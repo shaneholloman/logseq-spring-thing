@@ -47,6 +47,12 @@ The platform ingests knowledge from Logseq notebooks via GitHub, reasons over it
 VisionClaw is built on a Rust/Actix-web backend with hexagonal architecture, a React 19 + Three.js frontend with WebGPU/WebGL dual rendering, Neo4j graph storage, and CUDA 13.1 GPU-accelerated physics. It is production-proven — currently operational at MediaCityUK, powering a 15-person creative technology team, and validated in partnership with a major UK creative studio and the University of Salford.
 
 <div align="center">
+<img src="./graph-physics-live.png" alt="VisionClaw GPU-accelerated force-directed graph with Control Center" width="720"/>
+<br/>
+<em>GPU-accelerated force-directed graph layout with real-time physics controls — 934 nodes responding to spring/repulsion forces</em>
+
+<br/>
+
 <img src="./ChloeOctave.jpg" alt="Immersive interaction with a 3D knowledge graph" width="560"/>
 <br/>
 <em>Interacting with a knowledge graph in an immersive projected environment</em>
