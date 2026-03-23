@@ -13,6 +13,7 @@ import { nostrAuth } from '../../../../services/nostrAuthService';
 import { webSocketService } from '../../../../store/websocketStore';
 import type { SettingField } from './types';
 import { Lock, Info, RefreshCw } from 'lucide-react';
+import { isWebGPURenderer, setForceWebGLOverride, forceWebGLOverride } from '../../../../rendering/rendererFactory';
 
 interface UnifiedSettingsTabContentProps {
   sectionId: string;
@@ -429,8 +430,15 @@ export const UnifiedSettingsTabContent: React.FC<UnifiedSettingsTabContentProps>
             // Force refresh graph with current filter settings
             webSocketService.forceRefreshFilter();
             onSuccess?.('Graph refresh triggered - applying current filter settings');
+          } else if (field.action === 'toggle-webgpu') {
+            const currentlyWebGPU = isWebGPURenderer;
+            setForceWebGLOverride(currentlyWebGPU); // if WebGPU, force WebGL; if WebGL, remove force
+            window.location.reload();
           }
         };
+
+        const isWebGPUToggle = field.action === 'toggle-webgpu';
+        const webgpuActive = isWebGPUToggle ? isWebGPURenderer : false;
 
         return (
           <div key={field.key} style={{ padding: '8px 0' }}>
@@ -442,7 +450,9 @@ export const UnifiedSettingsTabContent: React.FC<UnifiedSettingsTabContentProps>
                 alignItems: 'center',
                 justifyContent: 'center',
                 gap: '8px',
-                background: 'linear-gradient(to right, #3b82f6, #2563eb)',
+                background: isWebGPUToggle
+                  ? (webgpuActive ? 'linear-gradient(to right, #10b981, #059669)' : 'linear-gradient(to right, #6b7280, #4b5563)')
+                  : 'linear-gradient(to right, #3b82f6, #2563eb)',
                 color: 'white',
                 padding: '8px 16px',
                 borderRadius: '4px',
@@ -451,7 +461,9 @@ export const UnifiedSettingsTabContent: React.FC<UnifiedSettingsTabContentProps>
                 border: 'none',
                 cursor: 'pointer',
                 transition: 'all 0.2s',
-                boxShadow: '0 2px 4px rgba(59, 130, 246, 0.3)'
+                boxShadow: isWebGPUToggle
+                  ? (webgpuActive ? '0 2px 4px rgba(16, 185, 129, 0.3)' : '0 2px 4px rgba(107, 114, 128, 0.3)')
+                  : '0 2px 4px rgba(59, 130, 246, 0.3)'
               }}
               onMouseEnter={(e) => {
                 e.currentTarget.style.transform = 'translateY(-1px)';
@@ -463,7 +475,7 @@ export const UnifiedSettingsTabContent: React.FC<UnifiedSettingsTabContentProps>
               }}
             >
               <RefreshCw size={14} />
-              {field.label}
+              {isWebGPUToggle ? (webgpuActive ? 'WebGPU Active — Click for WebGL' : 'WebGL Active — Click for WebGPU') : field.label}
             </button>
             {field.description && (
               <p style={{

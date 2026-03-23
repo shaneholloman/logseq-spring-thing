@@ -705,6 +705,10 @@ RUN cd /opt/claude-zai && npm install --production && \
 
 # Copy HTTPS Bridge Proxy (bridges https://localhost:3001 -> host http:3001)
 COPY --chown=devuser:devuser multi-agent-docker/https-bridge/ /opt/https-bridge/
+# MCP Gateway (TCP + WebSocket)
+RUN mkdir -p /opt/mcp-gateway
+COPY --chown=devuser:devuser multi-agent-docker/mcp-infrastructure/servers/mcp-gateway.js /opt/mcp-gateway/server.js
+RUN cd /opt/mcp-gateway && npm install ws --production
 RUN cd /opt/https-bridge && \
     openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
     -keyout server.key -out server.crt -subj "/CN=localhost" && \

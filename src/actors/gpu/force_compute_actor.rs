@@ -1201,10 +1201,10 @@ impl Handler<UpdateSimulationParams> for ForceComputeActor {
         // then get a sudden jump. The 60fps throttle in PhysicsOrchestratorActor's
         // UpdateNodePositions handler already rate-limits broadcasts.
         self.suppress_intermediate_broadcasts = false;
-        self.force_full_broadcast = false;
+        self.force_full_broadcast = true;
 
         info!(
-            "ForceComputeActor: Stability warmup=600, reheat=1.0, suppress_broadcasts=false (visible re-layout)"
+            "ForceComputeActor: Stability warmup=600, reheat=1.0, force_full_broadcast=true (visible re-layout)"
         );
 
         info!(

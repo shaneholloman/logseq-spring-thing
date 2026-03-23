@@ -130,6 +130,7 @@ class GraphDataManager {
         graphWorkerProxy.updateSettings(detail).catch((err: unknown) => {
           logger.warn('Failed to forward physics settings to worker:', createErrorMetadata(err));
         });
+        // Server sync handled by autoSaveManager -> settingsApi.updatePhysics() (GET-merge-PUT)
       }
     };
     window.addEventListener('physicsParametersUpdated', handlePhysicsUpdate);

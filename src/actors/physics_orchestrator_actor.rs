@@ -1247,6 +1247,10 @@ impl Handler<UpdateSimulationParams> for PhysicsOrchestratorActor {
                 || (cur.cooling_rate - new.cooling_rate).abs() > eps
                 || (cur.viewport_bounds - new.viewport_bounds).abs() > eps
                 || cur.use_sssp_distances != new.use_sssp_distances
+                || cur.auto_balance != new.auto_balance
+                || cur.enable_bounds != new.enable_bounds
+                || (cur.boundary_force_strength - new.boundary_force_strength).abs() > eps
+                || (cur.rest_length - new.rest_length).abs() > eps
         };
 
         self.target_params = msg.params.clone();

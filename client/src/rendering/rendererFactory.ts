@@ -83,12 +83,36 @@ function getMaxPixelRatio(): number {
  *   4. If the backend fell back to WebGL2, discard and use clean WebGLRenderer instead.
  *   5. Timeout guard: if WebGPU init takes >5s, fall back to WebGL (Quest 3 sometimes hangs).
  */
+/**
+ * Runtime flag to force WebGL renderer even when WebGPU is available.
+ * Toggled via the Effects tab "WebGPU Renderer" toggle. Persisted in localStorage.
+ * Requires page reload to take effect (R3F Canvas can't swap renderers live).
+ */
+export let forceWebGLOverride = typeof localStorage !== 'undefined'
+  && localStorage.getItem('visionflow-force-webgl') === 'true';
+
+export function setForceWebGLOverride(force: boolean) {
+  forceWebGLOverride = force;
+  if (typeof localStorage !== 'undefined') {
+    if (force) {
+      localStorage.setItem('visionflow-force-webgl', 'true');
+    } else {
+      localStorage.removeItem('visionflow-force-webgl');
+    }
+  }
+}
+
 export async function createGemRenderer(defaultProps: Record<string, unknown>) {
   const canvas = defaultProps.canvas as HTMLCanvasElement;
   const maxDPR = getMaxPixelRatio();
 
+  // Gate 0: user can force WebGL via Effects toggle
+  if (forceWebGLOverride) {
+    logger.info('[GemRenderer] WebGL forced by user preference (WebGPU disabled)');
+  }
+
   // Gate 1: browser must expose the WebGPU API
-  if (typeof navigator !== 'undefined' && (navigator as NavigatorWithGPU).gpu) {
+  if (!forceWebGLOverride && typeof navigator !== 'undefined' && (navigator as NavigatorWithGPU).gpu) {
     try {
       const threeWebGPU = await import('three/webgpu');
       const WebGPURenderer = (threeWebGPU as Record<string, unknown>).WebGPURenderer as new (opts: Record<string, unknown>) => WebGPURendererInstance;

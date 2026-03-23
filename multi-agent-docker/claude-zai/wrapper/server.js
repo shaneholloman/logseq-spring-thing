@@ -89,7 +89,7 @@ class ClaudeWorkerPool {
         const BASE_DELAY = 1000; // 1 second
 
         return new Promise((resolve, reject) => {
-            // GLM-4.7 is default model when using Z.AI, no --model flag needed
+            // GLM-5 is default model when using Z.AI, no --model flag needed
             const claudeProcess = spawn('claude', [
                 '--dangerously-skip-permissions',
                 '--print'
@@ -205,9 +205,9 @@ const pool = new ClaudeWorkerPool(WORKER_POOL_SIZE);
 app.get('/health', (req, res) => {
     res.json({
         status: 'ok',
-        service: 'z.ai-glm-4.7-wrapper',
-        backend: 'Z.AI GLM Coding Plan',
-        defaultModel: 'glm-4.7',
+        service: 'z.ai-glm-5-wrapper',
+        backend: 'Z.AI GLM 5 Coding Plan',
+        defaultModel: 'glm-5',
         baseUrl: ZAI_BASE_URL,
         configLoaded: !!config.apiKey,
         ...pool.getStats()

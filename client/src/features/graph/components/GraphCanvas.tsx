@@ -113,9 +113,21 @@ const GraphCanvas: React.FC = () => {
                     far: 2000,
                     position: [20, 15, 20]
                 }}
-                onCreated={({ gl, camera, scene }) => {
+                onCreated={({ gl, camera, scene, invalidate }) => {
                     gl.setClearColor(0x000033, 1);
                     setCanvasReady(true);
+                    // Force initial render — Edge/WebGPU doesn't paint until
+                    // a resize event occurs (e.g. opening DevTools). Scheduling
+                    // invalidation + a synthetic resize ensures first frame draws.
+                    invalidate();
+                    setTimeout(() => {
+                        invalidate();
+                        window.dispatchEvent(new Event('resize'));
+                    }, 100);
+                    setTimeout(() => {
+                        invalidate();
+                        window.dispatchEvent(new Event('resize'));
+                    }, 500);
                 }}
             >
                 {/* Lighting tuned for gem refraction -- driven by settings */}

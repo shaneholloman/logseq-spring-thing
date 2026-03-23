@@ -5,6 +5,7 @@ import { Eye, Zap, TrendingUp, MousePointer2, Download } from 'lucide-react';
 import { useSettingsStore } from '../../../../store/settingsStore';
 import type { GraphNode, GraphEdge } from '@/features/graph/types/graphTypes';
 import { createLogger } from '../../../../utils/loggerConfig';
+import { isWebGPURenderer, setForceWebGLOverride } from '../../../../rendering/rendererFactory';
 
 const logger = createLogger('RestoredGraphTabs');
 
@@ -173,6 +174,15 @@ export const RestoredGraphVisualisationTab: React.FC<GraphTabProps> = () => {
       />
 
       <SectionHeader icon={Zap} title="Visual Effects" color="#ec4899" />
+      <Toggle
+        checked={isWebGPURenderer}
+        onChange={(useWebGPU) => {
+          setForceWebGLOverride(!useWebGPU);
+          // Force Canvas remount by toggling a key — requires page reload
+          window.location.reload();
+        }}
+        label="WebGPU Renderer"
+      />
       <Toggle
         checked={bloomEffect}
         onChange={(val) => updateSettings((draft) => {

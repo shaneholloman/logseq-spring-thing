@@ -320,6 +320,14 @@ class GraphWorker {
         if (!isNaN(numericId) && numericId >= 0 && numericId <= 0xFFFFFFFF) {
             this.nodeIdMap.set(nodeId, numericId);
             this.reverseNodeIdMap.set(numericId, nodeId);
+            // Also register the masked ID (flag bits stripped) so binary position
+            // updates from the server can be matched. The server sends wire IDs
+            // with type flags in bits 26-31; getActualNodeId() strips them.
+            // Without this, only plain nodes (no flags) match incoming positions.
+            const maskedId = numericId & 0x03FFFFFF;
+            if (maskedId !== numericId && !this.reverseNodeIdMap.has(maskedId)) {
+                this.reverseNodeIdMap.set(maskedId, nodeId);
+            }
         } else {
             const mappedId = findFreeMappedId(nodeId, this.reverseNodeIdMap);
             this.nodeIdMap.set(nodeId, mappedId);

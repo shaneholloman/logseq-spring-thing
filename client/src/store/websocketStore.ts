@@ -1285,14 +1285,32 @@ export const useWebSocketStore = create<WebSocketState>()(
 
                 const transformedEdges = edges.map((edge: unknown) => {
                   const e = edge as Record<string, unknown>;
+                  // Recover source/target from multiple field names (API uses various conventions)
+                  let source = (e.source ?? e.from ?? e.from_node ?? e.sourceId ?? e.source_id) as string | undefined;
+                  let target = (e.target ?? e.to ?? e.to_node ?? e.targetId ?? e.target_id) as string | undefined;
+
+                  // Guard against prior String(undefined) coercion
+                  if (source === undefined || source === 'undefined' || source === 'null') source = undefined;
+                  if (target === undefined || target === 'undefined' || target === 'null') target = undefined;
+
+                  // Extract from edge ID if still missing (format: "sourceId-targetId")
+                  const edgeId = String(e.id || '');
+                  if ((source == null || target == null) && edgeId) {
+                    const parts = edgeId.split('-');
+                    if (parts.length >= 2) {
+                      if (source == null) source = parts[0];
+                      if (target == null) target = parts.slice(1).join('-');
+                    }
+                  }
+
                   return {
-                    id: String(e.id || `${e.source}-${e.target}`),
-                    source: String(e.source),
-                    target: String(e.target),
+                    id: edgeId || `${source}-${target}`,
+                    source: String(source),
+                    target: String(target),
                     weight: e.weight as number | undefined,
                     label: e.label as string | undefined,
                   };
-                });
+                }).filter((edge: { source: string; target: string }) => edge.source !== 'undefined' && edge.target !== 'undefined');
 
                 graphDataManager.setGraphData({
                   nodes: transformedNodes,

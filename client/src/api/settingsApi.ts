@@ -511,7 +511,8 @@ export const settingsApi = {
   ): Promise<AxiosResponse<void>> => {
     logger.debug('[SETTINGS-DIAG] updatePhysics called with:', settings);
     logger.debug('[SETTINGS-DIAG] auth: authenticated=', nostrAuth.isAuthenticated());
-    // GET-merge-PUT: backend requires full struct, not partial
+    // GET-merge-PUT: backend accepts partial JSON patches with field name normalization.
+    // The handler propagates changes to the GPU force compute actor for live physics updates.
     try {
       const current = await axios.get(`${API_BASE}/api/settings/physics`);
       logger.debug('[SETTINGS-DIAG] updatePhysics GET current:', current.status, current.data);

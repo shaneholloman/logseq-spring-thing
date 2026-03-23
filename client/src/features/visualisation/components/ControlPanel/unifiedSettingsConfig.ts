@@ -251,6 +251,9 @@ export const UNIFIED_SETTINGS_CONFIG: Record<string, SectionConfig> = {
   effects: {
     title: 'Visual Effects',
     fields: [
+      // Renderer toggle
+      { key: 'webgpuRenderer', label: 'WebGPU Renderer', type: 'action-button', action: 'toggle-webgpu', description: 'Switch between WebGPU (TSL materials) and WebGL renderer. Page reloads on change.' },
+
       // Scene Effects (WASM) - Basic
       { key: 'sceneEffectsEnabled', label: 'Scene Effects', type: 'toggle', path: 'visualisation.sceneEffects.enabled', description: 'Enable WASM ambient effects' },
       { key: 'particleCount', label: 'Particle Count', type: 'slider', min: 64, max: 512, step: 32, path: 'visualisation.sceneEffects.particleCount', description: 'Number of ambient dust particles' },
