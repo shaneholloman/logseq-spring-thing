@@ -307,12 +307,12 @@ export const InstancedLabels: React.FC<InstancedLabelsProps> = ({
 // ---------- WebGPU fallback implementation ----------
 
 const InstancedLabelsWebGPU: React.FC<InstancedLabelsProps> = ({
-  nodes, nodeIdToIndexMap, labelPositionsRef,
+  nodes, nodeIdToIndexMap, nodePositionsRef, labelPositionsRef,
   settings, graphMode, perNodeVisualModeMap, connectionCountMap,
   hierarchyMap, graphTypeVisuals, ssspResult, isXRMode,
 }) => {
   const { camera, size } = useThree();
-  const webGPULabelsRef = useRef<WebGPULabel[]>([]);
+  const [webGPULabels, setWebGPULabels] = React.useState<WebGPULabel[]>([]);
   const frameCountRef = useRef(0);
   const prevCameraRef = useRef({
     x: 0, y: 0, z: 0,
@@ -343,17 +343,18 @@ const InstancedLabelsWebGPU: React.FC<InstancedLabelsProps> = ({
     if (cameraMovingFast) {
       motionStateRef.current.lastFastTime = now;
       // Hide labels during fast camera motion — nodes keep rendering
-      webGPULabelsRef.current = [];
+      setWebGPULabels([]);
       return;
     }
     // Debounce: wait 150ms of stillness before rebuilding labels
     if (now - motionStateRef.current.lastFastTime < 150) return;
 
-    if (frameCountRef.current % 15 !== 0) return;
+    // Rebuild label list every 3 still frames (was 15 — too laggy)
+    if (frameCountRef.current % 3 !== 0) return;
 
     const labelSettings = (settings as any)?.visualisation?.graphs?.logseq?.labels ?? (settings as any)?.visualisation?.labels;
     if (!labelSettings?.enableLabels || nodes.length === 0) {
-      webGPULabelsRef.current = [];
+      setWebGPULabels([]);
       return;
     }
 
@@ -371,15 +372,23 @@ const InstancedLabelsWebGPU: React.FC<InstancedLabelsProps> = ({
     _projScreenMatrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
     _frustum.setFromProjectionMatrix(_projScreenMatrix);
 
-    const currentLabelPositions = labelPositionsRef.current;
+    // Read directly from SharedArrayBuffer (same source as GemNodes) for zero-lag positions.
+    // Falls back to labelPositionsRef if SAB not available.
+    const rawPositions = nodePositionsRef?.current;
     const labels: WebGPULabel[] = [];
     const halfW = size.width * 0.5;
     const halfH = size.height * 0.5;
 
     for (const node of nodes) {
       const originalIndex = nodeIdToIndexMap.get(String(node.id)) ?? -1;
-      const physicsPos = originalIndex !== -1 ? currentLabelPositions[originalIndex] : undefined;
-      const position = physicsPos || node.position || { x: 0, y: 0, z: 0 };
+      let position: { x: number; y: number; z: number };
+      if (originalIndex !== -1 && rawPositions && originalIndex * 3 + 2 < rawPositions.length) {
+        const i3 = originalIndex * 3;
+        position = { x: rawPositions[i3], y: rawPositions[i3 + 1], z: rawPositions[i3 + 2] };
+      } else {
+        const fallback = originalIndex !== -1 ? labelPositionsRef.current[originalIndex] : undefined;
+        position = fallback || node.position || { x: 0, y: 0, z: 0 };
+      }
 
       _tempVec3.set(position.x, position.y, position.z);
       if (!_frustum.containsPoint(_tempVec3)) continue;
@@ -415,10 +424,40 @@ const InstancedLabelsWebGPU: React.FC<InstancedLabelsProps> = ({
       labels.push({ screenX, screenY, lines, opacity });
     }
 
-    webGPULabelsRef.current = labels;
+    setWebGPULabels(labels);
   });
 
-  return <WebGPUFallbackLabels labelsRef={webGPULabelsRef} />;
+  // Render labels directly — useState triggers re-render when labels change
+  return (
+    <Html center={false} style={{ pointerEvents: 'none' }} calculatePosition={() => [0, 0, 0]}>
+      <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', pointerEvents: 'none' }}>
+        {webGPULabels.map((label, i) => (
+          <div key={i} style={{
+            position: 'absolute',
+            left: `${label.screenX}px`,
+            top: `${label.screenY}px`,
+            transform: 'translate(-50%, -100%)',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            whiteSpace: 'nowrap',
+            userSelect: 'none',
+            opacity: label.opacity,
+          }}>
+            {label.lines.map((line, j) => (
+              <span key={j} style={{
+                color: line.color,
+                fontSize: `${Math.round(line.fontSize * 28)}px`,
+                textShadow: '0 0 3px #000, 0 0 6px #000',
+                fontFamily: 'system-ui, sans-serif',
+                lineHeight: 1.3,
+              }}>{line.text}</span>
+            ))}
+          </div>
+        ))}
+      </div>
+    </Html>
+  );
 };
 
 // ---------- WebGL instanced implementation ----------
