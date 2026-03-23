@@ -661,7 +661,7 @@ See the [Contributing Guide](docs/how-to/development/contributing.md) for develo
 
 <div align="center">
 
-**VisionClaw is built by [DreamLab AI Consulting](https://dreamlab.ai) at MediaCityUK, Salford.**
+**VisionClaw is built by [DreamLab AI Consulting](https://www.dreamlab-ai.com) residential laboratory.**
 
 [Documentation](docs/README.md) | [Issues](https://github.com/DreamLab-AI/VisionClaw/issues) | [Discussions](https://github.com/DreamLab-AI/VisionClaw/discussions)
 
