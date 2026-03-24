@@ -15,14 +15,15 @@ pub async fn perform_clustering(
 ) -> Result<Vec<Cluster>, String> {
     info!("Performing {} clustering for task {}", request.method, task_id);
 
-    // GPU compute address is now Arc<RwLock<Option<...>>> - use async accessor
-    if let Some(gpu_addr) = app_state.get_gpu_compute_addr().await {
-        
+    // Route through GPUManagerActor → AnalyticsSupervisor → ClusteringActor
+    // (not ForceComputeActor which only stubs clustering)
+    if let Some(gpu_manager) = app_state.gpu_manager_addr.as_ref() {
+
         use crate::actors::messages::PerformGPUClustering;
 
-        info!("Using GPU-accelerated clustering for method: {}", request.method);
+        info!("Using GPU-accelerated clustering via GPUManager for method: {}", request.method);
 
-        
+
         if let Err(validation_error) = validate_clustering_params(request) {
             error!("Clustering parameter validation failed: {}", validation_error);
             return Err(validation_error);
@@ -34,9 +35,18 @@ pub async fn perform_clustering(
             task_id: task_id.to_string(),
         };
 
-        match gpu_addr.send(msg).await {
+        match gpu_manager.send(msg).await {
             Ok(Ok(clusters)) => {
                 info!("GPU clustering completed successfully: {} clusters found", clusters.len());
+                // Populate shared node_analytics store with cluster assignments
+                if let Ok(mut analytics) = app_state.node_analytics.write() {
+                    for (cluster_idx, cluster) in clusters.iter().enumerate() {
+                        for &node_id in &cluster.nodes {
+                            let entry = analytics.entry(node_id).or_insert((0, 0.0, 0));
+                            entry.0 = cluster_idx as u32; // cluster_id
+                        }
+                    }
+                }
                 return Ok(clusters);
             }
             Ok(Err(e)) => {
@@ -95,6 +105,15 @@ pub async fn perform_clustering(
     match clusters {
         Ok(clusters) => {
             info!("Clustering completed successfully: {} clusters found", clusters.len());
+            // Populate shared node_analytics store with CPU clustering results
+            if let Ok(mut analytics) = app_state.node_analytics.write() {
+                for (cluster_idx, cluster) in clusters.iter().enumerate() {
+                    for &node_id in &cluster.nodes {
+                        let entry = analytics.entry(node_id).or_insert((0, 0.0, 0));
+                        entry.0 = cluster_idx as u32;
+                    }
+                }
+            }
             Ok(clusters)
         }
         Err(e) => {

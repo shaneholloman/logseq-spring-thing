@@ -319,12 +319,14 @@ pub fn encode_node_data_extended(
         ontology_individual_ids,
         ontology_property_ids,
         None,
+        None,
     )
 }
 
 /// Encode node data with optional per-node SSSP distances and analytics.
 /// `sssp_data` maps node_id -> (distance, parent_id).
-/// When absent for a node, defaults to (INFINITY, -1).
+/// `analytics_data` maps node_id -> (cluster_id, anomaly_score, community_id).
+/// When absent for a node, defaults to (INFINITY, -1) / (0, 0.0, 0).
 pub fn encode_node_data_extended_with_sssp(
     nodes: &[(u32, BinaryNodeData)],
     agent_node_ids: &[u32],
@@ -333,6 +335,7 @@ pub fn encode_node_data_extended_with_sssp(
     ontology_individual_ids: &[u32],
     ontology_property_ids: &[u32],
     sssp_data: Option<&HashMap<u32, (f32, i32)>>,
+    analytics_data: Option<&HashMap<u32, (u32, f32, u32)>>,
 ) -> Vec<u8> {
     // Always use V3 as the default protocol (P0-4 Analytics Extension)
     let protocol_version = PROTOCOL_V3;
@@ -411,11 +414,14 @@ pub fn encode_node_data_extended_with_sssp(
         buffer.extend_from_slice(&sssp_distance.to_le_bytes());
         buffer.extend_from_slice(&sssp_parent.to_le_bytes());
 
-        // Analytics data (12 bytes) - V3 extension with default values
-        // For actual analytics data, use encode_node_data_with_analytics()
-        buffer.extend_from_slice(&0u32.to_le_bytes());   // cluster_id
-        buffer.extend_from_slice(&0.0f32.to_le_bytes()); // anomaly_score
-        buffer.extend_from_slice(&0u32.to_le_bytes());   // community_id
+        // Analytics data (12 bytes) - V3 extension populated from shared analytics store
+        let (cluster_id, anomaly_score, community_id) = analytics_data
+            .and_then(|m| m.get(node_id))
+            .copied()
+            .unwrap_or((0, 0.0, 0));
+        buffer.extend_from_slice(&cluster_id.to_le_bytes());
+        buffer.extend_from_slice(&anomaly_score.to_le_bytes());
+        buffer.extend_from_slice(&community_id.to_le_bytes());
     }
 
     
@@ -550,6 +556,16 @@ pub fn encode_node_data_with_all(
 
 pub fn encode_node_data(nodes: &[(u32, BinaryNodeData)]) -> Vec<u8> {
     encode_node_data_with_types(nodes, &[], &[])
+}
+
+/// Encode node data with analytics from a shared store.
+/// Convenience wrapper for the broadcast path that only has node positions
+/// and a reference to the shared analytics map.
+pub fn encode_node_data_with_live_analytics(
+    nodes: &[(u32, BinaryNodeData)],
+    analytics_data: Option<&HashMap<u32, (u32, f32, u32)>>,
+) -> Vec<u8> {
+    encode_node_data_extended_with_sssp(nodes, &[], &[], &[], &[], &[], None, analytics_data)
 }
 
 pub fn decode_node_data(data: &[u8]) -> Result<Vec<(u32, BinaryNodeData)>, String> {

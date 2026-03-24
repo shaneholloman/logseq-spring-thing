@@ -152,8 +152,9 @@ async fn start_clustering(
         algorithm, cluster_count
     );
 
-    if let Some(gpu_addr) = state.get_gpu_compute_addr().await {
-        
+    // Route PerformGPUClustering through GPUManagerActor → AnalyticsSupervisor → ClusteringActor
+    if let Some(gpu_manager) = state.gpu_manager_addr.as_ref() {
+
         use crate::actors::messages::PerformGPUClustering;
 
         let request = PerformGPUClustering {
@@ -180,7 +181,7 @@ async fn start_clustering(
             task_id: format!("{}_{}", algorithm, chrono::Utc::now().timestamp_millis()),
         };
 
-        let clustering_result = gpu_addr.send(request).await;
+        let clustering_result = gpu_manager.send(request).await;
 
         match clustering_result {
             Ok(Ok(cluster_results)) => {
@@ -188,6 +189,15 @@ async fn start_clustering(
                     "GPU clustering completed successfully with {} clusters",
                     cluster_results.len()
                 );
+                // Populate shared node_analytics with cluster assignments for V3 wire format
+                if let Ok(mut analytics) = state.node_analytics.write() {
+                    for (idx, cluster) in cluster_results.iter().enumerate() {
+                        for &node_id in &cluster.nodes {
+                            let entry = analytics.entry(node_id).or_insert((0, 0.0, 0));
+                            entry.0 = idx as u32;
+                        }
+                    }
+                }
                 ok_json!(json!({
                     "status": "completed",
                     "taskId": task_id,

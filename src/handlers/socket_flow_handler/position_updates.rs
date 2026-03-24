@@ -191,7 +191,9 @@ pub(crate) fn handle_request_full_snapshot(
         }
 
         if !all_nodes.is_empty() {
-            let binary_data = binary_protocol::encode_node_data(&all_nodes);
+            let analytics = _act.app_state.node_analytics.read().ok();
+            let analytics_ref = analytics.as_deref();
+            let binary_data = binary_protocol::encode_node_data_with_live_analytics(&all_nodes, analytics_ref);
             ctx.binary(binary_data);
             debug!("Sent position snapshot with {} nodes", all_nodes.len());
         }
@@ -365,7 +367,9 @@ pub(crate) fn handle_request_bots_positions(
         })
         .map(|nodes_data, _act, ctx| {
             if !nodes_data.is_empty() {
-                let binary_data = binary_protocol::encode_node_data(&nodes_data);
+                let analytics = _act.app_state.node_analytics.read().ok();
+                let analytics_ref = analytics.as_deref();
+                let binary_data = binary_protocol::encode_node_data_with_live_analytics(&nodes_data, analytics_ref);
 
                 // hot-path: trace only (fires per bots position update cycle)
                 trace!(
@@ -472,12 +476,16 @@ pub(crate) fn handle_subscribe_position_updates(
                     act.delta_frame_counter = (frame + 1) % 60;
                 } else {
                     // Delta encoding: V4 for delta frames (1-59), V3 for full sync (0, 60, 120, ...)
-                    let binary_data = delta_encoding::encode_node_data_delta(
+                    // On full sync frames, analytics data from shared store is included in V3 wire format.
+                    let analytics = act.app_state.node_analytics.read().ok();
+                    let analytics_ref = analytics.as_deref();
+                    let binary_data = delta_encoding::encode_node_data_delta_with_analytics(
                         &nodes,
                         &act.delta_previous_nodes,
                         frame,
                         &[],
                         &[],
+                        analytics_ref,
                     );
 
                     act.total_node_count = nodes.len();
@@ -600,7 +608,9 @@ pub(crate) fn handle_request_swarm_telemetry(
         })
         .map(|(nodes_data, swarm_metrics), _act, ctx| {
             if !nodes_data.is_empty() {
-                let binary_data = binary_protocol::encode_node_data(&nodes_data);
+                let analytics = _act.app_state.node_analytics.read().ok();
+                let analytics_ref = analytics.as_deref();
+                let binary_data = binary_protocol::encode_node_data_with_live_analytics(&nodes_data, analytics_ref);
                 ctx.binary(binary_data);
             }
 
@@ -885,7 +895,9 @@ pub(crate) fn handle_node_drag_update(
 
             if !node_data.is_empty() {
                 use crate::actors::messages::BroadcastNodePositions;
-                let binary_data = binary_protocol::encode_node_data(&node_data);
+                let analytics = app_state.node_analytics.read().ok();
+                let analytics_ref = analytics.as_deref();
+                let binary_data = binary_protocol::encode_node_data_with_live_analytics(&node_data, analytics_ref);
                 client_manager_addr.do_send(BroadcastNodePositions { positions: binary_data });
             }
         }
@@ -1007,7 +1019,9 @@ pub(crate) fn handle_node_drag_end(
 
             if !node_data.is_empty() {
                 use crate::actors::messages::BroadcastNodePositions;
-                let binary_data = binary_protocol::encode_node_data(&node_data);
+                let analytics = app_state.node_analytics.read().ok();
+                let analytics_ref = analytics.as_deref();
+                let binary_data = binary_protocol::encode_node_data_with_live_analytics(&node_data, analytics_ref);
                 client_manager_addr.do_send(BroadcastNodePositions { positions: binary_data });
             }
         }

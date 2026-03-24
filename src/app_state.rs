@@ -345,6 +345,11 @@ pub struct AppState {
     /// Health degradation reason. `None` means healthy; `Some(reason)` means degraded.
     /// Uses `std::sync::RwLock` (not tokio) so it can be read synchronously in health checks.
     pub degraded_reason: Arc<std::sync::RwLock<Option<String>>>,
+
+    /// Shared per-node analytics data populated by GPU analytics actors.
+    /// Maps node_id -> (cluster_id, anomaly_score, community_id).
+    /// Read by the binary broadcast path to fill V3 analytics fields.
+    pub node_analytics: Arc<std::sync::RwLock<std::collections::HashMap<u32, (u32, f32, u32)>>>,
 }
 
 impl AppState {
@@ -943,6 +948,7 @@ impl AppState {
             client_message_rx: Arc::new(tokio::sync::Mutex::new(client_message_rx)),
             ontology_pipeline_service,
             degraded_reason: Arc::new(std::sync::RwLock::new(None)),
+            node_analytics: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
         };
 
         // Validate optional actor addresses

@@ -21,9 +21,10 @@ pub async fn run_gpu_anomaly_detection(
 ) -> Result<Vec<Anomaly>, String> {
     info!("Running GPU anomaly detection with method: {}", method);
 
-    // GPU compute address is now Arc<RwLock<Option<...>>> - use async accessor
-    let gpu_addr = app_state.get_gpu_compute_addr().await
-        .ok_or_else(|| "GPU compute actor not available".to_string())?;
+    // Route through GPUManagerActor → AnalyticsSupervisor → AnomalyDetectionActor
+    // (not ForceComputeActor which only stubs anomaly detection)
+    let gpu_addr = app_state.gpu_manager_addr.as_ref()
+        .ok_or_else(|| "GPU manager actor not available".to_string())?;
 
     
     let anomaly_method = match method {
@@ -52,6 +53,23 @@ pub async fn run_gpu_anomaly_detection(
     match gpu_addr.send(msg).await {
         Ok(Ok(result)) => {
             info!("GPU anomaly detection completed: {} anomalies found", result.num_anomalies);
+            // Populate shared node_analytics with anomaly scores
+            if let Some(ref lof_scores) = result.lof_scores {
+                if let Ok(mut analytics) = app_state.node_analytics.write() {
+                    for (i, &score) in lof_scores.iter().enumerate() {
+                        let entry = analytics.entry(i as u32).or_insert((0, 0.0, 0));
+                        entry.1 = score; // anomaly_score
+                    }
+                }
+            }
+            if let Some(ref zscore_values) = result.zscore_values {
+                if let Ok(mut analytics) = app_state.node_analytics.write() {
+                    for (i, &score) in zscore_values.iter().enumerate() {
+                        let entry = analytics.entry(i as u32).or_insert((0, 0.0, 0));
+                        entry.1 = score.abs(); // anomaly_score (absolute z-score)
+                    }
+                }
+            }
             Ok(convert_gpu_anomaly_result_to_anomalies(result, &anomaly_method))
         }
         Ok(Err(e)) => {

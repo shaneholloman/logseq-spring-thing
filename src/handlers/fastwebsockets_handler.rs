@@ -396,10 +396,14 @@ impl StandaloneFastWsHandler {
 
             postcard::to_stdvec(&batch).unwrap_or_else(|_| {
                 // Fall back to legacy if postcard fails
-                binary_protocol::encode_node_data(nodes)
+                let analytics = self.app_state.node_analytics.read().ok();
+                let analytics_ref = analytics.as_deref();
+                binary_protocol::encode_node_data_with_live_analytics(nodes, analytics_ref)
             })
         } else {
-            binary_protocol::encode_node_data(nodes)
+            let analytics = self.app_state.node_analytics.read().ok();
+            let analytics_ref = analytics.as_deref();
+            binary_protocol::encode_node_data_with_live_analytics(nodes, analytics_ref)
         };
 
         self.bytes_sent += data.len() as u64;

@@ -133,6 +133,15 @@ pub async fn perform_gpu_spectral_clustering(
                     "GPU spectral clustering succeeded with {} clusters",
                     gpu_result.len()
                 );
+                // Populate shared node_analytics with cluster assignments
+                if let Ok(mut analytics) = app_state.node_analytics.write() {
+                    for (idx, cluster) in gpu_result.iter().enumerate() {
+                        for &node_id in &cluster.nodes {
+                            let entry = analytics.entry(node_id).or_insert((0, 0.0, 0));
+                            entry.0 = idx as u32;
+                        }
+                    }
+                }
                 return gpu_result;
             }
             Ok(Err(e)) => {
@@ -187,6 +196,14 @@ pub async fn perform_gpu_kmeans_clustering(
                     "GPU K-means clustering succeeded with {} clusters",
                     gpu_result.len()
                 );
+                if let Ok(mut analytics) = app_state.node_analytics.write() {
+                    for (idx, cluster) in gpu_result.iter().enumerate() {
+                        for &node_id in &cluster.nodes {
+                            let entry = analytics.entry(node_id).or_insert((0, 0.0, 0));
+                            entry.0 = idx as u32;
+                        }
+                    }
+                }
                 return gpu_result;
             }
             Ok(Err(e)) => {
@@ -241,6 +258,14 @@ pub async fn perform_gpu_louvain_clustering(
                     "GPU Louvain clustering succeeded with {} clusters",
                     gpu_result.len()
                 );
+                if let Ok(mut analytics) = app_state.node_analytics.write() {
+                    for (idx, cluster) in gpu_result.iter().enumerate() {
+                        for &node_id in &cluster.nodes {
+                            let entry = analytics.entry(node_id).or_insert((0, 0.0, 0));
+                            entry.0 = idx as u32;
+                        }
+                    }
+                }
                 return gpu_result;
             }
             Ok(Err(e)) => {

@@ -62,6 +62,25 @@ pub fn encode_node_data_delta(
     agent_node_ids: &[u32],
     knowledge_node_ids: &[u32],
 ) -> Vec<u8> {
+    encode_node_data_delta_with_analytics(
+        nodes,
+        previous_nodes,
+        frame_number,
+        agent_node_ids,
+        knowledge_node_ids,
+        None,
+    )
+}
+
+/// Delta encoding with optional analytics data for V3 full-sync frames.
+pub fn encode_node_data_delta_with_analytics(
+    nodes: &[(u32, BinaryNodeData)],
+    previous_nodes: &HashMap<u32, BinaryNodeData>,
+    frame_number: u64,
+    agent_node_ids: &[u32],
+    knowledge_node_ids: &[u32],
+    analytics_data: Option<&HashMap<u32, (u32, f32, u32)>>,
+) -> Vec<u8> {
     // Frame 0 or every 60th frame: send full state for resync
     if frame_number % DELTA_RESYNC_INTERVAL == 0 {
         trace!(
@@ -69,7 +88,9 @@ pub fn encode_node_data_delta(
             frame_number,
             nodes.len()
         );
-        return encode_node_data_extended(nodes, agent_node_ids, knowledge_node_ids, &[], &[], &[]);
+        return encode_node_data_extended_with_sssp(
+            nodes, agent_node_ids, knowledge_node_ids, &[], &[], &[], None, analytics_data,
+        );
     }
 
     // Frames 1-59: send only changes
