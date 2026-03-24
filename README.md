@@ -10,7 +10,7 @@
 [![Rust](https://img.shields.io/badge/Rust-2021-orange?style=flat-square&logo=rust)](https://www.rust-lang.org/)
 [![CUDA](https://img.shields.io/badge/CUDA-13.1-76B900?style=flat-square&logo=nvidia)](https://developer.nvidia.com/cuda-toolkit)
 
-**GPU-accelerated force-directed graph | Multi-user immersive XR | 71 agent skills | OWL 2 ontology governance**
+**110 CUDA kernels | GPU clustering, anomaly detection & PageRank | Multi-user immersive XR | 71 agent skills | OWL 2 ontology governance**
 
 <br/>
 
@@ -237,12 +237,13 @@ The orchestration layer is where agents reason, coordinate, and act — always a
 | `ontology_validate` | Axiom consistency check against Whelk reasoner |
 | `ontology_status` | Service health and statistics |
 
-**GPU-Accelerated Physics** — CUDA 13.1 kernels run server-authoritative force-directed graph layout. The `ForceComputeActor` dispatches GPU computation with real-time parameter updates. Clients receive position updates via the binary protocol V5 and apply optimistic tweening for smooth 60 FPS rendering. The `BroadcastOptimizer` uses delta compression with full-broadcast triggers on parameter changes.
+**GPU-Accelerated Compute** — 110 CUDA kernel functions across 11 kernel files (6,411 lines) run server-authoritative graph layout and analytics. The physics pipeline (force-directed layout, semantic forces, ontology constraints, stress majorisation) runs at 60 Hz. The analytics pipeline (K-Means clustering, Louvain community detection, LOF anomaly detection, PageRank) runs on-demand via API and streams results to clients in the V3 binary protocol's analytics fields (cluster_id, anomaly_score, community_id at bytes 36-47).
 
 | Metric | Result |
 |:-------|-------:|
+| CUDA kernel functions | 110 across 11 files |
 | GPU vs CPU speedup | 55x |
-| Position update size | 48 bytes/node (V3) |
+| Position + analytics size | 48 bytes/node (V3) |
 | WebSocket latency | 10ms |
 | Binary vs JSON bandwidth | 80% reduction |
 
@@ -280,7 +281,7 @@ High-frequency updates use a compact binary protocol instead of JSON, achieving 
 
 | Type | Code | Size | Purpose |
 |:-----|:-----|:-----|:--------|
-| `POSITION_UPDATE` | `0x10` | 48 bytes/node | Node positions from GPU physics |
+| `POSITION_UPDATE` | `0x10` | 48 bytes/node | Positions + velocity + SSSP + cluster/anomaly/community |
 | `AGENT_POSITIONS` | `0x11` | Variable | Batch agent position updates |
 | `VELOCITY_UPDATE` | `0x12` | Variable | Node velocity vectors |
 | `AGENT_STATE_FULL` | `0x20` | Variable | Complete agent state snapshot |
@@ -293,7 +294,7 @@ High-frequency updates use a compact binary protocol instead of JSON, achieving 
 | `HEARTBEAT` | `0x33` | 1 byte | Connection keepalive |
 | `BACKPRESSURE_ACK` | `0x34` | Variable | Flow control |
 
-Features: delta encoding, flate2 streaming compression, path-registry ID compression, node type flag bits (bits 26-31) for agent/knowledge/ontology classification.
+Features: V3 unified format (48 bytes/node with analytics), V4 delta encoding (20 bytes/changed node), node type flag bits (bits 26-31) for agent/knowledge/ontology classification, live GPU analytics fields (cluster_id, anomaly_score, community_id).
 
 </details>
 
@@ -308,11 +309,11 @@ The backend uses Actix actors for supervised concurrency. GPU compute actors run
 |:------|:--------|
 | `ForceComputeActor` | Core force-directed layout (CUDA) |
 | `StressMajorizationActor` | Stress majorisation algorithm |
-| `ClusteringActor` | Graph clustering |
-| `PageRankActor` | PageRank computation |
-| `ShortestPathActor` | Single-source shortest paths |
-| `ConnectedComponentsActor` | Component detection |
-| `AnomalyDetectionActor` | Outlier node detection |
+| `ClusteringActor` | K-Means + Louvain community detection (GPU) |
+| `PageRankActor` | GPU PageRank centrality computation |
+| `ShortestPathActor` | Delta-stepping SSSP (GPU) |
+| `ConnectedComponentsActor` | Label propagation component detection (GPU) |
+| `AnomalyDetectionActor` | LOF / Z-score anomaly detection (GPU) |
 | `SemanticForcesActor` | OWL-driven attraction/repulsion |
 | `ConstraintActor` | Layout constraint solving |
 | `AnalyticsSupervisor` | GPU analytics orchestration |
@@ -410,9 +411,9 @@ flowchart TB
     end
 
     subgraph GPU["GPU Compute (CUDA 13.1)"]
-        Kernels["CUDA Kernels"]
-        Physics["Force Simulation"]
-        Analytics["Graph Analytics"]
+        Kernels["110 CUDA Kernels"]
+        Physics["Force Simulation + Semantic Forces"]
+        Analytics["Clustering · Anomaly · PageRank"]
     end
 
     subgraph Agents["Multi-Agent Stack"]
@@ -517,7 +518,7 @@ flowchart LR
 | **Graph DB** | Neo4j 5.13 | Primary store, Cypher queries, bolt protocol |
 | **Relational DB** | PostgreSQL 15 | Vircadia World Server entity storage |
 | **Vector DB** | Qdrant | Semantic similarity search |
-| **GPU** | CUDA 13.1 | GPU compute via cudarc/cust crates |
+| **GPU** | CUDA 13.1 | 110 kernel functions, 6.4K LOC across 11 .cu files via cudarc |
 | **Ontology** | OWL 2 EL, Whelk-rs | EL++ subsumption, consistency checking (20 source files) |
 | **XR** | WebXR, @react-three/xr | Meta Quest 3, hand tracking, foveated rendering |
 | **Multi-User** | Vircadia World Server | Avatar sync, spatial audio, entity CRUD |
