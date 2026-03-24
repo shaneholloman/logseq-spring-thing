@@ -142,7 +142,18 @@ export function useGraphVisualState(graphData: GraphData): GraphVisualStateResul
         }
       }
 
-      // Priority 2: Metadata heuristics (fallback)
+      // Priority 2: Node type field from API (set by GraphStateActor classify_node)
+      const nodeType = (node as unknown as { type?: string }).type;
+      if (nodeType === 'ontology_node' || nodeType === 'owl_class') {
+        map.set(String(node.id), 'ontology');
+        continue;
+      }
+      if (nodeType === 'agent' || nodeType === 'bot') {
+        map.set(String(node.id), 'agent');
+        continue;
+      }
+
+      // Priority 3: Metadata heuristics (fallback)
       const nt = node.metadata?.nodeType || (node as unknown as { nodeType?: string }).nodeType || '';
       const owlIri = (node as unknown as { owlClassIri?: string }).owlClassIri;
       if (node.metadata?.agentType || node.metadata?.tokenRate !== undefined) {
