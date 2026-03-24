@@ -1272,6 +1272,7 @@ export const useWebSocketStore = create<WebSocketState>()(
                   return {
                     id: String(n.id),
                     label: String(n.label || n.name || n.id),
+                    wireId: n.wireId as number | undefined,
                     position: (n.position as { x: number; y: number; z: number }) || { x: Number(n.x) || 0, y: Number(n.y) || 0, z: Number(n.z) || 0 },
                     metadata: {
                       ...(n.metadata as Record<string, unknown>),

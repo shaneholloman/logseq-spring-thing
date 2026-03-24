@@ -114,6 +114,7 @@ export interface NodeMetadata {
 export interface Node {
   id: string;
   label: string;
+  wireId?: number;
   position: {
     x: number;
     y: number;
@@ -319,7 +320,7 @@ class GraphWorker {
 
         // Prefer server-provided compact wireId (0..N-1) which fits within
         // 26 bits and avoids collisions with binary protocol type flag bits.
-        const wireId = (node as any).wireId;
+        const wireId = node.wireId;
         if (wireId !== undefined && wireId !== null) {
             this.nodeIdMap.set(nodeId, wireId);
             this.reverseNodeIdMap.set(wireId, nodeId);
