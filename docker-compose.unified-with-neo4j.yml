@@ -111,7 +111,7 @@ services:
       VITE_DEV_SERVER_PORT: ${VITE_DEV_SERVER_PORT:-5173}
       VITE_API_PORT: ${VITE_API_PORT:-4000}
       VITE_HMR_PORT: ${VITE_HMR_PORT:-24678}
-      RUST_LOG: ${RUST_LOG:-debug}
+      RUST_LOG: ${RUST_LOG:-info,webxr::adapters::neo4j_ontology_repository=warn,webxr::actors::graph_state_actor=warn,actix_web=warn}
       RUST_LOG_REDIRECT: ${RUST_LOG_REDIRECT:-true}
       DOCKER_ENV: ${DOCKER_ENV:-true}
     volumes:

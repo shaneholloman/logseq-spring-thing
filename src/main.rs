@@ -573,6 +573,9 @@ async fn main() -> std::io::Result<()> {
                     .configure(bots_visualization_handler::configure_routes)
                     .configure(graph_export_handler::configure_routes)
 
+                    // GPU analytics: clustering, anomaly detection, stress optimisation
+                    .configure(webxr::handlers::clustering_handler::config)
+
                     // Ontology agent tools (MCP surface)
                     .configure(webxr::handlers::configure_ontology_agent_routes)
 
