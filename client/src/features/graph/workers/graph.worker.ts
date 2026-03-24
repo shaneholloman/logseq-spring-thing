@@ -114,7 +114,6 @@ export interface NodeMetadata {
 export interface Node {
   id: string;
   label: string;
-  wireId?: number;
   position: {
     x: number;
     y: number;
@@ -318,17 +317,11 @@ class GraphWorker {
         const nodeId = String(node.id);
         node.id = nodeId;
 
-        // Server sends compact wire IDs (0..N-1) consistently across ALL paths.
-        // Use wireId as the primary numeric key for binary frame lookups.
-        const wireId = node.wireId;
+        // Server sends compact IDs (0..N-1) as the node.id directly.
+        // No wireId indirection needed — node.id IS the compact wire ID.
         const numericId = parseInt(nodeId, 10);
 
-        if (wireId !== undefined && wireId !== null) {
-            // Preferred: server-assigned compact wire ID
-            this.nodeIdMap.set(nodeId, wireId);
-            this.reverseNodeIdMap.set(wireId, nodeId);
-        } else if (!isNaN(numericId) && numericId >= 0 && numericId <= 0xFFFFFFFF) {
-            // Legacy fallback — should not happen with proper server
+        if (!isNaN(numericId) && numericId >= 0 && numericId <= 0xFFFFFFFF) {
             this.nodeIdMap.set(nodeId, numericId);
             this.reverseNodeIdMap.set(numericId, nodeId);
         } else {
@@ -612,13 +605,9 @@ class GraphWorker {
       this.graphData.nodes.push(this.ensureNodeHasValidPosition(node));
 
 
-      // Use wireId (compact 0..N-1) when available, fall back to parsed numeric ID
-      const wireId = (node as any).wireId;
+      // Node IDs are compact (0..N-1) from the server — parse directly
       const numericId = parseInt(node.id, 10);
-      if (wireId !== undefined && wireId !== null) {
-        this.nodeIdMap.set(node.id, wireId);
-        this.reverseNodeIdMap.set(wireId, node.id);
-      } else if (!isNaN(numericId)) {
+      if (!isNaN(numericId)) {
         this.nodeIdMap.set(node.id, numericId);
         this.reverseNodeIdMap.set(numericId, node.id);
       } else {

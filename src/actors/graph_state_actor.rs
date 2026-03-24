@@ -85,9 +85,10 @@ pub struct GraphStateActor {
     ontology_property_ids: HashSet<u32>,
     agent_node_ids: HashSet<u32>,
 
-    /// Maps Neo4j node IDs to compact wire IDs (0..N-1) for binary protocol.
-    /// Compact IDs fit within NODE_ID_MASK (26 bits) so type flags don't collide.
-    neo4j_to_wire: HashMap<u32, u32>,
+    /// Maps compact ID (index) → original Neo4j ID for write-back operations.
+    /// After remapping, graph_data.nodes[i].id == i, so compact_to_neo4j[i] gives
+    /// the original Neo4j ID needed when persisting changes back to the database.
+    compact_to_neo4j: Vec<u32>,
 }
 
 impl GraphStateActor {
@@ -106,7 +107,7 @@ impl GraphStateActor {
             ontology_individual_ids: HashSet::new(),
             ontology_property_ids: HashSet::new(),
             agent_node_ids: HashSet::new(),
-            neo4j_to_wire: HashMap::new(),
+            compact_to_neo4j: Vec::new(),
         }
     }
 
@@ -120,26 +121,69 @@ impl GraphStateActor {
     }
 
     /// Returns node type arrays for binary protocol encoding.
-    /// IDs are remapped to compact wire IDs (0..N-1) so type flag bits don't
-    /// collide with large Neo4j node IDs.
+    /// Node IDs are already compact (0..N-1) after source remapping,
+    /// so no additional translation is needed.
     pub fn get_node_type_arrays(&self) -> NodeTypeArrays {
-        let remap = |ids: &HashSet<u32>| -> Vec<u32> {
-            ids.iter()
-                .filter_map(|neo4j_id| self.neo4j_to_wire.get(neo4j_id).copied())
-                .collect()
-        };
         NodeTypeArrays {
-            knowledge_ids: remap(&self.knowledge_node_ids),
-            agent_ids: remap(&self.agent_node_ids),
-            ontology_class_ids: remap(&self.ontology_class_ids),
-            ontology_individual_ids: remap(&self.ontology_individual_ids),
-            ontology_property_ids: remap(&self.ontology_property_ids),
+            knowledge_ids: self.knowledge_node_ids.iter().copied().collect(),
+            agent_ids: self.agent_node_ids.iter().copied().collect(),
+            ontology_class_ids: self.ontology_class_ids.iter().copied().collect(),
+            ontology_individual_ids: self.ontology_individual_ids.iter().copied().collect(),
+            ontology_property_ids: self.ontology_property_ids.iter().copied().collect(),
         }
     }
 
-    /// Returns the Neo4j-to-wire ID mapping for binary protocol encoding.
-    pub fn get_wire_id_mapping(&self) -> &HashMap<u32, u32> {
-        &self.neo4j_to_wire
+    /// Returns the compact-to-Neo4j reverse mapping for write-back operations.
+    pub fn get_compact_to_neo4j(&self) -> &Vec<u32> {
+        &self.compact_to_neo4j
+    }
+
+    /// Remap all node IDs to compact sequential IDs (0..N-1) and translate
+    /// edge source/target through the same mapping. After this call,
+    /// `graph_data.nodes[i].id == i` and all edges reference compact IDs.
+    /// The original Neo4j IDs are preserved in `compact_to_neo4j` for write-back.
+    fn remap_to_compact_ids(&mut self) {
+        let graph_data = Arc::make_mut(&mut self.graph_data);
+
+        // Build neo4j_id → compact_id mapping
+        let mut neo4j_to_compact: HashMap<u32, u32> = HashMap::with_capacity(graph_data.nodes.len());
+        self.compact_to_neo4j = Vec::with_capacity(graph_data.nodes.len());
+
+        for (compact_id, node) in graph_data.nodes.iter_mut().enumerate() {
+            let neo4j_id = node.id;
+            let compact = compact_id as u32;
+            neo4j_to_compact.insert(neo4j_id, compact);
+            self.compact_to_neo4j.push(neo4j_id);
+            node.id = compact;
+        }
+
+        // Remap edge source/target
+        for edge in &mut graph_data.edges {
+            if let Some(&compact_src) = neo4j_to_compact.get(&edge.source) {
+                edge.source = compact_src;
+            } else {
+                warn!("Edge source {} has no compact mapping — orphan edge", edge.source);
+            }
+            if let Some(&compact_tgt) = neo4j_to_compact.get(&edge.target) {
+                edge.target = compact_tgt;
+            } else {
+                warn!("Edge target {} has no compact mapping — orphan edge", edge.target);
+            }
+        }
+
+        // Rebuild node_map with compact IDs
+        let mut new_node_map = HashMap::with_capacity(graph_data.nodes.len());
+        for node in &graph_data.nodes {
+            new_node_map.insert(node.id, node.clone());
+        }
+        self.node_map = Arc::new(new_node_map);
+
+        info!(
+            "Remapped {} nodes to compact IDs 0..{} (edges: {})",
+            self.compact_to_neo4j.len(),
+            self.compact_to_neo4j.len().saturating_sub(1),
+            graph_data.edges.len()
+        );
     }
 
     /// Classify a single node into the appropriate type set based on its node_type and owl_class_iri fields
@@ -213,34 +257,31 @@ impl GraphStateActor {
             }
         }
 
-        // Rebuild compact wire ID mapping (0..N-1) for binary protocol.
-        // Node iteration order must match GPU upload order in ForceComputeActor.
-        self.neo4j_to_wire.clear();
-        for (compact_idx, node) in self.graph_data.nodes.iter().enumerate() {
-            self.neo4j_to_wire.insert(node.id, compact_idx as u32);
-        }
-
         info!(
-            "Node type classification: knowledge={}, agent={}, owl_class={}, owl_individual={}, owl_property={} | wire ID mapping: {} nodes -> 0..{}",
+            "Node type classification: knowledge={}, agent={}, owl_class={}, owl_individual={}, owl_property={} (compact IDs 0..{})",
             self.knowledge_node_ids.len(),
             self.agent_node_ids.len(),
             self.ontology_class_ids.len(),
             self.ontology_individual_ids.len(),
             self.ontology_property_ids.len(),
-            self.neo4j_to_wire.len(),
-            self.neo4j_to_wire.len().saturating_sub(1),
+            self.graph_data.nodes.len().saturating_sub(1),
         );
     }
 
     fn add_node(&mut self, node: Node) {
         let node_id = node.id;
 
-        // Classify the node by type
+        // Classify the node by type (uses compact ID)
         self.classify_node(&node);
 
         Arc::make_mut(&mut self.node_map).insert(node_id, node.clone());
-
         Arc::make_mut(&mut self.graph_data).nodes.push(node.clone());
+
+        // Track compact→neo4j mapping (for metadata-built nodes, compact == neo4j)
+        if self.compact_to_neo4j.len() <= node_id as usize {
+            self.compact_to_neo4j.resize(node_id as usize + 1, 0);
+        }
+        self.compact_to_neo4j[node_id as usize] = node_id;
 
         // Persist to Neo4j (fire-and-forget)
         let repository = Arc::clone(&self.repository);
@@ -337,21 +378,21 @@ impl GraphStateActor {
     fn build_from_metadata(&mut self, metadata: MetadataStore) -> Result<(), String> {
         let mut new_graph_data = GraphData::new();
 
-        
+        // Preserve existing positions by metadata_id
         let mut existing_positions: HashMap<String, (crate::types::vec3::Vec3Data, crate::types::vec3::Vec3Data)> = HashMap::new();
-
         for node in &self.graph_data.nodes {
             existing_positions.insert(node.metadata_id.clone(), (node.data.position(), node.data.velocity()));
         }
 
-        
-        let mut new_node_map = HashMap::new();
-        let mut current_id = self.next_node_id.load(std::sync::atomic::Ordering::SeqCst);
+        // Assign compact IDs directly (0..N-1)
+        let mut compact_id: u32 = 0;
+        // compact_to_neo4j not meaningful here (metadata-built nodes don't come from Neo4j)
+        // but we keep the vector consistent: compact_to_neo4j[i] = compact_id = i
+        self.compact_to_neo4j = Vec::with_capacity(metadata.len());
 
         for (metadata_id, file_metadata) in metadata.iter() {
-            let mut node = Node::new_with_id(metadata_id.clone(), Some(current_id));
+            let mut node = Node::new_with_id(metadata_id.clone(), Some(compact_id));
 
-            
             if let Some((position, velocity)) = existing_positions.get(metadata_id) {
                 node.data.x = position.x;
                 node.data.y = position.y;
@@ -360,27 +401,31 @@ impl GraphStateActor {
                 node.data.vy = velocity.y;
                 node.data.vz = velocity.z;
             } else {
-                
                 self.generate_random_position(&mut node);
             }
 
-            
             self.configure_node_from_metadata(&mut node, file_metadata);
 
-            new_node_map.insert(current_id, node.clone());
+            self.compact_to_neo4j.push(compact_id);
             new_graph_data.nodes.push(node);
-            current_id += 1;
+            compact_id += 1;
         }
 
-
+        // Generate edges (using compact IDs since nodes already have them)
         Self::generate_edges_from_metadata(&mut new_graph_data, &metadata);
 
         self.graph_data = Arc::new(new_graph_data);
-        self.node_map = Arc::new(new_node_map);
-        self.next_node_id.store(current_id, std::sync::atomic::Ordering::SeqCst);
+        self.next_node_id.store(compact_id, std::sync::atomic::Ordering::SeqCst);
         self.metadata_store = metadata.clone();
 
-        // Classify all nodes into type sets
+        // Rebuild node_map with compact IDs
+        let mut new_node_map = HashMap::with_capacity(self.graph_data.nodes.len());
+        for node in &self.graph_data.nodes {
+            new_node_map.insert(node.id, node.clone());
+        }
+        self.node_map = Arc::new(new_node_map);
+
+        // Classify all nodes into type sets (compact IDs)
         self.reclassify_all_nodes();
 
         // Persist edges to Neo4j so they survive restart
@@ -396,8 +441,9 @@ impl GraphStateActor {
             });
         }
 
-        info!("Built graph from metadata: {} nodes, {} edges",
-              self.graph_data.nodes.len(), self.graph_data.edges.len());
+        info!("Built graph from metadata: {} nodes, {} edges (compact IDs 0..{})",
+              self.graph_data.nodes.len(), self.graph_data.edges.len(),
+              self.graph_data.nodes.len().saturating_sub(1));
 
         Ok(())
     }
@@ -817,30 +863,35 @@ impl Actor for GraphStateActor {
                     // Update actor state with loaded graph (already Arc'd)
                     act.graph_data = arc_graph_data.clone();
 
-                    // Rebuild node map for efficient lookups
-                    let mut node_map = HashMap::new();
-                    for node in &arc_graph_data.nodes {
-                        node_map.insert(node.id, node.clone());
-                    }
-                    act.node_map = Arc::new(node_map);
-
-                    // Update next_node_id to avoid conflicts
-                    if let Some(max_id) = arc_graph_data.nodes.iter().map(|n| n.id).max() {
-                        act.next_node_id.store(max_id + 1, std::sync::atomic::Ordering::SeqCst);
-                    }
-
-                    // Classify all loaded nodes into type sets
-                    act.reclassify_all_nodes();
-
-                    // If no edges were loaded but we have nodes, generate from labels and persist
+                    // If no edges were loaded but we have nodes, generate from labels
+                    // BEFORE remapping, since generate_edges_from_labels uses original IDs
                     if act.graph_data.edges.is_empty() && !act.graph_data.nodes.is_empty() {
                         info!("No edges loaded from Neo4j — generating from node labels");
                         let graph_data_mut = Arc::make_mut(&mut act.graph_data);
                         Self::generate_edges_from_labels(graph_data_mut);
+                    }
 
-                        // Persist generated edges to Neo4j (fire-and-forget)
+                    // Remap all node IDs to compact 0..N-1 and translate edge src/tgt.
+                    // This MUST happen before node_map rebuild and classification.
+                    act.remap_to_compact_ids();
+
+                    // Update next_node_id to continue from compact range
+                    act.next_node_id.store(act.graph_data.nodes.len() as u32, std::sync::atomic::Ordering::SeqCst);
+
+                    // Classify all loaded nodes into type sets (using compact IDs)
+                    act.reclassify_all_nodes();
+
+                    // Persist generated edges to Neo4j using ORIGINAL Neo4j IDs (fire-and-forget)
+                    if !act.graph_data.edges.is_empty() {
                         let repo = Arc::clone(&act.repository);
-                        let edges_to_save = act.graph_data.edges.clone();
+                        // Translate compact edge IDs back to Neo4j IDs for persistence
+                        let c2n = act.compact_to_neo4j.clone();
+                        let edges_to_save: Vec<Edge> = act.graph_data.edges.iter().map(|e| {
+                            let mut neo4j_edge = e.clone();
+                            neo4j_edge.source = c2n.get(e.source as usize).copied().unwrap_or(e.source);
+                            neo4j_edge.target = c2n.get(e.target as usize).copied().unwrap_or(e.target);
+                            neo4j_edge
+                        }).collect();
                         let node_count = act.graph_data.nodes.len();
                         actix::spawn(async move {
                             for edge in &edges_to_save {
@@ -852,8 +903,9 @@ impl Actor for GraphStateActor {
                         });
                     }
 
-                    info!("GraphStateActor initialized with {} nodes, {} edges from Neo4j",
-                          act.graph_data.nodes.len(), act.graph_data.edges.len());
+                    info!("GraphStateActor initialized with {} nodes, {} edges from Neo4j (compact IDs 0..{})",
+                          act.graph_data.nodes.len(), act.graph_data.edges.len(),
+                          act.graph_data.nodes.len().saturating_sub(1));
                 } else {
                     warn!("GraphStateActor starting with empty graph due to load failure");
                 }
@@ -1176,30 +1228,32 @@ impl Handler<ReloadGraphFromDatabase> for GraphStateActor {
                         // Update actor state with reloaded graph
                         act.graph_data = arc_graph_data.clone();
 
-                        // Rebuild node map
-                        let mut node_map = HashMap::new();
-                        for node in &arc_graph_data.nodes {
-                            node_map.insert(node.id, node.clone());
-                        }
-                        act.node_map = Arc::new(node_map);
-
-                        // Update next_node_id
-                        if let Some(max_id) = arc_graph_data.nodes.iter().map(|n| n.id).max() {
-                            act.next_node_id.store(max_id + 1, std::sync::atomic::Ordering::SeqCst);
-                        }
-
-                        // Reclassify all nodes after reload
-                        act.reclassify_all_nodes();
-
-                        // If no edges were loaded but we have nodes, generate from labels and persist
+                        // Generate edges before remap (uses original IDs)
                         if act.graph_data.edges.is_empty() && !act.graph_data.nodes.is_empty() {
                             info!("ReloadGraphFromDatabase: No edges — generating from node labels");
                             let graph_data_mut = Arc::make_mut(&mut act.graph_data);
                             Self::generate_edges_from_labels(graph_data_mut);
+                        }
 
-                            // Persist generated edges (fire-and-forget)
+                        // Remap all IDs to compact 0..N-1
+                        act.remap_to_compact_ids();
+
+                        // Update next_node_id
+                        act.next_node_id.store(act.graph_data.nodes.len() as u32, std::sync::atomic::Ordering::SeqCst);
+
+                        // Reclassify all nodes after reload (using compact IDs)
+                        act.reclassify_all_nodes();
+
+                        // Persist generated edges to Neo4j with original IDs (fire-and-forget)
+                        if !act.graph_data.edges.is_empty() {
                             let repo = Arc::clone(&act.repository);
-                            let edges_to_save = act.graph_data.edges.clone();
+                            let c2n = act.compact_to_neo4j.clone();
+                            let edges_to_save: Vec<Edge> = act.graph_data.edges.iter().map(|e| {
+                                let mut neo4j_edge = e.clone();
+                                neo4j_edge.source = c2n.get(e.source as usize).copied().unwrap_or(e.source);
+                                neo4j_edge.target = c2n.get(e.target as usize).copied().unwrap_or(e.target);
+                                neo4j_edge
+                            }).collect();
                             actix::spawn(async move {
                                 for edge in &edges_to_save {
                                     if let Err(e) = repo.add_edge(edge).await {
@@ -1211,9 +1265,10 @@ impl Handler<ReloadGraphFromDatabase> for GraphStateActor {
                         }
 
                         info!(
-                            "GraphStateActor: State updated after reload - {} nodes, {} edges",
+                            "GraphStateActor: State updated after reload - {} nodes, {} edges (compact IDs 0..{})",
                             act.graph_data.nodes.len(),
-                            act.graph_data.edges.len()
+                            act.graph_data.edges.len(),
+                            act.graph_data.nodes.len().saturating_sub(1),
                         );
                         Ok(())
                     }
@@ -1236,7 +1291,9 @@ impl Handler<GetNodeIdMapping> for GraphStateActor {
     type Result = NodeIdMapping;
 
     fn handle(&mut self, _msg: GetNodeIdMapping, _ctx: &mut Self::Context) -> Self::Result {
-        NodeIdMapping(self.neo4j_to_wire.clone())
+        // Node IDs are now compact (0..N-1) at the source — no remapping needed.
+        // Return empty map for backward compatibility with any remaining callers.
+        NodeIdMapping(HashMap::new())
     }
 }
 

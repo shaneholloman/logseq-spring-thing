@@ -73,16 +73,6 @@ pub(crate) async fn fetch_nodes(
     let agent_set: HashSet<u32> = nta.agent_ids.iter().copied().collect();
     let knowledge_set: HashSet<u32> = nta.knowledge_ids.iter().copied().collect();
 
-    // Get compact wire ID mapping (Neo4j ID -> 0..N-1) for binary protocol
-    let wire_map: std::collections::HashMap<u32, u32> = match app_state
-        .graph_service_addr
-        .send(crate::actors::messages::GetNodeIdMapping)
-        .await
-    {
-        Ok(mapping) => mapping.0,
-        Err(_) => std::collections::HashMap::new(),
-    };
-
     let debug_enabled = crate::utils::logging::is_debug_enabled();
     let debug_websocket = debug_enabled;
     let detailed_debug = debug_enabled && debug_websocket;
@@ -95,7 +85,7 @@ pub(crate) async fn fetch_nodes(
         );
         for (i, node) in graph_data.nodes.iter().take(5).enumerate() {
             trace!(
-                "  Node {}: id={} (numeric), metadata_id={} (filename)",
+                "  Node {}: id={} (compact), metadata_id={} (filename)",
                 i, node.id, node.metadata_id
             );
         }
@@ -103,16 +93,15 @@ pub(crate) async fn fetch_nodes(
 
     let mut nodes = Vec::with_capacity(graph_data.nodes.len());
     for node in &graph_data.nodes {
-        // Use compact wire ID (0..N-1) instead of Neo4j ID to avoid 26-bit truncation
-        let wire_id = wire_map.get(&node.id).copied().unwrap_or(node.id);
+        // Node IDs are already compact (0..N-1) from GraphStateActor source remapping
+        let compact_id = node.id;
         // Apply node type flags so the client can distinguish agent/knowledge/ontology nodes
-        // agent_set/knowledge_set already contain compact wire IDs (remapped in get_node_type_arrays)
-        let flagged_id = if agent_set.contains(&wire_id) {
-            binary_protocol::set_agent_flag(wire_id)
-        } else if knowledge_set.contains(&wire_id) {
-            binary_protocol::set_knowledge_flag(wire_id)
+        let flagged_id = if agent_set.contains(&compact_id) {
+            binary_protocol::set_agent_flag(compact_id)
+        } else if knowledge_set.contains(&compact_id) {
+            binary_protocol::set_knowledge_flag(compact_id)
         } else {
-            wire_id
+            compact_id
         };
         let node_data =
             BinaryNodeDataClient::new(flagged_id, node.data.position(), node.data.velocity());
@@ -139,7 +128,7 @@ pub(crate) fn handle_request_full_snapshot(
 
     let app_state = _act.app_state.clone();
     let fut = async move {
-        use crate::actors::messages::{GetGraphData, GetBotsGraphData, GetNodeTypeArrays, GetNodeIdMapping};
+        use crate::actors::messages::{GetGraphData, GetBotsGraphData, GetNodeTypeArrays};
         use std::collections::HashSet;
 
         // hot-path: trace only (fires per snapshot request)
@@ -151,30 +140,24 @@ pub(crate) fn handle_request_full_snapshot(
         let mut knowledge_nodes = Vec::new();
         let mut agent_nodes = Vec::new();
 
-        // Fetch node type arrays (compact wire IDs) and wire mapping
+        // Fetch node type arrays (already compact IDs from source remapping)
         let nta = app_state.graph_service_addr.send(GetNodeTypeArrays).await
             .unwrap_or_default();
         let agent_set: HashSet<u32> = nta.agent_ids.iter().copied().collect();
 
-        let wire_map: std::collections::HashMap<u32, u32> = app_state
-            .graph_service_addr
-            .send(GetNodeIdMapping)
-            .await
-            .map(|m| m.0)
-            .unwrap_or_default();
-
         if include_knowledge {
             if let Ok(Ok(graph_data)) = app_state.graph_service_addr.send(GetGraphData).await {
                 for node in &graph_data.nodes {
-                    let wire_id = wire_map.get(&node.id).copied().unwrap_or(node.id);
+                    // Node IDs are already compact (0..N-1) from source remapping
+                    let compact_id = node.id;
                     let node_data = BinaryNodeData {
-                        node_id: wire_id, x: node.data.x, y: node.data.y, z: node.data.z,
+                        node_id: compact_id, x: node.data.x, y: node.data.y, z: node.data.z,
                         vx: node.data.vx, vy: node.data.vy, vz: node.data.vz,
                     };
-                    if agent_set.contains(&wire_id) {
-                        agent_nodes.push((wire_id, node_data));
+                    if agent_set.contains(&compact_id) {
+                        agent_nodes.push((compact_id, node_data));
                     } else {
-                        knowledge_nodes.push((wire_id, node_data));
+                        knowledge_nodes.push((compact_id, node_data));
                     }
                 }
             }
@@ -183,12 +166,13 @@ pub(crate) fn handle_request_full_snapshot(
         if include_agent {
             if let Ok(Ok(bots_data)) = app_state.graph_service_addr.send(GetBotsGraphData).await {
                 for node in &bots_data.nodes {
-                    let wire_id = wire_map.get(&node.id).copied().unwrap_or(node.id);
+                    // Bots graph IDs — use as-is (bots have their own ID scheme)
+                    let compact_id = node.id;
                     let node_data = BinaryNodeData {
-                        node_id: wire_id, x: node.data.x, y: node.data.y, z: node.data.z,
+                        node_id: compact_id, x: node.data.x, y: node.data.y, z: node.data.z,
                         vx: node.data.vx, vy: node.data.vy, vz: node.data.vz,
                     };
-                    agent_nodes.push((wire_id, node_data));
+                    agent_nodes.push((compact_id, node_data));
                 }
             }
         }
@@ -369,19 +353,12 @@ pub(crate) fn handle_request_bots_positions(
                 return vec![];
             }
 
-            // Get wire ID mapping so bot node IDs stay within 26-bit compact range
-            let wire_map: std::collections::HashMap<u32, u32> = app_state
-                .graph_service_addr
-                .send(crate::actors::messages::GetNodeIdMapping)
-                .await
-                .map(|m| m.0)
-                .unwrap_or_default();
-
             let mut nodes_data = Vec::new();
             for node in bots_nodes {
-                let wire_id = wire_map.get(&node.id).copied().unwrap_or(node.id);
+                // Node IDs are already compact from source remapping
+                let compact_id = node.id;
                 // Flag bots/agent nodes so the client renders them in AgentNodesLayer
-                let flagged_id = binary_protocol::set_agent_flag(wire_id);
+                let flagged_id = binary_protocol::set_agent_flag(compact_id);
                 let node_data = BinaryNodeData {
                     node_id: flagged_id,
                     x: node.data.x,
@@ -902,25 +879,19 @@ pub(crate) fn handle_node_drag_update(
             settle_start.elapsed().as_secs_f64() * 1000.0
         );
 
-        // 3. Fetch updated positions and broadcast to all clients (using compact wire IDs)
-        use crate::actors::messages::{GetGraphData, GetNodeIdMapping};
-        let wire_map: std::collections::HashMap<u32, u32> = app_state
-            .graph_service_addr
-            .send(GetNodeIdMapping)
-            .await
-            .map(|m| m.0)
-            .unwrap_or_default();
+        // 3. Fetch updated positions and broadcast to all clients (IDs already compact)
+        use crate::actors::messages::GetGraphData;
 
         if let Ok(Ok(graph_data)) = app_state.graph_service_addr.send(GetGraphData).await {
             let node_data: Vec<(u32, BinaryNodeData)> = graph_data
                 .nodes
                 .iter()
                 .map(|node| {
-                    let wire_id = wire_map.get(&node.id).copied().unwrap_or(node.id);
+                    // Node IDs are already compact (0..N-1) from source remapping
                     (
-                        wire_id,
+                        node.id,
                         BinaryNodeData {
-                            node_id: wire_id,
+                            node_id: node.id,
                             x: node.data.x,
                             y: node.data.y,
                             z: node.data.z,
@@ -1034,25 +1005,19 @@ pub(crate) fn handle_node_drag_end(
             settle_start.elapsed().as_secs_f64() * 1000.0
         );
 
-        // 3. Broadcast final positions to all clients (using compact wire IDs)
-        use crate::actors::messages::{GetGraphData, GetNodeIdMapping};
-        let wire_map: std::collections::HashMap<u32, u32> = app_state
-            .graph_service_addr
-            .send(GetNodeIdMapping)
-            .await
-            .map(|m| m.0)
-            .unwrap_or_default();
+        // 3. Broadcast final positions to all clients (IDs already compact)
+        use crate::actors::messages::GetGraphData;
 
         if let Ok(Ok(graph_data)) = app_state.graph_service_addr.send(GetGraphData).await {
             let node_data: Vec<(u32, BinaryNodeData)> = graph_data
                 .nodes
                 .iter()
                 .map(|node| {
-                    let wire_id = wire_map.get(&node.id).copied().unwrap_or(node.id);
+                    // Node IDs are already compact (0..N-1) from source remapping
                     (
-                        wire_id,
+                        node.id,
                         BinaryNodeData {
-                            node_id: wire_id,
+                            node_id: node.id,
                             x: node.data.x,
                             y: node.data.y,
                             z: node.data.z,

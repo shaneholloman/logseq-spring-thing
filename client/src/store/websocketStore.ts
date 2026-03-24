@@ -1272,7 +1272,7 @@ export const useWebSocketStore = create<WebSocketState>()(
                   return {
                     id: String(n.id),
                     label: String(n.label || n.name || n.id),
-                    wireId: n.wireId as number | undefined,
+                    // Node IDs are compact (0..N-1) from server — no wireId indirection needed
                     position: (n.position as { x: number; y: number; z: number }) || { x: Number(n.x) || 0, y: Number(n.y) || 0, z: Number(n.z) || 0 },
                     metadata: {
                       ...(n.metadata as Record<string, unknown>),

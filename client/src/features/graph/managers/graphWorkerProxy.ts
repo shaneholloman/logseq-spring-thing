@@ -13,7 +13,6 @@ export type { NodeMetadata } from '../workers/graph.worker';
 export interface Node {
   id: string;
   label: string;
-  wireId?: number;
   position: {
     x: number;
     y: number;

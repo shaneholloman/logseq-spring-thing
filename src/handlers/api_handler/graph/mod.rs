@@ -36,12 +36,6 @@ pub struct NodeWithPosition {
     pub metadata_id: String,
     pub label: String,
 
-    /// Compact wire ID (0..N-1) used by the binary protocol.
-    /// Fits within 26 bits so type flag bits 26-31 don't collide with real Neo4j IDs.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub wire_id: Option<u32>,
-
-
     pub position: Vec3Data,
     pub velocity: Vec3Data,
 
@@ -125,15 +119,6 @@ pub async fn get_graph_data(
         Result<Result<PhysicsState, Hexserror>, String>,
     ) = tokio::join!(graph_future, node_map_future, physics_future);
 
-    // Fetch wire ID mapping for binary protocol (Neo4j ID -> compact 0..N-1)
-    let wire_map: HashMap<u32, u32> = match state.graph_service_addr
-        .send(crate::actors::messages::GetNodeIdMapping)
-        .await
-    {
-        Ok(mapping) => mapping.0,
-        Err(_) => HashMap::new(),
-    };
-
     match (graph_result, node_map_result, physics_result) {
         (Ok(Ok(graph_data)), Ok(Ok(_node_map)), Ok(Ok(physics_state))) => {
             debug!(
@@ -157,7 +142,6 @@ pub async fn get_graph_data(
                         id: node.id,
                         metadata_id: node.metadata_id.clone(),
                         label: node.label.clone(),
-                        wire_id: wire_map.get(&node.id).copied(),
                         position,
                         velocity,
                         metadata: node.metadata.clone(),

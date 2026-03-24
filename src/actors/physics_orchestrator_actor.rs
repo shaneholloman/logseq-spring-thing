@@ -1127,17 +1127,15 @@ impl Handler<RequestPositionSnapshot> for PhysicsOrchestratorActor {
 
 
         if let Some(ref graph_data) = self.graph_data_ref {
-            // Remap Neo4j IDs to compact wire IDs (0..N-1) so binary protocol
-            // type flags in bits 26-31 don't collide with large raw IDs.
+            // Node IDs are already compact (0..N-1) from GraphStateActor source remapping.
+            // node.id == index, so no enumerate-based remapping is needed.
             let knowledge_nodes: Vec<(u32, BinaryNodeData)> = graph_data
                 .nodes
                 .iter()
-                .enumerate()
-                .map(|(idx, node)| {
-                    let wire_id = idx as u32;
+                .map(|node| {
                     let mut data = node.data.clone();
-                    data.node_id = wire_id;
-                    (wire_id, data)
+                    data.node_id = node.id;
+                    (node.id, data)
                 })
                 .collect();
 
