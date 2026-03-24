@@ -778,19 +778,19 @@ export const useSettingsStore = create<SettingsState>()(
 
 
         if (validatedParams.restLength !== undefined) {
-          validatedParams.restLength = Math.max(0.1, Math.min(10.0, validatedParams.restLength));
+          validatedParams.restLength = Math.max(0.1, Math.min(2000.0, validatedParams.restLength));
         }
         if (validatedParams.repulsionCutoff !== undefined) {
-          validatedParams.repulsionCutoff = Math.max(1.0, Math.min(1000.0, validatedParams.repulsionCutoff));
+          validatedParams.repulsionCutoff = Math.max(1.0, Math.min(5000.0, validatedParams.repulsionCutoff));
         }
         if (validatedParams.repulsionSofteningEpsilon !== undefined) {
-          validatedParams.repulsionSofteningEpsilon = Math.max(0.001, Math.min(1.0, validatedParams.repulsionSofteningEpsilon));
+          validatedParams.repulsionSofteningEpsilon = Math.max(0.00001, Math.min(1.0, validatedParams.repulsionSofteningEpsilon));
         }
         if (validatedParams.centerGravityK !== undefined) {
-          validatedParams.centerGravityK = Math.max(-1.0, Math.min(1.0, validatedParams.centerGravityK));
+          validatedParams.centerGravityK = Math.max(-10.0, Math.min(10.0, validatedParams.centerGravityK));
         }
         if (validatedParams.gridCellSize !== undefined) {
-          validatedParams.gridCellSize = Math.max(1.0, Math.min(100.0, validatedParams.gridCellSize));
+          validatedParams.gridCellSize = Math.max(1.0, Math.min(500.0, validatedParams.gridCellSize));
         }
         if (validatedParams.featureFlags !== undefined) {
           validatedParams.featureFlags = Math.max(0, Math.min(255, Math.floor(validatedParams.featureFlags)));
@@ -813,13 +813,13 @@ export const useSettingsStore = create<SettingsState>()(
 
 
         if (validatedParams.springK !== undefined) {
-          validatedParams.springK = Math.max(0.001, Math.min(10.0, validatedParams.springK));
+          validatedParams.springK = Math.max(0.001, Math.min(1000.0, validatedParams.springK));
         }
         if (validatedParams.repelK !== undefined) {
-          validatedParams.repelK = Math.max(0.001, Math.min(500.0, validatedParams.repelK));
+          validatedParams.repelK = Math.max(0.001, Math.min(5000.0, validatedParams.repelK));
         }
         if (validatedParams.attractionK !== undefined) {
-          validatedParams.attractionK = Math.max(0.0, Math.min(1.0, validatedParams.attractionK));
+          validatedParams.attractionK = Math.max(0.0, Math.min(500.0, validatedParams.attractionK));
         }
         if (validatedParams.gravity !== undefined) {
           validatedParams.gravity = Math.max(-1.0, Math.min(1.0, validatedParams.gravity));

@@ -118,11 +118,11 @@ pub fn validate_physics_settings(settings: &PhysicsSettings) -> Result<(), Strin
     };
 
     // Range-checked fields per QE audit spec
-    check_range(settings.gravity, "gravity", 0.0, 1.0, &mut errors);
+    check_range(settings.gravity, "gravity", -10.0, 10.0, &mut errors);
     check_range(settings.damping, "damping", 0.0, 1.0, &mut errors);
-    check_range(settings.spring_k, "spring_k", 0.0, 100.0, &mut errors);
-    check_range(settings.max_velocity, "max_velocity", 0.0, 2000.0, &mut errors);
-    check_range(settings.max_force, "max_force", 0.0, 2000.0, &mut errors);
+    check_range(settings.spring_k, "spring_k", 0.0, 1000.0, &mut errors);
+    check_range(settings.max_velocity, "max_velocity", 0.0, 10000.0, &mut errors);
+    check_range(settings.max_force, "max_force", 0.0, 10000.0, &mut errors);
     check_range(settings.dt, "timestep (dt)", 0.001, 1.0, &mut errors);
 
     // All other f32 fields: reject NaN/Infinity
