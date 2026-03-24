@@ -110,8 +110,8 @@ const GraphCanvas: React.FC = () => {
                 camera={{
                     fov: 75,
                     near: 0.1,
-                    far: 2000,
-                    position: [20, 15, 20]
+                    far: 5000,
+                    position: [80, 60, 80]
                 }}
                 onCreated={({ gl, camera, scene, invalidate }) => {
                     gl.setClearColor(0x000033, 1);
