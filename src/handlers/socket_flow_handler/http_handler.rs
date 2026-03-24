@@ -167,11 +167,12 @@ pub async fn socket_flow_handler(
         }
     }
 
-    // NOTE: permessage-deflate is a WebSocket *extension*, not a subprotocol.
-    // actix-web-actors does not support WebSocket extensions.
-    // To enable frame-level compression, the server would need tungstenite with
-    // DeflateConfig or a reverse proxy (nginx) performing permessage-deflate.
+    // Restore .protocols() for WebSocket subprotocol negotiation.
+    // Even though permessage-deflate is technically an extension not a subprotocol,
+    // removing this broke WebSocket connections through cloudflared/nginx proxy chains
+    // that expect the server to echo back the Sec-WebSocket-Protocol header.
     match ws::WsResponseBuilder::new(ws_server, &req, stream)
+        .protocols(&["permessage-deflate"])
         .start()
     {
         Ok(response) => {
