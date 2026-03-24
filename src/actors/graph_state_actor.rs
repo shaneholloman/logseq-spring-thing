@@ -193,7 +193,7 @@ impl GraphStateActor {
             Some("page") | Some("linked_page") => {
                 self.knowledge_node_ids.insert(node_id);
             }
-            Some("owl_class") => {
+            Some("owl_class") | Some("ontology_node") => {
                 self.ontology_class_ids.insert(node_id);
             }
             Some("owl_individual") => {
@@ -235,7 +235,7 @@ impl GraphStateActor {
                 Some("page") | Some("linked_page") => {
                     self.knowledge_node_ids.insert(*node_id);
                 }
-                Some("owl_class") => {
+                Some("owl_class") | Some("ontology_node") => {
                     self.ontology_class_ids.insert(*node_id);
                 }
                 Some("owl_individual") => {
