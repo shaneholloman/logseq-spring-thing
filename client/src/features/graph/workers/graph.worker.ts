@@ -318,23 +318,29 @@ class GraphWorker {
         const nodeId = String(node.id);
         node.id = nodeId;
 
-        // Prefer server-provided compact wireId (0..N-1) which fits within
-        // 26 bits and avoids collisions with binary protocol type flag bits.
+        // Register ALL possible IDs that binary frames might use:
+        // 1. wireId (compact 0..N-1) from server — used by fetch_nodes() path
+        // 2. Raw numeric ID — used by subscription broadcast paths
+        // 3. Masked raw ID (& 0x03FFFFFF) — used after getActualNodeId() strips flags
+        const numericId = parseInt(nodeId, 10);
         const wireId = node.wireId;
-        if (wireId !== undefined && wireId !== null) {
-            this.nodeIdMap.set(nodeId, wireId);
-            this.reverseNodeIdMap.set(wireId, nodeId);
-        } else {
-            // Fallback for nodes without wireId
-            const numericId = parseInt(nodeId, 10);
-            if (!isNaN(numericId) && numericId >= 0 && numericId <= 0xFFFFFFFF) {
-                this.nodeIdMap.set(nodeId, numericId);
-                this.reverseNodeIdMap.set(numericId, nodeId);
-            } else {
-                const mappedId = findFreeMappedId(nodeId, this.reverseNodeIdMap);
-                this.nodeIdMap.set(nodeId, mappedId);
-                this.reverseNodeIdMap.set(mappedId, nodeId);
+
+        if (!isNaN(numericId) && numericId >= 0 && numericId <= 0xFFFFFFFF) {
+            this.nodeIdMap.set(nodeId, numericId);
+            this.reverseNodeIdMap.set(numericId, nodeId);
+            // Also register masked ID for flag-stripped lookups
+            const maskedId = numericId & 0x03FFFFFF;
+            if (maskedId !== numericId && !this.reverseNodeIdMap.has(maskedId)) {
+                this.reverseNodeIdMap.set(maskedId, nodeId);
             }
+        } else {
+            const mappedId = findFreeMappedId(nodeId, this.reverseNodeIdMap);
+            this.nodeIdMap.set(nodeId, mappedId);
+            this.reverseNodeIdMap.set(mappedId, nodeId);
+        }
+        // Also register wireId if different from raw ID
+        if (wireId !== undefined && wireId !== null && !this.reverseNodeIdMap.has(wireId)) {
+            this.reverseNodeIdMap.set(wireId, nodeId);
         }
         this.nodeIndexMap.set(nodeId, index);
     });

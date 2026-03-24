@@ -324,18 +324,24 @@ pub async fn update_physics_settings(
 
             // Propagate physics changes to GPU actors so layout actually responds
             let sim_params: crate::models::simulation_params::SimulationParams = (&new_physics).into();
-            debug!("Propagating SimulationParams to GPU actors: {:?}", sim_params);
+            info!("Propagating SimulationParams: spring_k={}, repel_k={}, damping={}", sim_params.spring_k, sim_params.repel_k, sim_params.damping);
             let update_msg = UpdateSimulationParams { params: sim_params };
 
             if let Some(gpu_addr) = state.get_gpu_compute_addr().await {
+                info!("Sending UpdateSimulationParams to GPUComputeActor");
                 if let Err(e) = gpu_addr.send(update_msg.clone()).await {
                     error!("Failed to propagate physics to GPUComputeActor: {}", e);
+                } else {
+                    info!("UpdateSimulationParams sent to GPUComputeActor successfully");
                 }
             } else {
                 warn!("No GPUComputeActor address available — physics won't propagate to GPU!");
             }
+            info!("Sending UpdateSimulationParams to GraphServiceSupervisor");
             if let Err(e) = state.graph_service_addr.send(update_msg).await {
                 error!("Failed to propagate physics to GraphServiceActor: {}", e);
+            } else {
+                info!("UpdateSimulationParams sent to GraphServiceSupervisor successfully");
             }
 
             // Persist physics settings to Neo4j for cross-restart survival
