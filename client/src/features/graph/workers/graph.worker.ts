@@ -318,29 +318,23 @@ class GraphWorker {
         const nodeId = String(node.id);
         node.id = nodeId;
 
-        // Register ALL possible IDs that binary frames might use:
-        // 1. wireId (compact 0..N-1) from server — used by fetch_nodes() path
-        // 2. Raw numeric ID — used by subscription broadcast paths
-        // 3. Masked raw ID (& 0x03FFFFFF) — used after getActualNodeId() strips flags
-        const numericId = parseInt(nodeId, 10);
+        // Server sends compact wire IDs (0..N-1) consistently across ALL paths.
+        // Use wireId as the primary numeric key for binary frame lookups.
         const wireId = node.wireId;
+        const numericId = parseInt(nodeId, 10);
 
-        if (!isNaN(numericId) && numericId >= 0 && numericId <= 0xFFFFFFFF) {
+        if (wireId !== undefined && wireId !== null) {
+            // Preferred: server-assigned compact wire ID
+            this.nodeIdMap.set(nodeId, wireId);
+            this.reverseNodeIdMap.set(wireId, nodeId);
+        } else if (!isNaN(numericId) && numericId >= 0 && numericId <= 0xFFFFFFFF) {
+            // Legacy fallback — should not happen with proper server
             this.nodeIdMap.set(nodeId, numericId);
             this.reverseNodeIdMap.set(numericId, nodeId);
-            // Also register masked ID for flag-stripped lookups
-            const maskedId = numericId & 0x03FFFFFF;
-            if (maskedId !== numericId && !this.reverseNodeIdMap.has(maskedId)) {
-                this.reverseNodeIdMap.set(maskedId, nodeId);
-            }
         } else {
             const mappedId = findFreeMappedId(nodeId, this.reverseNodeIdMap);
             this.nodeIdMap.set(nodeId, mappedId);
             this.reverseNodeIdMap.set(mappedId, nodeId);
-        }
-        // Also register wireId if different from raw ID
-        if (wireId !== undefined && wireId !== null && !this.reverseNodeIdMap.has(wireId)) {
-            this.reverseNodeIdMap.set(wireId, nodeId);
         }
         this.nodeIndexMap.set(nodeId, index);
     });
@@ -618,8 +612,13 @@ class GraphWorker {
       this.graphData.nodes.push(this.ensureNodeHasValidPosition(node));
 
 
+      // Use wireId (compact 0..N-1) when available, fall back to parsed numeric ID
+      const wireId = (node as any).wireId;
       const numericId = parseInt(node.id, 10);
-      if (!isNaN(numericId)) {
+      if (wireId !== undefined && wireId !== null) {
+        this.nodeIdMap.set(node.id, wireId);
+        this.reverseNodeIdMap.set(wireId, node.id);
+      } else if (!isNaN(numericId)) {
         this.nodeIdMap.set(node.id, numericId);
         this.reverseNodeIdMap.set(numericId, node.id);
       } else {

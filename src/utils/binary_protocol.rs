@@ -378,6 +378,11 @@ pub fn encode_node_data_extended_with_sssp(
         } else if ontology_property_ids.contains(node_id) {
             set_ontology_property_flag(*node_id)
         } else {
+            debug_assert!(
+                *node_id <= NODE_ID_MASK,
+                "Unflagged node ID {} (0x{:08X}) exceeds 26-bit limit (max {}). Raw Neo4j ID leaked to wire.",
+                node_id, node_id, NODE_ID_MASK
+            );
             *node_id
         };
 

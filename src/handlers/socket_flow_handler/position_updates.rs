@@ -369,10 +369,19 @@ pub(crate) fn handle_request_bots_positions(
                 return vec![];
             }
 
+            // Get wire ID mapping so bot node IDs stay within 26-bit compact range
+            let wire_map: std::collections::HashMap<u32, u32> = app_state
+                .graph_service_addr
+                .send(crate::actors::messages::GetNodeIdMapping)
+                .await
+                .map(|m| m.0)
+                .unwrap_or_default();
+
             let mut nodes_data = Vec::new();
             for node in bots_nodes {
+                let wire_id = wire_map.get(&node.id).copied().unwrap_or(node.id);
                 // Flag bots/agent nodes so the client renders them in AgentNodesLayer
-                let flagged_id = binary_protocol::set_agent_flag(node.id);
+                let flagged_id = binary_protocol::set_agent_flag(wire_id);
                 let node_data = BinaryNodeData {
                     node_id: flagged_id,
                     x: node.data.x,
@@ -893,17 +902,25 @@ pub(crate) fn handle_node_drag_update(
             settle_start.elapsed().as_secs_f64() * 1000.0
         );
 
-        // 3. Fetch updated positions and broadcast to all clients
-        use crate::actors::messages::GetGraphData;
+        // 3. Fetch updated positions and broadcast to all clients (using compact wire IDs)
+        use crate::actors::messages::{GetGraphData, GetNodeIdMapping};
+        let wire_map: std::collections::HashMap<u32, u32> = app_state
+            .graph_service_addr
+            .send(GetNodeIdMapping)
+            .await
+            .map(|m| m.0)
+            .unwrap_or_default();
+
         if let Ok(Ok(graph_data)) = app_state.graph_service_addr.send(GetGraphData).await {
             let node_data: Vec<(u32, BinaryNodeData)> = graph_data
                 .nodes
                 .iter()
                 .map(|node| {
+                    let wire_id = wire_map.get(&node.id).copied().unwrap_or(node.id);
                     (
-                        node.id,
+                        wire_id,
                         BinaryNodeData {
-                            node_id: node.id,
+                            node_id: wire_id,
                             x: node.data.x,
                             y: node.data.y,
                             z: node.data.z,
@@ -1017,17 +1034,25 @@ pub(crate) fn handle_node_drag_end(
             settle_start.elapsed().as_secs_f64() * 1000.0
         );
 
-        // 3. Broadcast final positions to all clients
-        use crate::actors::messages::GetGraphData;
+        // 3. Broadcast final positions to all clients (using compact wire IDs)
+        use crate::actors::messages::{GetGraphData, GetNodeIdMapping};
+        let wire_map: std::collections::HashMap<u32, u32> = app_state
+            .graph_service_addr
+            .send(GetNodeIdMapping)
+            .await
+            .map(|m| m.0)
+            .unwrap_or_default();
+
         if let Ok(Ok(graph_data)) = app_state.graph_service_addr.send(GetGraphData).await {
             let node_data: Vec<(u32, BinaryNodeData)> = graph_data
                 .nodes
                 .iter()
                 .map(|node| {
+                    let wire_id = wire_map.get(&node.id).copied().unwrap_or(node.id);
                     (
-                        node.id,
+                        wire_id,
                         BinaryNodeData {
-                            node_id: node.id,
+                            node_id: wire_id,
                             x: node.data.x,
                             y: node.data.y,
                             z: node.data.z,

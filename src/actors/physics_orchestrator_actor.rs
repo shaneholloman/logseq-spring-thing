@@ -1125,17 +1125,25 @@ impl Handler<RequestPositionSnapshot> for PhysicsOrchestratorActor {
     fn handle(&mut self, _msg: RequestPositionSnapshot, _ctx: &mut Self::Context) -> Self::Result {
         use crate::actors::messages::PositionSnapshot;
 
-        
+
         if let Some(ref graph_data) = self.graph_data_ref {
+            // Remap Neo4j IDs to compact wire IDs (0..N-1) so binary protocol
+            // type flags in bits 26-31 don't collide with large raw IDs.
             let knowledge_nodes: Vec<(u32, BinaryNodeData)> = graph_data
                 .nodes
                 .iter()
-                .map(|node| (node.id, node.data.clone()))
+                .enumerate()
+                .map(|(idx, node)| {
+                    let wire_id = idx as u32;
+                    let mut data = node.data.clone();
+                    data.node_id = wire_id;
+                    (wire_id, data)
+                })
                 .collect();
 
             let snapshot = PositionSnapshot {
                 knowledge_nodes,
-                agent_nodes: Vec::new(), 
+                agent_nodes: Vec::new(),
                 timestamp: Instant::now(),
             };
 
