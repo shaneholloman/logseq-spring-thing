@@ -51,6 +51,16 @@ pub struct NodeTypeArrays {
 #[rtype(result = "NodeTypeArrays")]
 pub struct GetNodeTypeArrays;
 
+/// Neo4j-to-compact-wire-ID mapping result for binary protocol encoding.
+#[derive(Debug, Clone, Default, MessageResponse)]
+pub struct NodeIdMapping(pub HashMap<u32, u32>);
+
+/// Get the Neo4j-to-compact-wire-ID mapping for binary protocol encoding.
+/// Compact IDs (0..N-1) fit within 26 bits so type flag bits don't collide.
+#[derive(Message)]
+#[rtype(result = "NodeIdMapping")]
+pub struct GetNodeIdMapping;
+
 /// Update cached node type arrays in ClientCoordinatorActor for binary protocol flags
 #[derive(Message)]
 #[rtype(result = "()")]

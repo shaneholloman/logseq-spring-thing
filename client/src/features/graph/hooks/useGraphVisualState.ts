@@ -132,11 +132,10 @@ export function useGraphVisualState(graphData: GraphData): GraphVisualStateResul
       const nodeIdNum = parseInt(String(node.id), 10);
 
       // Priority 1: Binary protocol type flags (ground truth)
-      // nodeTypeMap keys are masked IDs (flag bits stripped via getActualNodeId),
-      // so look up both the raw ID and the masked ID.
+      // With server-side wire ID remapping, nodeTypeMap keys are compact wire IDs (0..N-1).
+      // Look up both the raw ID and the compact wire ID for backward compatibility.
       if (!isNaN(nodeIdNum) && binaryNodeTypeMap.size > 0) {
-        const maskedId = nodeIdNum & 0x03FFFFFF;
-        const binaryType = binaryNodeTypeMap.get(nodeIdNum) || binaryNodeTypeMap.get(maskedId);
+        const binaryType = binaryNodeTypeMap.get(nodeIdNum);
         if (binaryType && binaryType !== NodeType.Unknown) {
           map.set(String(node.id), nodeTypeToVisualMode(binaryType));
           continue;

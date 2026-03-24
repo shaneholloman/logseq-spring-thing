@@ -8,7 +8,7 @@ use serde_json;
 use std::collections::HashMap;
 
 // Protocol versions for wire format (V1 REMOVED - no backward compatibility)
-const PROTOCOL_V2: u8 = 2;
+// PROTOCOL_V2 (value: 2) removed — server no longer sends or decodes V2 frames
 const PROTOCOL_V3: u8 = 3; // Analytics extension protocol (P0-4) - CURRENT
 const PROTOCOL_V4: u8 = 4; // Delta encoding protocol
 
@@ -29,24 +29,11 @@ const NODE_ID_MASK: u32 = 0x03FFFFFF;
 // V1 wire format constants REMOVED - caused node ID truncation bugs
 // V2+ uses full u32 IDs with no truncation
 
-// Node type flag constants for u32 (wire format v2)
-const WIRE_V2_AGENT_FLAG: u32 = 0x80000000;
-const WIRE_V2_KNOWLEDGE_FLAG: u32 = 0x40000000;
-// Wire V2 node ID mask: bits 0-25 (excludes flag bits 26-31)
-const WIRE_V2_NODE_ID_MASK: u32 = 0x03FFFFFF; 
+// V2 wire flag constants removed — identical to AGENT_NODE_FLAG / KNOWLEDGE_NODE_FLAG / NODE_ID_MASK
+// (WIRE_V2_AGENT_FLAG was 0x80000000, WIRE_V2_KNOWLEDGE_FLAG was 0x40000000, WIRE_V2_NODE_ID_MASK was 0x03FFFFFF)
 
 // WireNodeDataItemV1 REMOVED - V1 protocol no longer supported
-
-/// Wire format V2 - 36 bytes per node
-/// Basic pathfinding + node type flags
-pub struct WireNodeDataItemV2 {
-    pub id: u32,
-    pub position: Vec3Data,
-    pub velocity: Vec3Data,
-    pub sssp_distance: f32,
-    pub sssp_parent: i32,
-
-}
+// WireNodeDataItemV2 REMOVED - V2 protocol no longer supported (was 36 bytes per node)
 
 /// Wire format V3 - 48 bytes per node (P0-4 Analytics Extension)
 /// Adds clustering, anomaly detection, and community detection
@@ -105,11 +92,10 @@ const WIRE_VEC3_SIZE: usize = 12;
 const WIRE_F32_SIZE: usize = 4;
 const WIRE_I32_SIZE: usize = 4;
 const WIRE_U32_SIZE: usize = 4;
-const WIRE_V2_ITEM_SIZE: usize =
-    WIRE_V2_ID_SIZE + WIRE_VEC3_SIZE + WIRE_VEC3_SIZE + WIRE_F32_SIZE + WIRE_I32_SIZE;
+// WIRE_V2_ITEM_SIZE removed — V2 decode no longer supported
 const WIRE_V3_ITEM_SIZE: usize =
     WIRE_V2_ID_SIZE + WIRE_VEC3_SIZE + WIRE_VEC3_SIZE + WIRE_F32_SIZE + WIRE_I32_SIZE +
-    WIRE_U32_SIZE + WIRE_F32_SIZE + WIRE_U32_SIZE; // V2 + cluster_id + anomaly_score + community_id 
+    WIRE_U32_SIZE + WIRE_F32_SIZE + WIRE_U32_SIZE; // id + pos + vel + sssp_dist + sssp_parent + cluster_id + anomaly_score + community_id
 
 // Backwards compatibility alias - now defaults to V3
 const WIRE_ID_SIZE: usize = WIRE_V2_ID_SIZE;
@@ -130,15 +116,7 @@ const WIRE_ITEM_SIZE: usize = WIRE_V3_ITEM_SIZE;
 // Total: 48 bytes per node
 // Supports node IDs: 0 to 67,108,863 (2^26 - 1)
 //
-// PROTOCOL V2 (STABLE - FIXES node ID truncation bug):
-// - Wire format sent to client (36 bytes total):
-//   - Node Index: 4 bytes (u32) - Bits 30-31 for agent/knowledge, bits 26-28 for ontology, bits 0-25 for ID
-//   - Position: 3 × 4 bytes = 12 bytes
-//   - Velocity: 3 × 4 bytes = 12 bytes
-//   - SSSP Distance: 4 bytes (f32)
-//   - SSSP Parent: 4 bytes (i32)
-// Total: 36 bytes per node (NOT 38 - that was a documentation error!)
-// Supports node IDs: 0 to 67,108,863 (2^26 - 1)
+// PROTOCOL V2 REMOVED — was 36 bytes/node (no analytics), server no longer sends or decodes V2
 //
 // PROTOCOL V1 REMOVED - Had node ID truncation bug (IDs > 16383 were corrupted)
 //
@@ -154,10 +132,20 @@ const WIRE_ITEM_SIZE: usize = WIRE_V3_ITEM_SIZE;
 // This allows the client to distinguish between different node types for visualization.
 
 pub fn set_agent_flag(node_id: u32) -> u32 {
+    debug_assert!(
+        node_id <= NODE_ID_MASK,
+        "Node ID {} (0x{:08X}) exceeds 26-bit limit (max {}). Use compact wire IDs.",
+        node_id, node_id, NODE_ID_MASK
+    );
     (node_id & NODE_ID_MASK) | AGENT_NODE_FLAG
 }
 
 pub fn set_knowledge_flag(node_id: u32) -> u32 {
+    debug_assert!(
+        node_id <= NODE_ID_MASK,
+        "Node ID {} (0x{:08X}) exceeds 26-bit limit (max {}). Use compact wire IDs.",
+        node_id, node_id, NODE_ID_MASK
+    );
     (node_id & NODE_ID_MASK) | KNOWLEDGE_NODE_FLAG
 }
 
@@ -208,14 +196,29 @@ pub fn get_node_type(node_id: u32) -> NodeType {
 }
 
 pub fn set_ontology_class_flag(node_id: u32) -> u32 {
+    debug_assert!(
+        node_id <= NODE_ID_MASK,
+        "Node ID {} (0x{:08X}) exceeds 26-bit limit (max {}). Use compact wire IDs.",
+        node_id, node_id, NODE_ID_MASK
+    );
     (node_id & NODE_ID_MASK) | ONTOLOGY_CLASS_FLAG
 }
 
 pub fn set_ontology_individual_flag(node_id: u32) -> u32 {
+    debug_assert!(
+        node_id <= NODE_ID_MASK,
+        "Node ID {} (0x{:08X}) exceeds 26-bit limit (max {}). Use compact wire IDs.",
+        node_id, node_id, NODE_ID_MASK
+    );
     (node_id & NODE_ID_MASK) | ONTOLOGY_INDIVIDUAL_FLAG
 }
 
 pub fn set_ontology_property_flag(node_id: u32) -> u32 {
+    debug_assert!(
+        node_id <= NODE_ID_MASK,
+        "Node ID {} (0x{:08X}) exceeds 26-bit limit (max {}). Use compact wire IDs.",
+        node_id, node_id, NODE_ID_MASK
+    );
     (node_id & NODE_ID_MASK) | ONTOLOGY_PROPERTY_FLAG
 }
 
@@ -590,7 +593,7 @@ pub fn decode_node_data(data: &[u8]) -> Result<Vec<(u32, BinaryNodeData)>, Strin
 
     match protocol_version {
         1 => Err("Protocol V1 is no longer supported. Please upgrade client.".to_string()),
-        PROTOCOL_V2 => decode_node_data_v2(payload),
+        2 => Err("V2 protocol no longer supported. Please upgrade client to V3+.".to_string()),
         PROTOCOL_V3 => decode_node_data_v3(payload),
         v => Err(format!("Unknown protocol version: {}", v)),
     }
@@ -598,142 +601,7 @@ pub fn decode_node_data(data: &[u8]) -> Result<Vec<(u32, BinaryNodeData)>, Strin
 
 // decode_node_data_v1 REMOVED - V1 protocol no longer supported
 
-fn decode_node_data_v2(data: &[u8]) -> Result<Vec<(u32, BinaryNodeData)>, String> {
-    if data.len() % WIRE_V2_ITEM_SIZE != 0 {
-        return Err(format!(
-            "Data size {} is not a multiple of V2 wire item size {}",
-            data.len(),
-            WIRE_V2_ITEM_SIZE
-        ));
-    }
-
-    let expected_nodes = data.len() / WIRE_V2_ITEM_SIZE;
-    if expected_nodes > MAX_NODE_COUNT {
-        return Err(format!(
-            "Node count {} exceeds maximum {}",
-            expected_nodes, MAX_NODE_COUNT
-        ));
-    }
-
-    debug!(
-        "Decoding V2 binary data: size={} bytes, expected nodes={}",
-        data.len(),
-        expected_nodes
-    );
-
-    let mut updates = Vec::with_capacity(expected_nodes);
-    let max_samples = 3;
-    let mut samples_logged = 0;
-
-    
-    for chunk in data.chunks_exact(WIRE_V2_ITEM_SIZE) {
-        let mut cursor = 0;
-
-        
-        let wire_id = u32::from_le_bytes([
-            chunk[cursor],
-            chunk[cursor + 1],
-            chunk[cursor + 2],
-            chunk[cursor + 3],
-        ]);
-        cursor += 4;
-
-        
-        let pos_x = f32::from_le_bytes([
-            chunk[cursor],
-            chunk[cursor + 1],
-            chunk[cursor + 2],
-            chunk[cursor + 3],
-        ]);
-        cursor += 4;
-        let pos_y = f32::from_le_bytes([
-            chunk[cursor],
-            chunk[cursor + 1],
-            chunk[cursor + 2],
-            chunk[cursor + 3],
-        ]);
-        cursor += 4;
-        let pos_z = f32::from_le_bytes([
-            chunk[cursor],
-            chunk[cursor + 1],
-            chunk[cursor + 2],
-            chunk[cursor + 3],
-        ]);
-        cursor += 4;
-
-        
-        let vel_x = f32::from_le_bytes([
-            chunk[cursor],
-            chunk[cursor + 1],
-            chunk[cursor + 2],
-            chunk[cursor + 3],
-        ]);
-        cursor += 4;
-        let vel_y = f32::from_le_bytes([
-            chunk[cursor],
-            chunk[cursor + 1],
-            chunk[cursor + 2],
-            chunk[cursor + 3],
-        ]);
-        cursor += 4;
-        let vel_z = f32::from_le_bytes([
-            chunk[cursor],
-            chunk[cursor + 1],
-            chunk[cursor + 2],
-            chunk[cursor + 3],
-        ]);
-        cursor += 4;
-
-        
-        let _sssp_distance = f32::from_le_bytes([
-            chunk[cursor],
-            chunk[cursor + 1],
-            chunk[cursor + 2],
-            chunk[cursor + 3],
-        ]);
-        cursor += 4;
-        let _sssp_parent = i32::from_le_bytes([
-            chunk[cursor],
-            chunk[cursor + 1],
-            chunk[cursor + 2],
-            chunk[cursor + 3],
-        ]);
-
-        
-        let full_node_id = from_wire_id_v2(wire_id);
-
-        if samples_logged < max_samples {
-            let is_agent = is_agent_node(full_node_id);
-            let actual_id = get_actual_node_id(full_node_id);
-            debug!(
-                "Decoded V2 node wire_id={} -> full_id={} (actual_id={}, is_agent={}): pos=[{:.3},{:.3},{:.3}], vel=[{:.3},{:.3},{:.3}]",
-                wire_id, full_node_id, actual_id, is_agent,
-                pos_x, pos_y, pos_z,
-                vel_x, vel_y, vel_z
-            );
-            samples_logged += 1;
-        }
-
-        let actual_id = get_actual_node_id(full_node_id);
-        let server_node_data = BinaryNodeData {
-            node_id: actual_id,
-            x: pos_x,
-            y: pos_y,
-            z: pos_z,
-            vx: vel_x,
-            vy: vel_y,
-            vz: vel_z,
-        };
-
-        updates.push((actual_id, server_node_data));
-    }
-
-    debug!(
-        "Successfully decoded {} V2 nodes from binary data",
-        updates.len()
-    );
-    Ok(updates)
-}
+// decode_node_data_v2 REMOVED — V2 protocol no longer supported (was 36 bytes/node, no analytics)
 
 /// Decode Protocol V3 with analytics data (P0-4)
 /// Returns standard BinaryNodeData (analytics data is discarded in basic decode)
@@ -967,16 +835,17 @@ mod tests {
     #[test]
     fn test_decode_invalid_data() {
         
-        let mut data = vec![PROTOCOL_V2]; 
-        data.extend_from_slice(&[0u8; 37]); 
+        // V2 protocol should be rejected
+        let mut data = vec![2u8]; // V2 version byte
+        data.extend_from_slice(&[0u8; 37]);
         let result = decode_node_data(&data);
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("not a multiple of"));
+        assert!(result.unwrap_err().contains("V2 protocol no longer supported"));
 
-        
-        let result = decode_node_data(&[PROTOCOL_V2]);
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap().len(), 0);
+        // V2 with empty payload should also be rejected
+        let result = decode_node_data(&[2u8]);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("V2 protocol no longer supported"));
     }
 
     #[test]
@@ -1035,15 +904,15 @@ mod tests {
         
         let agent_id = set_agent_flag(node_id);
         let agent_wire_id = to_wire_id(agent_id);
-        assert_eq!(agent_wire_id & WIRE_V2_NODE_ID_MASK, 42u32);
-        assert!((agent_wire_id & WIRE_V2_AGENT_FLAG) != 0);
+        assert_eq!(agent_wire_id & NODE_ID_MASK, 42u32);
+        assert!((agent_wire_id & AGENT_NODE_FLAG) != 0);
         assert_eq!(from_wire_id(agent_wire_id), agent_id);
 
-        
+
         let knowledge_id = set_knowledge_flag(node_id);
         let knowledge_wire_id = to_wire_id(knowledge_id);
-        assert_eq!(knowledge_wire_id & WIRE_V2_NODE_ID_MASK, 42u32);
-        assert!((knowledge_wire_id & WIRE_V2_KNOWLEDGE_FLAG) != 0);
+        assert_eq!(knowledge_wire_id & NODE_ID_MASK, 42u32);
+        assert!((knowledge_wire_id & KNOWLEDGE_NODE_FLAG) != 0);
         assert_eq!(from_wire_id(knowledge_wire_id), knowledge_id);
 
         

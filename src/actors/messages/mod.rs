@@ -23,13 +23,13 @@ pub use crate::ports::gpu_semantic_analyzer::PathfindingResult;
 pub use graph_messages::{
     AddEdge, AddNode, AddNodesFromMetadata, ArchiveWorkspace, AutoBalanceNotification,
     BuildGraphFromMetadata, CreateWorkspace, DeleteWorkspace, GetAutoBalanceNotifications,
-    GetGraphData, GetGraphStateActor, GetMetadata, GetNodeMap, GetNodePositions, GetNodeTypeArrays,
-    GetWorkspace, GetWorkspaceCount, GetWorkspaces, InitializeActor, LoadWorkspaces,
-    NodeTypeArrays, RefreshMetadata, ReloadGraphFromDatabase, RemoveEdge, RemoveNode,
-    RemoveNodeByMetadata, RequestGraphUpdate, SaveWorkspaces, ToggleFavoriteWorkspace,
-    UpdateGraphData, UpdateMetadata, UpdateNodeFromMetadata, UpdateNodePosition,
-    UpdateNodePositions, UpdateNodeTypeArrays, UpdateWorkspace, WorkspaceChangeType,
-    WorkspaceStateChanged,
+    GetGraphData, GetGraphStateActor, GetMetadata, GetNodeIdMapping, GetNodeMap, GetNodePositions,
+    GetNodeTypeArrays, NodeIdMapping, GetWorkspace, GetWorkspaceCount, GetWorkspaces, InitializeActor,
+    LoadWorkspaces, NodeTypeArrays, RefreshMetadata, ReloadGraphFromDatabase, RemoveEdge,
+    RemoveNode, RemoveNodeByMetadata, RequestGraphUpdate, SaveWorkspaces,
+    ToggleFavoriteWorkspace, UpdateGraphData, UpdateMetadata, UpdateNodeFromMetadata,
+    UpdateNodePosition, UpdateNodePositions, UpdateNodeTypeArrays, UpdateWorkspace,
+    WorkspaceChangeType, WorkspaceStateChanged,
 };
 
 // --- physics_messages ---

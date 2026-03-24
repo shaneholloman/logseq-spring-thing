@@ -65,13 +65,23 @@ pub(crate) async fn fetch_nodes(
         return None;
     }
 
-    // Fetch node type classification arrays for binary protocol flags
+    // Fetch node type classification arrays for binary protocol flags (already remapped to compact wire IDs)
     let nta = match app_state.graph_service_addr.send(GetNodeTypeArrays).await {
         Ok(arrays) => arrays,
         Err(_) => crate::actors::messages::NodeTypeArrays::default(),
     };
     let agent_set: HashSet<u32> = nta.agent_ids.iter().copied().collect();
     let knowledge_set: HashSet<u32> = nta.knowledge_ids.iter().copied().collect();
+
+    // Get compact wire ID mapping (Neo4j ID -> 0..N-1) for binary protocol
+    let wire_map: std::collections::HashMap<u32, u32> = match app_state
+        .graph_service_addr
+        .send(crate::actors::messages::GetNodeIdMapping)
+        .await
+    {
+        Ok(mapping) => mapping.0,
+        Err(_) => std::collections::HashMap::new(),
+    };
 
     let debug_enabled = crate::utils::logging::is_debug_enabled();
     let debug_websocket = debug_enabled;
@@ -93,13 +103,16 @@ pub(crate) async fn fetch_nodes(
 
     let mut nodes = Vec::with_capacity(graph_data.nodes.len());
     for node in &graph_data.nodes {
+        // Use compact wire ID (0..N-1) instead of Neo4j ID to avoid 26-bit truncation
+        let wire_id = wire_map.get(&node.id).copied().unwrap_or(node.id);
         // Apply node type flags so the client can distinguish agent/knowledge/ontology nodes
-        let flagged_id = if agent_set.contains(&node.id) {
-            binary_protocol::set_agent_flag(node.id)
-        } else if knowledge_set.contains(&node.id) {
-            binary_protocol::set_knowledge_flag(node.id)
+        // agent_set/knowledge_set already contain compact wire IDs (remapped in get_node_type_arrays)
+        let flagged_id = if agent_set.contains(&wire_id) {
+            binary_protocol::set_agent_flag(wire_id)
+        } else if knowledge_set.contains(&wire_id) {
+            binary_protocol::set_knowledge_flag(wire_id)
         } else {
-            node.id
+            wire_id
         };
         let node_data =
             BinaryNodeDataClient::new(flagged_id, node.data.position(), node.data.velocity());
@@ -126,7 +139,7 @@ pub(crate) fn handle_request_full_snapshot(
 
     let app_state = _act.app_state.clone();
     let fut = async move {
-        use crate::actors::messages::{GetGraphData, GetBotsGraphData, GetNodeTypeArrays};
+        use crate::actors::messages::{GetGraphData, GetBotsGraphData, GetNodeTypeArrays, GetNodeIdMapping};
         use std::collections::HashSet;
 
         // hot-path: trace only (fires per snapshot request)
@@ -138,22 +151,30 @@ pub(crate) fn handle_request_full_snapshot(
         let mut knowledge_nodes = Vec::new();
         let mut agent_nodes = Vec::new();
 
-        // Fetch node type arrays and graph data for classification
+        // Fetch node type arrays (compact wire IDs) and wire mapping
         let nta = app_state.graph_service_addr.send(GetNodeTypeArrays).await
             .unwrap_or_default();
         let agent_set: HashSet<u32> = nta.agent_ids.iter().copied().collect();
 
+        let wire_map: std::collections::HashMap<u32, u32> = app_state
+            .graph_service_addr
+            .send(GetNodeIdMapping)
+            .await
+            .map(|m| m.0)
+            .unwrap_or_default();
+
         if include_knowledge {
             if let Ok(Ok(graph_data)) = app_state.graph_service_addr.send(GetGraphData).await {
                 for node in &graph_data.nodes {
+                    let wire_id = wire_map.get(&node.id).copied().unwrap_or(node.id);
                     let node_data = BinaryNodeData {
-                        node_id: node.id, x: node.data.x, y: node.data.y, z: node.data.z,
+                        node_id: wire_id, x: node.data.x, y: node.data.y, z: node.data.z,
                         vx: node.data.vx, vy: node.data.vy, vz: node.data.vz,
                     };
-                    if agent_set.contains(&node.id) {
-                        agent_nodes.push((node.id, node_data));
+                    if agent_set.contains(&wire_id) {
+                        agent_nodes.push((wire_id, node_data));
                     } else {
-                        knowledge_nodes.push((node.id, node_data));
+                        knowledge_nodes.push((wire_id, node_data));
                     }
                 }
             }
@@ -162,11 +183,12 @@ pub(crate) fn handle_request_full_snapshot(
         if include_agent {
             if let Ok(Ok(bots_data)) = app_state.graph_service_addr.send(GetBotsGraphData).await {
                 for node in &bots_data.nodes {
+                    let wire_id = wire_map.get(&node.id).copied().unwrap_or(node.id);
                     let node_data = BinaryNodeData {
-                        node_id: node.id, x: node.data.x, y: node.data.y, z: node.data.z,
+                        node_id: wire_id, x: node.data.x, y: node.data.y, z: node.data.z,
                         vx: node.data.vx, vy: node.data.vy, vz: node.data.vz,
                     };
-                    agent_nodes.push((node.id, node_data));
+                    agent_nodes.push((wire_id, node_data));
                 }
             }
         }

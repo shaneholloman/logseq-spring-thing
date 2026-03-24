@@ -84,6 +84,10 @@ pub struct GraphStateActor {
     ontology_individual_ids: HashSet<u32>,
     ontology_property_ids: HashSet<u32>,
     agent_node_ids: HashSet<u32>,
+
+    /// Maps Neo4j node IDs to compact wire IDs (0..N-1) for binary protocol.
+    /// Compact IDs fit within NODE_ID_MASK (26 bits) so type flags don't collide.
+    neo4j_to_wire: HashMap<u32, u32>,
 }
 
 impl GraphStateActor {
@@ -102,6 +106,7 @@ impl GraphStateActor {
             ontology_individual_ids: HashSet::new(),
             ontology_property_ids: HashSet::new(),
             agent_node_ids: HashSet::new(),
+            neo4j_to_wire: HashMap::new(),
         }
     }
 
@@ -114,15 +119,27 @@ impl GraphStateActor {
         &self.node_map
     }
 
-    /// Returns node type arrays for binary protocol encoding
+    /// Returns node type arrays for binary protocol encoding.
+    /// IDs are remapped to compact wire IDs (0..N-1) so type flag bits don't
+    /// collide with large Neo4j node IDs.
     pub fn get_node_type_arrays(&self) -> NodeTypeArrays {
+        let remap = |ids: &HashSet<u32>| -> Vec<u32> {
+            ids.iter()
+                .filter_map(|neo4j_id| self.neo4j_to_wire.get(neo4j_id).copied())
+                .collect()
+        };
         NodeTypeArrays {
-            knowledge_ids: self.knowledge_node_ids.iter().cloned().collect(),
-            agent_ids: self.agent_node_ids.iter().cloned().collect(),
-            ontology_class_ids: self.ontology_class_ids.iter().cloned().collect(),
-            ontology_individual_ids: self.ontology_individual_ids.iter().cloned().collect(),
-            ontology_property_ids: self.ontology_property_ids.iter().cloned().collect(),
+            knowledge_ids: remap(&self.knowledge_node_ids),
+            agent_ids: remap(&self.agent_node_ids),
+            ontology_class_ids: remap(&self.ontology_class_ids),
+            ontology_individual_ids: remap(&self.ontology_individual_ids),
+            ontology_property_ids: remap(&self.ontology_property_ids),
         }
+    }
+
+    /// Returns the Neo4j-to-wire ID mapping for binary protocol encoding.
+    pub fn get_wire_id_mapping(&self) -> &HashMap<u32, u32> {
+        &self.neo4j_to_wire
     }
 
     /// Classify a single node into the appropriate type set based on its node_type and owl_class_iri fields
@@ -196,13 +213,22 @@ impl GraphStateActor {
             }
         }
 
+        // Rebuild compact wire ID mapping (0..N-1) for binary protocol.
+        // Node iteration order must match GPU upload order in ForceComputeActor.
+        self.neo4j_to_wire.clear();
+        for (compact_idx, node) in self.graph_data.nodes.iter().enumerate() {
+            self.neo4j_to_wire.insert(node.id, compact_idx as u32);
+        }
+
         info!(
-            "Node type classification: knowledge={}, agent={}, owl_class={}, owl_individual={}, owl_property={}",
+            "Node type classification: knowledge={}, agent={}, owl_class={}, owl_individual={}, owl_property={} | wire ID mapping: {} nodes -> 0..{}",
             self.knowledge_node_ids.len(),
             self.agent_node_ids.len(),
             self.ontology_class_ids.len(),
             self.ontology_individual_ids.len(),
             self.ontology_property_ids.len(),
+            self.neo4j_to_wire.len(),
+            self.neo4j_to_wire.len().saturating_sub(1),
         );
     }
 
@@ -1203,6 +1229,14 @@ impl Handler<GetNodeTypeArrays> for GraphStateActor {
 
     fn handle(&mut self, _msg: GetNodeTypeArrays, _ctx: &mut Self::Context) -> Self::Result {
         self.get_node_type_arrays()
+    }
+}
+
+impl Handler<GetNodeIdMapping> for GraphStateActor {
+    type Result = NodeIdMapping;
+
+    fn handle(&mut self, _msg: GetNodeIdMapping, _ctx: &mut Self::Context) -> Self::Result {
+        NodeIdMapping(self.neo4j_to_wire.clone())
     }
 }
 

@@ -216,11 +216,13 @@ impl ForceComputeActor {
         self.gpu_index_to_node_id = Vec::with_capacity(num_nodes);
         for (i, node) in graph_data.nodes.iter().enumerate() {
             node_indices.insert(node.id, i);
-            self.gpu_index_to_node_id.push(node.id);
+            // Use compact wire ID (= GPU index) instead of Neo4j ID.
+            // This keeps IDs within 26 bits so binary protocol type flags
+            // in bits 26-31 don't collide with real node IDs.
+            self.gpu_index_to_node_id.push(i as u32);
         }
-        info!("ForceComputeActor: GPU index→node_id mapping: first={}, last={} ({} entries)",
-              self.gpu_index_to_node_id.first().copied().unwrap_or(0),
-              self.gpu_index_to_node_id.last().copied().unwrap_or(0),
+        info!("ForceComputeActor: GPU index→wire_id mapping: 0..{} ({} entries, compact IDs)",
+              self.gpu_index_to_node_id.len().saturating_sub(1),
               self.gpu_index_to_node_id.len());
 
         let positions_x: Vec<f32> = graph_data.nodes.iter().map(|n| n.data.x).collect();

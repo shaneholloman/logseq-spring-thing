@@ -1429,3 +1429,22 @@ impl Handler<msgs::GetNodeTypeArrays> for GraphServiceSupervisor {
         }
     }
 }
+
+/// Handler for GetNodeIdMapping - forwards to GraphStateActor for wire ID remapping
+impl Handler<msgs::GetNodeIdMapping> for GraphServiceSupervisor {
+    type Result = ResponseFuture<msgs::NodeIdMapping>;
+
+    fn handle(&mut self, msg: msgs::GetNodeIdMapping, _ctx: &mut Self::Context) -> Self::Result {
+        if let Some(ref graph_state_addr) = self.graph_state {
+            let addr = graph_state_addr.clone();
+            Box::pin(async move {
+                addr.send(msg).await.unwrap_or_else(|e| {
+                    error!("Failed to forward GetNodeIdMapping to GraphStateActor: {}", e);
+                    msgs::NodeIdMapping::default()
+                })
+            })
+        } else {
+            Box::pin(async { msgs::NodeIdMapping::default() })
+        }
+    }
+}

@@ -316,22 +316,24 @@ class GraphWorker {
         // Edge source/target are always strings — keys must match.
         const nodeId = String(node.id);
         node.id = nodeId;
-        const numericId = parseInt(nodeId, 10);
-        if (!isNaN(numericId) && numericId >= 0 && numericId <= 0xFFFFFFFF) {
-            this.nodeIdMap.set(nodeId, numericId);
-            this.reverseNodeIdMap.set(numericId, nodeId);
-            // Also register the masked ID (flag bits stripped) so binary position
-            // updates from the server can be matched. The server sends wire IDs
-            // with type flags in bits 26-31; getActualNodeId() strips them.
-            // Without this, only plain nodes (no flags) match incoming positions.
-            const maskedId = numericId & 0x03FFFFFF;
-            if (maskedId !== numericId && !this.reverseNodeIdMap.has(maskedId)) {
-                this.reverseNodeIdMap.set(maskedId, nodeId);
-            }
+
+        // Prefer server-provided compact wireId (0..N-1) which fits within
+        // 26 bits and avoids collisions with binary protocol type flag bits.
+        const wireId = (node as any).wireId;
+        if (wireId !== undefined && wireId !== null) {
+            this.nodeIdMap.set(nodeId, wireId);
+            this.reverseNodeIdMap.set(wireId, nodeId);
         } else {
-            const mappedId = findFreeMappedId(nodeId, this.reverseNodeIdMap);
-            this.nodeIdMap.set(nodeId, mappedId);
-            this.reverseNodeIdMap.set(mappedId, nodeId);
+            // Fallback for nodes without wireId
+            const numericId = parseInt(nodeId, 10);
+            if (!isNaN(numericId) && numericId >= 0 && numericId <= 0xFFFFFFFF) {
+                this.nodeIdMap.set(nodeId, numericId);
+                this.reverseNodeIdMap.set(numericId, nodeId);
+            } else {
+                const mappedId = findFreeMappedId(nodeId, this.reverseNodeIdMap);
+                this.nodeIdMap.set(nodeId, mappedId);
+                this.reverseNodeIdMap.set(mappedId, nodeId);
+            }
         }
         this.nodeIndexMap.set(nodeId, index);
     });
