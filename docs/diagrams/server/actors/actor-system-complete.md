@@ -1,6 +1,6 @@
 ---
 title: Server-Side Actor System - Complete Architecture Documentation
-description: The server-side actor system is a hierarchical, fault-tolerant distributed computing architecture built on Actix.  It consists of 21+ specialized actors organized under a supervisor hierarchy for m...
+description: The server-side actor system is a hierarchical, fault-tolerant distributed computing architecture built on Actix.  It consists of 30 specialised actors organised under a supervisor hierarchy for m...
 category: explanation
 tags:
   - architecture
@@ -22,7 +22,7 @@ dependencies:
 
 ## System Overview
 
-The server-side actor system is a hierarchical, fault-tolerant distributed computing architecture built on Actix. It consists of 21+ specialized actors organized under a supervisor hierarchy for maximum reliability and performance.
+The server-side actor system is a hierarchical, fault-tolerant distributed computing architecture built on Actix. It consists of 30 specialised actors organised under a supervisor hierarchy for maximum reliability and performance.
 
 **Architecture Principles:**
 - **Supervision Trees**: Hierarchical fault isolation with restart strategies
@@ -41,16 +41,20 @@ graph TB
         GSS[GraphServiceSupervisor<br/>Strategy: OneForOne<br/>Restarts: 3 max]
     end
 
-    subgraph "Core State Actors"
+    subgraph "Core Service Actors (8)"
         GSS --> GSA[GraphStateActor<br/>State Machine: 7 States<br/>Manages: Graph Data + Nodes]
-        GSS --> PO[PhysicsOrchestratorActor<br/>Coordinates: 11 GPU Actors<br/>Mode: Hierarchical]
+        GSS --> PO[PhysicsOrchestratorActor<br/>Coordinates: 10 GPU Actors<br/>Mode: Hierarchical]
         GSS --> SP[SemanticProcessorActor<br/>AI: Semantic Analysis<br/>Constraints: Dynamic]
         GSS --> CC[ClientCoordinatorActor<br/>WebSocket: Broadcast Manager<br/>Clients: N concurrent]
+        GSS --> OA[OntologyActor<br/>OWL Reasoning via Whelk-rs<br/>Classification + Inference]
+        GSS --> WS[WorkspaceActor<br/>Workspace CRUD<br/>Multi-tenant]
+        GSS --> VC[VoiceCommandsActor<br/>STT/TTS Pipeline<br/>Audio Routing]
+        GSS --> TASK[TaskOrchestratorActor<br/>Async Task Management<br/>Job Scheduling]
     end
 
-    subgraph "GPU Sub-Actors (11 Total) - Supervised by PhysicsOrchestratorActor"
+    subgraph "GPU Compute Actors (10) - Supervised by PhysicsOrchestratorActor"
         PO --> FC[ForceComputeActor<br/>Primary Physics Engine<br/>CUDA Kernels]
-        PO --> SM[StressMajorizationActor<br/>Layout Optimization<br/>Iterative Solver]
+        PO --> SM[StressMajorizationActor<br/>Layout Optimisation<br/>Iterative Solver]
         PO --> SF[SemanticForcesActor<br/>Semantic Attraction<br/>AI-Driven Forces]
         PO --> CA[ConstraintActor<br/>Hard Constraints<br/>Collision Detection]
         PO --> OC[OntologyConstraintActor<br/>OWL/RDF Rules<br/>Semantic Validation]
@@ -59,22 +63,28 @@ graph TB
         PO --> CLA[ClusteringActor<br/>K-Means + Communities<br/>Label Propagation]
         PO --> AD[AnomalyDetectionActor<br/>LOF + Z-Score<br/>Outlier Detection]
         PO --> CCO[ConnectedComponentsActor<br/>Graph Components<br/>Union-Find]
-        PO --> GR[GPUResourceActor<br/>Memory Manager<br/>Stream Allocator]
     end
 
-    subgraph "Support Actors"
-        GSS --> WS[WorkspaceActor<br/>Workspace CRUD<br/>Multi-tenant]
-        GSS --> SA[SettingsActor<br/>Config Management<br/>Persistence]
-        GSS --> OSA[OptimisedSettingsActor<br/>Hot-path Settings<br/>Cache Layer]
+    subgraph "Supervisor Actors (6)"
+        GPM[GPUManagerActor<br/>Memory Pool + Stream Allocation]
+        PS[PhysicsSupervisor<br/>Physics Actor Lifecycle]
+        AS[AnalyticsSupervisor<br/>Analytics Actor Lifecycle]
+        GAS[GraphAnalyticsSupervisor<br/>Graph Analytics Lifecycle]
+        RS[ResourceSupervisor<br/>Resource Monitoring]
+        GSS
     end
 
-    subgraph "Integration Actors (24 Total)"
-        GSS --> MCP[MultiMcpVisualizationActor<br/>MCP Server Integration<br/>Multi-protocol coordination]
-        GSS --> TASK[TaskOrchestratorActor<br/>Async Task Management<br/>Job scheduling]
-        GSS --> MON[AgentMonitorActor<br/>Agent Health Monitoring<br/>Telemetry collection]
+    subgraph "Infrastructure Actors (5)"
+        GSS --> META[MetadataActor<br/>Node/Edge Metadata]
+        GSS --> PSA[ProtectedSettingsActor<br/>Auth-Guarded Settings]
+        GSS --> OSA[OptimisedSettingsActor<br/>Hot-path Settings Cache]
+        GSS --> MON[AgentMonitorActor<br/>Agent Health + Telemetry]
+        GSS --> MCP[MultiMcpVisualizationActor<br/>MCP Server Integration]
     end
 
     style GSS fill:#ff6b6b,stroke:#333,stroke-width:4px,color:#fff
+    style PO fill:#4fc3f7,stroke:#333,stroke-width:2px
+    style FC fill:#81c784,stroke:#333,stroke-width:2px
     style MCP fill:#b39ddb,stroke:#333,stroke-width:2px
     style TASK fill:#b39ddb,stroke:#333,stroke-width:2px
     style MON fill:#b39ddb,stroke:#333,stroke-width:2px
@@ -225,7 +235,7 @@ enum GraphState {
 ```mermaid
 graph TB
     subgraph "PhysicsOrchestratorActor - Central Coordinator"
-        PO[PhysicsOrchestratorActor<br/>Manages: 11 GPU Actors<br/>Strategy: Hierarchical Pipeline]
+        PO[PhysicsOrchestratorActor<br/>Manages: 10 GPU Actors<br/>Strategy: Hierarchical Pipeline]
     end
 
     subgraph "Force Computation Pipeline"
@@ -905,7 +915,7 @@ impl Handler<GraphUpdateEvent> for SemanticProcessorActor {
 graph TB
     subgraph "Fault Isolation Zones"
         Z1[Zone 1: Graph State<br/>Actor: GraphStateActor<br/>Failures: Transient errors]
-        Z2[Zone 2: Physics<br/>Actors: 11 GPU Actors<br/>Failures: CUDA errors, OOM]
+        Z2[Zone 2: Physics<br/>Actors: 10 GPU Actors<br/>Failures: CUDA errors, OOM]
         Z3[Zone 3: Semantic<br/>Actor: SemanticProcessorActor<br/>Failures: AI model errors]
         Z4[Zone 4: Clients<br/>Actor: ClientCoordinatorActor<br/>Failures: WebSocket disconnects]
     end

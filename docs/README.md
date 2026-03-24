@@ -60,11 +60,11 @@ Get running in 5 minutes:
 - **React Frontend** - [Client Architecture](explanation/architecture/client/overview.md), [State Management](how-to/development/state-management.md)
 - **Neo4j** - [Database Architecture](explanation/architecture/database.md), [Schemas](reference/database/schemas.md)
 - **GPU/CUDA** - [GPU Overview](explanation/architecture/gpu/README.md), [Optimisations](explanation/architecture/gpu/optimizations.md)
-- **WebSocket** - [Binary Protocol](reference/protocols/binary-websocket.md), [Best Practices](how-to/development/websocket-best-practices.md)
+- **WebSocket** - [Binary Protocol](diagrams/infrastructure/websocket/binary-protocol-complete.md), [Best Practices](how-to/development/websocket-best-practices.md)
 
 ### API Reference
 
-- [REST API](reference/api/rest-api-complete.md)
+- [REST API](api/API_REFERENCE.md)
 - [WebSocket API](reference/api/03-websocket.md)
 - [Authentication](reference/api/01-authentication.md)
 
@@ -191,14 +191,14 @@ graph TB
 | **Deploy AI agents** | [Agent Orchestration](how-to/agents/agent-orchestration.md) |
 | **Query Neo4j** | [Neo4j Integration](how-to/integration/neo4j-integration.md) |
 | **Add a feature** | [Adding Features](how-to/development/04-adding-features.md) |
-| **Set up XR/VR** | [Vircadia XR Guide](how-to/features/vircadia-xr-complete-guide.md) |
+| **Set up XR/VR** | [XR Architecture](diagrams/client/xr/xr-architecture-complete.md) |
 | **Understand architecture** | [Architecture Overview](explanation/architecture/README.md) |
 | **Learn the codebase** | [Developer Journey](explanation/architecture/developer-journey.md) |
 | **Deploy to production** | [Deployment Guide](how-to/deployment/deployment.md) |
 | **Configure environment** | [Configuration](how-to/operations/configuration.md) |
 | **Fix issues** | [Troubleshooting](how-to/operations/troubleshooting.md) |
 | **Write tests** | [Testing Guide](how-to/development/testing-guide.md) |
-| **Use REST API** | [REST API](reference/api/rest-api-complete.md) |
+| **Use REST API** | [REST API](api/API_REFERENCE.md) |
 | **Use WebSocket API** | [WebSocket API](reference/api/03-websocket.md) |
 | **Optimise performance** | [GPU Optimisations](explanation/architecture/gpu/optimizations.md) |
 | **Secure the app** | [Security Guide](how-to/operations/security.md) |
@@ -213,7 +213,6 @@ Step-by-step lessons for beginners.
 |----------|------|-------------|
 | [Installation](tutorials/installation.md) | 10 min | Docker and native setup |
 | [First Graph](tutorials/creating-first-graph.md) | 15 min | Create your first visualisation |
-| [Neo4j Quick Start](tutorials/neo4j-basics.md) | 20 min | Query the graph database |
 
 ### Concepts (Understanding-Oriented)
 
@@ -262,7 +261,7 @@ Practical instructions for specific goals.
 - [Development Setup](how-to/development/01-development-setup.md) - Environment
 - [Project Structure](how-to/development/02-project-structure.md) - Code organisation
 - [Adding Features](how-to/development/04-adding-features.md) - Workflow
-- [Contributing](how-to/development/06-contributing.md) - Code standards
+- [Contributing](CONTRIBUTING.md) - Code standards
 - [WebSocket Best Practices](how-to/development/websocket-best-practices.md) - Real-time
 - [JSON Serialisation](how-to/development/json-serialization-patterns.md) - Data formats
 - [Test Execution](how-to/development/test-execution.md) - Running tests
@@ -279,7 +278,7 @@ Practical instructions for specific goals.
 - [Telemetry](how-to/operations/telemetry-logging.md) - Observability
 - [Operator Runbook](how-to/operations/pipeline-operator-runbook.md) - Operations
 - [Infrastructure Architecture](how-to/infrastructure/architecture.md) - System design
-- [Docker Environment](how-to/infrastructure/docker-environment.md) - Containers
+- [Docker Environment](how-to/deployment/docker-environment.md) - Containers
 - [Port Configuration](how-to/infrastructure/port-configuration.md) - Networking
 - [Infrastructure Troubleshooting](how-to/infrastructure/troubleshooting.md) - Issues
 
@@ -309,7 +308,7 @@ Deep dives into architecture and design.
 - [GPU Semantic Forces](explanation/architecture/gpu-semantic-forces.md) - CUDA kernels
 - [GPU Communication](explanation/architecture/gpu/communication-flow.md) - Data transfer
 - [GPU Optimisations](explanation/architecture/gpu/optimizations.md) - Performance
-- [Stress Majorisation](explanation/architecture/stress-majorization.md) - Layout algorithm
+- [Stress Majorisation](how-to/features/stress-majorization-guide.md) - Layout algorithm
 
 </details>
 
@@ -331,10 +330,9 @@ Technical specifications and APIs.
 <details>
 <summary>API Documentation (8 references)</summary>
 
-- [API Complete](reference/api-complete-reference.md) - All endpoints
-- [REST API](reference/api/rest-api-complete.md) - HTTP API spec
+- [API Reference](api/API_REFERENCE.md) - All endpoints (Actix-web, port 8080)
 - [WebSocket API](reference/api/03-websocket.md) - Real-time protocol
-- [Authentication](reference/api/01-authentication.md) - JWT and Nostr
+- [Authentication](reference/api/01-authentication.md) - Nostr NIP-07/NIP-98
 - [Semantic Features API](reference/api/semantic-features-api.md) - NL queries
 
 </details>
@@ -345,8 +343,8 @@ Technical specifications and APIs.
 - [Database Schemas](reference/database/schemas.md) - Neo4j schema
 - [Ontology Schema V2](reference/database/ontology-schema-v2.md) - OWL schema
 - [User Settings Schema](reference/database/user-settings-schema.md) - User data
-- [Binary WebSocket](reference/protocols/binary-websocket.md) - 36-byte format
-- [WebSocket Protocol](reference/websocket-protocol.md) - V2 spec
+- [Binary Protocol](diagrams/infrastructure/websocket/binary-protocol-complete.md) - V3 (48 bytes/node) and V4 delta encoding
+- [Protocol Matrix](reference/protocols/protocol-matrix.md) - Protocol version comparison
 
 </details>
 
@@ -375,16 +373,16 @@ Technical specifications and APIs.
 
 | Category | Count |
 |----------|-------|
-| **Tutorials** | 5 |
-| **How-To Guides** | 81 |
-| **Explanation** | 72 |
-| **Reference** | 46 |
-| **Other (diagrams, research)** | 38 |
-| **Total** | 242 markdown files |
+| **Tutorials** | 2 |
+| **How-To Guides** | 68 |
+| **Explanation** | 70 |
+| **Reference** | 39 |
+| **Other (diagrams, research)** | 35 |
+| **Total** | ~214 markdown files |
 
 - **Framework**: Diataxis (Tutorials, How-To, Explanation, Reference)
-- **Last Updated**: 2026-02-11
-- **Verified**: Links checked, Mermaid diagrams validated
+- **Last Updated**: 2026-03-24
+- **Audit**: [DOCS-AUDIT-2026-03-24.md](DOCS-AUDIT-2026-03-24.md)
 
 ---
 

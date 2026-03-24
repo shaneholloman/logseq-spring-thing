@@ -20,7 +20,7 @@ Last updated: 2026-02-08
         | WebRTC P2P (voice)                              +---------+---------+
         |                                                 |         |         |
         v                                            Neo4j DB   CUDA GPU   Whelk-rs
-   Remote Peers                                      (Cypher)   (100+ kernels) (OWL 2 EL)
+   Remote Peers                                      (Cypher)   (110 kernels)  (OWL 2 EL)
 ```
 
 ### Component Summary
@@ -30,7 +30,7 @@ Last updated: 2026-02-08
 | Client | React 19, Three.js, R3F | 3D graph rendering, WebXR, UI |
 | Backend | Rust, Actix-web 4, Actix actors | HTTP/WS server, business logic, CQRS |
 | Database | Neo4j 5 | Graph storage, Cypher queries |
-| GPU | CUDA 12.4 | Physics simulation, analytics (100+ kernels) |
+| GPU | CUDA 13.1 | Physics simulation, analytics (110 kernels, 40 actors) |
 | Ontology | Whelk-rs (OWL 2 EL) | Reasoning, classification, inference |
 
 ---
@@ -40,35 +40,63 @@ Last updated: 2026-02-08
 The backend uses Actix actors for concurrent, message-driven processing. Each actor owns its
 state and communicates exclusively through typed messages (`Handler<Msg>` pattern).
 
-### Actor Hierarchy
+### Actor Hierarchy (30 Actors)
 
 ```
-                    main()
-                      |
-            +---------+---------+
-            |                   |
-    GraphServiceSupervisor  PhysicsSupervisor
-            |                   |
-    +-------+-------+    +-----+-----+
-    |       |       |    |     |     |
- GraphState Ontology Settings Force  SSSP  Clustering
-  Actor     Actor    Actor  Actor  Actor  Actor
-                              |
-                        AgentMonitorActor
+                              main()
+                                |
+                  +-------------+-------------+
+                  |                           |
+       GraphServiceSupervisor        PhysicsOrchestratorActor
+                  |                           |
+    +------+------+------+------+     +-------+-------+-------+-------+
+    |      |      |      |      |     |       |       |       |       |
+ GraphState  Ontology  Workspace  ClientCoord  ForceCompute  StressMaj  SemanticForces
+  Actor       Actor     Actor      Actor        Actor         Actor      Actor
+    |                                              |
+    +-- MetadataActor                              +-- ConstraintActor
+    +-- SemanticProcessorActor                     +-- OntologyConstraintActor
+    +-- VoiceCommandsActor                         +-- ShortestPathActor
+    +-- TaskOrchestratorActor                      +-- PageRankActor
+    +-- AgentMonitorActor                          +-- ClusteringActor
+                                                   +-- AnomalyDetectionActor
+  Settings Actors:                                 +-- ConnectedComponentsActor
+    +-- OptimisedSettingsActor
+    +-- ProtectedSettingsActor                Supervisors:
+                                                   +-- GPUManagerActor
+                                                   +-- PhysicsSupervisor
+                                                   +-- AnalyticsSupervisor
+                                                   +-- GraphAnalyticsSupervisor
+                                                   +-- ResourceSupervisor
+                                                   +-- GraphServiceSupervisor
 ```
+
+### Actor Subsystem Groups
+
+| Subsystem | Actors | Count |
+|:----------|:-------|:------|
+| GPU Compute | ForceComputeActor, StressMajorizationActor, ClusteringActor, PageRankActor, ShortestPathActor, ConnectedComponentsActor, AnomalyDetectionActor, SemanticForcesActor, ConstraintActor, OntologyConstraintActor | 10 |
+| Supervisors | GPUManagerActor, PhysicsSupervisor, AnalyticsSupervisor, GraphAnalyticsSupervisor, ResourceSupervisor, GraphServiceSupervisor | 6 |
+| Service | GraphStateActor, OntologyActor, WorkspaceActor, ClientCoordinatorActor, PhysicsOrchestratorActor, SemanticProcessorActor, VoiceCommandsActor, TaskOrchestratorActor | 8 |
+| Infrastructure | MetadataActor, ProtectedSettingsActor, OptimisedSettingsActor, AgentMonitorActor, MultiMcpVisualizationActor | 5 |
+| **Total** | | **30** (including root PhysicsOrchestratorActor) |
 
 ### Key Actors
 
 | Actor | Messages Handled | Responsibility |
 |:------|:-----------------|:---------------|
-| `GraphServiceSupervisor` | `UpdateBotsGraph`, `GetGraphData` | Coordinates graph state, broadcasts binary updates |
-| `GraphStateActor` | `AddNode`, `RemoveNode`, `AddEdge` | Authoritative graph state, node/edge CRUD |
+| `GraphServiceSupervisor` | `UpdateBotsGraph`, `GetGraphData` | Coordinates graph state, broadcasts binary updates (OneForOne strategy) |
+| `GraphStateActor` | `AddNode`, `RemoveNode`, `AddEdge` | Authoritative graph state, node/edge CRUD (7-state machine) |
 | `OntologyActor` | `LoadOntology`, `Classify`, `AddAxiom` | OWL reasoning via Whelk-rs |
-| `OptimizedSettingsActor` | `GetSettings`, `UpdateSettings` | Settings persistence to Neo4j |
+| `OptimisedSettingsActor` | `GetSettings`, `UpdateSettings` | Hot-path settings cache layer |
+| `ProtectedSettingsActor` | `GetProtectedSettings` | Guarded settings with auth enforcement |
+| `MetadataActor` | `GetMetadata`, `UpdateMetadata` | Node/edge metadata management |
 | `AgentMonitorActor` | `UpdateBotsGraph` | Receives agent telemetry from Management API |
-| `PhysicsSupervisor` | `StartSimulation`, `StopSimulation` | Manages GPU compute actors |
+| `PhysicsOrchestratorActor` | `UpdateSimulationParams` | Coordinates 10 GPU compute actors, manages reheat/settle |
 | `ForceComputeActor` | `ComputeForces` | CUDA force-directed layout (preserves iteration_count, stability_iterations, reheat_factor on settings updates) |
 | `ClientCoordinatorActor` | `RegisterClient`, `BroadcastBinary` | WebSocket session management |
+| `GPUManagerActor` | `AllocateMemory`, `FreeMemory` | GPU memory pool and stream allocation |
+| `TaskOrchestratorActor` | `CreateTask`, `CancelTask` | Async task management and job scheduling |
 
 ### Message Flow (Agent Telemetry Example)
 
@@ -404,7 +432,7 @@ impl AddNodeDirective {
 | Backend Framework | Actix-web | 4.x |
 | Backend Language | Rust | 1.75+ |
 | Database | Neo4j | 5.x |
-| GPU Compute | CUDA | 12.4 |
+| GPU Compute | CUDA | 13.1 |
 | Ontology Engine | Whelk-rs (OWL 2 EL) | -- |
 | WebSocket | JSON + Binary V3 | -- |
 | Spatial Audio | Web Audio API (HRTF) | -- |

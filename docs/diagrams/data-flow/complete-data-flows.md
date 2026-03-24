@@ -432,134 +432,120 @@ sequenceDiagram
 
 ## 4. Settings Update Flow
 
-**Path**: UI Settings → Store → API → Neo4j → WebSocket Broadcast
+**Path**: UI Settings → Store → autoSaveManager → settingsApi → PUT /api/settings/physics → SettingsActor → GPU Propagation
 
-### Sequence Diagram
+Two distinct paths exist: a **filter settings** path (REST POST) and a **physics settings** path (REST PUT + GPU propagation). The physics path is the critical one for layout behaviour.
+
+### Sequence Diagram (Physics Settings Path)
+
+```mermaid
+sequenceDiagram
+    participant UI as PhysicsEngineControls.tsx
+    participant Store as settingsStore.ts (Zustand + Immer)
+    participant ASM as autoSaveManager
+    participant API as settingsApi.updatePhysics
+    participant SR as settings_routes.rs (PUT /api/settings/physics)
+    participant SA as SettingsActor
+    participant FCA as ForceComputeActor
+    participant POA as PhysicsOrchestratorActor
+    participant GSS as GraphServiceSupervisor
+    participant GPU as CUDA Kernel
+
+    UI->>Store: handleForceParamChange('springStrength', 0.05) (t=0ms)
+    Note over UI,Store: Maps 'springStrength' to 'springK'
+
+    Store->>Store: updateSettings(draft) via Immer (t=1ms)
+    Note over Store: Mutates draft.visualisation.graphs.logseq.physics.springK
+
+    Store->>Store: notifyPhysicsUpdate() (t=2ms)
+    Note over Store: Dispatches CustomEvent 'physicsParametersUpdated'
+
+    ASM->>API: PUT /api/settings/physics { springK: 0.05 } (t=5ms)
+    Note over ASM,API: graphDataManager.ts listener fires on CustomEvent
+
+    API->>SR: HTTP PUT (t=8ms)
+    Note over API,SR: settings_routes.rs:1169 (route winner)
+
+    SR->>SR: normalize_physics_keys() + validate (t=10ms)
+    Note over SR: Converts camelCase keys to internal names
+
+    SR->>SA: UpdateSettings { settings: full_settings } (t=12ms)
+    Note over SR,SA: Persists to Neo4j via SettingsActor
+
+    SR->>FCA: gpu_addr.send(UpdateSimulationParams) (t=13ms)
+    Note over SR,FCA: Conditional: only if gpu_compute_addr is Some
+
+    SR->>GSS: graph_service_addr.send(UpdateSimulationParams) (t=14ms)
+
+    GSS->>POA: forward UpdateSimulationParams (t=15ms)
+    Note over GSS,POA: GSS:1190-1204
+
+    FCA->>FCA: update_simulation_parameters() (t=16ms)
+    Note over FCA: reheat_factor=1.0, stability_warmup_remaining=600
+
+    POA->>POA: Reset fast_settle, unpause physics (t=17ms)
+    Note over POA: fast_settle_complete=false, is_physics_paused=false
+
+    FCA->>GPU: Next ComputeForces tick uses new params (t=33ms)
+    Note over FCA,GPU: CUDA kernel picks up updated springK
+
+    GPU->>FCA: Updated positions (D2H copy) (t=45ms)
+
+    FCA->>GSS: BroadcastPositions (binary V3) (t=46ms)
+
+    GSS->>GSS: BroadcastOptimiser → UpdateNodePositions (t=47ms)
+
+    GSS-->>UI: WebSocket binary V3 (48 bytes/node) (t=50ms)
+```
+
+### Sequence Diagram (Filter Settings Path)
 
 ```mermaid
 sequenceDiagram
     participant UI as Settings UI
     participant Store as SettingsStore
-    participant API as Settings API
-    participant WS as WebSocket
-    participant Server as Settings Actor
+    participant API as POST /api/settings
+    participant SA as SettingsActor (OptimisedSettingsActor)
     participant Neo4j
-    participant Broadcast as WS Broadcast
-    participant Client as Other Clients
+    participant Broadcast as ClientCoordinatorActor
 
-    User->>UI: Change filter threshold (t=0ms)
-    Note over User,UI: Slider: 0.5 → 0.7
-
-    UI->>Store: set('nodeFilter.qualityThreshold', 0.7) (t=1ms)
-    Note over UI,Store: Zustand action
-
-    Store->>Store: Update state (t=2ms)
-    Note over Store: Immer mutation
-    Note over Store: Old: 0.5, New: 0.7
-
-    Store->>Store: Notify subscribers (t=3ms)
-    Note over Store: Path-specific subscribers
-    Note over Store: Count: 3 subscribers
-
-    Store->>WS: sendFilterUpdate() (t=5ms)
-    Note over Store,WS: Auto-sync via subscription
-
-    WS->>Server: {"type":"filter_update",...} (t=7ms)
-    Note over WS,Server: JSON: ~200 bytes
-    Note over WS,Server: Payload: {quality_threshold: 0.7}
-
-    Store->>API: POST /api/settings (t=8ms)
-    Note over Store,API: Debounced: 500ms
-    Note over Store,API: JSON: ~1KB
-
-    API->>Server: HTTP request (t=10ms)
-    Note over API,Server: REST endpoint
-
-    Server->>Server: Validate settings (t=12ms)
-    Note over Server: Schema validation
-    Note over Server: Range check: 0.0-1.0 ✓
-
-    Server->>Server: Apply filter to graph (t=15ms)
-    Note over Server: Filter nodes by quality ≥ 0.7
-    Note over Server: Before: 10k nodes
-    Note over Server: After: 2k nodes
-
-    Server->>Neo4j: UPDATE user_settings (t=20ms)
-    Note over Server,Neo4j: Cypher query
-    Note over Server,Neo4j: WHERE user_id = $user_id
-
-    Neo4j-->>Server: ACK (t=45ms)
-    Note over Neo4j,Server: Write confirmed
-
-    Server->>Server: Build filtered graph (t=50ms)
-    Note over Server: SELECT nodes WHERE quality ≥ 0.7
-    Note over Server: Include edges for visible nodes
-
-    Server-->>WS: {"type":"filter_confirmed",...} (t=55ms)
-    Note over Server,WS: JSON: ~150 bytes
-    Note over Server,WS: {visible_nodes: 2000, total: 10000}
-
-    WS->>UI: filter_confirmed event (t=57ms)
-    Note over WS,UI: Update UI badge
-
-    Server->>WS: {"type":"initialGraphLoad",...} (t=60ms)
-    Note over Server,WS: Filtered graph data
-    Note over Server,WS: JSON: ~500KB
-    Note over Server,WS: 2k nodes + edges
-
-    WS->>Store: Update graph data (t=65ms)
-    Note over WS,Store: Replace with filtered set
-
-    Store->>UI: Re-render (t=70ms)
-    Note over Store,UI: New node count
-
-    UI-->>User: Visual update (t=80ms)
-    Note over UI,User: Graph shows 2k nodes
-
-    Server->>Broadcast: Broadcast setting change (t=85ms)
-    Note over Server,Broadcast: To other clients (same user)
-
-    Broadcast->>Client: {"type":"settings_sync",...} (t=90ms)
-    Note over Broadcast,Client: Multi-device sync
-    Note over Broadcast,Client: JSON: ~200 bytes
-
-    Client->>Client: Apply same filter (t=95ms)
-    Note over Client: Sync across devices
+    UI->>Store: set('nodeFilter.qualityThreshold', 0.7) (t=0ms)
+    Store->>Store: Immer mutation (t=1ms)
+    Store->>API: POST /api/settings (debounced 500ms) (t=500ms)
+    API->>SA: UpdateSettings (t=502ms)
+    SA->>Neo4j: Cypher UPDATE user_settings (t=505ms)
+    Neo4j-->>SA: ACK (t=530ms)
+    SA->>SA: Build filtered graph (t=535ms)
+    SA->>Broadcast: Broadcast to connected clients (t=540ms)
+    Broadcast-->>UI: Binary V3 positions (filtered) (t=545ms)
 ```
 
 ### Data Transformations
 
 | Stage | Input | Output | Size | Duration |
 |-------|-------|--------|------|----------|
-| UI → Store | Slider value | State mutation | 8B | 1ms |
-| Store → WS | Setting object | JSON message | 200B | 2ms |
-| Store → API | Full settings | HTTP POST body | 1KB | 5ms |
-| API → Neo4j | Settings object | Cypher UPDATE | 500B | 25ms |
-| Server → Filter | Old graph | Filtered graph | 500KB | 35ms |
-| Server → Client | Filtered data | Binary positions | 42KB | 5ms |
+| UI → Store | Slider value | Immer draft mutation | 8B | 1ms |
+| Store → CustomEvent | State change | `physicsParametersUpdated` event | 200B | 1ms |
+| autoSaveManager → API | Physics params | PUT /api/settings/physics body | 500B | 5ms |
+| API → SettingsActor | Settings object | Cypher UPDATE via Neo4j | 500B | 25ms |
+| API → ForceComputeActor | UpdateSimulationParams | GPU parameter update + reheat | 128B | 2ms |
+| API → PhysicsOrchestratorActor | UpdateSimulationParams | fast_settle reset + unpause | 64B | 1ms |
+| GPU → ClientCoordinator | Updated positions | Binary V3 broadcast | 48B/node | 3ms |
 
 ### Performance Characteristics
 
-**Latency**:
+**Physics settings latency**:
+- **UI → Store**: 2ms (synchronous Immer)
+- **Store → API**: 5ms (CustomEvent → autoSaveManager)
+- **API → GPU propagation**: 8ms (SettingsActor + ForceComputeActor + Orchestrator)
+- **Next physics tick**: 16.67ms (60 FPS cadence)
+- **Total to visual effect**: ~50ms
+
+**Filter settings latency**:
 - **UI → Store**: 3ms (synchronous)
-- **Store → WS**: 5ms (immediate sync)
 - **Store → API**: 500ms (debounced)
 - **API → DB**: 25ms (write)
-- **Filter → Client**: 35ms (compute + send)
-- **Total UI feedback**: 80ms
 - **Total persistence**: 530ms
-
-**Throughput**:
-- Settings updates: Debounced to 1/500ms
-- WebSocket sync: Real-time (no throttle)
-- API writes: Batched per user
-- Broadcast: All connected clients
-
-**Message Sizes**:
-- Filter update: 200 bytes
-- Full settings: 1KB
-- Filtered graph: 500KB
-- Binary positions: 42KB
 
 ---
 
@@ -617,16 +603,20 @@ sequenceDiagram
         Handler->>GraphMgr: updateNodePositions(payload) (t=7ms)
 
         GraphMgr->>GraphMgr: Parse binary nodes (t=8ms)
-        Note over GraphMgr: Parse V2 format (21 bytes/node)
+        Note over GraphMgr: Parse V3 format (48 bytes/node)
         Note over GraphMgr: 2000 nodes
 
         loop For each node (parallel)
             GraphMgr->>GraphMgr: Read node data (t+0.01ms)
-            Note over GraphMgr: Offset: i * 21
-            Note over GraphMgr: nodeId: u32 (4 bytes)
+            Note over GraphMgr: Offset: i * 48
+            Note over GraphMgr: nodeId+typeFlags: u32 (4 bytes)
             Note over GraphMgr: position: 3×f32 (12 bytes)
-            Note over GraphMgr: timestamp: u32 (4 bytes)
-            Note over GraphMgr: flags: u8 (1 byte)
+            Note over GraphMgr: velocity: 3×f32 (12 bytes)
+            Note over GraphMgr: SSSP distance: f32 (4 bytes)
+            Note over GraphMgr: SSSP parent: i32 (4 bytes)
+            Note over GraphMgr: cluster ID: u32 (4 bytes)
+            Note over GraphMgr: anomaly score: f32 (4 bytes)
+            Note over GraphMgr: community ID: u32 (4 bytes)
         end
 
         GraphMgr->>GraphMgr: Update internal map (t=15ms)
@@ -703,21 +693,23 @@ sequenceDiagram
 - **Bandwidth**: 1.26 MB/s (42KB × 30)
 - **Node update rate**: 60k nodes/sec (2k × 30)
 
-**Message Format** (Binary V2):
+**Message Format** (Binary V3):
 ```
 Header (5 bytes):
   - type: u8 (1 byte) = 0x01 (GRAPH_UPDATE)
-  - version: u8 (1 byte) = 0x02
+  - version: u8 (1 byte) = 0x03
   - length: u16 (2 bytes) = payload size
   - graphTypeFlag: u8 (1 byte) = 0x01 (KNOWLEDGE_GRAPH)
 
-Per-Node (21 bytes each):
-  - nodeId: u32 (4 bytes)
-  - position.x: f32 (4 bytes)
-  - position.y: f32 (4 bytes)
-  - position.z: f32 (4 bytes)
-  - timestamp: u32 (4 bytes)
-  - flags: u8 (1 byte)
+Per-Node (48 bytes each):
+  - nodeId + type flags: u32 (4 bytes)  [bits 26-31 = type, bits 0-25 = ID]
+  - position (x, y, z): 3×f32 (12 bytes)
+  - velocity (vx, vy, vz): 3×f32 (12 bytes)
+  - SSSP distance: f32 (4 bytes)
+  - SSSP parent: i32 (4 bytes)
+  - cluster ID: u32 (4 bytes)
+  - anomaly score: f32 (4 bytes)
+  - community ID: u32 (4 bytes)
 ```
 
 ---
@@ -1028,9 +1020,9 @@ sequenceDiagram
     Note over CUDA,Force: Vec3[10000] positions
 
     Force->>Force: Convert to binary (t=15.5ms)
-    Note over Force: BinaryNodeDataClient format
-    Note over Force: 21 bytes per node
-    Note over Force: Total: 210KB
+    Note over Force: BinaryNodeDataClient V3 format
+    Note over Force: 48 bytes per node
+    Note over Force: Total: 480KB
 
     Force->>Force: Update stats (t=16ms)
     Note over Force: avg_velocity, kinetic_energy
@@ -1068,7 +1060,7 @@ sequenceDiagram
 | CUDA → GPU | Kernel code | Loaded instructions | 50KB | 1ms |
 | Kernel execution | Node/edge data | Updated positions | 240KB | 6ms |
 | GPU → CPU | Device memory | Host array | 240KB | 1.5ms |
-| Force → Binary | Vec3 array | Binary protocol | 210KB | 0.5ms |
+| Force → Binary | Vec3 array | Binary V3 protocol | 480KB | 0.5ms |
 | Coord → Filter | 10k nodes | 2k filtered | 42KB | 0.5ms |
 | WS → Client | Binary buffer | Network frame | 42KB | 2ms |
 

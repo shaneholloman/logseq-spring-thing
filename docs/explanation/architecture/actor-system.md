@@ -1,6 +1,6 @@
 ---
 title: Actor System Architecture
-description: Complete reference for VisionFlow's Actix-based actor system with 21+ specialised actors, supervision strategies, GPU sub-actors, and fault-tolerant message patterns.
+description: Complete reference for VisionFlow's Actix-based actor system with 30 specialised actors, supervision strategies, GPU sub-actors, and fault-tolerant message patterns.
 category: explanation
 tags:
   - actor
@@ -14,7 +14,7 @@ difficulty-level: advanced
 
 # Actor System Architecture
 
-VisionFlow uses the actor model for concurrent, fault-tolerant graph processing. Built on Actix, the system coordinates 21+ specialised actors under hierarchical supervision.
+VisionFlow uses the actor model for concurrent, fault-tolerant graph processing. Built on Actix, the system coordinates 30 specialised actors under hierarchical supervision.
 
 ---
 
