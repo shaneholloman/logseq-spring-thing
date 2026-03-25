@@ -413,8 +413,10 @@ impl UnifiedGPUCompute {
         info!("Running GPU-accelerated PageRank on {} nodes", num_nodes);
 
         // Download CSR row offsets to compute out-degrees on host
-        let mut row_offsets = vec![0i32; num_nodes + 1];
+        // Use allocated sizes for copy_to (device buffers may be overallocated)
+        let mut row_offsets = vec![0i32; self.edge_row_offsets.len()];
         self.edge_row_offsets.copy_to(&mut row_offsets)?;
+        row_offsets.truncate(num_nodes + 1);
 
         // Compute out-degrees from CSR row offsets
         let mut out_degrees = vec![0i32; num_nodes];
@@ -425,7 +427,7 @@ impl UnifiedGPUCompute {
         // Download CSR col_indices to build CSC (transpose) on the host.
         // The PageRank kernel requires CSC format for O(n+m) complexity.
         let num_edges = row_offsets[num_nodes] as usize;
-        let mut col_indices_host = vec![0i32; self.num_edges.max(num_edges)];
+        let mut col_indices_host = vec![0i32; self.edge_col_indices.len()];
         if num_edges > 0 {
             self.edge_col_indices.copy_to(&mut col_indices_host)?;
         }

@@ -4,8 +4,20 @@ use super::construction::UnifiedGPUCompute;
 use super::types::int3;
 use anyhow::{anyhow, Result};
 use cust::launch;
-use cust::memory::CopyDestination;
+use cust::memory::{CopyDestination, DeviceBuffer};
 use log::info;
+
+/// Safe download: allocate buffer matching device buffer size, copy, then truncate
+/// to the requested logical size. Avoids panics from overallocated device buffers.
+fn safe_download<T: Default + Clone + cust::memory::DeviceCopy>(
+    device_buf: &DeviceBuffer<T>,
+    logical_size: usize,
+) -> Result<Vec<T>> {
+    let mut full = vec![T::default(); device_buf.len()];
+    device_buf.copy_to(&mut full)?;
+    full.truncate(logical_size);
+    Ok(full)
+}
 
 impl UnifiedGPUCompute {
     pub fn run_kmeans(
@@ -125,8 +137,8 @@ impl UnifiedGPUCompute {
             self.stream.synchronize()?;
 
 
-            let mut partial_inertias = vec![0.0f32; grid_size as usize];
-            self.partial_inertia.copy_to(&mut partial_inertias)?;
+            let partial_inertias = safe_download(&self.partial_inertia, grid_size as usize)?;
+            
             let current_inertia: f32 = partial_inertias.iter().sum();
             final_inertia = current_inertia;
 
@@ -143,15 +155,15 @@ impl UnifiedGPUCompute {
         }
 
 
-        let mut assignments = vec![0i32; self.num_nodes];
-        self.cluster_assignments.copy_to(&mut assignments)?;
+        let assignments = safe_download(&self.cluster_assignments, self.num_nodes)?;
+        
 
-        let mut centroids_x = vec![0.0f32; num_clusters];
-        let mut centroids_y = vec![0.0f32; num_clusters];
-        let mut centroids_z = vec![0.0f32; num_clusters];
-        self.centroids_x.copy_to(&mut centroids_x)?;
-        self.centroids_y.copy_to(&mut centroids_y)?;
-        self.centroids_z.copy_to(&mut centroids_z)?;
+        let centroids_x = safe_download(&self.centroids_x, num_clusters)?;
+        let centroids_y = safe_download(&self.centroids_y, num_clusters)?;
+        let centroids_z = safe_download(&self.centroids_z, num_clusters)?;
+        
+        
+        
 
         let centroids: Vec<(f32, f32, f32)> = centroids_x
             .into_iter()
@@ -278,8 +290,8 @@ impl UnifiedGPUCompute {
             self.stream.synchronize()?;
 
 
-            let mut partial_inertias = vec![0.0f32; grid_size as usize];
-            self.partial_inertia.copy_to(&mut partial_inertias)?;
+            let partial_inertias = safe_download(&self.partial_inertia, grid_size as usize)?;
+            
             let current_inertia: f32 = partial_inertias.iter().sum();
             final_inertia = current_inertia;
 
@@ -297,15 +309,15 @@ impl UnifiedGPUCompute {
         }
 
 
-        let mut assignments = vec![0i32; self.num_nodes];
-        self.cluster_assignments.copy_to(&mut assignments)?;
+        let assignments = safe_download(&self.cluster_assignments, self.num_nodes)?;
+        
 
-        let mut centroids_x = vec![0.0f32; num_clusters];
-        let mut centroids_y = vec![0.0f32; num_clusters];
-        let mut centroids_z = vec![0.0f32; num_clusters];
-        self.centroids_x.copy_to(&mut centroids_x)?;
-        self.centroids_y.copy_to(&mut centroids_y)?;
-        self.centroids_z.copy_to(&mut centroids_z)?;
+        let centroids_x = safe_download(&self.centroids_x, num_clusters)?;
+        let centroids_y = safe_download(&self.centroids_y, num_clusters)?;
+        let centroids_z = safe_download(&self.centroids_z, num_clusters)?;
+        
+        
+        
 
         let centroids: Vec<(f32, f32, f32)> = centroids_x
             .into_iter()
@@ -375,10 +387,10 @@ impl UnifiedGPUCompute {
         self.stream.synchronize()?;
 
 
-        let mut lof_scores = vec![0.0f32; self.num_nodes];
-        let mut local_densities = vec![0.0f32; self.num_nodes];
-        self.lof_scores.copy_to(&mut lof_scores)?;
-        self.local_densities.copy_to(&mut local_densities)?;
+        let lof_scores = safe_download(&self.lof_scores, self.num_nodes)?;
+        let local_densities = safe_download(&self.local_densities, self.num_nodes)?;
+        
+        
 
         Ok((lof_scores, local_densities))
     }
@@ -394,7 +406,14 @@ impl UnifiedGPUCompute {
         }
 
 
-        self.feature_values.copy_from(feature_data)?;
+        // Pad to allocated_nodes for overallocated device buffer
+        if feature_data.len() < self.feature_values.len() {
+            let mut padded = feature_data.to_vec();
+            padded.resize(self.feature_values.len(), 0.0);
+            self.feature_values.copy_from(&padded)?;
+        } else {
+            self.feature_values.copy_from(feature_data)?;
+        }
 
         let block_size = 256;
         let grid_size = (self.num_nodes as u32 + block_size - 1) / block_size;
@@ -421,10 +440,8 @@ impl UnifiedGPUCompute {
         self.stream.synchronize()?;
 
 
-        let mut partial_sums = vec![0.0f32; grid_size as usize];
-        let mut partial_sq_sums = vec![0.0f32; grid_size as usize];
-        self.partial_sums.copy_to(&mut partial_sums)?;
-        self.partial_sq_sums.copy_to(&mut partial_sq_sums)?;
+        let partial_sums = safe_download(&self.partial_sums, grid_size as usize)?;
+        let partial_sq_sums = safe_download(&self.partial_sq_sums, grid_size as usize)?;
 
         let total_sum: f32 = partial_sums.iter().sum();
         let total_sq_sum: f32 = partial_sq_sums.iter().sum();
@@ -455,8 +472,8 @@ impl UnifiedGPUCompute {
         self.stream.synchronize()?;
 
 
-        let mut zscore_values = vec![0.0f32; self.num_nodes];
-        self.zscore_values.copy_to(&mut zscore_values)?;
+        let zscore_values = safe_download(&self.zscore_values, self.num_nodes)?;
+        
 
         Ok(zscore_values)
     }

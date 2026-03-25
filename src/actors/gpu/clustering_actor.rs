@@ -73,9 +73,12 @@ impl ClusteringActor {
             if let Ok(uc) = ctx.unified_compute.lock() {
                 let n = uc.num_nodes;
                 if n > 0 {
-                    let mut ids = vec![0i32; n];
+                    // Use allocated_nodes for copy_to (device buffer may be overallocated)
+                    let alloc_n = uc.node_graph_id.len();
+                    let mut ids = vec![0i32; alloc_n];
                     use cust::memory::CopyDestination;
                     if uc.node_graph_id.copy_to(&mut ids).is_ok() {
+                        ids.truncate(n);
                         // Check whether the buffer was actually populated
                         // (all zeros means it was never uploaded).
                         let has_real_ids = ids.iter().any(|&id| id != 0);
@@ -746,12 +749,15 @@ impl ClusteringActor {
                 let n = uc.num_nodes;
                 let num_edges = uc.num_edges;
                 if n > 0 && num_edges > 0 {
-                    let mut row_offsets = vec![0i32; n + 1];
-                    let mut col_indices = vec![0i32; num_edges];
+                    // Use allocated sizes for copy_to (device buffers may be overallocated)
+                    let mut row_offsets = vec![0i32; uc.edge_row_offsets.len()];
+                    let mut col_indices = vec![0i32; uc.edge_col_indices.len()];
                     use cust::memory::CopyDestination;
                     if uc.edge_row_offsets.copy_to(&mut row_offsets).is_ok()
                         && uc.edge_col_indices.copy_to(&mut col_indices).is_ok()
                     {
+                        row_offsets.truncate(n + 1);
+                        col_indices.truncate(num_edges);
                         let mut internal_count = 0usize;
                         for &node_id in nodes {
                             let idx = node_id as usize;
@@ -791,12 +797,14 @@ impl ClusteringActor {
                 let n = uc.num_nodes;
                 let num_edges = uc.num_edges;
                 if n > 0 && num_edges > 0 {
-                    let mut row_offsets = vec![0i32; n + 1];
-                    let mut col_indices = vec![0i32; num_edges];
+                    let mut row_offsets = vec![0i32; uc.edge_row_offsets.len()];
+                    let mut col_indices = vec![0i32; uc.edge_col_indices.len()];
                     use cust::memory::CopyDestination;
                     if uc.edge_row_offsets.copy_to(&mut row_offsets).is_ok()
                         && uc.edge_col_indices.copy_to(&mut col_indices).is_ok()
                     {
+                        row_offsets.truncate(n + 1);
+                        col_indices.truncate(num_edges);
                         let mut external_count = 0usize;
                         for &node_id in nodes {
                             let idx = node_id as usize;
