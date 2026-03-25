@@ -291,11 +291,6 @@ export const UNIFIED_SETTINGS_CONFIG: Record<string, SectionConfig> = {
       { key: 'gemEmissiveIntensity', label: 'Gem Emissive', type: 'slider', min: 0, max: 2, step: 0.05, path: 'visualisation.gemMaterial.emissiveIntensity', description: 'Emissive glow intensity of gems', isAdvanced: true },
       { key: 'gemIridescence', label: 'Gem Iridescence', type: 'slider', min: 0, max: 1, step: 0.05, path: 'visualisation.gemMaterial.iridescence', description: 'Rainbow sheen intensity', isAdvanced: true },
 
-      // Cluster Hulls - Basic
-      { key: 'clusterHullsEnabled', label: 'Cluster Hulls', type: 'toggle', path: 'visualisation.clusterHulls.enabled', description: 'Show translucent hull around clusters' },
-      { key: 'clusterHullsOpacity', label: 'Hull Opacity', type: 'slider', min: 0.01, max: 0.3, step: 0.01, path: 'visualisation.clusterHulls.opacity', description: 'Transparency of cluster hulls' },
-      { key: 'clusterHullsPadding', label: 'Hull Padding', type: 'slider', min: 0, max: 0.5, step: 0.05, path: 'visualisation.clusterHulls.padding', description: 'Hull inflation around clusters', isAdvanced: true },
-
       // Edge Effects - Basic
       { key: 'flowEffect', label: 'Edge Flow', type: 'toggle', path: 'visualisation.graphs.logseq.edges.enableFlowEffect', description: 'Animated flow on edges' },
       { key: 'flowSpeed', label: 'Flow Speed', type: 'slider', min: 0.1, max: 5, step: 0.1, path: 'visualisation.graphs.logseq.edges.flowSpeed', description: 'Speed of flow animation', isAdvanced: true },
@@ -331,7 +326,12 @@ export const UNIFIED_SETTINGS_CONFIG: Record<string, SectionConfig> = {
       { key: 'clusterResolution', label: 'Resolution', type: 'slider', min: 0.1, max: 2, step: 0.1, path: 'analytics.clustering.resolution', description: 'Clustering resolution', isAdvanced: true },
       { key: 'clusterIterations', label: 'Cluster Iterations', type: 'slider', min: 10, max: 100, step: 5, path: 'analytics.clustering.iterations', description: 'Algorithm iterations', isAdvanced: true },
       { key: 'exportClusters', label: 'Export Clusters', type: 'toggle', path: 'analytics.clustering.exportEnabled', description: 'Enable cluster export', isAdvanced: true, isPowerUserOnly: true },
-      { key: 'importDistances', label: 'Import Distances', type: 'toggle', path: 'analytics.clustering.importEnabled', description: 'Enable distance import', isAdvanced: true, isPowerUserOnly: true }
+      { key: 'importDistances', label: 'Import Distances', type: 'toggle', path: 'analytics.clustering.importEnabled', description: 'Enable distance import', isAdvanced: true, isPowerUserOnly: true },
+
+      // Cluster Hulls - Visual hull rendering around detected clusters
+      { key: 'clusterHullsEnabled', label: 'Cluster Hulls', type: 'toggle', path: 'visualisation.clusterHulls.enabled', description: 'Show translucent hull around clusters' },
+      { key: 'clusterHullsOpacity', label: 'Hull Opacity', type: 'slider', min: 0.01, max: 0.3, step: 0.01, path: 'visualisation.clusterHulls.opacity', description: 'Transparency of cluster hulls' },
+      { key: 'clusterHullsPadding', label: 'Hull Padding', type: 'slider', min: 0, max: 0.5, step: 0.05, path: 'visualisation.clusterHulls.padding', description: 'Hull inflation around clusters', isAdvanced: true }
     ]
   },
 

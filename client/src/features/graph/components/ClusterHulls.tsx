@@ -11,6 +11,7 @@ import { graphWorkerProxy } from '../managers/graphWorkerProxy';
 interface ClusterHullsProps {
   nodes: Array<{
     id: string;
+    label?: string;
     metadata?: any;
     position?: { x: number; y: number; z: number };
   }>;
@@ -31,6 +32,8 @@ const DOMAIN_COLORS: Record<string, string> = {
   'TC': '#FFD54F',
   'DT': '#EF5350',
   'NGM': '#4DB6AC',
+  'SEC': '#FF7043',
+  'INFRA': '#78909C',
 };
 
 const DEFAULT_COLOR = '#90A4AE';
@@ -44,26 +47,60 @@ const TICK_INTERVAL = 30;
 
 /**
  * Get cluster key from analytics buffer (cluster_id) when available,
- * falling back to domain-based grouping when cluster_id is 0 or absent.
+ * falling back to domain-based grouping from node label/metadata.
  */
-function getClusterKey(node: { metadata?: any }, nodeIndex?: number, analyticsBuffer?: Float32Array | null): string {
-  // Prefer server-provided cluster_id from binary protocol V3 analytics
+function getClusterKey(
+  node: { id: string; metadata?: any; label?: string },
+  nodeIndex?: number,
+  analyticsBuffer?: Float32Array | null,
+): string {
+  // 1. Prefer server-provided cluster_id from binary protocol V3 analytics
   if (analyticsBuffer && nodeIndex !== undefined) {
     const clusterId = analyticsBuffer[nodeIndex * 3]; // index 0 = cluster_id
     if (clusterId > 0) {
       return `cluster-${clusterId}`;
     }
   }
-  // Fallback to domain-based grouping
-  return (
+
+  // 2. Check metadata for explicit domain
+  const domain =
     node.metadata?.source_domain ??
     node.metadata?.domain ??
-    node.metadata?.cluster ??
-    'unknown'
-  );
+    node.metadata?.cluster;
+  if (domain && domain !== 'unknown') return domain;
+
+  // 3. Extract domain from label prefix (e.g., "BC-0034-nonce" → "BC",
+  //    "AI-0411-Privacy..." → "AI", "mv:Avatar" → "MV")
+  const label = node.label ?? node.metadata?.label ?? '';
+  const prefixMatch = label.match(/^(BC|AI|MV|RB|TC|DT|NGM|bc|ai|mv|rb|tc|dt|ngm)[-:]/i);
+  if (prefixMatch) return prefixMatch[1].toUpperCase();
+
+  // 4. Detect domain from common keywords in label
+  if (label.match(/Blockchain|Crypto|Token|DeFi|Smart Contract|Bitcoin|Ethereum|Consensus/i)) return 'BC';
+  if (label.match(/Artificial Intelligence|Machine Learning|Neural|NLP|Deep Learning|Agent(?!$)/i)) return 'AI';
+  if (label.match(/Metaverse|VR|AR|XR|Avatar|Render|Digital Twin|Hologram/i)) return 'MV';
+  if (label.match(/Robot|Drone|Sensor|IoT|Actuator/i)) return 'RB';
+  if (label.match(/Security|Privacy|Auth|Encrypt|Access Control|Firewall/i)) return 'SEC';
+  if (label.match(/Network|Protocol|API|Infrastructure|Server|Cloud/i)) return 'INFRA';
+
+  return 'unknown';
 }
 
+// GPU cluster palette for numeric cluster IDs
+const GPU_CLUSTER_COLORS = [
+  '#4FC3F7', '#81C784', '#FFB74D', '#CE93D8', '#FFD54F',
+  '#EF5350', '#4DB6AC', '#FF7043', '#78909C', '#AED581',
+  '#F48FB1', '#80DEEA', '#FFCC80', '#B39DDB', '#A5D6A7',
+  '#90CAF9', '#FFAB91', '#80CBC4', '#FFF176', '#E6EE9C',
+];
+
 function getDomainHullColor(domain: string): string {
+  // Handle GPU cluster IDs (cluster-1, cluster-2, etc.)
+  const clusterMatch = domain.match(/^cluster-(\d+)$/);
+  if (clusterMatch) {
+    const idx = parseInt(clusterMatch[1], 10) % GPU_CLUSTER_COLORS.length;
+    return GPU_CLUSTER_COLORS[idx];
+  }
   return DOMAIN_COLORS[domain] ?? DEFAULT_COLOR;
 }
 
