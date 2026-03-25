@@ -2,15 +2,16 @@ use actix_web::{web, HttpResponse, Result};
 use log::{debug, error, info, warn};
 
 use crate::actors::messages::GetPhysicsStats;
+use crate::actors::gpu::force_compute_actor::PhysicsStats;
 use crate::{ok_json, service_unavailable};
 use crate::AppState;
 
 use super::real_gpu_functions::get_real_gpu_physics_stats;
-use super::types::{GPUPhysicsStats, StatsResponse, SystemMetrics};
+use super::types::{StatsResponse, SystemMetrics};
 
 pub(crate) async fn calculate_network_metrics(
     _app_state: &AppState,
-    physics_stats: &Option<GPUPhysicsStats>,
+    physics_stats: &Option<PhysicsStats>,
 ) -> (f32, f32, f32, f32, f32) {
 
     let active_nodes = physics_stats.as_ref().map(|s| s.nodes_count).unwrap_or(0) as f32;
@@ -63,7 +64,7 @@ pub(crate) async fn calculate_network_metrics(
 pub async fn get_performance_stats(app_state: web::Data<AppState>) -> Result<HttpResponse> {
     info!("Getting performance statistics");
 
-    let _physics_stats = if let Some(gpu_addr) = app_state.get_gpu_compute_addr().await {
+    let physics_stats = if let Some(gpu_addr) = app_state.get_gpu_compute_addr().await {
         match gpu_addr.send(GetPhysicsStats).await {
             Ok(Ok(stats)) => Some(stats),
             Ok(Err(e)) => {
@@ -79,8 +80,6 @@ pub async fn get_performance_stats(app_state: web::Data<AppState>) -> Result<Htt
         None
     };
 
-    let physics_stats: Option<GPUPhysicsStats> = None;
-
 
     let (
         network_cost_per_mb,
@@ -90,21 +89,21 @@ pub async fn get_performance_stats(app_state: web::Data<AppState>) -> Result<Htt
         network_latency_ms,
     ) = calculate_network_metrics(&app_state, &physics_stats).await;
 
-    let (_active_nodes, _active_edges) = (
-        physics_stats.as_ref().map(|s| s.nodes_count).unwrap_or(0),
-        physics_stats.as_ref().map(|s| s.edges_count).unwrap_or(0),
-    );
+    let active_nodes = physics_stats.as_ref().map(|s| s.nodes_count).unwrap_or(0);
+    let active_edges = physics_stats.as_ref().map(|s| s.edges_count).unwrap_or(0);
 
-    let (active_nodes, active_edges) = (0u32, 0u32);
+    // Frame timing not yet instrumented — report zero rather than fabricate
+    let frame_time_ms = 0.0f32;
+    let fps = 0.0f32;
 
     let system_metrics = SystemMetrics {
-        fps: 60.0,
-        frame_time_ms: 16.67,
-        gpu_utilization: 45.0,
-        memory_usage_mb: 512.0,
+        fps,
+        frame_time_ms,
+        gpu_utilization: 0.0, // not yet measured — requires GPU-specific query
+        memory_usage_mb: 0.0, // not yet measured — requires GPU memory query
         active_nodes,
         active_edges,
-        render_time_ms: 12.5,
+        render_time_ms: 0.0, // not yet measured — requires render pipeline instrumentation
         network_cost_per_mb,
         total_network_cost,
         bandwidth_usage_mbps,
@@ -182,10 +181,10 @@ pub async fn get_gpu_status(app_state: web::Data<AppState>) -> Result<HttpRespon
                         "critical_anomalies": anomaly_state.stats.critical
                     },
                     "performance": {
-                        "gpu_utilization": 75.0,
-                        "memory_usage_percent": 45.0,
-                        "temperature": 68.0,
-                        "power_draw": 120.0
+                        "gpu_utilization": 0.0,  // not yet measured
+                        "memory_usage_percent": 0.0,  // not yet measured
+                        "temperature": 0.0,  // not yet measured
+                        "power_draw": 0.0  // not yet measured
                     },
                     "features": {
                         "stress_majorization": true,

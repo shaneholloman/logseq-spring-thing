@@ -5,9 +5,14 @@ import { createLogger } from '../utils/loggerConfig';
 const logger = createLogger('SpaceDriverService');
 
 // Device configuration
-const VENDOR_ID = 0x046d; 
-const DEVICE_FILTER = { vendorId: VENDOR_ID };
-const REQUEST_PARAMS = { filters: [DEVICE_FILTER] };
+// 3Dconnexion devices use two vendor IDs:
+// - 0x046d: Logitech (legacy, used by SpacePilot, older SpaceNavigator)
+// - 0x256f: 3Dconnexion (newer devices, SpaceNavigator USB, SpaceMouse Compact/Pro)
+const VENDOR_ID_LOGITECH = 0x046d;
+const VENDOR_ID_3DCONNEXION = 0x256f;
+const SUPPORTED_VENDOR_IDS = [VENDOR_ID_LOGITECH, VENDOR_ID_3DCONNEXION];
+const DEVICE_FILTERS = SUPPORTED_VENDOR_IDS.map(vendorId => ({ vendorId }));
+const REQUEST_PARAMS = { filters: DEVICE_FILTERS };
 
 // Report IDs
 const REPORT_ID_TRANSLATION = 1;
@@ -93,10 +98,12 @@ class SpaceDriverService extends EventTarget {
 
       
       const devices = await navigator.hid.getDevices();
-      const spacePilotDevices = devices.filter(d => d.vendorId === VENDOR_ID);
+      const spacePilotDevices = devices.filter(d => SUPPORTED_VENDOR_IDS.includes(d.vendorId));
       
       if (spacePilotDevices.length > 0) {
-        logger.info(`Found ${spacePilotDevices.length} paired SpacePilot device(s)`);
+        const dev = spacePilotDevices[0];
+        const vidLabel = dev.vendorId === VENDOR_ID_3DCONNEXION ? '3Dconnexion' : 'Logitech/3Dconnexion';
+        logger.info(`Found ${spacePilotDevices.length} paired device(s) — using ${dev.productName || 'unknown'} [${vidLabel} 0x${dev.vendorId.toString(16)}:0x${dev.productId.toString(16)}]`);
         await this.openDevice(spacePilotDevices[0]);
       }
 
@@ -106,7 +113,7 @@ class SpaceDriverService extends EventTarget {
       
       navigator.hid.addEventListener('connect', (evt: HIDConnectionEvent) => {
         logger.info('Device connected:', evt.device.productName);
-        if (evt.device.vendorId === VENDOR_ID && !this.device) {
+        if (SUPPORTED_VENDOR_IDS.includes(evt.device.vendorId) && !this.device) {
           this.openDevice(evt.device);
         }
       });
@@ -181,12 +188,21 @@ class SpaceDriverService extends EventTarget {
 
   
   private handleInputReport(evt: HIDInputReportEvent): void {
+    const values = new Int16Array(evt.data.buffer);
+
     switch (evt.reportId) {
       case REPORT_ID_TRANSLATION:
-        this.handleTranslation(new Int16Array(evt.data.buffer));
+        if (values.length >= 6) {
+          // SpaceNavigator USB sends combined 6-axis in report ID 1 (12 bytes)
+          this.handleTranslation(values);
+          this.handleRotation(new Int16Array([values[3], values[4], values[5]]));
+        } else {
+          // SpacePilot sends translation only in report ID 1 (6 bytes)
+          this.handleTranslation(values);
+        }
         break;
       case REPORT_ID_ROTATION:
-        this.handleRotation(new Int16Array(evt.data.buffer));
+        this.handleRotation(values);
         break;
       case REPORT_ID_BUTTONS:
         this.handleButtons(new Uint16Array(evt.data.buffer)[0]);

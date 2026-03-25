@@ -1,6 +1,6 @@
 use actix::prelude::*;
 use actix_web::web;
-use log::{debug, info, warn};
+use log::{debug, error, info, warn};
 use std::sync::{
     atomic::{AtomicUsize, Ordering},
     Arc,
@@ -525,10 +525,14 @@ impl AppState {
 
         info!("[AppState::new] GitHub sync running in background with enhanced monitoring, proceeding with actor initialization");
 
+        // Create shared node analytics map early so it can be shared with ClientCoordinatorActor
+        let node_analytics: Arc<std::sync::RwLock<std::collections::HashMap<u32, (u32, f32, u32)>>> =
+            Arc::new(std::sync::RwLock::new(std::collections::HashMap::new()));
 
         info!("[AppState::new] Starting ClientCoordinatorActor");
         let mut client_coordinator = ClientCoordinatorActor::new();
         client_coordinator.set_neo4j_repository(neo4j_settings_repository.clone());
+        client_coordinator.set_node_analytics(node_analytics.clone());
         let client_manager_addr = client_coordinator.start();
 
 
@@ -692,8 +696,22 @@ impl AppState {
 
             info!("[AppState] Initializing GPU connection with GPUManagerActor for proper message delegation");
             if let Some(ref gpu_manager) = gpu_manager_addr {
-                graph_service_addr.do_send(InitializeGPUConnection {
-                    gpu_manager: Some(gpu_manager.clone()),
+                // Use a delayed spawn to avoid mailbox contention with ontology sync.
+                // The ontology pipeline floods GraphServiceSupervisor's mailbox at startup;
+                // do_send silently drops InitializeGPUConnection when the mailbox is full.
+                // We retry with .send() (which awaits capacity) after a short delay.
+                let graph_service_for_gpu = graph_service_addr.clone();
+                let gpu_manager_for_conn = gpu_manager.clone();
+                actix::spawn(async move {
+                    // Wait for initial ontology sync to drain
+                    tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+                    info!("[AppState] Sending InitializeGPUConnection (delayed, post-ontology-sync)");
+                    match graph_service_for_gpu.send(InitializeGPUConnection {
+                        gpu_manager: Some(gpu_manager_for_conn),
+                    }).await {
+                        Ok(_) => info!("[AppState] InitializeGPUConnection delivered successfully"),
+                        Err(e) => error!("[AppState] Failed to deliver InitializeGPUConnection: {}", e),
+                    }
                 });
 
                 // Spawn async task to get ForceComputeActor address after actors are ready
@@ -948,7 +966,7 @@ impl AppState {
             client_message_rx: Arc::new(tokio::sync::Mutex::new(client_message_rx)),
             ontology_pipeline_service,
             degraded_reason: Arc::new(std::sync::RwLock::new(None)),
-            node_analytics: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
+            node_analytics,
         };
 
         // Validate optional actor addresses

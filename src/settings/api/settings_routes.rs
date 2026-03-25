@@ -328,14 +328,25 @@ pub async fn update_physics_settings(
             let update_msg = UpdateSimulationParams { params: sim_params };
 
             if let Some(gpu_addr) = state.get_gpu_compute_addr().await {
-                info!("Sending UpdateSimulationParams to GPUComputeActor");
+                info!("Sending UpdateSimulationParams to GPUComputeActor (direct)");
                 if let Err(e) = gpu_addr.send(update_msg.clone()).await {
                     error!("Failed to propagate physics to GPUComputeActor: {}", e);
                 } else {
                     info!("UpdateSimulationParams sent to GPUComputeActor successfully");
                 }
             } else {
-                warn!("No GPUComputeActor address available — physics won't propagate to GPU!");
+                // Fallback: route through GPUManagerActor when direct address isn't cached yet
+                // (first ~6s of startup while async init task completes)
+                warn!("Direct GPUComputeActor address not available, routing via GPUManagerActor fallback");
+                if let Some(ref gpu_mgr) = state.gpu_manager_addr {
+                    if let Err(e) = gpu_mgr.send(update_msg.clone()).await {
+                        error!("Fallback: Failed to route physics via GPUManagerActor: {}", e);
+                    } else {
+                        info!("Fallback: UpdateSimulationParams routed via GPUManagerActor");
+                    }
+                } else {
+                    error!("No GPUComputeActor or GPUManagerActor available — physics won't propagate to GPU!");
+                }
             }
             info!("Sending UpdateSimulationParams to GraphServiceSupervisor");
             if let Err(e) = state.graph_service_addr.send(update_msg).await {

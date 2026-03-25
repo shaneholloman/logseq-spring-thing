@@ -57,13 +57,19 @@ impl Handler<BroadcastPositionUpdate> for SocketFlowServer {
         }
 
         // Encode using delta encoding (V4 for delta frames, V3 for full sync frames)
-        let binary_data = delta_encoding::encode_node_data_delta(
-            &msg.0,
-            &self.delta_previous_nodes,
-            frame,
-            &[], // agent_node_ids -- flags are already set on the node IDs by callers
-            &[], // knowledge_node_ids
-        );
+        // Pass real analytics data from shared AppState when available
+        let binary_data = {
+            let analytics_guard = self.app_state.node_analytics.read().ok();
+            let analytics_ref = analytics_guard.as_deref();
+            delta_encoding::encode_node_data_delta_with_analytics(
+                &msg.0,
+                &self.delta_previous_nodes,
+                frame,
+                &[], // agent_node_ids -- flags are already set on the node IDs by callers
+                &[], // knowledge_node_ids
+                analytics_ref,
+            )
+        };
         ctx.binary(binary_data);
 
         // Update previous state for next delta computation.

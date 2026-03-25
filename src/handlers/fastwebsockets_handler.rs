@@ -150,12 +150,18 @@ impl FastWebSocketServer {
         _addr: SocketAddr,
         _sessions: Arc<RwLock<HashMap<String, Arc<RwLock<FastWsClientSession>>>>>,
         _app_state: Arc<AppState>,
-        _position_broadcast: broadcast::Sender<PostcardBatchUpdate>,
+        position_broadcast: broadcast::Sender<PostcardBatchUpdate>,
         _max_message_size: usize,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let broadcast_tx = Arc::new(position_broadcast);
+        let broadcast_for_service = broadcast_tx.clone();
+
         // Hyper service for HTTP upgrade
-        let service = service_fn(|req: Request<Incoming>| async move {
-            Self::upgrade_handler(req).await
+        let service = service_fn(move |req: Request<Incoming>| {
+            let broadcast_tx = broadcast_for_service.clone();
+            async move {
+                Self::upgrade_handler(req, broadcast_tx).await
+            }
         });
 
         let io = TokioIo::new(stream);
@@ -174,6 +180,7 @@ impl FastWebSocketServer {
     /// Handle WebSocket upgrade
     async fn upgrade_handler(
         mut req: Request<Incoming>,
+        position_broadcast: Arc<broadcast::Sender<PostcardBatchUpdate>>,
     ) -> Result<Response<Empty<Bytes>>, WebSocketError> {
         // SECURITY: Validate Origin header to prevent cross-site WebSocket hijacking
         if let Some(origin) = req.headers().get("origin") {
@@ -219,11 +226,12 @@ impl FastWebSocketServer {
         // Check if it's a WebSocket upgrade request and perform upgrade
         let (response, fut) = fastwebsockets::upgrade::upgrade(&mut req)?;
 
-        // Spawn the WebSocket handler
+        // Spawn the WebSocket handler with broadcast channel
+        let mut broadcast_rx = position_broadcast.subscribe();
         tokio::spawn(async move {
             match fut.await {
                 Ok(ws) => {
-                    if let Err(e) = Self::handle_websocket(ws).await {
+                    if let Err(e) = Self::handle_websocket(ws, &mut broadcast_rx).await {
                         error!("WebSocket handler error: {}", e);
                     }
                 }
@@ -239,6 +247,7 @@ impl FastWebSocketServer {
     /// Handle WebSocket connection after upgrade
     async fn handle_websocket<S>(
         ws: WebSocket<S>,
+        broadcast_rx: &mut broadcast::Receiver<PostcardBatchUpdate>,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>>
     where
         S: AsyncRead + AsyncWrite + Unpin + Send,
@@ -246,50 +255,82 @@ impl FastWebSocketServer {
         let mut ws = FragmentCollector::new(ws);
 
         loop {
-            match ws.read_frame().await {
-                Ok(frame) => {
-                    match frame.opcode {
-                        OpCode::Text => {
-                            // Handle text messages (JSON control frames)
-                            let payload = String::from_utf8_lossy(&frame.payload);
-                            trace!("Received text: {}", payload);
+            tokio::select! {
+                frame_result = ws.read_frame() => {
+                    match frame_result {
+                        Ok(frame) => {
+                            match frame.opcode {
+                                OpCode::Text => {
+                                    // Handle text messages (JSON control frames)
+                                    let payload = String::from_utf8_lossy(&frame.payload);
+                                    debug!("Received text message: {}", payload);
 
-                            // Echo back for now (implement control handling)
-                            ws.write_frame(Frame::text(Payload::Borrowed(&frame.payload)))
-                                .await?;
-                        }
-                        OpCode::Binary => {
-                            // Handle binary messages (position updates)
-                            trace!("Received binary: {} bytes", frame.payload.len());
+                                    // Parse JSON and route through control handling
+                                    match serde_json::from_str::<serde_json::Value>(&payload) {
+                                        Ok(json) => {
+                                            // Route based on message type
+                                            let msg_type = json.get("type")
+                                                .and_then(|t| t.as_str())
+                                                .unwrap_or("unknown");
+                                            debug!("Received control message type: {}", msg_type);
+                                            // Acknowledge receipt
+                                            let ack = serde_json::json!({"type": "ack", "status": "ok"});
+                                            let ack_bytes = serde_json::to_vec(&ack).unwrap_or_default();
+                                            let _ = ws.write_frame(Frame::text(Payload::Owned(ack_bytes))).await;
+                                        }
+                                        Err(_) => {
+                                            warn!("Received non-JSON text message, ignoring");
+                                        }
+                                    }
+                                }
+                                OpCode::Binary => {
+                                    // Handle binary messages (position updates from client)
+                                    trace!("Received client binary: {} bytes", frame.payload.len());
 
-                            // Try postcard first, fall back to legacy protocol
-                            if let Ok(batch) = postcard::from_bytes::<PostcardBatchUpdate>(&frame.payload) {
-                                trace!("Decoded postcard batch: {} nodes", batch.nodes.len());
-                            } else if let Ok(nodes) = binary_protocol::decode_node_data(&frame.payload) {
-                                trace!("Decoded legacy binary: {} nodes", nodes.len());
+                                    // Try postcard first, fall back to legacy protocol
+                                    if let Ok(batch) = postcard::from_bytes::<PostcardBatchUpdate>(&frame.payload) {
+                                        trace!("Decoded postcard batch: {} nodes", batch.nodes.len());
+                                    } else if let Ok(nodes) = binary_protocol::decode_node_data(&frame.payload) {
+                                        trace!("Decoded legacy binary: {} nodes", nodes.len());
+                                    } else {
+                                        warn!("Failed to decode client binary message ({} bytes)", frame.payload.len());
+                                    }
+                                }
+                                OpCode::Close => {
+                                    info!("WebSocket close received");
+                                    return Ok(());
+                                }
+                                OpCode::Ping => {
+                                    ws.write_frame(Frame::pong(frame.payload)).await?;
+                                }
+                                OpCode::Pong => {
+                                    trace!("Pong received");
+                                }
+                                _ => {}
                             }
                         }
-                        OpCode::Close => {
-                            info!("WebSocket close received");
-                            break;
+                        Err(e) => {
+                            warn!("WebSocket read error: {}", e);
+                            return Ok(());
                         }
-                        OpCode::Ping => {
-                            ws.write_frame(Frame::pong(frame.payload)).await?;
-                        }
-                        OpCode::Pong => {
-                            trace!("Pong received");
-                        }
-                        _ => {}
                     }
                 }
-                Err(e) => {
-                    warn!("WebSocket read error: {}", e);
-                    break;
+                Ok(batch) = broadcast_rx.recv() => {
+                    // Broadcast position updates to this client
+                    match postcard::to_stdvec(&batch) {
+                        Ok(data) => {
+                            if let Err(e) = ws.write_frame(Frame::binary(Payload::Owned(data))).await {
+                                warn!("Failed to send broadcast frame: {}", e);
+                                return Ok(());
+                            }
+                        }
+                        Err(e) => {
+                            warn!("Failed to serialize broadcast: {}", e);
+                        }
+                    }
                 }
             }
         }
-
-        Ok(())
     }
 
     /// Broadcast position update to all connected clients

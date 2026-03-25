@@ -288,8 +288,13 @@ impl Handler<UpdateGPUGraphData> for GPUManagerActor {
         }
 
         // Send to PhysicsSupervisor (forwards to ForceComputeActor)
-        if let Err(e) = supervisors.physics.try_send(msg) {
+        if let Err(e) = supervisors.physics.try_send(msg.clone()) {
             error!("Failed to send UpdateGPUGraphData to PhysicsSupervisor: {}", e);
+        }
+
+        // Send to AnalyticsSupervisor (forwards to ClusteringActor)
+        if let Err(e) = supervisors.analytics.try_send(msg) {
+            error!("Failed to send UpdateGPUGraphData to AnalyticsSupervisor: {}", e);
         }
 
         Ok(())

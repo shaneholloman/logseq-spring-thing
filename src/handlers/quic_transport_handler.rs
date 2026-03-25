@@ -44,6 +44,12 @@ pub struct PostcardNodeUpdate {
     pub vx: f32,
     pub vy: f32,
     pub vz: f32,
+    #[serde(default)]
+    pub cluster_id: u32,
+    #[serde(default)]
+    pub anomaly_score: f32,
+    #[serde(default)]
+    pub community_id: u32,
 }
 
 impl From<&BinaryNodeData> for PostcardNodeUpdate {
@@ -56,6 +62,9 @@ impl From<&BinaryNodeData> for PostcardNodeUpdate {
             vx: node.vx,
             vy: node.vy,
             vz: node.vz,
+            cluster_id: 0,
+            anomaly_score: 0.0,
+            community_id: 0,
         }
     }
 }
@@ -82,7 +91,7 @@ pub struct PostcardBatchUpdate {
     pub nodes: Vec<PostcardNodeUpdate>,
 }
 
-/// Delta-encoded position update (16 bytes vs 28 bytes)
+/// Delta-encoded position update (compact deltas, no analytics fields)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PostcardDeltaUpdate {
     pub id: u32,
@@ -707,8 +716,8 @@ mod tests {
         let nodes = vec![(42u32, node)];
         let encoded = encode_postcard_batch(&nodes).unwrap();
 
-        // Postcard should be more compact than JSON
-        assert!(encoded.len() < 50);
+        // Postcard should be more compact than JSON (extra analytics fields add ~12 bytes)
+        assert!(encoded.len() < 70);
 
         let decoded = decode_postcard_batch(&encoded).unwrap();
         assert_eq!(decoded.len(), 1);
@@ -738,6 +747,9 @@ mod tests {
             vx: 0.0,
             vy: 0.0,
             vz: 0.0,
+            cluster_id: 0,
+            anomaly_score: 0.0,
+            community_id: 0,
         });
 
         let deltas = calculate_deltas(&current, &previous, 100.0);

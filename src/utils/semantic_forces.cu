@@ -1,6 +1,6 @@
-// WARNING: This file is not compiled by build.rs. Kernels are accessed via
-// kernel_bridge.rs FFI which expects a pre-linked library. See build.rs for
-// the list of compiled .cu files.
+// Compiled by build.rs as both PTX (for kernel launches) and an object file
+// linked into libthrust_wrapper.a (for host-callable FFI).
+// FFI declarations in src/gpu/kernel_bridge.rs.
 //
 // Semantic Forces GPU Kernel - Type-aware physics for knowledge graphs
 // Implements DAG layout, type clustering, collision detection, and attribute-weighted springs.

@@ -202,13 +202,14 @@ impl ClientManager {
         positions: &[BinaryNodeDataClient],
         node_type_arrays: &crate::actors::messages::NodeTypeArrays,
         broadcast_sequence: u64,
+        analytics_data: Option<&std::collections::HashMap<u32, (u32, f32, u32)>>,
     ) -> usize {
         if positions.is_empty() || self.clients.is_empty() {
             return 0;
         }
 
         // Pre-serialize the full unfiltered payload ONCE
-        let unfiltered_binary = self.serialize_positions(positions, node_type_arrays, broadcast_sequence);
+        let unfiltered_binary = self.serialize_positions(positions, node_type_arrays, broadcast_sequence, analytics_data);
 
         let mut broadcast_count = 0;
         for (_, client_state) in &self.clients {
@@ -223,7 +224,7 @@ impl ClientManager {
                     .copied()
                     .collect();
                 if !filtered_positions.is_empty() {
-                    let binary_data = self.serialize_positions(&filtered_positions, node_type_arrays, broadcast_sequence);
+                    let binary_data = self.serialize_positions(&filtered_positions, node_type_arrays, broadcast_sequence, analytics_data);
                     client_state.addr.do_send(SendToClientBinary(binary_data));
                     broadcast_count += 1;
                 }
@@ -242,15 +243,16 @@ impl ClientManager {
         positions: &[BinaryNodeDataClient],
         nta: &crate::actors::messages::NodeTypeArrays,
         broadcast_sequence: u64,
+        analytics_data: Option<&std::collections::HashMap<u32, (u32, f32, u32)>>,
     ) -> Vec<u8> {
-        use crate::utils::binary_protocol::encode_node_data_extended;
+        use crate::utils::binary_protocol::encode_node_data_extended_with_sssp;
         use crate::utils::socket_flow_messages::BinaryNodeData;
         // Convert to (u32, BinaryNodeData) format for V3 protocol encoding
         let nodes: Vec<(u32, BinaryNodeData)> = positions
             .iter()
             .map(|pos| (pos.node_id, *pos))
             .collect();
-        let encoded = encode_node_data_extended(&nodes, &nta.agent_ids, &nta.knowledge_ids, &nta.ontology_class_ids, &nta.ontology_individual_ids, &nta.ontology_property_ids);
+        let encoded = encode_node_data_extended_with_sssp(&nodes, &nta.agent_ids, &nta.knowledge_ids, &nta.ontology_class_ids, &nta.ontology_individual_ids, &nta.ontology_property_ids, None, analytics_data);
         // Build V5 frame: [version=5][8-byte sequence LE][V3 node data without version byte]
         let mut result = Vec::with_capacity(1 + 8 + encoded.len().saturating_sub(1));
         result.push(5u8); // Protocol V5 = V3 nodes + embedded broadcast sequence
@@ -337,6 +339,9 @@ pub struct ClientCoordinatorActor {
 
     /// Cached node type arrays from GraphStateActor for binary protocol flags
     node_type_arrays: crate::actors::messages::NodeTypeArrays,
+
+    /// Shared node analytics data (cluster_id, anomaly_score, community_id) per node
+    node_analytics: Arc<std::sync::RwLock<std::collections::HashMap<u32, (u32, f32, u32)>>>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -372,7 +377,14 @@ impl ClientCoordinatorActor {
             pending_voice_data: Vec::new(),
             voice_data_queued_bytes: 0,
             node_type_arrays: crate::actors::messages::NodeTypeArrays::default(),
+            node_analytics: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
         }
+    }
+
+    /// Set the shared node analytics map (cluster_id, anomaly_score, community_id)
+    pub fn set_node_analytics(&mut self, analytics: Arc<std::sync::RwLock<std::collections::HashMap<u32, (u32, f32, u32)>>>) {
+        self.node_analytics = analytics;
+        info!("Node analytics configured for ClientCoordinatorActor");
     }
 
     /// Set the GPU compute actor address for backpressure acknowledgements
@@ -588,6 +600,10 @@ impl ClientCoordinatorActor {
         self.broadcast_sequence += 1;
         let current_sequence = self.broadcast_sequence;
 
+        // Read analytics data for embedding in binary protocol
+        let analytics_guard = self.node_analytics.read().ok();
+        let analytics_ref = analytics_guard.as_deref();
+
         // Use per-client filtered broadcast for consistency with BroadcastPositions
         let broadcast_count = {
             let manager = match handle_rwlock_error(self.client_manager.read()) {
@@ -597,7 +613,7 @@ impl ClientCoordinatorActor {
                     return false;
                 }
             };
-            manager.broadcast_with_filter(&position_data, &self.node_type_arrays, current_sequence)
+            manager.broadcast_with_filter(&position_data, &self.node_type_arrays, current_sequence, analytics_ref)
         };
 
         // Approximate byte size (V5 protocol: 48 bytes per node + 1 header + 8 sequence)
@@ -715,6 +731,10 @@ impl ClientCoordinatorActor {
         self.broadcast_sequence += 1;
         let current_sequence = self.broadcast_sequence;
 
+        // Read analytics data for embedding in binary protocol
+        let analytics_guard = self.node_analytics.read().ok();
+        let analytics_ref = analytics_guard.as_deref();
+
         // Use per-client filtered broadcast for consistency with BroadcastPositions
         let broadcast_count = {
             let manager = match handle_rwlock_error(self.client_manager.read()) {
@@ -724,7 +744,7 @@ impl ClientCoordinatorActor {
                     return Err(format!("Failed to acquire client manager lock: {}", e));
                 }
             };
-            manager.broadcast_with_filter(&position_data, &self.node_type_arrays, current_sequence)
+            manager.broadcast_with_filter(&position_data, &self.node_type_arrays, current_sequence, analytics_ref)
         };
 
         // Approximate byte size (V5 protocol: 48 bytes per node + 1 header + 8 sequence)
@@ -1124,6 +1144,10 @@ impl Handler<BroadcastPositions> for ClientCoordinatorActor {
         self.broadcast_sequence += 1;
         let current_sequence = self.broadcast_sequence;
 
+        // Read analytics data for embedding in binary protocol
+        let analytics_guard = self.node_analytics.read().ok();
+        let analytics_ref = analytics_guard.as_deref();
+
         let client_count = {
             let manager = match handle_rwlock_error(self.client_manager.read()) {
                 Ok(manager) => manager,
@@ -1132,7 +1156,7 @@ impl Handler<BroadcastPositions> for ClientCoordinatorActor {
                     return;
                 }
             };
-            manager.broadcast_with_filter(&msg.positions, &self.node_type_arrays, current_sequence)
+            manager.broadcast_with_filter(&msg.positions, &self.node_type_arrays, current_sequence, analytics_ref)
         };
 
         if client_count > 0 {

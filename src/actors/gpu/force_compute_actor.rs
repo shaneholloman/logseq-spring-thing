@@ -273,6 +273,28 @@ impl ForceComputeActor {
         ) {
             Ok(_) => {
                 info!("ForceComputeActor: Graph data uploaded to GPU successfully ({} nodes, {} CSR edges)", num_nodes, edge_count);
+
+                // Upload node_graph_id mapping so ClusteringActor's ensure_node_id_map
+                // can download it.  With compact IDs (node.id == sequential 0..N-1),
+                // this is an identity mapping, but initialize_graph's resize_buffers
+                // zeroes the buffer so we must re-upload it explicitly.
+                let mut node_graph_ids: Vec<i32> = self.gpu_index_to_node_id
+                    .iter()
+                    .map(|&id| id as i32)
+                    .collect();
+                if !node_graph_ids.is_empty() {
+                    use cust::memory::CopyDestination;
+                    // Pad to allocated_nodes since device buffer may be overallocated
+                    if node_graph_ids.len() < compute.node_graph_id.len() {
+                        node_graph_ids.resize(compute.node_graph_id.len(), 0);
+                    }
+                    if let Err(e) = compute.node_graph_id.copy_from(&node_graph_ids) {
+                        error!("ForceComputeActor: Failed to upload node_graph_id buffer: {}", e);
+                    } else {
+                        info!("ForceComputeActor: Uploaded node_graph_id mapping ({} entries)", node_graph_ids.len());
+                    }
+                }
+
                 self.gpu_state.num_nodes = num_nodes as u32;
                 self.gpu_state.num_edges = edge_count;
                 self.pending_graph_data = None;

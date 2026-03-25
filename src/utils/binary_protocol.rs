@@ -55,7 +55,7 @@ pub type WireNodeDataItem = WireNodeDataItemV3;
 // DELTA ENCODING (Protocol V4) - P1-3 Feature
 // ============================================================================
 
-/// Delta-encoded position update (16 bytes per changed node)
+/// Delta-encoded position update (20 bytes per changed node)
 /// Used in frames 1-59 to send only changes from previous frame
 /// Achieves 60-80% bandwidth reduction compared to full state updates
 #[repr(C)]
@@ -79,7 +79,7 @@ const DELTA_ALL_CHANGED: u8 = DELTA_POSITION_CHANGED | DELTA_VELOCITY_CHANGED;
 
 // Delta encoding constants
 const DELTA_SCALE_FACTOR: f32 = 100.0; // Scale factor for i16 precision
-const DELTA_ITEM_SIZE: usize = 16;     // Size of DeltaNodeData in bytes
+const DELTA_ITEM_SIZE: usize = 20;     // Size of DeltaNodeData in bytes: 4(id) + 1(flags) + 3(padding) + 6*2(deltas) = 20
 const DELTA_RESYNC_INTERVAL: u64 = 60; // Full state every 60 frames
 
 // Safety limits for decode functions
@@ -600,6 +600,15 @@ pub fn decode_node_data(data: &[u8]) -> Result<Vec<(u32, BinaryNodeData)>, Strin
         1 => Err("Protocol V1 is no longer supported. Please upgrade client.".to_string()),
         2 => Err("V2 protocol no longer supported. Please upgrade client to V3+.".to_string()),
         PROTOCOL_V3 => decode_node_data_v3(payload),
+        PROTOCOL_V4 => Err("V4 delta frames require decode_node_data_delta() with previous state".to_string()),
+        5 => {
+            // V5: [version_byte][8-byte broadcast_seq][V3 node data]
+            if payload.len() < 8 {
+                return Err("V5 frame too small for broadcast sequence".to_string());
+            }
+            // Skip 8-byte broadcast sequence number
+            decode_node_data_v3(&payload[8..])
+        }
         v => Err(format!("Unknown protocol version: {}", v)),
     }
 }

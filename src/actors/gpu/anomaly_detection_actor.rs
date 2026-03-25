@@ -72,7 +72,8 @@ impl AnomalyDetectionActor {
 
         // Move blocking GPU operations to dedicated blocking thread pool
         // This prevents std::sync::Mutex::lock() from blocking Tokio worker threads
-        type BlockingResult = (String, Option<Vec<f32>>, Option<Vec<f32>>, Option<Vec<i32>>, f32, u32);
+        // (method, lof_scores, z_scores, dbscan_labels, threshold, num_nodes, isolation_features)
+        type BlockingResult = (String, Option<Vec<f32>>, Option<Vec<f32>>, Option<Vec<i32>>, f32, u32, Option<Vec<f32>>);
         let blocking_result = tokio::task::spawn_blocking(move || -> Result<BlockingResult, String> {
             let mut unified_compute = match unified_compute_arc.lock() {
                 Ok(guard) => guard,
@@ -89,26 +90,49 @@ impl AnomalyDetectionActor {
                     let lof_result = unified_compute
                         .run_lof_anomaly_detection(k, thresh)
                         .map_err(|e| format!("LOF detection failed: {}", e))?;
-                    Ok(("LOF".to_string(), Some(lof_result.0), None, None, thresh, num_nodes))
+                    Ok(("LOF".to_string(), Some(lof_result.0), None, None, thresh, num_nodes, None))
                 }
                 AnomalyDetectionMethod::ZScore => {
                     let thresh = threshold.unwrap_or(3.0);
-                    let data = feature_data.unwrap_or_else(|| {
-                        (0..num_nodes)
-                            .map(|i| (i as f32 + 1.0) / num_nodes as f32 + (i as f32).sin() * 0.1 + (i as f32).cos() * 0.05)
-                            .collect()
-                    });
+                    let data = match feature_data {
+                        Some(fd) => fd,
+                        None => {
+                            // Download GPU positions and use as feature data
+                            let (pos_x, pos_y, pos_z) = unified_compute
+                                .get_node_positions()
+                                .map_err(|e| format!("Failed to get node positions for ZScore features: {}", e))?;
+                            // Use position magnitudes as the feature vector
+                            (0..num_nodes as usize)
+                                .map(|i| {
+                                    if i < pos_x.len() {
+                                        (pos_x[i] * pos_x[i] + pos_y[i] * pos_y[i] + pos_z[i] * pos_z[i]).sqrt()
+                                    } else {
+                                        0.0
+                                    }
+                                })
+                                .collect()
+                        }
+                    };
                     let z_scores = unified_compute
                         .run_zscore_anomaly_detection(&data)
                         .map_err(|e| format!("Z-Score detection failed: {}", e))?;
-                    Ok(("ZScore".to_string(), None, Some(z_scores), None, thresh, num_nodes))
+                    Ok(("ZScore".to_string(), None, Some(z_scores), None, thresh, num_nodes, None))
                 }
                 AnomalyDetectionMethod::IsolationForest => {
                     let thresh = threshold.unwrap_or(0.5);
-                    let _positions = unified_compute
+                    let (pos_x, pos_y, pos_z) = unified_compute
                         .get_node_positions()
                         .map_err(|e| format!("Failed to get node positions: {}", e))?;
-                    Ok(("IsolationForest".to_string(), None, None, None, thresh, num_nodes))
+                    // Flatten positions into feature vector [x0,y0,z0, x1,y1,z1, ...]
+                    let mut features = Vec::with_capacity(num_nodes as usize * 3);
+                    for i in 0..num_nodes as usize {
+                        if i < pos_x.len() {
+                            features.push(pos_x[i]);
+                            features.push(pos_y[i]);
+                            features.push(pos_z[i]);
+                        }
+                    }
+                    Ok(("IsolationForest".to_string(), None, None, None, thresh, num_nodes, Some(features)))
                 }
                 AnomalyDetectionMethod::DBSCAN => {
                     let eps = threshold.unwrap_or(50.0);
@@ -116,12 +140,12 @@ impl AnomalyDetectionActor {
                     let cluster_labels = unified_compute
                         .run_dbscan_clustering(eps, min_pts)
                         .map_err(|e| format!("DBSCAN clustering failed: {}", e))?;
-                    Ok(("DBSCAN".to_string(), None, None, Some(cluster_labels), eps, num_nodes))
+                    Ok(("DBSCAN".to_string(), None, None, Some(cluster_labels), eps, num_nodes, None))
                 }
             }
         }).await;
 
-        let (_method_name, lof_scores, z_scores, dbscan_labels, used_threshold, _num_nodes) = match blocking_result {
+        let (_method_name, lof_scores, z_scores, dbscan_labels, used_threshold, _num_nodes, isolation_features) = match blocking_result {
             Ok(inner_result) => inner_result?,
             Err(join_err) => return Err(format!("GPU blocking task panicked: {}", join_err)),
         };
@@ -137,9 +161,8 @@ impl AnomalyDetectionActor {
                 self.build_zscore_anomalies(&scores, used_threshold)
             }
             AnomalyDetectionMethod::IsolationForest => {
-                // IsolationForest uses CPU-side computation via compute_isolation_scores
-                // which was already called in the original sub-method; re-dispatch here
-                self.perform_isolation_forest_detection_cpu(&params)?
+                // Use GPU positions downloaded in the blocking task
+                self.perform_isolation_forest_detection_cpu(&params, isolation_features)?
             }
             AnomalyDetectionMethod::DBSCAN => {
                 let labels = dbscan_labels.unwrap_or_default();
@@ -321,16 +344,24 @@ impl AnomalyDetectionActor {
         let threshold = params.threshold.unwrap_or(3.0); 
 
         
-        let feature_data = params.feature_data.as_ref().cloned().unwrap_or_else(|| {
-            
-            (0..self.gpu_state.num_nodes)
-                .map(|i| {
-                    let base_val = (i as f32 + 1.0) / self.gpu_state.num_nodes as f32;
-                    
-                    base_val + (i as f32).sin() * 0.1 + (i as f32).cos() * 0.05
-                })
-                .collect()
-        });
+        let feature_data = match params.feature_data.as_ref().cloned() {
+            Some(fd) => fd,
+            None => {
+                // Download GPU positions and use position magnitudes as features
+                let (pos_x, pos_y, pos_z) = unified_compute
+                    .get_node_positions()
+                    .map_err(|e| format!("Failed to get node positions for ZScore features: {}", e))?;
+                (0..self.gpu_state.num_nodes as usize)
+                    .map(|i| {
+                        if i < pos_x.len() {
+                            (pos_x[i] * pos_x[i] + pos_y[i] * pos_y[i] + pos_z[i] * pos_z[i]).sqrt()
+                        } else {
+                            0.0
+                        }
+                    })
+                    .collect()
+            }
+        };
 
         let z_scores = unified_compute
             .run_zscore_anomaly_detection(&feature_data)
@@ -795,24 +826,26 @@ impl AnomalyDetectionActor {
         (anomalies, stats)
     }
 
-    /// CPU-only Isolation Forest detection (no GPU lock needed, uses compute_isolation_scores)
+    /// CPU-only Isolation Forest detection (no GPU lock needed, uses compute_isolation_scores).
+    /// `gpu_features` contains flattened [x,y,z] positions downloaded from the GPU in the
+    /// blocking task. If None, returns an error rather than fabricating synthetic data.
     #[allow(dead_code)]
     fn perform_isolation_forest_detection_cpu(
         &self,
         params: &AnomalyDetectionParams,
+        gpu_features: Option<Vec<f32>>,
     ) -> Result<(Vec<AnomalyNode>, AnomalyStats), String> {
         let threshold = params.threshold.unwrap_or(0.5);
         let num_trees = 100;
 
-        // Generate synthetic features from node indices (matches original behavior
-        // when GPU positions are unavailable in this CPU-only path)
         let num_nodes = self.gpu_state.num_nodes as usize;
-        let mut features = Vec::with_capacity(num_nodes * 3);
-        for i in 0..num_nodes {
-            features.push(i as f32);
-            features.push((i as f32).sin());
-            features.push((i as f32).cos());
-        }
+        let features = match gpu_features {
+            Some(f) if f.len() >= num_nodes * 3 => f,
+            Some(f) if !f.is_empty() => f,
+            _ => {
+                return Err("Isolation Forest requires GPU node positions but they are unavailable.".to_string());
+            }
+        };
 
         let isolation_scores = self.compute_isolation_scores(&features, num_trees);
 
@@ -982,9 +1015,21 @@ impl Handler<RunAnomalyDetection> for AnomalyDetectionActor {
                         }
                     }
                     AnomalyDetectionMethod::ZScore => {
-                        let feature_data: Vec<f32> = (0..num_nodes)
-                            .map(|i| (i as f32 + 1.0) / num_nodes as f32)
-                            .collect();
+                        // Use GPU positions as feature data instead of synthetic values
+                        let feature_data: Vec<f32> = match unified_compute.get_node_positions() {
+                            Ok((pos_x, pos_y, pos_z)) => {
+                                (0..num_nodes as usize)
+                                    .map(|i| {
+                                        if i < pos_x.len() {
+                                            (pos_x[i] * pos_x[i] + pos_y[i] * pos_y[i] + pos_z[i] * pos_z[i]).sqrt()
+                                        } else {
+                                            0.0
+                                        }
+                                    })
+                                    .collect()
+                            }
+                            Err(e) => return Err(format!("Failed to get node positions for ZScore features: {}", e)),
+                        };
 
                         match unified_compute.run_zscore_anomaly_detection(&feature_data) {
                             Ok(z_scores) => {

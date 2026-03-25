@@ -208,6 +208,17 @@ impl GPUResourceActor {
                             csr_result.num_edges as usize,
                         )
                         .map_err(|e| format!("Failed to initialize graph in unified compute: {}", e))?;
+
+                    // Upload buffer_index → graph_node_id mapping so clustering
+                    // actors can translate GPU indices back to real node IDs.
+                    // Pad to allocated_nodes since device buffer may be overallocated.
+                    let mut graph_ids = Self::build_node_graph_id_vec(&csr_result.node_indices, csr_result.num_nodes as usize);
+                    use cust::memory::CopyDestination;
+                    if graph_ids.len() < compute.node_graph_id.len() {
+                        graph_ids.resize(compute.node_graph_id.len(), 0);
+                    }
+                    compute.node_graph_id.copy_from(&graph_ids)
+                        .map_err(|e| format!("Failed to upload node_graph_id: {}", e))?;
                 }
 
                 info!("Graph data uploaded to GPU successfully");
@@ -333,7 +344,18 @@ impl GPUResourceActor {
         })
     }
 
-    
+    /// Build a Vec<i32> mapping GPU buffer index → graph node ID.
+    /// Inverts the `node_indices` HashMap (graph_id → buffer_index).
+    fn build_node_graph_id_vec(node_indices: &HashMap<u32, usize>, num_nodes: usize) -> Vec<i32> {
+        let mut graph_ids = vec![0i32; num_nodes];
+        for (&graph_id, &buffer_idx) in node_indices.iter() {
+            if buffer_idx < num_nodes {
+                graph_ids[buffer_idx] = graph_id as i32;
+            }
+        }
+        graph_ids
+    }
+
     fn calculate_graph_structure_hash(graph_data: &GraphData) -> u64 {
         let mut hasher = DefaultHasher::new();
 
@@ -614,7 +636,17 @@ impl GPUResourceActor {
                 )
                 .map_err(|e| format!("Failed to upload full graph structure: {}", e))?;
 
-            
+            // Upload buffer_index → graph_node_id mapping for clustering actors.
+            // Pad to allocated_nodes since device buffer may be overallocated.
+            let mut graph_ids = Self::build_node_graph_id_vec(&csr_result.node_indices, csr_result.num_nodes as usize);
+            use cust::memory::CopyDestination;
+            if graph_ids.len() < unified_compute.node_graph_id.len() {
+                graph_ids.resize(unified_compute.node_graph_id.len(), 0);
+            }
+            unified_compute.node_graph_id.copy_from(&graph_ids)
+                .map_err(|e| format!("Failed to upload node_graph_id: {}", e))?;
+
+
             self.gpu_state.num_nodes = csr_result.num_nodes;
             self.gpu_state.num_edges = csr_result.num_edges;
             self.gpu_state.node_indices = csr_result.node_indices;

@@ -66,6 +66,8 @@ struct SimParams {
     float lof_score_max;                    // Maximum LOF score clamp
     float weight_precision_multiplier;      // Weight precision multiplier for integer operations
     // NOTE: Stress majorization params removed (unused by GPU kernels, handled on CPU)
+
+    float gravity;  // Gravity pull toward origin (center-pull force)
 };
 
 // Global constant memory for simulation parameters
@@ -378,6 +380,13 @@ __global__ void force_pass_kernel(
     
     if (c_params.feature_flags & FeatureFlags::ENABLE_CENTERING) {
         total_force = vec3_sub(total_force, vec3_scale(my_pos, c_params.center_gravity_k));
+    }
+
+    // Gravity: gentle center-pull force (additive to centering)
+    if (c_params.gravity != 0.0f) {
+        total_force.x -= my_pos.x * c_params.gravity;
+        total_force.y -= my_pos.y * c_params.gravity;
+        total_force.z -= my_pos.z * c_params.gravity;
     }
 
     // Constraint force accumulation

@@ -499,6 +499,31 @@ impl Handler<ComputePageRank> for AnalyticsSupervisor {
     }
 }
 
+impl Handler<UpdateGPUGraphData> for AnalyticsSupervisor {
+    type Result = Result<(), String>;
+
+    fn handle(&mut self, msg: UpdateGPUGraphData, ctx: &mut Self::Context) -> Self::Result {
+        info!(
+            "AnalyticsSupervisor: UpdateGPUGraphData received — {} nodes, {} edges",
+            msg.graph.nodes.len(),
+            msg.graph.edges.len()
+        );
+
+        // Forward to ClusteringActor so it updates gpu_state.num_nodes/num_edges
+        if let Some(ref addr) = self.clustering_actor {
+            if let Err(e) = addr.try_send(msg) {
+                self.handle_actor_failure(
+                    "ClusteringActor",
+                    &format!("Failed to forward UpdateGPUGraphData: {}", e),
+                    ctx,
+                );
+            }
+        }
+
+        Ok(())
+    }
+}
+
 impl Handler<PerformGPUClustering> for AnalyticsSupervisor {
     type Result = ResponseActFuture<Self, Result<Vec<crate::handlers::api_handler::analytics::Cluster>, String>>;
 

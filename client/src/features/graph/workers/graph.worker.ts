@@ -873,9 +873,10 @@ class GraphWorker {
     if (!this.analyticsBuffer) return;
 
     // Check if server already populated analytics (any non-zero values in buffer)
+    // Check clusterId (i), anomalyScore (i+1), and communityId (i+2)
     let hasServerData = false;
     for (let i = 0; i < this.analyticsBuffer.length; i += 3) {
-      if (this.analyticsBuffer[i + 1] > 0 || this.analyticsBuffer[i + 2] > 0) {
+      if (this.analyticsBuffer[i] > 0 || this.analyticsBuffer[i + 1] > 0 || this.analyticsBuffer[i + 2] > 0) {
         hasServerData = true;
         break;
       }

@@ -185,13 +185,35 @@ fn load_precompiled_ptx(module: PTXModule) -> Result<String, String> {
     let manifest_dir = env!("CARGO_MANIFEST_DIR");
     let ptx_file = module.source_file().replace(".cu", ".ptx");
 
-    let ptx_paths = vec![
-        PathBuf::from(manifest_dir)
-            .join("src/utils/ptx")
-            .join(&ptx_file),
+    // Check env var override first, then build output (always fresh), then
+    // pre-compiled source tree copies (may be stale in Docker image layers).
+    let mut ptx_paths = Vec::new();
+
+    // 1. Environment variable override (highest priority)
+    if let Ok(env_path) = std::env::var(module.env_var()) {
+        ptx_paths.push(PathBuf::from(env_path));
+    }
+
+    // 2. Build output directory (recompiled by build.rs from current .cu source)
+    //    OUT_DIR is only available at build time, so scan target/*/build/*/out/
+    for profile in &["release", "debug"] {
+        let build_dir = PathBuf::from(manifest_dir).join("target").join(profile).join("build");
+        if let Ok(entries) = std::fs::read_dir(&build_dir) {
+            for entry in entries.flatten() {
+                let candidate = entry.path().join("out").join(&ptx_file);
+                if candidate.exists() {
+                    ptx_paths.push(candidate);
+                }
+            }
+        }
+    }
+
+    // 3. Pre-compiled source tree copies (may be stale in Docker overlay)
+    ptx_paths.extend([
+        PathBuf::from(manifest_dir).join("src/utils/ptx").join(&ptx_file),
         PathBuf::from("/app/src/utils/ptx").join(&ptx_file),
         PathBuf::from("./src/utils/ptx").join(&ptx_file),
-    ];
+    ]);
 
     for path in ptx_paths {
         if let Ok(content) = fs::read_to_string(&path) {

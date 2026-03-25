@@ -501,46 +501,39 @@ impl UnifiedGPUCompute {
     }
 
     pub(crate) fn calculate_cub_temp_storage(
-        _num_nodes: usize,
-        _num_cells: usize,
+        num_nodes: usize,
+        num_cells: usize,
     ) -> Result<DeviceBuffer<u8>> {
-        #[allow(unused_assignments)]
-        let mut sort_bytes = 0;
-        #[allow(unused_assignments)]
-        let mut scan_bytes = 0;
-        let mut error;
+        // CUB DeviceRadixSort and DeviceScan require temporary workspace whose
+        // exact size depends on the input length.  Ideally we would call the CUB
+        // API with a nullptr output to query the required size, but there is no
+        // Rust FFI wrapper for that today.  Instead we use a conservative
+        // heuristic derived from CUB internals:
+        //
+        //   RadixSort: ~2 * num_items * sizeof(key+value) + fixed overhead
+        //   ExclusiveSum: ~num_items * sizeof(value) + fixed overhead
+        //
+        // We take the maximum and add a generous safety margin.
 
+        let num_items = num_nodes.max(num_cells);
 
-        let d_keys_temp = DeviceBuffer::<i32>::zeroed(0)?;
-        let _d_keys_null = d_keys_temp.as_slice();
-        let d_values_temp = DeviceBuffer::<i32>::zeroed(0)?;
-        let _d_values_null = d_values_temp.as_slice();
+        // Sort temp: each key-value pair is (i32, i32) = 8 bytes.
+        // CUB double-buffers internally, so ~2x the data plus per-bin counters.
+        let sort_bytes = num_items * 2 * std::mem::size_of::<i32>() * 2 + 2048;
 
-        sort_bytes = 0;
-        error = 0;
-        if error != 0 {
-            return Err(anyhow!(
-                "CUB sort storage calculation failed with code {}",
-                error
-            ));
-        }
+        // Scan temp: one pass over i32 values plus block-level partial sums.
+        let scan_bytes = num_items * std::mem::size_of::<i32>() + 2048;
 
+        // Use the larger of the two so the buffer can serve both operations.
+        let total_bytes = sort_bytes.max(scan_bytes).max(4096);
 
-        let d_scan_temp = DeviceBuffer::<i32>::zeroed(0)?;
-        let _d_scan_null = d_scan_temp.as_slice();
+        info!(
+            "CUB temp storage: sort={} bytes, scan={} bytes, allocated={} bytes (num_items={})",
+            sort_bytes, scan_bytes, total_bytes, num_items
+        );
 
-        scan_bytes = 0;
-        error = 0;
-        if error != 0 {
-            return Err(anyhow!(
-                "CUB scan storage calculation failed with code {}",
-                error
-            ));
-        }
-
-        let total_bytes = sort_bytes.max(scan_bytes);
         DeviceBuffer::zeroed(total_bytes)
-            .map_err(|e| anyhow!("Failed to allocate CUB temp storage: {}", e))
+            .map_err(|e| anyhow!("Failed to allocate CUB temp storage ({} bytes): {}", total_bytes, e))
     }
 
     pub(crate) fn calculate_memory_usage(num_nodes: usize, num_edges: usize, max_grid_cells: usize) -> usize {

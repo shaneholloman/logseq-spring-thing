@@ -352,7 +352,7 @@ impl Default for PhysicsSettings {
             constraint_max_force_per_node: default_constraint_max_force_per_node(),
 
             clustering_algorithm: "kmeans".to_string(),
-            cluster_count: 5,
+            cluster_count: 8,
             clustering_resolution: 1.0,
             clustering_iterations: 30,
         }

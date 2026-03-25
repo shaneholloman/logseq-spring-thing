@@ -11,6 +11,27 @@ use log::{debug, info, warn};
 use std::ffi::CStr;
 
 impl UnifiedGPUCompute {
+    /// Default block size for kernel launches.  Ideally this would be queried
+    /// from `dynamic_grid.cu::calculate_optimal_block_size()` at init time, but
+    /// there is no Rust FFI wrapper for that function yet.  This constant can be
+    /// overridden via the `VISIONFLOW_BLOCK_SIZE` environment variable for
+    /// tuning without recompilation.
+    // TODO: Wire to dynamic_grid.cu::calculate_optimal_block_size() via FFI
+    //       and cache the result in UnifiedGPUCompute at construction time.
+    const DEFAULT_BLOCK_SIZE: u32 = 256;
+
+    fn kernel_block_size() -> u32 {
+        // Allow runtime override via environment variable for tuning
+        static BLOCK_SIZE: std::sync::OnceLock<u32> = std::sync::OnceLock::new();
+        *BLOCK_SIZE.get_or_init(|| {
+            std::env::var("VISIONFLOW_BLOCK_SIZE")
+                .ok()
+                .and_then(|v| v.parse::<u32>().ok())
+                .filter(|&bs| bs >= 32 && bs <= 1024 && bs % 32 == 0)
+                .unwrap_or(Self::DEFAULT_BLOCK_SIZE)
+        })
+    }
+
     pub fn execute(&mut self, mut params: SimParams) -> Result<()> {
         // Make CUDA context current for this thread (required when called from spawn_blocking threads)
         // Context::new() on the same device retains the primary context and makes it current
@@ -18,7 +39,7 @@ impl UnifiedGPUCompute {
             .map_err(|e| anyhow!("Failed to set CUDA context: {}", e))?;
 
         params.iteration = self.iteration;
-        let block_size = 256;
+        let block_size = Self::kernel_block_size();
         let grid_size = (self.num_nodes as u32 + block_size - 1) / block_size;
 
 
@@ -291,7 +312,8 @@ impl UnifiedGPUCompute {
         self.cell_start.copy_from(&self.zero_buffer)?;
         self.cell_end.copy_from(&self.zero_buffer)?;
 
-        let grid_cells_blocks = (num_grid_cells as u32 + 255) / 256;
+        let cell_block_size = block_size;
+        let grid_cells_blocks = (num_grid_cells as u32 + cell_block_size - 1) / cell_block_size;
         let compute_cell_bounds_kernel = self
             ._module
             .get_function(self.compute_cell_bounds_kernel_name)?;
@@ -303,7 +325,7 @@ impl UnifiedGPUCompute {
         unsafe {
             let stream = &self.stream;
             launch!(
-                compute_cell_bounds_kernel<<<grid_cells_blocks, 256, 0, stream>>>(
+                compute_cell_bounds_kernel<<<grid_cells_blocks, cell_block_size, 0, stream>>>(
                 sorted_keys.as_device_ptr(),
                 self.cell_start.as_device_ptr(),
                 self.cell_end.as_device_ptr(),

@@ -422,6 +422,50 @@ impl UnifiedGPUCompute {
             out_degrees[node] = row_offsets[node + 1] - row_offsets[node];
         }
 
+        // Download CSR col_indices to build CSC (transpose) on the host.
+        // The PageRank kernel requires CSC format for O(n+m) complexity.
+        let num_edges = row_offsets[num_nodes] as usize;
+        let mut col_indices_host = vec![0i32; self.num_edges.max(num_edges)];
+        if num_edges > 0 {
+            self.edge_col_indices.copy_to(&mut col_indices_host)?;
+        }
+        col_indices_host.truncate(num_edges);
+
+        // Build CSC: transpose the CSR graph
+        // CSC col_offsets[v] = start of incoming edges for node v in csc_row_indices
+        // CSC row_indices[j] = source node of incoming edge j
+        let mut csc_col_offsets = vec![0i32; num_nodes + 1];
+        let mut csc_row_indices = vec![0i32; num_edges];
+
+        // Count incoming edges per node (= column counts in CSR)
+        for &dst in &col_indices_host {
+            if (dst as usize) < num_nodes {
+                csc_col_offsets[dst as usize + 1] += 1;
+            }
+        }
+        // Prefix sum to get offsets
+        for v in 0..num_nodes {
+            csc_col_offsets[v + 1] += csc_col_offsets[v];
+        }
+        // Fill row_indices using a working copy of offsets
+        let mut write_pos = csc_col_offsets.clone();
+        for src in 0..num_nodes {
+            let edge_start = row_offsets[src] as usize;
+            let edge_end = row_offsets[src + 1] as usize;
+            for e in edge_start..edge_end {
+                let dst = col_indices_host[e] as usize;
+                if dst < num_nodes {
+                    let pos = write_pos[dst] as usize;
+                    csc_row_indices[pos] = src as i32;
+                    write_pos[dst] += 1;
+                }
+            }
+        }
+
+        // Upload CSC to GPU
+        let d_csc_col_offsets = DeviceBuffer::from_slice(&csc_col_offsets)?;
+        let d_csc_row_indices = DeviceBuffer::from_slice(&csc_row_indices)?;
+
         // Allocate GPU buffers for PageRank computation
         let mut d_pagerank_old = DeviceBuffer::<f32>::zeroed(num_nodes)?;
         let mut d_pagerank_new = DeviceBuffer::<f32>::zeroed(num_nodes)?;
@@ -450,9 +494,9 @@ impl UnifiedGPUCompute {
         let mut final_delta = 0.0f32;
 
         for iteration in 0..max_iterations {
-            // Run one PageRank iteration on GPU
+            // Run one PageRank iteration on GPU using CSC format
             // SAFETY: All device pointers (d_pagerank_old, d_pagerank_new,
-            // edge_row_offsets, edge_col_indices, d_out_degree) are valid
+            // d_csc_col_offsets, d_csc_row_indices, d_out_degree) are valid
             // DeviceBuffers with sufficient capacity. num_nodes matches the
             // allocation sizes. stream_ptr is a valid CUDA stream.
             unsafe {
@@ -460,8 +504,8 @@ impl UnifiedGPUCompute {
                     super::types::pagerank_iterate_optimized(
                         d_pagerank_old.as_device_ptr().as_raw() as *const f32,
                         d_pagerank_new.as_device_ptr().as_raw() as *mut f32,
-                        self.edge_row_offsets.as_device_ptr().as_raw() as *const _,
-                        self.edge_col_indices.as_device_ptr().as_raw() as *const _,
+                        d_csc_col_offsets.as_device_ptr().as_raw() as *const _,
+                        d_csc_row_indices.as_device_ptr().as_raw() as *const _,
                         d_out_degree.as_device_ptr().as_raw() as *const _,
                         num_nodes as ::std::os::raw::c_int,
                         damping,
@@ -471,8 +515,8 @@ impl UnifiedGPUCompute {
                     super::types::pagerank_iterate(
                         d_pagerank_old.as_device_ptr().as_raw() as *const f32,
                         d_pagerank_new.as_device_ptr().as_raw() as *mut f32,
-                        self.edge_row_offsets.as_device_ptr().as_raw() as *const _,
-                        self.edge_col_indices.as_device_ptr().as_raw() as *const _,
+                        d_csc_col_offsets.as_device_ptr().as_raw() as *const _,
+                        d_csc_row_indices.as_device_ptr().as_raw() as *const _,
                         d_out_degree.as_device_ptr().as_raw() as *const _,
                         num_nodes as ::std::os::raw::c_int,
                         damping,

@@ -6,6 +6,7 @@ use actix_web::{web, HttpRequest, HttpResponse};
 use log::{debug, error, info, warn};
 use serde_json::{json, Value};
 use std::collections::HashMap;
+use std::time::Instant;
 
 /// Minimum cluster size for meaningful grouping
 const MIN_CLUSTER_SIZE: usize = 3;
@@ -14,7 +15,7 @@ const DEFAULT_SIMILARITY_METRIC: &str = "cosine";
 /// Maximum iterations for convergence
 const MAX_CLUSTERING_ITERATIONS: usize = 100;
 /// Default number of clusters when not specified
-const DEFAULT_CLUSTER_COUNT: u32 = 5;
+const DEFAULT_CLUSTER_COUNT: u32 = 8;
 /// Default convergence threshold for iterative algorithms (f32 for ClusteringParams)
 const DEFAULT_CONVERGENCE_THRESHOLD: f32 = 0.001;
 /// Default tolerance threshold for iterative algorithms (f64 for ClusteringParams)
@@ -129,21 +130,54 @@ async fn start_clustering(
 ) -> Result<HttpResponse, actix_web::Error> {
     let request = payload.into_inner();
 
+    let start = Instant::now();
+
     info!("Starting real GPU clustering analysis");
     debug!(
         "Clustering request: {}",
         serde_json::to_string_pretty(&request).unwrap_or_default()
     );
 
+    // Fetch current settings for clustering defaults
+    let (settings_algorithm, settings_cluster_count, settings_resolution, settings_iterations) =
+        match state.settings_addr.send(GetSettings).await {
+            Ok(Ok(settings)) => {
+                let physics = &settings.visualisation.graphs.logseq.physics;
+                (
+                    Some(physics.clustering_algorithm.clone()),
+                    Some(physics.cluster_count),
+                    Some(physics.clustering_resolution),
+                    Some(physics.clustering_iterations),
+                )
+            }
+            Ok(Err(e)) => {
+                warn!("Failed to get settings for clustering defaults, using hardcoded: {}", e);
+                (None, None, None, None)
+            }
+            Err(e) => {
+                warn!("Settings actor unavailable for clustering defaults, using hardcoded: {}", e);
+                (None, None, None, None)
+            }
+        };
+
+    // Request body values override settings, which override hardcoded defaults
     let algorithm = request
         .get("algorithm")
         .and_then(|v| v.as_str())
-        .unwrap_or("louvain");
+        .map(|s| s.to_string())
+        .or(settings_algorithm)
+        .unwrap_or_else(|| "louvain".to_string());
 
     let cluster_count = request
         .get("clusterCount")
         .and_then(|v| v.as_u64())
-        .unwrap_or(DEFAULT_CLUSTER_COUNT as u64) as u32;
+        .map(|v| v as u32)
+        .or(settings_cluster_count)
+        .unwrap_or(DEFAULT_CLUSTER_COUNT);
+
+    let resolution = settings_resolution.unwrap_or(DEFAULT_RESOLUTION);
+
+    let max_iterations = settings_iterations.unwrap_or(MAX_CLUSTERING_ITERATIONS as u32);
 
     let task_id = uuid::Uuid::new_v4().to_string();
 
@@ -161,9 +195,9 @@ async fn start_clustering(
             method: algorithm.to_string(),
             params: crate::handlers::api_handler::analytics::ClusteringParams {
                 num_clusters: Some(cluster_count),
-                max_iterations: Some(MAX_CLUSTERING_ITERATIONS as u32),
+                max_iterations: Some(max_iterations),
                 convergence_threshold: Some(DEFAULT_CONVERGENCE_THRESHOLD),
-                resolution: Some(DEFAULT_RESOLUTION),
+                resolution: Some(resolution),
                 eps: None,
                 min_samples: None,
                 min_cluster_size: Some(MIN_CLUSTER_SIZE as u32),
@@ -185,10 +219,36 @@ async fn start_clustering(
 
         match clustering_result {
             Ok(Ok(cluster_results)) => {
+                let computation_time_ms = start.elapsed().as_millis() as u64;
+
                 info!(
-                    "GPU clustering completed successfully with {} clusters",
-                    cluster_results.len()
+                    "GPU clustering completed successfully with {} clusters in {}ms",
+                    cluster_results.len(),
+                    computation_time_ms
                 );
+
+                // Compute real modularity from cluster size distribution (Newman approximation)
+                let total_nodes: usize = cluster_results.iter().map(|c| c.nodes.len()).sum();
+                let modularity = if total_nodes > 0 {
+                    1.0 - cluster_results
+                        .iter()
+                        .map(|c| (c.nodes.len() as f64 / total_nodes as f64).powi(2))
+                        .sum::<f64>()
+                } else {
+                    0.0
+                };
+
+                // Average coherence across clusters (weighted by size)
+                let avg_coherence = if total_nodes > 0 {
+                    cluster_results
+                        .iter()
+                        .map(|c| c.coherence as f64 * c.nodes.len() as f64)
+                        .sum::<f64>()
+                        / total_nodes as f64
+                } else {
+                    0.0
+                };
+
                 // Populate shared node_analytics with cluster assignments for V3 wire format
                 if let Ok(mut analytics) = state.node_analytics.write() {
                     for (idx, cluster) in cluster_results.iter().enumerate() {
@@ -197,15 +257,23 @@ async fn start_clustering(
                             entry.0 = idx as u32;
                         }
                     }
+                    info!(
+                        "Populated node_analytics with {} entries across {} clusters",
+                        total_nodes,
+                        cluster_results.len()
+                    );
                 }
+
                 ok_json!(json!({
                     "status": "completed",
                     "taskId": task_id,
                     "algorithm": algorithm,
                     "clusterCount": cluster_results.len(),
                     "clustersFound": cluster_results.len(),
-                    "modularity": 0.8,
-                    "computationTimeMs": 150,
+                    "totalNodes": total_nodes,
+                    "modularity": (modularity * 1000.0).round() / 1000.0,
+                    "avgCoherence": (avg_coherence * 1000.0).round() / 1000.0,
+                    "computationTimeMs": computation_time_ms,
                     "gpuAccelerated": true
                 }))
             }

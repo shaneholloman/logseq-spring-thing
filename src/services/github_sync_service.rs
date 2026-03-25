@@ -345,7 +345,7 @@ impl GitHubSyncService {
                 debug!("🦉 Enriching graph with ontology data for {}", file.name);
                 match self.enrichment_service.enrich_graph(&mut parsed, &file.path, &content).await {
                     Ok((nodes_enriched, edges_enriched)) => {
-                        info!("✅ Enriched {}: {} nodes with owl_class_iri, {} edges with owl_property_iri",
+                        debug!("✅ Enriched {}: {} nodes with owl_class_iri, {} edges with owl_property_iri",
                             file.name, nodes_enriched, edges_enriched);
                     }
                     Err(e) => {
@@ -468,14 +468,14 @@ impl GitHubSyncService {
                                     + block.bridges_to.len() + block.bridges_from.len()
                                     + block.other_relationships.values()
                                         .map(|v| v.len()).sum::<usize>();
-                                info!("🔗 Created {} ontology edges from {} relationships in {}",
+                                debug!("🔗 Created {} ontology edges from {} relationships in {}",
                                     onto_edges_added, total_rels, file.name);
                             }
 
                             // Also save ontology data to Neo4j (legacy path)
                             match self.onto_parser.parse(&content, &file.name) {
                                 Ok(onto_data) => {
-                                    info!("🦉 Extracted from {}: {} classes, {} properties, {} axioms",
+                                    debug!("🦉 Extracted from {}: {} classes, {} properties, {} axioms",
                                         file.name,
                                         onto_data.classes.len(),
                                         onto_data.properties.len(),
@@ -508,7 +508,7 @@ impl GitHubSyncService {
                 debug!("🦉 Processing ontology file {}", file.name);
                 match self.onto_parser.parse(&content, &file.name) {
                     Ok(onto_data) => {
-                        info!("🦉 Extracted from {}: {} classes, {} properties, {} axioms",
+                        debug!("🦉 Extracted from {}: {} classes, {} properties, {} axioms",
                             file.name,
                             onto_data.classes.len(),
                             onto_data.properties.len(),

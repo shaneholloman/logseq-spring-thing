@@ -274,7 +274,7 @@ impl OntologyRepository for Neo4jOntologyRepository {
     // OWL Class Methods
     // ============================================================
 
-    #[instrument(skip(self))]
+    #[instrument(skip(self), level = "debug")]
     async fn add_owl_class(&self, class: &OwlClass) -> RepoResult<String> {
         debug!("Storing OWL class with rich metadata: {}", class.iri);
 
@@ -387,7 +387,7 @@ impl OntologyRepository for Neo4jOntologyRepository {
         Ok(class.iri.clone())
     }
 
-    #[instrument(skip(self))]
+    #[instrument(skip(self), level = "debug")]
     async fn get_owl_class(&self, iri: &str) -> RepoResult<Option<OwlClass>> {
         debug!("Fetching OWL class: {}", iri);
 
@@ -428,7 +428,7 @@ impl OntologyRepository for Neo4jOntologyRepository {
         }
     }
 
-    #[instrument(skip(self))]
+    #[instrument(skip(self), level = "debug")]
     async fn list_owl_classes(&self) -> RepoResult<Vec<OwlClass>> {
         debug!("Listing OWL classes");
 
@@ -470,7 +470,7 @@ impl OntologyRepository for Neo4jOntologyRepository {
         Ok(classes)
     }
 
-    #[instrument(skip(self))]
+    #[instrument(skip(self), level = "debug")]
     async fn remove_owl_class(&self, iri: &str) -> RepoResult<()> {
         debug!("Removing OWL class: {}", iri);
 
@@ -493,7 +493,7 @@ impl OntologyRepository for Neo4jOntologyRepository {
         Ok(())
     }
 
-    #[instrument(skip(self))]
+    #[instrument(skip(self), level = "debug")]
     async fn remove_axiom(&self, axiom_id: u64) -> RepoResult<()> {
         debug!("Removing OWL axiom: {}", axiom_id);
 
@@ -520,7 +520,7 @@ impl OntologyRepository for Neo4jOntologyRepository {
     // OWL Property Methods
     // ============================================================
 
-    #[instrument(skip(self))]
+    #[instrument(skip(self), level = "debug")]
     async fn add_owl_property(&self, property: &OwlProperty) -> RepoResult<String> {
         debug!("Storing OWL property with quality metrics: {}", property.iri);
 
@@ -572,7 +572,7 @@ impl OntologyRepository for Neo4jOntologyRepository {
         Ok(property.iri.clone())
     }
 
-    #[instrument(skip(self))]
+    #[instrument(skip(self), level = "debug")]
     async fn get_owl_property(&self, iri: &str) -> RepoResult<Option<OwlProperty>> {
         debug!("Fetching OWL property: {}", iri);
 
@@ -640,7 +640,7 @@ impl OntologyRepository for Neo4jOntologyRepository {
         }
     }
 
-    #[instrument(skip(self))]
+    #[instrument(skip(self), level = "debug")]
     async fn list_owl_properties(&self) -> RepoResult<Vec<OwlProperty>> {
         debug!("Listing all OWL properties");
 
@@ -711,7 +711,7 @@ impl OntologyRepository for Neo4jOntologyRepository {
     // OWL Axiom Methods
     // ============================================================
 
-    #[instrument(skip(self))]
+    #[instrument(skip(self), level = "debug")]
     async fn add_axiom(&self, axiom: &OwlAxiom) -> RepoResult<u64> {
         debug!("Storing OWL axiom: {:?}", axiom.id);
 
@@ -759,7 +759,7 @@ impl OntologyRepository for Neo4jOntologyRepository {
         Ok(axiom_id)
     }
 
-    #[instrument(skip(self))]
+    #[instrument(skip(self), level = "debug")]
     async fn get_axioms(&self) -> RepoResult<Vec<OwlAxiom>> {
         debug!("Fetching all OWL axioms");
 
@@ -842,7 +842,7 @@ impl OntologyRepository for Neo4jOntologyRepository {
     // Metrics and Validation
     // ============================================================
 
-    #[instrument(skip(self))]
+    #[instrument(skip(self), level = "debug")]
     async fn get_metrics(&self) -> RepoResult<OntologyMetrics> {
         debug!("Computing ontology metrics");
 
@@ -926,7 +926,7 @@ impl OntologyRepository for Neo4jOntologyRepository {
         })
     }
 
-    #[instrument(skip(self))]
+    #[instrument(skip(self), level = "debug")]
     async fn validate_ontology(&self) -> RepoResult<ValidationReport> {
         debug!("Validating ontology");
 
@@ -961,7 +961,7 @@ impl OntologyRepository for Neo4jOntologyRepository {
         })
     }
 
-    #[instrument(skip(self))]
+    #[instrument(skip(self), level = "debug")]
     async fn cache_sssp_result(&self, _entry: &PathfindingCacheEntry) -> RepoResult<()> {
         // Pathfinding cache not yet implemented
         // When implementing, consider:
@@ -973,14 +973,14 @@ impl OntologyRepository for Neo4jOntologyRepository {
         Ok(())
     }
 
-    #[instrument(skip(self))]
+    #[instrument(skip(self), level = "debug")]
     async fn get_cached_sssp(&self, _source_node_id: u32) -> RepoResult<Option<PathfindingCacheEntry>> {
         // Pathfinding cache not yet implemented
         // Returns None, forcing recomputation
         Ok(None)
     }
 
-    #[instrument(skip(self))]
+    #[instrument(skip(self), level = "debug")]
     async fn cache_apsp_result(&self, _distance_matrix: &Vec<Vec<f32>>) -> RepoResult<()> {
         // APSP (All-Pairs Shortest Path) cache not yet implemented
         // Note: APSP results can be very large (O(n²) space)
@@ -988,14 +988,14 @@ impl OntologyRepository for Neo4jOntologyRepository {
         Ok(())
     }
 
-    #[instrument(skip(self))]
+    #[instrument(skip(self), level = "debug")]
     async fn get_cached_apsp(&self) -> RepoResult<Option<Vec<Vec<f32>>>> {
         // APSP cache not yet implemented
         // Returns None, forcing recomputation
         Ok(None)
     }
 
-    #[instrument(skip(self))]
+    #[instrument(skip(self), level = "debug")]
     async fn invalidate_pathfinding_caches(&self) -> RepoResult<()> {
         info!("Clearing pathfinding cache (no-op, cache not implemented)");
         // When cache is implemented, this should:
@@ -1005,7 +1005,7 @@ impl OntologyRepository for Neo4jOntologyRepository {
         Ok(())
     }
 
-    #[instrument(skip(self))]
+    #[instrument(skip(self), level = "debug")]
     async fn load_ontology_graph(&self) -> RepoResult<Arc<GraphData>> {
         debug!("Loading ontology graph from Neo4j");
 
@@ -1116,12 +1116,12 @@ impl OntologyRepository for Neo4jOntologyRepository {
         Ok(())
     }
 
-    #[instrument(skip(self))]
+    #[instrument(skip(self), level = "debug")]
     async fn get_classes(&self) -> RepoResult<Vec<OwlClass>> {
         self.list_owl_classes().await
     }
 
-    #[instrument(skip(self))]
+    #[instrument(skip(self), level = "debug")]
     async fn get_class_axioms(&self, class_iri: &str) -> RepoResult<Vec<OwlAxiom>> {
         debug!("Getting axioms for class: {}", class_iri);
 

@@ -154,16 +154,45 @@ impl UnifiedGPUCompute {
     }
 
     pub fn download_positions(&self, x: &mut [f32], y: &mut [f32], z: &mut [f32]) -> Result<()> {
-        self.pos_in_x.copy_to(x)?;
-        self.pos_in_y.copy_to(y)?;
-        self.pos_in_z.copy_to(z)?;
+        // Device buffers may be overallocated (allocated_nodes > num_nodes).
+        // Download the full buffer then truncate, or download exactly num_nodes.
+        if x.len() == self.pos_in_x.len() {
+            self.pos_in_x.copy_to(x)?;
+            self.pos_in_y.copy_to(y)?;
+            self.pos_in_z.copy_to(z)?;
+        } else {
+            // Download full allocated buffer then copy only num_nodes elements
+            let mut full_x = vec![0.0f32; self.pos_in_x.len()];
+            let mut full_y = vec![0.0f32; self.pos_in_y.len()];
+            let mut full_z = vec![0.0f32; self.pos_in_z.len()];
+            self.pos_in_x.copy_to(&mut full_x)?;
+            self.pos_in_y.copy_to(&mut full_y)?;
+            self.pos_in_z.copy_to(&mut full_z)?;
+            let n = x.len().min(full_x.len());
+            x[..n].copy_from_slice(&full_x[..n]);
+            y[..n].copy_from_slice(&full_y[..n]);
+            z[..n].copy_from_slice(&full_z[..n]);
+        }
         Ok(())
     }
 
     pub fn download_velocities(&self, x: &mut [f32], y: &mut [f32], z: &mut [f32]) -> Result<()> {
-        self.vel_in_x.copy_to(x)?;
-        self.vel_in_y.copy_to(y)?;
-        self.vel_in_z.copy_to(z)?;
+        if x.len() == self.vel_in_x.len() {
+            self.vel_in_x.copy_to(x)?;
+            self.vel_in_y.copy_to(y)?;
+            self.vel_in_z.copy_to(z)?;
+        } else {
+            let mut full_x = vec![0.0f32; self.vel_in_x.len()];
+            let mut full_y = vec![0.0f32; self.vel_in_y.len()];
+            let mut full_z = vec![0.0f32; self.vel_in_z.len()];
+            self.vel_in_x.copy_to(&mut full_x)?;
+            self.vel_in_y.copy_to(&mut full_y)?;
+            self.vel_in_z.copy_to(&mut full_z)?;
+            let n = x.len().min(full_x.len());
+            x[..n].copy_from_slice(&full_x[..n]);
+            y[..n].copy_from_slice(&full_y[..n]);
+            z[..n].copy_from_slice(&full_z[..n]);
+        }
         Ok(())
     }
 

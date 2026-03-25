@@ -9,21 +9,13 @@ const logger = createLogger('SemanticClusteringControls');
 import { Label } from '@/features/design-system/components/Label';
 import { Button } from '@/features/design-system/components/Button';
 import { Badge } from '@/features/design-system/components/Badge';
-import { Progress } from '@/features/design-system/components/Progress';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/features/design-system/components/Tabs';
-import { 
-  Brain, 
-  Sparkles, 
-  Network, 
-  AlertTriangle, 
-  TrendingUp,
-  BarChart3,
-  GitBranch,
-  Layers,
+import {
+  Network,
+  AlertTriangle,
   RefreshCw,
   Download,
   Play,
-  Pause
 } from 'lucide-react';
 import { useToast } from '@/features/design-system/components/Toast';
 import { ScrollArea } from '@/features/design-system/components/ScrollArea';
@@ -61,7 +53,6 @@ export function SemanticClusteringControls() {
   
   
   const [isProcessing, setIsProcessing] = useState(false);
-  const [progress, setProgress] = useState(0);
   const [autoUpdate, setAutoUpdate] = useState(false);
   
   const [clusteringMethod, setClusteringMethod] = useState<string>('spectral');
@@ -102,13 +93,6 @@ export function SemanticClusteringControls() {
       gpuAccelerated: true,
     },
     {
-      id: 'hierarchical',
-      name: 'Hierarchical Clustering',
-      description: 'Tree-based hierarchical decomposition',
-      params: ['linkage', 'distanceThreshold'],
-      gpuAccelerated: true,
-    },
-    {
       id: 'dbscan',
       name: 'DBSCAN',
       description: 'Density-based spatial clustering',
@@ -129,13 +113,6 @@ export function SemanticClusteringControls() {
       params: ['resolution', 'randomState'],
       gpuAccelerated: true,
     },
-    {
-      id: 'affinity',
-      name: 'Affinity Propagation',
-      description: 'Message passing between data points',
-      params: ['damping', 'preference'],
-      gpuAccelerated: false,
-    },
   ];
 
   const anomalyMethods = [
@@ -149,12 +126,16 @@ export function SemanticClusteringControls() {
   
   const handleRunClustering = useCallback(async () => {
     setIsProcessing(true);
-    setProgress(0);
 
     try {
       const response = await unifiedApiClient.post('/api/analytics/clustering/run', {
-        method: clusteringMethod,
-        params: clusteringParams,
+        algorithm: clusteringMethod,
+        clusterCount: clusteringParams.numClusters,
+        resolution: 1.0,
+        iterations: clusteringParams.maxIterations,
+        min_cluster_size: clusteringParams.minClusterSize,
+        convergence_threshold: clusteringParams.convergenceThreshold,
+        similarity: clusteringParams.similarity,
       });
 
       setClusters(response.data.clusters);
@@ -171,7 +152,6 @@ export function SemanticClusteringControls() {
       });
     } finally {
       setIsProcessing(false);
-      setProgress(100);
     }
   }, [clusteringMethod, clusteringParams, toast]);
 
@@ -222,15 +202,7 @@ export function SemanticClusteringControls() {
     return () => clearInterval(interval);
   }, [anomalyDetection.enabled, anomalyDetection.updateInterval]);
 
-  
-  useEffect(() => {
-    if (isProcessing) {
-      const timer = setInterval(() => {
-        setProgress(prev => Math.min(prev + 10, 90));
-      }, 200);
-      return () => clearInterval(timer);
-    }
-  }, [isProcessing]);
+  // Progress is set to 100 on completion in handleRunClustering; no fake timer needed.
 
   return (
     <div className="space-y-4">
@@ -336,7 +308,10 @@ export function SemanticClusteringControls() {
               </Button>
               
               {isProcessing && (
-                <Progress value={progress} className="w-full" />
+                <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
+                  <RefreshCw className="h-4 w-4 animate-spin" />
+                  <span>Running clustering analysis...</span>
+                </div>
               )}
             </TabsContent>
             
@@ -523,38 +498,6 @@ export function SemanticClusteringControls() {
         </CardContent>
       </Card>
 
-      {}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Brain className="h-5 w-5" />
-            Advanced Analytics
-          </CardTitle>
-          <CardDescription>
-            GPU-powered graph analysis algorithms
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 gap-2">
-            <Button variant="outline" size="sm">
-              <Sparkles className="mr-2 h-4 w-4" />
-              UMAP Reduction
-            </Button>
-            <Button variant="outline" size="sm">
-              <GitBranch className="mr-2 h-4 w-4" />
-              Graph Wavelets
-            </Button>
-            <Button variant="outline" size="sm">
-              <Layers className="mr-2 h-4 w-4" />
-              Hyperbolic Embed
-            </Button>
-            <Button variant="outline" size="sm">
-              <BarChart3 className="mr-2 h-4 w-4" />
-              Persistent Homology
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
     </div>
   );
 }

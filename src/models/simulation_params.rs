@@ -125,6 +125,9 @@ pub struct SimParams {
     pub weight_precision_multiplier: f32,
     // NOTE: Stress majorization params removed from GPU SimParams (not used by GPU kernels).
     // Stress optimization is handled by SemanticProcessorActor on CPU.
+
+    /// Gravity pull toward origin (center-pull force). Added at end to preserve repr(C) layout.
+    pub gravity: f32,
 }
 
 // SAFETY: SimParams is repr(C) with only POD types, safe for GPU transfer
@@ -199,6 +202,13 @@ pub struct SimulationParams {
     pub boundary_force_strength: f32,
     pub warmup_iterations: u32,
     pub cooling_rate: f32,
+
+    /// Softening epsilon for repulsion to avoid singularities at zero distance
+    pub repulsion_softening_epsilon: f32,
+    /// Grid cell size for spatial hashing (defaults to 40.0)
+    pub grid_cell_size: f32,
+    /// Gravity pull toward center (defaults to 0.0001)
+    pub gravity: f32,
 
     
     pub rest_length: f32,
@@ -286,11 +296,11 @@ impl SimulationParams {
             rest_length: self.rest_length,
             repel_k: self.repel_k,
             repulsion_cutoff: self.max_repulsion_dist,
-            repulsion_softening_epsilon: 1e-4, 
-            center_gravity_k: self.center_gravity_k, 
+            repulsion_softening_epsilon: self.repulsion_softening_epsilon,
+            center_gravity_k: self.center_gravity_k,
             max_force: self.max_force,
             max_velocity: self.max_velocity,
-            grid_cell_size: self.max_repulsion_dist, 
+            grid_cell_size: self.grid_cell_size,
             feature_flags,
             seed: 1337,
             iteration: 0, 
@@ -323,6 +333,7 @@ impl SimulationParams {
             lof_score_max: crate::config::dev_config::physics().lof_score_max,
             weight_precision_multiplier: crate::config::dev_config::physics()
                 .weight_precision_multiplier,
+            gravity: self.gravity,
         }
     }
 }
@@ -387,6 +398,9 @@ impl SimParams {
             sssp_alpha: Some(self.sssp_alpha),
             constraint_ramp_frames: self.constraint_ramp_frames,
             constraint_max_force_per_node: self.constraint_max_force_per_node,
+            repulsion_softening_epsilon: self.repulsion_softening_epsilon,
+            grid_cell_size: self.grid_cell_size,
+            gravity: 0.0001, // SimParams doesn't carry gravity; use default
             phase: SimulationPhase::Dynamic,
             mode: SimulationMode::Remote,
             settle_mode: SettleMode::default(),
@@ -470,6 +484,7 @@ impl From<&PhysicsSettings> for SimParams {
             lof_score_max: crate::config::dev_config::physics().lof_score_max,
             weight_precision_multiplier: crate::config::dev_config::physics()
                 .weight_precision_multiplier,
+            gravity: physics.gravity,
         }
     }
 }
@@ -517,6 +532,9 @@ impl From<&PhysicsSettings> for SimulationParams {
             sssp_alpha: Some(1.5),     // SSSP-adaptive rest lengths
             constraint_ramp_frames: physics.constraint_ramp_frames,
             constraint_max_force_per_node: physics.constraint_max_force_per_node,
+            repulsion_softening_epsilon: physics.repulsion_softening_epsilon,
+            grid_cell_size: physics.grid_cell_size,
+            gravity: physics.gravity,
             phase: SimulationPhase::Dynamic,
             mode: SimulationMode::Remote,
             settle_mode: SettleMode::default(),

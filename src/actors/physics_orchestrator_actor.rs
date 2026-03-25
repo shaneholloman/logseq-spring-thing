@@ -1289,10 +1289,15 @@ impl Handler<UpdateSimulationParams> for PhysicsOrchestratorActor {
                 settle_mode_changed, physics_changed
             );
 
+            // Reset equilibrium counter — stale high value from previous cycle
+            // would cause check_equilibrium_and_auto_pause to immediately re-pause.
+            self.simulation_params.equilibrium_stability_counter = 0;
+
             // If physics was paused (from previous settle or equilibrium), unpause
             // and restart the pipeline so the GPU can re-converge under new params.
             if self.simulation_params.is_physics_paused {
                 self.simulation_params.is_physics_paused = false;
+                self.broadcast_physics_resumed();
                 info!("PhysicsOrchestratorActor: Unpausing physics for new settle cycle");
             }
 
@@ -1316,10 +1321,13 @@ impl Handler<UpdateSimulationParams> for PhysicsOrchestratorActor {
             }
         }
 
-        // NOTE: Do NOT send UpdateGPUGraphData here. The settings route already sends
-        // UpdateSimulationParams directly to ForceComputeActor, which updates the GPU
-        // kernel parameters in-place. Re-uploading graph data would overwrite evolved
-        // GPU positions with the stored initial positions, causing a visible position reset.
+        // Forward UpdateSimulationParams to ForceComputeActor as guaranteed fallback.
+        // The settings route sends via state.get_gpu_compute_addr() which depends on
+        // async init completing. The orchestrator always holds the address from
+        // StoreGPUComputeAddress, making this the reliable delivery path.
+        if let Some(ref gpu_addr) = self.gpu_compute_addr {
+            gpu_addr.do_send(msg);
+        }
 
         info!(
             "Physics parameters updated - repel_k: {}, damping: {}, center_gravity_k: {}",
@@ -1548,7 +1556,12 @@ impl Handler<crate::actors::messages::PhysicsStepCompleted> for PhysicsOrchestra
                     total_force_calculations: 0,
                 }
             });
-            stats.kinetic_energy = msg.kinetic_energy as f32;
+            // Guard against f64::MAX (from ForceComputeActor error paths before GPU
+            // is initialized).  Casting f64::MAX to f32 produces INFINITY which poisons
+            // convergence checks and logs as NaN.  Keep the previous value if invalid.
+            if msg.kinetic_energy.is_finite() {
+                stats.kinetic_energy = msg.kinetic_energy as f32;
+            }
             stats.iteration_count = msg.iteration;
             stats.last_step_duration_ms = msg.step_duration_ms;
         }
@@ -1593,11 +1606,16 @@ impl Handler<crate::actors::messages::PhysicsStepCompleted> for PhysicsOrchestra
                 .map(|s| s.kinetic_energy as f64)
                 .unwrap_or(f64::MAX);
 
+            // If energy is NaN or Infinity (GPU not yet initialized, or error path
+            // returned f64::MAX), treat as "not converged" and don't count toward
+            // convergence.  This prevents FastSettle from declaring settled when the
+            // GPU hasn't actually computed anything yet.
+            let energy_valid = energy.is_finite();
             let past_warmup = self.fast_settle_iteration_count >= MIN_SETTLE_WARMUP;
-            let converged = past_warmup && energy < energy_threshold;
+            let converged = past_warmup && energy_valid && energy < energy_threshold;
             let exhausted = self.fast_settle_iteration_count >= max_settle_iterations;
 
-            if converged || exhausted {
+            if converged || (exhausted && energy_valid) {
                 self.fast_settle_complete = true;
                 self.simulation_params.is_physics_paused = true;
 
@@ -1629,6 +1647,16 @@ impl Handler<crate::actors::messages::PhysicsStepCompleted> for PhysicsOrchestra
                 self.broadcast_physics_paused();
                 // Do NOT schedule another step — settling is complete.
                 return;
+            } else if exhausted && !energy_valid {
+                // Iteration cap reached but energy was never valid (GPU not yet
+                // initialized).  Do NOT declare settled — reset and keep physics
+                // running so it can retry once the GPU becomes available.
+                warn!(
+                    "PhysicsOrchestratorActor: FastSettle hit iteration cap {} but energy is invalid ({:.6}). \
+                     GPU may not be initialized yet. Resetting settle counter to retry.",
+                    max_settle_iterations, energy
+                );
+                self.fast_settle_iteration_count = 0;
             } else if self.fast_settle_iteration_count % 100 == 0 {
                 debug!(
                     "PhysicsOrchestratorActor: FastSettle progress: iter={}/{}, energy={:.6}",

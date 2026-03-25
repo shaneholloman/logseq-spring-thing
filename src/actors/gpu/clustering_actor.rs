@@ -41,11 +41,16 @@ pub struct Community {
 }
 
 pub struct ClusteringActor {
-    
+
     gpu_state: GPUState,
 
-    
+
     shared_context: Option<Arc<SharedGPUContext>>,
+
+    /// Maps GPU buffer index -> actual graph node ID.
+    /// Populated lazily from the GPU `node_graph_id` buffer before clustering.
+    /// When empty, raw buffer indices are used as-is (backward compat).
+    node_id_map: Vec<u32>,
 }
 
 impl ClusteringActor {
@@ -53,10 +58,55 @@ impl ClusteringActor {
         Self {
             gpu_state: GPUState::default(),
             shared_context: None,
+            node_id_map: Vec::new(),
         }
     }
 
-    
+    /// Download the buffer_index -> graph_node_id mapping from the GPU
+    /// `node_graph_id` DeviceBuffer. Caches the result in `self.node_id_map`.
+    /// Returns an empty Vec if the GPU context is unavailable.
+    fn ensure_node_id_map(&mut self) {
+        if !self.node_id_map.is_empty() {
+            return;
+        }
+        if let Some(ref ctx) = self.shared_context {
+            if let Ok(uc) = ctx.unified_compute.lock() {
+                let n = uc.num_nodes;
+                if n > 0 {
+                    let mut ids = vec![0i32; n];
+                    use cust::memory::CopyDestination;
+                    if uc.node_graph_id.copy_to(&mut ids).is_ok() {
+                        // Check whether the buffer was actually populated
+                        // (all zeros means it was never uploaded).
+                        let has_real_ids = ids.iter().any(|&id| id != 0);
+                        if has_real_ids {
+                            self.node_id_map = ids.iter().map(|&id| id as u32).collect();
+                            info!(
+                                "ClusteringActor: Downloaded node_id_map ({} entries) from GPU",
+                                self.node_id_map.len()
+                            );
+                        }
+                    }
+                }
+                // Also fix gpu_state.num_nodes if it was never set
+                if self.gpu_state.num_nodes == 0 && n > 0 {
+                    self.gpu_state.num_nodes = n as u32;
+                }
+            }
+        }
+    }
+
+    /// Translate a GPU buffer index to the actual graph node ID.
+    /// Falls back to the raw index if no mapping is available.
+    #[inline]
+    fn translate_gpu_index(&self, gpu_index: usize) -> u32 {
+        if gpu_index < self.node_id_map.len() {
+            self.node_id_map[gpu_index]
+        } else {
+            gpu_index as u32
+        }
+    }
+
     fn generate_cluster_keywords(nodes: &[u32]) -> Vec<String> {
         if nodes.is_empty() {
             return vec!["empty".to_string()];
@@ -137,14 +187,16 @@ impl ClusteringActor {
             Err(join_err) => return Err(format!("GPU blocking task panicked: {}", join_err)),
         };
 
-        
         let (assignments, centroids, inertia, actual_iterations, converged) = gpu_result;
+
+        // Ensure we have the GPU buffer index -> graph node ID mapping
+        self.ensure_node_id_map();
+
         let clusters = self.convert_gpu_kmeans_result_to_clusters(
             assignments.iter().map(|&x| x as u32).collect(),
             params.num_clusters as u32,
         )?;
 
-        
         let cluster_sizes: Vec<usize> = clusters.iter().map(|c| c.nodes.len()).collect();
         let avg_cluster_size = if !cluster_sizes.is_empty() {
             cluster_sizes.iter().sum::<usize>() as f32 / cluster_sizes.len() as f32
@@ -252,7 +304,9 @@ impl ClusteringActor {
             Err(join_err) => return Err(format!("GPU blocking task panicked: {}", join_err)),
         };
 
-        
+        // Ensure we have the GPU buffer index -> graph node ID mapping
+        self.ensure_node_id_map();
+
         let (node_labels, num_communities, modularity, iterations, community_sizes, converged) =
             gpu_result;
         let communities = self.convert_gpu_community_result_to_communities(
@@ -297,7 +351,9 @@ impl ClusteringActor {
         gpu_result: Vec<u32>,
         num_clusters: u32,
     ) -> Result<Vec<crate::handlers::api_handler::analytics::Cluster>, String> {
-        if gpu_result.len() != self.gpu_state.num_nodes as usize {
+        // gpu_state.num_nodes may lag behind the actual GPU node count when
+        // context was set but gpu_state was not forwarded; skip the check when 0.
+        if self.gpu_state.num_nodes > 0 && gpu_result.len() != self.gpu_state.num_nodes as usize {
             return Err(format!(
                 "GPU result size mismatch: expected {}, got {}",
                 self.gpu_state.num_nodes,
@@ -305,16 +361,16 @@ impl ClusteringActor {
             ));
         }
 
-        
         let mut cluster_nodes: Vec<Vec<u32>> = vec![Vec::new(); num_clusters as usize];
 
-        for (node_idx, &cluster_id) in gpu_result.iter().enumerate() {
+        for (gpu_idx, &cluster_id) in gpu_result.iter().enumerate() {
             if (cluster_id as usize) < cluster_nodes.len() {
-                cluster_nodes[cluster_id as usize].push(node_idx as u32);
+                let graph_node_id = self.translate_gpu_index(gpu_idx);
+                cluster_nodes[cluster_id as usize].push(graph_node_id);
             }
         }
 
-        
+
         let mut clusters = Vec::new();
         for (cluster_id, nodes) in cluster_nodes.into_iter().enumerate() {
             if !nodes.is_empty() {
@@ -353,7 +409,7 @@ impl ClusteringActor {
         &self,
         gpu_result: Vec<u32>,
     ) -> Result<Vec<Community>, String> {
-        if gpu_result.len() != self.gpu_state.num_nodes as usize {
+        if self.gpu_state.num_nodes > 0 && gpu_result.len() != self.gpu_state.num_nodes as usize {
             return Err(format!(
                 "GPU result size mismatch: expected {}, got {}",
                 self.gpu_state.num_nodes,
@@ -361,15 +417,15 @@ impl ClusteringActor {
             ));
         }
 
-        
         let mut community_nodes: std::collections::HashMap<u32, Vec<u32>> =
             std::collections::HashMap::new();
 
-        for (node_idx, &community_id) in gpu_result.iter().enumerate() {
+        for (gpu_idx, &community_id) in gpu_result.iter().enumerate() {
+            let graph_node_id = self.translate_gpu_index(gpu_idx);
             community_nodes
                 .entry(community_id)
                 .or_insert_with(Vec::new)
-                .push(node_idx as u32);
+                .push(graph_node_id);
         }
 
         
@@ -675,32 +731,93 @@ impl ClusteringActor {
         [0.0, 0.0, 0.0]
     }
 
-    
+    /// Count edges where both endpoints are in the node set (internal)
+    /// by downloading the CSR graph from the GPU.
+    /// Returns 0 if GPU edge data is unavailable.
     fn calculate_internal_edges(&self, nodes: &[u32]) -> usize {
-        
-        
-        let n = nodes.len();
-        if n < 2 {
-            0
-        } else {
-            
-            ((n * (n - 1)) as f32 * 0.3 / 2.0) as usize
+        if nodes.len() < 2 {
+            return 0;
         }
+
+        let node_set: std::collections::HashSet<u32> = nodes.iter().copied().collect();
+
+        if let Some(ref ctx) = self.shared_context {
+            if let Ok(uc) = ctx.unified_compute.lock() {
+                let n = uc.num_nodes;
+                let num_edges = uc.num_edges;
+                if n > 0 && num_edges > 0 {
+                    let mut row_offsets = vec![0i32; n + 1];
+                    let mut col_indices = vec![0i32; num_edges];
+                    use cust::memory::CopyDestination;
+                    if uc.edge_row_offsets.copy_to(&mut row_offsets).is_ok()
+                        && uc.edge_col_indices.copy_to(&mut col_indices).is_ok()
+                    {
+                        let mut internal_count = 0usize;
+                        for &node_id in nodes {
+                            let idx = node_id as usize;
+                            if idx < n {
+                                let start = row_offsets[idx] as usize;
+                                let end = row_offsets[idx + 1] as usize;
+                                for &neighbor in &col_indices[start..end.min(col_indices.len())] {
+                                    if node_set.contains(&(neighbor as u32)) {
+                                        internal_count += 1;
+                                    }
+                                }
+                            }
+                        }
+                        // Each internal edge counted twice (once from each endpoint)
+                        return internal_count / 2;
+                    }
+                }
+            }
+        }
+
+        // GPU edge data unavailable
+        0
     }
 
-    
+    /// Count edges where exactly one endpoint is in the node set (external)
+    /// by downloading the CSR graph from the GPU.
+    /// Returns 0 if GPU edge data is unavailable.
     fn calculate_external_edges(&self, nodes: &[u32]) -> usize {
-        
-        let n = nodes.len();
-        let total_nodes = self.gpu_state.num_nodes as usize;
-        let external_nodes = total_nodes - n;
-
-        if external_nodes > 0 {
-            
-            (n * external_nodes / 20).max(1)
-        } else {
-            0
+        if nodes.is_empty() {
+            return 0;
         }
+
+        let node_set: std::collections::HashSet<u32> = nodes.iter().copied().collect();
+
+        if let Some(ref ctx) = self.shared_context {
+            if let Ok(uc) = ctx.unified_compute.lock() {
+                let n = uc.num_nodes;
+                let num_edges = uc.num_edges;
+                if n > 0 && num_edges > 0 {
+                    let mut row_offsets = vec![0i32; n + 1];
+                    let mut col_indices = vec![0i32; num_edges];
+                    use cust::memory::CopyDestination;
+                    if uc.edge_row_offsets.copy_to(&mut row_offsets).is_ok()
+                        && uc.edge_col_indices.copy_to(&mut col_indices).is_ok()
+                    {
+                        let mut external_count = 0usize;
+                        for &node_id in nodes {
+                            let idx = node_id as usize;
+                            if idx < n {
+                                let start = row_offsets[idx] as usize;
+                                let end = row_offsets[idx + 1] as usize;
+                                for &neighbor in &col_indices[start..end.min(col_indices.len())] {
+                                    if !node_set.contains(&(neighbor as u32)) {
+                                        external_count += 1;
+                                    }
+                                }
+                            }
+                        }
+                        return external_count;
+                    }
+                }
+            }
+        }
+
+        // GPU edge data unavailable
+        0
     }
 
     
@@ -737,7 +854,8 @@ impl Handler<SetSharedGPUContext> for ClusteringActor {
     fn handle(&mut self, msg: SetSharedGPUContext, _ctx: &mut Self::Context) -> Self::Result {
         info!("ClusteringActor: Received SharedGPUContext from ResourceActor");
         self.shared_context = Some(msg.context);
-        
+        // Invalidate cached node_id_map so it gets rebuilt from the new context
+        self.node_id_map.clear();
         info!("ClusteringActor: SharedGPUContext stored successfully");
         Ok(())
     }
@@ -756,6 +874,7 @@ impl Handler<RunKMeans> for ClusteringActor {
         let mut actor_clone = Self {
             gpu_state: self.gpu_state.clone(),
             shared_context: self.shared_context.clone(),
+            node_id_map: self.node_id_map.clone(),
         };
 
         Box::pin(async move { actor_clone.perform_kmeans_clustering(msg.params).await })
@@ -772,9 +891,28 @@ impl Handler<RunCommunityDetection> for ClusteringActor {
         let mut actor_clone = Self {
             gpu_state: self.gpu_state.clone(),
             shared_context: self.shared_context.clone(),
+            node_id_map: self.node_id_map.clone(),
         };
 
         Box::pin(async move { actor_clone.perform_community_detection(msg.params).await })
+    }
+}
+
+impl Handler<UpdateGPUGraphData> for ClusteringActor {
+    type Result = Result<(), String>;
+
+    fn handle(&mut self, msg: UpdateGPUGraphData, _ctx: &mut Self::Context) -> Self::Result {
+        let num_nodes = msg.graph.nodes.len() as u32;
+        let num_edges = msg.graph.edges.len() as u32;
+        info!(
+            "ClusteringActor: UpdateGPUGraphData received — {} nodes, {} edges",
+            num_nodes, num_edges
+        );
+        self.gpu_state.num_nodes = num_nodes;
+        self.gpu_state.num_edges = num_edges;
+        // Force re-download of the node_id_map on next clustering operation
+        self.node_id_map.clear();
+        Ok(())
     }
 }
 
@@ -793,12 +931,13 @@ impl Handler<PerformGPUClustering> for ClusteringActor {
         let mut actor_clone = Self {
             gpu_state: self.gpu_state.clone(),
             shared_context: self.shared_context.clone(),
+            node_id_map: self.node_id_map.clone(),
         };
 
         Box::pin(async move {
             
             let params = KMeansParams {
-                num_clusters: msg.params.num_clusters.unwrap_or(5) as usize,
+                num_clusters: msg.params.num_clusters.unwrap_or(8) as usize,
                 max_iterations: msg.params.max_iterations,
                 tolerance: msg.params.convergence_threshold,
                 seed: None,

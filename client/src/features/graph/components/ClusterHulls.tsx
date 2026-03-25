@@ -2,6 +2,7 @@ import React, { useRef, useMemo, useEffect, useState } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { ConvexGeometry } from 'three/examples/jsm/geometries/ConvexGeometry.js';
+import { graphWorkerProxy } from '../managers/graphWorkerProxy';
 
 // ============================================================================
 // Types
@@ -41,7 +42,19 @@ const TICK_INTERVAL = 30;
 // Helpers
 // ============================================================================
 
-function getClusterKey(node: { metadata?: any }): string {
+/**
+ * Get cluster key from analytics buffer (cluster_id) when available,
+ * falling back to domain-based grouping when cluster_id is 0 or absent.
+ */
+function getClusterKey(node: { metadata?: any }, nodeIndex?: number, analyticsBuffer?: Float32Array | null): string {
+  // Prefer server-provided cluster_id from binary protocol V3 analytics
+  if (analyticsBuffer && nodeIndex !== undefined) {
+    const clusterId = analyticsBuffer[nodeIndex * 3]; // index 0 = cluster_id
+    if (clusterId > 0) {
+      return `cluster-${clusterId}`;
+    }
+  }
+  // Fallback to domain-based grouping
   return (
     node.metadata?.source_domain ??
     node.metadata?.domain ??
@@ -98,6 +111,7 @@ export const ClusterHulls: React.FC<ClusterHullsProps> = ({
   const groupRef = useRef<THREE.Group>(null);
   const frameCounter = useRef(0);
   const [tick, setTick] = useState(0);
+  const analyticsRef = useRef<Float32Array | null>(null);
 
   // ---- Early exit if feature is disabled ----
   // Respect both the visual clusterHulls.enabled toggle AND qualityGates.showClusters
@@ -108,20 +122,27 @@ export const ClusterHulls: React.FC<ClusterHullsProps> = ({
   const opacity = settings?.visualisation?.clusterHulls?.opacity ?? 0.08;
   const padding = settings?.visualisation?.clusterHulls?.padding ?? 0.15;
 
-  // ---- Increment tick every TICK_INTERVAL frames ----
+  // ---- Increment tick every TICK_INTERVAL frames and refresh analytics ----
   useFrame(() => {
     frameCounter.current += 1;
     if (frameCounter.current >= TICK_INTERVAL) {
       frameCounter.current = 0;
+      // Refresh analytics buffer from worker
+      graphWorkerProxy.getAnalyticsBuffer().then(buf => {
+        analyticsRef.current = buf.length > 0 ? buf : null;
+      }).catch(() => { /* ignore worker errors */ });
       setTick((t) => t + 1);
     }
   });
 
   // ---- Group nodes into clusters ----
   const clusterMap = useMemo(() => {
+    const analytics = analyticsRef.current;
     const map = new Map<string, string[]>();
-    for (const node of nodes) {
-      const key = getClusterKey(node);
+    for (let ni = 0; ni < nodes.length; ni++) {
+      const node = nodes[ni];
+      const nodeIndex = nodeIdToIndexMap.get(node.id);
+      const key = getClusterKey(node, nodeIndex, analytics);
       let arr = map.get(key);
       if (!arr) {
         arr = [];
@@ -130,7 +151,8 @@ export const ClusterHulls: React.FC<ClusterHullsProps> = ({
       arr.push(node.id);
     }
     return map;
-  }, [nodes]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nodes, nodeIdToIndexMap, tick]);
 
   // ---- Build hull geometries from current positions ----
   const hullEntries = useMemo(() => {
