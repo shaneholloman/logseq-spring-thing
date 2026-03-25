@@ -40,6 +40,9 @@ pub struct Community {
     pub density: f32,
 }
 
+/// Type alias for the shared node analytics map: node_id -> (cluster_id, anomaly_score, community_id)
+type NodeAnalyticsMap = Arc<std::sync::RwLock<std::collections::HashMap<u32, (u32, f32, u32)>>>;
+
 pub struct ClusteringActor {
 
     gpu_state: GPUState,
@@ -51,6 +54,10 @@ pub struct ClusteringActor {
     /// Populated lazily from the GPU `node_graph_id` buffer before clustering.
     /// When empty, raw buffer indices are used as-is (backward compat).
     node_id_map: Vec<u32>,
+
+    /// Shared analytics store — populated after clustering so the binary broadcast
+    /// path can embed real cluster_id values in V3 wire format (ADR-014 DL4 fix).
+    node_analytics: Option<NodeAnalyticsMap>,
 }
 
 impl ClusteringActor {
@@ -59,6 +66,7 @@ impl ClusteringActor {
             gpu_state: GPUState::default(),
             shared_context: None,
             node_id_map: Vec::new(),
+            node_analytics: None,
         }
     }
 
@@ -223,6 +231,22 @@ impl ClusteringActor {
             computation_time_ms: computation_time.as_millis() as u64,
         };
 
+        // ADR-014 DL4 fix: Populate shared node_analytics with cluster assignments
+        // so the V3 binary broadcast path carries real cluster_id values.
+        if let Some(ref analytics_map) = self.node_analytics {
+            if let Ok(mut map) = analytics_map.write() {
+                for (gpu_idx, &cluster_id) in assignments.iter().enumerate() {
+                    let node_id = self.translate_gpu_index(gpu_idx);
+                    let entry = map.entry(node_id).or_insert((0, 0.0, 0));
+                    entry.0 = cluster_id as u32; // cluster_id
+                }
+                info!(
+                    "ClusteringActor: Populated node_analytics with cluster assignments for {} nodes",
+                    assignments.len()
+                );
+            }
+        }
+
         Ok(KMeansResult {
             cluster_assignments: assignments,
             centroids,
@@ -320,6 +344,21 @@ impl ClusteringActor {
         let actual_community_sizes: Vec<usize> =
             communities.iter().map(|c| c.nodes.len()).collect();
         let actual_modularity = self.calculate_modularity(&communities);
+
+        // ADR-014 DL4 fix: Populate shared node_analytics with community assignments
+        if let Some(ref analytics_map) = self.node_analytics {
+            if let Ok(mut map) = analytics_map.write() {
+                for (gpu_idx, &community_label) in node_labels.iter().enumerate() {
+                    let node_id = self.translate_gpu_index(gpu_idx);
+                    let entry = map.entry(node_id).or_insert((0, 0.0, 0));
+                    entry.2 = community_label as u32; // community_id
+                }
+                info!(
+                    "ClusteringActor: Populated node_analytics with community assignments for {} nodes",
+                    node_labels.len()
+                );
+            }
+        }
 
         let stats = CommunityDetectionStats {
             total_communities: communities.len(),
@@ -883,6 +922,7 @@ impl Handler<RunKMeans> for ClusteringActor {
             gpu_state: self.gpu_state.clone(),
             shared_context: self.shared_context.clone(),
             node_id_map: self.node_id_map.clone(),
+            node_analytics: self.node_analytics.clone(),
         };
 
         Box::pin(async move { actor_clone.perform_kmeans_clustering(msg.params).await })
@@ -900,9 +940,19 @@ impl Handler<RunCommunityDetection> for ClusteringActor {
             gpu_state: self.gpu_state.clone(),
             shared_context: self.shared_context.clone(),
             node_id_map: self.node_id_map.clone(),
+            node_analytics: self.node_analytics.clone(),
         };
 
         Box::pin(async move { actor_clone.perform_community_detection(msg.params).await })
+    }
+}
+
+impl Handler<SetNodeAnalytics> for ClusteringActor {
+    type Result = ();
+
+    fn handle(&mut self, msg: SetNodeAnalytics, _ctx: &mut Self::Context) {
+        info!("ClusteringActor: Received shared node_analytics map");
+        self.node_analytics = Some(msg.node_analytics);
     }
 }
 
@@ -940,6 +990,7 @@ impl Handler<PerformGPUClustering> for ClusteringActor {
             gpu_state: self.gpu_state.clone(),
             shared_context: self.shared_context.clone(),
             node_id_map: self.node_id_map.clone(),
+            node_analytics: self.node_analytics.clone(),
         };
 
         Box::pin(async move {

@@ -55,12 +55,18 @@ impl SupervisedActorState {
 /// Analytics Supervisor Actor
 /// Manages the lifecycle of analytics-related GPU actors with proper error isolation.
 /// Analytics actors are considered non-critical - failures don't block physics.
+/// Type alias for the shared node analytics map: node_id -> (cluster_id, anomaly_score, community_id)
+type NodeAnalyticsMap = Arc<std::sync::RwLock<std::collections::HashMap<u32, (u32, f32, u32)>>>;
+
 pub struct AnalyticsSupervisor {
     /// Shared GPU context for analytics actors
     shared_context: Option<Arc<SharedGPUContext>>,
 
     /// Graph service address
     graph_service_addr: Option<Addr<crate::actors::GraphServiceSupervisor>>,
+
+    /// Shared node analytics map for cluster_id / anomaly_score / community_id (ADR-014 DL4 fix)
+    node_analytics: Option<NodeAnalyticsMap>,
 
     /// Child actor addresses
     clustering_actor: Option<Addr<ClusteringActor>>,
@@ -90,6 +96,7 @@ impl AnalyticsSupervisor {
         Self {
             shared_context: None,
             graph_service_addr: None,
+            node_analytics: None,
             clustering_actor: None,
             anomaly_detection_actor: None,
             pagerank_actor: None,
@@ -109,13 +116,13 @@ impl AnalyticsSupervisor {
 
         // Spawn ClusteringActor
         let clustering_actor = ClusteringActor::new().start();
-        self.clustering_actor = Some(clustering_actor);
+        self.clustering_actor = Some(clustering_actor.clone());
         self.clustering_state.is_running = true;
         debug!("AnalyticsSupervisor: ClusteringActor spawned");
 
         // Spawn AnomalyDetectionActor
         let anomaly_detection_actor = AnomalyDetectionActor::new().start();
-        self.anomaly_detection_actor = Some(anomaly_detection_actor);
+        self.anomaly_detection_actor = Some(anomaly_detection_actor.clone());
         self.anomaly_detection_state.is_running = true;
         debug!("AnalyticsSupervisor: AnomalyDetectionActor spawned");
 
@@ -125,7 +132,27 @@ impl AnalyticsSupervisor {
         self.pagerank_state.is_running = true;
         debug!("AnalyticsSupervisor: PageRankActor spawned");
 
+        // Distribute node_analytics to children if already available (ADR-014 DL4 fix)
+        self.distribute_node_analytics();
+
         info!("AnalyticsSupervisor: All child actors spawned successfully");
+    }
+
+    /// Send the shared node_analytics map to ClusteringActor and AnomalyDetectionActor
+    fn distribute_node_analytics(&self) {
+        if let Some(ref analytics) = self.node_analytics {
+            let msg = SetNodeAnalytics {
+                node_analytics: analytics.clone(),
+            };
+            if let Some(ref addr) = self.clustering_actor {
+                let _ = addr.try_send(msg.clone());
+                info!("AnalyticsSupervisor: node_analytics sent to ClusteringActor");
+            }
+            if let Some(ref addr) = self.anomaly_detection_actor {
+                let _ = addr.try_send(msg);
+                info!("AnalyticsSupervisor: node_analytics sent to AnomalyDetectionActor");
+            }
+        }
     }
 
     /// Distribute GPU context to child actors
@@ -278,6 +305,9 @@ impl AnalyticsSupervisor {
         if self.shared_context.is_some() {
             self.distribute_context(ctx);
         }
+
+        // Re-distribute node_analytics to restarted actors (ADR-014 DL4 fix)
+        self.distribute_node_analytics();
     }
 
     /// Calculate subsystem status
@@ -372,6 +402,16 @@ impl Handler<SetSharedGPUContext> for AnalyticsSupervisor {
         self.distribute_context(ctx);
 
         Ok(())
+    }
+}
+
+impl Handler<SetNodeAnalytics> for AnalyticsSupervisor {
+    type Result = ();
+
+    fn handle(&mut self, msg: SetNodeAnalytics, _ctx: &mut Self::Context) {
+        info!("AnalyticsSupervisor: Received SetNodeAnalytics — distributing to children");
+        self.node_analytics = Some(msg.node_analytics);
+        self.distribute_node_analytics();
     }
 }
 

@@ -262,6 +262,16 @@ impl Neo4jOntologyRepository {
             file_sha1,
             markdown_content,
             last_synced,
+            // Relationships not loaded from Neo4j node properties (stored as edges)
+            has_part: Vec::new(),
+            is_part_of: Vec::new(),
+            requires: Vec::new(),
+            depends_on: Vec::new(),
+            enables: Vec::new(),
+            relates_to: Vec::new(),
+            bridges_to: Vec::new(),
+            bridges_from: Vec::new(),
+            other_relationships: std::collections::HashMap::new(),
             properties: std::collections::HashMap::new(),
             additional_metadata,
         })
@@ -363,7 +373,7 @@ impl OntologyRepository for Neo4jOntologyRepository {
                 ))
             })?;
 
-        // Store parent relationships
+        // Store parent relationships (SUBCLASS_OF)
         for parent_iri in &class.parent_classes {
             let rel_query = "
                 MATCH (c:OwlClass {iri: $child_iri})
@@ -382,6 +392,90 @@ impl OntologyRepository for Neo4jOntologyRepository {
                         e
                     ))
                 })?;
+        }
+
+        // ADR-014: Store ALL semantic relationship types as :RELATES edges.
+        // Each relationship type maps to a RELATES edge with typed metadata.
+        let typed_relationships: Vec<(&str, &str, f64, &[String])> = vec![
+            ("has_part",     "mv:hasPart",     1.5, &class.has_part),
+            ("is_part_of",   "mv:isPartOf",    1.5, &class.is_part_of),
+            ("requires",     "mv:requires",    1.5, &class.requires),
+            ("depends_on",   "mv:dependsOn",   1.5, &class.depends_on),
+            ("enables",      "mv:enables",     1.5, &class.enables),
+            ("relates_to",   "mv:relatedTo",   1.0, &class.relates_to),
+            ("bridges_to",   "mv:bridgesTo",   1.0, &class.bridges_to),
+            ("bridges_from", "mv:bridgesFrom", 1.0, &class.bridges_from),
+        ];
+
+        for (rel_type, owl_iri, weight, targets) in &typed_relationships {
+            for target_label in *targets {
+                let clean_target = target_label
+                    .trim_start_matches("[[")
+                    .trim_end_matches("]]")
+                    .trim();
+                if clean_target.is_empty() { continue; }
+
+                let relates_query = "
+                    MATCH (child:OwlClass {iri: $child_iri})
+                    MATCH (target:OwlClass)
+                    WHERE target.label = $target_label
+                       OR target.iri = $target_label
+                       OR target.preferred_term = $target_label
+                    MERGE (child)-[r:RELATES {relationship_type: $rel_type, owl_property_iri: $owl_iri}]->(target)
+                    SET r.weight = $weight
+                ";
+
+                self.graph
+                    .run(query(relates_query)
+                        .param("child_iri", class.iri.clone())
+                        .param("target_label", clean_target.to_string())
+                        .param("rel_type", rel_type.to_string())
+                        .param("owl_iri", owl_iri.to_string())
+                        .param("weight", *weight))
+                    .await
+                    .map_err(|e| {
+                        OntologyRepositoryError::DatabaseError(format!(
+                            "Failed to store {} relationship: {}",
+                            rel_type, e
+                        ))
+                    })?;
+            }
+        }
+
+        // Store other_relationships (HashMap<String, Vec<String>>)
+        for (rel_name, targets) in &class.other_relationships {
+            for target_label in targets {
+                let clean_target = target_label
+                    .trim_start_matches("[[")
+                    .trim_end_matches("]]")
+                    .trim();
+                if clean_target.is_empty() { continue; }
+
+                let other_query = "
+                    MATCH (child:OwlClass {iri: $child_iri})
+                    MATCH (target:OwlClass)
+                    WHERE target.label = $target_label
+                       OR target.iri = $target_label
+                       OR target.preferred_term = $target_label
+                    MERGE (child)-[r:RELATES {relationship_type: $rel_type, owl_property_iri: $owl_iri}]->(target)
+                    SET r.weight = $weight
+                ";
+
+                self.graph
+                    .run(query(other_query)
+                        .param("child_iri", class.iri.clone())
+                        .param("target_label", clean_target.to_string())
+                        .param("rel_type", rel_name.clone())
+                        .param("owl_iri", format!("mv:{}", rel_name))
+                        .param("weight", 1.0_f64))
+                    .await
+                    .map_err(|e| {
+                        OntologyRepositoryError::DatabaseError(format!(
+                            "Failed to store {} relationship: {}",
+                            rel_name, e
+                        ))
+                    })?;
+            }
         }
 
         Ok(class.iri.clone())

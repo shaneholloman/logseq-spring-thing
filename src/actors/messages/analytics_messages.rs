@@ -226,3 +226,16 @@ pub struct UpdateComponentEdges {
     /// Edge list as (source_node_id, target_node_id) pairs
     pub edges: Vec<(u32, u32)>,
 }
+
+// ---------------------------------------------------------------------------
+// Node Analytics (ADR-014 Phase 2 — DL4 fix)
+// ---------------------------------------------------------------------------
+
+/// Inject the shared node_analytics map into an analytics actor so it can
+/// populate cluster_id / anomaly_score / community_id after computation.
+/// The map is `Arc<RwLock<HashMap<u32, (cluster_id, anomaly_score, community_id)>>>`.
+#[derive(Message, Clone)]
+#[rtype(result = "()")]
+pub struct SetNodeAnalytics {
+    pub node_analytics: std::sync::Arc<std::sync::RwLock<std::collections::HashMap<u32, (u32, f32, u32)>>>,
+}

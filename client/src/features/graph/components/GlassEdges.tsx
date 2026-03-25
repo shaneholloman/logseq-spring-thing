@@ -18,6 +18,8 @@ interface GlassEdgesProps {
 
 export interface GlassEdgesHandle {
   updatePoints(points: number[], count?: number): void;
+  /** Update per-instance colors. Array of [r,g,b] floats (0-1), 3 per edge. */
+  updateColors(colors: Float32Array, count: number): void;
 }
 
 /** Pre-allocated temp objects for matrix composition -- avoids per-frame GC. */
@@ -79,6 +81,7 @@ export const GlassEdges = forwardRef<GlassEdgesHandle, GlassEdgesProps>(
     const meshRef = useRef<THREE.InstancedMesh | null>(null);
     const edgeRevealRef = useRef(0);
     const totalEdgesRef = useRef(0);
+    const instanceColorsActiveRef = useRef(false);
     const EDGE_REVEAL_BATCH = 80;
 
     const { mesh, uniforms } = useMemo(() => {
@@ -96,6 +99,15 @@ export const GlassEdges = forwardRef<GlassEdgesHandle, GlassEdgesProps>(
       m.frustumCulled = false;
       m.count = 0;
 
+      // Pre-allocate instanceColor buffer for per-edge-type coloring.
+      // When populated via updateColors(), Three.js multiplies instance color
+      // with the material base color. Set material color to white when
+      // instance colors are active so the per-edge colors come through pure.
+      const colorArray = new Float32Array(MAX_EDGES * 3);
+      // Initialize to white (neutral multiply)
+      for (let ci = 0; ci < colorArray.length; ci++) colorArray[ci] = 1.0;
+      m.instanceColor = new THREE.InstancedBufferAttribute(colorArray, 3);
+
       // Initial population — first batch only, rest via progressive reveal
       if (points.length >= 6) {
         computeInstanceMatrices(m, points, EDGE_REVEAL_BATCH);
@@ -106,12 +118,16 @@ export const GlassEdges = forwardRef<GlassEdgesHandle, GlassEdgesProps>(
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    // Update material color and opacity when settings change
+    // Update material color and opacity when settings change.
+    // When per-instance colors are active (updateColors was called),
+    // keep base color white so instance colors come through pure.
     useEffect(() => {
       const mat = mesh.material as THREE.MeshPhysicalMaterial;
-      const targetColor = colorOverride || settings?.color;
-      if (targetColor && mat.color) {
-        mat.color.set(targetColor);
+      if (!instanceColorsActiveRef.current) {
+        const targetColor = colorOverride || settings?.color;
+        if (targetColor && mat.color) {
+          mat.color.set(targetColor);
+        }
       }
       if (settings?.opacity !== undefined) {
         mat.opacity = settings.opacity;
@@ -176,7 +192,28 @@ export const GlassEdges = forwardRef<GlassEdgesHandle, GlassEdgesProps>(
       [mesh],
     );
 
-    useImperativeHandle(ref, () => ({ updatePoints }), [updatePoints]);
+    // Update per-instance edge colors from a packed Float32Array [r,g,b, r,g,b, ...]
+    const updateColors = useCallback(
+      (colors: Float32Array, count: number) => {
+        if (!mesh.instanceColor) return;
+        const attr = mesh.instanceColor as THREE.InstancedBufferAttribute;
+        const dst = attr.array as Float32Array;
+        const len = Math.min(count * 3, dst.length, colors.length);
+        dst.set(colors.subarray(0, len));
+        attr.needsUpdate = true;
+        // When per-instance colors are active, set base color to white
+        // so the instance colors come through unmodified by material tint
+        instanceColorsActiveRef.current = count > 0;
+        const mat = mesh.material as THREE.MeshPhysicalMaterial;
+        if (count > 0 && mat.color) {
+          mat.color.setRGB(1, 1, 1);
+          mat.emissive.setRGB(0.3, 0.3, 0.3);
+        }
+      },
+      [mesh],
+    );
+
+    useImperativeHandle(ref, () => ({ updatePoints, updateColors }), [updatePoints, updateColors]);
 
     // Subtle emissive pulse on edges
     useFrame(({ clock }) => {

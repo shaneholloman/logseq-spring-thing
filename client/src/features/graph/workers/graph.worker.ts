@@ -128,6 +128,7 @@ export interface Edge {
   target: string;
   label?: string;
   weight?: number;
+  edgeType?: string;
   metadata?: Record<string, any>;
 }
 

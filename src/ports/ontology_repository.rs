@@ -87,6 +87,17 @@ pub struct OwlClass {
     pub markdown_content: Option<String>,
     pub last_synced: Option<chrono::DateTime<chrono::Utc>>,
 
+    // Semantic relationships (ADR-014: carry all relationship types to storage)
+    pub has_part: Vec<String>,
+    pub is_part_of: Vec<String>,
+    pub requires: Vec<String>,
+    pub depends_on: Vec<String>,
+    pub enables: Vec<String>,
+    pub relates_to: Vec<String>,
+    pub bridges_to: Vec<String>,
+    pub bridges_from: Vec<String>,
+    pub other_relationships: HashMap<String, Vec<String>>,
+
     // Additional metadata (JSON for extensibility)
     pub properties: HashMap<String, String>,
     pub additional_metadata: Option<String>,
@@ -118,6 +129,15 @@ impl Default for OwlClass {
             file_sha1: None,
             markdown_content: None,
             last_synced: None,
+            has_part: Vec::new(),
+            is_part_of: Vec::new(),
+            requires: Vec::new(),
+            depends_on: Vec::new(),
+            enables: Vec::new(),
+            relates_to: Vec::new(),
+            bridges_to: Vec::new(),
+            bridges_from: Vec::new(),
+            other_relationships: HashMap::new(),
             properties: HashMap::new(),
             additional_metadata: None,
         }

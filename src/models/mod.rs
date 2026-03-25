@@ -12,6 +12,7 @@ pub mod simulation_params;
 pub mod user_settings;
 pub mod workspace;
 
+pub use edge::SemanticEdgeType;
 pub use metadata::MetadataStore;
 pub use pagination::PaginationParams;
 pub use protected_settings::ProtectedSettings;

@@ -797,3 +797,18 @@ impl Handler<AdjustConstraintWeights> for GPUManagerActor {
         )
     }
 }
+
+/// ADR-014 DL4 fix: Forward shared node_analytics map to AnalyticsSupervisor
+/// so ClusteringActor and AnomalyDetectionActor can populate it after computation.
+impl Handler<SetNodeAnalytics> for GPUManagerActor {
+    type Result = ();
+
+    fn handle(&mut self, msg: SetNodeAnalytics, ctx: &mut Self::Context) {
+        info!("GPUManagerActor: Forwarding SetNodeAnalytics to AnalyticsSupervisor");
+        if let Ok(supervisors) = self.get_supervisors(ctx) {
+            let _ = supervisors.analytics.try_send(msg);
+        } else {
+            warn!("GPUManagerActor: Supervisors not available for SetNodeAnalytics");
+        }
+    }
+}

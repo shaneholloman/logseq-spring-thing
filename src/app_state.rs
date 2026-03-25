@@ -683,6 +683,13 @@ impl AppState {
             // Note: The actor is spawned by GPUManagerActor, so we'll retrieve it after initialization
             info!("[AppState::new] StressMajorizationActor will be available after GPU initialization");
 
+            // ADR-014 DL4 fix: Send shared node_analytics to GPUManagerActor so it reaches
+            // ClusteringActor and AnomalyDetectionActor via AnalyticsSupervisor.
+            gpu_manager.do_send(crate::actors::messages::SetNodeAnalytics {
+                node_analytics: node_analytics.clone(),
+            });
+            info!("[AppState::new] Sent SetNodeAnalytics to GPUManagerActor");
+
             (Some(gpu_manager), None, Some(shortest_path), Some(connected_components))
         };
 

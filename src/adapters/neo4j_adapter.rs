@@ -574,11 +574,11 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
             info!("Loaded {} OwlClass nodes as graph nodes", nodes.len());
         }
 
-        // Load edges — try GraphNode EDGE relationships first, then ontology relationships
+        // ADR-014: Always load ALL edge types — no either/or branching.
         let mut edges = Vec::new();
 
-        if iri_to_id.is_empty() {
-            // Traditional GraphNode edges
+        // 1) Load GraphNode EDGE relationships
+        {
             let edges_query = Query::new("MATCH (s:GraphNode)-[r:EDGE]->(t:GraphNode) RETURN s.id AS source, t.id AS target, r.weight AS weight, r.relation_type AS relation_type, r.owl_property_iri AS owl_property_iri, r.metadata AS metadata".to_string());
 
             let mut result = self.graph.execute(edges_query).await.map_err(|e| {
@@ -603,8 +603,13 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
 
                 edges.push(edge);
             }
-        } else {
-            // Ontology relationships: SUBCLASS_OF and RELATES
+
+            debug!("Loaded {} GraphNode EDGE relationships", edges.len());
+        }
+
+        // 2) Load ontology relationships (SUBCLASS_OF + RELATES between OwlClass nodes)
+        //    Map OwlClass IRIs to numeric node IDs via iri_to_id.
+        if !iri_to_id.is_empty() {
             let onto_edges_query = Query::new(
                 "MATCH (s:OwlClass)-[r]->(t:OwlClass)
                  WHERE type(r) IN ['SUBCLASS_OF', 'RELATES']
@@ -612,7 +617,8 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
                         t.iri AS target_iri,
                         type(r) AS rel_type,
                         r.relationship_type AS relationship_type,
-                        r.confidence AS confidence
+                        r.weight AS weight,
+                        r.owl_property_iri AS owl_property_iri
                  ".to_string()
             );
 
@@ -620,6 +626,7 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
                 KnowledgeGraphRepositoryError::DatabaseError(format!("Failed to load ontology edges: {}", e))
             })?;
 
+            let pre_count = edges.len();
             while let Ok(Some(row)) = onto_result.next().await {
                 let source_iri: String = match row.get("source_iri") {
                     Ok(v) => v,
@@ -642,19 +649,21 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
 
                 let rel_type: String = row.get("rel_type").unwrap_or_else(|_| "RELATES".to_string());
                 let relationship_type: Option<String> = row.get("relationship_type").ok();
-                let confidence: f64 = row.get("confidence").unwrap_or(1.0);
+                let weight: f64 = row.get("weight").unwrap_or(1.0);
+                let owl_property_iri: Option<String> = row.get("owl_property_iri").ok();
 
                 let display_type = relationship_type.unwrap_or(rel_type);
 
-                let mut edge = Edge::new(source_id, target_id, confidence as f32);
+                let mut edge = Edge::new(source_id, target_id, weight as f32);
                 edge.edge_type = Some(display_type);
+                edge.owl_property_iri = owl_property_iri;
                 edges.push(edge);
             }
 
-            info!("Loaded {} ontology edges", edges.len());
+            info!("Loaded {} ontology edges (SUBCLASS_OF + RELATES)", edges.len() - pre_count);
         }
 
-        debug!("Loaded {} base edges from Neo4j", edges.len());
+        debug!("Loaded {} total base edges from Neo4j", edges.len());
 
         // Enrich: Load ontology SUBCLASS_OF relationships and map to GraphNode edges.
         // OwlClass nodes have labels that match GraphNode labels — use this to bridge

@@ -411,8 +411,8 @@ impl GraphStateActor {
             compact_id += 1;
         }
 
-        // Generate edges (using compact IDs since nodes already have them)
-        Self::generate_edges_from_metadata(&mut new_graph_data, &metadata);
+        // ADR-014: Edges come from Neo4j (stored by github_sync_service and
+        // neo4j_ontology_repository). No client-side edge generation.
 
         self.graph_data = Arc::new(new_graph_data);
         self.next_node_id.store(compact_id, std::sync::atomic::Ordering::SeqCst);
@@ -518,135 +518,8 @@ impl GraphStateActor {
         }
     }
 
-    
-    fn generate_edges_from_metadata(graph_data: &mut GraphData, metadata: &MetadataStore) {
-        let mut edge_set: HashSet<(u32, u32)> = HashSet::new();
-
-        // Build lookup maps: label (lowercase, without .md) -> node_id
-        let mut label_to_node: HashMap<String, u32> = HashMap::new();
-        let mut metadata_id_to_node: HashMap<String, u32> = HashMap::new();
-        for node in &graph_data.nodes {
-            let label_key = node.label.to_lowercase().trim_end_matches(".md").to_string();
-            label_to_node.insert(label_key, node.id);
-            metadata_id_to_node.insert(node.metadata_id.clone(), node.id);
-        }
-
-        // 1) Edges from is_subclass_of relationships in metadata
-        for (metadata_id, file_meta) in metadata.iter() {
-            if file_meta.is_subclass_of.is_empty() {
-                continue;
-            }
-            let source_id = match metadata_id_to_node.get(metadata_id) {
-                Some(id) => *id,
-                None => continue,
-            };
-            for parent_label in &file_meta.is_subclass_of {
-                let parent_key = parent_label.to_lowercase();
-                if let Some(&target_id) = label_to_node.get(&parent_key) {
-                    if source_id != target_id && edge_set.insert((source_id, target_id)) {
-                        graph_data.edges.push(
-                            Edge::new(source_id, target_id, 1.0)
-                                .with_edge_type("is_subclass_of".to_string()),
-                        );
-                    }
-                }
-            }
-        }
-
-        // 2) Edges from topic_counts (cross-references between files)
-        for (metadata_id, file_meta) in metadata.iter() {
-            if file_meta.topic_counts.is_empty() {
-                continue;
-            }
-            let source_id = match metadata_id_to_node.get(metadata_id) {
-                Some(id) => *id,
-                None => continue,
-            };
-            for (topic, count) in &file_meta.topic_counts {
-                let topic_key = topic.to_lowercase();
-                if let Some(&target_id) = label_to_node.get(&topic_key) {
-                    if source_id != target_id && edge_set.insert((source_id, target_id)) {
-                        let weight = (*count as f32 * 0.3).min(1.0);
-                        graph_data.edges.push(
-                            Edge::new(source_id, target_id, weight)
-                                .with_edge_type("reference".to_string()),
-                        );
-                    }
-                }
-            }
-        }
-
-        // 3) Edges from shared namespace prefix (e.g., "underwear--*" files are related)
-        let mut prefix_groups: HashMap<String, Vec<u32>> = HashMap::new();
-        for node in &graph_data.nodes {
-            let name = node.label.to_lowercase().trim_end_matches(".md").to_string();
-            // Extract prefix before "--" separator (namespace convention)
-            if let Some(prefix) = name.split("--").next() {
-                if name.contains("--") {
-                    prefix_groups.entry(prefix.to_string())
-                        .or_default()
-                        .push(node.id);
-                }
-            }
-        }
-        for (_, group_nodes) in &prefix_groups {
-            if group_nodes.len() > 1 && group_nodes.len() <= 50 {
-                for i in 0..group_nodes.len() {
-                    for j in (i + 1)..group_nodes.len() {
-                        if edge_set.insert((group_nodes[i], group_nodes[j])) {
-                            graph_data.edges.push(
-                                Edge::new(group_nodes[i], group_nodes[j], 0.3)
-                                    .with_edge_type("namespace".to_string()),
-                            );
-                        }
-                    }
-                }
-            }
-        }
-
-        info!("Generated {} edges from metadata relationships (subclass + references + namespace)",
-              graph_data.edges.len());
-    }
-
-    /// Generate namespace edges from node labels alone (no metadata needed).
-    /// Used on startup / reload when edges weren't persisted to Neo4j.
-    fn generate_edges_from_labels(graph_data: &mut GraphData) {
-        let mut edge_set: HashSet<(u32, u32)> = HashSet::new();
-        // Collect existing edges to avoid duplicates
-        for edge in &graph_data.edges {
-            edge_set.insert((edge.source, edge.target));
-        }
-
-        // Group by namespace prefix (e.g., "material--merino" → "material")
-        let mut prefix_groups: HashMap<String, Vec<u32>> = HashMap::new();
-        for node in &graph_data.nodes {
-            let name = node.label.to_lowercase().trim_end_matches(".md").to_string();
-            if let Some(prefix) = name.split("--").next() {
-                if name.contains("--") {
-                    prefix_groups.entry(prefix.to_string()).or_default().push(node.id);
-                }
-            }
-        }
-
-        let mut generated = 0usize;
-        for (_, group_nodes) in &prefix_groups {
-            if group_nodes.len() > 1 && group_nodes.len() <= 50 {
-                for i in 0..group_nodes.len() {
-                    for j in (i + 1)..group_nodes.len() {
-                        if edge_set.insert((group_nodes[i], group_nodes[j])) {
-                            graph_data.edges.push(
-                                Edge::new(group_nodes[i], group_nodes[j], 0.3)
-                                    .with_edge_type("namespace".to_string()),
-                            );
-                            generated += 1;
-                        }
-                    }
-                }
-            }
-        }
-        info!("Generated {} namespace edges from node labels", generated);
-    }
-
+    // ADR-014: generate_edges_from_metadata() and generate_edges_from_labels() deleted.
+    // All edges now come from Neo4j (stored by github_sync_service + neo4j_ontology_repository).
 
     fn add_nodes_from_metadata(&mut self, metadata: MetadataStore) -> Result<(), String> {
         let mut added_count = 0;
@@ -670,15 +543,11 @@ impl GraphStateActor {
         self.next_node_id.store(current_id, std::sync::atomic::Ordering::SeqCst);
         info!("Added {} new nodes from metadata", added_count);
 
-        // Merge new metadata into stored metadata and regenerate all edges.
-        // Clone first to avoid borrow conflict with self.graph_data.
+        // Merge new metadata into stored metadata for node configuration.
         for (id, meta) in metadata {
             self.metadata_store.insert(id, meta);
         }
-        let full_metadata = self.metadata_store.clone();
-        let graph_data_mut = Arc::make_mut(&mut self.graph_data);
-        graph_data_mut.edges.clear();
-        Self::generate_edges_from_metadata(graph_data_mut, &full_metadata);
+        // ADR-014: Edges come from Neo4j, not generated client-side.
 
         Ok(())
     }
@@ -863,13 +732,7 @@ impl Actor for GraphStateActor {
                     // Update actor state with loaded graph (already Arc'd)
                     act.graph_data = arc_graph_data.clone();
 
-                    // If no edges were loaded but we have nodes, generate from labels
-                    // BEFORE remapping, since generate_edges_from_labels uses original IDs
-                    if act.graph_data.edges.is_empty() && !act.graph_data.nodes.is_empty() {
-                        info!("No edges loaded from Neo4j — generating from node labels");
-                        let graph_data_mut = Arc::make_mut(&mut act.graph_data);
-                        Self::generate_edges_from_labels(graph_data_mut);
-                    }
+                    // ADR-014: No fallback edge generation. Edges come from Neo4j.
 
                     // Remap all node IDs to compact 0..N-1 and translate edge src/tgt.
                     // This MUST happen before node_map rebuild and classification.
@@ -1228,12 +1091,7 @@ impl Handler<ReloadGraphFromDatabase> for GraphStateActor {
                         // Update actor state with reloaded graph
                         act.graph_data = arc_graph_data.clone();
 
-                        // Generate edges before remap (uses original IDs)
-                        if act.graph_data.edges.is_empty() && !act.graph_data.nodes.is_empty() {
-                            info!("ReloadGraphFromDatabase: No edges — generating from node labels");
-                            let graph_data_mut = Arc::make_mut(&mut act.graph_data);
-                            Self::generate_edges_from_labels(graph_data_mut);
-                        }
+                        // ADR-014: No fallback edge generation. Edges come from Neo4j.
 
                         // Remap all IDs to compact 0..N-1
                         act.remap_to_compact_ids();

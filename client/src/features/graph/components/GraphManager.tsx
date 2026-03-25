@@ -42,6 +42,35 @@ const DOMAIN_COLORS: Record<string, string> = {
 };
 const DEFAULT_DOMAIN_COLOR = '#90A4AE'; // Grey
 
+// Edge type to color mapping (DDD EdgeType enum from ddd-semantic-pipeline.md)
+// Colors are chosen to visually distinguish relationship semantics at a glance.
+const EDGE_TYPE_COLORS: Record<string, THREE.Color> = {
+  'hierarchical':  new THREE.Color('#FFD700'),   // gold — strongest relationship
+  'subclass':      new THREE.Color('#FFD700'),   // gold alias
+  'structural':    new THREE.Color('#4FC3F7'),   // blue
+  'has_part':      new THREE.Color('#4FC3F7'),   // blue alias
+  'is_part_of':    new THREE.Color('#4FC3F7'),   // blue alias
+  'dependency':    new THREE.Color('#81C784'),   // green
+  'requires':      new THREE.Color('#81C784'),   // green alias
+  'depends_on':    new THREE.Color('#81C784'),   // green alias
+  'enables':       new THREE.Color('#81C784'),   // green alias
+  'associative':   new THREE.Color('#CE93D8'),   // purple
+  'relates_to':    new THREE.Color('#CE93D8'),   // purple alias
+  'bridge':        new THREE.Color('#FF7043'),   // orange — cross-domain
+  'bridges_to':    new THREE.Color('#FF7043'),   // orange alias
+  'bridges_from':  new THREE.Color('#FF7043'),   // orange alias
+  'explicit_link': new THREE.Color('#FFFFFF'),   // white — default wikilink
+  'namespace':     new THREE.Color('#78909C'),   // grey — weakest grouping
+  'inferred':      new THREE.Color('#B0BEC5'),   // light grey — reasoner output
+};
+const DEFAULT_EDGE_COLOR = new THREE.Color('#AAAAAA');
+
+/** Resolve edge type string to a pre-allocated THREE.Color. */
+function getEdgeTypeColor(edgeType?: string): THREE.Color {
+  if (!edgeType) return DEFAULT_EDGE_COLOR;
+  return EDGE_TYPE_COLORS[edgeType] ?? EDGE_TYPE_COLORS[edgeType.toLowerCase()] ?? DEFAULT_EDGE_COLOR;
+}
+
 // O(1) domain color lookup
 const getDomainColor = (domain?: string): string => {
   return domain && DOMAIN_COLORS[domain] ? DOMAIN_COLORS[domain] : DEFAULT_DOMAIN_COLOR;
@@ -309,6 +338,8 @@ const GraphManager: React.FC<GraphManagerProps> = ({ onDragStateChange }) => {
   // Pre-allocated buffers to eliminate per-frame array allocation GC pressure
   const edgeBufferRef = useRef<number[]>([]);
   const highlightBufferRef = useRef<number[]>([]);
+  // Per-edge RGB color buffer for edge-type-based coloring (3 floats per edge)
+  const edgeColorBufferRef = useRef<Float32Array>(new Float32Array(0));
   const [nodesAreAtOrigin, setNodesAreAtOrigin] = useState(false)
 
   const [forceUpdate, setForceUpdate] = useState(0)
@@ -438,6 +469,14 @@ const GraphManager: React.FC<GraphManagerProps> = ({ onDragStateChange }) => {
         const newEdgePoints = edgeBufferRef.current;
         let edgePointIdx = 0;
 
+        // Per-edge color buffer: 3 floats (RGB) per edge, grows as needed
+        const edgeColorNeeded = edgeCount * 3;
+        if (edgeColorBufferRef.current.length < edgeColorNeeded) {
+          edgeColorBufferRef.current = new Float32Array(edgeColorNeeded);
+        }
+        const edgeColors = edgeColorBufferRef.current;
+        let edgeColorIdx = 0;
+
         // Cache drag state outside the loop (hot path — avoid ref access per edge)
         const isDragging = dragDataRef.current.isDragging;
         const dragNodeId = isDragging ? dragDataRef.current.nodeId : null;
@@ -510,6 +549,12 @@ const GraphManager: React.FC<GraphManagerProps> = ({ onDragStateChange }) => {
                 newEdgePoints[edgePointIdx++] = tempTargetOffset.x;
                 newEdgePoints[edgePointIdx++] = tempTargetOffset.y;
                 newEdgePoints[edgePointIdx++] = tempTargetOffset.z;
+
+                // Write per-edge color from edge type
+                const eColor = getEdgeTypeColor(edge.edgeType);
+                edgeColors[edgeColorIdx++] = eColor.r;
+                edgeColors[edgeColorIdx++] = eColor.g;
+                edgeColors[edgeColorIdx++] = eColor.b;
               }
             }
           }
@@ -598,6 +643,11 @@ const GraphManager: React.FC<GraphManagerProps> = ({ onDragStateChange }) => {
         // Imperative edge update: push buffer + count directly (no per-frame slice allocation)
         if (edgeFlowRef.current) {
           edgeFlowRef.current.updatePoints(newEdgePoints, edgePointIdx);
+          // Push per-edge-type colors (edgeColorIdx / 3 = number of edges with color data)
+          const edgeCountWithColor = edgeColorIdx / 3;
+          if (edgeCountWithColor > 0) {
+            edgeFlowRef.current.updateColors(edgeColors, edgeCountWithColor);
+          }
         } else {
           edgeUpdatePendingRef.current = newEdgePoints.slice(0, edgePointIdx);
         }

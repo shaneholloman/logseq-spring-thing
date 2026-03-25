@@ -90,7 +90,7 @@ pub use analytics_messages::{
     ComputePageRank, ComputeSSSP, ComputeShortestPaths, ExportClusterAssignments,
     GetClusteringResults, GetClusteringStatus, GetPageRankResult, KMeansParams, KMeansResult,
     PerformGPUClustering, RunAnomalyDetection, RunCommunityDetection, RunKMeans,
-    StartGPUClustering, UpdateComponentEdges,
+    SetNodeAnalytics, StartGPUClustering, UpdateComponentEdges,
 };
 
 // --- agent_messages ---

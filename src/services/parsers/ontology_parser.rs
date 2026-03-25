@@ -739,6 +739,16 @@ impl OntologyParser {
             file_sha1: None,
             markdown_content: Some(block.raw_block.clone()),
             last_synced: None,
+            // ADR-014: Carry all relationship types through to storage
+            has_part: block.has_part.clone(),
+            is_part_of: block.is_part_of.clone(),
+            requires: block.requires.clone(),
+            depends_on: block.depends_on.clone(),
+            enables: block.enables.clone(),
+            relates_to: block.relates_to.clone(),
+            bridges_to: block.bridges_to.clone(),
+            bridges_from: block.bridges_from.clone(),
+            other_relationships: block.other_relationships.clone(),
             properties,
             additional_metadata: None,
         }]

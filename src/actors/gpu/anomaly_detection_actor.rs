@@ -29,12 +29,19 @@ pub struct AnomalyNode {
     pub features: Vec<String>,
 }
 
+/// Type alias for the shared node analytics map: node_id -> (cluster_id, anomaly_score, community_id)
+type NodeAnalyticsMap = Arc<std::sync::RwLock<std::collections::HashMap<u32, (u32, f32, u32)>>>;
+
 pub struct AnomalyDetectionActor {
-    
+
     gpu_state: GPUState,
 
-    
+
     shared_context: Option<Arc<SharedGPUContext>>,
+
+    /// Shared analytics store — populated after anomaly detection so the binary broadcast
+    /// path can embed real anomaly_score values in V3 wire format (ADR-014 DL4 fix).
+    node_analytics: Option<NodeAnalyticsMap>,
 }
 
 impl AnomalyDetectionActor {
@@ -42,6 +49,7 @@ impl AnomalyDetectionActor {
         Self {
             gpu_state: GPUState::default(),
             shared_context: None,
+            node_analytics: None,
         }
     }
 
@@ -1154,7 +1162,42 @@ impl Handler<RunAnomalyDetection> for AnomalyDetectionActor {
             }
         };
 
-        Box::pin(future.into_actor(self).map(|result, _actor, _ctx| result))
+        Box::pin(future.into_actor(self).map(|result, actor, _ctx| {
+            // ADR-014 DL4 fix: Populate shared node_analytics with anomaly scores
+            // so the V3 binary broadcast path carries real anomaly_score values.
+            if let Ok(ref anomaly_result) = result {
+                if let Some(ref analytics_map) = actor.node_analytics {
+                    if let Ok(mut map) = analytics_map.write() {
+                        // Populate from LOF scores (per-node)
+                        if let Some(ref lof_scores) = anomaly_result.lof_scores {
+                            for (i, &score) in lof_scores.iter().enumerate() {
+                                let entry = map.entry(i as u32).or_insert((0, 0.0, 0));
+                                entry.1 = score; // anomaly_score
+                            }
+                        }
+                        // Populate from Z-Score values (per-node)
+                        if let Some(ref zscore_values) = anomaly_result.zscore_values {
+                            for (i, &score) in zscore_values.iter().enumerate() {
+                                let entry = map.entry(i as u32).or_insert((0, 0.0, 0));
+                                entry.1 = score.abs(); // anomaly_score
+                            }
+                        }
+                        // Populate from anomaly list (for methods without full score vectors)
+                        if anomaly_result.lof_scores.is_none() && anomaly_result.zscore_values.is_none() {
+                            for anomaly in &anomaly_result.anomalies {
+                                let entry = map.entry(anomaly.node_id).or_insert((0, 0.0, 0));
+                                entry.1 = anomaly.anomaly_score;
+                            }
+                        }
+                        info!(
+                            "AnomalyDetectionActor: Populated node_analytics with anomaly scores for {} entries",
+                            map.len()
+                        );
+                    }
+                }
+            }
+            result
+        }))
     }
 }
 
@@ -1175,8 +1218,17 @@ impl Handler<SetSharedGPUContext> for AnomalyDetectionActor {
     fn handle(&mut self, msg: SetSharedGPUContext, _ctx: &mut Self::Context) -> Self::Result {
         info!("AnomalyDetectionActor: Received SharedGPUContext from ResourceActor");
         self.shared_context = Some(msg.context);
-        
+
         info!("AnomalyDetectionActor: SharedGPUContext stored successfully");
         Ok(())
+    }
+}
+
+impl Handler<SetNodeAnalytics> for AnomalyDetectionActor {
+    type Result = ();
+
+    fn handle(&mut self, msg: SetNodeAnalytics, _ctx: &mut Self::Context) {
+        info!("AnomalyDetectionActor: Received shared node_analytics map");
+        self.node_analytics = Some(msg.node_analytics);
     }
 }
