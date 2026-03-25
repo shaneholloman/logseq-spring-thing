@@ -722,7 +722,24 @@ export const settingsApi = {
       promises.push(settingsApi.updateVisualSettings(visualUpdates));
     }
     if (Object.keys(clusteringUpdates).length > 0) {
-      promises.push(axios.post(`${API_BASE}/api/clustering/algorithm`, clusteringUpdates));
+      // Build complete clustering config with defaults for required fields
+      const clusteringConfig = {
+        algorithm: clusteringUpdates.algorithm || 'none',
+        numClusters: clusteringUpdates.clusterCount || clusteringUpdates.numClusters || 6,
+        resolution: clusteringUpdates.resolution || 1.0,
+        iterations: clusteringUpdates.iterations || 30,
+        exportAssignments: clusteringUpdates.exportAssignments ?? true,
+        autoUpdate: clusteringUpdates.autoUpdate ?? false,
+      };
+      // Configure then start clustering
+      promises.push(
+        axios.post(`${API_BASE}/api/clustering/configure`, clusteringConfig)
+          .then(() => {
+            if (clusteringConfig.algorithm !== 'none') {
+              return axios.post(`${API_BASE}/api/clustering/start`, {});
+            }
+          })
+      );
     }
 
     if (promises.length > 0) {

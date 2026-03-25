@@ -1208,6 +1208,9 @@ function setNestedValue(obj: Record<string, unknown>, path: string, value: unkno
     const key = keys[i];
     if (!(key in current) || typeof current[key] !== 'object' || current[key] === null) {
       current[key] = {};
+    } else {
+      // Shallow-clone this level to avoid writing to frozen Immer objects
+      current[key] = { ...(current[key] as Record<string, unknown>) };
     }
     current = current[key] as Record<string, unknown>;
   }

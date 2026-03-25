@@ -88,11 +88,11 @@ export const UnifiedSettingsTabContent: React.FC<UnifiedSettingsTabContentProps>
         current[keys[keys.length - 1]] = value;
       });
 
-      // For power user only settings, also persist to server
-      if (field.isPowerUserOnly && user) {
-        // Server persistence would happen here via settingsApi
-        // This is handled by updateSettings if persistSettingsOnServer is true
-      }
+      // Push to server via autoSaveManager (debounced).
+      // updateSettings only modifies the local Immer draft;
+      // the server sync must be triggered explicitly.
+      const { autoSaveManager } = await import('../../../../store/autoSaveManager');
+      autoSaveManager.queueChange(path, value);
 
       setSavingField(null);
     } catch (error) {
