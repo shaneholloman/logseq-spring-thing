@@ -69,21 +69,26 @@ function getClusterKey(
     node.metadata?.cluster;
   if (domain && domain !== 'unknown') return domain;
 
-  // 3. Extract domain from label prefix (e.g., "BC-0034-nonce" → "BC",
-  //    "AI-0411-Privacy..." → "AI", "mv:Avatar" → "MV")
+  // 3. Extract domain from source_file prefix (most reliable — ontology IRI encoding)
+  const sourceFile = node.metadata?.source_file ?? '';
+  const sfMatch = sourceFile.match(/^(BC|AI|MV|RB|TC|DT|NGM)[-_]/i);
+  if (sfMatch) return sfMatch[1].toUpperCase();
+
+  // 4. Extract domain from label prefix (e.g., "BC-0034-nonce" → "BC")
   const label = node.label ?? node.metadata?.label ?? '';
-  const prefixMatch = label.match(/^(BC|AI|MV|RB|TC|DT|NGM|bc|ai|mv|rb|tc|dt|ngm)[-:]/i);
+  const prefixMatch = label.match(/^(BC|AI|MV|RB|TC|DT|NGM|bc|ai|mv|rb|tc|dt|ngm)[-:_]/i);
   if (prefixMatch) return prefixMatch[1].toUpperCase();
 
-  // 4. Detect domain from common keywords in label
-  if (label.match(/Blockchain|Crypto|Token|DeFi|Smart Contract|Bitcoin|Ethereum|Consensus/i)) return 'BC';
-  if (label.match(/Artificial Intelligence|Machine Learning|Neural|NLP|Deep Learning|Agent(?!$)/i)) return 'AI';
-  if (label.match(/Metaverse|VR|AR|XR|Avatar|Render|Digital Twin|Hologram/i)) return 'MV';
-  if (label.match(/Robot|Drone|Sensor|IoT|Actuator/i)) return 'RB';
-  if (label.match(/Security|Privacy|Auth|Encrypt|Access Control|Firewall/i)) return 'SEC';
-  if (label.match(/Network|Protocol|API|Infrastructure|Server|Cloud/i)) return 'INFRA';
+  // 5. Detect domain from keywords in label (expanded for better coverage)
+  if (label.match(/Blockchain|Crypto|Token|DeFi|Smart Contract|Bitcoin|Ethereum|Consensus|ERC\d|Staking|Wallet|Ledger|Mining|DAO|DApp|Solidity|Proof.of/i)) return 'BC';
+  if (label.match(/Artificial Intelligence|Machine Learning|Neural|NLP|Deep Learning|Chatbot|GPT|LLM|Transformer|Embedding|Inference|Generative|Anthropic|Claude|Reinforcement|Classification|Prompt/i)) return 'AI';
+  if (label.match(/Metaverse|VR|AR|XR|Avatar|Render|Digital Twin|Hologram|Augmented|Virtual Reality|Mixed Reality|Spatial|Haptic|Immersive|Gaming|3D|Scene/i)) return 'MV';
+  if (label.match(/Robot|Drone|Sensor|IoT|Actuator|Autonomous/i)) return 'RB';
+  if (label.match(/Security|Privacy|Auth|Encrypt|Access Control|Firewall|Vulnerability|Threat|Compliance|GDPR/i)) return 'SEC';
+  if (label.match(/Network|Protocol|API|Infrastructure|Server|Cloud|Database|Storage|Computing|Compute|Docker|Kubernetes/i)) return 'INFRA';
 
-  return 'unknown';
+  // Skip 'unknown' group entirely — don't create a hull for unclassified nodes
+  return '';
 }
 
 // GPU cluster palette for numeric cluster IDs
@@ -180,6 +185,7 @@ export const ClusterHulls: React.FC<ClusterHullsProps> = ({
       const node = nodes[ni];
       const nodeIndex = nodeIdToIndexMap.get(node.id);
       const key = getClusterKey(node, nodeIndex, analytics);
+      if (!key) continue; // Skip unclassified nodes — no hull for them
       let arr = map.get(key);
       if (!arr) {
         arr = [];
