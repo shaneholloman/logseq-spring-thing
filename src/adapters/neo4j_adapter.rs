@@ -654,7 +654,117 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
             info!("Loaded {} ontology edges", edges.len());
         }
 
-        debug!("Loaded {} edges from Neo4j", edges.len());
+        debug!("Loaded {} base edges from Neo4j", edges.len());
+
+        // Enrich: Load ontology SUBCLASS_OF relationships and map to GraphNode edges.
+        // OwlClass nodes have labels that match GraphNode labels — use this to bridge
+        // the ontology hierarchy into the force-directed graph for meaningful clustering.
+        {
+            let label_to_id: HashMap<String, u32> = nodes.iter()
+                .map(|n| (n.label.to_lowercase(), n.id))
+                .collect();
+
+            let enrich_query = Query::new(
+                "MATCH (child:OwlClass)-[:SUBCLASS_OF]->(parent:OwlClass)
+                 WHERE child.label IS NOT NULL AND parent.label IS NOT NULL
+                 RETURN child.label AS child_label,
+                        parent.label AS parent_label,
+                        child.source_domain AS child_domain,
+                        parent.source_domain AS parent_domain
+                ".to_string()
+            );
+
+            let mut edge_set: std::collections::HashSet<(u32, u32)> = edges.iter()
+                .map(|e| (e.source, e.target))
+                .collect();
+
+            let mut enrich_count = 0u32;
+            match self.graph.execute(enrich_query).await {
+                Ok(mut enrich_result) => {
+                    while let Ok(Some(row)) = enrich_result.next().await {
+                        let child_label: String = match row.get("child_label") {
+                            Ok(v) => v,
+                            Err(_) => continue,
+                        };
+                        let parent_label: String = match row.get("parent_label") {
+                            Ok(v) => v,
+                            Err(_) => continue,
+                        };
+
+                        let child_key = child_label.to_lowercase();
+                        let parent_key = parent_label.to_lowercase();
+
+                        if let (Some(&src_id), Some(&tgt_id)) =
+                            (label_to_id.get(&child_key), label_to_id.get(&parent_key))
+                        {
+                            if src_id != tgt_id && edge_set.insert((src_id, tgt_id)) {
+                                let mut edge = Edge::new(src_id, tgt_id, 0.8);
+                                edge.edge_type = Some("subclass_of".to_string());
+                                // Propagate domain from OwlClass for downstream clustering
+                                let domain: Option<String> = row.get("child_domain").ok();
+                                if let Some(d) = domain {
+                                    edge.owl_property_iri = Some(format!("rdfs:subClassOf@{}", d));
+                                }
+                                edges.push(edge);
+                                enrich_count += 1;
+                            }
+                        }
+                    }
+                }
+                Err(e) => {
+                    warn!("Failed to load ontology enrichment edges: {} (continuing without them)", e);
+                }
+            }
+
+            if enrich_count > 0 {
+                info!(
+                    "Enriched graph with {} ontology SUBCLASS_OF edges (total: {} edges)",
+                    enrich_count, edges.len()
+                );
+            }
+        }
+
+        // Enrich: propagate source_domain from OwlClass to matching GraphNodes.
+        // Many GraphNodes lack domain metadata but have matching OwlClass entries
+        // with source_domain (bc, ai, mv, etc.) — bridge this for clustering.
+        {
+            let domain_query = Query::new(
+                "MATCH (c:OwlClass)
+                 WHERE c.label IS NOT NULL AND c.source_domain IS NOT NULL
+                   AND c.source_domain <> 'unknown' AND c.source_domain <> ''
+                 RETURN c.label AS label, c.source_domain AS domain
+                ".to_string()
+            );
+
+            let mut domain_map: HashMap<String, String> = HashMap::new();
+            match self.graph.execute(domain_query).await {
+                Ok(mut domain_result) => {
+                    while let Ok(Some(row)) = domain_result.next().await {
+                        if let (Ok(label), Ok(domain)) = (row.get::<String>("label"), row.get::<String>("domain")) {
+                            domain_map.insert(label.to_lowercase(), domain);
+                        }
+                    }
+                }
+                Err(e) => {
+                    warn!("Failed to load domain mapping: {}", e);
+                }
+            }
+
+            if !domain_map.is_empty() {
+                let mut enriched = 0u32;
+                for node in &mut nodes {
+                    if node.metadata.get("source_domain").map(|d| d == "unknown" || d.is_empty()).unwrap_or(true) {
+                        if let Some(domain) = domain_map.get(&node.label.to_lowercase()) {
+                            node.metadata.insert("source_domain".to_string(), domain.clone());
+                            enriched += 1;
+                        }
+                    }
+                }
+                if enriched > 0 {
+                    info!("Enriched {} nodes with source_domain from ontology", enriched);
+                }
+            }
+        }
 
         let mut graph = GraphData::new();
         graph.nodes = nodes;
