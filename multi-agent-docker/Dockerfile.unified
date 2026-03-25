@@ -37,7 +37,7 @@ LABEL org.opencontainers.image.description="Unified Ruflo V4 Development Environ
 LABEL org.opencontainers.image.version="4.0.0"
 LABEL org.opencontainers.image.created="2026-03-12"
 LABEL org.opencontainers.image.vendor="Turbo Flow"
-LABEL com.turboflow.skills.count="68"
+LABEL com.turboflow.skills.count="71"
 LABEL com.turboflow.ruflo.version="3.5"
 
 # ============================================================================
@@ -115,11 +115,12 @@ RUN for attempt in 1 2 3; do \
             direnv \
             github-cli \
             postgresql postgresql-libs \
+            godot \
         && break || { echo "Attempt $attempt failed, retrying in 10s..."; sleep 10; pacman -Syy --noconfirm; }; \
     done && \
     # Validate critical dev tools installed
     echo "=== Validating dev tools ===" && \
-    pacman -Q docker github-cli postgresql && \
+    pacman -Q docker github-cli postgresql godot && \
     rm -rf /var/cache/pacman/pkg/*
 
 # Install Node.js v23.11.1 (required for chrome-devtools-mcp compatibility)
@@ -193,6 +194,19 @@ RUN mkdir -p /opt/blender && \
         websockets>=15.0 requests numpy pydantic && \
     # Verify installation
     /opt/blender/5.0/python/bin/python3.11 -c "import websockets; print('websockets:', websockets.__version__)"
+
+# ============================================================================
+# PHASE 2.6: Arnis Minecraft World Generator (TerraCraft pipeline)
+# ============================================================================
+
+# Build arnis from source with GeoTIFF elevation + 1.18+ format patches
+RUN git clone --depth 1 https://github.com/louis-e/arnis.git /tmp/arnis-build && \
+    cd /tmp/arnis-build && \
+    git apply /home/devuser/.claude/skills/terracraft/pipeline/geotiff-elevation.patch 2>/dev/null || true && \
+    cargo build --no-default-features --release 2>/dev/null && \
+    cp target/release/arnis /usr/local/bin/arnis && \
+    chmod +x /usr/local/bin/arnis && \
+    rm -rf /tmp/arnis-build || echo "arnis build optional (requires Rust toolchain)"
 
 # ============================================================================
 # PHASE 3: Rust Toolchain Setup
@@ -503,6 +517,18 @@ COPY --chown=devuser:devuser multi-agent-docker/skills/ /home/devuser/.claude/sk
 # No separate copy needed - they're included in the skills/ copy above
 
 # ============================================================================
+# Bake CLAUDE.md hierarchy into the image
+# ============================================================================
+# These are the base configuration files that define memory protocol, skill
+# selection, agent routing, and behavioural rules. They are baked into the
+# image so that even without the project volume mount, agents have the full
+# context hierarchy available. The workspace mount overlays these at runtime.
+COPY --chown=devuser:devuser CLAUDE.md /home/devuser/workspace/CLAUDE.md
+COPY --chown=devuser:devuser multi-agent-docker/CLAUDE.md /home/devuser/.claude/CLAUDE.md.container-defaults
+COPY --chown=devuser:devuser multi-agent-docker/scripts/claude-md-dedup.sh /home/devuser/.local/bin/claude-md-dedup
+RUN chmod +x /home/devuser/.local/bin/claude-md-dedup 2>/dev/null || true
+
+# ============================================================================
 # Install MCP Server Dependencies (Node.js-based skills)
 # ============================================================================
 
@@ -539,6 +565,14 @@ RUN cd /home/devuser/.claude/skills/host-webserver-debug/mcp-server && \
     npm install --production 2>/dev/null || echo "Host debug deps optional" && \
     chmod +x server.js 2>/dev/null || true && \
     chmod +x /home/devuser/.claude/skills/host-webserver-debug/tools/*.js 2>/dev/null || true
+
+# Lazy-Fetch MCP server (context management, blueprints, progressive discovery)
+RUN cd /home/devuser/.claude/skills/lazy-fetch/mcp-server && \
+    npm install --production 2>/dev/null || echo "Lazy-fetch deps optional" && \
+    npm run build 2>/dev/null || echo "Lazy-fetch build optional" && \
+    chmod +x dist/mcp-server.js 2>/dev/null || true && \
+    chmod +x dist/cli.js 2>/dev/null || true && \
+    ln -sf /home/devuser/.claude/skills/lazy-fetch/mcp-server/dist/cli.js /usr/local/bin/lazy 2>/dev/null || true
 
 # ============================================================================
 # Install Python Dependencies for FastMCP Skills
@@ -602,6 +636,7 @@ RUN find /home/devuser/.claude/skills -name "*.py" -path "*/mcp-server/*" -exec 
     find /home/devuser/.claude/skills -name "*.js" -path "*/mcp-server/*" -exec chmod +x {} \; && \
     find /home/devuser/.claude/skills -name "*.py" -path "*/tools/*" -exec chmod +x {} \; && \
     find /home/devuser/.claude/skills -name "*.js" -path "*/tools/*" -exec chmod +x {} \; && \
+    find /home/devuser/.claude/skills -name "*.sh" -path "*/tools/*" -exec chmod +x {} \; && \
     chown -R devuser:devuser /home/devuser/.claude/skills
 
 # ============================================================================

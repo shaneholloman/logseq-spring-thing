@@ -756,6 +756,27 @@ find /home/devuser/.claude/skills -name "*.sh" -exec chmod +x {} \;
 SKILL_COUNT=$(find /home/devuser/.claude/skills -name "SKILL.md" | wc -l)
 echo "✓ $SKILL_COUNT Claude Code skills available"
 
+# Ensure CLAUDE.md hierarchy is available even without project volume mount.
+# Baked defaults from build are at /home/devuser/.claude/CLAUDE.md.container-defaults.
+# If workspace/CLAUDE.md doesn't exist (no volume mount), create from defaults.
+if [[ ! -f /home/devuser/workspace/CLAUDE.md ]]; then
+  if [[ -f /home/devuser/.claude/CLAUDE.md.container-defaults ]]; then
+    cp /home/devuser/.claude/CLAUDE.md.container-defaults /home/devuser/workspace/CLAUDE.md
+    echo "✓ Workspace CLAUDE.md created from container defaults"
+  fi
+fi
+
+# Ensure skill directory reference is available at workspace level
+if [[ -f /home/devuser/.claude/skills/SKILL-DIRECTORY.md ]] && [[ ! -f /home/devuser/workspace/SKILL-DIRECTORY.md ]]; then
+  ln -sf /home/devuser/.claude/skills/SKILL-DIRECTORY.md /home/devuser/workspace/SKILL-DIRECTORY.md 2>/dev/null || true
+fi
+
+# Make lazy-fetch CLI available
+if [[ -f /home/devuser/.claude/skills/lazy-fetch/mcp-server/dist/cli.js ]]; then
+  ln -sf /home/devuser/.claude/skills/lazy-fetch/mcp-server/dist/cli.js /usr/local/bin/lazy 2>/dev/null || true
+  echo "✓ lazy-fetch CLI available at /usr/local/bin/lazy"
+fi
+
 # ============================================================================
 # Phase 6.1: Build Chrome Extensions (Console Buddy, etc.)
 # ============================================================================
