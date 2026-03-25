@@ -295,6 +295,40 @@ impl ForceComputeActor {
                     }
                 }
 
+                // Upload domain-based class_id and class_charge for domain clustering.
+                // Same-domain nodes get the same class_id and low charge (less mutual repulsion).
+                // This makes the force-directed layout naturally cluster nodes by domain.
+                if let Some(ref graph_data) = self.pending_graph_data {
+                    let mut class_ids = Vec::with_capacity(num_nodes);
+                    let mut class_charges = Vec::with_capacity(num_nodes);
+                    let mut class_masses = vec![1.0f32; num_nodes];
+
+                    for node in &graph_data.nodes {
+                        let domain = node.metadata.get("source_domain")
+                            .map(|s| s.as_str())
+                            .unwrap_or("");
+                        let (id, charge) = match domain {
+                            "ai" => (1, 0.6),   // Lower charge → less intra-domain repulsion
+                            "bc" => (2, 0.6),
+                            "mv" => (3, 0.6),
+                            "rb" => (4, 0.6),
+                            "ngm" => (5, 0.6),
+                            "tc" => (6, 0.6),
+                            _ => (0, 1.2),       // Higher charge → more repulsion for unclassified
+                        };
+                        class_ids.push(id);
+                        class_charges.push(charge);
+                    }
+
+                    if let Err(e) = compute.upload_class_metadata(&class_ids, &class_charges, &class_masses) {
+                        warn!("ForceComputeActor: Failed to upload class metadata: {}", e);
+                    } else {
+                        let domain_counts: std::collections::HashMap<i32, usize> = class_ids.iter()
+                            .fold(std::collections::HashMap::new(), |mut m, &id| { *m.entry(id).or_insert(0) += 1; m });
+                        info!("ForceComputeActor: Uploaded class metadata — domain distribution: {:?}", domain_counts);
+                    }
+                }
+
                 self.gpu_state.num_nodes = num_nodes as u32;
                 self.gpu_state.num_edges = edge_count;
                 self.pending_graph_data = None;

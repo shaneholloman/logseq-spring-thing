@@ -221,6 +221,41 @@ impl GPUResourceActor {
                         .map_err(|e| format!("Failed to upload node_graph_id: {}", e))?;
                 }
 
+                // Upload domain-based class_id and class_charge for domain clustering.
+                // Same-domain nodes get lower charge (less mutual repulsion) so edges
+                // pull them together, creating natural domain clusters.
+                if let Some(ref mut uc) = self.unified_compute {
+                    let num = csr_result.num_nodes as usize;
+                    let mut class_ids = Vec::with_capacity(num);
+                    let mut class_charges = Vec::with_capacity(num);
+                    let class_masses = vec![1.0f32; num];
+
+                    for node in &graph_data.nodes {
+                        let domain = node.metadata.get("source_domain")
+                            .map(|s| s.as_str())
+                            .unwrap_or("");
+                        let (id, charge) = match domain {
+                            "ai" => (1i32, 0.5f32),
+                            "bc" => (2, 0.5),
+                            "mv" => (3, 0.5),
+                            "rb" => (4, 0.5),
+                            "ngm" => (5, 0.5),
+                            "tc" => (6, 0.5),
+                            _ => (0, 1.5),
+                        };
+                        class_ids.push(id);
+                        class_charges.push(charge);
+                    }
+
+                    match uc.upload_class_metadata(&class_ids, &class_charges, &class_masses) {
+                        Ok(_) => {
+                            let classified = class_ids.iter().filter(|&&id| id > 0).count();
+                            info!("Uploaded domain class metadata: {}/{} nodes classified", classified, num);
+                        }
+                        Err(e) => warn!("Failed to upload class metadata: {}", e),
+                    }
+                }
+
                 info!("Graph data uploaded to GPU successfully");
 
                 self.gpu_state.num_nodes = csr_result.num_nodes;

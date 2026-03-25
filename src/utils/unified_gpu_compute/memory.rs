@@ -70,10 +70,18 @@ impl UnifiedGPUCompute {
             ));
         }
 
-        // Upload to GPU buffers
-        self.class_id.copy_from(class_ids)?;
-        self.class_charge.copy_from(class_charges)?;
-        self.class_mass.copy_from(class_masses)?;
+        // Pad to allocated_nodes for overallocated device buffers
+        let alloc = self.class_id.len();
+        let mut padded_ids = class_ids.to_vec();
+        let mut padded_charges = class_charges.to_vec();
+        let mut padded_masses = class_masses.to_vec();
+        padded_ids.resize(alloc, 0);
+        padded_charges.resize(alloc, 1.0);
+        padded_masses.resize(alloc, 1.0);
+
+        self.class_id.copy_from(&padded_ids)?;
+        self.class_charge.copy_from(&padded_charges)?;
+        self.class_mass.copy_from(&padded_masses)?;
 
         Ok(())
     }
