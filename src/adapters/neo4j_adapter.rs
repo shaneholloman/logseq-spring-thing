@@ -664,13 +664,20 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
                 .map(|n| (n.label.to_lowercase(), n.id))
                 .collect();
 
+            // Parent OwlClasses often lack 'label' (they're referenced but not
+            // parsed from their own OntologyBlock). Use COALESCE to try label,
+            // preferred_term, then the IRI itself as a fallback label.
             let enrich_query = Query::new(
                 "MATCH (child:OwlClass)-[:SUBCLASS_OF]->(parent:OwlClass)
-                 WHERE child.label IS NOT NULL AND parent.label IS NOT NULL
-                 RETURN child.label AS child_label,
-                        parent.label AS parent_label,
-                        child.source_domain AS child_domain,
-                        parent.source_domain AS parent_domain
+                 WITH child,
+                      parent,
+                      COALESCE(child.label, child.preferred_term, child.iri) AS child_label,
+                      COALESCE(parent.label, parent.preferred_term, parent.iri) AS parent_label,
+                      child.source_domain AS child_domain,
+                      parent.source_domain AS parent_domain
+                 WHERE child_label IS NOT NULL AND parent_label IS NOT NULL
+                   AND child_label <> '' AND parent_label <> ''
+                 RETURN child_label, parent_label, child_domain, parent_domain
                 ".to_string()
             );
 
@@ -730,9 +737,12 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
         {
             let domain_query = Query::new(
                 "MATCH (c:OwlClass)
-                 WHERE c.label IS NOT NULL AND c.source_domain IS NOT NULL
+                 WHERE c.source_domain IS NOT NULL
                    AND c.source_domain <> 'unknown' AND c.source_domain <> ''
-                 RETURN c.label AS label, c.source_domain AS domain
+                 WITH COALESCE(c.label, c.preferred_term, c.iri) AS label,
+                      c.source_domain AS domain
+                 WHERE label IS NOT NULL AND label <> ''
+                 RETURN label, domain
                 ".to_string()
             );
 
