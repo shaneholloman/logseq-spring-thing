@@ -45,6 +45,7 @@ pub(crate) fn handle_authenticate(
                             client_id: cid,
                             pubkey: user.pubkey.clone(),
                             is_power_user: user.is_power_user,
+                            ephemeral: false, // NIP-98 is a real identity
                         });
                     }
 
@@ -74,7 +75,7 @@ pub(crate) fn handle_authenticate(
             }),
         );
     } else {
-        // --- Legacy path: { type: "authenticate", token, pubkey } ---
+        // --- Legacy path: { type: "authenticate", token, pubkey, ephemeral? } ---
         let token = msg
             .get("token")
             .and_then(|t| t.as_str())
@@ -83,6 +84,10 @@ pub(crate) fn handle_authenticate(
             .get("pubkey")
             .and_then(|p| p.as_str())
             .map(String::from);
+        let is_ephemeral = msg
+            .get("ephemeral")
+            .and_then(|e| e.as_bool())
+            .unwrap_or(false);
 
         if let (Some(token), Some(pubkey)) = (token, pubkey) {
             let nostr_service = act.app_state.nostr_service.clone();
@@ -100,7 +105,7 @@ pub(crate) fn handle_authenticate(
                     }
                     (None, client_id, cm_addr)
                 })
-                .map(|(user_opt, client_id, cm_addr), act, ctx| {
+                .map(move |(user_opt, client_id, cm_addr), act, ctx| {
                     if let Some(user) = user_opt {
                         act.pubkey = Some(user.pubkey.clone());
                         act.is_power_user = user.is_power_user;
@@ -111,6 +116,7 @@ pub(crate) fn handle_authenticate(
                                 client_id: cid,
                                 pubkey: user.pubkey.clone(),
                                 is_power_user: user.is_power_user,
+                                ephemeral: is_ephemeral,
                             });
                         }
 
@@ -118,14 +124,15 @@ pub(crate) fn handle_authenticate(
                             "type": "authenticate_success",
                             "pubkey": user.pubkey,
                             "is_power_user": user.is_power_user,
+                            "ephemeral": is_ephemeral,
                             "timestamp": chrono::Utc::now().timestamp_millis()
                         });
                         if let Ok(msg_str) = serde_json::to_string(&response) {
                             ctx.text(msg_str);
                         }
                         info!(
-                            "Client authenticated: pubkey={}, power_user={}",
-                            user.pubkey, user.is_power_user
+                            "Client authenticated: pubkey={}, power_user={}, ephemeral={}",
+                            user.pubkey, user.is_power_user, is_ephemeral
                         );
                     } else {
                         let error_msg = serde_json::json!({

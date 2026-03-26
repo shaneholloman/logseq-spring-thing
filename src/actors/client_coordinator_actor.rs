@@ -45,6 +45,13 @@ pub struct ClientState {
     pub pubkey: Option<String>,
     pub is_power_user: bool,
     pub filter: ClientFilter,
+    /// Per-user settings override. When set, the client has customised
+    /// settings that differ from the global defaults. For the MVP this is
+    /// stored and returned to the client on reconnect; actual per-user
+    /// GPU computation is a follow-up.
+    pub settings_override: Option<crate::config::app_settings::AppFullSettings>,
+    /// Whether this client authenticated with an ephemeral (dev-mode) identity
+    pub ephemeral_session: bool,
 }
 
 /// Per-client filter settings for graph visibility
@@ -135,6 +142,8 @@ impl ClientManager {
             pubkey: None,
             is_power_user: false,
             filter: ClientFilter::default(),
+            settings_override: None,
+            ephemeral_session: false,
         };
 
         self.clients.insert(client_id, client_state);
@@ -1486,20 +1495,22 @@ impl Handler<AuthenticateClient> for ClientCoordinatorActor {
         if let Some(client) = manager.get_client_mut(msg.client_id) {
             client.pubkey = Some(msg.pubkey.clone());
             client.is_power_user = msg.is_power_user;
+            client.ephemeral_session = msg.ephemeral;
             info!(
-                "Client {} authenticated as pubkey {} (power_user: {})",
-                msg.client_id, msg.pubkey, msg.is_power_user
+                "Client {} authenticated as pubkey {} (power_user: {}, ephemeral: {})",
+                msg.client_id, msg.pubkey, msg.is_power_user, msg.ephemeral
             );
 
-            // Load saved filter from Neo4j if repository is available
+            // Load saved filter and settings from Neo4j if repository is available
             if let Some(neo4j_repo) = self.neo4j_settings_repository.clone() {
                 let pubkey_clone = msg.pubkey.clone();
                 let client_id = msg.client_id;
                 let manager_arc = self.client_manager.clone();
                 let graph_addr = self.graph_service_addr.clone();
+                let neo4j_repo_for_filter = neo4j_repo.clone();
 
                 ctx.spawn(actix::fut::wrap_future::<_, Self>(async move {
-                    match neo4j_repo.get_user_filter(&pubkey_clone).await {
+                    match neo4j_repo_for_filter.get_user_filter(&pubkey_clone).await {
                         Ok(Some(user_filter)) => {
                             info!("✅ Loaded filter from Neo4j for pubkey {}: enabled={}, quality_threshold={}",
                                   pubkey_clone, user_filter.enabled, user_filter.quality_threshold);
@@ -1543,6 +1554,35 @@ impl Handler<AuthenticateClient> for ClientCoordinatorActor {
                         }
                         Err(e) => {
                             error!("Failed to load filter from Neo4j: {}", e);
+                        }
+                    }
+                }).map(|_, _, _| ()));
+
+                // Also load saved user settings from Neo4j for per-user physics isolation
+                let neo4j_repo2 = neo4j_repo;
+                let pubkey_clone2 = msg.pubkey.clone();
+                let client_id2 = msg.client_id;
+                let manager_arc2 = self.client_manager.clone();
+
+                ctx.spawn(actix::fut::wrap_future::<_, Self>(async move {
+                    match neo4j_repo2.get_user_settings(&pubkey_clone2).await {
+                        Ok(Some(user_settings)) => {
+                            info!("Loaded user settings from Neo4j for pubkey {}", pubkey_clone2);
+                            if let Ok(mut manager) = manager_arc2.write() {
+                                if let Some(client) = manager.get_client_mut(client_id2) {
+                                    client.settings_override = Some(user_settings);
+                                    info!(
+                                        "Applied per-user settings_override for client {} (pubkey {})",
+                                        client_id2, pubkey_clone2
+                                    );
+                                }
+                            }
+                        }
+                        Ok(None) => {
+                            info!("No saved user settings for pubkey {}, using global defaults", pubkey_clone2);
+                        }
+                        Err(e) => {
+                            error!("Failed to load user settings from Neo4j: {}", e);
                         }
                     }
                 }).map(|_, _, _| ()));

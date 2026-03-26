@@ -882,8 +882,12 @@ export const useSettingsStore = create<SettingsState>()(
 
       notifyPhysicsUpdate: (graphName: string, params: Partial<GPUPhysicsParams>) => {
         if (typeof window !== 'undefined') {
+          // Include session pubkey so the server can scope physics to this user
+          const sessionPubkey = nostrAuth.getCurrentUser()?.pubkey
+            || sessionStorage.getItem('ephemeral_session_pubkey')
+            || undefined;
           const event = new CustomEvent('physicsParametersUpdated', {
-            detail: { graphName, params }
+            detail: { graphName, params, pubkey: sessionPubkey }
           });
           window.dispatchEvent(event);
         }

@@ -1113,8 +1113,14 @@ export const useWebSocketStore = create<WebSocketState>()(
             const user = nostrAuth.getCurrentUser();
             if (user?.pubkey) {
               if (nostrAuth.isDevMode()) {
-                // Dev mode: legacy Bearer auth
-                socket.send(JSON.stringify({ type: 'authenticate', token: 'dev-session-token', pubkey: user.pubkey }));
+                // Dev mode: legacy Bearer auth with ephemeral per-tab session identity
+                const isEphemeral = !!sessionStorage.getItem('ephemeral_session_pubkey');
+                socket.send(JSON.stringify({
+                  type: 'authenticate',
+                  token: 'dev-session-token',
+                  pubkey: user.pubkey,
+                  ephemeral: isEphemeral,
+                }));
               } else {
                 // Production: NIP-98 signed event for WS URL
                 (async () => {

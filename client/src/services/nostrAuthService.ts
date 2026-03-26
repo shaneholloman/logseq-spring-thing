@@ -315,10 +315,17 @@ class NostrAuthService {
     if (this.initialized) return;
     logger.debug('Initializing NostrAuthService...');
 
-    // DEV MODE: Auto-login as power user
+    // DEV MODE: Auto-login as power user with ephemeral per-tab session identity
     if (this.isDevMode()) {
       logger.info('[DEV MODE] Auto-authenticating as power user');
-      const devPowerUserPubkey = import.meta.env.VITE_DEV_POWER_USER_PUBKEY || 'bfcf20d472f0fb143b23cb5be3fa0a040d42176b71f73ca272f6912b1d62a452';
+      // Generate a unique ephemeral pubkey per browser tab so multiple tabs
+      // get isolated session identities (different physics settings, filters, etc.)
+      let devPowerUserPubkey = sessionStorage.getItem('ephemeral_session_pubkey');
+      if (!devPowerUserPubkey) {
+        devPowerUserPubkey = import.meta.env.VITE_DEV_POWER_USER_PUBKEY
+          || crypto.randomUUID().replace(/-/g, '').padEnd(64, '0');
+        sessionStorage.setItem('ephemeral_session_pubkey', devPowerUserPubkey);
+      }
       this.currentUser = {
         pubkey: devPowerUserPubkey,
         npub: this.hexToNpub(devPowerUserPubkey),

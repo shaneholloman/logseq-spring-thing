@@ -85,6 +85,8 @@ pub struct AuthenticateClient {
     pub client_id: usize,
     pub pubkey: String,
     pub is_power_user: bool,
+    /// Whether this client uses an ephemeral (dev-mode) session identity
+    pub ephemeral: bool,
 }
 
 // ---------------------------------------------------------------------------
