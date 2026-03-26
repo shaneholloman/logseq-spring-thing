@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { Activity, Wifi, Database, Server, Check, AlertCircle, Loader, Filter } from 'lucide-react';
+import { Activity, Wifi, Database, Server, Check, AlertCircle, Loader, Filter, Link, Unlink } from 'lucide-react';
 import { webSocketService } from '../../../../store/websocketStore';
+import { useSettingsStore } from '../../../../store/settingsStore';
 
 interface ConnectionStatus {
   websocket: 'connected' | 'connecting' | 'disconnected';
@@ -243,6 +244,9 @@ export const SystemHealthIndicator: React.FC<SystemHealthIndicatorProps> = ({
         </div>
       </div>
 
+      {/* Settings Sync Toggle */}
+      <SettingsSyncToggle />
+
       {/* Sync status text */}
       <div style={{
         marginTop: '6px',
@@ -254,6 +258,48 @@ export const SystemHealthIndicator: React.FC<SystemHealthIndicatorProps> = ({
           ? 'All systems synchronized'
           : 'Waiting for connections...'}
       </div>
+    </div>
+  );
+};
+
+/** Settings sync telltale — shows whether physics/analytics changes propagate to the server */
+const SettingsSyncToggle: React.FC = () => {
+  const syncEnabled = useSettingsStore(s => s.settingsSyncEnabled);
+  const setSyncEnabled = useSettingsStore(s => s.setSettingsSyncEnabled);
+
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: '4px',
+        padding: '3px 6px',
+        marginTop: '4px',
+        background: syncEnabled ? 'rgba(34,197,94,0.1)' : 'rgba(239,68,68,0.1)',
+        borderRadius: '3px',
+        cursor: 'pointer',
+        border: `1px solid ${syncEnabled ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)'}`,
+        fontSize: '9px',
+        transition: 'all 0.2s ease'
+      }}
+      onClick={() => setSyncEnabled(!syncEnabled)}
+      title={syncEnabled
+        ? 'Settings sync ON — your changes update the shared server state. Click to switch to local-only.'
+        : 'Settings sync OFF — changes are local to this browser session. Click to re-enable sync.'}
+    >
+      {syncEnabled
+        ? <Link size={10} style={{ color: '#22c55e' }} />
+        : <Unlink size={10} style={{ color: '#ef4444' }} />}
+      <span style={{ color: syncEnabled ? '#22c55e' : '#ef4444' }}>
+        {syncEnabled ? 'Sync' : 'Local'}
+      </span>
+      <span style={{
+        marginLeft: 'auto',
+        width: '6px',
+        height: '6px',
+        borderRadius: '50%',
+        background: syncEnabled ? '#22c55e' : '#ef4444',
+      }} />
     </div>
   );
 };

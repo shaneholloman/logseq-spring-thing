@@ -247,6 +247,9 @@ export interface SettingsState {
   authenticated: boolean
   user: { isPowerUser: boolean; pubkey: string } | null
   isPowerUser: boolean
+  /** Whether settings changes sync to the server. When false, changes are local-only. */
+  settingsSyncEnabled: boolean
+  setSettingsSyncEnabled: (enabled: boolean) => void
 
 
   initialize: () => Promise<void>
@@ -377,6 +380,11 @@ export const useSettingsStore = create<SettingsState>()(
       authenticated: false,
       user: null,
       isPowerUser: false,
+      settingsSyncEnabled: true,
+      setSettingsSyncEnabled: (enabled: boolean) => {
+        set({ settingsSyncEnabled: enabled });
+        autoSaveManager.setSyncEnabled(enabled);
+      },
 
       initialize: async () => {
         try {

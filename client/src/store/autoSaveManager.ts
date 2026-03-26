@@ -14,8 +14,22 @@ export class AutoSaveManager {
   private pendingChanges: Map<string, any> = new Map();
   private saveDebounceTimer: NodeJS.Timeout | null = null;
   private isInitialized: boolean = false;
+  private _syncEnabled: boolean = true;
   private readonly DEBOUNCE_DELAY = 500;
 
+  /** Whether settings changes are synced to the server (true) or local-only (false) */
+  get syncEnabled(): boolean { return this._syncEnabled; }
+  setSyncEnabled(enabled: boolean) {
+    this._syncEnabled = enabled;
+    logger.info(`Settings sync ${enabled ? 'ENABLED' : 'DISABLED (local-only mode)'}`);
+    if (!enabled) {
+      if (this.saveDebounceTimer) {
+        clearTimeout(this.saveDebounceTimer);
+        this.saveDebounceTimer = null;
+      }
+      this.pendingChanges.clear();
+    }
+  }
 
   private readonly CLIENT_ONLY_PATHS = [
     'auth.nostr.connected',
@@ -38,6 +52,10 @@ export class AutoSaveManager {
   queueChange(path: string, value: any) {
     if (!this.isInitialized) {
       logger.debug(`[SETTINGS-DIAG] autoSaveManager.queueChange DROPPED (not initialized): ${path}`, value);
+      return;
+    }
+    if (!this._syncEnabled) {
+      logger.debug(`[SETTINGS-DIAG] autoSaveManager.queueChange DROPPED (sync disabled): ${path}`, value);
       return;
     }
     logger.debug(`[SETTINGS-DIAG] autoSaveManager.queueChange: ${path} =`, value);
