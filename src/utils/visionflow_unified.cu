@@ -312,10 +312,22 @@ __global__ void force_pass_kernel(
                                 const float dist = sqrtf(dist_sq);
                                 float repulsion = c_params.repel_k / (dist_sq + c_params.repulsion_softening_epsilon);
 
-                                // Apply class-based charge modifiers (default 1.0 if nullptr)
-                                const float my_charge = (class_charge != nullptr) ? class_charge[idx] : 1.0f;
-                                const float neighbor_charge = (class_charge != nullptr) ? class_charge[neighbor_idx] : 1.0f;
-                                repulsion *= my_charge * neighbor_charge;
+                                // Domain-aware repulsion: same-domain nodes repel less,
+                                // different-domain nodes repel more, creating natural clusters.
+                                if (class_id != nullptr && class_id[idx] != 0 && class_id[neighbor_idx] != 0) {
+                                    if (class_id[idx] == class_id[neighbor_idx]) {
+                                        // Same domain: reduce repulsion by 80% → nodes cluster tight
+                                        repulsion *= 0.2f;
+                                    } else {
+                                        // Different domain: increase repulsion by 50% → push apart
+                                        repulsion *= 1.5f;
+                                    }
+                                } else {
+                                    // Fallback to charge-based modulation for unclassified nodes
+                                    const float my_charge = (class_charge != nullptr) ? class_charge[idx] : 1.0f;
+                                    const float neighbor_charge = (class_charge != nullptr) ? class_charge[neighbor_idx] : 1.0f;
+                                    repulsion *= my_charge * neighbor_charge;
+                                }
 
                                 // Prevent repulsion force overflow when nodes are too close
                                 repulsion = fminf(repulsion, c_params.max_force);
