@@ -673,20 +673,25 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
                 .map(|n| (n.label.to_lowercase(), n.id))
                 .collect();
 
-            // Parent OwlClasses often lack 'label' (they're referenced but not
-            // parsed from their own OntologyBlock). Use COALESCE to try label,
-            // preferred_term, then the IRI itself as a fallback label.
+            // Map OwlClass→OwlClass edges (SUBCLASS_OF + RELATES) to GraphNode edges.
+            // Use COALESCE for label matching since parent OwlClasses often lack 'label'.
             let enrich_query = Query::new(
-                "MATCH (child:OwlClass)-[:SUBCLASS_OF]->(parent:OwlClass)
+                "MATCH (child:OwlClass)-[r]->(parent:OwlClass)
+                 WHERE type(r) IN ['SUBCLASS_OF', 'RELATES']
                  WITH child,
                       parent,
+                      r,
+                      type(r) AS rel_type,
+                      r.relationship_type AS sub_type,
+                      r.weight AS rel_weight,
                       COALESCE(child.label, child.preferred_term, child.iri) AS child_label,
                       COALESCE(parent.label, parent.preferred_term, parent.iri) AS parent_label,
                       child.source_domain AS child_domain,
                       parent.source_domain AS parent_domain
                  WHERE child_label IS NOT NULL AND parent_label IS NOT NULL
                    AND child_label <> '' AND parent_label <> ''
-                 RETURN child_label, parent_label, child_domain, parent_domain
+                 RETURN child_label, parent_label, child_domain, parent_domain,
+                        rel_type, sub_type, rel_weight
                 ".to_string()
             );
 
@@ -714,12 +719,21 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
                             (label_to_id.get(&child_key), label_to_id.get(&parent_key))
                         {
                             if src_id != tgt_id && edge_set.insert((src_id, tgt_id)) {
-                                let mut edge = Edge::new(src_id, tgt_id, 0.8);
-                                edge.edge_type = Some("subclass_of".to_string());
-                                // Propagate domain from OwlClass for downstream clustering
+                                // Use the relationship sub-type if available, else the Neo4j type
+                                let rel_type: String = row.get("rel_type").unwrap_or_else(|_| "SUBCLASS_OF".to_string());
+                                let sub_type: Option<String> = row.get("sub_type").ok();
+                                let weight: f64 = row.get("rel_weight").unwrap_or(0.8);
+
+                                let edge_type_str = sub_type.unwrap_or_else(|| {
+                                    if rel_type == "SUBCLASS_OF" { "hierarchical".to_string() }
+                                    else { "associative".to_string() }
+                                });
+
+                                let mut edge = Edge::new(src_id, tgt_id, weight as f32);
+                                edge.edge_type = Some(edge_type_str);
                                 let domain: Option<String> = row.get("child_domain").ok();
                                 if let Some(d) = domain {
-                                    edge.owl_property_iri = Some(format!("rdfs:subClassOf@{}", d));
+                                    edge.owl_property_iri = Some(format!("{}@{}", rel_type, d));
                                 }
                                 edges.push(edge);
                                 enrich_count += 1;
@@ -734,7 +748,7 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
 
             if enrich_count > 0 {
                 info!(
-                    "Enriched graph with {} ontology SUBCLASS_OF edges (total: {} edges)",
+                    "Enriched graph with {} ontology edges (SUBCLASS_OF + RELATES) (total: {} edges)",
                     enrich_count, edges.len()
                 );
             }
