@@ -316,11 +316,11 @@ __global__ void force_pass_kernel(
                                 // different-domain nodes repel more, creating natural clusters.
                                 if (class_id != nullptr && class_id[idx] != 0 && class_id[neighbor_idx] != 0) {
                                     if (class_id[idx] == class_id[neighbor_idx]) {
-                                        // Same domain: reduce repulsion by 80% → nodes cluster tight
-                                        repulsion *= 0.2f;
+                                        // Same domain: reduce repulsion by 90% → tight domain clusters
+                                        repulsion *= 0.1f;
                                     } else {
-                                        // Different domain: increase repulsion by 50% → push apart
-                                        repulsion *= 1.5f;
+                                        // Different domain: increase repulsion by 200% → strong separation
+                                        repulsion *= 3.0f;
                                     }
                                 } else {
                                     // Fallback to charge-based modulation for unclassified nodes
