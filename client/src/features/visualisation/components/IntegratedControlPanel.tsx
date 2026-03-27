@@ -27,6 +27,7 @@ import { SolidTabContent } from '../../solid/components/SolidTabContent';
 import { ControlPanelProvider, useControlPanelContext } from '../../settings/components/control-panel-context';
 import { useSettingsStore } from '../../../store/settingsStore';
 import { Lock, Star } from 'lucide-react';
+import { CommandInput } from './CommandInput';
 
 
 // Inner component that uses context
@@ -109,32 +110,35 @@ const IntegratedControlPanelInner: React.FC<ControlPanelProps> = ({
 
   if (!isExpanded) {
     return (
-      <div
-        onClick={() => setIsExpanded(true)}
-        style={{
-          position: 'fixed',
-          top: '10px',
-          left: '10px',
-          width: '40px',
-          height: '40px',
-          background: 'rgba(0,0,0,0.8)',
-          border: '1px solid rgba(255,255,255,0.3)',
-          borderRadius: '4px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          cursor: 'pointer',
-          zIndex: 1000
-        }}
-      >
-        <div style={{
-          width: '12px',
-          height: '12px',
-          background: '#f87171',
-          borderRadius: '50%',
-          boxShadow: '0 0 5px rgba(248,113,113,0.5)'
-        }} />
-      </div>
+      <>
+        <div
+          onClick={() => setIsExpanded(true)}
+          style={{
+            position: 'fixed',
+            top: '10px',
+            left: '10px',
+            width: '40px',
+            height: '40px',
+            background: 'rgba(0,0,0,0.8)',
+            border: '1px solid rgba(255,255,255,0.3)',
+            borderRadius: '4px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+            zIndex: 1000
+          }}
+        >
+          <div style={{
+            width: '12px',
+            height: '12px',
+            background: '#f87171',
+            borderRadius: '50%',
+            boxShadow: '0 0 5px rgba(248,113,113,0.5)'
+          }} />
+        </div>
+        <CommandInput isCollapsed={true} />
+      </>
     );
   }
 
