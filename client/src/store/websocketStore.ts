@@ -1316,6 +1316,8 @@ export const useWebSocketStore = create<WebSocketState>()(
                     target: String(target),
                     weight: e.weight as number | undefined,
                     label: e.label as string | undefined,
+                    edgeType: (e.edgeType ?? e.edge_type ?? e.relation_type) as string | undefined,
+                    owlPropertyIri: (e.owlPropertyIri ?? e.owl_property_iri) as string | undefined,
                   };
                 }).filter((edge: { source: string; target: string }) => edge.source !== 'undefined' && edge.target !== 'undefined');
 

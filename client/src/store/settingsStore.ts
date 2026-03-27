@@ -438,6 +438,18 @@ export const useSettingsStore = create<SettingsState>()(
               if (essGraphs?.logseq?.physics && mergedGraphs?.logseq) {
                 mergedGraphs.logseq.physics = essGraphs.logseq.physics;
               }
+              // Node visibility and core visual settings are server-authoritative
+              // to prevent stale localStorage from hiding graph types or making
+              // nodes invisible for new sessions inheriting shared state.
+              if (essGraphs?.logseq?.nodes && mergedGraphs?.logseq) {
+                const essNodes = essGraphs.logseq.nodes as Record<string, unknown>;
+                const mergedNodes = (mergedGraphs.logseq.nodes || {}) as Record<string, unknown>;
+                // Server wins for: visibility toggles, opacity, size
+                if (essNodes.nodeTypeVisibility) mergedNodes.nodeTypeVisibility = essNodes.nodeTypeVisibility;
+                if (essNodes.opacity !== undefined) mergedNodes.opacity = essNodes.opacity;
+                if (essNodes.nodeSize !== undefined) mergedNodes.nodeSize = essNodes.nodeSize;
+                mergedGraphs.logseq.nodes = mergedNodes;
+              }
             }
             if (essRec.clientTweening !== undefined && essRec.clientTweening !== null) {
               mergedRec.clientTweening = essRec.clientTweening;
