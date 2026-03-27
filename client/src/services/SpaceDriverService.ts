@@ -100,24 +100,29 @@ class SpaceDriverService extends EventTarget {
       const devices = await navigator.hid.getDevices();
       const spacePilotDevices = devices.filter(d => SUPPORTED_VENDOR_IDS.includes(d.vendorId));
 
+      // Use console.log directly — the logger defaults to 'warn' level and suppresses info/debug
+      console.log(`[SpaceDriver] HID available: ${!!navigator.hid}, secure: ${window.isSecureContext}, paired: ${devices.length}, supported: ${spacePilotDevices.length}`);
+
       if (spacePilotDevices.length > 0) {
-        logger.info(`Found ${spacePilotDevices.length} paired 3D input device(s)`);
         // Try each paired device until one opens — use whichever is physically connected
         let opened = false;
         for (const dev of spacePilotDevices) {
           const vidLabel = dev.vendorId === VENDOR_ID_3DCONNEXION ? '3Dconnexion' : 'Logitech/3Dconnexion';
+          console.log(`[SpaceDriver] Trying ${dev.productName || 'unknown'} [${vidLabel} 0x${dev.vendorId.toString(16)}:0x${dev.productId.toString(16)}] opened=${dev.opened}`);
           try {
-            logger.info(`Trying ${dev.productName || 'unknown'} [${vidLabel} 0x${dev.vendorId.toString(16)}:0x${dev.productId.toString(16)}]`);
             await this.openDevice(dev);
+            console.log(`[SpaceDriver] ✓ Opened ${dev.productName}`);
             opened = true;
             break;
           } catch (e) {
-            logger.warn(`Could not open ${dev.productName || 'unknown'}: ${e}`);
+            console.warn(`[SpaceDriver] ✗ Could not open ${dev.productName || 'unknown'}:`, e);
           }
         }
         if (!opened) {
-          logger.warn('No paired 3D input device could be opened');
+          console.warn('[SpaceDriver] No paired 3D input device could be opened');
         }
+      } else {
+        console.log('[SpaceDriver] No paired 3D input devices found. Use the SpacePilot panel to pair.');
       }
 
       
@@ -203,7 +208,12 @@ class SpaceDriverService extends EventTarget {
   }
 
   
+  private _reportCount = 0;
   private handleInputReport(evt: HIDInputReportEvent): void {
+    this._reportCount++;
+    if (this._reportCount <= 3 || this._reportCount % 1000 === 0) {
+      console.log(`[SpaceDriver] inputreport #${this._reportCount}: reportId=${evt.reportId}, bytes=${evt.data.byteLength}, device=${evt.device.productName}`);
+    }
     const values = new Int16Array(evt.data.buffer);
 
     switch (evt.reportId) {
