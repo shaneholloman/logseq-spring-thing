@@ -1696,6 +1696,7 @@ impl Handler<UpdateClientFilter> for ClientCoordinatorActor {
                                             vz: node.data.vz,
                                             owl_class_iri: node.owl_class_iri.clone(),
                                             node_type: node.node_type.clone(),
+                                            metadata: node.metadata.clone(),
                                         })
                                         .collect();
 

@@ -184,6 +184,9 @@ pub struct InitialNodeData {
     pub owl_class_iri: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub node_type: Option<String>,
+    /// Node metadata (source_domain, type, source_file, etc.)
+    #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
+    pub metadata: std::collections::HashMap<String, String>,
 }
 
 /// Edge data sent during initial graph load
