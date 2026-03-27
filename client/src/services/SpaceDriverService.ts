@@ -157,6 +157,13 @@ class SpaceDriverService extends EventTarget {
 
       
       await device.open();
+      console.log(`[SpaceDriver] Opened ${device.productName}, collections:`, device.collections?.map(c => ({
+        usagePage: '0x' + (c.usagePage ?? 0).toString(16),
+        usage: '0x' + (c.usage ?? 0).toString(16),
+        inputCount: c.inputReports?.length ?? 0,
+        outputCount: c.outputReports?.length ?? 0,
+        featureCount: c.featureReports?.length ?? 0,
+      })));
       logger.info('Opened device:', device.productName);
 
       
