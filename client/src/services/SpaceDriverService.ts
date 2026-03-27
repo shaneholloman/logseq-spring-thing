@@ -99,12 +99,25 @@ class SpaceDriverService extends EventTarget {
       
       const devices = await navigator.hid.getDevices();
       const spacePilotDevices = devices.filter(d => SUPPORTED_VENDOR_IDS.includes(d.vendorId));
-      
+
       if (spacePilotDevices.length > 0) {
-        const dev = spacePilotDevices[0];
-        const vidLabel = dev.vendorId === VENDOR_ID_3DCONNEXION ? '3Dconnexion' : 'Logitech/3Dconnexion';
-        logger.info(`Found ${spacePilotDevices.length} paired device(s) — using ${dev.productName || 'unknown'} [${vidLabel} 0x${dev.vendorId.toString(16)}:0x${dev.productId.toString(16)}]`);
-        await this.openDevice(spacePilotDevices[0]);
+        logger.info(`Found ${spacePilotDevices.length} paired 3D input device(s)`);
+        // Try each paired device until one opens — use whichever is physically connected
+        let opened = false;
+        for (const dev of spacePilotDevices) {
+          const vidLabel = dev.vendorId === VENDOR_ID_3DCONNEXION ? '3Dconnexion' : 'Logitech/3Dconnexion';
+          try {
+            logger.info(`Trying ${dev.productName || 'unknown'} [${vidLabel} 0x${dev.vendorId.toString(16)}:0x${dev.productId.toString(16)}]`);
+            await this.openDevice(dev);
+            opened = true;
+            break;
+          } catch (e) {
+            logger.warn(`Could not open ${dev.productName || 'unknown'}: ${e}`);
+          }
+        }
+        if (!opened) {
+          logger.warn('No paired 3D input device could be opened');
+        }
       }
 
       
@@ -113,8 +126,11 @@ class SpaceDriverService extends EventTarget {
       
       navigator.hid.addEventListener('connect', (evt: HIDConnectionEvent) => {
         logger.info('Device connected:', evt.device.productName);
-        if (SUPPORTED_VENDOR_IDS.includes(evt.device.vendorId) && !this.device) {
-          this.openDevice(evt.device);
+        if (SUPPORTED_VENDOR_IDS.includes(evt.device.vendorId)) {
+          // Use newly connected device (replaces current if any)
+          this.openDevice(evt.device).catch(e =>
+            logger.warn(`Failed to open newly connected device: ${e}`)
+          );
         }
       });
 
