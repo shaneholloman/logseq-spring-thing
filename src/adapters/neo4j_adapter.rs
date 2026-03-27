@@ -665,6 +665,54 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
 
         debug!("Loaded {} total base edges from Neo4j", edges.len());
 
+        // Bridge: If GraphNode EDGE relationships exist but weren't loaded (OwlClass path),
+        // map them into the current graph by matching GraphNode labels to loaded node labels.
+        // This gives knowledge/page nodes their wikilink edges in the ontology graph.
+        if !iri_to_id.is_empty() {
+            let label_to_id: std::collections::HashMap<String, u32> = nodes.iter()
+                .map(|n| (n.label.to_lowercase(), n.id))
+                .collect();
+
+            let wikilink_query = Query::new(
+                "MATCH (s:GraphNode)-[r:EDGE]->(t:GraphNode)
+                 RETURN s.label AS source_label, t.label AS target_label,
+                        r.weight AS weight, r.relation_type AS relation_type
+                ".to_string()
+            );
+
+            let mut edge_set: std::collections::HashSet<(u32, u32)> = edges.iter()
+                .map(|e| (e.source, e.target))
+                .collect();
+
+            let mut wikilink_count = 0u32;
+            match self.graph.execute(wikilink_query).await {
+                Ok(mut result) => {
+                    while let Ok(Some(row)) = result.next().await {
+                        let src_label: String = match row.get("source_label") { Ok(v) => v, Err(_) => continue };
+                        let tgt_label: String = match row.get("target_label") { Ok(v) => v, Err(_) => continue };
+                        let src_key = src_label.to_lowercase();
+                        let tgt_key = tgt_label.to_lowercase();
+
+                        if let (Some(&src_id), Some(&tgt_id)) = (label_to_id.get(&src_key), label_to_id.get(&tgt_key)) {
+                            if src_id != tgt_id && edge_set.insert((src_id, tgt_id)) {
+                                let weight: f64 = row.get("weight").unwrap_or(1.0);
+                                let rel_type: Option<String> = row.get("relation_type").ok();
+                                let mut edge = Edge::new(src_id, tgt_id, weight as f32);
+                                edge.edge_type = rel_type.or(Some("explicit_link".to_string()));
+                                edges.push(edge);
+                                wikilink_count += 1;
+                            }
+                        }
+                    }
+                }
+                Err(e) => warn!("Failed to load wikilink bridge edges: {}", e),
+            }
+
+            if wikilink_count > 0 {
+                info!("Bridged {} wikilink edges from GraphNode EDGE to ontology graph", wikilink_count);
+            }
+        }
+
         // Enrich: Load ontology SUBCLASS_OF relationships and map to GraphNode edges.
         // OwlClass nodes have labels that match GraphNode labels — use this to bridge
         // the ontology hierarchy into the force-directed graph for meaningful clustering.
