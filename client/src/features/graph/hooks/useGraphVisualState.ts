@@ -143,9 +143,15 @@ export function useGraphVisualState(graphData: GraphData): GraphVisualStateResul
       }
 
       // Priority 2: Node type field from API (set by GraphStateActor classify_node)
-      const nodeType = (node as unknown as { type?: string }).type;
-      if (nodeType === 'ontology_node' || nodeType === 'owl_class') {
+      const nodeType = (node as unknown as { type?: string }).type || '';
+      if (nodeType === 'ontology_node' || nodeType === 'owl_class' || nodeType === 'OwlClass'
+          || nodeType.includes(':') // OWL class IRI like "mv:Avatar", "ai:BdiModel"
+      ) {
         map.set(String(node.id), 'ontology');
+        continue;
+      }
+      if (nodeType === 'page' || nodeType === 'linked_page') {
+        map.set(String(node.id), 'knowledge_graph');
         continue;
       }
       if (nodeType === 'agent' || nodeType === 'bot') {
