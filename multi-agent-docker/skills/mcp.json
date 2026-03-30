@@ -4,12 +4,20 @@
   "description": "MCP Server Registry for Agentic Workstation - Modernized Skills",
   "mcpServers": {
     "claude-flow": {
-      "command": "node",
-      "args": ["/app/scripts/stdio-to-tcp-bridge.js"],
+      "command": "ruflo",
+      "args": ["mcp", "start"],
       "type": "stdio",
       "env": {
-        "MCP_HOST": "127.0.0.1",
-        "MCP_PORT": "9500"
+        "RUVECTOR_PG_HOST": "ruvector-postgres",
+        "RUVECTOR_PG_PORT": "5432",
+        "RUVECTOR_PG_DATABASE": "ruvector",
+        "RUVECTOR_PG_USER": "ruvector",
+        "RUVECTOR_PG_PASSWORD": "ruvector",
+        "PGHOST": "ruvector-postgres",
+        "PGPORT": "5432",
+        "PGDATABASE": "ruvector",
+        "PGUSER": "ruvector",
+        "PGPASSWORD": "ruvector"
       }
     },
     "ruv-swarm": {
@@ -105,6 +113,18 @@
         "GEMINI_TIMEOUT": "60"
       },
       "description": "URL expansion and analysis using Gemini 2.5 Flash URL Context API",
+      "protocol": "fastmcp",
+      "version": "1.0.0"
+    },
+    "notebooklm": {
+      "command": "python3",
+      "args": ["-u", "/home/devuser/.claude/skills/notebooklm/mcp-server/server.py"],
+      "type": "stdio",
+      "env": {
+        "NOTEBOOKLM_STORAGE_DIR": "/home/devuser/.notebooklm",
+        "NOTEBOOKLM_TIMEOUT": "300"
+      },
+      "description": "Google NotebookLM: notebooks, sources, chat, audio/video/slides/quiz generation",
       "protocol": "fastmcp",
       "version": "1.0.0"
     }

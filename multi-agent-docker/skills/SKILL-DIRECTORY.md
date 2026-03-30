@@ -1,7 +1,7 @@
 # Skill Directory -- Comprehensive Inventory and Decision Tree
 
-> **72 skills** audited. **6 deprecated**, **9 archived**, **57 active**.
-> Generated 2026-03-25. Reference this file from CLAUDE.md for intelligent routing.
+> **87 skills** audited. **6 deprecated**, **9 archived**, **72 active**.
+> Updated 2026-03-30. Reference this file from CLAUDE.md for intelligent routing.
 
 ---
 
@@ -27,7 +27,7 @@
 
 ---
 
-## Artefact 1: Categorised Skill Inventory (56 Active Skills)
+## Artefact 1: Categorised Skill Inventory (72 Active Skills)
 
 ### Context, Discovery, and Session Management
 
@@ -112,6 +112,7 @@ Testing is integrated into `build-with-quality` (TDD agents) and `sparc-methodol
 | `perplexity-research` | No | Real-time web search via Perplexity API with citations | Current information, market research, live web data |
 | `gemini-url-context` | Yes | Gemini 2.5 Flash URL expansion, up to 20 URLs per request, grounding metadata | Analysing or summarising specific known URLs |
 | `web-summary` | Yes | URL summarisation, YouTube transcript extraction, Logseq/Obsidian topic links | Summarising articles, YouTube videos, generating note links |
+| `notebooklm` | Yes | Google NotebookLM SDK: notebooks, sources, chat, audio/video/slides/quiz/report generation | Research automation, podcast generation, study material creation, knowledge management |
 
 ### Documentation and Reports
 
@@ -122,6 +123,7 @@ Testing is integrated into `build-with-quality` (TDD agents) and `sparc-methodol
 | `mermaid-diagrams` | No | 25 diagram types, PNG/SVG/PDF export, dark/light themes | System architecture, flowcharts, ER models, Gantt charts, mindmaps |
 | `paperbanana` | No | Publication-quality academic figures via multi-agent VLM pipeline (Gemini/OpenAI) | Research paper figures, methodology diagrams, statistical plots |
 | `fossflow` | No | Isometric network/architecture diagrams, compact LLM-optimised format | Network topology diagrams and infrastructure maps |
+| `wardley-maps` | No | Strategic Wardley mapping from any input, component evolution, value chain visualisation | Competitive positioning, strategic analysis, technology evolution mapping |
 
 ### UI/UX Design
 
@@ -129,6 +131,29 @@ Testing is integrated into `build-with-quality` (TDD agents) and `sparc-methodol
 |-------|-----|----------------|----------------|
 | `ui-ux-pro-max-skill` | No | 50 styles, 97 palettes, 57 font pairings, 9 tech stacks, shadcn/ui MCP | Designing UI components, choosing palettes/typography, reviewing UX |
 | `daisyui` | No | daisyUI 5 components, theme configuration, Tailwind CSS patterns | Building web interfaces specifically with daisyUI components |
+| `bencium-controlled-ux-designer` | No | WCAG 2.1 AA, mathematical scales, always-ask-first protocol, design system templates | Enterprise/regulated UX design with accessibility-first approach |
+| `bencium-innovative-ux-designer` | No | Bold creative UX, experimental typography, anti-generic-AI aesthetics | Landing pages, campaigns, visually striking interfaces |
+| `bencium-impact-designer` | No | Production-grade frontend, avoids AI slop, based on Anthropic's Frontend Designer | High-quality frontend implementations with distinctive aesthetics |
+| `design-audit` | No | Systematic visual UI/UX audits, phased implementation-ready design plans | Visual design review, polishing existing interfaces |
+| `typography` | No | Professional typography: proper quotes, dashes, spacing, hierarchy (Butterick rules) | Auto-enforced typography in any HTML/CSS/React code generation |
+| `relationship-design` | No | AI-first interfaces, memory-aware UX, trust evolution, collaborative planning | Designing agentic/AI apps with ongoing user relationships |
+
+### Communication & Decision Support
+
+| Skill | MCP | Key Capability | When to Choose |
+|-------|-----|----------------|----------------|
+| `adaptive-communication` | No | Detects relational vs transactional communication style, adapts responses | Ambiguous user intent, hedging language, relational conversations |
+| `negentropy-lens` | No | Entropy vs negentropy evaluation framework, surfaces tacit knowledge gaps | Architecture decisions, system evaluation, strategy review |
+
+### Software Architecture & Code Quality (Bencium)
+
+| Skill | MCP | Key Capability | When to Choose |
+|-------|-----|----------------|----------------|
+| `renaissance-architecture` | No | First-principles architecture, simplicity-first, building new vs derivative | Designing genuinely new features/products, avoiding over-engineering |
+| `human-architect-mindset` | No | Domain modeling, systems thinking, constraint navigation, AI-aware decomposition | Multi-component architecture, integration planning, breaking changes |
+| `vanity-engineering-review` | No | Detects ego-driven engineering: unnecessary abstractions, resume-driven tech choices | Code review, architecture review, complexity audit |
+| `bencium-code-conventions` | No | React/Next.js/TypeScript/TailwindCSS stack conventions, style guide | Projects using Bencium's preferred tech stack |
+| `bencium-aeo` | No | Answer Engine Optimisation for AI search visibility (ChatGPT, Claude, Gemini) | Optimising content for AI citations, not traditional SEO |
 
 ### Media Processing
 
@@ -145,6 +170,7 @@ Testing is integrated into `build-with-quality` (TDD agents) and `sparc-methodol
 | `game-dev` | No | 48 agents, 38 commands across Godot/Unity/Unreal, design/programming/art/audio/QA | Full game development projects across any major engine |
 | `terracraft` | No | OSM + elevation + arnis pipeline: real-world locations to Minecraft Java worlds. QGIS/Blender/GDAL integration | Generating Minecraft worlds from real geography, geospatial-to-game conversion |
 | `blender` | No | 3D modelling, scene creation, rendering, material PBR, import/export via socket | Programmatic 3D modelling, automated Blender workflows |
+| `lichtfeld-studio` | Yes | 3D Gaussian Splatting training, visualisation, editing, export (70+ MCP tools), SplatReady COLMAP | 3DGS scene capture, splat editing, radiance field workflows |
 
 ### Geospatial
 
@@ -205,14 +231,16 @@ Q2: What is the primary domain?
     [A] CODE DEVELOPMENT (write, refactor, test, review code)
     [B] GITHUB OPERATIONS (PRs, issues, releases, workflows, multi-repo)
     [C] MULTI-AGENT / SWARM COORDINATION
-    [D] RESEARCH, WEB, or CONTENT (fetch URLs, search web, summarise)
+    [D] RESEARCH, WEB, and CONTENT (fetch URLs, search web, summarise, NotebookLM)
     [E] DOCUMENTS and REPORTS (LaTeX, diagrams, docs validation)
     [F] MEDIA (image, video, audio, 3D, AI generation)
     [G] BROWSER AUTOMATION (scrape, test UI, debug web apps)
     [H] AI/ML MODEL WORK (train, deploy, reason)
     [I] MEMORY and LEARNING (store, search, vector DB, RL)
     [J] INFRASTRUCTURE / PLATFORM / DEVOPS
-    [K] DOMAIN-SPECIFIC (GIS, ontology, game dev, UI design)
+    [K] UI/UX DESIGN (interfaces, components, audit, typography)
+    [L] SOFTWARE ARCHITECTURE (first-principles, review, domain modelling)
+    [M] DOMAIN-SPECIFIC (GIS, ontology, game dev, SEO/AEO)
 ```
 
 ### [A] Code Development
@@ -240,8 +268,8 @@ Q3: How complex is the task?
     +-- CUDA GPU kernel development
     |   --> cuda
     |
-    +-- Generate docs from PRD (no code implementation)
-        --> prd2build
+    +-- React/Next.js/TypeScript/Tailwind stack conventions
+        --> bencium-code-conventions
 ```
 
 ### [B] GitHub Operations
@@ -303,11 +331,8 @@ Q3: What do you need?
     +-- Summarise articles or YouTube videos for notes
     |   --> web-summary
     |
-    +-- Delegate complex reasoning to DeepSeek
-    |   --> deepseek-reasoning
-    |
-    +-- Delegate coding/review to GPT-5.4
-        --> openai-codex
+    +-- NotebookLM: ingest sources, generate podcasts/slides/quizzes
+        --> notebooklm
 ```
 
 ### [E] Documents and Reports
@@ -334,7 +359,10 @@ Q3: What kind of document?
     |   --> docs-alignment
     |
     +-- Generate project docs from a PRD
-        --> prd2build
+    |   --> prd2build
+    |
+    +-- Strategic Wardley maps (competitive positioning, evolution)
+        --> wardley-maps
 ```
 
 ### [F] Media Processing
@@ -355,7 +383,10 @@ Q3: What media type?
     |   --> blender
     |
     +-- Game assets and full game dev pipeline
-        --> game-dev
+    |   --> game-dev
+    |
+    +-- 3D Gaussian Splatting (training, editing, export)
+        --> lichtfeld-studio
 ```
 
 ### [G] Browser Automation
@@ -396,7 +427,13 @@ Q3: What ML task?
     |   --> jupyter-notebooks
     |
     +-- Self-learning agents with RL algorithms
-        --> agentdb-learning
+    |   --> agentdb-learning
+    |
+    +-- Delegate reasoning to DeepSeek R1
+    |   --> deepseek-reasoning
+    |
+    +-- Delegate coding to GPT-5.4
+        --> openai-codex
 ```
 
 ### [I] Memory and Learning
@@ -438,7 +475,58 @@ Q3: What infrastructure task?
         --> skill-builder
 ```
 
-### [K] Domain-Specific Tools
+### [K] UI/UX Design
+
+```
+Q3: What kind of design work?
+    |
+    +-- General UI/UX (50 styles, palettes, fonts, accessibility)
+    |   --> ui-ux-pro-max-skill
+    |
+    +-- daisyUI / Tailwind components specifically
+    |   --> daisyui
+    |
+    +-- Enterprise UX (WCAG 2.1 AA, regulated, ask-first protocol)
+    |   --> bencium-controlled-ux-designer
+    |
+    +-- Bold creative UX (campaigns, anti-AI-slop aesthetics)
+    |   --> bencium-innovative-ux-designer
+    |
+    +-- Production frontend (distinctive, Anthropic-style quality)
+    |   --> bencium-impact-designer
+    |
+    +-- Audit / polish existing UI (visual review, no functionality)
+    |   --> design-audit
+    |
+    +-- Typography enforcement (quotes, dashes, spacing, hierarchy)
+    |   --> typography
+    |
+    +-- AI-first relationship interfaces (memory, trust, planning)
+        --> relationship-design
+```
+
+### [L] Software Architecture and Review
+
+```
+Q3: What architecture need?
+    |
+    +-- First-principles thinking, build genuinely new things
+    |   --> renaissance-architecture
+    |
+    +-- Domain modelling, systems thinking, constraint navigation
+    |   --> human-architect-mindset
+    |
+    +-- Over-engineering / vanity check on existing code
+    |   --> vanity-engineering-review
+    |
+    +-- Entropy vs negentropy evaluation of systems/decisions
+    |   --> negentropy-lens
+    |
+    +-- Detect relational vs transactional communication style
+        --> adaptive-communication
+```
+
+### [M] Domain-Specific Tools
 
 ```
 Q3: Which domain?
@@ -455,11 +543,11 @@ Q3: Which domain?
     +-- Game development (Godot/Unity/Unreal)
     |   --> game-dev
     |
-    +-- UI/UX design (styles, palettes, fonts, accessibility)
-    |   --> ui-ux-pro-max-skill
+    +-- Geospatial-to-game conversion (real-world to Minecraft)
+    |   --> terracraft
     |
-    +-- daisyUI components specifically
-        --> daisyui
+    +-- Content optimisation for AI search citations (AEO)
+        --> bencium-aeo
 ```
 
 ---
@@ -480,13 +568,22 @@ Some tasks benefit from combining skills. Common compositions:
 | Documentation with live web research | `report-builder` | `perplexity-research`, `gemini-url-context` |
 | Visual UI testing after building components | `daisyui` or `ui-ux-pro-max-skill` | `playwright` |
 | Academic paper with AI-generated figures | `latex-documents` | `paperbanana`, `mermaid-diagrams` |
+| Creative landing page with proper typography | `bencium-innovative-ux-designer` | `typography` |
+| Enterprise app with accessibility audit | `bencium-controlled-ux-designer` | `design-audit` |
+| Architecture review before major refactor | `vanity-engineering-review` | `human-architect-mindset`, `negentropy-lens` |
+| Research with NotebookLM podcast + report | `notebooklm` | `report-builder`, `perplexity-research` |
+| AI-first product with relationship UX | `relationship-design` | `bencium-impact-designer` |
+| Content optimised for AI search engines | `bencium-aeo` | `perplexity-research` |
 | Debug web app from Docker | `host-webserver-debug` | `chrome-cdp`, `playwright` |
+| Swarm with automated hooks | `swarm-advanced` | `hooks-automation` |
+| 3DGS with Blender scene prep | `lichtfeld-studio` | `blender` |
+| Architecture review before feature build | `human-architect-mindset` | `build-with-quality` |
 
 ---
 
 ## MCP Server Summary
 
-12 skills provide MCP servers (registered in `skills/mcp.json` or invocable via skill config):
+15 skills provide MCP servers (registered in `skills/mcp.json` or invocable via skill config):
 
 | Skill | Protocol | Entry Point |
 |-------|----------|-------------|
@@ -497,13 +594,15 @@ Some tasks benefit from combining skills. Common compositions:
 | `gemini-url-context` | fastmcp | `mcp-server/server.py` |
 | `host-webserver-debug` | mcp-sdk | `mcp-server/server.js` |
 | `imagemagick` | fastmcp | `mcp-server/server.py` |
+| `notebooklm` | fastmcp | `mcp-server/server.py` |
 | `openai-codex` | stdio | `mcp-server/server.js` |
 | `playwright` | mcp-sdk | `mcp-server/server.js` |
 | `qgis` | fastmcp | `mcp-server/server.py` |
 | `web-summary` | fastmcp | `mcp-server/server.py` |
+| `comfyui` | fastmcp | `mcp-server/server.py` |
+| `blender` | stdio | `mcp-server/server.py` |
+| `lichtfeld-studio` | stdio | `mcp-server/server.js` |
 | `perplexity` | mcp-sdk | `mcp-server/server.js` (DEPRECATED -- use perplexity-research) |
-
-Additionally, `blender` and `comfyui` have MCP server entries in `mcp.json` but declare `mcp_server` differently in their SKILL.md.
 
 ---
 

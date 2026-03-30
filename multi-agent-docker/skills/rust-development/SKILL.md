@@ -146,8 +146,7 @@ impl Drawable for Circle {
 
 ## Related Skills
 
-- docker-manager - Containerize Rust applications
-- git - Version control for projects
+None currently required. Standard Claude Code tools handle version control and containerisation.
 
 ## Notes
 

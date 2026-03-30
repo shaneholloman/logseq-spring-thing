@@ -242,8 +242,8 @@ if torch.cuda.is_available():
 ## Related Skills
 
 - jupyter-notebooks - Interactive ML development
-- cuda-development - Custom CUDA kernels
-- data-visualization - Plot training metrics
+- cuda - Custom CUDA kernels
+- report-builder - Plot training metrics
 
 ## Best Practices
 

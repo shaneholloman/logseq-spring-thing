@@ -905,8 +905,7 @@ pdflatex notebook.tex
 ## Related Skills
 
 - **jupyter-notebooks** - Generate LaTeX from notebooks
-- **data-visualization** - Create figures for inclusion
-- **git** - Version control for documents
+- **report-builder** - Create figures for inclusion
 
 ## Technical Details
 

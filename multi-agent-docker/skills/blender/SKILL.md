@@ -164,9 +164,7 @@ The skill handles:
 ## Integration with Other Skills
 
 Works well with:
-- `filesystem` skill for managing output files
 - `imagemagick` skill for post-processing renders
-- `pbr-rendering` skill for material preview generation
 
 ## Performance Notes
 

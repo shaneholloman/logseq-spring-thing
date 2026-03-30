@@ -8,10 +8,10 @@
     "port": 5432,
     "database": "ruvector",
     "user": "ruvector",
-    "password": "ruvector_secure_pass",
+    "password": "ruvector",
     "ssl": false,
     "poolSize": 10,
-    "connectionString": "host=ruvector-postgres port=5432 user=ruvector password=ruvector_secure_pass dbname=ruvector"
+    "connectionString": "host=ruvector-postgres port=5432 user=ruvector password=ruvector dbname=ruvector"
   },
   "sqlite": {
     "enabled": false,

@@ -325,5 +325,5 @@ tail -f /var/log/https-bridge.log
 ## Related Skills
 
 - **playwright**: Browser automation and testing
-- **chrome-devtools**: Advanced browser debugging
-- **docker-manager**: Container management
+- **chrome-cdp**: Advanced browser debugging via Chrome DevTools Protocol
+- **browser-automation**: Unified browser tool selection

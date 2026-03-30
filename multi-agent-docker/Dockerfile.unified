@@ -37,7 +37,7 @@ LABEL org.opencontainers.image.description="Unified Ruflo V4 Development Environ
 LABEL org.opencontainers.image.version="4.0.0"
 LABEL org.opencontainers.image.created="2026-03-12"
 LABEL org.opencontainers.image.vendor="Turbo Flow"
-LABEL com.turboflow.skills.count="71"
+LABEL com.turboflow.skills.count="87"
 LABEL com.turboflow.ruflo.version="3.5"
 
 # ============================================================================
@@ -61,6 +61,7 @@ RUN for attempt in 1 2 3; do \
             jq yq bat exa fzf \
             python make gcc python-setuptools \
             python python-pip rustup \
+            p7zip electron \
         && break || { echo "Attempt $attempt failed, retrying in 10s..."; sleep 10; pacman -Syy --noconfirm; }; \
     done && rm -rf /var/cache/pacman/pkg/*
 
@@ -209,6 +210,162 @@ RUN git clone --depth 1 https://github.com/louis-e/arnis.git /tmp/arnis-build &&
     rm -rf /tmp/arnis-build || echo "arnis build optional (requires Rust toolchain)"
 
 # ============================================================================
+# PHASE 2.7: 3D Gaussian Splatting Stack (COLMAP + LichtFeld Studio + SplatReady)
+# ============================================================================
+
+# Phase 2.7a: Install COLMAP build dependencies
+RUN for attempt in 1 2 3; do \
+        echo "=== COLMAP deps attempt $attempt/3 ===" && \
+        pacman -S --noconfirm --needed \
+            cmake ninja nasm \
+            eigen ceres-solver suitesparse cgal \
+            google-glog glew sqlite openimageio \
+            autoconf autoconf-archive automake libtool \
+            python-pillow \
+        && break || { echo "Attempt $attempt failed"; sleep 10; pacman -Syy --noconfirm; }; \
+    done
+
+# Phase 2.7b: Build METIS from source (required by COLMAP via Ceres/SuiteSparse)
+RUN cd /tmp && \
+    curl -sL https://github.com/KarypisLab/METIS/archive/refs/tags/v5.2.1.tar.gz | tar xz && \
+    cd METIS-5.2.1 && \
+    git clone --depth 1 https://github.com/KarypisLab/GKlib.git && \
+    # Build GKlib static
+    mkdir -p GKlib/build && cd GKlib/build && \
+    cmake .. -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DCMAKE_INSTALL_PREFIX=/usr/local \
+        -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_FLAGS="-fPIC" -DBUILD_SHARED_LIBS=OFF && \
+    make -j$(nproc) GKlib && make install && \
+    # Build METIS static
+    cd /tmp/METIS-5.2.1 && \
+    mkdir -p build/xinclude && \
+    echo "#define IDXTYPEWIDTH 32" > build/xinclude/metis.h && \
+    echo "#define REALTYPEWIDTH 32" >> build/xinclude/metis.h && \
+    cat include/metis.h >> build/xinclude/metis.h && \
+    cp include/CMakeLists.txt build/xinclude && \
+    cd build && \
+    cmake /tmp/METIS-5.2.1 -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+        -DGKLIB_PATH=/tmp/METIS-5.2.1/GKlib -DCMAKE_INSTALL_PREFIX=/usr/local \
+        -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_FLAGS="-fPIC" && \
+    make -j$(nproc) metis && \
+    cp libmetis/libmetis.a /usr/local/lib/ && \
+    cp /tmp/METIS-5.2.1/build/xinclude/metis.h /usr/local/include/ && \
+    # Create METIS cmake config
+    mkdir -p /usr/local/lib/cmake/metis && \
+    printf 'if(NOT TARGET METIS::METIS)\n\
+  add_library(METIS::METIS STATIC IMPORTED)\n\
+  set_target_properties(METIS::METIS PROPERTIES\n\
+    IMPORTED_LOCATION "/usr/local/lib/libmetis.a"\n\
+    INTERFACE_INCLUDE_DIRECTORIES "/usr/local/include"\n\
+    INTERFACE_LINK_LIBRARIES "/usr/local/lib/libGKlib.a;m")\n\
+endif()\n\
+set(METIS_FOUND TRUE)\n' > /usr/local/lib/cmake/metis/metis-config.cmake && \
+    ldconfig && \
+    rm -rf /tmp/METIS-5.2.1
+
+# Phase 2.7c: Build COLMAP from source (headless, CUDA-accelerated)
+RUN git clone --depth 1 https://github.com/colmap/colmap.git /tmp/colmap-build && \
+    cd /tmp/colmap-build && \
+    cmake -B build -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_CUDA_ARCHITECTURES="86;75" \
+        -DGUI_ENABLED=OFF \
+        -DCMAKE_INSTALL_PREFIX=/usr/local \
+        -DCMAKE_PREFIX_PATH=/usr/local \
+        -G Ninja && \
+    cmake --build build -- -j$(nproc) && \
+    cmake --install build && \
+    rm -rf /tmp/colmap-build && \
+    colmap --version
+
+# Phase 2.7d: Setup vcpkg (used by LichtFeld Studio)
+RUN git clone https://github.com/microsoft/vcpkg.git /opt/vcpkg && \
+    /opt/vcpkg/bootstrap-vcpkg.sh -disableMetrics
+ENV VCPKG_ROOT=/opt/vcpkg
+
+# Phase 2.7e: Build LichtFeld Studio from source
+RUN git clone --recursive https://github.com/MrNeRF/LichtFeld-Studio.git /opt/lichtfeld-src && \
+    cd /opt/lichtfeld-src && \
+    cmake -B build -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_TOOLCHAIN_FILE=/opt/vcpkg/scripts/buildsystems/vcpkg.cmake \
+        -G Ninja && \
+    cmake --build build -- -j$(nproc) || true && \
+    # Binary links at 557/559 even if Python stubgen fails (numpy version mismatch)
+    test -f build/LichtFeld-Studio && \
+    ln -sf /opt/lichtfeld-src/build/LichtFeld-Studio /usr/local/bin/lichtfeld-studio && \
+    # PTX warmup to pre-compile CUDA kernels
+    LD_LIBRARY_PATH=/opt/lichtfeld-src/build:$LD_LIBRARY_PATH \
+        /opt/lichtfeld-src/build/LichtFeld-Studio --warmup || true && \
+    echo "LichtFeld Studio built successfully"
+
+# Phase 2.7f: Install SplatReady plugin + Python deps
+RUN pip install --break-system-packages pillow piexif av && \
+    git clone https://github.com/jacobvanbeets/SplatReady.git \
+        /home/devuser/.lichtfeld/plugins/splat_ready && \
+    # Pre-configure SplatReady with COLMAP path
+    mkdir -p /home/devuser/.lichtfeld/plugins/splat_ready && \
+    printf '{\n\
+  "reconstruction_method": "colmap",\n\
+  "colmap_exe_path": "/usr/local/bin/colmap",\n\
+  "frame_rate": 1.0,\n\
+  "max_image_size": 2000,\n\
+  "min_scale": 0.5\n\
+}\n' > /home/devuser/.lichtfeld/plugins/splat_ready/pipeline_config.json
+
+# Phase 2.7h: Sprint dependencies — segmentation, meshing, video, HuggingFace
+RUN pip install --break-system-packages \
+    sam2 segment-anything \
+    trimesh xatlas pymeshfix fast-simplification scikit-image \
+    yt-dlp \
+    huggingface_hub
+
+# Phase 2.7i: Python 3.11 venv for USD assembly (usd-core needs Python <=3.12)
+RUN pacman -S --noconfirm python311 && \
+    python3.11 -m venv /opt/venv-usd && \
+    /opt/venv-usd/bin/pip install --no-cache-dir usd-core trimesh numpy
+
+# Phase 2.7g: Install LichtFeld skill + CLI wrappers
+COPY --chown=devuser:devuser multi-agent-docker/config/lichtfeld-studio/ \
+    /home/devuser/.claude/skills/lichtfeld-studio/
+
+RUN cat > /usr/local/bin/lfs-mcp << 'LFSEOF'
+#!/usr/bin/env bash
+# LichtFeld Studio MCP CLI wrapper
+ENDPOINT="${LICHTFELD_MCP_ENDPOINT:-http://127.0.0.1:45677/mcp}"
+ID="${RANDOM}"
+post() { curl -s -X POST "$ENDPOINT" -H "Content-Type: application/json" -d "$1"; }
+case "${1:-help}" in
+    ping) post "{\"jsonrpc\":\"2.0\",\"id\":$ID,\"method\":\"ping\"}" ;;
+    list) post "{\"jsonrpc\":\"2.0\",\"id\":$ID,\"method\":\"tools/list\"}" | jq -r '.result.tools[].name' 2>/dev/null ;;
+    resources) post "{\"jsonrpc\":\"2.0\",\"id\":$ID,\"method\":\"resources/list\"}" | jq -r '.result.resources[].uri' 2>/dev/null ;;
+    call) post "{\"jsonrpc\":\"2.0\",\"id\":$ID,\"method\":\"tools/call\",\"params\":{\"name\":\"${2:?}\",\"arguments\":${3:-{}}}}" ;;
+    read) post "{\"jsonrpc\":\"2.0\",\"id\":$ID,\"method\":\"resources/read\",\"params\":{\"uri\":\"${2:?}\"}}" ;;
+    *) echo "Usage: lfs-mcp {ping|list|resources|call <tool> [json]|read <uri>}" ;;
+esac
+LFSEOF
+    chmod +x /usr/local/bin/lfs-mcp && \
+    cat > /usr/local/bin/video2splat << 'V2SEOF'
+#!/usr/bin/env bash
+set -euo pipefail
+VIDEO="${1:?Usage: video2splat <video> <output_dir> [fps] [max_iter] [strategy]}"
+OUTPUT="${2:?Usage: video2splat <video> <output_dir> [fps] [max_iter] [strategy]}"
+FPS="${3:-1.0}"; MAX_ITER="${4:-30000}"; STRATEGY="${5:-mcmc}"
+PLUGIN_DIR="$HOME/.lichtfeld/plugins/splat_ready"
+CONFIG="/tmp/splatready_$(date +%s).json"
+cat > "$CONFIG" << EOF
+{"video_path":"$VIDEO","base_output_folder":"$OUTPUT","frame_rate":$FPS,
+"skip_extraction":false,"reconstruction_method":"colmap",
+"colmap_exe_path":"/usr/local/bin/colmap","max_image_size":2000,"min_scale":0.5}
+EOF
+echo "=== SplatReady: frames + COLMAP ===" && python3 "$PLUGIN_DIR/core/runner.py" "$CONFIG"
+DATASET="$OUTPUT/colmap/undistorted"
+[ -d "$DATASET" ] || { echo "ERROR: no output at $DATASET"; exit 1; }
+echo "=== LichtFeld: training ===" && \
+LD_LIBRARY_PATH="/opt/lichtfeld-src/build:${LD_LIBRARY_PATH:-}" \
+    lichtfeld-studio --headless --data-path "$DATASET" --output-path "$OUTPUT/model" \
+    --iter "$MAX_ITER" --strategy "$STRATEGY"
+V2SEOF
+    chmod +x /usr/local/bin/video2splat
+
+# ============================================================================
 # PHASE 3: Rust Toolchain Setup
 # ============================================================================
 
@@ -223,7 +380,7 @@ RUN rustup default stable && \
 # Create devuser (primary Claude Code user)
 RUN useradd -m -u 1000 -G wheel,video,audio,docker -s /usr/bin/zsh devuser && \
     echo "devuser ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers && \
-    mkdir -p /home/devuser/{workspace,models,.config,.cache,logs,agents,.claude/skills}
+    mkdir -p /home/devuser/{workspace,models,.config,.cache,logs,agents,.claude/skills,.claude/config}
 
 # Create gemini-user (Google Gemini tools)
 RUN useradd -m -u 1001 -s /usr/bin/zsh gemini-user && \
@@ -302,7 +459,9 @@ RUN npm install -g \
     ts-node@latest \
     @types/node@latest \
     # Mermaid CLI for diagrams-as-code (used by report-builder skill)
-    @mermaid-js/mermaid-cli@latest
+    @mermaid-js/mermaid-cli@latest \
+    # Electron asar tool (required by claude-cowork-linux)
+    @electron/asar@latest
     # PaperBanana academic diagram generator (used by report-builder skill)
     # Installed via pip in Python venv, not npm
 
@@ -385,7 +544,8 @@ RUN /opt/python312/bin/python3.12 -m venv /opt/venv && \
         pytest pytest-cov \
         requests beautifulsoup4 \
         pyyaml toml \
-        huggingface-hub
+        huggingface-hub \
+        "notebooklm-py[browser]"
 
 # Add venv to PATH for supervisor and other Python tools
 ENV PATH="/opt/venv/bin:${PATH}"
@@ -593,6 +753,13 @@ RUN pip3 install --no-cache-dir --break-system-packages \
 RUN pip3 install --no-cache-dir --break-system-packages \
     ipykernel nbformat
 
+# NotebookLM MCP server (notebooklm-py SDK with browser auth)
+# Python playwright needs its own chromium binary (separate from Node.js playwright)
+RUN pip3 install --no-cache-dir --break-system-packages \
+    "notebooklm-py[browser]" && \
+    playwright install --with-deps chromium 2>/dev/null || echo "NotebookLM playwright optional" && \
+    ln -sf /root/.cache/ms-playwright /home/devuser/.cache/ms-playwright 2>/dev/null || true
+
 # Web scraping and general utilities
 RUN pip3 install --no-cache-dir --break-system-packages \
     beautifulsoup4 requests
@@ -722,6 +889,68 @@ RUN npx ruflo@latest plugins install -n "@claude-flow/plugin-agentic-qe" 2>/dev/
     npx ruflo@latest plugins install -n "@claude-flow/teammate-plugin" 2>/dev/null || true && \
     npx ruflo@latest plugins install -n "@claude-flow/plugin-gastown-bridge" 2>/dev/null || true && \
     echo "✓ Ruflo V4 plugins installed (6/6)"
+
+# ============================================================================
+# PHASE 13.7: Claude Cowork for Linux (Unofficial Desktop Cowork Mode)
+# Runs Claude Desktop's Cowork mode natively on Linux via Electron + stubs
+# Source: https://github.com/johnzfitch/claude-cowork-linux
+# ============================================================================
+
+# Clone repo, run installer (downloads Claude Desktop DMG from CDN, extracts, patches)
+RUN git clone --depth 1 https://github.com/johnzfitch/claude-cowork-linux.git /tmp/claude-cowork-linux && \
+    cd /tmp/claude-cowork-linux && \
+    # Run install.sh which handles DMG download, extraction, patching, and launcher creation
+    HOME=/home/devuser INSTALL_FORCE=1 bash install.sh 2>&1 || true && \
+    # Fix i18n: copy locale files to electron resources dir (prevents ENOENT on en-US.json)
+    ELECTRON_RESOURCES="$(dirname $(readlink -f $(which electron)))/resources" && \
+    if [ -d "/home/devuser/.local/share/claude-desktop/linux-app-extracted/resources/i18n" ]; then \
+        cp /home/devuser/.local/share/claude-desktop/linux-app-extracted/resources/i18n/*.json \
+           "$ELECTRON_RESOURCES/" 2>/dev/null || true; \
+    fi && \
+    # Create /sessions symlink (required by Claude Code binary within Cowork)
+    mkdir -p /home/devuser/.config/Claude/local-agent-mode-sessions/sessions && \
+    ln -sf /home/devuser/.config/Claude/local-agent-mode-sessions/sessions /sessions && \
+    # Clean up clone (install already copied to ~/.local/share/claude-desktop)
+    rm -rf /tmp/claude-cowork-linux && \
+    chown -R devuser:devuser /home/devuser/.local/share/claude-desktop \
+                             /home/devuser/.config/Claude && \
+    echo "✓ Claude Cowork for Linux installed"
+
+# Create convenience management script (cowork start|stop|status|restart|logs)
+RUN cat > /home/devuser/.local/bin/cowork << 'COWORK_EOF'
+#!/bin/bash
+# Claude Cowork launcher/manager for VNC Display :1
+export DISPLAY="${DISPLAY:-:1}"
+CMD="${1:-start}"
+case "$CMD" in
+  start)
+    if pgrep -f "electron.*app.asar" > /dev/null 2>&1; then
+      echo "Claude Cowork already running (PID: $(pgrep -f 'electron.*app.asar' | head -1))"
+      exit 0
+    fi
+    echo "Starting Claude Cowork on Display ${DISPLAY}..."
+    shift
+    /home/devuser/.local/bin/claude-desktop "$@" &
+    disown
+    sleep 2
+    pgrep -f "electron.*app.asar" > /dev/null 2>&1 && \
+      echo "Started (PID: $(pgrep -f 'electron.*app.asar' | head -1))" || \
+      { echo "Failed. Check: ~/.local/state/claude-cowork/logs/startup.log"; exit 1; }
+    ;;
+  stop)
+    pkill -f "electron.*app.asar" 2>/dev/null && echo "Stopped." || echo "Not running."
+    ;;
+  restart) "$0" stop; sleep 2; "$0" start ;;
+  status)
+    pgrep -f "electron.*app.asar" > /dev/null 2>&1 && \
+      echo "Running (PID: $(pgrep -f 'electron.*app.asar' | head -1))" || echo "Not running."
+    ;;
+  logs) tail -50 ~/.local/state/claude-cowork/logs/startup.log 2>/dev/null ;;
+  *) echo "Usage: cowork [start|stop|status|restart|logs]" ;;
+esac
+COWORK_EOF
+RUN chmod +x /home/devuser/.local/bin/cowork && \
+    chown devuser:devuser /home/devuser/.local/bin/cowork
 
 # ============================================================================
 # PHASE 14: REMOVED - ComfyUI now runs as external Docker container
@@ -890,6 +1119,12 @@ RUN echo '# ============================================' >> ~/.zshrc && \
     echo '# Claude Code aliases' >> ~/.zshrc && \
     echo 'alias dsp="claude --dangerously-skip-permissions"' >> ~/.zshrc && \
     echo 'alias claude-monitor="~/.cargo/bin/claude-monitor"' >> ~/.zshrc && \
+    echo '' >> ~/.zshrc && \
+    echo '# 3D Gaussian Splatting (LichtFeld + COLMAP + SplatReady)' >> ~/.zshrc && \
+    echo 'export LICHTFELD_EXECUTABLE=/opt/lichtfeld-src/build/LichtFeld-Studio' >> ~/.zshrc && \
+    echo 'export LICHTFELD_MCP_ENDPOINT=http://127.0.0.1:45677/mcp' >> ~/.zshrc && \
+    echo 'export VCPKG_ROOT=/opt/vcpkg' >> ~/.zshrc && \
+    echo 'export LD_LIBRARY_PATH="/opt/lichtfeld-src/build:$LD_LIBRARY_PATH"' >> ~/.zshrc && \
     echo '' >> ~/.zshrc && \
     echo '# CUDA development aliases' >> ~/.zshrc && \
     echo 'alias nvcc-version="nvcc --version"' >> ~/.zshrc && \

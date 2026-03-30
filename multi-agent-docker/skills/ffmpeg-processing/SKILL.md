@@ -273,8 +273,7 @@ ffmpeg -err_detect ignore_err -i corrupted.mp4 -c copy repaired.mp4
 
 ## Related Skills
 
-- jupyter-notebooks - Analyze with Python
-- docker-manager - Batch processing in containers
+- **jupyter-notebooks** - Analyze media with Python
 
 ## Notes
 

@@ -189,8 +189,8 @@ The skill provides detailed error messages for:
 
 - **pytorch-ml** - Deep learning workflows
 - **latex-documents** - Scientific paper generation
-- **data-visualization** - Advanced plotting
-- **cuda-development** - GPU programming
+- **report-builder** - Advanced plotting and report generation
+- **cuda** - GPU programming
 
 ## Technical Details
 
