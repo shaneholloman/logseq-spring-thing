@@ -100,7 +100,7 @@ Testing is integrated into `build-with-quality` (TDD agents) and `sparc-methodol
 
 | Skill | MCP | Key Capability | When to Choose |
 |-------|-----|----------------|----------------|
-| `browser-automation` | No | **Meta-skill**: decision framework for choosing between the 4 browser tools below | Unsure which browser tool to use -- start here |
+| `browser-automation` | No | **Meta-skill**: decision framework for choosing between 5 browser tools + Claude in Chrome (official) | Unsure which browser tool to use -- start here |
 | `browser` | No | agent-browser with AI-optimised snapshots, 93% context reduction via @refs | Quick form filling, scraping, navigation with minimal context |
 | `playwright` | Yes | Full Playwright API, screenshots, visual testing on Display :1 via VNC | Visual testing, complex automation, screenshot verification |
 | `chrome-cdp` | No | CDP CLI for live Chromium sessions, 100+ tabs, no Puppeteer dependency | Inspecting already-open browser tabs, logged-in sessions |
@@ -422,6 +422,9 @@ Q3: What media type?
 Q3: Do you know which tool you need?
     |
     +-- No / unsure --> browser-automation (meta-skill, guides selection)
+    |
+    +-- Desktop Chrome with login state, GIF recording (official beta)
+    |   --> claude --chrome (not a skill — built into Claude Code 2.0.73+)
     |
     +-- Quick scrape/form-fill with minimal context
     |   --> browser (agent-browser, @ref snapshots)

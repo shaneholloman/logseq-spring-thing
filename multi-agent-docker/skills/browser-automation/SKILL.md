@@ -25,13 +25,40 @@ Unified decision framework for browser automation in this container. Five tools 
 
 | Need | Best Tool | Invoke |
 |------|-----------|--------|
-| Fill a form, click buttons, scrape data | **agent-browser** | `agent-browser open <url>` |
+| Desktop Chrome with login state, GIF recording, CAPTCHA handling | **Claude in Chrome** (official) | `claude --chrome` or `/chrome` |
+| Fill a form, click buttons, scrape data (headless) | **agent-browser** | `agent-browser open <url>` |
 | Screenshot, visual test, full Playwright API | **Playwright** | MCP `playwright` tools |
 | Inspect a live Chromium session, logged-in pages | **Chrome CDP** | `scripts/cdp.mjs list` |
 | Access host web server from Docker | **host-webserver-debug** | MCP `host-webserver-debug` tools |
 | Read page content without interaction | **WebFetch** or `curl` | Direct tool call |
 
-If unsure, start with **agent-browser** -- it has the smallest context footprint and covers 80% of use cases.
+**Desktop users**: If running Claude Code on a machine with Chrome installed, prefer `claude --chrome` — it shares your login state and handles CAPTCHAs.
+
+**Container users**: Start with **agent-browser** for headless tasks. Use Playwright for visual testing on VNC Display :1.
+
+---
+
+## Claude in Chrome (Official Beta)
+
+Anthropic's native Chrome integration, available since Claude Code 2.0.73. Unlike our container-based tools, it connects directly to a desktop Chrome browser via the Claude in Chrome extension.
+
+**Key advantages over container tools:**
+- Shares your browser's login state (Google Docs, Gmail, Notion, CRMs — no auth setup)
+- Visible real-time browser window (not headless)
+- Pauses for human intervention on CAPTCHAs and login pages
+- Built-in GIF recording of browser interactions
+- Chained browser + coding workflows in a single session
+
+**Requirements:** Chrome or Edge, Claude in Chrome extension v1.0.36+, direct Anthropic plan (not available via Bedrock/Vertex).
+
+**Usage:**
+```bash
+claude --chrome              # Start with Chrome
+/chrome                      # Enable mid-session
+/chrome                      # Check status, reconnect, manage permissions
+```
+
+**Container note:** This integration requires a desktop Chrome install. In our Docker container, use Playwright (VNC Display :1) or agent-browser (headless) instead. If the host machine has Chrome, the integration works via SSH-forwarded Claude Code sessions.
 
 ---
 
