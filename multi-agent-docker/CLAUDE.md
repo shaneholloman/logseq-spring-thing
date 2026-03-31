@@ -158,6 +158,24 @@ The worktree is auto-cleaned if the agent makes no changes. If changes are made,
 - Recursion limit: depth 2
 - If 3+ agents are blocked simultaneously → pause and alert human
 
+## Multi-Directory Access (`--add-dir`)
+
+When working across multiple repos or directories, use `--add-dir` to give Claude access:
+
+```bash
+claude --add-dir /home/devuser/workspace/ruvector    # Add RuVector source
+claude --add-dir /home/devuser/agents                # Add 610 sub-agent templates
+/add-dir /path/to/other-repo                         # Add mid-session
+```
+
+Key directories outside this project that are frequently needed:
+- `/home/devuser/workspace/ruvector/` — RuVector extension source (Rust crates)
+- `/home/devuser/agents/` — 610 sub-agent templates
+- `/home/devuser/workspace/claude-telegram-mirror-rs/` — CTM source
+- `/home/devuser/.claude/skills/` — Live skill deployments
+
+When a user references a path outside the current project, ask if they want to `--add-dir` it.
+
 ## Codebase Intelligence (GitNexus)
 - Index repo: `gnx-analyze` (creates knowledge graph)
 - Before editing shared code: check blast radius via GitNexus
