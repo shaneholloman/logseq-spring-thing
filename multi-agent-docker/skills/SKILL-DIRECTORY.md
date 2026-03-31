@@ -1,6 +1,6 @@
 # Skill Directory -- Comprehensive Inventory and Decision Tree
 
-> **94 skills** audited. **6 deprecated**, **9 archived**, **79 active**.
+> **95 skills** audited. **6 deprecated**, **9 archived**, **80 active**.
 > Updated 2026-03-30. Reference this file from CLAUDE.md for intelligent routing.
 
 ---
@@ -82,6 +82,7 @@ Testing is integrated into `build-with-quality` (TDD agents) and `sparc-methodol
 | Skill | MCP | Key Capability | When to Choose |
 |-------|-----|----------------|----------------|
 | `agentdb-advanced` | No | QUIC sync, multi-database, custom distance metrics, hybrid search, MMR diversity | Distributed AI systems needing cross-network AgentDB sync |
+| `ruvector-catalog` | No | Architect's playbook for 200+ RuVector capabilities across 14 domains, migration paths, 3 access paths (npm/WASM/NAPI) | "What RuVector tools can help with X?", technology recommendations, migration from aging tech |
 | `agentdb-learning` | No | 9 RL algorithms (Decision Transformer, Q-Learning, SARSA, Actor-Critic, etc.) | Building self-learning agents with reinforcement learning |
 | `agentdb-memory-patterns` | No | Session memory, long-term storage, pattern learning, context management | Stateful agents, chat systems, intelligent assistants |
 | `agentdb-vector-search` | No | HNSW indexing (150x faster), quantization, caching, batch ops, RAG pipelines | Semantic search, RAG systems, scaling to millions of vectors |
@@ -484,7 +485,10 @@ Q3: What memory operation?
     |   --> agentdb-learning
     |
     +-- Session context and plan tracking
-        --> lazy-fetch
+    |   --> lazy-fetch
+    |
+    +-- "What RuVector tool helps with X?" (200+ capabilities, migration paths)
+        --> ruvector-catalog
 ```
 
 ### [J] Infrastructure / Platform / DevOps
