@@ -1,6 +1,6 @@
 # Skill Directory -- Comprehensive Inventory and Decision Tree
 
-> **93 skills** audited. **6 deprecated**, **9 archived**, **78 active**.
+> **94 skills** audited. **6 deprecated**, **9 archived**, **79 active**.
 > Updated 2026-03-30. Reference this file from CLAUDE.md for intelligent routing.
 
 ---
@@ -43,6 +43,7 @@
 | `build-with-quality` | No | 111+ agents, unified dev+QE, TDD, ADR, quality gates, SONA learning, TinyDancer routing. **Supersedes** pair-programming, reasoningbank-*, agentic-qe | Any multi-file feature, refactor, or project needing quality gates, coverage, and testing |
 | `sparc-methodology` | No | SPARC 5-phase development (Specification, Pseudocode, Architecture, Refinement, Completion), 17 modes | Systematic multi-phase development from spec through deployment |
 | `prd2build` | No | PRD to complete documentation in a single command | Generating full project documentation from a product requirements document |
+| `bhil-methodology` | No | AI-first specification-driven methodology: PRD→SPEC→ADR→TASK traceability, AI-native ADRs (model/prompt/agent), eval suites, guardrails | Starting new features, architecture decisions, sprint planning, quality gates, artifact traceability |
 
 ### Code Quality, Review, and Verification
 
@@ -280,7 +281,10 @@ Q3: How complex is the task?
     |   --> cuda
     |
     +-- React/Next.js/TypeScript/Tailwind stack conventions
-        --> bencium-code-conventions
+    |   --> bencium-code-conventions
+    |
+    +-- Specification-driven methodology (PRD→SPEC→ADR→TASK traceability)
+        --> bhil-methodology
 ```
 
 ### [B] GitHub Operations
