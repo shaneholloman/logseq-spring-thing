@@ -1,6 +1,6 @@
 ---
 title: Skills Catalog
-description: Complete reference of 54 specialized skills for the Turbo Flow Claude multi-agent environment covering AI/ML, DevOps, graphics, system administration, and development workflows.
+description: "STALE — see multi-agent-docker/skills/SKILL-DIRECTORY.md for current 78-skill inventory (93 total with deprecated/archived). This file documents the original 54-skill catalog from Jan 2025."
 category: reference
 tags:
   - skills

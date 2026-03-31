@@ -1,0 +1,142 @@
+%%{init: {'theme': 'dark', 'themeVariables': {'primaryColor': '#1a1a2e', 'primaryTextColor': '#eee', 'lineColor': '#4ecdc4', 'secondaryColor': '#16213e'}}}%%
+graph TB
+    subgraph SKILLS["🎯 78 Active Skills — Turbo Flow Workstation"]
+        direction TB
+        
+        subgraph CODE["[A] Code Development"]
+            BWQ[build-with-quality<br/>111+ agents]
+            SPARC[sparc-methodology<br/>17 modes]
+            VQ[verification-quality]
+            RUST[rust-development]
+            WASM[wasm-js]
+            CUDA_S[cuda<br/>4 agents]
+            BCC[bencium-code-conventions]
+        end
+        
+        subgraph GITHUB["[B] GitHub Operations"]
+            GCR[github-code-review]
+            GRM[github-release-management]
+            GWA[github-workflow-automation]
+            GPM[github-project-management]
+            GMR[github-multi-repo]
+        end
+        
+        subgraph SWARM["[C] Swarm Coordination"]
+            SA[swarm-advanced]
+            HMA[hive-mind-advanced]
+            FNS[flow-nexus-swarm]
+            SC[stream-chain]
+            HA[hooks-automation]
+            AJ[agentic-jujutsu]
+        end
+        
+        subgraph RESEARCH["[D] Research & Content"]
+            PR[perplexity-research]
+            GUC[gemini-url-context]
+            WS[web-summary]
+            NLM[notebooklm<br/>15 MCP tools]
+            LI[linkedin<br/>13 tools]
+            RD[reddit<br/>5 tools]
+            TR[toprank<br/>6 SEO skills]
+        end
+        
+        subgraph DOCS["[E] Documents & Reports"]
+            RB[report-builder]
+            LX[latex-documents]
+            MM[mermaid-diagrams]
+            PB[paperbanana]
+            ART[art / Nano Banana 2<br/>16 workflows]
+            FF[fossflow]
+            WM[wardley-maps]
+            P2B[prd2build]
+        end
+        
+        subgraph MEDIA["[F] Media & 3D"]
+            FFM[ffmpeg-processing]
+            IM[imagemagick]
+            CUI[comfyui]
+            BL[blender]
+            GD[game-dev<br/>48 agents]
+            LS[lichtfeld-studio<br/>70+ tools]
+        end
+        
+        subgraph BROWSER["[G] Browser Automation"]
+            BA[browser-automation]
+            PW[playwright]
+            BR[browser]
+            CDP[chrome-cdp]
+            HWD[host-webserver-debug]
+        end
+        
+        subgraph AIML["[H] AI/ML"]
+            PT[pytorch-ml]
+            FNN[flow-nexus-neural]
+            JN[jupyter-notebooks]
+            AL[agentdb-learning]
+            DSR[deepseek-reasoning]
+            OC[openai-codex]
+        end
+        
+        subgraph MEMORY["[I] Memory & Learning"]
+            AMP[agentdb-memory-patterns]
+            AVS[agentdb-vector-search]
+            AA[agentdb-advanced]
+            LF[lazy-fetch<br/>25 MCP tools]
+        end
+        
+        subgraph INFRA["[J] Infrastructure"]
+            FNP[flow-nexus-platform]
+            PA[performance-analysis]
+            SB[skill-builder]
+        end
+        
+        subgraph DESIGN["[K] UI/UX Design"]
+            UX[ui-ux-pro-max]
+            DUI[daisyui]
+            BCU[bencium-controlled-ux]
+            BIU[bencium-innovative-ux]
+            BID[bencium-impact-designer]
+            DAU[design-audit]
+            TYP[typography]
+            RDS[relationship-design]
+        end
+        
+        subgraph ARCH["[L] Architecture & Review"]
+            RA[renaissance-architecture]
+            HAM[human-architect-mindset]
+            VER[vanity-engineering-review]
+            NL[negentropy-lens]
+            AC[adaptive-communication]
+        end
+        
+        subgraph DOMAIN["[M] Domain-Specific"]
+            QG[qgis<br/>51 tools]
+            OC2[ontology-core]
+            OE[ontology-enrich]
+            TC[terracraft]
+            AEO[bencium-aeo]
+        end
+        
+        subgraph SECURITY["[N] Security"]
+            DS[defense-security<br/>31 modules, 250+ actions]
+        end
+    end
+    
+    subgraph MCP["18 MCP Servers"]
+        direction LR
+        M1[claude-flow / ruflo]
+        M2[ruv-swarm]
+    end
+    
+    subgraph INFRA_SVC["Infrastructure"]
+        RV[(RuVector PG<br/>1.17M+ entries<br/>384-dim HNSW)]
+        AI1[Claude Opus/Sonnet/Haiku]
+        AI2[Gemini / GPT-5.4]
+        AI3[DeepSeek / Nemotron 3]
+    end
+    
+    SKILLS --> MCP
+    MCP --> RV
+    MCP --> AI1
+    MCP --> AI2
+    MCP --> AI3

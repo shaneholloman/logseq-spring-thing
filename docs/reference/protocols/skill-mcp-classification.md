@@ -1,6 +1,6 @@
 ---
 title: Skill MCP Implementation Classification
-description: Based on file structure analysis and code inspection of 6 representative skills:
+description: "STALE — see multi-agent-docker/skills/SKILL-DIRECTORY.md for current 78-skill inventory with 18 MCP servers. This file documents the original 40-skill classification from Dec 2025."
 category: explanation
 tags:
   - architecture
