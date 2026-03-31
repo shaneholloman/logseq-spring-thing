@@ -1,6 +1,6 @@
 # Skill Directory -- Comprehensive Inventory and Decision Tree
 
-> **90 skills** audited. **6 deprecated**, **9 archived**, **75 active**.
+> **93 skills** audited. **6 deprecated**, **9 archived**, **78 active**.
 > Updated 2026-03-30. Reference this file from CLAUDE.md for intelligent routing.
 
 ---
@@ -115,6 +115,7 @@ Testing is integrated into `build-with-quality` (TDD agents) and `sparc-methodol
 | `notebooklm` | Yes | Google NotebookLM SDK: notebooks, sources, chat, audio/video/slides/quiz/report generation | Research automation, podcast generation, study material creation, knowledge management |
 | `linkedin` | Yes | LinkedIn profile/job/company scraping, messaging, people search via browser automation | LinkedIn research, recruitment, networking, company analysis |
 | `reddit` | Yes | Reddit browsing, search, user analysis, post details with comment threads | Reddit research, community analysis, content discovery |
+| `toprank` | No | 6 SEO sub-skills: GSC audit, E-E-A-T content writing, keyword research, meta tags, schema markup, GEO | SEO audit, content optimisation, keyword research, schema markup, AI search visibility |
 
 ### Security and Compliance
 
@@ -130,6 +131,7 @@ Testing is integrated into `build-with-quality` (TDD agents) and `sparc-methodol
 | `latex-documents` | No | TeX Live toolchain, Beamer presentations, BibTeX, mathematical typesetting | Academic papers, presentations, publication-quality documents |
 | `mermaid-diagrams` | No | 25 diagram types, PNG/SVG/PDF export, dark/light themes | System architecture, flowcharts, ER models, Gantt charts, mindmaps |
 | `paperbanana` | No | Publication-quality academic figures via multi-agent VLM pipeline (Gemini/OpenAI) | Research paper figures, methodology diagrams, statistical plots |
+| `art` | No | Nano Banana 2 AI art: 16 workflows (editorial, technical diagrams, comics, maps, stats, sketchnotes), style transfer, text rendering | Blog headers, infographics, technical illustrations, editorial art, image editing |
 | `fossflow` | No | Isometric network/architecture diagrams, compact LLM-optimised format | Network topology diagrams and infrastructure maps |
 | `wardley-maps` | No | Strategic Wardley mapping from any input, component evolution, value chain visualisation | Competitive positioning, strategic analysis, technology evolution mapping |
 
@@ -347,7 +349,10 @@ Q3: What do you need?
     |   --> linkedin
     |
     +-- Reddit browsing, search, user analysis
-        --> reddit
+    |   --> reddit
+    |
+    +-- SEO audit, keyword research, content optimisation, schema markup
+        --> toprank
 ```
 
 ### [E] Documents and Reports
@@ -401,7 +406,10 @@ Q3: What media type?
     |   --> game-dev
     |
     +-- 3D Gaussian Splatting (training, editing, export)
-        --> lichtfeld-studio
+    |   --> lichtfeld-studio
+    |
+    +-- AI art (Nano Banana 2): blog headers, infographics, technical illustrations, comics
+        --> art
 ```
 
 ### [G] Browser Automation
