@@ -127,6 +127,46 @@
       "description": "Google NotebookLM: notebooks, sources, chat, audio/video/slides/quiz generation",
       "protocol": "fastmcp",
       "version": "1.0.0"
+    },
+    "linkedin": {
+      "command": "uvx",
+      "args": ["linkedin-scraper-mcp"],
+      "type": "stdio",
+      "env": {
+        "TIMEOUT": "${LINKEDIN_TIMEOUT}",
+        "DISPLAY": ":1"
+      },
+      "description": "LinkedIn profile, job, company scraping and messaging via browser automation",
+      "protocol": "stdio",
+      "version": "1.0.0"
+    },
+    "defense-security": {
+      "command": "npx",
+      "args": ["-y", "defense-mcp-server"],
+      "type": "stdio",
+      "env": {
+        "DEFENSE_MCP_DRY_RUN": "${DEFENSE_MCP_DRY_RUN}",
+        "DEFENSE_MCP_REQUIRE_CONFIRMATION": "${DEFENSE_MCP_REQUIRE_CONFIRMATION}",
+        "DEFENSE_MCP_ALLOWED_DIRS": "${DEFENSE_MCP_ALLOWED_DIRS}",
+        "DEFENSE_MCP_LOG_LEVEL": "${DEFENSE_MCP_LOG_LEVEL}"
+      },
+      "description": "Linux defensive security: 31 modules, 250+ actions for hardening, compliance, forensics",
+      "protocol": "stdio",
+      "version": "1.0.0"
+    },
+    "reddit": {
+      "command": "npx",
+      "args": ["-y", "reddit-mcp-buddy"],
+      "type": "stdio",
+      "env": {
+        "REDDIT_CLIENT_ID": "${REDDIT_CLIENT_ID}",
+        "REDDIT_CLIENT_SECRET": "${REDDIT_CLIENT_SECRET}",
+        "REDDIT_USERNAME": "${REDDIT_USERNAME}",
+        "REDDIT_PASSWORD": "${REDDIT_PASSWORD}"
+      },
+      "description": "Reddit browsing, search, user analysis, and post details with comment threads",
+      "protocol": "stdio",
+      "version": "1.0.0"
     }
   },
   "visionflow": {

@@ -37,7 +37,7 @@ LABEL org.opencontainers.image.description="Unified Ruflo V4 Development Environ
 LABEL org.opencontainers.image.version="4.0.0"
 LABEL org.opencontainers.image.created="2026-03-12"
 LABEL org.opencontainers.image.vendor="Turbo Flow"
-LABEL com.turboflow.skills.count="87"
+LABEL com.turboflow.skills.count="90"
 LABEL com.turboflow.ruflo.version="3.5"
 
 # ============================================================================
@@ -468,6 +468,11 @@ RUN npm install -g \
 # V4 New Systems: Beads (cross-session memory), GitNexus (codebase knowledge graph), OpenSpec
 # NOTE: These packages are planned but not yet published to npm. Skip for now.
 # When available, uncomment: npm install -g beads-cli@latest gitnexus@latest @fission-ai/openspec@latest
+RUN npm install -g defense-mcp-server reddit-mcp-buddy 2>/dev/null || echo "Security/Reddit MCP optional"
+
+# LinkedIn MCP (Python/uv-based)
+RUN pip3 install --no-cache-dir --break-system-packages linkedin-scraper-mcp 2>/dev/null || echo "LinkedIn MCP optional"
+
 RUN echo "⏭ V4 systems (beads-cli, gitnexus, openspec) - skipped (not yet published to npm)"
 
 # Fix 4/6: Install pg driver in ruflo global package (and legacy claude-flow path)

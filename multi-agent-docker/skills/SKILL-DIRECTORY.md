@@ -1,6 +1,6 @@
 # Skill Directory -- Comprehensive Inventory and Decision Tree
 
-> **87 skills** audited. **6 deprecated**, **9 archived**, **72 active**.
+> **90 skills** audited. **6 deprecated**, **9 archived**, **75 active**.
 > Updated 2026-03-30. Reference this file from CLAUDE.md for intelligent routing.
 
 ---
@@ -27,7 +27,7 @@
 
 ---
 
-## Artefact 1: Categorised Skill Inventory (72 Active Skills)
+## Artefact 1: Categorised Skill Inventory (75 Active Skills)
 
 ### Context, Discovery, and Session Management
 
@@ -113,6 +113,14 @@ Testing is integrated into `build-with-quality` (TDD agents) and `sparc-methodol
 | `gemini-url-context` | Yes | Gemini 2.5 Flash URL expansion, up to 20 URLs per request, grounding metadata | Analysing or summarising specific known URLs |
 | `web-summary` | Yes | URL summarisation, YouTube transcript extraction, Logseq/Obsidian topic links | Summarising articles, YouTube videos, generating note links |
 | `notebooklm` | Yes | Google NotebookLM SDK: notebooks, sources, chat, audio/video/slides/quiz/report generation | Research automation, podcast generation, study material creation, knowledge management |
+| `linkedin` | Yes | LinkedIn profile/job/company scraping, messaging, people search via browser automation | LinkedIn research, recruitment, networking, company analysis |
+| `reddit` | Yes | Reddit browsing, search, user analysis, post details with comment threads | Reddit research, community analysis, content discovery |
+
+### Security and Compliance
+
+| Skill | MCP | Key Capability | When to Choose |
+|-------|-----|----------------|----------------|
+| `defense-security` | Yes | 31 Linux security modules, 250+ actions: firewall, hardening, CIS/HIPAA/SOC2, malware, forensics | Linux security audit, system hardening, compliance checking, incident response |
 
 ### Documentation and Reports
 
@@ -241,6 +249,7 @@ Q2: What is the primary domain?
     [K] UI/UX DESIGN (interfaces, components, audit, typography)
     [L] SOFTWARE ARCHITECTURE (first-principles, review, domain modelling)
     [M] DOMAIN-SPECIFIC (GIS, ontology, game dev, SEO/AEO)
+    [N] SECURITY AND COMPLIANCE (hardening, audit, forensics)
 ```
 
 ### [A] Code Development
@@ -332,7 +341,13 @@ Q3: What do you need?
     |   --> web-summary
     |
     +-- NotebookLM: ingest sources, generate podcasts/slides/quizzes
-        --> notebooklm
+    |   --> notebooklm
+    |
+    +-- LinkedIn profiles, jobs, companies, messaging
+    |   --> linkedin
+    |
+    +-- Reddit browsing, search, user analysis
+        --> reddit
 ```
 
 ### [E] Documents and Reports
@@ -550,6 +565,18 @@ Q3: Which domain?
         --> bencium-aeo
 ```
 
+### [N] Security and Compliance
+
+```
+Q3: What security task?
+    |
+    +-- Linux system hardening, firewall, compliance audit
+    |   --> defense-security
+    |
+    +-- Security testing (OWASP, auth, vulns)
+        --> security-testing (QE skill)
+```
+
 ---
 
 ## Skill Composition Patterns
@@ -583,7 +610,7 @@ Some tasks benefit from combining skills. Common compositions:
 
 ## MCP Server Summary
 
-15 skills provide MCP servers (registered in `skills/mcp.json` or invocable via skill config):
+18 skills provide MCP servers (registered in `skills/mcp.json` or invocable via skill config):
 
 | Skill | Protocol | Entry Point |
 |-------|----------|-------------|
@@ -603,6 +630,9 @@ Some tasks benefit from combining skills. Common compositions:
 | `blender` | stdio | `mcp-server/server.py` |
 | `lichtfeld-studio` | stdio | `mcp-server/server.js` |
 | `perplexity` | mcp-sdk | `mcp-server/server.js` (DEPRECATED -- use perplexity-research) |
+| `linkedin` | stdio | via uvx linkedin-scraper-mcp |
+| `defense-security` | stdio | via npx defense-mcp-server |
+| `reddit` | stdio | via npx reddit-mcp-buddy |
 
 ---
 
