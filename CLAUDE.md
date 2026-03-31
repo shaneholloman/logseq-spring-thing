@@ -91,11 +91,13 @@ Skills compose. A single task may use multiple skills in sequence:
 3. `lazy check` -- validate the implementation
 4. `lazy remember "combat" "melee uses hitbox detection, not raycasts"` -- persist
 
-For ruflo swarms, each spawned agent can use lazy-fetch for its own context:
-- Agent spawns in worktree
+For ruflo swarms, each spawned agent uses worktree isolation:
+- Agent spawns in worktree (`wt-add <name>` for Ruflo, `isolation: "worktree"` for Agent tool)
 - Runs `lazy init` + `lazy gather` for its task scope
 - Implements using lazy-fetch plan tracking
-- Results merge back via ruflo coordination
+- Results merge back via ruflo coordination or git merge
+
+For massive parallelisable work (migrations, bulk refactors), use `/batch` — it fans out to N worktree agents automatically.
 
 ### Session Start Protocol
 
