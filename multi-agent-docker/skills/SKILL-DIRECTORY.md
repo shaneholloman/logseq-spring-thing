@@ -1,6 +1,6 @@
 # Skill Directory -- Comprehensive Inventory and Decision Tree
 
-> **97 skills** audited. **6 deprecated**, **9 archived**, **82 active**.
+> **98 skills** audited. **6 deprecated**, **9 archived**, **83 active**.
 > Updated 2026-03-30. Reference this file from CLAUDE.md for intelligent routing.
 
 ---
@@ -97,6 +97,7 @@ Testing is integrated into `build-with-quality` (TDD agents) and `sparc-methodol
 | `flow-nexus-neural` | Yes | Distributed neural network training in E2B sandboxes (feedforward, LSTM, GAN, transformer) | Training models in cloud sandboxes via Flow Nexus |
 | `deepseek-reasoning` | Yes | DeepSeek special model endpoint, structured chain-of-thought, multi-step reasoning | Complex reasoning tasks requiring DeepSeek's reasoning model |
 | `openai-codex` | Yes | GPT-5.4 code generation and review via MCP bridge | Delegating specific tasks to GPT-5.4 capabilities |
+| `codex-companion` | No | Full OpenAI Codex plugin: code review, adversarial review, rescue agent, GPT-5.4 structured prompting, stop-review gate | Cross-model validation, when Claude is stuck, adversarial design review, substantial code delegation |
 
 ### Browser Automation and Web
 
@@ -467,7 +468,7 @@ Q3: What ML task?
     |   --> deepseek-reasoning
     |
     +-- Delegate coding to GPT-5.4
-        --> openai-codex
+        --> openai-codex or codex-companion (/codex:rescue for full Codex plugin)
 ```
 
 ### [I] Memory and Learning
