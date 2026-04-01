@@ -53,6 +53,8 @@ tree below routes tasks to the right skill based on scope, complexity, and domai
 ### Quick Decision Tree
 
 ```
+Don't know which skill? --> /route [describe your task]  (unified dispatcher)
+
 Single file, quick fix? --> Direct Edit (no skill needed)
 Game dev (Godot/Unity/Unreal)? --> /game-dev
 Bug/feature/review (single agent)? --> lazy-fetch blueprints
@@ -68,6 +70,9 @@ Wardley maps / strategic analysis? --> /wardley-maps, /report-builder
 UI/UX design? --> /ui-ux-pro-max-skill, /bencium-*, /design-audit, /typography
 Architecture review? --> /vanity-engineering-review, /renaissance-architecture, /human-architect-mindset
 Research + NotebookLM? --> /notebooklm, /perplexity-research, /gemini-url-context
+Security / compliance? --> /defense-security
+AEC (building architecture)? --> /studio [task]
+SEO / content optimisation? --> /toprank
 ```
 
 Full routing with all 72 active skills: see `multi-agent-docker/skills/SKILL-DIRECTORY.md`

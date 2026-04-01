@@ -1,6 +1,6 @@
 # Skill Directory -- Comprehensive Inventory and Decision Tree
 
-> **96 skills** audited. **6 deprecated**, **9 archived**, **81 active**.
+> **97 skills** audited. **6 deprecated**, **9 archived**, **82 active**.
 > Updated 2026-03-30. Reference this file from CLAUDE.md for intelligent routing.
 
 ---
@@ -33,6 +33,7 @@
 
 | Skill | MCP | Key Capability | When to Choose |
 |-------|-----|----------------|----------------|
+| `skill-router` | No | **Unified dispatcher** for 82 skills. `/route [task]` classifies intent and routes to optimal skill. Single entry point | Don't know which skill to use — describe your task and get routed |
 | `lazy-fetch` | Yes | 25 MCP tools: context hydration, plan tracking, blueprints, PRD-to-sprints, security scanning, persistent memory | Starting a new session, managing context across tasks, tracking phased plans, running autonomous PRD execution |
 | `skill-builder` | No | Create new Claude Code skills with YAML frontmatter and progressive disclosure | Building new custom skills for the skills directory |
 
