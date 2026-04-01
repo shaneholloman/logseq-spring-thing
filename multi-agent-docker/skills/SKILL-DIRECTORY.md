@@ -1,6 +1,6 @@
 # Skill Directory -- Comprehensive Inventory and Decision Tree
 
-> **82 active skills**. 15 formerly deprecated/archived skills removed (see table below for history).
+> **83 active skills**. 15 formerly deprecated/archived skills removed (see table below for history).
 > Updated 2026-04-01. Reference this file from CLAUDE.md for intelligent routing.
 
 ---
@@ -177,6 +177,7 @@ Testing is integrated into `build-with-quality` (TDD agents) and `sparc-methodol
 | `ffmpeg-processing` | No | FFmpeg 8.0: transcode, edit, stream, filter, HLS/DASH/RTMP, CUDA acceleration | Video/audio conversion, editing, streaming, batch processing |
 | `imagemagick` | Yes | Format conversion, resize, crop, filter, batch ops, watermarks, metadata | Image format conversion, thumbnails, batch image processing |
 | `comfyui` | Yes | Stable Diffusion, FLUX, node-based workflows, distributed GPU (Salad Cloud) | AI image/video generation from prompts or workflows |
+| `open-montage` | No | Agentic video production: 11 pipelines, 49 tools, TTS, avatar, music, zero-key mode. On-demand clone | "Make a video", explainers, trailers, podcast-to-video, avatar presentations |
 
 ### 3D and Game Development
 
@@ -418,7 +419,10 @@ Q3: What media type?
     |   --> lichtfeld-studio
     |
     +-- AI art (Nano Banana 2): blog headers, infographics, technical illustrations, comics
-        --> art
+    |   --> art
+    |
+    +-- Full video production (explainers, trailers, podcasts, avatars, TTS)
+        --> open-montage
 ```
 
 ### [G] Browser Automation
