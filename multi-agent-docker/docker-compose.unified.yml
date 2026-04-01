@@ -81,7 +81,7 @@ services:
       com.turboflow.service: "agentic-workstation"
       com.turboflow.version: "4.0.0"
       com.turboflow.ruflo: "v4.0"
-      com.turboflow.skills.count: "68"
+      com.turboflow.skills.count: "69"
 
     # NVIDIA GPU support
     runtime: nvidia
@@ -192,6 +192,30 @@ services:
       BRAVE_API_KEY: ${BRAVE_API_KEY:-}
       PERPLEXITY_API_KEY: ${PERPLEXITY_API_KEY:-}
 
+      # OpenMontage / Media Production
+      FAL_KEY: ${FAL_KEY:-}
+      ELEVENLABS_API_KEY: ${ELEVENLABS_API_KEY:-}
+      SUNO_API_KEY: ${SUNO_API_KEY:-}
+      HEYGEN_API_KEY: ${HEYGEN_API_KEY:-}
+      RUNWAY_API_KEY: ${RUNWAY_API_KEY:-}
+      PEXELS_API_KEY: ${PEXELS_API_KEY:-}
+      PIXABAY_API_KEY: ${PIXABAY_API_KEY:-}
+      OPENROUTER_KEY: ${OPENROUTER_KEY:-}
+      REMOVEBG_API_KEY: ${REMOVEBG_API_KEY:-}
+
+      # Social / Research MCP
+      LINKEDIN_TIMEOUT: ${LINKEDIN_TIMEOUT:-5000}
+      REDDIT_CLIENT_ID: ${REDDIT_CLIENT_ID:-}
+      REDDIT_CLIENT_SECRET: ${REDDIT_CLIENT_SECRET:-}
+      REDDIT_USERNAME: ${REDDIT_USERNAME:-}
+      REDDIT_PASSWORD: ${REDDIT_PASSWORD:-}
+
+      # Defense Security MCP
+      DEFENSE_MCP_DRY_RUN: ${DEFENSE_MCP_DRY_RUN:-true}
+      DEFENSE_MCP_REQUIRE_CONFIRMATION: ${DEFENSE_MCP_REQUIRE_CONFIRMATION:-true}
+      DEFENSE_MCP_ALLOWED_DIRS: ${DEFENSE_MCP_ALLOWED_DIRS:-/tmp,/home,/var/log}
+      DEFENSE_MCP_LOG_LEVEL: ${DEFENSE_MCP_LOG_LEVEL:-info}
+
       # Z.AI Configuration (separate from Claude CLI)
       # ZAI_URL: Use localhost:9600 for internal supervisord, or claude-zai:9600 for external container
       ZAI_ANTHROPIC_API_KEY: ${ZAI_ANTHROPIC_API_KEY:-}
@@ -237,6 +261,15 @@ services:
       # Optional: LLM-backed tool summarization (e.g. Z.AI endpoint or Anthropic API)
       CTM_LLM_SUMMARIZE_URL: ${CTM_LLM_SUMMARIZE_URL:-}
       CTM_LLM_API_KEY: ${CTM_LLM_API_KEY:-}
+
+      # 3D Gaussian Splatting (LichtFeld Studio + COLMAP + SplatReady)
+      LICHTFELD_EXECUTABLE: /opt/lichtfeld-src/build/LichtFeld-Studio
+      LICHTFELD_MCP_ENDPOINT: http://127.0.0.1:45677/mcp
+      VCPKG_ROOT: /opt/vcpkg
+
+      # ComfyUI API Endpoints (inpainting / SAM3D)
+      COMFYUI_API_ENDPOINT: http://192.168.2.48:3001
+      COMFYUI_LOCAL_ENDPOINT: http://172.18.0.10:8188
 
       # System Configuration
       WORKSPACE: /home/devuser/workspace
