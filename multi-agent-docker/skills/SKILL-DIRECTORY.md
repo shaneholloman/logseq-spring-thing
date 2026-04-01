@@ -1,6 +1,6 @@
 # Skill Directory -- Comprehensive Inventory and Decision Tree
 
-> **95 skills** audited. **6 deprecated**, **9 archived**, **80 active**.
+> **96 skills** audited. **6 deprecated**, **9 archived**, **81 active**.
 > Updated 2026-03-30. Reference this file from CLAUDE.md for intelligent routing.
 
 ---
@@ -166,6 +166,7 @@ Testing is integrated into `build-with-quality` (TDD agents) and `sparc-methodol
 | `vanity-engineering-review` | No | Detects ego-driven engineering: unnecessary abstractions, resume-driven tech choices | Code review, architecture review, complexity audit |
 | `bencium-code-conventions` | No | React/Next.js/TypeScript/TailwindCSS stack conventions, style guide | Projects using Bencium's preferred tech stack |
 | `bencium-aeo` | No | Answer Engine Optimisation for AI search visibility (ChatGPT, Claude, Gemini) | Optimising content for AI citations, not traditional SEO |
+| `architecture-studio` | No | AEC studio: 36 skills, 7 agents — site planning, NYC zoning, sustainability (EPD), materials, FF&E, specs, presentations. `/studio` dispatcher | Architecture/construction: site analysis, zoning, sustainability, materials research, specifications |
 
 ### Media Processing
 
@@ -254,6 +255,7 @@ Q2: What is the primary domain?
     [L] SOFTWARE ARCHITECTURE (first-principles, review, domain modelling)
     [M] DOMAIN-SPECIFIC (GIS, ontology, game dev, SEO/AEO)
     [N] SECURITY AND COMPLIANCE (hardening, audit, forensics)
+    [O] AEC / BUILDING ARCHITECTURE (site planning, zoning, sustainability, materials)
 ```
 
 ### [A] Code Development
@@ -581,7 +583,10 @@ Q3: Which domain?
     |   --> terracraft
     |
     +-- Content optimisation for AI search citations (AEO)
-        --> bencium-aeo
+    |   --> bencium-aeo
+    |
+    +-- AEC (architecture, construction, site planning, zoning, sustainability)
+        --> architecture-studio (/studio [task] as entry point)
 ```
 
 ### [N] Security and Compliance
