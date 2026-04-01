@@ -1,8 +1,9 @@
 ---
 name: deepseek-reasoning
 description: >
-  DeepSeek special model reasoning bridge - Advanced multi-step reasoning via MCP,
-  bridging devuser to deepseek-user for complex problem-solving with structured
+  DeepSeek reasoning bridge. Use when the user says "ask deepseek", "consult with
+  deepseek", "delegate reasoning to deepseek", or needs advanced multi-step reasoning.
+  Bridges devuser to deepseek-user via MCP for complex problem-solving with structured
   Chain-of-Thought outputs.
 version: 1.0.0
 author: turbo-flow-claude

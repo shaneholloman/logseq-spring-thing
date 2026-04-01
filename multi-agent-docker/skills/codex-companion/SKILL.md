@@ -1,10 +1,12 @@
 ---
 name: codex-companion
 description: >
-  OpenAI Codex integration for Claude Code. Code reviews, adversarial reviews,
-  rescue operations (when Claude is stuck), and GPT-5.4 task delegation with
-  structured prompting. Uses the openai-user isolation for API key management.
-  From openai/codex-plugin-cc.
+  OpenAI Codex / GPT-5.4 integration for Claude Code. Use when the user says
+  "consult with openai", "talk to codex", "ask gpt-5.4", "get a second opinion
+  from openai", "delegate to codex", "openai review", or "codex rescue". Provides
+  code reviews, adversarial reviews, rescue operations (when Claude is stuck),
+  and GPT-5.4 task delegation with structured prompting. Uses the openai-user
+  isolation for API key management. From openai/codex-plugin-cc.
 version: 1.0.0
 author: OpenAI (adapted for Turbo Flow)
 tags:
