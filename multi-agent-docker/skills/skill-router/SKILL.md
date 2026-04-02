@@ -109,6 +109,7 @@ Examples:
 | Blog headers, infographics, editorial art, comics | `art` (Nano Banana 2) |
 | Real-world geography → Minecraft worlds | `terracraft` |
 | "Make a video", full video production, explainers, trailers, TTS, avatars, podcast-to-video | `open-montage` |
+| "Meeting recap", "live transcription", "meeting copilot", "coaching during meeting", "record this call" | `echoloop` |
 
 ### Browser Automation
 | If the request involves... | Route to |

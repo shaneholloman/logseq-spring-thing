@@ -37,7 +37,7 @@ LABEL org.opencontainers.image.description="Unified Ruflo V4 Development Environ
 LABEL org.opencontainers.image.version="4.0.0"
 LABEL org.opencontainers.image.created="2026-03-12"
 LABEL org.opencontainers.image.vendor="Turbo Flow"
-LABEL com.turboflow.skills.count="83"
+LABEL com.turboflow.skills.count="84"
 LABEL com.turboflow.ruflo.version="3.5"
 
 # ============================================================================
@@ -475,6 +475,10 @@ RUN pip3 install --no-cache-dir --break-system-packages linkedin-scraper-mcp 2>/
 
 # Scrapling (adaptive web scraping with MCP server, anti-bot bypass)
 RUN pip3 install --no-cache-dir --break-system-packages "scrapling[ai]" 2>/dev/null || echo "Scrapling optional"
+
+# EchoLoop meeting copilot (real-time transcription + LLM coaching)
+RUN pip3 install --no-cache-dir --break-system-packages \
+    sounddevice numpy faster-whisper anthropic openai httpx 2>/dev/null || echo "EchoLoop deps optional"
 
 # Toprank SEO (Python, Google Auth)
 RUN pip3 install --no-cache-dir --break-system-packages google-auth google-auth-httplib2 2>/dev/null || echo "Toprank deps optional"
