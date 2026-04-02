@@ -168,6 +168,18 @@
       "protocol": "stdio",
       "version": "1.0.0"
     },
+    "clipcannon": {
+      "command": "clipcannon",
+      "args": ["serve"],
+      "type": "stdio",
+      "env": {
+        "CLIPCANNON_DATA_DIR": "/home/devuser/.clipcannon",
+        "CLIPCANNON_GPU_DEVICE": "cuda:0"
+      },
+      "description": "AI video editor: 51 tools for understanding, editing, rendering, voice cloning, lip-sync, music",
+      "protocol": "stdio",
+      "version": "0.1.0"
+    },
     "scrapling": {
       "command": "scrapling",
       "args": ["mcp"],

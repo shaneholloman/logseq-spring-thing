@@ -110,6 +110,7 @@ Examples:
 | Real-world geography → Minecraft worlds | `terracraft` |
 | "Make a video", full video production, explainers, trailers, TTS, avatars, podcast-to-video | `open-montage` |
 | "Meeting recap", "live transcription", "meeting copilot", "coaching during meeting", "record this call" | `echoloop` |
+| "Edit this video", "find the best moments", "highlight reel", "add captions", "clone voice", "lip sync", "render for TikTok" | `clipcannon` (51 MCP tools, local GPU) |
 
 ### Browser Automation
 | If the request involves... | Route to |

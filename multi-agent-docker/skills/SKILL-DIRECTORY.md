@@ -1,6 +1,6 @@
 # Skill Directory -- Comprehensive Inventory and Decision Tree
 
-> **84 active skills**. 15 formerly deprecated/archived skills removed (see table below for history).
+> **85 active skills**. 15 formerly deprecated/archived skills removed (see table below for history).
 > Updated 2026-04-01. Reference this file from CLAUDE.md for intelligent routing.
 
 ---
@@ -180,6 +180,7 @@ Testing is integrated into `build-with-quality` (TDD agents) and `sparc-methodol
 | `imagemagick` | Yes | Format conversion, resize, crop, filter, batch ops, watermarks, metadata | Image format conversion, thumbnails, batch image processing |
 | `comfyui` | Yes | Stable Diffusion, FLUX, node-based workflows, distributed GPU (Salad Cloud) | AI image/video generation from prompts or workflows |
 | `open-montage` | No | Agentic video production: 11 pipelines, 49 tools, TTS, avatar, music, zero-key mode. On-demand clone | "Make a video", explainers, trailers, podcast-to-video, avatar presentations |
+| `clipcannon` | Yes | AI video editor: 51 MCP tools, 22-stage analysis, 5 embedding spaces, voice clone, lip-sync, 7 platform renders. Local GPU | Edit existing video, find moments, highlight reels, captions, voice clone, TikTok/Reels render |
 
 ### 3D and Game Development
 
@@ -427,7 +428,10 @@ Q3: What media type?
     |   --> open-montage
     |
     +-- Real-time meeting copilot (transcription, coaching, recap)
-        --> echoloop
+    |   --> echoloop
+    |
+    +-- AI video editor (51 MCP tools, analysis, voice clone, lip-sync, platform render)
+        --> clipcannon
 ```
 
 ### [G] Browser Automation
