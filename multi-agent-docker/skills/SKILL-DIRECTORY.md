@@ -1,6 +1,6 @@
 # Skill Directory -- Comprehensive Inventory and Decision Tree
 
-> **85 active skills**. 15 formerly deprecated/archived skills removed (see table below for history).
+> **86 active skills**. 15 formerly deprecated/archived skills removed (see table below for history).
 > Updated 2026-04-01. Reference this file from CLAUDE.md for intelligent routing.
 
 ---
