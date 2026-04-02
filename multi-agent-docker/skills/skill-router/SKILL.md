@@ -119,6 +119,7 @@ Examples:
 | Full API, screenshots, visual testing | `playwright` |
 | Inspect live Chromium tabs | `chrome-cdp` |
 | Host web server from Docker | `host-webserver-debug` |
+| Web scraping, crawling, anti-bot bypass, Cloudflare Turnstile, infra monitoring, spider framework | `scrapling` (MCP: 9 tools) |
 
 ### AI/ML
 | If the request involves... | Route to |

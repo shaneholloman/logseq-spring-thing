@@ -167,6 +167,17 @@
       "description": "Reddit browsing, search, user analysis, and post details with comment threads",
       "protocol": "stdio",
       "version": "1.0.0"
+    },
+    "scrapling": {
+      "command": "scrapling",
+      "args": ["mcp"],
+      "type": "stdio",
+      "env": {
+        "CURL_CA_BUNDLE": "/etc/ca-certificates/extracted/tls-ca-bundle.pem"
+      },
+      "description": "Adaptive web scraping: 9 MCP tools, anti-bot bypass (Cloudflare Turnstile), stealth browser, spider framework",
+      "protocol": "stdio",
+      "version": "0.4.3"
     }
   },
   "visionflow": {

@@ -473,6 +473,9 @@ RUN npm install -g defense-mcp-server reddit-mcp-buddy 2>/dev/null || echo "Secu
 # LinkedIn MCP (Python/uv-based)
 RUN pip3 install --no-cache-dir --break-system-packages linkedin-scraper-mcp 2>/dev/null || echo "LinkedIn MCP optional"
 
+# Scrapling (adaptive web scraping with MCP server, anti-bot bypass)
+RUN pip3 install --no-cache-dir --break-system-packages "scrapling[ai]" 2>/dev/null || echo "Scrapling optional"
+
 # Toprank SEO (Python, Google Auth)
 RUN pip3 install --no-cache-dir --break-system-packages google-auth google-auth-httplib2 2>/dev/null || echo "Toprank deps optional"
 

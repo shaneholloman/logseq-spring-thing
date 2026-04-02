@@ -108,6 +108,7 @@ Testing is integrated into `build-with-quality` (TDD agents) and `sparc-methodol
 | `playwright` | Yes | Full Playwright API, screenshots, visual testing on Display :1 via VNC | Visual testing, complex automation, screenshot verification |
 | `chrome-cdp` | No | CDP CLI for live Chromium sessions, 100+ tabs, no Puppeteer dependency | Inspecting already-open browser tabs, logged-in sessions |
 | `host-webserver-debug` | Yes | HTTPS-to-HTTP bridge for debugging host web servers from Docker | Cross-origin/CORS issues when accessing host dev servers |
+| `scrapling` | Yes | Adaptive web scraping: 9 MCP tools, Cloudflare Turnstile bypass, stealth browser, spider framework with pause/resume | Web scraping, internal infra monitoring, authorized client scraping, anti-bot bypass |
 
 ### Web Research and Content
 
@@ -445,7 +446,10 @@ Q3: Do you know which tool you need?
     |   --> chrome-cdp
     |
     +-- Debug host web server from inside Docker (CORS/HTTPS)
-        --> host-webserver-debug
+    |   --> host-webserver-debug
+    |
+    +-- Web scraping, crawling, anti-bot bypass, infra monitoring
+        --> scrapling (MCP: 9 tools, or CLI: scrapling extract)
 ```
 
 ### [H] AI/ML Model Work
