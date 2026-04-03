@@ -425,6 +425,12 @@ impl UnifiedGPUCompute {
         );
 
 
+        // Class metadata buffers must be resized with positions to avoid
+        // stale CUDA device pointers after the position buffers are reallocated.
+        self.class_id = DeviceBuffer::zeroed(actual_new_nodes)?;
+        self.class_charge = DeviceBuffer::from_slice(&vec![1.0f32; actual_new_nodes])?;
+        self.class_mass = DeviceBuffer::from_slice(&vec![1.0f32; actual_new_nodes])?;
+
         self.cluster_assignments = DeviceBuffer::zeroed(actual_new_nodes)?;
         self.distances_to_centroid = DeviceBuffer::zeroed(actual_new_nodes)?;
         let new_num_blocks = (actual_new_nodes + 255) / 256;

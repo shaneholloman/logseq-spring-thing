@@ -332,9 +332,18 @@ impl PhysicsSupervisor {
                     actor_ctx.set_mailbox_capacity(2048);
                     ForceComputeActor::new()
                 });
-                self.force_compute_actor = Some(force_compute_actor);
+                self.force_compute_actor = Some(force_compute_actor.clone());
                 self.force_compute_state.is_running = true;
                 self.force_compute_state.last_restart = Some(Instant::now());
+
+                // Re-wire OntologyConstraintActor with the new ForceComputeActor address.
+                // Without this, the ontology actor holds a stale address to the dead actor.
+                if let Some(ref onto_addr) = self.ontology_constraint_actor {
+                    onto_addr.do_send(crate::actors::messages::SetForceComputeAddr {
+                        addr: force_compute_actor,
+                    });
+                    info!("PhysicsSupervisor: Re-wired OntologyConstraintActor with new ForceComputeActor address");
+                }
             }
             "StressMajorizationActor" => {
                 let stress_majorization_actor = StressMajorizationActor::new().start();
@@ -403,6 +412,20 @@ impl Actor for PhysicsSupervisor {
     fn started(&mut self, ctx: &mut Self::Context) {
         info!("PhysicsSupervisor: Started");
         self.spawn_child_actors(ctx);
+
+        // Periodic health check: detect and respawn dead child actors.
+        // This handles the GPU init race condition where ForceComputeActor
+        // dies (mailbox closes) before graph data arrives.
+        ctx.run_interval(std::time::Duration::from_secs(5), |act, ctx| {
+            // Check ForceComputeActor
+            if let Some(ref addr) = act.force_compute_actor {
+                if !addr.connected() && act.force_compute_state.is_running {
+                    warn!("PhysicsSupervisor: ForceComputeActor mailbox disconnected — triggering restart");
+                    act.force_compute_state.is_running = false;
+                    act.handle_actor_failure("ForceComputeActor", "Mailbox disconnected (detected by health check)", ctx);
+                }
+            }
+        });
     }
 
     fn stopped(&mut self, _ctx: &mut Self::Context) {

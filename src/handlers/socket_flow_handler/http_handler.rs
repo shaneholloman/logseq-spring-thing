@@ -32,12 +32,35 @@ pub async fn socket_flow_handler(
             }
         });
 
+        // Check explicit allow-list first
         let is_allowed = allowed_origins
             .split(',')
             .map(|s| s.trim())
             .any(|allowed| allowed == origin);
 
-        if !is_allowed {
+        // Also allow same-host origins: if the Origin hostname matches the Host header,
+        // this is a same-origin request proxied through nginx and should be permitted.
+        // Nginx may strip the port from Host ($host), so we compare hostnames only.
+        let is_same_host = if !is_allowed {
+            if let Some(host_header) = req.headers().get("Host").or_else(|| req.headers().get("X-Forwarded-Host")) {
+                let host = host_header.to_str().unwrap_or("");
+                // Extract host from origin URL (strip scheme)
+                let origin_host = origin
+                    .strip_prefix("http://")
+                    .or_else(|| origin.strip_prefix("https://"))
+                    .unwrap_or("");
+                // Strip port from both for comparison (nginx $host strips port)
+                let host_no_port = host.split(':').next().unwrap_or("");
+                let origin_no_port = origin_host.split(':').next().unwrap_or("");
+                !host_no_port.is_empty() && !origin_no_port.is_empty() && origin_no_port == host_no_port
+            } else {
+                false
+            }
+        } else {
+            false
+        };
+
+        if !is_allowed && !is_same_host {
             warn!(
                 "WebSocket connection rejected - invalid origin: {} (allowed: {})",
                 origin, allowed_origins

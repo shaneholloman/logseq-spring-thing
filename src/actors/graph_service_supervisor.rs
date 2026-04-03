@@ -815,6 +815,33 @@ impl Actor for GraphServiceSupervisor {
         info!("GraphServiceSupervisor started");
         self.initialize_actors(ctx);
         self.supervision_stats.uptime = Duration::from_secs(0);
+
+        // Periodic GPU address refresh: if ForceComputeActor was respawned by
+        // PhysicsSupervisor, re-query the address and forward to PhysicsOrchestratorActor.
+        // This fixes the race condition where GPU init fails during startup.
+        ctx.run_interval(Duration::from_secs(10), |act, ctx| {
+            if let Some(ref gpu_manager) = act.gpu_manager {
+                if let Some(ref physics) = act.physics {
+                    let gpu_manager_clone = gpu_manager.clone();
+                    let physics_clone = physics.clone();
+                    ctx.spawn(
+                        async move {
+                            match gpu_manager_clone.send(msgs::GetForceComputeActor).await {
+                                Ok(Ok(force_compute_addr)) => {
+                                    if force_compute_addr.connected() {
+                                        physics_clone.do_send(msgs::StoreGPUComputeAddress {
+                                            addr: Some(force_compute_addr),
+                                        });
+                                    }
+                                }
+                                _ => {} // GPU not ready yet, will retry next interval
+                            }
+                        }
+                        .into_actor(act),
+                    );
+                }
+            }
+        });
     }
 
     fn stopped(&mut self, _ctx: &mut Self::Context) {
@@ -1019,18 +1046,12 @@ impl Handler<msgs::ReloadGraphFromDatabase> for GraphServiceSupervisor {
                             warn!("GraphServiceSupervisor: PhysicsOrchestratorActor not available to receive graph data");
                         }
 
-                        // Also send UpdateGPUGraphData directly to GPUManagerActor
-                        // to ensure the GPU has the correct node IDs after reload.
-                        // The PhysicsOrchestratorActor path may skip re-init if gpu_initialized is already true,
-                        // leaving the GPU with stale data from the initial (possibly wrong) load.
-                        if let Some(ref gpu_manager) = gpu_manager_addr {
-                            info!("GraphServiceSupervisor: Sending UpdateGPUGraphData to GPUManagerActor with {} nodes",
-                                graph_data.nodes.len());
-                            gpu_manager.do_send(msgs::UpdateGPUGraphData {
-                                graph: graph_data.clone(),
-                                correlation_id: None,
-                            });
-                        }
+                        // NOTE: Do NOT send UpdateGPUGraphData to GPUManagerActor here.
+                        // ForceComputeActor already handles graph upload via InitializeGPU.
+                        // Sending to both actors causes concurrent CUDA access on the same
+                        // SharedGPUContext, which panics the ForceComputeActor and poisons
+                        // the GPU mutex. The single-path through PhysicsOrchestratorActor →
+                        // ForceComputeActor is the correct (and sole) graph upload path.
 
                         Ok(())
                     }

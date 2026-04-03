@@ -2,16 +2,15 @@ use actix_web::{web, HttpResponse, Result};
 use log::{debug, error, info, warn};
 
 use crate::actors::messages::GetPhysicsStats;
-use crate::actors::gpu::force_compute_actor::PhysicsStats;
 use crate::{ok_json, service_unavailable};
 use crate::AppState;
 
 use super::real_gpu_functions::get_real_gpu_physics_stats;
-use super::types::{StatsResponse, SystemMetrics};
+use super::types::{GPUPhysicsStats, StatsResponse, SystemMetrics};
 
 pub(crate) async fn calculate_network_metrics(
     _app_state: &AppState,
-    physics_stats: &Option<PhysicsStats>,
+    physics_stats: &Option<GPUPhysicsStats>,
 ) -> (f32, f32, f32, f32, f32) {
 
     let active_nodes = physics_stats.as_ref().map(|s| s.nodes_count).unwrap_or(0) as f32;
@@ -64,9 +63,36 @@ pub(crate) async fn calculate_network_metrics(
 pub async fn get_performance_stats(app_state: web::Data<AppState>) -> Result<HttpResponse> {
     info!("Getting performance statistics");
 
-    let physics_stats = if let Some(gpu_addr) = app_state.get_gpu_compute_addr().await {
+    let physics_stats: Option<GPUPhysicsStats> = if let Some(gpu_addr) = app_state.get_gpu_compute_addr().await {
         match gpu_addr.send(GetPhysicsStats).await {
-            Ok(Ok(stats)) => Some(stats),
+            Ok(Ok(stats)) => Some(GPUPhysicsStats {
+                iteration_count: stats.iteration_count,
+                nodes_count: stats.nodes_count,
+                edges_count: stats.edges_count,
+                kinetic_energy: stats.average_velocity,
+                total_forces: 0.0,
+                gpu_enabled: true,
+                compute_mode: format!("{:?}", stats.compute_mode),
+                kernel_mode: String::new(),
+                num_nodes: stats.nodes_count,
+                num_edges: stats.edges_count,
+                num_constraints: 0,
+                num_isolation_layers: 0,
+                stress_majorization_interval: 0,
+                last_stress_majorization: 0,
+                gpu_failure_count: stats.gpu_failure_count,
+                has_advanced_features: false,
+                has_dual_graph_features: false,
+                has_visual_analytics_features: false,
+                stress_safety_stats: super::types::StressMajorizationStats {
+                    total_runs: 0, successful_runs: 0, failed_runs: 0,
+                    consecutive_failures: 0, emergency_stopped: false,
+                    last_error: String::new(), average_computation_time_ms: 0,
+                    success_rate: 0.0, is_emergency_stopped: false,
+                    emergency_stop_reason: String::new(), avg_computation_time_ms: 0,
+                    avg_stress: 0.0, avg_displacement: 0.0, is_converging: false,
+                },
+            }),
             Ok(Err(e)) => {
                 warn!("Failed to get physics stats: {}", e);
                 None

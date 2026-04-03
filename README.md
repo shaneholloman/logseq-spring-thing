@@ -14,7 +14,9 @@
 
 <br/>
 
-<img src="./jarvisSept.gif" alt="VisionClaw — 3D knowledge graph with autonomous agent orchestration" width="720"/>
+<video src="./docs/visionclaw.mp4" alt="VisionClaw — 3D knowledge graph with autonomous agent orchestration" width="720" autoplay loop muted playsinline>
+  Your browser does not support the video tag. <a href="./docs/visionclaw.mp4">Download the demo video</a>.
+</video>
 
 <br/>
 

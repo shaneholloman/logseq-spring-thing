@@ -195,7 +195,7 @@ const DEFAULT_GEM_MATERIAL = {
   transmission: 0.6,
   clearcoat: 1.0,
   clearcoatRoughness: 0.02,
-  emissiveIntensity: 0.3,
+  emissiveIntensity: 0.6,
   iridescence: 0.3,
 };
 
@@ -239,9 +239,9 @@ const DEFAULT_INTERACTION_SETTINGS = {
 };
 
 const DEFAULT_NODES_SETTINGS = {
-  baseColor: '#202724',
+  baseColor: '#4a6fa5',
   metalness: 0.1,
-  opacity: 0.88,
+  opacity: 1.0,
   roughness: 0.6,
   nodeSize: 1.7,
   quality: 'high' as const,
@@ -275,7 +275,7 @@ const DEFAULT_EDGES_SETTINGS = {
 const DEFAULT_LABELS_SETTINGS = {
   desktopFontSize: 0.4,
   enableLabels: true,
-  labelDistanceThreshold: 500,
+  labelDistanceThreshold: 1200,
   textColor: '#676565',
   textOutlineColor: '#00ff40',
   textOutlineWidth: 0.0074725277,

@@ -3,13 +3,14 @@
 use super::construction::UnifiedGPUCompute;
 use super::types::int3;
 use anyhow::{anyhow, Result};
+use cust::context::Context;
 use cust::launch;
 use cust::memory::{CopyDestination, DeviceBuffer};
 use log::info;
 
 /// Safe download: allocate buffer matching device buffer size, copy, then truncate
 /// to the requested logical size. Avoids panics from overallocated device buffers.
-fn safe_download<T: Default + Clone + cust::memory::DeviceCopy>(
+pub(crate) fn safe_download<T: Default + Clone + cust::memory::DeviceCopy>(
     device_buf: &DeviceBuffer<T>,
     logical_size: usize,
 ) -> Result<Vec<T>> {
@@ -17,6 +18,22 @@ fn safe_download<T: Default + Clone + cust::memory::DeviceCopy>(
     device_buf.copy_to(&mut full)?;
     full.truncate(logical_size);
     Ok(full)
+}
+
+/// Safe upload: pad host slice to match device buffer size if needed.
+/// Avoids panics when device buffers are overallocated (e.g. 1.5x growth).
+pub(crate) fn safe_upload<T: Default + Clone + cust::memory::DeviceCopy>(
+    device_buf: &mut DeviceBuffer<T>,
+    data: &[T],
+) -> Result<()> {
+    if data.len() == device_buf.len() {
+        device_buf.copy_from(data)?;
+    } else {
+        let mut padded = data.to_vec();
+        padded.resize(device_buf.len(), T::default());
+        device_buf.copy_from(&padded)?;
+    }
+    Ok(())
 }
 
 impl UnifiedGPUCompute {
@@ -27,6 +44,10 @@ impl UnifiedGPUCompute {
         tolerance: f32,
         seed: u32,
     ) -> Result<(Vec<i32>, Vec<(f32, f32, f32)>, f32)> {
+        // Make CUDA context current for this thread (required when called from spawn_blocking)
+        let _ctx = Context::new(self.device.clone())
+            .map_err(|e| anyhow!("Failed to set CUDA context for k-means: {}", e))?;
+
         if num_clusters > self.max_clusters {
             return Err(anyhow!(
                 "Too many clusters requested: {} > {}",
@@ -183,6 +204,9 @@ impl UnifiedGPUCompute {
         tolerance: f32,
         seed: u32,
     ) -> Result<(Vec<i32>, Vec<(f32, f32, f32)>, f32, u32, bool)> {
+        let _ctx = Context::new(self.device.clone())
+            .map_err(|e| anyhow!("Failed to set CUDA context for k-means: {}", e))?;
+
         if num_clusters > self.max_clusters {
             return Err(anyhow!(
                 "Too many clusters requested: {} > {}",

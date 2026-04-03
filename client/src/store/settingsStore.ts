@@ -791,6 +791,11 @@ export const useSettingsStore = create<SettingsState>()(
       },
 
       updatePhysics: (graphName: string, params: Partial<GPUPhysicsParams>) => {
+        // Guard against non-string graph names (prevents [object Object] key corruption)
+        if (typeof graphName !== 'string' || !graphName || graphName === '[object Object]') {
+          logger.warn('updatePhysics called with invalid graphName, defaulting to "logseq":', graphName);
+          graphName = 'logseq';
+        }
         const state = get();
 
 
@@ -798,19 +803,19 @@ export const useSettingsStore = create<SettingsState>()(
 
 
         if (validatedParams.restLength !== undefined) {
-          validatedParams.restLength = Math.max(0.1, Math.min(2000.0, validatedParams.restLength));
+          validatedParams.restLength = Math.max(0.1, Math.min(10000.0, validatedParams.restLength));
         }
         if (validatedParams.repulsionCutoff !== undefined) {
-          validatedParams.repulsionCutoff = Math.max(1.0, Math.min(5000.0, validatedParams.repulsionCutoff));
+          validatedParams.repulsionCutoff = Math.max(1.0, Math.min(50000.0, validatedParams.repulsionCutoff));
         }
         if (validatedParams.repulsionSofteningEpsilon !== undefined) {
           validatedParams.repulsionSofteningEpsilon = Math.max(0.00001, Math.min(1.0, validatedParams.repulsionSofteningEpsilon));
         }
         if (validatedParams.centerGravityK !== undefined) {
-          validatedParams.centerGravityK = Math.max(-10.0, Math.min(10.0, validatedParams.centerGravityK));
+          validatedParams.centerGravityK = Math.max(-1000.0, Math.min(1000.0, validatedParams.centerGravityK));
         }
         if (validatedParams.gridCellSize !== undefined) {
-          validatedParams.gridCellSize = Math.max(1.0, Math.min(500.0, validatedParams.gridCellSize));
+          validatedParams.gridCellSize = Math.max(1.0, Math.min(2000.0, validatedParams.gridCellSize));
         }
         if (validatedParams.featureFlags !== undefined) {
           validatedParams.featureFlags = Math.max(0, Math.min(255, Math.floor(validatedParams.featureFlags)));
@@ -906,6 +911,10 @@ export const useSettingsStore = create<SettingsState>()(
       },
 
       updateTweening: (graphName: string, params: Partial<{ enabled: boolean; lerpBase: number; snapThreshold: number; maxDivergence: number }>) => {
+        if (typeof graphName !== 'string' || !graphName || graphName === '[object Object]') {
+          logger.warn('updateTweening called with invalid graphName, defaulting to "logseq":', graphName);
+          graphName = 'logseq';
+        }
         const state = get();
 
         // Validate ranges

@@ -190,7 +190,27 @@ impl FastWebSocketServer {
             let is_allowed = allowed_origins
                 .split(',')
                 .any(|allowed| origin_str.starts_with(allowed.trim()));
-            if !is_allowed {
+
+            // Also allow same-host origins (proxied through nginx in Docker)
+            // Nginx $host strips port, so compare hostnames only
+            let is_same_host = if !is_allowed {
+                if let Some(host) = req.headers().get("host").or_else(|| req.headers().get("x-forwarded-host")) {
+                    let host_str = host.to_str().unwrap_or("");
+                    let origin_host = origin_str
+                        .strip_prefix("http://")
+                        .or_else(|| origin_str.strip_prefix("https://"))
+                        .unwrap_or("");
+                    let host_no_port = host_str.split(':').next().unwrap_or("");
+                    let origin_no_port = origin_host.split(':').next().unwrap_or("");
+                    !host_no_port.is_empty() && !origin_no_port.is_empty() && origin_no_port == host_no_port
+                } else {
+                    false
+                }
+            } else {
+                false
+            };
+
+            if !is_allowed && !is_same_host {
                 warn!(
                     "SECURITY: Rejected WebSocket upgrade from disallowed origin: {}",
                     origin_str

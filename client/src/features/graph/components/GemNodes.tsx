@@ -391,16 +391,37 @@ const GemNodesInner: React.ForwardRefRenderFunction<GemNodesHandle, GemNodesProp
       const vis = settings?.visualisation as Record<string, unknown> | undefined;
       const glow = vis?.glow as Record<string, unknown> | undefined;
       const glowBase = (glow?.intensity as number | undefined) ?? 0.3;
+
+      // Read per-type visual settings — no hardcoded multipliers
+      const typeVisuals = (vis as any)?.graphTypeVisuals;
+      const agentVis = typeVisuals?.agent;
+      const kgVis = typeVisuals?.knowledgeGraph;
+      const ontoVis = typeVisuals?.ontology;
+
+      // Per-type glow strength from settings (defaults from DEFAULT_GRAPH_TYPE_VISUALS)
+      const typeGlowStrength =
+        dominant === 'agent' ? (agentVis?.bioluminescentIntensity ?? 0.6) :
+        dominant === 'ontology' ? (ontoVis?.glowStrength ?? 1.8) :
+        (kgVis?.glowStrength ?? 2.5);
+      const agentBaseEmissive = agentVis?.nucleusGlowIntensity ?? 0.6;
+      const breathingSpeed = agentVis?.breathingSpeed ?? 1.5;
+      const breathingAmplitude = agentVis?.breathingAmplitude ?? 0.4;
+      const kgInnerGlow = kgVis?.innerGlowIntensity ?? 0.3;
+
       if (!pEnabled) {
-        // Pulse disabled — static emissive
-        currentMat.emissiveIntensity = dominant === 'agent' ? 0.15 : glowBase * 0.6;
+        // Pulse disabled — static emissive from type-specific settings
+        currentMat.emissiveIntensity = dominant === 'agent'
+          ? agentBaseEmissive * glowBase
+          : glowBase * kgInnerGlow * typeGlowStrength;
       } else if (dominant === 'agent' && u.activityLevel) {
         const pulse = Math.pow((Math.sin(clock.elapsedTime * pSpeed * Math.PI) + 1) * 0.5, 4);
-        currentMat.emissiveIntensity = 0.15 + pulse * u.activityLevel.value * 0.2 * pStrength;
+        currentMat.emissiveIntensity = agentBaseEmissive * glowBase + pulse * u.activityLevel.value * breathingAmplitude * pStrength;
       } else {
-        // Knowledge graph / ontology: subtle breathing emissive driven by glow setting
-        const breath = (Math.sin(clock.elapsedTime * pSpeed * 0.8) + 1) * 0.5;
-        currentMat.emissiveIntensity = glowBase * 0.6 + breath * glowBase * 0.4 * pStrength;
+        // Knowledge graph / ontology: breathing emissive driven by type and glow settings
+        const breathDamping = dominant === 'ontology' ? (ontoVis?.nebulaGlowIntensity ?? 0.7) : kgInnerGlow;
+        const breath = (Math.sin(clock.elapsedTime * pSpeed * breathingSpeed) + 1) * 0.5;
+        currentMat.emissiveIntensity = glowBase * breathDamping * typeGlowStrength
+          + breath * glowBase * breathingAmplitude * pStrength;
       }
     }
 

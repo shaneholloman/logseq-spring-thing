@@ -1,7 +1,9 @@
 //! Community detection algorithms: Label Propagation, Louvain, DBSCAN.
 
+use super::clustering::{safe_download, safe_upload};
 use super::construction::UnifiedGPUCompute;
-use anyhow::Result;
+use anyhow::{anyhow, Result};
+use cust::context::Context;
 use cust::launch;
 use cust::memory::{CopyDestination, DeviceBuffer};
 use log::info;
@@ -14,6 +16,9 @@ impl UnifiedGPUCompute {
         synchronous: bool,
         seed: u32,
     ) -> Result<(Vec<i32>, usize, f32, u32, Vec<i32>, bool)> {
+        let _ctx = Context::new(self.device.clone())
+            .map_err(|e| anyhow!("Failed to set CUDA context for community detection: {}", e))?;
+
         let block_size = 256;
         let grid_size = (self.num_nodes + block_size - 1) / block_size;
         let stream = &self.stream;
@@ -65,8 +70,7 @@ impl UnifiedGPUCompute {
 
 
         self.stream.synchronize()?;
-        let mut node_degrees_host = vec![0.0f32; self.num_nodes];
-        self.node_degrees.copy_to(&mut node_degrees_host)?;
+        let node_degrees_host = safe_download(&self.node_degrees, self.num_nodes)?;
         let total_weight: f32 = node_degrees_host.iter().sum::<f32>() / 2.0;
 
 
@@ -213,15 +217,13 @@ impl UnifiedGPUCompute {
         self.stream.synchronize()?;
 
 
-        let mut modularity_contributions = vec![0.0f32; self.num_nodes];
-        self.modularity_contributions
-            .copy_to(&mut modularity_contributions)?;
+        let modularity_contributions = safe_download(&self.modularity_contributions, self.num_nodes)?;
         let modularity: f32 = modularity_contributions.iter().sum::<f32>() / (2.0 * total_weight);
 
 
 
         let zero_communities = vec![0i32; self.max_labels];
-        self.community_sizes.copy_from(&zero_communities)?;
+        safe_upload(&mut self.community_sizes, &zero_communities)?;
 
         let count_communities_kernel = self._module.get_function("count_community_sizes_kernel")?;
         // SAFETY: Community size counting kernel is safe because:
@@ -242,10 +244,8 @@ impl UnifiedGPUCompute {
         self.stream.synchronize()?;
 
 
-        let mut labels = vec![0i32; self.num_nodes];
-        let mut community_sizes_host = vec![0i32; self.max_labels];
-        self.labels_current.copy_to(&mut labels)?;
-        self.community_sizes.copy_to(&mut community_sizes_host)?;
+        let mut labels = safe_download(&self.labels_current, self.num_nodes)?;
+        let community_sizes_host = safe_download(&self.community_sizes, self.max_labels)?;
 
 
         let mut label_map = vec![-1i32; self.max_labels];
@@ -262,7 +262,7 @@ impl UnifiedGPUCompute {
 
 
         if num_communities < self.max_labels {
-            self.label_mapping.copy_from(&label_map)?;
+            safe_upload(&mut self.label_mapping, &label_map)?;
 
             let relabel_kernel = self._module.get_function("relabel_communities_kernel")?;
             // SAFETY: Relabeling kernel is safe because:
@@ -281,7 +281,7 @@ impl UnifiedGPUCompute {
             }
 
             self.stream.synchronize()?;
-            self.labels_current.copy_to(&mut labels)?;
+            labels = safe_download(&self.labels_current, self.num_nodes)?;
         }
 
         Ok((
@@ -311,6 +311,9 @@ impl UnifiedGPUCompute {
         resolution: f32,
         _seed: u32,
     ) -> Result<(Vec<i32>, usize, f32, u32, Vec<i32>, bool)> {
+        let _ctx = Context::new(self.device.clone())
+            .map_err(|e| anyhow!("Failed to set CUDA context for Louvain: {}", e))?;
+
         info!("Running REAL Louvain community detection on GPU");
 
         let block_size = 256;
@@ -407,6 +410,9 @@ impl UnifiedGPUCompute {
 
 
     pub fn run_dbscan_clustering(&mut self, eps: f32, min_pts: i32) -> Result<Vec<i32>> {
+        let _ctx = Context::new(self.device.clone())
+            .map_err(|e| anyhow!("Failed to set CUDA context for DBSCAN: {}", e))?;
+
         info!("Running REAL DBSCAN clustering on GPU");
 
         let block_size = 256;

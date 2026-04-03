@@ -37,7 +37,7 @@ export interface TabConfig {
 export interface SettingField {
   key: string;
   label: string;
-  type: 'slider' | 'toggle' | 'color' | 'nostr-button' | 'text' | 'select' | 'action-button';
+  type: 'slider' | 'toggle' | 'color' | 'nostr-button' | 'text' | 'select' | 'action-button' | 'readonly';
   path?: string;
   min?: number;
   max?: number;

@@ -375,11 +375,35 @@ impl PhysicsOrchestratorActor {
 
     
     fn initialize_gpu_if_needed(&mut self, ctx: &mut Context<Self>) {
-        if self.gpu_init_in_progress || self.gpu_initialized {
+        if self.gpu_init_in_progress {
             return;
         }
 
+        // If gpu_initialized but the actor address is stale (mailbox closed after
+        // respawn), reset gpu_initialized so we can re-acquire and re-initialize.
+        if self.gpu_initialized {
+            if let Some(ref gpu_addr) = self.gpu_compute_addr {
+                if !gpu_addr.connected() {
+                    warn!("PhysicsOrchestratorActor: GPU was initialized but ForceComputeActor mailbox closed — resetting for re-init");
+                    self.gpu_initialized = false;
+                    self.gpu_compute_addr = None;
+                } else {
+                    return; // GPU is initialized and connected — nothing to do
+                }
+            } else {
+                return; // gpu_initialized but no addr — wait for StoreGPUComputeAddress
+            }
+        }
+
         if let Some(ref gpu_addr) = self.gpu_compute_addr {
+            // Check if the actor's mailbox is still connected before sending
+            if !gpu_addr.connected() {
+                warn!("GPU compute actor mailbox closed — clearing address for re-acquisition");
+                self.gpu_compute_addr = None;
+                self.gpu_init_in_progress = false;
+                return;
+            }
+
             info!("Initializing GPU compute for physics");
 
             if let Some(ref graph_data) = self.graph_data_ref {
@@ -999,6 +1023,25 @@ impl Actor for PhysicsOrchestratorActor {
                     }
                 }
             }
+
+            // GPU recovery: if we have graph data but no working GPU, retry initialization.
+            // This handles the race condition where GPU actor's mailbox closes before
+            // graph data arrives, leaving physics permanently dead.
+            if !act.gpu_initialized && !act.gpu_init_in_progress && act.graph_data_ref.is_some() {
+                if let Some(ref addr) = act.gpu_compute_addr {
+                    if !addr.connected() {
+                        warn!("[Physics] GPU compute actor disconnected with graph data available — clearing for re-acquisition");
+                        act.gpu_compute_addr = None;
+                        // The PhysicsSupervisor's health check will respawn ForceComputeActor.
+                        // After respawn, we need a new address. Log that we're waiting.
+                        info!("[Physics] Waiting for PhysicsSupervisor to respawn ForceComputeActor and re-supply address");
+                    }
+                }
+                // If we have a connected GPU address, try to initialize
+                if act.gpu_compute_addr.is_some() {
+                    act.initialize_gpu_if_needed(ctx);
+                }
+            }
         });
     }
 
@@ -1208,6 +1251,18 @@ impl Handler<StoreGPUComputeAddress> for PhysicsOrchestratorActor {
 
     fn handle(&mut self, msg: StoreGPUComputeAddress, ctx: &mut Self::Context) -> Self::Result {
         info!("PhysicsOrchestratorActor: Storing GPU compute address");
+
+        // If we receive a new address while gpu_initialized is true, the old
+        // ForceComputeActor must have died and been respawned. Reset state so
+        // initialize_gpu_if_needed will re-send InitializeGPU to the new actor.
+        if msg.addr.is_some() && self.gpu_initialized {
+            let old_is_stale = self.gpu_compute_addr.as_ref().map_or(true, |a| !a.connected());
+            if old_is_stale {
+                info!("PhysicsOrchestratorActor: ForceComputeActor address replaced (old disconnected) — resetting gpu_initialized for re-init");
+                self.gpu_initialized = false;
+                self.gpu_init_in_progress = false;
+            }
+        }
 
         // Actually store the ForceComputeActor address
         self.gpu_compute_addr = msg.addr;

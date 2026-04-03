@@ -399,7 +399,7 @@ RUVECTOR_USE_EXTERNAL="${RUVECTOR_USE_EXTERNAL:-true}"
 RUVECTOR_PG_HOST="${RUVECTOR_PG_HOST:-ruvector-postgres}"
 RUVECTOR_PG_PORT="${RUVECTOR_PG_PORT:-5432}"
 RUVECTOR_PG_USER="${RUVECTOR_PG_USER:-ruvector}"
-RUVECTOR_PG_PASSWORD="${RUVECTOR_PG_PASSWORD:-ruvector_secure_pass}"
+RUVECTOR_PG_PASSWORD="${RUVECTOR_PG_PASSWORD:-ruvector}"
 RUVECTOR_PG_DATABASE="${RUVECTOR_PG_DATABASE:-ruvector}"
 
 # Export connection string for psycopg
@@ -418,9 +418,10 @@ if [ "$RUVECTOR_USE_EXTERNAL" = "true" ]; then
         echo "  ✓ External RuVector PostgreSQL connected successfully"
 
         # Get stats from external database
-        ENTRY_COUNT=$(PGPASSWORD="$RUVECTOR_PG_PASSWORD" psql -h "$RUVECTOR_PG_HOST" -p "$RUVECTOR_PG_PORT" -U "$RUVECTOR_PG_USER" -d "$RUVECTOR_PG_DATABASE" -t -c "SELECT COUNT(*) FROM memory_entries" 2>/dev/null | xargs)
-        EMBEDDED_COUNT=$(PGPASSWORD="$RUVECTOR_PG_PASSWORD" psql -h "$RUVECTOR_PG_HOST" -p "$RUVECTOR_PG_PORT" -U "$RUVECTOR_PG_USER" -d "$RUVECTOR_PG_DATABASE" -t -c "SELECT COUNT(*) FROM memory_entries WHERE embedding_json IS NOT NULL" 2>/dev/null | xargs)
-        PROJECT_COUNT=$(PGPASSWORD="$RUVECTOR_PG_PASSWORD" psql -h "$RUVECTOR_PG_HOST" -p "$RUVECTOR_PG_PORT" -U "$RUVECTOR_PG_USER" -d "$RUVECTOR_PG_DATABASE" -t -c "SELECT COUNT(*) FROM projects" 2>/dev/null | xargs)
+        # Use count(id) not count(*) — ruvector 2.0.0 extension bug causes count(*) to return 0
+        ENTRY_COUNT=$(PGPASSWORD="$RUVECTOR_PG_PASSWORD" psql -h "$RUVECTOR_PG_HOST" -p "$RUVECTOR_PG_PORT" -U "$RUVECTOR_PG_USER" -d "$RUVECTOR_PG_DATABASE" -t -c "SELECT COUNT(id) FROM memory_entries" 2>/dev/null | xargs)
+        EMBEDDED_COUNT=$(PGPASSWORD="$RUVECTOR_PG_PASSWORD" psql -h "$RUVECTOR_PG_HOST" -p "$RUVECTOR_PG_PORT" -U "$RUVECTOR_PG_USER" -d "$RUVECTOR_PG_DATABASE" -t -c "SELECT COUNT(id) FROM memory_entries WHERE embedding_json IS NOT NULL" 2>/dev/null | xargs)
+        PROJECT_COUNT=$(PGPASSWORD="$RUVECTOR_PG_PASSWORD" psql -h "$RUVECTOR_PG_HOST" -p "$RUVECTOR_PG_PORT" -U "$RUVECTOR_PG_USER" -d "$RUVECTOR_PG_DATABASE" -t -c "SELECT COUNT(id) FROM projects" 2>/dev/null | xargs)
 
         echo "  📊 External DB Stats: $ENTRY_COUNT entries, $EMBEDDED_COUNT embedded, $PROJECT_COUNT projects"
         echo "  ✓ Using external RuVector PostgreSQL (skipping local PostgreSQL setup)"
@@ -879,7 +880,7 @@ if [ ! -f /home/devuser/.claude-flow/config.json ]; then
       "port": 5432,
       "database": "ruvector",
       "user": "ruvector",
-      "password": "ruvector_secure_pass",
+      "password": "ruvector",
       "ssl": false,
       "connectionTimeout": 10000,
       "maxConnections": 20
@@ -1307,7 +1308,7 @@ if [ "$EXTERNAL_READY" = "true" ]; then
                 claude-flow config set --key memory.postgres.port --value 5432 2>/dev/null || true
                 claude-flow config set --key memory.postgres.user --value ruvector 2>/dev/null || true
                 claude-flow config set --key memory.postgres.database --value ruvector 2>/dev/null || true
-                claude-flow config set --key memory.postgres.password --value ruvector_secure_pass 2>/dev/null || true
+                claude-flow config set --key memory.postgres.password --value ruvector 2>/dev/null || true
                 claude-flow config set --key memory.enableHNSW --value true 2>/dev/null || true
             "
         fi
@@ -1400,14 +1401,61 @@ if [ -n "$RUFLO_MCP_DIR" ]; then
         cp /opt/config/ruflo-memory-tools-pg.js "$RUFLO_MCP_DIR/memory-tools.js"
         echo "  ✓ memory-tools.js patched (PG backend labels)"
     fi
+    # Fix namespace default: 'default' → undefined (search all namespaces)
+    # Without this, MCP memory_search only hits entries in 'default' namespace
+    sed -i "s/const namespace = input.namespace || 'default';/const namespace = input.namespace || undefined;/" "$RUFLO_MCP_DIR/memory-tools.js" 2>/dev/null
+    echo "  ✓ memory-tools.js namespace default fixed (search all namespaces)"
 else
     echo "  ⚠️  ruflo mcp-tools dir not found"
 fi
 
-# Export embeddings availability for the bridge
-if [ "${RUVECTOR_EMBEDDINGS_AVAILABLE:-false}" = "true" ]; then
-    echo "export RUVECTOR_EMBEDDINGS_AVAILABLE=true" >> /home/devuser/.zshenv
+# Patch ruflo ruvector CLI commands to accept 'ruvector' extension alongside 'pgvector'
+# ruvector 2.0.0 registers as extname='ruvector' not 'vector', but ruflo checks for 'vector'
+RUFLO_RUVECTOR_DIR=$(find /usr/local/lib/node_modules -path "*/ruflo/node_modules/@claude-flow/cli/dist/src/commands/ruvector" -type d 2>/dev/null | head -1)
+if [ -n "$RUFLO_RUVECTOR_DIR" ]; then
+    for jsfile in "$RUFLO_RUVECTOR_DIR"/init.js "$RUFLO_RUVECTOR_DIR"/status.js; do
+        if [ -f "$jsfile" ] && grep -q "extname = 'vector'" "$jsfile" 2>/dev/null; then
+            sed -i "s/WHERE extname = 'vector'/WHERE extname IN ('vector', 'ruvector')/" "$jsfile"
+        fi
+    done
+    echo "  ✓ ruflo ruvector commands patched (pgvector→ruvector compat)"
 fi
+
+# Patch all project .mcp.json files to include PG env vars for claude-flow
+for mcp_file in /home/devuser/workspace/*/.mcp.json /home/devuser/workspace/.mcp.json /home/devuser/.mcp.json; do
+    [ -f "$mcp_file" ] || continue
+    python3 -c "
+import json
+with open('$mcp_file') as f: d=json.load(f)
+s=d.get('mcpServers',{})
+if 'claude-flow' in s:
+    e=s['claude-flow'].setdefault('env',{})
+    e.update({'RUVECTOR_PG_HOST':'$RUVECTOR_PG_HOST','RUVECTOR_PG_PORT':'$RUVECTOR_PG_PORT','RUVECTOR_PG_DATABASE':'$RUVECTOR_PG_DATABASE','RUVECTOR_PG_USER':'$RUVECTOR_PG_USER','RUVECTOR_PG_PASSWORD':'$RUVECTOR_PG_PASSWORD','PGHOST':'$RUVECTOR_PG_HOST','PGPORT':'$RUVECTOR_PG_PORT','PGDATABASE':'$RUVECTOR_PG_DATABASE','PGUSER':'$RUVECTOR_PG_USER','PGPASSWORD':'$RUVECTOR_PG_PASSWORD'})
+    s['claude-flow']['command']='ruflo'
+    s['claude-flow']['args']=['mcp','start']
+with open('$mcp_file','w') as f: json.dump(d,f,indent=2)
+" 2>/dev/null || true
+done
+echo "  ✓ All .mcp.json files patched with RuVector PG env vars"
+
+# Export RuVector connection vars to devuser profile so MCP child processes inherit them
+{
+    echo "export RUVECTOR_PG_HOST=\"$RUVECTOR_PG_HOST\""
+    echo "export RUVECTOR_PG_PORT=\"$RUVECTOR_PG_PORT\""
+    echo "export RUVECTOR_PG_USER=\"$RUVECTOR_PG_USER\""
+    echo "export RUVECTOR_PG_PASSWORD=\"$RUVECTOR_PG_PASSWORD\""
+    echo "export RUVECTOR_PG_DATABASE=\"$RUVECTOR_PG_DATABASE\""
+    echo "export RUVECTOR_PG_CONNINFO=\"$RUVECTOR_PG_CONNINFO\""
+    echo "export PGHOST=\"$RUVECTOR_PG_HOST\""
+    echo "export PGPORT=\"$RUVECTOR_PG_PORT\""
+    echo "export PGUSER=\"$RUVECTOR_PG_USER\""
+    echo "export PGPASSWORD=\"$RUVECTOR_PG_PASSWORD\""
+    echo "export PGDATABASE=\"$RUVECTOR_PG_DATABASE\""
+    if [ "${RUVECTOR_EMBEDDINGS_AVAILABLE:-false}" = "true" ]; then
+        echo "export RUVECTOR_EMBEDDINGS_AVAILABLE=true"
+    fi
+} >> /home/devuser/.zshenv
+chown devuser:devuser /home/devuser/.zshenv
 
 # Store canonical system marker in memory (external or local)
 (sudo -u devuser bash -c "claude-flow memory store --key 'system/canonical' --value 'agentic-workstation-v3.0' --namespace system 2>/dev/null" &) || true
@@ -1627,6 +1675,90 @@ VISIONFLOW
     '
 fi
 set -e  # Re-enable exit on error
+
+# Create ~/.claude/config/mcp.json with PG env vars for MCP server child processes
+# This is what Claude Code reads when spawning MCP servers
+mkdir -p /home/devuser/.claude/config
+cat > /home/devuser/.claude/config/mcp.json << MCPCONFIG
+{
+  "mcpServers": {
+    "claude-flow": {
+      "command": "ruflo",
+      "args": ["mcp", "start"],
+      "type": "stdio",
+      "description": "Ruflo (formerly Claude Flow) MCP integration for agentic workflows",
+      "env": {
+        "RUVECTOR_PG_HOST": "$RUVECTOR_PG_HOST",
+        "RUVECTOR_PG_PORT": "$RUVECTOR_PG_PORT",
+        "RUVECTOR_PG_DATABASE": "$RUVECTOR_PG_DATABASE",
+        "RUVECTOR_PG_USER": "$RUVECTOR_PG_USER",
+        "RUVECTOR_PG_PASSWORD": "$RUVECTOR_PG_PASSWORD",
+        "PGHOST": "$RUVECTOR_PG_HOST",
+        "PGPORT": "$RUVECTOR_PG_PORT",
+        "PGDATABASE": "$RUVECTOR_PG_DATABASE",
+        "PGUSER": "$RUVECTOR_PG_USER",
+        "PGPASSWORD": "$RUVECTOR_PG_PASSWORD"
+      }
+    },
+    "ruv-swarm": {
+      "command": "npx",
+      "args": ["ruv-swarm@latest", "mcp", "start"],
+      "type": "stdio",
+      "description": "Multi-agent swarm coordination and workflow orchestration"
+    },
+    "flow-nexus": {
+      "command": "npx",
+      "args": ["flow-nexus@latest", "mcp", "start"],
+      "type": "stdio",
+      "description": "Flow Nexus platform integration"
+    }
+  },
+  "memory": {
+    "backend": "postgresql",
+    "postgresql": {
+      "host": "$RUVECTOR_PG_HOST",
+      "port": $RUVECTOR_PG_PORT,
+      "database": "$RUVECTOR_PG_DATABASE",
+      "user": "$RUVECTOR_PG_USER",
+      "conninfo_env": "RUVECTOR_PG_CONNINFO"
+    },
+    "features": {
+      "ruvector": true,
+      "hnsw": true,
+      "dimensions": 384,
+      "model": "all-MiniLM-L6-v2"
+    }
+  }
+}
+MCPCONFIG
+chown devuser:devuser /home/devuser/.claude/config/mcp.json
+echo "  ✓ ~/.claude/config/mcp.json created with RuVector PostgreSQL env vars"
+
+# Also ensure project-level .mcp.json has PG env vars
+cat > /home/devuser/workspace/project/.mcp.json << PROJMCP
+{
+  "mcpServers": {
+    "claude-flow": {
+      "command": "ruflo",
+      "args": ["mcp", "start"],
+      "type": "stdio",
+      "env": {
+        "RUVECTOR_PG_HOST": "$RUVECTOR_PG_HOST",
+        "RUVECTOR_PG_PORT": "$RUVECTOR_PG_PORT",
+        "RUVECTOR_PG_DATABASE": "$RUVECTOR_PG_DATABASE",
+        "RUVECTOR_PG_USER": "$RUVECTOR_PG_USER",
+        "RUVECTOR_PG_PASSWORD": "$RUVECTOR_PG_PASSWORD",
+        "PGHOST": "$RUVECTOR_PG_HOST",
+        "PGPORT": "$RUVECTOR_PG_PORT",
+        "PGDATABASE": "$RUVECTOR_PG_DATABASE",
+        "PGUSER": "$RUVECTOR_PG_USER",
+        "PGPASSWORD": "$RUVECTOR_PG_PASSWORD"
+      }
+    }
+  }
+}
+PROJMCP
+chown devuser:devuser /home/devuser/workspace/project/.mcp.json
 
 # Count registered skills
 MCP_SKILL_COUNT=$(grep -c '"command":' /home/devuser/.config/claude/mcp_settings.json 2>/dev/null || echo "0")

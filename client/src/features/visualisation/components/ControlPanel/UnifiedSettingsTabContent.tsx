@@ -490,6 +490,29 @@ export const UnifiedSettingsTabContent: React.FC<UnifiedSettingsTabContentProps>
           </div>
         );
 
+      case 'readonly': {
+        const caps = value as { backend?: string; gpuAdapterName?: string; tslMaterialsActive?: boolean; nodeBasedBloom?: boolean; pixelRatio?: number; maxTextureSize?: number } | undefined;
+        return (
+          <div key={field.key} style={{ padding: '4px 0', fontSize: '9px', color: 'rgba(255,255,255,0.5)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <span style={{
+                display: 'inline-block',
+                width: '6px',
+                height: '6px',
+                borderRadius: '50%',
+                background: caps?.backend === 'webgpu' ? '#10b981' : '#6b7280',
+                boxShadow: caps?.backend === 'webgpu' ? '0 0 4px rgba(16,185,129,0.6)' : 'none'
+              }} />
+              <span>{caps?.backend?.toUpperCase() ?? 'Detecting...'}</span>
+              {caps?.gpuAdapterName && <span style={{ color: 'rgba(255,255,255,0.35)' }}>— {caps.gpuAdapterName}</span>}
+            </div>
+            {caps?.tslMaterialsActive && <span style={{ color: '#a78bfa', marginLeft: 10 }}>TSL Materials</span>}
+            {caps?.nodeBasedBloom && <span style={{ color: '#f59e0b', marginLeft: 6 }}>Node Bloom</span>}
+            {caps?.pixelRatio && <span style={{ color: 'rgba(255,255,255,0.3)', marginLeft: 6 }}>DPR: {caps.pixelRatio}</span>}
+          </div>
+        );
+      }
+
       default:
         return null;
     }

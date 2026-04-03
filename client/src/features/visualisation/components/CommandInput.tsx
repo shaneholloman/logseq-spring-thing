@@ -31,6 +31,8 @@ function validateCommand(cmd: string): { valid: boolean; message: string } {
     'reset', 'default', 'increase', 'decrease', 'more', 'less', 'enable', 'disable',
     'ontology', 'knowledge', 'agent', 'strength', 'spread', 'tight', 'compact',
     'separate', 'group', 'visibility', 'sync', 'local', 'analytics', 'metric',
+    'semantic', 'overwhelm', 'clutter', 'fewer', 'bigger', 'read', 'only',
+    'focus', 'find', 'search', 'dag', 'radial', 'hierarchy', 'tree',
   ];
 
   const hasRelevantKeyword = accepted.some(kw => lower.includes(kw));
@@ -227,10 +229,122 @@ function parseCommandToActions(cmd: string): SettingsAction[] {
     });
   }
 
+  // Semantic clusters — "create semantic clusters", "group by topic", "cluster"
+  if ((lower.includes('semantic') && lower.includes('cluster')) || lower.includes('group by')) {
+    actions.push({
+      description: 'Enabling semantic layout forces + Louvain clustering',
+      endpoint: '/api/settings/physics',
+      method: 'PUT',
+      body: { clusteringAlgorithm: 'louvain', clusterCount: 8, clusteringResolution: 1.0, clusteringIterations: 50 },
+    });
+    actions.push({
+      description: 'Enabling cluster visualization',
+      localAction: () => {
+        const ss = (window as any).useSettingsStore?.getState();
+        ss?.updateSettings?.((draft: any) => {
+          if (!draft.qualityGates) draft.qualityGates = {};
+          draft.qualityGates.showClusters = true;
+          draft.qualityGates.semanticForces = true;
+          if (!draft.visualisation) draft.visualisation = {};
+          if (!draft.visualisation.clusterHulls) draft.visualisation.clusterHulls = {};
+          draft.visualisation.clusterHulls.enabled = true;
+          draft.visualisation.clusterHulls.opacity = 0.08;
+        });
+      },
+    });
+  }
+
+  // "less overwhelming labels", "fewer labels", "reduce label clutter"
+  if (lower.includes('overwhelm') || lower.includes('clutter') || lower.includes('fewer label') || lower.includes('less label')) {
+    actions.push({
+      description: 'Reducing label visibility for clarity',
+      localAction: () => {
+        const ss = (window as any).useSettingsStore?.getState();
+        ss?.updateSettings?.((draft: any) => {
+          const labels = draft.visualisation?.graphs?.logseq?.labels;
+          if (labels) {
+            labels.labelDistanceThreshold = Math.max(100, (labels.labelDistanceThreshold || 1200) * 0.5);
+            labels.desktopFontSize = Math.max(0.15, (labels.desktopFontSize || 0.35) * 0.7);
+            labels.showMetadata = false;
+          }
+        });
+      },
+    });
+  }
+
+  // "more labels", "bigger labels", "I can't read the labels"
+  if ((lower.includes('more') || lower.includes('bigger') || lower.includes('read')) && lower.includes('label')) {
+    actions.push({
+      description: 'Increasing label visibility',
+      localAction: () => {
+        const ss = (window as any).useSettingsStore?.getState();
+        ss?.updateSettings?.((draft: any) => {
+          const labels = draft.visualisation?.graphs?.logseq?.labels;
+          if (labels) {
+            labels.labelDistanceThreshold = Math.min(2000, (labels.labelDistanceThreshold || 500) * 1.5);
+            labels.desktopFontSize = Math.min(2.0, (labels.desktopFontSize || 0.35) * 1.4);
+            labels.enableLabels = true;
+          }
+        });
+      },
+    });
+  }
+
+  // "only knowledge and agents" / "only show knowledge graph and agents"
+  if (lower.includes('only') && (lower.includes('knowledge') || lower.includes('agent'))) {
+    const showKnowledge = lower.includes('knowledge');
+    const showAgent = lower.includes('agent');
+    const showOntology = lower.includes('ontology');
+    actions.push({
+      description: `Showing: ${[showKnowledge && 'knowledge', showOntology && 'ontology', showAgent && 'agents'].filter(Boolean).join(', ')}`,
+      localAction: () => {
+        const ss = (window as any).useSettingsStore?.getState();
+        ss?.updateSettings?.((draft: any) => {
+          const vis = draft.visualisation?.graphs?.logseq?.nodes?.nodeTypeVisibility;
+          if (vis) {
+            vis.knowledge = showKnowledge;
+            vis.ontology = showOntology;
+            vis.agent = showAgent;
+          }
+        });
+      },
+    });
+  }
+
+  // "layout force directed" / "layout DAG" / "layout radial"
+  if (lower.includes('layout') && (lower.includes('dag') || lower.includes('radial') || lower.includes('hierarchy') || lower.includes('tree'))) {
+    const mode = lower.includes('radial') ? 'dag-radial' : lower.includes('left') ? 'dag-leftright' : 'dag-topdown';
+    actions.push({
+      description: `Switching to ${mode} layout`,
+      localAction: () => {
+        const ss = (window as any).useSettingsStore?.getState();
+        ss?.updateSettings?.((draft: any) => {
+          if (!draft.qualityGates) draft.qualityGates = {};
+          draft.qualityGates.layoutMode = mode;
+          draft.qualityGates.semanticForces = true;
+        });
+      },
+    });
+  }
+
+  // "focus on X" / "find X" — zoom to node by label search
+  if (lower.includes('focus') || lower.includes('find') || lower.includes('search')) {
+    const searchTerm = cmd.replace(/^(focus|find|search)\s*(on|for)?\s*/i, '').trim();
+    if (searchTerm.length > 1) {
+      actions.push({
+        description: `Searching for "${searchTerm}" — use the graph to navigate`,
+        localAction: () => {
+          // Dispatch a custom event that the graph can listen for
+          window.dispatchEvent(new CustomEvent('visionflow:search', { detail: { query: searchTerm } }));
+        },
+      });
+    }
+  }
+
   // Fallback
   if (actions.length === 0) {
     actions.push({
-      description: 'Command understood but no specific action mapped. Try: "show clusters", "increase repulsion", "hide knowledge nodes", "quality > 0.8"',
+      description: 'Try: "create semantic clusters", "less overwhelming labels", "only show knowledge and agents", "layout DAG radial", "increase repulsion", "show cluster hulls"',
       localAction: () => {},
     });
   }

@@ -360,7 +360,7 @@ const InstancedLabelsWebGPU: React.FC<InstancedLabelsProps> = ({
 
     const nodeSettings = (settings as any)?.visualisation?.graphs?.logseq?.nodes ?? (settings as any)?.visualisation?.nodes;
     const nodeSize = nodeSettings?.nodeSize ?? 0.5;
-    const LABEL_DISTANCE_THRESHOLD = labelSettings?.labelDistanceThreshold ?? 500;
+    const LABEL_DISTANCE_THRESHOLD = labelSettings?.labelDistanceThreshold ?? 1200;
     const METADATA_DISTANCE_THRESHOLD = LABEL_DISTANCE_THRESHOLD * 0.6;
     const FADE_START = LABEL_DISTANCE_THRESHOLD * 0.85;
     const metadataEnabled = labelSettings?.showMetadata !== false;
@@ -631,7 +631,7 @@ const InstancedLabelsWebGL: React.FC<InstancedLabelsProps> = ({
 
     const nodeSettingsObj = (settings as any)?.visualisation?.graphs?.logseq?.nodes ?? (settings as any)?.visualisation?.nodes;
     const nodeSize = nodeSettingsObj?.nodeSize ?? 0.5;
-    const LABEL_DISTANCE_THRESHOLD = labelSettings?.labelDistanceThreshold ?? 500;
+    const LABEL_DISTANCE_THRESHOLD = labelSettings?.labelDistanceThreshold ?? 1200;
     const METADATA_DISTANCE_THRESHOLD = LABEL_DISTANCE_THRESHOLD * 0.6;
     const FADE_START = LABEL_DISTANCE_THRESHOLD * 0.85;
     const metadataEnabled = labelSettings?.showMetadata !== false;

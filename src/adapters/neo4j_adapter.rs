@@ -1086,7 +1086,9 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
     }
 
     async fn add_edge(&self, edge: &Edge) -> RepoResult<String> {
-        let mut query = Query::new("MATCH (s:GraphNode {id: $source}) MATCH (t:GraphNode {id: $target}) CREATE (s)-[r:EDGE {weight: $weight, relation_type: $relation_type, owl_property_iri: $owl_property_iri, metadata: $metadata}]->(t) RETURN elementId(r) AS id".to_string());
+        // Use MERGE to prevent duplicate edges between the same source-target pair.
+        // Each GitHub sync re-processes all wikilinks; CREATE would duplicate on every run.
+        let mut query = Query::new("MATCH (s:GraphNode {id: $source}) MATCH (t:GraphNode {id: $target}) MERGE (s)-[r:EDGE]->(t) SET r.weight = $weight, r.relation_type = $relation_type, r.owl_property_iri = $owl_property_iri, r.metadata = $metadata RETURN elementId(r) AS id".to_string());
 
         query = query.param("source", edge.source as i64);
         query = query.param("target", edge.target as i64);

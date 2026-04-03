@@ -278,6 +278,8 @@ impl ForceComputeActor {
                 // can download it.  With compact IDs (node.id == sequential 0..N-1),
                 // this is an identity mapping, but initialize_graph's resize_buffers
                 // zeroes the buffer so we must re-upload it explicitly.
+                info!("ForceComputeActor: [DIAG] About to upload node_graph_id ({} entries, buffer len {})",
+                      self.gpu_index_to_node_id.len(), compute.node_graph_id.len());
                 let mut node_graph_ids: Vec<i32> = self.gpu_index_to_node_id
                     .iter()
                     .map(|&id| id as i32)
@@ -294,10 +296,9 @@ impl ForceComputeActor {
                         info!("ForceComputeActor: Uploaded node_graph_id mapping ({} entries)", node_graph_ids.len());
                     }
                 }
+                info!("ForceComputeActor: [DIAG] node_graph_id done, about to upload class metadata");
 
                 // Upload domain-based class_id and class_charge for domain clustering.
-                // Same-domain nodes get the same class_id and low charge (less mutual repulsion).
-                // This makes the force-directed layout naturally cluster nodes by domain.
                 if let Some(ref graph_data) = self.pending_graph_data {
                     let mut class_ids = Vec::with_capacity(num_nodes);
                     let mut class_charges = Vec::with_capacity(num_nodes);
@@ -308,13 +309,13 @@ impl ForceComputeActor {
                             .map(|s| s.as_str())
                             .unwrap_or("");
                         let (id, charge) = match domain {
-                            "ai" => (1, 0.6),   // Lower charge → less intra-domain repulsion
+                            "ai" => (1, 0.6),
                             "bc" => (2, 0.6),
                             "mv" => (3, 0.6),
                             "rb" => (4, 0.6),
                             "ngm" => (5, 0.6),
                             "tc" => (6, 0.6),
-                            _ => (0, 1.2),       // Higher charge → more repulsion for unclassified
+                            _ => (0, 1.2),
                         };
                         class_ids.push(id);
                         class_charges.push(charge);
@@ -323,12 +324,12 @@ impl ForceComputeActor {
                     if let Err(e) = compute.upload_class_metadata(&class_ids, &class_charges, &class_masses) {
                         warn!("ForceComputeActor: Failed to upload class metadata: {}", e);
                     } else {
-                        let domain_counts: std::collections::HashMap<i32, usize> = class_ids.iter()
-                            .fold(std::collections::HashMap::new(), |mut m, &id| { *m.entry(id).or_insert(0) += 1; m });
-                        info!("ForceComputeActor: Uploaded class metadata — domain distribution: {:?}", domain_counts);
+                        info!("ForceComputeActor: Uploaded class metadata ({} entries)", class_ids.len());
                     }
                 }
 
+                info!("ForceComputeActor: [DIAG] class metadata done, about to update gpu_state");
+                let was_uninitialized = self.gpu_state.num_nodes == 0;
                 self.gpu_state.num_nodes = num_nodes as u32;
                 self.gpu_state.num_edges = edge_count;
                 self.pending_graph_data = None;
@@ -342,6 +343,16 @@ impl ForceComputeActor {
                 self.broadcast_optimizer.reset_delta_state();
                 info!("ForceComputeActor: Stability warmup reset to {} frames after graph upload ({} edges)",
                       warmup, edge_count);
+
+                // If this is the first successful upload (deferred from InitializeGPU
+                // because shared_context wasn't available yet), send the GPUInitialized
+                // confirmation now so PhysicsOrchestratorActor can start the pipeline.
+                if was_uninitialized {
+                    if let Some(ref orchestrator_addr) = self.physics_orchestrator_addr {
+                        orchestrator_addr.do_send(crate::actors::messages::GPUInitialized);
+                        info!("ForceComputeActor: Deferred GPUInitialized confirmation sent after successful graph upload");
+                    }
+                }
             }
             Err(e) => {
                 error!("ForceComputeActor: Failed to upload graph to GPU: {}", e);
@@ -1531,10 +1542,19 @@ impl Handler<InitializeGPU> for ForceComputeActor {
         self.pending_graph_data = Some(msg.graph);
         self.try_upload_pending_graph_data();
 
-        // Send GPUInitialized confirmation back to PhysicsOrchestratorActor
-        if let Some(ref orchestrator_addr) = msg.physics_orchestrator_addr {
-            orchestrator_addr.do_send(crate::actors::messages::GPUInitialized);
-            info!("ForceComputeActor: GPUInitialized confirmation sent to PhysicsOrchestratorActor");
+        // Send GPUInitialized confirmation ONLY if graph data was successfully uploaded
+        // to GPU (gpu_state.num_nodes > 0 means try_upload_pending_graph_data succeeded).
+        // If shared_context is not yet available, the upload is deferred and
+        // GPUInitialized will be sent later from try_upload_pending_graph_data()
+        // when the context arrives via SetSharedGPUContext.
+        if self.gpu_state.num_nodes > 0 {
+            if let Some(ref orchestrator_addr) = msg.physics_orchestrator_addr {
+                orchestrator_addr.do_send(crate::actors::messages::GPUInitialized);
+                info!("ForceComputeActor: GPUInitialized confirmation sent to PhysicsOrchestratorActor");
+            }
+        } else {
+            info!("ForceComputeActor: Deferring GPUInitialized — graph not yet uploaded (shared_context={}, pending_data={})",
+                  self.shared_context.is_some(), self.pending_graph_data.is_some());
         }
 
         // H4: Send acknowledgment

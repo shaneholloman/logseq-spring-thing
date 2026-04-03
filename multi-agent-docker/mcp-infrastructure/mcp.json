@@ -4,12 +4,20 @@
   "description": "MCP Server Registry for Agentic Workstation - Modernized Skills",
   "mcpServers": {
     "claude-flow": {
-      "command": "node",
-      "args": ["/app/scripts/stdio-to-tcp-bridge.js"],
+      "command": "ruflo",
+      "args": ["mcp", "start"],
       "type": "stdio",
       "env": {
-        "MCP_HOST": "127.0.0.1",
-        "MCP_PORT": "9500"
+        "RUVECTOR_PG_HOST": "ruvector-postgres",
+        "RUVECTOR_PG_PORT": "5432",
+        "RUVECTOR_PG_DATABASE": "ruvector",
+        "RUVECTOR_PG_USER": "ruvector",
+        "RUVECTOR_PG_PASSWORD": "ruvector",
+        "PGHOST": "ruvector-postgres",
+        "PGPORT": "5432",
+        "PGDATABASE": "ruvector",
+        "PGUSER": "ruvector",
+        "PGPASSWORD": "ruvector"
       }
     },
     "ruv-swarm": {

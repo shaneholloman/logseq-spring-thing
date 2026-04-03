@@ -487,7 +487,31 @@ async fn main() -> std::io::Result<()> {
                     }
                 }
 
+                // Also accept origins that match the request Host (same-host via nginx proxy).
+                // This handles Docker internal IPs without listing them explicitly.
+                let origins_for_fn = allowed_origins.clone();
                 cors_builder
+                    .allowed_origin_fn(move |origin, req_head| {
+                        let origin_str = origin.to_str().unwrap_or("");
+                        // Check explicit list first
+                        if origins_for_fn.split(',').map(|s| s.trim()).any(|a| a == origin_str) {
+                            return true;
+                        }
+                        // Same-host check: compare hostnames (strip scheme and port)
+                        if let Some(host) = req_head.headers().get("host") {
+                            let host_str = host.to_str().unwrap_or("");
+                            let origin_host = origin_str
+                                .strip_prefix("http://")
+                                .or_else(|| origin_str.strip_prefix("https://"))
+                                .unwrap_or("");
+                            let host_no_port = host_str.split(':').next().unwrap_or("");
+                            let origin_no_port = origin_host.split(':').next().unwrap_or("");
+                            if !host_no_port.is_empty() && host_no_port == origin_no_port {
+                                return true;
+                            }
+                        }
+                        false
+                    })
                     .allowed_methods(vec!["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"])
                     .allowed_headers(vec![
                         actix_web::http::header::AUTHORIZATION,

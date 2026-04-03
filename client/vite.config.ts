@@ -62,6 +62,7 @@ export default defineConfig(({ mode }) => {
       ...(process.env.VITE_ALLOWED_HOSTS?.split(',') || ['localhost']),
       process.env.VITE_LOCAL_DEV_IP,
       'host.docker.internal',  // For HTTPS bridge proxy
+      'visionflow_container',  // Docker network hostname
       '127.0.0.1',
     ].filter(Boolean) as string[],
 
