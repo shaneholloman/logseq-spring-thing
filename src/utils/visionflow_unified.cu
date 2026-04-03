@@ -566,6 +566,45 @@ extern "C" __global__ void relaxation_step_kernel(
 }
 
 // =============================================================================
+// Cluster Cohesion Kernel
+// Applies a gentle attraction toward each cluster's centroid, causing nodes
+// in the same cluster to spatially group. Centroids are recomputed every
+// N iterations by the host (passed as device buffers).
+// =============================================================================
+
+extern "C" __global__ void cluster_cohesion_kernel(
+    const float* __restrict__ pos_x,
+    const float* __restrict__ pos_y,
+    const float* __restrict__ pos_z,
+    float* __restrict__ force_x,
+    float* __restrict__ force_y,
+    float* __restrict__ force_z,
+    const float* __restrict__ centroid_x,    // [num_clusters] cluster centroids
+    const float* __restrict__ centroid_y,
+    const float* __restrict__ centroid_z,
+    const int* __restrict__ cluster_assignments,  // [num_nodes] cluster ID per node (-1 = unassigned)
+    const int num_nodes,
+    const int num_clusters,
+    const float cohesion_strength)           // 0.005–0.02 recommended
+{
+    const int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= num_nodes) return;
+
+    int cluster_id = cluster_assignments[idx];
+    if (cluster_id < 0 || cluster_id >= num_clusters) return;
+
+    // Vector from node to its cluster centroid
+    float dx = centroid_x[cluster_id] - pos_x[idx];
+    float dy = centroid_y[cluster_id] - pos_y[idx];
+    float dz = centroid_z[cluster_id] - pos_z[idx];
+
+    // Apply as additive force (not velocity) — integrator handles dt
+    force_x[idx] += dx * cohesion_strength;
+    force_y[idx] += dy * cohesion_strength;
+    force_z[idx] += dz * cohesion_strength;
+}
+
+// =============================================================================
 // Integration Pass Kernel
 // =============================================================================
 

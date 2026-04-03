@@ -429,6 +429,35 @@ impl UnifiedGPUCompute {
             }
         }
 
+        // Cluster cohesion: apply gentle attraction toward cluster centroids.
+        // Only runs when cluster_assignments have been computed (GPU clustering ran).
+        // Centroids come from the last k-means/Louvain run stored in centroids_x/y/z.
+        if self.max_clusters > 0 {
+            if let Ok(cohesion_kernel) = self._module.get_function("cluster_cohesion_kernel") {
+                let cohesion_strength = params.cluster_strength.max(0.0).min(1.0) * 0.02;
+                if cohesion_strength > 0.0001 {
+                    let stream = &self.stream;
+                    unsafe {
+                        launch!(
+                            cohesion_kernel<<<grid_size as u32, block_size as u32, 0, stream>>>(
+                            self.pos_in_x.as_device_ptr(),
+                            self.pos_in_y.as_device_ptr(),
+                            self.pos_in_z.as_device_ptr(),
+                            self.force_x.as_device_ptr(),
+                            self.force_y.as_device_ptr(),
+                            self.force_z.as_device_ptr(),
+                            self.centroids_x.as_device_ptr(),
+                            self.centroids_y.as_device_ptr(),
+                            self.centroids_z.as_device_ptr(),
+                            self.cluster_assignments.as_device_ptr(),
+                            self.num_nodes as i32,
+                            self.max_clusters as i32,
+                            cohesion_strength
+                        ))?;
+                    }
+                }
+            }
+        }
 
         let integrate_pass_kernel = self._module.get_function(self.integrate_pass_kernel_name)?;
         let stream = &self.stream;
