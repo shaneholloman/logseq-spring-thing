@@ -107,6 +107,8 @@ class SolidPodService {
   private reconnectDelay = 1000;
   private reconnectTimerId: ReturnType<typeof setTimeout> | null = null;
   private isDisconnecting = false;
+  /** Cached preferences path from last successful getPodStructure call */
+  private lastKnownPreferencesPath: string | null = null;
 
   private constructor() {}
 
@@ -238,7 +240,11 @@ class SolidPodService {
    */
   public async getPodStructure(): Promise<PodStructure | null> {
     const result = await this.initPod();
-    return result.structure || null;
+    const structure = result.structure || null;
+    if (structure?.preferences) {
+      this.lastKnownPreferencesPath = structure.preferences;
+    }
+    return structure;
   }
 
   /**
@@ -280,6 +286,131 @@ class SolidPodService {
     } catch {
       return null;
     }
+  }
+
+  // ==========================================================================
+  // Graph View Management — Pod-backed named views with cross-device sync
+  // ==========================================================================
+
+  /**
+   * Save a named graph view to the user's Pod.
+   * Stores camera, filters, physics, cluster settings as JSON-LD.
+   */
+  public async saveGraphView(name: string, viewData: {
+    camera?: { x: number; y: number; z: number; fov?: number };
+    filters?: Record<string, unknown>;
+    physics?: Record<string, unknown>;
+    clusters?: Record<string, unknown>;
+    pinnedNodes?: number[];
+    nodeTypeVisibility?: Record<string, boolean>;
+  }): Promise<boolean> {
+    const structure = await this.getPodStructure();
+    if (!structure) {
+      logger.error('Cannot save graph view: pod not initialized');
+      return false;
+    }
+
+    const safeName = sanitizePreferenceKey(name);
+    const viewPath = `${structure.preferences}graph-views/${safeName}.jsonld`;
+    const doc = {
+      '@context': 'https://schema.org',
+      '@type': 'ViewAction',
+      '@id': `#${safeName}`,
+      name,
+      dateCreated: new Date().toISOString(),
+      ...viewData,
+    };
+
+    const success = await this.putResource(viewPath, doc);
+    if (success) {
+      logger.info(`Graph view "${name}" saved to Pod`);
+    }
+    return success;
+  }
+
+  /**
+   * Load a named graph view from the user's Pod.
+   */
+  public async loadGraphView(name: string): Promise<Record<string, unknown> | null> {
+    const structure = await this.getPodStructure();
+    if (!structure) return null;
+
+    try {
+      const safeName = sanitizePreferenceKey(name);
+      const viewPath = `${structure.preferences}graph-views/${safeName}.jsonld`;
+      const doc = await this.fetchJsonLd(viewPath);
+      return doc as Record<string, unknown>;
+    } catch {
+      logger.warn(`Graph view "${name}" not found in Pod`);
+      return null;
+    }
+  }
+
+  /**
+   * List all saved graph views from the user's Pod.
+   */
+  public async listGraphViews(): Promise<string[]> {
+    const structure = await this.getPodStructure();
+    if (!structure) return [];
+
+    try {
+      const containerPath = `${structure.preferences}graph-views/`;
+      const response = await this.fetchWithAuth(`/solid${containerPath}`, {
+        headers: { Accept: 'application/ld+json' },
+      });
+      if (!response.ok) return [];
+      const data = await response.json();
+      // Extract resource names from LDP container listing
+      const contains = data['ldp:contains'] || data['contains'] || [];
+      const items = Array.isArray(contains) ? contains : [contains];
+      return items
+        .map((item: { '@id'?: string; url?: string }) => {
+          const url = item['@id'] || item.url || '';
+          const match = url.match(/\/([^/]+)\.jsonld$/);
+          return match ? decodeURIComponent(match[1]) : '';
+        })
+        .filter(Boolean);
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Delete a named graph view from the user's Pod.
+   */
+  public async deleteGraphView(name: string): Promise<boolean> {
+    const structure = await this.getPodStructure();
+    if (!structure) return false;
+
+    const safeName = sanitizePreferenceKey(name);
+    const viewPath = `${structure.preferences}graph-views/${safeName}.jsonld`;
+    return this.deleteResource(viewPath);
+  }
+
+  /**
+   * Subscribe to graph view changes for cross-device sync.
+   * Returns an unsubscribe function.
+   */
+  public subscribeToGraphViewChanges(
+    callback: (viewName: string) => void
+  ): () => void {
+    // Use last-known structure synchronously (subscribe is called from useEffect)
+    // The caller should ensure the pod is initialized before subscribing.
+    const prefPath = this.lastKnownPreferencesPath;
+    if (!prefPath) {
+      logger.warn('Cannot subscribe to graph view changes: pod structure not cached');
+      return () => {};
+    }
+    const structure = { preferences: prefPath } as PodStructure;
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+
+    const containerPath = `${structure.preferences}graph-views/`;
+    return this.subscribeToChanges(containerPath, (url) => {
+      const match = url.match(/\/([^/]+)\.jsonld$/);
+      if (match) {
+        callback(decodeURIComponent(match[1]));
+      }
+    });
   }
 
   /**

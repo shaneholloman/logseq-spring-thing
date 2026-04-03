@@ -33,6 +33,7 @@ function validateCommand(cmd: string): { valid: boolean; message: string } {
     'separate', 'group', 'visibility', 'sync', 'local', 'analytics', 'metric',
     'semantic', 'overwhelm', 'clutter', 'fewer', 'bigger', 'read', 'only',
     'focus', 'find', 'search', 'dag', 'radial', 'hierarchy', 'tree',
+    'save', 'load', 'view', 'views', 'list', 'delete', 'pod',
   ];
 
   const hasRelevantKeyword = accepted.some(kw => lower.includes(kw));
@@ -341,10 +342,91 @@ function parseCommandToActions(cmd: string): SettingsAction[] {
     }
   }
 
+  // Save/Load graph views to Solid Pod
+  if (lower.includes('save') && lower.includes('view')) {
+    const viewName = cmd.replace(/^save\s+view\s*(as\s+)?/i, '').trim() || 'default';
+    actions.push({
+      description: `Saving graph view "${viewName}" to your Pod`,
+      localAction: async () => {
+        try {
+          const solidPod = (await import('../../../services/SolidPodService')).default;
+          const ss = (window as any).useSettingsStore?.getState();
+          const settings = ss?.settings;
+          const viewData = {
+            filters: settings?.nodeFilter,
+            physics: {
+              repelK: settings?.visualisation?.graphs?.logseq?.physics?.repelK,
+              springK: settings?.visualisation?.graphs?.logseq?.physics?.springK,
+              restLength: settings?.visualisation?.graphs?.logseq?.physics?.restLength,
+              centerGravityK: settings?.visualisation?.graphs?.logseq?.physics?.centerGravityK,
+              damping: settings?.visualisation?.graphs?.logseq?.physics?.damping,
+            },
+            clusters: settings?.qualityGates,
+            nodeTypeVisibility: settings?.visualisation?.graphs?.logseq?.nodes?.nodeTypeVisibility,
+          };
+          await solidPod.saveGraphView(viewName, viewData);
+        } catch (e) {
+          console.error('Failed to save view:', e);
+        }
+      },
+    });
+  }
+
+  if (lower.includes('load') && lower.includes('view')) {
+    const viewName = cmd.replace(/^load\s+view\s*/i, '').trim() || 'default';
+    actions.push({
+      description: `Loading graph view "${viewName}" from your Pod`,
+      localAction: async () => {
+        try {
+          const solidPod = (await import('../../../services/SolidPodService')).default;
+          const view = await solidPod.loadGraphView(viewName);
+          if (view) {
+            const ss = (window as any).useSettingsStore?.getState();
+            if (view.physics) {
+              await fetch('/api/settings/physics', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(view.physics),
+              });
+            }
+            if (view.nodeTypeVisibility && ss?.updateSettings) {
+              ss.updateSettings((draft: any) => {
+                if (draft.visualisation?.graphs?.logseq?.nodes) {
+                  draft.visualisation.graphs.logseq.nodes.nodeTypeVisibility = view.nodeTypeVisibility;
+                }
+              });
+            }
+          }
+        } catch (e) {
+          console.error('Failed to load view:', e);
+        }
+      },
+    });
+  }
+
+  if (lower.includes('list') && lower.includes('view')) {
+    actions.push({
+      description: 'Listing saved graph views from your Pod',
+      localAction: async () => {
+        try {
+          const solidPod = (await import('../../../services/SolidPodService')).default;
+          const views = await solidPod.listGraphViews();
+          if (views.length > 0) {
+            window.dispatchEvent(new CustomEvent('visionflow:status', {
+              detail: { message: `Saved views: ${views.join(', ')}` }
+            }));
+          }
+        } catch (e) {
+          console.error('Failed to list views:', e);
+        }
+      },
+    });
+  }
+
   // Fallback
   if (actions.length === 0) {
     actions.push({
-      description: 'Try: "create semantic clusters", "less overwhelming labels", "only show knowledge and agents", "layout DAG radial", "increase repulsion", "show cluster hulls"',
+      description: 'Try: "save view AI Research", "load view default", "list views", "create semantic clusters", "layout DAG radial"',
       localAction: () => {},
     });
   }
