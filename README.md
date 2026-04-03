@@ -14,9 +14,11 @@
 
 <br/>
 
-<video src="./docs/visionclaw.mp4" alt="VisionClaw — 3D knowledge graph with autonomous agent orchestration" width="720" autoplay loop muted playsinline>
-  Your browser does not support the video tag. <a href="./docs/visionclaw.mp4">Download the demo video</a>.
-</video>
+<a href="https://github.com/DreamLab-AI/VisionClaw/raw/main/docs/visionclaw.mp4">
+  <img src="./docs/visionclaw-poster.jpg" alt="VisionClaw — 3D knowledge graph with autonomous agent orchestration — click to play" width="720"/>
+</a>
+
+*Click image to play demo video*
 
 <br/>
 
