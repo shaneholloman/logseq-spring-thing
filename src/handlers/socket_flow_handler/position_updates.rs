@@ -153,20 +153,34 @@ pub(crate) fn handle_request_full_snapshot(
         let nta = app_state.graph_service_addr.send(GetNodeTypeArrays).await
             .unwrap_or_default();
         let agent_set: HashSet<u32> = nta.agent_ids.iter().copied().collect();
+        let ontology_class_set: HashSet<u32> = nta.ontology_class_ids.iter().copied().collect();
+        let ontology_individual_set: HashSet<u32> = nta.ontology_individual_ids.iter().copied().collect();
+        let ontology_property_set: HashSet<u32> = nta.ontology_property_ids.iter().copied().collect();
 
         if include_knowledge {
             if let Ok(Ok(graph_data)) = app_state.graph_service_addr.send(GetGraphData).await {
                 for node in &graph_data.nodes {
-                    // Node IDs are already compact (0..N-1) from source remapping
                     let compact_id = node.id;
+                    // Apply type flags for correct client-side classification
+                    let flagged_id = if agent_set.contains(&compact_id) {
+                        binary_protocol::set_agent_flag(compact_id)
+                    } else if ontology_class_set.contains(&compact_id) {
+                        binary_protocol::set_ontology_class_flag(compact_id)
+                    } else if ontology_individual_set.contains(&compact_id) {
+                        binary_protocol::set_ontology_individual_flag(compact_id)
+                    } else if ontology_property_set.contains(&compact_id) {
+                        binary_protocol::set_ontology_property_flag(compact_id)
+                    } else {
+                        binary_protocol::set_knowledge_flag(compact_id)
+                    };
                     let node_data = BinaryNodeData {
-                        node_id: compact_id, x: node.data.x, y: node.data.y, z: node.data.z,
+                        node_id: flagged_id, x: node.data.x, y: node.data.y, z: node.data.z,
                         vx: node.data.vx, vy: node.data.vy, vz: node.data.vz,
                     };
                     if agent_set.contains(&compact_id) {
-                        agent_nodes.push((compact_id, node_data));
+                        agent_nodes.push((flagged_id, node_data));
                     } else {
-                        knowledge_nodes.push((compact_id, node_data));
+                        knowledge_nodes.push((flagged_id, node_data));
                     }
                 }
             }

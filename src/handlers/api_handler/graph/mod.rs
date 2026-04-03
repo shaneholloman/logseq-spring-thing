@@ -165,7 +165,7 @@ pub async fn get_graph_data(
                         }
                         Some("ontology") => {
                             let nt = node.node_type.as_deref().unwrap_or("");
-                            nt.starts_with("owl_") || node.metadata.contains_key("owl_class_iri")
+                            nt.starts_with("owl_") || nt == "ontology_node" || node.metadata.contains_key("owl_class_iri")
                         }
                         Some("agent") => {
                             let nt = node.node_type.as_deref().unwrap_or("");
