@@ -415,6 +415,9 @@ impl From<&SimulationParams> for SimParams {
     }
 }
 
+// Compile-time size assertion: SimParams must match the CUDA struct exactly.
+const _: () = assert!(std::mem::size_of::<SimParams>() == 156);
+
 // Conversion from SimParams to SimulationParams
 impl From<&SimParams> for SimulationParams {
     fn from(params: &SimParams) -> Self {

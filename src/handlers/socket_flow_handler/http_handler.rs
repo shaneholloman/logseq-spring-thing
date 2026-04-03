@@ -94,9 +94,18 @@ pub async fn socket_flow_handler(
             });
 
         if token.as_deref().unwrap_or("").is_empty() {
+            if std::env::var("ALLOW_INSECURE_DEFAULTS").is_err() {
+                warn!(
+                    "SECURITY: Rejecting unauthenticated WebSocket connection on /wss from {}",
+                    client_ip
+                );
+                return Ok(
+                    HttpResponse::Unauthorized()
+                        .body("Authentication required for WebSocket connections")
+                );
+            }
             warn!(
-                "SECURITY: Unauthenticated WebSocket connection on /wss from {}. \
-                 Allowing for now -- enforcement will come when clients send tokens.",
+                "SECURITY: Unauthenticated WebSocket connection on /wss from {} (ALLOW_INSECURE_DEFAULTS set)",
                 client_ip
             );
         }

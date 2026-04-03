@@ -8,6 +8,12 @@
  * - Content negotiation (JSON-LD, Turtle)
  *
  * Works with VisionFlow's Nostr authentication system.
+ *
+ * TECH DEBT: This file is ~1600 lines (3.2x over 500-line limit).
+ * Graph view methods have been extracted to SolidGraphViewService.ts and
+ * re-exported here for backward compatibility. Further decomposition
+ * (WebSocket management, LDP CRUD, type index operations) should follow
+ * the same pattern when touching those areas.
  */
 
 import { createLogger } from '../utils/loggerConfig';

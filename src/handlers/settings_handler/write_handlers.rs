@@ -10,6 +10,7 @@ use serde_json::{json, Value};
 use crate::{ok_json, error_json, bad_request, service_unavailable};
 
 use crate::handlers::settings_validation_fix::convert_to_snake_case_recursive;
+use crate::settings::auth_extractor::AuthenticatedUser;
 
 use super::types::{SettingsResponseDTO, value_type_name};
 use super::validation::validate_settings_update;
@@ -18,6 +19,7 @@ use super::helpers::extract_physics_updates;
 
 pub async fn update_settings(
     _req: HttpRequest,
+    _user: AuthenticatedUser,
     state: web::Data<AppState>,
     payload: web::Json<Value>,
 ) -> Result<HttpResponse, Error> {
@@ -237,6 +239,7 @@ pub async fn update_settings(
 
 pub async fn reset_settings(
     _req: HttpRequest,
+    _user: AuthenticatedUser,
     state: web::Data<AppState>,
 ) -> Result<HttpResponse, Error> {
 
@@ -277,6 +280,7 @@ pub async fn reset_settings(
 
 pub async fn save_settings(
     _req: HttpRequest,
+    _user: AuthenticatedUser,
     state: web::Data<AppState>,
     payload: Option<web::Json<Value>>,
 ) -> Result<HttpResponse, Error> {
@@ -410,6 +414,7 @@ pub async fn batch_get_settings(
 }
 
 pub async fn batch_update_settings(
+    _user: AuthenticatedUser,
     state: web::Data<AppState>,
     payload: web::Json<Value>,
 ) -> Result<HttpResponse, Error> {

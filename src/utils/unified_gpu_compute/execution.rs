@@ -500,12 +500,15 @@ impl UnifiedGPUCompute {
         completion_event.record(&self.stream)?;
 
 
+        let poll_start = std::time::Instant::now();
         while completion_event
             .query()
             .unwrap_or(cust::event::EventStatus::Ready)
             != cust::event::EventStatus::Ready
         {
-
+            if poll_start.elapsed() > std::time::Duration::from_secs(10) {
+                return Err(anyhow::anyhow!("GPU kernel execution timed out after 10s"));
+            }
             std::thread::yield_now();
         }
 

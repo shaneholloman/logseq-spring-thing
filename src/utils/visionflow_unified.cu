@@ -70,6 +70,8 @@ struct SimParams {
     float gravity;  // Gravity pull toward origin (center-pull force)
 };
 
+static_assert(sizeof(SimParams) == 156, "SimParams size mismatch with Rust");
+
 // Global constant memory for simulation parameters
 __constant__ SimParams c_params;
 

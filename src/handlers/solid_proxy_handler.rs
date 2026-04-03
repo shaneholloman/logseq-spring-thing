@@ -110,7 +110,7 @@ impl SolidProxyState {
 
         let allow_anonymous = std::env::var("SOLID_ALLOW_ANONYMOUS")
             .map(|v| v == "true" || v == "1")
-            .unwrap_or(true);
+            .unwrap_or(false);
 
         if server_keys.is_some() {
             info!("Solid proxy initialized with server-side signing key (for anonymous fallback)");
@@ -524,7 +524,6 @@ async fn create_pod_structure(
     a acl:Authorization ;
     acl:agentClass foaf:Agent ;
     acl:accessTo <./> ;
-    acl:default <./> ;
     acl:mode acl:Read .
 "#,
         pubkey = pubkey
@@ -598,7 +597,6 @@ pub async fn ensure_pod_exists(
     a acl:Authorization ;
     acl:agentClass foaf:Agent ;
     acl:accessTo <./> ;
-    acl:default <./> ;
     acl:mode acl:Read .
 "#,
                 pubkey = pubkey

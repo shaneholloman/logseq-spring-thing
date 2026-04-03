@@ -10,6 +10,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use crate::{ok_json, error_json};
 use crate::AppState;
+use crate::settings::auth_extractor::AuthenticatedUser;
 
 use crate::application::physics_service::{
     LayoutOptimizationRequest, PhysicsService, SimulationParams,
@@ -117,10 +118,12 @@ pub struct UpdateParametersRequest {
 }
 
 pub async fn start_simulation(
+    user: AuthenticatedUser,
     physics_service: web::Data<Arc<PhysicsService>>,
     graph_data: web::Data<Arc<RwLock<GraphData>>>,
     req: web::Json<StartSimulationRequest>,
 ) -> ActixResult<HttpResponse> {
+    user.require_power_user()?;
     let graph = graph_data.read().await.clone();
 
     
@@ -173,8 +176,10 @@ pub async fn start_simulation(
 }
 
 pub async fn stop_simulation(
+    user: AuthenticatedUser,
     physics_service: web::Data<Arc<PhysicsService>>,
 ) -> ActixResult<HttpResponse> {
+    user.require_power_user()?;
     match physics_service.stop_simulation().await {
         Ok(_) => ok_json!(serde_json::json!({
             "status": "stopped"
@@ -253,9 +258,11 @@ pub async fn perform_step(
 }
 
 pub async fn apply_forces(
+    user: AuthenticatedUser,
     physics_service: web::Data<Arc<PhysicsService>>,
     req: web::Json<ApplyForcesRequest>,
 ) -> ActixResult<HttpResponse> {
+    user.require_power_user()?;
     let forces: Vec<_> = req
         .forces
         .iter()
@@ -271,9 +278,11 @@ pub async fn apply_forces(
 }
 
 pub async fn pin_nodes(
+    user: AuthenticatedUser,
     physics_service: web::Data<Arc<PhysicsService>>,
     req: web::Json<PinNodesRequest>,
 ) -> ActixResult<HttpResponse> {
+    user.require_power_user()?;
     let nodes: Vec<_> = req
         .nodes
         .iter()
@@ -301,9 +310,11 @@ pub async fn unpin_nodes(
 }
 
 pub async fn update_parameters(
+    user: AuthenticatedUser,
     physics_service: web::Data<Arc<PhysicsService>>,
     req: web::Json<UpdateParametersRequest>,
 ) -> ActixResult<HttpResponse> {
+    user.require_power_user()?;
     let mut params = PhysicsParameters::default();
 
     if let Some(v) = req.time_step {
@@ -334,8 +345,10 @@ pub async fn update_parameters(
 }
 
 pub async fn reset_simulation(
+    user: AuthenticatedUser,
     physics_service: web::Data<Arc<PhysicsService>>,
 ) -> ActixResult<HttpResponse> {
+    user.require_power_user()?;
     match physics_service.reset().await {
         Ok(_) => ok_json!(serde_json::json!({
             "status": "reset"

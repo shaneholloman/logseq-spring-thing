@@ -39,6 +39,8 @@ const _tmpPos = new THREE.Vector3();
 const _tmpScale = new THREE.Vector3();
 const _tmpColor = new THREE.Color();
 const _identityQuat = new THREE.Quaternion();
+// Module-scope reusable HSL object (avoid per-frame GC pressure)
+const _tmpHsl = { h: 0, s: 0, l: 0 };
 
 // ---------------------------------------------------------------------------
 // Props
@@ -317,10 +319,9 @@ const WasmWispInstances: React.FC<WasmWispInstancesProps> = ({
 
       if (colorArray) {
         // Derive base HSL from configured wisp color, shift hue per WASM output
-        const baseHsl = { h: 0, s: 0, l: 0 };
-        wispBaseColor.getHSL(baseHsl);
-        const hue = wasmHues[i] * 0.3 + baseHsl.h;
-        _tmpColor.setHSL(hue, baseHsl.s, baseHsl.l);
+        wispBaseColor.getHSL(_tmpHsl);
+        const hue = wasmHues[i] * 0.3 + _tmpHsl.h;
+        _tmpColor.setHSL(hue, _tmpHsl.s, _tmpHsl.l);
         const brightness = wasmOpacities[i] * opacity;
         colorArray[i3] = _tmpColor.r * brightness;
         colorArray[i3 + 1] = _tmpColor.g * brightness;

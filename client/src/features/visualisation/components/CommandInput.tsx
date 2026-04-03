@@ -17,7 +17,7 @@ interface StatusLine {
 function validateCommand(cmd: string): { valid: boolean; message: string } {
   const lower = cmd.toLowerCase();
 
-  const blocked = ['exec', 'eval', 'require', 'import', 'fetch(', 'delete', 'drop', 'truncate', 'rm ', 'sudo'];
+  const blocked = ['exec', 'eval', 'require', 'import', 'fetch(', 'drop', 'truncate', 'rm ', 'sudo'];
   for (const b of blocked) {
     if (lower.includes(b)) {
       return { valid: false, message: 'This interface only accepts view and graph configuration commands.' };
