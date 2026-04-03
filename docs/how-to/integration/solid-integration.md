@@ -1,6 +1,6 @@
 ---
 title: Solid Pod Integration
-description: Comprehensive guide for integrating Solid Pods with VisionFlow for decentralized user data storage, agent memory, and ontology contributions using Nostr NIP-98 authentication.
+description: Comprehensive guide for VisionClaw's Solid Pod integration — decentralized user data, graph views, ontology governance, agent memory, and Type Index discovery via JavaScript Solid Server (JSS).
 category: how-to
 tags:
   - solid
@@ -12,553 +12,290 @@ tags:
   - ldp
   - rdf
   - agent-memory
-updated-date: 2025-12-29
+  - sparql-patch
+  - type-index
+updated-date: 2026-04-03
 difficulty-level: intermediate
 dependencies:
   - Nostr authentication enabled
-  - Docker or native deployment
-  - Optional: JSS (JavaScript Solid Server)
+  - Docker deployment with JSS sidecar
 ---
 
 # Solid Pod Integration
 
 ## Overview
 
-VisionFlow integrates with [Solid](https://solidproject.org/) (Social Linked Data) to provide decentralized, user-controlled data storage. This enables users to own their data while participating in the VisionFlow knowledge graph ecosystem.
+VisionClaw integrates with [Solid](https://solidproject.org/) (Social Linked Data) via the [JavaScript Solid Server (JSS)](https://github.com/JavaScriptSolidServer/JavaScriptSolidServer) to provide decentralized, user-controlled data storage. Each user gets a personal Pod where they own their graph views, ontology contributions, agent memory, and preferences.
 
-### What is Solid?
+### About JSS
 
-Solid is a specification that lets people store their data securely in decentralized data stores called Pods. Users control who and what applications can access their data. Key features include:
+**JavaScript Solid Server** (v0.0.86) by [Melvin Carvalho](https://melvin.me/) is a minimal, fast, JSON-LD native Solid server. Unlike heavier alternatives, JSS is ~1MB with ~15 dependencies, runs on Node.js (including Android/Termux), and stores data as plain files — no database required.
 
-- **Data Sovereignty**: Users own and control their data
-- **Interoperability**: Data follows standard RDF/Linked Data formats
-- **Decentralization**: No single point of failure or control
-- **Fine-grained Access Control**: Granular permissions via WebACL
+JSS provides capabilities far beyond basic LDP storage:
 
-### Why VisionFlow Uses Solid
+| Feature | Status | Used by VisionClaw |
+|---------|--------|-------------------|
+| LDP CRUD (GET/PUT/POST/DELETE/PATCH) | Implemented | Yes |
+| Web Access Control (WAC) with `.acl` files | Implemented | Yes — agent memory ACLs |
+| WebSocket notifications (solid-0.1) | Implemented | Yes — cross-device sync |
+| SPARQL Update PATCH | Implemented | Yes — ontology mutations |
+| N3 Patch with `solid:where` | Implemented | Yes — conflict detection |
+| Nostr NIP-98 authentication | Implemented | Yes — primary auth |
+| `did:nostr` → WebID resolution | Implemented | Yes — identity mapping |
+| Schnorr SSO / Passkeys | Implemented | Available |
+| Git HTTP backend | Implemented | Future — ontology versioning |
+| ActivityPub federation | Implemented | Future — federated KG |
+| HTTP 402 micropayments | Implemented | Future — data marketplace |
+| WebRTC signaling | Implemented | Future — P2P collaboration |
+| Content negotiation (JSON-LD/Turtle) | Implemented | Yes |
+| Multi-user pod support | Implemented | Yes |
 
-1. **User-Owned Knowledge**: Personal ontologies and graph contributions stay with users
-2. **Agent Memory Persistence**: AI agent memories persist across sessions in user Pods
-3. **Collaborative Ontology Evolution**: Users propose ontology additions stored in their Pods
-4. **Privacy-First Design**: Sensitive knowledge remains under user control
-5. **Nostr Identity Integration**: Leverages existing Nostr authentication for Pod access
+**Repository:** [github.com/JavaScriptSolidServer/JavaScriptSolidServer](https://github.com/JavaScriptSolidServer/JavaScriptSolidServer)
+**License:** AGPL-3.0
+**Documentation:** [javascriptsolidserver.github.io/docs/](https://javascriptsolidserver.github.io/docs/)
 
-### Architecture: Sidecar Gateway with JSS
+## Architecture
 
-VisionFlow implements Solid via a **sidecar gateway pattern**:
-
-```mermaid
-graph TB
-    Client[VisionFlow Client] --> |REST/WebSocket| Gateway[Solid Gateway]
-    Gateway --> |LDP Protocol| JSS[JSS Solid Server]
-    Gateway --> |Auth| NostrAuth[Nostr NIP-98]
-    JSS --> |Storage| PodStorage[(Pod Storage)]
-
-    subgraph VisionFlow Services
-        Client
-        Gateway
-        NostrAuth
-    end
-
-    subgraph Solid Infrastructure
-        JSS
-        PodStorage
-    end
+```
+Browser (React + Three.js)
+    │
+    ├── SolidPodService.ts ──── NIP-98 Auth ────┐
+    │   ├── Graph Views (save/load/list)         │
+    │   ├── Type Index (discover/register)       │
+    │   └── Agent Memory (store/list/audit)      │
+    │                                            ▼
+    ├── Nginx (/solid/* proxy) ──────────► JSS (port 3030)
+    │   ├── /solid/{pod}/settings/               │
+    │   ├── /solid/{pod}/agents/{id}/memory/     │
+    │   └── /solid/.notifications (WebSocket)    │
+    │                                            │
+    └── JssOntologyService.ts                    │
+        ├── SPARQL PATCH mutations ──────────────┘
+        └── N3 Patch with solid:where
 ```
 
-The gateway:
-- Proxies LDP (Linked Data Platform) requests to JSS
-- Handles Nostr-to-WebID identity mapping
-- Manages Pod lifecycle (creation, deletion)
-- Provides WebSocket notifications for real-time updates
+### Docker Sidecar
 
-### Authentication: Nostr NIP-98
+JSS runs as a Docker sidecar service alongside VisionClaw:
 
-VisionFlow uses [NIP-98](https://github.com/nostr-protocol/nips/blob/master/98.md) HTTP Auth for Solid operations:
-
-1. Client signs authorization event with Nostr key
-2. Event includes: method, URL, timestamp, payload hash
-3. Gateway verifies signature and maps npub to WebID
-4. JSS receives authenticated requests with proper WebID
-
-See [Nostr Authentication](features/nostr-auth.md) for full authentication details.
-
----
-
-## Quick Start
-
-### Enable Solid Profile in Docker Compose
-
-Add the Solid profile to your deployment:
-
-```bash
-# Enable Solid services
-docker compose --profile solid up -d
-
-# Or with full stack
-docker compose --profile full --profile solid up -d
+```yaml
+# docker-compose.unified.yml
+jss:
+  container_name: visionflow-jss
+  build:
+    context: ./JavaScriptSolidServer
+    dockerfile: Dockerfile.jss
+  environment:
+    - JSS_HOST=0.0.0.0
+    - JSS_PORT=3030
+    - JSS_NOTIFICATIONS=true    # WebSocket real-time updates
+    - JSS_CONNEG=true           # Content negotiation
+    - JSS_MULTIUSER=true        # Multi-pod support
+    - JSS_IDP=false             # Uses Nostr auth, not built-in IdP
+    - JSS_MASHLIB_CDN=true      # Browser-based data navigation
+  ports:
+    - "3030:3030"
+  volumes:
+    - jss-data:/data
 ```
 
-### Environment Variables
+### Authentication Flow
 
-Configure Solid integration in your `.env` file:
+VisionClaw uses Nostr NIP-98 for all Solid operations:
 
-```bash
-# Solid Pod Server (JSS)
-JSS_URL=http://localhost:3000
-JSS_WS_URL=ws://localhost:3000
+1. User logs in with Nostr (NIP-07 browser extension: nos2x, Alby, etc.)
+2. Client signs each HTTP request with NIP-98 event signature
+3. VisionClaw proxy forwards the `Authorization: Nostr <token>` header to JSS
+4. JSS resolves `did:nostr:{pubkey}` to a WebID
+5. WAC `.acl` files control per-resource access using WebIDs
 
-# Pod storage configuration
-SOLID_POD_BASE=/pods
-SOLID_DEFAULT_ACL=private
+## Features
 
-# Nostr-to-WebID mapping
-SOLID_WEBID_PREFIX=https://visionflow.example/id/
+### 1. Pod-Backed Graph Views (ADR-027)
 
-# Optional: External Solid provider
-SOLID_EXTERNAL_PROVIDER=https://solidcommunity.net
-```
-
-### First Pod Creation
-
-After authentication, create your first Pod:
+Save, load, and share named graph views across devices.
 
 ```typescript
-// Client-side Pod creation
-const response = await fetch('/solid/pods', {
-  method: 'POST',
-  headers: {
-    'Authorization': `Nostr ${signedEvent}`,
-    'Content-Type': 'application/json'
-  },
-  body: JSON.stringify({
-    name: 'my-knowledge-base',
-    template: 'visionflow-default'
-  })
+import solidPodService from '@/services/SolidPodService';
+
+// Save current view
+await solidPodService.saveGraphView('AI Research', {
+  camera: { x: 10, y: 20, z: 50 },
+  physics: { repelK: 5000, springK: 100, restLength: 300 },
+  clusters: { algorithm: 'louvain', count: 8 },
+  nodeTypeVisibility: { knowledge: true, ontology: true, agent: false },
 });
 
-const pod = await response.json();
-console.log('Pod created:', pod.url);
-// Output: Pod created: /pods/npub1abc.../my-knowledge-base/
-```
+// Load a saved view
+const view = await solidPodService.loadGraphView('AI Research');
 
----
+// List all saved views
+const views = await solidPodService.listGraphViews();
 
-## Pod Management
-
-### Pod URL Structure
-
-Pods follow a predictable URL pattern:
-
-```
-/pods/{npub}/{pod-name}/
-       |         |
-       |         +-- User-defined pod identifier
-       +------------ Nostr public key (npub format)
-```
-
-Example URLs:
-- Profile: `/pods/npub1xyz.../profile/`
-- Memories: `/pods/npub1xyz.../agent-memories/`
-- Ontologies: `/pods/npub1xyz.../ontologies/`
-
-### WebID Mapping to Nostr Pubkey
-
-VisionFlow automatically maps Nostr identities to Solid WebIDs:
-
-| Nostr Identity | Solid WebID |
-|---------------|-------------|
-| `npub1abc...` | `https://visionflow.example/id/npub1abc.../profile/card#me` |
-| `npub1xyz...` | `https://visionflow.example/id/npub1xyz.../profile/card#me` |
-
-The WebID document includes:
-
-```turtle
-@prefix foaf: <http://xmlns.com/foaf/0.1/> .
-@prefix solid: <http://www.w3.org/ns/solid/terms#> .
-@prefix nostr: <https://nostr.com/ns/> .
-
-<#me>
-    a foaf:Person ;
-    foaf:name "Nostr User" ;
-    nostr:pubkey "npub1abc..." ;
-    solid:oidcIssuer <https://visionflow.example/> ;
-    solid:account </pods/npub1abc.../> .
-```
-
-### Pod Contents Structure
-
-Default Pod structure for VisionFlow:
-
-```
-/pods/{npub}/
-├── profile/
-│   ├── card               # WebID profile document
-│   └── preferences        # User preferences (Turtle)
-├── agent-memories/
-│   ├── episodic/          # Session memories
-│   ├── semantic/          # Long-term knowledge
-│   └── procedural/        # Learned procedures
-├── ontologies/
-│   ├── personal/          # User-defined classes
-│   ├── proposals/         # Community contributions
-│   └── imported/          # Imported ontologies
-├── graphs/
-│   ├── personal-kg/       # Personal knowledge graphs
-│   └── bookmarks/         # Saved graph views
-└── .acl                   # Root access control
-```
-
----
-
-## LDP Operations
-
-### CRUD with JSON-LD
-
-VisionFlow uses [JSON-LD](https://json-ld.org/) as the primary RDF serialization:
-
-#### Create Resource (POST)
-
-```typescript
-// Create a new episodic memory
-const memory = {
-  "@context": {
-    "@vocab": "https://visionflow.example/ns/memory#",
-    "xsd": "http://www.w3.org/2001/XMLSchema#"
-  },
-  "@type": "EpisodicMemory",
-  "timestamp": "2025-12-29T10:30:00Z",
-  "sessionId": "session-abc-123",
-  "content": "User explored the software ontology focusing on design patterns",
-  "entities": [
-    { "@id": "http://example.org/ontology#DesignPattern" },
-    { "@id": "http://example.org/ontology#SoftwareArchitecture" }
-  ],
-  "emotionalValence": 0.7,
-  "importance": 0.8
-};
-
-await fetch('/solid/pods/npub1abc.../agent-memories/episodic/', {
-  method: 'POST',
-  headers: {
-    'Authorization': `Nostr ${signedEvent}`,
-    'Content-Type': 'application/ld+json',
-    'Slug': 'memory-2025-12-29-001'
-  },
-  body: JSON.stringify(memory)
+// Subscribe to cross-device sync
+solidPodService.subscribeToGraphViewChanges((viewName) => {
+  console.log(`View "${viewName}" updated on another device`);
 });
 ```
 
-#### Read Resource (GET)
+**Natural language:** Collapse the control panel and type `save view AI Research` or `load view default` in the command input.
+
+### 2. SPARQL PATCH for Ontology Mutations (ADR-028)
+
+Surgical RDF edits instead of full-document replacement:
 
 ```typescript
-// Fetch with content negotiation
-const response = await fetch('/solid/pods/npub1abc.../profile/card', {
-  headers: {
-    'Authorization': `Nostr ${signedEvent}`,
-    'Accept': 'application/ld+json'  // or text/turtle
-  }
+import { jssOntologyService } from '@/features/ontology/services/JssOntologyService';
+
+// Add a triple
+await jssOntologyService.addOntologyTriple(
+  { type: 'iri', value: 'http://example.org/Person' },
+  { type: 'iri', value: 'http://www.w3.org/2000/01/rdf-schema#label' },
+  { type: 'literal', value: 'Person' }
+);
+
+// Update with conflict detection (N3 Patch)
+await jssOntologyService.patchOntologyN3(`
+  @prefix solid: <http://www.w3.org/ns/solid/terms#>.
+  _:patch a solid:InsertDeletePatch;
+    solid:where { <#Person> rdfs:label "Old Name" . } ;
+    solid:deletes { <#Person> rdfs:label "Old Name" . } ;
+    solid:inserts { <#Person> rdfs:label "New Name" . } .
+`);
+```
+
+### 3. Type Index Discovery (ADR-029)
+
+Discover shared views and agent capabilities across users:
+
+```typescript
+// Register your views in the public Type Index
+await solidPodService.registerViewInTypeIndex('AI Research', viewUrl);
+
+// Discover another user's shared views
+const views = await solidPodService.discoverSharedViews('https://pod.example/alice/profile/card#me');
+
+// Discover available agents
+const agents = await solidPodService.discoverAgents('https://pod.example/bob/profile/card#me');
+```
+
+### 4. Agent Memory in Pods (ADR-030)
+
+Auditable, user-controlled AI agent memory:
+
+```typescript
+// Store agent memory
+await solidPodService.storeAgentMemory('coder-agent', {
+  key: 'auth-pattern',
+  value: 'JWT with refresh tokens works best for this codebase',
+  namespace: 'patterns',
+  tags: ['auth', 'jwt'],
 });
 
-const profile = await response.json();
-```
+// List agent memories
+const memories = await solidPodService.listAgentMemories('coder-agent');
 
-#### Update Resource (PUT)
-
-```typescript
-// Replace entire resource
-await fetch('/solid/pods/npub1abc.../profile/preferences', {
-  method: 'PUT',
-  headers: {
-    'Authorization': `Nostr ${signedEvent}`,
-    'Content-Type': 'application/ld+json',
-    'If-Match': '"etag-value"'  // Optimistic locking
-  },
-  body: JSON.stringify(updatedPreferences)
+// Set WAC permissions (user controls agent access)
+await solidPodService.setAgentMemoryAccess('coder-agent', {
+  agentWebId: 'did:nostr:npub1agent...',
+  modes: ['Read', 'Append'],  // Agent can read and add, but not delete
 });
+
+// Revoke agent access
+await solidPodService.deleteAgentMemory('coder-agent', 'auth-pattern');
 ```
 
-#### Delete Resource (DELETE)
+## Pod Structure
 
-```typescript
-await fetch('/solid/pods/npub1abc.../agent-memories/episodic/old-memory', {
-  method: 'DELETE',
-  headers: {
-    'Authorization': `Nostr ${signedEvent}`
-  }
-});
+Each user's Pod follows this directory structure:
+
 ```
-
-### Content Negotiation
-
-The gateway supports multiple RDF formats:
-
-| Accept Header | Format | Description |
-|--------------|--------|-------------|
-| `application/ld+json` | JSON-LD | Default, JavaScript-friendly |
-| `text/turtle` | Turtle | Human-readable RDF |
-| `application/n-triples` | N-Triples | Line-based RDF |
-| `application/rdf+xml` | RDF/XML | Legacy XML format |
-
-### WebSocket Notifications
-
-Subscribe to Pod changes in real-time:
-
-```typescript
-// Connect to Solid WebSocket endpoint
-const ws = new WebSocket('ws://localhost:9090/solid/ws');
-
-ws.onopen = () => {
-  // Subscribe to container updates
-  ws.send(JSON.stringify({
-    type: 'sub',
-    resource: '/pods/npub1abc.../agent-memories/'
-  }));
-};
-
-ws.onmessage = (event) => {
-  const notification = JSON.parse(event.data);
-
-  if (notification.type === 'pub') {
-    console.log('Resource changed:', notification.resource);
-    console.log('Change type:', notification.activity);  // created, updated, deleted
-  }
-};
-
-// Unsubscribe when done
-ws.send(JSON.stringify({
-  type: 'unsub',
-  resource: '/pods/npub1abc.../agent-memories/'
-}));
+/{npub}/
+  profile/
+    card                           # WebID profile (JSON-LD)
+  settings/
+    graph-views/                   # Saved graph views
+      ai-research.jsonld
+      default.jsonld
+    publicTypeIndex.jsonld         # Type Index for discovery
+    preferences/                   # App preferences
+  ontology_contributions/          # Proposed ontology changes
+  ontology_proposals/              # Formal proposals
+  ontology_annotations/            # Node/edge annotations
+  agents/
+    coder-agent/
+      memory/                      # Agent memory entries
+        auth-pattern.jsonld
+        debug-strategy.jsonld
+      .acl                         # WAC: agent Read+Append, user full Control
+  inbox/                           # Linked Data Notifications
+  .acl                             # Root access control
 ```
-
----
-
-## User Ontology
-
-VisionFlow allows users to extend the shared ontology with personal classes and properties, stored in their Pods.
-
-### Contributing Ontology Additions
-
-Users can propose new ontology terms:
-
-```typescript
-// Create ontology proposal
-const proposal = {
-  "@context": {
-    "owl": "http://www.w3.org/2002/07/owl#",
-    "rdfs": "http://www.w3.org/2000/01/rdf-schema#",
-    "vf": "https://visionflow.example/ontology#"
-  },
-  "@type": "owl:Class",
-  "@id": "vf:MachineLearningModel",
-  "rdfs:subClassOf": { "@id": "vf:SoftwareComponent" },
-  "rdfs:label": "Machine Learning Model",
-  "rdfs:comment": "A trained machine learning model used for inference",
-  "vf:proposedBy": "npub1abc...",
-  "vf:proposedDate": "2025-12-29",
-  "vf:status": "pending"
-};
-
-await fetch('/solid/pods/npub1abc.../ontologies/proposals/', {
-  method: 'POST',
-  headers: {
-    'Authorization': `Nostr ${signedEvent}`,
-    'Content-Type': 'application/ld+json',
-    'Slug': 'ml-model-class-proposal'
-  },
-  body: JSON.stringify(proposal)
-});
-```
-
-### Proposal Workflow
-
-```mermaid
-stateDiagram-v2
-    [*] --> Draft: User creates proposal
-    Draft --> Pending: Submit for review
-    Pending --> UnderReview: Reviewers assigned
-    UnderReview --> Approved: Consensus reached
-    UnderReview --> Rejected: Not accepted
-    UnderReview --> Revision: Changes requested
-    Revision --> Pending: Resubmit
-    Approved --> Merged: Added to core ontology
-    Rejected --> [*]
-    Merged --> [*]
-```
-
-### Merging Process
-
-1. **Proposal Submission**: User creates proposal in their Pod
-2. **Community Review**: Other users can view and comment
-3. **Voting**: Weighted by contribution history
-4. **Approval**: Maintainers merge approved proposals
-5. **Notification**: All users notified of ontology updates
-
-Merged ontologies are stored in the shared repository and distributed via the GitHub sync pipeline.
-
----
-
-## Agent Memory
-
-VisionFlow AI agents use Solid Pods for persistent memory across sessions.
-
-### Memory Types
-
-| Type | Description | Storage Location |
-|------|-------------|-----------------|
-| **Episodic** | Session-specific events and interactions | `/agent-memories/episodic/` |
-| **Semantic** | Long-term knowledge and facts | `/agent-memories/semantic/` |
-| **Procedural** | Learned procedures and workflows | `/agent-memories/procedural/` |
-
-### Memory Schema
-
-```typescript
-interface EpisodicMemory {
-  "@type": "vf:EpisodicMemory";
-  timestamp: string;          // ISO 8601 datetime
-  sessionId: string;          // VisionFlow session ID
-  content: string;            // Natural language summary
-  entities: EntityRef[];      // Referenced ontology entities
-  emotionalValence: number;   // -1.0 to 1.0
-  importance: number;         // 0.0 to 1.0
-  decay?: number;             // Memory decay factor
-}
-
-interface SemanticMemory {
-  "@type": "vf:SemanticMemory";
-  subject: EntityRef;         // What the fact is about
-  predicate: string;          // Relationship type
-  object: EntityRef | string; // Related entity or value
-  confidence: number;         // 0.0 to 1.0
-  source: string;             // How this was learned
-  lastAccessed: string;       // For recency tracking
-}
-
-interface ProceduralMemory {
-  "@type": "vf:ProceduralMemory";
-  name: string;               // Procedure name
-  description: string;        // What it accomplishes
-  steps: ProcedureStep[];     // Ordered steps
-  triggers: string[];         // When to invoke
-  successRate: number;        // Historical success
-}
-```
-
-### claude-flow Hooks Integration
-
-VisionFlow agents use `claude-flow` hooks for memory coordination:
-
-```bash
-# Before agent task - restore relevant memories
-npx claude-flow@alpha hooks session-restore \
-  --session-id "swarm-$(date +%s)" \
-  --memory-source "solid:/pods/npub1abc.../agent-memories/"
-
-# After each significant action - store memory
-npx claude-flow@alpha hooks post-edit \
-  --file "ontology.owl" \
-  --memory-key "swarm/coder/ontology-update" \
-  --memory-store "solid"
-
-# End of session - persist all memories
-npx claude-flow@alpha hooks session-end \
-  --export-metrics true \
-  --persist-to "solid:/pods/npub1abc.../agent-memories/episodic/"
-```
-
-### Memory Persistence Across Sessions
-
-The Solid gateway ensures agent memories persist:
-
-1. **Session Start**: Agent loads recent memories from Pod
-2. **During Session**: Important events stored in working memory
-3. **Session End**: Working memory distilled and persisted to Pod
-4. **Next Session**: Relevant memories retrieved based on context
-
-```typescript
-// Agent memory retrieval with semantic search
-const memories = await fetch('/solid/pods/npub1abc.../agent-memories/semantic/', {
-  method: 'POST',
-  headers: {
-    'Authorization': `Nostr ${signedEvent}`,
-    'Content-Type': 'application/json',
-    'X-Solid-Query': 'sparql'
-  },
-  body: `
-    PREFIX vf: <https://visionflow.example/ontology#>
-    SELECT ?memory ?content ?importance
-    WHERE {
-      ?memory a vf:SemanticMemory ;
-              vf:content ?content ;
-              vf:importance ?importance .
-      FILTER(?importance > 0.5)
-    }
-    ORDER BY DESC(?importance)
-    LIMIT 10
-  `
-});
-```
-
----
 
 ## API Reference
 
-For complete API details, see [Solid API Reference](../reference/api/solid-api.md).
+### Pod Management
 
-### Quick Reference
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/solid/pods/init` | Create/initialize pod (requires NIP-98) |
+| GET | `/api/solid/pods/check` | Check if pod exists |
+| POST | `/api/solid/pods/init-nip98` | Init with fresh NIP-98 signature |
+| GET | `/solid/health` | JSS health check |
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/solid/pods` | POST | Create new Pod |
-| `/solid/pods/check` | GET | Check if Pod exists |
-| `/solid/{path}` | GET | Read resource |
-| `/solid/{path}` | PUT | Update resource |
-| `/solid/{path}` | POST | Create resource in container |
-| `/solid/{path}` | DELETE | Delete resource |
-| `/solid/ws` | WebSocket | Real-time notifications |
+### LDP Operations (via proxy)
 
----
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/solid/{path}` | Read resource (JSON-LD or Turtle via Accept header) |
+| PUT | `/solid/{path}` | Create or replace resource |
+| POST | `/solid/{container}/` | Create resource in container (Slug header for name) |
+| DELETE | `/solid/{path}` | Delete resource |
+| PATCH | `/solid/{path}` | Partial update (SPARQL Update or N3 Patch) |
+| HEAD | `/solid/{path}` | Metadata only |
 
-## Related Documentation
+### WebSocket Notifications
 
-- [Nostr Authentication](features/nostr-auth.md) - Identity and authentication
-- [Solid API Reference](../reference/api/solid-api.md) - Complete API specification
-- [Agent Orchestration](agent-orchestration.md) - Multi-agent coordination
-- [Ontology Storage Guide](ontology-storage-guide.md) - Neo4j ontology persistence
-- [Multi-Agent Skills](multi-agent-skills.md) - Agent capabilities
+Connect to `/solid/.notifications` for real-time updates:
 
----
+```
+Protocol: solid-0.1
+Subscribe:   sub {resourceUrl}
+Unsubscribe: unsub {resourceUrl}
+Notification: pub {resourceUrl}  (resource changed)
+Acknowledge:  ack {resourceUrl}
+```
+
+## Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `JSS_URL` | `http://jss:3030` | JSS internal URL |
+| `JSS_WS_URL` | `ws://jss:3030/.notifications` | JSS WebSocket URL |
+| `VITE_JSS_URL` | `/solid` | Client-side Solid proxy path |
+| `SOLID_PROXY_SECRET_KEY` | (none) | Server-side signing fallback |
 
 ## Troubleshooting
 
-### Common Issues
+### "Login Required" in Pod tab
+You must be authenticated with Nostr. Install a NIP-07 browser extension (nos2x, Alby, or Nostr Connect) and log in via the System tab → Nostr Login.
 
-**Pod Creation Fails**
-```
-Error: Unauthorized - Invalid Nostr signature
-```
-- Ensure NIP-98 event timestamp is within 60 seconds
-- Verify signature includes correct method and URL
-- Check that pubkey matches authenticated session
+### JSS shows "unhealthy"
+JSS requires authentication for all requests including health checks. This is expected — the container shows "unhealthy" in Docker but the server is running. Check `/solid/health` with auth headers.
 
-**WebSocket Connection Refused**
-```
-Error: WebSocket upgrade failed
-```
-- Confirm `JSS_WS_URL` is correctly configured
-- Check that Solid profile is enabled in Docker Compose
-- Verify network connectivity to JSS server
+### Pod creation fails with 401
+Ensure your Nostr session is active and the NIP-98 signature is valid. Try logging out and back in to refresh the signing keys.
 
-**Content Negotiation Error**
-```
-Error: 406 Not Acceptable
-```
-- Ensure `Accept` header matches supported formats
-- Default to `application/ld+json` if unsure
+## Credits
 
----
+- **[JavaScript Solid Server (JSS)](https://github.com/JavaScriptSolidServer/JavaScriptSolidServer)** by [Melvin Carvalho](https://melvin.me/) — AGPL-3.0
+- **[Solid Project](https://solidproject.org/)** — W3C Community Group specifications
+- **[Nostr Protocol](https://nostr.com/)** — NIP-98 HTTP Auth, NIP-07 browser signing
+- **VisionClaw Solid Integration** — Rust proxy, TypeScript client, Nostr↔WebID bridge
 
-**Last Updated**: 2025-12-29
-**Version**: 1.0
-**Maintainer**: VisionFlow Documentation Team
+## Architecture Decision Records
+
+- [ADR-027: Pod-backed Graph Views](../../adr/ADR-027-pod-backed-graph-views.md)
+- [ADR-028: SPARQL PATCH for Ontology](../../adr/ADR-028-sparql-patch-ontology.md)
+- [ADR-029: Type Index Discovery](../../adr/ADR-029-type-index-discovery.md)
+- [ADR-030: Agent Memory in Pods](../../adr/ADR-030-agent-memory-pods.md)

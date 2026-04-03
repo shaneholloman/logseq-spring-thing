@@ -9,7 +9,7 @@ tags:
   - websocket
   - nostr
   - authentication
-updated-date: 2025-12-29
+updated-date: 2026-04-03
 difficulty-level: intermediate
 ---
 
