@@ -507,7 +507,9 @@ export class BinaryWebSocketProtocol {
     const payload = new ArrayBuffer(totalSize);
     const view = new DataView(payload);
 
-    // TODO: agentId uses uint16 here but uint32 in position updates — needs protocol alignment with server
+    // Voice protocol uses uint16 for agentId (max 65535 agents).
+    // Position protocol uses uint32 with flag bits (26-bit ID + 6 type flags).
+    // These are separate wire formats — no alignment issue.
     view.setUint16(0, chunk.agentId, true);
     view.setUint16(2, chunk.chunkId, true);
     view.setUint8(4, chunk.format);
@@ -535,7 +537,9 @@ export class BinaryWebSocketProtocol {
     }
 
     return {
-      // TODO: agentId uses uint16 here but uint32 in position updates — needs protocol alignment with server
+      // Voice protocol uses uint16 for agentId (max 65535 agents).
+    // Position protocol uses uint32 with flag bits (26-bit ID + 6 type flags).
+    // These are separate wire formats — no alignment issue.
       agentId: view.getUint16(0, true),
       chunkId: view.getUint16(2, true),
       format: view.getUint8(4),

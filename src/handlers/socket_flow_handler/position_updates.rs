@@ -72,6 +72,9 @@ pub(crate) async fn fetch_nodes(
     };
     let agent_set: HashSet<u32> = nta.agent_ids.iter().copied().collect();
     let knowledge_set: HashSet<u32> = nta.knowledge_ids.iter().copied().collect();
+    let ontology_class_set: HashSet<u32> = nta.ontology_class_ids.iter().copied().collect();
+    let ontology_individual_set: HashSet<u32> = nta.ontology_individual_ids.iter().copied().collect();
+    let ontology_property_set: HashSet<u32> = nta.ontology_property_ids.iter().copied().collect();
 
     let debug_enabled = crate::utils::logging::is_debug_enabled();
     let debug_websocket = debug_enabled;
@@ -100,6 +103,12 @@ pub(crate) async fn fetch_nodes(
             binary_protocol::set_agent_flag(compact_id)
         } else if knowledge_set.contains(&compact_id) {
             binary_protocol::set_knowledge_flag(compact_id)
+        } else if ontology_class_set.contains(&compact_id) {
+            binary_protocol::set_ontology_class_flag(compact_id)
+        } else if ontology_individual_set.contains(&compact_id) {
+            binary_protocol::set_ontology_individual_flag(compact_id)
+        } else if ontology_property_set.contains(&compact_id) {
+            binary_protocol::set_ontology_property_flag(compact_id)
         } else {
             compact_id
         };
