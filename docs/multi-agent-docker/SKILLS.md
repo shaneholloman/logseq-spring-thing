@@ -437,11 +437,9 @@ claude "Use cuda skill (not pytorch-ml) to compile this kernel"
 
 ## Related Documentation
 
-- [Working with Agents](../archive/docs/guides/user/working-with-agents.md)
-- [Testing Guide](../archive/docs/guides/developer/05-testing-guide.md)
-- [Adding Features](../guides/developer/04-adding-features.md)
 - [ComfyUI SAM3D Docker Setup](comfyui-sam3d-setup.md)
-- [RAGFlow Knowledge Management Integration](../guides/ai-models/ragflow-integration.md)
+- [Working with Agents](../how-to/agents/working-with-agents.md)
+- [Adding Features](../how-to/development/04-adding-features.md)
 
 ## Summary
 

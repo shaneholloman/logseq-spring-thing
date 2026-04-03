@@ -150,10 +150,6 @@ docker logs comfyui --tail 100
 ## Related Documentation
 
 - [Skills Documentation](SKILLS.md)
-- [ComfyUI Service Integration - Automatic Startup](../comfyui-service-integration.md)
-- [Multi-Agent Docker Environment Architecture](../guides/infrastructure/architecture.md)
-- [Perplexity AI Integration](../guides/ai-models/perplexity-integration.md)
-- [Testing Guide](../archive/docs/guides/developer/05-testing-guide.md)
 
 ## MCP Skill Integration
 

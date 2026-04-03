@@ -10,7 +10,7 @@
 [![Rust](https://img.shields.io/badge/Rust-2021-orange?style=flat-square&logo=rust)](https://www.rust-lang.org/)
 [![CUDA](https://img.shields.io/badge/CUDA-13.1-76B900?style=flat-square&logo=nvidia)](https://developer.nvidia.com/cuda-toolkit)
 
-**110 CUDA kernels | GPU clustering, anomaly detection & PageRank | Multi-user immersive XR | 71 agent skills | OWL 2 ontology governance**
+**92 CUDA kernels | GPU clustering, anomaly detection & PageRank | Multi-user immersive XR | 83 agent skills | OWL 2 ontology governance**
 
 <br/>
 
@@ -40,7 +40,7 @@ VisionClaw takes the opposite approach. **Governance isn't the brake — it's wh
 
 VisionClaw is an open-source platform that transforms organisations into governed agentic meshes — where autonomous AI agents, human judgment, and institutional knowledge work together through a shared semantic substrate.
 
-VisionClaw gives organisations a governed intelligence layer where 71 specialist agent skills reason over a formal OWL 2 ontology before they act. Every agent decision is semantically grounded, every mutation passes consistency checking, and every reasoning chain is auditable from edge case back to first principles. The middle manager doesn't disappear — they evolve into the **Judgment Broker**, reviewing only the genuine edge cases and strategic decisions that exceed agent authority.
+VisionClaw gives organisations a governed intelligence layer where 83 specialist agent skills reason over a formal OWL 2 ontology before they act. Every agent decision is semantically grounded, every mutation passes consistency checking, and every reasoning chain is auditable from edge case back to first principles. The middle manager doesn't disappear — they evolve into the **Judgment Broker**, reviewing only the genuine edge cases and strategic decisions that exceed agent authority.
 
 The platform ingests knowledge from Logseq notebooks via GitHub, reasons over it with an OWL 2 EL inference engine (Whelk), renders the result as an interactive 3D graph where nodes attract or repel based on their semantic relationships, and exposes everything to AI agents through 7 Model Context Protocol tools. Users collaborate in the same space through multi-user XR presence, spatial voice, and immersive graph exploration.
 
@@ -126,7 +126,7 @@ flowchart TB
     end
 
     subgraph Layer2["LAYER 2 — ORCHESTRATION"]
-        Skills["71 Agent Skills\nClaude-Flow DAG Pipelines"]
+        Skills["83 Agent Skills\nClaude-Flow DAG Pipelines"]
         Ontology["OWL 2 EL Reasoning\nWhelk Inference Engine"]
         MCP["7 MCP Tools\nKnowledge Graph Read/Write"]
         GPU["GPU Compute\nCUDA 13.1 Kernels"]
@@ -221,7 +221,7 @@ Opus 48kHz mono end-to-end. HRTF spatial panning from Vircadia entity positions.
 
 The orchestration layer is where agents reason, coordinate, and act — always against the shared semantic substrate of the OWL 2 ontology.
 
-**71 Specialist Agent Skills** — The `multi-agent-docker/` container provides a complete AI orchestration environment with Claude-Flow coordination and 71 skill modules spanning creative production, research, knowledge codification, governance, workflow discovery, financial intelligence, spatial/immersive, and identity/trust domains.
+**83 Specialist Agent Skills** — The `multi-agent-docker/` container provides a complete AI orchestration environment with Claude-Flow coordination and 83 skill modules spanning creative production, research, knowledge codification, governance, workflow discovery, financial intelligence, spatial/immersive, and identity/trust domains.
 
 **Why OWL 2 Is the Secret Weapon** — Most agentic systems fail at scale because they lack a shared language. In VisionClaw, agents don't "guess" what a concept means — they reason against a common OWL 2 ontology. The same concept of "deliverable" means the same thing to a Creative Production agent and a Governance agent. Agent skill routing isn't keyword matching — it's ontological subsumption. The orchestration layer knows that a "risk assessment" is a sub-task of "governance review", and routes accordingly.
 
@@ -237,18 +237,18 @@ The orchestration layer is where agents reason, coordinate, and act — always a
 | `ontology_validate` | Axiom consistency check against Whelk reasoner |
 | `ontology_status` | Service health and statistics |
 
-**GPU-Accelerated Compute** — 110 CUDA kernel functions across 11 kernel files (6,411 lines) run server-authoritative graph layout and analytics. The physics pipeline (force-directed layout, semantic forces, ontology constraints, stress majorisation) runs at 60 Hz. The analytics pipeline (K-Means clustering, Louvain community detection, LOF anomaly detection, PageRank) runs on-demand via API and streams results to clients in the V3 binary protocol's analytics fields (cluster_id, anomaly_score, community_id at bytes 36-47).
+**GPU-Accelerated Compute** — 92 CUDA kernel functions across 11 kernel files (6,585 lines) run server-authoritative graph layout and analytics. The physics pipeline (force-directed layout, semantic forces, ontology constraints, stress majorisation) runs at 60 Hz. The analytics pipeline (K-Means clustering, Louvain community detection, LOF anomaly detection, PageRank) runs on-demand via API and streams results to clients in the V3 binary protocol's analytics fields (cluster_id, anomaly_score, community_id at bytes 36-47).
 
 | Metric | Result |
 |:-------|-------:|
-| CUDA kernel functions | 110 across 11 files |
+| CUDA kernel functions | 92 across 11 files |
 | GPU vs CPU speedup | 55x |
 | Position + analytics size | 48 bytes/node (V3) |
 | WebSocket latency | 10ms |
 | Binary vs JSON bandwidth | 80% reduction |
 
 <details>
-<summary><strong>Agent skill domains (71 skills)</strong></summary>
+<summary><strong>Agent skill domains (83 skills)</strong></summary>
 
 **Creative Production** — Script, storyboard, shot-list, grade & publish workflows. ComfyUI orchestration for image, video, and 3D asset generation via containerised API middleware.
 
@@ -369,16 +369,21 @@ The governance layer is what separates VisionClaw from every "move fast and brea
 
 How shadow workflows become sanctioned organisational intelligence:
 
-```
- ┌─────────────┐     ┌─────────────────┐     ┌──────────────┐     ┌──────────────┐     ┌───────────────┐
- │  DISCOVERY   │────▶│  CODIFICATION   │────▶│  VALIDATION  │────▶│ INTEGRATION  │────▶│ AMPLIFICATION │
- │              │     │                 │     │              │     │              │     │               │
- │ Passive agent│     │ IRIS maps the   │     │ The Judgment │     │ Promoted to  │     │ Mesh propaga- │
- │ monitoring   │     │ new path as a   │     │ Broker       │     │ live mesh    │     │ tes pattern   │
- │ detects the  │     │ proposed DAG —  │     │ reviews for  │     │ with SLAs,   │     │ to other      │
- │ pattern      │     │ OWL 2 formalised│     │ strategic    │     │ ownership,   │     │ teams where   │
- │              │     │ with provenance │     │ fit & bias   │     │ quality      │     │ it applies    │
- └─────────────┘     └─────────────────┘     └──────────────┘     └──────────────┘     └───────────────┘
+```mermaid
+flowchart LR
+    D["DISCOVERY\nPassive agent monitoring\ndetects the pattern"]
+    C["CODIFICATION\nIRIS maps the new path\nas a proposed DAG —\nOWL 2 formalised\nwith provenance"]
+    V["VALIDATION\nThe Judgment Broker\nreviews for strategic\nfit & bias"]
+    I["INTEGRATION\nPromoted to live mesh\nwith SLAs, ownership,\nquality"]
+    A["AMPLIFICATION\nMesh propagates\npattern to other\nteams where it applies"]
+
+    D --> C --> V --> I --> A
+
+    style D fill:#0A2A1A,stroke:#10B981
+    style C fill:#0A1A2A,stroke:#00D4FF
+    style V fill:#1A0A2A,stroke:#8B5CF6
+    style I fill:#0A1A2A,stroke:#00D4FF
+    style A fill:#0A2A1A,stroke:#10B981
 ```
 
 ---
@@ -411,13 +416,13 @@ flowchart TB
     end
 
     subgraph GPU["GPU Compute (CUDA 13.1)"]
-        Kernels["110 CUDA Kernels"]
+        Kernels["92 CUDA Kernels"]
         Physics["Force Simulation + Semantic Forces"]
         Analytics["Clustering · Anomaly · PageRank"]
     end
 
     subgraph Agents["Multi-Agent Stack"]
-        Skills["71 Agent Skills"]
+        Skills["83 Agent Skills"]
         ClaudeFlow["Claude-Flow Orchestrator"]
         AgenticQE["Agentic QE Fleet"]
     end
@@ -518,14 +523,14 @@ flowchart LR
 | **Graph DB** | Neo4j 5.13 | Primary store, Cypher queries, bolt protocol |
 | **Relational DB** | PostgreSQL 15 | Vircadia World Server entity storage |
 | **Vector DB** | Qdrant | Semantic similarity search |
-| **GPU** | CUDA 13.1 | 110 kernel functions, 6.4K LOC across 11 .cu files via cudarc |
+| **GPU** | CUDA 13.1 | 92 kernel functions, 6.4K LOC across 11 .cu files via cudarc |
 | **Ontology** | OWL 2 EL, Whelk-rs | EL++ subsumption, consistency checking (20 source files) |
 | **XR** | WebXR, @react-three/xr | Meta Quest 3, hand tracking, foveated rendering |
 | **Multi-User** | Vircadia World Server | Avatar sync, spatial audio, entity CRUD |
 | **Voice** | LiveKit SFU | turbo-whisper STT, Kokoro TTS, Opus codec |
 | **Protocol** | Binary V5 | 48-byte position updates, delta encoding, flag-bit node typing |
 | **Auth** | Nostr NIP-07/NIP-98 | Browser extension signing, relay integration |
-| **Agents** | MCP, Claude-Flow | 71 skills, 7 ontology tools |
+| **Agents** | MCP, Claude-Flow | 83 skills, 7 ontology tools |
 | **AI/ML** | GraphRAG, RAGFlow | Knowledge retrieval, inference |
 | **Build** | Vite 6, Vitest, Playwright | Frontend build, unit tests, E2E tests |
 | **Infra** | Docker Compose | 10 compose files, multi-profile deployment |
@@ -537,7 +542,7 @@ flowchart LR
 
 ## Documentation
 
-VisionClaw uses the [Diataxis](https://diataxis.fr/) documentation framework — 285 markdown files organised into four categories:
+VisionClaw uses the [Diataxis](https://diataxis.fr/) documentation framework — 267 markdown files organised into four categories:
 
 | Category | Path | Content |
 |:---------|:-----|:--------|
@@ -637,7 +642,7 @@ VisionClaw/
 │       ├── rendering/            #   Custom TSL materials, post-processing
 │       └── immersive/            #   XR/VR specific code
 ├── multi-agent-docker/           # AI agent orchestration container
-│   ├── skills/                   #   71 agent skill modules
+│   ├── skills/                   #   83 agent skill modules
 │   ├── mcp-infrastructure/       #   MCP servers, config, tools
 │   └── management-api/           #   Agent lifecycle management
 ├── docs/                         # Diataxis documentation (285 files)
@@ -650,7 +655,7 @@ VisionClaw/
 
 ## Contributing
 
-See the [Contributing Guide](docs/how-to/development/contributing.md) for development workflow, branching conventions, and coding standards.
+See the [Contributing Guide](docs/CONTRIBUTING.md) for development workflow, branching conventions, and coding standards.
 
 ---
 

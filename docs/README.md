@@ -1,11 +1,11 @@
 ---
-title: VisionFlow Documentation
-description: Complete documentation for VisionFlow - enterprise-grade multi-agent knowledge graphing
+title: VisionClaw Documentation
+description: Complete documentation for VisionClaw - enterprise-grade multi-agent knowledge graphing
 category: reference
-updated-date: 2026-02-11
+updated-date: 2026-04-03
 ---
 
-# VisionFlow Documentation
+# VisionClaw Documentation
 
 Enterprise-grade multi-agent knowledge graphing with 3D visualization, semantic reasoning, and GPU-accelerated physics. This documentation follows the [Diataxis framework](https://diataxis.fr/) for maximum discoverability.
 
@@ -20,13 +20,13 @@ Get running in 5 minutes:
 ## Documentation by Role
 
 <details>
-<summary><strong>New Users</strong> - Getting started with VisionFlow</summary>
+<summary><strong>New Users</strong> - Getting started with VisionClaw</summary>
 
 ### Your Learning Path
 
 | Step | Document | Time |
 |------|----------|------|
-| 1 | [What is VisionFlow?](tutorials/overview.md) | 10 min |
+| 1 | [What is VisionClaw?](tutorials/overview.md) | 10 min |
 | 2 | [Installation](tutorials/installation.md) | 15 min |
 | 3 | [First Graph](tutorials/creating-first-graph.md) | 20 min |
 | 4 | [Navigation Guide](how-to/navigation-guide.md) | 15 min |
@@ -41,7 +41,7 @@ Get running in 5 minutes:
 </details>
 
 <details>
-<summary><strong>Developers</strong> - Building and extending VisionFlow</summary>
+<summary><strong>Developers</strong> - Building and extending VisionClaw</summary>
 
 ### Onboarding Path
 
@@ -87,7 +87,7 @@ Get running in 5 minutes:
 ### Deep Dives
 
 - **Actor System** - [Actor Guide](how-to/development/actor-system.md), [Server Architecture](explanation/architecture/server/overview.md)
-- **Database** - [Database Architecture](explanation/architecture/database.md), [Neo4j ADR](explanation/architecture/adr/ADR-0001-neo4j-persistent-with-filesystem-sync.md)
+- **Database** - [Database Architecture](explanation/architecture/database.md)
 - **Physics** - [Semantic Physics](explanation/architecture/physics/semantic-forces.md), [GPU Communication](explanation/architecture/gpu/communication-flow.md)
 - **Ontology** - [Ontology Storage](explanation/architecture/ontology-storage-architecture.md), [Reasoning Pipeline](explanation/architecture/ontology/reasoning-engine.md)
 - **Multi-Agent** - [Multi-Agent System](explanation/architecture/agents/multi-agent.md), [Agent Orchestration](how-to/agents/agent-orchestration.md)
@@ -119,7 +119,7 @@ Get running in 5 minutes:
 ### Infrastructure
 
 - [Infrastructure Architecture](how-to/infrastructure/architecture.md)
-- [Docker Environment](how-to/infrastructure/docker-environment.md)
+- [Docker Environment](how-to/deployment/docker-environment.md)
 - [Port Configuration](how-to/infrastructure/port-configuration.md)
 - [Infrastructure Troubleshooting](how-to/infrastructure/troubleshooting.md)
 
@@ -186,7 +186,7 @@ graph TB
 
 | Task | Document |
 |------|----------|
-| **Install VisionFlow** | [Installation](tutorials/installation.md) |
+| **Install VisionClaw** | [Installation](tutorials/installation.md) |
 | **Create first graph** | [First Graph](tutorials/creating-first-graph.md) |
 | **Deploy AI agents** | [Agent Orchestration](how-to/agents/agent-orchestration.md) |
 | **Query Neo4j** | [Neo4j Integration](how-to/integration/neo4j-integration.md) |
@@ -220,7 +220,7 @@ Core mental models and foundational knowledge.
 
 | Concept | Description |
 |---------|-------------|
-| [Core Concepts](explanation/concepts/README.md) | Overview of VisionFlow mental models |
+| [Core Concepts](explanation/concepts/README.md) | Overview of VisionClaw mental models |
 | [Physics Engine](explanation/concepts/physics-engine.md) | Force-directed graph simulation |
 | [Actor Model](explanation/concepts/actor-model.md) | Concurrent actor-based patterns |
 | [Hexagonal Architecture](explanation/concepts/hexagonal-architecture.md) | Ports and adapters design |
@@ -349,13 +349,10 @@ Technical specifications and APIs.
 </details>
 
 <details>
-<summary>System Status (5 references)</summary>
+<summary>System Status (2 references)</summary>
 
 - [Error Codes](reference/error-codes.md) - Error reference
-- [Implementation Status](reference/implementation-status.md) - Feature matrix
-- [Code Quality](reference/code-quality-status.md) - Build health
 - [Performance Benchmarks](reference/performance-benchmarks.md) - GPU metrics
-- [Physics Implementation](reference/physics-implementation.md) - Physics details
 
 </details>
 
@@ -363,11 +360,11 @@ Technical specifications and APIs.
 
 | Issue Type | Resource |
 |------------|----------|
-| Documentation gaps | [GitHub Issues](https://github.com/DreamLab-AI/VisionFlow/issues) with `documentation` label |
+| Documentation gaps | [GitHub Issues](https://github.com/DreamLab-AI/VisionClaw/issues) with `documentation` label |
 | Technical problems | [Troubleshooting Guide](how-to/operations/troubleshooting.md) |
 | Infrastructure issues | [Infrastructure Troubleshooting](how-to/infrastructure/troubleshooting.md) |
 | Developer setup | [Development Setup](how-to/development/01-development-setup.md) |
-| Feature requests | [GitHub Discussions](https://github.com/DreamLab-AI/VisionFlow/discussions) |
+| Feature requests | [GitHub Discussions](https://github.com/DreamLab-AI/VisionClaw/discussions) |
 
 ## Documentation Stats
 
@@ -378,10 +375,10 @@ Technical specifications and APIs.
 | **Explanation** | 70 |
 | **Reference** | 39 |
 | **Other (diagrams, research)** | 35 |
-| **Total** | ~214 markdown files |
+| **Total** | ~267 markdown files |
 
 - **Framework**: Diataxis (Tutorials, How-To, Explanation, Reference)
-- **Last Updated**: 2026-03-24
+- **Last Updated**: 2026-04-03
 - **Audit**: [DOCS-AUDIT-2026-03-24.md](DOCS-AUDIT-2026-03-24.md)
 
 ---

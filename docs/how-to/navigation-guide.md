@@ -54,7 +54,7 @@ difficulty-level: intermediate
 4. 
 
 #### **Setup XR/VR**
-1. [Vircadia Complete Guide](features/vircadia-xr-complete-guide.md)
+1. [Vircadia Complete Guide](features/vr-development.md)
 2. [XR Architecture](../explanation/architecture/xr-immersive-system.md)
 
 #### **Understand the Architecture**
@@ -64,9 +64,9 @@ difficulty-level: intermediate
 
 #### **Use the API**
 1. 
-2. [REST API](../reference/api/rest-api-complete.md)
+2. [REST API](../reference/api/rest-api-reference.md)
 3. [WebSocket API](../reference/api/03-websocket.md)
-4. [Binary Protocol](../reference/protocols/binary-websocket.md) - 36-byte binary format specification
+4. [Binary Protocol](../reference/protocols/websocket-binary-v2.md) - 36-byte binary format specification
 
 #### **Debug Issues**
 1. 
@@ -84,16 +84,16 @@ difficulty-level: intermediate
 | **GPU Acceleration** |  • [Architecture](../explanation/architecture/gpu/README.md) • [Optimizations](../explanation/architecture/gpu/optimizations.md) |
 | **AI Agents** |  |
 | **Multi-Agent System** | [Architecture](../explanation/concepts/multi-agent-system.md) |
-| **XR/VR** | Architecture (TODO) • [Vircadia](features/vircadia-xr-complete-guide.md) |
+| **XR/VR** | [XR Architecture](../explanation/architecture/xr-immersive-system.md) • [VR Development](features/vr-development.md) |
 | **Database** | [Schema](../reference/database/schemas.md) •  |
-| **Binary Protocol** | [WebSocket](../reference/api/03-websocket.md) • [Specification](../reference/protocols/binary-websocket.md) |
+| **Binary Protocol** | [WebSocket](../reference/api/03-websocket.md) • [Specification](../reference/protocols/websocket-binary-v2.md) |
 
 ### Key Features
 | Feature | Quick Link | Complete Docs |
 |---------|------------|---------------|
 | **Ontology Reasoning** |  |  |
 | **Semantic Physics** |  |  |
-| **Multi-User XR** |  | [Complete Guide](features/vircadia-xr-complete-guide.md) |
+| **Multi-User XR** |  | [Complete Guide](features/vr-development.md) |
 | **CQRS Pattern** |  |  |
 | **GPU Compute** |  | [Architecture](../explanation/architecture/gpu/) |
 

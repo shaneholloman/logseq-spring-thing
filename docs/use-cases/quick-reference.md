@@ -280,36 +280,16 @@ Add 2x GPU, 2x RAM, 10 Gbps network minimum for all industries.
 
 ---
 
-## Case Study Previews
-
-### Gaming: "100-Player Physics Without Dedicated Servers"
-*Indie studio cuts $6K/month AWS costs to zero with P2P physics.*
-**→ [Read Full Case Study](./case-studies/gaming-p2p.md)**
-
-### Healthcare: "HIPAA-Compliant Surgical Training for $300/Resident"
-*Hospital network replaces $500K simulator with GPU workstations.*
-**→ [Read Full Case Study](./case-studies/healthcare-training.md)**
-
-### Manufacturing: "Catching 95% of Defects Before Welding"
-*Automotive OEM saves $4.6M/year with edge digital twin.*
-**→ [Read Full Case Study](./case-studies/manufacturing-digital-twin.md)**
-
-### Finance: "96x Faster Systemic Risk Stress Tests"
-*Central bank runs 100K scenarios in 30 minutes vs 48 hours.*
-**→ [Read Full Case Study](./case-studies/finance-risk-modeling.md)**
-
----
-
 ## Frequently Asked Questions
 
-### Q: Can VisionFlow replace [established tool]?
+### Q: Can VisionClaw replace [established tool]?
 **Gaming**: Not a Unity/Unreal replacement (graphics), but superior physics
 **Scientific**: GROMACS alternative for interactive/collaborative work
 **Manufacturing**: ANSYS alternative for conceptual design, not final validation
 **Healthcare**: Complements (not replaces) clinical training
 
 ### Q: What about cloud deployment?
-VisionFlow supports cloud (AWS, Azure, GCP) but **most value comes from on-premises/edge** due to:
+VisionClaw supports cloud (AWS, Azure, GCP) but **most value comes from on-premises/edge** due to:
 - Data privacy/sovereignty
 - Zero marginal cost scaling
 - Sub-10ms latency
@@ -326,12 +306,10 @@ VisionFlow supports cloud (AWS, Azure, GCP) but **most value comes from on-premi
 - **Support**: Enterprise SLA available
 
 ### Q: How do I contribute?
-- **GitHub**: [Issues](https://github.com/yourusername/visionflow/issues), [PRs](https://github.com/yourusername/visionflow/pulls)
-- **Discord**: [#contributors channel](https://discord.gg/visionflow)
-- **Bounties**: See [bounty board](https://github.com/yourusername/visionflow/labels/bounty)
+- **GitHub**: [Issues](https://github.com/DreamLab-AI/VisionClaw/issues), [PRs](https://github.com/DreamLab-AI/VisionClaw/pulls)
 
 ---
 
 **Document Version**: 1.0
-**Last Updated**: 2025-01-29
-**See Also**: [Full Industry Applications](./industry-applications.md) | [Technical Architecture](../architecture/overview.md) | [API Reference](../api/README.md)
+**Last Updated**: 2026-04-03
+**See Also**: [Full Industry Applications](./industry-applications.md) | [Architecture](../explanation/architecture/README.md) | [API Reference](../api/API_REFERENCE.md)

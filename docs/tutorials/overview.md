@@ -244,6 +244,6 @@ VisionFlow represents the future of collaborative knowledge work—where AI agen
 
 ---
 
-**Transform how your team discovers knowledge. Start exploring VisionFlow today.**
+**Transform how your team discovers knowledge. Start exploring VisionClaw today.**
 
-**[Get Started](installation.md)** | **[Architecture](../architecture/ARCHITECTURE.md)** | **[Star on GitHub](https://github.com/DreamLab-AI/VisionFlow)**
+**[Get Started](installation.md)** | **[Architecture](../architecture/ARCHITECTURE.md)** | **[Star on GitHub](https://github.com/DreamLab-AI/VisionClaw)**

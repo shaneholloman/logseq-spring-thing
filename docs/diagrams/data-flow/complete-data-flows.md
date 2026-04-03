@@ -1843,9 +1843,6 @@ Total time: 7000ms
 
 ## Related Documentation
 
-- [System Architecture Overview - Complete Mermaid Diagrams](../mermaid-library/01-system-architecture-overview.md)
-- [ASCII Diagram Deprecation - Complete Report](../../ASCII_DEPRECATION_COMPLETE.md)
-- [Deployment & Infrastructure Diagrams](../mermaid-library/03-deployment-infrastructure.md)
 - [Server-Side Actor System - Complete Architecture Documentation](../server/actors/actor-system-complete.md)
 - [Complete State Management Architecture](../client/state/state-management-complete.md)
 

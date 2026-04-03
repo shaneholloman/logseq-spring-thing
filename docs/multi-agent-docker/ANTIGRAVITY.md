@@ -45,10 +45,6 @@ Right-click on the desktop background to access the application menu (if configu
 ## Related Documentation
 
 - [Terminal Grid Configuration](TERMINAL_GRID.md)
-- [Hyprland Migration Summary](hyprland-migration-summary.md)
-- [GPU Access Fix Summary](../gpu-fix-summary.md)
-- [GPU-Only Build Fix Summary](fixes/SUMMARY.md)
-- [Upstream Turbo-Flow-Claude Analysis](upstream-analysis.md)
 
 ## Troubleshooting
 If the IDE fails to launch, check the logs or try launching from a terminal to see error output:

@@ -38,10 +38,9 @@ Complete technical reference documentation for VisionFlow APIs, protocols, confi
 
 | Document | Description |
 |----------|-------------|
-| [REST API](./api/rest-api.md) | Core REST endpoints |
+| [REST API](./api/rest-api-reference.md) | Core REST endpoints |
 | [WebSocket API](./api/websocket-api.md) | Real-time WebSocket protocol |
 | [Authentication](./api/authentication.md) | JWT, API keys, Nostr NIP-98 |
-| [Complete REST Reference](./api/rest-api-complete.md) | All 110+ endpoints |
 
 ### Configuration
 
@@ -54,14 +53,14 @@ Complete technical reference documentation for VisionFlow APIs, protocols, confi
 
 | Document | Description |
 |----------|-------------|
-| [Binary WebSocket](./protocols/binary-websocket.md) | V2/V3/V4 wire formats |
+| [Binary WebSocket](./protocols/websocket-binary-v2.md) | V2/V3/V4 wire formats |
 | [MCP Protocol](./protocols/mcp-protocol.md) | Agent orchestration protocol |
 
 ### Database
 
 | Document | Description |
 |----------|-------------|
-| [SQLite Schema](./database/schemas.md) | Unified.db table definitions |
+| [Database Schemas](./database/schemas.md) | Schema definitions |
 | [Neo4j Schema](./database/neo4j-schema.md) | Graph database schema |
 | [Ontology Schema](./database/ontology-schema-v2.md) | OWL ontology storage |
 

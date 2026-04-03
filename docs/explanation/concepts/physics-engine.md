@@ -103,7 +103,7 @@ When CUDA hardware is unavailable, VisionFlow falls back to CPU computation usin
 ## See Also
 
 - [GPU Acceleration](gpu-acceleration.md) -- detailed CUDA kernel inventory, memory hierarchy, and hardware requirements
-- [Stress Majorization](../architecture/stress-majorization.md) -- full algorithm reference with configuration parameters and benchmarks
+- [Stress Majorization Guide](../../how-to/features/stress-majorization-guide.md) -- algorithm reference with configuration parameters and benchmarks
 - [Actor Model](actor-model.md) -- how `PhysicsOrchestratorActor` coordinates GPU sub-actors
 - [Constraint System](constraint-system.md) -- LOD-aware constraint management for physics layout
 - [Semantic Forces](../architecture/physics/semantic-forces.md) -- force-based layout driven by ontology relationships

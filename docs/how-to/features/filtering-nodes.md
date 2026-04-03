@@ -25,7 +25,7 @@ The client-side filtering feature allows authenticated clients to filter which g
 1. **ClientFilter** (`src/actors/client_coordinator_actor.rs`)
    - Per-client filter configuration
    - Stores threshold settings and filtered node IDs
-   - Persisted to Neo4j (TODO) for authenticated users
+   - Persisted to Neo4j for authenticated users
 
 2. **Filter Logic** (`src/actors/client_filter.rs`)
    - `recompute_filtered_nodes()` - Main filtering function
@@ -38,30 +38,12 @@ The client-side filtering feature allows authenticated clients to filter which g
 
 ## Data Flow
 
-```
-┌─────────────────┐
-│  Client Auth    │
-└────────┬────────┘
-         │
-         ├──────> Load filter from Neo4j (TODO)
-         │
-         v
-┌─────────────────┐
-│ Recompute       │────> Fetch GraphData
-│ Filtered Nodes  │      (with metadata)
-└────────┬────────┘
-         │
-         v
-┌──────────────────────────────────┐
-│ ClientFilter.filtered_node_ids   │
-│ (HashSet<u32>)                   │
-└──────────────────────────────────┘
-         │
-         v
-┌─────────────────┐
-│ Position        │────> Only send nodes
-│ Broadcast       │      in filtered_node_ids
-└─────────────────┘
+```mermaid
+flowchart TD
+    A["Client Auth"] -->|Load filter from Neo4j| B["Recompute Filtered Nodes"]
+    B -->|Fetch GraphData with metadata| C["ClientFilter.filtered_node_ids\n(HashSet&lt;u32&gt;)"]
+    C --> D["Position Broadcast"]
+    D -->|Only send nodes in filtered_node_ids| E["Client"]
 ```
 
 ## Filter Criteria
@@ -281,30 +263,6 @@ Nodes without metadata receive default scores:
 - **authority_score**: `0.5`
 
 This ensures nodes without explicit scores are treated neutrally.
-
-## TODO
-
-### Neo4j Persistence
-
-Save filters per user:
-```cypher
-MATCH (u:User {pubkey: $pubkey})
-MERGE (u)-[:HAS_FILTER]->(f:ClientFilter)
-SET f.enabled = $enabled,
-    f.quality_threshold = $quality_threshold,
-    f.authority_threshold = $authority_threshold,
-    f.filter_by_quality = $filter_by_quality,
-    f.filter_by_authority = $filter_by_authority,
-    f.filter_mode = $filter_mode,
-    f.max_nodes = $max_nodes,
-    f.updated_at = timestamp()
-```
-
-Load on authentication:
-```cypher
-MATCH (u:User {pubkey: $pubkey})-[:HAS_FILTER]->(f:ClientFilter)
-RETURN f
-```
 
 ## Testing
 
