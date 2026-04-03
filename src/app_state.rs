@@ -770,6 +770,17 @@ impl AppState {
             }
         }
 
+        // Register AppState's gpu_compute_addr with GraphServiceSupervisor
+        // so its 10s periodic refresh also updates AppState when ForceComputeActor is respawned.
+        {
+            let supervisor_addr = graph_service_addr.clone();
+            let gpu_addr_for_supervisor = gpu_compute_addr.clone();
+            supervisor_addr.do_send(crate::actors::messages::SetAppGpuComputeAddr {
+                addr: gpu_addr_for_supervisor,
+            });
+            info!("[AppState] Registered gpu_compute_addr with GraphServiceSupervisor for periodic refresh");
+        }
+
         info!("[AppState::new] Starting OptimizedSettingsActor with repository injection (hexagonal architecture)");
 
         // Phase 3: Using Neo4j settings repository for actor (reusing config from above)

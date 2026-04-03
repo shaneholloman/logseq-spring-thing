@@ -6,7 +6,7 @@ import {
   createGlassEdgeGeometry,
 } from '../../../rendering/materials/GlassEdgeMaterial';
 import { useSettingsStore } from '../../../store/settingsStore';
-import type { GemMaterialSettings } from '../../settings/config/settings';
+import type { GemMaterialSettings, GlowSettings } from '../../settings/config/settings';
 
 const MAX_EDGES = 10_000;
 
@@ -82,7 +82,9 @@ export const GlassEdges = forwardRef<GlassEdgesHandle, GlassEdgesProps>(
     const edgeRevealRef = useRef(0);
     const totalEdgesRef = useRef(0);
     const instanceColorsActiveRef = useRef(false);
-    const EDGE_REVEAL_BATCH = 80;
+    // Read node reveal batch from settings to keep edge reveal in sync
+    const nodeRevealBatch = (settings?.revealBatch as number | undefined) ?? 120;
+    const EDGE_REVEAL_BATCH = Math.max(1, Math.round(nodeRevealBatch * 0.67));
 
     const { mesh, uniforms } = useMemo(() => {
       // Resolve initial edge color: prefer override, then settings, then default
@@ -134,6 +136,13 @@ export const GlassEdges = forwardRef<GlassEdgesHandle, GlassEdgesProps>(
       }
       mat.needsUpdate = true;
     }, [colorOverride, settings?.color, settings?.opacity, mesh]);
+
+    // Read glow settings for edge emissive values.
+    // Stored in a ref so useCallback closures always read the latest value
+    // without needing glowSettings in their dependency arrays.
+    const glowSettings = useSettingsStore(s => s.get<GlowSettings>('visualisation.glow'));
+    const glowSettingsRef = useRef(glowSettings);
+    glowSettingsRef.current = glowSettings;
 
     // Apply shared gem material settings (ior, transmission) from settings store
     const gemSettings = useSettingsStore(s => s.get<GemMaterialSettings>('visualisation.gemMaterial'));
@@ -207,7 +216,10 @@ export const GlassEdges = forwardRef<GlassEdgesHandle, GlassEdgesProps>(
         const mat = mesh.material as THREE.MeshPhysicalMaterial;
         if (count > 0 && mat.color) {
           mat.color.setRGB(1, 1, 1);
-          mat.emissive.setRGB(0.3, 0.3, 0.3);
+          // Read edge emissive base from glow settings (via ref for stable callback identity)
+          const edgeEmissiveBase = glowSettingsRef.current?.edgeGlowStrength ?? 0.3;
+          const normalizedEmissive = Math.min(edgeEmissiveBase / 3, 1.0);
+          mat.emissive.setRGB(normalizedEmissive, normalizedEmissive, normalizedEmissive);
         }
       },
       [mesh],
@@ -215,11 +227,16 @@ export const GlassEdges = forwardRef<GlassEdgesHandle, GlassEdgesProps>(
 
     useImperativeHandle(ref, () => ({ updatePoints, updateColors }), [updatePoints, updateColors]);
 
-    // Subtle emissive pulse on edges
+    // Subtle emissive pulse on edges — base and amplitude driven by glow settings
     useFrame(({ clock }) => {
       const mat = meshRef.current?.material as THREE.MeshPhysicalMaterial | undefined;
       if (mat) {
-        mat.emissiveIntensity = 0.15 + Math.sin(clock.elapsedTime * 0.8) * 0.08;
+        const gs = glowSettingsRef.current;
+        const edgeGlow = gs?.edgeGlowStrength ?? 1.0;
+        const pulseSpeed = gs?.pulseSpeed ?? 0.8;
+        const emissiveBase = 0.15 * edgeGlow;
+        const emissiveAmplitude = 0.08 * edgeGlow;
+        mat.emissiveIntensity = emissiveBase + Math.sin(clock.elapsedTime * pulseSpeed) * emissiveAmplitude;
       }
 
       // Progressive edge reveal: ramp up each frame (initial prop-based load only)

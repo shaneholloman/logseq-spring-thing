@@ -144,9 +144,11 @@ const GraphCanvas: React.FC = () => {
                     particleCount={sceneEffects?.particleCount ?? 256}
                     intensity={sceneEffects?.particleOpacity ?? 0.6}
                     particleDrift={sceneEffects?.particleDrift ?? 0.5}
+                    particleColor={sceneEffects?.particleColor}
                     wispsEnabled={sceneEffects?.wispsEnabled !== false}
                     wispCount={sceneEffects?.wispCount ?? 48}
                     wispDriftSpeed={sceneEffects?.wispDriftSpeed ?? 1.0}
+                    wispColor={sceneEffects?.wispColor}
                     atmosphereEnabled={sceneEffects?.fogEnabled !== false}
                     atmosphereResolution={sceneEffects?.atmosphereResolution ?? 128}
                 />

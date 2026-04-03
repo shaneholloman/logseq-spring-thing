@@ -25,6 +25,8 @@ import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useWasmSceneEffects } from '../../../hooks/useWasmSceneEffects';
 import { isWebGPURenderer } from '../../../rendering/rendererFactory';
+import { useSettingsStore } from '../../../store/settingsStore';
+import type { SceneEffectsSettings } from '../../settings/config/settings';
 
 // Pre-allocated temp objects (avoids per-frame GC).
 // INVARIANT: These are shared across all sub-components and are safe ONLY
@@ -59,15 +61,25 @@ export interface WasmSceneEffectsProps {
   intensity?: number;
   /** Particle drift speed multiplier (0-2, default 0.5). Reserved for future WASM bridge support. */
   particleDrift?: number;
+  /** Particle base color as CSS hex/rgb string (default '#6680E6'). */
+  particleColor?: string;
+  /** Wisp base color as CSS hex/rgb string (default '#668FCC'). */
+  wispColor?: string;
 }
 
 // ---------------------------------------------------------------------------
 // Shared constants
 // ---------------------------------------------------------------------------
-const FALLBACK_COUNT = 256;
+// Fallback constants aligned with DEFAULT_SCENE_EFFECTS in settingsApi.ts.
+// particleCount default is 128 (settings), FALLBACK_COUNT kept at 128 to match.
+const FALLBACK_COUNT = 128;
 const FALLBACK_RADIUS = 120;
 const FALLBACK_DRIFT = 0.15;
+// Wisp radius matches the spatial scale of WASM wisp placement
 const WISP_RADIUS = 80;
+// Default colors used when no settings override is provided
+const DEFAULT_PARTICLE_COLOR = '#6680E6';
+const DEFAULT_WISP_COLOR = '#668FCC';
 
 function hashNoise(x: number, y: number, seed: number): number {
   let h = (seed * 374761393 + x * 668265263 + y * 1274126177) | 0;
@@ -135,6 +147,8 @@ interface WasmParticleInstancesProps {
   update: ReturnType<typeof useWasmSceneEffects>['update'];
   opacity: number;
   count: number;
+  /** Base particle color as CSS string (default from settings). */
+  color?: string;
 }
 
 const WasmParticleInstances: React.FC<WasmParticleInstancesProps> = ({
@@ -142,9 +156,10 @@ const WasmParticleInstances: React.FC<WasmParticleInstancesProps> = ({
   update,
   opacity,
   count,
+  color,
 }) => {
   const meshRef = useRef<THREE.InstancedMesh | null>(null);
-  const baseColor = useMemo(() => new THREE.Color(0.4, 0.5, 0.9), []);
+  const baseColor = useMemo(() => new THREE.Color(color || DEFAULT_PARTICLE_COLOR), [color]);
 
   const mesh = useMemo(() => {
     const geo = new THREE.IcosahedronGeometry(0.15, 0);
@@ -228,14 +243,18 @@ interface WasmWispInstancesProps {
   wisps: NonNullable<ReturnType<typeof useWasmSceneEffects>['wisps']>;
   opacity: number;
   count: number;
+  /** Base wisp color as CSS string (default from settings). */
+  color?: string;
 }
 
 const WasmWispInstances: React.FC<WasmWispInstancesProps> = ({
   wisps,
   opacity,
   count,
+  color,
 }) => {
   const meshRef = useRef<THREE.InstancedMesh | null>(null);
+  const wispBaseColor = useMemo(() => new THREE.Color(color || DEFAULT_WISP_COLOR), [color]);
 
   const mesh = useMemo(() => {
     const geo = new THREE.IcosahedronGeometry(0.3, 0);
@@ -251,7 +270,7 @@ const WasmWispInstances: React.FC<WasmWispInstancesProps> = ({
     m.frustumCulled = false;
     m.count = count;
 
-    _tmpColor.setHSL(0.6, 0.7, 0.6);
+    _tmpColor.copy(wispBaseColor);
     for (let i = 0; i < count; i++) {
       _tmpMat4.makeTranslation(0, 0, 0);
       m.setMatrixAt(i, _tmpMat4);
@@ -297,8 +316,11 @@ const WasmWispInstances: React.FC<WasmWispInstancesProps> = ({
       m.setMatrixAt(i, _tmpMat4);
 
       if (colorArray) {
-        const hue = wasmHues[i] * 0.3 + 0.55;
-        _tmpColor.setHSL(hue, 0.7, 0.6);
+        // Derive base HSL from configured wisp color, shift hue per WASM output
+        const baseHsl = { h: 0, s: 0, l: 0 };
+        wispBaseColor.getHSL(baseHsl);
+        const hue = wasmHues[i] * 0.3 + baseHsl.h;
+        _tmpColor.setHSL(hue, baseHsl.s, baseHsl.l);
         const brightness = wasmOpacities[i] * opacity;
         colorArray[i3] = _tmpColor.r * brightness;
         colorArray[i3 + 1] = _tmpColor.g * brightness;
@@ -565,7 +587,7 @@ const FallbackFogPlane: React.FC<{ opacity: number }> = React.memo(({ opacity })
   const uniforms = useMemo(
     () => ({
       uTime: { value: 0 },
-      uOpacity: { value: Math.min(opacity, 0.03) },
+      uOpacity: { value: opacity },
       uColorDeep: { value: new THREE.Color('#0a0a1e') },
       uColorLight: { value: new THREE.Color('#12122e') },
     }),
@@ -576,7 +598,7 @@ const FallbackFogPlane: React.FC<{ opacity: number }> = React.memo(({ opacity })
   useFrame(({ clock }) => {
     if (matRef.current) {
       matRef.current.uniforms.uTime.value = clock.elapsedTime;
-      matRef.current.uniforms.uOpacity.value = Math.min(opacity, 0.15);
+      matRef.current.uniforms.uOpacity.value = opacity;
     }
   });
 
@@ -612,7 +634,15 @@ const WasmSceneEffects: React.FC<WasmSceneEffectsProps> = ({
   atmosphereEnabled = true,
   intensity = 0.6,
   particleDrift: _particleDrift = 0.5,
+  particleColor: particleColorProp,
+  wispColor: wispColorProp,
 }) => {
+  // Read scene effects settings from the store for values not passed as props
+  const storeSettings = useSettingsStore(s => s.get<SceneEffectsSettings>('visualisation.sceneEffects'));
+  const resolvedParticleColor = particleColorProp || storeSettings?.particleColor || DEFAULT_PARTICLE_COLOR;
+  const resolvedWispColor = wispColorProp || storeSettings?.wispColor || DEFAULT_WISP_COLOR;
+  const resolvedFogOpacity = storeSettings?.fogOpacity ?? 0.05;
+
   const { ready, failed, particles, atmosphere, wisps, update } = useWasmSceneEffects({
     particleCount,
     wispCount: wispsEnabled ? wispCount : 0,
@@ -641,6 +671,7 @@ const WasmSceneEffects: React.FC<WasmSceneEffectsProps> = ({
           update={update}
           opacity={clamped}
           count={particleCount}
+          color={resolvedParticleColor}
         />
         {atmosphereEnabled && atmosphere && (
           <WasmAtmosphereBackground
@@ -653,11 +684,12 @@ const WasmSceneEffects: React.FC<WasmSceneEffectsProps> = ({
             wisps={wisps}
             opacity={clamped}
             count={wispCount}
+            color={resolvedWispColor}
           />
         )}
         {/* Fog plane: GLSL ShaderMaterial — WebGL only */}
         {atmosphereEnabled && !isWebGPURenderer && (
-          <FallbackFogPlane opacity={0.05 + clamped * 0.1} />
+          <FallbackFogPlane opacity={resolvedFogOpacity + clamped * 0.1} />
         )}
       </group>
     );
@@ -666,7 +698,7 @@ const WasmSceneEffects: React.FC<WasmSceneEffectsProps> = ({
   // JS fallback: only when WASM fails to load (not renderer-dependent)
   if (failed || !ready) {
     const particleOpacity = 0.15 + clamped * 0.35;
-    const fogOpacity = 0.05 + clamped * 0.1;
+    const fogOpacity = resolvedFogOpacity + clamped * 0.1;
     const wispOpacity = 0.2 + clamped * 0.4;
 
     return (

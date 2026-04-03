@@ -4,10 +4,12 @@
 //! HTTP handlers for physics simulation endpoints using PhysicsService.
 
 use actix_web::{web, HttpResponse, Result as ActixResult};
+use log::warn;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use crate::{ok_json, error_json};
+use crate::AppState;
 
 use crate::application::physics_service::{
     LayoutOptimizationRequest, PhysicsService, SimulationParams,
@@ -182,38 +184,30 @@ pub async fn stop_simulation(
 }
 
 pub async fn get_status(
-    physics_service: web::Data<Arc<PhysicsService>>,
+    app_state: web::Data<AppState>,
 ) -> ActixResult<HttpResponse> {
-    let running = physics_service.is_running().await;
-    let simulation_id = physics_service.get_simulation_id().await;
+    // Query GPU compute actor availability from AppState
+    let gpu_available = app_state.get_gpu_compute_addr().await.is_some();
 
-    let gpu_status = physics_service
-        .get_gpu_status()
-        .await
-        .ok()
-        .map(|s| GpuStatusInfo {
-            device_name: s.device_name,
-            compute_capability: format!("{}.{}", s.compute_capability.0, s.compute_capability.1),
-            total_memory_mb: s.total_memory_mb,
-            free_memory_mb: s.free_memory_mb,
-        });
-
-    let statistics = physics_service
-        .get_statistics()
-        .await
-        .ok()
-        .map(|s| StatisticsInfo {
-            total_steps: s.total_steps,
-            average_step_time_ms: s.average_step_time_ms,
-            average_energy: s.average_energy,
-            gpu_memory_used_mb: s.gpu_memory_used_mb,
-        });
+    let gpu_status = if gpu_available {
+        // GPU is available but detailed status requires PhysicsService adapter
+        // which may not be registered. Report availability.
+        Some(GpuStatusInfo {
+            device_name: "GPU compute actor active".to_string(),
+            compute_capability: "N/A".to_string(),
+            total_memory_mb: 0,
+            free_memory_mb: 0,
+        })
+    } else {
+        warn!("GPU compute actor not available for physics status query");
+        None
+    };
 
     ok_json!(SimulationStatusResponse {
-        simulation_id,
-        running,
+        simulation_id: None,
+        running: gpu_available,
         gpu_status,
-        statistics,
+        statistics: None,
         settle_mode: SettleMode::default(),
     })
 }

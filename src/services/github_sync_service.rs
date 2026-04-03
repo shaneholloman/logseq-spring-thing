@@ -592,12 +592,23 @@ impl GitHubSyncService {
             .collect())
     }
 
-    // ... (rest of helper methods unchanged)
+    /// Fetch all markdown files using Git Trees API (single API call).
+    /// Falls back to recursive Contents API if Trees API fails.
     async fn fetch_all_markdown_files(&self) -> Result<Vec<GitHubFileBasicMetadata>, String> {
-        self.content_api
-            .list_markdown_files("")
-            .await
-            .map_err(|e| format!("GitHub API error: {}", e))
+        // Try the Trees API first — single call returns all file SHAs
+        match self.content_api.list_markdown_files_via_tree().await {
+            Ok(files) => {
+                info!("📂 Trees API returned {} markdown files in a single call", files.len());
+                Ok(files)
+            }
+            Err(e) => {
+                warn!("Trees API failed ({}), falling back to recursive Contents API", e);
+                self.content_api
+                    .list_markdown_files("")
+                    .await
+                    .map_err(|e| format!("GitHub API error: {}", e))
+            }
+        }
     }
 
     async fn get_existing_file_metadata(

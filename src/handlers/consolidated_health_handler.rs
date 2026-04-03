@@ -1,4 +1,4 @@
-use crate::actors::messages::{GetGPUStatus, GetGraphData, GetMetadata};
+use crate::actors::messages::{GetGPUStatus, GetGraphData, GetMetadata, GetSettings};
 use crate::services::mcp_relay_manager::McpRelayManager;
 use crate::ok_json;
 use crate::AppState;
@@ -388,35 +388,65 @@ async fn get_physics_diagnostics(
         diagnostics.push("GPU compute not available - using CPU fallback".to_string());
     }
 
-    
-    let physics_info = check_physics_parameters();
+
+    let physics_info = check_physics_parameters(app_state).await;
     diagnostics.push(physics_info);
 
     let full_diagnostics = diagnostics.join("; ");
     Ok((status, full_diagnostics))
 }
 
-fn check_physics_parameters() -> String {
-    // Default values used when actual physics parameters are not available from AppState/settings.
-    // These match PhysicsSettings::default() and serve as baseline sanity-check values.
-    let gravity = 0.08;
-    let damping = 0.92;
-    let spring_k = 0.3;
-
-    if gravity < 0.0 || gravity > 1.0 {
-        return "Invalid gravity value".to_string();
-    }
-    if damping < 0.0 || damping > 1.0 {
-        return "Invalid damping value".to_string();
-    }
-    if spring_k < 0.0 || spring_k > 1.0 {
-        return "Invalid spring strength".to_string();
-    }
-
-    format!(
-        "Physics params OK (gravity: {}, damping: {}, spring: {} [defaults])",
-        gravity, damping, spring_k
+async fn check_physics_parameters(app_state: &web::Data<AppState>) -> String {
+    // Try to read actual physics settings from OptimizedSettingsActor
+    match tokio::time::timeout(
+        Duration::from_secs(2),
+        app_state.settings_addr.send(GetSettings),
     )
+    .await
+    {
+        Ok(Ok(Ok(settings))) => {
+            let physics = &settings.visualisation.graphs.logseq.physics;
+            let gravity = physics.gravity;
+            let damping = physics.damping;
+            let spring_k = physics.spring_k;
+
+            if gravity < 0.0 || gravity > 1.0 {
+                return format!("Invalid gravity value: {}", gravity);
+            }
+            if damping < 0.0 || damping > 1.0 {
+                return format!("Invalid damping value: {}", damping);
+            }
+            if spring_k < 0.0 || spring_k > 1.0 {
+                return format!("Invalid spring strength: {}", spring_k);
+            }
+
+            format!(
+                "Physics params OK (gravity: {}, damping: {}, spring: {})",
+                gravity, damping, spring_k
+            )
+        }
+        _ => {
+            // Fallback to hardcoded defaults when settings actor is unavailable
+            let gravity = 0.08;
+            let damping = 0.92;
+            let spring_k = 0.3;
+
+            if gravity < 0.0 || gravity > 1.0 {
+                return "Invalid gravity value [fallback]".to_string();
+            }
+            if damping < 0.0 || damping > 1.0 {
+                return "Invalid damping value [fallback]".to_string();
+            }
+            if spring_k < 0.0 || spring_k > 1.0 {
+                return "Invalid spring strength [fallback]".to_string();
+            }
+
+            format!(
+                "Physics params OK (gravity: {}, damping: {}, spring: {} [fallback])",
+                gravity, damping, spring_k
+            )
+        }
+    }
 }
 
 pub async fn start_mcp_relay() -> Result<HttpResponse> {

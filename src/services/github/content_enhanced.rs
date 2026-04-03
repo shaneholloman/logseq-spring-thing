@@ -17,6 +17,119 @@ impl EnhancedContentAPI {
         Self { client }
     }
 
+    /// List all markdown files using GitHub's Git Trees API (single API call).
+    /// Returns all .md files under the configured base_path with their SHA hashes.
+    /// This replaces the recursive Contents API approach that required one call per directory.
+    pub async fn list_markdown_files_via_tree(
+        &self,
+    ) -> VisionFlowResult<Vec<GitHubFileBasicMetadata>> {
+        let base_path = self.client.base_path().trim_matches('/').to_string();
+        let branch = self.client.branch();
+
+        // Git Trees API with recursive=1 returns the entire tree in one call
+        let tree_url = format!(
+            "https://api.github.com/repos/{}/{}/git/trees/{}?recursive=1",
+            self.client.owner(),
+            self.client.repo(),
+            branch
+        );
+
+        info!("list_markdown_files_via_tree: Fetching tree from: {}", tree_url);
+
+        let response = self
+            .client
+            .client()
+            .get(&tree_url)
+            .header("Authorization", format!("Bearer {}", self.client.token()))
+            .header("Accept", "application/vnd.github+json")
+            .send()
+            .await?;
+
+        let status = response.status();
+        if !status.is_success() {
+            let error_text = response.text().await?;
+            error!(
+                "list_markdown_files_via_tree: GitHub API error ({}): {}",
+                status, error_text
+            );
+            return Err(format!(
+                "GitHub Trees API error ({}): {}",
+                status, error_text
+            )
+            .into());
+        }
+
+        let tree_data: Value = response.json().await?;
+        let truncated = tree_data["truncated"].as_bool().unwrap_or(false);
+        if truncated {
+            warn!("list_markdown_files_via_tree: Tree response was truncated - some files may be missing");
+        }
+
+        let tree = tree_data["tree"]
+            .as_array()
+            .ok_or("GitHub Trees API returned no tree array")?;
+
+        info!(
+            "list_markdown_files_via_tree: Tree contains {} entries",
+            tree.len()
+        );
+
+        let mut markdown_files = Vec::new();
+        let base_prefix = if base_path.is_empty() {
+            String::new()
+        } else {
+            format!("{}/", base_path)
+        };
+
+        for entry in tree {
+            let entry_type = entry["type"].as_str().unwrap_or("");
+            let entry_path = entry["path"].as_str().unwrap_or("");
+
+            // Only process blob (file) entries that are .md files under base_path
+            if entry_type != "blob" || !entry_path.ends_with(".md") {
+                continue;
+            }
+
+            // Filter by base_path prefix
+            if !base_path.is_empty() && !entry_path.starts_with(&base_prefix) {
+                continue;
+            }
+
+            let sha = entry["sha"].as_str().unwrap_or("").to_string();
+            let size = entry["size"].as_u64().unwrap_or(0);
+
+            // Extract filename from path
+            let name = entry_path
+                .rsplit('/')
+                .next()
+                .unwrap_or(entry_path)
+                .to_string();
+
+            // Construct download URL from path
+            let download_url = format!(
+                "https://raw.githubusercontent.com/{}/{}/{}/{}",
+                self.client.owner(),
+                self.client.repo(),
+                branch,
+                entry_path
+            );
+
+            markdown_files.push(GitHubFileBasicMetadata {
+                name,
+                path: entry_path.to_string(),
+                sha,
+                size,
+                download_url,
+            });
+        }
+
+        info!(
+            "list_markdown_files_via_tree: Found {} markdown files under '{}'",
+            markdown_files.len(),
+            base_path
+        );
+        Ok(markdown_files)
+    }
 
     pub fn list_markdown_files<'a>(
         &'a self,

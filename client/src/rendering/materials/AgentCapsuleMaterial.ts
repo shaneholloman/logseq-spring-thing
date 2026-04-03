@@ -39,7 +39,7 @@ export function createAgentCapsuleMaterial(): AgentCapsuleMaterialResult {
   const material = new THREE.MeshPhysicalMaterial({
     color: new THREE.Color(0.82, 0.95, 0.86),
     ior: 1.58,
-    transmission: isWebGPURenderer ? 0 : 0.5,
+    transmission: isWebGPURenderer ? 0 : 0.1,  // Agent nodes: nearly opaque, solid presence
     thickness: isWebGPURenderer ? 0 : 0.4,
     roughness: 0.15,
     metalness: 0.0,

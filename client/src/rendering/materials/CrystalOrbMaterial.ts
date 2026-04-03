@@ -39,7 +39,7 @@ export function createCrystalOrbMaterial(): CrystalOrbMaterialResult {
   const material = new THREE.MeshPhysicalMaterial({
     color: new THREE.Color(0.78, 0.78, 1.0),
     ior: 1.77,
-    transmission: isWebGPURenderer ? 0 : 0.8,
+    transmission: isWebGPURenderer ? 0 : 0.35,  // Ontology nodes: semi-translucent
     thickness: isWebGPURenderer ? 0 : 0.6,
     roughness: 0.12,
     metalness: 0.0,

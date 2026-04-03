@@ -7,6 +7,7 @@ import { BrowserSupportWarning } from '../components/BrowserSupportWarning';
 import { SpaceMouseStatus } from '../components/SpaceMouseStatus';
 import { AudioInputService } from '../services/AudioInputService';
 import { graphDataManager, type GraphData } from '../features/graph/managers/graphDataManager';
+import { NodeDetailPanel } from '../features/graph/components/NodeDetailPanel';
 import { createLogger } from '../utils/loggerConfig';
 
 const logger = createLogger('MainLayout');
@@ -81,6 +82,9 @@ const MainLayoutContent: React.FC = () => {
           otherGraphData={otherGraphData}
         />
       </nav>
+
+      {/* Node detail slide-in panel — driven by visionflow:node-selected events */}
+      <NodeDetailPanel />
 
       {/* OntologyPanel is accessed via the control panel's ontology tab, not rendered as overlay */}
 

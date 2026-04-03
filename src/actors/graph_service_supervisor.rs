@@ -196,6 +196,9 @@ pub struct GraphServiceSupervisor {
     // GPU manager address for GPU physics initialization
     gpu_manager: Option<Addr<GPUManagerActor>>,
 
+    // AppState's gpu_compute_addr — kept in sync when ForceComputeActor is respawned
+    app_gpu_compute_addr: Option<Arc<tokio::sync::RwLock<Option<Addr<crate::actors::gpu::ForceComputeActor>>>>>,
+
     // Knowledge graph repository
     kg_repo: Option<Arc<dyn crate::ports::knowledge_graph_repository::KnowledgeGraphRepository>>,
 
@@ -267,6 +270,7 @@ impl GraphServiceSupervisor {
             semantic: None,
             client: None,
             gpu_manager: None,
+            app_gpu_compute_addr: None,
             kg_repo: Some(kg_repo),
             strategy: GraphSupervisionStrategy::OneForOne,
             restart_policy: RestartPolicy::default(),
@@ -817,29 +821,36 @@ impl Actor for GraphServiceSupervisor {
         self.supervision_stats.uptime = Duration::from_secs(0);
 
         // Periodic GPU address refresh: if ForceComputeActor was respawned by
-        // PhysicsSupervisor, re-query the address and forward to PhysicsOrchestratorActor.
-        // This fixes the race condition where GPU init fails during startup.
+        // PhysicsSupervisor, re-query the address and forward to PhysicsOrchestratorActor
+        // AND update AppState's gpu_compute_addr so HTTP handlers also get the fresh address.
         ctx.run_interval(Duration::from_secs(10), |act, ctx| {
             if let Some(ref gpu_manager) = act.gpu_manager {
-                if let Some(ref physics) = act.physics {
-                    let gpu_manager_clone = gpu_manager.clone();
-                    let physics_clone = physics.clone();
-                    ctx.spawn(
-                        async move {
-                            match gpu_manager_clone.send(msgs::GetForceComputeActor).await {
-                                Ok(Ok(force_compute_addr)) => {
-                                    if force_compute_addr.connected() {
-                                        physics_clone.do_send(msgs::StoreGPUComputeAddress {
-                                            addr: Some(force_compute_addr),
+                let gpu_manager_clone = gpu_manager.clone();
+                let physics_clone = act.physics.clone();
+                let app_gpu_addr_clone = act.app_gpu_compute_addr.clone();
+                ctx.spawn(
+                    async move {
+                        match gpu_manager_clone.send(msgs::GetForceComputeActor).await {
+                            Ok(Ok(force_compute_addr)) => {
+                                if force_compute_addr.connected() {
+                                    // Update PhysicsOrchestratorActor
+                                    if let Some(physics) = physics_clone {
+                                        physics.do_send(msgs::StoreGPUComputeAddress {
+                                            addr: Some(force_compute_addr.clone()),
                                         });
                                     }
+                                    // Update AppState's gpu_compute_addr
+                                    if let Some(app_addr) = app_gpu_addr_clone {
+                                        let mut guard = app_addr.write().await;
+                                        *guard = Some(force_compute_addr);
+                                    }
                                 }
-                                _ => {} // GPU not ready yet, will retry next interval
                             }
+                            _ => {} // GPU not ready yet, will retry next interval
                         }
-                        .into_actor(act),
-                    );
-                }
+                    }
+                    .into_actor(act),
+                );
             }
         });
     }
@@ -1319,6 +1330,21 @@ impl Handler<msgs::InitializeGPUConnection> for GraphServiceSupervisor {
         } else {
             warn!("GraphServiceSupervisor: No GPU manager provided in InitializeGPUConnection");
         }
+    }
+}
+
+/// Handler for SetAppGpuComputeAddr - stores AppState's gpu_compute_addr Arc
+/// so the 10s periodic refresh can keep it in sync with respawned ForceComputeActors.
+impl Handler<msgs::SetAppGpuComputeAddr> for GraphServiceSupervisor {
+    type Result = ();
+
+    fn handle(
+        &mut self,
+        msg: msgs::SetAppGpuComputeAddr,
+        _ctx: &mut Self::Context,
+    ) -> Self::Result {
+        info!("GraphServiceSupervisor: AppState gpu_compute_addr registered for periodic refresh");
+        self.app_gpu_compute_addr = Some(msg.addr);
     }
 }
 

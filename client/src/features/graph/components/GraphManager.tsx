@@ -420,6 +420,18 @@ const GraphManager: React.FC<GraphManagerProps> = ({ onDragStateChange }) => {
   useFrame((state, delta) => {
     animationStateRef.current.time = state.clock.elapsedTime
 
+    // Camera fly-to animation (triggered by search/find commands)
+    if (flyToTargetRef.current) {
+      flyToProgressRef.current = Math.min(1, flyToProgressRef.current + delta * 2.0);
+      const t = flyToProgressRef.current;
+      // Smooth ease-out curve
+      const eased = 1 - Math.pow(1 - t, 3);
+      camera.position.lerp(flyToTargetRef.current, eased * 0.08);
+      if (t >= 1) {
+        flyToTargetRef.current = null;
+      }
+    }
+
     // Periodic label frustum refresh (~4 updates/sec at 60fps)
     labelTickRef.current++;
     if (labelTickRef.current >= 15) {
@@ -890,6 +902,122 @@ const GraphManager: React.FC<GraphManagerProps> = ({ onDragStateChange }) => {
 
   
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+
+  // Camera fly-to animation state
+  const flyToTargetRef = useRef<THREE.Vector3 | null>(null);
+  const flyToProgressRef = useRef(0);
+
+  // Dispatch node-selected event to NodeDetailPanel when selection changes
+  useEffect(() => {
+    if (!selectedNodeId) {
+      window.dispatchEvent(new CustomEvent('visionflow:node-selected', { detail: null }));
+      return;
+    }
+    const node = graphData.nodes.find(n => String(n.id) === selectedNodeId);
+    if (!node) return;
+
+    // Collect neighbor info
+    const neighborIds = new Set<string>();
+    graphData.edges.forEach(edge => {
+      const src = String(edge.source);
+      const tgt = String(edge.target);
+      if (src === selectedNodeId) neighborIds.add(tgt);
+      if (tgt === selectedNodeId) neighborIds.add(src);
+    });
+    const neighbors = Array.from(neighborIds).map(nid => {
+      const n = graphData.nodes.find(nd => String(nd.id) === nid);
+      return { id: nid, label: n?.label || nid };
+    });
+
+    window.dispatchEvent(new CustomEvent('visionflow:node-selected', {
+      detail: {
+        nodeId: selectedNodeId,
+        label: node.label,
+        metadata: node.metadata || {},
+        connectionCount: connectionCountMap.get(selectedNodeId) || neighborIds.size,
+        neighbors,
+      },
+    }));
+  }, [selectedNodeId, graphData.nodes, graphData.edges, connectionCountMap]);
+
+  // Listen for search events and node-deselect
+  useEffect(() => {
+    const handleSearch = (event: Event) => {
+      const { query, nodeId } = (event as CustomEvent).detail || {};
+
+      let targetNode: GraphNode | undefined;
+
+      // Direct node ID navigation (from neighbor click)
+      if (nodeId) {
+        targetNode = graphData.nodes.find(n => String(n.id) === nodeId);
+      }
+
+      // Fuzzy label search
+      if (!targetNode && query) {
+        const lowerQuery = query.toLowerCase();
+        // Exact prefix match first
+        targetNode = graphData.nodes.find(n =>
+          n.label.toLowerCase().startsWith(lowerQuery)
+        );
+        // Then substring match
+        if (!targetNode) {
+          targetNode = graphData.nodes.find(n =>
+            n.label.toLowerCase().includes(lowerQuery)
+          );
+        }
+        // Then fuzzy: split query into words, match nodes containing all words
+        if (!targetNode && lowerQuery.includes(' ')) {
+          const words = lowerQuery.split(/\s+/).filter((w: string) => w.length > 1);
+          targetNode = graphData.nodes.find(n => {
+            const label = n.label.toLowerCase();
+            return words.every((w: string) => label.includes(w));
+          });
+        }
+      }
+
+      if (!targetNode) return;
+
+      // Select the node
+      setSelectedNodeId(String(targetNode.id));
+
+      // Get position for camera fly-to
+      const idx = nodeIdToIndexMap.get(String(targetNode.id));
+      const positions = nodePositionsRef.current;
+      let targetPos: THREE.Vector3 | null = null;
+
+      if (idx !== undefined && positions && idx * 3 + 2 < positions.length) {
+        targetPos = new THREE.Vector3(
+          positions[idx * 3],
+          positions[idx * 3 + 1],
+          positions[idx * 3 + 2]
+        );
+      } else if (targetNode.position) {
+        targetPos = new THREE.Vector3(
+          targetNode.position.x,
+          targetNode.position.y,
+          targetNode.position.z
+        );
+      }
+
+      if (targetPos) {
+        // Set fly-to target offset from node (camera approaches from current direction)
+        const offset = new THREE.Vector3().subVectors(camera.position, targetPos).normalize().multiplyScalar(25);
+        flyToTargetRef.current = targetPos.clone().add(offset);
+        flyToProgressRef.current = 0;
+      }
+    };
+
+    const handleDeselect = () => {
+      setSelectedNodeId(null);
+    };
+
+    window.addEventListener('visionflow:search', handleSearch);
+    window.addEventListener('visionflow:node-deselect', handleDeselect);
+    return () => {
+      window.removeEventListener('visionflow:search', handleSearch);
+      window.removeEventListener('visionflow:node-deselect', handleDeselect);
+    };
+  }, [graphData.nodes, nodeIdToIndexMap, camera]);
 
   // Proxy ref: useGraphEventHandlers expects RefObject<InstancedMesh>.
   // GemNodes manages its own mesh internally, so we bridge via a getter-backed ref.

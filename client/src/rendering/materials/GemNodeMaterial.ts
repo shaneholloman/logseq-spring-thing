@@ -44,7 +44,7 @@ export function createGemNodeMaterial(): GemMaterialResult {
   const material = new THREE.MeshPhysicalMaterial({
     color: new THREE.Color(isWebGPURenderer ? 0.35 : 0.88, isWebGPURenderer ? 0.38 : 0.92, isWebGPURenderer ? 0.5 : 1.0),
     ior: 2.42,
-    transmission: isWebGPURenderer ? 0 : 0.6,
+    transmission: isWebGPURenderer ? 0 : 0.6,  // Knowledge nodes: glass-like transparency
     thickness: isWebGPURenderer ? 0 : 0.5,
     roughness: isWebGPURenderer ? 0.08 : 0.08,
     metalness: isWebGPURenderer ? 0.15 : 0.0,

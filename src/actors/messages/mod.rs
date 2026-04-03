@@ -41,7 +41,7 @@ pub use physics_messages::{
     GetConstraints, GetEquilibriumStatus, GetForceComputeActor, GetGPUMetrics, GetGPUStatus,
     GetHierarchyLevels, GetKernelMode, GetNodeData, GetPhysicsStats, GetSemanticConfig,
     GetStressMajorizationConfig, GetStressMajorizationStats, InitializeGPU,
-    InitializeGPUConnection, InitializeVisualAnalytics, NodeInteractionMessage,
+    InitializeGPUConnection, InitializeVisualAnalytics, NodeInteractionMessage, SetAppGpuComputeAddr,
     NodeInteractionType, PhysicsPauseMessage, PositionBroadcastAck, PositionSnapshot,
     RecalculateHierarchy, RegenerateSemanticConstraints, ReloadRelationshipBuffer,
     RemoveConstraints, RemoveIsolationLayer, RequestPositionSnapshot, ResetGPUInitFlag,

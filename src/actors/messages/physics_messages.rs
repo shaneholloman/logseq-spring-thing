@@ -77,6 +77,14 @@ pub struct InitializeGPUConnection {
     pub gpu_manager: Option<Addr<crate::actors::GPUManagerActor>>,
 }
 
+/// Message to provide AppState's gpu_compute_addr Arc to the supervisor
+/// so it can keep it in sync when ForceComputeActor is respawned.
+#[derive(Message)]
+#[rtype(result = "()")]
+pub struct SetAppGpuComputeAddr {
+    pub addr: std::sync::Arc<tokio::sync::RwLock<Option<Addr<crate::actors::gpu::ForceComputeActor>>>>,
+}
+
 #[derive(Message)]
 #[rtype(result = "()")]
 pub struct SetAdvancedGPUContext {

@@ -423,6 +423,7 @@ export interface SceneEffectsSettings {
   particleCount?: number;      // 64-512, default 256
   particleOpacity?: number;    // 0-1, default 0.3
   particleDrift?: number;      // 0-2, default 0.5
+  particleColor?: string;      // CSS hex/rgb, default '#6680E6' (RGB 0.4, 0.5, 0.9)
   // Atmosphere/fog
   fogEnabled?: boolean;        // default true
   fogOpacity?: number;         // 0-0.15, default 0.03
@@ -432,6 +433,7 @@ export interface SceneEffectsSettings {
   wispCount?: number;          // 8-128, default 48
   wispOpacity?: number;        // 0-1, default 0.3
   wispDriftSpeed?: number;     // 0-3, default 1.0
+  wispColor?: string;          // CSS hex/rgb, default '#668FCC' (HSL 0.6, 0.7, 0.6)
   // Ambient glow
   ambientGlowEnabled?: boolean; // default true
   ambientGlowOpacity?: number;  // 0-0.1, default 0.02
