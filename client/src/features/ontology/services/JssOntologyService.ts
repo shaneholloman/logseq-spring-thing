@@ -69,6 +69,22 @@ export interface FetchOptions {
   timeout?: number;
 }
 
+export interface PatchResult {
+  success: boolean;
+  status: number;
+  statusText: string;
+}
+
+/**
+ * Represents an RDF term that can be serialized into SPARQL or N3.
+ * Use angle brackets for IRIs, quotes for literals, prefixed names as-is.
+ */
+export interface RdfTerm {
+  value: string;
+  /** 'iri' wraps in <>, 'literal' wraps in "", 'prefixed' emits as-is */
+  type: 'iri' | 'literal' | 'prefixed';
+}
+
 // --- Service Implementation ---
 
 class JssOntologyService {
@@ -638,6 +654,151 @@ class JssOntologyService {
     const type = node['@type'];
     if (!type) return [];
     return Array.isArray(type) ? type : [type];
+  }
+
+  // --- SPARQL PATCH Mutations ---
+
+  /**
+   * Send a SPARQL Update PATCH to the ontology resource.
+   * Uses Content-Type: application/sparql-update as per Solid Protocol.
+   */
+  public async patchOntology(sparqlUpdate: string): Promise<PatchResult> {
+    const url = this.getOntologyUrl();
+
+    try {
+      const response = await this.fetchWithAuth(url, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/sparql-update',
+        },
+        body: sparqlUpdate,
+      });
+
+      if (response.ok) {
+        this.invalidateCache();
+      }
+
+      if (debugState.isEnabled()) {
+        logger.info('SPARQL PATCH sent', {
+          status: response.status,
+          bodyLength: sparqlUpdate.length,
+        });
+      }
+
+      return {
+        success: response.ok,
+        status: response.status,
+        statusText: response.statusText,
+      };
+    } catch (error) {
+      logger.error('SPARQL PATCH failed', createErrorMetadata(error));
+      throw error;
+    }
+  }
+
+  /**
+   * Send an N3 Patch to the ontology resource.
+   * Uses Content-Type: text/n3 for optimistic concurrency via solid:where clauses.
+   *
+   * N3 Patch format (Solid Protocol):
+   *   @prefix solid: <http://www.w3.org/ns/solid/terms#>.
+   *   _:patch a solid:InsertDeletePatch;
+   *     solid:where   { ?cond ... };
+   *     solid:deletes { ?old ... };
+   *     solid:inserts { ?new ... }.
+   */
+  public async patchOntologyN3(n3Patch: string): Promise<PatchResult> {
+    const url = this.getOntologyUrl();
+
+    try {
+      const response = await this.fetchWithAuth(url, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'text/n3',
+        },
+        body: n3Patch,
+      });
+
+      if (response.ok) {
+        this.invalidateCache();
+      }
+
+      if (debugState.isEnabled()) {
+        logger.info('N3 PATCH sent', {
+          status: response.status,
+          bodyLength: n3Patch.length,
+        });
+      }
+
+      return {
+        success: response.ok,
+        status: response.status,
+        statusText: response.statusText,
+      };
+    } catch (error) {
+      logger.error('N3 PATCH failed', createErrorMetadata(error));
+      throw error;
+    }
+  }
+
+  // --- Triple Mutation Helpers ---
+
+  /**
+   * Add a single triple to the ontology via SPARQL INSERT DATA.
+   */
+  public async addOntologyTriple(
+    subject: RdfTerm,
+    predicate: RdfTerm,
+    object: RdfTerm
+  ): Promise<PatchResult> {
+    const sparql = `INSERT DATA {\n  ${this.serializeTerm(subject)} ${this.serializeTerm(predicate)} ${this.serializeTerm(object)} .\n}`;
+    return this.patchOntology(sparql);
+  }
+
+  /**
+   * Remove a single triple from the ontology via SPARQL DELETE DATA.
+   */
+  public async removeOntologyTriple(
+    subject: RdfTerm,
+    predicate: RdfTerm,
+    object: RdfTerm
+  ): Promise<PatchResult> {
+    const sparql = `DELETE DATA {\n  ${this.serializeTerm(subject)} ${this.serializeTerm(predicate)} ${this.serializeTerm(object)} .\n}`;
+    return this.patchOntology(sparql);
+  }
+
+  /**
+   * Update a triple's object value via SPARQL DELETE/INSERT WHERE.
+   * Atomically removes the old value and inserts the new one.
+   */
+  public async updateOntologyTriple(
+    subject: RdfTerm,
+    predicate: RdfTerm,
+    oldValue: RdfTerm,
+    newValue: RdfTerm
+  ): Promise<PatchResult> {
+    const s = this.serializeTerm(subject);
+    const p = this.serializeTerm(predicate);
+    const sparql = [
+      `DELETE { ${s} ${p} ${this.serializeTerm(oldValue)} . }`,
+      `INSERT { ${s} ${p} ${this.serializeTerm(newValue)} . }`,
+      `WHERE  { ${s} ${p} ${this.serializeTerm(oldValue)} . }`,
+    ].join('\n');
+    return this.patchOntology(sparql);
+  }
+
+  /**
+   * Serialize an RdfTerm into its SPARQL string representation.
+   */
+  private serializeTerm(term: RdfTerm): string {
+    switch (term.type) {
+      case 'iri':
+        return `<${term.value}>`;
+      case 'literal':
+        return `"${term.value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+      case 'prefixed':
+        return term.value;
+    }
   }
 
   // --- Public Getters ---

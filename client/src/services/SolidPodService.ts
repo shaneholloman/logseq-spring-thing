@@ -72,6 +72,29 @@ export interface SolidNotification {
   url: string;
 }
 
+export interface TypeRegistration {
+  '@type': string;
+  'solid:forClass': string;
+  'solid:instance'?: string;
+  'solid:instanceContainer'?: string;
+  [key: string]: unknown;
+}
+
+export interface TypeIndexDocument extends JsonLdDocument {
+  '@type': 'solid:TypeIndex';
+  'solid:typeRegistration': TypeRegistration[];
+}
+
+export interface DiscoveredView {
+  name: string;
+  url: string;
+}
+
+export interface DiscoveredAgent {
+  id: string;
+  capabilities: string[];
+}
+
 type NotificationCallback = (notification: SolidNotification) => void;
 
 // --- Configuration ---
@@ -471,6 +494,292 @@ class SolidPodService {
     }, slug);
   }
 
+  // ==========================================================================
+  // Agent Memory — Pod-backed agent memory with per-agent WAC isolation
+  // ==========================================================================
+
+  /**
+   * Sanitize an agent ID for use in URL paths.
+   * Strips dangerous characters while preserving readability.
+   */
+  private sanitizeAgentId(agentId: string): string {
+    let sanitized = agentId.replace(/[\/\\\.]{2,}/g, '');
+    sanitized = sanitized.replace(/[\/\\]/g, '-');
+    sanitized = sanitized.replace(/^[.\-]+/, '');
+    if (!sanitized) {
+      throw new Error('Invalid agent ID');
+    }
+    return sanitized;
+  }
+
+  /**
+   * Resolve the Pod-relative path for an agent's memory container.
+   * Layout: /agents/{agentId}/memory/
+   */
+  private async resolveAgentMemoryContainer(agentId: string): Promise<string | null> {
+    const podUrl = await this.getPodUrl();
+    if (!podUrl) {
+      logger.error('Cannot resolve agent memory container: no pod');
+      return null;
+    }
+
+    const safeId = this.sanitizeAgentId(agentId);
+    // Extract path portion from podUrl (strip origin if absolute)
+    const podPath = podUrl.replace(/^https?:\/\/[^/]+/, '');
+    return `${podPath}/agents/${safeId}/memory/`;
+  }
+
+  /**
+   * Ensure the agent's memory container exists by issuing a PUT
+   * on the container path with Link: <ldp:BasicContainer>.
+   */
+  private async ensureAgentContainer(agentId: string): Promise<string | null> {
+    const containerPath = await this.resolveAgentMemoryContainer(agentId);
+    if (!containerPath) return null;
+
+    // Create the parent /agents/{id}/ container first, then /memory/
+    const safeId = this.sanitizeAgentId(agentId);
+    const podUrl = await this.getPodUrl();
+    if (!podUrl) return null;
+    const podPath = podUrl.replace(/^https?:\/\/[^/]+/, '');
+
+    const agentContainerPath = `${podPath}/agents/${safeId}/`;
+    for (const path of [agentContainerPath, containerPath]) {
+      const url = this.resolvePath(path);
+      const exists = await this.resourceExists(path);
+      if (!exists) {
+        const response = await this.fetchWithAuth(url, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'text/turtle',
+            'Link': '<http://www.w3.org/ns/ldp#BasicContainer>; rel="type"',
+          },
+          body: '',
+        });
+        if (!response.ok && response.status !== 409) {
+          logger.error('Failed to create agent container', { path, status: response.status });
+          return null;
+        }
+      }
+    }
+
+    return containerPath;
+  }
+
+  /**
+   * Store an agent memory entry in the user's Pod.
+   *
+   * Memory entries are stored as JSON-LD documents at:
+   *   /agents/{agentId}/memory/{key}.jsonld
+   *
+   * @param agentId - Unique identifier for the agent
+   * @param entry - Memory entry with key, value, namespace, optional tags and timestamp
+   * @returns true if stored successfully
+   */
+  public async storeAgentMemory(agentId: string, entry: {
+    key: string;
+    value: string;
+    namespace: string;
+    tags?: string[];
+    timestamp?: string;
+  }): Promise<boolean> {
+    const containerPath = await this.ensureAgentContainer(agentId);
+    if (!containerPath) return false;
+
+    const safeKey = sanitizePreferenceKey(entry.key);
+    const resourcePath = `${containerPath}${safeKey}.jsonld`;
+
+    const now = entry.timestamp || new Date().toISOString();
+    const npub = nostrAuth.getCurrentUser()?.npub;
+
+    const doc: JsonLdDocument = {
+      '@context': 'https://schema.org',
+      '@type': 'DigitalDocument',
+      identifier: entry.key,
+      name: entry.key,
+      text: entry.value,
+      keywords: entry.tags || [],
+      dateCreated: now,
+      dateModified: new Date().toISOString(),
+      author: npub ? { '@id': `did:nostr:${npub}` } : undefined,
+      additionalProperty: {
+        '@type': 'PropertyValue',
+        name: 'namespace',
+        value: entry.namespace,
+      },
+    };
+
+    const success = await this.putResource(resourcePath, doc);
+    if (success) {
+      logger.info('Agent memory stored in Pod', { agentId, key: entry.key, namespace: entry.namespace });
+    }
+    return success;
+  }
+
+  /**
+   * List agent memory entries from the Pod.
+   *
+   * Reads the LDP container at /agents/{agentId}/memory/ and returns
+   * summary objects for each contained resource.
+   *
+   * @param agentId - Agent whose memories to list
+   * @returns Array of memory entry summaries (key, value, namespace)
+   */
+  public async listAgentMemories(agentId: string): Promise<Array<{key: string; value: string; namespace: string}>> {
+    const containerPath = await this.resolveAgentMemoryContainer(agentId);
+    if (!containerPath) return [];
+
+    try {
+      const url = this.resolvePath(containerPath);
+      const response = await this.fetchWithAuth(url, {
+        headers: { Accept: 'application/ld+json' },
+      });
+
+      if (!response.ok) return [];
+
+      const data = await response.json();
+      const contains = data['ldp:contains'] || data['contains'] || [];
+      const items: Array<{ '@id'?: string; url?: string }> = Array.isArray(contains) ? contains : [contains];
+
+      const results: Array<{key: string; value: string; namespace: string}> = [];
+
+      for (const item of items) {
+        const itemUrl = item['@id'] || item.url || '';
+        const match = itemUrl.match(/\/([^/]+)\.jsonld$/);
+        if (!match) continue;
+
+        const key = decodeURIComponent(match[1]);
+        try {
+          const doc = await this.fetchJsonLd(itemUrl.startsWith('http') ? itemUrl : `${containerPath}${match[1]}.jsonld`);
+          results.push({
+            key: (doc as { identifier?: string }).identifier || key,
+            value: (doc as { text?: string }).text || '',
+            namespace: ((doc as { additionalProperty?: { value?: string } }).additionalProperty?.value) || '',
+          });
+        } catch {
+          // Include partial entry if we can't fetch the full document
+          results.push({ key, value: '', namespace: '' });
+        }
+      }
+
+      return results;
+    } catch (error) {
+      logger.error('Failed to list agent memories', { agentId, error });
+      return [];
+    }
+  }
+
+  /**
+   * Get a specific agent memory entry from the Pod.
+   *
+   * @param agentId - Agent whose memory to retrieve
+   * @param key - Memory entry key
+   * @returns The full JSON-LD document or null if not found
+   */
+  public async getAgentMemory(agentId: string, key: string): Promise<Record<string, unknown> | null> {
+    const containerPath = await this.resolveAgentMemoryContainer(agentId);
+    if (!containerPath) return null;
+
+    try {
+      const safeKey = sanitizePreferenceKey(key);
+      const resourcePath = `${containerPath}${safeKey}.jsonld`;
+      const doc = await this.fetchJsonLd(resourcePath);
+      return doc as Record<string, unknown>;
+    } catch {
+      logger.debug('Agent memory not found', { agentId, key });
+      return null;
+    }
+  }
+
+  /**
+   * Delete an agent memory entry from the Pod.
+   * This allows users to revoke specific agent memories.
+   *
+   * @param agentId - Agent whose memory to delete
+   * @param key - Memory entry key to remove
+   * @returns true if deleted (or already absent)
+   */
+  public async deleteAgentMemory(agentId: string, key: string): Promise<boolean> {
+    const containerPath = await this.resolveAgentMemoryContainer(agentId);
+    if (!containerPath) return false;
+
+    const safeKey = sanitizePreferenceKey(key);
+    const resourcePath = `${containerPath}${safeKey}.jsonld`;
+    return this.deleteResource(resourcePath);
+  }
+
+  /**
+   * Set WAC (Web Access Control) permissions for an agent's memory container.
+   *
+   * Creates/updates the ACL resource for the agent's memory container,
+   * granting the specified modes to the agent's WebID while preserving
+   * the owner's full control.
+   *
+   * @param agentId - Agent whose container to configure
+   * @param permissions - Agent WebID and access modes to grant
+   * @returns true if ACL was set successfully
+   */
+  public async setAgentMemoryAccess(agentId: string, permissions: {
+    agentWebId: string;
+    modes: ('Read' | 'Write' | 'Append')[];
+  }): Promise<boolean> {
+    const containerPath = await this.resolveAgentMemoryContainer(agentId);
+    if (!containerPath) return false;
+
+    const resolvedContainer = this.resolvePath(containerPath);
+
+    // Build WAC mode URIs
+    const agentModes = permissions.modes
+      .map((m) => `acl:${m}`)
+      .join(', ');
+
+    // Get the owner's WebID
+    const podInfo = await this.checkPodExists();
+    const ownerWebId = podInfo.webId || '';
+
+    // ACL in Turtle format following WAC spec
+    const aclTurtle = `@prefix acl: <http://www.w3.org/ns/auth/acl#>.
+@prefix foaf: <http://xmlns.com/foaf/0.1/>.
+
+# Owner retains full control
+<#owner>
+    a acl:Authorization;
+    acl:agent <${ownerWebId}>;
+    acl:accessTo <${resolvedContainer}>;
+    acl:default <${resolvedContainer}>;
+    acl:mode acl:Read, acl:Write, acl:Control.
+
+# Agent access
+<#agent>
+    a acl:Authorization;
+    acl:agent <${permissions.agentWebId}>;
+    acl:accessTo <${resolvedContainer}>;
+    acl:default <${resolvedContainer}>;
+    acl:mode ${agentModes}.
+`;
+
+    const aclPath = `${containerPath}.acl`;
+    const aclUrl = this.resolvePath(aclPath);
+
+    const response = await this.fetchWithAuth(aclUrl, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'text/turtle' },
+      body: aclTurtle,
+    });
+
+    if (!response.ok) {
+      logger.error('Failed to set agent memory ACL', { agentId, status: response.status });
+      return false;
+    }
+
+    logger.info('Agent memory ACL updated', {
+      agentId,
+      agentWebId: permissions.agentWebId,
+      modes: permissions.modes,
+    });
+    return true;
+  }
+
   // --- Connection Methods ---
 
   /**
@@ -800,6 +1109,344 @@ class SolidPodService {
       this.wsConnection = null;
     }
     this.subscriptions.clear();
+  }
+
+  // ==========================================================================
+  // Type Index — Agent and view discovery (Phase 3)
+  // ==========================================================================
+
+  /**
+   * Solid Type Index namespace constants
+   */
+  private static readonly SOLID_NS = 'http://www.w3.org/ns/solid/terms#';
+  private static readonly SCHEMA_NS = 'https://schema.org/';
+  private static readonly VISIONFLOW_NS = 'https://narrativegoldmine.com/ontology#';
+  private static readonly TYPE_INDEX_PATH = '/settings/publicTypeIndex.jsonld';
+
+  /**
+   * Get or create the public Type Index document for the current user.
+   * The Type Index is stored at /settings/publicTypeIndex.jsonld and linked
+   * from the user's WebID profile via solid:publicTypeIndex.
+   *
+   * @returns The URL of the public Type Index document
+   * @throws Error if the pod is not initialized
+   */
+  public async ensurePublicTypeIndex(): Promise<string> {
+    const structure = await this.getPodStructure();
+    if (!structure) {
+      throw new Error('Cannot ensure Type Index: pod not initialized');
+    }
+
+    // Derive the type index path relative to the pod's preferences container
+    // preferences path is like /pods/<id>/settings/preferences/
+    // We want /pods/<id>/settings/publicTypeIndex.jsonld
+    const prefPath = structure.preferences;
+    const settingsBase = prefPath.substring(0, prefPath.indexOf('/settings/') + '/settings/'.length);
+    const typeIndexPath = `${settingsBase}publicTypeIndex.jsonld`;
+
+    const exists = await this.resourceExists(typeIndexPath);
+    if (exists) {
+      return this.resolvePath(typeIndexPath);
+    }
+
+    // Create empty Type Index document
+    const typeIndexDoc: JsonLdDocument = {
+      '@context': {
+        'solid': SolidPodService.SOLID_NS,
+        'schema': SolidPodService.SCHEMA_NS,
+        'vf': SolidPodService.VISIONFLOW_NS,
+      },
+      '@type': 'solid:TypeIndex',
+      'solid:typeRegistration': [],
+    };
+
+    const created = await this.putResource(typeIndexPath, typeIndexDoc);
+    if (!created) {
+      throw new Error('Failed to create public Type Index document');
+    }
+
+    // Link from profile (best-effort — profile may already have this triple)
+    await this.linkTypeIndexFromProfile(typeIndexPath);
+
+    logger.info('Public Type Index created', { path: typeIndexPath });
+    return this.resolvePath(typeIndexPath);
+  }
+
+  /**
+   * Register a graph view in the public Type Index so other users can
+   * discover shared views via their peer's WebID.
+   *
+   * @param viewName - Human-readable name for the view
+   * @param viewUrl - Full URL or pod-relative path to the view resource
+   * @returns true if registration succeeded
+   */
+  public async registerViewInTypeIndex(
+    viewName: string,
+    viewUrl: string
+  ): Promise<boolean> {
+    try {
+      const typeIndexUrl = await this.ensurePublicTypeIndex();
+      const typeIndexPath = this.extractPath(typeIndexUrl);
+      const doc = await this.fetchJsonLd(typeIndexPath);
+
+      const registrations = this.extractRegistrations(doc);
+
+      // Avoid duplicate registration for the same view URL
+      const resolvedViewUrl = this.resolvePath(viewUrl);
+      const alreadyRegistered = registrations.some(
+        (r) => r['solid:instance'] === resolvedViewUrl
+      );
+      if (alreadyRegistered) {
+        logger.debug('View already registered in Type Index', { viewName });
+        return true;
+      }
+
+      const newRegistration: TypeRegistration = {
+        '@type': 'solid:TypeRegistration',
+        'solid:forClass': 'schema:ViewAction',
+        'solid:instance': resolvedViewUrl,
+        'vf:label': viewName,
+        'vf:registeredAt': new Date().toISOString(),
+      };
+
+      registrations.push(newRegistration);
+      (doc as Record<string, unknown>)['solid:typeRegistration'] = registrations;
+
+      const success = await this.putResource(typeIndexPath, doc);
+      if (success) {
+        logger.info('View registered in Type Index', { viewName, viewUrl });
+      }
+      return success;
+    } catch (error) {
+      logger.error('Failed to register view in Type Index', { viewName, error });
+      return false;
+    }
+  }
+
+  /**
+   * Register agent capabilities in the public Type Index so other users
+   * can discover available agents for collaboration.
+   *
+   * @param agentId - Unique identifier for the agent
+   * @param capabilities - List of capability strings (e.g., ["reasoning", "code-review"])
+   * @returns true if registration succeeded
+   */
+  public async registerAgentInTypeIndex(
+    agentId: string,
+    capabilities: string[]
+  ): Promise<boolean> {
+    try {
+      const typeIndexUrl = await this.ensurePublicTypeIndex();
+      const typeIndexPath = this.extractPath(typeIndexUrl);
+      const doc = await this.fetchJsonLd(typeIndexPath);
+
+      const registrations = this.extractRegistrations(doc);
+
+      // Remove any existing registration for this agent (update semantics)
+      const filtered = registrations.filter(
+        (r) => !(r['solid:forClass'] === 'vf:Agent' && r['vf:agentId'] === agentId)
+      );
+
+      const newRegistration: TypeRegistration = {
+        '@type': 'solid:TypeRegistration',
+        'solid:forClass': 'vf:Agent',
+        'vf:agentId': agentId,
+        'vf:capabilities': capabilities,
+        'vf:registeredAt': new Date().toISOString(),
+      };
+
+      filtered.push(newRegistration);
+      (doc as Record<string, unknown>)['solid:typeRegistration'] = filtered;
+
+      const success = await this.putResource(typeIndexPath, doc);
+      if (success) {
+        logger.info('Agent registered in Type Index', { agentId, capabilities });
+      }
+      return success;
+    } catch (error) {
+      logger.error('Failed to register agent in Type Index', { agentId, error });
+      return false;
+    }
+  }
+
+  /**
+   * Discover shared views from another user's public Type Index.
+   * Fetches the remote user's WebID profile, resolves their publicTypeIndex,
+   * and extracts all ViewAction registrations.
+   *
+   * @param webId - The remote user's WebID URL
+   * @returns Array of discovered views with name and URL
+   */
+  public async discoverSharedViews(webId: string): Promise<DiscoveredView[]> {
+    try {
+      const typeIndexUrl = await this.resolveRemoteTypeIndex(webId);
+      if (!typeIndexUrl) {
+        logger.debug('No public Type Index found for WebID', { webId });
+        return [];
+      }
+
+      const doc = await this.fetchJsonLd(typeIndexUrl);
+      const registrations = this.extractRegistrations(doc);
+
+      return registrations
+        .filter((r) => r['solid:forClass'] === 'schema:ViewAction')
+        .map((r) => ({
+          name: (r['vf:label'] as string) || this.extractViewName(r['solid:instance'] as string),
+          url: r['solid:instance'] as string,
+        }))
+        .filter((v) => v.url);
+    } catch (error) {
+      logger.error('Failed to discover shared views', { webId, error });
+      return [];
+    }
+  }
+
+  /**
+   * Discover available agents from another user's public Type Index.
+   * Fetches the remote user's WebID profile, resolves their publicTypeIndex,
+   * and extracts all Agent registrations with capabilities.
+   *
+   * @param webId - The remote user's WebID URL
+   * @returns Array of discovered agents with id and capabilities
+   */
+  public async discoverAgents(webId: string): Promise<DiscoveredAgent[]> {
+    try {
+      const typeIndexUrl = await this.resolveRemoteTypeIndex(webId);
+      if (!typeIndexUrl) {
+        logger.debug('No public Type Index found for WebID', { webId });
+        return [];
+      }
+
+      const doc = await this.fetchJsonLd(typeIndexUrl);
+      const registrations = this.extractRegistrations(doc);
+
+      return registrations
+        .filter((r) => r['solid:forClass'] === 'vf:Agent')
+        .map((r) => ({
+          id: (r['vf:agentId'] as string) || '',
+          capabilities: this.normalizeCapabilities(r['vf:capabilities']),
+        }))
+        .filter((a) => a.id);
+    } catch (error) {
+      logger.error('Failed to discover agents', { webId, error });
+      return [];
+    }
+  }
+
+  // --- Type Index Private Helpers ---
+
+  /**
+   * Extract type registrations array from a Type Index document,
+   * handling both array and single-object forms.
+   */
+  private extractRegistrations(doc: JsonLdDocument): TypeRegistration[] {
+    const raw = doc['solid:typeRegistration'];
+    if (!raw) return [];
+    if (Array.isArray(raw)) return raw as TypeRegistration[];
+    return [raw as TypeRegistration];
+  }
+
+  /**
+   * Resolve a remote user's public Type Index URL from their WebID profile.
+   * Fetches the WebID document and looks for solid:publicTypeIndex.
+   */
+  private async resolveRemoteTypeIndex(webId: string): Promise<string | null> {
+    try {
+      const response = await this.fetchWithAuth(webId, {
+        headers: { Accept: 'application/ld+json' },
+      });
+
+      if (!response.ok) {
+        logger.warn('Failed to fetch WebID profile', { webId, status: response.status });
+        return null;
+      }
+
+      const profile = await response.json();
+
+      // Look for solid:publicTypeIndex in profile
+      const typeIndexRef =
+        profile['solid:publicTypeIndex'] ||
+        profile['http://www.w3.org/ns/solid/terms#publicTypeIndex'];
+
+      if (!typeIndexRef) return null;
+
+      // Handle both string URL and object with @id
+      if (typeof typeIndexRef === 'string') return typeIndexRef;
+      if (typeIndexRef['@id']) return typeIndexRef['@id'];
+
+      return null;
+    } catch (error) {
+      logger.error('Failed to resolve remote Type Index', { webId, error });
+      return null;
+    }
+  }
+
+  /**
+   * Link the Type Index document from the user's WebID profile.
+   * Reads the profile, adds solid:publicTypeIndex if missing, writes it back.
+   */
+  private async linkTypeIndexFromProfile(typeIndexPath: string): Promise<void> {
+    try {
+      const podInfo = await this.checkPodExists();
+      if (!podInfo.webId) return;
+
+      // Fetch current profile
+      const profilePath = podInfo.webId;
+      let profile: JsonLdDocument;
+      try {
+        profile = await this.fetchJsonLd(profilePath);
+      } catch {
+        // Profile doesn't exist or isn't JSON-LD — skip linking
+        logger.debug('Cannot link Type Index: profile not accessible');
+        return;
+      }
+
+      // Already linked
+      if (profile['solid:publicTypeIndex']) return;
+
+      // Add the link
+      const resolvedTypeIndexUrl = this.resolvePath(typeIndexPath);
+      (profile as Record<string, unknown>)['solid:publicTypeIndex'] = {
+        '@id': resolvedTypeIndexUrl,
+      };
+
+      await this.putResource(profilePath, profile);
+      logger.debug('Type Index linked from profile', { profilePath });
+    } catch (error) {
+      logger.warn('Failed to link Type Index from profile (non-fatal)', { error });
+    }
+  }
+
+  /**
+   * Extract a view name from a view URL (fallback when no label stored).
+   */
+  private extractViewName(url: string): string {
+    if (!url) return '';
+    const match = url.match(/\/([^/]+?)(?:\.jsonld)?$/);
+    return match ? decodeURIComponent(match[1]) : url;
+  }
+
+  /**
+   * Normalize capabilities from stored format (may be string, array, or comma-separated).
+   */
+  private normalizeCapabilities(raw: unknown): string[] {
+    if (!raw) return [];
+    if (Array.isArray(raw)) return raw.map(String);
+    if (typeof raw === 'string') return raw.split(',').map((s) => s.trim()).filter(Boolean);
+    return [];
+  }
+
+  /**
+   * Extract the path portion from a full URL for use with internal methods.
+   */
+  private extractPath(url: string): string {
+    try {
+      const parsed = new URL(url);
+      return parsed.pathname;
+    } catch {
+      // Already a path
+      return url;
+    }
   }
 
   // --- Private Methods ---
