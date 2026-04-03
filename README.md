@@ -14,11 +14,7 @@
 
 <br/>
 
-<a href="https://github.com/DreamLab-AI/VisionClaw/raw/main/docs/visionclaw.mp4">
-  <img src="./docs/visionclaw-poster.jpg" alt="VisionClaw — 3D knowledge graph with autonomous agent orchestration — click to play" width="720"/>
-</a>
-
-*Click image to play demo video*
+https://github.com/user-attachments/assets/f45c92dc-4800-4b57-a6e2-178da6bb0a38
 
 <br/>
 
