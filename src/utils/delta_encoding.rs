@@ -81,6 +81,23 @@ pub fn encode_node_data_delta_with_analytics(
     knowledge_node_ids: &[u32],
     analytics_data: Option<&HashMap<u32, (u32, f32, u32)>>,
 ) -> Vec<u8> {
+    // FIX 5: Debug assertion — detect double type-flagging.
+    // If the caller already applied type flags to node IDs (bits 26-31 set),
+    // the type arrays MUST be empty. Otherwise flags would be applied twice,
+    // corrupting the node ID on the wire.
+    if !agent_node_ids.is_empty() || !knowledge_node_ids.is_empty() {
+        for (node_id, _) in nodes {
+            if (*node_id & 0xFC000000) != 0 {
+                log::warn!(
+                    "Double type-flagging detected: node {} (0x{:08X}) already has flag bits set, \
+                     but non-empty type arrays were passed to encoder. This will corrupt wire IDs.",
+                    node_id, node_id
+                );
+                break;
+            }
+        }
+    }
+
     // Frame 0 or every 60th frame: send full state for resync
     if frame_number % DELTA_RESYNC_INTERVAL == 0 {
         trace!(
@@ -93,8 +110,14 @@ pub fn encode_node_data_delta_with_analytics(
         );
     }
 
+    // FIX 3: V4 delta i16 overflow detection — if any delta * SCALE exceeds i16
+    // range (32767), the clamped i16 will produce a corrupted position on the client.
+    // Fall back to a full V3 frame when overflow is detected.
+    let i16_max_as_f32 = 32767.0 / DELTA_SCALE_FACTOR; // ~327.67
+
     // Frames 1-59: send only changes
     let mut changed_nodes = Vec::new();
+    let mut overflow_detected = false;
 
     for (node_id, node) in nodes {
         if let Some(prev_node) = previous_nodes.get(node_id) {
@@ -105,6 +128,20 @@ pub fn encode_node_data_delta_with_analytics(
             let dvx = node.vx - prev_node.vx;
             let dvy = node.vy - prev_node.vy;
             let dvz = node.vz - prev_node.vz;
+
+            // Check for i16 overflow before proceeding with delta encoding.
+            // If abs(delta) > i16_max_as_f32, the scaled value would overflow i16 range
+            // and the client would receive a clamped (wrong) delta.
+            if dx.abs() > i16_max_as_f32 || dy.abs() > i16_max_as_f32 || dz.abs() > i16_max_as_f32
+                || dvx.abs() > i16_max_as_f32 || dvy.abs() > i16_max_as_f32 || dvz.abs() > i16_max_as_f32
+            {
+                debug!(
+                    "Delta i16 overflow for node {}: dx={:.2}, dy={:.2}, dz={:.2} (max {:.2}). Forcing full V3 frame.",
+                    node_id, dx, dy, dz, i16_max_as_f32
+                );
+                overflow_detected = true;
+                break;
+            }
 
             // Threshold must match quantization resolution: deltas smaller than
             // 1/DELTA_SCALE_FACTOR truncate to zero in i16, producing useless packets.
@@ -154,6 +191,17 @@ pub fn encode_node_data_delta_with_analytics(
                 flagged_id,
             ));
         }
+    }
+
+    // If any delta overflows i16, emit a full V3 frame instead of corrupted V4
+    if overflow_detected {
+        debug!(
+            "Delta encoding: Frame {} - i16 overflow detected, falling back to FULL V3 state ({} nodes)",
+            frame_number, nodes.len()
+        );
+        return encode_node_data_extended_with_sssp(
+            nodes, agent_node_ids, knowledge_node_ids, &[], &[], &[], None, analytics_data,
+        );
     }
 
     trace!(

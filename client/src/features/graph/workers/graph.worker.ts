@@ -279,6 +279,19 @@ class GraphWorker {
   // Layout: [clusterId_0, anomalyScore_0, communityId_0, clusterId_1, anomalyScore_1, ...]
   private analyticsBuffer: Float32Array | null = null;
 
+  // FIX 4: JSON/binary race guard — binary frames arriving before setGraphData()
+  // are queued here and replayed once graph data is loaded. Without this, binary
+  // position updates for unknown node IDs are silently dropped.
+  private graphDataLoaded: boolean = false;
+  private pendingBinaryFrames: ArrayBuffer[] = [];
+
+  // FIX 2: Track unknown node IDs from binary stream. If binary positions arrive
+  // for nodes not in reverseNodeIdMap, it means the server added nodes (via graph
+  // mutation) that the client doesn't know about. The main thread can poll this
+  // to trigger a REST re-fetch of /api/graph/data.
+  private unknownNodeIds: Set<number> = new Set();
+  private lastUnknownNodeAlert: number = 0;
+
   
   async initialize(): Promise<void> {
     workerLogger.info('Initialize method called');
@@ -436,6 +449,19 @@ class GraphWorker {
     // Sync initial positions to SharedArrayBuffer so main thread
     // has real positions before the first tick() completes.
     this.syncToSharedBuffer();
+
+    // FIX 4: Mark graph data as loaded and replay any binary frames that
+    // arrived before setGraphData(). This prevents position data loss during
+    // the race between JSON graph load and binary position stream.
+    this.graphDataLoaded = true;
+    if (this.pendingBinaryFrames.length > 0) {
+      workerLogger.info(`Replaying ${this.pendingBinaryFrames.length} queued binary frames`);
+      const queued = this.pendingBinaryFrames;
+      this.pendingBinaryFrames = [];
+      for (const frame of queued) {
+        await this.processBinaryData(frame);
+      }
+    }
   }
 
   
@@ -494,6 +520,15 @@ class GraphWorker {
 
   
   async processBinaryData(data: ArrayBuffer): Promise<Float32Array> {
+    // FIX 4: If graph data hasn't been loaded yet, queue binary frames for
+    // later replay. Without this guard, binary position updates arrive before
+    // reverseNodeIdMap is populated, causing all updates to be silently dropped.
+    if (!this.graphDataLoaded) {
+      this.pendingBinaryFrames.push(data.slice(0)); // defensive copy
+      workerLogger.info(`Binary frame queued (graphData not yet loaded), queue size: ${this.pendingBinaryFrames.length}`);
+      return new Float32Array(0);
+    }
+
     // All graph types process binary position updates from the server.
     // Server is the single source of truth for positions.
 
@@ -520,12 +555,18 @@ class GraphWorker {
     }
     const positionArray = this.binaryOutputBuffer;
 
+    let unknownCount = 0;
     nodeUpdates.forEach((update, index) => {
       // Strip flag bits (agent/knowledge/ontology type) from binary wire ID
       // to get the actual node ID that matches reverseNodeIdMap keys.
       // Server sets bits 26-31 for node type classification; client must mask them off.
       const actualNodeId = getActualNodeId(update.nodeId);
       const stringNodeId = this.reverseNodeIdMap.get(actualNodeId);
+      if (!stringNodeId) {
+        // FIX 2: Track unknown node IDs from binary stream for REST re-fetch
+        this.unknownNodeIds.add(actualNodeId);
+        unknownCount++;
+      }
       if (stringNodeId) {
         const nodeIndex = this.nodeIndexMap.get(stringNodeId);
         if (nodeIndex !== undefined && !this.pinnedNodeIds.has(actualNodeId)) {
@@ -574,11 +615,37 @@ class GraphWorker {
       }
     });
 
+    // FIX 2: Log unknown nodes and signal need for REST re-fetch (throttled to once per 5s)
+    if (unknownCount > 0) {
+      const now = Date.now();
+      if (now - this.lastUnknownNodeAlert > 5000) {
+        this.lastUnknownNodeAlert = now;
+        workerLogger.warn(
+          `Binary stream contains ${unknownCount} unknown node IDs (total tracked: ${this.unknownNodeIds.size}). ` +
+          `Graph mutation likely occurred — client should re-fetch /api/graph/data.`
+        );
+      }
+    }
 
     return positionArray;
   }
 
-  
+  /**
+   * FIX 2: Returns true if the binary stream has received positions for node IDs
+   * not present in the current graph data. The main thread should poll this
+   * (e.g. every few seconds) and trigger a REST re-fetch when true.
+   * Clears the unknown set after reading to avoid redundant re-fetches.
+   */
+  async hasUnknownNodes(): Promise<boolean> {
+    const has = this.unknownNodeIds.size > 0;
+    if (has) {
+      workerLogger.info(`Clearing ${this.unknownNodeIds.size} unknown node IDs after check`);
+      this.unknownNodeIds.clear();
+    }
+    return has;
+  }
+
+
   async getGraphData(): Promise<GraphData> {
     if (this.currentPositions) {
       this.graphData.nodes.forEach((node, i) => {

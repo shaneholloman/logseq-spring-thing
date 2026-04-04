@@ -330,6 +330,18 @@ function parseDeltaNodes(buffer: ArrayBuffer): BinaryNodeData[] {
     const dvy = (changeFlags & DELTA_VELOCITY_CHANGED) ? dvyScaled / DELTA_SCALE_FACTOR : 0;
     const dvz = (changeFlags & DELTA_VELOCITY_CHANGED) ? dvzScaled / DELTA_SCALE_FACTOR : 0;
 
+    // FIX 3 (client): V4 delta overflow sanity check.
+    // If applying this delta would produce an out-of-range position (> 100000),
+    // the delta was likely clamped due to i16 overflow on the server.
+    // Log a warning so developers can diagnose the issue.
+    const POSITION_SANITY_BOUND = 100000;
+    if (Math.abs(dx) > POSITION_SANITY_BOUND || Math.abs(dy) > POSITION_SANITY_BOUND || Math.abs(dz) > POSITION_SANITY_BOUND) {
+      logger.warn(
+        `V4 delta overflow detected for node ${nodeId}: delta=[${dx.toFixed(2)}, ${dy.toFixed(2)}, ${dz.toFixed(2)}]. ` +
+        `Likely i16 clamping corruption. Wait for next full V3 frame.`
+      );
+    }
+
     nodes.push({
       nodeId,
       position: { x: dx, y: dy, z: dz },

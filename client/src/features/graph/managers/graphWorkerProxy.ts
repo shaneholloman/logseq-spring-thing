@@ -221,6 +221,22 @@ class GraphWorkerProxy {
   }
 
   
+  /**
+   * FIX 2: Check if binary stream has received positions for node IDs not in
+   * the current graph data. Returns true if a REST re-fetch is recommended.
+   * Clears the internal unknown set after reading to avoid redundant re-fetches.
+   */
+  public async hasUnknownNodes(): Promise<boolean> {
+    if (!this.workerApi) {
+      return false;
+    }
+    try {
+      return await this.workerApi.hasUnknownNodes();
+    } catch {
+      return false;
+    }
+  }
+
   public async updateNode(node: Node): Promise<void> {
     if (!this.workerApi) {
       throw new Error('Worker not initialized');

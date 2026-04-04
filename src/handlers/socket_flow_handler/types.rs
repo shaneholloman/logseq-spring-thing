@@ -92,6 +92,12 @@ pub struct SocketFlowServer {
     /// Maximum time (ms) with no position update before auto-unpin. Default 500ms.
     pub(crate) drag_timeout_ms: u64,
 
+    // FIX 6: Per-client node type filter for binary position stream.
+    // When non-empty, only nodes whose type matches one of these strings
+    // (e.g. "knowledge", "agent", "ontology") are included in position broadcasts.
+    // Set via subscribe_position_updates { data: { nodeTypes: ["knowledge", "agent"] } }.
+    pub(crate) subscribed_node_types: HashSet<String>,
+
     // Delta encoding state (per-connection)
     /// Frame counter for delta encoding (0..59, wraps at DELTA_RESYNC_INTERVAL)
     pub(crate) delta_frame_counter: u64,
@@ -156,6 +162,7 @@ impl SocketFlowServer {
             dragged_nodes: HashSet::new(),
             drag_last_update: HashMap::new(),
             drag_timeout_ms: 500,
+            subscribed_node_types: HashSet::new(),
             delta_frame_counter: 0,
             delta_previous_nodes: HashMap::new(),
             delta_epsilon_sq: 0.001 * 0.001, // epsilon = 0.001, stored as squared

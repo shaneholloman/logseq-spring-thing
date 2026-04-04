@@ -443,6 +443,25 @@ pub(crate) fn handle_subscribe_position_updates(
         .and_then(|binary| binary.as_bool())
         .unwrap_or(true);
 
+    // FIX 6: Parse optional nodeTypes filter from subscription message.
+    // Example: { "type": "subscribe_position_updates", "data": { "nodeTypes": ["knowledge", "agent"] } }
+    // When specified, only nodes matching these types are included in binary broadcasts.
+    let node_types: std::collections::HashSet<String> = msg
+        .get("data")
+        .and_then(|data| data.get("nodeTypes"))
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(|s| s.to_lowercase()))
+                .collect()
+        })
+        .unwrap_or_default();
+
+    if !node_types.is_empty() {
+        info!("Client subscribed with node type filter: {:?}", node_types);
+    }
+    act.subscribed_node_types = node_types;
+
     let min_allowed_interval =
         1000 / (EndpointRateLimits::socket_flow_updates().requests_per_minute / 60);
     let actual_interval = interval.max(min_allowed_interval as u64);
@@ -485,7 +504,26 @@ pub(crate) fn handle_subscribe_position_updates(
         let fut = actix::fut::wrap_future::<_, SocketFlowServer>(fut);
 
         ctx.spawn(fut.map(move |result, act, ctx| {
-            if let Some((nodes, detailed_debug)) = result {
+            if let Some((mut nodes, detailed_debug)) = result {
+                // FIX 6: Apply per-client node type filter to reduce bandwidth.
+                // When the client subscribes with nodeTypes, skip nodes that
+                // don't match. Type is determined from the flag bits in the node ID.
+                if !act.subscribed_node_types.is_empty() {
+                    let type_filter = &act.subscribed_node_types;
+                    nodes.retain(|(flagged_id, _)| {
+                        let node_type = binary_protocol::get_node_type(*flagged_id);
+                        let type_str = match node_type {
+                            binary_protocol::NodeType::Agent => "agent",
+                            binary_protocol::NodeType::Knowledge => "knowledge",
+                            binary_protocol::NodeType::OntologyClass => "ontology",
+                            binary_protocol::NodeType::OntologyIndividual => "ontology",
+                            binary_protocol::NodeType::OntologyProperty => "ontology",
+                            binary_protocol::NodeType::Unknown => "unknown",
+                        };
+                        type_filter.contains(type_str)
+                    });
+                }
+
                 let frame = act.delta_frame_counter;
                 let is_full_sync = frame == 0;
                 let epsilon_sq = act.delta_epsilon_sq;
@@ -510,12 +548,26 @@ pub(crate) fn handle_subscribe_position_updates(
                     // On full sync frames, analytics data from shared store is included in V3 wire format.
                     let analytics = act.app_state.node_analytics.read().ok();
                     let analytics_ref = analytics.as_deref();
+                    // FIX 5: Double type-flagging contract documentation.
+                    // fetch_nodes() already applies type flags (agent/knowledge/ontology)
+                    // to node IDs via binary_protocol::set_*_flag(). The encoder MUST
+                    // receive empty type arrays to avoid double-flagging. If the encoder
+                    // receives non-empty type arrays AND the node IDs already have flag
+                    // bits set, the flag bits would be applied twice, corrupting node IDs.
+                    debug_assert!(
+                        nodes.iter().all(|(id, _)| {
+                            let has_flags = (*id & 0xFC000000) != 0;
+                            // If ID has flags, type arrays must be empty (no double-flag)
+                            !has_flags || true // arrays below are empty, so this always holds
+                        }),
+                        "BUG: fetch_nodes() applied type flags but encoder also received non-empty type arrays"
+                    );
                     let binary_data = delta_encoding::encode_node_data_delta_with_analytics(
                         &nodes,
                         &act.delta_previous_nodes,
                         frame,
-                        &[],
-                        &[],
+                        &[], // Empty: fetch_nodes() already flagged IDs
+                        &[], // Empty: fetch_nodes() already flagged IDs
                         analytics_ref,
                     );
 

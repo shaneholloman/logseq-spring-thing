@@ -626,6 +626,31 @@ class GraphDataManager {
       // Successful processing — reset transient error counter
       useWorkerErrorStore.getState().resetTransientErrors();
 
+      // FIX 2: Periodically check if the binary stream delivered positions for
+      // unknown node IDs (graph mutation on server). If so, re-fetch graph data
+      // via REST to pick up new nodes and edges. Checked every ~100 binary frames
+      // to avoid excessive async overhead.
+      this.updateCount = (this.updateCount || 0) + 1;
+      if (this.updateCount % 100 === 0) {
+        graphWorkerProxy.hasUnknownNodes().then(async (hasUnknown) => {
+          if (hasUnknown) {
+            logger.info('[graphDataManager] Unknown nodes detected in binary stream — re-fetching graph data via REST');
+            try {
+              const response = await fetch('/api/graph/data');
+              if (response.ok) {
+                const freshData = await response.json();
+                if (freshData.nodes && freshData.nodes.length > 0) {
+                  await this.setGraphData(freshData);
+                  logger.info(`[graphDataManager] REST re-fetch complete: ${freshData.nodes.length} nodes, ${freshData.edges?.length ?? 0} edges`);
+                }
+              }
+            } catch (err) {
+              logger.error('[graphDataManager] REST re-fetch failed:', err);
+            }
+          }
+        }).catch(() => { /* ignore polling errors */ });
+      }
+
       const settings = useSettingsStore.getState().settings;
       const debugEnabled = settings?.system?.debug?.enabled;
       const physicsDebugEnabled = settings?.system?.debug?.enablePhysicsDebug;
