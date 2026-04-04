@@ -1495,3 +1495,19 @@ impl Handler<msgs::GetNodeIdMapping> for GraphServiceSupervisor {
         }
     }
 }
+
+/// Handler for AddEdge - delegates to GraphStateActor (used by mock agent injection)
+impl Handler<msgs::AddEdge> for GraphServiceSupervisor {
+    type Result = Result<(), String>;
+
+    fn handle(&mut self, msg: msgs::AddEdge, _ctx: &mut Self::Context) -> Self::Result {
+        if let Some(ref graph_state_addr) = self.graph_state {
+            debug!("Forwarding AddEdge to GraphStateActor");
+            graph_state_addr.do_send(msg);
+            Ok(())
+        } else {
+            warn!("Cannot forward AddEdge: GraphStateActor not initialized");
+            Err("GraphStateActor not initialized".to_string())
+        }
+    }
+}

@@ -2,13 +2,15 @@ use actix::{Actor, ActorContext, AsyncContext, Handler, Message, StreamHandler};
 use actix_web::{web, HttpResponse, Responder};
 use actix_web_actors::ws;
 use log::{debug, info, warn};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::time::{Duration, Instant};
 
+use crate::actors::messages::UpdateBotsGraph;
 use crate::services::agent_visualization_protocol::{
     AgentStateUpdate, AgentVisualizationProtocol, PositionUpdate,
 };
+use crate::services::bots_client::Agent;
 use crate::ok_json;
 use crate::AppState;
 
@@ -320,6 +322,185 @@ pub async fn initialize_swarm_visualization(
     }))
 }
 
+// ---------------------------------------------------------------------------
+// Mock Agent Injection
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Deserialize)]
+pub struct MockAgentDef {
+    pub id: String,
+    pub label: String,
+    #[serde(rename = "type")]
+    pub agent_type: String,
+    #[serde(default = "default_active")]
+    pub status: String,
+}
+
+fn default_active() -> String {
+    "active".to_string()
+}
+
+#[derive(Debug, Deserialize)]
+pub struct MockAgentsRequest {
+    pub agents: Vec<MockAgentDef>,
+}
+
+#[derive(Debug, Serialize)]
+struct MockAgentResult {
+    id: String,
+    node_id: u32,
+    edges_to: Vec<u32>,
+}
+
+/// POST /api/bots/mock-agents
+///
+/// Inject mock agents into the live 3D graph. Each agent is placed on a golden
+/// angle spiral (radius ~30 units) and connected to 3-5 random knowledge nodes
+/// with relationship edges ("reads", "modifies", "monitors").
+pub async fn inject_mock_agents(
+    req: web::Json<MockAgentsRequest>,
+    app_state: web::Data<AppState>,
+) -> Result<HttpResponse, actix_web::Error> {
+    let bot_id_offset: u32 = 10_000;
+    let agent_count = req.agents.len() as f32;
+
+    let edge_labels = ["reads", "modifies", "monitors"];
+
+    // Gather knowledge node IDs from the existing graph so we can create
+    // cross-edges. We read from graph_service_addr via a GetGraphData message.
+    let knowledge_ids: Vec<u32> = {
+        use crate::actors::messages::GetGraphData;
+        match app_state.graph_service_addr.send(GetGraphData).await {
+            Ok(Ok(graph_data)) => graph_data
+                .nodes
+                .iter()
+                .filter(|n| matches!(n.node_type.as_deref(), Some("page") | Some("linked_page") | None))
+                .map(|n| n.id)
+                .collect(),
+            _ => vec![],
+        }
+    };
+
+    let mut agents: Vec<Agent> = Vec::with_capacity(req.agents.len());
+    let mut results: Vec<MockAgentResult> = Vec::with_capacity(req.agents.len());
+
+    // Deterministic but varied seed based on agent id
+    let mut pseudo_rng_state: u64 = 0xDEAD_BEEF;
+    let next_rand = |state: &mut u64| -> u32 {
+        *state = state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        (*state >> 33) as u32
+    };
+
+    for (i, def) in req.agents.iter().enumerate() {
+        let node_id = bot_id_offset + i as u32;
+
+        // Golden angle spiral position at radius ~30
+        let golden_angle = std::f64::consts::PI * (3.0 - 5.0_f64.sqrt());
+        let theta = golden_angle * i as f64;
+        let y_norm = if agent_count <= 1.0 {
+            0.0
+        } else {
+            1.0 - (i as f64 / (agent_count as f64 - 1.0)) * 2.0
+        };
+        let radius_at_y = (1.0 - y_norm * y_norm).sqrt();
+        let scale = 30.0;
+
+        let x = (radius_at_y * theta.cos() * scale) as f32;
+        let y = (y_norm * scale) as f32;
+        let z = (radius_at_y * theta.sin() * scale) as f32;
+
+        let workload = match def.status.as_str() {
+            "active" => 0.7,
+            "thinking" => 0.9,
+            "idle" => 0.2,
+            _ => 0.5,
+        };
+
+        agents.push(Agent {
+            id: def.id.clone(),
+            name: def.label.clone(),
+            agent_type: def.agent_type.clone(),
+            status: def.status.clone(),
+            x,
+            y,
+            z,
+            cpu_usage: 15.0 + (i as f32 * 7.3) % 40.0,
+            memory_usage: 128.0 + (i as f32 * 23.7) % 256.0,
+            health: 95.0,
+            workload,
+            created_at: Some(chrono::Utc::now().to_rfc3339()),
+            age: Some(i as u64 * 12_000),
+        });
+
+        // Pick 3-5 random knowledge node targets for cross-edges
+        let mut edge_targets: Vec<u32> = Vec::new();
+        if !knowledge_ids.is_empty() {
+            let edge_count = 3 + (next_rand(&mut pseudo_rng_state) % 3) as usize; // 3..5
+            for _ in 0..edge_count {
+                let idx = next_rand(&mut pseudo_rng_state) as usize % knowledge_ids.len();
+                let target = knowledge_ids[idx];
+                if !edge_targets.contains(&target) {
+                    edge_targets.push(target);
+                }
+            }
+        }
+
+        results.push(MockAgentResult {
+            id: def.id.clone(),
+            node_id,
+            edges_to: edge_targets,
+        });
+    }
+
+    // Send UpdateBotsGraph with agent-to-knowledge edges baked in.
+    // The UpdateBotsGraph handler in GraphStateActor already creates inter-agent
+    // edges; we extend it by also sending a separate message for knowledge edges.
+    // However, UpdateBotsGraph only takes agents — knowledge edges are injected
+    // via a custom approach: we store them in agent metadata so the handler
+    // can read them, OR we post-process. For simplicity, we send the agents
+    // now and then inject knowledge edges directly.
+    app_state
+        .graph_service_addr
+        .do_send(UpdateBotsGraph { agents });
+
+    // Inject agent→knowledge edges via AddEdgeBatch if available,
+    // or via individual AddEdge messages. We use the graph_state_actor
+    // approach: send an InjectMockEdges message. Since that message doesn't
+    // exist yet, we create the edges in a follow-up UpdateBotsGraph extension.
+    // For now, the cross-edges are reported in the response and the graph_state_actor
+    // handler already creates inter-agent edges. The knowledge edges are injected
+    // via a dedicated AddEdge call through GraphServiceSupervisor.
+    {
+        use crate::actors::messages::AddEdge;
+        for result in &results {
+            for (j, &target_id) in result.edges_to.iter().enumerate() {
+                let label_idx = j % edge_labels.len();
+                let mut edge = crate::models::edge::Edge::new(result.node_id, target_id, 0.3);
+                edge.edge_type = Some(edge_labels[label_idx].to_string());
+                let metadata = edge.metadata.get_or_insert_with(std::collections::HashMap::new);
+                metadata.insert("mock_agent_edge".to_string(), "true".to_string());
+                metadata.insert("interaction".to_string(), edge_labels[label_idx].to_string());
+                app_state.graph_service_addr.do_send(AddEdge { edge });
+            }
+        }
+    }
+
+    info!(
+        "Injected {} mock agents with knowledge edges into graph",
+        results.len()
+    );
+
+    ok_json!(json!({
+        "success": true,
+        "injected": results.len(),
+        "agents": results.iter().map(|r| json!({
+            "id": r.id,
+            "node_id": r.node_id,
+            "edges_to_knowledge": r.edges_to,
+        })).collect::<Vec<_>>(),
+    }))
+}
+
 pub fn configure_routes(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/visualization")
@@ -332,6 +513,11 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
                 "/swarm/initialize",
                 web::post().to(initialize_swarm_visualization),
             ),
+    );
+    // Mock agent injection — outside /visualization scope, under /api/bots
+    cfg.route(
+        "/api/bots/mock-agents",
+        web::post().to(inject_mock_agents),
     );
 }
 

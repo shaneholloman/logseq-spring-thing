@@ -34,6 +34,7 @@ function validateCommand(cmd: string): { valid: boolean; message: string } {
     'semantic', 'overwhelm', 'clutter', 'fewer', 'bigger', 'read', 'only',
     'focus', 'find', 'search', 'dag', 'radial', 'hierarchy', 'tree',
     'save', 'load', 'view', 'views', 'list', 'delete', 'pod',
+    'inject', 'agents', 'swarm',
   ];
 
   const hasRelevantKeyword = accepted.some(kw => lower.includes(kw));
@@ -423,10 +424,44 @@ function parseCommandToActions(cmd: string): SettingsAction[] {
     });
   }
 
+  // "show agents" / "inject agents" / "show swarm" — inject mock claude-flow agents
+  if ((lower.includes('inject') || lower.includes('show')) && (lower.includes('agent') || lower.includes('swarm'))) {
+    // Don't conflict with visibility-only commands like "show agent nodes"
+    if (!lower.includes('node') && !lower.includes('only')) {
+      actions.push({
+        description: 'Injecting mock claude-flow swarm agents into graph',
+        localAction: async () => {
+          try {
+            const res = await fetch('/api/bots/mock-agents', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                agents: [
+                  { id: 'claude-opus', label: 'Claude Opus 4.6', type: 'coordinator', status: 'active' },
+                  { id: 'coder-1', label: 'Coder Agent', type: 'coder', status: 'active' },
+                  { id: 'reviewer-1', label: 'QE Reviewer', type: 'reviewer', status: 'thinking' },
+                  { id: 'researcher-1', label: 'Research Agent', type: 'researcher', status: 'active' },
+                  { id: 'memory-1', label: 'RuVector Memory', type: 'memory', status: 'idle' },
+                ],
+              }),
+            });
+            if (!res.ok) throw new Error(`API error: ${res.status}`);
+            const data = await res.json();
+            window.dispatchEvent(new CustomEvent('visionflow:status', {
+              detail: { message: `Injected ${data.injected} agents into graph` },
+            }));
+          } catch (e) {
+            console.error('Failed to inject mock agents:', e);
+          }
+        },
+      });
+    }
+  }
+
   // Fallback
   if (actions.length === 0) {
     actions.push({
-      description: 'Try: "save view AI Research", "load view default", "list views", "create semantic clusters", "layout DAG radial"',
+      description: 'Try: "save view AI Research", "load view default", "list views", "create semantic clusters", "inject agents"',
       localAction: () => {},
     });
   }

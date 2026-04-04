@@ -268,13 +268,98 @@ impl Handler<crate::actors::messages::InitializeActor> for AgentMonitorActor {
     }
 }
 
+/// Build the default mock swarm agents for dev mode (MOCK_AGENTS=true).
+fn build_mock_swarm_agents() -> Vec<AgentStatus> {
+    use crate::utils::time;
+
+    let mock_defs: Vec<(&str, &str, &str, &str, &str)> = vec![
+        ("mock-coordinator", "Claude Opus 4.6 (Coordinator)", "coordinator", "active", "Orchestrating swarm topology and task routing"),
+        ("mock-coder-1", "Coder Agent", "coder", "active", "Implementing feature branch with TDD"),
+        ("mock-reviewer-1", "QE Reviewer", "reviewer", "active", "Reviewing PR #42 for security and correctness"),
+        ("mock-researcher-1", "Research Agent", "researcher", "active", "Searching RuVector memory for related patterns"),
+        ("mock-memory-1", "RuVector Memory Specialist", "memory", "idle", "Indexing 384-dim embeddings into HNSW graph"),
+    ];
+
+    mock_defs
+        .into_iter()
+        .map(|(id, name, agent_type, status, task)| {
+            let agent_type_enum = match agent_type {
+                "coordinator" => AgentType::Coordinator,
+                "coder" => AgentType::Coder,
+                "reviewer" => AgentType::Analyst,
+                "researcher" => AgentType::Researcher,
+                _ => AgentType::Generic,
+            };
+            let now = time::now();
+            AgentStatus {
+                agent_id: id.to_string(),
+                profile: AgentProfile {
+                    name: name.to_string(),
+                    agent_type: agent_type_enum,
+                    capabilities: vec![agent_type.to_string()],
+                    description: Some(task.to_string()),
+                    version: "1.0.0".to_string(),
+                    tags: vec![agent_type.to_string(), "mock".to_string()],
+                },
+                status: status.to_string(),
+                active_tasks_count: if status == "idle" { 0 } else { 1 },
+                completed_tasks_count: 0,
+                failed_tasks_count: 0,
+                success_rate: 100.0,
+                timestamp: now,
+                current_task: None,
+                agent_type: agent_type.to_string(),
+                current_task_description: Some(task.to_string()),
+                capabilities: vec![agent_type.to_string()],
+                position: None,
+                cpu_usage: 12.0,
+                memory_usage: 128.0,
+                health: 1.0,
+                activity: if status == "idle" { 0.2 } else { 0.8 },
+                tasks_active: if status == "idle" { 0 } else { 1 },
+                tasks_completed: 0,
+                success_rate_normalized: 1.0,
+                tokens: 0,
+                token_rate: 0.0,
+                performance_metrics: PerformanceMetrics {
+                    tasks_completed: 0,
+                    success_rate: 100.0,
+                },
+                token_usage: TokenUsage {
+                    total: 0,
+                    token_rate: 0.0,
+                },
+                swarm_id: Some("mock-swarm-001".to_string()),
+                agent_mode: Some("mock".to_string()),
+                parent_queen_id: None,
+                processing_logs: None,
+                created_at: now.to_rfc3339(),
+                age: 0,
+                workload: Some(if status == "idle" { 0.2 } else { 0.7 }),
+            }
+        })
+        .collect()
+}
+
 impl Handler<ProcessAgentStatuses> for AgentMonitorActor {
     type Result = ();
 
     fn handle(&mut self, msg: ProcessAgentStatuses, _ctx: &mut Self::Context) {
+        // If management API returned 0 agents and MOCK_AGENTS is enabled, inject mock swarm
+        let agents = if msg.agents.is_empty()
+            && std::env::var("MOCK_AGENTS")
+                .map(|v| v == "true" || v == "1")
+                .unwrap_or(false)
+        {
+            info!("[AgentMonitorActor] No real agents found, MOCK_AGENTS=true — injecting mock swarm");
+            build_mock_swarm_agents()
+        } else {
+            msg.agents
+        };
+
         info!(
             "[AgentMonitorActor] Processing {} agent statuses (cpu={:.1}%, mem={:.0}MB)",
-            msg.agents.len(),
+            agents.len(),
             msg.telemetry.cpu_usage,
             msg.telemetry.memory_usage_mb
         );
@@ -282,9 +367,8 @@ impl Handler<ProcessAgentStatuses> for AgentMonitorActor {
         // Cache latest container telemetry
         self.container_telemetry = msg.telemetry;
 
-        let agent_count = msg.agents.len() as f32;
-        let agents: Vec<crate::services::bots_client::Agent> = msg
-            .agents
+        let agent_count = agents.len() as f32;
+        let agents_list: Vec<crate::services::bots_client::Agent> = agents
             .iter()
             .enumerate()
             .map(|(i, status)| {
@@ -315,16 +399,16 @@ impl Handler<ProcessAgentStatuses> for AgentMonitorActor {
             })
             .collect();
 
-        let message = UpdateBotsGraph { agents };
+        let message = UpdateBotsGraph { agents: agents_list };
         info!(
             "[AgentMonitorActor] Sending graph update with {} agents",
-            msg.agents.len()
+            agents.len()
         );
         self.graph_service_addr.do_send(message);
 
-        if !msg.agents.is_empty() {
+        if !agents.is_empty() {
             self.agent_cache.clear();
-            for agent in msg.agents {
+            for agent in agents {
                 self.agent_cache.insert(agent.agent_id.clone(), agent);
             }
         }
