@@ -37,7 +37,7 @@ LABEL org.opencontainers.image.description="Unified Ruflo V4 Development Environ
 LABEL org.opencontainers.image.version="4.0.0"
 LABEL org.opencontainers.image.created="2026-03-12"
 LABEL org.opencontainers.image.vendor="Turbo Flow"
-LABEL com.turboflow.skills.count="86"
+LABEL com.turboflow.skills.count="87"
 LABEL com.turboflow.ruflo.version="3.5"
 
 # ============================================================================
@@ -475,6 +475,9 @@ RUN pip3 install --no-cache-dir --break-system-packages linkedin-scraper-mcp 2>/
 
 # Scrapling (adaptive web scraping with MCP server, anti-bot bypass)
 RUN pip3 install --no-cache-dir --break-system-packages "scrapling[ai]" 2>/dev/null || echo "Scrapling optional"
+
+# Unreal Engine 5 automation (soft-ue-cli MCP server + CLI)
+RUN pip3 install --no-cache-dir --break-system-packages "soft-ue-cli[mcp]" 2>/dev/null || echo "UE5 CLI optional"
 
 # EchoLoop meeting copilot (real-time transcription + LLM coaching)
 RUN pip3 install --no-cache-dir --break-system-packages \

@@ -105,6 +105,7 @@ Examples:
 | AI image/video generation (SD, FLUX) | `comfyui` |
 | 3D modelling and rendering | `blender` |
 | Game development (Godot/Unity/Unreal) | `game-dev` |
+| "Unreal Engine", "UE5", "spawn actor", "blueprint", "PIE session" | `unreal-engine` (60+ MCP tools for direct editor control) |
 | 3D Gaussian Splatting | `lichtfeld-studio` |
 | Blog headers, infographics, editorial art, comics | `art` (Nano Banana 2) |
 | Real-world geography → Minecraft worlds | `terracraft` |

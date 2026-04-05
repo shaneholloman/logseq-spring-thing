@@ -168,6 +168,18 @@
       "protocol": "stdio",
       "version": "1.0.0"
     },
+    "unreal-engine": {
+      "command": "soft-ue-cli",
+      "args": ["mcp-serve"],
+      "type": "stdio",
+      "env": {
+        "SOFT_UE_HOST": "127.0.0.1",
+        "SOFT_UE_PORT": "8080"
+      },
+      "description": "Unreal Engine 5 automation: 60+ tools for actors, Blueprints, materials, PIE, rendering, profiling",
+      "protocol": "stdio",
+      "version": "1.0.0"
+    },
     "clipcannon": {
       "command": "clipcannon",
       "args": ["serve"],

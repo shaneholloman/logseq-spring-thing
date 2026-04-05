@@ -1,6 +1,6 @@
 # Skill Directory -- Comprehensive Inventory and Decision Tree
 
-> **86 active skills**. 15 formerly deprecated/archived skills removed (see table below for history).
+> **87 active skills**. 15 formerly deprecated/archived skills removed (see table below for history).
 > Updated 2026-04-01. Reference this file from CLAUDE.md for intelligent routing.
 
 ---
@@ -187,6 +187,7 @@ Testing is integrated into `build-with-quality` (TDD agents) and `sparc-methodol
 | Skill | MCP | Key Capability | When to Choose |
 |-------|-----|----------------|----------------|
 | `game-dev` | No | 48 agents, 38 commands across Godot/Unity/Unreal, design/programming/art/audio/QA | Full game development projects across any major engine |
+| `unreal-engine` | Yes | UE5 automation: 60+ MCP tools for actors, Blueprints, materials, PIE, profiling, assets, StateTrees | Direct UE5 editor control, Blueprint automation, PIE sessions, asset management |
 | `terracraft` | No | OSM + elevation + arnis pipeline: real-world locations to Minecraft Java worlds. QGIS/Blender/GDAL integration | Generating Minecraft worlds from real geography, geospatial-to-game conversion |
 | `blender` | No | 3D modelling, scene creation, rendering, material PBR, import/export via socket | Programmatic 3D modelling, automated Blender workflows |
 | `lichtfeld-studio` | Yes | 3D Gaussian Splatting training, visualisation, editing, export (70+ MCP tools), SplatReady COLMAP | 3DGS scene capture, splat editing, radiance field workflows |
@@ -417,6 +418,9 @@ Q3: What media type?
     |
     +-- Game assets and full game dev pipeline
     |   --> game-dev
+    |
+    +-- UE5 editor automation (actors, Blueprints, PIE, profiling)
+    |   --> unreal-engine (60+ MCP tools)
     |
     +-- 3D Gaussian Splatting (training, editing, export)
     |   --> lichtfeld-studio
