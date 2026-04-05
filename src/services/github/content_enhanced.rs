@@ -95,6 +95,15 @@ impl EnhancedContentAPI {
                 continue;
             }
 
+            // Skip Logseq backup directories and non-content paths
+            if entry_path.contains("/bak/")
+                || entry_path.contains("/logseq/")
+                || entry_path.contains("/.recycle/")
+                || entry_path.contains("/journals/")
+            {
+                continue;
+            }
+
             let sha = entry["sha"].as_str().unwrap_or("").to_string();
             let size = entry["size"].as_u64().unwrap_or(0);
 
@@ -198,6 +207,14 @@ impl EnhancedContentAPI {
                 });
             } else if file_type == "dir" {
                 let dir_path = file["path"].as_str().unwrap_or("");
+
+                // Skip Logseq backup, recycle, and journal directories
+                if dir_path.contains("/bak") || dir_path.contains("/logseq/")
+                    || dir_path.contains("/.recycle") || dir_path.contains("/journals") {
+                    debug!("list_markdown_files: Skipping excluded directory: {}", dir_path);
+                    continue;
+                }
+
                 debug!("list_markdown_files: Recursively processing directory: {}", dir_path);
 
                 match self.list_markdown_files(dir_path).await {
