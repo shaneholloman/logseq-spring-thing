@@ -1,0 +1,77 @@
+flowchart TB
+    subgraph Client["Client (Browser)"]
+        ZS[Zustand Settings Store]
+        WS[WebSocket Connection]
+    end
+
+    subgraph REST["REST API /api/settings/*"]
+        EP_PHY["PUT /physics"]
+        EP_REN["PUT /rendering"]
+        EP_CON["PUT /constraints"]
+        EP_VIS["PUT /visual"]
+        EP_NF["PUT /node-filter"]
+        EP_QG["PUT /quality-gates"]
+        EP_ALL["GET /all"]
+        EP_PROF["POST/GET /profiles"]
+    end
+
+    subgraph Actors["Actor System"]
+        OSA["OptimizedSettingsActor<br/>(Single Source of Truth)<br/>LRU cache + compression"]
+        GSS["GraphServiceSupervisor"]
+        POA["PhysicsOrchestratorActor"]
+        FCA["ForceComputeActor<br/>(GPU/CUDA)"]
+        GMA["GPUManagerActor<br/>(fallback router)"]
+        GSA["GraphStateActor"]
+        CCA["ClientCoordinatorActor"]
+    end
+
+    subgraph Persistence["Persistence Layer"]
+        N4J["Neo4j Settings Repository<br/>(cross-restart survival)"]
+        MEM["In-Memory AppFullSettings<br/>(Arc RwLock)"]
+    end
+
+    %% Client to REST
+    ZS -->|"HTTP PUT JSON"| EP_PHY
+    ZS -->|"HTTP PUT JSON"| EP_REN
+    ZS -->|"HTTP PUT JSON"| EP_CON
+    ZS -->|"HTTP PUT JSON"| EP_VIS
+    ZS -->|"HTTP PUT JSON"| EP_NF
+    ZS -->|"HTTP PUT JSON"| EP_QG
+    ZS -->|"HTTP GET"| EP_ALL
+
+    %% REST to Settings Actor
+    EP_PHY -->|"GetSettings + UpdateSettings"| OSA
+    EP_REN -->|"GetSettings + UpdateSettings"| OSA
+    EP_CON -->|"GetSettings + UpdateSettings"| OSA
+    EP_VIS -->|"GetSettings + UpdateSettings"| OSA
+    EP_NF -->|"GetSettings + UpdateSettings"| OSA
+    EP_QG -->|"GetSettings + UpdateSettings"| OSA
+
+    %% Settings Actor to storage
+    OSA -->|"Arc RwLock write"| MEM
+    EP_PHY -->|"set_setting async"| N4J
+    EP_CON -->|"set_setting async"| N4J
+    EP_NF -->|"set_setting async"| N4J
+
+    %% Physics propagation (dual path)
+    EP_PHY -->|"UpdateSimulationParams<br/>(direct via AppState)"| FCA
+    EP_PHY -.->|"UpdateSimulationParams<br/>(fallback if no direct addr)"| GMA
+    GMA -.->|"Forward"| FCA
+    EP_PHY -->|"UpdateSimulationParams"| GSS
+    GSS -->|"Forward"| POA
+    POA -->|"do_send (guaranteed)"| FCA
+
+    %% GPU pipeline
+    FCA -->|"PhysicsStepCompleted"| POA
+    POA -->|"UpdateNodePositions"| GSS
+    GSS -->|"BroadcastPositions"| CCA
+
+    %% WebSocket to client
+    CCA -->|"Binary position data"| WS
+    WS -->|"Update Three.js scene"| ZS
+
+    %% Settings broadcast to clients
+    CCA -->|"BroadcastMessage<br/>(settings-changed JSON)"| WS
+
+    %% Profiles
+    EP_PROF -->|"save/load/list/delete"| N4J

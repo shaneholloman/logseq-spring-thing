@@ -1,0 +1,47 @@
+sequenceDiagram
+    participant UI as Settings UI
+    participant REST as REST PUT /api/settings/physics
+    participant OSA as OptimizedSettingsActor
+    participant Neo4j as Neo4j Persistence
+    participant FCA as ForceComputeActor (GPU)
+    participant GSS as GraphServiceSupervisor
+    participant POA as PhysicsOrchestratorActor
+    participant GSA as GraphStateActor
+    participant CCA as ClientCoordinatorActor
+
+    UI->>REST: PUT physics JSON patch
+    REST->>OSA: GetSettings
+    OSA-->>REST: AppFullSettings snapshot
+    REST->>REST: Merge patch, validate
+    REST->>OSA: UpdateSettings{merged}
+    OSA-->>REST: Ok
+
+    Note over REST: Propagate to GPU actors
+
+    REST->>FCA: UpdateSimulationParams (direct via AppState)
+    FCA->>FCA: Update sim_params, reset warmup
+
+    REST->>GSS: UpdateSimulationParams
+    GSS->>POA: Forward UpdateSimulationParams
+    POA->>POA: Update target_params + simulation_params
+    POA->>POA: Reset fast-settle state if changed
+    POA->>FCA: do_send(UpdateSimulationParams) (redundant fallback)
+
+    REST-->>Neo4j: Persist physics JSON (async)
+
+    Note over POA,GSA: BROKEN PATH: Physics stays paused
+    rect rgb(255, 220, 220)
+        Note over POA: If physics was paused from equilibrium,<br/>is_physics_paused = false (line 1354)
+        Note over POA: BUT: schedule_next_pipeline_step<br/>only fires if simulation_running == true<br/>AND gpu_initialized == true
+        Note over POA: If simulation was stopped by<br/>equilibrium auto-pause, simulation_running<br/>may be false -- pipeline never restarts
+    end
+
+    rect rgb(255, 200, 200)
+        Note over GSA: GraphStateActor PhysicsState<br/>is NEVER updated -- no message sent
+        Note over CCA: No ForcePositionBroadcast sent<br/>Clients see stale positions
+    end
+
+    rect rgb(255, 200, 200)
+        Note over REST: NO ForceResumePhysics sent<br/>from settings route to POA
+        Note over POA: Orchestrator relies on internal<br/>unpause logic which may not trigger<br/>if simulation_running is already false
+    end

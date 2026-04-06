@@ -47,7 +47,7 @@ impl AutoPauseConfig {
             equilibrium_velocity_threshold: 0.1,
             equilibrium_check_frames: 30,
             equilibrium_energy_threshold: 0.01,
-            pause_on_equilibrium: true,
+            pause_on_equilibrium: false,
             resume_on_interaction: true,
         }
     }

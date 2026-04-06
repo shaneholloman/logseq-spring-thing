@@ -9,7 +9,7 @@ use log::{debug, error, info, warn};
 use std::sync::Arc;
 
 use crate::config::{PhysicsSettings, RenderingSettings};
-use crate::actors::messages::{BroadcastMessage, GetSettings, SetComputeMode, UpdateConstraints, UpdateSettings, UpdateSimulationParams};
+use crate::actors::messages::{BroadcastMessage, ForceResumePhysics, GetSettings, SetComputeMode, UpdateConstraints, UpdateSettings, UpdateSimulationParams};
 use crate::utils::unified_gpu_compute::ComputeMode;
 use crate::settings::models::{ConstraintSettings, NodeFilterSettings, QualityGateSettings, AllSettings};
 use crate::settings::auth_extractor::{AuthenticatedUser, OptionalAuth};
@@ -353,6 +353,17 @@ pub async fn update_physics_settings(
                 error!("Failed to propagate physics to GraphServiceActor: {}", e);
             } else {
                 info!("UpdateSimulationParams sent to GraphServiceSupervisor successfully");
+            }
+
+            // Force-resume physics so the new parameters actually take effect.
+            // Without this, a converged system stays paused and param changes are invisible.
+            info!("Sending ForceResumePhysics to GraphServiceSupervisor");
+            if let Err(e) = state.graph_service_addr.send(
+                ForceResumePhysics { reason: "Physics settings updated via API".to_string() }
+            ).await {
+                warn!("Failed to send ForceResumePhysics: {}", e);
+            } else {
+                info!("ForceResumePhysics sent to GraphServiceSupervisor successfully");
             }
 
             // Persist physics settings to Neo4j for cross-restart survival

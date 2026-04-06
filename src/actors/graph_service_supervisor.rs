@@ -1237,6 +1237,36 @@ impl Handler<msgs::UpdateSimulationParams> for GraphServiceSupervisor {
     }
 }
 
+impl Handler<msgs::ForceResumePhysics> for GraphServiceSupervisor {
+    type Result = ResponseActFuture<Self, Result<(), VisionFlowError>>;
+
+    fn handle(
+        &mut self,
+        msg: msgs::ForceResumePhysics,
+        _ctx: &mut Self::Context,
+    ) -> Self::Result {
+        if let Some(ref physics_addr) = self.physics {
+            let addr = physics_addr.clone();
+            Box::pin(
+                async move {
+                    addr.send(msg).await.unwrap_or_else(|e| {
+                        error!("Failed to forward ForceResumePhysics to PhysicsOrchestratorActor: {}", e);
+                        Err(VisionFlowError::Actor(ActorError::ActorNotAvailable(
+                            format!("ForceResumePhysics forwarding failed: {}", e),
+                        )))
+                    })
+                }
+                .into_actor(self),
+            )
+        } else {
+            warn!("ForceResumePhysics: PhysicsOrchestratorActor not initialized");
+            Box::pin(actix::fut::ready(Err(VisionFlowError::Actor(ActorError::ActorNotAvailable(
+                "Physics".to_string(),
+            )))))
+        }
+    }
+}
+
 impl Handler<msgs::InitializeGPUConnection> for GraphServiceSupervisor {
     type Result = ();
 

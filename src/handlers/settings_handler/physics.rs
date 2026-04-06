@@ -1,6 +1,6 @@
 // Physics-related handlers and GPU propagation logic
 
-use crate::actors::messages::{GetSettings, UpdateSettings, UpdateSimulationParams};
+use crate::actors::messages::{ForceResumePhysics, GetSettings, UpdateSettings, UpdateSimulationParams};
 use crate::app_state::AppState;
 use crate::config::AppFullSettings;
 use actix_web::{web, Error, HttpRequest, HttpResponse};
@@ -148,6 +148,17 @@ pub async fn propagate_physics_to_gpu_with_layout(
         error!("[PHYSICS UPDATE] FAILED to update GraphServiceActor: {}", e);
     } else {
         info!("[PHYSICS UPDATE] GraphServiceActor updated successfully");
+    }
+
+    // Force-resume physics so updated parameters take effect even if simulation
+    // auto-paused at equilibrium.
+    info!("[PHYSICS UPDATE] Sending ForceResumePhysics...");
+    if let Err(e) = state.graph_service_addr.send(
+        ForceResumePhysics { reason: format!("Physics propagated for graph '{}'", graph) }
+    ).await {
+        warn!("[PHYSICS UPDATE] Failed to send ForceResumePhysics: {}", e);
+    } else {
+        info!("[PHYSICS UPDATE] ForceResumePhysics sent successfully");
     }
 }
 

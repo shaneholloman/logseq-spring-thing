@@ -1,0 +1,98 @@
+flowchart TB
+    subgraph Independent["Independent Actors"]
+        OSA["OptimizedSettingsActor<br/>Settings SSOT, LRU cache,<br/>path queries, compression"]
+        SA["SettingsActor<br/>(legacy, per-domain)"]
+        GMA["GPUManagerActor<br/>Lightweight coordinator"]
+    end
+
+    subgraph GPUSubsystems["GPUManagerActor Subsystem Supervisors"]
+        RS["ResourceSupervisor<br/>GPU init + timeout"]
+        PS["PhysicsSupervisor<br/>Forces, stress, constraints"]
+        AS["AnalyticsSupervisor<br/>Clustering, anomaly, PageRank"]
+        GAS["GraphAnalyticsSupervisor<br/>Shortest path, components"]
+    end
+
+    subgraph MainSupervisor["GraphServiceSupervisor (Top-Level)"]
+        GSS["GraphServiceSupervisor<br/>Routes messages by type<br/>OneForOne restart policy"]
+    end
+
+    subgraph Children["Supervised Child Actors"]
+        GSA["GraphStateActor<br/>Graph data, node map,<br/>node type sets, metadata,<br/>hex-arch repository port"]
+        POA["PhysicsOrchestratorActor<br/>Simulation lifecycle,<br/>sequential pipeline,<br/>equilibrium detection,<br/>fast-settle, auto-balance"]
+        SPA["SemanticProcessorActor<br/>Semantic analysis,<br/>AI features"]
+        CCA["ClientCoordinatorActor<br/>WebSocket management,<br/>position broadcasting,<br/>client filters, auth"]
+    end
+
+    subgraph GPUCompute["GPU Compute Layer"]
+        FCA["ForceComputeActor<br/>CUDA force kernel,<br/>broadcast optimizer,<br/>backpressure, delta compression"]
+        OCA["OntologyConstraintActor<br/>Constraint buffer generation"]
+        SFA["SemanticForcesActor<br/>DAG layout, type clustering,<br/>collision detection"]
+        SMA["StressMajorizationActor<br/>Stress-based layout"]
+    end
+
+    subgraph Analytics["GPU Analytics Actors"]
+        PRA["PageRankActor"]
+        CA["ClusteringActor"]
+        ADA["AnomalyDetectionActor"]
+        CCA2["ConnectedComponentsActor"]
+        SSSP["ShortestPathActor"]
+    end
+
+    subgraph Other["Other Actors"]
+        AMO["AgentMonitorActor<br/>MCP agent polling"]
+        OA["OntologyActor<br/>OWL axiom processing"]
+        TOA["TaskOrchestratorActor"]
+        WA["WorkspaceActor"]
+        MA["MetadataActor"]
+    end
+
+    %% Supervisor -> Children
+    GSS --> GSA
+    GSS --> POA
+    GSS --> SPA
+    GSS --> CCA
+
+    %% Physics orchestrator -> GPU compute
+    POA -->|"ComputeForces<br/>InitializeGPU<br/>UpdateSimulationParams"| FCA
+    FCA -->|"PhysicsStepCompleted"| POA
+
+    %% GPU Manager -> Subsystem Supervisors
+    GMA --> RS
+    GMA --> PS
+    GMA --> AS
+    GMA --> GAS
+
+    %% Physics supervisor -> compute actors
+    PS --> FCA
+    PS --> SMA
+    PS --> OCA
+    PS --> SFA
+
+    %% Analytics supervisor -> analytics actors
+    AS --> PRA
+    AS --> CA
+    AS --> ADA
+    GAS --> CCA2
+    GAS --> SSSP
+
+    %% Cross-actor communication
+    POA -.->|"UpdateNodePositions"| GSS
+    GSS -.->|"BroadcastPositions"| CCA
+    FCA -.->|"Constraint upload"| OCA
+    OSA -.->|"Settings read by<br/>REST handlers"| GSS
+
+    %% Styling
+    classDef supervisor fill:#4a90d9,color:white,stroke:#2c5ea0
+    classDef gpu fill:#e67e22,color:white,stroke:#c0651c
+    classDef state fill:#27ae60,color:white,stroke:#1e8449
+    classDef analytics fill:#8e44ad,color:white,stroke:#6c3483
+    classDef settings fill:#f39c12,color:white,stroke:#c87f0a
+    classDef other fill:#95a5a6,color:white,stroke:#7f8c8d
+
+    class GSS,GMA supervisor
+    class FCA,OCA,SFA,SMA gpu
+    class GSA,POA,CCA state
+    class PRA,CA,ADA,CCA2,SSSP analytics
+    class OSA,SA settings
+    class AMO,OA,TOA,WA,MA,SPA other
+    class RS,PS,AS,GAS supervisor
