@@ -19,6 +19,8 @@ use crate::gpu::broadcast_optimizer::{BroadcastConfig, BroadcastOptimizer};
 use crate::gpu::backpressure::{BackpressureConfig, NetworkBackpressure};
 use glam::Vec3;
 
+use cudarc::driver::CudaDevice;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PhysicsStats {
     pub iteration_count: u32,
@@ -127,6 +129,10 @@ pub struct ForceComputeActor {
     /// step, enabling the orchestrator to drive the next step instead of using
     /// an independent timer.
     physics_orchestrator_addr: Option<Addr<crate::actors::physics_orchestrator_actor::PhysicsOrchestratorActor>>,
+
+    /// Whether we have already attempted to self-initialize the GPU context.
+    /// Prevents repeated CUDA init attempts on every message if the first one fails.
+    gpu_self_init_attempted: bool,
 }
 
 impl ForceComputeActor {
@@ -192,7 +198,119 @@ impl ForceComputeActor {
             gpu_index_to_node_id: Vec::new(),
             pending_graph_data: None,
             physics_orchestrator_addr: None,
+            gpu_self_init_attempted: false,
         }
+    }
+
+    /// Self-initialize the GPU context by creating a CUDA device, loading PTX modules,
+    /// and building a SharedGPUContext directly. This eliminates the dependency on the
+    /// supervisor chain (GPUResourceActor -> GPUManagerActor -> ResourceSupervisor ->
+    /// PhysicsSupervisor -> ForceComputeActor) which is prone to race conditions
+    /// and message delivery failures.
+    ///
+    /// If a SharedGPUContext was already set (e.g., via SetSharedGPUContext from the
+    /// supervisor chain), this method is a no-op.
+    fn initialize_own_gpu_context(&mut self) {
+        if self.shared_context.is_some() {
+            trace!("ForceComputeActor: GPU context already present, skipping self-init");
+            return;
+        }
+        if self.gpu_self_init_attempted {
+            trace!("ForceComputeActor: GPU self-init already attempted, skipping");
+            return;
+        }
+        self.gpu_self_init_attempted = true;
+
+        info!("ForceComputeActor: Self-initializing GPU context (bypassing supervisor chain)");
+
+        // 1. Create UnifiedGPUCompute engine FIRST — it initializes the cust CUDA context
+        //    internally. Creating CudaDevice before this causes a dual-context conflict
+        //    where Module::from_ptx() fails with "unknown error".
+        let ptx_content = match crate::utils::ptx::load_ptx_module_sync(
+            crate::utils::ptx::PTXModule::VisionflowUnified,
+        ) {
+            Ok(c) => c,
+            Err(e) => {
+                error!("ForceComputeActor: Failed to load main PTX: {}", e);
+                return;
+            }
+        };
+
+        let clustering_ptx = match crate::utils::ptx::load_ptx_module_sync(
+            crate::utils::ptx::PTXModule::GpuClusteringKernels,
+        ) {
+            Ok(c) => Some(c),
+            Err(e) => {
+                warn!("ForceComputeActor: Clustering PTX not available: {}", e);
+                None
+            }
+        };
+
+        let apsp_ptx = match crate::utils::ptx::load_ptx_module_sync(
+            crate::utils::ptx::PTXModule::GpuLandmarkApsp,
+        ) {
+            Ok(c) => Some(c),
+            Err(e) => {
+                warn!("ForceComputeActor: APSP PTX not available: {}", e);
+                None
+            }
+        };
+
+        let unified_compute = match crate::utils::unified_gpu_compute::UnifiedGPUCompute::new_with_modules(
+            1000,
+            1000,
+            &ptx_content,
+            clustering_ptx.as_deref(),
+            apsp_ptx.as_deref(),
+        ) {
+            Ok(c) => {
+                info!("ForceComputeActor: UnifiedGPUCompute engine created successfully");
+                c
+            }
+            Err(e) => {
+                error!("ForceComputeActor: Failed to create UnifiedGPUCompute: {}", e);
+                return;
+            }
+        };
+
+        // 2. Now create CudaDevice — attaches to the already-active primary context
+        let device = match CudaDevice::new(0) {
+            Ok(d) => {
+                info!("ForceComputeActor: CUDA device 0 initialized");
+                d
+            }
+            Err(e) => {
+                error!("ForceComputeActor: Failed to create CUDA device: {}. GPU physics will not work.", e);
+                return;
+            }
+        };
+
+        // 3. Create CUDA stream from the device
+        let cuda_stream = match device.fork_default_stream() {
+            Ok(s) => s,
+            Err(e) => {
+                error!("ForceComputeActor: Failed to create CUDA stream: {}", e);
+                return;
+            }
+        };
+
+        // 4. Build SharedGPUContext
+        let safe_stream = super::cuda_stream_wrapper::SafeCudaStream::new(cuda_stream);
+        let shared_context = Arc::new(SharedGPUContext {
+            device: device.clone(),
+            stream: Arc::new(std::sync::Mutex::new(safe_stream)),
+            unified_compute: Arc::new(std::sync::Mutex::new(unified_compute)),
+            gpu_access_lock: Arc::new(tokio::sync::RwLock::new(())),
+            resource_metrics: Arc::new(std::sync::Mutex::new(
+                super::shared::GPUResourceMetrics::default(),
+            )),
+            operation_batch: Arc::new(std::sync::Mutex::new(Vec::new())),
+            batch_timeout: std::time::Duration::from_millis(10),
+        });
+
+        self.shared_context = Some(shared_context);
+        self.gpu_state.is_initialized = true;
+        info!("ForceComputeActor: GPU context self-initialized successfully — GPU physics enabled");
     }
 
     /// Upload pending graph data to the GPU compute engine.
@@ -278,7 +396,7 @@ impl ForceComputeActor {
                 // can download it.  With compact IDs (node.id == sequential 0..N-1),
                 // this is an identity mapping, but initialize_graph's resize_buffers
                 // zeroes the buffer so we must re-upload it explicitly.
-                info!("ForceComputeActor: [DIAG] About to upload node_graph_id ({} entries, buffer len {})",
+                debug!("ForceComputeActor: [DIAG] About to upload node_graph_id ({} entries, buffer len {})",
                       self.gpu_index_to_node_id.len(), compute.node_graph_id.len());
                 let mut node_graph_ids: Vec<i32> = self.gpu_index_to_node_id
                     .iter()
@@ -296,7 +414,7 @@ impl ForceComputeActor {
                         info!("ForceComputeActor: Uploaded node_graph_id mapping ({} entries)", node_graph_ids.len());
                     }
                 }
-                info!("ForceComputeActor: [DIAG] node_graph_id done, about to upload class metadata");
+                debug!("ForceComputeActor: [DIAG] node_graph_id done, about to upload class metadata");
 
                 // Upload domain-based class_id and class_charge for domain clustering.
                 if let Some(ref graph_data) = self.pending_graph_data {
@@ -328,7 +446,7 @@ impl ForceComputeActor {
                     }
                 }
 
-                info!("ForceComputeActor: [DIAG] class metadata done, about to update gpu_state");
+                debug!("ForceComputeActor: [DIAG] class metadata done, about to update gpu_state");
                 let was_uninitialized = self.gpu_state.num_nodes == 0;
                 self.gpu_state.num_nodes = num_nodes as u32;
                 self.gpu_state.num_edges = edge_count;
@@ -675,11 +793,19 @@ impl Actor for ForceComputeActor {
     type Context = Context<Self>;
 
     fn started(&mut self, _ctx: &mut Self::Context) {
-        info!("Force Compute Actor started");
+        info!("ForceComputeActor: Started — initializing GPU context");
+
+        // Self-initialize the GPU context immediately on startup.
+        // This is the primary init path. The supervisor chain (GPUResourceActor ->
+        // GPUManagerActor -> ResourceSupervisor -> PhysicsSupervisor -> here) is a
+        // secondary path that can also set the context via SetSharedGPUContext.
+        // If the supervisor chain delivers a context later, it will be accepted and
+        // the self-created context will be replaced (see SetSharedGPUContext handler).
+        self.initialize_own_gpu_context();
     }
 
     fn stopped(&mut self, _ctx: &mut Self::Context) {
-        info!("Force Compute Actor stopped");
+        info!("ForceComputeActor: Stopped");
     }
 }
 
@@ -726,13 +852,20 @@ impl Handler<ComputeForces> for ForceComputeActor {
             return Box::pin(futures::future::ready(Ok(())).into_actor(self));
         }
 
-        // Check for shared context
+        // Check for shared context; attempt self-init if missing
+        if self.shared_context.is_none() {
+            self.initialize_own_gpu_context();
+        }
         let shared_context = match &self.shared_context {
             Some(ctx) => ctx.clone(),
             None => {
-                let error_msg = "GPU context not initialized".to_string();
+                // GPU init failed — this is a hard error, not transient
+                if self.skipped_frames % 300 == 0 {
+                    error!("ForceComputeActor: GPU context unavailable after init attempt (frame {})", self.skipped_frames);
+                }
+                self.skipped_frames += 1;
                 notify_skip!(self);
-                return Box::pin(futures::future::ready(Err(error_msg)).into_actor(self));
+                return Box::pin(futures::future::ready(Err("GPU context not initialized".to_string())).into_actor(self));
             }
         };
 
@@ -1538,8 +1671,13 @@ impl Handler<InitializeGPU> for ForceComputeActor {
             info!("ForceComputeActor: PhysicsOrchestratorActor address stored for sequential pipeline");
         }
 
-        // Store graph data for GPU upload (upload happens when shared_context is available)
+        // Store graph data for GPU upload
         self.pending_graph_data = Some(msg.graph);
+
+        // Ensure GPU context is available before attempting upload
+        if self.shared_context.is_none() {
+            self.initialize_own_gpu_context();
+        }
         self.try_upload_pending_graph_data();
 
         // Send GPUInitialized confirmation ONLY if graph data was successfully uploaded
@@ -1580,6 +1718,9 @@ impl Handler<UpdateGPUGraphData> for ForceComputeActor {
 
         // Store graph data and attempt upload (num_nodes set only after successful upload)
         self.pending_graph_data = Some(msg.graph);
+        if self.shared_context.is_none() {
+            self.initialize_own_gpu_context();
+        }
         self.try_upload_pending_graph_data();
 
         // H4: Send acknowledgment
@@ -1784,23 +1925,29 @@ impl Handler<SetSharedGPUContext> for ForceComputeActor {
     type Result = Result<(), String>;
 
     fn handle(&mut self, msg: SetSharedGPUContext, _ctx: &mut Self::Context) -> Self::Result {
-        info!("ForceComputeActor: Received SharedGPUContext from ResourceActor");
+        let had_context = self.shared_context.is_some();
+        if had_context {
+            info!("ForceComputeActor: Received SharedGPUContext from supervisor chain (replacing self-initialized context)");
+        } else {
+            info!("ForceComputeActor: Received SharedGPUContext from supervisor chain");
+        }
 
-
+        // Accept the externally-provided context. This replaces any self-created
+        // context and ensures all GPU actors share the same CUDA device/stream,
+        // which is important for clustering and analytics actors that also need
+        // the same SharedGPUContext.
         self.shared_context = Some(msg.context);
-
 
         if let Some(addr) = msg.graph_service_addr {
             self.graph_service_addr = Some(addr);
-            info!("ForceComputeActor: GraphServiceActor address stored - position updates will be sent to clients!");
-        } else {
-            warn!("ForceComputeActor: No GraphServiceActor address provided - positions won't be sent to clients");
+            info!("ForceComputeActor: GraphServiceActor address stored for position broadcasts");
+        } else if self.graph_service_addr.is_none() {
+            debug!("ForceComputeActor: No GraphServiceActor address provided with context");
         }
-
 
         self.gpu_state.is_initialized = true;
 
-        info!("ForceComputeActor: SharedGPUContext stored successfully - GPU physics enabled!");
+        info!("ForceComputeActor: SharedGPUContext stored successfully — GPU physics enabled");
 
         // If graph data was received before the context, upload it now
         if self.pending_graph_data.is_some() {

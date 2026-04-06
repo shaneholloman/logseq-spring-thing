@@ -51,6 +51,10 @@ pub use semantic_pathfinding_handler::configure_pathfinding_routes;
 pub mod briefing_handler;
 pub use briefing_handler::configure_routes as configure_briefing_routes;
 
+// Memory flash handler (RuVector access → WS broadcast)
+pub mod memory_flash_handler;
+pub use memory_flash_handler::configure_routes as configure_memory_flash_routes;
+
 // High-Performance Networking (QUIC/WebTransport + fastwebsockets)
 pub mod quic_transport_handler;
 pub mod fastwebsockets_handler;

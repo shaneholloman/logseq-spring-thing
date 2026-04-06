@@ -106,13 +106,18 @@ fn main() {
                    file_name, nvcc_output.status.code());
         }
 
-        // Downgrade PTX ISA version 9.1 -> 9.0 for driver compatibility.
-        // CUDA toolkit 13.1 emits .version 9.1 but the driver (13.0) only JITs up to 9.0.
+        // Downgrade PTX ISA version to 9.0 for driver compatibility.
+        // CUDA toolkit 13.x emits .version 9.x but the host driver may only JIT up to 9.0.
+        // This is safe: sm_86 kernels don't use ISA 9.1+ features.
         if let Ok(ptx_text) = std::fs::read_to_string(&ptx_output) {
-            if ptx_text.contains(".version 9.1") {
-                let fixed = ptx_text.replacen(".version 9.1", ".version 9.0", 1);
-                std::fs::write(&ptx_output, fixed).expect("Failed to write downgraded PTX");
-                println!("PTX Build: Downgraded ISA 9.1 -> 9.0 for {}", file_name);
+            // Match any .version 9.N where N > 0
+            if let Some(pos) = ptx_text.find(".version 9.") {
+                let version_str = &ptx_text[pos..pos+13.min(ptx_text.len() - pos)];
+                if version_str != ".version 9.0" {
+                    let fixed = ptx_text[..pos].to_string() + ".version 9.0" + &ptx_text[pos + 12..];
+                    std::fs::write(&ptx_output, fixed).expect("Failed to write downgraded PTX");
+                    println!("PTX Build: Downgraded {} -> 9.0 for {}", version_str.trim(), file_name);
+                }
             }
         }
 

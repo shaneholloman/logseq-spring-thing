@@ -223,11 +223,12 @@ const DEFAULT_CLUSTER_HULLS = {
 
 const DEFAULT_EMBEDDING_CLOUD = {
   enabled: true,
-  pointSize: 1.5,
+  pointSize: 7.5,
   opacity: 0.6,
   colorBy: 'namespace' as const,
   rotationSpeed: 0.0005,
   maxPoints: 50000,
+  cloudScale: 5.0,
 };
 
 const DEFAULT_ANIMATION_SETTINGS = {

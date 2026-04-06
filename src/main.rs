@@ -612,6 +612,9 @@ async fn main() -> std::io::Result<()> {
                     // Briefing workflow (voice → brief → role agents → debrief)
                     .configure(webxr::handlers::configure_briefing_routes)
 
+                    // Memory flash events (RuVector access → WS broadcast to all clients)
+                    .configure(webxr::handlers::configure_memory_flash_routes)
+
             );
 
             app

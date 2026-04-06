@@ -292,6 +292,13 @@ export const UNIFIED_SETTINGS_CONFIG: Record<string, SectionConfig> = {
       { key: 'gemEmissiveIntensity', label: 'Gem Emissive', type: 'slider', min: 0, max: 2, step: 0.05, path: 'visualisation.gemMaterial.emissiveIntensity', description: 'Emissive glow intensity of gems', isAdvanced: true },
       { key: 'gemIridescence', label: 'Gem Iridescence', type: 'slider', min: 0, max: 1, step: 0.05, path: 'visualisation.gemMaterial.iridescence', description: 'Rainbow sheen intensity', isAdvanced: true },
 
+      // Embedding Cloud - Basic
+      { key: 'embeddingCloudEnabled', label: 'Embedding Cloud', type: 'toggle', path: 'visualisation.embeddingCloud.enabled', description: 'Show RuVector embedding point cloud' },
+      { key: 'embeddingCloudScale', label: 'Cloud Scale', type: 'slider', min: 0.5, max: 20, step: 0.5, path: 'visualisation.embeddingCloud.cloudScale', description: 'Overall scale of embedding cloud' },
+      { key: 'embeddingPointSize', label: 'Point Size', type: 'slider', min: 0.5, max: 25, step: 0.5, path: 'visualisation.embeddingCloud.pointSize', description: 'Size of embedding points' },
+      { key: 'embeddingOpacity', label: 'Cloud Opacity', type: 'slider', min: 0, max: 1, step: 0.05, path: 'visualisation.embeddingCloud.opacity', description: 'Transparency of embedding points' },
+      { key: 'embeddingRotation', label: 'Rotation Speed', type: 'slider', min: 0, max: 0.005, step: 0.0001, path: 'visualisation.embeddingCloud.rotationSpeed', description: 'Auto-rotation speed', isAdvanced: true },
+
       // Edge Effects - Basic
       { key: 'flowEffect', label: 'Edge Flow', type: 'toggle', path: 'visualisation.graphs.logseq.edges.enableFlowEffect', description: 'Animated flow on edges' },
       { key: 'flowSpeed', label: 'Flow Speed', type: 'slider', min: 0.1, max: 5, step: 0.1, path: 'visualisation.graphs.logseq.edges.flowSpeed', description: 'Speed of flow animation', isAdvanced: true },

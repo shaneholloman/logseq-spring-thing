@@ -123,6 +123,9 @@ pub struct PhysicsOrchestratorActor {
     /// Target interval for the physics pipeline.  In Continuous mode this is 16ms
     /// (~60 fps).  In FastSettle mode it is 0 (fire as fast as GPU can compute).
     pipeline_target_interval: Duration,
+
+    /// Whether the CPU fallback warning has been logged (log at most once).
+    cpu_fallback_warned: bool,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -177,6 +180,7 @@ impl PhysicsOrchestratorActor {
             pipeline_step_pending: false,
             pipeline_step_pending_since: None,
             pipeline_target_interval: Duration::from_millis(16),
+            cpu_fallback_warned: false,
         }
     }
 
@@ -497,9 +501,10 @@ impl PhysicsOrchestratorActor {
 
     
     fn execute_cpu_physics_step(&mut self, _ctx: &mut Context<Self>) {
-        
-        
-        warn!("CPU physics fallback not fully implemented - using GPU compute");
+        if !self.cpu_fallback_warned {
+            warn!("CPU physics fallback not implemented — GPU compute is mandatory");
+            self.cpu_fallback_warned = true;
+        }
     }
 
     #[allow(dead_code)]
@@ -1265,12 +1270,13 @@ impl Handler<StoreGPUComputeAddress> for PhysicsOrchestratorActor {
         }
 
         // Actually store the ForceComputeActor address
+        let is_new_addr = msg.addr.is_some();
         self.gpu_compute_addr = msg.addr;
 
-        info!("PhysicsOrchestratorActor: GPU address stored: {:?}", self.gpu_compute_addr.is_some());
+        debug!("PhysicsOrchestratorActor: GPU address stored: {}", is_new_addr);
 
         // Now that we have the GPU address, try to initialize GPU physics
-        if self.gpu_compute_addr.is_some() {
+        if is_new_addr && !self.gpu_initialized {
             info!("PhysicsOrchestratorActor: GPU address available, initializing GPU physics");
             self.initialize_gpu_if_needed(ctx);
         }

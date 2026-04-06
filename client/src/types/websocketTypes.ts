@@ -473,6 +473,17 @@ export interface InitialGraphLoadMessage extends BaseWebSocketMessage {
   }>;
 }
 
+// Memory flash event — RuVector memory access visualization
+export interface MemoryFlashMessage extends BaseWebSocketMessage {
+  type: 'memory_flash';
+  data: {
+    key: string;
+    namespace: string;
+    action: string;
+    timestamp: number;
+  };
+}
+
 // Union type of all possible WebSocket messages
 export type WebSocketMessage =
   | WorkspaceUpdateMessage
@@ -508,7 +519,8 @@ export type WebSocketMessage =
   | ConnectionEstablishedMessage
   | ErrorMessage
   | FilterConfirmedMessage
-  | InitialGraphLoadMessage;
+  | InitialGraphLoadMessage
+  | MemoryFlashMessage;
 
 // Event handler types
 export type MessageHandler<T extends WebSocketMessage = WebSocketMessage> = (message: T) => void;

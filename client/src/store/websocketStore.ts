@@ -1352,6 +1352,11 @@ export const useWebSocketStore = create<WebSocketState>()(
                 }
               }
 
+              // Memory flash events — forward to event bus for EmbeddingCloudLayer
+              if (message.type === 'memory_flash' && (message as unknown as Record<string, unknown>).data) {
+                emit('memoryFlash', (message as unknown as Record<string, unknown>).data);
+              }
+
               messageHandlers.forEach(handler => {
                 try {
                   handler(message);
