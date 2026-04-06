@@ -18,6 +18,8 @@ qdrant_data/
 whelk-rs/
 .swarm/
 screenshots/
+backups/
+cleaned/
 
 # Dependencies
 node_modules
@@ -206,3 +208,4 @@ multi-agent-docker/.env
 *.secret
 **/credentials.json
 **/.env.local
+client/public/embedding-cloud.json

@@ -221,6 +221,15 @@ const DEFAULT_CLUSTER_HULLS = {
   padding: 0.15,
 };
 
+const DEFAULT_EMBEDDING_CLOUD = {
+  enabled: true,
+  pointSize: 1.5,
+  opacity: 0.6,
+  colorBy: 'namespace' as const,
+  rotationSpeed: 0.0005,
+  maxPoints: 50000,
+};
+
 const DEFAULT_ANIMATION_SETTINGS = {
   enableMotionBlur: false,
   enableNodeAnimations: true,
@@ -362,6 +371,7 @@ function transformApiToClientSettings(apiResponse: AllSettings): Record<string, 
       gemMaterial: deepMergeVisual(DEFAULT_GEM_MATERIAL, v.gemMaterial || {}),
       sceneEffects: deepMergeVisual(DEFAULT_SCENE_EFFECTS, v.sceneEffects || {}),
       clusterHulls: deepMergeVisual(DEFAULT_CLUSTER_HULLS, v.clusterHulls || {}),
+      embeddingCloud: deepMergeVisual(DEFAULT_EMBEDDING_CLOUD, v.embeddingCloud || {}),
       animations: deepMergeVisual(DEFAULT_ANIMATION_SETTINGS, v.animations || {}),
       interaction: deepMergeVisual(DEFAULT_INTERACTION_SETTINGS, v.interaction || {}),
       graphs: {

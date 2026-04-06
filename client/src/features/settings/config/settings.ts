@@ -455,6 +455,16 @@ export interface ClusterHullSettings {
   updateInterval: number; // frames between hull recalculation, default 30
 }
 
+// Embedding cloud layer settings (PCA-projected RuVector embeddings)
+export interface EmbeddingCloudSettings {
+  enabled: boolean;
+  pointSize: number;       // 0.5-5, default 1.5
+  opacity: number;         // 0-1, default 0.6
+  colorBy: 'namespace' | 'sourceType';
+  rotationSpeed: number;   // rad/frame, default 0.0005
+  maxPoints: number;       // cap on rendered points, default 50000
+}
+
 export interface VisualisationSettings {
 
   rendering: RenderingSettings;
@@ -473,6 +483,9 @@ export interface VisualisationSettings {
 
   // Cluster hull visualization
   clusterHulls?: ClusterHullSettings;
+
+  // Embedding cloud layer (PCA-projected RuVector vector embeddings)
+  embeddingCloud?: EmbeddingCloudSettings;
 
   // Graph-type-specific visual settings
   graphTypeVisuals?: GraphTypeVisualsSettings;

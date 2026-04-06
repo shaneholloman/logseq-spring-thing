@@ -24,6 +24,8 @@ import { HeadTrackedParallaxController } from '../../visualisation/components/He
 
 // Scene ambient effects (particles, fog, glow ring)
 import WasmSceneEffects from '../../visualisation/components/WasmSceneEffects';
+// Embedding cloud layer (PCA-projected RuVector vector embeddings)
+import EmbeddingCloudLayer from '../../visualisation/components/EmbeddingCloudLayer';
 
 // Store and utils
 import { useSettingsStore } from '../../../store/settingsStore';
@@ -42,6 +44,7 @@ const GraphCanvas: React.FC = () => {
     const ambientLightIntensity = useSettingsStore(s => s.settings?.visualisation?.rendering?.ambientLightIntensity ?? 0.5);
     const directionalLightIntensity = useSettingsStore(s => s.settings?.visualisation?.rendering?.directionalLightIntensity ?? 0.4);
     const sceneEffects = useSettingsStore(s => s.settings?.visualisation?.sceneEffects);
+    const embeddingCloudEnabled = useSettingsStore(s => s.settings?.visualisation?.embeddingCloud?.enabled ?? false);
     
     // Lightweight subscription: only track counts to avoid storing full graph data in two places
     const [nodeCount, setNodeCount] = useState(0);
@@ -152,6 +155,9 @@ const GraphCanvas: React.FC = () => {
                     atmosphereEnabled={sceneEffects?.fogEnabled !== false}
                     atmosphereResolution={sceneEffects?.atmosphereResolution ?? 128}
                 />
+
+                {/* Embedding cloud — background layer behind graph nodes */}
+                <EmbeddingCloudLayer enabled={embeddingCloudEnabled} />
 
                 {}
                 {canvasReady && nodeCount > 0 && (
