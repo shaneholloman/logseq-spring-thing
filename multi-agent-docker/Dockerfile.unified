@@ -38,7 +38,7 @@ LABEL org.opencontainers.image.version="4.0.0"
 LABEL org.opencontainers.image.created="2026-03-12"
 LABEL org.opencontainers.image.vendor="Turbo Flow"
 LABEL com.turboflow.skills.count="87"
-LABEL com.turboflow.ruflo.version="3.5"
+LABEL com.turboflow.ruflo.version="3.5.75"
 
 # ============================================================================
 # PHASE 1: Base System Packages
@@ -430,7 +430,7 @@ RUN npm install -g \
     @anthropic-ai/claude-code@2.1.47 \
     claude-usage-cli@latest \
     # Ruflo V3 CLI (Global Install - formerly @claude-flow/cli)
-    ruflo@3.5.2 \
+    ruflo@3.5.75 \
     # Postgres Driver (Fix 4)
     pg \
     @claude-flow/browser@latest \
@@ -440,12 +440,12 @@ RUN npm install -g \
     agent-browser@0.21.2 \
     # AgentDB v3 and RuVector ecosystem
     agentdb@alpha \
-    ruvector@0.1.99 \
+    ruvector@latest \
     @ruvector/gnn@latest \
     @ruvector/graph-transformer@latest \
     @ruvector/postgres-cli@latest \
     # Agentic-QE V3 Fleet (60 agents, 14 domains)
-    agentic-qe@3.7.5 \
+    agentic-qe@latest \
     # Agentic ecosystem
     agentic-flow@latest \
     agentic-jujutsu@latest \
@@ -858,7 +858,7 @@ RUN ln -sf /usr/local/bin/npx /usr/local/bin/claude-flow-npx && \
 RUN mkdir -p /home/devuser/.claude-flow && \
     cat > /home/devuser/.claude-flow/config.json << 'EOF'
 {
-  "version": "4.0.0",
+  "version": "4.1.0",
   "topology": "hierarchical",
   "maxAgents": 8,
   "strategy": "specialized",
@@ -875,12 +875,32 @@ RUN mkdir -p /home/devuser/.claude-flow && \
   },
   "neural": {
     "enabled": true,
-    "modelType": "moe"
+    "modelType": "moe",
+    "sona": {
+      "enabled": true,
+      "nativeBinding": true,
+      "adaptiveEmbeddings": true,
+      "learnFromOutcome": true
+    }
   },
   "hooks": {
     "preTriggerHooks": true,
     "postTriggerHooks": true,
     "autoLearning": true
+  },
+  "reasoningBank": {
+    "enabled": true,
+    "verdictJudge": true,
+    "postTaskHook": true,
+    "distillMemories": true,
+    "consolidation": true,
+    "heuristicFallback": true
+  },
+  "features": {
+    "enable_post_task_hook": true,
+    "enable_verdict_judge": true,
+    "enable_adaptive_embeddings": true,
+    "enable_pattern_extraction": true
   },
   "agentTeams": {
     "enabled": true,

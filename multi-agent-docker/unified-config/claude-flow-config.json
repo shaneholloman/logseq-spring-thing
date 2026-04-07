@@ -1,5 +1,5 @@
 {
-  "version": "3.0.0",
+  "version": "4.1.0",
   "memory": {
     "backend": "postgres",
     "pgConnInfo": "${RUVECTOR_PG_CONNINFO}",
@@ -27,6 +27,26 @@
   },
   "neural": {
     "enabled": true,
-    "backend": "postgres"
+    "backend": "postgres",
+    "sona": {
+      "enabled": true,
+      "nativeBinding": true,
+      "adaptiveEmbeddings": true,
+      "learnFromOutcome": true
+    }
+  },
+  "reasoningBank": {
+    "enabled": true,
+    "verdictJudge": true,
+    "postTaskHook": true,
+    "distillMemories": true,
+    "consolidation": true,
+    "heuristicFallback": true
+  },
+  "features": {
+    "enable_post_task_hook": true,
+    "enable_verdict_judge": true,
+    "enable_adaptive_embeddings": true,
+    "enable_pattern_extraction": true
   }
 }
