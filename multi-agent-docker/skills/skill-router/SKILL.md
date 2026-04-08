@@ -44,17 +44,26 @@ Examples:
 ## Routing Table
 
 ### Code Development
+
+**Methodology selection** (sequential phases — not competing skills):
+| Phase | Route to | Key trigger |
+|-------|----------|-------------|
+| You have a PRD → need docs + optional build | `prd2build` | "I have a PRD", "generate documentation" |
+| Artifact chain traceability across a sprint | `bhil-methodology` | "SPEC/ADR/TASK chain", "artifact traceability" |
+| Systematic 5-phase development | `sparc-methodology` | "spec through deployment", "SPARC" |
+| Multi-agent dev + quality gates (code execution) | `build-with-quality` | "implement", "feature", "TDD", "quality gates" |
+| Truth-score only | `verification-quality` | "verify", "rollback safety", "confidence score" |
+
+**Other code tasks:**
 | If the request involves... | Route to |
 |---|---|
-| Bug fix, feature implementation, refactoring with tests | `build-with-quality` |
-| Systematic multi-phase development (spec → deploy) | `sparc-methodology` |
-| PRD → SPEC → ADR traceability, sprint planning | `bhil-methodology` |
-| Truth scoring, verification, auto-rollback | `verification-quality` |
+| Large codebase structural analysis (call graphs, diff impact) | `codebase-memory` (permanent project upgrade) |
+| Version-specific external library docs while coding | `context7` |
 | Rust systems programming | `rust-development` |
 | WASM + JS graphics interop | `wasm-js` |
 | CUDA GPU kernel development | `cuda` |
 | React/Next.js/TypeScript/Tailwind conventions | `bencium-code-conventions` |
-| Generate docs from a PRD (no code) | `prd2build` |
+| Validate docs against codebase | `docs-alignment` |
 | Large codebase structure (500+ files): call graphs, architecture overview, diff blast radius | `codebase-memory` (permanent project upgrade) |
 | Version-specific external library docs while coding, "use context7", anti-hallucination | `context7` |
 

@@ -242,9 +242,16 @@ Testing is integrated into `build-with-quality` (TDD agents) and `sparc-methodol
 
 ## Artefact 2: Decision Tree
 
+> **Don't know which skill?** Use `/route [describe your task]` — the unified dispatcher
+> classifies your intent and routes you automatically. Only read further if you want to
+> understand the full routing logic.
+
 Answer these questions in order. Stop at the first match.
 
 ```
+Q0: Unsure which skill handles your task?
+    --> /route [describe task]  (skill-router — intelligent dispatcher for all 89 skills)
+
 Q1: Is the task about an EXISTING skill that is deprecated?
     YES --> Use its replacement (see Deprecated table above)
 
@@ -269,19 +276,61 @@ Q2: What is the primary domain?
 
 ### [A] Code Development
 
+#### Methodology Disambiguation
+
+Four methodology skills exist at different phases of the development lifecycle. **They are sequential, not competing**:
+
+```
+PHASE 1 — SPECIFICATION
+  You have a PRD and need all docs generated                → prd2build
+    (outputs: 8 spec files, 27+ ADRs, 11 DDD files, 20+ tasks)
+    (optional --build flag hands off to build-with-quality)
+
+  You need artifact traceability + sprint scaffolding       → bhil-methodology
+    (outputs: PRD-NNN → SPEC-NNN → ADR-NNN → TASK-NNN chain)
+    (does NOT execute code — specification-only)
+
+PHASE 2 — IMPLEMENTATION
+  Systematic 5-phase development (spec→pseudo→arch→refine→complete)  → sparc-methodology
+    (17 modes; delegates to sub-agents per phase)
+
+  Multi-file feature with quality gates, TDD, coverage             → build-with-quality
+    (111+ agents; dev + QE unified; SONA learning; truth scoring)
+
+PHASE 3 — VERIFICATION
+  Truth-score verification only, no full pipeline needed    → verification-quality
+    (0.0–1.0 truth scoring, automatic rollback at 0.95)
+```
+
+**Common flow**: `prd2build` → (docs) → `bhil-methodology` → (traceability artifacts) → `build-with-quality` → (code + tests) → `verification-quality` → (confidence score)
+
+#### Complexity Decision Tree
+
 ```
 Q3: How complex is the task?
     |
     +-- Single file, quick fix --> Edit directly (no skill needed)
     |
-    +-- Multi-file feature with quality gates, TDD, coverage
+    +-- You have a PRD → need all documentation + optional build execution
+    |   --> prd2build  [see Methodology Disambiguation above]
+    |
+    +-- Need artifact traceability chain (PRD→SPEC→ADR→TASK) across a sprint
+    |   --> bhil-methodology  [specification-only, no code execution]
+    |
+    +-- Multi-file feature with quality gates, TDD, coverage, 111+ agents
     |   --> build-with-quality
     |
-    +-- Systematic multi-phase (spec -> arch -> code -> deploy)
+    +-- Systematic multi-phase (spec -> pseudo -> arch -> refine -> complete)
     |   --> sparc-methodology
     |
     +-- Just need truth-score verification and rollback safety
     |   --> verification-quality
+    |
+    +-- Large codebase (500+ files): call graphs, architecture, diff impact, symbol search
+    |   --> codebase-memory (index once → permanent CLAUDE.md upgrade for this project)
+    |
+    +-- Need version-specific docs for external library while coding
+    |   --> context7 ("use context7" / "check docs for X")
     |
     +-- Rust systems programming
     |   --> rust-development
@@ -292,17 +341,11 @@ Q3: How complex is the task?
     +-- CUDA GPU kernel development
     |   --> cuda
     |
-    +-- Large codebase (500+ files): call graphs, architecture, diff impact, symbol search
-    |   --> codebase-memory (then append permanent CLAUDE.md upgrade block for the project)
-    |
-    +-- Need version-specific docs for external library while coding
-    |   --> context7 ("use context7" / "check docs for X")
-    |
     +-- React/Next.js/TypeScript/Tailwind stack conventions
     |   --> bencium-code-conventions
     |
-    +-- Specification-driven methodology (PRD→SPEC→ADR→TASK traceability)
-        --> bhil-methodology
+    +-- Validate documentation against the codebase
+        --> docs-alignment
 ```
 
 ### [B] GitHub Operations
@@ -400,8 +443,8 @@ Q3: What kind of document?
     +-- Validate existing docs against codebase
     |   --> docs-alignment
     |
-    +-- Generate project docs from a PRD
-    |   --> prd2build
+    +-- Generate project docs from a PRD (spec/ADR/DDD/tasks in one command)
+    |   --> prd2build  [see [A] Methodology Disambiguation for full context]
     |
     +-- Strategic Wardley maps (competitive positioning, evolution)
         --> wardley-maps
@@ -513,14 +556,14 @@ Q3: What memory operation?
     +-- Distributed multi-DB sync, QUIC, hybrid search
     |   --> agentdb-advanced
     |
-    +-- Reinforcement learning plugins
-    |   --> agentdb-learning
+    +-- Reinforcement learning (Decision Transformer, Q-Learning, SARSA, Actor-Critic, etc.)
+    |   --> agentdb-learning  [also in [H] if combined with model training]
     |
-    +-- Session context and plan tracking
-    |   --> lazy-fetch
+    +-- Session context and plan tracking (single session only — not cross-session)
+    |   --> lazy-fetch  [for persistent cross-session memory use agentdb-* or ruvector-catalog]
     |
-    +-- "What RuVector tool helps with X?" (200+ capabilities, migration paths)
-        --> ruvector-catalog
+    +-- "What RuVector tool helps with X?" (200+ capabilities across 14 domains)
+        --> ruvector-catalog  [broader than agentdb-*; covers all RuVector access patterns]
 ```
 
 ### [J] Infrastructure / Platform / DevOps
@@ -555,11 +598,13 @@ Q3: What kind of design work?
     +-- Enterprise UX (WCAG 2.1 AA, regulated, ask-first protocol)
     |   --> bencium-controlled-ux-designer
     |
-    +-- Bold creative UX (campaigns, anti-AI-slop aesthetics)
-    |   --> bencium-innovative-ux-designer
+    +-- Bold creative UX (experimental typography, campaign aesthetics, anti-AI-slop)
+    |   --> bencium-innovative-ux-designer  [design-first: commit boldly, no hedging]
     |
-    +-- Production frontend (distinctive, Anthropic-style quality)
-    |   --> bencium-impact-designer
+    +-- Production frontend (Anthropic-quality code, distinctive, implementable NOW)
+    |   --> bencium-impact-designer  [code-first: avoids AI slop at the implementation level]
+    |   NOTE: innovative=design vision; impact=implementation quality — use together for
+    |   complete pipeline: innovative for design decisions, impact for frontend code
     |
     +-- Audit / polish existing UI (visual review, no functionality)
     |   --> design-audit
