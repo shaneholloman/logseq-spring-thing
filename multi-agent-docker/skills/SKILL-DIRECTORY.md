@@ -1,6 +1,6 @@
 # Skill Directory -- Comprehensive Inventory and Decision Tree
 
-> **87 active skills**. 15 formerly deprecated/archived skills removed (see table below for history).
+> **89 active skills**. 15 formerly deprecated/archived skills removed (see table below for history).
 > Updated 2026-04-01. Reference this file from CLAUDE.md for intelligent routing.
 
 ---
@@ -27,15 +27,16 @@
 
 ---
 
-## Artefact 1: Categorised Skill Inventory (75 Active Skills)
+## Artefact 1: Categorised Skill Inventory (89 Active Skills)
 
 ### Context, Discovery, and Session Management
 
 | Skill | MCP | Key Capability | When to Choose |
 |-------|-----|----------------|----------------|
-| `skill-router` | No | **Unified dispatcher** for 82 skills. `/route [task]` classifies intent and routes to optimal skill. Single entry point | Don't know which skill to use — describe your task and get routed |
+| `skill-router` | No | **Unified dispatcher** for 89 skills. `/route [task]` classifies intent and routes to optimal skill. Single entry point | Don't know which skill to use — describe your task and get routed |
 | `lazy-fetch` | Yes | 25 MCP tools: context hydration, plan tracking, blueprints, PRD-to-sprints, security scanning, persistent memory | Starting a new session, managing context across tasks, tracking phased plans, running autonomous PRD execution |
 | `skill-builder` | No | Create new Claude Code skills with YAML frontmatter and progressive disclosure | Building new custom skills for the skills directory |
+| `codebase-memory` | Yes | 14 MCP tools: call graph tracing, architecture overview, git diff risk scoring, symbol search. 99.2% token reduction vs grep. Persistent SQLite index. **One-time index → permanent session upgrade** | Large codebase structural analysis (500+ files), call chains, diff blast radius, architecture overview |
 
 ### Development Methodology and Meta-Skills
 
@@ -121,6 +122,7 @@ Testing is integrated into `build-with-quality` (TDD agents) and `sparc-methodol
 | `linkedin` | Yes | LinkedIn profile/job/company scraping, messaging, people search via browser automation | LinkedIn research, recruitment, networking, company analysis |
 | `reddit` | Yes | Reddit browsing, search, user analysis, post details with comment threads | Reddit research, community analysis, content discovery |
 | `toprank` | No | 6 SEO sub-skills: GSC audit, E-E-A-T content writing, keyword research, meta tags, schema markup, GEO | SEO audit, content optimisation, keyword research, schema markup, AI search visibility |
+| `context7` | Yes | Version-specific documentation for 800+ libraries (Next.js, Supabase, React, etc.). `resolve-library-id` + `query-docs`. Eliminates hallucination from stale training data | Writing code with external libraries, "use context7", needing current API docs |
 
 ### Security and Compliance
 
@@ -289,6 +291,12 @@ Q3: How complex is the task?
     |
     +-- CUDA GPU kernel development
     |   --> cuda
+    |
+    +-- Large codebase (500+ files): call graphs, architecture, diff impact, symbol search
+    |   --> codebase-memory (then append permanent CLAUDE.md upgrade block for the project)
+    |
+    +-- Need version-specific docs for external library while coding
+    |   --> context7 ("use context7" / "check docs for X")
     |
     +-- React/Next.js/TypeScript/Tailwind stack conventions
     |   --> bencium-code-conventions

@@ -479,6 +479,13 @@ RUN pip3 install --no-cache-dir --break-system-packages "scrapling[ai]" 2>/dev/n
 # Unreal Engine 5 automation (soft-ue-cli MCP server + CLI)
 RUN pip3 install --no-cache-dir --break-system-packages "soft-ue-cli[mcp]" 2>/dev/null || echo "UE5 CLI optional"
 
+# Context7 documentation MCP (version-specific library docs, anti-hallucination)
+RUN npm install -g @upstash/context7-mcp 2>/dev/null || echo "Context7 MCP optional"
+
+# Codebase Memory MCP (code intelligence: call graphs, architecture, diff impact)
+RUN curl -fsSL https://raw.githubusercontent.com/DeusData/codebase-memory-mcp/main/install.sh | bash -s -- --skip-config 2>/dev/null || \
+    echo "codebase-memory-mcp optional (install manually with: curl -fsSL https://... | bash)"
+
 # EchoLoop meeting copilot (real-time transcription + LLM coaching)
 RUN pip3 install --no-cache-dir --break-system-packages \
     sounddevice numpy faster-whisper anthropic openai httpx 2>/dev/null || echo "EchoLoop deps optional"

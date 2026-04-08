@@ -1,7 +1,7 @@
 ---
 name: skill-router
 description: >
-  Unified dispatcher for 81+ skills. Describe your task; get routed to the optimal skill,
+  Unified dispatcher for 89+ skills. Describe your task; get routed to the optimal skill,
   agent composition, or MCP tool. Single entry point replacing manual decision tree navigation.
   Inspired by the /studio dispatcher pattern from architecture-studio.
 version: 1.0.0
@@ -16,7 +16,7 @@ user-invocable: true
 
 # /route — Unified Skill Dispatcher
 
-Describe your task. Get routed to the right skill. You don't need to know 81 skills — just say what you need.
+Describe your task. Get routed to the right skill. You don't need to know 89 skills — just say what you need.
 
 ## Usage
 
@@ -55,6 +55,8 @@ Examples:
 | CUDA GPU kernel development | `cuda` |
 | React/Next.js/TypeScript/Tailwind conventions | `bencium-code-conventions` |
 | Generate docs from a PRD (no code) | `prd2build` |
+| Large codebase structure (500+ files): call graphs, architecture overview, diff blast radius | `codebase-memory` (permanent project upgrade) |
+| Version-specific external library docs while coding, "use context7", anti-hallucination | `context7` |
 
 ### GitHub Operations
 | If the request involves... | Route to |
@@ -85,6 +87,7 @@ Examples:
 | LinkedIn profiles, jobs, companies, messaging | `linkedin` |
 | Reddit browsing, search, user analysis | `reddit` |
 | SEO audit, keyword research, schema markup, GEO | `toprank` |
+| Current/version-specific docs for external library (Next.js, React, Supabase, etc.) | `context7` |
 
 ### Documents and Reports
 | If the request involves... | Route to |

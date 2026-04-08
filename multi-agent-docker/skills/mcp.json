@@ -202,6 +202,28 @@
       "description": "Adaptive web scraping: 9 MCP tools, anti-bot bypass (Cloudflare Turnstile), stealth browser, spider framework",
       "protocol": "stdio",
       "version": "0.4.3"
+    },
+    "context7": {
+      "command": "npx",
+      "args": ["-y", "@upstash/context7-mcp@latest"],
+      "type": "stdio",
+      "env": {
+        "CONTEXT7_API_KEY": "${CONTEXT7_API_KEY}"
+      },
+      "description": "Version-specific documentation for 800+ libraries. Two tools: resolve-library-id and query-docs. Eliminates hallucination in agent code generation.",
+      "protocol": "stdio",
+      "version": "1.0.0"
+    },
+    "codebase-memory": {
+      "command": "codebase-memory-mcp",
+      "args": [],
+      "type": "stdio",
+      "env": {
+        "CBM_CACHE_DIR": "/home/devuser/.cache/codebase-memory-mcp"
+      },
+      "description": "Code intelligence: 14 MCP tools for call graphs, architecture overview, git diff risk scoring. 99.2% token reduction vs grep. Persistent SQLite index.",
+      "protocol": "stdio",
+      "version": "1.0.0"
     }
   },
   "visionflow": {

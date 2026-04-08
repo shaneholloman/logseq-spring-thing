@@ -59,6 +59,8 @@ Single file, quick fix? --> Direct Edit (no skill needed)
 Game dev (Godot/Unity/Unreal)? --> /game-dev
 Bug/feature/review (single agent)? --> lazy-fetch blueprints
 Multi-file feature with TDD? --> /build-with-quality
+Large codebase structural analysis (call graphs, arch, diff)? --> codebase-memory
+Need current library docs while coding? --> context7
 Swarm (3+ agents)? --> /swarm-advanced or hive-mind
 GitHub ops (PR/release/CI)? --> github-* skills
 Docs/reports? --> /report-builder, /docs-alignment
@@ -75,7 +77,7 @@ AEC (building architecture)? --> /studio [task]
 SEO / content optimisation? --> /toprank
 ```
 
-Full routing with all 72 active skills: see `multi-agent-docker/skills/SKILL-DIRECTORY.md`
+Full routing with all 89 active skills: see `multi-agent-docker/skills/SKILL-DIRECTORY.md`
 
 ### Skill Capabilities Matrix
 
