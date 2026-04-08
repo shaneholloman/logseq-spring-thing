@@ -1,7 +1,7 @@
 ---
 name: skill-router
 description: >
-  Unified dispatcher for 89+ skills. Describe your task; get routed to the optimal skill,
+  Unified dispatcher for 87+ skills. Describe your task; get routed to the optimal skill,
   agent composition, or MCP tool. Single entry point replacing manual decision tree navigation.
   Inspired by the /studio dispatcher pattern from architecture-studio.
 version: 1.0.0
@@ -16,7 +16,7 @@ user-invocable: true
 
 # /route — Unified Skill Dispatcher
 
-Describe your task. Get routed to the right skill. You don't need to know 89 skills — just say what you need.
+Describe your task. Get routed to the right skill. You don't need to know 87 skills — just say what you need.
 
 ## Usage
 
@@ -142,7 +142,7 @@ Examples:
 | PyTorch deep learning, model training | `pytorch-ml` |
 | Cloud neural training (Flow Nexus) | `flow-nexus-neural` |
 | Jupyter notebook experiments | `jupyter-notebooks` |
-| Reinforcement learning agents | `agentdb-learning` |
+| Reinforcement learning agents (Decision Transformer, Q-Learning, SARSA, etc.) | `agentdb-advanced` (RL Plugins section) |
 | Delegate reasoning to DeepSeek | `deepseek-reasoning` |
 | Delegate coding to GPT-5.4 (simple MCP bridge) | `openai-codex` |
 | "Consult with OpenAI", "talk to codex", "ask GPT-5.4", code review by Codex, adversarial review, rescue when stuck | `codex-companion` (`/codex:review`, `/codex:rescue`) |
@@ -152,7 +152,8 @@ Examples:
 |---|---|
 | Session/long-term agent memory | `agentdb-memory-patterns` |
 | Semantic vector search, RAG, HNSW | `agentdb-vector-search` |
-| Distributed multi-DB sync | `agentdb-advanced` |
+| Distributed multi-DB sync, QUIC, hybrid search | `agentdb-advanced` |
+| Reinforcement learning plugins (9 RL algorithms) | `agentdb-advanced` (RL Plugins section) |
 | Session context, plan tracking, blueprints | `lazy-fetch` |
 | "What RuVector tool helps with X?" | `ruvector-catalog` |
 
@@ -169,8 +170,7 @@ Examples:
 | General UI/UX (palettes, fonts, styles) | `ui-ux-pro-max-skill` |
 | daisyUI / Tailwind components | `daisyui` |
 | Enterprise UX (WCAG, regulated, ask-first) | `bencium-controlled-ux-designer` |
-| Bold creative UX (anti-AI-slop) | `bencium-innovative-ux-designer` |
-| Production frontend (Anthropic-quality) | `bencium-impact-designer` |
+| Bold creative UX, production frontend, anti-AI-slop, shadcn/Tailwind implementation | `bencium-creative` (`--design` for direction, `--build` for code, default=both) |
 | Visual design audit / polish | `design-audit` |
 | Typography enforcement | `typography` |
 | AI-first relationship interfaces | `relationship-design` |

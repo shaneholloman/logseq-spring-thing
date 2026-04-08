@@ -77,7 +77,7 @@ AEC (building architecture)? --> /studio [task]
 SEO / content optimisation? --> /toprank
 ```
 
-Full routing with all 89 active skills: see `multi-agent-docker/skills/SKILL-DIRECTORY.md`
+Full routing with all 87 active skills: see `multi-agent-docker/skills/SKILL-DIRECTORY.md`
 
 ### Skill Capabilities Matrix
 

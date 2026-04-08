@@ -1,7 +1,7 @@
 # Skill Directory -- Comprehensive Inventory and Decision Tree
 
-> **89 active skills**. 15 formerly deprecated/archived skills removed (see table below for history).
-> Updated 2026-04-01. Reference this file from CLAUDE.md for intelligent routing.
+> **87 active skills**. 18 formerly deprecated/archived skills removed (see table below for history).
+> Updated 2026-04-08. Reference this file from CLAUDE.md for intelligent routing.
 
 ---
 
@@ -9,7 +9,10 @@
 
 | Skill | Status | Replacement |
 |-------|--------|-------------|
+| `agentdb-learning` | DEPRECATED | `agentdb-advanced` (RL section) |
 | `agentdb-optimization` | DEPRECATED | `agentdb-vector-search` |
+| `bencium-impact-designer` | DEPRECATED | `bencium-creative` |
+| `bencium-innovative-ux-designer` | DEPRECATED | `bencium-creative` |
 | `pair-programming` | DEPRECATED | `build-with-quality` |
 | `perplexity` | DEPRECATED | `perplexity-research` |
 | `reasoningbank-agentdb` | DEPRECATED | `build-with-quality` |
@@ -27,7 +30,7 @@
 
 ---
 
-## Artefact 1: Categorised Skill Inventory (89 Active Skills)
+## Artefact 1: Categorised Skill Inventory (87 Active Skills)
 
 ### Context, Discovery, and Session Management
 
@@ -83,9 +86,8 @@ Testing is integrated into `build-with-quality` (TDD agents) and `sparc-methodol
 
 | Skill | MCP | Key Capability | When to Choose |
 |-------|-----|----------------|----------------|
-| `agentdb-advanced` | No | QUIC sync, multi-database, custom distance metrics, hybrid search, MMR diversity | Distributed AI systems needing cross-network AgentDB sync |
+| `agentdb-advanced` | No | QUIC sync, multi-database, custom distance metrics, hybrid search, MMR diversity, **9 RL algorithms** (Decision Transformer, Q-Learning, SARSA, Actor-Critic, Federated, etc.) | Distributed AI systems, cross-network AgentDB sync, self-learning agents with RL |
 | `ruvector-catalog` | No | Architect's playbook for 200+ RuVector capabilities across 14 domains, migration paths, 3 access paths (npm/WASM/NAPI) | "What RuVector tools can help with X?", technology recommendations, migration from aging tech |
-| `agentdb-learning` | No | 9 RL algorithms (Decision Transformer, Q-Learning, SARSA, Actor-Critic, etc.) | Building self-learning agents with reinforcement learning |
 | `agentdb-memory-patterns` | No | Session memory, long-term storage, pattern learning, context management | Stateful agents, chat systems, intelligent assistants |
 | `agentdb-vector-search` | No | HNSW indexing (150x faster), quantization, caching, batch ops, RAG pipelines | Semantic search, RAG systems, scaling to millions of vectors |
 
@@ -149,8 +151,7 @@ Testing is integrated into `build-with-quality` (TDD agents) and `sparc-methodol
 | `ui-ux-pro-max-skill` | No | 50 styles, 97 palettes, 57 font pairings, 9 tech stacks, shadcn/ui MCP | Designing UI components, choosing palettes/typography, reviewing UX |
 | `daisyui` | No | daisyUI 5 components, theme configuration, Tailwind CSS patterns | Building web interfaces specifically with daisyUI components |
 | `bencium-controlled-ux-designer` | No | WCAG 2.1 AA, mathematical scales, always-ask-first protocol, design system templates | Enterprise/regulated UX design with accessibility-first approach |
-| `bencium-innovative-ux-designer` | No | Bold creative UX, experimental typography, anti-generic-AI aesthetics | Landing pages, campaigns, visually striking interfaces |
-| `bencium-impact-designer` | No | Production-grade frontend, avoids AI slop, based on Anthropic's Frontend Designer | High-quality frontend implementations with distinctive aesthetics |
+| `bencium-creative` | No | Consolidated bold creative + production frontend. Two modes: `--design` (ask→commit boldly) and `--build` (shadcn/Tailwind/Phosphor implementation). Anti-AI-slop, 25+ tone options. Replaces bencium-innovative + bencium-impact | Creative landing pages, campaigns, product UIs needing distinctive aesthetics AND working code |
 | `design-audit` | No | Systematic visual UI/UX audits, phased implementation-ready design plans | Visual design review, polishing existing interfaces |
 | `typography` | No | Professional typography: proper quotes, dashes, spacing, hierarchy (Butterick rules) | Auto-enforced typography in any HTML/CSS/React code generation |
 | `relationship-design` | No | AI-first interfaces, memory-aware UX, trust evolution, collaborative planning | Designing agentic/AI apps with ongoing user relationships |
@@ -532,8 +533,8 @@ Q3: What ML task?
     +-- Interactive notebook-based experiments
     |   --> jupyter-notebooks
     |
-    +-- Self-learning agents with RL algorithms
-    |   --> agentdb-learning
+    +-- Self-learning agents with RL algorithms (Decision Transformer, Q-Learning, SARSA, etc.)
+    |   --> agentdb-advanced (RL Plugins section)
     |
     +-- Delegate reasoning to DeepSeek R1
     |   --> deepseek-reasoning
@@ -557,7 +558,7 @@ Q3: What memory operation?
     |   --> agentdb-advanced
     |
     +-- Reinforcement learning (Decision Transformer, Q-Learning, SARSA, Actor-Critic, etc.)
-    |   --> agentdb-learning  [also in [H] if combined with model training]
+    |   --> agentdb-advanced (RL Plugins section)  [also appears in [H]]
     |
     +-- Session context and plan tracking (single session only — not cross-session)
     |   --> lazy-fetch  [for persistent cross-session memory use agentdb-* or ruvector-catalog]
@@ -598,13 +599,11 @@ Q3: What kind of design work?
     +-- Enterprise UX (WCAG 2.1 AA, regulated, ask-first protocol)
     |   --> bencium-controlled-ux-designer
     |
-    +-- Bold creative UX (experimental typography, campaign aesthetics, anti-AI-slop)
-    |   --> bencium-innovative-ux-designer  [design-first: commit boldly, no hedging]
-    |
-    +-- Production frontend (Anthropic-quality code, distinctive, implementable NOW)
-    |   --> bencium-impact-designer  [code-first: avoids AI slop at the implementation level]
-    |   NOTE: innovative=design vision; impact=implementation quality — use together for
-    |   complete pipeline: innovative for design decisions, impact for frontend code
+    +-- Bold creative UX OR production frontend implementation (or both)
+    |   --> bencium-creative
+    |       --design flag: ask-first, commit boldly, pick aesthetic direction
+    |       --build flag: production code with shadcn/Tailwind/Phosphor
+    |       default: full pipeline (design questions → implement)
     |
     +-- Audit / polish existing UI (visual review, no functionality)
     |   --> design-audit
@@ -694,11 +693,11 @@ Some tasks benefit from combining skills. Common compositions:
 | Documentation with live web research | `report-builder` | `perplexity-research`, `gemini-url-context` |
 | Visual UI testing after building components | `daisyui` or `ui-ux-pro-max-skill` | `playwright` |
 | Academic paper with AI-generated figures | `latex-documents` | `paperbanana`, `mermaid-diagrams` |
-| Creative landing page with proper typography | `bencium-innovative-ux-designer` | `typography` |
+| Creative landing page with proper typography | `bencium-creative` | `typography` |
 | Enterprise app with accessibility audit | `bencium-controlled-ux-designer` | `design-audit` |
 | Architecture review before major refactor | `vanity-engineering-review` | `human-architect-mindset`, `negentropy-lens` |
 | Research with NotebookLM podcast + report | `notebooklm` | `report-builder`, `perplexity-research` |
-| AI-first product with relationship UX | `relationship-design` | `bencium-impact-designer` |
+| AI-first product with relationship UX | `relationship-design` | `bencium-creative` |
 | Content optimised for AI search engines | `bencium-aeo` | `perplexity-research` |
 | Debug web app from Docker | `host-webserver-debug` | `chrome-cdp`, `playwright` |
 | Swarm with automated hooks | `swarm-advanced` | `hooks-automation` |
@@ -747,13 +746,17 @@ Some tasks benefit from combining skills. Common compositions:
 
 **4. ReasoningBank + Pair Programming**: Both `reasoningbank-agentdb`, `reasoningbank-intelligence`, and `pair-programming` are deprecated; all merged into `build-with-quality`. Complete.
 
-**5. Browser Tools (4 active + 1 meta)**: Well-differentiated. `browser-automation` serves as the meta-skill decision layer. No merge needed.
+**5. AgentDB Learning → Advanced**: `agentdb-learning` deprecated; RL Plugins section added to `agentdb-advanced`. All 9 algorithms accessible from a single skill. Complete.
 
-**6. V3 Implementation Skills (9 archived)**: All archived. Serve as reference only. Could be moved to a `/skills/archive/` subdirectory to reduce clutter.
+**6. Bencium Creative Consolidation**: `bencium-innovative-ux-designer` and `bencium-impact-designer` deprecated; merged into `bencium-creative` with `--design`/`--build` modes. Complete.
 
-**7. Development Meta-Skills**: `build-with-quality` vs `sparc-methodology` -- distinct. BWQ focuses on quality engineering with 111+ agents; SPARC focuses on phased methodology. Both are needed.
+**7. Browser Tools (4 active + 1 meta)**: Well-differentiated. `browser-automation` serves as the meta-skill decision layer. No merge needed.
 
-**8. Flow Nexus Trio**: `flow-nexus-platform`, `flow-nexus-neural`, `flow-nexus-swarm` -- well-separated by concern (platform admin vs ML training vs swarm deployment). No merge needed.
+**8. V3 Implementation Skills (9 archived)**: All archived. Serve as reference only. Could be moved to a `/skills/archive/` subdirectory to reduce clutter.
+
+**9. Development Meta-Skills**: `build-with-quality` vs `sparc-methodology` -- distinct. BWQ focuses on quality engineering with 111+ agents; SPARC focuses on phased methodology. Both are needed.
+
+**10. Flow Nexus Trio**: `flow-nexus-platform`, `flow-nexus-neural`, `flow-nexus-swarm` -- well-separated by concern (platform admin vs ML training vs swarm deployment). No merge needed.
 
 ### Potential Future Consolidation
 
