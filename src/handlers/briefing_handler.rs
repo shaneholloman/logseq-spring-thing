@@ -12,6 +12,7 @@ use log::{error, info};
 use serde::Deserialize;
 
 use crate::services::briefing_service::{BriefingError, BriefingService};
+use crate::services::nostr_bead_publisher::NostrBeadPublisher;
 use crate::types::user_context::{BriefingRequest, RoleTask, UserContext};
 
 /// POST /api/briefs — Submit a new briefing request.
@@ -52,6 +53,7 @@ pub async fn submit_brief(
 /// POST /api/briefs/{brief_id}/debrief — Request a consolidated debrief.
 pub async fn request_debrief(
     briefing_service: web::Data<BriefingService>,
+    nostr_publisher: web::Data<Option<NostrBeadPublisher>>,
     path: web::Path<String>,
     body: web::Json<DebriefRequest>,
 ) -> HttpResponse {
@@ -63,14 +65,43 @@ pub async fn request_debrief(
         brief_id, user_context.display_name
     );
 
+    // Extract bead_id from the first role task that has one (epic bead).
+    let bead_id = body
+        .role_tasks
+        .iter()
+        .find_map(|rt| rt.bead_id.as_deref())
+        .unwrap_or(&brief_id)
+        .to_string();
+
     match briefing_service
         .request_debrief(&brief_id, &body.role_tasks, user_context)
         .await
     {
-        Ok(debrief_path) => HttpResponse::Created().json(serde_json::json!({
-            "brief_id": brief_id,
-            "debrief_path": debrief_path
-        })),
+        Ok(debrief_path) => {
+            // Fire-and-forget provenance event — does not affect the HTTP response.
+            if let Some(publisher) = nostr_publisher.as_ref().as_ref() {
+                let publisher = publisher.clone();
+                let bead_id = bead_id.clone();
+                let brief_id_owned = brief_id.clone();
+                let user_pubkey = user_context.pubkey.clone();
+                let debrief_path_owned = debrief_path.clone();
+                tokio::spawn(async move {
+                    publisher
+                        .publish_bead_complete(
+                            &bead_id,
+                            &brief_id_owned,
+                            Some(&user_pubkey),
+                            &debrief_path_owned,
+                        )
+                        .await;
+                });
+            }
+
+            HttpResponse::Created().json(serde_json::json!({
+                "brief_id": brief_id,
+                "debrief_path": debrief_path
+            }))
+        }
         Err(BriefingError::ApiError(msg)) => {
             error!("[briefing_handler] Debrief creation failed: {}", msg);
             HttpResponse::BadGateway().json(serde_json::json!({

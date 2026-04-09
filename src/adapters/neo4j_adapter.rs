@@ -177,8 +177,8 @@ impl Neo4jAdapter {
         Ok(adapter)
     }
 
-    /// Get access to underlying Graph for direct queries (crate-internal only)
-    pub(crate) fn graph(&self) -> &Arc<Graph> {
+    /// Get access to underlying Graph for direct queries.
+    pub fn graph(&self) -> &Arc<Graph> {
         &self.graph
     }
 

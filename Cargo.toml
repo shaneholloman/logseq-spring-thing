@@ -18,7 +18,7 @@ actix = "0.13"
 crossbeam-channel = "0.5"
 actix-web-actors = "4.3"
 tungstenite = "0.21.0"
-tokio-tungstenite = { version = "0.21.0" }
+tokio-tungstenite = { version = "0.21.0", features = ["native-tls"] }
 
 # Async runtime
 tokio = { version = "1.47.1", features = ["full"] }

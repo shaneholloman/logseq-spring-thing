@@ -25,13 +25,17 @@ use webxr::{
         workspace_handler,
     },
     services::speech_service::SpeechService,
+    services::briefing_service::BriefingService,
+    services::management_api_client::ManagementApiClient,
+    services::nostr_bead_publisher::NostrBeadPublisher,
+    services::nostr_bridge::NostrBridge,
     services::{
-        
+
         github::{content_enhanced::EnhancedContentAPI, ContentAPI, GitHubClient, GitHubConfig},
-        github_sync_service::GitHubSyncService, 
-        ragflow_service::RAGFlowService,        
+        github_sync_service::GitHubSyncService,
+        ragflow_service::RAGFlowService,
     },
-    
+
     AppState,
 };
 
@@ -433,6 +437,30 @@ async fn main() -> std::io::Result<()> {
     info!("Skipping redundant StartSimulation message to GraphServiceSupervisor for debugging stack overflow. Simulation should already be running from supervisor's started() method.");
 
     
+    // --- Briefing + Nostr services ---
+    let management_api_client = ManagementApiClient::new(
+        std::env::var("MANAGEMENT_API_HOST").unwrap_or_else(|_| "agentic-workstation".to_string()),
+        std::env::var("MANAGEMENT_API_PORT")
+            .ok()
+            .and_then(|p| p.parse::<u16>().ok())
+            .unwrap_or(9090),
+        std::env::var("MANAGEMENT_API_KEY").unwrap_or_default(),
+    );
+    let briefing_service = web::Data::new(BriefingService::new(management_api_client));
+
+    let nostr_publisher = web::Data::new(
+        NostrBeadPublisher::from_env()
+            .map(|p| p.with_neo4j(app_state.neo4j_adapter.graph().clone())),
+    );
+
+    // Spawn bridge as background task (no-op if FORUM_RELAY_URL is not set).
+    if let Some(bridge) = NostrBridge::from_env() {
+        tokio::spawn(bridge.run());
+        info!("[main] NostrBridge spawned");
+    } else {
+        info!("[main] NostrBridge not started (VISIONCLAW_NOSTR_PRIVKEY or FORUM_RELAY_URL not set)");
+    }
+
     let app_state_data = web::Data::new(app_state);
     
 
@@ -550,6 +578,8 @@ async fn main() -> std::io::Result<()> {
             .app_data(web::Data::new(ontology_query_service.clone()))
             .app_data(web::Data::new(ontology_mutation_service.clone()))
             .app_data(neo4j_repo_data.clone())
+            .app_data(briefing_service.clone())
+            .app_data(nostr_publisher.clone())
             
             
             .route("/wss", web::get().to(socket_flow_handler)) 
