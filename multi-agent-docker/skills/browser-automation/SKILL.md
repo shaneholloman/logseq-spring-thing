@@ -3,6 +3,7 @@ name: browser-automation
 description: >
   Unified browser automation meta-skill with progressive disclosure. Helps agents choose
   between agent-browser (AI snapshots), Playwright (full API + visual), Chrome CDP (live sessions),
+  qe-browser (Vibium/WebDriver BiDi — typed assertions, visual-diff, injection scan, AQE fleet),
   and host-webserver-debug (Docker bridge). Covers headless and VNC Display :1 desktop modes.
   Use when you need to automate browsers, scrape pages, test UIs, debug web apps, or interact
   with live browser sessions. Invoke for any browser-related task to get the optimal tool selection.
@@ -10,11 +11,11 @@ description: >
 
 # Browser Automation
 
-Unified decision framework for browser automation in this container. Five tools are available, each optimised for different scenarios. This skill helps you choose -- or combine -- them.
+Unified decision framework for browser automation in this container. Six tools are available, each optimised for different scenarios. This skill helps you choose -- or combine -- them.
 
 ## When Not To Use
 
-- If you already know which browser tool to use -- invoke that skill directly (browser, playwright, chrome-cdp, host-webserver-debug)
+- If you already know which browser tool to use -- invoke that skill directly (browser, playwright, qe-browser, chrome-cdp, host-webserver-debug)
 - For fetching page content without browser interaction -- use WebFetch, curl, web-summary, or gemini-url-context
 - For API testing without a real browser -- use curl or httpx directly
 - For building UI components -- use the daisyui or ui-ux-pro-max-skill skills instead
@@ -28,6 +29,7 @@ Unified decision framework for browser automation in this container. Five tools 
 | Desktop Chrome with login state, GIF recording, CAPTCHA handling | **Claude in Chrome** (official) | `claude --chrome` or `/chrome` |
 | Fill a form, click buttons, scrape data (headless) | **agent-browser** | `agent-browser open <url>` |
 | Screenshot, visual test, full Playwright API | **Playwright** | MCP `playwright` tools |
+| QE-grade: typed assertions, visual-diff baselines, prompt-injection scan, semantic element finder | **qe-browser** (AQE fleet) | `aqe init` to install; see `qe-browser` skill |
 | Inspect a live Chromium session, logged-in pages | **Chrome CDP** | `scripts/cdp.mjs list` |
 | Access host web server from Docker | **host-webserver-debug** | MCP `host-webserver-debug` tools |
 | Read page content without interaction | **WebFetch** or `curl` | Direct tool call |
@@ -200,7 +202,51 @@ chromium --remote-debugging-port=9222 --no-sandbox --headless &
 
 ---
 
-### 4. host-webserver-debug
+### 4. qe-browser (AQE Fleet — v3.9.9+)
+
+**Best for**: QE-grade assertion validation, visual regression baselines, injection scanning during debugging or CI. Part of the Agentic QE fleet.
+
+**Strengths**:
+- **10MB Vibium binary** (WebDriver BiDi, W3C standard) vs 300MB Playwright install
+- **16 typed assertion kinds**: `url_contains`, `selector_visible`, `no_console_errors`, `no_failed_requests`, `visual_match`, `text_equals`, `attribute_equals`, and more
+- **Batch pre-validation**: steps validated before any are executed — catches config errors early
+- **Pixel-perfect visual diff** against baselines stored in `.aqe/visual-baselines/`
+- **14-pattern prompt-injection scanner** — useful when testing AI-facing UIs
+- **15-intent semantic element finder**: `submit_form`, `accept_cookies`, `fill_email`, `primary_cta`, `navigation_link` — finds elements by intent rather than brittle selectors
+- **Honest missing-engine contract**: if Vibium isn't on PATH, exits with code 2 + structured JSON envelope (`vibiumUnavailable: true`) — CI tooling never has to grep error strings
+
+**Limitations**:
+- Requires `aqe init` to install Vibium on first use (1-3 min, downloads Chrome for Testing)
+- Linux ARM64: auto-install falls back to x86_64 under Rosetta; use native `chromium` + symlink workaround
+- Not a drop-in Playwright replacement — see `qe-browser` migration guide for 25-API mapping
+
+**Install**:
+```bash
+aqe init           # installs Vibium + adds qe-browser to .claude/skills/
+# or directly:
+npm install -g vibium
+```
+
+**Usage**:
+```bash
+# Single assertion
+node .claude/skills/qe-browser/scripts/assert.js --checks '[
+  {"kind": "url_contains", "text": "/dashboard"},
+  {"kind": "selector_visible", "selector": "[data-testid=user-menu]"},
+  {"kind": "no_console_errors"}
+]'
+
+# Batch with pre-validation (preferred for debugging)
+node .claude/skills/qe-browser/scripts/batch.js --steps '[...]'
+
+# Check exit codes: 0=pass, 1=fail, 2=Vibium missing
+```
+
+**Fleet note**: 11 AQE skills delegate to qe-browser internally — `a11y-ally`, `visual-testing-advanced`, `security-visual-testing`, `compatibility-testing`, `localization-testing`, and 6 others. You're already using it when those skills run.
+
+---
+
+### 5. host-webserver-debug
 
 **Best for**: Accessing web servers running on the Docker host from inside the container.
 
@@ -276,7 +322,40 @@ await click({ selector: "#login-btn" })
 await wait_for_selector({ selector: ".dashboard" })
 ```
 
-### Pattern 4: Parallel Multi-Agent Browser Work
+### Pattern 4: CDP Inspect + qe-browser Assert (Debug Loop)
+
+Use Chrome CDP to explore live state, then qe-browser to lock in typed assertions once you know what to check.
+
+```bash
+# 1. Start Chromium with CDP (inspect live state)
+chromium --remote-debugging-port=9222 --no-sandbox --headless &
+
+# 2. Use CDP to explore — find selectors, check network, read DOM
+/home/devuser/.claude/skills/chrome-cdp/scripts/cdp.mjs list
+/home/devuser/.claude/skills/chrome-cdp/scripts/cdp.mjs eval <target> "document.querySelector('[data-testid]')?.textContent"
+/home/devuser/.claude/skills/chrome-cdp/scripts/cdp.mjs shot <target>  # screenshot what you see
+
+# 3. Once you know what to assert, run qe-browser batch with pre-validated checks
+node .claude/skills/qe-browser/scripts/batch.js --steps '[
+  {"action": "go", "url": "https://app.example.com"},
+  {"action": "wait_url", "pattern": "/dashboard"},
+  {"action": "assert", "checks": [
+    {"kind": "selector_visible", "selector": "[data-testid=user-menu]"},
+    {"kind": "no_console_errors"},
+    {"kind": "no_failed_requests"},
+    {"kind": "visual_match", "baseline": ".aqe/visual-baselines/dashboard.png"}
+  ]}
+]'
+
+# 4. On assertion failure: exit code 1 = test failed; exit code 2 = engine missing
+# vibiumUnavailable:true in envelope → run `aqe init` to install Vibium
+```
+
+**When to use this pattern**: Actively debugging a regression where you know the page works visually (CDP confirms) but need reproducible typed proof. CDP for exploration, qe-browser for confirmation.
+
+---
+
+### Pattern 5: Parallel Multi-Agent Browser Work
 
 Spawn multiple agents with isolated sessions for parallel scraping.
 
@@ -314,7 +393,11 @@ START: What browser task?
 ├─ "Debug a live running page"
 │  ├─ Page is on host machine? → host-webserver-debug + Playwright
 │  ├─ Page in container Chromium? → Chrome CDP
-│  └─ Need to see it visually? → VNC Display :1 + Chrome CDP
+│  ├─ Need to see it visually? → VNC Display :1 + Chrome CDP
+│  └─ Need typed pass/fail assertions + visual diff while debugging?
+│     → qe-browser (Vibium: 16 assertion kinds, batch pre-validation, baseline diffs)
+│       NOTE: part of AQE fleet — run `aqe init` once to install Vibium engine
+│       Use alongside Chrome CDP (inspect) + qe-browser (assert) for full debug loop
 │
 ├─ "Execute JavaScript in page"
 │  ├─ One-off eval? → Chrome CDP eval or agent-browser eval
@@ -353,4 +436,5 @@ curl -s http://localhost:9222/json/version  # CDP if Chromium running
 5. **Sessions are isolated** -- agent-browser sessions and Playwright contexts do not share cookies
 6. **VNC password** is `turboflow` on port 5901
 7. **Combine freely** -- these tools can coexist. Run CDP on port 9222 while agent-browser uses its own Chromium instance
+8. **qe-browser for debugging assertions** -- once CDP shows you the page state, use qe-browser batch to codify reproducible typed checks; exit code 2 means Vibium missing (`aqe init` fixes it)
 8. **For swarm agents**: spawn each with their own `--session` to avoid collision
