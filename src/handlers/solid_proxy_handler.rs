@@ -1157,6 +1157,71 @@ pub async fn jss_health_check(state: web::Data<SolidProxyState>) -> HttpResponse
     }
 }
 
+// ─── DID Resolution Proxy ────────────────────────────────────────────────────
+//
+// DID documents are public and unauthenticated.  They must be served at the
+// canonical paths specified by the DID spec:
+//   /.well-known/did.json   (did:web method)
+//   /did/{tail}             (JSS DID resolution endpoint)
+//
+// Both are proxied directly to JSS without NIP-98 or ACL enforcement.
+// Internal JSS host references are stripped so DID docs are self-consistent
+// when consumed externally.
+
+/// Proxy GET /.well-known/did.json → JSS
+async fn handle_did_wellknown(state: web::Data<SolidProxyState>) -> HttpResponse {
+    let target_url = format!("{}/.well-known/did.json", state.config.base_url);
+    proxy_did_request(&state, &target_url).await
+}
+
+/// Proxy GET /did/{tail:.*} → JSS (DID resolution, e.g. /did/nostr:<npub>)
+async fn handle_did_proxy(
+    path: web::Path<String>,
+    state: web::Data<SolidProxyState>,
+) -> HttpResponse {
+    let tail = path.into_inner();
+    let target_url = format!("{}/did/{}", state.config.base_url, tail);
+    proxy_did_request(&state, &target_url).await
+}
+
+/// Shared DID proxy implementation.  Rewrites internal JSS host refs in the
+/// body so consumers receive clean, externally-addressable DID documents.
+async fn proxy_did_request(state: &SolidProxyState, target_url: &str) -> HttpResponse {
+    match state.http_client.get(target_url).send().await {
+        Ok(resp) => {
+            let status = actix_web::http::StatusCode::from_u16(resp.status().as_u16())
+                .unwrap_or(actix_web::http::StatusCode::INTERNAL_SERVER_ERROR);
+            let content_type = resp
+                .headers()
+                .get("content-type")
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or("application/json")
+                .to_string();
+            match resp.bytes().await {
+                Ok(bytes) => {
+                    // Strip internal JSS host so DID doc URLs are relative or external.
+                    if let Ok(body_str) = std::str::from_utf8(&bytes) {
+                        let rewritten = body_str.replace(&state.config.base_url, "");
+                        HttpResponse::build(status)
+                            .content_type(content_type)
+                            .body(rewritten)
+                    } else {
+                        HttpResponse::build(status).content_type(content_type).body(bytes)
+                    }
+                }
+                Err(e) => HttpResponse::BadGateway().json(SolidProxyError {
+                    error: "DID response read failed".to_string(),
+                    details: Some(e.to_string()),
+                }),
+            }
+        }
+        Err(e) => HttpResponse::BadGateway().json(SolidProxyError {
+            error: "DID resolution failed".to_string(),
+            details: Some(e.to_string()),
+        }),
+    }
+}
+
 /// Configure Solid proxy routes
 pub fn configure_routes(cfg: &mut web::ServiceConfig) {
     info!("=== REGISTERING SOLID PROXY ROUTES ===");
@@ -1182,5 +1247,15 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
                     "/{tail:.*}",
                     web::method(Method::PATCH).to(handle_solid_proxy),
                 ),
+        )
+        // DID document resolution — public endpoints at canonical spec paths.
+        // Must sit outside /solid scope so the URL scheme matches the DID spec.
+        .service(
+            web::resource("/.well-known/did.json")
+                .route(web::get().to(handle_did_wellknown)),
+        )
+        .service(
+            web::scope("/did")
+                .route("/{tail:.*}", web::get().to(handle_did_proxy)),
         );
 }

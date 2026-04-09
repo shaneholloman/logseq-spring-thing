@@ -20,6 +20,8 @@ x-common-environment: &common-environment
   # JavaScript Solid Server (JSS) configuration
   JSS_URL: ${JSS_URL:-http://jss:3030}
   JSS_WS_URL: ${JSS_WS_URL:-ws://jss:3030/.notifications}
+  # JavaScript Solid Server relay (used by all services that query JSS)
+  JSS_RELAY_URL: ${JSS_RELAY_URL:-ws://jss:3030/relay}
 
 x-common-healthcheck: &common-healthcheck
   test: ["CMD", "curl", "-f", "http://localhost:4000/api/health"]
@@ -89,7 +91,17 @@ services:
       - JSS_CONNEG=true
       - JSS_MULTIUSER=true
       - JSS_IDP=false
-      - JSS_MASHLIB_CDN=true
+      # Disable CDN fetch at startup — required for air-gapped deployments (Sellafield).
+      # Set JSS_MASHLIB=false so the browser UI does not load at all (API-only mode).
+      - JSS_MASHLIB_CDN=false
+      - JSS_MASHLIB=false
+      # Disable git HTTP backend (attack surface, not needed).
+      - JSS_GIT=false
+      # Per-pod storage quota (500 MB). Prevents unbounded growth on shared infra.
+      - JSS_DEFAULT_QUOTA=${JSS_DEFAULT_QUOTA:-524288000}
+      # Invite-only mode: off by default, can be enabled for closed beta.
+      - JSS_INVITE_ONLY=${JSS_INVITE_ONLY:-false}
+      - JSS_NOSTR=true
     volumes:
       - jss-data:/data
     ports:
@@ -139,7 +151,11 @@ services:
       RUST_LOG_REDIRECT: ${RUST_LOG_REDIRECT:-true}
       DOCKER_ENV: ${DOCKER_ENV:-true}
       # Dev-only: bypass Nostr auth for settings writes (never set in production)
-      SETTINGS_AUTH_BYPASS: "true"
+      SETTINGS_AUTH_BYPASS: "${SETTINGS_AUTH_BYPASS:-false}"
+      # Nostr bead provenance bridge — scoped to visionflow only (privkey must not leak to other containers)
+      # Bridge pubkey: eb47d8a792a4709329270a9f85f012326c61867a913791dc5f89dc7a0a760754
+      VISIONCLAW_NOSTR_PRIVKEY: ${VISIONCLAW_NOSTR_PRIVKEY:-}
+      FORUM_RELAY_URL: ${FORUM_RELAY_URL:-}
       # Neo4j Configuration
       NEO4J_URI: ${NEO4J_URI:-bolt://neo4j:7687}
       NEO4J_USER: ${NEO4J_USER:-neo4j}
@@ -232,6 +248,9 @@ services:
       # Solid pod storage for agent pipeline
       SOLID_PROXY_SECRET_KEY: ${SOLID_PROXY_SECRET_KEY}
       VISIONFLOW_AGENT_KEY: ${VISIONFLOW_AGENT_KEY:-changeme-agent-key}
+      # Nostr bead provenance bridge — scoped here only, never in common-environment
+      VISIONCLAW_NOSTR_PRIVKEY: ${VISIONCLAW_NOSTR_PRIVKEY:-}
+      FORUM_RELAY_URL: ${FORUM_RELAY_URL:-}
     volumes:
       # Production: ONLY data volumes (no source mounts, no Docker socket)
       - visionflow-data:/app/data
