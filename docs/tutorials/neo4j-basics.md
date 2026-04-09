@@ -1,12 +1,12 @@
 ---
 title: Neo4j Integration - Quick Start Guide
-description: Added dual persistence to Neo4j graph database for advanced graph analytics:
+description: Neo4j as the sole graph database for advanced graph analytics.
 category: tutorial
 tags:
   - docker
   - database
   - backend
-updated-date: 2025-12-18
+updated-date: 2026-04-09
 difficulty-level: advanced
 ---
 
@@ -15,7 +15,7 @@ difficulty-level: advanced
 
 ## What's New
 
-Added dual persistence to Neo4j graph database for advanced graph analytics:
+Neo4j as the sole graph database for advanced graph analytics:
 
 - ✅ **1,528 lines** of production code
 - ✅ **4 new modules** (adapter, dual-write, handler, sync)
@@ -121,14 +121,11 @@ RETURN n.id, n.label, degree
 - ✅ Write operations blocked via API
 - ✅ Parameterized queries prevent injection
 
-### Dual-Write Modes
+### Repository Initialisation
 
 ```rust
-// Non-strict: Log Neo4j errors, continue with SQLite
-let repo = DualGraphRepository::new(sqlite, Some(neo4j), false);
-
-// Strict: Fail entire operation if Neo4j fails
-let repo = DualGraphRepository::new(sqlite, Some(neo4j), true);
+// Neo4j is the sole store — initialise with the Neo4j adapter directly
+let repo = UnifiedGraphRepository::new(neo4j_adapter);
 ```
 
 ### Incremental Sync
@@ -143,11 +140,11 @@ cargo run --bin sync-neo4j -- --dry-run
 
 ## Performance
 
-| Nodes | SQLite Read | Neo4j Read | Multi-Hop (3) |
-|-------|-------------|------------|---------------|
-| 1k    | 0.2ms       | 1ms        | 15ms          |
-| 10k   | 0.5ms       | 2ms        | 25ms          |
-| 100k  | 1ms         | 5ms        | 50ms          |
+| Nodes | Neo4j Read | Multi-Hop (3) |
+|-------|------------|---------------|
+| 1k    | 1ms        | 15ms          |
+| 10k   | 2ms        | 25ms          |
+| 100k  | 5ms        | 50ms          |
 
 **Recommendation**: Use Neo4j for graphs with >100k nodes or complex queries.
 
@@ -166,21 +163,15 @@ use webxr::handlers::cypher-query-handler;
 
 ### 2. Repository
 
-Replace `UnifiedGraphRepository` with `DualGraphRepository`:
-
 ```rust
-use webxr::adapters::{DualGraphRepository, Neo4jAdapter, Neo4jConfig};
+use webxr::adapters::{UnifiedGraphRepository, Neo4jAdapter, Neo4jConfig};
 
 // Initialize
 let neo4j = Arc::new(Neo4jAdapter::new(Neo4jConfig::default()).await?);
-let dual-repo = Arc::new(DualGraphRepository::new(
-    sqlite-repo,
-    Some(neo4j),
-    false, // Non-strict mode
-));
+let repo = Arc::new(UnifiedGraphRepository::new(neo4j));
 
 // Use as normal
-dual-repo.add-node(&node).await?;
+repo.add-node(&node).await?;
 ```
 
 ### 3. Cypher Queries
@@ -226,7 +217,6 @@ open http://localhost:7474
 ```
 src/adapters/
   ├── neo4j-adapter.rs           (950 lines)
-  ├── dual-graph-repository.rs   (350 lines)
   └── NEO4j-integration.md       (600 lines)
 
 src/handlers/

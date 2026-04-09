@@ -17,7 +17,7 @@ difficulty-level: intermediate
 
  > [Guides](./index.md) > Troubleshooting
 
-Comprehensive troubleshooting guide for VisionFlow, covering installation, deployment, runtime issues, and system recovery. This guide consolidates solutions for both the main VisionFlow system and the multi-agent Docker environment.
+Comprehensive troubleshooting guide for VisionClaw, covering installation, deployment, runtime issues, and system recovery. This guide consolidates solutions for both the main VisionClaw system and the multi-agent Docker environment.
 
 ## Quick Reference - Common Issues
 
@@ -72,7 +72,7 @@ docker-compose --version
 ```
 
 **Prevention**:
-- Always verify Docker is running before starting VisionFlow
+- Always verify Docker is running before starting VisionClaw
 - Add Docker to system startup services
 - Use Docker Desktop on macOS/Windows for easier management
 
@@ -213,29 +213,29 @@ pip3 list
 **Solution**:
 ```bash
 # Check container logs
-docker logs visionflow-container
+docker logs visionclaw-container
 docker logs multi-agent-container
 
 # Check exit code
 docker ps -a --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
 
 # Debug with interactive shell
-docker run -it --entrypoint /bin/bash visionflow-container
+docker run -it --entrypoint /bin/bash visionclaw-container
 
 # Check container configuration
-docker inspect visionflow-container
+docker inspect visionclaw-container
 ```
 
 **Diagnostic Commands**:
 ```bash
 # View last 100 log lines
-docker logs --tail 100 visionflow-container
+docker logs --tail 100 visionclaw-container
 
 # Follow logs in real-time
-docker logs -f visionflow-container
+docker logs -f visionclaw-container
 
 # Check container events
-docker events --filter container=visionflow-container
+docker events --filter container=visionclaw-container
 ```
 
 **Common Causes**:
@@ -249,6 +249,25 @@ docker events --filter container=visionflow-container
 - Validate configuration before deployment
 - Test with `docker-compose config`
 
+### Startup Failure Decision Tree
+
+```mermaid
+flowchart TD
+    A[Container won't start] --> B{Check exit code\ndocker ps -a}
+    B --> C[Exit 0 immediately] --> D{Check entrypoint\nscript}
+    D --> E[Script syntax error] --> F[Fix script, rebuild image]
+    D --> G[Missing CMD/ENTRYPOINT] --> H[Update Dockerfile]
+    B --> I[Exit 1 - error] --> J{Read logs\ndocker logs}
+    J --> K[Port already in use\nEADDRINUSE] --> L[Change port in\ndocker-compose.yml]
+    J --> M[Missing env var] --> N[Check .env file\nadd missing variable]
+    J --> O[Volume mount error\nEACCES/ENOENT] --> P[Fix path & permissions\nchown -R 1000:1000]
+    J --> Q[Image not found] --> R[docker-compose build\n--no-cache]
+    B --> S[Exit 137 - OOMKilled] --> T[Increase memory limits\nin docker-compose.yml]
+    B --> U[Restart loop] --> V{Inspect restart count\ndocker inspect}
+    V --> W[Count > 3] --> X[docker stop → docker rm\nthen rebuild]
+    V --> Y[Count = 1-2] --> Z[Wait 60s and\ncheck logs again]
+```
+
 ---
 
 **Problem**: Container stuck in restart loop
@@ -256,13 +275,13 @@ docker events --filter container=visionflow-container
 **Solution**:
 ```bash
 # Stop the container
-docker stop visionflow-container
+docker stop visionclaw-container
 
 # Remove container (keeps volumes)
-docker rm visionflow-container
+docker rm visionclaw-container
 
 # Check restart policy
-docker inspect visionflow-container | grep -A 5 RestartPolicy
+docker inspect visionclaw-container | grep -A 5 RestartPolicy
 
 # Rebuild and start fresh
 docker-compose down
@@ -276,7 +295,7 @@ docker-compose up -d
 docker events --filter event=restart
 
 # Check restart count
-docker inspect --format='{{.RestartCount}}' visionflow-container
+docker inspect --format='{{.RestartCount}}' visionclaw-container
 ```
 
 **Prevention**: Set appropriate restart policies and fix underlying issues
@@ -300,7 +319,7 @@ docker-compose build multi-agent
 docker build -t debug . --progress=plain --no-cache
 
 # Build with host network (for network issues)
-docker build --network=host -t visionflow .
+docker build --network=host -t visionclaw .
 ```
 
 **Common Issues & Fixes**:
@@ -308,7 +327,7 @@ docker build --network=host -t visionflow .
 ```bash
 # Network timeout during build
 # Solution: Use --network=host or configure proxy
-docker build --network=host -t visionflow .
+docker build --network=host -t visionclaw .
 
 # Out of disk space
 # Solution: Clean up Docker resources
@@ -380,7 +399,7 @@ docker stats
 dmesg | grep -i "out of memory"
 
 # Check container memory limit
-docker inspect visionflow-container | grep -i memory
+docker inspect visionclaw-container | grep -i memory
 ```
 
 **Prevention**:
@@ -404,15 +423,15 @@ services:
     cpu-shares: 1024
 
 # Find process consuming CPU inside container
-docker exec visionflow-container top
-docker exec visionflow-container ps aux --sort=-%cpu
+docker exec visionclaw-container top
+docker exec visionclaw-container ps aux --sort=-%cpu
 ```
 
 **Diagnostic**:
 ```bash
 # Profile Rust backend
-docker exec visionflow-container perf record -F 99 -p <PID>
-docker exec visionflow-container perf report
+docker exec visionclaw-container perf record -F 99 -p <PID>
+docker exec visionclaw-container perf report
 
 # Check Node.js event loop
 docker exec multi-agent-container node --prof app.js
@@ -548,31 +567,31 @@ docker logs multi-agent-container | grep -i "task.*fail\|task.*error"
 docker stats --format "table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.NetIO}}\t{{.BlockIO}}"
 
 # Check disk I/O
-docker exec visionflow-container iostat -x 1
+docker exec visionclaw-container iostat -x 1
 
 # Optimise database
-docker exec postgres psql -U visionflow -c "VACUUM ANALYZE;"
-docker exec postgres psql -U visionflow -c "REINDEX DATABASE visionflow;"
+docker exec postgres psql -U visionclaw -c "VACUUM ANALYZE;"
+docker exec postgres psql -U visionclaw -c "REINDEX DATABASE visionclaw;"
 
 # Clear Redis cache
 docker exec redis redis-cli FLUSHDB
 
 # Check network latency
-docker exec visionflow-container ping -c 10 multi-agent-container
+docker exec visionclaw-container ping -c 10 multi-agent-container
 ```
 
 **Diagnostic Commands**:
 ```bash
 # System bottleneck analysis
 htop  # On host
-docker exec visionflow-container htop  # Inside container
+docker exec visionclaw-container htop  # Inside container
 
 # I/O monitoring
 iotop -o  # On host
 
 # Network monitoring
 iftop  # On host
-docker exec visionflow-container nethogs
+docker exec visionclaw-container nethogs
 ```
 
 **Prevention**:
@@ -591,7 +610,7 @@ docker exec visionflow-container nethogs
 ```bash
 # Monitor memory trend
 while true; do
-  docker stats --no-stream --format "{{.Container}}\t{{.MemUsage}}" | grep visionflow
+  docker stats --no-stream --format "{{.Container}}\t{{.MemUsage}}" | grep visionclaw
   sleep 60
 done
 
@@ -613,7 +632,7 @@ docker exec multi-agent-container clinic doctor -- node app.js
 
 # Check for memory leaks in Rust
 cargo install valgrind
-valgrind --leak-check=full ./target/debug/visionflow
+valgrind --leak-check=full ./target/debug/visionclaw
 ```
 
 **Prevention**:
@@ -652,7 +671,7 @@ docker-compose up -d
 **Diagnostic**:
 ```bash
 # List all listening ports
-docker exec visionflow-container netstat -tlnp
+docker exec visionclaw-container netstat -tlnp
 
 # Check port mapping
 docker ps --format "table {{.Names}}\t{{.Ports}}"
@@ -673,8 +692,8 @@ docker network ls
 docker network inspect docker-ragflow
 
 # Test connectivity between containers
-docker exec multi-agent-container ping -c 3 visionflow-container
-docker exec visionflow-container curl http://multi-agent-container:3000
+docker exec multi-agent-container ping -c 3 visionclaw-container
+docker exec visionclaw-container curl http://multi-agent-container:3000
 
 # Recreate network
 docker-compose down
@@ -746,6 +765,33 @@ docker exec gui-tools-container tcpdump -i any port 9876
 - Use health checks in docker-compose.yml
 - Implement retry logic in MCP clients
 
+### WebSocket / Connection Failure Decision Tree
+
+```mermaid
+flowchart TD
+    A[Connection refused\nor WebSocket error] --> B{Which endpoint\nfails?}
+    B --> C[Main API :4000\nor :3030] --> D{Container running?\ndocker ps}
+    D --> N1[No] --> E[docker-compose up -d webxr]
+    D --> Y1[Yes] --> F{Port mapped?\ndocker port}
+    F --> N2[No] --> G[Fix ports in\ndocker-compose.yml]
+    F --> Y2[Yes] --> H{Firewall blocking?\nufw status}
+    H --> Y3[Yes] --> I[sudo ufw allow\n3030/tcp 4000/tcp]
+    H --> N3[No] --> J[Check nginx config\nnginx -t inside container]
+    B --> K[Agent API :3000] --> L{MCP server listening?\nnetstat grep 9500}
+    L --> N4[No] --> M[supervisorctl restart\nmcp-tcp-server]
+    L --> Y4[Yes] --> O{Bridge responding?\nnc -zv localhost 9500}
+    O --> N5[No] --> P[supervisorctl restart\nmcp-bridge]
+    O --> Y5[Yes] --> Q[Check WebSocket upgrade\nheaders in nginx]
+    B --> R[GUI MCP :9876-9879] --> S{gui-tools-container\nhealthy?}
+    S --> N6[No] --> T[Wait 60-90s for\nstartup — see GUI section]
+    S --> Y6[Yes] --> U{Both containers on\ndocker-ragflow network?}
+    U --> N7[No] --> V[docker network connect\ndocker-ragflow]
+    U --> Y7[Yes] --> W[docker exec multi-agent-container\nnc -zv gui-tools-service 9876]
+    B --> X[External browser\nto server] --> AA{HTTPS enabled?\ncurl -I https://host}
+    AA --> N8[No] --> AB[Enable SSL — WebXR\nrequires HTTPS]
+    AA --> Y8[Yes] --> AC[Check host firewall\nand port forwarding]
+```
+
 ---
 
 ### External Access Issues
@@ -767,7 +813,7 @@ curl http://localhost:3030/
 curl http://localhost:5901
 
 # Check if service is listening on correct interface
-docker exec visionflow-container netstat -tlnp | grep 3001
+docker exec visionclaw-container netstat -tlnp | grep 3001
 
 # For remote access, check host firewall
 sudo iptables -L -n | grep 3001
@@ -780,14 +826,14 @@ sudo iptables -L -n | grep 3001
 curl http://localhost:3030
 
 # From container
-docker exec visionflow-container curl http://localhost:3030
+docker exec visionclaw-container curl http://localhost:3030
 
 # From another machine on network
 curl http://<host-ip>:3030
 
 # Check nginx configuration
-docker exec visionflow-container cat /etc/nginx/nginx.conf
-docker exec visionflow-container nginx -t
+docker exec visionclaw-container cat /etc/nginx/nginx.conf
+docker exec visionclaw-container nginx -t
 ```
 
 **Prevention**:
@@ -849,10 +895,10 @@ nvidia-smi --query-gpu=driver-version --format=csv,noheader
 nvcc --version
 
 # Test in container
-docker exec visionflow-container nvidia-smi
+docker exec visionclaw-container nvidia-smi
 
 # Check GPU allocation
-docker exec visionflow-container echo $NVIDIA-VISIBLE-DEVICES
+docker exec visionclaw-container echo $NVIDIA-VISIBLE-DEVICES
 ```
 
 **Prevention**:
@@ -870,7 +916,7 @@ docker exec visionflow-container echo $NVIDIA-VISIBLE-DEVICES
 nvidia-smi --query-gpu=memory.used,memory.total --format=csv
 
 # Inside container
-docker exec visionflow-container nvidia-smi
+docker exec visionclaw-container nvidia-smi
 
 # Reduce batch size or grid dimensions in GPU kernels
 # Edit .env file
@@ -878,7 +924,7 @@ echo "HASH-GRID-SIZE=64" >> .env  # Reduce from default 128
 echo "GPU-MEMORY-LIMIT=2048" >> .env  # Limit to 2GB
 
 # Clear GPU memory
-docker restart visionflow-container
+docker restart visionclaw-container
 
 # Use CPU fallback
 echo "ENABLE-GPU=false" >> .env
@@ -890,10 +936,10 @@ echo "ENABLE-GPU=false" >> .env
 watch -n 1 nvidia-smi
 
 # Profile GPU kernels
-docker exec visionflow-container nvprof ./target/release/visionflow
+docker exec visionclaw-container nvprof ./target/release/visionclaw
 
 # Check kernel launch configuration
-docker logs visionflow-container | grep -i "gpu\|cuda\|kernel"
+docker logs visionclaw-container | grep -i "gpu\|cuda\|kernel"
 ```
 
 **Prevention**:
@@ -1082,7 +1128,7 @@ docker ps | grep ragflow
 docker network inspect docker-ragflow | grep ragflow
 
 # Test connectivity
-docker exec visionflow-container curl http://ragflow:9380/health
+docker exec visionclaw-container curl http://ragflow:9380/health
 
 # Check RAGFlow configuration in .env
 grep RAGFLOW .env
@@ -1101,7 +1147,7 @@ docker logs ragflow-server
 curl http://localhost:9380/api/v1/status
 
 # Verify API key
-docker exec visionflow-container env | grep RAGFLOW
+docker exec visionclaw-container env | grep RAGFLOW
 ```
 
 **Prevention**: Document RAGFlow setup and maintain version compatibility
@@ -1121,7 +1167,7 @@ docker ps | grep whisper
 ./scripts/test-whisper-stt.sh
 
 # Verify Whisper is accessible
-docker exec visionflow-container curl http://whisper-service:8000/health
+docker exec visionclaw-container curl http://whisper-service:8000/health
 
 # Check audio input format
 # Whisper expects: 16kHz, mono, WAV or MP3
@@ -1181,7 +1227,7 @@ docker logs <kokoro-container-name>
 curl http://localhost:8880/health
 
 # Check network connectivity
-docker exec visionflow-container ping <kokoro-container-name>
+docker exec visionclaw-container ping <kokoro-container-name>
 
 # Verify audio output format
 curl -X POST -d '{"text":"test"}' http://localhost:8880/synthesize \
@@ -1234,6 +1280,50 @@ echo "GUI services ready!"
 5. MCP servers bind to ports (40-70s)
 6. Health check passes (60-90s)
 
+### MCP GUI Startup Sequence
+
+```mermaid
+sequenceDiagram
+    participant Op as Operator
+    participant DC as docker-compose
+    participant GT as gui-tools-container
+    participant MA as multi-agent-container
+    participant MCP as MCP Tool (e.g. Blender)
+
+    Op->>DC: docker-compose up -d
+    DC->>GT: Start container
+    DC->>MA: Start container
+
+    GT->>GT: Xvfb starts (10-20s)
+    GT->>GT: XFCE desktop starts (20-30s)
+    GT->>GT: GUI apps load (30-60s)
+    GT->>GT: MCP servers bind :9876-9879 (40-70s)
+    GT->>DC: Health check passes (60-90s)
+
+    MA->>GT: ping gui-tools-service (DNS check)
+    Note over MA,GT: Fails until GT is healthy — timeout expected
+
+    Op->>MA: Use MCP tool before GT ready
+    MA->>GT: nc -zv gui-tools-service 9876
+    GT-->>MA: Connection refused (still starting)
+    MA-->>Op: Timeout warning (EXPECTED — wait)
+
+    loop Every 5s until healthy
+        Op->>DC: docker inspect gui-tools-container grep healthy
+        DC-->>Op: starting | unhealthy | healthy
+    end
+
+    DC-->>Op: Status: healthy
+    Op->>MA: Retry MCP tool call
+    MA->>GT: TCP connect :9876
+    GT-->>MA: Connection accepted
+    MA->>MCP: Send MCP request
+    MCP-->>MA: Response
+    MA-->>Op: Tool result
+
+    Note over Op,GT: If still failing after 2min:\ndocker-compose restart gui-tools-service\nthen check: docker logs gui-tools-container | grep -i error
+```
+
 **When to worry**:
 If timeout warnings persist for more than 2 minutes after both containers show "Up" status:
 
@@ -1257,6 +1347,57 @@ vncviewer localhost:5901
 
 ## Diagnostic Tools
 
+### Service Dependency Chain
+
+```mermaid
+graph LR
+    subgraph Host["Host Machine"]
+        DK[Docker Daemon]
+        GPU[NVIDIA Driver]
+    end
+
+    subgraph Network["docker-ragflow network"]
+        subgraph Core["Core Services"]
+            WX[webxr container\nRust backend :4000\nVite dev :3030]
+            PG[postgres\n:5432]
+            RD[redis\ntask queue]
+            RF[ragflow-server\n:9380]
+        end
+
+        subgraph Agents["Multi-Agent Stack"]
+            MA[multi-agent-container\nAgent UI :3000\nMCP TCP :9500\nMCP Bridge :9503]
+        end
+
+        subgraph GUI["GUI Tools Stack"]
+            GT[gui-tools-container\nVNC :5901\nBlender MCP :9876\nQGIS MCP :9877\nKiCad MCP :9878\nImageMagick MCP :9879]
+        end
+
+        subgraph External["External Services"]
+            WH[whisper-service\nSTT :8000]
+            KK[kokoro TTS\n:8880]
+            RV[ruvector-postgres\n:5432]
+        end
+    end
+
+    DK -->|provides runtime| WX
+    DK -->|provides runtime| MA
+    DK -->|provides runtime| GT
+    GPU -->|passthrough --gpus all| WX
+    GPU -->|passthrough| WH
+
+    WX -->|reads graph data| PG
+    WX -->|task queue| RD
+    WX -->|knowledge retrieval| RF
+    WX -->|speech input| WH
+    WX -->|speech output| KK
+
+    MA -->|MCP tools| GT
+    MA -->|agent memory| RV
+    MA -->|coordinates| WX
+
+    RF -->|on same network| Network
+```
+
 ### System Health Check
 
 **Quick Health Check**:
@@ -1264,7 +1405,7 @@ vncviewer localhost:5901
 #!/bin/bash
 # Save as health-check.sh
 
-echo "=== VisionFlow Health Check ==="
+echo "=== VisionClaw Health Check ==="
 echo "Date: $(date)"
 echo
 
@@ -1278,18 +1419,18 @@ echo
 # Container status
 echo "2. Container Status:"
 docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" | \
-  grep -E "visionflow|multi-agent|gui-tools"
+  grep -E "visionclaw|multi-agent|gui-tools"
 echo
 
 # Resource usage
 echo "3. Resource Usage:"
 docker stats --no-stream --format "table {{.Container}}\t{{.CPUPerc}}\t{{.MemUsage}}" | \
-  grep -E "visionflow|multi-agent|gui-tools"
+  grep -E "visionclaw|multi-agent|gui-tools"
 echo
 
 # Network connectivity
 echo "4. Network Test:"
-docker exec visionflow-container curl -sf http://localhost:4000/ > /dev/null && \
+docker exec visionclaw-container curl -sf http://localhost:4000/ > /dev/null && \
   echo "✓ Main API: OK" || echo "✗ Main API: FAIL"
 
 docker exec multi-agent-container curl -sf http://localhost:3000/ > /dev/null && \
@@ -1372,7 +1513,7 @@ docker-compose logs --since "2025-10-03T10:00:00"
 docker-compose logs | grep -i "error\|warn\|fail" | less
 
 # Export logs with timestamps
-docker-compose logs -t > visionflow-logs-$(date +%Y%m%d-%H%M%S).log
+docker-compose logs -t > visionclaw-logs-$(date +%Y%m%d-%H%M%S).log
 ```
 
 **Structured log search**:
@@ -1403,7 +1544,7 @@ docker-compose logs | grep -E "agent.*fail|spawn.*error|mcp.*timeout"
 ./scripts/run-gpu-test-suite.sh
 
 # Profile GPU kernels
-docker exec visionflow-container nvprof ./target/release/visionflow
+docker exec visionclaw-container nvprof ./target/release/visionclaw
 
 # Monitor GPU utilisation
 watch -n 1 nvidia-smi
@@ -1413,7 +1554,7 @@ watch -n 1 nvidia-smi
 ```bash
 # Rust profiling (development)
 cargo install flamegraph
-cargo flamegraph --bin visionflow
+cargo flamegraph --bin visionclaw
 
 # Node.js profiling
 docker exec multi-agent-container node --prof /app/index.js
@@ -1426,8 +1567,8 @@ docker exec multi-agent-container node --prof-process isolate-*.log
 docker stats --format "table {{.Name}}\t{{.NetIO}}"
 
 # Capture traffic
-docker exec visionflow-container tcpdump -i any -w /tmp/capture.pcap
-docker cp visionflow-container:/tmp/capture.pcap ./
+docker exec visionclaw-container tcpdump -i any -w /tmp/capture.pcap
+docker cp visionclaw-container:/tmp/capture.pcap ./
 wireshark capture.pcap
 ```
 
@@ -1489,17 +1630,17 @@ echo "Creating backup..."
 mkdir -p backups/reset-$(date +%Y%m%d-%H%M%S)
 
 # Backup volumes
-docker run --rm -v visionflow-data:/data -v $(pwd)/backups:/backup \
+docker run --rm -v visionclaw-data:/data -v $(pwd)/backups:/backup \
   alpine tar czf /backup/reset-$(date +%Y%m%d-%H%M%S)/data.tar.gz -C /data .
 
 # Stop all containers
 docker-compose down -v
 
-# Remove all VisionFlow-related containers
-docker ps -a | grep visionflow | awk '{print $1}' | xargs -r docker rm -f
+# Remove all VisionClaw-related containers
+docker ps -a | grep visionclaw | awk '{print $1}' | xargs -r docker rm -f
 
-# Remove all VisionFlow images
-docker images | grep visionflow | awk '{print $3}' | xargs -r docker rmi -f
+# Remove all VisionClaw images
+docker images | grep visionclaw | awk '{print $3}' | xargs -r docker rmi -f
 
 # Prune system
 docker system prune -a --volumes -f
@@ -1521,7 +1662,7 @@ echo "✓ Reset complete. System rebuilding..."
 ls -lh backups/
 
 # Restore volume from backup
-docker run --rm -v visionflow-data:/data -v $(pwd)/backups:/backup \
+docker run --rm -v visionclaw-data:/data -v $(pwd)/backups:/backup \
   alpine tar xzf /backup/reset-20251003-120000/data.tar.gz -C /data
 
 # Restart services
@@ -1535,10 +1676,10 @@ docker-compose up -d
 **PostgreSQL recovery**:
 ```bash
 # Backup current database
-docker exec postgres pg-dump -U visionflow visionflow > backup-$(date +%Y%m%d).sql
+docker exec postgres pg-dump -U visionclaw visionclaw > backup-$(date +%Y%m%d).sql
 
 # Check database integrity
-docker exec postgres psql -U visionflow -d visionflow -c "
+docker exec postgres psql -U visionclaw -d visionclaw -c "
   SELECT schemaname, tablename,
          pg-size-pretty(pg-total-relation-size(schemaname||'.'||tablename)) AS size
   FROM pg-tables
@@ -1547,11 +1688,11 @@ docker exec postgres psql -U visionflow -d visionflow -c "
   LIMIT 10;"
 
 # Repair corrupted tables
-docker exec postgres psql -U visionflow -d visionflow -c "REINDEX DATABASE visionflow;"
-docker exec postgres psql -U visionflow -d visionflow -c "VACUUM FULL;"
+docker exec postgres psql -U visionclaw -d visionclaw -c "REINDEX DATABASE visionclaw;"
+docker exec postgres psql -U visionclaw -d visionclaw -c "VACUUM FULL;"
 
 # Restore from backup
-docker exec -i postgres psql -U visionflow visionflow < backup-20251003.sql
+docker exec -i postgres psql -U visionclaw visionclaw < backup-20251003.sql
 ```
 
 ---
@@ -1593,7 +1734,7 @@ find ./logs -name "*.log" -mtime +30 -delete
 echo "✓ Old logs cleaned"
 
 # 3. Optimise database
-docker exec postgres vacuumdb -U visionflow -d visionflow -z -v
+docker exec postgres vacuumdb -U visionclaw -d visionclaw -z -v
 echo "✓ Database optimised"
 
 # 4. Clean Docker resources
@@ -1610,7 +1751,7 @@ if [ "$UPDATES" -gt 0 ]; then
 fi
 
 # 6. Security audit (Rust)
-docker exec visionflow-container cargo audit
+docker exec visionclaw-container cargo audit
 echo "✓ Security audit complete"
 
 # 7. Generate health report
@@ -1626,7 +1767,7 @@ echo "=== Maintenance Complete ==="
 crontab -e
 
 # Add weekly maintenance (Sundays at 2 AM)
-0 2 * * 0 /path/to/visionflow/maintenance.sh >> /var/log/visionflow-maintenance.log 2>&1
+0 2 * * 0 /path/to/visionclaw/maintenance.sh >> /var/log/visionclaw-maintenance.log 2>&1
 ```
 
 ---
@@ -1669,7 +1810,7 @@ global:
   scrape-interval: 15s
 
 scrape-configs:
-  - job-name: 'visionflow'
+  - job-name: 'visionclaw'
     static-configs:
       - targets: ['webxr:9090']
 
@@ -1692,19 +1833,19 @@ scrape-configs:
 - 
 - 
 - 
-- [API Reference](../reference/api/)
+- [API Reference](../reference/)
 
 ### Community & Support
 
 **Community Channels**:
-- GitHub Issues: [github.com/your-org/visionflow/issues](https://github.com)
+- GitHub Issues: [github.com/your-org/visionclaw/issues](https://github.com)
 - Discord Server: Join for real-time help
 - Community Forum: Discussion and Q&A
 
 **Commercial Support**:
-- Email: support@visionflow.dev
-- Enterprise: enterprise@visionflow.dev
-- Security Issues: security@visionflow.dev
+- Email: support@visionclaw.dev
+- Enterprise: enterprise@visionclaw.dev
+- Security Issues: security@visionclaw.dev
 
 ### Reporting Issues
 
@@ -1744,7 +1885,7 @@ Brief description of the problem
 ## Environment
 - OS: Linux/macOS/Windows
 - Docker Version:
-- VisionFlow Version/Commit:
+- VisionClaw Version/Commit:
 - GPU: Yes/No (model if yes)
 
 ## Steps to Reproduce

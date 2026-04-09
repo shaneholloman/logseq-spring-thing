@@ -1,6 +1,6 @@
 ---
 title: Operations Guide
-description: Operating VisionFlow in production
+description: Operating VisionClaw in production
 category: how-to
 diataxis: how-to
 tags:
@@ -12,7 +12,7 @@ updated-date: 2025-01-29
 
 # Operations Guide
 
-Operating VisionFlow in production environments.
+Operating VisionClaw in production environments.
 
 ## Contents
 
@@ -33,4 +33,4 @@ Monitor these key metrics:
 ## Related
 
 - [Configuration](../../reference/configuration/README.md)
-- [Health API](../../reference/api/README.md)
+- [Health API](../../reference/README.md)

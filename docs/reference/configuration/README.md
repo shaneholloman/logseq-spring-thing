@@ -1,6 +1,6 @@
 ---
 title: Configuration Reference
-description: Complete reference for all VisionFlow configuration options
+description: Complete reference for all VisionClaw configuration options
 category: reference
 difficulty-level: intermediate
 tags:
@@ -11,7 +11,7 @@ updated-date: 2025-01-29
 
 # Configuration Reference
 
-Complete reference for all VisionFlow configuration options across environment variables, YAML files, and runtime settings.
+Complete reference for all VisionClaw configuration options across environment variables, YAML files, and runtime settings.
 
 ---
 
@@ -254,4 +254,4 @@ echo "Configuration valid"
 
 - [API Reference](../api/README.md)
 - [Error Reference](../error-codes.md)
-- [Deployment Guide](../../how-to/deployment/deployment.md)
+- [Deployment Guide](../../how-to/deployment-guide.md)

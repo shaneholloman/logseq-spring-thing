@@ -1,6 +1,6 @@
 ---
 title: Cargo Commands Reference
-description: Rust cargo commands for VisionFlow development
+description: Rust cargo commands for VisionClaw development
 category: reference
 difficulty-level: intermediate
 tags:
@@ -12,7 +12,7 @@ updated-date: 2025-01-29
 
 # Cargo Commands Reference
 
-Rust cargo commands for building, testing, and running VisionFlow.
+Rust cargo commands for building, testing, and running VisionClaw.
 
 ---
 
@@ -28,7 +28,7 @@ cargo build
 cargo build --all-features
 
 # Build specific package
-cargo build -p visionflow-core
+cargo build -p visionclaw-core
 ```
 
 ### Release Build
@@ -241,7 +241,7 @@ cargo update -p serde
 
 ```bash
 # Example with multiple env vars
-RUST_LOG=visionflow=debug RUST_BACKTRACE=1 cargo run
+RUST_LOG=visionclaw=debug RUST_BACKTRACE=1 cargo run
 ```
 
 ---
@@ -250,4 +250,4 @@ RUST_LOG=visionflow=debug RUST_BACKTRACE=1 cargo run
 
 - [Docker Commands](./docker-commands.md)
 - [CLI Reference](./README.md)
-- [Deployment Guide](../../how-to/deployment/deployment.md)
+- [Deployment Guide](../../how-to/deployment-guide.md)

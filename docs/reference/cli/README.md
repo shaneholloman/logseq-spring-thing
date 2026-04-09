@@ -1,6 +1,6 @@
 ---
 title: CLI Reference
-description: Command-line interface reference for VisionFlow development and deployment
+description: Command-line interface reference for VisionClaw development and deployment
 category: reference
 difficulty-level: intermediate
 tags:
@@ -12,7 +12,7 @@ updated-date: 2025-01-29
 
 # CLI Reference
 
-Command-line interface reference for VisionFlow development and deployment.
+Command-line interface reference for VisionClaw development and deployment.
 
 ---
 
@@ -53,7 +53,7 @@ cargo test
 docker-compose up -d
 
 # View logs
-docker-compose logs -f visionflow
+docker-compose logs -f visionclaw
 
 # Stop services
 docker-compose down
@@ -86,5 +86,5 @@ docker-compose build --no-cache
 
 ## Related Documentation
 
-- [Deployment Guide](../../how-to/deployment/deployment.md)
+- [Deployment Guide](../../how-to/deployment-guide.md)
 - [Configuration Reference](../configuration/README.md)

@@ -6,7 +6,7 @@ tags:
   - tutorial
   - documentation
   - reference
-  - visionflow
+  - visionclaw
 updated-date: 2025-12-18
 difficulty-level: intermediate
 ---
@@ -155,8 +155,8 @@ Typical performance:
 ## Related Documentation
 
 - [Natural Language Queries Tutorial](natural-language-queries.md)
-- [Semantic Forces User Guide](semantic-forces.md)
-- [VisionFlow Guides](../index.md)
+- [Semantic Forces User Guide](../explanation/physics-gpu-engine.md)
+- [VisionClaw Guides](../index.md)
 - [Goalie Integration - Goal-Oriented AI Research](../infrastructure/goalie-integration.md)
 - [Troubleshooting Guide](../infrastructure/troubleshooting.md)
 

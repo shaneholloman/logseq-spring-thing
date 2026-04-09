@@ -21,7 +21,7 @@ difficulty-level: advanced
 **Last Updated**: 2025-09-17
 **Status**: ✅ COMPREHENSIVE IMPLEMENTATION
 
-This guide provides complete documentation for the VisionFlow WebXR telemetry and logging system, including implementation details, operational procedures, and troubleshooting guidance.
+This guide provides complete documentation for the VisionClaw WebXR telemetry and logging system, including implementation details, operational procedures, and troubleshooting guidance.
 
 ## Table of Contents
 
@@ -40,7 +40,7 @@ This guide provides complete documentation for the VisionFlow WebXR telemetry an
 
 ## System Overview
 
-The VisionFlow telemetry system provides comprehensive logging, monitoring, and performance analysis capabilities across the entire application stack. It's designed for production-grade observability with structured logging, automatic correlation, and real-time metrics.
+The VisionClaw telemetry system provides comprehensive logging, monitoring, and performance analysis capabilities across the entire application stack. It's designed for production-grade observability with structured logging, automatic correlation, and real-time metrics.
 
 ### Key Features
 
@@ -1042,7 +1042,7 @@ Returns system health status including logging system status.
 
 ## Conclusion
 
-The VisionFlow telemetry system provides comprehensive observability into all aspects of the multi-agent WebXR application. By following this guide, you can effectively monitor system health, debug issues, and optimise performance.
+The VisionClaw telemetry system provides comprehensive observability into all aspects of the multi-agent WebXR application. By following this guide, you can effectively monitor system health, debug issues, and optimise performance.
 
 For additional support or feature requests, please refer to the main project documentation or create an issue in the project repository.
 

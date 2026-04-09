@@ -1,5 +1,5 @@
 ---
-title: "VisionFlow Performance Benchmarks"
+title: "VisionClaw Performance Benchmarks"
 description: "**Last Updated:** November 5, 2025 **Version:** v0.1.0 **Status:** Production"
 category: reference
 tags:
@@ -12,7 +12,7 @@ difficulty-level: advanced
 ---
 
 
-# VisionFlow Performance Benchmarks
+# VisionClaw Performance Benchmarks
 
 **Last Updated:** November 5, 2025
 **Version:** v0.1.0
@@ -22,12 +22,24 @@ difficulty-level: advanced
 
 ## Executive Summary
 
-VisionFlow achieves enterprise-grade performance for real-time 3D graph visualization:
+VisionClaw achieves enterprise-grade performance for real-time 3D graph visualization:
 
 - **100K+ nodes** @ 60 FPS with GPU acceleration
 - **Sub-10ms latency** for physics updates via binary WebSocket protocol
 - **80% bandwidth reduction** compared to JSON (3.6 MB vs 18 MB per frame)
 - **Linear scalability** from 1K to 1M nodes
+
+---
+
+### Key Performance Numbers at a Glance
+
+```mermaid
+xychart-beta
+    title "VisionClaw Performance Highlights"
+    x-axis ["GPU Speedup (55x)", "Binary Proto Speedup (6.9x)", "Instanced Render (10x)", "Neo4j Index (5x)", "WS Compression (2.5x)"]
+    y-axis "Speedup / Improvement Factor" 0 --> 60
+    bar [55, 6.9, 10, 5, 2.5]
+```
 
 ---
 
@@ -242,13 +254,13 @@ VisionFlow achieves enterprise-grade performance for real-time 3D graph visualiz
 
 ## 9. Comparison with Alternatives
 
-### VisionFlow vs Competitors
+### VisionClaw vs Competitors
 
 **Test:** Render & simulate 100K nodes @ 60 FPS
 
 | Solution | FPS | Latency | Bandwidth | CPU | GPU Memory |
 |----------|-----|---------|-----------|-----|------------|
-| **VisionFlow** | **60** | **10 ms** | **3.6 MB** | **5%** | **400 MB** |
+| **VisionClaw** | **60** | **10 ms** | **3.6 MB** | **5%** | **400 MB** |
 | Gephi | 8 | N/A | N/A | 45% | N/A |
 | Cytoscape | 12 | N/A | N/A | 38% | N/A |
 | Neo4j Bloom | 25 | 45 ms | 18 MB | 22% | 1.2 GB |
@@ -300,6 +312,29 @@ VisionFlow achieves enterprise-grade performance for real-time 3D graph visualiz
 
 ---
 
+### Benchmark Measurement Pipeline
+
+```mermaid
+graph LR
+    A[User Action / Workload Generator] --> B[Actix-web Server]
+    B --> C{Route}
+    C -->|Physics| D[CUDA Force Compute Actor]
+    C -->|Queries| E[Neo4j Graph DB]
+    C -->|Rendering| F[Babylon.js Client]
+    D --> G[GPU Timing: nvml / CUDA Events]
+    E --> H[Cypher Query Timer]
+    F --> I[Chrome DevTools / Frame Profiler]
+    G --> J[Prometheus Metrics Collector]
+    H --> J
+    I --> J
+    J --> K[Grafana Dashboard]
+    K --> L[Performance Report / Benchmark Tables]
+    B --> M[Jaeger Distributed Tracing]
+    M --> K
+```
+
+---
+
 ## 11. Performance Monitoring
 
 ### Key Metrics to Track
@@ -317,7 +352,7 @@ VisionFlow achieves enterprise-grade performance for real-time 3D graph visualiz
 
 - **Prometheus** + **Grafana** for metrics
 - **Jaeger** for distributed tracing
-- **VisionFlow Telemetry** built-in logging
+- **VisionClaw Telemetry** built-in logging
 - **Chrome DevTools** for client performance
 
 ---
@@ -344,7 +379,7 @@ Where: V = vertices, E = edges, D = max delta bucket, L = max path length, k = l
 
 ## Conclusion
 
-VisionFlow delivers production-grade performance across all tiers:
+VisionClaw delivers production-grade performance across all tiers:
 - **✅ Real-time physics** for 100K+ nodes @ 60 FPS
 - **✅ Sub-10ms latency** via binary WebSocket protocol
 - **✅ Linear scalability** from 1K to 1M nodes
@@ -356,7 +391,7 @@ VisionFlow delivers production-grade performance across all tiers:
 
 ## References
 
-- [Binary Protocol Specification](./protocols/websocket-binary-v2.md)
+- [Binary Protocol Specification](./websocket-binary.md)
 - [WebSocket API Documentation](./api/03-websocket.md)
 - 
 - 
@@ -364,5 +399,5 @@ VisionFlow delivers production-grade performance across all tiers:
 ---
 
 **Benchmark Version:** 1.0
-**VisionFlow Version:** v0.1.0
-**Maintainer:** VisionFlow Performance Team
+**VisionClaw Version:** v0.1.0
+**Maintainer:** VisionClaw Performance Team

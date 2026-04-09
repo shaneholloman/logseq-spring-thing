@@ -1,10 +1,10 @@
 # Voice System Integration Guide
 
-This guide explains how to integrate with VisionFlow's voice system for speech-to-text (STT), text-to-speech (TTS), and voice command processing.
+This guide explains how to integrate with VisionClaw's voice system for speech-to-text (STT), text-to-speech (TTS), and voice command processing.
 
 ## Overview
 
-VisionFlow provides a comprehensive voice system that enables:
+VisionClaw provides a comprehensive voice system that enables:
 
 - **Text-to-Speech (TTS)**: Convert text responses to audio using Kokoro or OpenAI
 - **Speech-to-Text (STT)**: Transcribe audio input using Whisper or OpenAI
@@ -684,6 +684,6 @@ Sessions automatically:
 
 ## Related Documentation
 
-- [Swarm Orchestration Guide](/docs/guides/features/swarm-orchestration.md)
-- [WebSocket API Reference](/docs/api/websocket.md)
-- [Configuration Reference](/docs/reference/configuration.md)
+- [Swarm Orchestration Guide](../how-to/agent-orchestration.md)
+- [WebSocket API Reference](../reference/websocket-binary.md)
+- [Configuration Reference](../reference/configuration/environment-variables.md)

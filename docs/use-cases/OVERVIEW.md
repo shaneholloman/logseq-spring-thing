@@ -1,8 +1,8 @@
-# Use Cases Overview: VisionFlow Industry Applications
+# Use Cases Overview: VisionClaw Industry Applications
 
 **Executive Summary for Stakeholders**
 
-This directory contains comprehensive research on VisionFlow's applications across 7 major industries, representing a $31.6B total addressable market.
+This directory contains comprehensive research on VisionClaw's applications across 7 major industries, representing a $31.6B total addressable market.
 
 ---
 
@@ -22,7 +22,7 @@ docs/use-cases/
 
 ## Key Industries & Market Opportunity
 
-| Industry | Market Size (2024) | VisionFlow TAM | Primary Value | 5-Year TCO Savings |
+| Industry | Market Size (2024) | VisionClaw TAM | Primary Value | 5-Year TCO Savings |
 |----------|-------------------|---------------|---------------|-------------------|
 | **Gaming** | $56.8B | $5.68B (10%) | P2P cost elimination | 99% vs dedicated servers |
 | **Scientific** | $8.2B | $4.1B (50%) | Privacy + HPC access | 90% vs cloud |
@@ -69,7 +69,7 @@ docs/use-cases/
 
 ## Performance Metrics
 
-| Capability | VisionFlow | Industry Average | Improvement |
+| Capability | VisionClaw | Industry Average | Improvement |
 |-----------|-----------|-----------------|-------------|
 | **Simulation Scale** | 100,000+ entities | 5,000-20,000 | 5-20x |
 | **Frame Rate** | 60 FPS (GPU) | 5-30 FPS (CPU) | 2-12x |
@@ -111,7 +111,7 @@ docs/use-cases/
 ### For CFOs/Procurement (Financial)
 **Read**: [TCO Analysis](./competitive-analysis.md#tco-analysis) (Section 1-7 by industry)
 **Evaluate**: 5-year cost comparison, CAPEX vs OPEX trade-offs
-**Decision**: ROI calculator (request from [sales@visionflow.dev](mailto:sales@visionflow.dev))
+**Decision**: ROI calculator (request from [sales@visionclaw.dev](mailto:sales@visionclaw.dev))
 
 ### For CISOs/Compliance (Security)
 **Read**: [Decentralization Value Prop](./industry-applications.md#cross-industry-decentralization-value-proposition)
@@ -121,26 +121,26 @@ docs/use-cases/
 ### For End Users (Scientists, Engineers, Analysts)
 **Read**: [Quick Reference](./quick-reference.md) (find your industry)
 **Try**: [Tutorials](../tutorials/) (2-8 hours hands-on)
-**Community**: [Discord](https://discord.gg/visionflow), [Forum](https://discuss.visionflow.dev)
+**Community**: [Discord](https://discord.gg/visionclaw), [Forum](https://discuss.visionclaw.dev)
 
 ---
 
 ## Next Steps by Stakeholder
 
 ### For Startups/Researchers (Budget <$50K)
-1. **Download**: [GitHub repo](https://github.com/yourusername/visionflow)
+1. **Download**: [GitHub repo](https://github.com/yourusername/visionclaw)
 2. **Tutorial**: [Getting Started](../getting-started/README.md)
-3. **Community**: [Discord #beginners](https://discord.gg/visionflow)
+3. **Community**: [Discord #beginners](https://discord.gg/visionclaw)
 4. **Cost**: $0 (open-source) + $1,599 (RTX 4090)
 
 ### For Enterprises (Budget >$100K)
-1. **Contact**: [enterprise@visionflow.dev](mailto:enterprise@visionflow.dev)
+1. **Contact**: [enterprise@visionclaw.dev](mailto:enterprise@visionclaw.dev)
 2. **POC**: 2-week pilot (free for qualified customers)
 3. **Pilot**: 3-month production trial (paid, with SLA)
 4. **Rollout**: Multi-site deployment + 24/7 support
 
 ### For System Integrators/Consultants
-1. **Partner Program**: [partners@visionflow.dev](mailto:partners@visionflow.dev)
+1. **Partner Program**: [partners@visionclaw.dev](mailto:partners@visionclaw.dev)
 2. **Certification**: 2-week training (remote or on-site)
 3. **Referral**: 20% revenue share on deals you close
 4. **Co-Marketing**: Joint case studies, webinars, conference talks
@@ -172,13 +172,13 @@ docs/use-cases/
 ## Educational Resources
 
 ### Webinars (YouTube)
-- [VisionFlow for Gaming](https://youtube.com/visionflow-gaming) - 45 min
-- [Manufacturing Digital Twins](https://youtube.com/visionflow-manufacturing) - 60 min
-- [HIPAA-Compliant Healthcare Simulations](https://youtube.com/visionflow-healthcare) - 60 min
-- [Financial Risk Modeling](https://youtube.com/visionflow-finance) - 45 min
+- [VisionClaw for Gaming](https://youtube.com/visionclaw-gaming) - 45 min
+- [Manufacturing Digital Twins](https://youtube.com/visionclaw-manufacturing) - 60 min
+- [HIPAA-Compliant Healthcare Simulations](https://youtube.com/visionclaw-healthcare) - 60 min
+- [Financial Risk Modeling](https://youtube.com/visionclaw-finance) - 45 min
 
 ### Papers & Publications
-- [VisionFlow Architecture White Paper](../papers/architecture-whitepaper.pdf)
+- [VisionClaw Architecture White Paper](../papers/architecture-whitepaper.pdf)
 - [GPU-Accelerated Physics Simulation](../papers/gpu-physics.pdf)
 - [Decentralized Simulation Networks](../papers/decentralized-simulation.pdf)
 
@@ -192,9 +192,9 @@ docs/use-cases/
 ## Community & Support
 
 ### Open Source Community (Free)
-- **GitHub**: [Issues](https://github.com/yourusername/visionflow/issues), [Discussions](https://github.com/yourusername/visionflow/discussions)
+- **GitHub**: [Issues](https://github.com/yourusername/visionclaw/issues), [Discussions](https://github.com/yourusername/visionclaw/discussions)
 - **Discord**: 5,000+ members, 24/7 community support
-- **Forum**: [discuss.visionflow.dev](https://discuss.visionflow.dev)
+- **Forum**: [discuss.visionclaw.dev](https://discuss.visionclaw.dev)
 
 ### Enterprise Support (Paid)
 - **SLA**: 99.9% uptime, 4-hour response time
@@ -204,7 +204,7 @@ docs/use-cases/
 ### Training & Certification
 - **Self-Paced**: Free online courses (YouTube, docs)
 - **Instructor-Led**: 1-week on-site training ($5K)
-- **Certification**: VisionFlow Certified Engineer (exam $500)
+- **Certification**: VisionClaw Certified Engineer (exam $500)
 
 ---
 
@@ -252,7 +252,7 @@ docs/use-cases/
 
 ### Q2 2025
 - 🔄 Healthcare: DICOM import, FDA audit trails
-- 🔄 Gaming: Unreal Engine 5 plugin (Nanite + VisionFlow)
+- 🔄 Gaming: Unreal Engine 5 plugin (Nanite + VisionClaw)
 - 🔄 Scientific: LAMMPS file format support
 
 ### Q3 2025
@@ -269,13 +269,13 @@ docs/use-cases/
 
 ## Quotes from Early Adopters
 
-> "We cut our physics server costs from $6,000/month to zero with VisionFlow's P2P networking. Game-changer for indie studios."
+> "We cut our physics server costs from $6,000/month to zero with VisionClaw's P2P networking. Game-changer for indie studios."
 > — **Game Studio Founder** (50-player space sim)
 
 > "Real-time collaboration in 3D changed how our city council evaluates traffic proposals. Went from 6-month studies to 2-week iterations."
 > — **Municipal Traffic Engineer** (300K population city)
 
-> "Data sovereignty was non-negotiable for our drug discovery program. VisionFlow let us keep everything behind the firewall while matching HPC performance."
+> "Data sovereignty was non-negotiable for our drug discovery program. VisionClaw let us keep everything behind the firewall while matching HPC performance."
 > — **Pharmaceutical Research Director** (multi-site consortium)
 
 > "Sub-10ms latency on the factory floor caught 95% of defects before welding. $4.6M annual savings, 4-month payback."
@@ -285,7 +285,7 @@ docs/use-cases/
 
 ## Decision Framework
 
-**Use this checklist to evaluate VisionFlow for your organization:**
+**Use this checklist to evaluate VisionClaw for your organization:**
 
 ### Must-Have Requirements
 - [ ] Real-time simulation needed (<10ms latency)
@@ -306,14 +306,14 @@ docs/use-cases/
 - [ ] Security/compliance validated (CISO approval)
 - [ ] Team trained (<1 week onboarding)
 
-**If 4+ must-haves and 6+ criteria met → Recommend VisionFlow**
+**If 4+ must-haves and 6+ criteria met → Recommend VisionClaw**
 
 ---
 
 **Document Version**: 1.0
 **Last Updated**: 2025-01-29
-**Maintained By**: VisionFlow Product Marketing
-**Contact**: [info@visionflow.dev](mailto:info@visionflow.dev)
+**Maintained By**: VisionClaw Product Marketing
+**Contact**: [info@visionclaw.dev](mailto:info@visionclaw.dev)
 
 **See Also**:
 - [Full Industry Research](./industry-applications.md)

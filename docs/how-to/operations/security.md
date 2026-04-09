@@ -16,7 +16,7 @@ difficulty-level: intermediate
 
 *[Guides](../guides/README.md) > Security*
 
-This document outlines the security measures implemented in the VisionFlow multi-agent system and provides guidelines for secure deployment and usage.
+This document outlines the security measures implemented in the VisionClaw multi-agent system and provides guidelines for secure deployment and usage.
 
 ## Table of Contents
 1. [Environment Variables](#environment-variables)

@@ -1,6 +1,6 @@
 ---
 title: Docker Commands Reference
-description: Docker and docker-compose commands for VisionFlow deployment
+description: Docker and docker-compose commands for VisionClaw deployment
 category: reference
 difficulty-level: intermediate
 tags:
@@ -12,7 +12,7 @@ updated-date: 2025-01-29
 
 # Docker Commands Reference
 
-Docker and docker-compose commands for VisionFlow deployment and management.
+Docker and docker-compose commands for VisionClaw deployment and management.
 
 ---
 
@@ -25,7 +25,7 @@ Docker and docker-compose commands for VisionFlow deployment and management.
 docker-compose up -d
 
 # Start specific service
-docker-compose up -d visionflow
+docker-compose up -d visionclaw
 
 # Start with build
 docker-compose up -d --build
@@ -44,7 +44,7 @@ docker-compose down
 docker-compose down -v
 
 # Stop specific service
-docker-compose stop visionflow
+docker-compose stop visionclaw
 ```
 
 ### Logs
@@ -57,10 +57,10 @@ docker-compose logs
 docker-compose logs -f
 
 # Follow specific service logs
-docker-compose logs -f visionflow
+docker-compose logs -f visionclaw
 
 # Show last N lines
-docker-compose logs --tail=100 visionflow
+docker-compose logs --tail=100 visionclaw
 ```
 
 ### Status
@@ -87,7 +87,7 @@ docker-compose build
 docker-compose build --no-cache
 
 # Build specific service
-docker-compose build visionflow
+docker-compose build visionclaw
 
 # Build with build args
 docker-compose build --build-arg VERSION=1.0.0
@@ -100,7 +100,7 @@ docker-compose build --build-arg VERSION=1.0.0
 docker-compose push
 
 # Push specific service
-docker-compose push visionflow
+docker-compose push visionclaw
 ```
 
 ---
@@ -111,13 +111,13 @@ docker-compose push visionflow
 
 ```bash
 # Execute command in running container
-docker-compose exec visionflow /bin/bash
+docker-compose exec visionclaw /bin/bash
 
 # Execute as root
-docker-compose exec -u root visionflow /bin/bash
+docker-compose exec -u root visionclaw /bin/bash
 
 # Run one-off command
-docker-compose run --rm visionflow cargo test
+docker-compose run --rm visionclaw cargo test
 ```
 
 ### Resource Usage
@@ -127,17 +127,17 @@ docker-compose run --rm visionflow cargo test
 docker stats
 
 # View specific container
-docker stats visionflow_visionflow_1
+docker stats visionclaw_visionclaw_1
 ```
 
 ### Inspect
 
 ```bash
 # Inspect container
-docker inspect visionflow_visionflow_1
+docker inspect visionclaw_visionclaw_1
 
 # View container IP
-docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' visionflow_visionflow_1
+docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' visionclaw_visionclaw_1
 ```
 
 ---
@@ -151,14 +151,14 @@ docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' visi
 docker volume ls
 
 # List project volumes
-docker volume ls | grep visionflow
+docker volume ls | grep visionclaw
 ```
 
 ### Inspect Volumes
 
 ```bash
 # Inspect volume
-docker volume inspect visionflow_postgres_data
+docker volume inspect visionclaw_postgres_data
 ```
 
 ### Remove Volumes
@@ -168,7 +168,7 @@ docker volume inspect visionflow_postgres_data
 docker volume prune
 
 # Remove specific volume
-docker volume rm visionflow_postgres_data
+docker volume rm visionclaw_postgres_data
 ```
 
 ---
@@ -182,17 +182,17 @@ docker volume rm visionflow_postgres_data
 docker network ls
 
 # Inspect network
-docker network inspect visionflow_default
+docker network inspect visionclaw_default
 ```
 
 ### Debug Connectivity
 
 ```bash
 # Test connectivity from container
-docker-compose exec visionflow nc -zv postgres 5432
+docker-compose exec visionclaw nc -zv postgres 5432
 
 # Check DNS resolution
-docker-compose exec visionflow nslookup postgres
+docker-compose exec visionclaw nslookup postgres
 ```
 
 ---
@@ -240,17 +240,17 @@ docker system prune --volumes -a
 docker-compose ps
 
 # Inspect health
-docker inspect --format='{{.State.Health.Status}}' visionflow_visionflow_1
+docker inspect --format='{{.State.Health.Status}}' visionclaw_visionclaw_1
 
 # View health logs
-docker inspect --format='{{json .State.Health}}' visionflow_visionflow_1 | jq
+docker inspect --format='{{json .State.Health}}' visionclaw_visionclaw_1 | jq
 ```
 
 ### Manual Health Check
 
 ```bash
 # Check API health
-docker-compose exec visionflow curl http://localhost:9090/api/health
+docker-compose exec visionclaw curl http://localhost:9090/api/health
 
 # Check database
 docker-compose exec postgres pg_isready
@@ -307,7 +307,7 @@ docker-compose logs --since 1h
 docker-compose restart
 
 # Restart specific service
-docker-compose restart visionflow
+docker-compose restart visionclaw
 
 # Force recreate
 docker-compose up -d --force-recreate
@@ -320,7 +320,7 @@ docker-compose up -d --force-recreate
 RUST_LOG=debug docker-compose up
 
 # Run interactively
-docker-compose run --rm visionflow /bin/bash
+docker-compose run --rm visionclaw /bin/bash
 ```
 
 ---
@@ -329,4 +329,4 @@ docker-compose run --rm visionflow /bin/bash
 
 - [Cargo Commands](./cargo-commands.md)
 - [Docker Compose Options](../configuration/docker-compose-options.md)
-- [Deployment Guide](../../how-to/deployment/deployment.md)
+- [Deployment Guide](../../how-to/deployment-guide.md)

@@ -1,23 +1,23 @@
 ---
-title: VisionFlow Error Codes Reference
-description: This document provides a comprehensive reference of all error codes used throughout the VisionFlow system. Error codes follow a hierarchical naming scheme: `[SYSTEM]-[SEVERITY]-[NUMBER]`.
+title: VisionClaw Error Codes Reference
+description: This document provides a comprehensive reference of all error codes used throughout the VisionClaw system. Error codes follow a hierarchical naming scheme: `[SYSTEM]-[SEVERITY]-[NUMBER]`.
 category: reference
 tags:
   - api
   - api
   - documentation
   - reference
-  - visionflow
+  - visionclaw
 updated-date: 2025-12-18
 difficulty-level: intermediate
 ---
 
 
-# VisionFlow Error Codes Reference
+# VisionClaw Error Codes Reference
 
 ## Overview
 
-This document provides a comprehensive reference of all error codes used throughout the VisionFlow system. Error codes follow a hierarchical naming scheme: `[SYSTEM]-[SEVERITY]-[NUMBER]`.
+This document provides a comprehensive reference of all error codes used throughout the VisionClaw system. Error codes follow a hierarchical naming scheme: `[SYSTEM]-[SEVERITY]-[NUMBER]`.
 
 ## Error Code Format
 

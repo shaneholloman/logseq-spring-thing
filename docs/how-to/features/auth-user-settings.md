@@ -1,6 +1,6 @@
 ---
 title: Per-User Settings Implementation
-description: Implemented server-side authentication middleware and per-user settings lookup for VisionFlow.
+description: Implemented server-side authentication middleware and per-user settings lookup for VisionClaw.
 category: how-to
 tags:
   - tutorial
@@ -14,7 +14,7 @@ difficulty-level: advanced
 # Per-User Settings Implementation
 
 ## Overview
-Implemented server-side authentication middleware and per-user settings lookup for VisionFlow.
+Implemented server-side authentication middleware and per-user settings lookup for VisionClaw.
 
 ## Architecture
 
@@ -187,10 +187,10 @@ cargo test user_filter -- --ignored
 ## Related Documentation
 
 - [Client-Side Filtering Implementation](filtering-nodes.md)
-- [GraphServiceActor Migration Guide (HISTORICAL REFERENCE)](../graphserviceactor-migration.md)
-- [Ontology Storage Guide](../ontology-storage-guide.md)
-- [Docker Compose Unified Configuration - Usage Guide](../docker-compose-guide.md)
-- [Developer Guides](../developer/README.md)
+
+- [Ontology Storage Guide](../../reference/neo4j-schema-unified.md)
+- [Docker Compose Unified Configuration - Usage Guide](../deployment-guide.md)
+- [Developer Guides](../../CONTRIBUTING.md)
 
 ## Future Enhancements
 - Add endpoint to copy global settings to user settings

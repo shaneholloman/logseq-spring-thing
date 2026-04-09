@@ -1,6 +1,6 @@
 ---
 title: MCP Protocol Reference
-description: Model Context Protocol specification for VisionFlow agent orchestration
+description: Model Context Protocol specification for VisionClaw agent orchestration
 category: reference
 difficulty-level: intermediate
 tags:
@@ -12,7 +12,48 @@ updated-date: 2025-01-29
 
 # MCP Protocol Reference
 
-Model Context Protocol (MCP) specification for VisionFlow agent orchestration.
+Model Context Protocol (MCP) specification for VisionClaw agent orchestration.
+
+---
+
+### MCP Handshake and Tool Invocation Flow
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant M as MCP Server (TCP :9500)
+    participant V as VisionClaw Backend
+
+    C->>M: TCP Connect
+    C->>M: swarm_init {topology, maxAgents, strategy}
+    M->>V: Create swarm context
+    V-->>M: swarmId
+    M-->>C: {swarmId, topology, maxAgents}
+
+    C->>M: agent_spawn {swarmId, type, capabilities}
+    M->>V: Spawn agent in swarm
+    V-->>M: agentId, status=active
+    M-->>C: {agentId, type, status}
+
+    C->>M: task_orchestrate {swarmId, task, strategy, priority}
+    M->>V: Distribute task to agents
+    V-->>M: taskId, assignedAgents
+    M-->>C: {taskId, status=queued, assignedAgents}
+
+    loop Task Execution
+        C->>M: swarm_status {swarmId}
+        M->>V: Query swarm state
+        V-->>M: activeAgents, pendingTasks, completedTasks
+        M-->>C: {topology, activeAgents, pendingTasks, completedTasks}
+    end
+
+    C->>M: agent_terminate {agentId}
+    M->>V: Terminate agent
+    V-->>M: OK
+    M-->>C: {success: true}
+
+    C->>M: TCP Close
+```
 
 ---
 
@@ -266,6 +307,65 @@ Terminate an agent.
 
 ---
 
+### MCP Tool Categories and Taxonomy
+
+```mermaid
+classDiagram
+    class MCPMethods {
+        +swarm_init()
+        +swarm_status()
+        +agent_spawn()
+        +agent_terminate()
+        +task_orchestrate()
+    }
+
+    class SwarmManagement {
+        swarm_init(topology, maxAgents, strategy)
+        swarm_status(swarmId)
+    }
+
+    class AgentLifecycle {
+        agent_spawn(swarmId, type, capabilities, name)
+        agent_terminate(agentId)
+    }
+
+    class TaskOrchestration {
+        task_orchestrate(swarmId, task, strategy, priority, maxAgents)
+    }
+
+    class AgentTypes {
+        researcher
+        coder
+        analyst
+        optimizer
+        coordinator
+    }
+
+    class TopologyOptions {
+        hierarchical
+        mesh
+        ring
+        star
+    }
+
+    class StrategyOptions {
+        adaptive
+        balanced
+        specialized
+        parallel
+        sequential
+    }
+
+    MCPMethods <|-- SwarmManagement
+    MCPMethods <|-- AgentLifecycle
+    MCPMethods <|-- TaskOrchestration
+    AgentLifecycle --> AgentTypes : spawns
+    SwarmManagement --> TopologyOptions : configures
+    TaskOrchestration --> StrategyOptions : uses
+```
+
+---
+
 ## Error Codes
 
 ### Standard JSON-RPC Errors
@@ -278,7 +378,7 @@ Terminate an agent.
 | -32602 | Invalid params |
 | -32603 | Internal error |
 
-### VisionFlow-Specific Errors
+### VisionClaw-Specific Errors
 
 | Code | Meaning |
 |------|---------|

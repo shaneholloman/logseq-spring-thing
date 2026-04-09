@@ -88,7 +88,7 @@ curl http://localhost:8080/api/admin/pipeline/metrics
 **Pipeline Down**
 ```
 alert: PipelineDown
-expr: up{job="visionflow-pipeline"} == 0
+expr: up{job="visionclaw-pipeline"} == 0
 for: 2m
 severity: critical
 ```
@@ -153,7 +153,7 @@ curl http://localhost:8080/api/admin/pipeline/status
 curl http://localhost:8080/api/health | jq '.components.reasoning-actor'
 
 # Check logs for correlation ID
-docker logs visionflow-unified 2>&1 | grep "correlation-id"
+docker logs visionclaw-unified 2>&1 | grep "correlation-id"
 ```
 
 **Resolution**:
@@ -167,7 +167,7 @@ curl -X POST http://localhost:8080/api/admin/pipeline/clear-queues
 curl -X POST http://localhost:8080/api/admin/pipeline/resume
 
 # Option 3: Full system restart (last resort)
-docker restart visionflow-unified
+docker restart visionclaw-unified
 ```
 
 ### Issue 2: GPU Out of Memory
@@ -223,10 +223,10 @@ curl -X POST http://localhost:8080/api/admin/pipeline/config \
 curl http://localhost:8080/api/admin/pipeline/metrics | jq '.cache-stats'
 
 # Check cache size
-sqlite3 /var/lib/visionflow/reasoning-cache.db "SELECT COUNT(*) FROM cache;"
+sqlite3 /var/lib/visionclaw/reasoning-cache.db "SELECT COUNT(*) FROM cache;"
 
 # Check for checksum mismatches
-docker logs visionflow-unified 2>&1 | grep "Checksum mismatch"
+docker logs visionclaw-unified 2>&1 | grep "Checksum mismatch"
 ```
 
 **Resolution**:
@@ -257,7 +257,7 @@ curl -H "Authorization: token $GITHUB-TOKEN" \
   https://api.github.com/rate-limit
 
 # Check sync service logs
-docker logs visionflow-unified 2>&1 | grep "GitHubSync"
+docker logs visionclaw-unified 2>&1 | grep "GitHubSync"
 
 # Verify GitHub token
 echo $GITHUB-TOKEN | wc -c  # Should be ~40 characters
@@ -270,7 +270,7 @@ echo $GITHUB-TOKEN | wc -c  # Should be ~40 characters
 
 # Option 2: Use authenticated requests
 export GITHUB-TOKEN="ghp-your-token-here"
-docker restart visionflow-unified
+docker restart visionclaw-unified
 
 # Option 3: Manual trigger with force
 curl -X POST http://localhost:8080/api/admin/sync/trigger \
@@ -294,7 +294,7 @@ curl http://localhost:8080/api/admin/clients/count
 curl http://localhost:8080/api/admin/websocket/stats
 
 # Monitor client queue sizes
-docker logs visionflow-unified 2>&1 | grep "client queue full"
+docker logs visionclaw-unified 2>&1 | grep "client queue full"
 ```
 
 **Resolution**:
@@ -369,7 +369,7 @@ curl -X POST http://localhost:8080/api/admin/clients/disconnect-idle
 4. **Investigate Root Cause**
    ```bash
    # Collect logs
-   docker logs visionflow-unified --since 1h > /tmp/incident-logs.txt
+   docker logs visionclaw-unified --since 1h > /tmp/incident-logs.txt
 
    # Check recent events
    curl http://localhost:8080/api/admin/pipeline/events/recent
@@ -407,11 +407,11 @@ neo4j-admin database dump neo4j --to-path=/backups/neo4j-$(date +%Y%m%d)/
 cypher-shell -d neo4j "CALL db.clearQueryCaches();"
 
 # 4. Clear old cache entries (>30 days)
-sqlite3 /var/lib/visionflow/reasoning-cache.db \
+sqlite3 /var/lib/visionclaw/reasoning-cache.db \
   "DELETE FROM cache WHERE created-at < datetime('now', '-30 days');"
 
 # 5. Restart service
-docker restart visionflow-unified
+docker restart visionclaw-unified
 
 # 6. Wait for healthy
 timeout 60 bash -c 'until curl -f http://localhost:8080/api/health; do sleep 2; done'
@@ -544,19 +544,19 @@ curl -X POST http://localhost:8080/api/admin/pipeline/config \
 **Find Errors by Correlation ID**
 ```bash
 correlation-id="abc-123"
-docker logs visionflow-unified 2>&1 | grep "\[$correlation-id\]"
+docker logs visionclaw-unified 2>&1 | grep "\[$correlation-id\]"
 ```
 
 **Analyze Error Patterns**
 ```bash
 # Count errors by type
-docker logs visionflow-unified 2>&1 \
+docker logs visionclaw-unified 2>&1 \
   | grep ERROR \
   | awk '{print $5}' \
   | sort | uniq -c | sort -nr
 
 # Recent errors
-docker logs visionflow-unified --since 1h 2>&1 | grep ERROR
+docker logs visionclaw-unified --since 1h 2>&1 | grep ERROR
 ```
 
 ### Performance Analysis
@@ -614,7 +614,7 @@ curl -X POST http://localhost:8080/api/admin/pipeline/pause \
 
 # 2. Backup current state
 mkdir -p /backups/emergency-$(date +%Y%m%d-%H%M%S)
-cp /var/lib/visionflow/*.db /backups/emergency-$(date +%Y%m%d-%H%M%S)/
+cp /var/lib/visionclaw/*.db /backups/emergency-$(date +%Y%m%d-%H%M%S)/
 
 # 3. Clear all queues
 curl -X POST http://localhost:8080/api/admin/pipeline/clear-queues
@@ -626,7 +626,7 @@ curl -X POST http://localhost:8080/api/admin/circuit-breakers/reset-all
 curl -X POST http://localhost:8080/api/admin/gpu/clear-memory
 
 # 6. Restart services
-docker restart visionflow-unified
+docker restart visionclaw-unified
 
 # 7. Wait for healthy
 timeout 120 bash -c 'until curl -f http://localhost:8080/api/health; do sleep 5; done'
@@ -644,8 +644,8 @@ echo "RECOVERY COMPLETE - $(date)"
 
 ## Related Documentation
 
-- [Vircadia Multi-User XR Integration - User Guide](../vircadia-multi-user-guide.md)
-- [Multi-Agent Docker Environment - Complete Documentation](../infrastructure/docker-environment.md)
+- [Vircadia Multi-User XR Integration - User Guide](../explanation/xr-architecture.md)
+- [Multi-Agent Docker Environment - Complete Documentation](../infrastructure/../deployment-guide.md)
 - [Multi-Agent Docker Environment Architecture](../infrastructure/architecture.md)
 - [Documentation Contributing Guidelines](../contributing.md)
 - [Agent Control Panel User Guide](../agent-orchestration.md)
@@ -674,7 +674,7 @@ constraint-cache-size-mb = 200
 ### Contact Information
 
 - **On-call Engineer**: PagerDuty rotation
-- **Slack Channel**: #visionflow-ops
+- **Slack Channel**: #visionclaw-ops
 - **Incident Management**: Jira Service Desk
 
 ### Version History

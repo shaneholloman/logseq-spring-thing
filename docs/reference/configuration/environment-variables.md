@@ -1,6 +1,6 @@
 ---
 title: Environment Variables Reference
-description: Complete reference for all VisionFlow environment variables
+description: Complete reference for all VisionClaw environment variables
 category: reference
 difficulty-level: intermediate
 tags:
@@ -12,7 +12,7 @@ updated-date: 2025-01-29
 
 # Environment Variables Reference
 
-Complete reference for all VisionFlow environment variables.
+Complete reference for all VisionClaw environment variables.
 
 ---
 
@@ -76,8 +76,8 @@ SESSION_TIMEOUT=86400
 |----------|------|---------|-------------|
 | `POSTGRES_HOST` | string | `postgres` | PostgreSQL host |
 | `POSTGRES_PORT` | integer | `5432` | PostgreSQL port |
-| `POSTGRES_DB` | string | `visionflow` | Database name |
-| `POSTGRES_USER` | string | `visionflow` | Database user |
+| `POSTGRES_DB` | string | `visionclaw` | Database name |
+| `POSTGRES_USER` | string | `visionclaw` | Database user |
 | `POSTGRES_PASSWORD` | string | *required* | Database password |
 | `POSTGRES_MAX_CONNECTIONS` | integer | `100` | Maximum connection pool size |
 | `POSTGRES_SSL_MODE` | string | `prefer` | SSL mode: `disable`, `prefer`, `require` |
@@ -209,7 +209,7 @@ GPU_MEMORY_LIMIT=16g
 |----------|------|---------|-------------|
 | `LOG_LEVEL` | string | `info` | Logging level |
 | `LOG_FORMAT` | string | `json` | Log format: `json`, `plain` |
-| `LOG_FILE` | string | `/app/logs/visionflow.log` | Log file path |
+| `LOG_FILE` | string | `/app/logs/visionclaw.log` | Log file path |
 | `LOG_ROTATION` | string | `daily` | Rotation policy |
 | `LOG_MAX_SIZE` | string | `100MB` | Maximum log file size |
 | `TRACK_PERFORMANCE` | boolean | `true` | Enable performance tracking |
@@ -220,4 +220,4 @@ GPU_MEMORY_LIMIT=16g
 
 - [Docker Compose Options](./docker-compose-options.md)
 - [Configuration Reference](./README.md)
-- [Deployment Guide](../../how-to/deployment/deployment.md)
+- [Deployment Guide](../../how-to/deployment-guide.md)

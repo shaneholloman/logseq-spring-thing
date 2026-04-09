@@ -1,6 +1,6 @@
 # Quick Reference: Industry Use Cases
 
-This document provides a rapid lookup for stakeholders evaluating VisionFlow for specific applications.
+This document provides a rapid lookup for stakeholders evaluating VisionClaw for specific applications.
 
 ---
 
@@ -262,21 +262,21 @@ Add 2x GPU, 2x RAM, 10 Gbps network minimum for all industries.
 - Run industry-specific example
 - Evaluate performance & ROI
 
-**Apply:** [poc@visionflow.dev](mailto:poc@visionflow.dev)
+**Apply:** [poc@visionclaw.dev](mailto:poc@visionclaw.dev)
 
 ### 2. Pilot Program (3 months, paid)
 - Full production deployment
 - Training & integration support
 - Performance benchmarking
 
-**Apply:** [sales@visionflow.dev](mailto:sales@visionflow.dev)
+**Apply:** [sales@visionclaw.dev](mailto:sales@visionclaw.dev)
 
 ### 3. Production Rollout
 - Multi-site deployment
 - 24/7 enterprise support
 - Custom feature development
 
-**Contact:** [enterprise@visionflow.dev](mailto:enterprise@visionflow.dev)
+**Contact:** [enterprise@visionclaw.dev](mailto:enterprise@visionclaw.dev)
 
 ---
 
@@ -312,4 +312,4 @@ VisionClaw supports cloud (AWS, Azure, GCP) but **most value comes from on-premi
 
 **Document Version**: 1.0
 **Last Updated**: 2026-04-03
-**See Also**: [Full Industry Applications](./industry-applications.md) | [Architecture](../explanation/architecture/README.md) | [API Reference](../api/API_REFERENCE.md)
+**See Also**: [Full Industry Applications](./industry-applications.md) | [Architecture](../explanation/system-overview.md) | [API Reference](../reference/rest-api.md)

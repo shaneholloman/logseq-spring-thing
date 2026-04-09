@@ -7,7 +7,7 @@ tags:
   - api
   - documentation
   - reference
-  - visionflow
+  - visionclaw
 updated-date: 2025-12-18
 difficulty-level: advanced
 ---
@@ -238,8 +238,8 @@ Set `GOAP-CACHE-TTL` higher (default: 3600 seconds) to cache results longer.
 
 ## Related Documentation
 
-- [Contributing Guidelines](../developer/06-contributing.md)
-- [Semantic Forces User Guide](../features/semantic-forces.md)
+- [Contributing Guidelines](../../CONTRIBUTING.md)
+- [Semantic Forces User Guide](../../explanation/physics-gpu-engine.md)
 - [Troubleshooting Guide](troubleshooting.md)
 - [Natural Language Queries Tutorial](../features/natural-language-queries.md)
 - [Intelligent Pathfinding Guide](../features/intelligent-pathfinding.md)

@@ -1,6 +1,6 @@
-# Competitive Analysis: VisionFlow vs Established Solutions
+# Competitive Analysis: VisionClaw vs Established Solutions
 
-This document provides detailed technical and business comparisons between VisionFlow and established solutions across 7 industry verticals.
+This document provides detailed technical and business comparisons between VisionClaw and established solutions across 7 industry verticals.
 
 ---
 
@@ -10,7 +10,7 @@ Each comparison includes:
 - **Technical Specifications**: Performance, features, architecture
 - **Total Cost of Ownership (TCO)**: 5-year analysis
 - **Use Case Fit**: When to use each solution
-- **Migration Path**: How to transition to VisionFlow
+- **Migration Path**: How to transition to VisionClaw
 
 **Comparison Criteria:**
 1. Performance (throughput, latency, scalability)
@@ -21,11 +21,11 @@ Each comparison includes:
 
 ---
 
-## 1. Gaming: VisionFlow vs Unity PhysX vs Havok
+## 1. Gaming: VisionClaw vs Unity PhysX vs Havok
 
 ### Technical Comparison
 
-| Feature | VisionFlow | Unity PhysX | Havok Physics |
+| Feature | VisionClaw | Unity PhysX | Havok Physics |
 |---------|-----------|-------------|---------------|
 | **Computation** | GPU (CUDA) | CPU (multi-threaded) | CPU (SIMD optimized) |
 | **Max Entities (60 FPS)** | 100,000+ | 5,000-10,000 | 10,000-20,000 |
@@ -40,7 +40,7 @@ Each comparison includes:
 
 **Test Scenario**: 10,000 rigid bodies, 50,000 collision pairs
 
-| Metric | VisionFlow (RTX 4090) | Unity PhysX (16-core CPU) | Havok (16-core CPU) |
+| Metric | VisionClaw (RTX 4090) | Unity PhysX (16-core CPU) | Havok (16-core CPU) |
 |--------|----------------------|--------------------------|---------------------|
 | Frame Time | 3.2ms (312 FPS) | 45ms (22 FPS) | 38ms (26 FPS) |
 | Physics Compute | 2.1ms | 40ms | 35ms |
@@ -50,7 +50,7 @@ Each comparison includes:
 
 ### TCO Analysis (5-Year, 100-Player Game)
 
-| Cost Category | VisionFlow (P2P) | Unity PhysX (Dedicated) | Havok (Dedicated) |
+| Cost Category | VisionClaw (P2P) | Unity PhysX (Dedicated) | Havok (Dedicated) |
 |--------------|-----------------|------------------------|-------------------|
 | **Server Hardware** | $0 (P2P) | $5,000 (4-core server) | $5,000 |
 | **Hosting** | $0 | $500/month × 60 = $30,000 | $30,000 |
@@ -62,12 +62,12 @@ Each comparison includes:
 
 **Notes:**
 - Assumes 100 concurrent players average
-- VisionFlow uses P2P networking (each client GPU contributes)
+- VisionClaw uses P2P networking (each client GPU contributes)
 - Unity/Havok require dedicated server for authoritative physics
 
 ### Use Case Recommendations
 
-#### Choose VisionFlow When:
+#### Choose VisionClaw When:
 - ✅ Indie studio (budget-constrained)
 - ✅ Physics-heavy gameplay (simulation, construction, space)
 - ✅ 100+ concurrent players (P2P scales linearly)
@@ -86,26 +86,26 @@ Each comparison includes:
 - ✅ Existing Havok expertise
 - ✅ Unreal Engine integration
 
-### Migration Path: Unity → VisionFlow
+### Migration Path: Unity → VisionClaw
 
-**Scenario**: Indie studio switching from Unity PhysX to VisionFlow P2P
+**Scenario**: Indie studio switching from Unity PhysX to VisionClaw P2P
 
 **Step 1: Assessment (1 week)**
 ```bash
 # Export Unity physics configuration
-# VisionFlow Unity plugin (coming Q2 2025)
-./unity-to-visionflow-exporter \
+# VisionClaw Unity plugin (coming Q2 2025)
+./unity-to-visionclaw-exporter \
   --scene Assets/Scenes/Main.unity \
-  --output visionflow-config.yaml
+  --output visionclaw-config.yaml
 ```
 
 **Step 2: Parallel Development (4 weeks)**
 - Keep Unity for graphics/gameplay
-- Replace PhysX with VisionFlow via plugin
+- Replace PhysX with VisionClaw via plugin
 - Test P2P networking with 10 beta players
 
 **Step 3: Production Deployment (2 weeks)**
-- Launch with VisionFlow physics
+- Launch with VisionClaw physics
 - Monitor performance metrics
 - Shutdown dedicated physics server
 
@@ -117,11 +117,11 @@ Each comparison includes:
 
 ---
 
-## 2. Scientific Computing: VisionFlow vs GROMACS vs LAMMPS
+## 2. Scientific Computing: VisionClaw vs GROMACS vs LAMMPS
 
 ### Technical Comparison
 
-| Feature | VisionFlow | GROMACS | LAMMPS |
+| Feature | VisionClaw | GROMACS | LAMMPS |
 |---------|-----------|---------|--------|
 | **Target Use Case** | Interactive MD, collaborative | Production MD runs | General-purpose MD |
 | **GPU Support** | CUDA (native) | CUDA, OpenCL | CUDA, OpenCL, Kokkos |
@@ -137,7 +137,7 @@ Each comparison includes:
 
 | Software | Hardware | Time (1 ns) | ns/day | Cost |
 |----------|----------|-------------|--------|------|
-| **VisionFlow** | RTX 4090 (1 GPU) | 16.7 min | 86 ns/day | $1,599 |
+| **VisionClaw** | RTX 4090 (1 GPU) | 16.7 min | 86 ns/day | $1,599 |
 | **GROMACS** | RTX 4090 (1 GPU) | 12.3 min | 117 ns/day | $1,599 |
 | **GROMACS** | 4× A100 (cluster) | 3.2 min | 450 ns/day | $40,000 |
 | **LAMMPS** | RTX 4090 (1 GPU) | 18.5 min | 78 ns/day | $1,599 |
@@ -145,14 +145,14 @@ Each comparison includes:
 
 **Analysis:**
 - GROMACS is 35% faster (single-GPU) due to decades of optimization
-- VisionFlow competitive on single-GPU, not yet multi-node optimized
+- VisionClaw competitive on single-GPU, not yet multi-node optimized
 - **Value proposition**: 60 FPS visualization + collaboration, not max throughput
 
 ### TCO Analysis (5-Year, Research Lab)
 
 **Scenario**: 10 researchers, 100K atom average system size
 
-| Cost Category | VisionFlow (Single RTX 4090) | GROMACS (University Cluster) | Cloud (AWS g5.12xlarge) |
+| Cost Category | VisionClaw (Single RTX 4090) | GROMACS (University Cluster) | Cloud (AWS g5.12xlarge) |
 |--------------|------------------------------|-----------------------------|-----------------------|
 | **Hardware** | $1,599 (GPU) + $2,000 (workstation) = $3,599 | $0 (university HPC) | $0 (pay-as-you-go) |
 | **Compute Time** | Free (owned hardware) | Free (allocation-based) | $5.67/hour × 2,000 hours/year × 5 years = $56,700 |
@@ -161,13 +161,13 @@ Each comparison includes:
 | **TOTAL** | **$4,099** | **$0** (university subsidized) | **$68,700** |
 
 **Key Insights:**
-- VisionFlow can't compete with free university clusters
+- VisionClaw can't compete with free university clusters
 - **Value**: When HPC access unavailable or queue wait times exceed research needs
 - **Cloud avoidance**: GDPR/HIPAA-sensitive data (patient genomics, proprietary compounds)
 
 ### Use Case Recommendations
 
-#### Choose VisionFlow When:
+#### Choose VisionClaw When:
 - ✅ No HPC cluster access (undergrad labs, startups)
 - ✅ Interactive exploration needed (hypothesis testing)
 - ✅ Multi-PI collaboration (real-time discussion)
@@ -185,37 +185,37 @@ Each comparison includes:
 - ✅ No capital budget (OPEX preferred over CAPEX)
 - ✅ Multi-region collaboration (data egress acceptable)
 
-### Migration Path: GROMACS → VisionFlow
+### Migration Path: GROMACS → VisionClaw
 
 **Scenario**: Lab wants real-time collaboration, keeps GROMACS for production
 
 **Hybrid Workflow:**
 1. **GROMACS** (HPC cluster): Long production runs (100+ ns)
-2. **VisionFlow** (local GPU): Interactive analysis, hypothesis generation
+2. **VisionClaw** (local GPU): Interactive analysis, hypothesis generation
 3. **VMD** (legacy): Publication-quality rendering
 
 **Implementation (2 weeks):**
 ```bash
-# Convert GROMACS trajectory to VisionFlow
+# Convert GROMACS trajectory to VisionClaw
 gmx trjconv -f traj.xtc -s topol.tpr -o traj.pdb
-visionflow import --format pdb --trajectory traj.pdb
+visionclaw import --format pdb --trajectory traj.pdb
 
 # Launch interactive session
-visionflow simulate --gpu --render 3d --collaborate
+visionclaw simulate --gpu --render 3d --collaborate
 ```
 
 **Benefits:**
 - Keep GROMACS investment (no migration risk)
-- Add real-time collaboration (VisionFlow)
+- Add real-time collaboration (VisionClaw)
 - **Cost**: $3,599 one-time (GPU workstation)
 
 ---
 
-## 3. Manufacturing: VisionFlow vs ANSYS vs Simulink
+## 3. Manufacturing: VisionClaw vs ANSYS vs Simulink
 
 ### Technical Comparison
 
-| Feature | VisionFlow | ANSYS Mechanical | MATLAB Simulink |
+| Feature | VisionClaw | ANSYS Mechanical | MATLAB Simulink |
 |---------|-----------|-----------------|-----------------|
 | **Simulation Type** | Constraint-based physics | Finite Element Analysis (FEA) | Multi-domain modeling |
 | **Real-Time** | Yes (60 FPS) | No (batch processing) | Limited (Real-Time Workshop) |
@@ -231,18 +231,18 @@ visionflow simulate --gpu --render 3d --collaborate
 
 | Software | Hardware | Solve Time | Mesh Type | Accuracy |
 |----------|----------|------------|-----------|----------|
-| **VisionFlow** | RTX 4090 | 8ms (125 Hz) | Constraint mesh | ±5% error |
+| **VisionClaw** | RTX 4090 | 8ms (125 Hz) | Constraint mesh | ±5% error |
 | **ANSYS** | 16-core CPU | 12 seconds | Tetrahedral FEA | <1% error (ref) |
 | **Simulink** | 16-core CPU | 45ms (22 Hz) | Lumped parameter | ±8% error |
 
 **Analysis:**
-- VisionFlow 1,500x faster than ANSYS (real-time vs batch)
-- ANSYS 5x more accurate (VisionFlow uses constraint approximation)
-- **Trade-off**: Speed vs accuracy (VisionFlow for design iteration, ANSYS for validation)
+- VisionClaw 1,500x faster than ANSYS (real-time vs batch)
+- ANSYS 5x more accurate (VisionClaw uses constraint approximation)
+- **Trade-off**: Speed vs accuracy (VisionClaw for design iteration, ANSYS for validation)
 
 ### TCO Analysis (5-Year, 10-Engineer Team)
 
-| Cost Category | VisionFlow (Edge) | ANSYS Mechanical | Simulink Real-Time |
+| Cost Category | VisionClaw (Edge) | ANSYS Mechanical | Simulink Real-Time |
 |--------------|------------------|-----------------|-------------------|
 | **Licensing** | $0 | $50K/seat/year × 10 × 5 = $2.5M | $10K/seat/year × 10 × 5 = $500K |
 | **Hardware** | $15K/edge server × 3 sites = $45K | $5K/workstation × 10 = $50K | $20K/real-time target × 3 = $60K |
@@ -253,7 +253,7 @@ visionflow simulate --gpu --render 3d --collaborate
 
 ### Use Case Recommendations
 
-#### Choose VisionFlow When:
+#### Choose VisionClaw When:
 - ✅ Real-time control needed (<10ms latency)
 - ✅ Edge deployment (factory floor)
 - ✅ Conceptual design (iterate quickly)
@@ -283,7 +283,7 @@ visionflow simulate --gpu --render 3d --collaborate
 - Defect detection: 60% (before welding)
 - Cost: $200K/year (cloud compute)
 
-**After (VisionFlow Edge):**
+**After (VisionClaw Edge):**
 - Edge deployment: RTX A6000 per assembly line
 - Latency: 17ms total (laser scan + physics + defect detection)
 - Defect detection: 95% (real-time)
@@ -296,11 +296,11 @@ visionflow simulate --gpu --render 3d --collaborate
 
 ---
 
-## 4. Healthcare: VisionFlow vs SimMan vs CAE Healthcare
+## 4. Healthcare: VisionClaw vs SimMan vs CAE Healthcare
 
 ### Technical Comparison
 
-| Feature | VisionFlow | SimMan 3G (Laerdal) | CAE Healthcare |
+| Feature | VisionClaw | SimMan 3G (Laerdal) | CAE Healthcare |
 |---------|-----------|-------------------|---------------|
 | **Modality** | GPU soft-tissue sim | Physical mannequin | Software + mannequin |
 | **Realism** | High (50K vertices) | Physical (pneumatic) | Medium (FEA-based) |
@@ -316,17 +316,17 @@ visionflow simulate --gpu --render 3d --collaborate
 
 | Solution | Capital Cost | Training Capacity | Cost per Resident | Total (5-Year) |
 |----------|-------------|-------------------|------------------|---------------|
-| **VisionFlow** | $15K (1 workstation) + $1,500/Quest 3 × 10 = $30K | 100 (software unlimited) | $300 | $30K |
+| **VisionClaw** | $15K (1 workstation) + $1,500/Quest 3 × 10 = $30K | 100 (software unlimited) | $300 | $30K |
 | **SimMan 3G** | $500K (1 unit) | 100 (sequential) | $5K | $500K |
 | **CAE Healthcare** | $200K (1 suite) | 100 (3 concurrent) | $2K | $200K |
 
 **TCO Analysis:**
-- VisionFlow: 94% cheaper than SimMan, 85% cheaper than CAE
-- Trade-off: Physical tactile feedback (SimMan) vs software flexibility (VisionFlow)
+- VisionClaw: 94% cheaper than SimMan, 85% cheaper than CAE
+- Trade-off: Physical tactile feedback (SimMan) vs software flexibility (VisionClaw)
 
 ### Use Case Recommendations
 
-#### Choose VisionFlow When:
+#### Choose VisionClaw When:
 - ✅ Budget <$50K (community colleges, small hospitals)
 - ✅ Volume training (>100 residents)
 - ✅ Geographically distributed (telemed training)
@@ -349,7 +349,7 @@ visionflow simulate --gpu --render 3d --collaborate
 
 **Study**: Hypothetical, based on similar research [8]
 
-| Metric | VisionFlow Group (n=50) | SimMan Group (n=50) | Traditional (Textbook, n=50) |
+| Metric | VisionClaw Group (n=50) | SimMan Group (n=50) | Traditional (Textbook, n=50) |
 |--------|------------------------|-------------------|---------------------------|
 | **Practice Surgeries to Competency** | 25 ± 5 | 30 ± 6 | 50 ± 10 |
 | **Error Rate (First Real Surgery)** | 3% ± 1% | 5% ± 2% | 15% ± 5% |
@@ -357,16 +357,16 @@ visionflow simulate --gpu --render 3d --collaborate
 | **Time to Proficiency (hours)** | 48 ± 8 | 60 ± 10 | 120 ± 20 |
 
 **Statistical Analysis:**
-- VisionFlow vs Traditional: p < 0.001 (highly significant)
-- VisionFlow vs SimMan: p = 0.08 (not significant, confidence score slightly higher for physical mannequin)
+- VisionClaw vs Traditional: p < 0.001 (highly significant)
+- VisionClaw vs SimMan: p = 0.08 (not significant, confidence score slightly higher for physical mannequin)
 
 ---
 
-## 5. Finance: VisionFlow vs SAS Grid vs MATLAB Parallel Server
+## 5. Finance: VisionClaw vs SAS Grid vs MATLAB Parallel Server
 
 ### Technical Comparison
 
-| Feature | VisionFlow | SAS Grid | MATLAB Parallel Server |
+| Feature | VisionClaw | SAS Grid | MATLAB Parallel Server |
 |---------|-----------|----------|---------------------|
 | **Architecture** | GPU + decentralized | CPU cluster | CPU cluster |
 | **Parallelization** | CUDA (10,000 threads) | MPI (100s of cores) | Parallel Computing Toolbox |
@@ -381,17 +381,17 @@ visionflow simulate --gpu --render 3d --collaborate
 
 | Software | Hardware | Runtime | Throughput | Cost |
 |----------|----------|---------|------------|------|
-| **VisionFlow** | RTX 6000 Ada × 4 | 30 min | 55 scenarios/sec | $80K hardware |
+| **VisionClaw** | RTX 6000 Ada × 4 | 30 min | 55 scenarios/sec | $80K hardware |
 | **SAS Grid** | 128-core cluster | 48 hours | 0.58 scenarios/sec | $500K/year license |
 | **MATLAB** | 64-core cluster | 24 hours | 1.16 scenarios/sec | $200K/year license |
 
 **Analysis:**
-- VisionFlow 96x faster than SAS, 48x faster than MATLAB
+- VisionClaw 96x faster than SAS, 48x faster than MATLAB
 - GPU parallelism (40,960 CUDA cores) vs CPU (128-256 cores)
 
 ### TCO Analysis (5-Year, Hedge Fund Risk Team)
 
-| Cost Category | VisionFlow (On-Prem) | SAS Grid (Cloud) | MATLAB Parallel (Cloud) |
+| Cost Category | VisionClaw (On-Prem) | SAS Grid (Cloud) | MATLAB Parallel (Cloud) |
 |--------------|---------------------|-----------------|------------------------|
 | **Hardware** | $80K (4× RTX 6000 Ada) | $0 (cloud) | $0 (cloud) |
 | **Licensing** | $0 (open-source) | $500K/year × 5 = $2.5M | $200K/year × 5 = $1M |
@@ -402,7 +402,7 @@ visionflow simulate --gpu --render 3d --collaborate
 
 ### Compliance & Privacy
 
-| Feature | VisionFlow | SAS Grid | MATLAB Parallel |
+| Feature | VisionClaw | SAS Grid | MATLAB Parallel |
 |---------|-----------|----------|-----------------|
 | **Data Residency** | On-premises (never leaves network) | Cloud (AWS/Azure) | Cloud (MathWorks Cloud) |
 | **Audit Trails** | Neo4j graph (full lineage) | SAS logs | MATLAB logs |
@@ -414,7 +414,7 @@ visionflow simulate --gpu --render 3d --collaborate
 
 ### Use Case Recommendations
 
-#### Choose VisionFlow When:
+#### Choose VisionClaw When:
 - ✅ IP protection critical (trading strategies)
 - ✅ Real-time risk needed (HFT, intraday VaR)
 - ✅ Budget <$200K (small hedge funds, family offices)
@@ -432,11 +432,11 @@ visionflow simulate --gpu --render 3d --collaborate
 
 ---
 
-## 6. Supply Chain: VisionFlow vs Kinaxis RapidResponse vs Llamasoft
+## 6. Supply Chain: VisionClaw vs Kinaxis RapidResponse vs Llamasoft
 
 ### Technical Comparison
 
-| Feature | VisionFlow | Kinaxis RapidResponse | Llamasoft (Coupa) |
+| Feature | VisionClaw | Kinaxis RapidResponse | Llamasoft (Coupa) |
 |---------|-----------|----------------------|------------------|
 | **Architecture** | Edge + P2P | Cloud SaaS | Cloud SaaS |
 | **Latency** | <10ms (local) | 100-500ms (cloud) | 100-500ms (cloud) |
@@ -451,18 +451,18 @@ visionflow simulate --gpu --render 3d --collaborate
 
 | Software | Runtime | Routes/Second | Daily Cost (100 DCs) |
 |----------|---------|---------------|---------------------|
-| **VisionFlow** | 1 second | 10,000 | $0 (owned hardware) |
+| **VisionClaw** | 1 second | 10,000 | $0 (owned hardware) |
 | **Kinaxis** | 100 seconds | 100 | $16/DC × 100 = $1,600/day |
 | **Llamasoft** | 66 seconds | 150 | $12/DC × 100 = $1,200/day |
 
 **Annual Cost:**
-- VisionFlow: $0 marginal (electricity negligible)
+- VisionClaw: $0 marginal (electricity negligible)
 - Kinaxis: $584K/year
 - Llamasoft: $438K/year
 
 ### TCO Analysis (5-Year, 100 Distribution Centers)
 
-| Cost Category | VisionFlow (Edge) | Kinaxis RapidResponse | Llamasoft |
+| Cost Category | VisionClaw (Edge) | Kinaxis RapidResponse | Llamasoft |
 |--------------|------------------|----------------------|-----------|
 | **Hardware** | $15K/DC × 100 = $1.5M | $0 (cloud) | $0 (cloud) |
 | **Subscription** | $0 | $200K/year × 5 = $1M | $150K/year × 5 = $750K |
@@ -472,13 +472,13 @@ visionflow simulate --gpu --render 3d --collaborate
 | **TOTAL** | **$1.82M** | **$1.6M** | **$1.23M** |
 
 **Notes:**
-- VisionFlow more expensive upfront (hardware CAPEX)
+- VisionClaw more expensive upfront (hardware CAPEX)
 - Kinaxis/Llamasoft OPEX-friendly (monthly subscription)
-- **Breakeven**: Year 2-3 (VisionFlow cheaper long-term)
+- **Breakeven**: Year 2-3 (VisionClaw cheaper long-term)
 
 ### Use Case Recommendations
 
-#### Choose VisionFlow When:
+#### Choose VisionClaw When:
 - ✅ Real-time control needed (<10ms for driver apps)
 - ✅ Offline resilience critical (network outages)
 - ✅ Data privacy (supplier relationships confidential)
@@ -497,11 +497,11 @@ visionflow simulate --gpu --render 3d --collaborate
 
 ---
 
-## 7. Smart Cities: VisionFlow vs PTV Vissim vs SUMO
+## 7. Smart Cities: VisionClaw vs PTV Vissim vs SUMO
 
 ### Technical Comparison
 
-| Feature | VisionFlow | PTV Vissim | SUMO (Open-Source) |
+| Feature | VisionClaw | PTV Vissim | SUMO (Open-Source) |
 |---------|-----------|-----------|-------------------|
 | **Agent Count** | 100,000+ | 100,000+ | 1,000,000+ |
 | **Frame Rate** | 60 FPS (GPU) | 5-10 FPS (CPU) | 10-30 FPS (CPU) |
@@ -516,17 +516,17 @@ visionflow simulate --gpu --render 3d --collaborate
 
 | Software | Hardware | Real-Time Factor | Cost |
 |----------|----------|-----------------|------|
-| **VisionFlow** | RTX 4090 | 10× (1 min real-time) | $1,599 |
+| **VisionClaw** | RTX 4090 | 10× (1 min real-time) | $1,599 |
 | **PTV Vissim** | 16-core CPU | 0.5× (20 min real-time) | $50K license |
 | **SUMO** | 16-core CPU | 2× (5 min real-time) | Free |
 
 **Analysis:**
-- VisionFlow 20x faster than Vissim, 5x faster than SUMO (GPU acceleration)
+- VisionClaw 20x faster than Vissim, 5x faster than SUMO (GPU acceleration)
 - SUMO free but steep learning curve (XML configs)
 
 ### TCO Analysis (5-Year, Municipal Traffic Department)
 
-| Cost Category | VisionFlow | PTV Vissim | SUMO |
+| Cost Category | VisionClaw | PTV Vissim | SUMO |
 |--------------|-----------|-----------|------|
 | **Licensing** | $0 (open-source) | $50K/seat × 3 = $150K | $0 (open-source) |
 | **Hardware** | $5K/workstation × 3 = $15K | $5K × 3 = $15K | $5K × 3 = $15K |
@@ -535,12 +535,12 @@ visionflow simulate --gpu --render 3d --collaborate
 | **TOTAL** | **$20K** | **$245K** | **$30K** |
 
 **Notes:**
-- VisionFlow vs Vissim: 92% cheaper
+- VisionClaw vs Vissim: 92% cheaper
 - SUMO cheapest but requires XML expertise
 
 ### Use Case Recommendations
 
-#### Choose VisionFlow When:
+#### Choose VisionClaw When:
 - ✅ Stakeholder engagement (city council, public hearings)
 - ✅ Real-time collaboration (multi-agency)
 - ✅ Budget <$50K (small cities, community groups)
@@ -566,22 +566,22 @@ visionflow simulate --gpu --render 3d --collaborate
 
 | Your Priority | Recommended Solution |
 |--------------|---------------------|
-| **Data Privacy** | **VisionFlow** (on-premises, never leaves network) |
+| **Data Privacy** | **VisionClaw** (on-premises, never leaves network) |
 | **Maximum Accuracy** | Traditional (ANSYS, GROMACS, Vissim) |
-| **Real-Time Performance** | **VisionFlow** (GPU acceleration, <10ms latency) |
-| **Lowest Cost** | Open-source alternatives (SUMO, LAMMPS) **or VisionFlow** (no licensing) |
-| **Regulatory Compliance** | Traditional (established audit trails) **or VisionFlow** (HIPAA/Basel III support) |
-| **Collaboration** | **VisionFlow** (only real-time multi-user solution) |
-| **Offline Operation** | **VisionFlow** (edge deployment, autonomous) |
+| **Real-Time Performance** | **VisionClaw** (GPU acceleration, <10ms latency) |
+| **Lowest Cost** | Open-source alternatives (SUMO, LAMMPS) **or VisionClaw** (no licensing) |
+| **Regulatory Compliance** | Traditional (established audit trails) **or VisionClaw** (HIPAA/Basel III support) |
+| **Collaboration** | **VisionClaw** (only real-time multi-user solution) |
+| **Offline Operation** | **VisionClaw** (edge deployment, autonomous) |
 | **Ecosystem Maturity** | Traditional (decades of plugins, tutorials) |
 
 ### By Budget
 
 | Budget | Gaming | Scientific | Manufacturing | Healthcare | Finance | Supply Chain | Smart City |
 |--------|--------|------------|---------------|-----------|---------|-------------|-----------|
-| **<$10K** | VisionFlow | SUMO | - | - | - | VisionFlow | SUMO |
-| **$10K-50K** | VisionFlow | VisionFlow | VisionFlow | VisionFlow | VisionFlow | VisionFlow | VisionFlow |
-| **$50K-200K** | Unity Pro | GROMACS (HPC) | VisionFlow | CAE Healthcare | VisionFlow | Kinaxis | PTV Vissim |
+| **<$10K** | VisionClaw | SUMO | - | - | - | VisionClaw | SUMO |
+| **$10K-50K** | VisionClaw | VisionClaw | VisionClaw | VisionClaw | VisionClaw | VisionClaw | VisionClaw |
+| **$50K-200K** | Unity Pro | GROMACS (HPC) | VisionClaw | CAE Healthcare | VisionClaw | Kinaxis | PTV Vissim |
 | **>$200K** | Havok | Cloud (AWS) | ANSYS | SimMan 3G | SAS Grid | Llamasoft | PTV Vissim |
 
 ---
@@ -589,36 +589,36 @@ visionflow simulate --gpu --render 3d --collaborate
 ## Migration Strategies
 
 ### General Principles
-1. **Parallel Development**: Run VisionFlow alongside existing tools (minimize risk)
-2. **Hybrid Workflows**: Use VisionFlow for exploration, traditional for validation
+1. **Parallel Development**: Run VisionClaw alongside existing tools (minimize risk)
+2. **Hybrid Workflows**: Use VisionClaw for exploration, traditional for validation
 3. **Pilot Program**: Start with 1 team/project, expand after success
 4. **Training Investment**: 1-2 weeks onboarding (lower than traditional tools)
 
 ### Industry-Specific Paths
 
-**Gaming: Unity → VisionFlow**
+**Gaming: Unity → VisionClaw**
 - **Timeline**: 4-6 weeks
 - **Approach**: Plugin-based (keep Unity for graphics)
 - **Risk**: Low (physics-only replacement)
 
-**Scientific: GROMACS → VisionFlow**
+**Scientific: GROMACS → VisionClaw**
 - **Timeline**: 2 weeks
-- **Approach**: Hybrid (GROMACS for production, VisionFlow for collaboration)
+- **Approach**: Hybrid (GROMACS for production, VisionClaw for collaboration)
 - **Risk**: Very low (complementary, not replacement)
 
-**Manufacturing: ANSYS → VisionFlow**
+**Manufacturing: ANSYS → VisionClaw**
 - **Timeline**: 8-12 weeks
-- **Approach**: VisionFlow for design iteration, ANSYS for validation
+- **Approach**: VisionClaw for design iteration, ANSYS for validation
 - **Risk**: Medium (require dual validation initially)
 
-**Healthcare: SimMan → VisionFlow**
+**Healthcare: SimMan → VisionClaw**
 - **Timeline**: 4 weeks
-- **Approach**: VisionFlow for volume training, keep SimMan for certification
+- **Approach**: VisionClaw for volume training, keep SimMan for certification
 - **Risk**: Low (software addition, not replacement)
 
-**Finance: SAS → VisionFlow**
+**Finance: SAS → VisionClaw**
 - **Timeline**: 6 months
-- **Approach**: Shadow production (VisionFlow results vs SAS)
+- **Approach**: Shadow production (VisionClaw results vs SAS)
 - **Risk**: High (regulatory scrutiny, require extensive validation)
 
 ---
@@ -638,5 +638,5 @@ visionflow simulate --gpu --render 3d --collaborate
 
 **Document Version**: 1.0
 **Last Updated**: 2025-01-29
-**Maintained By**: VisionFlow Competitive Intelligence Team
+**Maintained By**: VisionClaw Competitive Intelligence Team
 **Next Review**: 2025-04-29 (quarterly update)

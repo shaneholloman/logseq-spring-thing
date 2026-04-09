@@ -1,5 +1,5 @@
 ---
-title: What is VisionFlow?
+title: What is VisionClaw?
 description: Traditional knowledge management tools force you to manually organize information and search for connections.  AI chatbots only respond when prompted.
 category: tutorial
 tags:
@@ -21,34 +21,34 @@ dependencies:
   - Neo4j database
 ---
 
-# What is VisionFlow?
+# What is VisionClaw?
 
-**VisionFlow is an enterprise-grade platform that transforms how teams discover and interact with knowledge using AI agents and immersive 3D visualization.**
+**VisionClaw is an enterprise-grade platform that transforms how teams discover and interact with knowledge using AI agents and immersive 3D visualization.**
 
-## The Problem VisionFlow Solves
+## The Problem VisionClaw Solves
 
 Traditional knowledge management tools force you to manually organize information and search for connections. AI chatbots only respond when prompted. Neither approach reveals the hidden patterns and relationships in your data that could unlock breakthrough insights.
 
-**VisionFlow changes this paradigm** by deploying autonomous AI agent teams that work continuously in the background, analyzing your private knowledge base to discover patterns, connections, and insights you didn't know existed—then visualizing everything in an interactive 3D space your team can explore together.
+**VisionClaw changes this paradigm** by deploying autonomous AI agent teams that work continuously in the background, analyzing your private knowledge base to discover patterns, connections, and insights you didn't know existed—then visualizing everything in an interactive 3D space your team can explore together.
 
-## Who is VisionFlow For?
+## Who is VisionClaw For?
 
 ### Research Teams
-Scientists, academics, and R&D departments managing complex literature reviews and research connections. VisionFlow's AI agents continuously analyze papers, extract relationships, and organize findings into a navigable 3D knowledge graph.
+Scientists, academics, and R&D departments managing complex literature reviews and research connections. VisionClaw's AI agents continuously analyze papers, extract relationships, and organize findings into a navigable 3D knowledge graph.
 
 ### Enterprise Knowledge Management
-Organizations with large documentation repositories, wikis, and knowledge bases. VisionFlow transforms scattered information into a unified, intelligent system where teams can visually navigate relationships between projects, people, technologies, and concepts.
+Organizations with large documentation repositories, wikis, and knowledge bases. VisionClaw transforms scattered information into a unified, intelligent system where teams can visually navigate relationships between projects, people, technologies, and concepts.
 
 ### Strategic Planning & Intelligence
-Business analysts, consultants, and strategy teams connecting market intelligence, competitive analysis, and internal capabilities. VisionFlow's ontology system ensures logical consistency while agents discover non-obvious strategic connections.
+Business analysts, consultants, and strategy teams connecting market intelligence, competitive analysis, and internal capabilities. VisionClaw's ontology system ensures logical consistency while agents discover non-obvious strategic connections.
 
 ### Software Development Teams
-Engineering organizations mapping codebases, architectural decisions, and technical documentation. VisionFlow integrates with GitHub to automatically maintain living documentation that evolves with your code.
+Engineering organizations mapping codebases, architectural decisions, and technical documentation. VisionClaw integrates with GitHub to automatically maintain living documentation that evolves with your code.
 
 ### Data Scientists & AI Researchers
-Teams working with complex data relationships, model architectures, and experimental results. VisionFlow's GPU-accelerated physics engine handles massive graphs (100k+ nodes) at 60 FPS.
+Teams working with complex data relationships, model architectures, and experimental results. VisionClaw's GPU-accelerated physics engine handles massive graphs (100k+ nodes) at 60 FPS.
 
-## What Makes VisionFlow Different?
+## What Makes VisionClaw Different?
 
 ### 1. Continuous AI Analysis (Not Reactive Chat)
 
@@ -57,7 +57,7 @@ Teams working with complex data relationships, model architectures, and experime
 - Limited to conversation context
 - Forget everything after the chat ends
 
-**VisionFlow:**
+**VisionClaw:**
 - 50+ AI agents work 24/7 analyzing your data
 - Proactively discover patterns and connections
 - Continuously update the knowledge graph as data changes
@@ -70,7 +70,7 @@ Teams working with complex data relationships, model architectures, and experime
 - Linear document navigation
 - Static mind maps or diagrams
 
-**VisionFlow:**
+**VisionClaw:**
 - Interactive 3D force-directed graph physics
 - Spatial clusters reveal conceptual relationships
 - 60 FPS rendering even with 100,000+ nodes
@@ -84,7 +84,7 @@ Teams working with complex data relationships, model architectures, and experime
 - Limited control over AI processing
 - Vendor lock-in risks
 
-**VisionFlow:**
+**VisionClaw:**
 - Deploy on-premises or in your private cloud
 - All data stays within your infrastructure
 - Complete audit trail with Git version control
@@ -97,7 +97,7 @@ Teams working with complex data relationships, model architectures, and experime
 - No logical validation
 - Manual organization required
 
-**VisionFlow:**
+**VisionClaw:**
 - OWL ontologies define your domain's "rules"
 - Automatic inference discovers hidden relationships
 - Semantic physics organizes visualization meaningfully
@@ -151,23 +151,23 @@ Transform chaos into structure:
 
 ### Academic Research: Literature Review Automation
 **Challenge:** PhD student overwhelmed by 500+ papers on distributed systems
-**Solution:** VisionFlow's agents extract key concepts, authors, methodologies, and results, automatically clustering papers by topic and highlighting citation patterns. The 3D visualization reveals research "schools of thought" and knowledge gaps.
+**Solution:** VisionClaw's agents extract key concepts, authors, methodologies, and results, automatically clustering papers by topic and highlighting citation patterns. The 3D visualization reveals research "schools of thought" and knowledge gaps.
 
 ### Enterprise: Cross-Project Knowledge Transfer
 **Challenge:** Large organization with siloed teams duplicating effort
-**Solution:** VisionFlow ingests project documentation, Jira tickets, and Confluence wikis, creating a unified graph showing technology overlaps, team expertise, and reusable components. Agents proactively suggest collaboration opportunities.
+**Solution:** VisionClaw ingests project documentation, Jira tickets, and Confluence wikis, creating a unified graph showing technology overlaps, team expertise, and reusable components. Agents proactively suggest collaboration opportunities.
 
 ### Intelligence Analysis: Connecting Disparate Signals
 **Challenge:** Security team drowning in threat intelligence feeds
-**Solution:** VisionFlow's ontology defines threat actor profiles, malware families, and attack patterns. Agents correlate indicators across sources, visualizing attack campaigns in 3D with temporal clustering showing evolution over time.
+**Solution:** VisionClaw's ontology defines threat actor profiles, malware families, and attack patterns. Agents correlate indicators across sources, visualizing attack campaigns in 3D with temporal clustering showing evolution over time.
 
 ### Software Architecture: Living Documentation
 **Challenge:** Legacy codebase with outdated architecture diagrams
-**Solution:** VisionFlow syncs with GitHub, automatically parsing code structure, API dependencies, and architectural decision records (ADRs). The 3D graph updates in real-time as code changes, with semantic forces clustering services by domain.
+**Solution:** VisionClaw syncs with GitHub, automatically parsing code structure, API dependencies, and architectural decision records (ADRs). The 3D graph updates in real-time as code changes, with semantic forces clustering services by domain.
 
 ## Technical Foundation
 
-VisionFlow combines cutting-edge technologies:
+VisionClaw combines cutting-edge technologies:
 
 - **Backend:** Rust + Actix Web (hexagonal architecture, CQRS pattern)
 - **Database:** Neo4j 5.13 graph database (primary persistence layer)
@@ -181,15 +181,15 @@ VisionFlow combines cutting-edge technologies:
 
 ### Docker Quickstart (5 minutes)
 ```bash
-git clone https://github.com/DreamLab-AI/VisionFlow.git
-cd VisionFlow
+git clone https://github.com/DreamLab-AI/VisionClaw.git
+cd VisionClaw
 cp .env.example .env
 # Edit .env with your NEO4J_PASSWORD
 docker-compose --profile dev up -d
 ```
 
 ### Native Installation
-For custom deployments or development, VisionFlow supports:
+For custom deployments or development, VisionClaw supports:
 - **Linux** (Ubuntu 20.04+, Debian 11+, Arch) - Full support with GPU
 - **macOS** (12.0+) - CPU-only (no CUDA)
 - **Windows** (10/11) - WSL2 recommended
@@ -204,25 +204,25 @@ For custom deployments or development, VisionFlow supports:
 1. **[Installation Guide](installation.md)** - Docker or native setup
 2. **[First Graph Tutorial](creating-first-graph.md)** - Create your first visualization
 3. **[Architecture Overview](../architecture/ARCHITECTURE.md)** - Understand the system design
-4. **[Developer Journey](../explanation/architecture/developer-journey.md)** - Navigate the codebase
+4. **[Developer Journey](../explanation/system-overview.md)** - Navigate the codebase
 
 ## Community & Support
 
 - **Documentation:** [Complete documentation hub](../README.md)
-- **Issues:** [GitHub Issues](https://github.com/DreamLab-AI/VisionFlow/issues)
-- **Discussions:** [GitHub Discussions](https://github.com/DreamLab-AI/VisionFlow/discussions)
+- **Issues:** [GitHub Issues](https://github.com/DreamLab-AI/VisionClaw/issues)
+- **Discussions:** [GitHub Discussions](https://github.com/DreamLab-AI/VisionClaw/discussions)
 - **License:** Mozilla Public License 2.0 (MPL-2.0) - Commercial-friendly with copyleft on modifications
 
 ---
 
 ## Related Documentation
 
-- [VisionFlow Complete Architecture Documentation](../architecture/ARCHITECTURE.md)
+- [VisionClaw Complete Architecture Documentation](../architecture/ARCHITECTURE.md)
 - [Agent/Bot System Architecture](../diagrams/server/agents/agent-system-architecture.md)
 
 ## Vision & Roadmap
 
-VisionFlow represents the future of collaborative knowledge work—where AI agents continuously discover insights, teams collaborate in immersive 3D spaces, and your data remains completely under your control.
+VisionClaw represents the future of collaborative knowledge work—where AI agents continuously discover insights, teams collaborate in immersive 3D spaces, and your data remains completely under your control.
 
 **Current Status (v2.0.0 - November 2025):**
 - ✅ Complete Neo4j migration

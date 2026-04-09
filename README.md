@@ -542,24 +542,24 @@ flowchart LR
 
 ## Documentation
 
-VisionClaw uses the [Diataxis](https://diataxis.fr/) documentation framework — 267 markdown files organised into four categories:
+VisionClaw uses the [Diataxis](https://diataxis.fr/) documentation framework — 101 markdown files organised into four categories:
 
 | Category | Path | Content |
 |:---------|:-----|:--------|
-| **Tutorials** | `docs/tutorials/` | First graph, digital twin, protein folding, multiplayer |
+| **Tutorials** | `docs/tutorials/` | First graph, Neo4j basics, platform overview |
 | **How-To Guides** | `docs/how-to/` | Deployment, agents, features, operations, development |
-| **Explanation** | `docs/explanation/` | Architecture, concepts, system overview, design decisions |
-| **Reference** | `docs/reference/` | API specs, database schemas, port/adapter catalogue |
+| **Explanation** | `docs/explanation/` | Architecture, ontology, physics, XR, DDD, system overview |
+| **Reference** | `docs/reference/` | REST API, WebSocket protocol, Neo4j schema, agents catalog |
 
 Key entry points:
 
 - [Full Documentation Hub](docs/README.md)
 - [Architecture Overview](docs/explanation/system-overview.md)
-- [Project Structure](docs/how-to/development/02-project-structure.md)
-- [Ontology Agent Tools](docs/how-to/agents/ontology-agent-tools.md)
+- [Backend CQRS Pattern](docs/explanation/backend-cqrs-pattern.md)
 - [Voice Routing](docs/how-to/features/voice-routing.md)
-- [Docker Compose Guide](docs/how-to/deployment/docker-compose-guide.md)
-- [Hexagonal Architecture](docs/explanation/architecture/patterns/hexagonal-cqrs.md)
+- [Deployment Guide](docs/how-to/deployment-guide.md)
+- [Agent Orchestration](docs/how-to/agent-orchestration.md)
+- [REST API Reference](docs/reference/rest-api.md)
 
 ---
 

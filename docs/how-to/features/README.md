@@ -1,6 +1,6 @@
 ---
 title: Feature Guides
-description: How to use specific VisionFlow features
+description: How to use specific VisionClaw features
 category: how-to
 diataxis: how-to
 tags:
@@ -12,11 +12,11 @@ updated-date: 2025-01-29
 
 # Feature Guides
 
-How to use specific VisionFlow features.
+How to use specific VisionClaw features.
 
 ## Overview
 
-VisionFlow provides several key features:
+VisionClaw provides several key features:
 - Real-time physics simulation
 - Constraint-based layouts
 - Semantic ontology reasoning
@@ -25,4 +25,4 @@ VisionFlow provides several key features:
 
 ## Related
 
-- [API Reference](../../reference/api/README.md)
+- [API Reference](../../reference/README.md)

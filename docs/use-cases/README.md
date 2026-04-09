@@ -1,6 +1,6 @@
 # Use Cases Documentation
 
-This directory contains comprehensive documentation on real-world applications of VisionFlow's decentralized physics simulation platform.
+This directory contains comprehensive documentation on real-world applications of VisionClaw's decentralized physics simulation platform.
 
 ---
 
@@ -26,16 +26,16 @@ This directory contains comprehensive documentation on real-world applications o
 
 ### For Game Developers
 ```bash
-git clone https://github.com/yourusername/visionflow
-cd visionflow
+git clone https://github.com/yourusername/visionclaw
+cd visionclaw
 cargo run --example multiplayer_physics
 ```
 
 ### For Researchers
 ```bash
 cargo build --release --features gpu
-./target/release/visionflow import --format pdb < protein.pdb
-./target/release/visionflow simulate --gpu --render 3d
+./target/release/visionclaw import --format pdb < protein.pdb
+./target/release/visionclaw simulate --gpu --render 3d
 ```
 
 ### For Manufacturers
@@ -43,7 +43,7 @@ cargo build --release --features gpu
 docker run -d --gpus all \
   -p 8080:8080 \
   -v /data/factory:/data \
-  visionflow/edge:latest
+  visionclaw/edge:latest
 ```
 
 ---
@@ -91,7 +91,7 @@ docker run -d --gpus all \
 ### Pattern 1: "Cloud Migration Avoidance"
 **Industries**: Healthcare, Finance, Manufacturing (ITAR)
 **Problem**: Regulatory/IP concerns prevent cloud usage
-**Solution**: On-premises VisionFlow deployment
+**Solution**: On-premises VisionClaw deployment
 **TCO**: $1.7M (5-year) vs $2.2M cloud (22% savings)
 
 ### Pattern 2: "Edge Computing for Real-Time Control"
@@ -117,7 +117,7 @@ docker run -d --gpus all \
 ## Key Differentiators
 
 ### vs Traditional Simulation Software
-| VisionFlow | Traditional |
+| VisionClaw | Traditional |
 |-----------|-------------|
 | Real-time (60 FPS) | Batch processing (hours) |
 | Interactive 3D | Static output files |
@@ -126,7 +126,7 @@ docker run -d --gpus all \
 | GPU-accelerated | CPU-bound (mostly) |
 
 ### vs Cloud-Based Solutions
-| VisionFlow (On-Premises) | Cloud |
+| VisionClaw (On-Premises) | Cloud |
 |-------------------------|-------|
 | Data sovereignty | Data leaves network |
 | Zero marginal cost | $0.50-$5/hour per GPU |
@@ -135,7 +135,7 @@ docker run -d --gpus all \
 | One-time hardware ($15K) | Ongoing subscription |
 
 ### vs Game Engines (Unity/Unreal)
-| VisionFlow | Unity/Unreal |
+| VisionClaw | Unity/Unreal |
 |-----------|-------------|
 | 100x GPU physics | CPU PhysX/Chaos |
 | Deterministic (multiplayer) | Non-deterministic |
@@ -148,7 +148,7 @@ docker run -d --gpus all \
 ## Market Opportunities
 
 ### Total Addressable Market (TAM)
-| Industry | Market Size (2024) | CAGR | VisionFlow Addressable |
+| Industry | Market Size (2024) | CAGR | VisionClaw Addressable |
 |----------|-------------------|------|----------------------|
 | Gaming (multiplayer) | $56.8B | 12.4% | $5.68B (10% TAM) |
 | Scientific simulation | $8.2B | 15.3% | $4.1B (50% TAM) |
@@ -185,20 +185,20 @@ docker run -d --gpus all \
 ## Getting Help
 
 ### Community Support (Free)
-- **Discord**: [#use-cases channel](https://discord.gg/visionflow)
-- **Forum**: [discuss.visionflow.dev](https://discuss.visionflow.dev)
-- **GitHub Issues**: [Bug reports & feature requests](https://github.com/yourusername/visionflow/issues)
+- **Discord**: [#use-cases channel](https://discord.gg/visionclaw)
+- **Forum**: [discuss.visionclaw.dev](https://discuss.visionclaw.dev)
+- **GitHub Issues**: [Bug reports & feature requests](https://github.com/yourusername/visionclaw/issues)
 
 ### Enterprise Support (Paid)
-- **Email**: [support@visionflow.dev](mailto:support@visionflow.dev)
+- **Email**: [support@visionclaw.dev](mailto:support@visionclaw.dev)
 - **SLA**: 4-hour response time (99.9% uptime)
 - **Professional Services**: Custom integration, training, consulting
 
 ### Industry-Specific Contacts
-- **Gaming**: [gaming@visionflow.dev](mailto:gaming@visionflow.dev)
-- **Healthcare**: [healthcare@visionflow.dev](mailto:healthcare@visionflow.dev) (HIPAA BAA available)
-- **Finance**: [finance@visionflow.dev](mailto:finance@visionflow.dev) (SOC 2 Type II)
-- **Manufacturing**: [manufacturing@visionflow.dev](mailto:manufacturing@visionflow.dev)
+- **Gaming**: [gaming@visionclaw.dev](mailto:gaming@visionclaw.dev)
+- **Healthcare**: [healthcare@visionclaw.dev](mailto:healthcare@visionclaw.dev) (HIPAA BAA available)
+- **Finance**: [finance@visionclaw.dev](mailto:finance@visionclaw.dev) (SOC 2 Type II)
+- **Manufacturing**: [manufacturing@visionclaw.dev](mailto:manufacturing@visionclaw.dev)
 
 ---
 
@@ -207,9 +207,9 @@ docker run -d --gpus all \
 Have a novel use case? We'd love to hear about it!
 
 ### How to Contribute
-1. **Forum Post**: Share your use case on [discuss.visionflow.dev](https://discuss.visionflow.dev)
+1. **Forum Post**: Share your use case on [discuss.visionclaw.dev](https://discuss.visionclaw.dev)
 2. **Case Study**: Submit a PR with your story to `docs/use-cases/case-studies/`
-3. **Blog Post**: Write for our [community blog](https://blog.visionflow.dev)
+3. **Blog Post**: Write for our [community blog](https://blog.visionclaw.dev)
 
 ### Contribution Guidelines
 - Include **quantitative results** (ROI, performance metrics)
@@ -220,7 +220,7 @@ Have a novel use case? We'd love to hear about it!
 ### Recognition
 - Featured case studies on homepage
 - Co-branded marketing materials (with permission)
-- Speaker slot at annual VisionFlow conference
+- Speaker slot at annual VisionClaw conference
 
 ---
 
@@ -228,10 +228,10 @@ Have a novel use case? We'd love to hear about it!
 
 **Documentation**: CC BY-SA 4.0 (Creative Commons Attribution-ShareAlike)
 **Code Examples**: MPL 2.0 (Mozilla Public License)
-**Trademarks**: "VisionFlow" is a trademark of [Your Organization]
+**Trademarks**: "VisionClaw" is a trademark of [Your Organization]
 
 ---
 
 **Document Version**: 1.0
 **Last Updated**: 2025-01-29
-**Maintained By**: VisionFlow Research Team
+**Maintained By**: VisionClaw Research Team

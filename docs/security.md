@@ -1,6 +1,6 @@
 # Security Documentation
 
-This document covers the security architecture, practices, and considerations for the VisionFlow Vircadia integration.
+This document covers the security architecture, practices, and considerations for the VisionClaw Vircadia integration.
 
 ## SQL Parameterization
 
@@ -191,7 +191,7 @@ The Docker Compose configuration ships with default credentials that must be cha
 
 | Credential | Default Value | Environment Variable |
 |:-----------|:-------------|:---------------------|
-| PostgreSQL password | `visionflow_secure` | `POSTGRES_PASSWORD` |
+| PostgreSQL password | `visionclaw_secure` | `POSTGRES_PASSWORD` |
 | JWT secret | `change_this_in_production` | `VIRCADIA_JWT_SECRET` |
 
 ### 5. Microphone Access

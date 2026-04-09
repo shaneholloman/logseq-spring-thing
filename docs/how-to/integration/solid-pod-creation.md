@@ -2,12 +2,12 @@
 
 ## Overview
 
-VisionFlow integrates with JavaScript Solid Server (JSS) to provide user-owned data pods for ontology contributions, personal preferences, and agent memory. This document describes the pod creation and management flow.
+VisionClaw integrates with JavaScript Solid Server (JSS) to provide user-owned data pods for ontology contributions, personal preferences, and agent memory. This document describes the pod creation and management flow.
 
 ## Architecture
 
 ```
-React Frontend ────► VisionFlow (Rust) ────► JSS (Fastify)
+React Frontend ────► VisionClaw (Rust) ────► JSS (Fastify)
      │                     │                     │
      │ Nostr Auth          │ NIP-98 Forward      │ WebID Creation
      │                     │ /solid/* proxy      │ Pod Provisioning
@@ -29,7 +29,7 @@ Where `{npub}` is the Nostr bech32-encoded public key (e.g., `npub1abc123...`).
 User authenticates via existing Nostr flow (NIP-07 browser extension or NIP-46 remote signer).
 
 ### 2. Pod Existence Check
-VisionFlow checks if the user's pod exists:
+VisionClaw checks if the user's pod exists:
 
 ```bash
 # Server-side check
@@ -40,7 +40,7 @@ HEAD /pods/{npub}/
 - **404 Not Found**: Pod needs creation
 
 ### 3. Pod Creation Request
-If pod doesn't exist, VisionFlow creates it:
+If pod doesn't exist, VisionClaw creates it:
 
 ```bash
 # Create pod with Nostr identity
@@ -51,7 +51,7 @@ Authorization: Bearer {NIP-98-token}
 {
   "name": "{npub}",
   "webId": "did:nostr:{hex-pubkey}",
-  "template": "visionflow-user"
+  "template": "visionclaw-user"
 }
 ```
 
@@ -68,7 +68,7 @@ JSS creates the following structure:
 │   ├── proposals/              # Pending proposals for review
 │   └── annotations/            # Comments on public ontology
 ├── preferences/
-│   └── visionflow.ttl          # App settings (theme, layout, etc.)
+│   └── visionclaw.ttl          # App settings (theme, layout, etc.)
 ├── inbox/                      # Notifications and messages
 └── .acl                        # Access control list
 ```
@@ -207,7 +207,7 @@ export class SolidPodService {
       },
       body: JSON.stringify({
         name: npub,
-        template: 'visionflow-user'
+        template: 'visionclaw-user'
       })
     });
 
@@ -261,7 +261,7 @@ JSS is included in `docker-compose.unified.yml`:
 
 ```yaml
 jss:
-  container_name: visionflow-jss
+  container_name: visionclaw-jss
   build:
     context: ./JavaScriptSolidServer
     dockerfile: Dockerfile.jss
@@ -270,7 +270,7 @@ jss:
     - JSS_NOTIFICATIONS=true
     - JSS_CONNEG=true
     - JSS_MULTIUSER=true
-    - JSS_POD_TEMPLATE=visionflow
+    - JSS_POD_TEMPLATE=visionclaw
   volumes:
     - jss-data:/data
     - ./ontology:/data/public/ontology:ro  # Public ontology

@@ -120,9 +120,9 @@
 | Container | Image | Status | Ports | Purpose |
 |-----------|-------|--------|-------|---------|
 | agentic-workstation | multi-agent-docker-agentic-workstation | Healthy | 2222, 5901, 8080, 9090 | This container |
-| visionflow_container | ar-ai-knowledge-graph-visionflow | Healthy | 3001, 4000 | VisionFlow knowledge graph app |
-| visionflow-neo4j | neo4j:5.13.0 | Healthy | 7474, 7687 | Graph database |
-| visionflow-jss | ar-ai-knowledge-graph-jss | Unhealthy | 3030 | JSS service |
+| visionclaw_container | ar-ai-knowledge-graph-visionclaw | Healthy | 3001, 4000 | VisionClaw knowledge graph app |
+| visionclaw-neo4j | neo4j:5.13.0 | Healthy | 7474, 7687 | Graph database |
+| visionclaw-jss | ar-ai-knowledge-graph-jss | Unhealthy | 3030 | JSS service |
 | kokoro-tts-container | kokoro-fastapi-gpu | Up | 8880 | GPU text-to-speech |
 | docker-es01-1 | elasticsearch:8.11.3 | Healthy | 1200 | Search & analytics |
 | docker-minio-1 | quay.io/minio/minio | Healthy | 9000, 9001 | S3-compatible storage |

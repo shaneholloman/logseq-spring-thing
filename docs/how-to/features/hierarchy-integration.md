@@ -7,7 +7,7 @@ tags:
   - backend
   - documentation
   - reference
-  - visionflow
+  - visionclaw
 updated-date: 2025-12-18
 difficulty-level: intermediate
 ---
@@ -78,6 +78,29 @@ function GraphCanvas() {
   );
 }
 ```
+
+## OWL Class Hierarchy → Visual Clustering
+
+```mermaid
+graph TD
+    OWL[OWL Ontology\nSubClassOf axioms] --> Whelk[Whelk Reasoner\nInference engine]
+    Whelk --> SC[SUBCLASS_OF edges\nNeo4j :OwlClass nodes]
+    SC --> GSA[GraphStateActor\nLoads hierarchy on startup]
+    GSA --> SemanticForces[GPU Semantic Forces\nHierarchy-aware spring constants]
+    SemanticForces --> Cluster[Visual Clustering\n3D node positions]
+
+    subgraph "Depth → Visual Grouping"
+        Root[Root class\nDepth 0 — Cyan — loose spring]
+        Root --> Child1[Child class\nDepth 1 — Blue-1 — medium spring]
+        Root --> Child2[Child class\nDepth 1 — Blue-1]
+        Child1 --> GC1[Grandchild\nDepth 2 — Blue-2 — tight spring]
+        Child1 --> GC2[Grandchild\nDepth 2 — Blue-2]
+    end
+
+    Cluster -.->|drives| Root
+```
+
+*OWL class hierarchy maps to depth-coded node colours and spring constants: deeper nodes cluster tightly around their parent in 3D space.*
 
 ## Data Flow Diagram
 
@@ -394,6 +417,26 @@ useEffect(() => {
 const scale = Math.max(1, camera.position.distanceTo(node.position) / 10);
 label.scale.set(4 * scale, 1 * scale, 1);
 ```
+
+## Hierarchy Integration Flow
+
+```mermaid
+flowchart LR
+    OWL[OWL Ontology\nTurtle / RDF] --> Whelk[Whelk Reasoner\nSub-class closure]
+    Whelk --> SC[Neo4j\nSUBCLASS_OF rels\n:OwlClass nodes]
+    SC --> GSA[GraphStateActor\nClassifies nodes\nby type sets]
+    GSA --> GPU[GPU Physics\nSemantic force kernel\nhierarchy spring weights]
+    GPU --> Pos[Node Positions\nSAB broadcast]
+    Pos --> Client[3D Client\nHierarchyRenderer\nSemanticZoomControls]
+
+    SC -->|depth field| Depth[Depth metadata\n0 = root\nN = leaf]
+    Depth --> Color[Depth-based colour\nCyan → Blue gradient]
+    Depth --> Zoom[Semantic zoom filter\nLevel 0–5 visibility]
+    Color --> Client
+    Zoom --> Client
+```
+
+*Integration path: OWL axioms travel through Whelk inference, are stored as SUBCLASS_OF edges in Neo4j, drive GPU semantic forces that cluster nodes spatially, and are rendered with depth-coded colours and semantic zoom levels on the client.*
 
 ## Additional Resources
 

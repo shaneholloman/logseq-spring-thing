@@ -20,7 +20,7 @@ difficulty-level: advanced
 
 ## Overview
 
-Stress Majorization is an advanced graph layout algorithm that optimizes node positions to minimize the difference between graph-theoretic distances and Euclidean distances. VisionFlow implements both GPU-accelerated CUDA kernels and CPU fallback solvers.
+Stress Majorization is an advanced graph layout algorithm that optimizes node positions to minimize the difference between graph-theoretic distances and Euclidean distances. VisionClaw implements both GPU-accelerated CUDA kernels and CPU fallback solvers.
 
 ---
 
@@ -151,6 +151,22 @@ ctx.run-interval(Duration::from-secs(10), |act, ctx| {
 
 ## Algorithm Details
 
+### SMACOF Algorithm Overview
+
+```mermaid
+flowchart TD
+    Init[Initialize node positions\nrandom or from physics layout] --> Stress[Compute stress\nΣ w_ij · d_ij − δ_ij ²]
+    Stress --> Grad[Compute gradient\nper-node partial derivatives]
+    Grad --> Update[Update positions\ngradient descent + momentum\nclamp to max-displacement]
+    Update --> Conv{Max displacement\n< convergence\nthreshold?}
+    Conv -->|No — iterate| Stress
+    Conv -->|Yes| Done[Layout converged\nbroadcast positions]
+    Update --> IterCheck{Iterations\n≥ max-iterations?}
+    IterCheck -->|Yes — safety stop| Done
+```
+
+*SMACOF (Scaling by MAjorizing a COmplicated Function): iterative stress-majorization loop. Each cycle runs the five CUDA kernels — stress, gradient, position update, majorization step, max-displacement check — until convergence or the iteration cap is hit.*
+
 ### GPU Implementation (CUDA)
 
 **Kernels**:
@@ -199,6 +215,33 @@ StressMajorizationSafety {
 ```
 
 ---
+
+## Layout Comparison: Force-Directed vs Stress Majorization
+
+```mermaid
+graph LR
+    subgraph FD["Force-Directed (physics only)"]
+        direction TB
+        A1((A)) --- B1((B))
+        B1 --- C1((C))
+        C1 --- D1((D))
+        A1 --- D1
+        B1 --- D1
+    end
+
+    subgraph SM["Stress Majorization (distance-preserving)"]
+        direction TB
+        A2((A)) --- B2((B))
+        B2 --- C2((C))
+        C2 --- D2((D))
+        A2 --- D2
+        B2 --- D2
+    end
+
+    FD -->|"stress-blend-factor < 1.0\nSM refines positions"| SM
+```
+
+*Force-directed layouts minimise energy but do not preserve graph distances; stress majorization explicitly minimises the difference between graph-theoretic and Euclidean distances, producing more faithful spatial representations of connectivity. Use `stress-blend-factor` to interpolate between the two.*
 
 ## Use Cases
 

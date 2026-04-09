@@ -1,6 +1,6 @@
 ---
 title: Protocol Reference
-description: Complete specification for all VisionFlow communication protocols
+description: Complete specification for all VisionClaw communication protocols
 category: reference
 difficulty-level: intermediate
 tags:
@@ -12,7 +12,7 @@ updated-date: 2025-01-29
 
 # Protocol Reference
 
-Complete technical specification for all VisionFlow communication protocols.
+Complete technical specification for all VisionClaw communication protocols.
 
 ---
 

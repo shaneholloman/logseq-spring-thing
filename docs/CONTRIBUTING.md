@@ -344,18 +344,18 @@ stateDiagram-v2
 
 ✅ Good:
 ```markdown
-See [API Reference](./reference/api/rest-api-reference.md)
+See [API Reference](./reference/rest-api.md)
 ```
 
 ❌ Avoid:
 ```markdown
-See [API Reference](/docs/reference/api/rest-api-reference.md)
+See [API Reference](/docs/reference/rest-api.md)
 ```
 
 **Link to Specific Sections**
 
 ```markdown
-See [API Reference](./reference/api/rest-api-reference.md#configuration)
+See [API Reference](./reference/rest-api.md#configuration)
 ```
 
 **Verify Links Exist**
@@ -392,7 +392,7 @@ Link to related documents at the end of each section:
 ---
 
 **Related Documentation:**
-- [API Reference](./reference/api/rest-api-reference.md)
+- [API Reference](./reference/rest-api.md)
 - [Configuration Guide](./how-to/operations/configuration.md)
 - [Troubleshooting](./how-to/operations/troubleshooting.md)
 ```

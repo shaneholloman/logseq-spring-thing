@@ -17,7 +17,7 @@ difficulty-level: advanced
 
 **
 
-This comprehensive guide covers everything you need to install and configure VisionFlow, from basic setup to advanced GPU-accelerated deployments.
+This comprehensive guide covers everything you need to install and configure VisionClaw, from basic setup to advanced GPU-accelerated deployments.
 
 ## Prerequisites
 
@@ -48,7 +48,7 @@ This comprehensive guide covers everything you need to install and configure Vis
 ### Required Software
 
 #### Docker and Docker Compose
-VisionFlow requires Docker for containerised deployment:
+VisionClaw requires Docker for containerised deployment:
 
 **Linux (Ubuntu/Debian):**
 ```bash
@@ -134,16 +134,35 @@ brew install git
 # Download from: https://git-scm.com/download/win
 ```
 
+```mermaid
+flowchart TD
+    A[Check Prerequisites\nDocker · NVIDIA GPU] --> B{GPU Available?}
+    B -->|Yes| C[Install NVIDIA\nContainer Toolkit]
+    B -->|No| D[CPU-only mode\nset ENABLE_GPU=false]
+    C --> E[Clone Repository]
+    D --> E
+    E --> F[Copy .env.example\n→ .env]
+    F --> G[Configure environment\nNeo4j · GitHub token]
+    G --> H[docker compose up -d]
+    H --> I[Verify services healthy]
+    I --> J{All healthy?}
+    J -->|Yes| K[Open localhost:3001 ✅]
+    J -->|No| L[Check logs\ndocker compose logs]
+    L --> I
+```
+
+*Figure: Installation flow — follow this sequence to get VisionClaw running from scratch*
+
 ## Installation Steps
 
 ### Method 1: Quick Installation (Recommended)
 
-This is the fastest way to get VisionFlow running:
+This is the fastest way to get VisionClaw running:
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/visionflow/visionflow.git
-cd visionflow
+git clone https://github.com/visionclaw/visionclaw.git
+cd visionclaw
 
 # 2. Start with default configuration
 docker-compose up -d
@@ -151,7 +170,7 @@ docker-compose up -d
 # 3. Wait for services to start (2-3 minutes)
 docker-compose logs -f
 
-# 4. Open VisionFlow in your browser
+# 4. Open VisionClaw in your browser
 open http://localhost:3030
 ```
 
@@ -162,8 +181,8 @@ For production or customised deployments:
 #### Step 1: Clone and Configure
 ```bash
 # Clone the repository
-git clone https://github.com/visionflow/visionflow.git
-cd visionflow
+git clone https://github.com/visionclaw/visionclaw.git
+cd visionclaw
 
 # Copy environment template
 cp .env.example .env
@@ -199,9 +218,9 @@ JWT-SECRET=your-random-secret
 CORS-ORIGINS=http://localhost:3030
 
 # Database
-POSTGRES-USER=visionflow
+POSTGRES-USER=visionclaw
 POSTGRES-PASSWORD=secure-password
-POSTGRES-DB=visionflow
+POSTGRES-DB=visionclaw
 
 # Networking
 HOST-PORT=3001                   # External access port
@@ -231,7 +250,7 @@ docker-compose ps
 
 # Expected output:
 # NAME                    COMMAND                  SERVICE             STATUS
-# visionflow-container    "/app/scripts/start.sh"  webxr              Up
+# visionclaw-container    "/app/scripts/start.sh"  webxr              Up
 # multi-agent-container   "python3 -m claude..."   claude-flow        Up
 # postgres-container      "docker-entrypoint.s..."  postgres           Up
 # redis-container         "redis-server --appen..."  redis              Up
@@ -245,6 +264,24 @@ curl http://localhost:3030/api/health
 # Expected response:
 # {"status":"healthy","version":"0.1.0","timestamp":"2024-01-01T12:00:00Z"}
 ```
+
+```mermaid
+graph TB
+    Browser[Browser\n:3001] --> Nginx[Nginx\nReverse Proxy]
+    Nginx --> Vite[Vite Dev Server\n:5173]
+    Nginx --> Rust[VisionClaw API\n:8080]
+    Rust --> Neo4j[(Neo4j\n:7687)]
+    Rust --> JSS[Solid JSS\n:3030]
+    Rust --> GPU[CUDA GPU\nPhysics Engine]
+    Rust --> RuVector[(RuVector\n:5432)]
+
+    style Browser fill:#4A90D9,color:#fff
+    style Rust fill:#E67E22,color:#fff
+    style Neo4j fill:#27AE60,color:#fff
+    style GPU fill:#8E44AD,color:#fff
+```
+
+*Figure: Service topology — Docker services and their internal connections after a successful deployment*
 
 ## Advanced Installation
 
@@ -287,7 +324,7 @@ BATCH-SIZE=1000                  # Physics batch size
 docker-compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
 
 # Verify GPU usage
-docker exec visionflow-container nvidia-smi
+docker exec visionclaw-container nvidia-smi
 ```
 
 ### Multi-Node Deployment
@@ -297,11 +334,11 @@ For large-scale deployments across multiple servers:
 #### Step 1: Configure Network
 ```bash
 # Create external network
-docker network create visionflow-cluster
+docker network create visionclaw-cluster
 
 # Configure each node in docker-compose.yml
 networks:
-  visionflow-cluster:
+  visionclaw-cluster:
     external: true
 ```
 
@@ -310,14 +347,14 @@ networks:
 # docker-compose.cluster.yml
 version: '3.8'
 services:
-  visionflow-node1:
-    image: visionflow:latest
+  visionclaw-node1:
+    image: visionclaw:latest
     deploy:
       placement:
         constraints: [node.labels.role == primary]
 
-  visionflow-node2:
-    image: visionflow:latest
+  visionclaw-node2:
+    image: visionclaw:latest
     deploy:
       placement:
         constraints: [node.labels.role == worker]
@@ -329,7 +366,7 @@ services:
 docker swarm init
 
 # Deploy stack
-docker stack deploy -c docker-compose.cluster.yml visionflow-cluster
+docker stack deploy -c docker-compose.cluster.yml visionclaw-cluster
 ```
 
 ### Development Installation
@@ -355,8 +392,8 @@ npm --version
 #### Step 2: Build from Source
 ```bash
 # Clone repository
-git clone https://github.com/visionflow/visionflow.git
-cd visionflow
+git clone https://github.com/visionclaw/visionclaw.git
+cd visionclaw
 
 # Install backend dependencies
 cargo build --release
@@ -404,7 +441,7 @@ SWAP-LIMIT=4g
 ### CPU Optimisation
 ```bash
 # Set CPU affinity for containers
-docker-compose exec visionflow-container taskset -cp 0-7 1
+docker-compose exec visionclaw-container taskset -cp 0-7 1
 
 # Configure CPU limits
 CPU-LIMIT=8.0
@@ -418,12 +455,12 @@ CPU-RESERVATION=4.0
 docker volume create --driver local \
   --opt type=none \
   --opt o=bind \
-  --opt device=/mnt/ssd/visionflow \
-  visionflow-data
+  --opt device=/mnt/ssd/visionclaw \
+  visionclaw-data
 
 # Configure in docker-compose.yml
 volumes:
-  - visionflow-data:/app/data
+  - visionclaw-data:/app/data
 ```
 
 ### Network Optimisation
@@ -437,7 +474,7 @@ sysctl -p
 docker network create \
   --driver bridge \
   --opt com.docker.network.driver.mtu=9000 \
-  visionflow-network
+  visionclaw-network
 ```
 
 ## Troubleshooting
@@ -493,10 +530,10 @@ docker run --rm --gpus all nvidia/cuda:11.8-base-ubuntu20.04 nvidia-smi
 
 ### Service-Specific Issues
 
-#### VisionFlow Backend Won't Start
+#### VisionClaw Backend Won't Start
 ```bash
 # Check logs for specific errors
-docker-compose logs visionflow-container
+docker-compose logs visionclaw-container
 
 # Common fixes:
 # 1. Port conflict - change HOST-PORT in .env
@@ -561,7 +598,7 @@ NET-CORE-RMEM-MAX=134217728
 NET-CORE-WMEM-MAX=134217728
 
 # Use local network instead of localhost
-VISIONFLOW-HOST=127.0.0.1
+VISIONCLAW-HOST=127.0.0.1
 ```
 
 ## Verification Checklist
@@ -569,7 +606,7 @@ VISIONFLOW-HOST=127.0.0.1
 After installation, verify these components:
 
 ### Basic Functionality
-- [ ] VisionFlow web interface loads at `http://localhost:3030`
+- [ ] VisionClaw web interface loads at `http://localhost:3030`
 - [ ] API health check returns successful response
 - [ ] WebSocket connection establishes successfully
 - [ ] Sample graph data loads and displays
@@ -594,11 +631,11 @@ After installation, verify these components:
 
 ## Next Steps
 
-Now that VisionFlow is installed, proceed to:
+Now that VisionClaw is installed, proceed to:
 
 1. **[Quick Start Guide](creating-first-graph.md)** - Create your first graph in 5 minutes
-2. **[Configuration Guide](../how-to/operations/configuration.md)** - Customise VisionFlow for your needs
-3. **[API Documentation](../reference/api/)** - Integrate with your applications
+2. **[Configuration Guide](../how-to/operations/configuration.md)** - Customise VisionClaw for your needs
+3. **[API Documentation](../reference/)** - Integrate with your applications
 4. **[Architecture Overview](../architecture/ARCHITECTURE.md)** - Understand the system design
 
 ## Getting Help
@@ -606,13 +643,13 @@ Now that VisionFlow is installed, proceed to:
 If you encounter issues during installation:
 
 - **[Troubleshooting Guide](../how-to/operations/troubleshooting.md)** - Common problems and solutions
-- **[GitHub Issues](https://github.com/visionflow/visionflow/issues)** - Report bugs or request help
-- **[Discord Community](https://discord.gg/visionflow)** - Get real-time support
+- **[GitHub Issues](https://github.com/visionclaw/visionclaw/issues)** - Report bugs or request help
+- **[Discord Community](https://discord.gg/visionclaw)** - Get real-time support
 - **** - Comprehensive documentation
 
 ---
 
-**Installation complete!** VisionFlow is now ready to visualise your knowledge graphs and AI agent interactions.
+**Installation complete!** VisionClaw is now ready to visualise your knowledge graphs and AI agent interactions.
 
 ## Related Topics
 
@@ -622,4 +659,4 @@ If you encounter issues during installation:
 
 ---
 
-**Navigation:** [Getting Started](./) | [Guides](../how-to/) | [Architecture](../explanation/architecture/)
+**Navigation:** [Getting Started](./) | [Guides](../how-to/) | [Architecture](../explanation/)

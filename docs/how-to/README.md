@@ -1,52 +1,79 @@
 ---
 title: How-To Guides
-description: Practical instructions for specific tasks and goals
+description: Practical task-oriented instructions for deploying, developing, operating, and extending VisionClaw
 category: how-to
-diataxis: how-to
-tags:
-  - guides
-  - how-to
-  - tutorials
-updated-date: 2025-01-29
-difficulty-level: beginner
+tags: [guides, how-to, deployment, development, operations, features]
+updated-date: 2026-04-09
 ---
-
 
 # How-To Guides
 
-Welcome to the VisionFlow How-To Guides section. These guides provide practical, task-oriented instructions.
+Practical instructions for specific tasks. Each guide assumes you already have VisionClaw running; if not, start with [Installation](../tutorials/installation.md).
 
-## Guides Organization
-
-All guides are organized by category following the Diataxis framework:
-
-### By Subdirectory
-
-- **[deployment/](deployment/README.md)** - Getting VisionFlow running in various environments
-- **[development/](development/README.md)** - Local development setup and workflows
-- **[integration/](integration/README.md)** - External system integration (GitHub, Neo4j)
-- **[operations/](operations/README.md)** - Production monitoring and maintenance
-- **[features/](features/README.md)** - Working with specific features
-
-### By Topic
-
-- **Core Guides** - Essential configuration, deployment, and troubleshooting
-- **AI Agent Guides** - Agent orchestration and management
-- **Neo4j & Data** - Graph database operations and migrations
-- **Ontology & Reasoning** - Semantic web and inference
-- **Advanced Features** - Specialized functionality
-- **Developer** - Development workflows and patterns
-- **Infrastructure** - Docker, deployment, operations
-- **Features** - Specific feature implementations
-
-## Quick Links
-
-- [Main Documentation](../README.md)
-- [Configuration Guide](operations/configuration.md)
-- [Deployment Guide](deployment/deployment.md)
-- [Troubleshooting](operations/troubleshooting.md)
-- [AI Integration](ai-integration/README.md)
+[← Documentation Hub](../README.md)
 
 ---
 
-*Last Updated: 2025-12-19*
+## Deployment & Infrastructure
+
+| Guide | Description |
+|-------|-------------|
+| [Deployment Guide](deployment-guide.md) | Docker Compose production deployment with NVIDIA GPU, environment configuration, and service profiles |
+| [Goalie Integration](infrastructure/goalie-integration.md) | Goalie reverse proxy integration and infrastructure architecture |
+| [Port Configuration](infrastructure/port-configuration.md) | Service port mapping, firewall rules, and networking |
+| [Infrastructure Tools](infrastructure/tools.md) | Container management and diagnostic tooling |
+| [Infrastructure Troubleshooting](infrastructure/troubleshooting.md) | Container crashes, networking issues, and GPU detection failures |
+
+---
+
+## Development
+
+| Guide | Description |
+|-------|-------------|
+| [Development Guide](development-guide.md) | Rust/React local setup, project structure, testing workflow, and adding new features |
+
+---
+
+## Agent Orchestration
+
+| Guide | Description |
+|-------|-------------|
+| [Agent Orchestration](agent-orchestration.md) | Deploy, configure, and coordinate the multi-agent AI system via Docker, MCP tools, and the WebUI |
+
+---
+
+## Features
+
+| Guide | Description |
+|-------|-------------|
+| [Navigation Guide](navigation-guide.md) | 3D interface controls, camera movement, and spatial navigation |
+| [Filtering Nodes](features/filtering-nodes.md) | Filter graph nodes and edges by type, label, or property |
+| [Intelligent Pathfinding](features/intelligent-pathfinding.md) | Semantic shortest-path traversal between graph nodes |
+| [Natural Language Queries](features/natural-language-queries.md) | Plain-English search over the knowledge graph |
+| [Stress Majorisation](features/stress-majorization-guide.md) | Stress-majorisation graph layout algorithm guide |
+| [Voice Routing](features/voice-routing.md) | 4-plane voice architecture with LiveKit SFU |
+| [Voice Integration](features/voice-integration.md) | STT/TTS pipeline configuration |
+| [Nostr Auth](features/nostr-auth.md) | NIP-07/NIP-98 browser extension authentication |
+| [Auth & User Settings](features/auth-user-settings.md) | User settings and session management |
+| [Ontology Parser](features/ontology-parser.md) | OWL 2 parsing configuration and Logseq Markdown conventions |
+| [Hierarchy Integration](features/hierarchy-integration.md) | Class hierarchy tree visualisation |
+| [Local File Sync](features/local-file-sync-strategy.md) | GitHub-to-local file synchronisation strategy |
+| [ComfyUI Setup](comfyui-sam3d-setup.md) | ComfyUI SAM3D integration setup |
+
+---
+
+## Operations & Integration
+
+| Guide | Description |
+|-------|-------------|
+| [Configuration](operations/configuration.md) | Environment variables, runtime settings, and YAML config |
+| [Troubleshooting](operations/troubleshooting.md) | Common errors, diagnostic commands, and known issues |
+| [Security](operations/security.md) | Authentication hardening, secrets management, and SSRF mitigations |
+| [Telemetry & Logging](operations/telemetry-logging.md) | Structured logging, metrics, and observability setup |
+| [Pipeline Admin API](operations/pipeline-admin-api.md) | Admin REST endpoints for pipeline lifecycle management |
+| [Operator Runbook](operations/pipeline-operator-runbook.md) | Production operations playbook for on-call engineers |
+| [Maintenance](operations/maintenance.md) | Routine maintenance tasks, backups, and Neo4j housekeeping |
+| [Neo4j Integration](integration/neo4j-integration.md) | Neo4j connection, Cypher conventions, and migration |
+| [Solid Integration](integration/solid-integration.md) | Solid Pod integration overview and LDP operations |
+| [Solid Pod Creation](integration/solid-pod-creation.md) | Creating and managing per-user Solid Pods |
+| [ComfyUI Service](integration/comfyui-service-integration.md) | ComfyUI Docker service integration and API bridge |

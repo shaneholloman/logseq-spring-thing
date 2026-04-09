@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-VisionFlow is a high-performance, GPU-accelerated physics simulation platform built on Rust, designed for real-time constraint-based simulations with enterprise-grade performance. This document explores practical industry applications across 7 major sectors, highlighting how decentralization, privacy preservation, and GPU acceleration create competitive advantages.
+VisionClaw is a high-performance, GPU-accelerated physics simulation platform built on Rust, designed for real-time constraint-based simulations with enterprise-grade performance. This document explores practical industry applications across 7 major sectors, highlighting how decentralization, privacy preservation, and GPU acceleration create competitive advantages.
 
 **Core Technical Capabilities:**
 - **100+ CUDA kernel functions** across 13 modules for massive parallel computation
@@ -23,7 +23,7 @@ VisionFlow is a high-performance, GPU-accelerated physics simulation platform bu
 - **Cost**: Cloud physics computation costs scale linearly with player count
 - **Determinism**: Physics divergence between clients causes desync issues
 
-### VisionFlow Solution
+### VisionClaw Solution
 
 #### **Decentralized Multiplayer Physics**
 The platform's GPU-accelerated constraint solver enables peer-to-peer physics computation where each client contributes processing power:
@@ -43,7 +43,7 @@ The platform's GPU-accelerated constraint solver enables peer-to-peer physics co
 
 **Example Use Case: 200-Player Battle Royale**
 - **Traditional**: $500/month for physics server, 50ms average latency
-- **VisionFlow**: $0 server cost (P2P), 10ms latency, GPU load distributed across players
+- **VisionClaw**: $0 server cost (P2P), 10ms latency, GPU load distributed across players
 - **Result**: 5x latency reduction, zero marginal cost per player
 
 #### **Procedural Content Generation**
@@ -77,13 +77,13 @@ Semantic Force: Water bodies repel each other (avoids overlap)
 - **Reproducibility**: Closed-source physics engines prevent audit of simulation assumptions
 - **Collaboration**: Researchers can't interactively explore simulations together in real-time
 
-### VisionFlow Solution
+### VisionClaw Solution
 
 #### **Molecular Dynamics Simulations**
 The constraint-based physics engine naturally models molecular interactions:
 
 **Technical Mapping:**
-| Physics Concept | VisionFlow Feature |
+| Physics Concept | VisionClaw Feature |
 |----------------|-------------------|
 | Van der Waals forces | Semantic forces (attraction/repulsion by atom type) |
 | Bond constraints | Distance constraints with stiffness parameters |
@@ -107,7 +107,7 @@ SemanticConstraintGenerator {
 
 **Performance Benchmarks:**
 - **Protein folding**: 10,000 atoms, 60 FPS (GPU), 2 FPS (CPU-only)
-- **Comparison**: GROMACS 50 FPS (multi-node cluster), VisionFlow 60 FPS (single RTX 4090)
+- **Comparison**: GROMACS 50 FPS (multi-node cluster), VisionClaw 60 FPS (single RTX 4090)
 
 #### **Real-Time Collaborative Exploration**
 Multiple researchers explore simulation space together via WebSocket sync:
@@ -126,7 +126,7 @@ System: 10ms latency, synchronized camera controls, voice chat
 **Example Use Case: COVID-19 Drug Discovery**
 A consortium of 12 universities needed to screen 100,000 protein-ligand interactions:
 - **Centralized approach**: Upload data to AWS, $120K compute cost, 6-week timeline
-- **VisionFlow approach**: Distribute across institutional GPUs, $12K electricity, 2-week timeline
+- **VisionClaw approach**: Distribute across institutional GPUs, $12K electricity, 2-week timeline
 - **Result**: 90% cost reduction, 3x faster, data never left institutions
 
 **Target Customers:**
@@ -146,7 +146,7 @@ A consortium of 12 universities needed to screen 100,000 protein-ligand interact
 - **Data Security**: Design files sent to cloud providers risk IP theft (especially for defense contractors)
 - **Integration**: Siloed tools don't share physics models between design, simulation, and production
 
-### VisionFlow Solution
+### VisionClaw Solution
 
 #### **Edge-Based Digital Twins**
 Deploy physics simulation directly on factory floor edge servers:
@@ -155,7 +155,7 @@ Deploy physics simulation directly on factory floor edge servers:
 ```
 Manufacturing Floor:
   └── Edge Server (RTX A6000)
-      ├── VisionFlow Physics Engine (local)
+      ├── VisionClaw Physics Engine (local)
       ├── Real-time sensor fusion (100Hz)
       ├── WebSocket → Control Systems (PLC, SCADA)
       └── 3D Visualization → Engineering Workstations
@@ -171,7 +171,7 @@ Manufacturing Floor:
 Tesla needs real-time structural analysis of car frames as they move through production:
 
 **Problem**: AWS-based FEA had 200ms latency → missed defects until post-assembly testing
-**Solution**: VisionFlow on edge server
+**Solution**: VisionClaw on edge server
 1. Laser scanner captures frame geometry (1,000 points)
 2. GPU kernel converts to constraint mesh (5ms)
 3. Physics engine runs stress analysis (10ms)
@@ -222,7 +222,7 @@ The constraint-based physics engine excels at inverse kinematics and collision a
 - **Training Access**: Medical residents lack access to realistic surgical simulators ($500K capital cost)
 - **Research Collaboration**: HIPAA prevents sharing patient data across institutions
 
-### VisionFlow Solution
+### VisionClaw Solution
 
 #### **HIPAA-Compliant Local Simulations**
 Deploy physics engine in hospital data centers behind firewall:
@@ -230,7 +230,7 @@ Deploy physics engine in hospital data centers behind firewall:
 **Architecture:**
 ```
 Hospital Network (Air-Gapped):
-  ├── VisionFlow Server (on-premises)
+  ├── VisionClaw Server (on-premises)
   ├── De-identified patient data (Neo4j)
   ├── WebSocket → Researcher workstations
   └── 3D visualization → VR headsets (surgery planning)
@@ -264,7 +264,7 @@ GPU Performance:
 Medical residents need 50+ practice surgeries before operating on real patients:
 
 **Traditional**: $500K SimMan simulator, limited tissue realism, single-user
-**VisionFlow**: $15K GPU workstation, photorealistic soft-tissue physics, multi-user (mentor observes in VR)
+**VisionClaw**: $15K GPU workstation, photorealistic soft-tissue physics, multi-user (mentor observes in VR)
 
 **Results:**
 - Training cost: $10K → $300 per resident
@@ -315,7 +315,7 @@ Physics Constraints (auto-generated):
 - **Auditability**: Black-box ML models fail regulatory stress tests (Basel III, Dodd-Frank)
 - **Network Effects**: Traditional models don't capture contagion dynamics (2008 crisis lesson)
 
-### VisionFlow Solution
+### VisionClaw Solution
 
 #### **Agent-Based Market Modeling**
 The graph-based architecture naturally models financial networks:
@@ -355,7 +355,7 @@ Federal Reserve needs to simulate 2008-style crisis across 4,000 financial insti
 - Monte Carlo simulation (SAS Grid): 100,000 scenarios, 48 hours, $500K compute
 - Single-threaded, no visualization, black-box
 
-**VisionFlow Approach:**
+**VisionClaw Approach:**
 1. Model 4,000 institutions as graph (Neo4j import)
 2. Define stress scenarios as constraint violations
 3. Run GPU-accelerated physics simulation
@@ -374,7 +374,7 @@ The GPU acceleration enables massive parallel what-if analysis:
 **Performance:**
 - 1,000 concurrent strategy simulations (GPU)
 - 10-year historical data (1 billion ticks)
-- Results: 5 minutes (VisionFlow) vs 8 hours (traditional)
+- Results: 5 minutes (VisionClaw) vs 8 hours (traditional)
 
 **Decentralization Benefits:**
 - **Confidentiality**: Trading algorithms never leave firm's network
@@ -399,7 +399,7 @@ The GPU acceleration enables massive parallel what-if analysis:
 - **Resilience**: Centralized optimization fails during network outages (2023 FedEx cloud outage: $100M loss)
 - **Privacy**: Suppliers don't share demand data (competitive concerns)
 
-### VisionFlow Solution
+### VisionClaw Solution
 
 #### **Decentralized Route Optimization**
 Deploy physics engine at distribution centers for edge-based planning:
@@ -407,9 +407,9 @@ Deploy physics engine at distribution centers for edge-based planning:
 **Architecture:**
 ```
 Distribution Network:
-  ├── DC #1 (East Coast) → VisionFlow instance
-  ├── DC #2 (Midwest) → VisionFlow instance
-  ├── DC #3 (West Coast) → VisionFlow instance
+  ├── DC #1 (East Coast) → VisionClaw instance
+  ├── DC #2 (Midwest) → VisionClaw instance
+  ├── DC #3 (West Coast) → VisionClaw instance
   └── Peer-to-peer sync (Byzantine consensus)
 ```
 
@@ -437,7 +437,7 @@ Amazon needs to optimize 10,000 delivery routes per distribution center:
 - Network outage → drivers use stale routes
 - Cost: $200K/year compute
 
-**VisionFlow**: Edge-based optimization
+**VisionClaw**: Edge-based optimization
 - 10ms latency → routes recalculated mid-delivery (traffic updates)
 - Offline operation → local cache handles outages
 - Cost: $15K one-time hardware per DC
@@ -482,7 +482,7 @@ The 3D physics engine visualizes robot fleet interactions:
 - **Data Governance**: Citizen privacy concerns prevent sharing mobility data with vendors
 - **Cost**: Proprietary urban simulation tools cost $50K-500K (inaccessible for small cities)
 
-### VisionFlow Solution
+### VisionClaw Solution
 
 #### **Traffic Flow Simulation**
 The multi-agent physics engine models complex urban dynamics:
@@ -511,7 +511,7 @@ The multi-agent physics engine models complex urban dynamics:
 City needs to evaluate 10 traffic-calming proposals for downtown corridor:
 
 **Traditional**: Hire consultants, build VisSum model, 6-month timeline, $500K cost
-**VisionFlow**:
+**VisionClaw**:
 1. Import OpenStreetMap data (road network)
 2. Calibrate model with traffic sensor data
 3. Run 10 scenarios in parallel (GPU)
@@ -552,7 +552,7 @@ CPU Runtime: 48 hours per scenario
 The graph-based architecture naturally models power distribution:
 
 **Technical Mapping:**
-| Grid Concept | VisionFlow Feature |
+| Grid Concept | VisionClaw Feature |
 |-------------|-------------------|
 | Substations | Graph nodes |
 | Power lines | Weighted edges (capacity) |
@@ -581,14 +581,14 @@ The graph-based architecture naturally models power distribution:
 
 #### **1. Data Sovereignty & Privacy**
 **Problem**: Cloud providers can access customer data (PRISM scandal, Schrems II ruling)
-**Solution**: VisionFlow runs on-premises; data never leaves customer network
+**Solution**: VisionClaw runs on-premises; data never leaves customer network
 
 **Compliance Benefits:**
 - GDPR Article 25 (data protection by design)
 - HIPAA § 164.308 (administrative safeguards)
 - ITAR/EAR (defense/aerospace export controls)
 
-**Example**: European pharmaceutical company can't use AWS for drug simulations (Schrems II). VisionFlow runs in German data center, €0 legal risk.
+**Example**: European pharmaceutical company can't use AWS for drug simulations (Schrems II). VisionClaw runs in German data center, €0 legal risk.
 
 #### **2. Zero Marginal Cost Scaling**
 **Cloud Model**: Costs scale linearly with usage ($0.50-$5/hour per GPU)
@@ -610,7 +610,7 @@ The graph-based architecture naturally models power distribution:
 - Root cause: AWS authentication service failure
 - Impact: $15M revenue loss
 
-**VisionFlow Solution**: Peer-to-peer architecture continues operation during partial network failures.
+**VisionClaw Solution**: Peer-to-peer architecture continues operation during partial network failures.
 
 #### **4. Performance & Latency**
 **Cloud Round-Trip Latency:**
@@ -621,7 +621,7 @@ The graph-based architecture naturally models power distribution:
 **On-Premises Latency:**
 - LAN: 1-5ms
 - Inter-DC (dedicated fiber): 10-30ms
-- VisionFlow WebSocket: Sub-10ms target
+- VisionClaw WebSocket: Sub-10ms target
 
 **Example**: High-frequency trading firm loses $1M/day due to 100ms cloud latency. On-premises deployment: 5ms latency, $0 lost.
 
@@ -665,37 +665,37 @@ The graph-based architecture naturally models power distribution:
 
 ## Competitive Analysis
 
-### VisionFlow vs Established Solutions
+### VisionClaw vs Established Solutions
 
 #### **Scientific Computing: GROMACS**
-| Feature | VisionFlow | GROMACS | Advantage |
+| Feature | VisionClaw | GROMACS | Advantage |
 |---------|-----------|---------|-----------|
 | **Hardware** | Single GPU | Multi-node cluster | 10x cost reduction |
 | **Collaboration** | Real-time 3D | Static output files | Interactive exploration |
 | **Accessibility** | Open-source | Free but complex | Lower learning curve |
 | **Performance** | 60 FPS (10K atoms) | 50 FPS (10K atoms) | Comparable |
 
-**When to use VisionFlow**: Budget-constrained labs, need collaboration, early-stage research
+**When to use VisionClaw**: Budget-constrained labs, need collaboration, early-stage research
 **When to use GROMACS**: Production MD runs, established workflows, HPC access
 
 #### **Manufacturing: ANSYS**
-| Feature | VisionFlow | ANSYS | Advantage |
+| Feature | VisionClaw | ANSYS | Advantage |
 |---------|-----------|-------|-----------|
 | **Licensing** | Open-source | $10K-100K/seat/year | 100% cost reduction |
 | **Real-time** | 60 FPS (100K elements) | Batch processing | Interactive design |
 | **Accuracy** | Constraint-based | FEA gold standard | ANSYS more accurate |
 
-**When to use VisionFlow**: Conceptual design, real-time visualization, cost-sensitive
+**When to use VisionClaw**: Conceptual design, real-time visualization, cost-sensitive
 **When to use ANSYS**: Final validation, regulatory submission, safety-critical
 
 #### **Gaming: Unity/Unreal Engine**
-| Feature | VisionFlow | Unity/Unreal | Advantage |
+| Feature | VisionClaw | Unity/Unreal | Advantage |
 |---------|-----------|-------------|-----------|
 | **Physics** | GPU-accelerated | CPU PhysX/Chaos | 100x performance |
 | **Determinism** | Guaranteed (constraint solver) | Non-deterministic | Better for multiplayer |
 | **Graphics** | Basic 3D (WebGL) | AAA rendering | Unity/Unreal superior |
 
-**When to use VisionFlow**: Physics-heavy simulations, multiplayer determinism, P2P networking
+**When to use VisionClaw**: Physics-heavy simulations, multiplayer determinism, P2P networking
 **When to use Unity/Unreal**: Graphics-focused games, narrative experiences, established ecosystem
 
 ---
@@ -705,7 +705,7 @@ The graph-based architecture naturally models power distribution:
 ### Case Study 1: European Pharmaceutical Consortium
 **Customer**: 12-university drug discovery network (anonymized)
 **Problem**: Schrems II ruling prevented AWS usage; needed 100K protein-ligand screenings
-**Solution**: Deployed VisionFlow at each institution; federated learning across nodes
+**Solution**: Deployed VisionClaw at each institution; federated learning across nodes
 
 **Results:**
 - **Cost**: €12K electricity vs €120K AWS estimate (90% reduction)
@@ -727,7 +727,7 @@ The graph-based architecture naturally models power distribution:
 ### Case Study 3: US Municipal Government
 **Customer**: Mid-sized US city (300K population, anonymized)
 **Problem**: Traffic consultant quoted $500K, 6 months for corridor redesign study
-**Solution**: In-house simulation using VisionFlow
+**Solution**: In-house simulation using VisionClaw
 
 **Results:**
 - **Cost**: $5K vs $500K (99% reduction)
@@ -741,9 +741,9 @@ The graph-based architecture naturally models power distribution:
 
 ### For Game Developers
 ```bash
-# 1. Install VisionFlow
-git clone https://github.com/yourusername/visionflow
-cd visionflow
+# 1. Install VisionClaw
+git clone https://github.com/yourusername/visionclaw
+cd visionclaw
 cargo build --release
 
 # 2. Run multiplayer physics example
@@ -756,7 +756,7 @@ cargo run --example multiplayer_physics
 **Next Steps:**
 - Tutorial: [Building P2P Multiplayer Physics](docs/tutorials/multiplayer-game.md)
 - Example: [100-Player Battle Royale](examples/battle-royale/)
-- Discord: [#game-dev channel](https://discord.gg/visionflow)
+- Discord: [#game-dev channel](https://discord.gg/visionclaw)
 
 ### For Researchers
 ```bash
@@ -765,10 +765,10 @@ cargo build --release --features gpu
 
 # 2. Import molecular structure (PDB format)
 curl https://files.rcsb.org/download/1ABC.pdb | \
-  ./target/release/visionflow import --format pdb
+  ./target/release/visionclaw import --format pdb
 
 # 3. Run interactive simulation
-./target/release/visionflow simulate \
+./target/release/visionclaw simulate \
   --gpu \
   --render 3d \
   --physics molecular-dynamics
@@ -777,19 +777,19 @@ curl https://files.rcsb.org/download/1ABC.pdb | \
 **Next Steps:**
 - Tutorial: [Protein Folding Simulation](docs/tutorials/protein-folding.md)
 - Jupyter Notebook: [Python API Examples](notebooks/molecular-dynamics.ipynb)
-- Paper: [VisionFlow for Computational Biology](docs/papers/computational-biology.pdf)
+- Paper: [VisionClaw for Computational Biology](docs/papers/computational-biology.pdf)
 
 ### For Manufacturing Engineers
 ```bash
 # 1. Deploy edge server (NVIDIA Jetson AGX Orin)
-docker pull visionflow/edge:latest
+docker pull visionclaw/edge:latest
 docker run -d --gpus all \
   -p 8080:8080 \
   -v /data/factory:/data \
-  visionflow/edge
+  visionclaw/edge
 
 # 2. Connect PLCs/SCADA via Modbus TCP
-./visionflow configure --adapter modbus \
+./visionclaw configure --adapter modbus \
   --plc-ip 192.168.1.100
 
 # 3. Launch digital twin dashboard
@@ -799,7 +799,7 @@ open http://localhost:8080/dashboard
 **Next Steps:**
 - Tutorial: [Assembly Line Digital Twin](docs/tutorials/digital-twin.md)
 - Integration: [Siemens TIA Portal](docs/integrations/siemens-tia.md)
-- Webinar: [Manufacturing Use Cases](https://youtube.com/visionflow-manufacturing)
+- Webinar: [Manufacturing Use Cases](https://youtube.com/visionclaw-manufacturing)
 
 ---
 
@@ -808,7 +808,7 @@ open http://localhost:8080/dashboard
 ### Q2 2025
 - **Healthcare**: DICOM import for medical imaging (CT/MRI → 3D mesh)
 - **Finance**: Bloomberg Terminal integration (real-time market data)
-- **Gaming**: Unreal Engine 5 plugin (Nanite + VisionFlow physics)
+- **Gaming**: Unreal Engine 5 plugin (Nanite + VisionClaw physics)
 
 ### Q3 2025
 - **Scientific**: LAMMPS file format support (molecular dynamics standard)
@@ -837,10 +837,10 @@ open http://localhost:8080/dashboard
 ## Contact & Support
 
 ### Industry-Specific Consultation
-- **Gaming**: [gaming@visionflow.dev](mailto:gaming@visionflow.dev)
-- **Healthcare**: [healthcare@visionflow.dev](mailto:healthcare@visionflow.dev) (HIPAA BAA available)
-- **Finance**: [finance@visionflow.dev](mailto:finance@visionflow.dev) (SOC 2 Type II certified)
-- **Manufacturing**: [manufacturing@visionflow.dev](mailto:manufacturing@visionflow.dev)
+- **Gaming**: [gaming@visionclaw.dev](mailto:gaming@visionclaw.dev)
+- **Healthcare**: [healthcare@visionclaw.dev](mailto:healthcare@visionclaw.dev) (HIPAA BAA available)
+- **Finance**: [finance@visionclaw.dev](mailto:finance@visionclaw.dev) (SOC 2 Type II certified)
+- **Manufacturing**: [manufacturing@visionclaw.dev](mailto:manufacturing@visionclaw.dev)
 
 ### Enterprise Support
 - **Proof of Concept**: 2-week pilot program (free for qualified customers)
@@ -848,13 +848,13 @@ open http://localhost:8080/dashboard
 - **Training**: On-site workshops, certification program
 
 ### Community
-- **GitHub**: [github.com/yourusername/visionflow](https://github.com/yourusername/visionflow)
-- **Discord**: [discord.gg/visionflow](https://discord.gg/visionflow)
-- **Forum**: [discuss.visionflow.dev](https://discuss.visionflow.dev)
+- **GitHub**: [github.com/yourusername/visionclaw](https://github.com/yourusername/visionclaw)
+- **Discord**: [discord.gg/visionclaw](https://discord.gg/visionclaw)
+- **Forum**: [discuss.visionclaw.dev](https://discuss.visionclaw.dev)
 
 ---
 
 **Document Version**: 1.0
 **Last Updated**: 2025-01-29
-**Maintained By**: VisionFlow Research Team
+**Maintained By**: VisionClaw Research Team
 **License**: CC BY-SA 4.0 (documentation), MPL 2.0 (code)

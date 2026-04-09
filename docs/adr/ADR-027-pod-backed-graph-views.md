@@ -4,7 +4,7 @@
 Proposed
 
 ## Context
-VisionFlow users configure graph views (camera position, active filters, physics parameters, cluster settings, node visibility) through the control panel. These configurations are volatile — lost on page reload unless manually persisted to Neo4j (shared, not per-user) or localStorage (device-bound, not portable).
+VisionClaw users configure graph views (camera position, active filters, physics parameters, cluster settings, node visibility) through the control panel. These configurations are volatile — lost on page reload unless manually persisted to Neo4j (shared, not per-user) or localStorage (device-bound, not portable).
 
 The JSS sidecar already supports per-user Pods with LDP CRUD, WebSocket notifications, and WAC access control. SolidPodService.ts has `setPreference()`/`getPreference()` for basic key-value storage.
 

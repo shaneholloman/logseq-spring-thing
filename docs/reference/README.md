@@ -12,9 +12,9 @@ tags:
 updated-date: 2025-01-29
 ---
 
-# VisionFlow Reference Documentation
+# VisionClaw Reference Documentation
 
-Complete technical reference documentation for VisionFlow APIs, protocols, configurations, database schemas, and error codes.
+Complete technical reference documentation for VisionClaw APIs, protocols, configurations, database schemas, and error codes.
 
 ---
 
@@ -22,10 +22,12 @@ Complete technical reference documentation for VisionFlow APIs, protocols, confi
 
 | Section | Description |
 |---------|-------------|
-| **[API Reference](./api/README.md)** | REST API, WebSocket API, authentication methods |
-| **[Configuration Reference](./configuration/README.md)** | Environment variables, Docker Compose options |
-| **[Protocol Reference](./protocols/README.md)** | Binary WebSocket, MCP protocol specifications |
-| **[Database Reference](./database/README.md)** | SQLite and Neo4j schema documentation |
+| **[REST API](./rest-api.md)** | All REST endpoints with request/response schemas |
+| **[WebSocket Binary Protocol](./websocket-binary.md)** | V2/V3/V4 binary protocol specification |
+| **[Neo4j Schema](./neo4j-schema-unified.md)** | Unified graph database schema across all bounded contexts |
+| **[Agents Catalog](./agents-catalog.md)** | All 54 agent skills with invocation patterns |
+| **[Configuration](./configuration/README.md)** | Environment variables, Docker Compose options |
+| **[Protocol Reference](./protocols/README.md)** | MCP protocol, skill classification |
 | **[CLI Reference](./cli/README.md)** | Cargo and Docker command reference |
 | **[Error Codes](./error-codes.md)** | Complete error code reference with solutions |
 | **[Glossary](./glossary.md)** | Technical term definitions |
@@ -38,9 +40,8 @@ Complete technical reference documentation for VisionFlow APIs, protocols, confi
 
 | Document | Description |
 |----------|-------------|
-| [REST API](./api/rest-api-reference.md) | Core REST endpoints |
-| [WebSocket API](./api/websocket-api.md) | Real-time WebSocket protocol |
-| [Authentication](./api/authentication.md) | JWT, API keys, Nostr NIP-98 |
+| [REST API](./rest-api.md) | All REST endpoints — Nostr NIP-98 auth, graph, settings, ontology, Solid |
+| [WebSocket Binary Protocol](./websocket-binary.md) | V2 (36-byte), V3 analytics, V4 compact — V1 JSON is removed |
 
 ### Configuration
 
@@ -53,15 +54,15 @@ Complete technical reference documentation for VisionFlow APIs, protocols, confi
 
 | Document | Description |
 |----------|-------------|
-| [Binary WebSocket](./protocols/websocket-binary-v2.md) | V2/V3/V4 wire formats |
+| [Binary WebSocket](./websocket-binary.md) | V2/V3/V4 wire formats |
 | [MCP Protocol](./protocols/mcp-protocol.md) | Agent orchestration protocol |
 
 ### Database
 
 | Document | Description |
 |----------|-------------|
-| [Database Schemas](./database/schemas.md) | Schema definitions |
-| [Neo4j Schema](./database/neo4j-schema.md) | Graph database schema |
+| [Database Schemas](./neo4j-schema-unified.md) | Schema definitions |
+| [Neo4j Schema](./neo4j-schema-unified.md) | Graph database schema |
 | [Ontology Schema](./database/ontology-schema-v2.md) | OWL ontology storage |
 
 ### CLI
@@ -124,13 +125,13 @@ updated-date: 2025-01-29
 ### Guides
 
 - [Configuration Guide](../how-to/operations/configuration.md) - Practical examples
-- [Deployment Guide](../how-to/deployment/deployment.md) - Production deployment
+- [Deployment Guide](../how-to/deployment-guide.md) - Production deployment
 - [Troubleshooting Guide](../how-to/operations/troubleshooting.md) - Common issues
 
 ### Concepts
 
-- [Architecture Overview](../explanation/concepts/README.md) - System architecture
-- [Data Flow](../explanation/architecture/data-flow.md) - Data flow diagrams
+- [Architecture Overview](../explanation/system-overview.md) - System architecture
+- [Data Flow](../explanation/backend-cqrs-pattern.md) - Data flow diagrams
 
 ### Getting Started
 

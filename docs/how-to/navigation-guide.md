@@ -1,6 +1,6 @@
 ---
-title: VisionFlow Quick Navigation Guide
-description: **Fast access to essential VisionFlow documentation**
+title: VisionClaw Quick Navigation Guide
+description: **Fast access to essential VisionClaw documentation**
 category: how-to
 tags:
   - tutorial
@@ -12,9 +12,9 @@ difficulty-level: intermediate
 ---
 
 
-# VisionFlow Quick Navigation Guide
+# VisionClaw Quick Navigation Guide
 
-**Fast access to essential VisionFlow documentation**
+**Fast access to essential VisionClaw documentation**
 
 ---
 
@@ -31,7 +31,7 @@ difficulty-level: intermediate
 
 ### I Want To...
 
-#### **Get Started with VisionFlow**
+#### **Get Started with VisionClaw**
 1. 
 2. 
 3. 
@@ -54,19 +54,19 @@ difficulty-level: intermediate
 4. 
 
 #### **Setup XR/VR**
-1. [Vircadia Complete Guide](features/vr-development.md)
-2. [XR Architecture](../explanation/architecture/xr-immersive-system.md)
+1. [Vircadia Complete Guide](explanation/xr-architecture.md)
+2. [XR Architecture](../explanation/xr-architecture.md)
 
 #### **Understand the Architecture**
 1.
 2.
-3. [Database Schema](../reference/database/schemas.md)
+3. [Database Schema](../reference/neo4j-schema-unified.md)
 
 #### **Use the API**
 1. 
-2. [REST API](../reference/api/rest-api-reference.md)
-3. [WebSocket API](../reference/api/03-websocket.md)
-4. [Binary Protocol](../reference/protocols/websocket-binary-v2.md) - 36-byte binary format specification
+2. [REST API](../reference/rest-api.md)
+3. [WebSocket API](../reference/websocket-binary.md)
+4. [Binary Protocol](../reference/websocket-binary.md) - 36-byte binary format specification
 
 #### **Debug Issues**
 1. 
@@ -81,21 +81,21 @@ difficulty-level: intermediate
 | System | Documentation |
 |--------|---------------|
 | **Ontology** |  •  •  |
-| **GPU Acceleration** |  • [Architecture](../explanation/architecture/gpu/README.md) • [Optimizations](../explanation/architecture/gpu/optimizations.md) |
+| **GPU Acceleration** |  • [Architecture](../explanation/physics-gpu-engine.md) • [Optimizations](../explanation/physics-gpu-engine.md) |
 | **AI Agents** |  |
 | **Multi-Agent System** | [Architecture](../explanation/concepts/multi-agent-system.md) |
-| **XR/VR** | [XR Architecture](../explanation/architecture/xr-immersive-system.md) • [VR Development](features/vr-development.md) |
-| **Database** | [Schema](../reference/database/schemas.md) •  |
-| **Binary Protocol** | [WebSocket](../reference/api/03-websocket.md) • [Specification](../reference/protocols/websocket-binary-v2.md) |
+| **XR/VR** | [XR Architecture](../explanation/xr-architecture.md) • [VR Development](explanation/xr-architecture.md) |
+| **Database** | [Schema](../reference/neo4j-schema-unified.md) •  |
+| **Binary Protocol** | [WebSocket](../reference/websocket-binary.md) • [Specification](../reference/websocket-binary.md) |
 
 ### Key Features
 | Feature | Quick Link | Complete Docs |
 |---------|------------|---------------|
 | **Ontology Reasoning** |  |  |
 | **Semantic Physics** |  |  |
-| **Multi-User XR** |  | [Complete Guide](features/vr-development.md) |
+| **Multi-User XR** |  | [Complete Guide](explanation/xr-architecture.md) |
 | **CQRS Pattern** |  |  |
-| **GPU Compute** |  | [Architecture](../explanation/architecture/gpu/) |
+| **GPU Compute** |  | [Architecture](../explanation/physics-gpu-engine.md) |
 
 ---
 
@@ -178,13 +178,13 @@ ls docs/guides/developer/
 
 ### Common Questions
 - **Can't find something?** → Check [Master Index](index.md)
-- **New to VisionFlow?** → Start with 
+- **New to VisionClaw?** → Start with 
 - **Need API docs?** → See 
 - **Want to contribute?** → Read 
 
 ### Support Resources
-- [GitHub Issues](https://github.com/yourusername/VisionFlow/issues)
-- [GitHub Discussions](https://github.com/yourusername/VisionFlow/discussions)
+- [GitHub Issues](https://github.com/yourusername/VisionClaw/issues)
+- [GitHub Discussions](https://github.com/yourusername/VisionClaw/discussions)
 - [Documentation Hub](README.md)
 - [Master Index](index.md)
 
@@ -192,7 +192,7 @@ ls docs/guides/developer/
 
 ## External Resources
 
-- **Main Repository**: https://github.com/yourusername/VisionFlow
+- **Main Repository**: https://github.com/yourusername/VisionClaw
 - **Vircadia Platform**: https://vircadia.com
 - **Vircadia Docs**: https://docs.vircadia.com
 - **Diátaxis Framework**: https://diataxis.fr/

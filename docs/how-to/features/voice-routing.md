@@ -15,7 +15,7 @@ difficulty-level: intermediate
 
 ## Overview
 
-VisionFlow's AudioRouter provides multi-user voice routing across four audio planes, enabling both private agent interaction and public spatial voice chat within the Vircadia 3D world.
+VisionClaw's AudioRouter provides multi-user voice routing across four audio planes, enabling both private agent interaction and public spatial voice chat within the Vircadia 3D world.
 
 Each user gets an isolated voice session with per-user broadcast channels. Push-to-talk (PTT) controls audio routing between agent commands and spatial voice chat.
 
@@ -167,5 +167,5 @@ Voice routing integrates with Vircadia's spatial audio system:
 ## Related Documentation
 
 - [Voice Integration](voice-integration.md) - TTS/STT WebSocket protocol details
-- [Vircadia XR Guide](vircadia-xr-complete-guide.md) - Multi-user XR setup
-- [Vircadia Multi-User Guide](vircadia-multi-user-guide.md) - Collaboration features
+- [Vircadia XR Guide](../explanation/xr-architecture.md) - Multi-user XR setup
+- [Vircadia Multi-User Guide](../explanation/xr-architecture.md) - Collaboration features

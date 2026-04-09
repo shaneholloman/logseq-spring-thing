@@ -22,7 +22,7 @@ difficulty-level: advanced
 
 ## Overview
 
-**Neo4j 5.13 is the primary and sole persistence layer for VisionFlow.** All graph data, ontology information, and application settings are stored in Neo4j. The system requires a running Neo4j instance to function.
+**Neo4j 5.13 is the primary and sole persistence layer for VisionClaw.** All graph data, ontology information, and application settings are stored in Neo4j. The system requires a running Neo4j instance to function.
 
 This guide covers:
 - Neo4j setup and configuration
@@ -43,7 +43,7 @@ docker-compose --profile dev up -d
 
 # Or manually:
 docker run -d \
-  --name visionflow-neo4j \
+  --name visionclaw-neo4j \
   -p 7474:7474 -p 7687:7687 \
   -e NEO4J_AUTH=neo4j/your_secure_password \
   neo4j:5.13.0
@@ -52,7 +52,7 @@ docker run -d \
 ### 2. Configure Environment Variables
 
 ```bash
-# Required - VisionFlow will not start without these
+# Required - VisionClaw will not start without these
 NEO4J_URI=bolt://neo4j:7687  # Use 'neo4j' for Docker networks
 NEO4J_USER=neo4j
 NEO4J_PASSWORD=your_secure_password
@@ -65,7 +65,7 @@ NEO4J_DATABASE=neo4j
 # Access Neo4j Browser
 open http://localhost:7474
 
-# Check VisionFlow backend health
+# Check VisionClaw backend health
 curl http://localhost:4000/api/health
 
 # Query the graph
@@ -78,7 +78,7 @@ curl http://localhost:4000/api/graph/data
 
 ### Neo4j as Primary Database
 
-VisionFlow uses **Neo4j as the single source of truth** for all data:
+VisionClaw uses **Neo4j as the single source of truth** for all data:
 
 ```mermaid
 graph TD
@@ -248,7 +248,7 @@ RETURN class_count, property_count, count(r) as hierarchy_edges;
 
 ## REST API Endpoints
 
-VisionFlow provides REST endpoints that query Neo4j:
+VisionClaw provides REST endpoints that query Neo4j:
 
 ### Graph Data
 
@@ -369,15 +369,15 @@ neo4j:
 ### Backup Neo4j Data
 
 ```bash
-# Stop VisionFlow but keep Neo4j running
-docker stop visionflow_container
+# Stop VisionClaw but keep Neo4j running
+docker stop visionclaw_container
 
 # Create backup
-docker exec visionflow-neo4j neo4j-admin database dump neo4j \
+docker exec visionclaw-neo4j neo4j-admin database dump neo4j \
   --to-path=/var/lib/neo4j/data/dumps
 
 # Copy to host
-docker cp visionflow-neo4j:/var/lib/neo4j/data/dumps/neo4j.dump \
+docker cp visionclaw-neo4j:/var/lib/neo4j/data/dumps/neo4j.dump \
   ./neo4j-backup-$(date +%Y%m%d).dump
 ```
 
@@ -391,8 +391,8 @@ docker-compose --profile dev down
 docker-compose up -d neo4j
 
 # Load backup
-docker cp ./neo4j-backup-20251106.dump visionflow-neo4j:/tmp/restore.dump
-docker exec visionflow-neo4j neo4j-admin database load neo4j \
+docker cp ./neo4j-backup-20251106.dump visionclaw-neo4j:/tmp/restore.dump
+docker exec visionclaw-neo4j neo4j-admin database load neo4j \
   --from-path=/tmp
 
 # Restart everything
@@ -403,7 +403,7 @@ docker-compose --profile dev up -d
 
 ## Migration from SQLite
 
-If you're upgrading from an older VisionFlow version that used SQLite:
+If you're upgrading from an older VisionClaw version that used SQLite:
 
 ### Step 1: Export from SQLite
 
@@ -446,7 +446,7 @@ MATCH ()-[r]->() RETURN count(r);
 
 **Solution**:
 1. Verify Neo4j is running: `docker ps | grep neo4j`
-2. Check connection: `docker logs visionflow-neo4j`
+2. Check connection: `docker logs visionclaw-neo4j`
 3. Verify environment variables in `.env`
 4. Test connectivity: `nc -zv localhost 7687`
 
@@ -467,12 +467,12 @@ MATCH ()-[r]->() RETURN count(r);
 1. Increase heap size in docker-compose.yml
 2. Add indexes to reduce memory usage
 3. Use pagination for large result sets
-4. Restart Neo4j: `docker restart visionflow-neo4j`
+4. Restart Neo4j: `docker restart visionclaw-neo4j`
 
 ### Issue: Connection Refused
 
 **Solution**:
-1. Check Neo4j is listening: `docker logs visionflow-neo4j`
+1. Check Neo4j is listening: `docker logs visionclaw-neo4j`
 2. Verify port forwarding: `netstat -tuln | grep 7687`
 3. Check firewall rules
 4. Use correct URI format: `bolt://neo4j:7687` (Docker) or `bolt://localhost:7687` (host)
@@ -483,11 +483,11 @@ MATCH ()-[r]->() RETURN count(r);
 1. Verify password matches: `.env` must match Neo4j container
 2. Reset password:
    ```bash
-   docker exec -it visionflow-neo4j cypher-shell -u neo4j -p <old_password>
+   docker exec -it visionclaw-neo4j cypher-shell -u neo4j -p <old_password>
    CALL dbms.security.changePassword('<new_password>');
    ```
 3. Update `.env` with new password
-4. Restart VisionFlow: `docker-compose --profile dev restart visionflow`
+4. Restart VisionClaw: `docker-compose --profile dev restart visionclaw`
 
 ---
 
@@ -495,14 +495,14 @@ MATCH ()-[r]->() RETURN count(r);
 
 ### Custom Cypher Queries
 
-While VisionFlow provides a REST API, you can execute custom queries via Neo4j Browser or cypher-shell:
+While VisionClaw provides a REST API, you can execute custom queries via Neo4j Browser or cypher-shell:
 
 ```bash
 # Interactive shell
-docker exec -it visionflow-neo4j cypher-shell -u neo4j -p your_password
+docker exec -it visionclaw-neo4j cypher-shell -u neo4j -p your_password
 
 # Execute script
-docker exec -it visionflow-neo4j cypher-shell -u neo4j -p your_password \
+docker exec -it visionclaw-neo4j cypher-shell -u neo4j -p your_password \
   < your_script.cypher
 ```
 

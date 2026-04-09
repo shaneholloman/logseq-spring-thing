@@ -1,12 +1,12 @@
 ---
 title: Natural Language Queries Tutorial
-description: VisionFlow translates natural language questions into Cypher queries using LLM-powered semantic understanding.
+description: VisionClaw translates natural language questions into Cypher queries using LLM-powered semantic understanding.
 category: how-to
 tags:
   - tutorial
   - documentation
   - reference
-  - visionflow
+  - visionclaw
 updated-date: 2025-12-18
 difficulty-level: intermediate
 ---
@@ -16,7 +16,7 @@ difficulty-level: intermediate
 
 ## Overview
 
-VisionFlow translates natural language questions into Cypher queries using LLM-powered semantic understanding.
+VisionClaw translates natural language questions into Cypher queries using LLM-powered semantic understanding.
 
 ## Quick Start
 
@@ -154,10 +154,10 @@ Returns:
 ## Related Documentation
 
 - [Intelligent Pathfinding Guide](intelligent-pathfinding.md)
-- [Semantic Forces User Guide](semantic-forces.md)
-- [Contributing Guidelines](../developer/06-contributing.md)
+- [Semantic Forces User Guide](../explanation/physics-gpu-engine.md)
+- [Contributing Guidelines](../../CONTRIBUTING.md)
 - [Goalie Integration - Goal-Oriented AI Research](../infrastructure/goalie-integration.md)
-- [VisionFlow Guides](../index.md)
+- [VisionClaw Guides](../index.md)
 
 ## Schema Context
 

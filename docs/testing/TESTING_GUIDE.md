@@ -1,8 +1,8 @@
-# VisionFlow Testing & Validation Guide
+# VisionClaw Testing & Validation Guide
 
 ## Overview
 
-VisionFlow includes comprehensive testing and benchmarking suites to ensure performance, reliability, and compatibility across all platforms.
+VisionClaw includes comprehensive testing and benchmarking suites to ensure performance, reliability, and compatibility across all platforms.
 
 ## Test Suites
 
@@ -356,4 +356,4 @@ For issues with tests:
 ---
 
 **Last Updated**: 2025-01-15
-**Maintainer**: VisionFlow QA Team
+**Maintainer**: VisionClaw QA Team

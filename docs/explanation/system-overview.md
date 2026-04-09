@@ -1,14 +1,9 @@
 ---
-title: Complete Hexagonal Architecture Migration - Overview
-description: This document provides a complete architectural blueprint for migrating the VisionFlow application to a fully database-backed hexagonal architecture. All designs are **production-ready with NO stub...
+title: VisionClaw System Overview
+description: End-to-end architectural blueprint for VisionClaw — all three layers, service actors, hexagonal CQRS pattern, and data flow from GitHub ingestion to GPU-accelerated 3D rendering
 category: explanation
-tags:
-  - api
-  - api
-  - database
-  - backend
-updated-date: 2026-02-11
-difficulty-level: advanced
+tags: [architecture, system, overview, hexagonal, cqrs, actors, gpu]
+updated-date: 2026-04-09
 ---
 
 
@@ -16,7 +11,7 @@ difficulty-level: advanced
 
 ## Executive Summary
 
-This document provides a complete architectural blueprint for migrating the VisionFlow application to a fully database-backed hexagonal architecture. All designs are **production-ready with NO stubs, TODOs, or placeholders**.
+This document provides a complete architectural blueprint for migrating the VisionClaw application to a fully database-backed hexagonal architecture. All designs are **production-ready with NO stubs, TODOs, or placeholders**.
 
 ## Architecture Documents
 
@@ -50,7 +45,7 @@ This document provides a complete architectural blueprint for migrating the Visi
 
 ### System Overview
 
-VisionFlow integrates a complete ontology reasoning pipeline that transforms static OWL definitions into intelligent, self-organizing knowledge structures:
+VisionClaw integrates a complete ontology reasoning pipeline that transforms static OWL definitions into intelligent, self-organizing knowledge structures:
 
 ```mermaid
 graph LR

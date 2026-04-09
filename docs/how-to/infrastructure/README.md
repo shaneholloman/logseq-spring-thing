@@ -17,7 +17,7 @@ Infrastructure setup and management for the multi-agent Docker environment.
 ## Available Guides
 
 - [Architecture](architecture.md) - Multi-agent Docker system design
-- [Docker Environment](docker-environment.md) - Container setup and management
+- [Docker Environment](../deployment-guide.md) - Container setup and management
 - [Tools](tools.md) - Available MCP tools and integrations
 - [Port Configuration](port-configuration.md) - Network and service ports
 - [Troubleshooting](troubleshooting.md) - Infrastructure-specific issues
@@ -27,7 +27,7 @@ Infrastructure setup and management for the multi-agent Docker environment.
 
 - [Main Documentation](../../README.md)
 - [Deployment Guide](../deployment.md)
-- [Docker Compose Guide](../docker-compose-guide.md)
+- [Docker Compose Guide](../deployment-guide.md)
 
 ---
 

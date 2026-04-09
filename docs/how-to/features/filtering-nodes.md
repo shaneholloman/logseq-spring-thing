@@ -326,10 +326,10 @@ Result: Shows up to 10,000 nodes with quality ≥ 0.7
 ## Related Documentation
 
 - [Per-User Settings Implementation](auth-user-settings.md)
-- [GraphServiceActor Migration Guide (HISTORICAL REFERENCE)](../graphserviceactor-migration.md)
+
 - [Nostr Authentication Implementation](nostr-auth.md)
-- [Vircadia Multi-User XR Integration - User Guide](../vircadia-multi-user-guide.md)
-- [Multi-Agent Docker Environment - Complete Documentation](../infrastructure/docker-environment.md)
+- [Vircadia Multi-User XR Integration - User Guide](../explanation/xr-architecture.md)
+- [Multi-Agent Docker Environment - Complete Documentation](../infrastructure/../deployment-guide.md)
 
 ## Future Enhancements
 

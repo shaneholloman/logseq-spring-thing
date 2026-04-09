@@ -4,11 +4,11 @@
 Proposed
 
 ## Context
-VisionFlow users can save graph views to their Solid Pods (ADR-027) and interact with agents, but there is no standardized way for users to discover what views or agents another user has made available. Without a discovery mechanism, collaboration requires out-of-band URL sharing.
+VisionClaw users can save graph views to their Solid Pods (ADR-027) and interact with agents, but there is no standardized way for users to discover what views or agents another user has made available. Without a discovery mechanism, collaboration requires out-of-band URL sharing.
 
 The Solid specification defines a Type Index -- a well-known document linked from a user's WebID profile that registers RDF types and their storage locations. Applications use Type Indexes to advertise and discover data without crawling entire Pods.
 
-VisionFlow already has `SolidPodService.ts` with full LDP CRUD, WebSocket notifications, and Nostr-based authentication. The JSS sidecar supports JSON-LD content negotiation.
+VisionClaw already has `SolidPodService.ts` with full LDP CRUD, WebSocket notifications, and Nostr-based authentication. The JSS sidecar supports JSON-LD content negotiation.
 
 ## Decision
 Implement a public Type Index at each user's Pod (`/settings/publicTypeIndex.jsonld`) that registers two resource types:

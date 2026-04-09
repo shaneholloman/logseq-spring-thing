@@ -7,7 +7,7 @@ tags:
   - docker
   - documentation
   - reference
-  - visionflow
+  - visionclaw
 updated-date: 2025-12-18
 difficulty-level: intermediate
 ---
@@ -99,7 +99,7 @@ If you can't connect to the GUI environment using a VNC client, follow these ste
 
 ## Related Documentation
 
-- [VisionFlow Guides](../index.md)
+- [VisionClaw Guides](../index.md)
 - [Project Structure](../developer/02-project-structure.md)
 - [Goalie Integration - Goal-Oriented AI Research](goalie-integration.md)
 - [Natural Language Queries Tutorial](../features/natural-language-queries.md)

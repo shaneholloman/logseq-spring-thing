@@ -148,6 +148,36 @@ Propose a new NIP that standardizes HTTP request signing, then work with nos2x/A
 
 Best balance of pragmatism and user experience. Users likely already have nos2x or Alby installed.
 
+### Architecture Overview
+
+```mermaid
+graph TD
+    subgraph Browser["Browser"]
+        CS["Content Script<br/>(content.js)"]
+        BG["Background Worker<br/>(background.js)"]
+        PU["Popup UI<br/>(popup.html/js)"]
+        NIP07["NIP-07 Extension<br/>(nos2x / Alby)"]
+        PAGE["Web Page"]
+    end
+
+    subgraph External["External Services"]
+        SP["Solid Pod Server"]
+        NR["Nostr Relays"]
+    end
+
+    PAGE -- "HTTP requests" --> SP
+    SP -- "401 Unauthorized" --> BG
+    BG -- "SIGN_REQUEST msg" --> CS
+    BG -- "PROMPT_TRUST msg" --> CS
+    CS -- "window.nostr.signEvent()" --> NIP07
+    NIP07 -- "signed event" --> CS
+    CS -- "Authorization: Nostr …" --> SP
+    SP -- "200 OK + data" --> PAGE
+    PU -- "ADD/REMOVE_TRUSTED_SITE" --> BG
+    BG -- "chrome.storage" --> BG
+    NIP07 -.-> NR
+```
+
 ## Detailed Design
 
 ### Extension Components
@@ -1126,6 +1156,31 @@ export async function verifyNostrAuth(authHeader, request) {
 }
 ```
 
+### NIP-98 Authentication Flow
+
+```mermaid
+sequenceDiagram
+    participant U as User / Page
+    participant CS as Content Script
+    participant NIP07 as NIP-07 Extension
+    participant JSS as Solid Server (JSS)
+
+    U->>JSS: GET /private/resource
+    JSS-->>CS: 401 Unauthorized<br/>(WAC-Allow / Solid headers)
+    CS->>CS: isSolidServer() check
+    CS->>NIP07: window.nostr.getPublicKey()
+    NIP07-->>CS: pubkey (hex)
+    CS->>CS: Build kind:27235 event<br/>{u, method, created_at}
+    CS->>NIP07: window.nostr.signEvent(event)
+    NIP07-->>CS: signed event + sig
+    CS->>CS: btoa(JSON.stringify(signedEvent))
+    CS->>JSS: GET /private/resource<br/>Authorization: Nostr <base64>
+    JSS->>JSS: verifyNostrAuth()<br/>check sig, kind, url, method,<br/>timestamp (±60s)
+    JSS->>JSS: resolveDidNostrToWebId()<br/>→ WebID
+    JSS-->>U: 200 OK + resource body
+    CS->>CS: window.location.reload()
+```
+
 ### did:nostr → WebID Resolution
 
 ```javascript
@@ -1200,6 +1255,33 @@ if (methodTag[1] !== request.method) {
 - Content script isolated from page
 - No eval() or dynamic code execution
 
+### Extension Lifecycle States
+
+```mermaid
+stateDiagram-v2
+    [*] --> Idle: Extension installed
+
+    Idle --> Detecting: Page navigation
+    Detecting --> Idle: Not a Solid 401
+
+    Detecting --> PromptingTrust: 401 + unknown origin
+    PromptingTrust --> Idle: User dismissed
+    PromptingTrust --> Signing: User clicked Sign in
+
+    Detecting --> Signing: 401 + trusted origin
+
+    Signing --> WaitingForNIP07: getPublicKey()
+    WaitingForNIP07 --> BuildingEvent: pubkey received
+    BuildingEvent --> WaitingForSig: signEvent()
+    WaitingForSig --> Retrying: sig received
+    WaitingForSig --> Error: NIP-07 rejected
+
+    Retrying --> Idle: 200 OK → reload
+    Retrying --> Error: 4xx / 5xx
+
+    Error --> Idle: Notification shown
+```
+
 ## User Experience Flow
 
 ### First-Time User
@@ -1229,6 +1311,37 @@ if (methodTag[1] !== request.method) {
    └─> nos2x prompts to sign event
    └─> Extension retries request with auth
    └─> Page reloads with content
+```
+
+### Data Write/Read Flow
+
+```mermaid
+sequenceDiagram
+    participant U as User Action
+    participant CS as Content Script
+    participant BG as Background Worker
+    participant NIP07 as NIP-07 Extension
+    participant SP as Solid Pod
+
+    Note over U,SP: Read flow (GET)
+    U->>SP: Navigate / fetch resource
+    SP-->>BG: 401 (webRequest listener)
+    BG->>BG: Check trusted sites list
+    BG->>CS: SIGN_REQUEST {url, method}
+    CS->>NIP07: signEvent(kind 27235)
+    NIP07-->>CS: signed event
+    CS->>SP: GET + Authorization: Nostr …
+    SP-->>CS: 200 + RDF/Turtle body
+    CS->>U: window.location.reload()
+
+    Note over U,SP: Write flow (PUT/POST)
+    U->>CS: App calls fetch(url, {method:PUT, body})
+    CS->>NIP07: signEvent(kind 27235, method=PUT)
+    NIP07-->>CS: signed event
+    CS->>SP: PUT + Authorization: Nostr … + body
+    SP->>SP: Verify auth + WAC write check
+    SP-->>CS: 201 Created / 204 No Content
+    CS->>U: Resolve fetch promise
 ```
 
 ### Returning User (Trusted Site)

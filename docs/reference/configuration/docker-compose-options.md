@@ -1,6 +1,6 @@
 ---
 title: Docker Compose Options Reference
-description: Complete reference for VisionFlow Docker Compose configuration options
+description: Complete reference for VisionClaw Docker Compose configuration options
 category: reference
 difficulty-level: intermediate
 tags:
@@ -12,7 +12,7 @@ updated-date: 2025-01-29
 
 # Docker Compose Options Reference
 
-Complete reference for VisionFlow Docker Compose configuration.
+Complete reference for VisionClaw Docker Compose configuration.
 
 ---
 
@@ -29,12 +29,12 @@ Complete reference for VisionFlow Docker Compose configuration.
 
 ## Service Configuration
 
-### VisionFlow Container
+### VisionClaw Container
 
 ```yaml
 services:
-  visionflow:
-    image: visionflow:latest
+  visionclaw:
+    image: visionclaw:latest
     ports:
       - "${HOST_PORT:-3001}:3001"
       - "${WS_PORT:-9090}:9090"
@@ -66,8 +66,8 @@ services:
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-visionflow}
-      POSTGRES_USER: ${POSTGRES_USER:-visionflow}
+      POSTGRES_DB: ${POSTGRES_DB:-visionclaw}
+      POSTGRES_USER: ${POSTGRES_USER:-visionclaw}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
@@ -78,7 +78,7 @@ services:
         limits:
           memory: "4g"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-visionflow}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-visionclaw}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -112,7 +112,7 @@ services:
 
 ```yaml
 services:
-  visionflow:
+  visionclaw:
     # ... other config ...
     deploy:
       resources:
@@ -131,7 +131,7 @@ services:
 
 ```yaml
 services:
-  visionflow:
+  visionclaw:
     devices:
       - /dev/kfd
       - /dev/dri
@@ -149,7 +149,7 @@ services:
 ```yaml
 services:
   jss:
-    image: ghcr.io/visionflow/jss:latest
+    image: ghcr.io/visionclaw/jss:latest
     ports:
       - "${JSS_PORT:-3000}:3000"
       - "${SOLID_WS_PORT:-3001}:3001"
@@ -160,7 +160,7 @@ services:
     volumes:
       - jss_pods:/data/pods
     depends_on:
-      - visionflow
+      - visionclaw
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/.well-known/solid"]
       interval: 30s
@@ -183,7 +183,7 @@ volumes:
     driver: local
   redis_data:
     driver: local
-  visionflow_data:
+  visionclaw_data:
     driver: local
   jss_pods:
     driver: local
@@ -193,7 +193,7 @@ volumes:
 
 ```yaml
 services:
-  visionflow:
+  visionclaw:
     volumes:
       - ./data:/app/data:rw
       - ./logs:/app/logs:rw
@@ -208,16 +208,16 @@ services:
 
 ```yaml
 networks:
-  visionflow_network:
+  visionclaw_network:
     driver: bridge
     ipam:
       config:
         - subnet: 172.28.0.0/16
 
 services:
-  visionflow:
+  visionclaw:
     networks:
-      visionflow_network:
+      visionclaw_network:
         ipv4_address: 172.28.0.10
 ```
 
@@ -238,7 +238,7 @@ networks:
 
 ```yaml
 services:
-  visionflow:
+  visionclaw:
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9090/api/health"]
       interval: 30s
@@ -251,7 +251,7 @@ services:
 
 ```yaml
 services:
-  visionflow:
+  visionclaw:
     depends_on:
       postgres:
         condition: service_healthy
@@ -267,7 +267,7 @@ services:
 
 ```yaml
 services:
-  visionflow:
+  visionclaw:
     deploy:
       resources:
         limits:
@@ -282,7 +282,7 @@ services:
 
 ```yaml
 services:
-  visionflow:
+  visionclaw:
     shm_size: "2g"
 ```
 
@@ -294,7 +294,7 @@ services:
 
 ```yaml
 services:
-  visionflow:
+  visionclaw:
     logging:
       driver: "json-file"
       options:
@@ -306,12 +306,12 @@ services:
 
 ```yaml
 services:
-  visionflow:
+  visionclaw:
     logging:
       driver: "syslog"
       options:
         syslog-address: "udp://localhost:514"
-        tag: "visionflow"
+        tag: "visionclaw"
 ```
 
 ---
@@ -341,5 +341,5 @@ MEMORY_LIMIT=32g CPU_LIMIT=16.0 ENABLE_GPU=true GPU_COUNT=2 docker-compose up
 ## Related Documentation
 
 - [Environment Variables](./environment-variables.md)
-- [Deployment Guide](../../how-to/deployment/deployment.md)
+- [Deployment Guide](../../how-to/deployment-guide.md)
 - [Configuration Reference](./README.md)

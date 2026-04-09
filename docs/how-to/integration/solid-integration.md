@@ -81,7 +81,7 @@ JSS runs as a Docker sidecar service alongside VisionClaw:
 ```yaml
 # docker-compose.unified.yml
 jss:
-  container_name: visionflow-jss
+  container_name: visionclaw-jss
   build:
     context: ./JavaScriptSolidServer
     dockerfile: Dockerfile.jss

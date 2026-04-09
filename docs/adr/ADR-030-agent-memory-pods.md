@@ -2,11 +2,11 @@
 
 **Status**: Accepted
 **Date**: 2026-04-03
-**Deciders**: VisionFlow team
+**Deciders**: VisionClaw team
 
 ## Context
 
-VisionFlow agents store memory patterns in RuVector (PostgreSQL with HNSW vector search). This works well for agent-side retrieval and semantic search, but users have no visibility into what agents remember about them or their sessions. The Solid Pod sidecar (JSS) already provides per-user LDP containers with WAC access control (see ADR-027 for graph views). We can extend this to sync agent memory entries into user Pods, giving users the ability to inspect, audit, and revoke agent decisions.
+VisionClaw agents store memory patterns in RuVector (PostgreSQL with HNSW vector search). This works well for agent-side retrieval and semantic search, but users have no visibility into what agents remember about them or their sessions. The Solid Pod sidecar (JSS) already provides per-user LDP containers with WAC access control (see ADR-027 for graph views). We can extend this to sync agent memory entries into user Pods, giving users the ability to inspect, audit, and revoke agent decisions.
 
 ## Decision
 

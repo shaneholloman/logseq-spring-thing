@@ -23,6 +23,27 @@ difficulty-level: advanced
 
 ## Architecture
 
+### GitHub Sync Pipeline
+
+```mermaid
+flowchart LR
+    GitHub[GitHub\njjohare/logseq\nmainKnowledgeGraph/pages\n998 MD files] --> SHA1{SHA1 check\nor FORCE_FULL_SYNC?}
+    SHA1 -->|"FORCE_FULL_SYNC=1\n(bypass filter)"| Parser
+    SHA1 -->|"Changed files\n(local SHA1 ≠ GitHub SHA1)"| Parser[GitHubSyncService\nOntologyParser\nKnowledgeGraphParser]
+    SHA1 -->|Unchanged files| LocalDisk[Local disk\n/app/data/pages\nuse as-is]
+    Parser -->|"public:: true"| KG[KG Page Nodes\nNeo4j :GraphNode\ntype = knowledge]
+    Parser -->|"### OntologyBlock"| OWL[OWL Nodes\nNeo4j :OwlClass\nSUBCLASS_OF rels]
+    Parser -->|"[[wikilinks]]"| Linked[LinkedPage Nodes\nNeo4j :GraphNode\ntype = linked_page]
+    LocalDisk --> Neo4j
+    KG --> Neo4j[(Neo4j\nGraph store)]
+    OWL --> Neo4j
+    Linked --> Neo4j
+    Neo4j --> GSA[GraphStateActor\nIn-memory graph\nclassified node sets]
+    GSA --> WS[Binary WebSocket\nclient broadcast]
+```
+
+*Full sync pipeline: local SHA1 delta filter avoids redundant processing; `FORCE_FULL_SYNC=1` bypasses the filter to reprocess all files. Only `public:: true` files produce KG page nodes; OntologyBlocks are extracted from all files regardless.*
+
 ### Data Flow
 
 ```
@@ -48,6 +69,27 @@ difficulty-level: advanced
 │  6. Process files (parse, enrich, batch save to Neo4j)      │
 └─────────────────────────────────────────────────────────────┘
 ```
+
+### File Type Detection Flow
+
+```mermaid
+flowchart TD
+    All[All markdown files\n/app/data/pages/*.md] --> DFT[detect_file_type]
+    DFT --> Public{"Has\npublic:: true\ntag?"}
+    DFT --> Onto{"Contains\n### OntologyBlock?"}
+    DFT --> Journal{"Path starts with\njournals/?"}
+
+    Public -->|Yes| KGNode[KG Page Node\nparse wikilinks\n→ Neo4j :GraphNode\ntype=knowledge]
+    Public -->|No| Ignored[Not a KG node\nskip for graph]
+
+    Onto -->|Yes, any file| OWLNode[OWL Nodes\nextract axioms\n→ Neo4j :OwlClass\nSUBCLASS_OF rels]
+
+    Journal -->|Yes| Skip[Skip\nnot ingested\ninto graph]
+
+    KGNode -->|"[[wikilinks]]"| Linked[LinkedPage Nodes\n→ Neo4j :GraphNode\ntype=linked_page]
+```
+
+*`detect_file_type()` routes each file to the correct parser: `public:: true` tag gates KG page node creation; OntologyBlocks are extracted from all files (including non-public ones); journal files are excluded entirely.*
 
 ## Implementation
 
@@ -324,19 +366,19 @@ async fn main() -> Result<()> {
 
 ```bash
 # 1. Verify mount
-docker exec visionflow_container ls -la /app/data/pages | head -20
+docker exec visionclaw_container ls -la /app/data/pages | head -20
 
 # 2. Check file count
-docker exec visionflow_container find /app/data/pages -name "*.md" | wc -l
+docker exec visionclaw_container find /app/data/pages -name "*.md" | wc -l
 
 # 3. Test SHA1 calculation
-docker exec visionflow_container sha1sum /app/data/pages/ADAS.md
+docker exec visionclaw_container sha1sum /app/data/pages/ADAS.md
 
 # 4. Run sync service
-docker exec visionflow_container cargo run --bin sync_local
+docker exec visionclaw_container cargo run --bin sync_local
 
 # 5. Verify Neo4j data
-docker exec visionflow-neo4j cypher-shell -u neo4j -p visionflow-dev-password \
+docker exec visionclaw-neo4j cypher-shell -u neo4j -p visionclaw-dev-password \
   "MATCH (n:GraphNode) RETURN count(n) AS total"
 ```
 

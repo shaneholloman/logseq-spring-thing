@@ -17,13 +17,13 @@ difficulty-level: intermediate
 
 *[Guides](README.md)*
 
-This practical guide covers common configuration scenarios and use cases for VisionFlow. For comprehensive technical reference, see the .
+This practical guide covers common configuration scenarios and use cases for VisionClaw. For comprehensive technical reference, see the .
 
 ## Quick Configuration Setup
 
 ### Basic Development Setup
 
-Get VisionFlow running locally in development mode:
+Get VisionClaw running locally in development mode:
 
 ```bash
 # 1. Copy environment template
@@ -109,7 +109,7 @@ docker-compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
 Verify GPU is working:
 ```bash
 # Check GPU status
-docker exec -it visionflow-container nvidia-smi
+docker exec -it visionclaw-container nvidia-smi
 
 # Check GPU utilisation
 curl http://localhost:3030/api/analytics/gpu-metrics
@@ -370,8 +370,8 @@ RATE-LIMIT-MAX=1000
 RATE-LIMIT-WINDOW=900
 
 # SSL/TLS
-SSL-CERT-PATH=/etc/ssl/certs/visionflow.crt
-SSL-KEY-PATH=/etc/ssl/private/visionflow.key
+SSL-CERT-PATH=/etc/ssl/certs/visionclaw.crt
+SSL-KEY-PATH=/etc/ssl/private/visionclaw.key
 ```
 
 ### Database Security
@@ -571,7 +571,7 @@ Configure structured logging:
 # Logging configuration
 LOG-LEVEL=info
 LOG-FORMAT=json
-LOG-FILE=/app/logs/visionflow.log
+LOG-FILE=/app/logs/visionclaw.log
 LOG-ROTATION=daily
 LOG-MAX-SIZE=100MB
 LOG-MAX-FILES=10
@@ -593,7 +593,7 @@ Set up automatic configuration backups:
 BACKUP-ENABLED=true
 BACKUP-SCHEDULE="0 2 * * *"           # Daily at 2 AM
 BACKUP-RETENTION-DAYS=30
-BACKUP-LOCATION=/opt/backups/visionflow
+BACKUP-LOCATION=/opt/backups/visionclaw
 BACKUP-COMPRESSION=gzip
 
 # What to backup
@@ -721,10 +721,10 @@ wscat -c ws://localhost:3030/ws
 telnet localhost 9500
 
 # Test GPU (if enabled)
-docker exec -it visionflow-container nvidia-smi
+docker exec -it visionclaw-container nvidia-smi
 
 # Test database connection
-docker-compose exec postgres psql -U visionflow -d visionflow -c "SELECT version();"
+docker-compose exec postgres psql -U visionclaw -d visionclaw -c "SELECT version();"
 ```
 
 ## Best Practices
@@ -755,7 +755,7 @@ docker-compose exec postgres psql -U visionflow -d visionflow -c "SELECT version
 
 ---
 
-This guide covers the most common configuration scenarios for VisionFlow. For advanced configuration options and complete technical reference, see the .
+This guide covers the most common configuration scenarios for VisionClaw. For advanced configuration options and complete technical reference, see the .
 
 ## Related Topics
 
