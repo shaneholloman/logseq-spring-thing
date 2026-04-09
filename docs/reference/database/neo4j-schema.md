@@ -109,6 +109,69 @@ Class membership.
 (:GraphNode)-[:INSTANCE_OF]->(:OWLClass)
 ```
 
+### NostrEvent
+
+Nostr event published to the JSS relay as cryptographic provenance for a completed bead cycle.
+Written by `NostrBeadPublisher` after a successful `POST /api/briefs/{id}/debrief`.
+
+**Constraints**:
+```cypher
+CREATE CONSTRAINT nostr_event_id IF NOT EXISTS
+FOR (e:NostrEvent) REQUIRE e.id IS UNIQUE;
+```
+
+**Properties**:
+```cypher
+(:NostrEvent {
+  id: STRING,          // Hex-encoded Nostr event ID (SHA-256 of canonical JSON)
+  pubkey: STRING,      // Hex-encoded bridge bot public key
+  kind: INTEGER,       // 30001 (parameterized replaceable, NIP-33)
+  created_at: INTEGER  // Unix timestamp (seconds)
+})
+```
+
+### Bead
+
+A completed brief → debrief work unit. Created on first provenance write; subsequent
+re-publishes of the same `bead_id` merge without duplication (idempotent `MERGE`).
+
+**Constraints**:
+```cypher
+CREATE CONSTRAINT bead_id IF NOT EXISTS
+FOR (b:Bead) REQUIRE b.bead_id IS UNIQUE;
+```
+
+**Properties**:
+```cypher
+(:Bead {
+  bead_id: STRING,       // Unique bead identifier (also the Nostr `d` tag)
+  brief_id: STRING,      // Parent brief ID
+  debrief_path: STRING   // Filesystem path of the consolidated debrief file
+})
+```
+
+---
+
+## Relationship Types (Nostr Provenance)
+
+### PROVENANCE_OF
+
+Links a signed Nostr event to the bead it attests.
+
+```cypher
+(:NostrEvent)-[:PROVENANCE_OF]->(:Bead)
+```
+
+**Write pattern** (idempotent MERGE from `NostrBeadPublisher::write_provenance`):
+```cypher
+MERGE (e:NostrEvent {id: $event_id})
+SET e.pubkey = $pubkey, e.kind = $kind, e.created_at = $created_at
+WITH e
+MERGE (b:Bead {bead_id: $bead_id})
+ON CREATE SET b.brief_id = $brief_id, b.debrief_path = $debrief_path
+MERGE (e)-[:PROVENANCE_OF]->(b)
+```
+
 ---
 
 ## Indexes

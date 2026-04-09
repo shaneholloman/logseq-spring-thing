@@ -291,6 +291,37 @@ COMPRESSION-ENABLED=true
 
 ## Security Configuration
 
+### Nostr Bead Provenance
+
+VisionClaw publishes a signed Nostr event (kind 30001, NIP-33) to the JSS relay for each
+completed brief → debrief cycle, providing cryptographic provenance. A bridge service
+re-signs forwarded events as NIP-29 group messages (kind 9) and republishes to the forum relay.
+
+```bash
+# Bridge bot private key (64-char hex). Generate with: openssl rand -hex 32
+VISIONCLAW_NOSTR_PRIVKEY=<64-char hex secret key>
+
+# JSS integrated Nostr relay (default shown — matches docker-compose service name)
+JSS_RELAY_URL=ws://jss:3030/relay
+
+# DreamLab forum relay for NIP-29 group messages (bridge re-publishes here)
+FORUM_RELAY_URL=wss://forum.dreamlab.ai/relay
+```
+
+Also required in JSS environment:
+```bash
+JSS_NOSTR=true   # Enables the JSS integrated relay (set in docker-compose.unified.yml)
+```
+
+Bridge bot public key (for forum relay whitelist):
+```
+eb47d8a792a4709329270a9f85f012326c61867a913791dc5f89dc7a0a760754
+```
+
+This key must be added to the forum relay's D1 allowlist before the bridge can publish.
+
+---
+
 ### Authentication Setup
 
 Configure Nostr-based authentication:

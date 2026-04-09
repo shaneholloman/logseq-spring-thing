@@ -623,7 +623,93 @@ Large result sets automatically paginated:
 
 ---
 
+## Briefing API
+
+Endpoints for the VisionClaw briefing workflow. Bridges the VisionFlow frontend to the
+Management API agent container.
+
+### POST /api/briefs
+
+Submit a new brief and spawn role agents.
+
+**Request**:
+```http
+POST /api/briefs
+Content-Type: application/json
+```
+
+**Body**:
+```json
+{
+  "briefing": {
+    "content": "string",
+    "roles": ["string"]
+  },
+  "user_context": {
+    "display_name": "string",
+    "pubkey": "string"
+  }
+}
+```
+
+**Response** (201 Created):
+```json
+{
+  "brief_id": "string",
+  "bead_id": "string",
+  "path": "string",
+  "role_tasks": [
+    { "task_id": "string", "role": "string", "bead_id": "string" }
+  ]
+}
+```
+
+---
+
+### POST /api/briefs/{brief_id}/debrief
+
+Request a consolidated debrief for a brief. Triggers a fire-and-forget Nostr provenance
+event (kind 30001) on success.
+
+**Request**:
+```http
+POST /api/briefs/{brief_id}/debrief
+Content-Type: application/json
+```
+
+**Body**:
+```json
+{
+  "role_tasks": [
+    { "task_id": "string", "role": "string", "bead_id": "string" }
+  ],
+  "user_context": {
+    "display_name": "string",
+    "pubkey": "string"
+  }
+}
+```
+
+**Response** (201 Created):
+```json
+{
+  "brief_id": "string",
+  "debrief_path": "string"
+}
+```
+
+**Side effects**:
+- If `VISIONCLAW_NOSTR_PRIVKEY` is set, publishes a kind 30001 Nostr event to `JSS_RELAY_URL`
+- If Neo4j is available, writes `(:NostrEvent)-[:PROVENANCE_OF]->(:Bead)` provenance record
+
+---
+
 ## Changelog
+
+### v1.1.0 (2026-04-09)
+- Briefing API: `POST /api/briefs`, `POST /api/briefs/{id}/debrief`
+- Nostr provenance: kind 30001 events on debrief completion
+- Neo4j provenance graph: `NostrEvent → PROVENANCE_OF → Bead`
 
 ### v1.0.0 (2025-11-03)
 - Initial API release
