@@ -37,7 +37,7 @@ LABEL org.opencontainers.image.description="Unified Ruflo V4 Development Environ
 LABEL org.opencontainers.image.version="4.0.0"
 LABEL org.opencontainers.image.created="2026-03-12"
 LABEL org.opencontainers.image.vendor="Turbo Flow"
-LABEL com.turboflow.skills.count="87"
+LABEL com.turboflow.skills.count="88"
 LABEL com.turboflow.ruflo.version="3.5.75"
 
 # ============================================================================
@@ -466,7 +466,8 @@ RUN npm install -g \
     # Installed via pip in Python venv, not npm
 
 # V4 New Systems: Beads (cross-session memory), GitNexus (codebase knowledge graph), OpenSpec
-# NOTE: These packages are planned but not yet published to npm. Skip for now.
+# NOTE: beads-cli not yet published to npm; beads task tracking is implemented locally in
+# mcp-infrastructure/servers/mcp-server.js (beads_create/claim/close/show/sync/dep).
 # When available, uncomment: npm install -g beads-cli@latest gitnexus@latest @fission-ai/openspec@latest
 RUN npm install -g defense-mcp-server reddit-mcp-buddy 2>/dev/null || echo "Security/Reddit MCP optional"
 
@@ -699,6 +700,13 @@ RUN echo "devuser:turboflow" | chpasswd
 # ============================================================================
 
 # Copy skills (build context is parent directory, so paths include multi-agent-docker/)
+# NOTE: At runtime ~/.claude/ is bind-mounted from the host (HOST_CLAUDE_DIR), which overrides
+# this image layer. Skills here are for fresh deploys only; the host mount is the live source.
+# agentic-qe@latest (installed above) also populates ~/.claude/agents/ subdirectories
+# (consensus/, v3/, optimization/, flow-nexus/, swarm/) in the image layer, but these are
+# intentionally not carried over to the host mount — they have been consolidated into
+# swarm-advanced skill progressive discovery. On a fresh deploy, initialise the host
+# ~/.claude/agents/ from the curated state rather than from the image layer.
 COPY --chown=devuser:devuser multi-agent-docker/skills/ /home/devuser/.claude/skills/
 
 # Docker manager and chrome-devtools are already in skills/ directory

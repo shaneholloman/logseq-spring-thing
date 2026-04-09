@@ -1,20 +1,19 @@
+%% Updated 2026-04-09 — context engineering optimisation
 %%{init: {'theme': 'dark', 'themeVariables': {'primaryColor': '#1a1a2e', 'primaryTextColor': '#eee', 'lineColor': '#4ecdc4', 'secondaryColor': '#16213e'}}}%%
 graph TB
     subgraph ROUTER["🎯 /route — Unified Skill Dispatcher"]
         R[Describe your task<br/>→ routed to optimal skill]
     end
 
-    R --> CODE & GITHUB & SWARM & RESEARCH & DOCS & MEDIA & BROWSER & AIML & MEMORY & INFRA & DESIGN & ARCH & DOMAIN & SECURITY & AEC
+    R --> CODE & GITHUB & SWARM & RESEARCH & DOCS & MEDIA & BROWSER & AIML & MEMORY & INFRA & DESIGN & ARCH & DOMAIN & SECURITY & AEC & STRATEGIC
 
-    subgraph CODE["[A] Code Development — 8 skills"]
+    subgraph CODE["[A] Code Development — 6 skills"]
         BWQ[build-with-quality<br/>111+ agents]
         SPARC[sparc-methodology]
-        BHIL[bhil-methodology]
         VQ[verification-quality]
         RUST[rust-development]
         WASM[wasm-js]
         CUDA_S[cuda]
-        BCC[bencium-code-conventions]
     end
 
     subgraph GITHUB["[B] GitHub — 5 skills"]
@@ -25,10 +24,9 @@ graph TB
         GMR[github-multi-repo]
     end
 
-    subgraph SWARM["[C] Swarm — 6 skills"]
+    subgraph SWARM["[C] Swarm — 5 skills"]
         SA[swarm-advanced]
         HMA[hive-mind-advanced]
-        FNS[flow-nexus-swarm]
         SC[stream-chain]
         HA[hooks-automation]
         AJ[agentic-jujutsu]
@@ -74,9 +72,8 @@ graph TB
         HWD[host-webserver-debug]
     end
 
-    subgraph AIML["[H] AI/ML — 7 skills"]
+    subgraph AIML["[H] AI/ML — 6 skills"]
         PT[pytorch-ml]
-        FNN[flow-nexus-neural]
         JN[jupyter-notebooks]
         AL[agentdb-learning]
         DSR[deepseek-reasoning]
@@ -92,28 +89,23 @@ graph TB
         RVC[ruvector-catalog<br/>200+ capabilities]
     end
 
-    subgraph INFRA["[J] Infra — 3 skills"]
-        FNP[flow-nexus-platform]
+    subgraph INFRA["[J] Infra — 2 skills"]
         PA[performance-analysis]
         SB[skill-builder]
     end
 
-    subgraph DESIGN["[K] UI/UX — 8 skills"]
+    subgraph DESIGN["[K] UI/UX — 6 skills"]
         UX[ui-ux-pro-max]
         DUI[daisyui]
-        BCU[bencium-controlled-ux]
-        BIU[bencium-innovative-ux]
-        BID[bencium-impact]
+        BENC[bencium patterns<br/>progressive discovery]
         DAU[design-audit]
         TYP[typography]
         RDS[relationship-design]
     end
 
-    subgraph ARCH["[L] Architecture — 5 skills"]
+    subgraph ARCH["[L] Architecture — 3 skills"]
         RA[renaissance-architecture]
-        HAM[human-architect]
         VER[vanity-engineering-review]
-        NL[negentropy-lens]
         AC[adaptive-communication]
     end
 
@@ -132,6 +124,11 @@ graph TB
 
     subgraph AEC["[O] AEC — 1 skill (36 sub-skills)"]
         AS[architecture-studio<br/>/studio dispatcher<br/>7 agents]
+    end
+
+    subgraph STRATEGIC["[P] Strategic Thinking — 2 skills"]
+        NL2[negentropy-lens]
+        HAM2[human-architect-mindset]
     end
 
     subgraph MCP["18 MCP Servers"]

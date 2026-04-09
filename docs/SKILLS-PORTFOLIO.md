@@ -1,12 +1,12 @@
 # Skills Portfolio
 
-68 skills organised across 11 categories. 5 deprecated redirects. All skills have YAML frontmatter, description, and "When Not To Use" sections.
+67 skills organised across 11 categories. 5 deprecated redirects. All skills have YAML frontmatter, description, and "When Not To Use" sections.
 
 ## Portfolio Map
 
 ```mermaid
 mindmap
-  root((68 Skills))
+  root((67 Skills))
     Browser & UI
       browser
       browser-automation
@@ -77,10 +77,9 @@ mindmap
       v3-performance-optimization
       v3-security-overhaul
       v3-swarm-coordination
-    Flow Nexus
-      flow-nexus-neural
-      flow-nexus-platform
-      flow-nexus-swarm
+    Strategic Thinking
+      negentropy-lens
+      human-architect-mindset
 ```
 
 ## Browser Automation Decision Tree
@@ -129,12 +128,12 @@ flowchart TD
 | GIS & Specialised | 5 | qgis, ontology-core, jupyter-notebooks |
 | GitHub Integration | 5 | github-code-review, github-release-management |
 | V3 Implementation | 9 | v3-core-implementation, v3-security-overhaul |
-| Flow Nexus | 3 | flow-nexus-neural, flow-nexus-swarm |
+| Strategic Thinking | 2 | negentropy-lens, human-architect-mindset |
 | Deprecated (redirects) | 5 | agentdb-optimization, perplexity, swarm-orchestration |
 
 ## Conformance
 
-All 68 skills pass:
+All 67 skills pass:
 - SKILL.md present with YAML frontmatter
 - `name:` and `description:` fields
 - "When Not To Use" section (non-deprecated)

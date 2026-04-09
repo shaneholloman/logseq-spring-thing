@@ -1,284 +1,170 @@
-# Turbo Flow Container - Claude Flow V3
+# Claude Code Configuration - RuFlo V3
 
-> **Hierarchy**: This file inherits from `../CLAUDE.md` (project root) which
-> inherits from `../../CLAUDE.md` (workspace). Those parent files define:
-> memory-first protocol, intelligent skill selection, agent routing, tool
-> delineation, and behavioural rules. This file adds container-specific
-> configuration only. Do not duplicate parent content here.
->
-> **If parent CLAUDE.md files are not visible** (running from a subdirectory
-> without the project mount): the essential rules are: (1) ALWAYS use
-> `mcp__claude-flow__memory_*` MCP tools for memory, never CLI, never raw SQL
-> (raw SQL bypasses embedding generation — entries become invisible to semantic search); (2) check
-> `SKILL-DIRECTORY.md` in skills/ for routing tasks to the right skill;
-> (3) batch all operations in one message; (4) read before edit; (5) never
-> save to root directories.
+## Behavioral Rules (Always Enforced)
 
-## EXTERNAL MEMORY SYSTEM (PRIMARY — MANDATORY)
+- Do what has been asked; nothing more, nothing less
+- NEVER create files unless they're absolutely necessary for achieving your goal
+- ALWAYS prefer editing an existing file to creating a new one
+- NEVER proactively create documentation files (*.md) or README files unless explicitly requested
+- NEVER save working files, text/mds, or tests to the root folder
+- Never continuously check status after spawning a swarm — wait for results
+- ALWAYS read a file before editing it
+- NEVER commit secrets, credentials, or .env files
 
-The external RuVector PostgreSQL container is the **primary store and recall** for all agentic orchestration.
-All agents, swarms, and sessions share this single persistent memory. It survives container rebuilds.
+## File Organization
 
-### Connection
-| Property | Value |
-|----------|-------|
-| Host | `ruvector-postgres` (docker_ragflow network) |
-| Port | `5432` |
-| Database | `ruvector` |
-| User | `ruvector` |
-| ConnInfo | `$RUVECTOR_PG_CONNINFO` |
-| Extension | RuVector v2.0.0 (112 SQL functions, AVX-512 SIMD) |
-| Vector dims | 384 (all-MiniLM-L6-v2, client-side ONNX) |
-| Index | HNSW (m=16, ef_construction=64) — sub-millisecond cosine search |
+- NEVER save to root folder — use the directories below
+- Use `/src` for source code files
+- Use `/tests` for test files
+- Use `/docs` for documentation and markdown files
+- Use `/config` for configuration files
+- Use `/scripts` for utility scripts
+- Use `/examples` for example code
 
-### Store and Recall via MCP (preferred)
-```javascript
-// STORE — after any successful task, pattern discovery, or decision
-mcp__claude-flow__memory_store({
-  namespace: "patterns",     // or: coordination, tasks, agent-assignments, hooks:post-task
-  key: "descriptive-key",
-  value: JSON.stringify({description: "what worked", category: "...", confidence: 0.9})
-})
+## Project Architecture
 
-// RECALL — before starting any task
-mcp__claude-flow__memory_search({query: "[task keywords]", namespace: "patterns", limit: 10})
-```
+- Follow Domain-Driven Design with bounded contexts
+- Keep files under 500 lines
+- Use typed interfaces for all public APIs
+- Prefer TDD London School (mock-first) for new code
+- Use event sourcing for state changes
+- Ensure input validation at system boundaries
 
-### Store and Recall via SQL (advanced — for bulk ops, cross-namespace search, analytics)
-```bash
-# Store
-PGPASSWORD=ruvector psql -h ruvector-postgres -U ruvector -d ruvector -c "
-INSERT INTO memory_entries (id, project_id, namespace, key, value, metadata, source_type)
-VALUES (gen_random_uuid()::text, <project_id>, '<namespace>', '<key>', '<json>'::jsonb, '<meta>'::jsonb, 'claude')
-ON CONFLICT ON CONSTRAINT memory_entries_pkey DO UPDATE SET value = EXCLUDED.value, updated_at = now();
-"
+### Project Config
 
-# Recall by vector similarity (HNSW — requires embedding column populated)
-# Use count(id) not count(*) — extension quirk with count(*)
-PGPASSWORD=ruvector psql -h ruvector-postgres -U ruvector -d ruvector -c "
-WITH query AS (SELECT embedding FROM memory_entries WHERE key = '<known-key>')
-SELECT me.key, me.namespace, me.value, (1 - (me.embedding <=> q.embedding))::numeric(6,4) as similarity
-FROM memory_entries me, query q
-WHERE me.embedding IS NOT NULL
-ORDER BY me.embedding <=> q.embedding LIMIT 10;
-"
+- **Topology**: hierarchical-mesh
+- **Max Agents**: 15
+- **Memory**: hybrid
+- **HNSW**: Enabled
+- **Neural**: Enabled
 
-# Recall by namespace + JSONB content
-PGPASSWORD=ruvector psql -h ruvector-postgres -U ruvector -d ruvector -c "
-SELECT key, value->>'description' FROM memory_entries
-WHERE namespace = 'patterns' AND value->>'category' = 'architecture'
-ORDER BY updated_at DESC LIMIT 20;
-"
-```
-
-### Database Schema (6 tables)
-| Table | Purpose | Key columns |
-|-------|---------|-------------|
-| `memory_entries` | Primary KV + vector store | `key`, `namespace`, `value` (JSONB), `embedding` ruvector(384), `project_id`, `agent_id` |
-| `projects` | Project registry (20 projects) | `name`, `path`, `git_remote`, `total_entries` |
-| `patterns` | Learned code/workflow patterns | `type`, `pattern`, `confidence`, `embedding` ruvector(384) |
-| `reasoning_patterns` | ReasoningBank trajectories | `pattern_key`, `confidence`, `success_count`, `failure_count` |
-| `sona_trajectories` | SONA self-optimization tracking | `trajectory_id`, `agent_id`, `steps` (JSONB), `success` |
-| `session_state` | Session persistence | `session_id`, `state` (JSONB), `agents`, `tasks` |
-
-### Extension Capabilities (beyond vector search)
-- **Cypher graph queries**: `SELECT ruvector_cypher('graph_name', 'MATCH (n) RETURN n', '{}')`
-- **SPARQL**: `SELECT ruvector_sparql('store_name', 'SELECT ?s ?p ?o WHERE { ?s ?p ?o }', '{}')`
-- **Agent routing**: `ruvector_register_agent()`, `ruvector_route()`, `ruvector_find_agents_by_capability()`
-- **Self-learning**: `ruvector_enable_learning()`, `ruvector_record_feedback()`, `ruvector_extract_patterns()`
-- **Graph ops**: `ruvector_add_node()`, `ruvector_add_edge()`, `ruvector_shortest_path()`, `ruvector_cypher()`
-- **Attention**: `attention_score()`, `attention_softmax()`, `attention_weighted_add()`
-- **Hyperbolic geometry**: `ruvector_poincare_distance()`, `ruvector_lorentz_distance()`, `ruvector_mobius_add()`
-- **Temporal**: `temporal_velocity()`, `temporal_drift()`, `temporal_ema_update()`
-
-### Mandatory Protocol
-1. **NEVER** use `claude-flow memory *` CLI commands — they bypass the external store
-2. **ALWAYS** use MCP memory tools (`mcp__claude-flow__memory_*`) for standard ops
-3. Use SQL only for bulk operations, analytics, or cross-namespace vector search
-4. Embeddings are generated **client-side** by claude-flow's ONNX runtime (all-MiniLM-L6-v2)
-5. The `ruvector_embed()` SQL function is NOT available in this image — do not call it
-6. Use `count(id)` not `count(*)` when querying row counts (extension aggregate quirk)
-
-## V4 Three-Tier Memory Protocol
-
-### Session Start
-1. Run `bd ready` to check project state (blockers, in-progress work, decisions)
-2. Recall from external memory: `mcp__claude-flow__memory_search({query: "[project context]", limit: 10})`
-3. Check Native Tasks from prior sessions
-
-### During Work — Decision Tree
-- **Project roadmap / blockers / dependencies / decisions** → `bd add` (Beads)
-- **Current session tasks / active checklist** → Native Tasks
-- **Learned patterns / routing weights / skills** → External memory (store via MCP, persists in RuVector PG)
-- **Cross-agent coordination state** → External memory `coordination` namespace
-- **Agent assignment history** → External memory `agent-assignments` namespace
-
-### Session End
-- File discovered work as Beads issues: `bd add --type issue "description"`
-- Summarize architectural decisions: `bd add --type decision "description"`
-- Store session outcomes: `mcp__claude-flow__memory_store({namespace: "patterns", key: "session-<date>-summary", value: "..."})`
-- External memory persists automatically across container rebuilds
-
-## Agent Isolation via Git Worktrees
-
-Each parallel agent MUST operate in its own git worktree to prevent file conflicts.
-
-### Three ways to use worktrees
-
-| Method | When | Command |
-|--------|------|---------|
-| **Claude Code native** | Interactive session needing isolation | `claude -w` (auto-creates worktree) |
-| **Agent tool** | Spawning subagents from orchestrator | `Agent({ isolation: "worktree", ... })` |
-| **Custom (Ruflo swarms)** | Multi-agent swarm with PG schema isolation | `wt-add <agent-name>` |
-| **Batch fan-out** | Massive parallelisable changesets | `/batch` (interviews, then fans to N worktree agents) |
-
-### `wt-add` / `wt-remove` (container-optimised)
-```bash
-wt-add <agent-name>    # Creates .worktrees/<name>, branch <name>/<timestamp>, PG schema, GitNexus index
-wt-remove <agent-name> # Cleans up worktree + branch
-```
-
-### Agent tool worktree isolation
-When spawning subagents, use `isolation: "worktree"` for automatic worktree creation and cleanup:
-```
-Agent({ description: "Fix auth bug", prompt: "...", isolation: "worktree" })
-```
-The worktree is auto-cleaned if the agent makes no changes. If changes are made, the worktree path and branch are returned in the result for merge.
-
-### Best practices
-- Use worktrees for ANY task touching 2+ files that another agent might also touch
-- Ruflo swarm agents should ALWAYS use `wt-add` (provides PG schema + GitNexus)
-- Agent tool subagents should use `isolation: "worktree"` (lighter weight, auto-cleanup)
-- `/batch` for large migrations — fans out to dozens/hundreds of worktree agents automatically
-- NEVER run `--dangerously-skip-permissions` on bare metal — containers only
-
-## Agent Teams
-- `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` is enabled
-- Lead agent may spawn up to 3 teammates (each gets own worktree via `claude -w`)
-- Recursion limit: depth 2
-- If 3+ agents are blocked simultaneously → pause and alert human
-
-## Multi-Directory Access (`--add-dir`)
-
-When working across multiple repos or directories, use `--add-dir` to give Claude access:
+## Build & Test
 
 ```bash
-claude --add-dir /home/devuser/workspace/ruvector    # Add RuVector source
-claude --add-dir /home/devuser/agents                # Add 610 sub-agent templates
-/add-dir /path/to/other-repo                         # Add mid-session
+# Build
+npm run build
+
+# Test
+npm test
+
+# Lint
+npm run lint
 ```
 
-Key directories outside this project that are frequently needed:
-- `/home/devuser/workspace/ruvector/` — RuVector extension source (Rust crates)
-- `/home/devuser/agents/` — 610 sub-agent templates
-- `/home/devuser/workspace/claude-telegram-mirror-rs/` — CTM source
-- `/home/devuser/.claude/skills/` — Live skill deployments
+- ALWAYS run tests after making code changes
+- ALWAYS verify build succeeds before committing
 
-When a user references a path outside the current project, ask if they want to `--add-dir` it.
+## Security Rules
 
-## Codebase Intelligence (GitNexus)
-- Index repo: `gnx-analyze` (creates knowledge graph)
-- Before editing shared code: check blast radius via GitNexus
-- Auto-indexes new worktrees on `wt-add`
+- NEVER hardcode API keys, secrets, or credentials in source files
+- NEVER commit .env files or any file containing secrets
+- Always validate user input at system boundaries
+- Always sanitize file paths to prevent directory traversal
+- Run `npx @claude-flow/cli@latest security scan` after security-related changes
 
-## Cost Guardrails
-- Monitor: `claude-usage` or ruflo statusline
-- Use Haiku for simple tasks — don't burn Opus on formatting
+## Concurrency: 1 MESSAGE = ALL RELATED OPERATIONS
 
-## Guidance Control Plane (Automatic)
+- All operations MUST be concurrent/parallel in a single message
+- Use Claude Code's Task tool for spawning agents, not just MCP
+- ALWAYS batch ALL todos in ONE TodoWrite call (5-10+ minimum)
+- ALWAYS spawn ALL agents in ONE message with full instructions via Task tool
+- ALWAYS batch ALL file reads/writes/edits in ONE message
+- ALWAYS batch ALL Bash commands in ONE message
 
-Compiled via hooks: SessionStart compiles CLAUDE.md into typed constitution, UserPromptSubmit retrieves task-scoped shards, PreToolUse checks enforcement gates.
+## Swarm Orchestration
+
+- MUST initialize the swarm using CLI tools when starting complex tasks
+- MUST spawn concurrent agents using Claude Code's Task tool
+- Never use CLI tools alone for execution — Task tool agents do the actual work
+- MUST call CLI tools AND Task tool in ONE message for complex work
+
+### 3-Tier Model Routing (ADR-026)
+
+| Tier | Handler | Latency | Cost | Use Cases |
+|------|---------|---------|------|-----------|
+| **1** | Agent Booster (WASM) | <1ms | $0 | Simple transforms (var→const, add types) — Skip LLM |
+| **2** | Haiku | ~500ms | $0.0002 | Simple tasks, low complexity (<30%) |
+| **3** | Sonnet/Opus | 2-5s | $0.003-0.015 | Complex reasoning, architecture, security (>30%) |
+
+- Always check for `[AGENT_BOOSTER_AVAILABLE]` or `[TASK_MODEL_RECOMMENDATION]` before spawning agents
+- Use Edit tool directly when `[AGENT_BOOSTER_AVAILABLE]`
+
+## Swarm Configuration & Anti-Drift
+
+- ALWAYS use hierarchical topology for coding swarms
+- Keep maxAgents at 6-8 for tight coordination
+- Use specialized strategy for clear role boundaries
+- Use `raft` consensus for hive-mind (leader maintains authoritative state)
+- Run frequent checkpoints via `post-task` hooks
+- Keep shared memory namespace for all agents
 
 ```bash
-claude-flow guidance compile        # Compile policy
-claude-flow guidance retrieve --task "implement auth"
-claude-flow guidance status
+npx @claude-flow/cli@latest swarm init --topology hierarchical --max-agents 8 --strategy specialized
 ```
 
-Use `CLAUDE.local.md` for experiments. Promote with ADR when validated.
+## Swarm Execution Rules
 
-## Claude Cowork (Desktop Cowork Mode on Linux)
-Claude Desktop's Cowork mode runs natively on Linux via Electron + stub modules.
-Source: `johnzfitch/claude-cowork-linux` | Install: `~/.local/share/claude-desktop/`
+- ALWAYS use `run_in_background: true` for all agent Task calls
+- ALWAYS put ALL agent Task calls in ONE message for parallel execution
+- After spawning, STOP — do NOT add more tool calls or check status
+- Never poll TaskOutput or check swarm status — trust agents to return
+- When agent results arrive, review ALL results before proceeding
 
-| Command | Action |
-|---------|--------|
-| `cowork start` | Launch on VNC Display :1 |
-| `cowork stop` | Stop all processes |
-| `cowork restart` | Restart |
-| `cowork status` | Check if running |
-| `cowork logs` | View startup logs |
-| `claude-desktop --devtools` | Launch with DevTools |
-| `claude-desktop --doctor` | Run diagnostics |
+## V3 CLI Commands
 
-Requires Claude Pro (or higher) subscription. Accessible via VNC on port 5901.
+### Core Commands
 
-## Container Environment
+| Command | Subcommands | Description |
+|---------|-------------|-------------|
+| `init` | 4 | Project initialization |
+| `agent` | 8 | Agent lifecycle management |
+| `swarm` | 6 | Multi-agent swarm coordination |
+| `memory` | 11 | AgentDB memory with HNSW search |
+| `task` | 6 | Task creation and lifecycle |
+| `session` | 7 | Session state management |
+| `hooks` | 17 | Self-learning hooks + 12 workers |
+| `hive-mind` | 6 | Byzantine fault-tolerant consensus |
 
-### Multi-User System
-| User | UID | Purpose | Switch |
-|------|-----|---------|--------|
-| devuser | 1000 | Claude Code, primary dev | - |
-| gemini-user | 1001 | Google Gemini, gemini-flow | `as-gemini` |
-| openai-user | 1002 | OpenAI Codex | `as-openai` |
-| zai-user | 1003 | Z.AI service (port 9600) | `as-zai` |
-| deepseek-user | 1004 | DeepSeek API | `as-deepseek` |
-| local-private | 1005 | Private LLM (Nemotron 3 120B) | `as-local` |
+### Quick CLI Examples
 
-### Service Ports
-| Port | Service | Access |
-|------|---------|--------|
-| 22 | SSH | Public (mapped to 2222) |
-| 5901 | VNC | Public |
-| 8080 | code-server | Public |
-| 9090 | Management API | Public |
-| 9600 | Z.AI | Internal only |
-| 3100 | Local LLM Proxy | Internal only |
-
-### Local LLM Proxy (Nemotron 3 120B)
-Agentic-flow translates Anthropic API → OpenAI format for llama.cpp at `192.168.2.48:8080`.
 ```bash
-llm-proxy-start                    # Start proxy (supervisord)
-llm-proxy-status                   # Check proxy health
-as-local                           # Switch to local-private user (Claude CLI auto-routed)
-curl http://localhost:3100/health   # Direct health check
+npx @claude-flow/cli@latest init --wizard
+npx @claude-flow/cli@latest agent spawn -t coder --name my-coder
+npx @claude-flow/cli@latest swarm init --v3-mode
+npx @claude-flow/cli@latest memory search --query "authentication patterns"
+npx @claude-flow/cli@latest doctor --fix
 ```
-The `local-private` user has `ANTHROPIC_BASE_URL=http://localhost:3100` pre-configured.
-Claude CLI in that user context routes through the proxy to Nemotron automatically.
 
-### 610 Sub-Agents
-`/home/devuser/agents/*.md` -- Load: `cat agents/<name>.md`
-Key: doc-planner, microtask-breakdown, github-pr-manager, tdd-london-swarm
+## Available Agents (60+ Types)
 
-### Z.AI Service
-Port 9600 (internal) | Workers: 4 concurrent
+See ~/workspace/CLAUDE.md for agent types. Full 610 templates at /home/devuser/agents/
+
+## Personal Context (RuVector namespace: `personal-context`)
+
 ```bash
-curl http://localhost:9600/health
-curl -X POST http://localhost:9600/chat -H "Content-Type: application/json" -d '{"prompt": "...", "timeout": 30000}'
+# Quick context hydration
+mcp__claude-flow__memory_search --query "user identity preferences goals" --namespace personal-context --limit 7
 ```
 
-### Gemini Flow
-`gf-init`, `gf-swarm` (66 agents), `gf-architect`, `gf-coder`, `gf-status`, `gf-monitor`, `gf-health`
+| Key | Contents |
+|-----|----------|
+| `personal-context-identity` | Who the user is |
+| `personal-context-team` | Key collaborators |
+| `personal-context-goals` | Current strategy and priorities |
+| `personal-context-projects` | Active workstreams |
+| `personal-context-communication` | Style rules |
+| `personal-context-domain-expertise` | Deep expertise areas |
+| `personal-context-portfolio-index` | Master pointer |
 
-### tmux Workspace
-`tmux attach -t workspace` -- 8 windows: Claude-Main(0), Claude-Agent(1), Services(2), Dev(3), Logs(4), System(5), VNC(6), SSH(7)
+---
 
-### Management API
-`http://localhost:9090` | Auth: `X-API-Key: <MANAGEMENT_API_KEY>`
-Endpoints: GET /health, GET /api/status, POST /api/tasks, GET /api/tasks/:id, GET /metrics
+## File Ownership (CLAUDE.md Architecture)
 
-### Diagnostics
-```bash
-sudo supervisorctl status              # Service status
-tail -f /var/log/supervisord.log       # Logs
-docker exec turbo-flow-unified supervisorctl status  # From host
-```
+| File | Owns | Never contains |
+|------|------|----------------|
+| `~/.claude/CLAUDE.md` | Universal behavioural rules, tool discipline, style | Project or env specifics |
+| `~/CLAUDE.md` | Swarm config, V3 CLI, agent routing, personal context pointer | Env discovery commands |
+| `~/workspace/CLAUDE.md` | Container env facts, services, RuVector, browser, CTM, 610 agents | Methodology or behavioural rules |
+| `project/CLAUDE.md` | Project-specific overrides only | Anything already in upstream files |
 
-### Container Modification
-- DO: Edit `multi-agent-docker/` files directly in the project -- fix root cause
-- DON'T: Patching scripts or workarounds
-- Validate: `cargo test`, `npm test`, `pytest`
-- Container is isolated from external build systems
-
-**Security** (DEV ONLY): SSH `devuser:turboflow` | VNC `turboflow` | API `change-this-secret-key`
-
+This division is intentional. Do not merge content between files. If a rule belongs upstream, add it there and delete it from the project file.
