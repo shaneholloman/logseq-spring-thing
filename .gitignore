@@ -1,4 +1,11 @@
 turbo-flow
+
+# Local private config (never commit)
+.tempenv
+CLAUDE.local.md
+*.bak
+*.rlib
+
 # Logs
 logs
 *.log
