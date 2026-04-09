@@ -65,7 +65,7 @@ Swarm (3+ agents)? --> /swarm-advanced or hive-mind
 GitHub ops (PR/release/CI)? --> github-* skills
 Docs/reports? --> /report-builder, /docs-alignment
 Media (image/video/3D)? --> /imagemagick, /ffmpeg, /blender, /comfyui
-Browser automation? --> /playwright, /browser-automation
+Browser automation? --> /playwright, /browser-automation, /qe-browser (QE-grade: typed assertions, visual-diff, injection scan)
 AI/ML (PyTorch, CUDA, notebooks)? --> /pytorch-ml, /cuda, /jupyter-notebooks
 Memory/AgentDB? --> /agentdb-*, /lazy-fetch
 Wardley maps / strategic analysis? --> /wardley-maps, /report-builder
@@ -77,7 +77,7 @@ AEC (building architecture)? --> /studio [task]
 SEO / content optimisation? --> /toprank
 ```
 
-Full routing with all 87 active skills: see `multi-agent-docker/skills/SKILL-DIRECTORY.md`
+Full routing with all 88 active skills: see `multi-agent-docker/skills/SKILL-DIRECTORY.md`
 
 ### Skill Capabilities Matrix
 

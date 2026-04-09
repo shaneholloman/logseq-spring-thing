@@ -1,7 +1,7 @@
 ---
 name: skill-router
 description: >
-  Unified dispatcher for 87+ skills. Describe your task; get routed to the optimal skill,
+  Unified dispatcher for 88+ skills. Describe your task; get routed to the optimal skill,
   agent composition, or MCP tool. Single entry point replacing manual decision tree navigation.
   Inspired by the /studio dispatcher pattern from architecture-studio.
 version: 1.0.0
@@ -16,7 +16,7 @@ user-invocable: true
 
 # /route — Unified Skill Dispatcher
 
-Describe your task. Get routed to the right skill. You don't need to know 87 skills — just say what you need.
+Describe your task. Get routed to the right skill. You don't need to know 88 skills — just say what you need.
 
 ## Usage
 
@@ -132,6 +132,7 @@ Examples:
 | Desktop Chrome with login state | `claude --chrome` (built-in) |
 | Quick scrape/form-fill, headless | `browser` (agent-browser) |
 | Full API, screenshots, visual testing | `playwright` |
+| QE-grade browser: typed assertions (16 kinds), visual-diff baseline, prompt-injection scan, semantic intent finder | `qe-browser` (AQE fleet, Vibium engine — `aqe init` to install) |
 | Inspect live Chromium tabs | `chrome-cdp` |
 | Host web server from Docker | `host-webserver-debug` |
 | Web scraping, crawling, anti-bot bypass, Cloudflare Turnstile, infra monitoring, spider framework | `scrapling` (MCP: 9 tools) |

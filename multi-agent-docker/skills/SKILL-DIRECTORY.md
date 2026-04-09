@@ -1,7 +1,7 @@
 # Skill Directory -- Comprehensive Inventory and Decision Tree
 
-> **87 active skills**. 18 formerly deprecated/archived skills removed (see table below for history).
-> Updated 2026-04-08. Reference this file from CLAUDE.md for intelligent routing.
+> **88 active skills**. 18 formerly deprecated/archived skills removed (see table below for history).
+> Updated 2026-04-09. Reference this file from CLAUDE.md for intelligent routing.
 
 ---
 
@@ -30,7 +30,7 @@
 
 ---
 
-## Artefact 1: Categorised Skill Inventory (87 Active Skills)
+## Artefact 1: Categorised Skill Inventory (88 Active Skills)
 
 ### Context, Discovery, and Session Management
 
@@ -106,9 +106,10 @@ Testing is integrated into `build-with-quality` (TDD agents) and `sparc-methodol
 
 | Skill | MCP | Key Capability | When to Choose |
 |-------|-----|----------------|----------------|
-| `browser-automation` | No | **Meta-skill**: decision framework for choosing between 5 browser tools + Claude in Chrome (official) | Unsure which browser tool to use -- start here |
+| `browser-automation` | No | **Meta-skill**: decision framework for choosing between 6 browser tools + Claude in Chrome (official) | Unsure which browser tool to use -- start here |
 | `browser` | No | agent-browser with AI-optimised snapshots, 93% context reduction via @refs | Quick form filling, scraping, navigation with minimal context |
 | `playwright` | Yes | Full Playwright API, screenshots, visual testing on Display :1 via VNC | Visual testing, complex automation, screenshot verification |
+| `qe-browser` | No | **Vibium** (WebDriver BiDi, W3C standard, 10MB vs 300MB Playwright). 16 typed assertion kinds, multi-step batch pre-validation, pixel-perfect visual-diff baselines, 14-pattern prompt-injection scanner, 15-intent semantic element finder (`submit_form`, `accept_cookies`, `primary_cta`, …). Part of AQE fleet — installed via `aqe init`. 11 QE skills delegate to it (a11y, visual, security, localization, etc.) | QE-grade browser testing with typed assertions and visual regression; AQE fleet integration; when Playwright is too heavy |
 | `chrome-cdp` | No | CDP CLI for live Chromium sessions, 100+ tabs, no Puppeteer dependency | Inspecting already-open browser tabs, logged-in sessions |
 | `host-webserver-debug` | Yes | HTTPS-to-HTTP bridge for debugging host web servers from Docker | Cross-origin/CORS issues when accessing host dev servers |
 | `scrapling` | Yes | Adaptive web scraping: 9 MCP tools, Cloudflare Turnstile bypass, stealth browser, spider framework with pause/resume | Web scraping, internal infra monitoring, authorized client scraping, anti-bot bypass |
@@ -505,6 +506,11 @@ Q3: Do you know which tool you need?
     |
     +-- Full API, screenshots, visual testing on Display :1
     |   --> playwright
+    |
+    +-- QE-grade assertions (typed checks, visual-diff baselines, injection scan), AQE fleet
+    |   --> qe-browser  (Vibium: WebDriver BiDi, 10MB, 16 assertion kinds, `aqe init` to install)
+    |   NOTE: also used internally by a11y-ally, visual-testing, security-visual-testing,
+    |   compatibility-testing, localization-testing and 6 other QE fleet skills
     |
     +-- Inspect live Chromium tabs already open
     |   --> chrome-cdp
