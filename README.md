@@ -33,7 +33,7 @@ They just haven't told you yet.
 
 **The personal agent revolution has a governance problem.** Tools like Claude Code have shown that autonomous AI agents are powerful, popular, and ready to act. They've also shown what happens when agents operate without shared semantics, formal reasoning, or organisational guardrails: unauthorised actions, prompt injection attacks, and enterprises deploying security scanners just to detect rogue agent instances on their own networks.
 
-VisionClaw takes the opposite approach. **Governance isn't the brake, it's what lets you drive at 200 mph.**
+VisionClaw takes the opposite approach. **Governance isn't an inhibitor, it's an accelerant.**
 
 ---
 
