@@ -29,21 +29,21 @@ https://github.com/user-attachments/assets/f45c92dc-4800-4b57-a6e2-178da6bb0a38
 
 They just haven't told you yet.
 
-73% of frontline AI adoption happens without management sign-off. Your workforce is already building shadow workflows — stitching together AI agents, automating procurement shortcuts, inventing cross-functional pipelines that don't appear on any org chart. The question isn't whether your organisation is becoming an agentic mesh. It's whether you'll shape how it forms — or be reshaped by it.
+73% of frontline AI adoption happens without management sign-off. Your workforce is already building shadow workflows, stitching together AI agents, automating procurement shortcuts, inventing cross-functional pipelines that don't appear on any org chart. The question isn't whether your organisation is becoming an agentic mesh. It's whether you'll shape how it forms.
 
 **The personal agent revolution has a governance problem.** Tools like Claude Code have shown that autonomous AI agents are powerful, popular, and ready to act. They've also shown what happens when agents operate without shared semantics, formal reasoning, or organisational guardrails: unauthorised actions, prompt injection attacks, and enterprises deploying security scanners just to detect rogue agent instances on their own networks.
 
-VisionClaw takes the opposite approach. **Governance isn't the brake — it's what lets you drive at 200 mph.**
+VisionClaw takes the opposite approach. **Governance isn't the brake, it's what lets you drive at 200 mph.**
 
 ---
 
 ## What Is VisionClaw?
 
-VisionClaw is an open-source platform that transforms organisations into governed agentic meshes — where autonomous AI agents, human judgment, and institutional knowledge work together through a shared semantic substrate.
+VisionClaw is an open-source platform that transforms organisations into governed agentic meshes where autonomous AI agents, human judgment, and institutional knowledge work together through a shared semantic substrate.
 
 The platform ingests knowledge from Logseq notebooks via GitHub, reasons over it with an OWL 2 EL inference engine (Whelk-rs), renders the result as an interactive 3D graph where nodes attract or repel based on their semantic relationships, and exposes everything to AI agents through 7 Model Context Protocol tools. Users collaborate in the same space through multi-user XR presence, spatial voice, and immersive graph exploration. Every agent decision is semantically grounded, every mutation passes consistency checking, and every reasoning chain is auditable from edge case back to first principles.
 
-VisionClaw is production-proven — currently operational at MediaCityUK, powering a 15-person creative technology team, and validated in partnership with a major UK creative studio and the University of Salford.
+VisionClaw is production-proven currently operational at [DreamLab residential training lab](https://www.dreamlab-ai.com), augmenting a 50 person creative technology team, and validated in partnership with a major UK creative studio and the University of Salford.
 
 <div align="center">
 <img src="./graph-physics-live.png" alt="VisionClaw GPU-accelerated force-directed graph with Control Center" width="720"/>
