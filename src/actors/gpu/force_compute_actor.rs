@@ -296,10 +296,41 @@ impl ForceComputeActor {
 
         // 4. Build SharedGPUContext
         let safe_stream = super::cuda_stream_wrapper::SafeCudaStream::new(cuda_stream);
+
+        // Initialize GpuMemoryManager with 80% of reported GPU memory (or 6GB default)
+        let memory_limit = match cudarc::driver::result::mem_get_info() {
+            Ok((_free, total)) => {
+                let limit = (total as f64 * 0.8) as usize;
+                info!("ForceComputeActor: GPU total memory {} bytes, memory manager limit set to {} bytes (80%)", total, limit);
+                limit
+            }
+            Err(e) => {
+                warn!("ForceComputeActor: Could not query GPU memory info ({}), using 6GB default limit", e);
+                6 * 1024 * 1024 * 1024
+            }
+        };
+        let memory_manager = match crate::gpu::memory_manager::GpuMemoryManager::with_limit(memory_limit) {
+            Ok(mgr) => {
+                info!("ForceComputeActor: GpuMemoryManager initialized with {} byte limit", memory_limit);
+                Arc::new(std::sync::Mutex::new(mgr))
+            }
+            Err(e) => {
+                warn!("ForceComputeActor: GpuMemoryManager init failed ({}), creating with default", e);
+                match crate::gpu::memory_manager::GpuMemoryManager::new() {
+                    Ok(mgr) => Arc::new(std::sync::Mutex::new(mgr)),
+                    Err(e2) => {
+                        error!("ForceComputeActor: GpuMemoryManager completely failed: {}", e2);
+                        return;
+                    }
+                }
+            }
+        };
+
         let shared_context = Arc::new(SharedGPUContext {
             device: device.clone(),
             stream: Arc::new(std::sync::Mutex::new(safe_stream)),
             unified_compute: Arc::new(std::sync::Mutex::new(unified_compute)),
+            memory_manager,
             gpu_access_lock: Arc::new(tokio::sync::RwLock::new(())),
             resource_metrics: Arc::new(std::sync::Mutex::new(
                 super::shared::GPUResourceMetrics::default(),

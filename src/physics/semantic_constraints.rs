@@ -525,7 +525,7 @@ impl SemanticConstraintGenerator {
         sorted_pairs.sort_by(|a, b| {
             b.1.combined_similarity
                 .partial_cmp(&a.1.combined_similarity)
-                .unwrap()
+                .unwrap_or(std::cmp::Ordering::Equal)
         });
 
         for ((id_a, id_b), similarity) in sorted_pairs {

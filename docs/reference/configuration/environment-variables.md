@@ -7,7 +7,7 @@ tags:
   - configuration
   - environment
   - deployment
-updated-date: 2025-01-29
+updated-date: 2026-04-10
 ---
 
 # Environment Variables Reference
@@ -23,6 +23,7 @@ Complete reference for all VisionClaw environment variables.
 | Variable | Type | Default | Description |
 |----------|------|---------|-------------|
 | `ENVIRONMENT` | string | `development` | Environment mode: `development`, `staging`, `production` |
+| `APP_ENV` | string | `development` | Application environment. Setting to `production` enables security hardening: blocks `ALLOW_INSECURE_DEFAULTS`, blocks `SETTINGS_AUTH_BYPASS`, enforces required secrets |
 | `DEBUG_MODE` | boolean | `false` | Enable debug logging |
 | `RUST_LOG` | string | `info` | Rust log level: `trace`, `debug`, `info`, `warn`, `error` |
 | `HOST_PORT` | integer | `3001` | HTTP server port |
@@ -57,6 +58,8 @@ HOST_PORT=3030
 | `AUTH_REQUIRED` | boolean | `true` | Require authentication for API access |
 | `SESSION_TIMEOUT` | integer | `86400` | Session timeout in seconds (24 hours) |
 | `API_KEYS_ENABLED` | boolean | `true` | Enable API key authentication |
+| `SETTINGS_AUTH_BYPASS` | boolean | `false` | Bypass authentication for settings endpoints (development only). **Blocked in production mode** (`APP_ENV=production`); removed from docker-compose.yml |
+| `ALLOW_INSECURE_DEFAULTS` | boolean | `false` | Allow insecure default secrets (development only). **Blocked when `APP_ENV=production`** — server refuses to start if any secret retains its insecure default value |
 
 **Example**:
 ```bash
@@ -81,6 +84,12 @@ SESSION_TIMEOUT=86400
 | `POSTGRES_PASSWORD` | string | *required* | Database password |
 | `POSTGRES_MAX_CONNECTIONS` | integer | `100` | Maximum connection pool size |
 | `POSTGRES_SSL_MODE` | string | `prefer` | SSL mode: `disable`, `prefer`, `require` |
+
+### Neo4j
+
+| Variable | Type | Default | Description |
+|----------|------|---------|-------------|
+| `NEO4J_PASSWORD` | string | *required* | Neo4j database password. **No default** — server fails fast if unset. Must be explicitly configured in all environments |
 
 ### Redis Cache
 
@@ -113,6 +122,13 @@ SESSION_TIMEOUT=86400
 | `CPU_RESERVATION` | float | `4.0` | Reserved CPU cores |
 | `WORKER_THREADS` | integer | `8` | Worker thread count |
 | `MAX_AGENTS` | integer | `20` | Maximum concurrent agents |
+| `MAX_CONCURRENT_TASKS` | integer | `20` | Maximum concurrent tasks for TaskOrchestratorActor. Controls how many tasks can execute simultaneously across all agents |
+
+### Audit Configuration
+
+| Variable | Type | Default | Description |
+|----------|------|---------|-------------|
+| `AUDIT_LOG_PATH` | string | `/app/logs/audit.log` | File path for the persistent audit log. Records authentication events, authorization decisions, and administrative actions |
 
 ---
 

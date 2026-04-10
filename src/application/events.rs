@@ -176,7 +176,7 @@ impl DomainEvent {
     pub fn now() -> i64 {
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
+            .expect("system clock is before UNIX epoch")
             .as_millis() as i64
     }
 }

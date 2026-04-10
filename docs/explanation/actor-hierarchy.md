@@ -3,12 +3,12 @@ title: VisionClaw Actor System Hierarchy
 description: Complete reference for VisionClaw's 21-actor Actix-Web supervision tree, covering actor roles, message protocols, and supervision strategies
 category: explanation
 tags: [actors, actix, concurrency, supervision, rust]
-updated-date: 2026-04-09
+updated-date: 2026-04-10
 ---
 
 # VisionClaw Actor System Hierarchy
 
-VisionClaw's Rust backend coordinates 21 specialised Actix actors under a hierarchical supervision tree. Actors handle all concurrent concerns — WebSocket client management, GPU physics coordination, graph state, semantic processing, and GitHub ingestion — without shared mutable state. Communication is exclusively via typed asynchronous messages.
+VisionClaw's Rust backend coordinates 23 specialised Actix actors under a hierarchical supervision tree. Actors handle all concurrent concerns — WebSocket client management, GPU physics coordination, graph state, semantic processing, GitHub ingestion, agent monitoring, and task orchestration — without shared mutable state. Communication is exclusively via typed asynchronous messages.
 
 > **Note**: `GraphServiceActor` no longer exists as an active component. It was decomposed into the current 21-actor hierarchy and replaced by CQRS handlers backed by Neo4j. Any reference to `GraphServiceActor` in older documentation is historical.
 
@@ -67,7 +67,7 @@ graph TD
     ClientCoord --> WSSessions["WebSocketSession × N<br/>(one per client)"]
 ```
 
-The 21 named actors (excluding the ephemeral `WebSocketSession × N` instances):
+The 23 named actors (excluding the ephemeral `WebSocketSession × N` instances):
 
 1. `GraphStateActor`
 2. `GraphUpdateActor`
@@ -90,6 +90,8 @@ The 21 named actors (excluding the ephemeral `WebSocketSession × N` instances):
 19. `WorkspaceActor`
 20. `OntologyActor`
 21. `GitHubSyncActor`
+22. `AgentMonitorActor`
+23. `TaskOrchestratorActor`
 
 ---
 
@@ -389,6 +391,28 @@ Startup sequence:
 
 ---
 
+### AgentMonitorActor
+
+| Property | Value |
+|---|---|
+| Supervisor | `AppSupervisor` |
+| Mailbox | Bounded (capacity 64) |
+
+Monitors the health and lifecycle of all spawned agents. Tracks agent heartbeats, detects stalled or unresponsive agents, and reports health status via the `/api/health` diagnostic endpoint. Receives periodic health pings from active agents and maintains a registry of agent states.
+
+---
+
+### TaskOrchestratorActor
+
+| Property | Value |
+|---|---|
+| Supervisor | `AppSupervisor` |
+| Mailbox | Bounded (capacity 128) |
+
+Manages concurrent task scheduling and execution across agents. Enforces the `MAX_CONCURRENT_TASKS` capacity limit (default 20, configurable via environment variable). Routes incoming task requests to available agents, tracks task progress, handles timeouts, and supports task cancellation. Provides task status via the metrics endpoint.
+
+---
+
 ## 4. Inter-Actor Message Flow
 
 ### Position Broadcast Pipeline
@@ -461,7 +485,7 @@ sequenceDiagram
 | `GraphServiceSupervisor` | OneForOne | `GraphStateActor` and `GraphUpdateActor` are independent |
 | `PhysicsOrchestratorActor` | AllForOne (for GPU children) | GPU actors share CUDA device state; a CUDA OOM in one actor corrupts shared buffers |
 | `ResourceSupervisor` | Restart with backoff | GPU init failures are retried before escalation |
-| `PhysicsSupervisor` | AllForOne | Physics state is interdependent across force actors |
+| `PhysicsSupervisor` | AllForOne | Physics state is interdependent across force actors; restarts all 5 children when any fails since they share `SharedGPUContext` (upgraded from OneForOne in ADR-031 sprint) |
 | `AnalyticsSupervisor` | OneForOne | Analytics algorithms are independent; clustering failure must not restart PageRank |
 | `GraphAnalyticsSupervisor` | OneForOne | Path algorithms are independent |
 
@@ -482,6 +506,18 @@ SupervisorStrategy::OneForOne {
 ```
 
 If an actor exceeds 3 restarts in 10 seconds, the failure escalates to its parent supervisor.
+
+### Actor Respawning via ActorFactory
+
+`SupervisorActor` uses a type-erased `ActorFactory` trait to respawn child actors on failure. Each supervisor stores a `Box<dyn ActorFactory>` per child, enabling real actor recreation (with full `started()` lifecycle) rather than simple address re-registration. This ensures GPU actors re-execute their self-init sequence on respawn.
+
+### Graceful Shutdown
+
+Actors support the `InitiateGracefulShutdown` message, which triggers a drain-before-stop sequence: the actor finishes processing its current mailbox, flushes pending state (e.g., position checkpoints, cache writes), and then calls `ctx.stop()`. This prevents data loss during planned restarts or rolling deployments.
+
+### Escalation Wiring
+
+`GraphServiceSupervisor` sends `SetParentSupervisor` to its children during `started()`, wiring the escalation chain so that child actors can report unrecoverable failures to their parent supervisor. This message carries the parent's `Addr<SupervisorActor>`, enabling children to escalate without requiring a global actor registry.
 
 ---
 

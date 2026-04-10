@@ -571,7 +571,8 @@ impl FileService {
         }
 
         
-        let metadata_dir = Path::new(METADATA_PATH).parent().unwrap();
+        let metadata_dir = Path::new(METADATA_PATH).parent()
+            .expect("METADATA_PATH constant has a known parent directory");
         if !metadata_dir.exists() {
             info!("Creating metadata directory at {:?}", metadata_dir);
             fs::create_dir_all(metadata_dir).map_err(|e| {

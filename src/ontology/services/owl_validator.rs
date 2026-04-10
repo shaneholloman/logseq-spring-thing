@@ -203,8 +203,8 @@ impl OwlValidatorService {
                 let prop_iri = self.expand_prefixed_iri(&data_prop_mapping.owl_property)?;
 
                 
-                let values = if prop_value.is_array() {
-                    prop_value.as_array().unwrap().iter().collect()
+                let values = if let Some(arr) = prop_value.as_array() {
+                    arr.iter().collect()
                 } else {
                     vec![prop_value]
                 };

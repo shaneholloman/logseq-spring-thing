@@ -367,7 +367,7 @@ impl SemanticAnalyzer {
 
         
         let mut scored_domains: Vec<_> = domain_scores.into_iter().collect();
-        scored_domains.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+        scored_domains.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
 
         for (domain, score) in scored_domains.iter().take(3) {
             if *score > 0.1 {

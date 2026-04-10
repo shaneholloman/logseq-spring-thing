@@ -20,7 +20,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 
     let output_path = Path::new("client/src/types/generated/settings.ts");
-    let output_dir = output_path.parent().unwrap();
+    let output_dir = output_path.parent()
+        .expect("output_path has a known parent directory");
     if !output_dir.exists() {
         fs::create_dir_all(output_dir)?;
         println!("📁 Created output directory: {}", output_dir.display());

@@ -53,7 +53,7 @@ impl UnifiedGPUCompute {
 
         let mut c_params_global = self
             ._module
-            .get_global(CStr::from_bytes_with_nul(b"c_params\0").unwrap())?;
+            .get_global(CStr::from_bytes_with_nul(b"c_params\0").expect("static null-terminated byte literal is always valid"))?;
         c_params_global.copy_from(&[params])?;
 
 

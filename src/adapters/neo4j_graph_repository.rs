@@ -60,10 +60,10 @@ impl Neo4jGraphRepository {
         Self {
             graph,
             node_cache: Arc::new(RwLock::new(
-                LruCache::new(NonZeroUsize::new(CACHE_SIZE).unwrap())
+                LruCache::new(NonZeroUsize::new(CACHE_SIZE).expect("CACHE_SIZE constant is non-zero"))
             )),
             edge_cache: Arc::new(RwLock::new(
-                LruCache::new(NonZeroUsize::new(CACHE_SIZE).unwrap())
+                LruCache::new(NonZeroUsize::new(CACHE_SIZE).expect("CACHE_SIZE constant is non-zero"))
             )),
             graph_snapshot: Arc::new(RwLock::new(None)),
             is_loaded: Arc::new(RwLock::new(false)),
@@ -77,10 +77,10 @@ impl Neo4jGraphRepository {
         Self {
             graph,
             node_cache: Arc::new(RwLock::new(
-                LruCache::new(NonZeroUsize::new(CACHE_SIZE).unwrap())
+                LruCache::new(NonZeroUsize::new(CACHE_SIZE).expect("CACHE_SIZE constant is non-zero"))
             )),
             edge_cache: Arc::new(RwLock::new(
-                LruCache::new(NonZeroUsize::new(CACHE_SIZE).unwrap())
+                LruCache::new(NonZeroUsize::new(CACHE_SIZE).expect("CACHE_SIZE constant is non-zero"))
             )),
             graph_snapshot: Arc::new(RwLock::new(None)),
             is_loaded: Arc::new(RwLock::new(false)),

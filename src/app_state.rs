@@ -632,6 +632,21 @@ impl AppState {
             info!("[AppState::new] EventBus handlers registered: AuditEventHandler, NotificationEventHandler, GraphEventHandler, OntologyEventHandler");
         }
 
+        // Register CQRS command and query handlers
+        {
+            info!("[AppState::new] Registering CQRS command and query handlers");
+            let cmd_bus = command_bus.write().await;
+            let qry_bus = query_bus.write().await;
+            crate::cqrs::register_all_handlers(
+                &cmd_bus,
+                &qry_bus,
+                neo4j_adapter.clone() as Arc<dyn crate::ports::KnowledgeGraphRepository>,
+                ontology_repository.clone() as Arc<dyn crate::ports::OntologyRepository>,
+                settings_repository.clone(),
+            )
+            .await;
+        }
+
         // Log warnings for settings that are present in config but not yet wired
         {
             let net = &settings.system.network;

@@ -45,21 +45,18 @@ impl CommandBus {
         handlers.insert(type_id, Box::new(handler));
     }
 
-    
-    
-    
-    
-    
-    
-    
-    
+    /// Returns the number of registered command handlers.
+    pub async fn handler_count(&self) -> usize {
+        self.handlers.read().await.len()
+    }
+
     pub async fn execute<C: Command + 'static>(&self, command: C) -> Result<C::Result>
     where
         C::Result: 'static,
     {
         let command_name = command.name();
 
-        
+
         for mw in self.middleware.iter() {
             mw.before_execute(command_name).await?;
         }
@@ -143,21 +140,18 @@ impl QueryBus {
         handlers.insert(type_id, Box::new(handler));
     }
 
-    
-    
-    
-    
-    
-    
-    
-    
+    /// Returns the number of registered query handlers.
+    pub async fn handler_count(&self) -> usize {
+        self.handlers.read().await.len()
+    }
+
     pub async fn execute<Q: Query + 'static>(&self, query: Q) -> Result<Q::Result>
     where
         Q::Result: 'static,
     {
         let query_name = query.name();
 
-        
+
         for mw in self.middleware.iter() {
             mw.before_execute(query_name).await?;
         }

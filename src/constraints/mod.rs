@@ -1,6 +1,8 @@
 // Constraint Translation System - Module Root
 // Week 3 Deliverable: OWL Axiom → Physics Constraint Translation
 
+use log::warn;
+
 pub mod physics_constraint;
 pub mod axiom_mapper;
 pub mod priority_resolver;
@@ -147,7 +149,9 @@ impl ConstraintPipeline {
 
         
         let mut buffer = GPUConstraintBuffer::new(active.len());
-        buffer.add_constraints(active).unwrap();
+        if let Err(e) = buffer.add_constraints(active) {
+            warn!("Failed to add constraints to GPU buffer: {}. Returning empty buffer.", e);
+        }
 
         buffer
     }

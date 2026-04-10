@@ -371,8 +371,8 @@ struct AllocationEntry {
 
 /// Unified GPU Memory Manager
 pub struct GpuMemoryManager {
-    /// Named buffer storage (using Box for type erasure)
-    buffers: HashMap<String, Box<dyn std::any::Any>>,
+    /// Named buffer storage (using Box for type erasure, Send-safe for cross-thread access)
+    buffers: HashMap<String, Box<dyn std::any::Any + Send>>,
 
     /// Buffer configurations
     configs: HashMap<String, BufferConfig>,
@@ -421,7 +421,7 @@ impl GpuMemoryManager {
     }
 
     /// Allocate a new GPU buffer
-    pub fn allocate<T: cust_core::DeviceCopy + Clone + Default + 'static>(
+    pub fn allocate<T: cust_core::DeviceCopy + Clone + Default + Send + 'static>(
         &mut self,
         name: &str,
         capacity_elements: usize,
@@ -668,6 +668,33 @@ impl GpuMemoryManager {
                 size_bytes, name, new_total
             );
         }
+    }
+
+    /// Check whether a proposed allocation fits within the memory budget
+    /// without actually performing the allocation. Returns Ok(()) if the
+    /// allocation would succeed, or an error if the budget would be exceeded.
+    pub fn check_budget(&self, name: &str, size_bytes: usize) -> Result<(), CudaError> {
+        let current = self.total_allocated.load(Ordering::Relaxed);
+        if current + size_bytes > self.max_total_memory {
+            warn!(
+                "GPU memory budget exceeded for '{}': current={}, requested={}, limit={}",
+                name, current, size_bytes, self.max_total_memory
+            );
+            return Err(CudaError::InvalidMemoryAllocation);
+        }
+        Ok(())
+    }
+
+    /// Track an external allocation against the memory budget.
+    /// Use this when GPU memory is allocated outside the manager (e.g. by
+    /// `UnifiedGPUCompute`) but should still be accounted for in budget checks.
+    pub fn track_external_allocation(&self, name: &str, size_bytes: usize) {
+        self.track_allocation(name, size_bytes);
+    }
+
+    /// Remove tracking for an external allocation that was freed.
+    pub fn track_external_deallocation(&self, name: &str) {
+        self.track_deallocation(name, 0);
     }
 
     fn track_deallocation(&self, name: &str, size_bytes: usize) {

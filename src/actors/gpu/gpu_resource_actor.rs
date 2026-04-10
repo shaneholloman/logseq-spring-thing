@@ -523,11 +523,26 @@ impl Handler<InitializeGPU> for GPUResourceActor {
                             ) {
                                 let safe_stream = super::cuda_stream_wrapper::SafeCudaStream::new(stream);
 
+                                // Initialize GpuMemoryManager with 80% of GPU memory or 6GB default
+                                let mem_limit = cudarc::driver::result::mem_get_info()
+                                    .map(|(_free, total)| (total as f64 * 0.8) as usize)
+                                    .unwrap_or(6 * 1024 * 1024 * 1024);
+                                let memory_manager = crate::gpu::memory_manager::GpuMemoryManager::with_limit(mem_limit)
+                                    .or_else(|_| crate::gpu::memory_manager::GpuMemoryManager::new())
+                                    .map(|mgr| Arc::new(std::sync::Mutex::new(mgr)))
+                                    .unwrap_or_else(|e| {
+                                        warn!("GPUResourceActor: GpuMemoryManager init failed: {} — using dummy", e);
+                                        Arc::new(std::sync::Mutex::new(
+                                            crate::gpu::memory_manager::GpuMemoryManager::with_limit(6 * 1024 * 1024 * 1024)
+                                                .expect("fallback GpuMemoryManager must succeed")
+                                        ))
+                                    });
+
                                 let shared_context = Arc::new(super::shared::SharedGPUContext {
                                     device: device.clone(),
                                     stream: Arc::new(std::sync::Mutex::new(safe_stream)),
                                     unified_compute: Arc::new(std::sync::Mutex::new(compute)),
-
+                                    memory_manager,
                                     gpu_access_lock: Arc::new(tokio::sync::RwLock::new(())),
                                     resource_metrics: Arc::new(std::sync::Mutex::new(super::shared::GPUResourceMetrics::default())),
                                     operation_batch: Arc::new(std::sync::Mutex::new(Vec::new())),

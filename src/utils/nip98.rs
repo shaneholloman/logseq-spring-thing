@@ -229,7 +229,7 @@ pub fn validate_nip98_token(
     // Check timestamp (60 second window)
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
+        .expect("system clock is before UNIX epoch")
         .as_secs() as i64;
     let age = now - nip98_event.created_at;
 

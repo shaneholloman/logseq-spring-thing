@@ -403,11 +403,17 @@ impl OptimizedSettingsActor {
                         let mut compressor = Compress::new(Compression::default(), false);
                         let json_bytes = json_str.as_bytes();
 
-                        
+
                         let mut output = vec![0; json_bytes.len() * 2];
-                        let status = compressor
+                        let status = match compressor
                             .compress_vec(json_bytes, &mut output, FlushCompress::Finish)
-                            .unwrap();
+                        {
+                            Ok(s) => s,
+                            Err(e) => {
+                                warn!("Failed to compress settings for Redis cache: {}", e);
+                                return;
+                            }
+                        };
 
                         if status == Status::StreamEnd {
                             let compressed_size = compressor.total_out() as usize;

@@ -119,7 +119,8 @@ pub struct OntologyFileCache {
 
 impl OntologyFileCache {
     pub fn new(config: OntologyCacheConfig) -> Self {
-        let capacity = NonZeroUsize::new(config.max_entries).unwrap();
+        let capacity = NonZeroUsize::new(config.max_entries.max(1))
+            .expect("max(1) guarantees non-zero");
         let cache = Arc::new(RwLock::new(LruCache::new(capacity)));
 
         let stats = Arc::new(RwLock::new(OntologyCacheStats {

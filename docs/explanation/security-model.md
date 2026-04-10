@@ -3,7 +3,7 @@ title: VisionClaw Security Model
 description: Comprehensive explanation of VisionClaw's security architecture — Nostr DID authentication, Solid Pod data sovereignty, CQRS authorization boundaries, and audit trail design
 category: explanation
 tags: [security, authentication, nostr, did, solid, authorization, audit]
-updated-date: 2026-04-09
+updated-date: 2026-04-10
 ---
 
 # VisionClaw Security Model
@@ -151,16 +151,20 @@ VisionClaw follows a CQRS pattern (see `docs/explanation/backend-cqrs-pattern.md
 - **Commands** (POST, PUT, DELETE): require an authenticated session; the validated `pubkey` is injected into the command envelope and becomes the `author` field in event-sourced state changes
 - **Queries** (GET): graph data and ontology queries are public by default; settings queries require authentication; analytics requiring user-specific state require authentication
 
-### Role Distinction: Standard vs Power User
+### RBAC Roles
 
-VisionClaw has two roles:
+VisionClaw uses a four-tier role-based access control model:
 
 | Role | How assigned | Capabilities |
 |------|-------------|--------------|
-| Standard user | Any authenticated pubkey | Read graph, write own settings, provision own Pod, view analytics |
-| Power user | `pubkey` listed in `POWER_USER_PUBKEYS` env var | All standard capabilities + modify physics simulation parameters, force graph resync, access admin diagnostics |
+| `ReadOnly` | Default for unauthenticated or minimal-privilege sessions | Read graph data, view public ontology hierarchy, access health endpoints |
+| `WriteGraph` | Authenticated pubkey with graph write permissions | All ReadOnly capabilities + create/update/delete graph nodes and edges |
+| `WriteSettings` | Authenticated pubkey | All WriteGraph capabilities + modify own settings, provision own Pod |
+| `Admin` | `pubkey` listed in `POWER_USER_PUBKEYS` env var | All capabilities + modify physics simulation parameters, force graph resync, access admin diagnostics, trigger sync, manage ontology |
 
-There is no role stored in a database. Power user status is determined solely by membership in the comma-separated `POWER_USER_PUBKEYS` list at startup. This eliminates privilege escalation via database mutation.
+There is no role stored in a database. Admin status is determined solely by membership in the comma-separated `POWER_USER_PUBKEYS` list at startup. This eliminates privilege escalation via database mutation.
+
+Auth guards are applied to 17 write endpoints across graph mutations, ontology modifications, admin sync triggers, and settings updates. Each guarded endpoint checks the caller's role before dispatching the command through the CQRS bus.
 
 ### Public vs Protected Operations
 
@@ -254,14 +258,19 @@ The WebSocket upgrade request is validated before the connection is accepted:
 
 1. `Upgrade: websocket` header must be present and correct
 2. Auth token must be present in the query string (`?token=<bearer>`) at upgrade time — the WebSocket API does not permit custom headers after the upgrade
-3. After upgrade, the client sends an explicit `authenticate` message `{token, pubkey}` which is validated again server-side
-4. Connections that fail to send the auth message within 5 seconds are closed
+3. **Token validation via `validate_session()`**: The server validates the session token against the authenticated session store before completing the WebSocket upgrade. Invalid or expired tokens are rejected with a 401 before the upgrade completes.
+4. After upgrade, the client sends an explicit `authenticate` message `{token, pubkey}` which is validated again server-side
+5. Connections that fail to send the auth message within 5 seconds are closed
 
 ### Binary Protocol Security
 
 The binary position update protocol (V2/V3) carries only numeric node IDs and f32 position/velocity components. No user-identifying information, pubkeys, or session tokens appear in binary frames. An eavesdropper on the binary channel learns only that nodes moved — no identity linkage is possible from the binary stream alone.
 
-Protocol version is validated on every frame (only V2 and V3 accepted). Payload length declared in the header must match actual buffer size; mismatches are rejected, not truncated.
+Protocol version is validated on every frame (only V2 and V3 accepted). Payload length declared in the header must match actual buffer size; mismatches are rejected, not truncated. The client also validates the binary protocol version on receipt, rejecting frames with unexpected version bytes to guard against protocol downgrade or corruption.
+
+### Content Security Policy
+
+The client's `index.html` includes a Content-Security-Policy (CSP) header that restricts script sources, style sources, and connection targets. This mitigates XSS and data exfiltration risks in the WebXR client.
 
 ### Rate Limiting
 
@@ -290,9 +299,19 @@ All secrets are injected via environment variables. The following variables MUST
 | `WS_AUTH_TOKEN` | WebSocket pre-auth token | none — required |
 | `VIRCADIA_JWT_SECRET` | Legacy Vircadia JWT signing | `change_this_in_production` |
 | `POSTGRES_PASSWORD` | Neo4j / RuVector DB password | `visionclaw_secure` |
+| `NEO4J_PASSWORD` | Neo4j database password | none — **required** (no default; server fails fast if unset) |
 | `POWER_USER_PUBKEYS` | Comma-separated power user pubkeys | none (no power users) |
 | `AUTH_TOKEN_EXPIRY` | Session token TTL in seconds | `3600` |
 | `RUVECTOR_PG_CONNINFO` | RuVector connection string | — |
+
+### Production Security Hardening (`APP_ENV=production`)
+
+When `APP_ENV` is set to `production`, several additional security constraints are enforced:
+
+- **`ALLOW_INSECURE_DEFAULTS` is blocked**: The server refuses to start if any secret retains its insecure default value. In non-production environments, insecure defaults are permitted with a warning.
+- **`SETTINGS_AUTH_BYPASS` is blocked**: This variable has been removed from `docker-compose.yml` and is rejected at startup in production mode. It previously allowed unauthenticated access to settings endpoints during development.
+- **API keys masked in `Debug` output**: All API key and secret types implement custom `Debug` formatting that masks the value, preventing accidental credential leakage in log output or error messages.
+- **Docker socket mount removed**: The Docker socket (`/var/run/docker.sock`) is no longer mounted into any service container in the compose files, eliminating a container escape vector.
 
 ### What MUST NOT Be Hardcoded
 
@@ -425,7 +444,10 @@ Use this table to verify a deployment before exposing it to production traffic.
 | `WS_AUTH_TOKEN` set to a random value | [ ] |
 | `.env` file absent from version control (check `.gitignore`) | [ ] |
 | `POWER_USER_PUBKEYS` contains only intended pubkeys | [ ] |
-| `SETTINGS_AUTH_BYPASS` is `false` or unset | [ ] |
+| `SETTINGS_AUTH_BYPASS` is `false` or unset (blocked in production mode) | [ ] |
+| `ALLOW_INSECURE_DEFAULTS` is `false` or unset (blocked when `APP_ENV=production`) | [ ] |
+| `NEO4J_PASSWORD` set (no default — server fails fast if unset) | [ ] |
+| `APP_ENV` set to `production` for production deployments | [ ] |
 | Rate limiting parameters reviewed for expected traffic | [ ] |
 | CORS origins restricted to known domains (`CORS_ALLOWED_ORIGINS`) | [ ] |
 
@@ -444,6 +466,7 @@ Use this table to verify a deployment before exposing it to production traffic.
 | Check | Verified |
 |-------|---------|
 | Docker containers run as non-root user | [ ] |
+| Docker socket (`/var/run/docker.sock`) not mounted into containers | [ ] |
 | `no-new-privileges` security option set | [ ] |
 | Only required ports exposed on host | [ ] |
 | Internal services (Neo4j, RuVector, JSS) not exposed on host | [ ] |

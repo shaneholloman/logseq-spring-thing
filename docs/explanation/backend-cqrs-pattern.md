@@ -3,7 +3,7 @@ title: VisionClaw Backend Architecture — Hexagonal CQRS
 description: Comprehensive guide to VisionClaw's hexagonal architecture with CQRS pattern, 9 ports, 12 adapters, and 114 command/query handlers
 category: explanation
 tags: [architecture, cqrs, hexagonal, ports, adapters, rust, actix]
-updated-date: 2026-04-09
+updated-date: 2026-04-10
 ---
 
 # VisionClaw Backend Architecture — Hexagonal CQRS
@@ -311,6 +311,16 @@ impl CommandBus {
     }
 }
 ```
+
+Both `CommandBus` and `QueryBus` enforce a **30-second timeout** on `execute()` calls. If a handler does not return within 30 seconds, the bus returns a `BusError::Timeout` error. This prevents runaway handlers from blocking the bus indefinitely.
+
+### Bus Test Coverage
+
+CQRS bus tests (previously commented out) are now re-enabled and passing. These tests validate handler registration, dispatch routing, timeout behaviour, and error propagation.
+
+### Ontology Handler Honesty
+
+Four ontology handler stubs that previously returned silent `Ok(())` responses now return honest errors indicating the operation is not yet implemented. Specifically, `ExportOntologyQuery` returns a structured error rather than fake XML output. This ensures callers receive accurate feedback rather than silently succeeding with empty or invalid data.
 
 ---
 

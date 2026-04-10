@@ -192,7 +192,7 @@ impl OntologyContentAnalyzer {
         }
 
         // Also check for tags:: [[...]] patterns
-        let tag_pattern = Regex::new(r"tags?::\s*\[\[([^\]]+)\]\]").unwrap();
+        let tag_pattern = Regex::new(r"tags?::\s*\[\[([^\]]+)\]\]").expect("tag regex is a valid compile-time constant");
         for cap in tag_pattern.captures_iter(content) {
             if let Some(tag_match) = cap.get(1) {
                 let tag = tag_match.as_str().trim().to_string();

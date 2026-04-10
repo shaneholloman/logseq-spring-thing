@@ -631,7 +631,7 @@ impl SpeechService {
                                             .unwrap_or_else(|_| {
                                                 reqwest::multipart::Part::bytes(vec![])
                                                     .mime_str("audio/webm")
-                                                    .unwrap()
+                                                    .expect("static MIME type 'audio/webm' is always valid")
                                             }),
                                     );
 
@@ -823,7 +823,7 @@ impl SpeechService {
                                                     .unwrap_or_else(|_| {
                                                         reqwest::multipart::Part::bytes(vec![])
                                                             .mime_str("audio/wav")
-                                                            .unwrap()
+                                                            .expect("static MIME type 'audio/wav' is always valid")
                                                     }),
                                             )
                                             .text("model", "whisper-1")

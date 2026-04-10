@@ -36,8 +36,10 @@ pub mod bus;
 pub mod commands;
 pub mod handlers;
 pub mod queries;
+pub mod registration;
 pub mod types;
 
 // Re-export main types
 pub use bus::{CommandBus, QueryBus};
+pub use registration::register_all_handlers;
 pub use types::{Command, CommandHandler, Query, QueryHandler, Result};

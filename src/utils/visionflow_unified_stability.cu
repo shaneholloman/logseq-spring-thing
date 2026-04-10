@@ -246,9 +246,61 @@ __global__ void force_pass_with_stability_kernel(
     // (Rest of force calculation code remains the same as original)
 }
 
+// =============================================================================
+// Persistent buffers for check_system_stability()
+// Eliminates 300 cudaMalloc+cudaFree per second at 60fps.
+// =============================================================================
+static float* d_persistent_partial_ke   = nullptr;
+static float* d_persistent_total_ke     = nullptr;
+static float* d_persistent_avg_ke       = nullptr;
+static int*   d_persistent_active_count = nullptr;
+static int*   d_persistent_should_skip  = nullptr;
+static int    persistent_buffer_capacity = 0;  // num_blocks the partial_ke buffer was sized for
+
+/**
+ * Grow (or initially allocate) the persistent stability buffers.
+ * Only called when num_blocks exceeds persistent_buffer_capacity.
+ * Returns true on success.
+ */
+static bool grow_persistent_stability_buffers(int required_num_blocks) {
+    // Free existing buffers if they exist
+    if (d_persistent_partial_ke)   { cudaFree(d_persistent_partial_ke);   d_persistent_partial_ke   = nullptr; }
+    if (d_persistent_total_ke)     { cudaFree(d_persistent_total_ke);     d_persistent_total_ke     = nullptr; }
+    if (d_persistent_avg_ke)       { cudaFree(d_persistent_avg_ke);       d_persistent_avg_ke       = nullptr; }
+    if (d_persistent_active_count) { cudaFree(d_persistent_active_count); d_persistent_active_count = nullptr; }
+    if (d_persistent_should_skip)  { cudaFree(d_persistent_should_skip);  d_persistent_should_skip  = nullptr; }
+    persistent_buffer_capacity = 0;
+
+    // Over-allocate by 50% to reduce future reallocations
+    int alloc_blocks = required_num_blocks + required_num_blocks / 2;
+    if (alloc_blocks < 16) alloc_blocks = 16;
+
+    cudaError_t err;
+    err = cudaMalloc(&d_persistent_partial_ke, alloc_blocks * sizeof(float));
+    if (err != cudaSuccess) { printf("Failed to allocate persistent d_partial_ke: %s\n", cudaGetErrorString(err)); return false; }
+
+    err = cudaMalloc(&d_persistent_total_ke, sizeof(float));
+    if (err != cudaSuccess) { printf("Failed to allocate persistent d_total_ke: %s\n", cudaGetErrorString(err)); cudaFree(d_persistent_partial_ke); d_persistent_partial_ke = nullptr; return false; }
+
+    err = cudaMalloc(&d_persistent_avg_ke, sizeof(float));
+    if (err != cudaSuccess) { printf("Failed to allocate persistent d_avg_ke: %s\n", cudaGetErrorString(err)); cudaFree(d_persistent_partial_ke); d_persistent_partial_ke = nullptr; cudaFree(d_persistent_total_ke); d_persistent_total_ke = nullptr; return false; }
+
+    err = cudaMalloc(&d_persistent_active_count, sizeof(int));
+    if (err != cudaSuccess) { printf("Failed to allocate persistent d_active_count: %s\n", cudaGetErrorString(err)); cudaFree(d_persistent_partial_ke); d_persistent_partial_ke = nullptr; cudaFree(d_persistent_total_ke); d_persistent_total_ke = nullptr; cudaFree(d_persistent_avg_ke); d_persistent_avg_ke = nullptr; return false; }
+
+    err = cudaMalloc(&d_persistent_should_skip, sizeof(int));
+    if (err != cudaSuccess) { printf("Failed to allocate persistent d_should_skip: %s\n", cudaGetErrorString(err)); cudaFree(d_persistent_partial_ke); d_persistent_partial_ke = nullptr; cudaFree(d_persistent_total_ke); d_persistent_total_ke = nullptr; cudaFree(d_persistent_avg_ke); d_persistent_avg_ke = nullptr; cudaFree(d_persistent_active_count); d_persistent_active_count = nullptr; return false; }
+
+    persistent_buffer_capacity = alloc_blocks;
+    return true;
+}
+
 /**
  * Host-callable function to check system stability
- * Returns true if physics computation can be skipped
+ * Returns true if physics computation can be skipped.
+ *
+ * Uses persistent device buffers to avoid per-call cudaMalloc/cudaFree overhead.
+ * Buffers are allocated on first call and grown only when num_nodes increases.
  */
 __host__ bool check_system_stability(
     const float* d_vel_x,
@@ -264,95 +316,60 @@ __host__ bool check_system_stability(
     const int block_size = 256;
     const int num_blocks = (num_nodes + block_size - 1) / block_size;
     const size_t shared_mem_size = block_size * (sizeof(float) + sizeof(int));
-    
-    // Allocate temporary buffers
-    float* d_partial_ke;
-    float* d_total_ke;
-    float* d_avg_ke;
-    int* d_active_count;
-    int* d_should_skip;
-    
-    // Allocate GPU memory with error checking
-    cudaError_t err;
-    err = cudaMalloc(&d_partial_ke, num_blocks * sizeof(float));
-    if (err != cudaSuccess) {
-        printf("Failed to allocate d_partial_ke: %s\n", cudaGetErrorString(err));
-        return false;
+
+    // Grow persistent buffers if needed (first call or node count increased)
+    if (persistent_buffer_capacity < num_blocks) {
+        if (!grow_persistent_stability_buffers(num_blocks)) {
+            return false;
+        }
     }
 
-    err = cudaMalloc(&d_total_ke, sizeof(float));
-    if (err != cudaSuccess) {
-        printf("Failed to allocate d_total_ke: %s\n", cudaGetErrorString(err));
-        cudaFree(d_partial_ke);
-        return false;
-    }
-
-    err = cudaMalloc(&d_avg_ke, sizeof(float));
-    if (err != cudaSuccess) {
-        printf("Failed to allocate d_avg_ke: %s\n", cudaGetErrorString(err));
-        cudaFree(d_partial_ke);
-        cudaFree(d_total_ke);
-        return false;
-    }
-
-    err = cudaMalloc(&d_active_count, sizeof(int));
-    if (err != cudaSuccess) {
-        printf("Failed to allocate d_active_count: %s\n", cudaGetErrorString(err));
-        cudaFree(d_partial_ke);
-        cudaFree(d_total_ke);
-        cudaFree(d_avg_ke);
-        return false;
-    }
-
-    err = cudaMalloc(&d_should_skip, sizeof(int));
-    if (err != cudaSuccess) {
-        printf("Failed to allocate d_should_skip: %s\n", cudaGetErrorString(err));
-        cudaFree(d_partial_ke);
-        cudaFree(d_total_ke);
-        cudaFree(d_avg_ke);
-        cudaFree(d_active_count);
-        return false;
-    }
-    
     // Initialize counters
-    cudaMemsetAsync(d_active_count, 0, sizeof(int), stream);
-    cudaMemsetAsync(d_should_skip, 0, sizeof(int), stream);
-    
+    cudaMemsetAsync(d_persistent_active_count, 0, sizeof(int), stream);
+    cudaMemsetAsync(d_persistent_should_skip, 0, sizeof(int), stream);
+
     float min_vel_threshold_sq = min_velocity_threshold * min_velocity_threshold;
-    
+
     // Step 1: Calculate per-node kinetic energy with block reduction
     calculate_kinetic_energy_kernel<<<num_blocks, block_size, shared_mem_size, stream>>>(
         d_vel_x, d_vel_y, d_vel_z, d_mass,
-        d_partial_ke, d_active_count,
+        d_persistent_partial_ke, d_persistent_active_count,
         num_nodes, min_vel_threshold_sq
     );
-    
+
     // Step 2: Final reduction
     int reduction_blocks = min(num_blocks, 256);
     reduce_kinetic_energy_kernel<<<1, reduction_blocks, reduction_blocks * sizeof(float), stream>>>(
-        d_partial_ke, d_total_ke, d_avg_ke, d_active_count,
+        d_persistent_partial_ke, d_persistent_total_ke, d_persistent_avg_ke,
+        d_persistent_active_count,
         num_blocks, num_nodes
     );
-    
+
     // Step 3: Check stability
     check_stability_kernel<<<1, 1, 0, stream>>>(
-        d_avg_ke, d_active_count, d_should_skip,
+        d_persistent_avg_ke, d_persistent_active_count, d_persistent_should_skip,
         stability_threshold, num_nodes, iteration
     );
-    
+
     // Copy result back to host
     int should_skip_host = 0;
-    cudaMemcpyAsync(&should_skip_host, d_should_skip, sizeof(int), cudaMemcpyDeviceToHost, stream);
+    cudaMemcpyAsync(&should_skip_host, d_persistent_should_skip, sizeof(int), cudaMemcpyDeviceToHost, stream);
     cudaStreamSynchronize(stream);
-    
-    // Cleanup
-    cudaFree(d_partial_ke);
-    cudaFree(d_total_ke);
-    cudaFree(d_avg_ke);
-    cudaFree(d_active_count);
-    cudaFree(d_should_skip);
-    
+
     return should_skip_host != 0;
+}
+
+/**
+ * Free all persistent stability buffers.
+ * Call during application shutdown to release GPU resources cleanly.
+ */
+__host__ void cleanup_stability_buffers() {
+    if (d_persistent_partial_ke)   { cudaFree(d_persistent_partial_ke);   d_persistent_partial_ke   = nullptr; }
+    if (d_persistent_total_ke)     { cudaFree(d_persistent_total_ke);     d_persistent_total_ke     = nullptr; }
+    if (d_persistent_avg_ke)       { cudaFree(d_persistent_avg_ke);       d_persistent_avg_ke       = nullptr; }
+    if (d_persistent_active_count) { cudaFree(d_persistent_active_count); d_persistent_active_count = nullptr; }
+    if (d_persistent_should_skip)  { cudaFree(d_persistent_should_skip);  d_persistent_should_skip  = nullptr; }
+    persistent_buffer_capacity = 0;
 }
 
 } // extern "C"

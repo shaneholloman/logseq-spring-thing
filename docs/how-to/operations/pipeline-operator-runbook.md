@@ -50,8 +50,17 @@ The ontology processing pipeline transforms OWL data from GitHub into physics fo
 ### Health Check Endpoints
 
 ```bash
-# Overall system health
+# Liveness probe (lightweight — confirms process is running)
+curl http://localhost:8080/api/healthz
+
+# Readiness probe (confirms all dependencies are connected: Neo4j, GPU, etc.)
+curl http://localhost:8080/api/readyz
+
+# Full system diagnostics (detailed component-level health)
 curl http://localhost:8080/api/health
+
+# Application metrics (event bus stats, circuit breaker states, uptime)
+curl http://localhost:8080/api/metrics
 
 # Pipeline status
 curl http://localhost:8080/api/admin/pipeline/status
@@ -59,6 +68,29 @@ curl http://localhost:8080/api/admin/pipeline/status
 # Pipeline metrics
 curl http://localhost:8080/api/admin/pipeline/metrics
 ```
+
+#### Kubernetes Health Check Configuration
+
+For Kubernetes deployments, use the dedicated liveness and readiness probes:
+
+```yaml
+livenessProbe:
+  httpGet:
+    path: /api/healthz
+    port: 8080
+  initialDelaySeconds: 10
+  periodSeconds: 15
+  failureThreshold: 3
+readinessProbe:
+  httpGet:
+    path: /api/readyz
+    port: 8080
+  initialDelaySeconds: 20
+  periodSeconds: 10
+  failureThreshold: 5
+```
+
+Use `/api/healthz` for liveness (restarts the pod if the process is hung) and `/api/readyz` for readiness (removes the pod from the Service load balancer until all dependencies are healthy). Do not use `/api/health` for probes — it performs full diagnostics and is too expensive for frequent polling.
 
 ### Key Dashboards
 

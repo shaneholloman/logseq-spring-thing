@@ -971,7 +971,12 @@ impl Handler<RunAnomalyDetection> for AnomalyDetectionActor {
         let start_time = std::time::Instant::now();
 
         // Clone Arc for move into spawn_blocking
-        let shared_ctx = Arc::clone(self.shared_context.as_ref().unwrap());
+        let shared_ctx = match self.shared_context.as_ref() {
+            Some(ctx) => Arc::clone(ctx),
+            None => {
+                return Box::pin(async move { Err("Shared context not initialized for anomaly detection".to_string()) }.into_actor(self));
+            }
+        };
         let num_nodes = self.gpu_state.num_nodes;
         let internal_method = internal_params.method.clone();
         let internal_threshold = internal_params.threshold;

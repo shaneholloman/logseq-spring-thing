@@ -302,7 +302,7 @@ pub fn compile_ptx_fallback_sync_module(module: PTXModule) -> Result<String, Str
     // Use unique temp filename to avoid race conditions
     let unique = std::time::SystemTime::now()
         .duration_since(std::time::SystemTime::UNIX_EPOCH)
-        .unwrap()
+        .expect("system clock is before UNIX epoch")
         .as_nanos();
     let ptx_file = format!(
         "ptx_{}_{}.ptx",

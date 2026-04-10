@@ -318,7 +318,7 @@ impl OntologyQueryService {
         // Basic validation: check if referenced labels exist in ontology
         // Extract labels from MATCH (n:Label) patterns
         let label_re = regex::Regex::new(r"\((\w+):(\w+)\)").unwrap_or_else(|_| {
-            regex::Regex::new(r"x").unwrap() // fallback
+            regex::Regex::new(r"x").expect("single-char fallback regex is always valid")
         });
 
         for cap in label_re.captures_iter(cypher) {

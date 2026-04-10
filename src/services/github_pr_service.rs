@@ -149,12 +149,13 @@ impl GitHubPRService {
 
     fn headers(&self) -> reqwest::header::HeaderMap {
         let mut headers = reqwest::header::HeaderMap::new();
-        headers.insert(
-            AUTHORIZATION,
-            format!("Bearer {}", self.token).parse().unwrap(),
-        );
-        headers.insert(ACCEPT, "application/vnd.github+json".parse().unwrap());
-        headers.insert(USER_AGENT, "VisionFlow-OntologyAgent/1.0".parse().unwrap());
+        if let Ok(auth_value) = format!("Bearer {}", self.token).parse() {
+            headers.insert(AUTHORIZATION, auth_value);
+        }
+        headers.insert(ACCEPT, "application/vnd.github+json".parse()
+            .expect("static header value is always valid"));
+        headers.insert(USER_AGENT, "VisionFlow-OntologyAgent/1.0".parse()
+            .expect("static header value is always valid"));
         headers
     }
 

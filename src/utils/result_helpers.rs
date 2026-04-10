@@ -25,12 +25,15 @@ use tracing::{warn, error};
 pub fn safe_json_number(value: f64) -> serde_json::Number {
     use serde_json::Number;
 
+    // SAFETY: 0.0 is always a valid finite f64, so from_f64 never returns None for it
+    let zero = Number::from_f64(0.0).expect("0.0 is always a valid JSON number");
+
     if value.is_finite() {
-        Number::from_f64(value).unwrap_or_else(|| Number::from_f64(0.0).unwrap())
+        Number::from_f64(value).unwrap_or(zero)
     } else {
         // NaN or Infinity - replace with 0.0
         warn!("safe_json_number: Replacing non-finite value ({}) with 0.0", value);
-        Number::from_f64(0.0).unwrap()
+        zero
     }
 }
 

@@ -9,6 +9,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
 
+use crate::gpu::memory_manager::GpuMemoryManager;
 use crate::models::constraints::Constraint;
 use crate::models::simulation_params::SimulationParams;
 
@@ -125,8 +126,10 @@ pub struct SharedGPUContext {
     /// Unified GPU compute engine. Use spawn_blocking() for access in async contexts.
     pub unified_compute: Arc<std::sync::Mutex<UnifiedGPUCompute>>,
 
-    
-    
+    /// Unified GPU memory manager with pool-based allocation, leak detection,
+    /// and configurable memory limits. Wraps all GPU buffer lifecycle operations.
+    pub memory_manager: Arc<Mutex<GpuMemoryManager>>,
+
     pub gpu_access_lock: Arc<RwLock<()>>,
     pub resource_metrics: Arc<Mutex<GPUResourceMetrics>>,
     pub operation_batch: Arc<Mutex<Vec<GPUOperation>>>,

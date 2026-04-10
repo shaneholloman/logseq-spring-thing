@@ -171,12 +171,12 @@ pub mod validators {
 
     /// IRI/URI validation regex
     static IRI_REGEX: Lazy<Regex> = Lazy::new(|| {
-        Regex::new(r"^[a-zA-Z][a-zA-Z0-9+.-]*:.+$").unwrap()
+        Regex::new(r"^[a-zA-Z][a-zA-Z0-9+.-]*:.+$").expect("IRI regex is a valid compile-time constant")
     });
 
     /// URL validation regex
     static URL_REGEX: Lazy<Regex> = Lazy::new(|| {
-        Regex::new(r"^https?://.+$").unwrap()
+        Regex::new(r"^https?://.+$").expect("URL regex is a valid compile-time constant")
     });
 
     /// Validate IRI format

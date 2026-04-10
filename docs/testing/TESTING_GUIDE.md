@@ -6,6 +6,29 @@ VisionClaw includes comprehensive testing and benchmarking suites to ensure perf
 
 ## Test Suites
 
+### Gap Remediation Tests (ADR-031 Sprint)
+
+The following test suites were added during the VisionFlow gap remediation waves 1-4:
+
+**Backend Integration Tests**
+
+- **`tests/orchestration_improvements_test.rs`**: 15 integration tests covering ADR-031 agent orchestration improvements — supervisor AllForOne strategy, ActorFactory respawning, graceful shutdown draining, escalation wiring, health endpoint validation, CQRS bus timeouts, and ontology handler error honesty.
+
+**Client Unit Tests (94 new tests)**
+
+| Test File | Test Count | Coverage |
+|-----------|-----------|----------|
+| `settingsStore` | 31 | Settings state management, persistence, validation, defaults |
+| `graphDataManager` | 22 | Graph data loading, caching, incremental updates, error handling |
+| `graphComputations` | 41 | Layout algorithms, force calculations, position computations, edge cases |
+
+**Re-enabled Test Suites**
+
+- GPU test files are being re-enabled after CUDA path fixes
+- CQRS bus tests (previously commented out) are now uncommented and passing — these validate handler registration, dispatch routing, timeout behaviour, and error propagation
+
+---
+
 ### 1. Performance Benchmarks
 
 **Location**: `client/src/tests/performance/GraphBenchmark.ts`
@@ -355,5 +378,5 @@ For issues with tests:
 
 ---
 
-**Last Updated**: 2025-01-15
+**Last Updated**: 2026-04-10
 **Maintainer**: VisionClaw QA Team

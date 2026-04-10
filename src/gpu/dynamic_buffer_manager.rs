@@ -258,7 +258,7 @@ impl DynamicBufferManager {
             );
             self.buffers.insert(name.to_string(), buffer);
         }
-        self.buffers.get_mut(name).unwrap()
+        self.buffers.get_mut(name).expect("buffer was just inserted above")
     }
 
     

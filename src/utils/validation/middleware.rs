@@ -249,11 +249,12 @@ where
                 actix_web::http::header::HeaderValue::from_str(&remaining.to_string()).expect("Invalid header value"),
             );
 
-            res.headers_mut().insert(
-                actix_web::http::header::HeaderName::from_static("x-ratelimit-reset"),
-                actix_web::http::header::HeaderValue::from_str(&reset_time.as_secs().to_string())
-                    .unwrap(),
-            );
+            if let Ok(reset_val) = actix_web::http::header::HeaderValue::from_str(&reset_time.as_secs().to_string()) {
+                res.headers_mut().insert(
+                    actix_web::http::header::HeaderName::from_static("x-ratelimit-reset"),
+                    reset_val,
+                );
+            }
 
             Ok(res.map_into_boxed_body())
         })
