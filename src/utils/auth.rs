@@ -4,10 +4,51 @@ use tracing::{debug, info};
 use uuid::Uuid;
 use crate::services::nostr_service::NostrService;
 
-#[derive(Clone, Debug)]
+/// Scoped permission levels for RBAC.
+///
+/// The hierarchy (from least to most privileged):
+///   ReadOnly < WriteGraph < WriteSettings < Admin
+///
+/// Legacy mappings for backward compatibility:
+///   - `Authenticated` maps to `ReadOnly + WriteGraph`
+///   - `PowerUser` maps to `Admin`
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum AccessLevel {
+    /// Legacy: any authenticated user (maps to ReadOnly + WriteGraph)
     Authenticated,
+    /// Legacy: power user (maps to Admin)
     PowerUser,
+    /// Can read graph data and settings, no mutations
+    ReadOnly,
+    /// Can mutate graph data (create/update/delete nodes and edges)
+    WriteGraph,
+    /// Can modify application settings
+    WriteSettings,
+    /// Full administrative access (includes all permissions)
+    Admin,
+}
+
+impl AccessLevel {
+    /// Check whether this access level satisfies the `required` permission.
+    ///
+    /// The mapping is:
+    /// - `ReadOnly`: satisfied by ReadOnly, WriteGraph, WriteSettings, Admin, Authenticated, PowerUser
+    /// - `WriteGraph`: satisfied by WriteGraph, Admin, Authenticated, PowerUser
+    /// - `WriteSettings`: satisfied by WriteSettings, Admin, PowerUser
+    /// - `Admin`: satisfied by Admin, PowerUser
+    /// - `Authenticated`: satisfied by Authenticated, PowerUser, WriteGraph, WriteSettings, Admin, ReadOnly
+    /// - `PowerUser`: satisfied by PowerUser, Admin
+    pub fn has_permission(&self, required: &AccessLevel) -> bool {
+        use AccessLevel::*;
+        match required {
+            ReadOnly => true, // every authenticated level can read
+            Authenticated => true, // same as ReadOnly for permission checks
+            WriteGraph => matches!(self, WriteGraph | Admin | Authenticated | PowerUser),
+            WriteSettings => matches!(self, WriteSettings | Admin | PowerUser),
+            Admin => matches!(self, Admin | PowerUser),
+            PowerUser => matches!(self, Admin | PowerUser),
+        }
+    }
 }
 
 pub async fn verify_access(
@@ -61,17 +102,21 @@ pub async fn verify_access(
                         pubkey = %user.pubkey,
                         "NIP-98 auth successful"
                     );
-                    match required_level {
-                        AccessLevel::Authenticated => return Ok(user.pubkey),
-                        AccessLevel::PowerUser => {
-                            if user.is_power_user {
-                                return Ok(user.pubkey);
-                            } else {
-                                warn!("Non-power user {} attempted restricted operation", user.pubkey);
-                                return Err(HttpResponse::Forbidden()
-                                    .body("This operation requires power user access"));
-                            }
-                        }
+                    // Determine the user's effective access level
+                    let user_level = if user.is_power_user {
+                        AccessLevel::Admin
+                    } else {
+                        AccessLevel::Authenticated
+                    };
+                    if user_level.has_permission(&required_level) {
+                        return Ok(user.pubkey);
+                    } else {
+                        warn!(
+                            "User {} with level {:?} lacks required {:?}",
+                            user.pubkey, user_level, required_level
+                        );
+                        return Err(HttpResponse::Forbidden()
+                            .body("Insufficient permissions for this operation"));
                     }
                 }
                 Err(e) => {
@@ -134,35 +179,34 @@ pub async fn verify_access(
         "Session validated successfully"
     );
 
-    match required_level {
-        AccessLevel::Authenticated => {
-            debug!(
-                request_id = %request_id,
-                pubkey = %pubkey,
-                access_level = "authenticated",
-                "Access granted"
-            );
-            Ok(pubkey)
-        }
-        AccessLevel::PowerUser => {
-            if nostr_service.is_power_user(&pubkey).await {
-                debug!(
-                    request_id = %request_id,
-                    pubkey = %pubkey,
-                    access_level = "power_user",
-                    "Power user access granted"
-                );
-                Ok(pubkey)
-            } else {
-                warn!("Non-power user {} attempted restricted operation", pubkey);
-                debug!(
-                    request_id = %request_id,
-                    pubkey = %pubkey,
-                    "Power user access denied"
-                );
-                Err(HttpResponse::Forbidden().body("This operation requires power user access"))
-            }
-        }
+    // Determine the user's effective access level from their role
+    let is_power = nostr_service.is_power_user(&pubkey).await;
+    let user_level = if is_power {
+        AccessLevel::Admin
+    } else {
+        AccessLevel::Authenticated
+    };
+
+    if user_level.has_permission(&required_level) {
+        debug!(
+            request_id = %request_id,
+            pubkey = %pubkey,
+            user_level = ?user_level,
+            required_level = ?required_level,
+            "Access granted"
+        );
+        Ok(pubkey)
+    } else {
+        warn!(
+            "User {} with level {:?} lacks required {:?}",
+            pubkey, user_level, required_level
+        );
+        debug!(
+            request_id = %request_id,
+            pubkey = %pubkey,
+            "Access denied - insufficient permissions"
+        );
+        Err(HttpResponse::Forbidden().body("Insufficient permissions for this operation"))
     }
 }
 
@@ -180,4 +224,36 @@ pub async fn verify_authenticated(
     nostr_service: &NostrService,
 ) -> Result<String, HttpResponse> {
     verify_access(req, nostr_service, AccessLevel::Authenticated).await
+}
+
+// Helper function for handlers that require read-only access
+pub async fn verify_read_only(
+    req: &HttpRequest,
+    nostr_service: &NostrService,
+) -> Result<String, HttpResponse> {
+    verify_access(req, nostr_service, AccessLevel::ReadOnly).await
+}
+
+// Helper function for handlers that require graph write access
+pub async fn verify_write_graph(
+    req: &HttpRequest,
+    nostr_service: &NostrService,
+) -> Result<String, HttpResponse> {
+    verify_access(req, nostr_service, AccessLevel::WriteGraph).await
+}
+
+// Helper function for handlers that require settings write access
+pub async fn verify_write_settings(
+    req: &HttpRequest,
+    nostr_service: &NostrService,
+) -> Result<String, HttpResponse> {
+    verify_access(req, nostr_service, AccessLevel::WriteSettings).await
+}
+
+// Helper function for handlers that require admin access
+pub async fn verify_admin(
+    req: &HttpRequest,
+    nostr_service: &NostrService,
+) -> Result<String, HttpResponse> {
+    verify_access(req, nostr_service, AccessLevel::Admin).await
 }

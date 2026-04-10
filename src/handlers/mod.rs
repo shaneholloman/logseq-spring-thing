@@ -6,6 +6,7 @@ pub mod client_log_handler;
 pub mod client_messages_handler;
 pub mod clustering_handler;
 pub mod consolidated_health_handler;
+pub mod metrics_handler;
 pub mod constraints_handler;
 pub mod graph_export_handler;
 pub mod graph_state_handler;

@@ -252,6 +252,7 @@ mod supervisor_drain_tests {
                 strategy: SupervisionStrategy::Restart,
                 max_restart_count: 3,
                 restart_window: Duration::from_secs(60),
+                actor_factory: None,
             })
             .await
             .unwrap()
@@ -267,6 +268,7 @@ mod supervisor_drain_tests {
                 strategy: SupervisionStrategy::Restart,
                 max_restart_count: 3,
                 restart_window: Duration::from_secs(60),
+                actor_factory: None,
             })
             .await
             .unwrap();

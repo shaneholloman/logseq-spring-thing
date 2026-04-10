@@ -15,13 +15,14 @@ use webxr::{
         consolidated_health_handler,
         graph_export_handler,
         mcp_relay_handler::mcp_relay_handler,
+        metrics_handler,
         multi_mcp_websocket_handler,
         nostr_handler,
         pages_handler,
-        socket_flow_handler::{socket_flow_handler, PreReadSocketSettings}, 
+        socket_flow_handler::{socket_flow_handler, PreReadSocketSettings},
         speech_socket_handler::speech_socket_handler,
-        
-        
+
+
         workspace_handler,
     },
     services::speech_service::SpeechService,
@@ -46,13 +47,15 @@ use utoipa_swagger_ui::SwaggerUi;
 // DEPRECATED: std::future imports removed (were for ErrorRecoveryMiddleware)
 // DEPRECATED: Actix dev imports removed (were for ErrorRecoveryMiddleware)
 // DEPRECATED: LocalBoxFuture import removed (was for ErrorRecoveryMiddleware)
-// use actix_files::Files; 
+// use actix_files::Files;
 use dotenvy::dotenv;
 use log::{debug, error, info, warn};
 use std::sync::Arc;
+use std::time::Instant;
 use tokio::signal::unix::{signal, SignalKind};
 use tokio::sync::RwLock;
 use tokio::time::Duration;
+use tracing_subscriber::{fmt, EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 use webxr::middleware::{RateLimit, TimeoutMiddleware};
 use webxr::telemetry::agent_telemetry::init_telemetry_logger;
 use webxr::utils::advanced_logging::init_advanced_logging;
@@ -67,10 +70,20 @@ async fn main() -> std::io::Result<()> {
 
     dotenv().ok();
 
-    // Initialize env_logger for console output - MUST be before any log macros
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
-        .format_timestamp_millis()
+    // Initialize tracing_subscriber for structured logging with distributed tracing support.
+    // This replaces env_logger and bridges to the `log` crate, so existing log::info! etc. still work.
+    // RUST_LOG env var controls filtering (e.g. RUST_LOG=debug or RUST_LOG=webxr=debug,actix_web=info).
+    tracing_subscriber::registry()
+        .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")))
+        .with(
+            fmt::layer()
+                .with_target(true)
+                .with_thread_ids(true),
+        )
         .init();
+
+    // Record process start time for uptime reporting via /api/metrics
+    let process_start_time = Instant::now();
 
     info!("--- Configuration Verification ---");
     info!("MARKDOWN_DIR: {}", webxr::services::file_service::MARKDOWN_DIR);
@@ -563,6 +576,7 @@ async fn main() -> std::io::Result<()> {
             .app_data(web::Data::new(content_api.clone()))
             .app_data(app_state_data.clone())
             .app_data(pre_read_ws_settings_data.clone())
+            .app_data(web::Data::new(metrics_handler::ProcessStartTime(process_start_time)))
 
             .app_data(web::Data::new(app_state_data.graph_service_addr.clone()))
             .app_data(web::Data::new(app_state_data.settings_addr.clone()))
@@ -618,6 +632,9 @@ async fn main() -> std::io::Result<()> {
 
                     // Health and monitoring
                     .configure(consolidated_health_handler::configure_routes)
+
+                    // Observability metrics endpoint
+                    .configure(metrics_handler::configure_routes)
 
                     // Multi-MCP WebSocket
                     .configure(multi_mcp_websocket_handler::configure_multi_mcp_routes)

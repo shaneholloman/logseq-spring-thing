@@ -40,6 +40,8 @@ pub struct TaskState {
     pub created_at: DateTime<Utc>,
     pub last_updated: DateTime<Utc>,
     pub retry_count: u32,
+    /// ADR-031 gap 5a: JSON-encoded result payload, populated on completion.
+    pub result: Option<String>,
 }
 
 pub struct TaskOrchestratorActor {
@@ -204,6 +206,22 @@ pub struct StopTask {
 #[rtype(result = "Result<Vec<TaskInfo>, String>")]
 pub struct ListActiveTasks;
 
+/// ADR-031 gap 5a: Retrieve the stored result payload for a completed task.
+#[derive(Message)]
+#[rtype(result = "Result<Option<String>, String>")]
+pub struct GetTaskResult {
+    pub task_id: String,
+}
+
+/// ADR-031 gap 5a: Mark a task as completed and store its result payload.
+#[derive(Message)]
+#[rtype(result = "()")]
+pub struct CompleteTask {
+    pub task_id: String,
+    /// JSON-encoded result payload.
+    pub result: Option<String>,
+}
+
 #[derive(Message)]
 #[rtype(result = "Result<SystemStatusInfo, String>")]
 pub struct GetSystemStatus;
@@ -299,6 +317,7 @@ impl Handler<CreateTask> for TaskOrchestratorActor {
                                 created_at: time::now(),
                                 last_updated: time::now(),
                                 retry_count: attempts,
+                                result: None,
                             },
                         );
 
@@ -406,6 +425,68 @@ impl Handler<GetSystemStatus> for TaskOrchestratorActor {
                 }
             }
         })
+    }
+}
+
+// ========================================
+// ADR-031 gap 5a: Task result storage handlers
+// ========================================
+
+impl Handler<GetTaskResult> for TaskOrchestratorActor {
+    type Result = Result<Option<String>, String>;
+
+    fn handle(&mut self, msg: GetTaskResult, _ctx: &mut Self::Context) -> Self::Result {
+        match self.active_tasks.get(&msg.task_id) {
+            Some(task) => {
+                if task.status == ApiTaskState::Completed {
+                    Ok(task.result.clone())
+                } else if task.status == ApiTaskState::Running {
+                    // Task still running — no result yet.
+                    Ok(None)
+                } else {
+                    // Failed or other terminal state — return whatever we have.
+                    Ok(task.result.clone())
+                }
+            }
+            None => Err(format!("Task not found: {}", msg.task_id)),
+        }
+    }
+}
+
+impl Handler<CompleteTask> for TaskOrchestratorActor {
+    type Result = ();
+
+    fn handle(&mut self, msg: CompleteTask, _ctx: &mut Self::Context) {
+        if let Some(task) = self.active_tasks.get_mut(&msg.task_id) {
+            task.status = ApiTaskState::Completed;
+            task.last_updated = time::now();
+            task.result = msg.result;
+
+            info!(
+                "[TaskOrchestratorActor] Task {} completed (result payload: {} bytes)",
+                msg.task_id,
+                task.result.as_ref().map_or(0, |r| r.len())
+            );
+
+            // ADR-031 item 3: push notification to AgentMonitorActor.
+            let agent_type = task.agent.clone();
+            let running = self
+                .active_tasks
+                .values()
+                .filter(|t| t.status == ApiTaskState::Running && t.agent == agent_type)
+                .count();
+            if let Some(ref addr) = self.agent_monitor_addr {
+                addr.do_send(crate::actors::messages::TaskStatusChanged {
+                    agent_type,
+                    running_task_count: running,
+                });
+            }
+        } else {
+            warn!(
+                "[TaskOrchestratorActor] CompleteTask for unknown task_id={}",
+                msg.task_id
+            );
+        }
     }
 }
 

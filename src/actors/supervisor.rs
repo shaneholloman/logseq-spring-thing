@@ -10,6 +10,7 @@ use actix::prelude::*;
 use chrono::{DateTime, Utc};
 use log::{debug, error, info, warn};
 use std::collections::HashMap;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use crate::utils::time;
@@ -42,7 +43,11 @@ pub struct SupervisedActorInfo {
     pub last_heartbeat: DateTime<Utc>,
 }
 
-#[derive(Debug)]
+/// Type-erased factory the supervisor can call to re-create a supervised actor.
+/// The returned `Box<dyn std::any::Any + Send>` is opaque to the supervisor — it
+/// only needs to know whether the call succeeded.
+pub type ActorFactory = Arc<dyn Fn() -> Box<dyn std::any::Any + Send> + Send + Sync>;
+
 struct ActorState {
     actor_info: SupervisedActorInfo,
     restart_count: u32,
@@ -51,6 +56,10 @@ struct ActorState {
     is_running: bool,
     #[allow(dead_code)]
     session_id: Option<String>,
+    /// Optional factory to re-spawn the actor on restart.
+    /// When `None`, the supervisor can only mark the actor as failed —
+    /// it cannot automatically recreate it.
+    actor_factory: Option<ActorFactory>,
 }
 
 #[derive(Message)]
@@ -60,6 +69,10 @@ pub struct RegisterActor {
     pub strategy: SupervisionStrategy,
     pub max_restart_count: u32,
     pub restart_window: Duration,
+    /// Optional factory closure that the supervisor will invoke to re-create the
+    /// actor when a restart is triggered. If `None`, the supervisor logs a warning
+    /// and marks the actor as not running instead of attempting a restart.
+    pub actor_factory: Option<ActorFactory>,
 }
 
 #[derive(Message)]
@@ -271,6 +284,7 @@ impl Handler<RegisterActor> for SupervisorActor {
             current_delay: initial_delay,
             is_running: true,
             session_id: None,
+            actor_factory: msg.actor_factory,
         };
 
         self.supervised_actors.insert(msg.actor_name.clone(), state);
@@ -421,17 +435,49 @@ impl Handler<RestartAttempt> for SupervisorActor {
     fn handle(&mut self, msg: RestartAttempt, _ctx: &mut Self::Context) {
         debug!("Processing restart attempt for actor '{}'", msg.actor_name);
 
-        
-        
-        
-        
-        
-
         if let Some(state) = self.supervised_actors.get_mut(&msg.actor_name) {
-            
-            
-            state.is_running = true;
-            info!("Actor '{}' restart attempt completed", msg.actor_name);
+            if let Some(ref factory) = state.actor_factory {
+                // Call the factory to re-create the actor. The returned Any is
+                // opaque — what matters is that the factory ran without panicking.
+                // The factory itself is responsible for starting the new Actix
+                // actor (e.g. via `.start()`) and wiring it into the system.
+                let factory_clone = Arc::clone(factory);
+                match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    factory_clone()
+                })) {
+                    Ok(_new_actor) => {
+                        state.is_running = true;
+                        info!(
+                            "Actor '{}' restarted successfully via factory (attempt {})",
+                            msg.actor_name, state.restart_count
+                        );
+                    }
+                    Err(panic_payload) => {
+                        state.is_running = false;
+                        let panic_msg = panic_payload
+                            .downcast_ref::<&str>()
+                            .map(|s| s.to_string())
+                            .or_else(|| {
+                                panic_payload
+                                    .downcast_ref::<String>()
+                                    .cloned()
+                            })
+                            .unwrap_or_else(|| "unknown panic".to_string());
+                        error!(
+                            "Actor '{}' factory panicked during restart: {}",
+                            msg.actor_name, panic_msg
+                        );
+                    }
+                }
+            } else {
+                // No factory registered — cannot auto-restart.
+                state.is_running = false;
+                warn!(
+                    "Actor '{}' has no actor_factory registered — cannot auto-restart. \
+                     Marking as not running.",
+                    msg.actor_name
+                );
+            }
         }
     }
 }
@@ -484,6 +530,7 @@ use crate::utils::time;
             strategy: SupervisionStrategy::Restart,
             max_restart_count: 3,
             restart_window: Duration::from_secs(60),
+            actor_factory: None,
         };
 
         let result = supervisor.send(register_msg).await.unwrap();
@@ -508,11 +555,12 @@ use crate::utils::time;
             strategy: SupervisionStrategy::Restart,
             max_restart_count: 3,
             restart_window: Duration::from_secs(60),
+            actor_factory: None,
         };
 
         supervisor.send(register_msg).await.unwrap().unwrap();
 
-        
+
         let failure_msg = ActorFailed {
             actor_name: "TestActor".to_string(),
             error: VisionFlowError::Actor(ActorError::RuntimeFailure {

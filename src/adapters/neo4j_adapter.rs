@@ -221,7 +221,16 @@ impl Neo4jAdapter {
             warn!("Failed to create edge relation_type index (may already exist): {}", e);
         }
 
-        info!("✅ Neo4j schema created successfully with semantic type indexes");
+        // Create fulltext index on node label and metadata_id for fast text search
+        let fulltext_index_query = Query::new(
+            "CREATE FULLTEXT INDEX graph_node_label_ft IF NOT EXISTS FOR (n:GraphNode) ON EACH [n.label, n.metadata_id]".to_string()
+        );
+
+        if let Err(e) = self.graph.run(fulltext_index_query).await {
+            warn!("Failed to create fulltext index (may already exist): {}", e);
+        }
+
+        info!("Neo4j schema created successfully with semantic type and fulltext indexes");
         Ok(())
     }
 

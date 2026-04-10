@@ -1,3 +1,4 @@
+use chrono::{DateTime, Utc};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -6,6 +7,52 @@ use tracing::warn;
 use crate::events::types::{
     DomainEvent, EventError, EventHandler, EventMetadata, EventMiddleware, EventResult, StoredEvent,
 };
+use crate::utils::time;
+
+#[derive(Debug, Clone)]
+pub struct DeadLetterEntry {
+    pub event: StoredEvent,
+    pub handler_id: String,
+    pub error: EventError,
+    pub failed_at: DateTime<Utc>,
+    pub attempt_count: u32,
+}
+
+pub struct DeadLetterQueue {
+    entries: Arc<RwLock<Vec<DeadLetterEntry>>>,
+    max_entries: usize,
+}
+
+impl DeadLetterQueue {
+    pub fn new(max_entries: usize) -> Self {
+        Self {
+            entries: Arc::new(RwLock::new(Vec::new())),
+            max_entries,
+        }
+    }
+
+    pub async fn push(&self, entry: DeadLetterEntry) {
+        let mut entries = self.entries.write().await;
+        if entries.len() >= self.max_entries {
+            entries.remove(0);
+        }
+        entries.push(entry);
+    }
+
+    pub async fn get_entries(&self) -> Vec<DeadLetterEntry> {
+        self.entries.read().await.clone()
+    }
+
+    pub async fn count(&self) -> usize {
+        self.entries.read().await.len()
+    }
+}
+
+impl Default for DeadLetterQueue {
+    fn default() -> Self {
+        Self::new(10_000)
+    }
+}
 
 /// Execute a single handler with retry logic and middleware hooks.
 /// Extracted as a free function so it can be spawned concurrently without
@@ -80,17 +127,19 @@ async fn execute_handler_concurrent(
 }
 
 pub struct EventBus {
-    
+
     subscribers: Arc<RwLock<HashMap<String, Vec<Arc<dyn EventHandler>>>>>,
 
-    
+
     middleware: Arc<RwLock<Vec<Arc<dyn EventMiddleware>>>>,
 
-    
+
     sequence: Arc<RwLock<i64>>,
 
-    
+
     enabled: Arc<RwLock<bool>>,
+
+    dead_letter_queue: DeadLetterQueue,
 }
 
 impl EventBus {
@@ -101,6 +150,7 @@ impl EventBus {
             middleware: Arc::new(RwLock::new(Vec::new())),
             sequence: Arc::new(RwLock::new(0)),
             enabled: Arc::new(RwLock::new(true)),
+            dead_letter_queue: DeadLetterQueue::default(),
         }
     }
 
@@ -186,6 +236,20 @@ impl EventBus {
             }
         }
 
+        for (ref handler_id, ref error) in &errors {
+            let entry = DeadLetterEntry {
+                event: stored_event.clone(),
+                handler_id: handler_id.clone(),
+                error: error.clone(),
+                failed_at: time::now(),
+                attempt_count: handlers
+                    .iter()
+                    .find(|h| h.handler_id() == handler_id.as_str())
+                    .map(|h| h.max_retries() + 1)
+                    .unwrap_or(1),
+            };
+            self.dead_letter_queue.push(entry).await;
+        }
 
         let middleware = self.middleware.read().await;
         for mw in middleware.iter() {
@@ -247,6 +311,11 @@ impl EventBus {
         mw_list.push(middleware);
     }
 
+    /// Return a snapshot of the registered middleware list for observability.
+    pub async fn middlewares(&self) -> Vec<Arc<dyn EventMiddleware>> {
+        self.middleware.read().await.clone()
+    }
+
 
     
     pub async fn subscriber_count(&self, event_type: &str) -> usize {
@@ -274,6 +343,14 @@ impl EventBus {
     
     pub async fn current_sequence(&self) -> i64 {
         *self.sequence.read().await
+    }
+
+    pub async fn get_dead_letters(&self) -> Vec<DeadLetterEntry> {
+        self.dead_letter_queue.get_entries().await
+    }
+
+    pub async fn dead_letter_count(&self) -> usize {
+        self.dead_letter_queue.count().await
     }
 }
 

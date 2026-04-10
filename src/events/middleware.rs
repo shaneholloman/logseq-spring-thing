@@ -63,6 +63,10 @@ impl EventMiddleware for LoggingMiddleware {
         }
         Ok(())
     }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 }
 
 pub struct MetricsMiddleware {
@@ -112,6 +116,21 @@ impl MetricsMiddleware {
         self.handler_count.write().await.clear();
         self.error_count.write().await.clear();
     }
+
+    /// Snapshot all published counts keyed by event type.
+    pub async fn get_all_published_counts(&self) -> HashMap<String, usize> {
+        self.published_count.read().await.clone()
+    }
+
+    /// Snapshot all handler invocation counts keyed by handler id.
+    pub async fn get_all_handler_counts(&self) -> HashMap<String, usize> {
+        self.handler_count.read().await.clone()
+    }
+
+    /// Snapshot all error counts keyed by handler id.
+    pub async fn get_all_error_counts(&self) -> HashMap<String, usize> {
+        self.error_count.read().await.clone()
+    }
 }
 
 impl Default for MetricsMiddleware {
@@ -151,6 +170,10 @@ impl EventMiddleware for MetricsMiddleware {
         }
 
         Ok(())
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
     }
 }
 
@@ -213,6 +236,10 @@ impl EventMiddleware for ValidationMiddleware {
     ) -> EventResult<()> {
         Ok(())
     }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 }
 
 pub struct RetryMiddleware {
@@ -253,13 +280,35 @@ impl EventMiddleware for RetryMiddleware {
 
     async fn after_handle(
         &self,
-        _event: &StoredEvent,
-        _handler_id: &str,
-        _result: &Result<(), EventError>,
+        event: &StoredEvent,
+        handler_id: &str,
+        result: &Result<(), EventError>,
     ) -> EventResult<()> {
-        
-        
+        match result {
+            Ok(_) => {
+                log::debug!(
+                    "[RetryMiddleware] Handler '{}' succeeded for event '{}' (seq: {})",
+                    handler_id,
+                    event.metadata.event_type,
+                    event.sequence
+                );
+            }
+            Err(e) => {
+                log::warn!(
+                    "[RetryMiddleware] Handler '{}' exhausted {} retries for event '{}' (seq: {}): {}",
+                    handler_id,
+                    self.max_retries,
+                    event.metadata.event_type,
+                    event.sequence,
+                    e
+                );
+            }
+        }
         Ok(())
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
     }
 }
 
@@ -324,6 +373,10 @@ impl EventMiddleware for EnrichmentMiddleware {
         _result: &Result<(), EventError>,
     ) -> EventResult<()> {
         Ok(())
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
     }
 }
 

@@ -123,22 +123,26 @@ pub trait EventHandler: Send + Sync {
 
 #[async_trait]
 pub trait EventMiddleware: Send + Sync {
-    
+
     async fn before_publish(&self, event: &mut StoredEvent) -> Result<(), EventError>;
 
-    
+
     async fn after_publish(&self, event: &StoredEvent) -> Result<(), EventError>;
 
-    
+
     async fn before_handle(&self, event: &StoredEvent, handler_id: &str) -> Result<(), EventError>;
 
-    
+
     async fn after_handle(
         &self,
         event: &StoredEvent,
         handler_id: &str,
         result: &Result<(), EventError>,
     ) -> Result<(), EventError>;
+
+    /// Return self as `&dyn Any` so callers can downcast to concrete middleware
+    /// types (e.g. MetricsMiddleware) for observability.
+    fn as_any(&self) -> &dyn std::any::Any;
 }
 
 #[derive(Debug, Clone, thiserror::Error)]

@@ -24,7 +24,7 @@ use actix::prelude::*;
 use log::{debug, error, info, warn};
 use serde::{Deserialize, Serialize};
 use serde_json;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
 
@@ -98,6 +98,98 @@ impl std::str::FromStr for FilterMode {
             "or" => Ok(FilterMode::Or),
             _ => Err(format!("Invalid filter mode: {}", s)),
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// ADR-031 gap 3b: Per-client reconnect message queue.
+// Buffers messages for recently disconnected clients so they can be replayed
+// on reconnect, closing the gap between disconnect and reconnect.
+// ---------------------------------------------------------------------------
+
+#[derive(Debug)]
+struct DisconnectedClientQueue {
+    /// Maps client_id to buffered binary messages since disconnect.
+    buffers: HashMap<usize, VecDeque<Vec<u8>>>,
+    /// When the client disconnected (for TTL eviction).
+    disconnected_at: HashMap<usize, Instant>,
+    /// Maximum number of messages buffered per client.
+    max_buffer_per_client: usize,
+    /// How long to keep buffers before eviction.
+    ttl: Duration,
+}
+
+impl DisconnectedClientQueue {
+    fn new(max_buffer_per_client: usize, ttl: Duration) -> Self {
+        Self {
+            buffers: HashMap::new(),
+            disconnected_at: HashMap::new(),
+            max_buffer_per_client,
+            ttl,
+        }
+    }
+
+    /// Start buffering for a newly disconnected client.
+    fn track_disconnect(&mut self, client_id: usize) {
+        self.buffers.entry(client_id).or_insert_with(VecDeque::new);
+        self.disconnected_at.insert(client_id, Instant::now());
+    }
+
+    /// Buffer a message for a disconnected client. Drops oldest if at capacity.
+    fn push_message(&mut self, client_id: usize, data: Vec<u8>) {
+        if let Some(buf) = self.buffers.get_mut(&client_id) {
+            if buf.len() >= self.max_buffer_per_client {
+                buf.pop_front(); // drop oldest
+            }
+            buf.push_back(data);
+        }
+    }
+
+    /// Drain buffered messages for a reconnecting client, if any exist and TTL hasn't expired.
+    fn drain_for_reconnect(&mut self, client_id: usize) -> Vec<Vec<u8>> {
+        // Check TTL
+        if let Some(&disconnected) = self.disconnected_at.get(&client_id) {
+            if disconnected.elapsed() > self.ttl {
+                // Expired — discard.
+                self.buffers.remove(&client_id);
+                self.disconnected_at.remove(&client_id);
+                return Vec::new();
+            }
+        }
+
+        self.disconnected_at.remove(&client_id);
+        self.buffers
+            .remove(&client_id)
+            .map(|q| q.into_iter().collect())
+            .unwrap_or_default()
+    }
+
+    /// Evict stale entries past TTL. Called periodically.
+    fn evict_stale(&mut self) {
+        let now = Instant::now();
+        let stale_ids: Vec<usize> = self
+            .disconnected_at
+            .iter()
+            .filter(|(_, &t)| now.duration_since(t) > self.ttl)
+            .map(|(&id, _)| id)
+            .collect();
+
+        for id in &stale_ids {
+            self.buffers.remove(id);
+            self.disconnected_at.remove(id);
+        }
+
+        if !stale_ids.is_empty() {
+            debug!(
+                "[DisconnectedClientQueue] Evicted {} stale client buffers",
+                stale_ids.len()
+            );
+        }
+    }
+
+    /// Returns the set of currently tracked disconnected client IDs.
+    fn tracked_client_ids(&self) -> Vec<usize> {
+        self.buffers.keys().copied().collect()
     }
 }
 
@@ -408,6 +500,9 @@ pub struct ClientCoordinatorActor {
 
     /// Shared node analytics data (cluster_id, anomaly_score, community_id) per node
     node_analytics: Arc<std::sync::RwLock<std::collections::HashMap<u32, (u32, f32, u32)>>>,
+
+    /// ADR-031 gap 3b: Per-client reconnect message queue.
+    disconnected_queue: DisconnectedClientQueue,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -444,6 +539,32 @@ impl ClientCoordinatorActor {
             voice_data_queued_bytes: 0,
             node_type_arrays: crate::actors::messages::NodeTypeArrays::default(),
             node_analytics: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
+            disconnected_queue: DisconnectedClientQueue::new(
+                64,                          // max 64 messages buffered per client
+                Duration::from_secs(30),     // 30-second TTL
+            ),
+        }
+    }
+
+    /// ADR-031 gap 3b: Buffer a binary message to all currently tracked disconnected clients.
+    fn buffer_to_disconnected(&mut self, data: &[u8]) {
+        let ids = self.disconnected_queue.tracked_client_ids();
+        for id in ids {
+            self.disconnected_queue.push_message(id, data.to_vec());
+        }
+    }
+
+    /// ADR-031 gap 3b: Replay buffered messages to a specific client address.
+    fn replay_buffered_messages(&mut self, old_client_id: usize, addr: &Addr<SocketFlowServer>) {
+        let messages = self.disconnected_queue.drain_for_reconnect(old_client_id);
+        if !messages.is_empty() {
+            info!(
+                "[ClientCoordinator] Replaying {} buffered messages for reconnected client (old_id={})",
+                messages.len(), old_client_id
+            );
+            for msg in messages {
+                addr.do_send(SendToClientBinary(msg));
+            }
         }
     }
 
@@ -1000,8 +1121,13 @@ pub struct ClientCoordinatorStats {
 impl Actor for ClientCoordinatorActor {
     type Context = Context<Self>;
 
-    fn started(&mut self, _ctx: &mut Self::Context) {
+    fn started(&mut self, ctx: &mut Self::Context) {
         info!("ClientCoordinatorActor started - WebSocket communication manager ready");
+
+        // ADR-031 gap 3b: Periodic cleanup of stale disconnected client buffers (every 60s).
+        ctx.run_interval(Duration::from_secs(60), |act, _ctx| {
+            act.disconnected_queue.evict_stale();
+        });
 
         
         if let Some(logger) = get_telemetry_logger() {
@@ -1138,7 +1264,14 @@ impl Handler<UnregisterClient> for ClientCoordinatorActor {
         };
 
         if success {
-            
+            // ADR-031 gap 3b: Start buffering for the disconnected client so
+            // messages can be replayed if they reconnect within the TTL window.
+            self.disconnected_queue.track_disconnect(msg.client_id);
+            debug!(
+                "[ClientCoordinator] Client {} moved to disconnected queue (TTL: {:?})",
+                msg.client_id, self.disconnected_queue.ttl
+            );
+
             self.connection_stats.total_unregistrations += 1;
             self.update_connection_stats();
 
@@ -1180,6 +1313,9 @@ impl Handler<BroadcastNodePositions> for ClientCoordinatorActor {
     type Result = Result<(), String>;
 
     fn handle(&mut self, msg: BroadcastNodePositions, _ctx: &mut Self::Context) -> Self::Result {
+        // ADR-031 gap 3b: buffer to disconnected clients for reconnect replay.
+        self.buffer_to_disconnected(&msg.positions);
+
         let broadcast_result = {
             let manager = match handle_rwlock_error(self.client_manager.read()) {
                 Ok(manager) => manager,
@@ -1307,6 +1443,9 @@ impl Handler<BroadcastMessage> for ClientCoordinatorActor {
     type Result = Result<(), String>;
 
     fn handle(&mut self, msg: BroadcastMessage, _ctx: &mut Self::Context) -> Self::Result {
+        // ADR-031 gap 3b: buffer text messages for disconnected clients.
+        self.buffer_to_disconnected(msg.message.as_bytes());
+
         let client_count = {
             let manager = match handle_rwlock_error(self.client_manager.read()) {
                 Ok(manager) => manager,

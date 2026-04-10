@@ -36,11 +36,11 @@ where
 
     fn update_last_heartbeat(&mut self);
 
-    /// ADR-031 item 4: Return any pending server directives for this client.
+    /// ADR-031 item 4: Return and drain any pending server directives for this client.
     ///
-    /// Default implementation returns an empty list. Override to push
+    /// Default implementation returns an empty list. Override to drain
     /// `ReloadConfig`, `ForceFullSync`, or `UpdateAvailable` directives.
-    fn get_pending_directives(&self) -> Vec<HeartbeatDirective> {
+    fn get_pending_directives(&mut self) -> Vec<HeartbeatDirective> {
         Vec::new()
     }
 
@@ -90,7 +90,7 @@ where
         }
     }
 
-    fn send_pong(&self, ctx: &mut ws::WebsocketContext<Self>)
+    fn send_pong(&mut self, ctx: &mut ws::WebsocketContext<Self>)
     where
         Self: actix::Actor<Context = ws::WebsocketContext<Self>>,
     {

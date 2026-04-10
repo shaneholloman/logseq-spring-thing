@@ -13,7 +13,7 @@ use std::future::{ready, Ready};
 use std::rc::Rc;
 
 use crate::services::nostr_service::NostrService;
-use crate::utils::auth::{verify_authenticated, verify_power_user, AccessLevel};
+use crate::utils::auth::{verify_access, AccessLevel};
 
 /// Authentication middleware that enforces Nostr-based session validation
 /// # Example
@@ -40,6 +40,34 @@ impl RequireAuth {
     pub fn power_user() -> Self {
         Self {
             level: AccessLevel::PowerUser,
+        }
+    }
+
+    /// Require read-only access (any authenticated user)
+    pub fn read_only() -> Self {
+        Self {
+            level: AccessLevel::ReadOnly,
+        }
+    }
+
+    /// Require graph write access
+    pub fn write_graph() -> Self {
+        Self {
+            level: AccessLevel::WriteGraph,
+        }
+    }
+
+    /// Require settings write access
+    pub fn write_settings() -> Self {
+        Self {
+            level: AccessLevel::WriteSettings,
+        }
+    }
+
+    /// Require admin access
+    pub fn admin() -> Self {
+        Self {
+            level: AccessLevel::Admin,
         }
     }
 }
@@ -97,15 +125,9 @@ where
                 }
             };
 
-            // Verify access level
-            let result = match level {
-                AccessLevel::Authenticated => {
-                    verify_authenticated(req.request(), &nostr_service).await
-                }
-                AccessLevel::PowerUser => {
-                    verify_power_user(req.request(), &nostr_service).await
-                }
-            };
+            // Verify access level — delegates to the unified verify_access
+            // which handles all AccessLevel variants including scoped permissions
+            let result = verify_access(req.request(), &nostr_service, level).await;
 
             match result {
                 Ok(pubkey) => {
@@ -158,5 +180,42 @@ mod tests {
 
         let power = RequireAuth::power_user();
         assert!(matches!(power.level, AccessLevel::PowerUser));
+
+        let read = RequireAuth::read_only();
+        assert!(matches!(read.level, AccessLevel::ReadOnly));
+
+        let write_graph = RequireAuth::write_graph();
+        assert!(matches!(write_graph.level, AccessLevel::WriteGraph));
+
+        let write_settings = RequireAuth::write_settings();
+        assert!(matches!(write_settings.level, AccessLevel::WriteSettings));
+
+        let admin = RequireAuth::admin();
+        assert!(matches!(admin.level, AccessLevel::Admin));
+    }
+
+    #[test]
+    fn test_access_level_permissions() {
+        // Admin has all permissions
+        assert!(AccessLevel::Admin.has_permission(&AccessLevel::ReadOnly));
+        assert!(AccessLevel::Admin.has_permission(&AccessLevel::WriteGraph));
+        assert!(AccessLevel::Admin.has_permission(&AccessLevel::WriteSettings));
+        assert!(AccessLevel::Admin.has_permission(&AccessLevel::Admin));
+        assert!(AccessLevel::Admin.has_permission(&AccessLevel::PowerUser));
+
+        // Authenticated has read + write graph but not write settings or admin
+        assert!(AccessLevel::Authenticated.has_permission(&AccessLevel::ReadOnly));
+        assert!(AccessLevel::Authenticated.has_permission(&AccessLevel::WriteGraph));
+        assert!(!AccessLevel::Authenticated.has_permission(&AccessLevel::WriteSettings));
+        assert!(!AccessLevel::Authenticated.has_permission(&AccessLevel::Admin));
+
+        // ReadOnly can read but not write
+        assert!(AccessLevel::ReadOnly.has_permission(&AccessLevel::ReadOnly));
+        assert!(!AccessLevel::ReadOnly.has_permission(&AccessLevel::WriteGraph));
+        assert!(!AccessLevel::ReadOnly.has_permission(&AccessLevel::Admin));
+
+        // PowerUser has everything (maps to Admin)
+        assert!(AccessLevel::PowerUser.has_permission(&AccessLevel::Admin));
+        assert!(AccessLevel::PowerUser.has_permission(&AccessLevel::WriteSettings));
     }
 }

@@ -1,11 +1,15 @@
 use async_trait::async_trait;
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::Arc;
+use tokio::io::AsyncWriteExt;
 use tokio::sync::RwLock;
+use tracing::info;
 
 use crate::events::types::{
     DomainEvent, EventError, EventMetadata, EventResult, EventSnapshot, StoredEvent,
 };
+use crate::utils::time;
 
 #[async_trait]
 pub trait EventRepository: Send + Sync {
@@ -114,6 +118,163 @@ impl EventRepository for InMemoryEventRepository {
     }
 }
 
+pub struct FileEventRepository {
+    base_dir: PathBuf,
+}
+
+impl FileEventRepository {
+    pub fn new(base_dir: PathBuf) -> Self {
+        Self { base_dir }
+    }
+
+    fn events_path(&self, aggregate_type: &str, aggregate_id: &str) -> PathBuf {
+        self.base_dir
+            .join(aggregate_type)
+            .join(format!("{}.jsonl", aggregate_id))
+    }
+
+    fn snapshot_path(&self, aggregate_id: &str) -> PathBuf {
+        self.base_dir
+            .join("snapshots")
+            .join(format!("{}.json", aggregate_id))
+    }
+}
+
+#[async_trait]
+impl EventRepository for FileEventRepository {
+    async fn append(&self, event: StoredEvent) -> EventResult<()> {
+        let path = self.events_path(&event.metadata.aggregate_type, &event.metadata.aggregate_id);
+        if let Some(parent) = path.parent() {
+            tokio::fs::create_dir_all(parent)
+                .await
+                .map_err(|e| EventError::Storage(format!("Failed to create directory: {}", e)))?;
+        }
+        let mut line = serde_json::to_string(&event)
+            .map_err(|e| EventError::Serialization(e.to_string()))?;
+        line.push('\n');
+        tokio::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)
+            .await
+            .map_err(|e| EventError::Storage(format!("Failed to open file: {}", e)))?
+            .write_all(line.as_bytes())
+            .await
+            .map_err(|e| EventError::Storage(format!("Failed to write event: {}", e)))?;
+        Ok(())
+    }
+
+    async fn get_events(&self, aggregate_id: &str) -> EventResult<Vec<StoredEvent>> {
+        let mut results = Vec::new();
+        let read_dir = tokio::fs::read_dir(&self.base_dir).await;
+        let mut dirs_to_scan = Vec::new();
+        if let Ok(mut entries) = read_dir {
+            while let Ok(Some(entry)) = entries.next_entry().await {
+                let ft = entry.file_type().await;
+                if ft.map(|t| t.is_dir()).unwrap_or(false) {
+                    dirs_to_scan.push(entry.path());
+                }
+            }
+        }
+        for dir in dirs_to_scan {
+            let path = dir.join(format!("{}.jsonl", aggregate_id));
+            if let Ok(contents) = tokio::fs::read_to_string(&path).await {
+                for line in contents.lines() {
+                    if line.trim().is_empty() {
+                        continue;
+                    }
+                    let event: StoredEvent = serde_json::from_str(line)
+                        .map_err(|e| EventError::Serialization(format!("Failed to parse event: {}", e)))?;
+                    results.push(event);
+                }
+            }
+        }
+        results.sort_by_key(|e| e.sequence);
+        Ok(results)
+    }
+
+    async fn get_events_after(&self, sequence: i64) -> EventResult<Vec<StoredEvent>> {
+        let mut results = Vec::new();
+        let read_dir = tokio::fs::read_dir(&self.base_dir).await;
+        let mut dirs_to_scan = Vec::new();
+        if let Ok(mut entries) = read_dir {
+            while let Ok(Some(entry)) = entries.next_entry().await {
+                let ft = entry.file_type().await;
+                if ft.map(|t| t.is_dir()).unwrap_or(false) && entry.file_name() != "snapshots" {
+                    dirs_to_scan.push(entry.path());
+                }
+            }
+        }
+        for dir in dirs_to_scan {
+            let mut files = match tokio::fs::read_dir(&dir).await {
+                Ok(f) => f,
+                Err(_) => continue,
+            };
+            while let Ok(Some(file_entry)) = files.next_entry().await {
+                let path = file_entry.path();
+                if path.extension().and_then(|e| e.to_str()) != Some("jsonl") {
+                    continue;
+                }
+                if let Ok(contents) = tokio::fs::read_to_string(&path).await {
+                    for line in contents.lines() {
+                        if line.trim().is_empty() {
+                            continue;
+                        }
+                        let event: StoredEvent = serde_json::from_str(line)
+                            .map_err(|e| EventError::Serialization(format!("Failed to parse event: {}", e)))?;
+                        if event.sequence > sequence {
+                            results.push(event);
+                        }
+                    }
+                }
+            }
+        }
+        results.sort_by_key(|e| e.sequence);
+        Ok(results)
+    }
+
+    async fn get_events_by_type(&self, event_type: &str) -> EventResult<Vec<StoredEvent>> {
+        let all_events = self.get_events_after(0).await?;
+        Ok(all_events
+            .into_iter()
+            .filter(|e| e.metadata.event_type == event_type)
+            .collect())
+    }
+
+    async fn save_snapshot(&self, snapshot: EventSnapshot) -> EventResult<()> {
+        let path = self.snapshot_path(&snapshot.aggregate_id);
+        if let Some(parent) = path.parent() {
+            tokio::fs::create_dir_all(parent)
+                .await
+                .map_err(|e| EventError::Storage(format!("Failed to create snapshots dir: {}", e)))?;
+        }
+        let data = serde_json::to_string_pretty(&snapshot)
+            .map_err(|e| EventError::Serialization(e.to_string()))?;
+        tokio::fs::write(&path, data)
+            .await
+            .map_err(|e| EventError::Storage(format!("Failed to write snapshot: {}", e)))?;
+        Ok(())
+    }
+
+    async fn get_snapshot(&self, aggregate_id: &str) -> EventResult<Option<EventSnapshot>> {
+        let path = self.snapshot_path(aggregate_id);
+        match tokio::fs::read_to_string(&path).await {
+            Ok(contents) => {
+                let snapshot: EventSnapshot = serde_json::from_str(&contents)
+                    .map_err(|e| EventError::Serialization(format!("Failed to parse snapshot: {}", e)))?;
+                Ok(Some(snapshot))
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(e) => Err(EventError::Storage(format!("Failed to read snapshot: {}", e))),
+        }
+    }
+
+    async fn get_event_count(&self, aggregate_id: &str) -> EventResult<usize> {
+        let events = self.get_events(aggregate_id).await?;
+        Ok(events.len())
+    }
+}
+
 pub struct EventStore {
     repo: Arc<dyn EventRepository>,
     snapshot_threshold: usize,
@@ -124,7 +285,14 @@ impl EventStore {
     pub fn new(repo: Arc<dyn EventRepository>) -> Self {
         Self {
             repo,
-            snapshot_threshold: 100, 
+            snapshot_threshold: 100,
+        }
+    }
+
+    pub fn with_file_backend(base_dir: PathBuf) -> Self {
+        Self {
+            repo: Arc::new(FileEventRepository::new(base_dir)),
+            snapshot_threshold: 100,
         }
     }
 
@@ -155,8 +323,25 @@ impl EventStore {
         
         let count = self.repo.get_event_count(event.aggregate_id()).await?;
         if count % self.snapshot_threshold == 0 {
-            
-            
+            let events = self.repo.get_events(event.aggregate_id()).await?;
+            let last_sequence = events.last().map(|e| e.sequence).unwrap_or(0);
+            let state_data: Vec<String> = events.iter().map(|e| e.data.clone()).collect();
+            let snapshot = EventSnapshot {
+                aggregate_id: event.aggregate_id().to_string(),
+                aggregate_type: event.aggregate_type().to_string(),
+                sequence: last_sequence,
+                timestamp: time::now(),
+                state: serde_json::to_string(&state_data)
+                    .unwrap_or_else(|_| "[]".to_string()),
+            };
+            self.repo.save_snapshot(snapshot).await?;
+            info!(
+                aggregate_id = event.aggregate_id(),
+                version = last_sequence,
+                "Created event snapshot for aggregate {} at version {}",
+                event.aggregate_id(),
+                last_sequence
+            );
         }
 
         Ok(())

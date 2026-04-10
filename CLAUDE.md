@@ -180,3 +180,21 @@ Strategies: `byzantine` (f<n/3), `raft` (f<n/2), `gossip`, `crdt`, `quorum`
 claude-flow session restore --latest                                              # Start
 claude-flow hooks session-end --generate-summary true --persist-state true        # End
 ```
+
+## Codebase Memory MCP (ACTIVE — USE FIRST)
+
+`codebase-memory-mcp` is indexed for this project (`home-devuser-workspace-project`, 48,159 nodes, 95,766 edges). Use these tools BEFORE Grep/Glob/Read for all structural queries.
+
+| Query Type | Tool | Instead of |
+|---|---|---|
+| Who calls function X? | `trace_path(function_name, direction="callers")` | Grep |
+| Module/route architecture | `get_architecture(project, aspects=[...])` | Manual file reading |
+| Find struct/fn by name | `search_graph(project, query)` | Glob |
+| Git diff impact + risk score | `detect_changes(project)` | Manual inspection |
+| Fetch function source | `get_code_snippet(qualified_name)` | Read |
+| Check if index is current | `index_status(project)` | — |
+| Re-index after large changes | `index_repository(repo_path)` | — |
+
+**Project ID**: `home-devuser-workspace-project`
+**Session start**: run `index_status` — if `needs_reindex: true`, run `index_repository`.
+**Token savings**: ~99.2% vs grep (3,400 vs 412,000 tokens for 5 structural queries).

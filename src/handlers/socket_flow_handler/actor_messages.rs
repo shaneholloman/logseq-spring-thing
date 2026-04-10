@@ -3,6 +3,7 @@ use log::{debug, error, info, trace};
 
 use crate::utils::delta_encoding;
 use crate::utils::socket_flow_messages::BinaryNodeData;
+use crate::utils::websocket_heartbeat::HeartbeatDirective;
 
 use super::types::SocketFlowServer;
 
@@ -179,5 +180,29 @@ impl Handler<SendPositionUpdate> for SocketFlowServer {
                 msg.node_id
             );
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// ADR-031 item 4: Push a HeartbeatDirective to a specific client session.
+// Other actors can send this message to enqueue a directive that will be
+// delivered in the next heartbeat pong frame.
+// ---------------------------------------------------------------------------
+
+#[derive(Message)]
+#[rtype(result = "()")]
+pub struct PushDirective {
+    pub directive: HeartbeatDirective,
+}
+
+impl Handler<PushDirective> for SocketFlowServer {
+    type Result = ();
+
+    fn handle(&mut self, msg: PushDirective, _ctx: &mut Self::Context) -> Self::Result {
+        debug!(
+            "[WebSocket] Queuing directive {:?} for client {:?}",
+            msg.directive, self.client_id
+        );
+        self.queue_directive(msg.directive);
     }
 }

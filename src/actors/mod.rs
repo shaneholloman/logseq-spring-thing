@@ -53,7 +53,7 @@ pub use graph_state_actor::GraphStateActor;
 pub use graph_service_supervisor::{
     ActorHealth, ActorHeartbeat, ActorType, BackoffStrategy, GetSupervisorStatus,
     GraphServiceSupervisor, GraphSupervisionStrategy, RestartActor, RestartAllActors,
-    RestartPolicy, SupervisorMessage, SupervisorStatus,
+    RestartPolicy, SetParentSupervisor, SupervisorMessage, SupervisorStatus,
 };
 pub use messages::*;
 pub use messaging::{AckStatus, MessageAck, MessageId, MessageKind, MessageMetrics, MessageTracker};
@@ -70,7 +70,7 @@ pub use semantic_processor_actor::{
     AISemanticFeatures, SemanticProcessorActor, SemanticProcessorConfig, SemanticStats,
 };
 pub use supervisor::{
-    SupervisedActorInfo, SupervisedActorTrait, SupervisionStrategy, SupervisorActor,
+    ActorFactory, SupervisedActorInfo, SupervisedActorTrait, SupervisionStrategy, SupervisorActor,
 };
 pub use task_orchestrator_actor::{
     CreateTask, GetSystemStatus, GetTaskStatus, ListActiveTasks, StopTask, SystemStatusInfo,

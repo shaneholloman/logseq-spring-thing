@@ -15,14 +15,14 @@ pub use types::{
 
 pub use domain_events::*;
 
-pub use bus::EventBus;
+pub use bus::{DeadLetterEntry, DeadLetterQueue, EventBus};
 
 // Re-export EventBus in event_bus module for backward compatibility
 pub mod event_bus {
     pub use super::bus::EventBus;
 }
 
-pub use store::{EventRepository, EventStore, InMemoryEventRepository};
+pub use store::{EventRepository, EventStore, FileEventRepository, InMemoryEventRepository};
 
 pub use middleware::{
     EnrichmentMiddleware, LoggingMiddleware, MetricsMiddleware, RetryMiddleware,

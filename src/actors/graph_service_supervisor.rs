@@ -44,6 +44,7 @@ use crate::actors::{
     ClientCoordinatorActor, GPUManagerActor, PhysicsOrchestratorActor, SemanticProcessorActor,
 };
 use crate::actors::graph_state_actor::GraphStateActor;
+use crate::actors::supervisor::{ActorFailed, SupervisorActor};
 // Removed unused import - we don't use graph_messages types for handlers
 use crate::actors::messages as msgs;
 // Removed graph_messages::GetGraphData import - not used
@@ -202,23 +203,28 @@ pub struct GraphServiceSupervisor {
     // Knowledge graph repository
     kg_repo: Option<Arc<dyn crate::ports::knowledge_graph_repository::KnowledgeGraphRepository>>,
 
-    
+    /// Optional parent supervisor address for failure escalation.
+    /// When set, `Escalate` strategy sends `ActorFailed` to this address
+    /// instead of stopping self.
+    parent_supervisor: Option<Addr<SupervisorActor>>,
+
+
     strategy: GraphSupervisionStrategy,
     restart_policy: RestartPolicy,
 
-    
+
     actor_info: HashMap<ActorType, ActorInfo>,
 
-    
+
     health_check_interval: Duration,
     last_health_check: Instant,
 
-    
+
     #[allow(dead_code)]
     message_buffer_size: usize,
     total_messages_routed: u64,
 
-    
+
     supervision_stats: SupervisionStats,
 }
 
@@ -272,6 +278,7 @@ impl GraphServiceSupervisor {
             gpu_manager: None,
             app_gpu_compute_addr: None,
             kg_repo: Some(kg_repo),
+            parent_supervisor: None,
             strategy: GraphSupervisionStrategy::OneForOne,
             restart_policy: RestartPolicy::default(),
             actor_info: HashMap::new(),
@@ -523,9 +530,25 @@ impl GraphServiceSupervisor {
                 self.restart_all_actors(ctx);
             }
             GraphSupervisionStrategy::Escalate => {
-                error!("Escalating to parent supervisor");
-                
-                ctx.stop();
+                if let Some(ref parent) = self.parent_supervisor {
+                    warn!(
+                        "Escalating {:?} failure to parent supervisor",
+                        actor_type
+                    );
+                    parent.do_send(ActorFailed {
+                        actor_name: format!("GraphServiceSupervisor/{:?}", actor_type),
+                        error: VisionFlowError::Actor(ActorError::ActorNotAvailable(
+                            format!("{:?} exceeded restart limits", actor_type),
+                        )),
+                    });
+                } else {
+                    error!(
+                        "No parent supervisor configured — cannot escalate {:?} failure. \
+                         Stopping GraphServiceSupervisor.",
+                        actor_type
+                    );
+                    ctx.stop();
+                }
             }
             _ => {
                 error!("Actor {:?} failed beyond recovery limits", actor_type);
@@ -924,6 +947,15 @@ pub struct RestartActor {
 #[rtype(result = "Result<(), VisionFlowError>")]
 pub struct RestartAllActors;
 
+/// Message to wire a parent `SupervisorActor` after construction.
+/// When the parent is set, `Escalate` strategy sends `ActorFailed` to it
+/// instead of blindly stopping.
+#[derive(Message)]
+#[rtype(result = "()")]
+pub struct SetParentSupervisor {
+    pub parent: Addr<SupervisorActor>,
+}
+
 // Message handlers
 
 impl Handler<SupervisorMessage> for GraphServiceSupervisor {
@@ -972,6 +1004,15 @@ impl Handler<RestartAllActors> for GraphServiceSupervisor {
     fn handle(&mut self, _msg: RestartAllActors, ctx: &mut Self::Context) -> Self::Result {
         self.restart_all_actors(ctx);
         Ok(())
+    }
+}
+
+impl Handler<SetParentSupervisor> for GraphServiceSupervisor {
+    type Result = ();
+
+    fn handle(&mut self, msg: SetParentSupervisor, _ctx: &mut Self::Context) {
+        info!("GraphServiceSupervisor: parent supervisor wired for escalation");
+        self.parent_supervisor = Some(msg.parent);
     }
 }
 

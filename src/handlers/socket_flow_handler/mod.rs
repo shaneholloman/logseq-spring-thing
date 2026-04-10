@@ -12,6 +12,7 @@ pub mod http_handler;
 // Re-export public API (preserves all external imports)
 pub use types::{PreReadSocketSettings, SocketFlowServer};
 pub use actor_messages::BroadcastPositionUpdate;
+pub use actor_messages::PushDirective;
 pub use http_handler::socket_flow_handler;
 
 // StreamHandler glue -- delegates text/binary to submodules

@@ -118,26 +118,61 @@ impl ActorLifecycleManager {
     }
 
     
-    pub async fn shutdown(&mut self) -> Result<(), ActorLifecycleError> {
-        info!("Starting graceful actor shutdown");
+    /// Gracefully shut down all managed actors.
+    ///
+    /// `shutdown_timeout` controls how long to wait for actors to process their
+    /// final messages before the addresses are dropped (which triggers Actix to
+    /// stop the actors).  Dropping the last `Addr` clone causes Actix to call
+    /// `Actor::stopping` → `Actor::stopped` on the target actor, so the drop
+    /// itself is the stop signal.  The timeout gives in-flight messages time to
+    /// drain before we discard the addresses.
+    pub async fn shutdown_with_timeout(
+        &mut self,
+        shutdown_timeout: Duration,
+    ) -> Result<(), ActorLifecycleError> {
+        info!(
+            "Starting graceful actor shutdown (timeout: {:?})",
+            shutdown_timeout
+        );
 
-        
-        if let Some(_addr) = self.physics_actor.take() {
-            info!("Stopping PhysicsOrchestratorActor");
-            
+        // Phase 1: Check connectivity and log status for each actor.
+        if let Some(ref addr) = self.physics_actor {
+            if addr.connected() {
+                info!("PhysicsOrchestratorActor is connected — will be stopped");
+            } else {
+                warn!("PhysicsOrchestratorActor already disconnected");
+            }
+        }
+        if let Some(ref addr) = self.semantic_actor {
+            if addr.connected() {
+                info!("SemanticProcessorActor is connected — will be stopped");
+            } else {
+                warn!("SemanticProcessorActor already disconnected");
+            }
         }
 
-        
-        if let Some(_addr) = self.semantic_actor.take() {
-            info!("Stopping SemanticProcessorActor");
-            
+        // Phase 2: Wait for the timeout to let in-flight messages drain.
+        tokio::time::sleep(shutdown_timeout).await;
+
+        // Phase 3: Drop the addresses. When the last Addr clone is dropped,
+        // Actix transitions the actor through stopping → stopped.
+        if let Some(addr) = self.physics_actor.take() {
+            info!("Dropping PhysicsOrchestratorActor address to trigger Actix stop");
+            drop(addr);
         }
 
-        
-        tokio::time::sleep(Duration::from_secs(2)).await;
+        if let Some(addr) = self.semantic_actor.take() {
+            info!("Dropping SemanticProcessorActor address to trigger Actix stop");
+            drop(addr);
+        }
 
         info!("Actor system shutdown complete");
         Ok(())
+    }
+
+    /// Gracefully shut down all managed actors with a default 5-second timeout.
+    pub async fn shutdown(&mut self) -> Result<(), ActorLifecycleError> {
+        self.shutdown_with_timeout(Duration::from_secs(5)).await
     }
 
     

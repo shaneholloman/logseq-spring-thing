@@ -7,6 +7,33 @@ use crate::utils::validation::rate_limit::{create_rate_limit_response, extract_c
 
 use super::types::{PreReadSocketSettings, SocketFlowServer, WEBSOCKET_RATE_LIMITER};
 
+/// Check whether insecure defaults are allowed.
+///
+/// Returns `true` ONLY when `ALLOW_INSECURE_DEFAULTS` is set AND the
+/// environment is NOT production. In production (`APP_ENV=production` or
+/// `RUST_ENV=production`), insecure defaults are NEVER honoured regardless
+/// of `ALLOW_INSECURE_DEFAULTS`.
+fn is_insecure_defaults_allowed() -> bool {
+    if std::env::var("ALLOW_INSECURE_DEFAULTS").is_err() {
+        return false;
+    }
+
+    let is_production = std::env::var("APP_ENV")
+        .or_else(|_| std::env::var("RUST_ENV"))
+        .map(|v| v.eq_ignore_ascii_case("production"))
+        .unwrap_or(false);
+
+    if is_production {
+        warn!(
+            "SECURITY: ALLOW_INSECURE_DEFAULTS is set but APP_ENV/RUST_ENV is 'production' \
+             — ignoring insecure defaults. Remove ALLOW_INSECURE_DEFAULTS in production."
+        );
+        return false;
+    }
+
+    true
+}
+
 /// HTTP upgrade handler for WebSocket connections at `/wss`.
 pub async fn socket_flow_handler(
     req: HttpRequest,
@@ -21,11 +48,13 @@ pub async fn socket_flow_handler(
         return create_rate_limit_response(&client_ip, &WEBSOCKET_RATE_LIMITER);
     }
 
+    let insecure_allowed = is_insecure_defaults_allowed();
+
     // SECURITY: Validate Origin header to prevent cross-site WebSocket hijacking
     if let Some(origin_header) = req.headers().get("Origin") {
         let origin = origin_header.to_str().unwrap_or("");
         let allowed_origins = std::env::var("CORS_ALLOWED_ORIGINS").unwrap_or_else(|_| {
-            if std::env::var("ALLOW_INSECURE_DEFAULTS").is_ok() {
+            if insecure_allowed {
                 "http://localhost:3000,http://localhost:3001,http://127.0.0.1:3000,http://localhost:5173".to_string()
             } else {
                 "http://localhost:3000".to_string()
@@ -68,7 +97,7 @@ pub async fn socket_flow_handler(
             return Ok(HttpResponse::Forbidden()
                 .body(format!("Origin '{}' not allowed for WebSocket connections", origin)));
         }
-    } else if std::env::var("ALLOW_INSECURE_DEFAULTS").is_err() {
+    } else if !insecure_allowed {
         warn!(
             "WebSocket connection rejected - missing Origin header from {}",
             client_ip
@@ -79,6 +108,8 @@ pub async fn socket_flow_handler(
     }
 
     // SECURITY: WebSocket token validation at upgrade time.
+    // Extract Bearer token from Authorization header or ?token= query param,
+    // then cryptographically validate it via NostrService.
     {
         let token = req
             .headers()
@@ -93,21 +124,76 @@ pub async fn socket_flow_handler(
                     .map(|(_, v)| v.to_string())
             });
 
-        if token.as_deref().unwrap_or("").is_empty() {
-            if std::env::var("ALLOW_INSECURE_DEFAULTS").is_err() {
+        match token.as_deref() {
+            Some(t) if !t.is_empty() => {
+                // Token present — validate it cryptographically via NostrService
+                let nostr_service = app_state_data.nostr_service.as_ref();
+                match nostr_service {
+                    Some(ns) => {
+                        let session = ns.get_session(t).await;
+                        if session.is_none() {
+                            if insecure_allowed {
+                                warn!(
+                                    "SECURITY: WebSocket token validation failed for {} but \
+                                     ALLOW_INSECURE_DEFAULTS is set — allowing connection",
+                                    client_ip
+                                );
+                            } else {
+                                warn!(
+                                    "SECURITY: Rejecting WebSocket connection from {} — \
+                                     token failed cryptographic validation",
+                                    client_ip
+                                );
+                                return Ok(
+                                    HttpResponse::Unauthorized()
+                                        .body("Invalid or expired authentication token")
+                                );
+                            }
+                        } else {
+                            debug!(
+                                "WebSocket token validated successfully for client {}",
+                                client_ip
+                            );
+                        }
+                    }
+                    None => {
+                        // NostrService not configured — cannot validate
+                        if !insecure_allowed {
+                            warn!(
+                                "SECURITY: NostrService unavailable, rejecting WebSocket from {}",
+                                client_ip
+                            );
+                            return Ok(
+                                HttpResponse::Unauthorized()
+                                    .body("Authentication service unavailable")
+                            );
+                        }
+                        warn!(
+                            "SECURITY: NostrService unavailable but ALLOW_INSECURE_DEFAULTS set \
+                             — allowing unauthenticated WebSocket from {}",
+                            client_ip
+                        );
+                    }
+                }
+            }
+            _ => {
+                // No token at all
+                if !insecure_allowed {
+                    warn!(
+                        "SECURITY: Rejecting unauthenticated WebSocket connection on /wss from {}",
+                        client_ip
+                    );
+                    return Ok(
+                        HttpResponse::Unauthorized()
+                            .body("Authentication required for WebSocket connections")
+                    );
+                }
                 warn!(
-                    "SECURITY: Rejecting unauthenticated WebSocket connection on /wss from {}",
+                    "SECURITY: Unauthenticated WebSocket connection on /wss from {} \
+                     (ALLOW_INSECURE_DEFAULTS set, non-production)",
                     client_ip
                 );
-                return Ok(
-                    HttpResponse::Unauthorized()
-                        .body("Authentication required for WebSocket connections")
-                );
             }
-            warn!(
-                "SECURITY: Unauthenticated WebSocket connection on /wss from {} (ALLOW_INSECURE_DEFAULTS set)",
-                client_ip
-            );
         }
     }
 
