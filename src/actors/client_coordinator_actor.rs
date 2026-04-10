@@ -101,6 +101,18 @@ impl std::str::FromStr for FilterMode {
     }
 }
 
+/// ADR-031 item 5: Result returned by broadcast methods.
+///
+/// `sent` is the number of clients that accepted the message.
+/// `slow_clients` contains IDs of clients whose actor mailbox was full or
+/// closed (backpressure detected). Callers MUST evict these clients under a
+/// write lock AFTER releasing any read lock held during the broadcast.
+#[derive(Debug, Default)]
+pub struct BroadcastResult {
+    pub sent: usize,
+    pub slow_clients: Vec<usize>,
+}
+
 pub struct ClientManager {
     pub clients: HashMap<usize, ClientState>,
     pub next_id: usize,
@@ -192,13 +204,30 @@ impl ClientManager {
         }
     }
 
-    pub fn broadcast_to_all(&self, data: Vec<u8>) -> usize {
-        let mut broadcast_count = 0;
-        for (_, client_state) in &self.clients {
-            client_state.addr.do_send(SendToClientBinary(data.clone()));
-            broadcast_count += 1;
+    /// Broadcast raw bytes to every connected client.
+    ///
+    /// Uses `try_send` (ADR-031 item 5) to detect full or closed mailboxes.
+    /// Returns a `BroadcastResult` whose `slow_clients` list the caller
+    /// should evict under a write lock after releasing any read lock.
+    pub fn broadcast_to_all(&self, data: Vec<u8>) -> BroadcastResult {
+        let mut sent = 0;
+        let mut slow_clients = Vec::new();
+        for (&client_id, client_state) in &self.clients {
+            match client_state.addr.try_send(SendToClientBinary(data.clone())) {
+                Ok(()) => sent += 1,
+                Err(actix::prelude::SendError::Full(_)) => {
+                    warn!(
+                        "[ClientCoordinator] Client {} mailbox full — marking for eviction",
+                        client_id
+                    );
+                    slow_clients.push(client_id);
+                }
+                Err(actix::prelude::SendError::Closed(_)) => {
+                    slow_clients.push(client_id);
+                }
+            }
         }
-        broadcast_count
+        BroadcastResult { sent, slow_clients }
     }
 
     /// Broadcast with per-client filtering, including node type flags in binary protocol
@@ -206,40 +235,68 @@ impl ClientManager {
     /// Pre-serializes the unfiltered payload once so that clients without active filters
     /// receive a cheap `Vec<u8>` clone instead of re-encoding per client.
     /// Complexity: O(N + F*N_f) where F = filtered-client count, N_f = per-filter node count.
+    /// Broadcast position frames with per-client filtering.
+    ///
+    /// Pre-serialises the unfiltered payload once so clients without active
+    /// filters get a cheap `Vec<u8>` clone instead of re-encoding per client.
+    /// Uses `try_send` (ADR-031 item 5) to detect backpressure.
+    /// Complexity: O(N + F×N_f) where F = filtered-client count, N_f = per-filter node count.
     pub fn broadcast_with_filter(
         &self,
         positions: &[BinaryNodeDataClient],
         node_type_arrays: &crate::actors::messages::NodeTypeArrays,
         broadcast_sequence: u64,
         analytics_data: Option<&std::collections::HashMap<u32, (u32, f32, u32)>>,
-    ) -> usize {
+    ) -> BroadcastResult {
         if positions.is_empty() || self.clients.is_empty() {
-            return 0;
+            return BroadcastResult::default();
         }
 
         // Pre-serialize the full unfiltered payload ONCE
         let unfiltered_binary = self.serialize_positions(positions, node_type_arrays, broadcast_sequence, analytics_data);
 
-        let mut broadcast_count = 0;
-        for (_, client_state) in &self.clients {
-            if !client_state.filter.enabled {
+        let mut sent = 0;
+        let mut slow_clients = Vec::new();
+        for (&client_id, client_state) in &self.clients {
+            let payload = if !client_state.filter.enabled {
                 // Send pre-serialized payload — no re-encoding needed
-                client_state.addr.do_send(SendToClientBinary(unfiltered_binary.clone()));
-                broadcast_count += 1;
+                Some(unfiltered_binary.clone())
             } else {
                 // Only re-serialize for clients with active filters
-                let filtered_positions: Vec<_> = positions.iter()
+                let filtered_positions: Vec<_> = positions
+                    .iter()
                     .filter(|pos| client_state.filter.filtered_node_ids.contains(&pos.node_id))
                     .copied()
                     .collect();
-                if !filtered_positions.is_empty() {
-                    let binary_data = self.serialize_positions(&filtered_positions, node_type_arrays, broadcast_sequence, analytics_data);
-                    client_state.addr.do_send(SendToClientBinary(binary_data));
-                    broadcast_count += 1;
+                if filtered_positions.is_empty() {
+                    None
+                } else {
+                    Some(self.serialize_positions(
+                        &filtered_positions,
+                        node_type_arrays,
+                        broadcast_sequence,
+                        analytics_data,
+                    ))
+                }
+            };
+
+            if let Some(data) = payload {
+                match client_state.addr.try_send(SendToClientBinary(data)) {
+                    Ok(()) => sent += 1,
+                    Err(actix::prelude::SendError::Full(_)) => {
+                        warn!(
+                            "[ClientCoordinator] Client {} mailbox full — marking for eviction",
+                            client_id
+                        );
+                        slow_clients.push(client_id);
+                    }
+                    Err(actix::prelude::SendError::Closed(_)) => {
+                        slow_clients.push(client_id);
+                    }
                 }
             }
         }
-        broadcast_count
+        BroadcastResult { sent, slow_clients }
     }
 
     /// Serialize positions into V5 binary frame format.
@@ -469,19 +526,27 @@ impl ClientCoordinatorActor {
             }
 
             
-            let client_count = {
+            let broadcast_result = {
                 let manager = match handle_rwlock_error(self.client_manager.read()) {
-                Ok(manager) => manager,
-                Err(e) => {
-                    error!("RwLock error: {}", e);
-                    return Err(format!("Failed to acquire client manager lock: {}", e));
-                }
-            };
+                    Ok(manager) => manager,
+                    Err(e) => {
+                        error!("RwLock error: {}", e);
+                        return Err(format!("Failed to acquire client manager lock: {}", e));
+                    }
+                };
                 manager.broadcast_to_all(encoded.clone())
             };
-
+            // ADR-031 item 5: evict slow clients detected during broadcast.
+            if !broadcast_result.slow_clients.is_empty() {
+                if let Ok(mut manager) = self.client_manager.write() {
+                    for id in &broadcast_result.slow_clients {
+                        warn!("[ClientCoordinator] Evicting slow client {} (voice broadcast)", id);
+                        manager.unregister_client(*id);
+                    }
+                }
+            }
             self.record_bytes_sent(encoded.len());
-            total_sent += client_count;
+            total_sent += broadcast_result.sent;
 
             
             self.voice_data_queued_bytes -= voice_data_len;
@@ -490,7 +555,7 @@ impl ClientCoordinatorActor {
             debug!(
                 "Sent voice data: {} bytes to {} clients",
                 encoded.len(),
-                client_count
+                broadcast_result.sent
             );
         }
 
@@ -508,27 +573,35 @@ impl ClientCoordinatorActor {
 
             if self.check_bandwidth_available(binary_data.len()) {
 
-                let client_count = {
-                    let manager = match handle_rwlock_error(self.client_manager.read()) {
-                Ok(manager) => manager,
-                Err(e) => {
-                    error!("RwLock error: {}", e);
-                    return Err(format!("Failed to acquire client manager lock: {}", e));
-                }
-            };
-                    manager.broadcast_to_all(binary_data.clone())
+                let broadcast_result = {
+                let manager = match handle_rwlock_error(self.client_manager.read()) {
+                    Ok(manager) => manager,
+                    Err(e) => {
+                        error!("RwLock error: {}", e);
+                        return Err(format!("Failed to acquire client manager lock: {}", e));
+                    }
                 };
-
-                self.record_bytes_sent(binary_data.len());
-                self.broadcast_count += 1;
-                self.last_broadcast = Instant::now();
-                total_sent += client_count;
+                manager.broadcast_to_all(binary_data.clone())
+            };
+            // ADR-031 item 5: evict slow clients.
+            if !broadcast_result.slow_clients.is_empty() {
+                if let Ok(mut manager) = self.client_manager.write() {
+                    for id in &broadcast_result.slow_clients {
+                        warn!("[ClientCoordinator] Evicting slow client {} (position cache)", id);
+                        manager.unregister_client(*id);
+                    }
+                }
+            }
+            self.record_bytes_sent(binary_data.len());
+            self.broadcast_count += 1;
+            self.last_broadcast = Instant::now();
+            total_sent += broadcast_result.sent;
 
                 debug!(
                     "Sent graph update: {} nodes, {} bytes to {} clients",
                     position_data.len(),
                     binary_data.len(),
-                    client_count
+                    broadcast_result.sent
                 );
             } else {
                 debug!("Bandwidth limit reached, deferring graph update");
@@ -614,7 +687,7 @@ impl ClientCoordinatorActor {
         let analytics_ref = analytics_guard.as_deref();
 
         // Use per-client filtered broadcast for consistency with BroadcastPositions
-        let broadcast_count = {
+        let result = {
             let manager = match handle_rwlock_error(self.client_manager.read()) {
                 Ok(manager) => manager,
                 Err(e) => {
@@ -624,6 +697,16 @@ impl ClientCoordinatorActor {
             };
             manager.broadcast_with_filter(&position_data, &self.node_type_arrays, current_sequence, analytics_ref)
         };
+        let broadcast_count = result.sent;
+        // ADR-031 item 5: evict slow clients detected during force broadcast.
+        if !result.slow_clients.is_empty() {
+            if let Ok(mut manager) = self.client_manager.write() {
+                for id in &result.slow_clients {
+                    warn!("[ClientCoordinator] Evicting slow client {} (force broadcast)", id);
+                    manager.unregister_client(*id);
+                }
+            }
+        }
 
         // Approximate byte size (V5 protocol: 48 bytes per node + 1 header + 8 sequence)
         let approx_bytes = 1 + 8 + position_data.len() * 48;
@@ -745,7 +828,7 @@ impl ClientCoordinatorActor {
         let analytics_ref = analytics_guard.as_deref();
 
         // Use per-client filtered broadcast for consistency with BroadcastPositions
-        let broadcast_count = {
+        let result = {
             let manager = match handle_rwlock_error(self.client_manager.read()) {
                 Ok(manager) => manager,
                 Err(e) => {
@@ -755,6 +838,16 @@ impl ClientCoordinatorActor {
             };
             manager.broadcast_with_filter(&position_data, &self.node_type_arrays, current_sequence, analytics_ref)
         };
+        let broadcast_count = result.sent;
+        // ADR-031 item 5: evict slow clients detected during position broadcast.
+        if !result.slow_clients.is_empty() {
+            if let Ok(mut manager) = self.client_manager.write() {
+                for id in &result.slow_clients {
+                    warn!("[ClientCoordinator] Evicting slow client {} (position broadcast)", id);
+                    manager.unregister_client(*id);
+                }
+            }
+        }
 
         // Approximate byte size (V5 protocol: 48 bytes per node + 1 header + 8 sequence)
         let approx_bytes = 1 + 8 + position_data.len() * 48;
@@ -1087,7 +1180,7 @@ impl Handler<BroadcastNodePositions> for ClientCoordinatorActor {
     type Result = Result<(), String>;
 
     fn handle(&mut self, msg: BroadcastNodePositions, _ctx: &mut Self::Context) -> Self::Result {
-        let client_count = {
+        let broadcast_result = {
             let manager = match handle_rwlock_error(self.client_manager.read()) {
                 Ok(manager) => manager,
                 Err(e) => {
@@ -1097,6 +1190,16 @@ impl Handler<BroadcastNodePositions> for ClientCoordinatorActor {
             };
             manager.broadcast_to_all(msg.positions.clone())
         };
+        // ADR-031 item 5: evict slow clients.
+        if !broadcast_result.slow_clients.is_empty() {
+            if let Ok(mut manager) = self.client_manager.write() {
+                for id in &broadcast_result.slow_clients {
+                    warn!("[ClientCoordinator] Evicting slow client {} (node positions)", id);
+                    manager.unregister_client(*id);
+                }
+            }
+        }
+        let client_count = broadcast_result.sent;
 
         if client_count > 0 {
             
@@ -1157,7 +1260,7 @@ impl Handler<BroadcastPositions> for ClientCoordinatorActor {
         let analytics_guard = self.node_analytics.read().ok();
         let analytics_ref = analytics_guard.as_deref();
 
-        let client_count = {
+        let result = {
             let manager = match handle_rwlock_error(self.client_manager.read()) {
                 Ok(manager) => manager,
                 Err(e) => {
@@ -1167,6 +1270,16 @@ impl Handler<BroadcastPositions> for ClientCoordinatorActor {
             };
             manager.broadcast_with_filter(&msg.positions, &self.node_type_arrays, current_sequence, analytics_ref)
         };
+        let client_count = result.sent;
+        // ADR-031 item 5: evict slow clients detected during BroadcastPositions.
+        if !result.slow_clients.is_empty() {
+            if let Ok(mut manager) = self.client_manager.write() {
+                for id in &result.slow_clients {
+                    warn!("[ClientCoordinator] Evicting slow client {} (BroadcastPositions)", id);
+                    manager.unregister_client(*id);
+                }
+            }
+        }
 
         if client_count > 0 {
             self.broadcast_count += 1;

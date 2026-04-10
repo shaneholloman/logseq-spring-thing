@@ -113,6 +113,12 @@ pub struct AgentMonitorActor {
 
     /// Cached container telemetry from Management API /v1/status
     container_telemetry: ContainerTelemetry,
+
+    /// ADR-031 item 1: Round-robin poll offset.
+    /// Incremented each successful poll so the golden-spiral starting index
+    /// rotates, preventing the same agent from always occupying the apex 3-D
+    /// position. Adapted from Multica's `pollOffset` daemon fairness pattern.
+    poll_offset: usize,
 }
 
 impl AgentMonitorActor {
@@ -147,6 +153,7 @@ impl AgentMonitorActor {
             consecutive_poll_failures: 0,
             last_successful_poll: None,
             container_telemetry: ContainerTelemetry::default(),
+            poll_offset: 0,
         }
     }
 
@@ -368,14 +375,20 @@ impl Handler<ProcessAgentStatuses> for AgentMonitorActor {
         self.container_telemetry = msg.telemetry;
 
         let agent_count = agents.len() as f32;
+        // ADR-031 item 1: capture offset before the closure (borrow-checker).
+        let spiral_offset = self.poll_offset;
+        let agent_count_usize = agents.len().max(1);
         let agents_list: Vec<crate::services::bots_client::Agent> = agents
             .iter()
             .enumerate()
             .map(|(i, status)| {
-                // Distribute agents in a golden angle spiral on a sphere
+                // Distribute agents in a golden angle spiral on a sphere.
+                // Round-robin: rotate start index so the same agent does not
+                // always occupy the apex position each poll cycle.
+                let spiral_i = (i + spiral_offset) % agent_count_usize;
                 let golden_angle = std::f32::consts::PI * (3.0 - (5.0_f32).sqrt());
-                let theta = golden_angle * i as f32;
-                let y_pos = 1.0 - (i as f32 / (agent_count - 1.0).max(1.0)) * 2.0;
+                let theta = golden_angle * spiral_i as f32;
+                let y_pos = 1.0 - (spiral_i as f32 / (agent_count - 1.0).max(1.0)) * 2.0;
                 let radius_at_y = (1.0 - y_pos * y_pos).sqrt();
                 let scale = 15.0; // Radius of agent sphere
 
@@ -415,6 +428,8 @@ impl Handler<ProcessAgentStatuses> for AgentMonitorActor {
 
         self.consecutive_poll_failures = 0;
         self.last_successful_poll = Some(time::now());
+        // ADR-031 item 1: advance round-robin offset for next poll cycle.
+        self.poll_offset = self.poll_offset.wrapping_add(1);
     }
 }
 
@@ -448,5 +463,23 @@ impl Handler<UpdateAgentCache> for AgentMonitorActor {
             "[AgentMonitorActor] Agent cache updated: {} agents",
             self.agent_cache.len()
         );
+    }
+}
+
+/// ADR-031 item 3: Observational status inference.
+///
+/// `TaskOrchestratorActor` sends this when a task transitions to/from Running.
+/// Rather than waiting up to 3 s for the next scheduled poll, we trigger an
+/// immediate Management API re-poll so status changes are reflected instantly.
+impl Handler<TaskStatusChanged> for AgentMonitorActor {
+    type Result = ();
+
+    fn handle(&mut self, msg: TaskStatusChanged, ctx: &mut Self::Context) {
+        debug!(
+            "[AgentMonitorActor] TaskStatusChanged: agent_type={}, running={}. \
+             Triggering immediate re-poll.",
+            msg.agent_type, msg.running_task_count
+        );
+        self.poll_agent_statuses(ctx);
     }
 }

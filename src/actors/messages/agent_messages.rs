@@ -338,3 +338,35 @@ pub struct SystemMetrics {
     pub memory_usage: f32,
     pub gpu_usage: Option<f32>,
 }
+
+// ---------------------------------------------------------------------------
+// Orchestration Improvements — ADR-031 (Multica-derived patterns)
+// ---------------------------------------------------------------------------
+
+/// Signals that the running task count for an agent type has changed.
+///
+/// Emitted by `TaskOrchestratorActor` on every task state transition.
+/// `AgentMonitorActor` handles this by triggering an immediate Management API
+/// re-poll, eliminating up to 3 s of lag from the periodic polling interval.
+///
+/// Implements "observational status inference" (item 3 in ADR-031): agent
+/// status is derived from task count events rather than solely from polling.
+#[derive(Message)]
+#[rtype(result = "()")]
+pub struct TaskStatusChanged {
+    /// Agent type string (e.g. `"coder"`, `"reviewer"`).
+    pub agent_type: String,
+    /// Number of tasks of this type currently in the Running state.
+    pub running_task_count: usize,
+}
+
+/// Injects the `AgentMonitorActor` address into `TaskOrchestratorActor`.
+///
+/// After injection, `TaskOrchestratorActor` sends `TaskStatusChanged`
+/// notifications on every task state transition, enabling sub-second agent
+/// status updates without waiting for the next polling interval.
+#[derive(Message)]
+#[rtype(result = "()")]
+pub struct SetAgentMonitorAddr {
+    pub addr: actix::Addr<crate::actors::AgentMonitorActor>,
+}

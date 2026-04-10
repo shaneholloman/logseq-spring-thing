@@ -26,38 +26,57 @@ async fn execute_handler_concurrent(
         }
     }
 
-    // Retry loop with exponential backoff
-    let mut last_error = None;
-    for attempt in 0..=max_retries {
-        match handler.handle(&event).await {
-            Ok(_) => {
-                let mw_list = middleware.read().await;
-                for mw in mw_list.iter() {
-                    mw.after_handle(&event, &handler_id, &Ok(())).await?;
+    // ADR-031 item 6: Panic isolation.
+    // Wrap the retry loop in `tokio::task::spawn` so that a panic inside a
+    // handler is caught as a `JoinError` rather than unwinding through the
+    // EventBus and killing the entire task. Each handler failure is logged and
+    // reported as `EventError::Handler` without affecting other handlers.
+    let spawn_handler = Arc::clone(&handler);
+    let spawn_event = event.clone();
+    let spawn_middleware = Arc::clone(&middleware);
+    let spawn_handler_id = handler_id.clone();
+
+    let join_handle = tokio::task::spawn(async move {
+        let mut last_error = None;
+        for attempt in 0..=max_retries {
+            match spawn_handler.handle(&spawn_event).await {
+                Ok(_) => {
+                    let mw_list = spawn_middleware.read().await;
+                    for mw in mw_list.iter() {
+                        mw.after_handle(&spawn_event, &spawn_handler_id, &Ok(())).await?;
+                    }
+                    return Ok(());
                 }
-                return Ok(());
-            }
-            Err(e) => {
-                last_error = Some(e);
-                if attempt < max_retries {
-                    let delay = std::time::Duration::from_millis(100 * 2_u64.pow(attempt));
-                    tokio::time::sleep(delay).await;
+                Err(e) => {
+                    last_error = Some(e);
+                    if attempt < max_retries {
+                        let delay = std::time::Duration::from_millis(100 * 2_u64.pow(attempt));
+                        tokio::time::sleep(delay).await;
+                    }
                 }
             }
         }
-    }
 
-    let error = last_error.unwrap_or_else(|| {
-        EventError::Handler("Handler failed with unknown error after retries".to_string())
+        let error = last_error.unwrap_or_else(|| {
+            EventError::Handler("Handler failed with unknown error after retries".to_string())
+        });
+        let result = Err(error.clone());
+
+        let mw_list = spawn_middleware.read().await;
+        for mw in mw_list.iter() {
+            let _ = mw.after_handle(&spawn_event, &spawn_handler_id, &result).await;
+        }
+
+        Err(error)
     });
-    let result = Err(error.clone());
 
-    let mw_list = middleware.read().await;
-    for mw in mw_list.iter() {
-        let _ = mw.after_handle(&event, &handler_id, &result).await;
+    match join_handle.await {
+        Ok(result) => result,
+        Err(join_error) => Err(EventError::Handler(format!(
+            "Handler '{}' panicked: {}",
+            handler_id, join_error
+        ))),
     }
-
-    Err(error)
 }
 
 pub struct EventBus {

@@ -47,17 +47,35 @@ pub struct TaskOrchestratorActor {
     active_tasks: HashMap<String, TaskState>,
     max_retries: u32,
     retry_delay: Duration,
+    /// ADR-031 item 2: Capacity ceiling.
+    /// `CreateTask` is rejected immediately when `running_count >= max_concurrent_tasks`,
+    /// avoiding wasted HTTP retries. Configurable via `MAX_CONCURRENT_TASKS` env var.
+    max_concurrent_tasks: usize,
+    /// ADR-031 item 7: When `false` (drain mode) all new task creation is rejected.
+    /// Set by `DrainTasksBeforeShutdown`.
+    accepting_tasks: bool,
+    /// ADR-031 item 3: Optional address for push status notifications.
+    /// Set via `SetAgentMonitorAddr`. When present, `TaskStatusChanged` is sent
+    /// on every task state transition to trigger an immediate re-poll.
+    agent_monitor_addr: Option<Addr<crate::actors::AgentMonitorActor>>,
 }
 
 impl TaskOrchestratorActor {
 
     pub fn new(api_client: ManagementApiClient) -> Self {
         info!("[TaskOrchestratorActor] Initializing");
+        let max_concurrent_tasks = std::env::var("MAX_CONCURRENT_TASKS")
+            .ok()
+            .and_then(|v| v.parse::<usize>().ok())
+            .unwrap_or(20);
         Self {
             api_client,
             active_tasks: HashMap::new(),
             max_retries: 3,
             retry_delay: Duration::from_secs(2),
+            max_concurrent_tasks,
+            accepting_tasks: true,
+            agent_monitor_addr: None,
         }
     }
 }
@@ -205,6 +223,38 @@ impl Handler<CreateTask> for TaskOrchestratorActor {
     type Result = ResponseActFuture<Self, Result<TaskResponse, String>>;
 
     fn handle(&mut self, msg: CreateTask, _ctx: &mut Self::Context) -> Self::Result {
+        // ADR-031 item 7: reject during drain.
+        if !self.accepting_tasks {
+            return Box::pin(
+                async { Err("Task creation rejected: actor is draining".to_string()) }
+                    .into_actor(self),
+            );
+        }
+
+        // ADR-031 item 2: capacity-aware claiming.
+        // Count only Running tasks — Completed/Failed entries may linger until cleanup.
+        let running_count = self
+            .active_tasks
+            .values()
+            .filter(|t| t.status == ApiTaskState::Running)
+            .count();
+        if running_count >= self.max_concurrent_tasks {
+            warn!(
+                "[TaskOrchestratorActor] At capacity ({}/{}) — rejecting task for agent={}",
+                running_count, self.max_concurrent_tasks, msg.agent
+            );
+            let cap = self.max_concurrent_tasks;
+            return Box::pin(
+                async move {
+                    Err(format!(
+                        "At capacity: {}/{} tasks running",
+                        running_count, cap
+                    ))
+                }
+                .into_actor(self),
+            );
+        }
+
         info!(
             "[TaskOrchestratorActor] Received CreateTask: agent={}, provider={}",
             msg.agent, msg.provider
@@ -237,6 +287,7 @@ impl Handler<CreateTask> for TaskOrchestratorActor {
                 // This closure runs with &mut Self — mutations persist.
                 match result {
                     Ok((response, attempts, agent, task_desc, provider)) => {
+                        let agent_type = agent.clone();
                         act.active_tasks.insert(
                             response.task_id.clone(),
                             TaskState {
@@ -250,6 +301,24 @@ impl Handler<CreateTask> for TaskOrchestratorActor {
                                 retry_count: attempts,
                             },
                         );
+
+                        // ADR-031 item 3: observational status inference.
+                        // Push immediate notification so AgentMonitorActor re-polls
+                        // without waiting for its 3 s interval.
+                        let running = act
+                            .active_tasks
+                            .values()
+                            .filter(|t| {
+                                t.status == ApiTaskState::Running && t.agent == agent_type
+                            })
+                            .count();
+                        if let Some(ref addr) = act.agent_monitor_addr {
+                            addr.do_send(crate::actors::messages::TaskStatusChanged {
+                                agent_type,
+                                running_task_count: running,
+                            });
+                        }
+
                         Ok(response)
                     }
                     Err(e) => Err(e),
@@ -337,6 +406,79 @@ impl Handler<GetSystemStatus> for TaskOrchestratorActor {
                 }
             }
         })
+    }
+}
+
+// ========================================
+// ADR-031: Orchestration Improvement Messages
+// ========================================
+
+/// ADR-031 item 7: Graceful task drain.
+///
+/// On receipt the actor stops accepting new tasks (`accepting_tasks = false`)
+/// and polls every second until all running tasks finish or the timeout
+/// elapses, then stops itself. Adapted from Multica's WaitGroup-based 30-second
+/// drain on daemon shutdown.
+#[derive(Message)]
+#[rtype(result = "()")]
+pub struct DrainTasksBeforeShutdown {
+    /// Maximum seconds to wait for running tasks to complete.
+    pub timeout_secs: u64,
+}
+
+impl Handler<DrainTasksBeforeShutdown> for TaskOrchestratorActor {
+    type Result = ();
+
+    fn handle(&mut self, msg: DrainTasksBeforeShutdown, ctx: &mut Self::Context) {
+        let running = self
+            .active_tasks
+            .values()
+            .filter(|t| t.status == ApiTaskState::Running)
+            .count();
+        info!(
+            "[TaskOrchestratorActor] Drain initiated — rejecting new tasks, \
+             waiting up to {}s for {} running task(s)",
+            msg.timeout_secs, running
+        );
+        self.accepting_tasks = false;
+
+        let deadline =
+            std::time::Instant::now() + std::time::Duration::from_secs(msg.timeout_secs);
+
+        ctx.run_interval(std::time::Duration::from_secs(1), move |act, ctx| {
+            let remaining = act
+                .active_tasks
+                .values()
+                .filter(|t| t.status == ApiTaskState::Running)
+                .count();
+
+            if remaining == 0 {
+                info!("[TaskOrchestratorActor] All tasks drained — stopping actor");
+                ctx.stop();
+            } else if std::time::Instant::now() >= deadline {
+                warn!(
+                    "[TaskOrchestratorActor] Drain timeout exceeded with {} task(s) still running — stopping",
+                    remaining
+                );
+                ctx.stop();
+            }
+        });
+    }
+}
+
+/// ADR-031 item 3: Register `AgentMonitorActor` for push status notifications.
+impl Handler<crate::actors::messages::SetAgentMonitorAddr> for TaskOrchestratorActor {
+    type Result = ();
+
+    fn handle(
+        &mut self,
+        msg: crate::actors::messages::SetAgentMonitorAddr,
+        _ctx: &mut Self::Context,
+    ) {
+        info!(
+            "[TaskOrchestratorActor] AgentMonitorActor address registered for status notifications"
+        );
+        self.agent_monitor_addr = Some(msg.addr);
     }
 }
 

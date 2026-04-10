@@ -96,9 +96,25 @@ pub struct ActorStatusInfo {
     pub strategy: SupervisionStrategy,
 }
 
+/// ADR-031 item 7: Graceful shutdown message for the supervisor.
+///
+/// On receipt the supervisor sets `draining = true` (stops accepting new actor
+/// registrations) and schedules its own `ctx.stop()` after `timeout_secs`.
+/// This mirrors Multica's WaitGroup-based 30-second drain pattern, adapted for
+/// the Actix supervision tree.
+#[derive(Message)]
+#[rtype(result = "()")]
+pub struct InitiateGracefulShutdown {
+    /// Seconds to wait before force-stopping even if supervised actors are alive.
+    pub timeout_secs: u64,
+}
+
 pub struct SupervisorActor {
     supervised_actors: HashMap<String, ActorState>,
     supervisor_name: String,
+    /// ADR-031 item 7: When `true`, `RegisterActor` is rejected so new actors
+    /// cannot join the supervision tree during a drain window.
+    draining: bool,
 }
 
 impl SupervisorActor {
@@ -106,6 +122,7 @@ impl SupervisorActor {
         Self {
             supervised_actors: HashMap::new(),
             supervisor_name,
+            draining: false,
         }
     }
 
@@ -192,10 +209,45 @@ impl Actor for SupervisorActor {
     }
 }
 
+impl Handler<InitiateGracefulShutdown> for SupervisorActor {
+    type Result = ();
+
+    fn handle(&mut self, msg: InitiateGracefulShutdown, ctx: &mut Self::Context) {
+        let running = self
+            .supervised_actors
+            .values()
+            .filter(|s| s.is_running)
+            .count();
+        info!(
+            "[SupervisorActor '{}'] Graceful shutdown initiated — \
+             rejecting new registrations, stopping in {}s ({} actor(s) running)",
+            self.supervisor_name, msg.timeout_secs, running
+        );
+        self.draining = true;
+
+        ctx.run_later(Duration::from_secs(msg.timeout_secs), |_act, ctx| {
+            info!("[SupervisorActor] Drain timeout elapsed — stopping supervisor");
+            ctx.stop();
+        });
+    }
+}
+
 impl Handler<RegisterActor> for SupervisorActor {
     type Result = Result<(), VisionFlowError>;
 
     fn handle(&mut self, msg: RegisterActor, _ctx: &mut Self::Context) -> Self::Result {
+        // ADR-031 item 7: Reject new registrations during drain.
+        if self.draining {
+            warn!(
+                "[SupervisorActor '{}'] Rejecting registration of '{}' — supervisor is draining",
+                self.supervisor_name, msg.actor_name
+            );
+            return Err(VisionFlowError::Generic {
+                message: "Supervisor is draining, cannot register new actors".to_string(),
+                source: None,
+            });
+        }
+
         let actor_info = SupervisedActorInfo {
             name: msg.actor_name.clone(),
             strategy: msg.strategy.clone(),

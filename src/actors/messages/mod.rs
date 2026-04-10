@@ -104,4 +104,6 @@ pub use agent_messages::{
     RecordPollFailure, RecordPollSuccess, RetryMCPConnection, SpawnAgent, SpawnAgentCommand,
     StateSnapshot, SwarmDestroy, SwarmMonitor, SwarmMonitorData, SwarmScale, SwarmStatus,
     SystemMetrics, TaskOrchestrate, TopologyOptimize, UpdateAgentCache, UpdateBotsGraph,
+    // ADR-031: Orchestration improvements
+    SetAgentMonitorAddr, TaskStatusChanged,
 };

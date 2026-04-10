@@ -7,18 +7,42 @@ use std::time::{Duration, Instant};
 use crate::utils::time;
 use crate::utils::json::to_json;
 
+/// ADR-031 item 4: Server-to-client directives carried in heartbeat pong frames.
+///
+/// When the server has a pending action for a connected client it populates
+/// `get_pending_directives()`. The directive list is embedded in the next
+/// `send_pong` call and cleared by the client on receipt.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "directive", rename_all = "snake_case")]
+pub enum HeartbeatDirective {
+    /// Ask the client to reload its configuration from the server.
+    ReloadConfig,
+    /// Ask the client to request a full graph/position sync.
+    ForceFullSync,
+    /// Notify the client that a newer server version is available.
+    UpdateAvailable { version: String },
+}
+
 pub trait WebSocketHeartbeat: Actor<Context = ws::WebsocketContext<Self>>
 where
     Self: Sized,
 {
-    
+
     fn get_client_id(&self) -> &str;
 
-    
+
     fn get_last_heartbeat(&self) -> Instant;
 
-    
+
     fn update_last_heartbeat(&mut self);
+
+    /// ADR-031 item 4: Return any pending server directives for this client.
+    ///
+    /// Default implementation returns an empty list. Override to push
+    /// `ReloadConfig`, `ForceFullSync`, or `UpdateAvailable` directives.
+    fn get_pending_directives(&self) -> Vec<HeartbeatDirective> {
+        Vec::new()
+    }
 
     
     fn start_heartbeat(
@@ -66,16 +90,28 @@ where
         }
     }
 
-    
     fn send_pong(&self, ctx: &mut ws::WebsocketContext<Self>)
     where
         Self: actix::Actor<Context = ws::WebsocketContext<Self>>,
     {
-        let pong_message = json!({
-            "type": "pong",
-            "timestamp": time::now(),
-            "client_id": self.get_client_id()
-        });
+        // ADR-031 item 4: embed pending directives in pong so the server can
+        // push operational commands (ReloadConfig, ForceFullSync, etc.) to
+        // clients at heartbeat time without a separate message type.
+        let directives = self.get_pending_directives();
+        let pong_message = if directives.is_empty() {
+            json!({
+                "type": "pong",
+                "timestamp": time::now(),
+                "client_id": self.get_client_id()
+            })
+        } else {
+            json!({
+                "type": "pong",
+                "timestamp": time::now(),
+                "client_id": self.get_client_id(),
+                "directives": directives
+            })
+        };
 
         if let Ok(msg) = to_json(&pong_message) {
             ctx.text(msg);
@@ -150,6 +186,10 @@ pub enum CommonWebSocketMessage {
     Pong {
         timestamp: chrono::DateTime<Utc>,
         client_id: String,
+        /// ADR-031 item 4: Server directives piggy-backed on the pong frame.
+        /// Omitted from JSON when empty to keep normal pong frames minimal.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        directives: Vec<HeartbeatDirective>,
     },
 
     #[serde(rename = "connection_established")]
