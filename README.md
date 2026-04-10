@@ -45,18 +45,14 @@ The platform ingests knowledge from Logseq notebooks via GitHub, reasons over it
 
 VisionClaw is production-proven currently operational at [DreamLab residential training lab](https://www.dreamlab-ai.com), augmenting a 50 person creative technology team, and validated in partnership with a major UK creative studio and the University of Salford.
 
-<div align="center">
-<img src="./graph-physics-live.png" alt="VisionClaw GPU-accelerated force-directed graph with Control Center" width="720"/>
-<br/>
-<em>GPU-accelerated force-directed graph — 934 nodes responding to spring, repulsion, and ontology-driven semantic forces in real time</em>
+![VisionClaw GPU-accelerated force-directed graph with Control Center](./graph-physics-live.png)
 
-<br/>
+*GPU-accelerated force-directed graph — 934 nodes responding to spring, repulsion, and ontology-driven semantic forces in real time*
 
-<img src="./ChloeOctave.jpg" alt="Immersive interaction with a 3D knowledge graph" width="560"/>
-<br/>
-<em>Chloe Nevitt interacting with Prof Rob Aspin's precursor to VisionClaw in the Octave</em>
-</div>
-[See Octave Multimodal Lab  University of Salford 2017](https://narrativegoldmine.com/notes/#/page/octave%20multi%20model%20laboratory)
+![Immersive interaction with a 3D knowledge graph](./ChloeOctave.jpg)
+
+*Chloe Nevitt interacting with Prof Rob Aspin's precursor to VisionClaw in the*
+[Octave Multimodal Lab  University of Salford 2017](https://narrativegoldmine.com/notes/#/page/octave%20multi%20model%20laboratory)
 ---
 
 ## Core Capabilities
