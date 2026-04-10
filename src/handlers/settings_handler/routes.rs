@@ -98,6 +98,7 @@ async fn get_setting_by_path(
 
 async fn update_setting_by_path(
     _req: HttpRequest,
+    _auth: crate::settings::auth_extractor::AuthenticatedUser,
     state: web::Data<AppState>,
     payload: web::Json<Value>,
 ) -> Result<HttpResponse, Error> {

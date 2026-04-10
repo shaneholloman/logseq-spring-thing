@@ -297,6 +297,7 @@ pub async fn get_class_hierarchy(state: web::Data<AppState>) -> Result<HttpRespo
 }
 
 pub async fn add_owl_class(
+    _auth: crate::settings::auth_extractor::AuthenticatedUser,
     state: web::Data<AppState>,
     request: web::Json<AddClassRequest>,
 ) -> Result<HttpResponse, actix_web::Error> {
@@ -330,6 +331,7 @@ pub async fn add_owl_class(
 }
 
 pub async fn update_owl_class(
+    _auth: crate::settings::auth_extractor::AuthenticatedUser,
     state: web::Data<AppState>,
     request: web::Json<UpdateClassRequest>,
 ) -> Result<HttpResponse, actix_web::Error> {
@@ -361,6 +363,7 @@ pub async fn update_owl_class(
 }
 
 pub async fn remove_owl_class(
+    _auth: crate::settings::auth_extractor::AuthenticatedUser,
     state: web::Data<AppState>,
     iri: web::Path<String>,
 ) -> Result<HttpResponse, actix_web::Error> {
@@ -449,6 +452,7 @@ pub async fn list_owl_properties(state: web::Data<AppState>) -> Result<HttpRespo
 }
 
 pub async fn add_owl_property(
+    _auth: crate::settings::auth_extractor::AuthenticatedUser,
     state: web::Data<AppState>,
     request: web::Json<AddPropertyRequest>,
 ) -> Result<HttpResponse, actix_web::Error> {
@@ -482,6 +486,7 @@ pub async fn add_owl_property(
 }
 
 pub async fn update_owl_property(
+    _auth: crate::settings::auth_extractor::AuthenticatedUser,
     state: web::Data<AppState>,
     request: web::Json<UpdatePropertyRequest>,
 ) -> Result<HttpResponse, actix_web::Error> {
@@ -548,6 +553,7 @@ pub async fn get_class_axioms(
 }
 
 pub async fn add_axiom(
+    _auth: crate::settings::auth_extractor::AuthenticatedUser,
     state: web::Data<AppState>,
     request: web::Json<AddAxiomRequest>,
 ) -> Result<HttpResponse, actix_web::Error> {
@@ -577,7 +583,7 @@ pub async fn add_axiom(
     }
 }
 
-pub async fn remove_axiom(state: web::Data<AppState>, axiom_id: web::Path<u64>) -> Result<HttpResponse, actix_web::Error> {
+pub async fn remove_axiom(_auth: crate::settings::auth_extractor::AuthenticatedUser, state: web::Data<AppState>, axiom_id: web::Path<u64>) -> Result<HttpResponse, actix_web::Error> {
     let id = axiom_id.into_inner();
     info!("Removing axiom via CQRS directive: id={}", id);
 
@@ -635,6 +641,7 @@ pub async fn get_inference_results(state: web::Data<AppState>) -> Result<HttpRes
 }
 
 pub async fn store_inference_results(
+    _auth: crate::settings::auth_extractor::AuthenticatedUser,
     state: web::Data<AppState>,
     request: web::Json<StoreInferenceRequest>,
 ) -> Result<HttpResponse, actix_web::Error> {

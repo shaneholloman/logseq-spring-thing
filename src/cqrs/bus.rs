@@ -12,6 +12,9 @@ use std::any::{Any, TypeId};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
+use tokio::time::{timeout, Duration};
+
+const BUS_TIMEOUT: Duration = Duration::from_secs(30);
 
 pub struct CommandBus {
     handlers: Arc<RwLock<HashMap<TypeId, Box<dyn Any + Send + Sync>>>>,
@@ -62,7 +65,7 @@ impl CommandBus {
         }
 
         
-        let result = async {
+        let result = match timeout(BUS_TIMEOUT, async {
             let type_id = TypeId::of::<C>();
             let handlers = self.handlers.read().await;
 
@@ -77,10 +80,17 @@ impl CommandBus {
                 })?;
 
             handler.handle(command).await
-        }
-        .await;
+        })
+        .await
+        {
+            Ok(result) => result,
+            Err(_) => Err(anyhow::anyhow!(
+                "Command handler timed out after {}s",
+                BUS_TIMEOUT.as_secs()
+            )),
+        };
 
-        
+
         match &result {
             Ok(_) => {
                 for mw in self.middleware.iter() {
@@ -153,7 +163,7 @@ impl QueryBus {
         }
 
         
-        let result = async {
+        let result = match timeout(BUS_TIMEOUT, async {
             let type_id = TypeId::of::<Q>();
             let handlers = self.handlers.read().await;
 
@@ -168,10 +178,17 @@ impl QueryBus {
                 })?;
 
             handler.handle(query).await
-        }
-        .await;
+        })
+        .await
+        {
+            Ok(result) => result,
+            Err(_) => Err(anyhow::anyhow!(
+                "Query handler timed out after {}s",
+                BUS_TIMEOUT.as_secs()
+            )),
+        };
 
-        
+
         match &result {
             Ok(_) => {
                 for mw in self.middleware.iter() {
@@ -195,6 +212,7 @@ impl Default for QueryBus {
     }
 }
 
+#[derive(Clone)]
 pub struct MetricsMiddleware {
     command_counts: Arc<RwLock<HashMap<String, u64>>>,
     query_counts: Arc<RwLock<HashMap<String, u64>>>,
@@ -243,10 +261,6 @@ impl QueryMiddleware for MetricsMiddleware {
     }
 }
 
-// NOTE: Tests disabled due to:
-// 1. MetricsMiddleware doesn't implement CommandMiddleware trait
-// To re-enable: Implement CommandMiddleware trait for MetricsMiddleware
-/*
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -320,8 +334,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_metrics_middleware() {
-        let metrics = Arc::new(MetricsMiddleware::new());
-        let bus = CommandBus::with_middleware(vec![Box::new(metrics.clone())]);
+        let metrics = MetricsMiddleware::new();
+        let metrics_ref = metrics.clone();
+        let bus = CommandBus::with_middleware(vec![Box::new(metrics)]);
         bus.register(Box::new(TestCommandHandler)).await;
 
         let command = TestCommand {
@@ -329,8 +344,7 @@ mod tests {
         };
         bus.execute(command).await.unwrap();
 
-        let count = metrics.get_command_count("TestCommand").await;
+        let count = metrics_ref.get_command_count("TestCommand").await;
         assert_eq!(count, 1);
     }
 }
-*/

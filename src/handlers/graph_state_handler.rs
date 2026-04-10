@@ -177,6 +177,7 @@ pub async fn get_graph_statistics(state: web::Data<AppState>) -> impl Responder 
 }
 
 pub async fn add_node(
+    _auth: crate::settings::auth_extractor::AuthenticatedUser,
     state: web::Data<AppState>,
     request: web::Json<AddNodeRequest>,
 ) -> impl Responder {
@@ -213,6 +214,7 @@ pub async fn add_node(
 }
 
 pub async fn update_node(
+    _auth: crate::settings::auth_extractor::AuthenticatedUser,
     state: web::Data<AppState>,
     request: web::Json<UpdateNodeRequest>,
 ) -> impl Responder {
@@ -243,7 +245,7 @@ pub async fn update_node(
     }
 }
 
-pub async fn remove_node(state: web::Data<AppState>, node_id: web::Path<u32>) -> impl Responder {
+pub async fn remove_node(_auth: crate::settings::auth_extractor::AuthenticatedUser, state: web::Data<AppState>, node_id: web::Path<u32>) -> impl Responder {
     let id = node_id.into_inner();
     info!("Removing node via CQRS directive: id={}", id);
 
@@ -315,6 +317,7 @@ pub async fn get_node(state: web::Data<AppState>, node_id: web::Path<u32>) -> im
 }
 
 pub async fn add_edge(
+    _auth: crate::settings::auth_extractor::AuthenticatedUser,
     state: web::Data<AppState>,
     request: web::Json<AddEdgeRequest>,
 ) -> impl Responder {
@@ -352,7 +355,7 @@ pub async fn add_edge(
     }
 }
 
-pub async fn update_edge(state: web::Data<AppState>, request: web::Json<Edge>) -> impl Responder {
+pub async fn update_edge(_auth: crate::settings::auth_extractor::AuthenticatedUser, state: web::Data<AppState>, request: web::Json<Edge>) -> impl Responder {
     let edge = request.into_inner();
     info!("Updating edge via CQRS directive: id={}", edge.id);
 
@@ -381,6 +384,7 @@ pub async fn update_edge(state: web::Data<AppState>, request: web::Json<Edge>) -
 }
 
 pub async fn batch_update_positions(
+    _auth: crate::settings::auth_extractor::AuthenticatedUser,
     state: web::Data<AppState>,
     request: web::Json<BatchPositionsRequest>,
 ) -> impl Responder {

@@ -79,18 +79,21 @@ const GraphCanvas: React.FC = () => {
     }, []);
 
     return (
-        <div 
+        <div
             ref={containerRef}
-            style={{ 
+            role="img"
+            aria-label="Interactive 3D graph visualization"
+            style={{
                 position: 'fixed',
                 top: 0,
                 left: 0,
-                width: '100vw', 
+                width: '100vw',
                 height: '100vh',
                 backgroundColor: '#000033',
                 zIndex: 0
             }}
         >
+            <span className="sr-only">3D graph with {nodeCount} nodes and {edgeCount} edges</span>
             {}
             {showStats && (
                 <div style={{

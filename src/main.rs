@@ -64,9 +64,74 @@ use webxr::utils::json::to_json;
 
 // DEPRECATED: ErrorRecoveryMiddleware removed - NetworkRecoveryManager deleted
 
+/// Validate required and recommended environment variables at startup.
+/// In production (APP_ENV=production), missing required vars cause a hard failure.
+/// In dev mode, missing required vars emit warnings and the server continues with defaults.
+fn validate_required_env_vars() -> Result<(), String> {
+    let mut missing = Vec::new();
+    let required = [
+        "NEO4J_URI",
+        "NEO4J_PASSWORD",
+        "SYSTEM_NETWORK_PORT",
+    ];
+    for var in &required {
+        if std::env::var(var).is_err() {
+            missing.push(*var);
+        }
+    }
+    // Warn about optional but recommended vars
+    let recommended = [
+        "MANAGEMENT_API_KEY",
+        "JWT_SECRET",
+        "CORS_ALLOWED_ORIGINS",
+    ];
+    for var in &recommended {
+        if std::env::var(var).is_err() {
+            log::warn!("Recommended env var {} is not set", var);
+        }
+    }
+    // Check ALLOW_INSECURE_DEFAULTS is not set in production
+    let is_production = std::env::var("APP_ENV").map(|v| v == "production").unwrap_or(false);
+    if is_production {
+        if std::env::var("ALLOW_INSECURE_DEFAULTS").is_ok() {
+            log::error!("ALLOW_INSECURE_DEFAULTS is set in production — this is a security risk");
+        }
+        if std::env::var("SETTINGS_AUTH_BYPASS").map(|v| v == "true").unwrap_or(false) {
+            return Err("SETTINGS_AUTH_BYPASS=true is not allowed in production".to_string());
+        }
+    }
+    if missing.is_empty() {
+        Ok(())
+    } else {
+        // In non-production, warn but continue. In production, fail hard.
+        if is_production {
+            Err(format!("Missing required env vars: {}", missing.join(", ")))
+        } else {
+            for var in &missing {
+                log::warn!("Required env var {} is not set — using defaults (dev mode)", var);
+            }
+            Ok(())
+        }
+    }
+}
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
+    // Install a global panic hook that logs location + payload to stderr.
+    // This fires before the default handler and ensures panics on any thread
+    // are captured in container logs / journald.
+    std::panic::set_hook(Box::new(|panic_info| {
+        let payload = panic_info
+            .payload()
+            .downcast_ref::<&str>()
+            .copied()
+            .unwrap_or("unknown");
+        let location = panic_info
+            .location()
+            .map(|l| format!("{}:{}:{}", l.file(), l.line(), l.column()))
+            .unwrap_or_default();
+        eprintln!("PANIC at {}: {}", location, payload);
+    }));
 
     dotenv().ok();
 
@@ -81,6 +146,15 @@ async fn main() -> std::io::Result<()> {
                 .with_thread_ids(true),
         )
         .init();
+
+    // Validate required environment variables (after tracing init so log macros work)
+    if let Err(e) = validate_required_env_vars() {
+        error!("Environment validation failed: {}", e);
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            e,
+        ));
+    }
 
     // Record process start time for uptime reporting via /api/metrics
     let process_start_time = Instant::now();
@@ -530,29 +604,36 @@ async fn main() -> std::io::Result<()> {
 
                 // Also accept origins that match the request Host (same-host via nginx proxy).
                 // This handles Docker internal IPs without listing them explicitly.
-                let origins_for_fn = allowed_origins.clone();
-                cors_builder
-                    .allowed_origin_fn(move |origin, req_head| {
-                        let origin_str = origin.to_str().unwrap_or("");
-                        // Check explicit list first
-                        if origins_for_fn.split(',').map(|s| s.trim()).any(|a| a == origin_str) {
-                            return true;
-                        }
-                        // Same-host check: compare hostnames (strip scheme and port)
-                        if let Some(host) = req_head.headers().get("host") {
-                            let host_str = host.to_str().unwrap_or("");
-                            let origin_host = origin_str
-                                .strip_prefix("http://")
-                                .or_else(|| origin_str.strip_prefix("https://"))
-                                .unwrap_or("");
-                            let host_no_port = host_str.split(':').next().unwrap_or("");
-                            let origin_no_port = origin_host.split(':').next().unwrap_or("");
-                            if !host_no_port.is_empty() && host_no_port == origin_no_port {
+                // SECURITY: Only enabled in non-production to prevent origin spoofing.
+                let is_cors_production = std::env::var("APP_ENV").map(|v| v == "production").unwrap_or(false);
+                if !is_cors_production {
+                    let origins_for_fn = allowed_origins.clone();
+                    cors_builder = cors_builder
+                        .allowed_origin_fn(move |origin, req_head| {
+                            let origin_str = origin.to_str().unwrap_or("");
+                            // Check explicit list first
+                            if origins_for_fn.split(',').map(|s| s.trim()).any(|a| a == origin_str) {
                                 return true;
                             }
-                        }
-                        false
-                    })
+                            // Same-host check: compare hostnames (strip scheme and port)
+                            if let Some(host) = req_head.headers().get("host") {
+                                let host_str = host.to_str().unwrap_or("");
+                                let origin_host = origin_str
+                                    .strip_prefix("http://")
+                                    .or_else(|| origin_str.strip_prefix("https://"))
+                                    .unwrap_or("");
+                                let host_no_port = host_str.split(':').next().unwrap_or("");
+                                let origin_no_port = origin_host.split(':').next().unwrap_or("");
+                                if !host_no_port.is_empty() && host_no_port == origin_no_port {
+                                    return true;
+                                }
+                            }
+                            false
+                        });
+                } else {
+                    log::info!("Production mode: same-host CORS origin function disabled");
+                }
+                cors_builder
                     .allowed_methods(vec!["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"])
                     .allowed_headers(vec![
                         actix_web::http::header::AUTHORIZATION,

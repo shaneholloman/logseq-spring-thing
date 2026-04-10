@@ -477,6 +477,25 @@ pub async fn get_mcp_logs(query: web::Query<LogQuery>) -> Result<HttpResponse> {
     }
 }
 
+/// Liveness probe — returns 200 immediately with no system checks.
+/// Mount at `/healthz` (outside `/api` scope) for Kubernetes/Docker probes.
+pub async fn liveness_probe() -> HttpResponse {
+    HttpResponse::Ok().json(serde_json::json!({"status": "alive"}))
+}
+
+/// Readiness probe — returns 200 if the application is ready to serve traffic,
+/// 503 if critical subsystems (e.g. Neo4j) are unavailable.
+pub async fn readiness_probe(app_state: web::Data<AppState>) -> HttpResponse {
+    if let Some(reason) = app_state.get_degraded_reason() {
+        HttpResponse::ServiceUnavailable().json(serde_json::json!({
+            "status": "not_ready",
+            "reason": reason,
+        }))
+    } else {
+        HttpResponse::Ok().json(serde_json::json!({"status": "ready"}))
+    }
+}
+
 pub fn configure_routes(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/health")
@@ -487,5 +506,9 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
                     .route("/start", web::post().to(start_mcp_relay))
                     .route("/logs", web::get().to(get_mcp_logs)),
             ),
-    );
+    )
+    // Lightweight probe endpoints (no /api prefix needed — registered under /api here
+    // but can also be mounted at top-level in main.rs if desired)
+    .route("/healthz", web::get().to(liveness_probe))
+    .route("/readyz", web::get().to(readiness_probe));
 }

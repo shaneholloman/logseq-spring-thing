@@ -553,9 +553,14 @@ export const useWebSocketStore = create<WebSocketState>()(
         return false;
       }
 
-      // P1 BUG FIX: Previously returned true on parse failure, bypassing validation.
-      // Now we only perform lightweight structural checks (size bounds).
-      // The binary protocol header is validated inside processBinaryData.
+      // Validate binary protocol version from first byte
+      const version = new DataView(data).getUint8(0);
+      const VALID_VERSIONS = [2, 3, 5]; // PROTOCOL_V2, V3, V5
+      if (!VALID_VERSIONS.includes(version)) {
+        console.warn(`[WS] Invalid binary protocol version: ${version}`);
+        return false;
+      }
+
       return true;
     };
 

@@ -54,9 +54,11 @@ impl From<SyncStatistics> for SyncStatisticsDto {
 }
 
 pub async fn trigger_sync(
+    _auth: crate::settings::auth_extractor::AuthenticatedUser,
     sync_service: web::Data<GitHubSyncService>,
     app_state: web::Data<AppState>,
 ) -> Result<impl Responder> {
+    _auth.require_power_user()?;
     info!("Admin sync endpoint triggered");
 
     match sync_service.sync_graphs().await {

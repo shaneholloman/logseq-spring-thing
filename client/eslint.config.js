@@ -1,5 +1,7 @@
 // ESLint 9.0.0+ Flat Config for VisionFlow Client
 // Handles TypeScript and React with built-in ESLint capabilities
+import tseslint from '@typescript-eslint/eslint-plugin';
+import tsParser from '@typescript-eslint/parser';
 
 export default [
   // Ignore patterns
@@ -65,12 +67,11 @@ export default [
     },
   },
 
-  // TypeScript and TSX files (basic checking without @typescript-eslint)
-  // Note: Full TypeScript support requires @typescript-eslint/parser
-  // For now, we use a permissive approach
+  // TypeScript and TSX files with @typescript-eslint parser and plugin
   {
     files: ['src/**/*.{ts,tsx}'],
     languageOptions: {
+      parser: tsParser,
       ecmaVersion: 2020,
       sourceType: 'module',
       parserOptions: {
@@ -83,9 +84,13 @@ export default [
         JSX: 'readonly',
       },
     },
+    plugins: {
+      '@typescript-eslint': tseslint,
+    },
     rules: {
-      // Disable rules that require TypeScript parser
+      // Disable base rules that conflict with TypeScript
       'no-undef': 'off',
+      'no-unused-vars': 'off',
       'no-console': [
         'warn',
         {
@@ -94,6 +99,16 @@ export default [
       ],
       'no-empty': 'warn',
       'no-trailing-spaces': 'warn',
+      // TypeScript-specific rules
+      '@typescript-eslint/no-explicit-any': 'warn',
+      '@typescript-eslint/no-unused-vars': [
+        'warn',
+        {
+          argsIgnorePattern: '^_',
+          varsIgnorePattern: '^_',
+          caughtErrorsIgnorePattern: '^_',
+        },
+      ],
     },
   },
 

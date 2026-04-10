@@ -322,58 +322,93 @@ impl PhysicsSupervisor {
         self.restart_count += 1;
     }
 
-    /// Restart a specific actor
+    /// Restart a specific actor, then restart ALL sibling actors (AllForOne strategy).
+    ///
+    /// Physics actors share a `SharedGPUContext` with GPU buffers. If one actor panics
+    /// while holding the mutex, the mutex is poisoned and all siblings that recover from
+    /// it inherit potentially corrupt GPU state. Restarting all actors ensures a clean
+    /// slate for every consumer of the shared context.
     fn restart_actor(&mut self, actor_name: &str, ctx: &mut Context<Self>) {
-        info!("PhysicsSupervisor: Restarting actor: {}", actor_name);
+        info!(
+            "PhysicsSupervisor: AllForOne — restarting ALL physics actors due to failure in '{}'",
+            actor_name
+        );
 
-        match actor_name {
-            "ForceComputeActor" => {
-                let force_compute_actor = actix::Actor::create(|actor_ctx| {
-                    actor_ctx.set_mailbox_capacity(2048);
-                    ForceComputeActor::new()
-                });
-                self.force_compute_actor = Some(force_compute_actor.clone());
-                self.force_compute_state.is_running = true;
-                self.force_compute_state.last_restart = Some(Instant::now());
+        // Stop all existing actors by dropping their addresses
+        self.force_compute_actor = None;
+        self.stress_majorization_actor = None;
+        self.constraint_actor = None;
+        self.ontology_constraint_actor = None;
+        self.semantic_forces_actor = None;
 
-                // Re-wire OntologyConstraintActor with the new ForceComputeActor address.
-                // Without this, the ontology actor holds a stale address to the dead actor.
-                if let Some(ref onto_addr) = self.ontology_constraint_actor {
-                    onto_addr.do_send(crate::actors::messages::SetForceComputeAddr {
-                        addr: force_compute_actor,
-                    });
-                    info!("PhysicsSupervisor: Re-wired OntologyConstraintActor with new ForceComputeActor address");
-                }
-            }
-            "StressMajorizationActor" => {
-                let stress_majorization_actor = StressMajorizationActor::new().start();
-                self.stress_majorization_actor = Some(stress_majorization_actor);
-                self.stress_majorization_state.is_running = true;
-                self.stress_majorization_state.last_restart = Some(Instant::now());
-            }
-            "ConstraintActor" => {
-                let constraint_actor = ConstraintActor::new().start();
-                self.constraint_actor = Some(constraint_actor);
-                self.constraint_state.is_running = true;
-                self.constraint_state.last_restart = Some(Instant::now());
-            }
-            "OntologyConstraintActor" => {
-                let ontology_constraint_actor = OntologyConstraintActor::new().start();
-                self.ontology_constraint_actor = Some(ontology_constraint_actor);
-                self.ontology_constraint_state.is_running = true;
-                self.ontology_constraint_state.last_restart = Some(Instant::now());
-            }
-            "SemanticForcesActor" => {
-                let semantic_forces_actor = SemanticForcesActor::new().start();
-                self.semantic_forces_actor = Some(semantic_forces_actor);
-                self.semantic_forces_state.is_running = true;
-                self.semantic_forces_state.last_restart = Some(Instant::now());
-            }
-            _ => {
-                warn!("PhysicsSupervisor: Unknown actor for restart: {}", actor_name);
-                return;
+        // Mark all actors as stopped
+        let all_names = [
+            "ForceComputeActor",
+            "StressMajorizationActor",
+            "ConstraintActor",
+            "OntologyConstraintActor",
+            "SemanticForcesActor",
+        ];
+        for name in &all_names {
+            let state = match *name {
+                "ForceComputeActor" => &mut self.force_compute_state,
+                "StressMajorizationActor" => &mut self.stress_majorization_state,
+                "ConstraintActor" => &mut self.constraint_state,
+                "OntologyConstraintActor" => &mut self.ontology_constraint_state,
+                "SemanticForcesActor" => &mut self.semantic_forces_state,
+                _ => continue,
+            };
+            state.is_running = false;
+            state.has_context = false;
+            // Only increment failure_count for the actor that actually failed;
+            // siblings are restarted as a precaution.
+            if *name != actor_name {
+                state.last_restart = Some(Instant::now());
             }
         }
+
+        // Re-spawn all actors fresh
+        let force_compute_actor = actix::Actor::create(|actor_ctx| {
+            actor_ctx.set_mailbox_capacity(2048);
+            ForceComputeActor::new()
+        });
+        self.force_compute_actor = Some(force_compute_actor.clone());
+        self.force_compute_state.is_running = true;
+        self.force_compute_state.last_restart = Some(Instant::now());
+
+        let stress_majorization_actor = StressMajorizationActor::new().start();
+        self.stress_majorization_actor = Some(stress_majorization_actor);
+        self.stress_majorization_state.is_running = true;
+        self.stress_majorization_state.last_restart = Some(Instant::now());
+
+        let constraint_actor = ConstraintActor::new().start();
+        self.constraint_actor = Some(constraint_actor);
+        self.constraint_state.is_running = true;
+        self.constraint_state.last_restart = Some(Instant::now());
+
+        let ontology_constraint_actor = OntologyConstraintActor::new().start();
+        self.ontology_constraint_actor = Some(ontology_constraint_actor);
+        self.ontology_constraint_state.is_running = true;
+        self.ontology_constraint_state.last_restart = Some(Instant::now());
+
+        let semantic_forces_actor = SemanticForcesActor::new().start();
+        self.semantic_forces_actor = Some(semantic_forces_actor);
+        self.semantic_forces_state.is_running = true;
+        self.semantic_forces_state.last_restart = Some(Instant::now());
+
+        // Re-wire ForceComputeActor address to OntologyConstraintActor
+        if let (Some(ref force_addr), Some(ref onto_addr)) =
+            (&self.force_compute_actor, &self.ontology_constraint_actor)
+        {
+            onto_addr.do_send(crate::actors::messages::SetForceComputeAddr {
+                addr: force_addr.clone(),
+            });
+            info!("PhysicsSupervisor: AllForOne — re-wired OntologyConstraintActor with new ForceComputeActor address");
+        }
+
+        info!(
+            "PhysicsSupervisor: AllForOne — all 5 physics actors re-spawned successfully"
+        );
 
         // Re-distribute context if available
         if self.shared_context.is_some() {
@@ -414,8 +449,9 @@ impl Actor for PhysicsSupervisor {
         self.spawn_child_actors(ctx);
 
         // Periodic health check: detect and respawn dead child actors.
-        // This handles the GPU init race condition where ForceComputeActor
+        // This handles the GPU init race condition where any physics actor
         // dies (mailbox closes) before graph data arrives.
+        // Checks ALL supervised actors, not just ForceComputeActor.
         ctx.run_interval(std::time::Duration::from_secs(5), |act, ctx| {
             // Check ForceComputeActor
             if let Some(ref addr) = act.force_compute_actor {
@@ -423,6 +459,47 @@ impl Actor for PhysicsSupervisor {
                     warn!("PhysicsSupervisor: ForceComputeActor mailbox disconnected — triggering restart");
                     act.force_compute_state.is_running = false;
                     act.handle_actor_failure("ForceComputeActor", "Mailbox disconnected (detected by health check)", ctx);
+                    return; // AllForOne will restart everything
+                }
+            }
+
+            // Check StressMajorizationActor
+            if let Some(ref addr) = act.stress_majorization_actor {
+                if !addr.connected() && act.stress_majorization_state.is_running {
+                    warn!("PhysicsSupervisor: StressMajorizationActor mailbox disconnected — triggering restart");
+                    act.stress_majorization_state.is_running = false;
+                    act.handle_actor_failure("StressMajorizationActor", "Mailbox disconnected (detected by health check)", ctx);
+                    return;
+                }
+            }
+
+            // Check ConstraintActor
+            if let Some(ref addr) = act.constraint_actor {
+                if !addr.connected() && act.constraint_state.is_running {
+                    warn!("PhysicsSupervisor: ConstraintActor mailbox disconnected — triggering restart");
+                    act.constraint_state.is_running = false;
+                    act.handle_actor_failure("ConstraintActor", "Mailbox disconnected (detected by health check)", ctx);
+                    return;
+                }
+            }
+
+            // Check OntologyConstraintActor
+            if let Some(ref addr) = act.ontology_constraint_actor {
+                if !addr.connected() && act.ontology_constraint_state.is_running {
+                    warn!("PhysicsSupervisor: OntologyConstraintActor mailbox disconnected — triggering restart");
+                    act.ontology_constraint_state.is_running = false;
+                    act.handle_actor_failure("OntologyConstraintActor", "Mailbox disconnected (detected by health check)", ctx);
+                    return;
+                }
+            }
+
+            // Check SemanticForcesActor
+            if let Some(ref addr) = act.semantic_forces_actor {
+                if !addr.connected() && act.semantic_forces_state.is_running {
+                    warn!("PhysicsSupervisor: SemanticForcesActor mailbox disconnected — triggering restart");
+                    act.semantic_forces_state.is_running = false;
+                    act.handle_actor_failure("SemanticForcesActor", "Mailbox disconnected (detected by health check)", ctx);
+                    return;
                 }
             }
         });

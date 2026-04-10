@@ -237,6 +237,107 @@ impl Default for SimulationParams {
 }
 
 impl SimulationParams {
+    /// Validate all physics parameters are within safe ranges for GPU simulation.
+    /// Returns Ok(()) if valid, or Err with a semicolon-separated list of violations.
+    pub fn validate(&self) -> Result<(), String> {
+        let mut errors = Vec::new();
+
+        // Time step: must be positive and small enough to avoid numerical explosion
+        if self.dt <= 0.0 || self.dt > 0.1 {
+            errors.push(format!("dt must be in (0, 0.1], got {}", self.dt));
+        }
+        // Damping: must be positive (energy drain) and at most 1.0 (full drain per step)
+        if self.damping <= 0.0 || self.damping > 1.0 {
+            errors.push(format!("damping must be in (0, 1], got {}", self.damping));
+        }
+        // Repulsion strength: negative would cause attraction collapse
+        if self.repel_k < 0.0 {
+            errors.push(format!("repel_k must be >= 0, got {}", self.repel_k));
+        }
+        // Spring strength: negative would invert spring forces
+        if self.spring_k < 0.0 {
+            errors.push(format!("spring_k must be >= 0, got {}", self.spring_k));
+        }
+        // Max velocity: must be positive to clamp motion
+        if self.max_velocity <= 0.0 {
+            errors.push(format!("max_velocity must be > 0, got {}", self.max_velocity));
+        }
+        // Max force: must be positive to clamp forces
+        if self.max_force <= 0.0 {
+            errors.push(format!("max_force must be > 0, got {}", self.max_force));
+        }
+        // Cooling rate: must be in [0, 1] (fraction of temperature retained per step)
+        if self.cooling_rate < 0.0 || self.cooling_rate > 1.0 {
+            errors.push(format!("cooling_rate must be in [0, 1], got {}", self.cooling_rate));
+        }
+        // Boundary damping: must be in [0, 1]
+        if self.boundary_damping < 0.0 || self.boundary_damping > 1.0 {
+            errors.push(format!("boundary_damping must be in [0, 1], got {}", self.boundary_damping));
+        }
+        // Temperature: must be non-negative
+        if self.temperature < 0.0 {
+            errors.push(format!("temperature must be >= 0, got {}", self.temperature));
+        }
+        // Center gravity: must be non-negative
+        if self.center_gravity_k < 0.0 {
+            errors.push(format!("center_gravity_k must be >= 0, got {}", self.center_gravity_k));
+        }
+        // Rest length: must be positive for spring equilibrium
+        if self.rest_length <= 0.0 {
+            errors.push(format!("rest_length must be > 0, got {}", self.rest_length));
+        }
+        // Separation radius: must be non-negative
+        if self.separation_radius < 0.0 {
+            errors.push(format!("separation_radius must be >= 0, got {}", self.separation_radius));
+        }
+        // Gravity: must be non-negative
+        if self.gravity < 0.0 {
+            errors.push(format!("gravity must be >= 0, got {}", self.gravity));
+        }
+
+        // Check all f32 fields are finite (not NaN or Inf)
+        let float_fields: &[(&str, f32)] = &[
+            ("dt", self.dt),
+            ("damping", self.damping),
+            ("spring_k", self.spring_k),
+            ("repel_k", self.repel_k),
+            ("mass_scale", self.mass_scale),
+            ("max_velocity", self.max_velocity),
+            ("max_force", self.max_force),
+            ("temperature", self.temperature),
+            ("center_gravity_k", self.center_gravity_k),
+            ("cooling_rate", self.cooling_rate),
+            ("boundary_damping", self.boundary_damping),
+            ("viewport_bounds", self.viewport_bounds),
+            ("separation_radius", self.separation_radius),
+            ("cluster_strength", self.cluster_strength),
+            ("alignment_strength", self.alignment_strength),
+            ("rest_length", self.rest_length),
+            ("gravity", self.gravity),
+            ("repulsion_softening_epsilon", self.repulsion_softening_epsilon),
+            ("grid_cell_size", self.grid_cell_size),
+            ("stress_weight", self.stress_weight),
+            ("stress_alpha", self.stress_alpha),
+            ("boundary_limit", self.boundary_limit),
+            ("min_distance", self.min_distance),
+            ("max_repulsion_dist", self.max_repulsion_dist),
+            ("boundary_margin", self.boundary_margin),
+            ("boundary_force_strength", self.boundary_force_strength),
+            ("constraint_max_force_per_node", self.constraint_max_force_per_node),
+        ];
+        for &(name, value) in float_fields {
+            if !value.is_finite() {
+                errors.push(format!("{} must be finite, got {}", name, value));
+            }
+        }
+
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(errors.join("; "))
+        }
+    }
+
     pub fn new() -> Self {
 
         let default_physics = PhysicsSettings::default();

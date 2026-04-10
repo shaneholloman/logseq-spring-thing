@@ -146,6 +146,8 @@ impl DisconnectedClientQueue {
     }
 
     /// Drain buffered messages for a reconnecting client, if any exist and TTL hasn't expired.
+    /// Called by `replay_buffered_messages` when a client reconnects with its old ID.
+    #[allow(dead_code)]
     fn drain_for_reconnect(&mut self, client_id: usize) -> Vec<Vec<u8>> {
         // Check TTL
         if let Some(&disconnected) = self.disconnected_at.get(&client_id) {
@@ -555,6 +557,9 @@ impl ClientCoordinatorActor {
     }
 
     /// ADR-031 gap 3b: Replay buffered messages to a specific client address.
+    /// Will be called when reconnect-with-old-client-ID is wired up (e.g. via
+    /// pubkey matching in AuthenticateClient or an explicit ReconnectClient message).
+    #[allow(dead_code)]
     fn replay_buffered_messages(&mut self, old_client_id: usize, addr: &Addr<SocketFlowServer>) {
         let messages = self.disconnected_queue.drain_for_reconnect(old_client_id);
         if !messages.is_empty() {

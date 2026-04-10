@@ -125,7 +125,7 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
 
       
       return (
-        <div className="min-h-screen bg-background flex items-center justify-center p-4">
+        <div role="alert" aria-live="assertive" className="min-h-screen bg-background flex items-center justify-center p-4">
           <div className="max-w-2xl w-full">
             <div className="bg-card rounded-lg shadow-lg p-8 space-y-6">
               {}

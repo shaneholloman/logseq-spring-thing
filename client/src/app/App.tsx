@@ -193,12 +193,15 @@ function App() {
 
   return (
     <VircadiaProvider autoConnect={false}>
+      <a href="#main-content" className="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:p-4 focus:bg-white focus:text-black">Skip to graph</a>
       <TooltipProvider delayDuration={300} skipDelayDuration={100}>
         <HelpProvider>
           <OnboardingProvider>
             <ErrorBoundary>
               <ApplicationModeProvider>
+                <div id="main-content">
                 {renderContent()}
+                </div>
                 {initializationState === 'loading' && (
                   <AppInitializer onInitialized={handleInitialized} onError={handleInitializationError} />
                 )}

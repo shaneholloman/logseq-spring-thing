@@ -201,7 +201,14 @@ impl Neo4jGraphRepository {
             if conditions.is_empty() {
                 String::new()
             } else {
-                let join_op = if filter.filter_mode == "and" { " AND " } else { " OR " };
+                let join_op = match filter.filter_mode.as_str() {
+                    "and" => " AND ",
+                    "or" => " OR ",
+                    other => {
+                        warn!("Invalid filter_mode '{}', defaulting to OR", other);
+                        " OR "
+                    }
+                };
                 format!("WHERE {}", conditions.join(join_op))
             }
         } else {
@@ -645,32 +652,56 @@ impl GraphRepository for Neo4jGraphRepository {
         &self,
         updates: Vec<(u32, crate::ports::graph_repository::BinaryNodeData)>,
     ) -> Result<()> {
+        if updates.is_empty() {
+            return Ok(());
+        }
+
+        // PERF: Batch update using UNWIND — O(1) round-trips instead of O(n)
         // Update sim_* properties (GPU physics state) and velocities
         // x/y/z remain as initial/content positions - NEVER overwritten by physics
         // BinaryNodeData format: (x, y, z, vx, vy, vz)
-        for (node_id, data) in updates {
-            let query_str = "
-                MATCH (n:GraphNode {id: $id})
-                SET n.sim_x = $x,
-                    n.sim_y = $y,
-                    n.sim_z = $z,
-                    n.vx = $vx,
-                    n.vy = $vy,
-                    n.vz = $vz
-            ";
+        let query_str = "
+            UNWIND range(0, size($ids)-1) AS i
+            MATCH (n:GraphNode {id: $ids[i]})
+            SET n.sim_x = $xs[i],
+                n.sim_y = $ys[i],
+                n.sim_z = $zs[i],
+                n.vx = $vxs[i],
+                n.vy = $vys[i],
+                n.vz = $vzs[i]
+        ";
 
-            self.graph
-                .run(query(query_str)
-                    .param("id", node_id as i64)
-                    .param("x", data.0 as f64)
-                    .param("y", data.1 as f64)
-                    .param("z", data.2 as f64)
-                    .param("vx", data.3 as f64)
-                    .param("vy", data.4 as f64)
-                    .param("vz", data.5 as f64))
-                .await
-                .map_err(|e| GraphRepositoryError::AccessError(format!("Failed to update position/velocity: {}", e)))?;
+        let mut ids: Vec<i64> = Vec::with_capacity(updates.len());
+        let mut xs: Vec<f64> = Vec::with_capacity(updates.len());
+        let mut ys: Vec<f64> = Vec::with_capacity(updates.len());
+        let mut zs: Vec<f64> = Vec::with_capacity(updates.len());
+        let mut vxs: Vec<f64> = Vec::with_capacity(updates.len());
+        let mut vys: Vec<f64> = Vec::with_capacity(updates.len());
+        let mut vzs: Vec<f64> = Vec::with_capacity(updates.len());
+
+        for (node_id, data) in &updates {
+            ids.push(*node_id as i64);
+            xs.push(data.0 as f64);
+            ys.push(data.1 as f64);
+            zs.push(data.2 as f64);
+            vxs.push(data.3 as f64);
+            vys.push(data.4 as f64);
+            vzs.push(data.5 as f64);
         }
+
+        self.graph
+            .run(query(query_str)
+                .param("ids", ids)
+                .param("xs", xs)
+                .param("ys", ys)
+                .param("zs", zs)
+                .param("vxs", vxs)
+                .param("vys", vys)
+                .param("vzs", vzs))
+            .await
+            .map_err(|e| GraphRepositoryError::AccessError(
+                format!("Failed to batch update positions/velocities: {}", e)
+            ))?;
 
         Ok(())
     }

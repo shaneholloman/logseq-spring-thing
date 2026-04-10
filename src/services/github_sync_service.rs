@@ -119,9 +119,8 @@ impl GitHubSyncService {
             Err(e) => {
                 let error_msg = format!("Failed to fetch files: {}", e);
                 error!("{}", error_msg);
-                stats.errors.push(error_msg);
                 stats.duration = start_time.elapsed();
-                return Ok(stats);
+                return Err(format!("GitHub sync failed: {}", error_msg));
             }
         };
 

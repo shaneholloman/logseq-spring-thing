@@ -375,7 +375,7 @@ impl ForceComputeActor {
         let mut compute = match ctx.unified_compute.lock() {
             Ok(guard) => guard,
             Err(poisoned) => {
-                warn!("ForceComputeActor: GPU mutex was poisoned — recovering for graph upload");
+                error!("ForceComputeActor: GPU mutex was POISONED — a previous GPU operation panicked. Recovering for graph upload, but GPU state may be corrupt.");
                 poisoned.into_inner()
             }
         };
@@ -962,7 +962,7 @@ impl Handler<ComputeForces> for ForceComputeActor {
                 let mut unified_compute = match unified_compute_arc.lock() {
                     Ok(guard) => guard,
                     Err(poisoned) => {
-                        warn!("ForceComputeActor: GPU mutex was poisoned by previous panic — recovering");
+                        error!("ForceComputeActor: GPU mutex was POISONED by previous panic — recovering for physics step. GPU state may be corrupt.");
                         poisoned.into_inner()
                     }
                 };
@@ -1062,6 +1062,20 @@ impl Handler<ComputeForces> for ForceComputeActor {
                                     let node_id = actor.gpu_index_to_node_id.get(i).copied().unwrap_or(i as u32);
                                     actor.node_id_buffer.push(node_id);
                                 }
+
+                                // NaN/Inf guard: detect corrupted GPU output before broadcasting.
+                                // If any position contains NaN or Inf, the GPU state is corrupt —
+                                // skip this broadcast entirely to prevent poisoning clients.
+                                let nan_count = actor.position_velocity_buffer.iter()
+                                    .filter(|(p, _)| !p.x.is_finite() || !p.y.is_finite() || !p.z.is_finite())
+                                    .count();
+                                if nan_count > 0 {
+                                    error!(
+                                        "[ForceComputeActor] NaN/Inf detected in {} of {} GPU positions at iter {} — skipping broadcast",
+                                        nan_count, actor.position_velocity_buffer.len(), actor.gpu_state.iteration_count
+                                    );
+                                    // Skip all broadcast logic for this frame
+                                } else {
 
                                 // Diagnostic: log first few positions on early frames (6 decimal places for velocity)
                                 if actor.gpu_state.iteration_count < 5 || actor.gpu_state.iteration_count % 300 == 0 {
@@ -1247,6 +1261,7 @@ impl Handler<ComputeForces> for ForceComputeActor {
                                         );
                                     }
                                 } // end normal broadcast else branch
+                                } // end NaN guard else (clean positions)
                                 }
                             }
 
@@ -1338,6 +1353,17 @@ impl Handler<UpdateSimulationParams> for ForceComputeActor {
     type Result = Result<(), String>;
 
     fn handle(&mut self, msg: UpdateSimulationParams, _ctx: &mut Self::Context) -> Self::Result {
+        // Validate incoming parameters before applying — reject unsafe values
+        // that could cause GPU explosion (dt=1000), infinite energy (damping=0),
+        // or gravitational collapse (repel_k=-1).
+        if let Err(validation_errors) = msg.params.validate() {
+            error!(
+                "ForceComputeActor: UpdateSimulationParams REJECTED — validation failed: {}",
+                validation_errors
+            );
+            return Err(format!("Parameter validation failed: {}", validation_errors));
+        }
+
         // Idempotency: skip reset if ALL GPU-relevant params haven't changed.
         // The client autoSaveManager may fire redundant updates (GET-merge-PUT with same values).
         // Compare the full set of GPU-relevant fields, not just the original 6.
@@ -1469,7 +1495,10 @@ impl Handler<ForceFullBroadcast> for ForceComputeActor {
             let blocking_result = tokio::task::spawn_blocking(move || {
                 let mut unified_compute = match unified_compute_arc.lock() {
                     Ok(guard) => guard,
-                    Err(poisoned) => poisoned.into_inner(),
+                    Err(poisoned) => {
+                        error!("ForceComputeActor: GPU mutex was POISONED — recovering for ForceFullBroadcast position read. GPU state may be corrupt.");
+                        poisoned.into_inner()
+                    }
                 };
 
                 let positions_result = unified_compute.get_node_positions();
@@ -1621,7 +1650,7 @@ impl Handler<UploadPositions> for ForceComputeActor {
                 let mut unified_compute = match unified_compute_arc.lock() {
                     Ok(guard) => guard,
                     Err(poisoned) => {
-                        warn!("ForceComputeActor: GPU mutex was poisoned — recovering for position upload");
+                        error!("ForceComputeActor: GPU mutex was POISONED — recovering for position upload. GPU state may be corrupt.");
                         poisoned.into_inner()
                     }
                 };
@@ -2168,7 +2197,7 @@ impl Handler<RunAnomalyDetection> for ForceComputeActor {
                 let mut unified_compute = match unified_compute_arc.lock() {
                     Ok(guard) => guard,
                     Err(poisoned) => {
-                        warn!("ForceComputeActor: GPU mutex was poisoned — recovering for anomaly detection");
+                        error!("ForceComputeActor: GPU mutex was POISONED — recovering for anomaly detection. GPU state may be corrupt.");
                         poisoned.into_inner()
                     }
                 };

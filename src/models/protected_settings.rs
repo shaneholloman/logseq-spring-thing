@@ -1,13 +1,33 @@
 use serde::{Deserialize, Serialize};
+use std::fmt;
 use crate::utils::json::from_json;
 use crate::utils::time;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ApiKeys {
     pub perplexity: Option<String>,
     pub openai: Option<String>,
     pub ragflow: Option<String>,
+}
+
+/// Custom Debug implementation that masks API key values to prevent
+/// accidental secret leakage in logs or error messages.
+impl fmt::Debug for ApiKeys {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fn mask(opt: &Option<String>) -> &str {
+            match opt {
+                Some(s) if s.is_empty() => "<empty>",
+                Some(_) => "<redacted>",
+                None => "<none>",
+            }
+        }
+        f.debug_struct("ApiKeys")
+            .field("perplexity", &mask(&self.perplexity))
+            .field("openai", &mask(&self.openai))
+            .field("ragflow", &mask(&self.ragflow))
+            .finish()
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -174,6 +194,17 @@ impl ProtectedSettings {
                 "ProtectedSettings.merge: partial failure - {} succeeded, {} failed: {}",
                 successes, failures.len(), failures.join("; ")
             );
+        }
+
+        // Post-merge validation: prevent dangerous values
+        if !self.network.enable_rate_limiting {
+            log::warn!("Rate limiting disabled in protected settings — this is dangerous");
+        }
+        if self.network.max_request_size > 100_000_000 {
+            return Err("max_request_size cannot exceed 100MB".to_string());
+        }
+        if self.security.allowed_origins.iter().any(|o| o == "*") {
+            log::warn!("Wildcard CORS origin in protected settings — this is a security risk in production");
         }
 
         Ok(())

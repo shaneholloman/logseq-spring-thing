@@ -357,6 +357,7 @@ pub async fn save_settings(
 }
 
 pub async fn batch_get_settings(
+    _auth: AuthenticatedUser,
     state: web::Data<AppState>,
     payload: web::Json<Value>,
 ) -> Result<HttpResponse, Error> {

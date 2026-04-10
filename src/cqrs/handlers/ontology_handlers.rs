@@ -40,9 +40,9 @@ impl CommandHandler<UpdateClassCommand> for OntologyCommandHandler {
 impl CommandHandler<RemoveClassCommand> for OntologyCommandHandler {
     async fn handle(&self, command: RemoveClassCommand) -> Result<()> {
         command.validate()?;
-        
-        
-        Ok(())
+        Err(anyhow::anyhow!(
+            "RemoveClass not yet implemented — requires OntologyRepository integration"
+        ))
     }
 }
 
@@ -71,7 +71,9 @@ impl CommandHandler<UpdatePropertyCommand> for OntologyCommandHandler {
 impl CommandHandler<RemovePropertyCommand> for OntologyCommandHandler {
     async fn handle(&self, command: RemovePropertyCommand) -> Result<()> {
         command.validate()?;
-        Ok(())
+        Err(anyhow::anyhow!(
+            "RemoveProperty not yet implemented — requires OntologyRepository integration"
+        ))
     }
 }
 
@@ -86,7 +88,9 @@ impl CommandHandler<AddAxiomCommand> for OntologyCommandHandler {
 #[async_trait]
 impl CommandHandler<RemoveAxiomCommand> for OntologyCommandHandler {
     async fn handle(&self, _command: RemoveAxiomCommand) -> Result<()> {
-        Ok(())
+        Err(anyhow::anyhow!(
+            "RemoveAxiom not yet implemented — requires OntologyRepository integration"
+        ))
     }
 }
 
@@ -121,9 +125,9 @@ impl CommandHandler<StoreInferenceResultsCommand> for OntologyCommandHandler {
 impl CommandHandler<ImportOntologyCommand> for OntologyCommandHandler {
     async fn handle(&self, command: ImportOntologyCommand) -> Result<()> {
         command.validate()?;
-        
-        
-        Ok(())
+        Err(anyhow::anyhow!(
+            "ImportOntology not yet implemented — requires OWL parser integration"
+        ))
     }
 }
 
@@ -280,9 +284,7 @@ impl QueryHandler<LoadOntologyGraphQuery> for OntologyQueryHandler {
 #[async_trait]
 impl QueryHandler<ExportOntologyQuery> for OntologyQueryHandler {
     async fn handle(&self, _query: ExportOntologyQuery) -> Result<String> {
-        
-        
-        Ok("<?xml version=\"1.0\"?><Ontology/>".to_string())
+        Err(anyhow::anyhow!("OWL export not yet implemented"))
     }
 }
 

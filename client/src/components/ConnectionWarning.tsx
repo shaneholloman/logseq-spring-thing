@@ -130,6 +130,7 @@ export const ConnectionWarning: React.FC = () => {
             onClick={() => setIsDismissed(true)}
             className="flex items-center px-1.5 py-1 bg-white/10 hover:bg-white/20 rounded-md transition-colors"
             title="Dismiss - controls remain accessible"
+            aria-label="Dismiss connection warning"
           >
             <span className="text-xs">✕</span>
           </button>

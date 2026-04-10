@@ -39,14 +39,22 @@ impl FromRequest for AuthenticatedUser {
     fn from_request(req: &HttpRequest, _payload: &mut Payload) -> Self::Future {
         // Dev mode bypass: allow unauthenticated settings writes when explicitly enabled
         // SECURITY: Requires SETTINGS_AUTH_BYPASS=true in environment (only set in dev compose)
+        // SECURITY: Bypass is IGNORED when APP_ENV=production or RUST_ENV=production
         if std::env::var("SETTINGS_AUTH_BYPASS").unwrap_or_default() == "true" {
-            debug!("Settings auth bypass enabled (SETTINGS_AUTH_BYPASS=true) - using dev user");
-            return Box::pin(async {
-                Ok(AuthenticatedUser {
-                    pubkey: "dev-user".to_string(),
-                    is_power_user: true,
-                })
-            });
+            let is_production = std::env::var("APP_ENV").map(|v| v == "production").unwrap_or(false)
+                || std::env::var("RUST_ENV").map(|v| v == "production").unwrap_or(false);
+            if is_production {
+                warn!("SETTINGS_AUTH_BYPASS is set but ignored in production mode");
+                // fall through to normal auth
+            } else {
+                debug!("Settings auth bypass enabled (SETTINGS_AUTH_BYPASS=true) - using dev user");
+                return Box::pin(async {
+                    Ok(AuthenticatedUser {
+                        pubkey: "dev-user".to_string(),
+                        is_power_user: true,
+                    })
+                });
+            }
         }
 
         // Extract NostrService from app data
@@ -139,16 +147,24 @@ impl FromRequest for AuthenticatedUser {
         };
 
         // Dev-mode session bypass - requires SETTINGS_AUTH_BYPASS in environment
+        // SECURITY: Bypass is IGNORED when APP_ENV=production or RUST_ENV=production
         if std::env::var("SETTINGS_AUTH_BYPASS").unwrap_or_default() == "true"
             && token == "dev-session-token"
         {
-            debug!("Dev-mode session token accepted for pubkey: {}", pubkey);
-            return Box::pin(async move {
-                Ok(AuthenticatedUser {
-                    pubkey,
-                    is_power_user: true,
-                })
-            });
+            let is_production = std::env::var("APP_ENV").map(|v| v == "production").unwrap_or(false)
+                || std::env::var("RUST_ENV").map(|v| v == "production").unwrap_or(false);
+            if is_production {
+                warn!("SETTINGS_AUTH_BYPASS session bypass ignored in production mode");
+                // fall through to normal session validation
+            } else {
+                debug!("Dev-mode session token accepted for pubkey: {}", pubkey);
+                return Box::pin(async move {
+                    Ok(AuthenticatedUser {
+                        pubkey,
+                        is_power_user: true,
+                    })
+                });
+            }
         }
 
         Box::pin(async move {

@@ -99,8 +99,18 @@ impl Neo4jConfig {
 }
 
 impl Default for Neo4jConfig {
+    /// Returns a safe placeholder config that will NOT connect to any database.
+    /// Callers that need a real connection should use `Neo4jConfig::from_env()` instead.
     fn default() -> Self {
-        Self::from_env().expect("Neo4jConfig::from_env failed — check NEO4J_PASSWORD")
+        Self {
+            uri: "bolt://localhost:7687".to_string(),
+            user: "neo4j".to_string(),
+            password: "not-configured".to_string(),
+            database: None,
+            max_connections: 50,
+            query_timeout_secs: 30,
+            connection_timeout_secs: 10,
+        }
     }
 }
 

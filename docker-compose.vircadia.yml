@@ -23,7 +23,7 @@ services:
       # Authentication
       - ENABLE_AUTH=true
       - AUTH_PROVIDERS=system,nostr
-      - JWT_SECRET=${VIRCADIA_JWT_SECRET:-changeme}
+      - JWT_SECRET=${VIRCADIA_JWT_SECRET:?VIRCADIA_JWT_SECRET must be set}
       - SESSION_TIMEOUT=86400
 
       # Multi-User Settings

@@ -15,7 +15,8 @@ services:
       - visionflow-data:/app/data  # Internal volume for databases and markdown
       - ./data/pages:/app/data/pages:rw  # Mount local pages directory for persistent baseline
       - visionflow-logs:/app/logs  # Internal volume for application logs
-      - /var/run/docker.sock:/var/run/docker.sock:ro  # Docker socket for controlled access
+      # REMOVED: Docker socket mount — unnecessary attack surface
+      # - /var/run/docker.sock:/var/run/docker.sock:ro
       - npm-cache:/root/.npm
       - cargo-cache:/root/.cargo/registry
       - cargo-git-cache:/root/.cargo/git
@@ -50,7 +51,7 @@ services:
       - ORCHESTRATOR_WS_URL=ws://mcp-orchestrator:9001/ws
       - MCP_RELAY_FALLBACK_TO_MOCK=true
       - BOTS_ORCHESTRATOR_URL=ws://agentic-workstation:3002
-      - SETTINGS_AUTH_BYPASS=true
+      # REMOVED: SETTINGS_AUTH_BYPASS=true — auth bypass must never ship in compose
       - MANAGEMENT_API_HOST=agentic-workstation
       - MANAGEMENT_API_PORT=9090
       - FORCE_FULL_SYNC=0
