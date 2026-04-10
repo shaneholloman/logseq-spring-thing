@@ -141,8 +141,12 @@ const GraphCanvas: React.FC = () => {
                 <directionalLight position={[10, 10, 10]} intensity={directionalLightIntensity} />
                 <directionalLight position={[-5, -5, -10]} intensity={0.3} />
 
-                {/* Environment map for PBR glass material reflections */}
-                <Environment preset="studio" background={false} resolution={512} />
+                {/* Environment map for PBR glass material reflections.
+                    Uses a generated environment instead of CDN-hosted HDR to avoid
+                    network failures in Docker/LAN/offline environments. */}
+                <Environment background={false} resolution={256}>
+                  <color attach="background" args={['#111']} />
+                </Environment>
 
                 {/* Scene ambient effects (WASM particles, wisps, atmosphere) */}
                 <WasmSceneEffects
