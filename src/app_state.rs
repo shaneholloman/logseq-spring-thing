@@ -398,7 +398,11 @@ impl AppState {
         // Neo4j is now the primary graph repository
         let neo4j_adapter = {
             info!("[AppState::new] Initializing Neo4j as primary knowledge graph repository");
-            let config = Neo4jConfig::default();
+            let config = Neo4jConfig::from_env()
+                .unwrap_or_else(|e| {
+                    log::warn!("Neo4jConfig::from_env() failed ({}), using defaults", e);
+                    Neo4jConfig::default()
+                });
             let adapter = Neo4jAdapter::new(config).await
                 .map_err(|e| format!("Failed to initialize Neo4j adapter: {}", e))?;
             info!("✅ Neo4j adapter initialized successfully");
