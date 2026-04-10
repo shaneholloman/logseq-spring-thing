@@ -15,9 +15,12 @@ interface VRGraphCanvasProps {
 }
 
 // Create XR store outside component to persist across renders
+// Disable XR emulation in production to avoid bundling @iwer/sem room scene
+// data (~4.6MB of MetaQuest scene captures used only for localhost dev).
 const xrStore = createXRStore({
   hand: true,
   controller: true,
+  emulate: import.meta.env.DEV ? 'metaQuest3' : false,
 });
 
 export function VRGraphCanvas({

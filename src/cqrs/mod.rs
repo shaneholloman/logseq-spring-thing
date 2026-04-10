@@ -41,5 +41,5 @@ pub mod types;
 
 // Re-export main types
 pub use bus::{CommandBus, QueryBus};
-pub use registration::register_all_handlers;
+pub use registration::{register_all_handlers, register_physics_handlers};
 pub use types::{Command, CommandHandler, Query, QueryHandler, Result};

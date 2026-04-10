@@ -8,12 +8,14 @@ use crate::cqrs::bus::{CommandBus, QueryBus};
 use crate::cqrs::commands::*;
 use crate::cqrs::handlers::{
     GraphCommandHandler, GraphQueryHandler, OntologyCommandHandler, OntologyQueryHandler,
+    PhysicsCommandHandler, PhysicsQueryHandler,
     SettingsCommandHandler, SettingsQueryHandler,
 };
 use crate::cqrs::queries::*;
-use crate::ports::{KnowledgeGraphRepository, OntologyRepository, SettingsRepository};
+use crate::ports::{GpuPhysicsAdapter, KnowledgeGraphRepository, OntologyRepository, SettingsRepository};
 use log::info;
 use std::sync::Arc;
+use tokio::sync::Mutex;
 
 /// Register all graph domain command handlers on the command bus.
 ///
@@ -161,11 +163,75 @@ async fn register_settings_queries(
     bus.register::<SettingsHealthCheckQuery>(Box::new(SettingsQueryHandlerAdapter(h.clone()))).await;
 }
 
+/// Register all physics domain command handlers on the command bus.
+///
+/// Registers 8 command handlers covering physics initialization, parameter updates,
+/// graph data updates, external forces, node pinning, reset, and cleanup.
+async fn register_physics_commands(
+    bus: &CommandBus,
+    adapter: Arc<Mutex<dyn GpuPhysicsAdapter>>,
+) {
+    let h = Arc::new(PhysicsCommandHandler::new(adapter));
+
+    bus.register::<InitializePhysicsCommand>(Box::new(PhysicsCommandHandlerAdapter(h.clone()))).await;
+    bus.register::<UpdatePhysicsParametersCommand>(Box::new(PhysicsCommandHandlerAdapter(h.clone()))).await;
+    bus.register::<UpdateGraphDataCommand>(Box::new(PhysicsCommandHandlerAdapter(h.clone()))).await;
+    bus.register::<ApplyExternalForcesCommand>(Box::new(PhysicsCommandHandlerAdapter(h.clone()))).await;
+    bus.register::<PinNodesCommand>(Box::new(PhysicsCommandHandlerAdapter(h.clone()))).await;
+    bus.register::<UnpinNodesCommand>(Box::new(PhysicsCommandHandlerAdapter(h.clone()))).await;
+    bus.register::<ResetPhysicsCommand>(Box::new(PhysicsCommandHandlerAdapter(h.clone()))).await;
+    bus.register::<CleanupPhysicsCommand>(Box::new(PhysicsCommandHandlerAdapter(h.clone()))).await;
+}
+
+/// Register all physics domain query handlers on the query bus.
+///
+/// Registers 5 query handlers covering GPU status, physics statistics,
+/// device listing, performance metrics, and GPU availability checks.
+async fn register_physics_queries(
+    bus: &QueryBus,
+    adapter: Arc<Mutex<dyn GpuPhysicsAdapter>>,
+) {
+    let h = Arc::new(PhysicsQueryHandler::new(adapter));
+
+    bus.register::<GetGpuStatusQuery>(Box::new(PhysicsQueryHandlerAdapter(h.clone()))).await;
+    bus.register::<GetPhysicsStatisticsQuery>(Box::new(PhysicsQueryHandlerAdapter(h.clone()))).await;
+    bus.register::<ListGpuDevicesQuery>(Box::new(PhysicsQueryHandlerAdapter(h.clone()))).await;
+    bus.register::<GetPerformanceMetricsQuery>(Box::new(PhysicsQueryHandlerAdapter(h.clone()))).await;
+    bus.register::<IsGpuAvailableQuery>(Box::new(PhysicsQueryHandlerAdapter(h.clone()))).await;
+}
+
+/// Register physics CQRS handlers after GPU initialization completes.
+///
+/// Called from the async GPU-ready callback in AppState once the
+/// `PhysicsOrchestratorActor` is available. This completes the deferred
+/// registration from `register_all_handlers`.
+///
+/// # Handler count
+/// - Commands: 8 (InitializePhysics, UpdatePhysicsParameters, UpdateGraphData,
+///   ApplyExternalForces, PinNodes, UnpinNodes, ResetPhysics, CleanupPhysics)
+/// - Queries: 5 (GetGpuStatus, GetPhysicsStatistics, ListGpuDevices,
+///   GetPerformanceMetrics, IsGpuAvailable)
+/// - Total: 13 handlers
+pub async fn register_physics_handlers(
+    command_bus: &CommandBus,
+    query_bus: &QueryBus,
+    physics_adapter: Arc<Mutex<dyn GpuPhysicsAdapter>>,
+) {
+    register_physics_commands(command_bus, physics_adapter.clone()).await;
+    register_physics_queries(query_bus, physics_adapter).await;
+
+    let cmd_count = command_bus.handler_count().await;
+    let query_count = query_bus.handler_count().await;
+    info!(
+        "[CQRS Registration] Physics handlers registered (8 commands, 5 queries). Bus totals: {} commands, {} queries",
+        cmd_count, query_count
+    );
+}
+
 /// Register all available CQRS handlers on the command and query buses.
 ///
 /// This wires graph, ontology, and settings handlers. Physics handlers are
-/// skipped because `GpuPhysicsAdapter` is initialized asynchronously after
-/// GPU manager startup and is not available at bus creation time.
+/// registered separately via `register_physics_handlers()` after GPU init.
 ///
 /// # Handler count
 /// - Commands: 14 graph + 15 ontology + 8 settings = 37
@@ -193,11 +259,9 @@ pub async fn register_all_handlers(
     register_settings_queries(query_bus, settings_repo).await;
     info!("[CQRS Registration] Settings handlers registered (8 commands, 9 queries)");
 
-    // Physics domain: DEFERRED
-    // PhysicsCommandHandler and PhysicsQueryHandler require Arc<Mutex<dyn GpuPhysicsAdapter>>
-    // which is only available after asynchronous GPU initialization completes.
-    // TODO: Register physics handlers via a callback when GPU adapter becomes available.
-    info!("[CQRS Registration] Physics handlers DEFERRED (GPU adapter not yet initialized)");
+    // Physics domain: registered separately via register_physics_handlers()
+    // after asynchronous GPU initialization completes.
+    info!("[CQRS Registration] Physics handlers deferred (registered after GPU init)");
 
     let cmd_count = command_bus.handler_count().await;
     let query_count = query_bus.handler_count().await;
@@ -388,3 +452,48 @@ impl_settings_query!(GetPhysicsSettingsQuery);
 impl_settings_query!(ListPhysicsProfilesQuery);
 impl_settings_query!(ExportSettingsQuery);
 impl_settings_query!(SettingsHealthCheckQuery);
+
+// -- Physics command adapter -------------------------------------------------
+
+struct PhysicsCommandHandlerAdapter(Arc<PhysicsCommandHandler>);
+
+macro_rules! impl_physics_cmd {
+    ($cmd:ty) => {
+        #[async_trait]
+        impl CommandHandler<$cmd> for PhysicsCommandHandlerAdapter {
+            async fn handle(&self, command: $cmd) -> Result<<$cmd as Command>::Result> {
+                self.0.handle(command).await
+            }
+        }
+    };
+}
+
+impl_physics_cmd!(InitializePhysicsCommand);
+impl_physics_cmd!(UpdatePhysicsParametersCommand);
+impl_physics_cmd!(UpdateGraphDataCommand);
+impl_physics_cmd!(ApplyExternalForcesCommand);
+impl_physics_cmd!(PinNodesCommand);
+impl_physics_cmd!(UnpinNodesCommand);
+impl_physics_cmd!(ResetPhysicsCommand);
+impl_physics_cmd!(CleanupPhysicsCommand);
+
+// -- Physics query adapter ---------------------------------------------------
+
+struct PhysicsQueryHandlerAdapter(Arc<PhysicsQueryHandler>);
+
+macro_rules! impl_physics_query {
+    ($query:ty) => {
+        #[async_trait]
+        impl QueryHandler<$query> for PhysicsQueryHandlerAdapter {
+            async fn handle(&self, query: $query) -> Result<<$query as Query>::Result> {
+                self.0.handle(query).await
+            }
+        }
+    };
+}
+
+impl_physics_query!(GetGpuStatusQuery);
+impl_physics_query!(GetPhysicsStatisticsQuery);
+impl_physics_query!(ListGpuDevicesQuery);
+impl_physics_query!(GetPerformanceMetricsQuery);
+impl_physics_query!(IsGpuAvailableQuery);

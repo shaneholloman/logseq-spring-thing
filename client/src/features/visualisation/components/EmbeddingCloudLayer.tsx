@@ -88,6 +88,8 @@ const EmbeddingCloudLayer: React.FC<EmbeddingCloudProps> = ({ enabled }) => {
   const groupRef = useRef<THREE.Group>(null);
   const pointsRef = useRef<THREE.Points>(null);
   const [data, setData] = useState<EmbeddingCloudData | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [hovered, setHovered] = useState<{ index: number; point: THREE.Vector3 } | null>(null);
 
   // Lookup maps for flash targeting
@@ -111,10 +113,20 @@ const EmbeddingCloudLayer: React.FC<EmbeddingCloudProps> = ({ enabled }) => {
   const maxPoints = settings?.maxPoints ?? 50000;
   const cloudScale = settings?.cloudScale ?? 5.0;
 
-  // Fetch data once
+  // Fetch data lazily -- only when the embedding cloud feature is enabled.
+  // The JSON file (~8MB) is never bundled; it lives in public/ and is fetched on demand.
   useEffect(() => {
     if (!enabled) return;
-    fetch(import.meta.env.VITE_EMBEDDING_CLOUD_URL || '/embedding-cloud.json')
+    // Avoid re-fetching if we already have data
+    if (data) return;
+
+    const controller = new AbortController();
+    setLoading(true);
+    setError(null);
+
+    fetch(import.meta.env.VITE_EMBEDDING_CLOUD_URL || '/embedding-cloud.json', {
+      signal: controller.signal,
+    })
       .then(r => { if (!r.ok) throw new Error(r.statusText); return r.json(); })
       .then((d: EmbeddingCloudData) => {
         if (d.count > maxPoints) {
@@ -138,9 +150,17 @@ const EmbeddingCloudLayer: React.FC<EmbeddingCloudProps> = ({ enabled }) => {
         keyIndexMap.current = kMap;
         nsIndexMap.current = nMap;
         setData(d);
+        setLoading(false);
       })
-      .catch(() => { /* silently skip if no data file */ });
-  }, [enabled, maxPoints]);
+      .catch((err) => {
+        if (err.name !== 'AbortError') {
+          setError('Failed to load embedding cloud data');
+          setLoading(false);
+        }
+      });
+
+    return () => { controller.abort(); };
+  }, [enabled, maxPoints, data]);
 
   // Build point cloud geometry
   const geometry = useMemo(() => {
@@ -300,7 +320,44 @@ const EmbeddingCloudLayer: React.FC<EmbeddingCloudProps> = ({ enabled }) => {
 
   const onPointerOut = useCallback(() => setHovered(null), []);
 
-  if (!enabled || !data || !geometry) return null;
+  if (!enabled) return null;
+
+  // Show loading indicator while fetching the ~8MB embedding data
+  if (loading) {
+    return (
+      <Html center>
+        <div style={{
+          background: 'rgba(0,0,0,0.7)',
+          color: '#7df9ff',
+          padding: '8px 16px',
+          borderRadius: 6,
+          fontSize: 12,
+          fontFamily: 'monospace',
+        }}>
+          Loading embedding cloud...
+        </div>
+      </Html>
+    );
+  }
+
+  if (error) {
+    return (
+      <Html center>
+        <div style={{
+          background: 'rgba(80,0,0,0.7)',
+          color: '#ff6666',
+          padding: '8px 16px',
+          borderRadius: 6,
+          fontSize: 12,
+          fontFamily: 'monospace',
+        }}>
+          {error}
+        </div>
+      </Html>
+    );
+  }
+
+  if (!data || !geometry) return null;
 
   return (
     <group ref={groupRef} name="embedding-cloud-layer" scale={cloudScale}>

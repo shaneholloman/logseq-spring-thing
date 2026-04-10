@@ -493,6 +493,23 @@ impl ForceComputeActor {
                 info!("ForceComputeActor: Stability warmup reset to {} frames after graph upload ({} edges)",
                       warmup, edge_count);
 
+                // ADR-031: Track GPU buffer allocations in GpuMemoryManager
+                // so it knows current memory usage. Positions+velocities use
+                // 12 f32 buffers (6 in, 6 out) of actual_nodes * 4 bytes each.
+                // CSR edges use (num_nodes+1 + num_edges) * 4 bytes for offsets
+                // + col_indices, plus num_edges * 4 for weights.
+                if let Some(ref gpu_ctx) = self.shared_context {
+                    if let Ok(mgr) = gpu_ctx.memory_manager.lock() {
+                        let pos_vel_bytes = num_nodes * std::mem::size_of::<f32>() * 12;
+                        let csr_bytes = ((num_nodes + 1) + edge_count as usize) * std::mem::size_of::<i32>()
+                            + edge_count as usize * std::mem::size_of::<f32>();
+                        mgr.track_external_allocation("positions", pos_vel_bytes);
+                        mgr.track_external_allocation("edges_csr", csr_bytes);
+                        info!("ForceComputeActor: Tracked GPU allocations — positions: {} bytes, CSR: {} bytes",
+                              pos_vel_bytes, csr_bytes);
+                    }
+                }
+
                 // If this is the first successful upload (deferred from InitializeGPU
                 // because shared_context wasn't available yet), send the GPUInitialized
                 // confirmation now so PhysicsOrchestratorActor can start the pipeline.
@@ -836,7 +853,23 @@ impl Actor for ForceComputeActor {
     }
 
     fn stopped(&mut self, _ctx: &mut Self::Context) {
-        info!("ForceComputeActor: Stopped");
+        info!("[ForceComputeActor] Stopped — cleaning up CUDA stability buffers");
+
+        // ADR-031: Deallocate GPU memory tracked by the memory manager
+        if let Some(ref ctx) = self.shared_context {
+            if let Ok(mgr) = ctx.memory_manager.lock() {
+                mgr.track_external_deallocation("positions");
+                mgr.track_external_deallocation("edges_csr");
+            }
+        }
+
+        // Drop the shared GPU context reference. When the last Arc<SharedGPUContext>
+        // drops, the CudaDevice and all associated buffers (including the persistent
+        // stability buffers from visionflow_unified_stability.cu) are freed by the
+        // CUDA driver context teardown.
+        if self.shared_context.take().is_some() {
+            info!("[ForceComputeActor] Released SharedGPUContext reference");
+        }
     }
 }
 

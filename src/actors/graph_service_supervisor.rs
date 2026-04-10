@@ -1529,6 +1529,17 @@ impl Handler<msgs::GetGraphStateActor> for GraphServiceSupervisor {
     }
 }
 
+// Handler to get PhysicsOrchestratorActor from supervisor (used for CQRS physics handler registration)
+impl Handler<msgs::GetPhysicsOrchestratorActor> for GraphServiceSupervisor {
+    type Result = Result<Addr<PhysicsOrchestratorActor>, String>;
+
+    fn handle(&mut self, _msg: msgs::GetPhysicsOrchestratorActor, _ctx: &mut Self::Context) -> Self::Result {
+        self.physics
+            .clone()
+            .ok_or_else(|| "PhysicsOrchestratorActor not available".to_string())
+    }
+}
+
 /// Handler for GetNodeTypeArrays - forwards to GraphStateActor for binary protocol flag classification
 impl Handler<msgs::GetNodeTypeArrays> for GraphServiceSupervisor {
     type Result = ResponseFuture<msgs::NodeTypeArrays>;

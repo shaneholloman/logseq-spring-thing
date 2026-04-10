@@ -1,6 +1,7 @@
 use actix::prelude::*;
 use actix_web::web;
 use log::{debug, error, info, warn};
+use std::path::PathBuf;
 use std::sync::{
     atomic::{AtomicUsize, Ordering},
     Arc,
@@ -16,7 +17,7 @@ use crate::application::graph::*;
 
 // CQRS Phase 4: Command/Query/Event buses and Application Services
 use crate::cqrs::{CommandBus, QueryBus};
-use crate::events::EventBus;
+use crate::events::{EventBus, EventStore};
 
 use crate::actors::gpu;
 use crate::actors::gpu::GPUContextBus;
@@ -318,6 +319,7 @@ pub struct AppState {
     pub command_bus: Arc<RwLock<CommandBus>>,
     pub query_bus: Arc<RwLock<QueryBus>>,
     pub event_bus: Arc<RwLock<EventBus>>,
+    pub event_store: Arc<EventStore>,
     
     
     pub settings_addr: Addr<OptimizedSettingsActor>,
@@ -616,6 +618,13 @@ impl AppState {
         let query_bus = Arc::new(RwLock::new(QueryBus::new()));
         let event_bus = Arc::new(RwLock::new(EventBus::new()));
 
+        // Initialize EventStore with file-backed repository (configurable via env)
+        let event_store_path = std::env::var("EVENT_STORE_PATH")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| PathBuf::from("/tmp/visionflow-events"));
+        let event_store = Arc::new(EventStore::with_file_backend(event_store_path.clone()));
+        info!("[AppState::new] EventStore initialized with file backend at {:?}", event_store_path);
+
         // Register event handlers on the EventBus
         {
             use crate::events::handlers::{AuditEventHandler, NotificationEventHandler, GraphEventHandler, OntologyEventHandler};
@@ -736,9 +745,13 @@ impl AppState {
                     }
                 });
 
-                // Spawn async task to get ForceComputeActor address after actors are ready
+                // Spawn async task to get ForceComputeActor address after actors are ready,
+                // then register deferred CQRS physics handlers.
                 let gpu_manager_clone = gpu_manager.clone();
                 let gpu_compute_addr_clone = gpu_compute_addr.clone();
+                let graph_service_for_physics = graph_service_addr.clone();
+                let command_bus_for_physics = command_bus.clone();
+                let query_bus_for_physics = query_bus.clone();
 
                 actix::spawn(async move {
                     // Wait for GPUManagerActor and PhysicsSupervisor to fully initialize
@@ -749,6 +762,7 @@ impl AppState {
                     // Retry loop to get ForceComputeActor address
                     let max_retries = 10;
                     let retry_delay = tokio::time::Duration::from_millis(500);
+                    let mut gpu_ready = false;
 
                     for attempt in 1..=max_retries {
                         debug!("[AppState] Querying GPUManagerActor for ForceComputeActor (attempt {}/{})",
@@ -760,7 +774,8 @@ impl AppState {
                                 let mut guard = gpu_compute_addr_clone.write().await;
                                 *guard = Some(force_compute_actor);
                                 info!("[AppState] ForceComputeActor address stored - GPU physics now available via AppState");
-                                return;
+                                gpu_ready = true;
+                                break;
                             }
                             Ok(Err(e)) => {
                                 debug!("[AppState] ForceComputeActor not ready yet: {} (attempt {}/{})",
@@ -777,8 +792,33 @@ impl AppState {
                         }
                     }
 
-                    warn!("[AppState] Failed to obtain ForceComputeActor after {} attempts - HTTP handlers will use fallback paths",
-                          max_retries);
+                    if !gpu_ready {
+                        warn!("[AppState] Failed to obtain ForceComputeActor after {} attempts - HTTP handlers will use fallback paths",
+                              max_retries);
+                        return;
+                    }
+
+                    // GPU is ready — retrieve PhysicsOrchestratorActor and register CQRS physics handlers
+                    use crate::actors::messages::GetPhysicsOrchestratorActor;
+                    use crate::adapters::actix_physics_adapter::ActixPhysicsAdapter;
+
+                    match graph_service_for_physics.send(GetPhysicsOrchestratorActor).await {
+                        Ok(Ok(physics_orch_addr)) => {
+                            let adapter: Arc<tokio::sync::Mutex<dyn crate::ports::GpuPhysicsAdapter>> =
+                                Arc::new(tokio::sync::Mutex::new(
+                                    ActixPhysicsAdapter::from_actor(physics_orch_addr),
+                                ));
+                            let cmd_bus = command_bus_for_physics.write().await;
+                            let qry_bus = query_bus_for_physics.write().await;
+                            crate::cqrs::register_physics_handlers(&cmd_bus, &qry_bus, adapter).await;
+                        }
+                        Ok(Err(e)) => {
+                            warn!("[AppState] PhysicsOrchestratorActor not available: {} — physics CQRS handlers not registered", e);
+                        }
+                        Err(e) => {
+                            error!("[AppState] Failed to query GraphServiceSupervisor for PhysicsOrchestratorActor: {}", e);
+                        }
+                    }
                 });
             } else {
                 warn!("[AppState] GPUManagerActor not available - GPU physics will be disabled");
@@ -974,7 +1014,7 @@ impl AppState {
             command_bus,
             query_bus,
             event_bus,
-
+            event_store,
 
             settings_addr,
             protected_settings_addr,

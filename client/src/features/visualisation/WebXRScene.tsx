@@ -47,9 +47,12 @@ import { createLogger } from '../../utils/loggerConfig';
 const logger = createLogger('WebXRScene');
 
 // Create XR store singleton
+// Disable XR emulation in production to avoid bundling @iwer/sem room scene
+// data (~4.6MB of MetaQuest scene captures used only for localhost dev).
 const xrStore = createXRStore({
   hand: true,
   controller: true,
+  emulate: import.meta.env.DEV ? 'metaQuest3' : false,
 });
 
 /** Agent data for VR targeting */

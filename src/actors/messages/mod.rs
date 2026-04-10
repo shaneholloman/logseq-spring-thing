@@ -38,7 +38,7 @@ pub use physics_messages::{
     BroadcastPerformanceStats, ComputeForces, ConfigureBroadcastOptimization, ConfigureCollision,
     ConfigureDAG, ConfigureStressMajorization, ConfigureTypeClustering, ForceResumePhysics,
     GPUInitialized, GPUStatus, GetActiveConstraints, GetBroadcastStats, GetConstraintBuffer,
-    GetConstraints, GetEquilibriumStatus, GetForceComputeActor, GetGPUMetrics, GetGPUStatus,
+    GetConstraints, GetEquilibriumStatus, GetForceComputeActor, GetPhysicsOrchestratorActor, GetGPUMetrics, GetGPUStatus,
     GetHierarchyLevels, GetKernelMode, GetNodeData, GetPhysicsStats, GetSemanticConfig,
     GetStressMajorizationConfig, GetStressMajorizationStats, InitializeGPU,
     InitializeGPUConnection, InitializeVisualAnalytics, NodeInteractionMessage, SetAppGpuComputeAddr,

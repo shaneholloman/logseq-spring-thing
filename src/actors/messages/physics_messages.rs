@@ -72,6 +72,10 @@ pub struct StoreGPUComputeAddress {
 pub struct GetForceComputeActor;
 
 #[derive(Message)]
+#[rtype(result = "Result<Addr<crate::actors::physics_orchestrator_actor::PhysicsOrchestratorActor>, String>")]
+pub struct GetPhysicsOrchestratorActor;
+
+#[derive(Message)]
 #[rtype(result = "()")]
 pub struct InitializeGPUConnection {
     pub gpu_manager: Option<Addr<crate::actors::GPUManagerActor>>,

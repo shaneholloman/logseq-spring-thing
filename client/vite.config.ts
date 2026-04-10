@@ -32,6 +32,16 @@ export default defineConfig(({ mode }) => {
     },
     // Optimize chunking strategy
     rollupOptions: {
+      // Exclude XR emulator packages from production builds.
+      // @iwer/sem contains ~4.6MB of MetaQuest room scene captures that are
+      // only used for localhost XR emulation. createXRStore passes
+      // emulate: false in production, so these modules are never imported
+      // at runtime, but without explicit exclusion Rollup still bundles them
+      // because the dynamic import('./emulate.js') in @pmndrs/xr is statically
+      // analysable.
+      external: mode === 'production'
+        ? ['@iwer/sem', '@iwer/devui', 'iwer']
+        : [],
       output: {
         manualChunks: {
           // Separate heavy 3D libraries (Three.js only - Babylon.js removed)
