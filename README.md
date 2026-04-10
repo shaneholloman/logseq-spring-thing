@@ -596,9 +596,9 @@ Each context has its own aggregate roots, domain events, and anti-corruption lay
 
 | Deployment | Context | Scale |
 |:-----------|:--------|:------|
-| **MediaCityUK Creative Hub** | 15-person creative technology team — live production deployment | ~998 knowledge graph nodes, daily ontology mutations |
+| **DreamLab Creative Hub** | 50-person creative technology team — live production deployment | ~998 knowledge graph nodes, daily ontology mutations |
 | **University of Salford** | Research partnership validating semantic force-directed layout for academic knowledge graphs | Multi-institution ontology |
-| **THG World Record Attempt** | Large-scale multi-user immersive data visualisation event — see [THG project](https://github.com/DreamLab-AI/THG-world-record-attempt) | 250+ concurrent XR users |
+| **THG World Record** | Large-scale multi-user immersive data visualisation event — see [THG project](https://github.com/DreamLab-AI/THG-world-record-attempt) | 250+ concurrent XR users |
 
 ---
 
