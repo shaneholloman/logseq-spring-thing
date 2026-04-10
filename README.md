@@ -54,7 +54,7 @@ VisionClaw is production-proven currently operational at [DreamLab residential t
 
 <img src="./ChloeOctave.jpg" alt="Immersive interaction with a 3D knowledge graph" width="560"/>
 <br/>
-<em>Interacting with a knowledge graph in an immersive projected environment</em>
+<em>Chloe Nevitt interacting with Prof Rob Aspin's precursor to VisionClaw in the [Octave Multimodal Lab](https://narrativegoldmine.com/notes/#/page/octave%20multi%20model%20laboratory), University of Salford 2017</em>
 </div>
 
 ---
