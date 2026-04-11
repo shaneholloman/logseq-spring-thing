@@ -2313,5 +2313,22 @@ echo "  ALL SYSTEMS READY - STARTING NOW"
 echo "========================================"
 echo ""
 
+# Start memory flash bridge (RuVector PG → VisionFlow WebSocket visual telltale)
+# Runs in background; connects PG LISTEN/NOTIFY to the VisionFlow REST API
+if [ -f /home/devuser/workspace/project/scripts/memory-flash-bridge.mjs ]; then
+    echo "  Starting memory flash bridge..."
+    sudo -u devuser bash -c "
+        PGHOST=${RUVECTOR_PG_HOST:-ruvector-postgres} \
+        PGPORT=${RUVECTOR_PG_PORT:-5432} \
+        PGUSER=${RUVECTOR_PG_USER:-ruvector} \
+        PGDATABASE=${RUVECTOR_PG_DATABASE:-ruvector} \
+        PGPASSWORD=${RUVECTOR_PG_PASSWORD:-ruvector} \
+        VISIONFLOW_URL=http://visionflow_container:3001 \
+        node /home/devuser/workspace/project/scripts/memory-flash-bridge.mjs \
+        >> /var/log/memory-flash-bridge.log 2>&1 &
+    " || true
+    echo "  ✓ Memory flash bridge started"
+fi
+
 # Start supervisord (will run in foreground)
 exec /opt/venv/bin/supervisord -n -c /etc/supervisord.conf

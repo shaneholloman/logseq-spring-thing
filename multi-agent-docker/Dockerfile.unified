@@ -169,6 +169,10 @@ ENV __NV_PRIME_RENDER_OFFLOAD=1
 ENV __VK_LAYER_NV_optimus=NVIDIA_only
 ENV LIBGL_ALWAYS_INDIRECT=0
 ENV CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1
+# Disable Claude Code's file-based auto memory (MEMORY.md) — we use RuVector/AgentDB
+# via mcp__claude-flow__memory_* MCP tools for all persistent memory. File-based memories
+# are invisible to the memory cloud visualiser and other agents.
+ENV CLAUDE_CODE_DISABLE_AUTO_MEMORY=1
 
 # Global PATH for CUDA and Rust (available to all users and processes)
 ENV PATH="/opt/cuda/bin:/usr/lib/rustup/bin:/usr/local/bin:/usr/bin:${PATH}"
