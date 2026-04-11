@@ -2,7 +2,7 @@
 
 # VisionClaw
 
-### The Governed Agentic Mesh for Organisations That Can't Afford to Move Fast and Break Things
+### Immersivee, collaborative, agentic knowledge management, & tool factory.
 
 [![Build](https://img.shields.io/github/actions/workflow/status/DreamLab-AI/VisionClaw/ci.yml?branch=main&style=flat-square&logo=github)](https://github.com/DreamLab-AI/VisionClaw/actions)
 [![Version](https://img.shields.io/github/v/release/DreamLab-AI/VisionClaw?style=flat-square&logo=semantic-release)](https://github.com/DreamLab-AI/VisionClaw/releases)
