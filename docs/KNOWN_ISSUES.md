@@ -79,6 +79,50 @@ Full details including the node schema, Neo4j index definitions, and the full pi
 
 ---
 
+### GPU-002: Analytics Actors Missing SharedGPUContext
+
+**Status**: Known / Deferred
+**Impact**: PageRank, SSSP, APSP, and Connected Components endpoints return "GPU context not initialized" or "actor not available". The GPU context is created by `ForceComputeActor` but not shared to `PageRankActor`, `ShortestPathActor`, or `ConnectedComponentsActor` in the analytics subsystem.
+
+**Root Cause**: `AnalyticsSupervisor` spawns analytics actors but does not forward the `SetSharedGPUContext` message from the physics supervisor. Only `ForceComputeActor` receives the GPU context.
+
+**Workaround**: Clustering (K-means, DBSCAN, Louvain) works because `ClusteringActor` accesses the GPU via `UnifiedGPUCompute` which self-initializes. Other analytics actors use a different initialization path.
+
+**Fix Direction**: Forward `SetSharedGPUContext` from `PhysicsSupervisor` to `AnalyticsSupervisor` → all child actors. Estimated 50 lines.
+
+---
+
+### PHYS-001: No Graph Position Reset Endpoint
+
+**Status**: Known / Deferred
+**Impact**: When physics parameters change, the layout evolves from the current positions. If a previous extreme parameter set pushed nodes to boundary extremes, moderate parameters cannot recover them (gravity too weak at distance). The only reset is a full container restart.
+
+**Root Cause**: `POST /api/physics/reset` exists but depends on `PhysicsService` which is not injected into AppState. `POST /api/admin/sync` triggers `ReloadGraphFromDatabase` but requires power user auth and the full GitHub sync pipeline.
+
+**Fix Direction**: Add `POST /api/graph/reset-positions` that randomizes GPU positions and triggers a reheat. Estimated 30 lines in `force_compute_actor.rs`.
+
+---
+
+### UI-001: Client Slider Init Race — Settings Pushed Before Server Load
+
+**Status**: Partially Fixed (slider ranges capped)
+**Impact**: On first client connect, sliders may send values before fetching server state. With the old max ranges (repelK: 50000), this produced extreme physics parameters. Slider ranges are now capped to sane values (repelK: 2000, centerGravityK: 10) which limits damage, but the race condition remains.
+
+**Fix Direction**: Client should fetch `GET /api/settings/physics` and populate slider values before enabling any PUT calls. Add a `settingsLoaded` flag to gate writes.
+
+---
+
+### UI-002: `SETTINGS_AUTH_BYPASS` Not Picked Up by Docker Compose
+
+**Status**: Workaround Applied
+**Impact**: `.env` contains `SETTINGS_AUTH_BYPASS=true` but `docker compose config` resolves it to `false`. Settings PUT calls return 401.
+
+**Root Cause**: Docker Compose `.env` file resolution depends on the working directory of the `docker compose` command, which may differ from the project root when invoked via `launch.sh` from a DinD container.
+
+**Workaround**: Auth bypass now also triggers on `DOCKER_ENV=1 + NODE_ENV=development` (added to `auth_extractor.rs`).
+
+---
+
 ## Resolved Issues
 
 Previously known issues that are now fixed. Listed here so that old bug reports, forum threads, or git blame comments referencing these symptoms can be traced to their resolution.
