@@ -743,6 +743,9 @@ async fn main() -> std::io::Result<()> {
                     // Memory flash events (RuVector access → WS broadcast to all clients)
                     .configure(webxr::handlers::configure_memory_flash_routes)
 
+                    // Layout mode system (ADR-031)
+                    .configure(webxr::handlers::configure_layout_routes)
+
             );
 
             app

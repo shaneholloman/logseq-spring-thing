@@ -690,6 +690,18 @@ impl ForceComputeActor {
                     if let Err(e) = compute.upload_degree_weights(&normalized_weights) {
                         warn!("ForceComputeActor: Failed to upload degree weights: {}", e);
                     }
+
+                    // Also set class_mass = degree_weight so high-degree hubs have
+                    // more inertia — they resist sudden position changes during layout
+                    // transitions and settle more smoothly. Mass range: 0.5 (isolated)
+                    // to ~5.0 (max hub), clamped to prevent extreme sluggishness.
+                    let mass_weights: Vec<f32> = normalized_weights.iter()
+                        .map(|w| (0.5 + w * 2.0).min(5.0))
+                        .collect();
+                    match cust::memory::DeviceBuffer::from_slice(&mass_weights) {
+                        Ok(new_mass) => { compute.class_mass = new_mass; }
+                        Err(e) => { warn!("ForceComputeActor: Failed to upload mass weights: {}", e); }
+                    }
                 }
 
                 debug!("ForceComputeActor: [DIAG] class metadata done, about to update gpu_state");

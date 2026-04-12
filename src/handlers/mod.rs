@@ -56,6 +56,10 @@ pub use briefing_handler::configure_routes as configure_briefing_routes;
 pub mod memory_flash_handler;
 pub use memory_flash_handler::configure_routes as configure_memory_flash_routes;
 
+// Layout mode system (ADR-031)
+pub mod layout_handler;
+pub use layout_handler::configure_layout_routes;
+
 // High-Performance Networking (QUIC/WebTransport + fastwebsockets)
 pub mod quic_transport_handler;
 pub mod fastwebsockets_handler;

@@ -4,7 +4,7 @@ import type { GraphTypeVisualsSettings } from '../../settings/config/settings';
 
 // Default scaling parameters matching the original hardcoded values.
 // These are used when settings are not yet loaded or fields are missing.
-const KG_DEFAULTS = { authorityScaleFactor: 0.5, connectionInfluence: 0.4, globalScaleMultiplier: 2.5 };
+const KG_DEFAULTS = { authorityScaleFactor: 0.5, connectionInfluence: 0.8, globalScaleMultiplier: 2.5 };
 const ONTO_DEFAULTS = { hierarchyScaleFactor: 0.15, minScale: 0.4, instanceCountInfluence: 0.1 };
 const AGENT_DEFAULTS = { workloadInfluence: 0.3, tokenRateInfluence: 100, tokenRateCap: 0.5 };
 
@@ -48,11 +48,16 @@ export const computeNodeScale = (
   }
 
   // Knowledge graph (default)
+  // Scaling uses sqrt for stronger size distinction between hubs and leaves:
+  //   degree 1  → scale ~2.5  (small)
+  //   degree 10 → scale ~5.8  (medium)
+  //   degree 50 → scale ~11.5 (large)
+  //   degree 149→ scale ~19.0 (very large, ~7.6x smallest)
   const cfg = visuals?.knowledgeGraph;
   const auth = node.metadata?.authority ?? node.metadata?.authorityScore ?? 0;
   const cc = connectionCountMap.get(id) || 0;
   const connInfl = cfg?.connectionInfluence ?? KG_DEFAULTS.connectionInfluence;
   const authFactor = cfg?.authorityScaleFactor ?? KG_DEFAULTS.authorityScaleFactor;
   const globalMult = cfg?.globalScaleMultiplier ?? KG_DEFAULTS.globalScaleMultiplier;
-  return base * (1 + Math.log(cc + 1) * connInfl) * (1 + auth * authFactor) * globalMult;
+  return base * (1 + Math.sqrt(cc) * connInfl) * (1 + auth * authFactor) * globalMult;
 };

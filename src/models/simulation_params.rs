@@ -1,4 +1,5 @@
 use crate::config::{AutoBalanceConfig, AutoPauseConfig, PhysicsSettings};
+use crate::layout::types::LayoutMode;
 use bytemuck::{Pod, Zeroable};
 use cudarc::driver::DeviceRepr;
 use cust_core::DeviceCopy;
@@ -233,6 +234,10 @@ pub struct SimulationParams {
     /// 0 = merged (default), positive = knowledge at -X, ontology at +X, agents at origin.
     #[serde(default)]
     pub graph_separation_x: f32,
+
+    /// Active layout algorithm (ADR-031). Defaults to ForceDirected.
+    #[serde(default)]
+    pub layout_mode: LayoutMode,
 }
 
 impl Default for SimulationParams {
@@ -511,6 +516,7 @@ impl SimParams {
             mode: SimulationMode::Remote,
             settle_mode: SettleMode::default(),
             graph_separation_x: 0.0,
+            layout_mode: LayoutMode::default(),
         }
     }
 }
@@ -649,6 +655,7 @@ impl From<&PhysicsSettings> for SimulationParams {
             mode: SimulationMode::Remote,
             settle_mode: SettleMode::default(),
             graph_separation_x: physics.graph_separation_x,
+            layout_mode: LayoutMode::default(),
         }
     }
 }

@@ -195,6 +195,7 @@ export const UNIFIED_SETTINGS_CONFIG: Record<string, SectionConfig> = {
 
       // --- Layout Mode (moved from Quality) ---
       { key: 'layoutMode', label: 'Layout Mode', type: 'select', options: ['force-directed', 'dag-topdown', 'dag-radial', 'dag-leftright', 'type-clustering'], path: 'qualityGates.layoutMode', description: 'Graph layout algorithm — force-directed uses spring/repulsion, DAG modes add hierarchical layout, type-clustering groups by node type' },
+      { key: 'layoutAlgorithm', label: 'Layout Algorithm', type: 'select', options: ['forceDirected', 'hierarchical', 'radial', 'spectral', 'temporal', 'clustered'], path: 'visualisation.graphs.logseq.physics.layoutAlgorithm', description: 'Graph layout algorithm — ForceDirected reveals communities, Hierarchical shows taxonomy' },
 
       // --- Ontology Forces (moved from Quality) ---
       { key: 'ontologyPhysics', label: 'Ontology Forces', type: 'toggle', path: 'qualityGates.ontologyPhysics', description: 'Enable OWL ontology-derived constraint forces in the physics simulation' },
