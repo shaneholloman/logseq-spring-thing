@@ -19,6 +19,7 @@ pub struct UnifiedGPUCompute {
     pub(crate) _module: Module,
     pub(crate) clustering_module: Option<Module>,
     pub(crate) apsp_module: Option<Module>,
+    pub(crate) ontology_module: Option<Module>,
     pub(crate) stream: Stream,
 
 
@@ -173,6 +174,13 @@ pub struct UnifiedGPUCompute {
 
     pub(crate) aabb_block_results: DeviceBuffer<AABB>,
     pub(crate) aabb_num_blocks: usize,
+
+    /// Pre-computed degree weights for degree-weighted gravity.
+    /// Each element is log(1 + degree) for the corresponding node.
+    /// Isolated nodes (degree 0) have weight 0.0.
+    pub degree_weight: DeviceBuffer<f32>,
+    /// Whether degree weights have been uploaded (graph data available).
+    pub(crate) degree_weights_available: bool,
 }
 
 impl UnifiedGPUCompute {
@@ -186,6 +194,17 @@ impl UnifiedGPUCompute {
         ptx_content: &str,
         clustering_ptx: Option<&str>,
         apsp_ptx: Option<&str>,
+    ) -> Result<Self> {
+        Self::new_with_all_modules(num_nodes, num_edges, ptx_content, clustering_ptx, apsp_ptx, None)
+    }
+
+    pub fn new_with_all_modules(
+        num_nodes: usize,
+        num_edges: usize,
+        ptx_content: &str,
+        clustering_ptx: Option<&str>,
+        apsp_ptx: Option<&str>,
+        ontology_ptx: Option<&str>,
     ) -> Result<Self> {
 
         if let Err(e) = crate::utils::gpu_diagnostics::validate_ptx_content(ptx_content) {
@@ -246,6 +265,31 @@ impl UnifiedGPUCompute {
                     }
                     Err(e) => {
                         warn!("Failed to load APSP module: {}. Continuing without GPU APSP support.", e);
+                        None
+                    }
+                }
+            }
+        } else {
+            None
+        };
+
+        let ontology_module = if let Some(ontology_ptx_content) = ontology_ptx {
+            if let Err(e) =
+                crate::utils::gpu_diagnostics::validate_ptx_content(ontology_ptx_content)
+            {
+                warn!(
+                    "Ontology PTX validation failed: {}. Continuing without specialized ontology kernels.",
+                    e
+                );
+                None
+            } else {
+                match Module::from_ptx(ontology_ptx_content, &[]) {
+                    Ok(module) => {
+                        info!("Successfully loaded ontology constraints module with specialized kernels");
+                        Some(module)
+                    }
+                    Err(e) => {
+                        warn!("Failed to load ontology module: {}. Falling back to generic constraint path.", e);
                         None
                     }
                 }
@@ -361,6 +405,7 @@ impl UnifiedGPUCompute {
             _module: kernel_module,
             clustering_module,
             apsp_module,
+            ontology_module,
             stream,
             build_grid_kernel_name: "build_grid_kernel",
             compute_cell_bounds_kernel_name: "compute_cell_bounds_kernel",
@@ -493,6 +538,9 @@ impl UnifiedGPUCompute {
 
             aabb_num_blocks: (num_nodes + 255) / 256,
             aabb_block_results: DeviceBuffer::zeroed((num_nodes + 255) / 256)?,
+
+            degree_weight: DeviceBuffer::from_slice(&vec![1.0f32; num_nodes])?,
+            degree_weights_available: false,
         };
 
 

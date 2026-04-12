@@ -34,7 +34,8 @@ pub fn config(cfg: &mut web::ServiceConfig) {
             .route("/start", web::post().to(start_clustering))
             .route("/status", web::get().to(get_clustering_status))
             .route("/results", web::get().to(get_clustering_results))
-            .route("/export", web::post().to(export_cluster_assignments)),
+            .route("/export", web::post().to(export_cluster_assignments))
+            .route("/dbscan", web::post().to(run_dbscan)),
     );
 }
 
@@ -734,6 +735,127 @@ async fn export_cluster_assignments(
     Ok(HttpResponse::Ok()
         .content_type(content_type)
         .body(empty_response))
+}
+
+/// POST /clustering/dbscan
+/// Runs standalone DBSCAN clustering on the GPU.
+///
+/// Request body:
+/// ```json
+/// { "epsilon": 0.5, "minPoints": 5 }
+/// ```
+async fn run_dbscan(
+    _req: HttpRequest,
+    state: web::Data<AppState>,
+    payload: web::Json<Value>,
+) -> Result<HttpResponse, actix_web::Error> {
+    let request = payload.into_inner();
+
+    let epsilon = request
+        .get("epsilon")
+        .and_then(|v| v.as_f64())
+        .map(|v| v as f32)
+        .unwrap_or(0.5);
+
+    let min_points = request
+        .get("minPoints")
+        .or_else(|| request.get("min_points"))
+        .and_then(|v| v.as_u64())
+        .map(|v| v as u32)
+        .unwrap_or(5);
+
+    if epsilon <= 0.0 {
+        return bad_request!("epsilon must be positive");
+    }
+    if min_points == 0 {
+        return bad_request!("minPoints must be at least 1");
+    }
+
+    info!(
+        "Starting DBSCAN clustering with epsilon={}, minPoints={}",
+        epsilon, min_points
+    );
+
+    let start = Instant::now();
+
+    if let Some(gpu_manager) = state.gpu_manager_addr.as_ref() {
+        use crate::actors::messages::RunDBSCAN;
+        use crate::actors::messages::DBSCANParams;
+
+        let msg = RunDBSCAN {
+            params: DBSCANParams {
+                epsilon,
+                min_points,
+            },
+        };
+
+        match gpu_manager.send(msg).await {
+            Ok(Ok(result)) => {
+                let computation_time_ms = start.elapsed().as_millis() as u64;
+
+                // Populate shared node_analytics for V3 wire format
+                if let Ok(mut analytics) = state.node_analytics.write() {
+                    for cluster in &result.clusters {
+                        for &node_id in &cluster.nodes {
+                            let entry = analytics.entry(node_id).or_insert((0, 0.0, 0));
+                            // Use the cluster label from the DBSCAN result
+                            entry.0 = cluster.label.split_whitespace()
+                                .last()
+                                .and_then(|s| s.parse::<u32>().ok())
+                                .unwrap_or(0);
+                        }
+                    }
+                }
+
+                ok_json!(json!({
+                    "status": "completed",
+                    "algorithm": "dbscan",
+                    "epsilon": epsilon,
+                    "minPoints": min_points,
+                    "numClusters": result.num_clusters,
+                    "numNoisePoints": result.num_noise_points,
+                    "totalNodes": result.stats.total_nodes,
+                    "clusters": result.clusters.iter().map(|c| json!({
+                        "id": c.id,
+                        "label": c.label,
+                        "nodeCount": c.node_count,
+                        "coherence": c.coherence,
+                        "nodes": c.nodes,
+                        "centroid": c.centroid,
+                        "color": c.color,
+                        "keywords": c.keywords,
+                    })).collect::<Vec<_>>(),
+                    "stats": {
+                        "totalNodes": result.stats.total_nodes,
+                        "numClusters": result.stats.num_clusters,
+                        "numNoisePoints": result.stats.num_noise_points,
+                        "largestClusterSize": result.stats.largest_cluster_size,
+                        "smallestClusterSize": result.stats.smallest_cluster_size,
+                        "averageClusterSize": result.stats.average_cluster_size,
+                        "computationTimeMs": computation_time_ms
+                    },
+                    "gpuAccelerated": true,
+                    "computationTimeMs": computation_time_ms
+                }))
+            }
+            Ok(Err(e)) => {
+                error!("DBSCAN clustering failed: {}", e);
+                Ok(HttpResponse::InternalServerError().json(json!({
+                    "status": "failed",
+                    "algorithm": "dbscan",
+                    "error": format!("DBSCAN clustering failed: {}", e),
+                    "gpuAccelerated": false
+                })))
+            }
+            Err(e) => {
+                error!("GPU actor communication error: {}", e);
+                service_unavailable!("GPU compute actor unavailable")
+            }
+        }
+    } else {
+        warn!("GPU compute not available for DBSCAN clustering");
+        service_unavailable!("GPU compute not available")
+    }
 }
 
 fn validate_clustering_config(config: &ClusteringConfiguration) -> Result<(), String> {

@@ -55,7 +55,7 @@ pub async fn socket_flow_handler(
         let origin = origin_header.to_str().unwrap_or("");
         let allowed_origins = std::env::var("CORS_ALLOWED_ORIGINS").unwrap_or_else(|_| {
             if insecure_allowed {
-                "http://localhost:3000,http://localhost:3001,http://127.0.0.1:3000,http://localhost:5173".to_string()
+                "http://localhost:3000,http://localhost:3001,https://localhost:3001,http://127.0.0.1:3000,https://127.0.0.1:3001,http://localhost:5173,https://localhost:5173".to_string()
             } else {
                 "http://localhost:3000".to_string()
             }

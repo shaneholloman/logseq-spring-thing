@@ -291,19 +291,25 @@ impl UnifiedGPUCompute {
     }
 
     pub fn run_stress_majorization(&mut self) -> Result<(Vec<f32>, Vec<f32>, Vec<f32>)> {
-        info!("Running REAL stress majorization on GPU");
+        info!("Running GPU stress majorization with convergence detection");
 
-        let block_size = 256;
+        let block_size = 256u32;
         let grid_size = (self.num_nodes as u32 + block_size - 1) / block_size;
+        let n = self.num_nodes;
 
-        let mut pos_x = vec![0.0f32; self.num_nodes];
-        let mut pos_y = vec![0.0f32; self.num_nodes];
-        let mut pos_z = vec![0.0f32; self.num_nodes];
+        // Resolve the clustering module (stress kernels live in GpuClusteringKernels PTX)
+        let module = if let Some(ref clustering_mod) = self.clustering_module {
+            clustering_mod
+        } else {
+            &self._module
+        };
+
+        let mut pos_x = vec![0.0f32; n];
+        let mut pos_y = vec![0.0f32; n];
+        let mut pos_z = vec![0.0f32; n];
         self.download_positions(&mut pos_x, &mut pos_y, &mut pos_z)?;
 
         // Compute BFS shortest-path distances from the CSR graph structure.
-        // This replaces the previous bogus index-based formula.
-        let n = self.num_nodes;
         let (row_offsets, col_indices) = self.download_csr()?;
         let hop_distances = Self::bfs_all_pairs_distances(n, &row_offsets, &col_indices);
 
@@ -314,7 +320,6 @@ impl UnifiedGPUCompute {
             for j in 0..n {
                 let d = hop_distances[i * n + j];
                 if i == j || d == 0.0 {
-                    // Self-pair or unreachable: zero weight so it contributes nothing
                     target_distances[i * n + j] = 0.0;
                     weights[i * n + j] = 0.0;
                 } else {
@@ -325,33 +330,33 @@ impl UnifiedGPUCompute {
             }
         }
 
-
         let d_target_distances = DeviceBuffer::from_slice(&target_distances)?;
         let d_weights = DeviceBuffer::from_slice(&weights)?;
         let d_new_pos_x = DeviceBuffer::from_slice(&pos_x)?;
         let d_new_pos_y = DeviceBuffer::from_slice(&pos_y)?;
         let d_new_pos_z = DeviceBuffer::from_slice(&pos_z)?;
 
+        let stress_grid_size = grid_size;
 
         let max_iterations = 50;
         let learning_rate = self.params.learning_rate_default;
+        let convergence_threshold = 1e-4f32;
 
-        for _iter in 0..max_iterations {
+        let step_kernel = module.get_function("stress_majorization_step_kernel")?;
+        let stress_kernel = module.get_function("compute_stress_kernel")?;
 
-            let stress_kernel = self
-                ._module
-                .get_function("stress_majorization_step_kernel")?;
+        let mut prev_stress = f32::MAX;
 
-            // SAFETY: Stress majorization kernel launch is safe because:
-            // 1. pos_in_* contain current positions from download_positions()
-            // 2. d_new_pos_* are freshly allocated DeviceBuffers for output
-            // 3. d_target_distances and d_weights are NxN matrices allocated above
-            // 4. edge_* buffers are valid CSR graph data
-            // 5. The kernel computes weighted stress-minimizing position updates
+        for iter in 0..max_iterations {
+            // --- Step: update positions via stress_majorization_step_kernel ---
+            // SAFETY: All device buffers are valid allocations with capacity >= num_nodes.
+            // pos_in_* hold current positions, d_new_pos_* receive updated output.
+            // d_target_distances and d_weights are NxN matrices.
+            // edge_row_offsets/edge_col_indices are valid CSR graph data.
             unsafe {
                 let stream = &self.stream;
                 launch!(
-                stress_kernel<<<grid_size, block_size, 0, stream>>>(
+                step_kernel<<<grid_size, block_size, 0, stream>>>(
                     self.pos_in_x.as_device_ptr(),
                     self.pos_in_y.as_device_ptr(),
                     self.pos_in_z.as_device_ptr(),
@@ -363,25 +368,135 @@ impl UnifiedGPUCompute {
                     self.edge_row_offsets.as_device_ptr(),
                     self.edge_col_indices.as_device_ptr(),
                     learning_rate,
-                    self.num_nodes as i32,
+                    n as i32,
                     crate::config::dev_config::physics().force_epsilon
                 ))?;
             }
-
             self.stream.synchronize()?;
 
-
+            // Copy new positions back into pos_in buffers for the next iteration
             self.pos_in_x.copy_from(&d_new_pos_x)?;
             self.pos_in_y.copy_from(&d_new_pos_y)?;
             self.pos_in_z.copy_from(&d_new_pos_z)?;
-        }
 
+            // --- Convergence: compute stress via compute_stress_kernel ---
+            let d_partial_stress = DeviceBuffer::<f32>::zeroed(stress_grid_size as usize)?;
+
+            // compute_stress_kernel uses shared memory of block_size * sizeof(f32)
+            let shared_mem_bytes = block_size * std::mem::size_of::<f32>() as u32;
+            // SAFETY: pos_in_* hold updated positions, d_target_distances/d_weights are NxN,
+            // d_partial_stress has grid_size elements for block-level reduction output.
+            unsafe {
+                let stream = &self.stream;
+                launch!(
+                stress_kernel<<<stress_grid_size, block_size, shared_mem_bytes, stream>>>(
+                    self.pos_in_x.as_device_ptr(),
+                    self.pos_in_y.as_device_ptr(),
+                    self.pos_in_z.as_device_ptr(),
+                    d_target_distances.as_device_ptr(),
+                    d_weights.as_device_ptr(),
+                    d_partial_stress.as_device_ptr(),
+                    n as i32
+                ))?;
+            }
+            self.stream.synchronize()?;
+
+            // Download partial stress and sum on CPU (grid_size values)
+            let mut partial_stress = vec![0.0f32; stress_grid_size as usize];
+            d_partial_stress.copy_to(&mut partial_stress)?;
+            let current_stress: f32 = partial_stress.iter().sum();
+
+            // Check convergence: relative change in stress
+            let stress_change = (prev_stress - current_stress).abs();
+            let relative_change = if prev_stress.abs() > f32::EPSILON {
+                stress_change / prev_stress.abs()
+            } else {
+                stress_change
+            };
+
+            if iter > 0 && relative_change < convergence_threshold {
+                info!(
+                    "GPU stress majorization converged at iteration {} (stress={:.6}, rel_change={:.6})",
+                    iter, current_stress, relative_change
+                );
+                break;
+            }
+            prev_stress = current_stress;
+        }
 
         d_new_pos_x.copy_to(&mut pos_x)?;
         d_new_pos_y.copy_to(&mut pos_y)?;
         d_new_pos_z.copy_to(&mut pos_z)?;
 
         Ok((pos_x, pos_y, pos_z))
+    }
+
+    /// Compute the current stress value on GPU using compute_stress_kernel.
+    /// Returns the total (un-normalized) stress.
+    pub fn compute_stress_gpu(&mut self) -> Result<f32> {
+        let n = self.num_nodes;
+        if n < 2 {
+            return Ok(0.0);
+        }
+
+        let block_size = 256u32;
+        let grid_size = (n as u32 + block_size - 1) / block_size;
+
+        let module = if let Some(ref clustering_mod) = self.clustering_module {
+            clustering_mod
+        } else {
+            &self._module
+        };
+
+        // Compute BFS target distances and weights
+        let (row_offsets, col_indices) = self.download_csr()?;
+        let hop_distances = Self::bfs_all_pairs_distances(n, &row_offsets, &col_indices);
+
+        let mut target_distances = vec![0.0f32; n * n];
+        let mut weights = vec![0.0f32; n * n];
+
+        for i in 0..n {
+            for j in 0..n {
+                let d = hop_distances[i * n + j];
+                if i == j || d == 0.0 {
+                    target_distances[i * n + j] = 0.0;
+                    weights[i * n + j] = 0.0;
+                } else {
+                    target_distances[i * n + j] = d;
+                    weights[i * n + j] = 1.0 / (d * d);
+                }
+            }
+        }
+
+        let d_target_distances = DeviceBuffer::from_slice(&target_distances)?;
+        let d_weights = DeviceBuffer::from_slice(&weights)?;
+        let d_partial_stress = DeviceBuffer::<f32>::zeroed(grid_size as usize)?;
+
+        let shared_mem_bytes = block_size * std::mem::size_of::<f32>() as u32;
+        let stress_kernel = module.get_function("compute_stress_kernel")?;
+
+        // SAFETY: pos_in_* hold current positions, d_target_distances/d_weights are NxN,
+        // d_partial_stress has grid_size elements for block-level reduction output.
+        unsafe {
+            let stream = &self.stream;
+            launch!(
+            stress_kernel<<<grid_size, block_size, shared_mem_bytes, stream>>>(
+                self.pos_in_x.as_device_ptr(),
+                self.pos_in_y.as_device_ptr(),
+                self.pos_in_z.as_device_ptr(),
+                d_target_distances.as_device_ptr(),
+                d_weights.as_device_ptr(),
+                d_partial_stress.as_device_ptr(),
+                n as i32
+            ))?;
+        }
+        self.stream.synchronize()?;
+
+        let mut partial_stress = vec![0.0f32; grid_size as usize];
+        d_partial_stress.copy_to(&mut partial_stress)?;
+        let total_stress: f32 = partial_stress.iter().sum();
+
+        Ok(total_stress)
     }
 
     /// Run PageRank centrality computation on the graph using GPU kernels.

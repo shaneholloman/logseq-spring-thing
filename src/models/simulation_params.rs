@@ -26,9 +26,9 @@ pub enum SettleMode {
 impl Default for SettleMode {
     fn default() -> Self {
         SettleMode::FastSettle {
-            damping_override: 0.75,
-            max_settle_iterations: 2000,
-            energy_threshold: 0.005,
+            damping_override: 0.85,
+            max_settle_iterations: 5000,
+            energy_threshold: 0.001,
         }
     }
 }

@@ -16,6 +16,9 @@ pub mod community;
 // Pathfinding module (SSSP, APSP, Connected Components)
 pub mod pathfinding;
 
+// PageRank centrality module
+pub mod pagerank_handlers;
+
 // New submodules from split
 pub mod types;
 pub mod state;
@@ -48,6 +51,7 @@ pub use performance_handlers::{
 };
 pub use clustering_handlers::{
     run_clustering, get_clustering_status, focus_cluster, cancel_clustering,
+    run_dbscan_clustering,
 };
 pub use anomaly_handlers::{
     toggle_anomaly_detection, get_current_anomalies, get_anomaly_config,
@@ -123,6 +127,7 @@ pub fn config(cfg: &mut web::ServiceConfig) {
             .route("/clustering/status", web::get().to(get_clustering_status))
             .route("/clustering/focus", web::post().to(focus_cluster))
             .route("/clustering/cancel", web::post().to(cancel_clustering))
+            .route("/clustering/dbscan", web::post().to(run_dbscan_clustering))
 
             .route("/community/detect", web::post().to(run_community_detection))
             .route(
@@ -174,13 +179,20 @@ pub fn config(cfg: &mut web::ServiceConfig) {
             .route("/feature-flags", web::get().to(get_feature_flags))
             .route("/feature-flags", web::post().to(update_feature_flags))
 
+            // PageRank centrality routes (inside /analytics scope)
+            .route("/pagerank/compute", web::post().to(pagerank_handlers::compute_pagerank))
+            .route("/pagerank/result", web::get().to(pagerank_handlers::get_pagerank_result))
+            .route("/pagerank/clear", web::post().to(pagerank_handlers::clear_pagerank_cache))
+
+            // Pathfinding routes (inside /analytics scope)
+            .route("/pathfinding/sssp", web::post().to(pathfinding::compute_sssp))
+            .route("/pathfinding/apsp", web::post().to(pathfinding::compute_apsp))
+            .route("/pathfinding/connected-components", web::post().to(pathfinding::compute_connected_components))
+
             .service(
                 web::resource("/ws")
                     .wrap(RequireAuth::authenticated())
                     .route(web::get().to(websocket_integration::gpu_analytics_websocket)),
             ),
     );
-
-    // P2 Feature: Pathfinding API routes (SSSP, APSP, Connected Components)
-    pathfinding::configure_pathfinding_routes(cfg);
 }

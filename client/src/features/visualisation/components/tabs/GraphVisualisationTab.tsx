@@ -103,6 +103,8 @@ export const GraphVisualisationTab: React.FC<GraphVisualisationTabProps> = ({
 
   const resetCameraPosition = useCallback(() => {
     onFeatureUpdate?.('camera', { action: 'reset' });
+    // Dispatch custom event so the R3F CameraAutoFit hook re-fits to node bounding box
+    window.dispatchEvent(new CustomEvent('visionflow:camera-fit'));
     toast({
       title: "Camera Reset",
       description: "Camera position restored to default view"

@@ -274,6 +274,62 @@ extern "C" {
         forces: *mut Float3,
         num_edges: i32,
     );
+
+    /// Apply physicality-based clustering forces
+    fn apply_physicality_cluster_force(
+        node_physicality: *const i32,
+        physicality_centroids: *const Float3,
+        positions: *mut Float3,
+        forces: *mut Float3,
+        num_nodes: i32,
+    );
+
+    /// Apply role-based clustering forces
+    fn apply_role_cluster_force(
+        node_role: *const i32,
+        role_centroids: *const Float3,
+        positions: *mut Float3,
+        forces: *mut Float3,
+        num_nodes: i32,
+    );
+
+    /// Apply maturity-based layout forces
+    fn apply_maturity_layout_force(
+        node_maturity: *const i32,
+        positions: *mut Float3,
+        forces: *mut Float3,
+        num_nodes: i32,
+    );
+
+    /// Calculate physicality centroids
+    fn calculate_physicality_centroids(
+        node_physicality: *const i32,
+        positions: *const Float3,
+        physicality_centroids: *mut Float3,
+        physicality_counts: *mut i32,
+        num_nodes: i32,
+    );
+
+    /// Finalize physicality centroids (divide by count)
+    fn finalize_physicality_centroids(
+        physicality_centroids: *mut Float3,
+        physicality_counts: *const i32,
+    );
+
+    /// Calculate role centroids
+    fn calculate_role_centroids(
+        node_role: *const i32,
+        positions: *const Float3,
+        role_centroids: *mut Float3,
+        role_counts: *mut i32,
+        num_nodes: i32,
+    );
+
+    /// Finalize role centroids (divide by count)
+    fn finalize_role_centroids(
+        role_centroids: *mut Float3,
+        role_counts: *const i32,
+    );
 }
 
 // Import the kernel bridge for safe access to gated FFI functions

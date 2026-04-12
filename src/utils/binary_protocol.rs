@@ -92,7 +92,8 @@ const WIRE_VEC3_SIZE: usize = 12;
 const WIRE_F32_SIZE: usize = 4;
 const WIRE_I32_SIZE: usize = 4;
 const WIRE_U32_SIZE: usize = 4;
-// WIRE_V2_ITEM_SIZE removed — V2 decode no longer supported
+// V2 decode no longer supported but size constant retained for delta_encoding savings calculations
+const WIRE_V2_ITEM_SIZE: usize = WIRE_V2_ID_SIZE + WIRE_VEC3_SIZE + WIRE_VEC3_SIZE + WIRE_F32_SIZE + WIRE_I32_SIZE; // 4+12+12+4+4 = 36
 const WIRE_V3_ITEM_SIZE: usize =
     WIRE_V2_ID_SIZE + WIRE_VEC3_SIZE + WIRE_VEC3_SIZE + WIRE_F32_SIZE + WIRE_I32_SIZE +
     WIRE_U32_SIZE + WIRE_F32_SIZE + WIRE_U32_SIZE; // id + pos + vel + sssp_dist + sssp_parent + cluster_id + anomaly_score + community_id

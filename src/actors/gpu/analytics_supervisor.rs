@@ -491,6 +491,36 @@ impl Handler<RunCommunityDetection> for AnalyticsSupervisor {
     }
 }
 
+impl Handler<RunDBSCAN> for AnalyticsSupervisor {
+    type Result = ResponseActFuture<Self, Result<DBSCANResult, String>>;
+
+    fn handle(&mut self, msg: RunDBSCAN, _ctx: &mut Self::Context) -> Self::Result {
+        let addr = match &self.clustering_actor {
+            Some(a) if self.clustering_state.is_running => a.clone(),
+            _ => {
+                return Box::pin(
+                    async { Err("ClusteringActor not available".to_string()) }
+                        .into_actor(self)
+                );
+            }
+        };
+
+        Box::pin(
+            async move {
+                addr.send(msg).await
+                    .map_err(|e| format!("Communication failed: {}", e))?
+            }
+            .into_actor(self)
+            .map(|result, actor, _ctx| {
+                if result.is_ok() {
+                    actor.last_success = Some(Instant::now());
+                }
+                result
+            })
+        )
+    }
+}
+
 impl Handler<RunAnomalyDetection> for AnalyticsSupervisor {
     type Result = ResponseActFuture<Self, Result<AnomalyResult, String>>;
 
@@ -578,21 +608,11 @@ impl Handler<PerformGPUClustering> for AnalyticsSupervisor {
             }
         };
 
-        // Convert PerformGPUClustering to the appropriate internal message
-        let kmeans_msg = RunKMeans {
-            params: KMeansParams {
-                num_clusters: msg.params.num_clusters.unwrap_or(8) as usize,
-                max_iterations: Some(msg.params.max_iterations.unwrap_or(100)),
-                tolerance: Some(msg.params.tolerance.unwrap_or(0.001) as f32),
-                seed: msg.params.seed.map(|s| s as u32),
-            },
-        };
-
+        // Forward directly to ClusteringActor which dispatches by method
         Box::pin(
             async move {
-                addr.send(kmeans_msg).await
+                addr.send(msg).await
                     .map_err(|e| format!("Communication failed: {}", e))?
-                    .map(|r| r.clusters)
             }
             .into_actor(self)
         )

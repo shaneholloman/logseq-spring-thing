@@ -134,6 +134,7 @@ pub struct SystemMetrics {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ClusteringRequest {
+    #[serde(alias = "algorithm")]
     pub method: String,
     pub params: ClusteringParams,
 }

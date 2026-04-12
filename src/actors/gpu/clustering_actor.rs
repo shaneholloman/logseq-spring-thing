@@ -346,11 +346,14 @@ impl ClusteringActor {
         let actual_modularity = self.calculate_modularity(&communities);
 
         // ADR-014 DL4 fix: Populate shared node_analytics with community assignments
+        // Write community_id to BOTH slot 0 (cluster_id) and slot 2 (community_id)
+        // so that GemNodes.tsx can read slot 0 for node coloring.
         if let Some(ref analytics_map) = self.node_analytics {
             if let Ok(mut map) = analytics_map.write() {
                 for (gpu_idx, &community_label) in node_labels.iter().enumerate() {
                     let node_id = self.translate_gpu_index(gpu_idx);
                     let entry = map.entry(node_id).or_insert((0, 0.0, 0));
+                    entry.0 = community_label as u32; // cluster_id (for GemNodes.tsx coloring)
                     entry.2 = community_label as u32; // community_id
                 }
                 info!(
@@ -387,7 +390,145 @@ impl ClusteringActor {
         })
     }
 
-    
+    /// Run standalone DBSCAN clustering on the GPU.
+    async fn perform_dbscan_clustering(
+        &mut self,
+        params: DBSCANParams,
+    ) -> Result<DBSCANResult, String> {
+        info!(
+            "ClusteringActor: Starting DBSCAN clustering with epsilon={}, min_points={}",
+            params.epsilon, params.min_points
+        );
+
+        let unified_compute_arc = match &self.shared_context {
+            Some(ctx) => Arc::clone(&ctx.unified_compute),
+            None => {
+                return Err("GPU context not initialized".to_string());
+            }
+        };
+
+        let epsilon = params.epsilon;
+        let min_points = params.min_points;
+
+        // Move blocking GPU operations to dedicated blocking thread pool
+        let blocking_result = tokio::task::spawn_blocking(move || -> Result<_, String> {
+            let mut unified_compute = match unified_compute_arc.lock() {
+                Ok(guard) => guard,
+                Err(poisoned) => {
+                    warn!("ClusteringActor: GPU mutex was poisoned, recovering");
+                    poisoned.into_inner()
+                }
+            };
+
+            let start_time = Instant::now();
+
+            let labels = unified_compute
+                .run_dbscan_clustering(epsilon, min_points as i32)
+                .map_err(|e| {
+                    error!("GPU DBSCAN clustering failed: {}", e);
+                    format!("DBSCAN clustering failed: {}", e)
+                })?;
+
+            let computation_time = start_time.elapsed();
+            info!(
+                "ClusteringActor: DBSCAN clustering completed in {:?}",
+                computation_time
+            );
+
+            Ok((labels, computation_time))
+        })
+        .await;
+
+        let (labels, computation_time) = match blocking_result {
+            Ok(inner_result) => inner_result?,
+            Err(join_err) => return Err(format!("GPU blocking task panicked: {}", join_err)),
+        };
+
+        // Ensure we have the GPU buffer index -> graph node ID mapping
+        self.ensure_node_id_map();
+
+        // Build cluster groups from labels (ignoring noise = -1)
+        let mut cluster_nodes: std::collections::HashMap<i32, Vec<u32>> =
+            std::collections::HashMap::new();
+        let mut num_noise = 0usize;
+
+        for (gpu_idx, &label) in labels.iter().enumerate() {
+            if label < 0 {
+                num_noise += 1;
+                continue;
+            }
+            let graph_node_id = self.translate_gpu_index(gpu_idx);
+            cluster_nodes
+                .entry(label)
+                .or_insert_with(Vec::new)
+                .push(graph_node_id);
+        }
+
+        let num_clusters = cluster_nodes.len();
+
+        // Convert to Cluster structs matching the existing pattern
+        let mut clusters = Vec::new();
+        for (cluster_label, nodes) in &cluster_nodes {
+            clusters.push(crate::handlers::api_handler::analytics::Cluster {
+                id: Uuid::new_v4().to_string(),
+                label: format!("DBSCAN Cluster {}", cluster_label),
+                node_count: nodes.len() as u32,
+                coherence: self.calculate_cluster_coherence(nodes, &labels),
+                color: format!(
+                    "#{:02X}{:02X}{:02X}",
+                    (*cluster_label as usize * 50 % 255) as u8,
+                    (*cluster_label as usize * 100 % 255) as u8,
+                    (*cluster_label as usize * 150 % 255) as u8
+                ),
+                keywords: Self::generate_cluster_keywords(nodes),
+                centroid: Some(self.calculate_cluster_centroid(nodes)),
+                nodes: nodes.clone(),
+            });
+        }
+
+        let cluster_sizes: Vec<usize> = clusters.iter().map(|c| c.nodes.len()).collect();
+
+        // Populate shared node_analytics with DBSCAN cluster assignments
+        if let Some(ref analytics_map) = self.node_analytics {
+            if let Ok(mut map) = analytics_map.write() {
+                for (gpu_idx, &label) in labels.iter().enumerate() {
+                    if label >= 0 {
+                        let node_id = self.translate_gpu_index(gpu_idx);
+                        let entry = map.entry(node_id).or_insert((0, 0.0, 0));
+                        entry.0 = label as u32; // cluster_id
+                    }
+                }
+                info!(
+                    "ClusteringActor: Populated node_analytics with DBSCAN cluster assignments for {} nodes",
+                    labels.len() - num_noise
+                );
+            }
+        }
+
+        let stats = DBSCANStats {
+            total_nodes: labels.len(),
+            num_clusters,
+            num_noise_points: num_noise,
+            largest_cluster_size: cluster_sizes.iter().max().copied().unwrap_or(0),
+            smallest_cluster_size: cluster_sizes.iter().min().copied().unwrap_or(0),
+            average_cluster_size: if !cluster_sizes.is_empty() {
+                cluster_sizes.iter().sum::<usize>() as f32 / cluster_sizes.len() as f32
+            } else {
+                0.0
+            },
+            computation_time_ms: computation_time.as_millis() as u64,
+        };
+
+        Ok(DBSCANResult {
+            labels,
+            num_clusters,
+            num_noise_points: num_noise,
+            clusters,
+            stats,
+        })
+    }
+
+
     fn convert_gpu_kmeans_result_to_clusters(
         &self,
         gpu_result: Vec<u32>,
@@ -947,6 +1088,26 @@ impl Handler<RunCommunityDetection> for ClusteringActor {
     }
 }
 
+impl Handler<RunDBSCAN> for ClusteringActor {
+    type Result = actix::ResponseFuture<Result<DBSCANResult, String>>;
+
+    fn handle(&mut self, msg: RunDBSCAN, _ctx: &mut Self::Context) -> Self::Result {
+        info!(
+            "ClusteringActor: Received RunDBSCAN request (epsilon={}, min_points={})",
+            msg.params.epsilon, msg.params.min_points
+        );
+
+        let mut actor_clone = Self {
+            gpu_state: self.gpu_state.clone(),
+            shared_context: self.shared_context.clone(),
+            node_id_map: self.node_id_map.clone(),
+            node_analytics: self.node_analytics.clone(),
+        };
+
+        Box::pin(async move { actor_clone.perform_dbscan_clustering(msg.params).await })
+    }
+}
+
 impl Handler<SetNodeAnalytics> for ClusteringActor {
     type Result = ();
 
@@ -993,20 +1154,57 @@ impl Handler<PerformGPUClustering> for ClusteringActor {
             node_analytics: self.node_analytics.clone(),
         };
 
+        let method = msg.method.clone();
         Box::pin(async move {
-            
-            let params = KMeansParams {
-                num_clusters: msg.params.num_clusters.unwrap_or(8) as usize,
-                max_iterations: msg.params.max_iterations,
-                tolerance: msg.params.convergence_threshold,
-                seed: None,
-            };
-
-            
-            let result = actor_clone.perform_kmeans_clustering(params).await?;
-
-            
-            Ok(result.clusters)
+            match method.to_lowercase().as_str() {
+                "dbscan" => {
+                    let dbscan_params = DBSCANParams {
+                        epsilon: msg.params.eps.unwrap_or(0.5),
+                        min_points: msg.params.min_samples.unwrap_or(5),
+                    };
+                    let result = actor_clone.perform_dbscan_clustering(dbscan_params).await?;
+                    Ok(result.clusters)
+                }
+                "louvain" => {
+                    let community_params = CommunityDetectionParams {
+                        algorithm: CommunityDetectionAlgorithm::Louvain,
+                        max_iterations: msg.params.max_iterations,
+                        convergence_tolerance: msg.params.convergence_threshold,
+                        synchronous: None,
+                        seed: msg.params.seed.map(|s| s as u32),
+                    };
+                    let result = actor_clone.perform_community_detection(community_params).await?;
+                    // Convert communities to Cluster format
+                    Ok(result.communities.into_iter().map(|c| {
+                        crate::handlers::api_handler::analytics::Cluster {
+                            id: c.id.clone(),
+                            label: format!("Community {}", c.id),
+                            node_count: c.nodes.len() as u32,
+                            coherence: c.density,
+                            color: format!(
+                                "#{:02X}{:02X}{:02X}",
+                                (c.id.parse::<usize>().unwrap_or(0) * 50 % 255) as u8,
+                                (c.id.parse::<usize>().unwrap_or(0) * 100 % 255) as u8,
+                                (c.id.parse::<usize>().unwrap_or(0) * 150 % 255) as u8
+                            ),
+                            keywords: vec![format!("community-{}", c.id)],
+                            centroid: None,
+                            nodes: c.nodes,
+                        }
+                    }).collect())
+                }
+                _ => {
+                    // Default: K-means
+                    let params = KMeansParams {
+                        num_clusters: msg.params.num_clusters.unwrap_or(8) as usize,
+                        max_iterations: msg.params.max_iterations,
+                        tolerance: msg.params.convergence_threshold,
+                        seed: None,
+                    };
+                    let result = actor_clone.perform_kmeans_clustering(params).await?;
+                    Ok(result.clusters)
+                }
+            }
         })
     }
 }

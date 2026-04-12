@@ -130,9 +130,12 @@ pub struct ForceComputeActor {
     /// an independent timer.
     physics_orchestrator_addr: Option<Addr<crate::actors::physics_orchestrator_actor::PhysicsOrchestratorActor>>,
 
-    /// Whether we have already attempted to self-initialize the GPU context.
-    /// Prevents repeated CUDA init attempts on every message if the first one fails.
-    gpu_self_init_attempted: bool,
+    /// Number of GPU self-initialization attempts made so far.
+    gpu_self_init_attempts: u32,
+    /// Maximum number of GPU self-init retries before giving up.
+    gpu_self_init_max_retries: u32,
+    /// Timestamp of the last failed GPU self-init attempt (for exponential backoff).
+    gpu_self_init_last_attempt: Option<Instant>,
 }
 
 impl ForceComputeActor {
@@ -198,7 +201,9 @@ impl ForceComputeActor {
             gpu_index_to_node_id: Vec::new(),
             pending_graph_data: None,
             physics_orchestrator_addr: None,
-            gpu_self_init_attempted: false,
+            gpu_self_init_attempts: 0,
+            gpu_self_init_max_retries: 3,
+            gpu_self_init_last_attempt: None,
         }
     }
 
@@ -215,13 +220,41 @@ impl ForceComputeActor {
             trace!("ForceComputeActor: GPU context already present, skipping self-init");
             return;
         }
-        if self.gpu_self_init_attempted {
-            trace!("ForceComputeActor: GPU self-init already attempted, skipping");
+
+        // Check retry budget: if all retries exhausted, do not attempt again
+        if self.gpu_self_init_attempts >= self.gpu_self_init_max_retries {
+            trace!(
+                "ForceComputeActor: GPU self-init exhausted all {} retries, skipping",
+                self.gpu_self_init_max_retries
+            );
             return;
         }
-        self.gpu_self_init_attempted = true;
 
-        info!("ForceComputeActor: Self-initializing GPU context (bypassing supervisor chain)");
+        // Exponential backoff: wait 2^(attempt-1) seconds between retries
+        // (no delay on first attempt)
+        if self.gpu_self_init_attempts > 0 {
+            if let Some(last) = self.gpu_self_init_last_attempt {
+                let backoff_secs = 1u64 << (self.gpu_self_init_attempts - 1); // 1s, 2s, 4s, ...
+                if last.elapsed() < std::time::Duration::from_secs(backoff_secs) {
+                    trace!(
+                        "ForceComputeActor: GPU self-init backoff not elapsed (attempt {}, waiting {}s)",
+                        self.gpu_self_init_attempts, backoff_secs
+                    );
+                    return;
+                }
+            }
+        }
+
+        self.gpu_self_init_attempts += 1;
+        self.gpu_self_init_last_attempt = Some(Instant::now());
+
+        info!(
+            "ForceComputeActor: Self-initializing GPU context (attempt {}/{}, bypassing supervisor chain)",
+            self.gpu_self_init_attempts, self.gpu_self_init_max_retries
+        );
+
+        // Helper macro-like closure to send GPUInitFailed on error and return early.
+        // We capture the error reason inline at each failure point below.
 
         // 1. Create UnifiedGPUCompute engine FIRST — it initializes the cust CUDA context
         //    internally. Creating CudaDevice before this causes a dual-context conflict
@@ -231,7 +264,9 @@ impl ForceComputeActor {
         ) {
             Ok(c) => c,
             Err(e) => {
-                error!("ForceComputeActor: Failed to load main PTX: {}", e);
+                let reason = format!("Failed to load main PTX: {}", e);
+                error!("ForceComputeActor: {}", reason);
+                self.notify_gpu_init_failed(reason);
                 return;
             }
         };
@@ -256,19 +291,35 @@ impl ForceComputeActor {
             }
         };
 
-        let unified_compute = match crate::utils::unified_gpu_compute::UnifiedGPUCompute::new_with_modules(
+        let ontology_ptx = match crate::utils::ptx::load_ptx_module_sync(
+            crate::utils::ptx::PTXModule::OntologyConstraints,
+        ) {
+            Ok(c) => {
+                info!("ForceComputeActor: Ontology constraints PTX loaded ({} bytes)", c.len());
+                Some(c)
+            }
+            Err(e) => {
+                warn!("ForceComputeActor: Ontology PTX not available, will use generic path: {}", e);
+                None
+            }
+        };
+
+        let unified_compute = match crate::utils::unified_gpu_compute::UnifiedGPUCompute::new_with_all_modules(
             1000,
             1000,
             &ptx_content,
             clustering_ptx.as_deref(),
             apsp_ptx.as_deref(),
+            ontology_ptx.as_deref(),
         ) {
             Ok(c) => {
                 info!("ForceComputeActor: UnifiedGPUCompute engine created successfully");
                 c
             }
             Err(e) => {
-                error!("ForceComputeActor: Failed to create UnifiedGPUCompute: {}", e);
+                let reason = format!("Failed to create UnifiedGPUCompute: {}", e);
+                error!("ForceComputeActor: {}", reason);
+                self.notify_gpu_init_failed(reason);
                 return;
             }
         };
@@ -280,7 +331,9 @@ impl ForceComputeActor {
                 d
             }
             Err(e) => {
-                error!("ForceComputeActor: Failed to create CUDA device: {}. GPU physics will not work.", e);
+                let reason = format!("Failed to create CUDA device: {}", e);
+                error!("ForceComputeActor: {}. GPU physics will not work.", reason);
+                self.notify_gpu_init_failed(reason);
                 return;
             }
         };
@@ -289,7 +342,9 @@ impl ForceComputeActor {
         let cuda_stream = match device.fork_default_stream() {
             Ok(s) => s,
             Err(e) => {
-                error!("ForceComputeActor: Failed to create CUDA stream: {}", e);
+                let reason = format!("Failed to create CUDA stream: {}", e);
+                error!("ForceComputeActor: {}", reason);
+                self.notify_gpu_init_failed(reason);
                 return;
             }
         };
@@ -319,7 +374,9 @@ impl ForceComputeActor {
                 match crate::gpu::memory_manager::GpuMemoryManager::new() {
                     Ok(mgr) => Arc::new(std::sync::Mutex::new(mgr)),
                     Err(e2) => {
-                        error!("ForceComputeActor: GpuMemoryManager completely failed: {}", e2);
+                        let reason = format!("GpuMemoryManager completely failed: {}", e2);
+                        error!("ForceComputeActor: {}", reason);
+                        self.notify_gpu_init_failed(reason);
                         return;
                     }
                 }
@@ -342,6 +399,32 @@ impl ForceComputeActor {
         self.shared_context = Some(shared_context);
         self.gpu_state.is_initialized = true;
         info!("ForceComputeActor: GPU context self-initialized successfully — GPU physics enabled");
+    }
+
+    /// Send GPUInitFailed to the physics orchestrator if all retries are exhausted.
+    /// On intermediate failures (retries remaining), only logs — the next call to
+    /// initialize_own_gpu_context() will retry after the backoff period.
+    fn notify_gpu_init_failed(&self, reason: String) {
+        if self.gpu_self_init_attempts < self.gpu_self_init_max_retries {
+            warn!(
+                "ForceComputeActor: GPU init attempt {}/{} failed ({}), will retry after backoff",
+                self.gpu_self_init_attempts, self.gpu_self_init_max_retries, reason
+            );
+            return;
+        }
+        error!(
+            "ForceComputeActor: GPU init PERMANENTLY failed after {} attempts: {}",
+            self.gpu_self_init_attempts, reason
+        );
+        if let Some(ref orchestrator_addr) = self.physics_orchestrator_addr {
+            orchestrator_addr.do_send(crate::actors::messages::GPUInitFailed {
+                reason,
+                attempts: self.gpu_self_init_attempts,
+            });
+            info!("ForceComputeActor: GPUInitFailed sent to PhysicsOrchestratorActor");
+        } else {
+            warn!("ForceComputeActor: No orchestrator address — cannot send GPUInitFailed");
+        }
     }
 
     /// Upload pending graph data to the GPU compute engine.
@@ -374,9 +457,9 @@ impl ForceComputeActor {
               self.gpu_index_to_node_id.len().saturating_sub(1),
               self.gpu_index_to_node_id.len());
 
-        let positions_x: Vec<f32> = graph_data.nodes.iter().map(|n| n.data.x).collect();
-        let positions_y: Vec<f32> = graph_data.nodes.iter().map(|n| n.data.y).collect();
-        let positions_z: Vec<f32> = graph_data.nodes.iter().map(|n| n.data.z).collect();
+        let mut positions_x: Vec<f32> = graph_data.nodes.iter().map(|n| n.data.x).collect();
+        let mut positions_y: Vec<f32> = graph_data.nodes.iter().map(|n| n.data.y).collect();
+        let mut positions_z: Vec<f32> = graph_data.nodes.iter().map(|n| n.data.z).collect();
 
         let mut adjacency_lists: Vec<Vec<(u32, f32)>> = vec![Vec::new(); num_nodes];
         for edge in &graph_data.edges {
@@ -401,6 +484,55 @@ impl ForceComputeActor {
             }
         }
         row_offsets[num_nodes] = edge_count;
+
+        // Place isolated nodes (degree 0) on a spherical shell so they don't
+        // clump in the center and obscure community structure of connected nodes.
+        // The shell radius is set to 2x the average connected-node distance from origin.
+        {
+            use rand::Rng;
+            let mut rng = rand::thread_rng();
+
+            // Compute average distance of connected nodes from origin
+            let mut sum_dist = 0.0f64;
+            let mut connected_count = 0usize;
+            for (i, adj) in adjacency_lists.iter().enumerate() {
+                if !adj.is_empty() {
+                    let dx = positions_x[i] as f64;
+                    let dy = positions_y[i] as f64;
+                    let dz = positions_z[i] as f64;
+                    sum_dist += (dx * dx + dy * dy + dz * dz).sqrt();
+                    connected_count += 1;
+                }
+            }
+            let avg_dist = if connected_count > 0 {
+                sum_dist / connected_count as f64
+            } else {
+                100.0  // fallback if everything is isolated
+            };
+            let shell_radius = (avg_dist * 2.0).max(200.0) as f32;
+
+            let mut isolated_count = 0usize;
+            for (i, adj) in adjacency_lists.iter().enumerate() {
+                if adj.is_empty() {
+                    // Fibonacci sphere distribution for even spacing
+                    let golden_ratio = (1.0 + 5.0f32.sqrt()) / 2.0;
+                    let theta = 2.0 * std::f32::consts::PI * (i as f32) / golden_ratio;
+                    let phi = (1.0 - 2.0 * (i as f32 + 0.5) / num_nodes as f32).acos();
+                    // Add small random jitter to prevent perfect lattice artifacts
+                    let r = shell_radius * (1.0 + rng.gen_range(-0.05f32..0.05f32));
+                    positions_x[i] = r * phi.sin() * theta.cos();
+                    positions_y[i] = r * phi.sin() * theta.sin();
+                    positions_z[i] = r * phi.cos();
+                    isolated_count += 1;
+                }
+            }
+            if isolated_count > 0 {
+                info!(
+                    "ForceComputeActor: Placed {} isolated nodes on spherical shell (radius={:.1})",
+                    isolated_count, shell_radius
+                );
+            }
+        }
 
         // Upload to GPU via shared context (recover from poisoned mutex if needed)
         let mut compute = match ctx.unified_compute.lock() {
@@ -474,6 +606,48 @@ impl ForceComputeActor {
                         warn!("ForceComputeActor: Failed to upload class metadata: {}", e);
                     } else {
                         info!("ForceComputeActor: Uploaded class metadata ({} entries)", class_ids.len());
+                    }
+                }
+
+                // Compute and upload degree weights for degree-weighted gravity.
+                // degree_weight[i] = log(1 + degree[i]), where degree is computed
+                // from the CSR row_offsets. This causes hubs to be pulled toward
+                // the center more strongly and isolates (degree 0) to receive
+                // peripheral shell forces instead of uniform centering.
+                {
+                    let degree_weights: Vec<f32> = (0..num_nodes).map(|i| {
+                        let start = row_offsets[i] as usize;
+                        let end = row_offsets[i + 1] as usize;
+                        let degree = end - start;
+                        (1.0f32 + degree as f32).ln()
+                    }).collect();
+
+                    // Normalize so the median-degree node gets weight ~1.0
+                    // This preserves the overall gravity magnitude while redistributing it
+                    let mut sorted_weights: Vec<f32> = degree_weights.iter()
+                        .copied()
+                        .filter(|&w| w > 1e-6)
+                        .collect();
+                    sorted_weights.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+                    let median_weight = if sorted_weights.is_empty() {
+                        1.0f32
+                    } else {
+                        sorted_weights[sorted_weights.len() / 2]
+                    };
+                    let norm_factor = if median_weight > 1e-6 { 1.0 / median_weight } else { 1.0 };
+
+                    let normalized_weights: Vec<f32> = degree_weights.iter()
+                        .map(|&w| if w < 1e-6 { 0.0 } else { w * norm_factor })
+                        .collect();
+
+                    let isolated_count = normalized_weights.iter().filter(|&&w| w < 1e-6).count();
+                    info!(
+                        "ForceComputeActor: Degree weights computed — {} isolated nodes, median_weight={:.3}, norm_factor={:.3}",
+                        isolated_count, median_weight, norm_factor
+                    );
+
+                    if let Err(e) = compute.upload_degree_weights(&normalized_weights) {
+                        warn!("ForceComputeActor: Failed to upload degree weights: {}", e);
                     }
                 }
 
@@ -1067,13 +1241,15 @@ impl Handler<ComputeForces> for ForceComputeActor {
         Box::pin(fut.into_actor(self).map(move |result, actor, _ctx| {
             match result {
                 Ok((gpu_result, execution_duration, positions_result, velocities_result, _correlation_id, _iteration, step_start)) => {
-                    // Decay reheat factor gradually over ~10 steps so dense subgraphs
-                    // (knowledge/ontology) accumulate enough energy to break free from
-                    // spring-dominated equilibrium. Multiply by 0.7 each step:
-                    // step 0: 1.0, step 1: 0.7, step 2: 0.49, ... step 9: 0.04 → cleared.
+                    // Decay reheat factor gradually over ~30 steps so the layout has
+                    // enough iterations to explore structure before settling. Multiply
+                    // by 0.95 each step: step 0: 1.0, step 10: 0.60, step 20: 0.36,
+                    // step 30: 0.21, step 50: 0.08 → cleared.
+                    // (Previously 0.7x which decayed in ~10 steps — too fast for
+                    // 2000+ node graphs to find community structure.)
                     if actor.reheat_factor > 0.0 {
-                        actor.reheat_factor *= 0.7;
-                        if actor.reheat_factor < 0.05 {
+                        actor.reheat_factor *= 0.95;
+                        if actor.reheat_factor < 0.02 {
                             actor.reheat_factor = 0.0;
                         }
                     }
@@ -1783,9 +1959,26 @@ impl Handler<InitializeGPU> for ForceComputeActor {
                 orchestrator_addr.do_send(crate::actors::messages::GPUInitialized);
                 info!("ForceComputeActor: GPUInitialized confirmation sent to PhysicsOrchestratorActor");
             }
+        } else if self.shared_context.is_none() && self.gpu_self_init_attempts >= self.gpu_self_init_max_retries {
+            // GPU init permanently failed — notify orchestrator immediately so it
+            // does not defer GPUInitialized indefinitely.
+            error!(
+                "ForceComputeActor: GPU context unavailable after {} init attempts — sending GPUInitFailed",
+                self.gpu_self_init_attempts
+            );
+            if let Some(ref orchestrator_addr) = self.physics_orchestrator_addr {
+                orchestrator_addr.do_send(crate::actors::messages::GPUInitFailed {
+                    reason: format!(
+                        "GPU self-init failed after {} attempts, shared_context is None",
+                        self.gpu_self_init_attempts
+                    ),
+                    attempts: self.gpu_self_init_attempts,
+                });
+            }
         } else {
-            info!("ForceComputeActor: Deferring GPUInitialized — graph not yet uploaded (shared_context={}, pending_data={})",
-                  self.shared_context.is_some(), self.pending_graph_data.is_some());
+            info!("ForceComputeActor: Deferring GPUInitialized — graph not yet uploaded (shared_context={}, pending_data={}, init_attempts={}/{})",
+                  self.shared_context.is_some(), self.pending_graph_data.is_some(),
+                  self.gpu_self_init_attempts, self.gpu_self_init_max_retries);
         }
 
         // H4: Send acknowledgment
@@ -1844,6 +2037,60 @@ impl Handler<GetGPUStatus> for ForceComputeActor {
             iteration_count: self.gpu_state.iteration_count,
             num_nodes: self.gpu_state.num_nodes,
         }
+    }
+}
+
+impl Handler<GetCurrentPositions> for ForceComputeActor {
+    type Result = Result<CurrentPositionsSnapshot, String>;
+
+    fn handle(&mut self, _msg: GetCurrentPositions, _ctx: &mut Self::Context) -> Self::Result {
+        if self.position_velocity_buffer.is_empty() {
+            return Err("No GPU-computed positions available yet".to_string());
+        }
+
+        let num = self.position_velocity_buffer.len();
+        let mut positions = Vec::with_capacity(num);
+        let mut min_x = f32::MAX;
+        let mut min_y = f32::MAX;
+        let mut min_z = f32::MAX;
+        let mut max_x = f32::MIN;
+        let mut max_y = f32::MIN;
+        let mut max_z = f32::MIN;
+        let mut total_ke: f64 = 0.0;
+
+        for (i, (pos, vel)) in self.position_velocity_buffer.iter().enumerate() {
+            let node_id = self.gpu_index_to_node_id.get(i).copied().unwrap_or(i as u32);
+            positions.push((node_id, pos.x, pos.y, pos.z));
+
+            if pos.x < min_x { min_x = pos.x; }
+            if pos.y < min_y { min_y = pos.y; }
+            if pos.z < min_z { min_z = pos.z; }
+            if pos.x > max_x { max_x = pos.x; }
+            if pos.y > max_y { max_y = pos.y; }
+            if pos.z > max_z { max_z = pos.z; }
+
+            let v2 = (vel.x as f64).powi(2) + (vel.y as f64).powi(2) + (vel.z as f64).powi(2);
+            total_ke += 0.5 * v2;
+        }
+
+        let avg_ke = if num > 0 { total_ke / num as f64 } else { 0.0 };
+        // Settled heuristic: same as stability check — avg KE below threshold
+        let settled = avg_ke < 0.001;
+
+        Ok(CurrentPositionsSnapshot {
+            positions,
+            num_nodes: num as u32,
+            settled,
+            kinetic_energy: avg_ke,
+            bounding_box: BoundingBox {
+                min_x,
+                min_y,
+                min_z,
+                max_x,
+                max_y,
+                max_z,
+            },
+        })
     }
 }
 

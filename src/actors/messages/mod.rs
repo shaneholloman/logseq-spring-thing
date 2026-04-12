@@ -37,7 +37,7 @@ pub use physics_messages::{
     AddIsolationLayer, AdjustConstraintWeights, ApplyConstraintsToNodes,
     BroadcastPerformanceStats, ComputeForces, ConfigureBroadcastOptimization, ConfigureCollision,
     ConfigureDAG, ConfigureStressMajorization, ConfigureTypeClustering, ForceResumePhysics,
-    GPUInitialized, GPUStatus, GetActiveConstraints, GetBroadcastStats, GetConstraintBuffer,
+    GPUInitFailed, GPUInitialized, GPUStatus, GetActiveConstraints, GetBroadcastStats, GetConstraintBuffer,
     GetConstraints, GetEquilibriumStatus, GetForceComputeActor, GetPhysicsOrchestratorActor, GetGPUMetrics, GetGPUStatus,
     GetHierarchyLevels, GetKernelMode, GetNodeData, GetPhysicsStats, GetSemanticConfig,
     GetStressMajorizationConfig, GetStressMajorizationStats, InitializeGPU,
@@ -55,6 +55,8 @@ pub use physics_messages::{
     UploadPositions,
     // Sequential pipeline (Step 5)
     PhysicsStepCompleted, SetPhysicsOrchestratorAddr,
+    // GPU position snapshot (REST API)
+    BoundingBox, CurrentPositionsSnapshot, GetCurrentPositions,
 };
 
 // --- settings_messages ---
@@ -87,10 +89,11 @@ pub use analytics_messages::{
     AnomalyDetectionMethod, AnomalyDetectionParams, AnomalyDetectionStats, AnomalyMethod,
     AnomalyParams, AnomalyResult, ClearPageRankCache, CommunityDetectionAlgorithm,
     CommunityDetectionParams, CommunityDetectionResult, ComputeAllPairsShortestPaths,
-    ComputePageRank, ComputeSSSP, ComputeShortestPaths, ExportClusterAssignments,
-    GetClusteringResults, GetClusteringStatus, GetPageRankResult, KMeansParams, KMeansResult,
-    PerformGPUClustering, RunAnomalyDetection, RunCommunityDetection, RunKMeans,
-    SetNodeAnalytics, StartGPUClustering, UpdateComponentEdges,
+    ComputePageRank, ComputeSSSP, ComputeShortestPaths, DBSCANParams, DBSCANResult,
+    DBSCANStats, ExportClusterAssignments, GetClusteringResults, GetClusteringStatus,
+    GetPageRankResult, KMeansParams, KMeansResult, PerformGPUClustering, RunAnomalyDetection,
+    RunCommunityDetection, RunDBSCAN, RunKMeans, SetNodeAnalytics, StartGPUClustering,
+    UpdateComponentEdges,
 };
 
 // --- agent_messages ---

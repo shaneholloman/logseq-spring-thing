@@ -841,7 +841,7 @@ export const useSettingsStore = create<SettingsState>()(
           validatedParams.springK = Math.max(0.001, Math.min(1000.0, validatedParams.springK));
         }
         if (validatedParams.repelK !== undefined) {
-          validatedParams.repelK = Math.max(0.001, Math.min(5000.0, validatedParams.repelK));
+          validatedParams.repelK = Math.max(0.001, Math.min(2000.0, validatedParams.repelK));
         }
         if (validatedParams.attractionK !== undefined) {
           validatedParams.attractionK = Math.max(0.0, Math.min(500.0, validatedParams.attractionK));

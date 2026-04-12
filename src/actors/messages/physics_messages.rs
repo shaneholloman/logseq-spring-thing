@@ -51,6 +51,18 @@ pub struct InitializeGPU {
 #[rtype(result = "()")]
 pub struct GPUInitialized;
 
+/// Sent by ForceComputeActor to PhysicsOrchestratorActor when GPU self-initialization
+/// fails after exhausting all retry attempts. This unblocks the orchestrator's
+/// `gpu_init_in_progress` state so it does not wait indefinitely.
+#[derive(Message, Debug, Clone)]
+#[rtype(result = "()")]
+pub struct GPUInitFailed {
+    /// Human-readable reason for the failure
+    pub reason: String,
+    /// Number of attempts made before giving up
+    pub attempts: u32,
+}
+
 #[derive(Message)]
 #[rtype(result = "Result<(), String>")]
 pub struct SetSharedGPUContext {
@@ -509,6 +521,38 @@ pub struct BroadcastPerformanceStats {
     pub average_bandwidth_reduction: f32,
     pub target_fps: u32,
     pub delta_threshold: f32,
+}
+
+// ---------------------------------------------------------------------------
+// GPU position snapshot (REST API)
+// ---------------------------------------------------------------------------
+
+/// Retrieve the current GPU-computed node positions (not the initial Neo4j positions).
+/// Returns a tuple per node: (node_id, x, y, z).
+#[derive(Message)]
+#[rtype(result = "Result<CurrentPositionsSnapshot, String>")]
+pub struct GetCurrentPositions;
+
+/// Snapshot of GPU-computed positions returned by `GetCurrentPositions`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CurrentPositionsSnapshot {
+    /// Per-node positions: (node_id, x, y, z)
+    pub positions: Vec<(u32, f32, f32, f32)>,
+    pub num_nodes: u32,
+    pub settled: bool,
+    pub kinetic_energy: f64,
+    pub bounding_box: BoundingBox,
+}
+
+/// Axis-aligned bounding box.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BoundingBox {
+    pub min_x: f32,
+    pub min_y: f32,
+    pub min_z: f32,
+    pub max_x: f32,
+    pub max_y: f32,
+    pub max_z: f32,
 }
 
 // ---------------------------------------------------------------------------

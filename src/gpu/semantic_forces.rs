@@ -758,17 +758,29 @@ impl SemanticForcesEngine {
 
         // Apply physicality clustering forces
         if self.config.physicality_cluster.enabled {
-            self.apply_physicality_cluster_forces_cpu(graph);
+            if kernel_bridge::gpu_available() {
+                self.apply_physicality_cluster_forces_gpu(graph);
+            } else {
+                self.apply_physicality_cluster_forces_cpu(graph);
+            }
         }
 
         // Apply role clustering forces
         if self.config.role_cluster.enabled {
-            self.apply_role_cluster_forces_cpu(graph);
+            if kernel_bridge::gpu_available() {
+                self.apply_role_cluster_forces_gpu(graph);
+            } else {
+                self.apply_role_cluster_forces_cpu(graph);
+            }
         }
 
         // Apply maturity layout forces
         if self.config.maturity_layout.enabled {
-            self.apply_maturity_layout_forces_cpu(graph);
+            if kernel_bridge::gpu_available() {
+                self.apply_maturity_layout_forces_gpu(graph);
+            } else {
+                self.apply_maturity_layout_forces_cpu(graph);
+            }
         }
 
         // Apply cross-domain forces
@@ -950,6 +962,115 @@ impl SemanticForcesEngine {
                 graph.nodes[tgt_idx].data.vy -= dy * force_mag;
                 graph.nodes[tgt_idx].data.vz -= dz * force_mag;
             }
+        }
+    }
+
+    fn apply_physicality_cluster_forces_gpu(&self, graph: &mut GraphData) {
+        let num_nodes = graph.nodes.len();
+        // Determine max physicality type for centroid array sizing
+        // Physicality: 0=None, 1=VirtualEntity, 2=PhysicalEntity, 3=ConceptualEntity
+        let num_types = 4usize;
+
+        // Build positions and forces arrays in Float3 layout
+        let mut positions: Vec<kernel_bridge::Float3> = graph.nodes.iter()
+            .map(|n| kernel_bridge::Float3 { x: n.data.x, y: n.data.y, z: n.data.z })
+            .collect();
+        let mut forces: Vec<kernel_bridge::Float3> = vec![
+            kernel_bridge::Float3 { x: 0.0, y: 0.0, z: 0.0 }; num_nodes
+        ];
+
+        // Calculate centroids on GPU
+        let mut centroids = vec![kernel_bridge::Float3 { x: 0.0, y: 0.0, z: 0.0 }; num_types];
+        let mut counts = vec![0i32; num_types];
+        kernel_bridge::calculate_physicality_centroids(
+            &self.node_physicality,
+            &positions,
+            &mut centroids,
+            &mut counts,
+            num_nodes,
+        );
+        kernel_bridge::finalize_physicality_centroids(&mut centroids, &counts);
+
+        // Apply force kernel
+        kernel_bridge::apply_physicality_cluster_force(
+            &self.node_physicality,
+            &centroids,
+            &mut positions,
+            &mut forces,
+            num_nodes,
+        );
+
+        // Write forces back to graph velocity
+        for (i, node) in graph.nodes.iter_mut().enumerate() {
+            node.data.vx += forces[i].x;
+            node.data.vy += forces[i].y;
+            node.data.vz += forces[i].z;
+        }
+    }
+
+    fn apply_role_cluster_forces_gpu(&self, graph: &mut GraphData) {
+        let num_nodes = graph.nodes.len();
+        // Role: 0=None, 1=Process, 2=Agent, 3=Resource, 4=Concept
+        let num_types = 5usize;
+
+        let mut positions: Vec<kernel_bridge::Float3> = graph.nodes.iter()
+            .map(|n| kernel_bridge::Float3 { x: n.data.x, y: n.data.y, z: n.data.z })
+            .collect();
+        let mut forces: Vec<kernel_bridge::Float3> = vec![
+            kernel_bridge::Float3 { x: 0.0, y: 0.0, z: 0.0 }; num_nodes
+        ];
+
+        // Calculate centroids on GPU
+        let mut centroids = vec![kernel_bridge::Float3 { x: 0.0, y: 0.0, z: 0.0 }; num_types];
+        let mut counts = vec![0i32; num_types];
+        kernel_bridge::calculate_role_centroids(
+            &self.node_role,
+            &positions,
+            &mut centroids,
+            &mut counts,
+            num_nodes,
+        );
+        kernel_bridge::finalize_role_centroids(&mut centroids, &counts);
+
+        // Apply force kernel
+        kernel_bridge::apply_role_cluster_force(
+            &self.node_role,
+            &centroids,
+            &mut positions,
+            &mut forces,
+            num_nodes,
+        );
+
+        // Write forces back to graph velocity
+        for (i, node) in graph.nodes.iter_mut().enumerate() {
+            node.data.vx += forces[i].x;
+            node.data.vy += forces[i].y;
+            node.data.vz += forces[i].z;
+        }
+    }
+
+    fn apply_maturity_layout_forces_gpu(&self, graph: &mut GraphData) {
+        let num_nodes = graph.nodes.len();
+
+        let mut positions: Vec<kernel_bridge::Float3> = graph.nodes.iter()
+            .map(|n| kernel_bridge::Float3 { x: n.data.x, y: n.data.y, z: n.data.z })
+            .collect();
+        let mut forces: Vec<kernel_bridge::Float3> = vec![
+            kernel_bridge::Float3 { x: 0.0, y: 0.0, z: 0.0 }; num_nodes
+        ];
+
+        kernel_bridge::apply_maturity_layout_force(
+            &self.node_maturity,
+            &mut positions,
+            &mut forces,
+            num_nodes,
+        );
+
+        // Write forces back to graph velocity
+        for (i, node) in graph.nodes.iter_mut().enumerate() {
+            node.data.vx += forces[i].x;
+            node.data.vy += forces[i].y;
+            node.data.vz += forces[i].z;
         }
     }
 

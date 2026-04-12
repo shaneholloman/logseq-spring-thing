@@ -140,26 +140,61 @@ impl OntologyConstraintActor {
             .filter(|c| c.active)
             .count() as u32;
 
-        
+
         self.constraint_buffer = constraint_set.to_gpu_data();
 
-        
+
         if self.gpu_initialized && self.shared_context.is_some() {
-            match self.upload_constraints_to_gpu() {
-                Ok(_) => {
+            // Try specialized ontology kernels first (5 dedicated CUDA kernels)
+            match self.apply_specialized_constraints(graph_data) {
+                Ok(true) => {
                     info!(
-                        "OntologyConstraintActor: Successfully uploaded {} constraints to GPU",
-                        self.constraint_buffer.len()
+                        "OntologyConstraintActor: Specialized ontology kernels executed for {} constraints",
+                        self.ontology_constraints.iter().filter(|c| c.active).count()
                     );
+                }
+                Ok(false) => {
+                    // Ontology PTX module not loaded — fall back to generic constraint upload
+                    info!("OntologyConstraintActor: Ontology PTX not loaded, using generic constraint path");
+                    match self.upload_constraints_to_gpu() {
+                        Ok(_) => {
+                            info!(
+                                "OntologyConstraintActor: Successfully uploaded {} constraints to GPU (generic path)",
+                                self.constraint_buffer.len()
+                            );
+                        }
+                        Err(e) => {
+                            warn!(
+                                "OntologyConstraintActor: GPU upload failed, using CPU fallback: {}",
+                                e
+                            );
+                            self.stats.gpu_failure_count += 1;
+                            self.stats.cpu_fallback_count += 1;
+                        }
+                    }
                 }
                 Err(e) => {
                     warn!(
-                        "OntologyConstraintActor: GPU upload failed, using CPU fallback: {}",
+                        "OntologyConstraintActor: Specialized kernel execution failed: {}. Falling back to generic path.",
                         e
                     );
                     self.stats.gpu_failure_count += 1;
-                    self.stats.cpu_fallback_count += 1;
-                    
+                    // Fall back to generic constraint upload
+                    match self.upload_constraints_to_gpu() {
+                        Ok(_) => {
+                            info!(
+                                "OntologyConstraintActor: Fallback generic upload succeeded ({} constraints)",
+                                self.constraint_buffer.len()
+                            );
+                        }
+                        Err(e2) => {
+                            warn!(
+                                "OntologyConstraintActor: Both specialized and generic paths failed: {}",
+                                e2
+                            );
+                            self.stats.cpu_fallback_count += 1;
+                        }
+                    }
                 }
             }
         } else {
@@ -216,7 +251,194 @@ impl OntologyConstraintActor {
         Ok(())
     }
 
-    
+    /// Attempt to launch the 5 specialized ontology constraint kernels directly.
+    /// Returns `Ok(true)` if specialized kernels were executed, `Ok(false)` if the
+    /// ontology PTX module is not loaded (caller should fall back to generic path),
+    /// or `Err` on GPU failure.
+    fn apply_specialized_constraints(
+        &self,
+        graph_data: &crate::models::graph::GraphData,
+    ) -> Result<bool, String> {
+        let shared_context = self
+            .shared_context
+            .as_ref()
+            .ok_or("GPU context not available")?;
+
+        let mut unified_compute = shared_context
+            .unified_compute
+            .lock()
+            .map_err(|e| format!("Failed to acquire GPU compute lock: {}", e))?;
+
+        if !unified_compute.has_ontology_module() {
+            return Ok(false);
+        }
+
+        use crate::utils::unified_gpu_compute::{
+            GpuOntologyNode, GpuOntologyConstraint,
+            CONSTRAINT_DISJOINT_CLASSES, CONSTRAINT_SUBCLASS_OF,
+            CONSTRAINT_SAMEAS, CONSTRAINT_FUNCTIONAL,
+        };
+
+        // Build GpuOntologyNode array from graph data and current GPU positions.
+        // We use the array index as the simulation node index.
+        let num_nodes = graph_data.nodes.len();
+        let mut gpu_nodes: Vec<GpuOntologyNode> = Vec::with_capacity(num_nodes);
+
+        for (idx, node) in graph_data.nodes.iter().enumerate() {
+            // Determine ontology type flags from node metadata (HashMap<String, String>)
+            let owl_type = node.metadata.get("owl_type").map(|s| s.as_str()).unwrap_or("");
+            let mut ontology_type: u32 = 0;
+            if owl_type == "class" {
+                ontology_type |= 0x01; // ONTOLOGY_CLASS
+            }
+            if owl_type == "individual" {
+                ontology_type |= 0x02; // ONTOLOGY_INDIVIDUAL
+            }
+            if owl_type == "property" {
+                ontology_type |= 0x04; // ONTOLOGY_PROPERTY
+            }
+            // Default to individual if no owl_type specified
+            if ontology_type == 0 {
+                ontology_type = 0x02;
+            }
+
+            let property_count = node
+                .metadata
+                .get("property_count")
+                .and_then(|v| v.parse::<u32>().ok())
+                .unwrap_or(0);
+
+            let parent_class = node
+                .metadata
+                .get("parent_class_id")
+                .and_then(|v| v.parse::<u32>().ok())
+                .unwrap_or(0);
+
+            let mass = node
+                .metadata
+                .get("mass")
+                .and_then(|v| v.parse::<f32>().ok())
+                .or(node.mass)
+                .unwrap_or(1.0);
+
+            let radius = node
+                .metadata
+                .get("radius")
+                .and_then(|v| v.parse::<f32>().ok())
+                .unwrap_or(10.0);
+
+            gpu_nodes.push(GpuOntologyNode {
+                graph_id: 0, // default graph
+                node_id: idx as u32,
+                ontology_type,
+                constraint_flags: 0,
+                position: [
+                    node.x.unwrap_or(0.0),
+                    node.y.unwrap_or(0.0),
+                    node.z.unwrap_or(0.0),
+                ],
+                velocity: [0.0, 0.0, 0.0],
+                mass,
+                radius,
+                parent_class,
+                property_count,
+                padding: [0; 6],
+            });
+        }
+
+        // Build GpuOntologyConstraint array from ontology_constraints.
+        // Map ConstraintKind to CUDA constraint type constants.
+        // The ontology translator maps OWL axioms as follows:
+        //   DisjointClasses -> ConstraintKind::Separation  -> CUDA type 1
+        //   SubClassOf      -> ConstraintKind::Clustering  -> CUDA type 2
+        //   SameAs          -> ConstraintKind::Clustering (with colocation params) -> CUDA type 3
+        //   FunctionalProp  -> ConstraintKind::Boundary   -> CUDA type 5
+        //   Semantic        -> sub-type encoded in params[0]
+        let mut gpu_constraints: Vec<GpuOntologyConstraint> = Vec::new();
+
+        for constraint in &self.ontology_constraints {
+            if !constraint.active {
+                continue;
+            }
+
+            let cuda_type = match constraint.kind {
+                crate::models::constraints::ConstraintKind::Separation => CONSTRAINT_DISJOINT_CLASSES,
+                crate::models::constraints::ConstraintKind::Clustering => {
+                    // Clustering is used for both SubClassOf and SameAs.
+                    // Distinguish by number of node_indices: SameAs has exactly 2 nodes
+                    // with a very high weight (colocation), SubClassOf has 1 node + centroid params.
+                    if constraint.node_indices.len() == 2 && constraint.weight >= 0.9 {
+                        CONSTRAINT_SAMEAS
+                    } else {
+                        CONSTRAINT_SUBCLASS_OF
+                    }
+                }
+                crate::models::constraints::ConstraintKind::Boundary => CONSTRAINT_FUNCTIONAL,
+                crate::models::constraints::ConstraintKind::Semantic => {
+                    // Semantic constraints encode sub-type in params[0]:
+                    // 1.0=disjoint, 2.0=subclass, 3.0=sameas, 4.0=inverse, 5.0=functional
+                    let sub_type = constraint.params.first().copied().unwrap_or(0.0) as u32;
+                    if sub_type >= 1 && sub_type <= 5 {
+                        sub_type
+                    } else {
+                        CONSTRAINT_SUBCLASS_OF // default to hierarchy
+                    }
+                }
+                _ => continue, // Skip non-ontology constraint types
+            };
+
+            let source_id = constraint.node_indices.first().copied().unwrap_or(0);
+            let target_id = constraint.node_indices.get(1).copied().unwrap_or(0);
+            let graph_id = 0u32; // default graph
+
+            // Pre-compute indices (the host-side equivalent of precompute_constraint_indices)
+            let source_idx = if (source_id as usize) < num_nodes {
+                source_id as i32
+            } else {
+                -1
+            };
+            let target_idx = if (target_id as usize) < num_nodes {
+                target_id as i32
+            } else {
+                -1
+            };
+
+            let distance = constraint.params.get(1).copied().unwrap_or(50.0);
+
+            gpu_constraints.push(GpuOntologyConstraint {
+                constraint_type: cuda_type,
+                source_id,
+                target_id,
+                graph_id,
+                strength: constraint.weight,
+                distance,
+                source_idx,
+                target_idx,
+                padding: [0.0; 8],
+            });
+        }
+
+        if gpu_constraints.is_empty() {
+            info!("OntologyConstraintActor: No active ontology constraints to process via specialized kernels");
+            return Ok(true);
+        }
+
+        info!(
+            "OntologyConstraintActor: Launching specialized ontology kernels - {} nodes, {} constraints",
+            gpu_nodes.len(),
+            gpu_constraints.len()
+        );
+
+        let delta_time = 0.016; // ~60 FPS default timestep
+
+        unified_compute
+            .execute_ontology_constraints(&gpu_nodes, &gpu_constraints, delta_time)
+            .map_err(|e| format!("Specialized ontology kernel execution failed: {}", e))?;
+
+        Ok(true)
+    }
+
+
     fn upload_constraints_to_gpu(&self) -> Result<(), String> {
         let shared_context = self
             .shared_context

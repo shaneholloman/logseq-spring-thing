@@ -141,6 +141,46 @@ pub struct RunCommunityDetection {
 }
 
 // ---------------------------------------------------------------------------
+// DBSCAN clustering (standalone)
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DBSCANResult {
+    /// Cluster label per node (-1 = noise)
+    pub labels: Vec<i32>,
+    /// Number of clusters found (excluding noise)
+    pub num_clusters: usize,
+    /// Number of noise points (label == -1)
+    pub num_noise_points: usize,
+    /// Per-cluster node lists (keyed by cluster label)
+    pub clusters: Vec<crate::handlers::api_handler::analytics::Cluster>,
+    pub stats: DBSCANStats,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DBSCANStats {
+    pub total_nodes: usize,
+    pub num_clusters: usize,
+    pub num_noise_points: usize,
+    pub largest_cluster_size: usize,
+    pub smallest_cluster_size: usize,
+    pub average_cluster_size: f32,
+    pub computation_time_ms: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DBSCANParams {
+    pub epsilon: f32,
+    pub min_points: u32,
+}
+
+#[derive(Message)]
+#[rtype(result = "Result<DBSCANResult, String>")]
+pub struct RunDBSCAN {
+    pub params: DBSCANParams,
+}
+
+// ---------------------------------------------------------------------------
 // GPU Clustering (higher-level orchestration messages)
 // ---------------------------------------------------------------------------
 

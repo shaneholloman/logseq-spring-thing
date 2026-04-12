@@ -358,6 +358,26 @@ impl Handler<RunCommunityDetection> for GPUManagerActor {
     }
 }
 
+/// DBSCAN clustering - routes to AnalyticsSupervisor
+impl Handler<RunDBSCAN> for GPUManagerActor {
+    type Result = ResponseActFuture<Self, Result<DBSCANResult, String>>;
+
+    fn handle(&mut self, msg: RunDBSCAN, ctx: &mut Self::Context) -> Self::Result {
+        let supervisors = match self.get_supervisors(ctx) {
+            Ok(s) => s.clone(),
+            Err(e) => return Box::pin(async move { Err(e) }.into_actor(self)),
+        };
+
+        Box::pin(
+            async move {
+                supervisors.analytics.send(msg).await
+                    .map_err(|e| format!("AnalyticsSupervisor communication failed: {}", e))?
+            }
+            .into_actor(self)
+        )
+    }
+}
+
 /// Anomaly detection - routes to AnalyticsSupervisor
 impl Handler<RunAnomalyDetection> for GPUManagerActor {
     type Result = ResponseActFuture<Self, Result<AnomalyResult, String>>;

@@ -23,8 +23,10 @@ impl UnifiedGPUCompute {
         let grid_size = (self.num_nodes + block_size - 1) / block_size;
         let stream = &self.stream;
 
+        // All community/clustering kernels are in the clustering PTX module
+        let clust_mod = self.clustering_module.as_ref().ok_or(anyhow!("Clustering PTX module not loaded"))?;
 
-        let init_random_kernel = self._module.get_function("init_random_states_kernel")?;
+        let init_random_kernel = clust_mod.get_function("init_random_states_kernel")?;
         // SAFETY: Random state initialization kernel is safe because:
         // 1. rand_states buffer is allocated for num_nodes curandState elements
         // 2. Each thread initializes its own random state using seed + thread_id
@@ -42,7 +44,7 @@ impl UnifiedGPUCompute {
         // SAFETY: Label initialization kernel is safe because:
         // 1. labels_current is a valid DeviceBuffer with capacity >= num_nodes
         // 2. Each thread writes its own index as the initial community label
-        let init_labels_kernel = self._module.get_function("init_labels_kernel")?;
+        let init_labels_kernel = clust_mod.get_function("init_labels_kernel")?;
         unsafe {
             launch!(
                 init_labels_kernel<<<grid_size as u32, block_size as u32, 0, stream>>>(
@@ -56,7 +58,7 @@ impl UnifiedGPUCompute {
         // 1. edge_row_offsets and edge_weights are valid CSR graph data
         // 2. node_degrees is an output buffer with capacity >= num_nodes
         // 3. The kernel reads CSR offsets to compute weighted degree per node
-        let compute_degrees_kernel = self._module.get_function("compute_node_degrees_kernel")?;
+        let compute_degrees_kernel = clust_mod.get_function("compute_node_degrees_kernel")?;
         unsafe {
             launch!(
                 compute_degrees_kernel<<<grid_size as u32, block_size as u32, 0, stream>>>(
@@ -79,12 +81,12 @@ impl UnifiedGPUCompute {
 
 
         let propagate_kernel = if synchronous {
-            self._module.get_function("propagate_labels_sync_kernel")?
+            clust_mod.get_function("propagate_labels_sync_kernel")?
         } else {
-            self._module.get_function("propagate_labels_async_kernel")?
+            clust_mod.get_function("propagate_labels_async_kernel")?
         };
 
-        let check_convergence_kernel = self._module.get_function("check_convergence_kernel")?;
+        let check_convergence_kernel = clust_mod.get_function("check_convergence_kernel")?;
 
 
         let mut shared_mem_size = block_size * (self.max_labels + 1) * 4;
@@ -191,7 +193,7 @@ impl UnifiedGPUCompute {
         }
 
 
-        let modularity_kernel = self._module.get_function("compute_modularity_kernel")?;
+        let modularity_kernel = clust_mod.get_function("compute_modularity_kernel")?;
         // SAFETY: Modularity computation kernel is safe because:
         // 1. labels_current contains final community assignments from label propagation
         // 2. edge_* buffers are valid CSR graph data
@@ -225,7 +227,7 @@ impl UnifiedGPUCompute {
         let zero_communities = vec![0i32; self.max_labels];
         safe_upload(&mut self.community_sizes, &zero_communities)?;
 
-        let count_communities_kernel = self._module.get_function("count_community_sizes_kernel")?;
+        let count_communities_kernel = clust_mod.get_function("count_community_sizes_kernel")?;
         // SAFETY: Community size counting kernel is safe because:
         // 1. labels_current contains valid community labels (0 to max_labels-1)
         // 2. community_sizes was zeroed before this kernel and has capacity >= max_labels
@@ -264,7 +266,7 @@ impl UnifiedGPUCompute {
         if num_communities < self.max_labels {
             safe_upload(&mut self.label_mapping, &label_map)?;
 
-            let relabel_kernel = self._module.get_function("relabel_communities_kernel")?;
+            let relabel_kernel = clust_mod.get_function("relabel_communities_kernel")?;
             // SAFETY: Relabeling kernel is safe because:
             // 1. labels_current contains valid labels that index into label_mapping
             // 2. label_mapping was just populated with compact indices (0 to num_communities-1)
@@ -341,7 +343,8 @@ impl UnifiedGPUCompute {
             d_improvement_flag.copy_from(&[false])?;
 
 
-            let louvain_kernel = self._module.get_function("louvain_local_pass_kernel")?;
+            let clust_mod = self.clustering_module.as_ref().ok_or(anyhow!("Clustering PTX module not loaded"))?;
+            let louvain_kernel = clust_mod.get_function("louvain_local_pass_kernel")?;
 
             // SAFETY: Louvain community detection kernel launch is safe because:
             // 1. d_node_weights contains per-node weights (initialized to 1.0)
@@ -434,7 +437,8 @@ impl UnifiedGPUCompute {
         let d_neighbor_offsets = DeviceBuffer::from_slice(&neighbor_offsets)?;
 
 
-        let find_neighbors_kernel = self._module.get_function("dbscan_find_neighbors_kernel")?;
+        let clustering_mod = self.clustering_module.as_ref().ok_or(anyhow!("Clustering PTX module not loaded"))?;
+        let find_neighbors_kernel = clustering_mod.get_function("dbscan_find_neighbors_kernel")?;
 
         // SAFETY: DBSCAN neighbor finding kernel launch is safe because:
         // 1. pos_in_* contain valid position data for num_nodes nodes
@@ -461,8 +465,7 @@ impl UnifiedGPUCompute {
         self.stream.synchronize()?;
 
 
-        let mark_core_kernel = self
-            ._module
+        let mark_core_kernel = clustering_mod
             .get_function("dbscan_mark_core_points_kernel")?;
 
         // SAFETY: DBSCAN core point marking kernel is safe because:
@@ -484,8 +487,7 @@ impl UnifiedGPUCompute {
         self.stream.synchronize()?;
 
         // Phase 3: Propagate cluster labels until convergence
-        let propagate_kernel = self
-            ._module
+        let propagate_kernel = clustering_mod
             .get_function("dbscan_propagate_labels_kernel")?;
 
         let mut changed = vec![0i32; 1];
@@ -525,8 +527,7 @@ impl UnifiedGPUCompute {
         }
 
         // Phase 4: Finalize noise points
-        let finalize_kernel = self
-            ._module
+        let finalize_kernel = clustering_mod
             .get_function("dbscan_finalize_noise_kernel")?;
 
         // SAFETY: DBSCAN finalization kernel is safe because:

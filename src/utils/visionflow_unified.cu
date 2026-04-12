@@ -2291,4 +2291,69 @@ __global__ void compute_aabb_reduction_kernel(
     }
 }
 
+// =============================================================================
+// Degree-Weighted Gravity Kernel
+// Replaces uniform centering with degree-aware gravity:
+// - Hub nodes (high degree) get stronger pull toward center via log(1+degree)
+// - Leaf nodes (low degree) get weaker centering, allowing them to orbit hubs
+// - Isolated nodes (degree 0) get a peripheral shell force that pushes them
+//   to a spherical shell at `peripheral_radius`, keeping them out of the way
+//   of the connected graph's community structure.
+//
+// This kernel runs AFTER the main force_pass_kernel and CORRECTS the uniform
+// centering already applied. It:
+//   1. Undoes uniform centering: +pos * center_gravity_k
+//   2. Applies degree-weighted centering: -pos * center_gravity_k * degree_weight
+//   3. For isolated nodes: applies gentle radial force toward peripheral shell
+// =============================================================================
+__global__ void degree_weighted_gravity_kernel(
+    const float* __restrict__ pos_x,
+    const float* __restrict__ pos_y,
+    const float* __restrict__ pos_z,
+    float* __restrict__ force_x,
+    float* __restrict__ force_y,
+    float* __restrict__ force_z,
+    const float* __restrict__ degree_weight,  // [num_nodes] precomputed log(1+degree)
+    const int num_nodes,
+    const float center_gravity_k,             // same as c_params.center_gravity_k
+    const float peripheral_radius,            // target radius for isolated nodes
+    const float isolated_spring_k)            // spring constant for isolated shell force
+{
+    const int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= num_nodes) return;
+
+    float dw = degree_weight[idx];
+    float px = pos_x[idx];
+    float py = pos_y[idx];
+    float pz = pos_z[idx];
+
+    if (dw < 1e-6f) {
+        // Isolated node (degree 0): degree_weight == log(1+0) == 0
+        // Undo the uniform centering that was already applied
+        force_x[idx] += px * center_gravity_k;
+        force_y[idx] += py * center_gravity_k;
+        force_z[idx] += pz * center_gravity_k;
+
+        // Apply peripheral shell force: spring toward spherical shell
+        float dist = sqrtf(px * px + py * py + pz * pz);
+        if (dist > 1e-4f) {
+            float displacement = dist - peripheral_radius;
+            float shell_force = -isolated_spring_k * displacement;
+            float inv_dist = 1.0f / dist;
+            force_x[idx] += px * inv_dist * shell_force;
+            force_y[idx] += py * inv_dist * shell_force;
+            force_z[idx] += pz * inv_dist * shell_force;
+        }
+    } else {
+        // Connected node: replace uniform gravity with degree-weighted gravity
+        // Undo uniform: +pos * center_gravity_k
+        // Apply weighted: -pos * center_gravity_k * dw
+        // Net correction: pos * center_gravity_k * (1.0 - dw)
+        float correction = center_gravity_k * (1.0f - dw);
+        force_x[idx] += px * correction;
+        force_y[idx] += py * correction;
+        force_z[idx] += pz * correction;
+    }
+}
+
 } // extern "C"

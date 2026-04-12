@@ -97,6 +97,21 @@ pub async fn run_gpu_community_detection(
 
             let communities = convert_gpu_result_to_communities(result.clone())?;
 
+            // Populate shared node_analytics so V3 binary broadcast carries community_id values
+            // Write to both slot 0 (cluster_id for coloring) and slot 2 (community_id).
+            if let Ok(mut analytics) = app_state.node_analytics.write() {
+                for (node_id, &label) in result.node_labels.iter().enumerate() {
+                    let community_id = label as u32;
+                    let entry = analytics.entry(node_id as u32).or_insert((0, 0.0, 0));
+                    entry.0 = community_id;
+                    entry.2 = community_id;
+                }
+                info!(
+                    "run_gpu_community_detection: Populated node_analytics with {} community assignments",
+                    result.node_labels.len()
+                );
+            }
+
             Ok(CommunityDetectionResponse {
                 success: true,
                 communities,

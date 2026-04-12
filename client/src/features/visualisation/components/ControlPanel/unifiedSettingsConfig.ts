@@ -189,8 +189,8 @@ export const UNIFIED_SETTINGS_CONFIG: Record<string, SectionConfig> = {
       { key: 'enabled', label: 'Physics Enabled', type: 'toggle', path: 'visualisation.graphs.logseq.physics.enabled', description: 'Enable physics simulation' },
       { key: 'autoBalance', label: 'Auto Balance', type: 'toggle', path: 'visualisation.graphs.logseq.physics.autoBalance', description: 'Adaptive force balancing' },
       { key: 'damping', label: 'Damping', type: 'slider', min: 0, max: 1, step: 0.01, path: 'visualisation.graphs.logseq.physics.damping', description: 'Velocity damping — lower = more energy, higher = faster settle' },
-      { key: 'springK', label: 'Spring Strength', type: 'slider', min: 0.0001, max: 5000, step: 1, path: 'visualisation.graphs.logseq.physics.springK', description: 'Edge spring constant — higher pulls connected nodes tighter' },
-      { key: 'repelK', label: 'Repulsion', type: 'slider', min: 0, max: 50000, step: 10, path: 'visualisation.graphs.logseq.physics.repelK', description: 'Node repulsion — 0 for dense clusters, high for spread' },
+      { key: 'springK', label: 'Spring Strength', type: 'slider', min: 0.1, max: 200, step: 1, path: 'visualisation.graphs.logseq.physics.springK', description: 'Edge spring constant — higher pulls connected nodes tighter' },
+      { key: 'repelK', label: 'Repulsion', type: 'slider', min: 0, max: 2000, step: 10, path: 'visualisation.graphs.logseq.physics.repelK', description: 'Node repulsion — 0 for dense clusters, high for spread' },
       { key: 'attractionK', label: 'Attraction', type: 'slider', min: 0, max: 5000, step: 1, path: 'visualisation.graphs.logseq.physics.attractionK', description: 'Edge attraction strength' },
 
       // --- Layout Mode (moved from Quality) ---
@@ -208,7 +208,7 @@ export const UNIFIED_SETTINGS_CONFIG: Record<string, SectionConfig> = {
       { key: 'typeClusterRadius', label: 'Type Cluster Radius', type: 'slider', min: 10, max: 5000, step: 50, path: 'qualityGates.typeClusterRadius', description: 'Target radius for type-based cluster zones', isAdvanced: true },
 
       // Dynamics - Basic
-      { key: 'maxVelocity', label: 'Max Velocity', type: 'slider', min: 0.1, max: 10000, step: 50, path: 'visualisation.graphs.logseq.physics.maxVelocity', description: 'Maximum node speed — higher allows faster layout changes' },
+      { key: 'maxVelocity', label: 'Max Velocity', type: 'slider', min: 0.1, max: 500, step: 5, path: 'visualisation.graphs.logseq.physics.maxVelocity', description: 'Maximum node speed — higher allows faster layout changes' },
       { key: 'enableBounds', label: 'Enable Bounds', type: 'toggle', path: 'visualisation.graphs.logseq.physics.enableBounds', description: 'Constrain to bounds' },
       { key: 'boundsSize', label: 'Bounds Size', type: 'slider', min: 100, max: 100000, step: 500, path: 'visualisation.graphs.logseq.physics.boundsSize', description: 'Size of bounding box — larger allows more spread' },
 
@@ -221,10 +221,10 @@ export const UNIFIED_SETTINGS_CONFIG: Record<string, SectionConfig> = {
 
       // Fine-tuning - Advanced
       { key: 'minDistance', label: 'Min Distance', type: 'slider', min: 0.05, max: 20, step: 0.1, path: 'visualisation.graphs.logseq.physics.minDistance', description: 'Minimum repulsion distance', isAdvanced: true },
-      { key: 'maxRepulsionDist', label: 'Max Repulsion Dist', type: 'slider', min: 10, max: 50000, step: 100, path: 'visualisation.graphs.logseq.physics.maxRepulsionDist', description: 'Maximum repulsion range — larger affects more distant nodes', isAdvanced: true },
-      { key: 'restLength', label: 'Node Spacing', type: 'slider', min: 0.1, max: 10000, step: 10, path: 'visualisation.graphs.logseq.physics.restLength', description: 'Spring rest length — small = dense, large = spread' },
-      { key: 'repulsionCutoff', label: 'Repulsion Cutoff', type: 'slider', min: 1, max: 50000, step: 100, path: 'visualisation.graphs.logseq.physics.repulsionCutoff', description: 'Cutoff for repulsion forces — larger = repulsion reaches further', isAdvanced: true },
-      { key: 'centerGravityK', label: 'Cluster Tightness', type: 'slider', min: 0, max: 1000, step: 1, path: 'visualisation.graphs.logseq.physics.centerGravityK', description: 'Pull towards center — higher values tightly cluster the graph' },
+      { key: 'maxRepulsionDist', label: 'Max Repulsion Dist', type: 'slider', min: 10, max: 2000, step: 10, path: 'visualisation.graphs.logseq.physics.maxRepulsionDist', description: 'Maximum repulsion range — larger affects more distant nodes', isAdvanced: true },
+      { key: 'restLength', label: 'Node Spacing', type: 'slider', min: 1, max: 200, step: 1, path: 'visualisation.graphs.logseq.physics.restLength', description: 'Spring rest length — small = dense, large = spread' },
+      { key: 'repulsionCutoff', label: 'Repulsion Cutoff', type: 'slider', min: 1, max: 2000, step: 10, path: 'visualisation.graphs.logseq.physics.repulsionCutoff', description: 'Cutoff for repulsion forces — larger = repulsion reaches further', isAdvanced: true },
+      { key: 'centerGravityK', label: 'Cluster Tightness', type: 'slider', min: 0, max: 10, step: 0.1, path: 'visualisation.graphs.logseq.physics.centerGravityK', description: 'Pull towards center — higher values tightly cluster the graph' },
       { key: 'gridCellSize', label: 'Grid Cell Size', type: 'slider', min: 1, max: 2000, step: 10, path: 'visualisation.graphs.logseq.physics.gridCellSize', description: 'Spatial grid cell size — larger for spread-out graphs', isAdvanced: true },
       { key: 'repulsionSofteningEpsilon', label: 'Repulsion Epsilon', type: 'slider', min: 0.00001, max: 0.01, step: 0.0001, path: 'visualisation.graphs.logseq.physics.repulsionSofteningEpsilon', description: 'Softening for close nodes', isAdvanced: true },
       { key: 'boundaryExtremeMultiplier', label: 'Boundary Extreme Mult', type: 'slider', min: 1, max: 5, step: 0.1, path: 'visualisation.graphs.logseq.physics.boundaryExtremeMultiplier', description: 'Boundary force multiplier', isAdvanced: true },
@@ -232,7 +232,7 @@ export const UNIFIED_SETTINGS_CONFIG: Record<string, SectionConfig> = {
       { key: 'boundaryVelocityDamping', label: 'Boundary Vel Damping', type: 'slider', min: 0, max: 1, step: 0.01, path: 'visualisation.graphs.logseq.physics.boundaryVelocityDamping', description: 'Damping at boundaries', isAdvanced: true },
       { key: 'boundaryDamping', label: 'Boundary Damping', type: 'slider', min: 0, max: 1, step: 0.01, path: 'visualisation.graphs.logseq.physics.boundaryDamping', description: 'General boundary damping', isAdvanced: true },
       { key: 'updateThreshold', label: 'Update Threshold', type: 'slider', min: 0, max: 0.5, step: 0.01, path: 'visualisation.graphs.logseq.physics.updateThreshold', description: 'Movement threshold for updates', isAdvanced: true },
-      { key: 'maxForce', label: 'Max Force', type: 'slider', min: 1, max: 50000, step: 100, path: 'visualisation.graphs.logseq.physics.maxForce', description: 'Maximum force per node — higher allows stronger layout forces', isAdvanced: true },
+      { key: 'maxForce', label: 'Max Force', type: 'slider', min: 1, max: 1000, step: 5, path: 'visualisation.graphs.logseq.physics.maxForce', description: 'Maximum force per node — higher allows stronger layout forces', isAdvanced: true },
       { key: 'temperature', label: 'Temperature', type: 'slider', min: 0.001, max: 100, step: 0.5, path: 'visualisation.graphs.logseq.physics.temperature', description: 'Simulation temperature (energy) — higher = more movement', isAdvanced: true },
       { key: 'massScale', label: 'Mass Scale', type: 'slider', min: 0.001, max: 100, step: 0.5, path: 'visualisation.graphs.logseq.physics.massScale', description: 'Node mass multiplier — heavier nodes resist forces more', isAdvanced: true },
 
@@ -329,7 +329,7 @@ export const UNIFIED_SETTINGS_CONFIG: Record<string, SectionConfig> = {
       { key: 'showCentrality', label: 'Centrality Metrics', type: 'toggle', path: 'analytics.showCentrality', description: 'Show centrality scores', isAdvanced: true },
 
       // Clustering - Advanced
-      { key: 'clusteringAlgorithm', label: 'Clustering Algorithm', type: 'select', options: ['none', 'kmeans', 'spectral', 'louvain'], path: 'analytics.clustering.algorithm', description: 'Algorithm for clustering', isAdvanced: true },
+      { key: 'clusteringAlgorithm', label: 'Clustering Algorithm', type: 'select', options: ['none', 'kmeans', 'spectral', 'louvain', 'dbscan'], path: 'analytics.clustering.algorithm', description: 'Algorithm for clustering', isAdvanced: true },
       { key: 'clusterCount', label: 'Cluster Count', type: 'slider', min: 2, max: 20, step: 1, path: 'analytics.clustering.clusterCount', description: 'Number of clusters', isAdvanced: true },
       { key: 'clusterResolution', label: 'Resolution', type: 'slider', min: 0.1, max: 2, step: 0.1, path: 'analytics.clustering.resolution', description: 'Clustering resolution', isAdvanced: true },
       { key: 'clusterIterations', label: 'Cluster Iterations', type: 'slider', min: 10, max: 100, step: 5, path: 'analytics.clustering.iterations', description: 'Algorithm iterations', isAdvanced: true },

@@ -10,10 +10,198 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::OnceLock;
 
 pub const DEFAULT_CUDA_ARCH: &str = "75";
 pub const CUDA_ARCH_ENV: &str = "CUDA_ARCH";
 pub const DOCKER_ENV_VAR: &str = "DOCKER_ENV";
+
+/// Cached runtime GPU compute capability (e.g. "89" for sm_89).
+static RUNTIME_CUDA_ARCH: OnceLock<String> = OnceLock::new();
+
+/// Cached max PTX ISA version the installed driver supports.
+static RUNTIME_MAX_PTX_ISA: OnceLock<(u32, u32)> = OnceLock::new();
+
+/// Detects the GPU compute capability at runtime by querying `nvidia-smi`.
+/// The result is cached for the lifetime of the process.
+/// Falls back to `DEFAULT_CUDA_ARCH` ("75") if detection fails.
+pub fn detect_runtime_cuda_arch() -> &'static str {
+    RUNTIME_CUDA_ARCH.get_or_init(|| {
+        // Environment variable override takes highest priority
+        if let Ok(env_arch) = std::env::var(CUDA_ARCH_ENV) {
+            info!("Using CUDA arch from {} env var: sm_{}", CUDA_ARCH_ENV, env_arch);
+            return env_arch;
+        }
+
+        match Command::new("nvidia-smi")
+            .args(["--query-gpu=compute_cap", "--format=csv,noheader"])
+            .output()
+        {
+            Ok(output) if output.status.success() => {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                // nvidia-smi returns e.g. "8.9\n" — strip and convert "8.9" -> "89"
+                let trimmed = stdout.trim();
+                // Take only the first GPU if multiple are present
+                let first_line = trimmed.lines().next().unwrap_or(trimmed);
+                let arch = first_line.replace('.', "");
+                if arch.chars().all(|c| c.is_ascii_digit()) && !arch.is_empty() {
+                    info!("Detected runtime GPU compute capability: sm_{}", arch);
+                    arch
+                } else {
+                    warn!(
+                        "nvidia-smi returned unparseable compute capability '{}', falling back to sm_{}",
+                        first_line, DEFAULT_CUDA_ARCH
+                    );
+                    DEFAULT_CUDA_ARCH.to_string()
+                }
+            }
+            Ok(output) => {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                warn!(
+                    "nvidia-smi failed (exit {:?}): {}. Falling back to sm_{}",
+                    output.status.code(),
+                    stderr.trim(),
+                    DEFAULT_CUDA_ARCH
+                );
+                DEFAULT_CUDA_ARCH.to_string()
+            }
+            Err(e) => {
+                warn!(
+                    "Failed to run nvidia-smi: {}. Falling back to sm_{}",
+                    e, DEFAULT_CUDA_ARCH
+                );
+                DEFAULT_CUDA_ARCH.to_string()
+            }
+        }
+    })
+}
+
+/// Detects the maximum PTX ISA version the installed CUDA driver supports.
+/// Parses `nvidia-smi` output to determine the CUDA driver version and maps it
+/// to the highest PTX ISA the driver can JIT-compile.
+///
+/// Mapping (CUDA driver major.minor -> max PTX ISA):
+///   - 13.0 -> (9, 0)
+///   - 13.1 -> (9, 1)
+///   - 13.2+ -> (9, 2)
+///   - 12.x  -> (8, x) approximately; we cap at (8, 5) as a safe default
+///   - Unknown / older -> (9, 0) as a conservative fallback
+///
+/// The result is cached for the lifetime of the process.
+pub fn detect_max_ptx_isa() -> (u32, u32) {
+    *RUNTIME_MAX_PTX_ISA.get_or_init(|| {
+        match Command::new("nvidia-smi")
+            .args(["--query-gpu=driver_version", "--format=csv,noheader"])
+            .output()
+        {
+            Ok(output) if output.status.success() => {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                let trimmed = stdout.trim();
+                let first_line = trimmed.lines().next().unwrap_or(trimmed);
+                parse_driver_to_max_isa(first_line)
+            }
+            Ok(output) => {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                warn!(
+                    "nvidia-smi driver query failed (exit {:?}): {}. Using ISA fallback (9, 0)",
+                    output.status.code(),
+                    stderr.trim()
+                );
+                (9, 0)
+            }
+            Err(e) => {
+                warn!(
+                    "Failed to run nvidia-smi for driver detection: {}. Using ISA fallback (9, 0)",
+                    e
+                );
+                (9, 0)
+            }
+        }
+    })
+}
+
+/// Parses a driver version string (e.g. "560.35.03" or "13.0.1") into the
+/// CUDA toolkit major.minor and maps it to the max supported PTX ISA.
+///
+/// nvidia-smi driver_version returns the actual driver version (e.g. "560.35.03"),
+/// but we also handle the CUDA version string format for robustness.
+/// The CUDA version is available from `nvidia-smi` header or can be queried separately.
+fn parse_driver_to_max_isa(driver_version: &str) -> (u32, u32) {
+    // Try to get CUDA version directly (more reliable mapping)
+    if let Some(cuda_isa) = query_cuda_version_isa() {
+        return cuda_isa;
+    }
+
+    // Fallback: parse driver version and use known driver-to-CUDA mappings
+    let parts: Vec<&str> = driver_version.split('.').collect();
+    if parts.len() >= 2 {
+        if let Ok(driver_major) = parts[0].parse::<u32>() {
+            // NVIDIA driver major version to CUDA toolkit mapping (approximate):
+            // Driver 560+ -> CUDA 13.x
+            // Driver 550+ -> CUDA 12.8+
+            // Driver 535+ -> CUDA 12.2+
+            // Driver 525+ -> CUDA 12.0+
+            if driver_major >= 560 {
+                // CUDA 13.x territory - query more precisely
+                return query_cuda_version_isa().unwrap_or((9, 0));
+            } else if driver_major >= 525 {
+                // CUDA 12.x territory
+                return (8, 5);
+            }
+        }
+    }
+
+    info!(
+        "Could not map driver version '{}' to PTX ISA, defaulting to (9, 0)",
+        driver_version
+    );
+    (9, 0)
+}
+
+/// Queries `nvidia-smi` for the CUDA version and maps it to max PTX ISA.
+fn query_cuda_version_isa() -> Option<(u32, u32)> {
+    // nvidia-smi prints "CUDA Version: XX.Y" in its default output
+    let output = Command::new("nvidia-smi").output().ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // Look for "CUDA Version: XX.Y"
+    let cuda_marker = "CUDA Version: ";
+    let pos = stdout.find(cuda_marker)?;
+    let after = &stdout[pos + cuda_marker.len()..];
+    let end = after.find(|c: char| !c.is_ascii_digit() && c != '.').unwrap_or(after.len());
+    let ver_str = &after[..end];
+    let parts: Vec<&str> = ver_str.split('.').collect();
+    if parts.len() >= 2 {
+        let major: u32 = parts[0].parse().ok()?;
+        let minor: u32 = parts[1].parse().ok()?;
+        let isa = cuda_version_to_max_isa(major, minor);
+        info!(
+            "Detected CUDA version {}.{}, max PTX ISA: {}.{}",
+            major, minor, isa.0, isa.1
+        );
+        return Some(isa);
+    }
+    None
+}
+
+/// Maps CUDA toolkit version to the maximum PTX ISA the driver can JIT-compile.
+fn cuda_version_to_max_isa(cuda_major: u32, cuda_minor: u32) -> (u32, u32) {
+    match (cuda_major, cuda_minor) {
+        (13, 0) => (9, 0),
+        (13, 1) => (9, 1),
+        (13, minor) if minor >= 2 => (9, 2),
+        (12, minor) if minor >= 6 => (8, 5),
+        (12, minor) if minor >= 4 => (8, 4),
+        (12, minor) if minor >= 2 => (8, 2),
+        (12, _) => (8, 0),
+        (11, _) => (7, 8),
+        // Future-proof: if CUDA 14+ appears, allow ISA 9.2 as a safe ceiling
+        (major, _) if major > 13 => (9, 2),
+        _ => (9, 0), // conservative default
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum PTXModule {
@@ -87,30 +275,46 @@ pub fn get_compiled_ptx_path_legacy() -> Option<PathBuf> {
     COMPILED_PTX_PATH.map(PathBuf::from)
 }
 
+/// Returns the effective CUDA architecture for compilation.
+/// Priority: CUDA_ARCH env var > runtime GPU detection > DEFAULT_CUDA_ARCH.
 pub fn effective_cuda_arch() -> String {
-    std::env::var(CUDA_ARCH_ENV).unwrap_or_else(|_| DEFAULT_CUDA_ARCH.to_string())
+    detect_runtime_cuda_arch().to_string()
 }
-
-/// Maximum PTX ISA version the CUDA 13.0 driver (version 13000) can JIT-compile.
-/// CUDA toolkit 13.1 emits `.version 9.1` PTX, but driver 13.0 only supports up to 9.0.
-/// Downgrading the header is safe when the code uses no ISA-9.1-specific instructions
-/// (verified empirically: our kernels use only basic ops available since ISA 7.x).
-const MAX_DRIVER_PTX_ISA: &str = "9.0";
 
 /// Downgrades the PTX ISA version header when it exceeds what the installed driver
 /// can handle.  This avoids `CUDA_ERROR_INVALID_PTX` (222) on systems where the
 /// toolkit is newer than the driver.
+///
+/// The max supported ISA is detected at runtime via `detect_max_ptx_isa()` which
+/// queries the installed CUDA driver version. Falls back to ISA 9.0 if detection
+/// fails.
 pub fn downgrade_ptx_isa_if_needed(ptx: String) -> String {
-    // Fast path: already compatible
-    if !ptx.contains(".version 9.1") {
-        return ptx;
+    let (max_major, max_minor) = detect_max_ptx_isa();
+    let max_isa_str = format!("{}.{}", max_major, max_minor);
+
+    // Find the .version directive and check if it needs downgrading
+    if let Some(ver_start) = ptx.find(".version ") {
+        let after = &ptx[ver_start + 9..];
+        // Extract the version string (e.g. "9.2")
+        let ver_end = after.find(|c: char| !c.is_ascii_digit() && c != '.').unwrap_or(after.len());
+        let ver_str = &after[..ver_end];
+        let parts: Vec<&str> = ver_str.split('.').collect();
+        if parts.len() == 2 {
+            if let (Ok(major), Ok(minor)) = (parts[0].parse::<u32>(), parts[1].parse::<u32>()) {
+                if major > max_major || (major == max_major && minor > max_minor) {
+                    let old_directive = format!(".version {}", ver_str);
+                    let new_directive = format!(".version {}", max_isa_str);
+                    let fixed = ptx.replacen(&old_directive, &new_directive, 1);
+                    info!(
+                        "PTX ISA downgrade: {} -> {} (driver supports up to {}.{})",
+                        old_directive, new_directive, max_major, max_minor
+                    );
+                    return fixed;
+                }
+            }
+        }
     }
-    let fixed = ptx.replacen(".version 9.1", &format!(".version {}", MAX_DRIVER_PTX_ISA), 1);
-    info!(
-        "PTX ISA downgrade: .version 9.1 -> .version {} (driver compatibility)",
-        MAX_DRIVER_PTX_ISA
-    );
-    fixed
+    ptx
 }
 
 /// Validates PTX assembly code structure

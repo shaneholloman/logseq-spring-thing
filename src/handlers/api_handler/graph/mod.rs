@@ -491,6 +491,81 @@ pub async fn get_auto_balance_notifications(
     }
 }
 
+/// Return the current GPU-computed node positions (not the initial Neo4j zeros).
+///
+/// `GET /api/graph/positions`
+pub async fn get_graph_positions(
+    state: web::Data<AppState>,
+) -> impl Responder {
+    // Acquire ForceComputeActor address
+    let gpu_addr = match state.get_gpu_compute_addr().await {
+        Some(addr) => addr,
+        None => {
+            return HttpResponse::ServiceUnavailable().json(serde_json::json!({
+                "success": false,
+                "error": "GPU compute actor not available"
+            }));
+        }
+    };
+
+    use crate::actors::messages::GetCurrentPositions;
+
+    match gpu_addr.send(GetCurrentPositions).await {
+        Ok(Ok(snapshot)) => {
+            let positions: Vec<serde_json::Value> = snapshot
+                .positions
+                .iter()
+                .map(|(id, x, y, z)| {
+                    serde_json::json!({
+                        "id": id,
+                        "x": x,
+                        "y": y,
+                        "z": z
+                    })
+                })
+                .collect();
+
+            HttpResponse::Ok().json(serde_json::json!({
+                "success": true,
+                "data": {
+                    "positions": positions,
+                    "metadata": {
+                        "numNodes": snapshot.num_nodes,
+                        "settled": snapshot.settled,
+                        "kineticEnergy": snapshot.kinetic_energy,
+                        "boundingBox": {
+                            "min": {
+                                "x": snapshot.bounding_box.min_x,
+                                "y": snapshot.bounding_box.min_y,
+                                "z": snapshot.bounding_box.min_z
+                            },
+                            "max": {
+                                "x": snapshot.bounding_box.max_x,
+                                "y": snapshot.bounding_box.max_y,
+                                "z": snapshot.bounding_box.max_z
+                            }
+                        }
+                    }
+                }
+            }))
+        }
+        Ok(Err(e)) => {
+            warn!("GetCurrentPositions returned error: {}", e);
+            HttpResponse::Ok().json(serde_json::json!({
+                "success": false,
+                "error": e
+            }))
+        }
+        Err(e) => {
+            error!("Mailbox error sending GetCurrentPositions: {}", e);
+            HttpResponse::InternalServerError().json(serde_json::json!({
+                "success": false,
+                "error": format!("Actor mailbox error: {}", e)
+            }))
+        }
+    }
+}
+
 // Configure routes using snake_case
 /// SECURITY: Graph mutation operations require authentication
 pub fn config(cfg: &mut web::ServiceConfig) {
@@ -502,6 +577,7 @@ pub fn config(cfg: &mut web::ServiceConfig) {
             // Read operations - public with rate limiting
             .route("/data", web::get().to(get_graph_data))
             .route("/data/paginated", web::get().to(get_paginated_graph_data))
+            .route("/positions", web::get().to(get_graph_positions))
             .route(
                 "/auto-balance-notifications",
                 web::get().to(get_auto_balance_notifications),

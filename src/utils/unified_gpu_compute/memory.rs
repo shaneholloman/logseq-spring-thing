@@ -431,6 +431,10 @@ impl UnifiedGPUCompute {
         self.class_charge = DeviceBuffer::from_slice(&vec![1.0f32; actual_new_nodes])?;
         self.class_mass = DeviceBuffer::from_slice(&vec![1.0f32; actual_new_nodes])?;
 
+        // Degree weight buffer must be resized with positions
+        self.degree_weight = DeviceBuffer::from_slice(&vec![1.0f32; actual_new_nodes])?;
+        self.degree_weights_available = false;
+
         self.cluster_assignments = DeviceBuffer::zeroed(actual_new_nodes)?;
         self.distances_to_centroid = DeviceBuffer::zeroed(actual_new_nodes)?;
         let new_num_blocks = (actual_new_nodes + 255) / 256;
@@ -584,6 +588,38 @@ impl UnifiedGPUCompute {
         Ok(())
     }
 
+
+    /// Upload pre-computed degree weights for degree-weighted gravity.
+    /// `weights` should contain `log(1 + degree)` for each node.
+    /// Isolated nodes (degree 0) should have weight 0.0.
+    pub fn upload_degree_weights(&mut self, weights: &[f32]) -> Result<()> {
+        if weights.len() != self.num_nodes {
+            return Err(anyhow!(
+                "Degree weight array size mismatch: expected {} nodes, got {}",
+                self.num_nodes,
+                weights.len()
+            ));
+        }
+
+        let alloc = self.degree_weight.len();
+        if weights.len() < alloc {
+            let mut padded = weights.to_vec();
+            padded.resize(alloc, 0.0);
+            self.degree_weight.copy_from(&padded)?;
+        } else {
+            self.degree_weight.copy_from(weights)?;
+        }
+        self.degree_weights_available = true;
+
+        let isolated_count = weights.iter().filter(|&&w| w < 1e-6).count();
+        info!(
+            "Uploaded degree weights: {} nodes ({} isolated, {} connected)",
+            weights.len(),
+            isolated_count,
+            weights.len() - isolated_count
+        );
+        Ok(())
+    }
 
     pub fn initialize_graph(
         &mut self,

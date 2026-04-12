@@ -50,6 +50,20 @@ static WARNED_HIERARCHY_LEVELS: AtomicBool = AtomicBool::new(false);
 static WARNED_TYPE_CENTROIDS: AtomicBool = AtomicBool::new(false);
 #[cfg(not(feature = "gpu"))]
 static WARNED_FINALIZE_CENTROIDS: AtomicBool = AtomicBool::new(false);
+#[cfg(not(feature = "gpu"))]
+static WARNED_PHYSICALITY_CLUSTER: AtomicBool = AtomicBool::new(false);
+#[cfg(not(feature = "gpu"))]
+static WARNED_ROLE_CLUSTER: AtomicBool = AtomicBool::new(false);
+#[cfg(not(feature = "gpu"))]
+static WARNED_MATURITY_LAYOUT: AtomicBool = AtomicBool::new(false);
+#[cfg(not(feature = "gpu"))]
+static WARNED_PHYSICALITY_CENTROIDS: AtomicBool = AtomicBool::new(false);
+#[cfg(not(feature = "gpu"))]
+static WARNED_FINALIZE_PHYSICALITY: AtomicBool = AtomicBool::new(false);
+#[cfg(not(feature = "gpu"))]
+static WARNED_ROLE_CENTROIDS: AtomicBool = AtomicBool::new(false);
+#[cfg(not(feature = "gpu"))]
+static WARNED_FINALIZE_ROLE: AtomicBool = AtomicBool::new(false);
 
 #[cfg(not(feature = "gpu"))]
 fn warn_once(flag: &AtomicBool, fn_name: &str) {
@@ -111,6 +125,55 @@ mod gpu_ffi {
             type_centroids: *mut super::Float3,
             type_counts: *const i32,
             num_types: i32,
+        );
+
+        pub fn apply_physicality_cluster_force(
+            node_physicality: *const i32,
+            physicality_centroids: *const super::Float3,
+            positions: *mut super::Float3,
+            forces: *mut super::Float3,
+            num_nodes: i32,
+        );
+
+        pub fn apply_role_cluster_force(
+            node_role: *const i32,
+            role_centroids: *const super::Float3,
+            positions: *mut super::Float3,
+            forces: *mut super::Float3,
+            num_nodes: i32,
+        );
+
+        pub fn apply_maturity_layout_force(
+            node_maturity: *const i32,
+            positions: *mut super::Float3,
+            forces: *mut super::Float3,
+            num_nodes: i32,
+        );
+
+        pub fn calculate_physicality_centroids(
+            node_physicality: *const i32,
+            positions: *const super::Float3,
+            physicality_centroids: *mut super::Float3,
+            physicality_counts: *mut i32,
+            num_nodes: i32,
+        );
+
+        pub fn finalize_physicality_centroids(
+            physicality_centroids: *mut super::Float3,
+            physicality_counts: *const i32,
+        );
+
+        pub fn calculate_role_centroids(
+            node_role: *const i32,
+            positions: *const super::Float3,
+            role_centroids: *mut super::Float3,
+            role_counts: *mut i32,
+            num_nodes: i32,
+        );
+
+        pub fn finalize_role_centroids(
+            role_centroids: *mut super::Float3,
+            role_counts: *const i32,
         );
     }
 }
@@ -379,6 +442,267 @@ pub fn finalize_type_centroids(
                 type_centroids[i].x /= c;
                 type_centroids[i].y /= c;
                 type_centroids[i].z /= c;
+            }
+        }
+    }
+}
+
+/// Apply physicality-based clustering forces on GPU.
+///
+/// On CPU fallback: no-op (caller must use CPU implementation).
+pub fn apply_physicality_cluster_force(
+    node_physicality: &[i32],
+    physicality_centroids: &[Float3],
+    positions: &mut [Float3],
+    forces: &mut [Float3],
+    num_nodes: usize,
+) {
+    debug_assert!(node_physicality.len() >= num_nodes);
+    debug_assert!(positions.len() >= num_nodes);
+    debug_assert!(forces.len() >= num_nodes);
+
+    #[cfg(feature = "gpu")]
+    {
+        unsafe {
+            gpu_ffi::apply_physicality_cluster_force(
+                node_physicality.as_ptr(),
+                physicality_centroids.as_ptr(),
+                positions.as_mut_ptr(),
+                forces.as_mut_ptr(),
+                num_nodes as i32,
+            );
+        }
+    }
+    #[cfg(not(feature = "gpu"))]
+    {
+        let _ = (node_physicality, physicality_centroids, positions, forces, num_nodes);
+        warn_once(&WARNED_PHYSICALITY_CLUSTER, "apply_physicality_cluster_force");
+    }
+}
+
+/// Apply role-based clustering forces on GPU.
+///
+/// On CPU fallback: no-op (caller must use CPU implementation).
+pub fn apply_role_cluster_force(
+    node_role: &[i32],
+    role_centroids: &[Float3],
+    positions: &mut [Float3],
+    forces: &mut [Float3],
+    num_nodes: usize,
+) {
+    debug_assert!(node_role.len() >= num_nodes);
+    debug_assert!(positions.len() >= num_nodes);
+    debug_assert!(forces.len() >= num_nodes);
+
+    #[cfg(feature = "gpu")]
+    {
+        unsafe {
+            gpu_ffi::apply_role_cluster_force(
+                node_role.as_ptr(),
+                role_centroids.as_ptr(),
+                positions.as_mut_ptr(),
+                forces.as_mut_ptr(),
+                num_nodes as i32,
+            );
+        }
+    }
+    #[cfg(not(feature = "gpu"))]
+    {
+        let _ = (node_role, role_centroids, positions, forces, num_nodes);
+        warn_once(&WARNED_ROLE_CLUSTER, "apply_role_cluster_force");
+    }
+}
+
+/// Apply maturity-based layout forces on GPU.
+///
+/// On CPU fallback: no-op (caller must use CPU implementation).
+pub fn apply_maturity_layout_force(
+    node_maturity: &[i32],
+    positions: &mut [Float3],
+    forces: &mut [Float3],
+    num_nodes: usize,
+) {
+    debug_assert!(node_maturity.len() >= num_nodes);
+    debug_assert!(positions.len() >= num_nodes);
+    debug_assert!(forces.len() >= num_nodes);
+
+    #[cfg(feature = "gpu")]
+    {
+        unsafe {
+            gpu_ffi::apply_maturity_layout_force(
+                node_maturity.as_ptr(),
+                positions.as_mut_ptr(),
+                forces.as_mut_ptr(),
+                num_nodes as i32,
+            );
+        }
+    }
+    #[cfg(not(feature = "gpu"))]
+    {
+        let _ = (node_maturity, positions, forces, num_nodes);
+        warn_once(&WARNED_MATURITY_LAYOUT, "apply_maturity_layout_force");
+    }
+}
+
+/// Calculate physicality centroids on GPU.
+///
+/// On CPU fallback: accumulates positions per physicality type. Caller must
+/// call `finalize_physicality_centroids` to divide by counts.
+pub fn calculate_physicality_centroids(
+    node_physicality: &[i32],
+    positions: &[Float3],
+    physicality_centroids: &mut [Float3],
+    physicality_counts: &mut [i32],
+    num_nodes: usize,
+) {
+    debug_assert!(node_physicality.len() >= num_nodes);
+    debug_assert!(positions.len() >= num_nodes);
+
+    #[cfg(feature = "gpu")]
+    {
+        unsafe {
+            gpu_ffi::calculate_physicality_centroids(
+                node_physicality.as_ptr(),
+                positions.as_ptr(),
+                physicality_centroids.as_mut_ptr(),
+                physicality_counts.as_mut_ptr(),
+                num_nodes as i32,
+            );
+        }
+    }
+    #[cfg(not(feature = "gpu"))]
+    {
+        warn_once(&WARNED_PHYSICALITY_CENTROIDS, "calculate_physicality_centroids");
+        let num_types = physicality_centroids.len();
+        for c in physicality_centroids.iter_mut() {
+            c.x = 0.0;
+            c.y = 0.0;
+            c.z = 0.0;
+        }
+        for cnt in physicality_counts.iter_mut() {
+            *cnt = 0;
+        }
+        for i in 0..num_nodes {
+            let t = node_physicality[i] as usize;
+            if t < num_types {
+                physicality_centroids[t].x += positions[i].x;
+                physicality_centroids[t].y += positions[i].y;
+                physicality_centroids[t].z += positions[i].z;
+                physicality_counts[t] += 1;
+            }
+        }
+    }
+}
+
+/// Finalize physicality centroids by dividing accumulated positions by count.
+///
+/// On CPU fallback: performs the division directly.
+pub fn finalize_physicality_centroids(
+    physicality_centroids: &mut [Float3],
+    physicality_counts: &[i32],
+) {
+    #[cfg(feature = "gpu")]
+    {
+        unsafe {
+            gpu_ffi::finalize_physicality_centroids(
+                physicality_centroids.as_mut_ptr(),
+                physicality_counts.as_ptr(),
+            );
+        }
+    }
+    #[cfg(not(feature = "gpu"))]
+    {
+        warn_once(&WARNED_FINALIZE_PHYSICALITY, "finalize_physicality_centroids");
+        let num_types = physicality_centroids.len().min(physicality_counts.len());
+        for i in 0..num_types {
+            let count = physicality_counts[i];
+            if count > 0 {
+                let c = count as f32;
+                physicality_centroids[i].x /= c;
+                physicality_centroids[i].y /= c;
+                physicality_centroids[i].z /= c;
+            }
+        }
+    }
+}
+
+/// Calculate role centroids on GPU.
+///
+/// On CPU fallback: accumulates positions per role type. Caller must
+/// call `finalize_role_centroids` to divide by counts.
+pub fn calculate_role_centroids(
+    node_role: &[i32],
+    positions: &[Float3],
+    role_centroids: &mut [Float3],
+    role_counts: &mut [i32],
+    num_nodes: usize,
+) {
+    debug_assert!(node_role.len() >= num_nodes);
+    debug_assert!(positions.len() >= num_nodes);
+
+    #[cfg(feature = "gpu")]
+    {
+        unsafe {
+            gpu_ffi::calculate_role_centroids(
+                node_role.as_ptr(),
+                positions.as_ptr(),
+                role_centroids.as_mut_ptr(),
+                role_counts.as_mut_ptr(),
+                num_nodes as i32,
+            );
+        }
+    }
+    #[cfg(not(feature = "gpu"))]
+    {
+        warn_once(&WARNED_ROLE_CENTROIDS, "calculate_role_centroids");
+        let num_types = role_centroids.len();
+        for c in role_centroids.iter_mut() {
+            c.x = 0.0;
+            c.y = 0.0;
+            c.z = 0.0;
+        }
+        for cnt in role_counts.iter_mut() {
+            *cnt = 0;
+        }
+        for i in 0..num_nodes {
+            let t = node_role[i] as usize;
+            if t < num_types {
+                role_centroids[t].x += positions[i].x;
+                role_centroids[t].y += positions[i].y;
+                role_centroids[t].z += positions[i].z;
+                role_counts[t] += 1;
+            }
+        }
+    }
+}
+
+/// Finalize role centroids by dividing accumulated positions by count.
+///
+/// On CPU fallback: performs the division directly.
+pub fn finalize_role_centroids(
+    role_centroids: &mut [Float3],
+    role_counts: &[i32],
+) {
+    #[cfg(feature = "gpu")]
+    {
+        unsafe {
+            gpu_ffi::finalize_role_centroids(
+                role_centroids.as_mut_ptr(),
+                role_counts.as_ptr(),
+            );
+        }
+    }
+    #[cfg(not(feature = "gpu"))]
+    {
+        warn_once(&WARNED_FINALIZE_ROLE, "finalize_role_centroids");
+        let num_types = role_centroids.len().min(role_counts.len());
+        for i in 0..num_types {
+            let count = role_counts[i];
+            if count > 0 {
+                let c = count as f32;
+                role_centroids[i].x /= c;
+                role_centroids[i].y /= c;
+                role_centroids[i].z /= c;
             }
         }
     }

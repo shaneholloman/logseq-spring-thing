@@ -13,7 +13,7 @@ pub mod semantic_forces;
 // Re-export specific types and functions
 pub use files::{fetch_and_process_files, get_file_content};
 
-pub use graph::{get_graph_data, get_paginated_graph_data, refresh_graph, update_graph};
+pub use graph::{get_graph_data, get_graph_positions, get_paginated_graph_data, refresh_graph, update_graph};
 
 pub use visualisation::get_visualisation_settings;
 

@@ -459,6 +459,44 @@ impl UnifiedGPUCompute {
             }
         }
 
+        // Degree-weighted gravity correction: replaces uniform centering with
+        // degree-aware gravity for connected nodes and peripheral shell force
+        // for isolated nodes. Only runs when degree weights have been uploaded.
+        if self.degree_weights_available && params.center_gravity_k > 0.0 {
+            if let Ok(dw_gravity_kernel) = self._module.get_function("degree_weighted_gravity_kernel") {
+                // Compute peripheral radius as 2x the average connected-node distance from origin.
+                // We use a simple heuristic: 2x the AABB extent diagonal / 2.
+                let extent_x = aabb.max[0] - aabb.min[0];
+                let extent_y = aabb.max[1] - aabb.min[1];
+                let extent_z = aabb.max[2] - aabb.min[2];
+                let peripheral_radius = (extent_x * extent_x + extent_y * extent_y + extent_z * extent_z).sqrt();
+                let isolated_spring_k = 0.01f32; // Gentle spring toward peripheral shell
+
+                let stream = &self.stream;
+                // SAFETY: Degree-weighted gravity kernel launch is safe because:
+                // 1. pos_in_* buffers are valid DeviceBuffers with capacity >= num_nodes
+                // 2. force_* buffers contain accumulated forces from the force pass
+                // 3. degree_weight buffer was uploaded via upload_degree_weights()
+                // 4. All scalar parameters are finite floats
+                unsafe {
+                    launch!(
+                        dw_gravity_kernel<<<grid_size as u32, block_size as u32, 0, stream>>>(
+                        self.pos_in_x.as_device_ptr(),
+                        self.pos_in_y.as_device_ptr(),
+                        self.pos_in_z.as_device_ptr(),
+                        self.force_x.as_device_ptr(),
+                        self.force_y.as_device_ptr(),
+                        self.force_z.as_device_ptr(),
+                        self.degree_weight.as_device_ptr(),
+                        self.num_nodes as i32,
+                        params.center_gravity_k,
+                        peripheral_radius,
+                        isolated_spring_k
+                    ))?;
+                }
+            }
+        }
+
         let integrate_pass_kernel = self._module.get_function(self.integrate_pass_kernel_name)?;
         let stream = &self.stream;
         // SAFETY: Integration kernel launch is safe because:

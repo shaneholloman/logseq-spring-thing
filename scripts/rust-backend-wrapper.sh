@@ -11,6 +11,25 @@ log() {
     echo "[RUST-WRAPPER][$(date '+%Y-%m-%d %H:%M:%S')] $1"
 }
 
+# Auto-detect GPU compute capability at runtime (GPU is accessible in container).
+# ALWAYS prefer runtime detection over .env/compose values — the .env may contain
+# a stale arch from a different GPU (e.g. sm_89 when the actual GPU is sm_86).
+DETECTED_ARCH=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader --id=0 2>/dev/null | head -1 | tr -d '.' | tr -d '[:space:]')
+if [ -n "$DETECTED_ARCH" ] && [ "$DETECTED_ARCH" != "" ]; then
+    if [ -n "${CUDA_ARCH:-}" ] && [ "$CUDA_ARCH" != "$DETECTED_ARCH" ]; then
+        log "WARNING: .env CUDA_ARCH=${CUDA_ARCH} does not match GPU (sm_${DETECTED_ARCH}). Overriding to sm_${DETECTED_ARCH}"
+    fi
+    export CUDA_ARCH="$DETECTED_ARCH"
+    log "GPU compute capability: sm_${CUDA_ARCH} (runtime-detected)"
+else
+    if [ -n "${CUDA_ARCH:-}" ]; then
+        log "WARNING: nvidia-smi failed, using .env CUDA_ARCH=${CUDA_ARCH}"
+    else
+        export CUDA_ARCH="75"
+        log "WARNING: nvidia-smi failed, no .env CUDA_ARCH, falling back to sm_75"
+    fi
+fi
+
 # Always rebuild in dev mode unless explicitly skipped
 if [ "${SKIP_RUST_REBUILD:-false}" != "true" ]; then
     log "Rebuilding Rust backend with GPU support to apply code changes..."

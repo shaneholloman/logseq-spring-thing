@@ -60,6 +60,19 @@ pub async fn run_clustering(
         if let Some(task) = tasks.get_mut(&task_id_clone) {
             match clusters {
                 Ok(clusters) => {
+                    // Populate shared node_analytics so V3 binary broadcast carries cluster_id values
+                    if let Ok(mut analytics) = app_state_clone.node_analytics.write() {
+                        for (idx, cluster) in clusters.iter().enumerate() {
+                            for &node_id in &cluster.nodes {
+                                let entry = analytics.entry(node_id).or_insert((0, 0.0, 0));
+                                entry.0 = idx as u32;
+                            }
+                        }
+                        info!(
+                            "run_clustering: Populated node_analytics with {} clusters",
+                            clusters.len()
+                        );
+                    }
                     task.status = "completed".to_string();
                     task.progress = 1.0;
                     task.clusters = Some(clusters);
@@ -189,6 +202,131 @@ pub async fn cancel_clustering(
     }
 
     not_found!("Task not found or not cancellable")
+}
+
+/// POST /analytics/clustering/dbscan
+///
+/// Runs standalone DBSCAN clustering as an analytics algorithm.
+/// Request body: `{ "epsilon": 0.5, "minPoints": 5 }`
+pub async fn run_dbscan_clustering(
+    _auth: crate::settings::auth_extractor::AuthenticatedUser,
+    app_state: web::Data<AppState>,
+    request: web::Json<serde_json::Value>,
+) -> Result<HttpResponse> {
+    let body = request.into_inner();
+
+    let epsilon = body
+        .get("epsilon")
+        .and_then(|v| v.as_f64())
+        .map(|v| v as f32)
+        .unwrap_or(0.5);
+
+    let min_points = body
+        .get("minPoints")
+        .or_else(|| body.get("min_points"))
+        .and_then(|v| v.as_u64())
+        .map(|v| v as u32)
+        .unwrap_or(5);
+
+    if epsilon <= 0.0 {
+        return ok_json!(serde_json::json!({
+            "success": false,
+            "error": "epsilon must be positive"
+        }));
+    }
+    if min_points == 0 {
+        return ok_json!(serde_json::json!({
+            "success": false,
+            "error": "minPoints must be at least 1"
+        }));
+    }
+
+    info!(
+        "Analytics DBSCAN clustering: epsilon={}, minPoints={}",
+        epsilon, min_points
+    );
+
+    let task_id = Uuid::new_v4().to_string();
+
+    if let Some(gpu_manager) = app_state.gpu_manager_addr.as_ref() {
+        use crate::actors::messages::{RunDBSCAN, DBSCANParams};
+
+        let msg = RunDBSCAN {
+            params: DBSCANParams {
+                epsilon,
+                min_points,
+            },
+        };
+
+        match gpu_manager.send(msg).await {
+            Ok(Ok(result)) => {
+                // Store as a clustering task for status tracking
+                {
+                    let task = ClusteringTask {
+                        task_id: task_id.clone(),
+                        method: "dbscan".to_string(),
+                        status: "completed".to_string(),
+                        progress: 1.0,
+                        started_at: chrono::Utc::now().timestamp() as u64,
+                        clusters: Some(result.clusters.clone()),
+                        error: None,
+                    };
+                    let mut tasks = CLUSTERING_TASKS.lock().await;
+                    tasks.insert(task_id.clone(), task);
+                }
+
+                ok_json!(serde_json::json!({
+                    "success": true,
+                    "taskId": task_id,
+                    "method": "dbscan",
+                    "epsilon": epsilon,
+                    "minPoints": min_points,
+                    "numClusters": result.num_clusters,
+                    "numNoisePoints": result.num_noise_points,
+                    "clusters": result.clusters.iter().map(|c| serde_json::json!({
+                        "id": c.id,
+                        "label": c.label,
+                        "nodeCount": c.node_count,
+                        "coherence": c.coherence,
+                        "nodes": c.nodes,
+                        "centroid": c.centroid,
+                        "color": c.color,
+                        "keywords": c.keywords,
+                    })).collect::<Vec<_>>(),
+                    "stats": {
+                        "totalNodes": result.stats.total_nodes,
+                        "numClusters": result.stats.num_clusters,
+                        "numNoisePoints": result.stats.num_noise_points,
+                        "largestClusterSize": result.stats.largest_cluster_size,
+                        "smallestClusterSize": result.stats.smallest_cluster_size,
+                        "averageClusterSize": result.stats.average_cluster_size,
+                        "computationTimeMs": result.stats.computation_time_ms
+                    },
+                    "gpuAccelerated": true
+                }))
+            }
+            Ok(Err(e)) => {
+                warn!("DBSCAN clustering failed: {}", e);
+                ok_json!(serde_json::json!({
+                    "success": false,
+                    "method": "dbscan",
+                    "error": format!("DBSCAN clustering failed: {}", e)
+                }))
+            }
+            Err(e) => {
+                warn!("GPU actor communication error: {}", e);
+                ok_json!(serde_json::json!({
+                    "success": false,
+                    "error": "GPU compute actor unavailable"
+                }))
+            }
+        }
+    } else {
+        ok_json!(serde_json::json!({
+            "success": false,
+            "error": "GPU compute not available"
+        }))
+    }
 }
 
 pub(crate) async fn perform_clustering(

@@ -22,6 +22,7 @@ import { AgentNodesLayer, useAgentNodes } from '../../visualisation/components/A
 import { useGraphVisualState, type GraphVisualMode } from '../hooks/useGraphVisualState'
 import { useGraphFiltering } from '../hooks/useGraphFiltering'
 import { useFpsMonitor } from '../hooks/useFpsMonitor'
+import { useCameraAutoFit } from '../hooks/useCameraAutoFit'
 import { computeNodeScale } from '../utils/nodeScaling'
 import { InstancedLabels } from './InstancedLabels'
 
@@ -327,6 +328,10 @@ const GraphManager: React.FC<GraphManagerProps> = ({ onDragStateChange }) => {
   useFpsMonitor();
 
   const nodePositionsRef = useRef<Float32Array | null>(null)
+
+  // Auto-fit camera to bounding box of all nodes on first position data and on explicit request
+  const { requestFit: requestCameraFit } = useCameraAutoFit(nodePositionsRef, graphData.nodes.length);
+
   const [edgePoints, setEdgePoints] = useState<number[]>([])
   const [highlightEdgePoints, setHighlightEdgePoints] = useState<number[]>([]);
   const edgeFlowRef = useRef<GlassEdgesHandle>(null);
@@ -464,6 +469,9 @@ const GraphManager: React.FC<GraphManagerProps> = ({ onDragStateChange }) => {
         }
       }
       nodePositionsRef.current = positions;
+
+      // Auto-fit camera on first real position data (one-shot, non-continuous)
+      requestCameraFit();
 
       const positionsValid = positions && positions.length > 0 && positions.length >= graphData.nodes.length * 3;
       if (positions && positions.length > 0 && !positionsValid) {

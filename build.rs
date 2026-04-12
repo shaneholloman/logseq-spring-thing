@@ -38,10 +38,18 @@ fn main() {
         .or_else(|_| env::var("CUDA_HOME"))
         .unwrap_or_else(|_| "/opt/cuda".to_string());
 
-    // Determine CUDA architecture — prefer runtime GPU detection to avoid
-    // toolkit/driver version mismatches (e.g. nvcc 13.1 on CUDA 13.0 driver).
+    // Determine CUDA architecture.
+    // In Docker builds (DOCKER_ENV set), NEVER auto-detect via nvidia-smi because the
+    // build machine's GPU (e.g. sm_89) differs from the runtime GPU (e.g. sm_86).
+    // Instead, default to sm_75 — a portable baseline whose PTX JIT-compiles to any
+    // sm_75+ GPU at runtime.  The CUDA_ARCH env var overrides in all cases.
+    let is_docker = env::var("DOCKER_ENV").is_ok();
     let cuda_arch = env::var("CUDA_ARCH").unwrap_or_else(|_| {
-        // Try to auto-detect GPU compute capability via nvidia-smi (first GPU only)
+        if is_docker {
+            println!("Docker build detected — skipping nvidia-smi GPU detection, using portable sm_75");
+            return "75".to_string();
+        }
+        // Native (non-Docker) build: try to auto-detect GPU compute capability
         if let Ok(output) = Command::new("nvidia-smi")
             .args(["--query-gpu=compute_cap", "--format=csv,noheader", "--id=0"])
             .output()
@@ -163,12 +171,13 @@ fn main() {
         let cuda_src = Path::new(src_path);
         let obj_output = PathBuf::from(&out_dir).join(format!("{}.o", obj_name));
 
-        // Use -gencode to produce only native CUBIN (no PTX fallback).
-        // This avoids Thrust/CUB JIT compilation which fails when the toolkit
-        // (13.1, PTX ISA 9.1) is newer than the driver (13.0, ISA ≤ 9.0).
+        // Use -gencode to produce CUBIN + embedded PTX for portability.
+        // The PTX allows JIT compilation on GPUs with higher compute capability
+        // than the build target (e.g. built for sm_75, runs on sm_86).
+        // ISA version is downgraded post-compilation in build.rs (see below).
         let gencode_flag = format!(
-            "-gencode=arch=compute_{},code=sm_{}",
-            cuda_arch, cuda_arch
+            "-gencode=arch=compute_{0},code=[sm_{0},compute_{0}]",
+            cuda_arch
         );
         println!("Compiling {} to object file (gencode: {})...", obj_name, gencode_flag);
         let obj_status = Command::new("nvcc")
@@ -196,7 +205,7 @@ fn main() {
 
     // Device link all object files together (required for cross-module device calls)
     let dlink_output = PathBuf::from(&out_dir).join("cuda_dlink.o");
-    let dlink_gencode = format!("-gencode=arch=compute_{},code=sm_{}", cuda_arch, cuda_arch);
+    let dlink_gencode = format!("-gencode=arch=compute_{0},code=[sm_{0},compute_{0}]", cuda_arch);
     println!("Device linking {} CUDA object files ({})...", obj_files.len(), dlink_gencode);
     let mut dlink_args: Vec<String> = vec![
         "-dlink".to_string(),
