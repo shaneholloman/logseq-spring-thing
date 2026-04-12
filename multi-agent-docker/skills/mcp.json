@@ -186,9 +186,10 @@
       "type": "stdio",
       "env": {
         "CLIPCANNON_DATA_DIR": "/home/devuser/.clipcannon",
-        "CLIPCANNON_GPU_DEVICE": "cuda:0"
+        "CLIPCANNON_GPU_DEVICE": "cuda:0",
+        "CLIPCANNON_NVENC": "true"
       },
-      "description": "AI video editor: 51 tools for understanding, editing, rendering, voice cloning, lip-sync, music",
+      "description": "AI video editor: 51 tools across 12 categories (project, understanding, discovery, editing, rendering, audio, voice, avatar, video gen, billing, disk, config). 22-stage analysis DAG, 14 ML models, 5 embedding spaces, voice clone, lip-sync, AI music, text-to-video, Voice Agent. 626 tests. Local GPU",
       "protocol": "stdio",
       "version": "0.1.0"
     },

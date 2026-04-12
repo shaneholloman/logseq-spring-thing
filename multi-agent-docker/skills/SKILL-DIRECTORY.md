@@ -1,6 +1,6 @@
 # Skill Directory -- Comprehensive Inventory and Decision Tree
 
-> **88 active skills**. 18 formerly deprecated/archived skills removed (see table below for history).
+> **91 active skills**. 18 formerly deprecated/archived skills removed (see table below for history).
 > Updated 2026-04-09. Reference this file from CLAUDE.md for intelligent routing.
 
 ---
@@ -114,6 +114,14 @@ Testing is integrated into `build-with-quality` (TDD agents) and `sparc-methodol
 | `host-webserver-debug` | Yes | HTTPS-to-HTTP bridge for debugging host web servers from Docker | Cross-origin/CORS issues when accessing host dev servers |
 | `scrapling` | Yes | Adaptive web scraping: 9 MCP tools, Cloudflare Turnstile bypass, stealth browser, spider framework with pause/resume | Web scraping, internal infra monitoring, authorized client scraping, anti-bot bypass |
 
+### Research Workflows (adapted from Feynman methodology)
+
+| Skill | MCP | Key Capability | When to Choose |
+|-------|-----|----------------|----------------|
+| `deep-research` | No | Multi-source cited investigation with parallel researcher agents, provenance tracking, verification pass | Thorough research briefs, multi-source investigations, cited reports |
+| `autoresearch` | No | Autonomous experiment loop: try ideas, measure results, keep what works, discard what doesn't | GPU kernel optimization, benchmark sweeps, performance tuning, iterative improvement |
+| `provenance-tracking` | No | Source chain verification with .provenance.md sidecar, URL checking, confidence scoring | Adding citations and verification to any research output |
+
 ### Web Research and Content
 
 | Skill | MCP | Key Capability | When to Choose |
@@ -184,7 +192,7 @@ Testing is integrated into `build-with-quality` (TDD agents) and `sparc-methodol
 | `imagemagick` | Yes | Format conversion, resize, crop, filter, batch ops, watermarks, metadata | Image format conversion, thumbnails, batch image processing |
 | `comfyui` | Yes | Stable Diffusion, FLUX, node-based workflows, distributed GPU (Salad Cloud) | AI image/video generation from prompts or workflows |
 | `open-montage` | No | Agentic video production: 11 pipelines, 49 tools, TTS, avatar, music, zero-key mode. On-demand clone | "Make a video", explainers, trailers, podcast-to-video, avatar presentations |
-| `clipcannon` | Yes | AI video editor: 51 MCP tools, 22-stage analysis, 5 embedding spaces, voice clone, lip-sync, 7 platform renders. Local GPU | Edit existing video, find moments, highlight reels, captions, voice clone, TikTok/Reels render |
+| `clipcannon` | Yes | AI video editor: 51 MCP tools (12 categories), 22-stage analysis DAG, 14 ML models, 5 embedding spaces, voice clone (Qwen3-TTS), lip-sync (LatentSync 1.6), AI music (ACE-Step), text-to-video gen, Voice Agent ("Jarvis"), 7 platform renders, credit billing. Local GPU | Edit existing video, find moments, highlight reels, captions, voice clone, lip-sync, TikTok/Reels render, text-to-video, voice agent |
 
 ### 3D and Game Development
 
@@ -487,7 +495,7 @@ Q3: What media type?
     +-- Real-time meeting copilot (transcription, coaching, recap)
     |   --> echoloop
     |
-    +-- AI video editor (51 MCP tools, analysis, voice clone, lip-sync, platform render)
+    +-- AI video editor (51 MCP tools, 12 categories, 14 ML models, voice clone, lip-sync, voice agent, text-to-video)
         --> clipcannon
 ```
 

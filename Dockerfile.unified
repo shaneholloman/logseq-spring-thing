@@ -10,7 +10,7 @@
 #
 # Build Arguments:
 #   BUILD_TARGET:  development|production (default: development)
-#   CUDA_ARCH:     CUDA compute capability (default: 86 for RTX A6000)
+#   CUDA_ARCH:     CUDA compute capability (default: 75 for portable PTX)
 #
 # Usage Examples:
 #   Development:  docker build --target development -t visionflow:dev .
@@ -25,7 +25,7 @@
 FROM cachyos/cachyos-v3:latest AS base
 
 # Build arguments
-ARG CUDA_ARCH=86
+ARG CUDA_ARCH=75
 ARG BUILD_TARGET=development
 
 # Environment variables common to all stages

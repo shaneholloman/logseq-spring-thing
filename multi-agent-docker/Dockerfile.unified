@@ -32,13 +32,13 @@
 FROM cachyos/cachyos-v3:latest
 
 # Build metadata
-LABEL org.opencontainers.image.title="Agentic Workstation"
-LABEL org.opencontainers.image.description="Unified Ruflo V4 Development Environment"
-LABEL org.opencontainers.image.version="4.0.0"
-LABEL org.opencontainers.image.created="2026-03-12"
-LABEL org.opencontainers.image.vendor="Turbo Flow"
-LABEL com.turboflow.skills.count="88"
-LABEL com.turboflow.ruflo.version="3.5.75"
+LABEL org.opencontainers.image.title="Agentic Workstation" \
+      org.opencontainers.image.description="Unified Ruflo V4 Development Environment" \
+      org.opencontainers.image.version="4.0.0" \
+      org.opencontainers.image.created="2026-03-12" \
+      org.opencontainers.image.vendor="Turbo Flow" \
+      com.turboflow.skills.count="88" \
+      com.turboflow.ruflo.version="latest"
 
 # ============================================================================
 # PHASE 1: Base System Packages
@@ -158,25 +158,25 @@ RUN cp /etc/pacman.conf /etc/pacman.conf.bak && \
 
 # Configure NVIDIA/CUDA environment
 # These enable proper GPU detection via nvidia-container-toolkit
-ENV NVIDIA_VISIBLE_DEVICES=all
-ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility,graphics,display
-ENV __GLX_VENDOR_LIBRARY_NAME=nvidia
-ENV CUDA_HOME=/opt/cuda
-ENV CUDA_PATH=/opt/cuda
-ENV CUDA_VERSION=13.1
-ENV NVCC_PREPEND_FLAGS='-ccbin /usr/bin/g++'
-ENV __NV_PRIME_RENDER_OFFLOAD=1
-ENV __VK_LAYER_NV_optimus=NVIDIA_only
-ENV LIBGL_ALWAYS_INDIRECT=0
-ENV CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1
 # Disable Claude Code's file-based auto memory (MEMORY.md) — we use RuVector/AgentDB
 # via mcp__claude-flow__memory_* MCP tools for all persistent memory. File-based memories
 # are invisible to the memory cloud visualiser and other agents.
-ENV CLAUDE_CODE_DISABLE_AUTO_MEMORY=1
+ENV NVIDIA_VISIBLE_DEVICES=all \
+    NVIDIA_DRIVER_CAPABILITIES=compute,utility,graphics,display \
+    __GLX_VENDOR_LIBRARY_NAME=nvidia \
+    CUDA_HOME=/opt/cuda \
+    CUDA_PATH=/opt/cuda \
+    CUDA_VERSION=13.1 \
+    NVCC_PREPEND_FLAGS='-ccbin /usr/bin/g++' \
+    __NV_PRIME_RENDER_OFFLOAD=1 \
+    __VK_LAYER_NV_optimus=NVIDIA_only \
+    LIBGL_ALWAYS_INDIRECT=0 \
+    CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 \
+    CLAUDE_CODE_DISABLE_AUTO_MEMORY=1
 
 # Global PATH for CUDA and Rust (available to all users and processes)
-ENV PATH="/opt/cuda/bin:/usr/lib/rustup/bin:/usr/local/bin:/usr/bin:${PATH}"
-ENV LD_LIBRARY_PATH="/opt/cuda/lib64:/opt/cuda/extras/CUPTI/lib64:/usr/lib"
+ENV PATH="/opt/cuda/bin:/usr/lib/rustup/bin:/usr/local/bin:/usr/bin:${PATH}" \
+    LD_LIBRARY_PATH="/opt/cuda/lib64:/opt/cuda/extras/CUPTI/lib64:/usr/lib"
 
 # Ensure GLX uses NVIDIA
 RUN mkdir -p /usr/share/glvnd/egl_vendor.d && \
@@ -281,7 +281,8 @@ RUN git clone --depth 1 https://github.com/colmap/colmap.git /tmp/colmap-build &
     colmap --version
 
 # Phase 2.7d: Setup vcpkg (used by LichtFeld Studio)
-RUN git clone https://github.com/microsoft/vcpkg.git /opt/vcpkg && \
+RUN pacman -Sy --noconfirm zip unzip && \
+    git clone https://github.com/microsoft/vcpkg.git /opt/vcpkg && \
     /opt/vcpkg/bootstrap-vcpkg.sh -disableMetrics
 ENV VCPKG_ROOT=/opt/vcpkg
 
@@ -330,7 +331,7 @@ RUN pacman -S --noconfirm python311 && \
 COPY --chown=devuser:devuser multi-agent-docker/config/lichtfeld-studio/ \
     /home/devuser/.claude/skills/lichtfeld-studio/
 
-RUN cat > /usr/local/bin/lfs-mcp << 'LFSEOF'
+COPY <<-'LFSEOF' /usr/local/bin/lfs-mcp
 #!/usr/bin/env bash
 # LichtFeld Studio MCP CLI wrapper
 ENDPOINT="${LICHTFELD_MCP_ENDPOINT:-http://127.0.0.1:45677/mcp}"
@@ -345,8 +346,8 @@ case "${1:-help}" in
     *) echo "Usage: lfs-mcp {ping|list|resources|call <tool> [json]|read <uri>}" ;;
 esac
 LFSEOF
-    chmod +x /usr/local/bin/lfs-mcp && \
-    cat > /usr/local/bin/video2splat << 'V2SEOF'
+
+COPY <<-'V2SEOF' /usr/local/bin/video2splat
 #!/usr/bin/env bash
 set -euo pipefail
 VIDEO="${1:?Usage: video2splat <video> <output_dir> [fps] [max_iter] [strategy]}"
@@ -367,7 +368,7 @@ LD_LIBRARY_PATH="/opt/lichtfeld-src/build:${LD_LIBRARY_PATH:-}" \
     lichtfeld-studio --headless --data-path "$DATASET" --output-path "$OUTPUT/model" \
     --iter "$MAX_ITER" --strategy "$STRATEGY"
 V2SEOF
-    chmod +x /usr/local/bin/video2splat
+RUN chmod +x /usr/local/bin/lfs-mcp /usr/local/bin/video2splat
 
 # ============================================================================
 # PHASE 3: Rust Toolchain Setup
@@ -381,35 +382,29 @@ RUN rustup default stable && \
 # PHASE 4: Multi-User Setup
 # ============================================================================
 
-# Create devuser (primary Claude Code user)
+# Create all users, directories, and sudo configuration
 RUN useradd -m -u 1000 -G wheel,video,audio,docker -s /usr/bin/zsh devuser && \
     echo "devuser ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers && \
-    mkdir -p /home/devuser/{workspace,models,.config,.cache,logs,agents,.claude/skills,.claude/config}
-
-# Create gemini-user (Google Gemini tools)
-RUN useradd -m -u 1001 -s /usr/bin/zsh gemini-user && \
-    mkdir -p /home/gemini-user/{workspace,.config,.cache}
-
-# Create openai-user (OpenAI Codex tools)
-RUN useradd -m -u 1002 -s /usr/bin/zsh openai-user && \
-    mkdir -p /home/openai-user/{workspace,.config,.cache}
-
-# Create zai-user (Z.AI service)
-RUN useradd -m -u 1003 -s /usr/bin/zsh zai-user && \
-    mkdir -p /home/zai-user/{workspace,.config,.cache}
-
-# Create deepseek-user (DeepSeek reasoning API isolation)
-RUN useradd -m -u 1004 -s /usr/bin/zsh deepseek-user && \
+    mkdir -p /home/devuser/{workspace,models,.config,.cache,logs,agents,.claude/skills,.claude/config} && \
+    # Create gemini-user (Google Gemini tools)
+    useradd -m -u 1001 -s /usr/bin/zsh gemini-user && \
+    mkdir -p /home/gemini-user/{workspace,.config,.cache} && \
+    # Create openai-user (OpenAI Codex tools)
+    useradd -m -u 1002 -s /usr/bin/zsh openai-user && \
+    mkdir -p /home/openai-user/{workspace,.config,.cache} && \
+    # Create zai-user (Z.AI service)
+    useradd -m -u 1003 -s /usr/bin/zsh zai-user && \
+    mkdir -p /home/zai-user/{workspace,.config,.cache} && \
+    # Create deepseek-user (DeepSeek reasoning API isolation)
+    useradd -m -u 1004 -s /usr/bin/zsh deepseek-user && \
     mkdir -p /home/deepseek-user/{workspace,.config/deepseek,.cache} && \
-    chown -R deepseek-user:deepseek-user /home/deepseek-user
-
-# Create local-private user (private LLM — Nemotron 3 120B via llama.cpp)
-RUN useradd -m -u 1005 -s /usr/bin/zsh local-private && \
+    chown -R deepseek-user:deepseek-user /home/deepseek-user && \
+    # Create local-private user (private LLM — Nemotron 3 120B via llama.cpp)
+    useradd -m -u 1005 -s /usr/bin/zsh local-private && \
     mkdir -p /home/local-private/{workspace,.config/local-llm,.cache,.claude} && \
-    chown -R local-private:local-private /home/local-private
-
-# Configure sudo for devuser to switch to other users
-RUN echo "devuser ALL=(gemini-user,openai-user,zai-user,deepseek-user,local-private) NOPASSWD: ALL" >> /etc/sudoers
+    chown -R local-private:local-private /home/local-private && \
+    # Configure sudo for devuser to switch to other users
+    echo "devuser ALL=(gemini-user,openai-user,zai-user,deepseek-user,local-private) NOPASSWD: ALL" >> /etc/sudoers
 
 # ============================================================================
 # PHASE 5: Node.js Global Packages (as root)
@@ -421,20 +416,19 @@ RUN echo "devuser ALL=(gemini-user,openai-user,zai-user,deepseek-user,local-priv
 # Claude-Flow V3, RuVector, Agentic-QE V3, Browser Automation
 # ============================================================================
 
-# Fix 2: Clear npm auth tokens to prevent warnings
+# Fix 2: Clear npm auth tokens to prevent warnings, then install global packages
 RUN npm logout 2>/dev/null || true && \
     npm cache clean --force && \
     npm config delete _authToken || true && \
-    npm config delete //registry.npmjs.org/:_authToken || true
-
-RUN npm install -g \
+    npm config delete //registry.npmjs.org/:_authToken || true && \
+    npm install -g \
     # Claude Code CLI - Use native installer for user-level install, npm as fallback
     # Native installer: curl -fsSL https://claude.ai/install.sh | bash (installs to ~/.local/bin)
     # We use npm here for system-wide installation in Docker images
-    @anthropic-ai/claude-code@2.1.47 \
+    @anthropic-ai/claude-code@latest \
     claude-usage-cli@latest \
     # Ruflo V3 CLI (Global Install - formerly @claude-flow/cli)
-    ruflo@3.5.75 \
+    ruflo@latest \
     # Postgres Driver (Fix 4)
     pg \
     @claude-flow/browser@latest \
@@ -473,47 +467,39 @@ RUN npm install -g \
 # NOTE: beads-cli not yet published to npm; beads task tracking is implemented locally in
 # mcp-infrastructure/servers/mcp-server.js (beads_create/claim/close/show/sync/dep).
 # When available, uncomment: npm install -g beads-cli@latest gitnexus@latest @fission-ai/openspec@latest
-RUN npm install -g defense-mcp-server reddit-mcp-buddy 2>/dev/null || echo "Security/Reddit MCP optional"
+#
+# Optional npm + pip + misc packages (all soft-fail with || echo/|| true)
+# Includes: Security/Reddit MCP, LinkedIn MCP, Scrapling, UE5 CLI, Context7,
+# Codebase Memory MCP, EchoLoop deps, Toprank SEO, Art skill bun deps
+RUN npm install -g defense-mcp-server reddit-mcp-buddy 2>/dev/null || echo "Security/Reddit MCP optional" && \
+    npm install -g @upstash/context7-mcp 2>/dev/null || echo "Context7 MCP optional" && \
+    # LinkedIn MCP (Python/uv-based)
+    pip3 install --no-cache-dir --break-system-packages linkedin-scraper-mcp 2>/dev/null || echo "LinkedIn MCP optional" && \
+    # Scrapling (adaptive web scraping with MCP server, anti-bot bypass)
+    pip3 install --no-cache-dir --break-system-packages "scrapling[ai]" 2>/dev/null || echo "Scrapling optional" && \
+    # Unreal Engine 5 automation (soft-ue-cli MCP server + CLI)
+    pip3 install --no-cache-dir --break-system-packages "soft-ue-cli[mcp]" 2>/dev/null || echo "UE5 CLI optional" && \
+    # Codebase Memory MCP (code intelligence: call graphs, architecture, diff impact)
+    (curl -fsSL https://raw.githubusercontent.com/DeusData/codebase-memory-mcp/main/install.sh | bash -s -- --skip-config 2>/dev/null || \
+        echo "codebase-memory-mcp optional (install manually with: curl -fsSL https://... | bash)") && \
+    # EchoLoop meeting copilot (real-time transcription + LLM coaching)
+    pip3 install --no-cache-dir --break-system-packages \
+        sounddevice numpy faster-whisper anthropic openai httpx 2>/dev/null || echo "EchoLoop deps optional" && \
+    # Toprank SEO (Python, Google Auth)
+    pip3 install --no-cache-dir --break-system-packages google-auth google-auth-httplib2 2>/dev/null || echo "Toprank deps optional" && \
+    # Nano Banana Art Skill (Bun + TypeScript tools)
+    (cd /home/devuser/.claude/skills/art/tools && bun install 2>/dev/null || echo "Art skill bun deps optional") && \
+    echo "V4 systems (beads-cli, gitnexus, openspec) - skipped (not yet published to npm)"
 
-# LinkedIn MCP (Python/uv-based)
-RUN pip3 install --no-cache-dir --break-system-packages linkedin-scraper-mcp 2>/dev/null || echo "LinkedIn MCP optional"
-
-# Scrapling (adaptive web scraping with MCP server, anti-bot bypass)
-RUN pip3 install --no-cache-dir --break-system-packages "scrapling[ai]" 2>/dev/null || echo "Scrapling optional"
-
-# Unreal Engine 5 automation (soft-ue-cli MCP server + CLI)
-RUN pip3 install --no-cache-dir --break-system-packages "soft-ue-cli[mcp]" 2>/dev/null || echo "UE5 CLI optional"
-
-# Context7 documentation MCP (version-specific library docs, anti-hallucination)
-RUN npm install -g @upstash/context7-mcp 2>/dev/null || echo "Context7 MCP optional"
-
-# Codebase Memory MCP (code intelligence: call graphs, architecture, diff impact)
-RUN curl -fsSL https://raw.githubusercontent.com/DeusData/codebase-memory-mcp/main/install.sh | bash -s -- --skip-config 2>/dev/null || \
-    echo "codebase-memory-mcp optional (install manually with: curl -fsSL https://... | bash)"
-
-# EchoLoop meeting copilot (real-time transcription + LLM coaching)
-RUN pip3 install --no-cache-dir --break-system-packages \
-    sounddevice numpy faster-whisper anthropic openai httpx 2>/dev/null || echo "EchoLoop deps optional"
-
-# Toprank SEO (Python, Google Auth)
-RUN pip3 install --no-cache-dir --break-system-packages google-auth google-auth-httplib2 2>/dev/null || echo "Toprank deps optional"
-
-# Nano Banana Art Skill (Bun + TypeScript tools)
-RUN cd /home/devuser/.claude/skills/art/tools && bun install 2>/dev/null || echo "Art skill bun deps optional"
-
-RUN echo "⏭ V4 systems (beads-cli, gitnexus, openspec) - skipped (not yet published to npm)"
-
-# Fix 4/6: Install pg driver in ruflo global package (and legacy claude-flow path)
-RUN cd /usr/local/lib/node_modules/ruflo/node_modules/@claude-flow/cli && npm install pg --save 2>/dev/null || \
-    cd /usr/local/lib/node_modules/@claude-flow/cli && npm install pg --save 2>/dev/null || true
-
-# Install Playwright browsers (skip system deps - already installed via pacman)
-RUN npx -y playwright install chromium
-
-# Setup agent-browser with playwright version compatibility
-# agent-browser uses playwright internally; create symlinks for minor version mismatches
-# Handle both root and devuser playwright caches
-RUN agent-browser install 2>/dev/null || true && \
+# Fix 4/6: Install pg driver, Playwright, agent-browser, Google Cloud CLI, clear NPX cache
+RUN (cd /usr/local/lib/node_modules/ruflo/node_modules/@claude-flow/cli && npm install pg --save 2>/dev/null || \
+    cd /usr/local/lib/node_modules/@claude-flow/cli && npm install pg --save 2>/dev/null || true) && \
+    # Install Playwright browsers (skip system deps - already installed via pacman)
+    npx -y playwright install chromium && \
+    # Setup agent-browser with playwright version compatibility
+    # agent-browser uses playwright internally; create symlinks for minor version mismatches
+    # Handle both root and devuser playwright caches
+    (agent-browser install 2>/dev/null || true) && \
     for cache_dir in /root/.cache/ms-playwright /home/devuser/.cache/ms-playwright; do \
         [ -d "$cache_dir" ] || continue; \
         cd "$cache_dir" && \
@@ -528,19 +514,17 @@ RUN agent-browser install 2>/dev/null || true && \
                 [ -e "${base}-${target_v}" ] || ln -sf "$dir" "${base}-${target_v}" 2>/dev/null; \
             done; \
         done; \
-    done || true
-
-# Install Google Cloud CLI (gcloud) via official installer script
-RUN curl -sSL https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-linux-x86_64.tar.gz -o /tmp/gcloud.tar.gz && \
+    done || true && \
+    # Install Google Cloud CLI (gcloud) via official installer script
+    curl -sSL https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-linux-x86_64.tar.gz -o /tmp/gcloud.tar.gz && \
     tar -xzf /tmp/gcloud.tar.gz -C /opt && \
     /opt/google-cloud-sdk/install.sh --quiet --path-update=true && \
     ln -s /opt/google-cloud-sdk/bin/gcloud /usr/local/bin/gcloud && \
     ln -s /opt/google-cloud-sdk/bin/gsutil /usr/local/bin/gsutil && \
     ln -s /opt/google-cloud-sdk/bin/bq /usr/local/bin/bq && \
-    rm /tmp/gcloud.tar.gz
-
-# Clear NPX cache to prevent corruption issues
-RUN rm -rf /root/.npm/_npx /home/devuser/.npm/_npx 2>/dev/null || true
+    rm /tmp/gcloud.tar.gz && \
+    # Clear NPX cache to prevent corruption issues
+    rm -rf /root/.npm/_npx /home/devuser/.npm/_npx 2>/dev/null || true
 
 # ============================================================================
 # PHASE 6: Python 3.12 & Virtual Environment & Tools
@@ -587,17 +571,17 @@ ENV PATH="/opt/venv/bin:${PATH}"
 # PHASE 7: devuser Setup (Primary Development User)
 # ============================================================================
 
+# Ensure devuser owns their home before switching
+RUN chown -R devuser:devuser /home/devuser
+
 USER devuser
 WORKDIR /home/devuser
 
-# Install Oh-My-Zsh for devuser
-RUN sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended
-
-# Install uv package manager (skip fish config, use fallback for claude-monitor)
-RUN curl -LsSf https://astral.sh/uv/install.sh | sh || true
+# Install Oh-My-Zsh for devuser + uv package manager
+RUN sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended && \
+    (curl -LsSf https://astral.sh/uv/install.sh | sh || true)
 
 # Install Rust tools for devuser (as devuser, with proper environment)
-USER devuser
 ENV PATH="/home/devuser/.cargo/bin:${PATH}"
 RUN cargo install bat exa ripgrep fd-find tokei wasm-pack || echo "Rust tools installation skipped"
 USER root
@@ -607,8 +591,6 @@ RUN cd /home/devuser/agents && \
     git clone --depth 1 https://github.com/ChrisRoyse/610ClaudeSubagents.git temp-agents && \
     mv temp-agents/agents/*.md . && \
     rm -rf temp-agents
-
-USER root
 
 # ============================================================================
 # PHASE 8: gemini-user Setup
@@ -623,14 +605,10 @@ WORKDIR /home/gemini-user
 # Install Oh-My-Zsh for gemini-user
 RUN sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended
 
-# Install gemini-flow (will be configured with API key at runtime)
-RUN npm install --prefix /home/gemini-user/.local gemini-flow
-
-# Pre-create Gemini CLI config directories (populated at runtime by entrypoint)
-RUN mkdir -p /home/gemini-user/.gemini
-
-# Configure gemini-user .zshrc with Gemini CLI env
-RUN echo '' >> ~/.zshrc && \
+# Install gemini-flow, create config dirs, configure .zshrc with Gemini CLI env
+RUN npm install --prefix /home/gemini-user/.local gemini-flow && \
+    mkdir -p /home/gemini-user/.gemini && \
+    echo '' >> ~/.zshrc && \
     echo '# Google Gemini CLI' >> ~/.zshrc && \
     echo 'export PATH="/usr/local/bin:$PATH"' >> ~/.zshrc && \
     echo '[ -f ~/.gemini/.env ] && export $(grep -v "^#" ~/.gemini/.env | xargs) 2>/dev/null' >> ~/.zshrc
@@ -641,18 +619,15 @@ USER root
 # PHASE 9: openai-user Setup (GPT-5.4 / Codex First-Class Citizen)
 # ============================================================================
 
-USER root
 # Install the official OpenAI Codex CLI and Node SDK globally
 RUN npm install -g @openai/codex openai
 
 USER openai-user
 WORKDIR /home/openai-user
 
-# Install Oh-My-Zsh for openai-user
-RUN sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended
-
-# Install OpenAI Python library (no --user flag with venv)
-RUN /opt/venv/bin/pip install openai || echo "OpenAI install skipped"
+# Install Oh-My-Zsh for openai-user + OpenAI Python library
+RUN sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended && \
+    (/opt/venv/bin/pip install openai || echo "OpenAI install skipped")
 
 USER root
 
@@ -672,18 +647,16 @@ USER root
 # PHASE 11: Hyprland & Wayland Desktop Configuration
 # ============================================================================
 
-# Create Hyprland config directory
+# Create Hyprland config directory, Wayvnc password, XDG runtime directory
 RUN mkdir -p /home/devuser/.config/hypr && \
-    chown -R devuser:devuser /home/devuser/.config
-
-# Wayvnc password file (same as old VNC)
-RUN mkdir -p /home/devuser/.config/wayvnc && \
+    chown -R devuser:devuser /home/devuser/.config && \
+    # Wayvnc password file (same as old VNC)
+    mkdir -p /home/devuser/.config/wayvnc && \
     echo "turboflow" > /home/devuser/.config/wayvnc/password && \
     chmod 600 /home/devuser/.config/wayvnc/password && \
-    chown -R devuser:devuser /home/devuser/.config/wayvnc
-
-# Create XDG runtime directory
-RUN mkdir -p /run/user/1000 && \
+    chown -R devuser:devuser /home/devuser/.config/wayvnc && \
+    # Create XDG runtime directory
+    mkdir -p /run/user/1000 && \
     chown devuser:devuser /run/user/1000 && \
     chmod 700 /run/user/1000
 
@@ -694,10 +667,9 @@ RUN mkdir -p /run/user/1000 && \
 RUN mkdir -p /var/run/sshd && \
     sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin no/' /etc/ssh/sshd_config && \
     sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config && \
-    echo "AllowUsers devuser" >> /etc/ssh/sshd_config
-
-# Set password for devuser (default: turboflow)
-RUN echo "devuser:turboflow" | chpasswd
+    echo "AllowUsers devuser" >> /etc/ssh/sshd_config && \
+    # Set password for devuser (default: turboflow)
+    echo "devuser:turboflow" | chpasswd
 
 # ============================================================================
 # PHASE 13: Copy Application Files
@@ -732,44 +704,36 @@ RUN chmod +x /home/devuser/.local/bin/claude-md-dedup 2>/dev/null || true
 # Install MCP Server Dependencies (Node.js-based skills)
 # ============================================================================
 
-# Playwright MCP server (consolidated v2.0.0)
+# Install all MCP server Node.js dependencies in one layer
+# Web-summary MCP server (Python FastMCP v2.0.0 - no npm needed, deps installed via pip below)
 RUN cd /home/devuser/.claude/skills/playwright/mcp-server && \
-    npm install --production 2>/dev/null || echo "Playwright deps optional" && \
-    chmod +x server.js 2>/dev/null || true
-
-# Web-summary MCP server (Python FastMCP v2.0.0 - no npm needed)
-# Dependencies installed via pip below
-
-# Jupyter notebooks MCP server
-RUN cd /home/devuser/.claude/skills/jupyter-notebooks && \
-    npm install --production 2>/dev/null || echo "Jupyter deps optional" && \
-    chmod +x server.js 2>/dev/null || true
-
-# ComfyUI MCP server
-RUN cd /home/devuser/.claude/skills/comfyui/mcp-server && \
-    npm install --production 2>/dev/null || echo "ComfyUI deps optional" && \
-    chmod +x server.js 2>/dev/null || true
-
-# Perplexity MCP server
-RUN cd /home/devuser/.claude/skills/perplexity/mcp-server && \
-    npm install --production 2>/dev/null || echo "Perplexity deps optional" && \
-    chmod +x server.js 2>/dev/null || true
-
-# OpenAI Codex MCP server (GPT-5.4 bridge for cross-agent delegation)
-RUN cd /home/devuser/.claude/skills/openai-codex/mcp-server && \
-    npm install --production 2>/dev/null || echo "OpenAI Codex deps optional" && \
-    chmod +x server.js 2>/dev/null || true
-
-# Host Webserver Debug MCP server (HTTPS bridge, screenshots, CORS debugging)
-RUN cd /home/devuser/.claude/skills/host-webserver-debug/mcp-server && \
-    npm install --production 2>/dev/null || echo "Host debug deps optional" && \
+    (npm install --production 2>/dev/null || echo "Playwright deps optional") && \
     chmod +x server.js 2>/dev/null || true && \
-    chmod +x /home/devuser/.claude/skills/host-webserver-debug/tools/*.js 2>/dev/null || true
-
-# Lazy-Fetch MCP server (context management, blueprints, progressive discovery)
-RUN cd /home/devuser/.claude/skills/lazy-fetch/mcp-server && \
-    npm install --production 2>/dev/null || echo "Lazy-fetch deps optional" && \
-    npm run build 2>/dev/null || echo "Lazy-fetch build optional" && \
+    # Jupyter notebooks MCP server
+    cd /home/devuser/.claude/skills/jupyter-notebooks && \
+    (npm install --production 2>/dev/null || echo "Jupyter deps optional") && \
+    chmod +x server.js 2>/dev/null || true && \
+    # ComfyUI MCP server
+    cd /home/devuser/.claude/skills/comfyui/mcp-server && \
+    (npm install --production 2>/dev/null || echo "ComfyUI deps optional") && \
+    chmod +x server.js 2>/dev/null || true && \
+    # Perplexity MCP server
+    cd /home/devuser/.claude/skills/perplexity/mcp-server && \
+    (npm install --production 2>/dev/null || echo "Perplexity deps optional") && \
+    chmod +x server.js 2>/dev/null || true && \
+    # OpenAI Codex MCP server (GPT-5.4 bridge for cross-agent delegation)
+    cd /home/devuser/.claude/skills/openai-codex/mcp-server && \
+    (npm install --production 2>/dev/null || echo "OpenAI Codex deps optional") && \
+    chmod +x server.js 2>/dev/null || true && \
+    # Host Webserver Debug MCP server (HTTPS bridge, screenshots, CORS debugging)
+    cd /home/devuser/.claude/skills/host-webserver-debug/mcp-server && \
+    (npm install --production 2>/dev/null || echo "Host debug deps optional") && \
+    chmod +x server.js 2>/dev/null || true && \
+    chmod +x /home/devuser/.claude/skills/host-webserver-debug/tools/*.js 2>/dev/null || true && \
+    # Lazy-Fetch MCP server (context management, blueprints, progressive discovery)
+    cd /home/devuser/.claude/skills/lazy-fetch/mcp-server && \
+    (npm install --production 2>/dev/null || echo "Lazy-fetch deps optional") && \
+    (npm run build 2>/dev/null || echo "Lazy-fetch build optional") && \
     chmod +x dist/mcp-server.js 2>/dev/null || true && \
     chmod +x dist/cli.js 2>/dev/null || true && \
     ln -sf /home/devuser/.claude/skills/lazy-fetch/mcp-server/dist/cli.js /usr/local/bin/lazy 2>/dev/null || true
@@ -778,61 +742,41 @@ RUN cd /home/devuser/.claude/skills/lazy-fetch/mcp-server && \
 # Install Python Dependencies for FastMCP Skills
 # ============================================================================
 
-# Core MCP and FastMCP dependencies
+# All Python dependencies for FastMCP skills in one layer
+# Core MCP, Docker manager, Jupyter, NotebookLM, web scraping
 RUN pip3 install --no-cache-dir --break-system-packages \
     mcp>=1.0.0 \
     pydantic>=2.0.0 \
     httpx>=0.25.0 \
-    youtube-transcript-api>=0.6.0
-
-# Docker manager skill
-RUN pip3 install --no-cache-dir --break-system-packages \
-    docker>=7.0.0
-
-# Jupyter notebook skill
-RUN pip3 install --no-cache-dir --break-system-packages \
-    ipykernel nbformat
-
-# NotebookLM MCP server (notebooklm-py SDK with browser auth)
-# Python playwright needs its own chromium binary (separate from Node.js playwright)
-RUN pip3 install --no-cache-dir --break-system-packages \
-    "notebooklm-py[browser]" && \
+    youtube-transcript-api>=0.6.0 \
+    docker>=7.0.0 \
+    ipykernel nbformat \
+    "notebooklm-py[browser]" \
+    beautifulsoup4 requests \
+    "mcp[cli]>=1.3.0" \
+    websockets>=12.0 && \
+    # NotebookLM MCP server: Python playwright needs its own chromium binary (separate from Node.js playwright)
     playwright install --with-deps chromium 2>/dev/null || echo "NotebookLM playwright optional" && \
     ln -sf /root/.cache/ms-playwright /home/devuser/.cache/ms-playwright 2>/dev/null || true
 
-# Web scraping and general utilities
-RUN pip3 install --no-cache-dir --break-system-packages \
-    beautifulsoup4 requests
-
-# ============================================================================
-# Unified Blender MCP Server (Best-in-class 50+ tools)
-# ============================================================================
-
-# Install FastMCP and websockets for the bridge
-RUN pip3 install --no-cache-dir --break-system-packages \
-    "mcp[cli]>=1.3.0" \
-    websockets>=12.0 \
-    pydantic>=2.0.0
-
-# Create Blender 5.x addon directory and install Unified Blender MCP addon
+# Create Blender 5.x addon directory, startup script, and make headless script executable
 RUN mkdir -p /home/devuser/.config/blender/5.0/scripts/addons/unified_blender_mcp && \
-    cp -r /home/devuser/.claude/skills/blender/addon/* \
-       /home/devuser/.config/blender/5.0/scripts/addons/unified_blender_mcp/ && \
-    chown -R devuser:devuser /home/devuser/.config/blender
-
-# Create Blender startup script to auto-enable the unified addon
-RUN mkdir -p /home/devuser/.config/blender/5.0/scripts/startup && \
+    if [ -d /home/devuser/.claude/skills/blender/addon ]; then \
+        cp -r /home/devuser/.claude/skills/blender/addon/* \
+           /home/devuser/.config/blender/5.0/scripts/addons/unified_blender_mcp/; \
+    fi && \
+    # Create Blender startup script to auto-enable the unified addon
+    mkdir -p /home/devuser/.config/blender/5.0/scripts/startup && \
     echo 'import bpy\ntry:\n    bpy.ops.preferences.addon_enable(module="unified_blender_mcp")\n    print("[UnifiedMCP] Addon enabled successfully")\nexcept Exception as e:\n    print(f"[UnifiedMCP] Failed to enable: {e}")' \
     > /home/devuser/.config/blender/5.0/scripts/startup/enable_unified_mcp.py && \
-    chown -R devuser:devuser /home/devuser/.config/blender
-
-# Make headless start script executable
-RUN chmod +x /home/devuser/.claude/skills/blender/scripts/headless_start.py 2>/dev/null || true
+    chown -R devuser:devuser /home/devuser/.config/blender && \
+    # Make headless start script executable
+    chmod +x /home/devuser/.claude/skills/blender/scripts/headless_start.py 2>/dev/null || true
 
 # Unified Blender MCP environment variables
-ENV BLENDER_WS_HOST=127.0.0.1
-ENV BLENDER_WS_PORT=8765
-ENV BLENDER_WS_URL=ws://127.0.0.1:8765
+ENV BLENDER_WS_HOST=127.0.0.1 \
+    BLENDER_WS_PORT=8765 \
+    BLENDER_WS_URL=ws://127.0.0.1:8765
 
 # ============================================================================
 # Make All MCP Entry Points Executable
@@ -928,10 +872,9 @@ RUN mkdir -p /home/devuser/.claude-flow && \
   }
 }
 EOF
-RUN chown -R devuser:devuser /home/devuser/.claude-flow
-
-# Create global wrapper for quick access (rf = ruflo, cf = backwards compat)
-RUN echo '#!/bin/bash\n# Ruflo V3 Quick Access\nexec ruflo "$@"' > /usr/local/bin/rf && \
+RUN chown -R devuser:devuser /home/devuser/.claude-flow && \
+    # Create global wrapper for quick access (rf = ruflo, cf = backwards compat)
+    echo '#!/bin/bash\n# Ruflo V3 Quick Access\nexec ruflo "$@"' > /usr/local/bin/rf && \
     chmod +x /usr/local/bin/rf && \
     echo '#!/bin/bash\n# Claude Flow → Ruflo backwards compat\nexec ruflo "$@"' > /usr/local/bin/cf && \
     chmod +x /usr/local/bin/cf
@@ -959,8 +902,8 @@ RUN npx ruflo@latest plugins install -n "@claude-flow/plugin-agentic-qe" 2>/dev/
 # Clone repo, run installer (downloads Claude Desktop DMG from CDN, extracts, patches)
 RUN git clone --depth 1 https://github.com/johnzfitch/claude-cowork-linux.git /tmp/claude-cowork-linux && \
     cd /tmp/claude-cowork-linux && \
-    # Run install.sh which handles DMG download, extraction, patching, and launcher creation
-    HOME=/home/devuser INSTALL_FORCE=1 bash install.sh 2>&1 || true && \
+    # Run install.sh as devuser (refuses to run as root)
+    su devuser -c "HOME=/home/devuser INSTALL_FORCE=1 bash /tmp/claude-cowork-linux/install.sh" 2>&1 || true && \
     # Fix i18n: copy locale files to electron resources dir (prevents ENOENT on en-US.json)
     ELECTRON_RESOURCES="$(dirname $(readlink -f $(which electron)))/resources" && \
     if [ -d "/home/devuser/.local/share/claude-desktop/linux-app-extracted/resources/i18n" ]; then \
@@ -968,7 +911,8 @@ RUN git clone --depth 1 https://github.com/johnzfitch/claude-cowork-linux.git /t
            "$ELECTRON_RESOURCES/" 2>/dev/null || true; \
     fi && \
     # Create /sessions symlink (required by Claude Code binary within Cowork)
-    mkdir -p /home/devuser/.config/Claude/local-agent-mode-sessions/sessions && \
+    mkdir -p /home/devuser/.local/share/claude-desktop \
+             /home/devuser/.config/Claude/local-agent-mode-sessions/sessions && \
     ln -sf /home/devuser/.config/Claude/local-agent-mode-sessions/sessions /sessions && \
     # Clean up clone (install already copied to ~/.local/share/claude-desktop)
     rm -rf /tmp/claude-cowork-linux && \
@@ -1030,60 +974,56 @@ RUN cd /opt/claude-zai && npm install --production && \
 # Copy HTTPS Bridge Proxy (bridges https://localhost:3001 -> host http:3001)
 COPY --chown=devuser:devuser multi-agent-docker/https-bridge/ /opt/https-bridge/
 # MCP Gateway (TCP + WebSocket)
-RUN mkdir -p /opt/mcp-gateway
 COPY --chown=devuser:devuser multi-agent-docker/mcp-infrastructure/servers/mcp-gateway.js /opt/mcp-gateway/server.js
-RUN cd /opt/mcp-gateway && npm install ws --production
-RUN cd /opt/https-bridge && \
+
+# Install MCP Gateway deps, HTTPS Bridge certs, code-server, Antigravity IDE, gemini-flow
+RUN mkdir -p /opt/mcp-gateway && \
+    cd /opt/mcp-gateway && npm install ws --production && \
+    # HTTPS Bridge self-signed cert
+    cd /opt/https-bridge && \
     openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
     -keyout server.key -out server.crt -subj "/CN=localhost" && \
-    chown -R devuser:devuser /opt/https-bridge
-
-# Install code-server using standalone binary method (AUR requires non-root)
-RUN mkdir -p /usr/local/lib/code-server && \
+    chown -R devuser:devuser /opt/https-bridge && \
+    # Install code-server using standalone binary method (AUR requires non-root)
+    mkdir -p /usr/local/lib/code-server && \
     curl -fsSL https://github.com/coder/code-server/releases/download/v4.96.2/code-server-4.96.2-linux-amd64.tar.gz | \
     tar -xz -C /usr/local/lib/code-server --strip-components=1 && \
-    ln -s /usr/local/lib/code-server/bin/code-server /usr/bin/code-server
-
-# Install Google Antigravity IDE
-RUN mkdir -p /opt/antigravity && \
+    ln -s /usr/local/lib/code-server/bin/code-server /usr/bin/code-server && \
+    # Install Google Antigravity IDE
+    mkdir -p /opt/antigravity && \
     curl -fsSL https://edgedl.me.gvt1.com/edgedl/release2/j0qc3/antigravity/stable/1.11.3-6583016683339776/linux-x64/Antigravity.tar.gz | \
     tar -xz -C /opt/antigravity --strip-components=1 && \
-    ln -s /opt/antigravity/bin/antigravity /usr/bin/antigravity
-
-# Install gemini-flow globally
-RUN npm install -g gemini-flow
+    ln -s /opt/antigravity/bin/antigravity /usr/bin/antigravity && \
+    # Install gemini-flow globally
+    npm install -g gemini-flow
 
 # Copy helper scripts (includes generate-mcp-settings.sh for dynamic skill discovery)
 COPY --chown=root:root multi-agent-docker/unified-config/scripts/ /usr/local/bin/
+# Copy local LLM proxy script (Anthropic-to-OpenAI translation for llama.cpp)
+COPY --chown=root:root multi-agent-docker/unified-config/scripts/local-llm-proxy.mjs /opt/scripts/local-llm-proxy.mjs
+
+# Set permissions on helper scripts, LLM proxy, and create SSH directory
 RUN chmod 755 /usr/local/bin/*.sh && \
     ls -la /usr/local/bin/generate-mcp-settings.sh 2>/dev/null && \
-    echo "✓ MCP settings generator installed" || true
-
-# Copy local LLM proxy script (Anthropic-to-OpenAI translation for llama.cpp)
-RUN mkdir -p /opt/scripts
-COPY --chown=root:root multi-agent-docker/unified-config/scripts/local-llm-proxy.mjs /opt/scripts/local-llm-proxy.mjs
-RUN chmod 755 /opt/scripts/local-llm-proxy.mjs
-
-# Create SSH directory structure (will be mounted at runtime)
-RUN mkdir -p /home/devuser/.ssh && \
+    echo "✓ MCP settings generator installed" || true && \
+    mkdir -p /opt/scripts && \
+    chmod 755 /opt/scripts/local-llm-proxy.mjs && \
+    # Create SSH directory structure (will be mounted at runtime)
+    mkdir -p /home/devuser/.ssh && \
     chown devuser:devuser /home/devuser/.ssh && \
     chmod 700 /home/devuser/.ssh
 
-# Copy tmux configuration
+# Copy tmux configuration, screensaver, autostart, and terminal init scripts
 COPY --chown=devuser:devuser multi-agent-docker/unified-config/tmux-autostart.sh /home/devuser/.config/tmux-autostart.sh
-RUN chmod +x /home/devuser/.config/tmux-autostart.sh
-
-# Copy screensaver disable script
 COPY --chown=devuser:devuser multi-agent-docker/unified-config/disable-screensaver.sh /home/devuser/.config/disable-screensaver.sh
-RUN chmod +x /home/devuser/.config/disable-screensaver.sh
-
-# Copy terminal autostart script
 COPY --chown=devuser:devuser multi-agent-docker/unified-config/autostart-terminals.sh /home/devuser/.config/autostart-terminals.sh
-RUN chmod +x /home/devuser/.config/autostart-terminals.sh
-
-# Copy terminal init scripts
 COPY --chown=devuser:devuser multi-agent-docker/unified-config/terminal-init/ /home/devuser/.config/terminal-init/
-RUN chmod +x /home/devuser/.config/terminal-init/*.sh && \
+
+# Make all config scripts executable and create symlinks for terminal init
+RUN chmod +x /home/devuser/.config/tmux-autostart.sh \
+             /home/devuser/.config/disable-screensaver.sh \
+             /home/devuser/.config/autostart-terminals.sh && \
+    chmod +x /home/devuser/.config/terminal-init/*.sh && \
     ln -sf /home/devuser/.config/terminal-init/init-claude-main.sh /home/devuser/.config/init-claude-main.sh && \
     ln -sf /home/devuser/.config/terminal-init/init-claude-agent.sh /home/devuser/.config/init-claude-agent.sh && \
     ln -sf /home/devuser/.config/terminal-init/init-services.sh /home/devuser/.config/init-services.sh && \
@@ -1110,11 +1050,11 @@ COPY --chown=devuser:devuser multi-agent-docker/CLAUDE.workspace.md /home/devuse
 COPY --chown=devuser:devuser multi-agent-docker/aisp.md /home/devuser/aisp.md
 COPY --chown=devuser:devuser multi-agent-docker/aisp.md /home/devuser/workspace/aisp.md
 
-# Fix 5: Copy Claude-Flow Global Configuration
-RUN mkdir -p /home/devuser/.claude-flow
-COPY --chown=devuser:devuser multi-agent-docker/unified-config/claude-flow-config.json /home/devuser/.claude-flow/config.json
+# Fix 5: Create directories for Claude-Flow config, PG bridge, and statusline
+RUN mkdir -p /home/devuser/.claude-flow /opt/config /opt/unified-config
 
-# Copy RuVector Initialization SQL
+# Copy Claude-Flow Global Configuration + RuVector Initialization SQL
+COPY --chown=devuser:devuser multi-agent-docker/unified-config/claude-flow-config.json /home/devuser/.claude-flow/config.json
 COPY --chown=devuser:devuser multi-agent-docker/unified-config/init-ruvector.sql /home/devuser/.claude-flow/init-ruvector.sql
 
 # Copy PG Memory Bridge + patched memory modules (routes MCP memory ops to PostgreSQL)
@@ -1124,7 +1064,6 @@ COPY --chown=root:root multi-agent-docker/unified-config/ruflo-memory-bridge-pg.
 COPY --chown=root:root multi-agent-docker/unified-config/ruflo-memory-tools-pg.js /opt/config/ruflo-memory-tools-pg.js
 
 # Copy Statusline with Guidance Indicator (Fix 6: Guidance Control Plane)
-RUN mkdir -p /opt/unified-config
 COPY --chown=root:root multi-agent-docker/unified-config/statusline.sh /opt/unified-config/statusline.sh
 
 # ============================================================================
@@ -1223,7 +1162,7 @@ VOLUME ["/home/devuser/workspace", \
 # PHASE 16.5: QGIS MCP Plugin (nkarasiak/qgis-mcp)
 # ============================================================================
 
-# Clone qgis-mcp and symlink plugin into QGIS, patch default port to 9877
+# Clone qgis-mcp, symlink plugin into QGIS, patch default port, install PyQt5
 RUN git clone --depth 1 https://github.com/nkarasiak/qgis-mcp /home/devuser/workspace/qgis-mcp && \
     mkdir -p /home/devuser/.local/share/QGIS/QGIS3/profiles/default/python/plugins && \
     ln -s /home/devuser/workspace/qgis-mcp/qgis_mcp_plugin \
@@ -1232,10 +1171,9 @@ RUN git clone --depth 1 https://github.com/nkarasiak/qgis-mcp /home/devuser/work
       /home/devuser/workspace/qgis-mcp/qgis_mcp_plugin/plugin.py && \
     sed -i 's/DEFAULT_PORT = 9876/DEFAULT_PORT = 9877/' \
       /home/devuser/workspace/qgis-mcp/src/qgis_mcp/helpers.py && \
-    chown -R devuser:devuser /home/devuser/workspace/qgis-mcp
-
-# Install PyQt5 for Python 3.14 (runtime fix for SIP module)
-RUN python3.14 -m pip install --break-system-packages PyQt5-sip PyQt5 && \
+    chown -R devuser:devuser /home/devuser/workspace/qgis-mcp && \
+    # Install PyQt5 for Python 3.14 (runtime fix for SIP module)
+    python3.14 -m pip install --break-system-packages PyQt5-sip PyQt5 && \
     python3.14 -c "from PyQt5 import QtCore; print('PyQt5 configured for Python 3.14')"
 
 # ============================================================================

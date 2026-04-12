@@ -189,9 +189,9 @@ export const UNIFIED_SETTINGS_CONFIG: Record<string, SectionConfig> = {
       { key: 'enabled', label: 'Physics Enabled', type: 'toggle', path: 'visualisation.graphs.logseq.physics.enabled', description: 'Enable physics simulation' },
       { key: 'autoBalance', label: 'Auto Balance', type: 'toggle', path: 'visualisation.graphs.logseq.physics.autoBalance', description: 'Adaptive force balancing' },
       { key: 'damping', label: 'Damping', type: 'slider', min: 0, max: 1, step: 0.01, path: 'visualisation.graphs.logseq.physics.damping', description: 'Velocity damping — lower = more energy, higher = faster settle' },
-      { key: 'springK', label: 'Spring Strength', type: 'slider', min: 0.1, max: 200, step: 1, path: 'visualisation.graphs.logseq.physics.springK', description: 'Edge spring constant — higher pulls connected nodes tighter' },
-      { key: 'repelK', label: 'Repulsion', type: 'slider', min: 0, max: 2000, step: 10, path: 'visualisation.graphs.logseq.physics.repelK', description: 'Node repulsion — 0 for dense clusters, high for spread' },
-      { key: 'attractionK', label: 'Attraction', type: 'slider', min: 0, max: 5000, step: 1, path: 'visualisation.graphs.logseq.physics.attractionK', description: 'Edge attraction strength' },
+      { key: 'springK', label: 'Spring Strength', type: 'slider', min: 0.1, max: 100, step: 0.5, path: 'visualisation.graphs.logseq.physics.springK', description: 'Edge spring constant (recommended: 8-20 for 2K+ node graphs)' },
+      { key: 'repelK', label: 'Repulsion', type: 'slider', min: 0, max: 3000, step: 10, path: 'visualisation.graphs.logseq.physics.repelK', description: 'Node repulsion — balance with gravity (recommended: 800-1500)' },
+      { key: 'attractionK', label: 'Attraction', type: 'slider', min: 0, max: 100, step: 0.5, path: 'visualisation.graphs.logseq.physics.attractionK', description: 'Edge attraction strength' },
 
       // --- Layout Mode (moved from Quality) ---
       { key: 'layoutMode', label: 'Layout Mode', type: 'select', options: ['force-directed', 'dag-topdown', 'dag-radial', 'dag-leftright', 'type-clustering'], path: 'qualityGates.layoutMode', description: 'Graph layout algorithm — force-directed uses spring/repulsion, DAG modes add hierarchical layout, type-clustering groups by node type' },

@@ -304,8 +304,8 @@ configure_dev_environment() {
     
     # Set up git configuration if not present
     if ! git config --global user.name >/dev/null 2>&1; then
-        git config --global user.name "Dev User"
-        git config --global user.email "dev@multi-agent.local"
+        git config --global user.name "jjohare"
+        git config --global user.email "github@xrsystems.uk"
         git config --global init.defaultBranch main
         log_success "Configured git defaults"
     fi

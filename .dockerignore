@@ -51,4 +51,6 @@ docs/
 examples/*.md
 JavaScriptSolidServer/
 *.md
+!CLAUDE.md
+!multi-agent-docker/CLAUDE.md
 !client/**/*.md

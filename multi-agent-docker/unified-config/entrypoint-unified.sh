@@ -370,6 +370,22 @@ else
     echo "⚠️  Claude config directory created (host mount not detected)"
 fi
 
+# Fix .claude.json if Docker created it as a directory (host file didn't exist at mount time)
+if [ -d "/home/devuser/.claude.json" ]; then
+    rmdir /home/devuser/.claude.json 2>/dev/null || rm -rf /home/devuser/.claude.json
+fi
+
+# Restore .claude.json from backup if missing (lost on container rebuild)
+if [ ! -f "/home/devuser/.claude.json" ] && [ -d "/home/devuser/.claude/backups" ]; then
+    LATEST_BACKUP=$(ls -t /home/devuser/.claude/backups/.claude.json.backup.* 2>/dev/null | head -1)
+    if [ -n "$LATEST_BACKUP" ]; then
+        cp "$LATEST_BACKUP" /home/devuser/.claude.json
+        chown devuser:devuser /home/devuser/.claude.json
+        chmod 600 /home/devuser/.claude.json
+        echo "  - Restored .claude.json from backup: $(basename "$LATEST_BACKUP")"
+    fi
+fi
+
 # Setup ~/.config/claude if mounted
 if [ -d "/home/devuser/.config/claude" ]; then
     chown -R devuser:devuser /home/devuser/.config/claude 2>/dev/null || true
@@ -1419,6 +1435,35 @@ if [ -n "$RUFLO_RUVECTOR_DIR" ]; then
         fi
     done
     echo "  ✓ ruflo ruvector commands patched (pgvector→ruvector compat)"
+fi
+
+# Patch ruflo pg-backend.js: add pool error handler to prevent MCP server crashes,
+# reduce max pool size, add statement timeout for large-table safety
+RUFLO_PG_BACKEND=$(find /usr/local/lib/node_modules -path "*/ruflo/node_modules/@claude-flow/cli/dist/src/memory/pg-backend.js" 2>/dev/null | head -1)
+if [ -n "$RUFLO_PG_BACKEND" ] && [ -f "$RUFLO_PG_BACKEND" ]; then
+    if ! grep -q 'pool.on.*error.*non-fatal' "$RUFLO_PG_BACKEND" 2>/dev/null; then
+        sed -i '/^const pool = new Pool/,/^});/ {
+            s/max: 20,/max: 10,/
+            /^});/a\
+\
+// Prevent unhandled pool errors from crashing the MCP server process\
+pool.on('\''error'\'', (err) => {\
+  console.error('\''[pg-backend] Pool error (non-fatal):'\'', err.message);\
+});
+        }' "$RUFLO_PG_BACKEND"
+        # Add statement_timeout
+        sed -i 's/connectionTimeoutMillis: 10000,/connectionTimeoutMillis: 10000,\n  statement_timeout: 30000,/' "$RUFLO_PG_BACKEND"
+        echo "  ✓ pg-backend.js patched (pool error handler + statement timeout)"
+    fi
+fi
+
+# Patch ruflo memory_stats tool: use PG aggregate query instead of fetching 100K rows
+RUFLO_MEMORY_TOOLS=$(find /usr/local/lib/node_modules -path "*/ruflo/node_modules/@claude-flow/cli/dist/src/mcp-tools/memory-tools.js" 2>/dev/null | head -1)
+if [ -n "$RUFLO_MEMORY_TOOLS" ] && [ -f "$RUFLO_MEMORY_TOOLS" ]; then
+    if grep -q 'listEntries.*limit: 100000' "$RUFLO_MEMORY_TOOLS" 2>/dev/null; then
+        sed -i 's/listEntries({ limit: 100000 })/listEntries({ limit: 1000 })/' "$RUFLO_MEMORY_TOOLS"
+        echo "  ✓ memory-tools.js patched (stats limit 100K→1K)"
+    fi
 fi
 
 # Patch all project .mcp.json files to include PG env vars for claude-flow
