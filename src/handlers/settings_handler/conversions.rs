@@ -244,6 +244,7 @@ impl From<&crate::config::PhysicsSettings> for PhysicsSettingsDTO {
             cluster_count: settings.cluster_count,
             clustering_resolution: settings.clustering_resolution,
             clustering_iterations: settings.clustering_iterations,
+            graph_separation_x: settings.graph_separation_x,
         }
     }
 }

@@ -21,6 +21,15 @@ use glam::Vec3;
 
 use cudarc::driver::CudaDevice;
 
+/// Per-node graph population classification for dual-graph X-axis separation.
+/// Stored per GPU index during graph upload, used during position broadcast.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum GraphPopulation {
+    Knowledge,
+    Ontology,
+    Agent,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PhysicsStats {
     pub iteration_count: u32,
@@ -120,6 +129,10 @@ pub struct ForceComputeActor {
     /// Maps GPU buffer index → actual graph node ID (populated during graph upload)
     gpu_index_to_node_id: Vec<u32>,
 
+    /// Per-node graph population classification for dual-graph X-axis offset.
+    /// Indexed by GPU buffer index. Populated during graph upload from node_type field.
+    node_population: Vec<GraphPopulation>,
+
     /// Graph data waiting to be uploaded to GPU (set by InitializeGPU/UpdateGPUGraphData,
     /// consumed when shared_context becomes available)
     pending_graph_data: Option<Arc<crate::models::graph::GraphData>>,
@@ -199,6 +212,7 @@ impl ForceComputeActor {
             position_velocity_buffer: Vec::with_capacity(10000),
             node_id_buffer: Vec::with_capacity(10000),
             gpu_index_to_node_id: Vec::new(),
+            node_population: Vec::new(),
             pending_graph_data: None,
             physics_orchestrator_addr: None,
             gpu_self_init_attempts: 0,
@@ -443,19 +457,46 @@ impl ForceComputeActor {
 
         info!("ForceComputeActor: Uploading {} nodes, {} edges to GPU", num_nodes, num_edges);
 
-        // Build CSR representation and GPU-index-to-node-ID mapping
+        // Build CSR representation, GPU-index-to-node-ID mapping, and population classification
         let mut node_indices = std::collections::HashMap::new();
         self.gpu_index_to_node_id = Vec::with_capacity(num_nodes);
+        self.node_population = Vec::with_capacity(num_nodes);
+        let mut pop_counts = [0usize; 3]; // [knowledge, ontology, agent]
         for (i, node) in graph_data.nodes.iter().enumerate() {
             node_indices.insert(node.id, i);
             // Use compact wire ID (= GPU index) instead of Neo4j ID.
             // This keeps IDs within 26 bits so binary protocol type flags
             // in bits 26-31 don't collide with real node IDs.
             self.gpu_index_to_node_id.push(i as u32);
+
+            // Classify node into graph population for dual-graph X-axis separation
+            let pop = match node.node_type.as_deref() {
+                Some("agent") | Some("bot") => {
+                    pop_counts[2] += 1;
+                    GraphPopulation::Agent
+                }
+                Some("owl_class") | Some("ontology_node") | Some("owl_individual") | Some("owl_property") => {
+                    pop_counts[1] += 1;
+                    GraphPopulation::Ontology
+                }
+                _ => {
+                    // Check owl_class_iri as secondary signal for ontology
+                    if node.owl_class_iri.is_some() {
+                        pop_counts[1] += 1;
+                        GraphPopulation::Ontology
+                    } else {
+                        pop_counts[0] += 1;
+                        GraphPopulation::Knowledge
+                    }
+                }
+            };
+            self.node_population.push(pop);
         }
         info!("ForceComputeActor: GPU index→wire_id mapping: 0..{} ({} entries, compact IDs)",
               self.gpu_index_to_node_id.len().saturating_sub(1),
               self.gpu_index_to_node_id.len());
+        info!("ForceComputeActor: Node populations — knowledge: {}, ontology: {}, agent: {}",
+              pop_counts[0], pop_counts[1], pop_counts[2]);
 
         let mut positions_x: Vec<f32> = graph_data.nodes.iter().map(|n| n.data.x).collect();
         let mut positions_y: Vec<f32> = graph_data.nodes.iter().map(|n| n.data.y).collect();
@@ -1301,6 +1342,22 @@ impl Handler<ComputeForces> for ForceComputeActor {
                                     // Use actual graph node IDs, not buffer indices
                                     let node_id = actor.gpu_index_to_node_id.get(i).copied().unwrap_or(i as u32);
                                     actor.node_id_buffer.push(node_id);
+                                }
+
+                                // Apply dual-graph X-axis separation offset.
+                                // Knowledge nodes shift to -X, ontology nodes shift to +X,
+                                // agent nodes stay at origin (bridging both populations).
+                                let sep_x = actor.simulation_params.graph_separation_x;
+                                if sep_x > 0.0 && !actor.node_population.is_empty() {
+                                    for (i, (pos, _vel)) in actor.position_velocity_buffer.iter_mut().enumerate() {
+                                        if let Some(&pop) = actor.node_population.get(i) {
+                                            match pop {
+                                                GraphPopulation::Knowledge => pos.x -= sep_x,
+                                                GraphPopulation::Ontology => pos.x += sep_x,
+                                                GraphPopulation::Agent => {} // bridge at origin
+                                            }
+                                        }
+                                    }
                                 }
 
                                 // NaN/Inf guard: detect corrupted GPU output before broadcasting.

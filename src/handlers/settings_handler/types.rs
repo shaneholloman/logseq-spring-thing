@@ -375,6 +375,9 @@ pub struct PhysicsSettingsDTO {
     pub cluster_count: u32,
     pub clustering_resolution: f32,
     pub clustering_iterations: u32,
+    /// X-axis separation between knowledge and ontology graph populations (default 0 = merged)
+    #[serde(default)]
+    pub graph_separation_x: f32,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

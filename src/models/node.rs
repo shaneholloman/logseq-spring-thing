@@ -82,11 +82,12 @@ impl Node {
         let physics = dev_config::physics();
 
         
-        let theta = rng.gen::<f32>() * 2.0 * std::f32::consts::PI; 
-        let phi = rng.gen::<f32>() * std::f32::consts::PI; 
+        let theta = rng.gen::<f32>() * 2.0 * std::f32::consts::PI; // azimuthal [0, 2pi)
+        let phi = (rng.gen::<f32>() * 2.0 - 1.0).acos(); // polar: acos(uniform(-1,1)) for uniform sphere surface
 
-        
-        let radius = physics.initial_radius_min + rng.gen::<f32>() * physics.initial_radius_range;
+        // cbrt gives uniform distribution within the volume (not just on the surface)
+        let radius = physics.initial_radius_min
+            + rng.gen::<f32>().cbrt() * physics.initial_radius_range;
 
         let pos_x = radius * phi.sin() * theta.cos();
         let pos_y = radius * phi.sin() * theta.sin();

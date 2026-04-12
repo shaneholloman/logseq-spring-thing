@@ -297,6 +297,11 @@ pub struct PhysicsSettings {
     pub clustering_resolution: f32,
     #[serde(alias = "clustering_iterations")]
     pub clustering_iterations: u32,
+
+    /// X-axis separation between knowledge and ontology graph populations.
+    /// 0 = merged (default), positive = knowledge at -X, ontology at +X, agents at origin.
+    #[serde(default, alias = "graph_separation_x")]
+    pub graph_separation_x: f32,
 }
 
 #[allow(deprecated)]
@@ -355,6 +360,8 @@ impl Default for PhysicsSettings {
             cluster_count: 8,
             clustering_resolution: 1.0,
             clustering_iterations: 30,
+
+            graph_separation_x: 0.0,
         }
     }
 }

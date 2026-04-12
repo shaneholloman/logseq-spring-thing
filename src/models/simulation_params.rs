@@ -228,6 +228,11 @@ pub struct SimulationParams {
     /// threshold, then pauses. `Continuous` keeps the old timer-driven tick.
     #[serde(default)]
     pub settle_mode: SettleMode,
+
+    /// X-axis separation between knowledge and ontology graph populations.
+    /// 0 = merged (default), positive = knowledge at -X, ontology at +X, agents at origin.
+    #[serde(default)]
+    pub graph_separation_x: f32,
 }
 
 impl Default for SimulationParams {
@@ -505,6 +510,7 @@ impl SimParams {
             phase: SimulationPhase::Dynamic,
             mode: SimulationMode::Remote,
             settle_mode: SettleMode::default(),
+            graph_separation_x: 0.0,
         }
     }
 }
@@ -642,6 +648,7 @@ impl From<&PhysicsSettings> for SimulationParams {
             phase: SimulationPhase::Dynamic,
             mode: SimulationMode::Remote,
             settle_mode: SettleMode::default(),
+            graph_separation_x: physics.graph_separation_x,
         }
     }
 }
