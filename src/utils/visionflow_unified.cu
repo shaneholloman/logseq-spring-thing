@@ -68,9 +68,15 @@ struct SimParams {
     // NOTE: Stress majorization params removed (unused by GPU kernels, handled on CPU)
 
     float gravity;  // Gravity pull toward origin (center-pull force)
+
+    // ForceAtlas2 / LinLog parameters
+    unsigned int lin_log_mode;  // 1 = LinLog attraction log(1+d), 0 = linear Hooke spring
+    float scaling_ratio;        // FA2 repulsion: repulsion ∝ scaling_ratio * (deg_i+1) * (deg_j+1) / d
+    unsigned int adaptive_speed; // 1 = per-node adaptive speed (FA2 convergence), 0 = global dt
+    float global_speed;         // Base speed for adaptive integration
 };
 
-static_assert(sizeof(SimParams) == 156, "SimParams size mismatch with Rust");
+static_assert(sizeof(SimParams) == 172, "SimParams size mismatch with Rust");
 
 // Global constant memory for simulation parameters
 __constant__ SimParams c_params;
@@ -269,7 +275,9 @@ __global__ void force_pass_kernel(
     // Ontology class metadata for class-based physics
     const int* __restrict__ class_id,            // [num_nodes] OWL class IDs
     const float* __restrict__ class_charge,      // [num_nodes] class-specific charge modifiers
-    const float* __restrict__ class_mass)        // [num_nodes] class-specific mass modifiers
+    const float* __restrict__ class_mass,        // [num_nodes] class-specific mass modifiers
+    // FA2: node degree buffer for degree-scaled repulsion (nullptr = use classic repulsion)
+    const float* __restrict__ node_degrees)      // [num_nodes] sum of incident edge weights
 {
     const int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx >= num_nodes) return;
@@ -312,23 +320,34 @@ __global__ void force_pass_kernel(
 
                             if (dist_sq < c_params.repulsion_cutoff * c_params.repulsion_cutoff && dist_sq > 1e-6f) {
                                 const float dist = sqrtf(dist_sq);
-                                float repulsion = c_params.repel_k / (dist_sq + c_params.repulsion_softening_epsilon);
+                                float repulsion;
 
-                                // Domain-aware repulsion: same-domain nodes repel less,
-                                // different-domain nodes repel more, creating natural clusters.
-                                if (class_id != nullptr && class_id[idx] != 0 && class_id[neighbor_idx] != 0) {
-                                    if (class_id[idx] == class_id[neighbor_idx]) {
-                                        // Same domain: reduce repulsion by 90% → tight domain clusters
-                                        repulsion *= 0.1f;
-                                    } else {
-                                        // Different domain: increase repulsion by 200% → strong separation
-                                        repulsion *= 3.0f;
-                                    }
+                                if (c_params.lin_log_mode && node_degrees != nullptr) {
+                                    // FA2 degree-scaled repulsion:
+                                    // repulsion = scaling_ratio * (deg_i + 1) * (deg_j + 1) / dist
+                                    const float deg_i = node_degrees[idx] + 1.0f;
+                                    const float deg_j = node_degrees[neighbor_idx] + 1.0f;
+                                    repulsion = c_params.scaling_ratio * deg_i * deg_j / (dist + c_params.repulsion_softening_epsilon);
                                 } else {
-                                    // Fallback to charge-based modulation for unclassified nodes
-                                    const float my_charge = (class_charge != nullptr) ? class_charge[idx] : 1.0f;
-                                    const float neighbor_charge = (class_charge != nullptr) ? class_charge[neighbor_idx] : 1.0f;
-                                    repulsion *= my_charge * neighbor_charge;
+                                    // Classic repulsion with optional domain-aware and charge modulation
+                                    repulsion = c_params.repel_k / (dist_sq + c_params.repulsion_softening_epsilon);
+
+                                    // Domain-aware repulsion: same-domain nodes repel less,
+                                    // different-domain nodes repel more, creating natural clusters.
+                                    if (class_id != nullptr && class_id[idx] != 0 && class_id[neighbor_idx] != 0) {
+                                        if (class_id[idx] == class_id[neighbor_idx]) {
+                                            // Same domain: reduce repulsion by 90% → tight domain clusters
+                                            repulsion *= 0.1f;
+                                        } else {
+                                            // Different domain: increase repulsion by 200% → strong separation
+                                            repulsion *= 3.0f;
+                                        }
+                                    } else {
+                                        // Fallback to charge-based modulation for unclassified nodes
+                                        const float my_charge = (class_charge != nullptr) ? class_charge[idx] : 1.0f;
+                                        const float neighbor_charge = (class_charge != nullptr) ? class_charge[neighbor_idx] : 1.0f;
+                                        repulsion *= my_charge * neighbor_charge;
+                                    }
                                 }
 
                                 // Prevent repulsion force overflow when nodes are too close
@@ -370,20 +389,31 @@ __global__ void force_pass_kernel(
             const float dist = vec3_length(diff);
 
             if (dist > 1e-6f) {
-                float ideal = c_params.rest_length;
-                if (use_sssp) {
-                    const float dv = d_sssp_dist[neighbor_idx];
-                    // Handle disconnected components gracefully
-                    if (isfinite(du) && isfinite(dv)) {
-                        const float delta = fabsf(du - dv);
-                        const float norm_delta = fminf(delta, c_params.norm_delta_cap);
-                        // Use FMA for ideal distance calculation
-                        ideal = fmaf(c_params.sssp_alpha, norm_delta, c_params.rest_length);
+                float spring_force_mag;
+
+                if (c_params.lin_log_mode) {
+                    // LinLog attraction: force = log(1 + dist) * edge_weight
+                    // No rest length — pure logarithmic attraction.
+                    // This makes energy minimization equivalent to modularity maximization.
+                    spring_force_mag = log1pf(dist) * edge_weights[i];
+                } else {
+                    // Classic Hooke's law spring with optional SSSP-adjusted rest length
+                    float ideal = c_params.rest_length;
+                    if (use_sssp) {
+                        const float dv = d_sssp_dist[neighbor_idx];
+                        // Handle disconnected components gracefully
+                        if (isfinite(du) && isfinite(dv)) {
+                            const float delta = fabsf(du - dv);
+                            const float norm_delta = fminf(delta, c_params.norm_delta_cap);
+                            // Use FMA for ideal distance calculation
+                            ideal = fmaf(c_params.sssp_alpha, norm_delta, c_params.rest_length);
+                        }
                     }
+                    const float displacement = dist - ideal;
+                    // Use FMA for spring force calculation
+                    spring_force_mag = c_params.spring_k * displacement * edge_weights[i];
                 }
-                const float displacement = dist - ideal;
-                // Use FMA for spring force calculation
-                const float spring_force_mag = c_params.spring_k * displacement * edge_weights[i];
+
                 const float force_scale = spring_force_mag / dist;
                 total_force.x = fmaf(diff.x, force_scale, total_force.x);
                 total_force.y = fmaf(diff.y, force_scale, total_force.y);
@@ -631,7 +661,11 @@ __global__ void integrate_pass_kernel(
     // Ontology class metadata
     const int* __restrict__ class_id,       // [num_nodes] OWL class IDs
     const float* __restrict__ class_charge, // [num_nodes] class-specific charge modifiers
-    const float* __restrict__ class_mass)   // [num_nodes] class-specific mass modifiers
+    const float* __restrict__ class_mass,   // [num_nodes] class-specific mass modifiers
+    // FA2 adaptive speed: previous-step forces (read this step, will be updated)
+    float* __restrict__ prev_force_x,       // [num_nodes] force from prior step (in/out)
+    float* __restrict__ prev_force_y,
+    float* __restrict__ prev_force_z)
 {
     const int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx >= num_nodes) return;
@@ -662,12 +696,42 @@ __global__ void integrate_pass_kernel(
         effective_damping = c_params.damping + (c_params.cooling_rate - c_params.damping) * (1.0f - warmup_factor);
     }
 
-    // Apply integration with settings-based damping using FMA
-    const float dt_over_mass = c_params.dt / node_mass;
-    vel.x = fmaf(force.x, dt_over_mass, vel.x) * effective_damping;
-    vel.y = fmaf(force.y, dt_over_mass, vel.y) * effective_damping;
-    vel.z = fmaf(force.z, dt_over_mass, vel.z) * effective_damping;
-    vel = vec3_clamp(vel, c_params.max_velocity);
+    if (c_params.adaptive_speed && prev_force_x != nullptr) {
+        // FA2 per-node adaptive speed integration:
+        //   swing    = |force - prev_force|  (how much force direction changed — oscillation signal)
+        //   traction = |force + prev_force| / 2  (how consistent the force is — convergence signal)
+        //   speed    = global_speed / (1 + sqrt(swing))  (slow oscillating nodes)
+        //
+        // Velocity is set directly from force * speed / mass rather than accumulated,
+        // which prevents velocity blow-up in FA2-style convergence.
+        float3 prev_f = make_vec3(prev_force_x[idx], prev_force_y[idx], prev_force_z[idx]);
+        float3 force_diff = vec3_sub(force, prev_f);
+        float3 force_sum  = vec3_add(force, prev_f);
+        float swing    = vec3_length(force_diff);
+        // traction is unused beyond the speed calculation but left for future use
+        // float traction = vec3_length(force_sum) * 0.5f;
+        float speed = c_params.global_speed / (1.0f + sqrtf(swing));
+
+        // Direct velocity set (FA2 style: no accumulation)
+        const float speed_over_mass = speed / node_mass;
+        vel.x = force.x * speed_over_mass;
+        vel.y = force.y * speed_over_mass;
+        vel.z = force.z * speed_over_mass;
+        vel = vec3_clamp(vel, c_params.max_velocity);
+
+        // Update prev_force for next iteration
+        prev_force_x[idx] = force.x;
+        prev_force_y[idx] = force.y;
+        prev_force_z[idx] = force.z;
+    } else {
+        // Classic Verlet integration with settings-based damping using FMA
+        const float dt_over_mass = c_params.dt / node_mass;
+        vel.x = fmaf(force.x, dt_over_mass, vel.x) * effective_damping;
+        vel.y = fmaf(force.y, dt_over_mass, vel.y) * effective_damping;
+        vel.z = fmaf(force.z, dt_over_mass, vel.z) * effective_damping;
+        vel = vec3_clamp(vel, c_params.max_velocity);
+    }
+
     // Position update using FMA
     pos.x = fmaf(vel.x, c_params.dt, pos.x);
     pos.y = fmaf(vel.y, c_params.dt, pos.y);
@@ -2047,7 +2111,9 @@ __global__ void force_pass_with_stability_kernel(
     const float* __restrict__ d_sssp_dist,
     const ConstraintData* __restrict__ constraints,
     const int num_constraints,
-    const int* __restrict__ should_skip_all_physics)
+    const int* __restrict__ should_skip_all_physics,
+    // FA2: node degree buffer for degree-scaled repulsion (nullptr = use classic repulsion)
+    const float* __restrict__ node_degrees)      // [num_nodes] sum of incident edge weights
 {
     const int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx >= num_nodes) return;
@@ -2112,14 +2178,22 @@ __global__ void force_pass_with_stability_kernel(
                             float3 diff = vec3_sub(my_pos, neighbor_pos);
                             float dist_sq = vec3_length_sq(diff);
 
-                            if (dist_sq < c_params.repulsion_cutoff * c_params.repulsion_cutoff && 
+                            if (dist_sq < c_params.repulsion_cutoff * c_params.repulsion_cutoff &&
                                 dist_sq > 1e-6f) {
                                 float dist = sqrtf(dist_sq);
-                                float repulsion = c_params.repel_k / 
-                                    (dist_sq + c_params.repulsion_softening_epsilon);
-                                float max_repulsion = c_params.max_force;
-                                repulsion = fminf(repulsion, max_repulsion);
-                                
+                                float repulsion;
+
+                                if (c_params.lin_log_mode && node_degrees != nullptr) {
+                                    // FA2 degree-scaled repulsion
+                                    const float deg_i = node_degrees[idx] + 1.0f;
+                                    const float deg_j = node_degrees[neighbor_idx] + 1.0f;
+                                    repulsion = c_params.scaling_ratio * deg_i * deg_j / (dist + c_params.repulsion_softening_epsilon);
+                                } else {
+                                    repulsion = c_params.repel_k /
+                                        (dist_sq + c_params.repulsion_softening_epsilon);
+                                }
+                                repulsion = fminf(repulsion, c_params.max_force);
+
                                 if (isfinite(repulsion) && isfinite(dist) && dist > 0.0f) {
                                     total_force = vec3_add(total_force, vec3_scale(diff, repulsion / dist));
                                 }
@@ -2145,30 +2219,37 @@ __global__ void force_pass_with_stability_kernel(
         
         for (int i = start_edge; i < end_edge; ++i) {
             int neighbor_idx = edge_col_indices[i];
-            float3 neighbor_pos = make_vec3(pos_in_x[neighbor_idx], 
-                                          pos_in_y[neighbor_idx], 
+            float3 neighbor_pos = make_vec3(pos_in_x[neighbor_idx],
+                                          pos_in_y[neighbor_idx],
                                           pos_in_z[neighbor_idx]);
-            
+
             float3 diff = vec3_sub(neighbor_pos, my_pos);
             float dist = vec3_length(diff);
-            
+
             if (dist > 1e-6f) {
-                float ideal = c_params.rest_length;
-                if (use_sssp) {
-                    float dv = d_sssp_dist[neighbor_idx];
-                    if (isfinite(du) && isfinite(dv)) {
-                        float delta = fabsf(du - dv);
-                        float norm_delta = fminf(delta, c_params.norm_delta_cap);
-                        ideal = c_params.rest_length + c_params.sssp_alpha * norm_delta;
+                float spring_force_mag;
+
+                if (c_params.lin_log_mode) {
+                    // LinLog: log(1+d) attraction — modularity-equivalent energy minimization
+                    spring_force_mag = log1pf(dist) * edge_weights[i];
+                } else {
+                    float ideal = c_params.rest_length;
+                    if (use_sssp) {
+                        float dv = d_sssp_dist[neighbor_idx];
+                        if (isfinite(du) && isfinite(dv)) {
+                            float delta = fabsf(du - dv);
+                            float norm_delta = fminf(delta, c_params.norm_delta_cap);
+                            ideal = c_params.rest_length + c_params.sssp_alpha * norm_delta;
+                        }
                     }
+                    float displacement = dist - ideal;
+                    spring_force_mag = c_params.spring_k * displacement * edge_weights[i];
                 }
-                float displacement = dist - ideal;
-                float spring_force_mag = c_params.spring_k * displacement * edge_weights[i];
                 total_force = vec3_add(total_force, vec3_scale(diff, spring_force_mag / dist));
             }
         }
     }
-    
+
     // Centering force
     if (c_params.feature_flags & FeatureFlags::ENABLE_CENTERING) {
         total_force = vec3_sub(total_force, vec3_scale(my_pos, c_params.center_gravity_k));

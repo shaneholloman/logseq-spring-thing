@@ -5,6 +5,40 @@ All notable changes to VisionClaw will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] - 2026-04-12
+
+### Added
+- Layout mode system with 6 algorithms (ADR-031)
+- ForceAtlas2 LinLog kernel for community-revealing layout
+- Spectral, Hierarchical, Radial, Temporal, Clustered layout engines
+- PageRank HTTP API endpoints (compute/result/clear)
+- DBSCAN standalone clustering API
+- GET /api/graph/positions endpoint (GPU position snapshot)
+- Layout API endpoints (modes/status/zones/reset)
+- Camera auto-fit to graph bounding box
+- Degree-weighted node sizing (sqrt scaling, 10.7x ratio)
+- Mass-aware physics (hub inertia)
+- Dual-graph X-axis offset (graphSeparationX)
+- Constraint zone system for node type separation
+- 5 ontology constraint specialized GPU kernels
+- 7 semantic force GPU FFI bridges
+- Stress majorization GPU-only path
+- DBSCAN in settings dropdown
+
+### Fixed
+- CUDA_ARCH runtime auto-detection (was using stale .env)
+- PTX module lookup in community.rs (wrong module for clustering kernels)  
+- Two-sheet Z-axis degeneration (polar angle sampling bias)
+- Slider ranges capped to sane values (was 50000 max)
+- Clustering visualization: analytics panel writes to node_analytics
+- Louvain writes to both cluster_id and community_id slots
+- Community detection results stored in node_analytics
+- Settings auth bypass for dev containers
+- Route registration for pagerank/pathfinding (was 404)
+- Node ID type flag encoding in binary protocol
+
+---
+
 ## [Unreleased] - 2026-02-08
 
 ### Client Architecture Overhaul

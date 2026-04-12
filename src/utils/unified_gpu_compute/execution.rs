@@ -368,6 +368,13 @@ impl UnifiedGPUCompute {
         // 5. constraint_data has capacity for num_constraints ConstraintData elements
         // 6. should_skip_physics is a valid single-element DeviceBuffer for stability gating
         // 7. grid_size and block_size are validated via validate_kernel_launch()
+        // FA2: pass node_degrees when available, otherwise null (falls back to classic repulsion)
+        let d_node_degrees = if self.degree_weights_available {
+            self.node_degrees.as_device_ptr()
+        } else {
+            DevicePointer::<f32>::null()
+        };
+
         unsafe {
             if params.stability_threshold > 0.0 {
                 // Force pass with stability checking variant
@@ -394,7 +401,8 @@ impl UnifiedGPUCompute {
                     d_sssp,
                     self.constraint_data.as_device_ptr(),
                     self.num_constraints as i32,
-                    self.should_skip_physics.as_device_ptr()
+                    self.should_skip_physics.as_device_ptr(),
+                    d_node_degrees
                 ))?;
             } else {
 
@@ -424,7 +432,9 @@ impl UnifiedGPUCompute {
                     // Ontology class metadata
                     self.class_id.as_device_ptr(),
                     self.class_charge.as_device_ptr(),
-                    self.class_mass.as_device_ptr()
+                    self.class_mass.as_device_ptr(),
+                    // FA2 degree-scaled repulsion
+                    d_node_degrees
                 ))?;
             }
         }
@@ -528,7 +538,11 @@ impl UnifiedGPUCompute {
                 // Ontology class metadata
                 self.class_id.as_device_ptr(),
                 self.class_charge.as_device_ptr(),
-                self.class_mass.as_device_ptr()
+                self.class_mass.as_device_ptr(),
+                // FA2 adaptive speed: previous-step forces for swing/traction
+                self.prev_force_x.as_device_ptr(),
+                self.prev_force_y.as_device_ptr(),
+                self.prev_force_z.as_device_ptr()
             ))?;
         }
 

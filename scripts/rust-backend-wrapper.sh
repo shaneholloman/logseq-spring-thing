@@ -30,6 +30,9 @@ else
     fi
 fi
 
+# Truncate stale error log from previous runs
+> /app/logs/rust-error.log
+
 # Always rebuild in dev mode unless explicitly skipped
 if [ "${SKIP_RUST_REBUILD:-false}" != "true" ]; then
     log "Rebuilding Rust backend with GPU support to apply code changes..."

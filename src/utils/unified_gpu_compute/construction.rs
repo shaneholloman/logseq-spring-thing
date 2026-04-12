@@ -181,6 +181,12 @@ pub struct UnifiedGPUCompute {
     pub degree_weight: DeviceBuffer<f32>,
     /// Whether degree weights have been uploaded (graph data available).
     pub(crate) degree_weights_available: bool,
+
+    /// FA2 adaptive speed: previous-step force per node (for swing/traction calculation).
+    /// Initialized to zero; updated each integration step when adaptive_speed is enabled.
+    pub(crate) prev_force_x: DeviceBuffer<f32>,
+    pub(crate) prev_force_y: DeviceBuffer<f32>,
+    pub(crate) prev_force_z: DeviceBuffer<f32>,
 }
 
 impl UnifiedGPUCompute {
@@ -541,6 +547,10 @@ impl UnifiedGPUCompute {
 
             degree_weight: DeviceBuffer::from_slice(&vec![1.0f32; num_nodes])?,
             degree_weights_available: false,
+
+            prev_force_x: DeviceBuffer::zeroed(num_nodes)?,
+            prev_force_y: DeviceBuffer::zeroed(num_nodes)?,
+            prev_force_z: DeviceBuffer::zeroed(num_nodes)?,
         };
 
 

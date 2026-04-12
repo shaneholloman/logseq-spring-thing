@@ -57,6 +57,8 @@ pub use physics_messages::{
     PhysicsStepCompleted, SetPhysicsOrchestratorAddr,
     // GPU position snapshot (REST API)
     BoundingBox, CurrentPositionsSnapshot, GetCurrentPositions,
+    // Layout reset
+    ResetPositions,
 };
 
 // --- settings_messages ---

@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, Stats, Environment } from '@react-three/drei';
 import { createGemRenderer } from '../../../rendering/rendererFactory';
@@ -30,6 +30,69 @@ import EmbeddingCloudLayer from '../../visualisation/components/EmbeddingCloudLa
 // Store and utils
 import { useSettingsStore } from '../../../store/settingsStore';
 import { graphDataManager, type GraphData } from '../managers/graphDataManager';
+
+// ============================================================================
+// Layout Mode Indicator — displays current layout mode above the canvas
+// ============================================================================
+
+const LAYOUT_MODE_LABELS: Record<string, string> = {
+  'force-directed':  'Force Directed',
+  'dag-topdown':     'DAG Top-Down',
+  'dag-radial':      'DAG Radial',
+  'dag-leftright':   'DAG Left-Right',
+  'type-clustering': 'Type Clustering',
+  'forceDirected':   'Force Directed',
+  'hierarchical':    'Hierarchical',
+  'radial':          'Radial',
+  'spectral':        'Spectral',
+  'temporal':        'Temporal',
+  'clustered':       'Clustered',
+};
+
+const LayoutModeIndicator: React.FC = () => {
+  const layoutMode = useSettingsStore(s =>
+    (s.settings as unknown as Record<string, Record<string, unknown>>)?.qualityGates?.layoutMode as string | undefined
+  );
+  const [transitioning, setTransitioning] = useState(false);
+  const transitionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (!layoutMode) return;
+    setTransitioning(true);
+    if (transitionTimerRef.current) clearTimeout(transitionTimerRef.current);
+    transitionTimerRef.current = setTimeout(() => setTransitioning(false), 1200);
+    return () => {
+      if (transitionTimerRef.current) clearTimeout(transitionTimerRef.current);
+    };
+  }, [layoutMode]);
+
+  if (!layoutMode) return null;
+
+  const label = LAYOUT_MODE_LABELS[layoutMode] || layoutMode;
+
+  return (
+    <div style={{
+      position: 'absolute',
+      bottom: '14px',
+      left: '50%',
+      transform: 'translateX(-50%)',
+      zIndex: 100,
+      backgroundColor: 'rgba(0, 0, 0, 0.55)',
+      color: transitioning ? '#34d399' : 'rgba(255,255,255,0.65)',
+      padding: '3px 10px',
+      borderRadius: '4px',
+      fontSize: '10px',
+      letterSpacing: '0.05em',
+      fontFamily: 'monospace',
+      border: `1px solid ${transitioning ? 'rgba(52,211,153,0.5)' : 'rgba(255,255,255,0.1)'}`,
+      transition: 'color 0.3s, border-color 0.3s',
+      pointerEvents: 'none',
+      userSelect: 'none',
+    }}>
+      {transitioning ? `Transitioning to ${label}...` : `Layout: ${label}`}
+    </div>
+  );
+};
 
 // Main GraphCanvas component
 const GraphCanvas: React.FC = () => {
@@ -205,6 +268,9 @@ const GraphCanvas: React.FC = () => {
                 {}
                 {showStats && <Stats />}
             </Canvas>
+
+            {/* Layout mode indicator — rendered in HTML overlay above the canvas */}
+            <LayoutModeIndicator />
         </div>
     );
 };

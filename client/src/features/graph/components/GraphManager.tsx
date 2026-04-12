@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState, useMemo } from 'react'
+import React, { useRef, useEffect, useState, useMemo, useCallback } from 'react'
 import { useThree, useFrame, ThreeEvent } from '@react-three/fiber'
 // Text, Billboard, Html removed — InstancedLabels handles all label rendering
 import * as THREE from 'three'
@@ -25,6 +25,7 @@ import { useFpsMonitor } from '../hooks/useFpsMonitor'
 import { useCameraAutoFit } from '../hooks/useCameraAutoFit'
 import { computeNodeScale } from '../utils/nodeScaling'
 import { InstancedLabels } from './InstancedLabels'
+import { layoutApi, type LayoutPosition } from '../../../api/layoutApi'
 
 const logger = createLogger('GraphManager')
 
@@ -329,6 +330,20 @@ const GraphManager: React.FC<GraphManagerProps> = ({ onDragStateChange }) => {
 
   const nodePositionsRef = useRef<Float32Array | null>(null)
 
+  // Layout mode transition state: LERP from startPositions → targetPositions with mass-aware easing
+  const transitionRef = useRef<{
+    active: boolean;
+    startPositions: Float32Array;
+    targetPositions: Float32Array;
+    progress: number;
+    duration: number;
+    startTime: number;
+  } | null>(null);
+
+  // Tracks the currently active layout mode for the HUD indicator
+  const [activeLayoutMode, setActiveLayoutMode] = useState<string>('');
+  const [layoutTransitioning, setLayoutTransitioning] = useState(false);
+
   // Auto-fit camera to bounding box of all nodes on first position data and on explicit request
   const { requestFit: requestCameraFit } = useCameraAutoFit(nodePositionsRef, graphData.nodes.length);
 
@@ -401,6 +416,49 @@ const GraphManager: React.FC<GraphManagerProps> = ({ onDragStateChange }) => {
     }
   }, [ssspResult, normalizeDistances]);
 
+  // Start a layout mode transition: snapshot current positions as start, API positions as target
+  const startLayoutTransition = useCallback((targetPositions: LayoutPosition[], durationMs: number) => {
+    const positions = nodePositionsRef.current;
+    const nodeCount = graphData.nodes.length;
+    if (!positions || nodeCount === 0) return;
+
+    const needed = nodeCount * 3;
+    const startSnap = new Float32Array(needed);
+    startSnap.set(positions.subarray(0, Math.min(needed, positions.length)));
+
+    const targetSnap = new Float32Array(needed);
+    // Build a lookup: id → index in targetPositions
+    const idxById = new Map<number, number>();
+    for (let i = 0; i < targetPositions.length; i++) {
+      idxById.set(targetPositions[i].id, i);
+    }
+    for (let ni = 0; ni < nodeCount; ni++) {
+      const node = graphData.nodes[ni];
+      const numericId = parseInt(String(node.id), 10);
+      const tp = idxById.get(numericId);
+      if (tp !== undefined) {
+        targetSnap[ni * 3]     = targetPositions[tp].x;
+        targetSnap[ni * 3 + 1] = targetPositions[tp].y;
+        targetSnap[ni * 3 + 2] = targetPositions[tp].z;
+      } else {
+        // No target for this node: keep current position as target (no movement)
+        targetSnap[ni * 3]     = startSnap[ni * 3];
+        targetSnap[ni * 3 + 1] = startSnap[ni * 3 + 1];
+        targetSnap[ni * 3 + 2] = startSnap[ni * 3 + 2];
+      }
+    }
+
+    transitionRef.current = {
+      active: true,
+      startPositions: startSnap,
+      targetPositions: targetSnap,
+      progress: 0,
+      duration: durationMs,
+      startTime: Date.now(),
+    };
+    setLayoutTransitioning(true);
+  }, [graphData.nodes]);
+
   // (Color arrays, updateNodeColors, and mesh init removed -- GemNodes handles all node rendering)
 
   
@@ -417,6 +475,34 @@ const GraphManager: React.FC<GraphManagerProps> = ({ onDragStateChange }) => {
   useEffect(() => {
     graphWorkerProxy.updateSettings(settingsRef.current);
   }, [physicsFingerprint]);
+
+  // Subscribe to layoutMode changes and call the layout API when the value changes.
+  // Mirrors the pattern used by settingsStore.subscribe for server-action callbacks.
+  const layoutMode = useSettingsStore(s =>
+    (s.settings as unknown as Record<string, Record<string, unknown>>)?.qualityGates?.layoutMode as string | undefined
+  );
+  const prevLayoutModeRef = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (!layoutMode || layoutMode === prevLayoutModeRef.current) return;
+    prevLayoutModeRef.current = layoutMode;
+
+    const TRANSITION_MS = 800;
+    setActiveLayoutMode(layoutMode);
+    setLayoutTransitioning(true);
+
+    layoutApi.setMode(layoutMode, TRANSITION_MS).then(response => {
+      const { data } = response;
+      if (data.success && data.positions && data.positions.length > 0) {
+        startLayoutTransition(data.positions, data.transitionMs ?? TRANSITION_MS);
+      } else {
+        // API succeeded but no positions returned; clear transitioning flag
+        setLayoutTransitioning(false);
+      }
+    }).catch(err => {
+      logger.warn('[GraphManager] layoutApi.setMode failed:', err);
+      setLayoutTransitioning(false);
+    });
+  }, [layoutMode, startLayoutTransition]);
 
 
   // Priority -2: run BEFORE child components (GemNodes, InstancedLabels) so
@@ -469,6 +555,37 @@ const GraphManager: React.FC<GraphManagerProps> = ({ onDragStateChange }) => {
         }
       }
       nodePositionsRef.current = positions;
+
+      // === Layout mode transition: mass-aware LERP from start to target positions ===
+      if (transitionRef.current?.active) {
+        const t = transitionRef.current;
+        const elapsed = Date.now() - t.startTime;
+        const rawProgress = Math.min(elapsed / t.duration, 1.0);
+        // Ease in-out (smoothstep)
+        const progress = rawProgress < 0.5
+          ? 2 * rawProgress * rawProgress
+          : 1 - Math.pow(-2 * rawProgress + 2, 2) / 2;
+
+        const nodeCount = graphData.nodes.length;
+        for (let i = 0; i < nodeCount; i++) {
+          const idx = i * 3;
+          if (idx + 2 >= positions.length) break;
+          // Mass factor: high-degree nodes move slower (more inertia)
+          const connectionCount = connectionCountMap.get(String(i)) || 0;
+          const massFactor = 1.0 / (1.0 + Math.sqrt(connectionCount) * 0.3);
+          const nodeProgress = Math.min(progress / massFactor, 1.0);
+
+          positions[idx]     = t.startPositions[idx]     + (t.targetPositions[idx]     - t.startPositions[idx])     * nodeProgress;
+          positions[idx + 1] = t.startPositions[idx + 1] + (t.targetPositions[idx + 1] - t.startPositions[idx + 1]) * nodeProgress;
+          positions[idx + 2] = t.startPositions[idx + 2] + (t.targetPositions[idx + 2] - t.startPositions[idx + 2]) * nodeProgress;
+        }
+
+        if (rawProgress >= 1.0) {
+          transitionRef.current.active = false;
+          setLayoutTransitioning(false);
+        }
+      }
+      // === End layout mode transition ===
 
       // Auto-fit camera on first real position data (one-shot, non-continuous)
       requestCameraFit();

@@ -14,12 +14,22 @@ import { webSocketService } from '../../../../store/websocketStore';
 import type { SettingField } from './types';
 import { Lock, Info, RefreshCw } from 'lucide-react';
 import { isWebGPURenderer, setForceWebGLOverride, forceWebGLOverride } from '../../../../rendering/rendererFactory';
+import { layoutApi } from '../../../../api/layoutApi';
+import { createLogger } from '../../../../utils/loggerConfig';
 
 interface UnifiedSettingsTabContentProps {
   sectionId: string;
   onError?: (error: string) => void;
   onSuccess?: (message: string) => void;
 }
+
+const logger = createLogger('UnifiedSettingsTabContent');
+
+// Settings paths that should trigger a live layout API call when changed
+const LAYOUT_SETTING_PATHS = new Set([
+  'qualityGates.layoutMode',
+  'visualisation.graphs.logseq.physics.layoutAlgorithm',
+]);
 
 export const UnifiedSettingsTabContent: React.FC<UnifiedSettingsTabContentProps> = ({
   sectionId,
@@ -94,12 +104,24 @@ export const UnifiedSettingsTabContent: React.FC<UnifiedSettingsTabContentProps>
       const { autoSaveManager } = await import('../../../../store/autoSaveManager');
       autoSaveManager.queueChange(path, value);
 
+      // For layout-related settings, also call the layout API so the backend
+      // computes new positions and GraphManager can begin the transition animation.
+      if (LAYOUT_SETTING_PATHS.has(path) && typeof value === 'string') {
+        layoutApi.setMode(value, 800).then(response => {
+          if (response.data.success) {
+            onSuccess?.(`Layout transitioning to ${value}`);
+          }
+        }).catch(err => {
+          logger.warn('[UnifiedSettingsTabContent] layoutApi.setMode failed:', err);
+        });
+      }
+
       setSavingField(null);
     } catch (error) {
       setSavingField(null);
       onError?.(`Failed to update ${field.label}`);
     }
-  }, [updateSettings, isPowerUser, user, onError]);
+  }, [updateSettings, isPowerUser, user, onError, onSuccess]);
 
   // Nostr login handler
   const handleNostrLogin = async () => {

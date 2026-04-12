@@ -2390,6 +2390,83 @@ impl Handler<crate::actors::messages::SetPhysicsOrchestratorAddr> for ForceCompu
     }
 }
 
+/// Handler for ResetPositions — re-randomizes all positions on a uniform 3D sphere,
+/// re-uploads to GPU, and reheats the simulation so it re-converges from a fresh layout.
+impl Handler<crate::actors::messages::ResetPositions> for ForceComputeActor {
+    type Result = Result<(), String>;
+
+    fn handle(&mut self, _msg: crate::actors::messages::ResetPositions, _ctx: &mut Self::Context) -> Self::Result {
+        let ctx = match &self.shared_context {
+            Some(c) => c.clone(),
+            None => {
+                warn!("ForceComputeActor: ResetPositions received but GPU context is not initialized");
+                return Err("GPU context not available".to_string());
+            }
+        };
+
+        let num_nodes = self.gpu_state.num_nodes as usize;
+        if num_nodes == 0 {
+            warn!("ForceComputeActor: ResetPositions received but no nodes are loaded");
+            return Err("No nodes loaded in GPU".to_string());
+        }
+
+        // Generate uniform sphere distribution for all nodes
+        use rand::Rng;
+        let mut rng = rand::thread_rng();
+        let sphere_radius = (num_nodes as f32).cbrt() * 50.0 + 100.0;
+
+        let mut positions_x = Vec::with_capacity(num_nodes);
+        let mut positions_y = Vec::with_capacity(num_nodes);
+        let mut positions_z = Vec::with_capacity(num_nodes);
+
+        for _ in 0..num_nodes {
+            // Rejection sampling for uniform sphere distribution
+            loop {
+                let x: f32 = rng.gen_range(-1.0f32..1.0f32);
+                let y: f32 = rng.gen_range(-1.0f32..1.0f32);
+                let z: f32 = rng.gen_range(-1.0f32..1.0f32);
+                let r2 = x * x + y * y + z * z;
+                if r2 <= 1.0 && r2 > 0.0 {
+                    let r = r2.sqrt();
+                    positions_x.push(x / r * sphere_radius * rng.gen_range(0.1f32..1.0f32));
+                    positions_y.push(y / r * sphere_radius * rng.gen_range(0.1f32..1.0f32));
+                    positions_z.push(z / r * sphere_radius * rng.gen_range(0.1f32..1.0f32));
+                    break;
+                }
+            }
+        }
+
+        // Upload randomized positions to GPU
+        let mut compute = match ctx.unified_compute.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                error!("ForceComputeActor: ResetPositions — GPU mutex poisoned, recovering");
+                poisoned.into_inner()
+            }
+        };
+
+        compute.upload_positions(&positions_x, &positions_y, &positions_z)
+            .map_err(|e| format!("Failed to upload reset positions to GPU: {}", e))?;
+
+        drop(compute);
+
+        // Trigger a full reheat so the simulation re-explores from the new positions
+        self.stability_warmup_remaining = 600;
+        self.reheat_factor = 1.0;
+        self.suppress_intermediate_broadcasts = false;
+        self.force_full_broadcast = true;
+        self.stability_iterations = 0;
+        self.gpu_state.iteration_count = 0;
+
+        info!(
+            "ForceComputeActor: Positions reset to uniform sphere (r={:.1}, {} nodes) — full reheat triggered",
+            sphere_radius, num_nodes
+        );
+
+        Ok(())
+    }
+}
+
 /// Handler for ConfigureStressMajorization message
 impl Handler<ConfigureStressMajorization> for ForceComputeActor {
     type Result = Result<(), String>;

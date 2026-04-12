@@ -1,5 +1,6 @@
 use actix_web::{web, HttpResponse, Result};
 use crate::layout::types::*;
+use crate::layout::engines::compute_layout;
 use crate::AppState;
 use crate::ok_json;
 
@@ -12,19 +13,83 @@ pub async fn get_layout_modes(_data: web::Data<AppState>) -> Result<HttpResponse
 }
 
 pub async fn set_layout_mode(
-    _data: web::Data<AppState>,
+    data: web::Data<AppState>,
     body: web::Json<serde_json::Value>,
 ) -> Result<HttpResponse> {
-    let mode = body.get("mode").and_then(|m| m.as_str()).unwrap_or("forceDirected");
+    let mode_str = body.get("mode").and_then(|m| m.as_str()).unwrap_or("forceDirected");
     let transition_ms = body.get("transitionMs").and_then(|t| t.as_u64()).unwrap_or(500);
 
-    // TODO: Send ChangeLayoutMode message to ForceComputeActor
-    // For now, store in AppState and trigger physics reheat
+    let mode: LayoutMode = match serde_json::from_value(serde_json::Value::String(mode_str.to_string())) {
+        Ok(m) => m,
+        Err(_) => LayoutMode::ForceDirected,
+    };
+
+    // ForceDirected is handled by the GPU physics engine; no CPU layout needed.
+    if mode == LayoutMode::ForceDirected {
+        return ok_json!(serde_json::json!({
+            "success": true,
+            "mode": mode_str,
+            "transitionMs": transition_ms,
+            "positions": []
+        }));
+    }
+
+    // Fetch current graph data
+    use crate::actors::messages::GetGraphData;
+    let graph_data = match data.graph_service_addr.send(GetGraphData).await {
+        Ok(Ok(gd)) => gd,
+        Ok(Err(e)) => {
+            log::error!("set_layout_mode: failed to get graph data: {}", e);
+            return ok_json!(serde_json::json!({
+                "success": false,
+                "error": "Failed to retrieve graph data",
+                "mode": mode_str
+            }));
+        }
+        Err(e) => {
+            log::error!("set_layout_mode: actor mailbox error: {}", e);
+            return ok_json!(serde_json::json!({
+                "success": false,
+                "error": "Graph service unavailable",
+                "mode": mode_str
+            }));
+        }
+    };
+
+    // Convert graph data to the flat slices expected by compute_layout
+    let nodes: Vec<(u32, String)> = graph_data
+        .nodes
+        .iter()
+        .map(|n| (n.id, n.label.clone()))
+        .collect();
+
+    let edges: Vec<(u32, u32, f32)> = graph_data
+        .edges
+        .iter()
+        .map(|e| (e.source, e.target, e.weight))
+        .collect();
+
+    let config = LayoutModeConfig {
+        mode: mode.clone(),
+        ..LayoutModeConfig::default()
+    };
+
+    let raw_positions = compute_layout(&mode, &nodes, &edges, &config);
+
+    // Build JSON position array [{id, x, y, z}, ...]
+    let positions: Vec<serde_json::Value> = nodes
+        .iter()
+        .zip(raw_positions.iter())
+        .map(|((id, _label), &(x, y, z))| {
+            serde_json::json!({ "id": id, "x": x, "y": y, "z": z })
+        })
+        .collect();
 
     ok_json!(serde_json::json!({
         "success": true,
-        "mode": mode,
-        "transitionMs": transition_ms
+        "mode": mode_str,
+        "transitionMs": transition_ms,
+        "positions": positions
     }))
 }
 
@@ -64,12 +129,36 @@ pub async fn get_zones(_data: web::Data<AppState>) -> Result<HttpResponse> {
     }))
 }
 
-pub async fn reset_layout(_data: web::Data<AppState>) -> Result<HttpResponse> {
-    // TODO: Send ResetPositions message to ForceComputeActor
-    ok_json!(serde_json::json!({
-        "success": true,
-        "message": "Layout reset triggered"
-    }))
+pub async fn reset_layout(data: web::Data<AppState>) -> Result<HttpResponse> {
+    use crate::actors::messages::ResetPositions;
+
+    if let Some(addr) = data.get_gpu_compute_addr().await {
+        match addr.send(ResetPositions).await {
+            Ok(Ok(_)) => {
+                ok_json!(serde_json::json!({
+                    "success": true,
+                    "message": "Layout reset triggered — positions randomized and reheat applied"
+                }))
+            }
+            Ok(Err(e)) => {
+                ok_json!(serde_json::json!({
+                    "success": false,
+                    "message": format!("Reset failed: {}", e)
+                }))
+            }
+            Err(e) => {
+                ok_json!(serde_json::json!({
+                    "success": false,
+                    "message": format!("ForceComputeActor mailbox error: {}", e)
+                }))
+            }
+        }
+    } else {
+        ok_json!(serde_json::json!({
+            "success": false,
+            "message": "GPU compute actor not available — layout reset skipped"
+        }))
+    }
 }
 
 pub fn configure_layout_routes(cfg: &mut web::ServiceConfig) {

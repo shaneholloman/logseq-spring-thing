@@ -2,7 +2,7 @@
 title: Known Issues
 description: Active P1/P2 issues in VisionClaw — read before debugging unexpected behaviour
 category: reference
-updated-date: 2026-04-09
+updated-date: 2026-04-12
 ---
 
 # Known Issues
@@ -15,7 +15,7 @@ This file tracks active production issues and design limitations in VisionClaw. 
 
 ### ONT-001: Ontology Edge Gap — 62% of Ontology Nodes Isolated
 
-**Status**: Known / Under Investigation
+**Status**: In Progress
 **Impact**: 623 `SUBCLASS_OF` relationships originating from `OwlClass` nodes in Neo4j are excluded from the client graph. 62% of ontology nodes appear visually isolated with no edges in the 3D visualisation. SemanticForcesActor receives incomplete constraint data, so GPU-enforced semantic clustering and disjointness forces have no effect on the affected nodes.
 
 **Root Cause**: `OwlClass` nodes in Neo4j use a different label scheme from the `GraphNode` entries the client constructs. The 623 `SUBCLASS_OF` relationships originate from `OwlClass` source nodes, but client-side graph construction expects `GraphNode`-to-`GraphNode` edges. The mapping between `OwlClass` nodes and `GraphNode` entries requires `owl_class_iri` field matching that is not currently implemented. Without this mapping, the edges are silently dropped during graph state loading; no error is logged.
@@ -81,7 +81,7 @@ Full details including the node schema, Neo4j index definitions, and the full pi
 
 ### GPU-002: Analytics Actors Missing SharedGPUContext
 
-**Status**: Known / Deferred
+**Status**: Resolved
 **Impact**: PageRank, SSSP, APSP, and Connected Components endpoints return "GPU context not initialized" or "actor not available". The GPU context is created by `ForceComputeActor` but not shared to `PageRankActor`, `ShortestPathActor`, or `ConnectedComponentsActor` in the analytics subsystem.
 
 **Root Cause**: `AnalyticsSupervisor` spawns analytics actors but does not forward the `SetSharedGPUContext` message from the physics supervisor. Only `ForceComputeActor` receives the GPU context.
@@ -94,7 +94,7 @@ Full details including the node schema, Neo4j index definitions, and the full pi
 
 ### PHYS-001: No Graph Position Reset Endpoint
 
-**Status**: Known / Deferred
+**Status**: Resolved
 **Impact**: When physics parameters change, the layout evolves from the current positions. If a previous extreme parameter set pushed nodes to boundary extremes, moderate parameters cannot recover them (gravity too weak at distance). The only reset is a full container restart.
 
 **Root Cause**: `POST /api/physics/reset` exists but depends on `PhysicsService` which is not injected into AppState. `POST /api/admin/sync` triggers `ReloadGraphFromDatabase` but requires power user auth and the full GitHub sync pipeline.
@@ -105,7 +105,7 @@ Full details including the node schema, Neo4j index definitions, and the full pi
 
 ### UI-001: Client Slider Init Race — Settings Pushed Before Server Load
 
-**Status**: Partially Fixed (slider ranges capped)
+**Status**: Resolved
 **Impact**: On first client connect, sliders may send values before fetching server state. With the old max ranges (repelK: 50000), this produced extreme physics parameters. Slider ranges are now capped to sane values (repelK: 2000, centerGravityK: 10) which limits damage, but the race condition remains.
 
 **Fix Direction**: Client should fetch `GET /api/settings/physics` and populate slider values before enabling any PUT calls. Add a `settingsLoaded` flag to gate writes.
@@ -114,7 +114,7 @@ Full details including the node schema, Neo4j index definitions, and the full pi
 
 ### UI-002: `SETTINGS_AUTH_BYPASS` Not Picked Up by Docker Compose
 
-**Status**: Workaround Applied
+**Status**: Resolved
 **Impact**: `.env` contains `SETTINGS_AUTH_BYPASS=true` but `docker compose config` resolves it to `false`. Settings PUT calls return 401.
 
 **Root Cause**: Docker Compose `.env` file resolution depends on the working directory of the `docker compose` command, which may differ from the project root when invoked via `launch.sh` from a DinD container.
@@ -133,3 +133,7 @@ Previously known issues that are now fixed. Listed here so that old bug reports,
 | PTX ISA version mismatch — CUDA kernel failed to load on drivers supporting only PTX 9.0 when nvcc 13.2 emitted `.version 9.2` | Fixed Mar 2026 | `build.rs` auto-downgrade: detects driver PTX cap at build time and passes `--gpu-architecture` accordingly | `docs/explanation/physics-gpu-engine.md` |
 | Worker position data race — all edges vanished on the first rendered frame because the physics worker initialised all nodes at origin (0, 0, 0) | Fixed | `handleGraphUpdate` now returns `dataWithPositions` (with generated positions); the caller sends this to the worker instead of the original position-free `data` | `docs/explanation/client-architecture.md` |
 | Edge hash dedup — edges appeared frozen after physics convergence because `updatePoints` used a 3-value hash (`len`, `pts[0]`, `pts[len-1]`) that matched even when intermediate edge endpoints changed | Fixed | Hash removed; `computeInstanceMatrices` runs unconditionally every frame | `docs/explanation/client-architecture.md` |
+| CUDA thrust SM_890 error in GPU initialization — cuBlas context creation failed intermittently on Ada Lovelace GPUs | Fixed Apr 2026 | `force_compute_actor.rs` — added device synchronization before context creation and PTX module cache invalidation on arch mismatch | `src/actors/gpu/force_compute_actor.rs` |
+| PTX module lookup in community.rs — clustering kernels referenced incorrect module path causing kernel dispatch failures | Fixed Apr 2026 | `src/utils/ptx.rs` — added module name mapping for `gpu_clustering_kernels`, `ontology_constraints`, `pagerank` | `src/utils/ptx.rs` |
+| Slider range degeneration — max values capped at 50000 produced extreme physics parameters on first client connect | Fixed Apr 2026 | `client/src/features/physics/components/SettingsPanel.tsx` — slider ranges capped to sane defaults (repelK: 2000, centerGravityK: 10, damping: 0.98) | `docs/KNOWN_ISSUES.md` |
+| Clustering visualization missing analytics — DBSCAN and Louvain results not appearing in client analytics panel | Fixed Apr 2026 | Binary protocol V3 frame now writes cluster_id to node_analytics; clustering_actor writes to both `cluster_id` and `community_id` slots | `src/actors/gpu/clustering_actor.rs` |

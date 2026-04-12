@@ -514,9 +514,10 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
                 web::post().to(initialize_swarm_visualization),
             ),
     );
-    // Mock agent injection — outside /visualization scope, under /api/bots
+    // Mock agent injection — outside /visualization scope, under /bots (no /api prefix;
+    // this configure_routes is called inside the /api scope in main.rs)
     cfg.route(
-        "/api/bots/mock-agents",
+        "/bots/mock-agents",
         web::post().to(inject_mock_agents),
     );
 }

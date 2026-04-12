@@ -606,3 +606,10 @@ pub struct SetPhysicsOrchestratorAddr {
 pub struct SetGpuComputeAddress {
     pub addr: actix::Addr<crate::actors::gpu::force_compute_actor::ForceComputeActor>,
 }
+
+/// Re-randomize all node positions using a uniform 3D sphere distribution,
+/// re-upload to GPU, and trigger a full reheat so the simulation re-converges
+/// from a fresh layout. Used by `POST /api/layout/reset`.
+#[derive(Message, Debug, Clone)]
+#[rtype(result = "Result<(), String>")]
+pub struct ResetPositions;

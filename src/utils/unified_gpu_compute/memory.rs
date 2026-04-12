@@ -435,6 +435,11 @@ impl UnifiedGPUCompute {
         self.degree_weight = DeviceBuffer::from_slice(&vec![1.0f32; actual_new_nodes])?;
         self.degree_weights_available = false;
 
+        // FA2 adaptive speed: prev_force buffers reset to zero on resize
+        self.prev_force_x = DeviceBuffer::zeroed(actual_new_nodes)?;
+        self.prev_force_y = DeviceBuffer::zeroed(actual_new_nodes)?;
+        self.prev_force_z = DeviceBuffer::zeroed(actual_new_nodes)?;
+
         self.cluster_assignments = DeviceBuffer::zeroed(actual_new_nodes)?;
         self.distances_to_centroid = DeviceBuffer::zeroed(actual_new_nodes)?;
         let new_num_blocks = (actual_new_nodes + 255) / 256;

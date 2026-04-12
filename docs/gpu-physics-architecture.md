@@ -266,11 +266,76 @@ detects a disconnected address and retries init.
 **Fix**: check `nvidia-smi` for GPU health. Look for `Xid` errors in `dmesg`.
 Verify the GPU has sufficient free memory for the graph size.
 
+## Layout Mode System
+
+VisionClaw supports 6 layout algorithms configurable at runtime via physics mode selector:
+
+| Mode | Algorithm | Use Case | GPU Kernel |
+|------|-----------|----------|-----------|
+| **Force-Directed** | Repulsion + attraction + gravity + damping | General graphs, hierarchies | VisionflowUnified (28 kernels) |
+| **ForceAtlas2 LinLog** | LinLog kernel with degree-scaled mass and adaptive speed | Community detection, large networks | VisionflowUnified (lin-log variant) |
+| **Spectral** | Eigenvector-based layout (Laplacian spectrum) | Bipartite graphs, graph matching | DynamicGrid + AABB reduction |
+| **Hierarchical** | Sugiyama layering + crossing minimization | DAG visualization, flow diagrams | SemanticForces (hierarchy kernel) |
+| **Radial** | Polar coordinates, concentric circles by centrality | Star/hub networks, semantic wheels | VisionflowUnified (radial variant) |
+| **Temporal** | Time-aware positioning with temporal edges | Sequence/timeline graphs | VisionflowUnified (with temporal forces) |
+| **Clustered** | Constraint zones for node type separation | Multi-partite graphs, ontologies | VisionflowUnified + OntologyConstraints |
+
+### ForceAtlas2 LinLog Mode (Default)
+
+**Algorithm**: Combines repulsive and logarithmic attractive forces to reveal community structure:
+
+```
+F_repel = k_r / (r + epsilon)   // Traditional Coulomb repulsion
+F_attr  = k_a * ln(r)           // LinLog: logarithmic attraction
+F_total = F_repel + F_attr
+```
+
+**Parameters**:
+- `linLogStrength`: weight of logarithmic component (0-1, default 0.5)
+- `swingSpeed`: inertia multiplier for force application (0-2, default 1.0)
+- `tractionSpeed`: velocity damping per iteration (0-1, default 0.2)
+
+**Degree-Scaled Mass**: Hub nodes (high-degree) receive higher inertia:
+```
+mass = 1.0 + degree / avg_degree
+```
+
+This prevents hubs from drifting excessively while peripheral nodes settle quickly.
+
+### Per-Node Adaptive Speed
+
+Each node tracks individual swing (inertia) and traction (damping):
+
+```
+swing[node]    = |force[node] - last_force[node]|  // Velocity variance
+speed[node]    = swing[node] * swingSpeed / (1 + traction * traction_iterations)
+
+position[node] += velocity[node] * speed[node] * dt
+```
+
+Nodes with high oscillation slow down automatically, reducing vibration without global damping.
+
+### Constraint Zones
+
+Enforce spatial separation for different node types:
+
+| Zone Type | Constraint | GPU Kernel |
+|-----------|-----------|-----------|
+| **Disjoint** | Repel incompatible classes | `apply_disjoint_classes_kernel` |
+| **Alignment** | Attract class hierarchies | `apply_subclass_hierarchy_kernel` |
+| **Identity** | Co-locate owl:sameAs nodes | `apply_sameas_colocate_kernel` |
+| **Symmetry** | Symmetrical property edges | `apply_inverse_symmetry_kernel` |
+| **Cardinality** | Enforce functional property limits | `apply_functional_cardinality_kernel` |
+
+Zones partition 3D space into regions; nodes within a zone are clamped to that region's bounding box.
+
+---
+
 ## PTX Modules
 
 | Module | Kernel Set | Kernels |
 |--------|-----------|:-------:|
-| VisionflowUnified | Core force-directed layout (repulsion, springs, gravity, integration, constraints) + degree-weighted gravity | 28 |
+| VisionflowUnified | Core force-directed layout (repulsion, springs, gravity, integration, constraints) + degree-weighted gravity + ForceAtlas2 LinLog kernel | 28 |
 | SemanticForces | DAG hierarchy, type clustering, collision, attribute springs, physicality/role/maturity clustering | 15 |
 | GpuClusteringKernels | K-means, DBSCAN, Louvain community detection, LOF/Z-Score anomaly, stress majorization | 22 |
 | DynamicGrid | Spatial grid for neighbour queries | 0 (utility) |

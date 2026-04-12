@@ -8,6 +8,10 @@ fn default_auto_balance_interval() -> u32 {
     500
 }
 
+fn default_lin_log_mode() -> bool { true }
+fn default_scaling_ratio() -> f32 { 10.0 }
+fn default_adaptive_speed() -> bool { true }
+
 fn default_constraint_ramp_frames() -> u32 {
     60
 }
@@ -302,6 +306,19 @@ pub struct PhysicsSettings {
     /// 0 = merged (default), positive = knowledge at -X, ontology at +X, agents at origin.
     #[serde(default, alias = "graph_separation_x")]
     pub graph_separation_x: f32,
+
+    /// ForceAtlas2 LinLog mode: log(1+d) attraction per edge (modularity-equivalent).
+    /// Defaults to true.
+    #[serde(default = "default_lin_log_mode", alias = "lin_log_mode")]
+    pub lin_log_mode: bool,
+
+    /// FA2 repulsion scaling ratio (default 10.0).
+    #[serde(default = "default_scaling_ratio", alias = "scaling_ratio")]
+    pub scaling_ratio: f32,
+
+    /// FA2 per-node adaptive speed convergence (default true).
+    #[serde(default = "default_adaptive_speed", alias = "adaptive_speed")]
+    pub adaptive_speed: bool,
 }
 
 #[allow(deprecated)]
@@ -362,6 +379,9 @@ impl Default for PhysicsSettings {
             clustering_iterations: 30,
 
             graph_separation_x: 0.0,
+            lin_log_mode: true,
+            scaling_ratio: 10.0,
+            adaptive_speed: true,
         }
     }
 }

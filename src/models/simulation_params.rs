@@ -5,6 +5,10 @@ use cudarc::driver::DeviceRepr;
 use cust_core::DeviceCopy;
 use serde::{Deserialize, Serialize};
 
+fn default_lin_log_mode() -> bool { true }
+fn default_scaling_ratio() -> f32 { 10.0 }
+fn default_adaptive_speed() -> bool { true }
+
 /// Controls how the physics simulation converges.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", tag = "type")]
@@ -129,6 +133,16 @@ pub struct SimParams {
 
     /// Gravity pull toward origin (center-pull force). Added at end to preserve repr(C) layout.
     pub gravity: f32,
+
+    // ForceAtlas2 / LinLog parameters
+    /// 1 = LinLog attraction (log(1+d) per edge, modularity-equivalent), 0 = linear Hooke springs
+    pub lin_log_mode: u32,
+    /// FA2 repulsion scaling factor: repulsion ∝ scaling_ratio * (deg_i+1) * (deg_j+1) / d
+    pub scaling_ratio: f32,
+    /// 1 = per-node adaptive speed (FA2 convergence), 0 = global dt
+    pub adaptive_speed: u32,
+    /// Base speed for adaptive integration (scales per-node swing/traction)
+    pub global_speed: f32,
 }
 
 // SAFETY: SimParams is repr(C) with only POD types, safe for GPU transfer
@@ -238,6 +252,22 @@ pub struct SimulationParams {
     /// Active layout algorithm (ADR-031). Defaults to ForceDirected.
     #[serde(default)]
     pub layout_mode: LayoutMode,
+
+    /// ForceAtlas2 LinLog mode: attraction uses log(1+d) instead of Hooke's law.
+    /// Makes energy minimization equivalent to modularity maximization.
+    /// Defaults to true.
+    #[serde(default = "default_lin_log_mode")]
+    pub lin_log_mode: bool,
+
+    /// FA2 repulsion scaling ratio. Repulsion ∝ scaling_ratio × (deg_i+1) × (deg_j+1) / d.
+    /// Defaults to 10.0.
+    #[serde(default = "default_scaling_ratio")]
+    pub scaling_ratio: f32,
+
+    /// FA2 per-node adaptive speed for convergence. Slows oscillating nodes.
+    /// Defaults to true.
+    #[serde(default = "default_adaptive_speed")]
+    pub adaptive_speed: bool,
 }
 
 impl Default for SimulationParams {
@@ -445,6 +475,10 @@ impl SimulationParams {
             weight_precision_multiplier: crate::config::dev_config::physics()
                 .weight_precision_multiplier,
             gravity: self.gravity,
+            lin_log_mode: if self.lin_log_mode { 1 } else { 0 },
+            scaling_ratio: self.scaling_ratio,
+            adaptive_speed: if self.adaptive_speed { 1 } else { 0 },
+            global_speed: self.dt * 10.0, // sensible default: dt-relative base speed
         }
     }
 }
@@ -517,6 +551,9 @@ impl SimParams {
             settle_mode: SettleMode::default(),
             graph_separation_x: 0.0,
             layout_mode: LayoutMode::default(),
+            lin_log_mode: self.lin_log_mode != 0,
+            scaling_ratio: self.scaling_ratio,
+            adaptive_speed: self.adaptive_speed != 0,
         }
     }
 }
@@ -529,7 +566,7 @@ impl From<&SimulationParams> for SimParams {
 }
 
 // Compile-time size assertion: SimParams must match the CUDA struct exactly.
-const _: () = assert!(std::mem::size_of::<SimParams>() == 156);
+const _: () = assert!(std::mem::size_of::<SimParams>() == 172);
 
 // Conversion from SimParams to SimulationParams
 impl From<&SimParams> for SimulationParams {
@@ -601,6 +638,10 @@ impl From<&PhysicsSettings> for SimParams {
             weight_precision_multiplier: crate::config::dev_config::physics()
                 .weight_precision_multiplier,
             gravity: physics.gravity,
+            lin_log_mode: if physics.lin_log_mode { 1 } else { 0 },
+            scaling_ratio: physics.scaling_ratio,
+            adaptive_speed: if physics.adaptive_speed { 1 } else { 0 },
+            global_speed: physics.dt * 10.0,
         }
     }
 }
@@ -656,6 +697,9 @@ impl From<&PhysicsSettings> for SimulationParams {
             settle_mode: SettleMode::default(),
             graph_separation_x: physics.graph_separation_x,
             layout_mode: LayoutMode::default(),
+            lin_log_mode: physics.lin_log_mode,
+            scaling_ratio: physics.scaling_ratio,
+            adaptive_speed: physics.adaptive_speed,
         }
     }
 }

@@ -21,8 +21,7 @@ use webxr::{
         pages_handler,
         socket_flow_handler::{socket_flow_handler, PreReadSocketSettings},
         speech_socket_handler::speech_socket_handler,
-
-
+        validation_handler,
         workspace_handler,
     },
     services::speech_service::SpeechService,
@@ -549,6 +548,19 @@ async fn main() -> std::io::Result<()> {
     }
 
     let app_state_data = web::Data::new(app_state);
+    let validation_service = web::Data::new(validation_handler::ValidationService::new());
+
+    // Initialize PhysicsService so POST /api/physics/reset and related endpoints work.
+    // ActixPhysicsAdapter wraps PhysicsOrchestratorActor; the actor addr is populated
+    // lazily by the adapter's own initialization path.
+    let physics_service = {
+        use webxr::adapters::actix_physics_adapter::ActixPhysicsAdapter;
+        use webxr::application::PhysicsService;
+        use webxr::events::EventBus;
+        let adapter = Arc::new(tokio::sync::RwLock::new(ActixPhysicsAdapter::new()));
+        let event_bus = Arc::new(tokio::sync::RwLock::new(EventBus::new()));
+        web::Data::new(Arc::new(PhysicsService::new(adapter, event_bus)))
+    };
     
 
     
@@ -675,6 +687,8 @@ async fn main() -> std::io::Result<()> {
             .app_data(neo4j_repo_data.clone())
             .app_data(briefing_service.clone())
             .app_data(nostr_publisher.clone())
+            .app_data(validation_service.clone())
+            .app_data(physics_service.clone())
             
             
             .route("/wss", web::get().to(socket_flow_handler)) 
@@ -699,6 +713,7 @@ async fn main() -> std::io::Result<()> {
                     .configure(api_handler::config)
                     .configure(workspace_handler::config)
                     .configure(admin_sync_handler::configure_routes)
+                    .configure(validation_handler::config)
 
                     // Pipeline admin routes removed (SQLite-specific handlers deleted in Neo4j migration)
                     // Cypher query endpoint removed (handler deleted in Neo4j migration)
@@ -724,9 +739,6 @@ async fn main() -> std::io::Result<()> {
                     .service(web::scope("/bots").configure(api_handler::bots::config))
                     .configure(bots_visualization_handler::configure_routes)
                     .configure(graph_export_handler::configure_routes)
-
-                    // GPU analytics: clustering, anomaly detection, stress optimisation
-                    .configure(webxr::handlers::clustering_handler::config)
 
                     // Ontology agent tools (MCP surface)
                     .configure(webxr::handlers::configure_ontology_agent_routes)
