@@ -2360,16 +2360,16 @@ impl Handler<SetSharedGPUContext> for ForceComputeActor {
     fn handle(&mut self, msg: SetSharedGPUContext, _ctx: &mut Self::Context) -> Self::Result {
         let had_context = self.shared_context.is_some();
         if had_context {
-            info!("ForceComputeActor: Received SharedGPUContext from supervisor chain (replacing self-initialized context)");
+            // Keep the self-initialized context — it was created on this actor's
+            // thread and has the correct CUDA context binding. The supervisor's
+            // SharedGPUContext was created on a different thread; replacing our
+            // context with it causes silent CUDA failures and actor death.
+            // Other actors (clustering, analytics) will use their own contexts.
+            info!("ForceComputeActor: Keeping self-initialized GPU context (ignoring supervisor context to avoid cross-thread CUDA issues)");
         } else {
             info!("ForceComputeActor: Received SharedGPUContext from supervisor chain");
+            self.shared_context = Some(msg.context);
         }
-
-        // Accept the externally-provided context. This replaces any self-created
-        // context and ensures all GPU actors share the same CUDA device/stream,
-        // which is important for clustering and analytics actors that also need
-        // the same SharedGPUContext.
-        self.shared_context = Some(msg.context);
 
         if let Some(addr) = msg.graph_service_addr {
             self.graph_service_addr = Some(addr);
