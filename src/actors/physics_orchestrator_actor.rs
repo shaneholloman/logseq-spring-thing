@@ -1464,12 +1464,39 @@ impl Handler<UpdateGraphData> for PhysicsOrchestratorActor {
     type Result = ();
 
     fn handle(&mut self, msg: UpdateGraphData, ctx: &mut Self::Context) -> Self::Result {
-        info!("PhysicsOrchestratorActor: Received UpdateGraphData with {} nodes", msg.graph_data.nodes.len());
+        let new_node_count = msg.graph_data.nodes.len();
+        info!("PhysicsOrchestratorActor: Received UpdateGraphData with {} nodes (prev: {})",
+              new_node_count, self.last_node_count);
+
+        let prev_node_count = self.last_node_count;
         self.update_graph_data(msg.graph_data);
 
-        // Try GPU initialization now that we have graph data
-        // This handles the case where GPU address arrived before graph data
-        if self.gpu_compute_addr.is_some() && !self.gpu_initialized && !self.gpu_init_in_progress {
+        if self.gpu_initialized {
+            // GPU already running — if the graph grew (batch sync added new nodes),
+            // push the full updated graph so new nodes get initial positions and
+            // existing nodes don't lose their physics-computed layout.
+            if new_node_count > prev_node_count {
+                if let (Some(ref gpu_addr), Some(ref graph_data)) =
+                    (&self.gpu_compute_addr, &self.graph_data_ref)
+                {
+                    if gpu_addr.connected() {
+                        info!(
+                            "PhysicsOrchestratorActor: Graph grew from {} to {} nodes — \
+                             sending UpdateGPUGraphData for full re-upload",
+                            prev_node_count, new_node_count
+                        );
+                        let msg_id = crate::actors::messaging::message_id::MessageId::new();
+                        gpu_addr.do_send(UpdateGPUGraphData {
+                            graph: Arc::clone(graph_data),
+                            correlation_id: Some(msg_id),
+                        });
+                    }
+                }
+            }
+        } else if self.gpu_compute_addr.is_some() && !self.gpu_init_in_progress {
+            // GPU not yet initialized — attempt first-time initialization now that
+            // we have graph data. This handles the case where the GPU address arrived
+            // before graph data.
             info!("PhysicsOrchestratorActor: Graph data received, attempting GPU initialization");
             self.initialize_gpu_if_needed(ctx);
         }
