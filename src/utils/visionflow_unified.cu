@@ -2436,6 +2436,14 @@ __global__ void degree_weighted_gravity_kernel(
         //   degree 149: dw=5.01, norm=0.83 → gravity *= 1.83
         float dw_norm = dw / (1.0f + dw);
         float gravity_multiplier = 1.0f + dw_norm; // range [1, 2): hubs pulled harder
+
+        // 1) Undo the uniform centering that force_pass_kernel already applied
+        //    (force_pass adds: force -= pos * center_gravity_k)
+        force_x[idx] += px * center_gravity_k;
+        force_y[idx] += py * center_gravity_k;
+        force_z[idx] += pz * center_gravity_k;
+
+        // 2) Apply degree-weighted replacement: stronger for hubs
         force_x[idx] -= px * center_gravity_k * gravity_multiplier;
         force_y[idx] -= py * center_gravity_k * gravity_multiplier;
         force_z[idx] -= pz * center_gravity_k * gravity_multiplier;
