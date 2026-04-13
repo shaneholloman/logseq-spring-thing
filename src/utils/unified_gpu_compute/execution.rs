@@ -309,8 +309,14 @@ impl UnifiedGPUCompute {
 
 
 
-        self.cell_start.copy_from(&self.zero_buffer)?;
-        self.cell_end.copy_from(&self.zero_buffer)?;
+        // Zero cell buffers using correctly-sized slice to avoid panics during
+        // concurrent cell buffer resize (where zero_buffer may be a different size).
+        let cell_buf_len = self.cell_start.len();
+        if self.zero_buffer.len() != cell_buf_len {
+            self.zero_buffer = vec![0i32; cell_buf_len];
+        }
+        self.cell_start.copy_from(&self.zero_buffer[..cell_buf_len])?;
+        self.cell_end.copy_from(&self.zero_buffer[..cell_buf_len])?;
 
         let cell_block_size = block_size;
         let grid_cells_blocks = (num_grid_cells as u32 + cell_block_size - 1) / cell_block_size;
