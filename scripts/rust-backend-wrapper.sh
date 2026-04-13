@@ -57,7 +57,7 @@ if [ "${SKIP_RUST_REBUILD:-false}" != "true" ]; then
         rm -rf /app/target/release/deps/webxr-* 2>/dev/null || true
         rm -f /app/target/release/webxr 2>/dev/null || true
         rm -rf /app/target/release/build/webxr-* 2>/dev/null || true
-        mkdir -p /app/target
+        mkdir -p /app/target/release
         echo "$CURRENT_HASH" > "$HASH_FILE"
     else
         log "Source hash matches cached build — skipping recompilation"
