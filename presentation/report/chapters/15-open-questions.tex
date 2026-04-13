@@ -1,0 +1,106 @@
+\chapter{Open Questions and Research Directions}
+\label{ch:open-questions}
+
+\epigraph{A working document that hides its weaknesses is less useful than one that maps them. These gaps are research directions, not admissions of failure.}{}
+
+\section{The Core Thesis Is Incomplete}
+
+This report frames hierarchy as ``an information routing protocol'' and argues that AI collapses it. This framing is analytically productive but incomplete. Hierarchy also performs at least three additional functions that AI does not straightforwardly replace:
+
+\textbf{Legitimation.} Hierarchy establishes who has authority to commit resources. AI cannot authorise a two-million-pound capital expenditure. The signature on a contract carries legal force because it comes from a person with defined authority within a recognised organisational structure. No agentic system possesses this authority, and it is unclear how legitimation functions in a post-hierarchical structure.
+
+\textbf{Accountability.} Hierarchy establishes who is responsible when things go wrong. ``The mesh decided'' is not an answer a board of directors accepts. The accountability gap in AI-assisted decision-making is already a live issue in regulated industries; in a fully agentic organisation, it becomes a structural problem without a clear solution.
+
+\textbf{Political negotiation.} Hierarchy provides a mechanism for resolving competing priorities when budgets are finite and strategic directions conflict. AI can optimise within defined constraints; it cannot set the constraints themselves when setting them requires negotiating between stakeholders with different interests and different power.
+
+If three of hierarchy's five core functions persist, ``coordination collapse'' may be an overstatement. A more honest framing might be ``information routing collapse'' --- one function of hierarchy dissolves, forcing the others to restructure around different assumptions. The coordination tax shrinks dramatically; it does not reach zero.
+
+\textbf{Research needed:} How do legitimation, accountability, and political negotiation operate in post-hierarchical structures? Haier's micro-enterprise model provides the best existing evidence but operates in a culturally specific context that may not generalise.
+
+\section{Evidence Base Weaknesses}
+
+The argument in this report rests on specific empirical findings. Several of these findings have limitations that deserve explicit acknowledgement.
+
+\subsection{The Jagged Frontier Map Is Outdated}
+
+The BCG experiment \parencite{DellAcqua2026} used GPT-4, now two model generations behind current frontier models. The frontier has almost certainly moved. This report builds its architecture on a map that may no longer be accurate in its specifics, even though the principle --- that the frontier is jagged and unpredictable --- remains sound.
+
+\subsection{The 17x Error Multiplication}
+
+The 17-times error multiplication figure \parencite{TDS2026} is cited from Towards Data Science, an unedited community blogging platform rather than a peer-reviewed journal. This statistic performs heavy argumentative work in the report, particularly in the case against uncoordinated agent deployment. The underlying research source should be identified and verified, or the claim should be replaced with stronger evidence.
+
+\subsection{The Klarna Narrative}
+
+The report uses Klarna as a cautionary tale of AI replacement gone wrong. This narrative is accurate but incomplete. Klarna's 2025 financials showed improved margins. The CEO quote about cost being ``too predominant'' an evaluation factor is drawn from a longer statement that also defended the AI strategy. A hostile reader could characterise this as selective evidence. The full picture --- financial improvement alongside quality degradation --- should be presented, and the audience should draw their own conclusions.
+
+\subsection{The 89 Per Cent Reduction}
+
+The claim that providing approved AI tools reduces unauthorised use by 89 per cent is used repeatedly throughout the report. No source is cited. This figure requires attribution or removal.
+
+\subsection{Shadow AI Statistics}
+
+The shadow AI statistics stack vendor reports from Gartner, IBM, and others that have methodological limitations and commercial incentives to inflate threat estimates. No error bars or methodological caveats are provided. The statistics should be contextualised with appropriate caution.
+
+\subsection{Acemoglu's Sceptical Thesis}
+
+\textcite{Acemoglu2019} is cited in the bibliography but never substantively engaged with. His argument --- that automation may increase inequality rather than aggregate productivity --- is directly relevant to the equity implications of the mesh and is currently ignored. The agentic mesh could concentrate benefits among those with AI literacy and technical access while leaving others behind. This possibility deserves honest engagement.
+
+\section{Audience Blind Spots}
+
+\textbf{Middle managers} will ask: ``What does my Monday morning look like as a judgment broker?'' Chapter~\ref{ch:role-transformation} provides an initial answer, but a full competency framework, job specification, and salary benchmarking are needed for the role to be credible.
+
+\textbf{Change managers} will note that this report attacks phased transformation models and then provides a phased 90-day roadmap. Chapter~\ref{ch:change-problem} addresses this contradiction by distinguishing between a programme with an end date and a system with a start date, but the distinction may not survive contact with a sceptical audience.
+
+\textbf{AI leaders} will ask: ``What does this cost?'' Chapter~\ref{ch:implementation} provides indicative cost tiers, but detailed financial modelling --- total cost of ownership, return on investment timelines, comparison with alternative approaches --- is not yet developed.
+
+\textbf{All three audiences} will notice that DreamLab is simultaneously the analyst, the framework creator, and the vendor --- a classic consulting positioning conflict. This should be acknowledged explicitly: the framework should be judged on its merits and its evidence, not on its provenance.
+
+\section{Competing Frameworks Not Addressed}
+
+The report positions against Block and Every --- neither of which is a consulting framework that the target audience is actively evaluating. It does not differentiate from:
+
+\begin{itemize}
+  \item \textbf{SAFe 6.0}, which added AI-specific agile change patterns in 2024
+  \item \textbf{Microsoft Copilot Studio}, an enterprise organisational AI deployment framework
+  \item \textbf{Holacracy 5.0}, which specifically addressed the scale failures attributed to earlier versions in Chapter~\ref{ch:historical-context}
+  \item \textbf{Anthropic's constitutional AI governance}, directly relevant to the governance paradox in Chapter~\ref{ch:governance}
+\end{itemize}
+
+A competitor comparison table is provided in Appendix~\ref{ch:competitor-matrix}, but the main text does not engage with these alternatives substantively.
+
+\section{Implementation Landmines}
+
+The 90-day roadmap in Chapter~\ref{ch:implementation} contains several risks that are now addressed with mitigations but were not present in earlier versions:
+
+\begin{enumerate}
+  \item The monitoring deployment raises GDPR and employee surveillance concerns in EU jurisdictions and unionised workplaces. Legal and compliance dependencies are now specified but add time and cost to Phase~1.
+  \item OWL~2 ontology construction in 30 days is either trivially inadequate or requires specialist expertise that most organisations do not possess internally.
+  \item Failure criteria have been added, but they have not been validated in practice. The thresholds are judgment calls, not empirically derived.
+  \item Five resistance patterns are documented, but the roadmap's mitigation strategies are drawn from general change management evidence, not from specific experience with agentic mesh deployment.
+\end{enumerate}
+
+\section{Missing Topics}
+
+A well-informed audience would expect coverage of topics that this report does not address or addresses only in passing:
+
+\begin{itemize}
+  \item \textbf{Labour law and collective bargaining}: Role transformation at this scale triggers consultation obligations in most European jurisdictions.
+  \item \textbf{Environmental and energy costs}: Agentic infrastructure at scale has material compute and energy implications that are not quantified.
+  \item \textbf{Cybersecurity attack surface}: The ratio of 96 machine identities per human with 31 per cent having controls is a security argument, not merely a governance one.
+  \item \textbf{Equity and access}: Who benefits from the mesh and who is structurally excluded? Workers without AI literacy? Roles that do not lend themselves to agent augmentation?
+  \item \textbf{Failure mode analysis}: Beyond the ant death spiral, what other failure modes exist? Cascading errors? Single points of failure in the judgment broker? Ontology drift?
+  \item \textbf{The vigilance design response}: Chapter~\ref{ch:vigilance} identifies the problem but does not fully specify the architectural solution. How exactly does the mesh maintain human cognitive engagement?
+\end{itemize}
+
+\section{The VisionClaw Credibility Gap}
+
+A 15-person creative technology team led by the system architect is the most favourable possible environment for demonstrating an agentic mesh: high technical literacy, low process rigidity, flat power dynamics, intrinsic motivation, and the architect present to debug in real time. Extrapolating from this to a 500-person manufacturing firm with unionised labour, legacy ERP systems, regulated processes, and middle managers who did not choose the architecture requires a bridging argument that this report provides only partially.
+
+\begin{keyinsight}[title={Possible Bridging Strategies}]
+\begin{enumerate}
+  \item Run a pilot in a genuinely different context: a regulated industry, a non-technical workforce, an organisation where the architect is not present.
+  \item Partner with an established consulting framework (Deloitte, BCG) for independent validation.
+  \item Publish the methodology as open-source and invite external testing.
+  \item Position VisionClaw as ``existence proof under ideal conditions'' rather than ``proof'' --- honest about the gap, confident about the direction.
+\end{enumerate}
+\end{keyinsight}

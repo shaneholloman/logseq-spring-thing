@@ -1,0 +1,145 @@
+\chapter{Implementation}
+\label{ch:implementation}
+
+\epigraph{This 90-day roadmap is Phase 1 of a perpetual process, not ``the implementation plan.''}{}
+
+\section{From Org Chart to Agentic Mesh}
+
+The change management analysis in Chapter~\ref{ch:change-problem} established that AI transformation has no end state. The 90-day roadmap presented here is the bootstrap sequence for the compounding loop --- not a transformation programme with a completion date. It launches the Insight Ingestion Loop described in Chapter~\ref{ch:three-models}. Once launched, the loop is the plan. Phase 3 never ends.
+
+\section{Phase 1: Audit and Discovery (Days 1--30)}
+
+The first phase surfaces the shadow AI ecosystem that already exists and establishes the baseline against which progress will be measured.
+
+\subsection{Shadow Workflow Audit}
+
+Map what AI tools staff are already using. This audit serves two purposes: it reveals the scale of unsanctioned AI adoption (which the evidence in Chapter~\ref{ch:collapse-point} suggests will be substantial), and it identifies the shadow workflows that represent the raw material for the compounding loop.
+
+The audit must be conducted with explicit guarantees of non-punitive treatment. Workers will not disclose their AI usage if disclosure carries personal risk. The psychological safety evidence \parencite{EdmondsonLei2025} demonstrates that psychologically safe employees are 3.4 times more likely to report AI tool discovery. Providing sanctioned alternatives reduces unauthorised use by 89 per cent.
+
+\subsection{Friction Point Identification}
+
+Identify 5--10 high-value cross-functional friction points --- the places where information routing between departments is slowest, most error-prone, or most dependent on individual knowledge. These friction points are the initial targets for mesh deployment.
+
+\subsection{Monitoring Deployment}
+
+Deploy passive monitoring agents across key communication channels to detect patterns of informal collaboration and workaround behaviour.
+
+\begin{cautionbox}[title={Legal and Compliance Dependencies}]
+In any EU jurisdiction, and in most unionised workplaces, deploying monitoring agents across employee communication channels raises GDPR, employee surveillance, and works council obligations. These legal and compliance dependencies must be addressed \textbf{before} deployment, not after. Specific requirements include:
+\begin{itemize}
+  \item Data Protection Impact Assessment under GDPR Article 35
+  \item Works council consultation where applicable
+  \item Clear purpose limitation and data minimisation documentation
+  \item Employee notification and consent frameworks
+  \item Retention policies for monitored data
+\end{itemize}
+Failure to address these requirements exposes the organisation to regulatory sanctions and, equally important, destroys the psychological safety that the entire adoption strategy depends on.
+\end{cautionbox}
+
+\subsection{Baseline Measurement}
+
+Establish baseline values for the four KPIs defined in Chapter~\ref{ch:new-kpis}: Mesh Velocity, Augmentation Ratio, Trust Variance, and HITL Precision. The baseline measurement provides the reference point against which all subsequent progress is evaluated. Without it, success cannot be distinguished from aspiration.
+
+\subsection{Judgment Broker Identification}
+
+Identify the 9 per cent --- the potential judgment broker candidates from the 1-9-90 pattern \parencite{BCGAgenticShift2025}. These are the middle managers who show the willingness to experiment, the capacity for systems thinking, and the relational intelligence to serve as mesh coordinators. Not every current middle manager is a candidate. The identification process should be honest about this.
+
+\section{Phase 2: Architecture and Codification (Days 31--60)}
+
+The second phase builds the initial mesh infrastructure and begins the cultural transformation.
+
+\subsection{Agent Skill Pilot}
+
+Deploy 10--15 agent skills relevant to the top friction points identified in Phase~1. The initial deployment should be narrow and deep rather than broad and shallow: better to automate three workflows thoroughly than to touch fifteen superficially.
+
+\subsection{Domain Ontology Construction}
+
+Construct an initial OWL~2 domain ontology for core business processes. This step requires specific expertise and should not be underestimated: ontology engineering is a specialised discipline, and constructing a domain ontology that is simultaneously expressive enough to be useful and constrained enough to be maintainable is a non-trivial engineering task.
+
+\begin{cautionbox}[title={Staffing and Expertise Requirements}]
+Constructing an OWL~2 domain ontology in 30 days is either a trivial exercise that produces a toy ontology or a substantive knowledge engineering project that requires:
+\begin{itemize}
+  \item One or more knowledge engineers with OWL~2 experience
+  \item Domain experts from each business function being modelled
+  \item Iterative validation sessions with operational staff
+  \item Tools: Prot\'eg\'e or equivalent ontology editor, reasoner integration
+\end{itemize}
+If internal expertise is unavailable, this step requires external support and should be budgeted accordingly.
+\end{cautionbox}
+
+\subsection{DAG Construction}
+
+Build the first validated Directed Acyclic Graphs from discovered shadow workflows. Each DAG formalises a workflow that was previously informal, adding provenance metadata, dependency checks, and governance constraints.
+
+\subsection{Judgment Broker Workshops}
+
+Run workshops that reframe the middle management identity from information router to judgment broker. These workshops are not training events in the conventional sense. They are identity-level conversations that acknowledge the threat directly (Move~1 from Chapter~\ref{ch:compounding-org}), demonstrate the escalation (Move~2), and show the failure mode without the judgment broker (Move~3).
+
+\subsection{Protected Experimentation Time}
+
+Create protected AI experimentation time for the identified 9 per cent. The BCG/MIT evidence shows a 3.1 times higher adoption rate when experimentation time is provided \parencite{BCGAIKPIs2025}. This is not optional enrichment. It is a strategic investment with a measured return.
+
+\section{Phase 3: Live Mesh and Governance (Days 61--90 and Beyond)}
+
+The third phase activates the live mesh and governance layer. This phase has a start date but no end date.
+
+\subsection{Production Promotion}
+
+Promote validated workflows into the production mesh with full service-level agreements, ownership assignments, and governance constraints. Each workflow enters production with:
+
+\begin{itemize}
+  \item A named owner (human judgment broker)
+  \item Defined authority boundaries (what the agents can decide autonomously; what requires escalation)
+  \item Trust Variance monitoring (continuous quality measurement)
+  \item Audit trail (ontological provenance through the knowledge graph)
+\end{itemize}
+
+\subsection{Governance Activation}
+
+Activate the declarative governance layer with Trust Variance alerting live. The judgment broker receives real-time notification when agent decision quality drifts outside tolerance.
+
+\subsection{Insight Portal Launch}
+
+Launch the Insight Portal for frontline contribution to the mesh. This provides the bottom-up channel for the Discovery Engine: any employee can propose a workflow improvement, a cross-functional shortcut, or a novel AI application. The mesh evaluates proposals against the domain ontology and routes viable ones to the appropriate judgment broker for validation.
+
+\subsection{First Mesh Intelligence Report}
+
+Deliver the first Mesh Intelligence Report to the C-Suite, using the new KPI dashboard defined in Chapter~\ref{ch:new-kpis}. This report replaces headcount metrics with learning metrics: how fast the organisation is converting discoveries into capability, how reliably the agentic layer is handling cognitive load, and whether human attention is directed to the right problems.
+
+\section{Cost Tiers}
+
+\begin{table}[h]
+\centering
+\caption{Indicative cost tiers for agentic mesh deployment}
+\label{tab:cost-tiers}
+\begin{tabularx}{\textwidth}{l C{2.5cm} X}
+\toprule
+\textbf{Tier} & \textbf{Org Size} & \textbf{Indicative 90-Day Investment} \\
+\midrule
+Small & 50--100 & Cloud-based agent infrastructure, 1--2 external consultants for ontology engineering, minimal GPU requirements. Estimated range: \pounds50,000--\pounds150,000 \\
+\addlinespace
+Medium & 100--500 & Dedicated infrastructure, 2--4 knowledge engineers, judgment broker workshop programme, monitoring and governance tooling. Estimated range: \pounds150,000--\pounds500,000 \\
+\addlinespace
+Large & 500--5,000 & Enterprise infrastructure, dedicated ontology team, extensive change management programme, regulatory compliance workstream, executive coaching. Estimated range: \pounds500,000--\pounds2,000,000 \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+These figures are indicative. Actual costs depend on the complexity of the domain, the maturity of existing IT infrastructure, the degree of regulatory constraint, and the availability of internal expertise. A COO evaluating this roadmap will need a detailed cost estimate tailored to their specific context.
+
+\section{Failure Criteria}
+
+Every implementation plan should define what ``stop, this is not working'' looks like. The following signals, observed at or before day 45, indicate that the deployment should be paused, re-evaluated, or restructured:
+
+\begin{enumerate}
+  \item \textbf{Zero shadow workflows surfaced}: If the audit reveals no unsanctioned AI usage, either the methodology is wrong (workers do not trust the audit) or the workforce is genuinely not using AI (unlikely given the 75 per cent adoption data).
+  \item \textbf{Judgment broker candidates cannot be identified}: If the 1-9-90 pattern does not manifest --- if no middle managers show willingness to experiment --- the cultural prerequisites for the mesh may not be in place.
+  \item \textbf{Trust Variance exceeds tolerance on pilot workflows}: If agent decision quality is persistently poor during the pilot, the agent skills or the domain ontology may need fundamental revision before scaling.
+  \item \textbf{Legal counsel blocks monitoring deployment}: If the GDPR or surveillance concerns cannot be resolved within the Phase~1 timeline, the discovery methodology must be redesigned around voluntary disclosure rather than passive monitoring.
+  \item \textbf{Executive sponsorship withdrawn}: The mesh requires sustained executive commitment. If the C-Suite loses interest before Phase~3, the programme will stall at the pilot stage.
+\end{enumerate}
+
+\begin{keyinsight}
+The 90-day roadmap is designed to be falsifiable. If the specified failure criteria are met, the organisation has learned something valuable --- that the prerequisites for mesh deployment are not yet in place --- and can adjust accordingly. An implementation plan that cannot fail is not a plan; it is a wish.
+\end{keyinsight}

@@ -79,6 +79,17 @@ This is not incremental efficiency. This is the structural reason the org chart 
 >
 > **Critical finding**: when approved tools are provided, unauthorised use drops 89%. The problem is not workforce disobedience — it is organisational failure to provide sanctioned channels for capability that workers have already discovered.
 
+> **[NEW DATA — EPOCH AI SURVEY, MARCH 2026]**
+> Probability-based survey of 2,021 U.S. adults via Ipsos KnowledgePanel (March 3-5, 2026), subsample of 665 employed past-week AI users:
+> - **51% of employed Americans** who used AI in the past week reported using it at least as much for work as for personal tasks
+> - **27% report AI has replaced existing tasks** (automation); **21% report AI has created entirely new tasks** (augmentation); **13% experienced both simultaneously**
+> - Employer provision is the strongest adoption driver: **76% of those with employer-provided AI tools** use them for work, vs 58% self-paying, vs 38% free-tier
+> - Microsoft Copilot leads workplace AI usage (18.4%), followed by ChatGPT (12.6%), Google Gemini (7.5%), Claude (2.8%)
+>
+> The task displacement/creation split is directly relevant: the 27% experiencing pure automation are in the zone where middle managers fear obsolescence. The 21% experiencing pure augmentation are in the zone where judgment brokers are most needed. The 13% experiencing both represent the most complex organisational challenge: simultaneous role erosion and expansion.
+>
+> Source: Falkman Olsson & Edelman, Epoch AI, March 2026. https://epoch.ai/blog/half-of-employed-ai-users-now-use-it-for-work/
+
 ### The Shadow Workflow Problem
 
 The shadow AI statistics describe individual tool use. But something more structurally significant is happening: workers are not just using AI to do their jobs faster — they are *reorganising work itself* without management awareness.

@@ -1272,14 +1272,34 @@ impl Handler<ComputeForces> for ForceComputeActor {
                     }
                 }
 
-                let gpu_result = unified_compute.execute_physics_step_with_bypass(&sim_params, stability_bypass);
-                let execution_duration = step_start.elapsed().as_secs_f64() * 1000.0;
+                // Wrap GPU execution in catch_unwind to prevent mutex poisoning.
+                // Buffer size mismatches cause panics in cust copy_from/copy_to;
+                // catching them keeps the actor alive for subsequent frames where
+                // buffers may have been resized correctly.
+                let step_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    let gpu_result = unified_compute.execute_physics_step_with_bypass(&sim_params, stability_bypass);
+                    let execution_duration = step_start.elapsed().as_secs_f64() * 1000.0;
+                    let positions_result = unified_compute.get_node_positions();
+                    let velocities_result = unified_compute.get_node_velocities();
+                    (gpu_result, execution_duration, positions_result, velocities_result)
+                }));
 
-                // Get positions and velocities for broadcast
-                let positions_result = unified_compute.get_node_positions();
-                let velocities_result = unified_compute.get_node_velocities();
-
-                Ok((gpu_result, execution_duration, positions_result, velocities_result))
+                match step_result {
+                    Ok((gpu_result, execution_duration, positions_result, velocities_result)) => {
+                        Ok::<_, String>((gpu_result, execution_duration, positions_result, velocities_result))
+                    }
+                    Err(panic_info) => {
+                        let msg = if let Some(s) = panic_info.downcast_ref::<String>() {
+                            s.clone()
+                        } else if let Some(s) = panic_info.downcast_ref::<&str>() {
+                            s.to_string()
+                        } else {
+                            "unknown panic".to_string()
+                        };
+                        error!("GPU physics step caught panic (actor survives): {}", msg);
+                        Err(format!("GPU physics panic caught: {}", msg))
+                    }
+                }
             }).await;
 
             // Handle spawn_blocking join result
