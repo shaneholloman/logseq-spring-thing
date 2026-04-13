@@ -506,37 +506,35 @@ impl ForceComputeActor {
         let mut positions_y: Vec<f32> = graph_data.nodes.iter().map(|n| n.data.y).collect();
         let mut positions_z: Vec<f32> = graph_data.nodes.iter().map(|n| n.data.z).collect();
 
-        // Randomize any nodes stuck at origin (0,0,0) — Neo4j stores no positions,
-        // so all nodes start at zero. Force-directed layout can't separate co-located
-        // nodes (repulsion is 1/distance → infinity → capped → cancels in all directions).
-        // Place them on a random 3D sphere to break the singularity.
-        let initial_radius = 200.0f32; // Spread within the bounds
-        let mut rng_seed: u64 = 42;
-        let zero_count = positions_x.iter().enumerate()
-            .filter(|(i, &x)| x.abs() < 0.001 && positions_y[*i].abs() < 0.001 && positions_z[*i].abs() < 0.001)
-            .count();
-        if zero_count > num_nodes / 2 {
-            info!("ForceComputeActor: {}/{} nodes at origin — randomizing to 3D sphere (radius {})",
-                  zero_count, num_nodes, initial_radius);
-            for i in 0..num_nodes {
-                if positions_x[i].abs() < 0.001 && positions_y[i].abs() < 0.001 && positions_z[i].abs() < 0.001 {
-                    // Simple LCG random for reproducible placement
-                    rng_seed = rng_seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
-                    let u1 = (rng_seed >> 33) as f32 / (1u64 << 31) as f32; // 0..1
-                    rng_seed = rng_seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
-                    let u2 = (rng_seed >> 33) as f32 / (1u64 << 31) as f32;
-                    rng_seed = rng_seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
-                    let u3 = (rng_seed >> 33) as f32 / (1u64 << 31) as f32;
+        // ALWAYS randomize nodes at origin (0,0,0). Neo4j stores no physics positions,
+        // so all nodes arrive at zero. Force-directed layout can't separate co-located
+        // nodes. Every upload randomizes zero-position nodes, using the node index as
+        // part of the seed so the same node gets the same random position across uploads.
+        let initial_radius = 200.0f32;
+        let mut randomized = 0usize;
+        for i in 0..num_nodes {
+            if positions_x[i].abs() < 0.001 && positions_y[i].abs() < 0.001 && positions_z[i].abs() < 0.001 {
+                // Deterministic per-node seed: node index ensures reproducible positions
+                let mut s: u64 = (i as u64).wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+                let u1 = ((s >> 33) as f32) / ((1u64 << 31) as f32);
+                s = s.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+                let u2 = ((s >> 33) as f32) / ((1u64 << 31) as f32);
+                s = s.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+                let u3 = ((s >> 33) as f32) / ((1u64 << 31) as f32);
 
-                    let theta = u1 * 2.0 * std::f32::consts::PI;
-                    let phi = (u2 * 2.0 - 1.0).acos(); // uniform on sphere
-                    let r = initial_radius * u3.cbrt(); // uniform in volume
+                let theta = u1 * 2.0 * std::f32::consts::PI;
+                let phi = (u2 * 2.0 - 1.0).acos();
+                let r = initial_radius * u3.cbrt();
 
-                    positions_x[i] = r * phi.sin() * theta.cos();
-                    positions_y[i] = r * phi.sin() * theta.sin();
-                    positions_z[i] = r * phi.cos();
-                }
+                positions_x[i] = r * phi.sin() * theta.cos();
+                positions_y[i] = r * phi.sin() * theta.sin();
+                positions_z[i] = r * phi.cos();
+                randomized += 1;
             }
+        }
+        if randomized > 0 {
+            info!("ForceComputeActor: Randomized {}/{} zero-position nodes to 3D sphere (radius {})",
+                  randomized, num_nodes, initial_radius);
         }
 
         let mut adjacency_lists: Vec<Vec<(u32, f32)>> = vec![Vec::new(); num_nodes];
