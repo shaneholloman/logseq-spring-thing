@@ -2,7 +2,15 @@
 
 ## Status
 
-Accepted
+Accepted — Implemented 2026-04-13
+
+## Related Documents
+
+- **PRD**: [Bead Provenance Upgrade](../prd-bead-provenance-upgrade.md)
+- **DDD**: [Bead Provenance Bounded Context](../ddd-bead-provenance-context.md)
+- **Schema**: [Neo4j Schema — §2d](../reference/neo4j-schema-unified.md#2d-provenance-context-nostr-beads)
+- **Config**: [Operations — Bead Provenance](../how-to/operations/configuration.md#nostr-bead-provenance)
+- **Upstream**: [jedarden/NEEDLE](https://github.com/jedarden/NEEDLE)
 
 ## Date
 
@@ -103,10 +111,25 @@ records it in the store. No outcome path uses wildcard matching.
 
 Beads transition through explicit states:
 
-```
-Created → Publishing → Published → Neo4jPersisted → Bridged → Archived
-                  ↘ Failed(Transient) → [retry] → Publishing
-                  ↘ Failed(Permanent)
+```mermaid
+stateDiagram-v2
+    [*] --> Created: debrief requested
+    Created --> Publishing: orchestrator starts publish
+
+    Publishing --> Published: relay OK
+    Publishing --> Publishing: transient failure + retry
+    Publishing --> Failed_Transient: retries exhausted
+    Publishing --> Failed_Permanent: signing / rejection
+
+    Published --> Neo4jPersisted: graph write confirmed
+
+    Neo4jPersisted --> Bridged: forum relay confirmed
+    Neo4jPersisted --> Neo4jPersisted: bridge disabled
+
+    Bridged --> Archived: TTL expired
+    Neo4jPersisted --> Archived: TTL expired
+    Failed_Transient --> Archived: TTL expired
+    Failed_Permanent --> Archived: TTL expired
 ```
 
 State transitions are recorded in Neo4j with timestamps. The `BeadLifecycleOrchestrator`

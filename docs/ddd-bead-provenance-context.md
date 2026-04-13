@@ -1,5 +1,7 @@
 # DDD Analysis: Bead Provenance Bounded Context
 
+> **Related**: [PRD](prd-bead-provenance-upgrade.md) · [ADR-034](adr/ADR-034-needle-bead-provenance.md) · [Neo4j Schema §2d](reference/neo4j-schema-unified.md#2d-provenance-context-nostr-beads) · [NEEDLE](https://github.com/jedarden/NEEDLE)
+
 ## 1. Bounded Context Map
 
 ```mermaid
@@ -219,29 +221,57 @@ stateDiagram-v2
 
 ## 7. Module Structure
 
-```
-src/services/
-├── bead_types.rs          # BeadState, BeadOutcome, BeadFailure, BeadMetadata, BeadLearning
-├── bead_store.rs          # BeadStore trait + Neo4jBeadStore + MockBeadStore
-├── bead_lifecycle.rs      # BeadLifecycleOrchestrator (coordinates publish flow)
-├── nostr_bead_publisher.rs  # Upgraded: retry, outcomes, keyring (existing file, rewritten)
-├── nostr_bridge.rs          # Upgraded: backoff, health, telemetry (existing file, rewritten)
-└── mod.rs                   # Updated with new module declarations
+```mermaid
+graph TD
+    subgraph "src/services/ — Bead Provenance"
+        BT["bead_types.rs — 427 lines<br/>BeadState, BeadOutcome, BeadFailure,<br/>BeadMetadata, BeadLearning, BeadRetryConfig"]
+        BST["bead_store.rs — 1,217 lines<br/>BeadStore trait, Neo4jBeadStore,<br/>NoopBeadStore, MockBeadStore"]
+        BLC["bead_lifecycle.rs — 460 lines<br/>BeadLifecycleOrchestrator"]
+        NBP["nostr_bead_publisher.rs — 430 lines<br/>Retry, outcomes, send_with_retry"]
+        NBR["nostr_bridge.rs — 487 lines<br/>Backoff, BridgeHealth, structured logs"]
+    end
+
+    subgraph "src/handlers/"
+        BH["briefing_handler.rs<br/>→ BeadLifecycleOrchestrator"]
+    end
+
+    subgraph "Inline Tests — 70 total"
+        T1["14 bead_types tests"]
+        T2["19 bead_store tests"]
+        T3["7 bead_lifecycle tests"]
+        T4["15 publisher tests"]
+        T5["15 bridge tests"]
+    end
+
+    BT --> BST
+    BT --> NBP
+    BT --> BLC
+    BST --> BLC
+    NBP --> BLC
+    BLC --> BH
+
+    BT -.-> T1
+    BST -.-> T2
+    BLC -.-> T3
+    NBP -.-> T4
+    NBR -.-> T5
+
+    style BT fill:#264653,color:#fff
+    style BST fill:#264653,color:#fff
+    style BLC fill:#264653,color:#fff
+    style NBP fill:#2a9d8f,color:#fff
+    style NBR fill:#2a9d8f,color:#fff
 ```
 
-```
-src/handlers/
-└── briefing_handler.rs    # Updated: delegates to BeadLifecycleOrchestrator instead of tokio::spawn
-```
-
-```
-tests/
-├── bead_types_test.rs     # FSM transition tests, value object invariants
-├── bead_store_test.rs     # Neo4jBeadStore with testcontainers or MockBeadStore
-├── bead_lifecycle_test.rs # Orchestrator with mock store + mock publisher
-├── bead_publisher_test.rs # Publisher with mock WebSocket
-└── bead_bridge_test.rs    # Bridge with mock relays
-```
+| File | Lines | Role | Tests |
+|------|-------|------|-------|
+| [`bead_types.rs`](../src/services/bead_types.rs) | 427 | Domain types — FSM, outcomes, metadata, learning, retry config | 14 |
+| [`bead_store.rs`](../src/services/bead_store.rs) | 1,217 | `BeadStore` trait + `Neo4jBeadStore` + `NoopBeadStore` + `MockBeadStore` | 19 |
+| [`bead_lifecycle.rs`](../src/services/bead_lifecycle.rs) | 460 | `BeadLifecycleOrchestrator` — state machine coordination | 7 |
+| [`nostr_bead_publisher.rs`](../src/services/nostr_bead_publisher.rs) | 430 | Nostr relay publishing with retry + typed outcomes | 15 |
+| [`nostr_bridge.rs`](../src/services/nostr_bridge.rs) | 487 | JSS→Forum relay bridge with backoff + health | 15 |
+| [`briefing_handler.rs`](../src/handlers/briefing_handler.rs) | 137 | HTTP handler — delegates to orchestrator | — |
+| **Total** | **3,158** | | **70** |
 
 ---
 

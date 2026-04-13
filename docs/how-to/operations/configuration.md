@@ -294,8 +294,11 @@ COMPRESSION-ENABLED=true
 ### Nostr Bead Provenance
 
 VisionClaw publishes a signed Nostr event (kind 30001, NIP-33) to the JSS relay for each
-completed brief → debrief cycle, providing cryptographic provenance. A bridge service
-re-signs forwarded events as NIP-29 group messages (kind 9) and republishes to the forum relay.
+completed brief → debrief cycle, providing cryptographic provenance. The
+[`BeadLifecycleOrchestrator`](../../../src/services/bead_lifecycle.rs) coordinates the full
+lifecycle with retry, outcome classification, and learning capture (see
+[ADR-034](../../adr/ADR-034-needle-bead-provenance.md) and
+[PRD](../../prd-bead-provenance-upgrade.md)).
 
 ```bash
 # Bridge bot private key (64-char hex). Generate with: openssl rand -hex 32
@@ -317,6 +320,46 @@ Bridge bot public key (for forum relay whitelist):
 ```
 eb47d8a792a4709329270a9f85f012326c61867a913791dc5f89dc7a0a760754
 ```
+
+### Bead Retry Configuration
+
+The publisher retries transient failures (timeout, connection error) with exponential backoff.
+Permanent failures (signing error, relay rejection) fail immediately. See
+[`BeadRetryConfig`](../../../src/services/bead_types.rs).
+
+```bash
+# Maximum publish attempts before marking as failed (default: 3)
+BEAD_RETRY_MAX_ATTEMPTS=3
+
+# Base delay in milliseconds for first retry (default: 1000)
+BEAD_RETRY_BASE_DELAY_MS=1000
+
+# Maximum delay cap in milliseconds (default: 10000)
+BEAD_RETRY_MAX_DELAY_MS=10000
+
+# Backoff multiplier — delay doubles each attempt (default: 2.0)
+BEAD_RETRY_BACKOFF_MULTIPLIER=2.0
+```
+
+Backoff sequence with defaults: 1s → 2s → 4s (capped at 10s).
+
+### Bridge Reconnection
+
+The [`NostrBridge`](../../../src/services/nostr_bridge.rs) uses exponential backoff when
+the JSS relay connection drops:
+
+| Attempt | Delay | Notes |
+|---------|-------|-------|
+| 1 | 5s | Initial reconnect |
+| 2 | 10s | |
+| 3 | 20s | |
+| 4 | 40s | |
+| 5 | 80s | |
+| 6 | 160s | |
+| 7+ | 300s | Maximum cap |
+
+If a reconnection succeeds and remains healthy for > 60 seconds, the backoff resets to 5s.
+Monitor bridge health via `BridgeHealth::is_connected()` and `BridgeHealth::last_event_age_secs()`.
 
 This key must be added to the forum relay's D1 allowlist before the bridge can publish.
 

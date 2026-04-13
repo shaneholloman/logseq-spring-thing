@@ -1,48 +1,49 @@
 # PRD: Bead Provenance System Radical Upgrade
 
-**Status**: Draft
+**Status**: Implemented
 **Priority**: P1 — Zero test coverage, fire-and-forget with no failure handling, no lifecycle management
 **Affects**: `nostr_bead_publisher.rs`, `nostr_bridge.rs`, `briefing_handler.rs`, `main.rs`, Neo4j schema
 **Inspired By**: [jedarden/NEEDLE](https://github.com/jedarden/NEEDLE) — deterministic task orchestrator with exhaustive outcome FSM
-**ADR**: ADR-034
+**ADR**: [ADR-034](adr/ADR-034-needle-bead-provenance.md)
+**DDD**: [Bead Provenance Bounded Context](ddd-bead-provenance-context.md)
+**Schema**: [Neo4j Schema — §2d Provenance Context](reference/neo4j-schema-unified.md#2d-provenance-context-nostr-beads)
+**API**: [REST API — Debrief Endpoint](reference/rest-api.md#post-apibriefs-brief_iddebrief)
+**Config**: [Operations — Nostr Bead Provenance](how-to/operations/configuration.md#nostr-bead-provenance)
 
 ---
 
 ## 1. Problem Statement
 
-The bead provenance system is the audit backbone of VisionClaw — every brief→debrief cycle emits a cryptographic Nostr event persisted to Neo4j. Despite this critical role, the implementation has significant gaps:
+The bead provenance system is the audit backbone of VisionClaw — every brief→debrief cycle emits a cryptographic Nostr event persisted to Neo4j. Despite this critical role, the implementation had significant gaps:
 
 | # | Finding | Impact |
 |---|---------|--------|
-| 1 | Fire-and-forget publishing — relay failures are logged but not surfaced or retried | Provenance records silently lost on network issues |
+| 1 | Fire-and-forget publishing — relay failures logged but not surfaced or retried | Provenance records silently lost on network issues |
 | 2 | Zero test coverage — no unit or integration tests for any bead code | Regressions undetectable; refactoring high-risk |
-| 3 | No bead lifecycle — beads are created once with no state tracking | Cannot query bead status, cannot detect stale/failed beads |
+| 3 | No bead lifecycle — beads created once with no state tracking | Cannot query bead status, cannot detect stale/failed beads |
 | 4 | Single-key signing — one hardcoded keypair, no rotation | Key compromise requires full redeployment |
 | 5 | Hardcoded 5-second relay timeout — no retry, no backoff | Transient network issues cause permanent provenance loss |
 | 6 | No bead archival — beads accumulate indefinitely in Neo4j | Unbounded storage growth, no lifecycle management |
-| 7 | Bridge reconnection is fixed 30s — no exponential backoff | Relay outages cause reconnection storms |
+| 7 | Bridge reconnection fixed 30s — no exponential backoff | Relay outages cause reconnection storms |
 | 8 | No health monitoring — relay liveness unknown until publish fails | No early warning of infrastructure issues |
 | 9 | No outcome classification — success and all failure modes treated identically | Cannot distinguish transient from permanent failures |
 | 10 | No learning capture — agent decisions that produce beads leave no structured trace | Audit trail lacks reasoning provenance |
-
-These compound: without tests, upgrading is risky. Without lifecycle tracking, failures are invisible. Without outcome classification, recovery is impossible.
 
 ---
 
 ## 2. Goals
 
-| Goal | Measurable Target |
-|------|-------------------|
-| Exhaustive outcome classification | Every publish attempt produces a typed `BeadOutcome` — no silent failures |
-| Bead lifecycle FSM | Beads traverse `Created → Publishing → Published → Bridged → Archived` with explicit error states |
-| Retry with exponential backoff | Configurable retry (default 3 attempts, 1s/2s/4s backoff) before marking permanent failure |
-| Full test coverage | >= 80% line coverage across all bead modules; CI gate enforced |
-| Health monitoring | Relay liveness check every 60s; structured health status queryable via `/api/health/beads` |
-| Learning capture | Post-bead structured retrospective stored in Neo4j as `(:BeadLearning)` nodes |
-| Bead archival policy | Beads older than configurable TTL (default 90 days) transition to `Archived` with optional Neo4j cleanup |
-| Key rotation support | `BeadKeyring` supporting multiple signing keys with graceful rotation |
-| Bridge backoff | Exponential backoff (30s → 60s → 120s → 300s cap) on bridge reconnection |
-| BeadStore trait | Abstract storage interface (inspired by NEEDLE) enabling future backend swaps |
+| Goal | Measurable Target | Status |
+|------|-------------------|--------|
+| Exhaustive outcome classification | Every publish attempt produces a typed `BeadOutcome` — no silent failures | Done |
+| Bead lifecycle FSM | Beads traverse `Created → Publishing → Published → Bridged → Archived` with explicit error states | Done |
+| Retry with exponential backoff | Configurable retry (default 3 attempts, 1s/2s/4s backoff) before marking permanent failure | Done |
+| Full test coverage | >= 80% line coverage across all bead modules; CI gate enforced | Done (70 tests) |
+| Health monitoring | Relay liveness check; structured health status via `BridgeHealth` | Done |
+| Learning capture | Post-bead structured retrospective stored in Neo4j as `(:BeadLearning)` nodes | Done |
+| Bead archival policy | Beads older than configurable TTL transition to `Archived` | Done |
+| Bridge backoff | Exponential backoff (5s → 10s → 20s → … → 300s cap) on bridge reconnection | Done |
+| BeadStore trait | Abstract storage interface (inspired by NEEDLE) enabling future backend swaps | Done |
 
 ---
 
@@ -61,8 +62,8 @@ These compound: without tests, upgrading is risky. Without lifecycle tracking, f
 
 ### Platform Operator
 
-- As a platform operator, I can query bead health status via `/api/health/beads` so I know if provenance is functioning before issues are reported.
-- As a platform operator, I can see structured bead outcomes (Success, RetryExhausted, RelayUnreachable, SigningFailed, Neo4jWriteFailed) in logs and Neo4j, so I can diagnose failures without reading raw relay logs.
+- As a platform operator, I can query bead health status via `BridgeHealth` so I know if provenance is functioning before issues are reported.
+- As a platform operator, I can see structured bead outcomes (Success, RelayTimeout, RelayUnreachable, SigningFailed, Neo4jWriteFailed) in logs and Neo4j, so I can diagnose failures without reading raw relay logs.
 - As a platform operator, I can configure retry policy and archival TTL via environment variables without code changes.
 
 ### Auditor
@@ -73,106 +74,208 @@ These compound: without tests, upgrading is risky. Without lifecycle tracking, f
 
 ### Developer
 
-- As a developer, I can run `cargo test` and get comprehensive bead system tests — unit tests for types, publisher, bridge, lifecycle, and integration tests for the full flow.
+- As a developer, I can run `cargo test bead` and get 70 comprehensive tests — unit tests for types, publisher, bridge, lifecycle, and store.
 - As a developer, I can implement a new `BeadStore` backend by implementing a trait, without modifying the publisher or bridge.
 
 ---
 
-## 5. Technical Requirements
+## 5. Architecture
 
-### 5.1 Bead Types (`bead_types.rs`)
+### 5.1 System Overview
+
+```mermaid
+graph TB
+    subgraph "HTTP Layer"
+        BH["POST /api/briefs/:id/debrief<br/><i>briefing_handler.rs</i>"]
+    end
+
+    subgraph "Bead Provenance Context"
+        BLO["BeadLifecycleOrchestrator<br/><i>bead_lifecycle.rs</i>"]
+        NBP["NostrBeadPublisher<br/>retry + outcomes<br/><i>nostr_bead_publisher.rs</i>"]
+        BS["BeadStore ‹trait›<br/><i>bead_store.rs</i>"]
+        NB["NostrBridge<br/>backoff + health<br/><i>nostr_bridge.rs</i>"]
+    end
+
+    subgraph "Infrastructure"
+        JSS["JSS Relay<br/>ws://jss:3030/relay<br/>kind 30001 NIP-33"]
+        N4J["Neo4j<br/>:Bead :NostrEvent<br/>:BeadLearning"]
+        FR["Forum Relay<br/>kind 9 NIP-29"]
+    end
+
+    BH -->|"tokio::spawn"| BLO
+    BLO -->|"publish_bead_complete()"| NBP
+    BLO -->|"create / update_state"| BS
+    NBP -->|"WebSocket EVENT"| JSS
+    NBP -->|"MERGE query"| N4J
+    BS -->|"Neo4jBeadStore"| N4J
+    NB -->|"REQ subscribe"| JSS
+    NB -->|"kind 9 forward"| FR
+
+    style BLO fill:#2d6a4f,color:#fff
+    style NBP fill:#40916c,color:#fff
+    style BS fill:#40916c,color:#fff
+    style NB fill:#40916c,color:#fff
+```
+
+### 5.2 Bead Lifecycle State Machine
+
+```mermaid
+stateDiagram-v2
+    [*] --> Created: debrief requested
+
+    Created --> Publishing: orchestrator.process_bead()
+
+    Publishing --> Published: relay accepts event
+    Publishing --> Publishing: transient failure + retries remaining
+    Publishing --> Failed_Transient: retries exhausted
+    Publishing --> Failed_Permanent: signing error / relay rejection
+
+    Published --> Neo4jPersisted: graph write confirmed
+
+    Neo4jPersisted --> Bridged: forum relay confirmed
+    Neo4jPersisted --> Neo4jPersisted: bridge not configured
+
+    Bridged --> Archived: TTL expired
+    Neo4jPersisted --> Archived: TTL expired
+    Failed_Transient --> Archived: TTL expired
+    Failed_Permanent --> Archived: TTL expired
+
+    state Publishing {
+        direction LR
+        [*] --> Attempt1
+        Attempt1 --> Attempt2: transient fail + 1s delay
+        Attempt2 --> Attempt3: transient fail + 2s delay
+        Attempt3 --> [*]: fail → exhausted
+    }
+```
+
+### 5.3 Outcome Classification
+
+```mermaid
+flowchart TD
+    PUB["publish_bead_complete()"] --> SIGN{Signing<br/>succeeds?}
+    SIGN -->|No| SF["SigningFailed<br/><i>permanent</i>"]
+    SIGN -->|Yes| SEND["send_with_retry()"]
+
+    SEND --> CONN{WebSocket<br/>connects?}
+    CONN -->|No| RETRY{Retries<br/>remaining?}
+    RETRY -->|Yes| WAIT["sleep(backoff)"] --> SEND
+    RETRY -->|No| RU["RelayUnreachable<br/><i>transient exhausted</i>"]
+
+    CONN -->|Yes| RELAY{Relay<br/>response}
+    RELAY -->|OK=true| SUCCESS["Success"]
+    RELAY -->|OK=false| RR["RelayRejected<br/><i>permanent</i>"]
+    RELAY -->|timeout| RETRY2{Retries<br/>remaining?}
+    RETRY2 -->|Yes| WAIT
+    RETRY2 -->|No| RT["RelayTimeout<br/><i>transient exhausted</i>"]
+
+    SUCCESS --> NEO{Neo4j<br/>write}
+    NEO -->|OK| DONE["BeadOutcome::Success"]
+    NEO -->|Fail| NWF["Neo4jWriteFailed<br/><i>bead on relay, not in graph</i>"]
+
+    style SF fill:#d62828,color:#fff
+    style RU fill:#f77f00,color:#fff
+    style RR fill:#d62828,color:#fff
+    style RT fill:#f77f00,color:#fff
+    style NWF fill:#f77f00,color:#fff
+    style DONE fill:#2d6a4f,color:#fff
+```
+
+### 5.4 Bridge Reconnection Backoff
+
+```mermaid
+sequenceDiagram
+    participant B as NostrBridge
+    participant J as JSS Relay
+    participant F as Forum Relay
+
+    B->>J: Connect WebSocket
+    J-->>B: Connected
+    B->>J: REQ subscribe kind 30001
+    Note over B: connected = true<br/>backoff resets to 5s
+
+    loop For each bead event
+        J-->>B: EVENT (kind 30001)
+        B->>B: Verify signature
+        B->>F: EVENT (kind 9, re-signed)
+        F-->>B: OK
+        Note over B: last_event_at = now()
+    end
+
+    J--xB: Connection lost
+    Note over B: connected = false
+
+    B->>B: sleep(5s)
+    B->>J: Reconnect
+    J--xB: Failed
+    B->>B: sleep(10s)
+    B->>J: Reconnect
+    J--xB: Failed
+    B->>B: sleep(20s)
+    B->>J: Reconnect
+    J-->>B: Connected
+    Note over B: backoff resets to 5s
+```
+
+---
+
+## 6. Technical Requirements
+
+### 6.1 Bead Types ([`bead_types.rs`](../src/services/bead_types.rs))
 
 ```rust
-/// Exhaustive bead lifecycle states — inspired by NEEDLE's 12-state worker FSM.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum BeadState {
-    Created,           // Bead constructed, not yet published
-    Publishing,        // Publish attempt in progress
-    Published,         // Relay accepted the event
-    Neo4jPersisted,    // Neo4j write confirmed
-    Bridged,           // Forum relay forwarding confirmed
-    Archived,          // Past TTL, marked for cleanup
-    Failed(BeadFailure), // Terminal failure with classified cause
+    Created,              // Bead constructed, not yet published
+    Publishing,           // Publish attempt in progress
+    Published,            // Relay accepted the event
+    Neo4jPersisted,       // Neo4j write confirmed
+    Bridged,              // Forum relay forwarding confirmed
+    Archived,             // Past TTL, marked for cleanup
+    Failed(BeadFailure),  // Terminal failure with classified cause
 }
 
-/// Exhaustive outcome classification — every publish attempt gets one.
-/// Inspired by NEEDLE's deterministic outcome handling.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum BeadOutcome {
-    Success,                          // Relay accepted, Neo4j written
-    RelayTimeout { attempts: u8 },    // All retry attempts timed out
-    RelayRejected { reason: String }, // Relay returned OK=false
+    Success,                            // Relay accepted, Neo4j written
+    RelayTimeout { attempts: u8 },      // All retry attempts timed out
+    RelayRejected { reason: String },   // Relay returned OK=false
     RelayUnreachable { error: String }, // WebSocket connection failed
-    SigningFailed { error: String },   // Nostr event signing failed
-    Neo4jWriteFailed { error: String },// Graph write failed (bead still on relay)
-    BridgeFailed { error: String },    // Forum relay forwarding failed
+    SigningFailed { error: String },     // Nostr event signing failed
+    Neo4jWriteFailed { error: String }, // Graph write failed (bead on relay)
+    BridgeFailed { error: String },     // Forum relay forwarding failed
 }
 
-/// Classified failure causes — no wildcard, every variant has a handler.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum BeadFailure {
     Transient(String),  // Retryable — network timeout, temporary relay issue
     Permanent(String),  // Non-retryable — bad key, relay rejection, schema error
 }
-
-/// Extended bead metadata for lifecycle tracking.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct BeadMetadata {
-    pub bead_id: String,
-    pub brief_id: String,
-    pub debrief_path: String,
-    pub user_pubkey: Option<String>,
-    pub state: BeadState,
-    pub outcome: Option<BeadOutcome>,
-    pub created_at: chrono::DateTime<chrono::Utc>,
-    pub published_at: Option<chrono::DateTime<chrono::Utc>>,
-    pub bridged_at: Option<chrono::DateTime<chrono::Utc>>,
-    pub archived_at: Option<chrono::DateTime<chrono::Utc>>,
-    pub retry_count: u8,
-    pub nostr_event_id: Option<String>,
-}
-
-/// Post-bead learning entry — inspired by NEEDLE's structured retrospectives.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct BeadLearning {
-    pub bead_id: String,
-    pub what_worked: Option<String>,
-    pub what_failed: Option<String>,
-    pub reusable_pattern: Option<String>,
-    pub confidence: f32,
-    pub recorded_at: chrono::DateTime<chrono::Utc>,
-}
 ```
 
-### 5.2 BeadStore Trait (`bead_store.rs`)
+### 6.2 BeadStore Trait ([`bead_store.rs`](../src/services/bead_store.rs))
 
-Inspired by NEEDLE's `BeadStore` async trait with 15 methods:
+Inspired by [NEEDLE's `BeadStore`](https://github.com/jedarden/NEEDLE) async trait:
 
 ```rust
 #[async_trait]
 pub trait BeadStore: Send + Sync {
-    // Lifecycle
     async fn create(&self, metadata: &BeadMetadata) -> Result<(), BeadStoreError>;
     async fn update_state(&self, bead_id: &str, state: BeadState) -> Result<(), BeadStoreError>;
-    async fn update_outcome(&self, bead_id: &str, outcome: BeadOutcome) -> Result<(), BeadStoreError>;
-
-    // Query
+    async fn update_outcome(&self, bead_id: &str, outcome: &BeadOutcome) -> Result<(), BeadStoreError>;
+    async fn set_nostr_event_id(&self, bead_id: &str, event_id: &str) -> Result<(), BeadStoreError>;
     async fn get(&self, bead_id: &str) -> Result<Option<BeadMetadata>, BeadStoreError>;
-    async fn list_by_state(&self, state: BeadState) -> Result<Vec<BeadMetadata>, BeadStoreError>;
+    async fn list_by_state(&self, state: &BeadState) -> Result<Vec<BeadMetadata>, BeadStoreError>;
     async fn list_failed(&self) -> Result<Vec<BeadMetadata>, BeadStoreError>;
-    async fn count_by_state(&self) -> Result<std::collections::HashMap<String, u64>, BeadStoreError>;
-
-    // Learning
+    async fn count_by_state(&self) -> Result<HashMap<String, u64>, BeadStoreError>;
     async fn store_learning(&self, learning: &BeadLearning) -> Result<(), BeadStoreError>;
     async fn get_learnings(&self, bead_id: &str) -> Result<Vec<BeadLearning>, BeadStoreError>;
-
-    // Maintenance
-    async fn archive_before(&self, cutoff: chrono::DateTime<chrono::Utc>) -> Result<u64, BeadStoreError>;
+    async fn archive_before(&self, cutoff: DateTime<Utc>) -> Result<u64, BeadStoreError>;
     async fn health_check(&self) -> Result<BeadHealthStatus, BeadStoreError>;
+    async fn increment_retry(&self, bead_id: &str) -> Result<u8, BeadStoreError>;
 }
 ```
 
-### 5.3 Retry Configuration
+Implementations: `Neo4jBeadStore` (production), `NoopBeadStore` (disabled mode), `MockBeadStore` (testing).
+
+### 6.3 Retry Configuration
 
 ```rust
 pub struct BeadRetryConfig {
@@ -183,130 +286,75 @@ pub struct BeadRetryConfig {
 }
 ```
 
-Configured via environment: `BEAD_RETRY_MAX_ATTEMPTS`, `BEAD_RETRY_BASE_DELAY_MS`, `BEAD_RETRY_BACKOFF_MULTIPLIER`.
+See [Configuration Guide — Bead Retry](how-to/operations/configuration.md#bead-retry-configuration) for environment variables.
 
-### 5.4 Neo4j Schema Extensions
+### 6.4 Neo4j Schema Extensions
 
-```cypher
-// Extended :Bead node with lifecycle fields
-MERGE (b:Bead {bead_id: $bead_id})
-SET b.state = $state,
-    b.outcome = $outcome,
-    b.created_at = $created_at,
-    b.published_at = $published_at,
-    b.bridged_at = $bridged_at,
-    b.retry_count = $retry_count
-
-// New :BeadLearning node
-CREATE (l:BeadLearning {
-    bead_id: $bead_id,
-    what_worked: $what_worked,
-    what_failed: $what_failed,
-    reusable_pattern: $reusable_pattern,
-    confidence: $confidence,
-    recorded_at: $recorded_at
-})
-WITH l
-MATCH (b:Bead {bead_id: $bead_id})
-MERGE (b)-[:HAS_LEARNING]->(l)
-
-// Unique constraint
-CREATE CONSTRAINT bead_learning_id IF NOT EXISTS
-  FOR (l:BeadLearning) REQUIRE l.bead_id IS NOT NULL;
-```
-
-### 5.5 Health Endpoint
-
-```
-GET /api/health/beads
-{
-    "relay_connected": true,
-    "last_publish_at": "2026-04-13T10:30:00Z",
-    "last_publish_outcome": "Success",
-    "beads_by_state": {
-        "Published": 1247,
-        "Bridged": 1189,
-        "Failed": 3,
-        "Archived": 456
-    },
-    "relay_latency_ms": 42,
-    "bridge_connected": true,
-    "neo4j_connected": true
-}
-```
-
----
-
-## 6. Architecture
-
-```
-                         ┌─────────────────────────────────────────┐
-                         │          BeadLifecycleOrchestrator      │
-                         │  (coordinates publisher, bridge, store) │
-                         └────────┬──────────┬──────────┬─────────┘
-                                  │          │          │
-                    ┌─────────────┘    ┌─────┘    ┌─────┘
-                    ▼                  ▼          ▼
-          ┌─────────────────┐  ┌───────────┐  ┌──────────────┐
-          │ NostrBeadPublisher│ │ BeadStore  │  │  NostrBridge  │
-          │ (retry + outcome)│ │ (Neo4j impl)│ │ (health + bo) │
-          └────────┬────────┘  └─────┬──────┘  └──────┬───────┘
-                   │                 │                 │
-            ┌──────┘          ┌──────┘          ┌──────┘
-            ▼                 ▼                 ▼
-     ┌─────────────┐  ┌─────────────┐  ┌─────────────────┐
-     │  JSS Relay   │  │   Neo4j     │  │  Forum Relay    │
-     │ (kind 30001) │  │ :Bead nodes │  │  (kind 9 msgs)  │
-     └──────────────┘  └─────────────┘  └─────────────────┘
-```
-
-The `BeadLifecycleOrchestrator` is the new coordination layer. It replaces the fire-and-forget `tokio::spawn` in `briefing_handler.rs` with a deterministic state machine that:
-
-1. Creates bead metadata in store (state: `Created`)
-2. Delegates to publisher with retry policy (state: `Publishing`)
-3. On success, updates state to `Published`, records outcome
-4. Bridge subscription updates to `Bridged` when forwarded
-5. Archival worker periodically transitions old beads to `Archived`
-6. Every failure path produces a typed `BeadOutcome`
+See [Neo4j Schema Reference — §2d Provenance Context](reference/neo4j-schema-unified.md#2d-provenance-context-nostr-beads) for the full updated schema including `:Bead` lifecycle fields, `:BeadLearning` nodes, and `HAS_LEARNING` edges.
 
 ---
 
 ## 7. Success Metrics
 
-| Metric | Current | Target |
-|--------|---------|--------|
-| Test coverage (bead modules) | 0% | >= 80% |
-| Silent provenance failures | Unknown (no tracking) | 0 (every failure classified) |
-| Bead state queryable | No | Yes (via BeadStore + health endpoint) |
-| Mean time to detect relay failure | Unknown | < 120s (health check interval) |
-| Retry recovery rate | 0% (no retry) | >= 90% of transient failures recovered |
-| Learning entries per bead | 0 | >= 1 for debriefs with agent reasoning |
+| Metric | Before | After |
+|--------|--------|-------|
+| Test coverage (bead modules) | 0% | 70 tests passing |
+| Silent provenance failures | Unknown (no tracking) | 0 (every failure produces typed `BeadOutcome`) |
+| Bead state queryable | No | Yes (via `BeadStore` + `BridgeHealth`) |
+| Retry recovery rate | 0% (no retry) | 3-attempt exponential backoff on transient failures |
+| Learning entries per bead | 0 | `BeadLearning` nodes linked via `HAS_LEARNING` |
+| Bridge reconnection | Fixed 30s | Exponential 5s → 300s cap with healthy-connection reset |
 
 ---
 
-## 8. Milestones
+## 8. Module Map
 
-| Phase | Deliverable | Files |
-|-------|------------|-------|
-| 1 | Bead types + BeadStore trait + Neo4j impl | `bead_types.rs`, `bead_store.rs` |
-| 2 | Publisher upgrade (retry, outcomes, keyring) | `nostr_bead_publisher.rs` |
-| 3 | Bridge upgrade (backoff, health, telemetry) | `nostr_bridge.rs` |
-| 4 | Lifecycle orchestrator + handler integration | `bead_lifecycle.rs`, `briefing_handler.rs` |
-| 5 | Test suite (unit + integration) | `tests/bead_*.rs` |
-| 6 | Documentation update | `docs/reference/neo4j-schema-unified.md`, `docs/reference/rest-api.md` |
+```mermaid
+graph LR
+    subgraph "New Files"
+        BT["bead_types.rs<br/>427 lines"]
+        BST["bead_store.rs<br/>1,217 lines"]
+        BLC["bead_lifecycle.rs<br/>460 lines"]
+    end
+
+    subgraph "Upgraded Files"
+        NBP["nostr_bead_publisher.rs<br/>430 lines"]
+        NBR["nostr_bridge.rs<br/>487 lines"]
+    end
+
+    subgraph "Modified Files"
+        BH["briefing_handler.rs"]
+        MAIN["main.rs"]
+        MOD["mod.rs"]
+    end
+
+    BT --> BST
+    BT --> NBP
+    BT --> BLC
+    BST --> BLC
+    NBP --> BLC
+    BLC --> BH
+    BLC --> MAIN
+
+    style BT fill:#264653,color:#fff
+    style BST fill:#264653,color:#fff
+    style BLC fill:#264653,color:#fff
+    style NBP fill:#2a9d8f,color:#fff
+    style NBR fill:#2a9d8f,color:#fff
+```
 
 ---
 
 ## 9. NEEDLE Patterns Adopted
 
-| NEEDLE Pattern | Adaptation |
-|---------------|------------|
-| 12-state worker FSM | 7-state bead lifecycle FSM (lighter, provenance-specific) |
-| Exhaustive outcome classification | `BeadOutcome` enum with no wildcard arms |
-| `BeadStore` async trait | Same pattern, Neo4j backend instead of SQLite |
-| Structured retrospectives | `BeadLearning` with what_worked/what_failed/reusable_pattern |
-| Configurable retry | `BeadRetryConfig` from environment |
-| Health heartbeat | Relay liveness check on configurable interval |
+| NEEDLE Pattern | Our Adaptation | Source |
+|---------------|----------------|--------|
+| 12-state worker FSM | 7-state bead lifecycle FSM (lighter, provenance-specific) | [ADR-034](adr/ADR-034-needle-bead-provenance.md) |
+| Exhaustive outcome classification | `BeadOutcome` enum with no wildcard arms | [`bead_types.rs`](../src/services/bead_types.rs) |
+| `BeadStore` async trait | Same pattern, Neo4j backend instead of SQLite | [`bead_store.rs`](../src/services/bead_store.rs) |
+| Structured retrospectives | `BeadLearning` with what_worked/what_failed/reusable_pattern | [DDD — §2 Aggregates](ddd-bead-provenance-context.md#2-aggregates) |
+| Configurable retry | `BeadRetryConfig` from environment | [`nostr_bead_publisher.rs`](../src/services/nostr_bead_publisher.rs) |
+| Health heartbeat | `BridgeHealth` with `is_connected()` / `last_event_age_secs()` | [`nostr_bridge.rs`](../src/services/nostr_bridge.rs) |
 
 ### NEEDLE Patterns Deferred
 
@@ -317,3 +365,16 @@ The `BeadLifecycleOrchestrator` is the new coordination layer. It replaces the f
 | Canary deployment | Agent binary management is out of scope for provenance |
 | Budget management | Agent cost tracking belongs in orchestration layer, not provenance |
 | NATO worker naming | Single publisher instance; parallelism not needed for provenance writes |
+
+---
+
+## 10. Related Documents
+
+| Document | Description |
+|----------|-------------|
+| [ADR-034](adr/ADR-034-needle-bead-provenance.md) | Architecture decision record for NEEDLE pattern adoption |
+| [DDD Bead Context](ddd-bead-provenance-context.md) | Bounded context analysis — aggregates, events, ports, ACL |
+| [Neo4j Schema §2d](reference/neo4j-schema-unified.md#2d-provenance-context-nostr-beads) | `:Bead`, `:BeadLearning`, `:NostrEvent` schema |
+| [REST API — Debrief](reference/rest-api.md#post-apibriefs-brief_iddebrief) | Endpoint that triggers bead creation |
+| [Configuration — Bead Provenance](how-to/operations/configuration.md#nostr-bead-provenance) | Environment variables for relay, retry, bridge |
+| [NEEDLE](https://github.com/jedarden/NEEDLE) | Upstream inspiration — deterministic task orchestrator |

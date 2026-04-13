@@ -387,7 +387,7 @@ The governance layer is what separates VisionClaw from every "move fast and brea
 
 **HITL by Design** — The Human-in-the-Loop is an architectural feature. Agents know their authority boundary and surface exceptions cleanly. Every ontology mutation passes through a GitHub pull request, giving human reviewers full visibility and veto over structural changes before commit.
 
-**Ontological Provenance** — Every agent decision traces back through the OWL 2 knowledge graph. Auditors can traverse the full reasoning chain agent-by-agent, task-by-task. Every action is recorded as an immutable bead — content-addressed, cryptographically verifiable (Nostr NIP-09) — stored alongside human-readable Markdown summaries.
+**Ontological Provenance** — Every agent decision traces back through the OWL 2 knowledge graph. Auditors can traverse the full reasoning chain agent-by-agent, task-by-task. Every action is recorded as an immutable bead — content-addressed, cryptographically verifiable (Nostr NIP-33) — with a deterministic lifecycle state machine ([ADR-034](docs/adr/ADR-034-needle-bead-provenance.md)), exhaustive outcome classification, retry with exponential backoff, and structured learning capture. Inspired by [NEEDLE](https://github.com/jedarden/NEEDLE)'s trait-based architecture. See the [Bead Provenance PRD](docs/prd-bead-provenance-upgrade.md) and [DDD Bounded Context](docs/ddd-bead-provenance-context.md).
 
 **Cascading Trust Hierarchies** — Nostr DID-based agent identities with W3C-compliant key rotation. NIP-26 delegation allows agents to act on behalf of users within scoped permissions. When an agent is revoked, the revocation cascades through dependent agents automatically.
 
@@ -584,7 +584,7 @@ VisionClaw implements Domain-Driven Design with 10 bounded contexts across three
 
 **Supporting Domain:** Authentication (Nostr NIP-98) · Identity (DID/Solid) · Agent Orchestration · Semantic Analysis
 
-**Generic Domain:** User Management · Audit/Provenance · Configuration
+**Generic Domain:** User Management · [Bead Provenance](docs/ddd-bead-provenance-context.md) ([ADR-034](docs/adr/ADR-034-needle-bead-provenance.md)) · Configuration
 
 Each context has its own aggregate roots, domain events, and anti-corruption layers. Cross-context communication uses domain events, never direct model sharing. See [DDD Bounded Contexts](docs/explanation/ddd-bounded-contexts.md).
 

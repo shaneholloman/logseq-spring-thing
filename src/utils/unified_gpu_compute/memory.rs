@@ -446,6 +446,11 @@ impl UnifiedGPUCompute {
         self.partial_inertia = DeviceBuffer::zeroed(new_num_blocks)?;
         self.min_distances = DeviceBuffer::zeroed(actual_new_nodes)?;
 
+        // AABB and stability buffers must resize with node count
+        self.aabb_num_blocks = new_num_blocks;
+        self.aabb_block_results = DeviceBuffer::zeroed(new_num_blocks)?;
+        self.partial_kinetic_energy = DeviceBuffer::zeroed(new_num_blocks)?;
+
 
         self.lof_scores = DeviceBuffer::zeroed(actual_new_nodes)?;
         self.local_densities = DeviceBuffer::zeroed(actual_new_nodes)?;
