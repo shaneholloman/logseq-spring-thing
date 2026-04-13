@@ -2426,14 +2426,19 @@ __global__ void degree_weighted_gravity_kernel(
             force_z[idx] += pz * inv_dist * shell_force;
         }
     } else {
-        // Connected node: replace uniform gravity with degree-weighted gravity
-        // Undo uniform: +pos * center_gravity_k
-        // Apply weighted: -pos * center_gravity_k * dw
-        // Net correction: pos * center_gravity_k * (1.0 - dw)
-        float correction = center_gravity_k * (1.0f - dw);
-        force_x[idx] += px * correction;
-        force_y[idx] += py * correction;
-        force_z[idx] += pz * correction;
+        // Connected node: apply degree-weighted gravity toward origin.
+        // dw = log(1 + degree) has range [0, ∞). Normalize to [0, 1) so higher-degree
+        // nodes get STRONGER gravity (pulled more to center), not weaker.
+        // dw_norm = dw / (1 + dw) maps [0,∞) → [0,1)
+        //   degree 1:  dw=0.69, norm=0.41 → gravity *= 1.41
+        //   degree 10: dw=2.40, norm=0.71 → gravity *= 1.71
+        //   degree 50: dw=3.93, norm=0.80 → gravity *= 1.80
+        //   degree 149: dw=5.01, norm=0.83 → gravity *= 1.83
+        float dw_norm = dw / (1.0f + dw);
+        float gravity_multiplier = 1.0f + dw_norm; // range [1, 2): hubs pulled harder
+        force_x[idx] -= px * center_gravity_k * gravity_multiplier;
+        force_y[idx] -= py * center_gravity_k * gravity_multiplier;
+        force_z[idx] -= pz * center_gravity_k * gravity_multiplier;
     }
 }
 

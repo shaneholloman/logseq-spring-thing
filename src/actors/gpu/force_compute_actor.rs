@@ -513,7 +513,11 @@ impl ForceComputeActor {
         let initial_radius = 200.0f32;
         let mut randomized = 0usize;
         for i in 0..num_nodes {
-            if positions_x[i].abs() < 0.001 && positions_y[i].abs() < 0.001 && positions_z[i].abs() < 0.001 {
+            // Check magnitude (distance from origin), not per-component.
+            // Neo4j may store tiny non-zero positions (0.01-0.05) from previous
+            // collapsed layouts. Threshold of 1.0 catches all degenerate positions.
+            let mag_sq = positions_x[i] * positions_x[i] + positions_y[i] * positions_y[i] + positions_z[i] * positions_z[i];
+            if mag_sq < 1.0 {
                 // Deterministic per-node seed: node index ensures reproducible positions
                 let mut s: u64 = (i as u64).wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
                 let u1 = ((s >> 33) as f32) / ((1u64 << 31) as f32);
