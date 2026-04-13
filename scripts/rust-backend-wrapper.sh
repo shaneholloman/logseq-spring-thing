@@ -38,24 +38,24 @@ if [ "${SKIP_RUST_REBUILD:-false}" != "true" ]; then
     log "Rebuilding Rust backend with GPU support to apply code changes..."
     cd /app
 
-    # Force cargo to detect source changes from bind-mounted files.
-    # The bind mount overlays /app/src with host files, but cargo's incremental
-    # fingerprints may be cached from the Docker image build (different source).
-    # Touch Cargo.toml to bust the fingerprint cache and force recompilation.
-    if [ -f "/app/target/release/webxr" ] && [ -d "/app/src" ]; then
-        BINARY_TIME=$(stat -c %Y /app/target/release/webxr 2>/dev/null || echo 0)
-        SOURCE_TIME=$(find /app/src -name '*.rs' -newer /app/target/release/webxr 2>/dev/null | head -1)
-        CUDA_TIME=$(find /app/src -name '*.cu' -newer /app/target/release/webxr 2>/dev/null | head -1)
-        if [ -n "$SOURCE_TIME" ] || [ -n "$CUDA_TIME" ]; then
-            log "Source files newer than binary detected — forcing recompilation"
-            # Remove the lib fingerprint to ensure cargo sees the change
-            rm -rf /app/target/release/.fingerprint/webxr-* 2>/dev/null || true
-            rm -rf /app/target/release/deps/libwebxr* 2>/dev/null || true
-            rm -rf /app/target/release/deps/webxr-* 2>/dev/null || true
-            rm -f /app/target/release/webxr 2>/dev/null || true
-        else
-            log "Binary is up-to-date with mounted source"
-        fi
+    # Detect bind-mounted source changes using content hash (not mtime).
+    # Docker image build bakes source + compiles a binary. At runtime, bind mounts
+    # overlay /app/src with host files. Cargo's fingerprints use mtime which may
+    # match the image build. Content hashing catches actual code changes.
+    HASH_FILE="/app/target/.source_hash"
+    CURRENT_HASH=$(find /app/src -name '*.rs' -o -name '*.cu' 2>/dev/null | sort | xargs cat 2>/dev/null | md5sum | cut -d' ' -f1)
+    CACHED_HASH=$(cat "$HASH_FILE" 2>/dev/null || echo "none")
+    if [ "$CURRENT_HASH" != "$CACHED_HASH" ]; then
+        log "Source content changed (hash $CACHED_HASH → $CURRENT_HASH) — invalidating webxr artifacts"
+        rm -rf /app/target/release/.fingerprint/webxr-* 2>/dev/null || true
+        rm -rf /app/target/release/deps/libwebxr* 2>/dev/null || true
+        rm -rf /app/target/release/deps/webxr-* 2>/dev/null || true
+        rm -f /app/target/release/webxr 2>/dev/null || true
+        rm -rf /app/target/release/build/webxr-* 2>/dev/null || true
+        mkdir -p /app/target
+        echo "$CURRENT_HASH" > "$HASH_FILE"
+    else
+        log "Source hash matches cached build — skipping recompilation"
     fi
 
     # Clean stale incremental cache if fingerprints look corrupt
