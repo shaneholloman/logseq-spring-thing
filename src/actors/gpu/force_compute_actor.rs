@@ -506,19 +506,45 @@ impl ForceComputeActor {
         let mut positions_y: Vec<f32> = graph_data.nodes.iter().map(|n| n.data.y).collect();
         let mut positions_z: Vec<f32> = graph_data.nodes.iter().map(|n| n.data.z).collect();
 
-        // ALWAYS randomize nodes at origin (0,0,0). Neo4j stores no physics positions,
-        // so all nodes arrive at zero. Force-directed layout can't separate co-located
-        // nodes. Every upload randomizes zero-position nodes, using the node index as
-        // part of the seed so the same node gets the same random position across uploads.
+        // MERGE with existing GPU positions: if the GPU already has non-zero positions
+        // from a previous upload + physics simulation, prefer those over Neo4j zeros.
+        // This prevents incremental UpdateGPUGraphData from overwriting physics-computed
+        // positions with stale zeros from Neo4j (async write race condition).
+        if let Some(ref ctx) = self.shared_context {
+            if let Ok(compute) = ctx.unified_compute.lock() {
+                if compute.num_nodes > 0 {
+                    let mut gpu_x = vec![0.0f32; compute.num_nodes];
+                    let mut gpu_y = vec![0.0f32; compute.num_nodes];
+                    let mut gpu_z = vec![0.0f32; compute.num_nodes];
+                    if compute.download_positions(&mut gpu_x, &mut gpu_y, &mut gpu_z).is_ok() {
+                        let mut preserved = 0usize;
+                        for i in 0..num_nodes.min(compute.num_nodes) {
+                            let gpu_mag = gpu_x[i]*gpu_x[i] + gpu_y[i]*gpu_y[i] + gpu_z[i]*gpu_z[i];
+                            let neo_mag = positions_x[i]*positions_x[i] + positions_y[i]*positions_y[i] + positions_z[i]*positions_z[i];
+                            // If GPU has real positions but Neo4j has zeros, keep GPU positions
+                            if gpu_mag > 1.0 && neo_mag < 1.0 {
+                                positions_x[i] = gpu_x[i];
+                                positions_y[i] = gpu_y[i];
+                                positions_z[i] = gpu_z[i];
+                                preserved += 1;
+                            }
+                        }
+                        if preserved > 0 {
+                            info!("ForceComputeActor: Preserved {}/{} GPU-computed positions (Neo4j had zeros)",
+                                  preserved, num_nodes);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Randomize any remaining nodes at origin — these are genuinely new nodes
+        // that have never been positioned by either Neo4j or GPU physics.
         let initial_radius = 200.0f32;
         let mut randomized = 0usize;
         for i in 0..num_nodes {
-            // Check magnitude (distance from origin), not per-component.
-            // Neo4j may store tiny non-zero positions (0.01-0.05) from previous
-            // collapsed layouts. Threshold of 1.0 catches all degenerate positions.
             let mag_sq = positions_x[i] * positions_x[i] + positions_y[i] * positions_y[i] + positions_z[i] * positions_z[i];
             if mag_sq < 1.0 {
-                // Deterministic per-node seed: node index ensures reproducible positions
                 let mut s: u64 = (i as u64).wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
                 let u1 = ((s >> 33) as f32) / ((1u64 << 31) as f32);
                 s = s.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
