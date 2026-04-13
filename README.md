@@ -2,7 +2,7 @@
 
 # VisionClaw
 
-### Immersivee, collaborative, agentic knowledge management, & tool factory.
+### Immersive, collaborative, agentic knowledge management & tool factory.
 
 [![Build](https://img.shields.io/github/actions/workflow/status/DreamLab-AI/VisionClaw/ci.yml?branch=main&style=flat-square&logo=github)](https://github.com/DreamLab-AI/VisionClaw/actions)
 [![Version](https://img.shields.io/github/v/release/DreamLab-AI/VisionClaw?style=flat-square&logo=semantic-release)](https://github.com/DreamLab-AI/VisionClaw/releases)
@@ -11,7 +11,7 @@
 [![CUDA](https://img.shields.io/badge/CUDA-13.1-76B900?style=flat-square&logo=nvidia)](https://developer.nvidia.com/cuda-toolkit)
 [![Docs](https://img.shields.io/badge/Docs-Diataxis-4A90D9?style=flat-square)](docs/README.md)
 
-**92 CUDA kernels · GPU clustering, anomaly detection & PageRank · Multi-user immersive XR · 83 agent skills · OWL 2 ontology governance · Nostr DID identity · Solid Pod sovereignty**
+**92 CUDA kernels · GPU clustering, anomaly detection & PageRank · Multi-user immersive XR · 83 agent skills · OWL 2 ontology governance · Nostr identity & signed auth · Solid Pod sovereignty**
 
 <br/>
 
@@ -29,21 +29,39 @@ https://github.com/user-attachments/assets/f45c92dc-4800-4b57-a6e2-178da6bb0a38
 
 They just haven't told you yet.
 
-73% of frontline AI adoption happens without management sign-off. Your workforce is already building shadow workflows, stitching together AI agents, automating procurement shortcuts, inventing cross-functional pipelines that don't appear on any org chart. The question isn't whether your organisation is becoming an agentic mesh. It's whether you'll shape how it forms.
+More than half of generative AI users already use AI without telling their employers, and 78% of knowledge workers bring their own AI tools to work. Your workforce is already building shadow workflows, stitching together AI agents, automating procurement shortcuts, and inventing cross-functional pipelines that do not appear on any org chart. The question is no longer whether the coordination function is shifting. It is whether you will surface, govern, and compound what people have already discovered.
 
-**The personal agent revolution has a governance problem.** Tools like Claude Code have shown that autonomous AI agents are powerful, popular, and ready to act. They've also shown what happens when agents operate without shared semantics, formal reasoning, or organisational guardrails: unauthorised actions, prompt injection attacks, and enterprises deploying security scanners just to detect rogue agent instances on their own networks.
+**The personal agent revolution has a governance problem.** As information routing becomes computationally cheap, the strategic challenge shifts from moving information around the organisation to deciding where AI can be trusted, where human judgment must remain active, and how shared meaning is maintained across teams and agents. Tools like Claude Code have shown that autonomous AI agents are powerful, popular, and ready to act. They've also shown what happens when agents operate without shared semantics, formal reasoning, or organisational guardrails: unauthorised actions, prompt injection attacks, and enterprises deploying security scanners just to detect rogue agent instances on their own networks.
 
-VisionClaw takes the opposite approach. **Governance isn't an inhibitor, it's an accelerant.**
+VisionClaw takes the opposite approach. **Governance isn't an inhibitor, it's an accelerant** — a way to turn shadow workflows into auditable, reusable organisational capability.
 
 ---
 
 ## What Is VisionClaw?
 
-VisionClaw is an open-source platform that transforms organisations into governed agentic meshes where autonomous AI agents, human judgment, and institutional knowledge work together through a shared semantic substrate.
+VisionClaw is an open-source platform for building governed agentic meshes: a technical substrate where autonomous AI agents, human judgment, and institutional knowledge can work together through a shared semantic layer.
 
-The platform ingests knowledge from Logseq notebooks via GitHub, reasons over it with an OWL 2 EL inference engine (Whelk-rs), renders the result as an interactive 3D graph where nodes attract or repel based on their semantic relationships, and exposes everything to AI agents through 7 Model Context Protocol tools. Users collaborate in the same space through multi-user XR presence, spatial voice, and immersive graph exploration. Every agent decision is semantically grounded, every mutation passes consistency checking, and every reasoning chain is auditable from edge case back to first principles.
+The platform ingests knowledge from Logseq notebooks via GitHub, reasons over it with an OWL 2 EL inference engine (Whelk-rs), renders the result as an interactive 3D graph where nodes attract or repel based on their semantic relationships, and exposes that graph to AI agents through 7 Model Context Protocol tools. Users can collaborate in the same space through multi-user XR presence, spatial voice, and immersive graph exploration. Every ontology mutation can be consistency-checked, and the resulting reasoning chain can be traced from edge case back to source material.
 
-VisionClaw is production-proven currently operational at [DreamLab residential training lab](https://www.dreamlab-ai.com), augmenting a 50 person creative technology team, and validated in partnership with a major UK creative studio and the University of Salford.
+VisionClaw is operational at [DreamLab residential training lab](https://www.dreamlab-ai.com), supporting a creative technology team, and informed by collaboration with a major UK creative studio and the University of Salford.
+
+> **Positioning note** — VisionClaw is best understood as a working technical substrate and an existence proof under favourable conditions: a live OWL 2 + CUDA + WebXR + Nostr + agent orchestration stack in a creative technology context. It demonstrates how ontology-grounded orchestration and embedded governance can work in practice at small-to-medium scale; it does not, by itself, prove universal fit across every industry, workforce, or regulatory setting.
+
+<details>
+<summary><strong>What VisionClaw currently demonstrates</strong></summary>
+
+- Ontology-grounded agent orchestration with shared semantics
+- GPU-accelerated knowledge graph visualisation and analytics at small-to-medium scale
+- Nostr-signed identity and request authentication
+- A live environment for turning discovered workflows into governed graph operations
+
+**What remains open:**
+- Scaling the judgment broker model beyond the current context
+- Adoption by non-technical middle managers
+- Validation in regulated industries
+- Multi-provider orchestration beyond Claude-Flow
+
+</details>
 
 ![VisionClaw GPU-accelerated force-directed graph with Control Center](./graph-physics-live.png)
 
@@ -86,8 +104,8 @@ VisionClaw is production-proven currently operational at [DreamLab residential t
 **🤖 83 Agent Skills**
 - Claude-Flow DAG orchestration with RAFT consensus hive-mind
 - 7 MCP Ontology Tools (discover, read, query, traverse, propose, validate, status)
-- Nostr DID agent identities with W3C-compliant key rotation
-- Cascading trust revocation — revoke one agent, cascade to all dependents
+- Nostr-signed agent identities via NIP-98 auth
+- Ontology-grounded skill decomposition rather than keyword routing
 - RuVector PostgreSQL memory (pgvector + HNSW, 384-dim MiniLM-L6-v2)
 
 </td>
@@ -193,7 +211,7 @@ flowchart TB
     subgraph Layer3["LAYER 3 — DECLARATIVE GOVERNANCE"]
         JB["Judgment Broker\n(Human-in-the-Loop)"]
         Policy["AI-Enforced Policies\nBias · Security · Alignment"]
-        Trust["Cascading Trust\nNostr DID Identity"]
+        Trust["Cascading Trust\nNostr Identity & Signed Auth"]
     end
 
     subgraph Layer2["LAYER 2 — ORCHESTRATION"]
@@ -294,7 +312,7 @@ Opus 48kHz mono end-to-end. HRTF spatial panning from Vircadia entity positions.
 
 The orchestration layer is where agents reason, coordinate, and act — always against the shared semantic substrate of the OWL 2 ontology.
 
-**83 Specialist Agent Skills** — Claude-Flow coordination with RAFT consensus hive-mind and 83 skill modules spanning creative production, research, knowledge codification, governance, workflow discovery, financial intelligence, spatial/immersive, and identity/trust domains. Agents are assigned cryptographic Nostr DID identities and appear as physics nodes in the 3D graph — their status (idle, working, error) drives visual state changes in real time via the Agent-Physics Bridge.
+**83 Specialist Agent Skills** — Claude-Flow coordination with RAFT consensus hive-mind and 83 skill modules spanning creative production, research, knowledge codification, governance, workflow discovery, financial intelligence, spatial/immersive, and identity/trust domains. Agents are assigned cryptographic Nostr identities and appear as physics nodes in the 3D graph — their status (idle, working, error) drives visual state changes in real time via the Agent-Physics Bridge.
 
 **Why OWL 2 Is the Secret Weapon** — Most agentic systems fail at scale because they lack a shared language. In VisionClaw, agents reason against a common OWL 2 ontology. The same concept of "deliverable" means the same thing to a Creative Production agent and a Governance agent. Agent skill routing isn't keyword matching — it's ontological subsumption. The orchestration layer knows that a "risk assessment" is a sub-task of "governance review", and routes accordingly.
 
@@ -363,7 +381,7 @@ Adds `cluster_id` (u16), `anomaly_score` (f32), `community_id` (u16), `page_rank
 
 **Spatial & Immersive** — XR scene graph, light field, WebXR rendering agent, Blender MCP, ComfyUI SAM3D.
 
-**Identity & Trust** — DID management, key rotation, Nostr agent communications, NIP-26 delegation.
+**Identity & Trust** — Nostr identity operations, delegation patterns, and agent communications.
 
 **Development & Quality** — Rust development, pair programming, agentic QE fleet (111+ sub-agents), GitHub code review, performance analysis.
 
@@ -389,7 +407,7 @@ The governance layer is what separates VisionClaw from every "move fast and brea
 
 **Ontological Provenance** — Every agent decision traces back through the OWL 2 knowledge graph. Auditors can traverse the full reasoning chain agent-by-agent, task-by-task. Every action is recorded as an immutable bead — content-addressed, cryptographically verifiable (Nostr NIP-33) — with a deterministic lifecycle state machine ([ADR-034](docs/adr/ADR-034-needle-bead-provenance.md)), exhaustive outcome classification, retry with exponential backoff, and structured learning capture. Inspired by [NEEDLE](https://github.com/jedarden/NEEDLE)'s trait-based architecture. See the [Bead Provenance PRD](docs/prd-bead-provenance-upgrade.md) and [DDD Bounded Context](docs/ddd-bead-provenance-context.md).
 
-**Cascading Trust Hierarchies** — Nostr DID-based agent identities with W3C-compliant key rotation. NIP-26 delegation allows agents to act on behalf of users within scoped permissions. When an agent is revoked, the revocation cascades through dependent agents automatically.
+**Cryptographic Agent Identity** — VisionClaw uses Nostr-signed agent identities and NIP-98 request signing so agent actions are attributable without relying on passwords. Delegation and trust scoping can be layered on top of that identity model where required, while keeping the governance surface explicit and auditable.
 
 <details>
 <summary><strong>Mesh KPIs — measuring what matters in a governed agentic organisation</strong></summary>
@@ -463,7 +481,7 @@ flowchart TB
     subgraph Agents["Multi-Agent Stack"]
         Skills["83 Agent Skills"]
         ClaudeFlow["Claude-Flow\n(RAFT hive-mind)"]
-        NostrDID["Nostr DID Identities\n(NIP-26 delegation)"]
+        NostrDID["Nostr Identities\n(NIP-98 auth · delegation)"]
     end
 
     Client <-->|"Binary V2/V3 + REST"| Server
@@ -582,7 +600,7 @@ VisionClaw implements Domain-Driven Design with 10 bounded contexts across three
 
 **Core Domain:** Knowledge Graph · Ontology Governance · Physics Simulation
 
-**Supporting Domain:** Authentication (Nostr NIP-98) · Identity (DID/Solid) · Agent Orchestration · Semantic Analysis
+**Supporting Domain:** Authentication (Nostr NIP-98) · Identity (Nostr/Solid) · Agent Orchestration · Semantic Analysis
 
 **Generic Domain:** User Management · [Bead Provenance](docs/ddd-bead-provenance-context.md) ([ADR-034](docs/adr/ADR-034-needle-bead-provenance.md)) · Configuration
 
@@ -592,13 +610,13 @@ Each context has its own aggregate roots, domain events, and anti-corruption lay
 
 ---
 
-## Real-World Validation
+## Operational Context & Related Validation
 
 | Deployment | Context | Scale |
 |:-----------|:--------|:------|
-| **DreamLab Creative Hub** | 50-person creative technology team — live production deployment | ~998 knowledge graph nodes, daily ontology mutations |
-| **University of Salford** | Research partnership validating semantic force-directed layout for academic knowledge graphs | Multi-institution ontology |
-| **THG World Record** | Large-scale multi-user immersive data visualisation event — see [THG project](https://github.com/DreamLab-AI/THG-world-record-attempt) | 250+ concurrent XR users |
+| **DreamLab Creative Hub** | Live creative-technology deployment context | ~998 knowledge graph nodes, daily ontology mutations |
+| **University of Salford** | Research collaboration exploring semantic force-directed layout for academic knowledge graphs | Multi-institution ontology |
+| **THG World Record** | Related large-scale immersive data visualisation event — see [THG project](https://github.com/DreamLab-AI/THG-world-record-attempt) | 250+ concurrent XR users |
 
 ---
 
@@ -610,7 +628,7 @@ Each context has its own aggregate roots, domain events, and anti-corruption lay
 | HNSW semantic search | 61µs p50 | RuVector pgvector, 1.17M entries |
 | WebSocket latency | 10ms | Local network, V2 binary |
 | Bandwidth reduction | 80% | Binary V2 vs JSON |
-| Concurrent XR users | 250+ | Vircadia World Server |
+| Concurrent XR users | 250+ | Related immersive data visualisation event |
 | Position update size | 36 bytes (V2) / 48 bytes (V3) | Per node |
 | CUDA kernels | 92 | 6,585 LOC across 11 files |
 | Agent concurrency | 50+ | Via actor supervisor tree |
@@ -636,7 +654,7 @@ Each context has its own aggregate roots, domain events, and anti-corruption lay
 | **XR** | WebXR · Babylon.js | Meta Quest 3 · hand tracking · foveated rendering · `?force=quest3` |
 | **Multi-User** | Vircadia World Server | Avatar sync · spatial HRTF audio · entity CRUD · collaborative editing |
 | **Voice** | LiveKit SFU · turbo-whisper · Kokoro | CUDA STT · TTS · Opus 48kHz · 4-plane routing |
-| **Identity** | Nostr NIP-07/NIP-98 · DID | Browser extension signing · NIP-26 delegation · W3C key rotation |
+| **Identity** | Nostr NIP-07/NIP-98 | Browser extension signing · cryptographic HTTP auth · scoped delegation patterns |
 | **User Data** | Solid Pods · JSS sidecar | Per-user data sovereignty · WAC access control · JSON-LD |
 | **Agents** | Claude-Flow · MCP · RAFT | 83 skills · 7 ontology tools · hive-mind consensus |
 | **AI/ML** | GraphRAG · RAGFlow | Knowledge retrieval · semantic inference |

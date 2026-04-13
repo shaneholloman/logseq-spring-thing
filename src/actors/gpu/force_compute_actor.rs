@@ -699,9 +699,12 @@ impl ForceComputeActor {
                     // more inertia — they resist sudden position changes during layout
                     // transitions and settle more smoothly. Mass range: 0.5 (isolated)
                     // to ~5.0 (max hub), clamped to prevent extreme sluggishness.
-                    let mass_weights: Vec<f32> = normalized_weights.iter()
+                    // Pad mass weights to allocated_nodes to match class_mass buffer size.
+                    let alloc = compute.class_mass.len();
+                    let mut mass_weights: Vec<f32> = normalized_weights.iter()
                         .map(|w| (0.5 + w * 2.0).min(5.0))
                         .collect();
+                    mass_weights.resize(alloc, 1.0); // pad with default mass 1.0
                     match cust::memory::DeviceBuffer::from_slice(&mass_weights) {
                         Ok(new_mass) => { compute.class_mass = new_mass; }
                         Err(e) => { warn!("ForceComputeActor: Failed to upload mass weights: {}", e); }
