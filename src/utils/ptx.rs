@@ -264,8 +264,49 @@ impl PTXModule {
     }
 }
 
-// Build-time exported paths from build.rs (if present)
+// Build-time exported paths and content hashes from build.rs (if present)
 pub static COMPILED_PTX_PATH: Option<&'static str> = option_env!("VISIONFLOW_UNIFIED_PTX_PATH");
+
+/// Content hashes of CUDA source files at build time. Used to detect stale PTX
+/// from Docker cached target volumes when bind-mounted source has changed.
+pub static VISIONFLOW_UNIFIED_CUDA_HASH: Option<&'static str> = option_env!("VISIONFLOW_UNIFIED_CUDA_HASH");
+pub static GPU_CLUSTERING_KERNELS_CUDA_HASH: Option<&'static str> = option_env!("GPU_CLUSTERING_KERNELS_CUDA_HASH");
+
+/// Verify CUDA source hash matches the build-time hash. Returns true if hashes
+/// match or if verification is unavailable (no hash compiled in).
+pub fn verify_cuda_source_hash(module: PTXModule) -> bool {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::Hasher;
+
+    let build_hash = match module {
+        PTXModule::VisionflowUnified => VISIONFLOW_UNIFIED_CUDA_HASH,
+        PTXModule::GpuClusteringKernels => GPU_CLUSTERING_KERNELS_CUDA_HASH,
+        _ => None, // Other modules don't have hash verification yet
+    };
+
+    let Some(expected) = build_hash else { return true };
+
+    let source_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("src/utils")
+        .join(module.source_file());
+
+    match std::fs::read(&source_path) {
+        Ok(contents) => {
+            let mut hasher = DefaultHasher::new();
+            hasher.write(&contents);
+            let actual = format!("{:016x}", hasher.finish());
+            if actual != expected {
+                warn!(
+                    "CUDA source hash mismatch for {:?}: build={} runtime={}. PTX may be stale!",
+                    module, expected, actual
+                );
+                return false;
+            }
+            true
+        }
+        Err(_) => true, // Can't read source (e.g. production) — trust the build
+    }
+}
 
 pub fn get_compiled_ptx_path(module: PTXModule) -> Option<PathBuf> {
     std::env::var(module.env_var()).ok().map(PathBuf::from)
