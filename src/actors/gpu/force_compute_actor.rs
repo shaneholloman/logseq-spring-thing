@@ -318,9 +318,13 @@ impl ForceComputeActor {
             }
         };
 
+        // Pre-allocate for expected graph size to avoid buffer panics.
+        // 23 of 67 DeviceBuffers are not resized by resize_buffers() — they must
+        // be large enough at construction to cover the actual graph size.
+        // 8192 nodes / 16384 edges covers most knowledge graphs.
         let unified_compute = match crate::utils::unified_gpu_compute::UnifiedGPUCompute::new_with_all_modules(
-            1000,
-            1000,
+            8192,
+            16384,
             &ptx_content,
             clustering_ptx.as_deref(),
             apsp_ptx.as_deref(),
