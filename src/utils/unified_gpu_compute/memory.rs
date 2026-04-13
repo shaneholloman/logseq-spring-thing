@@ -305,6 +305,13 @@ impl UnifiedGPUCompute {
             )
         })?;
 
+        // Update zero_buffer and max_grid_cells IMMEDIATELY after allocating new
+        // cell buffers, BEFORE any copy operations. If copy_from panics (caught by
+        // catch_unwind), zero_buffer must already match cell_start size or every
+        // subsequent physics step will panic in execution.rs copy_from(&zero_buffer).
+        let old_memory = self.total_memory_allocated;
+        self.max_grid_cells = new_size;
+        self.zero_buffer = vec![0i32; new_size];
 
         if let (Some(start_data), Some(end_data)) = (old_cell_start_data, old_cell_end_data) {
             let copy_size = start_data.len().min(new_size);
@@ -314,11 +321,6 @@ impl UnifiedGPUCompute {
                 debug!("Preserved {} cells of data during resize", copy_size);
             }
         }
-
-
-        let old_memory = self.total_memory_allocated;
-        self.max_grid_cells = new_size;
-        self.zero_buffer = vec![0i32; new_size];
         self.resize_count += 1;
         self.total_memory_allocated = Self::calculate_memory_usage(
             self.allocated_nodes,
