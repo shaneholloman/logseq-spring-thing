@@ -2390,88 +2390,255 @@
     <bcf:citekey order="14" intorder="1">MicrosoftWorkTrend2024</bcf:citekey>
     <bcf:citekey order="15" intorder="1">Gartner2025</bcf:citekey>
     <bcf:citekey order="16" intorder="1">IBM2025</bcf:citekey>
-    <bcf:citekey order="17" intorder="1">Mollick2023SecretCyborgs</bcf:citekey>
+    <bcf:citekey order="17" intorder="1">EpochAI2026</bcf:citekey>
     <bcf:citekey order="18" intorder="1">Mollick2023SecretCyborgs</bcf:citekey>
-    <bcf:citekey order="19" intorder="1">EdmondsonLei2025</bcf:citekey>
+    <bcf:citekey order="19" intorder="1">Mollick2023SecretCyborgs</bcf:citekey>
     <bcf:citekey order="20" intorder="1">EdmondsonLei2025</bcf:citekey>
-    <bcf:citekey order="21" intorder="1">GoogleAristotle2025</bcf:citekey>
-    <bcf:citekey order="22" intorder="1">CyberArk2025</bcf:citekey>
+    <bcf:citekey order="21" intorder="1">EdmondsonLei2025</bcf:citekey>
+    <bcf:citekey order="22" intorder="1">GoogleAristotle2025</bcf:citekey>
     <bcf:citekey order="23" intorder="1">CyberArk2025</bcf:citekey>
-    <bcf:citekey order="24" intorder="1">DorseyBotha2026</bcf:citekey>
+    <bcf:citekey order="24" intorder="1">CyberArk2025</bcf:citekey>
     <bcf:citekey order="25" intorder="1">DorseyBotha2026</bcf:citekey>
-    <bcf:citekey order="26" intorder="1">DellAcqua2026</bcf:citekey>
+    <bcf:citekey order="26" intorder="1">DorseyBotha2026</bcf:citekey>
     <bcf:citekey order="27" intorder="1">DellAcqua2026</bcf:citekey>
-    <bcf:citekey order="28" intorder="1">Randazzo2024</bcf:citekey>
+    <bcf:citekey order="28" intorder="1">DellAcqua2026</bcf:citekey>
     <bcf:citekey order="29" intorder="1">Randazzo2024</bcf:citekey>
-    <bcf:citekey order="30" intorder="1">DellAcqua2026</bcf:citekey>
-    <bcf:citekey order="31" intorder="1">DellAcqua2023</bcf:citekey>
+    <bcf:citekey order="30" intorder="1">Randazzo2024</bcf:citekey>
+    <bcf:citekey order="31" intorder="1">DellAcqua2026</bcf:citekey>
     <bcf:citekey order="32" intorder="1">DellAcqua2023</bcf:citekey>
-    <bcf:citekey order="33" intorder="1">Gartner2025</bcf:citekey>
+    <bcf:citekey order="33" intorder="1">DellAcqua2023</bcf:citekey>
     <bcf:citekey order="34" intorder="1">Gartner2025</bcf:citekey>
-    <bcf:citekey order="35" intorder="1">McKinseySixShifts2026</bcf:citekey>
-    <bcf:citekey order="36" intorder="1">BCGAgenticShift2025</bcf:citekey>
-    <bcf:citekey order="37" intorder="1">BCGAgenticEnterprise2025</bcf:citekey>
-    <bcf:citekey order="38" intorder="1">DorseyBotha2026</bcf:citekey>
-    <bcf:citekey order="39" intorder="1">Zamost2026</bcf:citekey>
+    <bcf:citekey order="35" intorder="1">Gartner2025</bcf:citekey>
+    <bcf:citekey order="36" intorder="1">McKinseySixShifts2026</bcf:citekey>
+    <bcf:citekey order="37" intorder="1">BCGAgenticShift2025</bcf:citekey>
+    <bcf:citekey order="38" intorder="1">BCGAgenticEnterprise2025</bcf:citekey>
+    <bcf:citekey order="39" intorder="1">DorseyBotha2026</bcf:citekey>
     <bcf:citekey order="40" intorder="1">Zamost2026</bcf:citekey>
-    <bcf:citekey order="41" intorder="1">Spicer2026</bcf:citekey>
+    <bcf:citekey order="41" intorder="1">Zamost2026</bcf:citekey>
     <bcf:citekey order="42" intorder="1">Spicer2026</bcf:citekey>
-    <bcf:citekey order="43" intorder="1">Klarna2025</bcf:citekey>
-    <bcf:citekey order="44" intorder="1">OrgvueForrester2025</bcf:citekey>
-    <bcf:citekey order="45" intorder="1">Shipper2026</bcf:citekey>
-    <bcf:citekey order="45" intorder="2">Klaassen2025</bcf:citekey>
-    <bcf:citekey order="46" intorder="1">TDS2026</bcf:citekey>
-    <bcf:citekey order="47" intorder="1">Klaassen2025</bcf:citekey>
+    <bcf:citekey order="43" intorder="1">Spicer2026</bcf:citekey>
+    <bcf:citekey order="44" intorder="1">Klarna2025</bcf:citekey>
+    <bcf:citekey order="45" intorder="1">OrgvueForrester2025</bcf:citekey>
+    <bcf:citekey order="46" intorder="1">Shipper2026</bcf:citekey>
+    <bcf:citekey order="46" intorder="2">Klaassen2025</bcf:citekey>
+    <bcf:citekey order="47" intorder="1">TDS2026</bcf:citekey>
     <bcf:citekey order="48" intorder="1">Klaassen2025</bcf:citekey>
-    <bcf:citekey order="49" intorder="1">BCGAgenticShift2025</bcf:citekey>
+    <bcf:citekey order="49" intorder="1">Klaassen2025</bcf:citekey>
     <bcf:citekey order="50" intorder="1">BCGAgenticShift2025</bcf:citekey>
-    <bcf:citekey order="51" intorder="1">AlphaEvolve2025</bcf:citekey>
-    <bcf:citekey order="52" intorder="1">Capgemini2025</bcf:citekey>
-    <bcf:citekey order="53" intorder="1">Shipper2026</bcf:citekey>
-    <bcf:citekey order="54" intorder="1">DellAcqua2026</bcf:citekey>
-    <bcf:citekey order="55" intorder="1">DellAcqua2023</bcf:citekey>
-    <bcf:citekey order="56" intorder="1">BCGAgenticShift2025</bcf:citekey>
-    <bcf:citekey order="57" intorder="1">BCGAIKPIs2025</bcf:citekey>
+    <bcf:citekey order="51" intorder="1">BCGAgenticShift2025</bcf:citekey>
+    <bcf:citekey order="52" intorder="1">AlphaEvolve2025</bcf:citekey>
+    <bcf:citekey order="53" intorder="1">Capgemini2025</bcf:citekey>
+    <bcf:citekey order="54" intorder="1">Shipper2026</bcf:citekey>
+    <bcf:citekey order="55" intorder="1">DellAcqua2026</bcf:citekey>
+    <bcf:citekey order="56" intorder="1">DellAcqua2023</bcf:citekey>
+    <bcf:citekey order="57" intorder="1">BCGAgenticShift2025</bcf:citekey>
     <bcf:citekey order="58" intorder="1">BCGAIKPIs2025</bcf:citekey>
-    <bcf:citekey order="59" intorder="1">CyberArk2025</bcf:citekey>
+    <bcf:citekey order="59" intorder="1">BCGAIKPIs2025</bcf:citekey>
     <bcf:citekey order="60" intorder="1">CyberArk2025</bcf:citekey>
-    <bcf:citekey order="61" intorder="1">Gartner2025</bcf:citekey>
+    <bcf:citekey order="61" intorder="1">CyberArk2025</bcf:citekey>
     <bcf:citekey order="62" intorder="1">Gartner2025</bcf:citekey>
-    <bcf:citekey order="63" intorder="1">Prosci2024</bcf:citekey>
+    <bcf:citekey order="63" intorder="1">Gartner2025</bcf:citekey>
     <bcf:citekey order="64" intorder="1">Prosci2024</bcf:citekey>
-    <bcf:citekey order="65" intorder="1">WadeBonnet2025</bcf:citekey>
+    <bcf:citekey order="65" intorder="1">Prosci2024</bcf:citekey>
     <bcf:citekey order="66" intorder="1">WadeBonnet2025</bcf:citekey>
-    <bcf:citekey order="67" intorder="1">Deloitte2026</bcf:citekey>
+    <bcf:citekey order="67" intorder="1">WadeBonnet2025</bcf:citekey>
     <bcf:citekey order="68" intorder="1">Deloitte2026</bcf:citekey>
-    <bcf:citekey order="69" intorder="1">Teece2025</bcf:citekey>
+    <bcf:citekey order="69" intorder="1">Deloitte2026</bcf:citekey>
     <bcf:citekey order="70" intorder="1">Teece2025</bcf:citekey>
-    <bcf:citekey order="71" intorder="1">MicrosoftDirectedAutonomy2025</bcf:citekey>
+    <bcf:citekey order="71" intorder="1">Teece2025</bcf:citekey>
     <bcf:citekey order="72" intorder="1">MicrosoftDirectedAutonomy2025</bcf:citekey>
-    <bcf:citekey order="73" intorder="1">BCGAgenticShift2025</bcf:citekey>
+    <bcf:citekey order="73" intorder="1">MicrosoftDirectedAutonomy2025</bcf:citekey>
     <bcf:citekey order="74" intorder="1">BCGAgenticShift2025</bcf:citekey>
-    <bcf:citekey order="75" intorder="1">BCGAIKPIs2025</bcf:citekey>
-    <bcf:citekey order="76" intorder="1">Capgemini2025</bcf:citekey>
+    <bcf:citekey order="75" intorder="1">BCGAgenticShift2025</bcf:citekey>
+    <bcf:citekey order="76" intorder="1">BCGAIKPIs2025</bcf:citekey>
     <bcf:citekey order="77" intorder="1">Capgemini2025</bcf:citekey>
-    <bcf:citekey order="78" intorder="1">Mollick2025Management</bcf:citekey>
-    <bcf:citekey order="79" intorder="1">McKinseyAgenticOrg2026</bcf:citekey>
-    <bcf:citekey order="80" intorder="1">McKinseySixShifts2026</bcf:citekey>
-    <bcf:citekey order="81" intorder="1">BCGAgenticShift2025</bcf:citekey>
+    <bcf:citekey order="78" intorder="1">Capgemini2025</bcf:citekey>
+    <bcf:citekey order="79" intorder="1">Mollick2025Management</bcf:citekey>
+    <bcf:citekey order="80" intorder="1">McKinseyAgenticOrg2026</bcf:citekey>
+    <bcf:citekey order="81" intorder="1">McKinseySixShifts2026</bcf:citekey>
     <bcf:citekey order="82" intorder="1">BCGAgenticShift2025</bcf:citekey>
-    <bcf:citekey order="83" intorder="1">BCGAgenticEnterprise2025</bcf:citekey>
+    <bcf:citekey order="83" intorder="1">BCGAgenticShift2025</bcf:citekey>
     <bcf:citekey order="84" intorder="1">BCGAgenticEnterprise2025</bcf:citekey>
-    <bcf:citekey order="85" intorder="1">BCGJobsReshaping2026</bcf:citekey>
-    <bcf:citekey order="86" intorder="1">BCGAIKPIs2025</bcf:citekey>
-    <bcf:citekey order="87" intorder="1">Deloitte2026</bcf:citekey>
+    <bcf:citekey order="85" intorder="1">BCGAgenticEnterprise2025</bcf:citekey>
+    <bcf:citekey order="86" intorder="1">BCGJobsReshaping2026</bcf:citekey>
+    <bcf:citekey order="87" intorder="1">BCGAIKPIs2025</bcf:citekey>
     <bcf:citekey order="88" intorder="1">Deloitte2026</bcf:citekey>
-    <bcf:citekey order="89" intorder="1">Gartner2025</bcf:citekey>
+    <bcf:citekey order="89" intorder="1">Deloitte2026</bcf:citekey>
     <bcf:citekey order="90" intorder="1">Gartner2025</bcf:citekey>
-    <bcf:citekey order="91" intorder="1">WEF2025</bcf:citekey>
+    <bcf:citekey order="91" intorder="1">Gartner2025</bcf:citekey>
     <bcf:citekey order="92" intorder="1">WEF2025</bcf:citekey>
-    <bcf:citekey order="93" intorder="1">CyberArk2025</bcf:citekey>
-    <bcf:citekey order="94" intorder="1">Shipper2026</bcf:citekey>
-    <bcf:citekey order="95" intorder="1">Mollick2025Management</bcf:citekey>
+    <bcf:citekey order="93" intorder="1">WEF2025</bcf:citekey>
+    <bcf:citekey order="94" intorder="1">CyberArk2025</bcf:citekey>
+    <bcf:citekey order="95" intorder="1">Shipper2026</bcf:citekey>
     <bcf:citekey order="96" intorder="1">Mollick2025Management</bcf:citekey>
-    <bcf:citekey order="97" intorder="1">Shipper2026</bcf:citekey>
+    <bcf:citekey order="97" intorder="1">Mollick2025Management</bcf:citekey>
+    <bcf:citekey order="98" intorder="1">Shipper2026</bcf:citekey>
+    <bcf:citekey order="99" intorder="1">MicrosoftWorkTrend2024</bcf:citekey>
+    <bcf:citekey order="100" intorder="1">Gartner2025</bcf:citekey>
+    <bcf:citekey order="101" intorder="1">EdmondsonLei2025</bcf:citekey>
+    <bcf:citekey order="102" intorder="1">BCGAgenticShift2025</bcf:citekey>
+    <bcf:citekey order="103" intorder="1">ERA2025</bcf:citekey>
+    <bcf:citekey order="104" intorder="1">EUAIAct2025</bcf:citekey>
+    <bcf:citekey order="105" intorder="1">Capgemini2025</bcf:citekey>
+    <bcf:citekey order="106" intorder="1">BCGAIKPIs2025</bcf:citekey>
+    <bcf:citekey order="107" intorder="1">IBM2025</bcf:citekey>
+    <bcf:citekey order="108" intorder="1">OrgvueForrester2025</bcf:citekey>
+    <bcf:citekey order="109" intorder="1">MicrosoftDirectedAutonomy2025</bcf:citekey>
+    <bcf:citekey order="110" intorder="1">Gartner2025</bcf:citekey>
+    <bcf:citekey order="111" intorder="1">Gartner2025</bcf:citekey>
+    <bcf:citekey order="112" intorder="1">DellAcqua2026</bcf:citekey>
+    <bcf:citekey order="113" intorder="1">TDS2026</bcf:citekey>
+    <bcf:citekey order="114" intorder="1">Klarna2025</bcf:citekey>
+    <bcf:citekey order="115" intorder="1">Acemoglu2025</bcf:citekey>
+    <bcf:citekey order="116" intorder="1">Patterson2025</bcf:citekey>
+    <bcf:citekey order="117" intorder="1">Patterson2025</bcf:citekey>
+    <bcf:citekey order="118" intorder="1">NatureSustainability2025</bcf:citekey>
+    <bcf:citekey order="119" intorder="1">NatureSustainability2025</bcf:citekey>
+    <bcf:citekey order="120" intorder="1">CyberArk2025</bcf:citekey>
+    <bcf:citekey order="121" intorder="1">WEF2025</bcf:citekey>
+    <bcf:citekey order="122" intorder="1">WEF2025</bcf:citekey>
+    <bcf:citekey order="123" intorder="1">SAFe2024</bcf:citekey>
+    <bcf:citekey order="124" intorder="1">MicrosoftCopilotStudio2025</bcf:citekey>
+    <bcf:citekey order="125" intorder="1">Holacracy2024</bcf:citekey>
+    <bcf:citekey order="126" intorder="1">DorseyBotha2026</bcf:citekey>
+    <bcf:citekey order="127" intorder="1">DorseyBotha2026</bcf:citekey>
+    <bcf:citekey order="128" intorder="1">Klarna2025</bcf:citekey>
+    <bcf:citekey order="129" intorder="1">DellAcqua2023</bcf:citekey>
+    <bcf:citekey order="130" intorder="1">Spicer2026</bcf:citekey>
+    <bcf:citekey order="131" intorder="1">Spicer2026</bcf:citekey>
+    <bcf:citekey order="132" intorder="1">Randazzo2024</bcf:citekey>
+    <bcf:citekey order="133" intorder="1">Shipper2026</bcf:citekey>
+    <bcf:citekey order="134" intorder="1">Shipper2026</bcf:citekey>
+    <bcf:citekey order="135" intorder="1">TDS2026</bcf:citekey>
+    <bcf:citekey order="136" intorder="1">Shipper2026</bcf:citekey>
+    <bcf:citekey order="137" intorder="1">Capgemini2025</bcf:citekey>
+    <bcf:citekey order="138" intorder="1">Capgemini2025</bcf:citekey>
+    <bcf:citekey order="139" intorder="1">Acemoglu2025</bcf:citekey>
+    <bcf:citekey order="140" intorder="1">DellAcqua2026</bcf:citekey>
+    <bcf:citekey order="141" intorder="1">DellAcqua2023</bcf:citekey>
+    <bcf:citekey order="142" intorder="1">Randazzo2024</bcf:citekey>
+    <bcf:citekey order="143" intorder="1">BCGAIKPIs2025</bcf:citekey>
+    <bcf:citekey order="144" intorder="1">BCGAgenticShift2025</bcf:citekey>
+    <bcf:citekey order="145" intorder="1">EdmondsonLei2025</bcf:citekey>
+    <bcf:citekey order="145" intorder="2">GoogleAristotle2025</bcf:citekey>
+    <bcf:citekey order="146" intorder="1">WadeBonnet2025</bcf:citekey>
+    <bcf:citekey order="147" intorder="1">MicrosoftDirectedAutonomy2025</bcf:citekey>
+    <bcf:citekey order="148" intorder="1">Teece2025</bcf:citekey>
+    <bcf:citekey order="149" intorder="1">Gartner2025</bcf:citekey>
+    <bcf:citekey order="150" intorder="1">IBM2025</bcf:citekey>
+    <bcf:citekey order="151" intorder="1">Mollick2025Management</bcf:citekey>
+    <bcf:citekey order="152" intorder="1">Mollick2025Management</bcf:citekey>
+    <bcf:citekey order="245" intorder="1">DellAcqua2026</bcf:citekey>
+    <bcf:citekey order="246" intorder="1">DellAcqua2026</bcf:citekey>
+    <bcf:citekey order="247" intorder="1">Randazzo2024</bcf:citekey>
+    <bcf:citekey order="248" intorder="1">Randazzo2024</bcf:citekey>
+    <bcf:citekey order="249" intorder="1">DellAcqua2023</bcf:citekey>
+    <bcf:citekey order="250" intorder="1">DellAcqua2023</bcf:citekey>
+    <bcf:citekey order="251" intorder="1">BCGAIKPIs2025</bcf:citekey>
+    <bcf:citekey order="252" intorder="1">BCGAIKPIs2025</bcf:citekey>
+    <bcf:citekey order="253" intorder="1">DorseyBotha2026</bcf:citekey>
+    <bcf:citekey order="254" intorder="1">DorseyBotha2026</bcf:citekey>
+    <bcf:citekey order="255" intorder="1">Zamost2026</bcf:citekey>
+    <bcf:citekey order="256" intorder="1">Zamost2026</bcf:citekey>
+    <bcf:citekey order="257" intorder="1">Spicer2026</bcf:citekey>
+    <bcf:citekey order="258" intorder="1">Spicer2026</bcf:citekey>
+    <bcf:citekey order="259" intorder="1">Klarna2025</bcf:citekey>
+    <bcf:citekey order="260" intorder="1">Klarna2025</bcf:citekey>
+    <bcf:citekey order="261" intorder="1">OrgvueForrester2025</bcf:citekey>
+    <bcf:citekey order="262" intorder="1">OrgvueForrester2025</bcf:citekey>
+    <bcf:citekey order="263" intorder="1">McKinseyAgenticOrg2026</bcf:citekey>
+    <bcf:citekey order="264" intorder="1">McKinseyAgenticOrg2026</bcf:citekey>
+    <bcf:citekey order="265" intorder="1">McKinseySixShifts2026</bcf:citekey>
+    <bcf:citekey order="266" intorder="1">McKinseySixShifts2026</bcf:citekey>
+    <bcf:citekey order="267" intorder="1">BCGAgenticShift2025</bcf:citekey>
+    <bcf:citekey order="268" intorder="1">BCGAgenticShift2025</bcf:citekey>
+    <bcf:citekey order="269" intorder="1">BCGAgenticEnterprise2025</bcf:citekey>
+    <bcf:citekey order="270" intorder="1">BCGAgenticEnterprise2025</bcf:citekey>
+    <bcf:citekey order="271" intorder="1">Deloitte2026</bcf:citekey>
+    <bcf:citekey order="272" intorder="1">Deloitte2026</bcf:citekey>
+    <bcf:citekey order="273" intorder="1">WadeBonnet2025</bcf:citekey>
+    <bcf:citekey order="274" intorder="1">WadeBonnet2025</bcf:citekey>
+    <bcf:citekey order="275" intorder="1">Teece2025</bcf:citekey>
+    <bcf:citekey order="276" intorder="1">Teece2025</bcf:citekey>
+    <bcf:citekey order="277" intorder="1">MicrosoftDirectedAutonomy2025</bcf:citekey>
+    <bcf:citekey order="278" intorder="1">MicrosoftDirectedAutonomy2025</bcf:citekey>
+    <bcf:citekey order="279" intorder="1">Prosci2024</bcf:citekey>
+    <bcf:citekey order="280" intorder="1">Prosci2024</bcf:citekey>
+    <bcf:citekey order="281" intorder="1">Capgemini2025</bcf:citekey>
+    <bcf:citekey order="282" intorder="1">Capgemini2025</bcf:citekey>
+    <bcf:citekey order="283" intorder="1">Shipper2026</bcf:citekey>
+    <bcf:citekey order="284" intorder="1">Shipper2026</bcf:citekey>
+    <bcf:citekey order="285" intorder="1">Klaassen2025</bcf:citekey>
+    <bcf:citekey order="286" intorder="1">Klaassen2025</bcf:citekey>
+    <bcf:citekey order="287" intorder="1">CyberArk2025</bcf:citekey>
+    <bcf:citekey order="288" intorder="1">CyberArk2025</bcf:citekey>
+    <bcf:citekey order="289" intorder="1">TDS2026</bcf:citekey>
+    <bcf:citekey order="290" intorder="1">TDS2026</bcf:citekey>
+    <bcf:citekey order="291" intorder="1">DellAcqua2026</bcf:citekey>
+    <bcf:citekey order="292" intorder="1">DellAcqua2026</bcf:citekey>
+    <bcf:citekey order="293" intorder="1">Randazzo2024</bcf:citekey>
+    <bcf:citekey order="294" intorder="1">Randazzo2024</bcf:citekey>
+    <bcf:citekey order="295" intorder="1">DellAcqua2023</bcf:citekey>
+    <bcf:citekey order="296" intorder="1">DellAcqua2023</bcf:citekey>
+    <bcf:citekey order="297" intorder="1">Acemoglu2019</bcf:citekey>
+    <bcf:citekey order="298" intorder="1">Acemoglu2019</bcf:citekey>
+    <bcf:citekey order="299" intorder="1">Acemoglu2025</bcf:citekey>
+    <bcf:citekey order="300" intorder="1">Acemoglu2025</bcf:citekey>
+    <bcf:citekey order="301" intorder="1">BCGAIKPIs2025</bcf:citekey>
+    <bcf:citekey order="302" intorder="1">BCGAIKPIs2025</bcf:citekey>
+    <bcf:citekey order="303" intorder="1">MicrosoftWorkTrend2024</bcf:citekey>
+    <bcf:citekey order="304" intorder="1">MicrosoftWorkTrend2024</bcf:citekey>
+    <bcf:citekey order="305" intorder="1">WEF2025</bcf:citekey>
+    <bcf:citekey order="306" intorder="1">WEF2025</bcf:citekey>
+    <bcf:citekey order="307" intorder="1">Capgemini2025</bcf:citekey>
+    <bcf:citekey order="308" intorder="1">Capgemini2025</bcf:citekey>
+    <bcf:citekey order="309" intorder="1">EdmondsonLei2025</bcf:citekey>
+    <bcf:citekey order="310" intorder="1">EdmondsonLei2025</bcf:citekey>
+    <bcf:citekey order="311" intorder="1">DorseyBotha2026</bcf:citekey>
+    <bcf:citekey order="312" intorder="1">DorseyBotha2026</bcf:citekey>
+    <bcf:citekey order="313" intorder="1">Shipper2026</bcf:citekey>
+    <bcf:citekey order="314" intorder="1">Shipper2026</bcf:citekey>
+    <bcf:citekey order="315" intorder="1">Klaassen2025</bcf:citekey>
+    <bcf:citekey order="316" intorder="1">Klaassen2025</bcf:citekey>
+    <bcf:citekey order="317" intorder="1">Mollick2025Management</bcf:citekey>
+    <bcf:citekey order="318" intorder="1">Mollick2025Management</bcf:citekey>
+    <bcf:citekey order="319" intorder="1">Spicer2026</bcf:citekey>
+    <bcf:citekey order="320" intorder="1">Spicer2026</bcf:citekey>
+    <bcf:citekey order="321" intorder="1">Zamost2026</bcf:citekey>
+    <bcf:citekey order="322" intorder="1">Zamost2026</bcf:citekey>
+    <bcf:citekey order="323" intorder="1">TDS2026</bcf:citekey>
+    <bcf:citekey order="324" intorder="1">TDS2026</bcf:citekey>
+    <bcf:citekey order="325" intorder="1">IBM2025</bcf:citekey>
+    <bcf:citekey order="326" intorder="1">IBM2025</bcf:citekey>
+    <bcf:citekey order="327" intorder="1">Gartner2025</bcf:citekey>
+    <bcf:citekey order="328" intorder="1">Gartner2025</bcf:citekey>
+    <bcf:citekey order="329" intorder="1">DellAcqua2026</bcf:citekey>
+    <bcf:citekey order="329" intorder="2">Randazzo2024</bcf:citekey>
+    <bcf:citekey order="329" intorder="3">Acemoglu2025</bcf:citekey>
+    <bcf:citekey order="330" intorder="1">BCGAgenticShift2025</bcf:citekey>
+    <bcf:citekey order="331" intorder="1">BCGAgenticShift2025</bcf:citekey>
+    <bcf:citekey order="332" intorder="1">Shipper2026</bcf:citekey>
+    <bcf:citekey order="333" intorder="1">Shipper2026</bcf:citekey>
+    <bcf:citekey order="334" intorder="1">MicrosoftWorkTrend2024</bcf:citekey>
+    <bcf:citekey order="335" intorder="1">MicrosoftWorkTrend2024</bcf:citekey>
+    <bcf:citekey order="336" intorder="1">Randazzo2024</bcf:citekey>
+    <bcf:citekey order="337" intorder="1">Randazzo2024</bcf:citekey>
+    <bcf:citekey order="338" intorder="1">Klaassen2025</bcf:citekey>
+    <bcf:citekey order="339" intorder="1">Klaassen2025</bcf:citekey>
+    <bcf:citekey order="340" intorder="1">Randazzo2024</bcf:citekey>
+    <bcf:citekey order="341" intorder="1">Randazzo2024</bcf:citekey>
+    <bcf:citekey order="342" intorder="1">DorseyBotha2026</bcf:citekey>
+    <bcf:citekey order="343" intorder="1">DorseyBotha2026</bcf:citekey>
+    <bcf:citekey order="344" intorder="1">DellAcqua2026</bcf:citekey>
+    <bcf:citekey order="345" intorder="1">DellAcqua2026</bcf:citekey>
+    <bcf:citekey order="346" intorder="1">Mollick2023SecretCyborgs</bcf:citekey>
+    <bcf:citekey order="347" intorder="1">Mollick2023SecretCyborgs</bcf:citekey>
+    <bcf:citekey order="348" intorder="1">Randazzo2024</bcf:citekey>
+    <bcf:citekey order="349" intorder="1">Randazzo2024</bcf:citekey>
+    <bcf:citekey order="350" intorder="1">Gartner2025</bcf:citekey>
+    <bcf:citekey order="351" intorder="1">DellAcqua2023</bcf:citekey>
+    <bcf:citekey order="352" intorder="1">DellAcqua2023</bcf:citekey>
+    <bcf:citekey order="353" intorder="1">DorseyBotha2026</bcf:citekey>
   </bcf:section>
   <!-- SORTING TEMPLATES -->
   <bcf:sortingtemplate name="nyt">

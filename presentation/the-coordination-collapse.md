@@ -593,7 +593,7 @@ Investing in the 9% yields the highest ROI. These are the people who become judg
 
 ### A Working Agentic Mesh at 15-Person Scale
 
-VisionFlow is not a prototype or a whitepaper. It is an operational Agentic Mesh serving a 15-person creative technology team at MediaCityUK.
+VisionFlow is not a prototype or a whitepaper. It is an operational Agentic Mesh serving a 15-person creative technology team at DreamLab, Fairfield, Eskdale.
 
 | Metric | Value |
 |--------|-------|
@@ -842,5 +842,5 @@ A 15-person (corrected: ~50-person) creative technology team led by the system a
 
 ---
 
-*DreamLab AI Consulting Ltd · Dr. John O'Hare · MediaCityUK, Salford*
+*DreamLab AI Consulting Ltd · Dr. John O'Hare · DreamLab, Fairfield, Eskdale*
 *Document version: Working draft for NotebookLM ingestion — April 2026*

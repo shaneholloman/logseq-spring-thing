@@ -19,6 +19,86 @@
 
 \refsection{0}
   \datalist[entry]{nyt/global//global/global/global}
+    \entry{Acemoglu2025}{article}{}{}
+      \name{author}{1}{}{%
+        {{un=0,uniquepart=base,hash=d849e6f8de178bfb18aa67341c9f8d38}{%
+           family={Acemoglu},
+           familyi={A\bibinitperiod},
+           given={Daron},
+           giveni={D\bibinitperiod},
+           givenun=0}}%
+      }
+      \strng{namehash}{d849e6f8de178bfb18aa67341c9f8d38}
+      \strng{fullhash}{d849e6f8de178bfb18aa67341c9f8d38}
+      \strng{fullhashraw}{d849e6f8de178bfb18aa67341c9f8d38}
+      \strng{bibnamehash}{d849e6f8de178bfb18aa67341c9f8d38}
+      \strng{authorbibnamehash}{d849e6f8de178bfb18aa67341c9f8d38}
+      \strng{authornamehash}{d849e6f8de178bfb18aa67341c9f8d38}
+      \strng{authorfullhash}{d849e6f8de178bfb18aa67341c9f8d38}
+      \strng{authorfullhashraw}{d849e6f8de178bfb18aa67341c9f8d38}
+      \field{sortinit}{A}
+      \field{sortinithash}{2f401846e2029bad6b3ecc16d50031e2}
+      \field{extradatescope}{labelyear}
+      \field{labeldatesource}{}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{journaltitle}{Economic Policy}
+      \field{month}{1}
+      \field{note}{Originally NBER Working Paper 32487, April 2024}
+      \field{number}{121}
+      \field{title}{The Simple Macroeconomics of {AI}}
+      \field{volume}{40}
+      \field{year}{2025}
+      \verb{doi}
+      \verb 10.1093/epolic/eiae042
+      \endverb
+      \verb{urlraw}
+      \verb https://www.nber.org/papers/w32487
+      \endverb
+      \verb{url}
+      \verb https://www.nber.org/papers/w32487
+      \endverb
+    \endentry
+    \entry{Acemoglu2019}{article}{}{}
+      \name{author}{2}{}{%
+        {{un=0,uniquepart=base,hash=d849e6f8de178bfb18aa67341c9f8d38}{%
+           family={Acemoglu},
+           familyi={A\bibinitperiod},
+           given={Daron},
+           giveni={D\bibinitperiod},
+           givenun=0}}%
+        {{un=0,uniquepart=base,hash=741d2340160d17e7d9b5d9e3be8edd84}{%
+           family={Restrepo},
+           familyi={R\bibinitperiod},
+           given={Pascual},
+           giveni={P\bibinitperiod},
+           givenun=0}}%
+      }
+      \strng{namehash}{4cb0cc109d3549f4dc540e3709bf2e7b}
+      \strng{fullhash}{4cb0cc109d3549f4dc540e3709bf2e7b}
+      \strng{fullhashraw}{4cb0cc109d3549f4dc540e3709bf2e7b}
+      \strng{bibnamehash}{4cb0cc109d3549f4dc540e3709bf2e7b}
+      \strng{authorbibnamehash}{4cb0cc109d3549f4dc540e3709bf2e7b}
+      \strng{authornamehash}{4cb0cc109d3549f4dc540e3709bf2e7b}
+      \strng{authorfullhash}{4cb0cc109d3549f4dc540e3709bf2e7b}
+      \strng{authorfullhashraw}{4cb0cc109d3549f4dc540e3709bf2e7b}
+      \field{sortinit}{A}
+      \field{sortinithash}{2f401846e2029bad6b3ecc16d50031e2}
+      \field{extradatescope}{labelyear}
+      \field{labeldatesource}{}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{journaltitle}{Journal of Economic Perspectives}
+      \field{number}{2}
+      \field{title}{Automation and New Tasks: How Technology Displaces and Reinstates Labor}
+      \field{volume}{33}
+      \field{year}{2019}
+      \field{pages}{3\bibrangedash 30}
+      \range{pages}{28}
+      \verb{doi}
+      \verb 10.1257/jep.33.2.3
+      \endverb
+    \endentry
     \entry{BCGAgenticEnterprise2025}{report}{}{}
       \name{author}{1}{}{%
         {{un=0,uniquepart=base,hash=3e2cfbd2f2461bae7dcbc515d263e44a}{%
@@ -501,6 +581,109 @@
       \verb https://hbr.org/
       \endverb
     \endentry
+    \entry{ERA2025}{online}{}{}
+      \field{sortinit}{E}
+      \field{sortinithash}{8da8a182d344d5b9047633dfc0cc9131}
+      \field{extradatescope}{labelyear}
+      \field{labeldatesource}{}
+      \field{labeltitlesource}{title}
+      \field{month}{12}
+      \field{note}{Broadens collective consultation triggers; doubles protective award to 180 days' pay}
+      \field{title}{Employment Rights Act 2025: Major Reforms for {UK} Employment Law}
+      \field{urlday}{13}
+      \field{urlmonth}{4}
+      \field{urlyear}{2026}
+      \field{year}{2025}
+      \field{urldateera}{ce}
+      \verb{urlraw}
+      \verb https://www.lawandtheworkplace.com/2025/12/major-reforms-for-uk-employment-law-era-2025/
+      \endverb
+      \verb{url}
+      \verb https://www.lawandtheworkplace.com/2025/12/major-reforms-for-uk-employment-law-era-2025/
+      \endverb
+    \endentry
+    \entry{EUAIAct2025}{online}{}{}
+      \name{author}{1}{}{%
+        {{un=0,uniquepart=base,hash=04477f088e2d7fa909d6f010ddf08b41}{%
+           family={{European Parliament}},
+           familyi={E\bibinitperiod}}}%
+      }
+      \strng{namehash}{04477f088e2d7fa909d6f010ddf08b41}
+      \strng{fullhash}{04477f088e2d7fa909d6f010ddf08b41}
+      \strng{fullhashraw}{04477f088e2d7fa909d6f010ddf08b41}
+      \strng{bibnamehash}{04477f088e2d7fa909d6f010ddf08b41}
+      \strng{authorbibnamehash}{04477f088e2d7fa909d6f010ddf08b41}
+      \strng{authornamehash}{04477f088e2d7fa909d6f010ddf08b41}
+      \strng{authorfullhash}{04477f088e2d7fa909d6f010ddf08b41}
+      \strng{authorfullhashraw}{04477f088e2d7fa909d6f010ddf08b41}
+      \field{sortinit}{E}
+      \field{sortinithash}{8da8a182d344d5b9047633dfc0cc9131}
+      \field{extradatescope}{labelyear}
+      \field{labeldatesource}{}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{month}{11}
+      \field{note}{Article 26(7) of the AI Act mandates employer consultation with works councils before deploying high-risk AI}
+      \field{title}{{MEPs} Call for New Rules on Algorithmic Management at Work}
+      \field{urlday}{13}
+      \field{urlmonth}{4}
+      \field{urlyear}{2026}
+      \field{year}{2025}
+      \field{urldateera}{ce}
+      \verb{urlraw}
+      \verb https://www.europarl.europa.eu/news/en/press-room/20251110IPR31358/
+      \endverb
+      \verb{url}
+      \verb https://www.europarl.europa.eu/news/en/press-room/20251110IPR31358/
+      \endverb
+    \endentry
+    \entry{EpochAI2026}{online}{}{}
+      \name{author}{2}{}{%
+        {{un=0,uniquepart=base,hash=4a6e7ca38c35df37bb1a971f4a2263bc}{%
+           family={Falkman\bibnamedelima Olsson},
+           familyi={F\bibinitperiod\bibinitdelim O\bibinitperiod},
+           given={Caroline},
+           giveni={C\bibinitperiod},
+           givenun=0}}%
+        {{un=0,uniquepart=base,hash=85395f1137e8b1c33968e70b0d0b409f}{%
+           family={Edelman},
+           familyi={E\bibinitperiod},
+           given={Yafah},
+           giveni={Y\bibinitperiod},
+           givenun=0}}%
+      }
+      \list{institution}{1}{%
+        {Epoch AI}%
+      }
+      \strng{namehash}{8ce0a268d1138585cbf42f20e95fa9c4}
+      \strng{fullhash}{8ce0a268d1138585cbf42f20e95fa9c4}
+      \strng{fullhashraw}{8ce0a268d1138585cbf42f20e95fa9c4}
+      \strng{bibnamehash}{8ce0a268d1138585cbf42f20e95fa9c4}
+      \strng{authorbibnamehash}{8ce0a268d1138585cbf42f20e95fa9c4}
+      \strng{authornamehash}{8ce0a268d1138585cbf42f20e95fa9c4}
+      \strng{authorfullhash}{8ce0a268d1138585cbf42f20e95fa9c4}
+      \strng{authorfullhashraw}{8ce0a268d1138585cbf42f20e95fa9c4}
+      \field{sortinit}{F}
+      \field{sortinithash}{2638baaa20439f1b5a8f80c6c08a13b4}
+      \field{extradatescope}{labelyear}
+      \field{labeldatesource}{}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{month}{3}
+      \field{note}{Probability-based survey of 2,021 U.S.\ adults via Ipsos KnowledgePanel, March 3--5, 2026; subsample of 665 employed past-week AI users}
+      \field{title}{Half of Employed {AI} Users Now Use It for Work}
+      \field{urlday}{13}
+      \field{urlmonth}{4}
+      \field{urlyear}{2026}
+      \field{year}{2026}
+      \field{urldateera}{ce}
+      \verb{urlraw}
+      \verb https://epoch.ai/blog/half-of-employed-ai-users-now-use-it-for-work/
+      \endverb
+      \verb{url}
+      \verb https://epoch.ai/blog/half-of-employed-ai-users-now-use-it-for-work/
+      \endverb
+    \endentry
     \entry{Gartner2025}{report}{}{}
       \name{author}{1}{}{%
         {{un=0,uniquepart=base,hash=a41804af92a2aa0180154f489f3d308b}{%
@@ -608,6 +791,40 @@
       \endverb
       \verb{url}
       \verb https://deepmind.google/
+      \endverb
+    \endentry
+    \entry{Holacracy2024}{online}{}{}
+      \name{author}{1}{}{%
+        {{un=0,uniquepart=base,hash=fc56ba59750697f0abbfb6e6bbd379c8}{%
+           family={{HolacracyOne}},
+           familyi={H\bibinitperiod}}}%
+      }
+      \strng{namehash}{fc56ba59750697f0abbfb6e6bbd379c8}
+      \strng{fullhash}{fc56ba59750697f0abbfb6e6bbd379c8}
+      \strng{fullhashraw}{fc56ba59750697f0abbfb6e6bbd379c8}
+      \strng{bibnamehash}{fc56ba59750697f0abbfb6e6bbd379c8}
+      \strng{authorbibnamehash}{fc56ba59750697f0abbfb6e6bbd379c8}
+      \strng{authornamehash}{fc56ba59750697f0abbfb6e6bbd379c8}
+      \strng{authorfullhash}{fc56ba59750697f0abbfb6e6bbd379c8}
+      \strng{authorfullhashraw}{fc56ba59750697f0abbfb6e6bbd379c8}
+      \field{sortinit}{H}
+      \field{sortinithash}{23a3aa7c24e56cfa16945d55545109b5}
+      \field{extradatescope}{labelyear}
+      \field{labeldatesource}{}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{note}{Updated to address earlier criticisms of scalability}
+      \field{title}{Holacracy 5.0: Addressing Scale Through Distributed Authority}
+      \field{urlday}{10}
+      \field{urlmonth}{4}
+      \field{urlyear}{2026}
+      \field{year}{2024}
+      \field{urldateera}{ce}
+      \verb{urlraw}
+      \verb https://www.holacracy.org/
+      \endverb
+      \verb{url}
+      \verb https://www.holacracy.org/
       \endverb
     \endentry
     \entry{IBM2025}{report}{}{}
@@ -814,8 +1031,10 @@
       \strng{authornamehash}{140864078aeca1c7c35b4beb33c53c34}
       \strng{authorfullhash}{140864078aeca1c7c35b4beb33c53c34}
       \strng{authorfullhashraw}{140864078aeca1c7c35b4beb33c53c34}
+      \field{extraname}{1}
       \field{sortinit}{M}
       \field{sortinithash}{4625c616857f13d17ce56f7d4f97d451}
+      \field{extradate}{1}
       \field{extradatescope}{labelyear}
       \field{labeldatesource}{}
       \field{labelnamesource}{author}
@@ -832,6 +1051,41 @@
       \endverb
       \verb{url}
       \verb https://www.microsoft.com/en-us/worklab/work-trend-index/
+      \endverb
+    \endentry
+    \entry{MicrosoftCopilotStudio2025}{online}{}{}
+      \name{author}{1}{}{%
+        {{un=0,uniquepart=base,hash=140864078aeca1c7c35b4beb33c53c34}{%
+           family={{Microsoft}},
+           familyi={M\bibinitperiod}}}%
+      }
+      \strng{namehash}{140864078aeca1c7c35b4beb33c53c34}
+      \strng{fullhash}{140864078aeca1c7c35b4beb33c53c34}
+      \strng{fullhashraw}{140864078aeca1c7c35b4beb33c53c34}
+      \strng{bibnamehash}{140864078aeca1c7c35b4beb33c53c34}
+      \strng{authorbibnamehash}{140864078aeca1c7c35b4beb33c53c34}
+      \strng{authornamehash}{140864078aeca1c7c35b4beb33c53c34}
+      \strng{authorfullhash}{140864078aeca1c7c35b4beb33c53c34}
+      \strng{authorfullhashraw}{140864078aeca1c7c35b4beb33c53c34}
+      \field{extraname}{2}
+      \field{sortinit}{M}
+      \field{sortinithash}{4625c616857f13d17ce56f7d4f97d451}
+      \field{extradate}{2}
+      \field{extradatescope}{labelyear}
+      \field{labeldatesource}{}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{title}{Microsoft Copilot Studio: Organisational {AI} Deployment Framework}
+      \field{urlday}{10}
+      \field{urlmonth}{4}
+      \field{urlyear}{2026}
+      \field{year}{2025}
+      \field{urldateera}{ce}
+      \verb{urlraw}
+      \verb https://www.microsoft.com/en-us/microsoft-copilot/microsoft-copilot-studio
+      \endverb
+      \verb{url}
+      \verb https://www.microsoft.com/en-us/microsoft-copilot/microsoft-copilot-studio
       \endverb
     \endentry
     \entry{MicrosoftWorkTrend2024}{report}{}{}
@@ -951,6 +1205,41 @@
       \verb https://www.oneusefulthing.org/
       \endverb
     \endentry
+    \entry{NatureSustainability2025}{article}{}{}
+      \name{author}{1}{}{%
+        {{un=0,uniquepart=base,hash=91a66375758b099b39fed309ba308ef8}{%
+           family={{Nature Sustainability}},
+           familyi={N\bibinitperiod}}}%
+      }
+      \strng{namehash}{91a66375758b099b39fed309ba308ef8}
+      \strng{fullhash}{91a66375758b099b39fed309ba308ef8}
+      \strng{fullhashraw}{91a66375758b099b39fed309ba308ef8}
+      \strng{bibnamehash}{91a66375758b099b39fed309ba308ef8}
+      \strng{authorbibnamehash}{91a66375758b099b39fed309ba308ef8}
+      \strng{authornamehash}{91a66375758b099b39fed309ba308ef8}
+      \strng{authorfullhash}{91a66375758b099b39fed309ba308ef8}
+      \strng{authorfullhashraw}{91a66375758b099b39fed309ba308ef8}
+      \field{sortinit}{N}
+      \field{sortinithash}{22369a73d5f88983a108b63f07f37084}
+      \field{extradatescope}{labelyear}
+      \field{labeldatesource}{}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{journaltitle}{Nature Sustainability}
+      \field{note}{Estimates US AI servers produce 24--44 Mt CO$_2$ annually}
+      \field{title}{Carbon Footprint of {AI} Server Infrastructure in the {United States}}
+      \field{urlday}{10}
+      \field{urlmonth}{4}
+      \field{urlyear}{2026}
+      \field{year}{2025}
+      \field{urldateera}{ce}
+      \verb{urlraw}
+      \verb https://www.nature.com/natsustain/
+      \endverb
+      \verb{url}
+      \verb https://www.nature.com/natsustain/
+      \endverb
+    \endentry
     \entry{OrgvueForrester2025}{report}{}{}
       \name{author}{2}{}{%
         {{un=0,uniquepart=base,hash=2e1224d6a71f1ef7c1e00a90de0c4b92}{%
@@ -990,6 +1279,46 @@
       \endverb
       \verb{url}
       \verb https://www.orgvue.com/
+      \endverb
+    \endentry
+    \entry{Patterson2025}{article}{}{}
+      \true{moreauthor}
+      \true{morelabelname}
+      \name{author}{1}{}{%
+        {{un=0,uniquepart=base,hash=64f58317379ddd1a24e0e6cba85ae78c}{%
+           family={Patterson},
+           familyi={P\bibinitperiod},
+           given={David},
+           giveni={D\bibinitperiod},
+           givenun=0}}%
+      }
+      \strng{namehash}{8b3c2b2b185248740d5a9d106250800f}
+      \strng{fullhash}{8b3c2b2b185248740d5a9d106250800f}
+      \strng{fullhashraw}{8b3c2b2b185248740d5a9d106250800f}
+      \strng{bibnamehash}{8b3c2b2b185248740d5a9d106250800f}
+      \strng{authorbibnamehash}{8b3c2b2b185248740d5a9d106250800f}
+      \strng{authornamehash}{8b3c2b2b185248740d5a9d106250800f}
+      \strng{authorfullhash}{8b3c2b2b185248740d5a9d106250800f}
+      \strng{authorfullhashraw}{8b3c2b2b185248740d5a9d106250800f}
+      \field{sortinit}{P}
+      \field{sortinithash}{ff3bcf24f47321b42cb156c2cc8a8422}
+      \field{extradatescope}{labelyear}
+      \field{labeldatesource}{}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{journaltitle}{arXiv preprint}
+      \field{month}{9}
+      \field{note}{Microsoft Research. Median energy per query: 0.34 Wh standard, 4.32 Wh reasoning-heavy (43x increase)}
+      \field{title}{Energy Use of {AI} Inference}
+      \field{year}{2025}
+      \verb{eprint}
+      \verb 2509.20241
+      \endverb
+      \verb{urlraw}
+      \verb https://arxiv.org/abs/2509.20241
+      \endverb
+      \verb{url}
+      \verb https://arxiv.org/abs/2509.20241
       \endverb
     \endentry
     \entry{Prosci2024}{online}{}{}
@@ -1097,6 +1426,40 @@
       \endverb
       \verb{url}
       \verb https://www.hbs.edu/ris/Publication%20Files/Cyborgs-Centaurs-Self-Automators_5a8e0b5c-1a4e-4f8b-9a8a-6c3e3e1a7d8f.pdf
+      \endverb
+    \endentry
+    \entry{SAFe2024}{online}{}{}
+      \name{author}{1}{}{%
+        {{un=0,uniquepart=base,hash=49517f1a9dd5a9980014c4a61038dfe8}{%
+           family={{Scaled Agile, Inc.}},
+           familyi={S\bibinitperiod}}}%
+      }
+      \strng{namehash}{49517f1a9dd5a9980014c4a61038dfe8}
+      \strng{fullhash}{49517f1a9dd5a9980014c4a61038dfe8}
+      \strng{fullhashraw}{49517f1a9dd5a9980014c4a61038dfe8}
+      \strng{bibnamehash}{49517f1a9dd5a9980014c4a61038dfe8}
+      \strng{authorbibnamehash}{49517f1a9dd5a9980014c4a61038dfe8}
+      \strng{authornamehash}{49517f1a9dd5a9980014c4a61038dfe8}
+      \strng{authorfullhash}{49517f1a9dd5a9980014c4a61038dfe8}
+      \strng{authorfullhashraw}{49517f1a9dd5a9980014c4a61038dfe8}
+      \field{sortinit}{S}
+      \field{sortinithash}{b164b07b29984b41daf1e85279fbc5ab}
+      \field{extradatescope}{labelyear}
+      \field{labeldatesource}{}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{note}{Added AI-specific practices to the Scaled Agile Framework in 2024}
+      \field{title}{{SAFe} 6.0: {AI}-Specific Agile Change Patterns}
+      \field{urlday}{10}
+      \field{urlmonth}{4}
+      \field{urlyear}{2026}
+      \field{year}{2024}
+      \field{urldateera}{ce}
+      \verb{urlraw}
+      \verb https://scaledagileframework.com/
+      \endverb
+      \verb{url}
+      \verb https://scaledagileframework.com/
       \endverb
     \endentry
     \entry{Shipper2026}{online}{}{}

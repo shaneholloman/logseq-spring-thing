@@ -51,6 +51,23 @@ multi-agent-docker/.git
 .yarn
 
 
+# LaTeX build artifacts (keep .pdf and .tex, ignore the rest)
+*.aux
+*.bbl
+*.bcf
+*.blg
+*.fdb_latexmk
+*.fls
+*.lof
+*.lot
+*.out
+*.run.xml
+*.synctex.gz
+*.toc
+*.nav
+*.snm
+*.vrb
+
 # Build output
 dist
 dist-ssr
