@@ -16,6 +16,8 @@ export {
 } from './VRActionConnectionsLayer';
 
 export { VRAgentActionScene } from './VRAgentActionScene';
+export { VRTargetHighlight } from './VRTargetHighlight';
+export { VRPerformanceStats } from './VRPerformanceStats';
 
 // Default export
 export { default } from './VRGraphCanvas';

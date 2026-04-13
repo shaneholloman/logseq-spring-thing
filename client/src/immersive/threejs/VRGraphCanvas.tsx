@@ -1,9 +1,11 @@
 import React, { Suspense, useState, useMemo } from 'react';
 import { Canvas } from '@react-three/fiber';
-import { createXRStore, XR } from '@react-three/xr';
+import { XR } from '@react-three/xr';
 import GraphManager from '../../features/graph/components/GraphManager';
 import { GraphData } from '../../features/graph/managers/graphDataManager';
 import { VRAgentActionScene } from './VRAgentActionScene';
+import { xrStore } from '../xrStore';
+import { usePlatformStore } from '../../services/platformManager';
 
 interface VRGraphCanvasProps {
   graphData: GraphData;
@@ -14,15 +16,6 @@ interface VRGraphCanvasProps {
   showStats?: boolean;
 }
 
-// Create XR store outside component to persist across renders
-// Disable XR emulation in production to avoid bundling @iwer/sem room scene
-// data (~4.6MB of MetaQuest scene captures used only for localhost dev).
-const xrStore = createXRStore({
-  hand: true,
-  controller: true,
-  emulate: import.meta.env.DEV ? 'metaQuest3' : false,
-});
-
 export function VRGraphCanvas({
   graphData,
   onDragStateChange,
@@ -31,11 +24,8 @@ export function VRGraphCanvas({
 }: VRGraphCanvasProps) {
   const [isVRSupported, setIsVRSupported] = useState<boolean | null>(null);
 
-  // Check for ?vr=true URL parameter to force VR mode on Quest 3
-  const forceVR = useMemo(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    return urlParams.get('vr') === 'true';
-  }, []);
+  // Read centralised forceVR flag from platform store
+  const forceVR = usePlatformStore(s => s.forceVRMode);
 
   // Extract agent nodes for VR targeting
   const agentNodes = useMemo(() => {

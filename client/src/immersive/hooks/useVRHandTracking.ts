@@ -16,6 +16,7 @@
 import { useRef, useCallback, useMemo, useState } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
+import type { HandIdentity } from '../types';
 
 // Pre-allocated objects reused every frame in findTargetAlongRay to avoid GC pressure
 const _rayVec = new THREE.Vector3();
@@ -69,11 +70,11 @@ export interface VRHandTrackingResult {
   /** Color for preview line */
   previewColor: string;
   /** Manually update hand state (for external sources) */
-  updateHandState: (hand: 'primary' | 'secondary', state: Partial<HandState>) => void;
+  updateHandState: (hand: HandIdentity, state: Partial<HandState>) => void;
   /** Set available target nodes */
   setTargetNodes: (nodes: TargetNode[]) => void;
   /** Trigger haptic feedback */
-  triggerHaptic: (hand: 'primary' | 'secondary', intensity: number, duration: number) => void;
+  triggerHaptic: (hand: HandIdentity, intensity: number, duration: number) => void;
 }
 
 /**
@@ -129,7 +130,7 @@ export const useVRHandTracking = (
    * Update hand state from external source
    */
   const updateHandState = useCallback(
-    (hand: 'primary' | 'secondary', state: Partial<HandState>) => {
+    (hand: HandIdentity, state: Partial<HandState>) => {
       const ref = hand === 'primary' ? primaryHandRef : secondaryHandRef;
 
       if (state.position) ref.current.position.copy(state.position);
@@ -153,7 +154,7 @@ export const useVRHandTracking = (
    * Trigger haptic feedback
    */
   const triggerHaptic = useCallback(
-    (hand: 'primary' | 'secondary', intensity: number, duration: number) => {
+    (hand: HandIdentity, intensity: number, duration: number) => {
       if (!settings.enableHaptics) return;
 
       // Access XR session if available

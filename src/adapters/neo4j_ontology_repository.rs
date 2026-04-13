@@ -339,10 +339,8 @@ impl OntologyRepository for Neo4jOntologyRepository {
                 c.markdown_content = $markdown_content,
                 c.last_synced = $last_synced,
                 c.additional_metadata = $additional_metadata
-            SET c:GraphNode,
-                c.node_type = 'owl_class',
-                c.label = COALESCE(c.label, c.iri),
-                c.id = CASE WHEN c.id IS NULL THEN id(c) ELSE c.id END
+            SET c.node_type = 'owl_class',
+                c.label = COALESCE(c.label, c.iri)
         ";
 
         self.graph

@@ -1,7 +1,7 @@
 # Skill Directory -- Comprehensive Inventory and Decision Tree
 
-> **91 active skills**. 18 formerly deprecated/archived skills removed (see table below for history).
-> Updated 2026-04-09. Reference this file from CLAUDE.md for intelligent routing.
+> **92 active skills**. 18 formerly deprecated/archived skills removed (see table below for history).
+> Updated 2026-04-13. Reference this file from CLAUDE.md for intelligent routing.
 
 ---
 
@@ -203,6 +203,7 @@ Testing is integrated into `build-with-quality` (TDD agents) and `sparc-methodol
 | `terracraft` | No | OSM + elevation + arnis pipeline: real-world locations to Minecraft Java worlds. QGIS/Blender/GDAL integration | Generating Minecraft worlds from real geography, geospatial-to-game conversion |
 | `blender` | No | 3D modelling, scene creation, rendering, material PBR, import/export via socket | Programmatic 3D modelling, automated Blender workflows |
 | `lichtfeld-studio` | Yes | 3D Gaussian Splatting training, visualisation, editing, export (70+ MCP tools), SplatReady COLMAP | 3DGS scene capture, splat editing, radiance field workflows |
+| `meta-xr-sdk` | Yes | Meta VR/AR ecosystem: WebXR (IWER, RATK, @react-three/xr), Spatial SDK, hzdb CLI (40+ MCP tools), hand tracking, passthrough, plane/mesh detection, anchors | Quest WebXR apps, mixed reality, spatial computing, VR device management, agentic VR development |
 
 ### Geospatial
 
@@ -485,6 +486,9 @@ Q3: What media type?
     |
     +-- 3D Gaussian Splatting (training, editing, export)
     |   --> lichtfeld-studio
+    |
+    +-- Meta Quest VR/AR (WebXR, hand tracking, passthrough, spatial anchors, device mgmt)
+    |   --> meta-xr-sdk (40+ MCP tools)
     |
     +-- AI art (Nano Banana 2): blog headers, infographics, technical illustrations, comics
     |   --> art

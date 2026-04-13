@@ -180,8 +180,8 @@ export const useQuest3Integration = (options: Quest3IntegrationOptions = {}) => 
   };
 
   
-  const resetDetection = () => {
-    quest3AutoDetector.resetDetection();
+  const resetDetection = async () => {
+    await quest3AutoDetector.resetDetection();
     setState({
       isQuest3Detected: false,
       isAutoStartEnabled: enableAutoStart,

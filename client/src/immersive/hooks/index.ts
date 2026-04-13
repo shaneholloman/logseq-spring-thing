@@ -25,5 +25,12 @@ export type {
   VRHandTrackingResult,
 } from './useVRHandTracking';
 
+// Hand tracking session update
+export { updateHandTrackingFromSession } from './updateHandTrackingFromSession';
+
+// Canonical VR types
+export type { AgentData, AgentStatus, HandIdentity, XRHandedness } from '../types';
+export { toHandIdentity } from '../types';
+
 // Re-export existing hooks if present
 export * from './useImmersiveData';

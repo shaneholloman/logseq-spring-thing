@@ -1,32 +1,61 @@
-//! Nostr Bridge: JSS relay → DreamLab Forum relay
+//! Nostr Bridge: JSS relay → DreamLab Forum relay.
 //!
-//! Subscribes to VisionClaw's ephemeral JSS relay for kind 30001 bead
-//! provenance events and republishes them as NIP-29 group messages (kind 9)
-//! to the DreamLab forum relay, where admin and whitelisted forum users can
-//! query them.
+//! Subscribes to kind 30001 bead provenance events on the JSS relay and
+//! republishes them as NIP-29 group messages (kind 9) to the forum relay.
+//! Re-signs with its own keypair for the forum whitelist; preserves the
+//! original event ID in a `source_event` tag.
 //!
-//! The bridge re-signs events with its own keypair so it satisfies the forum
-//! relay's whitelist check. The original event ID is preserved in a
-//! `source_event` tag for cross-relay audit trails.
+//! Reconnects with exponential backoff (5 s → 300 s); resets after 60 s of
+//! healthy streaming. Exposes a `BridgeHealth` handle for external monitoring.
 //!
-//! Configure via environment:
-//!   VISIONCLAW_NOSTR_PRIVKEY  — bridge bot signing key (same as publisher)
-//!   JSS_RELAY_URL             — ws://jss:3030/relay (default)
-//!   FORUM_RELAY_URL           — wss://relay.dreamlab-ai.com (required)
-//!
-//! The bridge is designed as a long-running background task. Spawn with:
-//!   tokio::spawn(NostrBridge::from_env().unwrap().run());
+//! ```ignore
+//! let bridge = NostrBridge::from_env().unwrap();
+//! let health = bridge.health();
+//! tokio::spawn(bridge.run());
+//! assert!(!health.is_connected()); // not yet
+//! ```
 
 use futures_util::{SinkExt, StreamExt};
-use log::{debug, error, info, warn};
+use log::{error, info, warn};
 use nostr_sdk::prelude::*;
 use serde_json::{json, Value};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 use tokio_tungstenite::{connect_async, tungstenite::Message};
+
+const INITIAL_BACKOFF_SECS: u64 = 5;
+const MAX_BACKOFF_SECS: u64 = 300;
+const BACKOFF_MULTIPLIER: f64 = 2.0;
+/// If a connection lasted longer than this, reset backoff on reconnect.
+const HEALTHY_CONNECTION_SECS: u64 = 60;
+
+/// Cheaply cloneable handle for querying bridge health from external code.
+#[derive(Clone)]
+pub struct BridgeHealth {
+    connected: Arc<AtomicBool>,
+    last_event_at: Arc<Mutex<Option<Instant>>>,
+}
+
+impl BridgeHealth {
+    pub fn is_connected(&self) -> bool {
+        self.connected.load(Ordering::Relaxed)
+    }
+
+    pub fn last_event_age_secs(&self) -> Option<u64> {
+        self.last_event_at
+            .lock()
+            .ok()
+            .and_then(|guard| guard.map(|t| t.elapsed().as_secs()))
+    }
+}
 
 pub struct NostrBridge {
     keys: Keys,
     jss_relay_url: String,
     forum_relay_url: String,
+    connected: Arc<AtomicBool>,
+    last_event_at: Arc<Mutex<Option<Instant>>>,
 }
 
 impl NostrBridge {
@@ -59,22 +88,51 @@ impl NostrBridge {
             keys: Keys::new(secret_key),
             jss_relay_url,
             forum_relay_url,
+            connected: Arc::new(AtomicBool::new(false)),
+            last_event_at: Arc::new(Mutex::new(None)),
         })
     }
 
-    /// Run the bridge loop indefinitely, reconnecting on failure.
+    /// Return a cloneable health handle. Call *before* `run()` consumes self.
+    pub fn health(&self) -> BridgeHealth {
+        BridgeHealth {
+            connected: Arc::clone(&self.connected),
+            last_event_at: Arc::clone(&self.last_event_at),
+        }
+    }
+
+    /// Run the bridge loop indefinitely with exponential backoff reconnection.
     /// Call via `tokio::spawn(bridge.run())`.
     pub async fn run(self) {
         info!(
-            "[NostrBridge] Starting {} → {}",
-            self.jss_relay_url, self.forum_relay_url
+            target: "bead_bridge",
+            "[NostrBridge] Starting {} → {}", self.jss_relay_url, self.forum_relay_url
         );
+        let mut backoff_secs = INITIAL_BACKOFF_SECS;
         loop {
+            let started = Instant::now();
             match self.run_once().await {
-                Ok(()) => warn!("[NostrBridge] Stream ended unexpectedly, reconnecting in 30s"),
-                Err(e) => warn!("[NostrBridge] Connection lost ({e}), reconnecting in 30s"),
+                Ok(()) => {
+                    warn!(
+                        target: "bead_bridge",
+                        "[NostrBridge] Stream ended unexpectedly, reconnecting in {backoff_secs}s"
+                    );
+                }
+                Err(e) => {
+                    warn!(
+                        target: "bead_bridge",
+                        "[NostrBridge] Connection lost ({e}), reconnecting in {backoff_secs}s"
+                    );
+                }
             }
-            tokio::time::sleep(tokio::time::Duration::from_secs(30)).await;
+            self.connected.store(false, Ordering::Relaxed);
+            // Reset backoff if the connection was healthy for a sustained period.
+            if started.elapsed().as_secs() > HEALTHY_CONNECTION_SECS {
+                backoff_secs = INITIAL_BACKOFF_SECS;
+            }
+            tokio::time::sleep(Duration::from_secs(backoff_secs)).await;
+            backoff_secs =
+                ((backoff_secs as f64 * BACKOFF_MULTIPLIER) as u64).min(MAX_BACKOFF_SECS);
         }
     }
 
@@ -93,7 +151,11 @@ impl NostrBridge {
             .await
             .map_err(|e| format!("REQ send failed: {e}"))?;
 
-        info!("[NostrBridge] Subscribed to JSS relay for kind 30001");
+        self.connected.store(true, Ordering::Relaxed);
+        info!(
+            target: "bead_bridge",
+            "[NostrBridge] Subscribed to JSS relay for kind 30001"
+        );
 
         while let Some(msg) = jss_read.next().await {
             match msg {
@@ -117,26 +179,19 @@ impl NostrBridge {
     }
 
     async fn forward_to_forum(&self, original: &Value) {
-        // Verify the Nostr event signature before forwarding. Without this, any party
-        // that can write to the JSS relay could inject arbitrary content into the forum.
+        // Verify the Nostr event signature before forwarding — prevents injection
+        // by any party that can write to the JSS relay.
         let event_json = match serde_json::to_string(original) {
             Ok(s) => s,
-            Err(e) => {
-                warn!("[NostrBridge] Failed to serialise event for verification: {e}");
-                return;
-            }
+            Err(e) => { warn!(target: "bead_bridge", "[NostrBridge] Serialise failed: {e}"); return; }
         };
-        match Event::from_json(&event_json) {
-            Err(e) => {
-                warn!("[NostrBridge] Dropping unparseable event: {e}");
-                return;
-            }
-            Ok(ev) => {
-                if let Err(e) = ev.verify() {
-                    warn!("[NostrBridge] Dropping event with invalid signature: {e}");
-                    return;
-                }
-            }
+        let verified = match Event::from_json(&event_json) {
+            Err(e) => { warn!(target: "bead_bridge", "[NostrBridge] Unparseable event: {e}"); return; }
+            Ok(ev) => ev,
+        };
+        if let Err(e) = verified.verify() {
+            warn!(target: "bead_bridge", "[NostrBridge] Bad signature: {e}");
+            return;
         }
 
         let bead_id = tag_value(original, "bead_id").unwrap_or("unknown");
@@ -167,14 +222,28 @@ impl NostrBridge {
         {
             Ok(e) => e,
             Err(e) => {
-                error!("[NostrBridge] Failed to sign forum event: {e}");
+                error!(
+                    target: "bead_bridge",
+                    "[NostrBridge] Failed to sign forum event: {e}"
+                );
                 return;
             }
         };
 
         match self.send_to_forum(&event).await {
-            Ok(()) => debug!("[NostrBridge] Forwarded bead {bead_id} to forum relay"),
-            Err(e) => warn!("[NostrBridge] Failed to forward bead {bead_id}: {e}"),
+            Ok(()) => {
+                if let Ok(mut guard) = self.last_event_at.lock() {
+                    *guard = Some(Instant::now());
+                }
+                info!(
+                    target: "bead_bridge",
+                    "[NostrBridge] Forwarded bead_id={bead_id} source_event={source_event_id}"
+                );
+            }
+            Err(e) => warn!(
+                target: "bead_bridge",
+                "[NostrBridge] Failed bead_id={bead_id} source_event={source_event_id}: {e}"
+            ),
         }
     }
 
@@ -190,7 +259,7 @@ impl NostrBridge {
             .await
             .map_err(|e| format!("send failed: {e}"))?;
 
-        tokio::time::timeout(tokio::time::Duration::from_secs(5), async {
+        tokio::time::timeout(Duration::from_secs(5), async {
             while let Some(Ok(Message::Text(txt))) = read.next().await {
                 if let Ok(parsed) = serde_json::from_str::<Value>(&txt) {
                     if parsed[0] == "OK" {
@@ -218,4 +287,201 @@ fn tag_value<'a>(event: &'a Value, tag_name: &str) -> Option<&'a str> {
             None
         }
     })
+}
+
+/// Compute backoff duration for a given iteration (0-indexed).
+/// Public for testing only via `#[cfg(test)]`.
+fn compute_backoff(iteration: u32) -> u64 {
+    let delay = (INITIAL_BACKOFF_SECS as f64) * BACKOFF_MULTIPLIER.powi(iteration as i32);
+    (delay as u64).min(MAX_BACKOFF_SECS)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── from_env ───────────────────────────────────────────────────────
+
+    #[test]
+    fn from_env_returns_none_without_required_vars() {
+        // GIVEN: no VISIONCLAW_NOSTR_PRIVKEY
+        std::env::remove_var("VISIONCLAW_NOSTR_PRIVKEY");
+        std::env::remove_var("FORUM_RELAY_URL");
+
+        // WHEN/THEN: None
+        assert!(NostrBridge::from_env().is_none());
+    }
+
+    #[test]
+    fn from_env_returns_none_without_forum_relay() {
+        // GIVEN: privkey set but no FORUM_RELAY_URL
+        std::env::set_var(
+            "VISIONCLAW_NOSTR_PRIVKEY",
+            "0000000000000000000000000000000000000000000000000000000000000001",
+        );
+        std::env::remove_var("FORUM_RELAY_URL");
+
+        let result = NostrBridge::from_env();
+        assert!(result.is_none());
+
+        std::env::remove_var("VISIONCLAW_NOSTR_PRIVKEY");
+    }
+
+    #[test]
+    fn from_env_rejects_non_ws_jss_url() {
+        // GIVEN: valid privkey, valid forum URL, but HTTP jss URL
+        std::env::set_var(
+            "VISIONCLAW_NOSTR_PRIVKEY",
+            "0000000000000000000000000000000000000000000000000000000000000001",
+        );
+        std::env::set_var("FORUM_RELAY_URL", "wss://relay.dreamlab-ai.com");
+        std::env::set_var("JSS_RELAY_URL", "http://evil.com/jss");
+
+        let result = NostrBridge::from_env();
+        assert!(result.is_none());
+
+        std::env::remove_var("VISIONCLAW_NOSTR_PRIVKEY");
+        std::env::remove_var("FORUM_RELAY_URL");
+        std::env::remove_var("JSS_RELAY_URL");
+    }
+
+    #[test]
+    fn from_env_rejects_non_ws_forum_url() {
+        // GIVEN: valid privkey and jss but HTTP forum URL
+        std::env::set_var(
+            "VISIONCLAW_NOSTR_PRIVKEY",
+            "0000000000000000000000000000000000000000000000000000000000000001",
+        );
+        std::env::set_var("FORUM_RELAY_URL", "http://evil.com/forum");
+        std::env::set_var("JSS_RELAY_URL", "ws://jss:3030/relay");
+
+        let result = NostrBridge::from_env();
+        assert!(result.is_none());
+
+        std::env::remove_var("VISIONCLAW_NOSTR_PRIVKEY");
+        std::env::remove_var("FORUM_RELAY_URL");
+        std::env::remove_var("JSS_RELAY_URL");
+    }
+
+    // ── tag_value ──────────────────────────────────────────────────────
+
+    #[test]
+    fn tag_value_extracts_correct_tag() {
+        // GIVEN: a Nostr-style event JSON with tags
+        let event: Value = serde_json::json!({
+            "tags": [
+                ["bead_id", "bead-42"],
+                ["brief_id", "brief-7"],
+                ["debrief_path", "/out/debrief"]
+            ]
+        });
+
+        // WHEN/THEN: tag_value extracts the correct value
+        assert_eq!(tag_value(&event, "bead_id"), Some("bead-42"));
+        assert_eq!(tag_value(&event, "brief_id"), Some("brief-7"));
+        assert_eq!(tag_value(&event, "debrief_path"), Some("/out/debrief"));
+    }
+
+    #[test]
+    fn tag_value_returns_none_for_missing_tag() {
+        let event: Value = serde_json::json!({
+            "tags": [["bead_id", "bead-1"]]
+        });
+
+        assert_eq!(tag_value(&event, "nonexistent"), None);
+    }
+
+    #[test]
+    fn tag_value_returns_none_for_no_tags() {
+        let event: Value = serde_json::json!({});
+        assert_eq!(tag_value(&event, "bead_id"), None);
+    }
+
+    #[test]
+    fn tag_value_returns_none_for_empty_tags_array() {
+        let event: Value = serde_json::json!({"tags": []});
+        assert_eq!(tag_value(&event, "bead_id"), None);
+    }
+
+    // ── BridgeHealth ───────────────────────────────────────────────────
+
+    #[test]
+    fn bridge_health_is_connected_initially_false() {
+        // GIVEN: fresh bridge health state
+        let health = BridgeHealth {
+            connected: Arc::new(AtomicBool::new(false)),
+            last_event_at: Arc::new(Mutex::new(None)),
+        };
+
+        // THEN: not connected
+        assert!(!health.is_connected());
+    }
+
+    #[test]
+    fn bridge_health_reflects_connected_state() {
+        // GIVEN: connected set to true
+        let connected = Arc::new(AtomicBool::new(true));
+        let health = BridgeHealth {
+            connected: connected.clone(),
+            last_event_at: Arc::new(Mutex::new(None)),
+        };
+
+        // THEN: is_connected returns true
+        assert!(health.is_connected());
+
+        // WHEN: set to false
+        connected.store(false, Ordering::Relaxed);
+        assert!(!health.is_connected());
+    }
+
+    #[test]
+    fn bridge_health_last_event_age_none_initially() {
+        let health = BridgeHealth {
+            connected: Arc::new(AtomicBool::new(false)),
+            last_event_at: Arc::new(Mutex::new(None)),
+        };
+
+        assert!(health.last_event_age_secs().is_none());
+    }
+
+    #[test]
+    fn bridge_health_last_event_age_returns_elapsed() {
+        let health = BridgeHealth {
+            connected: Arc::new(AtomicBool::new(true)),
+            last_event_at: Arc::new(Mutex::new(Some(Instant::now()))),
+        };
+
+        // Age should be very small (< 1 second)
+        let age = health.last_event_age_secs().unwrap();
+        assert!(age < 2);
+    }
+
+    // ── Backoff calculation ────────────────────────────────────────────
+
+    #[test]
+    fn backoff_doubles_correctly() {
+        // GIVEN: initial backoff of 5s, multiplier 2.0
+        // WHEN: computing successive backoffs
+        assert_eq!(compute_backoff(0), 5);   // 5 * 2^0 = 5
+        assert_eq!(compute_backoff(1), 10);  // 5 * 2^1 = 10
+        assert_eq!(compute_backoff(2), 20);  // 5 * 2^2 = 20
+        assert_eq!(compute_backoff(3), 40);  // 5 * 2^3 = 40
+    }
+
+    #[test]
+    fn backoff_caps_at_max_backoff_secs() {
+        // GIVEN: large iteration number
+        // WHEN: computing backoff
+        let capped = compute_backoff(10); // 5 * 2^10 = 5120 > 300
+
+        // THEN: capped at MAX_BACKOFF_SECS
+        assert_eq!(capped, MAX_BACKOFF_SECS);
+    }
+
+    #[test]
+    fn backoff_constants_are_consistent() {
+        assert!(INITIAL_BACKOFF_SECS < MAX_BACKOFF_SECS);
+        assert!(BACKOFF_MULTIPLIER > 1.0);
+        assert!(HEALTHY_CONNECTION_SECS > 0);
+    }
 }

@@ -168,6 +168,18 @@
       "protocol": "stdio",
       "version": "1.0.0"
     },
+    "meta-xr-sdk": {
+      "command": "npx",
+      "args": ["@meta-quest/hzdb", "mcp", "server"],
+      "type": "stdio",
+      "env": {
+        "ADB_PATH": "${ADB_PATH}",
+        "HZDB_DEVICE_SERIAL": "${HZDB_DEVICE_SERIAL}"
+      },
+      "description": "Meta Quest VR/AR: 40+ tools for device management, app deployment, performance profiling, docs search, and agentic VR development",
+      "protocol": "stdio",
+      "version": "1.0.0"
+    },
     "unreal-engine": {
       "command": "soft-ue-cli",
       "args": ["mcp-serve"],

@@ -57,6 +57,7 @@ Don't know which skill? --> /route [describe your task]  (unified dispatcher)
 
 Single file, quick fix? --> Direct Edit (no skill needed)
 Game dev (Godot/Unity/Unreal)? --> /game-dev
+VR/AR (Meta Quest, WebXR, hand tracking, passthrough)? --> /meta-xr-sdk
 Bug/feature/review (single agent)? --> lazy-fetch blueprints
 Multi-file feature with TDD? --> /build-with-quality
 Large codebase structural analysis (call graphs, arch, diff)? --> codebase-memory
@@ -80,7 +81,7 @@ AEC (building architecture)? --> /studio [task]
 SEO / content optimisation? --> /toprank
 ```
 
-Full routing with all 88 active skills: see `multi-agent-docker/skills/SKILL-DIRECTORY.md`
+Full routing with all 92 active skills: see `multi-agent-docker/skills/SKILL-DIRECTORY.md`
 
 ### Skill Capabilities Matrix
 

@@ -24,20 +24,17 @@ import { useXREvent } from '@react-three/xr';
 import { useThree, useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { VRActionConnectionsLayer } from './VRActionConnectionsLayer';
+import { VRTargetHighlight } from './VRTargetHighlight';
+import { VRPerformanceStats } from './VRPerformanceStats';
 import { useActionConnections, ActionConnection } from '../../features/visualisation/hooks/useActionConnections';
 import { useAgentActionVisualization } from '../../features/visualisation/hooks/useAgentActionVisualization';
 import { useVRHandTracking, agentsToTargetNodes, TargetNode } from '../hooks/useVRHandTracking';
 import { useVRConnectionsLOD, calculateOptimalThresholds } from '../hooks/useVRConnectionsLOD';
+import { updateHandTrackingFromSession } from '../hooks/updateHandTrackingFromSession';
 import { createLogger } from '../../utils/loggerConfig';
+import { AgentData } from '../types';
 
 const logger = createLogger('VRAgentActionScene');
-
-interface AgentData {
-  id: string;
-  type: string;
-  position?: { x: number; y: number; z: number };
-  status?: 'active' | 'idle' | 'error' | 'warning';
-}
 
 interface VRAgentActionSceneProps {
   /** Agent data for targeting */
@@ -187,138 +184,5 @@ export const VRAgentActionScene: React.FC<VRAgentActionSceneProps> = ({
     </group>
   );
 };
-
-/**
- * Highlight ring around targeted agent
- */
-const VRTargetHighlight: React.FC<{
-  position: THREE.Vector3;
-  color: string;
-}> = ({ position, color }) => {
-  const ringRef = React.useRef<THREE.Mesh>(null);
-
-  useFrame((state) => {
-    if (ringRef.current) {
-      // Rotate slowly
-      ringRef.current.rotation.z = state.clock.elapsedTime * 0.5;
-
-      // Pulse scale
-      const scale = 1 + Math.sin(state.clock.elapsedTime * 3) * 0.1;
-      ringRef.current.scale.setScalar(scale);
-    }
-  });
-
-  return (
-    <group position={position}>
-      {/* Outer ring */}
-      <mesh ref={ringRef} rotation={[Math.PI / 2, 0, 0]}>
-        <ringGeometry args={[1.8, 2.2, 32]} />
-        <meshBasicMaterial
-          color={color}
-          transparent
-          opacity={0.4}
-          side={THREE.DoubleSide}
-          depthWrite={false}
-        />
-      </mesh>
-
-      {/* Inner glow */}
-      <mesh rotation={[Math.PI / 2, 0, 0]}>
-        <ringGeometry args={[1.2, 1.8, 32]} />
-        <meshBasicMaterial
-          color={color}
-          transparent
-          opacity={0.2}
-          side={THREE.DoubleSide}
-          depthWrite={false}
-        />
-      </mesh>
-    </group>
-  );
-};
-
-/**
- * VR-visible performance stats (positioned in 3D space)
- */
-const VRPerformanceStats: React.FC<{
-  activeConnections: number;
-  lodCacheSize: number;
-}> = ({ activeConnections, lodCacheSize }) => {
-  const { camera } = useThree();
-  const groupRef = React.useRef<THREE.Group>(null);
-
-  // Position stats panel in front of camera
-  useFrame(() => {
-    if (groupRef.current) {
-      const offset = new THREE.Vector3(0, -0.3, -1);
-      offset.applyQuaternion(camera.quaternion);
-      groupRef.current.position.copy(camera.position).add(offset);
-      groupRef.current.quaternion.copy(camera.quaternion);
-    }
-  });
-
-  return (
-    <group ref={groupRef}>
-      {/* Background panel */}
-      <mesh position={[0, 0, 0.01]}>
-        <planeGeometry args={[0.4, 0.15]} />
-        <meshBasicMaterial color="#000000" transparent opacity={0.7} />
-      </mesh>
-
-      {/* Stats text would go here - using simple geometry for now */}
-      <mesh position={[-0.15, 0.03, 0]}>
-        <planeGeometry args={[0.02 * activeConnections, 0.03]} />
-        <meshBasicMaterial color="#00ff88" />
-      </mesh>
-
-      <mesh position={[-0.15, -0.03, 0]}>
-        <planeGeometry args={[0.001 * lodCacheSize, 0.03]} />
-        <meshBasicMaterial color="#ffaa00" />
-      </mesh>
-    </group>
-  );
-};
-
-/**
- * Update hand tracking state from XR session
- */
-function updateHandTrackingFromSession(
-  session: XRSession,
-  updateHandState: (hand: 'primary' | 'secondary', state: any) => void
-) {
-  const inputSources = session.inputSources;
-  if (!inputSources) return;
-
-  for (const source of Array.from(inputSources) as XRInputSource[]) {
-    const hand = source.handedness === 'right' ? 'primary' : 'secondary';
-
-    // Try to get hand tracking data
-    if (source.hand) {
-      // Full hand tracking (Quest hand tracking)
-      const indexTip = source.hand.get('index-finger-tip');
-      if (indexTip) {
-        // Note: Would need XRFrame to get actual pose
-        updateHandState(hand, {
-          isTracking: true,
-          isPointing: true,
-        });
-      }
-    } else if (source.gamepad) {
-      // Controller tracking
-      const isPointing =
-        source.gamepad.buttons[0]?.pressed ||
-        source.gamepad.buttons[1]?.pressed;
-
-      updateHandState(hand, {
-        isTracking: true,
-        isPointing,
-        pinchStrength: Math.max(
-          source.gamepad.buttons[0]?.value || 0,
-          source.gamepad.buttons[1]?.value || 0
-        ),
-      });
-    }
-  }
-}
 
 export default VRAgentActionScene;

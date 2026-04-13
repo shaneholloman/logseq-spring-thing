@@ -5,8 +5,8 @@ import type { XRControllerEvent } from '@react-three/xr';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { createLogger } from '../../utils/loggerConfig';
-import { graphWorkerProxy } from '../../features/graph/managers/graphWorkerProxy';
-import { graphDataManager } from '../../features/graph/managers/graphDataManager';
+import { graphDataPort } from '../ports';
+import { toHandIdentity, type XRHandedness } from '../types';
 
 const logger = createLogger('VRInteractionManager');
 
@@ -28,7 +28,7 @@ export function VRInteractionManager({
   // XR controllers - accessed via refs updated from XR frame data
   const rightControllerRef = useRef<THREE.Group | null>(null);
   const leftControllerRef = useRef<THREE.Group | null>(null);
-  const grabbedNodeRef = useRef<{ nodeId: string; hand: 'left' | 'right' } | null>(null);
+  const grabbedNodeRef = useRef<{ nodeId: string; hand: XRHandedness } | null>(null);
   const raycaster = useRef(new THREE.Raycaster());
   const tempMatrix = useRef(new THREE.Matrix4());
 
@@ -121,7 +121,7 @@ export function VRInteractionManager({
       logger.info('Node grabbed via squeeze:', result.nodeId);
       grabbedNodeRef.current = {
         nodeId: result.nodeId,
-        hand: event.target.handedness as 'left' | 'right'
+        hand: event.target.handedness as XRHandedness
       };
       onNodeSelect?.(result.nodeId);
     }
@@ -178,10 +178,10 @@ export function VRInteractionManager({
 
     const dragPosition = controllerPos.clone().add(controllerDir.multiplyScalar(2));
 
-    // Send drag position directly to the worker proxy with numeric ID
-    const numericId = graphDataManager.nodeIdMap.get(grabbedNodeRef.current.nodeId);
+    // Send drag position directly to the graph port with numeric ID
+    const numericId = graphDataPort.getNodeNumericId(grabbedNodeRef.current.nodeId);
     if (numericId !== undefined) {
-      graphWorkerProxy.updateUserDrivenNodePosition(numericId, dragPosition);
+      graphDataPort.updateNodePosition(numericId, dragPosition);
     }
 
     onNodeDrag?.(grabbedNodeRef.current.nodeId, dragPosition);

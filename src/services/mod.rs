@@ -37,6 +37,9 @@ pub mod ontology_query_service;
 pub mod ontology_mutation_service;
 pub mod github_pr_service;
 pub mod briefing_service;
+pub mod bead_types;
+pub mod bead_store;
+pub mod bead_lifecycle;
 pub mod nostr_bead_publisher;
 pub mod nostr_bridge;
 

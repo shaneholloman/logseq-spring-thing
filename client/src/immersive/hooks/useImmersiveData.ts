@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
-import { graphDataManager } from '../../features/graph/managers/graphDataManager';
-import { graphWorkerProxy } from '../../features/graph/managers/graphWorkerProxy';
+import { graphDataPort } from '../ports';
 import { useSettingsStore } from '../../store/settingsStore';
 import type { GraphData } from '../../features/graph/managers/graphDataManager';
 import { createLogger } from '../../utils/loggerConfig';
@@ -29,28 +28,27 @@ export const useImmersiveData = (initialData?: any) => {
 
     try {
       
-      const graphDataUnsubscribe = graphDataManager.onGraphDataChange((data: GraphData) => {
+      const graphDataUnsubscribe = graphDataPort.onGraphDataChange((data: GraphData) => {
         logger.debug('Graph data updated:', data);
         setGraphData(data);
         setIsLoading(false);
-        setError(null); 
+        setError(null);
       });
       subscriptions.push(graphDataUnsubscribe);
 
-      
-      const positionUnsubscribe = graphDataManager.onPositionUpdate((positions: ArrayBuffer | Float32Array) => {
-        const floatPositions = positions instanceof Float32Array ? positions : new Float32Array(positions);
-        logger.debug('Position data updated, length:', floatPositions?.length);
-        setNodePositions(floatPositions);
+
+      const positionUnsubscribe = graphDataPort.onPositionUpdate((positions: Float32Array) => {
+        logger.debug('Position data updated, length:', positions?.length);
+        setNodePositions(positions);
       });
       subscriptions.push(positionUnsubscribe);
 
-      
+
       const initializeData = async () => {
         try {
-          
-          
-          const currentData = await graphDataManager.getGraphData();
+
+
+          const currentData = await graphDataPort.getGraphData();
           if (currentData && currentData.nodes && currentData.nodes.length > 0) {
             logger.debug('Initial graph data available:', currentData);
             setGraphData(currentData);
@@ -87,10 +85,10 @@ export const useImmersiveData = (initialData?: any) => {
   }, []);
 
   const updateNodePosition = (nodeId: string, position: { x: number; y: number; z: number }) => {
-    const numericId = graphDataManager.nodeIdMap.get(nodeId);
+    const numericId = graphDataPort.getNodeNumericId(nodeId);
     if (numericId !== undefined) {
-      graphWorkerProxy.pinNode(numericId);
-      graphWorkerProxy.updateUserDrivenNodePosition(numericId, position);
+      graphDataPort.pinNode(numericId);
+      graphDataPort.updateNodePosition(numericId, position);
     }
   };
 
@@ -102,16 +100,16 @@ export const useImmersiveData = (initialData?: any) => {
   };
 
   const pinNode = (nodeId: string) => {
-    const numericId = graphDataManager.nodeIdMap.get(nodeId);
+    const numericId = graphDataPort.getNodeNumericId(nodeId);
     if (numericId !== undefined) {
-      graphWorkerProxy.pinNode(numericId);
+      graphDataPort.pinNode(numericId);
     }
   };
 
   const unpinNode = (nodeId: string) => {
-    const numericId = graphDataManager.nodeIdMap.get(nodeId);
+    const numericId = graphDataPort.getNodeNumericId(nodeId);
     if (numericId !== undefined) {
-      graphWorkerProxy.unpinNode(numericId);
+      graphDataPort.unpinNode(numericId);
     }
   };
 

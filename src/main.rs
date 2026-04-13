@@ -27,6 +27,8 @@ use webxr::{
     services::speech_service::SpeechService,
     services::briefing_service::BriefingService,
     services::management_api_client::ManagementApiClient,
+    services::bead_lifecycle::BeadLifecycleOrchestrator,
+    services::bead_store::NoopBeadStore,
     services::nostr_bead_publisher::NostrBeadPublisher,
     services::nostr_bridge::NostrBridge,
     services::{
@@ -534,10 +536,14 @@ async fn main() -> std::io::Result<()> {
     );
     let briefing_service = web::Data::new(BriefingService::new(management_api_client));
 
-    let nostr_publisher = web::Data::new(
-        NostrBeadPublisher::from_env()
-            .map(|p| p.with_neo4j(app_state.neo4j_adapter.graph().clone())),
-    );
+    let nostr_publisher = NostrBeadPublisher::from_env()
+        .map(|p| p.with_neo4j(app_state.neo4j_adapter.graph().clone()));
+    let bead_orchestrator = web::Data::new(std::sync::Arc::new(
+        BeadLifecycleOrchestrator::new(
+            std::sync::Arc::new(NoopBeadStore),
+            nostr_publisher,
+        ),
+    ));
 
     // Spawn bridge as background task (no-op if FORUM_RELAY_URL is not set).
     if let Some(bridge) = NostrBridge::from_env() {
@@ -686,7 +692,7 @@ async fn main() -> std::io::Result<()> {
             .app_data(web::Data::new(ontology_mutation_service.clone()))
             .app_data(neo4j_repo_data.clone())
             .app_data(briefing_service.clone())
-            .app_data(nostr_publisher.clone())
+            .app_data(bead_orchestrator.clone())
             .app_data(validation_service.clone())
             .app_data(physics_service.clone())
             

@@ -11,8 +11,10 @@ use actix_web::{web, HttpResponse};
 use log::{error, info};
 use serde::Deserialize;
 
+use std::sync::Arc;
+
+use crate::services::bead_lifecycle::BeadLifecycleOrchestrator;
 use crate::services::briefing_service::{BriefingError, BriefingService};
-use crate::services::nostr_bead_publisher::NostrBeadPublisher;
 use crate::types::user_context::{BriefingRequest, RoleTask, UserContext};
 
 /// POST /api/briefs — Submit a new briefing request.
@@ -53,7 +55,7 @@ pub async fn submit_brief(
 /// POST /api/briefs/{brief_id}/debrief — Request a consolidated debrief.
 pub async fn request_debrief(
     briefing_service: web::Data<BriefingService>,
-    nostr_publisher: web::Data<Option<NostrBeadPublisher>>,
+    bead_orchestrator: web::Data<Arc<BeadLifecycleOrchestrator>>,
     path: web::Path<String>,
     body: web::Json<DebriefRequest>,
 ) -> HttpResponse {
@@ -78,24 +80,22 @@ pub async fn request_debrief(
         .await
     {
         Ok(debrief_path) => {
-            // Fire-and-forget provenance event — does not affect the HTTP response.
-            if let Some(publisher) = nostr_publisher.as_ref().as_ref() {
-                let publisher = publisher.clone();
-                let bead_id = bead_id.clone();
-                let brief_id_owned = brief_id.clone();
-                let user_pubkey = user_context.pubkey.clone();
-                let debrief_path_owned = debrief_path.clone();
-                tokio::spawn(async move {
-                    publisher
-                        .publish_bead_complete(
-                            &bead_id,
-                            &brief_id_owned,
-                            Some(&user_pubkey),
-                            &debrief_path_owned,
-                        )
-                        .await;
-                });
-            }
+            // Fire-and-forget lifecycle orchestration -- tracks outcome in store.
+            let orchestrator = bead_orchestrator.get_ref().clone();
+            let bead_id = bead_id.clone();
+            let brief_id_owned = brief_id.clone();
+            let user_pubkey = user_context.pubkey.clone();
+            let debrief_path_owned = debrief_path.clone();
+            tokio::spawn(async move {
+                orchestrator
+                    .process_bead(
+                        &bead_id,
+                        &brief_id_owned,
+                        Some(&user_pubkey),
+                        &debrief_path_owned,
+                    )
+                    .await;
+            });
 
             HttpResponse::Created().json(serde_json::json!({
                 "brief_id": brief_id,

@@ -371,7 +371,9 @@ CREATE INDEX settings_user_key_index IF NOT EXISTS
 
 ### 2d. Provenance Context (Nostr Beads)
 
-Written by `NostrBeadPublisher` after a successful `POST /api/briefs/{id}/debrief`. All writes are idempotent via `MERGE`.
+Written by `BeadLifecycleOrchestrator` (via `NostrBeadPublisher`) after a successful
+`POST /api/briefs/{id}/debrief`. All writes are idempotent via `MERGE`.
+See ADR-034 for the NEEDLE-inspired architectural upgrade.
 
 #### Node label: `:NostrEvent`
 
@@ -388,28 +390,82 @@ Written by `NostrBeadPublisher` after a successful `POST /api/briefs/{id}/debrie
 
 ```cypher
 (:Bead {
-  bead_id:      STRING,  // Unique bead ID (also the Nostr `d` tag) — unique
-  brief_id:     STRING,  // Parent brief ID
-  debrief_path: STRING   // Filesystem path of consolidated debrief file
+  bead_id:       STRING,    // Unique bead ID (also the Nostr `d` tag) — unique
+  brief_id:      STRING,    // Parent brief ID
+  debrief_path:  STRING,    // Filesystem path of consolidated debrief file
+  state:         STRING,    // Lifecycle state: Created|Publishing|Published|Neo4jPersisted|Bridged|Archived|Failed(*)
+  outcome:       STRING,    // Publish outcome: Success|RelayTimeout|RelayRejected|RelayUnreachable|SigningFailed|Neo4jWriteFailed|BridgeFailed
+  created_at:    DATETIME,  // When the bead was created
+  published_at:  DATETIME,  // When the relay accepted the event (null if unpublished)
+  persisted_at:  DATETIME,  // When Neo4j write was confirmed
+  bridged_at:    DATETIME,  // When forum relay forwarding was confirmed (null if bridge disabled)
+  archived_at:   DATETIME,  // When the bead was archived (null if active)
+  retry_count:   INTEGER,   // Number of publish retry attempts (0 on first success)
+  nostr_event_id: STRING    // Hex Nostr event ID (null until published)
 })
 ```
 
-**Edge type:**
+#### Node label: `:BeadLearning`
+
+```cypher
+(:BeadLearning {
+  bead_id:          STRING,   // Parent bead ID
+  what_worked:      STRING,   // Structured retrospective: what succeeded
+  what_failed:      STRING,   // Structured retrospective: what failed
+  reusable_pattern: STRING,   // Extractable pattern for future use
+  confidence:       FLOAT,    // Confidence score 0.0–1.0
+  recorded_at:      DATETIME  // When the learning was recorded
+})
+```
+
+#### Edge types
 
 ```cypher
 (:NostrEvent)-[:PROVENANCE_OF]->(:Bead)
+(:Bead)-[:HAS_LEARNING]->(:BeadLearning)
 ```
 
-**Idempotent write pattern:**
+#### Idempotent write pattern (lifecycle-aware)
 
 ```cypher
+// Bead creation (state: Created)
+MERGE (b:Bead {bead_id: $bead_id})
+ON CREATE SET b.brief_id = $brief_id, b.debrief_path = $debrief_path,
+              b.state = 'Created', b.created_at = datetime(), b.retry_count = 0
+
+// State transition (e.g. Publishing → Published)
+MATCH (b:Bead {bead_id: $bead_id})
+SET b.state = $state, b.published_at = CASE WHEN $state = 'Published' THEN datetime() ELSE b.published_at END
+
+// Provenance link (after successful relay publish)
 MERGE (e:NostrEvent {id: $event_id})
 SET e.pubkey = $pubkey, e.kind = $kind, e.created_at = $created_at
 WITH e
-MERGE (b:Bead {bead_id: $bead_id})
-ON CREATE SET b.brief_id = $brief_id, b.debrief_path = $debrief_path
+MATCH (b:Bead {bead_id: $bead_id})
+SET b.nostr_event_id = $event_id
 MERGE (e)-[:PROVENANCE_OF]->(b)
+
+// Learning capture
+CREATE (l:BeadLearning {
+    bead_id: $bead_id, what_worked: $what_worked, what_failed: $what_failed,
+    reusable_pattern: $reusable_pattern, confidence: $confidence, recorded_at: datetime()
+})
+WITH l
+MATCH (b:Bead {bead_id: $bead_id})
+MERGE (b)-[:HAS_LEARNING]->(l)
 ```
+
+#### Bead lifecycle state machine
+
+```
+Created → Publishing → Published → Neo4jPersisted → Bridged → Archived
+                  ↘ Failed(Transient) → [retry] → Publishing
+                  ↘ Failed(Permanent)
+```
+
+Retry uses exponential backoff (default: 3 attempts, 1s/2s/4s). Only transient
+failures (timeout, connection error) are retried. Permanent failures (signing
+error, relay rejection) fail immediately. See `BeadRetryConfig` in `bead_types.rs`.
 
 ---
 
@@ -475,6 +531,23 @@ erDiagram
         string bead_id
         string brief_id
         string debrief_path
+        string state
+        string outcome
+        datetime created_at
+        datetime published_at
+        datetime persisted_at
+        datetime bridged_at
+        datetime archived_at
+        integer retry_count
+        string nostr_event_id
+    }
+    BeadLearning {
+        string bead_id
+        string what_worked
+        string what_failed
+        string reusable_pattern
+        float confidence
+        datetime recorded_at
     }
 
     Node ||--o{ Node : "EDGE"
@@ -486,6 +559,7 @@ erDiagram
     User ||--o| UserSettings : "HAS_SETTINGS"
     User ||--o| UserFilter : "HAS_FILTER"
     NostrEvent ||--|| Bead : "PROVENANCE_OF"
+    Bead ||--o{ BeadLearning : "HAS_LEARNING"
 ```
 
 ---
@@ -658,6 +732,13 @@ CREATE CONSTRAINT nostr_event_id IF NOT EXISTS
 
 CREATE CONSTRAINT bead_id IF NOT EXISTS
   FOR (b:Bead) REQUIRE b.bead_id IS UNIQUE;
+
+// Index for lifecycle queries (ADR-034)
+CREATE INDEX bead_state IF NOT EXISTS
+  FOR (b:Bead) ON (b.state);
+
+CREATE INDEX bead_created_at IF NOT EXISTS
+  FOR (b:Bead) ON (b.created_at);
 ```
 
 ### Standard Indexes

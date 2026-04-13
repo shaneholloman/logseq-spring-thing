@@ -42,8 +42,9 @@ interface PlatformState {
   isXRMode: boolean;
   xrSessionState: XRSessionState;
   isWebXRSupported: boolean;
-  
-  
+  forceVRMode: boolean;
+
+
   listeners: Map<PlatformEventType, Set<Function>>;
   
   
@@ -90,6 +91,7 @@ export const usePlatformStore = create<PlatformState>()((set, get) => ({
   isXRMode: false,
   xrSessionState: 'inactive',
   isWebXRSupported: typeof navigator !== 'undefined' && !!navigator.xr,
+  forceVRMode: false,
   initialized: false,
   
   
@@ -97,8 +99,13 @@ export const usePlatformStore = create<PlatformState>()((set, get) => ({
   
   initialize: async () => {
     logger.info('Initializing platform manager');
-    
-    
+
+    const forceVR = typeof window !== 'undefined'
+      ? new URLSearchParams(window.location.search).get('vr') === 'true'
+      : false;
+    set({ forceVRMode: forceVR });
+
+
     get().detectPlatform();
     
     

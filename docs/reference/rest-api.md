@@ -886,7 +886,12 @@ Content-Type: application/json
 
 #### POST /api/briefs/:brief_id/debrief
 
-Request a consolidated debrief. On success, publishes a Nostr kind 30001 provenance event (if `VISIONCLAW_NOSTR_PRIVKEY` is set) and writes a `(:NostrEvent)-[:PROVENANCE_OF]->(:Bead)` record to Neo4j (if available).
+Request a consolidated debrief. On success, the `BeadLifecycleOrchestrator` (ADR-034)
+creates a bead in `Created` state, publishes a Nostr kind 30001 provenance event with
+retry (configurable via `BEAD_RETRY_*` env vars), persists the `(:NostrEvent)-[:PROVENANCE_OF]->(:Bead)`
+record to Neo4j, and tracks the full lifecycle. Every publish attempt produces a typed
+`BeadOutcome` (Success, RelayTimeout, RelayRejected, RelayUnreachable, SigningFailed,
+Neo4jWriteFailed, BridgeFailed) — no silent failures. Requires `VISIONCLAW_NOSTR_PRIVKEY`.
 
 ```http
 POST /api/briefs/brief-abc123/debrief

@@ -25,11 +25,13 @@
 
 import React, { Suspense, useMemo, useCallback, useRef, useEffect } from 'react';
 import { Canvas, useThree, useFrame } from '@react-three/fiber';
-import { createXRStore, XR, useXREvent } from '@react-three/xr';
+import { XR, useXREvent } from '@react-three/xr';
 import * as THREE from 'three';
 
 import { ActionConnectionsLayer } from './components/ActionConnectionsLayer';
 import { VRActionConnectionsLayer } from '../../immersive/threejs/VRActionConnectionsLayer';
+import { VRTargetHighlight } from '../../immersive/threejs/VRTargetHighlight';
+import { VRPerformanceStats } from '../../immersive/threejs/VRPerformanceStats';
 import { useAgentActionVisualization } from './hooks/useAgentActionVisualization';
 import {
   useVRConnectionsLOD,
@@ -42,26 +44,13 @@ import {
   TargetNode,
   HandState,
 } from '../../immersive/hooks/useVRHandTracking';
+import { updateHandTrackingFromSession } from '../../immersive/hooks/updateHandTrackingFromSession';
 import { createLogger } from '../../utils/loggerConfig';
+import { xrStore } from '../../immersive/xrStore';
+import { usePlatformStore } from '../../services/platformManager';
+import { AgentData } from '../../immersive/types';
 
 const logger = createLogger('WebXRScene');
-
-// Create XR store singleton
-// Disable XR emulation in production to avoid bundling @iwer/sem room scene
-// data (~4.6MB of MetaQuest scene captures used only for localhost dev).
-const xrStore = createXRStore({
-  hand: true,
-  controller: true,
-  emulate: import.meta.env.DEV ? 'metaQuest3' : false,
-});
-
-/** Agent data for VR targeting */
-interface AgentData {
-  id: string;
-  type?: string;
-  position?: { x: number; y: number; z: number };
-  status?: 'active' | 'idle' | 'error' | 'warning';
-}
 
 interface WebXRSceneProps {
   /** Agent data for visualization and VR targeting */
@@ -108,11 +97,8 @@ export const WebXRScene: React.FC<WebXRSceneProps> = ({
   const [isVRSupported, setIsVRSupported] = React.useState<boolean | null>(null);
   const [isInVR, setIsInVR] = React.useState(false);
 
-  // Check for ?vr=true URL parameter to force VR mode on Quest 3
-  const forceVR = useMemo(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    return urlParams.get('vr') === 'true';
-  }, []);
+  // Read centralised forceVR flag from platform store
+  const forceVR = usePlatformStore(s => s.forceVRMode);
 
   // Check VR support on mount
   useEffect(() => {
@@ -409,136 +395,5 @@ const ActionConnectionsScene: React.FC<{
     </group>
   );
 };
-
-/**
- * Highlight ring around targeted agent in VR.
- */
-const VRTargetHighlight: React.FC<{
-  position: THREE.Vector3;
-  color: string;
-}> = ({ position, color }) => {
-  const ringRef = useRef<THREE.Mesh>(null);
-
-  useFrame((state) => {
-    if (ringRef.current) {
-      // Rotate slowly
-      ringRef.current.rotation.z = state.clock.elapsedTime * 0.5;
-
-      // Pulse scale
-      const scale = 1 + Math.sin(state.clock.elapsedTime * 3) * 0.1;
-      ringRef.current.scale.setScalar(scale);
-    }
-  });
-
-  return (
-    <group position={position}>
-      {/* Outer ring */}
-      <mesh ref={ringRef} rotation={[Math.PI / 2, 0, 0]}>
-        <ringGeometry args={[1.8, 2.2, 32]} />
-        <meshBasicMaterial
-          color={color}
-          transparent
-          opacity={0.4}
-          side={THREE.DoubleSide}
-          depthWrite={false}
-        />
-      </mesh>
-
-      {/* Inner glow */}
-      <mesh rotation={[Math.PI / 2, 0, 0]}>
-        <ringGeometry args={[1.2, 1.8, 32]} />
-        <meshBasicMaterial
-          color={color}
-          transparent
-          opacity={0.2}
-          side={THREE.DoubleSide}
-          depthWrite={false}
-        />
-      </mesh>
-    </group>
-  );
-};
-
-/**
- * VR-visible performance stats positioned in 3D space.
- */
-const VRPerformanceStats: React.FC<{
-  activeConnections: number;
-  lodCacheSize: number;
-}> = ({ activeConnections, lodCacheSize }) => {
-  const { camera } = useThree();
-  const groupRef = useRef<THREE.Group>(null);
-
-  // Position stats panel in front of camera
-  useFrame(() => {
-    if (groupRef.current) {
-      const offset = new THREE.Vector3(0, -0.3, -1);
-      offset.applyQuaternion(camera.quaternion);
-      groupRef.current.position.copy(camera.position).add(offset);
-      groupRef.current.quaternion.copy(camera.quaternion);
-    }
-  });
-
-  return (
-    <group ref={groupRef}>
-      {/* Background panel */}
-      <mesh position={[0, 0, 0.01]}>
-        <planeGeometry args={[0.4, 0.15]} />
-        <meshBasicMaterial color="#000000" transparent opacity={0.7} />
-      </mesh>
-
-      {/* Connection bar */}
-      <mesh position={[-0.15, 0.03, 0]}>
-        <planeGeometry args={[Math.min(0.02 * activeConnections, 0.3), 0.03]} />
-        <meshBasicMaterial color="#00ff88" />
-      </mesh>
-
-      {/* LOD cache bar */}
-      <mesh position={[-0.15, -0.03, 0]}>
-        <planeGeometry args={[Math.min(0.001 * lodCacheSize, 0.3), 0.03]} />
-        <meshBasicMaterial color="#ffaa00" />
-      </mesh>
-    </group>
-  );
-};
-
-/**
- * Update hand tracking state from XR session.
- */
-function updateHandTrackingFromSession(
-  session: XRSession,
-  updateHandState: (hand: 'primary' | 'secondary', state: Partial<HandState>) => void
-) {
-  const inputSources = session.inputSources;
-  if (!inputSources) return;
-
-  for (const source of Array.from(inputSources) as XRInputSource[]) {
-    const hand = source.handedness === 'right' ? 'primary' : 'secondary';
-
-    if (source.hand) {
-      // Full hand tracking (Quest hand tracking)
-      updateHandState(hand, {
-        isTracking: true,
-        isPointing: true,
-      });
-    } else if (source.gamepad) {
-      // Controller tracking
-      const isPointing =
-        source.gamepad.buttons[0]?.pressed || source.gamepad.buttons[1]?.pressed;
-
-      updateHandState(hand, {
-        isTracking: true,
-        isPointing,
-        pinchStrength: Math.max(
-          source.gamepad.buttons[0]?.value || 0,
-          source.gamepad.buttons[1]?.value || 0
-        ),
-      });
-    }
-  }
-}
-
-/** Export XR store for external control */
-export { xrStore };
 
 export default WebXRScene;

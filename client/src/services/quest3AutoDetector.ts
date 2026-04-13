@@ -1,7 +1,8 @@
 import { createLogger } from '../utils/loggerConfig';
 import { usePlatformStore } from './platformManager';
 import { useSettingsStore } from '../store/settingsStore';
-import { ClientCore } from './vircadia/VircadiaClientCore';
+import type { XRNetworkAdapter } from '../xr/adapters/XRNetworkAdapter';
+import { NullAdapter } from '../xr/adapters/NullAdapter';
 
 const logger = createLogger('Quest3AutoDetector');
 
@@ -16,25 +17,27 @@ export class Quest3AutoDetector {
   private static instance: Quest3AutoDetector;
   private detectionResult: Quest3DetectionResult | null = null;
   private autoStartAttempted: boolean = false;
-  private vircadiaClient: ClientCore | null = null;
+  private networkAdapter: XRNetworkAdapter;
 
-  private constructor() {}
+  private constructor(adapter?: XRNetworkAdapter) {
+    this.networkAdapter = adapter ?? new NullAdapter();
+  }
 
-  public static getInstance(): Quest3AutoDetector {
+  public static getInstance(adapter?: XRNetworkAdapter): Quest3AutoDetector {
     if (!Quest3AutoDetector.instance) {
-      Quest3AutoDetector.instance = new Quest3AutoDetector();
+      Quest3AutoDetector.instance = new Quest3AutoDetector(adapter);
     }
     return Quest3AutoDetector.instance;
   }
 
-  
+
   public async detectQuest3Environment(): Promise<Quest3DetectionResult> {
     if (this.detectionResult) {
       return this.detectionResult;
     }
 
-    // Check for ?vr=true URL parameter to force Quest 3 mode
-    const forceVR = new URLSearchParams(window.location.search).get('vr') === 'true';
+    // Check centralised forceVR flag from platform store
+    const forceVR = usePlatformStore.getState().forceVRMode;
     if (forceVR) {
       logger.info('Quest 3 mode forced via ?vr=true URL parameter');
       this.detectionResult = { isQuest3: true, isQuest3Browser: true, supportsAR: false, shouldAutoStart: true };
@@ -44,19 +47,19 @@ export class Quest3AutoDetector {
     const userAgent = navigator.userAgent || '';
     const platform = usePlatformStore.getState();
 
-    
+
     const isQuest3Hardware = userAgent.includes('Quest 3') ||
                             userAgent.includes('Quest3') ||
                             userAgent.includes('Quest 3');
 
-    
+
     const isQuest3Browser = isQuest3Hardware ||
       userAgent.includes('OculusBrowser') ||
       userAgent.includes('Quest') ||
       (userAgent.includes('Mobile') && userAgent.includes('VR')) ||
       (userAgent.includes('X11') && userAgent.includes('Linux') && userAgent.includes('VR'));
 
-    
+
     let supportsAR = false;
     try {
       if ('xr' in navigator && navigator.xr) {
@@ -67,7 +70,7 @@ export class Quest3AutoDetector {
       supportsAR = false;
     }
 
-    
+
     const shouldAutoStart = isQuest3Hardware && isQuest3Browser && supportsAR;
 
     this.detectionResult = {
@@ -89,7 +92,7 @@ export class Quest3AutoDetector {
     return this.detectionResult;
   }
 
-  
+
   public async autoStartQuest3AR(): Promise<boolean> {
     if (this.autoStartAttempted) {
       logger.info('Quest 3 AR auto-start already attempted');
@@ -108,10 +111,10 @@ export class Quest3AutoDetector {
 
       logger.info('Attempting Quest 3 AR auto-start...');
 
-      
+
       await this.configureQuest3Settings();
 
-      
+
       const sessionInit: XRSessionInit = {
         requiredFeatures: ['local-floor'],
         optionalFeatures: [
@@ -128,7 +131,7 @@ export class Quest3AutoDetector {
       logger.info('Requesting immersive-ar session for Quest 3...');
       const session = await navigator.xr!.requestSession('immersive-ar', sessionInit);
 
-      
+
       if (session.environmentBlendMode !== 'additive' && session.environmentBlendMode !== 'alpha-blend') {
         logger.warn('Quest 3 AR session does not have expected blend mode:', session.environmentBlendMode);
       }
@@ -139,27 +142,27 @@ export class Quest3AutoDetector {
         inputSources: session.inputSources?.length || 0
       });
 
-      
+
       usePlatformStore.getState().setXRMode(true);
       usePlatformStore.getState().setXRSessionState('active');
 
-      
-      await this.initializeVircadiaConnection();
+
+      await this.networkAdapter.connect();
 
       return true;
 
     } catch (error) {
       logger.error('Failed to auto-start Quest 3 AR session:', error);
-      this.autoStartAttempted = false; 
+      this.autoStartAttempted = false;
       return false;
     }
   }
 
-  
+
   private async configureQuest3Settings(): Promise<void> {
     const settingsStore = useSettingsStore.getState();
 
-    
+
     const quest3Settings = {
       xr: {
         enabled: true,
@@ -179,7 +182,7 @@ export class Quest3AutoDetector {
         quality: 'high' as const
       },
       auth: {
-        enabled: false, 
+        enabled: false,
         required: false
       },
       visualisation: {
@@ -187,22 +190,22 @@ export class Quest3AutoDetector {
           context: 'quest3-ar' as const,
           enableAntialiasing: true,
           enableShadows: true,
-          backgroundColor: 'transparent' 
+          backgroundColor: 'transparent'
         },
         physics: {
           enabled: true,
-          boundsSize: 5.0, 
-          maxVelocity: 0.01 
+          boundsSize: 5.0,
+          maxVelocity: 0.01
         }
       },
       system: {
         debug: {
-          enabled: false 
+          enabled: false
         }
       }
     };
 
-    
+
     settingsStore.updateSettings((draft: any) => {
 
       Object.assign(draft.xr, quest3Settings.xr);
@@ -215,7 +218,7 @@ export class Quest3AutoDetector {
     logger.info('Quest 3 AR settings configured');
   }
 
-  
+
   public isInQuest3ARMode(): boolean {
     const platformState = usePlatformStore.getState();
     return platformState.isXRMode &&
@@ -223,57 +226,16 @@ export class Quest3AutoDetector {
            this.detectionResult?.shouldAutoStart === true;
   }
 
-  
-  private async initializeVircadiaConnection(): Promise<void> {
-    try {
-      logger.info('Initializing Vircadia connection for Quest 3 XR...');
-
-      
-      this.vircadiaClient = new ClientCore({
-        serverUrl: import.meta.env.VITE_VIRCADIA_SERVER_URL || 'ws://localhost:3020/world/ws',
-        authToken: import.meta.env.VITE_VIRCADIA_AUTH_TOKEN || 'system-token',
-        authProvider: import.meta.env.VITE_VIRCADIA_AUTH_PROVIDER || 'system',
-        reconnectAttempts: 5,
-        reconnectDelay: 5000,
-        debug: import.meta.env.DEV || false,
-        suppress: false
-      });
-
-      
-      const connectionInfo = await this.vircadiaClient.Utilities.Connection.connect({
-        timeoutMs: 10000
-      });
-
-      logger.info('Vircadia connected for Quest 3 XR', {
-        agentId: connectionInfo.agentId,
-        sessionId: connectionInfo.sessionId
-      });
-
-    } catch (error) {
-      logger.error('Failed to initialize Vircadia connection:', error);
-      
-    }
+  /** Returns the injected network adapter. */
+  public getNetworkAdapter(): XRNetworkAdapter {
+    return this.networkAdapter;
   }
 
-  
-  public getVircadiaClient(): ClientCore | null {
-    return this.vircadiaClient;
-  }
 
-  
-  public disconnectVircadia(): void {
-    if (this.vircadiaClient) {
-      logger.info('Disconnecting Vircadia client');
-      this.vircadiaClient.dispose();
-      this.vircadiaClient = null;
-    }
-  }
-
-  
-  public resetDetection(): void {
+  public async resetDetection(): Promise<void> {
     this.detectionResult = null;
     this.autoStartAttempted = false;
-    this.disconnectVircadia();
+    await this.networkAdapter.disconnect();
   }
 }
 
