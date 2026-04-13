@@ -546,9 +546,10 @@ impl UnifiedGPUCompute {
                 self.class_charge.as_device_ptr(),
                 self.class_mass.as_device_ptr(),
                 // FA2 adaptive speed: previous-step forces for swing/traction
-                self.prev_force_x.as_device_ptr(),
-                self.prev_force_y.as_device_ptr(),
-                self.prev_force_z.as_device_ptr()
+                // Safety: ensure buffers match num_nodes to prevent out-of-bounds writes
+                if self.prev_force_x.len() >= self.num_nodes { self.prev_force_x.as_device_ptr() } else { cust::memory::DevicePointer::null() },
+                if self.prev_force_y.len() >= self.num_nodes { self.prev_force_y.as_device_ptr() } else { cust::memory::DevicePointer::null() },
+                if self.prev_force_z.len() >= self.num_nodes { self.prev_force_z.as_device_ptr() } else { cust::memory::DevicePointer::null() }
             ))?;
         }
 

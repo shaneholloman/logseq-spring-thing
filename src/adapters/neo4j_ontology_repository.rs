@@ -290,12 +290,9 @@ impl OntologyRepository for Neo4jOntologyRepository {
 
         let query_str = "
             MERGE (c:OwlClass {iri: $iri})
-            SET c:GraphNode
-            SET c.id = CASE WHEN c.id IS NULL THEN id(c) END
-            SET c.label = COALESCE(c.label, c.iri)
-            SET c.node_type = 'owl_class'
             ON CREATE SET
                 c.created_at = datetime(),
+                c.id = id(c),
                 c.term_id = $term_id,
                 c.preferred_term = $preferred_term,
                 c.label = $label,
@@ -342,6 +339,9 @@ impl OntologyRepository for Neo4jOntologyRepository {
                 c.markdown_content = $markdown_content,
                 c.last_synced = $last_synced,
                 c.additional_metadata = $additional_metadata
+            SET c:GraphNode,
+                c.node_type = 'owl_class',
+                c.label = COALESCE(c.label, c.iri)
         ";
 
         self.graph
