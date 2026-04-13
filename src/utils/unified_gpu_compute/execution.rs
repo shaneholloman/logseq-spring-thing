@@ -327,19 +327,23 @@ impl UnifiedGPUCompute {
         self.cell_end.copy_from(&self.zero_buffer[..cell_buf_len])?;
 
         let cell_block_size = block_size;
-        let grid_cells_blocks = (num_grid_cells as u32 + cell_block_size - 1) / cell_block_size;
+        // compute_cell_bounds_kernel is NODE-indexed (iterates over sorted nodes,
+        // not grid cells) — must launch enough threads for num_nodes, not num_grid_cells.
+        // GPT-5.4 diagnosed: launching with grid_cells_blocks left most nodes without
+        // cell boundaries → no repulsion → collapsed to center.
+        let cell_bounds_blocks = (self.num_nodes as u32 + cell_block_size - 1) / cell_block_size;
         let compute_cell_bounds_kernel = self
             ._module
             .get_function(self.compute_cell_bounds_kernel_name)?;
         // SAFETY: Cell bounds kernel launch is safe because:
         // 1. sorted_keys is the output from thrust_sort_key_value (valid device memory)
         // 2. cell_start and cell_end were zeroed and have capacity >= num_grid_cells
-        // 3. num_grid_cells was computed from validated grid dimensions
+        // 3. The kernel iterates over num_nodes sorted entries
         // 4. The kernel reads sorted_keys and writes cell boundaries atomically
         unsafe {
             let stream = &self.stream;
             launch!(
-                compute_cell_bounds_kernel<<<grid_cells_blocks, cell_block_size, 0, stream>>>(
+                compute_cell_bounds_kernel<<<cell_bounds_blocks, cell_block_size, 0, stream>>>(
                 sorted_keys.as_device_ptr(),
                 self.cell_start.as_device_ptr(),
                 self.cell_end.as_device_ptr(),
