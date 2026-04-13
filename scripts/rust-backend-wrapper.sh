@@ -42,7 +42,12 @@ if [ "${SKIP_RUST_REBUILD:-false}" != "true" ]; then
     # Docker image build bakes source + compiles a binary. At runtime, bind mounts
     # overlay /app/src with host files. Cargo's fingerprints use mtime which may
     # match the image build. Content hashing catches actual code changes.
-    HASH_FILE="/app/target/.source_hash"
+    # In dev mode, ALWAYS recompile the webxr crate on container start.
+    # Docker image build compiles a binary from COPY'd source, but the bind mount
+    # overlays /app/src with host files that may differ. Cargo's fingerprints can't
+    # detect this because the target volume persists across container restarts.
+    # Removing webxr artifacts is cheap (~2 min rebuild), deps stay cached.
+    HASH_FILE="/app/target/release/.webxr_source_hash"
     CURRENT_HASH=$(find /app/src -name '*.rs' -o -name '*.cu' 2>/dev/null | sort | xargs cat 2>/dev/null | md5sum | cut -d' ' -f1)
     CACHED_HASH=$(cat "$HASH_FILE" 2>/dev/null || echo "none")
     if [ "$CURRENT_HASH" != "$CACHED_HASH" ]; then
