@@ -341,7 +341,8 @@ impl OntologyRepository for Neo4jOntologyRepository {
                 c.additional_metadata = $additional_metadata
             SET c:GraphNode,
                 c.node_type = 'owl_class',
-                c.label = COALESCE(c.label, c.iri)
+                c.label = COALESCE(c.label, c.iri),
+                c.id = CASE WHEN c.id IS NULL THEN id(c) ELSE c.id END
         ";
 
         self.graph
