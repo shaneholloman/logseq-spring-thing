@@ -2,7 +2,7 @@
 
 # VisionClaw
 
-### Immersive, collaborative, agentic knowledge management & tool factory.
+### The governed agentic coordination platform.
 
 [![Build](https://img.shields.io/github/actions/workflow/status/DreamLab-AI/VisionClaw/ci.yml?branch=main&style=flat-square&logo=github)](https://github.com/DreamLab-AI/VisionClaw/actions)
 [![Version](https://img.shields.io/github/v/release/DreamLab-AI/VisionClaw?style=flat-square&logo=semantic-release)](https://github.com/DreamLab-AI/VisionClaw/releases)
@@ -11,7 +11,7 @@
 [![CUDA](https://img.shields.io/badge/CUDA-13.1-76B900?style=flat-square&logo=nvidia)](https://developer.nvidia.com/cuda-toolkit)
 [![Docs](https://img.shields.io/badge/Docs-Diataxis-4A90D9?style=flat-square)](docs/README.md)
 
-**92 CUDA kernels · GPU clustering, anomaly detection & PageRank · Multi-user immersive XR · 83 agent skills · OWL 2 ontology governance · Nostr identity & signed auth · Solid Pod sovereignty**
+**Governed agentic coordination · Judgment Broker workbench · OWL 2 ontology governance · 92 CUDA kernels · Multi-user immersive XR · 83 agent skills · Enterprise identity (OIDC + Nostr) · Solid Pod sovereignty**
 
 <br/>
 
@@ -39,9 +39,9 @@ VisionClaw takes the opposite approach. **Governance isn't an inhibitor, it's an
 
 ## What Is VisionClaw?
 
-VisionClaw is an open-source platform for building governed agentic meshes: a technical substrate where autonomous AI agents, human judgment, and institutional knowledge can work together through a shared semantic layer.
+VisionClaw is an open-source platform for building governed agentic organisations: a coordination control plane where autonomous AI agents, human judgment brokers, and institutional knowledge work together through a shared semantic layer, with every decision auditable and every workflow governed by policy.
 
-The platform ingests knowledge from Logseq notebooks via GitHub, reasons over it with an OWL 2 EL inference engine (Whelk-rs), renders the result as an interactive 3D graph where nodes attract or repel based on their semantic relationships, and exposes that graph to AI agents through 7 Model Context Protocol tools. Users can collaborate in the same space through multi-user XR presence, spatial voice, and immersive graph exploration. Every ontology mutation can be consistency-checked, and the resulting reasoning chain can be traced from edge case back to source material.
+The platform ingests knowledge from Logseq notebooks via GitHub, reasons over it with an OWL 2 EL inference engine (Whelk-rs), renders the result as an interactive 3D graph where nodes attract or repel based on their semantic relationships, and exposes that graph to AI agents through 7 Model Context Protocol tools. A **Judgment Broker Workbench** surfaces edge cases, workflow proposals, and trust drift alerts for human review. An **Insight Ingestion Loop** discovers shadow workflows and codifies them into governed, reusable patterns. **Four organisational KPIs** (Mesh Velocity, Augmentation Ratio, Trust Variance, HITL Precision) measure whether AI adoption is compounding or fragmenting. Users can collaborate in the same space through multi-user XR presence, spatial voice, and immersive graph exploration.
 
 VisionClaw is operational at [DreamLab residential training lab](https://www.dreamlab-ai.com), supporting a creative technology team, and informed by collaboration with a major UK creative studio and the University of Salford.
 
@@ -54,11 +54,14 @@ VisionClaw is operational at [DreamLab residential training lab](https://www.dre
 - GPU-accelerated knowledge graph visualisation and analytics at small-to-medium scale
 - Nostr-signed identity and request authentication
 - A live environment for turning discovered workflows into governed graph operations
+- Full architectural blueprint for enterprise coordination (6 ADRs, 17 bounded contexts, enterprise PRD)
+- Platform coherence: single node type system, consolidated binary protocol, unified position flow
 
 **What remains open:**
-- Scaling the judgment broker model beyond the current context
-- Adoption by non-technical middle managers
-- Validation in regulated industries
+- Enterprise identity integration (OIDC — architected, not yet implemented)
+- Judgment Broker Workbench UI (architected as BC11, needs frontend)
+- Validation in regulated industries (pharma, finance pilots planned)
+- KPI instrumentation (formulas defined, computation engine pending)
 - Multi-provider orchestration beyond Claude-Flow
 
 </details>
@@ -84,7 +87,8 @@ VisionClaw is operational at [DreamLab residential training lab](https://www.dre
 - `subClassOf` → attraction, `disjointWith` → repulsion in GPU physics
 - Every ontology mutation creates a GitHub PR — human veto before commit
 - Content-addressed immutable provenance beads (Nostr NIP-09)
-- 10 DDD bounded contexts with CQRS — 114 command/query handlers
+- 17 DDD bounded contexts with CQRS — 114 command/query handlers
+- Policy engine with TOML-configurable rules (Allow/Deny/Escalate)
 
 </td>
 <td width="50%">
@@ -123,12 +127,12 @@ VisionClaw is operational at [DreamLab residential training lab](https://www.dre
 <tr>
 <td width="50%">
 
-**🔐 Self-Sovereign Identity**
-- Nostr NIP-98 HTTP auth — signed cryptographic events, no passwords
-- NIP-07 browser extension signing (Alby, nos2x, etc.)
+**🔐 Dual-Stack Identity**
+- Enterprise: OIDC/SAML via Entra ID, Okta, Google Workspace (ADR-040)
+- Provenance: Nostr NIP-98 signed events — every action cryptographically attributable
+- Server-side ephemeral keypair delegation (OIDC session → secp256k1)
 - Solid Pod user data sovereignty — each user owns their own Pod
-- JSS (JSON Solid Server) sidecar for local Pod storage
-- Per-user agent memory namespace via NIP-26 delegation
+- 4 enterprise roles: Broker, Admin, Auditor, Contributor
 
 </td>
 <td width="50%">
@@ -446,6 +450,24 @@ flowchart LR
 
 ---
 
+## Enterprise Roadmap
+
+| Phase | Timeline | Deliverables | Exit Criteria |
+|:------|:---------|:-------------|:--------------|
+| **0: Platform Coherence** | Weeks 1-6 | Node type consolidation, binary protocol, position flow, settings, ontology edge gap | No major contradictions between platform story and behaviour |
+| **1: Identity + Broker MVP** | Weeks 7-14 | OIDC support, role model, Broker Inbox, Decision Canvas | A broker can log in, review, and decide on real cases |
+| **2: Insight Ingestion Loop** | Weeks 15-24 | Insight objects, WorkflowProposal lifecycle, GitHub connector, workflow promotion | One discovered pattern becomes an approved live workflow |
+| **3: KPI + Governance** | Weeks 25-32 | Four mesh KPIs, policy engine, exportable audit reports | Thesis KPIs measurable from production data |
+| **4: Pilot Release** | Weeks 33-44 | Regulated pilot package, connector hardening, success reporting | At least one paid or design-partner pilot running |
+
+**Architecture decisions**: [ADR-040](docs/adr/ADR-040-enterprise-identity-strategy.md) · [ADR-041](docs/adr/ADR-041-judgment-broker-workbench.md) · [ADR-042](docs/adr/ADR-042-workflow-proposal-object-model.md) · [ADR-043](docs/adr/ADR-043-kpi-lineage-model.md) · [ADR-044](docs/adr/ADR-044-connector-governance-privacy.md) · [ADR-045](docs/adr/ADR-045-policy-engine-approach.md)
+
+**DDD model**: [Enterprise Bounded Contexts (BC11-BC17)](docs/explanation/ddd-enterprise-contexts.md)
+
+**PRD**: [Enterprise PRD](presentation/enterprise-prd.md) · [Architecture Self-Review](docs/architecture-self-review.md)
+
+---
+
 ## Architecture
 
 ```mermaid
@@ -453,7 +475,7 @@ flowchart TB
     subgraph Client["Browser Client (React 19 + Three.js / Babylon.js)"]
         R3F["React Three Fiber\n(desktop graph)"]
         BabylonXR["Babylon.js\n(immersive XR)"]
-        BinProto["Binary Protocol V2/V3"]
+        BinProto["Binary Protocol V3/V5"]
         Voice["Voice Orchestrator"]
         WasmFX["WASM Scene Effects\n(zero-copy Float32Array)"]
     end
@@ -484,7 +506,7 @@ flowchart TB
         NostrDID["Nostr Identities\n(NIP-98 auth · delegation)"]
     end
 
-    Client <-->|"Binary V2/V3 + REST"| Server
+    Client <-->|"Binary V3/V5 + REST"| Server
     Voice <-->|"LiveKit SFU + Opus"| AudioRouter
     Server <--> Neo4j
     Server <--> RuVector
@@ -594,17 +616,20 @@ The backend uses Actix actors for supervised concurrency. GPU actors form a hier
 </details>
 
 <details>
-<summary><strong>DDD bounded contexts (10 contexts)</strong></summary>
+<summary><strong>DDD bounded contexts (17 contexts)</strong></summary>
 
-VisionClaw implements Domain-Driven Design with 10 bounded contexts across three domain rings:
+VisionClaw implements Domain-Driven Design with 17 bounded contexts across three domain rings:
 
-**Core Domain:** Knowledge Graph · Ontology Governance · Physics Simulation
+**Core Domain:** Knowledge Graph · Ontology Governance · Physics Simulation · **Judgment Broker (BC11)** · **Workflow Lifecycle (BC12)** · **Insight Discovery (BC13)**
 
-**Supporting Domain:** Authentication (Nostr NIP-98) · Identity (Nostr/Solid) · Agent Orchestration · Semantic Analysis
+**Supporting Domain:** Authentication (Nostr NIP-98) · **Enterprise Identity (BC14)** · Agent Orchestration · Semantic Analysis · **Policy Engine (BC17)**
 
-**Generic Domain:** User Management · [Bead Provenance](docs/ddd-bead-provenance-context.md) ([ADR-034](docs/adr/ADR-034-needle-bead-provenance.md)) · Configuration
+**Generic Domain:** [Bead Provenance](docs/ddd-bead-provenance-context.md) ([ADR-034](docs/adr/ADR-034-needle-bead-provenance.md)) · Configuration · **KPI Observability (BC15)** · **Connector Ingestion (BC16)**
 
-Each context has its own aggregate roots, domain events, and anti-corruption layers. Cross-context communication uses domain events, never direct model sharing. See [DDD Bounded Contexts](docs/explanation/ddd-bounded-contexts.md).
+Each context has its own aggregate roots, domain events, and anti-corruption layers. Cross-context communication uses domain events, never direct model sharing.
+
+- [Core Bounded Contexts (BC1-BC10)](docs/explanation/ddd-bounded-contexts.md)
+- [Enterprise Bounded Contexts (BC11-BC17)](docs/explanation/ddd-enterprise-contexts.md)
 
 </details>
 
