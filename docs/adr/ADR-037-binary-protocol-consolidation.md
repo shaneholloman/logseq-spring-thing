@@ -1,0 +1,136 @@
+# ADR-035: Binary Protocol Consolidation
+
+## Status
+
+Proposed
+
+## Context
+
+VisionFlow's binary WebSocket protocol has accumulated 14 encoding paths across
+4 protocol versions (V2-V5) through incremental feature additions. The current
+state creates maintenance burden, type-classification bugs, and dead code that
+confuses contributors.
+
+**Server-side encoding functions (binary_protocol.rs):**
+
+| Function | Delegates to | Used by |
+|----------|-------------|---------|
+| `encode_node_data()` | `encode_node_data_with_types(&[], &[])` | Nowhere meaningful |
+| `encode_node_data_with_flags()` | `encode_node_data_with_types(agents, &[])` | Legacy callers |
+| `encode_node_data_with_types()` | `encode_node_data_extended()` | Thin wrapper |
+| `encode_node_data_extended()` | `encode_node_data_extended_with_sssp(None, None)` | Thin wrapper |
+| `encode_node_data_with_analytics()` | `encode_node_data_with_all()` | Thin wrapper |
+| `encode_node_data_with_all()` | Duplicates `encode_node_data_extended_with_sssp` body | 0 external callers |
+| `encode_node_data_extended_with_sssp()` | Terminal encoder (V3, 48 bytes/node) | All paths converge here |
+| `encode_node_data_with_live_analytics()` | `encode_node_data_extended_with_sssp(&[], &[], ...)` | Polling path (broken) |
+
+All seven wrappers eventually call `encode_node_data_extended_with_sssp()` which
+always emits V3 frames (48 bytes per node).
+
+**Critical bug:** `encode_node_data_with_live_analytics()` passes empty type
+arrays (`&[], &[]`) for agent/knowledge IDs. Every node sent through this path
+(position_updates.rs polling, fastwebsockets_handler.rs) arrives on the client
+classified as `Unknown`, breaking type-based rendering.
+
+**V4 delta encoding (delta_encoding.rs):** Fully implemented but permanently
+disabled. The delta encoder is called with `frame=0`, which always triggers the
+full-state V3 resync branch, so no V4 frame is ever emitted.
+
+**V5 backpressure wrapper (client_coordinator_actor.rs):** A thin 9-byte prefix
+(`[version=5][8-byte sequence LE]`) prepended to V3 node data. Used by the
+`ClientCoordinatorManager::serialize_positions()` broadcast path only.
+
+**Two serialize_positions() methods on ClientCoordinator:** The manager has a V5
+variant (with sequence number and analytics). The inner `ClientCoordinator` has a
+V3-only variant (no analytics, no sequence). Both convert `BinaryNodeDataClient`
+to `(u32, BinaryNodeData)` then call different protocol functions.
+
+**Client-side dead code:**
+- `BinaryWebSocketProtocol.ts` implements a `MessageType`-based protocol
+  (`GRAPH_UPDATE`, `NODE_POSITIONS`, etc.) that the server never sends.
+- `binaryProtocol.ts` contains a V2 parser that is unreachable since the server
+  only emits V3/V5.
+
+## Decision
+
+Consolidate to three encoding paths:
+
+1. **`encode_positions_v3()`** -- Single V3 encoder that accepts node data, type
+   classification arrays, optional SSSP data, and optional analytics data. This
+   replaces all seven existing wrappers plus `encode_node_data_with_all()`.
+
+2. **`wrap_v5(v3_frame, sequence)`** -- Stateless function that strips the V3
+   version byte and prepends the V5 header. Used only by the broadcast path that
+   needs backpressure sequence correlation.
+
+3. **Keep `delta_encoding.rs` dormant** -- Do not delete. The V4 delta encoder
+   is correct and tested. Gate it behind a feature flag (`delta-encoding`) so it
+   can be re-enabled when the client V4 parser is validated end-to-end.
+
+Additionally:
+
+- **Fix the type-classification bug:** All callers must pass node type arrays.
+  Remove `encode_node_data_with_live_analytics()` and require callers to supply
+  type arrays explicitly. The polling paths in `position_updates.rs` and
+  `fastwebsockets_handler.rs` must obtain `NodeTypeArrays` from `AppState`.
+
+- **Unify `serialize_positions()`:** Collapse the two methods into one on
+  `ClientCoordinatorManager` that always produces V5 frames.
+
+- **Delete client dead code:** Remove `BinaryWebSocketProtocol.ts` (phantom
+  protocol) and the V2 parser from `binaryProtocol.ts`.
+
+## Consequences
+
+### Positive
+
+- Eliminates 6 wrapper functions and ~120 lines of delegation boilerplate
+- Fixes the Unknown-node-type bug on all polling paths
+- Single encoding path simplifies protocol version upgrades
+- Client bundle size decreases by removing phantom protocol code
+- `wrap_v5()` makes the V3-to-V5 relationship explicit and testable
+
+### Negative
+
+- Breaking change for any out-of-tree code calling removed wrapper functions
+- Polling path callers need refactoring to thread `NodeTypeArrays` through
+- Feature-flagging delta encoding adds a cargo feature to manage
+
+### Neutral
+
+- Wire format does not change; V3 and V5 frames remain byte-compatible
+- No client parser changes needed beyond dead code removal
+
+## Options Considered
+
+### Option 1: Status Quo
+
+- **Pros**: No migration work
+- **Cons**: Type-classification bug persists, 7 wrappers remain, contributors
+  cannot determine the canonical encoding path
+
+### Option 2: Consolidate to V3 + V5 wrapper (chosen)
+
+- **Pros**: Minimal API surface, fixes type bug, preserves V4 for future use
+- **Cons**: One-time refactor cost across ~10 call sites
+
+### Option 3: Full V5 migration (drop V3)
+
+- **Pros**: Single protocol version everywhere
+- **Cons**: Sequence numbers add overhead for paths that do not need backpressure;
+  forces all clients to implement V5 parsing immediately
+
+## Related Decisions
+
+- ADR-013: Render Performance (node type rendering depends on correct flags)
+- ADR-012: WebSocket Store Decomposition (client protocol layer)
+
+## References
+
+- `src/utils/binary_protocol.rs` -- all encoding functions
+- `src/utils/delta_encoding.rs` -- V4 delta encoder
+- `src/actors/client_coordinator_actor.rs` -- two `serialize_positions()` methods
+- `src/handlers/socket_flow_handler/position_updates.rs` -- polling path (bug)
+- `src/handlers/fastwebsockets_handler.rs` -- fastws polling path (bug)
+- `client/src/services/BinaryWebSocketProtocol.ts` -- phantom protocol (delete)
+- `client/src/types/binaryProtocol.ts` -- V2 dead parser (delete)

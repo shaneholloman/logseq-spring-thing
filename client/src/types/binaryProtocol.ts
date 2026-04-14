@@ -8,9 +8,9 @@ const logger = createLogger('binaryProtocol');
  * Aligns with server-side src/utils/binary_protocol.rs
  *
  * Protocol Versions:
- * - V2: 36 bytes per node (basic pathfinding)
- * - V3: 48 bytes per node (adds cluster_id, anomaly_score, community_id)
+ * - V3: 48 bytes per node (current server default, adds cluster_id, anomaly_score, community_id)
  * - V4: Delta encoding (20 bytes per changed node, only changed nodes sent)
+ * - V5: V3 node data with 8-byte broadcast sequence prefix
  */
 
 export interface Vec3 {
@@ -37,7 +37,7 @@ export interface BinaryNodeData {
  * - Delta updates: nodes contain position/velocity DELTAS (add to targetPositions)
  */
 export interface ParsedBinaryFrame {
-  /** 'full' for V2/V3/V5 full state, 'delta' for V4 delta encoding */
+  /** 'full' for V3/V5 full state, 'delta' for V4 delta encoding */
   type: 'full' | 'delta';
   /** Parsed node data. For delta frames, position/velocity are DELTAS, not absolute. */
   nodes: BinaryNodeData[];
@@ -54,7 +54,6 @@ const DELTA_POSITION_CHANGED = 0x01;
 const DELTA_VELOCITY_CHANGED = 0x02;
 
 // Protocol version constants (must match server)
-export const PROTOCOL_V2 = 2;
 export const PROTOCOL_V3 = 3;
 export const PROTOCOL_V4 = 4;
 export const PROTOCOL_V5 = 5;
@@ -159,10 +158,6 @@ export function parseBinaryNodeData(buffer: ArrayBuffer): BinaryNodeData[] {
     let hasAnalytics: boolean;
 
     switch (protocolVersion) {
-      case PROTOCOL_V2:
-        nodeSize = BINARY_NODE_SIZE_V2;
-        hasAnalytics = false;
-        break;
       case PROTOCOL_V3:
         nodeSize = BINARY_NODE_SIZE_V3;
         hasAnalytics = true;
@@ -420,7 +415,7 @@ export function parseBinaryFrameData(buffer: ArrayBuffer): ParsedBinaryFrame {
     };
   }
 
-  // V2/V3: delegate to existing full-state parser
+  // V3 (or unknown): delegate to existing full-state parser
   const fullNodes = parseBinaryNodeData(buffer);
   return { type: 'full', nodes: fullNodes };
 }

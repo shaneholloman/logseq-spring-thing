@@ -384,6 +384,26 @@ impl PhysicsOrchestratorActor {
 
     
     fn initialize_gpu_if_needed(&mut self, ctx: &mut Context<Self>) {
+        // Replay pending graph data: if UpdateGraphData arrived while GPU address was
+        // missing, graph_data_ref is set but GPU never received it. Push it now.
+        if self.gpu_initialized && !self.gpu_init_in_progress {
+            if let (Some(ref gpu_addr), Some(ref graph_data)) = (&self.gpu_compute_addr, &self.graph_data_ref) {
+                if gpu_addr.connected() && graph_data.nodes.len() != self.last_node_count {
+                    info!(
+                        "PhysicsOrchestratorActor: Replaying cached graph to GPU ({} nodes, GPU had {})",
+                        graph_data.nodes.len(), self.last_node_count
+                    );
+                    let msg_id = crate::actors::messaging::message_id::MessageId::new();
+                    gpu_addr.do_send(UpdateGPUGraphData {
+                        graph: Arc::clone(graph_data),
+                        correlation_id: Some(msg_id),
+                    });
+                    self.last_node_count = graph_data.nodes.len();
+                    return;
+                }
+            }
+        }
+
         // Timeout stuck gpu_init_in_progress after 30 seconds
         if self.gpu_init_in_progress {
             if let Some(started) = self.gpu_init_started_at {
@@ -430,6 +450,11 @@ impl PhysicsOrchestratorActor {
             info!("Initializing GPU compute for physics");
 
             if let Some(ref graph_data) = self.graph_data_ref {
+                // Skip empty graph — wait for real data from ReloadGraphFromDatabase
+                if graph_data.nodes.is_empty() {
+                    info!("PhysicsOrchestratorActor: Graph data is empty — deferring GPU init until real data arrives");
+                    return;
+                }
                 // Only set in_progress when we actually send messages
                 self.gpu_init_in_progress = true;
                 self.gpu_init_started_at = Some(Instant::now());
@@ -1468,21 +1493,33 @@ impl Handler<UpdateGraphData> for PhysicsOrchestratorActor {
         info!("PhysicsOrchestratorActor: Received UpdateGraphData with {} nodes (prev: {})",
               new_node_count, self.last_node_count);
 
+        // Always store latest graph data — even empty graphs update the ref.
+        // But only forward non-empty graphs to GPU.
         let prev_node_count = self.last_node_count;
         self.update_graph_data(msg.graph_data);
 
+        if new_node_count == 0 {
+            if prev_node_count > 0 {
+                warn!(
+                    "PhysicsOrchestratorActor: Empty graph received (GPU has {} nodes). Stored but not forwarding to GPU.",
+                    prev_node_count
+                );
+            }
+            return;
+        }
+
         if self.gpu_initialized {
-            // GPU already running — if the graph grew (batch sync added new nodes),
-            // push the full updated graph so new nodes get initial positions and
-            // existing nodes don't lose their physics-computed layout.
-            if new_node_count > prev_node_count {
+            // GPU already running — always push the updated graph so the GPU
+            // has the latest node set. This handles both graph growth (batch sync)
+            // and graph replacement (ReloadGraphFromDatabase with different node set).
+            if new_node_count != prev_node_count {
                 if let (Some(ref gpu_addr), Some(ref graph_data)) =
                     (&self.gpu_compute_addr, &self.graph_data_ref)
                 {
                     if gpu_addr.connected() {
                         info!(
-                            "PhysicsOrchestratorActor: Graph grew from {} to {} nodes — \
-                             sending UpdateGPUGraphData for full re-upload",
+                            "PhysicsOrchestratorActor: Graph changed from {} to {} nodes — \
+                             sending UpdateGPUGraphData",
                             prev_node_count, new_node_count
                         );
                         let msg_id = crate::actors::messaging::message_id::MessageId::new();

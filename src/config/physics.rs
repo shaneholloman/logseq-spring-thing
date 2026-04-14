@@ -213,9 +213,6 @@ pub struct PhysicsSettings {
     pub repel_k: f32,
     #[serde(alias = "spring_k")]
     pub spring_k: f32,
-    #[deprecated(note = "Not wired to physics engine")]
-    #[serde(alias = "mass_scale")]
-    pub mass_scale: f32,
     #[serde(alias = "boundary_damping")]
     pub boundary_damping: f32,
     #[serde(alias = "update_threshold")]
@@ -227,15 +224,6 @@ pub struct PhysicsSettings {
     #[serde(alias = "gravity")]
     pub gravity: f32,
 
-    #[deprecated(note = "Not wired to physics engine")]
-    #[serde(alias = "stress_weight")]
-    pub stress_weight: f32,
-    #[deprecated(note = "Not wired to physics engine")]
-    #[serde(alias = "stress_alpha")]
-    pub stress_alpha: f32,
-    #[deprecated(note = "Not wired to physics engine")]
-    #[serde(alias = "boundary_limit")]
-    pub boundary_limit: f32,
     #[serde(alias = "alignment_strength")]
     pub alignment_strength: f32,
     #[serde(alias = "cluster_strength")]
@@ -273,12 +261,6 @@ pub struct PhysicsSettings {
     pub boundary_margin: f32,
     #[serde(alias = "boundary_force_strength")]
     pub boundary_force_strength: f32,
-    #[deprecated(note = "Not wired to physics engine")]
-    #[serde(alias = "warmup_curve")]
-    pub warmup_curve: String,
-    #[deprecated(note = "Not wired to physics engine")]
-    #[serde(alias = "zero_velocity_iterations")]
-    pub zero_velocity_iterations: u32,
 
 
     #[serde(
@@ -319,9 +301,14 @@ pub struct PhysicsSettings {
     /// FA2 per-node adaptive speed convergence (default true).
     #[serde(default = "default_adaptive_speed", alias = "adaptive_speed")]
     pub adaptive_speed: bool,
+
+    /// X-axis suppression: 0.0 = full 3D (default), 1.0 = fully planar (flat YZ planes).
+    /// Squashes X so each graph population becomes a flat plane. Combined with
+    /// graph_separation_x, produces two parallel YZ planes side by side.
+    #[serde(default, alias = "z_damping")]
+    pub z_damping: f32,
 }
 
-#[allow(deprecated)]
 impl Default for PhysicsSettings {
     fn default() -> Self {
         Self {
@@ -339,15 +326,11 @@ impl Default for PhysicsSettings {
             max_force: 500.0,
             repel_k: 900.0,
             spring_k: 14.0,
-            mass_scale: 1.0,
             boundary_damping: 0.92,
             update_threshold: 0.01,
             dt: 0.013,
             temperature: 0.01,
             gravity: 0.0001,
-            stress_weight: 0.1,
-            stress_alpha: 0.1,
-            boundary_limit: 490.0,
             alignment_strength: 0.5,
             cluster_strength: 1.0,
             compute_mode: 0,
@@ -367,9 +350,6 @@ impl Default for PhysicsSettings {
             max_repulsion_dist: 2000.0,
             boundary_margin: 0.85,
             boundary_force_strength: 2.0,
-            warmup_curve: "quadratic".to_string(),
-            zero_velocity_iterations: 5,
-
             constraint_ramp_frames: default_constraint_ramp_frames(),
             constraint_max_force_per_node: default_constraint_max_force_per_node(),
 
@@ -382,6 +362,7 @@ impl Default for PhysicsSettings {
             lin_log_mode: true,
             scaling_ratio: 10.0,
             adaptive_speed: true,
+            z_damping: 0.0,
         }
     }
 }
@@ -462,8 +443,6 @@ pub struct PhysicsUpdate {
     pub max_force: Option<f32>,
     #[serde(alias = "separation_radius")]
     pub separation_radius: Option<f32>,
-    #[serde(alias = "mass_scale")]
-    pub mass_scale: Option<f32>,
     #[serde(alias = "boundary_damping")]
     pub boundary_damping: Option<f32>,
     #[serde(alias = "dt")]
@@ -475,12 +454,6 @@ pub struct PhysicsUpdate {
     #[serde(alias = "update_threshold")]
     pub update_threshold: Option<f32>,
 
-    #[serde(alias = "stress_weight")]
-    pub stress_weight: Option<f32>,
-    #[serde(alias = "stress_alpha")]
-    pub stress_alpha: Option<f32>,
-    #[serde(alias = "boundary_limit")]
-    pub boundary_limit: Option<f32>,
     #[serde(alias = "alignment_strength")]
     pub alignment_strength: Option<f32>,
     #[serde(alias = "cluster_strength")]
@@ -498,10 +471,6 @@ pub struct PhysicsUpdate {
     pub boundary_force_strength: Option<f32>,
     #[serde(alias = "warmup_iterations")]
     pub warmup_iterations: Option<u32>,
-    #[serde(alias = "warmup_curve")]
-    pub warmup_curve: Option<String>,
-    #[serde(alias = "zero_velocity_iterations")]
-    pub zero_velocity_iterations: Option<u32>,
     #[serde(alias = "cooling_rate")]
     pub cooling_rate: Option<f32>,
 

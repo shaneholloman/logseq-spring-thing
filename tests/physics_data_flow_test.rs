@@ -13,8 +13,8 @@ use std::collections::HashMap;
 
 // Re-export types used across all test scenarios
 use webxr::utils::binary_protocol::{
-    self, decode_node_data, encode_node_data, encode_node_data_extended_with_sssp,
-    encode_node_data_with_types, get_actual_node_id, get_node_type, is_agent_node,
+    self, decode_node_data, encode_node_data_extended, encode_node_data_extended_with_sssp,
+    get_actual_node_id, get_node_type, is_agent_node,
     is_knowledge_node, set_agent_flag, set_knowledge_flag, BinaryProtocol, Message, MessageType,
     MultiplexedMessage, NodeType,
 };
@@ -59,7 +59,7 @@ fn v3_encode_decode_roundtrip_preserves_position_and_velocity() {
         make_node(99, -100.5, 200.75, 50.125, 1.0, -1.0, 0.5),
     ];
 
-    let encoded = encode_node_data(&nodes);
+    let encoded = encode_node_data_extended(&nodes, &[], &[], &[], &[], &[]);
 
     // Protocol V3 header byte
     assert_eq!(encoded[0], 3, "Expected protocol V3 header");
@@ -91,7 +91,7 @@ fn v3_encode_decode_with_node_type_flags() {
     let agent_ids = vec![1u32];
     let knowledge_ids = vec![2u32];
 
-    let encoded = encode_node_data_with_types(&nodes, &agent_ids, &knowledge_ids);
+    let encoded = encode_node_data_extended(&nodes, &agent_ids, &knowledge_ids, &[], &[], &[]);
     let decoded = decode_node_data(&encoded).expect("decode must succeed");
 
     assert_eq!(decoded.len(), 3);
@@ -132,7 +132,7 @@ fn v3_encode_with_sssp_and_analytics_roundtrip() {
 #[test]
 fn empty_node_list_encodes_and_decodes_cleanly() {
     let nodes: Vec<(u32, BinaryNodeData)> = vec![];
-    let encoded = encode_node_data(&nodes);
+    let encoded = encode_node_data_extended(&nodes, &[], &[], &[], &[], &[]);
     // Header only
     assert_eq!(encoded.len(), 1);
     let decoded = decode_node_data(&encoded).expect("decode must succeed");
@@ -363,7 +363,7 @@ fn nan_position_rejected_by_sanitize() {
     let neg_inf_node = make_node(3, 0.0, f32::NEG_INFINITY, 0.0, 0.0, 0.0, 0.0);
 
     let nodes = vec![nan_node, inf_node, neg_inf_node];
-    let encoded = encode_node_data(&nodes);
+    let encoded = encode_node_data_extended(&nodes, &[], &[], &[], &[], &[]);
     let decoded = decode_node_data(&encoded).expect("Encoding/decoding should not panic on NaN/Inf");
 
     // Verify the decoded values are still NaN/Inf (protocol preserves raw bytes)
@@ -586,7 +586,7 @@ fn delta_decode_size_mismatch() {
 fn v5_frame_decodes_through_sequence_header() {
     let nodes = vec![make_node_simple(1, 5.0, 6.0, 7.0)];
     // Build a V5 frame: version(1) + sequence(8) + V3 node data
-    let v3_payload = encode_node_data(&nodes);
+    let v3_payload = encode_node_data_extended(&nodes, &[], &[], &[], &[], &[]);
     // v3_payload[0] is protocol V3 header; strip it
     let v3_body = &v3_payload[1..];
 
@@ -620,7 +620,7 @@ fn encode_decode_1000_nodes() {
         })
         .collect();
 
-    let encoded = encode_node_data(&nodes);
+    let encoded = encode_node_data_extended(&nodes, &[], &[], &[], &[], &[]);
     assert_eq!(encoded.len(), 1 + 1000 * 48);
 
     let decoded = decode_node_data(&encoded).expect("1000-node decode must succeed");

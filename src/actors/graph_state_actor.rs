@@ -59,6 +59,7 @@ use crate::models::node::Node;
 use crate::models::edge::Edge;
 use crate::models::metadata::{MetadataStore, FileMetadata};
 use crate::models::graph::GraphData;
+use crate::models::graph_types::{classify_node_population, classify_ontology_subtype, NodePopulation, OntologySubtype};
 
 // Ports (hexagonal architecture)
 use crate::ports::knowledge_graph_repository::KnowledgeGraphRepository;
@@ -186,33 +187,36 @@ impl GraphStateActor {
         );
     }
 
-    /// Classify a single node into the appropriate type set based on its node_type and owl_class_iri fields
+    /// ADR-036: Classify a node using the canonical classify_node_population function.
+    /// Also handles owl_class_iri fallback for nodes without explicit type.
     fn classify_node(&mut self, node: &Node) {
         let node_id = node.id;
-        match node.node_type.as_deref() {
-            Some("page") | Some("linked_page") => {
-                self.knowledge_node_ids.insert(node_id);
-            }
-            Some("owl_class") | Some("ontology_node") => {
-                self.ontology_class_ids.insert(node_id);
-            }
-            Some("owl_individual") => {
-                self.ontology_individual_ids.insert(node_id);
-            }
-            Some("owl_property") => {
-                self.ontology_property_ids.insert(node_id);
-            }
-            Some("agent") | Some("bot") => {
-                self.agent_node_ids.insert(node_id);
-            }
-            _ => {
-                // Check owl_class_iri as secondary signal for ontology class
+        let pop = classify_node_population(node.node_type.as_deref());
+
+        match pop {
+            NodePopulation::Knowledge => {
+                // Secondary check: owl_class_iri overrides to ontology even without type string
                 if node.owl_class_iri.is_some() {
                     self.ontology_class_ids.insert(node_id);
                 } else {
-                    // Default: most nodes from logseq are knowledge nodes
                     self.knowledge_node_ids.insert(node_id);
                 }
+            }
+            NodePopulation::Ontology => {
+                match classify_ontology_subtype(node.node_type.as_deref()) {
+                    OntologySubtype::Class | OntologySubtype::Unspecified => {
+                        self.ontology_class_ids.insert(node_id);
+                    }
+                    OntologySubtype::Individual => {
+                        self.ontology_individual_ids.insert(node_id);
+                    }
+                    OntologySubtype::Property => {
+                        self.ontology_property_ids.insert(node_id);
+                    }
+                }
+            }
+            NodePopulation::Agent => {
+                self.agent_node_ids.insert(node_id);
             }
         }
     }
@@ -225,34 +229,36 @@ impl GraphStateActor {
         self.ontology_property_ids.clear();
         self.agent_node_ids.clear();
 
-        // Collect node data first to avoid borrow conflict
-        let nodes: Vec<(u32, Option<String>, Option<String>)> = self.graph_data.nodes.iter()
+        // ADR-036: Use canonical classify_node via collected node refs to avoid borrow conflict
+        let node_refs: Vec<(u32, Option<String>, Option<String>)> = self.graph_data.nodes.iter()
             .map(|n| (n.id, n.node_type.clone(), n.owl_class_iri.clone()))
             .collect();
 
-        for (node_id, node_type, owl_class_iri) in &nodes {
-            match node_type.as_deref() {
-                Some("page") | Some("linked_page") => {
-                    self.knowledge_node_ids.insert(*node_id);
-                }
-                Some("owl_class") | Some("ontology_node") => {
-                    self.ontology_class_ids.insert(*node_id);
-                }
-                Some("owl_individual") => {
-                    self.ontology_individual_ids.insert(*node_id);
-                }
-                Some("owl_property") => {
-                    self.ontology_property_ids.insert(*node_id);
-                }
-                Some("agent") | Some("bot") => {
-                    self.agent_node_ids.insert(*node_id);
-                }
-                _ => {
+        for (node_id, node_type, owl_class_iri) in &node_refs {
+            let pop = classify_node_population(node_type.as_deref());
+            match pop {
+                NodePopulation::Knowledge => {
                     if owl_class_iri.is_some() {
                         self.ontology_class_ids.insert(*node_id);
                     } else {
                         self.knowledge_node_ids.insert(*node_id);
                     }
+                }
+                NodePopulation::Ontology => {
+                    match classify_ontology_subtype(node_type.as_deref()) {
+                        OntologySubtype::Class | OntologySubtype::Unspecified => {
+                            self.ontology_class_ids.insert(*node_id);
+                        }
+                        OntologySubtype::Individual => {
+                            self.ontology_individual_ids.insert(*node_id);
+                        }
+                        OntologySubtype::Property => {
+                            self.ontology_property_ids.insert(*node_id);
+                        }
+                    }
+                }
+                NodePopulation::Agent => {
+                    self.agent_node_ids.insert(*node_id);
                 }
             }
         }
@@ -473,14 +479,21 @@ impl GraphStateActor {
 
         node.label = metadata.file_name.clone();
 
-
         let path = std::path::Path::new(&metadata.file_name);
         node.color = Some(Self::color_for_extension(path));
-
 
         let size = metadata.file_size;
         node.size = Some(10.0 + (size as f32 / 1000.0).min(50.0));
 
+        // ADR-036: Set node_type from metadata so classification works for incremental adds.
+        // Ontology nodes have owl_class or source_domain set; default to "page" for knowledge nodes.
+        if node.node_type.is_none() {
+            if metadata.owl_class.is_some() || metadata.source_domain.is_some() {
+                node.node_type = Some("owl_class".to_string());
+            } else {
+                node.node_type = Some("page".to_string());
+            }
+        }
 
         node.metadata.insert("file_name".to_string(), metadata.file_name.clone());
         node.metadata.insert("file_size".to_string(), size.to_string());
@@ -1189,5 +1202,465 @@ impl Handler<ComputeShortestPaths> for GraphStateActor {
                 Err(e)
             }
         }
+    }
+}
+
+// =============================================================================
+// Unit tests for configure_node_from_metadata node_type population (ADR-036)
+// =============================================================================
+// These tests verify that configure_node_from_metadata correctly populates
+// node.node_type based on metadata fields. Before the fix, node_type was
+// never set, causing all incrementally-added nodes to fall into the Knowledge
+// population by default.
+//
+// Tests call configure_node_from_metadata directly (private method accessible
+// from inline test module) to avoid requiring an Actix runtime. Classification
+// tests call classify_node directly for the same reason.
+// =============================================================================
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::metadata::Metadata;
+    use crate::ports::knowledge_graph_repository::{
+        GraphStatistics, KnowledgeGraphRepository,
+    };
+    use async_trait::async_trait;
+    use std::collections::HashMap;
+    use std::sync::Arc;
+
+    // ── Stub repository (no-op persistence for unit tests) ──────────
+    struct StubRepository;
+
+    #[async_trait]
+    impl KnowledgeGraphRepository for StubRepository {
+        async fn load_graph(&self) -> crate::ports::knowledge_graph_repository::Result<Arc<GraphData>> {
+            Ok(Arc::new(GraphData::new()))
+        }
+        async fn save_graph(&self, _graph: &GraphData) -> crate::ports::knowledge_graph_repository::Result<()> {
+            Ok(())
+        }
+        async fn add_node(&self, _node: &Node) -> crate::ports::knowledge_graph_repository::Result<u32> {
+            Ok(0)
+        }
+        async fn batch_add_nodes(&self, _nodes: Vec<Node>) -> crate::ports::knowledge_graph_repository::Result<Vec<u32>> {
+            Ok(vec![])
+        }
+        async fn update_node(&self, _node: &Node) -> crate::ports::knowledge_graph_repository::Result<()> {
+            Ok(())
+        }
+        async fn batch_update_nodes(&self, _nodes: Vec<Node>) -> crate::ports::knowledge_graph_repository::Result<()> {
+            Ok(())
+        }
+        async fn remove_node(&self, _node_id: u32) -> crate::ports::knowledge_graph_repository::Result<()> {
+            Ok(())
+        }
+        async fn batch_remove_nodes(&self, _node_ids: Vec<u32>) -> crate::ports::knowledge_graph_repository::Result<()> {
+            Ok(())
+        }
+        async fn get_node(&self, _node_id: u32) -> crate::ports::knowledge_graph_repository::Result<Option<Node>> {
+            Ok(None)
+        }
+        async fn get_nodes(&self, _node_ids: Vec<u32>) -> crate::ports::knowledge_graph_repository::Result<Vec<Node>> {
+            Ok(vec![])
+        }
+        async fn get_nodes_by_metadata_id(&self, _metadata_id: &str) -> crate::ports::knowledge_graph_repository::Result<Vec<Node>> {
+            Ok(vec![])
+        }
+        async fn get_nodes_by_owl_class_iri(&self, _iri: &str) -> crate::ports::knowledge_graph_repository::Result<Vec<Node>> {
+            Ok(vec![])
+        }
+        async fn search_nodes_by_label(&self, _label: &str) -> crate::ports::knowledge_graph_repository::Result<Vec<Node>> {
+            Ok(vec![])
+        }
+        async fn add_edge(&self, _edge: &Edge) -> crate::ports::knowledge_graph_repository::Result<String> {
+            Ok(String::new())
+        }
+        async fn batch_add_edges(&self, _edges: Vec<Edge>) -> crate::ports::knowledge_graph_repository::Result<Vec<String>> {
+            Ok(vec![])
+        }
+        async fn update_edge(&self, _edge: &Edge) -> crate::ports::knowledge_graph_repository::Result<()> {
+            Ok(())
+        }
+        async fn remove_edge(&self, _edge_id: &str) -> crate::ports::knowledge_graph_repository::Result<()> {
+            Ok(())
+        }
+        async fn batch_remove_edges(&self, _edge_ids: Vec<String>) -> crate::ports::knowledge_graph_repository::Result<()> {
+            Ok(())
+        }
+        async fn get_node_edges(&self, _node_id: u32) -> crate::ports::knowledge_graph_repository::Result<Vec<Edge>> {
+            Ok(vec![])
+        }
+        async fn get_edges_between(&self, _src: u32, _tgt: u32) -> crate::ports::knowledge_graph_repository::Result<Vec<Edge>> {
+            Ok(vec![])
+        }
+        async fn batch_update_positions(&self, _positions: Vec<(u32, f32, f32, f32)>) -> crate::ports::knowledge_graph_repository::Result<()> {
+            Ok(())
+        }
+        async fn get_all_positions(&self) -> crate::ports::knowledge_graph_repository::Result<HashMap<u32, (f32, f32, f32)>> {
+            Ok(HashMap::new())
+        }
+        async fn query_nodes(&self, _query: &str) -> crate::ports::knowledge_graph_repository::Result<Vec<Node>> {
+            Ok(vec![])
+        }
+        async fn get_neighbors(&self, _node_id: u32) -> crate::ports::knowledge_graph_repository::Result<Vec<Node>> {
+            Ok(vec![])
+        }
+        async fn get_statistics(&self) -> crate::ports::knowledge_graph_repository::Result<GraphStatistics> {
+            Ok(GraphStatistics {
+                node_count: 0,
+                edge_count: 0,
+                average_degree: 0.0,
+                connected_components: 0,
+                last_updated: chrono::Utc::now(),
+            })
+        }
+        async fn clear_graph(&self) -> crate::ports::knowledge_graph_repository::Result<()> {
+            Ok(())
+        }
+        async fn health_check(&self) -> crate::ports::knowledge_graph_repository::Result<bool> {
+            Ok(true)
+        }
+    }
+
+    // ── Helper: create actor with stub repository ───────────────────
+    fn make_actor() -> GraphStateActor {
+        GraphStateActor::new(Arc::new(StubRepository))
+    }
+
+    // ── Helper: create minimal Metadata ─────────────────────────────
+    fn base_metadata() -> Metadata {
+        Metadata {
+            file_name: "test-node.md".to_string(),
+            file_size: 1024,
+            ..Default::default()
+        }
+    }
+
+    // ── Helper: create a fresh Node with node_type = None ───────────
+    fn fresh_node(id: u32) -> Node {
+        Node::new_with_id("test".to_string(), Some(id))
+    }
+
+    // ================================================================
+    // Test 1: Metadata with owl_class sets node_type to "owl_class"
+    // ================================================================
+    // GIVEN: A fresh Node (node_type = None) and Metadata with owl_class set
+    // WHEN:  configure_node_from_metadata is called
+    // THEN:  node.node_type == Some("owl_class")
+    #[test]
+    fn test_metadata_with_owl_class_sets_ontology_type() {
+        let actor = make_actor();
+        let mut node = fresh_node(100);
+        let mut meta = base_metadata();
+        meta.owl_class = Some("MyClass".to_string());
+
+        actor.configure_node_from_metadata(&mut node, &meta);
+
+        assert_eq!(
+            node.node_type,
+            Some("owl_class".to_string()),
+            "Metadata with owl_class should produce node_type 'owl_class'"
+        );
+    }
+
+    // ================================================================
+    // Test 2: Metadata with source_domain sets node_type to "owl_class"
+    // ================================================================
+    // GIVEN: A fresh Node and Metadata with source_domain but no owl_class
+    // WHEN:  configure_node_from_metadata is called
+    // THEN:  node.node_type == Some("owl_class")
+    #[test]
+    fn test_metadata_with_source_domain_sets_ontology_type() {
+        let actor = make_actor();
+        let mut node = fresh_node(101);
+        let mut meta = base_metadata();
+        meta.source_domain = Some("physics".to_string());
+
+        actor.configure_node_from_metadata(&mut node, &meta);
+
+        assert_eq!(
+            node.node_type,
+            Some("owl_class".to_string()),
+            "Metadata with source_domain should produce node_type 'owl_class'"
+        );
+    }
+
+    // ================================================================
+    // Test 3: Plain metadata without ontology fields defaults to "page"
+    // ================================================================
+    // GIVEN: A fresh Node and Metadata with no owl_class, no source_domain
+    // WHEN:  configure_node_from_metadata is called
+    // THEN:  node.node_type == Some("page")
+    #[test]
+    fn test_metadata_without_ontology_sets_page_type() {
+        let actor = make_actor();
+        let mut node = fresh_node(102);
+        let meta = base_metadata();
+
+        actor.configure_node_from_metadata(&mut node, &meta);
+
+        assert_eq!(
+            node.node_type,
+            Some("page".to_string()),
+            "Plain metadata should produce node_type 'page'"
+        );
+    }
+
+    // ================================================================
+    // Test 4: Pre-existing node_type is not overwritten
+    // ================================================================
+    // GIVEN: A Node with node_type = Some("agent")
+    // WHEN:  configure_node_from_metadata is called with plain metadata
+    // THEN:  node_type remains Some("agent")
+    #[test]
+    fn test_existing_node_type_not_overwritten() {
+        let actor = make_actor();
+        let mut node = fresh_node(103);
+        node.node_type = Some("agent".to_string());
+        let meta = base_metadata();
+
+        actor.configure_node_from_metadata(&mut node, &meta);
+
+        assert_eq!(
+            node.node_type,
+            Some("agent".to_string()),
+            "Pre-existing node_type 'agent' must not be overwritten"
+        );
+    }
+
+    // ================================================================
+    // Test 5: Pre-existing "owl_individual" not overwritten by owl_class metadata
+    // ================================================================
+    // GIVEN: A Node with node_type = Some("owl_individual")
+    // WHEN:  configure_node_from_metadata is called with owl_class metadata
+    // THEN:  node_type remains Some("owl_individual"), not changed to "owl_class"
+    #[test]
+    fn test_existing_owl_individual_not_overwritten() {
+        let actor = make_actor();
+        let mut node = fresh_node(104);
+        node.node_type = Some("owl_individual".to_string());
+        let mut meta = base_metadata();
+        meta.owl_class = Some("SomeClass".to_string());
+
+        actor.configure_node_from_metadata(&mut node, &meta);
+
+        assert_eq!(
+            node.node_type,
+            Some("owl_individual".to_string()),
+            "Pre-existing node_type 'owl_individual' must not be overwritten"
+        );
+    }
+
+    // ================================================================
+    // Test 6: Both owl_class and source_domain present
+    // ================================================================
+    // GIVEN: Metadata with both owl_class and source_domain
+    // WHEN:  configure_node_from_metadata is called
+    // THEN:  node_type == Some("owl_class") (OR condition, not AND)
+    #[test]
+    fn test_metadata_with_both_owl_class_and_source_domain() {
+        let actor = make_actor();
+        let mut node = fresh_node(105);
+        let mut meta = base_metadata();
+        meta.owl_class = Some("PhysicalEntity".to_string());
+        meta.source_domain = Some("physics".to_string());
+
+        actor.configure_node_from_metadata(&mut node, &meta);
+
+        assert_eq!(
+            node.node_type,
+            Some("owl_class".to_string()),
+            "Metadata with both owl_class and source_domain should produce 'owl_class'"
+        );
+    }
+
+    // ================================================================
+    // Test 7: Classification of node_type="owl_class" into Ontology set
+    // ================================================================
+    // GIVEN: A node with node_type = Some("owl_class") (as set by the fix)
+    // WHEN:  classify_node is called
+    // THEN:  The node ID appears in ontology_class_ids, not knowledge_node_ids
+    #[test]
+    fn test_owl_class_classified_as_ontology() {
+        let mut actor = make_actor();
+        let mut node = fresh_node(200);
+        node.node_type = Some("owl_class".to_string());
+
+        actor.classify_node(&node);
+
+        assert!(
+            actor.ontology_class_ids.contains(&200),
+            "Node with type 'owl_class' should be in ontology_class_ids"
+        );
+        assert!(
+            !actor.knowledge_node_ids.contains(&200),
+            "Node with type 'owl_class' should NOT be in knowledge_node_ids"
+        );
+    }
+
+    // ================================================================
+    // Test 8: Classification of node_type="page" into Knowledge set
+    // ================================================================
+    // GIVEN: A node with node_type = Some("page")
+    // WHEN:  classify_node is called
+    // THEN:  The node ID appears in knowledge_node_ids, not ontology sets
+    #[test]
+    fn test_page_classified_as_knowledge() {
+        let mut actor = make_actor();
+        let mut node = fresh_node(201);
+        node.node_type = Some("page".to_string());
+
+        actor.classify_node(&node);
+
+        assert!(
+            actor.knowledge_node_ids.contains(&201),
+            "Node with type 'page' should be in knowledge_node_ids"
+        );
+        assert!(
+            !actor.ontology_class_ids.contains(&201),
+            "Node with type 'page' should NOT be in ontology_class_ids"
+        );
+    }
+
+    // ================================================================
+    // Test 9: End-to-end configure + classify for ontology node
+    // ================================================================
+    // GIVEN: A fresh node and metadata with owl_class
+    // WHEN:  configure_node_from_metadata then classify_node are called
+    // THEN:  node_type is "owl_class" AND node lands in ontology_class_ids
+    #[test]
+    fn test_configure_then_classify_ontology() {
+        let mut actor = make_actor();
+        let mut node = fresh_node(300);
+        let mut meta = base_metadata();
+        meta.owl_class = Some("Concept".to_string());
+
+        actor.configure_node_from_metadata(&mut node, &meta);
+        actor.classify_node(&node);
+
+        assert_eq!(node.node_type, Some("owl_class".to_string()));
+        assert!(actor.ontology_class_ids.contains(&300));
+        assert!(!actor.knowledge_node_ids.contains(&300));
+    }
+
+    // ================================================================
+    // Test 10: End-to-end configure + classify for knowledge node
+    // ================================================================
+    // GIVEN: A fresh node and plain metadata (no ontology fields)
+    // WHEN:  configure_node_from_metadata then classify_node are called
+    // THEN:  node_type is "page" AND node lands in knowledge_node_ids
+    #[test]
+    fn test_configure_then_classify_knowledge() {
+        let mut actor = make_actor();
+        let mut node = fresh_node(301);
+        let meta = base_metadata();
+
+        actor.configure_node_from_metadata(&mut node, &meta);
+        actor.classify_node(&node);
+
+        assert_eq!(node.node_type, Some("page".to_string()));
+        assert!(actor.knowledge_node_ids.contains(&301));
+        assert!(!actor.ontology_class_ids.contains(&301));
+    }
+
+    // ================================================================
+    // Test 11: Metadata fields copied to node.metadata map
+    // ================================================================
+    // GIVEN: Metadata with source_domain, quality_score, authority_score
+    // WHEN:  configure_node_from_metadata is called
+    // THEN:  Those values appear in node.metadata HashMap
+    #[test]
+    fn test_metadata_fields_copied_to_node_metadata() {
+        let actor = make_actor();
+        let mut node = fresh_node(400);
+        let mut meta = base_metadata();
+        meta.source_domain = Some("chemistry".to_string());
+        meta.quality_score = Some(0.95);
+        meta.authority_score = Some(0.87);
+
+        actor.configure_node_from_metadata(&mut node, &meta);
+
+        assert_eq!(
+            node.metadata.get("source_domain"),
+            Some(&"chemistry".to_string()),
+            "source_domain should be copied to node.metadata"
+        );
+        assert_eq!(
+            node.metadata.get("quality_score"),
+            Some(&"0.95".to_string()),
+            "quality_score should be copied to node.metadata"
+        );
+        assert_eq!(
+            node.metadata.get("authority_score"),
+            Some(&"0.87".to_string()),
+            "authority_score should be copied to node.metadata"
+        );
+    }
+
+    // ================================================================
+    // Test 12: Label and color set from metadata
+    // ================================================================
+    // GIVEN: Metadata with file_name "concept.rs"
+    // WHEN:  configure_node_from_metadata is called
+    // THEN:  node.label == "concept.rs" and node.color is the Rust color
+    #[test]
+    fn test_label_and_color_from_metadata() {
+        let actor = make_actor();
+        let mut node = fresh_node(401);
+        let mut meta = base_metadata();
+        meta.file_name = "concept.rs".to_string();
+
+        actor.configure_node_from_metadata(&mut node, &meta);
+
+        assert_eq!(node.label, "concept.rs");
+        assert_eq!(
+            node.color,
+            Some("#CE422B".to_string()),
+            ".rs files should get the Rust color"
+        );
+    }
+
+    // ================================================================
+    // Test 13: Size calculated from file_size
+    // ================================================================
+    // GIVEN: Metadata with file_size = 5000
+    // WHEN:  configure_node_from_metadata is called
+    // THEN:  node.size == Some(10.0 + (5000.0 / 1000.0).min(50.0)) == Some(15.0)
+    #[test]
+    fn test_size_from_file_size() {
+        let actor = make_actor();
+        let mut node = fresh_node(402);
+        let mut meta = base_metadata();
+        meta.file_size = 5000;
+
+        actor.configure_node_from_metadata(&mut node, &meta);
+
+        assert_eq!(
+            node.size,
+            Some(15.0),
+            "Size should be 10.0 + (5000/1000).min(50) = 15.0"
+        );
+    }
+
+    // ================================================================
+    // Test 14: is_subclass_of copied to node.metadata
+    // ================================================================
+    // GIVEN: Metadata with is_subclass_of = ["ParentA", "ParentB"]
+    // WHEN:  configure_node_from_metadata is called
+    // THEN:  node.metadata["is_subclass_of"] == "ParentA,ParentB"
+    #[test]
+    fn test_is_subclass_of_copied() {
+        let actor = make_actor();
+        let mut node = fresh_node(403);
+        let mut meta = base_metadata();
+        meta.is_subclass_of = vec!["ParentA".to_string(), "ParentB".to_string()];
+
+        actor.configure_node_from_metadata(&mut node, &meta);
+
+        assert_eq!(
+            node.metadata.get("is_subclass_of"),
+            Some(&"ParentA,ParentB".to_string()),
+            "is_subclass_of should be joined with commas"
+        );
     }
 }

@@ -506,10 +506,6 @@ impl ApiSchemas {
                 FieldValidator::number().min_value(0.001).max_value(1000.0),
             )
             .add_optional_field(
-                "massScale",
-                FieldValidator::number().min_value(0.01).max_value(100.0),
-            )
-            .add_optional_field(
                 "boundaryDamping",
                 FieldValidator::number().min_value(0.0).max_value(1.0),
             )

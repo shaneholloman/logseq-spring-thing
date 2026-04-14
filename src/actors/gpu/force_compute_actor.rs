@@ -17,18 +17,13 @@ use crate::utils::unified_gpu_compute::ComputeMode;
 use crate::utils::unified_gpu_compute::SimParams;
 use crate::gpu::broadcast_optimizer::{BroadcastConfig, BroadcastOptimizer};
 use crate::gpu::backpressure::{BackpressureConfig, NetworkBackpressure};
+use crate::models::graph_types::{NodePopulation, classify_node_population, effective_node_type};
 use glam::Vec3;
 
 use cudarc::driver::CudaDevice;
 
-/// Per-node graph population classification for dual-graph X-axis separation.
-/// Stored per GPU index during graph upload, used during position broadcast.
-#[derive(Debug, Clone, Copy, PartialEq)]
-enum GraphPopulation {
-    Knowledge,
-    Ontology,
-    Agent,
-}
+// Node population classification now uses crate::models::graph_types::NodePopulation
+// (ADR-036: single canonical classification function)
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PhysicsStats {
@@ -129,13 +124,21 @@ pub struct ForceComputeActor {
     /// Maps GPU buffer index → actual graph node ID (populated during graph upload)
     gpu_index_to_node_id: Vec<u32>,
 
+    /// Maps GPU buffer index → node metadata_id for position cache keying
+    gpu_index_to_metadata_id: Vec<String>,
+
     /// Per-node graph population classification for dual-graph X-axis offset.
     /// Indexed by GPU buffer index. Populated during graph upload from node_type field.
-    node_population: Vec<GraphPopulation>,
+    node_population: Vec<NodePopulation>,
 
     /// Graph data waiting to be uploaded to GPU (set by InitializeGPU/UpdateGPUGraphData,
     /// consumed when shared_context becomes available)
     pending_graph_data: Option<Arc<crate::models::graph::GraphData>>,
+
+    /// Cache of last-known raw GPU positions keyed by metadata_id.
+    /// Used to preserve node positions across graph reloads even when node count changes.
+    /// Populated during GPU readback, consumed during UpdateGPUGraphData merge.
+    cached_positions_by_key: std::collections::HashMap<String, [f32; 3]>,
 
     /// Back-channel to PhysicsOrchestratorActor for the sequential pipeline.
     /// When set, a PhysicsStepCompleted message is sent after each ComputeForces
@@ -212,8 +215,10 @@ impl ForceComputeActor {
             position_velocity_buffer: Vec::with_capacity(10000),
             node_id_buffer: Vec::with_capacity(10000),
             gpu_index_to_node_id: Vec::new(),
+            gpu_index_to_metadata_id: Vec::new(),
             node_population: Vec::new(),
             pending_graph_data: None,
+            cached_positions_by_key: std::collections::HashMap::new(),
             physics_orchestrator_addr: None,
             gpu_self_init_attempts: 0,
             gpu_self_init_max_retries: 3,
@@ -464,6 +469,7 @@ impl ForceComputeActor {
         // Build CSR representation, GPU-index-to-node-ID mapping, and population classification
         let mut node_indices = std::collections::HashMap::new();
         self.gpu_index_to_node_id = Vec::with_capacity(num_nodes);
+        self.gpu_index_to_metadata_id = Vec::with_capacity(num_nodes);
         self.node_population = Vec::with_capacity(num_nodes);
         let mut pop_counts = [0usize; 3]; // [knowledge, ontology, agent]
         for (i, node) in graph_data.nodes.iter().enumerate() {
@@ -472,37 +478,20 @@ impl ForceComputeActor {
             // This keeps IDs within 26 bits so binary protocol type flags
             // in bits 26-31 don't collide with real node IDs.
             self.gpu_index_to_node_id.push(i as u32);
+            self.gpu_index_to_metadata_id.push(node.metadata_id.clone());
 
-            // Classify node into graph population for dual-graph X-axis separation.
-            // node_type may be None when nodes are constructed programmatically
-            // (not from JSON deserialization). Fall back to metadata["type"].
-            let effective_type = node.node_type.as_deref()
-                .or_else(|| node.metadata.get("type").map(|v| v.as_str()));
-            let pop = match effective_type {
-                Some("agent") | Some("bot") => {
-                    pop_counts[2] += 1;
-                    GraphPopulation::Agent
-                }
-                Some("owl_class") | Some("ontology_node") | Some("owl_individual") | Some("owl_property") => {
-                    pop_counts[1] += 1;
-                    GraphPopulation::Ontology
-                }
-                // "page" is the canonical Neo4j node_type for Logseq/knowledge graph nodes.
-                // Classify explicitly before the owl_class_iri fallback so pages with an IRI
-                // field still land in the knowledge population, not ontology.
-                Some("page") | Some("block") | Some("knowledge_node") => {
-                    pop_counts[0] += 1;
-                    GraphPopulation::Knowledge
-                }
-                _ => {
-                    // Default: nodes without explicit type are knowledge nodes
-                    // (from markdown batch processing where node_type isn't set).
-                    // Ontology nodes always have node_type = "ontology_node" from
-                    // the enrichment service.
-                    pop_counts[0] += 1;
-                    GraphPopulation::Knowledge
-                }
-            };
+            // ADR-036: Canonical classification via graph_types::classify_node_population
+            let eff_type = effective_node_type(node.node_type.as_deref(), Some(&node.metadata));
+            if i == 0 {
+                info!("ForceComputeActor: Node[0] classification: node_type={:?}, metadata.type={:?}, effective={:?}",
+                    node.node_type, node.metadata.get("type"), eff_type);
+            }
+            let pop = classify_node_population(eff_type);
+            match pop {
+                NodePopulation::Knowledge => pop_counts[0] += 1,
+                NodePopulation::Ontology => pop_counts[1] += 1,
+                NodePopulation::Agent => pop_counts[2] += 1,
+            }
             self.node_population.push(pop);
         }
         info!("ForceComputeActor: GPU index→wire_id mapping: 0..{} ({} entries, compact IDs)",
@@ -514,6 +503,28 @@ impl ForceComputeActor {
         let mut positions_x: Vec<f32> = graph_data.nodes.iter().map(|n| n.data.x).collect();
         let mut positions_y: Vec<f32> = graph_data.nodes.iter().map(|n| n.data.y).collect();
         let mut positions_z: Vec<f32> = graph_data.nodes.iter().map(|n| n.data.z).collect();
+
+        // KEY-BASED position preservation: restore cached positions by metadata_id.
+        // This survives node count changes (adds/removes) unlike the index-based GPU merge below.
+        if !self.cached_positions_by_key.is_empty() {
+            let mut cache_preserved = 0usize;
+            for (i, node) in graph_data.nodes.iter().enumerate() {
+                if let Some(cached) = self.cached_positions_by_key.get(&node.metadata_id) {
+                    let neo_mag = positions_x[i]*positions_x[i] + positions_y[i]*positions_y[i] + positions_z[i]*positions_z[i];
+                    // Only use cache if Neo4j position is zero/near-zero (stale)
+                    if neo_mag < 1.0 || (cached[0]*cached[0] + cached[1]*cached[1] + cached[2]*cached[2]) > neo_mag {
+                        positions_x[i] = cached[0];
+                        positions_y[i] = cached[1];
+                        positions_z[i] = cached[2];
+                        cache_preserved += 1;
+                    }
+                }
+            }
+            if cache_preserved > 0 {
+                info!("ForceComputeActor: Restored {}/{} positions from metadata_id cache (cross-reload preservation)",
+                      cache_preserved, num_nodes);
+            }
+        }
 
         // MERGE with existing GPU positions: if the GPU already has non-zero positions
         // from a previous upload + physics simulation, prefer those over Neo4j zeros.
@@ -1448,9 +1459,13 @@ impl Handler<ComputeForces> for ForceComputeActor {
                                     let position = Vec3::new(pos_x[i], pos_y[i], pos_z[i]);
                                     let velocity = Vec3::new(vel_x[i], vel_y[i], vel_z[i]);
                                     actor.position_velocity_buffer.push((position, velocity));
-                                    // Use actual graph node IDs, not buffer indices
                                     let node_id = actor.gpu_index_to_node_id.get(i).copied().unwrap_or(i as u32);
                                     actor.node_id_buffer.push(node_id);
+
+                                    // Cache raw GPU positions by metadata_id for cross-reload preservation
+                                    if let Some(mid) = actor.gpu_index_to_metadata_id.get(i) {
+                                        actor.cached_positions_by_key.insert(mid.clone(), [pos_x[i], pos_y[i], pos_z[i]]);
+                                    }
                                 }
 
                                 // Apply asymmetric dual-graph X-axis separation, weighted by
@@ -1459,10 +1474,10 @@ impl Handler<ComputeForces> for ForceComputeActor {
                                 let half = actor.simulation_params.graph_separation_x * 0.5;
                                 if half.abs() > 0.001 && !actor.node_population.is_empty() {
                                     let n_knowledge = actor.node_population.iter()
-                                        .filter(|p| matches!(p, GraphPopulation::Knowledge))
+                                        .filter(|p| matches!(p, NodePopulation::Knowledge))
                                         .count();
                                     let n_ontology = actor.node_population.iter()
-                                        .filter(|p| matches!(p, GraphPopulation::Ontology))
+                                        .filter(|p| matches!(p, NodePopulation::Ontology))
                                         .count();
                                     let total = (n_knowledge + n_ontology).max(1) as f32;
                                     let onto_ratio = (n_ontology as f32 / total).sqrt();
@@ -1473,9 +1488,9 @@ impl Handler<ComputeForces> for ForceComputeActor {
                                     let know_offset = half * (know_ratio / sum_ratio) * 2.0;
                                     for (i, (pos, _vel)) in actor.position_velocity_buffer.iter_mut().enumerate() {
                                         match actor.node_population.get(i) {
-                                            Some(GraphPopulation::Knowledge) => pos.x -= know_offset,
-                                            Some(GraphPopulation::Ontology) => pos.x += onto_offset,
-                                            Some(GraphPopulation::Agent) | None => {} // agents bridge at center
+                                            Some(NodePopulation::Knowledge) => pos.x -= know_offset,
+                                            Some(NodePopulation::Ontology) => pos.x += onto_offset,
+                                            Some(NodePopulation::Agent) | None => {} // agents bridge at center
                                         }
                                     }
                                 }

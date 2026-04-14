@@ -12,6 +12,7 @@ use std::sync::Arc;
 // GraphService direct import is no longer needed as we use actors
 // use crate::services::graph_service::GraphService;
 use crate::actors::messages::{AddNodesFromMetadata, GetSettings};
+use crate::models::graph_types::{classify_node_population, NodePopulation};
 use crate::application::graph::queries::{
     GetAutoBalanceNotifications, GetGraphData, GetNodeMap, GetPhysicsState,
 };
@@ -154,22 +155,21 @@ pub async fn get_graph_data(
                 })
                 .collect();
 
-            // Filter nodes by graph_type if specified
+            // ADR-036: Filter nodes using canonical classify_node_population
             let filtered_nodes: Vec<NodeWithPosition> = nodes_with_positions
                 .into_iter()
                 .filter(|node| {
                     match query.graph_type.as_deref() {
                         Some("knowledge") => {
-                            let nt = node.node_type.as_deref().unwrap_or("");
-                            nt == "page" || nt == "linked_page" || nt.is_empty()
+                            classify_node_population(node.node_type.as_deref()) == NodePopulation::Knowledge
                         }
                         Some("ontology") => {
-                            let nt = node.node_type.as_deref().unwrap_or("");
-                            nt.starts_with("owl_") || nt == "ontology_node" || node.metadata.contains_key("owl_class_iri")
+                            classify_node_population(node.node_type.as_deref()) == NodePopulation::Ontology
+                                || node.metadata.contains_key("owl_class_iri")
                         }
                         Some("agent") => {
-                            let nt = node.node_type.as_deref().unwrap_or("");
-                            nt == "agent" || nt == "bot" || node.metadata.contains_key("agentType")
+                            classify_node_population(node.node_type.as_deref()) == NodePopulation::Agent
+                                || node.metadata.contains_key("agentType")
                         }
                         _ => true, // No filter, return all
                     }

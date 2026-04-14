@@ -499,6 +499,16 @@ pub(crate) fn handle_subscribe_position_updates(
         ctx.text(msg_str);
     }
 
+    // ADR-038: Poll-based position updates are being phased out in favor of push path
+    // (ForceComputeActor → GraphServiceSupervisor → PhysicsOrchestratorActor →
+    // ClientCoordinatorActor → WebSocket). Disable via DISABLE_POLL_POSITIONS=1.
+    //
+    // NOTE: When the poll path is disabled, the following imports become dead code
+    // but are intentionally retained for easy re-enablement:
+    //   - delta_encoding::encode_node_data_delta_with_analytics (only called from
+    //     the subscription timer below)
+    //   - fetch_nodes() (called from subscription timer; also used by snapshots)
+    if std::env::var("DISABLE_POLL_POSITIONS").unwrap_or_default() != "1" {
     ctx.run_later(update_interval, move |_act, ctx| {
         let fut = fetch_nodes(app_state.clone(), settings_addr.clone());
         let fut = actix::fut::wrap_future::<_, SocketFlowServer>(fut);
@@ -635,6 +645,9 @@ pub(crate) fn handle_subscribe_position_updates(
             }
         }));
     });
+    } else {
+        info!("Poll-based position updates disabled (DISABLE_POLL_POSITIONS=1). Using push path only.");
+    }
 }
 
 pub(crate) fn handle_request_swarm_telemetry(

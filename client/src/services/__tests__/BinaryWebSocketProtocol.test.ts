@@ -1,7 +1,7 @@
 /**
  * BinaryWebSocketProtocol Tests
  *
- * Tests V2 protocol (u32 IDs) - V1 backward compatibility removed.
+ * Tests V3 protocol (u32 IDs, analytics extension) - V1/V2 removed from SUPPORTED_PROTOCOLS.
  * See: src/utils/binary_protocol.rs for Rust implementation.
  */
 
@@ -9,6 +9,10 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import {
   BinaryWebSocketProtocol,
   PROTOCOL_V2,
+  PROTOCOL_V3,
+  PROTOCOL_V4,
+  PROTOCOL_VERSION,
+  SUPPORTED_PROTOCOLS,
   MESSAGE_HEADER_SIZE,
   AGENT_POSITION_SIZE_V2,
   AGENT_STATE_SIZE_V2,
@@ -30,7 +34,7 @@ function createVersionedPayload(version: number, dataSize: number): { buffer: Ar
   return { buffer, dataView: view, dataOffset: 1 };
 }
 
-describe('BinaryWebSocketProtocol - V2 Protocol', () => {
+describe('BinaryWebSocketProtocol - V3 Protocol', () => {
   let protocol: BinaryWebSocketProtocol;
 
   beforeEach(() => {
@@ -38,7 +42,7 @@ describe('BinaryWebSocketProtocol - V2 Protocol', () => {
   });
 
   describe('Position Updates (u32 IDs)', () => {
-    it('should encode V2 format with large IDs', () => {
+    it('should encode V3 format with large IDs', () => {
       protocol.setUserInteracting(true);
 
       const updates: AgentPositionUpdate[] = [
@@ -57,8 +61,8 @@ describe('BinaryWebSocketProtocol - V2 Protocol', () => {
       expect(encoded!.byteLength).toBe(MESSAGE_HEADER_SIZE + AGENT_POSITION_SIZE_V2);
     });
 
-    it('should decode V2 format with large IDs', () => {
-      const { buffer, dataView, dataOffset } = createVersionedPayload(PROTOCOL_V2, AGENT_POSITION_SIZE_V2);
+    it('should decode V3 format with large IDs', () => {
+      const { buffer, dataView, dataOffset } = createVersionedPayload(PROTOCOL_V3, AGENT_POSITION_SIZE_V2);
 
       dataView.setUint32(dataOffset + 0, 50000, true);
       dataView.setFloat32(dataOffset + 4, 1.0, true);
@@ -78,7 +82,7 @@ describe('BinaryWebSocketProtocol - V2 Protocol', () => {
       const largeIds = [16384, 20000, 50000, 100000, 1000000];
 
       for (const nodeId of largeIds) {
-        const { buffer, dataView, dataOffset } = createVersionedPayload(PROTOCOL_V2, AGENT_POSITION_SIZE_V2);
+        const { buffer, dataView, dataOffset } = createVersionedPayload(PROTOCOL_V3, AGENT_POSITION_SIZE_V2);
 
         dataView.setUint32(dataOffset + 0, nodeId, true);
         dataView.setFloat32(dataOffset + 4, 1.0, true);
@@ -94,9 +98,9 @@ describe('BinaryWebSocketProtocol - V2 Protocol', () => {
       }
     });
 
-    it('should decode multiple V2 updates correctly', () => {
+    it('should decode multiple V3 updates correctly', () => {
       const nodeIds = [100, 20000, 50000];
-      const { buffer, dataView, dataOffset } = createVersionedPayload(PROTOCOL_V2, AGENT_POSITION_SIZE_V2 * nodeIds.length);
+      const { buffer, dataView, dataOffset } = createVersionedPayload(PROTOCOL_V3, AGENT_POSITION_SIZE_V2 * nodeIds.length);
 
       nodeIds.forEach((nodeId, i) => {
         const offset = dataOffset + i * AGENT_POSITION_SIZE_V2;
@@ -118,7 +122,7 @@ describe('BinaryWebSocketProtocol - V2 Protocol', () => {
 
     it('should support maximum 30-bit node ID', () => {
       const maxId = 0x3FFFFFFF;
-      const { buffer, dataView, dataOffset } = createVersionedPayload(PROTOCOL_V2, AGENT_POSITION_SIZE_V2);
+      const { buffer, dataView, dataOffset } = createVersionedPayload(PROTOCOL_V3, AGENT_POSITION_SIZE_V2);
 
       dataView.setUint32(dataOffset + 0, maxId, true);
       dataView.setFloat32(dataOffset + 4, 1.0, true);
@@ -135,7 +139,7 @@ describe('BinaryWebSocketProtocol - V2 Protocol', () => {
   });
 
   describe('Agent State Data', () => {
-    it('should encode V2 agent state with large IDs', () => {
+    it('should encode V3 agent state with large IDs', () => {
       const agents: AgentStateData[] = [
         {
           agentId: 50000,
@@ -156,8 +160,8 @@ describe('BinaryWebSocketProtocol - V2 Protocol', () => {
       expect(encoded.byteLength).toBe(MESSAGE_HEADER_SIZE + AGENT_STATE_SIZE_V2);
     });
 
-    it('should decode V2 agent state with large IDs', () => {
-      const { buffer, dataView, dataOffset } = createVersionedPayload(PROTOCOL_V2, AGENT_STATE_SIZE_V2);
+    it('should decode V3 agent state with large IDs', () => {
+      const { buffer, dataView, dataOffset } = createVersionedPayload(PROTOCOL_V3, AGENT_STATE_SIZE_V2);
 
       dataView.setUint32(dataOffset + 0, 100000, true);
       dataView.setFloat32(dataOffset + 4, 1.0, true);
@@ -185,7 +189,7 @@ describe('BinaryWebSocketProtocol - V2 Protocol', () => {
   describe('No ID Collision Tests', () => {
     it('should have no collisions for different large IDs', () => {
       const nodeIds = [16384, 20000, 50000, 100000, 500000];
-      const { buffer, dataView, dataOffset } = createVersionedPayload(PROTOCOL_V2, AGENT_POSITION_SIZE_V2 * nodeIds.length);
+      const { buffer, dataView, dataOffset } = createVersionedPayload(PROTOCOL_V3, AGENT_POSITION_SIZE_V2 * nodeIds.length);
 
       nodeIds.forEach((nodeId, i) => {
         const offset = dataOffset + i * AGENT_POSITION_SIZE_V2;
@@ -214,7 +218,7 @@ describe('BinaryWebSocketProtocol - V2 Protocol', () => {
       const id1 = 100;
       const id2 = 16384 + 100; // Would truncate to same value in u16
 
-      const { buffer, dataView, dataOffset } = createVersionedPayload(PROTOCOL_V2, AGENT_POSITION_SIZE_V2 * 2);
+      const { buffer, dataView, dataOffset } = createVersionedPayload(PROTOCOL_V3, AGENT_POSITION_SIZE_V2 * 2);
 
       dataView.setUint32(dataOffset + 0, id1, true);
       dataView.setFloat32(dataOffset + 4, 1.0, true);
@@ -268,8 +272,46 @@ describe('BinaryWebSocketProtocol - V2 Protocol', () => {
     });
   });
 
+  describe('Protocol Version Constants', () => {
+    it('PROTOCOL_VERSION equals PROTOCOL_V3', () => {
+      expect(PROTOCOL_VERSION).toBe(3);
+      expect(PROTOCOL_VERSION).toBe(PROTOCOL_V3);
+    });
+
+    it('SUPPORTED_PROTOCOLS does not include V2', () => {
+      expect(SUPPORTED_PROTOCOLS).toEqual([PROTOCOL_V3, PROTOCOL_V4]);
+      expect(SUPPORTED_PROTOCOLS).not.toContain(PROTOCOL_V2);
+    });
+
+    it('V2 payload is rejected', () => {
+      // Build a valid-shaped message with V2 version in the header
+      const payloadSize = AGENT_POSITION_SIZE_V2;
+      const totalSize = MESSAGE_HEADER_SIZE + payloadSize;
+      const buffer = new ArrayBuffer(totalSize);
+      const view = new DataView(buffer);
+
+      // Write message header with V2 version
+      view.setUint8(0, 0x10); // MessageType.POSITION_UPDATE
+      view.setUint8(1, PROTOCOL_V2); // Version = 2 (unsupported)
+      view.setUint32(2, payloadSize, true); // payload length
+
+      // Fill payload with a valid position update
+      const payloadOffset = MESSAGE_HEADER_SIZE;
+      view.setUint32(payloadOffset + 0, 1, true);
+      view.setFloat32(payloadOffset + 4, 1.0, true);
+      view.setFloat32(payloadOffset + 8, 2.0, true);
+      view.setFloat32(payloadOffset + 12, 3.0, true);
+      view.setUint32(payloadOffset + 16, 0, true);
+      view.setUint8(payloadOffset + 20, 0);
+
+      // validateMessage should reject V2
+      const isValid = protocol.validateMessage(buffer);
+      expect(isValid).toBe(false);
+    });
+  });
+
   describe('Performance and Bandwidth', () => {
-    it('should calculate correct V2 bandwidth', () => {
+    it('should calculate correct V3 bandwidth', () => {
       const agentCount = 100;
       const updateRateHz = 60;
 

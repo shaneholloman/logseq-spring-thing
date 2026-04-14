@@ -3,7 +3,7 @@ import { debugState } from '../../../utils/clientDebugState';
 import { unifiedApiClient } from '../../../services/api/UnifiedApiClient';
 import { WebSocketAdapter } from '../../../store/websocketStore';
 import { useSettingsStore } from '../../../store/settingsStore';
-import { BinaryNodeData, parseBinaryNodeData, createBinaryNodeData, Vec3, BINARY_NODE_SIZE, PROTOCOL_V4 } from '../../../types/binaryProtocol';
+import { BinaryNodeData, parseBinaryNodeData, createBinaryNodeData, Vec3, BINARY_NODE_SIZE, PROTOCOL_V3 } from '../../../types/binaryProtocol';
 import { binaryProtocol } from '../../../services/BinaryWebSocketProtocol';
 import { stringToU32 } from '../../../types/idMapping';
 import { graphWorkerProxy } from './graphWorkerProxy';
@@ -612,9 +612,10 @@ class GraphDataManager {
       if (debugState.isDataDebugEnabled()) {
         logger.debug(`Received binary data: ${positionData.byteLength} bytes`);
 
-        // Skip size validation for V4 delta frames (variable-length format)
+        // V3 is the expected server format (48 bytes/node). Skip size validation
+        // for non-V3 frames (V4 delta encoding, V5, etc.) which have variable-length formats.
         const protoVersion = positionData.byteLength >= 1 ? new DataView(positionData).getUint8(0) : 0;
-        if (protoVersion !== PROTOCOL_V4) {
+        if (protoVersion === PROTOCOL_V3) {
           const remainder = (positionData.byteLength - 1) % BINARY_NODE_SIZE; // -1 for version byte
           if (remainder !== 0) {
             logger.warn(`Binary data size (${positionData.byteLength} bytes) is not a multiple of ${BINARY_NODE_SIZE}. Remainder: ${remainder} bytes`);

@@ -74,9 +74,14 @@ struct SimParams {
     float scaling_ratio;        // FA2 repulsion: repulsion ∝ scaling_ratio * (deg_i+1) * (deg_j+1) / d
     unsigned int adaptive_speed; // 1 = per-node adaptive speed (FA2 convergence), 0 = global dt
     float global_speed;         // Base speed for adaptive integration
+
+    // X-axis suppression: 0.0 = full 3D, 1.0 = fully planar (YZ planes)
+    // Squashes X so each graph population becomes a flat plane.
+    // Combined with graph_separation_x, gives two parallel YZ planes.
+    float z_damping;            // Misnamed legacy — actually dampens X axis
 };
 
-static_assert(sizeof(SimParams) == 172, "SimParams size mismatch with Rust");
+static_assert(sizeof(SimParams) == 176, "SimParams size mismatch with Rust");
 
 // Global constant memory for simulation parameters
 __constant__ SimParams c_params;
@@ -731,6 +736,24 @@ __global__ void integrate_pass_kernel(
         vel.y = fmaf(force.y, dt_over_mass, vel.y) * effective_damping;
         vel.z = fmaf(force.z, dt_over_mass, vel.z) * effective_damping;
         vel = vec3_clamp(vel, c_params.max_velocity);
+    }
+
+    // X-axis suppression: squash layout into YZ plane(s).
+    // z_damping=0.0 → full 3D, z_damping=1.0 → fully planar (X zeroed).
+    // Combined with graph_separation_x (applied post-GPU in Rust), this gives
+    // two parallel YZ planes: knowledge on the left, ontology on the right.
+    if (c_params.z_damping > 0.0f) {
+        float x_factor = 1.0f - c_params.z_damping;
+        vel.x *= x_factor;
+        // Pull X position toward zero (spring to YZ plane) — gentle per-frame decay
+        pos.x *= (1.0f - c_params.z_damping * 0.1f);
+    } else if (fabsf(pos.x) < 1.0f && c_params.iteration > 10) {
+        // Symmetry breaker: when flattening is off but nodes are compressed near X=0,
+        // inject a tiny deterministic perturbation so repulsion can spread them in X.
+        // Uses node index as seed for deterministic jitter (no rand in CUDA kernel).
+        unsigned int hash = (unsigned int)idx * 2654435761u;  // Knuth multiplicative hash
+        float jitter = ((float)(hash & 0xFFFF) / 65535.0f - 0.5f) * 2.0f;  // [-1, 1]
+        vel.x += jitter * 0.5f;  // small kick
     }
 
     // Position update using FMA

@@ -143,6 +143,10 @@ pub struct SimParams {
     pub adaptive_speed: u32,
     /// Base speed for adaptive integration (scales per-node swing/traction)
     pub global_speed: f32,
+
+    /// Z-axis suppression: 0.0 = full 3D, 1.0 = fully planar (2D on XY plane).
+    /// Dampens Z velocity and gently pulls Z positions toward zero.
+    pub z_damping: f32,
 }
 
 // SAFETY: SimParams is repr(C) with only POD types, safe for GPU transfer
@@ -189,7 +193,6 @@ pub struct SimulationParams {
     pub repel_k: f32,  
 
     
-    pub mass_scale: f32,       
     pub damping: f32,          
     pub boundary_damping: f32, 
 
@@ -205,9 +208,6 @@ pub struct SimulationParams {
     pub center_gravity_k: f32,  
 
     
-    pub stress_weight: f32,
-    pub stress_alpha: f32,
-    pub boundary_limit: f32,
     pub alignment_strength: f32,
     pub cluster_strength: f32,
     pub compute_mode: i32,
@@ -268,6 +268,11 @@ pub struct SimulationParams {
     /// Defaults to true.
     #[serde(default = "default_adaptive_speed")]
     pub adaptive_speed: bool,
+
+    /// Z-axis suppression: 0.0 = full 3D, 1.0 = fully planar (2D on XY plane).
+    /// Dampens Z velocity and gently pulls Z positions toward zero.
+    #[serde(default)]
+    pub z_damping: f32,
 }
 
 impl Default for SimulationParams {
@@ -341,7 +346,6 @@ impl SimulationParams {
             ("damping", self.damping),
             ("spring_k", self.spring_k),
             ("repel_k", self.repel_k),
-            ("mass_scale", self.mass_scale),
             ("max_velocity", self.max_velocity),
             ("max_force", self.max_force),
             ("temperature", self.temperature),
@@ -356,9 +360,6 @@ impl SimulationParams {
             ("gravity", self.gravity),
             ("repulsion_softening_epsilon", self.repulsion_softening_epsilon),
             ("grid_cell_size", self.grid_cell_size),
-            ("stress_weight", self.stress_weight),
-            ("stress_alpha", self.stress_alpha),
-            ("boundary_limit", self.boundary_limit),
             ("min_distance", self.min_distance),
             ("max_repulsion_dist", self.max_repulsion_dist),
             ("boundary_margin", self.boundary_margin),
@@ -479,6 +480,7 @@ impl SimulationParams {
             scaling_ratio: self.scaling_ratio,
             adaptive_speed: if self.adaptive_speed { 1 } else { 0 },
             global_speed: self.dt * 10.0, // sensible default: dt-relative base speed
+            z_damping: self.z_damping,
         }
     }
 }
@@ -515,7 +517,6 @@ impl SimParams {
             iterations: 100,
             dt: self.dt,
             repel_k: self.repel_k,
-            mass_scale: 1.0,
             damping: self.damping,
             boundary_damping: 0.9,
             viewport_bounds: self.viewport_bounds,
@@ -526,9 +527,6 @@ impl SimParams {
             separation_radius: self.separation_radius,
             center_gravity_k: self.center_gravity_k, 
             temperature: self.temperature,
-            stress_weight: 1.0,
-            stress_alpha: 0.1,
-            boundary_limit: 1000.0,
             alignment_strength: self.alignment_strength,
             cluster_strength: self.cluster_strength,
             compute_mode: 0,
@@ -554,6 +552,7 @@ impl SimParams {
             lin_log_mode: self.lin_log_mode != 0,
             scaling_ratio: self.scaling_ratio,
             adaptive_speed: self.adaptive_speed != 0,
+            z_damping: 0.0,
         }
     }
 }
@@ -566,7 +565,7 @@ impl From<&SimulationParams> for SimParams {
 }
 
 // Compile-time size assertion: SimParams must match the CUDA struct exactly.
-const _: () = assert!(std::mem::size_of::<SimParams>() == 172);
+const _: () = assert!(std::mem::size_of::<SimParams>() == 176);
 
 // Conversion from SimParams to SimulationParams
 impl From<&SimParams> for SimulationParams {
@@ -642,6 +641,7 @@ impl From<&PhysicsSettings> for SimParams {
             scaling_ratio: physics.scaling_ratio,
             adaptive_speed: if physics.adaptive_speed { 1 } else { 0 },
             global_speed: physics.dt * 10.0,
+            z_damping: physics.z_damping,
         }
     }
 }
@@ -661,7 +661,6 @@ impl From<&PhysicsSettings> for SimulationParams {
             dt: physics.dt,
             spring_k: physics.spring_k,
             repel_k: physics.repel_k,
-            mass_scale: physics.mass_scale,
             damping: physics.damping,
             boundary_damping: physics.boundary_damping,
             viewport_bounds: physics.bounds_size,
@@ -672,9 +671,6 @@ impl From<&PhysicsSettings> for SimulationParams {
             temperature: physics.temperature,
             center_gravity_k: physics.center_gravity_k,
             
-            stress_weight: physics.stress_weight,
-            stress_alpha: physics.stress_alpha,
-            boundary_limit: physics.boundary_limit,
             alignment_strength: physics.alignment_strength,
             cluster_strength: physics.cluster_strength,
             compute_mode: physics.compute_mode,
@@ -700,6 +696,7 @@ impl From<&PhysicsSettings> for SimulationParams {
             lin_log_mode: physics.lin_log_mode,
             scaling_ratio: physics.scaling_ratio,
             adaptive_speed: physics.adaptive_speed,
+            z_damping: physics.z_damping,
         }
     }
 }

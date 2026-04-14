@@ -82,7 +82,7 @@ vi.mock('../../../../types/binaryProtocol', () => ({
   parseBinaryNodeData: vi.fn(() => []),
   createBinaryNodeData: vi.fn(() => new ArrayBuffer(0)),
   BINARY_NODE_SIZE: 28,
-  PROTOCOL_V4: 4,
+  PROTOCOL_V3: 3,
 }));
 
 vi.mock('../../../../services/BinaryWebSocketProtocol', () => ({

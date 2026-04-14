@@ -30,7 +30,6 @@ const NODE_ID_MASK: u32 = 0x03FFFFFF;
 // V2+ uses full u32 IDs with no truncation
 
 // V2 wire flag constants removed — identical to AGENT_NODE_FLAG / KNOWLEDGE_NODE_FLAG / NODE_ID_MASK
-// (WIRE_V2_AGENT_FLAG was 0x80000000, WIRE_V2_KNOWLEDGE_FLAG was 0x40000000, WIRE_V2_NODE_ID_MASK was 0x03FFFFFF)
 
 // WireNodeDataItemV1 REMOVED - V1 protocol no longer supported
 // WireNodeDataItemV2 REMOVED - V2 protocol no longer supported (was 36 bytes per node)
@@ -86,20 +85,16 @@ const DELTA_RESYNC_INTERVAL: u64 = 60; // Full state every 60 frames
 const MAX_PAYLOAD_SIZE: usize = 10 * 1024 * 1024; // 10 MB
 const MAX_NODE_COUNT: usize = 100_000;
 
-// Constants for wire format sizes (V1 removed)
-const WIRE_V2_ID_SIZE: usize = 4;
+// Constants for wire format sizes
 const WIRE_VEC3_SIZE: usize = 12;
 const WIRE_F32_SIZE: usize = 4;
 const WIRE_I32_SIZE: usize = 4;
 const WIRE_U32_SIZE: usize = 4;
-// V2 decode no longer supported but size constant retained for delta_encoding savings calculations
-const WIRE_V2_ITEM_SIZE: usize = WIRE_V2_ID_SIZE + WIRE_VEC3_SIZE + WIRE_VEC3_SIZE + WIRE_F32_SIZE + WIRE_I32_SIZE; // 4+12+12+4+4 = 36
+const WIRE_ID_SIZE: usize = 4;
+// V3: id(4) + pos(12) + vel(12) + sssp_dist(4) + sssp_parent(4) + cluster_id(4) + anomaly_score(4) + community_id(4) = 48
 const WIRE_V3_ITEM_SIZE: usize =
-    WIRE_V2_ID_SIZE + WIRE_VEC3_SIZE + WIRE_VEC3_SIZE + WIRE_F32_SIZE + WIRE_I32_SIZE +
-    WIRE_U32_SIZE + WIRE_F32_SIZE + WIRE_U32_SIZE; // id + pos + vel + sssp_dist + sssp_parent + cluster_id + anomaly_score + community_id
-
-// Backwards compatibility alias - now defaults to V3
-const WIRE_ID_SIZE: usize = WIRE_V2_ID_SIZE;
+    WIRE_ID_SIZE + WIRE_VEC3_SIZE + WIRE_VEC3_SIZE + WIRE_F32_SIZE + WIRE_I32_SIZE +
+    WIRE_U32_SIZE + WIRE_F32_SIZE + WIRE_U32_SIZE;
 const WIRE_ITEM_SIZE: usize = WIRE_V3_ITEM_SIZE;
 
 // Binary format (explicit):
@@ -292,21 +287,6 @@ impl BinaryNodeData {
     }
 }
 
-pub fn needs_v2_protocol(nodes: &[(u32, BinaryNodeData)]) -> bool {
-    nodes.iter().any(|(node_id, _)| {
-        let actual_id = get_actual_node_id(*node_id);
-        actual_id > 0x3FFF 
-    })
-}
-
-pub fn encode_node_data_with_types(
-    nodes: &[(u32, BinaryNodeData)],
-    agent_node_ids: &[u32],
-    knowledge_node_ids: &[u32],
-) -> Vec<u8> {
-    encode_node_data_extended(nodes, agent_node_ids, knowledge_node_ids, &[], &[], &[])
-}
-
 pub fn encode_node_data_extended(
     nodes: &[(u32, BinaryNodeData)],
     agent_node_ids: &[u32],
@@ -443,128 +423,6 @@ pub fn encode_node_data_extended_with_sssp(
         );
     }
     buffer
-}
-
-pub fn encode_node_data_with_flags(
-    nodes: &[(u32, BinaryNodeData)],
-    agent_node_ids: &[u32],
-) -> Vec<u8> {
-    encode_node_data_with_types(nodes, agent_node_ids, &[])
-}
-
-/// Encode node data with analytics (Protocol V3 - P0-4)
-/// Extends V2 with cluster_id, anomaly_score, and community_id
-pub fn encode_node_data_with_analytics(
-    nodes: &[(u32, BinaryNodeData)],
-    agent_node_ids: &[u32],
-    knowledge_node_ids: &[u32],
-    ontology_class_ids: &[u32],
-    ontology_individual_ids: &[u32],
-    ontology_property_ids: &[u32],
-    analytics: &HashMap<u32, (u32, f32, u32)>, // (cluster_id, anomaly_score, community_id)
-) -> Vec<u8> {
-    encode_node_data_with_all(
-        nodes,
-        agent_node_ids,
-        knowledge_node_ids,
-        ontology_class_ids,
-        ontology_individual_ids,
-        ontology_property_ids,
-        None,
-        analytics,
-    )
-}
-
-/// Encode node data with both SSSP and analytics data (Protocol V3).
-/// `sssp_data` maps node_id -> (distance, parent_id).
-/// `analytics` maps node_id -> (cluster_id, anomaly_score, community_id).
-pub fn encode_node_data_with_all(
-    nodes: &[(u32, BinaryNodeData)],
-    agent_node_ids: &[u32],
-    knowledge_node_ids: &[u32],
-    ontology_class_ids: &[u32],
-    ontology_individual_ids: &[u32],
-    ontology_property_ids: &[u32],
-    sssp_data: Option<&HashMap<u32, (f32, i32)>>,
-    analytics: &HashMap<u32, (u32, f32, u32)>,
-) -> Vec<u8> {
-    let protocol_version = PROTOCOL_V3;
-    let item_size = WIRE_V3_ITEM_SIZE;
-
-    if !nodes.is_empty() {
-        trace!(
-            "Encoding {} nodes with analytics using protocol v{} (item_size={})",
-            nodes.len(),
-            protocol_version,
-            item_size
-        );
-    }
-
-    let mut buffer = Vec::with_capacity(1 + nodes.len() * item_size);
-    buffer.push(protocol_version);
-
-    for (node_id, node) in nodes {
-        // Apply node type flags
-        let flagged_id = if agent_node_ids.contains(node_id) {
-            set_agent_flag(*node_id)
-        } else if knowledge_node_ids.contains(node_id) {
-            set_knowledge_flag(*node_id)
-        } else if ontology_class_ids.contains(node_id) {
-            set_ontology_class_flag(*node_id)
-        } else if ontology_individual_ids.contains(node_id) {
-            set_ontology_individual_flag(*node_id)
-        } else if ontology_property_ids.contains(node_id) {
-            set_ontology_property_flag(*node_id)
-        } else {
-            *node_id
-        };
-
-        let wire_id = to_wire_id_v2(flagged_id);
-        buffer.extend_from_slice(&wire_id.to_le_bytes());
-
-        // Position (12 bytes)
-        buffer.extend_from_slice(&node.x.to_le_bytes());
-        buffer.extend_from_slice(&node.y.to_le_bytes());
-        buffer.extend_from_slice(&node.z.to_le_bytes());
-
-        // Velocity (12 bytes)
-        buffer.extend_from_slice(&node.vx.to_le_bytes());
-        buffer.extend_from_slice(&node.vy.to_le_bytes());
-        buffer.extend_from_slice(&node.vz.to_le_bytes());
-
-        // SSSP data (8 bytes) - read from sssp_data if available
-        let (sssp_distance, sssp_parent) = sssp_data
-            .and_then(|m| m.get(node_id))
-            .copied()
-            .unwrap_or((f32::INFINITY, -1));
-        buffer.extend_from_slice(&sssp_distance.to_le_bytes());
-        buffer.extend_from_slice(&sssp_parent.to_le_bytes());
-
-        // Analytics data (12 bytes) - V3 extension
-        let (cluster_id, anomaly_score, community_id) = analytics
-            .get(node_id)
-            .copied()
-            .unwrap_or((0, 0.0, 0)); // Default values if no analytics
-
-        buffer.extend_from_slice(&cluster_id.to_le_bytes());
-        buffer.extend_from_slice(&anomaly_score.to_le_bytes());
-        buffer.extend_from_slice(&community_id.to_le_bytes());
-    }
-
-    if !nodes.is_empty() {
-        trace!(
-            "Encoded binary data with analytics (v{}): {} bytes for {} nodes",
-            protocol_version,
-            buffer.len(),
-            nodes.len()
-        );
-    }
-
-    buffer
-}
-
-pub fn encode_node_data(nodes: &[(u32, BinaryNodeData)]) -> Vec<u8> {
-    encode_node_data_with_types(nodes, &[], &[])
 }
 
 /// Encode node data with analytics from a shared store.
@@ -790,9 +648,6 @@ mod tests {
 
     #[test]
     fn test_wire_format_size() {
-        // V1 REMOVED - was 34 bytes, caused node ID truncation
-        // V2: 4 + 12 + 12 + 4 + 4 = 36 bytes
-        assert_eq!(WIRE_V2_ITEM_SIZE, 36);
         // V3: 4 + 12 + 12 + 4 + 4 + 4 + 4 + 4 = 48 bytes (CURRENT)
         assert_eq!(WIRE_V3_ITEM_SIZE, 48);
         assert_eq!(WIRE_ITEM_SIZE, WIRE_V3_ITEM_SIZE); // Default is now V3
@@ -832,7 +687,7 @@ mod tests {
             ),
         ];
 
-        let encoded = encode_node_data(&nodes);
+        let encoded = encode_node_data_extended(&nodes, &[], &[], &[], &[], &[]);
 
         // V3 is now the default: 1 header byte + nodes * 48 bytes
         assert_eq!(encoded.len(), 1 + nodes.len() * WIRE_V3_ITEM_SIZE);
@@ -849,7 +704,7 @@ mod tests {
 
     #[test]
     fn test_decode_invalid_data() {
-        
+
         // V2 protocol should be rejected
         let mut data = vec![2u8]; // V2 version byte
         data.extend_from_slice(&[0u8; 37]);
@@ -882,7 +737,7 @@ mod tests {
         // V3: 1 header + 48 bytes per node
         assert_eq!(size, 1 + 48);
 
-        let encoded = encode_node_data(&nodes);
+        let encoded = encode_node_data_extended(&nodes, &[], &[], &[], &[], &[]);
         assert_eq!(encoded.len(), size);
     }
 
@@ -968,7 +823,7 @@ mod tests {
 
         // Mark node 2 as agent
         let agent_ids = vec![2u32];
-        let encoded = encode_node_data_with_flags(&nodes, &agent_ids);
+        let encoded = encode_node_data_extended(&nodes, &agent_ids, &[], &[], &[], &[]);
 
         // V3 format: 1 header + nodes * 48 bytes
         assert_eq!(encoded.len(), 1 + nodes.len() * WIRE_V3_ITEM_SIZE);
@@ -1014,10 +869,7 @@ mod tests {
             ),
         ];
 
-        
-        assert!(needs_v2_protocol(&large_nodes));
-
-        let encoded = encode_node_data(&large_nodes);
+        let encoded = encode_node_data_extended(&large_nodes, &[], &[], &[], &[], &[]);
 
         // V3 is now the default protocol
         assert_eq!(encoded[0], PROTOCOL_V3);
@@ -1171,6 +1023,499 @@ mod tests {
         let result = decode_node_data(&v1_encoded);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("no longer supported"));
+    }
+
+    // ========================================================================
+    // Regression tests: post-refactor validation of canonical encoding surface
+    // Validates that the 3 remaining encode functions (encode_node_data_extended,
+    // encode_node_data_extended_with_sssp, encode_node_data_with_live_analytics)
+    // produce correct V3 frames after removal of 6 wrapper functions.
+    // ========================================================================
+
+    #[test]
+    fn test_encode_extended_no_type_arrays() {
+        // GIVEN: Two nodes with no type array membership (empty agent/knowledge/ontology arrays)
+        let nodes = vec![
+            (
+                10u32,
+                BinaryNodeData {
+                    node_id: 10,
+                    x: 1.0,
+                    y: 2.0,
+                    z: 3.0,
+                    vx: 0.1,
+                    vy: 0.2,
+                    vz: 0.3,
+                },
+            ),
+            (
+                20u32,
+                BinaryNodeData {
+                    node_id: 20,
+                    x: 4.0,
+                    y: 5.0,
+                    z: 6.0,
+                    vx: 0.4,
+                    vy: 0.5,
+                    vz: 0.6,
+                },
+            ),
+        ];
+
+        // WHEN: Encoding with empty type arrays via encode_node_data_extended
+        let encoded = encode_node_data_extended(&nodes, &[], &[], &[], &[], &[]);
+
+        // THEN: Output is a valid V3 frame
+        assert_eq!(encoded[0], PROTOCOL_V3, "Version header must be V3 (3)");
+        assert_eq!(
+            encoded.len(),
+            1 + nodes.len() * WIRE_V3_ITEM_SIZE,
+            "Frame size must be 1 header + N*48"
+        );
+
+        // THEN: Wire IDs have NO type flags set (bits 26-31 all zero)
+        for i in 0..nodes.len() {
+            let offset = 1 + i * WIRE_V3_ITEM_SIZE;
+            let wire_id = u32::from_le_bytes([
+                encoded[offset],
+                encoded[offset + 1],
+                encoded[offset + 2],
+                encoded[offset + 3],
+            ]);
+            assert_eq!(
+                wire_id & !NODE_ID_MASK,
+                0,
+                "Node at index {} should have no type flags set, but wire_id=0x{:08X}",
+                i,
+                wire_id
+            );
+            assert_eq!(
+                wire_id & NODE_ID_MASK,
+                nodes[i].0,
+                "Node ID must be preserved without flags"
+            );
+        }
+
+        // THEN: Roundtrip decode succeeds with correct IDs and positions
+        let decoded = decode_node_data(&encoded).unwrap();
+        assert_eq!(decoded.len(), 2);
+        assert_eq!(decoded[0].0, 10);
+        assert_eq!(decoded[1].0, 20);
+        assert_eq!(decoded[0].1.position(), nodes[0].1.position());
+        assert_eq!(decoded[1].1.velocity(), nodes[1].1.velocity());
+    }
+
+    #[test]
+    fn test_encode_with_live_analytics_empty_type_arrays() {
+        // GIVEN: Nodes with analytics data (simulating the position_updates.rs hot path)
+        let nodes = vec![
+            (
+                5u32,
+                BinaryNodeData {
+                    node_id: 5,
+                    x: 10.0,
+                    y: 20.0,
+                    z: 30.0,
+                    vx: 1.0,
+                    vy: 2.0,
+                    vz: 3.0,
+                },
+            ),
+            (
+                15u32,
+                BinaryNodeData {
+                    node_id: 15,
+                    x: 40.0,
+                    y: 50.0,
+                    z: 60.0,
+                    vx: 4.0,
+                    vy: 5.0,
+                    vz: 6.0,
+                },
+            ),
+        ];
+        let mut analytics = HashMap::new();
+        analytics.insert(5u32, (7u32, 0.85f32, 3u32));   // cluster=7, anomaly=0.85, community=3
+        analytics.insert(15u32, (12u32, 0.10f32, 8u32));  // cluster=12, anomaly=0.10, community=8
+
+        // WHEN: Encoding via the live analytics convenience wrapper
+        let encoded = encode_node_data_with_live_analytics(&nodes, Some(&analytics));
+
+        // THEN: Output is valid V3 frame with correct size
+        assert_eq!(encoded[0], PROTOCOL_V3);
+        assert_eq!(encoded.len(), 1 + 2 * WIRE_V3_ITEM_SIZE);
+
+        // THEN: All type arrays are empty, so wire IDs have no flags
+        let wire_id_0 = u32::from_le_bytes([encoded[1], encoded[2], encoded[3], encoded[4]]);
+        assert_eq!(wire_id_0, 5, "First node wire ID should be raw 5 (no flags)");
+
+        let wire_id_1 = u32::from_le_bytes([
+            encoded[1 + WIRE_V3_ITEM_SIZE],
+            encoded[2 + WIRE_V3_ITEM_SIZE],
+            encoded[3 + WIRE_V3_ITEM_SIZE],
+            encoded[4 + WIRE_V3_ITEM_SIZE],
+        ]);
+        assert_eq!(wire_id_1, 15, "Second node wire ID should be raw 15 (no flags)");
+
+        // THEN: Analytics data is embedded in the wire bytes at the correct offsets
+        // V3 layout per node: id(4) + pos(12) + vel(12) + sssp_dist(4) + sssp_parent(4) + cluster(4) + anomaly(4) + community(4)
+        // Analytics starts at byte 36 within each node's 48-byte block
+        let analytics_offset_0 = 1 + 36; // first node: header(1) + 36 bytes into node block
+        let cluster_0 = u32::from_le_bytes([
+            encoded[analytics_offset_0],
+            encoded[analytics_offset_0 + 1],
+            encoded[analytics_offset_0 + 2],
+            encoded[analytics_offset_0 + 3],
+        ]);
+        let anomaly_0 = f32::from_le_bytes([
+            encoded[analytics_offset_0 + 4],
+            encoded[analytics_offset_0 + 5],
+            encoded[analytics_offset_0 + 6],
+            encoded[analytics_offset_0 + 7],
+        ]);
+        let community_0 = u32::from_le_bytes([
+            encoded[analytics_offset_0 + 8],
+            encoded[analytics_offset_0 + 9],
+            encoded[analytics_offset_0 + 10],
+            encoded[analytics_offset_0 + 11],
+        ]);
+        assert_eq!(cluster_0, 7, "Node 5 cluster_id must be 7");
+        assert!((anomaly_0 - 0.85).abs() < f32::EPSILON, "Node 5 anomaly_score must be 0.85");
+        assert_eq!(community_0, 3, "Node 5 community_id must be 3");
+
+        // THEN: Roundtrip decode recovers positions (analytics is discarded by basic decode)
+        let decoded = decode_node_data(&encoded).unwrap();
+        assert_eq!(decoded.len(), 2);
+        assert_eq!(decoded[0].0, 5);
+        assert_eq!(decoded[1].0, 15);
+        assert_eq!(decoded[0].1.x, 10.0);
+        assert_eq!(decoded[1].1.y, 50.0);
+    }
+
+    #[test]
+    fn test_encode_extended_with_sssp_full() {
+        // GIVEN: Nodes with ALL parameters populated
+        let nodes = vec![
+            (
+                1u32,
+                BinaryNodeData {
+                    node_id: 1,
+                    x: 100.0,
+                    y: 200.0,
+                    z: 300.0,
+                    vx: 10.0,
+                    vy: 20.0,
+                    vz: 30.0,
+                },
+            ),
+            (
+                2u32,
+                BinaryNodeData {
+                    node_id: 2,
+                    x: 400.0,
+                    y: 500.0,
+                    z: 600.0,
+                    vx: 40.0,
+                    vy: 50.0,
+                    vz: 60.0,
+                },
+            ),
+            (
+                3u32,
+                BinaryNodeData {
+                    node_id: 3,
+                    x: 700.0,
+                    y: 800.0,
+                    z: 900.0,
+                    vx: 70.0,
+                    vy: 80.0,
+                    vz: 90.0,
+                },
+            ),
+        ];
+
+        let agent_ids = vec![1u32];
+        let knowledge_ids = vec![2u32];
+        let ontology_class_ids = vec![3u32];
+        let ontology_individual_ids: Vec<u32> = vec![];
+        let ontology_property_ids: Vec<u32> = vec![];
+
+        let mut sssp = HashMap::new();
+        sssp.insert(1u32, (1.5f32, 0i32));    // distance=1.5, parent=root(0)
+        sssp.insert(2u32, (3.7f32, 1i32));    // distance=3.7, parent=node 1
+        sssp.insert(3u32, (5.2f32, 2i32));    // distance=5.2, parent=node 2
+
+        let mut analytics = HashMap::new();
+        analytics.insert(1u32, (0u32, 0.1f32, 10u32));   // cluster=0, anomaly=0.1, community=10
+        analytics.insert(2u32, (1u32, 0.95f32, 20u32));  // cluster=1, anomaly=0.95, community=20
+        analytics.insert(3u32, (2u32, 0.5f32, 30u32));   // cluster=2, anomaly=0.5, community=30
+
+        // WHEN: Encoding with ALL parameters via canonical encoder
+        let encoded = encode_node_data_extended_with_sssp(
+            &nodes,
+            &agent_ids,
+            &knowledge_ids,
+            &ontology_class_ids,
+            &ontology_individual_ids,
+            &ontology_property_ids,
+            Some(&sssp),
+            Some(&analytics),
+        );
+
+        // THEN: Valid V3 frame
+        assert_eq!(encoded[0], PROTOCOL_V3);
+        assert_eq!(encoded.len(), 1 + 3 * WIRE_V3_ITEM_SIZE);
+
+        // THEN: Node 1 has agent flag
+        let wire_id_0 = u32::from_le_bytes([encoded[1], encoded[2], encoded[3], encoded[4]]);
+        assert!(
+            is_agent_node(wire_id_0),
+            "Node 1 must have agent flag set, wire_id=0x{:08X}",
+            wire_id_0
+        );
+        assert_eq!(get_actual_node_id(wire_id_0), 1);
+
+        // THEN: Node 2 has knowledge flag
+        let node2_offset = 1 + WIRE_V3_ITEM_SIZE;
+        let wire_id_1 = u32::from_le_bytes([
+            encoded[node2_offset],
+            encoded[node2_offset + 1],
+            encoded[node2_offset + 2],
+            encoded[node2_offset + 3],
+        ]);
+        assert!(
+            is_knowledge_node(wire_id_1),
+            "Node 2 must have knowledge flag set, wire_id=0x{:08X}",
+            wire_id_1
+        );
+        assert_eq!(get_actual_node_id(wire_id_1), 2);
+
+        // THEN: Node 3 has ontology class flag
+        let node3_offset = 1 + 2 * WIRE_V3_ITEM_SIZE;
+        let wire_id_2 = u32::from_le_bytes([
+            encoded[node3_offset],
+            encoded[node3_offset + 1],
+            encoded[node3_offset + 2],
+            encoded[node3_offset + 3],
+        ]);
+        assert!(
+            is_ontology_class(wire_id_2),
+            "Node 3 must have ontology class flag, wire_id=0x{:08X}",
+            wire_id_2
+        );
+        assert_eq!(get_actual_node_id(wire_id_2), 3);
+
+        // THEN: SSSP data is correctly embedded for node 1
+        // SSSP starts at offset 28 within each node block (id=4 + pos=12 + vel=12 = 28)
+        let sssp_offset_0 = 1 + 28;
+        let sssp_dist_0 = f32::from_le_bytes([
+            encoded[sssp_offset_0],
+            encoded[sssp_offset_0 + 1],
+            encoded[sssp_offset_0 + 2],
+            encoded[sssp_offset_0 + 3],
+        ]);
+        let sssp_parent_0 = i32::from_le_bytes([
+            encoded[sssp_offset_0 + 4],
+            encoded[sssp_offset_0 + 5],
+            encoded[sssp_offset_0 + 6],
+            encoded[sssp_offset_0 + 7],
+        ]);
+        assert!((sssp_dist_0 - 1.5).abs() < f32::EPSILON, "Node 1 SSSP distance must be 1.5");
+        assert_eq!(sssp_parent_0, 0, "Node 1 SSSP parent must be 0 (root)");
+
+        // THEN: Analytics data is correctly embedded for node 2
+        let analytics_offset_1 = 1 + WIRE_V3_ITEM_SIZE + 36;
+        let cluster_1 = u32::from_le_bytes([
+            encoded[analytics_offset_1],
+            encoded[analytics_offset_1 + 1],
+            encoded[analytics_offset_1 + 2],
+            encoded[analytics_offset_1 + 3],
+        ]);
+        let anomaly_1 = f32::from_le_bytes([
+            encoded[analytics_offset_1 + 4],
+            encoded[analytics_offset_1 + 5],
+            encoded[analytics_offset_1 + 6],
+            encoded[analytics_offset_1 + 7],
+        ]);
+        let community_1 = u32::from_le_bytes([
+            encoded[analytics_offset_1 + 8],
+            encoded[analytics_offset_1 + 9],
+            encoded[analytics_offset_1 + 10],
+            encoded[analytics_offset_1 + 11],
+        ]);
+        assert_eq!(cluster_1, 1, "Node 2 cluster_id must be 1");
+        assert!((anomaly_1 - 0.95).abs() < f32::EPSILON, "Node 2 anomaly_score must be 0.95");
+        assert_eq!(community_1, 20, "Node 2 community_id must be 20");
+
+        // THEN: Roundtrip decode recovers correct positions
+        let decoded = decode_node_data(&encoded).unwrap();
+        assert_eq!(decoded.len(), 3);
+        for ((_orig_id, orig_data), (dec_id, dec_data)) in nodes.iter().zip(decoded.iter()) {
+            assert_eq!(*dec_id, get_actual_node_id(dec_data.node_id));
+            assert_eq!(orig_data.position(), dec_data.position());
+            assert_eq!(orig_data.velocity(), dec_data.velocity());
+        }
+    }
+
+    #[test]
+    fn test_v3_frame_always_48_bytes_per_node() {
+        // GIVEN: Various node counts from 0 to 5
+        let make_node = |id: u32| -> (u32, BinaryNodeData) {
+            (
+                id,
+                BinaryNodeData {
+                    node_id: id,
+                    x: id as f32,
+                    y: id as f32 * 2.0,
+                    z: id as f32 * 3.0,
+                    vx: 0.0,
+                    vy: 0.0,
+                    vz: 0.0,
+                },
+            )
+        };
+
+        for count in 0..=5 {
+            let nodes: Vec<_> = (1..=count).map(|i| make_node(i as u32)).collect();
+            let expected_size = 1 + nodes.len() * 48;
+
+            // WHEN/THEN: encode_node_data_extended produces 1 + N*48 bytes
+            let enc1 = encode_node_data_extended(&nodes, &[], &[], &[], &[], &[]);
+            assert_eq!(
+                enc1.len(),
+                expected_size,
+                "encode_node_data_extended with {} nodes: expected {} bytes, got {}",
+                count,
+                expected_size,
+                enc1.len()
+            );
+            if !enc1.is_empty() {
+                assert_eq!(enc1[0], PROTOCOL_V3, "Version byte must be 3");
+            }
+
+            // WHEN/THEN: encode_node_data_extended_with_sssp produces 1 + N*48 bytes
+            let enc2 = encode_node_data_extended_with_sssp(
+                &nodes, &[], &[], &[], &[], &[], None, None,
+            );
+            assert_eq!(
+                enc2.len(),
+                expected_size,
+                "encode_node_data_extended_with_sssp with {} nodes: expected {} bytes, got {}",
+                count,
+                expected_size,
+                enc2.len()
+            );
+
+            // WHEN/THEN: encode_node_data_with_live_analytics produces 1 + N*48 bytes
+            let enc3 = encode_node_data_with_live_analytics(&nodes, None);
+            assert_eq!(
+                enc3.len(),
+                expected_size,
+                "encode_node_data_with_live_analytics with {} nodes: expected {} bytes, got {}",
+                count,
+                expected_size,
+                enc3.len()
+            );
+
+            // WHEN/THEN: All three functions produce byte-identical output for same input
+            assert_eq!(enc1, enc2, "extended and extended_with_sssp(None,None) must be identical for {} nodes", count);
+            assert_eq!(enc1, enc3, "extended and with_live_analytics(None) must be identical for {} nodes", count);
+        }
+    }
+
+    #[test]
+    fn test_type_flags_preserved_through_encode_decode() {
+        // GIVEN: Five nodes, each assigned a different type flag
+        let nodes = vec![
+            (
+                1u32,
+                BinaryNodeData { node_id: 1, x: 1.0, y: 0.0, z: 0.0, vx: 0.0, vy: 0.0, vz: 0.0 },
+            ),
+            (
+                2u32,
+                BinaryNodeData { node_id: 2, x: 2.0, y: 0.0, z: 0.0, vx: 0.0, vy: 0.0, vz: 0.0 },
+            ),
+            (
+                3u32,
+                BinaryNodeData { node_id: 3, x: 3.0, y: 0.0, z: 0.0, vx: 0.0, vy: 0.0, vz: 0.0 },
+            ),
+            (
+                4u32,
+                BinaryNodeData { node_id: 4, x: 4.0, y: 0.0, z: 0.0, vx: 0.0, vy: 0.0, vz: 0.0 },
+            ),
+            (
+                5u32,
+                BinaryNodeData { node_id: 5, x: 5.0, y: 0.0, z: 0.0, vx: 0.0, vy: 0.0, vz: 0.0 },
+            ),
+        ];
+
+        let agent_ids = vec![1u32];
+        let knowledge_ids = vec![2u32];
+        let class_ids = vec![3u32];
+        let individual_ids = vec![4u32];
+        let property_ids = vec![5u32];
+
+        // WHEN: Encoding with all type arrays populated
+        let encoded = encode_node_data_extended(
+            &nodes,
+            &agent_ids,
+            &knowledge_ids,
+            &class_ids,
+            &individual_ids,
+            &property_ids,
+        );
+
+        // THEN: Verify each node's wire ID has the correct flag in the raw bytes
+        let expected_flags: Vec<(u32, &str, Box<dyn Fn(u32) -> bool>)> = vec![
+            (1, "Agent", Box::new(|id| is_agent_node(id))),
+            (2, "Knowledge", Box::new(|id| is_knowledge_node(id))),
+            (3, "OntologyClass", Box::new(|id| is_ontology_class(id))),
+            (4, "OntologyIndividual", Box::new(|id| is_ontology_individual(id))),
+            (5, "OntologyProperty", Box::new(|id| is_ontology_property(id))),
+        ];
+
+        for (i, (expected_id, flag_name, check_fn)) in expected_flags.iter().enumerate() {
+            let offset = 1 + i * WIRE_V3_ITEM_SIZE;
+            let wire_id = u32::from_le_bytes([
+                encoded[offset],
+                encoded[offset + 1],
+                encoded[offset + 2],
+                encoded[offset + 3],
+            ]);
+
+            // Flag is present in wire format
+            assert!(
+                check_fn(wire_id),
+                "Node {} (index {}) must have {} flag in wire format, wire_id=0x{:08X}",
+                expected_id, i, flag_name, wire_id
+            );
+
+            // Actual node ID is recoverable after masking
+            assert_eq!(
+                get_actual_node_id(wire_id),
+                *expected_id,
+                "Node {} actual ID must survive flag encoding",
+                expected_id
+            );
+        }
+
+        // THEN: Decode recovers the correct actual node IDs (flags stripped)
+        let decoded = decode_node_data(&encoded).unwrap();
+        assert_eq!(decoded.len(), 5);
+        for (i, (dec_id, dec_data)) in decoded.iter().enumerate() {
+            let expected_id = (i + 1) as u32;
+            assert_eq!(
+                *dec_id, expected_id,
+                "Decoded node at index {} must have ID {}",
+                i, expected_id
+            );
+            assert_eq!(
+                dec_data.x,
+                expected_id as f32,
+                "Decoded node {} must have correct x position",
+                expected_id
+            );
+        }
     }
 }
 
@@ -1575,7 +1920,7 @@ impl MultiplexedMessage {
     pub fn positions(node_data: &[(u32, BinaryNodeData)]) -> Self {
         Self {
             msg_type: MessageType::BinaryPositions,
-            data: encode_node_data(node_data),
+            data: encode_node_data_extended_with_sssp(node_data, &[], &[], &[], &[], &[], None, None),
         }
     }
 

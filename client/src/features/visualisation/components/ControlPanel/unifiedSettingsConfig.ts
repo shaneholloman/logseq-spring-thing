@@ -197,6 +197,10 @@ export const UNIFIED_SETTINGS_CONFIG: Record<string, SectionConfig> = {
       { key: 'layoutMode', label: 'Layout Mode', type: 'select', options: ['force-directed', 'dag-topdown', 'dag-radial', 'dag-leftright', 'type-clustering'], path: 'qualityGates.layoutMode', description: 'Graph layout algorithm — force-directed uses spring/repulsion, DAG modes add hierarchical layout, type-clustering groups by node type' },
       { key: 'layoutAlgorithm', label: 'Layout Algorithm', type: 'select', options: ['forceDirected', 'hierarchical', 'radial', 'spectral', 'temporal', 'clustered'], path: 'visualisation.graphs.logseq.physics.layoutAlgorithm', description: 'Graph layout algorithm — ForceDirected reveals communities, Hierarchical shows taxonomy' },
 
+      // --- Graph Topology Controls ---
+      { key: 'graphSeparationX', label: 'Dual Graph Separation', type: 'slider', min: 0, max: 2000, step: 10, path: 'visualisation.graphs.logseq.physics.graphSeparationX', description: 'X-axis distance between knowledge and ontology graph planes — 0 = merged, higher = further apart' },
+      { key: 'zDamping', label: 'Flatten to Planes', type: 'slider', min: 0, max: 1, step: 0.05, path: 'visualisation.graphs.logseq.physics.zDamping', description: 'Squash X-axis — 0 = full 3D, 1 = flat YZ planes. Use with Dual Graph Separation for two parallel plane views' },
+
       // --- Ontology Forces (moved from Quality) ---
       { key: 'ontologyPhysics', label: 'Ontology Forces', type: 'toggle', path: 'qualityGates.ontologyPhysics', description: 'Enable OWL ontology-derived constraint forces in the physics simulation' },
       { key: 'ontologyStrength', label: 'Ontology Strength', type: 'slider', min: 0, max: 1, step: 0.05, path: 'qualityGates.ontologyStrength', description: 'Global strength of ontology constraint forces (lower = gentler, higher = stricter)', isAdvanced: true },

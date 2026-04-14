@@ -336,7 +336,13 @@ impl Neo4jAdapter {
         let owl_class_iri: Option<String> = neo4j_node.get("owl_class_iri").ok();
         let color: Option<String> = neo4j_node.get("color").ok();
         let size: Option<f64> = neo4j_node.get("size").ok();
-        let node_type: Option<String> = neo4j_node.get("node_type").ok();
+        let raw_node_type: Result<String, _> = neo4j_node.get("node_type");
+        let node_type: Option<String> = raw_node_type.ok()
+            .filter(|s: &String| !s.is_empty());  // Treat empty string as None
+        // Log first few nodes for debugging type propagation
+        if id <= 3 {
+            log::info!("Neo4jAdapter::neo4j_node_to_node: id={} node_type={:?}", id, node_type);
+        }
         let weight: Option<f64> = neo4j_node.get("weight").ok();
         let group_name: Option<String> = neo4j_node.get("group_name").ok();
 
@@ -488,27 +494,105 @@ impl Neo4jAdapter {
 impl KnowledgeGraphRepository for Neo4jAdapter {
     #[instrument(skip(self), level = "debug")]
     async fn load_graph(&self) -> RepoResult<Arc<GraphData>> {
-        // Try loading GraphNode nodes first (traditional pipeline)
-        let nodes_query = Query::new("MATCH (n:GraphNode) RETURN n ORDER BY n.id".to_string());
+        // Flat-column projection (same approach as neo4j_graph_repository).
+        // DO NOT use `RETURN n` — Bolt node property extraction silently
+        // fails for some nodes, causing the whole load to abort or return 0.
+        let nodes_query = Query::new(
+            "MATCH (n:GraphNode)
+             RETURN n.id AS id,
+                    n.metadata_id AS metadata_id,
+                    n.label AS label,
+                    COALESCE(n.sim_x, n.x) AS x,
+                    COALESCE(n.sim_y, n.y) AS y,
+                    COALESCE(n.sim_z, n.z) AS z,
+                    n.vx AS vx, n.vy AS vy, n.vz AS vz,
+                    n.mass AS mass, n.size AS size,
+                    n.color AS color, n.weight AS weight,
+                    n.node_type AS node_type,
+                    n.owl_class_iri AS owl_class_iri,
+                    n.group_name AS group_name,
+                    n.metadata AS metadata_json,
+                    n.quality_score AS quality_score,
+                    n.authority_score AS authority_score
+             ORDER BY id".to_string()
+        );
 
         let mut nodes = Vec::new();
         let mut result = self.graph.execute(nodes_query).await.map_err(|e| {
-            KnowledgeGraphRepositoryError::DatabaseError(format!("Failed to load nodes: {}", e))
+            KnowledgeGraphRepositoryError::DatabaseError(format!("Failed to load GraphNode nodes: {}", e))
         })?;
 
+        let mut skipped = 0u32;
         while let Ok(Some(row)) = result.next().await {
-            if let Ok(neo4j_node) = row.get::<Neo4jNode>("n") {
-                nodes.push(Self::neo4j_node_to_node(&neo4j_node)?);
+            let id: i64 = match row.get("id") {
+                Ok(v) => v,
+                Err(e) => {
+                    if skipped < 3 { log::warn!("Skipping GraphNode row (missing id): {}", e); }
+                    skipped += 1;
+                    continue;
+                }
+            };
+            let metadata_id: String = row.get("metadata_id").unwrap_or_default();
+            let label: String = row.get("label").unwrap_or_default();
+            let x: f64 = row.get("x").unwrap_or(0.0);
+            let y: f64 = row.get("y").unwrap_or(0.0);
+            let z: f64 = row.get("z").unwrap_or(0.0);
+            let vx: f64 = row.get("vx").unwrap_or(0.0);
+            let vy: f64 = row.get("vy").unwrap_or(0.0);
+            let vz: f64 = row.get("vz").unwrap_or(0.0);
+            let mass: f64 = row.get("mass").unwrap_or(1.0);
+            let size: Option<f64> = row.get("size").ok();
+            let color: Option<String> = row.get("color").ok();
+            let weight: Option<f64> = row.get("weight").ok();
+            // Normalize empty strings to None for correct classification
+            let node_type: Option<String> = row.get::<String>("node_type").ok()
+                .filter(|s| !s.trim().is_empty());
+            let owl_class_iri: Option<String> = row.get("owl_class_iri").ok();
+            let group_name: Option<String> = row.get("group_name").ok();
+            let metadata_json: String = row.get("metadata_json").unwrap_or_else(|_| "{}".to_string());
+            let mut metadata: HashMap<String, String> = serde_json::from_str(&metadata_json)
+                .unwrap_or_default();
+            if let Ok(qs) = row.get::<f64>("quality_score") {
+                metadata.insert("quality_score".to_string(), qs.to_string());
             }
+            if let Ok(aus) = row.get::<f64>("authority_score") {
+                metadata.insert("authority_score".to_string(), aus.to_string());
+            }
+
+            let mut node = Node::new_with_id(metadata_id, Some(id as u32));
+            node.label = label;
+            node.data.x = x as f32; node.data.y = y as f32; node.data.z = z as f32;
+            node.data.vx = vx as f32; node.data.vy = vy as f32; node.data.vz = vz as f32;
+            node.mass = Some(mass as f32);
+            node.size = size.map(|s| s as f32);
+            node.color = color;
+            node.weight = weight.map(|w| w as f32);
+            node.node_type = node_type;
+            node.owl_class_iri = owl_class_iri;
+            node.group = group_name;
+            node.metadata = metadata;
+            nodes.push(node);
         }
 
-        debug!("Loaded {} GraphNode nodes from Neo4j", nodes.len());
+        info!("Loaded {} GraphNode nodes via flat projection (skipped {})", nodes.len(), skipped);
 
-        // If no GraphNode nodes exist, load ontology OwlClass nodes instead
-        // This bridges the ontology sync pipeline to the graph display pipeline
+        // If GraphNode load returns 0 during a transient state (e.g. mid-MERGE by
+        // file_service), return empty graph instead of falling back to OwlClass.
+        // The OwlClass fallback produces incorrect node_type values that collapse
+        // the dual-graph separation. The caller will retry via ReloadGraphFromDatabase.
         let mut iri_to_id: HashMap<String, u32> = HashMap::new();
         if nodes.is_empty() {
-            info!("No GraphNode nodes found — loading OwlClass ontology nodes for display");
+            warn!("GraphNode load returned 0 nodes — returning empty graph (NO OwlClass fallback)");
+            warn!("This is likely a transient state during file_service MERGE. Will retry on next reload.");
+            // Return empty graph instead of falling through to OwlClass
+            return Ok(Arc::new(GraphData {
+                nodes: vec![],
+                edges: vec![],
+                metadata: HashMap::new(),
+                id_to_metadata: HashMap::new(),
+            }));
+            // Dead code below: OwlClass fallback disabled to prevent type corruption
+            #[allow(unreachable_code)]
 
             let owl_query = Query::new(
                 "MATCH (c:OwlClass)
@@ -570,7 +654,8 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
                 node.owl_class_iri = Some(iri);
                 node.color = color;
                 node.size = size;
-                node.node_type = class_type.or_else(|| Some("OwlClass".to_string()));
+                // ADR-036: Normalize to snake_case for canonical classification
+                node.node_type = class_type.or_else(|| Some("owl_class".to_string()));
                 node.group = belongs_to_domain.or(Some(source_domain.clone()));
 
                 // Store ontology metadata
@@ -591,6 +676,25 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
             }
 
             info!("Loaded {} OwlClass nodes as graph nodes", nodes.len());
+        }
+
+        // Post-load population sanity check
+        {
+            use crate::models::graph_types::{classify_node_population, NodePopulation};
+            let mut k = 0u32; let mut o = 0u32; let mut a = 0u32; let mut none_count = 0u32;
+            for n in &nodes {
+                match classify_node_population(n.node_type.as_deref()) {
+                    NodePopulation::Knowledge => k += 1,
+                    NodePopulation::Ontology => o += 1,
+                    NodePopulation::Agent => a += 1,
+                }
+                if n.node_type.is_none() { none_count += 1; }
+            }
+            info!("Graph population sanity: total={}, knowledge={}, ontology={}, agent={}, node_type=None: {}",
+                  nodes.len(), k, o, a, none_count);
+            if o == 0 && nodes.len() > 100 {
+                warn!("Zero ontology nodes in {} total — node_type mapping may be broken", nodes.len());
+            }
         }
 
         // ADR-014: Always load ALL edge types — no either/or branching.

@@ -190,12 +190,8 @@ pub(crate) static FIELD_MAPPINGS: std::sync::LazyLock<std::collections::HashMap<
         field_mappings.insert("max_force", "maxForce");
         field_mappings.insert("repel_k", "repelK");
         field_mappings.insert("spring_k", "springK");
-        field_mappings.insert("mass_scale", "massScale");
         field_mappings.insert("boundary_damping", "boundaryDamping");
         field_mappings.insert("update_threshold", "updateThreshold");
-        field_mappings.insert("stress_weight", "stressWeight");
-        field_mappings.insert("stress_alpha", "stressAlpha");
-        field_mappings.insert("boundary_limit", "boundaryLimit");
         field_mappings.insert("alignment_strength", "alignmentStrength");
         field_mappings.insert("cluster_strength", "clusterStrength");
         field_mappings.insert("compute_mode", "computeMode");
@@ -216,8 +212,6 @@ pub(crate) static FIELD_MAPPINGS: std::sync::LazyLock<std::collections::HashMap<
         field_mappings.insert("max_repulsion_dist", "maxRepulsionDist");
         field_mappings.insert("boundary_margin", "boundaryMargin");
         field_mappings.insert("boundary_force_strength", "boundaryForceStrength");
-        field_mappings.insert("warmup_curve", "warmupCurve");
-        field_mappings.insert("zero_velocity_iterations", "zeroVelocityIterations");
 
 
         field_mappings.insert("host_port", "hostPort");

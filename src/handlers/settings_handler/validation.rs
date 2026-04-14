@@ -90,26 +90,6 @@ fn validate_physics_settings(physics: &Value) -> Result<(), String> {
     }
 
 
-    if let Some(boundary_limit) = physics.get("boundaryLimit") {
-        let val = boundary_limit
-            .as_f64()
-            .ok_or("boundaryLimit must be a number")?;
-        if val < 0.1 || val > 100000.0 {
-            return Err("boundaryLimit must be between 0.1 and 100000.0".to_string());
-        }
-
-
-        if let Some(bounds_size) = physics.get("boundsSize").and_then(|b| b.as_f64()) {
-            let max_boundary = bounds_size * 0.99;
-            if val > max_boundary {
-                return Err(format!(
-                    "boundaryLimit ({:.1}) must be less than 99% of boundsSize ({:.1})",
-                    val, bounds_size
-                ));
-            }
-        }
-    }
-
     Ok(())
 }
 

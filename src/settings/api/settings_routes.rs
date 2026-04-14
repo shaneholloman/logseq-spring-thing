@@ -60,7 +60,6 @@ fn normalize_physics_keys(patch: serde_json::Map<String, serde_json::Value>) -> 
             "center_gravity_k"  => "centerGravityK",
             "max_velocity"      => "maxVelocity",
             "max_force"         => "maxForce",
-            "mass_scale"        => "massScale",
             "enable_bounds"     => "enableBounds",
             "bounds_size"       => "boundsSize",
             "separation_radius" => "separationRadius",
@@ -85,6 +84,8 @@ fn normalize_physics_keys(patch: serde_json::Map<String, serde_json::Value>) -> 
             "springStiffness"   => "springK",
             "springDamping"     => "damping",
             "deltaTime"         => "dt",
+            "graph_separation_x"=> "graphSeparationX",
+            "z_damping"         => "zDamping",
             // Already camelCase — pass through
             other => other,
         };
@@ -129,13 +130,9 @@ pub fn validate_physics_settings(settings: &PhysicsSettings) -> Result<(), Strin
     check_finite(settings.bounds_size, "bounds_size", &mut errors);
     check_finite(settings.separation_radius, "separation_radius", &mut errors);
     check_finite(settings.repel_k, "repel_k", &mut errors);
-    check_finite(settings.mass_scale, "mass_scale", &mut errors);
     check_finite(settings.boundary_damping, "boundary_damping", &mut errors);
     check_finite(settings.update_threshold, "update_threshold", &mut errors);
     check_finite(settings.temperature, "temperature", &mut errors);
-    check_finite(settings.stress_weight, "stress_weight", &mut errors);
-    check_finite(settings.stress_alpha, "stress_alpha", &mut errors);
-    check_finite(settings.boundary_limit, "boundary_limit", &mut errors);
     check_finite(settings.alignment_strength, "alignment_strength", &mut errors);
     check_finite(settings.cluster_strength, "cluster_strength", &mut errors);
     check_finite(settings.rest_length, "rest_length", &mut errors);

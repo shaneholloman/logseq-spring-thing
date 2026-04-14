@@ -185,7 +185,6 @@ pub fn get_complete_field_mappings() -> HashMap<String, String> {
         "boundaryDamping".to_string(),
         "boundary_damping".to_string(),
     );
-    mappings.insert("massScale".to_string(), "mass_scale".to_string());
     mappings.insert(
         "separationRadius".to_string(),
         "separation_radius".to_string(),
@@ -194,8 +193,6 @@ pub fn get_complete_field_mappings() -> HashMap<String, String> {
         "updateThreshold".to_string(),
         "update_threshold".to_string(),
     );
-    mappings.insert("stressWeight".to_string(), "stress_weight".to_string());
-    mappings.insert("stressAlpha".to_string(), "stress_alpha".to_string());
     mappings.insert(
         "alignmentStrength".to_string(),
         "alignment_strength".to_string(),

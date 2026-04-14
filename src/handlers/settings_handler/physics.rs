@@ -59,7 +59,6 @@ pub async fn propagate_physics_to_gpu_with_layout(
     if crate::utils::logging::is_debug_enabled() {
         debug!("  - bounds_size: {:.1}", physics.bounds_size);
         debug!("  - separation_radius: {:.3}", physics.separation_radius);
-        debug!("  - mass_scale: {:.3}", physics.mass_scale);
         debug!("  - boundary_damping: {:.3}", physics.boundary_damping);
         debug!("  - update_threshold: {:.3}", physics.update_threshold);
         debug!("  - iterations: {}", physics.iterations);
@@ -74,11 +73,6 @@ pub async fn propagate_physics_to_gpu_with_layout(
             physics.boundary_force_strength
         );
         debug!("  - warmup_iterations: {}", physics.warmup_iterations);
-        debug!("  - warmup_curve: {}", physics.warmup_curve);
-        debug!(
-            "  - zero_velocity_iterations: {}",
-            physics.zero_velocity_iterations
-        );
         debug!("  - cooling_rate: {:.6}", physics.cooling_rate);
         debug!("  - clustering_algorithm: {}", physics.clustering_algorithm);
         debug!("  - cluster_count: {}", physics.cluster_count);
@@ -542,86 +536,13 @@ async fn get_cpu_fallback_analytics(
 
 pub async fn update_stress_optimization(
     _req: HttpRequest,
-    state: web::Data<AppState>,
-    payload: web::Json<Value>,
+    _state: web::Data<AppState>,
+    _payload: web::Json<Value>,
 ) -> Result<HttpResponse, Error> {
-    let update = payload.into_inner();
-
-    info!("Stress optimization update request received");
-    debug!(
-        "Stress optimization payload: {}",
-        serde_json::to_string_pretty(&update).unwrap_or_default()
-    );
-
-
-    let stress_weight = update
-        .get("stressWeight")
-        .and_then(|v| v.as_f64())
-        .unwrap_or(0.1) as f32;
-
-    let stress_alpha = update
-        .get("stressAlpha")
-        .and_then(|v| v.as_f64())
-        .unwrap_or(0.1) as f32;
-
-    if !(0.0..=1.0).contains(&stress_weight) || !(0.0..=1.0).contains(&stress_alpha) {
-        return bad_request!("stressWeight and stressAlpha must be between 0.0 and 1.0");
-    }
-
-
-    let physics_update = json!({
-        "stressWeight": stress_weight,
-        "stressAlpha": stress_alpha
-    });
-
-    let settings_update = create_physics_settings_update(physics_update);
-
-
-    let mut app_settings = match state.settings_addr.send(GetSettings).await {
-        Ok(Ok(s)) => s,
-        Ok(Err(e)) => {
-            error!("Failed to get current settings: {}", e);
-            return error_json!("Failed to get current settings");
-        }
-        Err(e) => {
-            error!("Settings actor error: {}", e);
-            return service_unavailable!("Settings service unavailable");
-        }
-    };
-
-    if let Err(e) = app_settings.merge_update(settings_update) {
-        error!("Failed to merge stress optimization settings: {}", e);
-        return error_json!("Failed to update stress optimization: {}", e);
-    }
-
-
-    match state
-        .settings_addr
-        .send(UpdateSettings {
-            settings: app_settings.clone(),
-        })
-        .await
-    {
-        Ok(Ok(())) => {
-            info!("Stress optimization updated successfully");
-
-
-            propagate_physics_to_gpu(&state, &app_settings, "logseq").await;
-            propagate_physics_to_gpu(&state, &app_settings, "visionflow").await;
-
-            ok_json!(json!({
-                "status": "Stress optimization updated successfully",
-                "stressWeight": stress_weight,
-                "stressAlpha": stress_alpha
-            }))
-        }
-        Ok(Err(e)) => {
-            error!("Failed to save stress optimization settings: {}", e);
-            error_json!("Failed to save stress optimization settings: {}", e)
-        }
-        Err(e) => {
-            error!("Settings actor error: {}", e);
-            service_unavailable!("Settings service unavailable")
-        }
-    }
+    // stressWeight / stressAlpha fields have been removed (deprecated, never wired to physics engine).
+    // Stress majorization is handled by SemanticProcessorActor on CPU, not via these settings.
+    ok_json!(json!({
+        "status": "deprecated",
+        "message": "stressWeight and stressAlpha settings have been removed; stress optimization is handled internally by SemanticProcessorActor"
+    }))
 }
