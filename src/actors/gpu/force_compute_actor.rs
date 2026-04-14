@@ -473,8 +473,12 @@ impl ForceComputeActor {
             // in bits 26-31 don't collide with real node IDs.
             self.gpu_index_to_node_id.push(i as u32);
 
-            // Classify node into graph population for dual-graph X-axis separation
-            let pop = match node.node_type.as_deref() {
+            // Classify node into graph population for dual-graph X-axis separation.
+            // node_type may be None when nodes are constructed programmatically
+            // (not from JSON deserialization). Fall back to metadata["type"].
+            let effective_type = node.node_type.as_deref()
+                .or_else(|| node.metadata.get("type").map(|v| v.as_str()));
+            let pop = match effective_type {
                 Some("agent") | Some("bot") => {
                     pop_counts[2] += 1;
                     GraphPopulation::Agent
