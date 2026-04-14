@@ -1,5 +1,6 @@
 pub mod constraints;
 pub mod edge;
+pub mod enterprise;
 pub mod graph;
 pub mod graph_export;
 pub mod graph_types;

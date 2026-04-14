@@ -16,6 +16,11 @@ pub mod knowledge_graph_repository;
 pub mod ontology_repository;
 pub mod settings_repository;
 
+// Enterprise ports
+pub mod broker_repository;
+pub mod policy_engine;
+pub mod workflow_repository;
+
 // GPU port trait definitions
 pub mod gpu_physics_adapter;
 pub mod gpu_semantic_analyzer;
@@ -30,6 +35,11 @@ pub use inference_engine::InferenceEngine;
 pub use knowledge_graph_repository::KnowledgeGraphRepository;
 pub use ontology_repository::OntologyRepository;
 pub use settings_repository::SettingsRepository;
+
+// Enterprise port exports
+pub use broker_repository::{BrokerError, BrokerRepository};
+pub use policy_engine::{PolicyEngine, PolicyError};
+pub use workflow_repository::{WorkflowError, WorkflowRepository};
 
 // GPU port trait exports (these are the TRAITS, not the implementations)
 pub use gpu_physics_adapter::{
