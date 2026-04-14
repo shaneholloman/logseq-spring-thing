@@ -544,8 +544,11 @@ pub(crate) fn handle_subscribe_position_updates(
                 if changed_count == 0 && !is_full_sync {
                     act.delta_frame_counter = (frame + 1) % 60;
                 } else {
-                    // Delta encoding: V4 for delta frames (1-59), V3 for full sync (0, 60, 120, ...)
-                    // On full sync frames, analytics data from shared store is included in V3 wire format.
+                    // FORCE V3 for all frames during active physics. V4 delta encoding
+                    // skips nodes that haven't moved, but force-directed layout moves ALL
+                    // nodes every frame. V4 was also being rejected by the client (only
+                    // V2/V3/V5 were in VALID_VERSIONS until the fix).
+                    // TODO: re-enable V4 once physics has converged and only a few nodes move.
                     let analytics = act.app_state.node_analytics.read().ok();
                     let analytics_ref = analytics.as_deref();
                     // FIX 5: Double type-flagging contract documentation.
@@ -562,10 +565,13 @@ pub(crate) fn handle_subscribe_position_updates(
                         }),
                         "BUG: fetch_nodes() applied type flags but encoder also received non-empty type arrays"
                     );
+                    // Force V3 (full sync) every frame by passing frame=0.
+                    // V4 delta encoding is counterproductive for force-directed layout
+                    // where all nodes move every frame.
                     let binary_data = delta_encoding::encode_node_data_delta_with_analytics(
                         &nodes,
                         &act.delta_previous_nodes,
-                        frame,
+                        0, // Always full sync (V3) — force frame=0
                         &[], // Empty: fetch_nodes() already flagged IDs
                         &[], // Empty: fetch_nodes() already flagged IDs
                         analytics_ref,
