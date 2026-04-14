@@ -85,6 +85,24 @@ pub async fn set_layout_mode(
         })
         .collect();
 
+    // Pause physics for non-ForceDirected layouts so the GPU engine does not
+    // immediately override the computed layout positions.
+    use crate::actors::messages::{GetPhysicsOrchestratorActor, PhysicsPauseMessage};
+    match data.graph_service_addr.send(GetPhysicsOrchestratorActor).await {
+        Ok(Ok(orch_addr)) => {
+            let pause_msg = PhysicsPauseMessage {
+                pause: true,
+                reason: format!("layout mode changed to {}", mode_str),
+            };
+            if let Err(e) = orch_addr.send(pause_msg).await {
+                log::warn!("set_layout_mode: failed to pause physics via orchestrator: {}", e);
+            }
+        }
+        _ => {
+            log::warn!("set_layout_mode: physics orchestrator unavailable — physics not paused");
+        }
+    }
+
     ok_json!(serde_json::json!({
         "success": true,
         "mode": mode_str,

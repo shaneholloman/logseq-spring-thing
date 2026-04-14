@@ -1451,16 +1451,28 @@ impl Handler<ComputeForces> for ForceComputeActor {
                                     actor.node_id_buffer.push(node_id);
                                 }
 
-                                // Apply dual-graph X-axis separation offset as ±half.
-                                // Each population shifts by half the configured separation so
-                                // the two graphs sit symmetrically around the origin rather
-                                // than both shifted to the positive side.
+                                // Apply asymmetric dual-graph X-axis separation, weighted by
+                                // sqrt(node_count) so each population gets space proportional
+                                // to its area footprint rather than a symmetric ±half split.
                                 let half = actor.simulation_params.graph_separation_x * 0.5;
                                 if half.abs() > 0.001 && !actor.node_population.is_empty() {
+                                    let n_knowledge = actor.node_population.iter()
+                                        .filter(|p| matches!(p, GraphPopulation::Knowledge))
+                                        .count();
+                                    let n_ontology = actor.node_population.iter()
+                                        .filter(|p| matches!(p, GraphPopulation::Ontology))
+                                        .count();
+                                    let total = (n_knowledge + n_ontology).max(1) as f32;
+                                    let onto_ratio = (n_ontology as f32 / total).sqrt();
+                                    let know_ratio = (n_knowledge as f32 / total).sqrt();
+                                    let sum_ratio = onto_ratio + know_ratio;
+                                    // Each population offset sums to the full separation distance.
+                                    let onto_offset = half * (onto_ratio / sum_ratio) * 2.0;
+                                    let know_offset = half * (know_ratio / sum_ratio) * 2.0;
                                     for (i, (pos, _vel)) in actor.position_velocity_buffer.iter_mut().enumerate() {
                                         match actor.node_population.get(i) {
-                                            Some(GraphPopulation::Knowledge) => pos.x -= half,
-                                            Some(GraphPopulation::Ontology) => pos.x += half,
+                                            Some(GraphPopulation::Knowledge) => pos.x -= know_offset,
+                                            Some(GraphPopulation::Ontology) => pos.x += onto_offset,
                                             Some(GraphPopulation::Agent) | None => {} // agents bridge at center
                                         }
                                     }

@@ -345,6 +345,8 @@ const GraphManager: React.FC<GraphManagerProps> = ({ onDragStateChange }) => {
   // Tracks the currently active layout mode for the HUD indicator
   const [activeLayoutMode, setActiveLayoutMode] = useState<string>('');
   const [layoutTransitioning, setLayoutTransitioning] = useState(false);
+  // Ref copy of activeLayoutMode for use inside useFrame (avoids stale closure capture)
+  const activeLayoutModeRef = useRef<string>('');
 
   // Auto-fit camera to bounding box of all nodes on first position data and on explicit request
   const { requestFit: requestCameraFit } = useCameraAutoFit(nodePositionsRef, graphData.nodes.length);
@@ -495,6 +497,7 @@ const GraphManager: React.FC<GraphManagerProps> = ({ onDragStateChange }) => {
 
     const TRANSITION_MS = 800;
     setActiveLayoutMode(layoutMode);
+    activeLayoutModeRef.current = layoutMode;
     setLayoutTransitioning(true);
 
     layoutApi.setMode(layoutMode, TRANSITION_MS).then(response => {
@@ -502,7 +505,10 @@ const GraphManager: React.FC<GraphManagerProps> = ({ onDragStateChange }) => {
       if (data.success && data.positions && data.positions.length > 0) {
         startLayoutTransition(data.positions, data.transitionMs ?? TRANSITION_MS);
       } else {
-        // API succeeded but no positions returned; clear transitioning flag
+        // API succeeded but no positions returned (forceDirected path).
+        // Null nodePositionsRef so the next useFrame tick repopulates it from the SAB,
+        // restoring physics worker ownership of positions.
+        nodePositionsRef.current = null;
         setLayoutTransitioning(false);
       }
     }).catch(err => {
@@ -602,8 +608,13 @@ const GraphManager: React.FC<GraphManagerProps> = ({ onDragStateChange }) => {
         if (rawProgress >= 1.0) {
           transitionRef.current.active = false;
           setLayoutTransitioning(false);
-          // Snap back to SAB on transition completion so the worker resumes ownership
-          nodePositionsRef.current = positions;
+          const isForceDirected = !activeLayoutModeRef.current || activeLayoutModeRef.current === 'forceDirected';
+          if (isForceDirected) {
+            // ForceDirected: hand back to SAB so the physics worker drives positions
+            nodePositionsRef.current = positions;
+          }
+          // Non-forceDirected: keep nodePositionsRef pointing at lerp (final layout positions).
+          // Physics is paused server-side, so the SAB worker is not updating positions.
         }
       }
       // === End layout mode transition ===
