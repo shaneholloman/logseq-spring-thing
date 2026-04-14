@@ -194,11 +194,16 @@ impl UnifiedGPUCompute {
         let optimal_cell_size = (scene_volume / optimal_cells).powf(1.0 / 3.0);
 
 
-        let auto_tuned_cell_size = if optimal_cell_size > 10.0 && optimal_cell_size < 1000.0 {
+        let mut auto_tuned_cell_size = if optimal_cell_size > 10.0 && optimal_cell_size < 1000.0 {
             optimal_cell_size
         } else {
             params.grid_cell_size
         };
+
+        // Fix 6: cell_size must be >= repulsion_cutoff / 3 so the 3x3x3 neighbor
+        // search covers the full repulsion radius.
+        let min_cell_size = params.repulsion_cutoff / 3.0;
+        auto_tuned_cell_size = auto_tuned_cell_size.max(min_cell_size);
 
         debug!(
             "Spatial hashing: scene_volume={:.2}, optimal_cell_size={:.2}, using_size={:.2}",
@@ -219,7 +224,30 @@ impl UnifiedGPUCompute {
             y: ((aabb.max[1] - aabb.min[1]) / auto_tuned_cell_size).ceil() as i32,
             z: ((aabb.max[2] - aabb.min[2]) / auto_tuned_cell_size).ceil() as i32,
         };
-        let num_grid_cells = (grid_dims.x * grid_dims.y * grid_dims.z) as usize;
+        let mut num_grid_cells = (grid_dims.x * grid_dims.y * grid_dims.z) as usize;
+
+        // Fix 5: if computed cell count still exceeds max (e.g. due to extreme AABB),
+        // grow cell_size until the grid fits within the allocated buffer.
+        let grid_dims = if num_grid_cells > self.max_grid_cells {
+            let mut cs = auto_tuned_cell_size;
+            let mut dims = grid_dims;
+            while num_grid_cells > self.max_grid_cells {
+                cs *= 1.25;
+                dims = int3 {
+                    x: ((aabb.max[0] - aabb.min[0]) / cs).ceil() as i32,
+                    y: ((aabb.max[1] - aabb.min[1]) / cs).ceil() as i32,
+                    z: ((aabb.max[2] - aabb.min[2]) / cs).ceil() as i32,
+                };
+                num_grid_cells = (dims.x * dims.y * dims.z) as usize;
+            }
+            debug!(
+                "Grid capped: cell_size grown from {:.2} to {:.2}, new grid {}x{}x{}={} cells",
+                auto_tuned_cell_size, cs, dims.x, dims.y, dims.z, num_grid_cells
+            );
+            dims
+        } else {
+            grid_dims
+        };
 
 
         let occupancy = self.get_grid_occupancy(num_grid_cells);
@@ -317,11 +345,12 @@ impl UnifiedGPUCompute {
 
 
 
-        // Zero cell buffers using correctly-sized slice to avoid panics during
-        // concurrent cell buffer resize (where zero_buffer may be a different size).
+        // Reset cell buffers to -1 sentinel (empty cell marker) before each physics step.
+        // Using -1 instead of 0 so the CUDA kernel can distinguish "empty cell" from
+        // "cell starting at index 0". The zero_buffer field stores -1 sentinels.
         let cell_buf_len = self.cell_start.len();
         if self.zero_buffer.len() != cell_buf_len {
-            self.zero_buffer = vec![0i32; cell_buf_len];
+            self.zero_buffer = vec![-1i32; cell_buf_len];
         }
         self.cell_start.copy_from(&self.zero_buffer[..cell_buf_len])?;
         self.cell_end.copy_from(&self.zero_buffer[..cell_buf_len])?;

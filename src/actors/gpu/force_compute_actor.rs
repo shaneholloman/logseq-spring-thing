@@ -483,6 +483,13 @@ impl ForceComputeActor {
                     pop_counts[1] += 1;
                     GraphPopulation::Ontology
                 }
+                // "page" is the canonical Neo4j node_type for Logseq/knowledge graph nodes.
+                // Classify explicitly before the owl_class_iri fallback so pages with an IRI
+                // field still land in the knowledge population, not ontology.
+                Some("page") | Some("block") | Some("knowledge_node") => {
+                    pop_counts[0] += 1;
+                    GraphPopulation::Knowledge
+                }
                 _ => {
                     // Check owl_class_iri as secondary signal for ontology
                     if node.owl_class_iri.is_some() {
@@ -1444,18 +1451,17 @@ impl Handler<ComputeForces> for ForceComputeActor {
                                     actor.node_id_buffer.push(node_id);
                                 }
 
-                                // Apply dual-graph X-axis separation offset.
-                                // Knowledge nodes shift to -X, ontology nodes shift to +X,
-                                // agent nodes stay at origin (bridging both populations).
-                                let sep_x = actor.simulation_params.graph_separation_x;
-                                if sep_x > 0.0 && !actor.node_population.is_empty() {
+                                // Apply dual-graph X-axis separation offset as ±half.
+                                // Each population shifts by half the configured separation so
+                                // the two graphs sit symmetrically around the origin rather
+                                // than both shifted to the positive side.
+                                let half = actor.simulation_params.graph_separation_x * 0.5;
+                                if half.abs() > 0.001 && !actor.node_population.is_empty() {
                                     for (i, (pos, _vel)) in actor.position_velocity_buffer.iter_mut().enumerate() {
-                                        if let Some(&pop) = actor.node_population.get(i) {
-                                            match pop {
-                                                GraphPopulation::Knowledge => pos.x -= sep_x,
-                                                GraphPopulation::Ontology => pos.x += sep_x,
-                                                GraphPopulation::Agent => {} // bridge at origin
-                                            }
+                                        match actor.node_population.get(i) {
+                                            Some(GraphPopulation::Knowledge) => pos.x -= half,
+                                            Some(GraphPopulation::Ontology) => pos.x += half,
+                                            Some(GraphPopulation::Agent) | None => {} // agents bridge at center
                                         }
                                     }
                                 }

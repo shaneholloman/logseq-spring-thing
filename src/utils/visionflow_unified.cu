@@ -309,6 +309,7 @@ __global__ void force_pass_kernel(
                         const int neighbor_cell_key = neighbor_grid_z * grid_dims.y * grid_dims.x + neighbor_grid_y * grid_dims.x + neighbor_grid_x;
                         const int start = cell_start[neighbor_cell_key];
                         const int end = cell_end[neighbor_cell_key];
+                        if (start < 0 || end <= start) continue; // skip empty cells (-1 sentinel)
 
                         for (int j = start; j < end; ++j) {
                             const int neighbor_idx = sorted_node_indices[j];
@@ -737,50 +738,34 @@ __global__ void integrate_pass_kernel(
     pos.y = fmaf(vel.y, c_params.dt, pos.y);
     pos.z = fmaf(vel.z, c_params.dt, pos.z);
 
-    // Apply enhanced boundary constraints with progressive repulsion
-    float boundary_limit = c_params.viewport_bounds;
-    if (boundary_limit > 0.0f) {
-        // Use boundary damping from settings for margin and strength
-        float boundary_margin = boundary_limit * c_params.boundary_damping;
-        float boundary_repulsion_strength = c_params.max_force * c_params.boundary_damping;
-        
-        // Check X boundary
-        if (fabsf(pos.x) > boundary_margin) {
-            float boundary_dist = fabsf(pos.x) - boundary_margin;
-            float boundary_force = boundary_repulsion_strength * (boundary_dist / (boundary_limit - boundary_margin));
-            boundary_force = fminf(boundary_force, c_params.max_force); // Cap using max_force setting
-            pos.x = pos.x > 0 ? fminf(pos.x, boundary_limit) : fmaxf(pos.x, -boundary_limit);
-            vel.x *= c_params.boundary_damping; // Apply boundary damping from settings
-            // Add reflection for strong collisions
-            if (fabsf(pos.x) >= boundary_limit) {
-                vel.x = -vel.x * c_params.boundary_damping; // Reflect with boundary damping
-            }
+    // Boundary: reflect velocity instead of hard clamping to prevent
+    // particles from sticking to walls.
+    const float limit = c_params.viewport_bounds;
+    if (limit > 0.0f) {
+        const float eps = 1e-3f;
+
+        if (pos.x > limit) {
+            pos.x = limit - eps;
+            if (vel.x > 0.0f) vel.x = -vel.x * c_params.boundary_damping;
+        } else if (pos.x < -limit) {
+            pos.x = -limit + eps;
+            if (vel.x < 0.0f) vel.x = -vel.x * c_params.boundary_damping;
         }
-        
-        // Check Y boundary
-        if (fabsf(pos.y) > boundary_margin) {
-            float boundary_dist = fabsf(pos.y) - boundary_margin;
-            float boundary_force = boundary_repulsion_strength * (boundary_dist / (boundary_limit - boundary_margin));
-            // Use max_force instead of hardcoded 15.0f
-            boundary_force = fminf(boundary_force, c_params.max_force);
-            pos.y = pos.y > 0 ? fminf(pos.y, boundary_limit) : fmaxf(pos.y, -boundary_limit);
-            vel.y *= c_params.boundary_damping;
-            if (fabsf(pos.y) >= boundary_limit) {
-                vel.y = -vel.y * c_params.boundary_damping;
-            }
+
+        if (pos.y > limit) {
+            pos.y = limit - eps;
+            if (vel.y > 0.0f) vel.y = -vel.y * c_params.boundary_damping;
+        } else if (pos.y < -limit) {
+            pos.y = -limit + eps;
+            if (vel.y < 0.0f) vel.y = -vel.y * c_params.boundary_damping;
         }
-        
-        // Check Z boundary
-        if (fabsf(pos.z) > boundary_margin) {
-            float boundary_dist = fabsf(pos.z) - boundary_margin;
-            float boundary_force = boundary_repulsion_strength * (boundary_dist / (boundary_limit - boundary_margin));
-            // Use max_force instead of hardcoded 15.0f
-            boundary_force = fminf(boundary_force, c_params.max_force);
-            pos.z = pos.z > 0 ? fminf(pos.z, boundary_limit) : fmaxf(pos.z, -boundary_limit);
-            vel.z *= c_params.boundary_damping;
-            if (fabsf(pos.z) >= boundary_limit) {
-                vel.z = -vel.z * c_params.boundary_damping;
-            }
+
+        if (pos.z > limit) {
+            pos.z = limit - eps;
+            if (vel.z > 0.0f) vel.z = -vel.z * c_params.boundary_damping;
+        } else if (pos.z < -limit) {
+            pos.z = -limit + eps;
+            if (vel.z < 0.0f) vel.z = -vel.z * c_params.boundary_damping;
         }
     }
 
@@ -1231,15 +1216,16 @@ __global__ void compute_lof_kernel(
                     neighbor_grid_y >= 0 && neighbor_grid_y < grid_dims.y &&
                     neighbor_grid_z >= 0 && neighbor_grid_z < grid_dims.z) {
                     
-                    int neighbor_cell_key = neighbor_grid_z * grid_dims.y * grid_dims.x + 
+                    int neighbor_cell_key = neighbor_grid_z * grid_dims.y * grid_dims.x +
                                           neighbor_grid_y * grid_dims.x + neighbor_grid_x;
                     int start = cell_start[neighbor_cell_key];
                     int end = cell_end[neighbor_cell_key];
-                    
+                    if (start < 0 || end <= start) continue; // skip empty cells (-1 sentinel)
+
                     for (int j = start; j < end; ++j) {
                         int neighbor_idx = sorted_node_indices[j];
                         if (idx == neighbor_idx) continue;
-                        
+
                         float3 neighbor_pos = make_vec3(pos_x[neighbor_idx], pos_y[neighbor_idx], pos_z[neighbor_idx]);
                         float3 diff = vec3_sub(my_pos, neighbor_pos);
                         float dist = vec3_length(diff);
@@ -2163,17 +2149,18 @@ __global__ void force_pass_with_stability_kernel(
                         neighbor_grid_y >= 0 && neighbor_grid_y < grid_dims.y &&
                         neighbor_grid_z >= 0 && neighbor_grid_z < grid_dims.z) {
                         
-                        int neighbor_cell_key = neighbor_grid_z * grid_dims.y * grid_dims.x + 
+                        int neighbor_cell_key = neighbor_grid_z * grid_dims.y * grid_dims.x +
                                               neighbor_grid_y * grid_dims.x + neighbor_grid_x;
                         int start = cell_start[neighbor_cell_key];
                         int end = cell_end[neighbor_cell_key];
+                        if (start < 0 || end <= start) continue; // skip empty cells (-1 sentinel)
 
                         for (int j = start; j < end; ++j) {
                             int neighbor_idx = sorted_node_indices[j];
                             if (idx == neighbor_idx) continue;
 
-                            float3 neighbor_pos = make_vec3(pos_in_x[neighbor_idx], 
-                                                          pos_in_y[neighbor_idx], 
+                            float3 neighbor_pos = make_vec3(pos_in_x[neighbor_idx],
+                                                          pos_in_y[neighbor_idx],
                                                           pos_in_z[neighbor_idx]);
                             float3 diff = vec3_sub(my_pos, neighbor_pos);
                             float dist_sq = vec3_length_sq(diff);

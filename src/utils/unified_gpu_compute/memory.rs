@@ -226,6 +226,10 @@ impl UnifiedGPUCompute {
     }
 
 
+    /// Returns a heuristic occupancy ratio in [0, 1]. It assumes 8 nodes per cell
+    /// is "optimal" and normalises against that. This is not a precise measurement —
+    /// actual occupancy varies by spatial distribution and should not be used for
+    /// correctness decisions, only for logging/tuning guidance.
     pub fn get_grid_occupancy(&self, num_grid_cells: usize) -> f32 {
         if num_grid_cells == 0 {
             return 0.0;
@@ -270,7 +274,7 @@ impl UnifiedGPUCompute {
         let preserve_data = self.max_grid_cells > 0 && self.iteration > 0;
 
         let old_cell_start_data = if preserve_data {
-            let mut data = vec![0i32; self.max_grid_cells];
+            let mut data = vec![-1i32; self.max_grid_cells];
             self.cell_start.copy_to(&mut data).unwrap_or_else(|e| {
                 warn!("Failed to preserve cell_start data: {}", e);
             });
@@ -280,7 +284,7 @@ impl UnifiedGPUCompute {
         };
 
         let old_cell_end_data = if preserve_data {
-            let mut data = vec![0i32; self.max_grid_cells];
+            let mut data = vec![-1i32; self.max_grid_cells];
             self.cell_end.copy_to(&mut data).unwrap_or_else(|e| {
                 warn!("Failed to preserve cell_end data: {}", e);
             });
@@ -290,14 +294,14 @@ impl UnifiedGPUCompute {
         };
 
 
-        self.cell_start = DeviceBuffer::zeroed(new_size).map_err(|e| {
+        self.cell_start = DeviceBuffer::from_slice(&vec![-1i32; new_size]).map_err(|e| {
             anyhow!(
                 "Failed to allocate cell_start buffer of size {}: {}",
                 new_size,
                 e
             )
         })?;
-        self.cell_end = DeviceBuffer::zeroed(new_size).map_err(|e| {
+        self.cell_end = DeviceBuffer::from_slice(&vec![-1i32; new_size]).map_err(|e| {
             anyhow!(
                 "Failed to allocate cell_end buffer of size {}: {}",
                 new_size,
@@ -311,7 +315,7 @@ impl UnifiedGPUCompute {
         // subsequent physics step will panic in execution.rs copy_from(&zero_buffer).
         let old_memory = self.total_memory_allocated;
         self.max_grid_cells = new_size;
-        self.zero_buffer = vec![0i32; new_size];
+        self.zero_buffer = vec![-1i32; new_size];
 
         if let (Some(start_data), Some(end_data)) = (old_cell_start_data, old_cell_end_data) {
             let copy_size = start_data.len().min(new_size);

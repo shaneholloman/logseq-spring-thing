@@ -335,6 +335,8 @@ const GraphManager: React.FC<GraphManagerProps> = ({ onDragStateChange }) => {
     active: boolean;
     startPositions: Float32Array;
     targetPositions: Float32Array;
+    /** Dedicated output buffer — decoupled from SAB so worker writes cannot overwrite LERP results */
+    lerpBuffer: Float32Array;
     progress: number;
     duration: number;
     startTime: number;
@@ -448,10 +450,15 @@ const GraphManager: React.FC<GraphManagerProps> = ({ onDragStateChange }) => {
       }
     }
 
+    // Allocate a dedicated output buffer so the SAB worker cannot overwrite LERP results
+    const lerpBuf = new Float32Array(needed);
+    lerpBuf.set(startSnap); // initialise to start positions so frame-0 is not garbage
+
     transitionRef.current = {
       active: true,
       startPositions: startSnap,
       targetPositions: targetSnap,
+      lerpBuffer: lerpBuf,
       progress: 0,
       duration: durationMs,
       startTime: Date.now(),
@@ -554,7 +561,13 @@ const GraphManager: React.FC<GraphManagerProps> = ({ onDragStateChange }) => {
           return;
         }
       }
-      nodePositionsRef.current = positions;
+      // During an active layout transition, do NOT overwrite nodePositionsRef from
+      // the SAB — the transition LERP owns position updates this frame. Overwriting
+      // here would discard the LERP result written last frame before the worker
+      // posts its next SAB snapshot.
+      if (!transitionRef.current?.active) {
+        nodePositionsRef.current = positions;
+      }
 
       // === Layout mode transition: mass-aware LERP from start to target positions ===
       if (transitionRef.current?.active) {
@@ -567,22 +580,30 @@ const GraphManager: React.FC<GraphManagerProps> = ({ onDragStateChange }) => {
           : 1 - Math.pow(-2 * rawProgress + 2, 2) / 2;
 
         const nodeCount = graphData.nodes.length;
+        // Write LERP results into the dedicated lerpBuffer (not the SAB view).
+        // This prevents the worker from overwriting interpolated positions between frames.
+        const lerp = t.lerpBuffer;
         for (let i = 0; i < nodeCount; i++) {
           const idx = i * 3;
-          if (idx + 2 >= positions.length) break;
+          if (idx + 2 >= lerp.length) break;
           // Mass factor: high-degree nodes move slower (more inertia)
           const connectionCount = connectionCountMap.get(String(i)) || 0;
           const massFactor = 1.0 / (1.0 + Math.sqrt(connectionCount) * 0.3);
           const nodeProgress = Math.min(progress / massFactor, 1.0);
 
-          positions[idx]     = t.startPositions[idx]     + (t.targetPositions[idx]     - t.startPositions[idx])     * nodeProgress;
-          positions[idx + 1] = t.startPositions[idx + 1] + (t.targetPositions[idx + 1] - t.startPositions[idx + 1]) * nodeProgress;
-          positions[idx + 2] = t.startPositions[idx + 2] + (t.targetPositions[idx + 2] - t.startPositions[idx + 2]) * nodeProgress;
+          lerp[idx]     = t.startPositions[idx]     + (t.targetPositions[idx]     - t.startPositions[idx])     * nodeProgress;
+          lerp[idx + 1] = t.startPositions[idx + 1] + (t.targetPositions[idx + 1] - t.startPositions[idx + 1]) * nodeProgress;
+          lerp[idx + 2] = t.startPositions[idx + 2] + (t.targetPositions[idx + 2] - t.startPositions[idx + 2]) * nodeProgress;
         }
+        // Point nodePositionsRef at the lerpBuffer so all consumers (GemNodes, edges) see
+        // transition positions this frame instead of the stale/overwritten SAB data.
+        nodePositionsRef.current = lerp;
 
         if (rawProgress >= 1.0) {
           transitionRef.current.active = false;
           setLayoutTransitioning(false);
+          // Snap back to SAB on transition completion so the worker resumes ownership
+          nodePositionsRef.current = positions;
         }
       }
       // === End layout mode transition ===

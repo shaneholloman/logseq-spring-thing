@@ -347,8 +347,8 @@ impl UnifiedGPUCompute {
 
 
         let max_grid_cells = 32 * 32 * 32;
-        let cell_start = DeviceBuffer::zeroed(max_grid_cells)?;
-        let cell_end = DeviceBuffer::zeroed(max_grid_cells)?;
+        let cell_start = DeviceBuffer::from_slice(&vec![-1i32; max_grid_cells])?;
+        let cell_end = DeviceBuffer::from_slice(&vec![-1i32; max_grid_cells])?;
 
 
         let cub_temp_storage = Self::calculate_cub_temp_storage(num_nodes, max_grid_cells)?;
@@ -452,7 +452,7 @@ impl UnifiedGPUCompute {
             allocated_edges: num_edges,
             max_grid_cells,
             iteration: 0,
-            zero_buffer: vec![0i32; max_grid_cells],
+            zero_buffer: vec![-1i32; max_grid_cells],
 
             dist,
             current_frontier,
