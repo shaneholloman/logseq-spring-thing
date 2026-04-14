@@ -15,25 +15,14 @@ This file tracks active production issues and design limitations in VisionClaw. 
 
 ### ONT-001: Ontology Edge Gap — 62% of Ontology Nodes Isolated
 
-**Status**: In Progress
-**Impact**: 623 `SUBCLASS_OF` relationships originating from `OwlClass` nodes in Neo4j are excluded from the client graph. 62% of ontology nodes appear visually isolated with no edges in the 3D visualisation. SemanticForcesActor receives incomplete constraint data, so GPU-enforced semantic clustering and disjointness forces have no effect on the affected nodes.
+**Status**: Fixed (2026-04-14)
+**Impact**: Was: 623 `SUBCLASS_OF` relationships excluded from client graph. 62% of ontology nodes appeared visually isolated.
 
-**Root Cause**: `OwlClass` nodes in Neo4j use a different label scheme from the `GraphNode` entries the client constructs. The 623 `SUBCLASS_OF` relationships originate from `OwlClass` source nodes, but client-side graph construction expects `GraphNode`-to-`GraphNode` edges. The mapping between `OwlClass` nodes and `GraphNode` entries requires `owl_class_iri` field matching that is not currently implemented. Without this mapping, the edges are silently dropped during graph state loading; no error is logged.
+**Root Cause**: `iri_to_id` map in `neo4j_adapter.rs` was never populated from GraphNode nodes. The map was declared empty, and the only population code was in a dead OwlClass fallback path (unreachable after an early return). The ontology edge bridge at line 735 (`if !iri_to_id.is_empty()`) never executed.
 
-**Symptom**: The dense ontology subgraph appears as a cloud of disconnected nodes in the 3D view. The knowledge graph (`public:: true` files) and agent nodes are unaffected and render correctly.
+**Fix**: Added `iri_to_id` population loop after GraphNode loading, iterating loaded nodes and inserting `owl_class_iri → node.id` mappings. Removed 80 lines of dead OwlClass fallback code. The ontology edge bridge now executes and maps `SUBCLASS_OF` + `RELATES` relationships between `OwlClass` nodes into numeric `GraphNode` IDs.
 
-**Workaround**: None currently available for end users.
-
-**Fix Direction**: Map `OwlClass` → `GraphNode` via `owl_class_iri` field at the `GraphStateActor` level using the following Cypher pattern:
-
-```cypher
-MATCH (oc:OwlClass)-[:SUBCLASS_OF]->(parent:OwlClass)
-MATCH (gn_child:GraphNode {owl_class_iri: oc.iri})
-MATCH (gn_parent:GraphNode {owl_class_iri: parent.iri})
-CREATE (gn_child)-[:SUBCLASS_OF]->(gn_parent)
-```
-
-Full details including the node schema, Neo4j index definitions, and the full pipeline sequence diagram are in `docs/explanation/ontology-pipeline.md` — specifically sections 4 (Neo4j Storage) and 8 (The Ontology Edge Gap Problem).
+**Verification**: After rebuild, `info!` log will show "ONT-001: Built iri_to_id map — N GraphNode nodes have owl_class_iri" followed by "Loaded M ontology edges (SUBCLASS_OF + RELATES)".
 
 ---
 

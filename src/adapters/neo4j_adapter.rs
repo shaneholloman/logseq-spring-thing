@@ -582,100 +582,14 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
         // the dual-graph separation. The caller will retry via ReloadGraphFromDatabase.
         let mut iri_to_id: HashMap<String, u32> = HashMap::new();
         if nodes.is_empty() {
-            warn!("GraphNode load returned 0 nodes — returning empty graph (NO OwlClass fallback)");
+            warn!("GraphNode load returned 0 nodes — returning empty graph");
             warn!("This is likely a transient state during file_service MERGE. Will retry on next reload.");
-            // Return empty graph instead of falling through to OwlClass
             return Ok(Arc::new(GraphData {
                 nodes: vec![],
                 edges: vec![],
                 metadata: HashMap::new(),
                 id_to_metadata: HashMap::new(),
             }));
-            // Dead code below: OwlClass fallback disabled to prevent type corruption
-            #[allow(unreachable_code)]
-
-            let owl_query = Query::new(
-                "MATCH (c:OwlClass)
-                 RETURN c.iri AS iri,
-                        c.term_id AS term_id,
-                        c.preferred_term AS preferred_term,
-                        c.label AS label,
-                        c.description AS description,
-                        c.source_domain AS source_domain,
-                        c.quality_score AS quality_score,
-                        c.authority_score AS authority_score,
-                        c.maturity AS maturity,
-                        c.status AS status,
-                        c.owl_physicality AS owl_physicality,
-                        c.owl_role AS owl_role,
-                        c.class_type AS class_type,
-                        c.belongs_to_domain AS belongs_to_domain,
-                        c.bridges_to_domain AS bridges_to_domain
-                 ORDER BY c.term_id".to_string()
-            );
-
-            let mut owl_result = self.graph.execute(owl_query).await.map_err(|e| {
-                KnowledgeGraphRepositoryError::DatabaseError(format!("Failed to load OwlClass nodes: {}", e))
-            })?;
-
-            let mut next_id: u32 = 1;
-            while let Ok(Some(row)) = owl_result.next().await {
-                let iri: String = match row.get("iri") {
-                    Ok(v) => v,
-                    Err(_) => continue,
-                };
-                let term_id: String = row.get("term_id").unwrap_or_else(|_| iri.clone());
-                let preferred_term: String = row.get("preferred_term").unwrap_or_else(|_| term_id.clone());
-                let label: String = row.get("label").unwrap_or_else(|_| preferred_term.clone());
-                let source_domain: String = row.get("source_domain").unwrap_or_else(|_| "unknown".to_string());
-                let quality_score: f64 = row.get("quality_score").unwrap_or(0.5);
-                let authority_score: f64 = row.get("authority_score").unwrap_or(0.5);
-                let maturity: String = row.get("maturity").unwrap_or_else(|_| "unknown".to_string());
-                let status: String = row.get("status").unwrap_or_else(|_| "active".to_string());
-                let owl_physicality: Option<String> = row.get("owl_physicality").ok();
-                let owl_role: Option<String> = row.get("owl_role").ok();
-                let class_type: Option<String> = row.get("class_type").ok();
-                let belongs_to_domain: Option<String> = row.get("belongs_to_domain").ok();
-                let bridges_to_domain: Option<String> = row.get("bridges_to_domain").ok();
-                let description: Option<String> = row.get("description").ok();
-
-                let node_id = next_id;
-                next_id += 1;
-                iri_to_id.insert(iri.clone(), node_id);
-
-                // Map source_domain to a color for visual grouping
-                let color = Some(Self::domain_to_color(&source_domain));
-
-                // Size based on quality + authority scores
-                let size = Some((0.5 + quality_score * 0.5 + authority_score * 0.5) as f32);
-
-                let mut node = Node::new_with_id(term_id.clone(), Some(node_id));
-                node.label = label;
-                node.owl_class_iri = Some(iri);
-                node.color = color;
-                node.size = size;
-                // ADR-036: Normalize to snake_case for canonical classification
-                node.node_type = class_type.or_else(|| Some("owl_class".to_string()));
-                node.group = belongs_to_domain.or(Some(source_domain.clone()));
-
-                // Store ontology metadata
-                let mut meta = HashMap::new();
-                meta.insert("preferred_term".to_string(), preferred_term);
-                meta.insert("source_domain".to_string(), source_domain);
-                meta.insert("quality_score".to_string(), quality_score.to_string());
-                meta.insert("authority_score".to_string(), authority_score.to_string());
-                meta.insert("maturity".to_string(), maturity);
-                meta.insert("status".to_string(), status);
-                if let Some(p) = owl_physicality { meta.insert("owl_physicality".to_string(), p); }
-                if let Some(r) = owl_role { meta.insert("owl_role".to_string(), r); }
-                if let Some(b) = bridges_to_domain { meta.insert("bridges_to_domain".to_string(), b); }
-                if let Some(d) = description { meta.insert("description".to_string(), d); }
-                node.metadata = meta;
-
-                nodes.push(node);
-            }
-
-            info!("Loaded {} OwlClass nodes as graph nodes", nodes.len());
         }
 
         // Post-load population sanity check
@@ -695,6 +609,18 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
             if o == 0 && nodes.len() > 100 {
                 warn!("Zero ontology nodes in {} total — node_type mapping may be broken", nodes.len());
             }
+        }
+
+        // ONT-001 fix: Populate iri_to_id from GraphNode nodes that have owl_class_iri.
+        // This enables the ontology edge bridge (SUBCLASS_OF + RELATES between OwlClass
+        // nodes) to map IRI-based relationships into numeric GraphNode IDs.
+        for node in &nodes {
+            if let Some(ref iri) = node.owl_class_iri {
+                iri_to_id.insert(iri.clone(), node.id);
+            }
+        }
+        if !iri_to_id.is_empty() {
+            info!("ONT-001: Built iri_to_id map — {} GraphNode nodes have owl_class_iri (enables ontology edge bridge)", iri_to_id.len());
         }
 
         // ADR-014: Always load ALL edge types — no either/or branching.

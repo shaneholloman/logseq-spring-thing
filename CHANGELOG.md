@@ -5,6 +5,32 @@ All notable changes to VisionFlow will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-04-14
+
+### Enterprise Platform Architecture
+
+#### Added
+
+- **ADR-040**: Enterprise Identity Strategy — dual-stack OIDC + Nostr with server-side ephemeral keypair delegation
+- **ADR-041**: Judgment Broker Workbench Architecture — BC11 with BrokerDecision aggregate, inbox, decision canvas
+- **ADR-042**: Workflow Proposal Object Model — first-class Neo4j entity with versioned lifecycle
+- **ADR-043**: KPI Lineage Model — four mesh KPIs with event-sourced computation and full lineage
+- **ADR-044**: Connector Governance and Privacy Boundaries — tiered approach, GitHub first, redaction pipeline
+- **ADR-045**: Policy Engine Approach — embedded Rust trait engine with TOML configuration
+- **DDD Enterprise Contexts**: 7 new bounded contexts (BC11-BC17) for broker, workflow, discovery, identity, KPI, connectors, policy
+
+### Platform Coherence (Workstream 1)
+
+#### Fixed
+
+- **ONT-001**: Ontology edge gap resolved — `iri_to_id` map now populated from GraphNode `owl_class_iri` fields, restoring 623+ `SUBCLASS_OF` edges that were silently dropped
+- **ADR-037**: Binary protocol encoder renamed to `encode_positions_v3()` as canonical single entry point with backward-compat aliases
+- **ADR-038**: Poll-based position updates permanently disabled — push path is sole real-time channel
+
+#### Removed
+
+- 80 lines of dead OwlClass fallback code in `neo4j_adapter.rs` (unreachable after early return)
+
 ## [1.2.0] - 2026-02-11
 
 ### Voice-to-Voice System (b92150b)

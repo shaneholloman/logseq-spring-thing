@@ -287,6 +287,7 @@ impl BinaryNodeData {
     }
 }
 
+/// ADR-037: Convenience wrapper — calls encode_positions_v3 without SSSP or analytics.
 pub fn encode_node_data_extended(
     nodes: &[(u32, BinaryNodeData)],
     agent_node_ids: &[u32],
@@ -295,7 +296,7 @@ pub fn encode_node_data_extended(
     ontology_individual_ids: &[u32],
     ontology_property_ids: &[u32],
 ) -> Vec<u8> {
-    encode_node_data_extended_with_sssp(
+    encode_positions_v3(
         nodes,
         agent_node_ids,
         knowledge_node_ids,
@@ -307,11 +308,17 @@ pub fn encode_node_data_extended(
     )
 }
 
-/// Encode node data with optional per-node SSSP distances and analytics.
-/// `sssp_data` maps node_id -> (distance, parent_id).
-/// `analytics_data` maps node_id -> (cluster_id, anomaly_score, community_id).
-/// When absent for a node, defaults to (INFINITY, -1) / (0, 0.0, 0).
-pub fn encode_node_data_extended_with_sssp(
+/// ADR-037: Single canonical V3 encoder.
+///
+/// Encodes node positions into V3 binary frames (48 bytes/node) with type flags,
+/// optional SSSP distances, and optional analytics data.
+///
+/// Type classification: if node IDs are pre-flagged (from fetch_nodes()), pass empty
+/// type arrays to avoid double-flagging. If unflagged, pass type arrays.
+///
+/// `sssp_data`: maps node_id -> (distance, parent_id). Default: (INFINITY, -1).
+/// `analytics_data`: maps node_id -> (cluster_id, anomaly_score, community_id). Default: (0, 0.0, 0).
+pub fn encode_positions_v3(
     nodes: &[(u32, BinaryNodeData)],
     agent_node_ids: &[u32],
     knowledge_node_ids: &[u32],
@@ -425,14 +432,34 @@ pub fn encode_node_data_extended_with_sssp(
     buffer
 }
 
-/// Encode node data with analytics from a shared store.
-/// Convenience wrapper for the broadcast path that only has node positions
-/// and a reference to the shared analytics map.
+/// ADR-037: Encode pre-flagged node data with analytics.
+///
+/// For paths where fetch_nodes() already applied type flags to node IDs.
+/// Passes empty type arrays to avoid double-flagging.
 pub fn encode_node_data_with_live_analytics(
     nodes: &[(u32, BinaryNodeData)],
     analytics_data: Option<&HashMap<u32, (u32, f32, u32)>>,
 ) -> Vec<u8> {
-    encode_node_data_extended_with_sssp(nodes, &[], &[], &[], &[], &[], None, analytics_data)
+    encode_positions_v3(nodes, &[], &[], &[], &[], &[], None, analytics_data)
+}
+
+/// ADR-037: Backward-compat alias for encode_positions_v3.
+#[inline]
+pub fn encode_node_data_extended_with_sssp(
+    nodes: &[(u32, BinaryNodeData)],
+    agent_node_ids: &[u32],
+    knowledge_node_ids: &[u32],
+    ontology_class_ids: &[u32],
+    ontology_individual_ids: &[u32],
+    ontology_property_ids: &[u32],
+    sssp_data: Option<&HashMap<u32, (f32, i32)>>,
+    analytics_data: Option<&HashMap<u32, (u32, f32, u32)>>,
+) -> Vec<u8> {
+    encode_positions_v3(
+        nodes, agent_node_ids, knowledge_node_ids,
+        ontology_class_ids, ontology_individual_ids, ontology_property_ids,
+        sssp_data, analytics_data,
+    )
 }
 
 pub fn decode_node_data(data: &[u8]) -> Result<Vec<(u32, BinaryNodeData)>, String> {
