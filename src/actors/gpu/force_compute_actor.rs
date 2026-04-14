@@ -495,14 +495,12 @@ impl ForceComputeActor {
                     GraphPopulation::Knowledge
                 }
                 _ => {
-                    // Check owl_class_iri as secondary signal for ontology
-                    if node.owl_class_iri.is_some() {
-                        pop_counts[1] += 1;
-                        GraphPopulation::Ontology
-                    } else {
-                        pop_counts[0] += 1;
-                        GraphPopulation::Knowledge
-                    }
+                    // Default: nodes without explicit type are knowledge nodes
+                    // (from markdown batch processing where node_type isn't set).
+                    // Ontology nodes always have node_type = "ontology_node" from
+                    // the enrichment service.
+                    pop_counts[0] += 1;
+                    GraphPopulation::Knowledge
                 }
             };
             self.node_population.push(pop);
