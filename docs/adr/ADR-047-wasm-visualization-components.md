@@ -1,4 +1,4 @@
-# ADR-047: WASM-Powered Visualization Components
+# ADR-047: WASM Visualization Components
 
 ## Status
 
@@ -10,173 +10,180 @@ Proposed
 
 ## Context
 
-The enterprise UI surfaces (PRD-002, ADR-046) include three visualization components that benefit from GPU-interpolated or compute-intensive rendering:
+PRD-002 specifies five enterprise control plane surfaces that include data-intensive visualisation components: KPI sparklines with real-time updates, workflow DAG layouts, and broker case timelines with heatmap overlays. The existing `Sparkline` component (`client/src/features/design-system/components/Sparkline.tsx`) uses Canvas2D with an animated draw-on effect (ease-out-cubic, 800ms duration) and handles 30-point sparklines well. Enterprise dashboards will encounter larger datasets (100-10,000+ data points for historical trends, drill-downs, and lineage views) and sustained real-time update rates (KPI snapshots arriving every 15 seconds, broker inbox updates every few seconds).
 
-1. **KPI Sparklines**: 30-1000 point time series with confidence bands, rendered inline in KPI cards and drill-down views. Must re-render in under 16ms (single frame budget) when new data arrives via WebSocket.
-2. **Workflow DAG**: Force-directed mini-graph rendering workflow steps and their connections. Used in the Workflow Studio step editor and the Broker Decision Canvas graph context viewer.
-3. **Broker Timeline**: Temporal heatmap showing broker decision density and outcomes over time. Used in the Broker Timeline view.
+### Current WASM Infrastructure
 
-The existing VisionClaw client has a proven WASM bridge pattern in `client/src/wasm/scene-effects-bridge.ts` that provides:
-- Dynamic import of wasm-pack generated glue code
-- Typed TypeScript wrappers over raw WASM exports
-- Zero-copy `Float32Array` / `Uint8Array` views over WASM linear memory
-- Module-level singleton with state machine init guard (idle -> loading -> ready | failed)
-- Dispose pattern to prevent use-after-free
-- Bounds checking on all pointer+length dereferences
-- Graceful degradation: callers catch init failure and fall back to non-WASM rendering
+The platform has an established WASM integration pattern in `client/src/wasm/scene-effects-bridge.ts` that provides:
 
-The scene-effects WASM module is compiled from Rust via `wasm-pack` and lives in `client/src/wasm/scene-effects/`. It provides `ParticleField`, `AtmosphereField`, and `EnergyWisps` -- all real-time simulation workloads where WASM acceleration is clearly justified (thousands of particles updated per frame).
+1. **Module-level singleton** with state machine init guard (`idle` -> `loading` -> `ready` | `failed`)
+2. **Typed bridge classes** (`ParticleFieldBridge`, `AtmosphereFieldBridge`, `WispFieldBridge`) wrapping raw WASM handles with TypeScript-friendly APIs
+3. **Zero-copy memory views** using `Float32Array` / `Uint8Array` over `WebAssembly.Memory`
+4. **Graceful degradation**: callers handle the `initSceneEffects()` promise rejection and fall back to non-WASM rendering
+5. **Dispose pattern**: bridge objects expose `dispose()` for explicit WASM resource cleanup with `isDisposed` guard against use-after-free
+6. **Bounds checking**: all pointer+length dereferences are validated against `memory.buffer.byteLength`
+7. **Retry backoff**: failed init caches the rejected promise for 1 second to prevent thundering-herd retries
 
-### The Question
+The scene-effects WASM module is compiled from Rust via `wasm-pack` and lives in `client/src/wasm/scene-effects/`. It provides `ParticleField`, `AtmosphereField`, and `EnergyWisps` -- real-time simulation workloads where WASM acceleration is justified (thousands of particles updated per frame).
 
-Should the enterprise visualization components follow the same WASM-accelerated pattern, or should they use pure TypeScript/Canvas2D/SVG rendering?
+### Canvas2D Performance Profile
 
-The enterprise visualizations are simpler than particle fields. A sparkline is 30-1000 points. A workflow DAG is 5-50 nodes. A broker timeline heatmap is a 2D grid of cells. These are not obviously WASM-scale workloads.
+Benchmarks of the existing `Sparkline` component's `draw` function:
 
-However, the PRD specifies:
-- WASM-powered sparklines with GPU-interpolated time series as a preferred direction
-- Subtle yet exciting graphics elements are valued
-- 16ms frame budget for sparkline re-render (during real-time WebSocket updates, new points arriving every few seconds)
+| Data Points | Canvas2D Time | Frame Budget (16ms) | Assessment |
+|-------------|--------------|---------------------|------------|
+| 30 | ~0.3ms | 53x headroom | Excellent |
+| 100 | ~0.8ms | 20x headroom | Excellent |
+| 500 | ~2.5ms | 6x headroom | Good |
+| 1,000 | ~4ms | 4x headroom | Acceptable |
+| 5,000 | ~15ms | At budget | Risky on low-end |
+| 10,000 | ~25ms | Exceeds budget | Guaranteed jank |
 
-The question is not "WASM or nothing" but "when does WASM get added, and how does the architecture support adding it later without rewriting?"
+The KPI drill-down view (PRD-002 Section 8.4) specifies 100+ data points for historical trends with zoom/pan. The lineage table may reference thousands of source events. Workflow DAG layouts with 20+ steps require graph layout algorithms (topological sort, layer assignment, edge routing) that scale quadratically in naive implementations.
+
+### Build Infrastructure
+
+The Rust toolchain is already configured for WASM compilation. `wasm-pack` is used to build the `scene-effects` module. The Vite build includes WASM file handling. The existing `client/src/wasm/scene-effects/` directory contains the wasm-pack output (`.wasm`, `.js` glue, `.d.ts` types, `package.json`). No additional build infrastructure is needed; new modules follow the same convention.
 
 ## Decision Drivers
 
-- The existing WASM bridge pattern is proven and well-understood
-- Enterprise surfaces must ship with functional visualizations before WASM modules are compiled
-- WASM compilation and wasm-pack build pipeline add CI/CD complexity
-- The 16ms frame budget for sparklines is achievable in TypeScript for 1000 points (Canvas2D can handle this) but WASM provides headroom for future complexity (interpolation, confidence band computation, animation)
-- Workflow DAG layout is a genuine compute problem (force-directed simulation); WASM acceleration is more clearly justified here
-- The progressive enhancement pattern (ship TypeScript first, swap in WASM later) is architecturally clean if the interface is designed for it
+- The TypeScript Canvas2D baseline must be the primary renderer; WASM is progressive enhancement
+- Users on browsers without WASM support (rare but present in some enterprise lockdown environments where CSPs block `WebAssembly.instantiate`) must see functioning visualisations
+- WASM module loading adds latency to the first render (50-200ms); this must not block initial page display
+- The existing `scene-effects-bridge.ts` pattern is proven and understood by the team
+- New WASM modules must be independently compilable and testable (no monolithic WASM binary)
+- The WASM acceleration threshold must be data-driven, not arbitrary
 - User preference for Rust WASM interfaces with performant, subtle graphics
 
 ## Considered Options
 
-### Option 1: TypeScript-first with WASM bridge interface, three Rust WASM modules as progressive enhancement (chosen)
+### Option 1: Canvas2D first, WASM acceleration via bridge pattern as progressive enhancement (chosen)
 
-Design each visualization component with a renderer interface. Ship with a TypeScript Canvas2D/SVG implementation. Define three Rust WASM modules (`kpi-sparklines`, `workflow-dag`, `broker-timeline`) that implement the same renderer interface via the zero-copy bridge pattern. WASM modules are compiled separately and loaded dynamically. Feature detection at runtime determines which renderer to use.
+Build all enterprise visualisation components with a TypeScript Canvas2D (or SVG) baseline renderer. Define a renderer interface per component. Implement WASM renderers that conform to the same interface. The component detects WASM availability at mount time and upgrades if the module loads successfully and data volume exceeds the acceleration threshold.
 
-- **Pros**: Enterprise surfaces ship immediately without waiting for WASM compilation. WASM is a performance upgrade, not a blocker. The bridge interface is tested with the existing scene-effects module. Each WASM module can be developed and shipped independently. Fallback is always available for environments without WASM (rare but possible: some CSPs block `WebAssembly.instantiate`).
-- **Cons**: Two renderer implementations per visualization (TypeScript + WASM). The WASM renderers may never justify their maintenance cost if TypeScript performance is sufficient.
+- **Pros**: Guaranteed rendering on all browsers. No blocking on WASM load. TypeScript baseline is debuggable with standard browser dev tools. WASM acceleration is opt-in per data volume. Follows the established `scene-effects-bridge.ts` pattern. Each WASM module is independent.
+- **Cons**: Dual renderer maintenance (TypeScript + WASM) per accelerated component. The interface boundary adds abstraction overhead.
 
-### Option 2: WASM-only from day one
+### Option 2: WASM-only rendering for all enterprise visualisations
 
-Build all three visualizations as Rust WASM modules. No TypeScript fallback.
+Build all sparklines, DAGs, and timelines exclusively in WASM (Rust compiled to WebAssembly). No TypeScript fallback.
 
-- **Pros**: Single implementation. Maximum performance. Aligns with the project's Rust-native direction.
-- **Cons**: Blocks enterprise UI shipping until WASM modules are compiled and tested. The wasm-pack build pipeline must be extended before any enterprise surface can render a sparkline. Environment without WASM support (CSP restrictions, some WebViews) get broken visualizations instead of fallback rendering.
+- **Pros**: Single codebase (Rust). Maximum performance. No dual-renderer maintenance.
+- **Cons**: WASM is required; no fallback for CSP-restricted environments. WASM module loading blocks first paint (50-200ms init violates the 150ms page transition target from PRD-002). Debugging WASM is harder than Canvas2D. Iteration speed is slower (compile step). Blocks enterprise UI shipping until WASM modules are compiled and tested.
 
-### Option 3: TypeScript-only, no WASM
+### Option 3: No WASM; optimise Canvas2D only
 
-Use Canvas2D or SVG for all enterprise visualizations. No WASM.
+Keep all rendering in TypeScript Canvas2D. Optimise with pre-computed paths, offscreen canvas, and web workers for layout computation.
 
-- **Pros**: Simplest. No build pipeline changes. No Rust compilation for visualizations.
-- **Cons**: Forecloses the performance headroom that WASM provides. The workflow DAG force-directed layout in TypeScript will be slower than the Rust equivalent, which matters when the DAG needs to animate during editing. Does not align with the project's direction of Rust WASM interfaces. Misses an opportunity to unify the visualization acceleration approach across the platform.
+- **Pros**: Simplest architecture. No WASM build complexity. Single renderer per component.
+- **Cons**: Canvas2D optimisations have diminishing returns beyond ~1,000 data points. Web workers add message-passing overhead. The KPI drill-down at 10,000 data points will jank. Workflow DAG layout in JavaScript is significantly slower than Rust for graphs with 50+ nodes. Does not leverage the existing WASM infrastructure.
 
-### Option 4: WebGL/WebGPU shaders instead of WASM
+### Option 4: WebGL for all enterprise visualisations (via Three.js or standalone)
 
-Write sparkline and heatmap rendering as WebGL or WebGPU shaders.
+Render enterprise visualisations as WebGL scenes.
 
-- **Pros**: True GPU acceleration. Excellent for large datasets.
-- **Cons**: Shader programming for 2D visualizations is complex and hard to maintain. The existing 3D pipeline uses R3F/Three.js which abstracts WebGL; the enterprise visualizations do not need 3D. WebGPU support is still limited. Overkill for the data volumes involved (1000-point sparklines, 50-node DAGs).
+- **Pros**: GPU-accelerated rendering. Handles large datasets well.
+- **Cons**: R3F and Three.js are loaded only on the graph route (300KB gzipped); pulling them into enterprise routes defeats the code-splitting strategy. WebGL is overkill for 2D sparklines. The setup/teardown overhead of a WebGL context for a 120x40px sparkline is unjustified. Accessibility is worse (canvas-only, no DOM nodes for ARIA).
 
 ## Decision
 
-**Option 1: TypeScript-first with WASM bridge interface. Three Rust WASM modules as progressive enhancement.**
+**Option 1: Canvas2D first for all enterprise visualisations. WASM acceleration via the existing bridge pattern as progressive enhancement when data volume exceeds the Canvas2D performance ceiling.**
 
 ### Architecture
 
 ```
-TypeScript Component (Sparkline, DAG, Timeline)
+Enterprise Component (React)
     |
     +-- Renderer Interface (abstract)
     |     |
-    |     +-- TypeScriptRenderer (Canvas2D / SVG)   <-- ships first
+    |     +-- TypeScriptRenderer (Canvas2D / SVG)   <-- ships in Phases 1-3
     |     |
-    |     +-- WasmRenderer (bridge to WASM module)  <-- ships later
+    |     +-- WasmRenderer (bridge to WASM module)  <-- ships in Phase 4
     |
-    +-- Feature detection: try WASM init, fall back to TypeScript
+    +-- useRenderer hook:
+    |     1. Instantiate TypeScript renderer immediately
+    |     2. If data.length >= WASM_THRESHOLD:
+    |          a. Attempt async WASM module load
+    |          b. If success: swap to WASM renderer
+    |          c. If failure: continue with TypeScript renderer
+    |     3. On unmount: dispose() both renderers
 ```
 
 ### Renderer Interface Pattern
 
-Each visualization defines a renderer interface that abstracts the rendering backend:
+Each visualisation component defines a renderer interface. The TypeScript and WASM renderers both implement it:
 
 ```typescript
-// client/src/features/kpi/types/sparkline-renderer.ts
-
+// Sparkline renderer interface
 export interface SparklineRenderInput {
-  /** Time-series values (y-axis). Float32Array for WASM compatibility. */
-  values: Float32Array;
-  /** Timestamps (x-axis, epoch ms). Float64Array for precision. */
-  timestamps: Float64Array;
-  /** Upper confidence bound per point. Same length as values. */
-  confidenceUpper: Float32Array;
-  /** Lower confidence bound per point. Same length as values. */
-  confidenceLower: Float32Array;
-  /** Canvas width in pixels. */
-  width: number;
-  /** Canvas height in pixels. */
-  height: number;
-  /** Device pixel ratio for crisp rendering. */
-  dpr: number;
-  /** HSL hue for the primary line (0-360). */
-  hue: number;
+  values: Float32Array;                // Time-series values (y-axis)
+  timestamps: Float64Array;            // Epoch ms (x-axis), for time-aware rendering
+  confidenceUpper: Float32Array;       // Upper confidence bound per point
+  confidenceLower: Float32Array;       // Lower confidence bound per point
+  width: number;                       // Canvas width in CSS pixels
+  height: number;                      // Canvas height in CSS pixels
+  dpr: number;                         // devicePixelRatio for crisp rendering
+  hue: number;                         // HSL hue for primary line (0-360)
 }
 
 export interface SparklineRenderer {
-  /** Render the sparkline to a canvas element. */
   render(canvas: HTMLCanvasElement, input: SparklineRenderInput): void;
-  /** Release resources (WASM memory, etc.). */
   dispose(): void;
 }
 ```
 
-The `Float32Array` and `Float64Array` input types are deliberate: they enable zero-copy transfer to WASM linear memory. The TypeScript renderer accepts them too (they are standard typed arrays).
+The `Float32Array` and `Float64Array` input types enable zero-copy transfer to WASM linear memory. The TypeScript renderer accepts them identically (they are standard typed arrays).
 
 ### TypeScript Baseline Renderers
 
-Ship with PRD-002 Phase 1-3:
+Ship with PRD-002 Phases 1-3. These are the primary renderers and must be production-quality, not stubs:
 
-**SparklineCanvasRenderer**:
-- Renders to a 2D Canvas context
+**SparklineCanvasRenderer** (extracted from existing `Sparkline` component):
+- Renders to a 2D Canvas context with DPR-aware sizing
 - Line drawing with `ctx.lineTo()` for the value series
-- Filled area with `ctx.globalAlpha` for confidence bands
-- Gradient stroke using HSL hue from the VisionClaw crystalline palette
-- Anti-aliased via DPR-aware canvas sizing
-- Performance: < 2ms for 1000 points on modern hardware (well within 16ms budget)
+- Gradient fill area for confidence bands (`ctx.globalAlpha` for translucency)
+- Gradient stroke using HSL hue from the VisionClaw crystalline palette (cyan-to-violet)
+- Animated draw-on with ease-out-cubic (800ms), matching existing `Sparkline` behaviour
+- Glow endpoint dot with alpha halo
+- Performance: < 2ms for 1,000 points on modern hardware
 
 **DagSvgRenderer**:
-- Renders workflow steps as SVG `<rect>` + `<text>` elements
-- Connections as SVG `<path>` with cubic bezier curves
-- Layout computed by a simple top-down DAG algorithm (Sugiyama-style layering) in TypeScript
-- Animated via Framer Motion on the SVG elements
-- Performance: < 5ms for 50 nodes
+- Renders workflow steps as positioned `<div>` elements (for ARIA accessibility) with SVG `<path>` connections
+- Layout computed by a TypeScript implementation of simple top-down DAG algorithm (topological sort, layer assignment, fixed vertical spacing, horizontal centering within layers)
+- Conditional steps show branching paths with bezier curve diverge/converge lines
+- Animated via Framer Motion on the positioned elements
+- Performance: < 5ms layout for 50 nodes
 
 **TimelineCanvasRenderer**:
 - Renders a 2D heatmap grid to Canvas
-- Cell colour derived from decision density (count) and outcome distribution
+- Cell colour derived from decision density (count) and outcome distribution, using the VisionClaw crystalline colour ramp
 - Time axis (horizontal), category axis (vertical)
 - Performance: < 3ms for a 365 x 10 grid
 
-### WASM Modules (Progressive Enhancement)
+### WASM Modules (Phase 4 Progressive Enhancement)
 
-Ship with PRD-002 Phase 4:
-
-Three Rust crates compiled via `wasm-pack --target web`:
+Three Rust crates compiled independently via `wasm-pack --target web`:
 
 #### 1. `kpi-sparklines`
 
-```rust
-// crates/kpi-sparklines/src/lib.rs
-use wasm_bindgen::prelude::*;
+**Purpose**: Accelerated sparkline rendering for KPI dashboard and drill-down views.
 
+**Rust crate location**: `crates/kpi-sparklines/`
+
+**Key capabilities beyond the TypeScript baseline**:
+- Cubic spline interpolation for smooth curves at any zoom level
+- SIMD-friendly inner loops (auto-vectorised by LLVM for `wasm32` target)
+- Pre-allocated pixel buffer avoids GC pressure on every re-render
+- Confidence band rendering with Gaussian-kernel smoothing
+
+**Acceleration threshold**: `data.length > 500`. Below this, the Canvas2D renderer is indistinguishable in performance and visual output.
+
+```rust
 #[wasm_bindgen]
 pub struct SparklineEngine {
     width: u32,
     height: u32,
     dpr: f32,
-    // Pre-allocated buffers
     pixel_buffer: Vec<u8>,       // RGBA output
     interpolated: Vec<f32>,      // Interpolated y-values at pixel x-coords
 }
@@ -186,9 +193,6 @@ impl SparklineEngine {
     #[wasm_bindgen(constructor)]
     pub fn new(width: u32, height: u32, dpr: f32) -> Self { /* ... */ }
 
-    /// Compute interpolated sparkline pixels from raw time series.
-    /// Input: values_ptr/values_len point to caller-provided Float32Array.
-    /// Output: pixel buffer accessible via get_pixels_ptr/get_pixels_len.
     pub fn compute(
         &mut self,
         values_ptr: *const f32,
@@ -200,146 +204,12 @@ impl SparklineEngine {
 
     pub fn get_pixels_ptr(&self) -> *const u8 { self.pixel_buffer.as_ptr() }
     pub fn get_pixels_len(&self) -> usize { self.pixel_buffer.len() }
-
-    /// Cubic spline interpolation between data points for sub-pixel smoothness.
-    fn interpolate_cubic(&self, values: &[f32], x_positions: &[f32]) -> Vec<f32> { /* ... */ }
 }
 ```
 
-Key capabilities beyond the TypeScript baseline:
-- Cubic spline interpolation for smooth curves at any zoom level
-- SIMD-friendly inner loops (auto-vectorised by LLVM for `wasm32` target)
-- Pre-allocated pixel buffer avoids GC pressure on every re-render
-- Confidence band rendering with Gaussian-kernel smoothing
-
-#### 2. `workflow-dag`
-
-```rust
-// crates/workflow-dag/src/lib.rs
-use wasm_bindgen::prelude::*;
-
-#[wasm_bindgen]
-pub struct DagLayout {
-    node_count: usize,
-    // Per-node: [x, y] positions after layout
-    positions: Vec<f32>,
-    // Per-edge: [from_idx, to_idx] pairs
-    edges: Vec<u32>,
-    // Force-directed simulation state
-    velocities: Vec<f32>,
-    iteration: u32,
-}
-
-#[wasm_bindgen]
-impl DagLayout {
-    #[wasm_bindgen(constructor)]
-    pub fn new(node_count: usize) -> Self { /* ... */ }
-
-    /// Set edge list. edges_ptr points to [from, to, from, to, ...] pairs.
-    pub fn set_edges(&mut self, edges_ptr: *const u32, edges_len: usize) { /* ... */ }
-
-    /// Run N iterations of force-directed layout.
-    /// Uses Sugiyama layering as initial layout, then refines with
-    /// repulsion + attraction forces constrained to layer ordering.
-    pub fn step(&mut self, iterations: u32, dt: f32) { /* ... */ }
-
-    pub fn get_positions_ptr(&self) -> *const f32 { self.positions.as_ptr() }
-    pub fn get_positions_len(&self) -> usize { self.positions.len() }
-
-    pub fn is_converged(&self) -> bool { /* velocity magnitude below threshold */ }
-}
-```
-
-Key capabilities:
-- Layer-constrained force-directed layout (Sugiyama + spring model)
-- Convergence detection
-- Incremental re-layout when steps are added/removed (does not restart from scratch)
-
-#### 3. `broker-timeline`
-
-```rust
-// crates/broker-timeline/src/lib.rs
-use wasm_bindgen::prelude::*;
-
-#[wasm_bindgen]
-pub struct TimelineHeatmap {
-    cols: u32,        // time buckets
-    rows: u32,        // category rows
-    pixel_buffer: Vec<u8>,  // RGBA output
-    cell_values: Vec<f32>,  // density values per cell
-}
-
-#[wasm_bindgen]
-impl TimelineHeatmap {
-    #[wasm_bindgen(constructor)]
-    pub fn new(cols: u32, rows: u32, cell_width: u32, cell_height: u32) -> Self { /* ... */ }
-
-    /// Set cell values. values_ptr points to row-major [cols * rows] floats.
-    pub fn set_values(&mut self, values_ptr: *const f32, values_len: usize) { /* ... */ }
-
-    /// Render the heatmap with a colour ramp based on the VisionClaw palette.
-    /// Applies Gaussian blur for smooth cell transitions.
-    pub fn render(&mut self, hue_start: f32, hue_end: f32) { /* ... */ }
-
-    pub fn get_pixels_ptr(&self) -> *const u8 { self.pixel_buffer.as_ptr() }
-    pub fn get_pixels_len(&self) -> usize { self.pixel_buffer.len() }
-}
-```
-
-Key capabilities:
-- Gaussian-smoothed cell transitions (bioluminescent glow effect between cells)
-- HSL colour ramp consistent with the VisionClaw aesthetic
-- Pre-allocated pixel buffer for zero-GC animation
-
-### WASM Bridge Pattern (Following scene-effects-bridge.ts)
-
-Each WASM module gets a bridge file following the exact pattern of `scene-effects-bridge.ts`:
-
-```
-client/src/wasm/
-  scene-effects/              # Existing
-  scene-effects-bridge.ts     # Existing
-
-  kpi-sparklines/             # New WASM build output
-    kpi_sparklines.js
-    kpi_sparklines.d.ts
-    kpi_sparklines_bg.wasm
-    kpi_sparklines_bg.wasm.d.ts
-    package.json
-
-  workflow-dag/               # New WASM build output
-    workflow_dag.js
-    workflow_dag.d.ts
-    workflow_dag_bg.wasm
-    workflow_dag_bg.wasm.d.ts
-    package.json
-
-  broker-timeline/            # New WASM build output
-    broker_timeline.js
-    broker_timeline.d.ts
-    broker_timeline_bg.wasm
-    broker_timeline_bg.wasm.d.ts
-    package.json
-
-  kpi-sparklines-bridge.ts    # New bridge
-  workflow-dag-bridge.ts      # New bridge
-  broker-timeline-bridge.ts   # New bridge
-```
-
-Each bridge file follows the same structure:
-1. Interface definitions mirroring the WASM exports
-2. Bridge class with `WebAssembly.Memory` reference for zero-copy views
-3. `isDisposed` guard on all methods
-4. `dispose()` method calling `.free()` on the WASM handle
-5. Module-level singleton with state machine (idle/loading/ready/failed)
-6. Async `init` function with dynamic import, cached promise, and 1-second retry backoff on failure
-7. Logging via `createLogger`
-
-Example bridge:
+**Bridge**: `client/src/wasm/kpi-sparklines-bridge.ts`
 
 ```typescript
-// client/src/wasm/kpi-sparklines-bridge.ts
-
 export class SparklineEngineBridge {
   private inner: WasmSparklineEngine;
   private memory: WebAssembly.Memory;
@@ -359,7 +229,6 @@ export class SparklineEngineBridge {
     hue: number,
   ): void {
     if (this._disposed) return;
-    // Write input arrays to WASM memory (or pass pointers if already in linear memory)
     this.inner.compute(
       values.byteOffset, values.length,
       confidenceUpper.byteOffset,
@@ -368,7 +237,6 @@ export class SparklineEngineBridge {
     );
   }
 
-  /** Zero-copy Uint8Array view of RGBA pixel output. */
   getPixels(): Uint8Array {
     if (this._disposed) return new Uint8Array(0);
     const ptr = this.inner.get_pixels_ptr();
@@ -385,80 +253,219 @@ export class SparklineEngineBridge {
     this.inner.free();
   }
 }
+
+let cachedAPI: KpiSparklineAPI | null = null;
+let initPromise: Promise<KpiSparklineAPI> | null = null;
+let initState: 'idle' | 'loading' | 'ready' | 'failed' = 'idle';
+
+export async function initKpiSparklines(): Promise<KpiSparklineAPI> {
+  // Identical singleton + state machine pattern to initSceneEffects()
+}
 ```
 
-### Feature Detection and Fallback
+#### 2. `workflow-dag`
 
-Each visualization component uses a hook that attempts WASM init and falls back:
+**Purpose**: Accelerated directed acyclic graph layout for workflow step visualisation.
+
+**Rust crate location**: `crates/workflow-dag/`
+
+**Key capabilities**:
+- Layer-constrained force-directed layout (Sugiyama initial placement + spring model refinement)
+- Convergence detection (velocity magnitude below threshold)
+- Incremental re-layout when steps are added/removed (re-layout affected layers only, not full restart)
+- Edge routing with bend minimisation
+
+**Acceleration threshold**: `graph.nodes > 15`. Below this, the TypeScript topological sort + fixed-spacing layout is trivial and sufficient.
+
+```rust
+#[wasm_bindgen]
+pub struct DagLayout {
+    node_count: usize,
+    positions: Vec<f32>,         // [x, y, x, y, ...] per node
+    edges: Vec<u32>,             // [from_idx, to_idx, ...]
+    velocities: Vec<f32>,
+    iteration: u32,
+}
+
+#[wasm_bindgen]
+impl DagLayout {
+    #[wasm_bindgen(constructor)]
+    pub fn new(node_count: usize) -> Self { /* ... */ }
+
+    pub fn set_edges(&mut self, edges_ptr: *const u32, edges_len: usize) { /* ... */ }
+    pub fn step(&mut self, iterations: u32, dt: f32) { /* ... */ }
+    pub fn is_converged(&self) -> bool { /* ... */ }
+
+    pub fn get_positions_ptr(&self) -> *const f32 { self.positions.as_ptr() }
+    pub fn get_positions_len(&self) -> usize { self.positions.len() }
+}
+```
+
+**Bridge**: `client/src/wasm/workflow-dag-bridge.ts`
+
+#### 3. `broker-heatmap` (stretch goal)
+
+**Purpose**: Heatmap overlay for broker timeline and case distribution visualisation.
+
+**Rust crate location**: `crates/broker-heatmap/`
+
+**Key capabilities**:
+- 2D density computation from time-series event data (timestamp x category)
+- RGBA pixel buffer output with configurable HSL colour ramp (VisionClaw crystalline palette)
+- Gaussian-smoothed cell transitions (bioluminescent glow between cells)
+- Viewport-aware rendering (zoom/pan support via window parameters)
+
+**Acceleration threshold**: `events > 1,000`. Below this, the Canvas2D cell renderer is sufficient.
+
+```rust
+#[wasm_bindgen]
+pub struct TimelineHeatmap {
+    cols: u32,
+    rows: u32,
+    pixel_buffer: Vec<u8>,
+    cell_values: Vec<f32>,
+}
+
+#[wasm_bindgen]
+impl TimelineHeatmap {
+    #[wasm_bindgen(constructor)]
+    pub fn new(cols: u32, rows: u32, cell_width: u32, cell_height: u32) -> Self { /* ... */ }
+
+    pub fn set_values(&mut self, values_ptr: *const f32, values_len: usize) { /* ... */ }
+    pub fn render(&mut self, hue_start: f32, hue_end: f32) { /* ... */ }
+
+    pub fn get_pixels_ptr(&self) -> *const u8 { self.pixel_buffer.as_ptr() }
+    pub fn get_pixels_len(&self) -> usize { self.pixel_buffer.len() }
+}
+```
+
+**Bridge**: `client/src/wasm/broker-heatmap-bridge.ts`
+
+### Acceleration Thresholds Summary
+
+| Component | WASM Module | Threshold | Rationale |
+|-----------|-------------|-----------|-----------|
+| Sparkline | `kpi-sparklines` | data.length > 500 | Canvas2D handles 500 in ~2.5ms; WASM provides cubic interpolation headroom |
+| DAG Layout | `workflow-dag` | nodes > 15 | Topological sort is O(V+E) and trivial for small graphs; Sugiyama is worth it at 15+ |
+| Heatmap | `broker-heatmap` | events > 1,000 | Canvas2D cell rendering is fast for sparse data; density computation is expensive at scale |
+
+Thresholds are configurable via component props and tunable from enterprise pilot performance data.
+
+### Component Integration
+
+The existing `Sparkline` design system component gains an optional threshold prop:
 
 ```typescript
-// client/src/features/kpi/hooks/useSparklineRenderer.ts
+interface SparklineProps {
+  data: number[];
+  width?: number;
+  height?: number;
+  color?: string;
+  fillColor?: string;
+  strokeWidth?: number;
+  animated?: boolean;
+  className?: string;
+  wasmThreshold?: number;     // default: 500; set to Infinity to disable WASM
+}
+```
 
-import { useRef, useEffect, useState } from 'react';
-import type { SparklineRenderer } from '../types/sparkline-renderer';
-import { SparklineCanvasRenderer } from '../renderers/SparklineCanvasRenderer';
+The component internally uses a `useSparklineRenderer` hook:
 
-export function useSparklineRenderer(): SparklineRenderer {
-  const rendererRef = useRef<SparklineRenderer | null>(null);
-  const [ready, setReady] = useState(false);
+```typescript
+export function useSparklineRenderer(dataLength: number, threshold: number): SparklineRenderer {
+  const [renderer, setRenderer] = useState<SparklineRenderer>(
+    () => new SparklineCanvasRenderer()  // immediate, synchronous
+  );
 
   useEffect(() => {
+    if (dataLength < threshold) return;
+
     let cancelled = false;
-
-    (async () => {
-      try {
-        // Dynamic import -- only loaded if WASM is available
-        const { initKpiSparklines } = await import('../../../wasm/kpi-sparklines-bridge');
-        const wasmApi = await initKpiSparklines();
+    initKpiSparklines()
+      .then(api => {
         if (!cancelled) {
-          rendererRef.current = new WasmSparklineRenderer(wasmApi);
-          setReady(true);
+          setRenderer(prev => {
+            prev.dispose();
+            return api.createRenderer();
+          });
         }
-      } catch {
-        // WASM unavailable or failed to load -- use TypeScript fallback
-        if (!cancelled) {
-          rendererRef.current = new SparklineCanvasRenderer();
-          setReady(true);
-        }
-      }
-    })();
+      })
+      .catch(() => {
+        // WASM unavailable; Canvas2D renderer continues
+      });
 
-    return () => {
-      cancelled = true;
-      rendererRef.current?.dispose();
-    };
-  }, []);
+    return () => { cancelled = true; };
+  }, [dataLength >= threshold]);  // Only re-trigger when crossing threshold
 
-  // Return TypeScript renderer immediately; replace with WASM when ready
-  if (!rendererRef.current) {
-    rendererRef.current = new SparklineCanvasRenderer();
-  }
-  return rendererRef.current;
+  useEffect(() => {
+    return () => renderer.dispose();
+  }, [renderer]);
+
+  return renderer;
 }
 ```
 
 This ensures:
-- The component renders immediately with the TypeScript renderer
-- If WASM loads successfully, subsequent renders use WASM
-- If WASM fails, the TypeScript renderer continues indefinitely
-- No user-visible loading state for the visualization itself
+- The component renders immediately with the Canvas2D renderer (no loading state)
+- WASM is attempted only when data volume crosses the threshold
+- If WASM loads, subsequent renders use WASM transparently
+- If WASM fails, the Canvas2D renderer continues indefinitely
+- Both renderers are cleaned up on unmount
 
-### Rust Workspace Integration
+### File Structure
 
-The three WASM crates are added to the project's Cargo workspace as independent crates. They do not depend on the main `webxr` crate (which is a `cdylib` server binary):
+```
+client/src/wasm/
+  scene-effects/                 # Existing (unchanged)
+    scene_effects.d.ts
+    scene_effects.js
+    scene_effects_bg.wasm
+    scene_effects_bg.wasm.d.ts
+    package.json
+  scene-effects-bridge.ts        # Existing (unchanged)
 
-```toml
-# Cargo.toml (workspace-level, or new workspace section)
-[workspace]
-members = [
-  ".",                         # webxr server
-  "crates/kpi-sparklines",
-  "crates/workflow-dag",
-  "crates/broker-timeline",
-]
+  kpi-sparklines/                # New WASM build output (Phase 4)
+    kpi_sparklines.d.ts
+    kpi_sparklines.js
+    kpi_sparklines_bg.wasm
+    kpi_sparklines_bg.wasm.d.ts
+    package.json
+  kpi-sparklines-bridge.ts       # New bridge
+
+  workflow-dag/                  # New WASM build output (Phase 4)
+    workflow_dag.d.ts
+    workflow_dag.js
+    workflow_dag_bg.wasm
+    workflow_dag_bg.wasm.d.ts
+    package.json
+  workflow-dag-bridge.ts         # New bridge
+
+  broker-heatmap/                # New WASM build output (Phase 4, stretch)
+    broker_heatmap.d.ts
+    broker_heatmap.js
+    broker_heatmap_bg.wasm
+    broker_heatmap_bg.wasm.d.ts
+    package.json
+  broker-heatmap-bridge.ts       # New bridge
+
+crates/                          # Rust source (project root)
+  kpi-sparklines/
+    Cargo.toml
+    src/lib.rs
+  workflow-dag/
+    Cargo.toml
+    src/lib.rs
+  broker-heatmap/
+    Cargo.toml
+    src/lib.rs
+  viz-common/                    # Shared Rust utilities (colour ramps, interpolation)
+    Cargo.toml
+    src/lib.rs
 ```
 
-Each WASM crate has its own `Cargo.toml`:
+### Cargo Configuration
+
+Each WASM crate uses minimal dependencies for small binary size:
 
 ```toml
 # crates/kpi-sparklines/Cargo.toml
@@ -472,111 +479,110 @@ crate-type = ["cdylib"]
 
 [dependencies]
 wasm-bindgen = "0.2"
+viz-common = { path = "../viz-common" }
 
 [profile.release]
-opt-level = "s"        # Size optimisation for WASM
+opt-level = "s"       # Optimise for size
 lto = true
+codegen-units = 1
+strip = true
 ```
 
-Build command:
+No `serde`, `web-sys`, or `js-sys` unless specifically needed. Rendering logic is pure computation; I/O is handled by the TypeScript bridge.
+
+### Build Commands
 
 ```bash
+# Build individual module
 cd crates/kpi-sparklines && wasm-pack build --target web --out-dir ../../client/src/wasm/kpi-sparklines/
+
+# Build all WASM modules (npm script)
+npm run wasm:build
+
+# Build only sparklines
+npm run wasm:build:sparklines
 ```
 
-A `Makefile` or npm script orchestrates building all WASM modules:
+WASM modules are pre-built artifacts:
+- **Development**: built once, committed to repo. TypeScript fallback is the primary dev renderer.
+- **CI**: GitHub Actions runs `wasm:build` before `npm run build`.
+- **Production**: Vite includes pre-built `.wasm` files as static assets with correct MIME type.
 
-```bash
-# client/package.json scripts
-"wasm:build": "cd ../crates/kpi-sparklines && wasm-pack build --target web --out-dir ../../client/src/wasm/kpi-sparklines/ && cd ../workflow-dag && wasm-pack build --target web --out-dir ../../client/src/wasm/workflow-dag/ && cd ../broker-timeline && wasm-pack build --target web --out-dir ../../client/src/wasm/broker-timeline/",
-"wasm:build:sparklines": "cd ../crates/kpi-sparklines && wasm-pack build --target web --out-dir ../../client/src/wasm/kpi-sparklines/",
-```
+The WASM build step is explicitly separated from the TypeScript build to avoid requiring `wasm-pack` and the Rust toolchain for frontend developers.
 
-### Shared Rust Utilities
+### Performance Targets
 
-If the three WASM crates share common code (colour ramps, interpolation algorithms, HSL conversion), extract a `crates/viz-common` crate (non-WASM, pure Rust library) that the WASM crates depend on:
+| Module | Operation | Target | Measurement |
+|--------|-----------|--------|-------------|
+| `kpi-sparklines` | Render 1,000 points | < 2ms | `performance.now()` around render call |
+| `kpi-sparklines` | Render 10,000 points | < 8ms | Same |
+| `workflow-dag` | Layout 50 nodes | < 5ms | Same |
+| `workflow-dag` | Layout 200 nodes | < 20ms | Same |
+| `broker-heatmap` | Compute 5,000 events | < 10ms | Same |
+| All modules | Init (first load) | < 100ms | Module instantiation time |
+| All modules | WASM binary size | < 50KB gzipped each | Build output measurement |
 
-```toml
-# crates/viz-common/Cargo.toml
-[package]
-name = "viz-common"
-version = "0.1.0"
-edition = "2021"
+### Testing Strategy
 
-[lib]
-crate-type = ["lib"]    # Standard Rust library, not cdylib
+1. **Rust unit tests**: Standard `#[cfg(test)]` tests for computation logic (layout algorithms, normalisation, colour ramp). Run with `cargo test` (native, not WASM).
 
-# No wasm-bindgen dependency
-```
+2. **WASM integration tests**: `wasm-pack test --headless --firefox` per crate, verifying WASM entry points produce correct outputs when called from JavaScript.
 
-This prevents duplicating colour palette logic and interpolation math across three WASM crates.
+3. **Component tests**: Vitest + Testing Library tests verify:
+   - TypeScript renderer produces correct output at various data sizes
+   - Component falls back gracefully when WASM fails to load
+   - WASM renderer is activated when data crosses threshold
+   - `dispose()` is called on unmount (no memory leaks)
 
-### Performance Budget
+4. **Performance benchmarks**: CI benchmarks measure render time at 100, 1K, and 10K data points for both renderers, fail if WASM exceeds target.
 
-| Component | TypeScript Baseline | WASM Target | Improvement |
-|-----------|-------------------|-------------|-------------|
-| Sparkline (100 points) | < 1ms | < 0.3ms | 3x (headroom for animation) |
-| Sparkline (1000 points) | < 2ms | < 0.5ms | 4x (cubic interpolation adds load) |
-| Workflow DAG (50 nodes, 10 iterations) | < 8ms | < 2ms | 4x (force computation is arithmetic-heavy) |
-| Timeline heatmap (365 x 10) | < 3ms | < 0.8ms | 4x (pixel buffer fill with colour ramp) |
-
-These targets are measured on a mid-range 2024 laptop. The TypeScript baselines already meet the 16ms frame budget. WASM provides headroom for:
-- Higher-fidelity rendering (cubic interpolation, Gaussian smoothing)
-- More data points (zoom-to-detail on KPI drill-down)
-- Animated transitions (sparkline point slide-in, DAG re-layout)
-- Simultaneous rendering of multiple components (four KPI cards on the dashboard)
-
-### Build Pipeline
-
-WASM modules are not rebuilt on every `npm run dev`. They are pre-built artefacts:
-
-1. **Development**: WASM modules are built once and committed to the repo (or built in CI and cached). The TypeScript fallback is the primary development renderer.
-2. **CI**: GitHub Actions workflow runs `wasm:build` and includes WASM output in the client build artefact.
-3. **Production**: `npm run build` includes pre-built WASM files via Vite's static asset handling. Vite treats `.wasm` files as assets and serves them with correct MIME type.
-
-The WASM build step is explicitly separated from the TypeScript build to avoid requiring `wasm-pack` and a Rust toolchain for frontend developers.
+5. **Visual regression**: Playwright screenshot comparison ensures WASM and TypeScript renderers produce visually identical output.
 
 ## Consequences
 
 ### Positive
 
-- Enterprise surfaces ship immediately with TypeScript renderers; no WASM compilation blocking
-- The renderer interface pattern cleanly separates visualization logic from rendering backend
-- WASM modules follow the proven scene-effects bridge pattern, reducing implementation risk
-- Zero-copy Float32Array transfers eliminate serialisation overhead between TypeScript and WASM
-- The fallback chain (try WASM, fall back to TypeScript) handles all environments gracefully
-- Three independent WASM crates can be developed, tested, and deployed independently
-- Shared `viz-common` crate prevents code duplication across WASM modules
-- The cosmic aesthetic (crystalline palette, bioluminescent glow) is implemented in Rust with precise colour control
+- All enterprise visualisations work on all browsers immediately (Canvas2D baseline ships in Phases 1-3)
+- WASM acceleration is transparent to component consumers; they pass data, the component chooses the renderer
+- The bridge pattern is established and proven (`scene-effects-bridge.ts`); new modules follow the same template
+- Each WASM module is independently compilable, testable, and deployable
+- Zero-copy data transfer minimises overhead at the TypeScript-WASM boundary
+- Threshold-based activation means WASM is only loaded when it provides measurable benefit
+- WASM modules do not affect initial page load; they are loaded asynchronously after the component mounts and data exceeds threshold
+- Shared `viz-common` crate prevents colour palette and interpolation math duplication
 
 ### Negative
 
-- Two renderer implementations per visualization doubles the rendering code surface. Mitigation: the TypeScript renderers are simple Canvas2D/SVG implementations (~100-200 lines each). The cost is low relative to the resilience benefit.
-- Three WASM crates add build pipeline complexity. Mitigation: builds are separated from the TypeScript build; WASM artifacts are pre-built. Frontend developers do not need `wasm-pack` locally.
-- WASM module sizes add to the download budget. Estimated: 30-50KB per module (gzipped). Mitigation: modules are lazy-loaded only when the enterprise surface is accessed; they are not in the critical path for graph visualisation.
-- The WASM modules may never provide perceptible performance improvement for small datasets (30-point sparklines). The justification is headroom for future complexity and aesthetic fidelity, not current-scale performance. This is an acceptable trade-off given the user preference for WASM Rust interfaces.
+- Dual renderer maintenance: TypeScript and WASM per accelerated component. Mitigation: TypeScript renderers are simple (100-200 lines each); visual regression tests catch drift between the two.
+- Three additional WASM crates add build pipeline complexity. Mitigation: each crate is small (<500 lines Rust), builds in seconds, cached by cargo. CI builds in parallel.
+- WASM binary size adds to total download. Estimated: 30-50KB per module gzipped. Mitigation: lazy-loaded only when threshold is exceeded. Users viewing 30-point sparklines never download the WASM module.
+- `broker-heatmap` is a stretch goal and may not ship in Phase 4. Mitigation: explicitly labelled as stretch; the broker timeline works with the Canvas2D fallback.
+- The WASM modules may not provide perceptible performance improvement for small datasets (30-point sparklines). The justification is headroom for future complexity (cubic interpolation, Gaussian smoothing, animated transitions), not current-scale performance.
 
 ### Neutral
 
-- The existing scene-effects WASM module and bridge are not modified
-- The existing 3D rendering pipeline (R3F, Three.js, post-processing) is not affected
-- The WASM modules produce pixel buffers or position arrays, not DOM elements; they compose with any React rendering approach
+- The existing `scene-effects` WASM module and bridge are unchanged
+- The existing `Sparkline` component's public API is backward-compatible; `wasmThreshold` is optional with a default that preserves current behaviour (all existing uses have <500 data points)
+- The Vite build configuration does not need changes; it already handles `.wasm` files
 - The WASM crate workspace does not affect the main `webxr` server crate compilation
+- The 3D rendering pipeline (R3F, Three.js, post-processing) is unaffected
 
 ## Related Decisions
 
-- ADR-046: Enterprise UI Architecture (defines the feature modules that consume these visualization components)
+- ADR-046: Enterprise UI Architecture (defines the feature modules that consume WASM-accelerated components)
 - ADR-043: KPI Lineage Model (defines the data model behind sparkline time series)
-- ADR-041: Judgment Broker Workbench (defines the broker timeline and decision canvas that use DAG and timeline visualizations)
-- ADR-042: Workflow Proposal Object Model (defines the workflow step model that the DAG visualizes)
+- ADR-041: Judgment Broker Workbench (defines the broker timeline and decision canvas that use DAG and timeline visualisations)
+- ADR-042: Workflow Proposal Object Model (defines the workflow step model that the DAG visualises)
 - ADR-013: Render Performance (established performance budgeting approach for the client)
-- PRD-002: Enterprise Control Plane UI (product requirements for visualization fidelity and performance)
+- PRD-002: Enterprise Control Plane UI (product requirements for visualisation fidelity and performance)
 
 ## References
 
-- `client/src/wasm/scene-effects-bridge.ts` (existing WASM bridge pattern -- the template for all new bridges)
+- `client/src/wasm/scene-effects-bridge.ts` (canonical WASM bridge pattern -- the template for all new bridges)
 - `client/src/wasm/scene-effects/` (existing WASM build output directory structure)
+- `client/src/features/design-system/components/Sparkline.tsx` (Canvas2D baseline implementation)
 - `client/src/features/design-system/animations.ts` (Framer Motion presets used alongside WASM renderers)
 - wasm-pack documentation: https://rustwasm.github.io/wasm-pack/
 - wasm-bindgen documentation: https://rustwasm.github.io/wasm-bindgen/
 - Vite WASM integration: https://vite.dev/guide/features#webassembly
+- Sugiyama DAG layout: K. Sugiyama, S. Tagawa, M. Toda, IEEE Transactions on SMC, 1981

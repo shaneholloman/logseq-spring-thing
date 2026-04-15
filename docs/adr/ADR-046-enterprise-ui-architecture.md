@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Accepted
 
 ## Date
 
@@ -16,7 +16,7 @@ PRD-002 specifies five enterprise control plane surfaces (Broker Workbench, Work
 
 - **Single route**: `MainLayout.tsx` renders a full-screen `GraphCanvasWrapper` with an `IntegratedControlPanel` overlay. There is no router.
 - **State**: A single `settingsStore.ts` (Zustand + Immer) with subscriber trie for path-based reactive updates. A `websocketStore.ts` for WebSocket connection lifecycle.
-- **Design system**: 25+ components in `client/src/features/design-system/components/` built on Radix UI v3 primitives (`@radix-ui/themes` 3.2.1) with Tailwind CSS v4 HSL custom property tokens. Animation presets in `design-system/animations.ts` using Framer Motion.
+- **Design system**: 25+ components in `client/src/features/design-system/components/` built on Radix UI v3 primitives (`@radix-ui/themes` 3.2.1) with Tailwind CSS v4 HSL custom property tokens. Animation presets in `design-system/animations.ts` using Framer Motion. Recently added: `StatusDot`, `Sparkline`, `EmptyState`, `Timeline`, `DataTable`.
 - **Feature modules**: `client/src/features/{analytics,bots,command-palette,graph,help,monitoring,onboarding,ontology,physics,settings,solid,visualisation,workspace}/` -- each with `components/`, `hooks/`, optional `store/`, and `index.ts`.
 - **WASM**: `client/src/wasm/scene-effects-bridge.ts` provides typed wrappers over scene-effects WASM module with zero-copy Float32Array views. Module-level singleton with state machine init guard.
 - **Icons**: Lucide React across all existing panels.
@@ -95,7 +95,9 @@ const WorkflowDetail = lazy(() => import('../features/workflows/components/Propo
 const KpiDashboard = lazy(() => import('../features/kpi'));
 const KpiDrilldown = lazy(() => import('../features/kpi/components/KpiDrilldown'));
 const ConnectorManagement = lazy(() => import('../features/connectors'));
+const ConnectorWizard = lazy(() => import('../features/connectors/components/ConnectorWizard'));
 const PolicyConsole = lazy(() => import('../features/policy'));
+const PolicyRuleEditor = lazy(() => import('../features/policy/components/PolicyRuleEditor'));
 
 const router = createBrowserRouter([
   {
@@ -162,10 +164,34 @@ const router = createBrowserRouter([
         ),
       },
       {
+        path: 'connectors/new',
+        element: (
+          <Suspense fallback={<LoadingScreen />}>
+            <ConnectorWizard />
+          </Suspense>
+        ),
+      },
+      {
+        path: 'connectors/:id/config',
+        element: (
+          <Suspense fallback={<LoadingScreen />}>
+            <ConnectorWizard />
+          </Suspense>
+        ),
+      },
+      {
         path: 'policy',
         element: (
           <Suspense fallback={<LoadingScreen />}>
             <PolicyConsole />
+          </Suspense>
+        ),
+      },
+      {
+        path: 'policy/:ruleId',
+        element: (
+          <Suspense fallback={<LoadingScreen />}>
+            <PolicyRuleEditor />
           </Suspense>
         ),
       },
@@ -180,6 +206,9 @@ A new `RootLayout` replaces the current top-level render in `App.tsx`:
 
 ```typescript
 // client/src/app/RootLayout.tsx
+import { Outlet } from 'react-router-dom';
+import { SidebarNav } from '../features/design-system/components/SidebarNav';
+
 export const RootLayout: React.FC = () => {
   return (
     <div className="flex h-screen w-screen bg-[#000022]">
@@ -204,7 +233,8 @@ Added to `client/src/features/design-system/components/SidebarNav.tsx`:
 - Badge component instances for live counts (open broker cases, pending reviews, connector errors)
 - Badge data sourced from lightweight Zustand selectors subscribed to the relevant stores
 - Keyboard accessible: `Tab` to focus, `Enter` to navigate, `ArrowUp/Down` to move between items
-- Collapse/expand toggle at the bottom
+- Collapse/expand toggle at the bottom, pinned state persisted to `localStorage`
+- Uses Framer Motion `variants.slideLeft` for expand/collapse animation
 
 ### Feature Module Convention
 
@@ -213,7 +243,7 @@ Each enterprise feature module follows a consistent structure:
 ```
 client/src/features/{domain}/
   components/           # React components, one per file
-  hooks/                # Custom hooks for data fetching, subscriptions
+  hooks/                # Custom hooks for data fetching, subscriptions, commands
   store/                # Zustand store definition
   types/                # TypeScript interfaces and types
   index.ts              # Default export: route-level component (for React.lazy)
@@ -242,7 +272,7 @@ Store design principles:
 
 ### WebSocket Subscription Management
 
-The existing `websocketStore.ts` manages the WebSocket connection lifecycle. Enterprise surfaces subscribe to additional channels via a new hook pattern:
+The existing `websocketStore.ts` manages the WebSocket connection lifecycle. Enterprise surfaces subscribe to additional channels via a hook pattern:
 
 ```typescript
 // client/src/features/broker/hooks/useBrokerWebSocket.ts
@@ -263,7 +293,12 @@ export function useBrokerWebSocket() {
         case 'broker:case_claimed':
           dispatch({ type: 'CASE_CLAIMED', payload: message.caseId });
           break;
-        // ...
+        case 'broker:case_updated':
+          dispatch({ type: 'CASE_UPDATED', payload: message.case });
+          break;
+        case 'broker:priority_changed':
+          dispatch({ type: 'PRIORITY_CHANGED', payload: message });
+          break;
       }
     };
 
@@ -289,11 +324,12 @@ The `SidebarNav` uses a declarative registration pattern. Each feature module re
 ```typescript
 // client/src/features/broker/index.ts
 import { registerNavEntry } from '../design-system/components/SidebarNav';
+import { Scale } from 'lucide-react';
 
 registerNavEntry({
   id: 'broker',
   label: 'Broker',
-  icon: Scale,              // from lucide-react
+  icon: Scale,
   path: '/broker',
   order: 20,
   badge: () => useBrokerStore(state => state.inbox.cases.filter(c => c.status === 'open').length),
@@ -332,6 +368,13 @@ export function useBrokerCommands() {
         keywords: ['broker', 'timeline', 'history', 'decisions'],
         handler: () => navigate('/broker?tab=timeline'),
       },
+      {
+        id: 'broker:submit',
+        title: 'Submit New Case',
+        category: 'Actions',
+        keywords: ['broker', 'submit', 'case', 'new', 'create'],
+        handler: () => navigate('/broker?action=submit'),
+      },
     ];
 
     commands.forEach(cmd => registry.register(cmd));
@@ -346,16 +389,17 @@ New components are added to the existing design system directory, not to feature
 
 | Component | File | Purpose |
 |-----------|------|---------|
-| `DataTable` | `design-system/components/DataTable.tsx` | Sortable, filterable, keyboard-navigable table built on HTML `<table>` with Radix primitives for sort controls and filter popovers |
-| `StatusIndicator` | `design-system/components/StatusIndicator.tsx` | Colour-coded dot + label, configurable colour map |
-| `Sparkline` | `design-system/components/Sparkline.tsx` | Inline SVG sparkline with optional confidence band. TypeScript baseline renderer. Accepts an optional WASM bridge for accelerated rendering (ADR-047). |
-| `StepIndicator` | `design-system/components/StepIndicator.tsx` | Horizontal pipeline progress bar with stage labels and active stage animation |
-| `FilterBar` | `design-system/components/FilterBar.tsx` | Collapsible container for filter controls, uses existing `Collapsible` |
-| `EmptyState` | `design-system/components/EmptyState.tsx` | Centered icon + message + optional CTA button |
-| `SidebarNav` | `design-system/components/SidebarNav.tsx` | Left sidebar with registration pattern |
-| `KeyboardShortcutHint` | `design-system/components/KeyboardShortcutHint.tsx` | Inline `<kbd>` styled badge |
+| `DataTable` | `design-system/components/DataTable.tsx` | Sortable, filterable, keyboard-navigable table built on HTML `<table>` with Radix primitives for sort controls and filter popovers. Already implemented. |
+| `StatusDot` | `design-system/components/StatusDot.tsx` | Colour-coded dot + label with 5 variants (active/warning/error/inactive/processing) and CSS glow effects. Already implemented. |
+| `Sparkline` | `design-system/components/Sparkline.tsx` | Canvas2D sparkline with animated draw-on, gradient fill, glow endpoint, DPR-aware rendering. TypeScript baseline; accepts optional WASM bridge for accelerated rendering (ADR-047). Already implemented. |
+| `EmptyState` | `design-system/components/EmptyState.tsx` | Centred icon + message + optional CTA button. Three size variants (sm/md/lg). Already implemented. |
+| `Timeline` | `design-system/components/Timeline.tsx` | Vertical timeline with status-coloured dots, connector lines, and metadata badges. Already implemented. |
+| `StepIndicator` | `design-system/components/StepIndicator.tsx` | Horizontal pipeline progress bar with stage labels and active stage pulse animation. To be added. |
+| `FilterBar` | `design-system/components/FilterBar.tsx` | Collapsible container for filter controls, wraps existing `Collapsible`. To be added. |
+| `SidebarNav` | `design-system/components/SidebarNav.tsx` | Left sidebar with registration pattern and collapse/expand. To be added. |
+| `KeyboardShortcutHint` | `design-system/components/KeyboardShortcutHint.tsx` | Inline `<kbd>` styled badge for displaying keyboard shortcuts. To be added. |
 
-These components are exported from the design system `index.ts` barrel and available to all feature modules.
+All components are exported from the design system `index.ts` barrel and available to all feature modules.
 
 ### Route-Level Code Splitting
 
@@ -366,7 +410,7 @@ dist/
   assets/
     index-[hash].js          # Core: React, Zustand, Router, design system, SidebarNav
     graph-[hash].js           # Graph: Three.js, R3F, WASM scene-effects, MainLayout
-    broker-[hash].js          # Broker Workbench (includes mini-graph for Decision Canvas)
+    broker-[hash].js          # Broker Workbench
     workflows-[hash].js       # Workflow Studio
     kpi-[hash].js             # KPI Dashboard
     connectors-[hash].js      # Connector Management
@@ -387,12 +431,14 @@ client/src/types/generated/
   BrokerDecision.ts
   WorkflowProposal.ts
   WorkflowVersion.ts
+  WorkflowPattern.ts
   OrganisationalMetricSnapshot.ts
   ConnectorSource.ts
   PolicyResult.ts
+  PolicyEvaluated.ts
 ```
 
-Feature module `types/` directories re-export and extend generated types with client-specific additions (e.g., `InboxFilters`, `SortState`, UI-only fields).
+Feature module `types/` directories re-export and extend generated types with client-specific additions (e.g., `InboxFilters`, `SortState`, UI-only fields like `isHighlighted`).
 
 ### Migration Path from Current Architecture
 
@@ -422,7 +468,7 @@ Steps 1-5 can be done in a single PR. The existing graph experience is completel
 
 ### Negative
 
-- Adding `react-router-dom` introduces a new dependency (~14KB gzipped). Mitigation: this is a well-maintained, widely-used library with no known security issues. The cost is small relative to Three.js (~150KB gzipped).
+- Adding `react-router-dom` introduces a new dependency (~14KB gzipped). Mitigation: well-maintained, widely-used library with no known security issues. The cost is small relative to Three.js (~150KB gzipped).
 - `MainLayout` must be refactored to participate in a router layout hierarchy. Mitigation: the refactoring is mechanical (extract viewport container, become a route child) and does not change any rendering logic.
 - Five new Zustand stores add memory overhead (five store instances, five subscription sets). Mitigation: stores are lazy (created when the feature module loads) and contain only data fetched on that route. Empty stores consume negligible memory.
 - The sidebar reduces the available width for the graph canvas by 56px. Mitigation: the graph canvas is already responsive; 56px is less than the width of the existing `IntegratedControlPanel`.
@@ -454,7 +500,9 @@ Steps 1-5 can be done in a single PR. The existing graph experience is completel
 - `client/src/store/settingsStore.ts` (Zustand + Immer store pattern)
 - `client/src/store/websocketStore.ts` (WebSocket connection lifecycle)
 - `client/src/features/design-system/components/` (existing component library)
+- `client/src/features/design-system/components/index.ts` (barrel export)
 - `client/src/features/design-system/animations.ts` (Framer Motion presets)
 - `client/src/features/command-palette/types.ts` (Command interface)
 - `client/src/features/settings/components/panels/` (existing control panel pattern)
+- `client/src/wasm/scene-effects-bridge.ts` (WASM bridge pattern reused by ADR-047)
 - React Router v7 documentation: https://reactrouter.com/
