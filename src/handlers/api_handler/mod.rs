@@ -1,6 +1,7 @@
 pub mod analytics;
 pub mod bots;
 pub mod broker;
+pub mod connectors;
 pub mod files;
 pub mod graph;
 pub mod mesh_metrics;
@@ -152,5 +153,6 @@ pub fn config(cfg: &mut web::ServiceConfig) {
         .configure(broker::config)
         .configure(workflows::config)
         .configure(mesh_metrics::config)
+        .configure(connectors::config)
         .configure(policy::config);
 }

@@ -12,7 +12,7 @@ updated-date: 2026-04-09
 
 **VisionClaw uses Babylon.js for XR and immersive modes. React Three Fiber (Three.js) is used exclusively for the desktop graph view.**
 
-This is a definitive architectural position established during the Vircadia integration and renderer consolidation analysis (see `/home/devuser/workspace/project/docs/archive/decisions-and-audits/vircadia-babylon-consolidation-analysis.md`). The rationale:
+This is a definitive architectural position established during the Vircadia integration and renderer consolidation analysis. The rationale:
 
 1. **Native WebXR support.** Babylon.js provides `WebXRExperienceHelper`, built-in `WebXRHandTracking`, `WebXRMotionControllerTeleportation`, and `WebXRController` without polyfills. Three.js requires a WebXR polyfill and manual implementation of hand tracking.
 2. **Quest 3 optimisation.** Babylon.js has WASM-accelerated physics, foveated rendering hooks, and a guardian-system integration that match Quest 3's 90fps requirements. The `Quest3Optimizer.ts` module was written specifically against Babylon.js APIs.
@@ -512,7 +512,6 @@ Additional XR-specific concerns:
 ## See Also
 
 - [Client Architecture](client-architecture.md) — React Three Fiber desktop graph, state management, binary WebSocket
-- [Vircadia Babylon Consolidation Analysis](../archive/decisions-and-audits/vircadia-babylon-consolidation-analysis.md) — full renderer comparison and consolidation feasibility study
-- [VR Development Guide](../how-to/features/vr-development.md) — R3F/WebXR component reference, LOD API, controller bindings
-- [XR Setup Guide](../how-to/features/xr-setup.md) — Quest DPR capping, LiveKit HRTF, Vircadia connection settings
-- [XR Immersive System Architecture](architecture/xr-immersive-system.md) — platform support matrix, gesture recognition, multi-user sync protocol
+- [Quest 3 VR Setup](../how-to/xr-setup-quest3.md) — Quest DPR capping, LiveKit HRTF, connection settings
+- [Physics & GPU Engine](physics-gpu-engine.md) — GPU force computation pipeline
+- [Deployment Topology](deployment-topology.md) — service containers and XR runtime

@@ -654,6 +654,5 @@ command_bus.register::<CreateNode, _>(CreateNodeHandler::new(
 ## See Also
 
 - [Actor System Hierarchy](actor-hierarchy.md) — the 21-actor Actix supervision tree
-- [Reference: Ports Overview](../reference/architecture/ports/01-overview.md) — port trait conventions
-- [Reference: SettingsRepository Port](../reference/architecture/ports/02-settings-repository.md) — settings port details
-- [Reference: KnowledgeGraphRepository Port](../reference/architecture/ports/03-knowledge-graph-repository.md) — graph port details
+- [System Overview](system-overview.md) — complete hexagonal architecture overview including port definitions
+- [Technology Choices](technology-choices.md) — Rust, Actix-Web, Neo4j technology rationale

@@ -113,7 +113,7 @@ export function PolicyConsole() {
                         </div>
                       )}
                     </div>
-                    <Switch checked={rule.enabled} onCheckedChange={() => toggleRule(rule.id)} />
+                    <Switch checked={rule.enabled} onCheckedChange={() => toggleRule(rule.id)} aria-label={`${rule.enabled ? 'Disable' : 'Enable'} ${rule.name}`} />
                   </div>
                 </CardContent>
               </Card>
@@ -128,9 +128,9 @@ export function PolicyConsole() {
             </CardHeader>
             <CardContent className="flex flex-col gap-4">
               <div className="flex flex-col gap-1.5">
-                <Label>Action</Label>
+                <Label htmlFor="policy-test-action">Action</Label>
                 <Select value={testAction} onValueChange={setTestAction}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger id="policy-test-action"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="workflow.promote">Promote Workflow</SelectItem>
                     <SelectItem value="workflow.approve">Approve Workflow</SelectItem>
@@ -141,7 +141,7 @@ export function PolicyConsole() {
               </div>
               <div className="flex flex-col gap-1.5">
                 <Label>Confidence: {(testConfidence / 100).toFixed(2)}</Label>
-                <Slider value={[testConfidence]} onValueChange={([v]: number[]) => setTestConfidence(v)} min={0} max={100} step={5} />
+                <Slider value={[testConfidence]} onValueChange={([v]: number[]) => setTestConfidence(v)} min={0} max={100} step={5} aria-label="Confidence threshold" />
               </div>
               <Button onClick={runTest} className="w-fit">Evaluate</Button>
               {testResult && (

@@ -1,4 +1,5 @@
 pub mod dev_config;
+pub mod oidc;
 pub mod path_access;
 pub mod feature_access;
 

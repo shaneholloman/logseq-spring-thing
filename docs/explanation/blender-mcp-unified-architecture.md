@@ -1976,11 +1976,10 @@ node --inspect blender-mcp/dist/server.js
 
 ## Related Documentation
 
-- [Agent/Bot System Architecture](../diagrams/server/agents/agent-system-architecture.md)
-- [VisionClaw Client Architecture Analysis](../visionclaw-architecture-analysis.md)
-- [Agent Orchestration & Multi-Agent Systems](../diagrams/mermaid-library/04-agent-orchestration.md)
-- [VisionClaw Complete Architecture Documentation](../architecture/overview.md)
-- [What is VisionClaw?](../OVERVIEW.md)
+- [Agent-Physics Bridge](agent-physics-bridge.md)
+- [Client Architecture](client-architecture.md)
+- [System Overview](system-overview.md)
+- [Actor Hierarchy](actor-hierarchy.md)
 
 ## 15. Appendix
 

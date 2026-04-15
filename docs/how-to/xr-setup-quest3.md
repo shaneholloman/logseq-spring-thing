@@ -305,4 +305,4 @@ sequenceDiagram
 
 - [XR/VR Immersive Architecture](../explanation/xr-architecture.md) — explains the Babylon.js / React Three Fiber two-renderer design, WebXR session lifecycle, controller bindings implementation, and LOD system in depth
 - [Deployment Guide](deployment-guide.md) — full port table, Docker Compose profiles, and environment variable reference
-- [VR Development Guide](features/vr-development.md) — R3F/WebXR component reference for developers extending XR features
+- [Client Architecture](../explanation/client-architecture.md) — R3F component reference and WebSocket consumption

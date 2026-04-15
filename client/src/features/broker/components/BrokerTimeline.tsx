@@ -80,7 +80,7 @@ export function BrokerTimeline() {
         <div className="flex items-center justify-between">
           <CardTitle>Decision Timeline</CardTitle>
           <Select value={filter} onValueChange={setFilter}>
-            <SelectTrigger className="w-[160px]">
+            <SelectTrigger className="w-[160px]" aria-label="Filter by decision action">
               <SelectValue placeholder="Filter action" />
             </SelectTrigger>
             <SelectContent>
@@ -121,7 +121,7 @@ export function BrokerTimeline() {
                   {index < filtered.length - 1 && (
                     <div className="absolute left-[11px] top-6 bottom-0 w-px bg-border" />
                   )}
-                  <div className={`absolute left-1 top-1.5 h-3 w-3 rounded-full ${style.dotColor}`} />
+                  <div className={`absolute left-1 top-1.5 h-3 w-3 rounded-full ${style.dotColor}`} aria-hidden="true" />
                   <div>
                     <div className="flex items-center gap-2 flex-wrap">
                       <Badge variant="outline" className={`text-xs ${style.color}`}>

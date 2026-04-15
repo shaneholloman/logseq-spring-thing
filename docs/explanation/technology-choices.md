@@ -9,10 +9,10 @@ tags:
   - structure
   - api
 related-docs:
-  - architecture/overview.md
+  - system-overview.md
   - QUICK_NAVIGATION.md
   - README.md
-  - architecture/overview.md
+  - system-overview.md
   - ASCII_DEPRECATION_COMPLETE.md
 updated-date: 2026-02-11
 difficulty-level: advanced
@@ -892,4 +892,4 @@ VisionClaw's technology choices reflect three core principles:
 
 **Last Updated:** 2025-12-02
 **Technology Stack Version:** v2.0.0
-**For Questions:** See [Architecture Overview](architecture/overview.md) or [GitHub Discussions](https://github.com/DreamLab-AI/VisionClaw/discussions)
+**For Questions:** See [Architecture Overview](system-overview.md) or [GitHub Discussions](https://github.com/DreamLab-AI/VisionClaw/discussions)

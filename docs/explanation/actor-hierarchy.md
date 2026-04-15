@@ -701,6 +701,5 @@ let constrained = self.constraint_actor.send(ApplyConstraints(combined)).await?;
 ## See Also
 
 - [Backend CQRS Pattern](backend-cqrs-pattern.md) — hexagonal architecture, 9 ports, 12 adapters, 114 handlers
-- [GPU Supervisor Hierarchy](../diagrams/infrastructure/gpu/gpu-supervisor-hierarchy.md) — detailed GPU actor diagram
-- [GitHub Sync Service Design](architecture/github-sync-service-design.md) — `GitHubSyncActor` implementation
-- [Reference: Actor System Architecture](architecture/actor-system.md) — original detailed reference
+- [Physics & GPU Engine](physics-gpu-engine.md) — GPU supervisor and CUDA force computation
+- [System Overview](system-overview.md) — complete hexagonal architecture migration overview

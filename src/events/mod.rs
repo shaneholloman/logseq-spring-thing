@@ -1,5 +1,6 @@
 pub mod bus;
 pub mod domain_events;
+pub mod enterprise_events;
 pub mod handlers;
 pub mod middleware;
 pub mod store;
@@ -14,6 +15,12 @@ pub use types::{
 };
 
 pub use domain_events::*;
+
+pub use enterprise_events::{
+    CaseCreatedEvent, CaseDecidedEvent, PolicyEvaluatedEvent,
+    ProposalCreatedEvent, ProposalStatusChangedEvent, WorkflowPromotedEvent,
+    emit_enterprise_event,
+};
 
 pub use bus::{DeadLetterEntry, DeadLetterQueue, EventBus};
 

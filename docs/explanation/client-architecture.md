@@ -362,10 +362,7 @@ Safari does not support `EXT_color_buffer_float`; bloom is disabled automaticall
 ## See Also
 
 - [XR Architecture](xr-architecture.md) — Babylon.js immersive mode, Vircadia multi-user, WebXR
-- [Server Architecture](concepts/architecture/core/server.md) — Rust/Actix backend
-- [Physics Engine](architecture/physics-engine.md) — CUDA force computation
-- [Data Flow](architecture/data-flow.md) — GitHub → Neo4j → GPU → Client pipeline
-- [Three.js Rendering Guide](../how-to/development/three-js-rendering.md) — instanced rendering, shaders, bloom
-- [State Management Guide](../how-to/development/state-management.md) — Zustand patterns, lazy loading
-- [WebSocket Best Practices](../how-to/development/websocket-best-practices.md) — connection management, binary protocol
-- [C4 Container Diagram](architecture/diagrams/c4-container.md) — system-level context
+- [System Overview](system-overview.md) — Hexagonal architecture, CQRS pattern, actor model
+- [Physics & GPU Engine](physics-gpu-engine.md) — CUDA force computation
+- [Backend CQRS Pattern](backend-cqrs-pattern.md) — Rust/Actix backend, command/query separation
+- [Deployment Topology](deployment-topology.md) — Service containers and data flow

@@ -1,18 +1,27 @@
-use actix_web::{web, Responder};
+use actix_web::{web, HttpRequest, Responder};
 use log::{info, error};
 use serde::Deserialize;
 use serde_json::json;
 
+use crate::events::enterprise_events::{
+    CaseCreatedEvent, CaseDecidedEvent, emit_enterprise_event,
+};
+use crate::middleware::enterprise_auth::require_role;
 use crate::models::enterprise::*;
 use crate::{ok_json, bad_request, not_found, created_json, error_json};
 use crate::AppState;
 
 /// GET /api/broker/inbox
 /// Returns broker cases, optionally filtered by status.
+/// Requires Broker role or higher.
 pub async fn get_inbox(
+    req: HttpRequest,
     state: web::Data<AppState>,
     query: web::Query<InboxQuery>,
 ) -> impl Responder {
+    if let Err(resp) = require_role(&req, EnterpriseRole::Broker) {
+        return resp;
+    }
     info!("GET /api/broker/inbox");
 
     let status_filter: Option<CaseStatus> = query.status.as_deref().and_then(|s| {
@@ -122,6 +131,16 @@ pub async fn create_case(
 
     match state.broker_repository.create_case(&case).await {
         Ok(()) => {
+            // Emit audit event
+            emit_enterprise_event(&CaseCreatedEvent {
+                case_id: case.id.clone(),
+                title: case.title.clone(),
+                priority: case.priority.clone(),
+                source: case.source.clone(),
+                created_by: "api".to_string(),
+                timestamp: chrono::Utc::now(),
+            });
+
             created_json!(json!({
                 "id": case.id,
                 "title": case.title,
@@ -146,11 +165,17 @@ pub struct CreateCaseRequest {
 }
 
 /// POST /api/broker/cases/{id}/decide
+/// Requires Broker role or higher.
 pub async fn decide_case(
+    req: HttpRequest,
     state: web::Data<AppState>,
     case_id: web::Path<String>,
     body: web::Json<DecisionRequest>,
 ) -> impl Responder {
+    let actor_role = match require_role(&req, EnterpriseRole::Broker) {
+        Ok(role) => role,
+        Err(resp) => return resp,
+    };
     let cid = case_id.into_inner();
     info!("POST /api/broker/cases/{}/decide", cid);
 
@@ -197,6 +222,15 @@ pub async fn decide_case(
 
     match state.broker_repository.record_decision(&decision).await {
         Ok(()) => {
+            // Emit audit event
+            emit_enterprise_event(&CaseDecidedEvent {
+                case_id: cid.clone(),
+                decision_id: decision.id.clone(),
+                action: decision.action.clone(),
+                decided_by: format!("{:?}", actor_role),
+                timestamp: chrono::Utc::now(),
+            });
+
             ok_json!(json!({
                 "case_id": cid,
                 "decision_id": decision.id,

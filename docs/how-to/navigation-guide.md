@@ -42,10 +42,8 @@ difficulty-level: intermediate
 3. 
 
 #### **Develop a Feature**
-1. [Development Setup](development/01-development-setup.md)
-2.
-3. [Adding Features](development/04-adding-features.md)
-4. [Testing Guide](development/testing-guide.md)
+1. [Development Guide](development-guide.md)
+2. [Contributing Guide](../CONTRIBUTING.md)
 
 #### **Work with Ontologies**
 1. 
@@ -54,7 +52,7 @@ difficulty-level: intermediate
 4. 
 
 #### **Setup XR/VR**
-1. [Vircadia Complete Guide](explanation/xr-architecture.md)
+1. [Quest 3 VR Setup](xr-setup-quest3.md)
 2. [XR Architecture](../explanation/xr-architecture.md)
 
 #### **Understand the Architecture**
@@ -83,8 +81,8 @@ difficulty-level: intermediate
 | **Ontology** |  •  •  |
 | **GPU Acceleration** |  • [Architecture](../explanation/physics-gpu-engine.md) • [Optimizations](../explanation/physics-gpu-engine.md) |
 | **AI Agents** |  |
-| **Multi-Agent System** | [Architecture](../explanation/concepts/multi-agent-system.md) |
-| **XR/VR** | [XR Architecture](../explanation/xr-architecture.md) • [VR Development](explanation/xr-architecture.md) |
+| **Multi-Agent System** | [Agent Orchestration](agent-orchestration.md) |
+| **XR/VR** | [XR Architecture](../explanation/xr-architecture.md) • [Quest 3 Setup](xr-setup-quest3.md) |
 | **Database** | [Schema](../reference/neo4j-schema-unified.md) •  |
 | **Binary Protocol** | [WebSocket](../reference/websocket-binary.md) • [Specification](../reference/websocket-binary.md) |
 
@@ -93,7 +91,7 @@ difficulty-level: intermediate
 |---------|------------|---------------|
 | **Ontology Reasoning** |  |  |
 | **Semantic Physics** |  |  |
-| **Multi-User XR** |  | [Complete Guide](explanation/xr-architecture.md) |
+| **Multi-User XR** |  | [XR Architecture](../explanation/xr-architecture.md) |
 | **CQRS Pattern** |  |  |
 | **GPU Compute** |  | [Architecture](../explanation/physics-gpu-engine.md) |
 

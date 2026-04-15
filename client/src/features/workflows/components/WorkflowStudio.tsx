@@ -45,6 +45,7 @@ export function WorkflowStudio() {
   const [newTitle, setNewTitle] = useState('');
   const [newDescription, setNewDescription] = useState('');
   const [showForm, setShowForm] = useState(false);
+  const [promotingId, setPromotingId] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -66,6 +67,26 @@ export function WorkflowStudio() {
     };
     fetchData();
   }, []);
+
+  const handlePromote = async (proposal: WorkflowProposal) => {
+    setPromotingId(proposal.id);
+    setError(null);
+    try {
+      await apiPost(`/api/workflows/proposals/${proposal.id}/promote`, {});
+      setProposals((prev) =>
+        prev.map((p) => (p.id === proposal.id ? { ...p, status: 'deployed' } : p))
+      );
+      // Re-fetch patterns to include the newly promoted one
+      const patternsData = await apiFetch<{ patterns: WorkflowPattern[] }>('/api/workflows/patterns');
+      setPatterns(patternsData.patterns || []);
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Promotion failed';
+      setError(message);
+      console.error('Failed to promote proposal:', err);
+    } finally {
+      setPromotingId(null);
+    }
+  };
 
   const handleCreateProposal = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -158,7 +179,7 @@ export function WorkflowStudio() {
           ) : (
             <div className="flex flex-col gap-2">
               {proposals.map((proposal) => (
-                <Card key={proposal.id} className="cursor-pointer hover:border-primary/50 transition-colors">
+                <Card key={proposal.id} className="hover:border-primary/50 transition-colors">
                   <CardContent className="py-3 px-4">
                     <div className="flex items-center justify-between">
                       <div className="flex-1 min-w-0">
@@ -170,6 +191,17 @@ export function WorkflowStudio() {
                         </div>
                         <h3 className="font-medium text-sm text-foreground truncate">{proposal.title}</h3>
                       </div>
+                      {proposal.status === 'approved' && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={promotingId === proposal.id}
+                          onClick={() => handlePromote(proposal)}
+                          className="shrink-0 ml-2"
+                        >
+                          {promotingId === proposal.id ? 'Promoting...' : 'Promote to Pattern'}
+                        </Button>
+                      )}
                     </div>
                   </CardContent>
                 </Card>

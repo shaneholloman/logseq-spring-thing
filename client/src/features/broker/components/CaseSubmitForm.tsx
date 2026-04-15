@@ -100,11 +100,9 @@ export function CaseSubmitForm({ onSubmitted }: CaseSubmitFormProps) {
             <Button type="submit" disabled={!title.trim() || submitting}>
               {submitting ? 'Submitting...' : 'Submit Case'}
             </Button>
-            {result && (
-              <span className="text-sm text-green-400">
-                Case {result.id} created
-              </span>
-            )}
+            <span role="status" aria-live="polite" className="text-sm text-green-400">
+              {result ? `Case ${result.id} created` : ''}
+            </span>
           </div>
         </form>
       </CardContent>

@@ -22,7 +22,7 @@ The most important conclusion is this:
 
 That means the thesis is **not detached from the codebase**. It is one abstraction layer above it. The architectural DNA matches. The product centre of gravity does not yet fully match.
 
-Key evidence used for this assessment includes the thesis itself in [`presentation/the-coordination-collapse.md`](presentation/the-coordination-collapse.md), the corrected substrate chapter in [`presentation/report/chapters/13-technical-substrate.tex`](presentation/report/chapters/13-technical-substrate.tex), the thesis self-critique in [`presentation/report/chapters/15-open-questions.tex`](presentation/report/chapters/15-open-questions.tex), and the VisionClaw system docs in [`docs/README.md`](docs/README.md), [`docs/how-to/agent-orchestration.md`](docs/how-to/agent-orchestration.md), [`docs/explanation/ontology-pipeline.md`](docs/explanation/ontology-pipeline.md), [`docs/explanation/security-model.md`](docs/explanation/security-model.md), and [`docs/KNOWN_ISSUES.md`](docs/KNOWN_ISSUES.md).
+Key evidence used for this assessment includes the thesis itself in [`presentation/the-coordination-collapse.md`](the-coordination-collapse.md), the corrected substrate chapter in [`presentation/report/chapters/13-technical-substrate.tex`](report/chapters/13-technical-substrate.tex), the thesis self-critique in [`presentation/report/chapters/15-open-questions.tex`](report/chapters/15-open-questions.tex), and the VisionClaw system docs in [`docs/README.md`](../docs/README.md), [`docs/how-to/agent-orchestration.md`](../docs/how-to/agent-orchestration.md), [`docs/explanation/ontology-pipeline.md`](../docs/explanation/ontology-pipeline.md), [`docs/explanation/security-model.md`](../docs/explanation/security-model.md), and [`docs/KNOWN_ISSUES.md`](../docs/KNOWN_ISSUES.md).
 
 ---
 
@@ -53,7 +53,7 @@ The thesis argues that the future organisation needs **shared semantics**, forma
 - Agent-facing ontology tools already exist for discovery, reading, querying, traversal, proposing, validating, and status checking.
 - The semantic pipeline is intended to feed directly into graph structure, constraints, and visual organisation.
 
-Evidence: [`docs/explanation/ontology-pipeline.md`](docs/explanation/ontology-pipeline.md), [`docs/adr/ADR-014-semantic-pipeline-unification.md`](docs/adr/ADR-014-semantic-pipeline-unification.md), [`docs/how-to/agent-orchestration.md`](docs/how-to/agent-orchestration.md), [`docs/reference/rest-api.md`](docs/reference/rest-api.md).
+Evidence: [`docs/explanation/ontology-pipeline.md`](../docs/explanation/ontology-pipeline.md), [`docs/adr/ADR-014-semantic-pipeline-unification.md`](../docs/adr/ADR-014-semantic-pipeline-unification.md), [`docs/how-to/agent-orchestration.md`](../docs/how-to/agent-orchestration.md), [`docs/reference/rest-api.md`](../docs/reference/rest-api.md).
 
 **Strategic implication:** the thesis’s claim that DreamLab is differentiated by ontology-grounded orchestration is credible. This is not hand-waving. Most “agentic” systems do not have this level of formal semantic substrate.
 
@@ -70,7 +70,7 @@ The thesis’s “declarative governance” story is not fully productised, but 
 - Bead provenance with lifecycle tracking, typed outcomes, retry/backoff, and learning capture
 - Audit-oriented event handling and health/status surfaces
 
-Evidence: [`docs/adr/ADR-011-auth-enforcement.md`](docs/adr/ADR-011-auth-enforcement.md), [`docs/explanation/security-model.md`](docs/explanation/security-model.md), [`docs/how-to/integration/solid-integration.md`](docs/how-to/integration/solid-integration.md), [`docs/adr/ADR-034-needle-bead-provenance.md`](docs/adr/ADR-034-needle-bead-provenance.md), [`docs/prd-bead-provenance-upgrade.md`](docs/prd-bead-provenance-upgrade.md), [`docs/ddd-bead-provenance-context.md`](docs/ddd-bead-provenance-context.md).
+Evidence: [`docs/adr/ADR-011-auth-enforcement.md`](../docs/adr/ADR-011-auth-enforcement.md), [`docs/explanation/security-model.md`](../docs/explanation/security-model.md), [`docs/how-to/integration/solid-integration.md`](../docs/how-to/integration/solid-integration.md), [`docs/adr/ADR-034-needle-bead-provenance.md`](../docs/adr/ADR-034-needle-bead-provenance.md), [`docs/prd-bead-provenance-upgrade.md`](../docs/prd-bead-provenance-upgrade.md), [`docs/ddd-bead-provenance-context.md`](../docs/ddd-bead-provenance-context.md).
 
 **Strategic implication:** the thesis’s governance argument is not speculative. VisionClaw already has the beginnings of a compliance-friendly, provenance-rich control fabric.
 
@@ -90,7 +90,7 @@ The combination of:
 
 creates a strong foundation for a sanctioned alternative to uncontrolled personal AI sprawl.
 
-Evidence: [`docs/adr/ADR-027-pod-backed-graph-views.md`](docs/adr/ADR-027-pod-backed-graph-views.md), [`docs/adr/ADR-029-type-index-discovery.md`](docs/adr/ADR-029-type-index-discovery.md), [`docs/adr/ADR-030-agent-memory-pods.md`](docs/adr/ADR-030-agent-memory-pods.md), [`docs/explanation/user-agent-pod-design.md`](docs/explanation/user-agent-pod-design.md), [`docs/explanation/security-model.md`](docs/explanation/security-model.md).
+Evidence: [`docs/adr/ADR-027-pod-backed-graph-views.md`](../docs/adr/ADR-027-pod-backed-graph-views.md), [`docs/adr/ADR-029-type-index-discovery.md`](../docs/adr/ADR-029-type-index-discovery.md), [`docs/adr/ADR-030-agent-memory-pods.md`](../docs/adr/ADR-030-agent-memory-pods.md), [`docs/explanation/user-agent-pod-design.md`](../docs/explanation/user-agent-pod-design.md), [`docs/explanation/security-model.md`](../docs/explanation/security-model.md).
 
 **Strategic implication:** this is one of the clearest ways VisionClaw can directly answer the thesis’s shadow-workflow and secret-cyborg problem: not by banning personal augmentation, but by **sanctioning it with ownership, identity, and audit**.
 
@@ -106,7 +106,7 @@ The thesis wants a visible coordination system, not invisible automation. Vision
 - GPU layout and clustering,
 - collaborative and XR-oriented interfaces.
 
-Evidence: [`docs/how-to/agent-orchestration.md`](docs/how-to/agent-orchestration.md), [`docs/explanation/agent-physics-bridge.md`](docs/explanation/agent-physics-bridge.md), [`docs/explanation/client-architecture.md`](docs/explanation/client-architecture.md), [`docs/explanation/physics-gpu-engine.md`](docs/explanation/physics-gpu-engine.md), [`docs/explanation/xr-architecture.md`](docs/explanation/xr-architecture.md).
+Evidence: [`docs/how-to/agent-orchestration.md`](../docs/how-to/agent-orchestration.md), [`docs/explanation/agent-physics-bridge.md`](../docs/explanation/agent-physics-bridge.md), [`docs/explanation/client-architecture.md`](../docs/explanation/client-architecture.md), [`docs/explanation/physics-gpu-engine.md`](../docs/explanation/physics-gpu-engine.md), [`docs/explanation/xr-architecture.md`](../docs/explanation/xr-architecture.md).
 
 **Strategic implication:** the thesis’s claim that DreamLab is building a visible mesh, not a hidden black box, is directionally supported.
 
@@ -121,7 +121,7 @@ That statement is consistent with both:
 - the corrected thesis chapter, and
 - the platform docs, which show real capability but also significant gaps.
 
-Evidence: [`presentation/report/chapters/13-technical-substrate.tex`](presentation/report/chapters/13-technical-substrate.tex), [`presentation/report/chapters/15-open-questions.tex`](presentation/report/chapters/15-open-questions.tex), [`docs/KNOWN_ISSUES.md`](docs/KNOWN_ISSUES.md).
+Evidence: [`presentation/report/chapters/13-technical-substrate.tex`](report/chapters/13-technical-substrate.tex), [`presentation/report/chapters/15-open-questions.tex`](report/chapters/15-open-questions.tex), [`docs/KNOWN_ISSUES.md`](../docs/KNOWN_ISSUES.md).
 
 **Strategic implication:** the thesis is strongest when it avoids overclaiming and presents VisionClaw as the most credible substrate for the idea, not final proof of the whole organisational model.
 
@@ -151,9 +151,9 @@ What does **not** clearly exist:
 - a concrete broker day-in-the-life interface,
 - explicit cross-functional mesh coherence tooling.
 
-Evidence for what exists: [`docs/how-to/agent-orchestration.md`](docs/how-to/agent-orchestration.md), [`docs/reference/rest-api.md`](docs/reference/rest-api.md), [`docs/adr/ADR-034-needle-bead-provenance.md`](docs/adr/ADR-034-needle-bead-provenance.md).
+Evidence for what exists: [`docs/how-to/agent-orchestration.md`](../docs/how-to/agent-orchestration.md), [`docs/reference/rest-api.md`](../docs/reference/rest-api.md), [`docs/adr/ADR-034-needle-bead-provenance.md`](../docs/adr/ADR-034-needle-bead-provenance.md).
 
-Evidence for what is missing: the thesis itself flags this gap in [`presentation/report/chapters/15-open-questions.tex`](presentation/report/chapters/15-open-questions.tex).
+Evidence for what is missing: the thesis itself flags this gap in [`presentation/report/chapters/15-open-questions.tex`](report/chapters/15-open-questions.tex).
 
 **Strategic consequence:** the thesis currently outruns the product at the exact human layer where enterprise buyers will care most.
 
@@ -177,7 +177,7 @@ But it lacks a general-purpose organisational version of the loop:
 - no automated propagation mechanism for validated practices across teams,
 - no productised measurement of loop velocity.
 
-Evidence: [`docs/prd-bead-provenance-upgrade.md`](docs/prd-bead-provenance-upgrade.md), [`docs/ddd-bead-provenance-context.md`](docs/ddd-bead-provenance-context.md), [`docs/how-to/integration/solid-integration.md`](docs/how-to/integration/solid-integration.md).
+Evidence: [`docs/prd-bead-provenance-upgrade.md`](../docs/prd-bead-provenance-upgrade.md), [`docs/ddd-bead-provenance-context.md`](../docs/ddd-bead-provenance-context.md), [`docs/how-to/integration/solid-integration.md`](../docs/how-to/integration/solid-integration.md).
 
 **Strategic consequence:** VisionClaw can support the thesis’s compounding loop, but it is not yet unmistakably built around it.
 
@@ -205,7 +205,7 @@ VisionClaw has extensive technical metrics:
 
 But the docs do **not** show native support for those organisational KPIs. There is no evidence of a dashboard or measurement model for them.
 
-Evidence: [`docs/reference/performance-benchmarks.md`](docs/reference/performance-benchmarks.md), [`docs/how-to/performance-profiling.md`](docs/how-to/performance-profiling.md), [`presentation/report/chapters/08-new-kpis.tex`](presentation/report/chapters/08-new-kpis.tex).
+Evidence: [`docs/reference/performance-benchmarks.md`](../docs/reference/performance-benchmarks.md), [`docs/how-to/performance-profiling.md`](../docs/how-to/performance-profiling.md), [`presentation/report/chapters/08-new-kpis.tex`](report/chapters/08-new-kpis.tex).
 
 **Strategic consequence:** the thesis currently cannot be empirically demonstrated inside the product using its own core metrics. That weakens both product-market fit and intellectual defensibility.
 
@@ -217,7 +217,7 @@ The thesis is aimed at organisational leaders in real companies. Yet one of the 
 
 The docs explicitly state that enterprise SSO is not supported and that an architecture decision is pending on SAML, OIDC, or proxy-based approaches.
 
-Evidence: [`docs/KNOWN_ISSUES.md`](docs/KNOWN_ISSUES.md), [`docs/explanation/security-model.md`](docs/explanation/security-model.md).
+Evidence: [`docs/KNOWN_ISSUES.md`](../docs/KNOWN_ISSUES.md), [`docs/explanation/security-model.md`](../docs/explanation/security-model.md).
 
 **Strategic consequence:** without enterprise identity, the thesis’s target buyers can admire the idea but cannot operationally adopt it in regulated or large organisations.
 
@@ -248,7 +248,7 @@ But the enterprise Discovery Engine would need connectors to real coordination e
 
 Those are not the centre of gravity of the current docs.
 
-Evidence: current integration emphasis in [`docs/how-to/integration/neo4j-integration.md`](docs/how-to/integration/neo4j-integration.md), [`docs/how-to/agent-orchestration.md`](docs/how-to/agent-orchestration.md), and the absence of corresponding enterprise connectors across the provided corpus.
+Evidence: current integration emphasis in [`docs/how-to/integration/neo4j-integration.md`](../docs/how-to/integration/neo4j-integration.md), [`docs/how-to/agent-orchestration.md`](../docs/how-to/agent-orchestration.md), and the absence of corresponding enterprise connectors across the provided corpus.
 
 **Strategic consequence:** VisionClaw currently understands knowledge-rich technical environments better than enterprise workflow reality. That is a market choice, but it limits direct alignment to the thesis’s broad organisational ambition.
 
@@ -266,7 +266,7 @@ The thesis is about replacing organisational coordination failure with coherent 
 - 7 position delivery paths,
 - 7 physics settings representations.
 
-Evidence: [`docs/PRD-001-pipeline-alignment.md`](docs/PRD-001-pipeline-alignment.md), [`docs/adr/ADR-036-node-type-consolidation.md`](docs/adr/ADR-036-node-type-consolidation.md), [`docs/adr/ADR-037-binary-protocol-consolidation.md`](docs/adr/ADR-037-binary-protocol-consolidation.md), [`docs/adr/ADR-038-position-flow-consolidation.md`](docs/adr/ADR-038-position-flow-consolidation.md), [`docs/adr/ADR-039-settings-consolidation.md`](docs/adr/ADR-039-settings-consolidation.md).
+Evidence: [`docs/PRD-001-pipeline-alignment.md`](../docs/PRD-001-pipeline-alignment.md), [`docs/adr/ADR-036-node-type-consolidation.md`](../docs/adr/ADR-036-node-type-consolidation.md), [`docs/adr/ADR-037-binary-protocol-consolidation.md`](../docs/adr/ADR-037-binary-protocol-consolidation.md), [`docs/adr/ADR-038-position-flow-consolidation.md`](../docs/adr/ADR-038-position-flow-consolidation.md), [`docs/adr/ADR-039-settings-consolidation.md`](../docs/adr/ADR-039-settings-consolidation.md).
 
 This is not “just tech debt.”
 
@@ -292,7 +292,7 @@ A lot of VisionClaw’s most detailed, advanced work is in:
 - voice,
 - peripheral tool integrations.
 
-Evidence: [`docs/CHANGELOG.md`](docs/CHANGELOG.md), [`docs/adr/ADR-031-layout-mode-system.md`](docs/adr/ADR-031-layout-mode-system.md), [`docs/explanation/physics-gpu-engine.md`](docs/explanation/physics-gpu-engine.md), [`docs/explanation/xr-architecture.md`](docs/explanation/xr-architecture.md).
+Evidence: [`docs/CHANGELOG.md`](../docs/CHANGELOG.md), [`docs/adr/ADR-031-layout-mode-system.md`](../docs/adr/ADR-031-layout-mode-system.md), [`docs/explanation/physics-gpu-engine.md`](../docs/explanation/physics-gpu-engine.md), [`docs/explanation/xr-architecture.md`](../docs/explanation/xr-architecture.md).
 
 That is impressive, but it means the product is currently **overbuilt in the visual substrate relative to the broker/governance/operator layer**.
 
@@ -355,7 +355,7 @@ That means every discovered workflow improvement could become:
 
 That is very close to the thesis’s compounding loop.
 
-Evidence: [`docs/adr/ADR-034-needle-bead-provenance.md`](docs/adr/ADR-034-needle-bead-provenance.md), [`docs/prd-bead-provenance-upgrade.md`](docs/prd-bead-provenance-upgrade.md).
+Evidence: [`docs/adr/ADR-034-needle-bead-provenance.md`](../docs/adr/ADR-034-needle-bead-provenance.md), [`docs/prd-bead-provenance-upgrade.md`](../docs/prd-bead-provenance-upgrade.md).
 
 ---
 
@@ -467,7 +467,7 @@ Some parts of the thesis are already more disciplined than some of the product d
 
 The thesis’s substrate chapter self-corrects overclaims. Parts of the broader docs still carry more expansive performance and readiness language.
 
-Evidence: corrected self-critique in [`presentation/report/chapters/13-technical-substrate.tex`](presentation/report/chapters/13-technical-substrate.tex) versus broader claims in [`docs/reference/performance-benchmarks.md`](docs/reference/performance-benchmarks.md) and some use-case materials.
+Evidence: corrected self-critique in [`presentation/report/chapters/13-technical-substrate.tex`](report/chapters/13-technical-substrate.tex) versus broader claims in [`docs/reference/performance-benchmarks.md`](../docs/reference/performance-benchmarks.md) and some use-case materials.
 
 **Strategic consequence:** DreamLab should establish a single canonical truth pack for external narrative. Right now, the most credible source is arguably the thesis, not the full docs estate.
 
@@ -507,7 +507,7 @@ Lead with:
 3. Clean up external narrative and doc truthfulness
 4. Fix the ontology edge gap and core pipeline inconsistencies
 
-Evidence for these priorities: [`docs/KNOWN_ISSUES.md`](docs/KNOWN_ISSUES.md), [`docs/PRD-001-pipeline-alignment.md`](docs/PRD-001-pipeline-alignment.md).
+Evidence for these priorities: [`docs/KNOWN_ISSUES.md`](../docs/KNOWN_ISSUES.md), [`docs/PRD-001-pipeline-alignment.md`](../docs/PRD-001-pipeline-alignment.md).
 
 #### Horizon 2 — next 6 months
 

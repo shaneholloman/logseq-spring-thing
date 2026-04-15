@@ -1171,10 +1171,9 @@ docker logs visionclaw_container 2>&1 | grep -i "ptx\|cuda\|nvcc"
 ## See Also
 
 - [Deployment Guide](./deployment-guide.md) — Docker Compose deployment reference
-- [Actor System Guide](./development/actor-system.md) — Actix actor patterns in depth
-- [Testing Guide](./development/testing-guide.md) — Full test suite reference
-- [Docker Environment Setup](./deployment/docker-environment-setup.md) — Local dev container setup
-- [Project Structure](./development/02-project-structure.md) — Complete directory reference (46 KB)
+- [Actor Hierarchy](../explanation/actor-hierarchy.md) — Actix actor patterns in depth
+- [Backend CQRS Pattern](../explanation/backend-cqrs-pattern.md) — Hexagonal architecture details
+- [Contributing Guide](../CONTRIBUTING.md) — Contribution standards and testing workflow
 
 ---
 

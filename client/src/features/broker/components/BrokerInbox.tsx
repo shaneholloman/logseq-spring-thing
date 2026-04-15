@@ -17,6 +17,7 @@ interface BrokerCase {
 
 interface BrokerInboxProps {
   onCountChange?: (count: number) => void;
+  onCaseSelect?: (caseId: string) => void;
 }
 
 const PRIORITY_COLORS: Record<string, string> = {
@@ -34,7 +35,7 @@ const SOURCE_LABELS: Record<string, string> = {
   workflow_proposal: 'Workflow',
 };
 
-export function BrokerInbox({ onCountChange }: BrokerInboxProps) {
+export function BrokerInbox({ onCountChange, onCaseSelect }: BrokerInboxProps) {
   const [cases, setCases] = useState<BrokerCase[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -120,13 +121,17 @@ export function BrokerInbox({ onCountChange }: BrokerInboxProps) {
               className={`cursor-pointer transition-colors hover:border-primary/50 ${
                 selectedCase === brokerCase.id ? 'border-primary' : ''
               }`}
-              onClick={() => setSelectedCase(brokerCase.id)}
+              onClick={() => {
+                setSelectedCase(brokerCase.id);
+                onCaseSelect?.(brokerCase.id);
+              }}
               role="button"
               tabIndex={0}
               onKeyDown={(e: React.KeyboardEvent) => {
                 if (e.key === 'Enter' || e.key === ' ') {
                   e.preventDefault();
                   setSelectedCase(brokerCase.id);
+                  onCaseSelect?.(brokerCase.id);
                 }
               }}
             >

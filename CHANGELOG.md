@@ -625,8 +625,8 @@ cp data/backup/*.db data/
 ## Resources
 
 ### Documentation
-- **[Architecture Guide](docs/architecture/)** - Hexagonal architecture deep dive
-- **[API Reference](docs/api/)** - Complete API documentation
+- **[Architecture Guide](docs/explanation/system-overview.md)** - Hexagonal architecture deep dive
+- **[API Reference](docs/reference/rest-api.md)** - Complete API documentation
 - **** - Upgrade instructions
 - **** - Optimization techniques
 

@@ -149,7 +149,7 @@ docker logs comfyui --tail 100
 
 ## Related Documentation
 
-- [Skills Documentation](SKILLS.md)
+- [Agents Catalog](../reference/agents-catalog.md)
 
 ## MCP Skill Integration
 

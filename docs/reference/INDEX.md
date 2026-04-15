@@ -46,7 +46,7 @@ Quick-lookup index for all reference documentation. For prose explanations see [
 | Reference | Description |
 |-----------|-------------|
 | [Agents Catalog](agents-catalog.md) | Complete catalog of 83 specialist agent skills organised by domain with invocation patterns |
-| [Skill MCP Classification](protocols/skill-mcp-classification.md) | Routing classification mapping agent skills to their MCP server implementations |
+| [MCP Protocol](protocols/mcp-protocol.md) | MCP protocol specification and skill routing |
 
 ---
 

@@ -72,8 +72,7 @@ Step-by-step lessons that teach VisionClaw by doing.
 |----------|-------------|
 | [What is VisionClaw?](tutorials/overview.md) | Platform overview and key concepts |
 | [Installation](tutorials/installation.md) | Docker and native setup from zero |
-| [Creating Your First Graph](tutorials/creating-first-graph.md) | Build and explore your first knowledge graph |
-| [First Graph (Quick)](tutorials/first-graph.md) | Rapid first-graph walkthrough |
+| [Creating Your First Graph](tutorials/first-graph.md) | Build and explore your first knowledge graph |
 | [Neo4j Basics](tutorials/neo4j-basics.md) | Query and navigate the graph database |
 
 ---

@@ -4,7 +4,8 @@ use serde::Deserialize;
 use serde_json::json;
 use std::collections::HashMap;
 
-use crate::models::enterprise::{WorkflowProposal, WorkflowStatus, WorkflowStep};
+use crate::events::enterprise_events::{ProposalCreatedEvent, emit_enterprise_event};
+use crate::models::enterprise::{WorkflowPattern, WorkflowProposal, WorkflowStatus, WorkflowStep};
 use crate::{ok_json, bad_request, not_found, created_json, error_json};
 use crate::AppState;
 
@@ -113,6 +114,14 @@ pub async fn create_proposal(
 
     match state.workflow_repository.create_proposal(&proposal).await {
         Ok(()) => {
+            // Emit audit event
+            emit_enterprise_event(&ProposalCreatedEvent {
+                proposal_id: proposal.id.clone(),
+                title: proposal.title.clone(),
+                submitted_by: proposal.submitted_by.clone(),
+                timestamp: chrono::Utc::now(),
+            });
+
             created_json!(json!({
                 "id": proposal.id,
                 "title": proposal.title,
@@ -173,6 +182,60 @@ pub async fn list_patterns(
     }
 }
 
+/// POST /api/workflows/proposals/{id}/promote
+///
+/// Promotes an approved proposal to a deployed pattern. Only proposals with
+/// status `approved` can be promoted. Creates a `WorkflowPattern` node and
+/// transitions the proposal status to `deployed`.
+pub async fn promote_proposal(
+    state: web::Data<AppState>,
+    proposal_id: web::Path<String>,
+) -> impl Responder {
+    info!("POST /api/workflows/proposals/{}/promote", proposal_id);
+
+    // 1. Fetch the proposal and validate status
+    let proposal = match state.workflow_repository.get_proposal(&proposal_id).await {
+        Ok(Some(p)) => p,
+        Ok(None) => return not_found!(format!("Proposal {} not found", proposal_id)),
+        Err(e) => {
+            warn!("Failed to get proposal {}: {}", proposal_id, e);
+            return error_json!("Failed to get proposal", e.to_string());
+        }
+    };
+
+    if proposal.status != WorkflowStatus::Approved {
+        return bad_request!(format!(
+            "Only approved proposals can be promoted (current status: {:?})",
+            proposal.status
+        ));
+    }
+
+    // 2. Build the pattern from the proposal
+    let now = chrono::Utc::now().to_rfc3339();
+    let pattern = WorkflowPattern {
+        id: format!("wfp-{}", uuid::Uuid::new_v4()),
+        title: proposal.title.clone(),
+        description: proposal.description.clone(),
+        active_version_id: proposal.id.clone(),
+        deployed_at: now,
+        deployed_by: "api".to_string(),
+        adoption_count: 0,
+        rollback_target_id: None,
+    };
+
+    // 3. Promote in the repository (creates pattern + transitions status)
+    if let Err(e) = state.workflow_repository.promote_to_pattern(&proposal_id, &pattern).await {
+        warn!("Failed to promote proposal {}: {}", proposal_id, e);
+        return error_json!("Failed to promote proposal", e.to_string());
+    }
+
+    ok_json!(json!({
+        "patternId": pattern.id,
+        "title": pattern.title,
+        "status": "deployed"
+    }))
+}
+
 /// Route configuration for workflow proposals and patterns.
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(
@@ -181,6 +244,7 @@ pub fn config(cfg: &mut web::ServiceConfig) {
             .route("/proposals", web::get().to(list_proposals))
             .route("/proposals", web::post().to(create_proposal))
             .route("/proposals/{id}", web::get().to(get_proposal))
+            .route("/proposals/{id}/promote", web::post().to(promote_proposal))
             .route("/patterns", web::get().to(list_patterns)),
     );
 }

@@ -990,9 +990,8 @@ sudo certbot renew --nginx
 
 ## See Also
 
-- [Docker Compose Guide](./deployment-guide.md) — Compose file reference
-- [Docker Environment Setup](./deployment/docker-environment-setup.md) — Local dev walkthrough
 - [Environment Variables Reference](../reference/configuration/environment-variables.md) — Complete variable list
+- [Docker Compose Options](../reference/configuration/docker-compose-options.md) — Compose options reference
 - [Development Guide](./development-guide.md) — Developer setup and workflow
 - `docker-compose.unified.yml` — Primary compose file (source of truth)
 - `Dockerfile.production` — Production multi-stage build

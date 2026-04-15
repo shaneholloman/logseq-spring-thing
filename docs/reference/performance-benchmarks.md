@@ -392,7 +392,7 @@ VisionClaw delivers production-grade performance across all tiers:
 ## References
 
 - [Binary Protocol Specification](./websocket-binary.md)
-- [WebSocket API Documentation](./api/03-websocket.md)
+- [WebSocket Binary Protocol](./websocket-binary.md)
 - 
 - 
 

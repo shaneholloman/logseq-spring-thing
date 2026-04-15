@@ -2,7 +2,7 @@
 
 **Status:** Proposed
 **Priority:** P0 strategic, P1 platform
-**Document purpose:** Turn VisionClaw from a strong semantic/agentic substrate into a complete, enterprise-usable agentic mesh control plane aligned with the organisational model in [`presentation/the-coordination-collapse.md`](presentation/the-coordination-collapse.md).
+**Document purpose:** Turn VisionClaw from a strong semantic/agentic substrate into a complete, enterprise-usable agentic mesh control plane aligned with the organisational model in [`presentation/the-coordination-collapse.md`](the-coordination-collapse.md).
 **Primary gap statement:** VisionClaw is already strong at ontology, orchestration, provenance, and visualisation, but incomplete at the human operating layer, the broker workflow layer, enterprise identity, and organisational KPI instrumentation.
 
 ## 1. Executive Summary
@@ -50,27 +50,27 @@ VisionClaw will evolve from a **semantic graph platform with agent features** in
 
 This PRD is grounded in the organisational model and current platform reality documented in:
 
-- [`presentation/the-coordination-collapse.md`](presentation/the-coordination-collapse.md)
-- [`presentation/google-analysis.md`](presentation/google-analysis.md)
-- [`presentation/report/chapters/08-new-kpis.tex`](presentation/report/chapters/08-new-kpis.tex)
-- [`presentation/report/chapters/09-governance.tex`](presentation/report/chapters/09-governance.tex)
-- [`presentation/report/chapters/13-technical-substrate.tex`](presentation/report/chapters/13-technical-substrate.tex)
-- [`presentation/report/chapters/14-implementation.tex`](presentation/report/chapters/14-implementation.tex)
-- [`presentation/report/chapters/15-open-questions.tex`](presentation/report/chapters/15-open-questions.tex)
-- [`docs/README.md`](docs/README.md)
-- [`docs/KNOWN_ISSUES.md`](docs/KNOWN_ISSUES.md)
-- [`docs/how-to/agent-orchestration.md`](docs/how-to/agent-orchestration.md)
-- [`docs/explanation/ontology-pipeline.md`](docs/explanation/ontology-pipeline.md)
-- [`docs/explanation/security-model.md`](docs/explanation/security-model.md)
-- [`docs/PRD-001-pipeline-alignment.md`](docs/PRD-001-pipeline-alignment.md)
-- [`docs/adr/ADR-036-node-type-consolidation.md`](docs/adr/ADR-036-node-type-consolidation.md)
-- [`docs/adr/ADR-037-binary-protocol-consolidation.md`](docs/adr/ADR-037-binary-protocol-consolidation.md)
-- [`docs/adr/ADR-038-position-flow-consolidation.md`](docs/adr/ADR-038-position-flow-consolidation.md)
-- [`docs/adr/ADR-039-settings-consolidation.md`](docs/adr/ADR-039-settings-consolidation.md)
-- [`docs/adr/ADR-027-pod-backed-graph-views.md`](docs/adr/ADR-027-pod-backed-graph-views.md)
-- [`docs/adr/ADR-029-type-index-discovery.md`](docs/adr/ADR-029-type-index-discovery.md)
-- [`docs/adr/ADR-030-agent-memory-pods.md`](docs/adr/ADR-030-agent-memory-pods.md)
-- [`docs/adr/ADR-034-needle-bead-provenance.md`](docs/adr/ADR-034-needle-bead-provenance.md)
+- [`presentation/the-coordination-collapse.md`](the-coordination-collapse.md)
+- [`presentation/google-analysis.md`](google-analysis.md)
+- [`presentation/report/chapters/08-new-kpis.tex`](report/chapters/08-new-kpis.tex)
+- [`presentation/report/chapters/09-governance.tex`](report/chapters/09-governance.tex)
+- [`presentation/report/chapters/13-technical-substrate.tex`](report/chapters/13-technical-substrate.tex)
+- [`presentation/report/chapters/14-implementation.tex`](report/chapters/14-implementation.tex)
+- [`presentation/report/chapters/15-open-questions.tex`](report/chapters/15-open-questions.tex)
+- [`docs/README.md`](../docs/README.md)
+- [`docs/KNOWN_ISSUES.md`](../docs/KNOWN_ISSUES.md)
+- [`docs/how-to/agent-orchestration.md`](../docs/how-to/agent-orchestration.md)
+- [`docs/explanation/ontology-pipeline.md`](../docs/explanation/ontology-pipeline.md)
+- [`docs/explanation/security-model.md`](../docs/explanation/security-model.md)
+- [`docs/PRD-001-pipeline-alignment.md`](../docs/PRD-001-pipeline-alignment.md)
+- [`docs/adr/ADR-036-node-type-consolidation.md`](../docs/adr/ADR-036-node-type-consolidation.md)
+- [`docs/adr/ADR-037-binary-protocol-consolidation.md`](../docs/adr/ADR-037-binary-protocol-consolidation.md)
+- [`docs/adr/ADR-038-position-flow-consolidation.md`](../docs/adr/ADR-038-position-flow-consolidation.md)
+- [`docs/adr/ADR-039-settings-consolidation.md`](../docs/adr/ADR-039-settings-consolidation.md)
+- [`docs/adr/ADR-027-pod-backed-graph-views.md`](../docs/adr/ADR-027-pod-backed-graph-views.md)
+- [`docs/adr/ADR-029-type-index-discovery.md`](../docs/adr/ADR-029-type-index-discovery.md)
+- [`docs/adr/ADR-030-agent-memory-pods.md`](../docs/adr/ADR-030-agent-memory-pods.md)
+- [`docs/adr/ADR-034-needle-bead-provenance.md`](../docs/adr/ADR-034-needle-bead-provenance.md)
 
 ---
 
@@ -254,7 +254,7 @@ This workstream resolves internal architecture fragmentation that directly under
 - ontology edge-gap repair,
 - graph loading correctness.
 
-**Source basis:** [`docs/PRD-001-pipeline-alignment.md`](docs/PRD-001-pipeline-alignment.md), [`docs/adr/ADR-036-node-type-consolidation.md`](docs/adr/ADR-036-node-type-consolidation.md), [`docs/adr/ADR-037-binary-protocol-consolidation.md`](docs/adr/ADR-037-binary-protocol-consolidation.md), [`docs/adr/ADR-038-position-flow-consolidation.md`](docs/adr/ADR-038-position-flow-consolidation.md), [`docs/adr/ADR-039-settings-consolidation.md`](docs/adr/ADR-039-settings-consolidation.md), [`docs/KNOWN_ISSUES.md`](docs/KNOWN_ISSUES.md).
+**Source basis:** [`docs/PRD-001-pipeline-alignment.md`](../docs/PRD-001-pipeline-alignment.md), [`docs/adr/ADR-036-node-type-consolidation.md`](../docs/adr/ADR-036-node-type-consolidation.md), [`docs/adr/ADR-037-binary-protocol-consolidation.md`](../docs/adr/ADR-037-binary-protocol-consolidation.md), [`docs/adr/ADR-038-position-flow-consolidation.md`](../docs/adr/ADR-038-position-flow-consolidation.md), [`docs/adr/ADR-039-settings-consolidation.md`](../docs/adr/ADR-039-settings-consolidation.md), [`docs/KNOWN_ISSUES.md`](../docs/KNOWN_ISSUES.md).
 
 **Outcome:** the substrate becomes coherent enough to support enterprise-facing workflow and governance features.
 
