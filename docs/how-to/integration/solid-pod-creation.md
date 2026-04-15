@@ -293,6 +293,6 @@ jss:
 
 ## Related Documentation
 
-- [Solid Integration Plan](/home/devuser/.claude/plans/composed-singing-stallman.md)
-- [Nostr Authentication](./NOSTR_AUTH.md)
-- [JSS Configuration](../JavaScriptSolidServer/README.md)
+- [Solid Integration](solid-integration.md)
+- [Nostr Authentication](../features/nostr-auth.md)
+- [Security Model](../../explanation/security-model.md)

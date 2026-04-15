@@ -544,8 +544,8 @@ CALL apoc.export.json.all("export.json", {});
 
 ## Related Documentation
 
-- **[Neo4j Migration Guide](neo4j-migration.md)** - Historical migration information
-- **[Implementation Status](../reference/implementation-status.md)** - Current system completeness
+- **[Neo4j Schema Reference](../../reference/neo4j-schema-unified.md)** - Unified schema documentation
+- **[Deployment Guide](../deployment-guide.md)** - Complete deployment guide
 - **** - Troubleshooting backend startup
 - **** - GitHub synchronization
 - **** - Complete deployment guide

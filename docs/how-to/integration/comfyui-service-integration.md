@@ -373,10 +373,8 @@ Then rebuild and access at http://localhost:8188
 
 ## Related Documentation
 
-- [ComfyUI SAM3D Docker Setup](multi-agent-docker/comfyui-sam3d-setup.md)
-- [RAGFlow Knowledge Management Integration](../ai-integration/ragflow-integration.md)
-- [Perplexity AI Integration](../ai-integration/perplexity-integration.md)
-- [Development Setup Guide](../development/01-development-setup.md)
+- [ComfyUI SAM3D Setup](../comfyui-sam3d-setup.md)
+- [Development Guide](../development-guide.md)
 - [Pipeline Operator Runbook](../operations/pipeline-operator-runbook.md)
 
 ## Status

@@ -419,7 +419,7 @@ For issues or questions about documentation maintenance:
 
 1. Check this guide first
 2. Review validation reports
-3. Consult [CONTRIBUTION.md](./CONTRIBUTION.md)
+3. Consult [CONTRIBUTING.md](../../CONTRIBUTING.md)
 4. Open an issue on GitHub
 
 ---
