@@ -154,7 +154,7 @@ Returns:
 ## Related Documentation
 
 - [Intelligent Pathfinding Guide](intelligent-pathfinding.md)
-- [Semantic Forces User Guide](../explanation/physics-gpu-engine.md)
+- [Physics & GPU Engine](../../explanation/physics-gpu-engine.md)
 - [Contributing Guidelines](../../CONTRIBUTING.md)
 - [Goalie Integration - Goal-Oriented AI Research](../infrastructure/goalie-integration.md)
 - [VisionClaw Guides](../index.md)

@@ -155,7 +155,7 @@ Typical performance:
 ## Related Documentation
 
 - [Natural Language Queries Tutorial](natural-language-queries.md)
-- [Semantic Forces User Guide](../explanation/physics-gpu-engine.md)
+- [Physics & GPU Engine](../../explanation/physics-gpu-engine.md)
 - [VisionClaw Guides](../index.md)
 - [Goalie Integration - Goal-Oriented AI Research](../infrastructure/goalie-integration.md)
 - [Troubleshooting Guide](../infrastructure/troubleshooting.md)

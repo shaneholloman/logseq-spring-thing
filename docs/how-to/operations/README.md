@@ -16,10 +16,13 @@ Operating VisionClaw in production environments.
 
 ## Contents
 
-- [Monitoring](monitoring.md) - Observability and alerting
-- [Backup & Recovery](backup.md) - Data protection strategies
+- [Configuration](configuration.md) - Environment and deployment configuration
 - [Troubleshooting](troubleshooting.md) - Common issues and solutions
-- [Scaling](scaling.md) - Performance tuning and scaling
+- [Security](security.md) - Security hardening
+- [Telemetry & Logging](telemetry-logging.md) - Observability and alerting
+- [Maintenance](maintenance.md) - Operational maintenance
+- [Pipeline Admin API](pipeline-admin-api.md) - Pipeline administration
+- [Operator Runbook](pipeline-operator-runbook.md) - Operational procedures
 
 ## Key Metrics
 

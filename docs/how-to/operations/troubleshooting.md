@@ -1,6 +1,6 @@
 ---
 title: Troubleshooting Guide
-description: > [Guides](./index.md) > Troubleshooting
+description: > [Guides](../README.md) > Troubleshooting
 category: how-to
 tags:
   - tutorial
@@ -15,7 +15,7 @@ difficulty-level: intermediate
 
 # Troubleshooting Guide
 
- > [Guides](./index.md) > Troubleshooting
+ > [Guides](../README.md) > Troubleshooting
 
 Comprehensive troubleshooting guide for VisionClaw, covering installation, deployment, runtime issues, and system recovery. This guide consolidates solutions for both the main VisionClaw system and the multi-agent Docker environment.
 
@@ -1829,11 +1829,8 @@ scrape-configs:
 
 ### Documentation Resources
 
-- [Installation Guide](../../getting-started/installation.md)
-- 
-- 
-- 
-- [API Reference](../reference/)
+- [Installation Guide](../../tutorials/installation.md)
+- [API Reference](../../reference/rest-api.md)
 
 ### Community & Support
 

@@ -52,16 +52,20 @@ VisionClaw is operational at [DreamLab residential training lab](https://www.dre
 
 - Ontology-grounded agent orchestration with shared semantics
 - GPU-accelerated knowledge graph visualisation and analytics at small-to-medium scale
-- Nostr-signed identity and request authentication
-- A live environment for turning discovered workflows into governed graph operations
-- Full architectural blueprint for enterprise coordination (6 ADRs, 17 bounded contexts, enterprise PRD)
-- Platform coherence: single node type system, consolidated binary protocol, unified position flow
+- Dual-stack identity: Nostr NIP-98 + OIDC configuration for enterprise SSO
+- Judgment Broker Workbench with Decision Canvas, case CRUD, and timeline (Neo4j-persisted)
+- Workflow proposal lifecycle: create → review → approve → promote to reusable pattern
+- KPI computation engine: Mesh Velocity, Augmentation Ratio, Trust Variance, HITL Precision with real trend data
+- Policy engine: 6 built-in rules with server-side evaluation, TOML-configurable, test bench
+- Connector management with GitHub connector setup, PII redaction, signal feed
+- RBAC: 4 enterprise roles (Broker, Admin, Auditor, Contributor) with role hierarchy middleware
+- 91 frontend tests, 60 backend tests, WCAG AA accessibility compliance
+- 30 design system components including animated Canvas2D sparklines
 
 **What remains open:**
-- Enterprise identity integration (OIDC — architected, not yet implemented)
-- Judgment Broker Workbench UI (architected as BC11, needs frontend)
+- Full OIDC token exchange flow (configuration types ready, token verification pending)
 - Validation in regulated industries (pharma, finance pilots planned)
-- KPI instrumentation (formulas defined, computation engine pending)
+- WebSocket push for real-time broker inbox (currently polls every 15s)
 - Multi-provider orchestration beyond Claude-Flow
 
 </details>

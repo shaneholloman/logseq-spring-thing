@@ -5,6 +5,34 @@ All notable changes to VisionFlow will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-04-15
+
+### Enterprise Platform — Full Implementation
+
+#### Added
+
+- **Judgment Broker Workbench**: Decision Canvas (6 actions, evidence panel, reasoning), case CRUD persisted in Neo4j, broker timeline with action-type styling
+- **Workflow Studio**: proposal lifecycle (create → review → approve → deploy), "Promote to Pattern" button, Neo4j persistence with state machine validation
+- **KPI Computation Engine**: real Mesh Velocity, Augmentation Ratio, Trust Variance, HITL Precision computed from repository data with trend lines
+- **Policy Engine**: InMemoryPolicyEngine with 6 rules, server-side POST /api/policy/evaluate, threshold-based confidence evaluation
+- **Connector Backend**: /api/connectors CRUD, frontend wired to real API with loading/error states
+- **RBAC Middleware**: RequireRole with Admin > Broker > Auditor > Contributor hierarchy, X-Enterprise-Role header extraction
+- **OIDC Configuration**: issuer URL, client ID, role mapping, role claim configuration types
+- **Domain Events**: CaseCreated, CaseDecided, ProposalCreated, ProposalStatusChanged, WorkflowPromoted, PolicyEvaluated
+- **Decision Canvas**: full case review with evidence, 6 decision action buttons, required reasoning, provenance recording
+- **apiFetch Wrapper**: typed fetch with response.ok checking, ApiError class, error banners on all panels
+
+#### Fixed
+
+- **WCAG AA Compliance**: 23 accessibility fixes across 12 components (keyboard navigation, ARIA labels, semantic lists, aria-live regions, linked label/control pairs)
+- **Design System**: Badge tokens, Modal→Dialog, ScrollArea custom scrollbar, Textarea CVA variants, 5 new components (Sparkline, Timeline, EmptyState, StatusDot, DataTable)
+- **Security**: RequireAuth on all enterprise endpoints, input validation (title length, enum allowlists)
+
+#### Tests
+
+- 91 frontend tests (67 design system + 24 enterprise panels)
+- 60 backend integration tests (domain model serialization, policy aggregation)
+
 ## [1.3.0] - 2026-04-14
 
 ### Enterprise Platform Architecture

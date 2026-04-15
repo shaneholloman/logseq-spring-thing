@@ -252,6 +252,6 @@ echo "Configuration valid"
 
 ## Related Documentation
 
-- [API Reference](../api/README.md)
+- [API Reference](../rest-api.md)
 - [Error Reference](../error-codes.md)
 - [Deployment Guide](../../how-to/deployment-guide.md)

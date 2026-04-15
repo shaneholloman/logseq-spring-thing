@@ -20,10 +20,10 @@ Complete technical specification for all VisionClaw communication protocols.
 
 | Protocol | Transport | Use Case | Documentation |
 |----------|-----------|----------|---------------|
-| **Binary WebSocket** | WebSocket | Real-time graph updates | [binary-websocket.md](./binary-websocket.md) |
+| **Binary WebSocket** | WebSocket | Real-time graph updates | [binary-websocket.md](../websocket-binary.md) |
 | **MCP** | TCP | Agent orchestration | [mcp-protocol.md](./mcp-protocol.md) |
-| **REST HTTP** | HTTP/HTTPS | CRUD operations | [API Reference](../api/rest-api.md) |
-| **Solid/LDP** | HTTP | Decentralized data | [Solid API](../api/solid-api.md) |
+| **REST HTTP** | HTTP/HTTPS | CRUD operations | [REST API](../rest-api.md) |
+| **Solid/LDP** | HTTP | Decentralized data | [REST API](../rest-api.md) |
 
 ---
 
@@ -54,7 +54,7 @@ Complete technical specification for all VisionClaw communication protocols.
 - Binary V2: 3.6 MB, 0.8ms parse, 80% smaller than JSON
 - JSON (deprecated): 18 MB, 12ms parse
 
-See [binary-websocket.md](./binary-websocket.md) for complete specification.
+See [binary-websocket.md](../websocket-binary.md) for complete specification.
 
 ---
 
@@ -146,6 +146,6 @@ See [mcp-protocol.md](./mcp-protocol.md) for complete specification.
 
 ## Related Documentation
 
-- [WebSocket API](../api/websocket-api.md)
-- [REST API](../api/rest-api.md)
+- [WebSocket Binary Protocol](../websocket-binary.md)
+- [REST API](../rest-api.md)
 - [Error Codes](../error-codes.md)

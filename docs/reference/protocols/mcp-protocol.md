@@ -418,5 +418,5 @@ Client                          Server
 ## Related Documentation
 
 - [Protocol Reference](./README.md)
-- [Binary WebSocket](./binary-websocket.md)
+- [WebSocket Binary Protocol](../websocket-binary.md)
 - [Agent Configuration](../configuration/README.md)

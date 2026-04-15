@@ -167,5 +167,4 @@ Voice routing integrates with Vircadia's spatial audio system:
 ## Related Documentation
 
 - [Voice Integration](voice-integration.md) - TTS/STT WebSocket protocol details
-- [Vircadia XR Guide](../explanation/xr-architecture.md) - Multi-user XR setup
-- [Vircadia Multi-User Guide](../explanation/xr-architecture.md) - Collaboration features
+- [XR Architecture](../../explanation/xr-architecture.md) - Multi-user XR setup and collaboration features

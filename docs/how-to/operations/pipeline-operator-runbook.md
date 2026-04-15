@@ -676,11 +676,10 @@ echo "RECOVERY COMPLETE - $(date)"
 
 ## Related Documentation
 
-- [Vircadia Multi-User XR Integration - User Guide](../explanation/xr-architecture.md)
-- [Multi-Agent Docker Environment - Complete Documentation](../infrastructure/../deployment-guide.md)
-- [Multi-Agent Docker Environment Architecture](../infrastructure/architecture.md)
-- [Documentation Contributing Guidelines](../contributing.md)
-- [Agent Control Panel User Guide](../agent-orchestration.md)
+- [XR Architecture](../../explanation/xr-architecture.md)
+- [Deployment Guide](../deployment-guide.md)
+- [Contributing Guidelines](../../CONTRIBUTING.md)
+- [Agent Orchestration Guide](../agent-orchestration.md)
 
 ## Appendix
 

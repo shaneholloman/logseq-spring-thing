@@ -1,6 +1,6 @@
 ---
 title: Telemetry and Logging Guide
-description: *[Guides](../guides/README.md) > Telemetry and Logging*
+description: *[Guides](../README.md) > Telemetry and Logging*
 category: how-to
 tags:
   - tutorial
@@ -15,7 +15,7 @@ difficulty-level: advanced
 
 # Telemetry and Logging Guide
 
-*[Guides](../guides/README.md) > Telemetry and Logging*
+*[Guides](../README.md) > Telemetry and Logging*
 
 **Version**: 1.0.0
 **Last Updated**: 2025-09-17

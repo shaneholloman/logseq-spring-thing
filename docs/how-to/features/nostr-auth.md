@@ -177,11 +177,11 @@ The backend needs to implement:
 
 ## Related Documentation
 
-- [Documentation Contributing Guidelines](../contributing.md)
+- [Documentation Contributing Guidelines](../../CONTRIBUTING.md)
 - [Agent Control Panel User Guide](../agent-orchestration.md)
 - [Pipeline Operator Runbook](../operations/pipeline-operator-runbook.md)
 - [Client-Side Filtering Implementation](filtering-nodes.md)
-- [Semantic Forces User Guide](../explanation/physics-gpu-engine.md)
+- [Physics & GPU Engine](../../explanation/physics-gpu-engine.md)
 
 ## Notes
 

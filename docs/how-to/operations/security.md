@@ -1,6 +1,6 @@
 ---
 title: Security Best Practices
-description: *[Guides](../guides/README.md) > Security*
+description: *[Guides](../README.md) > Security*
 category: how-to
 tags:
   - tutorial
@@ -14,7 +14,7 @@ difficulty-level: intermediate
 
 # Security Best Practices
 
-*[Guides](../guides/README.md) > Security*
+*[Guides](../README.md) > Security*
 
 This document outlines the security measures implemented in the VisionClaw multi-agent system and provides guidelines for secure deployment and usage.
 
@@ -253,7 +253,7 @@ services:
 
 - 
 - [Configuration Guide](./configuration.md)
-- [Deployment Guide](./deployment.md)
+- [Deployment Guide](../deployment-guide.md)
 
 ---
 
