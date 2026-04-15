@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '../../design-system/components';
 import { Badge } from '../../design-system/components';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../design-system/components';
+import { apiFetch, ApiError } from '../../../utils/apiFetch';
 
 interface DecisionRecord {
   id: string;
@@ -37,13 +38,14 @@ const ACTION_LABELS: Record<string, string> = {
 export function BrokerTimeline() {
   const [decisions, setDecisions] = useState<DecisionRecord[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState('all');
 
   useEffect(() => {
     const fetchDecisions = async () => {
       try {
-        const response = await fetch('/api/broker/inbox?status=decided');
-        const data = await response.json();
+        setError(null);
+        const data = await apiFetch<{ cases: any[] }>('/api/broker/inbox?status=decided');
         const records: DecisionRecord[] = (data.cases || [])
           .filter((c: any) => c.status === 'decided')
           .map((c: any) => ({
@@ -57,6 +59,8 @@ export function BrokerTimeline() {
           }));
         setDecisions(records);
       } catch (err) {
+        const message = err instanceof ApiError ? err.message : 'Network error';
+        setError(message);
         console.error('Failed to fetch decisions:', err);
       } finally {
         setLoading(false);
@@ -91,6 +95,11 @@ export function BrokerTimeline() {
         </div>
       </CardHeader>
       <CardContent>
+        {error && (
+          <div className="p-3 rounded-lg border border-red-500/30 bg-red-500/10 text-red-400 text-sm mb-4">
+            {error}
+          </div>
+        )}
         {loading ? (
           <div className="flex items-center justify-center py-8">
             <div className="text-muted-foreground">Loading timeline...</div>

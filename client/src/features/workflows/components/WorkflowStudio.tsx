@@ -6,6 +6,7 @@ import { Input } from '../../design-system/components';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../design-system/components';
 import { Textarea } from '../../design-system/components';
 import { Label } from '../../design-system/components';
+import { apiFetch, apiPost, ApiError } from '../../../utils/apiFetch';
 
 interface WorkflowProposal {
   id: string;
@@ -38,6 +39,7 @@ export function WorkflowStudio() {
   const [patterns, setPatterns] = useState<WorkflowPattern[]>([]);
   const [activeTab, setActiveTab] = useState('proposals');
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   // New proposal form state
   const [newTitle, setNewTitle] = useState('');
@@ -47,15 +49,16 @@ export function WorkflowStudio() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [proposalsRes, patternsRes] = await Promise.all([
-          fetch('/api/workflows/proposals'),
-          fetch('/api/workflows/patterns'),
+        setError(null);
+        const [proposalsData, patternsData] = await Promise.all([
+          apiFetch<{ proposals: WorkflowProposal[] }>('/api/workflows/proposals'),
+          apiFetch<{ patterns: WorkflowPattern[] }>('/api/workflows/patterns'),
         ]);
-        const proposalsData = await proposalsRes.json();
-        const patternsData = await patternsRes.json();
         setProposals(proposalsData.proposals || []);
         setPatterns(patternsData.patterns || []);
       } catch (err) {
+        const message = err instanceof ApiError ? err.message : 'Network error';
+        setError(message);
         console.error('Failed to fetch workflow data:', err);
       } finally {
         setLoading(false);
@@ -68,17 +71,17 @@ export function WorkflowStudio() {
     e.preventDefault();
     if (!newTitle.trim()) return;
     try {
-      const response = await fetch('/api/workflows/proposals', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: newTitle, description: newDescription }),
+      setError(null);
+      const data = await apiPost<WorkflowProposal>('/api/workflows/proposals', {
+        title: newTitle, description: newDescription,
       });
-      const data = await response.json();
       setProposals((prev) => [{ ...data, description: newDescription, createdAt: new Date().toISOString() }, ...prev]);
       setNewTitle('');
       setNewDescription('');
       setShowForm(false);
     } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Network error';
+      setError(message);
       console.error('Failed to create proposal:', err);
     }
   };
@@ -91,6 +94,12 @@ export function WorkflowStudio() {
           {showForm ? 'Cancel' : 'New Proposal'}
         </Button>
       </div>
+
+      {error && (
+        <div className="p-3 rounded-lg border border-red-500/30 bg-red-500/10 text-red-400 text-sm">
+          {error}
+        </div>
+      )}
 
       {showForm && (
         <Card>

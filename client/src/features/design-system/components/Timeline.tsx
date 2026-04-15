@@ -44,15 +44,18 @@ export function Timeline({ items, className }: TimelineProps) {
   if (items.length === 0) return null;
 
   return (
-    <div className={className}>
+    <ol aria-label="Timeline" className={className}>
       {items.map((item, index) => (
-        <div key={item.id} className={timelineItemVariants({ status: item.status })}>
+        <li key={item.id} className={timelineItemVariants({ status: item.status })}>
           {/* Vertical line */}
           {index < items.length - 1 && (
-            <div className="absolute left-[11px] top-6 bottom-0 w-px bg-border" />
+            <div className="absolute left-[11px] top-6 bottom-0 w-px bg-border" aria-hidden="true" />
           )}
           {/* Dot */}
-          <div className={`absolute left-1 top-1.5 h-3 w-3 rounded-full ${dotColors[item.status || 'default']}`} />
+          <div
+            className={`absolute left-1 top-1.5 h-3 w-3 rounded-full ${dotColors[item.status || 'default']}`}
+            aria-hidden="true"
+          />
           {/* Content */}
           <div>
             <div className="flex items-center gap-2">
@@ -72,8 +75,8 @@ export function Timeline({ items, className }: TimelineProps) {
               </div>
             )}
           </div>
-        </div>
+        </li>
       ))}
-    </div>
+    </ol>
   );
 }

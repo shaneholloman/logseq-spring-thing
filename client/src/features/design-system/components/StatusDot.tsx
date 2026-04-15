@@ -25,20 +25,29 @@ const statusDotVariants = cva(
   }
 );
 
+const STATUS_TEXT: Record<string, string> = {
+  active: 'Active',
+  warning: 'Warning',
+  error: 'Error',
+  inactive: 'Inactive',
+  processing: 'Processing',
+};
+
 interface StatusDotProps extends VariantProps<typeof statusDotVariants> {
   label?: string;
   className?: string;
 }
 
 export function StatusDot({ status, size, label, className }: StatusDotProps) {
+  const displayText = label || STATUS_TEXT[status as string] || (status as string);
+
   return (
     <span className="inline-flex items-center gap-1.5">
       <span
         className={statusDotVariants({ status, size, className })}
-        role="status"
-        aria-label={label || (status as string)}
+        aria-hidden="true"
       />
-      {label && <span className="text-xs text-muted-foreground">{label}</span>}
+      <span className="text-xs text-muted-foreground">{displayText}</span>
     </span>
   );
 }

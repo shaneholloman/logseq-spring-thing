@@ -5,6 +5,7 @@ import { Input } from '../../design-system/components';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../design-system/components';
 import { Textarea } from '../../design-system/components';
 import { Label } from '../../design-system/components';
+import { apiPost, ApiError } from '../../../utils/apiFetch';
 
 interface CaseSubmitFormProps {
   onSubmitted?: () => void;
@@ -16,25 +17,26 @@ export function CaseSubmitForm({ onSubmitted }: CaseSubmitFormProps) {
   const [priority, setPriority] = useState('medium');
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<{ id: string } | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim()) return;
 
     setSubmitting(true);
+    setError(null);
     try {
-      const response = await fetch('/api/broker/cases', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, description, priority, source: 'manual_submission' }),
+      const data = await apiPost<{ id: string }>('/api/broker/cases', {
+        title, description, priority, source: 'manual_submission',
       });
-      const data = await response.json();
       setResult(data);
       setTitle('');
       setDescription('');
       setPriority('medium');
       setTimeout(() => onSubmitted?.(), 1500);
     } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Network error';
+      setError(message);
       console.error('Failed to submit case:', err);
     } finally {
       setSubmitting(false);
@@ -87,6 +89,12 @@ export function CaseSubmitForm({ onSubmitted }: CaseSubmitFormProps) {
               </SelectContent>
             </Select>
           </div>
+
+          {error && (
+            <div className="p-3 rounded-lg border border-red-500/30 bg-red-500/10 text-red-400 text-sm">
+              {error}
+            </div>
+          )}
 
           <div className="flex items-center gap-3">
             <Button type="submit" disabled={!title.trim() || submitting}>

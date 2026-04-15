@@ -42,6 +42,7 @@ pub mod bead_store;
 pub mod bead_lifecycle;
 pub mod nostr_bead_publisher;
 pub mod nostr_bridge;
+pub mod policy_evaluation_service;
 
 // Re-export semantic type registry types for convenience
 pub use semantic_type_registry::{

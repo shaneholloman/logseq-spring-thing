@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Card, CardContent } from '../../design-system/components';
 import { Badge } from '../../design-system/components';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../design-system/components';
+import { apiFetch, ApiError } from '../../../utils/apiFetch';
 
 interface BrokerCase {
   id: string;
@@ -36,18 +37,25 @@ const SOURCE_LABELS: Record<string, string> = {
 export function BrokerInbox({ onCountChange }: BrokerInboxProps) {
   const [cases, setCases] = useState<BrokerCase[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [selectedCase, setSelectedCase] = useState<string | null>(null);
+  const liveRegionRef = useRef<HTMLDivElement>(null);
 
   const fetchInbox = useCallback(async () => {
     try {
+      setError(null);
       const params = statusFilter !== 'all' ? `?status=${statusFilter}` : '';
-      const response = await fetch(`/api/broker/inbox${params}`);
-      const data = await response.json();
+      const data = await apiFetch<{ cases: BrokerCase[]; total: number }>(`/api/broker/inbox${params}`);
       const fetchedCases = data.cases || [];
       setCases(fetchedCases);
       onCountChange?.(fetchedCases.length);
+      if (liveRegionRef.current) {
+        liveRegionRef.current.textContent = `${fetchedCases.length} case${fetchedCases.length !== 1 ? 's' : ''} loaded`;
+      }
     } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Network error';
+      setError(message);
       console.error('Failed to fetch broker inbox:', err);
     } finally {
       setLoading(false);
@@ -70,12 +78,18 @@ export function BrokerInbox({ onCountChange }: BrokerInboxProps) {
 
   return (
     <div className="flex flex-col gap-3">
+      <div ref={liveRegionRef} aria-live="polite" className="sr-only" />
+      {error && (
+        <div className="p-3 rounded-lg border border-red-500/30 bg-red-500/10 text-red-400 text-sm">
+          {error}
+        </div>
+      )}
       <div className="flex items-center justify-between">
         <span className="text-sm text-muted-foreground">
           {cases.length} case{cases.length !== 1 ? 's' : ''}
         </span>
         <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-[140px]">
+          <SelectTrigger className="w-[140px]" aria-label="Filter cases by status">
             <SelectValue placeholder="Filter status" />
           </SelectTrigger>
           <SelectContent>
@@ -107,6 +121,14 @@ export function BrokerInbox({ onCountChange }: BrokerInboxProps) {
                 selectedCase === brokerCase.id ? 'border-primary' : ''
               }`}
               onClick={() => setSelectedCase(brokerCase.id)}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e: React.KeyboardEvent) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  setSelectedCase(brokerCase.id);
+                }
+              }}
             >
               <CardContent className="py-3 px-4">
                 <div className="flex items-start justify-between gap-3">

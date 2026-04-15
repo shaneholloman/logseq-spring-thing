@@ -46,8 +46,16 @@ pub use gpu_semantic_analyzer::GpuSemanticAnalyzerAdapter;
 pub mod neo4j_settings_repository;
 pub mod neo4j_ontology_repository;
 
+// Broker repository adapter (ADR-041: persistent broker cases in Neo4j)
+pub mod neo4j_broker_adapter;
+
+// Workflow repository adapter (ADR-042: workflow proposals and patterns in Neo4j)
+pub mod neo4j_workflow_adapter;
+
 pub use neo4j_settings_repository::{Neo4jSettingsRepository, Neo4jSettingsConfig};
 pub use neo4j_ontology_repository::{Neo4jOntologyRepository, Neo4jOntologyConfig};
+pub use neo4j_broker_adapter::Neo4jBrokerRepository;
+pub use neo4j_workflow_adapter::Neo4jWorkflowRepository;
 
 // Inference engine exports
 pub use whelk_inference_engine::WhelkInferenceEngine;

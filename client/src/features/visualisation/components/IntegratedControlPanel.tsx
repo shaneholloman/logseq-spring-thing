@@ -24,6 +24,7 @@ import { AdvancedModeToggle } from './ControlPanel/AdvancedModeToggle';
 import { UnifiedSettingsTabContent } from './ControlPanel/UnifiedSettingsTabContent';
 import { UNIFIED_TABS, filterTabs } from './ControlPanel/unifiedSettingsConfig';
 import { SolidTabContent } from '../../solid/components/SolidTabContent';
+import { EnterprisePanel } from '../../enterprise/components/EnterprisePanel';
 import { ControlPanelProvider, useControlPanelContext } from '../../settings/components/control-panel-context';
 import { useSettingsStore } from '../../../store/settingsStore';
 import { Lock, Star } from 'lucide-react';
@@ -339,6 +340,8 @@ const IntegratedControlPanelInner: React.FC<ControlPanelProps> = ({
               <TabsContent key={tab.id} value={tab.id}>
                 {tab.id === 'solid' ? (
                   <SolidTabContent />
+                ) : tab.id === 'enterprise' ? (
+                  <EnterprisePanel />
                 ) : (
                   <UnifiedSettingsTabContent
                     sectionId={tab.id}

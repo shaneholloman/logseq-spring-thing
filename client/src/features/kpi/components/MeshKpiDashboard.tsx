@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../../design-system/components';
 import { Badge } from '../../design-system/components';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../design-system/components';
 import { Sparkline } from '../../design-system/components';
+import { apiFetch, ApiError } from '../../../utils/apiFetch';
 
 function generateTrendData(kpiKey: string): number[] {
   const seed = kpiKey.length;
@@ -38,14 +39,21 @@ export function MeshKpiDashboard() {
   const [metrics, setMetrics] = useState<KpiMetrics | null>(null);
   const [timeWindow, setTimeWindow] = useState('7d');
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const liveRegionRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const fetchMetrics = async () => {
       try {
-        const response = await fetch('/api/mesh-metrics');
-        const data = await response.json();
+        setError(null);
+        const data = await apiFetch<{ kpis: KpiMetrics }>('/api/mesh-metrics');
         setMetrics(data.kpis);
+        if (liveRegionRef.current) {
+          liveRegionRef.current.textContent = `KPI metrics updated for ${timeWindow} window`;
+        }
       } catch (err) {
+        const message = err instanceof ApiError ? err.message : 'Network error';
+        setError(message);
         console.error('Failed to fetch mesh metrics:', err);
       } finally {
         setLoading(false);
@@ -59,10 +67,11 @@ export function MeshKpiDashboard() {
 
   return (
     <div className="h-full flex flex-col gap-4 p-4">
+      <div ref={liveRegionRef} aria-live="polite" className="sr-only" />
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold text-foreground">Mesh KPIs</h1>
         <Select value={timeWindow} onValueChange={setTimeWindow}>
-          <SelectTrigger className="w-[120px]">
+          <SelectTrigger className="w-[120px]" aria-label="Select time window">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -73,6 +82,12 @@ export function MeshKpiDashboard() {
           </SelectContent>
         </Select>
       </div>
+
+      {error && (
+        <div className="p-3 rounded-lg border border-red-500/30 bg-red-500/10 text-red-400 text-sm">
+          {error}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {KPI_CONFIG.map(({ key, label, icon, target, color }) => {

@@ -6,6 +6,7 @@ pub mod graph;
 pub mod mesh_metrics;
 pub mod ontology;
 pub mod ontology_physics;
+pub mod policy;
 pub mod quest3;
 // pub mod sessions;
 pub mod visualisation;
@@ -150,5 +151,6 @@ pub fn config(cfg: &mut web::ServiceConfig) {
         // Enterprise REST handlers (ADR-040..045)
         .configure(broker::config)
         .configure(workflows::config)
-        .configure(mesh_metrics::config);
+        .configure(mesh_metrics::config)
+        .configure(policy::config);
 }

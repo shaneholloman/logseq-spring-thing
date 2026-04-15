@@ -64,6 +64,15 @@ export function DataTable<T extends Record<string, any>>({
                 }`}
                 style={col.width ? { width: col.width } : undefined}
                 onClick={() => col.sortable && handleSort(col.key)}
+                tabIndex={col.sortable ? 0 : undefined}
+                onKeyDown={col.sortable ? (e: React.KeyboardEvent) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    handleSort(col.key);
+                  }
+                } : undefined}
+                aria-sort={col.sortable && sortKey === col.key ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}
+                scope="col"
               >
                 <span className="inline-flex items-center gap-1">
                   {col.header}
@@ -90,6 +99,14 @@ export function DataTable<T extends Record<string, any>>({
                   onRowClick ? 'cursor-pointer hover:bg-muted/30' : ''
                 }`}
                 onClick={() => onRowClick?.(row)}
+                tabIndex={onRowClick ? 0 : undefined}
+                onKeyDown={onRowClick ? (e: React.KeyboardEvent) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    onRowClick(row);
+                  }
+                } : undefined}
+                role={onRowClick ? 'row' : undefined}
               >
                 {columns.map((col) => (
                   <td key={col.key} className="px-4 py-2.5 text-foreground">

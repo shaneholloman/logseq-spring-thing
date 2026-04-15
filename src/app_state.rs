@@ -48,6 +48,10 @@ use tokio::time::Duration;
 // Repository trait imports for hexagonal architecture
 use crate::adapters::neo4j_settings_repository::Neo4jSettingsRepository;
 use crate::adapters::neo4j_ontology_repository::{Neo4jOntologyRepository, Neo4jOntologyConfig};
+use crate::adapters::neo4j_broker_adapter::Neo4jBrokerRepository;
+use crate::adapters::neo4j_workflow_adapter::Neo4jWorkflowRepository;
+use crate::ports::broker_repository::BrokerRepository;
+use crate::ports::workflow_repository::WorkflowRepository;
 use crate::ports::settings_repository::SettingsRepository;
 
 /// SECURITY: List of known insecure default values that must be rejected
@@ -313,6 +317,12 @@ pub struct AppState {
     // Neo4j ontology repository (replaces UnifiedOntologyRepository)
     pub ontology_repository: Arc<Neo4jOntologyRepository>,
 
+    // Broker repository for persistent case storage (ADR-041)
+    pub broker_repository: Arc<dyn BrokerRepository>,
+
+    // Workflow repository for proposal and pattern storage (ADR-042)
+    pub workflow_repository: Arc<dyn WorkflowRepository>,
+
     pub graph_repository: Arc<ActorGraphRepository>,
     pub graph_query_handlers: GraphQueryHandlers,
     
@@ -352,6 +362,9 @@ pub struct AppState {
     /// Maps node_id -> (cluster_id, anomaly_score, community_id).
     /// Read by the binary broadcast path to fill V3 analytics fields.
     pub node_analytics: Arc<std::sync::RwLock<std::collections::HashMap<u32, (u32, f32, u32)>>>,
+
+    /// Policy engine for enterprise governance (ADR-045 / P4).
+    pub policy_engine: Arc<dyn crate::ports::policy_engine::PolicyEngine>,
 }
 
 impl AppState {
@@ -408,6 +421,26 @@ impl AppState {
             info!("✅ Neo4j adapter initialized successfully");
             Arc::new(adapter)
         };
+
+        // Create broker repository backed by Neo4j (ADR-041)
+        info!("[AppState::new] Creating Neo4j broker repository...");
+        let broker_repository: Arc<dyn BrokerRepository> = {
+            let repo = Neo4jBrokerRepository::new(neo4j_adapter.graph().clone());
+            repo.create_schema().await
+                .map_err(|e| format!("Failed to create broker schema: {}", e))?;
+            Arc::new(repo)
+        };
+        info!("[AppState::new] Neo4j broker repository initialized");
+
+        // Create workflow repository backed by Neo4j (ADR-042)
+        info!("[AppState::new] Creating Neo4j workflow repository...");
+        let workflow_repository: Arc<dyn WorkflowRepository> = {
+            let repo = Neo4jWorkflowRepository::new(neo4j_adapter.graph().clone());
+            repo.create_schema().await
+                .map_err(|e| format!("Failed to create workflow schema: {}", e))?;
+            Arc::new(repo)
+        };
+        info!("[AppState::new] Neo4j workflow repository initialized");
 
         // Create ontology pipeline service with semantic physics
         info!("[AppState::new] Creating ontology pipeline service");
@@ -1012,6 +1045,9 @@ impl AppState {
 
             ontology_repository,
 
+            broker_repository,
+            workflow_repository,
+
             graph_repository,
             graph_query_handlers,
 
@@ -1044,6 +1080,9 @@ impl AppState {
             ontology_pipeline_service,
             degraded_reason: Arc::new(std::sync::RwLock::new(None)),
             node_analytics,
+            policy_engine: Arc::new(
+                crate::services::policy_evaluation_service::InMemoryPolicyEngine::new(),
+            ),
         };
 
         // Validate optional actor addresses

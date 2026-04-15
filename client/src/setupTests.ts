@@ -3,12 +3,11 @@ import '@testing-library/jest-dom/vitest';
 import { vi, beforeAll, afterAll } from 'vitest';
 import * as React from 'react';
 
-// Polyfill React.act for React 19 compatibility with @testing-library/react
-// React 19 moved act from react-dom/test-utils to the main react package
-if (typeof (React as unknown as Record<string, unknown>).act === 'function') {
-  // React.act is available, patch react-dom/test-utils
-  (globalThis as unknown as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
-}
+// Enable React act environment for @testing-library/react.
+// The vitest config defines process.env.NODE_ENV='test' so that React's development
+// build loads (which exports React.act). Without this, the production build is used
+// and React.act is undefined, breaking @testing-library/react's render().
+(globalThis as unknown as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
 
 // Mock WebSocket
 class MockWebSocket {
@@ -32,12 +31,12 @@ class MockWebSocket {
 
 global.WebSocket = MockWebSocket as unknown as typeof WebSocket;
 
-// Mock ResizeObserver
-global.ResizeObserver = vi.fn().mockImplementation(() => ({
-  observe: vi.fn(),
-  unobserve: vi.fn(),
-  disconnect: vi.fn(),
-}));
+// Mock ResizeObserver (must be a class/constructor for React dev mode)
+global.ResizeObserver = class MockResizeObserver {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+} as unknown as typeof ResizeObserver;
 
 // Mock requestAnimationFrame
 global.requestAnimationFrame = vi.fn((cb: FrameRequestCallback) => setTimeout(cb, 16) as unknown as number);

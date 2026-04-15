@@ -4,6 +4,10 @@ import { resolve } from 'path';
 
 export default defineConfig({
   plugins: [react()],
+  // Force React development mode so React.act is available for testing
+  define: {
+    'process.env.NODE_ENV': JSON.stringify('test'),
+  },
   test: {
     globals: true,
     environment: 'jsdom',

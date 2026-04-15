@@ -8,7 +8,7 @@
 import type { SectionConfig } from './types';
 import {
   Eye, Sparkles, BarChart3, Gauge, Settings,
-  Bot, Code, Network, Shield, Database
+  Bot, Code, Network, Shield, Database, Briefcase
 } from 'lucide-react';
 // @ts-ignore - These icons exist in lucide-react but types may be outdated
 import { Atom, Glasses } from 'lucide-react';
@@ -95,6 +95,15 @@ export const UNIFIED_TABS: UnifiedTabConfig[] = [
     icon: Code,
     description: 'Debug tools and developer options',
     buttonKey: '9',
+    isAdvanced: true,
+    isPowerUserOnly: true
+  },
+  {
+    id: 'enterprise',
+    label: 'Enterprise',
+    icon: Briefcase,
+    description: 'Broker, workflows, KPIs, connectors, and policy',
+    buttonKey: 'E',
     isAdvanced: true,
     isPowerUserOnly: true
   },

@@ -9,6 +9,7 @@ interface SparklineProps {
   strokeWidth?: number;
   animated?: boolean;
   className?: string;
+  ariaLabel?: string;
 }
 
 export function Sparkline({
@@ -20,6 +21,7 @@ export function Sparkline({
   strokeWidth = 1.5,
   animated = true,
   className,
+  ariaLabel,
 }: SparklineProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animationRef = useRef<number>(0);
@@ -132,6 +134,8 @@ export function Sparkline({
       height={height}
       className={className}
       style={{ width, height }}
+      role="img"
+      aria-label={ariaLabel || `Trend chart with ${data.length} data points`}
     />
   );
 }

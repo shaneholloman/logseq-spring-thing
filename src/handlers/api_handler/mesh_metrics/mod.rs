@@ -45,6 +45,7 @@ pub async fn get_metrics(_state: web::Data<AppState>) -> impl Responder {
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/mesh-metrics")
+            .wrap(crate::middleware::RequireAuth::authenticated())
             .route("", web::get().to(get_metrics)),
     );
 }
