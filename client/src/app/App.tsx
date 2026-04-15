@@ -27,6 +27,8 @@ import { OnboardingWizard } from '../components/OnboardingWizard';
 import { LoadingScreen } from '../components/LoadingScreen';
 import { WorkerErrorModal } from '../components/WorkerErrorModal';
 import solidPodService from '../services/SolidPodService';
+import { useHashRoute } from '../hooks/useHashRoute';
+import { EnterpriseFullPage } from '../features/enterprise';
 
 const logger = createLogger('App');
 
@@ -36,6 +38,7 @@ if (typeof window !== 'undefined') {
 }
 
 function App() {
+  const route = useHashRoute();
   const [initializationState, setInitializationState] = useState<'loading' | 'initialized' | 'error'>('loading');
   const [initializationError, setInitializationError] = useState<Error | null>(null);
   const initialized = useSettingsStore(state => state.initialized);
@@ -175,6 +178,11 @@ function App() {
           </div>
         );
       case 'initialized':
+        // Enterprise route: full-viewport enterprise shell, no graph behind it
+        if (route.startsWith('/enterprise')) {
+          return <EnterpriseFullPage />;
+        }
+
         return shouldUseImmersiveClient() ? (
           <BotsDataProvider>
             <VircadiaBridgesProvider enableBotsBridge={true} enableGraphBridge={true}>

@@ -2,7 +2,7 @@ import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 import wasm from 'vite-plugin-wasm';
 import topLevelAwait from 'vite-plugin-top-level-await';
-import path from 'path';
+import path, { resolve } from 'path';
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, path.resolve(__dirname, '.'), 'VITE_');
@@ -32,6 +32,10 @@ export default defineConfig(({ mode }) => {
     },
     // Optimize chunking strategy
     rollupOptions: {
+      input: {
+        main: resolve(__dirname, 'index.html'),
+        enterprise: resolve(__dirname, 'enterprise.html'),
+      },
       // Exclude XR emulator packages from production builds.
       // @iwer/sem contains ~4.6MB of MetaQuest room scene captures that are
       // only used for localhost XR emulation. createXRStore passes
