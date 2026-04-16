@@ -99,7 +99,7 @@ export default defineConfig(({ mode }) => {
     // Security headers to match nginx
     headers: {
       'Cross-Origin-Opener-Policy': 'same-origin',
-      'Cross-Origin-Embedder-Policy': 'require-corp',
+      'Cross-Origin-Embedder-Policy': 'credentialless',
     },
     
     // Proxy API requests to backend server

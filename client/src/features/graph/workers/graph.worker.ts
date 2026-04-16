@@ -577,11 +577,20 @@ class GraphWorker {
             this.targetPositions![i3] += update.position.x;
             this.targetPositions![i3 + 1] += update.position.y;
             this.targetPositions![i3 + 2] += update.position.z;
+            // Also update currentPositions for delta so SAB reflects accumulated state
+            this.currentPositions![i3] = this.targetPositions![i3];
+            this.currentPositions![i3 + 1] = this.targetPositions![i3 + 1];
+            this.currentPositions![i3 + 2] = this.targetPositions![i3 + 2];
           } else {
-            // Full frame: SET absolute target positions
+            // Full frame: SET absolute positions — server is authoritative.
+            // Update BOTH target and current so SAB immediately reflects server state.
+            // Tweening in tick() will smooth subsequent micro-adjustments.
             this.targetPositions![i3] = update.position.x;
             this.targetPositions![i3 + 1] = update.position.y;
             this.targetPositions![i3 + 2] = update.position.z;
+            this.currentPositions![i3] = update.position.x;
+            this.currentPositions![i3 + 1] = update.position.y;
+            this.currentPositions![i3 + 2] = update.position.z;
           }
 
           // Store V3 analytics fields (clusterId, anomalyScore, communityId) per node
@@ -627,7 +636,20 @@ class GraphWorker {
       }
     }
 
+    // Push target positions to SAB immediately so main thread sees fresh data
+    // even if tick() is delayed or coalesced by the concurrency guard.
+    this.syncToSharedBuffer();
+
     return positionArray;
+  }
+
+  /**
+   * Return current node positions as Float32Array [x,y,z,x,y,z,...].
+   * Used as non-SAB fallback — called after processBinaryData to give
+   * the main thread a synchronous-accessible position snapshot.
+   */
+  async getCurrentPositions(): Promise<Float32Array> {
+    return this.currentPositions ? new Float32Array(this.currentPositions) : new Float32Array(0);
   }
 
   /**
@@ -1040,7 +1062,7 @@ class GraphWorker {
         const dx = Math.abs(tgtPos[i3] - curPos[i3]);
         const dy = Math.abs(tgtPos[i3 + 1] - curPos[i3 + 1]);
         const dz = Math.abs(tgtPos[i3 + 2] - curPos[i3 + 2]);
-        if (dx > 0.001 || dy > 0.001 || dz > 0.001) {
+        if (dx > 0.01 || dy > 0.01 || dz > 0.01) {
           hasAnyMovement = true;
         }
       }

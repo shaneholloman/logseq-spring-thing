@@ -191,6 +191,16 @@ class GraphWorkerProxy {
     try {
       const positionArray = await this.workerApi.processBinaryData(data);
       this.notifyPositionUpdateListeners(positionArray);
+
+      // When SharedArrayBuffer is unavailable, getPositionsSync() falls back to
+      // lastReceivedPositions. Fetch currentPositions (3-float-per-node format)
+      // from the worker so the renderer gets fresh positions without SAB.
+      if (!this.sharedPositionView) {
+        const currentPositions = await this.workerApi.getCurrentPositions();
+        if (currentPositions && currentPositions.length > 0) {
+          this.lastReceivedPositions = currentPositions;
+        }
+      }
       // Reset consecutive errors on success
       this._consecutiveTickErrors = 0;
 

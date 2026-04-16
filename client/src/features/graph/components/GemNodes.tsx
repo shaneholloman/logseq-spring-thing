@@ -115,6 +115,13 @@ const GemNodesInner: React.ForwardRefRenderFunction<GemNodesHandle, GemNodesProp
   const gemSettings = useSettingsStore(s => s.get<GemMaterialSettings>('visualisation.gemMaterial'));
   const lastGemSettingsRef = useRef<string>('');
 
+  // Live node visual settings — read from store (not props) so useFrame always sees current values
+  const liveSettingsRef = useRef(useSettingsStore.getState().settings);
+  useEffect(() => {
+    const unsub = useSettingsStore.subscribe(state => { liveSettingsRef.current = state.settings; });
+    return unsub;
+  }, []);
+
   // Quality gate toggles for cluster/anomaly/community coloring
   const qualityGates = useSettingsStore(s => s.get<QualityGatesSettings>('qualityGates'));
   // Per-node analytics data from binary protocol V3 (refreshed periodically)
@@ -145,7 +152,11 @@ const GemNodesInner: React.ForwardRefRenderFunction<GemNodesHandle, GemNodesProp
       inst.setColorAt(i, _col.set(0.5, 0.5, 0.5));
     }
     inst.instanceMatrix.needsUpdate = true;
-    if (inst.instanceColor) inst.instanceColor.needsUpdate = true;
+    if (inst.instanceMatrix.array) (inst.instanceMatrix as any).version++;
+    if (inst.instanceColor) {
+      inst.instanceColor.needsUpdate = true;
+      if ((inst.instanceColor as any).array) (inst.instanceColor as any).version++;
+    }
 
     // Per-instance metadata texture for TSL (RGBA float: quality, authority, connections, recency)
     const texData = new Float32Array(count * 4);
@@ -369,13 +380,17 @@ const GemNodesInner: React.ForwardRefRenderFunction<GemNodesHandle, GemNodesProp
         });
       }
     }
-    const visSettings = settings?.visualisation as Record<string, unknown> | undefined;
-    const nodeSettings = visSettings?.nodes as Record<string, unknown> | undefined;
+    // Use live settings ref (store-subscribed) so useFrame always sees current values
+    const liveVis = liveSettingsRef.current?.visualisation as Record<string, unknown> | undefined;
+    // Resolve node settings: prefer graph-specific path (graphs.logseq.nodes) over top-level (nodes)
+    const liveGraphs = liveVis?.graphs as Record<string, Record<string, unknown>> | undefined;
+    const logseqNodeSettings = liveGraphs?.logseq?.nodes as Record<string, unknown> | undefined;
+    const nodeSettings = logseqNodeSettings ?? (liveVis?.nodes as Record<string, unknown> | undefined);
     const baseScale = ((nodeSettings?.nodeSize as number | undefined) ?? 0.5) / 0.5;
     const texBuf = metaTexRef.current?.image?.data as Float32Array | undefined;
 
     // Read animation settings for pulse/wave control
-    const anims = visSettings?.animations as Record<string, unknown> | undefined;
+    const anims = liveVis?.animations as Record<string, unknown> | undefined;
     const animEnabled = (anims?.enableNodeAnimations as boolean | undefined) ?? true;
     const pEnabled = animEnabled && ((anims?.pulseEnabled as boolean | undefined) ?? true);
     const pSpeed = (anims?.pulseSpeed as number | undefined) ?? 1.2;
@@ -451,8 +466,8 @@ const GemNodesInner: React.ForwardRefRenderFunction<GemNodesHandle, GemNodesProp
     for (let i = 0; i < visCount; i++) {
       const node = nodes[i];
       const mode = perNodeVisualModeMap.get(String(node.id)) || graphMode;
-      const propsVis = props.settings?.visualisation as Record<string, unknown> | undefined;
-      let s = computeNodeScale(node, connectionCountMap, mode, hierarchyMap, propsVis?.graphTypeVisuals as GraphTypeVisualsSettings | undefined) * baseScale;
+      const liveVisInner = liveSettingsRef.current?.visualisation as Record<string, unknown> | undefined;
+      let s = computeNodeScale(node, connectionCountMap, mode, hierarchyMap, liveVisInner?.graphTypeVisuals as GraphTypeVisualsSettings | undefined) * baseScale;
       const waveEnabled = animEnabled && ((anims?.selectionWaveEnabled as boolean | undefined) ?? true);
       const wSpeed = (anims?.waveSpeed as number | undefined) ?? 1.0;
       if (selectedNodeId && String(node.id) === selectedNodeId && waveEnabled) {
@@ -490,9 +505,20 @@ const GemNodesInner: React.ForwardRefRenderFunction<GemNodesHandle, GemNodesProp
     }
     inst.count = visCount;
     inst.instanceMatrix.needsUpdate = true;
+    // WebGPU backend requires explicit buffer version bump to trigger GPU upload.
+    // needsUpdate alone only works for WebGL. Bump version on every frame so the
+    // WebGPU StorageInstancedBufferAttribute detects the change.
+    if (inst.instanceMatrix.array) {
+      (inst.instanceMatrix as any).version++;
+    }
 
     // Only upload instanceColor buffer when colors were actually written this frame
-    if (inst.instanceColor && colorsDirty) inst.instanceColor.needsUpdate = true;
+    if (inst.instanceColor && colorsDirty) {
+      inst.instanceColor.needsUpdate = true;
+      if ((inst.instanceColor as any).array) {
+        (inst.instanceColor as any).version++;
+      }
+    }
 
     // Dirty-flag metadata texture: only upload when inputs structurally change
     if (texBuf) {

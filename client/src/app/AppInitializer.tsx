@@ -199,63 +199,10 @@ const AppInitializer: React.FC<AppInitializerProps> = ({ onInitialized, onError 
       const websocketService = webSocketService;
 
       
-      websocketService.onBinaryMessage((data) => {
-        if (data instanceof ArrayBuffer) {
-          try {
-            
-            if (debugState.isDataDebugEnabled()) {
-              logger.debug(`Received binary data from WebSocket: ${data.byteLength} bytes`);
-            }
-
-            
-            graphDataManager.updateNodePositions(data).then(() => {
-              if (debugState.isDataDebugEnabled()) {
-                logger.debug(`Processed binary position update: ${data.byteLength} bytes`);
-              }
-            }).catch(error => {
-              logger.error('Failed to process binary position update via worker:', createErrorMetadata(error));
-            });
-          } catch (error) {
-            logger.error('Failed to process binary position update:', createErrorMetadata(error));
-
-            
-            if (debugState.isEnabled()) {
-              
-              logger.debug(`Binary data size: ${data.byteLength} bytes`);
-
-              
-              try {
-                const view = new DataView(data);
-                const hexBytes = [];
-                const maxBytesToShow = Math.min(16, data.byteLength);
-
-                for (let i = 0; i < maxBytesToShow; i++) {
-                  hexBytes.push(view.getUint8(i).toString(16).padStart(2, '0'));
-                }
-
-                logger.debug(`First ${maxBytesToShow} bytes: ${hexBytes.join(' ')}`);
-
-                
-                if (data.byteLength >= 2) {
-                  const firstByte = view.getUint8(0);
-                  const secondByte = view.getUint8(1);
-                  if (firstByte === 0x78 && (secondByte === 0x01 || secondByte === 0x9C || secondByte === 0xDA)) {
-                    logger.debug('Data appears to be zlib compressed (has zlib header)');
-                  }
-                }
-              } catch (e) {
-                logger.debug('Could not display binary data preview');
-              }
-
-              
-              const nodeSize = 26; 
-              if (data.byteLength % nodeSize !== 0) {
-                logger.debug(`Invalid data length: not a multiple of ${nodeSize} bytes per node (remainder: ${data.byteLength % nodeSize})`);
-              }
-            }
-          }
-        }
-      });
+      // Binary position updates are handled by the websocket store's binaryProtocol.ts
+      // pipeline (processBinaryData → graphDataManager.updateNodePositions). No duplicate
+      // handler needed here — registering one causes double-processing and incorrect
+      // updateCount cadence for REST re-fetch of unknown nodes.
 
       
       websocketService.onConnectionStatusChange((connected) => {

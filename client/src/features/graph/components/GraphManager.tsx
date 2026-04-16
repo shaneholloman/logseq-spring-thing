@@ -424,7 +424,11 @@ const GraphManager: React.FC<GraphManagerProps> = ({ onDragStateChange }) => {
   const startLayoutTransition = useCallback((targetPositions: LayoutPosition[], durationMs: number) => {
     const positions = nodePositionsRef.current;
     const nodeCount = graphData.nodes.length;
-    if (!positions || nodeCount === 0) return;
+    if (!positions || nodeCount === 0) {
+      // Cannot start transition without current positions — cancel immediately
+      setLayoutTransitioning(false);
+      return;
+    }
 
     const needed = nodeCount * 3;
     const startSnap = new Float32Array(needed);
@@ -567,55 +571,59 @@ const GraphManager: React.FC<GraphManagerProps> = ({ onDragStateChange }) => {
           return;
         }
       }
-      // During an active layout transition, do NOT overwrite nodePositionsRef from
-      // the SAB — the transition LERP owns position updates this frame. Overwriting
-      // here would discard the LERP result written last frame before the worker
-      // posts its next SAB snapshot.
-      if (!transitionRef.current?.active) {
-        nodePositionsRef.current = positions;
-      }
-
       // === Layout mode transition: mass-aware LERP from start to target positions ===
       if (transitionRef.current?.active) {
         const t = transitionRef.current;
         const elapsed = Date.now() - t.startTime;
         const rawProgress = Math.min(elapsed / t.duration, 1.0);
-        // Ease in-out (smoothstep)
-        const progress = rawProgress < 0.5
-          ? 2 * rawProgress * rawProgress
-          : 1 - Math.pow(-2 * rawProgress + 2, 2) / 2;
 
-        const nodeCount = graphData.nodes.length;
-        // Write LERP results into the dedicated lerpBuffer (not the SAB view).
-        // This prevents the worker from overwriting interpolated positions between frames.
-        const lerp = t.lerpBuffer;
-        for (let i = 0; i < nodeCount; i++) {
-          const idx = i * 3;
-          if (idx + 2 >= lerp.length) break;
-          // Mass factor: high-degree nodes move slower (more inertia)
-          const connectionCount = connectionCountMap.get(String(i)) || 0;
-          const massFactor = 1.0 / (1.0 + Math.sqrt(connectionCount) * 0.3);
-          const nodeProgress = Math.min(progress / massFactor, 1.0);
-
-          lerp[idx]     = t.startPositions[idx]     + (t.targetPositions[idx]     - t.startPositions[idx])     * nodeProgress;
-          lerp[idx + 1] = t.startPositions[idx + 1] + (t.targetPositions[idx + 1] - t.startPositions[idx + 1]) * nodeProgress;
-          lerp[idx + 2] = t.startPositions[idx + 2] + (t.targetPositions[idx + 2] - t.startPositions[idx + 2]) * nodeProgress;
-        }
-        // Point nodePositionsRef at the lerpBuffer so all consumers (GemNodes, edges) see
-        // transition positions this frame instead of the stale/overwritten SAB data.
-        nodePositionsRef.current = lerp;
-
-        if (rawProgress >= 1.0) {
+        // Safety timeout: if transition exceeds 2x duration, force-complete it.
+        // Prevents permanently blocking SAB position updates if something goes wrong.
+        if (elapsed > t.duration * 2) {
           transitionRef.current.active = false;
           setLayoutTransitioning(false);
-          const isForceDirected = !activeLayoutModeRef.current || activeLayoutModeRef.current === 'forceDirected';
-          if (isForceDirected) {
-            // ForceDirected: hand back to SAB so the physics worker drives positions
-            nodePositionsRef.current = positions;
+          nodePositionsRef.current = positions;
+        } else {
+          // Ease in-out (smoothstep)
+          const progress = rawProgress < 0.5
+            ? 2 * rawProgress * rawProgress
+            : 1 - Math.pow(-2 * rawProgress + 2, 2) / 2;
+
+          const nodeCount = graphData.nodes.length;
+          // Write LERP results into the dedicated lerpBuffer (not the SAB view).
+          // This prevents the worker from overwriting interpolated positions between frames.
+          const lerp = t.lerpBuffer;
+          for (let i = 0; i < nodeCount; i++) {
+            const idx = i * 3;
+            if (idx + 2 >= lerp.length) break;
+            // Mass factor: high-degree nodes move slower (more inertia)
+            const connectionCount = connectionCountMap.get(String(graphData.nodes[i]?.id)) || 0;
+            const massFactor = 1.0 / (1.0 + Math.sqrt(connectionCount) * 0.3);
+            const nodeProgress = Math.min(progress / massFactor, 1.0);
+
+            lerp[idx]     = t.startPositions[idx]     + (t.targetPositions[idx]     - t.startPositions[idx])     * nodeProgress;
+            lerp[idx + 1] = t.startPositions[idx + 1] + (t.targetPositions[idx + 1] - t.startPositions[idx + 1]) * nodeProgress;
+            lerp[idx + 2] = t.startPositions[idx + 2] + (t.targetPositions[idx + 2] - t.startPositions[idx + 2]) * nodeProgress;
           }
-          // Non-forceDirected: keep nodePositionsRef pointing at lerp (final layout positions).
-          // Physics is paused server-side, so the SAB worker is not updating positions.
+          // Point nodePositionsRef at the lerpBuffer so all consumers (GemNodes, edges) see
+          // transition positions this frame instead of the stale/overwritten SAB data.
+          nodePositionsRef.current = lerp;
+
+          if (rawProgress >= 1.0) {
+            transitionRef.current.active = false;
+            setLayoutTransitioning(false);
+            const isForceDirected = !activeLayoutModeRef.current || activeLayoutModeRef.current === 'forceDirected';
+            if (isForceDirected) {
+              // ForceDirected: hand back to SAB so the physics worker drives positions
+              nodePositionsRef.current = positions;
+            }
+            // Non-forceDirected: keep nodePositionsRef pointing at lerp (final layout positions).
+            // Physics is paused server-side, so the SAB worker is not updating positions.
+          }
         }
+      } else {
+        // No active transition: SAB/tick positions flow directly to renderer
+        nodePositionsRef.current = positions;
       }
       // === End layout mode transition ===
 

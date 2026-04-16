@@ -631,7 +631,6 @@ class GraphDataManager {
       // unknown node IDs (graph mutation on server). If so, re-fetch graph data
       // via REST to pick up new nodes and edges. Checked every ~100 binary frames
       // to avoid excessive async overhead.
-      this.updateCount = (this.updateCount || 0) + 1;
       if (this.updateCount % 100 === 0) {
         graphWorkerProxy.hasUnknownNodes().then(async (hasUnknown) => {
           if (hasUnknown) {
