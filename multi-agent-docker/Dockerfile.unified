@@ -422,10 +422,8 @@ RUN npm logout 2>/dev/null || true && \
     npm config delete _authToken || true && \
     npm config delete //registry.npmjs.org/:_authToken || true && \
     npm install -g \
-    # Claude Code CLI - Use native installer for user-level install, npm as fallback
-    # Native installer: curl -fsSL https://claude.ai/install.sh | bash (installs to ~/.local/bin)
-    # We use npm here for system-wide installation in Docker images
-    @anthropic-ai/claude-code@latest \
+    # Claude Code CLI installed via native installer as devuser in Phase 7
+    # (curl -fsSL https://claude.ai/install.sh | bash → ~/.local/bin/claude)
     claude-usage-cli@latest \
     # Ruflo V3 CLI (Global Install - formerly @claude-flow/cli)
     ruflo@latest \
@@ -580,6 +578,9 @@ WORKDIR /home/devuser
 # Install Oh-My-Zsh for devuser + uv package manager
 RUN sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended && \
     (curl -LsSf https://astral.sh/uv/install.sh | sh || true)
+
+# Install Claude Code CLI via official native installer (always latest)
+RUN curl -fsSL https://claude.ai/install.sh | bash
 
 # Install Rust tools for devuser (as devuser, with proper environment)
 ENV PATH="/home/devuser/.cargo/bin:${PATH}"
