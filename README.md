@@ -2,7 +2,7 @@
 
 # VisionClaw
 
-### The governed agentic coordination platform.
+### The first platform where knowledge graph and ontology negotiate live.
 
 [![Build](https://img.shields.io/github/actions/workflow/status/DreamLab-AI/VisionClaw/ci.yml?branch=main&style=flat-square&logo=github)](https://github.com/DreamLab-AI/VisionClaw/actions)
 [![Version](https://img.shields.io/github/v/release/DreamLab-AI/VisionClaw?style=flat-square&logo=semantic-release)](https://github.com/DreamLab-AI/VisionClaw/releases)
@@ -11,7 +11,7 @@
 [![CUDA](https://img.shields.io/badge/CUDA-13.1-76B900?style=flat-square&logo=nvidia)](https://developer.nvidia.com/cuda-toolkit)
 [![Docs](https://img.shields.io/badge/Docs-Diataxis-4A90D9?style=flat-square)](docs/README.md)
 
-**Governed agentic coordination · Judgment Broker workbench · OWL 2 ontology governance · 92 CUDA kernels · Multi-user immersive XR · 83 agent skills · Enterprise identity (OIDC + Nostr) · Solid Pod sovereignty**
+**Your Logseq note from last Tuesday just became a governed OWL class. Notes become vocabulary as a by-product of note-taking — physics-visible, agent-proposed, human-brokered, Nostr-signed.**
 
 <br/>
 
@@ -19,138 +19,67 @@ https://github.com/user-attachments/assets/f45c92dc-4800-4b57-a6e2-178da6bb0a38
 
 <br/>
 
-[Why VisionClaw?](#your-best-people-are-already-running-the-future) · [Quick Start](#quick-start) · [Capabilities](#core-capabilities) · [Architecture](#the-three-layers-of-the-dynamic-mesh) · [Performance](#performance) · [Documentation](#documentation) · [Contributing](#contributing)
+[The Migration Event](#the-migration-event) · [Quick Start](#quick-start) · [Positioning](#positioning--what-makes-this-different) · [Architecture](#architecture) · [Capabilities](#core-capabilities) · [Tradeoffs](#tradeoffs--honest-risks) · [Documentation](#documentation)
 
 </div>
 
 ---
 
-## Your Best People Are Already Running the Future
+## The problem
 
-They just haven't told you yet.
+Every organisation rots in the same two directions. Tribal knowledge accumulates in personal notes, Slack threads, and half-finished docs — rich and current but illegible to agents, query tools, or anyone who wasn't in the room. Meanwhile the formal ontology someone wrote in 2023 was out of date by 2024 — expensive to author, expensive to keep clean, and nobody uses it.
 
-More than half of generative AI users already use AI without telling their employers, and 78% of knowledge workers bring their own AI tools to work. Your workforce is already building shadow workflows, stitching together AI agents, automating procurement shortcuts, and inventing cross-functional pipelines that do not appear on any org chart. The question is no longer whether the coordination function is shifting. It is whether you will surface, govern, and compound what people have already discovered.
+Agents sit between the two, forced to improvise shared meaning on every request. They hallucinate categories, fabricate entity relationships, and route on keyword overlap because there's no canonical vocabulary they can trust.
 
-**The personal agent revolution has a governance problem.** As information routing becomes computationally cheap, the strategic challenge shifts from moving information around the organisation to deciding where AI can be trusted, where human judgment must remain active, and how shared meaning is maintained across teams and agents. Tools like Claude Code have shown that autonomous AI agents are powerful, popular, and ready to act. They've also shown what happens when agents operate without shared semantics, formal reasoning, or organisational guardrails: unauthorised actions, prompt injection attacks, and enterprises deploying security scanners just to detect rogue agent instances on their own networks.
-
-VisionClaw takes the opposite approach. **Governance isn't an inhibitor, it's an accelerant** — a way to turn shadow workflows into auditable, reusable organisational capability.
+VisionClaw treats this as one problem with one mechanism: **let the notes become the vocabulary, under human governance, visibly, as the graph itself.**
 
 ---
 
-## What Is VisionClaw?
+## The Migration Event
 
-VisionClaw is an open-source platform for building governed agentic organisations: a coordination control plane where autonomous AI agents, human judgment brokers, and institutional knowledge work together through a shared semantic layer, with every decision auditable and every workflow governed by policy.
+Every capability below exists to serve this one event. A `public:: true` Logseq note accumulates signals — ontology wikilinks, agent proposals, authoring maturity — until it surfaces in a Judgment Broker's inbox. The broker takes two minutes, approves, the system opens a GitHub PR, and on merge the note becomes a live OWL class Whelk can reason over. The 3D physics view redraws around it. A Nostr-signed provenance bead closes the chain.
 
-The platform ingests knowledge from Logseq notebooks via GitHub, reasons over it with an OWL 2 EL inference engine (Whelk-rs), renders the result as an interactive 3D graph where nodes attract or repel based on their semantic relationships, and exposes that graph to AI agents through 7 Model Context Protocol tools. A **Judgment Broker Workbench** surfaces edge cases, workflow proposals, and trust drift alerts for human review. An **Insight Ingestion Loop** discovers shadow workflows and codifies them into governed, reusable patterns. **Four organisational KPIs** (Mesh Velocity, Augmentation Ratio, Trust Variance, HITL Precision) measure whether AI adoption is compounding or fragmenting. Users can collaborate in the same space through multi-user XR presence, spatial voice, and immersive graph exploration.
+![The Migration Event — a Logseq note traverses detection, broker review, PR approval, merge, and physics re-settle in six stages](./docs/diagrams/06-migration-event.png)
 
-VisionClaw is operational at [DreamLab residential training lab](https://www.dreamlab-ai.com), supporting a creative technology team, and informed by collaboration with a major UK creative studio and the University of Salford.
+The ontology grows from the bottom up, not the top down. Nothing formal is authored unless something informal earned it.
 
-> **Positioning note** — VisionClaw is best understood as a working technical substrate and an existence proof under favourable conditions: a live OWL 2 + CUDA + WebXR + Nostr + agent orchestration stack in a creative technology context. It demonstrates how ontology-grounded orchestration and embedded governance can work in practice at small-to-medium scale; it does not, by itself, prove universal fit across every industry, workforce, or regulatory setting.
+### The two tiers it bridges
 
-<details>
-<summary><strong>What VisionClaw currently demonstrates</strong></summary>
+![Dual-tier identity — KG tier (public notes) with BRIDGE_TO filaments crossing to the Ontology tier (OWL classes), candidate/promoted/colocated states, orphan zone](./docs/diagrams/07-dual-tier-identity.png)
 
-- Ontology-grounded agent orchestration with shared semantics
-- GPU-accelerated knowledge graph visualisation and analytics at small-to-medium scale
-- Dual-stack identity: Nostr NIP-98 + OIDC configuration for enterprise SSO
-- Judgment Broker Workbench with Decision Canvas, case CRUD, and timeline (Neo4j-persisted)
-- Workflow proposal lifecycle: create → review → approve → promote to reusable pattern
-- KPI computation engine: Mesh Velocity, Augmentation Ratio, Trust Variance, HITL Precision with real trend data
-- Policy engine: 6 built-in rules with server-side evaluation, TOML-configurable, test bench
-- Connector management with GitHub connector setup, PII redaction, signal feed
-- RBAC: 4 enterprise roles (Broker, Admin, Auditor, Contributor) with role hierarchy middleware
-- 91 frontend tests, 60 backend tests, WCAG AA accessibility compliance
-- 30 design system components including animated Canvas2D sparklines
+`KGNode` (your notes, fast-moving) and `OntologyClass` (the formal canon, slow-moving) are different Neo4j labels sharing one canonical IRI scheme `vc:{domain}/{slug}`. They connect through `BRIDGE_TO` edges that advance `candidate → promoted` via the migration event — or stay `colocated` when a note and class are the same concept from two angles. See [ADR-048](docs/adr/ADR-048-dual-tier-identity-model.md) for the full identity model.
 
-**What remains open:**
-- Full OIDC token exchange flow (configuration types ready, token verification pending)
-- Validation in regulated industries (pharma, finance pilots planned)
-- WebSocket push for real-time broker inbox (currently polls every 15s)
-- Multi-provider orchestration beyond Claude-Flow
+### How candidates are scored
 
-</details>
+![Eight-signal scoring radar — wikilink count, agent proposal, OWL declaration, maturity, centrality, recency, authority, cooccurrence — all feed a sigmoid with 0.60 threshold](./docs/diagrams/08-scoring-radar.png)
 
-![VisionClaw GPU-accelerated force-directed graph with Control Center](./graph-physics-live.png)
+No LLM opinion-as-fact. Eight structural signals feed a sigmoid. Above 0.60 a candidate surfaces to the broker. Below 0.35 for three days it auto-expires. Agent confidence is *one* signal of eight — it does not bypass the gate. See [candidate-scoring.md](docs/design/2026-04-18-insight-migration-loop/05-candidate-scoring.md).
 
-*GPU-accelerated force-directed graph — 934 nodes responding to spring, repulsion, and ontology-driven semantic forces in real time*
+### Two loops, one mesh
 
-![Immersive interaction with a 3D knowledge graph](./ChloeOctave.jpg)
+![Dual ingestion loops — workflow and knowledge migration both instantiate the same Discover → Codify → Validate → Integrate → Amplify pattern](./docs/diagrams/11-dual-ingestion-loops.png)
 
-*Chloe Nevitt interacting with Prof Rob Aspin's precursor to VisionClaw in the*
-[Octave Multimodal Lab  University of Salford 2017](https://narrativegoldmine.com/notes/#/page/octave%20multi%20model%20laboratory)
+Shadow workflows become governed patterns. Shadow concepts become governed classes. Same five-beat loop, different units. See [Insight Migration Loop master design](docs/design/2026-04-18-insight-migration-loop/00-master.md).
+
 ---
 
-## Core Capabilities
+## Positioning — what makes this different
 
-<table>
-<tr>
-<td width="50%">
+![Positioning quadrant — VisionClaw alone in the upper-right: the only tool that is both highly formal (OWL, Whelk reasoning) and highly interactive (physics, agents, real-time co-authoring)](./docs/diagrams/10-prior-art-quadrant.png)
 
-**🧠 Semantic Governance**
-- OWL 2 EL reasoning via Whelk-rs (EL++ inference)
-- `subClassOf` → attraction, `disjointWith` → repulsion in GPU physics
-- Every ontology mutation creates a GitHub PR — human veto before commit
-- Content-addressed immutable provenance beads (Nostr NIP-09)
-- 17 DDD bounded contexts with CQRS — 114 command/query handlers
-- Policy engine with TOML-configurable rules (Allow/Deny/Escalate)
+Every axis of this tool has good prior art. Obsidian and Logseq do wikilinks beautifully. Protégé and TopBraid do formal OWL authoring. Palantir does enterprise ontology. NotebookLM does LLM over notebooks. Neo4j Bloom does graph interaction.
 
-</td>
-<td width="50%">
+**Nobody puts them in the same room.** The upper-right quadrant — high formality *and* high interactivity — was empty because the migration *event* itself is the hard part. VisionClaw lives there. See [prior-art analysis](docs/design/2026-04-18-insight-migration-loop/01-prior-art.md) for the full comparison and [bridge-theory.md](docs/design/2026-04-18-insight-migration-loop/02-bridge-theory.md) for the academic anchors (SECI, OntoClean, FCA, ontology evolution).
 
-**⚡ GPU-Accelerated Physics**
-- 92 CUDA kernel functions across 11 files (6,585 LOC)
-- 55× speedup vs single-threaded CPU physics
-- Force-directed layout + semantic forces + stress majorisation
-- On-demand: K-Means clustering, Louvain communities, LOF anomaly, PageRank
-- Periodic full broadcast every 300 iterations — no stale-position bugs
+---
 
-</td>
-</tr>
-<tr>
-<td width="50%">
+## Physics the metadata makes possible
 
-**🤖 83 Agent Skills**
-- Claude-Flow DAG orchestration with RAFT consensus hive-mind
-- 7 MCP Ontology Tools (discover, read, query, traverse, propose, validate, status)
-- Nostr-signed agent identities via NIP-98 auth
-- Ontology-grounded skill decomposition rather than keyword routing
-- RuVector PostgreSQL memory (pgvector + HNSW, 384-dim MiniLM-L6-v2)
+![Physics outcome — authoritative canon core, role bands (concept/process/agent), physicality clusters (abstract/concrete), draft orbital, orphan zone](./docs/diagrams/09-physics-outcome.png)
 
-</td>
-<td width="50%">
+The CUDA physics is not decoration. It reads `owl:physicality`, `owl:role`, and `maturity` properties and turns them into five semantic forces: abstract clumps with abstract, processes band together, authoritative nodes anchor a stable core while drafts drift outward, orphaned notes (no ontology anchor yet) repel into a distinct zone that makes them visible as migration candidates.
 
-**🌐 Multi-User Immersive XR**
-- Babylon.js WebXR for immersive/VR mode — Meta Quest 3 optimised
-- React Three Fiber for desktop graph (dual-renderer architecture)
-- Vircadia World Server: avatar sync, HRTF spatial audio, collaborative editing
-- WebGPU with Three Shading Language (TSL) + WebGL fallback
-- Foveated rendering, DPR capping, dynamic resolution scaling on Quest 3
-
-</td>
-</tr>
-<tr>
-<td width="50%">
-
-**🔐 Dual-Stack Identity**
-- Enterprise: OIDC/SAML via Entra ID, Okta, Google Workspace (ADR-040)
-- Provenance: Nostr NIP-98 signed events — every action cryptographically attributable
-- Server-side ephemeral keypair delegation (OIDC session → secp256k1)
-- Solid Pod user data sovereignty — each user owns their own Pod
-- 4 enterprise roles: Broker, Admin, Auditor, Contributor
-
-</td>
-<td width="50%">
-
-**🔊 Voice Routing (4-Plane Architecture)**
-- LiveKit SFU + turbo-whisper STT (CUDA) + Kokoro TTS
-- Plane 1: User mic → whisper → private agent channel
-- Plane 2: Agent TTS → user ear (private)
-- Planes 3–4: Public spatial audio via LiveKit + Vircadia HRTF
-- Opus 48kHz mono end-to-end
-
-</td>
-</tr>
-</table>
+92 CUDA kernel functions. 55× over single-threaded CPU. Every force is tunable per-domain. See [physics mapping](docs/design/2026-04-18-insight-migration-loop/03-physics-mapping.md).
 
 ---
 
@@ -164,481 +93,247 @@ docker-compose --profile dev up -d
 
 | Service | URL | Description |
 |:--------|:----|:------------|
-| Frontend | http://localhost:3001 | 3D knowledge graph interface (via Nginx) |
-| API (direct) | http://localhost:4000/api | REST + WebSocket endpoints (Rust/Actix-web) |
+| Frontend | http://localhost:3001 | 3D knowledge graph interface |
+| API | http://localhost:4000/api | REST + WebSocket endpoints |
 | Neo4j Browser | http://localhost:7474 | Graph database explorer |
 | JSS Solid | http://localhost:3030 | Solid Pod server |
-| Vircadia | ws://localhost:3020/world/ws | Multi-user WebSocket endpoint |
 
 <details>
-<summary><strong>Enable voice routing (LiveKit + whisper + TTS)</strong></summary>
+<summary><strong>Voice routing · Multi-user XR · Native Rust+CUDA build</strong></summary>
 
 ```bash
+# Voice routing (LiveKit + whisper + TTS)
 docker-compose -f docker-compose.yml -f docker-compose.voice.yml --profile dev up -d
-```
 
-Adds LiveKit SFU (port 7880), turbo-whisper STT (CUDA), and Kokoro TTS. Requires GPU for real-time transcription.
-
-</details>
-
-<details>
-<summary><strong>Enable multi-user XR (Vircadia World Server)</strong></summary>
-
-```bash
+# Multi-user XR (Vircadia World Server)
 docker-compose -f docker-compose.yml -f docker-compose.vircadia.yml --profile dev up -d
-```
 
-Adds Vircadia World Server with avatar sync, HRTF spatial audio, and collaborative graph editing.
-
-</details>
-
-<details>
-<summary><strong>Native Rust + CUDA build</strong></summary>
-
-```bash
+# Native build
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-git clone https://github.com/DreamLab-AI/VisionClaw.git
-cd VisionClaw && cp .env.example .env
 cargo build --release --features gpu
 cd client && npm install && npm run build && cd ..
 ./target/release/webxr
 ```
 
-Requires CUDA 13.1 toolkit. On CachyOS, set `CUDA_ROOT=/opt/cuda`. See [Deployment Guide](docs/how-to/deployment-guide.md) for full GPU setup.
+Requires CUDA 13.1. See [Deployment Guide](docs/how-to/deployment-guide.md).
 
 </details>
-
----
-
-## The Three Layers of the Dynamic Mesh
-
-VisionClaw implements a three-layer agentic mesh. Insights bubble up from frontline discovery, orchestrated through formal semantic pipelines, governed by declarative policy — with humans as the irreplaceable judgment layer at the top.
-
-![The Three Layers of the VisionClaw Governed Mesh](./docs/diagrams/01-three-layer-mesh.png)
-
-<details>
-<summary><strong>Diagram source (Mermaid)</strong></summary>
-
-See [`docs/diagrams/src/01-three-layer-mesh.mmd`](./docs/diagrams/src/01-three-layer-mesh.mmd) for the diagram-as-code. The rendered image above was generated via Mermaid → Nano Banana Pro with the VisionClaw aesthetic prompt in [`docs/diagrams/src/aesthetic-prompt.md`](./docs/diagrams/src/aesthetic-prompt.md).
-
-</details>
-
----
-
-### Layer 1 — The Discovery Engine
-
-The discovery layer ingests, structures, and renders organisational knowledge as a navigable, interactive 3D space.
-
-**Ontology Pipeline** — VisionClaw syncs Logseq markdown from GitHub, parses OWL 2 EL axioms embedded in `### OntologyBlock` sections, runs Whelk-rs inference for subsumption and consistency checking, and stores results in both Neo4j (persistent) and an in-memory `OntologyRepository` (fast access). GPU semantic forces use the ontology to drive layout physics — `subClassOf` creates attraction, `disjointWith` creates repulsion.
-
-```mermaid
-flowchart LR
-    GH["GitHub\n(Logseq pages)"] -->|SHA1 delta sync| Parser["OWL Parser\n(assembler → converter)"]
-    Parser --> Whelk["Whelk-rs Reasoner\n(EL++ inference)"]
-    Whelk --> Store["OntologyRepository\n(In-Memory + Neo4j)"]
-    Store --> Physics["Semantic Forces\n(GPU CUDA)"]
-    Store --> Agents["Agent Tools\n(7 MCP tools)"]
-    Store --> Client["3D Visualisation\n(binary WebSocket V5 + V3 analytics)"]
-```
-
-Explore a live ontology dataset at **[narrativegoldmine.com](https://www.narrativegoldmine.com)** — a 2D interactive graph built on the same ontology data VisionClaw renders in 3D.
-
-**Dual-Renderer 3D Visualisation** — React Three Fiber (Three.js) powers the desktop graph view with InstancedMesh, SharedArrayBuffer zero-copy positions, and custom TSL/WebGL materials. Babylon.js powers the immersive XR mode — the two renderers coexist but never overlap, with R3F suspended when entering XR.
-
-**RuVector AI Memory Substrate** — 1.17M+ agent memory entries in PostgreSQL + pgvector with HNSW indexing. MiniLM-L6-v2 generates 384-dim embeddings at ingestion. Semantic search at 61µs p50 via HNSW (vs ~5ms brute-force). All agent memory flows through MCP tools — raw SQL bypasses the embedding pipeline.
-
-<details>
-<summary><strong>Node geometry and material system</strong></summary>
-
-| Node Type | Geometry | Material | ID Encoding |
-|:---------|:---------|:---------|:------------|
-| Knowledge (public pages) | Icosahedron r=0.5 | `GemNodeMaterial` — analytics-driven colour | Bit 30 set (`0x40000000`) |
-| Ontology | Sphere r=0.5 | `CrystalOrbMaterial` — depth-pulsing cosmic spectrum | Bits 26-28 set (`0x1C000000`) |
-| Agent | Capsule r=0.3 h=0.6 | `AgentCapsuleMaterial` — bioluminescent heartbeat | Bit 31 set (`0x80000000`) |
-| Linked pages | Icosahedron r=0.35 | `GemNodeMaterial` | No flag bits |
-
-Agent visual states: `#10b981` (idle) · `#fbbf24` (spawning/active) · `#ef4444` (error) · `#f97316` (busy). Animation: breathing pulse (active), error flicker (failed), slow pulse (idle).
-
-</details>
-
-<details>
-<summary><strong>Voice routing (4-plane architecture)</strong></summary>
-
-![Four-Plane Voice Architecture — Private 1:1 agent dialogue (Planes 1-2, emerald) and Public spatial audio via LiveKit SFU (Planes 3-4, violet)](./docs/diagrams/03-four-plane-voice.png)
-
-| Plane | Direction | Scope | Trigger |
-|:------|:----------|:------|:--------|
-| 1 | User mic → turbo-whisper STT → Agent | Private | PTT held |
-| 2 | Agent → Kokoro TTS → User ear | Private | Agent responds |
-| 3 | User mic → LiveKit SFU → All users | Public (spatial) | PTT released |
-| 4 | Agent TTS → LiveKit → All users | Public (spatial) | Agent configured public |
-
-Opus 48kHz mono end-to-end. HRTF spatial panning from Vircadia entity positions.
-
-</details>
-
-<details>
-<summary><strong>Logseq ontology input (source data)</strong></summary>
-
-<br/>
-
-| Ontology metadata | Graph structure |
-|:-:|:-:|
-| <img src="./logseq1.png" alt="Logseq OWL metadata page" width="400"/> | <img src="./logseq3.png" alt="Logseq graph view — ontology clusters" width="400"/> |
-| OWL entity page with category, hierarchy, and source metadata | Graph view showing semantic clusters |
-
-<img src="./logseq2.png" alt="Logseq dense knowledge graph" width="720"/>
-
-*Dense knowledge graph in Logseq — the raw ontology VisionClaw ingests, reasons over, and renders in 3D*
-
-</details>
-
----
-
-### Layer 2 — The Orchestration Layer
-
-The orchestration layer is where agents reason, coordinate, and act — always against the shared semantic substrate of the OWL 2 ontology.
-
-**83 Specialist Agent Skills** — Claude-Flow coordination with RAFT consensus hive-mind and 83 skill modules spanning creative production, research, knowledge codification, governance, workflow discovery, financial intelligence, spatial/immersive, and identity/trust domains. Agents are assigned cryptographic Nostr identities and appear as physics nodes in the 3D graph — their status (idle, working, error) drives visual state changes in real time via the Agent-Physics Bridge.
-
-**Why OWL 2 Is the Secret Weapon** — Most agentic systems fail at scale because they lack a shared language. In VisionClaw, agents reason against a common OWL 2 ontology. The same concept of "deliverable" means the same thing to a Creative Production agent and a Governance agent. Agent skill routing isn't keyword matching — it's ontological subsumption. The orchestration layer knows that a "risk assessment" is a sub-task of "governance review", and routes accordingly.
-
-**7 Ontology Agent Tools (MCP)** — Read/write access to the knowledge graph via Model Context Protocol. Every tool flows through Whelk-rs for consistency and reasoning, with `ontology_propose` gating structural mutations through a GitHub PR for human review.
-
-![7 MCP Tools radiating from the Whelk-rs OWL 2 EL reasoner core, serving 83 Claude-Flow agents and bridged to Neo4j plus GitHub](./docs/diagrams/04-mcp-tools-radial.png)
-
-| Tool | Purpose |
-|:-----|:--------|
-| `ontology_discover` | Semantic keyword search with Whelk inference expansion |
-| `ontology_read` | Enriched note with axioms, relationships, schema context |
-| `ontology_query` | Validated Cypher execution with schema-aware label checking |
-| `ontology_traverse` | BFS graph traversal from starting IRI |
-| `ontology_propose` | Create/amend notes → consistency check → GitHub PR |
-| `ontology_validate` | Axiom consistency check against Whelk reasoner |
-| `ontology_status` | Service health and statistics |
-
-**GPU-Accelerated Compute** — 92 CUDA kernel functions across 11 kernel files (6,585 LOC) run server-authoritative graph layout and analytics. The physics pipeline (force-directed layout, semantic forces, ontology constraints, stress majorisation) runs at 60 Hz with a periodic full broadcast every 300 iterations to keep late-connecting clients synchronised. The analytics pipeline (K-Means clustering, Louvain community detection, LOF anomaly detection, PageRank) runs on-demand via API, with results streamed in the V3 binary protocol's analytics fields.
-
-| Metric | Result |
-|:-------|-------:|
-| CUDA kernel functions | 92 across 11 files |
-| GPU vs CPU speedup | 55× |
-| V5 protocol size | 9-byte header + 36 bytes/node |
-| V3 analytics fields | +12 bytes/node (cluster_id, anomaly_score, community_id, page_rank) |
-| WebSocket latency | 10ms |
-| Binary vs JSON bandwidth | 80% reduction |
-
-<details>
-<summary><strong>Binary WebSocket Protocol (V5 production)</strong></summary>
-
-High-frequency position updates use a compact binary protocol instead of JSON, achieving 80% bandwidth reduction.
-
-**V5 Production (9-byte header + 36 bytes/node)** — current wire format:
-
-| Bytes | Field | Type | Description |
-|:------|:------|:-----|:------------|
-| 0 | Version | u8 | Value `5` |
-| 1–8 | Broadcast sequence | u64 LE | Monotonic counter per broadcast |
-
-Per-node payload (V2/V3 layout following the 9-byte header):
-
-| Bytes (per node) | Field | Type | Description |
-|:-----------------|:------|:-----|:------------|
-| 0–3 | Node ID | u32 | Flag bits 26-31 encode node type |
-| 4–15 | Position (X/Y/Z) | f32×3 | World-space position |
-| 16–27 | Velocity (X/Y/Z) | f32×3 | Physics velocity |
-| 28–31 | SSSP distance | f32 | Shortest-path from source |
-| 32–35 | Timestamp | u32 | ms since session start |
-
-**V3 Analytics (48 bytes/node per frame)** — extends per-node payload with `cluster_id` (u16), `anomaly_score` (f32), `community_id` (u16), `page_rank` (f32) at bytes 36–47.
-
-**V4 Delta (16 bytes/changed node)** — experimental, not production-ready. See [Known Issues](docs/KNOWN_ISSUES.md) → WS-001.
-
-**Periodic full broadcast**: forced every 300 physics iterations regardless of convergence state, ensuring late-connecting clients synchronise within ~5 seconds. See [websocket-binary.md](docs/reference/websocket-binary.md) for the complete V5 specification including client parsing examples.
-
-</details>
-
-<details>
-<summary><strong>Agent skill domains (83 skills)</strong></summary>
-
-**Creative Production** — Script, storyboard, shot-list, grade & publish workflows. ComfyUI orchestration for image, video, and 3D asset generation via containerised API middleware.
-
-**Research & Synthesis** — Multi-source ingestion, GraphRAG, semantic clustering, Perplexity integration.
-
-**Knowledge Codification** — Tacit-to-explicit extraction; OWL concept mapping; Logseq-formatted output.
-
-**Governance & Audit** — Bias detection, provenance chains (content-addressed Nostr beads), declarative policy enforcement.
-
-**Workflow Discovery** — Shadow workflow detection; DAG proposal & validation against ontology.
-
-**Financial Intelligence** — R&D tax modelling, grant pipeline, ROI attribution.
-
-**Spatial & Immersive** — XR scene graph, light field, WebXR rendering agent, Blender MCP, ComfyUI SAM3D.
-
-**Identity & Trust** — Nostr identity operations, delegation patterns, and agent communications.
-
-**Development & Quality** — Rust development, pair programming, agentic QE fleet (111+ sub-agents), GitHub code review, performance analysis.
-
-**Infrastructure & DevOps** — Docker management, Kubernetes ops, Linux admin, network analysis, monitoring.
-
-**Document Processing** — LaTeX, DOCX, XLSX, PPTX, PDF generation and manipulation.
-
-</details>
-
----
-
-### Layer 3 — Declarative Governance
-
-The governance layer is what separates VisionClaw from every "move fast and break things" agent framework. Policies are code. Bias thresholds, access controls, and audit trails are embedded into every DAG transition — not bolted on afterwards.
-
-**The Judgment Broker** — Freed from reporting, forecasting, and coordination (all automated), the Judgment Broker focuses on three irreplaceable human capacities:
-
-- **Strategic direction** — Only humans decide what the organisation should be doing next year, and whether the mesh is pointed at it.
-- **Ethical adjudication** — Bias, fairness, and consequence live in human judgment. No agent is the final word on edge cases.
-- **Relational intelligence** — Trust, culture, and coalition-building are the lubrication layer no algorithm can replicate.
-
-**HITL by Design** — The Human-in-the-Loop is an architectural feature. Agents know their authority boundary and surface exceptions cleanly. Every ontology mutation passes through a GitHub pull request, giving human reviewers full visibility and veto over structural changes before commit.
-
-**Ontological Provenance** — Every agent decision traces back through the OWL 2 knowledge graph. Auditors can traverse the full reasoning chain agent-by-agent, task-by-task. Every action is recorded as an immutable bead — content-addressed, cryptographically verifiable (Nostr NIP-33) — with a deterministic lifecycle state machine ([ADR-034](docs/adr/ADR-034-needle-bead-provenance.md)), exhaustive outcome classification, retry with exponential backoff, and structured learning capture. Inspired by [NEEDLE](https://github.com/jedarden/NEEDLE)'s trait-based architecture. See the [Bead Provenance PRD](docs/prd-bead-provenance-upgrade.md) and [DDD Bounded Context](docs/ddd-bead-provenance-context.md).
-
-**Cryptographic Agent Identity** — VisionClaw uses Nostr-signed agent identities and NIP-98 request signing so agent actions are attributable without relying on passwords. Delegation and trust scoping can be layered on top of that identity model where required, while keeping the governance surface explicit and auditable.
-
-<details>
-<summary><strong>Mesh KPIs — measuring what matters in a governed agentic organisation</strong></summary>
-
-| KPI | Formula | Target | What It Measures |
-|:----|:--------|:-------|:-----------------|
-| **Mesh Velocity** | Δt(insight → codified workflow) | < 48h | How fast a discovered shortcut becomes a sanctioned, reusable DAG |
-| **Augmentation Ratio** | Cognitive load offloaded ÷ Total cognitive load | > 65% | Percentage of decision-making handled by agents without human escalation |
-| **Trust Variance** | σ(Agent Decision Quality) over 30-day window | < 0.12σ | Drift or bias monitoring in the automated task layer |
-| **HITL Precision** | Correct escalations ÷ Total escalations | > 90% | Are the edge cases the mesh flags actually requiring human intervention? |
-
-</details>
-
----
-
-## The Insight Ingestion Loop
-
-How shadow workflows become sanctioned organisational intelligence — a five-stage feedback loop orchestrated by the governed mesh:
-
-![The Insight Ingestion Loop — Discovery → Codification → Validation → Integration → Amplification → Discovery](./docs/diagrams/02-insight-ingestion-cycle.png)
-
-<details>
-<summary><strong>Diagram source (Mermaid)</strong></summary>
-
-See [`docs/diagrams/src/02-insight-ingestion-cycle.mmd`](./docs/diagrams/src/02-insight-ingestion-cycle.mmd).
-
-</details>
-
----
-
-## The Insight Migration Loop (research landed 2026-04-18)
-
-The knowledge-unit analogue of Layer 3's Insight Ingestion Loop. Logseq notes
-(`public:: true`) become candidates for promotion into OWL classes
-(`public-access:: true`) via agent-proposed, broker-approved, GitHub-gated,
-Nostr-signed migration with physics-visible candidate signal.
-
-See: [Master design](docs/design/2026-04-18-insight-migration-loop/00-master.md)
-· [PRD](docs/prd-insight-migration-loop.md)
-· [ADR-048 Identity](docs/adr/ADR-048-dual-tier-identity-model.md)
-· [ADR-049 Broker](docs/adr/ADR-049-insight-migration-broker-workflow.md)
-
----
-
-## Enterprise Roadmap
-
-| Phase | Timeline | Deliverables | Exit Criteria |
-|:------|:---------|:-------------|:--------------|
-| **0: Platform Coherence** | Weeks 1-6 | Node type consolidation, binary protocol, position flow, settings, ontology edge gap | No major contradictions between platform story and behaviour |
-| **1: Identity + Broker MVP** | Weeks 7-14 | OIDC support, role model, Broker Inbox, Decision Canvas | A broker can log in, review, and decide on real cases |
-| **2: Insight Ingestion Loop** | Weeks 15-24 | Insight objects, WorkflowProposal lifecycle, GitHub connector, workflow promotion | One discovered pattern becomes an approved live workflow |
-| **3: KPI + Governance** | Weeks 25-32 | Four mesh KPIs, policy engine, exportable audit reports | Thesis KPIs measurable from production data |
-| **4: Pilot Release** | Weeks 33-44 | Regulated pilot package, connector hardening, success reporting | At least one paid or design-partner pilot running |
-
-**Architecture decisions**: [ADR-040](docs/adr/ADR-040-enterprise-identity-strategy.md) · [ADR-041](docs/adr/ADR-041-judgment-broker-workbench.md) · [ADR-042](docs/adr/ADR-042-workflow-proposal-object-model.md) · [ADR-043](docs/adr/ADR-043-kpi-lineage-model.md) · [ADR-044](docs/adr/ADR-044-connector-governance-privacy.md) · [ADR-045](docs/adr/ADR-045-policy-engine-approach.md) · [ADR-048](docs/adr/ADR-048-dual-tier-identity-model.md) · [ADR-049](docs/adr/ADR-049-insight-migration-broker-workflow.md)
-
-**DDD model**: [Enterprise Bounded Contexts (BC11-BC17)](docs/explanation/ddd-enterprise-contexts.md)
-
-**PRD**: [Enterprise PRD](presentation/enterprise-prd.md) · [Architecture Self-Review](docs/architecture-self-review.md)
 
 ---
 
 ## Architecture
 
-![VisionClaw system architecture — Browser client, Transport, Rust backend with hexagonal ports/adapters, Data plane, GPU compute, and Agent mesh](./docs/diagrams/05-architecture-hexagonal.png)
+VisionClaw is a three-layer mesh. Insights bubble up from discovery, orchestrated through formal semantic pipelines, governed by declarative policy — with humans as the irreplaceable judgment layer at the top.
+
+![The three layers of the VisionClaw governed mesh — declarative governance, orchestration, discovery](./docs/diagrams/01-three-layer-mesh.png)
+
+Beneath those layers sits a hexagonal Rust backend with 21 Actix actors, 9 ports and 12 adapters, 114 CQRS handlers, CUDA 13.1 compute, and OWL 2 EL reasoning via Whelk-rs.
+
+![System architecture — hexagonal ports/adapters, 21 supervised actors, CUDA kernels, dual graph store, agent mesh](./docs/diagrams/05-architecture-hexagonal.png)
 
 <details>
-<summary><strong>Diagram source (Mermaid)</strong></summary>
+<summary><strong>Hexagonal details · 21 actors · 17 DDD bounded contexts</strong></summary>
 
-See [`docs/diagrams/src/05-architecture-hexagonal.mmd`](./docs/diagrams/src/05-architecture-hexagonal.mmd).
-
-</details>
-
-<details>
-<summary><strong>Hexagonal architecture (9 ports · 12 adapters · 114 CQRS handlers)</strong></summary>
-
-VisionClaw follows strict hexagonal architecture. Business logic in `src/services/` depends only on port traits in `src/ports/`. Concrete implementations live in `src/adapters/`, swapped at startup via dependency injection. All mutations flow through one of 114 command handlers; all reads through query handlers. No direct database access from handlers.
-
-```mermaid
-flowchart LR
-    subgraph Ports["src/ports/ (Traits)"]
-        GP[GraphRepository]
-        OR[OntologyRepository]
-        IE[InferenceEngine]
-        GPA[GpuPhysicsAdapter]
-        GSA[GpuSemanticAnalyzer]
-        SR[SettingsRepository]
-        SP[SolidPodRepository]
-        NR[NostrRelay]
-        VR[VectorRepository]
-    end
-
-    subgraph Adapters["src/adapters/ (Implementations)"]
-        Neo4jGraph[Neo4jGraphRepository]
-        Neo4jOntology[Neo4jOntologyRepository]
-        Whelk[WhelkInferenceEngine]
-        CudaPhysics[PhysicsOrchestratorAdapter]
-        JSSPod[JssSolidPodAdapter]
-        RuVectorAdapter[RuVectorAdapter]
-    end
-
-    subgraph Services["src/services/ (Business Logic)"]
-        OQS[OntologyQueryService]
-        OMS[OntologyMutationService]
-        GPS[GitHubPRService]
-        OPS[OntologyPipelineService]
-    end
-
-    Services --> Ports
-    Adapters -.->|implements| Ports
-
-    style Ports fill:#e8f5e9,stroke:#4caf50
-    style Adapters fill:#fff3e0,stroke:#ff9800
-    style Services fill:#e1f5ff,stroke:#0288d1
-```
-
-| Port Trait | Adapter | Purpose |
-|:-----------|:--------|:--------|
-| `GraphRepository` | `ActorGraphRepository` | Graph CRUD via actor messages |
-| `OntologyRepository` | `Neo4jOntologyRepository` | OWL class/axiom storage |
-| `InferenceEngine` | `WhelkInferenceEngine` | OWL 2 EL reasoning |
-| `GpuPhysicsAdapter` | `PhysicsOrchestratorAdapter` | CUDA force simulation |
-| `GpuSemanticAnalyzer` | `GpuSemanticAnalyzerAdapter` | GPU semantic forces |
-| `SolidPodRepository` | `JssSolidPodAdapter` | User Pod CRUD via JSS |
-| `VectorRepository` | `RuVectorAdapter` | pgvector HNSW semantic search |
-
-</details>
-
-<details>
-<summary><strong>21-Actor supervision tree</strong></summary>
-
-The backend uses Actix actors for supervised concurrency. GPU actors form a hierarchy: `GraphServiceSupervisor` → `PhysicsOrchestratorActor` → `ForceComputeActor`. All actors restart automatically on failure per their supervision strategy.
-
-**GPU Physics Actors:**
-
-| Actor | Purpose |
-|:------|:--------|
-| `ForceComputeActor` | Core force-directed layout (CUDA) — 60Hz |
-| `StressMajorizationActor` | Stress majorisation algorithm |
-| `ClusteringActor` | K-Means + Louvain community detection (GPU) |
-| `PageRankActor` | GPU PageRank centrality computation |
-| `ShortestPathActor` | Delta-stepping SSSP (GPU) |
-| `ConnectedComponentsActor` | Label propagation component detection (GPU) |
-| `AnomalyDetectionActor` | LOF / Z-score anomaly detection (GPU) |
-| `SemanticForcesActor` | OWL-driven attraction/repulsion constraints |
-| `ConstraintActor` | Layout constraint solving |
-| `AnalyticsSupervisor` | GPU analytics orchestration |
-| `BroadcastOptimizerActor` | Delta-filter + periodic full-broadcast (300 iters) |
-
-**Service Actors:**
-
-| Actor | Purpose |
-|:------|:--------|
-| `GraphStateActor` | Canonical graph state — single source of truth |
-| `OntologyActor` | OWL class management and Whelk bridge |
-| `ClientCoordinatorActor` | Per-client session management + WebSocket |
-| `PhysicsOrchestratorActor` | Delegates to GPU actors, manages convergence |
-| `SemanticProcessorActor` | NLP query processing |
-| `VoiceCommandsActor` | Voice-to-action routing |
-| `TaskOrchestratorActor` | Background task scheduling |
-| `GitHubSyncActor` | Incremental GitHub sync (SHA1 delta) |
-| `OntologyPipelineActor` | Assembler → converter → Whelk pipeline |
-| `GraphServiceSupervisor` | Top-level GPU supervision and restart |
-
-</details>
-
-<details>
-<summary><strong>DDD bounded contexts (17 contexts)</strong></summary>
-
-VisionClaw implements Domain-Driven Design with 17 bounded contexts across three domain rings:
-
-**Core Domain:** Knowledge Graph · Ontology Governance · Physics Simulation · **Judgment Broker (BC11)** · **Workflow Lifecycle (BC12)** · **Insight Discovery (BC13)**
-
-**Supporting Domain:** Authentication (Nostr NIP-98) · **Enterprise Identity (BC14)** · Agent Orchestration · Semantic Analysis · **Policy Engine (BC17)**
-
-**Generic Domain:** [Bead Provenance](docs/ddd-bead-provenance-context.md) ([ADR-034](docs/adr/ADR-034-needle-bead-provenance.md)) · Configuration · **KPI Observability (BC15)** · **Connector Ingestion (BC16)**
+- **Core Domain**: Knowledge Graph · Ontology Governance · Physics Simulation · [Judgment Broker (BC11)](docs/explanation/ddd-enterprise-contexts.md) · Workflow Lifecycle (BC12) · Insight Discovery (BC13 — owns the Migration Candidate aggregate)
+- **Supporting Domain**: Authentication · Enterprise Identity (BC14) · Agent Orchestration · Semantic Analysis · Policy Engine (BC17)
+- **Generic Domain**: Bead Provenance · Configuration · KPI Observability (BC15) · Connector Ingestion (BC16)
 
 Each context has its own aggregate roots, domain events, and anti-corruption layers. Cross-context communication uses domain events, never direct model sharing.
 
-- [Core Bounded Contexts (BC1-BC10)](docs/explanation/ddd-bounded-contexts.md)
-- [Enterprise Bounded Contexts (BC11-BC17)](docs/explanation/ddd-enterprise-contexts.md)
+- [Core Bounded Contexts (BC1–BC10)](docs/explanation/ddd-bounded-contexts.md)
+- [Enterprise Bounded Contexts (BC11–BC17)](docs/explanation/ddd-enterprise-contexts.md)
+- [Insight Migration context refinement](docs/explanation/ddd-insight-migration-context.md)
 
 </details>
 
 ---
 
-## Operational Context & Related Validation
+## Core capabilities
 
-| Deployment | Context | Scale |
-|:-----------|:--------|:------|
-| **DreamLab Creative Hub** | Live creative-technology deployment context | ~998 knowledge graph nodes, daily ontology mutations |
-| **University of Salford** | Research collaboration exploring semantic force-directed layout for academic knowledge graphs | Multi-institution ontology |
-| **THG World Record** | Related large-scale immersive data visualisation event — see [THG project](https://github.com/DreamLab-AI/THG-world-record-attempt) | 250+ concurrent XR users |
+<table>
+<tr>
+<td width="50%">
+
+**🪢 Insight Migration Loop** ([PRD](docs/prd-insight-migration-loop.md))
+- 8-signal sigmoid scoring over `public:: true` notes
+- Auto-surfacing at confidence ≥ 0.60
+- Broker inbox with side-by-side KG/OWL diff
+- One-click approve → auto GitHub PR
+- Whelk EL++ consistency check before merge
+- Physics re-settles; Nostr provenance bead closes chain
+
+</td>
+<td width="50%">
+
+**🧠 Semantic Governance**
+- OWL 2 EL reasoning via Whelk-rs
+- `subClassOf` → attraction, `disjointWith` → repulsion
+- Ontology mutations gate on GitHub PR
+- Content-addressed provenance beads (Nostr NIP-09)
+- 17 DDD bounded contexts · 114 CQRS handlers
+- Policy engine · 6 built-in rules · TOML config
+
+</td>
+</tr>
+<tr>
+<td width="50%">
+
+**⚡ GPU Physics**
+- 92 CUDA kernels · 55× vs single-threaded CPU
+- 5 semantic forces driven by OWL metadata
+- Force-directed layout · stress majorisation
+- K-Means · Louvain · LOF anomaly · PageRank
+- Periodic full broadcast every 300 iterations
+
+</td>
+<td width="50%">
+
+**🤖 Agent Mesh**
+- Claude-Flow orchestration · RAFT hive-mind
+- 7 MCP ontology tools · 83 agent skill modules
+- Nostr NIP-98 signed agent identities
+- `ontology_propose` tool emits PRs on demand
+- RuVector PostgreSQL · pgvector + HNSW
+- 1.17M+ memory entries · 61µs p50 semantic search
+
+</td>
+</tr>
+<tr>
+<td width="50%">
+
+**🌐 Immersive XR**
+- Babylon.js WebXR · Quest 3 optimised
+- React Three Fiber for desktop graph
+- Vircadia avatar sync · HRTF spatial audio
+- WebGPU with TSL shaders · WebGL fallback
+- Foveated rendering · dynamic resolution
+
+</td>
+<td width="50%">
+
+**🔐 Dual-Stack Identity**
+- Enterprise OIDC/SAML (Entra, Okta, Google)
+- Nostr NIP-98 signed HTTP auth for provenance
+- Ephemeral keypair delegation (OIDC → secp256k1)
+- Solid Pods · per-user data sovereignty
+- 4 roles: Broker · Admin · Auditor · Contributor
+
+</td>
+</tr>
+</table>
+
+<details>
+<summary><strong>Voice routing — four planes, spatial HRTF audio</strong></summary>
+
+![Four-plane voice architecture — private 1:1 agent dialogue (Planes 1-2) and public spatial audio via LiveKit SFU (Planes 3-4)](./docs/diagrams/03-four-plane-voice.png)
+
+| Plane | Direction | Scope |
+|:------|:----------|:------|
+| 1 | User mic → turbo-whisper STT → Agent | Private (PTT held) |
+| 2 | Agent → Kokoro TTS → User ear | Private |
+| 3 | User mic → LiveKit SFU → All users | Public spatial |
+| 4 | Agent TTS → LiveKit → All users | Public spatial |
+
+Opus 48 kHz mono end-to-end. HRTF spatial panning from Vircadia entity positions. See [voice routing guide](docs/how-to/features/voice-routing.md).
+
+</details>
+
+<details>
+<summary><strong>MCP ontology tools — seven spokes feeding Whelk-rs</strong></summary>
+
+![MCP tools radial — 7 ontology tools radiating from Whelk-rs core, serving 83 Claude-Flow agents and bridged to Neo4j + GitHub](./docs/diagrams/04-mcp-tools-radial.png)
+
+`ontology_discover` · `ontology_read` · `ontology_query` · `ontology_traverse` · `ontology_propose` · `ontology_validate` · `ontology_status`. Every tool goes through Whelk for consistency. `ontology_propose` is the agent entry point to the Migration Event — it drafts the PR a broker will approve.
+
+</details>
 
 ---
 
-## Performance
+## Agent skill domains (83 skills)
 
-| Metric | Result | Conditions |
+<details>
+<summary><strong>Full skill breakdown</strong></summary>
+
+Creative production · Research & synthesis · Knowledge codification · Governance & audit · Workflow discovery · Financial intelligence · Spatial/immersive · Identity & trust · Development & quality · Infrastructure & DevOps · Document processing.
+
+![Skills ecosystem — 83 specialised Claude-Flow skill modules with RAFT consensus](./docs/diagrams/skills-ecosystem-art-detailed.png)
+
+See the [agents catalog](docs/reference/agents-catalog.md) for the full skill taxonomy and the [Logseq ontology bridge](docs/explanation/ontology-pipeline.md) for how skills participate in the migration event.
+
+</details>
+
+---
+
+## Tradeoffs — honest risks
+
+This is a working existence proof at small-to-medium scale, not a universal solution. These are real:
+
+**Operational complexity.** Running the full stack touches Rust, Node, Python, CUDA, Neo4j, PostgreSQL (RuVector + Vircadia), Redis, LiveKit (WebRTC), OpenSearch, and Solid Pod sidecars. Teams under five engineers will spend real time on DevOps. The single-command `docker-compose up` hides most of it; the breakage surface doesn't go away.
+
+**O(n²) physics beyond ~5k nodes.** The current physicality and role cluster kernels iterate nodes against centroids in a loop that's fine at 2.5k nodes (~12 ms per tick) but breaks the 60 Hz frame budget at 10k. A centroid-approximation rewrite is documented as a required follow-on before scaling up. See [physics mapping §Performance envelope](docs/design/2026-04-18-insight-migration-loop/03-physics-mapping.md).
+
+**V4 delta protocol is unstable.** The binary V4 variant causes position drift. Production uses V5 (full frame with 9-byte sequence header). See [KNOWN_ISSUES WS-001](docs/KNOWN_ISSUES.md).
+
+**State fragmentation across stores.** Notes live in Logseq/GitHub, graph structure in Neo4j, agent memory in RuVector PostgreSQL, user data in Solid Pods. Race conditions on partial failure (e.g. GitHub PR merges but Neo4j write fails) are documented and handled, but the surface is large. See [ADR-034 on provenance beads as the rollback substrate](docs/adr/ADR-034-needle-bead-provenance.md).
+
+**Pilot scope.** The first pilot is consultancy context (see [PRD personas](docs/prd-insight-migration-loop.md)) because consulting firms dogfood us on their own methodology. Regulated industry (pharma, finance) is v2. Research institutes are v2+. No claim of universal fit today.
+
+---
+
+## The platform in numbers
+
+| Metric | Value | Conditions |
 |:-------|-------:|:-----------|
 | GPU physics speedup | 55× | vs single-threaded CPU |
-| HNSW semantic search | 61µs p50 | RuVector pgvector, 1.17M entries |
-| WebSocket latency | 10ms | Local network, V5 binary |
-| Bandwidth reduction | 80% | Binary V5 vs JSON |
-| Concurrent XR users | 250+ | Related immersive data visualisation event |
-| Position update size | 9-byte header + 36 bytes/node (V5) · +12 bytes analytics (V3) | Per frame |
 | CUDA kernels | 92 | 6,585 LOC across 11 files |
-| Agent concurrency | 50+ | Via actor supervisor tree |
-| Physics convergence | ~600 frames (~10s) | Typical graph at rest |
+| HNSW semantic search | 61 µs p50 | RuVector pgvector, 1.17M entries |
+| WebSocket latency | 10 ms | Local network, V5 binary |
+| Bandwidth reduction | 80% | Binary V5 vs JSON |
+| Concurrent XR users | 250+ | Related immersive event |
+| Frame size | 9-byte header + 36 bytes/node | V5 production |
+| Physics convergence | ~600 frames (~10 s) | Typical graph at rest |
+| DDD bounded contexts | 17 | with 114 CQRS handlers |
+| Agent skills | 83 | Claude-Flow hive-mind |
 
 ---
 
-## Technology Stack
+## Enterprise roadmap
+
+| Phase | Weeks | Deliverable | Exit criterion |
+|:------|:------|:------------|:---------------|
+| **0** Platform coherence | 1–6 | Node types, binary protocol, position flow, settings, ontology edges | No contradictions between story and behaviour |
+| **1** Identity + Broker MVP | 7–14 | OIDC, roles, Broker Inbox, Decision Canvas | Broker can log in, review, decide on real cases |
+| **2** Insight Ingestion + Migration | 15–24 | WorkflowProposal and MigrationCandidate lifecycles, GitHub connector, promotion | One shadow concept and one shadow workflow promoted live |
+| **3** KPI + Governance | 25–32 | Six mesh KPIs, policy engine, exportable audit reports | Thesis KPIs measurable from production data |
+| **4** Pilot | 33–44 | Consultancy pilot (Idris persona), connector hardening, success reporting | At least one paid pilot running |
+
+Key architecture decisions: [ADR-040](docs/adr/ADR-040-enterprise-identity-strategy.md) · [ADR-041](docs/adr/ADR-041-judgment-broker-workbench.md) · [ADR-042](docs/adr/ADR-042-workflow-proposal-object-model.md) · [ADR-043](docs/adr/ADR-043-kpi-lineage-model.md) · [ADR-044](docs/adr/ADR-044-connector-governance-privacy.md) · [ADR-045](docs/adr/ADR-045-policy-engine-approach.md) · [ADR-046](docs/adr/ADR-046-enterprise-ui-architecture.md) · [ADR-047](docs/adr/ADR-047-wasm-visualization-components.md) · [ADR-048](docs/adr/ADR-048-dual-tier-identity-model.md) · [ADR-049](docs/adr/ADR-049-insight-migration-broker-workflow.md)
+
+---
+
+## Technology stack
 
 <details>
 <summary><strong>Full technology breakdown</strong></summary>
 
 | Layer | Technology | Detail |
 |:------|:-----------|:-------|
-| **Backend** | Rust 2021 · Actix-web | 427 files, 175K LOC · hexagonal CQRS · 9 ports · 12 adapters · 114 handlers |
-| **Frontend (desktop)** | React 19 · Three.js 0.182 · R3F | 370 files, 96K LOC · TypeScript 5.9 · InstancedMesh · SAB zero-copy |
-| **Frontend (XR)** | Babylon.js | Immersive/VR mode — Quest 3 foveated rendering, hand tracking |
-| **WASM** | Rust → wasm-pack | `scene-effects` crate: zero-copy `Float32Array` view over `WebAssembly.Memory` |
-| **Graph DB** | Neo4j 5.13 | Primary store · Cypher queries · bolt protocol |
-| **Vector Memory** | RuVector PostgreSQL · pgvector | 1.17M+ entries · HNSW 384-dim · MiniLM-L6-v2 embeddings · 61µs search |
-| **GPU** | CUDA 13.1 · cudarc | 92 kernel functions · 6,585 LOC · PTX ISA auto-downgrade in build.rs |
-| **Ontology** | OWL 2 EL · Whelk-rs | EL++ subsumption · consistency checking · 20 source files |
-| **XR** | WebXR · Babylon.js | Meta Quest 3 · hand tracking · foveated rendering · `?force=quest3` |
-| **Multi-User** | Vircadia World Server | Avatar sync · spatial HRTF audio · entity CRUD · collaborative editing |
-| **Voice** | LiveKit SFU · turbo-whisper · Kokoro | CUDA STT · TTS · Opus 48kHz · 4-plane routing |
-| **Identity** | Nostr NIP-07/NIP-98 | Browser extension signing · cryptographic HTTP auth · scoped delegation patterns |
-| **User Data** | Solid Pods · JSS sidecar | Per-user data sovereignty · WAC access control · JSON-LD |
+| **Backend** | Rust 2021 · Actix-web | 427 files · hexagonal CQRS · 9 ports · 12 adapters · 114 handlers |
+| **Frontend (desktop)** | React 19 · Three.js · R3F | TypeScript 5.9 · InstancedMesh · SAB zero-copy |
+| **Frontend (XR)** | Babylon.js | Quest 3 foveated rendering · hand tracking |
+| **WASM** | Rust → wasm-pack | scene-effects · drawer-fx crates · zero-copy Float32Array |
+| **Graph DB** | Neo4j 5.13 | Primary store · Cypher · bolt protocol |
+| **Vector Memory** | RuVector · pgvector | 1.17M entries · HNSW 384-dim · MiniLM-L6-v2 |
+| **GPU** | CUDA 13.1 · cudarc | 92 kernels · 6,585 LOC · PTX ISA auto-downgrade |
+| **Ontology** | OWL 2 EL · Whelk-rs | EL++ subsumption · consistency checking |
+| **XR** | WebXR · Babylon.js | Meta Quest 3 · hand tracking |
+| **Multi-User** | Vircadia World Server | Avatar sync · HRTF spatial · collaborative editing |
+| **Voice** | LiveKit · turbo-whisper · Kokoro | CUDA STT · TTS · Opus 48 kHz |
+| **Identity** | Nostr NIP-07/NIP-98 | Browser ext signing · Schnorr HTTP auth · scoped delegation |
+| **User Data** | Solid Pods · JSS | Per-user sovereignty · WAC access control · JSON-LD |
 | **Agents** | Claude-Flow · MCP · RAFT | 83 skills · 7 ontology tools · hive-mind consensus |
-| **AI/ML** | GraphRAG · RAGFlow | Knowledge retrieval · semantic inference |
-| **Build** | Vite 6 · Vitest · Playwright | Frontend build · unit tests · E2E tests |
-| **Infra** | Docker Compose | 15+ services · multi-profile (dev/prod/voice/xr) |
-| **CI** | GitHub Actions | Build · test · docs quality · ontology federation |
+| **Build** | Vite 6 · Vitest · Playwright | Frontend build · unit/E2E tests |
+| **Infra** | Docker Compose | 15+ services · multi-profile |
 
 </details>
 
@@ -646,27 +341,16 @@ Each context has its own aggregate roots, domain events, and anti-corruption lay
 
 ## Documentation
 
-VisionClaw uses the [Diataxis](https://diataxis.fr/) framework — 144 markdown files across four categories, 54 with embedded Mermaid diagrams:
+VisionClaw uses the [Diataxis](https://diataxis.fr/) framework — 144 markdown files across four categories, 54 with embedded Mermaid diagrams.
 
-| Category | Path | Content |
-|:---------|:-----|:--------|
-| **Tutorials** | [`docs/tutorials/`](docs/tutorials/) | First graph, Neo4j basics, platform overview |
-| **How-To Guides** | [`docs/how-to/`](docs/how-to/) | Deployment, agents, XR setup, performance profiling, features, operations |
-| **Explanation** | [`docs/explanation/`](docs/explanation/) | Architecture, DDD, ontology, GPU physics, XR, security, Solid/Nostr, deployment topology |
-| **Reference** | [`docs/reference/`](docs/reference/) | REST API, WebSocket protocol, Neo4j schema, agents catalog, error codes |
+Entry points:
 
-Key entry points:
-
-- [Full Documentation Hub](docs/README.md) — all 106 docs indexed
-- [Known Issues](docs/KNOWN_ISSUES.md) — active P1/P2 bugs (read before debugging)
-- [Architecture Overview](docs/explanation/system-overview.md)
-- [Deployment Guide](docs/how-to/deployment-guide.md)
-- [Deployment Topology](docs/explanation/deployment-topology.md) — 15-service map, network architecture, dependency chain
-- [Quest 3 VR Setup](docs/how-to/xr-setup-quest3.md)
-- [Agent Orchestration](docs/how-to/agent-orchestration.md)
-- [REST API Reference](docs/reference/rest-api.md)
-- [WebSocket Binary Protocol](docs/reference/websocket-binary.md)
-- [Performance Profiling](docs/how-to/performance-profiling.md)
+- [Full Documentation Hub](docs/README.md)
+- [Insight Migration Loop — master design](docs/design/2026-04-18-insight-migration-loop/00-master.md) · [PRD](docs/prd-insight-migration-loop.md) · [explanation](docs/explanation/insight-migration-loop.md) · [tutorial](docs/tutorials/promoting-a-note-to-ontology.md)
+- [System Overview](docs/explanation/system-overview.md) · [Architecture Self-Review](docs/architecture-self-review.md)
+- [Deployment Guide](docs/how-to/deployment-guide.md) · [Quest 3 VR Setup](docs/how-to/xr-setup-quest3.md)
+- [Agent Orchestration](docs/how-to/agent-orchestration.md) · [REST API](docs/reference/rest-api.md) · [WebSocket V5 Binary](docs/reference/websocket-binary.md)
+- [Known Issues](docs/KNOWN_ISSUES.md) — read before debugging
 
 ---
 
@@ -681,97 +365,40 @@ Key entry points:
 | Docker + Docker Compose | — | Services |
 | CUDA Toolkit | 13.1 | GPU acceleration (optional) |
 
-### Build and Test
+### Build and test
 
 ```bash
-# Backend
-cargo build --release
-cargo test
-
-# Frontend
+cargo build --release --features gpu
+cargo test --features gpu
 cd client && npm install && npm run build && npm test
-
-# Integration tests
 cargo test --test ontology_agent_integration_test
 ```
 
-### System Requirements
+### System tiers
 
-| Tier | CPU | RAM | GPU | Use Case |
+| Tier | CPU | RAM | GPU | Use case |
 |:-----|:----|:----|:----|:---------|
-| **Minimum** | 4-core 2.5GHz | 8 GB | Integrated | Development · < 10K nodes |
-| **Recommended** | 8-core 3.0GHz | 16 GB | GTX 1060 / RX 580 | Production · < 50K nodes |
-| **Enterprise** | 16+ cores | 32 GB+ | RTX 4080+ (16GB VRAM) | Large graphs · multi-user XR |
+| **Minimum** | 4-core 2.5 GHz | 8 GB | Integrated | Development · < 10K nodes |
+| **Recommended** | 8-core 3.0 GHz | 16 GB | GTX 1060 / RX 580 | Production · < 50K nodes |
+| **Enterprise** | 16+ cores | 32 GB+ | RTX 4080+ (16 GB) | Large graphs · multi-user XR |
 
-**Platform support:** Linux (full GPU) · macOS (CPU-only) · Windows (WSL2) · Meta Quest 3 (Beta)
-
-<details>
-<summary><strong>Key environment variables</strong></summary>
-
-Copy `.env.example` and configure:
-
-| Variable | Description |
-|:---------|:------------|
-| `NEO4J_URI` | Neo4j bolt connection (default: `bolt://localhost:7687`) |
-| `NEO4J_USER` / `NEO4J_PASSWORD` | Neo4j credentials |
-| `RUVECTOR_PG_CONNINFO` | RuVector PostgreSQL connection string |
-| `NOSTR_PRIVATE_KEY` | Server-side Nostr signing key (hex) |
-| `GITHUB_TOKEN` | GitHub token for ontology PR creation |
-| `GITHUB_OWNER` / `GITHUB_REPO` / `GITHUB_BASE_PATH` | Logseq source repository |
-| `VITE_VIRCADIA_ENABLED` | Enable Vircadia multi-user (`true`/`false`) |
-| `VITE_VIRCADIA_SERVER_URL` | Vircadia World Server WebSocket URL |
-| `LIVEKIT_URL` / `LIVEKIT_API_KEY` / `LIVEKIT_API_SECRET` | Voice routing |
-| `VITE_QUEST3_ENABLE_HAND_TRACKING` | Enable Quest 3 hand tracking |
-
-Full reference: [Environment Variables](docs/reference/configuration/environment-variables.md)
-
-</details>
+**Platforms**: Linux (full GPU) · macOS (CPU only) · Windows (WSL2) · Meta Quest 3.
 
 ---
 
-## Project Structure
+## Operational context
 
-```
-VisionClaw/
-├── src/                          # Rust backend (427 files, 175K LOC)
-│   ├── actors/                   #   21 Actix actors (GPU compute + services)
-│   ├── adapters/                 #   Neo4j, Whelk, CUDA, JSS, RuVector adapters
-│   ├── handlers/                 #   HTTP/WebSocket request handlers (CQRS)
-│   ├── services/                 #   Business logic (ontology, voice, agents)
-│   ├── ports/                    #   Trait definitions (9 hexagonal boundaries)
-│   ├── gpu/                      #   CUDA kernel bridge, memory, streaming
-│   ├── ontology/                 #   OWL parser, Whelk bridge, physics integration
-│   └── config/                   #   Configuration management
-├── client/                       # React frontend (370 files, 96K LOC)
-│   ├── src/
-│   │   ├── features/             #   20 feature modules (graph, settings, enterprise, broker, kpi, workflows, connectors, policy, analytics, bots, monitoring, onboarding, workspace, ...)
-│   │   ├── services/             #   Voice, WebSocket, Nostr auth, Solid integration
-│   │   ├── rendering/            #   Custom TSL/WebGL materials, post-processing
-│   │   └── immersive/            #   Babylon.js XR mode
-│   └── crates/scene-effects/     #   Rust WASM crate — zero-copy scene FX
-├── multi-agent-docker/           # AI agent orchestration container
-│   ├── skills/                   #   83 agent skill modules
-│   ├── mcp-infrastructure/       #   MCP servers, config, tool registration
-│   └── management-api/           #   Agent lifecycle management
-├── docs/                         # Diataxis documentation (144 files, 54 with Mermaid)
-│   ├── tutorials/                #   Getting started
-│   ├── how-to/                   #   Operational guides
-│   ├── explanation/              #   Architecture deep-dives
-│   ├── reference/                #   API, protocol, schema specs
-│   ├── adr/                      #   Architecture Decision Records
-│   └── KNOWN_ISSUES.md           #   Active P1/P2 bugs
-├── tests/                        # Integration tests
-├── config/                       # LiveKit, deployment config
-└── scripts/                      # Build, migration, embedding ingestion scripts
-```
+| Deployment | Context | Scale |
+|:-----------|:--------|:------|
+| **DreamLab Creative Hub** | Live creative-technology deployment | ~998 knowledge graph nodes, daily ontology mutations |
+| **University of Salford** | Research collaboration — semantic force-directed layout | Multi-institution ontology |
+| **THG World Record** | Large-scale immersive data visualisation event | 250+ concurrent XR users |
 
 ---
 
 ## Contributing
 
-See the [Contributing Guide](docs/CONTRIBUTING.md) for development workflow, branching conventions, and coding standards.
-
-> **Before contributing**: Check [Known Issues](docs/KNOWN_ISSUES.md) — the Ontology Edge Gap (ONT-001) and V4 delta instability (WS-001) are active P1/P2 bugs that may affect your work area.
+See the [Contributing Guide](docs/CONTRIBUTING.md). Before contributing check [Known Issues](docs/KNOWN_ISSUES.md) — ONT-001 and WS-001 are active P1/P2 bugs that may touch your area.
 
 ---
 
