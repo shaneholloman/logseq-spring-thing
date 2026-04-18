@@ -241,6 +241,7 @@ Evidence is assembled server-side by `EvidenceAggregator` and returned as part o
 - ADR-042: Workflow Proposal Object Model (WorkflowProposal consumed as case source)
 - ADR-043: KPI Lineage Model (BrokerDecisionMade events feed HITL Precision KPI)
 - ADR-045: Policy Engine Approach (PolicyExceptionRequested events feed the inbox)
+- ADR-049: Insight-migration broker workflow — extends the Judgment Broker Workbench with a migration-candidate lane
 
 ## References
 

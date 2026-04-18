@@ -45,3 +45,7 @@ Store named graph views as JSON-LD documents in each user's Pod at `/settings/gr
 - **Positive**: No server-side schema changes (LDP handles storage)
 - **Negative**: Requires JSS sidecar running (graceful degradation to localStorage)
 - **Negative**: Additional WebSocket connection to JSS for sync
+
+## Related Decisions
+
+- ADR-048: Dual-tier identity model — extends the Pod-backed graph view with a KGNode / OntologyClass split

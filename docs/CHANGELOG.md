@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased] - 2026-04-18
 
 ### Added
+
+#### Insight Migration Loop design corpus
+- Phase 1 research: 9 artefacts totalling ~19,700 words defining the dual-tier identity, sigmoid scoring, broker workflow, physics forces, acceptance tests
+- ADR-048 Dual-tier identity model (KGNode + OntologyClass with BRIDGE_TO edges)
+- ADR-049 Insight-migration broker workflow (MigrationCase subtype, DecisionOrchestrator contract)
+- PRD: Insight Migration Loop (3 personas, 10 capabilities, 6 migration KPIs)
+- DDD context refinement (BC13 MigrationCandidate aggregate, BC11 MigrationCase)
+- 00-master.md: synthesised reconciliation resolving 5 cross-artefact contradictions, 8 blocking questions for owner decision
+
+#### Enterprise & Regression Testing
 - Enterprise drawer (`EnterpriseDrawerMount`, `EnterpriseDrawer`) — full-viewport slide-out panel with frosted-glass alpha blend, Ctrl+Shift+E / Cmd+Shift+E toggle, floating FAB button
 - `drawer-fx` WASM crate (`client/src/wasm/drawer-fx/`) — Rust flow-field ambient effect for enterprise drawer canvas layer; zero-copy `Float32Array` pattern matching `scene-effects`
 - Regression tests: `tests/physics_orchestrator_settle_regression.rs`, `tests/settings_physics_propagation_regression.rs`

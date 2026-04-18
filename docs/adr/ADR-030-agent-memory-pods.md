@@ -91,6 +91,10 @@ WAC ACL files control per-agent access:
 - No changes to the RuVector pipeline. This is a complementary read-model for users.
 - Future work may add WebSocket subscriptions for real-time memory change notifications (reusing the solid-0.1 protocol from ADR-027).
 
+## Related Decisions
+
+- ADR-048: Dual-tier identity model — uses agent memory pods for candidate scoring and detection signal persistence
+
 ## Alternatives Considered
 
 1. **Direct SQL access to RuVector for users**: Rejected. Violates Pod data sovereignty and requires exposing database credentials.

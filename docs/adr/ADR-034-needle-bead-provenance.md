@@ -215,3 +215,7 @@ preserves this as a future option.
 Migrate from Nostr events to W3C PROV-O ontology for provenance. Rejected — Nostr provides
 cryptographic signing, relay federation, and existing infrastructure. W3C PROV could be
 layered on top of the Nostr events via OWL mapping in future.
+
+## Related Decisions
+
+- ADR-048: Dual-tier identity model — emits a provenance bead for every BRIDGE_TO edge kind transition

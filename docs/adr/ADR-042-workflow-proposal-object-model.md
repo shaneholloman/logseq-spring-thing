@@ -246,6 +246,7 @@ Multiple rollback levels are supported by traversing the `SUPERSEDES` chain.
 - ADR-043: KPI Lineage Model (WorkflowPromotion events feed Mesh Velocity KPI)
 - ADR-044: Connector Governance (Insights from connectors become DISCOVERED_FROM sources)
 - ADR-034: Needle Bead Provenance (proposal lifecycle events recorded as provenance)
+- ADR-049: Insight-migration broker workflow — produces a WorkflowProposal-like artefact for the ontology-mutation PR
 
 ## References
 

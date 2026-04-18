@@ -178,6 +178,7 @@ Conceptual deep-dives that build understanding of how and why VisionClaw works.
 | [Deployment Topology](explanation/deployment-topology.md) | Multi-container service map, network architecture, dependency chain, scaling |
 | [Agent-Physics Bridge](explanation/agent-physics-bridge.md) | How AI agent lifecycle states synchronise to the 3D physics simulation |
 | [DDD Enterprise Contexts (BC11–BC17)](explanation/ddd-enterprise-contexts.md) | Judgment Broker, Workflow Lifecycle, Insight Discovery, Enterprise Identity, KPI Observability, Connector Ingestion, Policy Engine bounded contexts |
+| [DDD Insight Migration Context](explanation/ddd-insight-migration-context.md) | Insight Migration DDD context — MigrationCandidate aggregate in BC13, MigrationCase subtype in BC11, promotion lifecycle |
 
 ---
 
@@ -245,7 +246,7 @@ Design decisions recorded as ADRs in [docs/adr/](adr/).
 
 > ADR-035 is absent — the content was renumbered to ADR-037 (`ADR-037-binary-protocol-consolidation.md` carries the ADR-035 internal heading, a known inconsistency).
 
-### Enterprise Governance (ADR-040 to ADR-047)
+### Enterprise Governance (ADR-040 to ADR-049)
 
 | ADR | Status | Title |
 |-----|--------|-------|
@@ -257,6 +258,8 @@ Design decisions recorded as ADRs in [docs/adr/](adr/).
 | [ADR-045](adr/ADR-045-policy-engine-approach.md) | Proposed | Policy Engine Approach |
 | [ADR-046](adr/ADR-046-enterprise-ui-architecture.md) | **Accepted** | Enterprise UI Architecture |
 | [ADR-047](adr/ADR-047-wasm-visualization-components.md) | Proposed | WASM Visualization Components |
+| [ADR-048](adr/ADR-048-dual-tier-identity-model.md) | Proposed | Dual-Tier Identity Model (KGNode + OntologyClass) |
+| [ADR-049](adr/ADR-049-insight-migration-broker-workflow.md) | Proposed | Insight Migration Broker Workflow |
 
 > Six of eight enterprise ADRs are Proposed — the features are built and operational but the decisions are pending formal ratification.
 
@@ -277,6 +280,7 @@ Exploratory design documents in [docs/design/](design/).
 - [Nostr Relay Integration](design/nostr-relay-integration.md) — Architecture for VisionClaw ↔ Nostr relay bridging
 - [Nostr Solid Browser Extension](design/nostr-solid-browser-extension.md) — Browser extension design for Nostr + Solid identity
 - [Enterprise Drawer UI](design/2026-04-17-enterprise-drawer.md) — Full specification for the enterprise slide-out drawer: geometry, WASM ambient effects, Zustand store, keyboard shortcut, ARIA, graph dimming, rollback plan
+- [Insight Migration Loop](design/2026-04-18-insight-migration-loop/) — Research corpus for the tacit→explicit knowledge bridging workflow (prior art, bridge theory, physics mapping, acceptance tests, scoring)
 
 ---
 
@@ -289,6 +293,7 @@ Exploratory design documents in [docs/design/](design/).
 | [PRD: Agent Orchestration Improvements](PRD-agent-orchestration-improvements.md) | Multi-agent orchestration improvements |
 | [PRD: Bead Provenance Upgrade](prd-bead-provenance-upgrade.md) | NEEDLE-pattern bead provenance lifecycle upgrade |
 | [PRD: XR Modernisation](prd-xr-modernization.md) | WebXR modernisation for Quest 3 and Babylon.js |
+| [PRD: Insight Migration Loop](prd-insight-migration-loop.md) | The KG→Ontology migration workflow requirements, scoring, state machine, KPIs, risks |
 
 ---
 

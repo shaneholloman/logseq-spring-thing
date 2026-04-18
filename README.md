@@ -432,6 +432,20 @@ See [`docs/diagrams/src/02-insight-ingestion-cycle.mmd`](./docs/diagrams/src/02-
 
 ---
 
+## The Insight Migration Loop (research landed 2026-04-18)
+
+The knowledge-unit analogue of Layer 3's Insight Ingestion Loop. Logseq notes
+(`public:: true`) become candidates for promotion into OWL classes
+(`public-access:: true`) via agent-proposed, broker-approved, GitHub-gated,
+Nostr-signed migration with physics-visible candidate signal.
+
+See: [Master design](docs/design/2026-04-18-insight-migration-loop/00-master.md)
+· [PRD](docs/prd-insight-migration-loop.md)
+· [ADR-048 Identity](docs/adr/ADR-048-dual-tier-identity-model.md)
+· [ADR-049 Broker](docs/adr/ADR-049-insight-migration-broker-workflow.md)
+
+---
+
 ## Enterprise Roadmap
 
 | Phase | Timeline | Deliverables | Exit Criteria |
@@ -442,7 +456,7 @@ See [`docs/diagrams/src/02-insight-ingestion-cycle.mmd`](./docs/diagrams/src/02-
 | **3: KPI + Governance** | Weeks 25-32 | Four mesh KPIs, policy engine, exportable audit reports | Thesis KPIs measurable from production data |
 | **4: Pilot Release** | Weeks 33-44 | Regulated pilot package, connector hardening, success reporting | At least one paid or design-partner pilot running |
 
-**Architecture decisions**: [ADR-040](docs/adr/ADR-040-enterprise-identity-strategy.md) · [ADR-041](docs/adr/ADR-041-judgment-broker-workbench.md) · [ADR-042](docs/adr/ADR-042-workflow-proposal-object-model.md) · [ADR-043](docs/adr/ADR-043-kpi-lineage-model.md) · [ADR-044](docs/adr/ADR-044-connector-governance-privacy.md) · [ADR-045](docs/adr/ADR-045-policy-engine-approach.md)
+**Architecture decisions**: [ADR-040](docs/adr/ADR-040-enterprise-identity-strategy.md) · [ADR-041](docs/adr/ADR-041-judgment-broker-workbench.md) · [ADR-042](docs/adr/ADR-042-workflow-proposal-object-model.md) · [ADR-043](docs/adr/ADR-043-kpi-lineage-model.md) · [ADR-044](docs/adr/ADR-044-connector-governance-privacy.md) · [ADR-045](docs/adr/ADR-045-policy-engine-approach.md) · [ADR-048](docs/adr/ADR-048-dual-tier-identity-model.md) · [ADR-049](docs/adr/ADR-049-insight-migration-broker-workflow.md)
 
 **DDD model**: [Enterprise Bounded Contexts (BC11-BC17)](docs/explanation/ddd-enterprise-contexts.md)
 

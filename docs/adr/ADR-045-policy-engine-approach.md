@@ -274,6 +274,7 @@ This is a gradual migration, not a rewrite. The trait boundary ensures that the 
 - ADR-043: KPI Lineage Model (PolicyEvaluated events feed Trust Variance KPI)
 - ADR-011: Universal Authentication Enforcement (authentication layer, below the policy engine)
 - ADR-034: Needle Bead Provenance (policy evaluations recorded as provenance events)
+- ADR-049: Insight-migration broker workflow — uses the policy engine for candidate-surfacing thresholds and suppression rules
 
 ## References
 
