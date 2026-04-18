@@ -63,6 +63,44 @@ pub async fn verify_access(
         .unwrap_or(&Uuid::new_v4().to_string())
         .to_string();
 
+    // --- Dev-mode session bypass ---
+    // Mirrors `settings::auth_extractor` so enterprise panels behind
+    // `RequireAuth::authenticated()` work in dev too. Only active when
+    // APP_ENV != "production" AND the client sends `Bearer dev-session-token`
+    // plus an `X-Nostr-Pubkey`. The pubkey is trusted as-is in dev — never
+    // accept this branch without the APP_ENV gate.
+    if let Some(auth_value) = req
+        .headers()
+        .get("Authorization")
+        .and_then(|h| h.to_str().ok())
+    {
+        if auth_value == "Bearer dev-session-token" {
+            let is_production = std::env::var("APP_ENV")
+                .map(|v| v == "production")
+                .unwrap_or(false);
+            if !is_production {
+                let pubkey = req
+                    .headers()
+                    .get("X-Nostr-Pubkey")
+                    .and_then(|v| v.to_str().ok())
+                    .unwrap_or("dev-user")
+                    .to_string();
+                debug!(
+                    request_id = %request_id,
+                    pubkey = %pubkey,
+                    "Dev-mode bypass accepted (APP_ENV != production)"
+                );
+                // Dev users have PowerUser-equivalent access so enterprise panels
+                // (mesh-metrics, connectors, policy) open without extra setup.
+                let user_level = AccessLevel::Admin;
+                if user_level.has_permission(&required_level) {
+                    return Ok(pubkey);
+                }
+                // Somehow required level is higher than Admin — fall through.
+            }
+        }
+    }
+
     // --- NIP-98 Schnorr auth (primary path) ---
     if let Some(auth_value) = req
         .headers()

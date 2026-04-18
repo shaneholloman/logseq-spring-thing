@@ -118,6 +118,11 @@ pub struct ForceComputeActor {
     /// Pre-allocated buffer for position/velocity data (reused every frame to avoid 60Hz allocations)
     position_velocity_buffer: Vec<(Vec3, Vec3)>,
 
+    /// Per-node counter of consecutive frames a node has been pinned at the
+    /// viewport boundary. Used to identify boundary-stuck nodes for rescue.
+    /// Parallel to `position_velocity_buffer`.
+    boundary_stuck_frames: Vec<u32>,
+
     /// Pre-allocated buffer for node IDs (reused every frame to avoid 60Hz allocations)
     node_id_buffer: Vec<u32>,
 
@@ -213,6 +218,7 @@ impl ForceComputeActor {
             force_full_broadcast: false,
             backpressure: NetworkBackpressure::new(backpressure_config),
             position_velocity_buffer: Vec::with_capacity(10000),
+            boundary_stuck_frames: Vec::with_capacity(10000),
             node_id_buffer: Vec::with_capacity(10000),
             gpu_index_to_node_id: Vec::new(),
             gpu_index_to_metadata_id: Vec::new(),
@@ -1508,6 +1514,121 @@ impl Handler<ComputeForces> for ForceComputeActor {
                                     );
                                     // Skip all broadcast logic for this frame
                                 } else {
+                                // Runaway-node rescue: a node is "runaway" if ANY of:
+                                //  (a) |coord| exceeds 10× viewport_bounds — numerical escape;
+                                //  (b) |coord| is within 1 unit of ±viewport_bounds for
+                                //      BOUNDARY_STICK_THRESHOLD consecutive frames — boundary
+                                //      reflection oscillation that the damping can't resolve
+                                //      against continued outward force.
+                                // Offenders are teleported to a random interior position with
+                                // zeroed velocity; subsequent ticks re-settle them against their
+                                // edges. Legitimate long-range layouts aren't touched.
+                                let vb = actor.simulation_params.viewport_bounds.max(1.0);
+                                let escape_threshold = vb * 10.0;
+                                let boundary_eps = 1.0f32;
+                                const BOUNDARY_STICK_THRESHOLD: u32 = 60; // ~1s at 60Hz
+                                // Re-seed spread sits comfortably inside the viewport.
+                                let reseed_half_extent = (vb * 0.5).max(50.0);
+                                // Keep the stuck-frame counter parallel to position buffer.
+                                if actor.boundary_stuck_frames.len() != actor.position_velocity_buffer.len() {
+                                    actor.boundary_stuck_frames.resize(actor.position_velocity_buffer.len(), 0);
+                                }
+                                let mut rescued_indices: Vec<usize> = Vec::new();
+                                for (idx, (p, _v)) in actor.position_velocity_buffer.iter().enumerate() {
+                                    // (a) escaped
+                                    if p.x.abs() > escape_threshold
+                                        || p.y.abs() > escape_threshold
+                                        || p.z.abs() > escape_threshold
+                                    {
+                                        rescued_indices.push(idx);
+                                        actor.boundary_stuck_frames[idx] = 0;
+                                        continue;
+                                    }
+                                    // (b) boundary-stuck: at least one axis pinned against ±vb
+                                    let pinned = p.x.abs() >= vb - boundary_eps
+                                        || p.y.abs() >= vb - boundary_eps
+                                        || p.z.abs() >= vb - boundary_eps;
+                                    if pinned {
+                                        actor.boundary_stuck_frames[idx] =
+                                            actor.boundary_stuck_frames[idx].saturating_add(1);
+                                        if actor.boundary_stuck_frames[idx] >= BOUNDARY_STICK_THRESHOLD {
+                                            rescued_indices.push(idx);
+                                            actor.boundary_stuck_frames[idx] = 0;
+                                        }
+                                    } else {
+                                        actor.boundary_stuck_frames[idx] = 0;
+                                    }
+                                }
+                                if !rescued_indices.is_empty() {
+                                    // xorshift32 seeded by iteration + node index for deterministic
+                                    // scattering per frame (avoids collisions when many nodes rescue
+                                    // in the same tick).
+                                    let base_seed = actor.gpu_state.iteration_count as u32;
+                                    for (count, &idx) in rescued_indices.iter().enumerate() {
+                                        let mut s = base_seed
+                                            .wrapping_add(idx as u32)
+                                            .wrapping_mul(0x9E3779B9)
+                                            .wrapping_add(count as u32 * 0x85EBCA6B)
+                                            | 1;
+                                        let mut next = || {
+                                            s ^= s << 13;
+                                            s ^= s >> 17;
+                                            s ^= s << 5;
+                                            // Map to [-1, 1)
+                                            ((s as f32) / (u32::MAX as f32)) * 2.0 - 1.0
+                                        };
+                                        let nx = next() * reseed_half_extent;
+                                        let ny = next() * reseed_half_extent;
+                                        let nz = next() * reseed_half_extent;
+                                        actor.position_velocity_buffer[idx] = (
+                                            glam::Vec3::new(nx, ny, nz),
+                                            glam::Vec3::ZERO,
+                                        );
+                                    }
+                                    let node_ids: Vec<u32> = rescued_indices
+                                        .iter()
+                                        .map(|&i| actor.node_id_buffer[i])
+                                        .collect();
+                                    warn!(
+                                        "[ForceComputeActor] Rescued {} runaway/stuck nodes at iter {} \
+                                         (escape threshold={:.0}, boundary={:.0} for {}+ frames); \
+                                         teleported to random interior positions ±{:.0}. Sample node_ids: {:?}",
+                                        rescued_indices.len(),
+                                        actor.gpu_state.iteration_count,
+                                        escape_threshold,
+                                        vb,
+                                        BOUNDARY_STICK_THRESHOLD,
+                                        reseed_half_extent,
+                                        &node_ids[..node_ids.len().min(8)],
+                                    );
+                                    // Push the rescued positions back to the GPU so the next
+                                    // integration step reads from the corrected state rather
+                                    // than the stale runaway coords. Velocities on the GPU will
+                                    // decay via damping over ~20 ticks (negligible re-escape).
+                                    let pos_x: Vec<f32> = actor.position_velocity_buffer.iter().map(|(p, _)| p.x).collect();
+                                    let pos_y: Vec<f32> = actor.position_velocity_buffer.iter().map(|(p, _)| p.y).collect();
+                                    let pos_z: Vec<f32> = actor.position_velocity_buffer.iter().map(|(p, _)| p.z).collect();
+                                    if let Some(ref ctx) = actor.shared_context {
+                                        match ctx.unified_compute.lock() {
+                                            Ok(mut compute) => {
+                                                if let Err(e) = compute.upload_positions(&pos_x, &pos_y, &pos_z) {
+                                                    warn!(
+                                                        "[ForceComputeActor] Runaway rescue GPU re-upload failed \
+                                                         (nodes will re-diverge next tick): {}",
+                                                        e
+                                                    );
+                                                }
+                                            }
+                                            Err(poisoned) => {
+                                                warn!(
+                                                    "[ForceComputeActor] Runaway rescue: GPU mutex poisoned — recovering"
+                                                );
+                                                let mut compute = poisoned.into_inner();
+                                                let _ = compute.upload_positions(&pos_x, &pos_y, &pos_z);
+                                            }
+                                        }
+                                    }
+                                }
 
                                 // Diagnostic: log first few positions on early frames (6 decimal places for velocity)
                                 if actor.gpu_state.iteration_count < 5 || actor.gpu_state.iteration_count % 300 == 0 {
@@ -1564,13 +1685,17 @@ impl Handler<ComputeForces> for ForceComputeActor {
                                         actor.broadcast_optimizer.process_frame(&actor.position_velocity_buffer, &actor.node_id_buffer);
 
                                     if should_broadcast && !filtered_indices.is_empty() {
-                                        // Check if periodic full broadcast is due EVEN when some
-                                        // nodes are still moving. Without this, converged nodes
-                                        // never get their final positions sent to clients while
-                                        // other nodes (e.g. agents) keep moving.
+                                        // Force full broadcast every frame. In this workload almost
+                                        // every node moves every tick (force-directed layout), so
+                                        // delta encoding saves little bandwidth and adds real cost:
+                                        // stale-position drift on reconnect, delta decode bugs, and
+                                        // missed updates when the delta threshold filters a node out.
+                                        // Keeping the periodic-full accounting so logs and stats stay
+                                        // meaningful, but `needs_full` is now always true.
                                         let iters_since_full = actor.gpu_state.iteration_count
                                             .saturating_sub(actor.last_full_broadcast_iteration);
-                                        let needs_full = iters_since_full >= 300;
+                                        let _ = iters_since_full;
+                                        let needs_full = true;
 
                                         if needs_full {
                                             // Full broadcast: send ALL nodes, bypassing delta filter

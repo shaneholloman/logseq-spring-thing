@@ -76,8 +76,13 @@ pub enum FilterMode {
 impl Default for ClientFilter {
     fn default() -> Self {
         Self {
-            // DEFAULT FILTER ENABLED: Fresh clients get quality-filtered sparse dataset
-            enabled: true,
+            // Filter DISABLED by default. With `enabled: true` and an empty
+            // `filtered_node_ids` set, `broadcast_with_filter` produces no payload
+            // for fresh clients — so newly-connected subscribers silently receive
+            // zero position frames until they proactively push a `filter_update`
+            // with `enabled: false` (which the UI does, but headless/test clients
+            // don't). Default to wide-open: clients that want filtering opt in.
+            enabled: false,
             quality_threshold: 0.7,
             authority_threshold: 0.5,
             filter_by_quality: true,
@@ -384,9 +389,20 @@ impl ClientManager {
                         slow_clients.push(client_id);
                     }
                     Err(actix::prelude::SendError::Closed(_)) => {
+                        warn!(
+                            "[ClientCoordinator] Client {} mailbox closed — marking for eviction",
+                            client_id
+                        );
                         slow_clients.push(client_id);
                     }
                 }
+            } else {
+                // Logged at debug so we can trace filter-caused zero-sends without
+                // spamming the log in healthy operation.
+                debug!(
+                    "[ClientCoordinator] Client {} received no payload (filter produced empty set)",
+                    client_id
+                );
             }
         }
         BroadcastResult { sent, slow_clients }
@@ -1413,6 +1429,16 @@ impl Handler<BroadcastPositions> for ClientCoordinatorActor {
         self.broadcast_sequence += 1;
         let current_sequence = self.broadcast_sequence;
 
+        // TEMP DIAG: log every broadcast attempt so we can see if the handler
+        // runs, how many clients it iterates, and the payload size.
+        if self.broadcast_sequence % 60 == 1 {
+            let client_count = self.client_manager.read().map(|m| m.clients.len()).unwrap_or(0);
+            info!(
+                "[BroadcastPositions#{}] handler invoked: {} positions, {} clients in manager",
+                self.broadcast_sequence, msg.positions.len(), client_count
+            );
+        }
+
         // Read analytics data for embedding in binary protocol
         let analytics_guard = self.node_analytics.read().ok();
         let analytics_ref = analytics_guard.as_deref();
@@ -1436,6 +1462,18 @@ impl Handler<BroadcastPositions> for ClientCoordinatorActor {
                     manager.unregister_client(*id);
                 }
             }
+        }
+
+        // TEMP DIAG: log per-broadcast send count so we can confirm frames actually
+        // reach socket actors. Sampled 1 in 60 to avoid flooding the log.
+        if self.broadcast_sequence % 60 == 1 {
+            info!(
+                "[BroadcastPositions#{}] sent={}/{} slow_clients={}",
+                self.broadcast_sequence,
+                result.sent,
+                result.sent + result.slow_clients.len(),
+                result.slow_clients.len()
+            );
         }
 
         if client_count > 0 {

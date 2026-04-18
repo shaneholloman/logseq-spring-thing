@@ -15,6 +15,7 @@
     "types:generate": "cd .. && cargo run --bin generate_types",
     "types:watch": "cd .. && cargo watch -x 'run --bin generate_types'",
     "types:clean": "rm -rf src/types/generated",
+    "wasm:drawer-fx": "bash src/wasm/drawer-fx/build.sh",
     "prebuild": "npm run types:generate",
     "preinstall": "node scripts/block-test-packages.cjs",
     "security:check": "node scripts/block-test-packages.cjs && npm audit",

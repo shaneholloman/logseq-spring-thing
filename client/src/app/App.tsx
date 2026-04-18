@@ -28,7 +28,7 @@ import { LoadingScreen } from '../components/LoadingScreen';
 import { WorkerErrorModal } from '../components/WorkerErrorModal';
 import solidPodService from '../services/SolidPodService';
 import { useHashRoute } from '../hooks/useHashRoute';
-import { EnterpriseFullPage } from '../features/enterprise';
+import { EnterpriseFullPage, EnterpriseDrawerMount } from '../features/enterprise';
 
 const logger = createLogger('App');
 
@@ -219,6 +219,7 @@ function App() {
                     <CommandPalette />
                     <DebugControlPanel />
                     <WorkerErrorModal />
+                    {!route.startsWith('/enterprise') && <EnterpriseDrawerMount />}
                   </>
                 )}
               </ApplicationModeProvider>

@@ -285,12 +285,19 @@ pub async fn socket_flow_handler(
         }
     }
 
-    // Restore .protocols() for WebSocket subprotocol negotiation.
-    // Even though permessage-deflate is technically an extension not a subprotocol,
-    // removing this broke WebSocket connections through cloudflared/nginx proxy chains
-    // that expect the server to echo back the Sec-WebSocket-Protocol header.
+    // permessage-deflate is a WebSocket EXTENSION, not a subprotocol. Advertising
+    // it via `.protocols()` (Sec-WebSocket-Protocol header) is malformed — Chrome
+    // interprets that header as a subprotocol negotiation and, for some payload
+    // sizes, silently drops binary frames it can't reconcile with that subprotocol
+    // decision. Small frames slipped through historically, large V5 broadcasts
+    // (>64KB) did not. Removing it unblocks the binary stream. If a future proxy
+    // chain (cloudflared) regresses, add back a correct `Sec-WebSocket-Extensions`
+    // response header — do not use `.protocols()` for it.
+    //
+    // frame_size: actix-web-actors defaults to 64KiB on incoming frames. Raised
+    // to 4 MiB to also accommodate large incoming control messages if needed.
     match ws::WsResponseBuilder::new(ws_server, &req, stream)
-        .protocols(&["permessage-deflate"])
+        .frame_size(4 * 1024 * 1024)
         .start()
     {
         Ok(response) => {

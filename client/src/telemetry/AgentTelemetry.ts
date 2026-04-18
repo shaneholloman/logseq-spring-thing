@@ -219,7 +219,7 @@ export class AgentTelemetryService {
           agents: agentData.agents || telemetryData.agents || []
         };
 
-        this.logger.info(`Fetched telemetry for ${mergedData.agents?.length || 0} agents`);
+        this.logger.debug(`Fetched telemetry for ${mergedData.agents?.length || 0} agents`);
 
         
         if (mergedData.agents) {

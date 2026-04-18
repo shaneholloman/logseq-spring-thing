@@ -525,6 +525,37 @@ const GraphManager: React.FC<GraphManagerProps> = ({ onDragStateChange }) => {
   // Priority -2: run BEFORE child components (GemNodes, InstancedLabels) so
   // nodePositionsRef.current is populated before consumers read it this frame.
   // R3F executes lower priority numbers first.
+  // First-frame hazard fix: force an R3F invalidate once positions become
+  // non-null. Without this, some sessions settle the canvas before the SAB
+  // has any data — subsequent useFrame runs read null positions and skip
+  // matrix writes, leaving the user to trigger a window resize (which
+  // invalidates the R3F root) just to see nodes appear.
+  const positionsFirstSeenRef = useRef(false);
+  const { invalidate } = useThree();
+  useEffect(() => {
+    if (positionsFirstSeenRef.current) return;
+    let tries = 0;
+    const maxTries = 120; // ~2s at 60Hz poll
+    const id = window.setInterval(() => {
+      tries++;
+      const pos = graphWorkerProxy.getPositionsSync?.();
+      if (pos && pos.length > 0) {
+        // Scan for a non-zero to confirm the buffer is populated, not just allocated.
+        let ok = false;
+        for (let i = 0, n = Math.min(pos.length, 900); i < n; i++) {
+          if (pos[i] !== 0) { ok = true; break; }
+        }
+        if (ok) {
+          positionsFirstSeenRef.current = true;
+          invalidate();
+          window.clearInterval(id);
+        }
+      }
+      if (tries >= maxTries) window.clearInterval(id);
+    }, 16);
+    return () => window.clearInterval(id);
+  }, [invalidate]);
+
   useFrame((state, delta) => {
     animationStateRef.current.time = state.clock.elapsedTime
 

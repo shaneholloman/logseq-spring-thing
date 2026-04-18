@@ -590,7 +590,14 @@ impl AppState {
 
 
 
-        let graph_service_addr = GraphServiceSupervisor::new(neo4j_adapter.clone()).start();
+        // Share the ClientCoordinatorActor instance: without this the supervisor
+        // creates its own, and clients registered here would never receive
+        // broadcasts routed through the supervisor's PhysicsOrchestrator.
+        let graph_service_addr = GraphServiceSupervisor::with_client(
+            neo4j_adapter.clone(),
+            Some(client_manager_addr.clone()),
+        )
+        .start();
 
         // Neo4j feature is now required - removed legacy SQLite path
 

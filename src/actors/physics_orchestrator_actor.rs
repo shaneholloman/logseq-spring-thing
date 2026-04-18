@@ -1791,7 +1791,8 @@ impl Handler<crate::actors::messages::PhysicsStepCompleted> for PhysicsOrchestra
             let converged = past_warmup && energy_valid && energy < energy_threshold;
             let exhausted = self.fast_settle_iteration_count >= max_settle_iterations;
 
-            if converged || (exhausted && energy_valid) {
+            if converged {
+                // Genuine convergence — pause and broadcast final snapshot.
                 self.fast_settle_complete = true;
                 self.simulation_params.is_physics_paused = true;
 
@@ -1800,17 +1801,10 @@ impl Handler<crate::actors::messages::PhysicsStepCompleted> for PhysicsOrchestra
                     self.target_params.damping = original_damping;
                 }
 
-                if converged {
-                    info!(
-                        "PhysicsOrchestratorActor: FastSettle converged after {} iterations (energy={:.6} < threshold={:.6})",
-                        self.fast_settle_iteration_count, energy, energy_threshold
-                    );
-                } else {
-                    info!(
-                        "PhysicsOrchestratorActor: FastSettle reached iteration cap {} (energy={:.6}, threshold={:.6})",
-                        max_settle_iterations, energy, energy_threshold
-                    );
-                }
+                info!(
+                    "PhysicsOrchestratorActor: FastSettle converged after {} iterations (energy={:.6} < threshold={:.6})",
+                    self.fast_settle_iteration_count, energy, energy_threshold
+                );
 
                 // Pure snapshot broadcast: clients get final converged positions
                 // without running another integration step.
@@ -1823,6 +1817,32 @@ impl Handler<crate::actors::messages::PhysicsStepCompleted> for PhysicsOrchestra
                 self.broadcast_physics_paused();
                 // Do NOT schedule another step — settling is complete.
                 return;
+            } else if exhausted && energy_valid {
+                // Iteration cap reached WITHOUT convergence. Previously this
+                // latched `fast_settle_complete = true` + `is_physics_paused = true`
+                // which permanently halted the simulation — sliders would hit the
+                // server but GPU never recomputed. Fall back to Continuous mode
+                // instead so live parameter changes remain responsive.
+                warn!(
+                    "PhysicsOrchestratorActor: FastSettle did not converge at iteration cap {} \
+                     (energy={:.6}, threshold={:.6}). Falling back to Continuous mode so live \
+                     parameter updates keep driving the simulation.",
+                    max_settle_iterations, energy, energy_threshold
+                );
+
+                // Restore pre-settle damping so Continuous mode runs with user-configured values.
+                if let Some(original_damping) = self.pre_settle_damping.take() {
+                    self.simulation_params.damping = original_damping;
+                    self.target_params.damping = original_damping;
+                }
+
+                self.simulation_params.settle_mode = SettleMode::Continuous;
+                self.target_params.settle_mode = SettleMode::Continuous;
+                self.pipeline_target_interval = Duration::from_millis(16); // 60 FPS
+                self.fast_settle_iteration_count = 0;
+                // Explicitly leave fast_settle_complete = false and
+                // is_physics_paused = false so physics_step continues ticking.
+                // Fall through to normal post-step scheduling below.
             } else if exhausted && !energy_valid {
                 // Iteration cap reached but energy was never valid (GPU not yet
                 // initialized).  Do NOT declare settled — reset and keep physics

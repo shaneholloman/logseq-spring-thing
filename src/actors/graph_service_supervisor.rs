@@ -270,11 +270,26 @@ impl Default for ActorStats {
 impl GraphServiceSupervisor {
 
     pub fn new(kg_repo: Arc<dyn crate::ports::knowledge_graph_repository::KnowledgeGraphRepository>) -> Self {
+        Self::with_client(kg_repo, None)
+    }
+
+    /// Construct a supervisor pre-wired to an externally owned ClientCoordinatorActor.
+    ///
+    /// Historically the supervisor created its OWN `ClientCoordinatorActor` in
+    /// `start_actor(ClientCoordinator)` while `AppState` also created one that the
+    /// WebSocket handler (`SocketFlowServer`) registered clients against. Those
+    /// two actors had independent `client_manager` maps — clients registered to
+    /// one, broadcasts went to the other, so no physics updates ever reached the
+    /// wire. Pass the shared `Addr` here to keep a single source of truth.
+    pub fn with_client(
+        kg_repo: Arc<dyn crate::ports::knowledge_graph_repository::KnowledgeGraphRepository>,
+        client: Option<Addr<ClientCoordinatorActor>>,
+    ) -> Self {
         Self {
             graph_state: None,
             physics: None,
             semantic: None,
-            client: None,
+            client,
             gpu_manager: None,
             app_gpu_compute_addr: None,
             kg_repo: Some(kg_repo),
@@ -452,8 +467,18 @@ impl GraphServiceSupervisor {
                 self.semantic = Some(actor);
             }
             ActorType::ClientCoordinator => {
-                let actor = ClientCoordinatorActor::new().start();
-                self.client = Some(actor);
+                // Respect an externally injected ClientCoordinator (see `with_client`).
+                // Without this guard we would shadow AppState's instance and split
+                // the client registry into two disjoint maps.
+                if self.client.is_none() {
+                    let actor = ClientCoordinatorActor::new().start();
+                    self.client = Some(actor);
+                } else {
+                    info!(
+                        "GraphServiceSupervisor: using externally provided ClientCoordinatorActor \
+                         (skipping internal creation)"
+                    );
+                }
             }
         }
 

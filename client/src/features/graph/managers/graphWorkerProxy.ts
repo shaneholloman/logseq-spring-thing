@@ -88,8 +88,21 @@ class GraphWorkerProxy {
 
       
       this.worker.onerror = (error) => {
-        logger.error('Worker error:', error);
+        const ev = error as ErrorEvent;
+        logger.error('Worker error:', {
+          message: ev.message,
+          filename: ev.filename,
+          lineno: ev.lineno,
+          colno: ev.colno,
+          errorName: ev.error?.name,
+          errorMessage: ev.error?.message,
+          errorStack: ev.error?.stack,
+          type: ev.type,
+        });
       };
+      this.worker.addEventListener('messageerror', (e) => {
+        logger.error('Worker messageerror:', e);
+      });
 
       logger.info('Wrapping worker with Comlink');
       

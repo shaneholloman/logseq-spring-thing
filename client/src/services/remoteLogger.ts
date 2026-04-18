@@ -52,25 +52,39 @@ class RemoteLogger {
       debug: console.debug,
       info: console.info,
       warn: console.warn,
-      error: console.error
+      error: console.error,
     };
 
-    
+    // Gate the DEVTOOLS echo on the same `debug.consoleLogging` flag that
+    // the unified logger respects. Server-side log buffering still happens
+    // for every call — useful for post-mortem — but the browser console
+    // stays quiet unless the user opts in. Warnings and errors are always
+    // echoed so real problems remain visible.
+    const devtoolsEchoEnabled = (): boolean => {
+      try {
+        const v = localStorage.getItem('debug.consoleLogging');
+        return v === 'true';
+      } catch {
+        return false;
+      }
+    };
+
     console.log = (...args: any[]) => {
-      originalConsole.log(...args);
+      if (devtoolsEchoEnabled()) originalConsole.log(...args);
       this.log('info', 'console', this.formatArgs(args));
     };
 
     console.debug = (...args: any[]) => {
-      originalConsole.debug(...args);
+      if (devtoolsEchoEnabled()) originalConsole.debug(...args);
       this.log('debug', 'console', this.formatArgs(args));
     };
 
     console.info = (...args: any[]) => {
-      originalConsole.info(...args);
+      if (devtoolsEchoEnabled()) originalConsole.info(...args);
       this.log('info', 'console', this.formatArgs(args));
     };
 
+    // Warnings and errors always echo — they signal real problems.
     console.warn = (...args: any[]) => {
       originalConsole.warn(...args);
       this.log('warn', 'console', this.formatArgs(args));

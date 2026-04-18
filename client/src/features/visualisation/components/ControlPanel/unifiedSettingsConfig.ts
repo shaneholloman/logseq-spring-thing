@@ -191,15 +191,15 @@ export const UNIFIED_SETTINGS_CONFIG: Record<string, SectionConfig> = {
       { key: 'damping', label: 'Damping', type: 'slider', min: 0, max: 1, step: 0.01, path: 'visualisation.graphs.logseq.physics.damping', description: 'Velocity damping — lower = more energy, higher = faster settle' },
       { key: 'springK', label: 'Spring Strength', type: 'slider', min: 0.1, max: 100, step: 0.5, path: 'visualisation.graphs.logseq.physics.springK', description: 'Edge spring constant (recommended: 8-20 for 2K+ node graphs)' },
       { key: 'repelK', label: 'Repulsion', type: 'slider', min: 0, max: 3000, step: 10, path: 'visualisation.graphs.logseq.physics.repelK', description: 'Node repulsion — balance with gravity (recommended: 800-1500)' },
-      { key: 'attractionK', label: 'Attraction', type: 'slider', min: 0, max: 100, step: 0.5, path: 'visualisation.graphs.logseq.physics.attractionK', description: 'Edge attraction strength' },
+      { key: 'attractionK', label: 'Attraction', type: 'slider', min: 0, max: 10, step: 0.1, path: 'visualisation.graphs.logseq.physics.attractionK', description: 'Edge attraction strength — fully effective by ~10' },
 
       // --- Layout Mode (moved from Quality) ---
       { key: 'layoutMode', label: 'Layout Mode', type: 'select', options: ['force-directed', 'dag-topdown', 'dag-radial', 'dag-leftright', 'type-clustering'], path: 'qualityGates.layoutMode', description: 'Graph layout algorithm — force-directed uses spring/repulsion, DAG modes add hierarchical layout, type-clustering groups by node type' },
       { key: 'layoutAlgorithm', label: 'Layout Algorithm', type: 'select', options: ['forceDirected', 'hierarchical', 'radial', 'spectral', 'temporal', 'clustered'], path: 'visualisation.graphs.logseq.physics.layoutAlgorithm', description: 'Graph layout algorithm — ForceDirected reveals communities, Hierarchical shows taxonomy' },
 
       // --- Graph Topology Controls ---
-      { key: 'graphSeparationX', label: 'Dual Graph Separation', type: 'slider', min: 0, max: 2000, step: 10, path: 'visualisation.graphs.logseq.physics.graphSeparationX', description: 'X-axis distance between knowledge and ontology graph planes — 0 = merged, higher = further apart' },
-      { key: 'zDamping', label: 'Flatten to Planes', type: 'slider', min: 0, max: 1, step: 0.05, path: 'visualisation.graphs.logseq.physics.zDamping', description: 'Squash X-axis — 0 = full 3D, 1 = flat YZ planes. Use with Dual Graph Separation for two parallel plane views' },
+      { key: 'graphSeparationX', label: 'Dual Graph Separation', type: 'slider', min: 0, max: 500, step: 5, path: 'visualisation.graphs.logseq.physics.graphSeparationX', description: 'X-axis distance between knowledge and ontology graph planes — 0 = merged, fully effective by ~500' },
+      { key: 'zDamping', label: 'Flatten to Planes', type: 'slider', min: 0, max: 0.1, step: 0.002, path: 'visualisation.graphs.logseq.physics.zDamping', description: 'Squash X-axis — 0 = full 3D, 0.1 = fully flat YZ planes. Use with Dual Graph Separation for two parallel plane views' },
 
       // --- Ontology Forces (moved from Quality) ---
       { key: 'ontologyPhysics', label: 'Ontology Forces', type: 'toggle', path: 'qualityGates.ontologyPhysics', description: 'Enable OWL ontology-derived constraint forces in the physics simulation' },

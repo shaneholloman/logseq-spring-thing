@@ -50,16 +50,24 @@ export const BotsDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   // Track actual MCP connection status from API
   const [mcpConnectionStatus, setMcpConnectionStatus] = useState<boolean>(false);
 
+  // Memoize to prevent a fresh reference on every BotsDataProvider render
+  // which otherwise re-triggers the `configure` effect inside useAgentPolling,
+  // producing stop/start spam every 2 seconds in the console.
+  const pollingConfig = useMemo(
+    () => ({
+      activePollingInterval: 3000,
+      idlePollingInterval: 15000,
+      enableSmartPolling: true,
+    }),
+    [],
+  );
+  const onPollingError = useCallback((error: Error) => {
+    logger.error('Polling error:', error);
+  }, []);
   const pollingData = useAgentPolling({
     enabled: true,
-    config: {
-      activePollingInterval: 3000,  
-      idlePollingInterval: 15000,   
-      enableSmartPolling: true      
-    },
-    onError: (error) => {
-      logger.error('Polling error:', error);
-    }
+    config: pollingConfig,
+    onError: onPollingError,
   });
 
   const [botsData, setBotsData] = useState<BotsData | null>({
