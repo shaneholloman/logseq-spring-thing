@@ -130,6 +130,10 @@ Practical task-oriented instructions. See [how-to/README.md](how-to/README.md) f
 | [Hierarchy Integration](how-to/features/hierarchy-integration.md) | Class hierarchy visualisation |
 | [Local File Sync](how-to/features/local-file-sync-strategy.md) | GitHub-to-local file synchronisation |
 | [ComfyUI Setup](how-to/comfyui-sam3d-setup.md) | ComfyUI SAM3D integration setup |
+| [System Health Monitoring](how-to/features/monitoring.md) | System health monitoring — HealthDashboard, physics status, MCP relay controls |
+| [Welcome Tour](how-to/features/onboarding.md) | Welcome tour configuration — steps, flows, skip behaviour, localStorage persistence |
+| [Workspace Management](how-to/features/workspace.md) | Workspace management — save/restore graph configurations, favourites, real-time sync |
+| [Command Palette](how-to/features/command-palette.md) | Command palette — Ctrl+K, fuzzy search, custom command registration |
 
 ### Operations & Integration
 

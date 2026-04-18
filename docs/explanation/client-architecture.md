@@ -82,7 +82,10 @@ graph TD
     UI --> Search[SemanticSearch]
     UI --> Agents[AgentPanel]
     UI --> CommandPalette[CommandPalette]
+    UI --> EnterpriseDrawerMount[EnterpriseDrawerMount]
 ```
+
+`EnterpriseDrawerMount` is the top-level mount for the enterprise slide-out drawer. It renders the drawer itself, a floating trigger button, and registers a global keyboard shortcut: **Ctrl+Shift+E** (Windows/Linux) or **Cmd+Shift+E** (Mac) toggles the drawer open/closed (defined in `EnterpriseDrawerMount.tsx` line ~25). The shortcut is suppressed when focus is inside an `<input>`, `<textarea>`, or `contenteditable` element.
 
 ---
 

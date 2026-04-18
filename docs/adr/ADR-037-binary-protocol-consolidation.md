@@ -1,4 +1,4 @@
-# ADR-035: Binary Protocol Consolidation
+# ADR-037: Binary Protocol Consolidation
 
 ## Status
 
