@@ -11,8 +11,8 @@ use super::shared::{GPUState, SharedGPUContext};
 
 // Re-export message types for handlers
 pub use crate::actors::messages::{
-    ConfigureCollision, ConfigureDAG, ConfigureTypeClustering,
-    GetHierarchyLevels, GetSemanticConfig, RecalculateHierarchy,
+    ConfigureCollision, ConfigureDAG, ConfigureMaturity, ConfigurePhysicality, ConfigureRole,
+    ConfigureTypeClustering, GetHierarchyLevels, GetSemanticConfig, RecalculateHierarchy,
     ReloadRelationshipBuffer, SetSharedGPUContext,
 };
 
@@ -429,6 +429,72 @@ impl Default for AttributeSpringConfig {
     }
 }
 
+/// Physicality-based cluster force configuration.
+///
+/// Controls attraction of nodes with the same `PhysicalityCode` and repulsion between
+/// nodes in different physicality buckets.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PhysicalityClusterConfig {
+    pub cluster_attraction: f32,
+    pub cluster_radius: f32,
+    pub inter_physicality_repulsion: f32,
+    pub enabled: bool,
+}
+
+impl Default for PhysicalityClusterConfig {
+    fn default() -> Self {
+        Self {
+            cluster_attraction: 0.40,
+            cluster_radius: 80.0,
+            inter_physicality_repulsion: 0.20,
+            enabled: false,
+        }
+    }
+}
+
+/// Role-based cluster force configuration.
+///
+/// Controls attraction of nodes with the same `RoleCode` and repulsion between nodes
+/// in different role buckets.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RoleClusterConfig {
+    pub cluster_attraction: f32,
+    pub cluster_radius: f32,
+    pub inter_role_repulsion: f32,
+    pub enabled: bool,
+}
+
+impl Default for RoleClusterConfig {
+    fn default() -> Self {
+        Self {
+            cluster_attraction: 0.40,
+            cluster_radius: 80.0,
+            inter_role_repulsion: 0.20,
+            enabled: false,
+        }
+    }
+}
+
+/// Maturity-based layout force configuration.
+///
+/// Drives vertical stratification of nodes by `MaturityLevel`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MaturityLayoutConfig {
+    pub vertical_spacing: f32,
+    pub level_attraction: f32,
+    pub enabled: bool,
+}
+
+impl Default for MaturityLayoutConfig {
+    fn default() -> Self {
+        Self {
+            vertical_spacing: 100.0,
+            level_attraction: 0.50,
+            enabled: false,
+        }
+    }
+}
+
 /// Combined semantic configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SemanticConfig {
@@ -436,6 +502,9 @@ pub struct SemanticConfig {
     pub type_cluster: TypeClusterConfig,
     pub collision: CollisionConfig,
     pub attribute_spring: AttributeSpringConfig,
+    pub physicality: PhysicalityClusterConfig,
+    pub role: RoleClusterConfig,
+    pub maturity: MaturityLayoutConfig,
 }
 
 impl Default for SemanticConfig {
@@ -445,6 +514,9 @@ impl Default for SemanticConfig {
             type_cluster: TypeClusterConfig::default(),
             collision: CollisionConfig::default(),
             attribute_spring: AttributeSpringConfig::default(),
+            physicality: PhysicalityClusterConfig::default(),
+            role: RoleClusterConfig::default(),
+            maturity: MaturityLayoutConfig::default(),
         }
     }
 }
@@ -492,7 +564,45 @@ pub struct SemanticForcesActor {
     edge_targets: Vec<i32>,
     edge_weights: Vec<f32>,
     edge_types: Vec<i32>,
+
+    // ── Phase A semantic metadata (host-side scratch buffers) ──────────────────
+    //
+    // These mirror the per-node arrays held in UnifiedGPUCompute's DeviceBuffers.
+    // They are populated when graph data is uploaded (integration point: caller
+    // sends the appropriate message once upload_semantic_metadata is wired end-to-end).
+    // Until then they remain empty and the kernels below are gated on `is_some()`.
+
+    /// Per-node physicality codes (PhysicalityCode::as_i32()).
+    node_physicality: Vec<i32>,
+
+    /// Per-node role codes (RoleCode::as_i32()).
+    node_role: Vec<i32>,
+
+    /// Per-node maturity levels (MaturityLevel::as_i32()).
+    node_maturity: Vec<i32>,
+
+    /// Centroid scratch buffer for physicality clustering (4 buckets × Float3).
+    physicality_centroids: Vec<kernel_bridge::Float3>,
+
+    /// Count scratch buffer for physicality clustering (4 buckets).
+    physicality_counts: Vec<i32>,
+
+    /// Centroid scratch buffer for role clustering (7 buckets × Float3).
+    role_centroids: Vec<kernel_bridge::Float3>,
+
+    /// Count scratch buffer for role clustering (7 buckets).
+    role_counts: Vec<i32>,
 }
+
+// Number of distinct physicality buckets dispatched to the GPU kernels.
+// Matches PhysicalityCode variants: None=0, Abstract=1, Virtual=2, Conceptual=3.
+// (Unknown=255 is clamped by the GPU kernel; bucket 4 is reserved.)
+const NUM_PHYSICALITY_BUCKETS: usize = 4;
+
+// Number of distinct role buckets dispatched to the GPU kernels.
+// Matches RoleCode variants: None=0, Concept=1, Object=2, Process=3,
+// Domain=4, Method=5, Agent=6.
+const NUM_ROLE_BUCKETS: usize = 7;
 
 impl SemanticForcesActor {
     pub fn new() -> Self {
@@ -508,6 +618,13 @@ impl SemanticForcesActor {
             edge_targets: Vec::new(),
             edge_weights: Vec::new(),
             edge_types: Vec::new(),
+            node_physicality: Vec::new(),
+            node_role: Vec::new(),
+            node_maturity: Vec::new(),
+            physicality_centroids: vec![kernel_bridge::Float3 { x: 0.0, y: 0.0, z: 0.0 }; NUM_PHYSICALITY_BUCKETS],
+            physicality_counts: vec![0i32; NUM_PHYSICALITY_BUCKETS],
+            role_centroids: vec![kernel_bridge::Float3 { x: 0.0, y: 0.0, z: 0.0 }; NUM_ROLE_BUCKETS],
+            role_counts: vec![0i32; NUM_ROLE_BUCKETS],
         }
     }
 
@@ -559,28 +676,30 @@ impl SemanticForcesActor {
                 enabled: false,
                 _pad: [0; 3],
             },
-            // Physicality clustering config - defaults to disabled
+            // Physicality clustering config — driven by self.config.physicality
             physicality_cluster: PhysicalityClusterConfigGPU {
-                cluster_attraction: 0.4,
-                cluster_radius: 80.0,
-                inter_physicality_repulsion: 0.2,
-                enabled: false,
+                cluster_attraction: self.config.physicality.cluster_attraction,
+                cluster_radius: self.config.physicality.cluster_radius,
+                inter_physicality_repulsion: self.config.physicality.inter_physicality_repulsion,
+                enabled: self.config.physicality.enabled,
                 _pad: [0; 3],
             },
-            // Role clustering config - defaults to disabled
+            // Role clustering config — driven by self.config.role
             role_cluster: RoleClusterConfigGPU {
-                cluster_attraction: 0.4,
-                cluster_radius: 80.0,
-                inter_role_repulsion: 0.2,
-                enabled: false,
+                cluster_attraction: self.config.role.cluster_attraction,
+                cluster_radius: self.config.role.cluster_radius,
+                inter_role_repulsion: self.config.role.inter_role_repulsion,
+                enabled: self.config.role.enabled,
                 _pad: [0; 3],
             },
-            // Maturity layout config - defaults to disabled
+            // Maturity layout config — driven by self.config.maturity.
+            // `stage_separation` has no Rust-side counterpart yet; use vertical_spacing as a
+            // reasonable default until a dedicated field is introduced.
             maturity_layout: MaturityLayoutConfigGPU {
-                vertical_spacing: 100.0,
-                level_attraction: 0.5,
-                stage_separation: 150.0,
-                enabled: false,
+                vertical_spacing: self.config.maturity.vertical_spacing,
+                level_attraction: self.config.maturity.level_attraction,
+                stage_separation: self.config.maturity.vertical_spacing * 1.5,
+                enabled: self.config.maturity.enabled,
                 _pad: [0; 3],
             },
             // Cross-domain config - defaults to disabled
@@ -724,6 +843,155 @@ impl SemanticForcesActor {
             type_counts,
         })
     }
+
+    // ── Phase A semantic force dispatch ──────────────────────────────────────
+    //
+    // The three methods below implement the centroid-accumulate → finalise →
+    // apply-force pipeline for physicality, role, and maturity.  They mirror
+    // the existing `calculate_type_centroids` + `apply_type_cluster_force`
+    // pattern and are intended to be called in sequence from the force tick
+    // after the type-cluster kernels.
+    //
+    // Buffer access pattern: these methods operate entirely on host-side
+    // `Vec<i32>` / `Vec<kernel_bridge::Float3>` fields carried on the actor.
+    // The kernel_bridge wrappers accept host slices and either dispatch to GPU
+    // kernels (with `--features gpu`) or fall back to CPU accumulation.
+    //
+    // Open question for integration (Q-1): when `ForceComputeActor` owns
+    // positions_f3 and forces_f3, it will need to pass mutable references here
+    // or call these methods via an actor message.  The current signatures take
+    // `positions_f3: &[kernel_bridge::Float3]` and `forces_f3: &mut
+    // Vec<kernel_bridge::Float3>` to keep the interface minimal.
+
+    /// Compute physicality cluster centroids and apply cluster forces.
+    ///
+    /// Both `positions_f3` and `forces_f3` must contain at least `num_nodes`
+    /// elements.  `positions_f3` is the current node-position array (read for
+    /// centroid accumulation and updated by the force kernel).  `forces_f3` is
+    /// the force-accumulator (also updated in-place).
+    ///
+    /// No-ops silently when `node_physicality` is empty (metadata not yet
+    /// uploaded) or when the force is disabled in config.
+    pub fn apply_physicality_forces(
+        &mut self,
+        positions_f3: &mut Vec<kernel_bridge::Float3>,
+        forces_f3: &mut Vec<kernel_bridge::Float3>,
+        num_nodes: usize,
+    ) {
+        if !self.config.physicality.enabled
+            || self.node_physicality.is_empty()
+            || num_nodes == 0
+        {
+            return;
+        }
+
+        // Zero centroid accumulators before accumulation pass.
+        for c in self.physicality_centroids.iter_mut() {
+            c.x = 0.0;
+            c.y = 0.0;
+            c.z = 0.0;
+        }
+        for cnt in self.physicality_counts.iter_mut() {
+            *cnt = 0;
+        }
+
+        kernel_bridge::calculate_physicality_centroids(
+            &self.node_physicality,
+            &positions_f3[..num_nodes],
+            &mut self.physicality_centroids,
+            &mut self.physicality_counts,
+            num_nodes,
+        );
+
+        kernel_bridge::finalize_physicality_centroids(
+            &mut self.physicality_centroids,
+            &self.physicality_counts,
+        );
+
+        kernel_bridge::apply_physicality_cluster_force(
+            &self.node_physicality,
+            &self.physicality_centroids,
+            &mut positions_f3[..num_nodes],
+            &mut forces_f3[..num_nodes],
+            num_nodes,
+        );
+    }
+
+    /// Compute role cluster centroids and apply cluster forces.
+    ///
+    /// Both `positions_f3` and `forces_f3` must contain at least `num_nodes`
+    /// elements.
+    ///
+    /// No-ops silently when `node_role` is empty or the force is disabled.
+    pub fn apply_role_forces(
+        &mut self,
+        positions_f3: &mut Vec<kernel_bridge::Float3>,
+        forces_f3: &mut Vec<kernel_bridge::Float3>,
+        num_nodes: usize,
+    ) {
+        if !self.config.role.enabled
+            || self.node_role.is_empty()
+            || num_nodes == 0
+        {
+            return;
+        }
+
+        // Zero centroid accumulators before accumulation pass.
+        for c in self.role_centroids.iter_mut() {
+            c.x = 0.0;
+            c.y = 0.0;
+            c.z = 0.0;
+        }
+        for cnt in self.role_counts.iter_mut() {
+            *cnt = 0;
+        }
+
+        kernel_bridge::calculate_role_centroids(
+            &self.node_role,
+            &positions_f3[..num_nodes],
+            &mut self.role_centroids,
+            &mut self.role_counts,
+            num_nodes,
+        );
+
+        kernel_bridge::finalize_role_centroids(
+            &mut self.role_centroids,
+            &self.role_counts,
+        );
+
+        kernel_bridge::apply_role_cluster_force(
+            &self.node_role,
+            &self.role_centroids,
+            &mut positions_f3[..num_nodes],
+            &mut forces_f3[..num_nodes],
+            num_nodes,
+        );
+    }
+
+    /// Apply maturity-based vertical layout forces.
+    ///
+    /// No centroid step is required; the kernel reads `node_maturity` directly.
+    /// No-ops silently when `node_maturity` is empty or the force is disabled.
+    pub fn apply_maturity_forces(
+        &mut self,
+        positions_f3: &mut Vec<kernel_bridge::Float3>,
+        forces_f3: &mut Vec<kernel_bridge::Float3>,
+        num_nodes: usize,
+    ) {
+        if !self.config.maturity.enabled
+            || self.node_maturity.is_empty()
+            || num_nodes == 0
+        {
+            return;
+        }
+
+        kernel_bridge::apply_maturity_layout_force(
+            &self.node_maturity,
+            &mut positions_f3[..num_nodes],
+            &mut forces_f3[..num_nodes],
+            num_nodes,
+        );
+    }
 }
 
 // Actor implementation
@@ -805,6 +1073,83 @@ impl Handler<ConfigureCollision> for SemanticForcesActor {
             self.config.collision.enabled = e;
         }
         info!("SemanticForcesActor: Collision config updated, enabled={}", self.config.collision.enabled);
+        Ok(())
+    }
+}
+
+// ── Phase A: physicality / role / maturity handlers ─────────────────────────
+//
+// These three handlers follow the same optional-field pattern as
+// `ConfigureTypeClustering` and `ConfigureCollision` above.  Each updates the
+// corresponding sub-config on `self.config` and logs the new enabled state.
+// No GPU upload happens here; the live config is read by `config_to_gpu()` on
+// the next tick when `set_semantic_config` is called by the kernel.
+
+impl Handler<ConfigurePhysicality> for SemanticForcesActor {
+    type Result = Result<(), String>;
+
+    fn handle(&mut self, msg: ConfigurePhysicality, _ctx: &mut Self::Context) -> Self::Result {
+        if let Some(e) = msg.enabled {
+            self.config.physicality.enabled = e;
+        }
+        if let Some(a) = msg.cluster_attraction {
+            self.config.physicality.cluster_attraction = a;
+        }
+        if let Some(r) = msg.inter_physicality_repulsion {
+            self.config.physicality.inter_physicality_repulsion = r;
+        }
+        if let Some(cr) = msg.cluster_radius {
+            self.config.physicality.cluster_radius = cr;
+        }
+        info!(
+            "SemanticForcesActor: Physicality config updated, enabled={}",
+            self.config.physicality.enabled
+        );
+        Ok(())
+    }
+}
+
+impl Handler<ConfigureRole> for SemanticForcesActor {
+    type Result = Result<(), String>;
+
+    fn handle(&mut self, msg: ConfigureRole, _ctx: &mut Self::Context) -> Self::Result {
+        if let Some(e) = msg.enabled {
+            self.config.role.enabled = e;
+        }
+        if let Some(a) = msg.cluster_attraction {
+            self.config.role.cluster_attraction = a;
+        }
+        if let Some(r) = msg.inter_role_repulsion {
+            self.config.role.inter_role_repulsion = r;
+        }
+        if let Some(cr) = msg.cluster_radius {
+            self.config.role.cluster_radius = cr;
+        }
+        info!(
+            "SemanticForcesActor: Role config updated, enabled={}",
+            self.config.role.enabled
+        );
+        Ok(())
+    }
+}
+
+impl Handler<ConfigureMaturity> for SemanticForcesActor {
+    type Result = Result<(), String>;
+
+    fn handle(&mut self, msg: ConfigureMaturity, _ctx: &mut Self::Context) -> Self::Result {
+        if let Some(e) = msg.enabled {
+            self.config.maturity.enabled = e;
+        }
+        if let Some(vs) = msg.vertical_spacing {
+            self.config.maturity.vertical_spacing = vs;
+        }
+        if let Some(la) = msg.level_attraction {
+            self.config.maturity.level_attraction = la;
+        }
+        info!(
+            "SemanticForcesActor: Maturity config updated, enabled={}",
+            self.config.maturity.enabled
+        );
         Ok(())
     }
 }

@@ -137,6 +137,12 @@ Revocation is handled by creating a new `BrokerCase` with
 reviews the rollback case separately; approval mutates the `BRIDGE_TO` edge to
 `kind: "revoked"` and closes the ontology class in the OWL schema via a second PR.
 
+**Merge policy (D5)** — The PR created by broker approval can merge under one of two modes, configured per-deployment in the ontology repo's `.visionclaw/broker-policy.yaml`:
+- `mode: self_merge` — the approving broker also merges. Lower latency, suitable for trusted-pilot deployments.
+- `mode: second_reviewer` — an independent Broker/Admin must merge. Aligns with two-person rule for regulated-industry pilots.
+
+The policy engine (ADR-045) enforces the constraint at merge-time. Agents never satisfy the second-reviewer role.
+
 ## UI Affordances
 
 All components build on existing `client/src/features/broker/components/`.

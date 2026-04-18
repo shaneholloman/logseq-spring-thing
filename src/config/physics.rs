@@ -12,6 +12,10 @@ fn default_lin_log_mode() -> bool { true }
 fn default_scaling_ratio() -> f32 { 10.0 }
 fn default_adaptive_speed() -> bool { true }
 
+fn default_physicality_strength() -> f32 { 0.40 }
+fn default_role_strength() -> f32 { 0.30 }
+fn default_maturity_strength() -> f32 { 0.15 }
+
 fn default_constraint_ramp_frames() -> u32 {
     60
 }
@@ -307,6 +311,22 @@ pub struct PhysicsSettings {
     /// graph_separation_x, produces two parallel YZ planes side by side.
     #[serde(default, alias = "z_damping")]
     pub z_damping: f32,
+
+    /// Semantic force strength for physicality clustering (OWL physicality codes).
+    /// Nodes with the same physicality code attract; disparate codes repel.
+    /// 0.0 = disabled, 1.0 = maximum. Default 0.40.
+    #[serde(default = "default_physicality_strength", alias = "physicality_strength")]
+    pub physicality_strength: f32,
+
+    /// Semantic force strength for role clustering (OWL role codes).
+    /// Concept/Object/Process etc. nodes cluster by role. Default 0.30.
+    #[serde(default = "default_role_strength", alias = "role_strength")]
+    pub role_strength: f32,
+
+    /// Semantic force strength for maturity clustering.
+    /// Emerging/Mature/Declining nodes experience mild clustering pressure. Default 0.15.
+    #[serde(default = "default_maturity_strength", alias = "maturity_strength")]
+    pub maturity_strength: f32,
 }
 
 impl Default for PhysicsSettings {
@@ -363,6 +383,9 @@ impl Default for PhysicsSettings {
             scaling_ratio: 10.0,
             adaptive_speed: true,
             z_damping: 0.0,
+            physicality_strength: default_physicality_strength(),
+            role_strength: default_role_strength(),
+            maturity_strength: default_maturity_strength(),
         }
     }
 }
