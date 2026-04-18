@@ -152,10 +152,19 @@ impl KnowledgeGraphParser {
             vz: 0.0,
         };
 
+        // Display label: prefer preferred-term over the raw filename slug.
+        // Files named "AI-0424-confidential-computing.md" carry
+        // `preferred-term:: Confidential Computing` — use the human name
+        // for display, keep the slug as metadata_id for stable identity.
+        let display_label = metadata
+            .get("preferred-term")
+            .cloned()
+            .unwrap_or_else(|| page_name.to_string());
+
         Node {
             id,
             metadata_id: page_name.to_string(),
-            label: page_name.to_string(),
+            label: display_label,
             data,
             metadata,
             file_size: 0,
