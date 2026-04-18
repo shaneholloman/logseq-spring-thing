@@ -765,11 +765,23 @@ impl GitHubSyncService {
     fn detect_file_type(&self, content: &str) -> FileType {
         let content = content.trim_start_matches('\u{feff}');
 
-        // Check for public tags anywhere in the file.
-        // Logseq pages use "public:: true" (typically in first few lines)
-        // or "public-access:: true" (often deeper in metadata blocks).
-        let has_public = content.contains("public:: true")
-            || content.contains("public-access:: true");
+        // `public:: true` = Logseq publishing flag (user-authored, top of page).
+        //   This is the real publication gate.
+        //
+        // `public-access:: true` = an OWL PROPERTY authored INSIDE ### OntologyBlock
+        //   that classifies the ontology class's access level. It is NOT a page-
+        //   level publishing flag. Previously the parser conflated the two, sweeping
+        //   ~2,000 ontology-auto-stub pages into the KG as page nodes when they
+        //   should only populate the OwlClass reasoning layer.
+        //
+        // Match on a line-anchored Logseq property (bullet or unindented) inside
+        // the first 80 lines only, so body mentions of the literal string don't
+        // count as a flag.
+        let has_public = content.lines().take(80).any(|line| {
+            let trimmed = line.trim_start_matches(|c: char| c == '-' || c.is_whitespace());
+            trimmed.starts_with("public:: true")
+                && trimmed.trim_end() == "public:: true"
+        });
 
         let has_ontology = content.contains("### OntologyBlock");
 

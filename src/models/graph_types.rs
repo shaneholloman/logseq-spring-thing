@@ -175,7 +175,17 @@ pub fn classify_node_population(node_type: Option<&str>) -> NodePopulation {
             | "owl_property" | "ontologyclass" | "ontologyindividual"
             | "ontologyproperty" => NodePopulation::Ontology,
             "page" | "linked_page" | "block" | "knowledge_node" => NodePopulation::Knowledge,
-            _ => NodePopulation::Knowledge,
+            unknown => {
+                // Silent fall-through was hiding classification mismatches.
+                // Log the unknown type once per bucket so stray values surface
+                // in ingestion telemetry instead of being quietly absorbed
+                // into the Knowledge default.
+                log::debug!(
+                    "classify_node_population: unknown node_type '{}' — defaulting to Knowledge",
+                    unknown
+                );
+                NodePopulation::Knowledge
+            }
         },
         None => NodePopulation::Knowledge,
     }

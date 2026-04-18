@@ -79,7 +79,7 @@ impl KnowledgeGraphParser {
         // dangle harmlessly until the target page is synced.
         let wikilink_edges = self.extract_wikilink_edges(content, &nodes[0].id);
 
-        let metadata = self.extract_metadata_store(content);
+        let metadata = self.extract_metadata_store(content, &page_name);
 
         debug!(
             "Parsed {}: {} nodes, {} wikilink edges",
@@ -102,6 +102,36 @@ impl KnowledgeGraphParser {
         metadata.insert("type".to_string(), "page".to_string());
         metadata.insert("source_file".to_string(), format!("{}.md", page_name));
         metadata.insert("public".to_string(), "true".to_string());
+
+        // Extract Logseq-style `key:: value` properties from the page and fold
+        // them into node metadata so they reach Neo4j. Previously these were
+        // parsed into a local HashMap in extract_metadata_store() but discarded
+        // before returning, leaving source_domain/term-id/owl:class NULL on
+        // every GraphNode in the graph.
+        //
+        // Lowercase `source-domain` / `domain` values so the downstream domain
+        // filter (`graph_types.rs::classify_node_population` and
+        // `neo4j_adapter.rs::domain_to_color`) matches regardless of authoring
+        // case.
+        let prop_re = regex::Regex::new(r"(?m)^\s*-?\s*([a-zA-Z][a-zA-Z0-9_:\-]*)::\s*(.+)$")
+            .expect("invalid property regex");
+        let mut owl_class_iri: Option<String> = None;
+        for cap in prop_re.captures_iter(content) {
+            let (Some(k), Some(v)) = (cap.get(1), cap.get(2)) else { continue };
+            let key = k.as_str();
+            let mut value = v.as_str().trim().to_string();
+            if matches!(key, "source-domain" | "domain" | "source_domain") {
+                value = value.to_lowercase();
+            }
+            if key == "owl:class" {
+                owl_class_iri = Some(value.clone());
+            }
+            if matches!(key, "type" | "source_file" | "public") {
+                // Don't overwrite fields we set explicitly above.
+                continue;
+            }
+            metadata.entry(key.to_string()).or_insert(value);
+        }
 
         let tags = self.extract_tags(content);
         if !tags.is_empty() {
@@ -142,7 +172,11 @@ impl KnowledgeGraphParser {
             vx: Some(0.0),
             vy: Some(0.0),
             vz: Some(0.0),
-            owl_class_iri: None,
+            // If the page carries `owl:class:: bc:SomeClass` (or similar) that
+            // declaration is now promoted to the node's first-class owl_class_iri
+            // field so ontology enrichment and GPU semantic-force IRI lookup can
+            // actually find the node.
+            owl_class_iri,
         }
     }
 
@@ -247,27 +281,51 @@ impl KnowledgeGraphParser {
         (nodes, edges)
     }
 
-    
-    fn extract_metadata_store(&self, content: &str) -> MetadataStore {
-        let store = MetadataStore::new();
+    /// Extract a MetadataStore of parsed Logseq properties keyed by page name.
+    ///
+    /// Historically this function parsed every `key:: value` pair in the content
+    /// into a local HashMap and then returned an empty MetadataStore — the
+    /// properties HashMap was never used. All ontology metadata (term-id,
+    /// source-domain, owl:class, preferred-term, etc.) was silently discarded
+    /// here before Neo4j ever saw it.
+    ///
+    /// Now we populate a Metadata record with the fields the downstream schema
+    /// expects, so FileMetadata rows actually carry source attribution.
+    fn extract_metadata_store(&self, content: &str, page_name: &str) -> MetadataStore {
+        let mut store = MetadataStore::new();
 
-        
-        let prop_pattern = regex::Regex::new(r"([a-zA-Z_]+)::\s*(.+)").expect("Invalid regex pattern");
+        let prop_re = regex::Regex::new(r"(?m)^\s*-?\s*([a-zA-Z][a-zA-Z0-9_:\-]*)::\s*(.+)$")
+            .expect("invalid property regex");
 
-        
-        let mut properties = HashMap::new();
-        for cap in prop_pattern.captures_iter(content) {
-            if let (Some(key), Some(value)) = (cap.get(1), cap.get(2)) {
-                let key_str = key.as_str().to_string();
-                let value_str = value.as_str().trim().to_string();
+        let mut m = crate::models::metadata::Metadata::default();
+        m.file_name = format!("{}.md", page_name);
+        m.node_id = self.page_name_to_id(page_name).to_string();
 
-                
-                properties.insert(key_str, value_str);
+        for cap in prop_re.captures_iter(content) {
+            let (Some(k), Some(v)) = (cap.get(1), cap.get(2)) else { continue };
+            let key = k.as_str();
+            let value = v.as_str().trim().to_string();
+            match key {
+                "term-id" => m.term_id = Some(value),
+                "preferred-term" => m.preferred_term = Some(value),
+                "source-domain" | "domain" | "source_domain" =>
+                    m.source_domain = Some(value.to_lowercase()),
+                "status" | "ontology-status" => m.ontology_status = Some(value),
+                "owl:class" => m.owl_class = Some(value),
+                "owl:physicality" => m.owl_physicality = Some(value),
+                "owl:role" => m.owl_role = Some(value),
+                "quality-score" => m.quality_score = value.parse().ok(),
+                "authority-score" => m.authority_score = value.parse().ok(),
+                "maturity" => m.maturity = Some(value),
+                "definition" => m.definition = Some(value),
+                "belongsToDomain" | "belongs-to-domain" =>
+                    m.belongs_to_domain.push(value),
+                "is-subclass-of" => m.is_subclass_of.push(value),
+                _ => { /* preserved via node.metadata HashMap in create_page_node */ }
             }
         }
 
-        
-        
+        store.insert(page_name.to_string(), m);
         store
     }
 
