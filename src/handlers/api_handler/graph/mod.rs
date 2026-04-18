@@ -11,7 +11,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 // GraphService direct import is no longer needed as we use actors
 // use crate::services::graph_service::GraphService;
-use crate::actors::messages::{AddNodesFromMetadata, GetSettings};
+use crate::actors::messages::{AddNodesFromMetadata, GetPhysicsStats, GetSettings};
 use crate::models::graph_types::{classify_node_population, NodePopulation};
 use crate::application::graph::queries::{
     GetAutoBalanceNotifications, GetGraphData, GetNodeMap, GetPhysicsState,
@@ -189,16 +189,49 @@ pub async fn get_graph_data(
                 .cloned()
                 .collect();
 
+            // Query real-time physics stats from ForceComputeActor (if available).
+            // Previously this block hardcoded is_settled=!is_running and kinetic_energy=0.0,
+            // producing misleading telemetry (is_settled=true while nodes still moving at
+            // |v|~8.5 units/tick). Now we report the actual KE from the GPU compute loop
+            // and compute is_settled against the configured equilibrium energy threshold.
+            let (real_kinetic_energy, real_is_settled) = {
+                let energy_threshold = physics_state
+                    .params
+                    .auto_pause_config
+                    .equilibrium_energy_threshold;
+                let force_compute_addr = state.physics.force_compute.clone();
+                match force_compute_addr {
+                    Some(addr) => match addr.send(GetPhysicsStats).await {
+                        Ok(Ok(stats)) => {
+                            let ke = stats.kinetic_energy;
+                            // Settled = physics halted OR actual KE below threshold.
+                            let settled = !physics_state.is_running
+                                || (ke.is_finite() && ke < energy_threshold);
+                            (ke, settled)
+                        }
+                        Ok(Err(e)) => {
+                            warn!("[settlement] GetPhysicsStats returned error: {}", e);
+                            (0.0, !physics_state.is_running)
+                        }
+                        Err(e) => {
+                            warn!("[settlement] GetPhysicsStats send failed: {}", e);
+                            (0.0, !physics_state.is_running)
+                        }
+                    },
+                    None => (0.0, !physics_state.is_running),
+                }
+            };
+
             let response = GraphResponseWithPositions {
                 nodes: filtered_nodes,
                 edges: filtered_edges,
                 metadata: graph_data.metadata.clone(),
                 settlement_state: SettlementState {
-                    // PhysicsState only has is_running and params fields
-                    // Use sensible defaults for settlement state
-                    is_settled: !physics_state.is_running,
+                    is_settled: real_is_settled,
+                    // stable_frame_count is tracked in PhysicsOrchestrator; exposing it
+                    // end-to-end requires a separate query path — leave 0 until plumbed.
                     stable_frame_count: 0,
-                    kinetic_energy: 0.0,
+                    kinetic_energy: real_kinetic_energy,
                 },
             };
 
