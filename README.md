@@ -214,37 +214,14 @@ Requires CUDA 13.1 toolkit. On CachyOS, set `CUDA_ROOT=/opt/cuda`. See [Deployme
 
 VisionClaw implements a three-layer agentic mesh. Insights bubble up from frontline discovery, orchestrated through formal semantic pipelines, governed by declarative policy — with humans as the irreplaceable judgment layer at the top.
 
-```mermaid
-flowchart TB
-    subgraph Layer3["LAYER 3 — DECLARATIVE GOVERNANCE"]
-        JB["Judgment Broker\n(Human-in-the-Loop)"]
-        Policy["AI-Enforced Policies\nBias · Security · Alignment"]
-        Trust["Cascading Trust\nNostr Identity & Signed Auth"]
-    end
+![The Three Layers of the VisionClaw Governed Mesh](./docs/diagrams/01-three-layer-mesh.png)
 
-    subgraph Layer2["LAYER 2 — ORCHESTRATION"]
-        Skills["83 Agent Skills\nClaude-Flow DAG Pipelines"]
-        Ontology["OWL 2 EL Reasoning\nWhelk-rs Inference Engine"]
-        MCP["7 MCP Tools\nKnowledge Graph Read/Write"]
-        GPU["GPU Compute\n92 CUDA Kernels"]
-    end
+<details>
+<summary><strong>Diagram source (Mermaid)</strong></summary>
 
-    subgraph Layer1["LAYER 1 — DISCOVERY ENGINE"]
-        Ingest["Knowledge Ingestion\nLogseq · GitHub · RSS"]
-        Graph["Neo4j Knowledge Graph\n+ RuVector pgvector Memory"]
-        Viz["3D Visualisation\nR3F · Babylon.js · WebXR"]
-        Voice["Voice Routing\n4-Plane Architecture"]
-    end
+See [`docs/diagrams/src/01-three-layer-mesh.mmd`](./docs/diagrams/src/01-three-layer-mesh.mmd) for the diagram-as-code. The rendered image above was generated via Mermaid → Nano Banana Pro with the VisionClaw aesthetic prompt in [`docs/diagrams/src/aesthetic-prompt.md`](./docs/diagrams/src/aesthetic-prompt.md).
 
-    Layer1 -->|"Insights bubble up"| Layer2
-    Layer2 -->|"Exceptions surface"| Layer3
-    Layer3 -->|"Governance flows down"| Layer2
-    Layer2 -->|"Validated workflows deploy"| Layer1
-
-    style Layer3 fill:#1A0A2A,stroke:#8B5CF6
-    style Layer2 fill:#0A1A2A,stroke:#00D4FF
-    style Layer1 fill:#0A2A1A,stroke:#10B981
-```
+</details>
 
 ---
 
@@ -261,7 +238,7 @@ flowchart LR
     Whelk --> Store["OntologyRepository\n(In-Memory + Neo4j)"]
     Store --> Physics["Semantic Forces\n(GPU CUDA)"]
     Store --> Agents["Agent Tools\n(7 MCP tools)"]
-    Store --> Client["3D Visualisation\n(binary WebSocket V2/V3)"]
+    Store --> Client["3D Visualisation\n(binary WebSocket V5 + V3 analytics)"]
 ```
 
 Explore a live ontology dataset at **[narrativegoldmine.com](https://www.narrativegoldmine.com)** — a 2D interactive graph built on the same ontology data VisionClaw renders in 3D.
@@ -286,6 +263,8 @@ Agent visual states: `#10b981` (idle) · `#fbbf24` (spawning/active) · `#ef4444
 
 <details>
 <summary><strong>Voice routing (4-plane architecture)</strong></summary>
+
+![Four-Plane Voice Architecture — Private 1:1 agent dialogue (Planes 1-2, emerald) and Public spatial audio via LiveKit SFU (Planes 3-4, violet)](./docs/diagrams/03-four-plane-voice.png)
 
 | Plane | Direction | Scope | Trigger |
 |:------|:----------|:------|:--------|
@@ -324,7 +303,9 @@ The orchestration layer is where agents reason, coordinate, and act — always a
 
 **Why OWL 2 Is the Secret Weapon** — Most agentic systems fail at scale because they lack a shared language. In VisionClaw, agents reason against a common OWL 2 ontology. The same concept of "deliverable" means the same thing to a Creative Production agent and a Governance agent. Agent skill routing isn't keyword matching — it's ontological subsumption. The orchestration layer knows that a "risk assessment" is a sub-task of "governance review", and routes accordingly.
 
-**7 Ontology Agent Tools (MCP)** — Read/write access to the knowledge graph via Model Context Protocol:
+**7 Ontology Agent Tools (MCP)** — Read/write access to the knowledge graph via Model Context Protocol. Every tool flows through Whelk-rs for consistency and reasoning, with `ontology_propose` gating structural mutations through a GitHub PR for human review.
+
+![7 MCP Tools radiating from the Whelk-rs OWL 2 EL reasoner core, serving 83 Claude-Flow agents and bridged to Neo4j plus GitHub](./docs/diagrams/04-mcp-tools-radial.png)
 
 | Tool | Purpose |
 |:-----|:--------|
@@ -342,33 +323,38 @@ The orchestration layer is where agents reason, coordinate, and act — always a
 |:-------|-------:|
 | CUDA kernel functions | 92 across 11 files |
 | GPU vs CPU speedup | 55× |
-| V2 protocol size | 36 bytes/node |
-| V3 protocol size (+ analytics) | 48 bytes/node |
+| V5 protocol size | 9-byte header + 36 bytes/node |
+| V3 analytics fields | +12 bytes/node (cluster_id, anomaly_score, community_id, page_rank) |
 | WebSocket latency | 10ms |
 | Binary vs JSON bandwidth | 80% reduction |
 
 <details>
-<summary><strong>Binary WebSocket Protocol (V2/V3)</strong></summary>
+<summary><strong>Binary WebSocket Protocol (V5 production)</strong></summary>
 
 High-frequency position updates use a compact binary protocol instead of JSON, achieving 80% bandwidth reduction.
 
-**V2 Standard (36 bytes/node)** — production default:
+**V5 Production (9-byte header + 36 bytes/node)** — current wire format:
 
 | Bytes | Field | Type | Description |
 |:------|:------|:-----|:------------|
+| 0 | Version | u8 | Value `5` |
+| 1–8 | Broadcast sequence | u64 LE | Monotonic counter per broadcast |
+
+Per-node payload (V2/V3 layout following the 9-byte header):
+
+| Bytes (per node) | Field | Type | Description |
+|:-----------------|:------|:-----|:------------|
 | 0–3 | Node ID | u32 | Flag bits 26-31 encode node type |
 | 4–15 | Position (X/Y/Z) | f32×3 | World-space position |
 | 16–27 | Velocity (X/Y/Z) | f32×3 | Physics velocity |
 | 28–31 | SSSP distance | f32 | Shortest-path from source |
 | 32–35 | Timestamp | u32 | ms since session start |
 
-**V3 Analytics (48 bytes/node)** — includes GPU analytics:
-
-Adds `cluster_id` (u16), `anomaly_score` (f32), `community_id` (u16), `page_rank` (f32) at bytes 36–47.
+**V3 Analytics (48 bytes/node per frame)** — extends per-node payload with `cluster_id` (u16), `anomaly_score` (f32), `community_id` (u16), `page_rank` (f32) at bytes 36–47.
 
 **V4 Delta (16 bytes/changed node)** — experimental, not production-ready. See [Known Issues](docs/KNOWN_ISSUES.md) → WS-001.
 
-**BroadcastOptimizer** (V2 production): server-side culling that skips unchanged nodes. Distinct from V4 delta encoding — same pipeline, different concept. See [websocket-binary.md](docs/reference/websocket-binary.md) for the full disambiguation.
+**Periodic full broadcast**: forced every 300 physics iterations regardless of convergence state, ensuring late-connecting clients synchronise within ~5 seconds. See [websocket-binary.md](docs/reference/websocket-binary.md) for the complete V5 specification including client parsing examples.
 
 </details>
 
@@ -433,24 +419,16 @@ The governance layer is what separates VisionClaw from every "move fast and brea
 
 ## The Insight Ingestion Loop
 
-How shadow workflows become sanctioned organisational intelligence:
+How shadow workflows become sanctioned organisational intelligence — a five-stage feedback loop orchestrated by the governed mesh:
 
-```mermaid
-flowchart LR
-    D["DISCOVERY\nPassive agent monitoring\ndetects the pattern"]
-    C["CODIFICATION\nIRIS maps the new path\nas a proposed DAG —\nOWL 2 formalised\nwith provenance"]
-    V["VALIDATION\nThe Judgment Broker\nreviews for strategic\nfit & bias"]
-    I["INTEGRATION\nPromoted to live mesh\nwith SLAs, ownership,\nquality"]
-    A["AMPLIFICATION\nMesh propagates\npattern to other\nteams where it applies"]
+![The Insight Ingestion Loop — Discovery → Codification → Validation → Integration → Amplification → Discovery](./docs/diagrams/02-insight-ingestion-cycle.png)
 
-    D --> C --> V --> I --> A
+<details>
+<summary><strong>Diagram source (Mermaid)</strong></summary>
 
-    style D fill:#0A2A1A,stroke:#10B981
-    style C fill:#0A1A2A,stroke:#00D4FF
-    style V fill:#1A0A2A,stroke:#8B5CF6
-    style I fill:#0A1A2A,stroke:#00D4FF
-    style A fill:#0A2A1A,stroke:#10B981
-```
+See [`docs/diagrams/src/02-insight-ingestion-cycle.mmd`](./docs/diagrams/src/02-insight-ingestion-cycle.mmd).
+
+</details>
 
 ---
 
@@ -474,57 +452,14 @@ flowchart LR
 
 ## Architecture
 
-```mermaid
-flowchart TB
-    subgraph Client["Browser Client (React 19 + Three.js / Babylon.js)"]
-        R3F["React Three Fiber\n(desktop graph)"]
-        BabylonXR["Babylon.js\n(immersive XR)"]
-        BinProto["Binary Protocol V3/V5"]
-        Voice["Voice Orchestrator"]
-        WasmFX["WASM Scene Effects\n(zero-copy Float32Array)"]
-    end
+![VisionClaw system architecture — Browser client, Transport, Rust backend with hexagonal ports/adapters, Data plane, GPU compute, and Agent mesh](./docs/diagrams/05-architecture-hexagonal.png)
 
-    subgraph Server["Rust Backend (Actix-web · Hexagonal · CQRS)"]
-        Handlers["HTTP/WS Handlers\n(9 ports · 12 adapters)"]
-        Actors["21 Actix Actors\n(supervised concurrency)"]
-        Services["OWL Ontology Pipeline\n(Whelk-rs EL++)"]
-        AudioRouter["Audio Router\n(LiveKit SFU)"]
-        MCP["MCP Tool Server\n(:9500 TCP)"]
-    end
+<details>
+<summary><strong>Diagram source (Mermaid)</strong></summary>
 
-    subgraph Data["Data Layer"]
-        Neo4j[("Neo4j 5.13\n(primary graph store)")]
-        RuVector[("RuVector PostgreSQL\n(pgvector + HNSW)")]
-        Solid["Solid Pod\n(JSS sidecar · user data)"]
-    end
+See [`docs/diagrams/src/05-architecture-hexagonal.mmd`](./docs/diagrams/src/05-architecture-hexagonal.mmd).
 
-    subgraph GPU["GPU Compute (CUDA 13.1)"]
-        Kernels["92 CUDA Kernels"]
-        Physics["Force Physics\n+ Semantic Forces"]
-        Analytics["K-Means · Louvain\nPageRank · LOF Anomaly"]
-    end
-
-    subgraph Agents["Multi-Agent Stack"]
-        Skills["83 Agent Skills"]
-        ClaudeFlow["Claude-Flow\n(RAFT hive-mind)"]
-        NostrDID["Nostr Identities\n(NIP-98 auth · delegation)"]
-    end
-
-    Client <-->|"Binary V3/V5 + REST"| Server
-    Voice <-->|"LiveKit SFU + Opus"| AudioRouter
-    Server <--> Neo4j
-    Server <--> RuVector
-    Server <--> Solid
-    Server <--> GPU
-    MCP <--> Agents
-    Agents -->|"GitHub PRs (ontology mutations)"| Services
-
-    style Client fill:#e1f5ff,stroke:#0288d1
-    style Server fill:#fff3e0,stroke:#ff9800
-    style Data fill:#f3e5f5,stroke:#9c27b0
-    style GPU fill:#e8f5e9,stroke:#4caf50
-    style Agents fill:#fce4ec,stroke:#e91e63
-```
+</details>
 
 <details>
 <summary><strong>Hexagonal architecture (9 ports · 12 adapters · 114 CQRS handlers)</strong></summary>
@@ -655,10 +590,10 @@ Each context has its own aggregate roots, domain events, and anti-corruption lay
 |:-------|-------:|:-----------|
 | GPU physics speedup | 55× | vs single-threaded CPU |
 | HNSW semantic search | 61µs p50 | RuVector pgvector, 1.17M entries |
-| WebSocket latency | 10ms | Local network, V2 binary |
-| Bandwidth reduction | 80% | Binary V2 vs JSON |
+| WebSocket latency | 10ms | Local network, V5 binary |
+| Bandwidth reduction | 80% | Binary V5 vs JSON |
 | Concurrent XR users | 250+ | Related immersive data visualisation event |
-| Position update size | 36 bytes (V2) / 48 bytes (V3) | Per node |
+| Position update size | 9-byte header + 36 bytes/node (V5) · +12 bytes analytics (V3) | Per frame |
 | CUDA kernels | 92 | 6,585 LOC across 11 files |
 | Agent concurrency | 50+ | Via actor supervisor tree |
 | Physics convergence | ~600 frames (~10s) | Typical graph at rest |
