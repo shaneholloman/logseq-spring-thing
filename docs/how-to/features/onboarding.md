@@ -10,6 +10,8 @@ updated-date: 2026-04-18
 
 This guide covers starting and restarting onboarding tours, understanding how step positioning and element highlighting work, and clearing persisted tour state.
 
+> **Status**: The onboarding overlay is currently disabled in production (`OnboardingEventHandler` and `OnboardingOverlay` are commented out in `OnboardingProvider.tsx`). The context and hooks are active — `startFlow()` can be called programmatically — but the automatic tour does not launch on first visit.
+
 ---
 
 ## Available Tours
@@ -143,16 +145,30 @@ When `target` is absent or the selector matches nothing, the tooltip centres on 
 
 ---
 
-## Note on Current Status
+## Re-enabling
 
-The `OnboardingProvider` currently ships with the overlay commented out:
+To restore the automatic tour and overlay, uncomment three blocks in `client/src/features/onboarding/components/OnboardingProvider.tsx`:
 
 ```tsx
-{/* Onboarding disabled - uncomment to re-enable */}
-{/* <OnboardingEventHandler /> */}
+// 1. Event handler — listens for 'start-onboarding' CustomEvents and first-visit trigger
+{/* <OnboardingEventHandler /> */}   // remove the comment delimiters
+
+// 2. Overlay render — the visual tooltip and dimmed-page overlay
+{/* {isActive && currentStep && currentFlow && (
+  <OnboardingOverlay
+    step={currentStep}
+    stepNumber={currentStepIndex + 1}
+    totalSteps={currentFlow.steps.length}
+    onNext={nextStep}
+    onPrev={prevStep}
+    onSkip={skipFlow}
+    hasNext={hasNextStep}
+    hasPrev={hasPrevStep}
+  />
+)} */}                               // remove the comment delimiters
 ```
 
-Tours can still be started programmatically via `startFlow` and the underlying state machine is fully functional. To re-enable the visual overlay, uncomment the two lines inside `OnboardingProvider.tsx`.
+Both blocks are wrapped in a single `{/* Onboarding disabled - uncomment to re-enable */}` comment. Remove the outer comment delimiters to restore full onboarding behaviour.
 
 ---
 

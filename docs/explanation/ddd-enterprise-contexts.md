@@ -846,6 +846,40 @@ The enterprise contexts add the following node types to the existing type system
 
 ---
 
+## Supporting Infrastructure Contexts
+
+The following are cross-cutting infrastructure concerns consumed by all 17 bounded contexts. They are **not** DDD bounded contexts in the enterprise sense — they carry no enterprise domain logic, define no organisational ubiquitous language, and are not bounded by a strategic domain decision. They are shared platform plumbing.
+
+### Workspace Context (Infrastructure)
+
+**Domain**: persisted graph configurations — layout, physics parameters, node filters — saved as named workspaces per authenticated user.
+
+**Aggregate**: `Workspace` (id, name, description, type: `personal | team | public`, status: `active | archived`, WorkspaceSettings: autoSave, syncEnabled, collaborationEnabled, backupEnabled, maxMembers).
+
+**Runtime**: `WorkspaceActor` (Actix actor) manages in-memory state; persistence via `workspace_handler.rs` REST API backed by the same storage layer as the rest of the platform.
+
+**Relationship to enterprise BCs**: Workspaces are consumed by all 17 BCs — a broker session review, a KPI dashboard configuration, a policy audit layout can each be saved as a workspace. No enterprise domain logic lives here; workspaces are a UI persistence mechanism, not a domain object. BC11–BC17 reference workspace IDs by convention, not by domain invariant.
+
+**API**: `GET/POST /api/workspace/list`, `POST /api/workspace/create`, `GET|PUT|DELETE /api/workspace/{id}`, `POST /api/workspace/{id}/favorite|archive`. All routes require authentication; rate-limited to 60 requests/minute.
+
+---
+
+### Monitoring/Health Context (Infrastructure)
+
+**Domain**: operational health signals for the running VisionClaw platform instance.
+
+**Components monitored**: database connectivity, graph service, physics simulation (running state, step count, energy level, GPU memory), WebSocket service, MCP relay.
+
+**Key types**:
+- `HealthStatus` — top-level status with a `components` map keyed by component name
+- `PhysicsHealth` — physics-specific detail: running, steps, energy, GPU memory used/total
+
+**Runtime**: `useHealthService` React hook polls `GET /health` (HealthStatus) and `GET /health/physics` (PhysicsHealth). MCP relay controls: `POST /health/mcp/start`, `GET /health/mcp/logs`.
+
+**Relationship to enterprise BCs**: BC15 KPI Observability consumes health signals as one input to the platform's operational KPIs (e.g. physics simulation uptime feeds augmentation ratio calculations). Monitoring is **not** itself a BC — it is the infrastructure layer that BC15 observes. The `HealthStatus.components` map covers: `database`, `graph`, `physics`, `websocket`. No enterprise domain logic or provenance requirements apply here.
+
+---
+
 ## Cross-Reference to Enterprise PRD
 
 | PRD Workstream | Enterprise Context(s) | PRD Functional Requirement |

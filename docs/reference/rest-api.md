@@ -1062,18 +1062,86 @@ Configured in `constraints_handler.rs`.
 | POST | `/api/constraints/validate` | Yes | Validate constraint set |
 | POST | `/api/constraints/generate` | No | Generate from ontology (see Ontology Physics section) |
 
-### Workspace — `/api/workspace/*`
+### Workspace API — `/api/workspace/*`
 
-Configured in `workspace_handler.rs`.
+Configured in `workspace_handler.rs`. All endpoints require authentication (Nostr session or Bearer token via `RequireAuth` middleware). Rate limit: 60 requests/minute per authenticated user.
 
-| Method | Path | Auth | Description |
-|--------|------|------|-------------|
-| GET | `/api/workspace` | No | Get current workspace state |
-| POST | `/api/workspace/save` | Yes | Save workspace snapshot |
-| POST | `/api/workspace/load` | Yes | Load workspace by ID |
-| POST | `/api/workspace/export` | Yes | Export workspace (JSON format) |
-| POST | `/api/workspace/import` | Yes | Import workspace |
-| DELETE | `/api/workspace/:id` | Yes | Delete saved workspace |
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/workspace/list` | List workspaces with pagination and filtering |
+| POST | `/api/workspace/create` | Create a new workspace |
+| GET | `/api/workspace/count` | Count workspaces matching current filter |
+| GET | `/api/workspace/{id}` | Get a single workspace by ID |
+| PUT | `/api/workspace/{id}` | Update workspace metadata |
+| DELETE | `/api/workspace/{id}` | Soft-delete workspace (sets `status = deleted`, data retained) |
+| POST | `/api/workspace/{id}/favorite` | Toggle favourite status |
+| POST | `/api/workspace/{id}/archive` | Archive or unarchive workspace |
+
+**List query parameters** (`GET /api/workspace/list`):
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `page` | integer | Page number (default: 0) |
+| `page_size` | integer | Results per page (default: 20) |
+| `sort_by` | string | `name \| lastAccessed \| createdAt \| updatedAt` |
+| `sort_direction` | string | `asc \| desc` |
+| `status` | string | Filter by status: `active \| archived` |
+| `type` | string | Filter by type: `personal \| team \| public` |
+| `search` | string | Text search across name and description |
+
+**Create body** (`POST /api/workspace/create`):
+
+```json
+{
+  "name": "string",
+  "description": "string",
+  "type": "personal | team | public",
+  "settings": {
+    "autoSave": true,
+    "syncEnabled": false,
+    "collaborationEnabled": false,
+    "backupEnabled": true,
+    "maxMembers": 10
+  }
+}
+```
+
+**Update body** (`PUT /api/workspace/{id}`) — all fields optional:
+
+```json
+{
+  "name": "string",
+  "description": "string",
+  "type": "personal | team | public",
+  "settings": { }
+}
+```
+
+**Workspace model**:
+
+```typescript
+interface Workspace {
+  id: string;
+  name: string;
+  description: string;
+  type: 'personal' | 'team' | 'public';
+  status: 'active' | 'archived';
+  memberCount: number;
+  lastAccessed: Date;
+  createdAt: Date;
+  updatedAt: Date;
+  favorite: boolean;
+  settings?: {
+    autoSave: boolean;
+    syncEnabled: boolean;
+    collaborationEnabled: boolean;
+    backupEnabled: boolean;
+    maxMembers: number;
+  };
+}
+```
+
+**Soft delete**: `DELETE /api/workspace/{id}` sets `status = deleted` and retains all data. Deleted workspaces do not appear in list results by default but can be recovered by an admin. This differs from the constraints `DELETE` which performs a hard delete.
 
 ---
 

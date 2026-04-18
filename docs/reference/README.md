@@ -78,6 +78,7 @@ Complete technical reference documentation for VisionClaw APIs, protocols, confi
 
 | Document | Description |
 |----------|-------------|
+| [Physics Parameters](./physics-parameters.md) | UI slider → settings key → CUDA kernel mapping with effective ranges |
 | [Performance Benchmarks](./performance-benchmarks.md) | Performance metrics and targets |
 | Implementation Status | Feature implementation status (see main README) |
 | Code Quality | Code quality metrics (see main README) |

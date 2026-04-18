@@ -195,6 +195,7 @@ Full reference index: [reference/INDEX.md](reference/INDEX.md)
 | [Agents Catalog](reference/agents-catalog.md) | Complete catalog of specialist agent skills by domain |
 | [Error Codes](reference/error-codes.md) | AP-E, DB-E, GR-E, GP-E, WS-E error code hierarchy with solutions |
 | [Glossary](reference/glossary.md) | Definitions for domain terms used throughout the documentation |
+| [Physics Parameters](reference/physics-parameters.md) | UI slider → settings key → CUDA kernel mapping, effective ranges, FastSettle vs Continuous |
 | [Performance Benchmarks](reference/performance-benchmarks.md) | GPU physics, WebSocket, and API performance metrics |
 | [Environment Variables](reference/configuration/environment-variables.md) | All `.env` variables with types, defaults, and descriptions |
 | [Docker Compose Options](reference/configuration/docker-compose-options.md) | Service profiles, volumes, and compose file structure |
