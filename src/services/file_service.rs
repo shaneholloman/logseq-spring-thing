@@ -611,12 +611,21 @@ impl FileService {
                 Ok(())
             }
             Err(e) => {
-                error!("Failed to verify directory permissions: {}", e);
-                if let Ok(current_dir) = std::env::current_dir() {
-                    error!("Current directory: {:?}", current_dir);
-                }
-                if let Ok(dir_contents) = fs::read_dir(MARKDOWN_DIR) {
-                    error!("Directory contents: {:?}", dir_contents);
+                // EROFS (30) is expected — source pages are mounted read-only by design.
+                // Demote to debug so we don't flood the log on every tick.
+                if e.raw_os_error() == Some(30) {
+                    debug!(
+                        "Markdown dir {} is read-only (EROFS) — expected for bind-mounted source",
+                        MARKDOWN_DIR
+                    );
+                } else {
+                    error!("Failed to verify directory permissions: {}", e);
+                    if let Ok(current_dir) = std::env::current_dir() {
+                        error!("Current directory: {:?}", current_dir);
+                    }
+                    if let Ok(dir_contents) = fs::read_dir(MARKDOWN_DIR) {
+                        error!("Directory contents: {:?}", dir_contents);
+                    }
                 }
                 Err(Error::new(
                     std::io::ErrorKind::PermissionDenied,
