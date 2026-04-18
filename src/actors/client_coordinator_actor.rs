@@ -1429,16 +1429,6 @@ impl Handler<BroadcastPositions> for ClientCoordinatorActor {
         self.broadcast_sequence += 1;
         let current_sequence = self.broadcast_sequence;
 
-        // TEMP DIAG: log every broadcast attempt so we can see if the handler
-        // runs, how many clients it iterates, and the payload size.
-        if self.broadcast_sequence % 60 == 1 {
-            let client_count = self.client_manager.read().map(|m| m.clients.len()).unwrap_or(0);
-            info!(
-                "[BroadcastPositions#{}] handler invoked: {} positions, {} clients in manager",
-                self.broadcast_sequence, msg.positions.len(), client_count
-            );
-        }
-
         // Read analytics data for embedding in binary protocol
         let analytics_guard = self.node_analytics.read().ok();
         let analytics_ref = analytics_guard.as_deref();
@@ -1462,18 +1452,6 @@ impl Handler<BroadcastPositions> for ClientCoordinatorActor {
                     manager.unregister_client(*id);
                 }
             }
-        }
-
-        // TEMP DIAG: log per-broadcast send count so we can confirm frames actually
-        // reach socket actors. Sampled 1 in 60 to avoid flooding the log.
-        if self.broadcast_sequence % 60 == 1 {
-            info!(
-                "[BroadcastPositions#{}] sent={}/{} slow_clients={}",
-                self.broadcast_sequence,
-                result.sent,
-                result.sent + result.slow_clients.len(),
-                result.slow_clients.len()
-            );
         }
 
         if client_count > 0 {

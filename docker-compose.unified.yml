@@ -147,7 +147,8 @@ services:
       VITE_DEV_SERVER_PORT: ${VITE_DEV_SERVER_PORT:-5173}
       VITE_API_PORT: ${VITE_API_PORT:-4000}
       VITE_HMR_PORT: ${VITE_HMR_PORT:-24678}
-      RUST_LOG: ${RUST_LOG:-info,webxr::actors::gpu=debug,webxr::actors::physics_orchestrator_actor=debug,webxr::actors::graph_service_supervisor=debug,webxr::utils::ptx=debug,webxr::adapters::neo4j_ontology_repository=warn,webxr::actors::graph_state_actor=warn,actix_web=warn}
+      # Default: quiet. Set RUST_LOG=debug (or module-specific) in .env when debugging.
+      RUST_LOG: ${RUST_LOG:-warn,webxr=info,webxr::adapters::neo4j_ontology_repository=warn,webxr::actors::graph_state_actor=warn,actix_web=warn}
       RUST_LOG_REDIRECT: ${RUST_LOG_REDIRECT:-true}
       DOCKER_ENV: ${DOCKER_ENV:-true}
       # Dev-only: bypass Nostr auth for settings writes (never set in production)
