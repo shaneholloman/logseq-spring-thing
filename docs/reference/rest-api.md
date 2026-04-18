@@ -3,7 +3,7 @@ title: VisionClaw REST API Reference
 description: Complete REST API reference for VisionClaw, covering graph data, settings, authentication, ontology, pathfinding, and Solid Pod endpoints
 category: reference
 tags: [api, rest, http, endpoints]
-updated-date: 2026-04-09
+updated-date: 2026-04-18
 ---
 
 # VisionClaw REST API Reference
@@ -33,6 +33,7 @@ graph LR
     A --> H[/api/health/*]
     A --> I[/solid/*]
     A --> J[/wss]
+    A --> K[Enterprise]
 
     B --> B1[data]
     B --> B2[node/:id]
@@ -45,7 +46,133 @@ graph LR
     E --> E2[pagerank, clustering, community]
     I --> I1[pods/*]
     I --> I2[LDP resources]
+    K --> K1[/api/broker/*]
+    K --> K2[/api/workflows/*]
+    K --> K3[/api/connectors/*]
+    K --> K4[/api/policy/evaluate]
+    K --> K5[/api/mesh-metrics]
 ```
+
+---
+
+## Enterprise API Endpoints
+
+The enterprise control plane surfaces five API groups, all requiring the `Broker`, `Admin`, or `Auditor` role.
+
+### Judgment Broker — `/api/broker/*`
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/api/broker/inbox` | Broker/Admin | List open escalation cases for the authenticated broker |
+| GET | `/api/broker/cases` | Broker/Admin/Auditor | List all cases (filterable by status, priority, date) |
+| POST | `/api/broker/cases` | Broker/Admin | Submit a new escalation case |
+| GET | `/api/broker/cases/:id` | Broker/Admin/Auditor | Get a single case with full provenance chain |
+| POST | `/api/broker/cases/:id/decide` | Broker/Admin | Record a decision (Approve/Reject/Escalate/Defer) on a case |
+
+**Case submit body:**
+```json
+{
+  "title": "string",
+  "description": "string",
+  "priority": "P1 | P2 | P3",
+  "context": { "agentId": "string", "workflowId": "string", "ruleId": "string" }
+}
+```
+
+**Decide body:**
+```json
+{
+  "outcome": "Approved | Rejected | Escalated | Deferred",
+  "justification": "string",
+  "overrideRuleId": "string | null"
+}
+```
+
+---
+
+### Workflow Proposals — `/api/workflows/*`
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/api/workflows/proposals` | All authenticated | List workflow proposals (status filter: Draft/Submitted/UnderReview/Approved/...) |
+| POST | `/api/workflows/proposals` | Contributor+ | Submit a new workflow proposal |
+| GET | `/api/workflows/proposals/:id` | All authenticated | Get proposal detail with step graph |
+| POST | `/api/workflows/proposals/:id/promote` | Admin | Promote an Approved proposal to active workflow pattern |
+| GET | `/api/workflows/patterns` | All authenticated | List approved, reusable workflow patterns |
+
+---
+
+### Connectors — `/api/connectors/*`
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/api/connectors` | Admin/Auditor | List configured connectors |
+| POST | `/api/connectors` | Admin | Register a new connector (GitHub, Slack, Jira, Confluence, Notion) |
+| GET | `/api/connectors/:id` | Admin/Auditor | Get connector config and last-sync status |
+| DELETE | `/api/connectors/:id` | Admin | Remove connector and revoke credentials |
+
+**Connector create body:**
+```json
+{
+  "name": "string",
+  "type": "GitHub | Slack | Jira | Confluence | Notion",
+  "credentials": { "token": "string" },
+  "redactionRules": [{ "field": "string", "pattern": "string", "action": "Redact | Hash | Drop" }],
+  "syncIntervalMinutes": 60
+}
+```
+
+---
+
+### Policy Engine — `/api/policy/*`
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/api/policy/evaluate` | All authenticated | Evaluate an action against the current rule set |
+| GET | `/api/policy/rules` | Admin/Auditor | List configured policy rules |
+| PUT | `/api/policy/rules/:id` | Admin | Update a policy rule (Allow/Deny/Escalate, conditions, priority) |
+
+**Evaluate body:**
+```json
+{
+  "action": "string",
+  "subjectRole": "Broker | Admin | Auditor | Contributor",
+  "resourceType": "string",
+  "context": {}
+}
+```
+
+**Evaluate response:**
+```json
+{
+  "result": "Allow | Deny | Escalate",
+  "matchedRuleId": "string | null",
+  "justification": "string"
+}
+```
+
+---
+
+### Mesh KPIs — `/api/mesh-metrics`
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/api/mesh-metrics` | Admin/Auditor | Current four KPI values with 30-day trend |
+| GET | `/api/mesh-metrics?window=7d` | Admin/Auditor | KPI values for specified time window |
+
+**Response:**
+```json
+{
+  "meshVelocity": { "value": 36.5, "unit": "hours", "trend": [...] },
+  "augmentationRatio": { "value": 0.71, "trend": [...] },
+  "trustVariance": { "value": 0.09, "trend": [...] },
+  "hitlPrecision": { "value": 0.94, "trend": [...] },
+  "window": "30d",
+  "computedAt": "2026-04-18T12:00:00Z"
+}
+```
+
+See [DDD Enterprise Contexts](../explanation/ddd-enterprise-contexts.md) for the KPI definitions and lineage model.
 
 ### Authentication Summary
 

@@ -3,7 +3,7 @@ title: VisionClaw WebSocket Binary Protocol
 description: Complete specification for VisionClaw's binary WebSocket protocol (V2/V3/V4), covering message formats, connection lifecycle, and client implementation
 category: reference
 tags: [websocket, binary, protocol, real-time]
-updated-date: 2026-04-09
+updated-date: 2026-04-18
 ---
 
 # VisionClaw WebSocket Binary Protocol
@@ -48,18 +48,85 @@ The server also exposes:
 
 | Version | Bytes/Node | Status | Use Case |
 |---------|-----------|--------|----------|
-| **V2** | 36 | **Production standard** | All position streaming |
+| **V5** | 36 + 9-byte header | **Production wire format** | All position streaming (current) |
 | V3 | 48 | Stable | Analytics extension (clustering, anomaly, community) |
-| V4 | 16 (changed nodes only) | Experimental | Delta encoding |
+| V4 | 16 (changed nodes only) | Experimental | Delta encoding — see WS-001 in KNOWN_ISSUES |
+| V2 | 36 | Legacy | Superseded by V5 framing |
 | V1 | 34 | **Removed — do not use** | Legacy, ID limit 16383 |
 
 **Version selection logic** (server-side):
-1. Any node ID > 16383 → V2 required
-2. Analytics fields requested → V3
-3. Delta encoding enabled → V4
-4. Default → V2
+1. Default → V5 (9-byte header + V3 per-node payload, sequence-numbered)
+2. Analytics fields requested → V3 per-node fields included in V5 frame
+3. Delta encoding enabled → V4 (experimental, not recommended — see WS-001)
 
 The server encodes the protocol version as the first byte of every binary frame. Clients must read byte 0 before parsing the payload.
+
+---
+
+## V5 Frame Format (Production)
+
+V5 is the current production wire format. It wraps V3 per-node data in a 9-byte header that enables reliable sequence-based synchronisation.
+
+### V5 Frame Header (9 bytes, prefix to all position broadcasts)
+
+| Bytes | Field | Type | Description |
+|-------|-------|------|-------------|
+| 0 | Version | u8 | Value `5` |
+| 1–8 | Broadcast sequence | u64 LE | Monotonically increasing counter; increments on every broadcast |
+
+The 8-byte broadcast sequence replaces the per-node timestamp for frame ordering. Clients can detect missed frames by checking for sequence gaps. A missed frame warrants a full-state re-request rather than accumulating stale deltas.
+
+### V5 Frame Body (36 or 48 bytes per node, following the header)
+
+The per-node payload is identical to V2 (36 bytes) or V3 (48 bytes with analytics). All nodes in a single broadcast share one V5 header.
+
+**Full frame body layout (36 bytes × N nodes)**:
+
+| Bytes (per node) | Field | Type | Description |
+|------------------|-------|------|-------------|
+| 0–3 | Node ID | u32 | Flag bits 26-31 encode node type |
+| 4–15 | Position (X/Y/Z) | f32×3 | World-space position |
+| 16–27 | Velocity (X/Y/Z) | f32×3 | Physics velocity |
+| 28–31 | SSSP distance | f32 | Shortest-path from source |
+| 32–35 | Timestamp | u32 | ms since session start |
+
+### V5 Client Parsing Example
+
+```typescript
+function parseV5Frame(buffer: ArrayBuffer): { sequence: bigint; nodes: NodePosition[] } {
+  const view = new DataView(buffer);
+  const version = view.getUint8(0);
+  if (version !== 5) throw new Error(`Expected V5 frame, got version ${version}`);
+
+  const sequence = view.getBigUint64(1, true); // 8 bytes little-endian
+  const headerSize = 9;
+  const nodeSize = 36;
+  const nodeCount = (buffer.byteLength - headerSize) / nodeSize;
+  const nodes: NodePosition[] = [];
+
+  for (let i = 0; i < nodeCount; i++) {
+    const offset = headerSize + i * nodeSize;
+    nodes.push({
+      id:       view.getUint32(offset,      true),
+      x:        view.getFloat32(offset + 4, true),
+      y:        view.getFloat32(offset + 8, true),
+      z:        view.getFloat32(offset + 12, true),
+      vx:       view.getFloat32(offset + 16, true),
+      vy:       view.getFloat32(offset + 20, true),
+      vz:       view.getFloat32(offset + 24, true),
+      ssspDist: view.getFloat32(offset + 28, true),
+      ts:       view.getUint32(offset + 32, true),
+    });
+  }
+  return { sequence, nodes };
+}
+```
+
+### V5 Notes
+
+- **Full frames only**: V5 always sends all node positions. Delta encoding (V4) is not used in V5 framing because all nodes move every physics iteration — delta encoding provides no bandwidth benefit in practice.
+- **Broadcast sequence**: The server maintains a monotonic `broadcast_sequence` counter. Clients should track the last received sequence and request a full re-sync if a gap exceeds 5 frames.
+- **Periodic full broadcast**: The server forces a full broadcast every 300 physics iterations regardless of convergence state. This ensures late-connecting clients synchronise within ~5 seconds.
 
 ---
 

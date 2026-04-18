@@ -424,6 +424,13 @@ client/src/wasm/
     package.json
   scene-effects-bridge.ts        # Existing (unchanged)
 
+  drawer-fx/                     # Existing — Enterprise drawer ambient effect (shipped Apr 2026)
+    src/lib.rs                   #   Flow-field particle effect for drawer canvas layer
+    Cargo.toml                   #   Standalone crate; wasm-opt = false (binaryen validation workaround)
+    build.sh                     #   wasm-pack build script
+    README.md                    #   Crate-level documentation
+  useDrawerFx.ts                 # React hook mounting drawer-fx canvas
+
   kpi-sparklines/                # New WASM build output (Phase 4)
     kpi_sparklines.d.ts
     kpi_sparklines.js
@@ -462,6 +469,10 @@ crates/                          # Rust source (project root)
     Cargo.toml
     src/lib.rs
 ```
+
+### Note on `drawer-fx`
+
+`drawer-fx` was shipped as a standalone crate in April 2026 rather than extending `scene-effects` as originally specified in the enterprise drawer design document (`docs/design/2026-04-17-enterprise-drawer.md` §7, which proposed `scene-effects/src/drawer_ambient.rs`). The decision to keep it standalone was made to avoid destabilising the production `scene-effects` crate and to keep the ambient effect independently versioned. ADR-046 governs the broader enterprise UI architecture within which `drawer-fx` sits.
 
 ### Cargo Configuration
 

@@ -697,7 +697,7 @@ Each context has its own aggregate roots, domain events, and anti-corruption lay
 
 ## Documentation
 
-VisionClaw uses the [Diataxis](https://diataxis.fr/) framework — 106 markdown files across four categories, 46 with embedded Mermaid diagrams:
+VisionClaw uses the [Diataxis](https://diataxis.fr/) framework — 144 markdown files across four categories, 54 with embedded Mermaid diagrams:
 
 | Category | Path | Content |
 |:---------|:-----|:--------|
@@ -795,7 +795,7 @@ VisionClaw/
 │   └── config/                   #   Configuration management
 ├── client/                       # React frontend (370 files, 96K LOC)
 │   ├── src/
-│   │   ├── features/             #   13 feature modules (graph, settings, etc.)
+│   │   ├── features/             #   20 feature modules (graph, settings, enterprise, broker, kpi, workflows, connectors, policy, analytics, bots, monitoring, onboarding, workspace, ...)
 │   │   ├── services/             #   Voice, WebSocket, Nostr auth, Solid integration
 │   │   ├── rendering/            #   Custom TSL/WebGL materials, post-processing
 │   │   └── immersive/            #   Babylon.js XR mode
@@ -804,7 +804,7 @@ VisionClaw/
 │   ├── skills/                   #   83 agent skill modules
 │   ├── mcp-infrastructure/       #   MCP servers, config, tool registration
 │   └── management-api/           #   Agent lifecycle management
-├── docs/                         # Diataxis documentation (106 files, 46 with Mermaid)
+├── docs/                         # Diataxis documentation (144 files, 54 with Mermaid)
 │   ├── tutorials/                #   Getting started
 │   ├── how-to/                   #   Operational guides
 │   ├── explanation/              #   Architecture deep-dives

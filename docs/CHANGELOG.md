@@ -5,6 +5,33 @@ All notable changes to VisionClaw will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] - 2026-04-18
+
+### Added
+- Enterprise drawer (`EnterpriseDrawerMount`, `EnterpriseDrawer`) — full-viewport slide-out panel with frosted-glass alpha blend, Ctrl+Shift+E / Cmd+Shift+E toggle, floating FAB button
+- `drawer-fx` WASM crate (`client/src/wasm/drawer-fx/`) — Rust flow-field ambient effect for enterprise drawer canvas layer; zero-copy `Float32Array` pattern matching `scene-effects`
+- Regression tests: `tests/physics_orchestrator_settle_regression.rs`, `tests/settings_physics_propagation_regression.rs`
+- `tests/smoke/nginx-coep-headers.sh` — COEP header smoke test
+- Enterprise drawer design document: `docs/design/2026-04-17-enterprise-drawer.md`
+- QE audit report: `docs/audits/2026-04-17/` (master, frontend graph loading, backend settings routing, failure patterns, regression risk, regression tests — 6 files)
+- `enterprise-standalone.tsx` with `#/drawer-demo` hash route for isolated drawer preview
+
+### Fixed
+- **PHYSICS: Dual `ClientCoordinatorActor` instances** — `SocketFlowServer` registered clients in one coordinator instance while `PhysicsOrchestratorActor` broadcast to a second internally-created instance, causing 0 binary frames to reach any connected client. Fixed by injecting the shared `ClientCoordinatorActor` address into `GraphServiceSupervisor::with_client()` and skipping internal creation when an external instance is provided.
+- **PHYSICS: `ClientFilter` default filter to zero** — `ClientFilter::default()` had `enabled: true` with empty `filtered_node_ids`, causing `broadcast_with_filter` to produce no payload for fresh clients. Fixed by setting `enabled: false` as the default (opt-in filtering, not opt-out).
+- **PHYSICS: `FastSettle` permanent latch** — `FastSettle` mode set `fast_settle_complete = true` and `is_physics_paused = true` on reaching the iteration cap even when energy had not converged, preventing subsequent physics parameter changes from resuming simulation. Fixed by falling back to `Continuous` mode on non-convergent exhaustion rather than halting.
+- **PHYSICS: Boundary-pinned node rescue** — Added detection for nodes oscillating at viewport boundary (`|coord| >= viewport_bounds - 1` for 60+ consecutive frames) and teleporting them to randomised interior positions, complementing the existing runaway-node rescue (nodes beyond 10× viewport bounds).
+- **SLIDER RANGES: Calibrated physics UI sliders** — Attraction (`attractionK`) capped at 10, Dual Graph Separation (`graphSeparationX`) capped at 500, Flatten to Planes (`zDamping`) capped at 0.1. Previous maximums were orders of magnitude too wide.
+- **AUTH: Enterprise endpoints returning 403** — `apiFetch` was not injecting auth headers; added auth header injection mirroring `authRequestInterceptor`. Backend `verify_access` now accepts `Bearer dev-session-token` in non-production environments before NIP-98 path.
+- **NGINX: COEP headers lost on Vite proxy routes** — Per-location `add_header` now set for all Vite module proxy paths (`/.vite`, `/node_modules`, `/@vite`, etc.) because `add_header` in a `location` block drops server-level headers.
+- **DEBUG: Console spam from RemoteLogger** — Gated `originalConsole.log/debug/info` echo behind `localStorage.debug.consoleLogging === 'true'`; `warn` and `error` continue to echo unconditionally.
+- **DEBUG: BotsDataProvider polling churn** — `pollingConfig` literal re-created on every render caused `useAgentPolling` to stop and restart every 2 seconds. Fixed with `useMemo` + `useCallback`.
+- **WebSocket: `permessage-deflate` misused as subprotocol** — Removed `.protocols(&["permessage-deflate"])` from WebSocket upgrade handler (it is a WebSocket extension, not a subprotocol; placing it in `.protocols()` produced a malformed negotiation header).
+- **WebSocket: Frame size limit** — Added `.frame_size(4 * 1024 * 1024)` to WebSocket upgrade handler; default 64 KiB was silently truncating large V5 broadcasts.
+- **First-frame render** — `GraphManager` now polls via `window.setInterval` for non-zero positions from `graphWorkerProxy` and calls R3F `invalidate()` when data arrives, fixing the case where the graph was invisible until window resize triggered a re-render.
+
+---
+
 ## [Unreleased] - 2026-04-12
 
 ### Added

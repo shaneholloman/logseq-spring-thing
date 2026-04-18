@@ -1,7 +1,7 @@
 ---
 title: VisionClaw Documentation
 description: Complete documentation for VisionClaw — the governed agentic mesh for real-time 3D knowledge graph exploration with GPU-accelerated physics, OWL 2 ontology reasoning, and multi-agent AI orchestration
-updated-date: 2026-04-09
+updated-date: 2026-04-18
 ---
 
 # VisionClaw Documentation
@@ -52,13 +52,20 @@ graph LR
         E5[Ontology Pipeline]
         E6[Physics/GPU Engine]
         E7[XR Architecture]
+        E8[Enterprise Contexts BC11-17]
     end
     subgraph "Reference"
         R1[REST API]
-        R2[WebSocket Binary]
+        R2[WebSocket Binary V5]
         R3[Neo4j Schema]
         R4[Agents Catalog]
         R5[Config & Env]
+    end
+    subgraph "Enterprise"
+        ADR40[ADR-040 Identity]
+        ADR41[ADR-041 Broker]
+        ADR46[ADR-046 UI Arch]
+        PRD2[PRD-002 Enterprise]
     end
 ```
 
@@ -166,6 +173,7 @@ Conceptual deep-dives that build understanding of how and why VisionClaw works.
 | [Blender MCP Architecture](explanation/blender-mcp-unified-architecture.md) | Blender remote-control via WebSocket RPC + MCP tools |
 | [Deployment Topology](explanation/deployment-topology.md) | Multi-container service map, network architecture, dependency chain, scaling |
 | [Agent-Physics Bridge](explanation/agent-physics-bridge.md) | How AI agent lifecycle states synchronise to the 3D physics simulation |
+| [DDD Enterprise Contexts (BC11–BC17)](explanation/ddd-enterprise-contexts.md) | Judgment Broker, Workflow Lifecycle, Insight Discovery, Enterprise Identity, KPI Observability, Connector Ingestion, Policy Engine bounded contexts |
 
 ---
 
@@ -197,16 +205,60 @@ Full reference index: [reference/INDEX.md](reference/INDEX.md)
 
 Design decisions recorded as ADRs in [docs/adr/](adr/).
 
+> ADR-015 through ADR-026 are not in this repository — those numbers were assigned to decisions that predated the current ADR process and were not backfilled.
+
+### Core Platform (ADR-011 to ADR-014)
+
 | ADR | Title |
 |-----|-------|
 | [ADR-011](adr/ADR-011-auth-enforcement.md) | Authentication Enforcement |
 | [ADR-012](adr/ADR-012-websocket-store-decomposition.md) | WebSocket Store Decomposition |
 | [ADR-013](adr/ADR-013-render-performance.md) | Render Performance Strategy |
 | [ADR-014](adr/ADR-014-semantic-pipeline-unification.md) | Semantic Pipeline Unification |
+
+### Solid / Pod Integration (ADR-027 to ADR-030)
+
+| ADR | Title |
+|-----|-------|
 | [ADR-027](adr/ADR-027-pod-backed-graph-views.md) | Pod-Backed Graph Views |
 | [ADR-028](adr/ADR-028-sparql-patch-ontology.md) | SPARQL PATCH for Ontology Mutations |
 | [ADR-029](adr/ADR-029-type-index-discovery.md) | Type Index Discovery |
 | [ADR-030](adr/ADR-030-agent-memory-pods.md) | Agent Memory Pods |
+
+### Platform Consolidation (ADR-031 to ADR-039)
+
+| ADR | Title |
+|-----|-------|
+| [ADR-031](adr/ADR-031-layout-mode-system.md) | Layout Mode System |
+| [ADR-032](adr/ADR-032-ratk-integration.md) | RATK Integration for WebXR |
+| [ADR-033](adr/ADR-033-vircadia-decoupling.md) | Vircadia SDK Decoupling |
+| [ADR-034](adr/ADR-034-needle-bead-provenance.md) | NEEDLE Bead Provenance System |
+| [ADR-036](adr/ADR-036-node-type-consolidation.md) | Node Type System Consolidation |
+| [ADR-037](adr/ADR-037-binary-protocol-consolidation.md) | Binary Protocol Consolidation |
+| [ADR-038](adr/ADR-038-position-flow-consolidation.md) | Position Data Flow Consolidation |
+| [ADR-039](adr/ADR-039-settings-consolidation.md) | Settings/Physics Object Consolidation |
+
+> ADR-035 is absent — the content was renumbered to ADR-037 (`ADR-037-binary-protocol-consolidation.md` carries the ADR-035 internal heading, a known inconsistency).
+
+### Enterprise Governance (ADR-040 to ADR-047)
+
+| ADR | Status | Title |
+|-----|--------|-------|
+| [ADR-040](adr/ADR-040-enterprise-identity-strategy.md) | Proposed | Enterprise Identity Strategy (OIDC + Nostr) |
+| [ADR-041](adr/ADR-041-judgment-broker-workbench.md) | Proposed | Judgment Broker Workbench Architecture |
+| [ADR-042](adr/ADR-042-workflow-proposal-object-model.md) | Proposed | Workflow Proposal Object Model |
+| [ADR-043](adr/ADR-043-kpi-lineage-model.md) | Proposed | KPI Lineage Model |
+| [ADR-044](adr/ADR-044-connector-governance-privacy.md) | Proposed | Connector Governance and Privacy Boundaries |
+| [ADR-045](adr/ADR-045-policy-engine-approach.md) | Proposed | Policy Engine Approach |
+| [ADR-046](adr/ADR-046-enterprise-ui-architecture.md) | **Accepted** | Enterprise UI Architecture |
+| [ADR-047](adr/ADR-047-wasm-visualization-components.md) | Proposed | WASM Visualization Components |
+
+> Six of eight enterprise ADRs are Proposed — the features are built and operational but the decisions are pending formal ratification.
+
+### RuVector Federation
+
+| Document | Title |
+|----------|-------|
 | [RVF Integration AFD](adr/rvf-integration-afd.md) | RuVector Federation Architecture Feature Design |
 | [RVF Integration DDD](adr/rvf-integration-ddd.md) | RuVector Federation Domain-Driven Design |
 | [RVF Integration PRD](adr/rvf-integration-prd.md) | RuVector Federation Product Requirements |
@@ -219,6 +271,57 @@ Exploratory design documents in [docs/design/](design/).
 
 - [Nostr Relay Integration](design/nostr-relay-integration.md) — Architecture for VisionClaw ↔ Nostr relay bridging
 - [Nostr Solid Browser Extension](design/nostr-solid-browser-extension.md) — Browser extension design for Nostr + Solid identity
+- [Enterprise Drawer UI](design/2026-04-17-enterprise-drawer.md) — Full specification for the enterprise slide-out drawer: geometry, WASM ambient effects, Zustand store, keyboard shortcut, ARIA, graph dimming, rollback plan
+
+---
+
+## Product Requirements Documents
+
+| Document | Description |
+|----------|-------------|
+| [PRD-001: Pipeline Alignment](PRD-001-pipeline-alignment.md) | Backend physics/settings pipeline alignment requirements |
+| [PRD-002: Enterprise UI](PRD-002-enterprise-ui.md) | Enterprise control plane UI requirements (broker, KPI, workflows, connectors, policy) |
+| [PRD: Agent Orchestration Improvements](PRD-agent-orchestration-improvements.md) | Multi-agent orchestration improvements |
+| [PRD: Bead Provenance Upgrade](prd-bead-provenance-upgrade.md) | NEEDLE-pattern bead provenance lifecycle upgrade |
+| [PRD: XR Modernisation](prd-xr-modernization.md) | WebXR modernisation for Quest 3 and Babylon.js |
+
+---
+
+## Domain Models
+
+| Document | Description |
+|----------|-------------|
+| [DDD Bead Provenance Context](ddd-bead-provenance-context.md) | Bead lifecycle domain model — content-addressed provenance events |
+| [DDD XR Bounded Context](ddd-xr-bounded-context.md) | XR presence domain model — avatar, session, spatial audio |
+
+---
+
+## Audits
+
+QE audit reports in [docs/audits/](audits/).
+
+| Report | Description |
+|--------|-------------|
+| [QE Enterprise Audit](qe-enterprise-audit-report.md) | Enterprise feature security, accessibility, and test coverage audit (2026-04) |
+| [2026-04-17 Master Report](audits/2026-04-17/00-master.md) | Full QE fleet audit — frontend graph loading, backend settings routing, failure patterns, regression risk |
+| [Frontend Graph Loading](audits/2026-04-17/01-frontend-graph-loading.md) | Graph worker, WebSocket, binary protocol analysis |
+| [Backend Settings Routing](audits/2026-04-17/02-backend-settings-routing.md) | Settings PUT pipeline and actor routing audit |
+| [Similar Failure Patterns](audits/2026-04-17/03-similar-failure-patterns.md) | Cross-system failure pattern catalogue |
+| [Regression Risk](audits/2026-04-17/04-regression-risk.md) | Risk matrix for recent physics/WebSocket changes |
+| [Regression Tests](audits/2026-04-17/05-regression-tests.md) | Regression test specifications |
+
+---
+
+## Use Cases
+
+Industry applications and positioning in [docs/use-cases/](use-cases/).
+
+| Document | Description |
+|----------|-------------|
+| [Use Case Overview](use-cases/OVERVIEW.md) | Cross-industry application summary |
+| [Industry Applications](use-cases/industry-applications.md) | Sector-specific use cases (creative, research, enterprise) |
+| [Competitive Analysis](use-cases/competitive-analysis.md) | Positioning against alternative approaches |
+| [Quick Reference](use-cases/quick-reference.md) | One-page capability and positioning card |
 
 ---
 
