@@ -231,6 +231,27 @@ impl Neo4jAdapter {
             warn!("Failed to create edge relation_type index (may already exist): {}", e);
         }
 
+        // Semantic-code indexes: these properties were previously only present
+        // inside the `metadata` JSON string blob, invisible to Cypher queries.
+        // Now that save_graph flattens them as first-class properties, index
+        // them for fast filtering (e.g. WHERE n.physicality_code > 0, domain
+        // GROUP BY source_domain).
+        for (name, prop) in [
+            ("graph_node_physicality_code", "physicality_code"),
+            ("graph_node_role_code", "role_code"),
+            ("graph_node_maturity_level", "maturity_level"),
+            ("graph_node_source_domain", "source_domain"),
+            ("graph_node_term_id", "term_id"),
+        ] {
+            let q = Query::new(format!(
+                "CREATE INDEX {} IF NOT EXISTS FOR (n:GraphNode) ON (n.{})",
+                name, prop
+            ));
+            if let Err(e) = self.graph.run(q).await {
+                warn!("Failed to create {} index (may already exist): {}", name, e);
+            }
+        }
+
         // Create fulltext index on node label and metadata_id for fast text search
         let fulltext_index_query = Query::new(
             "CREATE FULLTEXT INDEX graph_node_label_ft IF NOT EXISTS FOR (n:GraphNode) ON EACH [n.label, n.metadata_id]".to_string()
@@ -907,6 +928,40 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
         // Save nodes in batch - PRESERVING physics state (sim_x/y/z, vx/vy/vz)
         // Content sync should NEVER reset GPU-calculated layout positions
         for node in &graph.nodes {
+            // Flatten semantic-code metadata entries into first-class Neo4j
+            // properties so Cypher queries can filter on them directly.
+            // Previously these lived only inside the `metadata` JSON string blob
+            // and were invisible to `WHERE n.physicality_code IS NOT NULL`.
+            // Codes use the u8 enum mapping from src/models/metadata.rs:
+            //   0 = None (property absent), 255 = Unknown (property present
+            //   but unrecognised), 1..N = canonical values.
+            let physicality_code: i64 = node.metadata.get("physicality_code")
+                .and_then(|s| s.parse::<i64>().ok())
+                .unwrap_or(0);
+            let role_code: i64 = node.metadata.get("role_code")
+                .and_then(|s| s.parse::<i64>().ok())
+                .unwrap_or(0);
+            let maturity_level: i64 = node.metadata.get("maturity_level")
+                .and_then(|s| s.parse::<i64>().ok())
+                .unwrap_or(0);
+            let source_domain: String = node.metadata.get("source_domain")
+                .or_else(|| node.metadata.get("source-domain"))
+                .or_else(|| node.metadata.get("domain"))
+                .cloned()
+                .unwrap_or_default();
+            let preferred_term: String = node.metadata.get("preferred-term")
+                .or_else(|| node.metadata.get("preferred_term"))
+                .cloned()
+                .unwrap_or_default();
+            let term_id: String = node.metadata.get("term-id")
+                .or_else(|| node.metadata.get("term_id"))
+                .cloned()
+                .unwrap_or_default();
+            let source_file: String = node.metadata.get("source_file")
+                .or_else(|| node.metadata.get("source-file"))
+                .cloned()
+                .unwrap_or_default();
+
             // Use COALESCE to preserve existing physics coordinates
             // Physics state is stored in sim_* properties, content coords in x/y/z
             let query = Query::new(
@@ -930,6 +985,13 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
                      n.node_type = $node_type,
                      n.weight = $weight,
                      n.group_name = $group_name,
+                     n.physicality_code = $physicality_code,
+                     n.role_code = $role_code,
+                     n.maturity_level = $maturity_level,
+                     n.source_domain = $source_domain,
+                     n.preferred_term = $preferred_term,
+                     n.term_id = $term_id,
+                     n.source_file = $source_file,
                      n.metadata = $metadata
                  ON MATCH SET
                      n.metadata_id = $metadata_id,
@@ -940,6 +1002,13 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
                      n.node_type = COALESCE($node_type, n.node_type),
                      n.weight = COALESCE($weight, n.weight),
                      n.group_name = COALESCE($group_name, n.group_name),
+                     n.physicality_code = $physicality_code,
+                     n.role_code = $role_code,
+                     n.maturity_level = $maturity_level,
+                     n.source_domain = $source_domain,
+                     n.preferred_term = $preferred_term,
+                     n.term_id = $term_id,
+                     n.source_file = $source_file,
                      n.metadata = $metadata
                  // NEVER overwrite sim_x/sim_y/sim_z or vx/vy/vz on MATCH
                  // These are the GPU-calculated physics positions
@@ -961,6 +1030,13 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
             .param("node_type", node.node_type.clone().unwrap_or_default())
             .param("weight", node.weight.unwrap_or(1.0) as f64)
             .param("group_name", node.group.clone().unwrap_or_default())
+            .param("physicality_code", physicality_code)
+            .param("role_code", role_code)
+            .param("maturity_level", maturity_level)
+            .param("source_domain", source_domain)
+            .param("preferred_term", preferred_term)
+            .param("term_id", term_id)
+            .param("source_file", source_file)
             .param("metadata", serde_json::to_string(&node.metadata).unwrap_or_default());
 
             self.graph.run(query).await.map_err(|e| {
