@@ -10,21 +10,117 @@ use crate::models::edge::Edge;
 use crate::models::graph::GraphData;
 use crate::models::metadata::{MaturityLevel, MetadataStore, PhysicalityCode, RoleCode};
 use crate::models::node::Node;
+use crate::services::parsers::visibility::{classify_visibility, Visibility};
 use crate::utils::socket_flow_messages::BinaryNodeData;
 use log::{debug, info};
-use std::collections::HashMap;
+use sha2::{Digest, Sha256};
+use std::collections::{HashMap, HashSet};
+
+/// A single source-of-truth file offered to the two-pass parser.
+///
+/// `name` is the filename (e.g. `PageName.md`). `path` is the repo-relative
+/// path used to compute the canonical IRI (ADR-050 §"Canonical IRI"). If
+/// the caller only has a flat filename, pass it as `path` as well — the
+/// canonical IRI stays deterministic for that input.
+#[derive(Debug, Clone)]
+pub struct FileBundle {
+    pub name: String,
+    pub path: String,
+    pub content: String,
+}
+
+impl FileBundle {
+    pub fn new(name: impl Into<String>, path: impl Into<String>, content: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            path: path.into(),
+            content: content.into(),
+        }
+    }
+}
+
+/// A draft of a `:KGNode` ready to be projected into Neo4j.
+///
+/// Carries the legacy `Node` payload plus the sovereign-model fields
+/// (`visibility` / `owner_pubkey` / `pod_url`). `opaque_id` is deliberately
+/// computed at query time per ADR-050 §"Opaque ID construction" — it is
+/// `None` here.
+///
+/// TODO(sibling: schema-and-binary): once the sibling agent lands the
+/// `KGNode` struct rename with these fields baked in, collapse this draft
+/// back into `Node` / `KGNode` and drop the wrapper.
+#[derive(Debug, Clone)]
+pub struct KGNodeDraft {
+    pub node: Node,
+    pub canonical_iri: String,
+    pub visibility: Visibility,
+    pub owner_pubkey: Option<String>,
+    pub opaque_id: Option<String>,
+    pub pod_url: Option<String>,
+    /// `true` when this node is a stub — i.e. referenced by a wikilink but
+    /// the source page was not present in the ingest batch. Stubs carry
+    /// no label, no metadata_id, no pod_url.
+    pub is_stub: bool,
+}
+
+/// Output of the two-pass parser.
+#[derive(Debug, Clone, Default)]
+pub struct ParseOutput {
+    pub nodes: Vec<KGNodeDraft>,
+    pub edges: Vec<Edge>,
+    /// The UUID assigned to this ingest run. Every `WikilinkRef` edge in
+    /// `edges` carries this id under `metadata["last_seen_run_id"]`. The
+    /// orphan-retraction background job scans for stale run ids.
+    pub run_id: String,
+}
+
+/// Internal page metadata gathered in Pass 1.
+#[derive(Debug, Clone)]
+struct PageMeta {
+    title: String,
+    canonical_iri: String,
+    relative_path: String,
+    raw_content: String,
+    wikilinks: Vec<String>,
+}
 
 /// Knowledge graph parser with position preservation support
 pub struct KnowledgeGraphParser {
     /// Existing positions from database (node_id -> (x, y, z))
     existing_positions: Option<HashMap<u32, (f32, f32, f32)>>,
+    /// Owner pubkey injected by the ingest pipeline (ADR-050). `None` is
+    /// allowed for the legacy single-file `parse()` path and for tests
+    /// that predate the sovereign model.
+    owner_pubkey: Option<String>,
 }
 
 impl KnowledgeGraphParser {
     pub fn new() -> Self {
         Self {
             existing_positions: None,
+            owner_pubkey: None,
         }
+    }
+
+    /// Construct a parser bound to a specific owner pubkey. Required for
+    /// the sovereign two-pass `parse_bundle` entry point so that canonical
+    /// IRIs and Pod URLs are stamped with the correct owner namespace.
+    pub fn new_with_owner(owner_pubkey: impl Into<String>) -> Self {
+        Self {
+            existing_positions: None,
+            owner_pubkey: Some(owner_pubkey.into()),
+        }
+    }
+
+    /// Replace or set the owner pubkey. Useful when the ingest pipeline
+    /// reuses a single parser instance across users.
+    pub fn set_owner_pubkey(&mut self, owner_pubkey: impl Into<String>) {
+        self.owner_pubkey = Some(owner_pubkey.into());
+    }
+
+    /// Current owner pubkey, if any.
+    pub fn owner_pubkey(&self) -> Option<&str> {
+        self.owner_pubkey.as_deref()
     }
 
     /// Create parser with existing positions from database
@@ -32,12 +128,271 @@ impl KnowledgeGraphParser {
     pub fn with_positions(existing_positions: HashMap<u32, (f32, f32, f32)>) -> Self {
         Self {
             existing_positions: Some(existing_positions),
+            owner_pubkey: None,
         }
     }
 
     /// Set existing positions for position preservation
     pub fn set_positions(&mut self, positions: HashMap<u32, (f32, f32, f32)>) {
         self.existing_positions = Some(positions);
+    }
+
+    /// Two-pass parse — the sovereign-model entry point (ADR-050 / ADR-051).
+    ///
+    /// Pass 1 walks every file, classifies visibility, extracts wikilinks,
+    /// and records the adjacency map keyed by canonical IRI. Pass 2 turns
+    /// every adjacency entry into a `KGNodeDraft` and synthesises a
+    /// private stub for every wikilink target that is NOT present in the
+    /// batch. Every wikilink edge carries `last_seen_run_id` so the
+    /// orphan-retraction background job can prune stale references.
+    ///
+    /// Gated by the `VISIBILITY_CLASSIFICATION` env flag. When the flag
+    /// is unset or `false`, the caller must fall back to the legacy
+    /// single-pass `parse()` entry point instead.
+    pub fn parse_bundle(&self, files: &[FileBundle]) -> Result<ParseOutput, String> {
+        let owner = self
+            .owner_pubkey
+            .as_deref()
+            .ok_or_else(|| {
+                "KnowledgeGraphParser::parse_bundle requires owner_pubkey — \
+                 construct with new_with_owner(...)"
+                    .to_string()
+            })?;
+
+        let run_id = generate_run_id();
+        info!(
+            "🧭 Two-pass parse: owner={} files={} run_id={}",
+            short_pubkey(owner),
+            files.len(),
+            run_id
+        );
+
+        // ------------------------------------------------------------------
+        // PASS 1 — build the adjacency map.
+        // ------------------------------------------------------------------
+        let mut adjacency: HashMap<String, PageMeta> = HashMap::new();
+        // Title → canonical_iri. Used to resolve `[[Page Name]]` against
+        // pages that exist in the batch before falling back to a stub.
+        let mut title_index: HashMap<String, String> = HashMap::new();
+
+        for file in files {
+            let meta = self.extract_page_meta(owner, file);
+            title_index.insert(meta.title.clone(), meta.canonical_iri.clone());
+            // Also index by the slug form so `[[my_page]]` resolves when a
+            // user wrote `[[My Page]]` originally and vice versa.
+            title_index.insert(slugify_title(&meta.title), meta.canonical_iri.clone());
+            adjacency.insert(meta.canonical_iri.clone(), meta);
+        }
+
+        debug!(
+            "Pass 1 complete: {} pages indexed, {} title aliases",
+            adjacency.len(),
+            title_index.len()
+        );
+
+        // ------------------------------------------------------------------
+        // PASS 2 — classify, build nodes, synthesise stubs, emit edges.
+        // ------------------------------------------------------------------
+        let mut nodes: Vec<KGNodeDraft> = Vec::with_capacity(adjacency.len());
+        let mut edges: Vec<Edge> = Vec::new();
+        let mut emitted_iris: HashSet<String> = HashSet::new();
+        // Dedup wikilink edges per (source_iri, target_iri) pair — a page
+        // may reference the same target several times.
+        let mut edge_seen: HashSet<(String, String)> = HashSet::new();
+
+        for (iri, meta) in &adjacency {
+            // This page always becomes a KGNode.
+            let visibility = classify_visibility(&meta.raw_content);
+            let source_node = self.build_kg_node(meta, visibility, owner);
+            let source_id = source_node.node.id;
+            nodes.push(source_node);
+            emitted_iris.insert(iri.clone());
+
+            for wikilink in &meta.wikilinks {
+                let target_iri = resolve_wikilink_to_iri(wikilink, &title_index, owner);
+
+                // If the target isn't an already-indexed page AND we haven't
+                // already emitted a stub for it in this batch, emit a stub.
+                if !adjacency.contains_key(&target_iri)
+                    && !emitted_iris.contains(&target_iri)
+                {
+                    let stub = self.build_private_stub(&target_iri, wikilink, owner);
+                    emitted_iris.insert(target_iri.clone());
+                    nodes.push(stub);
+                }
+
+                let target_id = deterministic_id_from_iri(&target_iri);
+
+                // Don't emit self-loops (a page linking to itself).
+                if target_id == source_id {
+                    continue;
+                }
+                // Dedup identical (source, target) pairs in this run.
+                let key = (iri.clone(), target_iri.clone());
+                if !edge_seen.insert(key) {
+                    continue;
+                }
+
+                edges.push(build_wikilink_ref_edge(source_id, target_id, &run_id));
+            }
+        }
+
+        info!(
+            "Pass 2 complete: {} nodes ({} stubs), {} wikilink edges",
+            nodes.len(),
+            nodes.iter().filter(|n| n.is_stub).count(),
+            edges.len()
+        );
+
+        Ok(ParseOutput {
+            nodes,
+            edges,
+            run_id,
+        })
+    }
+
+    /// Pass-1 extraction: pull the page title, its wikilinks, the canonical
+    /// IRI, and keep the raw content around for the Pass-2 visibility
+    /// classifier.
+    fn extract_page_meta(&self, owner: &str, file: &FileBundle) -> PageMeta {
+        let title = file
+            .name
+            .strip_suffix(".md")
+            .unwrap_or(&file.name)
+            .to_string();
+
+        let canonical_iri = canonical_iri(owner, &file.path);
+        let wikilinks = extract_wikilink_titles(&file.content);
+
+        PageMeta {
+            title,
+            canonical_iri,
+            relative_path: file.path.clone(),
+            raw_content: file.content.clone(),
+            wikilinks,
+        }
+    }
+
+    /// Build a `KGNodeDraft` for an indexed page (public or private).
+    fn build_kg_node(
+        &self,
+        meta: &PageMeta,
+        visibility: Visibility,
+        owner: &str,
+    ) -> KGNodeDraft {
+        // Reuse the legacy create_page_node logic for all the metadata /
+        // ontology / position plumbing — we're not rewriting that.
+        let mut node = self.create_page_node(&meta.title, &meta.raw_content);
+
+        // Stamp the node's id from the canonical IRI so the identity is
+        // stable across ingest runs (the legacy hash-of-filename fallback
+        // would drift the moment the page path changes).
+        let id = deterministic_id_from_iri(&meta.canonical_iri);
+        node.id = id;
+        node.data.node_id = id;
+
+        // Surface the canonical IRI on the node metadata map so the
+        // downstream Cypher projection can MERGE against it without a
+        // second lookup.
+        node.metadata
+            .insert("canonical_iri".into(), meta.canonical_iri.clone());
+        node.metadata
+            .insert("visibility".into(), visibility.as_str().into());
+        node.metadata
+            .insert("owner_pubkey".into(), owner.to_string());
+
+        let pod_url = pod_url_for(owner, &meta.relative_path, visibility);
+        node.metadata.insert("pod_url".into(), pod_url.clone());
+
+        KGNodeDraft {
+            node,
+            canonical_iri: meta.canonical_iri.clone(),
+            visibility,
+            owner_pubkey: Some(owner.to_string()),
+            // opaque_id is computed at query-time per ADR-050 §"Opaque ID
+            // construction" (HMAC with a rotating server-session salt).
+            // The parser never stamps it — that's the projection layer's
+            // responsibility.
+            opaque_id: None,
+            pod_url: Some(pod_url),
+            is_stub: false,
+        }
+    }
+
+    /// Build a private stub for a wikilink target that was not present in
+    /// the ingest batch. Stubs carry no label, no metadata_id, no pod_url
+    /// — they're placeholders that become fully-fledged nodes the next
+    /// time the owner syncs a file whose canonical IRI matches.
+    fn build_private_stub(
+        &self,
+        target_iri: &str,
+        wikilink_text: &str,
+        owner: &str,
+    ) -> KGNodeDraft {
+        let id = deterministic_id_from_iri(target_iri);
+        let (x, y, z) = self.get_position(id);
+
+        let mut metadata = HashMap::new();
+        metadata.insert("type".into(), "kg_stub".into());
+        metadata.insert("canonical_iri".into(), target_iri.to_string());
+        metadata.insert(
+            "visibility".into(),
+            Visibility::Private.as_str().into(),
+        );
+        metadata.insert("owner_pubkey".into(), owner.to_string());
+        // Preserve the authoring intent for the retraction job so it can
+        // surface a useful audit trail if the stub is later pruned.
+        metadata.insert("stub_source_wikilink".into(), wikilink_text.to_string());
+
+        let data = BinaryNodeData {
+            node_id: id,
+            x,
+            y,
+            z,
+            vx: 0.0,
+            vy: 0.0,
+            vz: 0.0,
+        };
+
+        let node = Node {
+            id,
+            // metadata_id is empty for stubs — we only know the opaque IRI.
+            metadata_id: String::new(),
+            // Stubs have NO label. The anonymous API must never see one.
+            label: String::new(),
+            data,
+            metadata,
+            file_size: 0,
+            node_type: Some("kg_stub".to_string()),
+            color: Some("#6B7280".to_string()),
+            size: Some(0.6),
+            weight: Some(0.5),
+            group: None,
+            user_data: None,
+            mass: Some(1.0),
+            x: Some(x),
+            y: Some(y),
+            z: Some(z),
+            vx: Some(0.0),
+            vy: Some(0.0),
+            vz: Some(0.0),
+            owl_class_iri: None,
+            visibility: Visibility::Private,
+            owner_pubkey: Some(owner.to_string()),
+            opaque_id: None,
+            pod_url: None,
+        };
+
+        KGNodeDraft {
+            node,
+            canonical_iri: target_iri.to_string(),
+            visibility: Visibility::Private,
+            owner_pubkey: Some(owner.to_string()),
+            opaque_id: None,
+            // A stub has no Pod content until the owner authors it.
+            pod_url: None,
+            is_stub: true,
+        }
     }
 
     /// Get position for a node ID, using existing position or generating random
@@ -408,6 +763,196 @@ impl Default for KnowledgeGraphParser {
     fn default() -> Self {
         Self::new()
     }
+}
+
+// ----------------------------------------------------------------------------
+// Sovereign-model free helpers (ADR-050 / ADR-051).
+//
+// These are intentionally module-free functions so tests can exercise them
+// without constructing a parser. Keep them pure.
+// ----------------------------------------------------------------------------
+
+/// Canonical IRI scheme per ADR-050 §"Canonical IRI":
+/// `visionclaw:owner:{owner_pubkey}/kg/{sha256(relative_path)}`.
+///
+/// Deterministic across runs; rename-proof identity is a non-goal — a
+/// `page.md` → `folder/page.md` move is a new IRI, which matches Logseq's
+/// filename-as-title semantics.
+pub fn canonical_iri(owner_pubkey: &str, relative_path: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(relative_path.as_bytes());
+    let path_hash = hex_encode(&hasher.finalize());
+    format!("visionclaw:owner:{}/kg/{}", owner_pubkey, path_hash)
+}
+
+/// Deterministic `u32` id derived from a canonical IRI. Stable across
+/// runs and across parser instances. Avoids the legacy filename-hash
+/// fallback which drifted on rename.
+///
+/// Reserves 0 as a sentinel (maps the hash into `[1, u32::MAX]`).
+pub fn deterministic_id_from_iri(iri: &str) -> u32 {
+    let mut hasher = Sha256::new();
+    hasher.update(iri.as_bytes());
+    let digest = hasher.finalize();
+    let v = u32::from_be_bytes([digest[0], digest[1], digest[2], digest[3]]);
+    // Clear bit 29 — ADR-050 reserves it as the on-wire opacity flag and
+    // the parser MUST NOT pre-stamp it. The protocol serialiser sets bit
+    // 29 when writing a private node.
+    let v = v & !0x2000_0000;
+    // Avoid the sentinel 0.
+    if v == 0 {
+        1
+    } else {
+        v
+    }
+}
+
+/// Resolve a `[[Wikilink]]` target to a canonical IRI.
+///
+/// Resolution order:
+/// 1. Exact title match against indexed pages (`[[My Page]]` when a page
+///    titled `My Page` is in the batch).
+/// 2. Slug match (`[[my_page]]` resolves to `My Page` via its slug form).
+/// 3. Fallback: synthesise a canonical IRI from the wikilink text treated
+///    as a relative path (`{slug}.md`). This is what happens for a
+///    target not present in the batch — the next sync that includes the
+///    page's real path will produce the same IRI and upgrade the stub.
+///
+/// Never silently drops the wikilink — an unknown target always yields a
+/// deterministic stub IRI.
+pub fn resolve_wikilink_to_iri(
+    wikilink: &str,
+    title_index: &HashMap<String, String>,
+    owner_pubkey: &str,
+) -> String {
+    let cleaned = wikilink.trim();
+
+    if let Some(iri) = title_index.get(cleaned) {
+        return iri.clone();
+    }
+    let slug = slugify_title(cleaned);
+    if let Some(iri) = title_index.get(&slug) {
+        return iri.clone();
+    }
+
+    // Synthetic fallback — treat the slug as the relative path. A later
+    // ingest run that includes the real page file will hash to the same
+    // IRI (iff the authored path matches `{slug}.md`) and MERGE upgrades
+    // the stub; otherwise the stub remains until the retraction job
+    // prunes it.
+    let synthetic_path = format!("{}.md", slug);
+    canonical_iri(owner_pubkey, &synthetic_path)
+}
+
+/// Logseq slug: lowercase, spaces → underscores, non-[a-z0-9_-] dropped.
+/// Intentionally simple — Logseq's own slugifier is equally permissive.
+pub fn slugify_title(title: &str) -> String {
+    let mut out = String::with_capacity(title.len());
+    for ch in title.chars() {
+        if ch == ' ' {
+            out.push('_');
+        } else if ch.is_ascii_alphanumeric() || ch == '_' || ch == '-' {
+            out.push(ch.to_ascii_lowercase());
+        }
+        // Drop everything else (punctuation, emoji, etc.).
+    }
+    out
+}
+
+/// Extract `[[Wikilink]]` targets from a page body. Handles the pipe
+/// alias form `[[Target|Display]]` — we keep `Target`.
+fn extract_wikilink_titles(content: &str) -> Vec<String> {
+    let re = regex::Regex::new(r"\[\[([^\]|]+)(?:\|[^\]]+)?\]\]")
+        .expect("invalid wikilink regex");
+    let mut out = Vec::new();
+    for cap in re.captures_iter(content) {
+        if let Some(m) = cap.get(1) {
+            let target = m.as_str().trim().to_string();
+            if !target.is_empty() {
+                out.push(target);
+            }
+        }
+    }
+    out
+}
+
+/// Pod URL builder per ADR-051 §"Publish saga" step 2: owner-namespaced
+/// container (`public/` vs `private/`) with the slug as the resource name.
+pub fn pod_url_for(owner: &str, relative_path: &str, visibility: Visibility) -> String {
+    let base = std::env::var("POD_BASE_URL")
+        .unwrap_or_else(|_| "https://pods.visionclaw.org".to_string());
+    let container = match visibility {
+        Visibility::Public => "public",
+        Visibility::Private => "private",
+    };
+    // Use the file's stem as the slug (`folder/Page.md` → `folder/page`).
+    // Strip the .md extension so the Pod resource name follows the
+    // convention used by ADR-051 §"Publish saga" (./{container}/kg/{slug}).
+    let slug_path = relative_path
+        .strip_suffix(".md")
+        .unwrap_or(relative_path)
+        .to_string();
+    let slug = slugify_title(&slug_path);
+    format!("{}/{}/{}/kg/{}", base, owner, container, slug)
+}
+
+/// Build a `WikilinkRef` edge carrying the current ingest-run id in its
+/// metadata map (ADR-051 §"Orphan retraction"). Stored under
+/// `last_seen_run_id` so the background scanner can detect stale edges.
+fn build_wikilink_ref_edge(source_id: u32, target_id: u32, run_id: &str) -> Edge {
+    let mut metadata = HashMap::new();
+    metadata.insert("last_seen_run_id".to_string(), run_id.to_string());
+    metadata.insert(
+        "neo4j_relationship".to_string(),
+        "WikilinkRef".to_string(),
+    );
+
+    Edge {
+        // Keep the id format stable with the legacy extract_wikilink_edges
+        // path so downstream dedup keys remain consistent.
+        id: format!("{}_{}", source_id, target_id),
+        source: source_id,
+        target: target_id,
+        weight: 1.0,
+        edge_type: Some("WikilinkRef".to_string()),
+        owl_property_iri: None,
+        metadata: Some(metadata),
+    }
+}
+
+/// Check the `VISIBILITY_CLASSIFICATION` env flag. Callers (ingest
+/// pipeline) use this to choose between `parse_bundle` and legacy
+/// `parse`.
+pub fn visibility_classification_enabled() -> bool {
+    std::env::var("VISIBILITY_CLASSIFICATION")
+        .map(|v| matches!(v.as_str(), "true" | "1" | "yes"))
+        .unwrap_or(false)
+}
+
+/// Generate a fresh run id (UUIDv4). Kept free so tests can assert edges
+/// carry a stable value via stubbing if they want to.
+fn generate_run_id() -> String {
+    uuid::Uuid::new_v4().to_string()
+}
+
+/// Short-form pubkey for logs only — never used in cryptographic contexts.
+fn short_pubkey(pubkey: &str) -> String {
+    if pubkey.len() <= 12 {
+        pubkey.to_string()
+    } else {
+        format!("{}…{}", &pubkey[..6], &pubkey[pubkey.len() - 4..])
+    }
+}
+
+/// Hex encoder — avoids pulling in `hex` crate for a dozen bytes.
+fn hex_encode(bytes: &[u8]) -> String {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut s = String::with_capacity(bytes.len() * 2);
+    for b in bytes {
+        s.push(HEX[(b >> 4) as usize] as char);
+        s.push(HEX[(b & 0x0f) as usize] as char);
+    }
+    s
 }
 
 #[cfg(test)]

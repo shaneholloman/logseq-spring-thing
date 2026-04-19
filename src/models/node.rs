@@ -13,7 +13,7 @@ static NEXT_NODE_ID: AtomicU32 = AtomicU32::new(1);
 /// owner-sovereign: the server only emits them over the wire with bit 29 of the
 /// node id set (see `crate::utils::binary_protocol::PRIVATE_OPAQUE_FLAG`) and
 /// with label/metadata stripped, so non-owner clients see an opaque placeholder.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Visibility {
     Public,

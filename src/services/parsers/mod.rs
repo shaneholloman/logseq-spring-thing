@@ -1,8 +1,12 @@
 pub mod knowledge_graph_parser;
 pub mod ontology_parser;
+pub mod visibility;
 
-pub use knowledge_graph_parser::KnowledgeGraphParser;
+pub use knowledge_graph_parser::{
+    FileBundle, KGNodeDraft, KnowledgeGraphParser, ParseOutput,
+};
 pub use ontology_parser::OntologyParser;
+pub use visibility::{classify_visibility, Visibility};
 
 #[derive(Debug, Clone)]
 pub struct OntologyData {
