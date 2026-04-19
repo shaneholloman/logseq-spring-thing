@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 // Re-export types from services module
 pub use crate::services::owl_validator::{
-    GraphEdge, GraphNode, PropertyGraph, RdfTriple, Severity, ValidationConfig, ValidationError,
+    GraphEdge, KGNode, PropertyGraph, RdfTriple, Severity, ValidationConfig, ValidationError,
     ValidationReport, Violation,
 };
 
@@ -162,7 +162,7 @@ impl OwlValidatorService {
     }
 
     
-    fn map_node_to_triples(&self, node: &GraphNode) -> Result<Vec<RdfTriple>> {
+    fn map_node_to_triples(&self, node: &KGNode) -> Result<Vec<RdfTriple>> {
         let mut triples = Vec::new();
 
         
@@ -306,7 +306,7 @@ impl OwlValidatorService {
     }
 
     
-    fn generate_node_iri(&self, node: &GraphNode) -> Result<String> {
+    fn generate_node_iri(&self, node: &KGNode) -> Result<String> {
         
         if let Some(label) = node.labels.first() {
             let label_lower = label.to_lowercase();
@@ -349,7 +349,7 @@ impl OwlValidatorService {
     }
 
     
-    fn apply_template(&self, template: &str, node_id: &str, _node: &GraphNode) -> Result<String> {
+    fn apply_template(&self, template: &str, node_id: &str, _node: &KGNode) -> Result<String> {
         let mut result = template.to_string();
 
         result = result.replace("{base_iri}", &self.mapping_config.global.base_iri);
@@ -646,7 +646,7 @@ mod tests {
     fn test_map_simple_node() {
         let service = create_test_service();
 
-        let node = GraphNode {
+        let node = KGNode {
             id: "person1".to_string(),
             labels: vec!["Person".to_string()],
             properties: {
@@ -676,7 +676,7 @@ mod tests {
 
         let graph = PropertyGraph {
             nodes: vec![
-                GraphNode {
+                KGNode {
                     id: "person1".to_string(),
                     labels: vec!["Person".to_string()],
                     properties: {
@@ -686,7 +686,7 @@ mod tests {
                         props
                     },
                 },
-                GraphNode {
+                KGNode {
                     id: "company1".to_string(),
                     labels: vec!["Company".to_string()],
                     properties: {

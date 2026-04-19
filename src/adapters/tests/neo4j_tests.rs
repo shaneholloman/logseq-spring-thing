@@ -21,7 +21,7 @@ use tokio::sync::RwLock;
 /// Used for unit testing without requiring a live Neo4j instance
 pub struct MockNeo4jGraph {
     /// Stored nodes keyed by id
-    nodes: RwLock<HashMap<u32, MockGraphNode>>,
+    nodes: RwLock<HashMap<u32, MockKGNode>>,
     /// Stored edges as (source, target) -> edge data
     edges: RwLock<HashMap<(u32, u32), MockEdge>>,
     /// Stored settings keyed by key name
@@ -37,7 +37,7 @@ pub struct MockNeo4jGraph {
 }
 
 #[derive(Clone, Debug)]
-struct MockGraphNode {
+struct MockKGNode {
     id: u32,
     metadata_id: String,
     label: String,
@@ -100,12 +100,12 @@ impl MockNeo4jGraph {
         }
     }
 
-    pub async fn add_node(&self, node: MockGraphNode) {
+    pub async fn add_node(&self, node: MockKGNode) {
         self.nodes.write().await.insert(node.id, node);
         *self.query_count.write().await += 1;
     }
 
-    pub async fn get_node(&self, id: u32) -> Option<MockGraphNode> {
+    pub async fn get_node(&self, id: u32) -> Option<MockKGNode> {
         *self.query_count.write().await += 1;
         self.nodes.read().await.get(&id).cloned()
     }
@@ -194,7 +194,7 @@ mod neo4j_adapter_tests {
         let mut metadata = HashMap::new();
         metadata.insert("key1".to_string(), "value1".to_string());
 
-        let node = MockGraphNode {
+        let node = MockKGNode {
             id: 1,
             metadata_id: "test-node-1".to_string(),
             label: "Test Node".to_string(),
@@ -224,7 +224,7 @@ mod neo4j_adapter_tests {
     /// Test node with optional fields as None
     #[test]
     fn test_node_properties_optional_none() {
-        let node = MockGraphNode {
+        let node = MockKGNode {
             id: 2,
             metadata_id: "minimal-node".to_string(),
             label: "Minimal".to_string(),
@@ -353,7 +353,7 @@ mod neo4j_graph_repository_tests {
     async fn test_mock_graph_add_nodes() {
         let mock_graph = MockNeo4jGraph::new();
 
-        let node = MockGraphNode {
+        let node = MockKGNode {
             id: 1,
             metadata_id: "node-1".to_string(),
             label: "Test Node 1".to_string(),
@@ -384,7 +384,7 @@ mod neo4j_graph_repository_tests {
 
         // Add two nodes first
         for id in 1..=2 {
-            mock_graph.add_node(MockGraphNode {
+            mock_graph.add_node(MockKGNode {
                 id,
                 metadata_id: format!("node-{}", id),
                 label: format!("Node {}", id),
@@ -471,7 +471,7 @@ mod neo4j_graph_repository_tests {
     #[test]
     fn test_batch_node_params_preparation() {
         let nodes = vec![
-            MockGraphNode {
+            MockKGNode {
                 id: 1,
                 metadata_id: "node-1".to_string(),
                 label: "Node 1".to_string(),
@@ -482,7 +482,7 @@ mod neo4j_graph_repository_tests {
                 node_type: Some("type_a".to_string()),
                 metadata: HashMap::new(),
             },
-            MockGraphNode {
+            MockKGNode {
                 id: 2,
                 metadata_id: "node-2".to_string(),
                 label: "Node 2".to_string(),
@@ -512,7 +512,7 @@ mod neo4j_graph_repository_tests {
 
         // Add initial nodes
         for id in 1..=5 {
-            mock_graph.add_node(MockGraphNode {
+            mock_graph.add_node(MockKGNode {
                 id,
                 metadata_id: format!("node-{}", id),
                 label: format!("Node {}", id),
@@ -542,7 +542,7 @@ mod neo4j_graph_repository_tests {
         let initial_count = mock_graph.get_query_count().await;
         assert_eq!(initial_count, 0);
 
-        mock_graph.add_node(MockGraphNode {
+        mock_graph.add_node(MockKGNode {
             id: 1,
             metadata_id: "node-1".to_string(),
             label: "Node 1".to_string(),
@@ -981,7 +981,7 @@ mod cypher_query_tests {
     #[test]
     fn test_merge_node_query_format() {
         let query = r#"
-            MERGE (n:GraphNode {id: $id})
+            MERGE (n:KGNode {id: $id})
             ON CREATE SET
                 n.metadata_id = $metadata_id,
                 n.label = $label,
@@ -1003,8 +1003,8 @@ mod cypher_query_tests {
     #[test]
     fn test_merge_edge_query_format() {
         let query = r#"
-            MATCH (s:GraphNode {id: $source})
-            MATCH (t:GraphNode {id: $target})
+            MATCH (s:KGNode {id: $source})
+            MATCH (t:KGNode {id: $target})
             MERGE (s)-[r:EDGE]->(t)
             SET r.weight = $weight
         "#;
@@ -1021,7 +1021,7 @@ mod cypher_query_tests {
     fn test_unwind_batch_query_format() {
         let query = r#"
             UNWIND range(0, size($ids)-1) AS i
-            MERGE (n:GraphNode {id: $ids[i]})
+            MERGE (n:KGNode {id: $ids[i]})
             ON CREATE SET
                 n.label = $labels[i],
                 n.x = $xs[i]
@@ -1036,7 +1036,7 @@ mod cypher_query_tests {
     #[test]
     fn test_position_update_preserves_physics() {
         let query = r#"
-            MATCH (n:GraphNode {id: $id})
+            MATCH (n:KGNode {id: $id})
             SET n.sim_x = $x, n.sim_y = $y, n.sim_z = $z
         "#;
 
@@ -1066,7 +1066,7 @@ mod cypher_query_tests {
     /// Test constraint creation query format
     #[test]
     fn test_constraint_query_format() {
-        let constraint = "CREATE CONSTRAINT graph_node_id IF NOT EXISTS FOR (n:GraphNode) REQUIRE n.id IS UNIQUE";
+        let constraint = "CREATE CONSTRAINT kg_node_id IF NOT EXISTS FOR (n:KGNode) REQUIRE n.id IS UNIQUE";
 
         assert!(constraint.contains("CONSTRAINT"));
         assert!(constraint.contains("IF NOT EXISTS"));
@@ -1076,7 +1076,7 @@ mod cypher_query_tests {
     /// Test index creation query format
     #[test]
     fn test_index_query_format() {
-        let index = "CREATE INDEX graph_node_metadata_id IF NOT EXISTS FOR (n:GraphNode) ON (n.metadata_id)";
+        let index = "CREATE INDEX kg_node_metadata_id IF NOT EXISTS FOR (n:KGNode) ON (n.metadata_id)";
 
         assert!(index.contains("INDEX"));
         assert!(index.contains("IF NOT EXISTS"));
@@ -1137,7 +1137,7 @@ mod physics_position_tests {
     /// Test position update preserves content positions
     #[test]
     fn test_position_update_preserves_content() {
-        let mut node = MockGraphNode {
+        let mut node = MockKGNode {
             id: 1,
             metadata_id: "test".to_string(),
             label: "Test".to_string(),
@@ -1660,7 +1660,7 @@ mod batch_operation_tests {
     /// Test empty batch handling
     #[test]
     fn test_empty_batch() {
-        let nodes: Vec<MockGraphNode> = vec![];
+        let nodes: Vec<MockKGNode> = vec![];
 
         assert!(nodes.is_empty());
 

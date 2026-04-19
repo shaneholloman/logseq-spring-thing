@@ -6,7 +6,7 @@ import { isWebGPURenderer } from '../../../rendering/rendererFactory';
 import { createGlyphAtlas, type GlyphAtlasResult } from '../../../rendering/text/GlyphAtlas';
 import { layoutText, layoutTextInline, type GlyphInstance } from '../../../rendering/text/textLayout';
 import { createTextMaterial, type TextMaterialResult } from '../../../rendering/text/createTextMaterial';
-import type { Node as GraphNode } from '../managers/graphDataManager';
+import type { Node as KGNode } from '../managers/graphDataManager';
 import type { GraphVisualMode } from '../hooks/useGraphVisualState';
 import { computeNodeScale } from '../utils/nodeScaling';
 import type { GraphTypeVisualsSettings } from '../../settings/config/settings';
@@ -63,7 +63,7 @@ const ONTOLOGY_DEPTH_HEX = ['#FF6B6B', '#FFD93D', '#4ECDC4', '#AA96DA', '#95E1D3
 const getOntologyDepthHex = (depth: number): string =>
   ONTOLOGY_DEPTH_HEX[Math.min(depth, ONTOLOGY_DEPTH_HEX.length - 1)];
 
-const getOntologyCategory = (node: GraphNode): 'class' | 'property' | 'instance' => {
+const getOntologyCategory = (node: KGNode): 'class' | 'property' | 'instance' => {
   const meta = node.metadata ?? {};
   const role = meta.role ?? meta.type ?? '';
   const rawNodeType = (node as unknown as { nodeType?: string }).nodeType;
@@ -103,7 +103,7 @@ interface SSSPResult {
 }
 
 export interface InstancedLabelsProps {
-  nodes: GraphNode[];
+  nodes: KGNode[];
   nodeIdToIndexMap: Map<string, number>;
   nodePositionsRef?: React.MutableRefObject<Float32Array | null>;
   labelPositionsRef: React.MutableRefObject<Array<{ x: number; y: number; z: number }>>;
@@ -125,7 +125,7 @@ const _projScreenMatrix = new THREE.Matrix4();
 
 // Build label lines for a node (pure function, extracted from GraphManager NodeLabels useMemo)
 function buildLabelLines(
-  node: GraphNode,
+  node: KGNode,
   mode: GraphVisualMode,
   labelText: string,
   textColor: string,

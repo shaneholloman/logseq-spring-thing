@@ -2,7 +2,7 @@
 
 import { Vector3, Color } from 'three';
 import { createLogger } from '../../../utils/loggerConfig';
-import type { GraphData, Node as GraphNode } from '../managers/graphDataManager';
+import type { GraphData, Node as KGNode } from '../managers/graphDataManager';
 
 const logger = createLogger('AIInsights');
 
@@ -797,7 +797,7 @@ export class AIInsights {
     return count > 0 ? totalDistance / count : 0;
   }
 
-  private getDominantTypes(nodes: GraphNode[]): string[] {
+  private getDominantTypes(nodes: KGNode[]): string[] {
     const typeCounts = new Map<string, number>();
     
     nodes.forEach(node => {
@@ -1027,20 +1027,20 @@ export class AIInsights {
     return clusters.map(c => `Cluster ${c.id}: ${c.nodes.length} nodes, density ${c.density.toFixed(2)}`);
   }
 
-  private analyzeNodeConnectivity(_node: GraphNode, graphData: GraphData): number {
+  private analyzeNodeConnectivity(_node: KGNode, graphData: GraphData): number {
     return graphData.edges.filter(e => e.source === _node.id || e.target === _node.id).length;
   }
 
-  private analyzeNodePositioning(_node: GraphNode, _graphData: GraphData): { x: number; y: number; z: number } {
+  private analyzeNodePositioning(_node: KGNode, _graphData: GraphData): { x: number; y: number; z: number } {
     return _node.position || { x: 0, y: 0, z: 0 };
   }
 
-  private analyzeNodeType(_node: GraphNode, _graphData: GraphData): string {
+  private analyzeNodeType(_node: KGNode, _graphData: GraphData): string {
     return _node.metadata?.type || 'unknown';
   }
 
   private generateNodeSpecificRecommendations(
-    node: GraphNode,
+    node: KGNode,
     connectivity: number,
     _positioning: { x: number; y: number; z: number },
     _typeAnalysis: string

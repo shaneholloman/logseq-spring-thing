@@ -30,7 +30,7 @@ use webxr::physics::ontology_constraints::{
     OntologyConstraintTranslator, OntologyInference, OntologyReasoningReport,
 };
 use webxr::services::owl_validator::{
-    GraphEdge, GraphNode, OwlValidatorService, PropertyGraph, RdfTriple, Severity,
+    GraphEdge, KGNode, OwlValidatorService, PropertyGraph, RdfTriple, Severity,
     ValidationConfig, ValidationError, ValidationReport, Violation,
 };
 use webxr::utils::socket_flow_messages::BinaryNodeData;

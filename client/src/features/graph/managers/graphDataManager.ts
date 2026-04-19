@@ -17,7 +17,7 @@ const logger = createLogger('GraphDataManager');
 export type { Node, Edge, GraphData, NodeMetadata } from './graphWorkerProxy';
 
 // Alias for backward compatibility
-export type GraphNode = Node;
+export type KGNode = Node;
 
 type GraphDataChangeListener = (data: GraphData) => void;
 type PositionUpdateListener = (positions: Float32Array) => void;

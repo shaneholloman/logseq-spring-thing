@@ -21,10 +21,10 @@
 ## Layer 2 — Data Ingestion
 
 - [ ] GitHub ontology sync kicks off on startup — look for `GithubSyncActor` logs
-- [ ] Logseq pages processed into `GraphNode` rows in Neo4j
+- [ ] Logseq pages processed into `KGNode` rows in Neo4j
 - [ ] OWL ontology assembler → converter → Whelk reasoner pipeline executes
 - [ ] Neo4j node count > 0 after ingestion (query: `MATCH (n) RETURN count(n)`)
-- [ ] `iri_to_id` map populated (logs: `ONT-001: Built iri_to_id map — N GraphNode nodes have owl_class_iri`)
+- [ ] `iri_to_id` map populated (logs: `ONT-001: Built iri_to_id map — N KGNode nodes have owl_class_iri`)
 - [ ] Ontology edges loaded (logs: `Loaded M ontology edges (SUBCLASS_OF + RELATES)`)
 
 ## Layer 3 — Real-time Pipeline

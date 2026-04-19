@@ -3,7 +3,7 @@
 import React, { useState, useCallback } from 'react';
 import { Eye, Zap, TrendingUp, MousePointer2, Download } from 'lucide-react';
 import { useSettingsStore } from '../../../../store/settingsStore';
-import type { GraphNode, GraphEdge } from '@/features/graph/types/graphTypes';
+import type { KGNode, GraphEdge } from '@/features/graph/types/graphTypes';
 import { createLogger } from '../../../../utils/loggerConfig';
 import { isWebGPURenderer, setForceWebGLOverride } from '../../../../rendering/rendererFactory';
 
@@ -52,7 +52,7 @@ interface ExportSettings {
 interface GraphTabProps {
   graphId?: string;
   graphData?: {
-    nodes: GraphNode[];
+    nodes: KGNode[];
     edges: GraphEdge[];
   };
   otherGraphData?: Record<string, unknown>;

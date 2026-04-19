@@ -254,7 +254,7 @@ VisionClaw graph nodes are serialized to Turtle RDF:
 @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
 @prefix dcterms: <http://purl.org/dc/terms/> .
 
-<> a vf:GraphNode ;
+<> a vf:KGNode ;
    vf:nodeId "node-550e8400-e29b-41d4-a716-446655440000"^^xsd:string ;
    vf:label "Example Concept"^^xsd:string ;
    vf:type "concept"^^xsd:string ;

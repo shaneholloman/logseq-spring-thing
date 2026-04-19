@@ -292,7 +292,7 @@ xychart-beta
 
 4. **Optimize Neo4j Indexes**
    ```cypher
-   CREATE INDEX node_id_index FOR (n:GraphNode) ON (n.id);
+   CREATE INDEX node_id_index FOR (n:KGNode) ON (n.id);
    ```
 
 5. **Enable WebSocket Compression**

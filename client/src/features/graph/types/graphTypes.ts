@@ -2,7 +2,7 @@
 
 export type GraphType = 'logseq' | 'visionflow';
 
-export interface GraphNode {
+export interface KGNode {
   id: string;
   label: string;
   position: {
@@ -27,7 +27,7 @@ export interface GraphEdge {
 }
 
 export interface TypedGraphData {
-  nodes: GraphNode[];
+  nodes: KGNode[];
   edges: GraphEdge[];
   graphType: GraphType;
   lastUpdate?: number;

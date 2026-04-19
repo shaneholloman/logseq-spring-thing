@@ -136,7 +136,7 @@ impl NaturalLanguageQueryService {
 Your task is to translate natural language queries into valid Cypher queries.
 
 Guidelines:
-1. Always use GraphNode label for nodes
+1. Always use KGNode label for nodes
 2. Always use EDGE label for relationships
 3. Node properties: id, label, node_type, metadata_id, x, y, z, vx, vy, vz, mass, owl_class_iri
 4. Relationship properties: weight, relation_type, owl_property_iri
@@ -286,23 +286,23 @@ impl QueryPatterns {
         vec![
             (
                 "Show me all person nodes",
-                "MATCH (n:GraphNode {node_type: 'person'}) RETURN n LIMIT 50"
+                "MATCH (n:KGNode {node_type: 'person'}) RETURN n LIMIT 50"
             ),
             (
                 "Find all dependency relationships",
-                "MATCH (a:GraphNode)-[r:EDGE {relation_type: 'dependency'}]->(b:GraphNode) RETURN a, r, b LIMIT 50"
+                "MATCH (a:KGNode)-[r:EDGE {relation_type: 'dependency'}]->(b:KGNode) RETURN a, r, b LIMIT 50"
             ),
             (
                 "What are the direct children of Project X?",
-                "MATCH (p:GraphNode {label: 'Project X'})-[r:EDGE {relation_type: 'hierarchy'}]->(c:GraphNode) RETURN c"
+                "MATCH (p:KGNode {label: 'Project X'})-[r:EDGE {relation_type: 'hierarchy'}]->(c:KGNode) RETURN c"
             ),
             (
                 "Show me the shortest path between Node A and Node B",
-                "MATCH path = shortestPath((a:GraphNode {label: 'Node A'})-[*]-(b:GraphNode {label: 'Node B'})) RETURN path"
+                "MATCH path = shortestPath((a:KGNode {label: 'Node A'})-[*]-(b:KGNode {label: 'Node B'})) RETURN path"
             ),
             (
                 "Find all nodes within 2 hops of Node X",
-                "MATCH (start:GraphNode {label: 'Node X'})-[*1..2]-(connected:GraphNode) RETURN DISTINCT connected LIMIT 100"
+                "MATCH (start:KGNode {label: 'Node X'})-[*1..2]-(connected:KGNode) RETURN DISTINCT connected LIMIT 100"
             ),
         ]
     }
@@ -317,10 +317,10 @@ mod tests {
         let service = create_test_service();
 
         // Valid query
-        assert!(service.validate_cypher("MATCH (n:GraphNode) RETURN n").is_ok());
+        assert!(service.validate_cypher("MATCH (n:KGNode) RETURN n").is_ok());
 
         // Missing RETURN
-        assert!(service.validate_cypher("MATCH (n:GraphNode)").is_err());
+        assert!(service.validate_cypher("MATCH (n:KGNode)").is_err());
 
         // Dangerous operation
         assert!(service.validate_cypher("MATCH (n) DELETE ALL").is_err());
@@ -334,7 +334,7 @@ mod tests {
 Here's the query:
 
 ```cypher
-MATCH (n:GraphNode) RETURN n
+MATCH (n:KGNode) RETURN n
 ```
 
 Explanation: This finds all nodes.
@@ -342,7 +342,7 @@ Explanation: This finds all nodes.
 
         let result = service.extract_cypher_block(response);
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(), "MATCH (n:GraphNode) RETURN n");
+        assert_eq!(result.unwrap(), "MATCH (n:KGNode) RETURN n");
     }
 
     #[test]

@@ -26,7 +26,7 @@ mod tests {
     // Import the validator service
     #[cfg(feature = "ontology")]
     use webxr::services::owl_validator::{
-        GraphEdge, GraphNode, OwlValidatorService, PropertyGraph, RdfTriple, Severity,
+        GraphEdge, KGNode, OwlValidatorService, PropertyGraph, RdfTriple, Severity,
         ValidationConfig, ValidationReport,
     };
 
@@ -128,7 +128,7 @@ Ontology(<http://example.org/test>
 
         let graph = PropertyGraph {
             nodes: vec![
-                GraphNode {
+                KGNode {
                     id: "person1".to_string(),
                     labels: vec!["Person".to_string()],
                     properties: {
@@ -138,7 +138,7 @@ Ontology(<http://example.org/test>
                         props
                     },
                 },
-                GraphNode {
+                KGNode {
                     id: "company1".to_string(),
                     labels: vec!["Company".to_string()],
                     properties: {
@@ -215,7 +215,7 @@ Ontology(<http://example.org/test>
 
         // Create a graph that violates the disjoint classes constraint
         let graph = PropertyGraph {
-            nodes: vec![GraphNode {
+            nodes: vec![KGNode {
                 id: "entity1".to_string(),
                 labels: vec!["Person".to_string(), "Company".to_string()],
                 properties: HashMap::new(),
@@ -258,12 +258,12 @@ Ontology(<http://example.org/test>
         // Create a graph with valid domain/range
         let graph = PropertyGraph {
             nodes: vec![
-                GraphNode {
+                KGNode {
                     id: "org1".to_string(),
                     labels: vec!["Organization".to_string()],
                     properties: HashMap::new(),
                 },
-                GraphNode {
+                KGNode {
                     id: "person1".to_string(),
                     labels: vec!["Person".to_string()],
                     properties: HashMap::new(),
@@ -411,7 +411,7 @@ Ontology(<http://example.org/test>
 
         // Create graph with cardinality violation (multiple SSN values)
         let graph = PropertyGraph {
-            nodes: vec![GraphNode {
+            nodes: vec![KGNode {
                 id: "person1".to_string(),
                 labels: vec!["Person".to_string()],
                 properties: {
@@ -448,7 +448,7 @@ Ontology(<http://example.org/test>
         for (prefixed, expected) in test_cases {
             // Use map_graph_to_rdf to indirectly test IRI expansion
             let graph = PropertyGraph {
-                nodes: vec![GraphNode {
+                nodes: vec![KGNode {
                     id: "test".to_string(),
                     labels: vec![prefixed.to_string()],
                     properties: HashMap::new(),
@@ -472,7 +472,7 @@ Ontology(<http://example.org/test>
         let validator = OwlValidatorService::new();
 
         let graph = PropertyGraph {
-            nodes: vec![GraphNode {
+            nodes: vec![KGNode {
                 id: "test".to_string(),
                 labels: vec!["Thing".to_string()],
                 properties: {
@@ -539,7 +539,7 @@ Ontology(<http://example.org/test>
         let ontology_id = validator.load_ontology(functional_ontology).await.unwrap();
 
         let graph = PropertyGraph {
-            nodes: vec![GraphNode {
+            nodes: vec![KGNode {
                 id: "thing1".to_string(),
                 labels: vec!["Thing".to_string()],
                 properties: HashMap::new(),

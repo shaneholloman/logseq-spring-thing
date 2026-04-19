@@ -3,7 +3,7 @@ import { persist, createJSONStorage } from 'zustand/middleware'
 import { createLogger, createErrorMetadata } from '../../../utils/loggerConfig'
 import { debugState } from '../../../utils/clientDebugState'
 import { produce } from 'immer'
-import type { GraphNode, GraphEdge } from '../../graph/types/graphTypes'
+import type { KGNode, GraphEdge } from '../../graph/types/graphTypes'
 import { unifiedApiClient } from '../../../services/api'
 
 const logger = createLogger('AnalyticsStore')
@@ -50,7 +50,7 @@ interface AnalyticsState {
   
   
   computeSSSP: (
-    nodes: GraphNode[], 
+    nodes: KGNode[], 
     edges: GraphEdge[], 
     sourceNodeId: string,
     algorithm?: 'dijkstra' | 'bellman-ford'
@@ -75,7 +75,7 @@ interface AnalyticsState {
 }
 
 // Hash function for graph structure (safe for non-Latin1 characters)
-function hashGraph(nodes: GraphNode[], edges: GraphEdge[]): string {
+function hashGraph(nodes: KGNode[], edges: GraphEdge[]): string {
   const nodeIds = nodes.map(n => n.id).sort().join(',')
   const edgeIds = edges.map(e => `${e.source}-${e.target}-${e.weight || 1}`).sort().join(',')
   const raw = `${nodeIds}|${edgeIds}`
@@ -149,7 +149,7 @@ class MinHeap {
 }
 
 // Dijkstra's algorithm implementation (O(V log V) with min-heap)
-function dijkstra(nodes: GraphNode[], edges: GraphEdge[], sourceNodeId: string): Omit<SSSPResult, 'timestamp' | 'computationTime' | 'algorithm'> {
+function dijkstra(nodes: KGNode[], edges: GraphEdge[], sourceNodeId: string): Omit<SSSPResult, 'timestamp' | 'computationTime' | 'algorithm'> {
   const distances: Record<string, number> = {}
   const predecessors: Record<string, string | null> = {}
   const visited = new Set<string>()
@@ -214,7 +214,7 @@ function dijkstra(nodes: GraphNode[], edges: GraphEdge[], sourceNodeId: string):
 }
 
 // Bellman-Ford algorithm (handles negative weights)
-function bellmanFord(nodes: GraphNode[], edges: GraphEdge[], sourceNodeId: string): Omit<SSSPResult, 'timestamp' | 'computationTime' | 'algorithm'> {
+function bellmanFord(nodes: KGNode[], edges: GraphEdge[], sourceNodeId: string): Omit<SSSPResult, 'timestamp' | 'computationTime' | 'algorithm'> {
   const distances: Record<string, number> = {}
   const predecessors: Record<string, string | null> = {}
   

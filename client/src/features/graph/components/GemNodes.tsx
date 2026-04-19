@@ -2,7 +2,7 @@ import React, { useRef, useMemo, useCallback, useEffect, forwardRef, useImperati
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import type { GraphVisualMode } from './GraphManager';
-import type { Node as GraphNode } from '../managers/graphDataManager';
+import type { Node as KGNode } from '../managers/graphDataManager';
 import { createGemNodeMaterial, createTslGemMaterial, createGemGeometry } from '../../../rendering/materials/GemNodeMaterial';
 import { createCrystalOrbMaterial, createCrystalOrbGeometry } from '../../../rendering/materials/CrystalOrbMaterial';
 import { createAgentCapsuleMaterial, createAgentCapsuleGeometry } from '../../../rendering/materials/AgentCapsuleMaterial';
@@ -30,7 +30,7 @@ interface SSSPResult {
 }
 
 export interface GemNodesProps {
-  nodes: GraphNode[];
+  nodes: KGNode[];
   edges: Edge[];
   graphMode: GraphVisualMode;
   perNodeVisualModeMap: Map<string, GraphVisualMode>;
@@ -65,7 +65,7 @@ const nextPowerOf2 = (n: number): number => Math.pow(2, Math.ceil(Math.log2(Math
 // Node scaling delegated to shared computeNodeScale (../utils/nodeScaling.ts)
 
 const getDominantMode = (
-  nodes: GraphNode[], global: GraphVisualMode, perNode: Map<string, GraphVisualMode>,
+  nodes: KGNode[], global: GraphVisualMode, perNode: Map<string, GraphVisualMode>,
 ): GraphVisualMode => {
   if (perNode.size === 0) return global;
   const c: Record<string, number> = { knowledge_graph: 0, ontology: 0, agent: 0 };
@@ -228,7 +228,7 @@ const GemNodesInner: React.ForwardRefRenderFunction<GemNodesHandle, GemNodesProp
     }
   }, [dominant, mesh, nodes.length]);
 
-  const computeColor = useCallback((node: GraphNode, mode: GraphVisualMode, nodeIndex?: number): THREE.Color => {
+  const computeColor = useCallback((node: KGNode, mode: GraphVisualMode, nodeIndex?: number): THREE.Color => {
     // Quality gate overrides: color-code by cluster/anomaly/community when enabled.
     // These take precedence over standard mode coloring (but not SSSP highlight).
     const analytics = analyticsRef.current;

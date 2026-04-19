@@ -51,7 +51,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Fixed
 
-- **ONT-001**: Ontology edge gap resolved — `iri_to_id` map now populated from GraphNode `owl_class_iri` fields, restoring 623+ `SUBCLASS_OF` edges that were silently dropped
+- **ONT-001**: Ontology edge gap resolved — `iri_to_id` map now populated from KGNode `owl_class_iri` fields, restoring 623+ `SUBCLASS_OF` edges that were silently dropped
 - **ADR-037**: Binary protocol encoder renamed to `encode_positions_v3()` as canonical single entry point with backward-compat aliases
 - **ADR-038**: Poll-based position updates permanently disabled — push path is sole real-time channel
 

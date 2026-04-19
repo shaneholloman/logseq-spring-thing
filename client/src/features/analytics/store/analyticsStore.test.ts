@@ -1,7 +1,7 @@
 // @ts-ignore - vitest types may not be available in all environments
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
 import { useAnalyticsStore } from './analyticsStore'
-import type { GraphNode, GraphEdge } from '../../graph/types/graphTypes'
+import type { KGNode, GraphEdge } from '../../graph/types/graphTypes'
 
 // Mock the logger and debug utilities
 vi.mock('../../../utils/logger', () => ({
@@ -43,7 +43,7 @@ global.localStorage = {
 } as Storage
 
 describe('AnalyticsStore', () => {
-  const sampleNodes: GraphNode[] = [
+  const sampleNodes: KGNode[] = [
     { id: 'A', label: 'Node A', position: { x: 0, y: 0, z: 0 } },
     { id: 'B', label: 'Node B', position: { x: 1, y: 0, z: 0 } },
     { id: 'C', label: 'Node C', position: { x: 2, y: 0, z: 0 } },
@@ -114,7 +114,7 @@ describe('AnalyticsStore', () => {
     })
 
     it('should handle unreachable nodes', async () => {
-      const isolatedNodes: GraphNode[] = [
+      const isolatedNodes: KGNode[] = [
         ...sampleNodes,
         { id: 'E', label: 'Isolated', position: { x: 5, y: 5, z: 0 } }
       ]
@@ -254,7 +254,7 @@ describe('AnalyticsStore', () => {
 
   describe('Utility Functions', () => {
     it('should identify unreachable nodes', async () => {
-      const isolatedNodes: GraphNode[] = [
+      const isolatedNodes: KGNode[] = [
         ...sampleNodes,
         { id: 'E', label: 'Isolated', position: { x: 5, y: 5, z: 0 } }
       ]

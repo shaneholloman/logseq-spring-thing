@@ -107,7 +107,7 @@ pub struct ValidationStatistics {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct GraphNode {
+pub struct KGNode {
     pub id: String,
     pub labels: Vec<String>,
     pub properties: HashMap<String, serde_json::Value>,
@@ -124,7 +124,7 @@ pub struct GraphEdge {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PropertyGraph {
-    pub nodes: Vec<GraphNode>,
+    pub nodes: Vec<KGNode>,
     pub edges: Vec<GraphEdge>,
     pub metadata: HashMap<String, serde_json::Value>,
 }
@@ -1175,7 +1175,7 @@ mod tests {
 
         
         let graph = PropertyGraph {
-            nodes: vec![GraphNode {
+            nodes: vec![KGNode {
                 id: "person1".to_string(),
                 labels: vec!["Person".to_string()],
                 properties: {

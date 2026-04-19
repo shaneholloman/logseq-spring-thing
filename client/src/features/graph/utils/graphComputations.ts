@@ -6,7 +6,7 @@
  */
 
 import type { GraphVisualMode } from '../hooks/useGraphVisualState';
-import type { Node as GraphNode, Edge } from '../managers/graphDataManager';
+import type { Node as KGNode, Edge } from '../managers/graphDataManager';
 import { computeNodeScale } from './nodeScaling';
 import type { GraphTypeVisualsSettings } from '../../settings/config/settings';
 
@@ -78,7 +78,7 @@ export function computeEdgePositions(
   positions: Float32Array | number[],
   nodeIdToIndexMap: Map<string, number>,
   nodeSize: number,
-  nodes: GraphNode[],
+  nodes: KGNode[],
   connectionCountMap: Map<string, number>,
   graphMode: GraphVisualMode,
   hierarchyMap?: Map<string, any>,
@@ -152,7 +152,7 @@ export function computeEdgePositions(
  * returning a hex string instead of mutating a shared THREE.Color instance.
  */
 export function computeNodeColor(
-  node: GraphNode,
+  node: KGNode,
   graphMode: GraphVisualMode = 'knowledge_graph',
 ): string {
   // Ontology mode
@@ -199,7 +199,7 @@ export interface NodeTypeVisibility {
  * When all toggles are true (or visibility config is null), always returns true.
  */
 export function isNodeVisible(
-  node: GraphNode,
+  node: KGNode,
   visibility: NodeTypeVisibility | null | undefined,
   graphMode: GraphVisualMode = 'knowledge_graph',
   perNodeVisualModeMap?: Map<string, GraphVisualMode>,

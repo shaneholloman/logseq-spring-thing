@@ -37,14 +37,14 @@ mod tests {
 
     #[cfg(feature = "ontology")]
     use webxr::services::owl_validator::{
-        GraphEdge, GraphNode, PropertyGraph, RdfTriple, ValidationConfig,
+        GraphEdge, KGNode, PropertyGraph, RdfTriple, ValidationConfig,
     };
 
     #[cfg(feature = "ontology")]
     fn create_test_graph() -> PropertyGraph {
         PropertyGraph {
             nodes: vec![
-                GraphNode {
+                KGNode {
                     id: "person1".to_string(),
                     labels: vec!["Person".to_string()],
                     properties: {
@@ -54,7 +54,7 @@ mod tests {
                         props
                     },
                 },
-                GraphNode {
+                KGNode {
                     id: "company1".to_string(),
                     labels: vec!["Company".to_string()],
                     properties: {
@@ -390,7 +390,7 @@ Ontology(<http://example.org/test>
         // Perform multiple validations in sequence
         for i in 0..3 {
             let mut graph = create_test_graph();
-            graph.nodes.push(GraphNode {
+            graph.nodes.push(KGNode {
                 id: format!("extra_node_{}", i),
                 labels: vec!["Thing".to_string()],
                 properties: HashMap::new(),
@@ -467,7 +467,7 @@ Ontology(<http://example.org/test>
 
             let future = async move {
                 let mut graph = create_test_graph();
-                graph.nodes.push(GraphNode {
+                graph.nodes.push(KGNode {
                     id: format!("node_{}", i),
                     labels: vec!["Thing".to_string()],
                     properties: HashMap::new(),

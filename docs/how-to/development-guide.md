@@ -527,7 +527,7 @@ Use `rename_all` to bridge Rust snake_case to TypeScript camelCase:
 ```rust
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct GraphNode {
+pub struct KGNode {
     pub node_id: String,           // serialises as "nodeId"
     pub label: String,
     pub owl_class_iri: Option<String>, // serialises as "owlClassIri"

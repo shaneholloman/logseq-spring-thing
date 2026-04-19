@@ -367,17 +367,17 @@ fn actor_timeout() -> StdDuration {
 }
 
 async fn extract_property_graph(state: &AppState) -> Result<PropertyGraph, ErrorResponse> {
-    use crate::services::owl_validator::{GraphNode, GraphEdge};
+    use crate::services::owl_validator::{KGNode, GraphEdge};
 
     match state.ontology_repository.load_ontology_graph().await {
         Ok(graph_data) => {
-            let nodes: Vec<GraphNode> = graph_data.nodes.iter().map(|n| {
+            let nodes: Vec<KGNode> = graph_data.nodes.iter().map(|n| {
                 let mut properties = HashMap::new();
                 properties.insert("label".to_string(), serde_json::json!(n.label));
                 if let Some(ref iri) = n.owl_class_iri {
                     properties.insert("owl_class_iri".to_string(), serde_json::json!(iri));
                 }
-                GraphNode {
+                KGNode {
                     id: n.metadata_id.clone(),
                     labels: vec![n.label.clone()],
                     properties,

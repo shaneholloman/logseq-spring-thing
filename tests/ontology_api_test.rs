@@ -16,13 +16,13 @@ mod integration_tests {
     use webxr::handlers::ontology_handler::config as ontology_config;
 
     #[cfg(feature = "ontology")]
-    use webxr::services::owl_validator::{GraphEdge, GraphNode, PropertyGraph};
+    use webxr::services::owl_validator::{GraphEdge, KGNode, PropertyGraph};
 
     #[cfg(feature = "ontology")]
     fn create_test_graph() -> PropertyGraph {
         PropertyGraph {
             nodes: vec![
-                GraphNode {
+                KGNode {
                     id: "person1".to_string(),
                     labels: vec!["Person".to_string()],
                     properties: {
@@ -32,7 +32,7 @@ mod integration_tests {
                         props
                     },
                 },
-                GraphNode {
+                KGNode {
                     id: "company1".to_string(),
                     labels: vec!["Company".to_string()],
                     properties: {

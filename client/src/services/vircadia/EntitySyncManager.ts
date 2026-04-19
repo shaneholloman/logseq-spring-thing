@@ -1,7 +1,7 @@
 
 
 import { ClientCore, QueryResult } from './VircadiaClientCore';
-import { GraphEntityMapper, GraphData, GraphNode, GraphEdge, VircadiaEntity } from './GraphEntityMapper';
+import { GraphEntityMapper, GraphData, KGNode, GraphEdge, VircadiaEntity } from './GraphEntityMapper';
 import { createLogger } from '../../utils/loggerConfig';
 
 const logger = createLogger('EntitySyncManager');

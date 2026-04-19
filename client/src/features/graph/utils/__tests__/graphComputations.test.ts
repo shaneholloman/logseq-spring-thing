@@ -14,17 +14,17 @@ import {
   type NodeTypeVisibility,
 } from '../graphComputations';
 import { computeNodeScale } from '../nodeScaling';
-import type { Node as GraphNode, Edge } from '../../managers/graphDataManager';
+import type { Node as KGNode, Edge } from '../../managers/graphDataManager';
 import type { GraphVisualMode } from '../../hooks/useGraphVisualState';
 
 // Helper to create a minimal node
-function makeNode(id: string, opts: Partial<GraphNode> = {}): GraphNode {
+function makeNode(id: string, opts: Partial<KGNode> = {}): KGNode {
   return {
     id,
     label: opts.label || `Node ${id}`,
     position: opts.position || { x: 0, y: 0, z: 0 },
     metadata: opts.metadata,
-  } as GraphNode;
+  } as KGNode;
 }
 
 // Helper to create a minimal edge

@@ -87,7 +87,7 @@ Find nodes within 3 hops of node #42:
 curl -X POST http://localhost:8080/api/query/cypher \
   -H "Content-Type: application/json" \
   -d '{
-    "query": "MATCH (n:GraphNode {id: $id})-[:EDGE*1..3]-(m) RETURN m.label",
+    "query": "MATCH (n:KGNode {id: $id})-[:EDGE*1..3]-(m) RETURN m.label",
     "parameters": {"id": 42},
     "limit": 10
   }'
@@ -98,14 +98,14 @@ curl -X POST http://localhost:8080/api/query/cypher \
 Find all nodes of a specific ontology class:
 
 ```cypher
-MATCH (n:GraphNode {owl-class-iri: "http://example.org/Class"})
+MATCH (n:KGNode {owl-class-iri: "http://example.org/Class"})
 RETURN n.id, n.label
 ```
 
 ### Graph Hubs (Most Connected Nodes)
 
 ```cypher
-MATCH (n:GraphNode)-[r:EDGE]-()
+MATCH (n:KGNode)-[r:EDGE]-()
 WITH n, count(r) AS degree
 ORDER BY degree DESC
 LIMIT 10
@@ -182,7 +182,7 @@ const response = await fetch('/api/query/cypher', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({
-    query: "MATCH (n:GraphNode {id: $id})-[:EDGE*1..3]-(m) RETURN m",
+    query: "MATCH (n:KGNode {id: $id})-[:EDGE*1..3]-(m) RETURN m",
     parameters: { id: nodeId },
     limit: 100,
     timeout: 30

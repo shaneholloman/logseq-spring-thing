@@ -3,7 +3,7 @@ import { useThree, useFrame, ThreeEvent } from '@react-three/fiber'
 // Text, Billboard, Html removed — InstancedLabels handles all label rendering
 import * as THREE from 'three'
 import { isWebGPURenderer } from '../../../rendering/rendererFactory'
-import { graphDataManager, type GraphData, type Node as GraphNode } from '../managers/graphDataManager'
+import { graphDataManager, type GraphData, type Node as KGNode } from '../managers/graphDataManager'
 import { graphWorkerProxy } from '../managers/graphWorkerProxy'
 import { usePlatformStore } from '../../../services/platformManager'
 import { createLogger } from '../../../utils/loggerConfig'
@@ -109,7 +109,7 @@ const AGENT_TYPE_COLORS: Record<string, THREE.Color> = {
 // copies of these helpers to avoid circular imports.
 
 // Enhanced position calculation with better distribution
-const getPositionForNode = (node: GraphNode, index: number, totalNodes: number): [number, number, number] => {
+const getPositionForNode = (node: KGNode, index: number, totalNodes: number): [number, number, number] => {
   if (!node.position || (node.position.x === 0 && node.position.y === 0 && node.position.z === 0)) {
     
     const goldenAngle = Math.PI * (3 - Math.sqrt(5))
@@ -156,7 +156,7 @@ const TYPE_THREE_COLORS: Record<string, THREE.Color> = {
 // === MODE-AWARE NODE COLOR ===
 // Returns the shared _nodeColor instance -- caller must use values before next call
 const getNodeColor = (
-  node: GraphNode,
+  node: KGNode,
   ssspResult?: any,
   graphMode: GraphVisualMode = 'knowledge_graph',
   hierarchyMap?: Map<string, any>,
@@ -1141,7 +1141,7 @@ const GraphManager: React.FC<GraphManagerProps> = ({ onDragStateChange }) => {
     const handleSearch = (event: Event) => {
       const { query, nodeId } = (event as CustomEvent).detail || {};
 
-      let targetNode: GraphNode | undefined;
+      let targetNode: KGNode | undefined;
 
       // Direct node ID navigation (from neighbor click)
       if (nodeId) {

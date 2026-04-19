@@ -80,7 +80,7 @@ pub struct ExplainCypherResponse {
 /// {
 ///   "translations": [{
 ///     "originalQuery": "Show me all person nodes connected to Project X",
-///     "cypherQuery": "MATCH (p:GraphNode {node_type: 'person'})-[r:EDGE]-(x:GraphNode {label: 'Project X'}) RETURN p, r",
+///     "cypherQuery": "MATCH (p:KGNode {node_type: 'person'})-[r:EDGE]-(x:KGNode {label: 'Project X'}) RETURN p, r",
 ///     "explanation": "Finds all person nodes connected to Project X",
 ///     "confidence": 0.85,
 ///     "warnings": []
@@ -128,7 +128,7 @@ pub async fn translate_query(
 ///   "examples": [
 ///     {
 ///       "description": "Show me all person nodes",
-///       "cypher": "MATCH (n:GraphNode {node_type: 'person'}) RETURN n LIMIT 50"
+///       "cypher": "MATCH (n:KGNode {node_type: 'person'}) RETURN n LIMIT 50"
 ///     }
 ///   ]
 /// }
@@ -154,13 +154,13 @@ pub async fn get_examples() -> Result<HttpResponse, actix_web::Error> {
 /// # Request Body
 /// ```json
 /// {
-///   "cypher": "MATCH (n:GraphNode)-[r:EDGE*1..3]-(m:GraphNode) RETURN n, m LIMIT 10"
+///   "cypher": "MATCH (n:KGNode)-[r:EDGE*1..3]-(m:KGNode) RETURN n, m LIMIT 10"
 /// }
 /// ```
 /// # Response
 /// ```json
 /// {
-///   "cypher": "MATCH (n:GraphNode)-[r:EDGE*1..3]-(m:GraphNode) RETURN n, m LIMIT 10",
+///   "cypher": "MATCH (n:KGNode)-[r:EDGE*1..3]-(m:KGNode) RETURN n, m LIMIT 10",
 ///   "explanation": "This query finds pairs of nodes that are connected by 1 to 3 relationships..."
 /// }
 /// ```
@@ -195,7 +195,7 @@ pub async fn explain_cypher(
 /// # Request Body
 /// ```json
 /// {
-///   "cypher": "MATCH (n:GraphNode) RETURN n"
+///   "cypher": "MATCH (n:KGNode) RETURN n"
 /// }
 /// ```
 /// # Response

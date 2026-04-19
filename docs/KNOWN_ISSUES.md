@@ -18,11 +18,11 @@ This file tracks active production issues and design limitations in VisionClaw. 
 **Status**: Fixed (2026-04-14)
 **Impact**: Was: 623 `SUBCLASS_OF` relationships excluded from client graph. 62% of ontology nodes appeared visually isolated.
 
-**Root Cause**: `iri_to_id` map in `neo4j_adapter.rs` was never populated from GraphNode nodes. The map was declared empty, and the only population code was in a dead OwlClass fallback path (unreachable after an early return). The ontology edge bridge at line 735 (`if !iri_to_id.is_empty()`) never executed.
+**Root Cause**: `iri_to_id` map in `neo4j_adapter.rs` was never populated from KGNode nodes. The map was declared empty, and the only population code was in a dead OwlClass fallback path (unreachable after an early return). The ontology edge bridge at line 735 (`if !iri_to_id.is_empty()`) never executed.
 
-**Fix**: Added `iri_to_id` population loop after GraphNode loading, iterating loaded nodes and inserting `owl_class_iri → node.id` mappings. Removed 80 lines of dead OwlClass fallback code. The ontology edge bridge now executes and maps `SUBCLASS_OF` + `RELATES` relationships between `OwlClass` nodes into numeric `GraphNode` IDs.
+**Fix**: Added `iri_to_id` population loop after KGNode loading, iterating loaded nodes and inserting `owl_class_iri → node.id` mappings. Removed 80 lines of dead OwlClass fallback code. The ontology edge bridge now executes and maps `SUBCLASS_OF` + `RELATES` relationships between `OwlClass` nodes into numeric `KGNode` IDs.
 
-**Verification**: After rebuild, `info!` log will show "ONT-001: Built iri_to_id map — N GraphNode nodes have owl_class_iri" followed by "Loaded M ontology edges (SUBCLASS_OF + RELATES)".
+**Verification**: After rebuild, `info!` log will show "ONT-001: Built iri_to_id map — N KGNode nodes have owl_class_iri" followed by "Loaded M ontology edges (SUBCLASS_OF + RELATES)".
 
 ---
 

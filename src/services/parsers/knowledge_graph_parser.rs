@@ -107,7 +107,7 @@ impl KnowledgeGraphParser {
         // them into node metadata so they reach Neo4j. Previously these were
         // parsed into a local HashMap in extract_metadata_store() but discarded
         // before returning, leaving source_domain/term-id/owl:class NULL on
-        // every GraphNode in the graph.
+        // every KGNode in the graph.
         //
         // Lowercase `source-domain` / `domain` values so the downstream domain
         // filter (`graph_types.rs::classify_node_population` and

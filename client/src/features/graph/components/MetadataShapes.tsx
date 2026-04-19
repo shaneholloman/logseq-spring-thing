@@ -2,7 +2,7 @@
 import React, { useRef, useMemo, useEffect } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
-import { type Node as GraphNode } from '../managers/graphDataManager';
+import { type Node as KGNode } from '../managers/graphDataManager';
 import { isWebGPURenderer } from '../../../rendering/rendererFactory';
 import type { GraphVisualMode } from './GraphManager';
 import { createLogger } from '../../../utils/loggerConfig';
@@ -32,7 +32,7 @@ const AGENT_STATUS_COLORS_MD: Record<string, THREE.Color> = {
 
 // --- 1. Define Visual Metaphor Logic (mode-aware) ---
 const getVisualsForNode = (
-  node: GraphNode,
+  node: KGNode,
   settingsBaseColor?: string,
   ssspResult?: Record<string, unknown>,
   graphMode: GraphVisualMode = 'knowledge_graph',
@@ -363,10 +363,10 @@ interface HierarchyNodeLike {
 }
 
 interface MetadataShapesProps {
-  nodes: GraphNode[];
+  nodes: KGNode[];
   nodePositions: Float32Array | null;
   onNodeClick?: (nodeId: string, event: THREE.Event) => void;
-  onNodeDoubleClick?: (nodeId: string, node: GraphNode, event: THREE.Event) => void;
+  onNodeDoubleClick?: (nodeId: string, node: KGNode, event: THREE.Event) => void;
   settings: Record<string, unknown> | undefined;
   ssspResult?: Record<string, unknown>;
   graphMode?: GraphVisualMode;
@@ -393,7 +393,7 @@ export const MetadataShapes: React.FC<MetadataShapesProps> = ({
 
   // Group nodes by geometry type (mode-aware)
   const nodeGroups = useMemo(() => {
-    const groups = new Map<string, { nodes: GraphNode[], originalIndices: number[] }>();
+    const groups = new Map<string, { nodes: KGNode[], originalIndices: number[] }>();
     const vis3 = settings?.visualisation as Record<string, unknown> | undefined;
     const graphs3 = vis3?.graphs as Record<string, Record<string, unknown>> | undefined;
     const ns = graphs3?.logseq?.nodes as Record<string, unknown> | undefined ?? vis3?.nodes as Record<string, unknown> | undefined;

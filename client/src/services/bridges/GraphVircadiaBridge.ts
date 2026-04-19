@@ -9,7 +9,7 @@ import { createLogger } from '../../utils/loggerConfig';
 
 const logger = createLogger('GraphVircadiaBridge');
 
-export interface GraphNode {
+export interface KGNode {
   id: string;
   label: string;
   position: { x: number; y: number; z: number };
@@ -89,7 +89,7 @@ export class GraphVircadiaBridge {
   }
 
 
-  syncGraphToVircadia(nodes: GraphNode[], edges: GraphEdge[]): void {
+  syncGraphToVircadia(nodes: KGNode[], edges: GraphEdge[]): void {
     if (!this.isActive) return;
 
     try {
@@ -110,7 +110,7 @@ export class GraphVircadiaBridge {
   }
 
 
-  private syncNodeToEntity(node: GraphNode): void {
+  private syncNodeToEntity(node: KGNode): void {
     const entityName = `node_${node.id}`;
     this.nodeEntityMap.set(node.id, entityName);
     this.nodePositionMap.set(node.id, node.position);
@@ -120,7 +120,7 @@ export class GraphVircadiaBridge {
       return;
     }
 
-    // Map bridge GraphNode to mapper GraphNode format and create entity
+    // Map bridge KGNode to mapper KGNode format and create entity
     const mapperNode = {
       id: node.id,
       label: node.label,

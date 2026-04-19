@@ -205,7 +205,7 @@ Populated from `### OntologyBlock` sections in Logseq markdown files (all files,
 
 #### Edge types in this context
 
-There are **623 `SUBCLASS_OF` relationships** among `OwlClass` nodes. These were historically excluded from the client graph, leaving 62 % of ontology nodes isolated. The fix maps `OwlClass` → `GraphNode` via label matching.
+There are **623 `SUBCLASS_OF` relationships** among `OwlClass` nodes. These were historically excluded from the client graph, leaving 62 % of ontology nodes isolated. The fix maps `OwlClass` → `KGNode` via label matching.
 
 ```cypher
 (:OwlClass)-[:SUBCLASS_OF]->(:OwlClass)
@@ -715,8 +715,8 @@ ForceComputeActor (GPU)
 ### Unique Constraints
 
 ```cypher
-CREATE CONSTRAINT graph_node_id IF NOT EXISTS
-  FOR (n:Node) REQUIRE n.id IS UNIQUE;
+CREATE CONSTRAINT kg_node_id IF NOT EXISTS
+  FOR (n:KGNode) REQUIRE n.id IS UNIQUE;
 
 CREATE CONSTRAINT user_pubkey_unique IF NOT EXISTS
   FOR (u:User) REQUIRE u.pubkey IS UNIQUE;

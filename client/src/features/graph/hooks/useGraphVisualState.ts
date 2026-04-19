@@ -17,7 +17,7 @@ import { useWebSocketStore } from '../../../store/websocketStore';
 import { NodeType } from '../../../types/binaryProtocol';
 import { detectHierarchy, type HierarchyNode } from '../utils/hierarchyDetector';
 import { createLogger } from '../../../utils/loggerConfig';
-import type { GraphData, Node as GraphNode } from '../managers/graphDataManager';
+import type { GraphData, Node as KGNode } from '../managers/graphDataManager';
 
 const logger = createLogger('useGraphVisualState');
 
@@ -29,7 +29,7 @@ export type GraphVisualMode = 'knowledge_graph' | 'ontology' | 'agent';
 // ---------------------------------------------------------------------------
 
 /** Detect the dominant graph visual mode from node population (sampled for perf) */
-const detectGraphMode = (nodes: GraphNode[]): GraphVisualMode => {
+const detectGraphMode = (nodes: KGNode[]): GraphVisualMode => {
   if (nodes.length === 0) return 'knowledge_graph';
   const sample = nodes.length > 50 ? nodes.slice(0, 50) : nodes;
   let ontologySignals = 0;

@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { analyticsAPI, AnalysisTask, GPUPerformanceStats, VisualAnalyticsParams } from '../api/analyticsApi';
 import { createLogger } from '../utils/loggerConfig';
 import { createErrorMetadata } from '../utils/loggerConfig';
-import type { GraphNode, GraphEdge } from '../features/graph/types/graphTypes';
+import type { KGNode, GraphEdge } from '../features/graph/types/graphTypes';
 
 const logger = createLogger('useAnalytics');
 
@@ -46,7 +46,7 @@ export interface UseAnalyticsOptions {
 export interface AnalysisRequest {
   type: 'structural' | 'semantic' | 'clustering' | 'anomaly';
   graphData: {
-    nodes: GraphNode[];
+    nodes: KGNode[];
     edges: GraphEdge[];
   };
   options?: any;

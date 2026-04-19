@@ -5,7 +5,7 @@ import { createLogger } from '../../utils/loggerConfig';
 const logger = createLogger('GraphEntityMapper');
 
 // VisionFlow graph types
-export interface GraphNode {
+export interface KGNode {
     id: string;
     label: string;
     type?: string;
@@ -28,7 +28,7 @@ export interface GraphEdge {
 }
 
 export interface GraphData {
-    nodes: GraphNode[];
+    nodes: KGNode[];
     edges: GraphEdge[];
 }
 
@@ -74,7 +74,7 @@ export class GraphEntityMapper {
     }
 
     
-    mapNodeToEntity(node: GraphNode): VircadiaEntity {
+    mapNodeToEntity(node: KGNode): VircadiaEntity {
         const entityName = `node_${node.id}`;
 
         
@@ -239,13 +239,13 @@ DO UPDATE SET
     }
 
     
-    static entityToGraphNode(entity: VircadiaEntity): GraphNode | null {
+    static entityToKGNode(entity: VircadiaEntity): KGNode | null {
         const metadata = GraphEntityMapper.extractMetadata(entity);
         if (!metadata || metadata.entityType !== 'node') {
             return null;
         }
 
-        const node: GraphNode = {
+        const node: KGNode = {
             id: metadata.graphId,
             label: metadata.label || metadata.graphId,
             type: (metadata.visualProperties?.type as string) || 'default',
@@ -282,11 +282,11 @@ DO UPDATE SET
 
     
     static entitiesToGraph(entities: VircadiaEntity[]): GraphData {
-        const nodes: GraphNode[] = [];
+        const nodes: KGNode[] = [];
         const edges: GraphEdge[] = [];
 
         entities.forEach(entity => {
-            const node = GraphEntityMapper.entityToGraphNode(entity);
+            const node = GraphEntityMapper.entityToKGNode(entity);
             if (node) {
                 nodes.push(node);
                 return;

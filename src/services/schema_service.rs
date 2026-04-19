@@ -89,11 +89,11 @@ impl GraphSchema {
         context.push_str("## Sample Cypher Queries\n");
         context.push_str("```cypher\n");
         context.push_str("// Find all nodes of a specific type\n");
-        context.push_str("MATCH (n:GraphNode {node_type: 'person'}) RETURN n\n\n");
+        context.push_str("MATCH (n:KGNode {node_type: 'person'}) RETURN n\n\n");
         context.push_str("// Find relationships of a specific type\n");
         context.push_str("MATCH (a)-[r:EDGE {relation_type: 'dependency'}]->(b) RETURN a, r, b\n\n");
         context.push_str("// Find paths between nodes\n");
-        context.push_str("MATCH path = (a:GraphNode)-[*1..3]->(b:GraphNode) WHERE a.label = 'Start' AND b.label = 'End' RETURN path\n");
+        context.push_str("MATCH path = (a:KGNode)-[*1..3]->(b:KGNode) WHERE a.label = 'Start' AND b.label = 'End' RETURN path\n");
         context.push_str("```\n");
 
         context

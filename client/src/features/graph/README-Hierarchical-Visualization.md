@@ -209,7 +209,7 @@ GET /api/ontology/hierarchy
 ### Graph Node Metadata
 Nodes should include class information:
 ```typescript
-interface GraphNode {
+interface KGNode {
   id: string;
   label: string;
   position: { x: number; y: number; z: number };

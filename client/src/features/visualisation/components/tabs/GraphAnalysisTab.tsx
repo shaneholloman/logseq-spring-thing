@@ -31,12 +31,12 @@ import { Separator } from '@/features/design-system/components/Separator';
 import { toast } from '@/features/design-system/components/Toast';
 import { ShortestPathControls } from '@/features/analytics/components/ShortestPathControls';
 import { useAnalytics } from '@/hooks/useAnalytics';
-import type { GraphNode, GraphEdge } from '@/features/graph/types/graphTypes';
+import type { KGNode, GraphEdge } from '@/features/graph/types/graphTypes';
 
 interface GraphAnalysisTabProps {
   graphId?: string;
   graphData?: {
-    nodes: GraphNode[];
+    nodes: KGNode[];
     edges: GraphEdge[];
   };
   otherGraphData?: any;

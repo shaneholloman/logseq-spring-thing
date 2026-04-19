@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { GraphNode } from '../managers/graphDataManager';
+import { KGNode } from '../managers/graphDataManager';
 import { ClassNode } from '../../ontology/store/useOntologyStore';
 
 /**
@@ -22,12 +22,12 @@ export interface ClassGroupNode {
  * Group nodes by their class hierarchy
  */
 export const groupNodesByClass = (
-  nodes: GraphNode[],
+  nodes: KGNode[],
   classHierarchy: Map<string, ClassNode>,
   expandedClasses: Set<string>
 ): ClassGroupNode[] => {
   const groups: ClassGroupNode[] = [];
-  const classNodeMap = new Map<string, GraphNode[]>();
+  const classNodeMap = new Map<string, KGNode[]>();
 
   // Group nodes by their class IRI
   nodes.forEach(node => {
@@ -161,10 +161,10 @@ export const renderCollapsedClass = (
  * Filter visible nodes based on semantic zoom level
  */
 export const filterNodesByZoomLevel = (
-  nodes: GraphNode[],
+  nodes: KGNode[],
   semanticZoomLevel: number,
   classHierarchy: Map<string, ClassNode>
-): GraphNode[] => {
+): KGNode[] => {
   if (semanticZoomLevel === 0) return nodes; // Show all
 
   return nodes.filter(node => {
@@ -185,7 +185,7 @@ export const filterNodesByZoomLevel = (
 /**
  * Calculate bounding box for a group of nodes
  */
-export const calculateGroupBoundingBox = (nodes: GraphNode[]): THREE.Box3 => {
+export const calculateGroupBoundingBox = (nodes: KGNode[]): THREE.Box3 => {
   const box = new THREE.Box3();
 
   nodes.forEach(node => {
@@ -203,8 +203,8 @@ export const calculateGroupBoundingBox = (nodes: GraphNode[]): THREE.Box3 => {
  * Highlight nodes of the same class
  */
 export const highlightSameClass = (
-  targetNode: GraphNode,
-  allNodes: GraphNode[]
+  targetNode: KGNode,
+  allNodes: KGNode[]
 ): string[] => {
   const classIri = targetNode.metadata?.classIri;
   if (!classIri) return [targetNode.id];

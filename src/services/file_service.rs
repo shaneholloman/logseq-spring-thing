@@ -1217,7 +1217,7 @@ impl FileService {
             params.insert("current_ids".to_string(), BoltType::from(id_list));
 
             match neo4j_adapter.execute_cypher_safe(
-                "MATCH (n:GraphNode)
+                "MATCH (n:KGNode)
                  WHERE n.metadata_id IS NOT NULL
                    AND NOT n.metadata_id IN $current_ids
                  WITH n, n.metadata_id AS mid

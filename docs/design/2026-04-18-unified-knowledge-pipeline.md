@@ -15,7 +15,7 @@ precedes: docs/audits/2026-04-18-logseq-ontology-audit/00-master.md
 
 This design replaces the current accreted pipeline with a coherent one built around four principles:
 
-1. **Unified page-as-class** — every page is simultaneously a Logseq page, a Neo4j GraphNode, and an OWL class. No more "this node has ontology, that node doesn't."
+1. **Unified page-as-class** — every page is simultaneously a Logseq page, a Neo4j KGNode, and an OWL class. No more "this node has ontology, that node doesn't."
 2. **Domain registry as data** — domains, colours, IRI prefixes, and physics weights live in one YAML file. Adding a domain is editing data, not shipping code.
 3. **Every relationship is a force** — the 8 orphan relationship types (`has-part`, `requires`, `enables`, etc.) become first-class GPU forces with per-relationship tunable magnitude.
 4. **Boundary validation with loud telemetry** — ingestion logs every rejection with reason. Dashboards surface coverage health. Silent failure becomes a build-failing test.
@@ -119,8 +119,8 @@ Three visibility states drive a clear lifecycle:
 | visibility | Ingested as | Physics | Discovery |
 |---|---|---|---|
 | `private` | FileMetadata only | — | Invisible to graph |
-| `review` | GraphNode with `kind: draft` | Reduced force weights | Shown in "Review Inbox" panel; visually dimmed |
-| `public` | Full GraphNode + OWL class | Full weights | First-class visible node |
+| `review` | KGNode with `kind: draft` | Reduced force weights | Shown in "Review Inbox" panel; visually dimmed |
+| `public` | Full KGNode + OWL class | Full weights | First-class visible node |
 
 The transition `private → review → public` becomes an explicit promotion gesture (broker UI action, agent proposal, or frontmatter edit). 1,028 journal entries stay private. The 272 unflagged workingGraph pages become `review` candidates.
 
@@ -151,13 +151,13 @@ Each stage has a **single responsibility** and logs to a structured report:
 
 **Stage 1 — Parse.** Read markdown. Extract frontmatter + body + wikilinks + OWL blocks. Output: one `RawPage` struct per file. Zero validation here. Any parse error is reported with filename and line.
 
-**Stage 2 — Validate.** Check required frontmatter fields. Check values against `config/domains.yaml`. Downcase domain. Tag page as `valid`, `valid-with-warnings`, or `rejected`. Rejected pages still produce a `FileMetadata` row (for tracking) but no GraphNode. **Every rejection is logged with exact reason.**
+**Stage 2 — Validate.** Check required frontmatter fields. Check values against `config/domains.yaml`. Downcase domain. Tag page as `valid`, `valid-with-warnings`, or `rejected`. Rejected pages still produce a `FileMetadata` row (for tracking) but no KGNode. **Every rejection is logged with exact reason.**
 
 **Stage 3 — Canonicalise.** Derive canonical IRI from frontmatter or rule. Resolve aliases against the known alias-index. Normalise wikilinks — `[[Agent]]` becomes `vc:mv/agent` (or the first matching alias). Detect IRI collisions (two files producing the same IRI) and log loudly.
 
 **Stage 4 — Resolve.** Check every wikilink and OWL axiom reference against the canonical IRI set. Unresolved references go into `unresolved_refs.log` with source page, target, line. Don't silently drop them — they become "ghost" nodes (stub placeholder with `kind: ghost`) so they're visible in the graph and the owner can see what's missing.
 
-**Stage 5 — Materialise.** Write to Neo4j: `GraphNode`, `OwlClass`, and the `EXTRACTED_FROM` edge linking GraphNode to its FileMetadata source. Write edges: `WIKILINK`, `SUBCLASS_OF`, `DISJOINT_WITH`, `EQUIVALENT_TO`, `HAS_PART`, `IS_PART_OF`, `REQUIRES`, `DEPENDS_ON`, `ENABLES`, `RELATES_TO`, `BRIDGES_TO`.
+**Stage 5 — Materialise.** Write to Neo4j: `KGNode`, `OwlClass`, and the `EXTRACTED_FROM` edge linking KGNode to its FileMetadata source. Write edges: `WIKILINK`, `SUBCLASS_OF`, `DISJOINT_WITH`, `EQUIVALENT_TO`, `HAS_PART`, `IS_PART_OF`, `REQUIRES`, `DEPENDS_ON`, `ENABLES`, `RELATES_TO`, `BRIDGES_TO`.
 
 ### 2.2 Kill the empty MetadataStore bug
 
@@ -313,7 +313,7 @@ At that point the question becomes "what are good weights for a balanced multi-f
 
 - [ ] Write `config/domains.yaml` with the 6 known domains + `uncategorised`
 - [ ] Implement `canonical_iri(page) -> String`
-- [ ] Migrate existing GraphNodes to carry the canonical IRI
+- [ ] Migrate existing KGNodes to carry the canonical IRI
 - [ ] Rewrite `ontology_enrichment_service` around the registry
 
 ### Phase 3 — Frontmatter schema v2 + validation (1-2 weeks)
@@ -353,9 +353,9 @@ A redesign earns its keep by moving measurable numbers:
 
 | Metric | Current | Target after Phase 1-2 | Target after Phase 4 |
 |---|---:|---:|---:|
-| Source pages → GraphNodes | 67% | 100% (minus journals-by-design) | 100% |
-| GraphNodes with `owl_class_iri` | 69% | 100% | 100% |
-| GraphNodes with populated `source_domain` | 0% | 100% | 100% |
+| Source pages → KGNodes | 67% | 100% (minus journals-by-design) | 100% |
+| KGNodes with `owl_class_iri` | 69% | 100% | 100% |
+| KGNodes with populated `source_domain` | 0% | 100% | 100% |
 | Unresolved wikilinks | ~25% | Logged, not silent | <5% (with ghost nodes) |
 | Parsed axioms producing GPU forces | ~25% | 50% | 95%+ |
 | OWL axiom types end-to-end | 3 | 3 | 11 |

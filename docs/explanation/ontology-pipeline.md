@@ -130,12 +130,12 @@ The parser recognises the OWL 2 EL subset: SubClassOf, EquivalentClasses, Disjoi
 
 ### Neo4j as primary graph store
 
-Neo4j (v5.15 community) is the **primary and sole graph store** (migration from SQLite completed November 2025). All nodes and relationships are stored as Neo4j `GraphNode` nodes with `EDGE` relationships.
+Neo4j (v5.15 community) is the **primary and sole graph store** (migration from SQLite completed November 2025). All nodes and relationships are stored as Neo4j `KGNode` nodes with `EDGE` relationships.
 
 ### Node schema
 
 ```cypher
-(:GraphNode {
+(:KGNode {
   id: Integer,              // Sequential u32 from NEXT_NODE_ID atomic counter
   metadata_id: String,      // File path or IRI
   label: String,
@@ -157,9 +157,9 @@ Neo4j (v5.15 community) is the **primary and sole graph store** (migration from 
 ### Indexes and constraints
 
 ```cypher
-CREATE CONSTRAINT graph_node_id IF NOT EXISTS FOR (n:GraphNode) REQUIRE n.id IS UNIQUE
-CREATE INDEX graph_node_metadata_id IF NOT EXISTS FOR (n:GraphNode) ON (n.metadata_id)
-CREATE INDEX graph_node_owl_class IF NOT EXISTS FOR (n:GraphNode) ON (n.owl_class_iri)
+CREATE CONSTRAINT kg_node_id IF NOT EXISTS FOR (n:KGNode) REQUIRE n.id IS UNIQUE
+CREATE INDEX kg_node_metadata_id IF NOT EXISTS FOR (n:KGNode) ON (n.metadata_id)
+CREATE INDEX kg_node_owl_class IF NOT EXISTS FOR (n:KGNode) ON (n.owl_class_iri)
 ```
 
 ### Edge types created by the ontology pipeline
@@ -176,7 +176,7 @@ CREATE INDEX graph_node_owl_class IF NOT EXISTS FOR (n:GraphNode) ON (n.owl_clas
 
 ### The 623 SUBCLASS_OF relationships
 
-There are 623 `SUBCLASS_OF` relationships originating from `OwlClass` nodes in Neo4j. These require **label matching** to link `OwlClass` nodes to the corresponding `GraphNode` entries. Without this mapping, the client graph receives isolated OwlClass nodes — see the **Ontology Edge Gap** section below.
+There are 623 `SUBCLASS_OF` relationships originating from `OwlClass` nodes in Neo4j. These require **label matching** to link `OwlClass` nodes to the corresponding `KGNode` entries. Without this mapping, the client graph receives isolated OwlClass nodes — see the **Ontology Edge Gap** section below.
 
 ### Namespace edge generation
 
@@ -367,15 +367,15 @@ Memory footprint: 10K nodes = 640 KB, 1K constraints = 64 KB.
 
 ```cypher
 -- Find all subclasses of a given class (including inferred)
-MATCH (n:GraphNode {owl_class_iri: $iri})<-[:SUBCLASS_OF*]-(child)
+MATCH (n:KGNode {owl_class_iri: $iri})<-[:SUBCLASS_OF*]-(child)
 RETURN child.label, child.id
 
 -- Find nodes by OWL class
-MATCH (n:GraphNode {owl_class_iri: $iri})
+MATCH (n:KGNode {owl_class_iri: $iri})
 RETURN n.id, n.label, n.metadata
 
 -- Multi-hop ontology path
-MATCH (n:GraphNode {id: $start})-[:SUBCLASS_OF|:LINKS_TO*1..5]-(m:GraphNode)
+MATCH (n:KGNode {id: $start})-[:SUBCLASS_OF|:LINKS_TO*1..5]-(m:KGNode)
 RETURN DISTINCT m.id, m.label
 ```
 
@@ -452,7 +452,7 @@ This is a known architectural debt item affecting the current production system.
 
 ### Root cause
 
-`OwlClass` nodes in Neo4j have a different label format than `GraphNode` entries. The 623 `SUBCLASS_OF` relationships originate from `OwlClass` source nodes, but the client-side `GraphNode` entries use a different ID scheme. The mapping between `OwlClass` nodes and `GraphNode` entries requires label-based matching that is not currently implemented.
+`OwlClass` nodes in Neo4j have a different label format than `KGNode` entries. The 623 `SUBCLASS_OF` relationships originate from `OwlClass` source nodes, but the client-side `KGNode` entries use a different ID scheme. The mapping between `OwlClass` nodes and `KGNode` entries requires label-based matching that is not currently implemented.
 
 ### Impact
 
@@ -462,12 +462,12 @@ This is a known architectural debt item affecting the current production system.
 
 ### Proposed fix
 
-Map `OwlClass` → `GraphNode` via `owl_class_iri` field matching:
+Map `OwlClass` → `KGNode` via `owl_class_iri` field matching:
 
 ```cypher
 MATCH (oc:OwlClass)-[:SUBCLASS_OF]->(parent:OwlClass)
-MATCH (gn_child:GraphNode {owl_class_iri: oc.iri})
-MATCH (gn_parent:GraphNode {owl_class_iri: parent.iri})
+MATCH (gn_child:KGNode {owl_class_iri: oc.iri})
+MATCH (gn_parent:KGNode {owl_class_iri: parent.iri})
 CREATE (gn_child)-[:SUBCLASS_OF]->(gn_parent)
 ```
 

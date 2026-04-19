@@ -37,7 +37,7 @@ Response:
 {
   "translations": [{
     "originalQuery": "Show me all person nodes",
-    "cypherQuery": "MATCH (n:GraphNode {node_type: 'person'}) RETURN n LIMIT 50",
+    "cypherQuery": "MATCH (n:KGNode {node_type: 'person'}) RETURN n LIMIT 50",
     "explanation": "Finds all nodes with type 'person'",
     "confidence": 0.95,
     "warnings": []
@@ -55,7 +55,7 @@ Response:
 
 Generates:
 ```cypher
-MATCH (p:GraphNode {label: 'Project X'})-[r:EDGE {relation_type: 'dependency'}]->(dep:GraphNode)
+MATCH (p:KGNode {label: 'Project X'})-[r:EDGE {relation_type: 'dependency'}]->(dep:KGNode)
 RETURN dep
 ```
 
@@ -68,7 +68,7 @@ RETURN dep
 Generates:
 ```cypher
 MATCH path = shortestPath(
-  (a:GraphNode {label: 'Alice'})-[*]-(b:GraphNode {label: 'Bob'})
+  (a:KGNode {label: 'Alice'})-[*]-(b:KGNode {label: 'Bob'})
 )
 RETURN path
 ```
@@ -81,7 +81,7 @@ RETURN path
 
 Generates:
 ```cypher
-MATCH (start:GraphNode {label: 'Node X'})-[*1..2]-(connected:GraphNode)
+MATCH (start:KGNode {label: 'Node X'})-[*1..2]-(connected:KGNode)
 RETURN DISTINCT connected LIMIT 100
 ```
 
@@ -122,7 +122,7 @@ POST /api/nl-query/validate
 Content-Type: application/json
 
 {
-  "cypher": "MATCH (n:GraphNode) RETURN n"
+  "cypher": "MATCH (n:KGNode) RETURN n"
 }
 ```
 

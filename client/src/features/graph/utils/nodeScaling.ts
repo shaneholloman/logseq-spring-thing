@@ -1,5 +1,5 @@
 import type { GraphVisualMode } from '../hooks/useGraphVisualState';
-import type { Node as GraphNode } from '../managers/graphDataManager';
+import type { Node as KGNode } from '../managers/graphDataManager';
 import type { GraphTypeVisualsSettings } from '../../settings/config/settings';
 
 // Default scaling parameters matching the original hardcoded values.
@@ -18,7 +18,7 @@ const AGENT_DEFAULTS = { workloadInfluence: 0.3, tokenRateInfluence: 100, tokenR
  * fallback defaults that preserve the original visual behavior.
  */
 export const computeNodeScale = (
-  node: GraphNode,
+  node: KGNode,
   connectionCountMap: Map<string, number>,
   graphMode: GraphVisualMode,
   hierarchyMap?: Map<string, any>,

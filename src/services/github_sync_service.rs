@@ -738,13 +738,13 @@ impl GitHubSyncService {
     }
 
     /// Clear all stale data from Neo4j when switching to a new GitHub base path.
-    /// Removes: GraphNode, FileMetadata, OwlClass, OwlProperty, Axiom nodes.
+    /// Removes: KGNode, FileMetadata, OwlClass, OwlProperty, Axiom nodes.
     async fn clear_stale_neo4j_data(&self) -> Result<(), String> {
         use neo4rs::query;
         let graph = self.onto_repo.graph();
 
         let queries = vec![
-            ("GraphNode",    "MATCH (n:GraphNode) DETACH DELETE n"),
+            ("KGNode",    "MATCH (n:KGNode) DETACH DELETE n"),
             ("FileMetadata", "MATCH (n:FileMetadata) DETACH DELETE n"),
             ("OwlClass",     "MATCH (n:OwlClass) DETACH DELETE n"),
             ("OwlProperty",  "MATCH (n:OwlProperty) DETACH DELETE n"),

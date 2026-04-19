@@ -15,7 +15,7 @@ import { useMemo, useEffect } from 'react';
 import { useSettingsStore } from '../../../store/settingsStore';
 import { useExpansionState, type ExpansionState } from '../hooks/useExpansionState';
 import { createLogger } from '../../../utils/loggerConfig';
-import type { GraphData, Node as GraphNode, Edge } from '../managers/graphDataManager';
+import type { GraphData, Node as KGNode, Edge } from '../managers/graphDataManager';
 import type { HierarchyNode } from '../utils/hierarchyDetector';
 
 const logger = createLogger('useGraphFiltering');
@@ -26,7 +26,7 @@ const logger = createLogger('useGraphFiltering');
 
 export interface GraphFilteringResult {
   /** Nodes that pass hierarchy-expansion and quality/authority filters */
-  visibleNodes: GraphNode[];
+  visibleNodes: KGNode[];
   /** O(1) lookup: string node-id -> index in graphData.nodes (full set, not filtered) */
   nodeIdToIndexMap: Map<string, number>;
   /** Edges from graphData (pass-through today; hook owns the contract for future filtering) */

@@ -31,9 +31,9 @@ flowchart LR
     SHA1 -->|"FORCE_FULL_SYNC=1\n(bypass filter)"| Parser
     SHA1 -->|"Changed files\n(local SHA1 ≠ GitHub SHA1)"| Parser[GitHubSyncService\nOntologyParser\nKnowledgeGraphParser]
     SHA1 -->|Unchanged files| LocalDisk[Local disk\n/app/data/pages\nuse as-is]
-    Parser -->|"public:: true"| KG[KG Page Nodes\nNeo4j :GraphNode\ntype = knowledge]
+    Parser -->|"public:: true"| KG[KG Page Nodes\nNeo4j :KGNode\ntype = knowledge]
     Parser -->|"### OntologyBlock"| OWL[OWL Nodes\nNeo4j :OwlClass\nSUBCLASS_OF rels]
-    Parser -->|"[[wikilinks]]"| Linked[LinkedPage Nodes\nNeo4j :GraphNode\ntype = linked_page]
+    Parser -->|"[[wikilinks]]"| Linked[LinkedPage Nodes\nNeo4j :KGNode\ntype = linked_page]
     LocalDisk --> Neo4j
     KG --> Neo4j[(Neo4j\nGraph store)]
     OWL --> Neo4j
@@ -79,14 +79,14 @@ flowchart TD
     DFT --> Onto{"Contains\n### OntologyBlock?"}
     DFT --> Journal{"Path starts with\njournals/?"}
 
-    Public -->|Yes| KGNode[KG Page Node\nparse wikilinks\n→ Neo4j :GraphNode\ntype=knowledge]
+    Public -->|Yes| KGNode[KG Page Node\nparse wikilinks\n→ Neo4j :KGNode\ntype=knowledge]
     Public -->|No| Ignored[Not a KG node\nskip for graph]
 
     Onto -->|Yes, any file| OWLNode[OWL Nodes\nextract axioms\n→ Neo4j :OwlClass\nSUBCLASS_OF rels]
 
     Journal -->|Yes| Skip[Skip\nnot ingested\ninto graph]
 
-    KGNode -->|"[[wikilinks]]"| Linked[LinkedPage Nodes\n→ Neo4j :GraphNode\ntype=linked_page]
+    KGNode -->|"[[wikilinks]]"| Linked[LinkedPage Nodes\n→ Neo4j :KGNode\ntype=linked_page]
 ```
 
 *`detect_file_type()` routes each file to the correct parser: `public:: true` tag gates KG page node creation; OntologyBlocks are extracted from all files (including non-public ones); journal files are excluded entirely.*
@@ -379,7 +379,7 @@ docker exec visionclaw_container cargo run --bin sync_local
 
 # 5. Verify Neo4j data
 docker exec visionclaw-neo4j cypher-shell -u neo4j -p visionclaw-dev-password \
-  "MATCH (n:GraphNode) RETURN count(n) AS total"
+  "MATCH (n:KGNode) RETURN count(n) AS total"
 ```
 
 ## Rollback Plan

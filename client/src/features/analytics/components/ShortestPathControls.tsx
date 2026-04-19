@@ -27,10 +27,10 @@ import {
   useSSSPError,
   useSSSPMetrics
 } from '../store/analyticsStore';
-import type { GraphNode, GraphEdge } from '../../graph/types/graphTypes';
+import type { KGNode, GraphEdge } from '../../graph/types/graphTypes';
 
 interface ShortestPathControlsProps {
-  nodes: GraphNode[];
+  nodes: KGNode[];
   edges: GraphEdge[];
   className?: string;
 }

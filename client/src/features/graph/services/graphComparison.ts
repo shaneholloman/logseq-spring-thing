@@ -2,7 +2,7 @@
 
 import { Vector3, Color } from 'three';
 import { createLogger } from '../../../utils/loggerConfig';
-import type { GraphData, Node as GraphNode } from '../managers/graphDataManager';
+import type { GraphData, Node as KGNode } from '../managers/graphDataManager';
 
 const logger = createLogger('GraphComparison');
 
@@ -36,8 +36,8 @@ export interface RelationshipBridge {
 }
 
 export interface GraphDifference {
-  onlyInLogseq: GraphNode[];
-  onlyInVisionflow: GraphNode[];
+  onlyInLogseq: KGNode[];
+  onlyInVisionflow: KGNode[];
   commonNodes: NodeMatch[];
   structuralDifferences: {
     logseqClusters: NodeCluster[];
@@ -132,8 +132,8 @@ export class GraphComparison {
 
   
   private calculateNodeMatch(
-    logseqNode: GraphNode,
-    visionflowNode: GraphNode,
+    logseqNode: KGNode,
+    visionflowNode: KGNode,
     logseqGraph: GraphData,
     visionflowGraph: GraphData,
     options: any

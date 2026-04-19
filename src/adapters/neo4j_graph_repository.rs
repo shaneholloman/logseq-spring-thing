@@ -218,7 +218,7 @@ impl Neo4jGraphRepository {
         // Use COALESCE to prefer sim_* (GPU physics state) over x/y/z (initial positions)
         // This preserves the calculated layout during content sync
         let query_str = format!("
-            MATCH (n:GraphNode)
+            MATCH (n:KGNode)
             {}
             RETURN n.id as id,
                    n.metadata_id as metadata_id,
@@ -360,11 +360,11 @@ impl Neo4jGraphRepository {
     }
 
     /// Load all edges from Neo4j
-    /// Matches any relationship type between GraphNode nodes, not just :EDGE,
+    /// Matches any relationship type between KGNode nodes, not just :EDGE,
     /// to handle cases where relationships were created with different types.
     async fn load_all_edges(&self) -> Result<Vec<Edge>> {
         let query_str = "
-            MATCH (source:GraphNode)-[r]->(target:GraphNode)
+            MATCH (source:KGNode)-[r]->(target:KGNode)
             RETURN source.id as source_id,
                    target.id as target_id,
                    COALESCE(r.weight, 1.0) as weight,
@@ -434,7 +434,7 @@ impl GraphRepository for Neo4jGraphRepository {
         // ON MATCH: Only update content properties, NEVER touch sim_* or velocity
         let query_str = "
             UNWIND range(0, size($ids)-1) AS i
-            MERGE (n:GraphNode {id: $ids[i]})
+            MERGE (n:KGNode {id: $ids[i]})
             ON CREATE SET
                 n.created_at = datetime(),
                 n.metadata_id = $metadata_ids[i],
@@ -570,8 +570,8 @@ impl GraphRepository for Neo4jGraphRepository {
         // PERF: Use UNWIND with parallel arrays - neo4rs native type support
         let query_str = "
             UNWIND range(0, size($edge_ids)-1) AS i
-            MATCH (source:GraphNode {id: $source_ids[i]})
-            MATCH (target:GraphNode {id: $target_ids[i]})
+            MATCH (source:KGNode {id: $source_ids[i]})
+            MATCH (target:KGNode {id: $target_ids[i]})
             MERGE (source)-[r:EDGE]->(target)
             ON CREATE SET r.created_at = datetime()
             ON MATCH SET r.updated_at = datetime()
@@ -662,7 +662,7 @@ impl GraphRepository for Neo4jGraphRepository {
         // BinaryNodeData format: (x, y, z, vx, vy, vz)
         let query_str = "
             UNWIND range(0, size($ids)-1) AS i
-            MATCH (n:GraphNode {id: $ids[i]})
+            MATCH (n:KGNode {id: $ids[i]})
             SET n.sim_x = $xs[i],
                 n.sim_y = $ys[i],
                 n.sim_z = $zs[i],

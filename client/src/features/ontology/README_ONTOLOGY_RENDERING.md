@@ -11,7 +11,7 @@ VisionFlow now supports ontology-based semantic visualization using OWL class IR
 - ✅ OntologyConverter service populates owl_class_iri
 - ✅ GPU metadata buffers (`class_id`, `class_charge`, `class_mass`)
 - ✅ WebSocket protocol sends `owl_class_iri` in InitialNodeData
-- ✅ TypeScript types updated (GraphNode interface)
+- ✅ TypeScript types updated (KGNode interface)
 
 ## Client-Side Implementation (TODO)
 
@@ -73,7 +73,7 @@ interface ClassFilter {
   showUnclassified: boolean; // Show nodes without owl_class_iri
 }
 
-const filterNodesByClass = (nodes: GraphNode[], filter: ClassFilter) => {
+const filterNodesByClass = (nodes: KGNode[], filter: ClassFilter) => {
   return nodes.filter(node => {
     if (!node.owlClassIri) return filter.showUnclassified;
     if (filter.excludedClasses.includes(node.owlClassIri)) return false;
@@ -104,7 +104,7 @@ GitHub Markdown → OntologyParser → OwlClass (IRI) ┐
                             ↓
                   WebSocket (InitialNodeData)
                             ↓
-                Client TypeScript (GraphNode)
+                Client TypeScript (KGNode)
                             ↓
             [TODO] Class-Based Rendering Logic
                             ↓
@@ -148,7 +148,7 @@ Future reasoning capabilities:
 
 ## Next Steps (Priority Order)
 
-1. ✅ Update GraphNode TypeScript type (DONE)
+1. ✅ Update KGNode TypeScript type (DONE)
 2. 🔲 Implement `getClassVisualProperties()` in GraphManager
 3. 🔲 Apply class-based rendering in Three.js scene
 4. 🔲 Create OntologyTreeView component
