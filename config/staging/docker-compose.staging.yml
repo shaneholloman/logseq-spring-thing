@@ -1,0 +1,168 @@
+# VisionClaw — staging environment (task #18)
+#
+# One-stop compose stack for exercising the sovereign-mesh plane end-to-end:
+#   * visionclaw (app + 24-metric Prometheus exporter)
+#   * neo4j (graph store w/ APOC + GDS)
+#   * jss (Node Solid Server sidecar, mirrors dev)
+#   * prometheus (scrapes visionclaw:4000/metrics every 15s)
+#   * grafana (provisioned datasource + sovereign-mesh-overview dashboard)
+#
+# Bring up with:
+#   docker compose -f config/staging/docker-compose.staging.yml --env-file .env.staging up -d
+#
+# Tear down and wipe state:
+#   docker compose -f config/staging/docker-compose.staging.yml down -v
+#
+# See config/staging/README.md for credentials, port map, and reset guidance.
+
+version: "3.9"
+
+services:
+  visionclaw:
+    container_name: visionclaw-staging
+    build:
+      context: ../..
+      dockerfile: Dockerfile.unified
+      target: dev
+      args:
+        CUDA_ARCH: ${CUDA_ARCH:-86}
+    depends_on:
+      neo4j:
+        condition: service_healthy
+      jss:
+        condition: service_started
+    env_file:
+      - ../../.env.staging
+    environment:
+      APP_ENV: staging
+      RUST_LOG: info,webxr=debug
+      BIND_ADDRESS: 0.0.0.0
+      SYSTEM_NETWORK_PORT: 4000
+      # Metrics
+      METRICS_ENABLED: "true"
+      # Neo4j
+      NEO4J_URI: bolt://neo4j:7687
+      NEO4J_USER: neo4j
+      NEO4J_PASSWORD: ${NEO4J_PASSWORD:-staging-neo4j-change-me}
+      NEO4J_DATABASE: neo4j
+      # Solid / Pod
+      POD_BASE_URL: http://jss:3030
+      POD_SAGA_ENABLED: "true"
+      BRIDGE_EDGE_ENABLED: "true"
+      NIP98_OPTIONAL_AUTH: "true"
+      # Server Nostr identity (override in .env.staging for real keys)
+      SERVER_NOSTR_PRIVKEY: ${SERVER_NOSTR_PRIVKEY:-}
+    ports:
+      - "4000:4000"   # HTTP API
+      - "9100:4000"   # Secondary alias so Prometheus can scrape via host if needed
+    volumes:
+      - visionclaw-staging-data:/app/data
+      - visionclaw-staging-logs:/app/logs
+    networks:
+      - visionclaw-staging
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://localhost:4000/metrics | head -c 1 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  neo4j:
+    image: neo4j:5-community
+    container_name: visionclaw-staging-neo4j
+    environment:
+      NEO4J_AUTH: neo4j/${NEO4J_PASSWORD:-staging-neo4j-change-me}
+      NEO4J_PLUGINS: '["apoc","graph-data-science"]'
+      NEO4J_dbms_security_procedures_unrestricted: 'apoc.*,gds.*'
+      NEO4J_dbms_security_procedures_allowlist: 'apoc.*,gds.*'
+      NEO4J_server_memory_heap_max__size: 1G
+      NEO4J_server_memory_pagecache_size: 512M
+    ports:
+      - "7474:7474"   # HTTP browser
+      - "7687:7687"   # Bolt
+    volumes:
+      - neo4j-staging-data:/data
+      - neo4j-staging-logs:/logs
+      - neo4j-staging-plugins:/plugins
+    networks:
+      - visionclaw-staging
+    healthcheck:
+      test: ["CMD-SHELL", "wget --spider --quiet http://localhost:7474 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 40s
+
+  jss:
+    image: node:20-alpine
+    container_name: visionclaw-staging-jss
+    working_dir: /app
+    command: >
+      sh -c "npm install -g solid-server@5 &&
+             solid start
+               --root /app/data
+               --port 3030
+               --server-uri http://jss:3030
+               --no-http2
+               --cors-origin http://visionclaw:4000"
+    environment:
+      PORT: 3030
+    ports:
+      - "3030:3030"
+    volumes:
+      - jss-staging-data:/app/data
+    networks:
+      - visionclaw-staging
+
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    container_name: visionclaw-staging-prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=14d
+      - --web.enable-lifecycle
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-staging-data:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - visionclaw-staging
+    depends_on:
+      - visionclaw
+
+  grafana:
+    image: grafana/grafana:11.0.0
+    container_name: visionclaw-staging-grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-staging-grafana-change-me}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_INSTALL_PLUGINS: ""
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-staging-data:/var/lib/grafana
+    ports:
+      - "3000:3000"
+    networks:
+      - visionclaw-staging
+    depends_on:
+      - prometheus
+
+networks:
+  visionclaw-staging:
+    name: visionclaw-staging
+    driver: bridge
+
+volumes:
+  visionclaw-staging-data:
+  visionclaw-staging-logs:
+  neo4j-staging-data:
+  neo4j-staging-logs:
+  neo4j-staging-plugins:
+  jss-staging-data:
+  prometheus-staging-data:
+  grafana-staging-data:

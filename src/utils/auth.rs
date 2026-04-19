@@ -1,8 +1,18 @@
-use actix_web::{HttpRequest, HttpResponse};
+use actix_web::{web, HttpRequest, HttpResponse};
 use log::warn;
+use std::sync::Arc;
 use tracing::{debug, info};
 use uuid::Uuid;
+use crate::services::metrics::MetricsRegistry;
 use crate::services::nostr_service::NostrService;
+
+/// Best-effort lookup of the shared metrics registry.
+/// Returns `None` if no registry is installed (e.g. unit tests) — call-sites
+/// should be tolerant of that and skip observation.
+fn metrics_of(req: &HttpRequest) -> Option<&Arc<MetricsRegistry>> {
+    req.app_data::<web::Data<Arc<MetricsRegistry>>>()
+        .map(|d| d.get_ref())
+}
 
 /// Scoped permission levels for RBAC.
 ///
@@ -110,6 +120,9 @@ pub async fn verify_access(
             request_id = %request_id,
             "Optional auth: no headers — passing through as anonymous"
         );
+        if let Some(m) = metrics_of(req) {
+            m.auth_anonymous_total.inc();
+        }
         return Ok(String::new());
     }
 
@@ -190,6 +203,9 @@ pub async fn verify_access(
                         pubkey = %user.pubkey,
                         "NIP-98 auth successful"
                     );
+                    if let Some(m) = metrics_of(req) {
+                        m.auth_nip98_success_total.inc();
+                    }
                     // Determine the user's effective access level
                     let user_level = if user.is_power_user {
                         AccessLevel::Admin
@@ -209,6 +225,9 @@ pub async fn verify_access(
                 }
                 Err(e) => {
                     warn!("[{}] NIP-98 validation failed: {}", request_id, e);
+                    if let Some(m) = metrics_of(req) {
+                        m.auth_nip98_failure_total.inc();
+                    }
                     return Err(
                         HttpResponse::Unauthorized().body(format!("NIP-98 auth failed: {}", e))
                     );
@@ -235,6 +254,12 @@ pub async fn verify_access(
             return Err(HttpResponse::Unauthorized()
                 .body("Legacy session auth not available in production. Use NIP-98."));
         }
+    }
+
+    // Request is entering the legacy (non-NIP-98) path — observed for ADR
+    // rollback visibility.
+    if let Some(m) = metrics_of(req) {
+        m.auth_legacy_fallback_total.inc();
     }
 
     let pubkey = match req.headers().get("X-Nostr-Pubkey") {

@@ -594,6 +594,16 @@ async fn main() -> std::io::Result<()> {
     let server_identity_data = web::Data::new(server_identity.clone());
     let server_nostr_addr_data = web::Data::new(server_nostr_addr);
 
+    // Prometheus metrics registry (task #18) — shared Arc so every handler and
+    // actor can observe counters without copying state.
+    let metrics_registry: Arc<webxr::services::metrics::MetricsRegistry> =
+        Arc::new(webxr::services::metrics::MetricsRegistry::new());
+    let metrics_data = web::Data::new(metrics_registry.clone());
+    info!(
+        "[main] Prometheus MetricsRegistry ready (METRICS_ENABLED={})",
+        webxr::services::metrics::metrics_enabled()
+    );
+
     let app_state_data = web::Data::new(app_state);
     let validation_service = web::Data::new(validation_handler::ValidationService::new());
 
@@ -729,6 +739,7 @@ async fn main() -> std::io::Result<()> {
             .app_data(app_state_data.nostr_service.clone().unwrap_or_else(|| web::Data::new(NostrService::default())))
             .app_data(server_identity_data.clone())
             .app_data(server_nostr_addr_data.clone())
+            .app_data(metrics_data.clone())
             .app_data(app_state_data.feature_access.clone())
             .app_data(web::Data::new(github_sync_service.clone()))
             .app_data(web::Data::new(ontology_query_service.clone()))
@@ -750,6 +761,10 @@ async fn main() -> std::io::Result<()> {
                 SwaggerUi::new("/swagger-ui/{_:.*}")
                     .url("/api-docs/openapi.json", webxr::openapi::ApiDoc::openapi())
             )
+            // Prometheus scrape endpoint at the server root (task #18).
+            // Intentionally outside the /api scope so scrapers hit /metrics
+            // by convention, with no auth or rate-limit wrapper.
+            .configure(metrics_handler::configure_metrics_routes)
             .service(
                 web::scope("/api")
                     // Client logs route - registered early to avoid scope conflicts

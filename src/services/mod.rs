@@ -52,6 +52,9 @@ pub mod ingest_saga;
 pub mod bridge_edge;
 pub mod orphan_retraction;
 
+// Prometheus / OpenMetrics registry (task #18)
+pub mod metrics;
+
 pub use bridge_edge::{
     bridge_edge_enabled, sigmoid_confidence, BridgeEdgeService, CandidateStatus,
     MigrationCandidate, SignalVector,

@@ -33,6 +33,7 @@ use neo4rs::query;
 use serde::{Deserialize, Serialize};
 
 use crate::adapters::neo4j_adapter::Neo4jAdapter;
+use crate::services::metrics::MetricsRegistry;
 
 // ── Weights (ADR-049 §migration-broker) ─────────────────────────────────────
 
@@ -183,11 +184,19 @@ pub fn bridge_edge_enabled() -> bool {
 /// Construct with `Arc<Neo4jAdapter>`. Cheap to clone (all state is in Neo4j).
 pub struct BridgeEdgeService {
     neo4j: Arc<Neo4jAdapter>,
+    prom: Option<Arc<MetricsRegistry>>,
 }
 
 impl BridgeEdgeService {
     pub fn new(neo4j: Arc<Neo4jAdapter>) -> Self {
-        Self { neo4j }
+        Self { neo4j, prom: None }
+    }
+
+    /// Attach a Prometheus registry — enables surfacing/promotion/expiry
+    /// counters and the confidence histogram.
+    pub fn with_prom(mut self, prom: Arc<MetricsRegistry>) -> Self {
+        self.prom = Some(prom);
+        self
     }
 
     /// Score a candidate without writing to Neo4j. Pure function over the
@@ -309,6 +318,9 @@ impl BridgeEdgeService {
             candidate.candidate_id(),
             candidate.confidence
         );
+        if let Some(prom) = self.prom.as_ref() {
+            prom.bridge_candidates_surfaced_total.inc();
+        }
         Ok(true)
     }
 
@@ -385,6 +397,10 @@ impl BridgeEdgeService {
             candidate.candidate_id(),
             candidate.confidence
         );
+        if let Some(prom) = self.prom.as_ref() {
+            prom.bridge_promotions_total.inc();
+            prom.bridge_confidence_histogram.observe(candidate.confidence);
+        }
         Ok(true)
     }
 
@@ -434,6 +450,9 @@ impl BridgeEdgeService {
         }
         if expired > 0 {
             info!("auto_expire: retired {} stale BRIDGE_CANDIDATE edges", expired);
+            if let Some(prom) = self.prom.as_ref() {
+                prom.bridge_expired_total.inc_by(expired);
+            }
         } else {
             debug!("auto_expire: no candidates to retire");
         }

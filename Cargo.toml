@@ -64,6 +64,10 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["json", "chrono", "env-filter"] }
 tracing-appender = "0.2"
 
+# Metrics (Prometheus)
+prometheus = "0.13"
+prometheus-client = "0.22"
+
 # Error handling
 thiserror = "2.0.16"
 anyhow = "1.0.99"

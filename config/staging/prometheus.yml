@@ -1,0 +1,34 @@
+# Prometheus scrape config for the VisionClaw staging stack (task #18).
+#
+# Targets:
+#   * visionclaw:4000/metrics — 24 sovereign-mesh metrics
+#   * self — Prometheus internal metrics for the scrape loop itself
+#
+# Prometheus in Docker resolves `visionclaw` via the shared
+# `visionclaw-staging` network (see docker-compose.staging.yml).
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    environment: staging
+    cluster: visionclaw-staging
+
+scrape_configs:
+  - job_name: visionclaw
+    metrics_path: /metrics
+    scheme: http
+    static_configs:
+      - targets:
+          - visionclaw:4000
+        labels:
+          service: visionclaw
+          tier: app
+
+  - job_name: prometheus
+    static_configs:
+      - targets:
+          - localhost:9090
+        labels:
+          service: prometheus
+          tier: observability

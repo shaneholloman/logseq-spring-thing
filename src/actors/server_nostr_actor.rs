@@ -23,6 +23,7 @@ use nostr_sdk::prelude::*;
 use serde_json::json;
 use uuid::Uuid;
 
+use crate::services::metrics::{MetricsRegistry, NostrKind, NostrKindLabels};
 use crate::services::server_identity::ServerIdentity;
 
 /// Default value of the NIP-29 group `h` tag applied to every server-signed
@@ -38,13 +39,40 @@ const SERVER_H_TAG: &str = "visionclaw-server";
 /// other actor.
 pub struct ServerNostrActor {
     identity: Arc<ServerIdentity>,
+    prom: Option<Arc<MetricsRegistry>>,
 }
 
 impl ServerNostrActor {
     /// Construct a new actor over the given identity. Use
     /// `actix::Actor::start` to get an `Addr<Self>`.
     pub fn new(identity: Arc<ServerIdentity>) -> Self {
-        Self { identity }
+        Self { identity, prom: None }
+    }
+
+    /// Attach a Prometheus metrics registry. Returns `self` for fluent use.
+    pub fn with_prom(mut self, prom: Arc<MetricsRegistry>) -> Self {
+        self.prom = Some(prom);
+        self
+    }
+
+    /// Increment the `signed_total` counter for the given Nostr event kind,
+    /// or the broadcast-errors counter if the signing outcome was an error.
+    fn observe_sign_outcome(
+        prom: &Option<Arc<MetricsRegistry>>,
+        kind: NostrKind,
+        outcome: &Result<Event>,
+    ) {
+        let Some(prom) = prom.as_ref() else { return };
+        match outcome {
+            Ok(_) => {
+                prom.server_nostr_signed_total
+                    .get_or_create(&NostrKindLabels { kind })
+                    .inc();
+            }
+            Err(_) => {
+                prom.server_nostr_broadcast_errors_total.inc();
+            }
+        }
     }
 
     /// Shared pubkey (hex) — useful for log lines.
@@ -87,6 +115,7 @@ impl Handler<SignMigrationApproval> for ServerNostrActor {
 
     fn handle(&mut self, msg: SignMigrationApproval, _ctx: &mut Self::Context) -> Self::Result {
         let identity = Arc::clone(&self.identity);
+        let prom = self.prom.clone();
         Box::pin(async move {
             let content = json!({
                 "migration_id": msg.migration_id.to_string(),
@@ -123,7 +152,9 @@ impl Handler<SignMigrationApproval> for ServerNostrActor {
                 ),
             ];
 
-            identity.sign_and_broadcast(30023, content, tags).await
+            let out = identity.sign_and_broadcast(30023, content, tags).await;
+            Self::observe_sign_outcome(&prom, NostrKind::K30023, &out);
+            out
         })
     }
 }
@@ -144,6 +175,7 @@ impl Handler<SignBridgePromotion> for ServerNostrActor {
 
     fn handle(&mut self, msg: SignBridgePromotion, _ctx: &mut Self::Context) -> Self::Result {
         let identity = Arc::clone(&self.identity);
+        let prom = self.prom.clone();
         Box::pin(async move {
             let content = json!({
                 "from_kg": msg.from_kg,
@@ -176,7 +208,9 @@ impl Handler<SignBridgePromotion> for ServerNostrActor {
                 ),
             ];
 
-            identity.sign_and_broadcast(30100, content, tags).await
+            let out = identity.sign_and_broadcast(30100, content, tags).await;
+            Self::observe_sign_outcome(&prom, NostrKind::K30100, &out);
+            out
         })
     }
 }
@@ -198,6 +232,7 @@ impl Handler<SignBeadStamp> for ServerNostrActor {
 
     fn handle(&mut self, msg: SignBeadStamp, _ctx: &mut Self::Context) -> Self::Result {
         let identity = Arc::clone(&self.identity);
+        let prom = self.prom.clone();
         Box::pin(async move {
             let content = json!({
                 "bead_id": msg.bead_id,
@@ -229,7 +264,9 @@ impl Handler<SignBeadStamp> for ServerNostrActor {
                 ),
             ];
 
-            identity.sign_and_broadcast(30200, content, tags).await
+            let out = identity.sign_and_broadcast(30200, content, tags).await;
+            Self::observe_sign_outcome(&prom, NostrKind::K30200, &out);
+            out
         })
     }
 }
@@ -251,6 +288,7 @@ impl Handler<SignAuditRecord> for ServerNostrActor {
 
     fn handle(&mut self, msg: SignAuditRecord, _ctx: &mut Self::Context) -> Self::Result {
         let identity = Arc::clone(&self.identity);
+        let prom = self.prom.clone();
         Box::pin(async move {
             let content = json!({
                 "action": msg.action,
@@ -292,7 +330,9 @@ impl Handler<SignAuditRecord> for ServerNostrActor {
                 ));
             }
 
-            identity.sign_and_broadcast(30300, content, tags).await
+            let out = identity.sign_and_broadcast(30300, content, tags).await;
+            Self::observe_sign_outcome(&prom, NostrKind::K30300, &out);
+            out
         })
     }
 }
