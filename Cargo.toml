@@ -175,6 +175,7 @@ default = ["gpu", "ontology"]
 gpu = []  # GPU acceleration with CUDA kernels
 ontology = []  # Ontology validation and reasoning
 redis = ["dep:redis"]  # Enable Redis distributed caching
+test-utils = []  # Expose `for_test` constructors for integration tests
 
 [profile.release]
 opt-level = 3

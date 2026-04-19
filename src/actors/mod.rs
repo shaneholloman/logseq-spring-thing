@@ -31,6 +31,7 @@ pub mod metadata_actor;
 pub mod optimized_settings_actor;
 pub mod physics_orchestrator_actor;
 pub mod protected_settings_actor;
+pub mod server_nostr_actor;
 pub mod supervisor;
 pub mod voice_commands;
 // pub mod supervisor_voice; 
@@ -66,6 +67,10 @@ pub use ontology_actor::{
 pub use optimized_settings_actor::OptimizedSettingsActor;
 pub use physics_orchestrator_actor::{PhysicsOrchestratorActor, SetClientCoordinator, UserNodeInteraction};
 pub use protected_settings_actor::ProtectedSettingsActor;
+pub use server_nostr_actor::{
+    ServerNostrActor, SignAuditRecord, SignBeadStamp, SignBridgePromotion,
+    SignMigrationApproval,
+};
 pub use semantic_processor_actor::{
     AISemanticFeatures, SemanticProcessorActor, SemanticProcessorConfig, SemanticStats,
 };

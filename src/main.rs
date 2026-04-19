@@ -572,6 +572,28 @@ async fn main() -> std::io::Result<()> {
         info!("[main] NostrBridge not started (VISIONCLAW_NOSTR_PRIVKEY or FORUM_RELAY_URL not set)");
     }
 
+    // Server's own Nostr identity (kinds 30023/30100/30200/30300).
+    // In APP_ENV=production a missing SERVER_NOSTR_PRIVKEY aborts startup — fail fast.
+    let server_identity = {
+        let mut si = webxr::services::server_identity::ServerIdentity::from_env()
+            .map_err(|e| {
+                log::error!("[main] ServerIdentity initialisation failed: {e:#}");
+                std::io::Error::new(std::io::ErrorKind::Other, format!("{e:#}"))
+            })?;
+        si.connect_relays().await;
+        std::sync::Arc::new(si)
+    };
+    info!(
+        "[main] ServerIdentity ready (pubkey_hex={})",
+        server_identity.pubkey_hex()
+    );
+    let server_nostr_addr = {
+        use actix::Actor;
+        webxr::actors::ServerNostrActor::new(server_identity.clone()).start()
+    };
+    let server_identity_data = web::Data::new(server_identity.clone());
+    let server_nostr_addr_data = web::Data::new(server_nostr_addr);
+
     let app_state_data = web::Data::new(app_state);
     let validation_service = web::Data::new(validation_handler::ValidationService::new());
 
@@ -705,6 +727,8 @@ async fn main() -> std::io::Result<()> {
             .app_data(web::Data::new(nl_query_service.clone()))
             .app_data(web::Data::new(pathfinding_service.clone()))
             .app_data(app_state_data.nostr_service.clone().unwrap_or_else(|| web::Data::new(NostrService::default())))
+            .app_data(server_identity_data.clone())
+            .app_data(server_nostr_addr_data.clone())
             .app_data(app_state_data.feature_access.clone())
             .app_data(web::Data::new(github_sync_service.clone()))
             .app_data(web::Data::new(ontology_query_service.clone()))
@@ -782,6 +806,13 @@ async fn main() -> std::io::Result<()> {
 
                     // Layout mode system (ADR-031)
                     .configure(webxr::handlers::configure_layout_routes)
+
+                    // Server Nostr identity — third parties discover the
+                    // server's signing pubkey via GET /api/server/identity.
+                    .service(
+                        web::scope("/server")
+                            .configure(webxr::handlers::configure_server_identity_routes)
+                    )
 
             );
 

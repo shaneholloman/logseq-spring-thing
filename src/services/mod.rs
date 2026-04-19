@@ -12,6 +12,7 @@ pub mod parsers;
 pub mod graph_serialization;
 pub mod mcp_relay_manager;
 pub mod nostr_service;
+pub mod server_identity;
 pub mod owl_validator;
 pub mod perplexity_service;
 pub mod ragflow_service;

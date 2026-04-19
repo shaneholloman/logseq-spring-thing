@@ -72,6 +72,10 @@ pub use solid_proxy_handler::configure_routes as configure_solid_routes;
 pub mod image_gen_handler;
 pub use image_gen_handler::configure_routes as configure_image_gen_routes;
 
+// Server Nostr identity (kind 30023/30100/30200/30300 signer pubkey)
+pub mod server_identity_handler;
+pub use server_identity_handler::configure_routes as configure_server_identity_routes;
+
 pub use quic_transport_handler::{
     QuicTransportServer, QuicServerConfig,
     PostcardNodeUpdate, PostcardBatchUpdate, PostcardDeltaUpdate,
