@@ -19,6 +19,7 @@ use crate::services::ontology_enrichment_service::OntologyEnrichmentService;
 use crate::services::ontology_reasoner::OntologyReasoner;
 use crate::services::edge_classifier::EdgeClassifier;
 use crate::services::ontology_pipeline_service::OntologyPipelineService;
+use crate::services::ingest_saga::{saga_enabled, serialise_node_for_pod, IngestSaga, NodeSagaPlan};
 use crate::adapters::whelk_inference_engine::WhelkInferenceEngine;
 use futures::stream::{FuturesUnordered, StreamExt};
 use log::{debug, error, info, warn};
@@ -54,6 +55,8 @@ pub struct GitHubSyncService {
     onto_repo: Arc<Neo4jOntologyRepository>,
     enrichment_service: Arc<OntologyEnrichmentService>,
     pipeline_service: Option<Arc<OntologyPipelineService>>,
+    /// Pod-first-Neo4j-second saga (ADR-051). `None` → legacy path.
+    saga: Option<Arc<IngestSaga>>,
 }
 
 impl GitHubSyncService {
@@ -82,6 +85,7 @@ impl GitHubSyncService {
             onto_repo,
             enrichment_service,
             pipeline_service: None,
+            saga: None,
         }
     }
 
@@ -89,6 +93,14 @@ impl GitHubSyncService {
     pub fn set_pipeline_service(&mut self, pipeline: Arc<OntologyPipelineService>) {
         info!("GitHubSyncService: Ontology pipeline service registered");
         self.pipeline_service = Some(pipeline);
+    }
+
+    /// Wire the Pod-first-Neo4j-second saga. When set, batch ingest routes
+    /// through the saga (Pod write → Neo4j commit) instead of the legacy
+    /// Neo4j-only path. Feature-flag-gated by `POD_SAGA_ENABLED`.
+    pub fn set_saga(&mut self, saga: Arc<IngestSaga>) {
+        info!("GitHubSyncService: IngestSaga registered (ADR-051)");
+        self.saga = Some(saga);
     }
 
     /// Synchronize graphs from GitHub - processes in batches with progress logging
@@ -292,19 +304,69 @@ impl GitHubSyncService {
 
             info!("💾 Saving batch: {} nodes, {} edges", node_vec.len(), edge_vec.len());
 
-            let mut graph = crate::models::graph::GraphData::new();
-            graph.nodes = node_vec;
-            graph.edges = edge_vec;
+            // ADR-051: Pod-first-Neo4j-second saga
+            // When the saga is wired AND POD_SAGA_ENABLED=true, route nodes
+            // through PodClient → IngestSaga so Pod content is written before
+            // the Neo4j commit. Edges always go through the legacy path —
+            // they are cheap cross-references that can be re-derived.
+            let use_saga = self.saga.is_some() && saga_enabled();
 
-            info!("🔍 [DEBUG] Calling save_graph() with {} nodes, {} edges",
-                graph.nodes.len(), graph.edges.len());
+            if use_saga {
+                let saga = self.saga.as_ref().expect("saga is Some").clone();
+                let plans: Vec<NodeSagaPlan> = node_vec.iter().map(|n| {
+                    let pod_url = saga.default_pod_url_for(n);
+                    NodeSagaPlan {
+                        node: n.clone(),
+                        pod_url,
+                        content: serialise_node_for_pod(n),
+                        content_type: "application/json".to_string(),
+                        auth_header: None, // server-Nostr signing path
+                    }
+                }).collect();
 
-            self.kg_repo.save_graph(&graph).await.map_err(|e| {
-                error!("❌ save_graph() failed: {}", e);
-                format!("Failed to save batch: {}", e)
-            })?;
+                info!("🔐 [saga] Executing Pod-first-Neo4j-second saga for {} nodes", plans.len());
+                let result = saga.execute_batch(plans).await;
+                info!(
+                    "🔐 [saga] Result: {} complete, {} pending, {} failed (duration: {:?})",
+                    result.complete.len(), result.pending.len(), result.failed.len(), result.duration
+                );
+                if !result.pending.is_empty() {
+                    for (node_id, err) in &result.pending {
+                        stats.errors.push(format!("Saga pending node {}: {}", node_id, err));
+                    }
+                }
+                if !result.failed.is_empty() {
+                    for (node_id, err) in &result.failed {
+                        stats.errors.push(format!("Saga failed node {}: {}", node_id, err));
+                    }
+                }
 
-            info!("✅ [DEBUG] save_graph() completed successfully");
+                // Edges are separate — still commit them through the legacy
+                // path. Orphaned edges (target never landed) will be filtered
+                // by downstream graph consumers.
+                if !edge_vec.is_empty() {
+                    let mut edge_graph = crate::models::graph::GraphData::new();
+                    edge_graph.edges = edge_vec;
+                    if let Err(e) = self.kg_repo.save_graph(&edge_graph).await {
+                        warn!("[saga] Edge-only save_graph failed: {}", e);
+                        stats.errors.push(format!("Edge commit: {}", e));
+                    }
+                }
+            } else {
+                let mut graph = crate::models::graph::GraphData::new();
+                graph.nodes = node_vec;
+                graph.edges = edge_vec;
+
+                info!("🔍 [DEBUG] Calling save_graph() with {} nodes, {} edges",
+                    graph.nodes.len(), graph.edges.len());
+
+                self.kg_repo.save_graph(&graph).await.map_err(|e| {
+                    error!("❌ save_graph() failed: {}", e);
+                    format!("Failed to save batch: {}", e)
+                })?;
+
+                info!("✅ [DEBUG] save_graph() completed successfully");
+            }
         } else {
             warn!("⚠️ [DEBUG] Batch is EMPTY after filtering - nothing to save!");
         }

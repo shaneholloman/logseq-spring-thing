@@ -44,6 +44,8 @@ pub mod nostr_bead_publisher;
 pub mod nostr_bridge;
 pub mod policy_evaluation_service;
 pub mod kpi_computation_service;
+pub mod pod_client;
+pub mod ingest_saga;
 
 // Re-export semantic type registry types for convenience
 pub use semantic_type_registry::{
