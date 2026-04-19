@@ -1,6 +1,6 @@
 ---
-title: Local File Sync Strategy with GitHub Delta Updates
-description: **GitHub Repository**: 250,000+ markdown files **Previous approach**: GitHub API pagination → would take hours, hit rate limits **New approach**: Local baseline + SHA1 delta updates → instant initi...
+title: Local File Sync Strategy with Two-Pass Parser + Pod-First Saga
+description: Two-pass knowledge graph parser + visibility classification + Pod-first-Neo4j-second saga. Pass 1 extracts wikilinks and visibility. Pass 2 emits nodes + stubs. Pod write precedes graph commit with 60s pending retry.
 category: how-to
 tags:
   - tutorial
@@ -8,201 +8,201 @@ tags:
   - docker
   - database
   - backend
-updated-date: 2025-12-18
+updated-date: 2026-04-19
 difficulty-level: advanced
 ---
 
 
-# Local File Sync Strategy with GitHub Delta Updates
+# Local File Sync Strategy with Two-Pass Parser + Pod-First Saga
 
 ## Problem Solved
 
-**GitHub Repository**: 250,000+ markdown files
-**Previous approach**: GitHub API pagination → would take hours, hit rate limits
-**New approach**: Local baseline + SHA1 delta updates → instant initial load, incremental updates
+**Visibility Model**: Public vs private pages; private wikilink targets → stubs in graph  
+**Crash Safety**: Pod succeeds but Neo4j fails → pending marker for 60s retry  
+**Data Integrity**: Never emit graph node before Pod has content  
+**New Approach**: Two-pass parser (commit 227f5b57a) + Pod-first saga (commit c939242f4)
 
 ## Architecture
 
-### GitHub Sync Pipeline
+### Two-Pass Parser (ADR-051)
 
-```mermaid
-flowchart LR
-    GitHub[GitHub\njjohare/logseq\nmainKnowledgeGraph/pages\n998 MD files] --> SHA1{SHA1 check\nor FORCE_FULL_SYNC?}
-    SHA1 -->|"FORCE_FULL_SYNC=1\n(bypass filter)"| Parser
-    SHA1 -->|"Changed files\n(local SHA1 ≠ GitHub SHA1)"| Parser[GitHubSyncService\nOntologyParser\nKnowledgeGraphParser]
-    SHA1 -->|Unchanged files| LocalDisk[Local disk\n/app/data/pages\nuse as-is]
-    Parser -->|"public:: true"| KG[KG Page Nodes\nNeo4j :KGNode\ntype = knowledge]
-    Parser -->|"### OntologyBlock"| OWL[OWL Nodes\nNeo4j :OwlClass\nSUBCLASS_OF rels]
-    Parser -->|"[[wikilinks]]"| Linked[LinkedPage Nodes\nNeo4j :KGNode\ntype = linked_page]
-    LocalDisk --> Neo4j
-    KG --> Neo4j[(Neo4j\nGraph store)]
-    OWL --> Neo4j
-    Linked --> Neo4j
-    Neo4j --> GSA[GraphStateActor\nIn-memory graph\nclassified node sets]
-    GSA --> WS[Binary WebSocket\nclient broadcast]
-```
+**Pass 1**: Scan all files, classify visibility (line-anchored `public:: true`), extract wikilinks, build adjacency map.
 
-*Full sync pipeline: local SHA1 delta filter avoids redundant processing; `FORCE_FULL_SYNC=1` bypasses the filter to reprocess all files. Only `public:: true` files produce KG page nodes; OntologyBlocks are extracted from all files regardless.*
-
-### Data Flow
+**Pass 2**: For every page in the batch → emit `KGNodeDraft`. For every wikilink target NOT in batch → emit private stub. Every `WikilinkRef` edge stamped with `last_seen_run_id` UUID for orphan retraction.
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│ Host Filesystem: /mnt/mldata/githubs/AR-AI-Knowledge-Graph │
-│                  /data/pages (1001 .md files)                │
-└──────────────────────────┬──────────────────────────────────┘
-                           │ (Docker volume mount :rw)
-                           ↓
-┌─────────────────────────────────────────────────────────────┐
-│ Container: /app/data/pages (persistent, writable)           │
-└──────────────────────────┬──────────────────────────────────┘
-                           │
-                           ↓
-┌─────────────────────────────────────────────────────────────┐
-│ LocalFileSyncService                                         │
-│  1. Scan local files → Vec<PathBuf>                        │
-│  2. Calculate SHA1 for each file                            │
-│  3. Fetch GitHub SHA1 map (metadata only, paginated)        │
-│  4. Compare: local_sha != github_sha?                       │
-│  5a. If match: Use local file ✅                            │
-│  5b. If mismatch: Download from GitHub, update local 🔄     │
-│  6. Process files (parse, enrich, batch save to Neo4j)      │
-└─────────────────────────────────────────────────────────────┘
+File: pages/Foo.md (public:: true)
+    ↓ Pass 1: Visibility::Public + wikilinks [[Bar]], [[Baz]]
+    ↓ Pass 2: emit KGNodeDraft(Foo, visibility=Public)
+             emit KGNodeDraft(Bar, visibility=Private, is_stub=true)
+             emit KGNodeDraft(Baz, visibility=Private, is_stub=true)
+             emit WikilinkRef(Foo→Bar, last_seen_run_id=UUID-X)
+             emit WikilinkRef(Foo→Baz, last_seen_run_id=UUID-X)
+
+File: pages/Private.md (no public:: true)
+    ↓ Pass 1: Visibility::Private (not marked public)
+    ↓ Pass 2: emit KGNodeDraft(Private, visibility=Private)
+             (and wikilink edges if any)
+
+Background orphan retraction job:
+    scan WikilinkRef edges where last_seen_run_id != current UUID
+    delete stale edges
+    for each stub: if zero refs remain, delete stub node
 ```
 
-### File Type Detection Flow
+### Visibility Classification (ADR-050 / ADR-051)
 
-```mermaid
-flowchart TD
-    All[All markdown files\n/app/data/pages/*.md] --> DFT[detect_file_type]
-    DFT --> Public{"Has\npublic:: true\ntag?"}
-    DFT --> Onto{"Contains\n### OntologyBlock?"}
-    DFT --> Journal{"Path starts with\njournals/?"}
+**Rule**: `classify_visibility(raw_content)` returns `Visibility::Public` **if and only if** the page has line-anchored `public:: true` in page properties block (before first `- ` or `#`).
 
-    Public -->|Yes| KGNode[KG Page Node\nparse wikilinks\n→ Neo4j :KGNode\ntype=knowledge]
-    Public -->|No| Ignored[Not a KG node\nskip for graph]
+**OWL Property Disambiguation**: `public-access:: true` inside an `### OntologyBlock` does **NOT** trigger public visibility. Reference commit b501942b1 for the regression that conflated them.
 
-    Onto -->|Yes, any file| OWLNode[OWL Nodes\nextract axioms\n→ Neo4j :OwlClass\nSUBCLASS_OF rels]
+**Canonical IRI** (ADR-050): `visionclaw:owner:{npub}/kg/{sha256(relative_path)}` — rename-proof.
 
-    Journal -->|Yes| Skip[Skip\nnot ingested\ninto graph]
+**Private Stubs**: No label, no content, canonical IRI + HMAC opaque_id generated at query-time (never at write-time).
 
-    KGNode -->|"[[wikilinks]]"| Linked[LinkedPage Nodes\n→ Neo4j :KGNode\ntype=linked_page]
+### Pod-First-Neo4j-Second Saga (ADR-051)
+
+**Phase ordering ensures crash safety:**
+
+```
+1. Pod write phase
+   For each KGNodeDraft:
+     PUT {pod_base}/{owner}/[public|private]/kg/{slug} ← content
+     if error: skip this node, no marker
+   
+2. Neo4j commit phase
+   save_graph() with Pod-successful nodes only
+   if error: write saga_pending=true marker on those nodes
+   
+3. Pending marker clearance
+   for each committed node: clear saga_pending flag
 ```
 
-*`detect_file_type()` routes each file to the correct parser: `public:: true` tag gates KG page node creation; OntologyBlocks are extracted from all files (including non-public ones); journal files are excluded entirely.*
+**Recovery**: Background task `IngestSaga::resume_pending` wakes every 60s, finds nodes with `saga_pending=true`, retries their Neo4j commit (idempotent via `MERGE`).
 
-## Implementation
+**Feature flag**: `POD_SAGA_ENABLED=true|false` — when false, legacy Neo4j-only path used.
 
-### 1. Docker Mount (DONE)
+### Container Routing (ADR-052)
 
-**File**: `docker-compose.yml:16`
-```yaml
-volumes:
-  - ./data/pages:/app/data/pages:rw  # Mount local pages for persistent baseline
+Pod URL construction depends on visibility:
+
+```
+Public node:  {pod_base}/{owner}/public/kg/{slug}
+Private node: {pod_base}/{owner}/private/kg/{slug}
 ```
 
-**Benefits**:
-- Changes persist across container restarts
-- Can bulk-update pages directory on host
-- Read/write access for delta updates
+**Default Pod base**: `http://jss:3030` (in-cluster); override via `POD_BASE_URL` env var.
 
-### 2. Local File Sync Service (DONE)
+### WikilinkRef Edges + Orphan Retraction
 
-**File**: `src/services/local_file_sync_service.rs`
+Every wikilink edge carries `metadata["last_seen_run_id"]` from the ingest run UUID.
 
-**Key Methods**:
-- `sync_with_github_delta()` - Main entry point
-- `scan_local_pages()` - Read local .md files
-- `fetch_github_sha_map()` - Get SHA1 hashes from GitHub
-- `calculate_file_sha1()` - Compute local file hash
-- `fetch_and_update_file()` - Download changed files from GitHub
-- `process_file_content()` - Parse KG/ontology data
-- `save_batch()` - Persist to Neo4j in batches of 50
+**Background job**:
+```sql
+MATCH (n:KGNode)-[r:WIKILINK_REF]->()
+WHERE r.metadata.last_seen_run_id != $current_run_id
+DELETE r
 
-**Features**:
-- ✅ Instant startup (local files available immediately)
-- ✅ Incremental updates (only changed files from GitHub)
-- ✅ Graceful degradation (works offline with local baseline)
-- ✅ SHA1 verification (ensures data integrity)
-- ✅ Batch processing (efficient Neo4j writes)
+MATCH (stub:KGNode {is_stub: true})
+WHERE NOT (stub)<-[WIKILINK_REF]-()
+DELETE stub
+```
 
-### 3. Usage
+This ensures stale references are pruned without manual intervention.
+
+### GitHubSyncService Integration
+
+`GitHubSyncService` now invokes the saga instead of direct Neo4j writes:
 
 ```rust
-// In main.rs or sync binary
-use crate::services::local_file_sync_service::LocalFileSyncService;
+let parser = KnowledgeGraphParser::new_with_owner(owner_pubkey);
+let parse_output = parser.parse_bundle(files)?;
 
-let sync_service = LocalFileSyncService::new(
-    content_api,
-    kg_repo,
-    onto_repo,
-    enrichment_service,
-);
-
-let stats = sync_service.sync_with_github_delta().await?;
-
-println!("Synced {} files from local baseline", stats.files_synced_from_local);
-println!("Updated {} files from GitHub", stats.files_updated_from_github);
-println!("Processed {} knowledge graph files", stats.kg_files_processed);
+let saga = IngestSaga::new(pod_client, neo4j);
+let outcome = saga.execute_batch(parse_output)?;
+// outcome: Complete | PendingRetry | Failed
 ```
 
-## Performance Comparison
+## Feature Flags
 
-### Old Approach (GitHub API Only)
+| Flag | Default | Behavior |
+|------|---------|----------|
+| `POD_SAGA_ENABLED` | `false` | When true, Pod-first saga. When false, legacy Neo4j-only writes. |
+| `VISIBILITY_CLASSIFICATION` | `true` | When true, two-pass parser with visibility gating. When false, all pages treated as public. |
+| `POD_DEFAULT_PRIVATE` | `false` | When true, pages without `public:: true` skip Pod write (content stays local). |
+| `POD_BASE_URL` | `http://jss:3030` | Pod API base URL for ingest writes. |
+| `FORCE_FULL_SYNC` | `false` | When true, bypass SHA1 delta filter, reprocess all files. |
 
-```
-Pagination: 250,000 files / 100 per page = 2,500 API calls
-Time: ~2,500 * 0.5s = 1,250 seconds (20+ minutes)
-Rate limits: High risk
-Network dependency: Critical
-```
+## Implementation Details
 
-### New Approach (Local + Delta)
+### Two-Pass Parser Location
 
-```
-Local scan: 1,001 files = ~0.1 seconds
-GitHub SHA1 fetch: 2,500 API calls (metadata only) = ~5 minutes (one-time)
-Delta updates: ~10-50 files/day = <10 seconds
-Total initial sync: ~5 minutes (vs 20+ minutes)
-Daily updates: <10 seconds (vs 20+ minutes)
-```
+**File**: `src/services/parsers/knowledge_graph_parser.rs`
 
-## Maintenance Workflow
+**Key types**:
+- `FileBundle` — input file + metadata
+- `KGNodeDraft` — node with visibility + is_stub flag + pod_url
+- `ParseOutput` — nodes + edges + run_id UUID
 
-### Initial Baseline Setup
+**Entry point**: `parse_bundle(files: Vec<FileBundle>) -> ParseOutput`
+
+### Visibility Module
+
+**File**: `src/services/parsers/visibility.rs`
+
+**Function**: `classify_visibility(raw: &str) -> Visibility`
+
+Scans page-properties block (before first `- ` or `#`), returns `Visibility::Public` iff exactly `public:: true` found on a single line.
+
+### Ingest Saga
+
+**File**: `src/services/ingest_saga.rs`
+
+**Types**:
+- `SagaStep::PodWrite` — upload to Pod
+- `SagaStep::Neo4jCommit` — graph commit
+- `SagaOutcome` — Complete | PendingRetry | Failed
+
+**Background task**: `spawn_resumption_task()` wakes every 60s, retries pending nodes.
+
+### Pod Client
+
+**File**: `src/services/pod_client.rs`
+
+Routes requests to `{pod_base}/{owner}/[public|private]/kg/{slug}` based on node visibility.
+
+## Testing & Verification
+
+### Check Parser Output
 
 ```bash
-# On host machine
-cd /mnt/mldata/githubs/AR-AI-Knowledge-Graph/data/pages
-
-# Option 1: Git clone (recommended for bulk download)
-git clone --depth 1 --filter=blob:none \
-  https://github.com/jjohare/logseq.git temp
-cp temp/mainKnowledgeGraph/pages/*.md .
-rm -rf temp
-
-# Option 2: Existing baseline (you already have 1001 files)
-# Just keep them, they'll be delta-updated automatically
+# Emit parse output + visibility classification
+cargo run --bin parse_files -- \
+  --input /app/data/pages \
+  --owner npub1... \
+  --output /tmp/parse_output.json
 ```
 
-### Daily Sync
+### Check Saga Execution
 
 ```bash
-# Inside container or via API endpoint
-cargo run --bin sync_local_github
+# View pending markers in Neo4j
+docker exec visionclaw-neo4j cypher-shell -u neo4j -p visionclaw-dev-password \
+  "MATCH (n:KGNode {saga_pending: true}) RETURN n.canonical_iri, n.visibility"
 
-# Or via HTTP API
-curl -X POST http://localhost:4000/api/admin/sync
+# Check Pod writes succeeded
+curl -s http://jss:3030/{owner}/public/kg/Foo.md | head -20
 ```
 
-### Force Re-download All
+### Monitor Orphan Retraction
 
 ```bash
-# Clear local cache, re-sync everything
-rm /mnt/mldata/githubs/AR-AI-Knowledge-Graph/data/pages/*.md
-
-# On next sync, all files will be downloaded from GitHub
-cargo run --bin sync_local_github
+# Check stale WikilinkRef edges
+docker exec visionclaw-neo4j cypher-shell -u neo4j -p visionclaw-dev-password \
+  "MATCH (n:KGNode)-[r:WIKILINK_REF]->(m:KGNode) \
+   WHERE r.metadata.last_seen_run_id IS NOT NULL \
+   RETURN r.metadata.last_seen_run_id, count(*) AS edge_count \
+   ORDER BY edge_count DESC"
 ```
 
 ## Configuration
@@ -210,199 +210,58 @@ cargo run --bin sync_local_github
 ### Environment Variables
 
 ```bash
-# .env file
+# Two-pass parser flags
+VISIBILITY_CLASSIFICATION=true
+POD_SAGA_ENABLED=true
+POD_DEFAULT_PRIVATE=false
+
+# Pod ingest
+POD_BASE_URL=http://jss:3030
+
+# Sync options
+FORCE_FULL_SYNC=false
+SYNC_BATCH_SIZE=50
+
+# GitHub credentials (for GitHubSyncService)
 GITHUB_OWNER=jjohare
 GITHUB_REPO=logseq
 GITHUB_BRANCH=main
 GITHUB_BASE_PATH=mainKnowledgeGraph/pages
 GITHUB_TOKEN=github_pat_...
-
-# Local pages directory (inside container)
-LOCAL_PAGES_DIR=/app/data/pages
-
-# Batch size for Neo4j writes
-SYNC_BATCH_SIZE=50
 ```
 
-## Advantages Over GitHub-Only Approach
+## References
 
-1. **Performance**
-   - Initial load: Instant (reads from local disk)
-   - Updates: Only changed files (typically <50/day)
-   - No pagination overhead for 250k files
+- **ADR-050**: Sovereign schema — canonical IRI, visibility, Pod URLs, opaque_id
+- **ADR-051**: Ingest saga — Pod-first write ordering, pending markers, orphan retraction
+- **ADR-052**: Container routes + public/private segregation
+- **ADR-030-ext**: GitHub credentials in secure storage
+- **Commit 227f5b57a**: Two-pass parser + visibility classification implementation
+- **Commit c939242f4**: Pod-first saga implementation
+- **Commit b501942b1**: Visibility classification regression fix (public-gating rule)
 
-2. **Reliability**
-   - Works offline with local baseline
-   - GitHub API failures don't block operations
-   - Rate limit resilient
+## Troubleshooting
 
-3. **Persistence**
-   - Volume mount survives container restarts
-   - Can pre-populate on host machine
-   - Easy bulk updates (git clone, rsync, etc.)
+### Pages not appearing in graph
 
-4. **Efficiency**
-   - SHA1 comparison is cheap (metadata-only API calls)
-   - Only downloads changed files
-   - Batched database writes
+1. Check visibility classification: does page have `public:: true` as line-anchored property?
+2. Check parse output: `cargo run --bin parse_files -- --input /app/data/pages`
+3. Check Pod write status: look for `saga_pending=true` in Neo4j
+4. Check pending retry: background task runs every 60s; wait or trigger manually
 
-5. **Scalability**
-   - Handles millions of files (limited by disk, not API)
-   - Incremental sync scales linearly
-   - No GitHub API pagination bottleneck
+### Orphaned stubs not cleaned up
 
-## Future Enhancements
+1. Verify orphan retraction job is running (background task spawned on startup)
+2. Check stale `last_seen_run_id` values via Neo4j
+3. Manually trigger cleanup: `curl -X POST http://localhost:4000/api/admin/orphan-retraction`
 
-### Git Tree API (More Efficient SHA1 Fetching)
+### Pod base URL not reachable
 
-```rust
-// Instead of paginating contents API, use git tree API
-// GET /repos/{owner}/{repo}/git/trees/{branch}?recursive=1
-// Returns ALL files + SHA1 in single response (up to 100k files)
-
-async fn fetch_github_tree_sha_map(&self) -> Result<HashMap<String, String>, String> {
-    let url = format!(
-        "https://api.github.com/repos/{}/{}/git/trees/{}?recursive=1",
-        owner, repo, branch
-    );
-
-    let response = self.client.get(&url).send().await?;
-    let tree: GitTree = response.json().await?;
-
-    let sha_map = tree.tree
-        .into_iter()
-        .filter(|entry| entry.path.starts_with("mainKnowledgeGraph/pages/")
-                     && entry.path.ends_with(".md"))
-        .map(|entry| (entry.path.split('/').last().unwrap().to_string(), entry.sha))
-        .collect();
-
-    Ok(sha_map)
-}
-```
-
-**Benefits**: Single API call for entire repository tree (up to 100k entries)
-
-### Parallel Downloads
-
-```rust
-use tokio::task::JoinSet;
-
-// Download multiple changed files in parallel
-let mut tasks = JoinSet::new();
-
-for file_name in files_to_update {
-    let service = self.clone();
-    tasks.spawn(async move {
-        service.fetch_and_update_file(file_name).await
-    });
-}
-
-while let Some(result) = tasks.join_next().await {
-    match result {
-        Ok(Ok(_)) => stats.files_updated += 1,
-        Ok(Err(e)) => stats.errors.push(e),
-        Err(e) => stats.errors.push(format!("Task error: {}", e)),
-    }
-}
-```
-
-### Watch Mode
-
-```rust
-use notify::{Watcher, RecursiveMode};
-
-// Watch local directory for changes, auto-sync to Neo4j
-let watcher = notify::recommended_watcher(|event| {
-    if let Ok(Event::Modify(..)) = event {
-        // File changed, re-process and update Neo4j
-    }
-})?;
-
-watcher.watch(LOCAL_PAGES_DIR, RecursiveMode::NonRecursive)?;
-```
-
-## Integration with Existing Code
-
-### Replace GitHubSyncService Calls
-
-**Before**:
-```rust
-let github_sync = GitHubSyncService::new(...);
-let stats = github_sync.sync_graphs().await?;
-```
-
-**After**:
-```rust
-let local_sync = LocalFileSyncService::new(...);
-let stats = local_sync.sync_with_github_delta().await?;
-```
-
-### Add to services/mod.rs
-
-```rust
-pub mod local_file_sync_service;
-pub use local_file_sync_service::LocalFileSyncService;
-```
-
-### Create Sync Binary
-
-```rust
-// bin/sync_local.rs
-#[tokio::main]
-async fn main() -> Result<()> {
-    let local_sync = LocalFileSyncService::new(...);
-    let stats = local_sync.sync_with_github_delta().await?;
-
-    println!("✅ Sync complete:");
-    println!("  - {} files from local", stats.files_synced_from_local);
-    println!("  - {} files updated from GitHub", stats.files_updated_from_github);
-    println!("  - Duration: {:?}", stats.duration);
-
-    Ok(())
-}
-```
-
-## Testing
-
-```bash
-# 1. Verify mount
-docker exec visionclaw_container ls -la /app/data/pages | head -20
-
-# 2. Check file count
-docker exec visionclaw_container find /app/data/pages -name "*.md" | wc -l
-
-# 3. Test SHA1 calculation
-docker exec visionclaw_container sha1sum /app/data/pages/ADAS.md
-
-# 4. Run sync service
-docker exec visionclaw_container cargo run --bin sync_local
-
-# 5. Verify Neo4j data
-docker exec visionclaw-neo4j cypher-shell -u neo4j -p visionclaw-dev-password \
-  "MATCH (n:KGNode) RETURN count(n) AS total"
-```
-
-## Rollback Plan
-
-If issues arise, revert to GitHub-only sync:
-
-```yaml
-# docker-compose.yml - Comment out local mount
-volumes:
-  # - ./data/pages:/app/data/pages:rw  # DISABLED
-```
-
-```rust
-// Use GitHubSyncService instead of LocalFileSyncService
-let github_sync = GitHubSyncService::new(...);
-```
+1. Verify `POD_BASE_URL` env var is set correctly
+2. Check in-cluster DNS: `nslookup jss:3030`
+3. Fallback to localhost for local testing: `POD_BASE_URL=http://localhost:3030`
 
 ---
 
-**Status**: Implemented and ready for testing
-**Next Steps**:
-1. Add to `src/services/mod.rs`
-2. Create `bin/sync_local.rs`
-3. Test with mounted volume
-4. Monitor delta updates
-5. Document in main README
+**Status**: Implemented and tested (ADR-051 merged)  
+**Next steps**: Monitor Pod write latency, tune resumption interval if needed, backport visibility classification to legacy single-file parser
