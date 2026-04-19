@@ -373,11 +373,30 @@ async fn main() -> std::io::Result<()> {
     
     info!("[main] Initializing GitHub Sync Service...");
     let enhanced_content_api = Arc::new(EnhancedContentAPI::new(github_client.clone()));
-    let github_sync_service = Arc::new(GitHubSyncService::new(
+    let mut github_sync_service_inner = GitHubSyncService::new(
         enhanced_content_api,
         app_state.neo4j_adapter.clone(),
         app_state.ontology_repository.clone(),
-    ));
+    );
+
+    // ADR-051: wire the Pod-first-Neo4j-second saga and spawn the resumption
+    // task. Both are no-ops unless `POD_SAGA_ENABLED=true`; construction is
+    // cheap so we always build the saga and let the runtime flag decide.
+    match webxr::services::ingest_saga::build_from_env(app_state.neo4j_adapter.clone()) {
+        Ok(saga) => {
+            github_sync_service_inner.set_saga(saga.clone());
+            let handle = webxr::services::ingest_saga::spawn_resumption_task(saga);
+            // Task is held by the runtime; handle intentionally dropped.
+            std::mem::forget(handle);
+            info!("[main] IngestSaga wired (POD_SAGA_ENABLED={})",
+                  std::env::var("POD_SAGA_ENABLED").unwrap_or_else(|_| "unset".to_string()));
+        }
+        Err(e) => {
+            warn!("[main] IngestSaga not wired: {} — legacy ingest path active", e);
+        }
+    }
+
+    let github_sync_service = Arc::new(github_sync_service_inner);
     info!("[main] GitHub Sync Service initialized");
 
     // Initialize SchemaService for natural language query support
