@@ -178,6 +178,10 @@ fn convert_agents_to_nodes(agents: Vec<Agent>) -> Vec<Node> {
                 vy: Some(0.0),
                 vz: Some(0.0),
                 owl_class_iri: None,
+                visibility: crate::models::node::Visibility::Public,
+                owner_pubkey: None,
+                opaque_id: None,
+                pod_url: None,
             }
         })
         .collect()

@@ -153,6 +153,10 @@ impl OntologyConverter {
             metadata,
             file_size: 0,
             user_data: None,
+            visibility: crate::models::node::Visibility::Public,
+            owner_pubkey: None,
+            opaque_id: None,
+            pod_url: None,
         })
     }
 

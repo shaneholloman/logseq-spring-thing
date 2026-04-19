@@ -5,14 +5,48 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicU32, Ordering};
 
 // Static counter for generating unique numeric IDs
-static NEXT_NODE_ID: AtomicU32 = AtomicU32::new(1); 
+static NEXT_NODE_ID: AtomicU32 = AtomicU32::new(1);
+
+/// Sovereign-model visibility for a knowledge-graph node (ADR-050).
+///
+/// `Public` nodes render with full label and metadata. `Private` nodes are
+/// owner-sovereign: the server only emits them over the wire with bit 29 of the
+/// node id set (see `crate::utils::binary_protocol::PRIVATE_OPAQUE_FLAG`) and
+/// with label/metadata stripped, so non-owner clients see an opaque placeholder.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Visibility {
+    Public,
+    Private,
+}
+
+impl Default for Visibility {
+    fn default() -> Self { Self::Public }
+}
+
+impl Visibility {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Public => "public",
+            Self::Private => "private",
+        }
+    }
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s {
+            "public" => Some(Self::Public),
+            "private" => Some(Self::Private),
+            _ => None,
+        }
+    }
+    pub fn is_private(&self) -> bool { matches!(self, Self::Private) }
+}
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct Node {
-    
+
     pub id: u32,
-    pub metadata_id: String, 
+    pub metadata_id: String,
     pub label: String,
     pub data: BinaryNodeData,
 
@@ -57,6 +91,29 @@ pub struct Node {
     pub group: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub user_data: Option<HashMap<String, String>>,
+
+    // ----------------------------------------------------------------------
+    // ADR-050 Sovereign-model fields
+    // ----------------------------------------------------------------------
+    /// Public vs private (owner-sovereign) visibility. Defaults to `Public`
+    /// for legacy rows and JSON documents that omit the field.
+    #[serde(default)]
+    pub visibility: Visibility,
+
+    /// Nostr public key of the owner in 64-char hex form. `None` for
+    /// public/global graph content with no sovereign owner.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub owner_pubkey: Option<String>,
+
+    /// Per-session HMAC-derived opaque id used when `visibility == Private`
+    /// and the consuming client is not the owner. 24 hex chars (12 bytes).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub opaque_id: Option<String>,
+
+    /// Solid Pod URL hosting the authoritative payload for this node.
+    /// `None` when the payload lives exclusively in the central graph.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pod_url: Option<String>,
 }
 
 impl Node {
@@ -114,7 +171,7 @@ impl Node {
             vx: Some(0.0),
             vy: Some(0.0),
             vz: Some(0.0),
-            mass: Some(1.0), 
+            mass: Some(1.0),
             owl_class_iri: None,
             metadata: HashMap::new(),
             file_size: 0,
@@ -124,6 +181,10 @@ impl Node {
             weight: None,
             group: None,
             user_data: None,
+            visibility: Visibility::Public,
+            owner_pubkey: None,
+            opaque_id: None,
+            pod_url: None,
         }
     }
 
@@ -241,7 +302,7 @@ impl Node {
             vx: Some(0.0),
             vy: Some(0.0),
             vz: Some(0.0),
-            mass: Some(1.0), 
+            mass: Some(1.0),
             owl_class_iri: None,
             metadata: HashMap::new(),
             file_size: 0,
@@ -251,6 +312,10 @@ impl Node {
             weight: None,
             group: None,
             user_data: None,
+            visibility: Visibility::Public,
+            owner_pubkey: None,
+            opaque_id: None,
+            pod_url: None,
         }
     }
 
@@ -321,13 +386,49 @@ impl Node {
         self.id.to_string()
     }
 
-    
+
     pub fn from_string_id(
         id_str: &str,
         metadata_id: String,
     ) -> Result<Self, std::num::ParseIntError> {
         let id: u32 = id_str.parse()?;
         Ok(Self::new_with_stored_id(metadata_id, Some(id)))
+    }
+
+    // ---------------- ADR-050 sovereign-model helpers ----------------
+
+    pub fn with_visibility(mut self, visibility: Visibility) -> Self {
+        self.visibility = visibility;
+        self
+    }
+
+    pub fn with_owner_pubkey(mut self, owner_pubkey: impl Into<String>) -> Self {
+        self.owner_pubkey = Some(owner_pubkey.into());
+        self
+    }
+
+    pub fn with_opaque_id(mut self, opaque_id: impl Into<String>) -> Self {
+        self.opaque_id = Some(opaque_id.into());
+        self
+    }
+
+    pub fn with_pod_url(mut self, pod_url: impl Into<String>) -> Self {
+        self.pod_url = Some(pod_url.into());
+        self
+    }
+
+    /// Returns true if this node is private AND the caller is not the owner.
+    /// `caller_pubkey` is the hex pubkey of the requesting user, or `None` if
+    /// the caller is anonymous / unauthenticated.
+    pub fn is_opaque_to(&self, caller_pubkey: Option<&str>) -> bool {
+        if !self.visibility.is_private() {
+            return false;
+        }
+        match (&self.owner_pubkey, caller_pubkey) {
+            (Some(owner), Some(caller)) => owner.as_str() != caller,
+            // No owner recorded, or caller is anonymous: opacity enforced.
+            _ => true,
+        }
     }
 }
 
