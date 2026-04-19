@@ -1,0 +1,167 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "type": "stat",
+      "title": "NIP-98 auth (5m rate)",
+      "gridPos": {"x": 0, "y": 0, "w": 6, "h": 4},
+      "datasource": {"type": "prometheus", "uid": "visionclaw-prom"},
+      "id": 1,
+      "targets": [
+        {"expr": "sum(rate(visionclaw_auth_nip98_success_total[5m]))", "legendFormat": "success", "refId": "A"},
+        {"expr": "sum(rate(visionclaw_auth_nip98_failure_total[5m]))", "legendFormat": "failure", "refId": "B"}
+      ],
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "value", "graphMode": "area"}
+    },
+    {
+      "type": "stat",
+      "title": "Anonymous vs legacy auth (5m rate)",
+      "gridPos": {"x": 6, "y": 0, "w": 6, "h": 4},
+      "datasource": {"type": "prometheus", "uid": "visionclaw-prom"},
+      "id": 2,
+      "targets": [
+        {"expr": "sum(rate(visionclaw_auth_anonymous_total[5m]))", "legendFormat": "anonymous", "refId": "A"},
+        {"expr": "sum(rate(visionclaw_auth_legacy_fallback_total[5m]))", "legendFormat": "legacy", "refId": "B"}
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Ingest saga outcomes",
+      "gridPos": {"x": 0, "y": 4, "w": 12, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "visionclaw-prom"},
+      "id": 3,
+      "targets": [
+        {"expr": "sum by (outcome) (rate(visionclaw_ingest_saga_total[5m]))", "legendFormat": "{{outcome}}", "refId": "A"}
+      ]
+    },
+    {
+      "type": "gauge",
+      "title": "Saga pending nodes",
+      "gridPos": {"x": 12, "y": 0, "w": 6, "h": 4},
+      "datasource": {"type": "prometheus", "uid": "visionclaw-prom"},
+      "id": 4,
+      "targets": [
+        {"expr": "visionclaw_ingest_saga_pending_nodes", "refId": "A"}
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Saga retries (5m)",
+      "gridPos": {"x": 18, "y": 0, "w": 6, "h": 4},
+      "datasource": {"type": "prometheus", "uid": "visionclaw-prom"},
+      "id": 5,
+      "targets": [
+        {"expr": "sum(rate(visionclaw_ingest_saga_retry_total[5m]))", "refId": "A"}
+      ]
+    },
+    {
+      "type": "heatmap",
+      "title": "Saga duration (seconds)",
+      "gridPos": {"x": 12, "y": 4, "w": 12, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "visionclaw-prom"},
+      "id": 6,
+      "targets": [
+        {"expr": "sum by (le) (rate(visionclaw_ingest_saga_duration_seconds_bucket[5m]))", "refId": "A", "format": "heatmap"}
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Ingested nodes public vs private (5m rate)",
+      "gridPos": {"x": 0, "y": 12, "w": 12, "h": 6},
+      "datasource": {"type": "prometheus", "uid": "visionclaw-prom"},
+      "id": 7,
+      "targets": [
+        {"expr": "sum(rate(visionclaw_ingest_nodes_public_total[5m]))", "legendFormat": "public", "refId": "A"},
+        {"expr": "sum(rate(visionclaw_ingest_nodes_private_total[5m]))", "legendFormat": "private", "refId": "B"},
+        {"expr": "sum(rate(visionclaw_ingest_wikilink_stubs_total[5m]))", "legendFormat": "wikilink-stubs", "refId": "C"}
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Bridge pipeline (5m rate)",
+      "gridPos": {"x": 12, "y": 12, "w": 12, "h": 6},
+      "datasource": {"type": "prometheus", "uid": "visionclaw-prom"},
+      "id": 8,
+      "targets": [
+        {"expr": "sum(rate(visionclaw_bridge_candidates_surfaced_total[5m]))", "legendFormat": "surfaced", "refId": "A"},
+        {"expr": "sum(rate(visionclaw_bridge_promotions_total[5m]))", "legendFormat": "promoted", "refId": "B"},
+        {"expr": "sum(rate(visionclaw_bridge_expired_total[5m]))", "legendFormat": "expired", "refId": "C"}
+      ]
+    },
+    {
+      "type": "heatmap",
+      "title": "Bridge promotion confidence",
+      "gridPos": {"x": 0, "y": 18, "w": 12, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "visionclaw-prom"},
+      "id": 9,
+      "targets": [
+        {"expr": "sum by (le) (rate(visionclaw_bridge_confidence_histogram_bucket[5m]))", "refId": "A", "format": "heatmap"}
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Orphan retraction (5m rate)",
+      "gridPos": {"x": 12, "y": 18, "w": 12, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "visionclaw-prom"},
+      "id": 10,
+      "targets": [
+        {"expr": "sum(rate(visionclaw_orphan_wikilinkref_removed_total[5m]))", "legendFormat": "wikilinks", "refId": "A"},
+        {"expr": "sum(rate(visionclaw_orphan_stubs_removed_total[5m]))", "legendFormat": "stubs", "refId": "B"}
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Pod client PUT by container (5m rate)",
+      "gridPos": {"x": 0, "y": 26, "w": 12, "h": 6},
+      "datasource": {"type": "prometheus", "uid": "visionclaw-prom"},
+      "id": 11,
+      "targets": [
+        {"expr": "sum by (container) (rate(visionclaw_pod_put_total[5m]))", "legendFormat": "{{container}}", "refId": "A"},
+        {"expr": "sum(rate(visionclaw_pod_put_errors_total[5m]))", "legendFormat": "errors", "refId": "B"},
+        {"expr": "sum(rate(visionclaw_pod_move_total[5m]))", "legendFormat": "moves", "refId": "C"}
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Server-Nostr signed events by kind (5m rate)",
+      "gridPos": {"x": 12, "y": 26, "w": 12, "h": 6},
+      "datasource": {"type": "prometheus", "uid": "visionclaw-prom"},
+      "id": 12,
+      "targets": [
+        {"expr": "sum by (kind) (rate(visionclaw_server_nostr_signed_total[5m]))", "legendFormat": "{{kind}}", "refId": "A"},
+        {"expr": "sum(rate(visionclaw_server_nostr_broadcast_errors_total[5m]))", "legendFormat": "broadcast errors", "refId": "B"}
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "solid-pod-rs requests / WAC denials (5m rate)",
+      "gridPos": {"x": 0, "y": 32, "w": 24, "h": 6},
+      "datasource": {"type": "prometheus", "uid": "visionclaw-prom"},
+      "id": 13,
+      "targets": [
+        {"expr": "sum(rate(visionclaw_solid_pod_rs_requests_total[5m]))", "legendFormat": "requests", "refId": "A"},
+        {"expr": "sum(rate(visionclaw_solid_pod_rs_wac_denied_total[5m]))", "legendFormat": "WAC denied", "refId": "B"}
+      ]
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "style": "dark",
+  "tags": ["visionclaw", "sovereign-mesh"],
+  "templating": {"list": []},
+  "time": {"from": "now-1h", "to": "now"},
+  "timepicker": {},
+  "timezone": "",
+  "title": "Sovereign Mesh — Overview",
+  "uid": "visionclaw-sovereign-mesh",
+  "version": 1,
+  "weekStart": ""
+}

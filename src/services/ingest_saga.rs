@@ -38,6 +38,7 @@ use crate::adapters::neo4j_adapter::Neo4jAdapter;
 use crate::models::graph::GraphData;
 use crate::models::node::Node as KGNode;
 use crate::ports::knowledge_graph_repository::KnowledgeGraphRepository;
+use crate::services::metrics::{MetricsRegistry, SagaOutcomeLabel, SagaOutcomeLabels};
 use crate::services::pod_client::{PodClient, PodClientError, Visibility};
 
 /// Env-var feature flag name.
@@ -121,6 +122,9 @@ pub struct IngestSaga {
     pub run_id: Uuid,
     pub pod_base: String,
     metrics: tokio::sync::Mutex<SagaMetrics>,
+    /// Optional Prometheus registry. When present, `execute_batch` observes
+    /// outcome counters and the duration histogram here.
+    prom: Option<Arc<MetricsRegistry>>,
 }
 
 /// A saga plan for a single node. Constructed by the caller, passed to
@@ -152,11 +156,48 @@ impl IngestSaga {
             run_id: Uuid::new_v4(),
             pod_base: pod_base_url(),
             metrics: tokio::sync::Mutex::new(SagaMetrics::default()),
+            prom: None,
         }
+    }
+
+    /// Attach a Prometheus registry. Returns `self` to allow fluent-style
+    /// wiring at construction sites.
+    pub fn with_prom(mut self, prom: Arc<MetricsRegistry>) -> Self {
+        self.prom = Some(prom);
+        self
     }
 
     pub async fn metrics_snapshot(&self) -> SagaMetrics {
         self.metrics.lock().await.clone()
+    }
+
+    /// Record one Prometheus sample describing a terminal batch outcome.
+    fn observe_prom_outcome(&self, complete: u64, pending: u64, failed: u64, elapsed_secs: f64) {
+        if let Some(prom) = self.prom.as_ref() {
+            if complete > 0 {
+                prom.ingest_saga_total
+                    .get_or_create(&SagaOutcomeLabels {
+                        outcome: SagaOutcomeLabel::Complete,
+                    })
+                    .inc_by(complete);
+            }
+            if pending > 0 {
+                prom.ingest_saga_total
+                    .get_or_create(&SagaOutcomeLabels {
+                        outcome: SagaOutcomeLabel::Pending,
+                    })
+                    .inc_by(pending);
+                prom.ingest_saga_pending_nodes.inc_by(pending as i64);
+            }
+            if failed > 0 {
+                prom.ingest_saga_total
+                    .get_or_create(&SagaOutcomeLabels {
+                        outcome: SagaOutcomeLabel::Failed,
+                    })
+                    .inc_by(failed);
+            }
+            prom.ingest_saga_duration_seconds.observe(elapsed_secs);
+        }
     }
 
     /// Build a node's default Pod URL from its metadata.
@@ -374,11 +415,21 @@ impl IngestSaga {
             "ingest_saga_batch_complete"
         );
 
+        // Prometheus emission mirrors the tracing event so scrapers get a
+        // first-class counter/histogram view.
+        let elapsed = start.elapsed();
+        self.observe_prom_outcome(
+            complete.len() as u64,
+            pending.len() as u64,
+            failed.len() as u64,
+            elapsed.as_secs_f64(),
+        );
+
         BatchSagaResult {
             complete,
             pending,
             failed,
-            duration: start.elapsed(),
+            duration: elapsed,
         }
     }
 
@@ -440,6 +491,9 @@ impl IngestSaga {
             let mut m = self.metrics.lock().await;
             m.retry_total += pending.len() as u64;
         }
+        if let Some(prom) = self.prom.as_ref() {
+            prom.ingest_saga_retry_total.inc_by(pending.len() as u64);
+        }
 
         let mut outcomes = Vec::with_capacity(pending.len());
         for node in pending {
@@ -450,6 +504,16 @@ impl IngestSaga {
                     // Clear the marker.
                     let _ = self.clear_pending(node.id).await;
                     outcomes.push(SagaOutcome::Complete);
+                    if let Some(prom) = self.prom.as_ref() {
+                        // Pending node cleared → promote to complete, drop
+                        // the gauge by one.
+                        prom.ingest_saga_total
+                            .get_or_create(&SagaOutcomeLabels {
+                                outcome: SagaOutcomeLabel::Complete,
+                            })
+                            .inc();
+                        prom.ingest_saga_pending_nodes.dec();
+                    }
                     debug!("[saga][resume] Node {} resumed successfully", node.id);
                 }
                 Err(e) => {

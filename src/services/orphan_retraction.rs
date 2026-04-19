@@ -24,6 +24,7 @@ use neo4rs::query;
 use tokio::task::JoinHandle;
 
 use crate::adapters::neo4j_adapter::Neo4jAdapter;
+use crate::services::metrics::MetricsRegistry;
 
 /// Default period between retraction sweeps, in seconds.
 pub const DEFAULT_PERIOD_SECS: u64 = 15 * 60;
@@ -58,6 +59,7 @@ pub struct RetractionReport {
 pub struct OrphanRetractionTask {
     neo4j: Arc<Neo4jAdapter>,
     current_run_id: Arc<tokio::sync::RwLock<String>>,
+    prom: Option<Arc<MetricsRegistry>>,
 }
 
 impl OrphanRetractionTask {
@@ -68,7 +70,15 @@ impl OrphanRetractionTask {
         Self {
             neo4j,
             current_run_id: Arc::new(tokio::sync::RwLock::new(initial_run_id.into())),
+            prom: None,
         }
+    }
+
+    /// Attach a Prometheus registry so each sweep records the number of
+    /// retracted edges and deleted stubs.
+    pub fn with_prom(mut self, prom: Arc<MetricsRegistry>) -> Self {
+        self.prom = Some(prom);
+        self
     }
 
     /// Update the run id the next sweep should consider "fresh". Typically
@@ -168,6 +178,18 @@ impl OrphanRetractionTask {
             .with_context(|| "orphan_retraction: read stub count row")?
         {
             report.stubs_deleted = row.get::<i64>("deleted").unwrap_or(0) as u64;
+        }
+
+        // Emit Prometheus counters once the full sweep has settled.
+        if let Some(prom) = self.prom.as_ref() {
+            if report.wikilinks_deleted > 0 {
+                prom.orphan_wikilinkref_removed_total
+                    .inc_by(report.wikilinks_deleted);
+            }
+            if report.stubs_deleted > 0 {
+                prom.orphan_stubs_removed_total
+                    .inc_by(report.stubs_deleted);
+            }
         }
 
         Ok(report)
