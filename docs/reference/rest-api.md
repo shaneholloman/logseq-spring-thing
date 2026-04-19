@@ -2,8 +2,9 @@
 title: VisionClaw REST API Reference
 description: Complete REST API reference for VisionClaw, covering graph data, settings, authentication, ontology, pathfinding, and Solid Pod endpoints
 category: reference
-tags: [api, rest, http, endpoints]
-updated-date: 2026-04-18
+tags: [api, rest, http, endpoints, nip-98, sovereign-mesh]
+updated-date: 2026-04-19
+adr-references: [ADR-028-ext, ADR-050, ADR-051, ADR-052]
 ---
 
 # VisionClaw REST API Reference
@@ -186,7 +187,17 @@ All mutation endpoints (POST, PUT, DELETE) require authentication. GET endpoints
 
 ## Authentication
 
-VisionClaw uses Nostr-based identity (NIP-98). Clients authenticate using a Nostr keypair; the server issues a session token bound to the Nostr pubkey.
+VisionClaw uses Nostr-based identity (NIP-98) with optional, authenticated, and admin access levels. Clients can authenticate using a Nostr keypair; the server issues a session token bound to the Nostr pubkey. Anonymous access is permitted for public endpoints.
+
+### Authentication Levels
+
+VisionClaw supports three authentication modes via `AccessLevel` enum:
+
+| Mode | Description | Use Case |
+|------|-------------|----------|
+| **Optional** | Client may authenticate but not required | Public graph data with optional caller-aware filtering |
+| **Authenticated** | Client must authenticate (NIP-98 or Bearer token) | User-scoped operations, workspace mutations |
+| **Admin** | Special roles only (Broker, Admin, Auditor) | System administration, policy enforcement |
 
 ### Authentication Flow
 
@@ -197,13 +208,13 @@ sequenceDiagram
     participant Neo4j
     participant Solid as Solid Pod
 
-    Client->>API: GET /api/graph/data
-    API->>API: Validate Nostr DID/keypair
-    API->>Neo4j: Query graph data
-    Neo4j-->>API: Graph nodes + edges
-    API->>Solid: Fetch user overlay (optional)
+    Client->>API: GET /api/graph/data (optional auth)
+    API->>API: Check auth level + caller pubkey
+    API->>Neo4j: Query graph data (filtered by visibility)
+    Neo4j-->>API: Public nodes (all) + private nodes (if caller owns)
+    API->>Solid: Fetch user overlay (if authenticated)
     Solid-->>API: Pod data
-    API-->>Client: Binary graph response
+    API-->>Client: Filtered graph response
 ```
 
 ### Nostr NIP-98 Authentication
@@ -254,6 +265,8 @@ X-Nostr-Pubkey: <hex_pubkey>
 
 Session validated via `nostr_service.validate_session(&pubkey, &token)`. Expiry controlled by `AUTH_TOKEN_EXPIRY` env var (default: 3600 seconds).
 
+**Legacy session path**: `X-Nostr-Pubkey + X-Nostr-Token` headers are gated behind `APP_ENV != production` (returns 401 in production unless explicitly enabled via feature flag). Use NIP-98 + Bearer for production integrations.
+
 ### 401 Error Response
 
 ```json
@@ -269,6 +282,16 @@ SETTINGS_AUTH_BYPASS=true  # treats all requests as power user dev-user
 POWER_USER_PUBKEYS=pubkey1,pubkey2  # comma-separated power user pubkeys
 ```
 
+### Feature Flags
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `NIP98_OPTIONAL_AUTH` | false | Enable optional-auth behaviour on wrappable endpoints (rollout safety) |
+| `POD_DEFAULT_PRIVATE` | false | New Pods default to private visibility |
+| `VISIBILITY_CLASSIFICATION` | false | Enable 4-state visibility enum (public, pod, private, opaque) |
+| `POD_SAGA_ENABLED` | false | Enable Pod provisioning saga pattern with retry |
+| `SOVEREIGN_SCHEMA` | false | Enable sovereign schema (ADR-050: kinds 30023/30100/30200/30300) |
+
 ---
 
 ## Graph Endpoints
@@ -277,13 +300,23 @@ Configured in `api_handler/graph/mod.rs`.
 
 ### GET /api/graph/data
 
-Retrieve the full graph (all nodes and edges). Optionally filter by graph type.
+Retrieve the full graph (all nodes and edges). Optionally filter by graph type. Supports optional authentication with caller-aware visibility filtering (requires `NIP98_OPTIONAL_AUTH=true` feature flag).
 
 **Query parameters**:
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `graph_type` | string | all | Filter: `knowledge`, `ontology`, `agent` |
+
+**Authentication**: Optional. Unauthenticated callers receive public nodes only. Authenticated callers receive public + own-private nodes. Other users' private nodes are opacified.
+
+#### Caller-aware Filtering
+
+When `NIP98_OPTIONAL_AUTH=true` and caller is authenticated:
+
+- **Public nodes** (`visibility='public'`): Returned unchanged for all callers
+- **Own-private nodes** (`visibility='private'` AND `n.owner_pubkey == caller_pubkey`): Returned with full metadata
+- **Other-user private nodes**: Opacified (bit 29 set on node_id, label/metadata/pod_url cleared, replaced with opaque_id hash)
 
 **Response** (200 OK):
 
@@ -294,10 +327,21 @@ Retrieve the full graph (all nodes and edges). Optionally filter by graph type.
       "id": "42",
       "label": "Design Patterns",
       "node_type": "page",
-      "metadata": {
-        "classIri": "http://example.org/KnowledgePage",
-        "file_path": "mainKnowledgeGraph/pages/design-patterns.md"
-      }
+      "metadata_id": "design-patterns.md",
+      "visibility": "public",
+      "owner_pubkey": "abc123def456...",
+      "opaque_id": null,
+      "pod_url": "https://alice.pods.visionclaw.org/public/kg/design-patterns"
+    },
+    {
+      "id": "199",
+      "label": "Internal Strategy",
+      "node_type": "page",
+      "metadata_id": "internal-strategy.md",
+      "visibility": "private",
+      "owner_pubkey": "abc123def456...",
+      "opaque_id": null,
+      "pod_url": "https://alice.pods.visionclaw.org/private/kg/internal-strategy"
     }
   ],
   "edges": [
@@ -314,7 +358,26 @@ Retrieve the full graph (all nodes and edges). Optionally filter by graph type.
 }
 ```
 
-**Note**: Node IDs are sequential u32 starting at 1. High bits encode type flags (see WebSocket binary protocol for flag definitions). Client must use `String()` coercion when comparing IDs.
+#### Opacified Node Example
+
+When caller requests graph but does not own node 545 (which is private to user XYZ):
+
+```json
+{
+  "id": 545259521,
+  "label": "",
+  "node_type": "page",
+  "metadata_id": "",
+  "visibility": "private",
+  "owner_pubkey": "xyz789...",
+  "opaque_id": "a1b2c3d4e5f67890abcdef1234567890abcdef123456",
+  "pod_url": null
+}
+```
+
+**Note**: Opaque node ID = `0x20000000 | base_id` (bit 29 set). The `opaque_id` is a deterministic hash used for deduplication; label, metadata, and pod_url are cleared to prevent leakage. Edges to opacified nodes are also filtered.
+
+Node IDs are sequential u32 starting at 1. High bits encode type and visibility flags (see WebSocket binary protocol for flag definitions). Client must use `String()` coercion when comparing IDs.
 
 ### GET /api/graph/stats
 
@@ -512,7 +575,7 @@ Content-Type: application/json
 
 ## Ontology Endpoints
 
-Configured in `ontology_handler.rs`.
+Configured in `ontology_handler.rs`. Note: `/api/ontology-agent/*` endpoints are now authentication-gated (previously unwrapped, critical security fix per ADR-028-ext).
 
 ### GET /api/ontology/classes
 
@@ -685,7 +748,7 @@ Content-Type: application/json
 
 ## Analytics and Pathfinding Endpoints
 
-Configured in `api_handler/analytics/mod.rs`. All pathfinding and GPU analytics endpoints require the `gpu` feature flag at compile time and a CUDA-capable GPU.
+Configured in `api_handler/analytics/mod.rs`. All pathfinding and GPU analytics endpoints require the `gpu` feature flag at compile time and a CUDA-capable GPU. Analytics routes are now re-enabled (previously commented-out for testing; authentication fully restored).
 
 ### Standard Analytics
 
@@ -1043,6 +1106,37 @@ Content-Type: application/json
   "debrief_path": "/briefs/brief-abc123/debrief"
 }
 ```
+
+---
+
+## Server Identity Endpoint
+
+### GET /api/server/identity
+
+Retrieve server identity, supported event kinds, and relay information. Public endpoint, no authentication required. This endpoint is foundational for ADR-050 sovereign schema support.
+
+**Response** (200 OK):
+
+```json
+{
+  "pubkey_hex": "abc123def456...",
+  "pubkey_npub": "npub1abc123def456...",
+  "supported_kinds": [
+    1,
+    30023,
+    30100,
+    30200,
+    30300,
+    27235
+  ],
+  "relay_urls": [
+    "wss://relay.example.org",
+    "wss://relay.visionclaw.org"
+  ]
+}
+```
+
+**Schema reference**: See ADR-050 for sovereign schema kinds (30023: long-form content, 30100: graphs, 30200: schemas, 30300: ontologies).
 
 ---
 

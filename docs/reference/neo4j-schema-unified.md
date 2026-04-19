@@ -1,9 +1,9 @@
 ---
 title: VisionClaw Database Schema Reference
-description: Unified schema reference for VisionClaw's data layer — Neo4j graph database, Solid Pod storage, and ontology triple store with bounded context organisation
+description: Unified schema reference for VisionClaw's data layer — Neo4j graph database, Solid Pod storage, and ontology triple store with bounded context organisation, including sovereign-mesh KGNode schema
 category: reference
-tags: [database, neo4j, solid, schema, ontology, graph]
-updated-date: 2026-04-09
+tags: [database, neo4j, solid, schema, ontology, graph, sovereign-mesh]
+updated-date: 2026-04-19
 ---
 
 # VisionClaw Database Schema Reference
@@ -62,10 +62,12 @@ Three bounded contexts live within a single Neo4j instance. Each has distinct no
 
 Populated by `GitHubSyncService` → `KnowledgeGraphParser`. Only files tagged `public:: true` in Logseq produce `:Node` records; `[[wikilink]]` targets produce `:Node` records for the target even when the target file lacks the tag.
 
-#### Node label: `:Node`
+#### Node label: `:KGNode`
+
+Modern sovereign-mesh schema (as of commit 715f91c9f):
 
 ```cypher
-(:Node {
+(:KGNode {
   id:          INTEGER,      // Internal VisionClaw u32 ID from NEXT_NODE_ID atomic
   metadata_id: STRING,       // UUID stable cross-system reference
   label:       STRING,       // Display name / page title
@@ -84,9 +86,26 @@ Populated by `GitHubSyncService` → `KnowledgeGraphParser`. Only files tagged `
   anomaly_score: FLOAT,
   hierarchy_level: INTEGER,
   created_at:  DATETIME,
-  updated_at:  DATETIME
+  updated_at:  DATETIME,
+  
+  // Sovereign-mesh fields (ADR-050, ADR-051)
+  visibility:  STRING,       // "Public" | "Private" (enum, serialised lowercase)
+  owner_pubkey: STRING,      // Optional: hex Nostr pubkey; required for private nodes
+  opaque_id:   STRING,       // Optional: 24 hex chars = HMAC-SHA256(session_salt, owner_pubkey "|" canonical_iri)
+  pod_url:     STRING        // Optional: URI in owner's Pod (/public/kg/{slug} or /private/kg/{slug})
 })
 ```
+
+Legacy `:Node` label continues to work via compatibility layer.
+
+**Sovereign-mesh fields:**
+
+| Field | Type | Nullability | Description |
+|-------|------|-------------|-------------|
+| `visibility` | STRING | Not null, default 'public' | Access level: "public" or "private". Drives caller-aware filtering. |
+| `owner_pubkey` | STRING | Optional | Hex-encoded Nostr public key of the Knowledge Graph owner. Required for `visibility = 'private'`; optional for server-owned canon. |
+| `opaque_id` | STRING | Optional | 24 hex characters = HMAC-SHA256(daily_salt, owner_pubkey \| canonical_iri). Supports 48h dual-salt overlap window for rotation. |
+| `pod_url` | STRING | Optional | URI in owner's Solid Pod (either `/public/kg/{slug}` or `/private/kg/{slug}` route). |
 
 **Node types:**
 
@@ -101,27 +120,46 @@ Populated by `GitHubSyncService` → `KnowledgeGraphParser`. Only files tagged `
 
 ```cypher
 // Primary link type — wiki links between pages
-(:Node)-[:EDGE {
+(:KGNode)-[:EDGE {
   relationship: STRING,  // "hyperlink" | "depends_on" | custom label
   weight:       FLOAT,
   created_at:   DATETIME
-}]->(:Node)
+}]->(:KGNode)
+
+// WikilinkRef edge type (ADR-051, introduced with sovereign-mesh parser)
+// Represents wikilink references discovered during parse runs with lifecycle tracking
+(:KGNode)-[:WikilinkRef {
+  last_seen_run_id: STRING  // UUID per parse run; stale edges pruned by orphan retraction job
+}]->(:KGNode)
 ```
 
 **Constraints and indexes:**
 
 ```cypher
-CREATE INDEX node_id_index IF NOT EXISTS
-  FOR (n:Node) ON (n.id);
+CREATE INDEX kg_node_id_index IF NOT EXISTS
+  FOR (n:KGNode) ON (n.id);
 
-CREATE INDEX node_metadata_id IF NOT EXISTS
-  FOR (n:Node) ON (n.metadata_id);
+CREATE INDEX kg_node_metadata_id IF NOT EXISTS
+  FOR (n:KGNode) ON (n.metadata_id);
 
-CREATE INDEX node_public IF NOT EXISTS
-  FOR (n:Node) ON (n.public);
+CREATE INDEX kg_node_public IF NOT EXISTS
+  FOR (n:KGNode) ON (n.public);
 
-CREATE INDEX node_label IF NOT EXISTS
-  FOR (n:Node) ON (n.label);
+CREATE INDEX kg_node_label IF NOT EXISTS
+  FOR (n:KGNode) ON (n.label);
+
+// Sovereign-mesh indexes (ADR-050)
+CREATE INDEX kg_node_visibility IF NOT EXISTS
+  FOR (n:KGNode) ON (n.visibility);
+
+CREATE INDEX kg_node_owner IF NOT EXISTS
+  FOR (n:KGNode) ON (n.owner_pubkey);
+
+CREATE INDEX kg_node_opaque IF NOT EXISTS
+  FOR (n:KGNode) ON (n.opaque_id);
+
+CREATE INDEX kg_node_pod_url IF NOT EXISTS
+  FOR (n:KGNode) ON (n.pod_url);
 ```
 
 ---
@@ -591,6 +629,36 @@ The 26-bit sequential space supports up to ~67 million nodes before the flag reg
 
 Node IDs are used as GPU buffer indices in the CUDA physics kernel. The flag bits are read by the kernel via `class_id` and `class_charge` per-node buffers for ontology constraint forces; they are **not** used for general rendering logic.
 
+### 4a. Binary V5 Opacity Flag (Sovereign-Mesh Private Nodes)
+
+The binary protocol (V5, commit 715f91c9f) adds an **opacity flag** on the 32-bit node ID field to signal private nodes to the client without serialising labels, metadata, or content.
+
+**Bit 29 Opacity Encoding:**
+
+```
+node_id (u32) with Bit 29 Flag:
+
+Bit 31  | Bit 30  | Bit 29 (OPACITY) | Bits 28–26 | Bits 25–0
+--------|---------|------------------|-----------|------------
+Agent   | KGNode  | Private Opaque   | Ontology  | Sequential ID
+        |         |                  | Subtype   | (0–67M)
+```
+
+**Flag manipulation (binary_protocol.rs):**
+
+- `PRIVATE_OPAQUE_FLAG = 0x20000000` — bit 29 set
+- `node_id_base(raw)` — strips flag to recover sequential ID
+- `is_private_opaque(raw)` — checks `(raw & 0x20000000) != 0`
+- `encode_node_id(base, is_private)` — sets flag if `is_private = true`
+
+**Serialisation rule (V5 wire protocol):**
+
+For nodes with the opacity flag set (private nodes, non-owner caller), the binary protocol:
+- Sends node_id with bit 29 set
+- **Omits all labels, metadata, descriptions, and content** — string-free
+- Client side uses the flag to suppress UI rendering of sensitive information
+- Owner caller always receives full node data (privacy controls applied at filter stage, not serialisation stage)
+
 ---
 
 ## 5. Solid Pod Schema
@@ -912,6 +980,32 @@ RETURN a.subject    AS subject,
 ORDER BY a.subject;
 ```
 
+### 8i. Caller-Aware Filtering (Sovereign-Mesh Private Nodes)
+
+**Pattern: Filter by visibility and owner (ADR-028-ext, ADR-050)**
+
+All KGNode reads that cross trust boundaries (public APIs, anonymous callers) must apply this filter:
+
+```cypher
+MATCH (n:KGNode)
+WHERE COALESCE(n.visibility, 'public') = 'public'
+   OR ($caller IS NOT NULL AND n.owner_pubkey = $caller)
+RETURN n
+LIMIT 100;
+```
+
+**Usage:**
+
+- `$caller` is the authenticated caller's Nostr public key (hex string), or `NULL` for anonymous
+- Nodes without `visibility` field (legacy rows) are treated as `'public'` via `COALESCE`
+- Private nodes are visible **only** to their owner
+- Public nodes are visible to everyone
+
+**Backwards compatibility:**
+
+- New fields use `#[serde(default)]` in Rust structs; missing fields deserialise to safe defaults
+- Legacy `:Node` label queries may not filter visibility; migrate to `:KGNode` for access control
+
 ---
 
 ## 9. Performance Benchmarks
@@ -1000,3 +1094,10 @@ NEO4J_HEAP_MAX=4G
 - `docs/explanation/solid-sidecar-architecture.md` — JSS sidecar configuration and data flows
 - `docs/reference/neo4j-schema-unified.md` — User settings Rust structs and API methods
 - `docs/reference/neo4j-schema-unified.md` — Extended OwlClass metadata (24+ fields)
+
+## Sovereign-Mesh Architecture (ADRs)
+
+- **ADR-050**: Sovereign KG schema — introduces `:KGNode` label, visibility, owner_pubkey, opaque_id, pod_url fields
+- **ADR-051**: Sovereign transitions and credentials — `:WikilinkRef` edge type with parse-run lifecycle tracking
+- **ADR-028-ext**: NIP-98 optional + caller-aware filtering — COALESCE pattern for backwards-compatible access control
+- See `docs/adr/ADR-050.md`, `docs/adr/ADR-051.md`, `docs/adr/ADR-028-ext.md` for full specifications
