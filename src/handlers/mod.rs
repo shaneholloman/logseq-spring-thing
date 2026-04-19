@@ -66,6 +66,7 @@ pub mod fastwebsockets_handler;
 
 // Solid Server (JSS) integration
 pub mod solid_proxy_handler;
+pub mod solid_proxy_migration;
 pub use solid_proxy_handler::configure_routes as configure_solid_routes;
 
 // Image generation (ComfyUI Flux2)
