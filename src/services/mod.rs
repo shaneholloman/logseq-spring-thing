@@ -48,6 +48,16 @@ pub mod kpi_computation_service;
 pub mod pod_client;
 pub mod ingest_saga;
 
+// ADR-051 BRIDGE_TO promotion + orphan retraction
+pub mod bridge_edge;
+pub mod orphan_retraction;
+
+pub use bridge_edge::{
+    bridge_edge_enabled, sigmoid_confidence, BridgeEdgeService, CandidateStatus,
+    MigrationCandidate, SignalVector,
+};
+pub use orphan_retraction::{OrphanRetractionTask, RetractionReport};
+
 // Re-export semantic type registry types for convenience
 pub use semantic_type_registry::{
     DynamicForceConfigGPU, RelationshipForceConfig, SemanticTypeRegistry,
