@@ -1,3 +1,5 @@
+[workspace]
+
 [package]
 name = "webxr"
 version = "0.1.0"
@@ -141,6 +143,8 @@ horned-owl = { version = "1.2.0", features = ["remote"] }
 horned-functional = { version = "0.4.0" }
 # walkdir = { version = "2.4" }  # Unused - removed during cleanup
 clap = { version = "4.5", features = ["derive"] }
+zeroize = { version = "1.8", features = ["derive"] }
+hex = "0.4"
 
 
 [dev-dependencies]
@@ -149,6 +153,7 @@ mockall = "0.13"
 pretty_assertions = "1.4"
 tempfile = "3.14"
 actix-rt = "2.11.0"
+wiremock = "0.6"
 
 # WASM Support for hybrid CPU-WASM/GPU SSSP
 [target.'cfg(target_arch = "wasm32")'.dependencies]
@@ -192,6 +197,10 @@ path = "src/bin/sync_local.rs"
 [[bin]]
 name = "sync_github"
 path = "src/bin/sync_github.rs"
+
+[[bin]]
+name = "vc-cli"
+path = "src/bin/vc_cli.rs"
 
 # REMOVED: migrate_settings_to_neo4j binary - migration complete
 # [[bin]]
