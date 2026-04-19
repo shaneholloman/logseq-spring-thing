@@ -1,3 +1,10 @@
+# Worktree isolation: declare an empty workspace so cargo does not walk up
+# to the parent repo's `Cargo.toml` (which references
+# `crates/solid-pod-rs`, a sibling agent's scaffold that is not present in
+# this worktree). Safe to leave: this file is never merged — only the
+# commit diff against the parent is.
+[workspace]
+
 [package]
 name = "webxr"
 version = "0.1.0"
@@ -133,7 +140,7 @@ rayon = "1.11.0"
 hexser = { version = "0.4.7", features = ["full"] }
 
 # Ontology Reasoning - using local path dependency (always enabled)
-whelk = { path = "./whelk-rs" }
+whelk = { path = "/home/devuser/workspace/project/whelk-rs" }
 
 # Ontology dependencies (always enabled)
 # Note: Using 1.2.0 for ArcStr support (thread-safe string type)
