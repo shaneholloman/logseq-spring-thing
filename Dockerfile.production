@@ -55,9 +55,11 @@ FROM toolchain AS deps
 
 WORKDIR /app
 
-# Copy ONLY dependency manifests + path dependency (whelk-rs)
+# Copy ONLY dependency manifests + path dependencies (whelk-rs + workspace crates)
 COPY Cargo.toml Cargo.lock ./
 COPY whelk-rs ./whelk-rs
+# Workspace members required for cargo resolution — see ADR-053
+COPY crates ./crates
 
 # Create stub sources so cargo can resolve and compile all dependencies.
 # The dummy lib/main must reference whelk so the path dep compiles too.
