@@ -148,6 +148,35 @@ Each context has its own aggregate roots, domain events, and anti-corruption lay
 
 ---
 
+## Sovereign Mesh Architecture (2026-04-19 sprint)
+
+Every wikilink target becomes a first-class `:KGNode` regardless of publish state. Public nodes appear with full label and metadata; private nodes appear as topology-only (node shape and edges visible, label and metadata opacified via bit 29 on node_id in the V5 binary protocol and stripped from REST).
+
+Each user's content lives in their own Solid Pod: `./public/kg/` for published pages (world-readable, canonical URI) and `./private/kg/` for working graph (owner-only). The Pod is write-master; the backend serves as performance layer, aggregation point, and physics engine. The system never writes outside the owner's container.
+
+| Component | What it does | Source |
+|-----------|--------------|--------|
+| NIP-98 optional auth | Anonymous callers see public only; signed callers see own-private + opacified-others | `src/utils/auth.rs`, `src/middleware/auth.rs` |
+| KGNode schema | visibility + owner_pubkey + opaque_id + pod_url, HMAC with daily salt rotation, bit 29 on wire | `src/models/node.rs`, `src/utils/binary_protocol.rs`, `src/utils/canonical_iri.rs`, `src/utils/opaque_id.rs` |
+| Two-pass parser | Build wikilink adjacency, classify visibility per page, emit private stubs | `src/services/parsers/knowledge_graph_parser.rs`, `src/services/parsers/visibility.rs` |
+| Pod-first ingest saga | Pod write → Neo4j commit, crash-safe with pending markers | `src/services/ingest_saga.rs`, `src/services/pod_client.rs` |
+| BRIDGE_TO promotion | 8-signal sigmoid scoring, monotonic confidence invariant, orphan retraction | `src/services/bridge_edge.rs`, `src/services/orphan_retraction.rs` |
+| Server-as-identity | Server signs kind 30023/30100/30200/30300 events (migration / bridge / bead / audit) | `src/services/server_identity.rs`, `src/actors/server_nostr_actor.rs`, `src/handlers/server_identity_handler.rs` |
+| solid-pod-rs crate | Rust-native Solid Pod server (WAC + LDP + NIP-98 + FS/Memory backends); planned JSS parity | `crates/solid-pod-rs/` |
+| Power-user CLI | `vc-cli bootstrap-power-user --env .env` writes GitHub creds to Pod | `src/bin/vc_cli.rs` |
+
+### Solid Ecosystem Integration
+
+VisionClaw aligns with two external ecosystems:
+
+**URN-Solid registry** — We emit `owl:sameAs urn:solid:<Name>` on `:OntologyClass` entries where well-known vocabulary equivalents exist (Person, Document, Event, etc.). Each user's Pod publishes `./public/kg/corpus.jsonl` — a line-delimited JSON-LD snapshot following the URN-Solid registry generation convention (`scripts/build.js`). See the [URN-Solid registry](https://github.com/urn-solid/urn-solid.github.io) (dual-licensed: code + LICENSE-DATA).
+
+**Solid-Apps (LOSOS)** — We publish `./public/schema/kg-node.schema.json` and `./public/schema/manifest.jsonld` with the `urn:solid:KGNode` type binding so LOSOS apps built on LION + solid-schema + solid-panes + LOSOS can render any user's KG content directly from their Pod without VisionClaw-specific code. See the [Solid-Apps project](https://github.com/solid-apps/solid-apps.github.io) (AGPL-3.0 code, separate LICENSE-DATA).
+
+This alignment is behind feature flag `URN_SOLID_ALIGNMENT=true` (default false in v1). Full specification: [ADR-054 — URN-Solid and Solid-Apps Alignment](docs/adr/ADR-054-urn-solid-and-solid-apps-alignment.md).
+
+---
+
 ## Core capabilities
 
 <table>
@@ -308,6 +337,8 @@ This is a working existence proof at small-to-medium scale, not a universal solu
 | **4** Pilot | 33–44 | Consultancy pilot (Idris persona), connector hardening, success reporting | At least one paid pilot running |
 
 Key architecture decisions: [ADR-040](docs/adr/ADR-040-enterprise-identity-strategy.md) · [ADR-041](docs/adr/ADR-041-judgment-broker-workbench.md) · [ADR-042](docs/adr/ADR-042-workflow-proposal-object-model.md) · [ADR-043](docs/adr/ADR-043-kpi-lineage-model.md) · [ADR-044](docs/adr/ADR-044-connector-governance-privacy.md) · [ADR-045](docs/adr/ADR-045-policy-engine-approach.md) · [ADR-046](docs/adr/ADR-046-enterprise-ui-architecture.md) · [ADR-047](docs/adr/ADR-047-wasm-visualization-components.md) · [ADR-048](docs/adr/ADR-048-dual-tier-identity-model.md) · [ADR-049](docs/adr/ADR-049-insight-migration-broker-workflow.md)
+
+Sovereign-mesh ADRs (Wave 1–4): [ADR-028-ext](docs/adr/ADR-028-ext-nip98-optional-caller-aware.md) · [ADR-030-ext](docs/adr/ADR-030-ext-sovereign-schema-transitions-creds.md) · [ADR-050](docs/adr/ADR-050-sovereign-knowledge-graph-model.md) · [ADR-051](docs/adr/ADR-051-pod-first-ingest-saga.md) · [ADR-052](docs/adr/ADR-052-wac-knode-visibility-control.md) · [ADR-053](docs/adr/ADR-053-binary-v5-opaque-nodes.md) · [ADR-054](docs/adr/ADR-054-urn-solid-and-solid-apps-alignment.md)
 
 ---
 
