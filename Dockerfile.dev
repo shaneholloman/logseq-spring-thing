@@ -84,6 +84,9 @@ COPY schema ./schema
 # Copy whelk-rs local dependency (required for cargo fetch)
 COPY whelk-rs ./whelk-rs
 
+# Copy workspace member crates (required for cargo fetch — see ADR-053)
+COPY crates ./crates
+
 # Copy client directory with all frontend files
 COPY client ./client
 
