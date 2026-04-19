@@ -351,6 +351,10 @@ impl Neo4jGraphRepository {
                 owl_class_iri: None,
                 file_size: 0,
                 user_data: None,
+                visibility: crate::models::node::Visibility::Public,
+                owner_pubkey: None,
+                opaque_id: None,
+                pod_url: None,
             };
 
             nodes.push(node);

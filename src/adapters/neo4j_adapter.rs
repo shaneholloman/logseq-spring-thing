@@ -333,6 +333,35 @@ impl Neo4jAdapter {
             warn!("Failed to create fulltext index (may already exist): {}", e);
         }
 
+        // ------------------------------------------------------------------
+        // Step 3: ADR-050 sovereign-model indexes (feature-flagged).
+        //
+        // These indexes back the per-owner, visibility-aware queries used by
+        // the sovereign data plane (private graph, Pod linkage, opaque-id
+        // lookups). They are only created when the `SOVEREIGN_SCHEMA` env
+        // flag is enabled so a bare deployment doesn't pay for them during
+        // the rollout window.
+        // ------------------------------------------------------------------
+        if crate::utils::binary_protocol::sovereign_schema_enabled() {
+            for (name, prop) in [
+                ("kg_node_visibility", "visibility"),
+                ("kg_node_owner", "owner_pubkey"),
+                ("kg_node_opaque", "opaque_id"),
+                ("kg_node_pod_url", "pod_url"),
+            ] {
+                let q = Query::new(format!(
+                    "CREATE INDEX {} IF NOT EXISTS FOR (n:KGNode) ON (n.{})",
+                    name, prop
+                ));
+                match self.graph.run(q).await {
+                    Ok(_) => info!("Created sovereign-schema index {}", name),
+                    Err(e) => warn!("Failed to create sovereign index {} (may already exist): {}", name, e),
+                }
+            }
+        } else {
+            debug!("SOVEREIGN_SCHEMA disabled — skipping ADR-050 indexes");
+        }
+
         info!("Neo4j schema created successfully with semantic type and fulltext indexes");
         Ok(())
     }
@@ -381,6 +410,30 @@ impl Neo4jAdapter {
             if let Ok(json) = to_json(&node.metadata) {
                 props.insert("metadata".to_string(), neo4rs::BoltType::String(neo4rs::BoltString::from(json)));
             }
+        }
+
+        // ADR-050 sovereign-model fields.
+        props.insert(
+            "visibility".to_string(),
+            neo4rs::BoltType::String(neo4rs::BoltString::from(node.visibility.as_str().to_string())),
+        );
+        if let Some(ref owner) = node.owner_pubkey {
+            props.insert(
+                "owner_pubkey".to_string(),
+                neo4rs::BoltType::String(neo4rs::BoltString::from(owner.clone())),
+            );
+        }
+        if let Some(ref opaque) = node.opaque_id {
+            props.insert(
+                "opaque_id".to_string(),
+                neo4rs::BoltType::String(neo4rs::BoltString::from(opaque.clone())),
+            );
+        }
+        if let Some(ref pod_url) = node.pod_url {
+            props.insert(
+                "pod_url".to_string(),
+                neo4rs::BoltType::String(neo4rs::BoltString::from(pod_url.clone())),
+            );
         }
 
         props
@@ -606,7 +659,11 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
                     n.group_name AS group_name,
                     n.metadata AS metadata_json,
                     n.quality_score AS quality_score,
-                    n.authority_score AS authority_score
+                    n.authority_score AS authority_score,
+                    n.visibility AS visibility,
+                    n.owner_pubkey AS owner_pubkey,
+                    n.opaque_id AS opaque_id,
+                    n.pod_url AS pod_url
              ORDER BY id".to_string()
         );
 
@@ -664,6 +721,20 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
             node.owl_class_iri = owl_class_iri;
             node.group = group_name;
             node.metadata = metadata;
+
+            // ADR-050 sovereign-model fields. Empty strings -> None so the
+            // JSON projection matches the `skip_serializing_if` semantics.
+            node.visibility = row.get::<String>("visibility").ok()
+                .as_deref()
+                .and_then(crate::models::node::Visibility::from_str)
+                .unwrap_or_default();
+            node.owner_pubkey = row.get::<String>("owner_pubkey").ok()
+                .filter(|s| !s.is_empty());
+            node.opaque_id = row.get::<String>("opaque_id").ok()
+                .filter(|s| !s.is_empty());
+            node.pod_url = row.get::<String>("pod_url").ok()
+                .filter(|s| !s.is_empty());
+
             nodes.push(node);
         }
 
@@ -1064,7 +1135,11 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
                      n.preferred_term = $preferred_term,
                      n.term_id = $term_id,
                      n.source_file = $source_file,
-                     n.metadata = $metadata
+                     n.metadata = $metadata,
+                     n.visibility = $visibility,
+                     n.owner_pubkey = $owner_pubkey,
+                     n.opaque_id = $opaque_id,
+                     n.pod_url = $pod_url
                  ON MATCH SET
                      n.metadata_id = $metadata_id,
                      n.label = $label,
@@ -1081,7 +1156,11 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
                      n.preferred_term = $preferred_term,
                      n.term_id = $term_id,
                      n.source_file = $source_file,
-                     n.metadata = $metadata
+                     n.metadata = $metadata,
+                     n.visibility = $visibility,
+                     n.owner_pubkey = COALESCE($owner_pubkey, n.owner_pubkey),
+                     n.opaque_id = COALESCE($opaque_id, n.opaque_id),
+                     n.pod_url = COALESCE($pod_url, n.pod_url)
                  // NEVER overwrite sim_x/sim_y/sim_z or vx/vy/vz on MATCH
                  // These are the GPU-calculated physics positions
                 ".to_string()
@@ -1109,7 +1188,14 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
             .param("preferred_term", preferred_term)
             .param("term_id", term_id)
             .param("source_file", source_file)
-            .param("metadata", serde_json::to_string(&node.metadata).unwrap_or_default());
+            .param("metadata", serde_json::to_string(&node.metadata).unwrap_or_default())
+            // ADR-050 sovereign-model fields. Writes occur regardless of the
+            // SOVEREIGN_SCHEMA feature flag so the data is preserved if/when
+            // the flag is flipped on later.
+            .param("visibility", node.visibility.as_str())
+            .param("owner_pubkey", node.owner_pubkey.clone().unwrap_or_default())
+            .param("opaque_id", node.opaque_id.clone().unwrap_or_default())
+            .param("pod_url", node.pod_url.clone().unwrap_or_default());
 
             self.graph.run(query).await.map_err(|e| {
                 KnowledgeGraphRepositoryError::DatabaseError(format!(

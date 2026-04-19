@@ -45,3 +45,5 @@ pub mod nip98; // NIP-98 HTTP authentication for Solid Server integration
 pub mod result_helpers;
 // REMOVED: result_mappers module - no longer exists
 pub mod neo4j_helpers;
+pub mod canonical_iri; // ADR-050: visionclaw:owner:{npub}/kg/{sha256(path)}
+pub mod opaque_id;     // ADR-050: HMAC-derived session opaque ids

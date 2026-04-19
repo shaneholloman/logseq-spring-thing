@@ -13,8 +13,17 @@ const PROTOCOL_V3: u8 = 3; // Analytics extension protocol (P0-4) - CURRENT
 const PROTOCOL_V4: u8 = 4; // Delta encoding protocol
 
 // Node type flag constants for u32 (server-side)
-const AGENT_NODE_FLAG: u32 = 0x80000000; 
-const KNOWLEDGE_NODE_FLAG: u32 = 0x40000000; 
+const AGENT_NODE_FLAG: u32 = 0x80000000;
+const KNOWLEDGE_NODE_FLAG: u32 = 0x40000000;
+
+/// ADR-050 private-opacity flag — bit 29 of the wire id.
+///
+/// When set, the client MUST render the node without label or metadata; the
+/// node is private-sovereign and the consuming client is not its owner. The
+/// server strips label/metadata at serialisation time, so the flag is a
+/// redundant belt-and-braces signal the client can also use to style the
+/// placeholder locally (e.g. render as "(private)").
+pub const PRIVATE_OPAQUE_FLAG: u32 = 0x20000000;
 
 // Ontology node type flags (bits 26-28, only valid when GraphType::Ontology)
 const ONTOLOGY_TYPE_MASK: u32 = 0x1C000000;
@@ -22,9 +31,28 @@ const ONTOLOGY_CLASS_FLAG: u32 = 0x04000000;
 const ONTOLOGY_INDIVIDUAL_FLAG: u32 = 0x08000000;
 const ONTOLOGY_PROPERTY_FLAG: u32 = 0x10000000;
 
-// Node ID mask: bits 0-25 only (excludes bits 26-31 for all flags)
+// Node ID mask: bits 0-25 only (excludes bits 26-31 for all flags).
+// Bit layout of the 32-bit wire id:
+//   31 AGENT | 30 KNOWLEDGE | 29 PRIVATE_OPAQUE | 28-26 ONTOLOGY_TYPE | 25-0 ID
 // Supports node IDs: 0 to 67,108,863 (2^26 - 1)
-const NODE_ID_MASK: u32 = 0x03FFFFFF; 
+const NODE_ID_MASK: u32 = 0x03FFFFFF;
+
+/// Strip bit 29 from a wire-flagged id and return the base (type-flagged) id.
+#[inline]
+pub fn node_id_base(raw: u32) -> u32 { raw & !PRIVATE_OPAQUE_FLAG }
+
+/// Did the server mark this wire id as private-opaque to the consuming client?
+#[inline]
+pub fn is_private_opaque(raw: u32) -> bool {
+    raw & PRIVATE_OPAQUE_FLAG != 0
+}
+
+/// OR the private-opacity flag onto `base` when `is_private == true`.
+/// Does not clear other flags (agent / knowledge / ontology type bits stay).
+#[inline]
+pub fn encode_node_id(base: u32, is_private: bool) -> u32 {
+    if is_private { base | PRIVATE_OPAQUE_FLAG } else { base }
+}
 
 // V1 wire format constants REMOVED - caused node ID truncation bugs
 // V2+ uses full u32 IDs with no truncation
@@ -287,6 +315,20 @@ impl BinaryNodeData {
     }
 }
 
+/// ADR-050: `true` iff the sovereign-schema feature flag is enabled for this
+/// process. Gates:
+///   - Neo4j sovereign indexes being created at startup.
+///   - Bit 29 (`PRIVATE_OPAQUE_FLAG`) being ORed into wire ids.
+///
+/// When unset/false, the new `visibility`/`owner_pubkey`/`opaque_id`/`pod_url`
+/// fields are still written through to Neo4j rows (so data gathered pre-flip
+/// is not lost), but no privacy enforcement happens on the wire.
+pub fn sovereign_schema_enabled() -> bool {
+    std::env::var("SOVEREIGN_SCHEMA")
+        .map(|v| matches!(v.to_ascii_lowercase().as_str(), "true" | "1" | "yes" | "on"))
+        .unwrap_or(false)
+}
+
 /// ADR-037: Convenience wrapper — calls encode_positions_v3 without SSSP or analytics.
 pub fn encode_node_data_extended(
     nodes: &[(u32, BinaryNodeData)],
@@ -328,6 +370,33 @@ pub fn encode_positions_v3(
     sssp_data: Option<&HashMap<u32, (f32, i32)>>,
     analytics_data: Option<&HashMap<u32, (u32, f32, u32)>>,
 ) -> Vec<u8> {
+    encode_positions_v3_with_privacy(
+        nodes, agent_node_ids, knowledge_node_ids,
+        ontology_class_ids, ontology_individual_ids, ontology_property_ids,
+        sssp_data, analytics_data, None,
+    )
+}
+
+/// ADR-050: V3 encoder with privacy enforcement.
+///
+/// `private_opaque_ids` (when `Some`) is the set of node ids that the caller
+/// does NOT own but is allowed to see as opaque placeholders. The encoder ORs
+/// `PRIVATE_OPAQUE_FLAG` (bit 29) into the wire id for each such node so the
+/// client can render them without label/metadata.
+///
+/// The flag is only applied when `sovereign_schema_enabled()` returns true —
+/// otherwise we retain pre-ADR-050 wire behaviour byte-for-byte.
+pub fn encode_positions_v3_with_privacy(
+    nodes: &[(u32, BinaryNodeData)],
+    agent_node_ids: &[u32],
+    knowledge_node_ids: &[u32],
+    ontology_class_ids: &[u32],
+    ontology_individual_ids: &[u32],
+    ontology_property_ids: &[u32],
+    sssp_data: Option<&HashMap<u32, (f32, i32)>>,
+    analytics_data: Option<&HashMap<u32, (u32, f32, u32)>>,
+    private_opaque_ids: Option<&std::collections::HashSet<u32>>,
+) -> Vec<u8> {
     // Always use V3 as the default protocol (P0-4 Analytics Extension)
     let protocol_version = PROTOCOL_V3;
     let item_size = WIRE_V3_ITEM_SIZE;
@@ -353,6 +422,8 @@ pub fn encode_positions_v3(
         );
     }
 
+    let sovereign_on = sovereign_schema_enabled();
+
     for (node_id, node) in nodes {
 
         let flagged_id = if agent_node_ids.contains(node_id) {
@@ -372,6 +443,18 @@ pub fn encode_positions_v3(
                 node_id, node_id, NODE_ID_MASK
             );
             *node_id
+        };
+
+        // ADR-050: OR in bit 29 if the caller is not the owner of this
+        // private node. Gated by the SOVEREIGN_SCHEMA feature flag so the
+        // wire format is unchanged when the flag is off.
+        let flagged_id = if sovereign_on {
+            let is_private = private_opaque_ids
+                .map(|s| s.contains(node_id) || s.contains(&get_actual_node_id(flagged_id)))
+                .unwrap_or(false);
+            encode_node_id(flagged_id, is_private)
+        } else {
+            flagged_id
         };
 
         if sample_size > 0 && *node_id < sample_size as u32 {
