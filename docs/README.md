@@ -28,6 +28,18 @@ Full setup details: [Deployment Guide](how-to/deployment-guide.md)
 
 ---
 
+## Sovereign Mesh Sprint (2026-04-19)
+
+Recent ship: **Pod-backed knowledge graph sovereignty with Solid Pod integration, per-user Nostr identity, and Web Access Control**. Six architectural decisions landed on `main`:
+
+- **Pod-First Ingest**: KGNode visibility + owner_pubkey + pod_url fields; private container default; Publish/Unpublish saga
+- **NIP-98 Enterprise Auth**: Optional auth mode with AccessLevel, caller-aware filters, legacy session deprecation
+- **Solid WAC Default**: /private, /public, /shared, /profile containers with double-gated writes
+
+See [Sovereign Mesh ADRs](#sovereign-mesh-pod-integration-adr-028-ext-to-adr-053) below. New tutorials: [Power-User Bootstrap CLI](how-to/operations/power-user-bootstrap.md) (stable), [Nostr Server Identity](how-to/operations/server-nostr-identity.md) (pending), [Sovereign Ingest](how-to/features/sovereign-ingest.md) (pending).
+
+---
+
 ## Documentation Map
 
 ```mermaid
@@ -146,9 +158,12 @@ Practical task-oriented instructions. See [how-to/README.md](how-to/README.md) f
 | [Pipeline Admin API](how-to/operations/pipeline-admin-api.md) | Admin endpoints for pipeline management |
 | [Operator Runbook](how-to/operations/pipeline-operator-runbook.md) | Production operations playbook |
 | [Maintenance](how-to/operations/maintenance.md) | Routine maintenance and upkeep tasks |
+| [Power-User Bootstrap CLI](how-to/operations/power-user-bootstrap.md) | CLI tool to bootstrap power-user accounts with GitHub credentials |
+| [Nostr Server Identity](how-to/operations/server-nostr-identity.md) | Per-server Nostr identity + WebID discovery via NIP-39 |
 | [Neo4j Integration](how-to/integration/neo4j-integration.md) | Neo4j database connection and migration |
 | [Solid Integration](how-to/integration/solid-integration.md) | Solid Pod integration overview |
 | [Solid Pod Creation](how-to/integration/solid-pod-creation.md) | Creating and managing user Solid Pods |
+| [Sovereign Ingest](how-to/features/sovereign-ingest.md) | Pod-first ingest saga with Neo4j fallback and crash-safe markers |
 | [ComfyUI Service](how-to/integration/comfyui-service-integration.md) | ComfyUI Docker service integration |
 
 ---
@@ -230,6 +245,17 @@ Design decisions recorded as ADRs in [docs/adr/](adr/).
 | [ADR-028](adr/ADR-028-sparql-patch-ontology.md) | SPARQL PATCH for Ontology Mutations |
 | [ADR-029](adr/ADR-029-type-index-discovery.md) | Type Index Discovery |
 | [ADR-030](adr/ADR-030-agent-memory-pods.md) | Agent Memory Pods |
+
+### Sovereign Mesh: Pod Integration (ADR-028-ext to ADR-053)
+
+| ADR | Title | Description |
+|-----|-------|-------------|
+| [ADR-028-ext](adr/ADR-028-ext-optional-auth.md) | NIP-98 Optional Enterprise Auth | AccessLevel::Optional + caller-aware filter + legacy session deprecation path |
+| [ADR-030-ext](adr/ADR-030-ext-github-creds-in-pod.md) | Pod-Stored GitHub Credentials | Per-user GitHub creds in Pod ./private/config/github + power-user bootstrap CLI |
+| [ADR-050](adr/ADR-050-pod-backed-kgnode-schema.md) | Pod-Backed KGNode Schema | KGNode visibility/owner_pubkey/opaque_id/pod_url fields + PRIVATE_OPAQUE_FLAG + HMAC opaque IDs |
+| [ADR-051](adr/ADR-051-visibility-transitions.md) | Publish/Unpublish Saga | Visibility state machine: MOVE between /public and /private containers, 410 Gone, cache invalidation |
+| [ADR-052](adr/ADR-052-pod-default-wac-public-container.md) | Pod Default WAC + Container Layout | Default-private root ACL + /private, /public, /shared, /profile + double-gated writes |
+| [ADR-053](adr/ADR-053-solid-pod-rs-crate-extraction.md) | solid-pod-rs Crate Extraction | Extract pod-worker → shared solid-pod-rs Rust crate (MIT/Apache-2.0, JSS parity gate, subtree split) |
 
 ### Platform Consolidation (ADR-031 to ADR-039)
 
