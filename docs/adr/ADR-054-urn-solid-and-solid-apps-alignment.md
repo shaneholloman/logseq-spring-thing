@@ -185,7 +185,46 @@ from their Pod using the same schema every VisionClaw instance publishes.
 
 ## References
 
-- URN-Solid registry: https://urn-solid.github.io/
-- Solid-Apps platform: https://solid-apps.github.io/
+### URN-Solid
+
+- Landing page: https://urn-solid.github.io/
+- Source: https://github.com/urn-solid/urn-solid.github.io
+- Structure: `terms/<Name>/index.json` (source JSON-LD), `schema/term.schema.json`
+  (meta-schema), `scripts/{validate,build}.js`, `corpus.jsonl` (generated), `context.jsonld`
+- Contribution: propose via GitHub issue with identifier + one-line definition +
+  canonical URI; LLM-driven batches accepted with provenance
+- LLM integration: `llms.txt` + `SKILL.md` (Anthropic Agent Skill format) + single
+  `/corpus.jsonl` fetch for whole-registry access
+- Registered terms today: ~200 (Person, Agent, Event, Document, etc.)
+- Licensing: dual — `LICENSE` (code) + `LICENSE-DATA` (registry data)
+
+### Solid-Apps
+
+- Landing page: https://solid-apps.github.io/
+- Source: https://github.com/solid-apps/solid-apps.github.io
+- Licence: AGPL-3.0 (code), separate LICENSE-DATA
+- App shape: directory with `app.json` manifest (name + description + supported
+  `urn:solid:` types) + `index.html` single-file app + `schema/app.schema.json`
+- Discovery: `index.json` (slug → manifest), `reverse-index.json`
+  (type → app-slug), `corpus.jsonl` (line-by-line manifests)
+- Example apps in-tree: bookmark, calendar, contacts, feed, preact, profile,
+  todos, template
+- Languages: 82.9% HTML, 17.1% JavaScript — LOSOS apps are browser-native,
+  no Rust interop surface required
+
+### Integration path VisionClaw ↔ both projects
+
+- Our `./public/kg/corpus.jsonl` format mirrors URN-Solid's generation contract;
+  we validate against `term.schema.json` before emission
+- Our type-manifest at `./public/schema/manifest.jsonld` follows the
+  Solid-Apps pattern (slug + type binding) so their `reverse-index.json`
+  crawler can discover it
+- `urn-solid-mapping.md` in-tree pins the ~200 terms we care about; refreshed
+  against upstream `corpus.jsonl` on a manual cadence (no auto-sync to avoid
+  registry drift breaking us)
+
+### Specs
+
 - JSON-LD 1.1 specification
 - Solid Protocol 0.11
+- Anthropic Agent Skill format (referenced by URN-Solid's SKILL.md)
