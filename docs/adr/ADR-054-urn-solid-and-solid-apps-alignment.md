@@ -1,4 +1,4 @@
-# ADR-054: URN-Solid + Solid-Apps Ecosystem Alignment
+# ADR-054: URN-Solid + solid-schema + Solid-Apps Ecosystem Alignment
 
 ## Status
 
@@ -6,8 +6,9 @@ Ratified 2026-04-19
 
 ## Context
 
-Two adjacent Solid-ecosystem projects cover the same ground VisionClaw touches
-at the intersection of ontology identity and Pod-hosted content:
+Three adjacent Solid-ecosystem projects cover the same ground VisionClaw
+touches at the intersection of ontology identity, schema-contract
+validation, and Pod-hosted content:
 
 - **URN-Solid** (`https://urn-solid.github.io/`) — a registry of
   location-independent identifiers of the form `urn:solid:<Name>` that map,
@@ -17,6 +18,15 @@ at the intersection of ontology identity and Pod-hosted content:
   `/corpus.jsonl` fetch plus `llms.txt` and `SKILL.md` integration files).
   Solves the registry-drift problem: stable names that survive across
   transport, storage, and evolving deployments.
+- **solid-schema** (`https://solid-schema.github.io/`) — a JSON Schema
+  2020-12 registry for `urn:solid:` types. Each schema published at a
+  stable URL `https://solid-schema.github.io/<Type>/index.json` with an
+  `x-urn-solid` extension carrying the URN-Solid term id, status, and
+  lineage. Occupies a distinct layer in the stack (LION wire format →
+  urn-solid vocabulary → **solid-schema contracts** → LOSOS runtime).
+  Provides the machine-readable validation layer that urn-solid's
+  vocabulary doesn't: what shape is a `urn:solid:Note` actually supposed
+  to have? Generates corpus.jsonl, index.json, reverse-index.json.
 - **Solid-Apps** (`https://solid-apps.github.io/`) — a curated platform
   for single-HTML-file Solid applications built on an integrated stack:
   LION (JSON-LD canonical format), urn-solid (type naming),
@@ -98,6 +108,31 @@ at `./public/schema/manifest.jsonld` declaring
 `urn:solid:KGNode` → our schema URL. A LOSOS app that handles
 `urn:solid:KGNode` can then read/write any user's KG content directly
 from their Pod using the same schema every VisionClaw instance publishes.
+
+The schema follows solid-schema conventions: JSON Schema 2020-12 +
+`x-urn-solid` extension with `term: "urn:solid:KGNode"`, `status: "stable"`,
+and `lineage: { parent: "solid-schema:Thing", version: "1.0.0" }`. The
+VisionClaw-authored schema is submittable upstream to solid-schema as a
+contribution once stable, giving the wider Solid ecosystem a canonical
+shape for knowledge-graph nodes.
+
+### 5. solid-schema validation in `solid-pod-rs`
+
+PUT requests to `./public/kg/{slug}` with `Content-Type: application/ld+json`
+validate against the published schema when a matching `x-urn-solid` type
+is declared in the payload's `@type`. Validation uses the
+`jsonschema` Rust crate (compatible with JSON Schema 2020-12) against a
+cached schema fetched from the user's own
+`./public/schema/kg-node.schema.json` (NOT solid-schema.github.io — we
+respect user sovereignty; their Pod is authoritative). Cache TTL 1h
+with ETag-based refresh.
+
+Failure modes:
+- Payload asserts unknown `@type` → accept (liberal ingress)
+- Payload asserts known type but fails schema → 400 with validation
+  errors per JSON Schema conventions
+- Schema itself unreachable → log warning, accept (fail-open rather
+  than fail-closed for Pod availability)
 
 ## Consequences
 
@@ -198,6 +233,18 @@ from their Pod using the same schema every VisionClaw instance publishes.
 - Registered terms today: ~200 (Person, Agent, Event, Document, etc.)
 - Licensing: dual — `LICENSE` (code) + `LICENSE-DATA` (registry data)
 
+### solid-schema
+
+- Landing page: https://solid-schema.github.io/
+- Source: https://github.com/solid-schema/solid-schema.github.io
+- Format: JSON Schema 2020-12 with `x-urn-solid` extension metadata
+  (term id + status + lineage)
+- Artefacts: `<Type>/index.json` (per-schema), `index.json` (lookup),
+  `reverse-index.json` (URI mapping), `corpus.jsonl` (bulk corpus)
+- Build: `npm run validate && npm run build`
+- Licence: AGPL-3.0
+- Rust consumer: `jsonschema` crate (JSON Schema 2020-12 compatible)
+
 ### Solid-Apps
 
 - Landing page: https://solid-apps.github.io/
@@ -212,13 +259,16 @@ from their Pod using the same schema every VisionClaw instance publishes.
 - Languages: 82.9% HTML, 17.1% JavaScript — LOSOS apps are browser-native,
   no Rust interop surface required
 
-### Integration path VisionClaw ↔ both projects
+### Integration path VisionClaw ↔ all three projects
 
 - Our `./public/kg/corpus.jsonl` format mirrors URN-Solid's generation contract;
   we validate against `term.schema.json` before emission
 - Our type-manifest at `./public/schema/manifest.jsonld` follows the
   Solid-Apps pattern (slug + type binding) so their `reverse-index.json`
   crawler can discover it
+- Our per-user `./public/schema/kg-node.schema.json` follows solid-schema's
+  file/extension convention so it can be submitted upstream at
+  `<Type>/index.json` without modification
 - `urn-solid-mapping.md` in-tree pins the ~200 terms we care about; refreshed
   against upstream `corpus.jsonl` on a manual cadence (no auto-sync to avoid
   registry drift breaking us)

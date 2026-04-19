@@ -171,6 +171,8 @@ VisionClaw aligns with two external ecosystems:
 
 **URN-Solid registry** — We emit `owl:sameAs urn:solid:<Name>` on `:OntologyClass` entries where well-known vocabulary equivalents exist (Person, Document, Event, etc.). Each user's Pod publishes `./public/kg/corpus.jsonl` — a line-delimited JSON-LD snapshot following the URN-Solid registry generation convention (`scripts/build.js`). See the [URN-Solid registry](https://github.com/urn-solid/urn-solid.github.io) (dual-licensed: code + LICENSE-DATA).
 
+**solid-schema** — JSON Schema 2020-12 contracts for `urn:solid:` types, sitting between vocabulary (URN-Solid) and runtime (LOSOS). We publish `./public/schema/kg-node.schema.json` following the solid-schema convention (JSON Schema 2020-12 + `x-urn-solid` extension with term id, status, and lineage) so the same contract can be submitted upstream for ecosystem-wide adoption. `solid-pod-rs` validates JSON-LD PUTs against user-published schemas via the `jsonschema` Rust crate. See the [solid-schema registry](https://github.com/solid-schema/solid-schema.github.io) (AGPL-3.0).
+
 **Solid-Apps (LOSOS)** — We publish `./public/schema/kg-node.schema.json` and `./public/schema/manifest.jsonld` with the `urn:solid:KGNode` type binding so LOSOS apps built on LION + solid-schema + solid-panes + LOSOS can render any user's KG content directly from their Pod without VisionClaw-specific code. See the [Solid-Apps project](https://github.com/solid-apps/solid-apps.github.io) (AGPL-3.0 code, separate LICENSE-DATA).
 
 This alignment is behind feature flag `URN_SOLID_ALIGNMENT=true` (default false in v1). Full specification: [ADR-054 — URN-Solid and Solid-Apps Alignment](docs/adr/ADR-054-urn-solid-and-solid-apps-alignment.md).
