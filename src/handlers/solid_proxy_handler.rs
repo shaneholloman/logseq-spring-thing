@@ -43,6 +43,181 @@ impl JssConfig {
     }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// ADR-052: Default-private WAC + 3-container layout + double-gated writes
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Feature flag: default-private pods + 3-container layout.
+/// When `true`, newly provisioned Pods use the owner-only root ACL, split
+/// content into `./private`, `./public`, `./shared`, `./profile`, and the
+/// public container is gated so only content explicitly marked public can
+/// be written there. When `false`, the legacy permissive layout (root
+/// `foaf:Agent` read + single flat tree) is used for backward compatibility.
+pub fn pod_default_private_enabled() -> bool {
+    std::env::var("POD_DEFAULT_PRIVATE")
+        .map(|v| matches!(v.as_str(), "true" | "1" | "yes" | "on"))
+        .unwrap_or(false)
+}
+
+/// Public base URL of the Pod server (used for NIP-39-derived WebIDs).
+/// Falls back to `https://pods.visionclaw.org` when unset.
+pub fn pod_public_base_url() -> String {
+    std::env::var("POD_BASE_URL").unwrap_or_else(|_| "https://pods.visionclaw.org".to_string())
+}
+
+/// Derive the NIP-39 compliant WebID for a given hex Nostr pubkey.
+/// Form: `{POD_BASE_URL}/{pubkey}/profile/card#me`.
+pub fn derive_webid(pubkey_hex: &str) -> String {
+    format!("{}/{}/profile/card#me", pod_public_base_url().trim_end_matches('/'), pubkey_hex)
+}
+
+/// Render the owner-only root/private ACL Turtle template per ADR-052.
+pub fn render_owner_only_acl(owner_webid: &str) -> String {
+    format!(
+        r#"@prefix acl: <http://www.w3.org/ns/auth/acl#>.
+
+<#owner>
+    a acl:Authorization;
+    acl:agent <{owner}>;
+    acl:accessTo <./>;
+    acl:default <./>;
+    acl:mode acl:Read, acl:Write, acl:Control.
+"#,
+        owner = owner_webid
+    )
+}
+
+/// Render the `./public/` ACL Turtle (foaf:Agent read + owner write).
+pub fn render_public_container_acl(owner_webid: &str) -> String {
+    format!(
+        r#"@prefix acl: <http://www.w3.org/ns/auth/acl#>.
+@prefix foaf: <http://xmlns.com/foaf/0.1/>.
+
+<#publicRead>
+    a acl:Authorization;
+    acl:agentClass foaf:Agent;
+    acl:accessTo <./>;
+    acl:default <./>;
+    acl:mode acl:Read.
+
+<#ownerWrite>
+    a acl:Authorization;
+    acl:agent <{owner}>;
+    acl:accessTo <./>;
+    acl:default <./>;
+    acl:mode acl:Read, acl:Write, acl:Control.
+"#,
+        owner = owner_webid
+    )
+}
+
+/// Render the `./profile/` ACL Turtle. Only `card` is public-readable; the
+/// rest of the container remains owner-scoped.
+pub fn render_profile_container_acl(owner_webid: &str) -> String {
+    format!(
+        r#"@prefix acl: <http://www.w3.org/ns/auth/acl#>.
+@prefix foaf: <http://xmlns.com/foaf/0.1/>.
+
+<#publicReadCard>
+    a acl:Authorization;
+    acl:agentClass foaf:Agent;
+    acl:accessTo <./card>;
+    acl:mode acl:Read.
+
+<#ownerWrite>
+    a acl:Authorization;
+    acl:agent <{owner}>;
+    acl:accessTo <./>;
+    acl:default <./>;
+    acl:mode acl:Read, acl:Write, acl:Control.
+"#,
+        owner = owner_webid
+    )
+}
+
+/// Render the minimal NIP-39 WebID document seeded at `./profile/card`.
+pub fn render_webid_card(pubkey_hex: &str) -> String {
+    format!(
+        r#"@prefix foaf: <http://xmlns.com/foaf/0.1/>.
+@prefix solid: <http://www.w3.org/ns/solid/terms#>.
+@prefix nostr: <https://nostr.com/vocab/>.
+
+<#me>
+    a foaf:Person;
+    nostr:hasPubkey "{pk}".
+"#,
+        pk = pubkey_hex
+    )
+}
+
+/// ADR-052 double-gate decision result for a PUT to `./public/kg/*`.
+/// The write is permitted only when BOTH the structural check (path is
+/// under `public/kg`) and the source check (content asserts `public:: true`
+/// or the caller set `X-VisionClaw-Visibility: public`) pass.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DoubleGateDecision {
+    /// Gate does not apply (path is not under `public/kg`).
+    NotApplicable,
+    /// Both gates passed — write is allowed.
+    Allow,
+    /// One or both gates failed — write must be rejected with 403.
+    Deny,
+}
+
+/// Detect whether a body asserts a Logseq-style `public:: true` marker.
+/// The assertion is tolerant to whitespace and case: the first bare
+/// occurrence of `public:: true` / `public:: "true"` in the body satisfies
+/// the source gate.
+pub fn body_marks_public(body: &[u8]) -> bool {
+    let Ok(text) = std::str::from_utf8(body) else {
+        return false;
+    };
+    text.lines().any(|line| {
+        let trimmed = line.trim_start();
+        // Logseq page-property syntax
+        if let Some(rest) = trimmed.strip_prefix("public::") {
+            let v = rest.trim().trim_matches(|c: char| c == '"' || c == '\'');
+            return v.eq_ignore_ascii_case("true");
+        }
+        // JSON/YAML-ish "public": true variant
+        if let Some(rest) = trimmed.strip_prefix("\"public\":") {
+            let v = rest.trim().trim_end_matches(',');
+            return v.eq_ignore_ascii_case("true");
+        }
+        false
+    })
+}
+
+/// Evaluate the ADR-052 double gate for a PUT request.
+/// `pod_relative_path` is the path inside the pod (e.g. `public/kg/foo.ttl`).
+pub fn evaluate_double_gate(
+    pod_relative_path: &str,
+    body: &[u8],
+    explicit_visibility_header: Option<&str>,
+) -> DoubleGateDecision {
+    // Strip any leading slashes for consistent matching.
+    let normalised = pod_relative_path.trim_start_matches('/');
+
+    // Structural gate: is this a write under ./public/kg/?
+    let is_public_kg = normalised.starts_with("public/kg/")
+        || normalised == "public/kg";
+    if !is_public_kg {
+        return DoubleGateDecision::NotApplicable;
+    }
+
+    // Source gate: explicit header wins when set to `public`.
+    let header_asserts_public = explicit_visibility_header
+        .map(|v| v.trim().eq_ignore_ascii_case("public"))
+        .unwrap_or(false);
+
+    if header_asserts_public || body_marks_public(body) {
+        DoubleGateDecision::Allow
+    } else {
+        DoubleGateDecision::Deny
+    }
+}
+
+
 /// Response from pod creation
 #[derive(Debug, Serialize, Deserialize)]
 pub struct PodCreationResponse {
@@ -67,6 +242,15 @@ pub struct PodStructure {
     pub preferences: String,
     /// Notifications inbox
     pub inbox: String,
+    /// ADR-052: private container (owner-only)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub private: Option<String>,
+    /// ADR-052: public container (foaf:Agent read + owner write)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub public: Option<String>,
+    /// ADR-052: shared container (named-group placeholder, owner-only today)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shared: Option<String>,
 }
 
 /// Error response structure
@@ -228,6 +412,35 @@ pub async fn handle_solid_proxy(
         "Solid proxy: {} /solid/{} -> JSS",
         method, target_path
     );
+
+    // ADR-052 double gate: PUTs under `<npub>/public/kg/*` must assert
+    // public visibility either via `public:: true` in the body or the
+    // `X-VisionClaw-Visibility: public` header. Denials short-circuit
+    // before any upstream traffic and produce a stable 403 payload.
+    if method.as_str() == "PUT" && pod_default_private_enabled() {
+        // Strip the leading `<npub>/` so the relative path starts at the
+        // pod root, mirroring the saga's own view of visibility.
+        let pod_relative = match target_path.split_once('/') {
+            Some((_npub, rest)) => rest,
+            None => target_path.as_str(),
+        };
+        let visibility_header = req
+            .headers()
+            .get("X-VisionClaw-Visibility")
+            .and_then(|v| v.to_str().ok());
+        match evaluate_double_gate(pod_relative, &body, visibility_header) {
+            DoubleGateDecision::Deny => {
+                warn!(
+                    "ADR-052 double-gate denial for PUT /solid/{} (header={:?})",
+                    target_path, visibility_header
+                );
+                return HttpResponse::Forbidden()
+                    .content_type("text/plain; charset=utf-8")
+                    .body("double-gate failure: content not marked public");
+            }
+            DoubleGateDecision::Allow | DoubleGateDecision::NotApplicable => {}
+        }
+    }
 
     // Build target URL
     let target_url = format!("{}/{}", state.config.base_url, target_path);
@@ -417,13 +630,168 @@ async fn pod_exists(state: &SolidProxyState, npub: &str) -> bool {
     }
 }
 
-/// Create the standard pod directory structure
+/// Helper: PUT a container (LDP BasicContainer) at `url`.
+async fn put_container(
+    state: &SolidProxyState,
+    url: &str,
+    auth_header: Option<&str>,
+    label: &str,
+) {
+    let mut req = state.http_client.put(url);
+    if let Some(auth) = auth_header {
+        req = req.header("Authorization", auth);
+    }
+    req = req
+        .header("Content-Type", "text/turtle")
+        .header("Link", "<http://www.w3.org/ns/ldp#BasicContainer>; rel=\"type\"")
+        .body("");
+    match req.send().await {
+        Ok(resp) if resp.status().is_success() || resp.status().as_u16() == 409 => {
+            debug!("Created/confirmed container: {}", label);
+        }
+        Ok(resp) => debug!("Container {} creation returned {}", label, resp.status()),
+        Err(e) => warn!("Failed to create container {}: {}", label, e),
+    }
+}
+
+/// Helper: PUT a Turtle resource at `url` with the given body.
+async fn put_turtle(
+    state: &SolidProxyState,
+    url: &str,
+    body: String,
+    auth_header: Option<&str>,
+    label: &str,
+) {
+    let mut req = state.http_client.put(url);
+    if let Some(auth) = auth_header {
+        req = req.header("Authorization", auth);
+    }
+    req = req
+        .header("Content-Type", "text/turtle")
+        .body(body);
+    match req.send().await {
+        Ok(resp) if resp.status().is_success() || resp.status().as_u16() == 409 => {
+            info!("Wrote {}", label);
+        }
+        Ok(resp) => warn!("Write of {} returned {}", label, resp.status()),
+        Err(e) => warn!("Failed to write {}: {}", label, e),
+    }
+}
+
+/// ADR-052 provisioning: default-private root + `./private`, `./public`,
+/// `./shared`, `./profile` containers with correctly scoped ACLs.
+async fn create_sovereign_pod_structure(
+    state: &SolidProxyState,
+    npub: &str,
+    pubkey: &str,
+    auth_header: Option<&str>,
+) -> Result<PodStructure, String> {
+    let pod_base = format!("{}/{}", state.config.base_url, npub);
+    let owner_webid = derive_webid(pubkey);
+
+    // 1. Root ACL — owner-only, zero foaf:Agent grants (ADR-052 §root-acl).
+    put_turtle(
+        state,
+        &format!("{}/.acl", pod_base),
+        render_owner_only_acl(&owner_webid),
+        auth_header,
+        &format!("root ACL for {}", npub),
+    )
+    .await;
+
+    // 2. `./private/` — mirrors root's owner-only template; sub-containers
+    //    inherit via `acl:default` so no further ACL writes are required.
+    let private_dirs = ["private", "private/kg", "private/config", "private/bridges"];
+    for dir in private_dirs {
+        put_container(state, &format!("{}/{}/", pod_base, dir), auth_header, dir).await;
+    }
+    put_turtle(
+        state,
+        &format!("{}/private/.acl", pod_base),
+        render_owner_only_acl(&owner_webid),
+        auth_header,
+        "./private/.acl",
+    )
+    .await;
+
+    // 3. `./public/` — foaf:Agent read + owner write (double-gated at write
+    //    time by `evaluate_double_gate`). Sub-container `public/kg/` inherits.
+    for dir in ["public", "public/kg"] {
+        put_container(state, &format!("{}/{}/", pod_base, dir), auth_header, dir).await;
+    }
+    put_turtle(
+        state,
+        &format!("{}/public/.acl", pod_base),
+        render_public_container_acl(&owner_webid),
+        auth_header,
+        "./public/.acl",
+    )
+    .await;
+
+    // 4. `./shared/` — placeholder for future named-group read. Today it
+    //    inherits the owner-only default from root; we still write an
+    //    explicit owner-only ACL for clarity and easy future extension.
+    put_container(state, &format!("{}/shared/", pod_base), auth_header, "shared").await;
+    put_turtle(
+        state,
+        &format!("{}/shared/.acl", pod_base),
+        render_owner_only_acl(&owner_webid),
+        auth_header,
+        "./shared/.acl",
+    )
+    .await;
+
+    // 5. `./profile/` + seeded `card` with NIP-39 claim.
+    put_container(state, &format!("{}/profile/", pod_base), auth_header, "profile").await;
+    put_turtle(
+        state,
+        &format!("{}/profile/.acl", pod_base),
+        render_profile_container_acl(&owner_webid),
+        auth_header,
+        "./profile/.acl",
+    )
+    .await;
+    put_turtle(
+        state,
+        &format!("{}/profile/card", pod_base),
+        render_webid_card(pubkey),
+        auth_header,
+        "./profile/card (WebID)",
+    )
+    .await;
+
+    info!(
+        "Provisioned sovereign pod layout for {} (webid: {})",
+        npub, owner_webid
+    );
+
+    Ok(PodStructure {
+        profile: format!("{}/profile/card#me", pod_base),
+        // Legacy fields kept for API compatibility — map to private/kg where
+        // ontology work now lives by default.
+        ontology_contributions: format!("{}/private/kg/contributions/", pod_base),
+        ontology_proposals: format!("{}/private/kg/proposals/", pod_base),
+        ontology_annotations: format!("{}/private/kg/annotations/", pod_base),
+        preferences: format!("{}/private/config/", pod_base),
+        inbox: format!("{}/private/bridges/inbox/", pod_base),
+        private: Some(format!("{}/private/", pod_base)),
+        public: Some(format!("{}/public/", pod_base)),
+        shared: Some(format!("{}/shared/", pod_base)),
+    })
+}
+
+/// Create the standard pod directory structure.
+/// Dispatches to the ADR-052 sovereign layout when `POD_DEFAULT_PRIVATE=true`.
 async fn create_pod_structure(
     state: &SolidProxyState,
     npub: &str,
     pubkey: &str,
     auth_header: Option<&str>,
 ) -> Result<PodStructure, String> {
+    if pod_default_private_enabled() {
+        return create_sovereign_pod_structure(state, npub, pubkey, auth_header).await;
+    }
+
     let pod_base = format!("{}/{}", state.config.base_url, npub);
 
     // Directories to create (relative to pod root)
@@ -557,7 +925,34 @@ async fn create_pod_structure(
         ontology_annotations: format!("{}/ontology/annotations/", pod_base),
         preferences: format!("{}/preferences/", pod_base),
         inbox: format!("{}/inbox/", pod_base),
+        private: None,
+        public: None,
+        shared: None,
     })
+}
+
+/// Test-only helper: directly provision a pod's root container + structure
+/// without the `pod_exists` HEAD short-circuit. Used by ADR-052 integration
+/// tests to observe the full sequence of PUTs a fresh Pod generates.
+#[doc(hidden)]
+pub async fn create_pod_if_missing_for_tests(
+    state: &SolidProxyState,
+    npub: &str,
+    pubkey: &str,
+) -> Result<PodStructure, String> {
+    // Create the pod root container
+    let pod_container_url = format!("{}/{}/", state.config.base_url, npub);
+    let mut req = state.http_client.put(&pod_container_url);
+    req = req
+        .header("Content-Type", "text/turtle")
+        .header("Link", "<http://www.w3.org/ns/ldp#BasicContainer>; rel=\"type\"")
+        .body("");
+    match req.send().await {
+        Ok(resp) if resp.status().is_success() || resp.status().as_u16() == 409 => {}
+        Ok(resp) => return Err(format!("root container PUT failed: {}", resp.status())),
+        Err(e) => return Err(format!("root container PUT error: {}", e)),
+    }
+    create_pod_structure(state, npub, pubkey, None).await
 }
 
 /// Initialize pod with auto-provisioning
@@ -582,8 +977,14 @@ pub async fn ensure_pod_exists(
         };
         if acl_missing {
             info!("Backfilling missing ACL for existing pod: {}", npub);
-            let acl_content = format!(
-                r#"@prefix acl: <http://www.w3.org/ns/auth/acl#> .
+            // Under the ADR-052 flag, backfill uses the owner-only sovereign
+            // template so pre-existing pods default to private; otherwise keep
+            // the legacy permissive ACL for backward compatibility.
+            let acl_content = if pod_default_private_enabled() {
+                render_owner_only_acl(&derive_webid(pubkey))
+            } else {
+                format!(
+                    r#"@prefix acl: <http://www.w3.org/ns/auth/acl#> .
 @prefix foaf: <http://xmlns.com/foaf/0.1/> .
 
 <#owner>
@@ -599,8 +1000,9 @@ pub async fn ensure_pod_exists(
     acl:accessTo <./> ;
     acl:mode acl:Read .
 "#,
-                pubkey = pubkey
-            );
+                    pubkey = pubkey
+                )
+            };
 
             let mut acl_req = state.http_client.put(&acl_url);
             if let Some(auth) = auth_header {
@@ -623,6 +1025,7 @@ pub async fn ensure_pod_exists(
             }
         }
 
+        let sovereign = pod_default_private_enabled();
         return Ok((false, PodStructure {
             profile: format!("{}/profile/card#me", pod_base),
             ontology_contributions: format!("{}/ontology/contributions/", pod_base),
@@ -630,6 +1033,9 @@ pub async fn ensure_pod_exists(
             ontology_annotations: format!("{}/ontology/annotations/", pod_base),
             preferences: format!("{}/preferences/", pod_base),
             inbox: format!("{}/inbox/", pod_base),
+            private: sovereign.then(|| format!("{}/private/", pod_base)),
+            public: sovereign.then(|| format!("{}/public/", pod_base)),
+            shared: sovereign.then(|| format!("{}/shared/", pod_base)),
         }));
     }
 
@@ -755,6 +1161,9 @@ pub async fn check_pod_exists(
                     ontology_annotations: format!("{}/ontology/annotations/", pod_base),
                     preferences: format!("{}/preferences/", pod_base),
                     inbox: format!("{}/inbox/", pod_base),
+                    private: None,
+                    public: None,
+                    shared: None,
                 }
             }))
         }
