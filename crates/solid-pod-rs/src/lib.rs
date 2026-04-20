@@ -30,8 +30,10 @@
 
 pub mod auth;
 pub mod error;
+pub mod interop;
 pub mod ldp;
 pub mod notifications;
+pub mod provision;
 pub mod storage;
 pub mod wac;
 pub mod webid;
@@ -43,11 +45,26 @@ pub mod oidc;
 pub use error::PodError;
 pub use storage::{ResourceMeta, Storage, StorageEvent};
 pub use wac::{
-    evaluate_access, evaluate_access_with_groups, method_to_mode, mode_name, wac_allow_header,
-    AccessMode, AclDocument, GroupMembership, StaticGroupMembership,
+    evaluate_access, evaluate_access_with_groups, method_to_mode, mode_name, parse_turtle_acl,
+    serialize_turtle_acl, wac_allow_header, AccessMode, AclDocument, GroupMembership,
+    StaticGroupMembership,
 };
 pub use ldp::{
-    apply_n3_patch, apply_sparql_patch, link_headers, negotiate_format, patch_dialect_from_mime,
-    server_managed_triples, ContainerRepresentation, Graph, PatchDialect, PatchOutcome,
-    PreferHeader, RdfFormat, Term, Triple, ACCEPT_POST,
+    apply_json_patch, apply_n3_patch, apply_sparql_patch, evaluate_preconditions, link_headers,
+    negotiate_format, options_for, parse_range_header, patch_dialect_from_mime,
+    server_managed_triples, slice_range, ByteRange, ConditionalOutcome, ContainerRepresentation,
+    Graph, OptionsResponse, PatchDialect, PatchOutcome, PreferHeader, RdfFormat, Term, Triple,
+    ACCEPT_PATCH, ACCEPT_POST,
+};
+pub use interop::{
+    dev_session, nip05_document, verify_nip05, webfinger_response, well_known_solid, DevSession,
+    Nip05Document, SolidWellKnown, WebFingerJrd, WebFingerLink,
+};
+pub use provision::{
+    check_admin_override, provision_pod, AdminOverride, ProvisionOutcome, ProvisionPlan,
+    QuotaTracker,
+};
+pub use webid::{
+    extract_oidc_issuer, generate_webid_html, generate_webid_html_with_issuer,
+    validate_webid_html,
 };

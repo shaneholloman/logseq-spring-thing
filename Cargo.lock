@@ -3566,6 +3566,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "k256"
+version = "0.13.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f6e3919bbaa2945715f0bb6d3934a173d1e9a59ac23767fbaaef277265a7411b"
+dependencies = [
+ "cfg-if",
+ "ecdsa 0.16.9",
+ "elliptic-curve 0.13.8",
+ "once_cell",
+ "sha2",
+ "signature 2.2.0",
+]
+
+[[package]]
 name = "kqueue"
 version = "1.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6015,7 +6029,7 @@ dependencies = [
 
 [[package]]
 name = "solid-pod-rs"
-version = "0.2.0-alpha.1"
+version = "0.3.0-alpha.1"
 dependencies = [
  "actix-web",
  "async-trait",
@@ -6028,6 +6042,7 @@ dependencies = [
  "futures-util",
  "hex",
  "jsonwebtoken",
+ "k256",
  "notify",
  "openidconnect",
  "rand 0.8.5",

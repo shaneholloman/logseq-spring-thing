@@ -1,6 +1,6 @@
 [package]
 name = "solid-pod-rs"
-version = "0.2.0-alpha.1"
+version = "0.3.0-alpha.1"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 description = "Rust implementation of Solid Pod server (WAC + LDP + Notifications + Solid-OIDC)"
@@ -50,12 +50,16 @@ aws-sdk-s3 = { version = "1", optional = true }
 openidconnect = { version = "4", optional = true }
 jsonwebtoken = { version = "9", optional = true }
 
+# NIP-98 Schnorr verification (Phase 3 close)
+k256 = { version = "0.13", features = ["schnorr"], optional = true }
+
 [features]
 default = ["fs-backend", "memory-backend"]
 fs-backend = []
 memory-backend = []
 s3-backend = ["dep:aws-sdk-s3"]
 oidc = ["dep:openidconnect", "dep:jsonwebtoken"]
+nip98-schnorr = ["dep:k256"]
 
 [dev-dependencies]
 tokio = { version = "1", features = ["full"] }
