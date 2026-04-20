@@ -36,10 +36,9 @@ pub enum CanonicalIriError {
 /// Build the canonical IRI for a KG node.
 ///
 /// `owner_pubkey_hex` must be a 64-char lowercase (or mixed-case) hex string —
-/// the same format already used throughout `nostr_service.rs` and
-/// `solid_proxy_handler.rs`. `relative_path` is the owner-scoped,
-/// forward-slash-normalised path to the source document (e.g. `logseq/pages/My
-/// Note.md`).
+/// the same format already used throughout `nostr_service.rs` and the Solid
+/// Pod handler. `relative_path` is the owner-scoped, forward-slash-normalised
+/// path to the source document (e.g. `logseq/pages/My Note.md`).
 pub fn canonical_iri(
     owner_pubkey_hex: &str,
     relative_path: &str,

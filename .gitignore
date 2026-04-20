@@ -24,6 +24,13 @@ webxr.long-type*
 qdrant_data/
 whelk-rs/
 .swarm/
+
+# solid-pod-rs extracted to github.com/DreamLab-AI/solid-pod-rs (ADR-053/056).
+# Local crates + extraction staging dir were retired 2026-04-20.
+crates/solid-pod-rs/
+crates/solid-pod-rs-*/
+extraction/
+
 screenshots/
 backups/
 cleaned/
