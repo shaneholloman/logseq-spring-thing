@@ -50,6 +50,17 @@ services:
       POD_SAGA_ENABLED: "true"
       BRIDGE_EDGE_ENABLED: "true"
       NIP98_OPTIONAL_AUTH: "true"
+      # ADR-053 Phase 3: jss | native | shadow.
+      # Staging default is `shadow` — JSS continues to serve client traffic
+      # while solid-pod-rs runs in parallel and its responses are diffed
+      # into docs/audits/YYYY-MM-DD-jss-native-shadow.jsonl. Promote to
+      # `native` only after 72h of clean shadow-mode diffs. Prod flips
+      # independently per the cut-plan in docs/ops/jss-native-cutover.md.
+      SOLID_IMPL: ${SOLID_IMPL:-shadow}
+      # Filesystem root for the native Pod backend. Only read when
+      # SOLID_IMPL != jss, but set unconditionally so shadow mode can
+      # create the directory eagerly.
+      POD_DATA_ROOT: /app/data/solid-pod-rs
       # Server Nostr identity (override in .env.staging for real keys)
       SERVER_NOSTR_PRIVKEY: ${SERVER_NOSTR_PRIVKEY:-}
     ports:
