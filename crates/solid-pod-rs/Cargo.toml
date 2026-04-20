@@ -61,43 +61,29 @@ s3-backend = ["dep:aws-sdk-s3"]
 oidc = ["dep:openidconnect", "dep:jsonwebtoken"]
 nip98-schnorr = ["dep:k256"]
 
-<<<<<<< HEAD
 # ---------------------------------------------------------------------------
-# Sprint 4 / JSS parity umbrella (ADR-056).
-#
-# `jss-v04` is the parent flag for v0.4.0 parity features. Enabling it
-# alone is a no-op — opt into specific sub-features below.
+# Sprint 4 / JSS parity umbrella (ADR-056 / PRD §F).
+# `jss-v04` is the parent flag. Sub-features enable one bounded
+# context each. Enabling `jss-v04` alone is a no-op.
 # ---------------------------------------------------------------------------
 jss-v04 = []
 
-# F1 (PRD §F1): security primitives umbrella. The structs are
-# light-weight and always compiled; this feature exists so downstream
-# crates can reference "JSS-parity v0.4.0 with security primitives
-# enabled" explicitly in their own Cargo manifest.
+# F1/F2: SSRF guard + dotfile allowlist (lightweight structs always
+# compiled; integration gated at call sites).
 security-primitives = ["jss-v04"]
 
-# F3 (PRD §F3): legacy `solid-0.1` WebSocket notifications adapter for
-# SolidOS data-browser compat. Enables `notifications::legacy` and
-# `handlers::legacy_notifications`.
+# F3: legacy `solid-0.1` WebSocket notifications adapter for SolidOS
+# data-browser compat.
 legacy-notifications = ["jss-v04"]
 
-# F4 (PRD §F4): WAC `acl:origin` enforcement per WAC §4.3. When off,
-# the evaluator ignores the Origin header for backward compat. See
-# `docs/design/jss-parity/03-wac-enforcement-context.md`.
+# F4: WAC `acl:origin` enforcement per WAC §4.3. When off, the
+# evaluator ignores the Origin header for backward compat.
 acl-origin = ["jss-v04"]
-=======
-# Sprint 4 / JSS-parity umbrella. Consumers opt in to specific parity
-# features (e.g. `config-loader`) which in turn enable `jss-v04`.
-jss-v04 = []
 
-# F6 (PRD §F6 / Sprint 4): JSS-compatible layered config loader. The
-# `config` module is always compiled (lightweight struct definitions);
-# this feature flag is the consumer-facing toggle that the eventual
-# `solid-pod-rs-server` / `standalone` binary uses to default onto the
-# loader rather than hand-rolled setup. See
-# `docs/design/jss-parity/05-config-platform-context.md`.
+# F6: JSS-compatible layered config loader. The `config` module is
+# always compiled (lightweight struct definitions); this feature flag
+# is the consumer-facing toggle for binary-layer wiring.
 config-loader = ["jss-v04"]
->>>>>>> 149bb9c66
 
 [dev-dependencies]
 tokio = { version = "1", features = ["full"] }
