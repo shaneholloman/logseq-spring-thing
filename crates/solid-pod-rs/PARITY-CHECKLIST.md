@@ -5,6 +5,20 @@ JavaScriptSolidServer (JSS), local clone at
 `/home/devuser/workspace/project/JavaScriptSolidServer/`. Canonical JSS
 surface: [`docs/reference/jss-feature-inventory.md`](./docs/reference/jss-feature-inventory.md). Prose companion: [`GAP-ANALYSIS.md`](./GAP-ANALYSIS.md).
 
+## Sprint 4 F7 update (2026-04-20)
+
+**97 rows tracked. 60 present, 5 partial-parity, 9 semantic-difference, 19 missing, 4 net-new.**
+
+**Parity percentage (present + net-new on spec surface): 74/97 = 76%.**
+**Parity percentage including partial-parity as half-credit: 76.5/97 = 79%.**
+
+F7 landing flips rows 139 (CLI binary) and 140 (framework coupling) to
+`present`: the library-server split (ADR-056 §D3) delivers a standalone
+`solid-pod-rs-server` binary crate wiring `PodService`-style primitives
+into actix-web via the F6 config loader, alongside four empty sibling
+crates reserving the v0.5.0 extension namespace (activitypub, git, idp,
+nostr).
+
 ## Sprint 3 close (2026-04-20)
 
 **97 rows tracked. 58 present, 6 partial-parity, 9 semantic-difference, 19 missing, 5 net-new.**
@@ -222,13 +236,13 @@ surface: [`docs/reference/jss-feature-inventory.md`](./docs/reference/jss-featur
 | 136 | Admin override (secret-compare) | not provided (operator edits config) | `provision::check_admin_override` constant-time compare | net-new | `src/provision.rs:204` | |
 | 137 | Dev-mode session (admin flag, test helper) | not provided | `interop::dev_session` → `DevSession` | net-new | `src/interop.rs:167,176` | Typed constructor only; never from headers. |
 | 138 | Quota reconcile (disk scan → DB update) | `bin/jss.js quota reconcile` | not provided | missing (P3) | — | Operator tooling. |
-| 139 | CLI binary (`bin/jss.js` with `start`/`init`/`invite`/`quota`) | — | `examples/standalone.rs` demo only | partial-parity | `examples/standalone.rs` | Full CLI lives in future `solid-pod-rs-server` crate (ADR-054). |
+| 139 | CLI binary (`bin/jss.js` with `start`/`init`/`invite`/`quota`) | — | `solid-pod-rs-server` binary crate (F7, ADR-056 §D3) | present | `crates/solid-pod-rs-server/src/main.rs` | Sprint 4 F7 — drop-in binary with F6 config loader. `invite`/`quota` subcommands remain P3 operator tooling. |
 
 ## 13. Framework / architectural
 
 | # | JSS feature | JSS path | solid-pod-rs | Status | Rust file:line | Notes |
 |---|---|---|---|---|---|---|
-| 140 | Fastify 4.29.x tightly coupled | `src/server.js:45-562` | framework-agnostic library | net-new (architectural) | `src/lib.rs:1` | Consumers bind into actix-web, axum, hyper. |
+| 140 | Fastify 4.29.x tightly coupled | `src/server.js:45-562` | framework-agnostic library + separate `solid-pod-rs-server` binary crate | present (architectural) | `src/lib.rs:1`, `crates/solid-pod-rs-server/` | Sprint 4 F7 library-server split (ADR-056 §D3). Consumers bind into actix-web, axum, hyper; operators `cargo install solid-pod-rs-server`. |
 | 141 | `@fastify/rate-limit` | `package.json:32` | consumer responsibility | missing as primitive (P2) | — | |
 | 142 | `@fastify/websocket` | `package.json:32` | `tokio-tungstenite` | present (different binding) | `Cargo.toml:40` | |
 | 143 | `@fastify/middie` (Koa-style mounting for oidc-provider) | `package.json:32` | N/A — we don't embed oidc-provider | — | — | |
@@ -259,13 +273,13 @@ surface: [`docs/reference/jss-feature-inventory.md`](./docs/reference/jss-featur
 
 ## Summary counts
 
-### By status
+### By status (Sprint 4 F7 update)
 
-- **present**: 58
-- **partial-parity**: 13
+- **present**: 60 (+2 from Sprint 3: rows 139, 140 flipped by F7)
+- **partial-parity**: 12 (-1: row 139 promoted)
 - **semantic-difference**: 6
 - **missing**: 16
-- **net-new** (solid-pod-rs has; JSS doesn't): 20
+- **net-new** (solid-pod-rs has; JSS doesn't): 19 (-1: row 140 promoted)
 - **explicitly-deferred** (documented won't-implement): 3
 - **wontfix-in-crate**: 3
 - **shared-gap** (neither has): 2 (`acl:origin`, Server-Sent Events)

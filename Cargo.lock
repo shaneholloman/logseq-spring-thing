@@ -6064,6 +6064,36 @@ dependencies = [
 ]
 
 [[package]]
+name = "solid-pod-rs-activitypub"
+version = "0.0.0"
+
+[[package]]
+name = "solid-pod-rs-git"
+version = "0.0.0"
+
+[[package]]
+name = "solid-pod-rs-idp"
+version = "0.0.0"
+
+[[package]]
+name = "solid-pod-rs-nostr"
+version = "0.0.0"
+
+[[package]]
+name = "solid-pod-rs-server"
+version = "0.3.0-alpha.1"
+dependencies = [
+ "actix-web",
+ "anyhow",
+ "bytes",
+ "clap 4.5.49",
+ "solid-pod-rs",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "spargebra"
 version = "0.3.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"

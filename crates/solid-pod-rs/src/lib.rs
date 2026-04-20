@@ -7,8 +7,15 @@
 //!
 //! The crate is framework-agnostic. Wire it into any HTTP server
 //! (actix-web, axum, hyper, …) by implementing the request → storage
-//! bindings yourself; see `examples/standalone.rs` for a minimal
-//! actix-web integration.
+//! bindings yourself; see `examples/embed_in_actix.rs` for the
+//! canonical embeddable pattern.
+//!
+//! Operators who want a turnkey binary should use the sibling crate
+//! `solid-pod-rs-server`, which provides `cargo install
+//! solid-pod-rs-server` — a drop-in JSS replacement wiring `PodService`
+//! into actix-web with the F6 config loader. The F7 library-server
+//! split (ADR-056 §D3) guarantees this library crate never mounts HTTP
+//! routes itself; consumers always own the transport.
 //!
 //! ## Layout
 //!
