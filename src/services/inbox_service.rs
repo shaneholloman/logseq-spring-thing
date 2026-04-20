@@ -471,9 +471,13 @@ impl<W: InboxWriter> InboxService<W> {
             .count();
         if live_after_age > self.retention_max_items {
             let overflow = live_after_age - self.retention_max_items;
-            for it in items.iter().filter(|it| !to_move.contains(&it.item_id)).take(overflow) {
-                to_move.push(it.item_id.clone());
-            }
+            let overflow_ids: Vec<String> = items
+                .iter()
+                .filter(|it| !to_move.contains(&it.item_id))
+                .take(overflow)
+                .map(|it| it.item_id.clone())
+                .collect();
+            to_move.extend(overflow_ids);
         }
 
         let mut moved = 0usize;

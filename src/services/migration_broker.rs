@@ -111,7 +111,7 @@ impl MigrationCandidateState {
     }
 }
 
-#[derive(Debug, Error, PartialEq, Eq)]
+#[derive(Debug, Error, PartialEq)]
 pub enum MigrationError {
     #[error("confidence {0:.3} is below surface threshold {1:.3}")]
     BelowThreshold(f64, f64),

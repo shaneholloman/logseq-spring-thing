@@ -159,7 +159,7 @@ impl DojoDiscoveryActor {
             fut.into_actor(self).map(|events, act, _ctx| {
                 for ev in events {
                     for sub in &act.subscribers {
-                        if sub.do_send(ev.clone()).is_err() {
+                        if sub.try_send(ev.clone()).is_err() {
                             warn!("[dojo-discovery] subscriber dropped; will be pruned next pass");
                         }
                     }

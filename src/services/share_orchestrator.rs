@@ -18,10 +18,10 @@ use thiserror::Error;
 use tokio::sync::Mutex;
 
 use crate::models::enterprise::{
-    BrokerCase, BrokerError, CasePriority, CaseStatus, EscalationSource, EvidenceItem,
+    BrokerCase, CasePriority, CaseStatus, EscalationSource, EvidenceItem,
     PolicyEvaluation, PolicyOutcome,
 };
-use crate::ports::broker_repository::BrokerRepository;
+use crate::ports::broker_repository::{BrokerError, BrokerRepository};
 use crate::services::share_policy::{
     ShareEvaluationContext, ShareHistory, ShareIntent, SharePolicyEngine, SharePreferences,
     ShareState, SubjectKind, TargetScope,
@@ -450,8 +450,9 @@ impl ShareOrchestrator {
             }
 
             // Team → Mesh (or escalated Private → Mesh with fast-path):
-            // open a BrokerCase, no WAC change yet.
-            (PolicyOutcome::Escalate | PolicyOutcome::Allow,
+            // open a BrokerCase, no WAC change yet. Warn is treated like
+            // Allow for Mesh routes — the broker is the next gate.
+            (PolicyOutcome::Escalate | PolicyOutcome::Allow | PolicyOutcome::Warn,
                 ShareTransition::TeamToMesh | ShareTransition::PrivateToMesh) => {
                 let payload = build_broker_payload(&intent,
                     Some(decision.policy_eval_id.clone()));

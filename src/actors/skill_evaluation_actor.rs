@@ -106,9 +106,9 @@ impl Handler<SubmitEvalRun> for SkillEvaluationActor {
 pub struct GetEvaluationStats;
 
 impl Handler<GetEvaluationStats> for SkillEvaluationActor {
-    type Result = (EvalFsm, u64);
+    type Result = ::actix::MessageResult<GetEvaluationStats>;
 
     fn handle(&mut self, _msg: GetEvaluationStats, _ctx: &mut Self::Context) -> Self::Result {
-        (self.state, self.completed_runs)
+        ::actix::MessageResult((self.state, self.completed_runs))
     }
 }
