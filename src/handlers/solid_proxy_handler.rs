@@ -322,10 +322,21 @@ impl SolidProxyState {
         }
     }
 
-    /// Extract and verify user identity from NIP-98 Authorization header
-    /// Returns the user's pubkey and original token for forwarding
-    /// Validates the NIP-98 signature, timestamp, URL, and method before accepting
-    pub fn extract_user_identity(&self, req: &HttpRequest) -> Option<UserIdentity> {
+    /// Extract and verify user identity from NIP-98 Authorization header.
+    ///
+    /// ADR-055 B3: when `body` is `Some(..)`, the NIP-98 signature is bound
+    /// to a SHA-256 of the raw request bytes so a captured token cannot be
+    /// replayed against a different payload. Callers that stream the body
+    /// through to JSS must buffer-then-forward: hash first, then forward.
+    ///
+    /// `body = None` is retained for endpoints that genuinely have no body
+    /// (WebSocket upgrade, bodyless init endpoints) — not as a silent
+    /// fallback. New code should prefer the body-bound path.
+    pub fn extract_user_identity(
+        &self,
+        req: &HttpRequest,
+        body: Option<&[u8]>,
+    ) -> Option<UserIdentity> {
         let auth_header = req.headers().get("Authorization")?;
         let auth_str = auth_header.to_str().ok()?;
 
@@ -364,8 +375,14 @@ impl SolidProxyState {
         );
         let expected_method = req.method().as_str();
 
-        // Validate the NIP-98 token: signature, timestamp, URL, and method
-        match validate_nip98_token(token, &expected_url, expected_method, None) {
+        // Validate the NIP-98 token: signature, timestamp, URL, method, and
+        // (when available) body hash. UTF-8 lossy conversion matches the
+        // JSON/RDF traffic profile of this proxy; tampered bodies still
+        // produce a different SHA-256, which is all the replay defence
+        // needs.
+        let body_as_str = body.map(|b| String::from_utf8_lossy(b).into_owned());
+        let body_ref: Option<&str> = body_as_str.as_deref();
+        match validate_nip98_token(token, &expected_url, expected_method, body_ref) {
             Ok(validation) => {
                 debug!(
                     "Verified NIP-98 user identity: pubkey={}...",
@@ -445,8 +462,11 @@ pub async fn handle_solid_proxy(
     // Build target URL
     let target_url = format!("{}/{}", state.config.base_url, target_path);
 
-    // Extract user identity from NIP-98 header (if present)
-    let user_identity = state.extract_user_identity(&req);
+    // Extract user identity from NIP-98 header (if present). ADR-055 B3:
+    // buffer-then-forward — the body is already materialised as `web::Bytes`
+    // here, so bind the NIP-98 signature to a SHA-256 of those bytes before
+    // relaying to JSS.
+    let user_identity = state.extract_user_identity(&req, Some(body.as_ref()));
 
     // Build the proxied request
     let mut proxy_req = match method.as_str() {
@@ -1073,12 +1093,31 @@ pub async fn ensure_pod_exists(
 /// Create a new pod for a user based on their Nostr identity
 pub async fn create_pod(
     req: HttpRequest,
-    _body: web::Json<CreatePodRequest>,
+    body: web::Bytes,
     state: web::Data<SolidProxyState>,
     nostr_service: web::Data<NostrService>,
 ) -> HttpResponse {
-    // Get user from session/token
-    let user = match get_user_from_request(&req, &nostr_service).await {
+    // ADR-055 B3: capture the raw bytes (as sent by the client, which is
+    // what the client signed) before deserialising, so the NIP-98 verifier
+    // can bind the signature to the exact payload the caller authorised.
+    // Deserialise permissively — an empty body maps to an all-None request
+    // struct.
+    let _parsed: CreatePodRequest = if body.is_empty() {
+        CreatePodRequest { name: None }
+    } else {
+        match serde_json::from_slice::<CreatePodRequest>(&body) {
+            Ok(r) => r,
+            Err(e) => {
+                return HttpResponse::BadRequest().json(SolidProxyError {
+                    error: "Invalid request body".to_string(),
+                    details: Some(e.to_string()),
+                });
+            }
+        }
+    };
+    // Get user from session/token — body is bound into the NIP-98 payload
+    // hash check.
+    let user = match get_user_from_request(&req, &nostr_service, Some(body.as_ref())).await {
         Some(u) => u,
         None => {
             return HttpResponse::Unauthorized().json(SolidProxyError {
@@ -1135,7 +1174,8 @@ pub async fn check_pod_exists(
     state: web::Data<SolidProxyState>,
     nostr_service: web::Data<NostrService>,
 ) -> HttpResponse {
-    let user = match get_user_from_request(&req, &nostr_service).await {
+    // Bodyless endpoint; ADR-055 B3 body binding N/A here.
+    let user = match get_user_from_request(&req, &nostr_service, None).await {
         Some(u) => u,
         None => {
             return HttpResponse::Unauthorized().json(SolidProxyError {
@@ -1199,8 +1239,8 @@ pub async fn init_pod(
     state: web::Data<SolidProxyState>,
     nostr_service: web::Data<NostrService>,
 ) -> HttpResponse {
-    // Get user from session/token
-    let user = match get_user_from_request(&req, &nostr_service).await {
+    // Bodyless init trigger; ADR-055 B3 body binding N/A here.
+    let user = match get_user_from_request(&req, &nostr_service, None).await {
         Some(u) => u,
         None => {
             return HttpResponse::Unauthorized().json(SolidProxyError {
@@ -1247,8 +1287,9 @@ pub async fn init_pod_nip98(
     req: HttpRequest,
     state: web::Data<SolidProxyState>,
 ) -> HttpResponse {
-    // Get user identity from NIP-98 header
-    let identity = match state.extract_user_identity(&req) {
+    // Get user identity from NIP-98 header. `init_pod_nip98` is a bodyless
+    // POST, so there is no payload to bind the signature to.
+    let identity = match state.extract_user_identity(&req, None) {
         Some(id) => id,
         None => {
             return HttpResponse::Unauthorized().json(SolidProxyError {
@@ -1303,10 +1344,17 @@ pub async fn init_pod_nip98(
     }
 }
 
-/// Get user from request using NIP-98 auth (primary) or session token (fallback)
+/// Get user from request using NIP-98 auth (primary) or session token (fallback).
+///
+/// ADR-055 B3: `body` is the buffered request body (if any). When present,
+/// the NIP-98 signature is bound to a SHA-256 of those bytes so captured
+/// tokens cannot be replayed with a tampered payload. `None` is correct only
+/// for genuinely bodyless endpoints (HEAD-style checks, bodyless POSTs used
+/// for lifecycle triggers).
 async fn get_user_from_request(
     req: &HttpRequest,
     nostr_service: &web::Data<NostrService>,
+    body: Option<&[u8]>,
 ) -> Option<NostrUser> {
     // Try to get token from Authorization header
     let auth_header = req.headers().get("Authorization")?;
@@ -1335,8 +1383,14 @@ async fn get_user_from_request(
         let request_url = format!("{}://{}{}", scheme, host, path);
         let request_method = req.method().as_str();
 
+        // ADR-055 B3: bind the NIP-98 signature to the buffered body when
+        // available. UTF-8 lossy conversion matches the JSON traffic this
+        // path handles; tampered bodies still produce a different payload
+        // hash, which is what defeats the replay.
+        let body_as_str = body.map(|b| String::from_utf8_lossy(b).into_owned());
+        let body_ref: Option<&str> = body_as_str.as_deref();
         match nostr_service
-            .verify_nip98_auth(auth_str, &request_url, request_method, None)
+            .verify_nip98_auth(auth_str, &request_url, request_method, body_ref)
             .await
         {
             Ok(user) => return Some(user),
@@ -1362,7 +1416,8 @@ async fn get_user_identity_from_request(
     req: &HttpRequest,
     state: &web::Data<SolidProxyState>,
 ) -> Option<UserIdentity> {
-    state.extract_user_identity(req)
+    // Bodyless helper kept for diagnostics only; no payload to bind.
+    state.extract_user_identity(req, None)
 }
 
 // ============================================================================
@@ -1499,8 +1554,10 @@ pub async fn handle_solid_notifications_ws(
     stream: web::Payload,
     state: web::Data<SolidProxyState>,
 ) -> Result<HttpResponse, actix_web::Error> {
-    // Extract user identity if present
-    let user_identity = state.extract_user_identity(&req);
+    // Extract user identity if present. WebSocket upgrade has no body; the
+    // subscription frames arrive post-handshake and are authenticated by
+    // the persistent session rather than per-frame NIP-98.
+    let user_identity = state.extract_user_identity(&req, None);
 
     if let Some(ref identity) = user_identity {
         debug!(

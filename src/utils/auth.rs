@@ -1,6 +1,6 @@
 use actix_web::{web, HttpRequest, HttpResponse};
 use log::warn;
-use std::sync::Arc;
+use std::sync::{Arc, Once};
 use tracing::{debug, info};
 use uuid::Uuid;
 use crate::services::metrics::MetricsRegistry;
@@ -12,6 +12,32 @@ use crate::services::nostr_service::NostrService;
 fn metrics_of(req: &HttpRequest) -> Option<&Arc<MetricsRegistry>> {
     req.app_data::<web::Data<Arc<MetricsRegistry>>>()
         .map(|d| d.get_ref())
+}
+
+/// Fail-closed `APP_ENV` probe (ADR-055 H3).
+///
+/// Returns `true` when the env var is absent OR set to `"production"`.
+/// This flips the pre-H3 default of "missing → non-production" (which
+/// silently enabled dev-mode bypasses in unconfigured deployments) to
+/// "missing → production" so the safe default is the restrictive one.
+///
+/// The first call with an unset `APP_ENV` emits a single startup WARN so
+/// operators who intended to run in development mode notice and set the
+/// variable explicitly.
+fn is_production() -> bool {
+    static WARN_ONCE: Once = Once::new();
+    match std::env::var("APP_ENV") {
+        Ok(v) => v == "production",
+        Err(_) => {
+            WARN_ONCE.call_once(|| {
+                warn!(
+                    "APP_ENV unset — defaulting to production for safety; \
+                     set APP_ENV=development for dev-mode bypasses"
+                );
+            });
+            true
+        }
+    }
 }
 
 /// Scoped permission levels for RBAC.
@@ -83,10 +109,26 @@ fn optional_auth_enabled() -> bool {
         .unwrap_or(false)
 }
 
+/// Legacy entry-point used by the middleware layer where the request body is
+/// not yet buffered. The NIP-98 call runs without body-hash binding — handler-
+/// level callers with access to the buffered body should prefer
+/// [`verify_access_with_body`] (ADR-055 B3).
 pub async fn verify_access(
     req: &HttpRequest,
     nostr_service: &NostrService,
     required_level: AccessLevel,
+) -> Result<String, HttpResponse> {
+    verify_access_with_body(req, nostr_service, required_level, None).await
+}
+
+/// Verify access with an optional request body. When `body` is `Some(..)`, the
+/// NIP-98 path binds the signature to a SHA-256 of the raw bytes (ADR-055 B3)
+/// so a captured token cannot be replayed against a different payload.
+pub async fn verify_access_with_body(
+    req: &HttpRequest,
+    nostr_service: &NostrService,
+    required_level: AccessLevel,
+    body: Option<&[u8]>,
 ) -> Result<String, HttpResponse> {
     // Feature-flag downgrade: when disabled, Optional behaves as Authenticated.
     let required_level = match required_level {
@@ -138,10 +180,8 @@ pub async fn verify_access(
         .and_then(|h| h.to_str().ok())
     {
         if auth_value == "Bearer dev-session-token" {
-            let is_production = std::env::var("APP_ENV")
-                .map(|v| v == "production")
-                .unwrap_or(false);
-            if !is_production {
+            // ADR-055 H3: fail-closed — missing APP_ENV now means production.
+            if !is_production() {
                 let pubkey = req
                     .headers()
                     .get("X-Nostr-Pubkey")
@@ -193,8 +233,23 @@ pub async fn verify_access(
             );
             let method = req.method().as_str();
 
+            // ADR-055 B3: bind the NIP-98 signature to the request body via
+            // SHA-256 so a captured token cannot be replayed against a
+            // different payload. Middleware callers pass `None` because the
+            // body isn't buffered yet at that layer; handler-level callers
+            // use `verify_access_with_body` to close the loop.
+            //
+            // The verifier treats the body as UTF-8 text (JSON, RDF/TTL,
+            // form-encoded — all UTF-8) and computes the payload hash the
+            // same way the client did. Binary bodies are rare on our
+            // authenticated surface; a lossy conversion preserves the hash
+            // equivalence class for legitimate traffic and still fails the
+            // replay test because tampered bodies produce a different hash.
+            let body_as_str = body.map(|b| String::from_utf8_lossy(b).into_owned());
+            let body_ref: Option<&str> = body_as_str.as_deref();
+
             match nostr_service
-                .verify_nip98_auth(auth_value, &url, method, None)
+                .verify_nip98_auth(auth_value, &url, method, body_ref)
                 .await
             {
                 Ok(user) => {
@@ -242,18 +297,16 @@ pub async fn verify_access(
     // scripts) but is an unsigned bearer-style flow without NIP-98's
     // Schnorr/body-hash/URL-binding guarantees. Rejected outright in
     // production so no regression path can re-enable it.
-    {
-        let is_production = std::env::var("APP_ENV")
-            .map(|v| v == "production")
-            .unwrap_or(false);
-        if is_production {
-            warn!(
-                "[{}] Legacy X-Nostr-Pubkey auth rejected in production; use NIP-98",
-                request_id
-            );
-            return Err(HttpResponse::Unauthorized()
-                .body("Legacy session auth not available in production. Use NIP-98."));
-        }
+    // ADR-055 H3: fail-closed — missing APP_ENV now means production, so the
+    // legacy unsigned bearer-token path is disabled unless APP_ENV is
+    // explicitly set to "development".
+    if is_production() {
+        warn!(
+            "[{}] Legacy X-Nostr-Pubkey auth rejected in production; use NIP-98",
+            request_id
+        );
+        return Err(HttpResponse::Unauthorized()
+            .body("Legacy session auth not available in production. Use NIP-98."));
     }
 
     // Request is entering the legacy (non-NIP-98) path — observed for ADR
@@ -388,4 +441,58 @@ pub async fn verify_admin(
     nostr_service: &NostrService,
 ) -> Result<String, HttpResponse> {
     verify_access(req, nostr_service, AccessLevel::Admin).await
+}
+
+// ---------------------------------------------------------------------------
+// Body-bound helpers (ADR-055 B3)
+// ---------------------------------------------------------------------------
+//
+// These variants accept the buffered request body and forward it to the
+// NIP-98 verifier so the signature binds to the payload. Handler-level code
+// with access to `web::Bytes` should prefer these over the body-less
+// helpers above.
+
+/// Authenticated scope with body-hash binding.
+pub async fn verify_authenticated_with_body(
+    req: &HttpRequest,
+    nostr_service: &NostrService,
+    body: &[u8],
+) -> Result<String, HttpResponse> {
+    verify_access_with_body(req, nostr_service, AccessLevel::Authenticated, Some(body)).await
+}
+
+/// Read-only scope with body-hash binding.
+pub async fn verify_read_only_with_body(
+    req: &HttpRequest,
+    nostr_service: &NostrService,
+    body: &[u8],
+) -> Result<String, HttpResponse> {
+    verify_access_with_body(req, nostr_service, AccessLevel::ReadOnly, Some(body)).await
+}
+
+/// Graph-write scope with body-hash binding.
+pub async fn verify_write_graph_with_body(
+    req: &HttpRequest,
+    nostr_service: &NostrService,
+    body: &[u8],
+) -> Result<String, HttpResponse> {
+    verify_access_with_body(req, nostr_service, AccessLevel::WriteGraph, Some(body)).await
+}
+
+/// Settings-write scope with body-hash binding.
+pub async fn verify_write_settings_with_body(
+    req: &HttpRequest,
+    nostr_service: &NostrService,
+    body: &[u8],
+) -> Result<String, HttpResponse> {
+    verify_access_with_body(req, nostr_service, AccessLevel::WriteSettings, Some(body)).await
+}
+
+/// Admin scope with body-hash binding.
+pub async fn verify_admin_with_body(
+    req: &HttpRequest,
+    nostr_service: &NostrService,
+    body: &[u8],
+) -> Result<String, HttpResponse> {
+    verify_access_with_body(req, nostr_service, AccessLevel::Admin, Some(body)).await
 }
