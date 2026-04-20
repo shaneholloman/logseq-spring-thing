@@ -7,6 +7,7 @@ pub mod client;
 pub mod config;
 pub mod constraints;
 pub mod cqrs;
+pub mod domain;
 pub mod errors;
 pub mod events;
 pub mod gpu;

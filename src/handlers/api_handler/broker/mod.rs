@@ -253,6 +253,46 @@ pub struct DecisionRequest {
     pub reasoning: Option<String>,
 }
 
+/// GET /api/broker/cases/{id}/history
+/// Returns the append-only decision history for a case.
+pub async fn get_case_history(
+    state: web::Data<AppState>,
+    case_id: web::Path<String>,
+) -> impl Responder {
+    info!("GET /api/broker/cases/{}/history", case_id);
+    match state.broker_repository.get_decisions(case_id.as_str()).await {
+        Ok(decisions) => ok_json!(json!({
+            "caseId": case_id.into_inner(),
+            "decisions": decisions,
+            "count": decisions.len(),
+        })),
+        Err(e) => {
+            error!("Failed to list decisions for case {}: {}", case_id, e);
+            error_json!("Failed to fetch decision history", e.to_string())
+        }
+    }
+}
+
+/// GET /api/broker/subscribe (WebSocket upgrade stub)
+///
+/// The real subscription pipe is served by the platform-wide fast-websocket
+/// handler; this endpoint returns a descriptor that the client can use to
+/// route broker events through the same socket. Kept as a REST call so the
+/// client has a stable discovery handle.
+pub async fn subscribe_descriptor() -> impl Responder {
+    ok_json!(json!({
+        "transport": "ws",
+        "channels": ["inbox", "case:{id}"],
+        "events": [
+            "broker:new_case",
+            "broker:case_updated",
+            "broker:case_claimed",
+            "broker:case_decided",
+            "broker:priority_changed"
+        ]
+    }))
+}
+
 /// Route configuration for the broker workbench.
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(
@@ -261,6 +301,8 @@ pub fn config(cfg: &mut web::ServiceConfig) {
             .route("/inbox", web::get().to(get_inbox))
             .route("/cases", web::post().to(create_case))
             .route("/cases/{id}", web::get().to(get_case))
-            .route("/cases/{id}/decide", web::post().to(decide_case)),
+            .route("/cases/{id}/decide", web::post().to(decide_case))
+            .route("/cases/{id}/history", web::get().to(get_case_history))
+            .route("/subscribe", web::get().to(subscribe_descriptor)),
     );
 }

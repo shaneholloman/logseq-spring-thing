@@ -2,11 +2,29 @@
 
 ## Status
 
-Accepted
+Implemented 2026-04-20
 
 ## Date
 
-2026-04-14
+2026-04-14 (accepted) / 2026-04-20 (implemented)
+
+## Implementation Notes (2026-04-20)
+
+Backend BC11 landed under `src/domain/broker/` (`BrokerCase` aggregate with
+`CaseCategory::ContributorMeshShare` + `SubjectKind` discriminator per ADR-057
+reconciliation), `DecisionOrchestrator` service, and `ShareIntentBrokerAdapter`
+scaffold. Six canonical `DecisionOutcome` variants (Approve, Reject, Amend,
+Delegate, Promote, Precedent) enforce append-only `DecisionHistory`, no
+self-review, and forward-only share-state transitions (Private → Team → Mesh).
+`BrokerActor` (supervised) owns the in-process inbox cache + WebSocket
+broadcast (`broker:new_case`, `broker:case_decided`, `broker:case_claimed`).
+REST routes: `GET /api/broker/inbox`, `GET /api/broker/cases/:id`,
+`POST /api/broker/cases`, `POST /api/broker/cases/:id/decide`,
+`GET /api/broker/cases/:id/history`, `GET /api/broker/subscribe`. Tests in
+`tests/broker_tests.rs` cover approval, self-review, delegation, terminal
+idempotency, and six-variant coverage. `ShareOrchestratorActor` (C4) owns
+actual share-state transition execution; `ShareIntentBrokerAdapter` only
+produces the intent case.
 
 ## Context
 
