@@ -61,6 +61,16 @@ s3-backend = ["dep:aws-sdk-s3"]
 oidc = ["dep:openidconnect", "dep:jsonwebtoken"]
 nip98-schnorr = ["dep:k256"]
 
+# Umbrella for JSS v0.4 parity features (Sprint 4 / PRD §F). Consumers
+# opt in to the specific bridges they need; enabling `jss-v04` alone
+# is a no-op — it is the parent of the opt-in sub-features.
+jss-v04 = []
+
+# F3 (PRD §F3): legacy `solid-0.1` WebSocket notifications adapter for
+# SolidOS data-browser compat. Enables `notifications::legacy` and
+# `handlers::legacy_notifications`.
+legacy-notifications = ["jss-v04"]
+
 [dev-dependencies]
 tokio = { version = "1", features = ["full"] }
 tempfile = "3"
