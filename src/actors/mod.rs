@@ -42,6 +42,7 @@ pub mod messaging;
 pub mod multi_mcp_visualization_actor;
 pub mod ontology_actor;
 pub mod semantic_processor_actor;
+pub mod share_orchestrator_actor;
 pub mod task_orchestrator_actor;
 pub mod workspace_actor;
 
@@ -73,6 +74,11 @@ pub use server_nostr_actor::{
 };
 pub use semantic_processor_actor::{
     AISemanticFeatures, SemanticProcessorActor, SemanticProcessorConfig, SemanticStats,
+};
+pub use share_orchestrator_actor::{
+    register_share_orchestrator_actor, ApplyBrokerDecision,
+    IsReady as ShareOrchIsReady, RouteShareIntent, ShareOrchestratorActor,
+    Shutdown as ShareOrchShutdown,
 };
 pub use supervisor::{
     ActorFactory, SupervisedActorInfo, SupervisedActorTrait, SupervisionStrategy, SupervisorActor,

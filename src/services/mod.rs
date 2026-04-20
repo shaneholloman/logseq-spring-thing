@@ -48,6 +48,11 @@ pub mod kpi_computation_service;
 pub mod pod_client;
 pub mod ingest_saga;
 
+// BC18 Contributor Studio — share funnel (agent C4, ADR-052 double-gate).
+pub mod share_policy;
+pub mod share_orchestrator;
+pub mod wac_mutator;
+
 // ADR-054: URN-Solid + solid-schema + Solid-Apps ecosystem alignment
 pub mod urn_solid_mapping;
 
