@@ -291,6 +291,10 @@ pub struct DpopVerified {
 /// added in Sprint 4 / F5). Pass `None` to preserve pre-F5 behaviour
 /// (no replay detection); pass `Some(&cache)` to reject a DPoP proof
 /// whose `jti` was already seen inside the cache's TTL window.
+///
+/// When the `dpop-replay-cache` feature is disabled, the cache type
+/// is unavailable and this function reduces to its historical
+/// 5-argument form.
 #[cfg(feature = "dpop-replay-cache")]
 pub async fn verify_dpop_proof(
     proof: &str,
@@ -302,8 +306,8 @@ pub async fn verify_dpop_proof(
 ) -> Result<DpopVerified, PodError> {
     let verified = verify_dpop_proof_core(proof, expected_htu, expected_htm, now, skew)?;
 
-    // F5: replay check after claim validation so we never admit a
-    // tampered proof into the cache.
+    // F5: replay check after signature/claim validation so we never
+    // admit a tampered proof into the cache.
     if let Some(cache) = replay_cache {
         if let Err(e) = cache.check_and_record(&verified.jti).await {
             match e {
