@@ -1111,11 +1111,448 @@ fn convert_quad_pattern_to_ground(
     })
 }
 
+// ---------------------------------------------------------------------------
+// Conditional requests (RFC 7232: If-Match / If-None-Match / If-Modified-Since)
+// ---------------------------------------------------------------------------
+
+/// Outcome of evaluating conditional request headers against a current
+/// resource ETag.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConditionalOutcome {
+    /// The request may proceed.
+    Proceed,
+    /// Request must fail with `412 Precondition Failed` (e.g.
+    /// `If-Match` mismatch).
+    PreconditionFailed,
+    /// Request should return `304 Not Modified` (GET/HEAD only with
+    /// `If-None-Match`).
+    NotModified,
+}
+
+/// Evaluate `If-Match` and `If-None-Match` precondition headers against
+/// the current ETag of a resource. The caller passes whatever is
+/// observed on the storage side; `None` for the ETag means the
+/// resource does not exist.
+///
+/// * `If-Match: *` matches any existing resource (fails if absent).
+/// * `If-None-Match: *` fails if the resource exists.
+/// * `If-Match: "etag1", "etag2"` — pass if any matches.
+/// * `If-None-Match: "etag1", "etag2"` — for GET/HEAD a match means
+///   `NotModified`; for any other method a match means
+///   `PreconditionFailed`.
+pub fn evaluate_preconditions(
+    method: &str,
+    current_etag: Option<&str>,
+    if_match: Option<&str>,
+    if_none_match: Option<&str>,
+) -> ConditionalOutcome {
+    let method_upper = method.to_ascii_uppercase();
+    let safe = method_upper == "GET" || method_upper == "HEAD";
+
+    if let Some(im) = if_match {
+        let raw = im.trim();
+        if raw == "*" {
+            if current_etag.is_none() {
+                return ConditionalOutcome::PreconditionFailed;
+            }
+        } else {
+            let wanted = parse_etag_list(raw);
+            match current_etag {
+                None => return ConditionalOutcome::PreconditionFailed,
+                Some(cur) => {
+                    if !wanted.iter().any(|w| w == cur || w == "*") {
+                        return ConditionalOutcome::PreconditionFailed;
+                    }
+                }
+            }
+        }
+    }
+
+    if let Some(inm) = if_none_match {
+        let raw = inm.trim();
+        if raw == "*" {
+            if current_etag.is_some() {
+                if safe {
+                    return ConditionalOutcome::NotModified;
+                }
+                return ConditionalOutcome::PreconditionFailed;
+            }
+        } else {
+            let wanted = parse_etag_list(raw);
+            if let Some(cur) = current_etag {
+                if wanted.iter().any(|w| w == cur) {
+                    if safe {
+                        return ConditionalOutcome::NotModified;
+                    }
+                    return ConditionalOutcome::PreconditionFailed;
+                }
+            }
+        }
+    }
+
+    ConditionalOutcome::Proceed
+}
+
+fn parse_etag_list(input: &str) -> Vec<String> {
+    input
+        .split(',')
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .map(|s| {
+            // Strip weak-etag prefix + surrounding double quotes.
+            let s = s.strip_prefix("W/").unwrap_or(s);
+            s.trim_matches('"').to_string()
+        })
+        .collect()
+}
+
+// ---------------------------------------------------------------------------
+// Byte-range requests (RFC 7233)
+// ---------------------------------------------------------------------------
+
+/// A parsed byte range. `end` is inclusive per RFC 7233 §2.1.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ByteRange {
+    pub start: u64,
+    pub end: u64,
+}
+
+impl ByteRange {
+    pub fn length(&self) -> u64 {
+        self.end.saturating_sub(self.start) + 1
+    }
+    /// Render as the `Content-Range` header value (without the
+    /// `Content-Range: ` prefix).
+    pub fn content_range(&self, total: u64) -> String {
+        format!("bytes {}-{}/{}", self.start, self.end, total)
+    }
+}
+
+/// Parse a `Range:` header value of the form `bytes=start-end` or
+/// `bytes=start-` or `bytes=-suffix`. Multi-range is intentionally
+/// not supported — Solid Pods treat non-rangeable media (JSON-LD,
+/// Turtle) as opaque and the binary path is the only consumer.
+///
+/// Returns `Ok(None)` when the header is absent, `Err` when the header
+/// is syntactically valid but unsatisfiable (clients must receive
+/// `416 Range Not Satisfiable`), and `Ok(Some(range))` for the
+/// happy path.
+pub fn parse_range_header(
+    header: Option<&str>,
+    total: u64,
+) -> Result<Option<ByteRange>, PodError> {
+    let raw = match header {
+        Some(v) if !v.trim().is_empty() => v.trim(),
+        _ => return Ok(None),
+    };
+    let spec = raw
+        .strip_prefix("bytes=")
+        .ok_or_else(|| PodError::Unsupported(format!("unsupported Range unit: {raw}")))?;
+    if spec.contains(',') {
+        return Err(PodError::Unsupported(
+            "multi-range requests not supported".into(),
+        ));
+    }
+    let (start_s, end_s) = spec
+        .split_once('-')
+        .ok_or_else(|| PodError::Unsupported(format!("malformed Range: {spec}")))?;
+    if total == 0 {
+        return Err(PodError::PreconditionFailed(
+            "range request against empty resource".into(),
+        ));
+    }
+
+    let range = if start_s.is_empty() {
+        // suffix: `bytes=-500`
+        let suffix: u64 = end_s
+            .parse()
+            .map_err(|e| PodError::Unsupported(format!("range suffix parse: {e}")))?;
+        if suffix == 0 {
+            return Err(PodError::PreconditionFailed("zero suffix length".into()));
+        }
+        let start = total.saturating_sub(suffix);
+        ByteRange {
+            start,
+            end: total - 1,
+        }
+    } else {
+        let start: u64 = start_s
+            .parse()
+            .map_err(|e| PodError::Unsupported(format!("range start parse: {e}")))?;
+        let end = if end_s.is_empty() {
+            total - 1
+        } else {
+            let v: u64 = end_s
+                .parse()
+                .map_err(|e| PodError::Unsupported(format!("range end parse: {e}")))?;
+            v.min(total - 1)
+        };
+        if start > end {
+            return Err(PodError::PreconditionFailed(format!(
+                "unsatisfiable range: {start}-{end}"
+            )));
+        }
+        if start >= total {
+            return Err(PodError::PreconditionFailed(format!(
+                "range start {start} >= total {total}"
+            )));
+        }
+        ByteRange { start, end }
+    };
+    Ok(Some(range))
+}
+
+/// Slice a body buffer to a byte range. The slice is a zero-copy
+/// view; callers are expected to `copy_from_slice` or similar when
+/// returning it through an HTTP framework.
+pub fn slice_range(body: &[u8], range: ByteRange) -> &[u8] {
+    let end_excl = (range.end as usize + 1).min(body.len());
+    let start = (range.start as usize).min(end_excl);
+    &body[start..end_excl]
+}
+
+// ---------------------------------------------------------------------------
+// OPTIONS response (RFC 7231 §4.3.7)
+// ---------------------------------------------------------------------------
+
+/// Build the set of values returned on OPTIONS for a Solid resource.
+///
+/// * `Allow` advertises methods the resource supports.
+/// * `Accept-Post` is set for containers.
+/// * `Accept-Patch` advertises supported PATCH dialects.
+/// * `Accept-Ranges: bytes` is always advertised so binary resources
+///   can be sliced with `Range:` requests.
+#[derive(Debug, Clone)]
+pub struct OptionsResponse {
+    pub allow: Vec<&'static str>,
+    pub accept_post: Option<&'static str>,
+    pub accept_patch: &'static str,
+    pub accept_ranges: &'static str,
+}
+
+/// `Accept-Patch` advertising the PATCH dialects supported.
+pub const ACCEPT_PATCH: &str = "text/n3, application/sparql-update, application/json-patch+json";
+
+pub fn options_for(path: &str) -> OptionsResponse {
+    let container = is_container(path);
+    let mut allow = vec!["GET", "HEAD", "OPTIONS"];
+    if container {
+        allow.push("POST");
+    } else {
+        allow.push("PUT");
+        allow.push("PATCH");
+    }
+    allow.push("DELETE");
+    OptionsResponse {
+        allow,
+        accept_post: if container { Some(ACCEPT_POST) } else { None },
+        accept_patch: ACCEPT_PATCH,
+        accept_ranges: "bytes",
+    }
+}
+
+// ---------------------------------------------------------------------------
+// JSON Patch (RFC 6902) — applied to the JSON representation of a
+// resource. Keeps the surface intentionally small: `add`, `remove`,
+// `replace`, `test`. `copy` and `move` are implemented on top.
+// ---------------------------------------------------------------------------
+
+/// Apply a JSON Patch document (RFC 6902) to a `serde_json::Value` in
+/// place. Returns `Err(PodError::PreconditionFailed)` when a `test`
+/// operation fails, `Err(PodError::Unsupported)` for malformed patches.
+pub fn apply_json_patch(
+    target: &mut serde_json::Value,
+    patch: &serde_json::Value,
+) -> Result<(), PodError> {
+    let ops = patch
+        .as_array()
+        .ok_or_else(|| PodError::Unsupported("JSON Patch must be an array".into()))?;
+    for op in ops {
+        let op_name = op
+            .get("op")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| PodError::Unsupported("JSON Patch op missing 'op'".into()))?;
+        let path = op
+            .get("path")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| PodError::Unsupported("JSON Patch op missing 'path'".into()))?;
+        match op_name {
+            "add" => {
+                let value = op
+                    .get("value")
+                    .cloned()
+                    .ok_or_else(|| PodError::Unsupported("add requires value".into()))?;
+                json_pointer_set(target, path, value, /* add_mode = */ true)?;
+            }
+            "replace" => {
+                let value = op
+                    .get("value")
+                    .cloned()
+                    .ok_or_else(|| PodError::Unsupported("replace requires value".into()))?;
+                json_pointer_set(target, path, value, /* add_mode = */ false)?;
+            }
+            "remove" => {
+                json_pointer_remove(target, path)?;
+            }
+            "test" => {
+                let value = op
+                    .get("value")
+                    .ok_or_else(|| PodError::Unsupported("test requires value".into()))?;
+                let actual = json_pointer_get(target, path)
+                    .ok_or_else(|| PodError::PreconditionFailed(format!("test path missing: {path}")))?;
+                if actual != value {
+                    return Err(PodError::PreconditionFailed(format!(
+                        "test failed at {path}"
+                    )));
+                }
+            }
+            "copy" => {
+                let from = op
+                    .get("from")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| PodError::Unsupported("copy requires from".into()))?;
+                let value = json_pointer_get(target, from)
+                    .cloned()
+                    .ok_or_else(|| PodError::PreconditionFailed(format!("copy from missing: {from}")))?;
+                json_pointer_set(target, path, value, true)?;
+            }
+            "move" => {
+                let from = op
+                    .get("from")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| PodError::Unsupported("move requires from".into()))?;
+                let value = json_pointer_get(target, from)
+                    .cloned()
+                    .ok_or_else(|| PodError::PreconditionFailed(format!("move from missing: {from}")))?;
+                json_pointer_remove(target, from)?;
+                json_pointer_set(target, path, value, true)?;
+            }
+            other => {
+                return Err(PodError::Unsupported(format!(
+                    "unsupported JSON Patch op: {other}"
+                )));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn json_pointer_get<'a>(
+    target: &'a serde_json::Value,
+    path: &str,
+) -> Option<&'a serde_json::Value> {
+    if path.is_empty() {
+        return Some(target);
+    }
+    target.pointer(path)
+}
+
+fn json_pointer_remove(target: &mut serde_json::Value, path: &str) -> Result<(), PodError> {
+    if path.is_empty() {
+        return Err(PodError::Unsupported("cannot remove root".into()));
+    }
+    let (parent_path, last) = split_pointer(path);
+    let parent = target
+        .pointer_mut(&parent_path)
+        .ok_or_else(|| PodError::PreconditionFailed(format!("remove path missing: {path}")))?;
+    match parent {
+        serde_json::Value::Object(m) => {
+            m.remove(&last).ok_or_else(|| {
+                PodError::PreconditionFailed(format!("remove key missing: {path}"))
+            })?;
+            Ok(())
+        }
+        serde_json::Value::Array(a) => {
+            let idx: usize = last.parse().map_err(|_| {
+                PodError::Unsupported(format!("remove array index not numeric: {last}"))
+            })?;
+            if idx >= a.len() {
+                return Err(PodError::PreconditionFailed(format!(
+                    "remove array out of bounds: {idx}"
+                )));
+            }
+            a.remove(idx);
+            Ok(())
+        }
+        _ => Err(PodError::PreconditionFailed(format!(
+            "remove target is not container: {path}"
+        ))),
+    }
+}
+
+fn json_pointer_set(
+    target: &mut serde_json::Value,
+    path: &str,
+    value: serde_json::Value,
+    add_mode: bool,
+) -> Result<(), PodError> {
+    if path.is_empty() {
+        *target = value;
+        return Ok(());
+    }
+    let (parent_path, last) = split_pointer(path);
+    let parent = target
+        .pointer_mut(&parent_path)
+        .ok_or_else(|| PodError::PreconditionFailed(format!("set parent missing: {path}")))?;
+    match parent {
+        serde_json::Value::Object(m) => {
+            if !add_mode && !m.contains_key(&last) {
+                return Err(PodError::PreconditionFailed(format!(
+                    "replace missing key: {path}"
+                )));
+            }
+            m.insert(last, value);
+            Ok(())
+        }
+        serde_json::Value::Array(a) => {
+            if last == "-" {
+                a.push(value);
+                return Ok(());
+            }
+            let idx: usize = last.parse().map_err(|_| {
+                PodError::Unsupported(format!("array index not numeric: {last}"))
+            })?;
+            if add_mode {
+                if idx > a.len() {
+                    return Err(PodError::PreconditionFailed(format!(
+                        "array add out of bounds: {idx}"
+                    )));
+                }
+                a.insert(idx, value);
+            } else {
+                if idx >= a.len() {
+                    return Err(PodError::PreconditionFailed(format!(
+                        "array replace out of bounds: {idx}"
+                    )));
+                }
+                a[idx] = value;
+            }
+            Ok(())
+        }
+        _ => Err(PodError::PreconditionFailed(format!(
+            "set parent not container: {path}"
+        ))),
+    }
+}
+
+fn split_pointer(path: &str) -> (String, String) {
+    match path.rfind('/') {
+        Some(pos) => {
+            let parent = path[..pos].to_string();
+            let last_raw = &path[pos + 1..];
+            let last = last_raw.replace("~1", "/").replace("~0", "~");
+            (parent, last)
+        }
+        None => (String::new(), path.to_string()),
+    }
+}
+
 /// Pick a PATCH dialect from the `Content-Type` header.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PatchDialect {
     N3,
     SparqlUpdate,
+    JsonPatch,
 }
 
 pub fn patch_dialect_from_mime(mime: &str) -> Option<PatchDialect> {
@@ -1125,6 +1562,7 @@ pub fn patch_dialect_from_mime(mime: &str) -> Option<PatchDialect> {
         "application/sparql-update" | "application/sparql-update+update" => {
             Some(PatchDialect::SparqlUpdate)
         }
+        "application/json-patch+json" => Some(PatchDialect::JsonPatch),
         _ => None,
     }
 }
@@ -1380,5 +1818,135 @@ mod tests {
         let v = render_container("/docs/", &members);
         assert!(v.get("@context").is_some());
         assert!(v.get("ldp:contains").unwrap().as_array().unwrap().len() == 2);
+    }
+
+    #[test]
+    fn preconditions_if_match_star_passes_when_resource_exists() {
+        let got = evaluate_preconditions("PUT", Some("etag123"), Some("*"), None);
+        assert_eq!(got, ConditionalOutcome::Proceed);
+    }
+
+    #[test]
+    fn preconditions_if_match_star_fails_when_resource_absent() {
+        let got = evaluate_preconditions("PUT", None, Some("*"), None);
+        assert_eq!(got, ConditionalOutcome::PreconditionFailed);
+    }
+
+    #[test]
+    fn preconditions_if_match_mismatch_412() {
+        let got = evaluate_preconditions("PUT", Some("etag123"), Some("\"other\""), None);
+        assert_eq!(got, ConditionalOutcome::PreconditionFailed);
+    }
+
+    #[test]
+    fn preconditions_if_none_match_match_on_get_returns_304() {
+        let got =
+            evaluate_preconditions("GET", Some("etag123"), None, Some("\"etag123\""));
+        assert_eq!(got, ConditionalOutcome::NotModified);
+    }
+
+    #[test]
+    fn preconditions_if_none_match_on_put_when_exists_fails() {
+        let got = evaluate_preconditions("PUT", Some("etag1"), None, Some("*"));
+        assert_eq!(got, ConditionalOutcome::PreconditionFailed);
+    }
+
+    #[test]
+    fn preconditions_if_none_match_on_put_when_absent_passes() {
+        let got = evaluate_preconditions("PUT", None, None, Some("*"));
+        assert_eq!(got, ConditionalOutcome::Proceed);
+    }
+
+    #[test]
+    fn range_parses_start_end() {
+        let r = parse_range_header(Some("bytes=0-99"), 1000).unwrap().unwrap();
+        assert_eq!(r.start, 0);
+        assert_eq!(r.end, 99);
+        assert_eq!(r.length(), 100);
+    }
+
+    #[test]
+    fn range_parses_open_ended() {
+        let r = parse_range_header(Some("bytes=500-"), 1000).unwrap().unwrap();
+        assert_eq!(r.start, 500);
+        assert_eq!(r.end, 999);
+    }
+
+    #[test]
+    fn range_parses_suffix() {
+        let r = parse_range_header(Some("bytes=-200"), 1000).unwrap().unwrap();
+        assert_eq!(r.start, 800);
+        assert_eq!(r.end, 999);
+    }
+
+    #[test]
+    fn range_rejects_unsatisfiable() {
+        let err = parse_range_header(Some("bytes=2000-3000"), 1000);
+        assert!(matches!(err, Err(PodError::PreconditionFailed(_))));
+    }
+
+    #[test]
+    fn range_content_range_header_value() {
+        let r = parse_range_header(Some("bytes=0-99"), 1000).unwrap().unwrap();
+        assert_eq!(r.content_range(1000), "bytes 0-99/1000");
+    }
+
+    #[test]
+    fn options_container_includes_post_and_accept_post() {
+        let o = options_for("/photos/");
+        assert!(o.allow.contains(&"POST"));
+        assert!(o.accept_post.is_some());
+        assert_eq!(o.accept_ranges, "bytes");
+    }
+
+    #[test]
+    fn options_resource_includes_put_patch_no_post() {
+        let o = options_for("/photos/cat.jpg");
+        assert!(o.allow.contains(&"PUT"));
+        assert!(o.allow.contains(&"PATCH"));
+        assert!(!o.allow.contains(&"POST"));
+        assert!(o.accept_post.is_none());
+        assert!(o.accept_patch.contains("sparql-update"));
+        assert!(o.accept_patch.contains("json-patch"));
+    }
+
+    #[test]
+    fn json_patch_add_and_replace() {
+        let mut v = serde_json::json!({ "name": "alice" });
+        let patch = serde_json::json!([
+            { "op": "add", "path": "/age", "value": 30 },
+            { "op": "replace", "path": "/name", "value": "bob" }
+        ]);
+        apply_json_patch(&mut v, &patch).unwrap();
+        assert_eq!(v["name"], "bob");
+        assert_eq!(v["age"], 30);
+    }
+
+    #[test]
+    fn json_patch_remove() {
+        let mut v = serde_json::json!({ "name": "alice", "age": 30 });
+        let patch = serde_json::json!([
+            { "op": "remove", "path": "/age" }
+        ]);
+        apply_json_patch(&mut v, &patch).unwrap();
+        assert!(v.get("age").is_none());
+    }
+
+    #[test]
+    fn json_patch_test_failure_returns_precondition() {
+        let mut v = serde_json::json!({ "name": "alice" });
+        let patch = serde_json::json!([
+            { "op": "test", "path": "/name", "value": "bob" }
+        ]);
+        let err = apply_json_patch(&mut v, &patch).unwrap_err();
+        assert!(matches!(err, PodError::PreconditionFailed(_)));
+    }
+
+    #[test]
+    fn json_patch_dialect_detection() {
+        assert_eq!(
+            patch_dialect_from_mime("application/json-patch+json"),
+            Some(PatchDialect::JsonPatch)
+        );
     }
 }

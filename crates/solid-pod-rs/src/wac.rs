@@ -30,56 +30,53 @@ pub const ALL_MODES: &[AccessMode] = &[
     AccessMode::Control,
 ];
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct AclDocument {
-    #[serde(rename = "@context")]
-    #[allow(dead_code)]
+    #[serde(rename = "@context", skip_serializing_if = "Option::is_none")]
     pub context: Option<serde_json::Value>,
 
-    #[serde(rename = "@graph")]
+    #[serde(rename = "@graph", skip_serializing_if = "Option::is_none")]
     pub graph: Option<Vec<AclAuthorization>>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct AclAuthorization {
-    #[serde(rename = "@id")]
-    #[allow(dead_code)]
+    #[serde(rename = "@id", skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
 
-    #[serde(rename = "@type")]
-    #[allow(dead_code)]
+    #[serde(rename = "@type", skip_serializing_if = "Option::is_none")]
     pub r#type: Option<String>,
 
-    #[serde(rename = "acl:agent")]
+    #[serde(rename = "acl:agent", skip_serializing_if = "Option::is_none")]
     pub agent: Option<IdOrIds>,
 
-    #[serde(rename = "acl:agentClass")]
+    #[serde(rename = "acl:agentClass", skip_serializing_if = "Option::is_none")]
     pub agent_class: Option<IdOrIds>,
 
-    #[serde(rename = "acl:agentGroup")]
+    #[serde(rename = "acl:agentGroup", skip_serializing_if = "Option::is_none")]
     pub agent_group: Option<IdOrIds>,
 
-    #[serde(rename = "acl:origin")]
+    #[serde(rename = "acl:origin", skip_serializing_if = "Option::is_none")]
     pub origin: Option<IdOrIds>,
 
-    #[serde(rename = "acl:accessTo")]
+    #[serde(rename = "acl:accessTo", skip_serializing_if = "Option::is_none")]
     pub access_to: Option<IdOrIds>,
 
-    #[serde(rename = "acl:default")]
+    #[serde(rename = "acl:default", skip_serializing_if = "Option::is_none")]
     pub default: Option<IdOrIds>,
 
-    #[serde(rename = "acl:mode")]
+    #[serde(rename = "acl:mode", skip_serializing_if = "Option::is_none")]
     pub mode: Option<IdOrIds>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(untagged)]
 pub enum IdOrIds {
     Single(IdRef),
     Multiple(Vec<IdRef>),
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct IdRef {
     #[serde(rename = "@id")]
     pub id: String,
@@ -341,9 +338,20 @@ impl<S: Storage> AclResolver for StorageAclResolver<S> {
             } else {
                 format!("{}.acl", path.trim_end_matches('/'))
             };
-            if let Ok((body, _meta)) = self.storage.get(&acl_key).await {
+            if let Ok((body, meta)) = self.storage.get(&acl_key).await {
+                // Try JSON-LD first (preferred); fall back to Turtle.
                 if let Ok(doc) = serde_json::from_slice::<AclDocument>(&body) {
                     return Ok(Some(doc));
+                }
+                let ct = meta.content_type.to_ascii_lowercase();
+                let looks_turtle = ct.starts_with("text/turtle")
+                    || ct.starts_with("application/turtle")
+                    || ct.starts_with("application/x-turtle");
+                let text = std::str::from_utf8(&body).unwrap_or("");
+                if looks_turtle || text.contains("@prefix") || text.contains("acl:Authorization") {
+                    if let Ok(doc) = parse_turtle_acl(text) {
+                        return Ok(Some(doc));
+                    }
                 }
             }
             if path == "/" || path.is_empty() {
@@ -359,6 +367,320 @@ impl<S: Storage> AclResolver for StorageAclResolver<S> {
         Ok(None)
     }
 }
+
+// ---------------------------------------------------------------------------
+// Turtle ACL parser (subset sufficient for WAC documents)
+// ---------------------------------------------------------------------------
+
+/// Parse a Turtle ACL document into the same `AclDocument` shape that
+/// the JSON-LD deserialiser produces. Accepts the subset used by
+/// real-world Solid ACL files: `@prefix` directives, `a` shorthand,
+/// and `;`-separated predicate-object pairs terminated with `.`.
+///
+/// Non-recognised tokens are skipped — the parser is deliberately
+/// forgiving so that odd whitespace or extra comments do not break it.
+pub fn parse_turtle_acl(input: &str) -> Result<AclDocument, PodError> {
+    let mut prefixes: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    prefixes.insert("acl".into(), "http://www.w3.org/ns/auth/acl#".into());
+    prefixes.insert("foaf".into(), "http://xmlns.com/foaf/0.1/".into());
+    prefixes.insert("vcard".into(), "http://www.w3.org/2006/vcard/ns#".into());
+
+    // Strip comments (lines beginning with # outside IRIs).
+    let cleaned = strip_turtle_comments(input);
+
+    // Pull out @prefix directives.
+    let mut body = String::new();
+    for line in cleaned.lines() {
+        let trimmed = line.trim();
+        if let Some(rest) = trimmed.strip_prefix("@prefix") {
+            // `@prefix acl: <...> .`
+            let rest = rest.trim();
+            if let Some((name, iri_part)) = rest.split_once(':') {
+                let name = name.trim().to_string();
+                let iri_part = iri_part.trim().trim_end_matches('.').trim();
+                let iri = iri_part.trim_start_matches('<').trim_end_matches('>').trim();
+                prefixes.insert(name, iri.to_string());
+            }
+        } else {
+            body.push_str(line);
+            body.push('\n');
+        }
+    }
+
+    // Split into statements separated by `.` at top level (respecting `<>` brackets).
+    let statements = split_turtle_statements(&body);
+    let mut graph: Vec<AclAuthorization> = Vec::new();
+    for stmt in statements {
+        if stmt.trim().is_empty() {
+            continue;
+        }
+        if let Some(auth) = parse_turtle_authorization(&stmt, &prefixes) {
+            graph.push(auth);
+        }
+    }
+    Ok(AclDocument {
+        context: None,
+        graph: if graph.is_empty() { None } else { Some(graph) },
+    })
+}
+
+fn strip_turtle_comments(input: &str) -> String {
+    let mut out = String::with_capacity(input.len());
+    for line in input.lines() {
+        let mut in_iri = false;
+        let mut filtered = String::with_capacity(line.len());
+        for c in line.chars() {
+            match c {
+                '<' => {
+                    in_iri = true;
+                    filtered.push(c);
+                }
+                '>' => {
+                    in_iri = false;
+                    filtered.push(c);
+                }
+                '#' if !in_iri => break,
+                _ => filtered.push(c),
+            }
+        }
+        out.push_str(&filtered);
+        out.push('\n');
+    }
+    out
+}
+
+fn split_turtle_statements(input: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    let mut cur = String::new();
+    let mut depth_iri = 0i32;
+    let mut in_str = false;
+    for c in input.chars() {
+        match c {
+            '<' if !in_str => {
+                depth_iri += 1;
+                cur.push(c);
+            }
+            '>' if !in_str => {
+                depth_iri = (depth_iri - 1).max(0);
+                cur.push(c);
+            }
+            '"' => {
+                in_str = !in_str;
+                cur.push(c);
+            }
+            '.' if depth_iri == 0 && !in_str => {
+                out.push(cur.clone());
+                cur.clear();
+            }
+            _ => cur.push(c),
+        }
+    }
+    if !cur.trim().is_empty() {
+        out.push(cur);
+    }
+    out
+}
+
+fn parse_turtle_authorization(
+    stmt: &str,
+    prefixes: &std::collections::HashMap<String, String>,
+) -> Option<AclAuthorization> {
+    // Only accept statements whose subject is followed by `a ... acl:Authorization`.
+    let trimmed = stmt.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    // Expect form: SUBJECT PRED OBJ ; PRED OBJ ; ...
+    let (_subject, body) = turtle_pop_term(trimmed)?;
+    let mut auth = AclAuthorization {
+        id: None,
+        r#type: None,
+        agent: None,
+        agent_class: None,
+        agent_group: None,
+        origin: None,
+        access_to: None,
+        default: None,
+        mode: None,
+    };
+    let mut any_authz = false;
+    for pair in body.split(';') {
+        let pair = pair.trim();
+        if pair.is_empty() {
+            continue;
+        }
+        let (pred, rest) = turtle_pop_term(pair)?;
+        let pred_expanded = expand_curie_or_iri(&pred, prefixes);
+        let objects = parse_object_list(rest.trim(), prefixes);
+
+        match pred_expanded.as_str() {
+            "a"
+            | "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
+            | "rdf:type" => {
+                // type statement
+                if objects.iter().any(|o| {
+                    o == "http://www.w3.org/ns/auth/acl#Authorization"
+                        || o == "acl:Authorization"
+                }) {
+                    any_authz = true;
+                }
+            }
+            "http://www.w3.org/ns/auth/acl#agent" | "acl:agent" => {
+                auth.agent = Some(ids_of(objects));
+            }
+            "http://www.w3.org/ns/auth/acl#agentClass" | "acl:agentClass" => {
+                auth.agent_class = Some(ids_of(objects));
+            }
+            "http://www.w3.org/ns/auth/acl#agentGroup" | "acl:agentGroup" => {
+                auth.agent_group = Some(ids_of(objects));
+            }
+            "http://www.w3.org/ns/auth/acl#origin" | "acl:origin" => {
+                auth.origin = Some(ids_of(objects));
+            }
+            "http://www.w3.org/ns/auth/acl#accessTo" | "acl:accessTo" => {
+                auth.access_to = Some(ids_of(objects));
+            }
+            "http://www.w3.org/ns/auth/acl#default" | "acl:default" => {
+                auth.default = Some(ids_of(objects));
+            }
+            "http://www.w3.org/ns/auth/acl#mode" | "acl:mode" => {
+                // Keep mode values as they were (expanded if prefixed).
+                auth.mode = Some(ids_of(objects));
+            }
+            _ => {}
+        }
+    }
+    if any_authz {
+        Some(auth)
+    } else {
+        None
+    }
+}
+
+fn turtle_pop_term(input: &str) -> Option<(String, String)> {
+    let input = input.trim_start();
+    if let Some(rest) = input.strip_prefix('<') {
+        let end = rest.find('>')?;
+        Some((rest[..end].to_string(), rest[end + 1..].to_string()))
+    } else if input.starts_with('"') {
+        // literal — not expected at subject/predicate positions we care about.
+        None
+    } else {
+        // Identifier token terminated by whitespace.
+        let end = input
+            .find(|c: char| c.is_whitespace())
+            .unwrap_or(input.len());
+        Some((input[..end].to_string(), input[end..].to_string()))
+    }
+}
+
+fn parse_object_list(
+    input: &str,
+    prefixes: &std::collections::HashMap<String, String>,
+) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut remaining = input.trim().to_string();
+    loop {
+        let r = remaining.trim_start();
+        if r.is_empty() {
+            break;
+        }
+        let (tok, rest) = match turtle_pop_term(r) {
+            Some(v) => v,
+            None => break,
+        };
+        out.push(expand_curie_or_iri(&tok, prefixes));
+        let r = rest.trim_start();
+        if let Some(after_comma) = r.strip_prefix(',') {
+            remaining = after_comma.to_string();
+        } else {
+            break;
+        }
+    }
+    out
+}
+
+fn expand_curie_or_iri(
+    tok: &str,
+    prefixes: &std::collections::HashMap<String, String>,
+) -> String {
+    let tok = tok.trim();
+    if tok == "a" {
+        return "a".to_string();
+    }
+    if let Some((p, local)) = tok.split_once(':') {
+        // curie if not already an IRI `<...>`
+        if !p.starts_with('<') {
+            if let Some(base) = prefixes.get(p) {
+                return format!("{base}{local}");
+            }
+        }
+    }
+    tok.to_string()
+}
+
+fn ids_of(items: Vec<String>) -> IdOrIds {
+    if items.len() == 1 {
+        IdOrIds::Single(IdRef {
+            id: items.into_iter().next().unwrap(),
+        })
+    } else {
+        IdOrIds::Multiple(items.into_iter().map(|id| IdRef { id }).collect())
+    }
+}
+
+/// Serialise an [`AclDocument`] as Turtle.
+pub fn serialize_turtle_acl(doc: &AclDocument) -> String {
+    let mut out = String::new();
+    out.push_str("@prefix acl: <http://www.w3.org/ns/auth/acl#> .\n");
+    out.push_str("@prefix foaf: <http://xmlns.com/foaf/0.1/> .\n\n");
+    let graph = match &doc.graph {
+        Some(g) => g,
+        None => return out,
+    };
+    for (i, auth) in graph.iter().enumerate() {
+        let subject = format!("<#rule-{i}>");
+        out.push_str(&subject);
+        out.push_str(" a acl:Authorization");
+        fn emit_pairs(out: &mut String, pred: &str, vals: &Option<IdOrIds>) {
+            if let Some(ids) = vals {
+                let refs: Vec<&str> = match ids {
+                    IdOrIds::Single(r) => vec![r.id.as_str()],
+                    IdOrIds::Multiple(v) => v.iter().map(|r| r.id.as_str()).collect(),
+                };
+                if refs.is_empty() {
+                    return;
+                }
+                out.push_str(" ;\n    ");
+                out.push_str(pred);
+                out.push(' ');
+                let rendered: Vec<String> = refs
+                    .iter()
+                    .map(|r| {
+                        if r.starts_with("http") {
+                            format!("<{r}>")
+                        } else {
+                            r.to_string()
+                        }
+                    })
+                    .collect();
+                out.push_str(&rendered.join(", "));
+            }
+        }
+        emit_pairs(&mut out, "acl:agent", &auth.agent);
+        emit_pairs(&mut out, "acl:agentClass", &auth.agent_class);
+        emit_pairs(&mut out, "acl:agentGroup", &auth.agent_group);
+        emit_pairs(&mut out, "acl:accessTo", &auth.access_to);
+        emit_pairs(&mut out, "acl:default", &auth.default);
+        emit_pairs(&mut out, "acl:mode", &auth.mode);
+        out.push_str(" .\n\n");
+    }
+    out
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {
@@ -434,5 +756,50 @@ mod tests {
         let doc = make_doc(vec![public_read("/")]);
         let hdr = wac_allow_header(Some(&doc), None, "/");
         assert_eq!(hdr, "user=\"read\", public=\"read\"");
+    }
+
+    #[test]
+    fn turtle_acl_round_trip_parses_basic_rules() {
+        let ttl = r#"
+            @prefix acl: <http://www.w3.org/ns/auth/acl#> .
+            @prefix foaf: <http://xmlns.com/foaf/0.1/> .
+
+            <#public> a acl:Authorization ;
+                acl:agentClass foaf:Agent ;
+                acl:accessTo </> ;
+                acl:mode acl:Read .
+        "#;
+        let doc = parse_turtle_acl(ttl).unwrap();
+        assert!(evaluate_access(Some(&doc), None, "/", AccessMode::Read));
+        assert!(!evaluate_access(Some(&doc), None, "/", AccessMode::Write));
+    }
+
+    #[test]
+    fn turtle_acl_with_owner_grants_write() {
+        let ttl = r#"
+            @prefix acl: <http://www.w3.org/ns/auth/acl#> .
+
+            <#owner> a acl:Authorization ;
+                acl:agent <did:nostr:owner> ;
+                acl:accessTo </> ;
+                acl:default </> ;
+                acl:mode acl:Write, acl:Control .
+        "#;
+        let doc = parse_turtle_acl(ttl).unwrap();
+        assert!(evaluate_access(
+            Some(&doc),
+            Some("did:nostr:owner"),
+            "/foo",
+            AccessMode::Write
+        ));
+    }
+
+    #[test]
+    fn serialize_turtle_acl_emits_prefixes_and_rules() {
+        let doc = make_doc(vec![public_read("/")]);
+        let out = serialize_turtle_acl(&doc);
+        assert!(out.contains("@prefix acl:"));
+        assert!(out.contains("acl:Authorization"));
+        assert!(out.contains("acl:mode"));
     }
 }

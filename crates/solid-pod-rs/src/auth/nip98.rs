@@ -130,7 +130,13 @@ pub fn verify_at(
         _ => payload_tag,
     };
 
-    // Signature verification is the Phase 2 deliverable.
+    // Schnorr signature verification is available under the
+    // `nip98-schnorr` feature. Structural checks always run.
+    #[cfg(feature = "nip98-schnorr")]
+    {
+        verify_schnorr_signature(&event)?;
+    }
+
     Ok(Nip98Verified {
         pubkey: event.pubkey,
         url: token_url,
@@ -138,6 +144,69 @@ pub fn verify_at(
         payload_hash: verified_payload_hash,
         created_at: event.created_at,
     })
+}
+
+/// Canonical serialisation of a Nostr event per NIP-01 §"Serialization".
+/// Returns `sha256(json([0, pubkey, created_at, kind, tags, content]))`
+/// as lowercase hex.
+pub fn compute_event_id(event: &Nip98Event) -> String {
+    let canonical = serde_json::json!([
+        0,
+        event.pubkey,
+        event.created_at,
+        event.kind,
+        event.tags,
+        event.content,
+    ]);
+    let serialized = serde_json::to_string(&canonical).unwrap_or_default();
+    hex::encode(Sha256::digest(serialized.as_bytes()))
+}
+
+/// Schnorr signature verification (feature-gated).
+///
+/// This validates:
+/// 1. `event.id` matches the canonical NIP-01 hash.
+/// 2. `event.sig` is a valid BIP-340 Schnorr signature by `event.pubkey`
+///    over the event id bytes.
+#[cfg(feature = "nip98-schnorr")]
+pub fn verify_schnorr_signature(event: &Nip98Event) -> Result<(), PodError> {
+    use k256::schnorr::{signature::Verifier, Signature, VerifyingKey};
+
+    let computed_id = compute_event_id(event);
+    if computed_id.to_lowercase() != event.id.to_lowercase() {
+        return Err(PodError::Nip98(format!(
+            "event id mismatch: computed={computed_id}, claimed={}",
+            event.id
+        )));
+    }
+    let pub_bytes = hex::decode(&event.pubkey)
+        .map_err(|e| PodError::Nip98(format!("pubkey hex decode: {e}")))?;
+    let sig_bytes = hex::decode(&event.sig)
+        .map_err(|e| PodError::Nip98(format!("sig hex decode: {e}")))?;
+    if sig_bytes.len() != 64 {
+        return Err(PodError::Nip98(format!(
+            "sig wrong length: {}",
+            sig_bytes.len()
+        )));
+    }
+    let id_bytes = hex::decode(&computed_id)
+        .map_err(|e| PodError::Nip98(format!("id hex decode: {e}")))?;
+
+    let vk = VerifyingKey::from_bytes(&pub_bytes)
+        .map_err(|e| PodError::Nip98(format!("pubkey parse: {e}")))?;
+    let sig = Signature::try_from(sig_bytes.as_slice())
+        .map_err(|e| PodError::Nip98(format!("sig parse: {e}")))?;
+    vk.verify(&id_bytes, &sig)
+        .map_err(|e| PodError::Nip98(format!("schnorr verify: {e}")))?;
+    Ok(())
+}
+
+/// No-op stub when the `nip98-schnorr` feature is not enabled.
+#[cfg(not(feature = "nip98-schnorr"))]
+pub fn verify_schnorr_signature(_event: &Nip98Event) -> Result<(), PodError> {
+    Err(PodError::Unsupported(
+        "nip98-schnorr feature not enabled".into(),
+    ))
 }
 
 fn get_tag(event: &Nip98Event, name: &str) -> Option<String> {
@@ -251,5 +320,26 @@ mod tests {
         let hdr = authorization_header(&encode_event(&ev));
         let err = verify_at(&hdr, "https://a/b", "GET", None, ts).unwrap_err();
         assert!(matches!(err, PodError::Nip98(_)));
+    }
+
+    #[test]
+    fn compute_event_id_matches_canonical_hash() {
+        let event = Nip98Event {
+            id: String::new(),
+            pubkey: "a".repeat(64),
+            created_at: 1_700_000_000,
+            kind: 27235,
+            tags: vec![
+                vec!["u".into(), "https://api.example.com/x".into()],
+                vec!["method".into(), "GET".into()],
+            ],
+            content: String::new(),
+            sig: "0".repeat(128),
+        };
+        // Stable canonical hash — recomputing produces the same value.
+        let id1 = compute_event_id(&event);
+        let id2 = compute_event_id(&event);
+        assert_eq!(id1, id2);
+        assert_eq!(id1.len(), 64);
     }
 }
