@@ -257,7 +257,6 @@ pub struct DecisionRequest {
     pub reasoning: Option<String>,
 }
 
-<<<<<<< HEAD
 // ─────────────────────────────────────────────────────────────────────────────
 // ADR-049: Migration candidate endpoints (subject_kind = "ontology_term")
 // ─────────────────────────────────────────────────────────────────────────────
