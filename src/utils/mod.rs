@@ -7,7 +7,9 @@ pub mod auth;
 pub mod async_improvements;
 pub mod audio_processor;
 pub mod binary_protocol;
-pub mod delta_encoding;
+// delta_encoding module removed by ADR-037 (Implemented 2026-04-20).
+// V4 delta frames were never emitted in production; the module has been
+// retired along with its callers.
 pub mod client_message_extractor;
 pub mod edge_data;
 #[cfg(test)]

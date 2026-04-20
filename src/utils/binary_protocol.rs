@@ -7,10 +7,17 @@ use serde::{Deserialize, Serialize};
 use serde_json;
 use std::collections::HashMap;
 
-// Protocol versions for wire format (V1 REMOVED - no backward compatibility)
-// PROTOCOL_V2 (value: 2) removed — server no longer sends or decodes V2 frames
-const PROTOCOL_V3: u8 = 3; // Analytics extension protocol (P0-4) - CURRENT
-const PROTOCOL_V4: u8 = 4; // Delta encoding protocol
+// Protocol versions for wire format.
+// V1 / V2 / V4 are REMOVED — the server no longer sends or decodes them.
+// V3 is the canonical per-node payload (48 bytes/node with analytics).
+// V5 is the canonical production envelope: [version=5][8-byte broadcast sequence LE][V3 node body].
+// See ADR-037 (Binary Protocol Consolidation, Implemented 2026-04-20).
+const PROTOCOL_V3: u8 = 3; // Canonical node payload (P0-4 Analytics Extension)
+const PROTOCOL_V5: u8 = 5; // Canonical wire envelope (9-byte header + V3 node body)
+
+/// Byte length of the V5 frame header (`[version=5][8-byte sequence LE]`).
+/// This is the 9-byte sequence header referenced by ADR-037.
+pub const V5_HEADER_LEN: usize = 1 + 8;
 
 // Node type flag constants for u32 (server-side)
 const AGENT_NODE_FLAG: u32 = 0x80000000;
@@ -79,35 +86,11 @@ pub struct WireNodeDataItemV3 {
 pub type WireNodeDataItem = WireNodeDataItemV3;
 
 // ============================================================================
-// DELTA ENCODING (Protocol V4) - P1-3 Feature
+// DELTA ENCODING (Protocol V4) — REMOVED per ADR-037 (Implemented 2026-04-20).
+// V4 was never emitted in production: the delta encoder was always called with
+// frame=0, which short-circuits to a V3 full resync. Removing it collapses the
+// wire protocol surface to V3 (node payload) + V5 (envelope).
 // ============================================================================
-
-/// Delta-encoded position update (20 bytes per changed node)
-/// Used in frames 1-59 to send only changes from previous frame
-/// Achieves 60-80% bandwidth reduction compared to full state updates
-#[repr(C)]
-#[derive(Debug, Clone, Copy)]
-pub struct DeltaNodeData {
-    pub id: u32,            // 4 bytes - node ID with flags
-    pub change_flags: u8,   // 1 byte - bits indicate which fields changed
-    pub _padding: [u8; 3],  // 3 bytes - alignment padding
-    pub dx: i16,            // 2 bytes - delta position x (scaled)
-    pub dy: i16,            // 2 bytes - delta position y (scaled)
-    pub dz: i16,            // 2 bytes - delta position z (scaled)
-    pub dvx: i16,           // 2 bytes - delta velocity x (scaled)
-    pub dvy: i16,           // 2 bytes - delta velocity y (scaled)
-    pub dvz: i16,           // 2 bytes - delta velocity z (scaled)
-}
-
-// Change flags for delta encoding
-const DELTA_POSITION_CHANGED: u8 = 0x01;
-const DELTA_VELOCITY_CHANGED: u8 = 0x02;
-const DELTA_ALL_CHANGED: u8 = DELTA_POSITION_CHANGED | DELTA_VELOCITY_CHANGED;
-
-// Delta encoding constants
-const DELTA_SCALE_FACTOR: f32 = 100.0; // Scale factor for i16 precision
-const DELTA_ITEM_SIZE: usize = 20;     // Size of DeltaNodeData in bytes: 4(id) + 1(flags) + 3(padding) + 6*2(deltas) = 20
-const DELTA_RESYNC_INTERVAL: u64 = 60; // Full state every 60 frames
 
 // Safety limits for decode functions
 const MAX_PAYLOAD_SIZE: usize = 10 * 1024 * 1024; // 10 MB
@@ -125,11 +108,19 @@ const WIRE_V3_ITEM_SIZE: usize =
     WIRE_U32_SIZE + WIRE_F32_SIZE + WIRE_U32_SIZE;
 const WIRE_ITEM_SIZE: usize = WIRE_V3_ITEM_SIZE;
 
-// Binary format (explicit):
+// Binary format (explicit) — canonicalised by ADR-037:
 //
-// PROTOCOL V3 (CURRENT - P0-4 Analytics Extension):
-// - Wire format sent to client (48 bytes total):
-//   - Node Index: 4 bytes (u32) - Bits 30-31 for agent/knowledge, bits 26-28 for ontology, bits 0-25 for ID
+// PROTOCOL V5 (PRODUCTION ENVELOPE):
+// - 9-byte header: [version=5][8-byte broadcast_sequence LE]
+// - Payload: V3 node body (48 bytes per node, no inner version byte)
+// - Emitted by every server -> client position broadcast path.
+//
+// PROTOCOL V3 (CANONICAL NODE PAYLOAD — P0-4 Analytics Extension):
+// - Wire format sent to client (48 bytes per node):
+//   - Node Index: 4 bytes (u32) - Bits 30-31 for agent/knowledge,
+//                                 bit 29 for ADR-050 private-opaque,
+//                                 bits 26-28 for ontology type,
+//                                 bits 0-25 for ID
 //   - Position: 3 × 4 bytes = 12 bytes
 //   - Velocity: 3 × 4 bytes = 12 bytes
 //   - SSSP Distance: 4 bytes (f32)
@@ -140,9 +131,9 @@ const WIRE_ITEM_SIZE: usize = WIRE_V3_ITEM_SIZE;
 // Total: 48 bytes per node
 // Supports node IDs: 0 to 67,108,863 (2^26 - 1)
 //
-// PROTOCOL V2 REMOVED — was 36 bytes/node (no analytics), server no longer sends or decodes V2
-//
-// PROTOCOL V1 REMOVED - Had node ID truncation bug (IDs > 16383 were corrupted)
+// PROTOCOL V4 REMOVED — delta encoder permanently emitted V3 (see ADR-037).
+// PROTOCOL V2 REMOVED — was 36 bytes/node (no analytics).
+// PROTOCOL V1 REMOVED — had node ID truncation bug (IDs > 16383 were corrupted).
 //
 // - Server format (BinaryNodeData - 28 bytes total):
 //   - Node ID: 4 bytes (u32)
@@ -609,17 +600,72 @@ pub fn decode_node_data(data: &[u8]) -> Result<Vec<(u32, BinaryNodeData)>, Strin
         1 => Err("Protocol V1 is no longer supported. Please upgrade client.".to_string()),
         2 => Err("V2 protocol no longer supported. Please upgrade client to V3+.".to_string()),
         PROTOCOL_V3 => decode_node_data_v3(payload),
-        PROTOCOL_V4 => Err("V4 delta frames require decode_node_data_delta() with previous state".to_string()),
-        5 => {
-            // V5: [version_byte][8-byte broadcast_seq][V3 node data]
+        4 => Err("V4 delta protocol removed by ADR-037. Server only emits V3/V5.".to_string()),
+        PROTOCOL_V5 => {
+            // V5: [version=5][8-byte broadcast_seq LE][V3 node body]
             if payload.len() < 8 {
                 return Err("V5 frame too small for broadcast sequence".to_string());
             }
-            // Skip 8-byte broadcast sequence number
+            // Skip 8-byte broadcast sequence number; body is a raw V3 node payload
+            // (no inner version byte).
             decode_node_data_v3(&payload[8..])
         }
         v => Err(format!("Unknown protocol version: {}", v)),
     }
+}
+
+// ============================================================================
+// ADR-037: Canonical V5 envelope helpers.
+// ============================================================================
+
+/// Wrap a raw V3 node-body (without the V3 version byte) in a V5 frame.
+///
+/// V5 wire format: `[version=5][8-byte broadcast_sequence LE][v3_body]`.
+/// The sequence number lets the client echo the value back in `BroadcastAck`
+/// frames for end-to-end backpressure correlation.
+///
+/// Callers that already hold a full V3 frame (with leading version byte) should
+/// use [`wrap_v5_from_v3_frame`] instead.
+pub fn wrap_v5(v3_body: &[u8], broadcast_sequence: u64) -> Vec<u8> {
+    let mut out = Vec::with_capacity(V5_HEADER_LEN + v3_body.len());
+    out.push(PROTOCOL_V5);
+    out.extend_from_slice(&broadcast_sequence.to_le_bytes());
+    out.extend_from_slice(v3_body);
+    out
+}
+
+/// Wrap a full V3 frame (with its leading version byte) in a V5 envelope by
+/// stripping the V3 version byte and prepending the V5 header.
+///
+/// Returns a zero-length V3 body (just the V5 header) if `v3_frame` is empty
+/// or contains only the version byte.
+pub fn wrap_v5_from_v3_frame(v3_frame: &[u8], broadcast_sequence: u64) -> Vec<u8> {
+    let body: &[u8] = if v3_frame.len() > 1 { &v3_frame[1..] } else { &[] };
+    wrap_v5(body, broadcast_sequence)
+}
+
+/// Parse the V5 header off a frame, returning `(broadcast_sequence, v3_body)`.
+///
+/// Returns `Err` if the input is shorter than the 9-byte header or does not
+/// carry the V5 version byte.
+pub fn unwrap_v5(frame: &[u8]) -> Result<(u64, &[u8]), String> {
+    if frame.len() < V5_HEADER_LEN {
+        return Err(format!(
+            "V5 frame too small: {} bytes, need at least {}",
+            frame.len(), V5_HEADER_LEN
+        ));
+    }
+    if frame[0] != PROTOCOL_V5 {
+        return Err(format!(
+            "Not a V5 frame: version byte = {} (expected {})",
+            frame[0], PROTOCOL_V5
+        ));
+    }
+    let seq = u64::from_le_bytes([
+        frame[1], frame[2], frame[3], frame[4],
+        frame[5], frame[6], frame[7], frame[8],
+    ]);
+    Ok((seq, &frame[V5_HEADER_LEN..]))
 }
 
 // decode_node_data_v1 REMOVED - V1 protocol no longer supported
@@ -1573,6 +1619,151 @@ mod tests {
         }
     }
 
+    // ========================================================================
+    // ADR-037: V5 envelope + bit 29 opaque-node unit tests.
+    // ========================================================================
+
+    #[test]
+    fn v5_wrap_produces_9_byte_header_then_v3_body() {
+        // GIVEN: A V3 body (no version byte) for two nodes.
+        let nodes = vec![
+            (
+                10u32,
+                BinaryNodeData {
+                    node_id: 10, x: 1.0, y: 2.0, z: 3.0,
+                    vx: 0.1, vy: 0.2, vz: 0.3,
+                },
+            ),
+            (
+                20u32,
+                BinaryNodeData {
+                    node_id: 20, x: 4.0, y: 5.0, z: 6.0,
+                    vx: 0.4, vy: 0.5, vz: 0.6,
+                },
+            ),
+        ];
+        let v3_frame = encode_node_data_extended(&nodes, &[], &[], &[], &[], &[]);
+        assert_eq!(v3_frame[0], PROTOCOL_V3);
+        let v3_body = &v3_frame[1..];
+
+        // WHEN: Wrapping in a V5 envelope with sequence = 0xDEADBEEFCAFEBABE.
+        let seq: u64 = 0xDEAD_BEEF_CAFE_BABE;
+        let framed = wrap_v5(v3_body, seq);
+
+        // THEN: Frame length = 9-byte header + full V3 body.
+        assert_eq!(framed.len(), V5_HEADER_LEN + v3_body.len());
+        assert_eq!(V5_HEADER_LEN, 9, "V5 header must be exactly 9 bytes");
+        assert_eq!(framed[0], PROTOCOL_V5, "First byte must be version=5");
+
+        // THEN: Bytes 1..9 are the little-endian sequence.
+        let encoded_seq = u64::from_le_bytes([
+            framed[1], framed[2], framed[3], framed[4],
+            framed[5], framed[6], framed[7], framed[8],
+        ]);
+        assert_eq!(encoded_seq, seq, "Sequence must be LE-encoded in bytes 1..9");
+
+        // THEN: Bytes 9.. are the original V3 body, byte-for-byte.
+        assert_eq!(&framed[V5_HEADER_LEN..], v3_body);
+
+        // THEN: unwrap_v5 reverses the transform exactly.
+        let (round_trip_seq, round_trip_body) = unwrap_v5(&framed).unwrap();
+        assert_eq!(round_trip_seq, seq);
+        assert_eq!(round_trip_body, v3_body);
+
+        // THEN: decode_node_data parses the V5 frame end-to-end.
+        let decoded = decode_node_data(&framed).unwrap();
+        assert_eq!(decoded.len(), 2);
+        assert_eq!(decoded[0].0, 10);
+        assert_eq!(decoded[1].0, 20);
+    }
+
+    #[test]
+    fn v5_wrap_from_v3_frame_strips_inner_version_byte() {
+        // GIVEN: An empty V3 body and a V3 frame with just the version byte.
+        let empty_v3 = vec![PROTOCOL_V3];
+        let framed = wrap_v5_from_v3_frame(&empty_v3, 0);
+        assert_eq!(framed.len(), V5_HEADER_LEN, "Empty V3 yields header-only V5 frame");
+        assert_eq!(framed[0], PROTOCOL_V5);
+
+        // GIVEN: A real V3 frame.
+        let nodes = vec![(
+            1u32,
+            BinaryNodeData {
+                node_id: 1, x: 1.5, y: 2.5, z: 3.5,
+                vx: 0.0, vy: 0.0, vz: 0.0,
+            },
+        )];
+        let v3 = encode_node_data_extended(&nodes, &[], &[], &[], &[], &[]);
+        let framed = wrap_v5_from_v3_frame(&v3, 42);
+
+        // THEN: The inner V3 version byte is not duplicated.
+        assert_eq!(framed.len(), V5_HEADER_LEN + (v3.len() - 1));
+        // First byte of V3 body must be the wire id, not the V3 version byte.
+        assert_ne!(framed[V5_HEADER_LEN], PROTOCOL_V3,
+            "V3 version byte must be stripped during V5 wrap");
+    }
+
+    #[test]
+    fn v5_unwrap_rejects_short_and_mis_versioned_frames() {
+        // Too short to contain header.
+        assert!(unwrap_v5(&[]).is_err());
+        assert!(unwrap_v5(&[5u8]).is_err());
+        assert!(unwrap_v5(&[5u8, 0, 0, 0, 0, 0, 0, 0]).is_err()); // 8 bytes, need 9
+
+        // Header-sized but wrong version byte.
+        let wrong_version = [3u8, 0, 0, 0, 0, 0, 0, 0, 0];
+        let err = unwrap_v5(&wrong_version).unwrap_err();
+        assert!(err.contains("V5"), "Error must call out V5 version mismatch: {}", err);
+    }
+
+    #[test]
+    fn v4_version_byte_is_rejected_by_decoder() {
+        // ADR-037: V4 is no longer a valid wire version. A lone V4 header byte
+        // must surface an explicit rejection rather than silent parse.
+        let v4_frame = vec![4u8];
+        let err = decode_node_data(&v4_frame).unwrap_err();
+        assert!(err.contains("V4"), "V4 rejection must name V4: {}", err);
+        assert!(err.contains("ADR-037"), "V4 rejection must cite ADR-037: {}", err);
+    }
+
+    #[test]
+    fn bit29_private_opaque_flag_round_trip() {
+        // ADR-050 bit 29: private-opaque flag travels through encode / decode
+        // via the public id helpers and does not collide with the other flag
+        // bits (agent/knowledge/ontology) nor with the 26-bit id payload.
+        let raw = 0x0012_3456u32; // 0x123456 = 1,193,046 — inside 26-bit range
+        assert_eq!(raw & NODE_ID_MASK, raw);
+
+        let flagged = encode_node_id(raw, true);
+        assert!(is_private_opaque(flagged), "bit 29 must be set after encode");
+        assert_eq!(flagged & PRIVATE_OPAQUE_FLAG, PRIVATE_OPAQUE_FLAG);
+        assert_eq!(node_id_base(flagged), raw, "base id must survive the flag");
+
+        let cleared = encode_node_id(raw, false);
+        assert_eq!(cleared, raw, "encode_node_id(_, false) must be a no-op");
+        assert!(!is_private_opaque(cleared));
+
+        // Compose with an agent flag: the two flags coexist on the wire id.
+        let agent = set_agent_flag(raw);
+        let agent_private = encode_node_id(agent, true);
+        assert!(is_agent_node(agent_private), "agent flag preserved");
+        assert!(is_private_opaque(agent_private), "private-opaque flag set");
+        assert_eq!(get_actual_node_id(agent_private), raw, "base id recoverable");
+        assert_eq!(node_id_base(agent_private), agent,
+            "node_id_base strips bit 29 without touching other flags");
+    }
+
+    #[test]
+    fn bit29_opaque_does_not_collide_with_other_flag_bits() {
+        // The four named flag bits must be pairwise disjoint and all outside
+        // NODE_ID_MASK, so a private-opaque flag never corrupts type routing.
+        assert_eq!(AGENT_NODE_FLAG & PRIVATE_OPAQUE_FLAG, 0);
+        assert_eq!(KNOWLEDGE_NODE_FLAG & PRIVATE_OPAQUE_FLAG, 0);
+        assert_eq!(ONTOLOGY_TYPE_MASK & PRIVATE_OPAQUE_FLAG, 0);
+        assert_eq!(NODE_ID_MASK & PRIVATE_OPAQUE_FLAG, 0);
+        assert_eq!(PRIVATE_OPAQUE_FLAG, 1u32 << 29);
+    }
+
     #[test]
     fn test_type_flags_preserved_through_encode_decode() {
         // GIVEN: Five nodes, each assigned a different type flag
@@ -1929,16 +2120,18 @@ impl ControlFrame {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum MessageType {
 
-    /// Binary position updates using Protocol V3 (48 bytes/node)
+    /// Binary position updates using Protocol V3 node payload (48 bytes/node).
+    /// Wrapped in a V5 envelope by the broadcast path — see `wrap_v5()`.
     BinaryPositions = 0,
 
     VoiceData = 0x02,
 
     ControlFrame = 0x03,
 
-    /// Delta-encoded position updates (Protocol V4)
-    /// Frame 0: FULL state, Frames 1-59: DELTA, Frame 60: FULL resync
-    PositionDelta = 0x04,
+    // PositionDelta (0x04) REMOVED by ADR-037 — V4 delta frames are no longer
+    // emitted. Reserved value 0x04 is left unused so old clients that still
+    // tag incoming frames get an "Unknown message type" error rather than
+    // silent misparse.
 
     /// Client acknowledgement of position broadcast (Protocol V3 backpressure)
     /// Enables true end-to-end flow control vs queue-only confirmation
@@ -2100,7 +2293,7 @@ impl MultiplexedMessage {
             0 => MessageType::BinaryPositions,
             0x02 => MessageType::VoiceData,
             0x03 => MessageType::ControlFrame,
-            0x04 => MessageType::PositionDelta,
+            // 0x04 (PositionDelta) was removed by ADR-037 and is reserved.
             0x23 => MessageType::AgentAction,
             0x34 => MessageType::BroadcastAck,
             t => return Err(format!("Unknown message type: {}", t)),
@@ -2308,11 +2501,10 @@ mod control_frame_tests {
 
     #[test]
     fn test_message_type_values() {
-        // Verify message type constants match spec
+        // Verify message type constants match spec (post-ADR-037: 0x04 retired).
         assert_eq!(MessageType::BinaryPositions as u8, 0x00);
         assert_eq!(MessageType::VoiceData as u8, 0x02);
         assert_eq!(MessageType::ControlFrame as u8, 0x03);
-        assert_eq!(MessageType::PositionDelta as u8, 0x04);
         assert_eq!(MessageType::AgentAction as u8, 0x23);
         assert_eq!(MessageType::BroadcastAck as u8, 0x34);
     }

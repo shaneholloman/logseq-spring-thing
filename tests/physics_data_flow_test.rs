@@ -18,10 +18,6 @@ use webxr::utils::binary_protocol::{
     is_knowledge_node, set_agent_flag, set_knowledge_flag, BinaryProtocol, Message, MessageType,
     MultiplexedMessage, NodeType,
 };
-use webxr::utils::delta_encoding::{
-    calculate_delta_savings, decode_node_data_delta, encode_node_data_delta,
-    enforce_history_limit, enforce_history_limit_vec, MAX_HISTORY_FRAMES,
-};
 use webxr::utils::socket_flow_messages::BinaryNodeData;
 
 // ---------------------------------------------------------------------------
@@ -140,132 +136,10 @@ fn empty_node_list_encodes_and_decodes_cleanly() {
 }
 
 // ---------------------------------------------------------------------------
-// 2. Delta encoding: nodes that haven't moved are filtered out
+// 2. V4 delta encoding: REMOVED by ADR-037 (Implemented 2026-04-20).
+//    Tests that exercised the delta_encoding module have been deleted along
+//    with the module itself.
 // ---------------------------------------------------------------------------
-
-#[test]
-fn delta_encoding_filters_unchanged_nodes() {
-    let node_a = make_node(1, 10.0, 20.0, 30.0, 1.0, 2.0, 3.0);
-    let node_b = make_node(2, 40.0, 50.0, 60.0, 4.0, 5.0, 6.0);
-
-    let nodes = vec![node_a.clone(), node_b.clone()];
-    let previous: HashMap<u32, BinaryNodeData> = nodes.iter().cloned().collect();
-
-    // Only change node 1's position
-    let updated_nodes = vec![
-        make_node(1, 10.5, 20.0, 30.0, 1.0, 2.0, 3.0), // x changed by 0.5
-        node_b.clone(),                                    // unchanged
-    ];
-
-    let encoded = encode_node_data_delta(&updated_nodes, &previous, 1, &[], &[]);
-
-    // Should be V4 (delta)
-    assert_eq!(encoded[0], 4, "Expected protocol V4 for delta frame");
-
-    // Parse header: frame_number, num_changed
-    let num_changed = u16::from_le_bytes([encoded[2], encoded[3]]);
-    assert_eq!(num_changed, 1, "Only 1 node changed, but got {}", num_changed);
-}
-
-#[test]
-fn delta_encoding_includes_new_nodes_not_in_previous() {
-    let previous: HashMap<u32, BinaryNodeData> = HashMap::new();
-    let nodes = vec![make_node_simple(1, 1.0, 2.0, 3.0)];
-
-    let encoded = encode_node_data_delta(&nodes, &previous, 1, &[], &[]);
-    assert_eq!(encoded[0], 4); // V4 delta
-    let num_changed = u16::from_le_bytes([encoded[2], encoded[3]]);
-    assert_eq!(num_changed, 1, "New node should be included in delta");
-}
-
-#[test]
-fn delta_below_quantization_threshold_is_filtered() {
-    // Deltas smaller than 1/100 (0.01) truncate to zero in i16 and should be filtered
-    let node = make_node(1, 100.0, 200.0, 300.0, 0.0, 0.0, 0.0);
-    let previous: HashMap<u32, BinaryNodeData> = vec![node.clone()].into_iter().collect();
-
-    // Move by 0.005 -- below the 0.01 threshold
-    let updated = vec![make_node(1, 100.005, 200.0, 300.0, 0.0, 0.0, 0.0)];
-    let encoded = encode_node_data_delta(&updated, &previous, 1, &[], &[]);
-
-    assert_eq!(encoded[0], 4);
-    let num_changed = u16::from_le_bytes([encoded[2], encoded[3]]);
-    assert_eq!(num_changed, 0, "Sub-threshold delta should be filtered out");
-}
-
-// ---------------------------------------------------------------------------
-// 3. Full-sync frame every 60 frames regardless of delta
-// ---------------------------------------------------------------------------
-
-#[test]
-fn full_sync_at_frame_0_60_120() {
-    let nodes = vec![make_node_simple(1, 1.0, 2.0, 3.0)];
-    let previous: HashMap<u32, BinaryNodeData> = nodes.iter().cloned().collect();
-
-    for frame in [0u64, 60, 120, 180, 240] {
-        let encoded = encode_node_data_delta(&nodes, &previous, frame, &[], &[]);
-        assert_eq!(
-            encoded[0], 3,
-            "Frame {} should be full V3 resync, got protocol {}",
-            frame, encoded[0]
-        );
-    }
-}
-
-#[test]
-fn delta_frames_between_resyncs() {
-    let nodes = vec![make_node(1, 1.0, 2.0, 3.0, 0.1, 0.2, 0.3)];
-    let previous: HashMap<u32, BinaryNodeData> = nodes.iter().cloned().collect();
-
-    // Change position so delta is non-empty
-    let updated = vec![make_node(1, 2.0, 3.0, 4.0, 0.1, 0.2, 0.3)];
-
-    for frame in [1u64, 15, 30, 45, 59] {
-        let encoded = encode_node_data_delta(&updated, &previous, frame, &[], &[]);
-        assert_eq!(
-            encoded[0], 4,
-            "Frame {} should be V4 delta, got protocol {}",
-            frame, encoded[0]
-        );
-    }
-}
-
-#[test]
-fn delta_encode_decode_roundtrip_across_multiple_frames() {
-    let initial_nodes = vec![
-        make_node(1, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
-        make_node(2, 10.0, 10.0, 10.0, 0.0, 0.0, 0.0),
-    ];
-
-    // Frame 0: full sync
-    let encoded_f0 = encode_node_data_delta(&initial_nodes, &HashMap::new(), 0, &[], &[]);
-    assert_eq!(encoded_f0[0], 3); // V3 full
-
-    // Build previous state from initial nodes
-    let mut state: HashMap<u32, BinaryNodeData> = initial_nodes.iter().cloned().collect();
-
-    // Frame 1: move node 1
-    let frame1_nodes = vec![
-        make_node(1, 0.5, 0.0, 0.0, 0.0, 0.0, 0.0),
-        make_node(2, 10.0, 10.0, 10.0, 0.0, 0.0, 0.0),
-    ];
-    let encoded_f1 = encode_node_data_delta(&frame1_nodes, &state, 1, &[], &[]);
-    assert_eq!(encoded_f1[0], 4); // V4 delta
-
-    // Decode delta frame 1
-    let decoded_state = decode_node_data_delta(&encoded_f1[1..], &state)
-        .expect("delta decode frame 1 must succeed");
-
-    let node1 = decoded_state.get(&1).expect("node 1 should exist in decoded state");
-    assert!(
-        (node1.x - 0.5).abs() < 0.02,
-        "Node 1 x should be ~0.5, got {}",
-        node1.x
-    );
-
-    let node2 = decoded_state.get(&2).expect("node 2 should exist in decoded state");
-    assert_eq!(node2.x, 10.0, "Unchanged node 2 should keep original x");
-}
 
 // ---------------------------------------------------------------------------
 // 4. Node type flag preservation through encode/decode
@@ -286,22 +160,7 @@ fn node_type_flags_agent_and_knowledge() {
     assert_eq!(get_node_type(knowledge_id), NodeType::Knowledge);
 }
 
-#[test]
-fn node_type_flags_preserved_through_delta_encoding() {
-    let node = make_node(5, 1.0, 2.0, 3.0, 0.1, 0.2, 0.3);
-    let nodes = vec![node.clone()];
-    let previous: HashMap<u32, BinaryNodeData> = HashMap::new();
-
-    // Encode with agent flag
-    let encoded = encode_node_data_delta(&nodes, &previous, 1, &[5], &[]);
-    assert_eq!(encoded[0], 4); // V4
-
-    // Parse the wire ID from the delta payload
-    // Header: version(1) + frame(1) + num_changed(2) = 4 bytes, then first item starts
-    let wire_id = u32::from_le_bytes([encoded[4], encoded[5], encoded[6], encoded[7]]);
-    assert!(is_agent_node(wire_id), "Wire ID should have agent flag set");
-    assert_eq!(get_actual_node_id(wire_id), 5);
-}
+// node_type_flags_preserved_through_delta_encoding removed by ADR-037.
 
 // ---------------------------------------------------------------------------
 // 5. Backpressure: BroadcastAck decode
@@ -372,49 +231,7 @@ fn nan_position_rejected_by_sanitize() {
     assert!(decoded[2].1.y.is_infinite(), "Neg infinity should survive roundtrip");
 }
 
-#[test]
-fn nan_in_delta_encoding_triggers_full_frame_or_valid_output() {
-    // NaN deltas can occur if previous or current position is NaN.
-    // The encoder should either emit a full V3 frame (overflow fallback)
-    // or a valid V4 frame without corruption.
-    let prev_node = make_node(1, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
-    let previous: HashMap<u32, BinaryNodeData> = vec![prev_node].into_iter().collect();
-
-    let nan_nodes = vec![make_node(1, f32::NAN, 0.0, 0.0, 0.0, 0.0, 0.0)];
-    let encoded = encode_node_data_delta(&nan_nodes, &previous, 1, &[], &[]);
-
-    // NaN - 0.0 = NaN; abs(NaN) > i16_max_as_f32 is false (NaN comparisons return false)
-    // So NaN delta does NOT trigger the overflow fallback. The NaN gets clamped to i16.
-    // This is a known edge case -- the server-side sanitiser (VULN-05) must reject NaN
-    // BEFORE it reaches the delta encoder.
-    let version = encoded[0];
-    assert!(
-        version == 3 || version == 4,
-        "Should produce valid V3 or V4 frame, got version {}",
-        version
-    );
-}
-
-// ---------------------------------------------------------------------------
-// Delta i16 overflow triggers full V3 fallback
-// ---------------------------------------------------------------------------
-
-#[test]
-fn delta_i16_overflow_falls_back_to_full_v3() {
-    // i16 max scaled = 32767 / 100 = 327.67
-    // A delta > 327.67 would overflow i16, so the encoder should fall back to V3.
-    let prev = make_node(1, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
-    let previous: HashMap<u32, BinaryNodeData> = vec![prev].into_iter().collect();
-
-    let big_jump = vec![make_node(1, 500.0, 0.0, 0.0, 0.0, 0.0, 0.0)]; // delta=500 > 327.67
-    let encoded = encode_node_data_delta(&big_jump, &previous, 1, &[], &[]);
-
-    assert_eq!(
-        encoded[0], 3,
-        "i16 overflow should trigger full V3 frame, got protocol {}",
-        encoded[0]
-    );
-}
+// NaN / delta i16 overflow tests removed along with the V4 delta encoder (ADR-037).
 
 // ---------------------------------------------------------------------------
 // Multiplexed message framing
@@ -444,52 +261,7 @@ fn unknown_multiplexed_type_rejected() {
     assert!(result.is_err(), "Unknown message type 0xFF should be rejected");
 }
 
-// ---------------------------------------------------------------------------
-// History limit enforcement
-// ---------------------------------------------------------------------------
-
-#[test]
-fn enforce_history_limit_vecdeque() {
-    let mut history: std::collections::VecDeque<u32> = (0..200).collect();
-    enforce_history_limit(&mut history);
-    assert_eq!(history.len(), MAX_HISTORY_FRAMES);
-    // Oldest entries removed, newest retained
-    assert_eq!(*history.front().unwrap(), 200 - MAX_HISTORY_FRAMES as u32);
-    assert_eq!(*history.back().unwrap(), 199);
-}
-
-#[test]
-fn enforce_history_limit_vec_trims_oldest() {
-    let mut history: Vec<u32> = (0..200).collect();
-    enforce_history_limit_vec(&mut history);
-    assert_eq!(history.len(), MAX_HISTORY_FRAMES);
-    assert_eq!(history[0], 200 - MAX_HISTORY_FRAMES as u32);
-}
-
-// ---------------------------------------------------------------------------
-// Bandwidth savings calculation
-// ---------------------------------------------------------------------------
-
-#[test]
-fn bandwidth_savings_realistic_scenario() {
-    // 10K nodes, 5% changing
-    let (full_size, delta_size, savings) = calculate_delta_savings(10_000, 500, 1);
-
-    // Full: 1 + 10000*36 = 360_001
-    assert_eq!(full_size, 360_001);
-    // Delta: 4 + 500*20 = 10_004
-    assert_eq!(delta_size, 10_004);
-    // >97% savings
-    assert!(savings > 97.0, "Expected >97% savings, got {:.1}%", savings);
-}
-
-#[test]
-fn bandwidth_savings_resync_frame_no_savings() {
-    let (full_size, delta_size, savings) = calculate_delta_savings(1000, 100, 60);
-    // Resync frame: delta_size == full_size
-    assert_eq!(full_size, delta_size);
-    assert!(savings.abs() < 0.001, "Resync frame should have 0% savings");
-}
+// History limit + bandwidth savings tests removed with the V4 delta encoder (ADR-037).
 
 // ---------------------------------------------------------------------------
 // Protocol edge cases
@@ -527,14 +299,16 @@ fn decode_v2_protocol_rejected() {
 }
 
 #[test]
-fn decode_v4_without_previous_state_rejected() {
-    let mut data = vec![4u8]; // V4 delta version
-    data.extend_from_slice(&[0u8; 20]);
+fn decode_v4_rejected_with_adr037_message() {
+    // ADR-037: V4 delta frames are no longer a valid wire version.
+    let data = vec![4u8];
     let result = decode_node_data(&data);
     assert!(result.is_err());
+    let err = result.unwrap_err();
     assert!(
-        result.unwrap_err().contains("delta"),
-        "V4 decode via decode_node_data should indicate delta requirement"
+        err.contains("V4") && err.contains("ADR-037"),
+        "V4 rejection must cite ADR-037: got {}",
+        err
     );
 }
 
@@ -556,27 +330,7 @@ fn decode_v3_misaligned_payload_rejected() {
     assert!(result.unwrap_err().contains("not a multiple"));
 }
 
-// ---------------------------------------------------------------------------
-// Delta decode edge cases
-// ---------------------------------------------------------------------------
-
-#[test]
-fn delta_decode_too_small_payload() {
-    let result = decode_node_data_delta(&[0u8; 2], &HashMap::new());
-    assert!(result.is_err());
-    assert!(result.unwrap_err().contains("too small"));
-}
-
-#[test]
-fn delta_decode_size_mismatch() {
-    // Header says 1 changed node but payload is too short
-    let mut data = vec![0u8]; // frame number
-    data.extend_from_slice(&1u16.to_le_bytes()); // 1 changed node
-    data.extend_from_slice(&[0u8; 10]); // only 10 bytes, need 20
-    let result = decode_node_data_delta(&data, &HashMap::new());
-    assert!(result.is_err());
-    assert!(result.unwrap_err().contains("Invalid delta data size"));
-}
+// Delta decode edge-case tests removed with the V4 encoder (ADR-037).
 
 // ---------------------------------------------------------------------------
 // V5 broadcast-sequence frame decode
@@ -639,45 +393,7 @@ fn encode_decode_1000_nodes() {
     }
 }
 
-#[test]
-fn delta_encode_decode_1000_nodes_5pct_changed() {
-    let nodes: Vec<(u32, BinaryNodeData)> = (0..1000u32)
-        .map(|i| make_node(i, i as f32, 0.0, 0.0, 0.0, 0.0, 0.0))
-        .collect();
-
-    let previous: HashMap<u32, BinaryNodeData> = nodes.iter().cloned().collect();
-
-    // Change 50 nodes (5%)
-    let mut updated = nodes.clone();
-    for i in 0..50 {
-        updated[i].1.x += 1.0;
-    }
-
-    let encoded = encode_node_data_delta(&updated, &previous, 1, &[], &[]);
-    assert_eq!(encoded[0], 4); // V4 delta
-
-    let num_changed = u16::from_le_bytes([encoded[2], encoded[3]]);
-    assert_eq!(num_changed, 50);
-
-    // Decode and verify
-    let decoded = decode_node_data_delta(&encoded[1..], &previous)
-        .expect("delta decode must succeed");
-
-    for i in 0..50u32 {
-        let node = decoded.get(&i).expect("changed node should exist");
-        assert!(
-            (node.x - (i as f32 + 1.0)).abs() < 0.02,
-            "Node {} x should be ~{}, got {}",
-            i,
-            i as f32 + 1.0,
-            node.x
-        );
-    }
-    for i in 50..1000u32 {
-        let node = decoded.get(&i).expect("unchanged node should exist");
-        assert_eq!(node.x, i as f32, "Unchanged node {} should keep original x", i);
-    }
-}
+// delta_encode_decode_1000_nodes_5pct_changed removed along with the V4 encoder (ADR-037).
 
 // ---------------------------------------------------------------------------
 // Voice data protocol

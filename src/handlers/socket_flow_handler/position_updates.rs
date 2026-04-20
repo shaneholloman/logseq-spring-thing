@@ -4,7 +4,6 @@ use log::{debug, info, trace, warn};
 use std::time::Instant;
 
 use crate::utils::binary_protocol;
-use crate::utils::delta_encoding;
 use crate::utils::socket_flow_messages::{BinaryNodeData, BinaryNodeDataClient};
 use crate::utils::validation::rate_limit::EndpointRateLimits;
 
@@ -580,36 +579,22 @@ pub(crate) fn handle_subscribe_position_updates(
                 if changed_count == 0 && !is_full_sync {
                     act.delta_frame_counter = (frame + 1) % 60;
                 } else {
-                    // FORCE V3 for all frames during active physics. V4 delta encoding
-                    // skips nodes that haven't moved, but force-directed layout moves ALL
-                    // nodes every frame. V4 was also being rejected by the client (only
-                    // V2/V3/V5 were in VALID_VERSIONS until the fix).
-                    // TODO: re-enable V4 once physics has converged and only a few nodes move.
+                    // ADR-037: V4 delta encoding retired. Every broadcast on this
+                    // path emits a canonical V3 full-state frame. `fetch_nodes()`
+                    // has already applied type flags (agent / knowledge / ontology)
+                    // to the node IDs, so the encoder receives empty type arrays
+                    // to avoid double-flagging.
                     let analytics = act.app_state.node_analytics.read().ok();
                     let analytics_ref = analytics.as_deref();
-                    // FIX 5: Double type-flagging contract documentation.
-                    // fetch_nodes() already applies type flags (agent/knowledge/ontology)
-                    // to node IDs via binary_protocol::set_*_flag(). The encoder MUST
-                    // receive empty type arrays to avoid double-flagging. If the encoder
-                    // receives non-empty type arrays AND the node IDs already have flag
-                    // bits set, the flag bits would be applied twice, corrupting node IDs.
                     debug_assert!(
                         nodes.iter().all(|(id, _)| {
                             let has_flags = (*id & 0xFC000000) != 0;
-                            // If ID has flags, type arrays must be empty (no double-flag)
-                            !has_flags || true // arrays below are empty, so this always holds
+                            !has_flags || true
                         }),
                         "BUG: fetch_nodes() applied type flags but encoder also received non-empty type arrays"
                     );
-                    // Force V3 (full sync) every frame by passing frame=0.
-                    // V4 delta encoding is counterproductive for force-directed layout
-                    // where all nodes move every frame.
-                    let binary_data = delta_encoding::encode_node_data_delta_with_analytics(
+                    let binary_data = binary_protocol::encode_node_data_with_live_analytics(
                         &nodes,
-                        &act.delta_previous_nodes,
-                        0, // Always full sync (V3) — force frame=0
-                        &[], // Empty: fetch_nodes() already flagged IDs
-                        &[], // Empty: fetch_nodes() already flagged IDs
                         analytics_ref,
                     );
 
