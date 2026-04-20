@@ -1,6 +1,7 @@
 //! Actor system modules for replacing Arc<RwLock<T>> patterns with Actix actors
 
 pub mod agent_monitor_actor;
+pub mod broker_actor;
 pub mod client_coordinator_actor;
 pub mod client_filter;
 pub mod dojo_discovery_actor;
@@ -50,6 +51,7 @@ pub mod task_orchestrator_actor;
 pub mod workspace_actor;
 
 pub use agent_monitor_actor::AgentMonitorActor;
+pub use broker_actor::BrokerActor;
 pub use client_coordinator_actor::{
     ClientCoordinatorActor, ClientCoordinatorStats, ClientManager, ClientState,
 };

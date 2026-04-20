@@ -1,7 +1,11 @@
 //! Domain layer for DDD bounded contexts.
 //!
-//! Houses stratum aggregates per `docs/explanation/ddd-contributor-enablement-context.md`.
-//! Currently implements BC19 Skill Lifecycle; BC18 Contributor Enablement is agent C1's
-//! scope (see `project-state::contributor-nexus-impl-swarm-plan-2026-04-20`).
+//! Each bounded context owns a submodule. Currently houses:
+//! - `broker` — BC11 Judgment Broker Workbench (ADR-041/042)
+//! - `skills` — BC19 Skill Lifecycle (ADR-057)
+//!
+//! See `docs/explanation/ddd-contributor-enablement-context.md` and
+//! `docs/explanation/ddd-enterprise-contexts.md`.
 
+pub mod broker;
 pub mod skills;

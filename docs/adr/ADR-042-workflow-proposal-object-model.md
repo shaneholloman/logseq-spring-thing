@@ -2,11 +2,24 @@
 
 ## Status
 
-Accepted
+Implemented 2026-04-20
 
 ## Date
 
-2026-04-14
+2026-04-14 (accepted) / 2026-04-20 (implemented)
+
+## Implementation Notes (2026-04-20)
+
+`WorkflowProposal`, `WorkflowVersion`, and `WorkflowPattern` types are live in
+`src/models/enterprise.rs`, backed by `Neo4jWorkflowRepository`
+(`src/adapters/neo4j_workflow_adapter.rs`) and exposed via
+`src/handlers/api_handler/workflows/` (`GET/POST /api/workflows/proposals`,
+`POST /api/workflows/proposals/:id/promote`, `GET /api/workflows/patterns`).
+Status transitions emit `ProposalCreatedEvent`, `ProposalStatusChangedEvent`,
+`WorkflowPromotedEvent`. Broker linkage is via `BrokerCase.category =
+WorkflowReview` with `BrokerCase.subject.id` pointing at the proposal id, so
+the decision orchestrator in ADR-041 can drive workflow approval without
+schema changes here.
 
 ## Context
 

@@ -6,6 +6,7 @@
 
 pub mod agent_messages;
 pub mod analytics_messages;
+pub mod broker_messages;
 pub mod client_messages;
 pub mod graph_messages;
 pub mod ontology_messages;
