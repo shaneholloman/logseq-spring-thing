@@ -278,6 +278,56 @@ impl PodClient {
         Ok(())
     }
 
+    /// GET a resource. Returns `Ok(None)` on 404 (the caller decides whether
+    /// to create-on-miss). Returns the raw body on 2xx with the declared
+    /// `Content-Type` as a best-effort string.
+    ///
+    /// Used by ADR-029 Type Index discovery to fetch remote WebID profile
+    /// documents and `publicTypeIndex.jsonld` from peer Pods. For read-only
+    /// discovery against public containers, pass `auth_header: None` — the
+    /// server keys signature is sufficient since the resource is world-readable
+    /// under WAC (ADR-052). For user-scoped reads, the caller supplies an
+    /// explicit NIP-98 header signed with the user's keys.
+    pub async fn get_resource(
+        &self,
+        pod_url: &str,
+        accept: Option<&str>,
+        auth_header: Option<&str>,
+    ) -> PodResult<Option<(String, Option<String>)>> {
+        let auth = self.resolve_auth("GET", pod_url, None, auth_header)?;
+
+        debug!("[pod_client] GET {}", pod_url);
+
+        let mut req = self.http.get(pod_url).header("Authorization", auth);
+        if let Some(a) = accept {
+            req = req.header("Accept", a);
+        }
+        let resp = req.send().await?;
+
+        let status = resp.status();
+        if status.as_u16() == 404 {
+            return Ok(None);
+        }
+        if !status.is_success() {
+            let code = status.as_u16();
+            let body = resp.text().await.unwrap_or_default();
+            return Err(PodClientError::Status {
+                method: "GET".into(),
+                url: pod_url.into(),
+                status: code,
+                body,
+            });
+        }
+
+        let content_type = resp
+            .headers()
+            .get("content-type")
+            .and_then(|v| v.to_str().ok())
+            .map(str::to_string);
+        let body = resp.text().await.unwrap_or_default();
+        Ok(Some((body, content_type)))
+    }
+
     /// HEAD a resource and return its ETag (if present). Returns `Ok(None)`
     /// when the resource does not exist (404) — callers use this to decide
     /// whether to skip a redundant PUT on saga replay.

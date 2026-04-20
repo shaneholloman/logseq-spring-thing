@@ -2,11 +2,37 @@
 
 ## Status
 
-Proposed
+Implemented 2026-04-20
 
 ## Date
 
 2026-04-18
+
+## Implementation Notes (2026-04-20)
+
+Core backend landed in this sprint (agent E2, Contributor Nexus swarm):
+
+- `src/services/migration_broker.rs` — `MigrationCandidateAggregate` with the
+  candidate/under_review/approved/pr_assigned/promoted/rejected/revoked state
+  machine and a `to_broker_case()` adapter that stamps
+  `category = "contributor_mesh_share"` and
+  `metadata["subject_kind"] = "ontology_term"` (canonical discriminators per
+  the Contributor Nexus swarm plan, 2026-04-20).
+- `src/actors/ontology_actor.rs` — new `OntologyPropose` message + handler
+  implementing the `ontology_propose` MCP tool. It writes the SPARQL patch to
+  `patches/migrations/{candidate_id}.sparql` (override supported) and opens a
+  GitHub PR via `GitHubPRService::create_ontology_pr`.
+- `src/handlers/api_handler/broker/mod.rs` — two new routes:
+  `POST /api/broker/migration-candidates` (surface) and
+  `POST /api/broker/cases/{id}/approve-migration` (decide → triggers
+  `ontology_propose`). Both assert the `subject_kind = "ontology_term"`
+  invariant.
+- `tests/migration_broker_tests.rs` — 16 lifecycle/adapter/MCP-tool tests.
+- `BRIDGE_TO.kind` flip `candidate → promoted` remains owned by ADR-048 P3;
+  this aggregate writes back the PR URL on `on_pr_assigned` and records the
+  post-merge state transition but does not touch the graph edge.
+- Broker UI (E3) and merge-policy enforcement (D5) are deferred; this sprint
+  delivers the aggregate, adapter, MCP tool, and REST surface only.
 
 ## Context
 

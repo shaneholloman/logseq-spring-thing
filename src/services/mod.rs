@@ -37,6 +37,7 @@ pub mod semantic_type_registry;
 pub mod ontology_query_service;
 pub mod ontology_mutation_service;
 pub mod github_pr_service;
+pub mod migration_broker;
 pub mod briefing_service;
 pub mod bead_types;
 pub mod bead_store;
@@ -46,6 +47,7 @@ pub mod nostr_bridge;
 pub mod policy_evaluation_service;
 pub mod kpi_computation_service;
 pub mod pod_client;
+pub mod type_index_discovery;
 pub mod ingest_saga;
 
 // ADR-054: URN-Solid + solid-schema + Solid-Apps ecosystem alignment

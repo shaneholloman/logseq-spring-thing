@@ -7,11 +7,18 @@ pub mod client;
 pub mod config;
 pub mod constraints;
 pub mod cqrs;
+pub mod domain;
 pub mod errors;
 pub mod events;
 pub mod gpu;
 pub mod handlers;
 pub mod inference;
+/// Locally-dispatched MCP tool registry (ADR-057 Contributor Studio + Skill Dojo).
+///
+/// The existing `handlers::mcp_relay_handler` handles WebSocket transport;
+/// this module owns the tool *surface* for contributor-enablement tools
+/// that the backend answers itself.
+pub mod mcp;
 pub mod middleware;
 // pub mod migrations; // Removed in Phase 3 - Neo4j migration complete
 pub mod models;

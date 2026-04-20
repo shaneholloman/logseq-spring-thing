@@ -80,6 +80,86 @@ export class EnergyWisps {
 }
 
 /**
+ * Mini-graph rasteriser used by the Decision Canvas skill preview cards and
+ * the `/studio/:workspaceId` embedded work-lane graph.
+ *
+ * Accepts:
+ *   * Stride-7 node buffer `[x, y, r, g, b, a, weight]`
+ *   * Flat edge buffer `[from, to, from, to, ...]`
+ *
+ * Renders edges first (linear blend) then nodes (additive glow).
+ */
+export class MiniGraph {
+    free(): void;
+    [Symbol.dispose](): void;
+    edge_count(): number;
+    get_height(): number;
+    get_pixels_len(): number;
+    get_pixels_ptr(): number;
+    get_width(): number;
+    constructor(width: number, height: number);
+    node_count(): number;
+    /**
+     * Render the mini-graph into the pixel buffer.
+     */
+    render(): void;
+    /**
+     * Convenience: upload both buffers and render in one call.
+     */
+    render_with(nodes_ptr: number, nodes_len: number, edges_ptr: number, edges_len: number): boolean;
+    set_edges(ptr: number, len: number): void;
+    set_nodes(ptr: number, len: number): void;
+}
+
+/**
+ * Ontology-neighbor thumbnail renderer for Sensei nudge cards.
+ *
+ * Produces a small RGBA image of the neighbourhood around a focus node:
+ * a central dot with up to 8 neighbours laid out by their `(x, y)` in NDC
+ * plus connecting radial lines tinted by each neighbour's `weight`.
+ */
+export class OntologyNeighborThumb {
+    free(): void;
+    [Symbol.dispose](): void;
+    /**
+     * Thumbnail height in pixels.
+     */
+    get_height(): number;
+    /**
+     * Number of bytes in the pixel buffer.
+     */
+    get_pixels_len(): number;
+    /**
+     * Raw pointer to the RGBA8 pixel buffer.
+     */
+    get_pixels_ptr(): number;
+    /**
+     * Thumbnail width in pixels.
+     */
+    get_width(): number;
+    /**
+     * Create a new thumbnail renderer with the given dimensions.
+     */
+    constructor(width: number, height: number);
+    /**
+     * Render the thumbnail into the pixel buffer. Safe to call repeatedly;
+     * clears the buffer first.
+     */
+    render(): void;
+    /**
+     * Convenience: upload `nodes` and render in one call. Returns `true` on
+     * success. Used by the `renderOntologyNeighborThumb` bridge helper.
+     */
+    render_with(ptr: number, len: number): boolean;
+    /**
+     * Set the neighbour buffer. Stride is 7 floats: `[x, y, r, g, b, a, weight]`.
+     * Node 0 is the focus (centre). Nodes 1..N are neighbours. Coordinates in
+     * [-1, 1] NDC.
+     */
+    set_nodes(ptr: number, len: number): void;
+}
+
+/**
  * Particle field managing positions, velocities, visual properties.
  *
  * All buffers are contiguous f32 arrays suitable for direct Float32Array
@@ -140,6 +220,22 @@ export class ParticleField {
 export function init(): void;
 
 /**
+ * Stateless one-shot renderer exposed as `renderMiniGraph` on the JS side.
+ */
+export function renderMiniGraph(width: number, height: number, nodes_ptr: number, nodes_len: number, edges_ptr: number, edges_len: number): Uint8Array;
+
+/**
+ * Stateless one-shot renderer exposed as `renderOntologyNeighborThumb` on the
+ * JS side. Allocates a fresh thumbnail, renders, and returns the pixel
+ * buffer as a `Box<[u8]>` (boxed slice, length-prefixed by wasm-bindgen).
+ *
+ * Note: `Box<[u8]>` is serialised by wasm-bindgen as a `Uint8Array` copy.
+ * For zero-copy access, callers should instantiate `OntologyNeighborThumb`
+ * directly and use the `get_pixels_ptr` / `get_pixels_len` pair.
+ */
+export function renderOntologyNeighborThumb(width: number, height: number, nodes_ptr: number, nodes_len: number): Uint8Array;
+
+/**
  * Diagnostic: returns the library version string.
  */
 export function version(): string;
@@ -148,8 +244,30 @@ export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembl
 
 export interface InitOutput {
     readonly memory: WebAssembly.Memory;
+    readonly __wbg_minigraph_free: (a: number, b: number) => void;
+    readonly __wbg_ontologyneighborthumb_free: (a: number, b: number) => void;
+    readonly minigraph_edge_count: (a: number) => number;
+    readonly minigraph_get_height: (a: number) => number;
+    readonly minigraph_get_pixels_len: (a: number) => number;
+    readonly minigraph_get_pixels_ptr: (a: number) => number;
+    readonly minigraph_get_width: (a: number) => number;
+    readonly minigraph_new: (a: number, b: number) => number;
+    readonly minigraph_node_count: (a: number) => number;
+    readonly minigraph_render: (a: number) => void;
+    readonly minigraph_render_with: (a: number, b: number, c: number, d: number, e: number) => number;
+    readonly minigraph_set_edges: (a: number, b: number, c: number) => void;
+    readonly minigraph_set_nodes: (a: number, b: number, c: number) => void;
+    readonly ontologyneighborthumb_get_height: (a: number) => number;
+    readonly ontologyneighborthumb_get_pixels_len: (a: number) => number;
+    readonly ontologyneighborthumb_get_pixels_ptr: (a: number) => number;
+    readonly ontologyneighborthumb_get_width: (a: number) => number;
+    readonly ontologyneighborthumb_new: (a: number, b: number) => number;
+    readonly ontologyneighborthumb_render: (a: number) => void;
+    readonly ontologyneighborthumb_render_with: (a: number, b: number, c: number) => number;
+    readonly ontologyneighborthumb_set_nodes: (a: number, b: number, c: number) => void;
+    readonly renderMiniGraph: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number];
+    readonly renderOntologyNeighborThumb: (a: number, b: number, c: number, d: number) => [number, number];
     readonly __wbg_energywisps_free: (a: number, b: number) => void;
-    readonly __wbg_particlefield_free: (a: number, b: number) => void;
     readonly energywisps_get_hues_len: (a: number) => number;
     readonly energywisps_get_hues_ptr: (a: number) => number;
     readonly energywisps_get_opacities_len: (a: number) => number;
@@ -162,6 +280,7 @@ export interface InitOutput {
     readonly energywisps_set_drift_speed: (a: number, b: number) => void;
     readonly energywisps_update: (a: number, b: number, c: number, d: number, e: number) => void;
     readonly energywisps_wisp_count: (a: number) => number;
+    readonly __wbg_particlefield_free: (a: number, b: number) => void;
     readonly particlefield_get_opacities_len: (a: number) => number;
     readonly particlefield_get_opacities_ptr: (a: number) => number;
     readonly particlefield_get_positions_len: (a: number) => number;

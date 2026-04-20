@@ -25,6 +25,22 @@ export interface SceneEffectsModule {
   ParticleField: new (count: number) => WasmParticleField;
   AtmosphereField: new (width: number, height: number) => WasmAtmosphereField;
   EnergyWisps: new (count: number) => WasmEnergyWisps;
+  OntologyNeighborThumb: new (width: number, height: number) => WasmOntologyNeighborThumb;
+  MiniGraph: new (width: number, height: number) => WasmMiniGraph;
+  renderOntologyNeighborThumb: (
+    width: number,
+    height: number,
+    nodesPtr: number,
+    nodesLen: number,
+  ) => Uint8Array;
+  renderMiniGraph: (
+    width: number,
+    height: number,
+    nodesPtr: number,
+    nodesLen: number,
+    edgesPtr: number,
+    edgesLen: number,
+  ) => Uint8Array;
   version: () => string;
 }
 
@@ -66,6 +82,38 @@ interface WasmAtmosphereField {
   get_height(): number;
   set_frequency(freq: number): void;
   set_speed(speed: number): void;
+  free(): void;
+}
+
+/** Raw WASM OntologyNeighborThumb handle. */
+interface WasmOntologyNeighborThumb {
+  set_nodes(ptr: number, len: number): void;
+  render(): void;
+  render_with(ptr: number, len: number): boolean;
+  get_pixels_ptr(): number;
+  get_pixels_len(): number;
+  get_width(): number;
+  get_height(): number;
+  free(): void;
+}
+
+/** Raw WASM MiniGraph handle. */
+interface WasmMiniGraph {
+  set_nodes(ptr: number, len: number): void;
+  set_edges(ptr: number, len: number): void;
+  render(): void;
+  render_with(
+    nodesPtr: number,
+    nodesLen: number,
+    edgesPtr: number,
+    edgesLen: number,
+  ): boolean;
+  get_pixels_ptr(): number;
+  get_pixels_len(): number;
+  get_width(): number;
+  get_height(): number;
+  node_count(): number;
+  edge_count(): number;
   free(): void;
 }
 
@@ -298,6 +346,138 @@ export class WispFieldBridge {
 }
 
 /**
+ * Zero-copy node descriptor used by `MiniGraphBridge` and
+ * `OntologyNeighborThumbBridge`. Laid out as stride-7 Float32Array:
+ *   `[x, y, r, g, b, a, weight]` per node, with coordinates in [-1, 1] NDC.
+ *
+ * Prefer allocating a single contiguous `Float32Array` per render call so the
+ * bridge can pass `byteOffset` + `length` directly into WASM linear memory
+ * without copying.
+ */
+export const MINI_GRAPH_NODE_STRIDE = 7;
+
+/**
+ * Wrapper around the WASM ontology-neighbour thumbnail renderer. Used by the
+ * Sensei nudge card (ADR-047 extension) to show a tiny radial preview of the
+ * ontology neighbourhood around a focus class/term.
+ *
+ * Input is a stride-7 Float32Array. Node 0 is the focus; nodes 1..N are
+ * neighbours. The bridge writes the pointer + length into WASM and reads the
+ * resulting RGBA8 buffer as a zero-copy `Uint8Array` view over linear memory.
+ */
+export class OntologyNeighborThumbBridge {
+  private inner: WasmOntologyNeighborThumb;
+  private memory: WebAssembly.Memory;
+  private _disposed = false;
+
+  constructor(inner: WasmOntologyNeighborThumb, memory: WebAssembly.Memory) {
+    this.inner = inner;
+    this.memory = memory;
+  }
+
+  get isDisposed(): boolean { return this._disposed; }
+
+  /**
+   * Upload the stride-7 node buffer and render. The caller owns `nodes`; the
+   * bridge copies it internally (WASM may keep the data between calls).
+   */
+  render(nodes: Float32Array): void {
+    if (this._disposed) return;
+    this.inner.render_with(nodes.byteOffset, nodes.length);
+  }
+
+  /** Zero-copy RGBA8 view. Size = width * height * 4. */
+  getPixels(): Uint8Array {
+    if (this._disposed) return new Uint8Array(0);
+    const ptr = this.inner.get_pixels_ptr();
+    const len = this.inner.get_pixels_len();
+    if (ptr + len > this.memory.buffer.byteLength) {
+      throw new Error('WASM pointer out of bounds');
+    }
+    return new Uint8Array(this.memory.buffer, ptr, len);
+  }
+
+  get width(): number { return this._disposed ? 0 : this.inner.get_width(); }
+  get height(): number { return this._disposed ? 0 : this.inner.get_height(); }
+
+  dispose(): void {
+    if (this._disposed) return;
+    this._disposed = true;
+    this.inner.free();
+  }
+}
+
+/**
+ * Wrapper around the WASM mini-graph renderer. Used by:
+ *   - Decision Canvas skill preview cards (broker workbench, ADR-041)
+ *   - Embedded mini-graph in `/studio/:workspaceId` work lane (BC18 surface)
+ *
+ * Inputs:
+ *   - `nodes`: stride-7 Float32Array `[x, y, r, g, b, a, weight]` per node
+ *   - `edges`: flat Uint32Array `[from, to, from, to, ...]`
+ */
+export class MiniGraphBridge {
+  private inner: WasmMiniGraph;
+  private memory: WebAssembly.Memory;
+  private _disposed = false;
+
+  constructor(inner: WasmMiniGraph, memory: WebAssembly.Memory) {
+    this.inner = inner;
+    this.memory = memory;
+  }
+
+  get isDisposed(): boolean { return this._disposed; }
+
+  /** Upload node + edge buffers and render in one call. */
+  render(nodes: Float32Array, edges: Uint32Array): void {
+    if (this._disposed) return;
+    this.inner.render_with(
+      nodes.byteOffset, nodes.length,
+      edges.byteOffset, edges.length,
+    );
+  }
+
+  /** Upload only the node buffer (keep existing edges). */
+  setNodes(nodes: Float32Array): void {
+    if (this._disposed) return;
+    this.inner.set_nodes(nodes.byteOffset, nodes.length);
+  }
+
+  /** Upload only the edge buffer (keep existing nodes). */
+  setEdges(edges: Uint32Array): void {
+    if (this._disposed) return;
+    this.inner.set_edges(edges.byteOffset, edges.length);
+  }
+
+  /** Trigger a render pass using the last-uploaded buffers. */
+  renderCached(): void {
+    if (this._disposed) return;
+    this.inner.render();
+  }
+
+  getPixels(): Uint8Array {
+    if (this._disposed) return new Uint8Array(0);
+    const ptr = this.inner.get_pixels_ptr();
+    const len = this.inner.get_pixels_len();
+    if (ptr + len > this.memory.buffer.byteLength) {
+      throw new Error('WASM pointer out of bounds');
+    }
+    return new Uint8Array(this.memory.buffer, ptr, len);
+  }
+
+  get width(): number { return this._disposed ? 0 : this.inner.get_width(); }
+  get height(): number { return this._disposed ? 0 : this.inner.get_height(); }
+  get nodeCount(): number { return this._disposed ? 0 : this.inner.node_count(); }
+  get edgeCount(): number { return this._disposed ? 0 : this.inner.edge_count(); }
+
+  dispose(): void {
+    if (this._disposed) return;
+    this._disposed = true;
+    this.inner.free();
+  }
+}
+
+/**
  * Public API returned from initSceneEffects().
  */
 export interface SceneEffectsAPI {
@@ -307,6 +487,27 @@ export interface SceneEffectsAPI {
   createAtmosphereField(width: number, height: number): AtmosphereFieldBridge;
   /** Create an energy wisps field with up to `count` wisps (max 128). */
   createWispField(count: number): WispFieldBridge;
+  /** Create an ontology-neighbour thumbnail renderer. */
+  createOntologyNeighborThumb(width: number, height: number): OntologyNeighborThumbBridge;
+  /** Create a mini-graph renderer (skill preview / workspace work-lane graph). */
+  createMiniGraph(width: number, height: number): MiniGraphBridge;
+  /**
+   * One-shot render of an ontology-neighbour thumbnail. Returns an RGBA8
+   * `Uint8Array` owned by the caller (not a WASM memory view). Prefer the
+   * bridge class for repeated renders.
+   */
+  renderOntologyNeighborThumb(
+    width: number,
+    height: number,
+    nodes: Float32Array,
+  ): Uint8Array;
+  /** One-shot mini-graph render. See caveat above on ownership. */
+  renderMiniGraph(
+    width: number,
+    height: number,
+    nodes: Float32Array,
+    edges: Uint32Array,
+  ): Uint8Array;
   /** WASM module version string. */
   version: string;
 }
@@ -349,6 +550,26 @@ export async function initSceneEffects(): Promise<SceneEffectsAPI> {
         createWispField(count: number): WispFieldBridge {
           const inner = new wasmModule.EnergyWisps(count);
           return new WispFieldBridge(inner, memory);
+        },
+        createOntologyNeighborThumb(width: number, height: number): OntologyNeighborThumbBridge {
+          const inner = new wasmModule.OntologyNeighborThumb(width, height);
+          return new OntologyNeighborThumbBridge(inner, memory);
+        },
+        createMiniGraph(width: number, height: number): MiniGraphBridge {
+          const inner = new wasmModule.MiniGraph(width, height);
+          return new MiniGraphBridge(inner, memory);
+        },
+        renderOntologyNeighborThumb(width, height, nodes) {
+          return wasmModule.renderOntologyNeighborThumb(
+            width, height, nodes.byteOffset, nodes.length,
+          );
+        },
+        renderMiniGraph(width, height, nodes, edges) {
+          return wasmModule.renderMiniGraph(
+            width, height,
+            nodes.byteOffset, nodes.length,
+            edges.byteOffset, edges.length,
+          );
         },
         version: wasmModule.version(),
       };

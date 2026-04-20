@@ -179,6 +179,32 @@ This alignment is behind feature flag `URN_SOLID_ALIGNMENT=true` (default false 
 
 ---
 
+## Contributor AI Support Stratum (2026-04-20 sprint)
+
+VisionClaw has a strong substrate (graph, ontology, pods, agents, GPU physics) and a strong governance mesh (broker, workflow, KPI, connector, policy). What it lacked until now was a contributor-facing harness. Individual contributors fragmented their AI work across Logseq, CLI, MCP, the command palette, and raw pod edits — lots of local activity, no institutional compounding. One person's breakthrough never became the team's baseline.
+
+The Contributor AI Support Stratum closes that gap. **Contributor Studio** (new route `/#/studio`) is a multi-pane harness that co-locates 3D graph context, markdown work, an AI partner lane, an ontology guidance rail, a skill dojo, and pod-backed memory. It sits above the substrate (BC1–BC10) and below the governance mesh (BC11–BC17), feeding finished work into the broker via an explicit share-to-mesh funnel rather than letting it die in local scratchpads.
+
+![Contributor AI Support Stratum — layering model showing the new stratum between substrate contexts (BC1–BC10) and governance mesh contexts (BC11–BC17), with Contributor Studio as the primary surface connecting to pods, graph, ontology, and broker](./docs/diagrams/12-contributor-stratum-layering.png)
+
+| Component | What it does | Scope |
+|-----------|--------------|-------|
+| BC18 Contributor Enablement | ContributorWorkspace · GuidanceSession · ShareIntent · WorkArtifact aggregates; ContextAssembly · OntologyGuidance · PartnerOrchestration · ShareOrchestrator services | Core |
+| BC19 Skill Lifecycle | SkillPackage · SkillVersion · SkillEvalSuite · SkillBenchmark · SkillDistribution aggregates; SkillRegistry · SkillEvaluation · SkillRecommendation · SkillCompatibilityScanner services | Supporting |
+| Pod containers | `/public/skills/` · `/public/workspaces/` · `/private/automations/` · `/private/contributor-profile/` · `/private/skill-evals/` · `/inbox/` (all under ADR-052 WAC) | Per-user |
+| Share states | Private (pod-only) → Team (shared/team/ with WAC group) → Mesh (broker-reviewed, graph-promoted) | Lifecycle |
+
+### Four Pillars
+
+- **Sovereign Workspace** — split-pane UI with graph · editor · partner lane · ontology rail; NIP-07 auth transparently flows through to Solid Pod and MCP; deep-linking from graph selection into agent context.
+- **Mesh Dojo** — decentralised skill sharing via Solid Pod Type Index (ADR-029), `SKILL.md` in `/public/skills/`, peer discovery by graph traversal, lifecycle discipline from draft through retirement.
+- **Ontology Sensei** — background synthesis of `/private/agent-memory/episodic/` with proactive "3 relevant skills for current context" nudges via `ontology_discover`, matching candidates against the contributor's current work.
+- **Pod-Native Automations** — scheduled agents via an extended `TaskOrchestratorActor` write briefs to `/inbox/`; the contributor reviews, approves, and the approved output is routed to the Judgment Broker.
+
+See the [Contributor Studio sprint master](docs/design/2026-04-20-contributor-studio/00-master.md), [PRD-003](docs/PRD-003-contributor-ai-support-stratum.md), [ADR-057](docs/adr/ADR-057-contributor-enablement-platform.md), and the [BC18/BC19 DDD document](docs/explanation/ddd-contributor-enablement-context.md).
+
+---
+
 ## Core capabilities
 
 <table>
@@ -248,6 +274,19 @@ This alignment is behind feature flag `URN_SOLID_ALIGNMENT=true` (default false 
 - Ephemeral keypair delegation (OIDC → secp256k1)
 - Solid Pods · per-user data sovereignty
 - 4 roles: Broker · Admin · Auditor · Contributor
+
+</td>
+</tr>
+<tr>
+<td width="50%" colspan="2">
+
+**🤝 Contributor Studio** ([PRD-003](docs/PRD-003-contributor-ai-support-stratum.md))
+- Multi-pane workspace · graph · editor · partner lane · ontology rail
+- `/#/studio` route · NIP-07 auth flow-through to Pod + MCP
+- Skill Dojo — discover · install · eval · benchmark · share · retire
+- Ontology Sensei — proactive "3 skills for current context" nudges
+- Pod-native automations — scheduled agents write to `/inbox/`
+- Share-to-mesh funnel — Private → Team → Mesh (broker-reviewed)
 
 </td>
 </tr>
@@ -325,6 +364,9 @@ This is a working existence proof at small-to-medium scale, not a universal solu
 | Physics convergence | ~600 frames (~10 s) | Typical graph at rest |
 | DDD bounded contexts | 17 | with 114 CQRS handlers |
 | Agent skills | 83 | Claude-Flow hive-mind |
+| Contributor sprint artifacts | 10 | PRD-003 · ADR-057 · BC18/BC19 DDD · 4 design specs · 62 BDD scenarios |
+| Bounded contexts total | 19 | Core BC1–BC10 · Enterprise BC11–BC17 · Contributor BC18–BC19 |
+| Skill lifecycle states | 7 | Draft → Personal → TeamShared → Benchmarked → MeshCandidate → Promoted → Retired |
 
 ---
 
@@ -337,8 +379,9 @@ This is a working existence proof at small-to-medium scale, not a universal solu
 | **2** Insight Ingestion + Migration | 15–24 | WorkflowProposal and MigrationCandidate lifecycles, GitHub connector, promotion | One shadow concept and one shadow workflow promoted live |
 | **3** KPI + Governance | 25–32 | Six mesh KPIs, policy engine, exportable audit reports | Thesis KPIs measurable from production data |
 | **4** Pilot | 33–44 | Consultancy pilot (Idris persona), connector hardening, success reporting | At least one paid pilot running |
+| **5** Contributor Stratum | 45–56 | PRD-003: Studio MVP shell, Skill Dojo + evals, share-to-mesh funnel, automations + proactive Sensei | Contributor activation rate ≥ target; first contributor-to-mesh promotion lands via broker |
 
-Key architecture decisions: [ADR-040](docs/adr/ADR-040-enterprise-identity-strategy.md) · [ADR-041](docs/adr/ADR-041-judgment-broker-workbench.md) · [ADR-042](docs/adr/ADR-042-workflow-proposal-object-model.md) · [ADR-043](docs/adr/ADR-043-kpi-lineage-model.md) · [ADR-044](docs/adr/ADR-044-connector-governance-privacy.md) · [ADR-045](docs/adr/ADR-045-policy-engine-approach.md) · [ADR-046](docs/adr/ADR-046-enterprise-ui-architecture.md) · [ADR-047](docs/adr/ADR-047-wasm-visualization-components.md) · [ADR-048](docs/adr/ADR-048-dual-tier-identity-model.md) · [ADR-049](docs/adr/ADR-049-insight-migration-broker-workflow.md)
+Key architecture decisions: [ADR-040](docs/adr/ADR-040-enterprise-identity-strategy.md) · [ADR-041](docs/adr/ADR-041-judgment-broker-workbench.md) · [ADR-042](docs/adr/ADR-042-workflow-proposal-object-model.md) · [ADR-043](docs/adr/ADR-043-kpi-lineage-model.md) · [ADR-044](docs/adr/ADR-044-connector-governance-privacy.md) · [ADR-045](docs/adr/ADR-045-policy-engine-approach.md) · [ADR-046](docs/adr/ADR-046-enterprise-ui-architecture.md) · [ADR-047](docs/adr/ADR-047-wasm-visualization-components.md) · [ADR-048](docs/adr/ADR-048-dual-tier-identity-model.md) · [ADR-049](docs/adr/ADR-049-insight-migration-broker-workflow.md) · [ADR-057](docs/adr/ADR-057-contributor-enablement-platform.md)
 
 Sovereign-mesh ADRs (Wave 1–4): [ADR-028-ext](docs/adr/ADR-028-ext-nip98-optional-caller-aware.md) · [ADR-030-ext](docs/adr/ADR-030-ext-sovereign-schema-transitions-creds.md) · [ADR-050](docs/adr/ADR-050-sovereign-knowledge-graph-model.md) · [ADR-051](docs/adr/ADR-051-pod-first-ingest-saga.md) · [ADR-052](docs/adr/ADR-052-wac-knode-visibility-control.md) · [ADR-053](docs/adr/ADR-053-binary-v5-opaque-nodes.md) · [ADR-054](docs/adr/ADR-054-urn-solid-and-solid-apps-alignment.md)
 
@@ -367,6 +410,7 @@ Sovereign-mesh ADRs (Wave 1–4): [ADR-028-ext](docs/adr/ADR-028-ext-nip98-optio
 | **Agents** | Claude-Flow · MCP · RAFT | 83 skills · 7 ontology tools · hive-mind consensus |
 | **Build** | Vite 6 · Vitest · Playwright | Frontend build · unit/E2E tests |
 | **Infra** | Docker Compose | 15+ services · multi-profile |
+| **Contributor Studio** | React 19 · Radix v3 · react-router-dom 7 | Multi-pane surface · NIP-07 auth flow-through · Zustand stores · ADR-026 tiered partner lane |
 
 </details>
 
@@ -383,6 +427,7 @@ Entry points:
 - [System Overview](docs/explanation/system-overview.md) · [Architecture Self-Review](docs/architecture-self-review.md)
 - [Deployment Guide](docs/how-to/deployment-guide.md) · [Quest 3 VR Setup](docs/how-to/xr-setup-quest3.md)
 - [Agent Orchestration](docs/how-to/agent-orchestration.md) · [REST API](docs/reference/rest-api.md) · [WebSocket V5 Binary](docs/reference/websocket-binary.md)
+- [Contributor AI Support Stratum — sprint master](docs/design/2026-04-20-contributor-studio/00-master.md) · [PRD-003](docs/PRD-003-contributor-ai-support-stratum.md) · [ADR-057](docs/adr/ADR-057-contributor-enablement-platform.md) · [BC18/BC19 DDD](docs/explanation/ddd-contributor-enablement-context.md)
 - [Known Issues](docs/KNOWN_ISSUES.md) — read before debugging
 
 ---

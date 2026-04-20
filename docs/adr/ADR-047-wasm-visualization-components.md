@@ -2,11 +2,39 @@
 
 ## Status
 
-Proposed
+Implemented 2026-04-20
 
 ## Date
 
-2026-04-14
+2026-04-14 (proposed) / 2026-04-20 (Sensei + Decision Canvas + Studio work-lane thumbnails implemented)
+
+## Implementation Notes (2026-04-20)
+
+- The `scene-effects` crate (v0.2.0) was extended in-place rather than forking a
+  new crate. Two new WASM classes (`OntologyNeighborThumb`, `MiniGraph`) and two
+  stateless one-shot functions (`renderOntologyNeighborThumb`, `renderMiniGraph`)
+  were added via `client/crates/scene-effects/src/mini_graph.rs`.
+- Bridge extended in `client/src/wasm/scene-effects-bridge.ts` with
+  `OntologyNeighborThumbBridge` and `MiniGraphBridge`, plus one-shot helpers on
+  `SceneEffectsAPI`. The same zero-copy `Float32Array` / `Uint8Array` pattern as
+  `ParticleFieldBridge` / `AtmosphereFieldBridge` is reused (pointer + length
+  with `byteOffset` into linear memory; bounds-checked view construction).
+- React wrappers: `client/src/features/design-system/components/WasmMiniGraph.tsx`
+  and `client/src/features/design-system/components/OntologyNeighborThumb.tsx`.
+  Both ship a Canvas2D baseline that renders synchronously on mount and
+  upgrade to WASM once `initSceneEffects()` resolves. `forceFallback` prop
+  disables the WASM path for tests / degraded environments.
+- Stride-7 node buffer `[x, y, r, g, b, a, weight]` is the shared interchange
+  format, exported as `MINI_GRAPH_NODE_STRIDE` from the bridge.
+- Consumers:
+  - Sensei nudge thumbnails → `OntologyNeighborThumb`
+  - Decision Canvas skill preview cards (broker workbench, ADR-041) → `WasmMiniGraph`
+  - `/studio/:workspaceId` embedded work-lane mini-graph (BC18) → `WasmMiniGraph`
+- Build: `wasm-pack build --target web --out-dir ../../../client/src/wasm/scene-effects`
+  (executed from `client/crates/scene-effects/`). Final wasm binary is ~50 KB,
+  comfortably inside the ADR's 50 KB-per-module target.
+- 9 Rust unit tests pass (`cargo test --lib` inside the standalone crate).
+  Typecheck clean for all files touched by this change.
 
 ## Context
 

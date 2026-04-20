@@ -198,6 +198,206 @@ export class EnergyWisps {
 if (Symbol.dispose) EnergyWisps.prototype[Symbol.dispose] = EnergyWisps.prototype.free;
 
 /**
+ * Mini-graph rasteriser used by the Decision Canvas skill preview cards and
+ * the `/studio/:workspaceId` embedded work-lane graph.
+ *
+ * Accepts:
+ *   * Stride-7 node buffer `[x, y, r, g, b, a, weight]`
+ *   * Flat edge buffer `[from, to, from, to, ...]`
+ *
+ * Renders edges first (linear blend) then nodes (additive glow).
+ */
+export class MiniGraph {
+    __destroy_into_raw() {
+        const ptr = this.__wbg_ptr;
+        this.__wbg_ptr = 0;
+        MiniGraphFinalization.unregister(this);
+        return ptr;
+    }
+    free() {
+        const ptr = this.__destroy_into_raw();
+        wasm.__wbg_minigraph_free(ptr, 0);
+    }
+    /**
+     * @returns {number}
+     */
+    edge_count() {
+        const ret = wasm.minigraph_edge_count(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * @returns {number}
+     */
+    get_height() {
+        const ret = wasm.minigraph_get_height(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * @returns {number}
+     */
+    get_pixels_len() {
+        const ret = wasm.minigraph_get_pixels_len(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * @returns {number}
+     */
+    get_pixels_ptr() {
+        const ret = wasm.minigraph_get_pixels_ptr(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * @returns {number}
+     */
+    get_width() {
+        const ret = wasm.minigraph_get_width(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * @param {number} width
+     * @param {number} height
+     */
+    constructor(width, height) {
+        const ret = wasm.minigraph_new(width, height);
+        this.__wbg_ptr = ret >>> 0;
+        MiniGraphFinalization.register(this, this.__wbg_ptr, this);
+        return this;
+    }
+    /**
+     * @returns {number}
+     */
+    node_count() {
+        const ret = wasm.minigraph_node_count(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * Render the mini-graph into the pixel buffer.
+     */
+    render() {
+        wasm.minigraph_render(this.__wbg_ptr);
+    }
+    /**
+     * Convenience: upload both buffers and render in one call.
+     * @param {number} nodes_ptr
+     * @param {number} nodes_len
+     * @param {number} edges_ptr
+     * @param {number} edges_len
+     * @returns {boolean}
+     */
+    render_with(nodes_ptr, nodes_len, edges_ptr, edges_len) {
+        const ret = wasm.minigraph_render_with(this.__wbg_ptr, nodes_ptr, nodes_len, edges_ptr, edges_len);
+        return ret !== 0;
+    }
+    /**
+     * @param {number} ptr
+     * @param {number} len
+     */
+    set_edges(ptr, len) {
+        wasm.minigraph_set_edges(this.__wbg_ptr, ptr, len);
+    }
+    /**
+     * @param {number} ptr
+     * @param {number} len
+     */
+    set_nodes(ptr, len) {
+        wasm.minigraph_set_nodes(this.__wbg_ptr, ptr, len);
+    }
+}
+if (Symbol.dispose) MiniGraph.prototype[Symbol.dispose] = MiniGraph.prototype.free;
+
+/**
+ * Ontology-neighbor thumbnail renderer for Sensei nudge cards.
+ *
+ * Produces a small RGBA image of the neighbourhood around a focus node:
+ * a central dot with up to 8 neighbours laid out by their `(x, y)` in NDC
+ * plus connecting radial lines tinted by each neighbour's `weight`.
+ */
+export class OntologyNeighborThumb {
+    __destroy_into_raw() {
+        const ptr = this.__wbg_ptr;
+        this.__wbg_ptr = 0;
+        OntologyNeighborThumbFinalization.unregister(this);
+        return ptr;
+    }
+    free() {
+        const ptr = this.__destroy_into_raw();
+        wasm.__wbg_ontologyneighborthumb_free(ptr, 0);
+    }
+    /**
+     * Thumbnail height in pixels.
+     * @returns {number}
+     */
+    get_height() {
+        const ret = wasm.ontologyneighborthumb_get_height(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * Number of bytes in the pixel buffer.
+     * @returns {number}
+     */
+    get_pixels_len() {
+        const ret = wasm.ontologyneighborthumb_get_pixels_len(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * Raw pointer to the RGBA8 pixel buffer.
+     * @returns {number}
+     */
+    get_pixels_ptr() {
+        const ret = wasm.ontologyneighborthumb_get_pixels_ptr(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * Thumbnail width in pixels.
+     * @returns {number}
+     */
+    get_width() {
+        const ret = wasm.ontologyneighborthumb_get_width(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * Create a new thumbnail renderer with the given dimensions.
+     * @param {number} width
+     * @param {number} height
+     */
+    constructor(width, height) {
+        const ret = wasm.ontologyneighborthumb_new(width, height);
+        this.__wbg_ptr = ret >>> 0;
+        OntologyNeighborThumbFinalization.register(this, this.__wbg_ptr, this);
+        return this;
+    }
+    /**
+     * Render the thumbnail into the pixel buffer. Safe to call repeatedly;
+     * clears the buffer first.
+     */
+    render() {
+        wasm.ontologyneighborthumb_render(this.__wbg_ptr);
+    }
+    /**
+     * Convenience: upload `nodes` and render in one call. Returns `true` on
+     * success. Used by the `renderOntologyNeighborThumb` bridge helper.
+     * @param {number} ptr
+     * @param {number} len
+     * @returns {boolean}
+     */
+    render_with(ptr, len) {
+        const ret = wasm.ontologyneighborthumb_render_with(this.__wbg_ptr, ptr, len);
+        return ret !== 0;
+    }
+    /**
+     * Set the neighbour buffer. Stride is 7 floats: `[x, y, r, g, b, a, weight]`.
+     * Node 0 is the focus (centre). Nodes 1..N are neighbours. Coordinates in
+     * [-1, 1] NDC.
+     * @param {number} ptr
+     * @param {number} len
+     */
+    set_nodes(ptr, len) {
+        wasm.ontologyneighborthumb_set_nodes(this.__wbg_ptr, ptr, len);
+    }
+}
+if (Symbol.dispose) OntologyNeighborThumb.prototype[Symbol.dispose] = OntologyNeighborThumb.prototype.free;
+
+/**
  * Particle field managing positions, velocities, visual properties.
  *
  * All buffers are contiguous f32 arrays suitable for direct Float32Array
@@ -309,6 +509,44 @@ export function init() {
 }
 
 /**
+ * Stateless one-shot renderer exposed as `renderMiniGraph` on the JS side.
+ * @param {number} width
+ * @param {number} height
+ * @param {number} nodes_ptr
+ * @param {number} nodes_len
+ * @param {number} edges_ptr
+ * @param {number} edges_len
+ * @returns {Uint8Array}
+ */
+export function renderMiniGraph(width, height, nodes_ptr, nodes_len, edges_ptr, edges_len) {
+    const ret = wasm.renderMiniGraph(width, height, nodes_ptr, nodes_len, edges_ptr, edges_len);
+    var v1 = getArrayU8FromWasm0(ret[0], ret[1]).slice();
+    wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
+    return v1;
+}
+
+/**
+ * Stateless one-shot renderer exposed as `renderOntologyNeighborThumb` on the
+ * JS side. Allocates a fresh thumbnail, renders, and returns the pixel
+ * buffer as a `Box<[u8]>` (boxed slice, length-prefixed by wasm-bindgen).
+ *
+ * Note: `Box<[u8]>` is serialised by wasm-bindgen as a `Uint8Array` copy.
+ * For zero-copy access, callers should instantiate `OntologyNeighborThumb`
+ * directly and use the `get_pixels_ptr` / `get_pixels_len` pair.
+ * @param {number} width
+ * @param {number} height
+ * @param {number} nodes_ptr
+ * @param {number} nodes_len
+ * @returns {Uint8Array}
+ */
+export function renderOntologyNeighborThumb(width, height, nodes_ptr, nodes_len) {
+    const ret = wasm.renderOntologyNeighborThumb(width, height, nodes_ptr, nodes_len);
+    var v1 = getArrayU8FromWasm0(ret[0], ret[1]).slice();
+    wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
+    return v1;
+}
+
+/**
  * Diagnostic: returns the library version string.
  * @returns {string}
  */
@@ -361,9 +599,20 @@ const AtmosphereFieldFinalization = (typeof FinalizationRegistry === 'undefined'
 const EnergyWispsFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
     : new FinalizationRegistry(ptr => wasm.__wbg_energywisps_free(ptr >>> 0, 1));
+const MiniGraphFinalization = (typeof FinalizationRegistry === 'undefined')
+    ? { register: () => {}, unregister: () => {} }
+    : new FinalizationRegistry(ptr => wasm.__wbg_minigraph_free(ptr >>> 0, 1));
+const OntologyNeighborThumbFinalization = (typeof FinalizationRegistry === 'undefined')
+    ? { register: () => {}, unregister: () => {} }
+    : new FinalizationRegistry(ptr => wasm.__wbg_ontologyneighborthumb_free(ptr >>> 0, 1));
 const ParticleFieldFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
     : new FinalizationRegistry(ptr => wasm.__wbg_particlefield_free(ptr >>> 0, 1));
+
+function getArrayU8FromWasm0(ptr, len) {
+    ptr = ptr >>> 0;
+    return getUint8ArrayMemory0().subarray(ptr / 1, ptr / 1 + len);
+}
 
 function getStringFromWasm0(ptr, len) {
     ptr = ptr >>> 0;

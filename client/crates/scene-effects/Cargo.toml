@@ -1,8 +1,12 @@
 [package]
 name = "scene-effects"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 description = "WASM-powered background scene effects for Three.js knowledge graph visualization"
+
+# Standalone crate: live outside the root webxr workspace so the crate can be
+# built independently via `wasm-pack` without invoking server-side features.
+[workspace]
 
 [lib]
 crate-type = ["cdylib", "rlib"]

@@ -3,6 +3,7 @@
 pub mod agent_monitor_actor;
 pub mod client_coordinator_actor;
 pub mod client_filter;
+pub mod dojo_discovery_actor;
 pub mod gpu;
 pub mod graph_state_actor;
 pub mod graph_actor {
@@ -42,6 +43,9 @@ pub mod messaging;
 pub mod multi_mcp_visualization_actor;
 pub mod ontology_actor;
 pub mod semantic_processor_actor;
+pub mod skill_compatibility_scanner;
+pub mod skill_evaluation_actor;
+pub mod skill_registry_supervisor;
 pub mod task_orchestrator_actor;
 pub mod workspace_actor;
 
@@ -73,6 +77,17 @@ pub use server_nostr_actor::{
 };
 pub use semantic_processor_actor::{
     AISemanticFeatures, SemanticProcessorActor, SemanticProcessorConfig, SemanticStats,
+};
+pub use skill_compatibility_scanner::{
+    BenchmarkDispatcher, NoopBenchmarkDispatcher, ScanAllInstalled, SkillCompatibilityScanner,
+    SkillCompatibilityScannerConfig,
+};
+pub use skill_evaluation_actor::{
+    EvalFsm, GetEvaluationStats, SkillEvaluationActor, SubmitEvalRun,
+};
+pub use skill_registry_supervisor::{
+    AttachBenchmark, GetPackage, ListInstalledIds, RegisterPackage, RunSkillEval,
+    SkillRegistrySupervisor, TransitionPackage, TriggerConfigChangeScan,
 };
 pub use supervisor::{
     ActorFactory, SupervisedActorInfo, SupervisedActorTrait, SupervisionStrategy, SupervisorActor,

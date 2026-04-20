@@ -1,3 +1,7 @@
+use crate::mcp::{
+    contributor_tool_registry, ContributorToolRegistry, ToolDispatchError, ToolInvocation,
+    ToolOutcome,
+};
 use crate::utils::network::{
     CircuitBreaker, HealthCheckConfig, HealthCheckManager, ServiceEndpoint, TimeoutConfig,
 };
@@ -6,11 +10,38 @@ use actix_web::{web, HttpRequest, HttpResponse};
 use actix_web_actors::ws;
 use futures_util::{stream::SplitSink, SinkExt, StreamExt};
 use log::{debug, error, info, warn};
+use once_cell::sync::Lazy;
 use serde_json;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::Mutex;
 use tokio_tungstenite::{connect_async, tungstenite::Message as TungsteniteMessage};
+
+/// Process-global registry of locally-dispatched MCP tools (ADR-057).
+///
+/// The relay routes incoming `tools/call` frames whose `name` is present in
+/// this registry to the local dispatcher; all other traffic continues to be
+/// forwarded verbatim to the orchestrator. Registration is lazy + one-shot.
+pub static CONTRIBUTOR_TOOL_REGISTRY: Lazy<Arc<ContributorToolRegistry>> =
+    Lazy::new(contributor_tool_registry);
+
+/// Returns true iff the tool name corresponds to a locally-dispatched tool.
+///
+/// Handy for the relay's inbound-routing shortcut and for tests.
+pub fn is_locally_dispatched_tool(name: &str) -> bool {
+    CONTRIBUTOR_TOOL_REGISTRY.get(name).is_some()
+}
+
+/// Dispatch a contributor-studio tool invocation through the local registry.
+///
+/// All stubs return `ToolOutcome::NotImplemented` until C1–C5 wire the
+/// backing services. The relay serialises this outcome straight back to the
+/// client as a structured MCP response.
+pub fn dispatch_local_tool(
+    invocation: &ToolInvocation,
+) -> Result<ToolOutcome, ToolDispatchError> {
+    CONTRIBUTOR_TOOL_REGISTRY.dispatch(invocation)
+}
 
 type OrchestratorSink = Arc<
     Mutex<
@@ -336,7 +367,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for MCPRelayActor {
 
                 
                 if let Ok(msg) = serde_json::from_str::<serde_json::Value>(&text) {
-                    
+
                     if let Some(msg_type) = msg.get("type").and_then(|t| t.as_str()) {
                         match msg_type {
                             "ping" => {
@@ -350,6 +381,84 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for MCPRelayActor {
                                 return;
                             }
                             _ => {}
+                        }
+                    }
+
+                    // ADR-057: short-circuit locally-dispatched MCP tool calls
+                    // (Contributor Studio + Skill Dojo + Automation). We match
+                    // both the native MCP `tools/call` JSON-RPC envelope and
+                    // the simpler in-house `{type:"tool_call", name, arguments}`
+                    // shape used by the Studio client.
+                    let local_call: Option<(String, serde_json::Value)> = {
+                        if msg.get("method").and_then(|m| m.as_str()) == Some("tools/call") {
+                            let params = msg.get("params").cloned().unwrap_or(serde_json::Value::Null);
+                            let name = params
+                                .get("name")
+                                .and_then(|n| n.as_str())
+                                .map(|s| s.to_string());
+                            let args = params
+                                .get("arguments")
+                                .cloned()
+                                .unwrap_or(serde_json::Value::Object(Default::default()));
+                            name.map(|n| (n, args))
+                        } else if msg.get("type").and_then(|t| t.as_str()) == Some("tool_call") {
+                            let name = msg
+                                .get("name")
+                                .and_then(|n| n.as_str())
+                                .map(|s| s.to_string());
+                            let args = msg
+                                .get("arguments")
+                                .cloned()
+                                .unwrap_or(serde_json::Value::Object(Default::default()));
+                            name.map(|n| (n, args))
+                        } else {
+                            None
+                        }
+                    };
+
+                    if let Some((tool_name, arguments)) = local_call {
+                        if is_locally_dispatched_tool(&tool_name) {
+                            let invocation = ToolInvocation {
+                                tool: tool_name.clone(),
+                                arguments,
+                            };
+                            let request_id = msg
+                                .get("id")
+                                .cloned()
+                                .unwrap_or(serde_json::Value::Null);
+
+                            let response = match dispatch_local_tool(&invocation) {
+                                Ok(ToolOutcome::Ok { value }) => serde_json::json!({
+                                    "jsonrpc": "2.0",
+                                    "id": request_id,
+                                    "result": { "content": value, "status": "ok" },
+                                    "x-dispatched-locally": true,
+                                }),
+                                Ok(ToolOutcome::NotImplemented {
+                                    owner_slice,
+                                    message,
+                                }) => serde_json::json!({
+                                    "jsonrpc": "2.0",
+                                    "id": request_id,
+                                    "result": {
+                                        "status": "not_implemented",
+                                        "owner_slice": owner_slice,
+                                        "message": message,
+                                    },
+                                    "x-dispatched-locally": true,
+                                }),
+                                Err(err) => serde_json::json!({
+                                    "jsonrpc": "2.0",
+                                    "id": request_id,
+                                    "error": {
+                                        "code": -32602,
+                                        "message": err.to_string(),
+                                    },
+                                    "x-dispatched-locally": true,
+                                }),
+                            };
+                            ctx.text(response.to_string());
+                            return;
                         }
                     }
                 }

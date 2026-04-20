@@ -21,9 +21,11 @@ use thiserror::Error;
 use uuid::Uuid;
 
 use crate::actors::messages::*;
+use crate::services::github_pr_service::GitHubPRService;
 use crate::services::owl_validator::{
     OwlValidatorService, PropertyGraph, RdfTriple, ValidationConfig, ValidationReport,
 };
+use crate::types::ontology_tools::AgentContext;
 use crate::utils::time;
 
 #[derive(Error, Debug)]
@@ -152,6 +154,11 @@ pub struct OntologyActor {
 
     /// Optional client coordinator for broadcasting validation updates via WebSocket
     client_manager_addr: Option<Addr<crate::actors::client_coordinator_actor::ClientCoordinatorActor>>,
+
+    /// Optional GitHub PR service for `ontology_propose` MCP tool (ADR-049).
+    /// When absent, `ontology_propose` will write the SPARQL patch to disk
+    /// but skip PR creation and return an error to the caller.
+    github_pr: Option<Arc<GitHubPRService>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -208,7 +215,14 @@ impl OntologyActor {
             semantic_processor_addr: None,
             gpu_manager_addr: None,
             client_manager_addr: None,
+            github_pr: None,
         }
+    }
+
+    /// Attach a GitHub PR service so `ontology_propose` can open PRs
+    /// against the ontology repo (ADR-049).
+    pub fn set_github_pr_service(&mut self, svc: Arc<GitHubPRService>) {
+        self.github_pr = Some(svc);
     }
 
 
@@ -971,5 +985,171 @@ impl Handler<GetCachedOntologies> for OntologyActor {
 impl Default for OntologyActor {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ontology_propose MCP tool (ADR-049 §api-surface)
+//
+// Writes a SPARQL patch for an approved migration candidate to the ontology
+// repository as a file on a feature branch, then opens a GitHub PR for
+// human review. The PR URL is returned to the caller so the broker workbench
+// can populate `MigrationCandidateAggregate.pr_url` via `on_pr_assigned`.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Result of `ontology_propose`: PR url, branch, and file path written.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OntologyProposeResult {
+    pub pr_url: String,
+    pub branch: String,
+    pub patch_path: String,
+    pub candidate_id: String,
+}
+
+/// MCP tool message: write a SPARQL patch to the ontology repo and open a PR.
+///
+/// `patch_path` defaults to `patches/migrations/{candidate_id}.sparql` when
+/// left empty. `ontology_iri` is used only for the PR title/body.
+#[derive(Message)]
+#[rtype(result = "Result<OntologyProposeResult, String>")]
+pub struct OntologyPropose {
+    pub candidate_id: String,
+    pub ontology_iri: String,
+    pub kg_note_label: String,
+    pub sparql_patch: String,
+    /// Optional override path inside the ontology repo. Defaults to
+    /// `patches/migrations/{candidate_id}.sparql`.
+    pub patch_path: Option<String>,
+    pub agent_ctx: AgentContext,
+}
+
+impl OntologyPropose {
+    pub fn default_patch_path(candidate_id: &str) -> String {
+        format!("patches/migrations/{}.sparql", candidate_id)
+    }
+
+    pub fn pr_title(&self) -> String {
+        format!("[ontology-migration] Promote `{}`", self.ontology_iri)
+    }
+
+    pub fn pr_body(&self) -> String {
+        format!(
+            "**Automated migration PR** opened via `ontology_propose` (ADR-049).\n\n\
+             - Candidate: `{}`\n\
+             - Target IRI: `{}`\n\
+             - KG note: `{}`\n\
+             - Agent: `{}` ({})\n\
+             - User: `{}`\n\n\
+             ### SPARQL patch\n\n\
+             ```sparql\n{}\n```\n\n\
+             On merge, `BRIDGE_TO.kind` will flip from `candidate` to `promoted` \
+             (owned by ADR-048 P3).",
+            self.candidate_id,
+            self.ontology_iri,
+            self.kg_note_label,
+            self.agent_ctx.agent_id,
+            self.agent_ctx.agent_type,
+            self.agent_ctx.user_id,
+            self.sparql_patch
+        )
+    }
+}
+
+impl Handler<OntologyPropose> for OntologyActor {
+    type Result = ResponseFuture<Result<OntologyProposeResult, String>>;
+
+    fn handle(&mut self, msg: OntologyPropose, _ctx: &mut Self::Context) -> Self::Result {
+        let github_pr = self.github_pr.clone();
+
+        Box::pin(async move {
+            // Refuse empty patches — caller must have a concrete SPARQL delta.
+            if msg.sparql_patch.trim().is_empty() {
+                return Err("sparql_patch must not be empty".to_string());
+            }
+            if msg.candidate_id.trim().is_empty() {
+                return Err("candidate_id must not be empty".to_string());
+            }
+            if msg.ontology_iri.trim().is_empty() {
+                return Err("ontology_iri must not be empty".to_string());
+            }
+
+            let patch_path = msg
+                .patch_path
+                .clone()
+                .unwrap_or_else(|| OntologyPropose::default_patch_path(&msg.candidate_id));
+
+            let title = msg.pr_title();
+            let body = msg.pr_body();
+
+            let github_pr = github_pr.ok_or_else(|| {
+                "GitHubPRService not configured on OntologyActor; \
+                 cannot open PR for ontology_propose"
+                    .to_string()
+            })?;
+
+            let pr_url = github_pr
+                .create_ontology_pr(&patch_path, &msg.sparql_patch, &title, &body, &msg.agent_ctx)
+                .await?;
+
+            // Branch name mirrors GitHubPRService::create_ontology_pr internals,
+            // so callers can audit without an extra round-trip.
+            let agent_id_short = &msg.agent_ctx.agent_id[..8.min(msg.agent_ctx.agent_id.len())];
+            let branch = format!("ontology/{}-{}", msg.agent_ctx.agent_type, agent_id_short);
+
+            info!(
+                "ontology_propose: candidate={} patch={} pr={}",
+                msg.candidate_id, patch_path, pr_url
+            );
+
+            Ok(OntologyProposeResult {
+                pr_url,
+                branch,
+                patch_path,
+                candidate_id: msg.candidate_id,
+            })
+        })
+    }
+}
+
+#[cfg(test)]
+mod ontology_propose_tests {
+    use super::*;
+    use crate::types::ontology_tools::AgentContext;
+
+    fn sample_ctx() -> AgentContext {
+        AgentContext {
+            agent_id: "agent-12345678".to_string(),
+            agent_type: "migration-broker".to_string(),
+            task_description: "promote ontology term".to_string(),
+            session_id: None,
+            confidence: 0.9,
+            user_id: "user-1".to_string(),
+        }
+    }
+
+    #[test]
+    fn default_patch_path_uses_candidate_id() {
+        let p = OntologyPropose::default_patch_path("mc-abc");
+        assert_eq!(p, "patches/migrations/mc-abc.sparql");
+    }
+
+    #[test]
+    fn pr_title_and_body_embed_candidate_fields() {
+        let msg = OntologyPropose {
+            candidate_id: "mc-42".into(),
+            ontology_iri: "https://ex.org/owl#Widget".into(),
+            kg_note_label: "Widget".into(),
+            sparql_patch: "INSERT DATA { <https://ex.org/owl#Widget> a owl:Class }".into(),
+            patch_path: None,
+            agent_ctx: sample_ctx(),
+        };
+        let title = msg.pr_title();
+        assert!(title.contains("ontology-migration"));
+        assert!(title.contains("Widget"));
+        let body = msg.pr_body();
+        assert!(body.contains("mc-42"));
+        assert!(body.contains("https://ex.org/owl#Widget"));
+        assert!(body.contains("ADR-049"));
+        assert!(body.contains("INSERT DATA"));
     }
 }

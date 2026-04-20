@@ -18,11 +18,13 @@ mod noise;
 mod particles;
 mod atmosphere;
 mod energy_wisps;
+mod mini_graph;
 
 // Re-export the WASM-bindgen types so they are accessible from JS
 pub use particles::ParticleField;
 pub use atmosphere::AtmosphereField;
 pub use energy_wisps::EnergyWisps;
+pub use mini_graph::{MiniGraph, OntologyNeighborThumb};
 
 use wasm_bindgen::prelude::*;
 
