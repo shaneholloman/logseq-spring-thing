@@ -1,7 +1,15 @@
 #![allow(dead_code)]
-// High-Performance Settings Actor with Hexagonal Architecture
-// Now uses SettingsRepository port for database operations
-// Maintains caching and performance optimizations as adapter concerns
+// Canonical SettingsActor (ADR-039) — unifies public + protected settings partitions.
+//
+// Public partition  (`settings`)  — subscribers can read/write via GetSettings /
+//                                    UpdateSettings / *ByPath(s) / hot-reload.
+// Protected partition (`protected`) — admin-only, write-through merge/save gate
+//                                    (API keys, Nostr sessions, network/security).
+//
+// Both partitions are owned by a single actor so that a consolidated supervisor
+// spawn path (see app_state.rs) replaces the former split between
+// OptimizedSettingsActor and ProtectedSettingsActor. `ProtectedSettingsActor`
+// is retained as a type alias for backward compatibility.
 
 use crate::actors::gpu::ForceComputeActor;
 use crate::actors::messages::{
@@ -10,6 +18,7 @@ use crate::actors::messages::{
 };
 use crate::config::AppFullSettings;
 use crate::errors::{SettingsError, VisionFlowError, VisionFlowResult};
+use crate::models::protected_settings::{ApiKeys, NostrUser, ProtectedSettings};
 use actix::prelude::*;
 use blake3::Hasher;
 use flate2::Status;
@@ -36,10 +45,16 @@ use crate::utils::result_helpers::safe_json_number;
 const CACHE_SIZE: usize = 1000;
 
 pub struct OptimizedSettingsActor {
-    
     repository: Arc<dyn SettingsRepository>,
-    
+
+    // Public partition — broadcast-safe application settings.
     settings: Arc<RwLock<AppFullSettings>>,
+
+    // Protected partition (ADR-039) — admin-only settings: API keys,
+    // network/security, websocket server, nostr user registry. All writes
+    // go through the merge/update handlers which log and validate.
+    protected: Arc<RwLock<ProtectedSettings>>,
+
     #[cfg(feature = "redis")]
     redis_client: Option<RedisClient>,
     path_cache: Arc<RwLock<LruCache<String, CachedValue>>>,
@@ -50,6 +65,11 @@ pub struct OptimizedSettingsActor {
     graph_service_addr: Option<Addr<crate::actors::GraphServiceSupervisor>>,
     gpu_compute_addr: Option<Addr<ForceComputeActor>>,
 }
+
+/// Canonical alias — ADR-039 unifies settings actors under a single name.
+/// New code should use `SettingsActor`; `OptimizedSettingsActor` is kept as
+/// the underlying type for now to minimise churn across 15+ consumers.
+pub type SettingsActor = OptimizedSettingsActor;
 
 #[derive(Clone, Debug)]
 struct CachedValue {
@@ -185,6 +205,7 @@ impl OptimizedSettingsActor {
         Ok(Self {
             repository,
             settings: Arc::new(RwLock::new(settings)),
+            protected: Arc::new(RwLock::new(ProtectedSettings::default())),
             #[cfg(feature = "redis")]
             redis_client,
             path_cache,
@@ -207,6 +228,14 @@ impl OptimizedSettingsActor {
         actor.gpu_compute_addr = gpu_compute_addr;
         info!("OptimizedSettingsActor initialized with repository injection, GPU and Graph actor addresses for physics forwarding and concurrent update batching");
         Ok(actor)
+    }
+
+    /// ADR-039: Seed the protected partition at construction. Used by AppState
+    /// to pass a pre-loaded `ProtectedSettings` into the unified actor instead
+    /// of spawning a second actor.
+    pub fn with_protected(mut self, protected: ProtectedSettings) -> Self {
+        self.protected = Arc::new(RwLock::new(protected));
+        self
     }
 
     fn initialize_path_patterns(lookup: &mut HashMap<String, PathPattern>) {
@@ -863,6 +892,7 @@ impl Clone for OptimizedSettingsActor {
         Self {
             repository: Arc::clone(&self.repository),
             settings: self.settings.clone(),
+            protected: self.protected.clone(),
             #[cfg(feature = "redis")]
             redis_client: self.redis_client.clone(),
             path_cache: self.path_cache.clone(),
@@ -1273,5 +1303,126 @@ impl Handler<ReloadSettings> for OptimizedSettingsActor {
         );
 
         Ok(())
+    }
+}
+
+// ---------------------------------------------------------------------------
+// ADR-039: Protected partition handlers
+//
+// These handlers implement the admin-only write-through gate for protected
+// settings (API keys, nostr users, network/security config). They replicate
+// the surface previously exposed by the separate `ProtectedSettingsActor`
+// so that callers using `use crate::actors::protected_settings_actor::*;`
+// continue to work unchanged against the unified actor.
+// ---------------------------------------------------------------------------
+
+use crate::actors::protected_settings_actor::{
+    CleanupExpiredTokens, GetApiKeys, GetUser, MergeSettings, SaveSettings, StoreClientToken,
+    UpdateUserApiKeys, ValidateClientToken,
+};
+
+impl OptimizedSettingsActor {
+    /// Snapshot of the protected partition — for tests and admin tooling.
+    pub async fn get_protected(&self) -> ProtectedSettings {
+        self.protected.read().await.clone()
+    }
+
+    /// Replace the protected partition wholesale. Primarily used by tests
+    /// and bootstrap paths; runtime updates should go through MergeSettings.
+    pub async fn set_protected(&self, new_protected: ProtectedSettings) {
+        let mut guard = self.protected.write().await;
+        *guard = new_protected;
+    }
+}
+
+impl Handler<GetApiKeys> for OptimizedSettingsActor {
+    type Result = ResponseFuture<ApiKeys>;
+
+    fn handle(&mut self, msg: GetApiKeys, _ctx: &mut Self::Context) -> Self::Result {
+        let protected = self.protected.clone();
+        Box::pin(async move { protected.read().await.get_api_keys(&msg.pubkey) })
+    }
+}
+
+impl Handler<ValidateClientToken> for OptimizedSettingsActor {
+    type Result = ResponseFuture<bool>;
+
+    fn handle(&mut self, msg: ValidateClientToken, _ctx: &mut Self::Context) -> Self::Result {
+        let protected = self.protected.clone();
+        Box::pin(async move {
+            protected
+                .read()
+                .await
+                .validate_client_token(&msg.pubkey, &msg.token)
+        })
+    }
+}
+
+impl Handler<StoreClientToken> for OptimizedSettingsActor {
+    type Result = ResponseFuture<()>;
+
+    fn handle(&mut self, msg: StoreClientToken, _ctx: &mut Self::Context) -> Self::Result {
+        let protected = self.protected.clone();
+        Box::pin(async move {
+            protected
+                .write()
+                .await
+                .store_client_token(msg.pubkey, msg.token);
+        })
+    }
+}
+
+impl Handler<UpdateUserApiKeys> for OptimizedSettingsActor {
+    type Result = ResponseFuture<Result<NostrUser, String>>;
+
+    fn handle(&mut self, msg: UpdateUserApiKeys, _ctx: &mut Self::Context) -> Self::Result {
+        let protected = self.protected.clone();
+        Box::pin(async move {
+            protected
+                .write()
+                .await
+                .update_user_api_keys(&msg.pubkey, msg.api_keys)
+        })
+    }
+}
+
+impl Handler<CleanupExpiredTokens> for OptimizedSettingsActor {
+    type Result = ResponseFuture<()>;
+
+    fn handle(&mut self, msg: CleanupExpiredTokens, _ctx: &mut Self::Context) -> Self::Result {
+        let protected = self.protected.clone();
+        Box::pin(async move {
+            protected
+                .write()
+                .await
+                .cleanup_expired_tokens(msg.max_age_hours);
+        })
+    }
+}
+
+impl Handler<MergeSettings> for OptimizedSettingsActor {
+    type Result = ResponseFuture<Result<(), String>>;
+
+    fn handle(&mut self, msg: MergeSettings, _ctx: &mut Self::Context) -> Self::Result {
+        let protected = self.protected.clone();
+        Box::pin(async move { protected.write().await.merge(msg.settings) })
+    }
+}
+
+impl Handler<SaveSettings> for OptimizedSettingsActor {
+    type Result = ResponseFuture<Result<(), String>>;
+
+    fn handle(&mut self, msg: SaveSettings, _ctx: &mut Self::Context) -> Self::Result {
+        let protected = self.protected.clone();
+        Box::pin(async move { protected.read().await.save(&msg.path) })
+    }
+}
+
+impl Handler<GetUser> for OptimizedSettingsActor {
+    type Result = ResponseFuture<Option<NostrUser>>;
+
+    fn handle(&mut self, msg: GetUser, _ctx: &mut Self::Context) -> Self::Result {
+        let protected = self.protected.clone();
+        Box::pin(async move { protected.read().await.users.get(&msg.pubkey).cloned() })
     }
 }

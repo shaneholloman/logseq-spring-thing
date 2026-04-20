@@ -64,7 +64,11 @@ pub use ontology_actor::{
     ActorStatistics as OntologyActorStatistics, JobPriority, JobStatus, OntologyActor,
     OntologyActorConfig, ValidationJob,
 };
-pub use optimized_settings_actor::OptimizedSettingsActor;
+// ADR-039: SettingsActor is the canonical unified settings actor. The old
+// `OptimizedSettingsActor` name is retained as the underlying type for now
+// to keep diff size small; `ProtectedSettingsActor` is a type alias that
+// resolves to the same actor (see protected_settings_actor.rs).
+pub use optimized_settings_actor::{OptimizedSettingsActor, SettingsActor};
 pub use physics_orchestrator_actor::{PhysicsOrchestratorActor, SetClientCoordinator, UserNodeInteraction};
 pub use protected_settings_actor::ProtectedSettingsActor;
 pub use server_nostr_actor::{

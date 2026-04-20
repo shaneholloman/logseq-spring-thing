@@ -2,11 +2,37 @@
 
 ## Status
 
-Proposed
+Implemented 2026-04-20
 
 ## Date
 
-2026-04-14
+2026-04-14 (proposed) / 2026-04-20 (actor consolidation implemented)
+
+## Implementation Notes (2026-04-20)
+
+The actor-side scope of this ADR has been implemented. `OptimizedSettingsActor`
+is now the canonical `SettingsActor`, carrying two partitions:
+
+- **Public partition** (`settings: Arc<RwLock<AppFullSettings>>`) — subject to
+  subscribe/read via `GetSettings`, `GetSettingByPath(s)`, `UpdateSettings`,
+  `SetSettingsByPaths`, hot-reload, and auto-balance updates.
+- **Protected partition** (`protected: Arc<RwLock<ProtectedSettings>>`) —
+  admin-only, routed through `GetApiKeys`, `ValidateClientToken`,
+  `StoreClientToken`, `UpdateUserApiKeys`, `CleanupExpiredTokens`,
+  `MergeSettings`, `SaveSettings`, `GetUser` as a write-through gate.
+
+The former `ProtectedSettingsActor` struct has been removed; the name is
+retained as a backward-compatible type alias over `OptimizedSettingsActor`
+so that existing imports (`use crate::actors::protected_settings_actor::*;`)
+compile unchanged. `AppState` now spawns a single actor and exposes the
+same `Addr` under both `settings_addr` and `protected_settings_addr`.
+
+Physics-object consolidation (`SimulationParams`/`PhysicsSettingsDTO`/
+`UpdatePhysicsRequest` removal) remains in scope for a follow-up sprint and
+is tracked separately from the actor unification.
+
+See `tests/settings_consolidation_test.rs` for partition-level regression
+coverage.
 
 ## Context
 
