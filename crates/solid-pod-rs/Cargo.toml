@@ -61,6 +61,18 @@ s3-backend = ["dep:aws-sdk-s3"]
 oidc = ["dep:openidconnect", "dep:jsonwebtoken"]
 nip98-schnorr = ["dep:k256"]
 
+# Sprint 4 / JSS-parity umbrella. Consumers opt in to specific parity
+# features (e.g. `config-loader`) which in turn enable `jss-v04`.
+jss-v04 = []
+
+# F6 (PRD §F6 / Sprint 4): JSS-compatible layered config loader. The
+# `config` module is always compiled (lightweight struct definitions);
+# this feature flag is the consumer-facing toggle that the eventual
+# `solid-pod-rs-server` / `standalone` binary uses to default onto the
+# loader rather than hand-rolled setup. See
+# `docs/design/jss-parity/05-config-platform-context.md`.
+config-loader = ["jss-v04"]
+
 [dev-dependencies]
 tokio = { version = "1", features = ["full"] }
 tempfile = "3"
