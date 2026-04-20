@@ -2,11 +2,33 @@
 
 ## Status
 
-Proposed
+Implemented 2026-04-20
 
 ## Date
 
-2026-04-18
+2026-04-18 (Proposed) · 2026-04-20 (Implemented)
+
+## Implementation
+
+- Service: `src/services/bridge_edge.rs` — scoring sigmoid, `surface`, `promote`
+  (monotonic), `auto_expire` (3-day below 0.35).
+- Hygiene: `src/services/orphan_retraction.rs` — 15-min sweep, stale
+  `WikilinkRef` deletion and orphan private-stub cleanup.
+- Migration: `queries/migrations/0042_bridge_to.cypher` — constraints, indexes,
+  colocation backfill.
+- Tests: `tests/bridge_edge_test.rs` — weights-sum-to-one, sigmoid shape,
+  monotonic-invariant logic (`#[ignore]`-gated Neo4j integration for the
+  on-wire confidence check).
+- Model: `src/models/node.rs` (visibility/owner sovereign fields) and
+  `src/models/graph_types.rs::classify_node_population` recognise both
+  `KGNode` and `OntologyClass` populations.
+
+### Signal weights (per ADR-049 migration-broker)
+
+S1 wikilink 0.20 · S2 cooccurrence 0.15 · S3 OWL declaration 0.15 ·
+S4 agent proposal 0.20 · S5 maturity 0.10 · S6 centrality 0.10 ·
+S7 recency 0.05 · S8 authority 0.05  (Σ = 1.00). Sigmoid `k=12, bias=0.42`.
+Surface threshold 0.60; expiry threshold 0.35 over 3 days.
 
 ## Related Documents
 

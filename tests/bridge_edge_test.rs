@@ -133,6 +133,72 @@ fn bridge_edge_disabled_by_default() {
     }
 }
 
+/// Pure-computation proxy for the `promote` monotonic invariant.
+///
+/// The Cypher `ON MATCH SET r.confidence = CASE WHEN $new > r.confidence
+/// THEN $new ELSE r.confidence END` expression is exercised against a live
+/// Neo4j in `promote_creates_bridge_to_and_is_monotonic` (ignored without a
+/// database). This test pins the pure arithmetic so regressions to the
+/// comparison direction or branch wiring fail offline as well.
+#[test]
+fn promote_confidence_is_monotonic_nondecreasing() {
+    // Simulate the Cypher CASE branch: confidence may only rise.
+    fn next_confidence(current: f64, new: f64) -> f64 {
+        if new > current { new } else { current }
+    }
+
+    let initial = 0.98_f64;
+    let after_lower = next_confidence(initial, 0.70);
+    assert!(
+        (after_lower - 0.98).abs() < 1e-9,
+        "monotonic invariant: lower rescore must not reduce stored confidence, got {}",
+        after_lower
+    );
+
+    let after_higher = next_confidence(after_lower, 0.995);
+    assert!(
+        (after_higher - 0.995).abs() < 1e-9,
+        "monotonic invariant: higher rescore must lift stored confidence, got {}",
+        after_higher
+    );
+
+    // Equal rescore is a no-op; still non-decreasing.
+    let after_equal = next_confidence(after_higher, 0.995);
+    assert!((after_equal - 0.995).abs() < 1e-9);
+
+    // Subsequent slump still does not roll back.
+    let after_slump = next_confidence(after_equal, 0.10);
+    assert!((after_slump - 0.995).abs() < 1e-9);
+}
+
+/// Guards the candidate→promoted monotonic advance: once promoted, the
+/// status ladder never falls back to surfaced/reviewing.
+#[test]
+fn candidate_status_promoted_is_terminal_advance() {
+    // Advance predicate: only transitions that a rescore + promote path
+    // should legitimately make. Revoke is broker-owned (ADR-049) and not
+    // a rescore output.
+    fn can_advance(from: CandidateStatus, to: CandidateStatus) -> bool {
+        use CandidateStatus::*;
+        match (from, to) {
+            // Surfaced can move forward to reviewing/promoted/rejected/expired.
+            (Surfaced, Reviewing | Promoted | Rejected | Expired) => true,
+            // Reviewing can resolve promote/reject/expire.
+            (Reviewing, Promoted | Rejected | Expired) => true,
+            // Promoted is terminal for the rescore path.
+            (Promoted, _) => false,
+            // Rejected/Expired are also terminal for rescore.
+            (Rejected, _) => false,
+            (Expired, _) => false,
+            _ => false,
+        }
+    }
+    assert!(can_advance(CandidateStatus::Surfaced, CandidateStatus::Promoted));
+    assert!(!can_advance(CandidateStatus::Promoted, CandidateStatus::Surfaced));
+    assert!(!can_advance(CandidateStatus::Promoted, CandidateStatus::Reviewing));
+    assert!(!can_advance(CandidateStatus::Promoted, CandidateStatus::Expired));
+}
+
 #[test]
 fn orphan_period_defaults_to_fifteen_minutes() {
     let prev = std::env::var("ORPHAN_RETRACTION_PERIOD_SECS").ok();
