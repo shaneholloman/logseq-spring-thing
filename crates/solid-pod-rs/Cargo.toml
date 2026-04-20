@@ -61,6 +61,19 @@ s3-backend = ["dep:aws-sdk-s3"]
 oidc = ["dep:openidconnect", "dep:jsonwebtoken"]
 nip98-schnorr = ["dep:k256"]
 
+# ---------------------------------------------------------------------------
+# Sprint 4 / JSS parity umbrella (ADR-056).
+#
+# `jss-v04` is the parent flag for v0.4.0 parity features. Enabling it
+# alone is a no-op — opt into specific sub-features below.
+# ---------------------------------------------------------------------------
+jss-v04 = []
+
+# F4 (PRD §F4): WAC `acl:origin` enforcement per WAC §4.3. When off,
+# the evaluator ignores the Origin header for backward compat. See
+# `docs/design/jss-parity/03-wac-enforcement-context.md`.
+acl-origin = ["jss-v04"]
+
 [dev-dependencies]
 tokio = { version = "1", features = ["full"] }
 tempfile = "3"

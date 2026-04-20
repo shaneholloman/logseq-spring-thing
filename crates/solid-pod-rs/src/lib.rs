@@ -45,8 +45,9 @@ pub mod oidc;
 pub use error::PodError;
 pub use storage::{ResourceMeta, Storage, StorageEvent};
 pub use wac::{
-    evaluate_access, evaluate_access_with_groups, method_to_mode, mode_name, parse_turtle_acl,
-    serialize_turtle_acl, wac_allow_header, AccessMode, AclDocument, GroupMembership,
+    check_origin, evaluate_access, evaluate_access_with_groups, extract_origin_patterns,
+    method_to_mode, mode_name, parse_turtle_acl, serialize_turtle_acl, wac_allow_header,
+    AccessMode, AclDocument, GroupMembership, Origin, OriginDecision, OriginPattern,
     StaticGroupMembership,
 };
 pub use ldp::{

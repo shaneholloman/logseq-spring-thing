@@ -41,7 +41,7 @@ fn default_on_container_inherits_to_child_resource() {
         Some("did:nostr:alice"),
         "/shared/file.txt",
         AccessMode::Read,
-    ));
+        None,));
 }
 
 #[test]
@@ -60,7 +60,7 @@ fn default_on_container_inherits_to_deep_descendant() {
         Some("did:nostr:alice"),
         "/root/a/b/c/d.txt",
         AccessMode::Read,
-    ));
+        None,));
 }
 
 #[test]
@@ -79,7 +79,7 @@ fn default_mode_does_not_grant_unspecified_mode() {
         Some("did:nostr:alice"),
         "/x",
         AccessMode::Write,
-    ));
+        None,));
 }
 
 #[test]
@@ -100,7 +100,7 @@ fn access_to_does_not_inherit_by_itself() {
         Some("did:nostr:alice"),
         "/container/deep/file.txt",
         AccessMode::Read,
-    ));
+        None,));
 }
 
 #[test]
@@ -119,7 +119,7 @@ fn access_to_on_container_covers_direct_children() {
         Some("did:nostr:alice"),
         "/container/file.txt",
         AccessMode::Read,
-    ));
+        None,));
 }
 
 // ---------------------------------------------------------------------------
@@ -146,7 +146,7 @@ fn child_explicit_acl_replaces_parent_default() {
         Some("did:nostr:alice"),
         "/child/file",
         AccessMode::Write,
-    ));
+        None,));
 }
 
 #[test]
@@ -166,7 +166,7 @@ fn child_explicit_without_mode_denies_even_if_parent_grants() {
         Some("did:nostr:alice"),
         "/child",
         AccessMode::Read,
-    ));
+        None,));
 }
 
 // ---------------------------------------------------------------------------
@@ -189,7 +189,7 @@ fn access_to_applies_to_resource_itself() {
         Some("did:nostr:alice"),
         "/doc",
         AccessMode::Read,
-    ));
+        None,));
 }
 
 #[test]
@@ -208,7 +208,7 @@ fn default_does_not_apply_when_agent_unknown() {
         Some("did:nostr:mallory"),
         "/shared/file",
         AccessMode::Read,
-    ));
+        None,));
 }
 
 #[test]
@@ -230,13 +230,13 @@ fn access_to_and_default_both_apply_to_own_container() {
         Some("did:nostr:alice"),
         "/x",
         AccessMode::Read,
-    ));
+        None,));
     assert!(evaluate_access(
         Some(&doc),
         Some("did:nostr:alice"),
         "/x/deep/nested",
         AccessMode::Read,
-    ));
+        None,));
 }
 
 // ---------------------------------------------------------------------------
@@ -262,19 +262,19 @@ fn multiple_agents_all_granted() {
         Some("did:nostr:alice"),
         "/shared",
         AccessMode::Read,
-    ));
+        None,));
     assert!(evaluate_access(
         Some(&doc),
         Some("did:nostr:bob"),
         "/shared",
         AccessMode::Read,
-    ));
+        None,));
     assert!(!evaluate_access(
         Some(&doc),
         Some("did:nostr:carol"),
         "/shared",
         AccessMode::Read,
-    ));
+        None,));
 }
 
 #[test]
@@ -294,7 +294,7 @@ fn multiple_modes_in_one_authorization() {
     );
     for mode in [AccessMode::Read, AccessMode::Write, AccessMode::Append, AccessMode::Control] {
         assert!(
-            evaluate_access(Some(&doc), Some("did:nostr:alice"), "/f", mode),
+            evaluate_access(Some(&doc), Some("did:nostr:alice"), "/f", mode, None),
             "mode {mode:?} should be granted"
         );
     }
@@ -315,13 +315,13 @@ fn foaf_agent_covers_anonymous() {
             }]
         }"#,
     );
-    assert!(evaluate_access(Some(&doc), None, "/public", AccessMode::Read));
+    assert!(evaluate_access(Some(&doc), None, "/public", AccessMode::Read, None));
     assert!(evaluate_access(
         Some(&doc),
         Some("did:nostr:anyone"),
         "/public",
         AccessMode::Read,
-    ));
+        None,));
 }
 
 #[test]
@@ -335,13 +335,13 @@ fn authenticated_agent_excludes_anonymous() {
             }]
         }"#,
     );
-    assert!(!evaluate_access(Some(&doc), None, "/members", AccessMode::Read));
+    assert!(!evaluate_access(Some(&doc), None, "/members", AccessMode::Read, None));
     assert!(evaluate_access(
         Some(&doc),
         Some("did:nostr:alice"),
         "/members",
         AccessMode::Read,
-    ));
+        None,));
 }
 
 #[test]
@@ -355,7 +355,7 @@ fn foaf_agent_iri_full_form_accepted() {
             }]
         }"#,
     );
-    assert!(evaluate_access(Some(&doc), None, "/public", AccessMode::Read));
+    assert!(evaluate_access(Some(&doc), None, "/public", AccessMode::Read, None));
 }
 
 #[test]
@@ -374,8 +374,8 @@ fn authenticated_agent_full_iri_accepted() {
         Some("did:nostr:bob"),
         "/m",
         AccessMode::Read,
-    ));
-    assert!(!evaluate_access(Some(&doc), None, "/m", AccessMode::Read));
+        None,));
+    assert!(!evaluate_access(Some(&doc), None, "/m", AccessMode::Read, None));
 }
 
 // ---------------------------------------------------------------------------
@@ -404,15 +404,15 @@ fn group_membership_grants_access() {
         Some("did:nostr:alice"),
         "/project",
         AccessMode::Read,
-        &groups,
-    ));
+        None,
+        &groups,));
     assert!(!evaluate_access_with_groups(
         Some(&doc),
         Some("did:nostr:carol"),
         "/project",
         AccessMode::Read,
-        &groups,
-    ));
+        None,
+        &groups,));
 }
 
 #[test]
@@ -432,7 +432,7 @@ fn group_without_resolver_denies() {
         Some("did:nostr:alice"),
         "/p",
         AccessMode::Read,
-    ));
+        None,));
 }
 
 #[test]
@@ -453,8 +453,8 @@ fn empty_group_grants_nobody() {
         Some("did:nostr:alice"),
         "/p",
         AccessMode::Read,
-        &groups,
-    ));
+        None,
+        &groups,));
 }
 
 // ---------------------------------------------------------------------------
@@ -477,13 +477,13 @@ fn write_implies_append() {
         Some("did:nostr:alice"),
         "/inbox",
         AccessMode::Append,
-    ));
+        None,));
     assert!(evaluate_access(
         Some(&doc),
         Some("did:nostr:alice"),
         "/inbox",
         AccessMode::Write,
-    ));
+        None,));
 }
 
 #[test]
@@ -502,13 +502,13 @@ fn append_does_not_imply_write() {
         Some("did:nostr:alice"),
         "/inbox",
         AccessMode::Write,
-    ));
+        None,));
     assert!(evaluate_access(
         Some(&doc),
         Some("did:nostr:alice"),
         "/inbox",
         AccessMode::Append,
-    ));
+        None,));
 }
 
 #[test]
@@ -528,13 +528,13 @@ fn control_does_not_imply_read() {
         Some("did:nostr:alice"),
         "/r",
         AccessMode::Control,
-    ));
+        None,));
     assert!(!evaluate_access(
         Some(&doc),
         Some("did:nostr:alice"),
         "/r",
         AccessMode::Read,
-    ));
+        None,));
 }
 
 #[test]
@@ -553,7 +553,7 @@ fn read_does_not_imply_append() {
         Some("did:nostr:alice"),
         "/r",
         AccessMode::Append,
-    ));
+        None,));
 }
 
 // ---------------------------------------------------------------------------
@@ -581,19 +581,19 @@ fn union_of_authorizations_is_effective_permission() {
             ]
         }"#,
     );
-    assert!(evaluate_access(Some(&doc), None, "/r", AccessMode::Read));
+    assert!(evaluate_access(Some(&doc), None, "/r", AccessMode::Read, None));
     assert!(evaluate_access(
         Some(&doc),
         Some("did:nostr:alice"),
         "/r",
         AccessMode::Write,
-    ));
+        None,));
     assert!(!evaluate_access(
         Some(&doc),
         Some("did:nostr:bob"),
         "/r",
         AccessMode::Write,
-    ));
+        None,));
 }
 
 #[test]
@@ -612,7 +612,7 @@ fn unrelated_authorization_does_not_grant_unrelated_resource() {
         Some("did:nostr:alice"),
         "/public",
         AccessMode::Read,
-    ));
+        None,));
 }
 
 // ---------------------------------------------------------------------------
@@ -635,7 +635,7 @@ fn trailing_slash_normalisation_on_container() {
         Some("did:nostr:alice"),
         "/shared/file",
         AccessMode::Read,
-    ));
+        None,));
 }
 
 #[test]
@@ -657,7 +657,7 @@ fn root_default_covers_everything() {
         Some("did:nostr:alice"),
         "/anything/at/all",
         AccessMode::Write,
-    ));
+        None,));
 }
 
 #[test]
@@ -676,7 +676,7 @@ fn dot_prefixed_path_resolves() {
         Some("did:nostr:alice"),
         "/local",
         AccessMode::Read,
-    ));
+        None,));
 }
 
 // ---------------------------------------------------------------------------
@@ -691,7 +691,7 @@ fn empty_graph_denies_everyone() {
         Some("did:nostr:alice"),
         "/x",
         AccessMode::Read,
-    ));
+        None,));
 }
 
 #[test]
@@ -702,7 +702,7 @@ fn missing_graph_treated_as_no_acl() {
         Some("did:nostr:alice"),
         "/x",
         AccessMode::Read,
-    ));
+        None,));
 }
 
 // ---------------------------------------------------------------------------
@@ -735,5 +735,5 @@ fn struct_literal_authorization_works() {
         Some("did:nostr:alice"),
         "/d",
         AccessMode::Read,
-    ));
+        None,));
 }
