@@ -64,15 +64,12 @@ pub use layout_handler::configure_layout_routes;
 pub mod quic_transport_handler;
 pub mod fastwebsockets_handler;
 
-// Solid Server (JSS) integration
-pub mod solid_proxy_handler;
-pub mod solid_proxy_migration;
-pub use solid_proxy_handler::configure_routes as configure_solid_routes;
-
-// Solid Server — native path (`solid-pod-rs` backend, ADR-053 Phase 3)
+// Solid Pod server — native `solid-pod-rs` backend (ADR-053/056).
+// JSS proxy + shadow comparator retired 2026-04-20; the external
+// `solid-pod-rs` crate is now the sole Pod implementation.
 pub mod solid_pod_handler;
 pub use solid_pod_handler::configure_routes as configure_solid_native_routes;
-pub use solid_pod_handler::{NativeSolidService, SolidImpl};
+pub use solid_pod_handler::NativeSolidService;
 
 // Image generation (ComfyUI Flux2)
 pub mod image_gen_handler;

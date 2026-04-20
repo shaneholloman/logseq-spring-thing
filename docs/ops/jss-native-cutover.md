@@ -1,5 +1,14 @@
 # JSS → solid-pod-rs Cutover Runbook
 
+> **STATUS: COMPLETED 2026-04-20.** JSS sidecar retired. `solid-pod-rs`
+> is now an external crate (`github.com/DreamLab-AI/solid-pod-rs`,
+> pinned at `v0.4.0-alpha.1`) and the only Solid Pod backend. The
+> `SOLID_IMPL` env var, the shadow comparator, and the
+> `solid_proxy_handler` module have all been removed. This document
+> is preserved as a historical record of the phased cutover; operators
+> should ignore the `SOLID_IMPL` guidance below — there is no flag to
+> flip any more.
+
 **Authoritative reference:** [ADR-053](../adr/ADR-053-solid-pod-rs-crate-extraction.md)
 §"Phase 3 Integration" + §"Post-parity extraction".
 

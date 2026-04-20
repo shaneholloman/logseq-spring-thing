@@ -1,26 +1,10 @@
 //! Native Solid Pod handler (`solid-pod-rs` backend).
 //!
-//! ADR-053 §"Phase 3 Integration" — dispatches `/solid/*` requests
-//! against the in-process `solid-pod-rs` crate rather than the JSS
-//! Node sidecar. Selected at runtime by the `SOLID_IMPL=native`
-//! feature flag; the JSS proxy stays live under `SOLID_IMPL=jss` (the
-//! default) for backward compatibility and rollback.
-//!
-//! This module is intentionally additive: the legacy
-//! `solid_proxy_handler` is untouched. Both handlers may be mounted
-//! under the same URL surface depending on `SOLID_IMPL`.
-//!
-//! ## Shadow mode
-//!
-//! `SOLID_IMPL=shadow` runs BOTH backends: JSS serves the client,
-//! while the native backend runs in parallel and the differences are
-//! journalled to `docs/audits/YYYY-MM-DD-jss-native-shadow.jsonl`
-//! (one line per request, JSON). The native response is never shown
-//! to the caller in shadow mode — it is observed only.
-//!
-//! The shadow comparator lives next to the dispatcher in `main.rs`
-//! (see `webxr::shadow_dispatch`), not here, so it can wrap the full
-//! request lifecycle of either handler.
+//! ADR-053/056 — dispatches `/solid/*` requests against the external
+//! `solid-pod-rs` crate (pinned in Cargo.toml). As of 2026-04-20 this
+//! is the sole Pod implementation; the legacy JSS proxy and shadow
+//! comparator were retired in the `chore/solid-pod-rs-externalise-jss-cut`
+//! commit.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -475,9 +459,8 @@ pub async fn handle_native_solid(
     svc.handle_request(&req, body).await
 }
 
-/// Mount the native Solid service at `/solid/*` (matches the scope
-/// shape used by `solid_proxy_handler::configure_routes` so nesting
-/// under `/api` continues to work identically).
+/// Mount the native Solid service at `/solid/*`. The scope nests
+/// cleanly under `/api` (e.g. `/api/solid/alice/public/...`).
 pub fn configure_routes(cfg: &mut web::ServiceConfig) {
     info!("=== REGISTERING SOLID-POD-RS NATIVE ROUTES ===");
     cfg.service(
@@ -488,155 +471,3 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
     );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Shadow-mode comparator (ADR-053 §Phase 3)
-// ─────────────────────────────────────────────────────────────────────────────
-
-/// Captured response fields used for shadow-mode diffing. Kept
-/// small — shadow logs must stay under a kilobyte per row.
-#[derive(Debug, Clone)]
-pub struct CapturedResponse {
-    pub status: u16,
-    pub content_type: Option<String>,
-    pub link_headers: Vec<String>,
-    pub body: bytes::Bytes,
-}
-
-/// Result of comparing a JSS response against a native response.
-/// Serialised one-per-line to the daily JSONL audit file.
-#[derive(Debug, Clone, serde::Serialize)]
-pub struct ShadowDiff {
-    pub ts: String,
-    pub path: String,
-    pub method: String,
-    pub status_match: bool,
-    pub jss_status: u16,
-    pub native_status: u16,
-    pub content_type_match: bool,
-    pub link_match: bool,
-    pub body_match: bool,
-    pub body_diff_bytes: i64,
-}
-
-/// Compare two captured responses and return a `ShadowDiff`.
-pub fn compare_shadow(
-    path: &str,
-    method: &str,
-    jss: &CapturedResponse,
-    native: &CapturedResponse,
-) -> ShadowDiff {
-    let status_match = jss.status == native.status;
-    let content_type_match = jss.content_type == native.content_type;
-
-    let mut jss_links = jss.link_headers.clone();
-    jss_links.sort();
-    let mut nat_links = native.link_headers.clone();
-    nat_links.sort();
-    let link_match = jss_links == nat_links;
-
-    let j_norm = normalise_turtle(&jss.body);
-    let n_norm = normalise_turtle(&native.body);
-    let body_match = j_norm == n_norm;
-    let body_diff_bytes = (n_norm.len() as i64) - (j_norm.len() as i64);
-
-    ShadowDiff {
-        ts: chrono::Utc::now().to_rfc3339(),
-        path: path.to_string(),
-        method: method.to_string(),
-        status_match,
-        jss_status: jss.status,
-        native_status: native.status,
-        content_type_match,
-        link_match,
-        body_match,
-        body_diff_bytes,
-    }
-}
-
-/// Normalise a Turtle/byte body for comparison — collapses runs of
-/// whitespace to a single space and trims. Keeps non-Turtle bodies
-/// byte-equal by only applying the normalisation when the body looks
-/// like text.
-fn normalise_turtle(body: &[u8]) -> Vec<u8> {
-    match std::str::from_utf8(body) {
-        Ok(text) => text
-            .split_whitespace()
-            .collect::<Vec<_>>()
-            .join(" ")
-            .into_bytes(),
-        Err(_) => body.to_vec(),
-    }
-}
-
-/// Append a shadow diff line to the daily JSONL audit file. The file
-/// is rotated per UTC day and created lazily on first write. Errors
-/// are logged but never propagate — shadow observability must never
-/// fail a request.
-pub async fn append_shadow_diff(diff: &ShadowDiff) {
-    let day = chrono::Utc::now().format("%Y-%m-%d").to_string();
-    let file = format!("docs/audits/{day}-jss-native-shadow.jsonl");
-    let line = match serde_json::to_string(diff) {
-        Ok(s) => format!("{s}\n"),
-        Err(e) => {
-            warn!("[shadow] serialise failed: {e}");
-            return;
-        }
-    };
-    match tokio::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&file)
-        .await
-    {
-        Ok(mut f) => {
-            use tokio::io::AsyncWriteExt;
-            if let Err(e) = f.write_all(line.as_bytes()).await {
-                warn!("[shadow] write failed ({file}): {e}");
-            }
-        }
-        Err(e) => warn!("[shadow] open failed ({file}): {e}"),
-    }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Feature-flag dispatch (selected from main.rs)
-// ─────────────────────────────────────────────────────────────────────────────
-
-/// The set of valid `SOLID_IMPL` values. `jss` is the default for
-/// backward compatibility; `native` flips to `solid-pod-rs`;
-/// `shadow` runs both and diffs the responses (client sees JSS).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SolidImpl {
-    Jss,
-    Native,
-    Shadow,
-}
-
-impl SolidImpl {
-    pub fn from_env() -> Self {
-        match std::env::var("SOLID_IMPL")
-            .ok()
-            .as_deref()
-            .map(str::to_ascii_lowercase)
-            .as_deref()
-        {
-            Some("native") => SolidImpl::Native,
-            Some("shadow") => SolidImpl::Shadow,
-            Some("jss") | None => SolidImpl::Jss,
-            Some(other) => {
-                warn!(
-                    "[solid-pod-rs] SOLID_IMPL={other:?} is unrecognised — defaulting to jss"
-                );
-                SolidImpl::Jss
-            }
-        }
-    }
-
-    pub fn as_str(self) -> &'static str {
-        match self {
-            SolidImpl::Jss => "jss",
-            SolidImpl::Native => "native",
-            SolidImpl::Shadow => "shadow",
-        }
-    }
-}

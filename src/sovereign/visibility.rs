@@ -30,9 +30,10 @@
 //!
 //! Tombstone:
 //!
-//! On unpublish, a `:PodTombstone {path}` node is merged into Neo4j. The
-//! `solid_proxy_handler` GET path checks for a tombstone before routing
-//! upstream; when found, it returns HTTP 410 Gone with a `Sunset` header.
+//! On unpublish, a `:PodTombstone {path}` node is merged into Neo4j.
+//! Downstream consumers (external `solid-pod-rs` surface, federation
+//! clients) check for a tombstone before serving; when found, they
+//! return HTTP 410 Gone with a `Sunset` header.
 
 use std::sync::Arc;
 

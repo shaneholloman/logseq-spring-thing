@@ -696,32 +696,21 @@ async fn main() -> std::io::Result<()> {
     };
     let pre_read_ws_settings_data = web::Data::new(pre_read_ws_settings);
 
-    // ADR-053 Phase 3: SOLID_IMPL dispatcher.
-    //   jss (default) → legacy JSS proxy (unchanged).
-    //   native        → solid-pod-rs in-process.
-    //   shadow        → JSS serves the client; native runs in parallel
-    //                   and the diff is journalled to docs/audits/*.
-    let solid_impl = webxr::handlers::SolidImpl::from_env();
-    info!(
-        "[solid-pod-rs] SOLID_IMPL={} (jss|native|shadow)",
-        solid_impl.as_str()
-    );
-    let native_solid_data: Option<web::Data<Arc<webxr::handlers::NativeSolidService>>> =
-        match solid_impl {
-            webxr::handlers::SolidImpl::Native | webxr::handlers::SolidImpl::Shadow => {
-                match webxr::handlers::NativeSolidService::from_env().await {
-                    Ok(svc) => Some(web::Data::new(Arc::new(svc))),
-                    Err(e) => {
-                        error!(
-                            "[solid-pod-rs] NativeSolidService init failed: {e} — \
-                             falling back to JSS path"
-                        );
-                        None
-                    }
-                }
+    // ADR-053/056: JSS retired 2026-04-20. Solid is always served by the
+    // external `solid-pod-rs` crate (git dep in Cargo.toml). A startup
+    // failure here is fatal — there is no fallback path.
+    let native_solid_data: web::Data<Arc<webxr::handlers::NativeSolidService>> =
+        match webxr::handlers::NativeSolidService::from_env().await {
+            Ok(svc) => web::Data::new(Arc::new(svc)),
+            Err(e) => {
+                error!("[solid-pod-rs] NativeSolidService init failed: {e}");
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    format!("solid-pod-rs init failed: {e}"),
+                ));
             }
-            webxr::handlers::SolidImpl::Jss => None,
         };
+    info!("[solid-pod-rs] native Pod service ready (JSS retired)");
 
     info!("Starting HTTP server on {}", bind_address);
 
@@ -898,35 +887,10 @@ async fn main() -> std::io::Result<()> {
                     // Ontology agent tools (MCP surface)
                     .configure(webxr::handlers::configure_ontology_agent_routes)
 
-                    // Solid Pod routes — feature-flagged by SOLID_IMPL (ADR-053 §Phase 3).
-                    //   jss (default) → legacy Node-sidecar proxy.
-                    //   native        → solid-pod-rs in-process backend.
-                    //   shadow        → JSS serves the client, native runs in
-                    //                   parallel for diffing (see solid_pod_handler).
-                    .configure(|cfg| {
-                        match solid_impl {
-                            webxr::handlers::SolidImpl::Native => {
-                                if let Some(data) = native_solid_data.as_ref() {
-                                    cfg.app_data(data.clone());
-                                    webxr::handlers::configure_solid_native_routes(cfg);
-                                } else {
-                                    // Native requested but init failed — fall
-                                    // back to JSS so /solid/* remains live.
-                                    webxr::handlers::configure_solid_routes(cfg);
-                                }
-                            }
-                            webxr::handlers::SolidImpl::Jss
-                            | webxr::handlers::SolidImpl::Shadow => {
-                                // Shadow mode keeps the client-facing JSS
-                                // routes; the native comparator runs behind
-                                // the scenes, driven by solid_pod_handler.
-                                if let Some(data) = native_solid_data.as_ref() {
-                                    cfg.app_data(data.clone());
-                                }
-                                webxr::handlers::configure_solid_routes(cfg);
-                            }
-                        }
-                    })
+                    // Solid Pod routes — native `solid-pod-rs` backend only
+                    // (ADR-053/056; JSS proxy retired 2026-04-20).
+                    .app_data(native_solid_data.clone())
+                    .configure(webxr::handlers::configure_solid_native_routes)
 
                     // Image generation via ComfyUI (Flux2)
                     .configure(webxr::handlers::configure_image_gen_routes)

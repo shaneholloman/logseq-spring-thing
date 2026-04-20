@@ -1,9 +1,9 @@
 # VisionClaw — staging environment (task #18)
 #
 # One-stop compose stack for exercising the sovereign-mesh plane end-to-end:
-#   * visionclaw (app + 24-metric Prometheus exporter)
+#   * visionclaw (app + 24-metric Prometheus exporter; Solid Pod now
+#     served in-process by the external `solid-pod-rs` crate, ADR-053/056)
 #   * neo4j (graph store w/ APOC + GDS)
-#   * jss (Node Solid Server sidecar, mirrors dev)
 #   * prometheus (scrapes visionclaw:4000/metrics every 15s)
 #   * grafana (provisioned datasource + sovereign-mesh-overview dashboard)
 #
@@ -29,8 +29,6 @@ services:
     depends_on:
       neo4j:
         condition: service_healthy
-      jss:
-        condition: service_started
     env_file:
       - ../../.env.staging
     environment:
@@ -45,22 +43,13 @@ services:
       NEO4J_USER: neo4j
       NEO4J_PASSWORD: ${NEO4J_PASSWORD:-staging-neo4j-change-me}
       NEO4J_DATABASE: neo4j
-      # Solid / Pod
-      POD_BASE_URL: http://jss:3030
+      # Solid / Pod — native `solid-pod-rs` (external crate; ADR-053/056).
+      # JSS sidecar + SOLID_IMPL dispatcher retired 2026-04-20.
+      POD_BASE_URL: http://visionclaw:4000
+      POD_DATA_ROOT: /app/data/solid-pod-rs
       POD_SAGA_ENABLED: "true"
       BRIDGE_EDGE_ENABLED: "true"
       NIP98_OPTIONAL_AUTH: "true"
-      # ADR-053 Phase 3: jss | native | shadow.
-      # Staging default is `shadow` — JSS continues to serve client traffic
-      # while solid-pod-rs runs in parallel and its responses are diffed
-      # into docs/audits/YYYY-MM-DD-jss-native-shadow.jsonl. Promote to
-      # `native` only after 72h of clean shadow-mode diffs. Prod flips
-      # independently per the cut-plan in docs/ops/jss-native-cutover.md.
-      SOLID_IMPL: ${SOLID_IMPL:-shadow}
-      # Filesystem root for the native Pod backend. Only read when
-      # SOLID_IMPL != jss, but set unconditionally so shadow mode can
-      # create the directory eagerly.
-      POD_DATA_ROOT: /app/data/solid-pod-rs
       # Server Nostr identity (override in .env.staging for real keys)
       SERVER_NOSTR_PRIVKEY: ${SERVER_NOSTR_PRIVKEY:-}
     ports:
@@ -104,26 +93,8 @@ services:
       retries: 6
       start_period: 40s
 
-  jss:
-    image: node:20-alpine
-    container_name: visionclaw-staging-jss
-    working_dir: /app
-    command: >
-      sh -c "npm install -g solid-server@5 &&
-             solid start
-               --root /app/data
-               --port 3030
-               --server-uri http://jss:3030
-               --no-http2
-               --cors-origin http://visionclaw:4000"
-    environment:
-      PORT: 3030
-    ports:
-      - "3030:3030"
-    volumes:
-      - jss-staging-data:/app/data
-    networks:
-      - visionclaw-staging
+  # NOTE: JSS Node sidecar removed 2026-04-20. Solid Pod is served
+  # in-process by the external `solid-pod-rs` crate (ADR-053/056).
 
   prometheus:
     image: prom/prometheus:v2.53.0
@@ -174,6 +145,5 @@ volumes:
   neo4j-staging-data:
   neo4j-staging-logs:
   neo4j-staging-plugins:
-  jss-staging-data:
   prometheus-staging-data:
   grafana-staging-data:
