@@ -1,4 +1,4 @@
-name: Parity gap (vs JSS / CSS)
+name: Parity gap (vs JSS)
 description: Report behaviour that differs from the reference Solid server implementation
 title: "[parity] "
 labels: ["parity", "triage"]
@@ -7,7 +7,7 @@ body:
     attributes:
       value: |
         Use this template when solid-pod-rs disagrees with a reference
-        implementation (typically the JavaScript Solid Server, JSS/CSS) on a
+        implementation (typically JavaScriptSolidServer, JSS) on a
         specification-level behaviour. See `PARITY-CHECKLIST.md` for the running
         list of tracked items.
 
@@ -25,7 +25,7 @@ body:
     attributes:
       label: Reference implementation
       description: Which implementation + version was the behaviour compared against?
-      placeholder: "@solid/community-server 7.1.0"
+      placeholder: "javascript-solid-server 0.0.86"
     validations:
       required: true
 

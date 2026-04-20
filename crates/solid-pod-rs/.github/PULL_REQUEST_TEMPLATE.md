@@ -33,7 +33,7 @@ Please fill in the sections below. Delete any that do not apply.
 
 ## Parity checklist (if applicable)
 
-<!-- Tick these only when the PR changes user-visible behaviour compared to JSS/CSS. -->
+<!-- Tick these only when the PR changes user-visible behaviour compared to JSS. -->
 
 - [ ] Behaviour verified against the reference Solid server
 - [ ] `PARITY-CHECKLIST.md` updated (entry added, moved, or closed)

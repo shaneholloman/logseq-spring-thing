@@ -149,7 +149,7 @@ accepted loss.
 - Solid Notifications 0.2 §7 says so.
 - AS2.0 has a published JSON-LD context; consumers can embed and
   validate with off-the-shelf tooling.
-- Clients that already subscribe to CSS/NSS pods consume the same
+- Clients that already subscribe to JSS/NSS pods consume the same
   shape — we keep interop.
 
 ## Why `broadcast::channel` inside `WebSocketChannelManager`
