@@ -440,6 +440,14 @@ impl StandaloneFastWsHandler {
 
     /// Encode nodes for transmission
     pub fn encode_nodes(&mut self, nodes: &[(u32, BinaryNodeData)]) -> Vec<u8> {
+        // ADR-050 (H2): `FastWsClientSession` does not currently carry an
+        // authenticated Nostr pubkey, so every private node is opacified
+        // for this transport. The set is empty by default — it is populated
+        // from the graph state when the caller-identity plumbing lands in
+        // a follow-up (tracked under ADR-055 §fast-ws-auth).
+        let private_opaque_ids: std::collections::HashSet<u32> =
+            std::collections::HashSet::new();
+
         let data = if self.use_postcard {
             let updates: Vec<PostcardNodeUpdate> = nodes
                 .iter()
@@ -459,12 +467,20 @@ impl StandaloneFastWsHandler {
                 // Fall back to legacy if postcard fails
                 let analytics = self.app_state.node_analytics.read().ok();
                 let analytics_ref = analytics.as_deref();
-                binary_protocol::encode_node_data_with_live_analytics(nodes, analytics_ref)
+                binary_protocol::encode_node_data_with_live_analytics_and_privacy(
+                    nodes,
+                    analytics_ref,
+                    Some(&private_opaque_ids),
+                )
             })
         } else {
             let analytics = self.app_state.node_analytics.read().ok();
             let analytics_ref = analytics.as_deref();
-            binary_protocol::encode_node_data_with_live_analytics(nodes, analytics_ref)
+            binary_protocol::encode_node_data_with_live_analytics_and_privacy(
+                nodes,
+                analytics_ref,
+                Some(&private_opaque_ids),
+            )
         };
 
         self.bytes_sent += data.len() as u64;

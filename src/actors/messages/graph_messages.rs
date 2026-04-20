@@ -44,6 +44,12 @@ pub struct NodeTypeArrays {
     pub ontology_class_ids: Vec<u32>,
     pub ontology_individual_ids: Vec<u32>,
     pub ontology_property_ids: Vec<u32>,
+    /// ADR-050 (H2): map of node_id -> owner_pubkey for private-visibility
+    /// nodes. Used by the binary encoder to set bit 29
+    /// (`PRIVATE_OPAQUE_FLAG`) on the wire id for every node whose owner is
+    /// not the consuming client. Empty for public-only graphs and when
+    /// `SOVEREIGN_SCHEMA` is off.
+    pub private_node_owners: HashMap<u32, String>,
 }
 
 /// Get node type classification arrays for binary protocol flags

@@ -27,6 +27,24 @@ pub const MAX_HISTORY_FRAMES: usize = 120;
 // Wire format sizes from binary_protocol
 const WIRE_V2_ITEM_SIZE: usize = 36;
 
+/// ADR-050 (H2): conditionally OR `PRIVATE_OPAQUE_FLAG` (bit 29) onto a
+/// type-flagged wire id. Gated by the SOVEREIGN_SCHEMA env flag inside
+/// `encode_node_id`; when off the function is a no-op. `base_node_id` is the
+/// original node id (no type flags) used to lookup the private set.
+fn apply_private_opaque_flag(
+    flagged_id: u32,
+    base_node_id: u32,
+    private_opaque_ids: Option<&std::collections::HashSet<u32>>,
+) -> u32 {
+    if !sovereign_schema_enabled() {
+        return flagged_id;
+    }
+    let is_private = private_opaque_ids
+        .map(|s| s.contains(&base_node_id))
+        .unwrap_or(false);
+    encode_node_id(flagged_id, is_private)
+}
+
 /// Delta-encoded position update (20 bytes per changed node)
 /// Used in frames 1-59 to send only changes from previous frame
 /// Achieves 60-80% bandwidth reduction compared to full state updates
@@ -81,6 +99,29 @@ pub fn encode_node_data_delta_with_analytics(
     knowledge_node_ids: &[u32],
     analytics_data: Option<&HashMap<u32, (u32, f32, u32)>>,
 ) -> Vec<u8> {
+    encode_node_data_delta_with_analytics_and_privacy(
+        nodes, previous_nodes, frame_number,
+        agent_node_ids, knowledge_node_ids, analytics_data, None,
+    )
+}
+
+/// ADR-050 (H2): Privacy-aware delta encoder.
+///
+/// V4 delta frames encode a raw `(id, flags, dx, dy, dz, dvx, dvy, dvz)` tuple
+/// per changed node. Bit 29 (`PRIVATE_OPAQUE_FLAG`) is ORed onto the `id`
+/// field for every node in `private_opaque_ids`, matching the behaviour of
+/// the V3 full-state path so the same opacity decisions propagate across
+/// both frame types. Full-state resyncs (frame 0 and every 60th frame) are
+/// delegated to `encode_node_data_extended_with_sssp_and_privacy`.
+pub fn encode_node_data_delta_with_analytics_and_privacy(
+    nodes: &[(u32, BinaryNodeData)],
+    previous_nodes: &HashMap<u32, BinaryNodeData>,
+    frame_number: u64,
+    agent_node_ids: &[u32],
+    knowledge_node_ids: &[u32],
+    analytics_data: Option<&HashMap<u32, (u32, f32, u32)>>,
+    private_opaque_ids: Option<&std::collections::HashSet<u32>>,
+) -> Vec<u8> {
     // FIX 5: Debug assertion — detect double type-flagging.
     // If the caller already applied type flags to node IDs (bits 26-31 set),
     // the type arrays MUST be empty. Otherwise flags would be applied twice,
@@ -105,8 +146,9 @@ pub fn encode_node_data_delta_with_analytics(
             frame_number,
             nodes.len()
         );
-        return encode_node_data_extended_with_sssp(
+        return encode_node_data_extended_with_sssp_and_privacy(
             nodes, agent_node_ids, knowledge_node_ids, &[], &[], &[], None, analytics_data,
+            private_opaque_ids,
         );
     }
 
@@ -166,6 +208,12 @@ pub fn encode_node_data_delta_with_analytics(
                 } else {
                     *node_id
                 };
+                // ADR-050 (H2): OR bit 29 onto the wire id when the caller
+                // does not own this private node. Gated by the
+                // SOVEREIGN_SCHEMA env flag inside `encode_node_id`.
+                let flagged_id = apply_private_opaque_flag(
+                    flagged_id, *node_id, private_opaque_ids,
+                );
 
                 changed_nodes.push((*node_id, change_flags, dx, dy, dz, dvx, dvy, dvz, flagged_id));
             }
@@ -178,6 +226,9 @@ pub fn encode_node_data_delta_with_analytics(
             } else {
                 *node_id
             };
+            let flagged_id = apply_private_opaque_flag(
+                flagged_id, *node_id, private_opaque_ids,
+            );
 
             changed_nodes.push((
                 *node_id,
@@ -199,8 +250,9 @@ pub fn encode_node_data_delta_with_analytics(
             "Delta encoding: Frame {} - i16 overflow detected, falling back to FULL V3 state ({} nodes)",
             frame_number, nodes.len()
         );
-        return encode_node_data_extended_with_sssp(
+        return encode_node_data_extended_with_sssp_and_privacy(
             nodes, agent_node_ids, knowledge_node_ids, &[], &[], &[], None, analytics_data,
+            private_opaque_ids,
         );
     }
 
