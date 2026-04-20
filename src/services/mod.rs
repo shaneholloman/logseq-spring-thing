@@ -55,6 +55,11 @@ pub mod share_policy;
 pub mod share_orchestrator;
 pub mod wac_mutator;
 
+// ADR-057 / design 03 §5 §6 §8 — contributor automations, inbox, NIP-26 caps
+pub mod automation_routine;
+pub mod inbox_service;
+pub mod nip26_cap;
+
 // ADR-054: URN-Solid + solid-schema + Solid-Apps ecosystem alignment
 pub mod urn_solid_mapping;
 

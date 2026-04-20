@@ -50,6 +50,7 @@ pub mod skill_evaluation_actor;
 pub mod skill_registry_supervisor;
 pub mod task_orchestrator_actor;
 pub mod workspace_actor;
+pub mod automation_orchestrator_actor;
 
 pub use agent_monitor_actor::AgentMonitorActor;
 pub use broker_actor::BrokerActor;
@@ -107,6 +108,12 @@ pub use supervisor::{
 pub use task_orchestrator_actor::{
     CreateTask, GetSystemStatus, GetTaskStatus, ListActiveTasks, StopTask, SystemStatusInfo,
     TaskOrchestratorActor, TaskState,
+};
+pub use automation_orchestrator_actor::{
+    AutomationDispatcher, AutomationOrchestratorActor, DispatchOutcome, FireDecision,
+    GetWheelSize, HeartbeatWebId, OfflineBlock, PresenceTracker, RegisterCap, RegisterRoutine,
+    SchedulerCore, SkipReason, StubDispatcher, Tick, DEFAULT_DAILY_RATE_LIMIT,
+    OFFLINE_THRESHOLD_MIN, TICK_INTERVAL,
 };
 pub use voice_commands::{SwarmIntent, SwarmVoiceResponse, VoiceCommand, VoicePreamble};
 pub use workspace_actor::WorkspaceActor;
