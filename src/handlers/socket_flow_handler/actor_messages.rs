@@ -1,7 +1,7 @@
 use actix::{Handler, Message};
 use log::{debug, error, info, trace};
 
-use crate::utils::delta_encoding;
+use crate::utils::binary_protocol;
 use crate::utils::socket_flow_messages::BinaryNodeData;
 use crate::utils::websocket_heartbeat::HeartbeatDirective;
 
@@ -57,17 +57,14 @@ impl Handler<BroadcastPositionUpdate> for SocketFlowServer {
             return;
         }
 
-        // Encode using delta encoding (V4 for delta frames, V3 for full sync frames)
-        // Pass real analytics data from shared AppState when available
+        // ADR-037: V4 delta encoding retired. Always emit a V3 full-state frame.
+        // Node IDs are already type-flagged upstream by `fetch_nodes()`, so the
+        // encoder receives empty type arrays to avoid double-flagging.
         let binary_data = {
             let analytics_guard = self.app_state.node_analytics.read().ok();
             let analytics_ref = analytics_guard.as_deref();
-            delta_encoding::encode_node_data_delta_with_analytics(
+            binary_protocol::encode_node_data_with_live_analytics(
                 &msg.0,
-                &self.delta_previous_nodes,
-                frame,
-                &[], // agent_node_ids -- flags are already set on the node IDs by callers
-                &[], // knowledge_node_ids
                 analytics_ref,
             )
         };

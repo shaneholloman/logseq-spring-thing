@@ -528,9 +528,11 @@ impl Actor for SocketFlowServer {
             "is_reconnection": is_reconnection,
             "state_sync_sent": true,
             "protocol": {
-                "supported": [2, 3, 4],
-                "preferred": 3,
-                "delta_encoding": true
+                // ADR-037: V3 is the canonical node payload, V5 is the broadcast
+                // envelope. V4 delta frames were retired on 2026-04-20.
+                "supported": [3, 5],
+                "preferred": 5,
+                "delta_encoding": false
             }
         });
 

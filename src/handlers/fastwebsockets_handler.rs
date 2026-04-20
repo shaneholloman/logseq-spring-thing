@@ -513,6 +513,10 @@ pub enum TransportProtocol {
 }
 
 /// Protocol negotiation result
+///
+/// `supports_delta_encoding` is retained as a stable field for API
+/// compatibility but is always `false` since ADR-037 retired the V4 delta
+/// encoder (2026-04-20).
 pub struct NegotiatedProtocol {
     pub protocol: TransportProtocol,
     pub serialization: SerializationFormat,
@@ -535,7 +539,8 @@ pub fn negotiate_protocol(client_capabilities: &[String]) -> NegotiatedProtocol 
             protocol: TransportProtocol::QuicWebTransport,
             serialization: SerializationFormat::Postcard,
             supports_datagrams: true,
-            supports_delta_encoding: true,
+            // ADR-037: delta encoding retired; always false.
+            supports_delta_encoding: false,
         };
     }
 
@@ -545,7 +550,7 @@ pub fn negotiate_protocol(client_capabilities: &[String]) -> NegotiatedProtocol 
             protocol: TransportProtocol::FastWebSocketPostcard,
             serialization: SerializationFormat::Postcard,
             supports_datagrams: false,
-            supports_delta_encoding: true,
+            supports_delta_encoding: false,
         };
     }
 
