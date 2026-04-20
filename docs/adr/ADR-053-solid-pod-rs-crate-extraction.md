@@ -15,24 +15,32 @@ Ratified 2026-04-19
 - ADR-052: (predecessor ADR in Wave 4 sequence)
 - `src/handlers/solid_proxy_handler.rs` — current JSS proxy
 - community-forum-rs: `crates/pod-worker/` (Cloudflare Worker pod implementation)
-- Community Solid Server (JSS): https://github.com/CommunitySolidServer/CommunitySolidServer
+- JavaScriptSolidServer (JSS): https://github.com/JavaScriptSolidServer/JavaScriptSolidServer
+  — AGPL-3.0-only
 
 ## Context
 
-VisionClaw currently proxies Pod requests through a Node.js JSS (JavaScript
-Solid Server) via `src/handlers/solid_proxy_handler.rs`. The sibling
-community-forum-rs project (at `/home/devuser/workspace/project2/community-forum-rs`)
-has a Cloudflare-Worker-specific Rust Pod implementation in `crates/pod-worker/`
-(44 KB, 13 modules, LDP + WAC + Solid Notifications).
+VisionClaw currently proxies Pod requests through a Node.js JSS
+(JavaScriptSolidServer) via `src/handlers/solid_proxy_handler.rs`.
+The sibling community-forum-rs project (at
+`/home/devuser/workspace/project2/community-forum-rs`) has a
+Cloudflare-Worker-specific Rust Pod implementation in
+`crates/pod-worker/` (44 KB, 13 modules, LDP + WAC + Solid
+Notifications).
 
-Both projects need a Rust Solid Pod server. Keeping two Pod implementations
-(Node JSS + CF pod-worker) is long-term tech debt — every spec change has to
-land twice, ops has two runtimes to operate, and neither codebase gets
-community hardening.
+Both projects need a Rust Solid Pod server. Keeping two Pod
+implementations (Node JSS + CF pod-worker) is long-term tech debt —
+every spec change has to land twice, ops has two runtimes to operate,
+and neither codebase gets community hardening.
 
-The user has a personal relationship with Melvin Carvalho (author of Community
-Solid Server) and wants to frame a Rust port as a contribution to the Solid
-ecosystem rather than competition.
+We want to frame a Rust port as a contribution to the Solid ecosystem
+rather than competition with JSS. solid-pod-rs is NOT a derivative
+work of JSS's JavaScript source: the Rust implementation originates
+from `community-forum-rs/crates/pod-worker` (written in Rust from
+scratch), and we read JSS only as a reference-only resource to
+understand Solid Protocol 0.11 + WAC + LDP + Solid-OIDC + Solid
+Notifications behaviour. See `crates/solid-pod-rs/NOTICE` for the full
+licensing relationship.
 
 ## Decision
 
@@ -51,7 +59,7 @@ its own GitHub repo post-parity.
   - `FsBackend` — VisionClaw default
   - `S3Backend` — feature-gated
   - `R2Backend` — feature-gated for community-forum consumers
-- Vendor latest JSS at `references/community-solid-server/` as a git submodule,
+- Vendor latest JSS at `references/javascript-solid-server/` as a git submodule,
   read-only reference for porting.
 - `PARITY-CHECKLIST.md` catalogues every JSS feature →
   `present | partial | missing` status.
@@ -96,14 +104,28 @@ git push new-origin solid-pod-rs-history:main
 
 ### Licensing
 
-Dual **MIT OR Apache-2.0** (Rust ecosystem standard; no conflict with JSS's MIT).
+Dual **MIT OR Apache-2.0** (Rust ecosystem standard). JSS is
+AGPL-3.0-only. This crate is deliberately MIT/Apache-2.0 dual despite
+JSS being AGPL because solid-pod-rs is NOT a derivative work of JSS's
+JavaScript source — the Rust implementation originates from
+community-forum-rs's pod-worker (written in Rust from scratch) and
+treats JSS purely as a reference-only resource to understand Solid
+Protocol behaviour. No JSS JavaScript was translated, transliterated,
+or machine-ported. See `crates/solid-pod-rs/NOTICE` §"Licence
+relationship to JavaScriptSolidServer (JSS)" for the full rationale
+and the independence claims about the test corpora.
 
-### Melvin Engagement
+Consumers who bundle JSS and this crate together must verify their own
+compliance with AGPL-3.0's network-service clause for JSS.
 
-The user owns this relationship. At the `0.1.0` milestone, open an issue on the
-Community Solid Server repo offering the crate as a Rust reference port. Frame
-as contribution to the Solid ecosystem, not competition. Invite Melvin as a
-named advisor/reviewer on the new repo.
+### JavaScriptSolidServer Engagement
+
+At the `0.1.0` milestone, open an issue on
+https://github.com/JavaScriptSolidServer/JavaScriptSolidServer
+offering solid-pod-rs as a Rust-side reference implementation. Frame
+as contribution to the Solid ecosystem, not competition. Invite the
+JavaScriptSolidServer contributors to review the crate and file issues
+against any parity gaps they care about.
 
 ## Consequences
 
@@ -135,13 +157,13 @@ named advisor/reviewer on the new repo.
 
 - [ ] `crates/solid-pod-rs/` scaffolded as VisionClaw workspace member
 - [ ] `Storage` trait with 2+ MVP backends (Memory, FS); Phase 1 exit gate
-- [ ] `references/community-solid-server/` vendored; `PARITY-CHECKLIST.md` exists
-- [ ] JSS test corpus ported; all green; Phase 2 exit gate
+- [ ] `references/javascript-solid-server/` vendored; `PARITY-CHECKLIST.md` exists
+- [ ] JSS-equivalent test corpus authored; all green; Phase 2 exit gate
 - [ ] Shadow-testing harness in staging; Phase 3 operational
 - [ ] `SOLID_IMPL=native` default on; JSS removed by week 10
 - [ ] Crate extracted to own GitHub repo; 0.1.0 on crates.io
 - [ ] community-forum-rs migrated to depend on published crate
-- [ ] Melvin notified per user's preferred channel
+- [ ] JavaScriptSolidServer contributors notified via GitHub issue
 
 ## Rollback
 

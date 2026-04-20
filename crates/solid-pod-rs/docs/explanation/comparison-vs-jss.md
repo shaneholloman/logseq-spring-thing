@@ -1,26 +1,27 @@
 # Comparison vs JSS
 
-JSS — the [Community Solid Server](https://github.com/CommunitySolidServer/CommunitySolidServer)
-— is the reference TypeScript implementation of Solid. This page
-compares solid-pod-rs to JSS across runtime, protocol support,
-operations, and extensibility. It is meant to set expectations for
-operators evaluating a migration and to help contributors understand
-where the two implementations diverge.
+JSS — [JavaScriptSolidServer](https://github.com/JavaScriptSolidServer/JavaScriptSolidServer)
+— is a JavaScript implementation of the Solid Protocol, licensed
+AGPL-3.0-only and maintained by the JavaScriptSolidServer
+contributors. This page compares solid-pod-rs to JSS across runtime,
+protocol support, operations, and extensibility. It is meant to set
+expectations for operators evaluating a migration and to help
+contributors understand where the two implementations diverge.
 
 See also [PARITY-CHECKLIST.md](../../PARITY-CHECKLIST.md) for a
 feature-level status table.
 
 ## At a glance
 
-|                                | JSS (CSS) v7         | solid-pod-rs 0.2.0-alpha |
-|--------------------------------|----------------------|---------------------------|
-| Language                       | TypeScript (Node 18+)| Rust 2021 / 1.74+         |
-| Binary distribution            | `npm install -g`     | Build from source; drop-in crate |
-| Memory footprint (idle)        | ~80 MB               | ~8 MB                     |
-| Startup time                   | ~1 s                 | < 50 ms                   |
-| HTTP framework                 | Koa (bundled)        | Agnostic; actix/axum/hyper|
-| Dependency-injection config    | Components.js JSON   | Rust code                 |
-| Lines of code (core)           | ~30k                 | ~4k                       |
+|                                | JSS 0.0.x             | solid-pod-rs 0.2.0-alpha |
+|--------------------------------|-----------------------|---------------------------|
+| Language                       | JavaScript (Node 18+) | Rust 2021 / 1.74+         |
+| Binary distribution            | `npm install -g javascript-solid-server` → `jss` | Build from source; drop-in crate |
+| Licence                        | AGPL-3.0-only         | MIT OR Apache-2.0 dual    |
+| HTTP framework                 | Fastify               | Agnostic; actix/axum/hyper|
+| Configuration                  | `JSS_*` env vars + optional `config.json` | Rust code (no runtime config loader) |
+| Memory footprint (idle)        | ~80 MB                | ~8 MB                     |
+| Startup time                   | ~1 s                  | < 50 ms                   |
 
 ## Protocol coverage
 
@@ -33,12 +34,12 @@ feature-level status table.
 | Content negotiation (Turtle/JSON-LD/N-Triples/RDF-XML) | full | Turtle/JSON-LD/N-Triples full; RDF-XML partial (negotiated, serialisation deferred) |
 | `Link`: type, acl, describedby, storage | full      | full          |
 | Strong ETag (SHA-256)                   | optional  | always        |
-| If-Match enforcement                    | full      | partial (storage returns ETag; HTTP enforcement P2) |
-| Range requests                          | full      | not implemented |
+| If-Match enforcement                    | full      | full          |
+| Range requests                          | full      | full          |
 | `WAC-Allow` header                      | full      | full          |
 | WAC agent / agentClass / agentGroup     | full      | full          |
 | `.acl` walk-up resolution               | full      | full          |
-| JSON Patch (RFC 6902)                   | full      | **not supported** |
+| JSON Patch (RFC 6902)                   | full      | full          |
 | N3 PATCH (solid-protocol)               | full      | full          |
 | SPARQL-Update PATCH                     | full      | subset (INSERT DATA, DELETE DATA, DELETE/INSERT WHERE with ground templates) |
 | Notifications 0.2 WebSocketChannel2023  | full      | full          |
@@ -48,28 +49,31 @@ feature-level status table.
 | OIDC discovery doc                      | full      | full          |
 | Token introspection (RFC 7662)          | full      | full          |
 | WebID extraction                        | full      | full          |
-| WebID-TLS                               | full      | not supported (legacy) |
-| NIP-98                                  | none      | full (structural) |
-| `.provision` / account scaffold         | full      | not implemented (consumer concern) |
-| `.well-known/solid`                     | full      | partial (OIDC discovery only) |
-| WebFinger / NIP-05                      | none / none | not implemented |
+| WebID-TLS                               | feature-flagged (`webidTls`) | not supported (legacy) |
+| NIP-98                                  | via Nostr relay feature | full (structural) |
+| `.provision` / account scaffold         | full (IdP + multiuser) | full (`provision_pod`) |
+| `.well-known/solid`                     | full      | full          |
+| WebFinger / NIP-05                      | full (via ActivityPub + Nostr features) | full |
 
 ## Defaults that differ (gotchas for JSS migrants)
 
 ### ACL posture
 
-- **JSS default:** some distributions ship `allow-everything.json`
-  for convenience. Production deployments add explicit ACL.
+- **JSS default:** multiuser-enabled; pods created through the IdP
+  signup flow receive a scaffolded `/.acl`. A `public: true` option
+  disables WAC entirely for trusted single-user deployments.
 - **solid-pod-rs:** deny-by-default, always. You cannot read a pod
-  without an `.acl` being in effect somewhere up the tree.
+  without an `.acl` being in effect somewhere up the tree. No runtime
+  switch to disable WAC — it is a library invariant.
 
 Mitigation: commit `/.acl` as the first write to any new pod. See
 [tutorial 3](../tutorials/03-adding-access-control.md).
 
 ### Content-type storage
 
-- **JSS:** stores the intent (e.g. `text/turtle`) and may transcode
-  on the fly between RDF serialisations.
+- **JSS:** stores the body as the client `PUT`s it, with a sidecar
+  describing content type. Content-type negotiation at read time is
+  opt-in via the `conneg` flag.
 - **solid-pod-rs:** stores the body verbatim with its original
   `Content-Type`. No on-the-fly transcoding. If a client `PUT`s
   Turtle and another `GET`s with `Accept: application/ld+json`, we
@@ -80,45 +84,44 @@ Mitigation: commit `/.acl` as the first write to any new pod. See
 ### PATCH dialect support
 
 - **JSS:** supports JSON Patch, N3, and SPARQL Update.
-- **solid-pod-rs:** N3 + SPARQL Update only. JSON Patch is
-  deliberately out of scope (the original pod-worker had it; we
-  dropped it to keep surface small and because Solid clients have
-  largely converged on N3).
+- **solid-pod-rs:** all three dialects supported; SPARQL-Update is a
+  documented subset (INSERT DATA, DELETE DATA, DELETE/INSERT WHERE
+  with ground templates only).
 
 ## Operational comparison
 
 ### Configuration
 
-- **JSS:** Components.js DI container configured via JSON bundles.
-  The `CSS_CONFIG` env var points at a bundle. You compose features
-  by selecting or overriding JSON entries.
+- **JSS:** `JSS_*` environment variables (e.g. `JSS_PORT`, `JSS_HOST`,
+  `JSS_ROOT`) overlaid on an optional `config.json` file, overlaid on
+  CLI arguments. Precedence: CLI > env > file > defaults.
 - **solid-pod-rs:** configured in Rust. You write a ~50-line `main.rs`
   that picks a storage backend, wires auth, and starts your HTTP
-  framework. No DI container.
+  framework. No DI container, no runtime config loader.
 
 Pros and cons:
 
-- Components.js gives you runtime configurability; you can change the
-  storage backend without rebuilding. solid-pod-rs requires a rebuild
-  to swap backends — but the build takes <2 s incremental and your
-  whole server is a static binary.
+- JSS gives you runtime configurability; you can change the storage
+  root without rebuilding. solid-pod-rs requires a rebuild to swap
+  backends — but the build takes <2 s incremental and your whole
+  server is a static binary.
 - Rust configuration is type-checked. Misconfigurations show up at
   compile time, not on startup.
 
 ### Observability
 
-- **JSS:** logs via `winston`. Structured logs supported.
+- **JSS:** logs via Fastify's pino-based logger.
 - **solid-pod-rs:** `tracing`. Structured JSON logs + spans.
 
 ### Monitoring
 
-- **JSS:** metrics via plugin; Prometheus exporter available.
+- **JSS:** emits logs; no built-in metrics exporter.
 - **solid-pod-rs:** library does not export metrics itself; you
   instrument at the HTTP framework layer.
 
 ### Backup
 
-- **JSS:** filesystem backup of `~/.data/` works.
+- **JSS:** filesystem backup of `JSS_ROOT` (default `./data`) works.
 - **solid-pod-rs:** filesystem backup of `$POD_FS_ROOT` works; include
   the `.meta.json` sidecars.
 
@@ -126,29 +129,31 @@ Pros and cons:
 
 ### Writing a custom storage backend
 
-- **JSS:** implement `DataAccessor` and wire via Components.js.
+- **JSS:** the data layer is monolithic (filesystem + optional sql.js
+  for accounts); swapping it requires a fork.
 - **solid-pod-rs:** implement the `Storage` trait (7 async methods).
   Pass `tests/storage_trait.rs` and you're done.
 
 ### Writing custom auth
 
-- **JSS:** implement `Credentials` / `CredentialsExtractor`.
+- **JSS:** fastify plugin architecture; add middleware or a custom
+  auth hook via Fastify's hook API.
 - **solid-pod-rs:** write middleware in your HTTP framework; call
   `auth::nip98::verify` or `oidc::verify_access_token` (or your own
   logic) and populate request-scoped state.
 
 ### Writing a notification backend
 
-- **JSS:** implement `NotificationChannelType`.
+- **JSS:** `@fastify/websocket` plugin; extension requires a fork.
 - **solid-pod-rs:** implement `Notifications` trait (3 async methods)
   and feed it from `Storage::watch()`.
 
 ## What you give up moving to solid-pod-rs
 
-- JSON Patch on resources.
-- Quota enforcement.
-- `.provision` endpoint.
-- WebFinger / NIP-05 integration.
+- IdP integration with dynamic account signup (JSS's
+  `oidc-provider`-based flow is out of scope; bring your own IdP).
+- ActivityPub federation (JSS has built-in support; not in
+  solid-pod-rs).
 - Some Prefer-header nuances (handling=strict vs handling=lenient —
   we always parse leniently).
 
@@ -164,13 +169,17 @@ Pros and cons:
   seconds.
 - Linear cost increase per resource (Rust + tokio scales further per
   core than V8).
+- MIT/Apache-2.0 licensing rather than AGPL-3.0 — fewer compliance
+  concerns when embedding into proprietary or non-AGPL services.
 
 ## When to stay on JSS
 
-- You rely on JSON Patch.
-- You need `.provision` / account management out of the box.
-- You have ops tooling built around Components.js bundles.
+- You need the built-in IdP (OIDC provider with account signup).
+- You want ActivityPub federation out of the box.
+- You rely on JSS-specific features (`mashlib`, `solidosUi`, Git HTTP
+  backend, invite-only registration).
 - You need WebID-TLS.
+- AGPL-3.0 licensing is acceptable or desired for your project.
 
 ## When to pick solid-pod-rs
 
@@ -181,6 +190,7 @@ Pros and cons:
 - You need strict deny-by-default WAC.
 - Your deployment demands static binaries (k8s, distroless, single-
   container deployments).
+- You cannot take an AGPL-3.0 dependency into your service tree.
 
 ## See also
 

@@ -35,7 +35,7 @@ shortest procedural recipe.
 - [Configure NIP-98 authentication](how-to/configure-nip98-auth.md)
 - [Enable Solid-OIDC](how-to/enable-solid-oidc.md)
 - [Swap storage backends](how-to/swap-storage-backends.md)
-- [Migrate from JSS (Community Solid Server)](how-to/migrate-from-jss.md)
+- [Migrate from JSS (JavaScriptSolidServer)](how-to/migrate-from-jss.md)
 - [Enable webhook notifications](how-to/enable-notifications-webhook.md)
 - [Enable WebSocket notifications](how-to/enable-notifications-websocket.md)
 - [Scale with an S3 backend](how-to/scale-with-s3-backend.md)

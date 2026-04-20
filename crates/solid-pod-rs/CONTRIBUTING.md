@@ -16,8 +16,8 @@ and themselves. Concurrency-safety is required.
 
 ## Parity checklist
 
-Any feature port from the JavaScript Solid Server reference (under
-`references/community-solid-server/`) must update
+Any feature port from the JavaScriptSolidServer reference (under
+`references/javascript-solid-server/`) must update
 `PARITY-CHECKLIST.md` to reflect its new status.
 
 ## Testing
