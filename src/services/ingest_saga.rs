@@ -40,6 +40,9 @@ use crate::models::node::Node as KGNode;
 use crate::ports::knowledge_graph_repository::KnowledgeGraphRepository;
 use crate::services::metrics::{MetricsRegistry, SagaOutcomeLabel, SagaOutcomeLabels};
 use crate::services::pod_client::{PodClient, PodClientError, Visibility};
+use crate::services::urn_solid_mapping::{
+    urn_solid_alignment_enabled, MappingStatus, UrnSolidMapper,
+};
 
 /// Env-var feature flag name.
 pub const POD_SAGA_ENABLED_ENV: &str = "POD_SAGA_ENABLED";
@@ -125,6 +128,9 @@ pub struct IngestSaga {
     /// Optional Prometheus registry. When present, `execute_batch` observes
     /// outcome counters and the duration histogram here.
     prom: Option<Arc<MetricsRegistry>>,
+    /// ADR-054: optional URN-Solid mapper used by `regenerate_corpus_jsonl`
+    /// to emit `owl:sameAs` aliases per published node.
+    urn_solid_mapper: Option<Arc<UrnSolidMapper>>,
 }
 
 /// A saga plan for a single node. Constructed by the caller, passed to
@@ -157,6 +163,7 @@ impl IngestSaga {
             pod_base: pod_base_url(),
             metrics: tokio::sync::Mutex::new(SagaMetrics::default()),
             prom: None,
+            urn_solid_mapper: None,
         }
     }
 
@@ -164,6 +171,13 @@ impl IngestSaga {
     /// wiring at construction sites.
     pub fn with_prom(mut self, prom: Arc<MetricsRegistry>) -> Self {
         self.prom = Some(prom);
+        self
+    }
+
+    /// Attach a URN-Solid mapper (ADR-054). When set, corpus.jsonl emission
+    /// enriches each document with the mapped `urn:solid:` alias.
+    pub fn with_urn_solid_mapper(mut self, mapper: Arc<UrnSolidMapper>) -> Self {
+        self.urn_solid_mapper = Some(mapper);
         self
     }
 
@@ -632,6 +646,246 @@ impl IngestSaga {
         m.duration_ms_sum += start.elapsed().as_millis() as u64;
         SagaOutcome::Failed { error: err }
     }
+
+    // ─── ADR-054: corpus.jsonl generation ──────────────────────────────────
+
+    /// Regenerate `./public/kg/corpus.jsonl` on the owner's Pod from the
+    /// current set of public `:KGNode` records belonging to that owner.
+    ///
+    /// Behaviour:
+    ///   * No-op unless `URN_SOLID_ALIGNMENT=true` (safe-off default).
+    ///   * Fetches every `:KGNode {owner_pubkey: $owner, visibility: 'public'}`
+    ///     from Neo4j.
+    ///   * Emits one JSON-LD document per line, joined by `\n`.
+    ///   * PUTs the result to `{pod_base}/{owner}/public/kg/corpus.jsonl` via
+    ///     [`PodClient::put_resource`], signing with server keys unless the
+    ///     caller supplies an auth header.
+    ///   * Empty corpora are still written (0-byte file) so downstream
+    ///     crawlers see a deterministic "user has no public KG" signal.
+    ///
+    /// The call site is `VisibilityTransitionService` on publish/unpublish
+    /// (see ADR-054 §2); callers are free to invoke it on any
+    /// visibility-material event.
+    pub async fn regenerate_corpus_jsonl(
+        &self,
+        owner_pubkey: &str,
+        auth_header: Option<&str>,
+    ) -> Result<CorpusJsonlReport, String> {
+        if !urn_solid_alignment_enabled() {
+            debug!("[urn-solid] regenerate_corpus_jsonl skipped (flag off)");
+            return Ok(CorpusJsonlReport::skipped());
+        }
+
+        let public_nodes = self.fetch_public_nodes_for_owner(owner_pubkey).await?;
+
+        let body = build_corpus_jsonl(
+            &public_nodes,
+            owner_pubkey,
+            &self.pod_base,
+            self.urn_solid_mapper.as_deref(),
+        );
+
+        let pod_url = corpus_jsonl_url(&self.pod_base, owner_pubkey);
+
+        self.pod_client
+            .put_resource(
+                &pod_url,
+                Bytes::from(body.clone()),
+                "application/x-ndjson",
+                auth_header,
+            )
+            .await
+            .map_err(|e| format!("PUT {}: {}", pod_url, e))?;
+
+        info!(
+            "[urn-solid] corpus.jsonl regenerated for {} ({} documents, {} bytes) at {}",
+            owner_pubkey,
+            public_nodes.len(),
+            body.len(),
+            pod_url,
+        );
+
+        Ok(CorpusJsonlReport {
+            skipped: false,
+            document_count: public_nodes.len(),
+            bytes_written: body.len(),
+            pod_url,
+        })
+    }
+
+    /// Load every public `:KGNode` for the given owner, mapping a minimal
+    /// projection (`id`, `metadata_id`, `label`, `pod_url`, `owl_class_iri`)
+    /// into a [`KGNode`]. Private and tombstoned nodes are excluded by the
+    /// `visibility = 'public'` guard.
+    async fn fetch_public_nodes_for_owner(
+        &self,
+        owner_pubkey: &str,
+    ) -> Result<Vec<KGNode>, String> {
+        let q = neo4rs::query(
+            "MATCH (n:KGNode) \
+             WHERE n.owner_pubkey = $owner AND n.visibility = 'public' \
+             RETURN n.id AS id, \
+                    n.metadata_id AS metadata_id, \
+                    coalesce(n.label, '') AS label, \
+                    coalesce(n.pod_url, '') AS pod_url, \
+                    n.owl_class_iri AS owl_class_iri \
+             ORDER BY n.id",
+        )
+        .param("owner", owner_pubkey.to_string());
+
+        let mut result = self
+            .neo4j
+            .graph()
+            .execute(q)
+            .await
+            .map_err(|e| format!("fetch_public_nodes: {}", e))?;
+
+        let mut out = Vec::new();
+        while let Some(row) = result
+            .next()
+            .await
+            .map_err(|e| format!("row: {}", e))?
+        {
+            let id: i64 = row.get("id").unwrap_or(0);
+            let metadata_id: String = row.get("metadata_id").unwrap_or_default();
+            let label: String = row.get("label").unwrap_or_default();
+            let pod_url: String = row.get("pod_url").unwrap_or_default();
+            let owl_class_iri: Option<String> = row.get("owl_class_iri").ok();
+
+            let mut node = KGNode::new_with_id(metadata_id, Some(id as u32));
+            node.label = label;
+            node.owl_class_iri = owl_class_iri;
+            if !pod_url.is_empty() {
+                node.pod_url = Some(pod_url);
+            }
+            node.owner_pubkey = Some(owner_pubkey.to_string());
+            out.push(node);
+        }
+
+        Ok(out)
+    }
+}
+
+/// Result of a corpus.jsonl regeneration call.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CorpusJsonlReport {
+    /// Flag was off; no write happened.
+    pub skipped: bool,
+    /// Number of JSON-LD documents written.
+    pub document_count: usize,
+    /// Number of bytes in the final file body.
+    pub bytes_written: usize,
+    /// Destination Pod URL.
+    pub pod_url: String,
+}
+
+impl CorpusJsonlReport {
+    pub fn skipped() -> Self {
+        Self {
+            skipped: true,
+            document_count: 0,
+            bytes_written: 0,
+            pod_url: String::new(),
+        }
+    }
+}
+
+/// Compose the full Pod URL for the per-owner corpus.jsonl.
+pub fn corpus_jsonl_url(pod_base: &str, owner: &str) -> String {
+    let base = pod_base.trim_end_matches('/');
+    let owner = owner.trim_matches('/');
+    format!("{base}/{owner}/public/kg/corpus.jsonl")
+}
+
+/// Build the body of `corpus.jsonl` from a set of public nodes.
+///
+/// Format: one JSON object per line, NDJSON style, no trailing newline.
+/// Each line shape:
+/// ```json
+/// {
+///   "@context": "https://visionclaw.org/context.jsonld",
+///   "@id": "<canonical iri>",
+///   "@type": ["<our_iri>", "urn:solid:<Name>"?],
+///   "rdfs:label": "...",
+///   "vc:podUrl": "<pod url>",
+///   "owl:sameAs": ["urn:solid:<Name>"]
+/// }
+/// ```
+pub fn build_corpus_jsonl(
+    nodes: &[KGNode],
+    owner_pubkey: &str,
+    pod_base: &str,
+    mapper: Option<&UrnSolidMapper>,
+) -> String {
+    let mut lines = Vec::with_capacity(nodes.len());
+    for node in nodes {
+        let doc = build_corpus_jsonld_document(node, owner_pubkey, pod_base, mapper);
+        match serde_json::to_string(&doc) {
+            Ok(s) => lines.push(s),
+            Err(e) => warn!("[urn-solid] serialise corpus line for node {}: {}", node.id, e),
+        }
+    }
+    lines.join("\n")
+}
+
+/// Build a single JSON-LD document for one public KG node.
+pub fn build_corpus_jsonld_document(
+    node: &KGNode,
+    owner_pubkey: &str,
+    pod_base: &str,
+    mapper: Option<&UrnSolidMapper>,
+) -> serde_json::Value {
+    use serde_json::json;
+
+    let canonical_iri = format!(
+        "visionclaw:owner:{}/kg/{}",
+        owner_pubkey,
+        node.metadata_id
+    );
+
+    // Resolve URN-Solid alias for stable mappings only.
+    let urn_alias: Option<String> = match (mapper, node.owl_class_iri.as_deref()) {
+        (Some(m), Some(iri)) => m
+            .lookup(iri)
+            .filter(|r| r.status == MappingStatus::Stable)
+            .map(|r| r.urn_solid),
+        _ => None,
+    };
+
+    let mut types: Vec<String> = Vec::new();
+    if let Some(our) = node.owl_class_iri.clone() {
+        types.push(our);
+    }
+    if let Some(a) = urn_alias.clone() {
+        types.push(a);
+    }
+
+    let pod_url = node
+        .pod_url
+        .clone()
+        .unwrap_or_else(|| corpus_jsonl_url(pod_base, owner_pubkey)
+            .trim_end_matches("corpus.jsonl")
+            .trim_end_matches('/')
+            .to_string());
+
+    let mut doc = json!({
+        "@context": "https://visionclaw.org/context.jsonld",
+        "@id": canonical_iri,
+        "rdfs:label": node.label,
+        "vc:podUrl": pod_url,
+    });
+
+    if !types.is_empty() {
+        doc["@type"] = serde_json::Value::Array(
+            types.into_iter().map(serde_json::Value::String).collect(),
+        );
+    }
+
+    if let Some(a) = urn_alias {
+        doc["owl:sameAs"] = json!([a]);
+    }
+
+    doc
 }
 
 /// Spawn the background resumption task. Runs every 60s, processing pending

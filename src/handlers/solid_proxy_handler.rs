@@ -151,6 +151,132 @@ pub fn render_webid_card(pubkey_hex: &str) -> String {
     )
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// ADR-054: URN-Solid type manifest + KGNode schema
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Render the `./public/schema/kg-node.schema.json` document.
+///
+/// JSON Schema 2020-12 describing the shape of a `:KGNode`. Carries the
+/// `x-urn-solid` extension (term id / status / lineage) so solid-schema
+/// tooling can harvest it directly.
+pub fn render_kg_node_schema_json(pod_base_url: &str, npub: &str) -> String {
+    let pod_base = pod_base_url.trim_end_matches('/');
+    let schema_id = format!("{}/{}/public/schema/kg-node.schema.json", pod_base, npub);
+    let body = serde_json::json!({
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$id": schema_id,
+        "x-urn-solid": {
+            "term": "urn:solid:KGNode",
+            "status": "stable",
+            "lineage": {
+                "parent": "solid-schema:Thing",
+                "version": "1.0.0"
+            }
+        },
+        "title": "KGNode",
+        "description": "VisionClaw knowledge-graph node (ADR-048, ADR-050, ADR-054).",
+        "type": "object",
+        "required": ["id", "label", "visibility", "owner_pubkey"],
+        "properties": {
+            "id": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Numeric primary key on :KGNode."
+            },
+            "metadata_id": {
+                "type": "string",
+                "description": "Collision-safe slug identifier (derived from markdown filename)."
+            },
+            "label": {
+                "type": "string",
+                "description": "Human-readable label. Replaced by opaque_id on-the-wire for private nodes."
+            },
+            "visibility": {
+                "type": "string",
+                "enum": ["public", "private"],
+                "description": "ADR-051 visibility transition marker."
+            },
+            "owner_pubkey": {
+                "type": "string",
+                "description": "Nostr pubkey (hex) of the node owner."
+            },
+            "opaque_id": {
+                "type": ["string", "null"],
+                "description": "HMAC-SHA256 identifier used when visibility=private."
+            },
+            "pod_url": {
+                "type": ["string", "null"],
+                "format": "uri",
+                "description": "Full Pod URL for the node's content resource."
+            },
+            "owl_class_iri": {
+                "type": ["string", "null"],
+                "description": "Ontology class IRI (e.g. bc:Person)."
+            },
+            "urn_solid_same_as": {
+                "type": ["string", "null"],
+                "description": "URN-Solid alias emitted via owl:sameAs (ADR-054 §1)."
+            }
+        },
+        "additionalProperties": true
+    });
+    serde_json::to_string_pretty(&body).unwrap_or_else(|_| "{}".to_string())
+}
+
+/// Render the `./public/schema/manifest.jsonld` document.
+///
+/// Declares every `urn:solid:<Type>` this Pod advertises, binding each to
+/// a JSON Schema URL. At minimum carries the per-Pod `urn:solid:KGNode`
+/// binding; upstream solid-schema terms are referenced by their canonical
+/// `https://solid-schema.github.io/<Type>/index.json` URLs so LOSOS apps
+/// can discover them without a second fetch.
+pub fn render_manifest_jsonld(pod_base_url: &str, npub: &str) -> String {
+    let pod_base = pod_base_url.trim_end_matches('/');
+    let kg_node_url = format!(
+        "{}/{}/public/schema/kg-node.schema.json",
+        pod_base, npub
+    );
+    let body = serde_json::json!({
+        "@context": "https://solid-apps.github.io/context.jsonld",
+        "@id": format!("{}/{}/public/schema/manifest.jsonld", pod_base, npub),
+        "types": {
+            "urn:solid:KGNode": kg_node_url,
+            "urn:solid:Person": "https://solid-schema.github.io/Person/index.json",
+            "urn:solid:Document": "https://solid-schema.github.io/Document/index.json",
+            "urn:solid:Event": "https://solid-schema.github.io/Event/index.json",
+            "urn:solid:Organization": "https://solid-schema.github.io/Organization/index.json",
+            "urn:solid:Note": "https://solid-schema.github.io/Note/index.json",
+            "urn:solid:Thing": "https://solid-schema.github.io/Thing/index.json"
+        },
+        "x-generated-by": "visionclaw/ADR-054"
+    });
+    serde_json::to_string_pretty(&body).unwrap_or_else(|_| "{}".to_string())
+}
+
+/// Helper: PUT a JSON body at `url` with the given content type.
+pub(crate) async fn put_json(
+    state: &SolidProxyState,
+    url: &str,
+    body: String,
+    content_type: &str,
+    auth_header: Option<&str>,
+    label: &str,
+) {
+    let mut req = state.http_client.put(url);
+    if let Some(auth) = auth_header {
+        req = req.header("Authorization", auth);
+    }
+    req = req.header("Content-Type", content_type).body(body);
+    match req.send().await {
+        Ok(resp) if resp.status().is_success() || resp.status().as_u16() == 409 => {
+            info!("Wrote {}", label);
+        }
+        Ok(resp) => warn!("Write of {} returned {}", label, resp.status()),
+        Err(e) => warn!("Failed to write {}: {}", label, e),
+    }
+}
+
 /// ADR-052 double-gate decision result for a PUT to `./public/kg/*`.
 /// The write is permitted only when BOTH the structural check (path is
 /// under `public/kg`) and the source check (content asserts `public:: true`
@@ -825,6 +951,39 @@ async fn create_sovereign_pod_structure(
         "./profile/card (WebID)",
     )
     .await;
+
+    // 6. ADR-054: URN-Solid type manifest + KGNode JSON Schema.
+    //    Gated on `URN_SOLID_ALIGNMENT=true`. Writes `./public/schema/` container
+    //    and two JSON artefacts that LOSOS apps and URN-Solid crawlers use to
+    //    locate the canonical shape for this Pod's KG content.
+    if crate::services::urn_solid_mapping::urn_solid_alignment_enabled() {
+        let schema_container = format!("{}/public/schema/", pod_base);
+        put_container(state, &schema_container, auth_header, "public/schema").await;
+
+        put_json(
+            state,
+            &format!("{}/public/schema/kg-node.schema.json", pod_base),
+            render_kg_node_schema_json(&state.config.base_url, npub),
+            "application/schema+json",
+            auth_header,
+            "./public/schema/kg-node.schema.json (ADR-054)",
+        )
+        .await;
+
+        put_json(
+            state,
+            &format!("{}/public/schema/manifest.jsonld", pod_base),
+            render_manifest_jsonld(&state.config.base_url, npub),
+            "application/ld+json",
+            auth_header,
+            "./public/schema/manifest.jsonld (ADR-054)",
+        )
+        .await;
+
+        info!("[urn-solid] Wrote type manifest + kg-node schema for {}", npub);
+    } else {
+        debug!("[urn-solid] Manifest + schema skipped (URN_SOLID_ALIGNMENT=false)");
+    }
 
     info!(
         "Provisioned sovereign pod layout for {} (webid: {})",
