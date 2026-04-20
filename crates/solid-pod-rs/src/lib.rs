@@ -32,8 +32,10 @@ pub mod auth;
 pub mod error;
 pub mod interop;
 pub mod ldp;
+pub mod metrics;
 pub mod notifications;
 pub mod provision;
+pub mod security;
 pub mod storage;
 pub mod wac;
 pub mod webid;
@@ -43,6 +45,8 @@ pub mod oidc;
 
 // Re-exports for ergonomic consumers.
 pub use error::PodError;
+pub use metrics::SecurityMetrics;
+pub use security::{DotfileAllowlist, DotfileError, IpClass, SsrfError, SsrfPolicy};
 pub use storage::{ResourceMeta, Storage, StorageEvent};
 pub use wac::{
     evaluate_access, evaluate_access_with_groups, method_to_mode, mode_name, parse_turtle_acl,

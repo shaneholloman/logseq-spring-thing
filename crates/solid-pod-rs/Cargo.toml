@@ -61,6 +61,20 @@ s3-backend = ["dep:aws-sdk-s3"]
 oidc = ["dep:openidconnect", "dep:jsonwebtoken"]
 nip98-schnorr = ["dep:k256"]
 
+# ---------------------------------------------------------------------------
+# Sprint 4 / JSS parity umbrella.
+#
+# The `jss-v04` feature is the umbrella flag for the v0.4.0 JSS-parity
+# migration (ADR-056). Individual sub-features enable one bounded
+# context each; `security-primitives` is always compiled (the structs
+# are light-weight and the call-site wiring already lives behind its
+# own integration points — see `src/security/mod.rs`). The feature
+# exists so downstream crates can reference "JSS-parity v0.4.0 with
+# security primitives enabled" explicitly in their own Cargo manifest.
+# ---------------------------------------------------------------------------
+jss-v04 = []
+security-primitives = ["jss-v04"]
+
 [dev-dependencies]
 tokio = { version = "1", features = ["full"] }
 tempfile = "3"
