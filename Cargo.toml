@@ -14,6 +14,10 @@ license = "MIT"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
+# ADR-053 Phase 3: solid-pod-rs native Pod server (workspace member).
+# Consumed by src/handlers/solid_pod_handler.rs under `SOLID_IMPL=native|shadow`.
+solid-pod-rs = { path = "crates/solid-pod-rs" }
+
 # Web framework and WebSocket
 actix-web = { version = "4.11.0", features = ["compress-zstd", "macros"] }
 actix-cors = "0.7.1"

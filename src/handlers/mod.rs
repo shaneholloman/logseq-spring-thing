@@ -69,6 +69,11 @@ pub mod solid_proxy_handler;
 pub mod solid_proxy_migration;
 pub use solid_proxy_handler::configure_routes as configure_solid_routes;
 
+// Solid Server — native path (`solid-pod-rs` backend, ADR-053 Phase 3)
+pub mod solid_pod_handler;
+pub use solid_pod_handler::configure_routes as configure_solid_native_routes;
+pub use solid_pod_handler::{NativeSolidService, SolidImpl};
+
 // Image generation (ComfyUI Flux2)
 pub mod image_gen_handler;
 pub use image_gen_handler::configure_routes as configure_image_gen_routes;
