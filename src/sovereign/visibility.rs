@@ -45,8 +45,10 @@ use thiserror::Error;
 
 use crate::actors::server_nostr_actor::{ServerNostrActor, SignAuditRecord};
 use crate::adapters::neo4j_adapter::Neo4jAdapter;
+use crate::services::ingest_saga::IngestSaga;
 use crate::services::metrics::{MetricsRegistry, SagaOutcomeLabel, SagaOutcomeLabels};
 use crate::services::pod_client::{PodClient, PodClientError};
+use crate::services::urn_solid_mapping::urn_solid_alignment_enabled;
 
 /// Env-var feature flag controlling whether publish/unpublish perform any
 /// side-effects. When unset or `false`, the service returns
@@ -306,6 +308,9 @@ pub struct VisibilityTransitionService {
     neo4j: Arc<dyn VisibilityNeo4jOps>,
     server_nostr: Addr<ServerNostrActor>,
     metrics: Option<Arc<MetricsRegistry>>,
+    /// ADR-054: optional saga used to regenerate `./public/kg/corpus.jsonl`
+    /// after every publish/unpublish. Only fires when `URN_SOLID_ALIGNMENT=true`.
+    ingest_saga: Option<Arc<IngestSaga>>,
 }
 
 impl VisibilityTransitionService {
@@ -321,6 +326,7 @@ impl VisibilityTransitionService {
             neo4j: neo4j as Arc<dyn VisibilityNeo4jOps>,
             server_nostr,
             metrics,
+            ingest_saga: None,
         }
     }
 
@@ -336,6 +342,39 @@ impl VisibilityTransitionService {
             neo4j,
             server_nostr,
             metrics,
+            ingest_saga: None,
+        }
+    }
+
+    /// Attach an [`IngestSaga`] so the service can regenerate the per-owner
+    /// `corpus.jsonl` file on each transition (ADR-054 §2). No-op unless
+    /// `URN_SOLID_ALIGNMENT=true`.
+    pub fn with_ingest_saga(mut self, saga: Arc<IngestSaga>) -> Self {
+        self.ingest_saga = Some(saga);
+        self
+    }
+
+    /// Regenerate the per-owner `corpus.jsonl` if the URN-Solid alignment
+    /// flag is on and an [`IngestSaga`] is attached. Logs failures and does
+    /// not surface them to the caller — corpus regeneration is additive.
+    async fn maybe_regenerate_corpus(&self, owner_pubkey: &str) {
+        if !urn_solid_alignment_enabled() {
+            return;
+        }
+        let Some(saga) = self.ingest_saga.as_ref() else {
+            debug!("[urn-solid] corpus regen skipped — no IngestSaga attached");
+            return;
+        };
+        match saga.regenerate_corpus_jsonl(owner_pubkey, None).await {
+            Ok(report) => {
+                if !report.skipped {
+                    info!(
+                        "[urn-solid] regenerated corpus.jsonl for {} ({} docs, {} bytes)",
+                        owner_pubkey, report.document_count, report.bytes_written
+                    );
+                }
+            }
+            Err(e) => warn!("[urn-solid] corpus regen for {} failed: {}", owner_pubkey, e),
         }
     }
 
@@ -412,6 +451,11 @@ impl VisibilityTransitionService {
             owner_pubkey = %req.owner_pubkey,
             "visibility.publish"
         );
+
+        // 3b. ADR-054 §2: regenerate the per-owner corpus.jsonl snapshot so
+        // downstream crawlers see the new public node in one fetch. Flag-gated
+        // and best-effort; failures are logged, not propagated.
+        self.maybe_regenerate_corpus(&req.owner_pubkey).await;
 
         // 4. Server-signed audit kind-30300 via the existing actor path.
         if let Err(e) = self
@@ -519,6 +563,10 @@ impl VisibilityTransitionService {
             owner_pubkey = %req.owner_pubkey,
             "visibility.unpublish"
         );
+
+        // 3b. ADR-054 §2: regenerate corpus.jsonl so the retracted node
+        // disappears from the public snapshot. Flag-gated, best-effort.
+        self.maybe_regenerate_corpus(&req.owner_pubkey).await;
 
         // 4. Server-signed audit kind-30300.
         if let Err(e) = self

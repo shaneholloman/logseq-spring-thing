@@ -3,18 +3,36 @@
 //!
 //! Enriches parsed graph data with ontology information (owl_class_iri, owl_property_iri)
 //! AFTER parsing but BEFORE saving to database.
+//!
+//! ADR-054 (URN-Solid alignment): when `URN_SOLID_ALIGNMENT=true` AND a
+//! [`UrnSolidMapper`] is attached AND a [`Neo4jAdapter`] handle is wired in,
+//! every enriched node whose inferred class has a `stable` mapping in the
+//! registry also emits a `urn_solid_same_as` property on the corresponding
+//! `:OntologyClass` row. The property is surfaced as `owl:sameAs` in the RDF
+//! view (see `MATCH (o:OntologyClass) WHERE o.urn_solid_same_as IS NOT NULL`).
 
 use std::sync::Arc;
-use log::{info, debug};
+use log::{info, debug, warn};
 
+use crate::adapters::neo4j_adapter::Neo4jAdapter;
 use crate::models::graph::GraphData;
 use crate::services::ontology_reasoner::OntologyReasoner;
 use crate::services::edge_classifier::EdgeClassifier;
+use crate::services::urn_solid_mapping::{
+    urn_solid_alignment_enabled, MappingStatus, UrnSolidMapper,
+};
 
 /// Service that enriches graph data with ontology classifications
 pub struct OntologyEnrichmentService {
     reasoner: Arc<OntologyReasoner>,
     classifier: Arc<EdgeClassifier>,
+    /// ADR-054 — when present and `URN_SOLID_ALIGNMENT=true`, inferred classes
+    /// are cross-referenced against this mapper and matching stable entries
+    /// are persisted as `urn_solid_same_as` on `:OntologyClass`.
+    urn_solid_mapper: Option<Arc<UrnSolidMapper>>,
+    /// Neo4j handle for `urn_solid_same_as` property writes. None disables the
+    /// emission regardless of the flag.
+    neo4j: Option<Arc<Neo4jAdapter>>,
 }
 
 impl OntologyEnrichmentService {
@@ -27,7 +45,66 @@ impl OntologyEnrichmentService {
         Self {
             reasoner,
             classifier,
+            urn_solid_mapper: None,
+            neo4j: None,
         }
+    }
+
+    /// Attach a URN-Solid mapper for `owl:sameAs` emission (ADR-054 §1).
+    pub fn with_urn_solid_mapper(mut self, mapper: Arc<UrnSolidMapper>) -> Self {
+        self.urn_solid_mapper = Some(mapper);
+        self
+    }
+
+    /// Attach the Neo4j adapter used to persist `urn_solid_same_as` properties.
+    /// Required for emission to take effect.
+    pub fn with_neo4j(mut self, neo4j: Arc<Neo4jAdapter>) -> Self {
+        self.neo4j = Some(neo4j);
+        self
+    }
+
+    /// Emit `owl:sameAs urn:solid:<Name>` as `urn_solid_same_as` property on
+    /// the matching `:OntologyClass` row, if and only if:
+    ///   * `URN_SOLID_ALIGNMENT=true`
+    ///   * a mapper and Neo4j adapter were wired in
+    ///   * the class has a `stable` mapping
+    ///
+    /// Returns `Ok(true)` when a property was written, `Ok(false)` when any
+    /// precondition failed (no-op), `Err` on Neo4j failure.
+    pub async fn emit_urn_solid_same_as(&self, class_iri: &str) -> Result<bool, String> {
+        if !urn_solid_alignment_enabled() {
+            return Ok(false);
+        }
+
+        let (mapper, neo4j) = match (self.urn_solid_mapper.as_ref(), self.neo4j.as_ref()) {
+            (Some(m), Some(n)) => (m, n),
+            _ => return Ok(false),
+        };
+
+        let mapping = match mapper.lookup(class_iri) {
+            Some(m) if m.status == MappingStatus::Stable => m,
+            _ => return Ok(false),
+        };
+
+        let q = neo4rs::query(
+            "MATCH (o:OntologyClass {iri: $iri}) \
+             SET o.urn_solid_same_as = $urn_solid",
+        )
+        .param("iri", class_iri.to_string())
+        .param("urn_solid", mapping.urn_solid.clone());
+
+        neo4j
+            .graph()
+            .run(q)
+            .await
+            .map_err(|e| format!("emit urn_solid_same_as for {}: {}", class_iri, e))?;
+
+        debug!(
+            "[urn-solid] Emitted owl:sameAs {} for OntologyClass {}",
+            mapping.urn_solid, class_iri
+        );
+
+        Ok(true)
     }
 
     /// Enrich a graph with ontology information
@@ -101,6 +178,13 @@ impl OntologyEnrichmentService {
 
                 // Also update visual properties based on class
                 self.update_node_visuals_by_class(node, &iri);
+
+                // ADR-054 §1: emit owl:sameAs urn:solid:<Name> as a property on
+                // the class row. No-op unless the URN-Solid alignment flag is
+                // on, a mapper + Neo4j are wired, and the mapping is stable.
+                if let Err(e) = self.emit_urn_solid_same_as(&iri).await {
+                    warn!("[urn-solid] sameAs emission failed for {}: {}", iri, e);
+                }
             }
         }
 
