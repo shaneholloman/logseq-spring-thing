@@ -200,15 +200,19 @@ pub(crate) fn handle_request_full_snapshot(
             }
         }
 
-        crate::actors::messages::PositionSnapshot {
+        let snapshot = crate::actors::messages::PositionSnapshot {
             knowledge_nodes,
             agent_nodes,
             timestamp: std::time::Instant::now(),
-        }
+        };
+        // ADR-050 (H2): return the nta alongside the snapshot so the
+        // encode path can set bit 29 on private nodes that belong to
+        // somebody other than the consuming client.
+        (snapshot, nta)
     };
 
     let fut = actix::fut::wrap_future::<_, SocketFlowServer>(fut);
-    ctx.spawn(fut.map(move |snapshot, _act, ctx| {
+    ctx.spawn(fut.map(move |(snapshot, nta), _act, ctx| {
         let mut all_nodes = Vec::new();
 
         for (id, data) in snapshot.knowledge_nodes {
@@ -222,7 +226,19 @@ pub(crate) fn handle_request_full_snapshot(
         if !all_nodes.is_empty() {
             let analytics = _act.app_state.node_analytics.read().ok();
             let analytics_ref = analytics.as_deref();
-            let binary_data = binary_protocol::encode_node_data_with_live_analytics(&all_nodes, analytics_ref);
+            // ADR-050 (H2): per-caller private-opaque set. `self.pubkey`
+            // carries the authenticated Nostr pubkey when the WebSocket
+            // upgrade carried NIP-98; anonymous callers see every private
+            // node as opaque.
+            let private_opaque_ids = crate::actors::client_coordinator_actor::compute_private_opaque_ids(
+                &nta,
+                _act.pubkey.as_deref(),
+            );
+            let binary_data = binary_protocol::encode_node_data_with_live_analytics_and_privacy(
+                &all_nodes,
+                analytics_ref,
+                Some(&private_opaque_ids),
+            );
             ctx.binary(binary_data);
             debug!("Sent position snapshot with {} nodes", all_nodes.len());
         }
@@ -400,7 +416,17 @@ pub(crate) fn handle_request_bots_positions(
             if !nodes_data.is_empty() {
                 let analytics = _act.app_state.node_analytics.read().ok();
                 let analytics_ref = analytics.as_deref();
-                let binary_data = binary_protocol::encode_node_data_with_live_analytics(&nodes_data, analytics_ref);
+                // ADR-050 (H2): bots-positions is agent-only. Agents carry no
+                // sovereign-private state today, so the set is always empty —
+                // pass an explicit empty set rather than `None` to make the
+                // privacy contract visible at the call site.
+                let private_opaque_ids: std::collections::HashSet<u32> =
+                    std::collections::HashSet::new();
+                let binary_data = binary_protocol::encode_node_data_with_live_analytics_and_privacy(
+                    &nodes_data,
+                    analytics_ref,
+                    Some(&private_opaque_ids),
+                );
 
                 // hot-path: trace only (fires per bots position update cycle)
                 trace!(
@@ -712,7 +738,16 @@ pub(crate) fn handle_request_swarm_telemetry(
             if !nodes_data.is_empty() {
                 let analytics = _act.app_state.node_analytics.read().ok();
                 let analytics_ref = analytics.as_deref();
-                let binary_data = binary_protocol::encode_node_data_with_live_analytics(&nodes_data, analytics_ref);
+                // ADR-050 (H2): swarm-telemetry is agent-only; no
+                // sovereign-private state. Pass an explicit empty set so
+                // the `_with_privacy` path is uniform across call sites.
+                let private_opaque_ids: std::collections::HashSet<u32> =
+                    std::collections::HashSet::new();
+                let binary_data = binary_protocol::encode_node_data_with_live_analytics_and_privacy(
+                    &nodes_data,
+                    analytics_ref,
+                    Some(&private_opaque_ids),
+                );
                 ctx.binary(binary_data);
             }
 
@@ -974,7 +1009,7 @@ pub(crate) fn handle_node_drag_update(
         );
 
         // 3. Fetch updated positions and broadcast to all clients (IDs already compact)
-        use crate::actors::messages::GetGraphData;
+        use crate::actors::messages::{GetGraphData, GetNodeTypeArrays};
 
         if let Ok(Ok(graph_data)) = app_state.graph_service_addr.send(GetGraphData).await {
             let node_data: Vec<(u32, BinaryNodeData)> = graph_data
@@ -1001,7 +1036,22 @@ pub(crate) fn handle_node_drag_update(
                 use crate::actors::messages::BroadcastNodePositions;
                 let analytics = app_state.node_analytics.read().ok();
                 let analytics_ref = analytics.as_deref();
-                let binary_data = binary_protocol::encode_node_data_with_live_analytics(&node_data, analytics_ref);
+                // ADR-050 (H2): drag broadcasts reach every connected client
+                // through `broadcast_to_all` (no per-client re-serialisation),
+                // so every private node is opaque to every receiver — the
+                // caller-filter can't differentiate here. Pass caller=None.
+                let nta = app_state
+                    .graph_service_addr
+                    .send(GetNodeTypeArrays)
+                    .await
+                    .unwrap_or_default();
+                let private_opaque_ids =
+                    crate::actors::client_coordinator_actor::compute_private_opaque_ids(&nta, None);
+                let binary_data = binary_protocol::encode_node_data_with_live_analytics_and_privacy(
+                    &node_data,
+                    analytics_ref,
+                    Some(&private_opaque_ids),
+                );
                 client_manager_addr.do_send(BroadcastNodePositions { positions: binary_data });
             }
         }
@@ -1100,7 +1150,7 @@ pub(crate) fn handle_node_drag_end(
         );
 
         // 3. Broadcast final positions to all clients (IDs already compact)
-        use crate::actors::messages::GetGraphData;
+        use crate::actors::messages::{GetGraphData, GetNodeTypeArrays};
 
         if let Ok(Ok(graph_data)) = app_state.graph_service_addr.send(GetGraphData).await {
             let node_data: Vec<(u32, BinaryNodeData)> = graph_data
@@ -1127,7 +1177,21 @@ pub(crate) fn handle_node_drag_end(
                 use crate::actors::messages::BroadcastNodePositions;
                 let analytics = app_state.node_analytics.read().ok();
                 let analytics_ref = analytics.as_deref();
-                let binary_data = binary_protocol::encode_node_data_with_live_analytics(&node_data, analytics_ref);
+                // ADR-050 (H2): drag-end also fans out to everyone via
+                // `broadcast_to_all`. Pass caller=None so every private
+                // node is opacified for all receivers.
+                let nta = app_state
+                    .graph_service_addr
+                    .send(GetNodeTypeArrays)
+                    .await
+                    .unwrap_or_default();
+                let private_opaque_ids =
+                    crate::actors::client_coordinator_actor::compute_private_opaque_ids(&nta, None);
+                let binary_data = binary_protocol::encode_node_data_with_live_analytics_and_privacy(
+                    &node_data,
+                    analytics_ref,
+                    Some(&private_opaque_ids),
+                );
                 client_manager_addr.do_send(BroadcastNodePositions { positions: binary_data });
             }
         }

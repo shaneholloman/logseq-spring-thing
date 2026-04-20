@@ -526,6 +526,22 @@ pub fn encode_node_data_with_live_analytics(
     encode_positions_v3(nodes, &[], &[], &[], &[], &[], None, analytics_data)
 }
 
+/// ADR-050 (H2): Privacy-aware variant of `encode_node_data_with_live_analytics`.
+///
+/// Accepts `private_opaque_ids` — the set of node ids the caller does NOT own
+/// but is allowed to see as opaque placeholders. The encoder ORs
+/// `PRIVATE_OPAQUE_FLAG` (bit 29) onto each such id so the client can render
+/// them without label/metadata. Gated by `SOVEREIGN_SCHEMA=true`.
+pub fn encode_node_data_with_live_analytics_and_privacy(
+    nodes: &[(u32, BinaryNodeData)],
+    analytics_data: Option<&HashMap<u32, (u32, f32, u32)>>,
+    private_opaque_ids: Option<&std::collections::HashSet<u32>>,
+) -> Vec<u8> {
+    encode_positions_v3_with_privacy(
+        nodes, &[], &[], &[], &[], &[], None, analytics_data, private_opaque_ids,
+    )
+}
+
 /// ADR-037: Backward-compat alias for encode_positions_v3.
 #[inline]
 pub fn encode_node_data_extended_with_sssp(
@@ -542,6 +558,30 @@ pub fn encode_node_data_extended_with_sssp(
         nodes, agent_node_ids, knowledge_node_ids,
         ontology_class_ids, ontology_individual_ids, ontology_property_ids,
         sssp_data, analytics_data,
+    )
+}
+
+/// ADR-050 (H2): Privacy-aware variant of `encode_node_data_extended_with_sssp`.
+///
+/// See `encode_node_data_with_live_analytics_and_privacy` for the semantics of
+/// `private_opaque_ids`. Bit 29 is ORed onto the wire id for each id in the
+/// set, gated by `SOVEREIGN_SCHEMA=true`.
+#[inline]
+pub fn encode_node_data_extended_with_sssp_and_privacy(
+    nodes: &[(u32, BinaryNodeData)],
+    agent_node_ids: &[u32],
+    knowledge_node_ids: &[u32],
+    ontology_class_ids: &[u32],
+    ontology_individual_ids: &[u32],
+    ontology_property_ids: &[u32],
+    sssp_data: Option<&HashMap<u32, (f32, i32)>>,
+    analytics_data: Option<&HashMap<u32, (u32, f32, u32)>>,
+    private_opaque_ids: Option<&std::collections::HashSet<u32>>,
+) -> Vec<u8> {
+    encode_positions_v3_with_privacy(
+        nodes, agent_node_ids, knowledge_node_ids,
+        ontology_class_ids, ontology_individual_ids, ontology_property_ids,
+        sssp_data, analytics_data, private_opaque_ids,
     )
 }
 

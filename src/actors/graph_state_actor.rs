@@ -124,13 +124,30 @@ impl GraphStateActor {
     /// Returns node type arrays for binary protocol encoding.
     /// Node IDs are already compact (0..N-1) after source remapping,
     /// so no additional translation is needed.
+    ///
+    /// ADR-050 (H2): also populates `private_node_owners` with the owner
+    /// pubkey of every `visibility=Private` node. The ClientCoordinatorActor
+    /// uses this map to derive the per-client `private_opaque_ids` set that
+    /// drives bit 29 (`PRIVATE_OPAQUE_FLAG`) on the wire — private nodes
+    /// owned by the consuming client get rendered with full fidelity, other
+    /// clients' private nodes are wire-flagged opaque.
     pub fn get_node_type_arrays(&self) -> NodeTypeArrays {
+        use crate::models::node::Visibility;
+        let mut private_node_owners = HashMap::new();
+        for node in self.node_map.values() {
+            if node.visibility == Visibility::Private {
+                if let Some(owner) = &node.owner_pubkey {
+                    private_node_owners.insert(node.id, owner.clone());
+                }
+            }
+        }
         NodeTypeArrays {
             knowledge_ids: self.knowledge_node_ids.iter().copied().collect(),
             agent_ids: self.agent_node_ids.iter().copied().collect(),
             ontology_class_ids: self.ontology_class_ids.iter().copied().collect(),
             ontology_individual_ids: self.ontology_individual_ids.iter().copied().collect(),
             ontology_property_ids: self.ontology_property_ids.iter().copied().collect(),
+            private_node_owners,
         }
     }
 

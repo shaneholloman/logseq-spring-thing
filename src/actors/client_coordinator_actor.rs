@@ -94,6 +94,34 @@ impl Default for ClientFilter {
     }
 }
 
+/// ADR-050 (H2): build the `private_opaque_ids` set for a given caller.
+///
+/// For every private node in `nta.private_node_owners` whose `owner_pubkey`
+/// does NOT match the caller, insert its node_id into the returned set. The
+/// binary encoder will OR `PRIVATE_OPAQUE_FLAG` (bit 29) onto the wire id for
+/// each such node, signalling to the client that it is an owner-private
+/// placeholder.
+///
+/// Anonymous callers (`caller_pubkey == None`) see every private node as
+/// opaque. Owners see their own private nodes with full fidelity.
+pub fn compute_private_opaque_ids(
+    nta: &crate::actors::messages::NodeTypeArrays,
+    caller_pubkey: Option<&str>,
+) -> std::collections::HashSet<u32> {
+    let mut set = std::collections::HashSet::new();
+    for (node_id, owner) in &nta.private_node_owners {
+        match caller_pubkey {
+            Some(caller) if !caller.is_empty() && caller == owner.as_str() => {
+                // caller is the owner — full fidelity, do NOT opacify.
+            }
+            _ => {
+                set.insert(*node_id);
+            }
+        }
+    }
+    set
+}
+
 impl std::str::FromStr for FilterMode {
     type Err = String;
 
@@ -350,15 +378,37 @@ impl ClientManager {
             return BroadcastResult::default();
         }
 
-        // Pre-serialize the full unfiltered payload ONCE
-        let unfiltered_binary = self.serialize_positions(positions, node_type_arrays, broadcast_sequence, analytics_data);
-
         let mut sent = 0;
         let mut slow_clients = Vec::new();
+        // ADR-050 (H2): privacy-aware serialisation. Each client gets a
+        // per-caller `private_opaque_ids` set so private nodes owned by OTHER
+        // users are wire-encoded with bit 29 set. The owner always sees their
+        // own private nodes with full fidelity (empty set for them).
+        //
+        // Build a per-client (opaque_set, cache_key) lookup so we can still
+        // cache-reuse the serialised buffer across identical callers.
+        let mut unfiltered_cache: HashMap<Vec<u8>, Vec<u8>> = HashMap::new();
         for (&client_id, client_state) in &self.clients {
+            let private_opaque_ids =
+                compute_private_opaque_ids(node_type_arrays, client_state.pubkey.as_deref());
+
             let payload = if !client_state.filter.enabled {
-                // Send pre-serialized payload — no re-encoding needed
-                Some(unfiltered_binary.clone())
+                // Key the unfiltered cache on the opaque-id set so clients
+                // with the same caller identity share a serialised buffer.
+                let mut key_vec: Vec<u32> = private_opaque_ids.iter().copied().collect();
+                key_vec.sort_unstable();
+                let mut key_bytes = Vec::with_capacity(key_vec.len() * 4);
+                for id in &key_vec { key_bytes.extend_from_slice(&id.to_le_bytes()); }
+                let entry = unfiltered_cache.entry(key_bytes).or_insert_with(|| {
+                    self.serialize_positions(
+                        positions,
+                        node_type_arrays,
+                        broadcast_sequence,
+                        analytics_data,
+                        Some(&private_opaque_ids),
+                    )
+                });
+                Some(entry.clone())
             } else {
                 // Only re-serialize for clients with active filters
                 let filtered_positions: Vec<_> = positions
@@ -374,6 +424,7 @@ impl ClientManager {
                         node_type_arrays,
                         broadcast_sequence,
                         analytics_data,
+                        Some(&private_opaque_ids),
                     ))
                 }
             };
@@ -413,21 +464,37 @@ impl ClientManager {
     /// V5 wire format: `[1 byte: version=5][8 bytes: broadcast_sequence LE][V3 node data without version byte]`
     /// This embeds the authoritative server broadcast sequence so clients can echo it
     /// back in acks, enabling true end-to-end backpressure correlation.
+    ///
+    /// ADR-050 (H2): `private_opaque_ids` is the set of node ids for which
+    /// bit 29 (`PRIVATE_OPAQUE_FLAG`) should be set on the wire, signalling
+    /// to the client that the node is owner-private and must render without
+    /// label/metadata.
     fn serialize_positions(
         &self,
         positions: &[BinaryNodeDataClient],
         nta: &crate::actors::messages::NodeTypeArrays,
         broadcast_sequence: u64,
         analytics_data: Option<&std::collections::HashMap<u32, (u32, f32, u32)>>,
+        private_opaque_ids: Option<&std::collections::HashSet<u32>>,
     ) -> Vec<u8> {
-        use crate::utils::binary_protocol::encode_node_data_extended_with_sssp;
+        use crate::utils::binary_protocol::encode_node_data_extended_with_sssp_and_privacy;
         use crate::utils::socket_flow_messages::BinaryNodeData;
         // Convert to (u32, BinaryNodeData) format for V3 protocol encoding
         let nodes: Vec<(u32, BinaryNodeData)> = positions
             .iter()
             .map(|pos| (pos.node_id, *pos))
             .collect();
-        let encoded = encode_node_data_extended_with_sssp(&nodes, &nta.agent_ids, &nta.knowledge_ids, &nta.ontology_class_ids, &nta.ontology_individual_ids, &nta.ontology_property_ids, None, analytics_data);
+        let encoded = encode_node_data_extended_with_sssp_and_privacy(
+            &nodes,
+            &nta.agent_ids,
+            &nta.knowledge_ids,
+            &nta.ontology_class_ids,
+            &nta.ontology_individual_ids,
+            &nta.ontology_property_ids,
+            None,
+            analytics_data,
+            private_opaque_ids,
+        );
         // Build V5 frame: [version=5][8-byte sequence LE][V3 node data without version byte]
         let mut result = Vec::with_capacity(1 + 8 + encoded.len().saturating_sub(1));
         result.push(5u8); // Protocol V5 = V3 nodes + embedded broadcast sequence
@@ -892,7 +959,7 @@ impl ClientCoordinatorActor {
     }
 
     fn serialize_positions(&self, positions: &[BinaryNodeDataClient]) -> Vec<u8> {
-        use crate::utils::binary_protocol::encode_node_data_extended;
+        use crate::utils::binary_protocol::encode_node_data_extended_with_sssp_and_privacy;
         use crate::utils::socket_flow_messages::BinaryNodeData;
         // Convert to (u32, BinaryNodeData) format for V3 protocol encoding
         let nodes: Vec<(u32, BinaryNodeData)> = positions
@@ -900,7 +967,21 @@ impl ClientCoordinatorActor {
             .map(|pos| (pos.node_id, *pos))
             .collect();
         let nta = &self.node_type_arrays;
-        encode_node_data_extended(&nodes, &nta.agent_ids, &nta.knowledge_ids, &nta.ontology_class_ids, &nta.ontology_individual_ids, &nta.ontology_property_ids)
+        // ADR-050 (H2): this is the "broadcast-to-all" path (voice relay,
+        // force-broadcast). It has no per-client caller identity, so every
+        // private node is opaque to every receiver — pass caller_pubkey=None.
+        let private_opaque_ids = compute_private_opaque_ids(nta, None);
+        encode_node_data_extended_with_sssp_and_privacy(
+            &nodes,
+            &nta.agent_ids,
+            &nta.knowledge_ids,
+            &nta.ontology_class_ids,
+            &nta.ontology_individual_ids,
+            &nta.ontology_property_ids,
+            None,
+            None,
+            Some(&private_opaque_ids),
+        )
     }
 
     /// Update cached node type arrays from GraphStateActor

@@ -56,6 +56,26 @@ pub struct NodeWithPosition {
     pub weight: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub group: Option<String>,
+
+    // ----------------------------------------------------------------------
+    // ADR-050 sovereign-model fields (propagated to the REST wire so the
+    // client can render opacified private nodes)
+    // ----------------------------------------------------------------------
+    /// Owner's Nostr pubkey — preserved on opacified nodes so future
+    /// delegation/ACLs can reference the owner. `None` for public nodes with
+    /// no sovereign owner.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub owner_pubkey: Option<String>,
+
+    /// Per-session HMAC-derived opaque id. Populated when the node was
+    /// opacified for this caller (i.e. cross-user private). 24 hex chars.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub opaque_id: Option<String>,
+
+    /// Solid Pod URL for the authoritative payload. Cleared to `None` on
+    /// opacification so cross-user callers cannot dereference the pod.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pod_url: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -133,6 +153,59 @@ pub fn visibility_allows(
     }
 }
 
+/// ADR-050 (H1): opacify a cross-user private node instead of dropping it.
+///
+/// Returns a clone of `node` with identifying fields stripped:
+/// - `label`, `metadata_id`, `metadata` map cleared to empty
+/// - `pod_url` cleared to None (cross-user callers cannot dereference)
+/// - `opaque_id` populated via HMAC (`src/utils/opaque_id.rs`) so the client
+///   has a stable-within-salt-window handle for diffing
+/// - `owner_pubkey` preserved (needed for future delegation/ACL checks)
+/// - `x/y/z/vx/vy/vz` preserved (topology is visible per ADR-050 §three-tier)
+/// - `color/size/weight/group/node_type` preserved (shape metrics are OK)
+///
+/// When `salt` is `None` (e.g. `OPAQUE_ID_SALT_SEED` unset), the opaque id is
+/// left as `None` and the caller gets a structurally-opacified placeholder
+/// with no stable handle. This fails closed — no leakage either way.
+pub fn opacify_for_caller(
+    node: &NodeWithPosition,
+    salt: Option<&[u8]>,
+) -> NodeWithPosition {
+    let owner = node.metadata.get("owner_pubkey").cloned();
+    let canonical_iri = node
+        .metadata
+        .get("canonical_iri")
+        .cloned()
+        // Fallback: use metadata_id as the iri input when no explicit
+        // canonical_iri is stored. This keeps determinism for legacy rows.
+        .unwrap_or_else(|| node.metadata_id.clone());
+
+    let opaque_id = match (salt, owner.as_deref()) {
+        (Some(s), Some(o)) => Some(crate::utils::opaque_id::opaque_id(s, o, &canonical_iri)),
+        _ => None,
+    };
+
+    NodeWithPosition {
+        id: node.id,
+        // Identifying fields: cleared
+        metadata_id: String::new(),
+        label: String::new(),
+        metadata: HashMap::new(),
+        pod_url: None,
+        // Topology / shape: preserved
+        position: node.position,
+        velocity: node.velocity,
+        node_type: node.node_type.clone(),
+        size: node.size,
+        color: node.color.clone(),
+        weight: node.weight,
+        group: node.group.clone(),
+        // Sovereign fields
+        owner_pubkey: owner,
+        opaque_id,
+    }
+}
+
 pub async fn get_graph_data(
     state: web::Data<AppState>,
     query: web::Query<GraphQuery>,
@@ -199,25 +272,37 @@ pub async fn get_graph_data(
                         color: node.color.clone(),
                         weight: node.weight,
                         group: node.group.clone(),
+                        owner_pubkey: node.owner_pubkey.clone(),
+                        opaque_id: node.opaque_id.clone(),
+                        pod_url: node.pod_url.clone(),
                     }
                 })
                 .collect();
 
             // ADR-036: Filter nodes using canonical classify_node_population.
-            // ADR-028-ext: Caller-aware visibility filter (sovereign-mesh).
-            // Anonymous callers see only `visibility=public`; signed callers
-            // additionally see their own private nodes. Legacy rows without a
-            // `visibility` field are treated as public (backwards compatible).
+            // ADR-050 (H1): opacify cross-user private nodes rather than
+            // dropping them. The three-tier privacy contract says private
+            // nodes stay in the response with label/metadata stripped and an
+            // HMAC-derived `opaque_id` so the client can render a placeholder
+            // stub. Nodes still fail the graph_type filter as usual.
+            //
+            // Resolve the opaque-id salt once per request. The salt is
+            // rotated daily by a background task; we read it lazily here so
+            // a re-key takes effect on the next request.
             let caller_ref = caller_pubkey.as_deref();
+            let opaque_salt: Option<Vec<u8>> = std::env::var("OPAQUE_ID_SALT_SEED")
+                .ok()
+                .filter(|s| s.len() >= 16)
+                .map(|s| s.into_bytes());
+            let salt_ref = opaque_salt.as_deref();
+
             let filtered_nodes: Vec<NodeWithPosition> = nodes_with_positions
                 .into_iter()
-                .filter(|node| {
-                    // Visibility gate first — cheapest reject; never leaks
-                    // private nodes regardless of graph_type.
-                    if !visibility_allows(&node.metadata, caller_ref) {
-                        return false;
-                    }
-                    match query.graph_type.as_deref() {
+                .filter_map(|node| {
+                    // Graph-type filter first — applies regardless of
+                    // visibility. Nodes that fail the type filter are
+                    // dropped entirely.
+                    let type_matches = match query.graph_type.as_deref() {
                         Some("knowledge") => {
                             classify_node_population(node.node_type.as_deref()) == NodePopulation::Knowledge
                         }
@@ -229,7 +314,21 @@ pub async fn get_graph_data(
                             classify_node_population(node.node_type.as_deref()) == NodePopulation::Agent
                                 || node.metadata.contains_key("agentType")
                         }
-                        _ => true, // No type filter; return all surviving visibility
+                        _ => true, // No type filter; admit all types.
+                    };
+                    if !type_matches {
+                        return None;
+                    }
+
+                    // Visibility gate: if the caller is allowed to see the
+                    // full node, return it as-is. Otherwise opacify (strip
+                    // label/metadata, populate opaque_id) rather than drop
+                    // so the client can still render a placeholder and the
+                    // topology is preserved.
+                    if visibility_allows(&node.metadata, caller_ref) {
+                        Some(node)
+                    } else {
+                        Some(opacify_for_caller(&node, salt_ref))
                     }
                 })
                 .collect();
