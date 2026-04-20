@@ -105,6 +105,13 @@ pub struct MetricsRegistry {
     pub bridge_promotions_total: Counter,
     pub bridge_expired_total: Counter,
     pub bridge_confidence_histogram: Histogram,
+    /// Count of kind-30100 BRIDGE_TO audit events successfully signed
+    /// (ADR-050 §server-identity + ADR-051 §audit).
+    pub bridge_kind30100_signed_total: Counter,
+    /// Count of kind-30100 signing attempts that failed after a successful
+    /// promote commit. Best-effort: the Cypher commit is authoritative; a
+    /// missing audit event is an observability sidecar failure, not a data loss.
+    pub bridge_kind30100_errors_total: Counter,
 
     // ── Orphan retraction ────────────────────────────────────────────
     pub orphan_wikilinkref_removed_total: Counter,
@@ -246,6 +253,19 @@ impl MetricsRegistry {
             bridge_confidence_histogram.clone(),
         );
 
+        let bridge_kind30100_signed_total = Counter::default();
+        let bridge_kind30100_errors_total = Counter::default();
+        registry.register(
+            "bridge_kind30100_signed_total",
+            "Count of server-signed kind-30100 BRIDGE_TO audit events emitted after a successful promote",
+            bridge_kind30100_signed_total.clone(),
+        );
+        registry.register(
+            "bridge_kind30100_errors_total",
+            "Count of kind-30100 signing attempts that failed after a successful promote (best-effort sidecar audit)",
+            bridge_kind30100_errors_total.clone(),
+        );
+
         // Orphan retraction
         let orphan_wikilinkref_removed_total = Counter::default();
         let orphan_stubs_removed_total = Counter::default();
@@ -329,6 +349,8 @@ impl MetricsRegistry {
             bridge_promotions_total,
             bridge_expired_total,
             bridge_confidence_histogram,
+            bridge_kind30100_signed_total,
+            bridge_kind30100_errors_total,
             orphan_wikilinkref_removed_total,
             orphan_stubs_removed_total,
             pod_put_total,
