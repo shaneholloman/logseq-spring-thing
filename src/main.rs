@@ -593,6 +593,7 @@ async fn main() -> std::io::Result<()> {
     };
     let server_identity_data = web::Data::new(server_identity.clone());
     let server_nostr_addr_for_visibility = server_nostr_addr.clone();
+    let server_nostr_addr_for_bridge = server_nostr_addr.clone();
     let server_nostr_addr_data = web::Data::new(server_nostr_addr);
 
     // Prometheus metrics registry (task #18) — shared Arc so every handler and
@@ -636,6 +637,26 @@ async fn main() -> std::io::Result<()> {
     let visibility_transition_data = visibility_transition_service
         .as_ref()
         .map(|svc| web::Data::new(svc.clone()));
+
+    // ADR-051 §bridge + ADR-050 §server-identity: BridgeEdgeService handles
+    // BRIDGE_TO promotion with a kind-30100 audit-trail fan-out. Registered
+    // as web::Data so migration handlers can look it up. Gated at the call
+    // site by BRIDGE_EDGE_ENABLED.
+    let bridge_edge_service = {
+        let svc = std::sync::Arc::new(
+            webxr::services::bridge_edge::BridgeEdgeService::new(
+                app_state.neo4j_adapter.clone(),
+            )
+            .with_prom(metrics_registry.clone())
+            .with_server_nostr(server_nostr_addr_for_bridge),
+        );
+        info!(
+            "[main] BridgeEdgeService wired with kind-30100 fan-out (BRIDGE_EDGE_ENABLED={})",
+            std::env::var("BRIDGE_EDGE_ENABLED").unwrap_or_else(|_| "unset".to_string())
+        );
+        svc
+    };
+    let bridge_edge_data = web::Data::new(bridge_edge_service);
 
     let app_state_data = web::Data::new(app_state);
     let validation_service = web::Data::new(validation_handler::ValidationService::new());
@@ -772,6 +793,7 @@ async fn main() -> std::io::Result<()> {
             .app_data(app_state_data.nostr_service.clone().unwrap_or_else(|| web::Data::new(NostrService::default())))
             .app_data(server_identity_data.clone())
             .app_data(server_nostr_addr_data.clone())
+            .app_data(bridge_edge_data.clone())
             .app_data(metrics_data.clone())
             .app_data(app_state_data.feature_access.clone())
             .app_data(web::Data::new(github_sync_service.clone()))

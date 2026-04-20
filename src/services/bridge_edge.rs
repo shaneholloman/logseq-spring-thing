@@ -26,12 +26,14 @@
 
 use std::sync::Arc;
 
+use actix::Addr;
 use anyhow::{Context, Result};
 use chrono::{DateTime, Duration, Utc};
 use log::{debug, info, warn};
 use neo4rs::query;
 use serde::{Deserialize, Serialize};
 
+use crate::actors::server_nostr_actor::{ServerNostrActor, SignBridgePromotion};
 use crate::adapters::neo4j_adapter::Neo4jAdapter;
 use crate::services::metrics::MetricsRegistry;
 
@@ -185,17 +187,36 @@ pub fn bridge_edge_enabled() -> bool {
 pub struct BridgeEdgeService {
     neo4j: Arc<Neo4jAdapter>,
     prom: Option<Arc<MetricsRegistry>>,
+    /// Optional server-Nostr actor. When Some, every successful `promote`
+    /// commit is followed by a best-effort [`SignBridgePromotion`] dispatch
+    /// (kind-30100 audit trail per ADR-050 §server-identity + ADR-051 §audit).
+    /// When None, promote still commits to Neo4j — the audit event is a
+    /// sidecar, not the source of truth.
+    server_nostr: Option<Addr<ServerNostrActor>>,
 }
 
 impl BridgeEdgeService {
     pub fn new(neo4j: Arc<Neo4jAdapter>) -> Self {
-        Self { neo4j, prom: None }
+        Self {
+            neo4j,
+            prom: None,
+            server_nostr: None,
+        }
     }
 
     /// Attach a Prometheus registry — enables surfacing/promotion/expiry
     /// counters and the confidence histogram.
     pub fn with_prom(mut self, prom: Arc<MetricsRegistry>) -> Self {
         self.prom = Some(prom);
+        self
+    }
+
+    /// Attach the server-Nostr actor so every `promote` fans out a
+    /// kind-30100 audit event after the Cypher commit. Best-effort: mailbox
+    /// errors and signing errors are logged but do not fail the promote
+    /// operation. See ADR-050 §server-identity and ADR-051 §audit.
+    pub fn with_server_nostr(mut self, addr: Addr<ServerNostrActor>) -> Self {
+        self.server_nostr = Some(addr);
         self
     }
 
@@ -401,6 +422,55 @@ impl BridgeEdgeService {
             prom.bridge_promotions_total.inc();
             prom.bridge_confidence_histogram.observe(candidate.confidence);
         }
+
+        // Step 3 (ADR-050 §server-identity + ADR-051 §audit): fan out a
+        // server-signed kind-30100 BRIDGE_TO audit event. Best-effort —
+        // Neo4j is already consistent; this is a sidecar audit trail. On
+        // error we increment `bridge_kind30100_errors_total` but never fail
+        // the promote operation.
+        if let Some(addr) = self.server_nostr.as_ref() {
+            let msg = SignBridgePromotion {
+                from_kg: candidate.kg_iri.clone(),
+                to_owl: candidate.owl_class_iri.clone(),
+                signals: candidate.signals.to_vec(),
+            };
+            match addr.send(msg).await {
+                Ok(Ok(event)) => {
+                    info!(
+                        "BRIDGE_TO promoted + kind-30100 signed: event_id={} from={} to={}",
+                        event.id.to_hex(),
+                        candidate.kg_iri,
+                        candidate.owl_class_iri
+                    );
+                    if let Some(prom) = self.prom.as_ref() {
+                        prom.bridge_kind30100_signed_total.inc();
+                    }
+                }
+                Ok(Err(e)) => {
+                    log::error!(
+                        "BRIDGE_TO promoted but kind-30100 signing failed: from={} to={} err={}",
+                        candidate.kg_iri,
+                        candidate.owl_class_iri,
+                        e
+                    );
+                    if let Some(prom) = self.prom.as_ref() {
+                        prom.bridge_kind30100_errors_total.inc();
+                    }
+                }
+                Err(e) => {
+                    log::error!(
+                        "BRIDGE_TO promoted but actor mailbox failed: from={} to={} err={}",
+                        candidate.kg_iri,
+                        candidate.owl_class_iri,
+                        e
+                    );
+                    if let Some(prom) = self.prom.as_ref() {
+                        prom.bridge_kind30100_errors_total.inc();
+                    }
+                }
+            }
+        }
+
         Ok(true)
     }
 
