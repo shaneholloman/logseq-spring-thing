@@ -2,6 +2,21 @@
 
 export type GraphType = 'logseq' | 'visionflow';
 
+/**
+ * Node visibility modes (ADR-049 + ADR-051).
+ *
+ * - `public`   - rendered normally with full label + metadata.
+ * - `private`  - opaque-id only, grey/60%-opacity render, no label for non-owners.
+ * - `tombstone` - node was unpublished; a short-lived red-X marker is rendered.
+ */
+export type NodeVisibility = 'public' | 'private' | 'tombstone';
+
+/**
+ * Confidence banding for migration candidates.
+ * Backend emits a float in [0,1]; we bucket for the 8-signal radar.
+ */
+export type ConfidenceBand = 'low' | 'medium' | 'high';
+
 export interface KGNode {
   id: string;
   label: string;
@@ -10,10 +25,20 @@ export interface KGNode {
     y: number;
     z: number;
   };
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
   graphType?: GraphType;
   owlClassIri?: string;  // Ontology class IRI for semantic identity
   nodeType?: string;     // Visual node type for rendering
+
+  // --- Sovereign-mesh extensions (ADR-049 / ADR-051) ---
+  /** Current visibility mode for this node. */
+  visibility?: NodeVisibility;
+  /** Nostr pubkey (hex) of the node owner, if known. */
+  owner_pubkey?: string;
+  /** Stable opaque identifier surfaced to non-owners for private nodes. */
+  opaque_id?: string;
+  /** Solid pod URL for the canonical record, when published. */
+  pod_url?: string;
 }
 
 export interface GraphEdge {
@@ -92,6 +117,99 @@ export interface GraphTypeConfig {
       healthIndicator: boolean;
     };
   };
+}
+
+// =============================================================================
+// Sovereign-mesh Sprint 3 types (ADR-048 / ADR-049 / ADR-051)
+// =============================================================================
+
+/**
+ * 8-signal radar readings surfaced by the Judgment Broker.
+ * Each value is a normalised [0,1] score. Missing signals are rendered as 0
+ * in the radar component.
+ */
+export interface MigrationCandidateSignals {
+  structural_fit: number;
+  semantic_similarity: number;
+  provenance_strength: number;
+  temporal_stability: number;
+  editor_consensus: number;
+  reasoner_support: number;
+  kg_popularity: number;
+  owl_coverage: number;
+}
+
+/**
+ * A candidate surfaced by the Judgment Broker for promotion from the
+ * Knowledge Graph (KG) to an OWL ontology class.
+ *
+ * Backend shape matches `GET /api/bridge/candidates`.
+ */
+export interface MigrationCandidate {
+  /** Broker-assigned candidate id. */
+  id: string;
+  /** KG node the broker wants to promote. */
+  kg_node: KGNode;
+  /** Proposed ontology class metadata (IRI + label + definition). */
+  proposed_ontology_class: {
+    iri: string;
+    label: string;
+    definition?: string;
+  };
+  /** Confidence score [0,1] aggregated from the 8 signals. */
+  confidence: number;
+  /** Bucketed band for quick visual triage. */
+  confidence_band: ConfidenceBand;
+  /** Per-signal radar values. */
+  signals: MigrationCandidateSignals;
+  /** Free-text rationale from the broker. */
+  rationale?: string;
+  /** Lifecycle status. */
+  status: 'surfaced' | 'approved' | 'rejected' | 'deferred';
+  /** ISO8601 timestamp when the candidate was surfaced. */
+  surfaced_at: string;
+}
+
+/**
+ * Event emitted when a bridge promotion lands in the graph
+ * (Nostr kind 30100 / migration event stream).
+ */
+export interface BridgePromotionEvent {
+  /** Event id (Nostr event hash or server-assigned uuid). */
+  id: string;
+  /** KG node id the bridge promotes from. */
+  from_kg: string;
+  /** OWL class IRI the bridge promotes to. */
+  to_owl: string;
+  /** Final confidence at promotion time. */
+  confidence: number;
+  /** Edge id created in the graph (if the server minted one). */
+  edge_id?: string;
+  /** ISO8601 timestamp. */
+  at: string;
+  /** Optional human-readable summary. */
+  summary?: string;
+}
+
+/**
+ * Visibility transition event emitted when a node flips public <-> private
+ * or is tombstoned (ADR-049).
+ */
+export interface VisibilityTransition {
+  /** Event id. */
+  id: string;
+  /** Target node id in the graph. */
+  node_id: string;
+  /** Previous visibility (if known). */
+  from: NodeVisibility | null;
+  /** New visibility after the transition. */
+  to: NodeVisibility;
+  /** Owner pubkey at the time of the transition. */
+  owner_pubkey?: string;
+  /** Pod URL if the node just became public. */
+  pod_url?: string;
+  /** ISO8601 timestamp. */
+  at: string;
 }
 
 // Default configurations
