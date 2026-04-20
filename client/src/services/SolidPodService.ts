@@ -417,6 +417,65 @@ class SolidPodService {
   }
 
   /**
+   * Share a named graph view with another WebID by writing a companion
+   * `.acl` next to the view resource. Grants the target WebID `acl:Read`.
+   * Revoke by calling with `targetWebId = null` (removes the `.acl`).
+   *
+   * Per ADR-027: Pod-backed graph views. Per ADR-052: WAC double-gate
+   * (resource path + explicit ACL). The owner is always granted full
+   * control; only `Read` is added/removed for the target.
+   */
+  public async shareGraphView(
+    name: string,
+    targetWebId: string | null,
+  ): Promise<boolean> {
+    const structure = await this.getPodStructure();
+    if (!structure) return false;
+
+    const safeName = sanitizePreferenceKey(name);
+    const viewPath = `${structure.preferences}graph-views/${safeName}.jsonld`;
+    const aclPath = `${viewPath}.acl`;
+
+    // Revoke-share path: delete the `.acl` companion resource.
+    if (targetWebId === null) {
+      return this.deleteResource(aclPath).catch(() => false);
+    }
+
+    // Load the owner WebID so the ACL grants the owner full control.
+    const ownerWebId = await this.getPodUrl();
+    if (!ownerWebId) {
+      logger.error('Cannot share graph view: owner WebID not resolvable');
+      return false;
+    }
+
+    const aclTurtle = [
+      `@prefix acl: <http://www.w3.org/ns/auth/acl#>.`,
+      `@prefix foaf: <http://xmlns.com/foaf/0.1/>.`,
+      ``,
+      `<#owner>`,
+      `    a acl:Authorization;`,
+      `    acl:accessTo <${viewPath}>;`,
+      `    acl:agent <${ownerWebId}>;`,
+      `    acl:mode acl:Read, acl:Write, acl:Control.`,
+      ``,
+      `<#reader>`,
+      `    a acl:Authorization;`,
+      `    acl:accessTo <${viewPath}>;`,
+      `    acl:agent <${targetWebId}>;`,
+      `    acl:mode acl:Read.`,
+      ``,
+    ].join('\n');
+
+    try {
+      await this.putResource(aclPath, aclTurtle, 'text/turtle');
+      return true;
+    } catch (err) {
+      logger.error('Failed to share graph view', err);
+      return false;
+    }
+  }
+
+  /**
    * Subscribe to graph view changes for cross-device sync.
    * Returns an unsubscribe function.
    */

@@ -1,5 +1,4 @@
 use actix::prelude::*;
-use actix_web_actors::ws;
 use log::{debug, info, trace, warn};
 use std::time::Instant;
 
@@ -505,9 +504,10 @@ pub(crate) fn handle_subscribe_position_updates(
         actual_interval, binary
     );
 
-    let update_interval = std::time::Duration::from_millis(actual_interval);
-    let app_state = act.app_state.clone();
-    let settings_addr = act.app_state.settings_addr.clone();
+    // ADR-038: push path is authoritative; no poll timer is spawned.
+    // The `actual_interval` is echoed back to the client in the subscription_confirmed
+    // payload so the client can align its own heartbeat cadence.
+    let _update_interval = std::time::Duration::from_millis(actual_interval);
 
     let response = serde_json::json!({
         "type": "subscription_confirmed",
@@ -532,133 +532,6 @@ pub(crate) fn handle_subscribe_position_updates(
     //
     // Subscription acknowledgment above tells the client updates will arrive via
     // the push path. No poll timer is started.
-    if false {
-    // Dead code: retained for reference only. Will be removed in next cleanup.
-    ctx.run_later(update_interval, move |_act, ctx| {
-        let fut = fetch_nodes(app_state.clone(), settings_addr.clone());
-        let fut = actix::fut::wrap_future::<_, SocketFlowServer>(fut);
-
-        ctx.spawn(fut.map(move |result, act, ctx| {
-            if let Some((mut nodes, detailed_debug)) = result {
-                // FIX 6: Apply per-client node type filter to reduce bandwidth.
-                // When the client subscribes with nodeTypes, skip nodes that
-                // don't match. Type is determined from the flag bits in the node ID.
-                if !act.subscribed_node_types.is_empty() {
-                    let type_filter = &act.subscribed_node_types;
-                    nodes.retain(|(flagged_id, _)| {
-                        let node_type = binary_protocol::get_node_type(*flagged_id);
-                        let type_str = match node_type {
-                            binary_protocol::NodeType::Agent => "agent",
-                            binary_protocol::NodeType::Knowledge => "knowledge",
-                            binary_protocol::NodeType::OntologyClass => "ontology",
-                            binary_protocol::NodeType::OntologyIndividual => "ontology",
-                            binary_protocol::NodeType::OntologyProperty => "ontology",
-                            binary_protocol::NodeType::Unknown => "unknown",
-                        };
-                        type_filter.contains(type_str)
-                    });
-                }
-
-                let frame = act.delta_frame_counter;
-                let is_full_sync = frame == 0;
-                let epsilon_sq = act.delta_epsilon_sq;
-
-                // Count nodes that have actually moved (squared distance epsilon check)
-                let changed_count = nodes.iter().filter(|(node_id, node_data)| {
-                    if let Some(prev) = act.delta_previous_nodes.get(node_id) {
-                        let dx = node_data.x - prev.x;
-                        let dy = node_data.y - prev.y;
-                        let dz = node_data.z - prev.z;
-                        (dx * dx + dy * dy + dz * dz) > epsilon_sq
-                    } else {
-                        true // New node always counts as changed
-                    }
-                }).count();
-
-                // Skip broadcast entirely when graph has converged (0 changes) and not a full sync frame
-                if changed_count == 0 && !is_full_sync {
-                    act.delta_frame_counter = (frame + 1) % 60;
-                } else {
-                    // ADR-037: V4 delta encoding retired. Every broadcast on this
-                    // path emits a canonical V3 full-state frame. `fetch_nodes()`
-                    // has already applied type flags (agent / knowledge / ontology)
-                    // to the node IDs, so the encoder receives empty type arrays
-                    // to avoid double-flagging.
-                    let analytics = act.app_state.node_analytics.read().ok();
-                    let analytics_ref = analytics.as_deref();
-                    debug_assert!(
-                        nodes.iter().all(|(id, _)| {
-                            let has_flags = (*id & 0xFC000000) != 0;
-                            !has_flags || true
-                        }),
-                        "BUG: fetch_nodes() applied type flags but encoder also received non-empty type arrays"
-                    );
-                    let binary_data = binary_protocol::encode_node_data_with_live_analytics(
-                        &nodes,
-                        analytics_ref,
-                    );
-
-                    act.total_node_count = nodes.len();
-                    let moving_nodes = nodes
-                        .iter()
-                        .filter(|(_, node_data)| {
-                            let vel = node_data.velocity();
-                            vel.x.abs() > 0.001 || vel.y.abs() > 0.001 || vel.z.abs() > 0.001
-                        })
-                        .count();
-                    act.nodes_in_motion = moving_nodes;
-
-                    act.last_transfer_size = binary_data.len();
-                    act.total_bytes_sent += binary_data.len();
-                    act.update_count += 1;
-                    act.nodes_sent_count += changed_count;
-
-                    // hot-path: trace only (fires every update cycle per client)
-                    if detailed_debug {
-                        debug!(
-                            "[Position Updates] Frame {} ({}): {} changed of {} total, {} bytes",
-                            frame,
-                            if is_full_sync { "full" } else { "delta" },
-                            changed_count,
-                            nodes.len(),
-                            binary_data.len()
-                        );
-                    }
-
-                    ctx.binary(binary_data);
-
-                    // Update previous node state for next delta computation.
-                    // On full sync frames, clear and repopulate to prevent stale
-                    // entries for deleted nodes from accumulating (VULN-09).
-                    if is_full_sync {
-                        act.delta_previous_nodes.clear();
-                    }
-                    for (node_id, node_data) in &nodes {
-                        act.delta_previous_nodes.insert(*node_id, node_data.clone());
-                    }
-                    act.delta_frame_counter = (frame + 1) % 60;
-                }
-
-                let next_interval = std::time::Duration::from_millis(actual_interval);
-                ctx.run_later(next_interval, move |act, ctx| {
-                    let subscription_msg = format!(
-                        "{{\"type\":\"subscribe_position_updates\",\"data\":{{\"interval\":{},\"binary\":{}}}}}",
-                        actual_interval, binary
-                    );
-                    <SocketFlowServer as StreamHandler<
-                        Result<ws::Message, ws::ProtocolError>,
-                    >>::handle(
-                        act,
-                        Ok(ws::Message::Text(subscription_msg.into())),
-                        ctx,
-                    );
-                });
-            }
-        }));
-    });
-    } else {
-        info!("Poll-based position updates disabled (DISABLE_POLL_POSITIONS=1). Using push path only.");
-    }
 }
 
 pub(crate) fn handle_request_swarm_telemetry(

@@ -1,6 +1,8 @@
 # ADR-027: Pod-backed Graph Views
 
 ## Status
+
+Implemented 2026-04-20 — `SolidPodService.saveGraphView/loadGraphView/listGraphViews/deleteGraphView/subscribeToGraphViewChanges` already present from ADR-027 design; `shareGraphView` added in this wave.
 Proposed
 
 ## Context

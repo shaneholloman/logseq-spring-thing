@@ -2,6 +2,8 @@
 
 ## Status
 
+Implemented 2026-04-20 (dead poll block removed from position_updates.rs; push path canonical)
+
 Proposed
 
 ## Date
