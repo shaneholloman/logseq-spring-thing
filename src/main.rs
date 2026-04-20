@@ -592,6 +592,7 @@ async fn main() -> std::io::Result<()> {
         webxr::actors::ServerNostrActor::new(server_identity.clone()).start()
     };
     let server_identity_data = web::Data::new(server_identity.clone());
+    let server_nostr_addr_for_visibility = server_nostr_addr.clone();
     let server_nostr_addr_data = web::Data::new(server_nostr_addr);
 
     // Prometheus metrics registry (task #18) — shared Arc so every handler and
@@ -603,6 +604,38 @@ async fn main() -> std::io::Result<()> {
         "[main] Prometheus MetricsRegistry ready (METRICS_ENABLED={})",
         webxr::services::metrics::metrics_enabled()
     );
+
+    // ADR-051: VisibilityTransitionService orchestrates publish/unpublish
+    // sagas (Pod MOVE + Neo4j flip + tombstone + audit). Registered as
+    // web::Data so solid-proxy's tombstone check can look it up. Gated at
+    // the call site by VISIBILITY_TRANSITIONS.
+    let visibility_transition_service = match webxr::services::pod_client::PodClient::from_env() {
+        Ok(pc) => {
+            let svc = std::sync::Arc::new(
+                webxr::sovereign::VisibilityTransitionService::new(
+                    std::sync::Arc::new(pc),
+                    app_state.neo4j_adapter.clone(),
+                    server_nostr_addr_for_visibility,
+                    Some(metrics_registry.clone()),
+                ),
+            );
+            info!(
+                "[main] VisibilityTransitionService wired (VISIBILITY_TRANSITIONS={})",
+                std::env::var("VISIBILITY_TRANSITIONS").unwrap_or_else(|_| "unset".to_string())
+            );
+            Some(svc)
+        }
+        Err(e) => {
+            warn!(
+                "[main] VisibilityTransitionService not wired: {} — tombstone check inert",
+                e
+            );
+            None
+        }
+    };
+    let visibility_transition_data = visibility_transition_service
+        .as_ref()
+        .map(|svc| web::Data::new(svc.clone()));
 
     let app_state_data = web::Data::new(app_state);
     let validation_service = web::Data::new(validation_handler::ValidationService::new());
@@ -748,10 +781,19 @@ async fn main() -> std::io::Result<()> {
             .app_data(briefing_service.clone())
             .app_data(bead_orchestrator.clone())
             .app_data(validation_service.clone())
-            .app_data(physics_service.clone())
-            
-            
-            .route("/wss", web::get().to(socket_flow_handler)) 
+            .app_data(physics_service.clone());
+
+            // ADR-051: optional VisibilityTransitionService web::Data. When
+            // absent (PodClient couldn't be constructed at startup), the
+            // solid-proxy's tombstone check becomes inert and GETs pass
+            // straight through to JSS.
+            let app = if let Some(vts) = visibility_transition_data.as_ref() {
+                app.app_data(vts.clone())
+            } else {
+                app
+            };
+            let app = app
+                .route("/wss", web::get().to(socket_flow_handler))
             .route("/ws/speech", web::get().to(speech_socket_handler))
             .route("/ws/mcp-relay", web::get().to(mcp_relay_handler)) 
             

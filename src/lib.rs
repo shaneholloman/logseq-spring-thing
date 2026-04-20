@@ -23,6 +23,7 @@ pub mod ports;
 pub mod repositories;
 pub mod services;
 pub mod settings;
+pub mod sovereign;
 pub mod telemetry;
 pub mod types;
 
