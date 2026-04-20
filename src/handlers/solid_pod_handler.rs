@@ -167,7 +167,10 @@ impl NativeSolidService {
         };
 
         let required = method_to_mode(&method);
-        if !evaluate_access(acl.as_ref(), agent_uri.as_deref(), &path, required) {
+        // F4 (ADR-056): evaluate_access gained a `request_origin` parameter.
+        // VisionClaw mounts solid-pod-rs natively over its own auth; we pass
+        // None here (origin check intentionally off for this internal path).
+        if !evaluate_access(acl.as_ref(), agent_uri.as_deref(), &path, required, None) {
             return forbidden_response(acl.as_ref(), agent_uri.as_deref(), &path);
         }
 
