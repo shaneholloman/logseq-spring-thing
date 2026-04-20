@@ -1,44 +1,34 @@
+// ADR-039 (Implemented 2026-04-20): ProtectedSettingsActor has been merged
+// into the canonical SettingsActor (see optimized_settings_actor.rs).
+//
+// This module now only hosts the protected-partition *message types* so that
+// existing call sites importing `crate::actors::protected_settings_actor::*`
+// keep working. The actor type itself is a backward-compatible alias over
+// `OptimizedSettingsActor` (a.k.a. `SettingsActor`).
+
 use actix::prelude::*;
-use log::info;
 use serde_json::Value;
 
-use crate::models::protected_settings::{ApiKeys, NostrUser, ProtectedSettings};
+use crate::models::protected_settings::{ApiKeys, NostrUser};
 
-pub struct ProtectedSettingsActor {
-    settings: ProtectedSettings,
-}
+/// Backward-compatible alias. All new code should use
+/// [`crate::actors::SettingsActor`]. Existing callers referring to
+/// `ProtectedSettingsActor` now resolve to the unified actor and therefore
+/// address the same actor instance that serves public settings.
+pub type ProtectedSettingsActor = crate::actors::optimized_settings_actor::OptimizedSettingsActor;
 
-impl ProtectedSettingsActor {
-    pub fn new(settings: ProtectedSettings) -> Self {
-        info!("ProtectedSettingsActor created");
-        Self { settings }
-    }
-}
+// ---------------------------------------------------------------------------
+// Protected-partition messages. Handlers live on `OptimizedSettingsActor`
+// (optimized_settings_actor.rs). Do not move them back; the unified actor is
+// the single authority for protected settings after ADR-039.
+// ---------------------------------------------------------------------------
 
-impl Actor for ProtectedSettingsActor {
-    type Context = Context<Self>;
-
-    fn started(&mut self, _ctx: &mut Self::Context) {
-        info!("ProtectedSettingsActor started");
-    }
-}
-
-// Message to get API keys for a user
 #[derive(Message)]
 #[rtype(result = "ApiKeys")]
 pub struct GetApiKeys {
     pub pubkey: String,
 }
 
-impl Handler<GetApiKeys> for ProtectedSettingsActor {
-    type Result = MessageResult<GetApiKeys>;
-
-    fn handle(&mut self, msg: GetApiKeys, _ctx: &mut Self::Context) -> Self::Result {
-        MessageResult(self.settings.get_api_keys(&msg.pubkey))
-    }
-}
-
-// Message to validate client token
 #[derive(Message)]
 #[rtype(result = "bool")]
 pub struct ValidateClientToken {
@@ -46,15 +36,6 @@ pub struct ValidateClientToken {
     pub token: String,
 }
 
-impl Handler<ValidateClientToken> for ProtectedSettingsActor {
-    type Result = bool;
-
-    fn handle(&mut self, msg: ValidateClientToken, _ctx: &mut Self::Context) -> Self::Result {
-        self.settings.validate_client_token(&msg.pubkey, &msg.token)
-    }
-}
-
-// Message to store client token
 #[derive(Message)]
 #[rtype(result = "()")]
 pub struct StoreClientToken {
@@ -62,15 +43,6 @@ pub struct StoreClientToken {
     pub token: String,
 }
 
-impl Handler<StoreClientToken> for ProtectedSettingsActor {
-    type Result = ();
-
-    fn handle(&mut self, msg: StoreClientToken, _ctx: &mut Self::Context) -> Self::Result {
-        self.settings.store_client_token(msg.pubkey, msg.token);
-    }
-}
-
-// Message to update user API keys
 #[derive(Message)]
 #[rtype(result = "Result<NostrUser, String>")]
 pub struct UpdateUserApiKeys {
@@ -78,71 +50,26 @@ pub struct UpdateUserApiKeys {
     pub api_keys: ApiKeys,
 }
 
-impl Handler<UpdateUserApiKeys> for ProtectedSettingsActor {
-    type Result = Result<NostrUser, String>;
-
-    fn handle(&mut self, msg: UpdateUserApiKeys, _ctx: &mut Self::Context) -> Self::Result {
-        self.settings
-            .update_user_api_keys(&msg.pubkey, msg.api_keys)
-    }
-}
-
-// Message to cleanup expired tokens
 #[derive(Message)]
 #[rtype(result = "()")]
 pub struct CleanupExpiredTokens {
     pub max_age_hours: i64,
 }
 
-impl Handler<CleanupExpiredTokens> for ProtectedSettingsActor {
-    type Result = ();
-
-    fn handle(&mut self, msg: CleanupExpiredTokens, _ctx: &mut Self::Context) -> Self::Result {
-        self.settings.cleanup_expired_tokens(msg.max_age_hours);
-    }
-}
-
-// Message to merge settings
 #[derive(Message)]
 #[rtype(result = "Result<(), String>")]
 pub struct MergeSettings {
     pub settings: Value,
 }
 
-impl Handler<MergeSettings> for ProtectedSettingsActor {
-    type Result = Result<(), String>;
-
-    fn handle(&mut self, msg: MergeSettings, _ctx: &mut Self::Context) -> Self::Result {
-        self.settings.merge(msg.settings)
-    }
-}
-
-// Message to save settings to file
 #[derive(Message)]
 #[rtype(result = "Result<(), String>")]
 pub struct SaveSettings {
     pub path: String,
 }
 
-impl Handler<SaveSettings> for ProtectedSettingsActor {
-    type Result = Result<(), String>;
-
-    fn handle(&mut self, msg: SaveSettings, _ctx: &mut Self::Context) -> Self::Result {
-        self.settings.save(&msg.path)
-    }
-}
-
-// Message to get user by pubkey
 #[derive(Message)]
 #[rtype(result = "Option<NostrUser>")]
 pub struct GetUser {
     pub pubkey: String,
-}
-
-impl Handler<GetUser> for ProtectedSettingsActor {
-    type Result = Option<NostrUser>;
-
-    fn handle(&mut self, msg: GetUser, _ctx: &mut Self::Context) -> Self::Result {
-        self.settings.users.get(&msg.pubkey).cloned()
-    }
 }

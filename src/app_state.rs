@@ -890,6 +890,10 @@ impl AppState {
                 .map_err(|e| format!("Failed to create Neo4j actor settings repository: {}", e))?,
         );
 
+        // ADR-039: single canonical SettingsActor handles both public and
+        // protected partitions. The former ProtectedSettingsActor is now a
+        // type alias for OptimizedSettingsActor (see protected_settings_actor.rs),
+        // so we spawn one actor and hand out the same address under both fields.
         let settings_actor = OptimizedSettingsActor::with_actors(
             actor_settings_repository,
             Some(graph_service_addr.clone()),
@@ -898,7 +902,8 @@ impl AppState {
         .map_err(|e| {
             log::error!("Failed to create OptimizedSettingsActor: {}", e);
             e
-        })?;
+        })?
+        .with_protected(ProtectedSettings::default());
         let settings_addr = settings_actor.start();
 
         
@@ -951,9 +956,13 @@ impl AppState {
 
         }
 
-        info!("[AppState::new] Starting ProtectedSettingsActor");
-        let protected_settings_addr =
-            ProtectedSettingsActor::new(ProtectedSettings::default()).start();
+        // ADR-039: ProtectedSettingsActor is now a type alias for the unified
+        // SettingsActor. Instead of spawning a second actor, reuse the already
+        // started `settings_addr` under the protected-settings field so that
+        // all existing callers (nostr handler, api key lookups, token store)
+        // route to the same canonical actor.
+        info!("[AppState::new] Reusing SettingsActor for protected partition (ADR-039)");
+        let protected_settings_addr = settings_addr.clone();
 
         info!("[AppState::new] Starting WorkspaceActor");
         let workspace_addr = WorkspaceActor::new().start();
