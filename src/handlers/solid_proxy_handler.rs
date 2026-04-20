@@ -23,6 +23,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::models::protected_settings::NostrUser;
 use crate::services::nostr_service::NostrService;
+use crate::sovereign::VisibilityTransitionService;
 use crate::utils::nip98::{generate_nip98_token, build_auth_header, validate_nip98_token, Nip98Config};
 use nostr_sdk::{Keys, PublicKey, ToBech32};
 
@@ -429,6 +430,51 @@ pub async fn handle_solid_proxy(
         "Solid proxy: {} /solid/{} -> JSS",
         method, target_path
     );
+
+    // ADR-051 tombstone check: GETs to `<npub>/public/…` paths must return
+    // HTTP 410 Gone if the resource was unpublished. Runs before upstream
+    // traffic and before double-gate evaluation (tombstone = read concern;
+    // double-gate = write concern).
+    if method.as_str() == "GET" {
+        let pod_relative = match target_path.split_once('/') {
+            Some((_npub, rest)) => rest,
+            None => target_path.as_str(),
+        };
+        let normalised = pod_relative.trim_start_matches('/');
+        let is_public = normalised.starts_with("public/") || normalised == "public";
+        if is_public {
+            if let Some(vts) = req
+                .app_data::<web::Data<std::sync::Arc<VisibilityTransitionService>>>()
+            {
+                let ops = vts.neo4j_ops();
+                let check_paths = [target_path.clone(), format!("/{}", target_path)];
+                for p in &check_paths {
+                    match ops.is_tombstoned(p).await {
+                        Ok(true) => {
+                            let sunset = ops
+                                .tombstone_sunset(p)
+                                .await
+                                .ok()
+                                .flatten()
+                                .unwrap_or_else(|| "now".to_string());
+                            warn!(
+                                "ADR-051 tombstone hit for GET /solid/{} (sunset={})",
+                                target_path, sunset
+                            );
+                            return HttpResponse::Gone()
+                                .insert_header(("Sunset", sunset))
+                                .content_type("text/plain; charset=utf-8")
+                                .body("Resource was unpublished by the owner.");
+                        }
+                        Ok(false) => {}
+                        Err(e) => {
+                            debug!("tombstone lookup failed for {}: {}", p, e);
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     // ADR-052 double gate: PUTs under `<npub>/public/kg/*` must assert
     // public visibility either via `public:: true` in the body or the
