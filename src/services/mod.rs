@@ -48,6 +48,11 @@ pub mod kpi_computation_service;
 pub mod pod_client;
 pub mod ingest_saga;
 
+// ADR-057 / design 03 §5 §6 §8 — contributor automations, inbox, NIP-26 caps
+pub mod automation_routine;
+pub mod inbox_service;
+pub mod nip26_cap;
+
 // ADR-054: URN-Solid + solid-schema + Solid-Apps ecosystem alignment
 pub mod urn_solid_mapping;
 
