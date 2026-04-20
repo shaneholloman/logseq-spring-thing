@@ -26,6 +26,7 @@ import { useCameraAutoFit } from '../hooks/useCameraAutoFit'
 import { computeNodeScale } from '../utils/nodeScaling'
 import { InstancedLabels } from './InstancedLabels'
 import { layoutApi, type LayoutPosition } from '../../../api/layoutApi'
+import { SovereignOverlay } from './SovereignOverlay'
 
 const logger = createLogger('GraphManager')
 
@@ -1413,6 +1414,14 @@ const GraphManager: React.FC<GraphManagerProps> = ({ onDragStateChange }) => {
         graphTypeVisuals={graphTypeVisuals}
         ssspResult={normalizedSSSPResult}
         isXRMode={isXRMode}
+      />
+
+      {/* Sovereign-mesh overlay: BRIDGE_TO filaments, private-node opacity,
+          tombstone markers (ADR-048 / ADR-049). Feature-flag gated inside. */}
+      <SovereignOverlay
+        nodes={typeFilteredNodes}
+        nodePositionsRef={nodePositionsRef}
+        nodeIdToIndexMap={nodeIdToIndexMap}
       />
     </>
   )

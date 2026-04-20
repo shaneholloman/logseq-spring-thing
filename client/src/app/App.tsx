@@ -29,6 +29,8 @@ import { WorkerErrorModal } from '../components/WorkerErrorModal';
 import solidPodService from '../services/SolidPodService';
 import { useHashRoute } from '../hooks/useHashRoute';
 import { EnterpriseFullPage, EnterpriseDrawerMount } from '../features/enterprise';
+import { BrokerInbox } from '../features/broker/BrokerInbox';
+import { MigrationEventToast } from '../features/migration/MigrationEventToast';
 
 const logger = createLogger('App');
 
@@ -220,6 +222,10 @@ function App() {
                     <DebugControlPanel />
                     <WorkerErrorModal />
                     {!route.startsWith('/enterprise') && <EnterpriseDrawerMount />}
+                    {/* Sprint 3: Judgment Broker inbox + migration event toast
+                        (ADR-048 / ADR-051). Feature-flag gated internally. */}
+                    {!route.startsWith('/enterprise') && <BrokerInbox compact />}
+                    {!route.startsWith('/enterprise') && <MigrationEventToast />}
                   </>
                 )}
               </ApplicationModeProvider>
