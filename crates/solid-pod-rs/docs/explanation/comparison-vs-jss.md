@@ -17,7 +17,7 @@ feature-level status table.
 |--------------------------------|-----------------------|---------------------------|
 | Language                       | JavaScript (Node 18+) | Rust 2021 / 1.74+         |
 | Binary distribution            | `npm install -g javascript-solid-server` → `jss` | Build from source; drop-in crate |
-| Licence                        | AGPL-3.0-only         | MIT OR Apache-2.0 dual    |
+| Licence                        | AGPL-3.0-only         | AGPL-3.0-only (inherited) |
 | HTTP framework                 | Fastify               | Agnostic; actix/axum/hyper|
 | Configuration                  | `JSS_*` env vars + optional `config.json` | Rust code (no runtime config loader) |
 | Memory footprint (idle)        | ~80 MB                | ~8 MB                     |
@@ -169,7 +169,8 @@ Pros and cons:
   seconds.
 - Linear cost increase per resource (Rust + tokio scales further per
   core than V8).
-- MIT/Apache-2.0 licensing rather than AGPL-3.0 — fewer compliance
+- AGPL-3.0-only licensing inherited from the JSS ecosystem covenant — same
+  network-service copyleft protection, different runtime — fewer compliance
   concerns when embedding into proprietary or non-AGPL services.
 
 ## When to stay on JSS

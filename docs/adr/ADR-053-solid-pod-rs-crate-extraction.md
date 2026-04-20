@@ -104,19 +104,27 @@ git push new-origin solid-pod-rs-history:main
 
 ### Licensing
 
-Dual **MIT OR Apache-2.0** (Rust ecosystem standard). JSS is
-AGPL-3.0-only. This crate is deliberately MIT/Apache-2.0 dual despite
-JSS being AGPL because solid-pod-rs is NOT a derivative work of JSS's
-JavaScript source — the Rust implementation originates from
-community-forum-rs's pod-worker (written in Rust from scratch) and
-treats JSS purely as a reference-only resource to understand Solid
-Protocol behaviour. No JSS JavaScript was translated, transliterated,
-or machine-ported. See `crates/solid-pod-rs/NOTICE` §"Licence
-relationship to JavaScriptSolidServer (JSS)" for the full rationale
-and the independence claims about the test corpora.
+**AGPL-3.0-only**, inherited from the JavaScriptSolidServer (JSS)
+ecosystem covenant. JSS is AGPL-3.0-only and solid-pod-rs preserves
+the same network-service copyleft protection rather than weakening
+it with a permissive relicence. See `crates/solid-pod-rs/NOTICE` for
+the full provenance chain (JSS → community-forum-rs pod-worker →
+VisionClaw crates/solid-pod-rs → dreamlab-ai/solid-pod-rs) and the
+rationale for inheritance.
 
-Consumers who bundle JSS and this crate together must verify their own
-compliance with AGPL-3.0's network-service clause for JSS.
+Operational consequences:
+
+- Consumers operating solid-pod-rs as a network-accessible service
+  must make their corresponding source code available to their users
+  per AGPL §13.
+- VisionClaw itself is already AGPL-compatible; the previous MIT-OR-
+  Apache-2.0 dual-licence stance was an under-claim that weakened the
+  Solid ecosystem covenant. 0.3.0-alpha.3 (tracked in
+  `crates/solid-pod-rs/CHANGELOG.md`) migrates to AGPL.
+- Dependency-graph policy lives in `crates/solid-pod-rs/deny.toml`:
+  AGPL-3.0 is on the allowlist; permissive ecosystem licences
+  (MIT, Apache-2.0, BSD, ISC, MPL-2.0, etc.) remain on the allowlist
+  for compatibility with the wider Rust dependency graph.
 
 ### JavaScriptSolidServer Engagement
 

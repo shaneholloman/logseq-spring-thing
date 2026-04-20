@@ -6,12 +6,14 @@ to a solid-pod-rs-backed server, with no data loss and a tested
 rollback.
 
 This guide is written for operators who already run JSS and want to
-replace the runtime while keeping their pod data intact. JSS is
-licensed AGPL-3.0-only; solid-pod-rs is MIT/Apache-2.0 dual. Replacing
-the server runtime does not change the licence of data stored in the
-pod, but it does change your compliance surface: once JSS is no longer
-in the network path, you no longer carry AGPL-3.0's network-service
-clause for the server software.
+replace the runtime while keeping their pod data intact. Both JSS and
+solid-pod-rs are licensed **AGPL-3.0-only**; solid-pod-rs inherits
+the licence from the JSS ecosystem covenant. Replacing the server
+runtime does not change the licence of data stored in the pod, and it
+does not change your AGPL compliance surface — AGPL §13 continues to
+require that users of the network service receive the corresponding
+source code. You are swapping one AGPL server for another AGPL server;
+licence-wise, nothing changes.
 
 ## TL;DR
 
@@ -34,7 +36,7 @@ clause for the server software.
 | HTTP framework | Fastify | framework-agnostic; examples use actix-web |
 | JSON Patch (RFC 6902) | supported | supported |
 | ActivityPub federation | feature-flagged (`activitypub: true`) | not supported |
-| Licence | AGPL-3.0-only | MIT/Apache-2.0 dual |
+| Licence | AGPL-3.0-only | AGPL-3.0-only (inherited) |
 
 The most important difference is the WAC default. **Do not start
 solid-pod-rs in production without first installing a `/.acl`
@@ -257,8 +259,8 @@ translated, forward and backward migration are symmetric.
 - Strong typing at every API boundary — `AccessMode`, `RdfFormat`,
   `PatchDialect`, `StorageEvent`.
 - Straight path to S3, R2, IPFS backends via the `Storage` trait.
-- MIT/Apache-2.0 licensing rather than AGPL-3.0 — fewer compliance
-  constraints when embedding into proprietary or non-AGPL services.
+- AGPL-3.0-only licensing inherited from JSS — same covenant, different
+  runtime, no change in your obligations as a network-service operator.
 
 ## See also
 
