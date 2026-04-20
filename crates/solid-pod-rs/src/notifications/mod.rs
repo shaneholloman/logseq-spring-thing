@@ -29,6 +29,11 @@ use tokio::sync::{broadcast, RwLock};
 use crate::error::PodError;
 use crate::storage::StorageEvent;
 
+// F3 (Sprint 4): Legacy `solid-0.1` notification adapter for SolidOS
+// data-browser compat. Feature-gated — zero runtime cost when off.
+#[cfg(feature = "legacy-notifications")]
+pub mod legacy;
+
 /// `as:` type URIs per Activity Streams 2.0.
 pub mod as_ns {
     pub const CONTEXT: &str = "https://www.w3.org/ns/activitystreams";

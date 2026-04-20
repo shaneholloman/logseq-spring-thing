@@ -43,6 +43,13 @@ pub mod webid;
 #[cfg(feature = "oidc")]
 pub mod oidc;
 
+/// Transport-agnostic HTTP / WebSocket handler drivers. Consumers wire
+/// these into their HTTP framework of choice. Feature-gated; present
+/// only when at least one handler is enabled. Respects the F7
+/// library-server boundary — this crate never mounts routes itself.
+#[cfg(feature = "legacy-notifications")]
+pub mod handlers;
+
 // Re-exports for ergonomic consumers.
 pub use error::PodError;
 pub use metrics::SecurityMetrics;
