@@ -1,7 +1,10 @@
 # cargo-deny configuration for solid-pod-rs
 #
-# Licence: solid-pod-rs is MIT OR Apache-2.0. We deny any copyleft licence
-# (GPL/AGPL/LGPL) to prevent accidental contamination of a permissive crate.
+# Licence: solid-pod-rs is AGPL-3.0-only, inherited from the JSS ecosystem
+# covenant. The allowlist below permits AGPL-3.0 (the crate itself) plus the
+# standard Rust-ecosystem permissive licences its dependencies use. Other
+# restrictive / commercial licences remain denied via the "deny-by-default"
+# posture: anything not on the allowlist fails the licence check.
 #
 # Reference: https://embarkstudios.github.io/cargo-deny/
 
@@ -44,6 +47,10 @@ version = 2
 unused-allowed-license = "allow"
 confidence-threshold = 0.93
 allow = [
+    # solid-pod-rs itself
+    "AGPL-3.0-only",
+    "AGPL-3.0-or-later",
+    # Standard Rust-ecosystem permissive licences used by dependencies
     "MIT",
     "Apache-2.0",
     "Apache-2.0 WITH LLVM-exception",
@@ -57,8 +64,10 @@ allow = [
     "Unicode-DFS-2016",
     "Unicode-3.0",
 ]
-# Copyleft licences are denied to keep solid-pod-rs permissive.
-# GPL/AGPL/LGPL (any version) will fail the licence check.
+# AGPL is explicitly allowed (the crate inherits it from JSS). Other
+# copyleft / commercial / source-available licences (e.g. BUSL, SSPL,
+# Elastic-2.0, commercial-only) remain implicitly denied: anything not on
+# the allowlist fails the licence check.
 exceptions = []
 
 [[licenses.clarify]]

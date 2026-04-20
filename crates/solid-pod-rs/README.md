@@ -52,3 +52,21 @@ cargo run --example standalone -p solid-pod-rs
 
 Extracted from `community-forum-rs/crates/pod-worker`. See NOTICE for
 full provenance.
+
+## Licence
+
+**AGPL-3.0-only** — inherited from the JavaScriptSolidServer ecosystem
+covenant.
+
+This means: if you operate solid-pod-rs as a network-accessible service,
+AGPL §13 requires you to make the corresponding source code available to
+your users under AGPL-3.0 or later. See `LICENSE` and `NOTICE` for full
+terms and provenance.
+
+If AGPL-3.0 is incompatible with your project's licence strategy, consider:
+- Contributing upstream rather than hard-forking
+- Using the crate in a sidecar architecture where AGPL obligations are
+  contained to the sidecar process
+- Running JSS itself (same licence; different language)
+
+We welcome issues + PRs asking about specific compatibility scenarios.

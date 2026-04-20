@@ -110,7 +110,7 @@ jobs:
             echo "---"
             echo
             echo "Crate: \`solid-pod-rs\` — Solid Pod server (WAC + LDP + Notifications + Solid-OIDC)."
-            echo "Licence: MIT OR Apache-2.0."
+            echo "Licence: AGPL-3.0-only (inherited from JSS ecosystem covenant)."
           } > "${BODY_FILE}"
           echo "path=${BODY_FILE}" >> "${GITHUB_OUTPUT}"
           cat "${BODY_FILE}"
