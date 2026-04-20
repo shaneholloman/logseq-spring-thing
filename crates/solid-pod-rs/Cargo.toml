@@ -62,3 +62,64 @@ tokio = { version = "1", features = ["full"] }
 tempfile = "3"
 actix-web = "4"
 wiremock = "0.6"
+criterion = { version = "0.5", features = ["html_reports"] }
+axum = "0.7"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+rand = { version = "0.8", features = ["small_rng"] }
+
+# ---------------------------------------------------------------------------
+# Examples — runnable via `cargo run --example <name>`.
+# ---------------------------------------------------------------------------
+
+[[example]]
+name = "standalone"
+path = "examples/standalone.rs"
+
+[[example]]
+name = "embed_in_actix"
+path = "examples/embed_in_actix.rs"
+
+[[example]]
+name = "custom_storage"
+path = "examples/custom_storage.rs"
+
+[[example]]
+name = "nip98_client"
+path = "examples/nip98_client.rs"
+
+[[example]]
+name = "notifications_consumer"
+path = "examples/notifications_consumer.rs"
+
+[[example]]
+name = "webhook_receiver"
+path = "examples/webhook_receiver.rs"
+
+[[example]]
+name = "wac_admin"
+path = "examples/wac_admin.rs"
+
+[[example]]
+name = "oidc_client"
+path = "examples/oidc_client.rs"
+required-features = ["oidc"]
+
+# ---------------------------------------------------------------------------
+# Benchmarks — criterion-based, see `docs/benchmarks.md`.
+# ---------------------------------------------------------------------------
+
+[[bench]]
+name = "storage_backend_bench"
+harness = false
+
+[[bench]]
+name = "wac_eval_bench"
+harness = false
+
+[[bench]]
+name = "ldp_content_negotiation_bench"
+harness = false
+
+[[bench]]
+name = "nip98_verify_bench"
+harness = false
