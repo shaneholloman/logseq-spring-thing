@@ -25,6 +25,15 @@ https://github.com/user-attachments/assets/f45c92dc-4800-4b57-a6e2-178da6bb0a38
 
 ---
 
+## Your Best People Are Already Running the Future
+They just haven't told you yet.
+
+More than half of generative AI users already use AI without telling their employers, and 78% of knowledge workers bring their own AI tools to work. Your workforce is already building shadow workflows, stitching together AI agents, automating procurement shortcuts, and inventing cross-functional pipelines that do not appear on any org chart. The question is no longer whether the coordination function is shifting. It is whether you will surface, govern, and compound what people have already discovered.
+
+The personal agent revolution has a governance problem. As information routing becomes computationally cheap, the strategic challenge shifts from moving information around the organisation to deciding where AI can be trusted, where human judgment must remain active, and how shared meaning is maintained across teams and agents. Tools like Claude Code have shown that autonomous AI agents are powerful, popular, and ready to act. They've also shown what happens when agents operate without shared semantics, formal reasoning, or organisational guardrails: unauthorised actions, prompt injection attacks, and enterprises deploying security scanners just to detect rogue agent instances on their own networks.
+
+VisionClaw takes the opposite approach. Governance isn't an inhibitor, it's an accelerant — a way to turn shadow workflows into auditable, reusable organisational capability.
+
 ## The problem
 
 Every organisation rots in the same three directions.
