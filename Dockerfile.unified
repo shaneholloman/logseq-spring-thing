@@ -257,8 +257,10 @@ COPY src ./src
 COPY data/schema ./data/schema
 COPY whelk-rs ./whelk-rs
 
-# Workspace member crates (required for cargo fetch — see ADR-053)
-COPY crates ./crates
+# ADR-053: solid-pod-rs crate externalised (cc4389a56 retired the
+# local crates/ tree). Cargo.toml workspace declares `members = ["."]`
+# only, so there is nothing to copy here. Left as a deliberate no-op
+# so anyone following git-log → Dockerfile line numbers finds the note.
 
 # Copy client source (not built, will use dev server)
 COPY client ./client
