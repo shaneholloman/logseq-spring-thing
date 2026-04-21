@@ -110,6 +110,12 @@ services:
       # Nostr bead provenance bridge — scoped to visionflow only (privkey must not leak to other containers)
       # Bridge pubkey: eb47d8a792a4709329270a9f85f012326c61867a913791dc5f89dc7a0a760754
       VISIONCLAW_NOSTR_PRIVKEY: ${VISIONCLAW_NOSTR_PRIVKEY:-}
+      # ServerIdentity (ADR-040) — server_identity.rs expects SERVER_NOSTR_PRIVKEY.
+      # Alias the existing bridge key so the server has a stable identity to sign
+      # kind 30023/30100/30200/30300 events with. Fallback to auto-generate in dev
+      # per `server_identity.rs:57-91` — APP_ENV must not be "production" for that.
+      SERVER_NOSTR_PRIVKEY: ${SERVER_NOSTR_PRIVKEY:-${VISIONCLAW_NOSTR_PRIVKEY:-}}
+      SERVER_NOSTR_AUTO_GENERATE: ${SERVER_NOSTR_AUTO_GENERATE:-true}
       FORUM_RELAY_URL: ${FORUM_RELAY_URL:-}
       # Neo4j Configuration
       NEO4J_URI: ${NEO4J_URI:-bolt://neo4j:7687}
@@ -205,6 +211,8 @@ services:
       VISIONFLOW_AGENT_KEY: ${VISIONFLOW_AGENT_KEY:-changeme-agent-key}
       # Nostr bead provenance bridge — scoped here only, never in common-environment
       VISIONCLAW_NOSTR_PRIVKEY: ${VISIONCLAW_NOSTR_PRIVKEY:-}
+      # ServerIdentity (ADR-040) — production REQUIRES an explicit key; no auto-generate here.
+      SERVER_NOSTR_PRIVKEY: ${SERVER_NOSTR_PRIVKEY:-${VISIONCLAW_NOSTR_PRIVKEY:-}}
       FORUM_RELAY_URL: ${FORUM_RELAY_URL:-}
     volumes:
       # Production: ONLY data volumes (no source mounts, no Docker socket)
