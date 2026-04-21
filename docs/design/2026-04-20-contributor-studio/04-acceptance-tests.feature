@@ -831,3 +831,134 @@ Feature: Memory by default with inspectable write-once-read-many files
 #   concurrent-session scenarios are asserted here.
 # - Dual-tier identity bridge edges (DDD Open Question 2) are not tested;
 #   add BRIDGE_TO-emission scenarios to Feature 11 once timing is decided.
+
+# ═════════════════════════════════════════════════════════════════════════════
+# Feature 13 — Risk register R11–R14 (promoted from DR5–DR8 during reconciliation)
+# ═════════════════════════════════════════════════════════════════════════════
+
+@risk-R11 @sensei @budget
+Feature: Sensei sustained background cost has an enforced per-contributor budget cap
+  As the Admin operating VisionClaw at scale
+  I want per-contributor Sensei budget caps so that nudge frequency cannot
+    blow the Tier-2 Haiku inference spend
+  So that cost grows with contributor count, not with attention span
+  [Satisfies PRD-003 §14 R11; design 03 §12 observability]
+
+  Background:
+    Given the contributor "Rosa" is active in /studio
+    And the Tier-2 daily budget is set to 40 sensei_nudge calls per contributor
+
+  Scenario: Budget approaching triggers a warning, not a block
+    Given Rosa has consumed 35 sensei_nudge calls today
+    When the Ontology Guide Rail would emit a 36th nudge
+    Then the nudge is emitted at Tier 2
+    And the event "sensei.budget.warning" is recorded with remaining = 4
+
+  Scenario: Budget exhaustion degrades Sensei to Tier-1 ontology-distance heuristics
+    Given Rosa has consumed exactly 40 sensei_nudge calls today
+    When the Ontology Guide Rail is asked to emit a nudge
+    Then the call MUST route to Tier 1 Agent Booster, not Tier 2 Haiku
+    And the event "sensei.budget.exhausted" is recorded
+    And the nudge-card UI shows a subtle "Tier-1 fallback" badge
+
+  Scenario: Budget resets at contributor's configured daily boundary
+    Given Rosa's budget is exhausted
+    And her `preferences.jsonld` sets her daily reset boundary to 00:00 Europe/London
+    When the clock passes 00:00 Europe/London
+    Then Rosa's consumed counter returns to 0
+    And Tier-2 routing resumes
+
+@risk-R12 @skill-compatibility-scanner @back-pressure
+Feature: Compatibility Scanner fan-out is bounded and rate-limited
+  As the Admin
+  I want the SkillCompatibilityScanner to never starve the mesh benchmark
+    runner when the model-routing config (ADR-026) changes
+  So that hundreds of skills don't re-benchmark simultaneously
+  [Satisfies PRD-003 §14 R12; design 02 §8.4]
+
+  Background:
+    Given 250 Personal-scope skills across 40 contributor pods are installed
+    And the per-contributor hourly re-benchmark quota is 10 skills
+
+  Scenario: Tier-mapping change queues benchmarks at bounded concurrency
+    Given the bounded-concurrency parallel-run limit is 8
+    When an Admin changes the ADR-026 tier mapping for a base model
+    Then the Scanner enumerates all 250 skills into a priority queue
+    And at most 8 benchmarks execute in parallel at any instant
+    And per-contributor enqueue rate MUST NOT exceed 10 skills/hour
+    And the queue depth is surfaced in the Admin dashboard within 5 s
+
+  Scenario: Tier-mapping change is feature-flagged with a planned rollout schedule
+    Given an Admin is about to deploy a tier-mapping change
+    When they open the "Schedule rollout" pane
+    Then they see three fields: start_at, batch_size, batch_interval_seconds
+    And the minimum batch_size is 1 and minimum batch_interval_seconds is 60
+    And no benchmark executes before the configured start_at
+
+  Scenario: Queue-depth SLA exposed to Admin
+    Given the Scanner queue depth is non-zero
+    When the Admin visits /kpi/scanner-queue
+    Then they see the queue depth trend chart for the last 24 h
+    And they see the ETA to drain at current concurrency
+
+@risk-R13 @inbox @retention
+Feature: Inbox retention prevents unbounded growth
+  As a contributor
+  I want bounded inbox retention so runaway automations cannot fill my pod
+  So that new automation output is never silently dropped
+  [Satisfies PRD-003 §14 R13; design 03 §5, §6]
+
+  Background:
+    Given the default retention is 500 items OR 30 days, whichever first
+    And Rosa has 3 automation routines writing to /inbox/
+
+  Scenario: Over-count overflow moves oldest items to the DLQ container
+    Given Rosa's /inbox/ namespace contains 499 items
+    When a 501st arrival from routine "daily-research-brief" lands
+    Then the oldest item is MOVED to /inbox/.dlq/ (not deleted)
+    And the event "inbox.quota.approached" is emitted
+    And Rosa's Workspace bar shows a visible warning chip within 5 s
+
+  Scenario: Over-age overflow moves expired items to the archive container
+    Given an inbox item's created_at is older than 30 days
+    When the retention sweeper runs
+    Then the item is MOVED to /inbox/.archive/
+    And a one-click "Restore" action is available in the Studio inbox view
+
+  Scenario: Contributor can raise per-namespace retention when pod storage allows
+    Given Rosa has 50 GiB of pod quota available
+    When she sets /inbox/routine-heavy/retention_max_items to 2000 in preferences.jsonld
+    Then the sweeper honours the new limit for that namespace only
+    And the default 500 remains for other namespaces
+
+@risk-R14 @websocket @fan-out
+Feature: WebSocket /api/ws/studio fan-out is capped per WebID
+  As the platform operator
+  I want per-WebID connection caps and topic-scoped broadcasts so that
+    a publish spike cannot saturate the relay
+  So that contributors with many tabs open cannot self-DDOS the mesh
+  [Satisfies PRD-003 §14 R14; design 01 §15]
+
+  Background:
+    Given the per-WebID /api/ws/studio connection cap is 4
+    And the chat and nudge channels have independent rate limits
+
+  Scenario: Excess session returns 429 with retry-after
+    Given Rosa has 4 concurrent /api/ws/studio sessions open
+    When a 5th tab attempts to open a new /api/ws/studio session
+    Then the server responds HTTP 429 Too Many Requests
+    And the response includes a Retry-After header of at least 5 seconds
+    And one of Rosa's existing sessions is NOT terminated to make room
+
+  Scenario: Mesh publish fan-out scopes by workspace_id, not webid
+    Given 1000 contributors have active /studio sessions across 2000 workspaces
+    When a Mesh skill is promoted and a "skill.mesh.promoted" broadcast fires
+    Then the broadcast is scoped to subscribers of the "skills:mesh" topic only
+    And no subscriber's chat or inbox channels are touched
+    And subscribers NOT on the "skills:mesh" topic receive zero frames
+
+  Scenario: Chat and nudge channels have independent rate limits
+    Given Rosa has hit the nudge channel's rate limit
+    When her AI partner attempts to stream a chat message to her
+    Then the chat message is delivered without delay
+    And the nudge channel returns a rate-limit indicator to the Sensei service

@@ -78,7 +78,7 @@ Continuing the personas introduced in the Insight Migration PRD (Rosa, Idris, Ch
 
 **Rosa, research lead at a 30-person AI policy institute.** Has 2,000+ Logseq pages. She opens Studio because she wants an AI partner that knows her corpus, not a chatbot she has to re-brief every session. Her Studio cockpit combines the graph view of her pod's knowledge graph, the AI partner lane pre-loaded with her pod's `/private/agent-memory/` episodic history, the Ontology Sensei rail suggesting three already-existing terms adjacent to her current note, and her inbox where automations have left synthesised briefs. When she has a reusable prompt, she publishes it to the Mesh Dojo at team scope. Her juniors install it the same day. The Sensei's job is to stop her re-inventing vocabulary she already has.
 
-**Idris, principal at a boutique digital-transformation consultancy.** Runs 20 client engagements a year. Studio is his firm's common floor: a consultant wraps up an engagement, hits "Share to Team", the deliverable template + prompt set + eval harness land in `/shared/team/` on their pod and surface to the next consultant who opens Studio with a similar client domain. Idris himself uses Pod-Native Automations to schedule weekly synthesis across his consultants' `/public/kg/` subtrees; the synthesis lands in his inbox Monday morning. Studio has to make "package an engagement" a two-minute gesture, or his team stays in their personal Logseqs and the firm compounds nothing.
+**Idris, principal at a boutique digital-transformation consultancy.** Runs 20 client engagements a year. Studio is his firm's common floor: a consultant wraps up an engagement, hits "Share to Team", the deliverable template + prompt set + eval harness land in `/shared/skills/{team}/` and `/shared/workspaces/{team}/` on their pod and surface to the next consultant who opens Studio with a similar client domain. Idris himself uses Pod-Native Automations to schedule weekly synthesis across his consultants' `/public/kg/` subtrees; the synthesis lands in his inbox Monday morning. Studio has to make "package an engagement" a two-minute gesture, or his team stays in their personal Logseqs and the firm compounds nothing.
 
 **Chen, regulated-industry SME at a medical-device manufacturer.** ISO 14971 and IEC 62304 land on her desk. She needs every clinical-risk claim to trace to a controlled vocabulary. Studio's Ontology Sensei rail warns her when a draft note invents a term that collides with an existing OwlClass; the AI partner lane refuses to continue a draft that cites a retired skill; the share-to-mesh funnel routes her proposed vocabulary additions through the Policy Engine (ADR-045) before they ever reach the Broker. For Chen, Studio is the compliance harness that prevents casual authoring from creating casual vocabulary.
 
@@ -145,7 +145,7 @@ The Contributor AI Support Stratum is structured as four pillars. Each pillar ha
 
 **Capabilities**:
 - `SkillPackage` is a first-class aggregate in BC19 (Skill Lifecycle) with three share states: Private, Team, Mesh (details in §10).
-- Skills live in `/public/skills/` (mesh), `/shared/team/skills/` (team), `/private/skills/` (private) in the pod; discoverable via Type Index entries per ADR-029.
+- Skills live in `/public/skills/` (mesh), `/shared/skills/{team}/` (team), `/private/skills/` (private) in the pod; discoverable via Type Index entries per ADR-029.
 - Install pulls a skill's manifest and fixtures into the installing contributor's `/private/skills/` as a linked copy with provenance back to the origin.
 - Every skill has a required `SkillEvalSuite` before it can transition from Private to Team, and a `SkillBenchmark` record before Team to Mesh (details in §11).
 - Retirement is a first-class state that does not delete the skill but prevents new installs and surfaces a migration banner to existing users.
@@ -248,7 +248,7 @@ The pillars (§6) compose into concrete surfaces. Subsections mirror the Insight
 ### 7.6 Skill discovery
 
 - **Story**: "As a contributor I browse available skills by scope (team, mesh), tag, domain, and benchmark outcome."
-- **Signal**: `/studio/skills` route renders a filtered skill catalogue pulled from pod Type Index (ADR-029) + BC19 SkillRegistry service. `SkillCard` component displays manifest summary, share state, benchmark badge.
+- **Signal**: `/studio/:workspaceId/skills` route renders a filtered skill catalogue pulled from pod Type Index (ADR-029) + BC19 SkillRegistry service. `SkillCard` component displays manifest summary, share state, benchmark badge.
 - **Out of scope**: Commercial discovery (ratings, marketing copy).
 
 ### 7.7 Skill install
@@ -272,7 +272,7 @@ The pillars (§6) compose into concrete surfaces. Subsections mirror the Insight
 ### 7.10 Share-to-mesh funnel
 
 - **Story**: "As a contributor I submit a workspace, skill, or insight to the mesh through an explicit gate that tells me exactly what the Policy Engine, Broker, and Migration Workflow need from me."
-- **Signal**: Share funnel UI at `/studio/share/new`; validates completeness (eval suite present, redaction check passed, confidence above threshold), surfaces the checks visibly, and on submit produces the appropriate artefact: a `MigrationPayload` (ADR-049), a `WorkflowProposal` (ADR-042), or a `ShareIntent` for Team scope.
+- **Signal**: Share funnel UI at `/studio/:workspaceId/share/new`; validates completeness (eval suite present, redaction check passed, confidence above threshold), surfaces the checks visibly, and on submit produces the appropriate artefact: a `MigrationPayload` (ADR-049), a `WorkflowProposal` (ADR-042), or a `ShareIntent` for Team scope.
 - **Out of scope**: Implicit / silent promotion. Every mesh crossing is an explicit, audited action.
 
 ### 7.11 Inbox review
@@ -299,11 +299,11 @@ Studio slots into the ADR-046 router as a sixth top-level surface. Existing surf
 |-------|---------|
 | `/studio` | Studio shell index; restores last workspace or prompts to create one |
 | `/studio/:workspaceId` | Named workspace (saved split-pane layout + pinned graph selection + pinned pod context) |
-| `/studio/skills` | Skill catalogue (discovery + filters + installed list) |
-| `/studio/skills/:skillId` | Skill detail (manifest, version history, eval results, share controls) |
+| `/studio/:workspaceId/skills` | Skill catalogue (discovery + filters + installed list) |
+| `/studio/:workspaceId/skills/:skillId` | Skill detail (manifest, version history, eval results, share controls) |
 | `/studio/automations` | Automation list + composer |
 | `/studio/inbox` | Pod inbox review queue |
-| `/studio/share/new` | Share-to-mesh funnel composer |
+| `/studio/:workspaceId/share/new` | Share-to-mesh funnel composer |
 
 All routes are lazy-loaded via `React.lazy()` following the PRD-002 §14 pattern. The Studio chunk target is <60KB gzipped (skill catalogue and automations composer are sub-chunks).
 
@@ -331,7 +331,7 @@ New commands registered by the Studio module's command hook (ADR-046 pattern):
 |---------|--------|
 | `Go to Studio` | Navigate to `/studio` |
 | `New Workspace` | Open workspace creation dialog |
-| `Install Skill` | Navigate to `/studio/skills` with install filter |
+| `Install Skill` | Navigate to `/studio/:workspaceId/skills` with install filter |
 | `Publish Skill` | Open skill share wizard for selected skill |
 | `Run Skill Eval` | Execute current skill's eval suite |
 | `Open Inbox` | Navigate to `/studio/inbox` |
@@ -445,7 +445,7 @@ New relationships:
 | `EVALUATED_BY` | SkillVersion | SkillEvalSuite |
 | `INSTALLED_BY` | SkillPackage | SkillDistribution |
 
-All graph projections carry a `pod_uri` back-reference so the pod remains authoritative (ADR-052 §Consequences). Invalidation on pod writes uses the same Solid Notifications subscription pattern ADR-052 established for `/public/kg/`, extended to `/public/skills/`, `/public/workspaces/`, `/shared/team/`, and `/inbox/`.
+All graph projections carry a `pod_uri` back-reference so the pod remains authoritative (ADR-052 §Consequences). Invalidation on pod writes uses the same Solid Notifications subscription pattern ADR-052 established for `/public/kg/`, extended to `/public/skills/`, `/public/workspaces/`, `/shared/skills/{team}/`, `/shared/workspaces/{team}/`, and `/inbox/`.
 
 ### 9.3 Transient state
 
@@ -467,7 +467,7 @@ The share-to-mesh funnel is the bridge from the Contributor AI Support Stratum t
 | State | Pod location | Visibility | Transition cost |
 |-------|-------------|------------|-----------------|
 | **Private** | `/private/skills/*`, `/private/automations/*`, session memory | Contributor only | None (default) |
-| **Team** | `/shared/team/skills/*`, `/shared/team/workspaces/*` | Team (WAC named group, ADR-052 §shared) | `SkillEvalSuite` present + redaction check passed |
+| **Team** | `/shared/skills/{team}/*`, `/shared/workspaces/{team}/*` | Team (WAC named group, ADR-052 §shared) | `SkillEvalSuite` present + redaction check passed |
 | **Mesh** | `/public/skills/*`, `/public/workspaces/*` | Open mesh | `SkillBenchmark` recorded + Policy Engine check passed + Broker approval (ADR-041 case) |
 
 A single artefact never exists in two states at once. Transitions are pod MOVE operations (per ADR-052 symmetric publish/unpublish), co-ordinated by the `ShareOrchestrator` service (BC18) which records a `ShareIntent` aggregate as provenance.
@@ -484,7 +484,7 @@ A single artefact never exists in two states at once. Transitions are pod MOVE o
 - `SkillBenchmark` record with pass/fail metrics.
 - Eval suite passes deterministically across at least 3 fixtures.
 - Policy Engine evaluates under `share_team_to_mesh`; failure routes to Broker as a policy exception.
-- On Policy pass, `ShareOrchestrator` creates a `BrokerCase` with `category: "share_to_mesh"` and the artefact's payload. The Broker applies the same claim/decide machinery (ADR-041). For skill shares whose approval implies an ontology change, the Broker's decision additionally emits a `MigrationPayload` (ADR-049) into the existing migration workflow. For skill shares that imply a new reusable workflow pattern, the Broker's decision emits a `WorkflowProposal` (ADR-042).
+- On Policy pass, `ShareOrchestrator` creates a `BrokerCase` with `category: "contributor_mesh_share"` (with `subject_kind` discriminator) and the artefact's payload. The Broker applies the same claim/decide machinery (ADR-041). For skill shares whose approval implies an ontology change, the Broker's decision additionally emits a `MigrationPayload` (ADR-049) into the existing migration workflow. For skill shares that imply a new reusable workflow pattern, the Broker's decision emits a `WorkflowProposal` (ADR-042).
 - Only after Broker approval does the `SharePolicy` write to `/public/skills/*` (the pod MOVE).
 
 ### 10.3 Policy Engine hooks
@@ -499,7 +499,7 @@ All three route Deny results to Broker as standard policy exceptions (ADR-045 §
 
 ### 10.4 Rollback / un-share
 
-Un-sharing is symmetric with sharing: a pod MOVE from `/public/skills/X` back to `/shared/team/skills/X` with a `ShareIntent` of direction `mesh_to_team`. Existing installs continue to resolve (pod redirects serve the moved resource from its new location; the Type Index entry is updated). A banner flags "this skill has been demoted" on any `SkillCard` showing an installed skill whose source share state has dropped.
+Un-sharing is symmetric with sharing: a pod MOVE from `/public/skills/X` back to `/shared/skills/{team}/X` with a `ShareIntent` of direction `mesh_to_team`. Existing installs continue to resolve (pod redirects serve the moved resource from its new location; the Type Index entry is updated). A banner flags "this skill has been demoted" on any `SkillCard` showing an installed skill whose source share state has dropped.
 
 ---
 
@@ -547,7 +547,7 @@ Extends the KPI Lineage Model (ADR-043). Each of the six KPIs declared in §2 is
 
 ### 12.4 Share-to-Mesh Conversion Rate
 
-- **Source events**: `share.intent.created` (direction `team_to_mesh`), `share.intent.approved`, `share.intent.rejected`, `broker.case.decided { category: share_to_mesh }`.
+- **Source events**: `share.intent.created` (direction `team_to_mesh`), `share.intent.approved`, `share.intent.rejected`, `broker.case.decided { category: contributor_mesh_share }`.
 - **Calculation**: Over rolling 30 days: approved mesh ShareIntents ÷ all mesh ShareIntents (approved + rejected + expired).
 - **Target**: >= 15% conversion.
 - **Lineage**: BC18 `ShareIntent` + BC11 `BrokerCase` + (for ontology-implicating shares) ADR-049 `MigrationPayload`.
@@ -608,8 +608,8 @@ All six KPIs render on the Mesh KPI Dashboard (PRD-002 §8) with a new dimension
 |-------|-------|-------|-------------------|
 | 0 | prereq | Close enterprise mesh wire/auth gaps identified in `docs/qe-enterprise-audit-report.md` §1 (5 HIGH security findings, auth middleware on all enterprise endpoints, server-side policy evaluation). Phase 0 is **not owned by this PRD** but is a hard dependency -- no Studio capability ships on unauthenticated endpoints. | qe-enterprise-audit-report Security score >= 80/100; all enterprise endpoints require `Broker`/`Contributor`/`Admin` role as appropriate. |
 | 1 | 2 wks | Contributor Studio MVP shell + pod context + ontology rail + AI partner lane (read-only Sensei). New routes `/studio`, `/studio/:workspaceId`. BC18 aggregates `ContributorWorkspace` and `GuidanceSession`. Pod container creation for `/private/contributor-profile/` and `/inbox/`. Sidebar entry + 4 commands. | Rosa persona flow: open Studio, attach pod, receive >=1 Sensei suggestion, save a workspace. Activation Rate KPI instrumented and reporting. |
-| 2 | 3 wks | Skill Dojo MVP + evals. Routes `/studio/skills`, `/studio/skills/:skillId`. BC19 aggregates `SkillPackage`, `SkillVersion`, `SkillEvalSuite`. Pod containers `/private/skills/`, `/private/skill-evals/`, `/shared/team/skills/`. Install, publish-to-team, eval composer + runner. | Idris persona flow: one consultant publishes a skill to team; a second consultant discovers, installs, evaluates it. Skill Reuse Rate KPI instrumented. |
-| 3 | 3 wks | Share-to-mesh funnel (§10). Route `/studio/share/new`. `ShareOrchestrator` service (BC18). `SkillBenchmark` aggregate (BC19). Policy Engine rules `share_private_to_team`, `share_team_to_mesh`, `skill_retirement_request`. Integration with ADR-041 BrokerCase with `category: share_to_mesh`. Integration with ADR-049 MigrationPayload and ADR-042 WorkflowProposal as optional outputs of Broker approval. | Chen persona flow: submit a skill that touches ontology from Team to Mesh; it lands on Broker as a case; Broker approves; MigrationPayload flows into Migration Broker Workflow; outcome visible in contributor's inbox. Share-to-Mesh Conversion Rate KPI instrumented. |
+| 2 | 3 wks | Skill Dojo MVP + evals. Routes `/studio/:workspaceId/skills`, `/studio/:workspaceId/skills/:skillId`. BC19 aggregates `SkillPackage`, `SkillVersion`, `SkillEvalSuite`. Pod containers `/private/skills/`, `/private/skill-evals/`, `/shared/skills/{team}/`. Install, publish-to-team, eval composer + runner. | Idris persona flow: one consultant publishes a skill to team; a second consultant discovers, installs, evaluates it. Skill Reuse Rate KPI instrumented. |
+| 3 | 3 wks | Share-to-mesh funnel (§10). Route `/studio/:workspaceId/share/new`. `ShareOrchestrator` service (BC18). `SkillBenchmark` aggregate (BC19). Policy Engine rules `share_private_to_team`, `share_team_to_mesh`, `skill_retirement_request`. Integration with ADR-041 BrokerCase with `category: contributor_mesh_share`. Integration with ADR-049 MigrationPayload and ADR-042 WorkflowProposal as optional outputs of Broker approval. | Chen persona flow: submit a skill that touches ontology from Team to Mesh; it lands on Broker as a case; Broker approves; MigrationPayload flows into Migration Broker Workflow; outcome visible in contributor's inbox. Share-to-Mesh Conversion Rate KPI instrumented. |
 | 4 | 3 wks | Pod-Native Automations + proactive Sensei. Routes `/studio/automations`, `/studio/inbox`. BC18 `Automation` aggregate; TaskOrchestratorActor extension for scheduling; budget caps enforced by Policy Engine. Sensei switches from reactive (on-edit) to proactive (periodic synthesis). Rate-limit and mute infrastructure. | Rosa Sunday-night synthesis and Idris Monday-morning cross-check both land in inbox at the scheduled time, under budget, with provenance. Hit Rate + Retirement Rate KPIs reporting. |
 
 Total: 2 + 3 + 3 + 3 = 11 weeks of Studio-scoped work, with Phase 0 gated separately on the QE audit remediation. Phase boundaries are acceptance gates (see §15).
@@ -622,7 +622,7 @@ Total: 2 + 3 + 3 + 3 = 11 weeks of Studio-scoped work, with Phase 0 gated separa
 |---|------|-----------|
 | R1 | **Broker intake overload**. The share-to-mesh funnel creates a new case source for BC11; high-volume contributor publishing could flood the Broker Inbox. | Rate-limit per contributor (default 3 mesh share intents/24h, configurable); Policy Engine pre-screens (§10.3); failed pre-screen never reaches Broker. Monitor Broker Inbox size as a leading indicator; raise rate limit only after observed backlog stays low for 2 weeks. |
 | R2 | **Skill drift**. A skill publishes, gets installed, then its author modifies it without eval re-run; consumers are on an unsafe version. | SkillVersion is immutable per semver; new versions are new versions. Install pins a specific version. Eval suite must pass against the installed version; consumers see a warning if their pinned version fails newer eval runs. |
-| R3 | **Pod-to-Neo4j cache incoherence**. Contributor writes to pod directly (third-party Solid client) without going through Studio; Neo4j projection lags. | Reuses ADR-052 Solid Notifications subscription mechanism on the new containers (`/public/skills/`, `/public/workspaces/`, `/shared/team/`, `/inbox/`). 60 s polling fallback per ADR-052. Admin dashboard exposes per-user notification health. |
+| R3 | **Pod-to-Neo4j cache incoherence**. Contributor writes to pod directly (third-party Solid client) without going through Studio; Neo4j projection lags. | Reuses ADR-052 Solid Notifications subscription mechanism on the new containers (`/public/skills/`, `/public/workspaces/`, `/shared/skills/{team}/`, `/shared/workspaces/{team}/`, `/inbox/`). 60 s polling fallback per ADR-052. Admin dashboard exposes per-user notification health. |
 | R4 | **Eval gaming**. An author games eval fixtures to secure a green badge without real quality. | Benchmark runs mesh-side (SkillEvaluation service in BC19) against a held-out fixture set per skill domain; mesh-side benchmark results are signed by the service, not by the author. Broker sees both author-asserted eval results and mesh-side benchmark results side-by-side. |
 | R5 | **WAC misconfiguration leaks**. A contributor accidentally marks private content as `public:: true` and it lands in `/public/skills/`. | Double-gate already enforced by ADR-052 (page flag AND container path). Share-to-mesh funnel adds a third gate: explicit Contributor confirmation + Policy Engine check + (for Mesh) Broker approval. Any single gate failure blocks publication. |
 | R6 | **Sensei becomes nagware**. Excessive suggestions erode contributor trust; mute ratio rises; activation plateaus. | Per-pane rate limit (default <= 1 suggestion/20s); per-context mute; global "quiet hours" in guidance settings. Mute ratio tracked as a reverse-indicator KPI; if it exceeds 30% org-wide, Sensei suggestion rate auto-halves until it drops. Default mute remembered per context type (graph-focused, prose-focused, skill-focused). |
@@ -661,7 +661,7 @@ Phase 2, 3, 4 acceptance gates are specified in the design docs `02-skill-dojo-a
 
 Flagged for resolution by companion artefacts (ADR-057, BC18/BC19 DDD doc, design specs 00-03):
 
-1. **Team-scoped skill discovery without doxxing membership**. If a skill under `/shared/team/skills/` is listed on a contributor's Type Index, does that leak team membership to peers who can read the profile? **Open**: ADR-057 §D4 to define whether `/shared/team/` Type Index entries are access-gated or live in a separate named-group-only Type Index.
+1. **Team-scoped skill discovery without doxxing membership**. If a skill under `/shared/skills/{team}/` is listed on a contributor's Type Index, does that leak team membership to peers who can read the profile? **Open**: ADR-057 §D4 to define whether `/shared/skills/{team}/` Type Index entries are access-gated or live in a separate named-group-only Type Index.
 2. **How does a retired skill still serve history**. *Resolved 2026-04-20*: retirement MOVEs the skill from `/public/skills/{slug}/` to `/public/skills/{slug}/archive/` per design spec 02 §10. This preserves historical read access for audit + past installers (archive inherits the parent `/public/` WAC `foaf:Agent` Read) while removing the skill's `urn:solid:AgentSkill` entry from the public Type Index so it is no longer discoverable for new installs. A `retirement.jsonld` sidecar records who retired, when, why, and the replacement pointer.
 3. **Offline automation auth**. A scheduled automation runs while the contributor is offline and their ephemeral Nostr delegation (ADR-040) has expired. **Open**: ADR-057 §D6 to define whether automations use a longer-lived refresh delegation, a service-principal alternate key, or simply queue until the contributor reauthenticates.
 4. **What happens when a contributor's pod is down**. Writes queue locally (per R10) but reads of other contributors' pods may also fail (e.g. resolving a Team-scope skill whose authoring pod is offline). **Open**: ADR-057 §D7 to define read-side caching policy and the TTL for cached Mesh / Team skills.

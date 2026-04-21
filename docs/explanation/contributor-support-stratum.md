@@ -322,7 +322,7 @@ session-bounded delegation, writes the synthesis to the inbox, emits
 shows the weekly synthesis. They skim it, promote one paragraph into
 a Work Artifact, raise a `ShareIntent` to Mesh because they think the
 pattern in the synthesis is organisation-worthy. The broker sees the
-intent in their inbox as a `share_review` case later that day.
+intent in their inbox as a `contributor_mesh_share` case later that day.
 
 The compounding loop has completed one turn. The contributor did not
 coordinate manually with anyone. They did not query the mesh

@@ -163,7 +163,7 @@ document visible so that resolution can flow back to the right owner.
 
 ### 8.1 Security & WAC
 
-- **Q1** — Do `/shared/team/` Type Index entries on a contributor's profile
+- **Q1** — Do `/shared/skills/{team}/` Type Index entries on a contributor's profile
   leak team membership to peers who can read the profile? Resolution:
   ADR-057 §D4; may require access-gated Type Index or a named-group-only
   Type Index (PRD-003 §16.1).
@@ -314,7 +314,7 @@ document visible so that resolution can flow back to the right owner.
       `/private/automations/`, `/private/skills/`,
       `/private/skill-evals/`, `/private/workspaces/`,
       `/public/skills/`, `/public/workspaces/`, `/shared/skills/`,
-      `/shared/team/skills/`, `/shared/team/workspaces/`, `/inbox/`)
+      `/shared/skills/{team}/`, `/shared/workspaces/{team}/`, `/inbox/`)
       has an ACL template in design 03
 - [ ] Phase 0 prerequisites signed off by the enterprise-audit owner
       (auth middleware on all enterprise endpoints, Security score ≥ 80)
