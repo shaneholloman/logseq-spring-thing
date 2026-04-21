@@ -215,8 +215,8 @@ const GraphCanvas: React.FC = () => {
                     No CDN/network dependency — fully generated at runtime. */}
                 <Environment background={false} resolution={256}>
                   <Lightformer form="ring" intensity={8} color="#ffffff" scale={10} position={[0, 5, -8]} />
-                  <Lightformer form="rect" intensity={6} color="#88ccff" scale={[8, 8]} position={[-6, 2, 4]} rotation={[0, Math.PI / 4, 0]} />
-                  <Lightformer form="rect" intensity={4} color="#ff99cc" scale={[6, 6]} position={[6, 1, 3]} rotation={[0, -Math.PI / 4, 0]} />
+                  <Lightformer form="rect" intensity={6} color="#88ccff" scale={[8, 8, 1]} position={[-6, 2, 4]} rotation={[0, Math.PI / 4, 0]} />
+                  <Lightformer form="rect" intensity={4} color="#ff99cc" scale={[6, 6, 1]} position={[6, 1, 3]} rotation={[0, -Math.PI / 4, 0]} />
                 </Environment>
 
                 {/* Scene ambient effects (WASM particles, wisps, atmosphere) */}

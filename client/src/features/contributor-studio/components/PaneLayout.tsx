@@ -11,9 +11,9 @@
 
 import React from 'react';
 import {
+  Group,
   Panel,
-  PanelGroup,
-  PanelResizeHandle,
+  Separator,
 } from 'react-resizable-panels';
 import { useStudioWorkspaceStore } from '../stores/studioWorkspaceStore';
 
@@ -41,41 +41,39 @@ export function PaneLayout({
       data-testid="studio-pane-layout"
       className="flex-1 min-h-0 flex flex-col"
     >
-      <PanelGroup direction="horizontal" className="flex-1">
+      <Group orientation="horizontal" className="flex-1">
         <Panel
           id="studio-left"
-          order={1}
           defaultSize={20}
           minSize={14}
           maxSize={32}
           collapsible
-          onResize={(size) => setLayout({ leftWidth: Math.round(size * 16) })}
+          onResize={(size) => setLayout({ leftWidth: Math.round(size.inPixels) })}
           className="min-w-0"
         >
           {left}
         </Panel>
 
-        <PanelResizeHandle className={HANDLE_CLASS} aria-label="Resize guide rail" />
+        <Separator className={HANDLE_CLASS} aria-label="Resize guide rail" />
 
-        <Panel id="studio-centre" order={2} minSize={40} className="min-w-0">
+        <Panel id="studio-centre" minSize={40} className="min-w-0">
           {centre}
         </Panel>
 
-        <PanelResizeHandle className={HANDLE_CLASS} aria-label="Resize partner lane" />
+        <Separator className={HANDLE_CLASS} aria-label="Resize partner lane" />
 
         <Panel
           id="studio-right"
-          order={3}
           defaultSize={24}
           minSize={18}
           maxSize={36}
           collapsible
-          onResize={(size) => setLayout({ rightWidth: Math.round(size * 16) })}
+          onResize={(size) => setLayout({ rightWidth: Math.round(size.inPixels) })}
           className="min-w-0"
         >
           {right}
         </Panel>
-      </PanelGroup>
+      </Group>
 
       {bottom ? (
         <div

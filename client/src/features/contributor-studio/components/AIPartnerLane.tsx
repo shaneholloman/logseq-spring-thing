@@ -72,12 +72,13 @@ export function AIPartnerLane({ workspaceId }: AIPartnerLaneProps): React.ReactE
         (agent X1) is wired.
       </section>
 
-      <ScrollArea
-        className="flex-1"
-        aria-label="Chat transcript"
-        role="log"
-        aria-live="polite"
-      >
+      <ScrollArea className="flex-1">
+        <div
+          role="log"
+          aria-label="Chat transcript"
+          aria-live="polite"
+          className="h-full"
+        >
         {transcript.length === 0 ? (
           <div className="p-4">
             <EmptyState
@@ -100,6 +101,7 @@ export function AIPartnerLane({ workspaceId }: AIPartnerLaneProps): React.ReactE
             ))}
           </ul>
         )}
+        </div>
       </ScrollArea>
     </aside>
   );
