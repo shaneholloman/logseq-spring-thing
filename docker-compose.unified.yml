@@ -146,8 +146,12 @@ services:
       - cargo-target-cache:/app/target
       # Docker socket for controlled access (development only)
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      # Mount host data directory for graph content
-      - ${HOST_PROJECT_ROOT:-.}/data/markdown:/workspace/ext/data/markdown:ro
+      # Mount host data directory for graph content. Both markdown and metadata
+      # are rw so the GitHub sync can populate /workspace/ext/data/markdown
+      # with fetched .md files from GITHUB_OWNER/GITHUB_REPO. The `ro` flag
+      # on markdown was the cause of the "Failed to verify directory
+      # permissions: Read-only file system" error observed on startup.
+      - ${HOST_PROJECT_ROOT:-.}/data/markdown:/workspace/ext/data/markdown:rw
       - ${HOST_PROJECT_ROOT:-.}/data/metadata:/workspace/ext/data/metadata:rw
     ports:
       # Development: Nginx entry point + API port
