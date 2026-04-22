@@ -29,12 +29,19 @@ export const computeNodeScale = (
 
   if (graphMode === 'ontology') {
     const cfg = visuals?.ontology;
-    const depth = hierarchyMap?.get(id)?.depth ?? (node.metadata?.depth ?? 0);
+    const h = hierarchyMap?.get(id);
+    // Use edge-derived depth (from hierarchyDetector) when available, else metadata fallback
+    const depth = h?.depth ?? (node.metadata?.depth != null ? Number(node.metadata.depth) : 0);
+    const childCount = h?.childIds?.length ?? 0;
+    const isLeaf = childCount === 0;
     const ic = parseInt(node.metadata?.instanceCount || '0', 10);
     const hsFactor = cfg?.hierarchyScaleFactor ?? ONTO_DEFAULTS.hierarchyScaleFactor;
     const minS = cfg?.minScale ?? ONTO_DEFAULTS.minScale;
     const icInfluence = cfg?.instanceCountInfluence ?? ONTO_DEFAULTS.instanceCountInfluence;
-    return base * Math.max(minS, 1.0 - depth * hsFactor) * (1 + Math.log(ic + 1) * icInfluence);
+    // Roots are largest; leaves are smallest. Child-count bonus rewards parents with many sub-nodes.
+    const depthScale = Math.max(minS, 1.0 - depth * hsFactor);
+    const childBonus = isLeaf ? 1.0 : (1 + Math.log(childCount + 1) * 0.12);
+    return base * depthScale * childBonus * (1 + Math.log(ic + 1) * icInfluence);
   }
 
   if (graphMode === 'agent') {

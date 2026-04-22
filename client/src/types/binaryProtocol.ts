@@ -7,10 +7,34 @@ const logger = createLogger('binaryProtocol');
  * Binary Protocol for WebSocket node data communication
  * Aligns with server-side src/utils/binary_protocol.rs
  *
+ * ============================================================================
+ * ARCHITECTURE LOCK — DO NOT RE-INTRODUCE DELTA PROTOCOLS (V4)
+ * ============================================================================
+ * The wire protocol is LITERAL-ONLY. Every broadcast is a full snapshot.
+ *
+ * V4 delta encoding WAS tried. It was removed because:
+ *   • Force-directed spring networks move every node every tick — our
+ *     "deltas" always contained every node, saving nothing.
+ *   • Stale-position drift on reconnect / packet loss.
+ *   • Silent drop of user pin signals when the threshold filtered them out.
+ *   • Parallel decoders (V3 full + V4 delta) doubled bug surface area.
+ *
+ * The V4 parser below remains ONLY to detect unintended server regressions;
+ * receiving a V4 frame throws loudly. DO NOT call it from new code.
+ *
+ * The real bandwidth lever is BROADCAST CADENCE: server broadcasts on
+ * settlement change, pin change, topology change, or heartbeat — not every
+ * physics tick. See ForceComputeActor::broadcast path.
+ *
+ * Relitigated 2026-04-21. Any PR that re-enables V4, adds a delta_threshold
+ * prop to wire parsing, or introduces a new "delta-compressed" protocol
+ * variant is REJECTED on sight. See ADR-037.
+ * ============================================================================
+ *
  * Protocol Versions:
- * - V3: 48 bytes per node (current server default, adds cluster_id, anomaly_score, community_id)
- * - V4: Delta encoding (20 bytes per changed node, only changed nodes sent)
- * - V5: V3 node data with 8-byte broadcast sequence prefix
+ * - V3: 48 bytes per node (server default — literal absolute positions)
+ * - V4: REMOVED — see lock above; parser remains as regression detector only
+ * - V5: V3 node data with 9-byte envelope (version + broadcast sequence)
  */
 
 export interface Vec3 {
@@ -163,9 +187,12 @@ export function parseBinaryNodeData(buffer: ArrayBuffer): BinaryNodeData[] {
         hasAnalytics = true;
         break;
       case PROTOCOL_V4:
-        // Delta encoding - decode via parseBinaryFrameData() instead
-        // Return empty from this legacy function; callers should use parseBinaryFrameData()
-        return parseDeltaNodes(safeBuffer);
+        // ARCHITECTURE LOCK (see top of file): V4 delta encoding is REMOVED.
+        // Receiving a V4 frame means the server regressed. Fail loudly so the
+        // regression is caught immediately rather than silently corrupting
+        // positions via delta accumulation.
+        logger.error('[binaryProtocol] SERVER REGRESSION: received PROTOCOL_V4 (delta) frame. Wire protocol is literal-only — see ADR-037. Dropping frame.');
+        return [];
       case PROTOCOL_V5:
         // V5 = V3 node data with 8-byte broadcast sequence prefix
         // Extract sequence, then parse remainder as V3
@@ -396,13 +423,9 @@ export function parseBinaryFrameData(buffer: ArrayBuffer): ParsedBinaryFrame {
   const protocolVersion = view.getUint8(0);
 
   if (protocolVersion === PROTOCOL_V4) {
-    const frameNumber = safeBuffer.byteLength >= 2 ? view.getUint8(1) : 0;
-    const deltaNodes = parseDeltaNodes(safeBuffer);
-    return {
-      type: 'delta',
-      nodes: deltaNodes,
-      frameNumber,
-    };
+    // ARCHITECTURE LOCK (see top of file): V4 delta is REMOVED. Fail loudly.
+    logger.error('[binaryProtocol] SERVER REGRESSION: PROTOCOL_V4 delta frame received. Dropping — ADR-037.');
+    return { type: 'full', nodes: [] };
   }
 
   if (protocolVersion === PROTOCOL_V5) {

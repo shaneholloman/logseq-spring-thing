@@ -1,0 +1,967 @@
+================================================================================
+VisionClaw Enterprise Feature Inventory
+================================================================================
+Generated: 2026-04-22T17:38:00Z
+Commit range: a61a9c095fc14cb5e0c85ee5ce6c53b3693f626d → 2787cb47db448381f73b1d4a0a04bb742b7e1d3b
+Total commits: 162
+Date range: 2026-04-14 → 2026-04-21
+Total files: 545 (336 added, 207 modified, 2 deleted)
+Total changes: +74,420 / -4,528 lines
+
+Legend:
+  [A] = Added since base commit
+  [M] = Modified since base commit
+  [D] = Deleted since base commit
+
+Feature categories mapped to README.md sections and DDD bounded contexts (BC):
+  - Management Mesh (BC11–BC17): Broker, Workflow, Insight, Identity, KPI, Connector, Policy
+  - Contributor Stratum (BC18–BC19): Studio, Skills, Dojo, Sensei, Automations, Sharing
+  - Sovereign-Mesh Data Model: Solid Pods, Visibility, BRIDGE_TO, NIP auth, Binary V5
+  - Insight Migration Loop: Scoring, Broker review, GitHub PR, Whelk consistency
+  - Dual-Stack Identity: OIDC/SAML, NIP-98, NIP-26, Ephemeral keypairs
+  - GPU Physics & Semantic Forces: CUDA kernels, OWL-driven forces
+  - Enterprise UI: Drawer, Panels, Design System, WASM visualisation
+  - Documentation: ADRs, PRDs, Design docs, Tutorials, Audits, Ops runbooks
+  - Infrastructure: Docker, Config, Scripts, Migrations
+  - Tests: Integration, Unit, E2E, Smoke
+
+================================================================================
+1. MANAGEMENT MESH — JUDGMENT BROKER (BC11)
+   ADR-041, ADR-049 — Broker Inbox, Decision Canvas, BrokerCase lifecycle
+================================================================================
+
+[A] src/domain/broker/mod.rs                              | BC11 aggregate root
+[A] src/domain/broker/broker_case.rs                      | BC11 BrokerCase entity
+[A] src/domain/broker/broker_decision.rs                  | BC11 BrokerDecision value object
+[A] src/actors/broker_actor.rs                            | BC11 broker supervisor actor
+[A] src/actors/messages/broker_messages.rs                | BC11 actor message types
+[A] src/adapters/neo4j_broker_adapter.rs                  | BC11 Neo4j persistence adapter
+[A] src/ports/broker_repository.rs                        | BC11 repository port
+[A] src/services/migration_broker.rs                      | BC11 migration candidate → broker flow
+[A] src/services/kpi_computation_service.rs               | BC15 KPI lineage computation
+[A] src/events/enterprise_events.rs                       | BC11-BC17 domain events
+[A] src/handlers/api_handler/broker/mod.rs                | BC11 REST/WS handlers
+[A] src/models/enterprise.rs                              | BC11-BC17 shared enterprise models
+[M] src/events/mod.rs                                     | BC11 event registration
+[M] src/adapters/mod.rs                                   | BC11 adapter registration
+[M] src/ports/mod.rs                                      | BC11 port registration
+[M] src/handlers/api_handler/mod.rs                       | BC11 handler registration
+[M] src/handlers/mod.rs                                   | BC11 handler registration
+
+Client — Broker Workbench:
+[A] client/src/features/broker/BrokerInbox.tsx            | Broker inbox entry point
+[A] client/src/features/broker/index.ts                   | Broker feature barrel
+[A] client/src/features/broker/components/BrokerInbox.tsx | Broker inbox component
+[A] client/src/features/broker/components/BrokerTimeline.tsx | Decision timeline
+[A] client/src/features/broker/components/BrokerWorkbench.tsx | Full workbench layout
+[A] client/src/features/broker/components/CaseSubmitForm.tsx | Case submission form
+[A] client/src/features/broker/components/DecisionCanvas.tsx | Side-by-side KG/OWL diff
+[A] client/src/features/broker/components/__tests__/BrokerInbox.test.tsx
+[A] client/src/features/broker/components/__tests__/CaseSubmitForm.test.tsx
+[A] client/src/features/graph/store/brokerSlice.ts        | Broker Redux slice
+[A] client/src/features/graph/store/migrationEventsSlice.ts | Migration event Redux slice
+
+Tests — Broker:
+[A] tests/broker_tests.rs                                 | BC11 integration tests
+[A] tests/migration_broker_tests.rs                       | Migration broker flow tests
+
+Docs — Broker:
+[A] docs/adr/ADR-041-judgment-broker-workbench.md         | Broker workbench ADR
+[A] docs/adr/ADR-049-insight-migration-broker-workflow.md | Migration workflow ADR
+[M] docs/adr/ADR-041-judgment-broker-workbench.md         | Broker ADR updates
+[A] docs/how-to/use-broker-inbox.md                       | Broker inbox how-to guide
+
+================================================================================
+2. MANAGEMENT MESH — WORKFLOW LIFECYCLE (BC12)
+   ADR-042 — WorkflowProposal object model, shadow workflow discovery
+================================================================================
+
+[A] src/ports/workflow_repository.rs                      | BC12 repository port
+[A] src/adapters/neo4j_workflow_adapter.rs                | BC12 Neo4j persistence
+[A] src/handlers/api_handler/workflows/mod.rs             | BC12 REST handlers
+
+Client — Workflows:
+[A] client/src/features/workflows/index.ts                | Workflows feature barrel
+[A] client/src/features/workflows/components/WorkflowStudio.tsx | Workflow studio UI
+[A] client/src/features/workflows/components/__tests__/WorkflowStudio.test.tsx
+
+Docs — Workflow:
+[M] docs/adr/ADR-042-workflow-proposal-object-model.md    | Workflow proposal ADR
+
+================================================================================
+3. MANAGEMENT MESH — INSIGHT DISCOVERY / MIGRATION (BC13)
+   8-signal sigmoid scoring, BRIDGE_TO edges, orphan retraction, dual-tier identity
+================================================================================
+
+[A] src/services/bridge_edge.rs                           | BC13 BRIDGE_TO edge service
+[A] src/services/orphan_retraction.rs                     | BC13 orphan retraction service
+[A] src/utils/canonical_iri.rs                            | BC13 vc:{domain}/{slug} IRI scheme
+[A] src/sovereign/mod.rs                                  | Sovereign mesh module
+[A] src/sovereign/visibility.rs                           | Visibility classification
+[A] src/services/parsers/visibility.rs                    | Two-pass visibility parser
+[M] src/services/parsers/knowledge_graph_parser.rs        | Visibility-aware parsing
+[M] src/services/parsers/mod.rs                           | Parser module registration
+
+Client — Migration:
+[A] client/src/features/migration/MigrationEventToast.tsx | Migration event notification
+[A] client/src/features/graph/store/visibilitySlice.ts    | Visibility Redux slice
+
+Tests — Insight/Migration:
+[A] tests/bridge_edge_test.rs                             | BRIDGE_TO edge tests
+[A] tests/bridge_signing_fanout.rs                        | Bridge signing fanout tests
+[A] tests/semantic_forces_phase_a_test.rs                 | Semantic forces phase A tests
+[A] tests/parser_sovereign.rs                             | Sovereign parser tests
+[A] tests/schema_sovereign_fields.rs                      | Schema sovereign field tests
+[A] tests/visibility_transitions.rs                       | Visibility transition tests
+[A] tests/type_index_tests.rs                             | Type index discovery tests
+
+Database Migrations:
+[A] queries/migrations/0042_bridge_to.cypher              | BRIDGE_TO edge schema
+[M] queries/migrations/0043_render_ontology_tier.cypher   | Ontology tier rendering
+[M] queries/migrations/0044_ontology_tier_layout.cypher   | Ontology tier layout
+
+Docs — Insight Migration:
+[A] docs/adr/ADR-048-dual-tier-identity-model.md          | Dual-tier identity ADR
+[A] docs/adr/ADR-050-pod-backed-kgnode-schema.md          | Pod-backed KGNode schema ADR
+[A] docs/adr/ADR-051-visibility-transitions.md            | Visibility transitions ADR
+[A] docs/design/2026-04-18-insight-migration-loop/00-master.md | Loop master design
+[A] docs/design/2026-04-18-insight-migration-loop/01-prior-art.md | Prior art analysis
+[A] docs/design/2026-04-18-insight-migration-loop/02-bridge-theory.md | Bridge theory
+[A] docs/design/2026-04-18-insight-migration-loop/03-physics-mapping.md | Physics mapping
+[A] docs/design/2026-04-18-insight-migration-loop/04-acceptance-tests.feature | Acceptance tests
+[A] docs/design/2026-04-18-insight-migration-loop/05-candidate-scoring.md | 8-signal scoring
+[A] docs/design/2026-04-18-insight-migration-loop/README.md | Design README
+[A] docs/explanation/insight-migration-loop.md            | Insight loop explanation
+[A] docs/explanation/ddd-insight-migration-context.md     | DDD context refinement
+[A] docs/tutorials/promoting-a-note-to-ontology.md        | Note→ontology tutorial
+[A] docs/prd-insight-migration-loop.md                    | Insight migration PRD
+
+================================================================================
+4. MANAGEMENT MESH — ENTERPRISE IDENTITY (BC14)
+   OIDC/SAML, NIP-98 signed HTTP auth, ephemeral keypair delegation, 5 roles
+================================================================================
+
+[A] src/middleware/enterprise_auth.rs                      | BC14 enterprise auth middleware
+[A] src/config/oidc.rs                                    | BC14 OIDC configuration
+[M] src/middleware/auth.rs                                 | BC14 auth middleware updates
+[M] src/middleware/mod.rs                                  | Middleware registration
+[M] src/utils/auth.rs                                     | Auth utility updates
+[A] src/utils/nip98.rs                                    | NIP-98 Schnorr HTTP auth
+[A] src/utils/opaque_id.rs                                | Opaque ID with HMAC + bit 29
+[M] src/models/node.rs                                    | visibility + owner_pubkey + opaque_id
+
+Client — Identity:
+[A] client/src/services/featureFlags.ts                   | Feature flag service
+[A] client/src/hooks/useHashRoute.ts                      | Hash-based routing for auth
+[M] client/src/services/nostrAuthService.ts               | NIP-07 auth integration
+
+Tests — Identity:
+[A] tests/auth_hardening.rs                               | Auth hardening tests
+[A] tests/auth_sovereign_mesh.rs                          | Sovereign mesh auth tests
+[A] tests/bit29_on_wire.rs                                | Bit 29 wire protocol tests
+
+Docs — Identity:
+[M] docs/adr/ADR-040-enterprise-identity-strategy.md      | Enterprise identity ADR
+[A] docs/adr/ADR-028-ext-optional-auth.md                 | NIP-98 optional caller-aware ADR
+[A] docs/explanation/ddd-identity-contexts.md             | Identity DDD contexts (modified)
+[M] docs/how-to/features/nostr-auth.md                    | Nostr auth how-to
+
+================================================================================
+5. MANAGEMENT MESH — KPI OBSERVABILITY (BC15)
+   6 mesh KPIs + 6 contributor KPIs, lineage model, exportable audit
+================================================================================
+
+[A] src/services/kpi_computation_service.rs               | BC15 KPI computation
+[A] src/services/metrics.rs                               | BC15 metrics service
+[A] src/handlers/api_handler/mesh_metrics/mod.rs          | BC15 metrics handlers
+[M] src/handlers/metrics_handler.rs                       | Metrics handler updates
+
+Client — KPI:
+[A] client/src/features/kpi/index.ts                     | KPI feature barrel
+[A] client/src/features/kpi/components/MeshKpiDashboard.tsx | Mesh KPI dashboard
+[A] client/src/features/kpi/components/__tests__/MeshKpiDashboard.test.tsx
+
+Docs — KPI:
+[M] docs/adr/ADR-043-kpi-lineage-model.md                | KPI lineage ADR
+[A] docs/ops/metrics.md                                   | Ops metrics reference
+
+================================================================================
+6. MANAGEMENT MESH — CONNECTOR INGESTION (BC16)
+   GitHub connector, file sync, governance/privacy
+================================================================================
+
+[A] client/src/features/connectors/index.ts               | Connectors feature barrel
+[A] client/src/features/connectors/components/ConnectorPanel.tsx | Connector panel
+[A] client/src/features/connectors/components/__tests__/ConnectorPanel.test.tsx
+[M] src/services/github_sync_service.rs                   | GitHub sync service updates
+[M] src/services/file_service.rs                          | File service updates
+
+Docs — Connectors:
+[M] docs/adr/ADR-044-connector-governance-privacy.md      | Connector governance ADR
+
+================================================================================
+7. MANAGEMENT MESH — POLICY ENGINE (BC17)
+   6 built-in rules + 8 contributor-stratum rules, WAC mutation
+================================================================================
+
+[A] src/ports/policy_engine.rs                            | BC17 policy engine port
+[A] src/services/policy_evaluation_service.rs             | BC17 policy evaluation
+[A] src/services/share_policy.rs                          | BC17 share policy rules
+[A] src/services/wac_mutator.rs                           | BC17 WAC access control mutation
+[A] src/handlers/api_handler/policy/mod.rs                | BC17 policy handlers
+
+Client — Policy:
+[A] client/src/features/policy/index.ts                   | Policy feature barrel
+[A] client/src/features/policy/components/PolicyConsole.tsx | Policy console UI
+[A] client/src/features/policy/components/__tests__/PolicyConsole.test.tsx
+
+Docs — Policy:
+[M] docs/adr/ADR-045-policy-engine-approach.md            | Policy engine ADR
+
+================================================================================
+8. CONTRIBUTOR STRATUM — CONTRIBUTOR ENABLEMENT (BC18)
+   Studio, Workspace, GuidanceSession, ShareIntent, Context Assembly
+================================================================================
+
+[A] src/domain/contributor/mod.rs                         | BC18 aggregate module
+[A] src/domain/contributor/contributor_workspace.rs       | BC18 ContributorWorkspace
+[A] src/domain/contributor/contributor_profile.rs         | BC18 ContributorProfile
+[A] src/domain/contributor/guidance_session.rs            | BC18 GuidanceSession
+[A] src/domain/contributor/context_assembly.rs            | BC18 ContextAssembly
+[A] src/domain/contributor/share_intent.rs                | BC18 ShareIntent
+[A] src/domain/contributor/work_artifact.rs               | BC18 WorkArtifact
+[A] src/domain/contributor/value_objects.rs               | BC18 value objects
+[A] src/domain/contributor/events.rs                      | BC18 domain events
+[A] src/domain/mod.rs                                     | Domain module root
+[A] src/actors/contributor_studio_supervisor.rs           | BC18 studio supervisor actor
+[A] src/actors/context_assembly_actor.rs                  | BC18 context assembly actor
+[A] src/actors/ontology_guidance_actor.rs                 | BC18 ontology guidance actor
+[A] src/actors/share_orchestrator_actor.rs                | BC18 share funnel actor
+[A] src/actors/automation_orchestrator_actor.rs           | BC18 headless work actor
+[A] src/actors/server_nostr_actor.rs                      | BC18 Nostr identity actor
+[A] src/services/share_orchestrator.rs                    | BC18 share orchestrator service
+[A] src/services/inbox_service.rs                         | BC18 inbox delivery service
+[A] src/services/automation_routine.rs                    | BC18 cron routine service
+[A] src/services/nip26_cap.rs                             | BC18 NIP-26 scoped delegation
+[A] src/services/pod_client.rs                            | BC18 Solid Pod client
+[A] src/services/ingest_saga.rs                           | BC18 pod-first ingest saga
+[A] src/services/type_index_discovery.rs                  | BC18 type index discovery
+[A] src/services/urn_solid_mapping.rs                     | BC18 URN-Solid mapping
+[A] src/services/server_identity.rs                       | BC18 server Nostr signing
+[A] src/handlers/server_identity_handler.rs               | BC18 server identity handler
+[A] src/handlers/solid_pod_handler.rs                     | BC18 Solid Pod handler
+[D] src/handlers/solid_proxy_handler.rs                   | BC18 retired proxy handler
+
+Client — Contributor Studio:
+[A] client/src/features/contributor-studio/index.ts       | Studio feature barrel
+[A] client/src/features/contributor-studio/routes.tsx     | Studio routing
+[A] client/src/features/contributor-studio/types.ts       | Studio TypeScript types
+[A] client/src/features/contributor-studio/components/ContributorStudioRoot.tsx | Studio root
+[A] client/src/features/contributor-studio/components/PaneLayout.tsx | Multi-pane layout
+[A] client/src/features/contributor-studio/components/OntologyGuideRail.tsx | Ontology rail
+[A] client/src/features/contributor-studio/components/WorkLane.tsx | Work lane
+[A] client/src/features/contributor-studio/components/AIPartnerLane.tsx | AI partner lane
+[A] client/src/features/contributor-studio/components/SessionMemoryBar.tsx | Session memory
+[A] client/src/features/contributor-studio/components/WorkspaceBar.tsx | Workspace bar
+[A] client/src/features/contributor-studio/components/WorkspaceCreateWizard.tsx | Create wizard
+[A] client/src/features/contributor-studio/components/WorkspaceListView.tsx | List view
+[A] client/src/features/contributor-studio/components/ArtifactDetail.tsx | Artifact detail
+[A] client/src/features/contributor-studio/components/InboxView.tsx | Inbox view
+[A] client/src/features/contributor-studio/components/InstalledSkills.tsx | Installed skills
+[A] client/src/features/contributor-studio/components/SkillDojo.tsx | Skill Dojo
+[A] client/src/features/contributor-studio/components/SenseiTrace.tsx | Sensei trace
+[A] client/src/features/contributor-studio/components/AutomationCreateWizard.tsx | Automation wizard
+[A] client/src/features/contributor-studio/components/AutomationDetail.tsx | Automation detail
+[A] client/src/features/contributor-studio/components/AutomationList.tsx | Automation list
+[A] client/src/features/contributor-studio/hooks/useStudioCommands.ts | Studio command hooks
+[A] client/src/features/contributor-studio/stores/senseiStore.ts | Sensei Zustand store
+[A] client/src/features/contributor-studio/stores/studioContextStore.ts | Context Zustand store
+[A] client/src/features/contributor-studio/stores/studioInboxStore.ts | Inbox Zustand store
+[A] client/src/features/contributor-studio/stores/studioPartnerStore.ts | Partner Zustand store
+[A] client/src/features/contributor-studio/stores/studioWorkspaceStore.ts | Workspace Zustand store
+
+Tests — Contributor:
+[A] tests/share_orchestrator_tests.rs                     | Share orchestrator tests
+[A] tests/ingest_saga.rs                                  | Ingest saga tests
+[A] tests/server_identity.rs                              | Server identity tests
+[A] tests/enterprise_integration_test.rs                  | Full enterprise integration
+[A] tests/mcp_contributor_tools_tests.rs                  | MCP contributor tools tests
+[A] tests/bc19_tests.rs                                   | BC19 skill lifecycle tests
+
+Docs — Contributor:
+[A] docs/adr/ADR-057-contributor-enablement-platform.md   | Contributor enablement ADR
+[A] docs/PRD-003-contributor-ai-support-stratum.md        | Contributor stratum PRD
+[A] docs/explanation/contributor-support-stratum.md       | Contributor stratum explanation
+[A] docs/explanation/ddd-contributor-enablement-context.md | BC18/BC19 DDD context
+[A] docs/design/2026-04-20-contributor-studio/00-master.md | Sprint master design
+[A] docs/design/2026-04-20-contributor-studio/01-contributor-studio-surface.md | Studio surface
+[A] docs/design/2026-04-20-contributor-studio/02-skill-dojo-and-evals.md | Dojo + evals
+[A] docs/design/2026-04-20-contributor-studio/03-pod-context-memory-and-sharing.md | Pod sharing
+[A] docs/design/2026-04-20-contributor-studio/04-acceptance-tests.feature | Acceptance tests
+[A] docs/design/2026-04-20-contributor-studio/98-integration-report.md | Integration report
+[A] docs/design/2026-04-20-contributor-studio/99-sprint-close.md | Sprint close
+[A] docs/design/2026-04-20-contributor-studio/diagrams.md | Sprint diagrams
+[A] docs/design/2026-04-20-contributor-studio/evidence-annex.md | Evidence annex
+
+================================================================================
+9. CONTRIBUTOR STRATUM — SKILL LIFECYCLE (BC19)
+   SkillPackage, SkillVersion, SkillEvalSuite, SkillBenchmark, Dojo discovery
+================================================================================
+
+[A] src/domain/skills/mod.rs                               | BC19 aggregate module
+[A] src/domain/skills/skill_package.rs                     | BC19 SkillPackage entity
+[A] src/domain/skills/skill_version.rs                     | BC19 SkillVersion
+[A] src/domain/skills/skill_eval_suite.rs                  | BC19 SkillEvalSuite
+[A] src/domain/skills/skill_benchmark.rs                   | BC19 SkillBenchmark
+[A] src/domain/skills/skill_distribution.rs                | BC19 SkillDistribution
+[A] src/domain/skills/lifecycle.rs                         | BC19 7-state lifecycle
+[A] src/actors/skill_registry_supervisor.rs                | BC19 skill registry supervisor
+[A] src/actors/skill_evaluation_actor.rs                   | BC19 evaluation actor
+[A] src/actors/skill_compatibility_scanner.rs              | BC19 compatibility scanner
+[A] src/actors/dojo_discovery_actor.rs                     | BC19 Dojo discovery actor
+
+MCP Tools — Contributor Studio (9 tools):
+[A] src/mcp/mod.rs                                         | MCP module root
+[A] src/mcp/contributor_tools/mod.rs                       | Contributor tools module
+[A] src/mcp/contributor_tools/skill_tools.rs               | skill_publish/install/eval_run
+[A] src/mcp/contributor_tools/studio_tools.rs              | studio_context_assemble/sensei_nudge/share_intent_create/studio_run_skill
+[A] src/mcp/contributor_tools/automation_tools.rs          | automation_schedule/inbox_ack
+
+================================================================================
+10. SOVEREIGN-MESH DATA MODEL
+    Solid Pods, visibility, BRIDGE_TO, Share-to-Mesh, NIP auth, Binary V5
+================================================================================
+
+[A] src/sovereign/mod.rs                                   | Sovereign mesh module
+[A] src/sovereign/visibility.rs                            | Visibility classification
+[A] src/utils/canonical_iri.rs                             | vc:{domain}/{slug} IRI scheme
+[A] src/utils/opaque_id.rs                                 | Opaque ID with HMAC + bit 29
+[A] src/services/ingest_saga.rs                            | Pod-first ingest saga
+[A] src/services/pod_client.rs                             | Solid Pod client
+[A] src/services/type_index_discovery.rs                   | Type index discovery
+[A] src/services/urn_solid_mapping.rs                      | URN-Solid registry mapping
+[A] src/services/wac_mutator.rs                            | WAC access control mutation
+[A] src/services/nip26_cap.rs                              | NIP-26 scoped delegation caps
+[A] src/services/server_identity.rs                        | Server Nostr signing
+[A] src/actors/server_nostr_actor.rs                       | Server Nostr actor
+[M] src/utils/auth.rs                                      | Auth utility updates
+[M] src/utils/binary_protocol.rs                           | V5 binary protocol updates
+[A] src/utils/canonical_iri.rs                             | Canonical IRI utility
+[D] src/utils/delta_encoding.rs                            | Removed (V5 consolidation)
+[M] src/utils/mod.rs                                       | Utils module registration
+[M] src/models/node.rs                                     | Node model: visibility + pod_url
+[M] src/models/graph_types.rs                              | Graph type updates
+[M] src/models/metadata.rs                                 | Metadata model updates
+[M] src/models/simulation_params.rs                        | Simulation params updates
+
+Client — Sovereign/Visibility:
+[A] client/src/features/node/VisibilityControl.tsx         | Visibility control UI
+[A] client/src/features/graph/components/SovereignOverlay.tsx | Sovereign overlay
+[A] client/src/features/graph/store/visibilitySlice.ts     | Visibility Redux slice
+[M] client/src/features/graph/types/graphTypes.ts          | Graph type updates
+[M] client/src/services/SolidPodService.ts                 | Solid Pod service updates
+[M] client/src/utils/apiFetch.ts                           | API fetch utility
+
+Docs — Sovereign-Mesh:
+[A] docs/adr/ADR-029-type-index-discovery.md               | Type index ADR (modified)
+[A] docs/adr/ADR-030-ext-github-creds-in-pod.md            | GitHub creds in Pod ADR
+[A] docs/adr/ADR-050-pod-backed-kgnode-schema.md           | Pod-backed KGNode schema ADR
+[A] docs/adr/ADR-051-visibility-transitions.md             | Visibility transitions ADR
+[A] docs/adr/ADR-052-pod-default-wac-public-container.md   | WAC public container ADR
+[A] docs/adr/ADR-053-solid-pod-rs-crate-extraction.md      | solid-pod-rs extraction ADR
+[A] docs/adr/ADR-054-urn-solid-and-solid-apps-alignment.md | URN-Solid alignment ADR
+[A] docs/adr/ADR-055-sovereign-debt-payoff-sprint.md       | Sovereign debt sprint ADR
+[A] docs/reference/urn-solid-mapping.md                    | URN-Solid mapping reference
+
+================================================================================
+11. ENTERPRISE UI — DRAWER, PANELS, DESIGN SYSTEM
+    ADR-046, ADR-047 — Enterprise drawer, WASM visualisation, design system
+================================================================================
+
+[A] client/src/enterprise-standalone.tsx                   | Standalone enterprise entry
+[A] client/enterprise.html                                | Enterprise HTML shell
+[A] client/src/features/enterprise/index.ts               | Enterprise feature barrel
+[A] client/src/features/enterprise/components/EnterpriseDrawer.tsx | Enterprise drawer
+[A] client/src/features/enterprise/components/EnterpriseDrawerDemo.tsx | Drawer demo
+[A] client/src/features/enterprise/components/EnterpriseDrawerMount.tsx | Drawer mount
+[A] client/src/features/enterprise/components/EnterpriseDrawerToggle.tsx | Drawer toggle
+[A] client/src/features/enterprise/components/EnterpriseFullPage.tsx | Full-page layout
+[A] client/src/features/enterprise/components/EnterpriseNav.tsx | Enterprise navigation
+[A] client/src/features/enterprise/components/EnterprisePanel.tsx | Enterprise panel
+[A] client/src/features/enterprise/components/__tests__/EnterpriseDrawer.test.tsx
+[A] client/src/features/enterprise/components/__tests__/EnterpriseNav.test.tsx
+[A] client/src/features/enterprise/components/__tests__/EnterprisePanel.test.tsx
+[A] client/src/features/enterprise/fx/drawerFx.ts         | Drawer effects
+[A] client/src/features/enterprise/fx/DrawerFxDemo.tsx    | Effects demo
+[A] client/src/features/enterprise/fx/useDrawerFx.ts      | Effects hook
+[A] client/src/features/enterprise/store/drawerStore.ts   | Drawer state store
+
+Design System (new components):
+[A] client/src/features/design-system/components/DataTable.tsx | Data table component
+[A] client/src/features/design-system/components/EmptyState.tsx | Empty state component
+[A] client/src/features/design-system/components/OntologyNeighborThumb.tsx | Ontology thumb
+[A] client/src/features/design-system/components/Sparkline.tsx | Sparkline chart
+[A] client/src/features/design-system/components/StatusDot.tsx | Status indicator
+[A] client/src/features/design-system/components/Timeline.tsx | Timeline component
+[A] client/src/features/design-system/components/WasmMiniGraph.tsx | WASM mini-graph
+[A] client/src/features/design-system/components/__tests__/DataTable.test.tsx
+[A] client/src/features/design-system/components/__tests__/EmptyState.test.tsx
+[A] client/src/features/design-system/components/__tests__/Sparkline.test.tsx
+[A] client/src/features/design-system/components/__tests__/StatusDot.test.tsx
+[A] client/src/features/design-system/components/__tests__/Timeline.test.tsx
+[M] client/src/features/design-system/components/Badge.tsx
+[M] client/src/features/design-system/components/index.ts
+[M] client/src/features/design-system/components/Modal.tsx
+[M] client/src/features/design-system/components/ScrollArea.tsx
+[M] client/src/features/design-system/components/Textarea.tsx
+
+WASM Visualisation:
+[A] client/src/wasm/drawer-fx/Cargo.toml                  | Drawer FX WASM crate
+[A] client/src/wasm/drawer-fx/src/lib.rs                  | Drawer FX WASM source
+[A] client/src/wasm/drawer-fx/build.sh                    | WASM build script
+[A] client/src/wasm/drawer-fx/README.md                   | WASM readme
+[A] client/src/wasm/drawer-fx/.gitignore                  | WASM gitignore
+[A] client/src/wasm/scene-effects/README.md               | Scene effects readme
+[M] client/src/wasm/scene-effects-bridge.ts               | WASM bridge updates
+[M] client/src/wasm/scene-effects/.gitignore              | Gitignore update
+[M] client/src/wasm/scene-effects/scene_effects_bg.wasm   | Compiled WASM binary
+[M] client/src/wasm/scene-effects/scene_effects_bg.wasm.d.ts | WASM type declarations
+[M] client/src/wasm/scene-effects/scene_effects.d.ts      | WASM type declarations
+[M] client/src/wasm/scene-effects/scene_effects.js        | WASM JS bindings
+[A] client/crates/scene-effects/src/mini_graph.rs         | Mini-graph WASM module
+[M] client/crates/scene-effects/Cargo.toml                | Scene effects crate config
+[M] client/crates/scene-effects/src/lib.rs                | Scene effects lib updates
+
+Docs — Enterprise UI:
+[A] docs/adr/ADR-046-enterprise-ui-architecture.md        | Enterprise UI ADR
+[A] docs/adr/ADR-047-wasm-visualization-components.md     | WASM visualisation ADR
+[A] docs/PRD-002-enterprise-ui.md                         | Enterprise UI PRD
+[A] docs/design/2026-04-17-enterprise-drawer.md           | Enterprise drawer design
+
+================================================================================
+12. BINARY PROTOCOL V5 CONSOLIDATION (ADR-037)
+    Unified binary protocol, delta_encoding removed, bit 29 for visibility
+================================================================================
+
+[M] src/utils/binary_protocol.rs                           | V5 unified protocol
+[D] src/utils/delta_encoding.rs                            | Removed (consolidated into V5)
+[M] src/utils/mod.rs                                       | Module registration
+[M] src/handlers/socket_flow_handler/actor_messages.rs     | Socket flow actor messages
+[M] src/handlers/socket_flow_handler/http_handler.rs       | Socket flow HTTP handler
+[M] src/handlers/socket_flow_handler/position_updates.rs   | Position update handler
+[M] src/handlers/socket_flow_handler/types.rs              | Socket flow types
+[M] src/actors/messages/physics_messages.rs                | Physics message updates
+[M] src/actors/messages/mod.rs                             | Message module updates
+[M] src/actors/messages/graph_messages.rs                  | Graph message updates
+
+Tests — Binary Protocol:
+[A] tests/bit29_on_wire.rs                                 | Bit 29 protocol tests
+
+Docs — Binary Protocol:
+[M] docs/adr/ADR-037-binary-protocol-consolidation.md      | Binary protocol ADR
+[M] docs/reference/websocket-binary.md                     | WebSocket binary reference
+
+================================================================================
+13. SETTINGS CONSOLIDATION (ADR-039)
+    Unified settings actors, physics parameter propagation
+================================================================================
+
+[M] src/actors/optimized_settings_actor.rs                 | Optimized settings actor
+[M] src/actors/protected_settings_actor.rs                 | Protected settings actor
+[M] src/actors/physics_orchestrator_actor.rs               | Physics orchestrator updates
+[M] src/config/physics.rs                                  | Physics config updates
+[M] src/handlers/settings_handler/conversions.rs           | Settings handler conversions
+[M] src/handlers/settings_handler/types.rs                 | Settings handler types
+[M] src/models/simulation_params.rs                        | Simulation params updates
+
+Tests — Settings:
+[A] tests/settings_consolidation_test.rs                   | Settings consolidation tests
+[A] tests/settings_physics_propagation_regression.rs       | Physics propagation regression
+[A] tests/physics_orchestrator_settle_regression.rs        | Settle regression test
+
+Docs — Settings:
+[M] docs/adr/ADR-039-settings-consolidation.md             | Settings ADR
+[A] docs/reference/physics-parameters.md                   | Physics parameters reference
+[A] docs/physics-calibration-proposal.md                   | Physics calibration proposal
+
+================================================================================
+14. POSITION FLOW CONSOLIDATION (ADR-038)
+    Position flow from settings → physics → binary protocol
+================================================================================
+
+[M] docs/adr/ADR-038-position-flow-consolidation.md        | Position flow ADR
+
+================================================================================
+15. GRAPH & PHYSICS UPDATES
+    Graph canvas, worker proxy, hierarchical renderer, semantic forces
+================================================================================
+
+[M] src/actors/gpu/force_compute_actor.rs                  | GPU force compute updates
+[M] src/actors/gpu/semantic_forces_actor.rs                | Semantic forces actor updates
+[M] src/actors/graph_service_supervisor.rs                 | Graph supervisor updates
+[M] src/actors/graph_state_actor.rs                        | Graph state actor updates
+[M] src/actors/ontology_actor.rs                           | Ontology actor updates
+[M] src/actors/client_coordinator_actor.rs                 | Client coordinator updates
+[M] src/actors/mod.rs                                      | Actors module registration
+[M] src/adapters/neo4j_adapter.rs                          | Neo4j adapter updates
+[M] src/adapters/neo4j_graph_repository.rs                 | Neo4j graph repo updates
+[M] src/adapters/tests/neo4j_tests.rs                      | Neo4j adapter tests
+[M] src/app_state.rs                                       | App state updates
+[M] src/services/natural_language_query_service.rs         | NLQ service updates
+[M] src/services/ontology_converter.rs                     | Ontology converter updates
+[M] src/services/ontology_enrichment_service.rs            | Ontology enrichment updates
+[M] src/services/owl_validator.rs                          | OWL validator updates
+[M] src/services/schema_service.rs                         | Schema service updates
+[M] src/ontology/services/owl_validator.rs                 | Ontology OWL validator
+[M] src/models/graph_types.rs                              | Graph type model updates
+[M] src/models/metadata.rs                                 | Metadata model updates
+[M] src/models/mod.rs                                      | Models module registration
+[M] src/handlers/bots_handler.rs                           | Bots handler updates
+[M] src/handlers/fastwebsockets_handler.rs                 | WebSocket handler updates
+[M] src/handlers/mcp_relay_handler.rs                      | MCP relay handler updates
+[M] src/handlers/metrics_handler.rs                        | Metrics handler updates
+[M] src/handlers/ontology_agent_handler.rs                 | Ontology agent handler updates
+[M] src/handlers/api_handler/analytics/mod.rs              | Analytics handler updates
+[M] src/handlers/api_handler/graph/mod.rs                  | Graph handler updates
+[M] src/handlers/api_handler/ontology/mod.rs               | Ontology handler updates
+[M] src/main.rs                                            | Main entry updates
+[M] src/lib.rs                                             | Library root updates
+[M] src/services/mod.rs                                    | Services module registration
+[M] src/services/github_sync_service.rs                    | GitHub sync updates
+[M] src/services/file_service.rs                           | File service updates
+[M] src/services/parsers/knowledge_graph_parser.rs         | KG parser updates
+
+Client — Graph:
+[M] client/src/features/graph/components/GemNodes.tsx      | Gem nodes updates
+[M] client/src/features/graph/components/GraphCanvas.tsx   | Graph canvas updates
+[M] client/src/features/graph/components/GraphManager.tsx  | Graph manager updates
+[M] client/src/features/graph/components/InstancedLabels.tsx | Labels updates
+[M] client/src/features/graph/components/MetadataShapes.tsx | Metadata shapes updates
+[M] client/src/features/graph/hooks/useGraphFiltering.ts   | Graph filtering hook
+[M] client/src/features/graph/hooks/useGraphVisualState.ts | Graph visual state hook
+[M] client/src/features/graph/managers/graphDataManager.ts  | Graph data manager
+[M] client/src/features/graph/managers/graphWorkerProxy.ts  | Graph worker proxy
+[A] client/src/features/graph/managers/__tests__/graphWorkerProxy.fallback.test.ts
+[M] client/src/features/graph/README-Hierarchical-Visualization.md
+[M] client/src/features/graph/services/aiInsights.ts       | AI insights updates
+[M] client/src/features/graph/services/graphComparison.ts  | Graph comparison updates
+[M] client/src/features/graph/types/graphTypes.ts          | Graph type updates
+[M] client/src/features/graph/utils/graphComputations.ts   | Graph computations
+[M] client/src/features/graph/utils/hierarchicalRenderer.ts | Hierarchical renderer
+[M] client/src/features/graph/utils/nodeScaling.ts         | Node scaling
+[M] client/src/features/graph/utils/__tests__/graphComputations.test.ts
+[M] client/src/features/graph/workers/graph.worker.ts      | Graph worker updates
+
+Tests — Graph/Physics:
+[M] tests/ontology_actor_integration_test.rs               | Ontology actor tests
+[M] tests/ontology_api_test.rs                             | Ontology API tests
+[M] tests/ontology_smoke_test.rs                           | Ontology smoke tests
+[M] tests/ontology_validation_test.rs                      | Ontology validation tests
+[M] tests/physics_data_flow_test.rs                        | Physics data flow tests
+
+================================================================================
+16. CLIENT APP INFRASTRUCTURE
+    App initializer, routing, styles, build config
+================================================================================
+
+[M] client/src/app/AppInitializer.tsx                      | App initializer updates
+[M] client/src/app/App.tsx                                 | App root updates
+[M] client/index.html                                      | HTML entry updates
+[M] client/package.json                                    | Package dependencies
+[M] client/vite.config.ts                                  | Vite build config
+[M] client/vitest.config.ts                                | Vitest test config
+[M] client/src/setupTests.ts                               | Test setup updates
+[M] client/src/styles/base.css                             | Base style updates
+[M] client/src/telemetry/AgentTelemetry.ts                 | Telemetry updates
+[M] client/src/services/remoteLogger.ts                    | Remote logger updates
+[M] client/src/services/bridges/GraphVircadiaBridge.ts     | Vircadia bridge updates
+[M] client/src/services/vircadia/EntitySyncManager.ts      | Entity sync updates
+[M] client/src/services/vircadia/GraphEntityMapper.ts      | Graph entity mapper
+[M] client/src/hooks/useAnalytics.ts                       | Analytics hook updates
+
+Client — Visualisation:
+[M] client/src/features/visualisation/components/ControlPanel/RestoredGraphTabs.tsx
+[M] client/src/features/visualisation/components/ControlPanel/unifiedSettingsConfig.ts
+[M] client/src/features/visualisation/components/IntegratedControlPanel.tsx
+[M] client/src/features/visualisation/components/tabs/GraphAnalysisTab.tsx
+
+Client — Analytics:
+[M] client/src/features/analytics/components/ShortestPathControls.tsx
+[M] client/src/features/analytics/store/analyticsStore.test.ts
+[M] client/src/features/analytics/store/analyticsStore.ts
+
+Client — Bots:
+[M] client/src/features/bots/contexts/BotsDataContext.tsx
+
+Client — Onboarding:
+[A] docs/how-to/features/onboarding.md                    | Onboarding how-to
+[A] docs/how-to/features/command-palette.md               | Command palette how-to
+[A] docs/how-to/features/monitoring.md                    | Monitoring how-to
+[A] docs/how-to/features/workspace.md                     | Workspace how-to
+
+================================================================================
+17. JSS PARITY MIGRATION (ADR-056)
+    Sprint 4 — 6 bounded contexts for JSS parity
+================================================================================
+
+[A] docs/adr/ADR-056-jss-parity-migration.md              | JSS parity ADR
+[A] docs/prd/jss-parity-migration.md                      | JSS parity PRD
+[A] docs/design/jss-parity/00-master.md                   | JSS parity master
+[A] docs/design/jss-parity/01-security-primitives-context.md | Security primitives
+[A] docs/design/jss-parity/02-notifications-compat-context.md | Notifications compat
+[A] docs/design/jss-parity/03-wac-enforcement-context.md  | WAC enforcement
+[A] docs/design/jss-parity/04-oidc-hardening-context.md   | OIDC hardening
+[A] docs/design/jss-parity/05-config-platform-context.md  | Config platform
+[A] docs/design/jss-parity/06-library-surface-context.md  | Library surface
+
+================================================================================
+18. DOCUMENTATION — ADRs (ARCHITECTURE DECISION RECORDS)
+    20 new/modified ADRs since base commit
+================================================================================
+
+[A] docs/adr/ADR-028-ext-optional-auth.md                 | NIP-98 optional caller-aware
+[A] docs/adr/ADR-030-ext-github-creds-in-pod.md           | GitHub creds in Pod
+[A] docs/adr/ADR-046-enterprise-ui-architecture.md         | Enterprise UI architecture
+[A] docs/adr/ADR-047-wasm-visualization-components.md      | WASM visualisation
+[A] docs/adr/ADR-048-dual-tier-identity-model.md           | Dual-tier identity
+[A] docs/adr/ADR-049-insight-migration-broker-workflow.md  | Migration workflow
+[A] docs/adr/ADR-050-pod-backed-kgnode-schema.md           | Pod-backed KGNode schema
+[A] docs/adr/ADR-051-visibility-transitions.md             | Visibility transitions
+[A] docs/adr/ADR-052-pod-default-wac-public-container.md   | WAC public container
+[A] docs/adr/ADR-053-solid-pod-rs-crate-extraction.md      | solid-pod-rs extraction
+[A] docs/adr/ADR-054-urn-solid-and-solid-apps-alignment.md | URN-Solid alignment
+[A] docs/adr/ADR-055-sovereign-debt-payoff-sprint.md       | Sovereign debt sprint
+[A] docs/adr/ADR-056-jss-parity-migration.md               | JSS parity migration
+[A] docs/adr/ADR-057-contributor-enablement-platform.md    | Contributor enablement
+[M] docs/adr/ADR-014-semantic-pipeline-unification.md      | Semantic pipeline updates
+[M] docs/adr/ADR-027-pod-backed-graph-views.md             | Pod-backed views updates
+[M] docs/adr/ADR-028-sparql-patch-ontology.md              | SPARQL patch updates
+[M] docs/adr/ADR-029-type-index-discovery.md               | Type index updates
+[M] docs/adr/ADR-030-agent-memory-pods.md                  | Agent memory pods updates
+[M] docs/adr/ADR-034-needle-bead-provenance.md             | Bead provenance updates
+[M] docs/adr/ADR-037-binary-protocol-consolidation.md      | Binary protocol updates
+[M] docs/adr/ADR-038-position-flow-consolidation.md        | Position flow updates
+[M] docs/adr/ADR-039-settings-consolidation.md              | Settings updates
+[M] docs/adr/ADR-040-enterprise-identity-strategy.md       | Identity strategy updates
+[M] docs/adr/ADR-041-judgment-broker-workbench.md          | Broker workbench updates
+[M] docs/adr/ADR-042-workflow-proposal-object-model.md     | Workflow proposal updates
+[M] docs/adr/ADR-043-kpi-lineage-model.md                  | KPI lineage updates
+[M] docs/adr/ADR-044-connector-governance-privacy.md       | Connector governance updates
+[M] docs/adr/ADR-045-policy-engine-approach.md             | Policy engine updates
+
+================================================================================
+19. DOCUMENTATION — PRDs, DESIGN, EXPLANATIONS, TUTORIALS
+================================================================================
+
+PRDs:
+[A] docs/PRD-002-enterprise-ui.md                         | Enterprise UI PRD
+[A] docs/PRD-003-contributor-ai-support-stratum.md        | Contributor stratum PRD
+[A] docs/prd-insight-migration-loop.md                    | Insight migration PRD
+[A] docs/prd/jss-parity-migration.md                      | JSS parity PRD
+[A] docs/qe-enterprise-audit-report.md                    | QE enterprise audit
+
+Design Docs:
+[A] docs/design/2026-04-17-enterprise-drawer.md           | Enterprise drawer design
+[A] docs/design/2026-04-18-unified-knowledge-pipeline.md  | Unified knowledge pipeline
+[A] docs/design/2026-04-18-insight-migration-loop/        | Insight migration loop (8 files)
+[A] docs/design/2026-04-20-contributor-studio/             | Contributor studio (10 files)
+[A] docs/design/jss-parity/                                | JSS parity (7 files)
+
+Explanation Docs:
+[A] docs/explanation/contributor-support-stratum.md       | Contributor stratum
+[A] docs/explanation/ddd-contributor-enablement-context.md | BC18/BC19 DDD
+[A] docs/explanation/ddd-insight-migration-context.md      | Insight migration DDD
+[A] docs/explanation/insight-migration-loop.md             | Insight loop explanation
+[M] docs/explanation/actor-hierarchy.md                    | Actor hierarchy updates
+[M] docs/explanation/backend-cqrs-pattern.md               | CQRS pattern updates
+[M] docs/explanation/blender-mcp-unified-architecture.md   | Blender MCP updates
+[M] docs/explanation/client-architecture.md                | Client architecture updates
+[M] docs/explanation/ddd-enterprise-contexts.md            | Enterprise DDD updates
+[M] docs/explanation/ddd-semantic-pipeline.md              | Semantic pipeline DDD
+[M] docs/explanation/ontology-pipeline.md                  | Ontology pipeline updates
+[M] docs/explanation/solid-sidecar-architecture.md         | Solid sidecar updates
+[M] docs/explanation/system-overview.md                    | System overview updates
+[M] docs/explanation/technology-choices.md                 | Technology choices updates
+[M] docs/explanation/xr-architecture.md                    | XR architecture updates
+
+Tutorials:
+[A] docs/tutorials/promoting-a-note-to-ontology.md        | Note→ontology tutorial
+[M] docs/tutorials/first-graph.md                          | First graph updates
+[M] docs/tutorials/installation.md                         | Installation updates
+[M] docs/tutorials/neo4j-basics.md                         | Neo4j basics updates
+[M] docs/tutorials/overview.md                             | Overview updates
+
+================================================================================
+20. DOCUMENTATION — DIAGRAMS (20 new enterprise diagrams)
+================================================================================
+
+[A] docs/diagrams/01-three-layer-mesh.png                  | Three strata diagram
+[A] docs/diagrams/02-insight-ingestion-cycle.png           | Insight ingestion cycle
+[A] docs/diagrams/03-four-plane-voice.png                  | Four-plane voice
+[A] docs/diagrams/04-mcp-tools-radial.png                  | MCP tools radial
+[A] docs/diagrams/05-architecture-hexagonal.png            | Hexagonal architecture
+[A] docs/diagrams/06-migration-event.png                   | Migration event
+[A] docs/diagrams/07-dual-tier-identity.png                | Dual-tier identity
+[A] docs/diagrams/08-scoring-radar.png                     | 8-signal scoring radar
+[A] docs/diagrams/09-physics-outcome.png                   | Physics outcome
+[A] docs/diagrams/10-prior-art-quadrant.png                | Prior art quadrant
+[A] docs/diagrams/11-dual-ingestion-loops.png              | Dual ingestion loops
+[A] docs/diagrams/12-contributor-stratum-layering.png      | Contributor stratum
+[A] docs/diagrams/13-adr057-share-state-transitions.png    | Share state transitions
+[A] docs/diagrams/14-adr057-skill-lifecycle.png            | Skill lifecycle
+[A] docs/diagrams/15-ddd-context-map.png                   | DDD context map
+[A] docs/diagrams/16-ddd-acl-flow.png                      | DDD ACL flow
+[A] docs/diagrams/17-ddd-mesh-promotion-sequence.png       | Mesh promotion sequence
+[A] docs/diagrams/18-skill-retirement-sequence.png         | Skill retirement
+[A] docs/diagrams/19-skill-dojo-topology.png               | Skill Dojo topology
+[A] docs/diagrams/20-skill-eval-lifecycle.png              | Skill eval lifecycle
+[A] docs/diagrams/e2e-test-checklist.md                    | E2E test checklist
+[A] docs/diagrams/.gitignore                               | Diagrams gitignore
+[A] docs/diagrams/README.md                                | Diagrams readme
+[A] docs/diagrams/src/01-three-layer-mesh.mmd              | Mermaid source
+[A] docs/diagrams/src/02-insight-ingestion-cycle.mmd       | Mermaid source
+[A] docs/diagrams/src/03-four-plane-voice.mmd              | Mermaid source
+[A] docs/diagrams/src/04-mcp-tools-radial.mmd              | Mermaid source
+[A] docs/diagrams/src/05-architecture-hexagonal.mmd        | Mermaid source
+[A] docs/diagrams/src/06-migration-event.mmd               | Mermaid source
+[A] docs/diagrams/src/07-dual-tier-identity.mmd            | Mermaid source
+[A] docs/diagrams/src/08-scoring-radar.mmd                 | Mermaid source
+[A] docs/diagrams/src/09-physics-outcome.mmd               | Mermaid source
+[A] docs/diagrams/src/10-prior-art-quadrant.mmd            | Mermaid source
+[A] docs/diagrams/src/11-dual-ingestion-loops.mmd          | Mermaid source
+[A] docs/diagrams/src/aesthetic-prompt.md                  | Diagram aesthetic prompt
+[A] docs/diagrams/src/batch-generate-phase2.sh             | Phase 2 batch generator
+[A] docs/diagrams/src/batch-generate.sh                    | Batch generator script
+[A] docs/diagrams/src/visionclaw-theme.json                | Diagram theme config
+
+================================================================================
+21. DOCUMENTATION — AUDITS, OPS, HOW-TO, REFERENCE
+================================================================================
+
+Audits:
+[A] docs/audits/2026-04-17/00-master.md                   | Sprint audit master
+[A] docs/audits/2026-04-17/01-frontend-graph-loading.md   | Frontend loading audit
+[A] docs/audits/2026-04-17/02-backend-settings-routing.md | Backend settings audit
+[A] docs/audits/2026-04-17/03-similar-failure-patterns.md | Failure patterns audit
+[A] docs/audits/2026-04-17/04-regression-risk.md          | Regression risk audit
+[A] docs/audits/2026-04-17/05-regression-tests.md         | Regression tests audit
+[A] docs/audits/2026-04-18-cuda-kernel-utilisation.md     | CUDA kernel audit
+[A] docs/audits/2026-04-18-logseq-ontology-audit/00-master.md | Logseq ontology audit
+[A] docs/audits/2026-04-19-sovereign-mesh-qe/00-master.md | Sovereign mesh QE master
+[A] docs/audits/2026-04-19-sovereign-mesh-qe/01-security.md | Security audit
+[A] docs/audits/2026-04-19-sovereign-mesh-qe/02-privacy.md | Privacy audit
+[A] docs/audits/2026-04-19-sovereign-mesh-qe/03-architecture.md | Architecture audit
+[A] docs/audits/2026-04-19-sovereign-mesh-qe/04-coverage.md | Coverage audit
+[A] docs/audits/2026-04-19-sovereign-mesh-qe/05-integration.md | Integration audit
+[A] docs/audits/2026-04-19-sovereign-mesh-qe/06-performance.md | Performance audit
+[A] docs/audits/2026-04-20-sovereign-mesh-qe-sprint2/00-master.md | Sprint 2 QE master
+[A] docs/audits/2026-04-20-sovereign-mesh-qe-sprint2/01-b1-publish-unpublish.md | B1 audit
+[A] docs/audits/2026-04-20-sovereign-mesh-qe-sprint2/02-b2-bridge-kind30100.md | B2 audit
+[A] docs/audits/2026-04-20-sovereign-mesh-qe-sprint2/03-b3-h3-auth.md | B3 auth audit
+[A] docs/audits/2026-04-20-sovereign-mesh-qe-sprint2/04-h1-h2-opacity.md | H1/H2 opacity
+[A] docs/audits/2026-04-20-sovereign-mesh-qe-sprint2/05-phase2-and-adr054.md | Phase 2 audit
+[A] docs/audits/2026-04-20-sovereign-mesh-qe-sprint2/06-new-risks.md | New risks audit
+
+Ops Runbooks:
+[A] docs/ops/bridge-audit-drift-runbook.md                | BRIDGE_TO drift runbook
+[A] docs/ops/corpus-regen-scaling-runbook.md               | Corpus regen scaling runbook
+[A] docs/ops/jss-native-cutover.md                         | JSS native cutover runbook
+[A] docs/ops/metrics.md                                    | Ops metrics reference
+[A] docs/ops/power-user-bootstrap.md                       | Power user bootstrap
+[A] docs/ops/server-nostr-identity.md                      | Server Nostr identity
+
+How-To Updates:
+[A] docs/how-to/use-broker-inbox.md                        | Broker inbox how-to
+[A] docs/how-to/features/command-palette.md                | Command palette how-to
+[A] docs/how-to/features/monitoring.md                     | Monitoring how-to
+[A] docs/how-to/features/onboarding.md                     | Onboarding how-to
+[A] docs/how-to/features/workspace.md                      | Workspace how-to
+[M] docs/how-to/agent-orchestration.md                     | Agent orchestration updates
+[M] docs/how-to/comfyui-sam3d-setup.md                     | ComfyUI setup updates
+[M] docs/how-to/deployment-guide.md                        | Deployment guide updates
+[M] docs/how-to/development-guide.md                       | Development guide updates
+[M] docs/how-to/features/filtering-nodes.md                | Filtering updates
+[M] docs/how-to/features/intelligent-pathfinding.md        | Pathfinding updates
+[M] docs/how-to/features/local-file-sync-strategy.md       | File sync updates
+[M] docs/how-to/features/natural-language-queries.md       | NLQ updates
+[M] docs/how-to/features/nostr-auth.md                     | Nostr auth updates
+[M] docs/how-to/features/voice-integration.md              | Voice integration updates
+[M] docs/how-to/features/voice-routing.md                  | Voice routing updates
+[M] docs/how-to/index.md                                   | How-to index updates
+[M] docs/how-to/infrastructure/port-configuration.md       | Port config updates
+[M] docs/how-to/infrastructure/README.md                   | Infrastructure readme
+[M] docs/how-to/infrastructure/troubleshooting.md          | Troubleshooting updates
+[M] docs/how-to/integration/comfyui-service-integration.md | ComfyUI integration
+[M] docs/how-to/integration/neo4j-integration.md           | Neo4j integration
+[M] docs/how-to/integration/solid-integration.md           | Solid integration
+[M] docs/how-to/integration/solid-pod-creation.md          | Solid pod creation
+[M] docs/how-to/navigation-guide.md                        | Navigation guide
+[M] docs/how-to/operations/configuration.md                | Config operations
+[M] docs/how-to/operations/maintenance.md                  | Maintenance operations
+[M] docs/how-to/operations/pipeline-operator-runbook.md    | Pipeline runbook
+[M] docs/how-to/operations/README.md                       | Operations readme
+[M] docs/how-to/operations/security.md                     | Security operations
+[M] docs/how-to/operations/telemetry-logging.md            | Telemetry logging
+[M] docs/how-to/operations/troubleshooting.md              | Troubleshooting operations
+[M] docs/how-to/performance-profiling.md                   | Performance profiling
+[M] docs/how-to/xr-setup-quest3.md                         | Quest 3 setup
+
+Reference Updates:
+[A] docs/reference/physics-parameters.md                   | Physics parameters
+[A] docs/reference/urn-solid-mapping.md                    | URN-Solid mapping
+[M] docs/reference/agents-catalog.md                       | Agents catalog updates
+[M] docs/reference/configuration/README.md                 | Config reference
+[M] docs/reference/glossary.md                             | Glossary updates
+[M] docs/reference/INDEX.md                                | Reference index
+[M] docs/reference/neo4j-schema-unified.md                 | Neo4j schema updates
+[M] docs/reference/performance-benchmarks.md               | Performance benchmarks
+[M] docs/reference/protocols/mcp-protocol.md               | MCP protocol updates
+[M] docs/reference/protocols/README.md                     | Protocols readme
+[M] docs/reference/README.md                               | Reference readme
+[M] docs/reference/rest-api.md                             | REST API updates
+[M] docs/reference/websocket-binary.md                     | WebSocket binary updates
+
+Other Doc Updates:
+[A] docs/architecture-self-review.md                       | Architecture self-review
+[M] docs/README.md                                         | Docs hub updates
+[M] docs/CHANGELOG.md                                      | Changelog updates
+[M] docs/KNOWN_ISSUES.md                                   | Known issues updates
+
+================================================================================
+22. INFRASTRUCTURE — DOCKER, CONFIG, SCRIPTS
+================================================================================
+
+Docker & Build:
+[M] docker-compose.unified.yml                             | Unified compose updates
+[M] Dockerfile.dev                                         | Dev Dockerfile updates
+[M] Dockerfile.unified                                     | Unified Dockerfile updates
+[M] .env.example                                           | Environment template updates
+[M] .gitignore                                             | Gitignore updates
+[M] nginx.dev.conf                                         | Nginx dev config updates
+[M] Dockerfile.production                                  | Production Dockerfile
+[M] multi-agent-docker/Dockerfile.unified                  | Multi-agent Dockerfile
+[M] CHANGELOG.md                                           | Project changelog
+[M] Cargo.toml                                             | Rust workspace config
+[M] Cargo.lock                                             | Rust dependency lock
+[M] build.rs                                               | Build script updates
+[M] supervisord.dev.conf                                   | Supervisord config
+
+Staging Config:
+[A] config/staging/docker-compose.staging.yml              | Staging compose
+[A] config/staging/grafana/dashboards/sovereign-mesh-overview.json | Grafana dashboard
+[A] config/staging/grafana/provisioning/dashboards/sovereign-mesh.yml | Grafana provisioning
+[A] config/staging/grafana/provisioning/datasources/prometheus.yml | Prometheus datasource
+[A] config/staging/prometheus.yml                          | Prometheus config
+[A] config/staging/README.md                               | Staging readme
+
+Binaries:
+[A] src/bin/vc_cli.rs                                      | VisionClaw CLI binary
+[M] src/config/mod.rs                                      | Config module updates
+
+Test Infrastructure:
+[A] tests/smoke/nginx-coep-headers.sh                      | COEP headers smoke test
+[A] tests/bootstrap_cli.rs                                 | CLI bootstrap tests
+
+================================================================================
+23. PRESENTATION & RESEARCH
+================================================================================
+
+[A] presentation/2026-04-20-best-companies-ai/00-transcript.md | Industry analysis transcript
+[A] presentation/2026-04-20-best-companies-ai/01-pwc-2026-ai-performance-study.md | PwC study
+[A] presentation/2026-04-20-best-companies-ai/02-mckinsey-ai-transformation-manifesto.md | McKinsey
+[A] presentation/2026-04-20-best-companies-ai/03-a16z-institutional-vs-individual-ai.md | a16z
+[A] presentation/2026-04-20-best-companies-ai/04-ramp-glass-seb-goddijn.md | Ramp Glass
+[A] presentation/2026-04-20-best-companies-ai/04b-ramp-glass-shane-buchan-how-we-built-it.md | Ramp build
+[A] presentation/2026-04-20-best-companies-ai/05-social-posts-and-links.md | Social posts
+[A] presentation/2026-04-20-best-companies-ai/90-anthropic-skill-creator-v2.md | Anthropic Skills
+[A] presentation/2026-04-20-best-companies-ai/README.md   | Research readme
+[A] presentation/enterprise-prd.md                         | Enterprise PRD presentation
+[A] presentation/final-layer.md                            | Final layer presentation
+[A] presentation/google-analysis.md                        | Google analysis
+[A] references/README.md                                   | References readme
+
+================================================================================
+24. TEST FILES — ALL ENTERPRISE-RELATED TESTS
+================================================================================
+
+New Test Files:
+[A] tests/auth_hardening.rs                                | Auth hardening tests
+[A] tests/auth_sovereign_mesh.rs                           | Sovereign mesh auth tests
+[A] tests/bc19_tests.rs                                    | BC19 skill lifecycle tests
+[A] tests/bit29_on_wire.rs                                 | Bit 29 binary protocol tests
+[A] tests/bootstrap_cli.rs                                 | CLI bootstrap tests
+[A] tests/bridge_edge_test.rs                              | BRIDGE_TO edge tests
+[A] tests/bridge_signing_fanout.rs                         | Bridge signing fanout tests
+[A] tests/broker_tests.rs                                  | BC11 broker tests
+[A] tests/enterprise_integration_test.rs                   | Full enterprise integration
+[A] tests/ingest_saga.rs                                   | Pod-first ingest saga tests
+[A] tests/mcp_contributor_tools_tests.rs                   | MCP contributor tools tests
+[A] tests/migration_broker_tests.rs                        | Migration broker tests
+[A] tests/parser_sovereign.rs                              | Sovereign parser tests
+[A] tests/physics_orchestrator_settle_regression.rs        | Physics settle regression
+[A] tests/schema_sovereign_fields.rs                       | Schema sovereign fields
+[A] tests/semantic_forces_phase_a_test.rs                  | Semantic forces phase A
+[A] tests/server_identity.rs                               | Server identity tests
+[A] tests/settings_consolidation_test.rs                   | Settings consolidation
+[A] tests/settings_physics_propagation_regression.rs       | Physics propagation regression
+[A] tests/share_orchestrator_tests.rs                      | Share orchestrator tests
+[A] tests/smoke/nginx-coep-headers.sh                      | COEP smoke test
+[A] tests/type_index_tests.rs                              | Type index discovery tests
+[A] tests/visibility_transitions.rs                        | Visibility transition tests
+
+Modified Test Files:
+[M] tests/ontology_actor_integration_test.rs               | Ontology actor tests
+[M] tests/ontology_api_test.rs                             | Ontology API tests
+[M] tests/ontology_smoke_test.rs                           | Ontology smoke tests
+[M] tests/ontology_validation_test.rs                      | Ontology validation tests
+[M] tests/physics_data_flow_test.rs                        | Physics data flow tests
+
+================================================================================
+SUMMARY STATISTICS
+================================================================================
+
+By Feature Area:
+  Management Mesh — Broker (BC11):          ~30 files
+  Management Mesh — Workflow (BC12):          ~5 files
+  Management Mesh — Insight/Migration (BC13): ~30 files
+  Management Mesh — Identity (BC14):          ~15 files
+  Management Mesh — KPI (BC15):               ~10 files
+  Management Mesh — Connector (BC16):          ~5 files
+  Management Mesh — Policy (BC17):            ~10 files
+  Contributor Stratum — Enablement (BC18):    ~60 files
+  Contributor Stratum — Skills (BC19):        ~20 files
+  Sovereign-Mesh Data Model:                  ~30 files
+  Enterprise UI / Design System:              ~45 files
+  Binary Protocol V5:                         ~15 files
+  Settings Consolidation:                     ~10 files
+  JSS Parity Migration:                       ~10 files
+  Documentation (ADRs/PRDs/Design):          ~130 files
+  Diagrams:                                   ~35 files
+  Audits & Ops:                               ~30 files
+  Infrastructure (Docker/Config):             ~20 files
+  Tests:                                      ~30 files
+  Presentation/Research:                      ~15 files
+
+By File Type:
+  Rust (.rs):                                ~130 files
+  TypeScript/TSX (.ts/.tsx):                 ~100 files
+  Markdown (.md):                            ~230 files
+  Mermaid (.mmd):                              11 files
+  PNG diagrams (.png):                         20 files
+  WASM binary (.wasm):                          2 files
+  Cypher (.cypher):                             3 files
+  JSON (.json):                                 6 files
+  Config (YAML/TOML/conf):                     ~15 files
+  Shell (.sh):                                  3 files
+  HTML:                                         2 files
+  Other:                                       ~23 files
+
+By Change Type:
+  Added (A):           336 files
+  Modified (M):        207 files
+  Deleted (D):           2 files
+  TOTAL:               545 files
+
+================================================================================
+END OF ENTERPRISE FEATURE INVENTORY
+================================================================================

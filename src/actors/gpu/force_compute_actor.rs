@@ -1680,95 +1680,58 @@ impl Handler<ComputeForces> for ForceComputeActor {
                                     // Still call process_frame to keep delta state tracking.
                                     let _ = actor.broadcast_optimizer.process_frame(&actor.position_velocity_buffer, &actor.node_id_buffer);
                                 } else {
-                                    // Normal broadcast path (Continuous mode or post-settle)
+                                    // ================================================================
+                                    // LITERAL + BACKPRESSURE-ONLY broadcast (ADR-037 / 2026-04-21)
+                                    // ================================================================
+                                    // Policy: every broadcast is a full literal snapshot (no delta).
+                                    // Cadence is driven by:
+                                    //   1. Network backpressure (token bucket — we only emit as fast
+                                    //      as the client pipeline drains);
+                                    //   2. The upstream broadcast_optimizer's time gate (coarse rate
+                                    //      cap for systems without interactive settlement signals —
+                                    //      the token bucket is the hot gate).
+                                    // We do NOT consult `filtered_indices` for selective sending: in
+                                    // this force-directed workload every node moves every tick, so
+                                    // "deltas" are always the whole graph with none of the correctness
+                                    // benefits of a literal send.
                                     let (should_broadcast, filtered_indices) =
                                         actor.broadcast_optimizer.process_frame(&actor.position_velocity_buffer, &actor.node_id_buffer);
 
                                     if should_broadcast && !filtered_indices.is_empty() {
-                                        // Force full broadcast every frame. In this workload almost
-                                        // every node moves every tick (force-directed layout), so
-                                        // delta encoding saves little bandwidth and adds real cost:
-                                        // stale-position drift on reconnect, delta decode bugs, and
-                                        // missed updates when the delta threshold filters a node out.
-                                        // Keeping the periodic-full accounting so logs and stats stay
-                                        // meaningful, but `needs_full` is now always true.
-                                        let iters_since_full = actor.gpu_state.iteration_count
-                                            .saturating_sub(actor.last_full_broadcast_iteration);
-                                        let _ = iters_since_full;
-                                        let needs_full = true;
-
-                                        if needs_full {
-                                            // Full broadcast: send ALL nodes, bypassing delta filter
-                                            if let Some(_sequence_id) = actor.backpressure.try_acquire() {
-                                                let mut node_updates = Vec::with_capacity(actor.node_id_buffer.len());
-                                                for idx in 0..actor.node_id_buffer.len() {
-                                                    let node_id = actor.node_id_buffer[idx];
-                                                    let (position, velocity) = actor.position_velocity_buffer[idx];
-                                                    if !position.x.is_finite() || !position.y.is_finite() || !position.z.is_finite() {
-                                                        continue;
-                                                    }
-                                                    node_updates.push((node_id, BinaryNodeDataClient::new(
-                                                        node_id,
-                                                        glam_to_vec3data(position),
-                                                        glam_to_vec3data(velocity),
-                                                    )));
+                                        // LITERAL-ONLY full broadcast. Gated purely by the token
+                                        // bucket: if the network isn't drained, skip this cycle.
+                                        if let Some(_sequence_id) = actor.backpressure.try_acquire() {
+                                            let mut node_updates = Vec::with_capacity(actor.node_id_buffer.len());
+                                            for idx in 0..actor.node_id_buffer.len() {
+                                                let node_id = actor.node_id_buffer[idx];
+                                                let (position, velocity) = actor.position_velocity_buffer[idx];
+                                                if !position.x.is_finite() || !position.y.is_finite() || !position.z.is_finite() {
+                                                    continue;
                                                 }
-                                                if let Some(ref graph_addr) = actor.graph_service_addr {
+                                                node_updates.push((node_id, BinaryNodeDataClient::new(
+                                                    node_id,
+                                                    glam_to_vec3data(position),
+                                                    glam_to_vec3data(velocity),
+                                                )));
+                                            }
+                                            if let Some(ref graph_addr) = actor.graph_service_addr {
+                                                // Throttled info log — broadcasts are now backpressure-driven
+                                                // so the cadence reflects real network drain rate.
+                                                if actor.gpu_state.iteration_count % 300 == 0 {
                                                     info!(
-                                                        "ForceComputeActor: Periodic full broadcast — ALL {} positions (iter {}, delta had {})",
-                                                        node_updates.len(), actor.gpu_state.iteration_count,
-                                                        filtered_indices.len()
+                                                        "ForceComputeActor: literal broadcast — {} positions (iter {})",
+                                                        node_updates.len(), actor.gpu_state.iteration_count
                                                     );
-                                                    graph_addr.do_send(crate::actors::messages::UpdateNodePositions {
-                                                        positions: node_updates,
-                                                        correlation_id: Some(crate::actors::messaging::MessageId::new()),
-                                                    });
                                                 }
-                                                actor.last_full_broadcast_iteration = actor.gpu_state.iteration_count;
-                                                actor.broadcast_optimizer.reset_delta_state();
-                                            } else {
-                                                actor.backpressure.record_skip();
+                                                graph_addr.do_send(crate::actors::messages::UpdateNodePositions {
+                                                    positions: node_updates,
+                                                    correlation_id: Some(crate::actors::messaging::MessageId::new()),
+                                                });
                                             }
+                                            actor.last_full_broadcast_iteration = actor.gpu_state.iteration_count;
+                                            actor.broadcast_optimizer.reset_delta_state();
                                         } else {
-                                            // Delta broadcast: send only moved nodes
-                                            if let Some(_sequence_id) = actor.backpressure.try_acquire() {
-                                                let mut node_updates = Vec::with_capacity(filtered_indices.len());
-                                                for &idx in &filtered_indices {
-                                                    let node_id = actor.node_id_buffer[idx];
-                                                    let (position, velocity) = actor.position_velocity_buffer[idx];
-
-                                                    node_updates.push((node_id, BinaryNodeDataClient::new(
-                                                        node_id,
-                                                        glam_to_vec3data(position),
-                                                        glam_to_vec3data(velocity),
-                                                    )));
-                                                }
-
-                                                if let Some(ref graph_addr) = actor.graph_service_addr {
-                                                    if actor.stability_warmup_remaining > 295
-                                                        || actor.gpu_state.iteration_count % 300 == 0
-                                                    {
-                                                        info!(
-                                                            "ForceComputeActor: Sending {} position updates (iter {}, warmup_remaining={})",
-                                                            node_updates.len(), actor.gpu_state.iteration_count,
-                                                            actor.stability_warmup_remaining
-                                                        );
-                                                    }
-                                                    graph_addr.do_send(crate::actors::messages::UpdateNodePositions {
-                                                        positions: node_updates,
-                                                        correlation_id: Some(crate::actors::messaging::MessageId::new()),
-                                                    });
-                                                } else {
-                                                    if actor.gpu_state.iteration_count % 60 == 0 {
-                                                        warn!(
-                                                            "ForceComputeActor: graph_service_addr is None — {} position updates DROPPED (iter {})",
-                                                            node_updates.len(), actor.gpu_state.iteration_count
-                                                        );
-                                                    }
-                                                }
-                                            } else {
-                                                actor.backpressure.record_skip();
-                                            }
+                                            actor.backpressure.record_skip();
                                         }
                                     } else if should_broadcast && filtered_indices.is_empty() {
                                     // Delta filter found zero movement — periodic full broadcast

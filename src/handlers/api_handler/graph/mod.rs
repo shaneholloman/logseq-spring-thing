@@ -225,6 +225,65 @@ pub async fn get_graph_data(
         caller_pubkey.is_some()
     );
 
+    // Early-return path: serve the full :OwlClass graph directly from Neo4j
+    // when graph_type=ontology. The KGNode-based pipeline only returns 143
+    // nodes that happen to carry an owl_class_iri field; the 2,811 dedicated
+    // :OwlClass nodes with their SUBCLASS_OF / RELATES edges are invisible to
+    // that pipeline and must be fetched via the ontology repository.
+    if query.graph_type.as_deref() == Some("ontology") {
+        return match state.ontology_repository.load_ontology_graph_data().await {
+            Ok(graph_data) => {
+                let nodes_with_positions: Vec<NodeWithPosition> = graph_data
+                    .nodes
+                    .iter()
+                    .map(|node| {
+                        let position = node.data.position();
+                        let velocity = node.data.velocity();
+                        NodeWithPosition {
+                            id: node.id,
+                            metadata_id: node.metadata_id.clone(),
+                            label: node.label.clone(),
+                            position,
+                            velocity,
+                            metadata: node.metadata.clone(),
+                            node_type: node.node_type.clone(),
+                            size: node.size,
+                            color: node.color.clone(),
+                            weight: node.weight,
+                            group: node.group.clone(),
+                            owner_pubkey: node.owner_pubkey.clone(),
+                            opaque_id: node.opaque_id.clone(),
+                            pod_url: node.pod_url.clone(),
+                        }
+                    })
+                    .collect();
+
+                let response = GraphResponseWithPositions {
+                    nodes: nodes_with_positions,
+                    edges: graph_data.edges.clone(),
+                    metadata: graph_data.metadata.clone(),
+                    settlement_state: SettlementState {
+                        is_settled: false,
+                        stable_frame_count: 0,
+                        kinetic_energy: 0.0,
+                    },
+                };
+
+                info!(
+                    "Sending ontology graph data: {} OwlClass nodes, {} edges",
+                    response.nodes.len(),
+                    response.edges.len()
+                );
+
+                ok_json!(response)
+            }
+            Err(e) => {
+                error!("Failed to load ontology graph data: {}", e);
+                Ok(HttpResponse::InternalServerError()
+                    .json(serde_json::json!({"error": "Failed to retrieve ontology graph data"})))
+            }
+        };
+    }
 
     let graph_handler = state.graph_query_handlers.get_graph_data.clone();
     let node_map_handler = state.graph_query_handlers.get_node_map.clone();

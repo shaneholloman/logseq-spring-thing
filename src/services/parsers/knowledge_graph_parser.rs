@@ -432,7 +432,10 @@ impl KnowledgeGraphParser {
         // created here. Edges whose target doesn't exist as a page node will
         // still be stored — the Neo4j MERGE will create stubs or the edge will
         // dangle harmlessly until the target page is synced.
-        let wikilink_edges = self.extract_wikilink_edges(content, &nodes[0].id);
+        // Strip OntologyBlock before extracting wikilinks so taxonomy class
+        // references inside ### OntologyBlock do not become wikilink edges.
+        let content_for_wikilinks = Self::strip_ontology_block(content);
+        let wikilink_edges = self.extract_wikilink_edges(content_for_wikilinks, &nodes[0].id);
 
         let metadata = self.extract_metadata_store(content, &page_name);
 
@@ -572,12 +575,28 @@ impl KnowledgeGraphParser {
         }
     }
 
+    /// Strip everything from `### OntologyBlock` to end of string.
+    /// OntologyBlock sections contain taxonomy class references like
+    /// `[[Domain Concept]]` that must not become wikilink edges.
+    fn strip_ontology_block(content: &str) -> &str {
+        if let Some(pos) = content.find("### OntologyBlock") {
+            &content[..pos]
+        } else {
+            content
+        }
+    }
+
     /// Extract wikilink edges only — no new nodes created.
     /// Returns Edge objects for each [[WikiLink]] found in content.
     /// Deduplicates by target to avoid multiple edges to the same page.
+    /// OntologyBlock sections are stripped before scanning so taxonomy class
+    /// references do not become wikilink edges.
     fn extract_wikilink_edges(&self, content: &str, source_id: &u32) -> Vec<Edge> {
         let mut edges = Vec::new();
         let mut seen_targets = std::collections::HashSet::new();
+
+        // Strip OntologyBlock section so taxonomy references don't become edges
+        let content = Self::strip_ontology_block(content);
 
         let link_pattern = regex::Regex::new(r"\[\[([^\]|]+)(?:\|[^\]]+)?\]\]")
             .expect("Invalid regex pattern");

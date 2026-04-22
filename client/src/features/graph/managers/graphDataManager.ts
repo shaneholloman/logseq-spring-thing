@@ -381,7 +381,13 @@ class GraphDataManager {
     const maxNodeCount = qualityGates?.maxNodeCount ?? Infinity;
     // Performance: Removed per-call logging
 
-
+    // ADR-048: no client-side tier filter here. Filtering the nodes list would
+    // desync `reverseNodeIdMap` in graph.worker.ts from the binary position
+    // stream — the server sends updates for ALL loaded nodes (KG + OwlClass),
+    // so every unknown ID triggers the unknown-node handler and the view stops
+    // updating without a manual refresh. Tier visibility is controlled at the
+    // backend via `LOAD_ONTOLOGY_TIER` env (default true). To hide the ontology
+    // tier, unset that env rather than filtering on the client.
     let validatedData = data;
     if (data && data.nodes) {
       let nodesToUse = data.nodes;
@@ -636,13 +642,20 @@ class GraphDataManager {
           if (hasUnknown) {
             logger.info('[graphDataManager] Unknown nodes detected in binary stream — re-fetching graph data via REST');
             try {
-              const response = await fetch('/api/graph/data');
-              if (response.ok) {
-                const freshData = await response.json();
-                if (freshData.nodes && freshData.nodes.length > 0) {
-                  await this.setGraphData(freshData);
-                  logger.info(`[graphDataManager] REST re-fetch complete: ${freshData.nodes.length} nodes, ${freshData.edges?.length ?? 0} edges`);
-                }
+              // Use unifiedApiClient (carries auth cookies/headers) so the
+              // recovery path works when /api/graph/data is auth-gated.
+              // Raw fetch() returned 401/403 and silently swallowed, which
+              // meant reverseNodeIdMap never rebuilt and positions stayed
+              // stale until the user hard-refreshed the page.
+              const resp = await unifiedApiClient.get<{ nodes?: Node[]; edges?: Edge[]; data?: GraphData }>('/graph/data', { timeout: 10000 });
+              const payload = resp.data;
+              const freshData: GraphData | undefined =
+                (payload && Array.isArray((payload as GraphData).nodes))
+                  ? (payload as GraphData)
+                  : (payload && (payload as { data?: GraphData }).data);
+              if (freshData?.nodes && freshData.nodes.length > 0) {
+                await this.setGraphData(freshData);
+                logger.info(`[graphDataManager] REST re-fetch complete: ${freshData.nodes.length} nodes, ${freshData.edges?.length ?? 0} edges`);
               }
             } catch (err) {
               logger.error('[graphDataManager] REST re-fetch failed:', err);

@@ -27,6 +27,7 @@ import { computeNodeScale } from '../utils/nodeScaling'
 import { InstancedLabels } from './InstancedLabels'
 import { layoutApi, type LayoutPosition } from '../../../api/layoutApi'
 import { SovereignOverlay } from './SovereignOverlay'
+import { CollapsedGroupRings } from './CollapsedGroupRings'
 
 const logger = createLogger('GraphManager')
 
@@ -62,6 +63,15 @@ const EDGE_TYPE_COLORS: Record<string, THREE.Color> = {
   'bridge':        new THREE.Color('#FF7043'),   // orange — cross-domain
   'bridges_to':    new THREE.Color('#FF7043'),   // orange alias
   'bridges_from':  new THREE.Color('#FF7043'),   // orange alias
+  // ADR-048 BRIDGE_TO kinds — distinct hues to mark promotion state
+  'bridge_colocated': new THREE.Color('#5DADE2'),// sky blue — co-existence
+  'bridge_candidate': new THREE.Color('#F5B041'),// amber — awaiting broker
+  'bridge_promoted':  new THREE.Color('#27AE60'),// green — confirmed promotion
+  'bridge_revoked':   new THREE.Color('#7F8C8D'),// grey — rolled back
+  'bridge_rejected':  new THREE.Color('#E74C3C'),// red — declined
+  // Raw Neo4j relationship type fallback
+  'SUBCLASS_OF':   new THREE.Color('#FFD700'),   // gold — treat as hierarchical
+  'subclass_of':   new THREE.Color('#FFD700'),
   'explicit_link': new THREE.Color('#FFFFFF'),   // white — default wikilink
   'namespace':     new THREE.Color('#78909C'),   // grey — weakest grouping
   'inferred':      new THREE.Color('#B0BEC5'),   // light grey — reasoner output
@@ -72,6 +82,25 @@ const DEFAULT_EDGE_COLOR = new THREE.Color('#AAAAAA');
 function getEdgeTypeColor(edgeType?: string): THREE.Color {
   if (!edgeType) return DEFAULT_EDGE_COLOR;
   return EDGE_TYPE_COLORS[edgeType] ?? EDGE_TYPE_COLORS[edgeType.toLowerCase()] ?? DEFAULT_EDGE_COLOR;
+}
+
+/** Resolve edge-type opacity (ADR-048). Bridge edges dim so tiers read as
+ *  separate layers; strong relationships (hierarchical, promoted) go solid. */
+const EDGE_TYPE_ALPHA: Record<string, number> = {
+  'hierarchical':     0.9,
+  'SUBCLASS_OF':      0.9,
+  'subclass_of':      0.9,
+  'bridge_colocated': 0.55,
+  'bridge_candidate': 0.35,
+  'bridge_promoted':  0.85,
+  'bridge_revoked':   0.25,
+  'bridge_rejected':  0.3,
+  'bridge':           0.5,
+  'inferred':         0.4,
+};
+function getEdgeTypeAlpha(edgeType?: string): number {
+  if (!edgeType) return 1.0;
+  return EDGE_TYPE_ALPHA[edgeType] ?? EDGE_TYPE_ALPHA[edgeType.toLowerCase()] ?? 1.0;
 }
 
 // O(1) domain color lookup
@@ -365,6 +394,8 @@ const GraphManager: React.FC<GraphManagerProps> = ({ onDragStateChange }) => {
   const highlightBufferRef = useRef<number[]>([]);
   // Per-edge RGB color buffer for edge-type-based coloring (3 floats per edge)
   const edgeColorBufferRef = useRef<Float32Array>(new Float32Array(0));
+  // Per-edge alpha buffer for edge-type-based opacity (1 float per edge)
+  const edgeAlphaBufferRef = useRef<Float32Array>(new Float32Array(0));
   const [nodesAreAtOrigin, setNodesAreAtOrigin] = useState(false)
 
   const [forceUpdate, setForceUpdate] = useState(0)
@@ -686,6 +717,13 @@ const GraphManager: React.FC<GraphManagerProps> = ({ onDragStateChange }) => {
         const edgeColors = edgeColorBufferRef.current;
         let edgeColorIdx = 0;
 
+        // Per-edge alpha buffer: 1 float per edge
+        if (edgeAlphaBufferRef.current.length < edgeCount) {
+          edgeAlphaBufferRef.current = new Float32Array(edgeCount);
+        }
+        const edgeAlphas = edgeAlphaBufferRef.current;
+        let edgeAlphaIdx = 0;
+
         // Cache drag state outside the loop (hot path — avoid ref access per edge)
         const isDragging = dragDataRef.current.isDragging;
         const dragNodeId = isDragging ? dragDataRef.current.nodeId : null;
@@ -759,11 +797,12 @@ const GraphManager: React.FC<GraphManagerProps> = ({ onDragStateChange }) => {
                 newEdgePoints[edgePointIdx++] = tempTargetOffset.y;
                 newEdgePoints[edgePointIdx++] = tempTargetOffset.z;
 
-                // Write per-edge color from edge type
+                // Write per-edge color and alpha from edge type
                 const eColor = getEdgeTypeColor(edge.edgeType);
                 edgeColors[edgeColorIdx++] = eColor.r;
                 edgeColors[edgeColorIdx++] = eColor.g;
                 edgeColors[edgeColorIdx++] = eColor.b;
+                edgeAlphas[edgeAlphaIdx++] = getEdgeTypeAlpha(edge.edgeType);
               }
             }
           }
@@ -856,6 +895,7 @@ const GraphManager: React.FC<GraphManagerProps> = ({ onDragStateChange }) => {
           const edgeCountWithColor = edgeColorIdx / 3;
           if (edgeCountWithColor > 0) {
             edgeFlowRef.current.updateColors(edgeColors, edgeCountWithColor);
+            edgeFlowRef.current.updateAlphas(edgeAlphas, edgeAlphaIdx);
           }
         } else {
           edgeUpdatePendingRef.current = newEdgePoints.slice(0, edgePointIdx);
@@ -1329,6 +1369,17 @@ const GraphManager: React.FC<GraphManagerProps> = ({ onDragStateChange }) => {
           if (event.instanceId !== undefined && event.instanceId < typeFilteredNodes.length) {
             const node = typeFilteredNodes[event.instanceId];
             if (node) {
+              const nodeId = String(node.id);
+              const hierarchyNode = hierarchyMap.get(nodeId);
+
+              // Hierarchy parent: double-click toggles collapse/expand.
+              // Takes priority over URL navigation so ontology tree works.
+              if (hierarchyNode && hierarchyNode.childIds.length > 0) {
+                expansionState.toggleExpansion(nodeId);
+                return;
+              }
+
+              // KG leaf node: open source page if available
               const pageUrl = node.metadata?.page_url || node.metadata?.pageUrl || node.metadata?.url;
               if (pageUrl) {
                 window.open(pageUrl, '_blank', 'noopener,noreferrer');
@@ -1341,16 +1392,20 @@ const GraphManager: React.FC<GraphManagerProps> = ({ onDragStateChange }) => {
               }
               if (node.label) {
                 window.open(`https://narrativegoldmine.com/#/page/${encodeURIComponent(node.label)}`, '_blank', 'noopener,noreferrer');
-                return;
-              }
-              const hierarchyNode = hierarchyMap.get(node.id);
-              if (hierarchyNode && hierarchyNode.childIds.length > 0) {
-                expansionState.toggleExpansion(node.id);
               }
             }
           }
         }}
         selectedNodeId={selectedNodeId}
+      />
+
+      {/* Collapsed-group halo rings — pulsing indicator on parent nodes with hidden children */}
+      <CollapsedGroupRings
+        nodes={typeFilteredNodes}
+        hierarchyMap={hierarchyMap}
+        expansionState={expansionState}
+        nodePositionsRef={nodePositionsRef}
+        nodeIdToIndexMap={nodeIdToIndexMap}
       />
 
       {/* Glass edge rendering */}

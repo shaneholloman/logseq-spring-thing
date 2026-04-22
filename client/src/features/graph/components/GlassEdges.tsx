@@ -20,6 +20,8 @@ export interface GlassEdgesHandle {
   updatePoints(points: number[], count?: number): void;
   /** Update per-instance colors. Array of [r,g,b] floats (0-1), 3 per edge. */
   updateColors(colors: Float32Array, count: number): void;
+  /** Update per-instance alpha (opacity multiplier). Floats 0-1, 1 per edge. */
+  updateAlphas(alphas: Float32Array, count: number): void;
 }
 
 /** Pre-allocated temp objects for matrix composition -- avoids per-frame GC. */
@@ -109,6 +111,14 @@ export const GlassEdges = forwardRef<GlassEdgesHandle, GlassEdgesProps>(
       // Initialize to white (neutral multiply)
       for (let ci = 0; ci < colorArray.length; ci++) colorArray[ci] = 1.0;
       m.instanceColor = new THREE.InstancedBufferAttribute(colorArray, 3);
+
+      // Pre-allocate instanceAlpha buffer for per-edge-type opacity (ADR-048
+      // bridge edges should render semi-transparent so the tiers read as
+      // separate layers). Attribute name 'instanceAlpha' is shared between
+      // WebGL (onBeforeCompile injection) and WebGPU (TSL attribute node).
+      const alphaArray = new Float32Array(MAX_EDGES);
+      for (let ai = 0; ai < alphaArray.length; ai++) alphaArray[ai] = 1.0;
+      geo.setAttribute('instanceAlpha', new THREE.InstancedBufferAttribute(alphaArray, 1));
 
       // Initial population — first batch only, rest via progressive reveal
       if (points.length >= 6) {
@@ -216,26 +226,45 @@ export const GlassEdges = forwardRef<GlassEdgesHandle, GlassEdgesProps>(
         const mat = mesh.material as THREE.MeshPhysicalMaterial;
         if (count > 0 && mat.color) {
           mat.color.setRGB(1, 1, 1);
-          // Read edge emissive base from glow settings (via ref for stable callback identity)
-          const edgeEmissiveBase = glowSettingsRef.current?.edgeGlowStrength ?? 0.3;
-          const normalizedEmissive = Math.min(edgeEmissiveBase / 3, 1.0);
-          mat.emissive.setRGB(normalizedEmissive, normalizedEmissive, normalizedEmissive);
+          // Set emissive white so the per-instance color modulates the glow hue.
+          // instanceColor is multiplied in, so white emissive + colored instance
+          // = colored bloom of the right hue.
+          mat.emissive.setRGB(1, 1, 1);
         }
       },
       [mesh],
     );
 
-    useImperativeHandle(ref, () => ({ updatePoints, updateColors }), [updatePoints, updateColors]);
+    // Update per-instance alpha (opacity multiplier). Written into the
+    // `instanceAlpha` attribute; shader code in GlassEdgeMaterial multiplies
+    // it into the final fragment alpha.
+    const updateAlphas = useCallback(
+      (alphas: Float32Array, count: number) => {
+        const geom = mesh.geometry as THREE.BufferGeometry;
+        const attr = geom.attributes.instanceAlpha as THREE.InstancedBufferAttribute | undefined;
+        if (!attr) return;
+        const dst = attr.array as Float32Array;
+        const len = Math.min(count, dst.length, alphas.length);
+        dst.set(alphas.subarray(0, len));
+        attr.needsUpdate = true;
+      },
+      [mesh],
+    );
 
-    // Subtle emissive pulse on edges — base and amplitude driven by glow settings
+    useImperativeHandle(ref, () => ({ updatePoints, updateColors, updateAlphas }), [updatePoints, updateColors, updateAlphas]);
+
+    // Subtle emissive pulse on edges — base and amplitude driven by glow settings.
+    // Emissive base raised from 0.15 → 0.6 so edges clear the bloom threshold
+    // (default 0.3) and glow through the post-processing pipeline. The old
+    // 0.15 base kept edges dim (~0.07 channel brightness) — below the threshold.
     useFrame(({ clock }) => {
       const mat = meshRef.current?.material as THREE.MeshPhysicalMaterial | undefined;
       if (mat) {
         const gs = glowSettingsRef.current;
         const edgeGlow = gs?.edgeGlowStrength ?? 1.0;
         const pulseSpeed = gs?.pulseSpeed ?? 0.8;
-        const emissiveBase = 0.15 * edgeGlow;
-        const emissiveAmplitude = 0.08 * edgeGlow;
+        const emissiveBase = 0.6 * edgeGlow;
+        const emissiveAmplitude = 0.2 * edgeGlow;
         mat.emissiveIntensity = emissiveBase + Math.sin(clock.elapsedTime * pulseSpeed) * emissiveAmplitude;
       }
 

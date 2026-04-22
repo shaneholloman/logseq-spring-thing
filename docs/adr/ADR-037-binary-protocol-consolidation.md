@@ -2,7 +2,44 @@
 
 ## Status
 
-Implemented (2026-04-20)
+Implemented (2026-04-20). **Relitigated 2026-04-21** — see "Lock-in" below.
+
+## Lock-in (2026-04-21)
+
+**DO NOT re-introduce delta-encoded position protocols (V4 or any successor).**
+
+Multiple agents have attempted to "optimise bandwidth" by wiring delta encoding
+back into the broadcast path. Every attempt has regressed position updates.
+This is wrong for our workload and the reasons are physics-fundamental, not
+about implementation quality:
+
+1. The graph is a force-directed spring network. Under continuous simulation
+   every node moves every tick. Our "deltas" always contain every node — there
+   is nothing to compress.
+2. Delta encoding trades a tiny (near-zero for us) bandwidth saving for real
+   correctness risks: stale-position drift on reconnect, silent drop of user
+   pin signals when the threshold filters them out, and parallel decode paths
+   that double the bug surface.
+3. The real bandwidth lever is **broadcast cadence**, not payload encoding.
+   `ForceComputeActor` now drives broadcasts via **network backpressure** (a
+   token-bucket gate — we only emit as fast as the client pipeline drains).
+   No FPS timer. No delta filter.
+
+**Enforcement:**
+
+- Server `src/utils/binary_protocol.rs` carries an ARCHITECTURE LOCK comment
+  at the top of the file; V4 constants/decoders are gone.
+- Client `client/src/types/binaryProtocol.ts` carries the same lock; any V4
+  frame received triggers a loud error log and is dropped (regression detector).
+- Server `src/gpu/broadcast_optimizer.rs` retains `DeltaCompressor` only as
+  dead code for a future pure deletion PR; its `filter_delta_updates` must
+  never be re-wired. Header comment enforces this.
+- Server `src/actors/gpu/force_compute_actor.rs` broadcast path is
+  **literal-only + backpressure-driven**. The delta branch has been removed.
+
+Any PR that adds `PROTOCOL_V4`, a `type: 'delta'` flag on the wire, a
+`filter_delta_*` call from the broadcast path, or a "bandwidth-saving"
+per-node movement threshold is **rejected on sight**.
 
 ## Context
 

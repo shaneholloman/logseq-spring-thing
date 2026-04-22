@@ -95,15 +95,17 @@ export function useGraphVisualState(graphData: GraphData): GraphVisualStateResul
   // Binary protocol node-type map from websocket store
   const binaryNodeTypeMap = useWebSocketStore(state => state.nodeTypeMap);
 
-  // --- hierarchyMap ---
+  // --- hierarchyMap (built from hierarchical edges, not path heuristic) ---
   const hierarchyMap = useMemo(() => {
     if (graphData.nodes.length === 0) return new Map<string, HierarchyNode>();
-    const hierarchy = detectHierarchy(graphData.nodes);
-    logger.info(`Detected hierarchy: ${hierarchy.size} nodes, max depth: ${
-      Math.max(...Array.from(hierarchy.values()).map(n => n.depth))
-    }`);
+    const hierarchy = detectHierarchy(graphData.nodes, graphData.edges);
+    const maxDepth = hierarchy.size > 0
+      ? Math.max(...Array.from(hierarchy.values()).map(n => n.depth))
+      : 0;
+    const parentCount = Array.from(hierarchy.values()).filter(n => n.childIds.length > 0).length;
+    logger.info(`Hierarchy: ${hierarchy.size} nodes, ${parentCount} parents, max depth ${maxDepth}`);
     return hierarchy;
-  }, [graphData.nodes]);
+  }, [graphData.nodes, graphData.edges]);
 
   // --- connectionCountMap ---
   const connectionCountMap = useMemo(() => {

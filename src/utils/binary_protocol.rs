@@ -7,6 +7,28 @@ use serde::{Deserialize, Serialize};
 use serde_json;
 use std::collections::HashMap;
 
+// =============================================================================
+// ARCHITECTURE LOCK — DO NOT RE-INTRODUCE DELTA PROTOCOLS
+// =============================================================================
+// The wire protocol is LITERAL-ONLY. Every broadcast is a full snapshot of
+// every node's absolute position + velocity.
+//
+// Why not delta?
+//   This graph is a force-directed spring network. Every node moves on every
+//   physics tick (non-trivially). Delta encoding saves nothing — our "deltas"
+//   always contain every node — while adding real cost:
+//     * Stale-position drift on reconnect and packet loss
+//     * Silent drop when the threshold filters out a jitter that was actually
+//       the user's pin signal
+//     * Parallel decoders (V3 full, V4 delta) double the surface area for bugs
+//
+// The REAL bandwidth lever is BROADCAST CADENCE, not payload encoding.
+// See ForceComputeActor broadcast path: we broadcast on settlement-change,
+// user-pin-change, topology-change, or heartbeat — not every physics tick.
+//
+// Any PR that adds a PROTOCOL_V4, a `delta: true` flag, or a `filter_delta_*`
+// function is REJECTED on sight. This was relitigated 2026-04-21 (ADR-037).
+// =============================================================================
 // Protocol versions for wire format.
 // V1 / V2 / V4 are REMOVED — the server no longer sends or decodes them.
 // V3 is the canonical per-node payload (48 bytes/node with analytics).

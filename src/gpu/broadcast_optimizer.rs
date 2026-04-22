@@ -1,9 +1,24 @@
 //! GPU Physics Broadcast Optimization
 //!
-//! Reduces network bandwidth by 70-80% through:
-//! - Adaptive broadcast frequency (20-30fps instead of 60fps)
-//! - Delta compression (only send nodes that moved)
-//! - Spatial partitioning (visibility culling)
+//! # ARCHITECTURE LOCK — READ BEFORE EDITING
+//!
+//! This module STILL CONTAINS a `DeltaCompressor` with `filter_delta_updates()`.
+//! That code is HELD FOR DELETION. It must not be wired back into the
+//! broadcast path. Enabling it regresses us to the delta-encoding failure
+//! modes documented in `src/utils/binary_protocol.rs` (force-directed spring
+//! networks move every node every tick, so deltas always contain every node;
+//! the only outcomes are stale-position drift and silent drop of user pin
+//! signals when the threshold filters legitimate motion).
+//!
+//! The wire protocol is LITERAL-ONLY. See ADR-037.
+//!
+//! The real bandwidth lever is BROADCAST CADENCE. `ForceComputeActor` drives
+//! broadcasts via settlement-change / pin-change / topology-change / heartbeat
+//! — gated by `NetworkBackpressure::try_acquire` so we only ever emit as fast
+//! as the client pipeline drains.
+//!
+//! If you find yourself re-wiring `filter_delta_updates` here, STOP. It is
+//! wrong for this workload. Relitigated 2026-04-21.
 
 use glam::Vec3;
 use log::{debug, info};

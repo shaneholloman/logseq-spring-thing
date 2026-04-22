@@ -320,8 +320,10 @@ impl OntologyEnrichmentService {
         node.color = Some(color.to_string());
         node.size = Some(size as f32);
 
-        // Update node type to reflect ontology class
-        node.node_type = Some("ontology_node".to_string());
+        // ADR-048 dual-tier: do NOT override node_type here. KGNodes keep their
+        // own type ("page", "knowledge_node", "agent"); ontology class membership
+        // is expressed via owl_class_iri and BRIDGE_TO edges to the OntologyClass
+        // tier, not by relabelling a narrative node as an ontology node.
     }
 
     /// Batch enrich multiple graphs

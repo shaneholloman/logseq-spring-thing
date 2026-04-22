@@ -1554,6 +1554,192 @@ impl Neo4jOntologyRepository {
         Ok(())
     }
 
+    /// Load the ontology graph as GraphData (OwlClass nodes + SUBCLASS_OF/RELATES edges).
+    ///
+    /// Queries all :OwlClass nodes and their relationships directly, producing
+    /// a GraphData suitable for serving to the client under `graph_type=ontology`.
+    /// Node IDs are stable u32 hashes of the IRI so they are consistent across
+    /// requests without relying on Neo4j internal IDs.
+    pub async fn load_ontology_graph_data(&self) -> RepoResult<GraphData> {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+
+        // Helper: stable u32 from IRI string
+        let iri_to_id = |iri: &str| -> u32 {
+            let mut h = DefaultHasher::new();
+            iri.hash(&mut h);
+            (h.finish() & 0xFFFF_FFFE) as u32 + 1
+        };
+
+        // --- Query nodes ---
+        let nodes_query_str = "
+            MATCH (c:OwlClass)
+            RETURN c.iri AS iri, c.label AS label, c.source_domain AS source_domain,
+                   c.quality_score AS quality_score, c.status AS status
+            ORDER BY c.iri
+        ";
+
+        let mut result = self.graph
+            .execute(query(nodes_query_str))
+            .await
+            .map_err(|e| OntologyRepositoryError::DatabaseError(format!(
+                "Failed to query OwlClass nodes: {}", e
+            )))?;
+
+        let mut nodes: Vec<Node> = Vec::new();
+        let mut iri_set: std::collections::HashSet<String> = std::collections::HashSet::new();
+
+        while let Ok(Some(row)) = result.next().await {
+            let iri: String = match row.get("iri") {
+                Ok(v) => v,
+                Err(_) => continue,
+            };
+            if !iri_set.insert(iri.clone()) {
+                continue; // skip duplicate IRIs
+            }
+
+            let label: Option<String> = row.get("label").ok();
+            let source_domain: Option<String> = row.get("source_domain").ok();
+            let _quality_score: Option<f64> = row.get("quality_score").ok();
+            let _status: Option<String> = row.get("status").ok();
+
+            // Use last fragment of IRI as display label when label is absent
+            let display_label = label.unwrap_or_else(|| {
+                iri.rsplit(|c| c == '#' || c == '/').next()
+                    .unwrap_or(&iri)
+                    .to_string()
+            });
+
+            let node_id = iri_to_id(&iri);
+
+            // Sphere distribution matching Node::new_with_id
+            use rand::Rng;
+            let mut rng = rand::thread_rng();
+            let theta = rng.gen::<f32>() * 2.0 * std::f32::consts::PI;
+            let phi = (rng.gen::<f32>() * 2.0 - 1.0).acos();
+            let radius = 50.0 + rng.gen::<f32>().cbrt() * 150.0;
+            let x = radius * phi.sin() * theta.cos();
+            let y = radius * phi.sin() * theta.sin();
+            let z = radius * phi.cos();
+
+            let mut metadata: HashMap<String, String> = HashMap::new();
+            metadata.insert("owl_class_iri".to_string(), iri.clone());
+            if let Some(domain) = source_domain {
+                metadata.insert("source_domain".to_string(), domain);
+            }
+
+            use crate::utils::socket_flow_messages::BinaryNodeData;
+            nodes.push(Node {
+                id: node_id,
+                metadata_id: iri.clone(),
+                label: display_label,
+                data: BinaryNodeData {
+                    node_id,
+                    x,
+                    y,
+                    z,
+                    vx: 0.0,
+                    vy: 0.0,
+                    vz: 0.0,
+                },
+                x: Some(x),
+                y: Some(y),
+                z: Some(z),
+                vx: Some(0.0),
+                vy: Some(0.0),
+                vz: Some(0.0),
+                mass: Some(1.0),
+                owl_class_iri: Some(iri.clone()),
+                metadata,
+                file_size: 0,
+                node_type: Some("owl_class".to_string()),
+                size: Some(1.0),
+                color: Some("#5DADE2".to_string()),
+                weight: Some(1.0),
+                group: None,
+                user_data: None,
+                visibility: crate::models::node::Visibility::Public,
+                owner_pubkey: None,
+                opaque_id: None,
+                pod_url: None,
+            });
+        }
+
+        // --- Query SUBCLASS_OF edges ---
+        let subclass_query_str = "
+            MATCH (s:OwlClass)-[r:SUBCLASS_OF]->(t:OwlClass)
+            RETURN s.iri AS src, t.iri AS tgt
+        ";
+
+        let mut result = self.graph
+            .execute(query(subclass_query_str))
+            .await
+            .map_err(|e| OntologyRepositoryError::DatabaseError(format!(
+                "Failed to query SUBCLASS_OF edges: {}", e
+            )))?;
+
+        let mut edges: Vec<Edge> = Vec::new();
+
+        while let Ok(Some(row)) = result.next().await {
+            if let (Ok(src), Ok(tgt)) = (row.get::<String>("src"), row.get::<String>("tgt")) {
+                let source = iri_to_id(&src);
+                let target = iri_to_id(&tgt);
+                edges.push(Edge {
+                    id: format!("{}-{}", source, target),
+                    source,
+                    target,
+                    weight: 1.0,
+                    edge_type: Some("hierarchical".to_string()),
+                    metadata: None,
+                    owl_property_iri: None,
+                });
+            }
+        }
+
+        // --- Query RELATES edges ---
+        let relates_query_str = "
+            MATCH (s:OwlClass)-[r:RELATES]->(t:OwlClass)
+            RETURN s.iri AS src, t.iri AS tgt, r.relationship_type AS rel
+        ";
+
+        let mut result = self.graph
+            .execute(query(relates_query_str))
+            .await
+            .map_err(|e| OntologyRepositoryError::DatabaseError(format!(
+                "Failed to query RELATES edges: {}", e
+            )))?;
+
+        while let Ok(Some(row)) = result.next().await {
+            if let (Ok(src), Ok(tgt)) = (row.get::<String>("src"), row.get::<String>("tgt")) {
+                let rel: Option<String> = row.get("rel").ok();
+                let source = iri_to_id(&src);
+                let target = iri_to_id(&tgt);
+                edges.push(Edge {
+                    id: format!("{}-{}-{}", source, target, rel.as_deref().unwrap_or("rel")),
+                    source,
+                    target,
+                    weight: 1.0,
+                    edge_type: Some(rel.unwrap_or_else(|| "associative".to_string())),
+                    metadata: None,
+                    owl_property_iri: None,
+                });
+            }
+        }
+
+        info!(
+            "Loaded ontology graph: {} OwlClass nodes, {} edges",
+            nodes.len(),
+            edges.len()
+        );
+
+        Ok(GraphData {
+            nodes,
+            edges,
+            metadata: Default::default(),
+            id_to_metadata: HashMap::new(),
+        })
+    }
+
     /// Get clustering by physicality and role
     /// Returns a grouped view of classes organized by physicality and role
     pub async fn get_physicality_role_clustering(&self) -> RepoResult<HashMap<String, HashMap<String, Vec<OwlClass>>>> {

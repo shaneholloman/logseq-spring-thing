@@ -1120,10 +1120,27 @@ impl FileService {
 
         let mut graph_data = GraphData::new();
 
+        // Deterministic hash ID from page name — must match KGParser::page_name_to_id exactly
+        let page_name_to_id = |page_name: &str| -> u32 {
+            use std::collections::hash_map::DefaultHasher;
+            use std::hash::{Hash, Hasher};
+            let mut hasher = DefaultHasher::new();
+            page_name.hash(&mut hasher);
+            let hash_val = hasher.finish();
+            (hash_val & 0xFFFF_FFFE) as u32 + 1
+        };
+
+        // Strip OntologyBlock section before wikilink extraction to avoid hub-node explosion
+        fn strip_ontology_block(content: &str) -> &str {
+            if let Some(pos) = content.find("### OntologyBlock") {
+                &content[..pos]
+            } else {
+                content
+            }
+        }
+
         // Phase 1: Create nodes and collect file contents + actual IDs.
-        // new_with_id auto-increments when nodeId is 0, so we capture the real ID.
         let mut term_to_id: HashMap<String, u32> = HashMap::new();
-        let mut filename_to_id: HashMap<String, u32> = HashMap::new();
         let mut file_contents: Vec<(String, u32)> = Vec::new(); // (content, actual_node_id)
 
         for (filename, meta) in metadata.iter() {
@@ -1136,13 +1153,13 @@ impl FileService {
                 }
             };
 
-            let meta_node_id = meta.node_id.parse::<u32>().unwrap_or(0);
+            let page_name = meta.file_name.trim_end_matches(".md");
+            let hash_id = page_name_to_id(page_name);
 
-            let mut node = AppNode::new_with_id(
-                filename.clone(),
-                Some(meta_node_id)
-            );
-            node.label = meta.file_name.trim_end_matches(".md").to_string();
+            let mut node = AppNode::new_with_id(filename.clone(), Some(hash_id));
+            node.id = hash_id; // ensure ID matches hash regardless of NEXT_NODE_ID
+            node.label = page_name.to_string();
+            node.node_type = Some("page".to_string());
             node.size = Some(meta.node_size as f32);
             node.color = Some("#888888".to_string());
             let mut rng = rand::thread_rng();
@@ -1150,17 +1167,14 @@ impl FileService {
             node.data.y = rng.gen_range(-100.0..100.0);
             node.data.z = rng.gen_range(-100.0..100.0);
 
-            // Capture the actual assigned ID (may differ from meta_node_id due to auto-increment)
-            let actual_id = node.id;
-            filename_to_id.insert(filename.clone(), actual_id);
-
-            // Map preferred term → actual node ID for wikilink resolution
+            // Map page name and preferred term → hash ID for wikilink resolution
+            term_to_id.insert(page_name.to_lowercase(), hash_id);
             if let Some(ref term) = meta.preferred_term {
-                term_to_id.insert(term.to_lowercase(), actual_id);
+                term_to_id.insert(term.to_lowercase(), hash_id);
             }
 
             graph_data.nodes.push(node);
-            file_contents.push((content, actual_id));
+            file_contents.push((content, hash_id));
         }
 
         info!(
@@ -1168,13 +1182,14 @@ impl FileService {
             graph_data.nodes.len(), term_to_id.len()
         );
 
-        // Phase 2: Extract edges from wikilinks using the preferred_term mapping.
+        // Phase 2: Extract edges from wikilinks, excluding OntologyBlock content.
         let wikilink_re = Regex::new(r"\[\[([^\]|]+)(?:\|[^\]]+)?\]\]")
             .expect("Invalid wikilink regex");
         let mut seen_edges = std::collections::HashSet::new();
 
         for (content, source_id) in &file_contents {
-            for cap in wikilink_re.captures_iter(content) {
+            let kg_content = strip_ontology_block(content);
+            for cap in wikilink_re.captures_iter(kg_content) {
                 if let Some(link_match) = cap.get(1) {
                     let target = link_match.as_str().trim().to_lowercase();
                     if let Some(&target_id) = term_to_id.get(&target) {

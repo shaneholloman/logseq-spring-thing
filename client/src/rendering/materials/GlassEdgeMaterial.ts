@@ -67,6 +67,27 @@ export function createGlassEdgeMaterial(baseColor?: string | THREE.Color): Glass
     } : {}),
   });
 
+  // WebGL path: inject per-instance alpha via onBeforeCompile.
+  // Reads `instanceAlpha` float attribute, passes to fragment via varying,
+  // multiplies into the output alpha after the standard output_fragment chunk.
+  // WebGPU path is handled in the TSL `ready` block below.
+  if (!isWebGPURenderer) {
+    material.onBeforeCompile = (shader) => {
+      shader.vertexShader =
+        'attribute float instanceAlpha;\nvarying float vInstanceAlpha;\n' +
+        shader.vertexShader.replace(
+          '#include <begin_vertex>',
+          'vInstanceAlpha = instanceAlpha;\n#include <begin_vertex>',
+        );
+      shader.fragmentShader =
+        'varying float vInstanceAlpha;\n' +
+        shader.fragmentShader.replace(
+          '#include <opaque_fragment>',
+          '#include <opaque_fragment>\ngl_FragColor.a *= vInstanceAlpha;',
+        );
+    };
+  }
+
   // TSL ENABLED (r183+) with PBR fallback — Fresnel emissive and opacity nodes
   // are applied asynchronously on WebGPU; standard PBR + per-frame emissive
   // modulation in GlassEdges useFrame remains the active fallback path.
@@ -74,16 +95,25 @@ export function createGlassEdgeMaterial(baseColor?: string | THREE.Color): Glass
     if (!isWebGPURenderer) return;
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Three.js TSL module exports are complex node builder types with no stable public API
-      const { float, vec3, normalize, positionView, normalView, dot, saturate, pow, oneMinus } = await import('three/tsl') as any;
+      const tsl = await import('three/tsl') as any;
+      const { float, vec3, normalize, positionView, normalView, dot, saturate, pow, oneMinus, attribute } = tsl;
       const viewDir = normalize(positionView.negate());
       const fresnel = pow(oneMinus(saturate(dot(normalView, viewDir))), float(3.0));
       const emissiveNode = vec3(float(0.1), float(0.15), float(0.3)).mul(fresnel);
-      const opacityNode = float(0.3).add(fresnel.mul(0.5));
+      // Per-instance alpha sourced from the `instanceAlpha` geometry attribute
+      // allocated in GlassEdges. Multiplies into the Fresnel-based opacity so
+      // ADR-048 bridge edges can render semi-transparent while still benefiting
+      // from the glass fresnel falloff at grazing angles.
+      const instAlpha = attribute ? attribute('instanceAlpha', 'float') : null;
+      let opacityNode = float(0.3).add(fresnel.mul(0.5));
+      if (instAlpha) {
+        opacityNode = opacityNode.mul(instAlpha);
+      }
       const augmented = material as unknown as TSLNodeProperties;
       augmented.emissiveNode = emissiveNode;
       augmented.opacityNode = opacityNode;
       augmented.needsUpdate = true;
-      logger.info('TSL nodes enabled (r183+)');
+      logger.info(`TSL nodes enabled (r183+) — instanceAlpha ${instAlpha ? 'wired' : 'unavailable'}`);
     } catch (err) {
       logger.warn('TSL upgrade failed, using PBR fallback:', err);
     }

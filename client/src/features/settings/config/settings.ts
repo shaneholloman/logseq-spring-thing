@@ -394,6 +394,11 @@ export interface OntologyVisualSettings {
   showInstanceCount?: boolean;
   showConstraintStatus?: boolean;
   nebulaGlowIntensity?: number;
+  // ADR-048: tier toggles. When `showTier` is false, OwlClass nodes and their
+  // edges are filtered client-side before rendering.
+  showTier?: boolean;          // default false — opt-in
+  showBridgeEdges?: boolean;   // default true when tier is shown
+  bridgeEdgeColor?: string;    // default '#5DADE2'
 }
 
 export interface AgentVisualSettings {

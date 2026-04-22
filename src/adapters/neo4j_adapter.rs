@@ -775,16 +775,98 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
             }
         }
 
-        // ONT-001 fix: Populate iri_to_id from KGNode nodes that have owl_class_iri.
-        // This enables the ontology edge bridge (SUBCLASS_OF + RELATES between OwlClass
-        // nodes) to map IRI-based relationships into numeric KGNode IDs.
+        // ADR-048 dual-tier: load :OwlClass nodes as the ontology tier. Their
+        // Neo4j ids (2..~5M) are disjoint from KGNode hash ids (~9M..4.29B), so
+        // they coexist safely in the same u32 id space until the in-memory
+        // remap_to_compact_ids() collapses everything to 0..N-1.
+        //
+        // Physics separation is achieved via:
+        //   - Spatial: migration 0044 places OwlClass on a radius-600 shell
+        //   - Mass: migration 0044 sets mass=10 (10× heavier than KG)
+        //   - Edge weights: SUBCLASS_OF=0.15, BRIDGE_TO=0.02 (see edge loader)
+        //
+        // Default ON: ADR-048 dual-tier is the canonical view. Physics is
+        // tuned for it via weight attenuation (SUBCLASS_OF=0.15, BRIDGE_TO=0.02)
+        // and migration 0044's r=600 shell + mass=10 for OwlClass.
+        // Opt out via env: LOAD_ONTOLOGY_TIER=false (e.g. for perf testing).
+        let load_ontology = std::env::var("LOAD_ONTOLOGY_TIER")
+            .map(|v| v.eq_ignore_ascii_case("true"))
+            .unwrap_or(true);
+        if load_ontology {
+            let owl_query = Query::new(
+                "MATCH (o:OwlClass)
+                 RETURN o.id AS id,
+                        COALESCE(o.metadata_id, o.iri, toString(o.id)) AS metadata_id,
+                        COALESCE(o.label, o.preferred_term, o.iri, toString(o.id)) AS label,
+                        COALESCE(o.sim_x, o.x, 0.0) AS x,
+                        COALESCE(o.sim_y, o.y, 0.0) AS y,
+                        COALESCE(o.sim_z, o.z, 0.0) AS z,
+                        COALESCE(o.vx, 0.0) AS vx,
+                        COALESCE(o.vy, 0.0) AS vy,
+                        COALESCE(o.vz, 0.0) AS vz,
+                        COALESCE(o.mass, 10.0) AS mass,
+                        COALESCE(o.size, 1.4) AS size,
+                        COALESCE(o.color, '#9B59B6') AS color,
+                        COALESCE(o.weight, 1.0) AS weight,
+                        COALESCE(o.node_type, 'owl_class') AS node_type,
+                        o.iri AS iri,
+                        o.source_domain AS source_domain,
+                        COALESCE(o.group_name, 'ontology') AS group_name".to_string()
+            );
+            match self.graph.execute(owl_query).await {
+                Ok(mut result) => {
+                    let pre = nodes.len();
+                    while let Ok(Some(row)) = result.next().await {
+                        let id: i64 = match row.get("id") { Ok(v) => v, Err(_) => continue };
+                        let metadata_id: String = row.get("metadata_id").unwrap_or_default();
+                        let label: String = row.get("label").unwrap_or_default();
+                        let x: f64 = row.get("x").unwrap_or(0.0);
+                        let y: f64 = row.get("y").unwrap_or(0.0);
+                        let z: f64 = row.get("z").unwrap_or(0.0);
+                        let vx: f64 = row.get("vx").unwrap_or(0.0);
+                        let vy: f64 = row.get("vy").unwrap_or(0.0);
+                        let vz: f64 = row.get("vz").unwrap_or(0.0);
+                        let mass: f64 = row.get("mass").unwrap_or(10.0);
+                        let size: f64 = row.get("size").unwrap_or(1.4);
+                        let color: Option<String> = row.get("color").ok();
+                        let weight: f64 = row.get("weight").unwrap_or(1.0);
+                        let node_type: String = row.get("node_type").unwrap_or_else(|_| "owl_class".to_string());
+                        let iri: Option<String> = row.get("iri").ok();
+                        let source_domain: Option<String> = row.get("source_domain").ok();
+                        let group_name: String = row.get("group_name").unwrap_or_else(|_| "ontology".to_string());
+
+                        let mut node = Node::new_with_id(metadata_id, Some(id as u32));
+                        node.label = label;
+                        node.data.x = x as f32; node.data.y = y as f32; node.data.z = z as f32;
+                        node.data.vx = vx as f32; node.data.vy = vy as f32; node.data.vz = vz as f32;
+                        node.mass = Some(mass as f32);
+                        node.size = Some(size as f32);
+                        node.color = color;
+                        node.weight = Some(weight as f32);
+                        node.node_type = Some(node_type);
+                        node.owl_class_iri = iri;
+                        node.group = Some(group_name);
+                        if let Some(d) = source_domain {
+                            if !d.is_empty() && d != "unknown" {
+                                node.metadata.insert("source_domain".to_string(), d);
+                            }
+                        }
+                        nodes.push(node);
+                    }
+                    info!("ADR-048: loaded {} :OwlClass nodes (ontology tier, shell r=600)", nodes.len() - pre);
+                }
+                Err(e) => warn!("Failed to load :OwlClass nodes: {}", e),
+            }
+        }
+
+        // Populate iri_to_id from all loaded nodes that have owl_class_iri.
         for node in &nodes {
             if let Some(ref iri) = node.owl_class_iri {
                 iri_to_id.insert(iri.clone(), node.id);
             }
         }
         if !iri_to_id.is_empty() {
-            info!("ONT-001: Built iri_to_id map — {} KGNode nodes have owl_class_iri (enables ontology edge bridge)", iri_to_id.len());
+            info!("ONT-001: Built iri_to_id map — {} nodes have owl_class_iri", iri_to_id.len());
         }
 
         // ADR-014: Always load ALL edge types — no either/or branching.
@@ -820,6 +902,55 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
             debug!("Loaded {} KGNode EDGE relationships", edges.len());
         }
 
+        // ADR-048: SUBCLASS_OF between :OwlClass nodes — ontology hierarchy.
+        // Weight 0.15 attenuates the spring force so the hierarchy shape stays
+        // loose rather than collapsing to a tight tree that pulls on bridges.
+        // Opt out via env: LOAD_ONTOLOGY_TIER=false
+        if load_ontology {
+            let q = Query::new(
+                "MATCH (s:OwlClass)-[r:SUBCLASS_OF]->(t:OwlClass)
+                 RETURN s.id AS source, t.id AS target".to_string()
+            );
+            match self.graph.execute(q).await {
+                Ok(mut result) => {
+                    let pre = edges.len();
+                    while let Ok(Some(row)) = result.next().await {
+                        let src: i64 = match row.get("source") { Ok(v) => v, Err(_) => continue };
+                        let tgt: i64 = match row.get("target") { Ok(v) => v, Err(_) => continue };
+                        let mut e = Edge::new(src as u32, tgt as u32, 0.15_f32);
+                        e.edge_type = Some("hierarchical".to_string());
+                        edges.push(e);
+                    }
+                    info!("ADR-048: loaded {} SUBCLASS_OF edges (weight=0.15)", edges.len() - pre);
+                }
+                Err(e) => warn!("Failed to load SUBCLASS_OF edges: {}", e),
+            }
+
+            // BRIDGE_TO edges — dual-tier bridges. Weight 0.02 makes them
+            // visual connectors with almost no physics pull, so the ontology
+            // shell doesn't yank KG pages outward.
+            let q = Query::new(
+                "MATCH (k:KGNode)-[r:BRIDGE_TO]->(o:OwlClass)
+                 RETURN k.id AS source, o.id AS target,
+                        COALESCE(r.kind, 'colocated') AS kind".to_string()
+            );
+            match self.graph.execute(q).await {
+                Ok(mut result) => {
+                    let pre = edges.len();
+                    while let Ok(Some(row)) = result.next().await {
+                        let src: i64 = match row.get("source") { Ok(v) => v, Err(_) => continue };
+                        let tgt: i64 = match row.get("target") { Ok(v) => v, Err(_) => continue };
+                        let kind: String = row.get("kind").unwrap_or_else(|_| "colocated".to_string());
+                        let mut e = Edge::new(src as u32, tgt as u32, 0.02_f32);
+                        e.edge_type = Some(format!("bridge_{}", kind));
+                        edges.push(e);
+                    }
+                    info!("ADR-048: loaded {} BRIDGE_TO edges (weight=0.02)", edges.len() - pre);
+                }
+                Err(e) => warn!("Failed to load BRIDGE_TO edges: {}", e),
+            }
+        }
+
         // 2) Load ontology relationships (SUBCLASS_OF + RELATES between OwlClass nodes)
         //    Map OwlClass IRIs to numeric node IDs via iri_to_id.
         if !iri_to_id.is_empty() {
@@ -838,6 +969,11 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
             let mut onto_result = self.graph.execute(onto_edges_query).await.map_err(|e| {
                 KnowledgeGraphRepositoryError::DatabaseError(format!("Failed to load ontology edges: {}", e))
             })?;
+
+            // Dedup against direct SUBCLASS_OF/BRIDGE_TO edges loaded above.
+            let mut onto_edge_set: std::collections::HashSet<(u32, u32)> = edges.iter()
+                .map(|e| (e.source, e.target))
+                .collect();
 
             let pre_count = edges.len();
             while let Ok(Some(row)) = onto_result.next().await {
@@ -867,13 +1003,17 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
 
                 let display_type = relationship_type.unwrap_or(rel_type);
 
+                if !onto_edge_set.insert((source_id, target_id)) {
+                    continue;
+                }
+
                 let mut edge = Edge::new(source_id, target_id, weight as f32);
                 edge.edge_type = Some(display_type);
                 edge.owl_property_iri = owl_property_iri;
                 edges.push(edge);
             }
 
-            info!("Loaded {} ontology edges (SUBCLASS_OF + RELATES)", edges.len() - pre_count);
+            info!("Loaded {} ontology edges via IRI remap (legacy, deduped)", edges.len() - pre_count);
         }
 
         debug!("Loaded {} total base edges from Neo4j", edges.len());
