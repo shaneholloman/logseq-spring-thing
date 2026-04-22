@@ -34,7 +34,7 @@ The personal agent revolution has a governance problem. As information routing b
 
 VisionClaw takes the opposite approach. Governance isn't an inhibitor, it's an accelerant — a way to turn shadow workflows into auditable, reusable organisational capability.
 
-## The problem
+## Problem
 
 Every organisation rots in the same three directions.
 
@@ -49,8 +49,11 @@ Agents sit in the middle, forced to improvise shared meaning on every request. T
 VisionClaw treats all three as one problem with one mechanism: **let the work become the institution — under human governance, visibly, as the graph itself.**
 
 ---
+## Overall Infographic
 
-## The three strata
+![Full Infographic](./full-infographic.png)
+
+## Three Solution Strata
 
 ![Three strata — substrate (graph, ontology, pods, physics) · contributor stratum (Studio, Dojo, Sensei, Automations) · management mesh (broker, workflow, KPI, policy)](./docs/diagrams/01-three-layer-mesh.png)
 
