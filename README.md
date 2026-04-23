@@ -2,7 +2,7 @@
 
 # VisionClaw
 
-### The governed knowledge mesh where contributors, agents, and ontology compound.
+### A governed knowledge mesh where contributors, agents, and ontology compound.
 
 [![Build](https://img.shields.io/github/actions/workflow/status/DreamLab-AI/VisionClaw/ci.yml?branch=main&style=flat-square&logo=github)](https://github.com/DreamLab-AI/VisionClaw/actions)
 [![Version](https://img.shields.io/github/v/release/DreamLab-AI/VisionClaw?style=flat-square&logo=semantic-release)](https://github.com/DreamLab-AI/VisionClaw/releases)
@@ -51,7 +51,7 @@ VisionClaw treats all three as one problem with one mechanism: **let the work be
 ---
 ## Overall Infographic
 
-![Full Infographic](./full-infographic.png)
+![Full Infographic](./infographic.png)
 
 ## Three Solution Strata
 

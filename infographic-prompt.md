@@ -443,3 +443,6 @@ The following existing diagrams (in `docs/diagrams/`) should be used as structur
 | Share State Transitions | `13-adr057-share-state-transitions.png` | Section 6 |
 | Skill Lifecycle | `14-adr057-skill-lifecycle.png` | Section 2 (Mesh Dojo) |
 | DDD Context Map | `15-ddd-context-map.png` | Section 2 (context labels) |
+
+
+synthesise across the knowledge and create the first of two high resolution infographics covering the whole of the project. This first image should be around half of the information, the second image will be the other half of the information.
