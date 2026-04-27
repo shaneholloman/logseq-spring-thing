@@ -393,10 +393,15 @@ impl OntologyRepository for Neo4jOntologyRepository {
                 ))
             })?;
 
-        // Store parent relationships (SUBCLASS_OF)
+        // Store parent relationships (SUBCLASS_OF).
+        // MERGE-create both endpoints by iri for order-independence: the
+        // ontology pipeline may visit a child before its parent class is
+        // explicitly added (especially for upstream-only parents). The
+        // unique constraint on OntologyClass.iri (0042_bridge_to.cypher)
+        // means MERGE-by-iri is bijective with the canonical row.
         for parent_iri in &class.parent_classes {
             let rel_query = "
-                MATCH (c:OntologyClass {iri: $child_iri})
+                MERGE (c:OntologyClass {iri: $child_iri})
                 MERGE (p:OntologyClass {iri: $parent_iri})
                 MERGE (c)-[:SUBCLASS_OF]->(p)
             ";

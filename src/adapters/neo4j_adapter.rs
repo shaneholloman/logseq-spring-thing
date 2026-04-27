@@ -1430,9 +1430,17 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
             })?;
         }
 
-        // Save edges in batch
+        // Save edges in batch.
+        //
+        // CORRECTNESS: MERGE (not MATCH) on endpoints. Github_sync processes
+        // files in batches; an edge in batch N can reference a wikilink
+        // target whose own file lands in batch N+M. MATCH-on-id returns
+        // zero rows for unsaved targets and the edge MERGE silently
+        // no-ops (no error). MERGE-create produces an `iri`-less stub
+        // keyed only by `id`; when the real file's add_node lands later
+        // it MERGEs by id and fills in label/iri/v2 fields on the stub.
         for edge in &graph.edges {
-            let mut query = Query::new("MATCH (s:KGNode {id: $source}) MATCH (t:KGNode {id: $target}) MERGE (s)-[r:EDGE]->(t) SET r.weight = $weight, r.relation_type = $relation_type, r.owl_property_iri = $owl_property_iri, r.metadata = $metadata".to_string());
+            let mut query = Query::new("MERGE (s:KGNode {id: $source}) MERGE (t:KGNode {id: $target}) MERGE (s)-[r:EDGE]->(t) SET r.weight = $weight, r.relation_type = $relation_type, r.owl_property_iri = $owl_property_iri, r.metadata = $metadata".to_string());
 
             query = query.param("source", edge.source as i64);
             query = query.param("target", edge.target as i64);
@@ -1596,7 +1604,8 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
     async fn add_edge(&self, edge: &Edge) -> RepoResult<String> {
         // Use MERGE to prevent duplicate edges between the same source-target pair.
         // Each GitHub sync re-processes all wikilinks; CREATE would duplicate on every run.
-        let mut query = Query::new("MATCH (s:KGNode {id: $source}) MATCH (t:KGNode {id: $target}) MERGE (s)-[r:EDGE]->(t) SET r.weight = $weight, r.relation_type = $relation_type, r.owl_property_iri = $owl_property_iri, r.metadata = $metadata RETURN elementId(r) AS id".to_string());
+        // MERGE endpoints (not MATCH) to be order-independent — see save_graph above.
+        let mut query = Query::new("MERGE (s:KGNode {id: $source}) MERGE (t:KGNode {id: $target}) MERGE (s)-[r:EDGE]->(t) SET r.weight = $weight, r.relation_type = $relation_type, r.owl_property_iri = $owl_property_iri, r.metadata = $metadata RETURN elementId(r) AS id".to_string());
 
         query = query.param("source", edge.source as i64);
         query = query.param("target", edge.target as i64);

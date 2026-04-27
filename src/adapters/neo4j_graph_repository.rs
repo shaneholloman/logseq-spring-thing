@@ -609,11 +609,21 @@ impl GraphRepository for Neo4jGraphRepository {
             return Ok(Vec::new());
         }
 
-        // PERF: Use UNWIND with parallel arrays - neo4rs native type support
+        // PERF: Use UNWIND with parallel arrays - neo4rs native type support.
+        //
+        // CORRECTNESS: MERGE (not MATCH) on endpoints. The parser produces
+        // edges referencing wikilink targets that may not yet have a
+        // :KGNode row in the current batch (the target file is processed
+        // later). With MATCH, Cypher returns zero rows → MERGE for the
+        // edge silently no-ops, dropping the edge with no error. With
+        // MERGE-create, an `iri`-less stub appears with just the id; when
+        // the real file lands its `add_nodes` upsert MERGEs by id and
+        // fills in label/iri/visionclaw_uri/etc. Pre-fix ratio was 187
+        // edges from 33,617 parsed (99.5% loss).
         let query_str = "
             UNWIND range(0, size($edge_ids)-1) AS i
-            MATCH (source:KGNode {id: $source_ids[i]})
-            MATCH (target:KGNode {id: $target_ids[i]})
+            MERGE (source:KGNode {id: $source_ids[i]})
+            MERGE (target:KGNode {id: $target_ids[i]})
             MERGE (source)-[r:EDGE]->(target)
             ON CREATE SET r.created_at = datetime()
             ON MATCH SET r.updated_at = datetime()
