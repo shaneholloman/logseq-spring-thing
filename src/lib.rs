@@ -33,6 +33,7 @@ pub mod settings;
 pub mod sovereign;
 pub mod telemetry;
 pub mod types;
+pub mod uri;
 
 // Import utils with macro_use to make response macros available everywhere
 #[macro_use]

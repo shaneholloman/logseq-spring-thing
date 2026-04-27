@@ -39,6 +39,15 @@ pub enum CanonicalIriError {
 /// the same format already used throughout `nostr_service.rs` and the Solid
 /// Pod handler. `relative_path` is the owner-scoped, forward-slash-normalised
 /// path to the source document (e.g. `logseq/pages/My Note.md`).
+///
+/// **Deprecated**: new code should use [`crate::uri::mint_owned_kg`] which
+/// produces the 12-hex API alias form. This shim survives so the existing
+/// `canonical_iri` Neo4j column values stay byte-identical (PRD-006 §5.1).
+#[deprecated(
+    since = "0.2.0",
+    note = "use crate::uri::mint_owned_kg for new code; this fn preserves \
+            ADR-054 row values for the canonical_iri column"
+)]
 pub fn canonical_iri(
     owner_pubkey_hex: &str,
     relative_path: &str,
@@ -84,6 +93,7 @@ fn nibble_to_hex(n: u8) -> char {
 }
 
 #[cfg(test)]
+#[allow(deprecated)] // Tests intentionally call the deprecated fn to verify legacy column values.
 mod tests {
     use super::*;
 

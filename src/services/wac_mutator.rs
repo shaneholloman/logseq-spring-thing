@@ -277,7 +277,7 @@ fn plan_mutation(intent: &ShareIntent, _pod_base: &str) -> Result<WacMutationPla
                 kind = kind_seg, team = team, name = file);
             let acl_document_path = format!(
                 "/shared/{kind}/{team}/.acl", kind = kind_seg, team = team);
-            let group_iri = format!("urn:visionclaw:group:{}#members", team);
+            let group_iri = crate::uri::mint_group_members(team);
             let acl_turtle = render_team_acl(&intent.contributor_webid, &group_iri);
             verify_double_gate(intent, &destination_path)?;
             Ok(WacMutationPlan {

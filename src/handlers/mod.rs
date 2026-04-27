@@ -56,6 +56,10 @@ pub use briefing_handler::configure_routes as configure_briefing_routes;
 pub mod memory_flash_handler;
 pub use memory_flash_handler::configure_routes as configure_memory_flash_routes;
 
+// URI resolver (PRD-006 §5.2) — URN/CURIE parsing + 307/404/400 surface.
+pub mod uri_resolver_handler;
+pub use uri_resolver_handler::configure_routes as configure_uri_resolver_routes;
+
 // Layout mode system (ADR-031)
 pub mod layout_handler;
 pub use layout_handler::configure_layout_routes;

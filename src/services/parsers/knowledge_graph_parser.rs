@@ -428,6 +428,7 @@ impl KnowledgeGraphParser {
     /// For v2 pages the `iri::` property IS the canonical IRI — we use it
     /// directly instead of computing a hash-based IRI from the file path.
     /// For v4 / plain pages we fall back to the legacy computation.
+    #[allow(deprecated)] // Calls local canonical_iri (kept for byte-identical column values).
     fn extract_page_meta(&self, owner: &str, file: &FileBundle) -> PageMeta {
         let title = file
             .name
@@ -1108,6 +1109,17 @@ impl Default for KnowledgeGraphParser {
 /// Deterministic across runs; rename-proof identity is a non-goal — a
 /// `page.md` → `folder/page.md` move is a new IRI, which matches Logseq's
 /// filename-as-title semantics.
+///
+/// **Deprecated**: new code should use [`crate::uri::mint_owned_kg`] which
+/// produces the 12-hex API alias form. This local function survives so
+/// existing rows stay byte-identical (PRD-006 §5.1). NOTE: this variant
+/// uses RAW HEX pubkey, diverging from `crate::utils::canonical_iri` which
+/// uses bech32 npub — both forms persist in the live database.
+#[deprecated(
+    since = "0.2.0",
+    note = "use crate::uri::mint_owned_kg for new code; this fn preserves \
+            existing canonical_iri column values (raw-hex pubkey form)"
+)]
 pub fn canonical_iri(owner_pubkey: &str, relative_path: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(relative_path.as_bytes());
@@ -1150,6 +1162,7 @@ pub fn deterministic_id_from_iri(iri: &str) -> u32 {
 ///
 /// Never silently drops the wikilink — an unknown target always yields a
 /// deterministic stub IRI.
+#[allow(deprecated)] // Calls local canonical_iri (kept for byte-identical column values).
 pub fn resolve_wikilink_to_iri(
     wikilink: &str,
     title_index: &HashMap<String, String>,
