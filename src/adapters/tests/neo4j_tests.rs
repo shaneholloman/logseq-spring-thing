@@ -864,7 +864,7 @@ mod neo4j_ontology_repository_tests {
 
         // Format as used in Cypher query
         let relationship_query = format!(
-            "MATCH (c:OwlClass {{iri: '{}'}}) MERGE (p:OwlClass {{iri: '{}'}}) MERGE (c)-[:SUBCLASS_OF]->(p)",
+            "MATCH (c:OntologyClass {{iri: '{}'}}) MERGE (p:OntologyClass {{iri: '{}'}}) MERGE (c)-[:SUBCLASS_OF]->(p)",
             child_iri, parent_iri
         );
 
@@ -1248,7 +1248,7 @@ mod extended_ontology_query_tests {
         let domain_iri = "http://example.org/domain#Science";
 
         let query = format!(
-            "MATCH (c:OwlClass)-[:IN_DOMAIN]->(d:Domain {{iri: '{}'}}) RETURN c",
+            "MATCH (c:OntologyClass)-[:IN_DOMAIN]->(d:Domain {{iri: '{}'}}) RETURN c",
             domain_iri
         );
 
@@ -1263,7 +1263,7 @@ mod extended_ontology_query_tests {
 
         for level in maturity_levels {
             let query = format!(
-                "MATCH (c:OwlClass) WHERE c.maturity_level = '{}' RETURN c",
+                "MATCH (c:OntologyClass) WHERE c.maturity_level = '{}' RETURN c",
                 level
             );
             assert!(query.contains("maturity_level"));
@@ -1275,11 +1275,11 @@ mod extended_ontology_query_tests {
     #[test]
     fn test_query_by_physicality_cypher() {
         // Physical entities (can be touched/measured)
-        let physical_query = "MATCH (c:OwlClass) WHERE c.is_physical = true RETURN c";
+        let physical_query = "MATCH (c:OntologyClass) WHERE c.is_physical = true RETURN c";
         assert!(physical_query.contains("is_physical = true"));
 
         // Abstract concepts
-        let abstract_query = "MATCH (c:OwlClass) WHERE c.is_physical = false RETURN c";
+        let abstract_query = "MATCH (c:OntologyClass) WHERE c.is_physical = false RETURN c";
         assert!(abstract_query.contains("is_physical = false"));
     }
 
@@ -1294,14 +1294,14 @@ mod extended_ontology_query_tests {
 
         // AND mode
         let and_query = format!(
-            "MATCH (c:OwlClass) WHERE {} RETURN c",
+            "MATCH (c:OntologyClass) WHERE {} RETURN c",
             conditions.join(" AND ")
         );
         assert!(and_query.contains("c.quality_score >= 0.7 AND c.authority_score >= 0.5"));
 
         // OR mode
         let or_query = format!(
-            "MATCH (c:OwlClass) WHERE ({}) RETURN c",
+            "MATCH (c:OntologyClass) WHERE ({}) RETURN c",
             conditions.join(" OR ")
         );
         assert!(or_query.contains("c.quality_score >= 0.7 OR c.authority_score >= 0.5"));
@@ -1315,7 +1315,7 @@ mod extended_ontology_query_tests {
         let skip = (page - 1) * page_size;
 
         let query = format!(
-            "MATCH (c:OwlClass) RETURN c SKIP {} LIMIT {}",
+            "MATCH (c:OntologyClass) RETURN c SKIP {} LIMIT {}",
             skip, page_size
         );
 
@@ -1335,7 +1335,7 @@ mod extended_ontology_query_tests {
 
         for (field, direction) in order_fields {
             let query = format!(
-                "MATCH (c:OwlClass) RETURN c ORDER BY c.{} {}",
+                "MATCH (c:OntologyClass) RETURN c ORDER BY c.{} {}",
                 field, direction
             );
             assert!(query.contains(&format!("ORDER BY c.{} {}", field, direction)));
@@ -1544,8 +1544,8 @@ mod owl_axiom_tests {
         let object_iri = "http://example.org/Parent";
 
         let query = format!(
-            "MATCH (s:OwlClass {{iri: $subject}}) \
-             MATCH (o:OwlClass {{iri: $object}}) \
+            "MATCH (s:OntologyClass {{iri: $subject}}) \
+             MATCH (o:OntologyClass {{iri: $object}}) \
              MERGE (s)-[r:SUBCLASS_OF]->(o) \
              SET r.axiom_type = 'SubClassOf', r.created_at = datetime()"
         );
@@ -1634,8 +1634,8 @@ mod owl_axiom_tests {
 
         // Batch UNWIND pattern
         let query = "UNWIND $axioms AS axiom \
-                     MATCH (s:OwlClass {iri: axiom.subject}) \
-                     MATCH (o:OwlClass {iri: axiom.object}) \
+                     MATCH (s:OntologyClass {iri: axiom.subject}) \
+                     MATCH (o:OntologyClass {iri: axiom.object}) \
                      CALL { \
                          WITH s, o, axiom \
                          FOREACH (x IN CASE WHEN axiom.type = 'SubClassOf' THEN [1] ELSE [] END | \

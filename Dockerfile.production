@@ -58,19 +58,21 @@ WORKDIR /app
 # Copy ONLY dependency manifests + path dependencies (whelk-rs + workspace crates)
 COPY Cargo.toml Cargo.lock ./
 COPY whelk-rs ./whelk-rs
-# Workspace members required for cargo resolution — see ADR-053
-COPY crates ./crates
+# NOTE: `COPY crates ./crates` removed — `crates/` no longer exists in the
+# repo. ADR-053 reference is stale; whelk-rs is the only path dep now.
 
 # Create stub sources so cargo can resolve and compile all dependencies.
 # The dummy lib/main must reference whelk so the path dep compiles too.
+# IMPORTANT: every [[bin]] declared in Cargo.toml needs a stub here, else
+# the deps-stage `cargo build --release` fails before it can prime the
+# dependency cache. Keep this list in sync with `Cargo.toml` [[bin]] blocks.
 RUN mkdir -p src/bin && \
     echo 'fn main() {}' > src/main.rs && \
     echo 'pub use whelk;' > src/lib.rs && \
     echo 'fn main() {}' > src/bin/generate_types.rs && \
     echo 'fn main() {}' > src/bin/sync_local.rs && \
     echo 'fn main() {}' > src/bin/sync_github.rs && \
-    echo 'fn main() {}' > src/bin/load_ontology.rs && \
-    echo 'fn main() {}' > src/bin/test_tcp_connection_fixed.rs && \
+    echo 'fn main() {}' > src/bin/vc_cli.rs && \
     mkdir -p examples && \
     echo 'fn main() {}' > examples/constraint_integration_debug.rs && \
     echo 'fn main() {}' > examples/metadata_debug.rs && \

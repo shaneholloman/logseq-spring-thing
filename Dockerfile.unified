@@ -131,20 +131,22 @@ COPY Cargo.toml build.rs ./
 COPY Cargo.lock* ./
 COPY whelk-rs ./whelk-rs
 
-# Workspace member crates (required for cargo resolution — see ADR-053)
-COPY crates ./crates
+# NOTE: `COPY crates ./crates` removed — `crates/` no longer exists in the
+# repo. ADR-053 reference is stale; whelk-rs is the only path dep now.
 
 # Copy CUDA source files needed by build.rs for PTX compilation
 COPY src/utils/*.cu src/utils/
 
-# Create dummy Rust source to build dependencies without real code
-# Must create placeholders for all [[bin]] targets in Cargo.toml
+# Create dummy Rust source to build dependencies without real code.
+# Must create placeholders for all [[bin]] targets in Cargo.toml — keep this
+# list in sync with the [[bin]] blocks in Cargo.toml.
 RUN mkdir -p src/bin examples && \
     echo "fn main() {}" > src/main.rs && \
     echo "pub fn lib() {}" > src/lib.rs && \
     echo "fn main() {}" > src/bin/generate_types.rs && \
     echo "fn main() {}" > src/bin/sync_local.rs && \
     echo "fn main() {}" > src/bin/sync_github.rs && \
+    echo "fn main() {}" > src/bin/vc_cli.rs && \
     echo "fn main() {}" > examples/constraint_integration_debug.rs && \
     echo "fn main() {}" > examples/metadata_debug.rs && \
     echo "fn main() {}" > examples/ontology_constraints_example.rs && \

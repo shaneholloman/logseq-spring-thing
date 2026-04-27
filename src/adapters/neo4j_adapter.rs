@@ -265,6 +265,44 @@ impl Neo4jAdapter {
         }
 
         // ------------------------------------------------------------------
+        // Step 1d: Idempotent label migration — :OntologyClass → :OntologyClass
+        //
+        // ADR-048's canonical ontology label is :OntologyClass. The corpus
+        // historically carried :OntologyClass; bridge_edge.rs MATCHes against
+        // :OntologyClass and was silently no-oping (or worse, creating orphan
+        // stubs by MERGE-ing on a label that didn't match real ontology rows).
+        // This block adds :OntologyClass to every :OntologyClass that lacks it.
+        // The reverse strip (:OntologyClass removal) is deferred to a separate
+        // numbered migration (0045) gated by ops to allow a soak window.
+        //
+        // Failure mode: if the 0042 ontology_class_iri_unique constraint
+        // is violated by orphan :OntologyClass stubs created by older
+        // bridge_edge.rs MERGEs, the SET fails and we log instructions for
+        // the operator to run the cleanup migration before the next start.
+        // ------------------------------------------------------------------
+        let onto_label_add = Query::new(
+            "MATCH (c:OntologyClass) WHERE NOT c:OntologyClass SET c:OntologyClass RETURN count(c) AS migrated".to_string()
+        );
+        match self.graph.execute(onto_label_add).await {
+            Ok(mut res) => {
+                if let Ok(Some(row)) = res.next().await {
+                    let migrated: i64 = row.get("migrated").unwrap_or(0);
+                    if migrated > 0 {
+                        info!("OntologyClass migration: added :OntologyClass label to {} rows", migrated);
+                    } else {
+                        debug!("OntologyClass migration: no rows needed :OntologyClass label (already migrated)");
+                    }
+                }
+            }
+            Err(e) => warn!(
+                "OntologyClass migration: label-add failed (likely an :OntologyClass orphan stub from an \
+                 older bridge_edge.rs MERGE conflicts with a real :OntologyClass IRI under the unique constraint). \
+                 Run queries/migrations/0045_owlclass_to_ontologyclass.cypher manually before next start. Error: {}",
+                e
+            ),
+        }
+
+        // ------------------------------------------------------------------
         // Step 2: Create canonical kg_node_* schema against :KGNode
         // ------------------------------------------------------------------
 
@@ -791,7 +829,7 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
             }
         }
 
-        // ADR-048 dual-tier: load :OwlClass nodes as the ontology tier. Their
+        // ADR-048 dual-tier: load :OntologyClass nodes as the ontology tier. Their
         // Neo4j ids (2..~5M) are disjoint from KGNode hash ids (~9M..4.29B), so
         // they coexist safely in the same u32 id space until the in-memory
         // remap_to_compact_ids() collapses everything to 0..N-1.
@@ -810,7 +848,7 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
             .unwrap_or(true);
         if load_ontology {
             let owl_query = Query::new(
-                "MATCH (o:OwlClass)
+                "MATCH (o:OntologyClass)
                  RETURN o.id AS id,
                         COALESCE(o.metadata_id, o.iri, toString(o.id)) AS metadata_id,
                         COALESCE(o.label, o.preferred_term, o.iri, toString(o.id)) AS label,
@@ -869,9 +907,9 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
                         }
                         nodes.push(node);
                     }
-                    info!("ADR-048: loaded {} :OwlClass nodes (ontology tier, shell r=600)", nodes.len() - pre);
+                    info!("ADR-048: loaded {} :OntologyClass nodes (ontology tier, shell r=600)", nodes.len() - pre);
                 }
-                Err(e) => warn!("Failed to load :OwlClass nodes: {}", e),
+                Err(e) => warn!("Failed to load :OntologyClass nodes: {}", e),
             }
         }
 
@@ -918,13 +956,13 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
             debug!("Loaded {} KGNode EDGE relationships", edges.len());
         }
 
-        // ADR-048: SUBCLASS_OF between :OwlClass nodes — ontology hierarchy.
+        // ADR-048: SUBCLASS_OF between :OntologyClass nodes — ontology hierarchy.
         // Weight 0.15 attenuates the spring force so the hierarchy shape stays
         // loose rather than collapsing to a tight tree that pulls on bridges.
         // Opt out via env: LOAD_ONTOLOGY_TIER=false
         if load_ontology {
             let q = Query::new(
-                "MATCH (s:OwlClass)-[r:SUBCLASS_OF]->(t:OwlClass)
+                "MATCH (s:OntologyClass)-[r:SUBCLASS_OF]->(t:OntologyClass)
                  RETURN s.id AS source, t.id AS target".to_string()
             );
             match self.graph.execute(q).await {
@@ -946,7 +984,7 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
             // visual connectors with almost no physics pull, so the ontology
             // shell doesn't yank KG pages outward.
             let q = Query::new(
-                "MATCH (k:KGNode)-[r:BRIDGE_TO]->(o:OwlClass)
+                "MATCH (k:KGNode)-[r:BRIDGE_TO]->(o:OntologyClass)
                  RETURN k.id AS source, o.id AS target,
                         COALESCE(r.kind, 'colocated') AS kind".to_string()
             );
@@ -971,7 +1009,7 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
         //    Map OwlClass IRIs to numeric node IDs via iri_to_id.
         if !iri_to_id.is_empty() {
             let onto_edges_query = Query::new(
-                "MATCH (s:OwlClass)-[r]->(t:OwlClass)
+                "MATCH (s:OntologyClass)-[r]->(t:OntologyClass)
                  WHERE type(r) IN ['SUBCLASS_OF', 'RELATES']
                  RETURN s.iri AS source_iri,
                         t.iri AS target_iri,
@@ -1093,7 +1131,7 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
             // Map OwlClass→OwlClass edges (SUBCLASS_OF + RELATES) to KGNode edges.
             // Use COALESCE for label matching since parent OwlClasses often lack 'label'.
             let enrich_query = Query::new(
-                "MATCH (child:OwlClass)-[r]->(parent:OwlClass)
+                "MATCH (child:OntologyClass)-[r]->(parent:OntologyClass)
                  WHERE type(r) IN ['SUBCLASS_OF', 'RELATES']
                  WITH child,
                       parent,
@@ -1176,7 +1214,7 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
         // with source_domain (bc, ai, mv, etc.) — bridge this for clustering.
         {
             let domain_query = Query::new(
-                "MATCH (c:OwlClass)
+                "MATCH (c:OntologyClass)
                  WHERE c.source_domain IS NOT NULL
                    AND c.source_domain <> 'unknown' AND c.source_domain <> ''
                  WITH COALESCE(c.label, c.preferred_term, c.iri) AS label,

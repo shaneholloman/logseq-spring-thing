@@ -3,22 +3,22 @@
 // ADR-048 — Spatial + mass separation for the ontology tier
 // =============================================================================
 //
-// Places :OwlClass nodes on a Fibonacci-spiral sphere at radius ~600 so they
+// Places :OntologyClass nodes on a Fibonacci-spiral sphere at radius ~600 so they
 // form a shell well outside the KG's ~100-unit working volume. Pumps mass to
 // 10× so the ontology tier is effectively static while KG physics settles.
 //
 // Rationale: when the KG and ontology tiers share one physics pipeline
 // (no per-tier force parameters yet), spatial + mass separation keeps each
-// tier stable. Reversible via `MATCH (o:OwlClass) REMOVE o.sim_x, o.x, ...`.
+// tier stable. Reversible via `MATCH (o:OntologyClass) REMOVE o.sim_x, o.x, ...`.
 //
 // Apply (idempotent):
 //   cypher-shell -u neo4j -p $NEO4J_PASSWORD -d neo4j < queries/migrations/0044_ontology_tier_layout.cypher
 // =============================================================================
 
-// -- STEP 1: Fibonacci-sphere placement for :OwlClass -------------------------
+// -- STEP 1: Fibonacci-sphere placement for :OntologyClass -------------------------
 // Uses node rank (ordered by id) to pick an index into the 2811-point sphere.
 // Radius 600 keeps them far from KG's workspace (~[-100, 100]).
-MATCH (o:OwlClass)
+MATCH (o:OntologyClass)
 WITH collect(o) AS classes, 600.0 AS radius, 3.14159265358979 AS pi
 WITH classes, radius, pi, size(classes) AS n,
      (3.14159265358979 - sqrt(5.0)) AS ga  // golden angle in radians
@@ -40,7 +40,7 @@ SET o.x     = radius * sin(theta) * cos(phi),
 RETURN count(o) AS owl_positions_reseated;
 
 // -- STEP 2: Heavy mass + tier group marker ----------------------------------
-MATCH (o:OwlClass)
+MATCH (o:OntologyClass)
 SET o.mass       = 10.0,
     o.size       = COALESCE(o.size, 1.4),
     o.color      = COALESCE(o.color, '#9B59B6'),

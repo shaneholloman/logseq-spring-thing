@@ -241,6 +241,14 @@ impl Neo4jGraphRepository {
                    n.hierarchy_level as hierarchy_level,
                    n.quality_score as quality_score,
                    n.authority_score as authority_score,
+                   n.canonical_iri as canonical_iri,
+                   n.visionclaw_uri as visionclaw_uri,
+                   n.rdf_type as rdf_type,
+                   n.same_as as same_as,
+                   n.domain as domain,
+                   n.content_hash as content_hash,
+                   n.preferred_term_v2 as preferred_term_v2,
+                   n.graph_source as graph_source,
                    n.metadata as metadata_json
             ORDER BY id
         ", where_clause);
@@ -292,9 +300,28 @@ impl Neo4jGraphRepository {
             let community_id: Option<BoltInteger> = row.get("community_id").ok();
             let hierarchy_level: Option<BoltInteger> = row.get("hierarchy_level").ok();
 
-            // Quality/authority scores for filtering
-            let quality_score: Option<BoltFloat> = row.get("quality_score").ok();
-            let authority_score: Option<BoltFloat> = row.get("authority_score").ok();
+            // Quality/authority scores for filtering. Convert once to f32 so the
+            // value is available both for the metadata HashMap (legacy) and for
+            // the typed Node fields (PRD-006 P1 / F1) without moving issues —
+            // BoltFloat is Clone but not Copy.
+            let quality_score: Option<f32> = row.get::<BoltFloat>("quality_score").ok().map(|f| f.value as f32);
+            let authority_score: Option<f32> = row.get::<BoltFloat>("authority_score").ok().map(|f| f.value as f32);
+
+            // VisionClaw v2 ontology fields (PRD-006 P1 / F1: round-trip plumbing).
+            // The write path in neo4j_adapter.rs persists these via .unwrap_or_default(),
+            // so a Rust None becomes an empty Cypher string. We normalise back to None
+            // here so callers get an honest "absent" signal rather than `Some("")`.
+            let normalize = |s: Option<String>| -> Option<String> {
+                s.filter(|v| !v.is_empty())
+            };
+            let canonical_iri: Option<String>   = normalize(row.get("canonical_iri").ok());
+            let visionclaw_uri: Option<String>  = normalize(row.get("visionclaw_uri").ok());
+            let rdf_type: Option<String>        = normalize(row.get("rdf_type").ok());
+            let same_as: Option<String>         = normalize(row.get("same_as").ok());
+            let domain: Option<String>          = normalize(row.get("domain").ok());
+            let content_hash: Option<String>    = normalize(row.get("content_hash").ok());
+            let preferred_term_v2: Option<String> = normalize(row.get("preferred_term_v2").ok());
+            let graph_source: Option<String>    = normalize(row.get("graph_source").ok());
 
             // Metadata JSON
             let metadata_json: String = row.get("metadata_json").unwrap_or_else(|_| "{}".to_string());
@@ -314,12 +341,13 @@ impl Neo4jGraphRepository {
             if let Some(level) = hierarchy_level {
                 metadata.insert("hierarchy_level".to_string(), level.value.to_string());
             }
-            // Store quality/authority scores in metadata
+            // Store quality/authority scores in metadata (legacy mirror — also
+            // present as typed fields on Node now).
             if let Some(qs) = quality_score {
-                metadata.insert("quality_score".to_string(), qs.value.to_string());
+                metadata.insert("quality_score".to_string(), qs.to_string());
             }
             if let Some(as_score) = authority_score {
-                metadata.insert("authority_score".to_string(), as_score.value.to_string());
+                metadata.insert("authority_score".to_string(), as_score.to_string());
             }
 
             let node = Node {
@@ -355,16 +383,16 @@ impl Neo4jGraphRepository {
                 owner_pubkey: None,
                 opaque_id: None,
                 pod_url: None,
-                canonical_iri: None,
-                visionclaw_uri: None,
-                rdf_type: None,
-                same_as: None,
-                domain: None,
-                content_hash: None,
-                quality_score: None,
-                authority_score: None,
-                preferred_term: None,
-                graph_source: None,
+                canonical_iri,
+                visionclaw_uri,
+                rdf_type,
+                same_as,
+                domain,
+                content_hash,
+                quality_score,
+                authority_score,
+                preferred_term: preferred_term_v2,
+                graph_source,
             };
 
             nodes.push(node);

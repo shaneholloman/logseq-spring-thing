@@ -129,37 +129,37 @@ impl Neo4jOntologyRepository {
 
         let queries = vec![
             // OWL Class constraints and core indexes
-            "CREATE CONSTRAINT owl_class_iri IF NOT EXISTS FOR (c:OwlClass) REQUIRE c.iri IS UNIQUE",
-            "CREATE INDEX owl_class_label IF NOT EXISTS FOR (c:OwlClass) ON (c.label)",
-            "CREATE INDEX owl_class_ontology_id IF NOT EXISTS FOR (c:OwlClass) ON (c.ontology_id)",
+            "CREATE CONSTRAINT owl_class_iri IF NOT EXISTS FOR (c:OntologyClass) REQUIRE c.iri IS UNIQUE",
+            "CREATE INDEX owl_class_label IF NOT EXISTS FOR (c:OntologyClass) ON (c.label)",
+            "CREATE INDEX owl_class_ontology_id IF NOT EXISTS FOR (c:OntologyClass) ON (c.ontology_id)",
 
             // Schema V2: Core identification indexes
-            "CREATE INDEX owl_class_term_id IF NOT EXISTS FOR (c:OwlClass) ON (c.term_id)",
-            "CREATE INDEX owl_class_preferred_term IF NOT EXISTS FOR (c:OwlClass) ON (c.preferred_term)",
+            "CREATE INDEX owl_class_term_id IF NOT EXISTS FOR (c:OntologyClass) ON (c.term_id)",
+            "CREATE INDEX owl_class_preferred_term IF NOT EXISTS FOR (c:OntologyClass) ON (c.preferred_term)",
 
             // Schema V2: Classification indexes
-            "CREATE INDEX owl_class_source_domain IF NOT EXISTS FOR (c:OwlClass) ON (c.source_domain)",
-            "CREATE INDEX owl_class_version IF NOT EXISTS FOR (c:OwlClass) ON (c.version)",
-            "CREATE INDEX owl_class_type IF NOT EXISTS FOR (c:OwlClass) ON (c.class_type)",
+            "CREATE INDEX owl_class_source_domain IF NOT EXISTS FOR (c:OntologyClass) ON (c.source_domain)",
+            "CREATE INDEX owl_class_version IF NOT EXISTS FOR (c:OntologyClass) ON (c.version)",
+            "CREATE INDEX owl_class_type IF NOT EXISTS FOR (c:OntologyClass) ON (c.class_type)",
 
             // Schema V2: Quality metrics indexes (critical for filtering)
-            "CREATE INDEX owl_class_status IF NOT EXISTS FOR (c:OwlClass) ON (c.status)",
-            "CREATE INDEX owl_class_maturity IF NOT EXISTS FOR (c:OwlClass) ON (c.maturity)",
-            "CREATE INDEX owl_class_quality_score IF NOT EXISTS FOR (c:OwlClass) ON (c.quality_score)",
-            "CREATE INDEX owl_class_authority_score IF NOT EXISTS FOR (c:OwlClass) ON (c.authority_score)",
-            "CREATE INDEX owl_class_content_status IF NOT EXISTS FOR (c:OwlClass) ON (c.content_status)",
+            "CREATE INDEX owl_class_status IF NOT EXISTS FOR (c:OntologyClass) ON (c.status)",
+            "CREATE INDEX owl_class_maturity IF NOT EXISTS FOR (c:OntologyClass) ON (c.maturity)",
+            "CREATE INDEX owl_class_quality_score IF NOT EXISTS FOR (c:OntologyClass) ON (c.quality_score)",
+            "CREATE INDEX owl_class_authority_score IF NOT EXISTS FOR (c:OntologyClass) ON (c.authority_score)",
+            "CREATE INDEX owl_class_content_status IF NOT EXISTS FOR (c:OntologyClass) ON (c.content_status)",
 
             // Schema V2: OWL2 property indexes
-            "CREATE INDEX owl_class_physicality IF NOT EXISTS FOR (c:OwlClass) ON (c.owl_physicality)",
-            "CREATE INDEX owl_class_role IF NOT EXISTS FOR (c:OwlClass) ON (c.owl_role)",
+            "CREATE INDEX owl_class_physicality IF NOT EXISTS FOR (c:OntologyClass) ON (c.owl_physicality)",
+            "CREATE INDEX owl_class_role IF NOT EXISTS FOR (c:OntologyClass) ON (c.owl_role)",
 
             // Schema V2: Domain relationship indexes
-            "CREATE INDEX owl_class_belongs_to_domain IF NOT EXISTS FOR (c:OwlClass) ON (c.belongs_to_domain)",
-            "CREATE INDEX owl_class_bridges_to_domain IF NOT EXISTS FOR (c:OwlClass) ON (c.bridges_to_domain)",
+            "CREATE INDEX owl_class_belongs_to_domain IF NOT EXISTS FOR (c:OntologyClass) ON (c.belongs_to_domain)",
+            "CREATE INDEX owl_class_bridges_to_domain IF NOT EXISTS FOR (c:OntologyClass) ON (c.bridges_to_domain)",
 
             // Schema V2: Source tracking indexes
-            "CREATE INDEX owl_class_file_sha1 IF NOT EXISTS FOR (c:OwlClass) ON (c.file_sha1)",
-            "CREATE INDEX owl_class_source_file IF NOT EXISTS FOR (c:OwlClass) ON (c.source_file)",
+            "CREATE INDEX owl_class_file_sha1 IF NOT EXISTS FOR (c:OntologyClass) ON (c.file_sha1)",
+            "CREATE INDEX owl_class_source_file IF NOT EXISTS FOR (c:OntologyClass) ON (c.source_file)",
 
             // OWL Property constraints and indexes
             "CREATE CONSTRAINT owl_property_iri IF NOT EXISTS FOR (p:OwlProperty) REQUIRE p.iri IS UNIQUE",
@@ -297,7 +297,7 @@ impl OntologyRepository for Neo4jOntologyRepository {
         debug!("Storing OWL class with rich metadata: {}", class.iri);
 
         let query_str = "
-            MERGE (c:OwlClass {iri: $iri})
+            MERGE (c:OntologyClass {iri: $iri})
             ON CREATE SET
                 c.created_at = datetime(),
                 c.id = id(c),
@@ -396,8 +396,8 @@ impl OntologyRepository for Neo4jOntologyRepository {
         // Store parent relationships (SUBCLASS_OF)
         for parent_iri in &class.parent_classes {
             let rel_query = "
-                MATCH (c:OwlClass {iri: $child_iri})
-                MERGE (p:OwlClass {iri: $parent_iri})
+                MATCH (c:OntologyClass {iri: $child_iri})
+                MERGE (p:OntologyClass {iri: $parent_iri})
                 MERGE (c)-[:SUBCLASS_OF]->(p)
             ";
 
@@ -436,8 +436,8 @@ impl OntologyRepository for Neo4jOntologyRepository {
                 if clean_target.is_empty() { continue; }
 
                 let relates_query = "
-                    MATCH (child:OwlClass {iri: $child_iri})
-                    MATCH (target:OwlClass)
+                    MATCH (child:OntologyClass {iri: $child_iri})
+                    MATCH (target:OntologyClass)
                     WHERE target.label = $target_label
                        OR target.iri = $target_label
                        OR target.preferred_term = $target_label
@@ -472,8 +472,8 @@ impl OntologyRepository for Neo4jOntologyRepository {
                 if clean_target.is_empty() { continue; }
 
                 let other_query = "
-                    MATCH (child:OwlClass {iri: $child_iri})
-                    MATCH (target:OwlClass)
+                    MATCH (child:OntologyClass {iri: $child_iri})
+                    MATCH (target:OntologyClass)
                     WHERE target.label = $target_label
                        OR target.iri = $target_label
                        OR target.preferred_term = $target_label
@@ -506,8 +506,8 @@ impl OntologyRepository for Neo4jOntologyRepository {
         debug!("Fetching OWL class: {}", iri);
 
         let query_str = "
-            MATCH (c:OwlClass {iri: $iri})
-            OPTIONAL MATCH (c)-[:SUBCLASS_OF]->(p:OwlClass)
+            MATCH (c:OntologyClass {iri: $iri})
+            OPTIONAL MATCH (c)-[:SUBCLASS_OF]->(p:OntologyClass)
             RETURN c, collect(p.iri) as parent_iris
         ";
 
@@ -547,8 +547,8 @@ impl OntologyRepository for Neo4jOntologyRepository {
         debug!("Listing OWL classes");
 
         let query_str = "
-            MATCH (c:OwlClass)
-            OPTIONAL MATCH (c)-[:SUBCLASS_OF]->(p:OwlClass)
+            MATCH (c:OntologyClass)
+            OPTIONAL MATCH (c)-[:SUBCLASS_OF]->(p:OntologyClass)
             RETURN c, collect(p.iri) as parent_iris
             ";
 
@@ -589,7 +589,7 @@ impl OntologyRepository for Neo4jOntologyRepository {
         debug!("Removing OWL class: {}", iri);
 
         let query_str = "
-            MATCH (c:OwlClass {iri: $iri})
+            MATCH (c:OntologyClass {iri: $iri})
             DETACH DELETE c
         ";
 
@@ -961,7 +961,7 @@ impl OntologyRepository for Neo4jOntologyRepository {
         debug!("Computing ontology metrics");
 
         // Count classes
-        let class_count_query = query("MATCH (c:OwlClass) RETURN count(c) as count");
+        let class_count_query = query("MATCH (c:OntologyClass) RETURN count(c) as count");
 
         let mut result = self.graph.execute(class_count_query).await
             .map_err(|e| OntologyRepositoryError::DatabaseError(e.to_string()))?;
@@ -999,7 +999,7 @@ impl OntologyRepository for Neo4jOntologyRepository {
 
         // Calculate max depth by finding longest path in class hierarchy
         let depth_query = query("
-            MATCH path = (root:OwlClass)-[:SUBCLASS_OF*]->(leaf:OwlClass)
+            MATCH path = (root:OntologyClass)-[:SUBCLASS_OF*]->(leaf:OntologyClass)
             WHERE NOT (root)-[:SUBCLASS_OF]->()
             RETURN length(path) as depth
             ORDER BY depth DESC
@@ -1017,7 +1017,7 @@ impl OntologyRepository for Neo4jOntologyRepository {
 
         // Calculate average branching factor: avg number of direct subclasses
         let branching_query = query("
-            MATCH (parent:OwlClass)<-[:SUBCLASS_OF]-(child:OwlClass)
+            MATCH (parent:OntologyClass)<-[:SUBCLASS_OF]-(child:OntologyClass)
             WITH parent, count(child) as children
             RETURN avg(children) as avg_branching
         ");
@@ -1049,7 +1049,7 @@ impl OntologyRepository for Neo4jOntologyRepository {
 
         // Check for orphaned classes (no relationships)
         let orphan_query = query("
-            MATCH (c:OwlClass)
+            MATCH (c:OntologyClass)
             WHERE NOT (c)-[:SUBCLASS_OF]->() AND NOT ()-[:SUBCLASS_OF]->(c)
             RETURN count(c) as count
         ");
@@ -1240,7 +1240,7 @@ impl OntologyRepository for Neo4jOntologyRepository {
         debug!("Getting axioms for class: {}", class_iri);
 
         let query_str = query(
-            "MATCH (c:OwlClass {iri: $iri})-[:HAS_AXIOM]->(a:Axiom) \
+            "MATCH (c:OntologyClass {iri: $iri})-[:HAS_AXIOM]->(a:Axiom) \
              RETURN a.axiom_type as axiom_type, \
                     a.subject as subject, \
                     a.predicate as predicate, \
@@ -1294,7 +1294,7 @@ impl Neo4jOntologyRepository {
         debug!("Querying classes with quality_score >= {}", min_score);
 
         let query_str = "
-            MATCH (c:OwlClass)
+            MATCH (c:OntologyClass)
             WHERE c.quality_score >= $min_score
             WITH c, (COALESCE(c.quality_score, 0.0) * COALESCE(c.authority_score, 0.0)) as combined_score
             RETURN c
@@ -1323,7 +1323,7 @@ impl Neo4jOntologyRepository {
         debug!("Querying cross-domain bridge classes");
 
         let query_str = "
-            MATCH (c:OwlClass)
+            MATCH (c:OntologyClass)
             WHERE c.bridges_to_domain IS NOT NULL AND c.bridges_to_domain <> ''
             RETURN c
             ORDER BY c.belongs_to_domain, c.bridges_to_domain
@@ -1351,7 +1351,7 @@ impl Neo4jOntologyRepository {
         debug!("Querying classes in domain: {}", domain);
 
         let query_str = "
-            MATCH (c:OwlClass)
+            MATCH (c:OntologyClass)
             WHERE c.source_domain = $domain OR c.belongs_to_domain = $domain
             RETURN c
             ORDER BY c.quality_score DESC
@@ -1379,7 +1379,7 @@ impl Neo4jOntologyRepository {
         debug!("Querying classes with maturity: {}", maturity);
 
         let query_str = "
-            MATCH (c:OwlClass)
+            MATCH (c:OntologyClass)
             WHERE c.maturity = $maturity
             RETURN c
             ORDER BY c.quality_score DESC
@@ -1407,7 +1407,7 @@ impl Neo4jOntologyRepository {
         debug!("Querying classes with physicality: {}", physicality);
 
         let query_str = "
-            MATCH (c:OwlClass)
+            MATCH (c:OntologyClass)
             WHERE c.owl_physicality = $physicality
             RETURN c
             ORDER BY c.label
@@ -1435,7 +1435,7 @@ impl Neo4jOntologyRepository {
         debug!("Querying classes with role: {}", role);
 
         let query_str = "
-            MATCH (c:OwlClass)
+            MATCH (c:OntologyClass)
             WHERE c.owl_role = $role
             RETURN c
             ORDER BY c.label
@@ -1470,8 +1470,8 @@ impl Neo4jOntologyRepository {
         debug!("Adding relationship: {} -[{}]-> {}", source_iri, relationship_type, target_iri);
 
         let query_str = "
-            MATCH (s:OwlClass {iri: $source_iri})
-            MATCH (t:OwlClass {iri: $target_iri})
+            MATCH (s:OntologyClass {iri: $source_iri})
+            MATCH (t:OntologyClass {iri: $target_iri})
             MERGE (s)-[r:RELATES {relationship_type: $relationship_type}]->(t)
             SET r.confidence = $confidence,
                 r.is_inferred = $is_inferred,
@@ -1502,7 +1502,7 @@ impl Neo4jOntologyRepository {
         debug!("Querying relationships of type: {}", relationship_type);
 
         let query_str = "
-            MATCH (s:OwlClass)-[r:RELATES {relationship_type: $relationship_type}]->(t:OwlClass)
+            MATCH (s:OntologyClass)-[r:RELATES {relationship_type: $relationship_type}]->(t:OntologyClass)
             RETURN s.iri as source, t.iri as target, r.confidence as confidence, r.is_inferred as is_inferred
             ORDER BY r.confidence DESC
         ";
@@ -1573,7 +1573,7 @@ impl Neo4jOntologyRepository {
 
     /// Load the ontology graph as GraphData (OwlClass nodes + SUBCLASS_OF/RELATES edges).
     ///
-    /// Queries all :OwlClass nodes and their relationships directly, producing
+    /// Queries all :OntologyClass nodes and their relationships directly, producing
     /// a GraphData suitable for serving to the client under `graph_type=ontology`.
     /// Node IDs are stable u32 hashes of the IRI so they are consistent across
     /// requests without relying on Neo4j internal IDs.
@@ -1590,7 +1590,7 @@ impl Neo4jOntologyRepository {
 
         // --- Query nodes ---
         let nodes_query_str = "
-            MATCH (c:OwlClass)
+            MATCH (c:OntologyClass)
             RETURN c.iri AS iri, c.label AS label, c.source_domain AS source_domain,
                    c.quality_score AS quality_score, c.status AS status
             ORDER BY c.iri
@@ -1694,7 +1694,7 @@ impl Neo4jOntologyRepository {
 
         // --- Query SUBCLASS_OF edges ---
         let subclass_query_str = "
-            MATCH (s:OwlClass)-[r:SUBCLASS_OF]->(t:OwlClass)
+            MATCH (s:OntologyClass)-[r:SUBCLASS_OF]->(t:OntologyClass)
             RETURN s.iri AS src, t.iri AS tgt
         ";
 
@@ -1725,7 +1725,7 @@ impl Neo4jOntologyRepository {
 
         // --- Query RELATES edges ---
         let relates_query_str = "
-            MATCH (s:OwlClass)-[r:RELATES]->(t:OwlClass)
+            MATCH (s:OntologyClass)-[r:RELATES]->(t:OntologyClass)
             RETURN s.iri AS src, t.iri AS tgt, r.relationship_type AS rel
         ";
 
@@ -1773,7 +1773,7 @@ impl Neo4jOntologyRepository {
         debug!("Computing physicality-role clustering");
 
         let query_str = "
-            MATCH (c:OwlClass)
+            MATCH (c:OntologyClass)
             WHERE c.owl_physicality IS NOT NULL AND c.owl_role IS NOT NULL
             RETURN c.owl_physicality as physicality, c.owl_role as role, collect(c) as classes
             ORDER BY physicality, role

@@ -200,10 +200,10 @@ async fn test_validate_cypher_unknown_label_with_hint() {
 async fn test_validate_cypher_builtin_labels_pass() {
     let service = build_query_service();
     let result = service
-        .validate_and_execute_cypher("MATCH (n:OwlClass) RETURN n LIMIT 10")
+        .validate_and_execute_cypher("MATCH (n:OntologyClass) RETURN n LIMIT 10")
         .await
         .unwrap();
-    assert!(result.valid, "OwlClass is a built-in label — should validate");
+    assert!(result.valid, "OntologyClass is the canonical label per ADR-048 — should validate");
 }
 
 // ---------- Proposal Tests ----------

@@ -225,11 +225,12 @@ pub async fn get_graph_data(
         caller_pubkey.is_some()
     );
 
-    // Early-return path: serve the full :OwlClass graph directly from Neo4j
-    // when graph_type=ontology. The KGNode-based pipeline only returns 143
-    // nodes that happen to carry an owl_class_iri field; the 2,811 dedicated
-    // :OwlClass nodes with their SUBCLASS_OF / RELATES edges are invisible to
-    // that pipeline and must be fetched via the ontology repository.
+    // Early-return path: serve the full :OntologyClass graph directly from
+    // Neo4j when graph_type=ontology. The KGNode-based pipeline only returns
+    // nodes that happen to carry an owl_class_iri field; dedicated
+    // :OntologyClass nodes with their SUBCLASS_OF / RELATES edges are
+    // invisible to that pipeline and must be fetched via the ontology
+    // repository. (Label was historically :OwlClass — see ADR-048 + 0045.)
     if query.graph_type.as_deref() == Some("ontology") {
         return match state.ontology_repository.load_ontology_graph_data().await {
             Ok(graph_data) => {

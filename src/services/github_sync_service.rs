@@ -998,11 +998,14 @@ impl GitHubSyncService {
         let graph = self.onto_repo.graph();
 
         let queries = vec![
-            ("KGNode",    "MATCH (n:KGNode) DETACH DELETE n"),
-            ("FileMetadata", "MATCH (n:FileMetadata) DETACH DELETE n"),
-            ("OwlClass",     "MATCH (n:OwlClass) DETACH DELETE n"),
-            ("OwlProperty",  "MATCH (n:OwlProperty) DETACH DELETE n"),
-            ("Axiom",        "MATCH (n:Axiom) DETACH DELETE n"),
+            ("KGNode",          "MATCH (n:KGNode) DETACH DELETE n"),
+            ("FileMetadata",    "MATCH (n:FileMetadata) DETACH DELETE n"),
+            // Match either label during the OwlClass→OntologyClass transition
+            // (ADR-048; see migration 0045). Once the soak window strips the
+            // legacy label, the OwlClass disjunct becomes a no-op.
+            ("OntologyClass",   "MATCH (n) WHERE n:OntologyClass OR n:OwlClass DETACH DELETE n"),
+            ("OwlProperty",     "MATCH (n:OwlProperty) DETACH DELETE n"),
+            ("Axiom",           "MATCH (n:Axiom) DETACH DELETE n"),
         ];
 
         for (label, cypher) in queries {
