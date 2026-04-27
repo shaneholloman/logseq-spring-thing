@@ -324,6 +324,22 @@ impl Neo4jAdapter {
             }
         }
 
+        // VisionClaw v2 indexes for ontology-enriched KGNode properties
+        for (name, prop) in [
+            ("kg_node_canonical_iri", "canonical_iri"),
+            ("kg_node_domain", "domain"),
+            ("kg_node_quality_score", "quality_score"),
+            ("kg_node_graph_source", "graph_source"),
+        ] {
+            let q = Query::new(format!(
+                "CREATE INDEX {} IF NOT EXISTS FOR (n:KGNode) ON (n.{})",
+                name, prop
+            ));
+            if let Err(e) = self.graph.run(q).await {
+                warn!("Failed to create {} index (may already exist): {}", name, e);
+            }
+        }
+
         // Create fulltext index on node label and metadata_id for fast text search
         let fulltext_index_query = Query::new(
             "CREATE FULLTEXT INDEX kg_node_label_ft IF NOT EXISTS FOR (n:KGNode) ON EACH [n.label, n.metadata_id]".to_string()
@@ -1279,7 +1295,17 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
                      n.visibility = $visibility,
                      n.owner_pubkey = $owner_pubkey,
                      n.opaque_id = $opaque_id,
-                     n.pod_url = $pod_url
+                     n.pod_url = $pod_url,
+                     n.canonical_iri = $canonical_iri,
+                     n.visionclaw_uri = $visionclaw_uri,
+                     n.rdf_type = $rdf_type,
+                     n.same_as = $same_as,
+                     n.domain = $domain,
+                     n.content_hash = $content_hash,
+                     n.quality_score = $quality_score,
+                     n.authority_score = $authority_score,
+                     n.preferred_term_v2 = $preferred_term_v2,
+                     n.graph_source = $graph_source
                  ON MATCH SET
                      n.metadata_id = $metadata_id,
                      n.label = $label,
@@ -1300,7 +1326,17 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
                      n.visibility = $visibility,
                      n.owner_pubkey = COALESCE($owner_pubkey, n.owner_pubkey),
                      n.opaque_id = COALESCE($opaque_id, n.opaque_id),
-                     n.pod_url = COALESCE($pod_url, n.pod_url)
+                     n.pod_url = COALESCE($pod_url, n.pod_url),
+                     n.canonical_iri = COALESCE($canonical_iri, n.canonical_iri),
+                     n.visionclaw_uri = COALESCE($visionclaw_uri, n.visionclaw_uri),
+                     n.rdf_type = COALESCE($rdf_type, n.rdf_type),
+                     n.same_as = COALESCE($same_as, n.same_as),
+                     n.domain = COALESCE($domain, n.domain),
+                     n.content_hash = COALESCE($content_hash, n.content_hash),
+                     n.quality_score = COALESCE($quality_score, n.quality_score),
+                     n.authority_score = COALESCE($authority_score, n.authority_score),
+                     n.preferred_term_v2 = COALESCE($preferred_term_v2, n.preferred_term_v2),
+                     n.graph_source = COALESCE($graph_source, n.graph_source)
                  // NEVER overwrite sim_x/sim_y/sim_z or vx/vy/vz on MATCH
                  // These are the GPU-calculated physics positions
                 ".to_string()
@@ -1335,7 +1371,18 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
             .param("visibility", node.visibility.as_str())
             .param("owner_pubkey", node.owner_pubkey.clone().unwrap_or_default())
             .param("opaque_id", node.opaque_id.clone().unwrap_or_default())
-            .param("pod_url", node.pod_url.clone().unwrap_or_default());
+            .param("pod_url", node.pod_url.clone().unwrap_or_default())
+            // VisionClaw v2 ontology fields
+            .param("canonical_iri", node.canonical_iri.clone().unwrap_or_default())
+            .param("visionclaw_uri", node.visionclaw_uri.clone().unwrap_or_default())
+            .param("rdf_type", node.rdf_type.clone().unwrap_or_default())
+            .param("same_as", node.same_as.clone().unwrap_or_default())
+            .param("domain", node.domain.clone().unwrap_or_default())
+            .param("content_hash", node.content_hash.clone().unwrap_or_default())
+            .param("quality_score", node.quality_score.unwrap_or(0.0) as f64)
+            .param("authority_score", node.authority_score.unwrap_or(0.0) as f64)
+            .param("preferred_term_v2", node.preferred_term.clone().unwrap_or_default())
+            .param("graph_source", node.graph_source.clone().unwrap_or_default());
 
             self.graph.run(query).await.map_err(|e| {
                 KnowledgeGraphRepositoryError::DatabaseError(format!(

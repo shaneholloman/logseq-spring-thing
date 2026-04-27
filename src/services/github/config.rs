@@ -82,6 +82,39 @@ impl GitHubConfig {
         Ok(config)
     }
 
+    /// Returns the list of base paths to sync.
+    ///
+    /// Reads `GITHUB_BASE_PATHS` (comma-separated) first. If unset, falls back
+    /// to the single `base_path` field (from `GITHUB_BASE_PATH`).
+    pub fn base_paths(&self) -> Vec<String> {
+        if let Ok(paths) = env::var("GITHUB_BASE_PATHS") {
+            let multi: Vec<String> = paths
+                .split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect();
+            if !multi.is_empty() {
+                return multi;
+            }
+        }
+        vec![self.base_path.clone()]
+    }
+
+    /// Derive a graph source label from a base path.
+    ///
+    /// Given `"mainKnowledgeGraph/pages"` returns `"mainKnowledgeGraph"`.
+    /// Given `"workingGraph/pages"` returns `"workingGraph"`.
+    /// Falls back to the full path if no known prefix matches.
+    pub fn graph_source_for_path(base_path: &str) -> String {
+        // Take the first path segment as the graph source name
+        let first_segment = base_path
+            .trim_matches('/')
+            .split('/')
+            .next()
+            .unwrap_or(base_path);
+        first_segment.to_string()
+    }
+
     fn validate(&self) -> Result<(), GitHubConfigError> {
         if self.token.is_empty() {
             return Err(GitHubConfigError::ValidationError(
@@ -195,5 +228,60 @@ mod tests {
         assert!(!config.rate_limit);
         assert_eq!(config.version, "v4");
         assert_eq!(config.branch, "multi-ontology");
+    }
+
+    #[test]
+    fn test_base_paths_single_fallback() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        env::set_var("GITHUB_TOKEN", "token");
+        env::set_var("GITHUB_OWNER", "owner");
+        env::set_var("GITHUB_REPO", "repo");
+        env::set_var("GITHUB_BASE_PATH", "mainKnowledgeGraph/pages");
+        env::remove_var("GITHUB_BASE_PATHS");
+        env::remove_var("GITHUB_BRANCH");
+        env::remove_var("GITHUB_RATE_LIMIT");
+        env::remove_var("GITHUB_API_VERSION");
+
+        let config = GitHubConfig::from_env().unwrap();
+        assert_eq!(config.base_paths(), vec!["mainKnowledgeGraph/pages"]);
+    }
+
+    #[test]
+    fn test_base_paths_multi() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        env::set_var("GITHUB_TOKEN", "token");
+        env::set_var("GITHUB_OWNER", "owner");
+        env::set_var("GITHUB_REPO", "repo");
+        env::set_var("GITHUB_BASE_PATH", "mainKnowledgeGraph/pages");
+        env::set_var("GITHUB_BASE_PATHS", "mainKnowledgeGraph/pages, workingGraph/pages");
+        env::remove_var("GITHUB_BRANCH");
+        env::remove_var("GITHUB_RATE_LIMIT");
+        env::remove_var("GITHUB_API_VERSION");
+
+        let config = GitHubConfig::from_env().unwrap();
+        assert_eq!(
+            config.base_paths(),
+            vec!["mainKnowledgeGraph/pages", "workingGraph/pages"]
+        );
+    }
+
+    #[test]
+    fn test_graph_source_for_path() {
+        assert_eq!(
+            GitHubConfig::graph_source_for_path("mainKnowledgeGraph/pages"),
+            "mainKnowledgeGraph"
+        );
+        assert_eq!(
+            GitHubConfig::graph_source_for_path("workingGraph/pages"),
+            "workingGraph"
+        );
+        assert_eq!(
+            GitHubConfig::graph_source_for_path("singleSegment"),
+            "singleSegment"
+        );
+        assert_eq!(
+            GitHubConfig::graph_source_for_path("/leadingSlash/pages"),
+            "leadingSlash"
+        );
     }
 }

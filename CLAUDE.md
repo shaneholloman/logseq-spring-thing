@@ -1,5 +1,26 @@
 # Claude Code Configuration - Claude Flow V3
 
+## Agent container subsystems (2026-04-26)
+
+VisionClaw's agent-container subsystem is in active migration:
+
+- **`multi-agent-docker/`** — legacy; on deprecation track per [ADR-058](docs/adr/ADR-058-mad-to-agentbox-migration.md). No new features land here. Running as `agentic-workstation` on ports 9090/8080/5901/2222.
+- **`agentbox/`** — git submodule (`github.com/DreamLab-AI/agentbox`); Nix-based v2 replacement. Federation/standalone adapter architecture per [agentbox ADR-005](agentbox/docs/reference/adr/ADR-005-pluggable-adapter-architecture.md). Integration contract with VisionClaw Rust substrate per [PRD-004](docs/PRD-004-agentbox-visionclaw-integration.md) and [DDD BC20](docs/ddd-agentbox-integration-context.md). Running side-by-side on ports 9190/8180/5902/2223. Feature gap analysis: [docs/gap-analysis-mad-vs-agentbox.md](docs/gap-analysis-mad-vs-agentbox.md). Agentbox docs symlinked at [docs/agentbox-docs/](docs/agentbox-docs/).
+
+**Side-by-side port mapping:**
+
+| Service | MAD (legacy) | Agentbox (new) |
+|---------|-------------|---------------|
+| Management API | 9090 | 9190 |
+| Code Server | 8080 | 8180 |
+| VNC Desktop | 5901 | 5902 |
+| SSH | 2222 | 2223 |
+| Solid Pod | — | 8484 |
+| Agent Events | — | 9700 |
+| Metrics | — | 9191 |
+
+Task-routing guidance: any task touching agent-container build, supervisord, or durable-state adapters belongs in `agentbox/`; any task consuming agentbox from the VisionClaw actor mesh is a BC20 concern and belongs in `src/actors/` with ACL wiring in this repo.
+
 ## MEMORY FIRST (Reinforced)
 
 Before ANY task: search memory. After ANY success: store pattern. Non-negotiable.

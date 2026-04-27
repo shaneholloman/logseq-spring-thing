@@ -5,6 +5,21 @@ All notable changes to VisionClaw will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] - 2026-04-23
+
+### Added — Agentbox integration planning
+
+- **PRD-004** (`docs/PRD-004-agentbox-visionclaw-integration.md`): deprecate `multi-agent-docker/` in favour of `agentbox/` as VisionClaw's agent-container subsystem. 5 milestones (M1-M5), 17 port-in rows (P0-P3), 13 agentbox-design-improvement rows (D.1-D.13), 11 explicit rejections, 10 resolved open questions. All milestone exit criteria are now passable predicates.
+- **ADR-058** (`docs/adr/ADR-058-mad-to-agentbox-migration.md`): MAD deprecation with four predicate-based gates, mid-cutover rollback protocol (< 5 min target, CI-verified), 30-day post-cutover window with frozen-MAD container.
+- **DDD-BC20 AgentboxIntegration** (`docs/ddd-agentbox-integration-context.md`): new bounded context acting as Anti-Corruption Layer between agentbox's adapter protocol and VisionClaw Rust aggregates. `FederationSession` + `AgentExecution` aggregates, five ACL translator modules, composed `SessionHealth` with per-slot degrade policies, `/v1/meta` handshake protocol, signed Ed25519 `LocalFallbackProbe`.
+- **Agentbox subdir**: `agentbox/` added as sibling to `multi-agent-docker/` for in-situ radical-upgrade work. Slated for promotion to standalone repo `github.com/DreamLab-AI/agentbox` once stable.
+- **QE fleet pre-implementation audit** (RuVector `agentbox-comparison :: qe-fleet-review-2026-04-23`): verdict **Conditional GO** for M1; five P0 doc edits landed before any code work.
+
+### Changed
+
+- `multi-agent-docker/` is on a deprecation track per ADR-058; no new features land there.
+- Durable state (beads, pods, memory) is henceforth a VisionClaw-Rust concern, not a container-internal concern. Agentbox is a federation client (see agentbox ADR-005).
+
 ## [Unreleased] - 2026-04-18
 
 ### Added

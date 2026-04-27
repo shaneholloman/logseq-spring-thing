@@ -2,16 +2,23 @@
 //! GitHub Sync Service
 //!
 //! Synchronizes markdown files from GitHub repository to Neo4j.
+//! - Supports dual-graph import via `GITHUB_BASE_PATHS` (comma-separated)
+//!   e.g. `"mainKnowledgeGraph/pages,workingGraph/pages"`.
+//!   Falls back to single `GITHUB_BASE_PATH` for backward compat.
+//! - Tags each node with `graph_source` (first path segment, e.g. `"mainKnowledgeGraph"`)
+//! - Detects v2 format (`iri::` + `rdf-type:: owl:Class`) via `FileFormat::VisionClawV2`
 //! - Parses public:: true pages as knowledge graph nodes (KnowledgeGraphRepository - Neo4jAdapter)
 //! - Extracts OntologyBlock sections as OWL data (Neo4jOntologyRepository)
 //! - Enriches graph nodes with owl_class_iri metadata via OntologyEnrichmentService
 //! - Triggers OntologyPipelineService for automatic reasoning and constraint generation
 //! - Uses SHA1 filtering to process only changed files (unless FORCE_FULL_SYNC=1)
 //! - Batch processing (50 files) to avoid memory issues with large repositories
+//! - Selective data wipe: only clears Neo4j data for graph sources removed from config
 
 use crate::adapters::neo4j_ontology_repository::Neo4jOntologyRepository;
 use crate::ports::knowledge_graph_repository::KnowledgeGraphRepository;
 use crate::ports::ontology_repository::OntologyRepository;
+use crate::services::github::config::GitHubConfig;
 use crate::services::github::content_enhanced::EnhancedContentAPI;
 use crate::services::github::types::GitHubFileBasicMetadata;
 use crate::services::parsers::{KnowledgeGraphParser, OntologyParser};
@@ -33,6 +40,19 @@ pub enum FileType {
     KnowledgeGraph,
     Ontology,
     Skip,
+}
+
+/// Detected file format used for routing through the correct parser pipeline.
+#[derive(Debug, Clone, PartialEq)]
+pub enum FileFormat {
+    /// VisionClaw v2 format: starts with `iri::` and contains `rdf-type:: owl:Class`
+    VisionClawV2,
+    /// Legacy OntologyBlock v4 format: contains `### OntologyBlock`
+    OntologyV4,
+    /// Public Logseq page: `public:: true` in the first 25 lines
+    PublicNote,
+    /// Private/non-public note (default fallback)
+    PrivateNote,
 }
 
 #[derive(Debug, Clone)]
@@ -103,9 +123,14 @@ impl GitHubSyncService {
         self.saga = Some(saga);
     }
 
-    /// Synchronize graphs from GitHub - processes in batches with progress logging
+    /// Synchronize graphs from GitHub - processes in batches with progress logging.
+    ///
+    /// Supports dual-graph import via `GITHUB_BASE_PATHS` (comma-separated).
+    /// Falls back to single `GITHUB_BASE_PATH` for backward compatibility.
+    /// Each base path is tagged with a `graph_source` derived from the first
+    /// path segment (e.g. `mainKnowledgeGraph/pages` -> `"mainKnowledgeGraph"`).
     pub async fn sync_graphs(&self) -> Result<SyncStatistics, String> {
-        info!("🔄 Starting GitHub sync (batch size: {})", BATCH_SIZE);
+        info!("Starting GitHub sync (batch size: {})", BATCH_SIZE);
         let start_time = Instant::now();
 
         let mut stats = SyncStatistics {
@@ -119,81 +144,147 @@ impl GitHubSyncService {
             total_edges: 0,
         };
 
-        // Detect base path change — clear stale Neo4j data if target repo path changed
-        let base_path_changed = self.detect_and_handle_base_path_change().await;
+        // Resolve base paths (dual-graph or single)
+        let base_paths = self.resolve_base_paths();
+        info!("Sync targets: {:?}", base_paths);
 
-        // Fetch files
-        let files = match self.fetch_all_markdown_files().await {
-            Ok(files) => {
-                info!("📂 Found {} markdown files", files.len());
-                files
-            }
-            Err(e) => {
-                let error_msg = format!("Failed to fetch files: {}", e);
-                error!("{}", error_msg);
-                stats.duration = start_time.elapsed();
-                return Err(format!("GitHub sync failed: {}", error_msg));
-            }
-        };
+        // Detect base path change — clear stale Neo4j data for removed graph sources
+        let any_path_changed = self.detect_and_handle_base_paths_change(&base_paths).await;
 
-        stats.total_files = files.len();
-
-        // SHA1 filtering - only process changed files (unless FORCE_FULL_SYNC is set)
-        let force_full_sync = base_path_changed || std::env::var("FORCE_FULL_SYNC")
+        let force_full_sync = any_path_changed || std::env::var("FORCE_FULL_SYNC")
             .map(|v| v == "1" || v.to_lowercase() == "true")
             .unwrap_or(false);
 
-        let files_to_process = if force_full_sync {
-            info!("🔄 Full sync required — processing ALL {} files (bypassing SHA1 filter)", files.len());
-            files.clone()
-        } else {
-            match self.filter_changed_files(&files).await {
-                Ok(filtered) => {
-                    info!("📋 Processing {} changed files ({} unchanged)",
-                        filtered.len(), files.len() - filtered.len());
-                    stats.skipped_files = files.len() - filtered.len();
-                    filtered
+        let mut all_files_to_update: Vec<GitHubFileBasicMetadata> = Vec::new();
+
+        for base_path in &base_paths {
+            let graph_source = GitHubConfig::graph_source_for_path(base_path);
+            info!("Syncing graph source '{}' from base path '{}'", graph_source, base_path);
+
+            // Fetch files for this base path
+            let files = match self.fetch_markdown_files_for_path(base_path).await {
+                Ok(files) => {
+                    info!("Found {} markdown files in '{}'", files.len(), base_path);
+                    files
                 }
                 Err(e) => {
-                    error!("SHA1 filter failed: {}", e);
-                    files.clone() // Process all if filter fails
+                    let error_msg = format!("Failed to fetch files from '{}': {}", base_path, e);
+                    error!("{}", error_msg);
+                    stats.errors.push(error_msg);
+                    continue;
                 }
-            }
-        };
+            };
 
-        // Clone files_to_process for metadata update later
-        let all_files_to_process = files_to_process.clone();
+            stats.total_files += files.len();
 
-        // Process in batches
-        for (batch_idx, batch) in files_to_process.chunks(BATCH_SIZE).enumerate() {
-            let batch_start = Instant::now();
-            info!("📦 Processing batch {}/{} ({} files)",
-                batch_idx + 1,
-                (files_to_process.len() + BATCH_SIZE - 1) / BATCH_SIZE,
-                batch.len()
-            );
-
-            match self.process_batch(batch, &mut stats).await {
-                Ok(_) => {
-                    info!("✅ Batch {} completed in {:?}", batch_idx + 1, batch_start.elapsed());
+            // SHA1 filtering
+            let files_to_process = if force_full_sync {
+                info!("Full sync required for '{}' — processing ALL {} files", base_path, files.len());
+                files.clone()
+            } else {
+                match self.filter_changed_files(&files).await {
+                    Ok(filtered) => {
+                        info!("Processing {} changed files ({} unchanged) in '{}'",
+                            filtered.len(), files.len() - filtered.len(), base_path);
+                        stats.skipped_files += files.len() - filtered.len();
+                        filtered
+                    }
+                    Err(e) => {
+                        error!("SHA1 filter failed for '{}': {}", base_path, e);
+                        files.clone()
+                    }
                 }
-                Err(e) => {
-                    error!("❌ Batch {} failed: {}", batch_idx + 1, e);
-                    stats.errors.push(format!("Batch {}: {}", batch_idx + 1, e));
+            };
+
+            all_files_to_update.extend(files_to_process.clone());
+
+            // Process in batches with graph_source tagging
+            for (batch_idx, batch) in files_to_process.chunks(BATCH_SIZE).enumerate() {
+                let batch_start = Instant::now();
+                let total_batches = (files_to_process.len() + BATCH_SIZE - 1) / BATCH_SIZE;
+                info!("Processing batch {}/{} ({} files) for graph '{}'",
+                    batch_idx + 1, total_batches, batch.len(), graph_source);
+
+                match self.process_batch_with_source(batch, &graph_source, &mut stats).await {
+                    Ok(_) => {
+                        info!("Batch {} for '{}' completed in {:?}",
+                            batch_idx + 1, graph_source, batch_start.elapsed());
+                    }
+                    Err(e) => {
+                        error!("Batch {} for '{}' failed: {}", batch_idx + 1, graph_source, e);
+                        stats.errors.push(format!("Batch {} [{}]: {}", batch_idx + 1, graph_source, e));
+                    }
                 }
             }
         }
 
         // Update metadata
-        if let Err(e) = self.update_file_metadata(&all_files_to_process).await {
+        if let Err(e) = self.update_file_metadata(&all_files_to_update).await {
             warn!("Failed to update file_metadata: {}", e);
         }
 
         stats.duration = start_time.elapsed();
-        info!("🎉 Sync complete: {} nodes, {} edges in {:?}",
+        info!("Sync complete: {} nodes, {} edges in {:?}",
             stats.total_nodes, stats.total_edges, stats.duration);
 
         Ok(stats)
+    }
+
+    /// Resolve the list of base paths from env vars.
+    /// `GITHUB_BASE_PATHS` (comma-separated) takes precedence.
+    /// Falls back to `GITHUB_BASE_PATH` for backward compat.
+    fn resolve_base_paths(&self) -> Vec<String> {
+        if let Ok(paths) = std::env::var("GITHUB_BASE_PATHS") {
+            let multi: Vec<String> = paths
+                .split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect();
+            if !multi.is_empty() {
+                return multi;
+            }
+        }
+        // Fallback to single GITHUB_BASE_PATH (already loaded by GitHubClient)
+        let single = std::env::var("GITHUB_BASE_PATH").unwrap_or_default();
+        if single.is_empty() {
+            vec![]
+        } else {
+            vec![single]
+        }
+    }
+
+    /// Fetch markdown files for a specific base path.
+    /// Uses the Trees API (single call) filtered to the given path prefix,
+    /// falling back to the recursive Contents API.
+    async fn fetch_markdown_files_for_path(
+        &self,
+        base_path: &str,
+    ) -> Result<Vec<GitHubFileBasicMetadata>, String> {
+        // Try the Trees API first — it returns the entire repo tree; we filter client-side
+        match self.content_api.list_markdown_files_via_tree_for_path(base_path).await {
+            Ok(files) => {
+                info!("Trees API returned {} markdown files for '{}'", files.len(), base_path);
+                Ok(files)
+            }
+            Err(e) => {
+                warn!("Trees API failed for '{}' ({}), falling back to Contents API", base_path, e);
+                self.content_api
+                    .list_markdown_files(base_path)
+                    .await
+                    .map_err(|e| format!("GitHub API error for '{}': {}", base_path, e))
+            }
+        }
+    }
+
+    /// Process a batch of files with graph source tagging.
+    /// Wraps `process_batch` and stamps `graph_source` on every node produced.
+    async fn process_batch_with_source(
+        &self,
+        files: &[GitHubFileBasicMetadata],
+        graph_source: &str,
+        stats: &mut SyncStatistics,
+    ) -> Result<(), String> {
+        self.process_batch(files, graph_source, stats).await
     }
 
     /// Process a batch of files with parallel content fetching
@@ -202,6 +293,7 @@ impl GitHubSyncService {
     async fn process_batch(
         &self,
         files: &[GitHubFileBasicMetadata],
+        graph_source: &str,
         stats: &mut SyncStatistics,
     ) -> Result<(), String> {
         let mut batch_nodes = std::collections::HashMap::new();
@@ -293,6 +385,14 @@ impl GitHubSyncService {
         // self.filter_orphan_edges(&mut batch_edges, &batch_nodes);
         // info!("🔍 [DEBUG] After filter_orphan_edges: {} edges (removed {})",
         //     batch_edges.len(), edges_before_filter - batch_edges.len());
+
+        // Stamp graph_source on every node in this batch
+        if !graph_source.is_empty() {
+            for node in batch_nodes.values_mut() {
+                node.graph_source = Some(graph_source.to_string());
+                node.metadata.insert("graph_source".to_string(), graph_source.to_string());
+            }
+        }
 
         // Save batch to database
         if !batch_nodes.is_empty() {
@@ -655,6 +755,8 @@ impl GitHubSyncService {
 
     /// Fetch all markdown files using Git Trees API (single API call).
     /// Falls back to recursive Contents API if Trees API fails.
+    /// Retained for backward compat; prefer `fetch_markdown_files_for_path`.
+    #[allow(dead_code)]
     async fn fetch_all_markdown_files(&self) -> Result<Vec<GitHubFileBasicMetadata>, String> {
         // Try the Trees API first — single call returns all file SHAs
         match self.content_api.list_markdown_files_via_tree().await {
@@ -738,69 +840,159 @@ impl GitHubSyncService {
         Ok(())
     }
 
-    /// Detect if GITHUB_BASE_PATH changed and clear stale Neo4j data if so.
-    /// Stores/reads a SyncConfig node in Neo4j to track the last-used base path.
-    /// Returns true if the base path changed (triggering a forced full sync).
-    async fn detect_and_handle_base_path_change(&self) -> bool {
+    /// Detect if the set of base paths changed and selectively clear stale Neo4j
+    /// data for graph sources that were removed.
+    ///
+    /// Stores the active graph source list in a `SyncConfig` node keyed by
+    /// `github_graph_sources`. Returns true if any path changed (triggering
+    /// a forced full sync for all remaining paths).
+    async fn detect_and_handle_base_paths_change(&self, current_paths: &[String]) -> bool {
         use neo4rs::query;
 
-        let current_base_path = std::env::var("GITHUB_BASE_PATH").unwrap_or_default();
-        if current_base_path.is_empty() {
+        if current_paths.is_empty() {
             return false;
         }
 
+        let current_sources: std::collections::HashSet<String> = current_paths
+            .iter()
+            .map(|p| GitHubConfig::graph_source_for_path(p))
+            .collect();
+
         let graph = self.onto_repo.graph();
 
-        // Read the previously stored base path from Neo4j
-        let read_query = query("MATCH (c:SyncConfig {key: 'github_base_path'}) RETURN c.value AS value");
-        let stored_base_path = match graph.execute(read_query).await {
+        // Read the previously stored graph sources from Neo4j
+        let read_query = query(
+            "MATCH (c:SyncConfig {key: 'github_graph_sources'}) RETURN c.value AS value"
+        );
+        let stored_sources: Option<std::collections::HashSet<String>> = match graph.execute(read_query).await {
             Ok(mut result) => {
                 match result.next().await {
-                    Ok(Some(row)) => row.get::<String>("value").ok(),
+                    Ok(Some(row)) => {
+                        row.get::<String>("value").ok().map(|v| {
+                            v.split(',')
+                                .map(|s| s.trim().to_string())
+                                .filter(|s| !s.is_empty())
+                                .collect()
+                        })
+                    }
                     _ => None,
                 }
             }
             Err(e) => {
-                warn!("[GitHubSync] Failed to read SyncConfig: {} (treating as first run)", e);
+                warn!("[GitHubSync] Failed to read SyncConfig graph_sources: {} (treating as first run)", e);
                 None
             }
         };
 
-        let changed = match &stored_base_path {
-            Some(stored) if stored == &current_base_path => false,
+        let changed = match &stored_sources {
+            Some(stored) if stored == &current_sources => false,
             Some(stored) => {
-                info!("🔄 GITHUB_BASE_PATH changed: '{}' → '{}' — clearing stale Neo4j data",
-                    stored, current_base_path);
+                // Find removed graph sources and selectively wipe their data
+                let removed: Vec<&String> = stored.difference(&current_sources).collect();
+                if !removed.is_empty() {
+                    info!("Graph sources removed: {:?} — clearing their Neo4j data", removed);
+                    for source in &removed {
+                        if let Err(e) = self.clear_graph_source_data(source).await {
+                            error!("Failed to clear data for graph source '{}': {}", source, e);
+                        }
+                    }
+                }
+                let added: Vec<&String> = current_sources.difference(stored).collect();
+                if !added.is_empty() {
+                    info!("Graph sources added: {:?}", added);
+                }
                 true
             }
             None => {
-                info!("📝 First sync run — recording base path '{}'", current_base_path);
-                false // First run, no stale data to clear
+                info!("First sync run — recording graph sources: {:?}", current_sources);
+                false
             }
         };
 
-        if changed {
-            // Clear all stale data from Neo4j for clean ingest
-            if let Err(e) = self.clear_stale_neo4j_data().await {
-                error!("Failed to clear stale Neo4j data: {}", e);
+        // Also check legacy single-path SyncConfig for backward compat migration
+        if stored_sources.is_none() {
+            let legacy_query = query(
+                "MATCH (c:SyncConfig {key: 'github_base_path'}) RETURN c.value AS value"
+            );
+            if let Ok(mut result) = graph.execute(legacy_query).await {
+                if let Ok(Some(row)) = result.next().await {
+                    if let Ok(old_path) = row.get::<String>("value") {
+                        let old_source = GitHubConfig::graph_source_for_path(&old_path);
+                        if !current_sources.contains(&old_source) {
+                            info!("Legacy base path '{}' (source '{}') not in current config — clearing",
+                                old_path, old_source);
+                            if let Err(e) = self.clear_graph_source_data(&old_source).await {
+                                error!("Failed to clear legacy graph source '{}': {}", old_source, e);
+                            }
+                        }
+                    }
+                }
             }
         }
 
-        // Update the stored base path
+        // Update the stored graph sources
+        let sources_str = current_sources.iter()
+            .cloned()
+            .collect::<Vec<_>>()
+            .join(",");
         let upsert_query = query(
-            "MERGE (c:SyncConfig {key: 'github_base_path'})
+            "MERGE (c:SyncConfig {key: 'github_graph_sources'})
              SET c.value = $value, c.updated_at = datetime()"
-        ).param("value", current_base_path.clone());
+        ).param("value", sources_str);
 
         if let Err(e) = graph.run(upsert_query).await {
-            warn!("[GitHubSync] Failed to save SyncConfig: {}", e);
+            warn!("[GitHubSync] Failed to save SyncConfig graph_sources: {}", e);
+        }
+
+        // Also update legacy key for backward compat (use first path)
+        if let Some(first_path) = current_paths.first() {
+            let legacy_upsert = query(
+                "MERGE (c:SyncConfig {key: 'github_base_path'})
+                 SET c.value = $value, c.updated_at = datetime()"
+            ).param("value", first_path.clone());
+
+            if let Err(e) = graph.run(legacy_upsert).await {
+                warn!("[GitHubSync] Failed to save legacy SyncConfig: {}", e);
+            }
         }
 
         changed
     }
 
-    /// Clear all stale data from Neo4j when switching to a new GitHub base path.
-    /// Removes: KGNode, FileMetadata, OwlClass, OwlProperty, Axiom nodes.
+    /// Clear Neo4j data for a specific graph source.
+    /// Only removes KGNode and FileMetadata entries tagged with this graph source.
+    /// Falls back to clearing all if no graph_source tag exists (legacy data).
+    async fn clear_graph_source_data(&self, graph_source: &str) -> Result<(), String> {
+        use neo4rs::query;
+        let graph = self.onto_repo.graph();
+
+        // Remove KGNodes with matching graph_source
+        let kg_query = query(
+            "MATCH (n:KGNode {graph_source: $source}) DETACH DELETE n"
+        ).param("source", graph_source.to_string());
+
+        match graph.run(kg_query).await {
+            Ok(_) => info!("  Cleared KGNode nodes for graph source '{}'", graph_source),
+            Err(e) => warn!("  Failed to clear KGNode for '{}': {}", graph_source, e),
+        }
+
+        // Remove FileMetadata for files from this graph source
+        let fm_query = query(
+            "MATCH (f:FileMetadata {graph_source: $source}) DETACH DELETE f"
+        ).param("source", graph_source.to_string());
+
+        match graph.run(fm_query).await {
+            Ok(_) => info!("  Cleared FileMetadata for graph source '{}'", graph_source),
+            Err(e) => warn!("  Failed to clear FileMetadata for '{}': {}", graph_source, e),
+        }
+
+        info!("Cleared stale data for graph source '{}'", graph_source);
+        Ok(())
+    }
+
+    /// Clear all stale data from Neo4j (legacy full wipe).
+    /// Used only when no graph_source tagging exists (backward compat).
+    #[allow(dead_code)]
     async fn clear_stale_neo4j_data(&self) -> Result<(), String> {
         use neo4rs::query;
         let graph = self.onto_repo.graph();
@@ -815,12 +1007,12 @@ impl GitHubSyncService {
 
         for (label, cypher) in queries {
             match graph.run(query(cypher)).await {
-                Ok(_) => info!("  ✓ Cleared {} nodes", label),
-                Err(e) => warn!("  ✗ Failed to clear {} nodes: {}", label, e),
+                Ok(_) => info!("  Cleared {} nodes", label),
+                Err(e) => warn!("  Failed to clear {} nodes: {}", label, e),
             }
         }
 
-        info!("🧹 Stale Neo4j data cleared for fresh ingest");
+        info!("Stale Neo4j data cleared for fresh ingest");
         Ok(())
     }
 
@@ -864,6 +1056,37 @@ impl GitHubSyncService {
         }
 
         FileType::Skip
+    }
+
+    /// Detect the semantic file format for routing to the correct parser.
+    ///
+    /// Returns a `FileFormat` variant:
+    /// - `VisionClawV2`: v2 ontology format (`iri::` header + `rdf-type:: owl:Class`)
+    /// - `OntologyV4`: legacy OntologyBlock format (`### OntologyBlock`)
+    /// - `PublicNote`: Logseq public page (`public:: true` in first 25 lines)
+    /// - `PrivateNote`: anything else
+    pub fn detect_file_format(content: &str) -> FileFormat {
+        let content = content.trim_start_matches('\u{feff}');
+
+        // v2 format: iri:: header property + rdf-type:: owl:Class
+        if content.starts_with("iri::") && content.contains("rdf-type:: owl:Class") {
+            return FileFormat::VisionClawV2;
+        }
+
+        // Legacy OntologyBlock format
+        if content.contains("### OntologyBlock") {
+            return FileFormat::OntologyV4;
+        }
+
+        // Public Logseq page
+        if content.lines().take(25).any(|l| {
+            let trimmed = l.trim_start_matches(|c: char| c == '-' || c.is_whitespace());
+            trimmed.starts_with("public:: true") && trimmed.trim_end() == "public:: true"
+        }) {
+            return FileFormat::PublicNote;
+        }
+
+        FileFormat::PrivateNote
     }
 
     /// Save ontology data to Neo4j and trigger reasoning pipeline

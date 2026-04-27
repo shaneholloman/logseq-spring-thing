@@ -114,6 +114,51 @@ pub struct Node {
     /// `None` when the payload lives exclusively in the central graph.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pod_url: Option<String>,
+
+    // ----------------------------------------------------------------------
+    // VisionClaw v2 ontology fields
+    // ----------------------------------------------------------------------
+    /// Canonical IRI from the ontology namespace, e.g.
+    /// `http://narrativegoldmine.com/ontology#SomeConcept`
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub canonical_iri: Option<String>,
+
+    /// VisionClaw URN alias, e.g. `urn:visionclaw:concept:artificial-intelligence:neural-networks`
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub visionclaw_uri: Option<String>,
+
+    /// OWL RDF type, e.g. `owl:Class`
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rdf_type: Option<String>,
+
+    /// `owl:sameAs` link to an equivalent resource
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub same_as: Option<String>,
+
+    /// Full-word domain slug, e.g. `artificial-intelligence`, `blockchain`
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub domain: Option<String>,
+
+    /// Content hash for deduplication, e.g. `sha256-12-...`
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content_hash: Option<String>,
+
+    /// Quality score in range 0.00 -- 1.00
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub quality_score: Option<f32>,
+
+    /// Authority score in range 0.00 -- 1.00
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub authority_score: Option<f32>,
+
+    /// Human-readable preferred label (skos:prefLabel equivalent)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub preferred_term: Option<String>,
+
+    /// Which knowledge graph this node belongs to, e.g.
+    /// `"mainKnowledgeGraph"` or `"workingGraph"`
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub graph_source: Option<String>,
 }
 
 impl Node {
@@ -185,6 +230,16 @@ impl Node {
             owner_pubkey: None,
             opaque_id: None,
             pod_url: None,
+            canonical_iri: None,
+            visionclaw_uri: None,
+            rdf_type: None,
+            same_as: None,
+            domain: None,
+            content_hash: None,
+            quality_score: None,
+            authority_score: None,
+            preferred_term: None,
+            graph_source: None,
         }
     }
 
@@ -316,6 +371,16 @@ impl Node {
             owner_pubkey: None,
             opaque_id: None,
             pod_url: None,
+            canonical_iri: None,
+            visionclaw_uri: None,
+            rdf_type: None,
+            same_as: None,
+            domain: None,
+            content_hash: None,
+            quality_score: None,
+            authority_score: None,
+            preferred_term: None,
+            graph_source: None,
         }
     }
 
@@ -414,6 +479,58 @@ impl Node {
 
     pub fn with_pod_url(mut self, pod_url: impl Into<String>) -> Self {
         self.pod_url = Some(pod_url.into());
+        self
+    }
+
+    // ---------------- VisionClaw v2 helpers ----------------
+
+    pub fn with_canonical_iri(mut self, iri: impl Into<String>) -> Self {
+        self.canonical_iri = Some(iri.into());
+        self
+    }
+
+    pub fn with_visionclaw_uri(mut self, uri: impl Into<String>) -> Self {
+        self.visionclaw_uri = Some(uri.into());
+        self
+    }
+
+    pub fn with_rdf_type(mut self, rdf_type: impl Into<String>) -> Self {
+        self.rdf_type = Some(rdf_type.into());
+        self
+    }
+
+    pub fn with_same_as(mut self, same_as: impl Into<String>) -> Self {
+        self.same_as = Some(same_as.into());
+        self
+    }
+
+    pub fn with_domain(mut self, domain: impl Into<String>) -> Self {
+        self.domain = Some(domain.into());
+        self
+    }
+
+    pub fn with_content_hash(mut self, hash: impl Into<String>) -> Self {
+        self.content_hash = Some(hash.into());
+        self
+    }
+
+    pub fn with_quality_score(mut self, score: f32) -> Self {
+        self.quality_score = Some(score);
+        self
+    }
+
+    pub fn with_authority_score(mut self, score: f32) -> Self {
+        self.authority_score = Some(score);
+        self
+    }
+
+    pub fn with_preferred_term(mut self, term: impl Into<String>) -> Self {
+        self.preferred_term = Some(term.into());
+        self
+    }
+
+    pub fn with_graph_source(mut self, source: impl Into<String>) -> Self {
+        self.graph_source = Some(source.into());
         self
     }
 

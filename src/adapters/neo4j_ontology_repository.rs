@@ -238,6 +238,11 @@ impl Neo4jOntologyRepository {
         // Additional metadata
         let additional_metadata: Option<String> = node.get("additional_metadata").ok();
 
+        // VisionClaw v2 identifiers
+        let canonical_iri: Option<String> = node.get("canonical_iri").ok();
+        let visionclaw_uri: Option<String> = node.get("visionclaw_uri").ok();
+        let content_hash: Option<String> = node.get("content_hash").ok();
+
         Ok(OwlClass {
             iri,
             term_id,
@@ -274,6 +279,9 @@ impl Neo4jOntologyRepository {
             other_relationships: std::collections::HashMap::new(),
             properties: std::collections::HashMap::new(),
             additional_metadata,
+            canonical_iri,
+            visionclaw_uri,
+            content_hash,
         })
     }
 }
@@ -314,7 +322,10 @@ impl OntologyRepository for Neo4jOntologyRepository {
                 c.file_sha1 = $file_sha1,
                 c.markdown_content = $markdown_content,
                 c.last_synced = $last_synced,
-                c.additional_metadata = $additional_metadata
+                c.additional_metadata = $additional_metadata,
+                c.canonical_iri = $canonical_iri,
+                c.visionclaw_uri = $visionclaw_uri,
+                c.content_hash = $content_hash
             ON MATCH SET
                 c.updated_at = datetime(),
                 c.term_id = $term_id,
@@ -338,7 +349,10 @@ impl OntologyRepository for Neo4jOntologyRepository {
                 c.file_sha1 = $file_sha1,
                 c.markdown_content = $markdown_content,
                 c.last_synced = $last_synced,
-                c.additional_metadata = $additional_metadata
+                c.additional_metadata = $additional_metadata,
+                c.canonical_iri = $canonical_iri,
+                c.visionclaw_uri = $visionclaw_uri,
+                c.content_hash = $content_hash
             SET c.node_type = 'owl_class',
                 c.label = COALESCE(c.label, c.iri)
         ";
@@ -367,7 +381,10 @@ impl OntologyRepository for Neo4jOntologyRepository {
                 .param("file_sha1", class.file_sha1.clone().unwrap_or_default())
                 .param("markdown_content", class.markdown_content.clone().unwrap_or_default())
                 .param("last_synced", class.last_synced.map(|dt| dt.to_rfc3339()).unwrap_or_default())
-                .param("additional_metadata", class.additional_metadata.clone().unwrap_or_default()))
+                .param("additional_metadata", class.additional_metadata.clone().unwrap_or_default())
+                .param("canonical_iri", class.canonical_iri.clone().unwrap_or_default())
+                .param("visionclaw_uri", class.visionclaw_uri.clone().unwrap_or_default())
+                .param("content_hash", class.content_hash.clone().unwrap_or_default()))
             .await
             .map_err(|e| {
                 OntologyRepositoryError::DatabaseError(format!(
@@ -1662,6 +1679,16 @@ impl Neo4jOntologyRepository {
                 owner_pubkey: None,
                 opaque_id: None,
                 pod_url: None,
+                canonical_iri: None,
+                visionclaw_uri: None,
+                rdf_type: None,
+                same_as: None,
+                domain: None,
+                content_hash: None,
+                quality_score: None,
+                authority_score: None,
+                preferred_term: None,
+                graph_source: None,
             });
         }
 

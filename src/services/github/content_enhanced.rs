@@ -140,6 +140,121 @@ impl EnhancedContentAPI {
         Ok(markdown_files)
     }
 
+    /// List markdown files via the Git Trees API for a specific base path.
+    ///
+    /// Unlike `list_markdown_files_via_tree()` which uses the client's configured
+    /// base_path, this accepts an explicit path prefix. Used by the dual-graph
+    /// sync loop to iterate over multiple graph directories.
+    pub async fn list_markdown_files_via_tree_for_path(
+        &self,
+        base_path: &str,
+    ) -> VisionFlowResult<Vec<GitHubFileBasicMetadata>> {
+        let base_path = base_path.trim_matches('/').to_string();
+        let branch = self.client.branch();
+
+        let tree_url = format!(
+            "https://api.github.com/repos/{}/{}/git/trees/{}?recursive=1",
+            self.client.owner(),
+            self.client.repo(),
+            branch
+        );
+
+        info!("list_markdown_files_via_tree_for_path: Fetching tree for base '{}'", base_path);
+
+        let response = self
+            .client
+            .client()
+            .get(&tree_url)
+            .header("Authorization", format!("Bearer {}", self.client.token()))
+            .header("Accept", "application/vnd.github+json")
+            .send()
+            .await?;
+
+        let status = response.status();
+        if !status.is_success() {
+            let error_text = response.text().await?;
+            error!(
+                "list_markdown_files_via_tree_for_path: GitHub API error ({}): {}",
+                status, error_text
+            );
+            return Err(format!(
+                "GitHub Trees API error ({}): {}",
+                status, error_text
+            )
+            .into());
+        }
+
+        let tree_data: Value = response.json().await?;
+        let truncated = tree_data["truncated"].as_bool().unwrap_or(false);
+        if truncated {
+            warn!("list_markdown_files_via_tree_for_path: Tree response was truncated");
+        }
+
+        let tree = tree_data["tree"]
+            .as_array()
+            .ok_or("GitHub Trees API returned no tree array")?;
+
+        let mut markdown_files = Vec::new();
+        let base_prefix = if base_path.is_empty() {
+            String::new()
+        } else {
+            format!("{}/", base_path)
+        };
+
+        for entry in tree {
+            let entry_type = entry["type"].as_str().unwrap_or("");
+            let entry_path = entry["path"].as_str().unwrap_or("");
+
+            if entry_type != "blob" || !entry_path.ends_with(".md") {
+                continue;
+            }
+
+            if !base_path.is_empty() && !entry_path.starts_with(&base_prefix) {
+                continue;
+            }
+
+            if entry_path.contains("/bak/")
+                || entry_path.contains("/logseq/")
+                || entry_path.contains("/.recycle/")
+                || entry_path.contains("/journals/")
+            {
+                continue;
+            }
+
+            let sha = entry["sha"].as_str().unwrap_or("").to_string();
+            let size = entry["size"].as_u64().unwrap_or(0);
+
+            let name = entry_path
+                .rsplit('/')
+                .next()
+                .unwrap_or(entry_path)
+                .to_string();
+
+            let download_url = format!(
+                "https://raw.githubusercontent.com/{}/{}/{}/{}",
+                self.client.owner(),
+                self.client.repo(),
+                branch,
+                entry_path
+            );
+
+            markdown_files.push(GitHubFileBasicMetadata {
+                name,
+                path: entry_path.to_string(),
+                sha,
+                size,
+                download_url,
+            });
+        }
+
+        info!(
+            "list_markdown_files_via_tree_for_path: Found {} markdown files under '{}'",
+            markdown_files.len(),
+            base_path
+        );
+        Ok(markdown_files)
+    }
+
     pub fn list_markdown_files<'a>(
         &'a self,
         path: &'a str,

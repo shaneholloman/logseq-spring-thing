@@ -157,6 +157,16 @@ impl OntologyConverter {
             owner_pubkey: None,
             opaque_id: None,
             pod_url: None,
+            canonical_iri: None,
+            visionclaw_uri: None,
+            rdf_type: None,
+            same_as: None,
+            domain: None,
+            content_hash: None,
+            quality_score: None,
+            authority_score: None,
+            preferred_term: None,
+            graph_source: None,
         })
     }
 

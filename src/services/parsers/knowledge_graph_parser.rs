@@ -5,6 +5,9 @@
 //! - Nodes (pages, concepts)
 //! - Edges (links, relationships)
 //! - Metadata (properties, tags)
+//!
+//! Supports both VisionClaw v2 (IRI-first) and v4 (OntologyBlock) page
+//! formats with automatic format detection. See `PageFormat` enum.
 
 use crate::models::edge::Edge;
 use crate::models::graph::GraphData;
@@ -15,6 +18,151 @@ use crate::utils::socket_flow_messages::BinaryNodeData;
 use log::{debug, info};
 use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
+
+/// Detected page format — drives IRI computation and metadata extraction.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PageFormat {
+    /// v2 ontology: line 1 starts with `iri::` AND contains `rdf-type:: owl:Class`.
+    V2Ontology,
+    /// v2 note (workingGraph): has `public:: true` but NO `iri::` on line 1.
+    V2Note,
+    /// v4 ontology: contains `### OntologyBlock`.
+    V4Ontology,
+    /// Plain page: `public:: true` without any ontology markers.
+    Plain,
+}
+
+impl PageFormat {
+    /// Detect page format from raw content.
+    pub fn detect(content: &str) -> Self {
+        let first_line = content.lines().next().unwrap_or("");
+        let has_iri_line1 = first_line.starts_with("iri::");
+        let has_rdf_type_owl_class = content
+            .lines()
+            .any(|l| {
+                let t = l.trim();
+                t.starts_with("rdf-type::") && t.contains("owl:Class")
+            });
+        let has_ontology_block = content.contains("### OntologyBlock");
+
+        if has_iri_line1 && has_rdf_type_owl_class {
+            PageFormat::V2Ontology
+        } else if has_ontology_block {
+            PageFormat::V4Ontology
+        } else if has_iri_line1 {
+            // Has IRI but no rdf-type owl:Class — treat as v2 note variant.
+            PageFormat::V2Note
+        } else {
+            // No IRI on line 1, no OntologyBlock — plain page or workingGraph note.
+            PageFormat::Plain
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            PageFormat::V2Ontology => "v2_ontology",
+            PageFormat::V2Note => "v2_note",
+            PageFormat::V4Ontology => "v4_ontology",
+            PageFormat::Plain => "plain",
+        }
+    }
+}
+
+/// Which graph a file was sourced from. Stored in node metadata so
+/// downstream consumers (Neo4j projection, API layer) can distinguish
+/// ontology pages from user notes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GraphSource {
+    /// mainKnowledgeGraph — curated ontology pages.
+    MainKnowledgeGraph,
+    /// workingGraph — user notes and drafts.
+    WorkingGraph,
+}
+
+impl GraphSource {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            GraphSource::MainKnowledgeGraph => "mainKnowledgeGraph",
+            GraphSource::WorkingGraph => "workingGraph",
+        }
+    }
+}
+
+impl Default for GraphSource {
+    fn default() -> Self {
+        GraphSource::MainKnowledgeGraph
+    }
+}
+
+/// Extract a Logseq flat property (`key:: value`) from page content.
+/// Returns the first match. Only matches line-anchored (non-indented)
+/// properties so bullet-level properties are not picked up by accident.
+fn extract_property<'a>(content: &'a str, key: &str) -> Option<String> {
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with('-') || trimmed.starts_with('#') {
+            // Past page-properties block — stop scanning.
+            break;
+        }
+        if let Some(rest) = trimmed.strip_prefix(key) {
+            if let Some(value) = rest.strip_prefix("::") {
+                let v = value.trim();
+                if !v.is_empty() {
+                    return Some(v.to_string());
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Extract wikilinks from relationship property lines.
+///
+/// Relationship properties are indented bullet items like:
+///   `  - is-subclass-of:: [[Target1]], [[Target2]]`
+///
+/// This function scans the full content for known relationship keys and
+/// extracts all `[[...]]` targets from their values. The set of
+/// relationship keys follows the v2 PAGE-FORMAT.md spec.
+fn extract_relationship_wikilinks(content: &str) -> Vec<String> {
+    static RELATIONSHIP_KEYS: &[&str] = &[
+        "is-subclass-of",
+        "has-part",
+        "is-part-of",
+        "requires",
+        "enables",
+        "implements",
+        "bridges-to",
+        "depends-on",
+        "belongs-to-domain",
+        "implemented-in-layer",
+        "sources",
+    ];
+
+    let link_re = regex::Regex::new(r"\[\[([^\]|]+)(?:\|[^\]]+)?\]\]")
+        .expect("invalid wikilink regex");
+    let mut out = Vec::new();
+
+    for line in content.lines() {
+        let trimmed = line.trim().trim_start_matches('-').trim();
+        for &key in RELATIONSHIP_KEYS {
+            if let Some(rest) = trimmed.strip_prefix(key) {
+                if rest.starts_with("::") {
+                    let value_part = &rest[2..];
+                    for cap in link_re.captures_iter(value_part) {
+                        if let Some(m) = cap.get(1) {
+                            let target = m.as_str().trim().to_string();
+                            if !target.is_empty() {
+                                out.push(target);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    out
+}
 
 /// A single source-of-truth file offered to the two-pass parser.
 ///
@@ -27,6 +175,8 @@ pub struct FileBundle {
     pub name: String,
     pub path: String,
     pub content: String,
+    /// Which graph this file belongs to. Defaults to `MainKnowledgeGraph`.
+    pub graph_source: GraphSource,
 }
 
 impl FileBundle {
@@ -35,6 +185,22 @@ impl FileBundle {
             name: name.into(),
             path: path.into(),
             content: content.into(),
+            graph_source: GraphSource::default(),
+        }
+    }
+
+    /// Construct a FileBundle with an explicit graph source.
+    pub fn new_with_source(
+        name: impl Into<String>,
+        path: impl Into<String>,
+        content: impl Into<String>,
+        graph_source: GraphSource,
+    ) -> Self {
+        Self {
+            name: name.into(),
+            path: path.into(),
+            content: content.into(),
+            graph_source,
         }
     }
 }
@@ -82,6 +248,10 @@ struct PageMeta {
     relative_path: String,
     raw_content: String,
     wikilinks: Vec<String>,
+    /// Detected page format (v2 ontology, v2 note, v4 ontology, plain).
+    format: PageFormat,
+    /// Which graph this page was sourced from.
+    graph_source: GraphSource,
 }
 
 /// Knowledge graph parser with position preservation support
@@ -254,6 +424,10 @@ impl KnowledgeGraphParser {
     /// Pass-1 extraction: pull the page title, its wikilinks, the canonical
     /// IRI, and keep the raw content around for the Pass-2 visibility
     /// classifier.
+    ///
+    /// For v2 pages the `iri::` property IS the canonical IRI — we use it
+    /// directly instead of computing a hash-based IRI from the file path.
+    /// For v4 / plain pages we fall back to the legacy computation.
     fn extract_page_meta(&self, owner: &str, file: &FileBundle) -> PageMeta {
         let title = file
             .name
@@ -261,8 +435,33 @@ impl KnowledgeGraphParser {
             .unwrap_or(&file.name)
             .to_string();
 
-        let canonical_iri = canonical_iri(owner, &file.path);
-        let wikilinks = extract_wikilink_titles(&file.content);
+        let format = PageFormat::detect(&file.content);
+
+        // Canonical IRI: v2 pages carry it as a property; legacy pages compute it.
+        let canonical_iri = match format {
+            PageFormat::V2Ontology | PageFormat::V2Note => {
+                extract_property(&file.content, "iri")
+                    .unwrap_or_else(|| canonical_iri(owner, &file.path))
+            }
+            _ => canonical_iri(owner, &file.path),
+        };
+
+        // Body wikilinks (from markdown content, excluding OntologyBlock in v4).
+        let mut wikilinks = extract_wikilink_titles(&file.content);
+
+        // v2 pages: also extract wikilinks from structured relationship properties
+        // (is-subclass-of, has-part, etc.) which use `[[Target]]` syntax.
+        if matches!(format, PageFormat::V2Ontology | PageFormat::V2Note) {
+            let rel_links = extract_relationship_wikilinks(&file.content);
+            // Merge without duplicates — body extraction may already have them.
+            // Collect owned strings into the set to avoid borrow conflicts.
+            let existing: HashSet<String> = wikilinks.iter().cloned().collect();
+            for link in rel_links {
+                if !existing.contains(&link) {
+                    wikilinks.push(link);
+                }
+            }
+        }
 
         PageMeta {
             title,
@@ -270,6 +469,8 @@ impl KnowledgeGraphParser {
             relative_path: file.path.clone(),
             raw_content: file.content.clone(),
             wikilinks,
+            format,
+            graph_source: file.graph_source,
         }
     }
 
@@ -300,6 +501,23 @@ impl KnowledgeGraphParser {
             .insert("visibility".into(), visibility.as_str().into());
         node.metadata
             .insert("owner_pubkey".into(), owner.to_string());
+
+        // Page format and graph source — allows downstream consumers to
+        // distinguish v2 ontology pages from plain notes.
+        node.metadata
+            .insert("page_format".into(), meta.format.as_str().into());
+        node.metadata
+            .insert("graph_source".into(), meta.graph_source.as_str().into());
+
+        // v2-specific metadata extraction: pull structured properties that
+        // the v2 PAGE-FORMAT.md spec defines at page level.
+        if matches!(meta.format, PageFormat::V2Ontology | PageFormat::V2Note) {
+            self.extract_v2_metadata(&meta.raw_content, &mut node.metadata);
+        }
+
+        // Stamp first-class Node fields that depend on FileBundle context.
+        node.canonical_iri = Some(meta.canonical_iri.clone());
+        node.graph_source = Some(meta.graph_source.as_str().to_string());
 
         let pod_url = pod_url_for(owner, &meta.relative_path, visibility);
         node.metadata.insert("pod_url".into(), pod_url.clone());
@@ -381,6 +599,16 @@ impl KnowledgeGraphParser {
             owner_pubkey: Some(owner.to_string()),
             opaque_id: None,
             pod_url: None,
+            canonical_iri: None,
+            visionclaw_uri: None,
+            rdf_type: None,
+            same_as: None,
+            domain: None,
+            content_hash: None,
+            quality_score: None,
+            authority_score: None,
+            preferred_term: None,
+            graph_source: None,
         };
 
         KGNodeDraft {
@@ -392,6 +620,47 @@ impl KnowledgeGraphParser {
             // A stub has no Pod content until the owner authors it.
             pod_url: None,
             is_stub: true,
+        }
+    }
+
+    /// Extract v2-specific metadata properties from page content and insert
+    /// them into the node metadata map. Only called for `V2Ontology` or
+    /// `V2Note` format pages.
+    ///
+    /// These properties are defined in PAGE-FORMAT.md and sit at the page
+    /// level (flat, non-indented). The generic property regex in
+    /// `create_page_node` already captures most of them, but this method
+    /// ensures the key names used downstream are consistent (snake_case)
+    /// and that v2-specific keys that don't exist in v4 are always present.
+    fn extract_v2_metadata(&self, content: &str, metadata: &mut HashMap<String, String>) {
+        // Map of v2 property key → metadata key used downstream.
+        static V2_KEYS: &[(&str, &str)] = &[
+            ("domain", "domain"),
+            ("quality-score", "quality_score"),
+            ("authority-score", "authority_score"),
+            ("content-hash", "content_hash"),
+            ("preferred-term", "preferred_term"),
+            ("rdf-type", "rdf_type"),
+            ("same-as", "same_as"),
+            ("status", "status"),
+            ("iri", "iri"),
+            ("uri", "uri"),
+            ("context", "context"),
+            ("legacy-term-id", "legacy_term_id"),
+            ("version", "version"),
+        ];
+
+        for &(prop_key, meta_key) in V2_KEYS {
+            if let Some(value) = extract_property(content, prop_key) {
+                let value = if meta_key == "domain" {
+                    value.to_lowercase()
+                } else {
+                    value
+                };
+                // Don't overwrite if already set by the generic property regex
+                // in create_page_node (which uses the original kebab-case key).
+                metadata.entry(meta_key.to_string()).or_insert(value);
+            }
         }
     }
 
@@ -543,6 +812,25 @@ impl KnowledgeGraphParser {
             .cloned()
             .unwrap_or_else(|| page_name.to_string());
 
+        // Promote v2 properties from the metadata HashMap to first-class
+        // Node fields so they serialize to JSON / propagate to Neo4j
+        // without downstream consumers needing to dig into the generic map.
+        let preferred_term_field = metadata.get("preferred-term").cloned();
+        let domain_field = metadata.get("domain")
+            .or_else(|| metadata.get("source-domain"))
+            .or_else(|| metadata.get("source_domain"))
+            .cloned()
+            .map(|d| d.to_lowercase());
+        let quality_score_field = metadata.get("quality-score")
+            .and_then(|v| v.parse::<f32>().ok());
+        let authority_score_field = metadata.get("authority-score")
+            .and_then(|v| v.parse::<f32>().ok());
+        let content_hash_field = metadata.get("content-hash").cloned();
+        let rdf_type_field = metadata.get("rdf-type").cloned();
+        let same_as_field = metadata.get("same-as").cloned();
+        let visionclaw_uri_field = metadata.get("uri").cloned();
+        // canonical_iri and graph_source are stamped by build_kg_node, not here.
+
         Node {
             id,
             metadata_id: page_name.to_string(),
@@ -572,6 +860,19 @@ impl KnowledgeGraphParser {
             owner_pubkey: None,
             opaque_id: None,
             pod_url: None,
+            // v2 first-class fields — populated from parsed properties above.
+            // canonical_iri and graph_source are set by build_kg_node after
+            // create_page_node returns (they depend on FileBundle context).
+            canonical_iri: None,
+            visionclaw_uri: visionclaw_uri_field,
+            rdf_type: rdf_type_field,
+            same_as: same_as_field,
+            domain: domain_field,
+            content_hash: content_hash_field,
+            quality_score: quality_score_field,
+            authority_score: authority_score_field,
+            preferred_term: preferred_term_field,
+            graph_source: None,
         }
     }
 
@@ -679,6 +980,16 @@ impl KnowledgeGraphParser {
                     owner_pubkey: None,
                     opaque_id: None,
                     pod_url: None,
+                    canonical_iri: None,
+                    visionclaw_uri: None,
+                    rdf_type: None,
+                    same_as: None,
+                    domain: None,
+                    content_hash: None,
+                    quality_score: None,
+                    authority_score: None,
+                    preferred_term: None,
+                    graph_source: None,
                 });
 
                 edges.push(Edge {

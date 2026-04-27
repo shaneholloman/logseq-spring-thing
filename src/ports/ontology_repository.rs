@@ -101,6 +101,14 @@ pub struct OwlClass {
     // Additional metadata (JSON for extensibility)
     pub properties: HashMap<String, String>,
     pub additional_metadata: Option<String>,
+
+    // VisionClaw v2 ontology identifiers
+    /// Canonical http:// IRI from the narrativegoldmine namespace
+    pub canonical_iri: Option<String>,
+    /// VisionClaw URN alias, e.g. `urn:visionclaw:concept:domain:slug`
+    pub visionclaw_uri: Option<String>,
+    /// Content hash for deduplication, e.g. `sha256-12-...`
+    pub content_hash: Option<String>,
 }
 
 impl Default for OwlClass {
@@ -140,6 +148,9 @@ impl Default for OwlClass {
             other_relationships: HashMap::new(),
             properties: HashMap::new(),
             additional_metadata: None,
+            canonical_iri: None,
+            visionclaw_uri: None,
+            content_hash: None,
         }
     }
 }
