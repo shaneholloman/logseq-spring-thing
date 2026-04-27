@@ -1,0 +1,3 @@
+[submodule "agentbox"]
+	path = agentbox
+	url = git@github.com:DreamLab-AI/agentbox.git
