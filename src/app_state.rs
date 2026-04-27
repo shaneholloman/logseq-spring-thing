@@ -475,6 +475,12 @@ impl AppState {
         info!("[AppState::new] Starting GitHub data sync in background (non-blocking)...");
 
         let sync_service_clone = github_sync_service.clone();
+        // Captured to fire render-tier migrations (0043 + 0044) after sync
+        // populates :OntologyClass rows. The migrations are no-ops when
+        // run at create_schema() time because data isn't there yet; firing
+        // them post-sync makes ontology nodes pick up colour / mass /
+        // Fibonacci-shell positions on first ingest, not next restart.
+        let neo4j_adapter_for_migrations = neo4j_adapter.clone();
 
         // Will be initialized before spawn
         let graph_service_addr_ref: std::sync::Arc<tokio::sync::Mutex<Option<Addr<GraphServiceSupervisor>>>> =
@@ -508,6 +514,15 @@ impl AppState {
                             warn!("    ... and {} more errors", stats.errors.len() - 5);
                         }
                     }
+
+                    // Apply render-tier migrations (0043 + 0044). They were
+                    // no-ops at create_schema() time because :OntologyClass
+                    // rows didn't exist yet; firing them post-sync gives the
+                    // ontology tier its purple radius-600 Fibonacci shell on
+                    // first ingest. Idempotent (gated on rows lacking colour),
+                    // safe to call repeatedly.
+                    info!("🎨 [GitHub Sync] Applying render-tier migrations to fresh ontology data...");
+                    neo4j_adapter_for_migrations.apply_render_tier_migrations().await;
 
                     // Load synced data into graph actor (if it's ready)
                     if let Some(graph_addr) = &*graph_service_addr_clone_for_sync.lock().await {

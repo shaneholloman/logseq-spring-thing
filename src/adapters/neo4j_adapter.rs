@@ -416,8 +416,112 @@ impl Neo4jAdapter {
             debug!("SOVEREIGN_SCHEMA disabled — skipping ADR-050 indexes");
         }
 
+        // ------------------------------------------------------------------
+        // Step 4: Auto-apply numbered render-tier migrations.
+        //
+        // Pre-this-block these were manual ops steps run via
+        // `cypher-shell < migration.cypher`. After a Neo4j wipe the
+        // marker rows are gone AND the data isn't there yet at the moment
+        // create_schema() runs (sync hasn't fired). We therefore can't
+        // gate on a SchemaMigration marker — that would race with sync
+        // and lock the migrations out forever. Instead we gate on the
+        // OBSERVABLE STATE: do any :OntologyClass rows lack `color`?
+        // If yes, apply. If no, skip. This is naturally idempotent and
+        // self-healing: after every wipe + resync, the next startup
+        // detects un-coloured rows and re-runs the visual setup.
+        for (id, content) in [
+            ("0043_render_ontology_tier",  include_str!("../../queries/migrations/0043_render_ontology_tier.cypher")),
+            ("0044_ontology_tier_layout",  include_str!("../../queries/migrations/0044_ontology_tier_layout.cypher")),
+        ] {
+            self.apply_numbered_migration(id, content).await;
+        }
+
         info!("Neo4j schema created successfully with semantic type and fulltext indexes");
         Ok(())
+    }
+
+    /// Apply a numbered .cypher render-tier migration idempotently.
+    ///
+    /// Idempotency strategy: gate on observable data state, NOT on a
+    /// SchemaMigration marker. The marker-based approach broke after Neo4j
+    /// wipes — create_schema() runs before sync populates data, so the
+    /// migrations no-op and the marker locks them out forever. Instead we
+    /// check whether any `:OntologyClass` row lacks `color`. If yes, the
+    /// migrations need to (re)run. If all rows are coloured, skip.
+    ///
+    /// Each statement in the file (`;`-terminated) runs separately because
+    /// Bolt doesn't support multi-statement transactions on a single Query.
+    /// Comment-only statements (`//` lines) are filtered.
+    async fn apply_numbered_migration(&self, id: &str, content: &str) {
+        // Probe: count :OntologyClass rows that lack a `color` property.
+        let probe = Query::new(
+            "MATCH (n:OntologyClass) WHERE n.color IS NULL RETURN count(n) AS n".to_string()
+        );
+        let uncoloured = match self.graph.execute(probe).await {
+            Ok(mut res) => res
+                .next()
+                .await
+                .ok()
+                .flatten()
+                .and_then(|row| row.get::<i64>("n").ok())
+                .unwrap_or(0),
+            Err(e) => {
+                warn!("Migration {}: state-probe failed (skipping): {}", id, e);
+                return;
+            }
+        };
+        if uncoloured == 0 {
+            debug!("Migration {}: skip (all :OntologyClass rows already coloured)", id);
+            return;
+        }
+
+        info!("Migration {}: applying ({} :OntologyClass rows lack render props)", id, uncoloured);
+        let mut applied = 0usize;
+        let mut errors = 0usize;
+        for raw_stmt in content.split(";\n") {
+            // Strip leading/trailing whitespace and skip empty / comment-only.
+            let stmt = raw_stmt.trim();
+            if stmt.is_empty() {
+                continue;
+            }
+            let non_comment = stmt
+                .lines()
+                .filter(|l| {
+                    let t = l.trim();
+                    !t.is_empty() && !t.starts_with("//")
+                })
+                .count();
+            if non_comment == 0 {
+                continue;
+            }
+            // Trailing semicolon was eaten by split; restore not needed (Cypher
+            // accepts statements without it). Trailing comments after split are fine.
+            match self.graph.run(Query::new(stmt.to_string())).await {
+                Ok(_) => applied += 1,
+                Err(e) => {
+                    errors += 1;
+                    warn!("Migration {} statement failed: {} — query: {}", id, e, stmt.lines().next().unwrap_or("(empty)"));
+                }
+            }
+        }
+        if errors == 0 {
+            info!("Migration {}: applied {} statements cleanly", id, applied);
+        } else {
+            warn!("Migration {}: applied {} statements with {} errors", id, applied, errors);
+        }
+    }
+
+    /// Public entry to trigger render-tier migrations on demand. Called
+    /// after github_sync_service finishes a batch so newly-arrived
+    /// :OntologyClass rows pick up render properties without waiting for
+    /// the next process restart.
+    pub async fn apply_render_tier_migrations(&self) {
+        for (id, content) in [
+            ("0043_render_ontology_tier",  include_str!("../../queries/migrations/0043_render_ontology_tier.cypher")),
+            ("0044_ontology_tier_layout",  include_str!("../../queries/migrations/0044_ontology_tier_layout.cypher")),
+        ] {
+            self.apply_numbered_migration(id, content).await;
+        }
     }
 
     /// Convert Node to Neo4j properties
