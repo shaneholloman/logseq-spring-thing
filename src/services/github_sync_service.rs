@@ -539,9 +539,22 @@ impl GitHubSyncService {
                     debug!("✓ Added {} edges from {}", edges.len() - edges_before, file.name);
                 }
 
-                // Also check for and parse ontology blocks in this file
-                if content.contains("### OntologyBlock") {
-                    debug!("🦉 Detected OntologyBlock in {}, extracting ontology data", file.name);
+                // Also check for and parse ontology blocks in this file.
+                // Two formats qualify:
+                //   1. v4 (legacy): `### OntologyBlock` section
+                //   2. v2 (current): `iri::` line 1 + `rdf-type:: owl:Class`
+                // Pre-fix this gate only matched v4, so v2 ontology pages with
+                // `public:: true` (the bulk of the corpus, ~468 files) had
+                // their narrative tier saved as :KGNode but NEVER produced
+                // their :OntologyClass twin — explaining the asymmetry of
+                // ~15k :KGNode vs ~9 :OntologyClass.
+                let onto_format = Self::detect_file_format(&content);
+                let has_ontology_data = matches!(
+                    onto_format,
+                    FileFormat::OntologyV4 | FileFormat::VisionClawV2
+                );
+                if has_ontology_data {
+                    debug!("🦉 Detected ontology data ({:?}) in {}, extracting", onto_format, file.name);
 
                     // Use parse_enhanced to get the full OntologyBlock with relationships
                     match self.onto_parser.parse_enhanced(&content, &file.name) {
@@ -1040,13 +1053,27 @@ impl GitHubSyncService {
                 && trimmed.trim_end() == "public:: true"
         });
 
-        let has_ontology = content.contains("### OntologyBlock");
+        // Two ontology-data formats qualify a file as Ontology:
+        //   1. v4 (legacy): `### OntologyBlock` anywhere in the file
+        //   2. v2 (current): `iri::` line 1 + `rdf-type:: owl:Class`
+        // Pre-fix this only matched v4, so v2 ontology pages without
+        // `public:: true` (the auto-stub vocabulary tier — thousands of
+        // them) were FileType::Skip and never reached any pipeline. Per
+        // ADR-048 the v2 vocabulary tier MUST populate :OntologyClass
+        // even when its narrative twin is absent.
+        let has_v4_ontology = content.contains("### OntologyBlock");
+        let has_v2_ontology = {
+            let trimmed = content.trim_start_matches('\u{feff}');
+            trimmed.starts_with("iri::") && trimmed.contains("rdf-type:: owl:Class")
+        };
+        let has_ontology = has_v4_ontology || has_v2_ontology;
 
         // Files with public:: true are knowledge-graph nodes.
-        // The KG branch also has secondary OntologyBlock handling
-        // (process_fetched_file) so ontology data is still extracted
-        // from public pages — but KG nodes + wikilink edges are also
-        // created, which is essential for the force-directed layout.
+        // The KG branch also has secondary ontology-data handling
+        // (process_fetched_file gate at ~line 543) so ontology data is
+        // extracted from public pages whether they're v2 or v4 — but
+        // KG nodes + wikilink edges are also created, which is essential
+        // for the force-directed layout.
         if has_public {
             return FileType::KnowledgeGraph;
         }
