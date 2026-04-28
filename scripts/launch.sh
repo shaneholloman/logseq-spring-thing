@@ -15,8 +15,14 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 COMPOSE_FILE="$PROJECT_ROOT/docker-compose.unified.yml"
 CONTAINER_NAME="visionflow_container"
-AGENT_CONTAINER="agentic-workstation"
-AGENT_COMPOSE_FILE="$PROJECT_ROOT/multi-agent-docker/docker-compose.unified.yml"
+# Agentbox is the canonical agent-container per ADR-058 (MAD→agentbox migration).
+# The legacy multi-agent-docker / agentic-workstation path is retired; this
+# launcher targets agentbox exclusively. Compose files in $PROJECT_ROOT/agentbox/
+# are auto-generated from agentbox.toml via flake.nix; the override.yml there
+# binds ports 9190/8180/5902/2223/9700/8484/9191.
+AGENT_CONTAINER="agentbox"
+AGENT_COMPOSE_FILE="$PROJECT_ROOT/agentbox/docker-compose.yml"
+AGENT_DIR="$PROJECT_ROOT/agentbox"
 
 # Default values
 COMMAND="${1:-up}"
@@ -71,12 +77,12 @@ ${YELLOW}Commands:${NC}
     ${GREEN}down${NC}           Stop and remove containers
     ${GREEN}build${NC}          Build containers (with layer cache)
     ${GREEN}rebuild${NC}        Full rebuild (no cache, cleans all cargo volumes)
-    ${GREEN}rebuild-agent${NC}  Rebuild agentic-workstation (full GPU/ComfyUI/CachyOS validation)
+    ${GREEN}rebuild-agent${NC}  Rebuild agentbox (full GPU/ComfyUI/CachyOS validation)
                      Options: --skip-comfyui, --comfyui-full, --skip-cachyos
     ${GREEN}logs${NC}           Show container logs (follow mode)
     ${GREEN}shell${NC}          Open interactive shell in container
     ${GREEN}restart${NC}        Restart the environment
-    ${GREEN}restart-agent${NC}  Restart the agentic-workstation container
+    ${GREEN}restart-agent${NC}  Restart the agentbox container
     ${GREEN}status${NC}         Show container status and URLs
     ${GREEN}clean${NC}          Clean all containers, volumes, and images
 
@@ -94,7 +100,7 @@ ${YELLOW}Environments:${NC}
                 - Optimized builds
 
 ${YELLOW}Flags:${NC}
-    ${GREEN}--with-agent${NC}   Also restart the agentic-workstation container
+    ${GREEN}--with-agent${NC}   Also restart the agentbox container
 
 ${YELLOW}Examples:${NC}
     ./launch.sh                    ${CYAN}# Start dev environment${NC}
@@ -105,7 +111,7 @@ ${YELLOW}Examples:${NC}
     ./launch.sh logs dev           ${CYAN}# View dev logs${NC}
     ./launch.sh shell prod         ${CYAN}# Open prod shell${NC}
     ./launch.sh restart dev        ${CYAN}# Restart dev${NC}
-    ./launch.sh restart-agent      ${CYAN}# Restart agentic-workstation${NC}
+    ./launch.sh restart-agent      ${CYAN}# Restart agentbox${NC}
     ./launch.sh rebuild-agent      ${CYAN}# Full rebuild with GPU/ComfyUI/CachyOS${NC}
     ./launch.sh rebuild-agent --skip-comfyui  ${CYAN}# Skip ComfyUI check${NC}
     ./launch.sh rebuild-agent --comfyui-full  ${CYAN}# Build full open3d (30-60 min)${NC}
@@ -606,9 +612,9 @@ restart_environment() {
     start_environment
 }
 
-# Restart agent container (agentic-workstation)
+# Restart agent container (agentbox)
 restart_agent_container() {
-    log "Restarting agentic-workstation container..."
+    log "Restarting agentbox container..."
 
     # Check if agent compose file exists
     if [[ ! -f "$AGENT_COMPOSE_FILE" ]]; then
@@ -630,7 +636,7 @@ restart_agent_container() {
     local RAGFLOW_NET="${EXTERNAL_NETWORK:-docker_ragflow}"
     if docker ps --format '{{.Names}}' | grep -q "^comfyui$"; then
         if ! docker inspect comfyui --format '{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}' 2>/dev/null | grep -q "$RAGFLOW_NET"; then
-            info "Connecting comfyui to $RAGFLOW_NET for agentic-workstation access..."
+            info "Connecting comfyui to $RAGFLOW_NET for agentbox access..."
             docker network connect "$RAGFLOW_NET" comfyui && \
                 success "comfyui connected to $RAGFLOW_NET (reachable at comfyui:3000 enhanced API, comfyui:8188 standard)" || \
                 warning "Could not connect comfyui to $RAGFLOW_NET (container will use host.docker.internal fallback)"
@@ -641,18 +647,20 @@ restart_agent_container() {
         warning "comfyui container not running - ComfyUI integration will be unavailable"
     fi
 
-    # Start the agent container
+    # Start the agent container (agentbox)
     info "Starting $AGENT_CONTAINER..."
-    cd "$PROJECT_ROOT/multi-agent-docker"
+    cd "$AGENT_DIR"
 
-    # Load .env from multi-agent-docker
+    # Load .env from agentbox/
     if [[ -f ".env" ]]; then
         set -a
         source .env
         set +a
     fi
 
-    docker compose -f docker-compose.unified.yml up -d
+    # docker-compose.yml + docker-compose.override.yml auto-merge.
+    # No explicit -f flag needed.
+    docker compose up -d
 
     # Wait for container to start
     sleep 3
@@ -661,22 +669,25 @@ restart_agent_container() {
     if docker ps --format '{{.Names}}' | grep -q "^${AGENT_CONTAINER}$"; then
         success "Container $AGENT_CONTAINER restarted successfully"
         echo ""
-        info "Services available:"
-        echo "  ${GREEN}SSH:${NC}            ssh devuser@localhost -p 2222"
-        echo "  ${GREEN}VNC:${NC}            localhost:5901"
-        echo "  ${GREEN}code-server:${NC}    http://localhost:8080"
-        echo "  ${GREEN}Management API:${NC} http://localhost:9090"
+        info "Services available (agentbox ports per docker-compose.override.yml):"
+        echo "  ${GREEN}SSH:${NC}            ssh devuser@localhost -p 2223"
+        echo "  ${GREEN}VNC:${NC}            localhost:5902"
+        echo "  ${GREEN}code-server:${NC}    http://localhost:8180"
+        echo "  ${GREEN}Management API:${NC} http://localhost:9190"
+        echo "  ${GREEN}Solid Pod:${NC}      http://localhost:8484"
+        echo "  ${GREEN}Agent Events:${NC}   http://localhost:9700"
+        echo "  ${GREEN}Metrics:${NC}        http://localhost:9191"
         echo "  ${GREEN}ComfyUI API:${NC}    http://comfyui:3000 (enhanced) | http://comfyui:8188 (standard)"
         echo ""
         info "View logs with: docker logs -f $AGENT_CONTAINER"
     else
         error "Failed to start $AGENT_CONTAINER"
-        docker compose -f docker-compose.unified.yml logs --tail=50
+        docker compose logs --tail=50
         exit 1
     fi
 }
 
-# Rebuild agent container (agentic-workstation) with no cache
+# Rebuild agent container (agentbox) with no cache
 # Canonical build with GPU verification, ComfyUI, CachyOS builds, and skills validation
 rebuild_agent_container() {
     local SKIP_COMFYUI=false
@@ -704,8 +715,8 @@ rebuild_agent_container() {
         exit 1
     fi
 
-    # Change to multi-agent-docker directory
-    cd "$PROJECT_ROOT/multi-agent-docker"
+    # Change to agentbox directory (compose + override + .env all live here).
+    cd "$AGENT_DIR"
 
     # Check for .env file
     if [[ ! -f .env ]]; then
@@ -760,15 +771,26 @@ rebuild_agent_container() {
         docker rm "$AGENT_CONTAINER" 2>/dev/null || true
     fi
 
-    # Build with no cache
-    log "[1/4] Building Agentic Workstation Docker image..."
-    export DOCKER_BUILDKIT=1
-    export COMPOSE_DOCKER_CLI_BUILD=1
-    docker compose -f docker-compose.unified.yml build --no-cache
+    # Build via Nix flake (agentbox image is composed from agentbox.toml via
+    # flake.nix; docker-compose.yml has no build: directive and is auto-
+    # generated). nix-daemon profile sourced defensively.
+    log "[1/4] Building Agentbox image via Nix flake..."
+    if [[ -f /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh ]]; then
+        # shellcheck source=/dev/null
+        source /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh
+    fi
+    if ! command -v nix >/dev/null 2>&1; then
+        error "nix command not found on host. Install Nix (multi-user) or set up profile.d hook."
+        exit 1
+    fi
+    nix build .#runtime --no-link --print-out-paths --option eval-cache false || {
+        error "nix build .#runtime failed"
+        exit 1
+    }
 
-    # Start the container
-    log "[2/4] Launching Agentic Workstation..."
-    docker compose -f docker-compose.unified.yml up -d
+    # Start the container (compose merges docker-compose.yml + override.yml).
+    log "[2/4] Launching Agentbox..."
+    docker compose up -d
 
     log "[3/4] Waiting for services to start..."
     sleep 10
@@ -846,7 +868,7 @@ else:
             fi
         else
             info "Standalone ComfyUI container not found"
-            info "To deploy: cd multi-agent-docker/comfyui && ./build-comfyui.sh"
+            info "ComfyUI is external for agentbox (set COMFYUI_API_ENDPOINT in agentbox/.env)"
         fi
     fi
 
@@ -932,8 +954,8 @@ else:
     fi
 
     echo -e "${GREEN}Management Commands:${NC}"
-    echo "  View logs:   docker compose -f multi-agent-docker/docker-compose.unified.yml logs -f"
-    echo "  Stop:        docker compose -f multi-agent-docker/docker-compose.unified.yml down"
+    echo "  View logs:   docker compose -f agentbox/docker-compose.yml logs -f"
+    echo "  Stop:        docker compose -f agentbox/docker-compose.yml down"
     echo "  Shell:       docker exec -it $AGENT_CONTAINER zsh"
     echo ""
     echo -e "${GREEN}Build Options:${NC}"
