@@ -182,24 +182,40 @@ impl Neo4jGraphRepository {
     /// Load all nodes from Neo4j with optional quality/authority filtering.
     /// Uses parameterized queries to prevent Cypher injection (QE Fix #4).
     async fn load_all_nodes_filtered(&self, filter: &NodeFilterSettings) -> Result<Vec<Node>> {
+        // ALWAYS-ON STUB FILTER:
+        //   Hide bare :KGNode rows that have no metadata_id. These are the
+        //   side-effect rows from `add_edges`/`save_graph` MERGE-on-id, which
+        //   creates an :KGNode stub when an edge references an endpoint not
+        //   yet in the corpus (typically wikilinks pointing at non-existent
+        //   files). They have only an `id` property — no label, no node_type,
+        //   no IRI — and are useless to clients. Pre-this-filter ratio was
+        //   ~86% bare stubs (19,083 of 22,156 :KGNode). Filtering reduces the
+        //   delivered graph to the real ingested pages + valid edge endpoints.
+        let stub_filter = "n.metadata_id IS NOT NULL AND n.metadata_id <> ''".to_string();
+
         // Build WHERE clause using parameterized placeholders instead of format! interpolation
-        let where_clause = if filter.enabled {
-            let mut conditions = Vec::new();
+        let where_clause = {
+            let mut conditions = vec![stub_filter];
 
-            if filter.filter_by_quality {
-                conditions.push(
-                    "(n.quality_score IS NULL OR n.quality_score >= $quality_threshold)".to_string()
-                );
+            if filter.enabled {
+                if filter.filter_by_quality {
+                    conditions.push(
+                        "(n.quality_score IS NULL OR n.quality_score >= $quality_threshold)".to_string()
+                    );
+                }
+
+                if filter.filter_by_authority {
+                    conditions.push(
+                        "(n.authority_score IS NULL OR n.authority_score >= $authority_threshold)".to_string()
+                    );
+                }
             }
 
-            if filter.filter_by_authority {
-                conditions.push(
-                    "(n.authority_score IS NULL OR n.authority_score >= $authority_threshold)".to_string()
-                );
-            }
-
-            if conditions.is_empty() {
-                String::new()
+            // Quality/authority conditions combine via filter_mode (and|or);
+            // the stub filter is a hard prefix that always AND-s with whatever
+            // the user picked. We keep them at this point: stub_filter AND (q ? q OR a : true).
+            if conditions.len() == 1 {
+                format!("WHERE {}", conditions[0])
             } else {
                 let join_op = match filter.filter_mode.as_str() {
                     "and" => " AND ",
@@ -209,10 +225,9 @@ impl Neo4jGraphRepository {
                         " OR "
                     }
                 };
-                format!("WHERE {}", conditions.join(join_op))
+                let stub = conditions.remove(0);
+                format!("WHERE {} AND ({})", stub, conditions.join(join_op))
             }
-        } else {
-            String::new()
         };
 
         // Use COALESCE to prefer sim_* (GPU physics state) over x/y/z (initial positions)
@@ -404,9 +419,16 @@ impl Neo4jGraphRepository {
     /// Load all edges from Neo4j
     /// Matches any relationship type between KGNode nodes, not just :EDGE,
     /// to handle cases where relationships were created with different types.
+    ///
+    /// The WHERE clause mirrors the stub-filter applied in
+    /// `load_all_nodes_filtered`: edges incident to bare :KGNode stubs
+    /// (no metadata_id, the auto-create artefacts of MERGE-on-id) would
+    /// otherwise reach the client with orphan endpoints we just hid.
     async fn load_all_edges(&self) -> Result<Vec<Edge>> {
         let query_str = "
             MATCH (source:KGNode)-[r]->(target:KGNode)
+            WHERE source.metadata_id IS NOT NULL AND source.metadata_id <> ''
+              AND target.metadata_id IS NOT NULL AND target.metadata_id <> ''
             RETURN source.id as source_id,
                    target.id as target_id,
                    COALESCE(r.weight, 1.0) as weight,
