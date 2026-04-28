@@ -1,1 +1,0 @@
-Run `lazy recall $ARGUMENTS` to retrieve stored knowledge. If no key is given, show everything stored.
