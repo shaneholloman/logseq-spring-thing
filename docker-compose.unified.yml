@@ -151,6 +151,7 @@ services:
       - ${HOST_PROJECT_ROOT:-.}/Cargo.lock:/app/Cargo.lock:ro
       - ${HOST_PROJECT_ROOT:-.}/build.rs:/app/build.rs:ro
       - ${HOST_PROJECT_ROOT:-.}/whelk-rs:/app/whelk-rs:ro
+      - ${HOST_PROJECT_ROOT:-.}/queries:/app/queries:ro
       - ${HOST_PROJECT_ROOT:-.}/client/src:/app/client/src:ro
       - ${HOST_PROJECT_ROOT:-.}/client/public:/app/client/public:ro
       - ${HOST_PROJECT_ROOT:-.}/client/index.html:/app/client/index.html:ro

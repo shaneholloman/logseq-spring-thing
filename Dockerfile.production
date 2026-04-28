@@ -139,6 +139,7 @@ COPY --from=cuda-ptx /app/ptx/ /app/src/utils/ptx/
 COPY build.rs ./
 COPY src ./src
 COPY schema ./schema
+COPY queries ./queries
 
 # Force rebuild of webxr crate to run real build.rs (not cached stub)
 # Clean only the webxr build artifacts, keeping deps cached

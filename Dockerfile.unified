@@ -171,6 +171,7 @@ FROM rust-deps AS rust-builder
 # Copy actual source code
 COPY src ./src
 COPY data/schema ./data/schema
+COPY queries ./queries
 
 # Force cargo to recompile: Docker COPY preserves host mtimes which may be
 # older than Stage 2 build artifacts, causing cargo to skip recompilation
