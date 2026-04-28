@@ -182,16 +182,18 @@ impl Neo4jGraphRepository {
     /// Load all nodes from Neo4j with optional quality/authority filtering.
     /// Uses parameterized queries to prevent Cypher injection (QE Fix #4).
     async fn load_all_nodes_filtered(&self, filter: &NodeFilterSettings) -> Result<Vec<Node>> {
-        // ALWAYS-ON STUB FILTER:
-        //   Hide bare :KGNode rows that have no metadata_id. These are the
-        //   side-effect rows from `add_edges`/`save_graph` MERGE-on-id, which
-        //   creates an :KGNode stub when an edge references an endpoint not
-        //   yet in the corpus (typically wikilinks pointing at non-existent
-        //   files). They have only an `id` property — no label, no node_type,
-        //   no IRI — and are useless to clients. Pre-this-filter ratio was
-        //   ~86% bare stubs (19,083 of 22,156 :KGNode). Filtering reduces the
-        //   delivered graph to the real ingested pages + valid edge endpoints.
-        let stub_filter = "n.metadata_id IS NOT NULL AND n.metadata_id <> ''".to_string();
+        // ALWAYS-ON BARE-STUB FILTER:
+        //   Hide :KGNode rows that have no `node_type` — those are the
+        //   side-effect bare stubs from `add_edges`/`save_graph` MERGE-on-id,
+        //   created when an edge references an endpoint not yet in the corpus.
+        //   They have only an `id` property, no semantic class — useless to
+        //   clients. Legitimate private stubs from the parser
+        //   (`build_private_stub`) carry `node_type='kg_stub'` plus the
+        //   ADR-050 sovereign fields (visibility=Private, owner_pubkey, etc.)
+        //   and ARE returned (the binary protocol opacifies them via bit 29
+        //   so owners see opaque shapes; anonymous callers see no labels).
+        //   Real ingested pages have `node_type='page'`.
+        let stub_filter = "n.node_type IS NOT NULL AND n.node_type <> ''".to_string();
 
         // Build WHERE clause using parameterized placeholders instead of format! interpolation
         let where_clause = {
@@ -420,15 +422,17 @@ impl Neo4jGraphRepository {
     /// Matches any relationship type between KGNode nodes, not just :EDGE,
     /// to handle cases where relationships were created with different types.
     ///
-    /// The WHERE clause mirrors the stub-filter applied in
+    /// The WHERE clause mirrors the bare-stub filter in
     /// `load_all_nodes_filtered`: edges incident to bare :KGNode stubs
-    /// (no metadata_id, the auto-create artefacts of MERGE-on-id) would
+    /// (no `node_type`, the MERGE-on-id auto-create artefacts) would
     /// otherwise reach the client with orphan endpoints we just hid.
+    /// Legitimate private stubs (`node_type='kg_stub'`) ARE returned —
+    /// the binary protocol opacifies them via bit 29.
     async fn load_all_edges(&self) -> Result<Vec<Edge>> {
         let query_str = "
             MATCH (source:KGNode)-[r]->(target:KGNode)
-            WHERE source.metadata_id IS NOT NULL AND source.metadata_id <> ''
-              AND target.metadata_id IS NOT NULL AND target.metadata_id <> ''
+            WHERE source.node_type IS NOT NULL AND source.node_type <> ''
+              AND target.node_type IS NOT NULL AND target.node_type <> ''
             RETURN source.id as source_id,
                    target.id as target_id,
                    COALESCE(r.weight, 1.0) as weight,
@@ -637,15 +641,27 @@ impl GraphRepository for Neo4jGraphRepository {
         // edges referencing wikilink targets that may not yet have a
         // :KGNode row in the current batch (the target file is processed
         // later). With MATCH, Cypher returns zero rows → MERGE for the
-        // edge silently no-ops, dropping the edge with no error. With
-        // MERGE-create, an `iri`-less stub appears with just the id; when
-        // the real file lands its `add_nodes` upsert MERGEs by id and
-        // fills in label/iri/visionclaw_uri/etc. Pre-fix ratio was 187
-        // edges from 33,617 parsed (99.5% loss).
+        // edge silently no-ops, dropping the edge with no error.
+        //
+        // ADR-050 COMPLIANCE: when MERGE-create fires for an unknown
+        // endpoint, classify the stub as a private kg_stub so the
+        // sovereign-model invariants hold. Owner/opaque_id stay NULL —
+        // we don't know who authored the wikilink target. Visibility
+        // 'private' alone is enough for bit-29 opacification on the
+        // wire and for the load-path stub filter to keep these out of
+        // anonymous responses. ON MATCH does NOT touch node properties:
+        // if the stub becomes a real page later, `add_nodes` MERGE-by-id
+        // will overwrite kg_stub→page and visibility=private→public.
         let query_str = "
             UNWIND range(0, size($edge_ids)-1) AS i
             MERGE (source:KGNode {id: $source_ids[i]})
+            ON CREATE SET source.node_type = 'kg_stub',
+                          source.visibility = 'private',
+                          source.created_at  = datetime()
             MERGE (target:KGNode {id: $target_ids[i]})
+            ON CREATE SET target.node_type = 'kg_stub',
+                          target.visibility = 'private',
+                          target.created_at  = datetime()
             MERGE (source)-[r:EDGE]->(target)
             ON CREATE SET r.created_at = datetime()
             ON MATCH SET r.updated_at = datetime()

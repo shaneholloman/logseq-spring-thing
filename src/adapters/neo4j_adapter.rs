@@ -303,6 +303,36 @@ impl Neo4jAdapter {
         }
 
         // ------------------------------------------------------------------
+        // Step 1e: Backfill bare :KGNode stubs into ADR-050 private kg_stub
+        // form. These are leftover rows from the MATCH→MERGE edge fix
+        // (`add_edges`/`save_graph` ON CREATE) before that branch
+        // was wired to set node_type/visibility. They have only an `id`
+        // and would otherwise stay forever-hidden by the load-path
+        // node_type filter. Promoting them to {node_type:'kg_stub',
+        // visibility:'private'} makes them ADR-050 compliant private
+        // stubs — visible on the wire, opacified via bit 29.
+        // Idempotent: SET only fires for rows where node_type IS NULL.
+        let kgstub_backfill = Query::new(
+            "MATCH (n:KGNode) WHERE n.node_type IS NULL OR n.node_type = '' \
+             SET n.node_type = 'kg_stub', \
+                 n.visibility = COALESCE(n.visibility, 'private') \
+             RETURN count(n) AS backfilled".to_string()
+        );
+        match self.graph.execute(kgstub_backfill).await {
+            Ok(mut res) => {
+                if let Ok(Some(row)) = res.next().await {
+                    let n: i64 = row.get("backfilled").unwrap_or(0);
+                    if n > 0 {
+                        info!("KGNode stub backfill: classified {} bare rows as private kg_stub", n);
+                    } else {
+                        debug!("KGNode stub backfill: no bare rows found");
+                    }
+                }
+            }
+            Err(e) => warn!("KGNode stub backfill failed (continuing): {}", e),
+        }
+
+        // ------------------------------------------------------------------
         // Step 2: Create canonical kg_node_* schema against :KGNode
         // ------------------------------------------------------------------
 
@@ -1540,11 +1570,25 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
         // files in batches; an edge in batch N can reference a wikilink
         // target whose own file lands in batch N+M. MATCH-on-id returns
         // zero rows for unsaved targets and the edge MERGE silently
-        // no-ops (no error). MERGE-create produces an `iri`-less stub
-        // keyed only by `id`; when the real file's add_node lands later
-        // it MERGEs by id and fills in label/iri/v2 fields on the stub.
+        // no-ops (no error).
+        //
+        // ADR-050 COMPLIANCE: when MERGE-create fires for an unknown
+        // endpoint, classify the stub as a private kg_stub. Visibility
+        // 'private' enables bit-29 opacification on the wire and keeps
+        // anonymous-API filters honest. ON MATCH does NOT overwrite
+        // node properties — if the stub later becomes a real page, the
+        // file-processing add_node path (MERGE-by-id) overwrites
+        // kg_stub→page and private→public there.
         for edge in &graph.edges {
-            let mut query = Query::new("MERGE (s:KGNode {id: $source}) MERGE (t:KGNode {id: $target}) MERGE (s)-[r:EDGE]->(t) SET r.weight = $weight, r.relation_type = $relation_type, r.owl_property_iri = $owl_property_iri, r.metadata = $metadata".to_string());
+            let mut query = Query::new(
+                "MERGE (s:KGNode {id: $source}) \
+                 ON CREATE SET s.node_type = 'kg_stub', s.visibility = 'private', s.created_at = datetime() \
+                 MERGE (t:KGNode {id: $target}) \
+                 ON CREATE SET t.node_type = 'kg_stub', t.visibility = 'private', t.created_at = datetime() \
+                 MERGE (s)-[r:EDGE]->(t) \
+                 SET r.weight = $weight, r.relation_type = $relation_type, \
+                     r.owl_property_iri = $owl_property_iri, r.metadata = $metadata".to_string()
+            );
 
             query = query.param("source", edge.source as i64);
             query = query.param("target", edge.target as i64);
@@ -1709,7 +1753,17 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
         // Use MERGE to prevent duplicate edges between the same source-target pair.
         // Each GitHub sync re-processes all wikilinks; CREATE would duplicate on every run.
         // MERGE endpoints (not MATCH) to be order-independent — see save_graph above.
-        let mut query = Query::new("MERGE (s:KGNode {id: $source}) MERGE (t:KGNode {id: $target}) MERGE (s)-[r:EDGE]->(t) SET r.weight = $weight, r.relation_type = $relation_type, r.owl_property_iri = $owl_property_iri, r.metadata = $metadata RETURN elementId(r) AS id".to_string());
+        // Classify auto-created stubs as private kg_stub for ADR-050 compliance.
+        let mut query = Query::new(
+            "MERGE (s:KGNode {id: $source}) \
+             ON CREATE SET s.node_type = 'kg_stub', s.visibility = 'private', s.created_at = datetime() \
+             MERGE (t:KGNode {id: $target}) \
+             ON CREATE SET t.node_type = 'kg_stub', t.visibility = 'private', t.created_at = datetime() \
+             MERGE (s)-[r:EDGE]->(t) \
+             SET r.weight = $weight, r.relation_type = $relation_type, \
+                 r.owl_property_iri = $owl_property_iri, r.metadata = $metadata \
+             RETURN elementId(r) AS id".to_string()
+        );
 
         query = query.param("source", edge.source as i64);
         query = query.param("target", edge.target as i64);
