@@ -83,6 +83,11 @@ pub use image_gen_handler::configure_routes as configure_image_gen_routes;
 pub mod server_identity_handler;
 pub use server_identity_handler::configure_routes as configure_server_identity_routes;
 
+// ADR-059 / ADR-014 — bidirectional agent events WebSocket
+pub mod agent_events_ws_handler;
+// ADR-059 §3 Phase 3 — user-interaction REST → broadcaster
+pub mod user_interaction_handler;
+
 pub use quic_transport_handler::{
     QuicTransportServer, QuicServerConfig,
     PostcardNodeUpdate, PostcardBatchUpdate, PostcardDeltaUpdate,

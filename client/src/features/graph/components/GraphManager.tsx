@@ -9,6 +9,7 @@ import { usePlatformStore } from '../../../services/platformManager'
 import { createLogger } from '../../../utils/loggerConfig'
 import { debugState } from '../../../utils/clientDebugState'
 import { useSettingsStore } from '../../../store/settingsStore'
+import { useSelectionAndFocusEvents } from '../hooks/useUserInteractionEvents'
 import { BinaryNodeData } from '../../../types/binaryProtocol'
 import { GemNodes, GemNodesHandle } from './GemNodes'
 import { MetadataShapes } from './MetadataShapes'
@@ -1137,8 +1138,12 @@ const GraphManager: React.FC<GraphManagerProps> = ({ onDragStateChange }) => {
     }
   }, [])
 
-  
+
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+
+  // ADR-059 §3 Phase 3 — emit user_interaction events to agentbox so
+  // agents can observe user attention. Transient (not persisted).
+  useSelectionAndFocusEvents(selectedNodeId);
 
   // Camera fly-to animation state
   const flyToTargetRef = useRef<THREE.Vector3 | null>(null);

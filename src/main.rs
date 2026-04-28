@@ -21,6 +21,7 @@ use webxr::{
         pages_handler,
         socket_flow_handler::{socket_flow_handler, PreReadSocketSettings},
         speech_socket_handler::speech_socket_handler,
+        agent_events_ws_handler::{agent_events_handler, new_broadcaster},
         validation_handler,
         workspace_handler,
     },
@@ -712,6 +713,16 @@ async fn main() -> std::io::Result<()> {
         };
     info!("[solid-pod-rs] native Pod service ready (JSS retired)");
 
+    // ADR-059 / ADR-014 — bidirectional agent events channel.
+    // TransientEdgeActor manages beam+gluon visual lifecycle (≤1ms reap @ 10Hz).
+    // Broadcaster fans user_interaction events out to subscribed agentbox WS sessions.
+    use actix::Actor;
+    let transient_edge_addr = webxr::actors::transient_edge_actor::TransientEdgeActor::new().start();
+    let agent_events_broadcaster = new_broadcaster();
+    let transient_edge_data = web::Data::new(transient_edge_addr);
+    let agent_events_broadcaster_data = web::Data::new(agent_events_broadcaster.clone());
+    info!("[agent-events] TransientEdgeActor started + broadcaster initialised");
+
     info!("Starting HTTP server on {}", bind_address);
 
     info!("main: All services and actors initialized. Configuring HTTP server.");
@@ -810,6 +821,9 @@ async fn main() -> std::io::Result<()> {
             .app_data(server_identity_data.clone())
             .app_data(server_nostr_addr_data.clone())
             .app_data(bridge_edge_data.clone())
+            // ADR-059 / ADR-014 bidirectional agent events
+            .app_data(transient_edge_data.clone())
+            .app_data(agent_events_broadcaster_data.clone())
             .app_data(metrics_data.clone())
             .app_data(app_state_data.feature_access.clone())
             .app_data(web::Data::new(github_sync_service.clone()))
@@ -832,6 +846,8 @@ async fn main() -> std::io::Result<()> {
             };
             let app = app
                 .route("/wss", web::get().to(socket_flow_handler))
+            // ADR-059 §1: bidirectional agent events. Subprotocol vc-agent-events.v1.
+            .route("/wss/agent-events", web::get().to(agent_events_handler))
             .route("/ws/speech", web::get().to(speech_socket_handler))
             .route("/ws/mcp-relay", web::get().to(mcp_relay_handler)) 
             
@@ -903,6 +919,12 @@ async fn main() -> std::io::Result<()> {
 
                     // URI resolver (PRD-006 §5.2): /api/v1/uri/{urn|by-curie/{curie}}
                     .configure(webxr::handlers::configure_uri_resolver_routes)
+
+                    // ADR-059 §3 Phase 3 — POST /api/v1/agent-events/user-interaction
+                    .service(
+                        web::scope("/v1")
+                            .configure(webxr::handlers::user_interaction_handler::configure_routes)
+                    )
 
                     // Layout mode system (ADR-031)
                     .configure(webxr::handlers::configure_layout_routes)

@@ -232,13 +232,37 @@ pub(crate) fn handle_request_full_snapshot(
                 &nta,
                 _act.pubkey.as_deref(),
             );
+            // ADR-060 (Phase 4 of ADR-059) — opt-in stricter filter that
+            // drops private-of-others entirely rather than opacifying.
+            // Default opacify (ADR-050 bit-29). Fail-closed: anonymous +
+            // flag enabled ⇒ public-only graph.
+            let drop_filter_enabled = std::env::var("PUBKEY_VISIBILITY_FILTER")
+                .map(|v| v == "true" || v == "1")
+                .unwrap_or(false);
+            let nodes_to_send: Vec<_> = if drop_filter_enabled {
+                all_nodes
+                    .iter()
+                    .filter(|(id, _)| !private_opaque_ids.contains(id))
+                    .cloned()
+                    .collect()
+            } else {
+                all_nodes.clone()
+            };
             let binary_data = binary_protocol::encode_node_data_with_live_analytics_and_privacy(
-                &all_nodes,
+                &nodes_to_send,
                 analytics_ref,
                 Some(&private_opaque_ids),
             );
             ctx.binary(binary_data);
-            debug!("Sent position snapshot with {} nodes", all_nodes.len());
+            if drop_filter_enabled && nodes_to_send.len() != all_nodes.len() {
+                debug!(
+                    "Sent position snapshot with {} nodes ({} dropped by PUBKEY_VISIBILITY_FILTER)",
+                    nodes_to_send.len(),
+                    all_nodes.len() - nodes_to_send.len()
+                );
+            } else {
+                debug!("Sent position snapshot with {} nodes", nodes_to_send.len());
+            }
         }
     }));
 }

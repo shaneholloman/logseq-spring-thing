@@ -701,36 +701,36 @@ mod tests {
     use crate::utils::socket_flow_messages::BinaryNodeData;
 
     fn create_test_node(id: u32, metadata_id: String, node_type: Option<String>) -> Node {
-        Node {
-            id,
-            metadata_id,
-            label: format!("Test Node {}", id),
-            data: BinaryNodeData {
-                node_id: id,
-                x: 0.0,
-                y: 0.0,
-                z: 0.0,
-                vx: 0.0,
-                vy: 0.0,
-                vz: 0.0,
-            },
-            x: Some(0.0),
-            y: Some(0.0),
-            z: Some(0.0),
-            vx: Some(0.0),
-            vy: Some(0.0),
-            vz: Some(0.0),
-            mass: Some(1.0),
-            owl_class_iri: None,
-            metadata: HashMap::new(),
-            file_size: 0,
-            node_type,
-            size: None,
-            color: None,
-            weight: None,
-            group: None,
-            user_data: None,
-        }
+        // Build via Node::new_with_id so future fields (ADR-050 sovereign +
+        // VisionClaw v2 ontology) get sensible defaults automatically.
+        let mut n = Node::new_with_id(metadata_id, Some(id));
+        n.label = format!("Test Node {}", id);
+        n.data = BinaryNodeData {
+            node_id: id,
+            x: 0.0,
+            y: 0.0,
+            z: 0.0,
+            vx: 0.0,
+            vy: 0.0,
+            vz: 0.0,
+        };
+        n.x = Some(0.0);
+        n.y = Some(0.0);
+        n.z = Some(0.0);
+        n.vx = Some(0.0);
+        n.vy = Some(0.0);
+        n.vz = Some(0.0);
+        n.mass = Some(1.0);
+        n.owl_class_iri = None;
+        n.metadata = HashMap::new();
+        n.file_size = 0;
+        n.node_type = node_type;
+        n.size = None;
+        n.color = None;
+        n.weight = None;
+        n.group = None;
+        n.user_data = None;
+        n
     }
 
     #[test]

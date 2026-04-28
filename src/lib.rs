@@ -1,5 +1,6 @@
 pub mod actors;
 pub mod adapters;
+pub mod agent_events;
 pub mod layout;
 pub mod app_state;
 pub mod application;

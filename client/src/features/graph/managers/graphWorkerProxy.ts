@@ -119,8 +119,10 @@ class GraphWorkerProxy {
       }
 
       
-      const maxNodes = 10000;
-      const bufferSize = maxNodes * 4 * 4; 
+      // Capacity sized for KG + ontology + ADR-050 stub layer. With ~22k live
+      // nodes today, 100k gives ~4× headroom; SAB cost is 1.6 MB.
+      const maxNodes = 100000;
+      const bufferSize = maxNodes * 4 * 4;
 
       if (!self.crossOriginIsolated) {
         logger.warn('Cross-origin isolation is NOT active. COOP/COEP headers may be missing or stripped. SharedArrayBuffer will be unavailable.');

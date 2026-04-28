@@ -31,6 +31,7 @@ pub mod graph_actor {
 }
 pub mod metadata_actor;
 pub mod optimized_settings_actor;
+pub mod transient_edge_actor;
 pub mod physics_orchestrator_actor;
 pub mod protected_settings_actor;
 pub mod server_nostr_actor;

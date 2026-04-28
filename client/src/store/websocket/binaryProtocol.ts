@@ -68,7 +68,7 @@ export function initializeBatchQueue(
   }
 
   const validationMiddleware = createValidationMiddleware({
-    maxNodes: 10000,
+    maxNodes: 100000,
     maxCoordinate: 10000,
     minCoordinate: -10000,
     maxVelocity: 1000

@@ -78,9 +78,18 @@ pub struct AgentInit {
     pub tokens: u64,
     pub token_rate: f32,
 
-    
+
     pub capabilities: Vec<String>,
     pub created_at: i64,
+
+    // Phase 1 of ADR-059: optional identity attribution.
+    // Backward-compatible — legacy producers that don't set these stay valid.
+    /// Optional did:nostr hex pubkey of the agent (or its operator).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pubkey: Option<String>,
+    /// Optional canonical URN, typically `did:nostr:<hex>` or `urn:agentbox:agent:<scope>:<local>`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_urn: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -982,6 +991,11 @@ use crate::utils::json::to_json;
                 token_rate: agent.token_rate,
                 capabilities: agent.metadata.capabilities,
                 created_at: agent.metadata.created_at.timestamp(),
+                // Phase 1 of ADR-059: identity is unknown at this rendering layer.
+                // The REST polling path (agent_monitor_actor) doesn't carry
+                // pubkey today; Phase 2 WS handler will populate when known.
+                pubkey: None,
+                source_urn: None,
             })
             .collect();
 

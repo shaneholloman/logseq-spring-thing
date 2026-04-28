@@ -225,34 +225,37 @@ fn test_user_filter_serialization_roundtrip() {
 // Neo4jSettingsConfig Unit Tests
 // ============================================================
 
+// Test mutex: NEO4J_* env vars are process-global; cargo runs tests in
+// parallel by default, so two tests mutating these vars race. Combine
+// both into a single test guarded by a Mutex so no other test (in or
+// out of this file) can interleave.
+static NEO4J_ENV_MUTEX: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 #[test]
-fn test_neo4j_settings_config_default() {
-    // Clear env vars to test defaults
+fn test_neo4j_settings_config_default_and_from_env() {
+    let _guard = NEO4J_ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+
+    // -- Phase 1: defaults when env is empty.
     std::env::remove_var("NEO4J_URI");
     std::env::remove_var("NEO4J_USER");
     std::env::remove_var("NEO4J_PASSWORD");
     std::env::remove_var("NEO4J_DATABASE");
 
     let config = Neo4jSettingsConfig::default();
-
     assert_eq!(config.uri, "bolt://localhost:7687");
     assert_eq!(config.user, "neo4j");
     assert_eq!(config.password, "password");
     assert!(config.database.is_none());
     assert_eq!(config.fetch_size, 500);
     assert_eq!(config.max_connections, 10);
-}
 
-#[test]
-fn test_neo4j_settings_config_from_env() {
-    // Set env vars
+    // -- Phase 2: from-env override.
     std::env::set_var("NEO4J_URI", "bolt://testhost:7688");
     std::env::set_var("NEO4J_USER", "testuser");
     std::env::set_var("NEO4J_PASSWORD", "testpass");
     std::env::set_var("NEO4J_DATABASE", "testdb");
 
     let config = Neo4jSettingsConfig::default();
-
     assert_eq!(config.uri, "bolt://testhost:7688");
     assert_eq!(config.user, "testuser");
     assert_eq!(config.password, "testpass");

@@ -47,9 +47,19 @@ mod tests {
 
     #[test]
     fn test_effective_cuda_arch_default() {
+        // When CUDA_ARCH is unset, the function falls back to nvidia-smi
+        // detection, then to DEFAULT_CUDA_ARCH ("75") if detection fails.
+        // On a CUDA-capable host (e.g. RTX A6000 → "86"), the live value
+        // varies by hardware. Accept any non-empty all-digit arch string —
+        // that's the documented contract.
         std::env::remove_var(CUDA_ARCH_ENV);
         let arch = effective_cuda_arch();
-        assert_eq!(arch, DEFAULT_CUDA_ARCH, "Should return default arch");
+        assert!(
+            !arch.is_empty() && arch.chars().all(|c| c.is_ascii_digit()),
+            "Should return a non-empty all-digit arch string (got {:?}; default is {})",
+            arch,
+            DEFAULT_CUDA_ARCH
+        );
     }
 
     #[test]

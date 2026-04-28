@@ -394,8 +394,16 @@ pub fn metrics_enabled() -> bool {
 mod tests {
     use super::*;
 
+    // METRICS_ENABLED is process-global; tests that read or mutate it
+    // must serialise to avoid the standard cargo test parallelism race.
+    static METRICS_ENV_MUTEX: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
     #[test]
     fn constructs_and_renders_nonempty_text() {
+        let _guard = METRICS_ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        // Pin to enabled so a parallel run that flipped the flag false
+        // doesn't make `render_text()` short-circuit to the disabled marker.
+        std::env::set_var("METRICS_ENABLED", "true");
         let r = MetricsRegistry::new();
         // Touch a counter so at least one non-zero sample exists.
         r.auth_nip98_success_total.inc();
@@ -405,6 +413,7 @@ mod tests {
             "expected the counter HELP/line to be present; got: {}",
             body
         );
+        std::env::remove_var("METRICS_ENABLED");
     }
 
     #[test]
@@ -426,6 +435,7 @@ mod tests {
 
     #[test]
     fn metrics_enabled_defaults_true() {
+        let _guard = METRICS_ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         std::env::remove_var("METRICS_ENABLED");
         assert!(metrics_enabled());
         std::env::set_var("METRICS_ENABLED", "false");
@@ -437,6 +447,7 @@ mod tests {
 
     #[test]
     fn disabled_render_returns_marker() {
+        let _guard = METRICS_ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         std::env::set_var("METRICS_ENABLED", "false");
         let r = MetricsRegistry::new();
         let body = r.render_text();

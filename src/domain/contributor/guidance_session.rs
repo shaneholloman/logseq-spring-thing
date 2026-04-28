@@ -221,10 +221,12 @@ mod tests {
     fn ended_session_rejects_mutations() {
         let (mut s, _) = GuidanceSession::start("ws-1", focus());
         s.end().unwrap();
-        assert_eq!(
-            s.accept_suggestion(SuggestionKind::PolicyHint, "p", 1),
-            Err(GuidanceSessionError::AlreadyEnded)
-        );
+        // SuggestionAcceptedEvent doesn't impl PartialEq, so we can't use
+        // assert_eq! on the Result. Pattern-match the error instead.
+        match s.accept_suggestion(SuggestionKind::PolicyHint, "p", 1) {
+            Err(GuidanceSessionError::AlreadyEnded) => {}
+            other => panic!("expected AlreadyEnded, got {:?}", other.map(|_| "Ok")),
+        }
     }
 
     #[test]
@@ -238,10 +240,13 @@ mod tests {
             vec![],
             None,
         );
-        assert_eq!(
-            s.bind_partner(bad, &session_scope),
-            Err(GuidanceSessionError::PartnerScopeEscalation)
-        );
+        match s.bind_partner(bad, &session_scope) {
+            Err(GuidanceSessionError::PartnerScopeEscalation) => {}
+            other => panic!(
+                "expected PartnerScopeEscalation, got {:?}",
+                other.map(|_| "Ok")
+            ),
+        }
         let ok = PartnerBinding::new(
             PartnerKind::Ai,
             "agent-x",

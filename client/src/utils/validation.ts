@@ -18,7 +18,7 @@ export interface ValidationConfig {
 }
 
 const DEFAULT_VALIDATION_CONFIG: ValidationConfig = {
-  maxNodes: 10000,
+  maxNodes: 100000,
   maxCoordinate: 10000,
   minCoordinate: -10000,
   maxVelocity: 1000,
