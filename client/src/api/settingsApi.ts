@@ -103,6 +103,8 @@ export interface NodeFilterSettings {
   filterMode: 'or' | 'and';
   /** Hierarchy collapse cutoff. >=999 disables the filter. Client-only. */
   tierDepth?: number;
+  /** Hide auto-created kg_stub placeholder nodes (orphan wikilink targets). Client-only. */
+  hideStubs?: boolean;
 }
 
 export interface QualityGateSettings {

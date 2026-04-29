@@ -64,6 +64,10 @@ export function useGraphFiltering(
   const filterMode = storeNodeFilter?.filterMode ?? 'or';
   // Tier-depth collapse: client-only, default 999 (= filter off).
   const tierDepth = storeNodeFilter?.tierDepth ?? 999;
+  // Hide kg_stub placeholder nodes — typically 85% of the dataset on a content-
+  // sparse graph. Operates BEFORE the hierarchy/quality gates so it removes
+  // load before everything else.
+  const hideStubs = storeNodeFilter?.hideStubs ?? false;
 
   // Log filter settings changes for debugging
   useEffect(() => {
@@ -98,6 +102,17 @@ export function useGraphFiltering(
     logger.debug(`[NodeFilter] Computing visible nodes: filterEnabled=${filterEnabled}, qualityThreshold=${qualityThreshold}, authorityThreshold=${authorityThreshold}`);
 
     const visible = graphData.nodes.filter(node => {
+      // Hide kg_stub placeholder nodes. The backend marks orphan wikilink
+      // targets (no source file, empty label, empty metadataId) as `type:
+      // 'kg_stub'`. Two access shapes seen in the wild — top-level `node.type`
+      // from /api/graph/data, and `node.metadata.type` from the worker pipeline
+      // — so check both.
+      if (hideStubs) {
+        const topType = (node as unknown as { type?: string }).type;
+        const metaType = node.metadata?.type;
+        if (topType === 'kg_stub' || metaType === 'kg_stub') return false;
+      }
+
       // First apply hierarchy/expansion filtering
       const hierarchyNode = hierarchyMap.get(node.id);
       if (hierarchyNode) {

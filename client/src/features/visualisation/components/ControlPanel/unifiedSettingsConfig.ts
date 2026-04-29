@@ -368,6 +368,10 @@ export const UNIFIED_SETTINGS_CONFIG: Record<string, SectionConfig> = {
       // fallback in hierarchyDetector. Pulsing rings (CollapsedGroupRings) light up
       // around every parent that ends up collapsed.
       { key: 'tierDepth', label: 'Tier Depth', type: 'slider', min: 0, max: 20, step: 1, path: 'nodeFilter.tierDepth', description: 'Show only nodes at hierarchy depth ≤ N. 20 = no collapse. Hides deep ontology branches; pulsing rings mark each collapsed parent.' },
+      // Hide auto-created kg_stub orphan nodes. Typically 80–90% of a content-
+      // sparse KG: empty label, empty metadataId, no scores. Massive render-load
+      // win when on; default off to preserve behaviour for existing users.
+      { key: 'hideStubs', label: 'Hide Stub Nodes', type: 'toggle', path: 'nodeFilter.hideStubs', description: 'Hide auto-created kg_stub placeholder nodes (orphan wikilink targets with no source file). Frees substantial render budget — recommended ON for graphs ≥10k nodes.' },
       // Refresh Graph Button - applies current filter settings
       { key: 'refreshGraph', label: 'Refresh Graph', type: 'action-button', action: 'refresh_graph', description: 'Apply filter changes and reload graph' },
 

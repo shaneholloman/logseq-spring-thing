@@ -695,6 +695,14 @@ export interface NodeFilterSettings {
    * Client-only — not consumed by the server's UpdateClientFilter handler.
    */
   tierDepth?: number;
+  /**
+   * Hide auto-created `kg_stub` placeholder nodes. These are orphan wikilink
+   * targets with no source file — empty metadataId, empty label, no scores.
+   * On a representative dataset they were 85% of the rendered graph (21716/25395)
+   * with no content to display. Default false to preserve existing behaviour;
+   * toggling on slashes the GPU/render load dramatically. Client-only.
+   */
+  hideStubs?: boolean;
 }
 
 // Main settings interface - Single source of truth matching server AppFullSettings
