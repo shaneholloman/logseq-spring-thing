@@ -62,6 +62,8 @@ export function useGraphFiltering(
   const filterByQuality = storeNodeFilter?.filterByQuality ?? true;
   const filterByAuthority = storeNodeFilter?.filterByAuthority ?? false;
   const filterMode = storeNodeFilter?.filterMode ?? 'or';
+  // Tier-depth collapse: client-only, default 999 (= filter off).
+  const tierDepth = storeNodeFilter?.tierDepth ?? 999;
 
   // Log filter settings changes for debugging
   useEffect(() => {
@@ -72,9 +74,22 @@ export function useGraphFiltering(
       filterByQuality,
       filterByAuthority,
       filterMode,
+      tierDepth,
       hasStoreFilter: !!storeNodeFilter,
     });
-  }, [filterEnabled, qualityThreshold, authorityThreshold, filterByQuality, filterByAuthority, filterMode, storeNodeFilter]);
+  }, [filterEnabled, qualityThreshold, authorityThreshold, filterByQuality, filterByAuthority, filterMode, tierDepth, storeNodeFilter]);
+
+  // --- Tier-depth driven mass-collapse ---
+  // When the slider moves, repopulate expansionState.collapsedNodes with every
+  // parent at depth >= tierDepth. The effect intentionally does NOT depend on
+  // expansionState (would cause an infinite loop) — it overwrites the entire
+  // set, which means manual click-toggles get blown away whenever the slider
+  // moves. That trade-off matches WebVOWL's UX: tier slider is the dominant
+  // control; per-node toggles are for fine-tuning between slider moves.
+  useEffect(() => {
+    expansionState.setCollapsedFromTierDepth(tierDepth, hierarchyMap);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tierDepth, hierarchyMap]);
 
   // --- visibleNodes ---
   const visibleNodes = useMemo(() => {

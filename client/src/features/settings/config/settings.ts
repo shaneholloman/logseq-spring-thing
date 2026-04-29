@@ -688,6 +688,13 @@ export interface NodeFilterSettings {
   filterByQuality?: boolean;
   filterByAuthority?: boolean;
   filterMode?: 'and' | 'or';
+  /**
+   * Hierarchy collapse cutoff (WebVOWL-style). Nodes whose hierarchy depth is
+   * greater than this value are hidden by collapsing their parent in
+   * `useExpansionState`. Values >= 999 disable the filter (full graph visible).
+   * Client-only — not consumed by the server's UpdateClientFilter handler.
+   */
+  tierDepth?: number;
 }
 
 // Main settings interface - Single source of truth matching server AppFullSettings

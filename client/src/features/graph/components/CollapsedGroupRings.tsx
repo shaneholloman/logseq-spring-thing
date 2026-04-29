@@ -12,7 +12,7 @@ import React, { useRef, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import type { Node as KGNode } from '../managers/graphDataManager';
-import type { HierarchyNode } from '../utils/hierarchyDetector';
+import { getDescendants, type HierarchyNode } from '../utils/hierarchyDetector';
 import type { ExpansionState } from '../hooks/useExpansionState';
 
 interface CollapsedGroupRingsProps {
@@ -46,12 +46,31 @@ export const CollapsedGroupRings: React.FC<CollapsedGroupRingsProps> = ({
   const outerRef = useRef<THREE.InstancedMesh>(null);
   const innerRef = useRef<THREE.InstancedMesh>(null);
 
-  // Only parent nodes that are currently collapsed
+  // Only parent nodes that are currently collapsed.
+  //
+  // We also precompute total *transitive* descendant count per collapsed parent
+  // so the ring scale reflects how much subtree is hidden, not just the direct
+  // child fan-out. This is what gives a single big ring around a parent that
+  // hides 200 nodes vs. a small ring around one that hides 3 — the visual
+  // signal users actually want from a tier-collapse view.
+  //
+  // BFS via getDescendants is O(subtree) per collapsed parent. With hundreds of
+  // collapsed parents and thousands of descendants this is still cheap — runs
+  // only when the collapsed set changes (slider move / click toggle), not per
+  // frame.
   const collapsedParents = useMemo(() => {
-    return nodes.filter(n => {
-      const h = hierarchyMap.get(String(n.id));
-      return h && h.childIds.length > 0 && !expansionState.isExpanded(String(n.id));
-    });
+    const out: Array<{ node: KGNode; descendantCount: number }> = [];
+    for (const n of nodes) {
+      const id = String(n.id);
+      const h = hierarchyMap.get(id);
+      if (!h || h.childIds.length === 0) continue;
+      if (expansionState.isExpanded(id)) continue;
+      out.push({
+        node: n,
+        descendantCount: getDescendants(id, hierarchyMap).length,
+      });
+    }
+    return out;
   }, [nodes, hierarchyMap, expansionState]);
 
   const count = collapsedParents.length;
@@ -73,10 +92,9 @@ export const CollapsedGroupRings: React.FC<CollapsedGroupRingsProps> = ({
 
     const positions = nodePositionsRef.current;
     const t = clock.elapsedTime;
-    const pulse = 1.0 + Math.sin(t * PULSE_SPEED) * PULSE_AMPLITUDE;
 
     for (let i = 0; i < count; i++) {
-      const node = collapsedParents[i];
+      const { node, descendantCount } = collapsedParents[i];
       const nodeId = String(node.id);
       const srcIdx = nodeIdToIndexMap.get(nodeId);
       const posIdx = srcIdx !== undefined ? srcIdx : i;
@@ -85,12 +103,19 @@ export const CollapsedGroupRings: React.FC<CollapsedGroupRingsProps> = ({
       let x = 0, y = 0, z = 0;
       if (positions && i3 + 2 < positions.length) {
         x = positions[i3]; y = positions[i3 + 1]; z = positions[i3 + 2];
-      } else if (node.x !== undefined) {
-        x = node.x!; y = node.y!; z = node.z!;
+      } else if (node.position) {
+        x = node.position.x; y = node.position.y; z = node.position.z;
       }
 
-      const childCount = hierarchyMap.get(nodeId)?.childIds.length ?? 1;
-      const s = BASE_SCALE * pulse * (1 + Math.log(childCount) * 0.15);
+      // Scale grows with log of total descendants (not just direct children),
+      // so a parent hiding 200 nodes is visibly bigger than one hiding 3.
+      // Pulse amplitude also grows with the hidden subtree to make large
+      // collapses pulse harder.
+      const dc = Math.max(1, descendantCount);
+      const sizeBoost = 1 + Math.log(dc) * 0.18;
+      const ampBoost = 1 + Math.min(1.0, Math.log(dc) * 0.12);
+      const localPulse = 1.0 + Math.sin(t * PULSE_SPEED) * PULSE_AMPLITUDE * ampBoost;
+      const s = BASE_SCALE * localPulse * sizeBoost;
 
       _pos.set(x, y, z);
       _scale.set(s, s, s);

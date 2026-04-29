@@ -363,6 +363,11 @@ export const UNIFIED_SETTINGS_CONFIG: Record<string, SectionConfig> = {
       { key: 'filterByAuthority', label: 'Filter by Authority', type: 'toggle', path: 'nodeFilter.filterByAuthority', description: 'Use authority score for filtering' },
       { key: 'authorityThreshold', label: 'Authority Threshold', type: 'slider', min: 0, max: 1, step: 0.05, path: 'nodeFilter.authorityThreshold', description: 'Minimum authority score (0-1)' },
       { key: 'filterMode', label: 'Filter Mode', type: 'select', options: ['or', 'and'], path: 'nodeFilter.filterMode', description: 'How to combine filters (and = both, or = either)', isAdvanced: true },
+      // Hierarchy collapse (WebVOWL-style). 0 = roots only; 999 = fully expanded (off).
+      // Operates on detected SUBCLASS_OF / hierarchical edges plus the path-prefix
+      // fallback in hierarchyDetector. Pulsing rings (CollapsedGroupRings) light up
+      // around every parent that ends up collapsed.
+      { key: 'tierDepth', label: 'Tier Depth', type: 'slider', min: 0, max: 20, step: 1, path: 'nodeFilter.tierDepth', description: 'Show only nodes at hierarchy depth ≤ N. 20 = no collapse. Hides deep ontology branches; pulsing rings mark each collapsed parent.' },
       // Refresh Graph Button - applies current filter settings
       { key: 'refreshGraph', label: 'Refresh Graph', type: 'action-button', action: 'refresh_graph', description: 'Apply filter changes and reload graph' },
 

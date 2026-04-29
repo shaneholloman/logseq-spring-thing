@@ -101,6 +101,8 @@ export interface NodeFilterSettings {
   filterByQuality: boolean;
   filterByAuthority: boolean;
   filterMode: 'or' | 'and';
+  /** Hierarchy collapse cutoff. >=999 disables the filter. Client-only. */
+  tierDepth?: number;
 }
 
 export interface QualityGateSettings {

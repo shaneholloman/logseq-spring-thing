@@ -6,6 +6,7 @@
  */
 
 import { useState, useCallback, useMemo } from 'react';
+import type { HierarchyNode } from '../utils/hierarchyDetector';
 
 export interface ExpansionState {
   /** Set of collapsed node IDs */
@@ -28,6 +29,27 @@ export interface ExpansionState {
 
   /** Expand a node and all its ancestors */
   expandWithAncestors: (nodeId: string, ancestorIds: string[]) => void;
+
+  /**
+   * WebVOWL-style depth slider: collapse every parent at depth >= maxDepth.
+   *
+   * Semantic: nodes with `hierarchy.depth <= maxDepth` stay visible; deeper
+   * descendants get hidden because their parent (at depth maxDepth or below
+   * but still a parent of a hidden tier) is in `collapsedNodes`.
+   *
+   * To make `isVisible(child, parent)` correctly hide grandchildren, we collapse
+   * EVERY parent at `depth >= maxDepth` — not just the boundary — so the chain
+   * stays consistent without `isVisible` walking ancestors.
+   *
+   * Pass `Number.POSITIVE_INFINITY` (or any value >= max graph depth) to clear
+   * the depth filter. Manual click-collapses persist independently — calling
+   * this overwrites the entire set, so it should only be invoked when the
+   * tier-depth setting changes, not on every render.
+   */
+  setCollapsedFromTierDepth: (
+    maxDepth: number,
+    hierarchyMap: Map<string, HierarchyNode>,
+  ) => void;
 }
 
 /**
@@ -91,6 +113,27 @@ export function useExpansionState(defaultExpanded: boolean = true): ExpansionSta
     });
   }, []);
 
+  const setCollapsedFromTierDepth = useCallback(
+    (maxDepth: number, hierarchyMap: Map<string, HierarchyNode>) => {
+      // No-op when filter disabled (Infinity / sentinel-large value).
+      if (!Number.isFinite(maxDepth) || maxDepth >= 999) {
+        setCollapsedNodes(new Set());
+        return;
+      }
+      const next = new Set<string>();
+      for (const [id, h] of hierarchyMap) {
+        // Only collapse PARENT nodes — leaves don't gate any children's visibility
+        // and adding them just bloats the set. Cascading collapse works because
+        // every parent at depth >= maxDepth ends up in the set.
+        if (h.childIds.length > 0 && h.depth >= maxDepth) {
+          next.add(id);
+        }
+      }
+      setCollapsedNodes(next);
+    },
+    [],
+  );
+
   return useMemo(() => ({
     collapsedNodes,
     toggleExpansion,
@@ -98,6 +141,7 @@ export function useExpansionState(defaultExpanded: boolean = true): ExpansionSta
     isVisible,
     expandAll,
     collapseAll,
-    expandWithAncestors
-  }), [collapsedNodes, toggleExpansion, isExpanded, isVisible, expandAll, collapseAll, expandWithAncestors]);
+    expandWithAncestors,
+    setCollapsedFromTierDepth,
+  }), [collapsedNodes, toggleExpansion, isExpanded, isVisible, expandAll, collapseAll, expandWithAncestors, setCollapsedFromTierDepth]);
 }
