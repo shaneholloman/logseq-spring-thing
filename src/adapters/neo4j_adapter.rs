@@ -1580,11 +1580,34 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
         // file-processing add_node path (MERGE-by-id) overwrites
         // kg_stub→page and private→public there.
         for edge in &graph.edges {
+            // Auto-stub label rescue: when an edge references a node that
+            // wasn't supplied in this batch's `nodes` list, MERGE creates a
+            // bare stub with `ON CREATE SET node_type='kg_stub'`. Previously
+            // the stub was created without a label, so the client rendered
+            // it as the numeric node id (~85% of the visible graph on a
+            // content-sparse KG). The parser now carries the wikilink text
+            // in `edge.metadata.target_wikilink`; we lift it onto the stub
+            // as `t.label` on ON CREATE so users see the link target name
+            // ("[[Foo]]" → label "Foo") instead of an opaque integer.
+            //
+            // ON CREATE only — never overwrite a real page's label.
+            let target_wikilink = edge
+                .metadata
+                .as_ref()
+                .and_then(|m| m.get("target_wikilink"))
+                .cloned()
+                .unwrap_or_default();
+
             let mut query = Query::new(
                 "MERGE (s:KGNode {id: $source}) \
                  ON CREATE SET s.node_type = 'kg_stub', s.visibility = 'private', s.created_at = datetime() \
                  MERGE (t:KGNode {id: $target}) \
-                 ON CREATE SET t.node_type = 'kg_stub', t.visibility = 'private', t.created_at = datetime() \
+                 ON CREATE SET t.node_type = 'kg_stub', t.visibility = 'private', t.created_at = datetime(), \
+                               t.label = CASE WHEN $target_wikilink = '' THEN '' ELSE $target_wikilink END, \
+                               t.metadata_id = CASE WHEN $target_wikilink = '' THEN '' ELSE $target_wikilink END \
+                 ON MATCH SET t.label = CASE WHEN t.label IS NULL OR t.label = '' \
+                                              THEN CASE WHEN $target_wikilink = '' THEN coalesce(t.label, '') ELSE $target_wikilink END \
+                                              ELSE t.label END \
                  MERGE (s)-[r:EDGE]->(t) \
                  SET r.weight = $weight, r.relation_type = $relation_type, \
                      r.owl_property_iri = $owl_property_iri, r.metadata = $metadata".to_string()
@@ -1592,6 +1615,7 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
 
             query = query.param("source", edge.source as i64);
             query = query.param("target", edge.target as i64);
+            query = query.param("target_wikilink", target_wikilink);
             query = query.param("weight", edge.weight as f64);
             query = query.param("relation_type", edge.edge_type.clone().unwrap_or_default());
             query = query.param("owl_property_iri", edge.owl_property_iri.clone().unwrap_or_default());

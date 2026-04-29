@@ -403,7 +403,7 @@ impl KnowledgeGraphParser {
                     continue;
                 }
 
-                edges.push(build_wikilink_ref_edge(source_id, target_id, &run_id));
+                edges.push(build_wikilink_ref_edge(source_id, target_id, wikilink, &run_id));
             }
         }
 
@@ -921,13 +921,21 @@ impl KnowledgeGraphParser {
                     continue;
                 }
 
+                // Carry the wikilink text on the edge so the Neo4j writer can
+                // label the auto-created stub on the target side. Without this,
+                // the edge-write `MERGE (t:KGNode {id})` ON CREATE branch only
+                // sets `node_type='kg_stub'` and never gets a label, so the
+                // client falls back to rendering the numeric node ID.
+                let mut metadata = HashMap::new();
+                metadata.insert("target_wikilink".to_string(), target_page.clone());
+
                 edges.push(Edge {
                     id: format!("{}_{}", source_id, target_id),
                     source: *source_id,
                     target: target_id,
                     weight: 1.0,
                     edge_type: Some("explicit_link".to_string()),
-                    metadata: None,
+                    metadata: Some(metadata),
                     owl_property_iri: None,
                 });
             }
@@ -1250,13 +1258,20 @@ pub fn pod_url_for(owner: &str, relative_path: &str, visibility: Visibility) -> 
 /// Build a `WikilinkRef` edge carrying the current ingest-run id in its
 /// metadata map (ADR-051 §"Orphan retraction"). Stored under
 /// `last_seen_run_id` so the background scanner can detect stale edges.
-fn build_wikilink_ref_edge(source_id: u32, target_id: u32, run_id: &str) -> Edge {
+///
+/// Also carries the verbatim wikilink text under `target_wikilink` so that
+/// when the Neo4j writer's MERGE on the target id auto-creates a stub
+/// (because no matching node was supplied in this batch), the ON CREATE
+/// branch has a human-readable label to set instead of leaving the stub
+/// unlabelled — which causes the client to render the numeric node id.
+fn build_wikilink_ref_edge(source_id: u32, target_id: u32, wikilink_text: &str, run_id: &str) -> Edge {
     let mut metadata = HashMap::new();
     metadata.insert("last_seen_run_id".to_string(), run_id.to_string());
     metadata.insert(
         "neo4j_relationship".to_string(),
         "WikilinkRef".to_string(),
     );
+    metadata.insert("target_wikilink".to_string(), wikilink_text.to_string());
 
     Edge {
         // Keep the id format stable with the legacy extract_wikilink_edges
