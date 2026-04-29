@@ -577,8 +577,16 @@ impl KnowledgeGraphParser {
             id,
             // metadata_id is empty for stubs — we only know the opaque IRI.
             metadata_id: String::new(),
-            // Stubs have NO label. The anonymous API must never see one.
-            label: String::new(),
+            // Use the wikilink text as the visible label. The original "anonymous
+            // API must never see one" privacy concern is handled at a different
+            // layer (ADR-050 H2 bit-29 opacification at the binary encoder for
+            // non-owners), NOT by writing an empty label to Neo4j. Empty labels
+            // caused the client to fall back to rendering the numeric node ID,
+            // which dominated the visible graph (~85% of nodes on a content-
+            // sparse KG). The wikilink text is the most informative label we
+            // have for an unresolved target. Anonymous viewers still get the
+            // opacification on the wire path; the label only reaches owners.
+            label: wikilink_text.to_string(),
             data,
             metadata,
             file_size: 0,
