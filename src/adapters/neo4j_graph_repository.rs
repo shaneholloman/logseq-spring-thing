@@ -367,27 +367,42 @@ impl Neo4jGraphRepository {
                 metadata.insert("authority_score".to_string(), as_score.to_string());
             }
 
-            // Round-trip the JSON-serialised metadata blob persisted at write
-            // time. Without this step the parser's bespoke fields (e.g.
-            // `stub_source_wikilink`, `canonical_iri`, `visibility` for stubs)
-            // never reach the API consumer. Existing per-row reads above take
-            // precedence — JSON blob fills in only keys not already present.
+            // Selective round-trip of the JSON-serialised metadata blob.
+            //
+            // Earlier this loop unpacked EVERY key from `n.metadata` into the
+            // response HashMap. On a 22k-node graph that ballooned the API
+            // payload to ~18 MB (mean per-node JSON jumped from ~150 to 388
+            // bytes) and stalled the browser at init while parsing 22k node
+            // metadata bags. Most keys (rdf-type, content-hash, iri, tags,
+            // physicality_code, etc.) are never consumed by the client.
+            //
+            // Allowlist only the small set that consumers actually need:
+            //   - stub_source_wikilink: fallback label for unresolved stubs
+            //   - canonical_iri        : ADR-013 URI/URN identity
+            //   - visibility           : ADR-050 H2 wire-side privacy hint
+            //   - type                 : kg_stub / linked_page discriminator
+            //                            consumed by client filtering paths
             if let Ok(metadata_json) = row.get::<String>("metadata_json") {
                 if !metadata_json.is_empty() {
                     if let Ok(serde_json::Value::Object(map)) =
                         serde_json::from_str::<serde_json::Value>(&metadata_json)
                     {
-                        for (k, v) in map {
-                            if metadata.contains_key(&k) {
-                                continue; // structured field wins
+                        const ALLOWLIST: &[&str] = &[
+                            "stub_source_wikilink",
+                            "canonical_iri",
+                            "visibility",
+                            "type",
+                        ];
+                        for k in ALLOWLIST {
+                            if metadata.contains_key(*k) { continue; }
+                            if let Some(v) = map.get(*k) {
+                                let s = match v {
+                                    serde_json::Value::String(s) => s.clone(),
+                                    serde_json::Value::Null => continue,
+                                    other => other.to_string(),
+                                };
+                                metadata.insert((*k).to_string(), s);
                             }
-                            // Stringify scalars; nested values get JSON-encoded.
-                            let s = match v {
-                                serde_json::Value::String(s) => s,
-                                serde_json::Value::Null => continue,
-                                other => other.to_string(),
-                            };
-                            metadata.insert(k, s);
                         }
                     }
                 }
