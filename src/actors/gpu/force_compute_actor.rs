@@ -1889,6 +1889,15 @@ impl Handler<UpdateSimulationParams> for ForceComputeActor {
         // Compare the full set of GPU-relevant fields, not just the original 6.
         let cur = &self.simulation_params;
         let eps = 1e-5_f32; // Slightly larger than EPSILON to catch floating-point round-trips
+        // Every user-tunable physics field MUST be in this comparison.
+        // Omitting a field means dragging only that slider triggers `physics_unchanged ==
+        // true` → handler returns Ok with no reheat → the GPU keeps using the old value
+        // → user sees PUT 200 with no visible re-layout. That is exactly the silent-
+        // failure class the surrounding fixes (C/D/E + canonical-beats-alias + fail-loud
+        // + sustained-Full eviction) were shipped to eliminate. Audit catch 2026-04-29:
+        // gravity/rest_length/grid_cell_size/repulsion_cutoff/repulsion_softening_epsilon/
+        // max_repulsion_dist/min_distance were missing and re-introduced the bug for
+        // users who only adjusted gravity or repulsion-shaping sliders.
         let physics_unchanged =
             (cur.spring_k - msg.params.spring_k).abs() < eps
             && (cur.repel_k - msg.params.repel_k).abs() < eps
@@ -1897,6 +1906,7 @@ impl Handler<UpdateSimulationParams> for ForceComputeActor {
             && (cur.max_velocity - msg.params.max_velocity).abs() < eps
             && (cur.max_force - msg.params.max_force).abs() < eps
             && (cur.center_gravity_k - msg.params.center_gravity_k).abs() < eps
+            && (cur.gravity - msg.params.gravity).abs() < eps
             && (cur.temperature - msg.params.temperature).abs() < eps
             && (cur.cluster_strength - msg.params.cluster_strength).abs() < eps
             && (cur.alignment_strength - msg.params.alignment_strength).abs() < eps
@@ -1904,6 +1914,16 @@ impl Handler<UpdateSimulationParams> for ForceComputeActor {
             && (cur.cooling_rate - msg.params.cooling_rate).abs() < eps
             && (cur.viewport_bounds - msg.params.viewport_bounds).abs() < eps
             && (cur.boundary_damping - msg.params.boundary_damping).abs() < eps
+            && (cur.rest_length - msg.params.rest_length).abs() < eps
+            // NOTE: SimulationParams does NOT carry `repulsion_cutoff`; that field
+            // lives only on the flattened GPU `SimParams` struct in
+            // `models/simulation_params.rs::SimParams` (line 84). It is derived from
+            // other fields at the GPU boundary, so a settings PUT cannot change it
+            // independently — no idempotency comparison needed here.
+            && (cur.repulsion_softening_epsilon - msg.params.repulsion_softening_epsilon).abs() < eps
+            && (cur.grid_cell_size - msg.params.grid_cell_size).abs() < eps
+            && (cur.max_repulsion_dist - msg.params.max_repulsion_dist).abs() < eps
+            && (cur.min_distance - msg.params.min_distance).abs() < eps
             && cur.use_sssp_distances == msg.params.use_sssp_distances
             && cur.warmup_iterations == msg.params.warmup_iterations
             && cur.constraint_ramp_frames == msg.params.constraint_ramp_frames

@@ -113,9 +113,21 @@ pub async fn update_physics_settings(
                 settings.physics.dt = dt;
             }
 
-            
+
             match state.settings_addr.send(UpdateSettings { settings: settings.clone() }).await {
                 Ok(Ok(())) => {
+                    // REGRESSION FIX 2026-04-29: the bulk physics endpoint historically
+                    // saved settings then returned, never telling the GPU. Without this
+                    // call, ForceComputeActor::UpdateSimulationParams never fires, the
+                    // reheat-on-param-change pulse (force_compute_actor.rs:1937-1956) is
+                    // skipped, and live setting changes have no visible effect on the
+                    // running simulation. Per the prior memo "Settings Change → Graph
+                    // Layout Pipeline" and the symmetric path-by-path PUT handler in
+                    // settings_handler::routes that already calls this.
+                    use crate::handlers::settings_handler::physics::propagate_physics_to_gpu;
+                    propagate_physics_to_gpu(&state, &settings, "logseq").await;
+                    propagate_physics_to_gpu(&state, &settings, "visionflow").await;
+
                     ok_json!(json!({
                         "success": true,
                         "physics": settings.physics

@@ -43,55 +43,99 @@ pub struct ErrorResponse {
 // Physics Settings Validation (QE Fix #2 + Fix #5)
 // ============================================================================
 
-/// Normalize incoming physics JSON keys to the canonical camelCase names
-/// expected by PhysicsSettings (which uses `#[serde(rename_all = "camelCase")]`).
+/// Pure mapping from any accepted incoming key to its canonical PhysicsSettings
+/// camelCase name. Returns the input unchanged if there is no alias.
 ///
-/// This maps common aliases (snake_case, legacy names, client variants) so that
-/// both `{"spring_k": 0.05}` and `{"springK": 0.05}` work correctly.
+/// Keep this a pure function: `normalize_physics_keys` depends on the property
+/// that calling this twice on the same key gives the same answer.
+fn canonical_physics_key(key: &str) -> &str {
+    match key {
+        // snake_case → camelCase mappings
+        "spring_k"          => "springK",
+        "repel_k"           => "repelK",
+        "spring_strength"   => "springK",
+        "repulsion_strength"=> "repelK",
+        "center_gravity_k"  => "centerGravityK",
+        "max_velocity"      => "maxVelocity",
+        "max_force"         => "maxForce",
+        "enable_bounds"     => "enableBounds",
+        "bounds_size"       => "boundsSize",
+        "separation_radius" => "separationRadius",
+        "boundary_damping"  => "boundaryDamping",
+        "update_threshold"  => "updateThreshold",
+        "rest_length"       => "restLength",
+        "repulsion_cutoff"  => "repulsionCutoff",
+        "grid_cell_size"    => "gridCellSize",
+        "warmup_iterations" => "warmupIterations",
+        "cooling_rate"      => "coolingRate",
+        "max_repulsion_dist"=> "maxRepulsionDist",
+        "min_distance"      => "minDistance",
+        "auto_balance"      => "autoBalance",
+        "compute_mode"      => "computeMode",
+        "cluster_strength"  => "clusterStrength",
+        "alignment_strength"=> "alignmentStrength",
+        // Legacy/client aliases
+        "springStrength"    => "springK",
+        "repulsionStrength" => "repelK",
+        "springStiffness"   => "springK",
+        "springDamping"     => "damping",
+        "deltaTime"         => "dt",
+        "graph_separation_x"=> "graphSeparationX",
+        "z_damping"         => "zDamping",
+        // Already canonical or unrecognised — pass through.
+        // Unrecognised keys fall through to PhysicsSettings deserialisation, which
+        // silently drops unknown fields (no `deny_unknown_fields`). Orphan UI sliders
+        // like attractionK therefore become harmless no-ops without explicit aliasing.
+        other => other,
+    }
+}
+
+/// Normalise incoming physics JSON keys to canonical camelCase names.
+///
+/// Invariant: when a canonical key is present in the original patch (e.g.
+/// `springK`), an alias that maps to the same canonical (e.g. `springStrength`)
+/// MUST NOT overwrite it — regardless of `serde_json::Map` iteration order.
+///
+/// This is enforced by precomputing the set of canonical names that appear
+/// explicitly in the input, then skipping any alias whose canonical is in that
+/// set. Without this guard, a previous regression (Fix E, 2026-04-29) showed
+/// alphabetical BTreeMap iteration could let an alias clobber the user's
+/// explicit value depending entirely on key alphabet — a load-bearing accident.
 fn normalize_physics_keys(patch: serde_json::Map<String, serde_json::Value>) -> serde_json::Map<String, serde_json::Value> {
+    use std::collections::HashSet;
+
+    // Set of canonical keys the client provided EXPLICITLY (i.e. names where the
+    // alias map is a no-op). These always win over any alias mapping.
+    let explicit_canonicals: HashSet<String> = patch
+        .keys()
+        .filter(|k| canonical_physics_key(k) == k.as_str())
+        .cloned()
+        .collect();
+
     let mut normalized = serde_json::Map::new();
     for (key, value) in patch {
-        let canonical = match key.as_str() {
-            // snake_case → camelCase mappings
-            "spring_k"          => "springK",
-            "repel_k"           => "repelK",
-            "spring_strength"   => "springK",
-            "repulsion_strength"=> "repelK",
-            "center_gravity_k"  => "centerGravityK",
-            "max_velocity"      => "maxVelocity",
-            "max_force"         => "maxForce",
-            "enable_bounds"     => "enableBounds",
-            "bounds_size"       => "boundsSize",
-            "separation_radius" => "separationRadius",
-            "boundary_damping"  => "boundaryDamping",
-            "update_threshold"  => "updateThreshold",
-            "rest_length"       => "restLength",
-            "repulsion_cutoff"  => "repulsionCutoff",
-            "grid_cell_size"    => "gridCellSize",
-            "warmup_iterations" => "warmupIterations",
-            "cooling_rate"      => "coolingRate",
-            "max_repulsion_dist"=> "maxRepulsionDist",
-            "min_distance"      => "minDistance",
-            "auto_balance"      => "autoBalance",
-            "compute_mode"      => "computeMode",
-            "cluster_strength"  => "clusterStrength",
-            "alignment_strength"=> "alignmentStrength",
-            // Legacy/client aliases
-            "springStrength"    => "springK",
-            "repulsionStrength" => "repelK",
-            "attractionStrength"=> "centerGravityK",
-            "attractionK"       => "centerGravityK",
-            "springStiffness"   => "springK",
-            "springDamping"     => "damping",
-            "deltaTime"         => "dt",
-            "graph_separation_x"=> "graphSeparationX",
-            "z_damping"         => "zDamping",
-            // Already camelCase — pass through
-            other => other,
-        };
-        // Don't overwrite if the canonical key was already provided explicitly
-        if !normalized.contains_key(canonical) {
-            normalized.insert(canonical.to_string(), value);
+        let canonical = canonical_physics_key(&key);
+        let is_alias = canonical != key.as_str();
+
+        // Drop aliases whose canonical was supplied explicitly — the explicit
+        // value wins regardless of iteration order.
+        if is_alias && explicit_canonicals.contains(canonical) {
+            log::debug!(
+                "normalize_physics_keys: dropping alias {} because canonical {} is explicit",
+                key, canonical
+            );
+            continue;
+        }
+
+        // Two distinct aliases mapping to the same canonical: log + first-wins.
+        // (Symmetry-breaking when client sends e.g. both `springStrength` and
+        // `springStiffness` without an explicit `springK`.)
+        if normalized.insert(canonical.to_string(), value).is_some() {
+            log::warn!(
+                "normalize_physics_keys: duplicate canonical key {} after alias normalisation \
+                 (input had multiple aliases for the same field) — first one wins",
+                canonical
+            );
         }
     }
     normalized
@@ -262,6 +306,16 @@ pub async fn update_physics_settings(
 ) -> impl Responder {
     debug!("User {} updating physics settings — request body: {:?}", auth.pubkey, body);
 
+    // Reject non-object bodies up-front. Previously these silently became a no-op
+    // (the merge fell through to a clone) and the endpoint still returned 200, which
+    // recreated the same silent-failure class as the original settings-not-applied bug.
+    if !body.is_object() {
+        warn!("Physics settings PUT rejected: body is not a JSON object");
+        return HttpResponse::BadRequest().json(ErrorResponse {
+            error: "Physics settings update body must be a JSON object".to_string(),
+        });
+    }
+
     // Single GetSettings call -- fetch full settings snapshot once to avoid TOCTOU race
     let mut full_settings = match state.settings_addr.send(GetSettings).await {
         Ok(Ok(settings)) => settings,
@@ -302,7 +356,11 @@ pub async fn update_physics_settings(
             }
         }
     } else {
-        full_settings.visualisation.graphs.logseq.physics.clone()
+        // Unreachable: we validated `body.is_object()` above. Keep as a defensive
+        // fallback so a future refactor doesn't silently re-introduce the no-op path.
+        return HttpResponse::BadRequest().json(ErrorResponse {
+            error: "Physics settings update body must be a JSON object".to_string(),
+        });
     };
 
     // Validate before applying
@@ -319,35 +377,86 @@ pub async fn update_physics_settings(
         Ok(Ok(())) => {
             info!("Physics settings updated successfully by {}", auth.pubkey);
 
-            // Propagate physics changes to GPU actors so layout actually responds
+            // Propagate physics changes to GPU actors so layout actually responds.
+            //
+            // Track propagation errors so we can return a degraded-status response
+            // instead of a misleading 200. Until this guard was added, any failure
+            // here was silently logged while the API still returned `Ok`, exactly
+            // recreating the original "settings PUT 200 but viewport doesn't update"
+            // bug class even after Fix C/D/E shipped.
             let sim_params: crate::models::simulation_params::SimulationParams = (&new_physics).into();
-            info!("Propagating SimulationParams: spring_k={}, repel_k={}, damping={}", sim_params.spring_k, sim_params.repel_k, sim_params.damping);
+            info!(
+                "Propagating SimulationParams: spring_k={}, repel_k={}, damping={}",
+                sim_params.spring_k, sim_params.repel_k, sim_params.damping
+            );
             let update_msg = UpdateSimulationParams { params: sim_params };
+            let mut propagation_errors: Vec<String> = Vec::new();
+            let mut reached_gpu = false;
 
+            // Try the direct ForceComputeActor address first; on ANY failure (Closed
+            // during restart, missing address during startup, mailbox Full, or inner
+            // handler-returned Err), fall through to the GPUManagerActor route so a
+            // transient direct-path glitch doesn't return a misleading 503 to the user.
+            //
+            // `addr.send(msg).await` returns `Result<Result<(), String>, MailboxError>`
+            // because UpdateSimulationParams's `rtype = "Result<(), String>"`.
+            // Both layers can fail and both must surface as propagation_errors.
+            let mut tried_direct = false;
             if let Some(gpu_addr) = state.get_gpu_compute_addr().await {
+                tried_direct = true;
                 info!("Sending UpdateSimulationParams to GPUComputeActor (direct)");
-                if let Err(e) = gpu_addr.send(update_msg.clone()).await {
-                    error!("Failed to propagate physics to GPUComputeActor: {}", e);
-                } else {
-                    info!("UpdateSimulationParams sent to GPUComputeActor successfully");
+                match gpu_addr.send(update_msg.clone()).await {
+                    Ok(Ok(())) => {
+                        reached_gpu = true;
+                        info!("UpdateSimulationParams sent to GPUComputeActor successfully");
+                    }
+                    Ok(Err(inner)) => {
+                        let m = format!("GPUComputeActor handler returned error: {}", inner);
+                        warn!("Direct send returned inner error ({}), trying GPUManagerActor fallback", inner);
+                        propagation_errors.push(m);
+                    }
+                    Err(e) => {
+                        let m = format!("GPUComputeActor mailbox: {}", e);
+                        warn!("Direct send mailbox error ({}), trying GPUManagerActor fallback", e);
+                        propagation_errors.push(m);
+                    }
                 }
-            } else {
-                // Fallback: route through GPUManagerActor when direct address isn't cached yet
-                // (first ~6s of startup while async init task completes)
-                warn!("Direct GPUComputeActor address not available, routing via GPUManagerActor fallback");
+            }
+
+            // Fallback path runs when direct address isn't cached (startup window) OR
+            // when the direct send failed above.
+            if !reached_gpu {
+                if !tried_direct {
+                    warn!("Direct GPUComputeActor address not available, routing via GPUManagerActor fallback");
+                }
                 if let Some(ref gpu_mgr) = state.gpu_manager_addr {
-                    if let Err(e) = gpu_mgr.send(update_msg.clone()).await {
-                        error!("Fallback: Failed to route physics via GPUManagerActor: {}", e);
-                    } else {
-                        info!("Fallback: UpdateSimulationParams routed via GPUManagerActor");
+                    match gpu_mgr.send(update_msg.clone()).await {
+                        Ok(Ok(())) => {
+                            reached_gpu = true;
+                            info!("Fallback: UpdateSimulationParams routed via GPUManagerActor");
+                        }
+                        Ok(Err(inner)) => {
+                            let m = format!("GPUManagerActor handler returned error: {}", inner);
+                            error!("Fallback: GPUManagerActor returned inner error: {}", inner);
+                            propagation_errors.push(m);
+                        }
+                        Err(e) => {
+                            let m = format!("GPUManagerActor fallback mailbox: {}", e);
+                            error!("Fallback: GPUManagerActor mailbox error: {}", e);
+                            propagation_errors.push(m);
+                        }
                     }
                 } else {
                     error!("No GPUComputeActor or GPUManagerActor available — physics won't propagate to GPU!");
+                    propagation_errors.push(
+                        "No GPU actor address available — physics did not reach GPU".to_string()
+                    );
                 }
             }
             info!("Sending UpdateSimulationParams to GraphServiceSupervisor");
             if let Err(e) = state.graph_service_addr.send(update_msg).await {
                 error!("Failed to propagate physics to GraphServiceActor: {}", e);
+                propagation_errors.push(format!("GraphServiceSupervisor mailbox: {}", e));
             } else {
                 info!("UpdateSimulationParams sent to GraphServiceSupervisor successfully");
             }
@@ -359,8 +468,25 @@ pub async fn update_physics_settings(
                 ForceResumePhysics { reason: "Physics settings updated via API".to_string() }
             ).await {
                 warn!("Failed to send ForceResumePhysics: {}", e);
+                propagation_errors.push(format!("ForceResumePhysics: {}", e));
             } else {
                 info!("ForceResumePhysics sent to GraphServiceSupervisor successfully");
+            }
+
+            // If we never reached the GPU at all, the user sees no live re-layout —
+            // surface that as a degraded status rather than a green 200.
+            if !reached_gpu {
+                error!(
+                    "Physics settings persisted but did not reach GPU — propagation errors: {:?}",
+                    propagation_errors
+                );
+                return HttpResponse::ServiceUnavailable().json(ErrorResponse {
+                    error: format!(
+                        "Settings saved but live physics propagation failed (GPU unreachable). \
+                         Errors: {}",
+                        propagation_errors.join("; ")
+                    ),
+                });
             }
 
             // Persist physics settings to Neo4j for cross-restart survival

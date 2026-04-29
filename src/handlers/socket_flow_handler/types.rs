@@ -475,6 +475,15 @@ impl Actor for SocketFlowServer {
     type Context = ws::WebsocketContext<Self>;
 
     fn started(&mut self, ctx: &mut Self::Context) {
+        // Default actix mailbox capacity is 16. With ~1.2 MB binary frames at
+        // 60 Hz, that buffers <300 ms — far less than the browser's initial-burst
+        // window (React StrictMode double-mount + GPU shader compile + 25 k-node
+        // mesh build can stall WS draining for several seconds). When the mailbox
+        // overflows, ClientCoordinatorActor was previously evicting the client,
+        // silently stranding it on JSON-only updates so settings changes never
+        // reflected on the visual graph. Bump to 2048 to survive the burst.
+        ctx.set_mailbox_capacity(2048);
+
         let client_ip = self.client_ip.clone();
         let cm_addr = self.client_manager_addr.clone();
         let addr = ctx.address();

@@ -113,6 +113,12 @@ services:
       DOCKER_ENV: ${DOCKER_ENV:-true}
       # Dev-only: bypass Nostr auth for settings writes (never set in production)
       SETTINGS_AUTH_BYPASS: "${SETTINGS_AUTH_BYPASS:-false}"
+      # ADR-050 sovereign-mesh — anonymous gets public-only, signed gets
+      # public + own-private. Without this flag, RequireAuth::optional()
+      # collapses to authenticated() and the JSON populate at /api/graph/data
+      # rejects the dev client → reverseNodeIdMap stays empty → binary
+      # positions arrive but aren't bound to nodes → physics looks frozen.
+      NIP98_OPTIONAL_AUTH: "${NIP98_OPTIONAL_AUTH:-true}"
       # Dev-only pubkey allowlist — add your NIP-07 browser-extension pubkey
       # (hex, 64 chars) to POWER_USER_PUBKEYS via .env to unlock power-user
       # affordances. APPROVED_PUBKEYS elevates to general "authenticated

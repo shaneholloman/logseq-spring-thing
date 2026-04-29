@@ -34,7 +34,7 @@ use crate::handlers::socket_flow_handler::SocketFlowServer;
 use crate::telemetry::agent_telemetry::{get_telemetry_logger, CorrelationId, Position3D};
 use crate::utils::socket_flow_messages::BinaryNodeDataClient;
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct ClientState {
     pub client_id: usize,
     pub addr: Addr<SocketFlowServer>,
@@ -52,7 +52,23 @@ pub struct ClientState {
     pub settings_override: Option<crate::config::app_settings::AppFullSettings>,
     /// Whether this client authenticated with an ephemeral (dev-mode) identity
     pub ephemeral_session: bool,
+    /// Number of consecutive `SendError::Full` events on the client's mailbox.
+    /// Reset to 0 on a successful binary push. Evicted when this exceeds
+    /// `MAILBOX_FULL_EVICTION_THRESHOLD` — preventing a permanently-stuck
+    /// client from holding 2048 queued frames forever, while still tolerating
+    /// the initial-burst window (browser GPU shader compile + 25k-node mesh build)
+    /// that motivated drop-on-Full in Fix D.
+    ///
+    /// `AtomicU32` enables in-place mutation through the read-locked broadcast
+    /// hot path without escalating to a write-lock or restructuring the API.
+    pub consecutive_full_frames: std::sync::atomic::AtomicU32,
 }
+
+/// Number of consecutive frame-drop events after which a client is considered
+/// genuinely stuck (rather than experiencing a transient initial-burst stall)
+/// and should be evicted. With the V5 broadcast cadence at ~60 Hz, 60 frames
+/// = ~1 second of sustained backpressure.
+pub const MAILBOX_FULL_EVICTION_THRESHOLD: u32 = 60;
 
 /// Per-client filter settings for graph visibility
 #[derive(Debug, Clone)]
@@ -282,6 +298,7 @@ impl ClientManager {
             filter: ClientFilter::default(),
             settings_override: None,
             ephemeral_session: false,
+            consecutive_full_frames: std::sync::atomic::AtomicU32::new(0),
         };
 
         self.clients.insert(client_id, client_state);
@@ -336,17 +353,36 @@ impl ClientManager {
     /// Returns a `BroadcastResult` whose `slow_clients` list the caller
     /// should evict under a write lock after releasing any read lock.
     pub fn broadcast_to_all(&self, data: Vec<u8>) -> BroadcastResult {
+        use std::sync::atomic::Ordering;
         let mut sent = 0;
         let mut slow_clients = Vec::new();
         for (&client_id, client_state) in &self.clients {
             match client_state.addr.try_send(SendToClientBinary(data.clone())) {
-                Ok(()) => sent += 1,
+                Ok(()) => {
+                    sent += 1;
+                    // Successful push — clear the sustained-Full counter so a
+                    // client that briefly stalls but recovers isn't penalised.
+                    client_state.consecutive_full_frames.store(0, Ordering::Relaxed);
+                }
                 Err(actix::prelude::SendError::Full(_)) => {
-                    warn!(
-                        "[ClientCoordinator] Client {} mailbox full — marking for eviction",
-                        client_id
-                    );
-                    slow_clients.push(client_id);
+                    // Drop frame on transient backpressure but track sustained pressure.
+                    // Eviction on a single Full strands the client on JSON-only fallback
+                    // (the original Fix D bug). Eviction never strands the client when
+                    // pressure is transient (initial-burst stall), but a permanently
+                    // stuck client is removed after ~1s of continuous Fulls.
+                    let n = client_state.consecutive_full_frames.fetch_add(1, Ordering::Relaxed) + 1;
+                    if n >= MAILBOX_FULL_EVICTION_THRESHOLD {
+                        warn!(
+                            "[ClientCoordinator] Client {} mailbox full for {} consecutive frames — evicting",
+                            client_id, n
+                        );
+                        slow_clients.push(client_id);
+                    } else {
+                        debug!(
+                            "[ClientCoordinator] Client {} mailbox full — dropping frame ({} consecutive)",
+                            client_id, n
+                        );
+                    }
                 }
                 Err(actix::prelude::SendError::Closed(_)) => {
                     slow_clients.push(client_id);
@@ -430,16 +466,37 @@ impl ClientManager {
             };
 
             if let Some(data) = payload {
+                use std::sync::atomic::Ordering;
                 match client_state.addr.try_send(SendToClientBinary(data)) {
-                    Ok(()) => sent += 1,
+                    Ok(()) => {
+                        sent += 1;
+                        client_state.consecutive_full_frames.store(0, Ordering::Relaxed);
+                    }
                     Err(actix::prelude::SendError::Full(_)) => {
-                        warn!(
-                            "[ClientCoordinator] Client {} mailbox full — marking for eviction",
-                            client_id
-                        );
-                        slow_clients.push(client_id);
+                        // Drop the frame; track sustained pressure so a permanently
+                        // stuck client doesn't accumulate a 2048-deep queue indefinitely.
+                        // Transient initial-burst stalls (browser GPU shader compile,
+                        // 25k-node mesh build, React StrictMode double-mount) recover
+                        // well below the threshold; only genuine zombies get evicted.
+                        let n = client_state
+                            .consecutive_full_frames
+                            .fetch_add(1, Ordering::Relaxed)
+                            + 1;
+                        if n >= MAILBOX_FULL_EVICTION_THRESHOLD {
+                            warn!(
+                                "[ClientCoordinator] Client {} mailbox full for {} consecutive frames — evicting",
+                                client_id, n
+                            );
+                            slow_clients.push(client_id);
+                        } else {
+                            debug!(
+                                "[ClientCoordinator] Client {} mailbox full — dropping frame ({} consecutive)",
+                                client_id, n
+                            );
+                        }
                     }
                     Err(actix::prelude::SendError::Closed(_)) => {
+                        // Real disconnect: client actor is gone. Evict.
                         warn!(
                             "[ClientCoordinator] Client {} mailbox closed — marking for eviction",
                             client_id
@@ -1227,6 +1284,47 @@ impl Actor for ClientCoordinatorActor {
         // ADR-031 gap 3b: Periodic cleanup of stale disconnected client buffers (every 60s).
         ctx.run_interval(Duration::from_secs(60), |act, _ctx| {
             act.disconnected_queue.evict_stale();
+        });
+
+        // REGRESSION FIX 2026-04-29: refresh node_type_arrays from GraphStateActor.
+        //
+        // Symptom: every node in the binary frame had idFlagged with all flag
+        // bits zero — the encoder couldn't distinguish KG from agent from
+        // ontology, so the renderer fell back to a uniform appearance and
+        // user setting changes had no visible effect ("we don't see live
+        // updates"). Root cause: ClientCoordinator caches the arrays in
+        // `self.node_type_arrays` but nobody ever sent `UpdateNodeTypeArrays`
+        // (zero senders in the codebase). The cache stayed at default-empty
+        // forever. The encoder at `binary_protocol.rs:442-451` walks each
+        // array — empty arrays mean no flag is set on any node ID.
+        //
+        // Fix: pull arrays from GraphStateActor every 5 s. First refresh
+        // fires ~immediately so the very first broadcast that reaches the
+        // client carries proper flags. 5 s cadence keeps stale-after-sync
+        // windows short without flooding GraphStateActor.
+        ctx.run_interval(Duration::from_secs(5), |act, ctx| {
+            let Some(graph_addr) = act.graph_service_addr.clone() else { return };
+            let self_addr = ctx.address();
+            actix::spawn(async move {
+                use crate::actors::messages::{GetNodeTypeArrays, UpdateNodeTypeArrays};
+                match graph_addr.send(GetNodeTypeArrays).await {
+                    Ok(arrays) => {
+                        self_addr.do_send(UpdateNodeTypeArrays { arrays });
+                    }
+                    Err(e) => warn!("[ClientCoordinator] node_type_arrays mailbox error: {}", e),
+                }
+            });
+        });
+        // Fire one refresh ~immediately at boot (don't wait for the 5-s tick).
+        ctx.run_later(Duration::from_secs(1), |act, ctx| {
+            let Some(graph_addr) = act.graph_service_addr.clone() else { return };
+            let self_addr = ctx.address();
+            actix::spawn(async move {
+                use crate::actors::messages::{GetNodeTypeArrays, UpdateNodeTypeArrays};
+                if let Ok(arrays) = graph_addr.send(GetNodeTypeArrays).await {
+                    self_addr.do_send(UpdateNodeTypeArrays { arrays });
+                }
+            });
         });
 
         

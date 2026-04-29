@@ -20,15 +20,14 @@ import { unifiedApiClient } from '../../../services/api';
 type KernelMode = 'legacy' | 'advanced' | 'visual_analytics';
 
 interface ForceParameters {
-  repulsionStrength: number;  
-  attractionStrength: number;
+  repulsionStrength: number;
   springStrength: number;
   damping: number;
   gravity: number;
   timeStep: number;
   maxVelocity: number;
   temperature: number;
-  
+
   boundaryExtremeMultiplier: number;
   boundaryExtremeForceMultiplier: number;
   boundaryVelocityDamping: number;
@@ -168,14 +167,13 @@ export function PhysicsEngineControls() {
     
     const paramMapping: Record<string, string> = {
       repulsionStrength: 'repelK',
-      attractionStrength: 'attractionK',
       springStrength: 'springK',
       damping: 'damping',
       gravity: 'gravity',
       timeStep: 'dt',
       maxVelocity: 'maxVelocity',
       temperature: 'temperature',
-      
+
       boundaryExtremeMultiplier: 'boundaryExtremeMultiplier',
       boundaryExtremeForceMultiplier: 'boundaryExtremeForceMultiplier',
       boundaryVelocityDamping: 'boundaryVelocityDamping',
@@ -408,21 +406,9 @@ export function PhysicsEngineControls() {
                 />
               </div>
               
-              <div className="space-y-2">
-                <div className="flex justify-between items-center">
-                  <Label htmlFor="attractionStrength">Attraction Strength</Label>
-                  <span className="text-sm text-muted-foreground">{(physicsSettings?.attractionK || 0.001).toFixed(3)}</span>
-                </div>
-                <Slider
-                  id="attractionStrength"
-                  min={0}
-                  max={10}  
-                  step={0.01}
-                  value={[physicsSettings?.attractionK || 0.001]}
-                  onValueChange={([v]) => handleForceParamChange('attractionStrength', v)}
-                />
-              </div>
-              
+              {/* "Attraction Strength" slider removed 2026-04-29: it was a duplicate
+                  of "Spring Strength" with no separate physics field on the server. */}
+
               <div className="space-y-2">
                 <div className="flex justify-between items-center">
                   <Label htmlFor="damping">Damping</Label>
