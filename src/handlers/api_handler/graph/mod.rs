@@ -393,9 +393,19 @@ pub async fn get_graph_data(
                 })
                 .collect();
 
-            // Filter edges to only include those connecting filtered nodes
+            // Filter edges to only include those connecting filtered nodes,
+            // then strip server-internal metadata keys before going on the wire.
+            //
+            // Edge metadata accumulated several persistence-only fields over
+            // time (target_wikilink for stub-label rescue, last_seen_run_id for
+            // ADR-051 retraction, neo4j_relationship for the writer). The
+            // client only consumes `edge_type` / `relation_type` (see
+            // hierarchyDetector.ts). Sending the rest costs ~80 bytes per edge
+            // × 10k+ edges = ~1 MB of pure server-internal noise that bloated
+            // the response and contributed to client init hangs.
             let filtered_node_ids: std::collections::HashSet<u32> =
                 filtered_nodes.iter().map(|n| n.id).collect();
+            const EDGE_META_ALLOWLIST: &[&str] = &["edge_type", "relation_type"];
             let filtered_edges: Vec<_> = graph_data
                 .edges
                 .iter()
@@ -403,7 +413,16 @@ pub async fn get_graph_data(
                     filtered_node_ids.contains(&e.source)
                         && filtered_node_ids.contains(&e.target)
                 })
-                .cloned()
+                .map(|e| {
+                    let mut e2 = e.clone();
+                    if let Some(m) = e2.metadata.as_mut() {
+                        m.retain(|k, _| EDGE_META_ALLOWLIST.contains(&k.as_str()));
+                        if m.is_empty() {
+                            e2.metadata = None;
+                        }
+                    }
+                    e2
+                })
                 .collect();
 
             // Query real-time physics stats from ForceComputeActor (if available).

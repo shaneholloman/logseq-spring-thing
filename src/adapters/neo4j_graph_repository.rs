@@ -367,32 +367,29 @@ impl Neo4jGraphRepository {
                 metadata.insert("authority_score".to_string(), as_score.to_string());
             }
 
-            // Selective round-trip of the JSON-serialised metadata blob.
+            // Display-only metadata round-trip.
             //
-            // Earlier this loop unpacked EVERY key from `n.metadata` into the
-            // response HashMap. On a 22k-node graph that ballooned the API
-            // payload to ~18 MB (mean per-node JSON jumped from ~150 to 388
-            // bytes) and stalled the browser at init while parsing 22k node
-            // metadata bags. Most keys (rdf-type, content-hash, iri, tags,
-            // physicality_code, etc.) are never consumed by the client.
+            // The principle: each node's metadata is sent ONCE at init via
+            // /api/graph/data and ONLY if a client renderer needs it for
+            // display. Everything else lives in Neo4j and is fetched on
+            // demand (URL minting, owner-aware actions, ADR-050 privacy
+            // checks all use the typed Node fields, not this metadata bag).
             //
-            // Allowlist only the small set that consumers actually need:
-            //   - stub_source_wikilink: fallback label for unresolved stubs
-            //   - canonical_iri        : ADR-013 URI/URN identity
-            //   - visibility           : ADR-050 H2 wire-side privacy hint
-            //   - type                 : kg_stub / linked_page discriminator
-            //                            consumed by client filtering paths
+            // Display-relevant fields:
+            //   - type : kg_stub / linked_page / page discriminator. Used by
+            //            MetadataShapes.tsx and the new hide-stubs filter.
+            //
+            // Everything else (canonical_iri, visibility, owner_pubkey,
+            // stub_source_wikilink, last_seen_run_id, content_hash, ...) is
+            // server-internal or consumed via dedicated endpoints. Keeping
+            // them out of the bulk graph response slashes the payload by
+            // multiple MB on large graphs.
             if let Ok(metadata_json) = row.get::<String>("metadata_json") {
                 if !metadata_json.is_empty() {
                     if let Ok(serde_json::Value::Object(map)) =
                         serde_json::from_str::<serde_json::Value>(&metadata_json)
                     {
-                        const ALLOWLIST: &[&str] = &[
-                            "stub_source_wikilink",
-                            "canonical_iri",
-                            "visibility",
-                            "type",
-                        ];
+                        const ALLOWLIST: &[&str] = &["type"];
                         for k in ALLOWLIST {
                             if metadata.contains_key(*k) { continue; }
                             if let Some(v) = map.get(*k) {
