@@ -38,6 +38,11 @@ pub struct NodeWithPosition {
     pub label: String,
 
     pub position: Vec3Data,
+    /// Velocity is REDUNDANT with the 28 B/node binary stream (ADR-061).
+    /// The WS stream warms in <1s; the JSON init's role is render-bootstrap,
+    /// not transient-state delivery. Skipping saves ~80 B/node × 25k = ~2 MB.
+    /// Client default-zero handling lives in graphDataManager.ts:745.
+    #[serde(skip)]
     pub velocity: Vec3Data,
 
 
@@ -356,12 +361,29 @@ pub async fn get_graph_data(
                 .map(|s| s.into_bytes());
             let salt_ref = opaque_salt.as_deref();
 
+            // Codex audit 2026-04-30: drop display-empty `kg_stub` nodes
+            // BEFORE the type/visibility pipeline. These are MERGE-on-id
+            // orphans (an edge referenced an unknown id; the writer
+            // auto-created a typed-stub row to keep topology consistent).
+            // They have no `metadata_id` and no `label` — nothing to render.
+            // Keeping 21k+ of them in JSON init was costing ~3.6 MB of
+            // boilerplate per request and contributing to client init hangs.
+            // ADR-050 §H1 "preserve topology" was about opacified MEANINGFUL
+            // private nodes, not unresolved-id placeholders.
+            let mut empty_stubs_dropped = 0usize;
             let filtered_nodes: Vec<NodeWithPosition> = nodes_with_positions
                 .into_iter()
                 .filter_map(|node| {
-                    // Graph-type filter first — applies regardless of
-                    // visibility. Nodes that fail the type filter are
-                    // dropped entirely.
+                    // Drop empty kg_stub orphans (no displayable identity).
+                    let is_empty_stub = node.node_type.as_deref() == Some("kg_stub")
+                        && node.metadata_id.is_empty()
+                        && node.label.is_empty();
+                    if is_empty_stub {
+                        empty_stubs_dropped += 1;
+                        return None;
+                    }
+
+                    // Graph-type filter — applies regardless of visibility.
                     let type_matches = match query.graph_type.as_deref() {
                         Some("knowledge") => {
                             classify_node_population(node.node_type.as_deref()) == NodePopulation::Knowledge
@@ -374,17 +396,14 @@ pub async fn get_graph_data(
                             classify_node_population(node.node_type.as_deref()) == NodePopulation::Agent
                                 || node.metadata.contains_key("agentType")
                         }
-                        _ => true, // No type filter; admit all types.
+                        _ => true, // No type filter; admit all remaining types.
                     };
                     if !type_matches {
                         return None;
                     }
 
-                    // Visibility gate: if the caller is allowed to see the
-                    // full node, return it as-is. Otherwise opacify (strip
-                    // label/metadata, populate opaque_id) rather than drop
-                    // so the client can still render a placeholder and the
-                    // topology is preserved.
+                    // Visibility gate: full node for owner, opacified for others.
+                    // Topology preserved via opaque_id (not by passing the raw stub).
                     if visibility_allows(&node.metadata, caller_ref) {
                         Some(node)
                     } else {
@@ -392,6 +411,12 @@ pub async fn get_graph_data(
                     }
                 })
                 .collect();
+            if empty_stubs_dropped > 0 {
+                info!(
+                    "[graph_init] dropped {} empty kg_stub orphans from JSON init payload",
+                    empty_stubs_dropped
+                );
+            }
 
             // Filter edges to only include those connecting filtered nodes,
             // then strip server-internal metadata keys before going on the wire.

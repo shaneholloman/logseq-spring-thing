@@ -3,10 +3,12 @@
 use actix::prelude::*;
 use log::{error, info, warn};
 use serde::{Deserialize, Serialize};
+use std::sync::atomic::{AtomicU64, Ordering as AtomicOrdering};
 use std::sync::Arc;
 use std::time::Instant;
 
 use super::shared::{GPUState, SharedGPUContext};
+use crate::actors::client_coordinator_actor::ClientCoordinatorActor;
 use crate::actors::messages::AnomalyDetectionStats as MessageAnomalyStats;
 use crate::actors::messages::*;
 use crate::utils::unified_gpu_compute::UnifiedGPUCompute;
@@ -39,9 +41,18 @@ pub struct AnomalyDetectionActor {
 
     shared_context: Option<Arc<SharedGPUContext>>,
 
-    /// Shared analytics store — populated after anomaly detection so the binary broadcast
-    /// path can embed real anomaly_score values in V3 wire format (ADR-014 DL4 fix).
+    /// Shared analytics store — populated after anomaly detection. Per
+    /// ADR-061 the binary frame no longer carries anomaly_score; this map
+    /// is now an in-process side table for REST API consumers. Wire-side
+    /// delivery to clients goes via `BroadcastAnalyticsUpdate`.
     node_analytics: Option<NodeAnalyticsMap>,
+
+    /// PRD-007 §B1 / ADR-061 §D2: address of the `ClientCoordinatorActor`
+    /// for emitting `BroadcastAnalyticsUpdate` on kernel completion.
+    client_coordinator_addr: Option<Addr<ClientCoordinatorActor>>,
+
+    /// Monotonic generation counter — increments on every recompute.
+    analytics_generation: Arc<AtomicU64>,
 }
 
 impl AnomalyDetectionActor {
@@ -50,6 +61,8 @@ impl AnomalyDetectionActor {
             gpu_state: GPUState::default(),
             shared_context: None,
             node_analytics: None,
+            client_coordinator_addr: None,
+            analytics_generation: Arc::new(AtomicU64::new(0)),
         }
     }
 
@@ -1168,26 +1181,25 @@ impl Handler<RunAnomalyDetection> for AnomalyDetectionActor {
         };
 
         Box::pin(future.into_actor(self).map(|result, actor, _ctx| {
-            // ADR-014 DL4 fix: Populate shared node_analytics with anomaly scores
-            // so the V3 binary broadcast path carries real anomaly_score values.
             if let Ok(ref anomaly_result) = result {
+                // Per ADR-061: maintain in-process side table for REST
+                // consumers; per-frame binary stream no longer carries
+                // anomaly_score. Wire-side delivery via
+                // BroadcastAnalyticsUpdate emitted below.
                 if let Some(ref analytics_map) = actor.node_analytics {
                     if let Ok(mut map) = analytics_map.write() {
-                        // Populate from LOF scores (per-node)
                         if let Some(ref lof_scores) = anomaly_result.lof_scores {
                             for (i, &score) in lof_scores.iter().enumerate() {
                                 let entry = map.entry(i as u32).or_insert((0, 0.0, 0));
-                                entry.1 = score; // anomaly_score
+                                entry.1 = score;
                             }
                         }
-                        // Populate from Z-Score values (per-node)
                         if let Some(ref zscore_values) = anomaly_result.zscore_values {
                             for (i, &score) in zscore_values.iter().enumerate() {
                                 let entry = map.entry(i as u32).or_insert((0, 0.0, 0));
-                                entry.1 = score.abs(); // anomaly_score
+                                entry.1 = score.abs();
                             }
                         }
-                        // Populate from anomaly list (for methods without full score vectors)
                         if anomaly_result.lof_scores.is_none() && anomaly_result.zscore_values.is_none() {
                             for anomaly in &anomaly_result.anomalies {
                                 let entry = map.entry(anomaly.node_id).or_insert((0, 0.0, 0));
@@ -1199,6 +1211,54 @@ impl Handler<RunAnomalyDetection> for AnomalyDetectionActor {
                             map.len()
                         );
                     }
+                }
+
+                // ADR-061 §D2: emit analytics_update side channel.
+                if let Some(ref coord) = actor.client_coordinator_addr {
+                    let generation = actor
+                        .analytics_generation
+                        .fetch_add(1, AtomicOrdering::Relaxed)
+                        + 1;
+                    let mut entries: Vec<AnalyticsEntry> = Vec::new();
+                    if let Some(ref lof_scores) = anomaly_result.lof_scores {
+                        for (i, &score) in lof_scores.iter().enumerate() {
+                            entries.push(AnalyticsEntry {
+                                id: i as u32,
+                                cluster_id: None,
+                                community_id: None,
+                                anomaly_score: Some(score),
+                                sssp_distance: None,
+                                sssp_parent: None,
+                            });
+                        }
+                    } else if let Some(ref zscore_values) = anomaly_result.zscore_values {
+                        for (i, &score) in zscore_values.iter().enumerate() {
+                            entries.push(AnalyticsEntry {
+                                id: i as u32,
+                                cluster_id: None,
+                                community_id: None,
+                                anomaly_score: Some(score.abs()),
+                                sssp_distance: None,
+                                sssp_parent: None,
+                            });
+                        }
+                    } else {
+                        for anomaly in &anomaly_result.anomalies {
+                            entries.push(AnalyticsEntry {
+                                id: anomaly.node_id,
+                                cluster_id: None,
+                                community_id: None,
+                                anomaly_score: Some(anomaly.anomaly_score),
+                                sssp_distance: None,
+                                sssp_parent: None,
+                            });
+                        }
+                    }
+                    coord.do_send(BroadcastAnalyticsUpdate {
+                        source: AnalyticsSource::Anomaly,
+                        generation,
+                        entries,
+                    });
                 }
             }
             result
@@ -1235,5 +1295,18 @@ impl Handler<SetNodeAnalytics> for AnomalyDetectionActor {
     fn handle(&mut self, msg: SetNodeAnalytics, _ctx: &mut Self::Context) {
         info!("AnomalyDetectionActor: Received shared node_analytics map");
         self.node_analytics = Some(msg.node_analytics);
+    }
+}
+
+impl Handler<crate::actors::messages::SetClientCoordinatorAddr> for AnomalyDetectionActor {
+    type Result = ();
+
+    fn handle(
+        &mut self,
+        msg: crate::actors::messages::SetClientCoordinatorAddr,
+        _ctx: &mut Self::Context,
+    ) {
+        info!("AnomalyDetectionActor: Received ClientCoordinatorActor address for analytics_update emission");
+        self.client_coordinator_addr = Some(msg.addr);
     }
 }

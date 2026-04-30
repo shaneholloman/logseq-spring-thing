@@ -176,7 +176,7 @@ mod tests {
             "source_agent_id": 7,
             "source_urn": "did:nostr:abc123",
             "target_node_id": 4242,
-            "target_urn": "urn:visionclaw:kg:npub1xyz:sha256-12-deadbeef",
+            "target_urn": "urn:visionclaw:kg:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:sha256-12-deadbeef0001",
             "action_type": 4,
             "duration_ms": 250,
             "pubkey": "abc123",
@@ -184,7 +184,7 @@ mod tests {
         }"#;
         let env: AgentActionEnvelope = serde_json::from_str(json).expect("parse");
         assert_eq!(env.source_urn.as_deref(), Some("did:nostr:abc123"));
-        assert_eq!(env.target_urn.as_deref(), Some("urn:visionclaw:kg:npub1xyz:sha256-12-deadbeef"));
+        assert_eq!(env.target_urn.as_deref(), Some("urn:visionclaw:kg:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:sha256-12-deadbeef0001"));
         assert_eq!(env.pubkey.as_deref(), Some("abc123"));
         assert!(env.has_identity());
         assert_eq!(env.beam_color(), "#a855f7");

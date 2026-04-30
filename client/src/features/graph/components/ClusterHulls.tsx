@@ -2,7 +2,7 @@ import React, { useRef, useMemo, useEffect, useState } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { ConvexGeometry } from 'three/examples/jsm/geometries/ConvexGeometry.js';
-import { graphWorkerProxy } from '../managers/graphWorkerProxy';
+import { useAnalyticsStore } from '../../../store/analyticsStore';
 
 // ============================================================================
 // Types
@@ -46,20 +46,17 @@ const TICK_INTERVAL = 30;
 // ============================================================================
 
 /**
- * Get cluster key from analytics buffer (cluster_id) when available,
- * falling back to domain-based grouping from node label/metadata.
+ * Get cluster key from analytics store (cluster_id from analytics_update
+ * messages) when available, falling back to domain-based grouping from
+ * node label/metadata.
  */
 function getClusterKey(
   node: { id: string; metadata?: any; label?: string },
-  nodeIndex?: number,
-  analyticsBuffer?: Float32Array | null,
+  clusterIdFromStore?: number,
 ): string {
-  // 1. Prefer server-provided cluster_id from binary protocol V3 analytics
-  if (analyticsBuffer && nodeIndex !== undefined) {
-    const clusterId = analyticsBuffer[nodeIndex * 3]; // index 0 = cluster_id
-    if (clusterId > 0) {
-      return `cluster-${clusterId}`;
-    }
+  // 1. Prefer server-provided cluster_id from analytics store (ADR-061)
+  if (clusterIdFromStore !== undefined && clusterIdFromStore > 0) {
+    return `cluster-${clusterIdFromStore}`;
   }
 
   // 2. Check metadata for explicit domain
@@ -153,7 +150,11 @@ export const ClusterHulls: React.FC<ClusterHullsProps> = ({
   const groupRef = useRef<THREE.Group>(null);
   const frameCounter = useRef(0);
   const [tick, setTick] = useState(0);
-  const analyticsRef = useRef<Float32Array | null>(null);
+
+  // ADR-061: cluster_id rides the analytics_update side stream and merges
+  // into useAnalyticsStore. Subscribe to byNodeId so cluster reassignments
+  // re-render hulls.
+  const analyticsByNodeId = useAnalyticsStore(s => s.byNodeId);
 
   // ---- Early exit if feature is disabled ----
   // Respect both the visual clusterHulls.enabled toggle AND qualityGates.showClusters
@@ -164,27 +165,25 @@ export const ClusterHulls: React.FC<ClusterHullsProps> = ({
   const opacity = settings?.visualisation?.clusterHulls?.opacity ?? 0.08;
   const padding = settings?.visualisation?.clusterHulls?.padding ?? 0.15;
 
-  // ---- Increment tick every TICK_INTERVAL frames and refresh analytics ----
+  // ---- Increment tick every TICK_INTERVAL frames so hull geometry is rebuilt ----
   useFrame(() => {
     frameCounter.current += 1;
     if (frameCounter.current >= TICK_INTERVAL) {
       frameCounter.current = 0;
-      // Refresh analytics buffer from worker
-      graphWorkerProxy.getAnalyticsBuffer().then(buf => {
-        analyticsRef.current = buf.length > 0 ? buf : null;
-      }).catch(() => { /* ignore worker errors */ });
       setTick((t) => t + 1);
     }
   });
 
   // ---- Group nodes into clusters ----
   const clusterMap = useMemo(() => {
-    const analytics = analyticsRef.current;
     const map = new Map<string, string[]>();
     for (let ni = 0; ni < nodes.length; ni++) {
       const node = nodes[ni];
-      const nodeIndex = nodeIdToIndexMap.get(node.id);
-      const key = getClusterKey(node, nodeIndex, analytics);
+      const numericId = Number(node.id);
+      const clusterId = Number.isFinite(numericId)
+        ? analyticsByNodeId.get(numericId)?.cluster_id
+        : undefined;
+      const key = getClusterKey(node, clusterId);
       if (!key) continue; // Skip unclassified nodes — no hull for them
       let arr = map.get(key);
       if (!arr) {
@@ -195,7 +194,7 @@ export const ClusterHulls: React.FC<ClusterHullsProps> = ({
     }
     return map;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nodes, nodeIdToIndexMap, tick]);
+  }, [nodes, nodeIdToIndexMap, analyticsByNodeId, tick]);
 
   // ---- Build hull geometries from current positions ----
   const hullEntries = useMemo(() => {

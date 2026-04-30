@@ -2,7 +2,7 @@
 import React, { createContext, useContext, useState, useEffect, useMemo, useCallback } from 'react';
 import type { BotsAgent, BotsEdge, BotsFullUpdateMessage } from '../types/BotsTypes';
 import { botsWebSocketIntegration } from '../services/BotsWebSocketIntegration';
-import { parseBinaryNodeData, parseBinaryFrameData, isAgentNode, getActualNodeId } from '../../../types/binaryProtocol';
+import { decodePositionFrame } from '../../../types/binaryProtocol';
 import { useAgentPolling } from '../hooks/useAgentPolling';
 import { agentPollingService } from '../services/AgentPollingService';
 import { unifiedApiClient } from '../../../services/api/UnifiedApiClient';
@@ -197,75 +197,48 @@ export const BotsDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }));
   };
 
-  
+
   const updateFromBinaryPositions = (binaryData: ArrayBuffer) => {
     try {
-
-      const frame = parseBinaryFrameData(binaryData);
-      const isDelta = frame.type === 'delta';
-      const agentUpdates = frame.nodes.filter(node => isAgentNode(node.nodeId));
-
-      if (agentUpdates.length === 0) {
+      // ADR-061: position frames carry raw u32 node ids — no flag bits, no
+      // agent/knowledge discriminator. We look up positions for each known
+      // agent by its id string (matched against the raw u32 id) and skip
+      // anything not in our agent list.
+      const frame = decodePositionFrame(binaryData);
+      if (!frame || frame.nodes.size === 0) {
         return;
       }
 
-      logger.debug(`Processing ${agentUpdates.length} agent position updates from binary data (${frame.type})`);
+      logger.debug(`Processing position frame (${frame.nodes.size} entries) for agent overlay`);
 
       setBotsData(prev => {
         if (!prev) return prev;
 
-
+        let touched = 0;
         const updatedAgents = prev.agents.map(agent => {
-
-          const positionUpdate = agentUpdates.find(update => {
-            const actualNodeId = getActualNodeId(update.nodeId);
-
-            return String(actualNodeId) === agent.id || actualNodeId.toString() === agent.id;
-          });
-
-          if (positionUpdate) {
-            if (isDelta) {
-              // Delta frame: ADD deltas to existing agent position
-              const prevPos = agent.position || { x: 0, y: 0, z: 0 };
-              const prevVel = agent.velocity || { x: 0, y: 0, z: 0 };
-              return {
-                ...agent,
-                position: {
-                  x: prevPos.x + positionUpdate.position.x,
-                  y: prevPos.y + positionUpdate.position.y,
-                  z: prevPos.z + positionUpdate.position.z,
-                },
-                velocity: {
-                  x: prevVel.x + positionUpdate.velocity.x,
-                  y: prevVel.y + positionUpdate.velocity.y,
-                  z: prevVel.z + positionUpdate.velocity.z,
-                },
-                lastPositionUpdate: Date.now()
-              };
-            }
-
-            // Full frame: SET absolute positions
-            return {
-              ...agent,
-              position: positionUpdate.position,
-              velocity: positionUpdate.velocity,
-
-              ssspDistance: positionUpdate.ssspDistance,
-              ssspParent: positionUpdate.ssspParent,
-
-              lastPositionUpdate: Date.now()
-            };
-          }
-
-          return agent;
+          const numericId = Number(agent.id);
+          if (!Number.isFinite(numericId)) return agent;
+          const positionUpdate = frame.nodes.get(numericId);
+          if (!positionUpdate) return agent;
+          touched++;
+          return {
+            ...agent,
+            position: positionUpdate.position,
+            velocity: positionUpdate.velocity,
+            lastPositionUpdate: Date.now(),
+          };
         });
 
+        if (touched === 0) {
+          return prev;
+        }
         return {
           ...prev,
           agents: updatedAgents,
-          lastUpdate: new Date().toISOString()
+          lastUpdate: new Date().toISOString(),
         };
       });
+
     } catch (error) {
       logger.error('Error processing binary position updates:', error);
     }

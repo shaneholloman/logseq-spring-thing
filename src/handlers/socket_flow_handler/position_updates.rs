@@ -32,15 +32,14 @@ fn sanitize_position(x: f32, y: f32, z: f32) -> Option<(f32, f32, f32)> {
 
 /// Fetch nodes from the graph service for streaming position updates.
 ///
-/// Pre-flags all node IDs with their type (agent, knowledge, ontology) so that
-/// downstream delta/binary encoding emits correct type bits on the wire.
+/// Per ADR-061: wire ids are raw u32. Node-type classification rides the
+/// JSON `/api/graph/data` init payload, not per-frame flag bits.
 pub(crate) async fn fetch_nodes(
     app_state: std::sync::Arc<crate::app_state::AppState>,
     _settings_addr: actix::Addr<crate::actors::optimized_settings_actor::OptimizedSettingsActor>,
 ) -> Option<(Vec<(u32, BinaryNodeData)>, bool)> {
-    use crate::actors::messages::{GetGraphData, GetNodeTypeArrays};
+    use crate::actors::messages::GetGraphData;
     use log::error;
-    use std::collections::HashSet;
 
     let graph_data = match app_state.graph_service_addr.send(GetGraphData).await {
         Ok(Ok(data)) => data,
@@ -62,17 +61,6 @@ pub(crate) async fn fetch_nodes(
         trace!("[WebSocket] No nodes to send! Empty graph data.");
         return None;
     }
-
-    // Fetch node type classification arrays for binary protocol flags (already remapped to compact wire IDs)
-    let nta = match app_state.graph_service_addr.send(GetNodeTypeArrays).await {
-        Ok(arrays) => arrays,
-        Err(_) => crate::actors::messages::NodeTypeArrays::default(),
-    };
-    let agent_set: HashSet<u32> = nta.agent_ids.iter().copied().collect();
-    let knowledge_set: HashSet<u32> = nta.knowledge_ids.iter().copied().collect();
-    let ontology_class_set: HashSet<u32> = nta.ontology_class_ids.iter().copied().collect();
-    let ontology_individual_set: HashSet<u32> = nta.ontology_individual_ids.iter().copied().collect();
-    let ontology_property_set: HashSet<u32> = nta.ontology_property_ids.iter().copied().collect();
 
     let debug_enabled = crate::utils::logging::is_debug_enabled();
     let debug_websocket = debug_enabled;
@@ -96,23 +84,9 @@ pub(crate) async fn fetch_nodes(
     for node in &graph_data.nodes {
         // Node IDs are already compact (0..N-1) from GraphStateActor source remapping
         let compact_id = node.id;
-        // Apply node type flags so the client can distinguish agent/knowledge/ontology nodes
-        let flagged_id = if agent_set.contains(&compact_id) {
-            binary_protocol::set_agent_flag(compact_id)
-        } else if knowledge_set.contains(&compact_id) {
-            binary_protocol::set_knowledge_flag(compact_id)
-        } else if ontology_class_set.contains(&compact_id) {
-            binary_protocol::set_ontology_class_flag(compact_id)
-        } else if ontology_individual_set.contains(&compact_id) {
-            binary_protocol::set_ontology_individual_flag(compact_id)
-        } else if ontology_property_set.contains(&compact_id) {
-            binary_protocol::set_ontology_property_flag(compact_id)
-        } else {
-            compact_id
-        };
         let node_data =
-            BinaryNodeDataClient::new(flagged_id, node.data.position(), node.data.velocity());
-        nodes.push((flagged_id, node_data));
+            BinaryNodeDataClient::new(compact_id, node.data.position(), node.data.velocity());
+        nodes.push((compact_id, node_data));
     }
 
     if nodes.is_empty() {
@@ -147,38 +121,25 @@ pub(crate) fn handle_request_full_snapshot(
         let mut knowledge_nodes = Vec::new();
         let mut agent_nodes = Vec::new();
 
-        // Fetch node type arrays (already compact IDs from source remapping)
+        // Fetch node type arrays (already compact IDs from source remapping).
+        // Per ADR-061 these only drive the private-owner table; type
+        // classification is no longer encoded into wire ids.
         let nta = app_state.graph_service_addr.send(GetNodeTypeArrays).await
             .unwrap_or_default();
         let agent_set: HashSet<u32> = nta.agent_ids.iter().copied().collect();
-        let ontology_class_set: HashSet<u32> = nta.ontology_class_ids.iter().copied().collect();
-        let ontology_individual_set: HashSet<u32> = nta.ontology_individual_ids.iter().copied().collect();
-        let ontology_property_set: HashSet<u32> = nta.ontology_property_ids.iter().copied().collect();
 
         if include_knowledge {
             if let Ok(Ok(graph_data)) = app_state.graph_service_addr.send(GetGraphData).await {
                 for node in &graph_data.nodes {
                     let compact_id = node.id;
-                    // Apply type flags for correct client-side classification
-                    let flagged_id = if agent_set.contains(&compact_id) {
-                        binary_protocol::set_agent_flag(compact_id)
-                    } else if ontology_class_set.contains(&compact_id) {
-                        binary_protocol::set_ontology_class_flag(compact_id)
-                    } else if ontology_individual_set.contains(&compact_id) {
-                        binary_protocol::set_ontology_individual_flag(compact_id)
-                    } else if ontology_property_set.contains(&compact_id) {
-                        binary_protocol::set_ontology_property_flag(compact_id)
-                    } else {
-                        binary_protocol::set_knowledge_flag(compact_id)
-                    };
                     let node_data = BinaryNodeData {
-                        node_id: flagged_id, x: node.data.x, y: node.data.y, z: node.data.z,
+                        node_id: compact_id, x: node.data.x, y: node.data.y, z: node.data.z,
                         vx: node.data.vx, vy: node.data.vy, vz: node.data.vz,
                     };
                     if agent_set.contains(&compact_id) {
-                        agent_nodes.push((flagged_id, node_data));
+                        agent_nodes.push((compact_id, node_data));
                     } else {
-                        knowledge_nodes.push((flagged_id, node_data));
+                        knowledge_nodes.push((compact_id, node_data));
                     }
                 }
             }
@@ -187,7 +148,6 @@ pub(crate) fn handle_request_full_snapshot(
         if include_agent {
             if let Ok(Ok(bots_data)) = app_state.graph_service_addr.send(GetBotsGraphData).await {
                 for node in &bots_data.nodes {
-                    // Bots graph IDs — use as-is (bots have their own ID scheme)
                     let compact_id = node.id;
                     let node_data = BinaryNodeData {
                         node_id: compact_id, x: node.data.x, y: node.data.y, z: node.data.z,
@@ -203,9 +163,6 @@ pub(crate) fn handle_request_full_snapshot(
             agent_nodes,
             timestamp: std::time::Instant::now(),
         };
-        // ADR-050 (H2): return the nta alongside the snapshot so the
-        // encode path can set bit 29 on private nodes that belong to
-        // somebody other than the consuming client.
         (snapshot, nta)
     };
 
@@ -214,49 +171,33 @@ pub(crate) fn handle_request_full_snapshot(
         let mut all_nodes = Vec::new();
 
         for (id, data) in snapshot.knowledge_nodes {
-            all_nodes.push((binary_protocol::set_knowledge_flag(id), data));
+            all_nodes.push((id, data));
         }
 
         for (id, data) in snapshot.agent_nodes {
-            all_nodes.push((binary_protocol::set_agent_flag(id), data));
+            all_nodes.push((id, data));
         }
 
         if !all_nodes.is_empty() {
-            let analytics = _act.app_state.node_analytics.read().ok();
-            let analytics_ref = analytics.as_deref();
-            // ADR-050 (H2): per-caller private-opaque set. `self.pubkey`
-            // carries the authenticated Nostr pubkey when the WebSocket
-            // upgrade carried NIP-98; anonymous callers see every private
-            // node as opaque.
-            let private_opaque_ids = crate::actors::client_coordinator_actor::compute_private_opaque_ids(
+            // ADR-061 §D3: privacy is enforced by DROPPING positions for
+            // private nodes the caller is not the owner of. The wire no
+            // longer carries an opacification flag bit.
+            let private_hidden_ids = crate::actors::client_coordinator_actor::compute_private_opaque_ids(
                 &nta,
                 _act.pubkey.as_deref(),
             );
-            // ADR-060 (Phase 4 of ADR-059) — opt-in stricter filter that
-            // drops private-of-others entirely rather than opacifying.
-            // Default opacify (ADR-050 bit-29). Fail-closed: anonymous +
-            // flag enabled ⇒ public-only graph.
-            let drop_filter_enabled = std::env::var("PUBKEY_VISIBILITY_FILTER")
-                .map(|v| v == "true" || v == "1")
-                .unwrap_or(false);
-            let nodes_to_send: Vec<_> = if drop_filter_enabled {
-                all_nodes
-                    .iter()
-                    .filter(|(id, _)| !private_opaque_ids.contains(id))
-                    .cloned()
-                    .collect()
-            } else {
-                all_nodes.clone()
-            };
-            let binary_data = binary_protocol::encode_node_data_with_live_analytics_and_privacy(
-                &nodes_to_send,
-                analytics_ref,
-                Some(&private_opaque_ids),
-            );
+            let nodes_to_send: Vec<_> = all_nodes
+                .iter()
+                .filter(|(id, _)| !private_hidden_ids.contains(id))
+                .cloned()
+                .collect();
+            // Out-of-band snapshot path: not part of the broadcast-sequence
+            // ack chain, so seq=0.
+            let binary_data = binary_protocol::encode_position_frame(&nodes_to_send, 0);
             ctx.binary(binary_data);
-            if drop_filter_enabled && nodes_to_send.len() != all_nodes.len() {
+            if nodes_to_send.len() != all_nodes.len() {
                 debug!(
-                    "Sent position snapshot with {} nodes ({} dropped by PUBKEY_VISIBILITY_FILTER)",
+                    "Sent position snapshot with {} nodes ({} dropped, owner not the caller)",
                     nodes_to_send.len(),
                     all_nodes.len() - nodes_to_send.len()
                 );
@@ -416,12 +357,12 @@ pub(crate) fn handle_request_bots_positions(
 
             let mut nodes_data = Vec::new();
             for node in bots_nodes {
-                // Node IDs are already compact from source remapping
+                // Node IDs are already compact from source remapping.
+                // Per ADR-061: raw u32 id on wire — node-type classification
+                // (agent/knowledge/etc.) rides JSON init, not flag bits.
                 let compact_id = node.id;
-                // Flag bots/agent nodes so the client renders them in AgentNodesLayer
-                let flagged_id = binary_protocol::set_agent_flag(compact_id);
                 let node_data = BinaryNodeData {
-                    node_id: flagged_id,
+                    node_id: compact_id,
                     x: node.data.x,
                     y: node.data.y,
                     z: node.data.z,
@@ -429,26 +370,16 @@ pub(crate) fn handle_request_bots_positions(
                     vy: node.data.vy,
                     vz: node.data.vz,
                 };
-                nodes_data.push((flagged_id, node_data));
+                nodes_data.push((compact_id, node_data));
             }
 
             nodes_data
         })
         .map(|nodes_data, _act, ctx| {
             if !nodes_data.is_empty() {
-                let analytics = _act.app_state.node_analytics.read().ok();
-                let analytics_ref = analytics.as_deref();
-                // ADR-050 (H2): bots-positions is agent-only. Agents carry no
-                // sovereign-private state today, so the set is always empty —
-                // pass an explicit empty set rather than `None` to make the
-                // privacy contract visible at the call site.
-                let private_opaque_ids: std::collections::HashSet<u32> =
-                    std::collections::HashSet::new();
-                let binary_data = binary_protocol::encode_node_data_with_live_analytics_and_privacy(
-                    &nodes_data,
-                    analytics_ref,
-                    Some(&private_opaque_ids),
-                );
+                // Bots-positions is agent-only — no sovereign-private state.
+                // Out-of-band path: seq=0.
+                let binary_data = binary_protocol::encode_position_frame(&nodes_data, 0);
 
                 // hot-path: trace only (fires per bots position update cycle)
                 trace!(
@@ -533,16 +464,15 @@ pub(crate) fn handle_subscribe_position_updates(
     // payload so the client can align its own heartbeat cadence.
     let _update_interval = std::time::Duration::from_millis(actual_interval);
 
+    // Per ADR-061 §D5: `min_interval_ms` and `requests_per_minute` removed
+    // from the subscription_confirmed payload (zero client consumers per
+    // audit). Server still honours the rate-limited cadence internally.
     let response = serde_json::json!({
         "type": "subscription_confirmed",
         "subscription": "position_updates",
         "interval": actual_interval,
         "binary": binary,
         "timestamp": chrono::Utc::now().timestamp_millis(),
-        "rate_limit": {
-            "requests_per_minute": EndpointRateLimits::socket_flow_updates().requests_per_minute,
-            "min_interval_ms": min_allowed_interval
-        }
     });
     if let Ok(msg_str) = serde_json::to_string(&response) {
         ctx.text(msg_str);
@@ -590,15 +520,15 @@ pub(crate) fn handle_request_swarm_telemetry(
                         total_workload += agent.workload;
 
                         let id = (1000 + idx) as u32;
-                        // Flag swarm telemetry nodes as agents for client-side rendering
-                        let flagged_id = binary_protocol::set_agent_flag(id);
+                        // Per ADR-061: raw u32 id on wire. Node-type
+                        // classification rides JSON init, not flag bits.
                         let node_data = BinaryNodeData {
-                            node_id: flagged_id,
+                            node_id: id,
                             x: (idx as f32 * 100.0).sin() * 500.0,
                             y: (idx as f32 * 100.0).cos() * 500.0,
                             z: 0.0, vx: 0.0, vy: 0.0, vz: 0.0,
                         };
-                        nodes_data.push((flagged_id, node_data));
+                        nodes_data.push((id, node_data));
                     }
 
                     let n = agents.len() as f32;
@@ -618,18 +548,9 @@ pub(crate) fn handle_request_swarm_telemetry(
         })
         .map(|(nodes_data, swarm_metrics), _act, ctx| {
             if !nodes_data.is_empty() {
-                let analytics = _act.app_state.node_analytics.read().ok();
-                let analytics_ref = analytics.as_deref();
-                // ADR-050 (H2): swarm-telemetry is agent-only; no
-                // sovereign-private state. Pass an explicit empty set so
-                // the `_with_privacy` path is uniform across call sites.
-                let private_opaque_ids: std::collections::HashSet<u32> =
-                    std::collections::HashSet::new();
-                let binary_data = binary_protocol::encode_node_data_with_live_analytics_and_privacy(
-                    &nodes_data,
-                    analytics_ref,
-                    Some(&private_opaque_ids),
-                );
+                // Swarm-telemetry is agent-only — no sovereign-private state.
+                // Out-of-band path: seq=0.
+                let binary_data = binary_protocol::encode_position_frame(&nodes_data, 0);
                 ctx.binary(binary_data);
             }
 
@@ -916,33 +837,33 @@ pub(crate) fn handle_node_drag_update(
 
             if !node_data.is_empty() {
                 use crate::actors::messages::BroadcastNodePositions;
-                let analytics = app_state.node_analytics.read().ok();
-                let analytics_ref = analytics.as_deref();
-                // ADR-050 (H2): drag broadcasts reach every connected client
-                // through `broadcast_to_all` (no per-client re-serialisation),
-                // so every private node is opaque to every receiver — the
-                // caller-filter can't differentiate here. Pass caller=None.
+                // Per ADR-061 §D3: drag broadcasts reach every connected
+                // client through `broadcast_to_all` (no per-client identity),
+                // so every private node is dropped from the frame for all
+                // receivers. Pass caller=None to compute the full hidden set.
                 let nta = app_state
                     .graph_service_addr
                     .send(GetNodeTypeArrays)
                     .await
                     .unwrap_or_default();
-                let private_opaque_ids =
+                let private_hidden_ids =
                     crate::actors::client_coordinator_actor::compute_private_opaque_ids(&nta, None);
-                let binary_data = binary_protocol::encode_node_data_with_live_analytics_and_privacy(
-                    &node_data,
-                    analytics_ref,
-                    Some(&private_opaque_ids),
-                );
+                let visible: Vec<(u32, BinaryNodeData)> = node_data
+                    .into_iter()
+                    .filter(|(id, _)| !private_hidden_ids.contains(id))
+                    .collect();
+                // Out-of-band drag broadcast: seq=0 (not part of the
+                // physics-tick ack chain).
+                let binary_data = binary_protocol::encode_position_frame(&visible, 0);
                 client_manager_addr.do_send(BroadcastNodePositions { positions: binary_data });
             }
         }
     };
 
     ctx.spawn(actix::fut::wrap_future::<_, SocketFlowServer>(fut).map(|_, act, _ctx| {
-        // Fix: drag broadcast bypasses delta state -- clear delta_previous_nodes so
-        // the next subscription-tick broadcast computes a full V3 frame, re-syncing
-        // all clients that received the out-of-band drag broadcast.
+        // Drag broadcast bypasses delta state — clear delta_previous_nodes so
+        // the next subscription-tick broadcast computes a full frame,
+        // re-syncing all clients that received the out-of-band drag broadcast.
         act.delta_previous_nodes.clear();
         act.delta_frame_counter = 0;
     }));
@@ -1057,32 +978,30 @@ pub(crate) fn handle_node_drag_end(
 
             if !node_data.is_empty() {
                 use crate::actors::messages::BroadcastNodePositions;
-                let analytics = app_state.node_analytics.read().ok();
-                let analytics_ref = analytics.as_deref();
-                // ADR-050 (H2): drag-end also fans out to everyone via
+                // Per ADR-061 §D3: drag-end also fans out via
                 // `broadcast_to_all`. Pass caller=None so every private
-                // node is opacified for all receivers.
+                // node is dropped from the frame for all receivers.
                 let nta = app_state
                     .graph_service_addr
                     .send(GetNodeTypeArrays)
                     .await
                     .unwrap_or_default();
-                let private_opaque_ids =
+                let private_hidden_ids =
                     crate::actors::client_coordinator_actor::compute_private_opaque_ids(&nta, None);
-                let binary_data = binary_protocol::encode_node_data_with_live_analytics_and_privacy(
-                    &node_data,
-                    analytics_ref,
-                    Some(&private_opaque_ids),
-                );
+                let visible: Vec<(u32, BinaryNodeData)> = node_data
+                    .into_iter()
+                    .filter(|(id, _)| !private_hidden_ids.contains(id))
+                    .collect();
+                let binary_data = binary_protocol::encode_position_frame(&visible, 0);
                 client_manager_addr.do_send(BroadcastNodePositions { positions: binary_data });
             }
         }
     };
 
     ctx.spawn(actix::fut::wrap_future::<_, SocketFlowServer>(fut).map(|_, act, _ctx| {
-        // Fix: drag broadcast bypasses delta state -- clear delta_previous_nodes so
-        // the next subscription-tick broadcast computes a full V3 frame, re-syncing
-        // all clients that received the out-of-band drag broadcast.
+        // Drag broadcast bypasses delta state — clear delta_previous_nodes so
+        // the next subscription-tick broadcast computes a full frame,
+        // re-syncing all clients that received the out-of-band drag broadcast.
         act.delta_previous_nodes.clear();
         act.delta_frame_counter = 0;
     }));

@@ -68,8 +68,8 @@ struct KindEntry {
 const GRAMMAR_HINT: &str =
     "URN forms: urn:visionclaw:concept:<domain>:<slug> | \
      urn:visionclaw:group:<team>#members | \
-     urn:visionclaw:kg:<npub>:<sha256-12-hex> | \
-     urn:visionclaw:bead:<npub>:<sha256-12-hex> | \
+     urn:visionclaw:kg:<hex-pubkey>:<sha256-12-hex> | \
+     urn:visionclaw:bead:<hex-pubkey>:<sha256-12-hex> | \
      urn:visionclaw:execution:<sha256-12-hex> | \
      did:nostr:<64-hex>. \
      CURIE: vc:<domain>/<slug>.";
@@ -99,14 +99,14 @@ async fn describe() -> impl Responder {
             },
             KindEntry {
                 kind: "kg",
-                urn_template: "urn:visionclaw:kg:<npub>:<sha256-12-hex>",
+                urn_template: "urn:visionclaw:kg:<hex-pubkey>:<sha256-12-hex>",
                 curie_template: None,
                 resolvable: true,
                 notes: "R1+R2. Owner-scoped, content-addressed.",
             },
             KindEntry {
                 kind: "bead",
-                urn_template: "urn:visionclaw:bead:<npub>:<sha256-12-hex>",
+                urn_template: "urn:visionclaw:bead:<hex-pubkey>:<sha256-12-hex>",
                 curie_template: None,
                 resolvable: false,
                 notes: "Federates to agentbox. 404 with federation-hop hint until BC20 lands.",

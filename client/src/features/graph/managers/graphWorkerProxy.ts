@@ -362,8 +362,15 @@ class GraphWorkerProxy {
   }
 
   /**
-   * Return per-node analytics data from binary protocol V3.
-   * Layout: Float32Array of [clusterId, anomalyScore, communityId] per node.
+   * Return per-node client-fallback analytics (degree-based anomaly scoring +
+   * Louvain community detection) computed by the worker. Layout: Float32Array
+   * of [clusterId, anomalyScore, communityId] per node, indexed by node order
+   * in graphData.nodes.
+   *
+   * NOTE (ADR-061): server-emitted analytics now ride the `analytics_update`
+   * side stream into useAnalyticsStore — this method is retained only for the
+   * worker's degree-based fallback when the server has not (yet) emitted any
+   * cluster/community/anomaly data.
    */
   public async getAnalyticsBuffer(): Promise<Float32Array> {
     if (!this.workerApi) {

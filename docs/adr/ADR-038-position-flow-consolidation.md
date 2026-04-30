@@ -1,19 +1,24 @@
 # ADR-038: Position Data Flow Consolidation
 
+> **Wire-format clauses updated by [ADR-061](ADR-061-binary-protocol-unification.md) (2026-04-30)** —
+> the push-path consolidation decision in this ADR remains in effect. The wire-format
+> language below (legacy V3/V5 frame names and versioning vocabulary) is historical;
+> the current spec is one binary protocol with no versioning. See
+> [docs/binary-protocol.md](../binary-protocol.md).
+
 ## Status
 
-Implemented 2026-04-20 (dead poll block removed from position_updates.rs; push path canonical)
-
-Proposed
+Implemented 2026-04-20 (dead poll block removed from position_updates.rs; push path canonical).
+Wire-format clauses superseded by ADR-061 (2026-04-30); push-path consolidation still active.
 
 ## Date
 
 2026-04-14
 
-## Context
+## Context (historical, pre-ADR-061)
 
-VisionFlow has 7 server-side position delivery paths. The overlap causes duplicate
-frames on the same WebSocket connection with conflicting protocol versions:
+VisionFlow had 7 server-side position delivery paths. The overlap caused duplicate
+frames on the same WebSocket connection with conflicting wire-format encodings:
 
 1. **Push path**: `ForceComputeActor` -> `GraphServiceSupervisor` ->
    `PhysicsOrchestratorActor` -> `ClientCoordinatorActor` -> WebSocket V5 frames.

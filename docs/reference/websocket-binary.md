@@ -1,14 +1,23 @@
 ---
 title: VisionClaw WebSocket Binary Protocol
-description: Complete specification for VisionClaw's binary WebSocket protocol (V2/V3/V4), covering message formats, connection lifecycle, and client implementation
+description: Historical reference — the unified spec is docs/binary-protocol.md (ADR-061)
 category: reference
 tags: [websocket, binary, protocol, real-time]
-updated-date: 2026-04-18
+updated-date: 2026-04-30
 ---
 
 # VisionClaw WebSocket Binary Protocol
 
+> **Superseded by [ADR-061](../adr/ADR-061-binary-protocol-unification.md) (2026-04-30).**
+> The current single-source spec is **[docs/binary-protocol.md](../binary-protocol.md)**.
+> One binary protocol, no versions, 24 bytes/node fixed.
+>
+> The historical V2/V3/V4/V5 content below is preserved for archaeological reference.
+> Do not implement against it.
+
 ---
+
+## Historical context
 
 ## CRITICAL: V1 JSON Protocol is Dead
 
@@ -59,7 +68,7 @@ The server also exposes:
 2. Analytics fields requested → V3 per-node fields included in V5 frame
 3. Delta encoding enabled → V4 (experimental, not recommended — see WS-001)
 
-The server encodes the protocol version as the first byte of every binary frame. Clients must read byte 0 before parsing the payload.
+Historically, the server encoded a one-byte version field as the first byte of every binary frame. *(post-ADR-061: replaced by a fixed 0x42 preamble; not a version dispatch — see [docs/binary-protocol.md](../binary-protocol.md).)*
 
 ---
 
@@ -525,7 +534,7 @@ Bytes 21-24: Capabilities bitmask (u32)
 Byte 25:     Platform (0=WebXR, 1=Meta Quest, 2=Apple Vision Pro, 3=SteamVR, 4=Desktop)
 ```
 
-**Server → Client (WELCOME)**: session UUID, world UUID, protocol version, server capabilities, gzip-compressed state snapshot.
+**Server → Client (WELCOME)**: session UUID, world UUID, XR handshake version, server capabilities, gzip-compressed state snapshot.
 
 ---
 

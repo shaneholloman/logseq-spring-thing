@@ -64,8 +64,12 @@ describe('NostrAuthService', () => {
       removeItem: vi.fn((key: string) => { delete mockLocalStorage[key]; }),
     });
 
-    // Mock import.meta.env
-    vi.stubGlobal('import', { meta: { env: { DEV: false } } });
+    // Disable dev-mode auto-login for these tests. `vi.stubGlobal('import', ...)`
+    // does NOT actually replace `import.meta.env` (Vite resolves that at the
+    // import-meta level, not via a global named `import`). Use `vi.stubEnv`
+    // which patches `import.meta.env` for the duration of the test.
+    vi.stubEnv('DEV', '');
+    vi.stubEnv('VITE_DEV_MODE_AUTH', 'false');
 
     // Mock crypto.subtle for signRequest
     vi.stubGlobal('crypto', {
@@ -332,16 +336,30 @@ describe('NostrAuthService', () => {
       expect(nostrAuth.getCurrentUser()?.pubkey).toBe(pubkey);
     });
 
-    it('should store pubkey in sessionStorage but not private key', async () => {
+    it('persists user via localStorage and never writes the private key to any storage', async () => {
+      // Privacy contract (nostrAuthService.ts:10-11): the passkey-derived
+      // private key is held in memory only — it MUST NOT be written to
+      // sessionStorage or localStorage. The pubkey rides the cached user
+      // object in localStorage.
       const pubkey = 'd'.repeat(64);
       const privkey = new Uint8Array(32).fill(0x01);
       mockNpubEncode.mockReturnValue('npub1pk');
 
       await nostrAuth.loginWithPasskey(pubkey, privkey);
 
-      expect(sessionStorage.setItem).toHaveBeenCalledWith('nostr_passkey_pubkey', pubkey);
-      // private key should NOT be stored in sessionStorage
-      expect(sessionStorage.setItem).not.toHaveBeenCalledWith('nostr_passkey_key', expect.anything());
+      // The cached user (which contains the pubkey) lands in localStorage.
+      expect(localStorage.setItem).toHaveBeenCalledWith(
+        'nostr_user',
+        expect.stringContaining(pubkey),
+      );
+
+      // Critically: the private key is NEVER stored in either storage.
+      const allSessionWrites = (sessionStorage.setItem as ReturnType<typeof vi.fn>).mock.calls;
+      const allLocalWrites = (localStorage.setItem as ReturnType<typeof vi.fn>).mock.calls;
+      const privKeyHex = Array.from(privkey).map((b) => b.toString(16).padStart(2, '0')).join('');
+      for (const [, value] of [...allSessionWrites, ...allLocalWrites]) {
+        expect(String(value)).not.toContain(privKeyHex);
+      }
     });
   });
 
@@ -360,8 +378,12 @@ describe('NostrAuthService', () => {
       expect(nostrAuth.hasPasskeySession()).toBe(true);
     });
 
-    it('should return true if legacy sessionStorage key exists', () => {
-      mockSessionStorage['nostr_passkey_key'] = 'aa'.repeat(32);
+    it('should return true after setLocalKey populates the in-memory key', () => {
+      // Privacy refactor (nostrAuthService.ts:10-11) removed the legacy
+      // sessionStorage migration. `hasPasskeySession()` now reflects the
+      // in-memory key only — `setLocalKey` is the supported API.
+      const hex = 'aa'.repeat(32);
+      setLocalKey(hex);
       expect(nostrAuth.hasPasskeySession()).toBe(true);
     });
   });
@@ -369,26 +391,27 @@ describe('NostrAuthService', () => {
   // --- restorePasskeySession ---
 
   describe('restorePasskeySession', () => {
-    it('should restore from legacy sessionStorage and remove it', () => {
+    it('restores the in-memory key + sessionStorage pubkey when both align', () => {
+      // Post-privacy-refactor: restore only fires when the in-memory key is
+      // available (set via `setLocalKey`). The pubkey still rides
+      // `nostr_passkey_pubkey` for cross-tab handoff during a single session.
       const hexKey = 'ab'.repeat(32);
       const pubkey = 'f'.repeat(64);
-      mockSessionStorage['nostr_passkey_key'] = hexKey;
+      setLocalKey(hexKey);
       mockSessionStorage['nostr_passkey_pubkey'] = pubkey;
       mockGetPublicKey.mockReturnValue(pubkey);
       mockNpubEncode.mockReturnValue('npub1restored');
 
       nostrAuth.restorePasskeySession();
 
-      // Legacy key should be removed
-      expect(sessionStorage.removeItem).toHaveBeenCalledWith('nostr_passkey_key');
-      // User should be set
+      // User should be set from the matched in-memory + sessionStorage pair.
       expect(nostrAuth.getCurrentUser()?.pubkey).toBe(pubkey);
     });
 
     it('should clear session on pubkey mismatch', () => {
       const hexKey = 'cd'.repeat(32);
       const pubkey = '0'.repeat(64);
-      mockSessionStorage['nostr_passkey_key'] = hexKey;
+      setLocalKey(hexKey);
       mockSessionStorage['nostr_passkey_pubkey'] = pubkey;
       mockGetPublicKey.mockReturnValue('1'.repeat(64)); // different pubkey
 

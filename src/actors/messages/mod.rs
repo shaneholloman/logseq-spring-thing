@@ -85,13 +85,15 @@ pub use client_messages::{
     AuthenticateClient, BroadcastMessage, BroadcastNodePositions, BroadcastPositions,
     ClientBroadcastAck, ForcePositionBroadcast, GetClientCount, InitialClientSync,
     RegisterClient, SendInitialGraphLoad, SendPositionUpdate, SendToClientBinary,
-    SendToClientText, SetGraphServiceAddress, UnregisterClient, UpdateClientFilter,
+    SendToClientText, SetClientCoordinatorAddr, SetGraphServiceAddress, UnregisterClient,
+    UpdateClientFilter,
 };
 
 // --- analytics_messages ---
 pub use analytics_messages::{
-    AnomalyDetectionMethod, AnomalyDetectionParams, AnomalyDetectionStats, AnomalyMethod,
-    AnomalyParams, AnomalyResult, ClearPageRankCache, CommunityDetectionAlgorithm,
+    AnalyticsEntry, AnalyticsSource, AnomalyDetectionMethod, AnomalyDetectionParams,
+    AnomalyDetectionStats, AnomalyMethod, AnomalyParams, AnomalyResult,
+    BroadcastAnalyticsUpdate, ClearPageRankCache, CommunityDetectionAlgorithm,
     CommunityDetectionParams, CommunityDetectionResult, ComputeAllPairsShortestPaths,
     ComputePageRank, ComputeSSSP, ComputeShortestPaths, DBSCANParams, DBSCANResult,
     DBSCANStats, ExportClusterAssignments, GetClusteringResults, GetClusteringStatus,

@@ -377,19 +377,22 @@ ws.onmessage = (event: MessageEvent) => {
     return
   }
 
-  // Binary frame — V2 protocol: 1 version byte + 36 bytes/node
+  // Binary frame — single binary protocol: 1 preamble byte (0x42) + 8-byte LE
+  // broadcast_sequence + 24 bytes/node. See docs/binary-protocol.md.
   const buffer = event.data as ArrayBuffer
   const view   = new DataView(buffer)
-  const version = view.getUint8(0)
+  const preamble = view.getUint8(0)
 
-  if (version !== 2) {
-    console.warn(`Unexpected WS protocol version: ${version}`)
+  if (preamble !== 0x42) {
+    console.warn(`Unexpected WS binary preamble: 0x${preamble.toString(16)}`)
     return
   }
 
-  const nodeCount = (buffer.byteLength - 1) / 36
+  const HEADER_SIZE = 9   // 1 preamble + 8 broadcast_sequence
+  const NODE_SIZE   = 24  // u32 id + 6 × f32 (pos+vel)
+  const nodeCount = (buffer.byteLength - HEADER_SIZE) / NODE_SIZE
   for (let i = 0; i < nodeCount; i++) {
-    const offset = 1 + i * 36
+    const offset = HEADER_SIZE + i * NODE_SIZE
     const nodeId = view.getUint32(offset,      true)
     const x      = view.getFloat32(offset + 4,  true)
     const y      = view.getFloat32(offset + 8,  true)
@@ -402,7 +405,7 @@ ws.onmessage = (event: MessageEvent) => {
 setInterval(() => ws.send(JSON.stringify({ type: 'heartbeat' })), 25_000)
 ```
 
-The server sends V2 binary frames by default. V3 (48 bytes/node, includes analytics fields) and experimental V4 delta frames are also available — the first byte of every binary frame identifies the version.
+The server emits one binary protocol — there are no versions. The preamble byte (0x42) is a fixed sanity check, not a version dispatch. Sticky GPU outputs (`cluster_id`, `community_id`, `anomaly_score`, `sssp_distance`, `sssp_parent`) ride a separate `analytics_update` JSON message at recompute cadence. See [docs/binary-protocol.md](../binary-protocol.md) and [ADR-061](../adr/ADR-061-binary-protocol-unification.md).
 
 ---
 

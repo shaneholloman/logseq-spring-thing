@@ -55,7 +55,6 @@ class WebSocketServiceCompat {
   unsubscribeSolidResource = (url: string) => useWebSocketStore.getState().unsubscribeSolidResource(url);
   isSolidWebSocketConnected = () => useWebSocketStore.getState().isSolidWebSocketConnected();
   getSolidSubscriptions = () => useWebSocketStore.getState().getSolidSubscriptions();
-  getNodeTypeMap = () => useWebSocketStore.getState().getNodeTypeMap();
   isReady = () => useWebSocketStore.getState().isReady();
   getConnectionState = () => useWebSocketStore.getState().getConnectionState();
   getQueuedMessageCount = () => useWebSocketStore.getState().getQueuedMessageCount();

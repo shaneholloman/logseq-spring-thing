@@ -21,8 +21,8 @@ use crate::uri::kinds::ParsedUri;
 /// Accepts:
 ///   - `urn:visionclaw:concept:<domain>:<slug>`
 ///   - `urn:visionclaw:group:<team>#members`
-///   - `urn:visionclaw:kg:<npub>:<sha256-12-hex>`
-///   - `urn:visionclaw:bead:<npub>:<sha256-12-hex>`
+///   - `urn:visionclaw:kg:<hex-pubkey>:<sha256-12-hex>`
+///   - `urn:visionclaw:bead:<hex-pubkey>:<sha256-12-hex>`
 ///   - `urn:visionclaw:execution:<sha256-12-hex>`
 ///   - `did:nostr:<64-hex>`
 ///   - `vc:<domain>/<slug>` (CURIE; resolves to `Concept`)
@@ -79,11 +79,11 @@ pub fn to_curie(parsed: &ParsedUri) -> String {
     match parsed {
         ParsedUri::Concept { domain, slug } => format!("vc:{}/{}", domain, slug),
         ParsedUri::Group { team } => format!("urn:visionclaw:group:{}#members", team),
-        ParsedUri::OwnedKg { npub, hash12, .. } => {
-            format!("urn:visionclaw:kg:{}:{}", npub, hash12)
+        ParsedUri::OwnedKg { pubkey_hex, hash12 } => {
+            format!("urn:visionclaw:kg:{}:{}", pubkey_hex, hash12)
         }
-        ParsedUri::Bead { npub, hash12, .. } => {
-            format!("urn:visionclaw:bead:{}:{}", npub, hash12)
+        ParsedUri::Bead { pubkey_hex, hash12 } => {
+            format!("urn:visionclaw:bead:{}:{}", pubkey_hex, hash12)
         }
         ParsedUri::AgentExecution { hash12 } => {
             format!("urn:visionclaw:execution:{}", hash12)
@@ -159,27 +159,20 @@ fn parse_group(body: &str) -> Result<ParsedUri, UriError> {
 }
 
 fn parse_owned(body: &str, is_bead: bool) -> Result<ParsedUri, UriError> {
-    let (npub, hash12) = body
+    let (scope, hash12) = body
         .split_once(':')
         .ok_or_else(|| UriError::ParseFailed(format!("owned URN missing hash: {}", body)))?;
     validate_hash12(hash12)?;
-    if !npub.starts_with("npub1") {
-        return Err(UriError::ParseFailed(format!(
-            "owned URN scope segment is not an npub: {}",
-            npub
-        )));
-    }
-    let pubkey_hex = decode_npub(npub)?;
+    validate_hex64(scope)?;
+    let pubkey_hex = scope.to_lowercase();
     let parsed = if is_bead {
         ParsedUri::Bead {
             pubkey_hex,
-            npub: npub.to_string(),
             hash12: hash12.to_string(),
         }
     } else {
         ParsedUri::OwnedKg {
             pubkey_hex,
-            npub: npub.to_string(),
             hash12: hash12.to_string(),
         }
     };

@@ -17,12 +17,12 @@ pub enum Kind {
     Concept,
     /// `urn:visionclaw:group:<team>#members` — R3.
     Group,
-    /// `urn:visionclaw:kg:<npub>:<sha256-12-hex>` — R1 + R2.
+    /// `urn:visionclaw:kg:<hex-pubkey>:<sha256-12-hex>` — R1 + R2.
     /// 12-hex form is the API alias; the canonical_iri column carries the
     /// legacy `visionclaw:owner:<npub>/kg/<sha256-64>` form (see ADR-054 +
     /// `legacy::canonical_iri_npub`).
     OwnedKg,
-    /// `urn:visionclaw:bead:<npub>:<sha256-12-hex>` — R1 + R2.
+    /// `urn:visionclaw:bead:<hex-pubkey>:<sha256-12-hex>` — R1 + R2.
     Bead,
     /// `urn:visionclaw:execution:<sha256-12-hex>` — R1.
     AgentExecution,
@@ -44,17 +44,13 @@ pub enum ParsedUri {
         team: String,
     },
     OwnedKg {
-        /// 64-char lowercase hex (the substrate-internal pubkey form).
+        /// 64-char lowercase hex (BIP-340 x-only pubkey).
         pubkey_hex: String,
-        /// `npub1...` rendering — duplicates information in `pubkey_hex`
-        /// but is what appears on the wire so we keep both.
-        npub: String,
         /// 12-char lowercase hex (the API alias hash).
         hash12: String,
     },
     Bead {
         pubkey_hex: String,
-        npub: String,
         hash12: String,
     },
     AgentExecution {

@@ -821,13 +821,13 @@ struct BinaryNodeData {
 - Binary messages can't be inspected in browser DevTools
 - Mitigation: Logging middleware (decode to JSON for debugging), binary inspector tool
 
-**Versioning Complexity:**
-- Adding fields requires protocol version negotiation
-- Mitigation: Reserved flags field (8 bits for future extensions), protocol version handshake
+**Evolution Strategy** (post-[ADR-061](../adr/ADR-061-binary-protocol-unification.md)):
+- The wire format is fixed at 24 bytes/node and is not versioned
+- Mitigation: any future evolution is a new endpoint, not a version negotiation; sticky GPU outputs ride a separate `analytics_update` JSON message
 
 **Limited Flexibility:**
-- Fixed 36-byte format can't encode arbitrary data
-- Mitigation: Separate JSON API for non-position data (node labels, metadata, etc.)
+- Fixed 24-byte/node format can't encode arbitrary data
+- Mitigation: Separate JSON API for non-position data (node labels, metadata, analytics — see [docs/binary-protocol.md](../binary-protocol.md))
 
 ---
 

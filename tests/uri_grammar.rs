@@ -50,7 +50,7 @@ fn mint_owned_kg_same_payload_same_urn() {
     let a = mint_owned_kg(TEST_PUBKEY, b"pages/Note.md").unwrap();
     let b = mint_owned_kg(TEST_PUBKEY, b"pages/Note.md").unwrap();
     assert_eq!(a, b);
-    assert!(a.starts_with("urn:visionclaw:kg:npub1"));
+    assert!(a.starts_with(&format!("urn:visionclaw:kg:{}:", TEST_PUBKEY)));
 }
 
 #[test]
@@ -102,7 +102,7 @@ fn mint_bead_same_payload_same_urn() {
     let a = mint_bead(TEST_PUBKEY, &payload).unwrap();
     let b = mint_bead(TEST_PUBKEY, &payload).unwrap();
     assert_eq!(a, b);
-    assert!(a.starts_with("urn:visionclaw:bead:npub1"));
+    assert!(a.starts_with(&format!("urn:visionclaw:bead:{}:", TEST_PUBKEY)));
 }
 
 #[test]
@@ -259,9 +259,8 @@ fn parse_group_urn_roundtrip() {
 fn parse_owned_kg_urn_roundtrip() {
     let urn = mint_owned_kg(TEST_PUBKEY, b"x").unwrap();
     match parse(&urn).unwrap() {
-        ParsedUri::OwnedKg { pubkey_hex, npub, hash12 } => {
+        ParsedUri::OwnedKg { pubkey_hex, hash12 } => {
             assert_eq!(pubkey_hex, TEST_PUBKEY);
-            assert!(npub.starts_with("npub1"));
             assert!(hash12.starts_with("sha256-12-"));
         }
         other => panic!("expected OwnedKg, got {:?}", other),
@@ -409,25 +408,18 @@ fn parse_rejects_group_missing_members_anchor() {
 }
 
 #[test]
-fn parse_rejects_owned_with_non_npub_scope() {
+fn parse_rejects_owned_with_non_hex_scope() {
     assert!(matches!(
-        parse("urn:visionclaw:kg:not-an-npub:sha256-12-deadbeef0001"),
-        Err(UriError::ParseFailed(_))
+        parse("urn:visionclaw:kg:not-a-hex-pubkey:sha256-12-deadbeef0001"),
+        Err(UriError::InvalidPubkeyHex(_))
     ));
 }
 
 #[test]
 fn parse_rejects_owned_with_bad_hash() {
-    use nostr_sdk::{PublicKey, ToBech32};
-    let pk = PublicKey::from_hex(TEST_PUBKEY).unwrap();
-    let npub = pk.to_bech32().unwrap();
-
-    // Hash too short
-    assert!(parse(&format!("urn:visionclaw:kg:{}:sha256-12-abc", npub)).is_err());
-    // Hash uppercase
-    assert!(parse(&format!("urn:visionclaw:kg:{}:sha256-12-ABCDEF012345", npub)).is_err());
-    // Missing prefix
-    assert!(parse(&format!("urn:visionclaw:kg:{}:abcdef012345", npub)).is_err());
+    assert!(parse(&format!("urn:visionclaw:kg:{}:sha256-12-abc", TEST_PUBKEY)).is_err());
+    assert!(parse(&format!("urn:visionclaw:kg:{}:sha256-12-ABCDEF012345", TEST_PUBKEY)).is_err());
+    assert!(parse(&format!("urn:visionclaw:kg:{}:abcdef012345", TEST_PUBKEY)).is_err());
 }
 
 #[test]

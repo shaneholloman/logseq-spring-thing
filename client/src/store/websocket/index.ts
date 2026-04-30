@@ -13,7 +13,7 @@ import { useSettingsStore } from '../settingsStore';
 import type { WebSocketMessage } from '../../types/websocketTypes';
 import { webSocketRegistry } from '../../services/WebSocketRegistry';
 import { webSocketEventBus } from '../../services/WebSocketEventBus';
-import type { NodeType } from '../../types/binaryProtocol';
+import { useAnalyticsStore } from '../analyticsStore';
 
 // ── Module imports ─────────────────────────────────────────────────────
 import {
@@ -48,7 +48,6 @@ import {
   sendNodePositionUpdates as sendNodePositionUpdatesFn,
   flushPositionUpdates as flushPositionUpdatesFn,
   getPositionQueueMetrics as getPositionQueueMetricsFn,
-  getCurrentNodeTypeMap,
   getPositionBatchQueue,
   resetBinaryState,
 } from './binaryProtocol';
@@ -165,7 +164,6 @@ export const useWebSocketStore = create<WebSocketState>()(
       solidSocket: null,
       isSolidConnected: false,
       solidSubscriptions: new Map(),
-      nodeTypeMap: new Map(),
       messageQueue: [],
       statistics: {
         messagesReceived: 0,
@@ -255,7 +253,7 @@ export const useWebSocketStore = create<WebSocketState>()(
                 _pendingBinaryFrame = null;
                 if (frame) {
                   try {
-                    processBinaryData(frame, get, set);
+                    processBinaryData(frame, get);
                   } catch (err) {
                     logger.error('Error in binary frame processing:', createErrorMetadata(err));
                   }
@@ -598,8 +596,6 @@ export const useWebSocketStore = create<WebSocketState>()(
         return Array.from(get().solidSubscriptions.keys());
       },
 
-      getNodeTypeMap: () => getCurrentNodeTypeMap(),
-
       isReady: () => {
         const state = get();
         return state.isConnected && state.isServerReady;
@@ -621,6 +617,7 @@ export const useWebSocketStore = create<WebSocketState>()(
         resetHandlerState();
         resetBinaryState();
         resetFilterState();
+        useAnalyticsStore.getState().reset();
 
         set({
           socket: null,
@@ -634,7 +631,6 @@ export const useWebSocketStore = create<WebSocketState>()(
           solidSocket: null,
           isSolidConnected: false,
           solidSubscriptions: new Map(),
-          nodeTypeMap: new Map(),
           messageQueue: [],
           statistics: {
             messagesReceived: 0,

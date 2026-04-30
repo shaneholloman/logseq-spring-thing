@@ -123,8 +123,8 @@ The grammars are compatible in principle and the content-addressing convention a
 pub enum Kind {
     Concept,            // urn:visionclaw:concept:<domain>:<slug>      (R3 stable)
     Group,              // urn:visionclaw:group:<team>#members          (R3 stable)
-    OwnedKgNode,        // urn:visionclaw:kg:<npub>:<sha256-12-hex>     (R1+R2 content+scope)
-    Bead,               // urn:visionclaw:bead:<npub>:<sha256-12-hex>   (R1+R2)
+    OwnedKgNode,        // urn:visionclaw:kg:<hex-pubkey>:<sha256-12-hex> (R1+R2 content+scope)
+    Bead,               // urn:visionclaw:bead:<hex-pubkey>:<sha256-12-hex> (R1+R2)
     AgentExecution,     // urn:visionclaw:execution:<sha256-12-hex>     (R1)
     Did,                // did:nostr:<pubkey-hex>
 }

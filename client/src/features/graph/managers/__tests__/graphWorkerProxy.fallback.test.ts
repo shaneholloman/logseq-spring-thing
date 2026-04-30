@@ -85,8 +85,13 @@ describe('GraphWorkerProxy — SharedArrayBuffer fallback (BUG #2 regression)', 
     };
 
     // Replace global Worker so the proxy's `new Worker(...)` returns our fake.
+    // `vi.fn().mockImplementation(() => fakeWorker)` is NOT a constructor;
+    // `new` on it throws "is not a constructor". Use a real class whose
+    // constructor returns the fake so `new Worker(url, opts)` works.
     // @ts-ignore
-    globalThis.Worker = vi.fn().mockImplementation(() => fakeWorker) as any;
+    globalThis.Worker = class FakeWorkerCtor {
+      constructor() { return fakeWorker; }
+    } as any;
 
     // Fresh import after globals are stubbed.
     const mod = await import('../graphWorkerProxy');

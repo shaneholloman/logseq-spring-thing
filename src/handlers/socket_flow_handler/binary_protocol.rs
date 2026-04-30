@@ -78,9 +78,9 @@ impl SocketFlowServer {
             }
         }
 
-        // Fall back to legacy binary node data protocol
-        match binary_protocol::decode_node_data(data) {
-            Ok(nodes) => {
+        // Fall back to the binary protocol position frame.
+        match binary_protocol::decode_position_frame(data) {
+            Ok((_seq, nodes)) => {
                 info!("Decoded {} nodes from binary message", nodes.len());
                 let _nodes_vec: Vec<_> = nodes.clone().into_iter().collect();
 

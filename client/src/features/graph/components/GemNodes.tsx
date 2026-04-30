@@ -11,7 +11,7 @@ import type { GemMaterialSettings, GraphTypeVisualsSettings, QualityGatesSetting
 import type { Edge } from '../managers/graphDataManager';
 import type { ThreeEvent } from '@react-three/fiber';
 import { createLogger } from '../../../utils/loggerConfig';
-import { graphWorkerProxy } from '../managers/graphWorkerProxy';
+import { useAnalyticsStore } from '../../../store/analyticsStore';
 
 const logger = createLogger('GemNodes');
 import { computeNodeScale } from '../utils/nodeScaling';
@@ -124,9 +124,10 @@ const GemNodesInner: React.ForwardRefRenderFunction<GemNodesHandle, GemNodesProp
 
   // Quality gate toggles for cluster/anomaly/community coloring
   const qualityGates = useSettingsStore(s => s.get<QualityGatesSettings>('qualityGates'));
-  // Per-node analytics data from binary protocol V3 (refreshed periodically)
-  const analyticsRef = useRef<Float32Array | null>(null);
-  const analyticsFrameRef = useRef(0);
+  // ADR-061: per-node analytics (cluster_id, community_id, anomaly_score) ride
+  // the analytics_update side stream and live in useAnalyticsStore. Read once
+  // per render via Zustand subscription — no per-frame Comlink fetch.
+  const analyticsByNodeId = useAnalyticsStore(s => s.byNodeId);
 
   // Allocate instance buffer at next-power-of-2 of node count (minimum 4096).
   // Recreate when visual mode changes OR nodes exceed current capacity.
@@ -228,15 +229,16 @@ const GemNodesInner: React.ForwardRefRenderFunction<GemNodesHandle, GemNodesProp
     }
   }, [dominant, mesh, nodes.length]);
 
-  const computeColor = useCallback((node: KGNode, mode: GraphVisualMode, nodeIndex?: number): THREE.Color => {
+  const computeColor = useCallback((node: KGNode, mode: GraphVisualMode, _nodeIndex?: number): THREE.Color => {
     // Quality gate overrides: color-code by cluster/anomaly/community when enabled.
     // These take precedence over standard mode coloring (but not SSSP highlight).
-    const analytics = analyticsRef.current;
-    if (analytics && nodeIndex !== undefined && nodeIndex * 3 + 2 < analytics.length) {
-      const a3 = nodeIndex * 3;
-      const clusterId = analytics[a3];
-      const anomalyScore = analytics[a3 + 1];
-      const communityId = analytics[a3 + 2];
+    // ADR-061: read from analytics store keyed by raw u32 node id.
+    const numericId = Number(node.id);
+    const row = Number.isFinite(numericId) ? analyticsByNodeId.get(numericId) : undefined;
+    if (row) {
+      const anomalyScore = row.anomaly_score ?? 0;
+      const clusterId = row.cluster_id ?? 0;
+      const communityId = row.community_id ?? 0;
 
       // Anomaly highlighting: red intensity proportional to anomalyScore (0-1)
       if (qualityGates?.showAnomalies && anomalyScore > 0.01) {
@@ -280,7 +282,7 @@ const GemNodesInner: React.ForwardRefRenderFunction<GemNodesHandle, GemNodesProp
     const lit = 0.45 + auth * 0.2;
     _col.setHSL(hue, Math.min(sat, 0.9), Math.min(lit, 0.75));
     return _col;
-  }, [ssspResult, hierarchyMap, connectionCountMap, qualityGates]);
+  }, [ssspResult, hierarchyMap, connectionCountMap, qualityGates, analyticsByNodeId]);
 
   // Progressive reveal: ramp up visible instance count over frames so nodes
   // appear in waves (~120 nodes/frame at 60fps → full 1090 in ~0.15s).
@@ -320,15 +322,9 @@ const GemNodesInner: React.ForwardRefRenderFunction<GemNodesHandle, GemNodesProp
     const positions = nodePositionsRef.current;
     frameCountRef.current++;
 
-    // Refresh per-node analytics from worker every ~30 frames (~0.5s at 60fps)
-    // to avoid Comlink overhead on every frame.
-    analyticsFrameRef.current++;
-    if (analyticsFrameRef.current % 30 === 1 &&
-        (qualityGates?.showClusters || qualityGates?.showAnomalies || qualityGates?.showCommunities)) {
-      graphWorkerProxy.getAnalyticsBuffer().then(buf => {
-        analyticsRef.current = buf.length > 0 ? buf : null;
-      }).catch(() => { /* ignore worker errors */ });
-    }
+    // ADR-061: analytics rides the analytics_update side stream into
+    // useAnalyticsStore — no per-frame fetch needed. The Zustand
+    // subscription above causes a re-render when the store changes.
 
     // Delayed diagnostic — fires at frame 60 when positions are loaded (dev only)
     if (import.meta.env.DEV) {

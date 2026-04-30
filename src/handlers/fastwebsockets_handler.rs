@@ -310,8 +310,8 @@ impl FastWebSocketServer {
                                     // Try postcard first, fall back to legacy protocol
                                     if let Ok(batch) = postcard::from_bytes::<PostcardBatchUpdate>(&frame.payload) {
                                         trace!("Decoded postcard batch: {} nodes", batch.nodes.len());
-                                    } else if let Ok(nodes) = binary_protocol::decode_node_data(&frame.payload) {
-                                        trace!("Decoded legacy binary: {} nodes", nodes.len());
+                                    } else if let Ok((seq, nodes)) = binary_protocol::decode_position_frame(&frame.payload) {
+                                        trace!("Decoded binary position frame: seq={}, {} nodes", seq, nodes.len());
                                     } else {
                                         warn!("Failed to decode client binary message ({} bytes)", frame.payload.len());
                                     }
@@ -428,26 +428,23 @@ impl StandaloneFastWsHandler {
             }
         }
 
-        // Fall back to legacy binary protocol
-        match binary_protocol::decode_node_data(data) {
-            Ok(nodes) => {
-                debug!("Processed legacy binary: {} nodes", nodes.len());
+        // Fall back to the binary protocol position frame.
+        match binary_protocol::decode_position_frame(data) {
+            Ok((seq, nodes)) => {
+                debug!("Processed binary position frame: seq={}, {} nodes", seq, nodes.len());
                 Ok(vec![])
             }
             Err(e) => Err(format!("Failed to decode binary: {}", e)),
         }
     }
 
-    /// Encode nodes for transmission
+    /// Encode nodes for transmission.
+    ///
+    /// Per ADR-061: binary path uses the unified `encode_position_frame`.
+    /// `FastWsClientSession` does not currently carry an authenticated
+    /// pubkey, so private-node filtering is delegated to the upstream
+    /// caller (the producer is expected to have already filtered).
     pub fn encode_nodes(&mut self, nodes: &[(u32, BinaryNodeData)]) -> Vec<u8> {
-        // ADR-050 (H2): `FastWsClientSession` does not currently carry an
-        // authenticated Nostr pubkey, so every private node is opacified
-        // for this transport. The set is empty by default — it is populated
-        // from the graph state when the caller-identity plumbing lands in
-        // a follow-up (tracked under ADR-055 §fast-ws-auth).
-        let private_opaque_ids: std::collections::HashSet<u32> =
-            std::collections::HashSet::new();
-
         let data = if self.use_postcard {
             let updates: Vec<PostcardNodeUpdate> = nodes
                 .iter()
@@ -464,23 +461,13 @@ impl StandaloneFastWsHandler {
             };
 
             postcard::to_stdvec(&batch).unwrap_or_else(|_| {
-                // Fall back to legacy if postcard fails
-                let analytics = self.app_state.node_analytics.read().ok();
-                let analytics_ref = analytics.as_deref();
-                binary_protocol::encode_node_data_with_live_analytics_and_privacy(
-                    nodes,
-                    analytics_ref,
-                    Some(&private_opaque_ids),
-                )
+                // Fall back to legacy binary if postcard fails. Out-of-band
+                // path: seq=0.
+                binary_protocol::encode_position_frame(nodes, 0)
             })
         } else {
-            let analytics = self.app_state.node_analytics.read().ok();
-            let analytics_ref = analytics.as_deref();
-            binary_protocol::encode_node_data_with_live_analytics_and_privacy(
-                nodes,
-                analytics_ref,
-                Some(&private_opaque_ids),
-            )
+            // Out-of-band path: seq=0.
+            binary_protocol::encode_position_frame(nodes, 0)
         };
 
         self.bytes_sent += data.len() as u64;

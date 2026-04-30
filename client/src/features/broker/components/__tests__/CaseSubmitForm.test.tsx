@@ -47,13 +47,22 @@ describe('CaseSubmitForm', () => {
     fireEvent.click(screen.getByRole('button', { name: /submit case/i }));
 
     await waitFor(() => {
-      expect(fetchSpy).toHaveBeenCalledWith('/api/broker/cases', expect.objectContaining({
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-      }));
+      // `apiPost` (utils/apiFetch.ts) wraps headers in a `Headers` instance
+      // before calling `fetch`, so an exact-shape match on a plain object
+      // would never hit. Assert structural fields that survive the wrapper.
+      expect(fetchSpy).toHaveBeenCalledWith(
+        '/api/broker/cases',
+        expect.objectContaining({ method: 'POST' }),
+      );
     });
 
-    const callBody = JSON.parse(fetchSpy.mock.calls[0][1].body);
+    const init = fetchSpy.mock.calls[0][1] as RequestInit;
+    const headers = init.headers instanceof Headers
+      ? init.headers
+      : new Headers(init.headers as HeadersInit | undefined);
+    expect(headers.get('Content-Type')).toBe('application/json');
+
+    const callBody = JSON.parse(init.body as string);
     expect(callBody.title).toBe('Unapproved LLM usage');
     expect(callBody.source).toBe('manual_submission');
   });

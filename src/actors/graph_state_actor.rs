@@ -125,12 +125,12 @@ impl GraphStateActor {
     /// Node IDs are already compact (0..N-1) after source remapping,
     /// so no additional translation is needed.
     ///
-    /// ADR-050 (H2): also populates `private_node_owners` with the owner
-    /// pubkey of every `visibility=Private` node. The ClientCoordinatorActor
-    /// uses this map to derive the per-client `private_opaque_ids` set that
-    /// drives bit 29 (`PRIVATE_OPAQUE_FLAG`) on the wire — private nodes
-    /// owned by the consuming client get rendered with full fidelity, other
-    /// clients' private nodes are wire-flagged opaque.
+    /// ADR-050 (H2), updated by ADR-061 §D3: also populates
+    /// `private_node_owners` with the owner pubkey of every
+    /// `visibility=Private` node. `ClientCoordinatorActor` uses this map to
+    /// derive the per-client hidden-id set; private nodes owned by other
+    /// clients are DROPPED from the per-frame position stream rather than
+    /// being opacified with a wire flag (the wire is plain id+pos+vel).
     pub fn get_node_type_arrays(&self) -> NodeTypeArrays {
         use crate::models::node::Visibility;
         let mut private_node_owners = HashMap::new();
@@ -477,7 +477,11 @@ impl GraphStateActor {
         use rand::rngs::{StdRng, OsRng};
 
         let mut rng = StdRng::from_seed(OsRng.gen());
-        let radius = 50.0 + rng.gen::<f32>() * 100.0;
+        // Initial scatter within bounds_size (≈±80 units) — keeps the warmup
+        // phase from spending its energy budget pulling nodes inward from
+        // 100+ units away. The post-2026-04-30 viewport-calibrated physics
+        // defaults expect a tight initial cloud.
+        let radius = 5.0 + rng.gen::<f32>() * 25.0;
         let theta = rng.gen::<f32>() * 2.0 * std::f32::consts::PI;
         let phi = rng.gen::<f32>() * std::f32::consts::PI;
 
@@ -485,10 +489,9 @@ impl GraphStateActor {
         node.data.y = radius * phi.sin() * theta.sin();
         node.data.z = radius * phi.cos();
 
-        
-        node.data.vx = rng.gen_range(-1.0..1.0);
-        node.data.vy = rng.gen_range(-1.0..1.0);
-        node.data.vz = rng.gen_range(-1.0..1.0);
+        node.data.vx = rng.gen_range(-0.2..0.2);
+        node.data.vy = rng.gen_range(-0.2..0.2);
+        node.data.vz = rng.gen_range(-0.2..0.2);
     }
 
     

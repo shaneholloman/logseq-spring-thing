@@ -68,6 +68,11 @@ pub struct AnalyticsSupervisor {
     /// Shared node analytics map for cluster_id / anomaly_score / community_id (ADR-014 DL4 fix)
     node_analytics: Option<NodeAnalyticsMap>,
 
+    /// ClientCoordinator address forwarded to producers so they can emit
+    /// `BroadcastAnalyticsUpdate` (ADR-061 §D2). Cached so we can re-fan-out
+    /// after a child restart.
+    client_coordinator_addr: Option<Addr<crate::actors::ClientCoordinatorActor>>,
+
     /// Child actor addresses
     clustering_actor: Option<Addr<ClusteringActor>>,
     anomaly_detection_actor: Option<Addr<AnomalyDetectionActor>>,
@@ -97,6 +102,7 @@ impl AnalyticsSupervisor {
             shared_context: None,
             graph_service_addr: None,
             node_analytics: None,
+            client_coordinator_addr: None,
             clustering_actor: None,
             anomaly_detection_actor: None,
             pagerank_actor: None,
@@ -135,7 +141,30 @@ impl AnalyticsSupervisor {
         // Distribute node_analytics to children if already available (ADR-014 DL4 fix)
         self.distribute_node_analytics();
 
+        // ADR-061 §D2: distribute ClientCoordinator addr if already wired so
+        // newly spawned producers can emit `analytics_update`.
+        self.distribute_client_coordinator_addr();
+
         info!("AnalyticsSupervisor: All child actors spawned successfully");
+    }
+
+    /// Send the cached ClientCoordinator address to producer actors so they
+    /// can emit `BroadcastAnalyticsUpdate` on kernel completion (ADR-061 §D2).
+    /// Called after spawn and after restart.
+    fn distribute_client_coordinator_addr(&self) {
+        let addr = match &self.client_coordinator_addr {
+            Some(a) => a.clone(),
+            None => return,
+        };
+        let msg = SetClientCoordinatorAddr { addr };
+        if let Some(ref a) = self.clustering_actor {
+            let _ = a.try_send(msg.clone());
+            info!("AnalyticsSupervisor: ClientCoordinator addr sent to ClusteringActor");
+        }
+        if let Some(ref a) = self.anomaly_detection_actor {
+            let _ = a.try_send(msg);
+            info!("AnalyticsSupervisor: ClientCoordinator addr sent to AnomalyDetectionActor");
+        }
     }
 
     /// Send the shared node_analytics map to ClusteringActor and AnomalyDetectionActor
@@ -308,6 +337,10 @@ impl AnalyticsSupervisor {
 
         // Re-distribute node_analytics to restarted actors (ADR-014 DL4 fix)
         self.distribute_node_analytics();
+
+        // ADR-061 §D2: re-distribute ClientCoordinator addr so the restarted
+        // producer can resume emitting `analytics_update`.
+        self.distribute_client_coordinator_addr();
     }
 
     /// Calculate subsystem status
@@ -412,6 +445,18 @@ impl Handler<SetNodeAnalytics> for AnalyticsSupervisor {
         info!("AnalyticsSupervisor: Received SetNodeAnalytics — distributing to children");
         self.node_analytics = Some(msg.node_analytics);
         self.distribute_node_analytics();
+    }
+}
+
+/// ADR-061 §D2: cache the ClientCoordinator addr and fan it out to GPU
+/// producer children so they can emit `analytics_update` on recompute.
+impl Handler<SetClientCoordinatorAddr> for AnalyticsSupervisor {
+    type Result = ();
+
+    fn handle(&mut self, msg: SetClientCoordinatorAddr, _ctx: &mut Self::Context) {
+        info!("AnalyticsSupervisor: Received SetClientCoordinatorAddr — distributing to children");
+        self.client_coordinator_addr = Some(msg.addr);
+        self.distribute_client_coordinator_addr();
     }
 }
 

@@ -140,46 +140,46 @@ visualisation:
           equilibriumEnergyThreshold: 0.01
           pauseOnEquilibrium: false
           resumeOnInteraction: true
-        boundsSize: 1000.0
-        separationRadius: 2.1155233
-        damping: 0.6
-        enableBounds: false
+        boundsSize: 100.0
+        separationRadius: 0.5
+        damping: 0.85
+        enableBounds: true
         enabled: true
         iterations: 50
-        maxVelocity: 100.0
-        maxForce: 1000.0
-        repelK: 80.0
+        maxVelocity: 20.0
+        maxForce: 200.0
+        repelK: 3.0
         springK: 2.0
         massScale: 1.0
-        boundaryDamping: 0.95
+        boundaryDamping: 0.92
         updateThreshold: 0.01
         dt: 0.016
-        temperature: 1.0
+        temperature: 0.5
         gravity: 0.0001
         stressWeight: 0.0001
         stressAlpha: 0.0001
-        boundaryLimit: 2000.0
+        boundaryLimit: 80.0
         alignmentStrength: 0.1
         clusterStrength: 0.1
         computeMode: 1
-        restLength: 80.0
-        repulsionCutoff: 200.0
+        restLength: 2.0
+        repulsionCutoff: 5.0
         repulsionSofteningEpsilon: 0.0001
-        centerGravityK: 0.001
-        gridCellSize: 50.0
+        centerGravityK: 0.02
+        gridCellSize: 4.0
         warmupIterations: 100
         coolingRate: 0.001
         boundaryExtremeMultiplier: 2.0
         boundaryExtremeForceMultiplier: 5.0
         boundaryVelocityDamping: 0.5
-        minDistance: 1.0
-        maxRepulsionDist: 1000.0
-        boundaryMargin: 10.0
+        minDistance: 0.1
+        maxRepulsionDist: 8.0
+        boundaryMargin: 5.0
         boundaryForceStrength: 1.0
         warmupCurve: exponential
         zeroVelocityIterations: 10
         constraintRampFrames: 60
-        constraintMaxForcePerNode: 50.0
+        constraintMaxForcePerNode: 20.0
         clusteringAlgorithm: louvain
         clusterCount: 5
         clusteringResolution: 1.0
@@ -188,7 +188,7 @@ visualisation:
         enabled: true
         lerpBase: 0.0001
         snapThreshold: 0.05
-        maxDivergence: 50.0
+        maxDivergence: 5.0
     visionflow:
       nodes:
         baseColor: '#40ff00'
@@ -265,33 +265,33 @@ visualisation:
           equilibriumEnergyThreshold: 0.005
           pauseOnEquilibrium: false
           resumeOnInteraction: true
-        boundsSize: 1000.0
-        separationRadius: 2.0
-        damping: 0.1
-        enableBounds: false
+        boundsSize: 100.0
+        separationRadius: 0.5
+        damping: 0.85
+        enableBounds: true
         enabled: true
         iterations: 50
-        maxVelocity: 50.0
-        maxForce: 500.0
-        repelK: 100.0
-        springK: 10.0
+        maxVelocity: 20.0
+        maxForce: 200.0
+        repelK: 3.0
+        springK: 2.0
         massScale: 1.0
-        boundaryDamping: 0.95
+        boundaryDamping: 0.92
         updateThreshold: 0.01
         dt: 0.016
-        temperature: 1.0
+        temperature: 0.5
         gravity: 0.0001
         stressWeight: 0.0001
         stressAlpha: 0.0001
-        boundaryLimit: 1000.0
+        boundaryLimit: 80.0
         alignmentStrength: 0.1
         clusterStrength: 0.1
         computeMode: 1
-        restLength: 50.0
-        repulsionCutoff: 50.0
+        restLength: 2.0
+        repulsionCutoff: 5.0
         repulsionSofteningEpsilon: 0.0001
-        centerGravityK: 0.0
-        gridCellSize: 50.0
+        centerGravityK: 0.02
+        gridCellSize: 4.0
         warmupIterations: 100
         coolingRate: 0.001
         boundaryExtremeMultiplier: 2.0

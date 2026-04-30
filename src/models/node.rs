@@ -7,12 +7,13 @@ use std::sync::atomic::{AtomicU32, Ordering};
 // Static counter for generating unique numeric IDs
 static NEXT_NODE_ID: AtomicU32 = AtomicU32::new(1);
 
-/// Sovereign-model visibility for a knowledge-graph node (ADR-050).
+/// Sovereign-model visibility for a knowledge-graph node (ADR-050,
+/// updated by ADR-061 §D3).
 ///
 /// `Public` nodes render with full label and metadata. `Private` nodes are
-/// owner-sovereign: the server only emits them over the wire with bit 29 of the
-/// node id set (see `crate::utils::binary_protocol::PRIVATE_OPAQUE_FLAG`) and
-/// with label/metadata stripped, so non-owner clients see an opaque placeholder.
+/// owner-sovereign: per ADR-061 the server drops them from the per-frame
+/// position stream entirely for non-owner clients (no opacification flag
+/// on the wire — visibility is enforced by `ClientCoordinator::broadcast_with_filter`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Visibility {

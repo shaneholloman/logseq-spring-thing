@@ -389,32 +389,18 @@ impl SocketFlowServer {
                               nodes.len(), graph_data.nodes.len(),
                               edges.len(), DEFAULT_INITIAL_NODE_LIMIT);
 
-                        // Fetch node type arrays for binary protocol flags
-                        let nta = app_state.graph_service_addr
-                            .send(crate::actors::messages::GetNodeTypeArrays)
-                            .await
-                            .unwrap_or_default();
-                        let agent_set: std::collections::HashSet<u32> = nta.agent_ids.iter().copied().collect();
-                        let knowledge_set: std::collections::HashSet<u32> = nta.knowledge_ids.iter().copied().collect();
-
-                        // Also send binary position data for SAME limited nodes only,
-                        // with node type flags applied for client-side rendering
+                        // Per ADR-061: raw u32 ids on the wire. Node-type
+                        // classification rides the JSON init payload above
+                        // (`SendInitialGraphLoad`), not flag bits.
                         let node_data: Vec<(u32, BinaryNodeData)> = graph_data
                             .nodes
                             .iter()
                             .filter(|node| filtered_node_ids.contains(&node.id))
                             .map(|node| {
-                                let flagged_id = if agent_set.contains(&node.id) {
-                                    crate::utils::binary_protocol::set_agent_flag(node.id)
-                                } else if knowledge_set.contains(&node.id) {
-                                    crate::utils::binary_protocol::set_knowledge_flag(node.id)
-                                } else {
-                                    node.id
-                                };
                                 (
-                                    flagged_id,
+                                    node.id,
                                     BinaryNodeData {
-                                        node_id: flagged_id,
+                                        node_id: node.id,
                                         x: node.data.x,
                                         y: node.data.y,
                                         z: node.data.z,

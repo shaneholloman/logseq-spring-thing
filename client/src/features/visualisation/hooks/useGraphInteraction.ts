@@ -3,7 +3,6 @@ import { throttle } from 'lodash';
 import { createLogger } from '../../../utils/loggerConfig';
 import { debugState } from '../../../utils/clientDebugState';
 import { graphDataManager } from '../../graph/managers/graphDataManager';
-import { BinaryNodeData } from '../../../types/binaryProtocol';
 
 const logger = createLogger('useGraphInteraction');
 

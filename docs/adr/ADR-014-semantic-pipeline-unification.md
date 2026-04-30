@@ -30,7 +30,7 @@ The VisionClaw codebase contains a complete semantic pipeline — parsers, Neo4j
 - `neo4j_ontology_repository::add_owl_class()` → store ALL relationship types as `:RELATES` edges
 - `neo4j_adapter::load_graph()` → single query: EDGE + SUBCLASS_OF + RELATES
 - `force_compute_actor` → CSR with `edge_types: DeviceBuffer<u8>`
-- `clustering_actor` → `ClientCoordinatorActor` → `node_analytics` → binary V3
+- `clustering_actor` → `ClientCoordinatorActor` → `analytics_update` JSON message (post-[ADR-061](ADR-061-binary-protocol-unification.md); historically rode the per-frame binary)
 - `ontology_constraint_actor` → `apply_ontology_constraints()` (remove dead_code annotation)
 - `semantic_forces_actor` → receive `source_domain` as type_id, activate type clustering
 

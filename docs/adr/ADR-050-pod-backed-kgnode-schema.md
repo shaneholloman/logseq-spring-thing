@@ -46,8 +46,11 @@ re-hash candidates and confirm membership. We need an HMAC with a rotating
 server secret to close that gap without losing referential stability across a
 session.
 
-Bit 29 on the wire-level `node_id` was reserved during the V5 binary protocol
-work (ADR-037) for an opaque-node flag. This ADR activates that reservation.
+Bit 29 on the wire-level `node_id` was reserved during the prior binary
+protocol consolidation work (ADR-037, since superseded by ADR-061) for an
+opaque-node flag. ADR-061 replaces the bit-29 wire mechanism with per-client
+broadcast-boundary filtering; see the H2 section below for the current
+implementation.
 
 ## Decision
 
@@ -115,19 +118,29 @@ opaque_id = hex_truncate_24(
   schemes suffer; rotation prevents longitudinal correlation of the same
   private node across users or across days.
 
-### Bit 29 reservation on `node_id`
+### Visibility enforcement at the broadcast boundary
 
-The V5 binary protocol's 32-bit node ID field reserves bit 29 for the private-
-opaque flag:
+> **Updated by [ADR-061](ADR-061-binary-protocol-unification.md) (2026-04-30)**:
+> H2 is implemented at the broadcast boundary, not in the wire format.
+> `ClientCoordinator::broadcast_with_filter` drops positions for nodes the
+> caller cannot see; the wire id is the raw u32. Anonymous viewers therefore
+> receive no positions, no labels, and no metadata for private nodes — same
+> end-state as the prior bit-29 mechanism, simpler implementation. The
+> single-source wire-format spec is [docs/binary-protocol.md](../binary-protocol.md).
+
+#### Historical (pre-ADR-061): Bit 29 reservation on `node_id`
+
+The prior binary protocol's 32-bit node ID field reserved bit 29 for the
+private-opaque flag:
 
 ```rust
-pub const PRIVATE_OPAQUE_FLAG: u32 = 0x20000000;  // bit 29
+// Removed by ADR-061 — node_id is the raw u32 on the wire.
+pub const PRIVATE_OPAQUE_FLAG: u32 = 0x20000000;  // bit 29 (historical)
 ```
 
-Serialiser sets bit 29 when writing a private node; deserialiser on the client
-uses bit 29 as the **authoritative** opacity signal. The client MUST NOT fall
-back to checking `label`/`metadata` for emptiness — those fields are absent by
-design on the anonymous view.
+Under ADR-061, the wire id is the raw u32 with no flag bits. The bit-29
+opacification mechanism is replaced by per-client position filtering at
+the broadcast boundary; visibility is no longer encoded on the wire.
 
 ### Neo4j schema indexes
 
@@ -165,9 +178,9 @@ pre-sovereign corpus; it becomes the public canon by default.
 - **Physics blind to visibility**: forces compute on topology only, not on
   labels or content. No CUDA kernel changes are required; the private stub is
   just another `:KGNode` from the physics engine's perspective.
-- **Binary V5 protocol stays string-free**: bit 29 is the only opacity marker
-  on the wire. Clients render the opacified shape without ever receiving the
-  real label.
+- **Binary protocol stays string-free**: per ADR-061, the broadcast boundary
+  filter drops private-node positions for unauthorised clients. Clients render
+  the opacified shape without ever receiving the real label.
 - **Canonical IRI survives renames as a new identity**: this is the *correct*
   semantic for Logseq pages — a rename is an authorial act, not a move.
 - **HMAC + rotating salt** closes the dictionary-attack vector present in prior
@@ -181,9 +194,10 @@ pre-sovereign corpus; it becomes the public canon by default.
   day. The 48h dual-salt window bounds user-visible disruption.
 - **Added fields bloat node records**; mitigated by Neo4j's variable-length
   property storage. Legacy nodes without the new fields pay no cost.
-- **Client must trust bit 29**: any client that falls back to inspecting
-  `label` for opacity will render fine but has a logic bug worth catching in
-  review.
+- **Client trusts the broadcast filter** (post-ADR-061): the client never
+  receives positions for nodes it cannot see, so there is no per-frame
+  opacity signal to interpret. Any client that still falls back to inspecting
+  `label` for opacity has a logic bug worth catching in review.
 
 ### Neutral
 
@@ -199,11 +213,14 @@ pre-sovereign corpus; it becomes the public canon by default.
 
 - [ ] `Visibility` enum defined in `src/models/node.rs`
 - [ ] `owner_pubkey`, `opaque_id`, `pod_url` fields added to `KGNode`
-- [ ] `PRIVATE_OPAQUE_FLAG` constant in `src/utils/binary_protocol.rs`
+- [ ] Visibility filter applied in `ClientCoordinator::broadcast_with_filter`
+  (post-ADR-061). The historical `PRIVATE_OPAQUE_FLAG` constant in
+  `src/utils/binary_protocol.rs` is removed.
 - [ ] Three Neo4j indexes created (`kg_node_visibility`, `kg_node_owner`, `kg_node_opaque`)
 - [ ] HMAC opaque_id with rotating session salt (24 hex chars, daily rotation, 48h dual-salt window)
 - [ ] Canonical IRI uses `visionclaw:owner:{npub}/kg/{sha256(path)}` form
-- [ ] Bit 29 on `node_id` serialised correctly in the V5 binary protocol
+- [ ] Visibility enforced at the broadcast boundary (post-ADR-061);
+  legacy bit-29 on `node_id` is no longer serialised
 - [ ] `COALESCE(n.visibility, 'public')` fallback applied in all read queries touching legacy rows
 
 ## Rollback
@@ -213,13 +230,14 @@ pre-sovereign corpus; it becomes the public canon by default.
 - Indexes can be dropped idempotently:
   `DROP INDEX kg_node_visibility IF EXISTS;` (repeat for `kg_node_owner`,
   `kg_node_opaque`).
-- `PRIVATE_OPAQUE_FLAG` is a compile-time constant; removing its usage restores
-  pre-050 wire format. Clients with the new flag handling must be updated
-  before a rollback server ships.
+- The broadcast-boundary filter (post-ADR-061) is the rollback target;
+  removing it restores pre-050 unfiltered behaviour. The historical
+  `PRIVATE_OPAQUE_FLAG` constant has been removed entirely under ADR-061.
 
 ## References
 
 - `src/models/node.rs` — `KGNode` struct and `Visibility` enum
-- `src/utils/binary_protocol.rs` — V5 encoder/decoder and `PRIVATE_OPAQUE_FLAG`
+- `src/utils/binary_protocol.rs` — `encode_position_frame` (post-ADR-061;
+  no flag bits, raw u32 ids); see [docs/binary-protocol.md](../binary-protocol.md)
 - `docs/reference/neo4j-schema-unified.md` — master schema reference
 - Commit `89c8d800e` — `refactor/kg-node-rename`

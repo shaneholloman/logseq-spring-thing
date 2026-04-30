@@ -6,8 +6,8 @@
 //! |---------------------------------------------------------|--------------------|-------|
 //! | `urn:visionclaw:concept:<domain>:<slug>`                | `mint_concept`     | R3    |
 //! | `urn:visionclaw:group:<team>#members`                   | `mint_group_members` | R3  |
-//! | `urn:visionclaw:kg:<npub>:<sha256-12-hex>`              | `mint_owned_kg`    | R1+R2 |
-//! | `urn:visionclaw:bead:<npub>:<sha256-12-hex>`            | `mint_bead`        | R1+R2 |
+//! | `urn:visionclaw:kg:<hex-pubkey>:<sha256-12-hex>`         | `mint_owned_kg`    | R1+R2 |
+//! | `urn:visionclaw:bead:<hex-pubkey>:<sha256-12-hex>`      | `mint_bead`        | R1+R2 |
 //! | `urn:visionclaw:execution:<sha256-12-hex>`              | `mint_execution`   | R1    |
 //! | `did:nostr:<64-hex-pubkey>`                             | `mint_did_nostr`   | R3    |
 //!

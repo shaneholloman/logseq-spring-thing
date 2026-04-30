@@ -134,8 +134,11 @@ describe('validation utilities', () => {
     });
 
     it('should reject too many nodes', () => {
-      const nodes = Array.from({ length: 10001 }, (_, i) => makeNode(i));
-      const result = validateNodePositions(nodes);
+      // The default `maxNodes` is 100_000 (validation.ts:21). Pass an
+      // explicit smaller cap so the test exercises the rejection branch
+      // without allocating 100k objects.
+      const nodes = Array.from({ length: 10_001 }, (_, i) => makeNode(i));
+      const result = validateNodePositions(nodes, { maxNodes: 10_000 });
       expect(result.valid).toBe(false);
       expect(result.errors).toEqual(expect.arrayContaining([expect.stringContaining('Too many nodes')]));
     });

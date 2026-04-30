@@ -18,7 +18,7 @@
 //! - **Active Periods**: 20Hz (50ms intervals) during graph changes
 //! - **Stable Periods**: 1Hz (1s intervals) during settled states
 //! - **New Client**: Immediate broadcast regardless of graph state
-//! - **Binary Protocol**: 28-byte optimized node data for network efficiency
+//! - **Binary Protocol**: 28-byte node data per ADR-061
 
 use actix::prelude::*;
 use log::{debug, error, info, warn};
@@ -66,8 +66,8 @@ pub struct ClientState {
 
 /// Number of consecutive frame-drop events after which a client is considered
 /// genuinely stuck (rather than experiencing a transient initial-burst stall)
-/// and should be evicted. With the V5 broadcast cadence at ~60 Hz, 60 frames
-/// = ~1 second of sustained backpressure.
+/// and should be evicted. At ~60 Hz broadcast cadence, 60 frames = ~1 second
+/// of sustained backpressure.
 pub const MAILBOX_FULL_EVICTION_THRESHOLD: u32 = 60;
 
 /// Per-client filter settings for graph visibility
@@ -110,16 +110,19 @@ impl Default for ClientFilter {
     }
 }
 
-/// ADR-050 (H2): build the `private_opaque_ids` set for a given caller.
+/// ADR-061 (supersedes ADR-050 §H2): build the `private_hidden_ids` set for a
+/// given caller.
 ///
 /// For every private node in `nta.private_node_owners` whose `owner_pubkey`
-/// does NOT match the caller, insert its node_id into the returned set. The
-/// binary encoder will OR `PRIVATE_OPAQUE_FLAG` (bit 29) onto the wire id for
-/// each such node, signalling to the client that it is an owner-private
-/// placeholder.
+/// does NOT match the caller, insert its node_id into the returned set.
 ///
-/// Anonymous callers (`caller_pubkey == None`) see every private node as
-/// opaque. Owners see their own private nodes with full fidelity.
+/// Per ADR-061 §D3, the wire no longer carries an opacification flag bit;
+/// privacy is enforced by DROPPING the node from the position frame entirely
+/// for non-owners. Callers receive this set and use it to filter the
+/// positions vec before encoding.
+///
+/// Anonymous callers (`caller_pubkey == None`) see no private nodes.
+/// Owners see their own private nodes with full fidelity.
 pub fn compute_private_opaque_ids(
     nta: &crate::actors::messages::NodeTypeArrays,
     caller_pubkey: Option<&str>,
@@ -128,7 +131,7 @@ pub fn compute_private_opaque_ids(
     for (node_id, owner) in &nta.private_node_owners {
         match caller_pubkey {
             Some(caller) if !caller.is_empty() && caller == owner.as_str() => {
-                // caller is the owner — full fidelity, do NOT opacify.
+                // caller is the owner — full fidelity, do NOT hide.
             }
             _ => {
                 set.insert(*node_id);
@@ -392,23 +395,25 @@ impl ClientManager {
         BroadcastResult { sent, slow_clients }
     }
 
-    /// Broadcast with per-client filtering, including node type flags in binary protocol
+    /// Broadcast position frames with per-client visibility and filter.
     ///
-    /// Pre-serializes the unfiltered payload once so that clients without active filters
-    /// receive a cheap `Vec<u8>` clone instead of re-encoding per client.
-    /// Complexity: O(N + F*N_f) where F = filtered-client count, N_f = per-filter node count.
-    /// Broadcast position frames with per-client filtering.
+    /// ADR-061 §D3: privacy is enforced here by DROPPING positions for nodes
+    /// the caller may not see (via `compute_private_opaque_ids`) before
+    /// encoding. The encoder no longer knows about visibility — this function
+    /// is the choke point.
     ///
-    /// Pre-serialises the unfiltered payload once so clients without active
-    /// filters get a cheap `Vec<u8>` clone instead of re-encoding per client.
-    /// Uses `try_send` (ADR-031 item 5) to detect backpressure.
-    /// Complexity: O(N + F×N_f) where F = filtered-client count, N_f = per-filter node count.
+    /// Pre-serialises the unfiltered payload once per visibility-set so
+    /// clients with the same caller identity share a `Vec<u8>` clone instead
+    /// of re-encoding. Uses `try_send` (ADR-031 item 5) to detect
+    /// backpressure.
+    ///
+    /// `node_type_arrays` is consulted for the private-node owner table; per
+    /// ADR-061 it is no longer used to flag wire ids.
     pub fn broadcast_with_filter(
         &self,
         positions: &[BinaryNodeDataClient],
         node_type_arrays: &crate::actors::messages::NodeTypeArrays,
         broadcast_sequence: u64,
-        analytics_data: Option<&std::collections::HashMap<u32, (u32, f32, u32)>>,
     ) -> BroadcastResult {
         if positions.is_empty() || self.clients.is_empty() {
             return BroadcastResult::default();
@@ -416,52 +421,43 @@ impl ClientManager {
 
         let mut sent = 0;
         let mut slow_clients = Vec::new();
-        // ADR-050 (H2): privacy-aware serialisation. Each client gets a
-        // per-caller `private_opaque_ids` set so private nodes owned by OTHER
-        // users are wire-encoded with bit 29 set. The owner always sees their
-        // own private nodes with full fidelity (empty set for them).
-        //
-        // Build a per-client (opaque_set, cache_key) lookup so we can still
-        // cache-reuse the serialised buffer across identical callers.
+        // Cache encoded buffers keyed by the sorted set of hidden ids — every
+        // client with the same caller identity will produce the same set, so
+        // we serialise once per identity and clone the bytes per send.
         let mut unfiltered_cache: HashMap<Vec<u8>, Vec<u8>> = HashMap::new();
         for (&client_id, client_state) in &self.clients {
-            let private_opaque_ids =
+            let private_hidden_ids =
                 compute_private_opaque_ids(node_type_arrays, client_state.pubkey.as_deref());
 
             let payload = if !client_state.filter.enabled {
-                // Key the unfiltered cache on the opaque-id set so clients
-                // with the same caller identity share a serialised buffer.
-                let mut key_vec: Vec<u32> = private_opaque_ids.iter().copied().collect();
+                let mut key_vec: Vec<u32> = private_hidden_ids.iter().copied().collect();
                 key_vec.sort_unstable();
                 let mut key_bytes = Vec::with_capacity(key_vec.len() * 4);
                 for id in &key_vec { key_bytes.extend_from_slice(&id.to_le_bytes()); }
                 let entry = unfiltered_cache.entry(key_bytes).or_insert_with(|| {
-                    self.serialize_positions(
-                        positions,
-                        node_type_arrays,
-                        broadcast_sequence,
-                        analytics_data,
-                        Some(&private_opaque_ids),
-                    )
+                    let visible: Vec<BinaryNodeDataClient> = positions
+                        .iter()
+                        .filter(|pos| !private_hidden_ids.contains(&pos.node_id))
+                        .copied()
+                        .collect();
+                    self.serialize_positions(&visible, broadcast_sequence)
                 });
                 Some(entry.clone())
             } else {
-                // Only re-serialize for clients with active filters
+                // Per-client filter: subset positions to those allowed by the
+                // filter AND drop privately-owned nodes the caller can't see.
                 let filtered_positions: Vec<_> = positions
                     .iter()
-                    .filter(|pos| client_state.filter.filtered_node_ids.contains(&pos.node_id))
+                    .filter(|pos| {
+                        client_state.filter.filtered_node_ids.contains(&pos.node_id)
+                            && !private_hidden_ids.contains(&pos.node_id)
+                    })
                     .copied()
                     .collect();
                 if filtered_positions.is_empty() {
                     None
                 } else {
-                    Some(self.serialize_positions(
-                        &filtered_positions,
-                        node_type_arrays,
-                        broadcast_sequence,
-                        analytics_data,
-                        Some(&private_opaque_ids),
-                    ))
+                    Some(self.serialize_positions(&filtered_positions, broadcast_sequence))
                 }
             };
 
@@ -516,50 +512,23 @@ impl ClientManager {
         BroadcastResult { sent, slow_clients }
     }
 
-    /// Serialize positions into V5 binary frame format.
+    /// Serialise positions into a binary protocol frame.
     ///
-    /// V5 wire format: `[1 byte: version=5][8 bytes: broadcast_sequence LE][V3 node data without version byte]`
-    /// This embeds the authoritative server broadcast sequence so clients can echo it
-    /// back in acks, enabling true end-to-end backpressure correlation.
-    ///
-    /// ADR-050 (H2): `private_opaque_ids` is the set of node ids for which
-    /// bit 29 (`PRIVATE_OPAQUE_FLAG`) should be set on the wire, signalling
-    /// to the client that the node is owner-private and must render without
-    /// label/metadata.
+    /// Per ADR-061: single wire format, 28 bytes/node, no analytics, no
+    /// flags. Visibility is enforced upstream — by the time this is called,
+    /// `positions` contains only nodes the recipient may see.
     fn serialize_positions(
         &self,
         positions: &[BinaryNodeDataClient],
-        nta: &crate::actors::messages::NodeTypeArrays,
         broadcast_sequence: u64,
-        analytics_data: Option<&std::collections::HashMap<u32, (u32, f32, u32)>>,
-        private_opaque_ids: Option<&std::collections::HashSet<u32>>,
     ) -> Vec<u8> {
-        use crate::utils::binary_protocol::encode_node_data_extended_with_sssp_and_privacy;
+        use crate::utils::binary_protocol::encode_position_frame;
         use crate::utils::socket_flow_messages::BinaryNodeData;
-        // Convert to (u32, BinaryNodeData) format for V3 protocol encoding
         let nodes: Vec<(u32, BinaryNodeData)> = positions
             .iter()
             .map(|pos| (pos.node_id, *pos))
             .collect();
-        let encoded = encode_node_data_extended_with_sssp_and_privacy(
-            &nodes,
-            &nta.agent_ids,
-            &nta.knowledge_ids,
-            &nta.ontology_class_ids,
-            &nta.ontology_individual_ids,
-            &nta.ontology_property_ids,
-            None,
-            analytics_data,
-            private_opaque_ids,
-        );
-        // Build V5 frame: [version=5][8-byte sequence LE][V3 node data without version byte]
-        let mut result = Vec::with_capacity(1 + 8 + encoded.len().saturating_sub(1));
-        result.push(5u8); // Protocol V5 = V3 nodes + embedded broadcast sequence
-        result.extend_from_slice(&broadcast_sequence.to_le_bytes());
-        if encoded.len() > 1 {
-            result.extend_from_slice(&encoded[1..]); // node data without V3 version byte
-        }
-        result
+        encode_position_frame(&nodes, broadcast_sequence)
     }
 
     pub fn broadcast_message(&self, message: String) -> usize {
@@ -644,6 +613,23 @@ pub struct ClientCoordinatorActor {
 
     /// ADR-031 gap 3b: Per-client reconnect message queue.
     disconnected_queue: DisconnectedClientQueue,
+
+    /// ADR-061 §D2: per-source rate cap on `analytics_update` emissions.
+    /// Defence-in-depth — producers should already be bounded, but this
+    /// throttles fast-arriving emits so a misconfigured producer cannot
+    /// flood clients. Max 1 emit per second per source.
+    last_analytics_emit: HashMap<crate::actors::messages::AnalyticsSource, Instant>,
+
+    /// ADR-061 §D2: when an emit is rate-capped, stash the LATEST message
+    /// per source so it can be flushed when the window opens. Last-wins by
+    /// generation — only the freshest update is retained.
+    pending_analytics_emit: HashMap<
+        crate::actors::messages::AnalyticsSource,
+        crate::actors::messages::BroadcastAnalyticsUpdate,
+    >,
+    /// Tracks whether a flush is already scheduled for a source so we don't
+    /// pile up `run_later` callbacks under sustained pressure.
+    analytics_flush_scheduled: std::collections::HashSet<crate::actors::messages::AnalyticsSource>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -684,6 +670,9 @@ impl ClientCoordinatorActor {
                 64,                          // max 64 messages buffered per client
                 Duration::from_secs(30),     // 30-second TTL
             ),
+            last_analytics_emit: HashMap::new(),
+            pending_analytics_emit: HashMap::new(),
+            analytics_flush_scheduled: std::collections::HashSet::new(),
         }
     }
 
@@ -946,10 +935,6 @@ impl ClientCoordinatorActor {
         self.broadcast_sequence += 1;
         let current_sequence = self.broadcast_sequence;
 
-        // Read analytics data for embedding in binary protocol
-        let analytics_guard = self.node_analytics.read().ok();
-        let analytics_ref = analytics_guard.as_deref();
-
         // Use per-client filtered broadcast for consistency with BroadcastPositions
         let result = {
             let manager = match handle_rwlock_error(self.client_manager.read()) {
@@ -959,7 +944,7 @@ impl ClientCoordinatorActor {
                     return false;
                 }
             };
-            manager.broadcast_with_filter(&position_data, &self.node_type_arrays, current_sequence, analytics_ref)
+            manager.broadcast_with_filter(&position_data, &self.node_type_arrays, current_sequence)
         };
         let broadcast_count = result.sent;
         // ADR-031 item 5: evict slow clients detected during force broadcast.
@@ -972,8 +957,9 @@ impl ClientCoordinatorActor {
             }
         }
 
-        // Approximate byte size (V5 protocol: 48 bytes per node + 1 header + 8 sequence)
-        let approx_bytes = 1 + 8 + position_data.len() * 48;
+        // Approximate byte size: 9-byte frame header + 28 bytes per node.
+        let approx_bytes = crate::utils::binary_protocol::FRAME_HEADER_SIZE
+            + position_data.len() * crate::utils::binary_protocol::NODE_ENTRY_SIZE;
 
         self.broadcast_count += 1;
         self.bytes_sent += approx_bytes as u64;
@@ -1015,30 +1001,24 @@ impl ClientCoordinatorActor {
         true
     }
 
+    /// Serialise positions for the broadcast-to-all path (voice relay,
+    /// position cache flush). No per-client identity available here, so
+    /// every private node is filtered out of the frame.
     fn serialize_positions(&self, positions: &[BinaryNodeDataClient]) -> Vec<u8> {
-        use crate::utils::binary_protocol::encode_node_data_extended_with_sssp_and_privacy;
+        use crate::utils::binary_protocol::encode_position_frame;
         use crate::utils::socket_flow_messages::BinaryNodeData;
-        // Convert to (u32, BinaryNodeData) format for V3 protocol encoding
+        let nta = &self.node_type_arrays;
+        let private_hidden_ids = compute_private_opaque_ids(nta, None);
         let nodes: Vec<(u32, BinaryNodeData)> = positions
             .iter()
+            .filter(|pos| !private_hidden_ids.contains(&pos.node_id))
             .map(|pos| (pos.node_id, *pos))
             .collect();
-        let nta = &self.node_type_arrays;
-        // ADR-050 (H2): this is the "broadcast-to-all" path (voice relay,
-        // force-broadcast). It has no per-client caller identity, so every
-        // private node is opaque to every receiver — pass caller_pubkey=None.
-        let private_opaque_ids = compute_private_opaque_ids(nta, None);
-        encode_node_data_extended_with_sssp_and_privacy(
-            &nodes,
-            &nta.agent_ids,
-            &nta.knowledge_ids,
-            &nta.ontology_class_ids,
-            &nta.ontology_individual_ids,
-            &nta.ontology_property_ids,
-            None,
-            None,
-            Some(&private_opaque_ids),
-        )
+        // Sequence 0 — this path is for broadcast-to-all where the sequence
+        // is not consumed by ack correlation (force_broadcast handles its
+        // own sequence). For send_prioritized_broadcasts, the broadcast
+        // cadence and ack mechanism are decoupled (ADR-031 §queue-only ack).
+        encode_position_frame(&nodes, 0)
     }
 
     /// Update cached node type arrays from GraphStateActor
@@ -1101,10 +1081,6 @@ impl ClientCoordinatorActor {
         self.broadcast_sequence += 1;
         let current_sequence = self.broadcast_sequence;
 
-        // Read analytics data for embedding in binary protocol
-        let analytics_guard = self.node_analytics.read().ok();
-        let analytics_ref = analytics_guard.as_deref();
-
         // Use per-client filtered broadcast for consistency with BroadcastPositions
         let result = {
             let manager = match handle_rwlock_error(self.client_manager.read()) {
@@ -1114,7 +1090,7 @@ impl ClientCoordinatorActor {
                     return Err(format!("Failed to acquire client manager lock: {}", e));
                 }
             };
-            manager.broadcast_with_filter(&position_data, &self.node_type_arrays, current_sequence, analytics_ref)
+            manager.broadcast_with_filter(&position_data, &self.node_type_arrays, current_sequence)
         };
         let broadcast_count = result.sent;
         // ADR-031 item 5: evict slow clients detected during position broadcast.
@@ -1127,8 +1103,9 @@ impl ClientCoordinatorActor {
             }
         }
 
-        // Approximate byte size (V5 protocol: 48 bytes per node + 1 header + 8 sequence)
-        let approx_bytes = 1 + 8 + position_data.len() * 48;
+        // Approximate byte size: 9-byte frame header + 28 bytes per node.
+        let approx_bytes = crate::utils::binary_protocol::FRAME_HEADER_SIZE
+            + position_data.len() * crate::utils::binary_protocol::NODE_ENTRY_SIZE;
 
         self.broadcast_count += 1;
         self.bytes_sent += approx_bytes as u64;
@@ -1599,7 +1576,12 @@ impl Handler<BroadcastNodePositions> for ClientCoordinatorActor {
     }
 }
 
-/// Handler for BroadcastPositions - modern position broadcasting with backpressure ack
+/// Handler for BroadcastPositions — the per-physics-tick push path.
+///
+/// Per ADR-061: encoder is `binary_protocol::encode_position_frame`, no
+/// analytics columns, no flag bits. Privacy is enforced inside
+/// `broadcast_with_filter` by dropping invisible nodes from the frame.
+/// Backpressure ack remains via the broadcast-sequence header.
 impl Handler<BroadcastPositions> for ClientCoordinatorActor {
     type Result = ();
 
@@ -1607,10 +1589,6 @@ impl Handler<BroadcastPositions> for ClientCoordinatorActor {
         // Increment sequence BEFORE broadcast so it's embedded in the wire frame
         self.broadcast_sequence += 1;
         let current_sequence = self.broadcast_sequence;
-
-        // Read analytics data for embedding in binary protocol
-        let analytics_guard = self.node_analytics.read().ok();
-        let analytics_ref = analytics_guard.as_deref();
 
         let result = {
             let manager = match handle_rwlock_error(self.client_manager.read()) {
@@ -1620,7 +1598,7 @@ impl Handler<BroadcastPositions> for ClientCoordinatorActor {
                     return;
                 }
             };
-            manager.broadcast_with_filter(&msg.positions, &self.node_type_arrays, current_sequence, analytics_ref)
+            manager.broadcast_with_filter(&msg.positions, &self.node_type_arrays, current_sequence)
         };
         let client_count = result.sent;
         // ADR-031 item 5: evict slow clients detected during BroadcastPositions.
@@ -1635,8 +1613,9 @@ impl Handler<BroadcastPositions> for ClientCoordinatorActor {
 
         if client_count > 0 {
             self.broadcast_count += 1;
-            // Approximate byte size (V5 protocol: 48 bytes per node + 1 header + 8 sequence)
-            let approx_bytes = 1 + 8 + msg.positions.len() * 48;
+            // Approximate byte size: 9-byte frame header + 28 bytes per node.
+            let approx_bytes = crate::utils::binary_protocol::FRAME_HEADER_SIZE
+                + msg.positions.len() * crate::utils::binary_protocol::NODE_ENTRY_SIZE;
             self.bytes_sent += approx_bytes as u64;
             self.last_broadcast = Instant::now();
 
@@ -1652,6 +1631,120 @@ impl Handler<BroadcastPositions> for ClientCoordinatorActor {
                 self.broadcast_sequence
             );
         }
+    }
+}
+
+/// Handler for `BroadcastAnalyticsUpdate` (PRD-007 / ADR-061 §D2).
+///
+/// Sticky GPU outputs (cluster, community, anomaly, sssp) ride this side
+/// channel at recompute cadence rather than the per-frame position stream.
+/// Wire format is a JSON text message:
+/// ```jsonc
+/// {"type":"analytics_update","source":"clustering",
+///  "generation":<u64>,"entries":[...]}
+/// ```
+///
+/// Server-side rate cap: max 1 emit per source per second. Producers should
+/// already be bounded by recompute cadence; this is defence-in-depth so a
+/// runaway producer cannot flood clients.
+/// ADR-061 §D2 rate-cap window per source.
+const ANALYTICS_RATE_CAP: Duration = Duration::from_secs(1);
+
+impl ClientCoordinatorActor {
+    /// Emit a single `analytics_update` envelope to all subscribed clients.
+    /// Updates `last_analytics_emit` so the rate-cap window restarts.
+    fn emit_analytics_update(
+        &mut self,
+        msg: crate::actors::messages::BroadcastAnalyticsUpdate,
+    ) {
+        self.last_analytics_emit.insert(msg.source, Instant::now());
+        let envelope = serde_json::json!({
+            "type": "analytics_update",
+            "source": msg.source,
+            "generation": msg.generation,
+            "entries": msg.entries,
+        });
+        let serialised = match serde_json::to_string(&envelope) {
+            Ok(s) => s,
+            Err(e) => {
+                error!("[ClientCoordinator] failed to serialise analytics_update: {}", e);
+                return;
+            }
+        };
+        let count = {
+            let manager = match handle_rwlock_error(self.client_manager.read()) {
+                Ok(m) => m,
+                Err(e) => {
+                    error!("[ClientCoordinator] analytics_update lock error: {}", e);
+                    return;
+                }
+            };
+            manager.broadcast_message(serialised)
+        };
+        debug!(
+            "[ClientCoordinator] analytics_update source={:?} gen={} entries={} fanned to {} clients",
+            msg.source, msg.generation, msg.entries.len(), count
+        );
+    }
+}
+
+impl Handler<crate::actors::messages::BroadcastAnalyticsUpdate> for ClientCoordinatorActor {
+    type Result = ();
+
+    fn handle(
+        &mut self,
+        msg: crate::actors::messages::BroadcastAnalyticsUpdate,
+        ctx: &mut Self::Context,
+    ) -> Self::Result {
+        let now = Instant::now();
+        let elapsed = self
+            .last_analytics_emit
+            .get(&msg.source)
+            .map(|prev| now.duration_since(*prev));
+
+        // Within the rate window — coalesce: keep the latest message per source
+        // (last-wins by generation; the merge resolves it client-side too) and
+        // schedule a flush at the window boundary if one isn't already pending.
+        if let Some(elapsed) = elapsed {
+            if elapsed < ANALYTICS_RATE_CAP {
+                let source = msg.source;
+                let prior_gen = self
+                    .pending_analytics_emit
+                    .get(&source)
+                    .map(|m| m.generation);
+                let keep = match prior_gen {
+                    Some(g) => msg.generation > g,
+                    None => true,
+                };
+                if keep {
+                    debug!(
+                        "[ClientCoordinator] coalescing analytics_update source={:?} gen={} (rate cap, keeping for flush)",
+                        source, msg.generation
+                    );
+                    self.pending_analytics_emit.insert(source, msg);
+                } else {
+                    debug!(
+                        "[ClientCoordinator] dropping analytics_update source={:?} gen={} (older than pending)",
+                        source, msg.generation
+                    );
+                }
+
+                if !self.analytics_flush_scheduled.contains(&source) {
+                    self.analytics_flush_scheduled.insert(source);
+                    let remaining = ANALYTICS_RATE_CAP.saturating_sub(elapsed);
+                    ctx.run_later(remaining, move |actor, _ctx| {
+                        actor.analytics_flush_scheduled.remove(&source);
+                        if let Some(pending) = actor.pending_analytics_emit.remove(&source) {
+                            actor.emit_analytics_update(pending);
+                        }
+                    });
+                }
+                return;
+            }
+        }
+
+        // Window open — emit immediately.
+        self.emit_analytics_update(msg);
     }
 }
 

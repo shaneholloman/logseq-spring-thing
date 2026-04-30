@@ -6,7 +6,6 @@
 
 use crate::uri::errors::UriError;
 use crate::uri::parse::{content_hash_12, normalise_pubkey};
-use nostr_sdk::{PublicKey, ToBech32};
 
 /// `urn:visionclaw:concept:<domain>:<slug>` — R3 (stable on identity).
 ///
@@ -24,7 +23,7 @@ pub fn mint_group_members(team: &str) -> String {
     format!("urn:visionclaw:group:{}#members", team)
 }
 
-/// `urn:visionclaw:kg:<npub>:<sha256-12-hex>` — R1 + R2 (content-addressed +
+/// `urn:visionclaw:kg:<hex-pubkey>:<sha256-12-hex>` — R1 + R2 (content-addressed +
 /// owner-scoped). API-alias form stored on `node.visionclaw_uri`.
 ///
 /// The legacy `visionclaw:owner:<npub>/kg/<sha256-64>` form lives on the
@@ -35,9 +34,8 @@ pub fn mint_owned_kg(pubkey_hex: &str, payload_bytes: &[u8]) -> Result<String, U
         return Err(UriError::EmptyPubkey);
     }
     let normalised = normalise_pubkey(pubkey_hex)?;
-    let npub = encode_npub(&normalised)?;
     let hash12 = content_hash_12(payload_bytes);
-    Ok(format!("urn:visionclaw:kg:{}:{}", npub, hash12))
+    Ok(format!("urn:visionclaw:kg:{}:{}", normalised, hash12))
 }
 
 /// `did:nostr:<64-hex-pubkey>` — R3.
@@ -52,21 +50,17 @@ pub fn mint_did_nostr(pubkey_hex: &str) -> Result<String, UriError> {
     Ok(format!("did:nostr:{}", hex))
 }
 
-/// `urn:visionclaw:bead:<npub>:<sha256-12-hex>` — R1 + R2.
+/// `urn:visionclaw:bead:<hex-pubkey>:<sha256-12-hex>` — R1 + R2.
 pub fn mint_bead(pubkey_hex: &str, payload: &serde_json::Value) -> Result<String, UriError> {
     if pubkey_hex.is_empty() {
         return Err(UriError::EmptyPubkey);
     }
     let normalised = normalise_pubkey(pubkey_hex)?;
-    let npub = encode_npub(&normalised)?;
-    // serde_json::to_vec is deterministic for objects keyed by string;
-    // both substrates use it, so the hash is byte-identical to the
-    // agentbox-side mint of the same JSON payload.
     let bytes = serde_json::to_vec(payload).map_err(|e| {
         UriError::ParseFailed(format!("bead payload serialisation: {}", e))
     })?;
     let hash12 = content_hash_12(&bytes);
-    Ok(format!("urn:visionclaw:bead:{}:{}", npub, hash12))
+    Ok(format!("urn:visionclaw:bead:{}:{}", normalised, hash12))
 }
 
 /// `urn:visionclaw:execution:<sha256-12-hex>` — R1.
@@ -88,13 +82,3 @@ pub fn mint_execution(
     Ok(format!("urn:visionclaw:execution:{}", hash12))
 }
 
-// ----------------------------------------------------------------------------
-// Internal helpers
-// ----------------------------------------------------------------------------
-
-/// NIP-19 `npub` encoding for a 64-char lowercase hex pubkey.
-fn encode_npub(pubkey_hex: &str) -> Result<String, UriError> {
-    let pk = PublicKey::from_hex(pubkey_hex)
-        .map_err(|e| UriError::InvalidPubkeyHex(e.to_string()))?;
-    pk.to_bech32().map_err(|e| UriError::Bech32Error(e.to_string()))
-}

@@ -1,8 +1,18 @@
 # ADR-037: Binary Protocol Consolidation
 
+> **Status: Superseded by [ADR-061](ADR-061-binary-protocol-unification.md) (2026-04-30)** —
+> the V3/V5 wire format documented here was replaced by the unified binary protocol with
+> a 24-byte/node payload and no versioning vocabulary. The historical content below
+> remains for archaeological reference. Do not implement against this ADR.
+>
+> The current single-source wire-format spec is [docs/binary-protocol.md](../binary-protocol.md).
+
 ## Status
 
-Implemented (2026-04-20). **Relitigated 2026-04-21** — see "Lock-in" below.
+**Superseded by ADR-061** (2026-04-30). Originally implemented (2026-04-20),
+relitigated (2026-04-21).
+
+## Historical context
 
 ## Lock-in (2026-04-21)
 

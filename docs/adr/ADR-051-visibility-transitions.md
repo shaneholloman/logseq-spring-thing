@@ -136,7 +136,8 @@ stay in whichever container they were provisioned to; no data loss.
   feature to the intersection of backend capabilities.
 - **Brief inconsistency window during saga mid-flight** (< 100ms expected).
   Clients in the window may see a stale opacity state for one frame until the
-  binary V5 broadcast arrives.
+  next binary protocol broadcast arrives (post-[ADR-061](ADR-061-binary-protocol-unification.md):
+  visibility is enforced at the broadcast boundary by `ClientCoordinator::broadcast_with_filter`).
 
 ### Neutral
 

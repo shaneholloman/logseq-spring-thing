@@ -3,7 +3,13 @@ import { debugState } from '../../../utils/clientDebugState';
 import { unifiedApiClient } from '../../../services/api/UnifiedApiClient';
 import { WebSocketAdapter } from '../../../store/websocketStore';
 import { useSettingsStore } from '../../../store/settingsStore';
-import { BinaryNodeData, parseBinaryNodeData, createBinaryNodeData, Vec3, BINARY_NODE_SIZE, PROTOCOL_V3 } from '../../../types/binaryProtocol';
+import {
+  BinaryNodeData,
+  createBinaryNodeData,
+  Vec3,
+  BINARY_NODE_SIZE,
+  BINARY_FRAME_HEADER_SIZE,
+} from '../../../types/binaryProtocol';
 import { binaryProtocol } from '../../../services/BinaryWebSocketProtocol';
 import { stringToU32 } from '../../../types/idMapping';
 import { graphWorkerProxy } from './graphWorkerProxy';
@@ -618,13 +624,14 @@ class GraphDataManager {
       if (debugState.isDataDebugEnabled()) {
         logger.debug(`Received binary data: ${positionData.byteLength} bytes`);
 
-        // V3 is the expected server format (48 bytes/node). Skip size validation
-        // for non-V3 frames (V4 delta encoding, V5, etc.) which have variable-length formats.
-        const protoVersion = positionData.byteLength >= 1 ? new DataView(positionData).getUint8(0) : 0;
-        if (protoVersion === PROTOCOL_V3) {
-          const remainder = (positionData.byteLength - 1) % BINARY_NODE_SIZE; // -1 for version byte
+        // ADR-061: 9-byte envelope (preamble + broadcast_sequence) + N × 24 B nodes.
+        if (positionData.byteLength >= BINARY_FRAME_HEADER_SIZE) {
+          const remainder = (positionData.byteLength - BINARY_FRAME_HEADER_SIZE) % BINARY_NODE_SIZE;
           if (remainder !== 0) {
-            logger.warn(`Binary data size (${positionData.byteLength} bytes) is not a multiple of ${BINARY_NODE_SIZE}. Remainder: ${remainder} bytes`);
+            logger.warn(
+              `Binary data size (${positionData.byteLength} bytes) does not match ` +
+              `${BINARY_FRAME_HEADER_SIZE} + N × ${BINARY_NODE_SIZE}. Remainder: ${remainder} bytes`,
+            );
           }
         }
       }
@@ -671,9 +678,10 @@ class GraphDataManager {
       
       if (debugEnabled && (physicsDebugEnabled || nodeDebugEnabled)) {
         const view = new DataView(positionData);
-        const nodeCount = Math.min(3, positionData.byteLength / BINARY_NODE_SIZE);
+        const payloadBytes = Math.max(0, positionData.byteLength - BINARY_FRAME_HEADER_SIZE);
+        const nodeCount = Math.min(3, Math.floor(payloadBytes / BINARY_NODE_SIZE));
         for (let i = 0; i < nodeCount; i++) {
-          const offset = i * BINARY_NODE_SIZE;
+          const offset = BINARY_FRAME_HEADER_SIZE + i * BINARY_NODE_SIZE;
           const x = view.getFloat32(offset + 4, true);
           const y = view.getFloat32(offset + 8, true);
           const z = view.getFloat32(offset + 12, true);

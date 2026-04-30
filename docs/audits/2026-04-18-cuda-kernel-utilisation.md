@@ -60,7 +60,7 @@ Eight kernels — full distributed PageRank with dangling node handling and opti
 - `pagerank_normalize_kernel`
 - `pagerank_convergence_kernel`
 
-Wiring PageRank through to an API endpoint and surfacing the score in the binary V3 analytics fields would give users a centrality metric in the visualisation — direct visual value.
+Wiring PageRank through to an API endpoint and surfacing the score on the `analytics_update` JSON channel (post-[ADR-061](../adr/ADR-061-binary-protocol-unification.md): analytics no longer ride the per-frame binary protocol) would give users a centrality metric in the visualisation — direct visual value.
 
 ### Single-source shortest paths (orphaned)
 

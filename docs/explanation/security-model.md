@@ -264,9 +264,9 @@ The WebSocket upgrade request is validated before the connection is accepted:
 
 ### Binary Protocol Security
 
-The binary position update protocol (V2/V3) carries only numeric node IDs and f32 position/velocity components. No user-identifying information, pubkeys, or session tokens appear in binary frames. An eavesdropper on the binary channel learns only that nodes moved — no identity linkage is possible from the binary stream alone.
+The binary position update protocol (single unified format — see [docs/binary-protocol.md](../binary-protocol.md) and [ADR-061](../adr/ADR-061-binary-protocol-unification.md)) carries only numeric node IDs and f32 position/velocity components. No user-identifying information, pubkeys, or session tokens appear in binary frames. An eavesdropper on the binary channel learns only that nodes moved — no identity linkage is possible from the binary stream alone.
 
-Protocol version is validated on every frame (only V2 and V3 accepted). Payload length declared in the header must match actual buffer size; mismatches are rejected, not truncated. The client also validates the binary protocol version on receipt, rejecting frames with unexpected version bytes to guard against protocol downgrade or corruption.
+The fixed preamble byte (0x42) is validated on every frame as a sanity check; mismatches are rejected, not truncated. Payload length must match `9 + 24 × node_count`. The preamble is not a version dispatch — there is one binary protocol, and any future evolution gets a new endpoint.
 
 ### Content Security Policy
 

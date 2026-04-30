@@ -13,7 +13,6 @@
 
 import { useMemo } from 'react';
 import { useSettingsStore } from '../../../store/settingsStore';
-import { useWebSocketStore } from '../../../store/websocketStore';
 import { NodeType } from '../../../types/binaryProtocol';
 import { detectHierarchy, type HierarchyNode } from '../utils/hierarchyDetector';
 import { createLogger } from '../../../utils/loggerConfig';
@@ -92,8 +91,10 @@ export function useGraphVisualState(graphData: GraphData): GraphVisualStateResul
     s => (s.settings?.visualisation?.graphs as unknown as { mode?: GraphVisualMode } | undefined)?.mode
   );
 
-  // Binary protocol node-type map from websocket store
-  const binaryNodeTypeMap = useWebSocketStore(state => state.nodeTypeMap);
+  // ADR-061: node type now ships via JSON `/api/graph/data` (`node.type`) at
+  // session init — not via per-frame binary flag bits. The classification
+  // priorities below cascade JSON-first → metadata heuristics; no wire-side
+  // map is consulted.
 
   // --- hierarchyMap (built from hierarchical edges, not path heuristic) ---
   const hierarchyMap = useMemo(() => {
@@ -131,20 +132,9 @@ export function useGraphVisualState(graphData: GraphData): GraphVisualStateResul
   const perNodeVisualModeMap = useMemo(() => {
     const map = new Map<string, GraphVisualMode>();
     for (const node of graphData.nodes) {
-      const nodeIdNum = parseInt(String(node.id), 10);
-
-      // Priority 1: Binary protocol type flags (ground truth)
-      // With server-side wire ID remapping, nodeTypeMap keys are compact wire IDs (0..N-1).
-      // Look up both the raw ID and the compact wire ID for backward compatibility.
-      if (!isNaN(nodeIdNum) && binaryNodeTypeMap.size > 0) {
-        const binaryType = binaryNodeTypeMap.get(nodeIdNum);
-        if (binaryType && binaryType !== NodeType.Unknown) {
-          map.set(String(node.id), nodeTypeToVisualMode(binaryType));
-          continue;
-        }
-      }
-
-      // Priority 2: Node type field from API (set by GraphStateActor classify_node)
+      // Priority 1: Node type field from API (set by GraphStateActor classify_node).
+      // Per ADR-061 this is the canonical source — node type rides JSON init,
+      // not the per-frame binary stream.
       const nodeType = (node as unknown as { type?: string }).type || '';
       if (nodeType === 'ontology_node' || nodeType === 'owl_class' || nodeType === 'OwlClass'
           || nodeType.includes(':') // OWL class IRI like "mv:Avatar", "ai:BdiModel"
@@ -161,7 +151,7 @@ export function useGraphVisualState(graphData: GraphData): GraphVisualStateResul
         continue;
       }
 
-      // Priority 3: Metadata heuristics (fallback)
+      // Priority 2: Metadata heuristics (fallback for nodes without explicit type)
       const nt = node.metadata?.nodeType || (node as unknown as { nodeType?: string }).nodeType || '';
       const owlIri = (node as unknown as { owlClassIri?: string }).owlClassIri;
       if (node.metadata?.agentType || node.metadata?.tokenRate !== undefined) {
@@ -172,7 +162,7 @@ export function useGraphVisualState(graphData: GraphData): GraphVisualStateResul
       // If no signals found, don't set -- will fall through to global dominantMode
     }
     return map;
-  }, [graphData.nodes, binaryNodeTypeMap]);
+  }, [graphData.nodes]);
 
   return {
     perNodeVisualModeMap,

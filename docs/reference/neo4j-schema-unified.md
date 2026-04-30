@@ -651,13 +651,19 @@ Agent   | KGNode  | Private Opaque   | Ontology  | Sequential ID
 - `is_private_opaque(raw)` — checks `(raw & 0x20000000) != 0`
 - `encode_node_id(base, is_private)` — sets flag if `is_private = true`
 
-**Serialisation rule (V5 wire protocol):**
+**Serialisation rule (post-[ADR-061](../adr/ADR-061-binary-protocol-unification.md), 2026-04-30):**
 
-For nodes with the opacity flag set (private nodes, non-owner caller), the binary protocol:
-- Sends node_id with bit 29 set
-- **Omits all labels, metadata, descriptions, and content** — string-free
-- Client side uses the flag to suppress UI rendering of sensitive information
-- Owner caller always receives full node data (privacy controls applied at filter stage, not serialisation stage)
+Visibility is enforced at the broadcast boundary, not on the wire. The binary
+protocol carries the raw u32 node id with no flag bits (see
+[docs/binary-protocol.md](../binary-protocol.md)):
+
+- `ClientCoordinator::broadcast_with_filter` drops positions for private nodes
+  the caller cannot see; non-owner callers therefore receive **no** position
+  frame, **no** label, **no** metadata for those nodes.
+- Owner callers receive full node data via the normal broadcast path.
+- The `is_private_opaque` / bit-29 wire mechanism (historical, pre-ADR-061) has
+  been removed; the helper functions above remain for the `node_id_base` /
+  `encode_node_id` accessors used in storage-layer joins.
 
 ---
 

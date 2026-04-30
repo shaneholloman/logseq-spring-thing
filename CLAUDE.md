@@ -206,6 +206,21 @@ claude-flow session restore --latest                                            
 claude-flow hooks session-end --generate-summary true --persist-state true        # End
 ```
 
+## Architecture Patterns / Wire formats
+
+The GPU position stream uses a single binary protocol — there are no versions.
+Single-source spec: [`docs/binary-protocol.md`](docs/binary-protocol.md)
+(authoritative ADR: [ADR-061](docs/adr/ADR-061-binary-protocol-unification.md);
+domain model: [ddd-binary-protocol-context](docs/ddd-binary-protocol-context.md)).
+The 24-byte/node frame carries position + velocity only; sticky GPU outputs
+ride a separate `analytics_update` JSON message.
+
+Two parallel URI namespaces exist by design:
+- **`urn:visionclaw:*`** — Rust substrate, 6 kinds (`concept`, `kg`, `bead`, `execution`, `group`), minted in `src/uri/` (mint.rs, parse.rs, kinds.rs). Grammar: `urn:visionclaw:<kind>:<hex-pubkey>:<local>`. Owner-scoped kinds (`kg`, `bead`) use 64-char hex pubkey as scope (not bech32 npub).
+- **`urn:agentbox:*`** — JS management API, 18 kinds, minted in `management-api/lib/uris.js`. Grammar: `urn:agentbox:<kind>:[<hex-pubkey>:]<local>`. Canonical ref: agentbox ADR-013.
+- Both share `did:nostr:<hex-pubkey>` identity and `sha256-12-<12 hex chars>` content addressing. Hex pubkey is the canonical scope form everywhere; bech32 npub is only used at the Nostr relay wire boundary and in legacy pod filesystem paths.
+- BC20 anti-corruption layer maps between them at the federation boundary (planned, see [DDD BC20](docs/ddd-agentbox-integration-context.md)).
+
 ## Codebase Memory MCP (ACTIVE — USE FIRST)
 
 `codebase-memory-mcp` is indexed for this project (`home-devuser-workspace-project`, 48,159 nodes, 95,766 edges). Use these tools BEFORE Grep/Glob/Read for all structural queries.

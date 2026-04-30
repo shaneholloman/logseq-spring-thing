@@ -145,7 +145,7 @@ These entities are readable by any connected client querying the entity store. I
 | Boundary | Validation |
 |:---------|:-----------|
 | WebSocket messages | JSON.parse with try/catch; malformed messages are logged and discarded |
-| Binary protocol | Header size validation; payload length verification; protocol version check |
+| Binary protocol | Header size validation; payload length verification; preamble byte sanity check (0x42, fixed, not a version dispatch — see [ADR-061](adr/ADR-061-binary-protocol-unification.md)) |
 | Query responses | Request ID matching; timeout enforcement per query |
 | Remote avatar data | Position and rotation values parsed from entity metadata with null checks |
 | Hand tracking joints | Joint array bounds checking before mesh updates |

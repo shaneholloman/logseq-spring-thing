@@ -1,6 +1,5 @@
 import type { WebSocketMessage, WebSocketStatistics } from '../../types/websocketTypes';
 import type { NodePositionBatchQueue } from '../../utils/BatchQueue';
-import type { NodeType } from '../../types/binaryProtocol';
 
 // WebSocketAdapter interface for components that need to send binary data
 export interface WebSocketAdapter {
@@ -141,10 +140,6 @@ export interface WebSocketState {
   unsubscribeSolidResource: (resourceUrl: string) => void;
   isSolidWebSocketConnected: () => boolean;
   getSolidSubscriptions: () => string[];
-
-  // Per-node type map from binary protocol flags
-  nodeTypeMap: Map<number, NodeType>;
-  getNodeTypeMap: () => Map<number, NodeType>;
 
   // Utility methods
   isReady: () => boolean;

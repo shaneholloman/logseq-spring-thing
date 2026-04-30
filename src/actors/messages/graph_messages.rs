@@ -44,11 +44,11 @@ pub struct NodeTypeArrays {
     pub ontology_class_ids: Vec<u32>,
     pub ontology_individual_ids: Vec<u32>,
     pub ontology_property_ids: Vec<u32>,
-    /// ADR-050 (H2): map of node_id -> owner_pubkey for private-visibility
-    /// nodes. Used by the binary encoder to set bit 29
-    /// (`PRIVATE_OPAQUE_FLAG`) on the wire id for every node whose owner is
-    /// not the consuming client. Empty for public-only graphs and when
-    /// `SOVEREIGN_SCHEMA` is off.
+    /// ADR-050 (H2), updated by ADR-061 §D3: map of node_id -> owner_pubkey
+    /// for private-visibility nodes. `ClientCoordinator::broadcast_with_filter`
+    /// uses this map to DROP private positions belonging to other owners
+    /// from the per-frame stream (no opacification flag is encoded on the
+    /// wire). Empty for public-only graphs and when `SOVEREIGN_SCHEMA` is off.
     pub private_node_owners: HashMap<u32, String>,
 }
 

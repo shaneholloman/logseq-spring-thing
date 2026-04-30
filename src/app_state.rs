@@ -773,6 +773,19 @@ impl AppState {
             });
             info!("[AppState::new] Sent SetNodeAnalytics to GPUManagerActor");
 
+            // ADR-061 §D2: wire ClientCoordinator into the analytics producers
+            // so they can emit `BroadcastAnalyticsUpdate` on kernel completion.
+            // GPUManagerActor relays to AnalyticsSupervisor → Clustering/Anomaly;
+            // ShortestPathActor receives the addr directly because it lives
+            // outside the supervisor tree.
+            gpu_manager.do_send(crate::actors::messages::SetClientCoordinatorAddr {
+                addr: client_manager_addr.clone(),
+            });
+            shortest_path.do_send(crate::actors::messages::SetClientCoordinatorAddr {
+                addr: client_manager_addr.clone(),
+            });
+            info!("[AppState::new] Wired ClientCoordinator addr into GPU analytics producers");
+
             (Some(gpu_manager), None, Some(shortest_path), Some(connected_components))
         };
 

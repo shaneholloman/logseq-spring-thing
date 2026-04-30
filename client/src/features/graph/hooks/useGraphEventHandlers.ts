@@ -4,7 +4,6 @@ import * as THREE from 'three';
 import { throttle } from 'lodash';
 import { graphDataManager, type GraphData, type Node } from '../managers/graphDataManager';
 import { graphWorkerProxy } from '../managers/graphWorkerProxy';
-import { createBinaryNodeData, BinaryNodeData } from '../../../types/binaryProtocol';
 import { createLogger } from '../../../utils/loggerConfig';
 import { debugState } from '../../../utils/clientDebugState';
 import { useGraphInteraction } from '../../visualisation/hooks/useGraphInteraction';

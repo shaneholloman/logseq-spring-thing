@@ -1,33 +1,29 @@
 /**
- * binaryProtocol.ts — Binary message handling
+ * binaryProtocol.ts — Position-frame decoder + outbound batch queue (ADR-061 / PRD-007).
  *
- * Handles: validateBinaryData, processBinaryData, protocol version dispatch,
- * position update parsing, batch queue, all binary frame processing.
+ * Inbound: a single straight path. Every binary frame is a position frame
+ * (28 B/node, fixed). No version dispatch. No flag-bit decode. Sticky GPU
+ * outputs (cluster_id, anomaly_score, etc.) arrive on the separate
+ * `analytics_update` text-message channel — see analyticsStore.
+ *
+ * Outbound: position-batch-queue scaffolding for user-driven node drag updates.
+ * Unrelated to the inbound decoder; preserved as-is from the prior design.
  */
 
 import { createLogger, createErrorMetadata } from '../../utils/loggerConfig';
 import { debugState } from '../../utils/clientDebugState';
-import { useSettingsStore } from '../settingsStore';
 import { graphDataManager } from '../../features/graph/managers/graphDataManager';
 import {
-  parseBinaryNodeData,
-  parseBinaryFrameData,
-  isAgentNode,
+  decodePositionFrame,
+  isPositionFrame,
+  BINARY_PROTOCOL_PREAMBLE,
   type BinaryNodeData,
-  getNodeType,
-  getActualNodeId,
-  NodeType,
-  PROTOCOL_V3,
-  PROTOCOL_V5,
 } from '../../types/binaryProtocol';
 import { NodePositionBatchQueue, createWebSocketBatchProcessor } from '../../utils/BatchQueue';
 import { validateNodePositions, createValidationMiddleware } from '../../utils/validation';
-import { binaryProtocol, MessageType, GraphTypeFlag } from '../../services/BinaryWebSocketProtocol';
+import { binaryProtocol } from '../../services/BinaryWebSocketProtocol';
 import type { WebSocketErrorFrame, NodePositionUpdate } from './types';
-import {
-  emit,
-  notifyBinaryMessageHandlers,
-} from './connectionManager';
+import { emit, notifyBinaryMessageHandlers } from './connectionManager';
 
 const logger = createLogger('WebSocketStore');
 
@@ -37,7 +33,6 @@ const ACK_BATCH_SIZE = 10;
 // ── Encapsulated module-level state ────────────────────────────────────
 let positionBatchQueue: NodePositionBatchQueue | null = null;
 let binaryMessageCount = 0;
-let currentNodeTypeMap: Map<number, NodeType> = new Map();
 let positionUpdateSequence = 0;
 let lastAckSentSequence = 0;
 
@@ -53,7 +48,6 @@ export function resetBinaryState() {
   }
   positionBatchQueue = null;
   binaryMessageCount = 0;
-  currentNodeTypeMap = new Map();
   positionUpdateSequence = 0;
   lastAckSentSequence = 0;
 }
@@ -71,7 +65,7 @@ export function initializeBatchQueue(
     maxNodes: 100000,
     maxCoordinate: 10000,
     minCoordinate: -10000,
-    maxVelocity: 1000
+    maxVelocity: 1000,
   });
 
   const batchProcessor = createWebSocketBatchProcessor((data: ArrayBuffer) => {
@@ -105,7 +99,7 @@ export function initializeBatchQueue(
       await batchProcessor.processBatch(validatedBatch);
     },
     onError: batchProcessor.onError,
-    onSuccess: batchProcessor.onSuccess
+    onSuccess: batchProcessor.onSuccess,
   });
 
   logger.info('Position batch queue initialized');
@@ -118,7 +112,7 @@ export function destroyBatchQueue() {
   }
 }
 
-// ── Position ACK ───────────────────────────────────────────────────────
+// ── Position ACK (backpressure) ────────────────────────────────────────
 
 function sendPositionAck(
   get: () => { socket: WebSocket | null },
@@ -142,26 +136,6 @@ function sendPositionAck(
   }
 }
 
-// ── Node type map ──────────────────────────────────────────────────────
-
-function updateNodeTypeMapFromParsed(
-  parsedNodes: BinaryNodeData[],
-  set: (partial: { nodeTypeMap: Map<number, NodeType> }) => void,
-) {
-  for (const node of parsedNodes) {
-    const nodeType = getNodeType(node.nodeId);
-    if (nodeType !== NodeType.Unknown) {
-      const actualId = getActualNodeId(node.nodeId);
-      currentNodeTypeMap.set(actualId, nodeType);
-    }
-  }
-  set({ nodeTypeMap: new Map(currentNodeTypeMap) });
-}
-
-export function getCurrentNodeTypeMap(): Map<number, NodeType> {
-  return new Map(currentNodeTypeMap);
-}
-
 // ── Validation ─────────────────────────────────────────────────────────
 
 export function validateBinaryData(data: ArrayBuffer): boolean {
@@ -174,10 +148,12 @@ export function validateBinaryData(data: ArrayBuffer): boolean {
     return false;
   }
 
-  const version = new DataView(data).getUint8(0);
-  const VALID_VERSIONS = [3, 4, 5];
-  if (!VALID_VERSIONS.includes(version)) {
-    console.warn(`[WS] Invalid binary protocol version: ${version}`);
+  if (!isPositionFrame(data)) {
+    const firstByte = new DataView(data).getUint8(0);
+    logger.warn(
+      `Invalid binary protocol preamble: 0x${firstByte.toString(16)} ` +
+      `(expected 0x${BINARY_PROTOCOL_PREAMBLE.toString(16)})`,
+    );
     return false;
   }
 
@@ -200,7 +176,7 @@ export function handleErrorFrame(
       if (error.affectedPaths && error.affectedPaths.length > 0) {
         emit('validation-error', {
           paths: error.affectedPaths,
-          message: error.message
+          message: error.message,
         });
       }
       break;
@@ -210,7 +186,7 @@ export function handleErrorFrame(
         logger.warn(`Rate limited. Retry after ${error.retryAfter}ms`);
         emit('rate-limit', {
           retryAfter: error.retryAfter,
-          message: error.message
+          message: error.message,
         });
       }
       break;
@@ -218,7 +194,7 @@ export function handleErrorFrame(
     case 'auth':
       emit('auth-error', {
         code: error.code,
-        message: error.message
+        message: error.message,
       });
       break;
 
@@ -239,230 +215,55 @@ export function handleErrorFrame(
   }
 }
 
-// ── Binary message processing handlers ─────────────────────────────────
-
-async function handleGraphUpdate(data: ArrayBuffer, header: ReturnType<typeof binaryProtocol.parseHeader>) {
-  if (!header) return;
-
-  const graphTypeFlag = header.graphTypeFlag as GraphTypeFlag;
-  const currentMode = useSettingsStore.getState().get<'knowledge_graph' | 'ontology'>('visualisation.graphs.mode') || 'knowledge_graph';
-
-  const shouldProcess =
-    (currentMode === 'knowledge_graph' && graphTypeFlag === GraphTypeFlag.KNOWLEDGE_GRAPH) ||
-    (currentMode === 'ontology' && graphTypeFlag === GraphTypeFlag.ONTOLOGY);
-
-  if (!shouldProcess) {
-    if (debugState.isDataDebugEnabled()) {
-      logger.debug(`Skipping graph update - mode mismatch: current=${currentMode}, flag=${graphTypeFlag}`);
-    }
-    return;
-  }
-
-  const payload = binaryProtocol.extractPayload(data, header);
-
-  emit('graph-update', {
-    graphType: graphTypeFlag === GraphTypeFlag.ONTOLOGY ? 'ontology' : 'knowledge_graph',
-    data: payload
-  });
-
-  if (debugState.isDataDebugEnabled()) {
-    logger.debug(`Processed graph update: mode=${currentMode}, size=${payload.byteLength}`);
-  }
-}
-
-async function handleVoiceData(data: ArrayBuffer, header: ReturnType<typeof binaryProtocol.parseHeader>) {
-  if (!header) return;
-
-  const payload = binaryProtocol.extractPayload(data, header);
-
-  emit('voice-data', payload);
-
-  if (debugState.isDataDebugEnabled()) {
-    logger.debug(`Processed voice data: size=${payload.byteLength}`);
-  }
-}
-
-async function handlePositionUpdate(
-  data: ArrayBuffer,
-  header: ReturnType<typeof binaryProtocol.parseHeader>,
-  get: () => { socket: WebSocket | null },
-  set: (partial: { nodeTypeMap: Map<number, NodeType> }) => void,
-) {
-  if (!header) return;
-
-  const payload = binaryProtocol.extractPayload(data, header);
-  const estimatedNodeCount = Math.floor(payload.byteLength / 28);
-
-  let parsedNodes: BinaryNodeData[] | null = null;
-  try {
-    parsedNodes = parseBinaryNodeData(payload);
-  } catch (error) {
-    logger.error('Error parsing binary node data:', createErrorMetadata(error));
-    return;
-  }
-
-  updateNodeTypeMapFromParsed(parsedNodes, set);
-
-  const hasBotsData = parsedNodes.some(node => isAgentNode(node.nodeId));
-
-  if (hasBotsData) {
-    emit('bots-position-update', payload);
-    if (debugState.isDataDebugEnabled()) {
-      logger.debug('Emitted bots-position-update event');
-    }
-  }
-
-  const graphType = graphDataManager.getGraphType();
-
-  binaryMessageCount = (binaryMessageCount || 0) + 1;
-  if (binaryMessageCount % 100 === 1) {
-    logger.debug('Position update received', { graphType, dataSize: payload.byteLength, msgCount: binaryMessageCount });
-  }
-
-  try {
-    await graphDataManager.updateNodePositions(payload);
-    if (binaryMessageCount % 100 === 1) {
-      logger.debug('Node positions updated successfully', { graphType });
-    }
-  } catch (error) {
-    logger.error('[WebSocketStore] Error updating positions:', createErrorMetadata(error));
-    logger.error('Error processing position data in graphDataManager:', createErrorMetadata(error));
-  }
-
-  positionUpdateSequence++;
-  if (positionUpdateSequence - lastAckSentSequence >= ACK_BATCH_SIZE) {
-    sendPositionAck(get, positionUpdateSequence, estimatedNodeCount);
-    lastAckSentSequence = positionUpdateSequence;
-  }
-}
-
-async function handleLegacyBinaryData(
-  data: ArrayBuffer,
-  get: () => { socket: WebSocket | null },
-  set: (partial: { nodeTypeMap: Map<number, NodeType> }) => void,
-) {
-  const estimatedNodeCount = Math.floor(data.byteLength / 28);
-
-  let frame: ReturnType<typeof parseBinaryFrameData>;
-  try {
-    frame = parseBinaryFrameData(data);
-  } catch (error) {
-    logger.error('Error parsing legacy binary data:', createErrorMetadata(error));
-    return;
-  }
-
-  const parsedNodes = frame.nodes;
-
-  updateNodeTypeMapFromParsed(parsedNodes, set);
-
-  const hasBotsData = parsedNodes.some(node => isAgentNode(node.nodeId));
-
-  if (hasBotsData) {
-    emit('bots-position-update', data);
-    if (debugState.isDataDebugEnabled()) {
-      logger.debug('Emitted bots-position-update event (legacy)');
-    }
-  }
-
-  const graphType = graphDataManager.getGraphType();
-  binaryMessageCount = (binaryMessageCount || 0) + 1;
-
-  if (binaryMessageCount % 100 === 1) {
-    logger.debug('Legacy binary data received', { graphType, dataSize: data.byteLength, msgCount: binaryMessageCount });
-  }
-
-  try {
-    await graphDataManager.updateNodePositions(data);
-    if (binaryMessageCount % 100 === 1) {
-      logger.debug('Node positions updated successfully (legacy)', { graphType });
-    }
-  } catch (error) {
-    logger.error('Error processing legacy binary data:', createErrorMetadata(error));
-  }
-
-  positionUpdateSequence++;
-  const ackSequence = frame.broadcastSequence ?? positionUpdateSequence;
-  if (positionUpdateSequence - lastAckSentSequence >= ACK_BATCH_SIZE) {
-    sendPositionAck(get, ackSequence, estimatedNodeCount);
-    lastAckSentSequence = positionUpdateSequence;
-  }
-}
-
-async function handleAgentAction(data: ArrayBuffer, header: ReturnType<typeof binaryProtocol.parseHeader>) {
-  if (!header) return;
-
-  const payload = binaryProtocol.extractPayload(data, header);
-
-  const actions = payload.byteLength >= 15
-    ? binaryProtocol.decodeAgentActions(payload)
-    : [];
-
-  if (actions.length > 0) {
-    emit('agent-action', actions);
-
-    if (debugState.isDataDebugEnabled()) {
-      logger.debug(`Processed ${actions.length} agent action(s)`);
-    }
-  }
-}
-
-// ── Main binary data processor ─────────────────────────────────────────
+// ── Main binary data processor — single straight path ──────────────────
 
 export async function processBinaryData(
   data: ArrayBuffer,
   get: () => { socket: WebSocket | null },
-  set: (partial: { nodeTypeMap: Map<number, NodeType> }) => void,
 ) {
   try {
     if (debugState.isDataDebugEnabled()) {
       logger.debug(`Processing binary data: ${data.byteLength} bytes`);
     }
 
-    if (data.byteLength >= 1) {
-      const firstByte = new DataView(data).getUint8(0);
-      if (firstByte === PROTOCOL_V3 || firstByte === PROTOCOL_V5) {
-        await handleLegacyBinaryData(data, get, set);
-        notifyBinaryMessageHandlers(data);
-        return;
-      }
-    }
-
-    const header = binaryProtocol.parseHeader(data);
-    if (!header) {
-      logger.error('Failed to parse binary message header');
+    const frame = decodePositionFrame(data);
+    if (!frame) {
       return;
     }
 
-    switch (header.type) {
-      case MessageType.GRAPH_UPDATE:
-        await handleGraphUpdate(data, header);
-        break;
-
-      case MessageType.VOICE_DATA:
-        await handleVoiceData(data, header);
-        break;
-
-      case MessageType.POSITION_UPDATE:
-      case MessageType.AGENT_POSITIONS:
-        await handlePositionUpdate(data, header, get, set);
-        break;
-
-      case MessageType.AGENT_ACTION:
-        await handleAgentAction(data, header);
-        break;
-
-      default:
-        await handleLegacyBinaryData(data, get, set);
-        break;
+    binaryMessageCount = (binaryMessageCount || 0) + 1;
+    if (binaryMessageCount % 100 === 1) {
+      logger.debug('Position frame received', {
+        bytes: data.byteLength,
+        nodes: frame.nodes.size,
+        broadcastSequence: frame.broadcastSequence,
+        msgCount: binaryMessageCount,
+      });
     }
 
+    // Forward the raw buffer to graphDataManager → worker for SAB writeback.
+    // Pass-through so the worker can parse with the same canonical decoder.
+    try {
+      await graphDataManager.updateNodePositions(data);
+    } catch (error) {
+      logger.error('Error updating positions:', createErrorMetadata(error));
+    }
+
+    // Notify any registered raw-binary listeners (BotsWebSocketIntegration etc.)
     notifyBinaryMessageHandlers(data);
+
+    // Backpressure ack — every Nth frame, ack the latest broadcast_sequence.
+    positionUpdateSequence++;
+    if (positionUpdateSequence - lastAckSentSequence >= ACK_BATCH_SIZE) {
+      sendPositionAck(get, frame.broadcastSequence, frame.nodes.size);
+      lastAckSentSequence = positionUpdateSequence;
+    }
   } catch (error) {
     logger.error('Error processing binary data:', createErrorMetadata(error));
   }
 }
 
-// ── Position update sending ────────────────────────────────────────────
+// ── Position update sending (outbound batch queue) ─────────────────────
 
 export function sendNodePositionUpdates(updates: NodePositionUpdate[]) {
   if (!positionBatchQueue) {
@@ -475,12 +276,10 @@ export function sendNodePositionUpdates(updates: NodePositionUpdate[]) {
       nodeId: update.nodeId,
       position: update.position,
       velocity: update.velocity || { x: 0, y: 0, z: 0 },
-      ssspDistance: 0,
-      ssspParent: -1
     }));
 
     const validation = validateNodePositions(binaryNodes, {
-      maxNodes: updates.length + 100
+      maxNodes: updates.length + 100,
     });
 
     if (!validation.valid) {
@@ -489,8 +288,7 @@ export function sendNodePositionUpdates(updates: NodePositionUpdate[]) {
     }
 
     binaryNodes.forEach(node => {
-      const priority = isAgentNode(node.nodeId) ? 10 : 0;
-      positionBatchQueue!.enqueuePositionUpdate(node, priority);
+      positionBatchQueue!.enqueuePositionUpdate(node, 0);
     });
 
     if (debugState.isDataDebugEnabled()) {

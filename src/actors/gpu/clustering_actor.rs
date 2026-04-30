@@ -4,11 +4,13 @@ use actix::prelude::*;
 use log::{error, info, warn};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
+use std::sync::atomic::{AtomicU64, Ordering as AtomicOrdering};
 use std::sync::Arc;
 use std::time::Instant;
 use uuid::Uuid;
 
 use super::shared::{GPUState, SharedGPUContext};
+use crate::actors::client_coordinator_actor::ClientCoordinatorActor;
 use crate::actors::messages::*;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -55,9 +57,20 @@ pub struct ClusteringActor {
     /// When empty, raw buffer indices are used as-is (backward compat).
     node_id_map: Vec<u32>,
 
-    /// Shared analytics store — populated after clustering so the binary broadcast
-    /// path can embed real cluster_id values in V3 wire format (ADR-014 DL4 fix).
+    /// Shared analytics store — populated after clustering. Per ADR-061 the
+    /// binary frame no longer carries analytics columns; this map is now an
+    /// in-process side table for REST API consumers. Wire-side delivery to
+    /// clients goes via `BroadcastAnalyticsUpdate` on the
+    /// `ClientCoordinatorActor`.
     node_analytics: Option<NodeAnalyticsMap>,
+
+    /// PRD-007 §B1 / ADR-061 §D2: address of the `ClientCoordinatorActor`
+    /// for emitting `BroadcastAnalyticsUpdate` on kernel completion.
+    client_coordinator_addr: Option<Addr<ClientCoordinatorActor>>,
+
+    /// Monotonic generation counter — increments on every recompute; merged
+    /// by the client side-table for ordering.
+    analytics_generation: Arc<AtomicU64>,
 }
 
 impl ClusteringActor {
@@ -67,6 +80,8 @@ impl ClusteringActor {
             shared_context: None,
             node_id_map: Vec::new(),
             node_analytics: None,
+            client_coordinator_addr: None,
+            analytics_generation: Arc::new(AtomicU64::new(0)),
         }
     }
 
@@ -231,8 +246,10 @@ impl ClusteringActor {
             computation_time_ms: computation_time.as_millis() as u64,
         };
 
-        // ADR-014 DL4 fix: Populate shared node_analytics with cluster assignments
-        // so the V3 binary broadcast path carries real cluster_id values.
+        // Per ADR-061: maintain the in-process side table for REST API
+        // consumers, but DO NOT depend on it for the per-frame binary
+        // stream. Wire-side delivery to clients goes via
+        // BroadcastAnalyticsUpdate emitted below.
         if let Some(ref analytics_map) = self.node_analytics {
             if let Ok(mut map) = analytics_map.write() {
                 for (gpu_idx, &cluster_id) in assignments.iter().enumerate() {
@@ -245,6 +262,28 @@ impl ClusteringActor {
                     assignments.len()
                 );
             }
+        }
+
+        // ADR-061 §D2: emit analytics_update side-channel message.
+        if let Some(ref coord) = self.client_coordinator_addr {
+            let generation = self.analytics_generation.fetch_add(1, AtomicOrdering::Relaxed) + 1;
+            let entries: Vec<AnalyticsEntry> = assignments
+                .iter()
+                .enumerate()
+                .map(|(gpu_idx, &cluster_id)| AnalyticsEntry {
+                    id: self.translate_gpu_index(gpu_idx),
+                    cluster_id: Some(cluster_id as u32),
+                    community_id: None,
+                    anomaly_score: None,
+                    sssp_distance: None,
+                    sssp_parent: None,
+                })
+                .collect();
+            coord.do_send(BroadcastAnalyticsUpdate {
+                source: AnalyticsSource::Clustering,
+                generation,
+                entries,
+            });
         }
 
         Ok(KMeansResult {
@@ -345,22 +384,45 @@ impl ClusteringActor {
             communities.iter().map(|c| c.nodes.len()).collect();
         let actual_modularity = self.calculate_modularity(&communities);
 
-        // ADR-014 DL4 fix: Populate shared node_analytics with community assignments
-        // Write community_id to BOTH slot 0 (cluster_id) and slot 2 (community_id)
-        // so that GemNodes.tsx can read slot 0 for node coloring.
+        // Per ADR-061: maintain the in-process side table for REST API
+        // consumers; per-frame binary stream no longer carries community_id.
+        // Wire-side delivery to clients goes via BroadcastAnalyticsUpdate
+        // emitted below.
         if let Some(ref analytics_map) = self.node_analytics {
             if let Ok(mut map) = analytics_map.write() {
                 for (gpu_idx, &community_label) in node_labels.iter().enumerate() {
                     let node_id = self.translate_gpu_index(gpu_idx);
                     let entry = map.entry(node_id).or_insert((0, 0.0, 0));
-                    entry.0 = community_label as u32; // cluster_id (for GemNodes.tsx coloring)
-                    entry.2 = community_label as u32; // community_id
+                    entry.0 = community_label as u32; // cluster_id (REST consumers)
+                    entry.2 = community_label as u32; // community_id (REST consumers)
                 }
                 info!(
                     "ClusteringActor: Populated node_analytics with community assignments for {} nodes",
                     node_labels.len()
                 );
             }
+        }
+
+        // ADR-061 §D2: emit analytics_update side-channel message.
+        if let Some(ref coord) = self.client_coordinator_addr {
+            let generation = self.analytics_generation.fetch_add(1, AtomicOrdering::Relaxed) + 1;
+            let entries: Vec<AnalyticsEntry> = node_labels
+                .iter()
+                .enumerate()
+                .map(|(gpu_idx, &community_label)| AnalyticsEntry {
+                    id: self.translate_gpu_index(gpu_idx),
+                    cluster_id: None,
+                    community_id: Some(community_label as u32),
+                    anomaly_score: None,
+                    sssp_distance: None,
+                    sssp_parent: None,
+                })
+                .collect();
+            coord.do_send(BroadcastAnalyticsUpdate {
+                source: AnalyticsSource::Community,
+                generation,
+                entries,
+            });
         }
 
         let stats = CommunityDetectionStats {
@@ -488,7 +550,7 @@ impl ClusteringActor {
 
         let cluster_sizes: Vec<usize> = clusters.iter().map(|c| c.nodes.len()).collect();
 
-        // Populate shared node_analytics with DBSCAN cluster assignments
+        // Populate in-process side table for REST API consumers.
         if let Some(ref analytics_map) = self.node_analytics {
             if let Ok(mut map) = analytics_map.write() {
                 for (gpu_idx, &label) in labels.iter().enumerate() {
@@ -503,6 +565,30 @@ impl ClusteringActor {
                     labels.len() - num_noise
                 );
             }
+        }
+
+        // ADR-061 §D2: emit analytics_update for DBSCAN under the
+        // Clustering source.
+        if let Some(ref coord) = self.client_coordinator_addr {
+            let generation = self.analytics_generation.fetch_add(1, AtomicOrdering::Relaxed) + 1;
+            let entries: Vec<AnalyticsEntry> = labels
+                .iter()
+                .enumerate()
+                .filter(|(_, &label)| label >= 0)
+                .map(|(gpu_idx, &label)| AnalyticsEntry {
+                    id: self.translate_gpu_index(gpu_idx),
+                    cluster_id: Some(label as u32),
+                    community_id: None,
+                    anomaly_score: None,
+                    sssp_distance: None,
+                    sssp_parent: None,
+                })
+                .collect();
+            coord.do_send(BroadcastAnalyticsUpdate {
+                source: AnalyticsSource::Clustering,
+                generation,
+                entries,
+            });
         }
 
         let stats = DBSCANStats {
@@ -1064,6 +1150,8 @@ impl Handler<RunKMeans> for ClusteringActor {
             shared_context: self.shared_context.clone(),
             node_id_map: self.node_id_map.clone(),
             node_analytics: self.node_analytics.clone(),
+            client_coordinator_addr: self.client_coordinator_addr.clone(),
+            analytics_generation: self.analytics_generation.clone(),
         };
 
         Box::pin(async move { actor_clone.perform_kmeans_clustering(msg.params).await })
@@ -1082,6 +1170,8 @@ impl Handler<RunCommunityDetection> for ClusteringActor {
             shared_context: self.shared_context.clone(),
             node_id_map: self.node_id_map.clone(),
             node_analytics: self.node_analytics.clone(),
+            client_coordinator_addr: self.client_coordinator_addr.clone(),
+            analytics_generation: self.analytics_generation.clone(),
         };
 
         Box::pin(async move { actor_clone.perform_community_detection(msg.params).await })
@@ -1102,6 +1192,8 @@ impl Handler<RunDBSCAN> for ClusteringActor {
             shared_context: self.shared_context.clone(),
             node_id_map: self.node_id_map.clone(),
             node_analytics: self.node_analytics.clone(),
+            client_coordinator_addr: self.client_coordinator_addr.clone(),
+            analytics_generation: self.analytics_generation.clone(),
         };
 
         Box::pin(async move { actor_clone.perform_dbscan_clustering(msg.params).await })
@@ -1114,6 +1206,19 @@ impl Handler<SetNodeAnalytics> for ClusteringActor {
     fn handle(&mut self, msg: SetNodeAnalytics, _ctx: &mut Self::Context) {
         info!("ClusteringActor: Received shared node_analytics map");
         self.node_analytics = Some(msg.node_analytics);
+    }
+}
+
+impl Handler<crate::actors::messages::SetClientCoordinatorAddr> for ClusteringActor {
+    type Result = ();
+
+    fn handle(
+        &mut self,
+        msg: crate::actors::messages::SetClientCoordinatorAddr,
+        _ctx: &mut Self::Context,
+    ) {
+        info!("ClusteringActor: Received ClientCoordinatorActor address for analytics_update emission");
+        self.client_coordinator_addr = Some(msg.addr);
     }
 }
 
@@ -1152,6 +1257,8 @@ impl Handler<PerformGPUClustering> for ClusteringActor {
             shared_context: self.shared_context.clone(),
             node_id_map: self.node_id_map.clone(),
             node_analytics: self.node_analytics.clone(),
+            client_coordinator_addr: self.client_coordinator_addr.clone(),
+            analytics_generation: self.analytics_generation.clone(),
         };
 
         let method = msg.method.clone();

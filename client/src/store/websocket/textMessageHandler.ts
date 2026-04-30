@@ -12,6 +12,7 @@ import type { WebSocketMessage } from '../../types/websocketTypes';
 import type { WebSocketErrorFrame } from './types';
 import { emit, notifyMessageHandlers } from './connectionManager';
 import { handleErrorFrame } from './binaryProtocol';
+import { useAnalyticsStore, type AnalyticsUpdate } from '../analyticsStore';
 
 const logger = createLogger('WebSocketStore');
 
@@ -62,6 +63,18 @@ export function handleTextMessage(
   // Memory flash events -- forward to event bus for EmbeddingCloudLayer
   if (message.type === 'memory_flash' && (message as unknown as Record<string, unknown>).data) {
     emit('memoryFlash', (message as unknown as Record<string, unknown>).data);
+  }
+
+  // Analytics-side stream (ADR-061): sticky GPU outputs (cluster_id, anomaly_score,
+  // sssp_*) arrive here at recompute cadence and merge into useAnalyticsStore.
+  // Renderers read from the store, not from per-frame binary fields.
+  if (message.type === 'analytics_update') {
+    try {
+      useAnalyticsStore.getState().merge(message as unknown as AnalyticsUpdate);
+    } catch (error) {
+      logger.error('Error merging analytics_update:', createErrorMetadata(error));
+    }
+    return;
   }
 
   notifyMessageHandlers(message);

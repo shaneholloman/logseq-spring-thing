@@ -1,6 +1,13 @@
 # PRD-001: VisionFlow Data Pipeline Alignment
 
-**Status**: Draft
+> **Wire-format clauses superseded by [ADR-061](adr/ADR-061-binary-protocol-unification.md) /
+> [PRD-007](PRD-007-binary-protocol-unification.md) (2026-04-30)** — references to V3/V5
+> wire formats and the legacy versioning vocabulary below reflect the historical state.
+> The current single binary protocol (no versioning) is documented at
+> [docs/binary-protocol.md](binary-protocol.md). Other consolidation work in this PRD
+> (node classification, settings handlers, graph loading) remains as historical record.
+
+**Status**: Draft (wire-format sections superseded 2026-04-30)
 **Author**: Tech Debt Research Fleet
 **Date**: 2026-04-12
 **Priority**: P0 — Blocks correct rendering for all users
@@ -20,7 +27,7 @@ VisionFlow's data pipeline from Neo4j through Rust server to TypeScript client h
 ## Goals
 
 - **Single node classification function** on server, single matching function on client
-- **One binary protocol version** (V3 wire format) with optional V5 sequence wrapper for backpressure
+- **One binary wire format** (with optional sequence wrapper for backpressure) — *historical: superseded by ADR-061's single binary protocol*
 - **Two position delivery paths**: REST snapshot (new client) + WebSocket push (real-time)
 - **One physics settings struct chain**: Config → SimParams → GPU, with one API handler
 - **One graph loading path** per trigger type, with correct node_type propagation
@@ -61,7 +68,7 @@ VisionFlow's data pipeline from Neo4j through Rust server to TypeScript client h
 
 ### Area 2: Binary Protocol (14 → 3)
 
-**Current state**: 14 encoding paths, 4 protocol versions defined, server always sends V3.
+**Historical state (pre-ADR-061)**: 14 encoding paths, 4 named wire-format variants defined, server always sent the canonical 48-byte node payload.
 
 **Target**:
 - `encode_positions_v3(nodes, type_ids, analytics) -> Vec<u8>` — the one encoder

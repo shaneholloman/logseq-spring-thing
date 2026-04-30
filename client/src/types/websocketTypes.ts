@@ -484,6 +484,24 @@ export interface MemoryFlashMessage extends BaseWebSocketMessage {
   };
 }
 
+// Analytics-side stream (ADR-061 / PRD-007). Sticky GPU outputs ride here at
+// recompute cadence (≈0.1–1 Hz) instead of the per-frame binary stream.
+// The merge logic and per-source field projection lives in
+// `src/store/analyticsStore.ts`.
+export interface AnalyticsUpdateMessage extends BaseWebSocketMessage {
+  type: 'analytics_update';
+  source: 'clustering' | 'community' | 'anomaly' | 'sssp';
+  generation: number;
+  entries: Array<{
+    id: number;
+    cluster_id?: number;
+    community_id?: number;
+    anomaly_score?: number;
+    sssp_distance?: number;
+    sssp_parent?: number;
+  }>;
+}
+
 // Union type of all possible WebSocket messages
 export type WebSocketMessage =
   | WorkspaceUpdateMessage
@@ -520,7 +538,8 @@ export type WebSocketMessage =
   | ErrorMessage
   | FilterConfirmedMessage
   | InitialGraphLoadMessage
-  | MemoryFlashMessage;
+  | MemoryFlashMessage
+  | AnalyticsUpdateMessage;
 
 // Event handler types
 export type MessageHandler<T extends WebSocketMessage = WebSocketMessage> = (message: T) => void;

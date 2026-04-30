@@ -1,1890 +1,215 @@
 #![allow(dead_code)]
+//! # The binary protocol
+//!
+//! Per-physics-tick stream of `(node_id, position, velocity)` tuples from the
+//! GPU force-compute path to subscribed WebSocket clients. There is exactly
+//! ONE wire format. There is no version negotiation, no flag-bit
+//! discriminator, no analytics column. Sticky GPU outputs (cluster_id,
+//! community_id, anomaly_score, sssp_distance, sssp_parent) ride a separate
+//! `analytics_update` message at recompute cadence — see
+//! `src/actors/messages/analytics_messages.rs`.
+//!
+//! ## Frame layout
+//!
+//! ```text
+//! [u8  preamble        = 0x42]   ← fixed sanity byte; NOT a version dispatch
+//! [u64 broadcast_seq_LE]         ← backpressure-ack key
+//! [N × Node]
+//!
+//! Node (28 bytes — id + position + velocity):
+//!   [u32 id_LE]
+//!   [f32 x_LE] [f32 y_LE] [f32 z_LE]
+//!   [f32 vx_LE] [f32 vy_LE] [f32 vz_LE]
+//! ```
+//!
+//! See PRD-007, ADR-061, and `docs/ddd-binary-protocol-context.md`.
+//!
+//! ## Note on byte counts
+//!
+//! PRD-007 §4.1 and ADR-061 §D1 describe the per-node entry as "24 bytes"
+//! while listing seven 4-byte fields (id + 6 floats). The arithmetic
+//! resolves to 28 bytes; the prose figure is a documented spec error
+//! corrected here. The wire ALWAYS carries the raw u32 id followed by
+//! position + velocity = 28 bytes per node.
+
 use crate::models::constraints::{AdvancedParams, Constraint};
-use crate::types::vec3::Vec3Data;
 use crate::utils::socket_flow_messages::BinaryNodeData;
 use log::{debug, trace};
 use serde::{Deserialize, Serialize};
 use serde_json;
-use std::collections::HashMap;
 
 // =============================================================================
-// ARCHITECTURE LOCK — DO NOT RE-INTRODUCE DELTA PROTOCOLS
+// ARCHITECTURE LOCK — ONE WIRE, NO VERSIONING
 // =============================================================================
-// The wire protocol is LITERAL-ONLY. Every broadcast is a full snapshot of
-// every node's absolute position + velocity.
+// The wire is LITERAL-ONLY: every broadcast is a full snapshot of every
+// node's position + velocity, addressed by raw u32 id.
 //
-// Why not delta?
-//   This graph is a force-directed spring network. Every node moves on every
-//   physics tick (non-trivially). Delta encoding saves nothing — our "deltas"
-//   always contain every node — while adding real cost:
-//     * Stale-position drift on reconnect and packet loss
-//     * Silent drop when the threshold filters out a jitter that was actually
-//       the user's pin signal
-//     * Parallel decoders (V3 full, V4 delta) double the surface area for bugs
+// Why no delta? This graph is a force-directed spring network. Every node
+// moves on every physics tick. Delta encoding saves nothing while adding
+// stale-position drift on reconnect, silent drops on threshold filtering,
+// and parallel decoders. The bandwidth lever is BROADCAST CADENCE, not
+// payload encoding.
 //
-// The REAL bandwidth lever is BROADCAST CADENCE, not payload encoding.
-// See ForceComputeActor broadcast path: we broadcast on settlement-change,
-// user-pin-change, topology-change, or heartbeat — not every physics tick.
+// Why no version byte? See ADR-061 §D4. The preamble byte 0x42 is a
+// permanent sanity check; it does not select a code path. If the protocol
+// ever needs to evolve, it does so via a new endpoint, not a version byte.
 //
-// Any PR that adds a PROTOCOL_V4, a `delta: true` flag, or a `filter_delta_*`
-// function is REJECTED on sight. This was relitigated 2026-04-21 (ADR-037).
+// Why no analytics columns? See ADR-061 §D2. cluster_id, community_id,
+// anomaly_score, sssp_distance, sssp_parent ride a separate
+// `analytics_update` message at recompute cadence (~0.1–1 Hz), not the
+// 60 Hz position stream.
 // =============================================================================
-// Protocol versions for wire format.
-// V1 / V2 / V4 are REMOVED — the server no longer sends or decodes them.
-// V3 is the canonical per-node payload (48 bytes/node with analytics).
-// V5 is the canonical production envelope: [version=5][8-byte broadcast sequence LE][V3 node body].
-// See ADR-037 (Binary Protocol Consolidation, Implemented 2026-04-20).
-const PROTOCOL_V3: u8 = 3; // Canonical node payload (P0-4 Analytics Extension)
-const PROTOCOL_V5: u8 = 5; // Canonical wire envelope (9-byte header + V3 node body)
 
-/// Byte length of the V5 frame header (`[version=5][8-byte sequence LE]`).
-/// This is the 9-byte sequence header referenced by ADR-037.
-pub const V5_HEADER_LEN: usize = 1 + 8;
+/// Fixed sanity byte that prefixes every position frame. NOT a version field.
+/// If the protocol ever changes, it changes via a new endpoint, not by
+/// switching this byte.
+pub const BINARY_PROTOCOL_PREAMBLE: u8 = 0x42;
 
-// Node type flag constants for u32 (server-side)
-const AGENT_NODE_FLAG: u32 = 0x80000000;
-const KNOWLEDGE_NODE_FLAG: u32 = 0x40000000;
+/// Bytes per node entry on the wire: `id(4) + pos(12) + vel(12) = 28`.
+/// (PRD-007 §4.1 / ADR-061 §D1 list this as "24" — that is a documented
+/// arithmetic error in the spec text; the field list is authoritative.)
+pub const NODE_ENTRY_SIZE: usize = 28;
 
-/// ADR-050 private-opacity flag — bit 29 of the wire id.
-///
-/// When set, the client MUST render the node without label or metadata; the
-/// node is private-sovereign and the consuming client is not its owner. The
-/// server strips label/metadata at serialisation time, so the flag is a
-/// redundant belt-and-braces signal the client can also use to style the
-/// placeholder locally (e.g. render as "(private)").
-pub const PRIVATE_OPAQUE_FLAG: u32 = 0x20000000;
-
-// Ontology node type flags (bits 26-28, only valid when GraphType::Ontology)
-const ONTOLOGY_TYPE_MASK: u32 = 0x1C000000;
-const ONTOLOGY_CLASS_FLAG: u32 = 0x04000000;
-const ONTOLOGY_INDIVIDUAL_FLAG: u32 = 0x08000000;
-const ONTOLOGY_PROPERTY_FLAG: u32 = 0x10000000;
-
-// Node ID mask: bits 0-25 only (excludes bits 26-31 for all flags).
-// Bit layout of the 32-bit wire id:
-//   31 AGENT | 30 KNOWLEDGE | 29 PRIVATE_OPAQUE | 28-26 ONTOLOGY_TYPE | 25-0 ID
-// Supports node IDs: 0 to 67,108,863 (2^26 - 1)
-const NODE_ID_MASK: u32 = 0x03FFFFFF;
-
-/// Strip bit 29 from a wire-flagged id and return the base (type-flagged) id.
-#[inline]
-pub fn node_id_base(raw: u32) -> u32 { raw & !PRIVATE_OPAQUE_FLAG }
-
-/// Did the server mark this wire id as private-opaque to the consuming client?
-#[inline]
-pub fn is_private_opaque(raw: u32) -> bool {
-    raw & PRIVATE_OPAQUE_FLAG != 0
-}
-
-/// OR the private-opacity flag onto `base` when `is_private == true`.
-/// Does not clear other flags (agent / knowledge / ontology type bits stay).
-#[inline]
-pub fn encode_node_id(base: u32, is_private: bool) -> u32 {
-    if is_private { base | PRIVATE_OPAQUE_FLAG } else { base }
-}
-
-// V1 wire format constants REMOVED - caused node ID truncation bugs
-// V2+ uses full u32 IDs with no truncation
-
-// V2 wire flag constants removed — identical to AGENT_NODE_FLAG / KNOWLEDGE_NODE_FLAG / NODE_ID_MASK
-
-// WireNodeDataItemV1 REMOVED - V1 protocol no longer supported
-// WireNodeDataItemV2 REMOVED - V2 protocol no longer supported (was 36 bytes per node)
-
-/// Wire format V3 - 48 bytes per node (P0-4 Analytics Extension)
-/// Adds clustering, anomaly detection, and community detection
-pub struct WireNodeDataItemV3 {
-    pub id: u32,
-    pub position: Vec3Data,
-    pub velocity: Vec3Data,
-    pub sssp_distance: f32,
-    pub sssp_parent: i32,
-    pub cluster_id: u32,
-    pub anomaly_score: f32,
-    pub community_id: u32,
-}
-
-// Backwards compatibility alias - now defaults to V3
-pub type WireNodeDataItem = WireNodeDataItemV3;
-
-// ============================================================================
-// DELTA ENCODING (Protocol V4) — REMOVED per ADR-037 (Implemented 2026-04-20).
-// V4 was never emitted in production: the delta encoder was always called with
-// frame=0, which short-circuits to a V3 full resync. Removing it collapses the
-// wire protocol surface to V3 (node payload) + V5 (envelope).
-// ============================================================================
+/// Bytes in the frame header: `preamble(1) + broadcast_sequence(8) = 9`.
+pub const FRAME_HEADER_SIZE: usize = 1 + 8;
 
 // Safety limits for decode functions
 const MAX_PAYLOAD_SIZE: usize = 10 * 1024 * 1024; // 10 MB
 const MAX_NODE_COUNT: usize = 100_000;
 
-// Constants for wire format sizes
-const WIRE_VEC3_SIZE: usize = 12;
-const WIRE_F32_SIZE: usize = 4;
-const WIRE_I32_SIZE: usize = 4;
-const WIRE_U32_SIZE: usize = 4;
-const WIRE_ID_SIZE: usize = 4;
-// V3: id(4) + pos(12) + vel(12) + sssp_dist(4) + sssp_parent(4) + cluster_id(4) + anomaly_score(4) + community_id(4) = 48
-const WIRE_V3_ITEM_SIZE: usize =
-    WIRE_ID_SIZE + WIRE_VEC3_SIZE + WIRE_VEC3_SIZE + WIRE_F32_SIZE + WIRE_I32_SIZE +
-    WIRE_U32_SIZE + WIRE_F32_SIZE + WIRE_U32_SIZE;
-const WIRE_ITEM_SIZE: usize = WIRE_V3_ITEM_SIZE;
-
-// Binary format (explicit) — canonicalised by ADR-037:
-//
-// PROTOCOL V5 (PRODUCTION ENVELOPE):
-// - 9-byte header: [version=5][8-byte broadcast_sequence LE]
-// - Payload: V3 node body (48 bytes per node, no inner version byte)
-// - Emitted by every server -> client position broadcast path.
-//
-// PROTOCOL V3 (CANONICAL NODE PAYLOAD — P0-4 Analytics Extension):
-// - Wire format sent to client (48 bytes per node):
-//   - Node Index: 4 bytes (u32) - Bits 30-31 for agent/knowledge,
-//                                 bit 29 for ADR-050 private-opaque,
-//                                 bits 26-28 for ontology type,
-//                                 bits 0-25 for ID
-//   - Position: 3 × 4 bytes = 12 bytes
-//   - Velocity: 3 × 4 bytes = 12 bytes
-//   - SSSP Distance: 4 bytes (f32)
-//   - SSSP Parent: 4 bytes (i32)
-//   - Cluster ID: 4 bytes (u32) - K-means cluster assignment
-//   - Anomaly Score: 4 bytes (f32) - LOF anomaly score (0.0-1.0)
-//   - Community ID: 4 bytes (u32) - Louvain community assignment
-// Total: 48 bytes per node
-// Supports node IDs: 0 to 67,108,863 (2^26 - 1)
-//
-// PROTOCOL V4 REMOVED — delta encoder permanently emitted V3 (see ADR-037).
-// PROTOCOL V2 REMOVED — was 36 bytes/node (no analytics).
-// PROTOCOL V1 REMOVED — had node ID truncation bug (IDs > 16383 were corrupted).
-//
-// - Server format (BinaryNodeData - 28 bytes total):
-//   - Node ID: 4 bytes (u32)
-//   - Position: 3 × 4 bytes = 12 bytes
-//   - Velocity: 3 × 4 bytes = 12 bytes
-// Total: 28 bytes per node
-//
-// Node Type Flags:
-// - V2/V3: Bits 30-31 of u32 ID (Bit 31 = Agent, Bit 30 = Knowledge)
-// - V2/V3: Bits 26-28 of u32 ID for Ontology types (Bit 26 = Class, Bit 27 = Individual, Bit 28 = Property)
-// This allows the client to distinguish between different node types for visualization.
-
-pub fn set_agent_flag(node_id: u32) -> u32 {
-    debug_assert!(
-        node_id <= NODE_ID_MASK,
-        "Node ID {} (0x{:08X}) exceeds 26-bit limit (max {}). Use compact wire IDs.",
-        node_id, node_id, NODE_ID_MASK
-    );
-    (node_id & NODE_ID_MASK) | AGENT_NODE_FLAG
-}
-
-pub fn set_knowledge_flag(node_id: u32) -> u32 {
-    debug_assert!(
-        node_id <= NODE_ID_MASK,
-        "Node ID {} (0x{:08X}) exceeds 26-bit limit (max {}). Use compact wire IDs.",
-        node_id, node_id, NODE_ID_MASK
-    );
-    (node_id & NODE_ID_MASK) | KNOWLEDGE_NODE_FLAG
-}
-
-pub fn clear_agent_flag(node_id: u32) -> u32 {
-    node_id & !AGENT_NODE_FLAG
-}
-
-pub fn clear_all_flags(node_id: u32) -> u32 {
-    node_id & NODE_ID_MASK
-}
-
-pub fn is_agent_node(node_id: u32) -> bool {
-    (node_id & AGENT_NODE_FLAG) != 0
-}
-
-pub fn is_knowledge_node(node_id: u32) -> bool {
-    (node_id & KNOWLEDGE_NODE_FLAG) != 0
-}
-
-pub fn get_actual_node_id(node_id: u32) -> u32 {
-    node_id & NODE_ID_MASK
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum NodeType {
-    Knowledge,
-    Agent,
-    OntologyClass,
-    OntologyIndividual,
-    OntologyProperty,
-    Unknown,
-}
-
-pub fn get_node_type(node_id: u32) -> NodeType {
-    if is_agent_node(node_id) {
-        NodeType::Agent
-    } else if is_knowledge_node(node_id) {
-        NodeType::Knowledge
-    } else if is_ontology_class(node_id) {
-        NodeType::OntologyClass
-    } else if is_ontology_individual(node_id) {
-        NodeType::OntologyIndividual
-    } else if is_ontology_property(node_id) {
-        NodeType::OntologyProperty
-    } else {
-        NodeType::Unknown
-    }
-}
-
-pub fn set_ontology_class_flag(node_id: u32) -> u32 {
-    debug_assert!(
-        node_id <= NODE_ID_MASK,
-        "Node ID {} (0x{:08X}) exceeds 26-bit limit (max {}). Use compact wire IDs.",
-        node_id, node_id, NODE_ID_MASK
-    );
-    (node_id & NODE_ID_MASK) | ONTOLOGY_CLASS_FLAG
-}
-
-pub fn set_ontology_individual_flag(node_id: u32) -> u32 {
-    debug_assert!(
-        node_id <= NODE_ID_MASK,
-        "Node ID {} (0x{:08X}) exceeds 26-bit limit (max {}). Use compact wire IDs.",
-        node_id, node_id, NODE_ID_MASK
-    );
-    (node_id & NODE_ID_MASK) | ONTOLOGY_INDIVIDUAL_FLAG
-}
-
-pub fn set_ontology_property_flag(node_id: u32) -> u32 {
-    debug_assert!(
-        node_id <= NODE_ID_MASK,
-        "Node ID {} (0x{:08X}) exceeds 26-bit limit (max {}). Use compact wire IDs.",
-        node_id, node_id, NODE_ID_MASK
-    );
-    (node_id & NODE_ID_MASK) | ONTOLOGY_PROPERTY_FLAG
-}
-
-pub fn is_ontology_class(node_id: u32) -> bool {
-    (node_id & ONTOLOGY_TYPE_MASK) == ONTOLOGY_CLASS_FLAG
-}
-
-pub fn is_ontology_individual(node_id: u32) -> bool {
-    (node_id & ONTOLOGY_TYPE_MASK) == ONTOLOGY_INDIVIDUAL_FLAG
-}
-
-pub fn is_ontology_property(node_id: u32) -> bool {
-    (node_id & ONTOLOGY_TYPE_MASK) == ONTOLOGY_PROPERTY_FLAG
-}
-
-pub fn is_ontology_node(node_id: u32) -> bool {
-    (node_id & ONTOLOGY_TYPE_MASK) != 0
-}
-
-// to_wire_id_v1 and from_wire_id_v1 REMOVED - V1 protocol no longer supported
-// Use to_wire_id_v2/from_wire_id_v2 for full 32-bit node ID support
-
-pub fn to_wire_id_v2(node_id: u32) -> u32 {
-    
-    
-    node_id
-}
-
-pub fn from_wire_id_v2(wire_id: u32) -> u32 {
-    
-    wire_id
-}
-
-// Backwards compatibility aliases - use V2 by default
-pub fn to_wire_id(node_id: u32) -> u32 {
-    to_wire_id_v2(node_id)
-}
-
-pub fn from_wire_id(wire_id: u32) -> u32 {
-    from_wire_id_v2(wire_id)
-}
-
-/// Convert BinaryNodeData to wire format V3
-impl BinaryNodeData {
-    pub fn to_wire_format(&self, node_id: u32) -> WireNodeDataItem {
-        self.to_wire_format_with_data(node_id, None, None)
-    }
-
-    /// Convert to wire format V3 with optional SSSP and analytics data.
-    /// `sssp`: (distance, parent_id). Defaults to (INFINITY, -1).
-    /// `analytics`: (cluster_id, anomaly_score, community_id). Defaults to (0, 0.0, 0).
-    pub fn to_wire_format_with_data(
-        &self,
-        node_id: u32,
-        sssp: Option<(f32, i32)>,
-        analytics: Option<(u32, f32, u32)>,
-    ) -> WireNodeDataItem {
-        let (sssp_distance, sssp_parent) = sssp.unwrap_or((f32::INFINITY, -1));
-        let (cluster_id, anomaly_score, community_id) = analytics.unwrap_or((0, 0.0, 0));
-        WireNodeDataItem {
-            id: to_wire_id(node_id),
-            position: self.position(),
-            velocity: self.velocity(),
-            sssp_distance,
-            sssp_parent,
-            cluster_id,
-            anomaly_score,
-            community_id,
-        }
-    }
-}
-
-/// ADR-050: `true` iff the sovereign-schema feature flag is enabled for this
-/// process. Gates:
-///   - Neo4j sovereign indexes being created at startup.
-///   - Bit 29 (`PRIVATE_OPAQUE_FLAG`) being ORed into wire ids.
+/// ADR-050: `true` iff the sovereign-schema feature flag is enabled.
 ///
-/// When unset/false, the new `visibility`/`owner_pubkey`/`opaque_id`/`pod_url`
-/// fields are still written through to Neo4j rows (so data gathered pre-flip
-/// is not lost), but no privacy enforcement happens on the wire.
+/// This gates Neo4j sovereign-index creation in `neo4j_adapter`. It is
+/// kept here as the single home for the flag check; it is unrelated to
+/// the wire protocol (per ADR-061 §D3, visibility is enforced by
+/// `ClientCoordinator::broadcast_with_filter` dropping invisible nodes
+/// from the per-frame stream, not by setting bits on the wire id).
 pub fn sovereign_schema_enabled() -> bool {
     std::env::var("SOVEREIGN_SCHEMA")
         .map(|v| matches!(v.to_ascii_lowercase().as_str(), "true" | "1" | "yes" | "on"))
         .unwrap_or(false)
 }
 
-/// ADR-037: Convenience wrapper — calls encode_positions_v3 without SSSP or analytics.
-pub fn encode_node_data_extended(
-    nodes: &[(u32, BinaryNodeData)],
-    agent_node_ids: &[u32],
-    knowledge_node_ids: &[u32],
-    ontology_class_ids: &[u32],
-    ontology_individual_ids: &[u32],
-    ontology_property_ids: &[u32],
+// =============================================================================
+// THE encoder
+// =============================================================================
+
+/// Encode a position frame: preamble + broadcast_sequence + N×28-byte nodes.
+///
+/// `positions` is the (id, BinaryNodeData) list for nodes the receiving
+/// client may see. Per-client visibility is enforced upstream — by the time
+/// we reach this function, every node in `positions` is intended for the
+/// recipient.
+///
+/// Output size: `9 + 28 × positions.len()`.
+pub fn encode_position_frame(
+    positions: &[(u32, BinaryNodeData)],
+    broadcast_sequence: u64,
 ) -> Vec<u8> {
-    encode_positions_v3(
-        nodes,
-        agent_node_ids,
-        knowledge_node_ids,
-        ontology_class_ids,
-        ontology_individual_ids,
-        ontology_property_ids,
-        None,
-        None,
-    )
-}
+    let mut buffer = Vec::with_capacity(FRAME_HEADER_SIZE + positions.len() * NODE_ENTRY_SIZE);
 
-/// ADR-037: Single canonical V3 encoder.
-///
-/// Encodes node positions into V3 binary frames (48 bytes/node) with type flags,
-/// optional SSSP distances, and optional analytics data.
-///
-/// Type classification: if node IDs are pre-flagged (from fetch_nodes()), pass empty
-/// type arrays to avoid double-flagging. If unflagged, pass type arrays.
-///
-/// `sssp_data`: maps node_id -> (distance, parent_id). Default: (INFINITY, -1).
-/// `analytics_data`: maps node_id -> (cluster_id, anomaly_score, community_id). Default: (0, 0.0, 0).
-pub fn encode_positions_v3(
-    nodes: &[(u32, BinaryNodeData)],
-    agent_node_ids: &[u32],
-    knowledge_node_ids: &[u32],
-    ontology_class_ids: &[u32],
-    ontology_individual_ids: &[u32],
-    ontology_property_ids: &[u32],
-    sssp_data: Option<&HashMap<u32, (f32, i32)>>,
-    analytics_data: Option<&HashMap<u32, (u32, f32, u32)>>,
-) -> Vec<u8> {
-    encode_positions_v3_with_privacy(
-        nodes, agent_node_ids, knowledge_node_ids,
-        ontology_class_ids, ontology_individual_ids, ontology_property_ids,
-        sssp_data, analytics_data, None,
-    )
-}
+    buffer.push(BINARY_PROTOCOL_PREAMBLE);
+    buffer.extend_from_slice(&broadcast_sequence.to_le_bytes());
 
-/// ADR-050: V3 encoder with privacy enforcement.
-///
-/// `private_opaque_ids` (when `Some`) is the set of node ids that the caller
-/// does NOT own but is allowed to see as opaque placeholders. The encoder ORs
-/// `PRIVATE_OPAQUE_FLAG` (bit 29) into the wire id for each such node so the
-/// client can render them without label/metadata.
-///
-/// The flag is only applied when `sovereign_schema_enabled()` returns true —
-/// otherwise we retain pre-ADR-050 wire behaviour byte-for-byte.
-pub fn encode_positions_v3_with_privacy(
-    nodes: &[(u32, BinaryNodeData)],
-    agent_node_ids: &[u32],
-    knowledge_node_ids: &[u32],
-    ontology_class_ids: &[u32],
-    ontology_individual_ids: &[u32],
-    ontology_property_ids: &[u32],
-    sssp_data: Option<&HashMap<u32, (f32, i32)>>,
-    analytics_data: Option<&HashMap<u32, (u32, f32, u32)>>,
-    private_opaque_ids: Option<&std::collections::HashSet<u32>>,
-) -> Vec<u8> {
-    // Always use V3 as the default protocol (P0-4 Analytics Extension)
-    let protocol_version = PROTOCOL_V3;
-    let item_size = WIRE_V3_ITEM_SIZE;
-
-    if !nodes.is_empty() {
-        trace!(
-            "Encoding {} nodes with agent flags using protocol v{} (item_size={})",
-            nodes.len(),
-            protocol_version,
-            item_size
-        );
-    }
-
-    let mut buffer = Vec::with_capacity(1 + nodes.len() * item_size);
-
-    buffer.push(protocol_version);
-
-    let sample_size = std::cmp::min(3, nodes.len());
-    if sample_size > 0 {
-        trace!(
-            "Sample of nodes being encoded with agent flags (protocol v{}):",
-            protocol_version
-        );
-    }
-
-    let sovereign_on = sovereign_schema_enabled();
-
-    for (node_id, node) in nodes {
-
-        let flagged_id = if agent_node_ids.contains(node_id) {
-            set_agent_flag(*node_id)
-        } else if knowledge_node_ids.contains(node_id) {
-            set_knowledge_flag(*node_id)
-        } else if ontology_class_ids.contains(node_id) {
-            set_ontology_class_flag(*node_id)
-        } else if ontology_individual_ids.contains(node_id) {
-            set_ontology_individual_flag(*node_id)
-        } else if ontology_property_ids.contains(node_id) {
-            set_ontology_property_flag(*node_id)
-        } else {
-            debug_assert!(
-                *node_id <= NODE_ID_MASK,
-                "Unflagged node ID {} (0x{:08X}) exceeds 26-bit limit (max {}). Raw Neo4j ID leaked to wire.",
-                node_id, node_id, NODE_ID_MASK
-            );
-            *node_id
-        };
-
-        // ADR-050: OR in bit 29 if the caller is not the owner of this
-        // private node. Gated by the SOVEREIGN_SCHEMA feature flag so the
-        // wire format is unchanged when the flag is off.
-        let flagged_id = if sovereign_on {
-            let is_private = private_opaque_ids
-                .map(|s| s.contains(node_id) || s.contains(&get_actual_node_id(flagged_id)))
-                .unwrap_or(false);
-            encode_node_id(flagged_id, is_private)
-        } else {
-            flagged_id
-        };
-
-        if sample_size > 0 && *node_id < sample_size as u32 {
-            trace!(
-                "Encoding node {}: pos=[{:.3},{:.3},{:.3}], vel=[{:.3},{:.3},{:.3}], is_agent={}",
-                node_id,
-                node.x,
-                node.y,
-                node.z,
-                node.vx,
-                node.vy,
-                node.vz,
-                agent_node_ids.contains(node_id)
-            );
-        }
-
-        // V3 always uses u32 IDs
-        let wire_id = to_wire_id_v2(flagged_id);
-        buffer.extend_from_slice(&wire_id.to_le_bytes());
-
-        // Position (12 bytes)
+    for (id, node) in positions {
+        buffer.extend_from_slice(&id.to_le_bytes());
         buffer.extend_from_slice(&node.x.to_le_bytes());
         buffer.extend_from_slice(&node.y.to_le_bytes());
         buffer.extend_from_slice(&node.z.to_le_bytes());
-
-        // Velocity (12 bytes)
         buffer.extend_from_slice(&node.vx.to_le_bytes());
         buffer.extend_from_slice(&node.vy.to_le_bytes());
         buffer.extend_from_slice(&node.vz.to_le_bytes());
-
-        // SSSP data (8 bytes) - read from sssp_data if available
-        let (sssp_distance, sssp_parent) = sssp_data
-            .and_then(|m| m.get(node_id))
-            .copied()
-            .unwrap_or((f32::INFINITY, -1));
-        buffer.extend_from_slice(&sssp_distance.to_le_bytes());
-        buffer.extend_from_slice(&sssp_parent.to_le_bytes());
-
-        // Analytics data (12 bytes) - V3 extension populated from shared analytics store
-        let (cluster_id, anomaly_score, community_id) = analytics_data
-            .and_then(|m| m.get(node_id))
-            .copied()
-            .unwrap_or((0, 0.0, 0));
-        buffer.extend_from_slice(&cluster_id.to_le_bytes());
-        buffer.extend_from_slice(&anomaly_score.to_le_bytes());
-        buffer.extend_from_slice(&community_id.to_le_bytes());
     }
 
-    
-    if nodes.len() > 0 {
+    if !positions.is_empty() {
         trace!(
-            "Encoded binary data with agent flags (v{}): {} bytes for {} nodes",
-            protocol_version,
-            buffer.len(),
-            nodes.len()
+            "encode_position_frame: {} nodes, seq={}, {} bytes",
+            positions.len(),
+            broadcast_sequence,
+            buffer.len()
         );
     }
+
     buffer
 }
 
-/// ADR-037: Encode pre-flagged node data with analytics.
+/// Decode a position frame produced by `encode_position_frame`.
 ///
-/// For paths where fetch_nodes() already applied type flags to node IDs.
-/// Passes empty type arrays to avoid double-flagging.
-pub fn encode_node_data_with_live_analytics(
-    nodes: &[(u32, BinaryNodeData)],
-    analytics_data: Option<&HashMap<u32, (u32, f32, u32)>>,
-) -> Vec<u8> {
-    encode_positions_v3(nodes, &[], &[], &[], &[], &[], None, analytics_data)
-}
-
-/// ADR-050 (H2): Privacy-aware variant of `encode_node_data_with_live_analytics`.
-///
-/// Accepts `private_opaque_ids` — the set of node ids the caller does NOT own
-/// but is allowed to see as opaque placeholders. The encoder ORs
-/// `PRIVATE_OPAQUE_FLAG` (bit 29) onto each such id so the client can render
-/// them without label/metadata. Gated by `SOVEREIGN_SCHEMA=true`.
-pub fn encode_node_data_with_live_analytics_and_privacy(
-    nodes: &[(u32, BinaryNodeData)],
-    analytics_data: Option<&HashMap<u32, (u32, f32, u32)>>,
-    private_opaque_ids: Option<&std::collections::HashSet<u32>>,
-) -> Vec<u8> {
-    encode_positions_v3_with_privacy(
-        nodes, &[], &[], &[], &[], &[], None, analytics_data, private_opaque_ids,
-    )
-}
-
-/// ADR-037: Backward-compat alias for encode_positions_v3.
-#[inline]
-pub fn encode_node_data_extended_with_sssp(
-    nodes: &[(u32, BinaryNodeData)],
-    agent_node_ids: &[u32],
-    knowledge_node_ids: &[u32],
-    ontology_class_ids: &[u32],
-    ontology_individual_ids: &[u32],
-    ontology_property_ids: &[u32],
-    sssp_data: Option<&HashMap<u32, (f32, i32)>>,
-    analytics_data: Option<&HashMap<u32, (u32, f32, u32)>>,
-) -> Vec<u8> {
-    encode_positions_v3(
-        nodes, agent_node_ids, knowledge_node_ids,
-        ontology_class_ids, ontology_individual_ids, ontology_property_ids,
-        sssp_data, analytics_data,
-    )
-}
-
-/// ADR-050 (H2): Privacy-aware variant of `encode_node_data_extended_with_sssp`.
-///
-/// See `encode_node_data_with_live_analytics_and_privacy` for the semantics of
-/// `private_opaque_ids`. Bit 29 is ORed onto the wire id for each id in the
-/// set, gated by `SOVEREIGN_SCHEMA=true`.
-#[inline]
-pub fn encode_node_data_extended_with_sssp_and_privacy(
-    nodes: &[(u32, BinaryNodeData)],
-    agent_node_ids: &[u32],
-    knowledge_node_ids: &[u32],
-    ontology_class_ids: &[u32],
-    ontology_individual_ids: &[u32],
-    ontology_property_ids: &[u32],
-    sssp_data: Option<&HashMap<u32, (f32, i32)>>,
-    analytics_data: Option<&HashMap<u32, (u32, f32, u32)>>,
-    private_opaque_ids: Option<&std::collections::HashSet<u32>>,
-) -> Vec<u8> {
-    encode_positions_v3_with_privacy(
-        nodes, agent_node_ids, knowledge_node_ids,
-        ontology_class_ids, ontology_individual_ids, ontology_property_ids,
-        sssp_data, analytics_data, private_opaque_ids,
-    )
-}
-
-pub fn decode_node_data(data: &[u8]) -> Result<Vec<(u32, BinaryNodeData)>, String> {
-    if data.is_empty() {
-        return Ok(Vec::new());
-    }
-
-    if data.len() > MAX_PAYLOAD_SIZE {
+/// Returns `(broadcast_sequence, [(id, BinaryNodeData), ...])`.
+pub fn decode_position_frame(
+    bytes: &[u8],
+) -> Result<(u64, Vec<(u32, BinaryNodeData)>), String> {
+    if bytes.len() > MAX_PAYLOAD_SIZE {
         return Err(format!(
             "Payload size {} exceeds maximum {}",
-            data.len(),
+            bytes.len(),
             MAX_PAYLOAD_SIZE
         ));
     }
-
-    if data.len() < 1 {
-        return Err("Data too small for protocol version".to_string());
-    }
-
-    let protocol_version = data[0];
-    let payload = &data[1..];
-
-    match protocol_version {
-        1 => Err("Protocol V1 is no longer supported. Please upgrade client.".to_string()),
-        2 => Err("V2 protocol no longer supported. Please upgrade client to V3+.".to_string()),
-        PROTOCOL_V3 => decode_node_data_v3(payload),
-        4 => Err("V4 delta protocol removed by ADR-037. Server only emits V3/V5.".to_string()),
-        PROTOCOL_V5 => {
-            // V5: [version=5][8-byte broadcast_seq LE][V3 node body]
-            if payload.len() < 8 {
-                return Err("V5 frame too small for broadcast sequence".to_string());
-            }
-            // Skip 8-byte broadcast sequence number; body is a raw V3 node payload
-            // (no inner version byte).
-            decode_node_data_v3(&payload[8..])
-        }
-        v => Err(format!("Unknown protocol version: {}", v)),
-    }
-}
-
-// ============================================================================
-// ADR-037: Canonical V5 envelope helpers.
-// ============================================================================
-
-/// Wrap a raw V3 node-body (without the V3 version byte) in a V5 frame.
-///
-/// V5 wire format: `[version=5][8-byte broadcast_sequence LE][v3_body]`.
-/// The sequence number lets the client echo the value back in `BroadcastAck`
-/// frames for end-to-end backpressure correlation.
-///
-/// Callers that already hold a full V3 frame (with leading version byte) should
-/// use [`wrap_v5_from_v3_frame`] instead.
-pub fn wrap_v5(v3_body: &[u8], broadcast_sequence: u64) -> Vec<u8> {
-    let mut out = Vec::with_capacity(V5_HEADER_LEN + v3_body.len());
-    out.push(PROTOCOL_V5);
-    out.extend_from_slice(&broadcast_sequence.to_le_bytes());
-    out.extend_from_slice(v3_body);
-    out
-}
-
-/// Wrap a full V3 frame (with its leading version byte) in a V5 envelope by
-/// stripping the V3 version byte and prepending the V5 header.
-///
-/// Returns a zero-length V3 body (just the V5 header) if `v3_frame` is empty
-/// or contains only the version byte.
-pub fn wrap_v5_from_v3_frame(v3_frame: &[u8], broadcast_sequence: u64) -> Vec<u8> {
-    let body: &[u8] = if v3_frame.len() > 1 { &v3_frame[1..] } else { &[] };
-    wrap_v5(body, broadcast_sequence)
-}
-
-/// Parse the V5 header off a frame, returning `(broadcast_sequence, v3_body)`.
-///
-/// Returns `Err` if the input is shorter than the 9-byte header or does not
-/// carry the V5 version byte.
-pub fn unwrap_v5(frame: &[u8]) -> Result<(u64, &[u8]), String> {
-    if frame.len() < V5_HEADER_LEN {
+    if bytes.len() < FRAME_HEADER_SIZE {
         return Err(format!(
-            "V5 frame too small: {} bytes, need at least {}",
-            frame.len(), V5_HEADER_LEN
+            "Frame too small: {} bytes, need at least {}",
+            bytes.len(),
+            FRAME_HEADER_SIZE
         ));
     }
-    if frame[0] != PROTOCOL_V5 {
+    if bytes[0] != BINARY_PROTOCOL_PREAMBLE {
         return Err(format!(
-            "Not a V5 frame: version byte = {} (expected {})",
-            frame[0], PROTOCOL_V5
+            "Bad preamble byte: 0x{:02X} (expected 0x{:02X})",
+            bytes[0], BINARY_PROTOCOL_PREAMBLE
         ));
     }
+
     let seq = u64::from_le_bytes([
-        frame[1], frame[2], frame[3], frame[4],
-        frame[5], frame[6], frame[7], frame[8],
+        bytes[1], bytes[2], bytes[3], bytes[4],
+        bytes[5], bytes[6], bytes[7], bytes[8],
     ]);
-    Ok((seq, &frame[V5_HEADER_LEN..]))
-}
 
-// decode_node_data_v1 REMOVED - V1 protocol no longer supported
-
-// decode_node_data_v2 REMOVED — V2 protocol no longer supported (was 36 bytes/node, no analytics)
-
-/// Decode Protocol V3 with analytics data (P0-4)
-/// Returns standard BinaryNodeData (analytics data is discarded in basic decode)
-fn decode_node_data_v3(data: &[u8]) -> Result<Vec<(u32, BinaryNodeData)>, String> {
-    if data.len() % WIRE_V3_ITEM_SIZE != 0 {
+    let body = &bytes[FRAME_HEADER_SIZE..];
+    if body.len() % NODE_ENTRY_SIZE != 0 {
         return Err(format!(
-            "Data size {} is not a multiple of V3 wire item size {}",
-            data.len(),
-            WIRE_V3_ITEM_SIZE
+            "Body size {} is not a multiple of node entry size {}",
+            body.len(),
+            NODE_ENTRY_SIZE
         ));
     }
 
-    let expected_nodes = data.len() / WIRE_V3_ITEM_SIZE;
-    if expected_nodes > MAX_NODE_COUNT {
+    let count = body.len() / NODE_ENTRY_SIZE;
+    if count > MAX_NODE_COUNT {
         return Err(format!(
             "Node count {} exceeds maximum {}",
-            expected_nodes, MAX_NODE_COUNT
+            count, MAX_NODE_COUNT
         ));
     }
 
-    debug!(
-        "Decoding V3 binary data with analytics: size={} bytes, expected nodes={}",
-        data.len(),
-        expected_nodes
-    );
-
-    let mut updates = Vec::with_capacity(expected_nodes);
-    let max_samples = 3;
-    let mut samples_logged = 0;
-
-    for chunk in data.chunks_exact(WIRE_V3_ITEM_SIZE) {
-        let mut cursor = 0;
-
-        // Node ID (4 bytes)
-        let wire_id = u32::from_le_bytes([
-            chunk[cursor],
-            chunk[cursor + 1],
-            chunk[cursor + 2],
-            chunk[cursor + 3],
-        ]);
-        cursor += 4;
-
-        // Position (12 bytes)
-        let pos_x = f32::from_le_bytes([
-            chunk[cursor],
-            chunk[cursor + 1],
-            chunk[cursor + 2],
-            chunk[cursor + 3],
-        ]);
-        cursor += 4;
-        let pos_y = f32::from_le_bytes([
-            chunk[cursor],
-            chunk[cursor + 1],
-            chunk[cursor + 2],
-            chunk[cursor + 3],
-        ]);
-        cursor += 4;
-        let pos_z = f32::from_le_bytes([
-            chunk[cursor],
-            chunk[cursor + 1],
-            chunk[cursor + 2],
-            chunk[cursor + 3],
-        ]);
-        cursor += 4;
-
-        // Velocity (12 bytes)
-        let vel_x = f32::from_le_bytes([
-            chunk[cursor],
-            chunk[cursor + 1],
-            chunk[cursor + 2],
-            chunk[cursor + 3],
-        ]);
-        cursor += 4;
-        let vel_y = f32::from_le_bytes([
-            chunk[cursor],
-            chunk[cursor + 1],
-            chunk[cursor + 2],
-            chunk[cursor + 3],
-        ]);
-        cursor += 4;
-        let vel_z = f32::from_le_bytes([
-            chunk[cursor],
-            chunk[cursor + 1],
-            chunk[cursor + 2],
-            chunk[cursor + 3],
-        ]);
-        cursor += 4;
-
-        // SSSP data (8 bytes) - read but not used
-        let _sssp_distance = f32::from_le_bytes([
-            chunk[cursor],
-            chunk[cursor + 1],
-            chunk[cursor + 2],
-            chunk[cursor + 3],
-        ]);
-        cursor += 4;
-        let _sssp_parent = i32::from_le_bytes([
-            chunk[cursor],
-            chunk[cursor + 1],
-            chunk[cursor + 2],
-            chunk[cursor + 3],
-        ]);
-        cursor += 4;
-
-        // Analytics data (12 bytes) - NEW in V3
-        let _cluster_id = u32::from_le_bytes([
-            chunk[cursor],
-            chunk[cursor + 1],
-            chunk[cursor + 2],
-            chunk[cursor + 3],
-        ]);
-        cursor += 4;
-        let _anomaly_score = f32::from_le_bytes([
-            chunk[cursor],
-            chunk[cursor + 1],
-            chunk[cursor + 2],
-            chunk[cursor + 3],
-        ]);
-        cursor += 4;
-        let _community_id = u32::from_le_bytes([
-            chunk[cursor],
-            chunk[cursor + 1],
-            chunk[cursor + 2],
-            chunk[cursor + 3],
-        ]);
-
-        let full_node_id = from_wire_id_v2(wire_id);
-
-        if samples_logged < max_samples {
-            let is_agent = is_agent_node(full_node_id);
-            let actual_id = get_actual_node_id(full_node_id);
-            debug!(
-                "Decoded V3 node wire_id={} -> full_id={} (actual_id={}, is_agent={}): pos=[{:.3},{:.3},{:.3}], vel=[{:.3},{:.3},{:.3}], cluster={}, anomaly={:.3}, community={}",
-                wire_id, full_node_id, actual_id, is_agent,
-                pos_x, pos_y, pos_z,
-                vel_x, vel_y, vel_z,
-                _cluster_id, _anomaly_score, _community_id
-            );
-            samples_logged += 1;
-        }
-
-        let actual_id = get_actual_node_id(full_node_id);
-        let server_node_data = BinaryNodeData {
-            node_id: actual_id,
-            x: pos_x,
-            y: pos_y,
-            z: pos_z,
-            vx: vel_x,
-            vy: vel_y,
-            vz: vel_z,
-        };
-
-        updates.push((actual_id, server_node_data));
+    let mut out = Vec::with_capacity(count);
+    for chunk in body.chunks_exact(NODE_ENTRY_SIZE) {
+        let id = u32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
+        let x = f32::from_le_bytes([chunk[4], chunk[5], chunk[6], chunk[7]]);
+        let y = f32::from_le_bytes([chunk[8], chunk[9], chunk[10], chunk[11]]);
+        let z = f32::from_le_bytes([chunk[12], chunk[13], chunk[14], chunk[15]]);
+        let vx = f32::from_le_bytes([chunk[16], chunk[17], chunk[18], chunk[19]]);
+        let vy = f32::from_le_bytes([chunk[20], chunk[21], chunk[22], chunk[23]]);
+        let vz = f32::from_le_bytes([chunk[24], chunk[25], chunk[26], chunk[27]]);
+        let node = BinaryNodeData { node_id: id, x, y, z, vx, vy, vz };
+        out.push((id, node));
     }
 
     debug!(
-        "Successfully decoded {} V3 nodes with analytics from binary data",
-        updates.len()
+        "decode_position_frame: seq={}, {} nodes, {} bytes",
+        seq, out.len(), bytes.len()
     );
-    Ok(updates)
+    Ok((seq, out))
 }
 
+/// Compute the on-wire size of a position frame for the given updates.
 pub fn calculate_message_size(updates: &[(u32, BinaryNodeData)]) -> usize {
-    // V3 is now the default protocol (48 bytes per node)
-    1 + updates.len() * WIRE_V3_ITEM_SIZE
+    FRAME_HEADER_SIZE + updates.len() * NODE_ENTRY_SIZE
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_wire_format_size() {
-        // V3: 4 + 12 + 12 + 4 + 4 + 4 + 4 + 4 = 48 bytes (CURRENT)
-        assert_eq!(WIRE_V3_ITEM_SIZE, 48);
-        assert_eq!(WIRE_ITEM_SIZE, WIRE_V3_ITEM_SIZE); // Default is now V3
-        assert_eq!(
-            WIRE_ID_SIZE + WIRE_VEC3_SIZE + WIRE_VEC3_SIZE + WIRE_F32_SIZE + WIRE_I32_SIZE +
-            WIRE_U32_SIZE + WIRE_F32_SIZE + WIRE_U32_SIZE,
-            48
-        );
-    }
-
-    #[test]
-    fn test_encode_decode_roundtrip() {
-        let nodes = vec![
-            (
-                1u32,
-                BinaryNodeData {
-                    node_id: 1,
-                    x: 1.0,
-                    y: 2.0,
-                    z: 3.0,
-                    vx: 0.1,
-                    vy: 0.2,
-                    vz: 0.3,
-                },
-            ),
-            (
-                2u32,
-                BinaryNodeData {
-                    node_id: 2,
-                    x: 4.0,
-                    y: 5.0,
-                    z: 6.0,
-                    vx: 0.4,
-                    vy: 0.5,
-                    vz: 0.6,
-                },
-            ),
-        ];
-
-        let encoded = encode_node_data_extended(&nodes, &[], &[], &[], &[], &[]);
-
-        // V3 is now the default: 1 header byte + nodes * 48 bytes
-        assert_eq!(encoded.len(), 1 + nodes.len() * WIRE_V3_ITEM_SIZE);
-
-        let decoded = decode_node_data(&encoded).unwrap();
-        assert_eq!(nodes.len(), decoded.len());
-
-        for ((orig_id, orig_data), (dec_id, dec_data)) in nodes.iter().zip(decoded.iter()) {
-            assert_eq!(orig_id, dec_id);
-            assert_eq!(orig_data.position(), dec_data.position());
-            assert_eq!(orig_data.velocity(), dec_data.velocity());
-        }
-    }
-
-    #[test]
-    fn test_decode_invalid_data() {
-
-        // V2 protocol should be rejected
-        let mut data = vec![2u8]; // V2 version byte
-        data.extend_from_slice(&[0u8; 37]);
-        let result = decode_node_data(&data);
-        assert!(result.is_err());
-        assert!(result.unwrap_err().contains("V2 protocol no longer supported"));
-
-        // V2 with empty payload should also be rejected
-        let result = decode_node_data(&[2u8]);
-        assert!(result.is_err());
-        assert!(result.unwrap_err().contains("V2 protocol no longer supported"));
-    }
-
-    #[test]
-    fn test_message_size_calculation() {
-        let nodes = vec![(
-            1u32,
-            BinaryNodeData {
-                node_id: 1,
-                x: 1.0,
-                y: 2.0,
-                z: 3.0,
-                vx: 0.1,
-                vy: 0.2,
-                vz: 0.3,
-            },
-        )];
-
-        let size = calculate_message_size(&nodes);
-        // V3: 1 header + 48 bytes per node
-        assert_eq!(size, 1 + 48);
-
-        let encoded = encode_node_data_extended(&nodes, &[], &[], &[], &[], &[]);
-        assert_eq!(encoded.len(), size);
-    }
-
-    #[test]
-    fn test_agent_flag_functions() {
-        let node_id = 42u32;
-
-        
-        let flagged_id = set_agent_flag(node_id);
-        assert_eq!(flagged_id, node_id | AGENT_NODE_FLAG);
-        assert!(is_agent_node(flagged_id));
-
-        
-        let actual_id = get_actual_node_id(flagged_id);
-        assert_eq!(actual_id, node_id);
-
-        
-        let cleared_id = clear_agent_flag(flagged_id);
-        assert_eq!(cleared_id, node_id);
-        assert!(!is_agent_node(cleared_id));
-
-        
-        assert!(!is_agent_node(node_id));
-    }
-
-    #[test]
-    fn test_wire_id_conversion() {
-        
-        let node_id = 42u32;
-        let wire_id = to_wire_id(node_id);
-        assert_eq!(wire_id, 42u32); 
-        assert_eq!(from_wire_id(wire_id), node_id);
-
-        
-        let agent_id = set_agent_flag(node_id);
-        let agent_wire_id = to_wire_id(agent_id);
-        assert_eq!(agent_wire_id & NODE_ID_MASK, 42u32);
-        assert!((agent_wire_id & AGENT_NODE_FLAG) != 0);
-        assert_eq!(from_wire_id(agent_wire_id), agent_id);
-
-
-        let knowledge_id = set_knowledge_flag(node_id);
-        let knowledge_wire_id = to_wire_id(knowledge_id);
-        assert_eq!(knowledge_wire_id & NODE_ID_MASK, 42u32);
-        assert!((knowledge_wire_id & KNOWLEDGE_NODE_FLAG) != 0);
-        assert_eq!(from_wire_id(knowledge_wire_id), knowledge_id);
-
-        
-        let large_id = 0x5432u32;
-        let wire_id = to_wire_id(large_id);
-        assert_eq!(wire_id, 0x5432u32); 
-        assert_eq!(from_wire_id(wire_id), large_id);
-    }
-
-    #[test]
-    fn test_encode_with_agent_flags() {
-        let nodes = vec![
-            (
-                1u32,
-                BinaryNodeData {
-                    node_id: 1,
-                    x: 1.0,
-                    y: 2.0,
-                    z: 3.0,
-                    vx: 0.1,
-                    vy: 0.2,
-                    vz: 0.3,
-                },
-            ),
-            (
-                2u32,
-                BinaryNodeData {
-                    node_id: 2,
-                    x: 4.0,
-                    y: 5.0,
-                    z: 6.0,
-                    vx: 0.4,
-                    vy: 0.5,
-                    vz: 0.6,
-                },
-            ),
-        ];
-
-        // Mark node 2 as agent
-        let agent_ids = vec![2u32];
-        let encoded = encode_node_data_extended(&nodes, &agent_ids, &[], &[], &[], &[]);
-
-        // V3 format: 1 header + nodes * 48 bytes
-        assert_eq!(encoded.len(), 1 + nodes.len() * WIRE_V3_ITEM_SIZE);
-
-        let decoded = decode_node_data(&encoded).unwrap();
-        assert_eq!(nodes.len(), decoded.len());
-
-        
-        for ((orig_id, orig_data), (dec_id, dec_data)) in nodes.iter().zip(decoded.iter()) {
-            assert_eq!(orig_id, dec_id); 
-            assert_eq!(orig_data.position(), dec_data.position());
-            assert_eq!(orig_data.velocity(), dec_data.velocity());
-        }
-    }
-
-    #[test]
-    fn test_large_node_id_no_truncation() {
-        
-        let large_nodes = vec![
-            (
-                20000u32,
-                BinaryNodeData {
-                    node_id: 20000,
-                    x: 1.0,
-                    y: 2.0,
-                    z: 3.0,
-                    vx: 0.1,
-                    vy: 0.2,
-                    vz: 0.3,
-                },
-            ),
-            (
-                100000u32,
-                BinaryNodeData {
-                    node_id: 100000,
-                    x: 4.0,
-                    y: 5.0,
-                    z: 6.0,
-                    vx: 0.4,
-                    vy: 0.5,
-                    vz: 0.6,
-                },
-            ),
-        ];
-
-        let encoded = encode_node_data_extended(&large_nodes, &[], &[], &[], &[], &[]);
-
-        // V3 is now the default protocol
-        assert_eq!(encoded[0], PROTOCOL_V3);
-
-        let decoded = decode_node_data(&encoded).unwrap();
-        assert_eq!(large_nodes.len(), decoded.len());
-
-        
-        assert_eq!(decoded[0].0, 20000u32);
-        assert_eq!(decoded[1].0, 100000u32);
-    }
-
-    #[test]
-    fn test_ontology_node_flags() {
-        let node_id = 123u32;
-
-        // Test ontology class flag
-        let class_id = set_ontology_class_flag(node_id);
-        assert!(is_ontology_class(class_id));
-        assert!(is_ontology_node(class_id));
-        assert!(!is_ontology_individual(class_id));
-        assert!(!is_ontology_property(class_id));
-        // get_actual_node_id masks out all flags including ontology flags
-        // The flagged ID includes the ontology bits, but actual ID strips them
-        assert_eq!(get_actual_node_id(class_id), node_id);
-        assert_eq!(get_node_type(class_id), NodeType::OntologyClass);
-
-        // Test ontology individual flag
-        let individual_id = set_ontology_individual_flag(node_id);
-        assert!(is_ontology_individual(individual_id));
-        assert!(is_ontology_node(individual_id));
-        assert!(!is_ontology_class(individual_id));
-        assert!(!is_ontology_property(individual_id));
-        assert_eq!(get_actual_node_id(individual_id), node_id);
-        assert_eq!(get_node_type(individual_id), NodeType::OntologyIndividual);
-
-        // Test ontology property flag
-        let property_id = set_ontology_property_flag(node_id);
-        assert!(is_ontology_property(property_id));
-        assert!(is_ontology_node(property_id));
-        assert!(!is_ontology_class(property_id));
-        assert!(!is_ontology_individual(property_id));
-        assert_eq!(get_actual_node_id(property_id), node_id);
-        assert_eq!(get_node_type(property_id), NodeType::OntologyProperty);
-
-        // Test that unflagged node is not an ontology node
-        assert!(!is_ontology_node(node_id));
-        assert!(!is_ontology_class(node_id));
-        assert!(!is_ontology_individual(node_id));
-        assert!(!is_ontology_property(node_id));
-    }
-
-    #[test]
-    fn test_encode_with_ontology_types() {
-        let nodes = vec![
-            (
-                1u32,
-                BinaryNodeData {
-                    node_id: 1,
-                    x: 1.0,
-                    y: 2.0,
-                    z: 3.0,
-                    vx: 0.1,
-                    vy: 0.2,
-                    vz: 0.3,
-                },
-            ),
-            (
-                2u32,
-                BinaryNodeData {
-                    node_id: 2,
-                    x: 4.0,
-                    y: 5.0,
-                    z: 6.0,
-                    vx: 0.4,
-                    vy: 0.5,
-                    vz: 0.6,
-                },
-            ),
-            (
-                3u32,
-                BinaryNodeData {
-                    node_id: 3,
-                    x: 7.0,
-                    y: 8.0,
-                    z: 9.0,
-                    vx: 0.7,
-                    vy: 0.8,
-                    vz: 0.9,
-                },
-            ),
-        ];
-
-        // Mark nodes with ontology types
-        let class_ids = vec![1u32];
-        let individual_ids = vec![2u32];
-        let property_ids = vec![3u32];
-
-        let encoded =
-            encode_node_data_extended(&nodes, &[], &[], &class_ids, &individual_ids, &property_ids);
-
-        // V3 format: 1 header + nodes * 48 bytes
-        assert_eq!(encoded.len(), 1 + nodes.len() * WIRE_V3_ITEM_SIZE);
-
-        let decoded = decode_node_data(&encoded).unwrap();
-        assert_eq!(nodes.len(), decoded.len());
-
-        // After decoding, the actual node IDs should match (flags are stripped)
-        // decode_node_data strips flags via get_actual_node_id
-        for ((orig_id, orig_data), (dec_id, dec_data)) in nodes.iter().zip(decoded.iter()) {
-            assert_eq!(*orig_id, *dec_id);
-            assert_eq!(orig_data.position(), dec_data.position());
-            assert_eq!(orig_data.velocity(), dec_data.velocity());
-        }
-    }
-
-    #[test]
-    fn test_ontology_flags_preserved_in_wire_format() {
-        let nodes = vec![(
-            100u32,
-            BinaryNodeData {
-                node_id: 100,
-                x: 1.0,
-                y: 2.0,
-                z: 3.0,
-                vx: 0.1,
-                vy: 0.2,
-                vz: 0.3,
-            },
-        )];
-
-        let class_ids = vec![100u32];
-        let encoded = encode_node_data_extended(&nodes, &[], &[], &class_ids, &[], &[]);
-
-        // V3 is now the default protocol
-        assert_eq!(encoded[0], PROTOCOL_V3);
-
-        // Wire ID is at offset 1
-        let wire_id = u32::from_le_bytes([encoded[1], encoded[2], encoded[3], encoded[4]]);
-
-        // Verify ontology flag is set in the wire format
-        assert_eq!(wire_id & ONTOLOGY_TYPE_MASK, ONTOLOGY_CLASS_FLAG);
-        // Verify the actual node ID is preserved (using NODE_ID_MASK to extract it)
-        assert_eq!(wire_id & NODE_ID_MASK, 100u32);
-    }
-
-    #[test]
-    fn test_v1_protocol_rejected() {
-        // V1 protocol should be rejected with clear error message
-        let v1_encoded = vec![1u8]; // Protocol version 1
-        let result = decode_node_data(&v1_encoded);
-        assert!(result.is_err());
-        assert!(result.unwrap_err().contains("no longer supported"));
-    }
-
-    // ========================================================================
-    // Regression tests: post-refactor validation of canonical encoding surface
-    // Validates that the 3 remaining encode functions (encode_node_data_extended,
-    // encode_node_data_extended_with_sssp, encode_node_data_with_live_analytics)
-    // produce correct V3 frames after removal of 6 wrapper functions.
-    // ========================================================================
-
-    #[test]
-    fn test_encode_extended_no_type_arrays() {
-        // GIVEN: Two nodes with no type array membership (empty agent/knowledge/ontology arrays)
-        let nodes = vec![
-            (
-                10u32,
-                BinaryNodeData {
-                    node_id: 10,
-                    x: 1.0,
-                    y: 2.0,
-                    z: 3.0,
-                    vx: 0.1,
-                    vy: 0.2,
-                    vz: 0.3,
-                },
-            ),
-            (
-                20u32,
-                BinaryNodeData {
-                    node_id: 20,
-                    x: 4.0,
-                    y: 5.0,
-                    z: 6.0,
-                    vx: 0.4,
-                    vy: 0.5,
-                    vz: 0.6,
-                },
-            ),
-        ];
-
-        // WHEN: Encoding with empty type arrays via encode_node_data_extended
-        let encoded = encode_node_data_extended(&nodes, &[], &[], &[], &[], &[]);
-
-        // THEN: Output is a valid V3 frame
-        assert_eq!(encoded[0], PROTOCOL_V3, "Version header must be V3 (3)");
-        assert_eq!(
-            encoded.len(),
-            1 + nodes.len() * WIRE_V3_ITEM_SIZE,
-            "Frame size must be 1 header + N*48"
-        );
-
-        // THEN: Wire IDs have NO type flags set (bits 26-31 all zero)
-        for i in 0..nodes.len() {
-            let offset = 1 + i * WIRE_V3_ITEM_SIZE;
-            let wire_id = u32::from_le_bytes([
-                encoded[offset],
-                encoded[offset + 1],
-                encoded[offset + 2],
-                encoded[offset + 3],
-            ]);
-            assert_eq!(
-                wire_id & !NODE_ID_MASK,
-                0,
-                "Node at index {} should have no type flags set, but wire_id=0x{:08X}",
-                i,
-                wire_id
-            );
-            assert_eq!(
-                wire_id & NODE_ID_MASK,
-                nodes[i].0,
-                "Node ID must be preserved without flags"
-            );
-        }
-
-        // THEN: Roundtrip decode succeeds with correct IDs and positions
-        let decoded = decode_node_data(&encoded).unwrap();
-        assert_eq!(decoded.len(), 2);
-        assert_eq!(decoded[0].0, 10);
-        assert_eq!(decoded[1].0, 20);
-        assert_eq!(decoded[0].1.position(), nodes[0].1.position());
-        assert_eq!(decoded[1].1.velocity(), nodes[1].1.velocity());
-    }
-
-    #[test]
-    fn test_encode_with_live_analytics_empty_type_arrays() {
-        // GIVEN: Nodes with analytics data (simulating the position_updates.rs hot path)
-        let nodes = vec![
-            (
-                5u32,
-                BinaryNodeData {
-                    node_id: 5,
-                    x: 10.0,
-                    y: 20.0,
-                    z: 30.0,
-                    vx: 1.0,
-                    vy: 2.0,
-                    vz: 3.0,
-                },
-            ),
-            (
-                15u32,
-                BinaryNodeData {
-                    node_id: 15,
-                    x: 40.0,
-                    y: 50.0,
-                    z: 60.0,
-                    vx: 4.0,
-                    vy: 5.0,
-                    vz: 6.0,
-                },
-            ),
-        ];
-        let mut analytics = HashMap::new();
-        analytics.insert(5u32, (7u32, 0.85f32, 3u32));   // cluster=7, anomaly=0.85, community=3
-        analytics.insert(15u32, (12u32, 0.10f32, 8u32));  // cluster=12, anomaly=0.10, community=8
-
-        // WHEN: Encoding via the live analytics convenience wrapper
-        let encoded = encode_node_data_with_live_analytics(&nodes, Some(&analytics));
-
-        // THEN: Output is valid V3 frame with correct size
-        assert_eq!(encoded[0], PROTOCOL_V3);
-        assert_eq!(encoded.len(), 1 + 2 * WIRE_V3_ITEM_SIZE);
-
-        // THEN: All type arrays are empty, so wire IDs have no flags
-        let wire_id_0 = u32::from_le_bytes([encoded[1], encoded[2], encoded[3], encoded[4]]);
-        assert_eq!(wire_id_0, 5, "First node wire ID should be raw 5 (no flags)");
-
-        let wire_id_1 = u32::from_le_bytes([
-            encoded[1 + WIRE_V3_ITEM_SIZE],
-            encoded[2 + WIRE_V3_ITEM_SIZE],
-            encoded[3 + WIRE_V3_ITEM_SIZE],
-            encoded[4 + WIRE_V3_ITEM_SIZE],
-        ]);
-        assert_eq!(wire_id_1, 15, "Second node wire ID should be raw 15 (no flags)");
-
-        // THEN: Analytics data is embedded in the wire bytes at the correct offsets
-        // V3 layout per node: id(4) + pos(12) + vel(12) + sssp_dist(4) + sssp_parent(4) + cluster(4) + anomaly(4) + community(4)
-        // Analytics starts at byte 36 within each node's 48-byte block
-        let analytics_offset_0 = 1 + 36; // first node: header(1) + 36 bytes into node block
-        let cluster_0 = u32::from_le_bytes([
-            encoded[analytics_offset_0],
-            encoded[analytics_offset_0 + 1],
-            encoded[analytics_offset_0 + 2],
-            encoded[analytics_offset_0 + 3],
-        ]);
-        let anomaly_0 = f32::from_le_bytes([
-            encoded[analytics_offset_0 + 4],
-            encoded[analytics_offset_0 + 5],
-            encoded[analytics_offset_0 + 6],
-            encoded[analytics_offset_0 + 7],
-        ]);
-        let community_0 = u32::from_le_bytes([
-            encoded[analytics_offset_0 + 8],
-            encoded[analytics_offset_0 + 9],
-            encoded[analytics_offset_0 + 10],
-            encoded[analytics_offset_0 + 11],
-        ]);
-        assert_eq!(cluster_0, 7, "Node 5 cluster_id must be 7");
-        assert!((anomaly_0 - 0.85).abs() < f32::EPSILON, "Node 5 anomaly_score must be 0.85");
-        assert_eq!(community_0, 3, "Node 5 community_id must be 3");
-
-        // THEN: Roundtrip decode recovers positions (analytics is discarded by basic decode)
-        let decoded = decode_node_data(&encoded).unwrap();
-        assert_eq!(decoded.len(), 2);
-        assert_eq!(decoded[0].0, 5);
-        assert_eq!(decoded[1].0, 15);
-        assert_eq!(decoded[0].1.x, 10.0);
-        assert_eq!(decoded[1].1.y, 50.0);
-    }
-
-    #[test]
-    fn test_encode_extended_with_sssp_full() {
-        // GIVEN: Nodes with ALL parameters populated
-        let nodes = vec![
-            (
-                1u32,
-                BinaryNodeData {
-                    node_id: 1,
-                    x: 100.0,
-                    y: 200.0,
-                    z: 300.0,
-                    vx: 10.0,
-                    vy: 20.0,
-                    vz: 30.0,
-                },
-            ),
-            (
-                2u32,
-                BinaryNodeData {
-                    node_id: 2,
-                    x: 400.0,
-                    y: 500.0,
-                    z: 600.0,
-                    vx: 40.0,
-                    vy: 50.0,
-                    vz: 60.0,
-                },
-            ),
-            (
-                3u32,
-                BinaryNodeData {
-                    node_id: 3,
-                    x: 700.0,
-                    y: 800.0,
-                    z: 900.0,
-                    vx: 70.0,
-                    vy: 80.0,
-                    vz: 90.0,
-                },
-            ),
-        ];
-
-        let agent_ids = vec![1u32];
-        let knowledge_ids = vec![2u32];
-        let ontology_class_ids = vec![3u32];
-        let ontology_individual_ids: Vec<u32> = vec![];
-        let ontology_property_ids: Vec<u32> = vec![];
-
-        let mut sssp = HashMap::new();
-        sssp.insert(1u32, (1.5f32, 0i32));    // distance=1.5, parent=root(0)
-        sssp.insert(2u32, (3.7f32, 1i32));    // distance=3.7, parent=node 1
-        sssp.insert(3u32, (5.2f32, 2i32));    // distance=5.2, parent=node 2
-
-        let mut analytics = HashMap::new();
-        analytics.insert(1u32, (0u32, 0.1f32, 10u32));   // cluster=0, anomaly=0.1, community=10
-        analytics.insert(2u32, (1u32, 0.95f32, 20u32));  // cluster=1, anomaly=0.95, community=20
-        analytics.insert(3u32, (2u32, 0.5f32, 30u32));   // cluster=2, anomaly=0.5, community=30
-
-        // WHEN: Encoding with ALL parameters via canonical encoder
-        let encoded = encode_node_data_extended_with_sssp(
-            &nodes,
-            &agent_ids,
-            &knowledge_ids,
-            &ontology_class_ids,
-            &ontology_individual_ids,
-            &ontology_property_ids,
-            Some(&sssp),
-            Some(&analytics),
-        );
-
-        // THEN: Valid V3 frame
-        assert_eq!(encoded[0], PROTOCOL_V3);
-        assert_eq!(encoded.len(), 1 + 3 * WIRE_V3_ITEM_SIZE);
-
-        // THEN: Node 1 has agent flag
-        let wire_id_0 = u32::from_le_bytes([encoded[1], encoded[2], encoded[3], encoded[4]]);
-        assert!(
-            is_agent_node(wire_id_0),
-            "Node 1 must have agent flag set, wire_id=0x{:08X}",
-            wire_id_0
-        );
-        assert_eq!(get_actual_node_id(wire_id_0), 1);
-
-        // THEN: Node 2 has knowledge flag
-        let node2_offset = 1 + WIRE_V3_ITEM_SIZE;
-        let wire_id_1 = u32::from_le_bytes([
-            encoded[node2_offset],
-            encoded[node2_offset + 1],
-            encoded[node2_offset + 2],
-            encoded[node2_offset + 3],
-        ]);
-        assert!(
-            is_knowledge_node(wire_id_1),
-            "Node 2 must have knowledge flag set, wire_id=0x{:08X}",
-            wire_id_1
-        );
-        assert_eq!(get_actual_node_id(wire_id_1), 2);
-
-        // THEN: Node 3 has ontology class flag
-        let node3_offset = 1 + 2 * WIRE_V3_ITEM_SIZE;
-        let wire_id_2 = u32::from_le_bytes([
-            encoded[node3_offset],
-            encoded[node3_offset + 1],
-            encoded[node3_offset + 2],
-            encoded[node3_offset + 3],
-        ]);
-        assert!(
-            is_ontology_class(wire_id_2),
-            "Node 3 must have ontology class flag, wire_id=0x{:08X}",
-            wire_id_2
-        );
-        assert_eq!(get_actual_node_id(wire_id_2), 3);
-
-        // THEN: SSSP data is correctly embedded for node 1
-        // SSSP starts at offset 28 within each node block (id=4 + pos=12 + vel=12 = 28)
-        let sssp_offset_0 = 1 + 28;
-        let sssp_dist_0 = f32::from_le_bytes([
-            encoded[sssp_offset_0],
-            encoded[sssp_offset_0 + 1],
-            encoded[sssp_offset_0 + 2],
-            encoded[sssp_offset_0 + 3],
-        ]);
-        let sssp_parent_0 = i32::from_le_bytes([
-            encoded[sssp_offset_0 + 4],
-            encoded[sssp_offset_0 + 5],
-            encoded[sssp_offset_0 + 6],
-            encoded[sssp_offset_0 + 7],
-        ]);
-        assert!((sssp_dist_0 - 1.5).abs() < f32::EPSILON, "Node 1 SSSP distance must be 1.5");
-        assert_eq!(sssp_parent_0, 0, "Node 1 SSSP parent must be 0 (root)");
-
-        // THEN: Analytics data is correctly embedded for node 2
-        let analytics_offset_1 = 1 + WIRE_V3_ITEM_SIZE + 36;
-        let cluster_1 = u32::from_le_bytes([
-            encoded[analytics_offset_1],
-            encoded[analytics_offset_1 + 1],
-            encoded[analytics_offset_1 + 2],
-            encoded[analytics_offset_1 + 3],
-        ]);
-        let anomaly_1 = f32::from_le_bytes([
-            encoded[analytics_offset_1 + 4],
-            encoded[analytics_offset_1 + 5],
-            encoded[analytics_offset_1 + 6],
-            encoded[analytics_offset_1 + 7],
-        ]);
-        let community_1 = u32::from_le_bytes([
-            encoded[analytics_offset_1 + 8],
-            encoded[analytics_offset_1 + 9],
-            encoded[analytics_offset_1 + 10],
-            encoded[analytics_offset_1 + 11],
-        ]);
-        assert_eq!(cluster_1, 1, "Node 2 cluster_id must be 1");
-        assert!((anomaly_1 - 0.95).abs() < f32::EPSILON, "Node 2 anomaly_score must be 0.95");
-        assert_eq!(community_1, 20, "Node 2 community_id must be 20");
-
-        // THEN: Roundtrip decode recovers correct positions
-        let decoded = decode_node_data(&encoded).unwrap();
-        assert_eq!(decoded.len(), 3);
-        for ((_orig_id, orig_data), (dec_id, dec_data)) in nodes.iter().zip(decoded.iter()) {
-            assert_eq!(*dec_id, get_actual_node_id(dec_data.node_id));
-            assert_eq!(orig_data.position(), dec_data.position());
-            assert_eq!(orig_data.velocity(), dec_data.velocity());
-        }
-    }
-
-    #[test]
-    fn test_v3_frame_always_48_bytes_per_node() {
-        // GIVEN: Various node counts from 0 to 5
-        let make_node = |id: u32| -> (u32, BinaryNodeData) {
-            (
-                id,
-                BinaryNodeData {
-                    node_id: id,
-                    x: id as f32,
-                    y: id as f32 * 2.0,
-                    z: id as f32 * 3.0,
-                    vx: 0.0,
-                    vy: 0.0,
-                    vz: 0.0,
-                },
-            )
-        };
-
-        for count in 0..=5 {
-            let nodes: Vec<_> = (1..=count).map(|i| make_node(i as u32)).collect();
-            let expected_size = 1 + nodes.len() * 48;
-
-            // WHEN/THEN: encode_node_data_extended produces 1 + N*48 bytes
-            let enc1 = encode_node_data_extended(&nodes, &[], &[], &[], &[], &[]);
-            assert_eq!(
-                enc1.len(),
-                expected_size,
-                "encode_node_data_extended with {} nodes: expected {} bytes, got {}",
-                count,
-                expected_size,
-                enc1.len()
-            );
-            if !enc1.is_empty() {
-                assert_eq!(enc1[0], PROTOCOL_V3, "Version byte must be 3");
-            }
-
-            // WHEN/THEN: encode_node_data_extended_with_sssp produces 1 + N*48 bytes
-            let enc2 = encode_node_data_extended_with_sssp(
-                &nodes, &[], &[], &[], &[], &[], None, None,
-            );
-            assert_eq!(
-                enc2.len(),
-                expected_size,
-                "encode_node_data_extended_with_sssp with {} nodes: expected {} bytes, got {}",
-                count,
-                expected_size,
-                enc2.len()
-            );
-
-            // WHEN/THEN: encode_node_data_with_live_analytics produces 1 + N*48 bytes
-            let enc3 = encode_node_data_with_live_analytics(&nodes, None);
-            assert_eq!(
-                enc3.len(),
-                expected_size,
-                "encode_node_data_with_live_analytics with {} nodes: expected {} bytes, got {}",
-                count,
-                expected_size,
-                enc3.len()
-            );
-
-            // WHEN/THEN: All three functions produce byte-identical output for same input
-            assert_eq!(enc1, enc2, "extended and extended_with_sssp(None,None) must be identical for {} nodes", count);
-            assert_eq!(enc1, enc3, "extended and with_live_analytics(None) must be identical for {} nodes", count);
-        }
-    }
-
-    // ========================================================================
-    // ADR-037: V5 envelope + bit 29 opaque-node unit tests.
-    // ========================================================================
-
-    #[test]
-    fn v5_wrap_produces_9_byte_header_then_v3_body() {
-        // GIVEN: A V3 body (no version byte) for two nodes.
-        let nodes = vec![
-            (
-                10u32,
-                BinaryNodeData {
-                    node_id: 10, x: 1.0, y: 2.0, z: 3.0,
-                    vx: 0.1, vy: 0.2, vz: 0.3,
-                },
-            ),
-            (
-                20u32,
-                BinaryNodeData {
-                    node_id: 20, x: 4.0, y: 5.0, z: 6.0,
-                    vx: 0.4, vy: 0.5, vz: 0.6,
-                },
-            ),
-        ];
-        let v3_frame = encode_node_data_extended(&nodes, &[], &[], &[], &[], &[]);
-        assert_eq!(v3_frame[0], PROTOCOL_V3);
-        let v3_body = &v3_frame[1..];
-
-        // WHEN: Wrapping in a V5 envelope with sequence = 0xDEADBEEFCAFEBABE.
-        let seq: u64 = 0xDEAD_BEEF_CAFE_BABE;
-        let framed = wrap_v5(v3_body, seq);
-
-        // THEN: Frame length = 9-byte header + full V3 body.
-        assert_eq!(framed.len(), V5_HEADER_LEN + v3_body.len());
-        assert_eq!(V5_HEADER_LEN, 9, "V5 header must be exactly 9 bytes");
-        assert_eq!(framed[0], PROTOCOL_V5, "First byte must be version=5");
-
-        // THEN: Bytes 1..9 are the little-endian sequence.
-        let encoded_seq = u64::from_le_bytes([
-            framed[1], framed[2], framed[3], framed[4],
-            framed[5], framed[6], framed[7], framed[8],
-        ]);
-        assert_eq!(encoded_seq, seq, "Sequence must be LE-encoded in bytes 1..9");
-
-        // THEN: Bytes 9.. are the original V3 body, byte-for-byte.
-        assert_eq!(&framed[V5_HEADER_LEN..], v3_body);
-
-        // THEN: unwrap_v5 reverses the transform exactly.
-        let (round_trip_seq, round_trip_body) = unwrap_v5(&framed).unwrap();
-        assert_eq!(round_trip_seq, seq);
-        assert_eq!(round_trip_body, v3_body);
-
-        // THEN: decode_node_data parses the V5 frame end-to-end.
-        let decoded = decode_node_data(&framed).unwrap();
-        assert_eq!(decoded.len(), 2);
-        assert_eq!(decoded[0].0, 10);
-        assert_eq!(decoded[1].0, 20);
-    }
-
-    #[test]
-    fn v5_wrap_from_v3_frame_strips_inner_version_byte() {
-        // GIVEN: An empty V3 body and a V3 frame with just the version byte.
-        let empty_v3 = vec![PROTOCOL_V3];
-        let framed = wrap_v5_from_v3_frame(&empty_v3, 0);
-        assert_eq!(framed.len(), V5_HEADER_LEN, "Empty V3 yields header-only V5 frame");
-        assert_eq!(framed[0], PROTOCOL_V5);
-
-        // GIVEN: A real V3 frame.
-        let nodes = vec![(
-            1u32,
-            BinaryNodeData {
-                node_id: 1, x: 1.5, y: 2.5, z: 3.5,
-                vx: 0.0, vy: 0.0, vz: 0.0,
-            },
-        )];
-        let v3 = encode_node_data_extended(&nodes, &[], &[], &[], &[], &[]);
-        let framed = wrap_v5_from_v3_frame(&v3, 42);
-
-        // THEN: The inner V3 version byte is not duplicated.
-        assert_eq!(framed.len(), V5_HEADER_LEN + (v3.len() - 1));
-        // First byte of V3 body must be the wire id, not the V3 version byte.
-        assert_ne!(framed[V5_HEADER_LEN], PROTOCOL_V3,
-            "V3 version byte must be stripped during V5 wrap");
-    }
-
-    #[test]
-    fn v5_unwrap_rejects_short_and_mis_versioned_frames() {
-        // Too short to contain header.
-        assert!(unwrap_v5(&[]).is_err());
-        assert!(unwrap_v5(&[5u8]).is_err());
-        assert!(unwrap_v5(&[5u8, 0, 0, 0, 0, 0, 0, 0]).is_err()); // 8 bytes, need 9
-
-        // Header-sized but wrong version byte.
-        let wrong_version = [3u8, 0, 0, 0, 0, 0, 0, 0, 0];
-        let err = unwrap_v5(&wrong_version).unwrap_err();
-        assert!(err.contains("V5"), "Error must call out V5 version mismatch: {}", err);
-    }
-
-    #[test]
-    fn v4_version_byte_is_rejected_by_decoder() {
-        // ADR-037: V4 is no longer a valid wire version. A lone V4 header byte
-        // must surface an explicit rejection rather than silent parse.
-        let v4_frame = vec![4u8];
-        let err = decode_node_data(&v4_frame).unwrap_err();
-        assert!(err.contains("V4"), "V4 rejection must name V4: {}", err);
-        assert!(err.contains("ADR-037"), "V4 rejection must cite ADR-037: {}", err);
-    }
-
-    #[test]
-    fn bit29_private_opaque_flag_round_trip() {
-        // ADR-050 bit 29: private-opaque flag travels through encode / decode
-        // via the public id helpers and does not collide with the other flag
-        // bits (agent/knowledge/ontology) nor with the 26-bit id payload.
-        let raw = 0x0012_3456u32; // 0x123456 = 1,193,046 — inside 26-bit range
-        assert_eq!(raw & NODE_ID_MASK, raw);
-
-        let flagged = encode_node_id(raw, true);
-        assert!(is_private_opaque(flagged), "bit 29 must be set after encode");
-        assert_eq!(flagged & PRIVATE_OPAQUE_FLAG, PRIVATE_OPAQUE_FLAG);
-        assert_eq!(node_id_base(flagged), raw, "base id must survive the flag");
-
-        let cleared = encode_node_id(raw, false);
-        assert_eq!(cleared, raw, "encode_node_id(_, false) must be a no-op");
-        assert!(!is_private_opaque(cleared));
-
-        // Compose with an agent flag: the two flags coexist on the wire id.
-        let agent = set_agent_flag(raw);
-        let agent_private = encode_node_id(agent, true);
-        assert!(is_agent_node(agent_private), "agent flag preserved");
-        assert!(is_private_opaque(agent_private), "private-opaque flag set");
-        assert_eq!(get_actual_node_id(agent_private), raw, "base id recoverable");
-        assert_eq!(node_id_base(agent_private), agent,
-            "node_id_base strips bit 29 without touching other flags");
-    }
-
-    #[test]
-    fn bit29_opaque_does_not_collide_with_other_flag_bits() {
-        // The four named flag bits must be pairwise disjoint and all outside
-        // NODE_ID_MASK, so a private-opaque flag never corrupts type routing.
-        assert_eq!(AGENT_NODE_FLAG & PRIVATE_OPAQUE_FLAG, 0);
-        assert_eq!(KNOWLEDGE_NODE_FLAG & PRIVATE_OPAQUE_FLAG, 0);
-        assert_eq!(ONTOLOGY_TYPE_MASK & PRIVATE_OPAQUE_FLAG, 0);
-        assert_eq!(NODE_ID_MASK & PRIVATE_OPAQUE_FLAG, 0);
-        assert_eq!(PRIVATE_OPAQUE_FLAG, 1u32 << 29);
-    }
-
-    #[test]
-    fn test_type_flags_preserved_through_encode_decode() {
-        // GIVEN: Five nodes, each assigned a different type flag
-        let nodes = vec![
-            (
-                1u32,
-                BinaryNodeData { node_id: 1, x: 1.0, y: 0.0, z: 0.0, vx: 0.0, vy: 0.0, vz: 0.0 },
-            ),
-            (
-                2u32,
-                BinaryNodeData { node_id: 2, x: 2.0, y: 0.0, z: 0.0, vx: 0.0, vy: 0.0, vz: 0.0 },
-            ),
-            (
-                3u32,
-                BinaryNodeData { node_id: 3, x: 3.0, y: 0.0, z: 0.0, vx: 0.0, vy: 0.0, vz: 0.0 },
-            ),
-            (
-                4u32,
-                BinaryNodeData { node_id: 4, x: 4.0, y: 0.0, z: 0.0, vx: 0.0, vy: 0.0, vz: 0.0 },
-            ),
-            (
-                5u32,
-                BinaryNodeData { node_id: 5, x: 5.0, y: 0.0, z: 0.0, vx: 0.0, vy: 0.0, vz: 0.0 },
-            ),
-        ];
-
-        let agent_ids = vec![1u32];
-        let knowledge_ids = vec![2u32];
-        let class_ids = vec![3u32];
-        let individual_ids = vec![4u32];
-        let property_ids = vec![5u32];
-
-        // WHEN: Encoding with all type arrays populated
-        let encoded = encode_node_data_extended(
-            &nodes,
-            &agent_ids,
-            &knowledge_ids,
-            &class_ids,
-            &individual_ids,
-            &property_ids,
-        );
-
-        // THEN: Verify each node's wire ID has the correct flag in the raw bytes
-        let expected_flags: Vec<(u32, &str, Box<dyn Fn(u32) -> bool>)> = vec![
-            (1, "Agent", Box::new(|id| is_agent_node(id))),
-            (2, "Knowledge", Box::new(|id| is_knowledge_node(id))),
-            (3, "OntologyClass", Box::new(|id| is_ontology_class(id))),
-            (4, "OntologyIndividual", Box::new(|id| is_ontology_individual(id))),
-            (5, "OntologyProperty", Box::new(|id| is_ontology_property(id))),
-        ];
-
-        for (i, (expected_id, flag_name, check_fn)) in expected_flags.iter().enumerate() {
-            let offset = 1 + i * WIRE_V3_ITEM_SIZE;
-            let wire_id = u32::from_le_bytes([
-                encoded[offset],
-                encoded[offset + 1],
-                encoded[offset + 2],
-                encoded[offset + 3],
-            ]);
-
-            // Flag is present in wire format
-            assert!(
-                check_fn(wire_id),
-                "Node {} (index {}) must have {} flag in wire format, wire_id=0x{:08X}",
-                expected_id, i, flag_name, wire_id
-            );
-
-            // Actual node ID is recoverable after masking
-            assert_eq!(
-                get_actual_node_id(wire_id),
-                *expected_id,
-                "Node {} actual ID must survive flag encoding",
-                expected_id
-            );
-        }
-
-        // THEN: Decode recovers the correct actual node IDs (flags stripped)
-        let decoded = decode_node_data(&encoded).unwrap();
-        assert_eq!(decoded.len(), 5);
-        for (i, (dec_id, dec_data)) in decoded.iter().enumerate() {
-            let expected_id = (i + 1) as u32;
-            assert_eq!(
-                *dec_id, expected_id,
-                "Decoded node at index {} must have ID {}",
-                i, expected_id
-            );
-            assert_eq!(
-                dec_data.x,
-                expected_id as f32,
-                "Decoded node {} must have correct x position",
-                expected_id
-            );
-        }
-    }
-}
-
-// ============================================================================
+// =============================================================================
 // AGENT ACTION EVENTS (Protocol 0x23) - Ephemeral Connection Visualization
-// ============================================================================
+// =============================================================================
 
 /// Action types for agent-to-data interactions
 #[repr(u8)]
@@ -2072,7 +397,7 @@ pub fn decode_agent_actions(data: &[u8]) -> Result<Vec<AgentActionEvent>, String
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum ControlFrame {
-    
+
     #[serde(rename = "constraints_update")]
     ConstraintsUpdate {
         version: u32,
@@ -2081,14 +406,14 @@ pub enum ControlFrame {
         advanced_params: Option<AdvancedParams>,
     },
 
-    
+
     #[serde(rename = "lens_request")]
     LensRequest {
         lens_type: String,
         parameters: serde_json::Value,
     },
 
-    
+
     #[serde(rename = "control_ack")]
     ControlAck {
         frame_type: String,
@@ -2097,27 +422,27 @@ pub enum ControlFrame {
         message: Option<String>,
     },
 
-    
+
     #[serde(rename = "physics_params")]
     PhysicsParams { advanced_params: AdvancedParams },
 
-    
+
     #[serde(rename = "preset_request")]
     PresetRequest { preset_name: String },
 }
 
 impl ControlFrame {
-    
+
     pub fn to_bytes(&self) -> Result<Vec<u8>, serde_json::Error> {
         serde_json::to_vec(self)
     }
 
-    
+
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, serde_json::Error> {
         serde_json::from_slice(bytes)
     }
 
-    
+
     pub fn constraints_update(
         constraints: Vec<Constraint>,
         params: Option<AdvancedParams>,
@@ -2129,7 +454,7 @@ impl ControlFrame {
         }
     }
 
-    
+
     pub fn ack(frame_type: &str, success: bool, message: Option<String>) -> Self {
         ControlFrame::ControlAck {
             frame_type: frame_type.to_string(),
@@ -2142,21 +467,16 @@ impl ControlFrame {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum MessageType {
 
-    /// Binary position updates using Protocol V3 node payload (48 bytes/node).
-    /// Wrapped in a V5 envelope by the broadcast path — see `wrap_v5()`.
+    /// Binary position frame: `preamble(0x42) + broadcast_seq(8) + N×28B nodes`.
+    /// See `encode_position_frame`.
     BinaryPositions = 0,
 
     VoiceData = 0x02,
 
     ControlFrame = 0x03,
 
-    // PositionDelta (0x04) REMOVED by ADR-037 — V4 delta frames are no longer
-    // emitted. Reserved value 0x04 is left unused so old clients that still
-    // tag incoming frames get an "Unknown message type" error rather than
-    // silent misparse.
-
-    /// Client acknowledgement of position broadcast (Protocol V3 backpressure)
-    /// Enables true end-to-end flow control vs queue-only confirmation
+    /// Client acknowledgement of position broadcast (backpressure).
+    /// Enables true end-to-end flow control vs queue-only confirmation.
     BroadcastAck = 0x34,
 
     /// Agent action event for visualization of agent-to-data interactions
@@ -2265,8 +585,8 @@ impl BinaryProtocol {
         })
     }
 
-    
-    
+
+
     pub fn encode_voice_data(audio: &[u8]) -> Vec<u8> {
         let mut buffer = Vec::with_capacity(1 + audio.len());
         buffer.push(MessageType::VoiceData as u8);
@@ -2281,15 +601,17 @@ pub struct MultiplexedMessage {
 }
 
 impl MultiplexedMessage {
-    
+
+    /// Build a binary-positions multiplexed message from a list of nodes.
+    /// Uses sequence number 0 (intended for tests / non-broadcast paths).
     pub fn positions(node_data: &[(u32, BinaryNodeData)]) -> Self {
         Self {
             msg_type: MessageType::BinaryPositions,
-            data: encode_node_data_extended_with_sssp(node_data, &[], &[], &[], &[], &[], None, None),
+            data: encode_position_frame(node_data, 0),
         }
     }
 
-    
+
     pub fn control(frame: &ControlFrame) -> Result<Self, serde_json::Error> {
         Ok(Self {
             msg_type: MessageType::ControlFrame,
@@ -2297,7 +619,7 @@ impl MultiplexedMessage {
         })
     }
 
-    
+
     pub fn encode(&self) -> Vec<u8> {
         let mut result = Vec::with_capacity(1 + self.data.len());
         result.push(self.msg_type as u8);
@@ -2315,7 +637,6 @@ impl MultiplexedMessage {
             0 => MessageType::BinaryPositions,
             0x02 => MessageType::VoiceData,
             0x03 => MessageType::ControlFrame,
-            // 0x04 (PositionDelta) was removed by ADR-037 and is reserved.
             0x23 => MessageType::AgentAction,
             0x34 => MessageType::BroadcastAck,
             t => return Err(format!("Unknown message type: {}", t)),
@@ -2325,209 +646,5 @@ impl MultiplexedMessage {
             msg_type,
             data: data[1..].to_vec(),
         })
-    }
-}
-
-#[cfg(test)]
-mod control_frame_tests {
-    use super::*;
-    use crate::models::constraints::ConstraintKind;
-
-    #[test]
-    fn test_control_frame_serialization() {
-        let constraint = Constraint {
-            kind: ConstraintKind::Separation,
-            node_indices: vec![1, 2],
-            params: vec![100.0],
-            weight: 0.8,
-            active: true,
-        };
-
-        let frame = ControlFrame::constraints_update(vec![constraint], None);
-        let bytes = frame.to_bytes().expect("Serialization failed");
-        let decoded = ControlFrame::from_bytes(&bytes).expect("Deserialization failed");
-
-        match decoded {
-            ControlFrame::ConstraintsUpdate {
-                version,
-                constraints,
-                ..
-            } => {
-                assert_eq!(version, 1);
-                assert_eq!(constraints.len(), 1);
-                assert_eq!(constraints[0].kind, ConstraintKind::Separation);
-            }
-            _ => panic!("Wrong frame type"),
-        }
-    }
-
-    #[test]
-    fn test_multiplexed_message() {
-        let nodes = vec![(
-            1u32,
-            BinaryNodeData {
-                node_id: 1,
-                x: 1.0,
-                y: 2.0,
-                z: 3.0,
-                vx: 0.1,
-                vy: 0.2,
-                vz: 0.3,
-            },
-        )];
-
-        let msg = MultiplexedMessage::positions(&nodes);
-        let encoded = msg.encode();
-
-        assert_eq!(encoded[0], 0); 
-
-        let decoded = MultiplexedMessage::decode(&encoded).expect("Decode failed");
-        assert_eq!(decoded.msg_type, MessageType::BinaryPositions);
-    }
-
-    #[test]
-    fn test_simplified_protocol_voice_data() {
-        let audio = vec![0x12, 0x34, 0x56, 0x78];
-
-        let encoded = BinaryProtocol::encode_voice_data(&audio);
-        assert_eq!(encoded[0], 0x02); 
-        assert_eq!(encoded.len(), 1 + audio.len());
-
-        let decoded = BinaryProtocol::decode_message(&encoded).expect("Message decode failed");
-        match decoded {
-            Message::VoiceData {
-                audio: decoded_audio,
-            } => {
-                assert_eq!(decoded_audio, audio);
-            }
-            _ => panic!("Expected VoiceData message"),
-        }
-    }
-
-    #[test]
-    fn test_protocol_error_handling() {
-        // Empty message
-        let result = BinaryProtocol::decode_message(&[]);
-        assert!(matches!(result, Err(ProtocolError::DecodingError(_))));
-
-        // Invalid message type
-        let result = BinaryProtocol::decode_message(&[0xFF]);
-        assert!(matches!(
-            result,
-            Err(ProtocolError::InvalidMessageType(0xFF))
-        ));
-    }
-
-    #[test]
-    fn test_agent_action_type_conversion() {
-        assert_eq!(AgentActionType::from(0), AgentActionType::Query);
-        assert_eq!(AgentActionType::from(1), AgentActionType::Update);
-        assert_eq!(AgentActionType::from(2), AgentActionType::Create);
-        assert_eq!(AgentActionType::from(3), AgentActionType::Delete);
-        assert_eq!(AgentActionType::from(4), AgentActionType::Link);
-        assert_eq!(AgentActionType::from(5), AgentActionType::Transform);
-        assert_eq!(AgentActionType::from(255), AgentActionType::Query); // Default
-    }
-
-    #[test]
-    fn test_agent_action_event_encode_decode() {
-        let event = AgentActionEvent::new(
-            42,   // source_agent_id
-            100,  // target_node_id
-            AgentActionType::Update,
-            500,  // duration_ms
-        );
-
-        let encoded = event.encode();
-
-        // Verify message type header
-        assert_eq!(encoded[0], MessageType::AgentAction as u8);
-        assert_eq!(encoded[0], 0x23);
-
-        // Verify header size: 1 (msg type) + 15 (header) = 16 bytes minimum
-        assert!(encoded.len() >= 16);
-
-        // Decode (skip msg type byte)
-        let decoded = AgentActionEvent::decode(&encoded[1..]).expect("Decode failed");
-
-        assert_eq!(decoded.source_agent_id, 42);
-        assert_eq!(decoded.target_node_id, 100);
-        assert_eq!(decoded.get_action_type(), AgentActionType::Update);
-        assert_eq!(decoded.duration_ms, 500);
-        assert!(decoded.payload.is_empty());
-    }
-
-    #[test]
-    fn test_agent_action_event_with_payload() {
-        let mut event = AgentActionEvent::new(
-            1,
-            2,
-            AgentActionType::Create,
-            1000,
-        );
-        event.payload = vec![0xDE, 0xAD, 0xBE, 0xEF];
-
-        let encoded = event.encode();
-
-        // 1 (msg type) + 15 (header) + 4 (payload) = 20 bytes
-        assert_eq!(encoded.len(), 20);
-
-        let decoded = AgentActionEvent::decode(&encoded[1..]).expect("Decode failed");
-        assert_eq!(decoded.payload, vec![0xDE, 0xAD, 0xBE, 0xEF]);
-    }
-
-    #[test]
-    fn test_agent_action_batch_encode_decode() {
-        let events = vec![
-            AgentActionEvent::new(1, 10, AgentActionType::Query, 100),
-            AgentActionEvent::new(2, 20, AgentActionType::Update, 200),
-            AgentActionEvent::new(3, 30, AgentActionType::Delete, 300),
-        ];
-
-        let encoded = encode_agent_actions(&events);
-
-        // First byte is message type
-        assert_eq!(encoded[0], MessageType::AgentAction as u8);
-
-        // Decode batch (skip msg type byte)
-        let decoded = decode_agent_actions(&encoded[1..]).expect("Batch decode failed");
-
-        assert_eq!(decoded.len(), 3);
-        assert_eq!(decoded[0].source_agent_id, 1);
-        assert_eq!(decoded[0].target_node_id, 10);
-        assert_eq!(decoded[0].get_action_type(), AgentActionType::Query);
-
-        assert_eq!(decoded[1].source_agent_id, 2);
-        assert_eq!(decoded[1].get_action_type(), AgentActionType::Update);
-
-        assert_eq!(decoded[2].source_agent_id, 3);
-        assert_eq!(decoded[2].get_action_type(), AgentActionType::Delete);
-    }
-
-    #[test]
-    fn test_agent_action_decode_error() {
-        // Data too small
-        let result = AgentActionEvent::decode(&[0; 10]);
-        assert!(result.is_err());
-        assert!(result.unwrap_err().contains("too small"));
-    }
-
-    #[test]
-    fn test_multiplexed_agent_action() {
-        let event = AgentActionEvent::new(5, 50, AgentActionType::Link, 750);
-        let encoded = event.encode();
-
-        let msg = MultiplexedMessage::decode(&encoded).expect("Decode failed");
-        assert_eq!(msg.msg_type, MessageType::AgentAction);
-    }
-
-    #[test]
-    fn test_message_type_values() {
-        // Verify message type constants match spec (post-ADR-037: 0x04 retired).
-        assert_eq!(MessageType::BinaryPositions as u8, 0x00);
-        assert_eq!(MessageType::VoiceData as u8, 0x02);
-        assert_eq!(MessageType::ControlFrame as u8, 0x03);
-        assert_eq!(MessageType::AgentAction as u8, 0x23);
-        assert_eq!(MessageType::BroadcastAck as u8, 0x34);
     }
 }

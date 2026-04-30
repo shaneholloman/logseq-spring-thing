@@ -1,7 +1,12 @@
 
 
 import { expose } from 'comlink';
-import { BinaryNodeData, parseBinaryNodeData, parseBinaryFrameData, createBinaryNodeData, Vec3, getActualNodeId } from '../../../types/binaryProtocol';
+import {
+  BinaryNodeData,
+  Vec3,
+  decodePositionFrame,
+  createBinaryNodeData,
+} from '../../../types/binaryProtocol';
 import { stringToU32 } from '../../../types/idMapping';
 
 const MAX_HASH_PROBES = 1000;
@@ -274,9 +279,14 @@ class GraphWorker {
   private binaryOutputBuffer: Float32Array | null = null;
   private binaryOutputBufferSize: number = 0;
 
-  // Per-node analytics data from binary protocol V3 (clusterId, anomalyScore, communityId).
-  // Indexed by nodeIndex (same order as graphData.nodes). Updated every processBinaryData call.
-  // Layout: [clusterId_0, anomalyScore_0, communityId_0, clusterId_1, anomalyScore_1, ...]
+  // ADR-061: per-node analytics (cluster_id, community_id, anomaly_score) no
+  // longer ride the per-frame binary stream. They arrive on the
+  // `analytics_update` text-message channel and are merged into the main-thread
+  // `useAnalyticsStore` (Zustand). The worker keeps a degree-based fallback
+  // anomaly + Louvain community computation for graphs where the server has
+  // not yet emitted analytics — the result is still surfaced via
+  // getAnalyticsBuffer() as a Float32Array of [clusterId, anomalyScore,
+  // communityId] per node.
   private analyticsBuffer: Float32Array | null = null;
 
   // FIX 4: JSON/binary race guard — binary frames arriving before setGraphData()
@@ -532,23 +542,24 @@ class GraphWorker {
     // All graph types process binary position updates from the server.
     // Server is the single source of truth for positions.
 
-
     this.binaryUpdateCount = (this.binaryUpdateCount || 0) + 1;
     this.lastBinaryUpdate = Date.now();
-
 
     if (isZlibCompressed(data)) {
       data = await decompressZlib(data);
     }
 
-    // Parse frame with delta awareness
-    const frame = parseBinaryFrameData(data);
-    const nodeUpdates = frame.nodes;
-    const isDelta = frame.type === 'delta';
+    // ADR-061: single 24 B/node decoder. Frame := [u8 0x42][u64 seq][N × 24 B node].
+    // No flag bits, no version dispatch, no per-frame analytics.
+    const frame = decodePositionFrame(data);
+    if (!frame) {
+      return new Float32Array(0);
+    }
 
+    const nodeCount = frame.nodes.size;
 
     // Reuse binary output buffer, only reallocate if size changed
-    const requiredBinarySize = nodeUpdates.length * 4;
+    const requiredBinarySize = nodeCount * 4;
     if (!this.binaryOutputBuffer || this.binaryOutputBufferSize !== requiredBinarySize) {
       this.binaryOutputBuffer = new Float32Array(requiredBinarySize);
       this.binaryOutputBufferSize = requiredBinarySize;
@@ -556,73 +567,37 @@ class GraphWorker {
     const positionArray = this.binaryOutputBuffer;
 
     let unknownCount = 0;
-    nodeUpdates.forEach((update, index) => {
-      // Strip flag bits (agent/knowledge/ontology type) from binary wire ID
-      // to get the actual node ID that matches reverseNodeIdMap keys.
-      // Server sets bits 26-31 for node type classification; client must mask them off.
-      const actualNodeId = getActualNodeId(update.nodeId);
-      const stringNodeId = this.reverseNodeIdMap.get(actualNodeId);
+    let outIdx = 0;
+    for (const update of frame.nodes.values()) {
+      const nodeId = update.nodeId;
+      const stringNodeId = this.reverseNodeIdMap.get(nodeId);
       if (!stringNodeId) {
         // FIX 2: Track unknown node IDs from binary stream for REST re-fetch
-        this.unknownNodeIds.add(actualNodeId);
+        this.unknownNodeIds.add(nodeId);
         unknownCount++;
-      }
-      if (stringNodeId) {
-        const nodeIndex = this.nodeIndexMap.get(stringNodeId);
-        if (nodeIndex !== undefined && !this.pinnedNodeIds.has(actualNodeId)) {
-          const i3 = nodeIndex * 3;
-
-          if (isDelta) {
-            // Delta frame: ADD deltas to existing target positions
-            this.targetPositions![i3] += update.position.x;
-            this.targetPositions![i3 + 1] += update.position.y;
-            this.targetPositions![i3 + 2] += update.position.z;
-            // Also update currentPositions for delta so SAB reflects accumulated state
-            this.currentPositions![i3] = this.targetPositions![i3];
-            this.currentPositions![i3 + 1] = this.targetPositions![i3 + 1];
-            this.currentPositions![i3 + 2] = this.targetPositions![i3 + 2];
-          } else {
-            // Full frame: SET absolute positions — server is authoritative.
-            // Update BOTH target and current so SAB immediately reflects server state.
-            // Tweening in tick() will smooth subsequent micro-adjustments.
-            this.targetPositions![i3] = update.position.x;
-            this.targetPositions![i3 + 1] = update.position.y;
-            this.targetPositions![i3 + 2] = update.position.z;
-            this.currentPositions![i3] = update.position.x;
-            this.currentPositions![i3 + 1] = update.position.y;
-            this.currentPositions![i3 + 2] = update.position.z;
-          }
-
-          // Store V3 analytics fields (clusterId, anomalyScore, communityId) per node
-          if (this.analyticsBuffer && update.clusterId !== undefined) {
-            this.analyticsBuffer[i3] = update.clusterId;
-            this.analyticsBuffer[i3 + 1] = update.anomalyScore ?? 0;
-            this.analyticsBuffer[i3 + 2] = update.communityId ?? 0;
-          }
-        }
-      }
-
-      const arrayOffset = index * 4;
-      positionArray[arrayOffset] = actualNodeId;
-      if (isDelta && stringNodeId) {
-        // For delta frames, output the resulting absolute position (not the delta)
-        const nodeIndex = this.nodeIndexMap.get(stringNodeId);
-        if (nodeIndex !== undefined) {
-          const i3 = nodeIndex * 3;
-          positionArray[arrayOffset + 1] = this.targetPositions![i3];
-          positionArray[arrayOffset + 2] = this.targetPositions![i3 + 1];
-          positionArray[arrayOffset + 3] = this.targetPositions![i3 + 2];
-        } else {
-          positionArray[arrayOffset + 1] = update.position.x;
-          positionArray[arrayOffset + 2] = update.position.y;
-          positionArray[arrayOffset + 3] = update.position.z;
-        }
       } else {
-        positionArray[arrayOffset + 1] = update.position.x;
-        positionArray[arrayOffset + 2] = update.position.y;
-        positionArray[arrayOffset + 3] = update.position.z;
+        const nodeIndex = this.nodeIndexMap.get(stringNodeId);
+        if (nodeIndex !== undefined && !this.pinnedNodeIds.has(nodeId)) {
+          const i3 = nodeIndex * 3;
+          // Server is authoritative; SET both target and current so SAB
+          // immediately reflects server state. Tweening in tick() smooths
+          // subsequent micro-adjustments.
+          this.targetPositions![i3] = update.position.x;
+          this.targetPositions![i3 + 1] = update.position.y;
+          this.targetPositions![i3 + 2] = update.position.z;
+          this.currentPositions![i3] = update.position.x;
+          this.currentPositions![i3 + 1] = update.position.y;
+          this.currentPositions![i3 + 2] = update.position.z;
+        }
       }
-    });
+
+      const arrayOffset = outIdx * 4;
+      positionArray[arrayOffset] = nodeId;
+      positionArray[arrayOffset + 1] = update.position.x;
+      positionArray[arrayOffset + 2] = update.position.y;
+      positionArray[arrayOffset + 3] = update.position.z;
+      outIdx++;
+    }
 
     // FIX 2: Log unknown nodes and signal need for REST re-fetch (throttled to once per 5s)
     if (unknownCount > 0) {
@@ -981,9 +956,15 @@ class GraphWorker {
   }
 
   /**
-   * Return per-node analytics data from binary protocol V3.
-   * Layout: Float32Array of [clusterId, anomalyScore, communityId] per node,
-   * indexed by node position in graphData.nodes (i.e., index * 3 + offset).
+   * Return per-node client-fallback analytics computed by this worker (degree
+   * z-score + Louvain communities). Layout: Float32Array of [clusterId,
+   * anomalyScore, communityId] per node, indexed by node position in
+   * graphData.nodes (i.e., index * 3 + offset).
+   *
+   * NOTE (ADR-061): server-side analytics no longer ride the per-frame binary
+   * stream — they arrive on the `analytics_update` side stream and merge into
+   * useAnalyticsStore on the main thread. This buffer remains as a graceful
+   * fallback for graphs that have not yet received a server analytics update.
    */
   async getAnalyticsBuffer(): Promise<Float32Array> {
     return this.analyticsBuffer ?? new Float32Array(0);

@@ -832,3 +832,20 @@ impl Handler<SetNodeAnalytics> for GPUManagerActor {
         }
     }
 }
+
+/// ADR-061 §D2: Forward ClientCoordinator address to AnalyticsSupervisor so
+/// `ClusteringActor` / `AnomalyDetectionActor` can emit `BroadcastAnalyticsUpdate`
+/// on kernel completion. Without this wire the analytics_update side stream
+/// silently no-ops in production.
+impl Handler<SetClientCoordinatorAddr> for GPUManagerActor {
+    type Result = ();
+
+    fn handle(&mut self, msg: SetClientCoordinatorAddr, ctx: &mut Self::Context) {
+        info!("GPUManagerActor: Forwarding SetClientCoordinatorAddr to AnalyticsSupervisor");
+        if let Ok(supervisors) = self.get_supervisors(ctx) {
+            let _ = supervisors.analytics.try_send(msg);
+        } else {
+            warn!("GPUManagerActor: Supervisors not available for SetClientCoordinatorAddr");
+        }
+    }
+}

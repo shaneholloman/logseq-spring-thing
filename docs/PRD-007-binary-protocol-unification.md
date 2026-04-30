@@ -33,7 +33,7 @@ Plus an envelope:
 ### 1.1 Quantified waste
 
 On a 25 k-node graph at 30 Hz steady-state:
-- 24 redundant bytes/node × 25 000 × 30 Hz = **≈ 18 MB/s** of wire spend on values that did not change.
+- 20 redundant bytes/node × 25 000 × 30 Hz = **≈ 18 MB/s** of wire spend on values that did not change.
 - Browser-side, every frame the decoder runs through the analytics offsets in `parseBinaryFrameData` for fields it then re-stores at the same index of the same side-table — wasted main-thread cycles 30 times a second.
 
 ### 1.2 Versioning has accumulated, not converged
@@ -54,7 +54,7 @@ The user directive (2026-04-30) is to stop framing this as a "versioning" proble
 
 | # | Goal | Success Metric |
 |---|------|----------------|
-| G1 | Reduce per-node wire payload to its original intent | Per-node binary frame is **24 bytes** (id + position + velocity) |
+| G1 | Reduce per-node wire payload to its original intent | Per-node binary frame is **28 bytes** (id + position + velocity) |
 | G2 | Move sticky GPU outputs to an on-change side stream — same producer, different cadence | `ClusteringActor`, `AnomalyDetectionActor`, `SsspActor` push their results only on recompute completion. No analytics field appears in the per-frame stream. |
 | G3 | Remove version numbering from the protocol surface | No `V3`/`V4`/`V5` tokens in `src/utils/binary_protocol.rs`, in client decoder, in test names, or in current ADRs. The wire format byte is removed (or fixed and undocumented). One name: "binary protocol." |
 | G4 | Demote session-invariant type/visibility discriminators to JSON init | Bits 26-31 of id-with-flags removed from the wire. Node type / privacy state ride `/api/graph/data`'s JSON response once at init; client side-table caches them. |
@@ -83,7 +83,7 @@ Frame layout:
   [u64 broadcast_sequence_LE]    ← preserved from prior envelope; backpressure ack key
   [N × Node]
 
-Per-Node layout (24 bytes, fixed):
+Per-Node layout (28 bytes, fixed):
   [u32 id_LE]          ← raw node id; no flag bits
   [f32 x_LE]
   [f32 y_LE]
@@ -140,7 +140,7 @@ Client behaviour: maintain a side-table `analyticsByNodeId: Map<u32, AnalyticsRo
 
 | File | Change |
 |---|---|
-| `src/utils/binary_protocol.rs` | Replace `PROTOCOL_V3`/`V4`/`V5` constants, the `encode_node_data_*` family, and the flag-bit constants. Single `encode_position_frame(positions: &[(u32, BinaryNodeData)], broadcast_sequence: u64) -> Vec<u8>`. 24 B/node fixed. No flags. |
+| `src/utils/binary_protocol.rs` | Replace `PROTOCOL_V3`/`V4`/`V5` constants, the `encode_node_data_*` family, and the flag-bit constants. Single `encode_position_frame(positions: &[(u32, BinaryNodeData)], broadcast_sequence: u64) -> Vec<u8>`. 28 B/node fixed. No flags. |
 | `src/actors/client_coordinator_actor.rs::serialize_positions` (~line 472) | Drop the `private_opaque_ids`, `analytics_data`, and `node_type_arrays` parameters from the per-frame path. Per-client visibility enforcement moves up one level — the client filter already drops invisible nodes from `positions` before serialise. |
 | `src/actors/gpu/clustering_actor.rs` | On k-means / Louvain completion, emit `analytics_update{source:"clustering"|"community"}` via a new `BroadcastAnalyticsUpdate` message that `ClientCoordinator` proxies to all subscribed sockets as a JSON or compact binary frame. **Stop writing `cluster_id`/`community_id` into the per-node binary frame state.** |
 | `src/actors/gpu/anomaly_detection_actor.rs` | Same shape, source=`anomaly`. |
@@ -154,7 +154,7 @@ Client behaviour: maintain a side-table `analyticsByNodeId: Map<u32, AnalyticsRo
 
 | File | Change |
 |---|---|
-| `client/src/store/websocket/binaryProtocol.ts` | Delete `PROTOCOL_V3`/`V5` branches. `processBinaryData` becomes one path: validate preamble byte, read `broadcast_sequence`, iterate 24 B/node. The flag-bit decode loop and `currentNodeTypeMap` builder go away. |
+| `client/src/store/websocket/binaryProtocol.ts` | Delete `PROTOCOL_V3`/`V5` branches. `processBinaryData` becomes one path: validate preamble byte, read `broadcast_sequence`, iterate 28 B/node. The flag-bit decode loop and `currentNodeTypeMap` builder go away. |
 | `client/src/types/binaryProtocol.ts` | Same — collapse the type matrix to one node shape. |
 | `client/src/store/websocket/index.ts` (message dispatch) | Add `analytics_update` text-message handler that merges into a `useAnalyticsStore` Zustand slice. |
 | `client/src/features/graph/components/ClusterHulls.tsx` and similar | Read `cluster_id` / `community_id` / `anomaly_score` from the analytics store, not from per-node parsed binary fields. |
@@ -174,37 +174,56 @@ Client behaviour: maintain a side-table `analyticsByNodeId: Map<u32, AnalyticsRo
 
 ---
 
-## 6. Migration Plan
+## 6. Single-Sprint Execution
 
-### Phase 1 — Side stream lives, old wire still on (one PR)
+Per the velocity directive (2026-04-30), all changes ship in ONE sprint, ONE
+landing. No phasing, no fallback layer. The risk of an analytics renderer
+not migrating cleanly is mitigated by the parallel-stream agent topology
+described below — every renderer gets migrated in lockstep with the wire
+trim. If a renderer can't read from the analytics store, the sprint doesn't
+land.
 
-1. Implement `analytics_update` message type (server emit + client decode + analytics store).
-2. ClusteringActor / AnomalyDetectionActor / SsspActor begin emitting on completion.
-3. Client renderers switch to reading from the analytics store.
-4. Per-frame binary still carries the now-redundant analytics columns. **No regressions possible — clients can fall back to per-frame fields if the analytics store is empty.**
+### 6.1 Workstreams (executed in parallel)
 
-Verification: with the side stream live, set log probes confirming renderers fetch from store rather than per-frame data.
+| Stream | Owner | Deliverable |
+|---|---|---|
+| **A. Rust wire** | server agent | `binary_protocol.rs` collapsed to single `encode_position_frame(positions, broadcast_sequence) -> Vec<u8>`; flag-bit constants removed; legacy `encode_node_data_*` family deleted; new `BroadcastAnalyticsUpdate` actor message + serialiser |
+| **B. Rust analytics emitters** | server agent | `ClusteringActor` / `AnomalyDetectionActor` / `SsspActor` emit `BroadcastAnalyticsUpdate` on recompute completion only; remove their writes to per-node binary columns |
+| **C. TypeScript client** | client agent | `binaryProtocol.ts` decoder reduced to one path (28 B/node); `analytics_update` text-message handler; new `useAnalyticsStore` Zustand slice; renderers (`ClusterHulls`, anomaly overlay, SSSP gradients, `InstancedLabels` for `nodeType`) read from store/JSON-init not per-frame |
+| **D. Tests** | qe agent | Replace V3/V5 fixtures with one `binary_protocol_roundtrip_test`; client decoder unit tests; renderer integration tests verifying side-table reads; one E2E smoke proving cluster hulls + anomaly overlay still render after wire trim |
+| **E. Doc consolidation** | doc agent | Mark ADR-037 **Superseded by ADR-061**; remove every `V3`/`V4`/`V5` token from `src/`, `client/src/`, `docs/`, `tests/`; new `docs/binary-protocol.md` single-source spec; CLAUDE.md / README updates; JSDoc cleanup |
 
-### Phase 2 — Trim the wire (one PR)
+### 6.2 Landing order within the sprint
 
-1. Replace `encode_node_data_*` with single `encode_position_frame`. Per-node 24 B.
-2. Update client decoder. Remove version branches, remove flag-bit decode.
-3. Remove `subscription_confirmed` rate-limit fields.
-4. Remove `currentNodeTypeMap` (now sourced from JSON init).
-5. Add wire-cost telemetry.
+The streams are parallel but the merge has one ordering constraint:
+analytics emitters (B) must reach `main` before — or with — the wire trim
+(A), so that even a brief in-flight build never has a renderer reading
+analytics columns that the wire no longer provides. The sprint coordinator
+gates merge on (A+B+C+D+E green) as a single atomic landing. Branch is
+`feat/binary-protocol-unification`.
 
-Verification: wire frame size drops from `9 + 48*N` to `9 + 24*N`. Smoke test in browser at 25 k nodes confirms physics + tween + cluster overlay + SSSP overlay all render correctly.
+### 6.3 Verification gates
 
-### Phase 3 — Doc + ADR consolidation (one PR)
+Before the sprint can claim success:
 
-1. Mark ADR-037 superseded by PRD-007. Move PRD-007 to ADR if the team prefers ADR-as-spec.
-2. Rename test files: `binary_protocol_v3_*` → `binary_protocol_*`.
-3. Strip "V3 / V4 / V5" from all comments, log lines, JSDoc.
-4. Add the protocol summary to a single doc — `docs/binary-protocol.md` — and link from CLAUDE.md.
+1. `cargo build --lib && cargo test` green; the binary protocol roundtrip
+   test exercises the new 28 B/node format end-to-end.
+2. `cargo grep -r "PROTOCOL_V3\|PROTOCOL_V4\|PROTOCOL_V5\|encode_node_data_with_"` returns
+   zero matches in `src/`.
+3. `tsc --noEmit && jest` green; `grep -rE "PROTOCOL_V[345]|BINARY_NODE_SIZE_V" client/src` returns
+   zero matches.
+4. Browser smoke: hard-refresh against a freshly-rebuilt backend.
+   Per-node wire payload measured at exactly 28 bytes via DevTools
+   network inspection of the WS frames; cluster hulls / anomaly overlay /
+   SSSP overlay all render correctly; settings-driven reheat still works.
+5. Telemetry counter `bytes_per_frame_per_client` reports ≈ `9 + 28*N`
+   on a connected client.
 
-### Phase 4 — Telemetry verification (no code, runs in prod)
+### 6.4 Telemetry verification (post-merge)
 
-Confirm the production deployment shows the predicted wire-cost reduction (≈18 MB/s saved at 25 k nodes / 30 Hz). If the saving is materially less than predicted, write a follow-up ADR to investigate.
+Confirm production shows predicted wire-cost reduction (≈18 MB/s saved at
+25 k nodes / 30 Hz). If the saving is materially less than predicted,
+follow-up ADR investigates.
 
 ---
 
@@ -223,11 +242,11 @@ Confirm the production deployment shows the predicted wire-cost reduction (≈18
 
 ## 8. Success Criteria
 
-1. **Wire**: per-node payload is 24 bytes, every frame, every client. No exceptions.
+1. **Wire**: per-node payload is 28 bytes, every frame, every client. No exceptions.
 2. **Code**: zero matches for `PROTOCOL_V3`, `PROTOCOL_V4`, `PROTOCOL_V5`, `binary_protocol_v` in `src/`, `client/src/`, `docs/`, `tests/`.
 3. **Docs**: every reference to "V3" / "V5" wire format in CLAUDE.md / README.md / ADRs has been removed or relegated to a "Historical context" subsection.
 4. **Behaviour**: at 25 k nodes / 30 Hz, the browser shows physics, tweening, cluster hulls, anomaly overlays, and SSSP overlays correctly; client init does not hang; settings-driven reheat propagates as before.
-5. **Telemetry**: `bytes_per_frame_per_client` averages around `9 + 24*N` (where N is the visible node count for that client). `analytics_updates_per_minute` is bounded.
+5. **Telemetry**: `bytes_per_frame_per_client` averages around `9 + 28*N` (where N is the visible node count for that client). `analytics_updates_per_minute` is bounded.
 
 ---
 

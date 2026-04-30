@@ -13,10 +13,12 @@
 use actix::prelude::*;
 use log::{error, info};
 use serde::{Deserialize, Serialize};
+use std::sync::atomic::{AtomicU64, Ordering as AtomicOrdering};
 use std::sync::Arc;
 use std::time::Instant;
 
 use super::shared::{GPUState, SharedGPUContext};
+use crate::actors::client_coordinator_actor::ClientCoordinatorActor;
 use crate::actors::messages::*;
 
 /// SSSP computation parameters
@@ -118,6 +120,13 @@ pub struct ShortestPathActor {
 
     /// Computation statistics
     stats: ShortestPathStats,
+
+    /// PRD-007 §B1 / ADR-061 §D2: address of the `ClientCoordinatorActor`
+    /// for emitting `BroadcastAnalyticsUpdate` on SSSP completion.
+    client_coordinator_addr: Option<Addr<ClientCoordinatorActor>>,
+
+    /// Monotonic generation counter — increments on every SSSP completion.
+    analytics_generation: Arc<AtomicU64>,
 }
 
 impl ShortestPathActor {
@@ -132,6 +141,8 @@ impl ShortestPathActor {
                 avg_apsp_time_ms: 0.0,
                 last_computation_time_ms: 0,
             },
+            client_coordinator_addr: None,
+            analytics_generation: Arc::new(AtomicU64::new(0)),
         }
     }
 
@@ -255,6 +266,35 @@ impl Handler<ComputeSSP> for ShortestPathActor {
             computation_time, nodes_reached, filtered_distances.len()
         );
 
+        // ADR-061 §D2: emit analytics_update side channel. SSSP doesn't
+        // currently produce a parent vector through this path, so
+        // `sssp_parent` is left None; downstream renderers reading
+        // `sssp_distance` for path-coloring see the right value.
+        if let Some(ref coord) = self.client_coordinator_addr {
+            let generation = self
+                .analytics_generation
+                .fetch_add(1, AtomicOrdering::Relaxed)
+                + 1;
+            let entries: Vec<AnalyticsEntry> = filtered_distances
+                .iter()
+                .enumerate()
+                .filter(|(_, &d)| d.is_finite() && d < f32::MAX)
+                .map(|(i, &d)| AnalyticsEntry {
+                    id: i as u32,
+                    cluster_id: None,
+                    community_id: None,
+                    anomaly_score: None,
+                    sssp_distance: Some(d),
+                    sssp_parent: None,
+                })
+                .collect();
+            coord.do_send(BroadcastAnalyticsUpdate {
+                source: AnalyticsSource::Sssp,
+                generation,
+                entries,
+            });
+        }
+
         Ok(SSSPResult {
             distances: filtered_distances,
             source_idx: msg.source_idx,
@@ -262,6 +302,19 @@ impl Handler<ComputeSSP> for ShortestPathActor {
             max_distance,
             computation_time_ms: computation_time,
         })
+    }
+}
+
+impl Handler<crate::actors::messages::SetClientCoordinatorAddr> for ShortestPathActor {
+    type Result = ();
+
+    fn handle(
+        &mut self,
+        msg: crate::actors::messages::SetClientCoordinatorAddr,
+        _ctx: &mut Self::Context,
+    ) {
+        info!("ShortestPathActor: Received ClientCoordinatorActor address for analytics_update emission");
+        self.client_coordinator_addr = Some(msg.addr);
     }
 }
 

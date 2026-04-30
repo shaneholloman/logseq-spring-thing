@@ -55,7 +55,7 @@ The Nostr-relay durable channel (agentbox `[sovereign_mesh].relay`, ADR-009) is 
   "source_agent_id": 7,                                      // legacy int, retained
   "source_urn": "did:nostr:abc...",                          // optional, ADR-013
   "target_node_id": 4242,                                    // legacy int, retained
-  "target_urn": "urn:visionclaw:kg:<npub>:<sha256-12-hex>",  // optional, ADR-050
+  "target_urn": "urn:visionclaw:kg:<hex-pubkey>:<sha256-12-hex>",  // optional, ADR-050
   "action_type": 1,                                          // 0..5 per AgentActionType
   "duration_ms": 250,
   "pubkey": "abc...",                                        // optional did:nostr hex

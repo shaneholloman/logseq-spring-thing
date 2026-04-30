@@ -66,6 +66,17 @@ pub struct SetGraphServiceAddress {
     pub addr: actix::Addr<crate::actors::GraphServiceSupervisor>,
 }
 
+/// PRD-007 / ADR-061 §D2: inject the `ClientCoordinatorActor` address into
+/// a GPU producer actor so it can emit `BroadcastAnalyticsUpdate` messages
+/// on kernel completion. Each producer (clustering, anomaly, sssp) holds
+/// the address optionally; emission is silently dropped before wiring is
+/// complete.
+#[derive(Message, Clone)]
+#[rtype(result = "()")]
+pub struct SetClientCoordinatorAddr {
+    pub addr: actix::Addr<crate::actors::client_coordinator_actor::ClientCoordinatorActor>,
+}
+
 // Messages for ClientManagerActor to send to individual SocketFlowServer clients
 #[derive(Message)]
 #[rtype(result = "()")]

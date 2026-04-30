@@ -274,8 +274,69 @@ pub struct UpdateComponentEdges {
 /// Inject the shared node_analytics map into an analytics actor so it can
 /// populate cluster_id / anomaly_score / community_id after computation.
 /// The map is `Arc<RwLock<HashMap<u32, (cluster_id, anomaly_score, community_id)>>>`.
+///
+/// Retained as an internal in-memory side table; per ADR-061 the analytics
+/// values are emitted to clients via `BroadcastAnalyticsUpdate` rather than
+/// being copied into the per-frame binary stream.
 #[derive(Message, Clone)]
 #[rtype(result = "()")]
 pub struct SetNodeAnalytics {
     pub node_analytics: std::sync::Arc<std::sync::RwLock<std::collections::HashMap<u32, (u32, f32, u32)>>>,
+}
+
+// ---------------------------------------------------------------------------
+// Analytics-update side stream (PRD-007 / ADR-061 §D2)
+//
+// Sticky GPU outputs (cluster, community, anomaly, sssp) ride this channel
+// at recompute cadence (~0.1–1 Hz) instead of the 60 Hz position frame.
+// The producer fires `BroadcastAnalyticsUpdate` on kernel completion;
+// `ClientCoordinator` JSON-serialises and fans out to all subscribed
+// sockets.
+// ---------------------------------------------------------------------------
+
+/// One row of the `entries` array in an `analytics_update` message.
+/// All fields except `id` are optional and only populated by their
+/// respective source actors.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AnalyticsEntry {
+    pub id: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cluster_id: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub community_id: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub anomaly_score: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sssp_distance: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sssp_parent: Option<i32>,
+}
+
+/// Source kernel that produced this analytics update.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AnalyticsSource {
+    Clustering,
+    Community,
+    Anomaly,
+    Sssp,
+}
+
+/// Broadcast an analytics update to all connected clients.
+///
+/// Serialised on the wire as:
+/// ```jsonc
+/// {"type":"analytics_update","source":"clustering",
+///  "generation":<u64>,"entries":[...]}
+/// ```
+///
+/// Fired by GPU producer actors on kernel completion. `ClientCoordinator`
+/// applies a server-side rate cap (max 1 emit per second per source) as
+/// defence-in-depth.
+#[derive(Message, Debug, Clone)]
+#[rtype(result = "()")]
+pub struct BroadcastAnalyticsUpdate {
+    pub source: AnalyticsSource,
+    pub generation: u64,
+    pub entries: Vec<AnalyticsEntry>,
 }

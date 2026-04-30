@@ -28,18 +28,13 @@ This file tracks active production issues and design limitations in VisionClaw. 
 
 ## P2 Issues (Degraded Feature)
 
-### WS-001: V4 Delta Encoding — Not Production Ready
+### WS-001: Delta Encoding — Permanently Retired (historical)
 
-**Status**: Experimental / Do Not Use
-**Impact**: V4 (16-byte per-changed-node delta frames) causes position state divergence and latency spikes every 60 frames due to resync overhead. Nodes gradually drift to incorrect positions on the client, then snap back on the forced full-state resync that fires every 60 frames. Under packet loss or reconnect scenarios, client-side delta accumulation diverges further from server state before the next resync corrects it.
+**Status**: Resolved by [ADR-037](adr/ADR-037-binary-protocol-consolidation.md) (delta lock-in) and [ADR-061](adr/ADR-061-binary-protocol-unification.md) (single binary protocol). Per-frame delta encoding is not, and will not become, part of the binary protocol — see [docs/binary-protocol.md](binary-protocol.md).
 
-**Root Cause**: The V4 resync strategy (full V2 frame at frame 0 and every 60 frames) is insufficient to bound drift under real network conditions. The `i16` delta encoding (`position × 100.0`) provides 0.01-unit precision, which accumulates rounding error across many frames. There is no sequence-number-based consistency check; the client has no way to detect a missed delta frame other than waiting for the next scheduled resync.
+**Historical impact**: Delta-encoded position frames caused position state divergence and latency spikes due to resync overhead. The graph is a force-directed spring network — every node moves every tick — so the encoding never compressed in practice while introducing real correctness risks (stale-position drift on reconnect, silent drop of pin signals, parallel decode paths).
 
-**Symptom**: Intermittent "all nodes at origin" visual glitch. Nodes drifting slowly then snapping. Latency spikes at 60-frame intervals visible in browser devtools WebSocket frame timing.
-
-**Workaround**: Use V2 (36-byte standard format) or V3 (48-byte analytics format) in all production and staging deployments. V4 is disabled by default and must be explicitly opted into. Do not enable it.
-
-**Fix Direction**: Implement sequence-number-based resync without full-broadcast penalty. See `docs/reference/websocket-binary.md` (V4 Delta Format section, around line 284) for the current frame layout. No ETA.
+**Current state**: The wire format is the single binary protocol with 24 bytes/node, fixed forever. Bandwidth is managed via broadcast cadence (token-bucket backpressure on `ForceComputeActor`, see [ADR-031](adr/ADR-031-broadcast-backpressure.md)), not payload encoding.
 
 ---
 
@@ -125,7 +120,7 @@ Previously known issues that are now fixed. Listed here so that old bug reports,
 | CUDA thrust SM_890 error in GPU initialization — cuBlas context creation failed intermittently on Ada Lovelace GPUs | Fixed Apr 2026 | `force_compute_actor.rs` — added device synchronization before context creation and PTX module cache invalidation on arch mismatch | `src/actors/gpu/force_compute_actor.rs` |
 | PTX module lookup in community.rs — clustering kernels referenced incorrect module path causing kernel dispatch failures | Fixed Apr 2026 | `src/utils/ptx.rs` — added module name mapping for `gpu_clustering_kernels`, `ontology_constraints`, `pagerank` | `src/utils/ptx.rs` |
 | Slider range degeneration — max values capped at 50000 produced extreme physics parameters on first client connect | Fixed Apr 2026 | `client/src/features/physics/components/SettingsPanel.tsx` — slider ranges capped to sane defaults (repelK: 2000, centerGravityK: 10, damping: 0.98) | `docs/KNOWN_ISSUES.md` |
-| Clustering visualization missing analytics — DBSCAN and Louvain results not appearing in client analytics panel | Fixed Apr 2026 | Binary protocol V3 frame now writes cluster_id to node_analytics; clustering_actor writes to both `cluster_id` and `community_id` slots | `src/actors/gpu/clustering_actor.rs` |
+| Clustering visualization missing analytics — DBSCAN and Louvain results not appearing in client analytics panel | Fixed Apr 2026 (analytics moved off the per-frame wire by ADR-061) | Historical: prior wire format wrote cluster_id to node_analytics. Post-ADR-061: cluster_id rides the `analytics_update` JSON message at recompute cadence; the per-frame binary protocol carries position+velocity only. | `src/actors/gpu/clustering_actor.rs` |
 | **Dual ClientCoordinatorActor instances** — `SocketFlowServer` registered clients in one actor while `PhysicsOrchestratorActor` broadcast to a second internally-created instance; result: "2241 positions, 0 clients in manager", zero binary frames delivered to any client | Fixed Apr 2026 (commit fcfc1a166) | `graph_service_supervisor.rs` — new `with_client()` constructor accepts externally-injected `ClientCoordinatorActor`; `app_state.rs` passes shared address; internal creation skipped when external instance provided | `src/actors/graph_service_supervisor.rs` |
 | **ClientFilter default filtering to zero** — `ClientFilter::default()` had `enabled: true` with empty `filtered_node_ids`, causing every new client to receive zero nodes from `broadcast_with_filter` | Fixed Apr 2026 (commit fcfc1a166) | `client_filter.rs` — default changed to `enabled: false`; opt-in filtering semantics | `src/actors/client_filter.rs` |
 | **FastSettle permanent physics halt** — `FastSettle` mode latched `fast_settle_complete = true` and `is_physics_paused = true` on reaching the iteration cap even without energy convergence; subsequent settings changes could not resume simulation | Fixed Apr 2026 (commit fcfc1a166) | `physics_orchestrator_actor.rs` — non-convergent exhaustion falls back to `Continuous` mode rather than halting | `src/actors/physics_orchestrator_actor.rs` |

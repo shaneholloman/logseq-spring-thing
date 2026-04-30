@@ -186,14 +186,14 @@ Each context owns aggregate roots, domain events, and anti-corruption layers. Cr
 
 ### Sovereign-mesh data model
 
-Every wikilink target becomes a first-class `:KGNode` regardless of publish state. Public nodes appear with full label and metadata; private nodes appear as topology-only (node shape and edges visible, label and metadata opacified via bit 29 on `node_id` in the V5 binary protocol and stripped from REST).
+Every wikilink target becomes a first-class `:KGNode` regardless of publish state. Public nodes appear with full label and metadata; private nodes appear as topology-only (node shape and edges visible, label and metadata dropped at the broadcast boundary by `ClientCoordinator::broadcast_with_filter` and stripped from REST). See [docs/binary-protocol.md](docs/binary-protocol.md).
 
 Each user's content lives in their own Solid Pod: `/public/kg/` for published pages (world-readable, canonical URI), `/private/kg/` for working graph (owner-only), and the full Contributor Stratum container set for their Studio state, automations, skills, and inbox. The Pod is write-master; the backend serves as indexer, aggregation point, and physics engine. The system never writes outside the owner's container.
 
 | Component | What it does | Source |
 |-----------|--------------|--------|
 | NIP-98 optional auth | Anonymous callers see public only; signed callers see own-private + opacified-others | `src/utils/auth.rs`, `src/middleware/auth.rs` |
-| KGNode schema | `visibility` + `owner_pubkey` + `opaque_id` + `pod_url`, HMAC with daily salt rotation, bit 29 on wire | `src/models/node.rs`, `src/utils/binary_protocol.rs`, `src/utils/canonical_iri.rs`, `src/utils/opaque_id.rs` |
+| KGNode schema | `visibility` + `owner_pubkey` + `opaque_id` + `pod_url`, HMAC with daily salt rotation; visibility enforced at broadcast boundary (no wire flag bits — see ADR-061) | `src/models/node.rs`, `src/utils/binary_protocol.rs`, `src/utils/canonical_iri.rs`, `src/utils/opaque_id.rs` |
 | Two-pass parser | Build wikilink adjacency, classify visibility per page, emit private stubs | `src/services/parsers/knowledge_graph_parser.rs`, `src/services/parsers/visibility.rs` |
 | Pod-first ingest saga | Pod write → Neo4j commit, crash-safe with pending markers | `src/services/ingest_saga.rs`, `src/services/pod_client.rs` |
 | BRIDGE_TO promotion | 8-signal sigmoid scoring, monotonic confidence invariant, orphan retraction | `src/services/bridge_edge.rs`, `src/services/orphan_retraction.rs` |
@@ -361,10 +361,10 @@ See the [agents catalog](docs/reference/agents-catalog.md) for the full core ski
 | GPU physics speedup | 55× | vs single-threaded CPU |
 | CUDA kernels | 92 | 6,585 LOC across 11 files |
 | HNSW semantic search | 61 µs p50 | RuVector pgvector, 1.17M entries |
-| WebSocket latency | 10 ms | Local network, V5 binary |
-| Bandwidth reduction | 80% | Binary V5 vs JSON |
+| WebSocket latency | 10 ms | Local network, binary protocol |
+| Bandwidth reduction | 80%+ | Binary protocol vs JSON (see ADR-061) |
 | Concurrent XR users | 250+ | Related immersive event |
-| Frame size | 9-byte header + 36 bytes/node | V5 production |
+| Frame size | 9-byte header + 24 bytes/node | Binary protocol (post-ADR-061) |
 | Physics convergence | ~600 frames (~10 s) | Typical graph at rest |
 | DDD bounded contexts | 19 | Substrate · Mesh · Stratum |
 | MCP tools | 16 | 7 ontology + 9 Contributor Studio |
@@ -432,7 +432,7 @@ Entry points:
 - [Insight Migration Loop — master design](docs/design/2026-04-18-insight-migration-loop/00-master.md) · [PRD](docs/prd-insight-migration-loop.md) · [explanation](docs/explanation/insight-migration-loop.md) · [tutorial](docs/tutorials/promoting-a-note-to-ontology.md)
 - [System Overview](docs/explanation/system-overview.md) · [Architecture Self-Review](docs/architecture-self-review.md)
 - [Deployment Guide](docs/how-to/deployment-guide.md) · [Quest 3 VR Setup](docs/how-to/xr-setup-quest3.md)
-- [Agent Orchestration](docs/how-to/agent-orchestration.md) · [REST API](docs/reference/rest-api.md) · [WebSocket V5 Binary](docs/reference/websocket-binary.md)
+- [Agent Orchestration](docs/how-to/agent-orchestration.md) · [REST API](docs/reference/rest-api.md) · [WebSocket Binary Protocol](docs/binary-protocol.md)
 
 ---
 

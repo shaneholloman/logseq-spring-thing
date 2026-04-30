@@ -5,12 +5,12 @@ import type { Vec3 } from '../types/binaryProtocol';
 
 const logger = createLogger('BinaryWebSocketProtocol');
 
-// Protocol versions
-export const PROTOCOL_V2 = 2;  // Legacy: uint16 payload length, uint16 SSSP IDs
-export const PROTOCOL_V3 = 3;  // Analytics extension (48 bytes/node)
-export const PROTOCOL_V4 = 4;  // CURRENT: uint32 payload length header (6 bytes), uint32 SSSP IDs (14 bytes/node)
-export const PROTOCOL_VERSION = PROTOCOL_V3;  // Server sends V3 position frames
-export const SUPPORTED_PROTOCOLS = [PROTOCOL_V3, PROTOCOL_V4];
+// Wire-envelope version for typed-message frames handled by this class
+// (BROADCAST_ACK, voice, control bits, etc.). NOT related to the
+// per-physics-tick position-frame binary protocol (ADR-061), which is a
+// fixed 24 B/node format with no version vocabulary.
+export const MESSAGE_ENVELOPE_VERSION = 3;
+export const SUPPORTED_MESSAGE_ENVELOPE_VERSIONS = [3, 4];
 
 // MessageType enum is reserved for future typed-message protocol.
 // Server currently sends raw V3 position frames.
@@ -229,7 +229,7 @@ export class BinaryWebSocketProtocol {
 
     // V4 header: [1-byte type][1-byte version][4-byte payloadLength (uint32, LE)]
     view.setUint8(0, type);
-    view.setUint8(1, PROTOCOL_VERSION);
+    view.setUint8(1, MESSAGE_ENVELOPE_VERSION);
     view.setUint32(2, payload.byteLength, true);
 
     if (isGraphUpdate && graphTypeFlag !== undefined) {
@@ -791,8 +791,8 @@ export class BinaryWebSocketProtocol {
     if (!header) return false;
 
     
-    if (!SUPPORTED_PROTOCOLS.includes(header.version)) {
-      logger.warn(`Unsupported protocol version: ${header.version}. Supported: ${SUPPORTED_PROTOCOLS.join(', ')}`);
+    if (!SUPPORTED_MESSAGE_ENVELOPE_VERSIONS.includes(header.version)) {
+      logger.warn(`Unsupported protocol version: ${header.version}. Supported: ${SUPPORTED_MESSAGE_ENVELOPE_VERSIONS.join(', ')}`);
       return false;
     }
 

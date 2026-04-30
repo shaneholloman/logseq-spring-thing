@@ -1,6 +1,13 @@
 # 04 — H1 + H2 Opacity on the Wire (ADR-050 §bit-29 / §three-tier)
 
-**Status: CLOSED (both).**
+> **Historical audit (2026-04-20)**: H2 implementation has since changed under
+> [ADR-061](../../adr/ADR-061-binary-protocol-unification.md) (2026-04-30).
+> Visibility is now enforced at the broadcast boundary
+> (`ClientCoordinator::broadcast_with_filter`); the wire id is the raw u32 with
+> no flag bits. This audit reflects the prior bit-29 wire mechanism. Current
+> wire-format spec: [docs/binary-protocol.md](../../binary-protocol.md).
+
+**Status: CLOSED (both); H2 mechanism replaced by ADR-061 broadcast filter.**
 
 ## H1 — Opacify cross-user private nodes (instead of drop)
 
@@ -60,8 +67,9 @@
   - **New node not in previous frame** at :229-231 (treated as full
     change via `DELTA_ALL_CHANGED`).
 - Full-state resync path (frame 0, every 60th frame, and i16 overflow
-  fallback at :143-152 and :253-256) delegates to the V3 encoder, so
-  bit 29 propagates through both protocol versions.
+  fallback at :143-152 and :253-256) delegates to the canonical encoder, so
+  bit 29 propagates through both historical wire variants. *(post-ADR-061:
+  bit-29 mechanism removed; visibility filtered at broadcast boundary.)*
 
 ### Encoder call sites (8 distinct locations, all now pass a real set)
 
