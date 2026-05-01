@@ -85,8 +85,8 @@ COPY queries ./queries
 # Copy whelk-rs local dependency (required for cargo fetch)
 COPY whelk-rs ./whelk-rs
 
-# NOTE: `COPY crates ./crates` removed — `crates/` no longer exists in the
-# repo. ADR-053 reference is stale; whelk-rs is the only path dep now.
+# Copy workspace crates (graph-cognition-core, extract, physics-presets)
+COPY crates ./crates
 
 # Copy client directory with all frontend files
 COPY client ./client
