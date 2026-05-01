@@ -52,6 +52,7 @@ pub mod skill_registry_supervisor;
 pub mod task_orchestrator_actor;
 pub mod workspace_actor;
 pub mod automation_orchestrator_actor;
+pub mod code_analysis_actor;
 
 pub use agent_monitor_actor::AgentMonitorActor;
 pub use broker_actor::BrokerActor;
@@ -118,6 +119,10 @@ pub use automation_orchestrator_actor::{
 };
 pub use voice_commands::{SwarmIntent, SwarmVoiceResponse, VoiceCommand, VoicePreamble};
 pub use workspace_actor::WorkspaceActor;
+pub use code_analysis_actor::{
+    AnalysisStats, AnalyzeBatch, AnalyzeBatchResult, AnalyzeFile, AnalyzeFileResult,
+    CodeAnalysisActor, GetAnalysisStats,
+};
 
 // Phase 5: Actor lifecycle management and coordination
 pub mod event_coordination;

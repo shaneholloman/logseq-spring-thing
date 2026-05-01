@@ -12,6 +12,7 @@ serde_json = "1.0"
 uuid = { version = "1", features = ["v3", "v4"] }
 thiserror = "2"
 log = "0.4"
+regex = "1"
 
 [dev-dependencies]
 pretty_assertions = "1"

@@ -10,6 +10,29 @@
 #include <cub/cub.cuh>
 #include <curand_kernel.h>
 #include <cfloat>
+#include "kernel_timing.cuh"
+
+// =============================================================================
+// Per-Kernel Timing Infrastructure (ADR-070 D1.3)
+// =============================================================================
+
+enum UnifiedKernelIndex {
+    UKERNEL_BUILD_GRID           = 0,
+    UKERNEL_COMPUTE_CELL_BOUNDS  = 1,
+    UKERNEL_FORCE_PASS           = 2,
+    UKERNEL_RELAXATION_STEP      = 3,
+    UKERNEL_CLUSTER_COHESION     = 4,
+    UKERNEL_INTEGRATE_PASS       = 5,
+    UKERNEL_COMPACT_FRONTIER     = 6,
+    UKERNEL_THRUST_SORT          = 7,
+    UKERNEL_THRUST_SCAN          = 8,
+    UKERNEL_FORCE_PASS_STABILITY = 9,
+    UKERNEL_AABB_REDUCTION       = 10,
+    UKERNEL_DEGREE_GRAVITY       = 11,
+    UKERNEL_COUNT
+};
+
+static float g_kernel_times[16] = {0};
 
 extern "C" {
 
@@ -868,38 +891,52 @@ extern "C" {
 void thrust_sort_key_value(
     void* d_keys_in,
     void* d_keys_out,
-    void* d_values_in, 
+    void* d_values_in,
     void* d_values_out,
     int num_items,
     cudaStream_t stream
 ) {
+    KernelTimer timer;
+    timer.start(stream);
+
     // Copy input to output first
-    cudaMemcpyAsync(d_keys_out, d_keys_in, 
-                    num_items * sizeof(int), 
+    cudaMemcpyAsync(d_keys_out, d_keys_in,
+                    num_items * sizeof(int),
                     cudaMemcpyDeviceToDevice, stream);
     cudaMemcpyAsync(d_values_out, d_values_in,
                     num_items * sizeof(int),
                     cudaMemcpyDeviceToDevice, stream);
-    
+
     // Sort in-place on output buffers
     thrust::device_ptr<int> keys(static_cast<int*>(d_keys_out));
     thrust::device_ptr<int> vals(static_cast<int*>(d_values_out));
     thrust::sort_by_key(thrust::cuda::par.on(stream),
                        keys, keys + num_items, vals);
+
+    timer.stop(stream);
+    float ms = timer.elapsed_ms();
+    if (ms >= 0.0f) g_kernel_times[UKERNEL_THRUST_SORT] += ms;
 }
 
-// Wrapper for thrust exclusive_scan operation  
+// Wrapper for thrust exclusive_scan operation
 void thrust_exclusive_scan(
     void* d_in,
     void* d_out,
     int num_items,
     cudaStream_t stream
 ) {
+    KernelTimer timer;
+    timer.start(stream);
+
     thrust::device_ptr<int> in_ptr(static_cast<int*>(d_in));
     thrust::device_ptr<int> out_ptr(static_cast<int*>(d_out));
     thrust::exclusive_scan(thrust::cuda::par.on(stream),
-                          in_ptr, in_ptr + num_items, 
+                          in_ptr, in_ptr + num_items,
                           out_ptr, 0); // 0 = initial value
+
+    timer.stop(stream);
+    float ms = timer.elapsed_ms();
+    if (ms >= 0.0f) g_kernel_times[UKERNEL_THRUST_SCAN] += ms;
 }
 
 // =============================================================================
@@ -2457,6 +2494,23 @@ __global__ void degree_weighted_gravity_kernel(
         force_x[idx] -= px * center_gravity_k * gravity_multiplier;
         force_y[idx] -= py * center_gravity_k * gravity_multiplier;
         force_z[idx] -= pz * center_gravity_k * gravity_multiplier;
+    }
+}
+
+// =============================================================================
+// Kernel Timing Stats Accessor (ADR-070 D1.3)
+// =============================================================================
+
+void get_kernel_timing_stats(float* out_times, int max_kernels) {
+    int count = (max_kernels < 16) ? max_kernels : 16;
+    for (int i = 0; i < count; i++) {
+        out_times[i] = g_kernel_times[i];
+    }
+}
+
+void reset_kernel_timing_stats() {
+    for (int i = 0; i < 16; i++) {
+        g_kernel_times[i] = 0.0f;
     }
 }
 

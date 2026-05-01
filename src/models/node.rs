@@ -22,7 +22,9 @@ pub enum Visibility {
 }
 
 impl Default for Visibility {
-    fn default() -> Self { Self::Public }
+    fn default() -> Self {
+        Self::Public
+    }
 }
 
 impl Visibility {
@@ -39,19 +41,19 @@ impl Visibility {
             _ => None,
         }
     }
-    pub fn is_private(&self) -> bool { matches!(self, Self::Private) }
+    pub fn is_private(&self) -> bool {
+        matches!(self, Self::Private)
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct Node {
-
     pub id: u32,
     pub metadata_id: String,
     pub label: String,
     pub data: BinaryNodeData,
 
-    
     #[serde(skip_serializing_if = "Option::is_none")]
     pub x: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -67,18 +69,15 @@ pub struct Node {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub mass: Option<f32>,
 
-    
     #[serde(skip_serializing_if = "Option::is_none")]
     pub owl_class_iri: Option<String>,
 
-    
     #[serde(default)]
     #[serde(skip_serializing_if = "HashMap::is_empty")]
     pub metadata: HashMap<String, String>,
     #[serde(skip)]
     pub file_size: u64,
 
-    
     #[serde(rename = "type")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub node_type: Option<String>,
@@ -160,6 +159,15 @@ pub struct Node {
     /// `"mainKnowledgeGraph"` or `"workingGraph"`
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub graph_source: Option<String>,
+
+    // ----------------------------------------------------------------------
+    // ADR-064 graph-cognition-core migration field
+    // ----------------------------------------------------------------------
+    /// Typed node kind discriminant from `graph_cognition_core::NodeKind`.
+    /// `None` for legacy nodes that predate the typed schema; new nodes
+    /// populate this via `NodeKind::from_legacy_type()`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind_id: Option<u8>,
 }
 
 impl Node {
@@ -168,29 +176,21 @@ impl Node {
     }
 
     pub fn new_with_id(metadata_id: String, provided_id: Option<u32>) -> Self {
-        
-        
         let id = match provided_id {
-            Some(id) if id != 0 => {
-                
-                id
-            }
+            Some(id) if id != 0 => id,
             _ => NEXT_NODE_ID.fetch_add(1, Ordering::SeqCst),
         };
 
-        
-        
         use rand::Rng;
         let mut rng = rand::thread_rng();
         let physics = dev_config::physics();
 
-        
         let theta = rng.gen::<f32>() * 2.0 * std::f32::consts::PI; // azimuthal [0, 2pi)
         let phi = (rng.gen::<f32>() * 2.0 - 1.0).acos(); // polar: acos(uniform(-1,1)) for uniform sphere surface
 
         // cbrt gives uniform distribution within the volume (not just on the surface)
-        let radius = physics.initial_radius_min
-            + rng.gen::<f32>().cbrt() * physics.initial_radius_range;
+        let radius =
+            physics.initial_radius_min + rng.gen::<f32>().cbrt() * physics.initial_radius_range;
 
         let pos_x = radius * phi.sin() * theta.cos();
         let pos_y = radius * phi.sin() * theta.sin();
@@ -199,18 +199,18 @@ impl Node {
         Self {
             id,
             metadata_id: metadata_id.clone(),
-            label: String::new(), 
+            label: String::new(),
             data: BinaryNodeData {
                 node_id: id,
-                
+
                 x: pos_x,
                 y: pos_y,
                 z: pos_z,
-                vx: 0.0, 
-                vy: 0.0, 
+                vx: 0.0,
+                vy: 0.0,
                 vz: 0.0,
             },
-            
+
             x: Some(pos_x),
             y: Some(pos_y),
             z: Some(pos_z),
@@ -241,15 +241,13 @@ impl Node {
             authority_score: None,
             preferred_term: None,
             graph_source: None,
+            kind_id: None,
         }
     }
 
     pub fn set_file_size(&mut self, size: u64) {
         self.file_size = size;
-        
 
-        
-        
         if size > 0 {
             self.metadata
                 .insert("fileSize".to_string(), size.to_string());
@@ -321,18 +319,15 @@ impl Node {
         self
     }
 
-    
     pub fn new_with_stored_id(metadata_id: String, stored_node_id: Option<u32>) -> Self {
-        
         let id = match stored_node_id {
             Some(stored_id) => stored_id,
             None => NEXT_NODE_ID.fetch_add(1, Ordering::SeqCst),
         };
 
-        
         let id_hash = id as f32;
-        let angle = id_hash * 0.618033988749895; 
-        let radius = (id_hash * 0.1).min(100.0); 
+        let angle = id_hash * 0.618033988749895;
+        let radius = (id_hash * 0.1).min(100.0);
 
         let pos_x = radius * angle.cos() * 2.0;
         let pos_y = radius * angle.sin() * 2.0;
@@ -351,7 +346,7 @@ impl Node {
                 vy: 0.0,
                 vz: 0.0,
             },
-            
+
             x: Some(pos_x),
             y: Some(pos_y),
             z: Some(pos_z),
@@ -382,19 +377,17 @@ impl Node {
             authority_score: None,
             preferred_term: None,
             graph_source: None,
+            kind_id: None,
         }
     }
 
     pub fn calculate_mass(file_size: u64) -> u8 {
-        
-        
         let base_mass = ((file_size + 1) as f32).log10() / 4.0;
-        
+
         let mass = base_mass.max(0.1).min(10.0);
         (mass * 255.0 / 10.0) as u8
     }
 
-    
     pub fn x(&self) -> f32 {
         self.data.x
     }
@@ -447,11 +440,9 @@ impl Node {
         self.mass.unwrap_or(1.0)
     }
 
-    
     pub fn id_as_string(&self) -> String {
         self.id.to_string()
     }
-
 
     pub fn from_string_id(
         id_str: &str,
@@ -535,6 +526,11 @@ impl Node {
         self
     }
 
+    pub fn with_kind_id(mut self, kind_id: u8) -> Self {
+        self.kind_id = Some(kind_id);
+        self
+    }
+
     /// Returns true if this node is private AND the caller is not the owner.
     /// `caller_pubkey` is the hex pubkey of the requesting user, or `None` if
     /// the caller is anonymous / unauthenticated.
@@ -563,24 +559,18 @@ mod tests {
 
     #[test]
     fn test_numeric_id_generation() {
-        
         let start_value = NEXT_NODE_ID.load(Ordering::SeqCst);
 
-        
         let node1 = Node::new("test-file-1.md".to_string());
         let node2 = Node::new("test-file-2.md".to_string());
 
-        
         assert_ne!(node1.id, node2.id);
 
-        
         assert_eq!(node1.metadata_id, "test-file-1.md");
         assert_eq!(node2.metadata_id, "test-file-2.md");
 
-        
         assert_eq!(node1.id + 1, node2.id);
 
-        
         let end_value = NEXT_NODE_ID.load(Ordering::SeqCst);
         assert_eq!(end_value, start_value + 2);
     }
@@ -597,7 +587,6 @@ mod tests {
             .with_weight(2.0)
             .with_group("group1".to_string());
 
-        
         assert!(node.id > 0, "ID should be positive, got: {}", node.id);
         assert_eq!(node.metadata_id, "test");
         assert_eq!(node.label, "Test Node");
@@ -632,12 +621,4 @@ mod tests {
         assert_eq!(node.vy(), 0.2);
         assert_eq!(node.vz(), 0.3);
     }
-
-    
-    
-    
-    
-    
-    
-    
 }

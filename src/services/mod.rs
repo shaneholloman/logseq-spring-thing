@@ -42,6 +42,7 @@ pub mod briefing_service;
 pub mod bead_types;
 pub mod bead_store;
 pub mod bead_lifecycle;
+pub mod bead_signing;
 pub mod nostr_bead_publisher;
 pub mod nostr_bridge;
 pub mod policy_evaluation_service;
@@ -69,6 +70,13 @@ pub mod orphan_retraction;
 
 // Prometheus / OpenMetrics registry (task #18)
 pub mod metrics;
+pub mod incremental_update;
+
+// ADR-069 D6: 60-frame preset transition ease-in
+pub mod preset_transition;
+
+// Epic G: OntoBricks MCP bridge for external ontology axiom ingestion
+pub mod ontobricks_bridge;
 
 pub use bridge_edge::{
     bridge_edge_enabled, sigmoid_confidence, BridgeEdgeService, CandidateStatus,

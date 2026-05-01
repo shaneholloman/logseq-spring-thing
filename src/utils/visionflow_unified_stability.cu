@@ -6,6 +6,21 @@
 #include <device_launch_parameters.h>
 #include <cub/cub.cuh>
 #include <cfloat>
+#include "kernel_timing.cuh"
+
+// =============================================================================
+// Per-Kernel Timing Infrastructure (ADR-070 D1.3)
+// =============================================================================
+
+enum StabilityKernelIndex {
+    SKERNEL_CALCULATE_KINETIC_ENERGY = 0,
+    SKERNEL_REDUCE_KINETIC_ENERGY    = 1,
+    SKERNEL_CHECK_STABILITY          = 2,
+    SKERNEL_FORCE_PASS_STABILITY     = 3,
+    SKERNEL_COUNT
+};
+
+static float g_stability_kernel_times[16] = {0};
 
 extern "C" {
 
@@ -331,30 +346,48 @@ __host__ bool check_system_stability(
     float min_vel_threshold_sq = min_velocity_threshold * min_velocity_threshold;
 
     // Step 1: Calculate per-node kinetic energy with block reduction
+    KernelTimer timer_ke;
+    timer_ke.start(stream);
     calculate_kinetic_energy_kernel<<<num_blocks, block_size, shared_mem_size, stream>>>(
         d_vel_x, d_vel_y, d_vel_z, d_mass,
         d_persistent_partial_ke, d_persistent_active_count,
         num_nodes, min_vel_threshold_sq
     );
+    timer_ke.stop(stream);
 
     // Step 2: Final reduction
     int reduction_blocks = min(num_blocks, 256);
+    KernelTimer timer_reduce;
+    timer_reduce.start(stream);
     reduce_kinetic_energy_kernel<<<1, reduction_blocks, reduction_blocks * sizeof(float), stream>>>(
         d_persistent_partial_ke, d_persistent_total_ke, d_persistent_avg_ke,
         d_persistent_active_count,
         num_blocks, num_nodes
     );
+    timer_reduce.stop(stream);
 
     // Step 3: Check stability
+    KernelTimer timer_check;
+    timer_check.start(stream);
     check_stability_kernel<<<1, 1, 0, stream>>>(
         d_persistent_avg_ke, d_persistent_active_count, d_persistent_should_skip,
         stability_threshold, num_nodes, iteration
     );
+    timer_check.stop(stream);
 
     // Copy result back to host
     int should_skip_host = 0;
     cudaMemcpyAsync(&should_skip_host, d_persistent_should_skip, sizeof(int), cudaMemcpyDeviceToHost, stream);
     cudaStreamSynchronize(stream);
+
+    // Accumulate per-kernel timing
+    float ms;
+    ms = timer_ke.elapsed_ms();
+    if (ms >= 0.0f) g_stability_kernel_times[SKERNEL_CALCULATE_KINETIC_ENERGY] += ms;
+    ms = timer_reduce.elapsed_ms();
+    if (ms >= 0.0f) g_stability_kernel_times[SKERNEL_REDUCE_KINETIC_ENERGY] += ms;
+    ms = timer_check.elapsed_ms();
+    if (ms >= 0.0f) g_stability_kernel_times[SKERNEL_CHECK_STABILITY] += ms;
 
     return should_skip_host != 0;
 }
@@ -370,6 +403,23 @@ __host__ void cleanup_stability_buffers() {
     if (d_persistent_active_count) { cudaFree(d_persistent_active_count); d_persistent_active_count = nullptr; }
     if (d_persistent_should_skip)  { cudaFree(d_persistent_should_skip);  d_persistent_should_skip  = nullptr; }
     persistent_buffer_capacity = 0;
+}
+
+// =============================================================================
+// Kernel Timing Stats Accessor (ADR-070 D1.3)
+// =============================================================================
+
+void get_stability_kernel_timing_stats(float* out_times, int max_kernels) {
+    int count = (max_kernels < 16) ? max_kernels : 16;
+    for (int i = 0; i < count; i++) {
+        out_times[i] = g_stability_kernel_times[i];
+    }
+}
+
+void reset_stability_kernel_timing_stats() {
+    for (int i = 0; i < 16; i++) {
+        g_stability_kernel_times[i] = 0.0f;
+    }
 }
 
 } // extern "C"

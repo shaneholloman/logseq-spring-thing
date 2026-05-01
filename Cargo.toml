@@ -151,6 +151,15 @@ rayon = "1.11.0"
 # Hexagonal Architecture
 hexser = { version = "0.4.7", features = ["full"] }
 
+# Core typed-graph schema (ADR-064)
+graph-cognition-core = { path = "crates/graph-cognition-core" }
+
+# Block-level extraction (Logseq parser, ADR-068) + code analysis (ADR-065)
+graph-cognition-extract = { path = "crates/graph-cognition-extract" }
+
+# Force presets and SimParams validation (ADR-069, ADR-070)
+graph-cognition-physics-presets = { path = "crates/graph-cognition-physics-presets" }
+
 # Ontology Reasoning - using local path dependency (always enabled)
 whelk = { path = "./whelk-rs" }
 

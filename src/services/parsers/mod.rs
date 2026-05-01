@@ -1,3 +1,4 @@
+pub mod block_level_parser;
 pub mod knowledge_graph_parser;
 pub mod ontology_parser;
 pub mod visibility;

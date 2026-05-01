@@ -160,6 +160,22 @@ pub struct ForceComputeActor {
     gpu_self_init_max_retries: u32,
     /// Timestamp of the last failed GPU self-init attempt (for exponential backoff).
     gpu_self_init_last_attempt: Option<Instant>,
+
+    // ── ADR-070 D1.2: NaN guard ──────────────────────────────────────────
+    /// Ticks since the last GPU-side NaN check. Checked every 32 iterations.
+    iterations_since_nan_check: u32,
+    /// Last-known-good flat position array (interleaved x,y,z per node).
+    /// Updated every tick where NaN was NOT detected. On NaN detection the
+    /// GPU positions are reverted to this snapshot.
+    last_good_positions: Option<Vec<f32>>,
+    /// When true, physics is skipped for one frame to let the system stabilize
+    /// after a NaN-triggered position revert.
+    nan_recovery_active: bool,
+
+    // ── ADR-070 D1.3 prep: preset-aware damping ──────────────────────────
+    /// Name of the currently active force preset. Prep field for full preset
+    /// switching — not yet wired to `graph-cognition-physics-presets` loading.
+    active_preset_name: String,
 }
 
 impl ForceComputeActor {
@@ -185,7 +201,7 @@ impl ForceComputeActor {
 
         let initial_params = SimulationParams::default();
         info!(
-            "ForceComputeActor::new() — initial params: dt={}, damping={}, repel_k={}, spring_k={}, center_gravity_k={}, max_force={}, max_velocity={}",
+            "ForceComputeActor::new() — initial params: dt={}, damping={}, repel_k={}, spring_k={}, center_gravity_k={}, max_force={}, max_velocity={}, active_preset=\"default\"",
             initial_params.dt, initial_params.damping, initial_params.repel_k,
             initial_params.spring_k, initial_params.center_gravity_k,
             initial_params.max_force, initial_params.max_velocity
@@ -233,6 +249,10 @@ impl ForceComputeActor {
             gpu_self_init_attempts: 0,
             gpu_self_init_max_retries: 3,
             gpu_self_init_last_attempt: None,
+            iterations_since_nan_check: 0,
+            last_good_positions: None,
+            nan_recovery_active: false,
+            active_preset_name: "default".to_string(),
         }
     }
 
@@ -1243,6 +1263,14 @@ impl Handler<ComputeForces> for ForceComputeActor {
             return Box::pin(futures::future::ready(Ok(())).into_actor(self));
         }
 
+        // ADR-070 D1.2: skip one frame after NaN recovery to let the system stabilize
+        if self.nan_recovery_active {
+            self.nan_recovery_active = false;
+            debug!("ForceComputeActor: skipping one frame for NaN recovery stabilization");
+            notify_skip!(self);
+            return Box::pin(futures::future::ready(Ok(())).into_actor(self));
+        }
+
         // Check for shared context; attempt self-init if missing
         if self.shared_context.is_none() {
             self.initialize_own_gpu_context();
@@ -1496,6 +1524,81 @@ impl Handler<ComputeForces> for ForceComputeActor {
                                     // Cache raw GPU positions by metadata_id for cross-reload preservation
                                     if let Some(mid) = actor.gpu_index_to_metadata_id.get(i) {
                                         actor.cached_positions_by_key.insert(mid.clone(), [pos_x[i], pos_y[i], pos_z[i]]);
+                                    }
+                                }
+
+                                // ── ADR-070 D1.2: periodic GPU-side NaN guard ────────────
+                                // Every 32 iterations, run the GPU NaN-check kernel on the
+                                // raw position arrays. On detection: revert to last-known-good
+                                // positions, set recovery flag, and bail out of this tick.
+                                actor.iterations_since_nan_check += 1;
+                                let num_nodes = pos_x.len();
+                                if actor.iterations_since_nan_check >= 32 {
+                                    actor.iterations_since_nan_check = 0;
+                                    // Build flat interleaved [x0,y0,z0, x1,y1,z1, ...] for the FFI call
+                                    let mut flat_positions = Vec::with_capacity(num_nodes * 3);
+                                    for i in 0..num_nodes {
+                                        flat_positions.push(pos_x[i]);
+                                        flat_positions.push(pos_y[i]);
+                                        flat_positions.push(pos_z[i]);
+                                    }
+
+                                    let has_nan = crate::gpu::kernel_bridge::check_positions_for_nan(
+                                        &flat_positions, num_nodes,
+                                    );
+
+                                    if has_nan {
+                                        warn!(
+                                            "physics_nan_detected: iter={}, reverting to last-known-good positions",
+                                            actor.gpu_state.iteration_count
+                                        );
+                                        // Revert GPU positions from snapshot
+                                        if let Some(ref good_pos) = actor.last_good_positions {
+                                            // De-interleave back to separate x/y/z arrays
+                                            let n = good_pos.len() / 3;
+                                            let mut rx = Vec::with_capacity(n);
+                                            let mut ry = Vec::with_capacity(n);
+                                            let mut rz = Vec::with_capacity(n);
+                                            for i in 0..n {
+                                                rx.push(good_pos[i * 3]);
+                                                ry.push(good_pos[i * 3 + 1]);
+                                                rz.push(good_pos[i * 3 + 2]);
+                                            }
+                                            if let Some(ref ctx) = actor.shared_context {
+                                                match ctx.unified_compute.lock() {
+                                                    Ok(mut compute) => {
+                                                        if let Err(e) = compute.upload_positions(&rx, &ry, &rz) {
+                                                            error!(
+                                                                "[ForceComputeActor] NaN recovery: GPU re-upload failed: {}",
+                                                                e
+                                                            );
+                                                        } else {
+                                                            info!(
+                                                                "[ForceComputeActor] NaN recovery: reverted {} nodes to last-known-good positions",
+                                                                n
+                                                            );
+                                                        }
+                                                    }
+                                                    Err(poisoned) => {
+                                                        warn!("[ForceComputeActor] NaN recovery: GPU mutex poisoned — recovering");
+                                                        let mut compute = poisoned.into_inner();
+                                                        let _ = compute.upload_positions(&rx, &ry, &rz);
+                                                    }
+                                                }
+                                            }
+                                        } else {
+                                            warn!(
+                                                "[ForceComputeActor] NaN recovery: no last-known-good snapshot available — cannot revert"
+                                            );
+                                        }
+                                        // Skip physics next frame to stabilize
+                                        actor.nan_recovery_active = true;
+                                        // Fall through to iteration_count increment and is_computing cleanup
+                                        // but skip all broadcast logic (the existing NaN guard below will
+                                        // also fire on the corrupted buffer and suppress the broadcast).
+                                    } else {
+                                        // Positions are clean — snapshot as last-known-good
+                                        actor.last_good_positions = Some(flat_positions);
                                     }
                                 }
 

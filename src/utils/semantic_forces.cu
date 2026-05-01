@@ -9,6 +9,28 @@
 #include <device_launch_parameters.h>
 #include <cfloat>
 #include <cmath>
+#include "kernel_timing.cuh"
+
+// =============================================================================
+// Per-Kernel Timing Infrastructure (ADR-070 D1.3)
+// =============================================================================
+
+enum SemanticKernelIndex {
+    SEMKERNEL_DAG_FORCE                    = 0,
+    SEMKERNEL_TYPE_CLUSTER_FORCE           = 1,
+    SEMKERNEL_COLLISION_FORCE              = 2,
+    SEMKERNEL_ATTRIBUTE_SPRING_FORCE       = 3,
+    SEMKERNEL_HIERARCHY_LEVELS             = 4,
+    SEMKERNEL_TYPE_CENTROIDS               = 5,
+    SEMKERNEL_FINALIZE_TYPE_CENTROIDS      = 6,
+    SEMKERNEL_DYNAMIC_RELATIONSHIP_FORCE   = 7,
+    SEMKERNEL_PHYSICALITY_CLUSTER_FORCE    = 8,
+    SEMKERNEL_ROLE_CLUSTER_FORCE           = 9,
+    SEMKERNEL_MATURITY_LAYOUT_FORCE        = 10,
+    SEMKERNEL_COUNT
+};
+
+static float g_semantic_kernel_times[16] = {0};
 
 extern "C" {
 
@@ -906,6 +928,28 @@ int get_dynamic_relationship_buffer_version() {
 // Get maximum supported relationship types
 int get_max_relationship_types() {
     return MAX_RELATIONSHIP_TYPES;
+}
+
+// =============================================================================
+// Kernel Timing Stats Accessor (ADR-070 D1.3)
+// =============================================================================
+
+// Semantic force kernels are launched from Rust via PTX (cuLaunchKernel),
+// not from host C++ wrappers in this file. The timing arrays below are
+// populated if/when host-side timed wrappers are added in the future.
+// For now they provide the infrastructure expected by ADR-070 D1.3.
+
+void get_semantic_kernel_timing_stats(float* out_times, int max_kernels) {
+    int count = (max_kernels < 16) ? max_kernels : 16;
+    for (int i = 0; i < count; i++) {
+        out_times[i] = g_semantic_kernel_times[i];
+    }
+}
+
+void reset_semantic_kernel_timing_stats() {
+    for (int i = 0; i < 16; i++) {
+        g_semantic_kernel_times[i] = 0.0f;
+    }
 }
 
 } // extern "C"
