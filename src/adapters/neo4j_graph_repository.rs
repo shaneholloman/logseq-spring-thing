@@ -448,6 +448,7 @@ impl Neo4jGraphRepository {
                 authority_score,
                 preferred_term: preferred_term_v2,
                 graph_source,
+                kind_id: None,
             };
 
             nodes.push(node);

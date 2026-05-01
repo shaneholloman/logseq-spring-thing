@@ -192,6 +192,7 @@ fn convert_agents_to_nodes(agents: Vec<Agent>) -> Vec<Node> {
                 authority_score: None,
                 preferred_term: None,
                 graph_source: None,
+                kind_id: None,
             }
         })
         .collect()

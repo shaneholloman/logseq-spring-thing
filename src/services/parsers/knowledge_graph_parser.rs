@@ -618,6 +618,7 @@ impl KnowledgeGraphParser {
             authority_score: None,
             preferred_term: None,
             graph_source: None,
+            kind_id: None,
         };
 
         KGNodeDraft {
@@ -698,7 +699,7 @@ impl KnowledgeGraphParser {
         let page_name = filename.strip_suffix(".md").unwrap_or(filename).to_string();
 
         
-        let mut nodes = vec![self.create_page_node(&page_name, content)];
+        let nodes = vec![self.create_page_node(&page_name, content)];
         let mut id_to_metadata = HashMap::new();
         id_to_metadata.insert(nodes[0].id.to_string(), page_name.clone());
 
@@ -882,6 +883,7 @@ impl KnowledgeGraphParser {
             authority_score: authority_score_field,
             preferred_term: preferred_term_field,
             graph_source: None,
+            kind_id: None,
         }
     }
 
@@ -1007,6 +1009,7 @@ impl KnowledgeGraphParser {
                     authority_score: None,
                     preferred_term: None,
                     graph_source: None,
+                    kind_id: None,
                 });
 
                 edges.push(Edge {

@@ -137,7 +137,7 @@ mod sssp;
 mod clustering;
 mod community;
 mod async_transfer;
-mod ontology;
+pub mod ontology;
 mod metrics;
 
 // Re-export all public types from types module

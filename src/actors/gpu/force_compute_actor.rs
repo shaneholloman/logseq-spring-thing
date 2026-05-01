@@ -741,7 +741,7 @@ impl ForceComputeActor {
                 if let Some(ref graph_data) = self.pending_graph_data {
                     let mut class_ids = Vec::with_capacity(num_nodes);
                     let mut class_charges = Vec::with_capacity(num_nodes);
-                    let mut class_masses = vec![1.0f32; num_nodes];
+                    let class_masses = vec![1.0f32; num_nodes];
 
                     for node in &graph_data.nodes {
                         let domain = node.metadata.get("source_domain")

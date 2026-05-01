@@ -19,8 +19,6 @@ use log::{debug, info, warn};
 use graph_cognition_extract::code::extractor_for_path;
 use graph_cognition_extract::code::ExtractionResult;
 
-use graph_cognition_extract::code::extractor::CodeExtractor;
-
 // Core typed-graph schema (ADR-064). Only TypedGraph is referenced directly
 // as a field type; TypedNode/TypedEdge flow through ExtractionResult.
 use graph_cognition_core::TypedGraph;

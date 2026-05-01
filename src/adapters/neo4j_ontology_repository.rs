@@ -1694,6 +1694,7 @@ impl Neo4jOntologyRepository {
                 authority_score: None,
                 preferred_term: None,
                 graph_source: None,
+                kind_id: None,
             });
         }
 
