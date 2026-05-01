@@ -58,11 +58,27 @@ These Rust-side `Uuid::new_v4()` sites should migrate to `src/uri/mint_*`:
 | `actors/messaging/message_id.rs` | 20 | `Uuid::new_v4()` | `mint_execution(pubkey, ...)` |
 | `actors/skill_evaluation_actor.rs` | varies | `Uuid::new_v4()` | `mint_execution(pubkey, ...)` |
 
-### Memory System
+### Memory System (Implemented)
 
-RuVector memory entries stored via MCP tools use URN keys:
-`urn:agentbox:<kind>:<scope>:<sha256-12>` where scope is the abbreviated
-sovereign pubkey and sha256-12 is the content address of the semantic key.
+Every memory entry stored or retrieved via MCP tools now carries a canonical URN:
+
+```
+urn:agentbox:memory:<namespace>.<key>
+```
+
+The URN is minted at three layers:
+
+| Layer | File | Change |
+|-------|------|--------|
+| MCP server | `mcp/servers/mcp-server.js` | `store`, `retrieve`, `list`, `search` actions all mint/annotate URNs via `uris.mint({kind:'memory', localId:...})` |
+| Embedded adapter | `adapters/memory/embedded-ruvector.js` | `store()` and `retrieve()` return `urn` field |
+| External PG adapter | `adapters/memory/external-pg.js` | `store()`, `retrieve()`, and `search()` return `urn` field |
+| Contract test | `tests/contract/memory.contract.spec.js` | New `[M2]` assertion verifies URN presence and grammar |
+
+The `memory` kind in `uris.js` is `ownerScope: false`, `contentAddressed: false`,
+with `resolvableSurface: 'memory'`. The `localId` is `<namespace>.<key>` — deterministic
+and stable across store/retrieve cycles. The URN minting degrades gracefully (returns
+`null`) if `uris.js` is not loadable, so the memory system never fails on URN errors.
 
 ### Plugin System
 
