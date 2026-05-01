@@ -81,6 +81,9 @@ services:
       - NEO4J_USER=neo4j
       - NEO4J_PASSWORD=${NEO4J_PASSWORD:-changeme-dev}
       - NEO4J_DATABASE=neo4j
+      - SERVER_NOSTR_AUTO_GENERATE=true
+      # Without NIP98_OPTIONAL_AUTH, /api/graph/data returns 401 in dev
+      - NIP98_OPTIONAL_AUTH=true
     deploy: # Indentation: 4 spaces
       resources:
         reservations:
