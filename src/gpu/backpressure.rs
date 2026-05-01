@@ -64,9 +64,9 @@ pub struct BackpressureConfig {
 impl Default for BackpressureConfig {
     fn default() -> Self {
         Self {
-            max_tokens: 100,
-            initial_tokens: 100,
-            refill_rate_per_sec: 30.0, // 30 tokens/sec = ~30Hz steady state
+            max_tokens: 4,
+            initial_tokens: 2,
+            refill_rate_per_sec: 5.0, // 5 tokens/sec — safe for 13K+ node graphs
             broadcast_cost: 1,
             ack_restore_tokens: 1,
             enable_time_refill: true,

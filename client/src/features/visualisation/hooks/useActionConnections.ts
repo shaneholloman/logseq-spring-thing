@@ -162,14 +162,17 @@ export function useActionConnections(
   // Determine which interface is being used
   const isMapInterface = agentPositionsOrOptions instanceof Map;
 
-  // Extract position maps or create empty ones
+  // Stable empty maps for the non-Map interface (hooks must be unconditional)
+  const emptyAgentMap = useMemo(() => new Map<number, THREE.Vector3>(), []);
+  const emptyNodeMap = useMemo(() => new Map<number, THREE.Vector3>(), []);
+
   const agentPositionMap = isMapInterface
     ? (agentPositionsOrOptions as Map<number, THREE.Vector3>)
-    : useMemo(() => new Map<number, THREE.Vector3>(), []);
+    : emptyAgentMap;
 
   const nodePositionMap = isMapInterface && nodePositions
     ? nodePositions
-    : useMemo(() => new Map<number, THREE.Vector3>(), []);
+    : emptyNodeMap;
 
   // Extract options
   const options = isMapInterface

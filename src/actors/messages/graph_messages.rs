@@ -102,6 +102,10 @@ pub struct UpdateNodePosition {
 #[rtype(result = "Result<(), String>")]
 pub struct UpdateNodePositions {
     pub positions: Vec<(u32, BinaryNodeData)>,
+    /// Parallel vec of real graph node IDs (from Neo4j). When present,
+    /// GraphStateActor uses these for position matching instead of the
+    /// compact wire IDs in the `positions` tuple keys.
+    pub graph_node_ids: Option<Vec<u32>>,
     /// Optional correlation ID for message tracking (H4)
     pub correlation_id: Option<MessageId>,
 }

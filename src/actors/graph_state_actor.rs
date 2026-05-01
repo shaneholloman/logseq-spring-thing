@@ -826,21 +826,16 @@ impl Handler<UpdateNodePositions> for GraphStateActor {
             return Ok(());
         }
 
-        // Build a lookup from the incoming positions
+        // Build a lookup using real graph node IDs (from gpu_index_to_graph_id)
+        // when available, otherwise fall back to wire IDs from the tuple.
         let pos_map: std::collections::HashMap<u32, &crate::utils::socket_flow_messages::BinaryNodeDataClient> =
-            msg.positions.iter().map(|(id, data)| (*id, data)).collect();
-
-        // Diagnostic: log ID mismatch on first occurrence
-        if !self.graph_data.nodes.is_empty() && !msg.positions.is_empty() {
-            let first_gpu_id = msg.positions[0].0;
-            let first_graph_id = self.graph_data.nodes[0].id;
-            if !pos_map.contains_key(&first_graph_id) {
-                warn!(
-                    "GPU→GraphState ID mismatch: GPU sends id={}, graph has id={} (GPU count={}, graph count={})",
-                    first_gpu_id, first_graph_id, msg.positions.len(), self.graph_data.nodes.len()
-                );
-            }
-        }
+            if let Some(ref graph_ids) = msg.graph_node_ids {
+                graph_ids.iter().zip(msg.positions.iter())
+                    .map(|(gid, (_, data))| (*gid, data))
+                    .collect()
+            } else {
+                msg.positions.iter().map(|(id, data)| (*id, data)).collect()
+            };
 
         // Mutate the Arc<GraphData> in-place (clones on first mutation if shared)
         let graph_data = Arc::make_mut(&mut self.graph_data);
@@ -857,20 +852,35 @@ impl Handler<UpdateNodePositions> for GraphStateActor {
             }
         }
 
-        // Also update the node_map
+        // Also update the node_map using real graph IDs
         let node_map = Arc::make_mut(&mut self.node_map);
-        for (id, pos) in &msg.positions {
-            if let Some(node) = node_map.get_mut(id) {
-                node.data.x = pos.x;
-                node.data.y = pos.y;
-                node.data.z = pos.z;
-                node.data.vx = pos.vx;
-                node.data.vy = pos.vy;
-                node.data.vz = pos.vz;
+        if let Some(ref graph_ids) = msg.graph_node_ids {
+            for (gid, (_, pos)) in graph_ids.iter().zip(msg.positions.iter()) {
+                if let Some(node) = node_map.get_mut(gid) {
+                    node.data.x = pos.x;
+                    node.data.y = pos.y;
+                    node.data.z = pos.z;
+                    node.data.vx = pos.vx;
+                    node.data.vy = pos.vy;
+                    node.data.vz = pos.vz;
+                }
+            }
+        } else {
+            for (id, pos) in &msg.positions {
+                if let Some(node) = node_map.get_mut(id) {
+                    node.data.x = pos.x;
+                    node.data.y = pos.y;
+                    node.data.z = pos.z;
+                    node.data.vx = pos.vx;
+                    node.data.vy = pos.vy;
+                    node.data.vz = pos.vz;
+                }
             }
         }
 
-        info!("GraphStateActor: Updated {} node positions from GPU", updated);
+        if updated > 0 {
+            debug!("GraphStateActor: Updated {} node positions from GPU", updated);
+        }
         Ok(())
     }
 }

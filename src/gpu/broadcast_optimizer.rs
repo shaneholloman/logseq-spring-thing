@@ -313,7 +313,7 @@ impl BroadcastOptimizer {
     /// Only clears position history — preserves the broadcast time gate so
     /// the reset doesn't delay the next broadcast by a full interval.
     pub fn reset_delta_state(&mut self) {
-        info!("BroadcastOptimizer: Resetting delta state — next broadcast will include all nodes");
+        debug!("BroadcastOptimizer: Resetting delta state — next broadcast will include all nodes");
         // Don't recreate DeltaCompressor (which resets last_broadcast_time).
         // Only clear position history so all nodes are "first time seen" on next frame.
         self.delta_compressor.previous_positions.clear();

@@ -193,14 +193,12 @@ const GraphCanvas: React.FC = () => {
                     setCanvasReady(true);
                     // Force initial render — Edge/WebGPU doesn't paint until
                     // a resize event triggers the render pipeline compilation.
-                    // Dispatch synthetic resize at staggered intervals to cover
-                    // the async WebGPU pipeline setup window.
                     invalidate();
-                    const kicks = [50, 150, 300, 600, 1200];
-                    kicks.forEach(ms => setTimeout(() => {
+                    // Single deferred kick to trigger WebGPU pipeline compilation.
+                    setTimeout(() => {
                         invalidate();
                         window.dispatchEvent(new Event('resize'));
-                    }, ms));
+                    }, 200);
                 }}
             >
                 {/* Lighting tuned for gem refraction -- driven by settings */}

@@ -1470,6 +1470,7 @@ impl Handler<msgs::UpdateNodePositions> for GraphServiceSupervisor {
         if let Some(ref graph_state_addr) = self.graph_state {
             graph_state_addr.do_send(msgs::UpdateNodePositions {
                 positions: msg.positions.clone(),
+                graph_node_ids: msg.graph_node_ids.clone(),
                 correlation_id: msg.correlation_id.clone(),
             });
         }

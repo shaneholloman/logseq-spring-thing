@@ -126,8 +126,11 @@ pub struct ForceComputeActor {
     /// Pre-allocated buffer for node IDs (reused every frame to avoid 60Hz allocations)
     node_id_buffer: Vec<u32>,
 
-    /// Maps GPU buffer index → actual graph node ID (populated during graph upload)
+    /// Maps GPU buffer index → compact wire ID (= GPU index, for binary protocol)
     gpu_index_to_node_id: Vec<u32>,
+
+    /// Maps GPU buffer index → original graph node.id (Neo4j ID, for GraphStateActor)
+    gpu_index_to_graph_id: Vec<u32>,
 
     /// Maps GPU buffer index → node metadata_id for position cache keying
     gpu_index_to_metadata_id: Vec<String>,
@@ -171,9 +174,9 @@ impl ForceComputeActor {
 
         // Initialize network backpressure with token bucket
         let backpressure_config = BackpressureConfig {
-            max_tokens: 100,
-            initial_tokens: 100,
-            refill_rate_per_sec: 30.0, // Match target broadcast rate
+            max_tokens: 4,
+            initial_tokens: 2,
+            refill_rate_per_sec: 5.0, // 5 Hz max broadcast — 13K nodes × 28B × 5/s ≈ 1.9 MB/s
             broadcast_cost: 1,
             ack_restore_tokens: 1,
             enable_time_refill: true,
@@ -221,6 +224,7 @@ impl ForceComputeActor {
             boundary_stuck_frames: Vec::with_capacity(10000),
             node_id_buffer: Vec::with_capacity(10000),
             gpu_index_to_node_id: Vec::new(),
+            gpu_index_to_graph_id: Vec::new(),
             gpu_index_to_metadata_id: Vec::new(),
             node_population: Vec::new(),
             pending_graph_data: None,
@@ -475,6 +479,7 @@ impl ForceComputeActor {
         // Build CSR representation, GPU-index-to-node-ID mapping, and population classification
         let mut node_indices = std::collections::HashMap::new();
         self.gpu_index_to_node_id = Vec::with_capacity(num_nodes);
+        self.gpu_index_to_graph_id = Vec::with_capacity(num_nodes);
         self.gpu_index_to_metadata_id = Vec::with_capacity(num_nodes);
         self.node_population = Vec::with_capacity(num_nodes);
         let mut pop_counts = [0usize; 3]; // [knowledge, ontology, agent]
@@ -484,6 +489,7 @@ impl ForceComputeActor {
             // This keeps IDs within 26 bits so binary protocol type flags
             // in bits 26-31 don't collide with real node IDs.
             self.gpu_index_to_node_id.push(i as u32);
+            self.gpu_index_to_graph_id.push(node.id);
             self.gpu_index_to_metadata_id.push(node.metadata_id.clone());
 
             // ADR-036: Canonical classification via graph_types::classify_node_population
@@ -1652,6 +1658,7 @@ impl Handler<ComputeForces> for ForceComputeActor {
 
                                     if let Some(_sequence_id) = actor.backpressure.try_acquire() {
                                         let mut node_updates = Vec::with_capacity(actor.node_id_buffer.len());
+                                        let mut graph_ids = Vec::with_capacity(actor.node_id_buffer.len());
                                         for idx in 0..actor.node_id_buffer.len() {
                                             let node_id = actor.node_id_buffer[idx];
                                             let (position, velocity) = actor.position_velocity_buffer[idx];
@@ -1663,6 +1670,7 @@ impl Handler<ComputeForces> for ForceComputeActor {
                                                 glam_to_vec3data(position),
                                                 glam_to_vec3data(velocity),
                                             )));
+                                            graph_ids.push(actor.gpu_index_to_graph_id.get(idx).copied().unwrap_or(node_id));
                                         }
                                         if let Some(ref graph_addr) = actor.graph_service_addr {
                                             info!(
@@ -1671,6 +1679,7 @@ impl Handler<ComputeForces> for ForceComputeActor {
                                             );
                                             graph_addr.do_send(crate::actors::messages::UpdateNodePositions {
                                                 positions: node_updates,
+                                                graph_node_ids: Some(graph_ids),
                                                 correlation_id: Some(crate::actors::messaging::MessageId::new()),
                                             });
                                         }
@@ -1702,6 +1711,7 @@ impl Handler<ComputeForces> for ForceComputeActor {
                                         // bucket: if the network isn't drained, skip this cycle.
                                         if let Some(_sequence_id) = actor.backpressure.try_acquire() {
                                             let mut node_updates = Vec::with_capacity(actor.node_id_buffer.len());
+                                            let mut graph_ids = Vec::with_capacity(actor.node_id_buffer.len());
                                             for idx in 0..actor.node_id_buffer.len() {
                                                 let node_id = actor.node_id_buffer[idx];
                                                 let (position, velocity) = actor.position_velocity_buffer[idx];
@@ -1713,10 +1723,9 @@ impl Handler<ComputeForces> for ForceComputeActor {
                                                     glam_to_vec3data(position),
                                                     glam_to_vec3data(velocity),
                                                 )));
+                                                graph_ids.push(actor.gpu_index_to_graph_id.get(idx).copied().unwrap_or(node_id));
                                             }
                                             if let Some(ref graph_addr) = actor.graph_service_addr {
-                                                // Throttled info log — broadcasts are now backpressure-driven
-                                                // so the cadence reflects real network drain rate.
                                                 if actor.gpu_state.iteration_count % 300 == 0 {
                                                     info!(
                                                         "ForceComputeActor: literal broadcast — {} positions (iter {})",
@@ -1725,6 +1734,7 @@ impl Handler<ComputeForces> for ForceComputeActor {
                                                 }
                                                 graph_addr.do_send(crate::actors::messages::UpdateNodePositions {
                                                     positions: node_updates,
+                                                    graph_node_ids: Some(graph_ids),
                                                     correlation_id: Some(crate::actors::messaging::MessageId::new()),
                                                 });
                                             }
@@ -1742,10 +1752,10 @@ impl Handler<ComputeForces> for ForceComputeActor {
                                         // Build updates from ALL nodes, bypassing delta filter
                                         if let Some(_sequence_id) = actor.backpressure.try_acquire() {
                                             let mut node_updates = Vec::with_capacity(actor.node_id_buffer.len());
+                                            let mut graph_ids = Vec::with_capacity(actor.node_id_buffer.len());
                                             for idx in 0..actor.node_id_buffer.len() {
                                                 let node_id = actor.node_id_buffer[idx];
                                                 let (position, velocity) = actor.position_velocity_buffer[idx];
-                                                // Skip NaN/Inf positions
                                                 if !position.x.is_finite() || !position.y.is_finite() || !position.z.is_finite() {
                                                     continue;
                                                 }
@@ -1754,6 +1764,7 @@ impl Handler<ComputeForces> for ForceComputeActor {
                                                     glam_to_vec3data(position),
                                                     glam_to_vec3data(velocity),
                                                 )));
+                                                graph_ids.push(actor.gpu_index_to_graph_id.get(idx).copied().unwrap_or(node_id));
                                             }
 
                                             if let Some(ref graph_addr) = actor.graph_service_addr {
@@ -1764,6 +1775,7 @@ impl Handler<ComputeForces> for ForceComputeActor {
                                                 );
                                                 graph_addr.do_send(crate::actors::messages::UpdateNodePositions {
                                                     positions: node_updates,
+                                                    graph_node_ids: Some(graph_ids),
                                                     correlation_id: Some(crate::actors::messaging::MessageId::new()),
                                                 });
                                             }
@@ -2059,6 +2071,7 @@ impl Handler<ForceFullBroadcast> for ForceComputeActor {
             match result {
                 Ok((Ok((pos_x, pos_y, pos_z)), Ok((vel_x, vel_y, vel_z)))) => {
                     let mut node_updates = Vec::with_capacity(pos_x.len());
+                    let mut graph_ids = Vec::with_capacity(pos_x.len());
                     for i in 0..pos_x.len() {
                         let position = Vec3::new(pos_x[i], pos_y[i], pos_z[i]);
                         let velocity = Vec3::new(vel_x[i], vel_y[i], vel_z[i]);
@@ -2071,6 +2084,7 @@ impl Handler<ForceFullBroadcast> for ForceComputeActor {
                             glam_to_vec3data(position),
                             glam_to_vec3data(velocity),
                         )));
+                        graph_ids.push(actor.gpu_index_to_graph_id.get(i).copied().unwrap_or(node_id));
                     }
 
                     if let Some(ref graph_addr) = actor.graph_service_addr {
@@ -2080,6 +2094,7 @@ impl Handler<ForceFullBroadcast> for ForceComputeActor {
                         );
                         graph_addr.do_send(crate::actors::messages::UpdateNodePositions {
                             positions: node_updates,
+                            graph_node_ids: Some(graph_ids),
                             correlation_id: Some(crate::actors::messaging::MessageId::new()),
                         });
                     }

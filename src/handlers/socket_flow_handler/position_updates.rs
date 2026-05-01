@@ -660,6 +660,7 @@ pub(crate) fn handle_node_drag_start(
         };
         app_state.graph_service_addr.do_send(UpdateNodePositions {
             positions: vec![(node_id, pinned_data)],
+            graph_node_ids: None,
             correlation_id: None,
         });
     };
@@ -779,6 +780,7 @@ pub(crate) fn handle_node_drag_update(
         };
         app_state.graph_service_addr.do_send(UpdateNodePositions {
             positions: vec![(node_id, pinned_data)],
+            graph_node_ids: None,
             correlation_id: None,
         });
 

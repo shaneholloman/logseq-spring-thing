@@ -439,8 +439,11 @@ class GraphWorker {
     // Allocate per-node analytics buffer (3 floats per node: clusterId, anomalyScore, communityId)
     this.analyticsBuffer = new Float32Array(nodeCount * 3);
 
-    // Compute client-side analytics if server data is empty
-    this.recomputeAnalytics();
+    // Defer client-side analytics to avoid blocking setGraphData response.
+    // Louvain + anomaly scoring on 13K nodes takes 100-500ms; running it
+    // synchronously here starves the Comlink message queue and delays the
+    // first render frame.
+    setTimeout(() => this.recomputeAnalytics(), 0);
 
     // Write preserved positions back into graphData so that:
     // 1) Any consumer reading node.position gets current values, not stale DB positions

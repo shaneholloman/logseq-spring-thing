@@ -354,39 +354,37 @@ const AgentConnection: React.FC<{
 }> = ({ connection, agents, color }) => {
   const lineRef = useRef<THREE.Line>(null);
 
-  
   const sourceAgent = agents.find(a => a.id === connection.source);
   const targetAgent = agents.find(a => a.id === connection.target);
 
-  if (!sourceAgent || !targetAgent || !sourceAgent.position || !targetAgent.position) {
-    return null;
-  }
+  const hasBoth = !!(sourceAgent?.position && targetAgent?.position);
 
-  // Safe: early return above guarantees position is defined
-  const sourcePos = useMemo(() => new THREE.Vector3(
-    sourceAgent.position!.x, sourceAgent.position!.y, sourceAgent.position!.z
-  ), [sourceAgent.position?.x, sourceAgent.position?.y, sourceAgent.position?.z]);
+  const sourcePos = useMemo(() => hasBoth
+    ? new THREE.Vector3(sourceAgent!.position!.x, sourceAgent!.position!.y, sourceAgent!.position!.z)
+    : new THREE.Vector3(),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [sourceAgent?.position?.x, sourceAgent?.position?.y, sourceAgent?.position?.z]);
 
-  const targetPos = useMemo(() => new THREE.Vector3(
-    targetAgent.position!.x, targetAgent.position!.y, targetAgent.position!.z
-  ), [targetAgent.position?.x, targetAgent.position?.y, targetAgent.position?.z]);
+  const targetPos = useMemo(() => hasBoth
+    ? new THREE.Vector3(targetAgent!.position!.x, targetAgent!.position!.y, targetAgent!.position!.z)
+    : new THREE.Vector3(),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [targetAgent?.position?.x, targetAgent?.position?.y, targetAgent?.position?.z]);
 
-  
   const points = useMemo(() => {
+    if (!hasBoth) return [];
     const midPoint = new THREE.Vector3()
       .addVectors(sourcePos, targetPos)
       .multiplyScalar(0.5);
-
-    
     const direction = new THREE.Vector3().subVectors(targetPos, sourcePos);
     const perpendicular = new THREE.Vector3(-direction.y, direction.x, 0).normalize();
     midPoint.add(perpendicular.multiplyScalar(2));
-
     const curve = new THREE.QuadraticBezierCurve3(sourcePos, midPoint, targetPos);
     return curve.getPoints(50);
-  }, [sourcePos, targetPos]);
+  }, [hasBoth, sourcePos, targetPos]);
 
   const geometry = useMemo(() => {
+    if (points.length === 0) return null;
     return new THREE.BufferGeometry().setFromPoints(points);
   }, [points]);
 
@@ -394,14 +392,12 @@ const AgentConnection: React.FC<{
     return () => { geometry?.dispose(); };
   }, [geometry]);
 
-
   useFrame((state) => {
     if (lineRef.current) {
       const material = lineRef.current.material as THREE.LineBasicMaterial;
       material.opacity = 0.3 + Math.sin(state.clock.elapsedTime * 2) * 0.2;
     }
   });
-
 
   const lineWidth = connection.weight ? connection.weight * 2 : 2;
   const opacity = connection.type === 'communication' ? 0.5 : 0.3;
@@ -423,6 +419,8 @@ const AgentConnection: React.FC<{
       lineMaterial?.dispose();
     };
   }, [lineMaterial]);
+
+  if (!hasBoth) return null;
 
   return (
     <>
