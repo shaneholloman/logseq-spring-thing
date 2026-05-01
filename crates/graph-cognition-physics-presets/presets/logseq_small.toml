@@ -1,0 +1,81 @@
+# logseq_small.toml — Logseq vaults with ≤1 000 nodes (ADR-069 D2)
+#
+# Small personal knowledge bases.  Pages are loosely linked via wikilinks,
+# with block-parent hierarchy providing local structure.  The graph is
+# sparse enough that we can afford tighter damping and faster convergence
+# without sacrificing layout quality.
+#
+# Tuning rationale:
+#   - gravity:        Small negative pull keeps disconnected pages from
+#                     flying off, but far weaker than logseq_large.
+#   - central_gravity: Slightly stronger than default to keep the small
+#                     graph compact and centred in the viewport.
+#   - damping:        0.7 — more aggressive than default (0.85) for faster
+#                     convergence.  Acceptable because node count is low.
+#   - spring_k:       0.4 — lighter than default to let the graph breathe.
+#   - rest_length:    1.2 — slightly longer to spread out the small graph
+#                     so labels are readable.
+#   - repel_k:        60.0 — lower repulsion; fewer nodes means less need
+#                     to push apart.
+#   - max_velocity:   4.0 — tighter cap for calmer animation.
+
+name = "logseq_small"
+version = 1
+
+[global]
+gravity         = -0.1
+central_gravity = 0.02
+damping         = 0.7
+dt              = 0.016
+spring_k        = 0.4
+rest_length     = 1.2
+repel_k         = 60.0
+max_velocity    = 4.0
+max_force       = 8.0
+
+# ── Knowledge edge kinds ──
+
+[edge_kinds.block_parent]
+# Tight parent-child hierarchy.  Short rest length keeps blocks visually
+# nested under their page.
+spring_k            = 0.8
+rest_length         = 0.4
+repulsion_strength  = 0.0
+
+[edge_kinds.wiki_link]
+# Primary cross-page connective tissue.  Medium spring pulls linked pages
+# together without collapsing unrelated clusters.
+spring_k            = 0.5
+rest_length         = 1.2
+repulsion_strength  = 0.0
+
+[edge_kinds.block_ref]
+# Weak transclusion links.  Long rest length keeps block-ref targets from
+# clustering too tightly with the referencing page.
+spring_k            = 0.25
+rest_length         = 1.8
+repulsion_strength  = 0.0
+
+[edge_kinds.tagged_with]
+# Tag association.  Moderate pull groups pages sharing a tag, but not as
+# tightly as direct wikilinks.
+spring_k            = 0.35
+rest_length         = 1.5
+repulsion_strength  = 0.0
+
+# ── Semantic edge kinds (for ontology overlays) ──
+
+[edge_kinds.sub_class_of]
+spring_k            = 0.6
+rest_length         = 0.8
+repulsion_strength  = 0.0
+
+[edge_kinds.instance_of]
+spring_k            = 0.5
+rest_length         = 1.0
+repulsion_strength  = 0.0
+
+[stability]
+velocity_epsilon = 0.02
+force_epsilon    = 0.002
+max_iterations   = 30000

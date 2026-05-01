@@ -173,13 +173,22 @@ pub fn classify_node_population(node_type: Option<&str>) -> NodePopulation {
             "agent" | "bot" => NodePopulation::Agent,
             "owl_class" | "owlclass" | "ontology_node" | "owl_individual"
             | "owl_property" | "ontologyclass" | "ontologyindividual"
-            | "ontologyproperty" => NodePopulation::Ontology,
-            "page" | "linked_page" | "block" | "knowledge_node" => NodePopulation::Knowledge,
+            | "ontologyproperty"
+            // ADR-064: typed graph schema ontology kinds
+            | "ontology_class" | "ontology_individual" => NodePopulation::Ontology,
+            "page" | "linked_page" | "block" | "knowledge_node"
+            // ADR-064: typed graph schema knowledge kinds
+            | "concept" => NodePopulation::Knowledge,
+            // ADR-064: code analysis pipeline node kinds (Epic B)
+            "function" | "module" | "class" | "interface" | "variable" => {
+                NodePopulation::Knowledge
+            }
+            // ADR-064: infrastructure node kinds
+            "service" | "container" | "database" | "queue" | "cache"
+            | "gateway" | "load_balancer" | "cdn" => NodePopulation::Knowledge,
+            // ADR-064: domain node kinds
+            "entity" | "value_object" | "aggregate" => NodePopulation::Knowledge,
             unknown => {
-                // Silent fall-through was hiding classification mismatches.
-                // Log the unknown type once per bucket so stray values surface
-                // in ingestion telemetry instead of being quietly absorbed
-                // into the Knowledge default.
                 log::debug!(
                     "classify_node_population: unknown node_type '{}' — defaulting to Knowledge",
                     unknown

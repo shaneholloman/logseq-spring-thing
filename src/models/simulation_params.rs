@@ -515,7 +515,102 @@ impl SimParams {
         params.to_sim_params()
     }
 
-    
+    /// ADR-070 D1.1: Validate GPU-bound SimParams before cudaMemcpyToSymbol upload.
+    ///
+    /// Checks all fields that the CUDA kernel reads from `c_params` constant memory.
+    /// Returns `Ok(())` if all values are safe for GPU execution, or `Err(Vec<String>)`
+    /// with every violation collected (so the caller can log them all at once).
+    ///
+    /// This mirrors the validation in `graph-cognition-core::validation::validate_gpu_params`
+    /// but is implemented directly on SimParams because the monolith cannot depend on
+    /// that crate yet (CUDA build dependency chain).
+    pub fn validate_for_gpu(&self) -> Result<(), Vec<String>> {
+        let mut errors = Vec::new();
+
+        // dt ∈ [0.001, 0.1]
+        if self.dt < 0.001 || self.dt > 0.1 {
+            errors.push(format!("dt must be in [0.001, 0.1], got {}", self.dt));
+        }
+
+        // damping ∈ (0.0, 1.0) — stricter than SimulationParams::validate() which allows 1.0
+        if self.damping <= 0.0 || self.damping >= 1.0 {
+            errors.push(format!("damping must be in (0.0, 1.0), got {}", self.damping));
+        }
+
+        // spring_k >= 0
+        if self.spring_k < 0.0 {
+            errors.push(format!("spring_k must be >= 0, got {}", self.spring_k));
+        }
+
+        // repel_k >= 0
+        if self.repel_k < 0.0 {
+            errors.push(format!("repel_k must be >= 0, got {}", self.repel_k));
+        }
+
+        // max_force > 0
+        if self.max_force <= 0.0 {
+            errors.push(format!("max_force must be > 0, got {}", self.max_force));
+        }
+
+        // max_velocity > 0
+        if self.max_velocity <= 0.0 {
+            errors.push(format!("max_velocity must be > 0, got {}", self.max_velocity));
+        }
+
+        // gravity magnitude <= 100 (sanity ceiling per ADR-070)
+        if self.gravity.abs() > 100.0 {
+            errors.push(format!(
+                "gravity magnitude must be <= 100, got {}",
+                self.gravity.abs()
+            ));
+        }
+
+        // rest_length > 0
+        if self.rest_length <= 0.0 {
+            errors.push(format!("rest_length must be > 0, got {}", self.rest_length));
+        }
+
+        // All float fields finite (NaN / ±Inf check)
+        let fields: &[(&str, f32)] = &[
+            ("dt", self.dt),
+            ("damping", self.damping),
+            ("spring_k", self.spring_k),
+            ("repel_k", self.repel_k),
+            ("max_force", self.max_force),
+            ("max_velocity", self.max_velocity),
+            ("gravity", self.gravity),
+            ("rest_length", self.rest_length),
+            ("center_gravity_k", self.center_gravity_k),
+            ("temperature", self.temperature),
+            ("cooling_rate", self.cooling_rate),
+            ("repulsion_cutoff", self.repulsion_cutoff),
+            ("repulsion_softening_epsilon", self.repulsion_softening_epsilon),
+            ("grid_cell_size", self.grid_cell_size),
+            ("separation_radius", self.separation_radius),
+            ("cluster_strength", self.cluster_strength),
+            ("alignment_strength", self.alignment_strength),
+            ("viewport_bounds", self.viewport_bounds),
+            ("boundary_damping", self.boundary_damping),
+            ("sssp_alpha", self.sssp_alpha),
+            ("constraint_max_force_per_node", self.constraint_max_force_per_node),
+            ("scaling_ratio", self.scaling_ratio),
+            ("global_speed", self.global_speed),
+            ("z_damping", self.z_damping),
+        ];
+        for &(name, value) in fields {
+            if !value.is_finite() {
+                errors.push(format!("{} must be finite, got {}", name, value));
+            }
+        }
+
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(errors)
+        }
+    }
+
+
     pub fn set_iteration(&mut self, iteration: i32) {
         self.iteration = iteration;
     }

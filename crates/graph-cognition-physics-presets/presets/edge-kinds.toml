@@ -1,0 +1,233 @@
+# ADR-069 D1: Data-driven edge kind registration for SemanticTypeRegistry.
+#
+# All 35 UA EdgeKind variants with force parameters calibrated for
+# VisionClaw's metre-scale coordinate system (NOT pixel-space).
+#
+# force_type: 0=spring, 1=orbit_cluster, 2=cross_domain_long_range, 3=repulsion
+# is_directional: true = force applies source→target only
+
+# ── Structural (5) ──
+
+[contains]
+spring_k = 0.8
+rest_length = 0.6
+is_directional = true
+force_type = 0
+
+[inherits_from]
+spring_k = 0.8
+rest_length = 0.6
+is_directional = true
+force_type = 0
+
+[implements]
+spring_k = 0.7
+rest_length = 0.7
+is_directional = true
+force_type = 0
+
+[composed_of]
+spring_k = 0.85
+rest_length = 0.5
+is_directional = true
+force_type = 1  # orbit clustering for composition
+
+[nests]
+spring_k = 0.9
+rest_length = 0.4
+is_directional = true
+force_type = 0
+
+# ── Behavioral (4) ──
+
+[calls]
+spring_k = 0.6
+rest_length = 0.8
+is_directional = true
+force_type = 0
+
+[overrides]
+spring_k = 0.7
+rest_length = 0.6
+is_directional = true
+force_type = 0
+
+[triggers]
+spring_k = 0.5
+rest_length = 0.9
+is_directional = true
+force_type = 0
+
+[subscribes]
+spring_k = 0.4
+rest_length = 1.2
+is_directional = true
+force_type = 0
+
+# ── Data Flow (4) ──
+
+[reads_from]
+spring_k = 0.5
+rest_length = 0.9
+is_directional = true
+force_type = 0
+
+[writes_to]
+spring_k = 0.5
+rest_length = 0.9
+is_directional = true
+force_type = 0
+
+[transforms_to]
+spring_k = 0.6
+rest_length = 0.8
+is_directional = true
+force_type = 0
+
+[pipes]
+spring_k = 0.5
+rest_length = 0.9
+is_directional = true
+force_type = 0
+
+# ── Dependencies (4) ──
+
+[depends_on]
+spring_k = 0.7
+rest_length = 0.8
+is_directional = true
+force_type = 0
+
+[imports]
+spring_k = 0.7
+rest_length = 0.6
+is_directional = true
+force_type = 0
+
+[requires]
+spring_k = 0.7
+rest_length = 0.8
+is_directional = true
+force_type = 0
+
+[enables]
+spring_k = 0.4
+rest_length = 1.2
+is_directional = false
+force_type = 0
+
+# ── Semantic (5) ──
+
+[sub_class_of]
+spring_k = 0.8
+rest_length = 0.6
+is_directional = true
+force_type = 0
+
+[instance_of]
+spring_k = 0.7
+rest_length = 0.7
+is_directional = true
+force_type = 0
+
+[equivalent_to]
+spring_k = 0.9
+rest_length = 0.3
+is_directional = false
+force_type = 0
+
+[disjoint_with]
+spring_k = -0.3
+rest_length = 1.5
+is_directional = false
+force_type = 3  # repulsion
+
+[same_as]
+spring_k = 0.9
+rest_length = 0.3
+is_directional = false
+force_type = 0
+
+# ── Infrastructure (4) ──
+
+[deploys_to]
+spring_k = 0.4
+rest_length = 1.2
+is_directional = true
+force_type = 0
+
+[routes_to]
+spring_k = 0.4
+rest_length = 1.2
+is_directional = true
+force_type = 0
+
+[replicates_to]
+spring_k = 0.3
+rest_length = 1.5
+is_directional = true
+force_type = 0
+
+[monitors]
+spring_k = 0.3
+rest_length = 1.5
+is_directional = true
+force_type = 0
+
+# ── Domain (4) ──
+
+[has_part]
+spring_k = 0.9
+rest_length = 0.4
+is_directional = true
+force_type = 1  # orbit clustering
+
+[bridges_to]
+spring_k = 0.3
+rest_length = 2.0
+is_directional = false
+force_type = 2  # cross-domain long-range
+
+[fulfills]
+spring_k = 0.5
+rest_length = 1.0
+is_directional = true
+force_type = 0
+
+[constrains]
+spring_k = 0.6
+rest_length = 0.8
+is_directional = true
+force_type = 0
+
+# ── Knowledge (5) ──
+
+[wiki_link]
+spring_k = 0.5
+rest_length = 1.0
+is_directional = false
+force_type = 0
+
+[block_ref]
+spring_k = 0.4
+rest_length = 1.2
+is_directional = false
+force_type = 0
+
+[block_parent]
+spring_k = 0.85
+rest_length = 0.3
+is_directional = true
+force_type = 0
+
+[tagged_with]
+spring_k = 0.3
+rest_length = 1.5
+is_directional = true
+force_type = 0
+
+[cited_by]
+spring_k = 0.4
+rest_length = 1.2
+is_directional = true
+force_type = 0

@@ -1,0 +1,17 @@
+[package]
+name = "graph-cognition-extract"
+version = "0.1.0"
+edition = "2021"
+description = "Graph extraction: Logseq block parser, code analysis (ADR-065, ADR-068)"
+license = "MIT"
+
+[dependencies]
+graph-cognition-core = { path = "../graph-cognition-core" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+uuid = { version = "1", features = ["v3", "v4"] }
+thiserror = "2"
+log = "0.4"
+
+[dev-dependencies]
+pretty_assertions = "1"

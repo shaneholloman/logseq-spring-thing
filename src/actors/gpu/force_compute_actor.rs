@@ -1368,6 +1368,25 @@ impl Handler<ComputeForces> for ForceComputeActor {
                     }
                 }
 
+                // ADR-070 D1.1: Validate GPU-bound SimParams before upload.
+                // Convert to the GPU struct and check all fields. On failure, skip
+                // the GPU upload (previous valid params remain in device constant
+                // memory) and return the current positions as-is.
+                {
+                    let candidate = sim_params.to_sim_params();
+                    if let Err(errors) = candidate.validate_for_gpu() {
+                        warn!(
+                            "physics.invalid_simparams: {}",
+                            errors.join("; ")
+                        );
+                        // Return current positions/velocities without running physics
+                        let execution_duration = step_start.elapsed().as_secs_f64() * 1000.0;
+                        let positions_result = unified_compute.get_node_positions();
+                        let velocities_result = unified_compute.get_node_velocities();
+                        return Ok((Ok(()), execution_duration, positions_result, velocities_result));
+                    }
+                }
+
                 // Wrap GPU execution in catch_unwind to prevent mutex poisoning.
                 // Buffer size mismatches cause panics in cust copy_from/copy_to;
                 // catching them keeps the actor alive for subsequent frames where

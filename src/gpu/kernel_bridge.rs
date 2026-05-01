@@ -175,6 +175,47 @@ mod gpu_ffi {
             role_centroids: *mut super::Float3,
             role_counts: *const i32,
         );
+
+        // ADR-070 D1.2: NaN guard for GPU output positions
+        pub fn check_nan_positions_sync(
+            positions: *const f32,
+            num_nodes: i32,
+            result: *mut i32,
+        ) -> i32;
+    }
+}
+
+// ============================================================================
+// NaN Guard (ADR-070 D1.2)
+// ============================================================================
+
+/// Check GPU position array for NaN/Inf values.
+/// Returns true if ANY non-finite value detected.
+/// On CPU fallback: always returns false (no GPU data to check).
+pub fn check_positions_for_nan(positions: &[f32], num_nodes: usize) -> bool {
+    #[cfg(feature = "gpu")]
+    {
+        if positions.len() < num_nodes * 3 {
+            return false;
+        }
+        let mut result: i32 = 0;
+        unsafe {
+            let ret = gpu_ffi::check_nan_positions_sync(
+                positions.as_ptr(),
+                num_nodes as i32,
+                &mut result as *mut i32,
+            );
+            if ret != 0 {
+                log::warn!("check_nan_positions_sync returned error code {}", ret);
+                return false;
+            }
+        }
+        result != 0
+    }
+    #[cfg(not(feature = "gpu"))]
+    {
+        let _ = (positions, num_nodes);
+        false
     }
 }
 

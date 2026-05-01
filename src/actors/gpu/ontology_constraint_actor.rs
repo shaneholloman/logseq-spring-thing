@@ -520,11 +520,52 @@ impl Handler<ApplyOntologyConstraints> for OntologyConstraintActor {
             msg.graph_id
         );
 
-        
+        // ADR-070 D1.4: Hard cap on constraint count to prevent OOM kernel launch.
+        // Configurable via physics.max_ontology_constraints setting (default 50,000).
+        const MAX_ONTOLOGY_CONSTRAINTS: usize = 50_000;
         let constraint_count = msg.constraint_set.constraints.len();
+
+        if constraint_count > MAX_ONTOLOGY_CONSTRAINTS {
+            warn!(
+                "OntologyConstraintActor: Rejecting {} constraints (cap: {}). Surplus axioms truncated.",
+                constraint_count, MAX_ONTOLOGY_CONSTRAINTS
+            );
+            // Truncate to cap — take the first MAX constraints, mark event
+            let mut truncated_set = msg.constraint_set.clone();
+            truncated_set.constraints.truncate(MAX_ONTOLOGY_CONSTRAINTS);
+            let truncated_count = constraint_count - MAX_ONTOLOGY_CONSTRAINTS;
+            warn!(
+                "physics.constraints_truncated: {} constraints dropped",
+                truncated_count
+            );
+            // Continue with truncated set
+            let constraint_count = truncated_set.constraints.len();
+            match msg.merge_mode {
+                ConstraintMergeMode::Replace => {
+                    self.ontology_constraints = truncated_set.constraints.clone();
+                    info!(
+                        "OntologyConstraintActor: Replaced with {} constraints (truncated from {})",
+                        self.ontology_constraints.len(), constraint_count + truncated_count
+                    );
+                }
+                _ => {
+                    // For merge modes, also check total after merge
+                    self.ontology_constraints.extend(truncated_set.constraints.clone());
+                    if self.ontology_constraints.len() > MAX_ONTOLOGY_CONSTRAINTS {
+                        self.ontology_constraints.truncate(MAX_ONTOLOGY_CONSTRAINTS);
+                        warn!("OntologyConstraintActor: Post-merge truncation to {}", MAX_ONTOLOGY_CONSTRAINTS);
+                    }
+                }
+            }
+            self.constraint_buffer = truncated_set.to_gpu_data();
+            self.stats.active_ontology_constraints = self
+                .ontology_constraints.iter().filter(|c| c.active).count() as u32;
+            return Ok(());
+        }
+
         match msg.merge_mode {
             ConstraintMergeMode::Replace => {
-                
+
                 self.ontology_constraints = msg.constraint_set.constraints.clone();
                 info!(
                     "OntologyConstraintActor: Replaced all constraints with {} new constraints",
@@ -562,6 +603,16 @@ impl Handler<ApplyOntologyConstraints> for OntologyConstraintActor {
             }
         }
 
+        // ADR-070 D1.4: Post-merge cap enforcement
+        if self.ontology_constraints.len() > MAX_ONTOLOGY_CONSTRAINTS {
+            let surplus = self.ontology_constraints.len() - MAX_ONTOLOGY_CONSTRAINTS;
+            self.ontology_constraints.truncate(MAX_ONTOLOGY_CONSTRAINTS);
+            warn!(
+                "OntologyConstraintActor: Post-merge cap enforced, dropped {} surplus constraints",
+                surplus
+            );
+        }
+
         self.constraint_buffer = msg.constraint_set.to_gpu_data();
 
         self.stats.active_ontology_constraints = self
@@ -570,7 +621,7 @@ impl Handler<ApplyOntologyConstraints> for OntologyConstraintActor {
             .filter(|c| c.active)
             .count() as u32;
 
-        
+
         if self.gpu_initialized && self.shared_context.is_some() {
             match self.upload_constraints_to_gpu() {
                 Ok(_) => {

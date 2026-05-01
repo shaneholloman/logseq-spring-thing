@@ -1,5 +1,10 @@
 [workspace]
-members = ["."]
+members = [
+    ".",
+    "crates/graph-cognition-core",
+    "crates/graph-cognition-physics-presets",
+    "crates/graph-cognition-extract",
+]
 resolver = "2"
 
 [package]

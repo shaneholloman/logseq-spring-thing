@@ -1,0 +1,16 @@
+[package]
+name = "graph-cognition-physics-presets"
+version = "0.1.0"
+edition = "2021"
+description = "Force presets and SimParams validation for GPU physics (ADR-069, ADR-070)"
+license = "MIT"
+
+[dependencies]
+graph-cognition-core = { path = "../graph-cognition-core" }
+serde = { version = "1.0", features = ["derive"] }
+strum = { version = "0.26", features = ["derive"] }
+toml = "0.8"
+thiserror = "2"
+
+[dev-dependencies]
+serde_json = "1.0"

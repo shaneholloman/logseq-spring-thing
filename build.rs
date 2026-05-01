@@ -24,6 +24,7 @@ fn main() {
         "src/utils/semantic_forces.cu",
         "src/utils/pagerank.cu",
         "src/utils/gpu_connected_components.cu",
+        "src/utils/nan_guard.cu",
     ];
 
     // Only rebuild if CUDA files change
@@ -31,6 +32,7 @@ fn main() {
         println!("cargo:rerun-if-changed={}", cuda_file);
     }
     println!("cargo:rerun-if-changed=build.rs");
+    println!("cargo:rerun-if-changed=src/utils/kernel_timing.cuh");
 
     // Content-hash CUDA files to detect bind-mount overlay changes that cargo's
     // mtime-based rerun-if-changed misses (Docker image build vs host mount).
@@ -56,7 +58,34 @@ fn main() {
     let out_dir = env::var("OUT_DIR").unwrap();
     let cuda_path = env::var("CUDA_PATH")
         .or_else(|_| env::var("CUDA_HOME"))
-        .unwrap_or_else(|_| "/opt/cuda".to_string());
+        .unwrap_or_else(|_| {
+            // ADR-070 D1.5: fail clearly if CUDA is not found
+            let default = "/opt/cuda";
+            if !Path::new(default).exists() {
+                panic!(
+                    "CUDA_PATH/CUDA_HOME not set and {} does not exist. \
+                     Install CUDA toolkit or set CUDA_PATH.",
+                    default
+                );
+            }
+            default.to_string()
+        });
+
+    // ADR-070 D1.5: Detect nvcc vs driver version mismatch
+    if let Ok(nvcc_out) = Command::new("nvcc").arg("--version").output() {
+        let nvcc_version = String::from_utf8_lossy(&nvcc_out.stdout);
+        if let Ok(smi_out) = Command::new("nvidia-smi")
+            .args(["--query-gpu=driver_version", "--format=csv,noheader", "--id=0"])
+            .output()
+        {
+            let driver_version = String::from_utf8_lossy(&smi_out.stdout);
+            println!(
+                "cargo:warning=CUDA toolkit: {}, Driver: {} — verify PTX JIT compatibility",
+                nvcc_version.lines().last().unwrap_or("unknown").trim(),
+                driver_version.trim()
+            );
+        }
+    }
 
     // Determine CUDA architecture.
     // In Docker builds (DOCKER_ENV set), NEVER auto-detect via nvidia-smi because the
@@ -134,17 +163,31 @@ fn main() {
                    file_name, nvcc_output.status.code());
         }
 
-        // Downgrade PTX ISA version to 9.0 for driver compatibility.
+        // ADR-070 D1.5: Downgrade PTX ISA version to 9.0 for driver compatibility.
         // CUDA toolkit 13.x emits .version 9.x but the host driver may only JIT up to 9.0.
         // This is safe: sm_86 kernels don't use ISA 9.1+ features.
+        // Fixed: previous substring code could panic if PTX file ended early.
         if let Ok(ptx_text) = std::fs::read_to_string(&ptx_output) {
-            // Match any .version 9.N where N > 0
             if let Some(pos) = ptx_text.find(".version 9.") {
-                let version_str = &ptx_text[pos..pos+13.min(ptx_text.len() - pos)];
-                if version_str != ".version 9.0" {
-                    let fixed = ptx_text[..pos].to_string() + ".version 9.0" + &ptx_text[pos + 12..];
-                    std::fs::write(&ptx_output, fixed).expect("Failed to write downgraded PTX");
-                    println!("PTX Build: Downgraded {} -> 9.0 for {}", version_str.trim(), file_name);
+                let end = (pos + 13).min(ptx_text.len());
+                let version_str = &ptx_text[pos..end];
+                if !version_str.starts_with(".version 9.0") {
+                    // Find the end of the version directive (next whitespace or newline)
+                    let directive_end = ptx_text[pos..]
+                        .find(|c: char| c == '\n' || c == '\r')
+                        .map(|off| pos + off)
+                        .unwrap_or(ptx_text.len());
+                    let fixed = format!(
+                        "{}.version 9.0{}",
+                        &ptx_text[..pos],
+                        &ptx_text[directive_end..]
+                    );
+                    std::fs::write(&ptx_output, &fixed).expect("Failed to write downgraded PTX");
+                    println!(
+                        "PTX Build: Downgraded '{}' -> '.version 9.0' for {}",
+                        ptx_text[pos..directive_end].trim(),
+                        file_name
+                    );
                 }
             }
         }
@@ -183,6 +226,7 @@ fn main() {
         ("src/utils/semantic_forces.cu", "semantic_forces"),
         ("src/utils/pagerank.cu", "pagerank"),
         ("src/utils/gpu_connected_components.cu", "gpu_connected_components"),
+        ("src/utils/nan_guard.cu", "nan_guard"),
     ];
 
     let mut obj_files: Vec<PathBuf> = Vec::new();
