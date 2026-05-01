@@ -167,7 +167,8 @@ impl OntologyConverter {
             authority_score: None,
             preferred_term: None,
             graph_source: None,
-            kind_id: None,
+            kind_id: graph_cognition_core::NodeKind::from_legacy_type("ontology_node")
+                .map(|k| k.kind_id()),
         })
     }
 

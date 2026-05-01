@@ -11,7 +11,7 @@
 use std::time::{Duration, Instant};
 
 use crate::models::simulation_params::SimParams;
-use graph_cognition_physics_presets::PresetConfig;
+use graph_cognition_physics_presets::{PresetConfig, StabilityConfig};
 
 /// Debounce window: any preset change arriving within this duration of the
 /// previous change start is queued and coalesced.
@@ -209,6 +209,8 @@ pub struct PresetTransition {
     last_change_at: Instant,
     /// A queued preset change that arrived during the debounce window.
     pending: Option<SimParamsSnapshot>,
+    /// Per-preset stability thresholds from the active preset (ADR-069 D7).
+    stability: StabilityConfig,
 }
 
 impl PresetTransition {
@@ -223,6 +225,11 @@ impl PresetTransition {
             active: false,
             last_change_at: Instant::now() - DEBOUNCE_WINDOW * 2,
             pending: None,
+            stability: StabilityConfig {
+                velocity_epsilon: 0.05,
+                force_epsilon: 0.01,
+                max_iterations: 2000,
+            },
         }
     }
 
@@ -321,6 +328,27 @@ impl PresetTransition {
         }
         let t = self.frame as f32 / self.total_frames as f32;
         self.old_params.lerp(&self.new_params, t)
+    }
+
+    /// Update stability thresholds from a preset config (ADR-069 D7).
+    pub fn set_stability(&mut self, config: &PresetConfig) {
+        self.stability = config.stability.clone();
+    }
+
+    /// Returns the active stability thresholds.
+    pub fn stability(&self) -> &StabilityConfig {
+        &self.stability
+    }
+
+    /// Check whether the simulation has settled according to the active
+    /// preset's stability thresholds.
+    pub fn is_settled(&self, max_velocity: f32, max_force: f32, iteration: u32) -> bool {
+        if self.active {
+            return false;
+        }
+        max_velocity < self.stability.velocity_epsilon
+            && max_force < self.stability.force_epsilon
+            || iteration >= self.stability.max_iterations
     }
 
     /// Number of frames remaining in the current transition.

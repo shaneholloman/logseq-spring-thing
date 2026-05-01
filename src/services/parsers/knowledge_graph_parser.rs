@@ -573,7 +573,7 @@ impl KnowledgeGraphParser {
             vz: 0.0,
         };
 
-        let node = Node {
+        let mut node = Node {
             id,
             // metadata_id is empty for stubs — we only know the opaque IRI.
             metadata_id: String::new(),
@@ -620,6 +620,7 @@ impl KnowledgeGraphParser {
             graph_source: None,
             kind_id: None,
         };
+        node.ensure_kind_id();
 
         KGNodeDraft {
             node,
@@ -883,7 +884,8 @@ impl KnowledgeGraphParser {
             authority_score: authority_score_field,
             preferred_term: preferred_term_field,
             graph_source: None,
-            kind_id: None,
+            kind_id: graph_cognition_core::NodeKind::from_legacy_type("page")
+                .map(|k| k.kind_id()),
         }
     }
 
@@ -1009,7 +1011,8 @@ impl KnowledgeGraphParser {
                     authority_score: None,
                     preferred_term: None,
                     graph_source: None,
-                    kind_id: None,
+                    kind_id: graph_cognition_core::NodeKind::from_legacy_type("linked_page")
+                        .map(|k| k.kind_id()),
                 });
 
                 edges.push(Edge {

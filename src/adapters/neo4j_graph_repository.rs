@@ -405,7 +405,7 @@ impl Neo4jGraphRepository {
                 }
             }
 
-            let node = Node {
+            let mut node = Node {
                 id: id.value as u32,
                 metadata_id,
                 label,
@@ -450,6 +450,7 @@ impl Neo4jGraphRepository {
                 graph_source,
                 kind_id: None,
             };
+            node.ensure_kind_id();
 
             nodes.push(node);
         }

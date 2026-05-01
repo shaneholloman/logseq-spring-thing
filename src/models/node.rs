@@ -531,6 +531,19 @@ impl Node {
         self
     }
 
+    /// Derive `kind_id` from `node_type` using the ADR-064 legacy mapping.
+    /// No-op if `kind_id` is already set or `node_type` is `None`/unmapped.
+    pub fn ensure_kind_id(&mut self) {
+        if self.kind_id.is_some() {
+            return;
+        }
+        if let Some(ref nt) = self.node_type {
+            if let Some(kind) = graph_cognition_core::NodeKind::from_legacy_type(nt) {
+                self.kind_id = Some(kind.kind_id());
+            }
+        }
+    }
+
     /// Returns true if this node is private AND the caller is not the owner.
     /// `caller_pubkey` is the hex pubkey of the requesting user, or `None` if
     /// the caller is anonymous / unauthenticated.

@@ -192,7 +192,8 @@ fn convert_agents_to_nodes(agents: Vec<Agent>) -> Vec<Node> {
                 authority_score: None,
                 preferred_term: None,
                 graph_source: None,
-                kind_id: None,
+                kind_id: graph_cognition_core::NodeKind::from_legacy_type("agent")
+                    .map(|k| k.kind_id()),
             }
         })
         .collect()
