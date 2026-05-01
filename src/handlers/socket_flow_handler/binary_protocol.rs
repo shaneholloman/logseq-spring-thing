@@ -5,7 +5,8 @@ use crate::utils::binary_protocol;
 
 use super::types::{SocketFlowServer, WEBSOCKET_RATE_LIMITER};
 
-/// Handle incoming binary WebSocket messages (position updates, voice data, broadcast acks).
+/// Handle incoming binary WebSocket messages (position updates, broadcast acks).
+/// Voice data uses the dedicated `/ws/speech` WebSocket endpoint instead.
 impl SocketFlowServer {
     pub(crate) fn handle_binary_message(
         &mut self,
@@ -35,18 +36,6 @@ impl SocketFlowServer {
         use crate::utils::binary_protocol::{BinaryProtocol, Message as ProtocolMessage};
 
         match BinaryProtocol::decode_message(data) {
-            Ok(ProtocolMessage::VoiceData { audio }) => {
-                info!("Received voice data: {} bytes", audio.len());
-                let response = serde_json::json!({
-                    "type": "voice_ack",
-                    "bytes": audio.len(),
-                    "message": "Voice data received but not yet processed"
-                });
-                if let Ok(msg_str) = serde_json::to_string(&response) {
-                    ctx.text(msg_str);
-                }
-                return;
-            }
             Ok(ProtocolMessage::BroadcastAck {
                 sequence_id,
                 nodes_received,
@@ -70,9 +59,12 @@ impl SocketFlowServer {
                 });
                 return;
             }
+            Ok(_) => {
+                debug!("Ignoring non-ack binary protocol message on main WS");
+            }
             Err(e) => {
                 debug!(
-                    "New protocol decode failed ({}), trying legacy protocol",
+                    "New protocol decode failed ({}), trying position frame",
                     e
                 );
             }
@@ -82,11 +74,10 @@ impl SocketFlowServer {
         match binary_protocol::decode_position_frame(data) {
             Ok((_seq, nodes)) => {
                 info!("Decoded {} nodes from binary message", nodes.len());
-                let _nodes_vec: Vec<_> = nodes.clone().into_iter().collect();
 
                 {
                     let app_state = self.app_state.clone();
-                    let nodes_vec: Vec<_> = nodes.clone().into_iter().collect();
+                    let nodes_vec: Vec<_> = nodes.into_iter().collect();
 
                     let fut = async move {
                         for (node_id, node_data) in &nodes_vec {
@@ -154,8 +145,8 @@ impl SocketFlowServer {
                     "recoverable": true,
                     "details": {
                         "data_length": data.len(),
-                        "expected_item_size": 26,
-                        "remainder": data.len() % 26
+                        "expected_item_size": 28,
+                        "remainder": data.len() % 28
                     }
                 });
                 if let Ok(msg_str) = serde_json::to_string(&error_msg) {

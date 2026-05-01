@@ -35,7 +35,7 @@ export enum MessageType {
 
 
   CONTROL_BITS = 0x30,
-  SSSP_DATA = 0x31,
+  // 0x31 was SSSP_DATA — removed, SSSP rides analytics_update JSON channel (ADR-061)
   HANDSHAKE = 0x32,
   HEARTBEAT = 0x33,
 
@@ -113,14 +113,6 @@ export interface AgentStateData {
 }
 
 
-export interface SSSPData {
-  nodeId: number;        
-  distance: number;      
-  parentId: number;      
-  flags: number;         
-}
-
-
 export interface VoiceChunk {
   agentId: number;       
   chunkId: number;       
@@ -188,13 +180,9 @@ export const MESSAGE_HEADER_SIZE = 6;
 export const GRAPH_UPDATE_HEADER_SIZE = 7;  // MESSAGE_HEADER_SIZE + 1-byte graphTypeFlag
 export const AGENT_POSITION_SIZE_V2 = 21;  // 4 (u32 id) + 12 (pos) + 4 (timestamp) + 1 (flags)
 export const AGENT_STATE_SIZE_V2 = 49;     // Full agent state with u32 IDs
-// V4 SSSP layout: 4 (u32 nodeId) + 4 (f32 distance) + 4 (u32 parentId) + 2 (u16 flags) = 14 bytes
-export const SSSP_DATA_SIZE_V2 = 14;       // SSSP with u32 IDs
-
 // Canonical sizes
 export const AGENT_POSITION_SIZE = AGENT_POSITION_SIZE_V2;
 export const AGENT_STATE_SIZE = AGENT_STATE_SIZE_V2;
-export const SSSP_DATA_SIZE = SSSP_DATA_SIZE_V2;
 
 export const VOICE_HEADER_SIZE = 7; 
 
@@ -442,51 +430,6 @@ export class BinaryWebSocketProtocol {
     return agents;
   }
 
-  
-  public encodeSSSPData(nodes: SSSPData[]): ArrayBuffer {
-    const payload = new ArrayBuffer(nodes.length * SSSP_DATA_SIZE);
-    const view = new DataView(payload);
-
-    nodes.forEach((node, index) => {
-      const offset = index * SSSP_DATA_SIZE;
-
-      // V4 layout: [u32 nodeId][f32 distance][u32 parentId][u16 flags] = 14 bytes
-      view.setUint32(offset, node.nodeId, true);
-      view.setFloat32(offset + 4, node.distance, true);
-      view.setUint32(offset + 8, node.parentId, true);
-      view.setUint16(offset + 12, node.flags, true);
-    });
-
-    return this.createMessage(MessageType.SSSP_DATA, payload);
-  }
-
-  
-  public decodeSSSPData(payload: ArrayBuffer): SSSPData[] {
-    const nodes: SSSPData[] = [];
-    const view = new DataView(payload);
-    const nodeCount = Math.floor(payload.byteLength / SSSP_DATA_SIZE);
-
-    for (let i = 0; i < nodeCount; i++) {
-      const offset = i * SSSP_DATA_SIZE;
-
-      if (offset + SSSP_DATA_SIZE > payload.byteLength) {
-        logger.warn('Truncated SSSP data');
-        break;
-      }
-
-      // V4 layout: [u32 nodeId][f32 distance][u32 parentId][u16 flags] = 14 bytes
-      nodes.push({
-        nodeId: view.getUint32(offset, true),
-        distance: view.getFloat32(offset + 4, true),
-        parentId: view.getUint32(offset + 8, true),
-        flags: view.getUint16(offset + 12, true)
-      });
-    }
-
-    return nodes;
-  }
-
-  
   public encodeControlBits(flags: ControlFlags): ArrayBuffer {
     const payload = new ArrayBuffer(1);
     const view = new DataView(payload);
@@ -611,27 +554,31 @@ export class BinaryWebSocketProtocol {
    * @returns Binary message ready to send over WebSocket
    */
   public createBroadcastAck(sequenceId: number, nodesReceived: number): ArrayBuffer {
-    // Payload: 8 bytes sequenceId + 4 bytes nodesReceived + 8 bytes timestamp = 20 bytes
-    const payload = new ArrayBuffer(20);
-    const view = new DataView(payload);
+    // Wire format: [0x34 type_byte][8B sequence_id][4B nodes_received][8B timestamp] = 21 bytes.
+    // Server's decode_message strips data[0] then passes &data[1..] to decode_broadcast_ack,
+    // so we write the bare type byte + payload — no envelope wrapper.
+    const buffer = new ArrayBuffer(21);
+    const view = new DataView(buffer);
 
-    // Write sequenceId as BigInt64 (8 bytes, little-endian)
+    view.setUint8(0, MessageType.BROADCAST_ACK);
+
+    // sequenceId as u64 LE
     const lowBits = sequenceId >>> 0;
     const highBits = Math.floor(sequenceId / 0x100000000) >>> 0;
-    view.setUint32(0, lowBits, true);
-    view.setUint32(4, highBits, true);
+    view.setUint32(1, lowBits, true);
+    view.setUint32(5, highBits, true);
 
-    // Write nodesReceived (4 bytes, little-endian)
-    view.setUint32(8, nodesReceived, true);
+    // nodesReceived as u32 LE
+    view.setUint32(9, nodesReceived, true);
 
-    // Write timestamp (8 bytes, little-endian)
+    // timestamp as u64 LE
     const timestamp = Date.now();
     const tsLowBits = timestamp >>> 0;
     const tsHighBits = Math.floor(timestamp / 0x100000000) >>> 0;
-    view.setUint32(12, tsLowBits, true);
-    view.setUint32(16, tsHighBits, true);
+    view.setUint32(13, tsLowBits, true);
+    view.setUint32(17, tsHighBits, true);
 
-    return this.createMessage(MessageType.BROADCAST_ACK, payload);
+    return buffer;
   }
 
   /**

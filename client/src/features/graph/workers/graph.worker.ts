@@ -549,7 +549,7 @@ class GraphWorker {
       data = await decompressZlib(data);
     }
 
-    // ADR-061: single 24 B/node decoder. Frame := [u8 0x42][u64 seq][N × 24 B node].
+    // ADR-061: single 28 B/node decoder. Frame := [u8 0x42][u64 seq][N × 28 B node].
     // No flag bits, no version dispatch, no per-frame analytics.
     const frame = decodePositionFrame(data);
     if (!frame) {

@@ -14,9 +14,10 @@ import { createLogger, createErrorMetadata } from '../../utils/loggerConfig';
 import { debugState } from '../../utils/clientDebugState';
 import { graphDataManager } from '../../features/graph/managers/graphDataManager';
 import {
-  decodePositionFrame,
   isPositionFrame,
   BINARY_PROTOCOL_PREAMBLE,
+  BINARY_FRAME_HEADER_SIZE,
+  BINARY_NODE_SIZE,
   type BinaryNodeData,
 } from '../../types/binaryProtocol';
 import { NodePositionBatchQueue, createWebSocketBatchProcessor } from '../../utils/BatchQueue';
@@ -226,23 +227,30 @@ export async function processBinaryData(
       logger.debug(`Processing binary data: ${data.byteLength} bytes`);
     }
 
-    const frame = decodePositionFrame(data);
-    if (!frame) {
+    // Header-only validation: preamble + broadcast_sequence + node count.
+    // Full per-node decode happens ONLY in the worker thread.
+    if (data.byteLength < BINARY_FRAME_HEADER_SIZE) {
       return;
     }
+    const headerView = new DataView(data);
+    if (headerView.getUint8(0) !== BINARY_PROTOCOL_PREAMBLE) {
+      return;
+    }
+    const broadcastSequence = Number(headerView.getBigUint64(1, true));
+    const nodeCount = Math.floor((data.byteLength - BINARY_FRAME_HEADER_SIZE) / BINARY_NODE_SIZE);
 
     binaryMessageCount = (binaryMessageCount || 0) + 1;
     if (binaryMessageCount % 100 === 1) {
       logger.debug('Position frame received', {
         bytes: data.byteLength,
-        nodes: frame.nodes.size,
-        broadcastSequence: frame.broadcastSequence,
+        nodes: nodeCount,
+        broadcastSequence,
         msgCount: binaryMessageCount,
       });
     }
 
     // Forward the raw buffer to graphDataManager → worker for SAB writeback.
-    // Pass-through so the worker can parse with the same canonical decoder.
+    // The worker does the full per-node decode via the canonical decoder.
     try {
       await graphDataManager.updateNodePositions(data);
     } catch (error) {
@@ -255,7 +263,7 @@ export async function processBinaryData(
     // Backpressure ack — every Nth frame, ack the latest broadcast_sequence.
     positionUpdateSequence++;
     if (positionUpdateSequence - lastAckSentSequence >= ACK_BATCH_SIZE) {
-      sendPositionAck(get, frame.broadcastSequence, frame.nodes.size);
+      sendPositionAck(get, broadcastSequence, nodeCount);
       lastAckSentSequence = positionUpdateSequence;
     }
   } catch (error) {

@@ -2,14 +2,14 @@
 //!
 //! Pins:
 //!   - 9-byte header: `[u8 preamble = 0x42][u64 broadcast_sequence_LE]`
-//!   - 24-byte node stride: `[u32 id_LE][f32 x][f32 y][f32 z][f32 vx][f32 vy][f32 vz]`
-//!   - Total frame length: `9 + 24 * N` for any N (including N == 0).
+//!   - 28-byte node stride: `[u32 id_LE][f32 x][f32 y][f32 z][f32 vx][f32 vy][f32 vz]`
+//!   - Total frame length: `9 + 28 * N` for any N (including N == 0).
 //!   - Round-trip preserves position + velocity per node.
-//!   - NO trailing flag-bit residue: a non-empty frame's length modulo 24 is
+//!   - NO trailing flag-bit residue: a non-empty frame's length modulo 28 is
 //!     exactly 9 (header). Never 9 + 48 * N.
 //!
 //! These are the DDD aggregate `PositionFrame` invariants I03 ("per-node
-//! payload = exactly 24 B") and the structural shape from ADR-061 §D1.
+//! payload = exactly 28 B") and the structural shape from ADR-061 §D1.
 //!
 //! Implementation under test: `webxr::utils::binary_protocol::{
 //!     encode_position_frame, decode_position_frame
@@ -24,8 +24,8 @@ use webxr::utils::socket_flow_messages::BinaryNodeData;
 /// does not evolve via this byte.
 const PREAMBLE: u8 = 0x42;
 
-/// Per-node stride in bytes — the contract.
-const NODE_STRIDE: usize = 24;
+/// Per-node stride in bytes — the contract (u32 id + 6 × f32 = 4 + 24 = 28).
+const NODE_STRIDE: usize = 28;
 
 /// Header length: 1 byte preamble + 8 bytes broadcast_sequence (LE).
 const HEADER_LEN: usize = 9;
@@ -91,11 +91,11 @@ fn encode_then_decode_preserves_positions_and_velocities() {
     // WHEN: Encoded then decoded.
     let bytes = encode_position_frame(&positions, 12345);
 
-    // THEN: Frame size is exactly 9 + 24 * N.
+    // THEN: Frame size is exactly 9 + 28 * N.
     assert_eq!(
         bytes.len(),
         HEADER_LEN + NODE_STRIDE * positions.len(),
-        "expected header (9) + 24 per node, got {} for {} nodes",
+        "expected header (9) + 28 per node, got {} for {} nodes",
         bytes.len(),
         positions.len()
     );
@@ -148,14 +148,14 @@ fn byte_offsets_within_a_node_are_exactly_id_pos_vel() {
     // WHEN: Encoded.
     let bytes = encode_position_frame(&positions, 0xCAFEBABE_DEADBEEF);
 
-    // THEN: Header preamble at 0, sequence at 1..9, exactly one 24-byte node
+    // THEN: Header preamble at 0, sequence at 1..9, exactly one 28-byte node
     // body starting at offset 9.
     assert_eq!(bytes.len(), HEADER_LEN + NODE_STRIDE);
     assert_eq!(bytes[0], PREAMBLE);
     assert_eq!(read_u64_le(&bytes, 1), 0xCAFEBABE_DEADBEEF);
 
     // THEN: Within the single node body, id at offset 9, then six f32s at
-    // offsets 13, 17, 21, 25, 29, 33. This pins the 24 B/node stride byte
+    // offsets 13, 17, 21, 25, 29, 33. This pins the 28 B/node stride byte
     // for byte and rejects any 48-byte legacy layout.
     assert_eq!(read_u32_le(&bytes, 9), 7, "id at offset 9");
     assert!((read_f32_le(&bytes, 13) - 1.5).abs() < 1e-6, "x at offset 13");
@@ -165,12 +165,12 @@ fn byte_offsets_within_a_node_are_exactly_id_pos_vel() {
     assert!((read_f32_le(&bytes, 29) - 0.5).abs() < 1e-6, "vy at offset 29");
     assert!((read_f32_le(&bytes, 33) - 0.6).abs() < 1e-6, "vz at offset 33");
 
-    // THEN: Total length is exactly header + 24 — never 48 (no analytics
+    // THEN: Total length is exactly header + 28 — never 48 (no analytics
     // residue from the legacy V3 node body).
     assert_eq!(
         bytes.len(),
-        HEADER_LEN + 24,
-        "single-node frame is header + 24 bytes, not header + 48"
+        HEADER_LEN + 28,
+        "single-node frame is header + 28 bytes, not header + 48"
     );
 }
 
@@ -200,19 +200,16 @@ fn empty_frame_is_just_the_header() {
 
 /// Regression test for the per-node payload contract.
 ///
-/// The whole point of ADR-061 is that the per-node payload is **24 bytes,
-/// fixed**. If anyone re-introduces analytics columns (cluster_id,
-/// community_id, anomaly_score, sssp_distance, sssp_parent) into the
-/// per-frame stream, the per-node stride doubles to 48 and this test
-/// fails immediately.
+/// The whole point of ADR-061 is that the per-node payload is **28 bytes,
+/// fixed** (u32 id + 6 × f32 pos/vel). If anyone re-introduces analytics
+/// columns (cluster_id, community_id, anomaly_score, sssp_distance,
+/// sssp_parent) into the per-frame stream, the per-node stride doubles
+/// to 48+ and this test fails immediately.
 ///
-/// The check `bytes.len() % NODE_STRIDE == HEADER_LEN % NODE_STRIDE`
-/// (i.e. `% 24 == 9`) holds for any N when the stride is 24, but does NOT
-/// hold for any N >= 1 when the stride is 48 (because `9 + 48 * N` mod 24
-/// is `9` only when `N == 0`). To be unambiguous we just verify the strict
-/// equality `len == HEADER_LEN + NODE_STRIDE * N`.
+/// To be unambiguous we verify the strict equality
+/// `len == HEADER_LEN + NODE_STRIDE * N`.
 #[test]
-fn frame_size_is_exactly_header_plus_24_per_node_no_residue() {
+fn frame_size_is_exactly_header_plus_28_per_node_no_residue() {
     for n in [0usize, 1, 2, 5, 100] {
         let positions: Vec<(u32, BinaryNodeData)> = (0..n as u32)
             .map(|i| node(i, i as f32, 0.0, 0.0, 0.0, 0.0, 0.0))
@@ -224,7 +221,7 @@ fn frame_size_is_exactly_header_plus_24_per_node_no_residue() {
         assert_eq!(
             bytes.len(),
             expected,
-            "frame for {} nodes must be exactly {} bytes (header {} + 24*N), got {}",
+            "frame for {} nodes must be exactly {} bytes (header {} + 28*N), got {}",
             n,
             expected,
             HEADER_LEN,
@@ -239,8 +236,8 @@ fn frame_size_is_exactly_header_plus_24_per_node_no_residue() {
             assert_eq!(
                 bytes.len() % NODE_STRIDE,
                 HEADER_LEN % NODE_STRIDE,
-                "non-empty frame length must be header_len mod 24 — i.e. 9 — \
-                 confirming no 24-byte analytics residue per node"
+                "non-empty frame length must be header_len mod 28 — \
+                 confirming no analytics residue per node"
             );
         }
 

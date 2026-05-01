@@ -3,8 +3,8 @@
  *
  * Pins (PRD-007 §4 / ADR-061 §D1+§D2+§D3 / DDD §5):
  *   1. JSON init carries node_type + visibility once at session start.
- *   2. Per-frame WebSocket binary frames are 9 + 24*N bytes (preamble
- *      0x42 + sequence + 24-byte node bodies).
+ *   2. Per-frame WebSocket binary frames are 9 + 28*N bytes (preamble
+ *      0x42 + sequence + 28-byte node bodies: u32 id + 6×f32 pos/vel).
  *   3. `analytics_update` text messages populate the analytics
  *      side-table; renderers consult it.
  *   4. NO per-frame flag-bit decode happens — the per-frame decoder
@@ -36,14 +36,14 @@ vi.mock('../../src/utils/loggerConfig', () => ({
 
 // ── Imports under test ───────────────────────────────────────────────────────
 
-import { parsePositionFrame } from '../../src/store/websocket/binaryProtocol';
+import { decodePositionFrame } from '../../src/types/binaryProtocol';
 import { createAnalyticsStore } from '../../src/store/analyticsStore';
 import type { AnalyticsUpdate } from '../../src/store/analyticsStore';
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
 const PREAMBLE = 0x42;
-const NODE_STRIDE = 24;
+const NODE_STRIDE = 28;
 const HEADER_LEN = 9;
 
 // ── Synthetic JSON init payload ──────────────────────────────────────────────
@@ -89,7 +89,7 @@ function buildBinaryFrame(seq: bigint, nodes: BinNode[]): ArrayBuffer {
     dv.setFloat32(off + 12, nodes[i].z, true);
     dv.setFloat32(off + 16, nodes[i].vx, true);
     dv.setFloat32(off + 20, nodes[i].vy, true);
-    dv.setFloat32(off + 24 - 4, nodes[i].vz, true);
+    dv.setFloat32(off + 24, nodes[i].vz, true);
   }
   return buf;
 }
@@ -132,14 +132,10 @@ function tickRenderer(
 ): void {
   for (const [id, pos] of frame.nodes) {
     state.positions.set(id, { x: pos.x, y: pos.y, z: pos.z });
-    // Node type comes from the JSON-init side-table — NOT from
-    // (id & 0x80000000) etc. If an implementation tried to derive
-    // type from the wire id flag bits, the next assertion catches it.
     const ty = initSideTable.get(id);
     if (ty !== undefined) {
       state.nodeTypes.set(id, ty);
     }
-    // Cluster colour comes from the analytics store.
     const row = analyticsStore.getState().byNodeId.get(id);
     if (row?.cluster_id !== undefined) {
       state.clusterColors.set(id, row.cluster_id);
@@ -167,15 +163,11 @@ describe('binary protocol E2E smoke (PRD-007 / ADR-061)', () => {
 
   it('full session: JSON init -> binary frame -> analytics_update -> renderer reflects all three', () => {
     // ─── 1. JSON init phase ──────────────────────────────────────────────
-    // GIVEN: A session-start JSON init message arrives. The client populates
-    // its node-type side-table from this once.
     expect(initSideTable.size).toBe(4);
     expect(initSideTable.get(1)).toBe('knowledge');
     expect(initSideTable.get(3)).toBe('agent');
 
     // ─── 2. Binary frame phase ───────────────────────────────────────────
-    // WHEN: The first per-frame binary message arrives — a 24 B/node frame
-    // with sequence=1.
     const frameBytes = buildBinaryFrame(1n, [
       { id: 1, x: 0.1, y: 0.2, z: 0.3, vx: 0, vy: 0, vz: 0 },
       { id: 2, x: 1.1, y: 1.2, z: 1.3, vx: 0, vy: 0, vz: 0 },
@@ -183,23 +175,22 @@ describe('binary protocol E2E smoke (PRD-007 / ADR-061)', () => {
       { id: 4, x: 3.1, y: 3.2, z: 3.3, vx: 0, vy: 0, vz: 0 },
     ]);
 
-    // THEN: Frame size is exactly 9 + 24*4 = 105 bytes (NOT 9 + 48*4).
+    // THEN: Frame size is exactly 9 + 28*4 = 121 bytes.
     expect(frameBytes.byteLength).toBe(HEADER_LEN + NODE_STRIDE * 4);
-    expect(frameBytes.byteLength).toBe(105);
+    expect(frameBytes.byteLength).toBe(121);
 
-    // THEN: Preamble is 0x42 (NOT 0x05 from legacy V5).
+    // THEN: Preamble is 0x42.
     expect(new DataView(frameBytes).getUint8(0)).toBe(PREAMBLE);
 
-    // WHEN: Decoded.
-    const frame = parsePositionFrame(frameBytes);
+    // WHEN: Decoded via canonical decoder.
+    const frame = decodePositionFrame(frameBytes);
+    expect(frame).not.toBeNull();
 
     // THEN: All four positions are present.
-    expect(frame.broadcastSequence).toBe(1n);
-    expect(frame.nodes.size).toBe(4);
+    expect(frame!.broadcastSequence).toBe(1n);
+    expect(frame!.nodes.size).toBe(4);
 
     // ─── 3. Analytics update phase ───────────────────────────────────────
-    // WHEN: An `analytics_update` message arrives with cluster_id
-    // assignments — the cadence is on-recompute, not per frame.
     const clusteringMessage: AnalyticsUpdate = {
       type: 'analytics_update',
       source: 'clustering',
@@ -220,16 +211,15 @@ describe('binary protocol E2E smoke (PRD-007 / ADR-061)', () => {
     expect(store.getState().byNodeId.get(4)?.cluster_id).toBe(20);
 
     // ─── 4. Renderer tick ────────────────────────────────────────────────
-    // WHEN: The renderer consumes the frame in conjunction with the
-    // init side-table and the analytics store.
-    tickRenderer(renderState, frame, initSideTable, store);
+    tickRenderer(renderState, frame!, initSideTable, store);
 
     // THEN: Positions came from the binary frame.
     expect(renderState.positions.size).toBe(4);
-    expect(renderState.positions.get(1)).toEqual({ x: 0.1, y: 0.2, z: 0.3 });
+    expect(renderState.positions.get(1)!.x).toBeCloseTo(0.1, 5);
+    expect(renderState.positions.get(1)!.y).toBeCloseTo(0.2, 5);
+    expect(renderState.positions.get(1)!.z).toBeCloseTo(0.3, 5);
 
-    // THEN: Node types came from the JSON-init side-table — the renderer
-    // did NOT derive them from per-frame flag bits.
+    // THEN: Node types came from the JSON-init side-table.
     expect(renderState.nodeTypes.get(1)).toBe('knowledge');
     expect(renderState.nodeTypes.get(3)).toBe('agent');
     expect(renderState.perFrameFlagBitDecodes).toBe(0);
@@ -240,7 +230,6 @@ describe('binary protocol E2E smoke (PRD-007 / ADR-061)', () => {
   });
 
   it('subsequent per-frame binary updates do NOT carry analytics columns', () => {
-    // GIVEN: A session in steady state.
     store.merge({
       type: 'analytics_update',
       source: 'clustering',
@@ -248,28 +237,20 @@ describe('binary protocol E2E smoke (PRD-007 / ADR-061)', () => {
       entries: [{ id: 1, cluster_id: 99 }],
     });
 
-    // WHEN: The next physics tick lands a binary frame for node 1.
     const bytes = buildBinaryFrame(2n, [
       { id: 1, x: 5, y: 5, z: 5, vx: 0, vy: 0, vz: 0 },
     ]);
 
-    // THEN: Per-frame size is exactly header + 24 — the wire is NOT
-    // re-introducing a `cluster_id` column even though the renderer
-    // still wants it. It comes from the side-table.
+    // THEN: Per-frame size is exactly header + 28.
     expect(bytes.byteLength).toBe(HEADER_LEN + NODE_STRIDE);
 
-    // WHEN: Decoded.
-    const frame = parsePositionFrame(bytes);
-
-    // THEN: The frame reflects only position+velocity; the analytics
-    // store's value (cluster_id=99) is unchanged after the binary
-    // tick.
-    expect(frame.nodes.size).toBe(1);
+    const frame = decodePositionFrame(bytes);
+    expect(frame).not.toBeNull();
+    expect(frame!.nodes.size).toBe(1);
     expect(store.getState().byNodeId.get(1)?.cluster_id).toBe(99);
   });
 
   it('a high-frequency tick does NOT trigger an analytics_update message', () => {
-    // GIVEN: A session in which 30 physics ticks land in succession.
     store.merge({
       type: 'analytics_update',
       source: 'clustering',
@@ -277,22 +258,16 @@ describe('binary protocol E2E smoke (PRD-007 / ADR-061)', () => {
       entries: [{ id: 1, cluster_id: 7 }],
     });
 
-    // WHEN: 30 binary frames arrive (simulating one second of 30 Hz physics).
     for (let i = 0; i < 30; i++) {
       const bytes = buildBinaryFrame(BigInt(i), [
         { id: 1, x: i, y: 0, z: 0, vx: 0, vy: 0, vz: 0 },
       ]);
-      const frame = parsePositionFrame(bytes);
-      tickRenderer(renderState, frame, initSideTable, store);
+      const frame = decodePositionFrame(bytes);
+      expect(frame).not.toBeNull();
+      tickRenderer(renderState, frame!, initSideTable, store);
     }
 
-    // THEN: The analytics generation high-water remained at 1 — no
-    // analytics emission was triggered by physics ticks. (The store
-    // still holds the original cluster_id.)
     expect(store.getState().byNodeId.get(1)?.cluster_id).toBe(7);
-
-    // AND: The renderer tracked 30 distinct positions but the cluster
-    // colour reads remained sourced from the side-table.
     expect(renderState.positions.get(1)).toEqual({ x: 29, y: 0, z: 0 });
     expect(renderState.clusterColors.get(1)).toBe(7);
     expect(renderState.perFrameFlagBitDecodes).toBe(0);
