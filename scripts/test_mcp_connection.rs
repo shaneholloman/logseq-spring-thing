@@ -9,8 +9,7 @@ use mcp_connection::call_agent_list;
 async fn main() {
     env_logger::init();
 
-    // Use the multi-agent-container hostname
-    let host = "multi-agent-container";
+    let host = "localhost";
     let port = "9500";
 
     println!("Testing MCP connection to {}:{}", host, port);

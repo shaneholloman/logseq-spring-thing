@@ -15,7 +15,7 @@
 //!     ↓ (HTTP POST)
 //! ManagementApiClient
 //!     ↓ (HTTP request)
-//! agentic-workstation:9090/v1/tasks
+//! agentbox:9190/v1/tasks
 //! ```
 
 use actix::prelude::*;
@@ -571,8 +571,8 @@ mod tests {
     #[test]
     fn test_actor_creation() {
         let client = ManagementApiClient::new(
-            "agentic-workstation".to_string(),
-            9090,
+            "localhost".to_string(),
+            9190,
             "test-key".to_string(),
         );
 

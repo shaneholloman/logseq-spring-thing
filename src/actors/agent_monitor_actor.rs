@@ -1,7 +1,7 @@
 //! Agent Monitor Actor - Monitoring via Management API
 //!
 //! This actor focuses solely on:
-//! - Polling the Management API (port 9090) for active task statuses
+//! - Polling the Management API (port 9190) for active task statuses
 //! - Converting tasks to agent nodes
 //! - Forwarding updates to GraphServiceSupervisor
 //!
@@ -109,6 +109,7 @@ pub struct AgentMonitorActor {
     agent_cache: HashMap<String, AgentStatus>,
 
     consecutive_poll_failures: u32,
+    backoff_tick: u32,
     last_successful_poll: Option<DateTime<Utc>>,
 
     /// Cached container telemetry from Management API /v1/status
@@ -129,11 +130,11 @@ impl AgentMonitorActor {
         info!("[AgentMonitorActor] Initializing with Management API monitoring");
 
         let host = std::env::var("MANAGEMENT_API_HOST")
-            .unwrap_or_else(|_| "agentic-workstation".to_string());
+            .unwrap_or_else(|_| "localhost".to_string());
         let port = std::env::var("MANAGEMENT_API_PORT")
             .ok()
             .and_then(|p| p.parse::<u16>().ok())
-            .unwrap_or(9090);
+            .unwrap_or(9190);
         // SECURITY: Management API key is required - no insecure fallback
         let api_key = std::env::var("MANAGEMENT_API_KEY").unwrap_or_else(|_| {
             warn!("[AgentMonitorActor] MANAGEMENT_API_KEY not set - Management API client will be disabled");
@@ -151,6 +152,7 @@ impl AgentMonitorActor {
             last_poll: time::now(),
             agent_cache: HashMap::new(),
             consecutive_poll_failures: 0,
+            backoff_tick: 0,
             last_successful_poll: None,
             container_telemetry: ContainerTelemetry::default(),
             poll_offset: 0,
@@ -158,6 +160,14 @@ impl AgentMonitorActor {
     }
 
     fn poll_agent_statuses(&mut self, ctx: &mut Context<Self>) {
+        if self.consecutive_poll_failures > 0 {
+            let backoff_factor = 1u32 << self.consecutive_poll_failures.min(8);
+            self.backoff_tick += 1;
+            if self.backoff_tick % backoff_factor != 0 {
+                return;
+            }
+        }
+
         debug!("[AgentMonitorActor] Polling active tasks from Management API");
 
         let api_client = self.management_api_client.clone();
@@ -427,6 +437,7 @@ impl Handler<ProcessAgentStatuses> for AgentMonitorActor {
         }
 
         self.consecutive_poll_failures = 0;
+        self.backoff_tick = 0;
         self.last_successful_poll = Some(time::now());
         // ADR-031 item 1: advance round-robin offset for next poll cycle.
         self.poll_offset = self.poll_offset.wrapping_add(1);

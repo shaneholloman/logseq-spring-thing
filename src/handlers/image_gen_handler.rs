@@ -457,7 +457,7 @@ pub async fn submit_image_job(
 /// Uses the ComfyUI Salad wrapper (:3000) — synchronous, returns base64 images
 /// in a single request. No polling needed.
 ///
-/// Used by MCP agents in the agentic-workstation container — no user Nostr session needed.
+/// Used by MCP agents in the agentbox container — no user Nostr session needed.
 /// Images are stored directly in JSS under the `user_npub` pod using server NIP-98 signing.
 pub async fn agent_submit_image_job(
     req: HttpRequest,

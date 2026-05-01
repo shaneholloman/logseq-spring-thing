@@ -7,7 +7,7 @@ use anyhow::{anyhow, Result};
 use cust::context::Context;
 use cust::launch;
 use cust::memory::{CopyDestination, DeviceBuffer, DevicePointer};
-use log::{debug, info, warn};
+use log::{debug, info, trace, warn};
 use std::ffi::CStr;
 
 impl UnifiedGPUCompute {
@@ -47,8 +47,7 @@ impl UnifiedGPUCompute {
             return Err(anyhow!("CRITICAL: num_nodes ({}) exceeds allocated_nodes ({}). This would cause buffer overflow!", self.num_nodes, self.allocated_nodes));
         }
 
-        // Debug: log all buffer sizes to find mismatch causing copy_from panic
-        warn!("GPU BUFFER SIZES: num_nodes={} allocated={} pos_in_x={} vel_in_x={} class_id={} class_mass={} mass={} aabb_blocks={} partial_ke={} prev_fx={} degree_w={}",
+        trace!("GPU BUFFER SIZES: num_nodes={} allocated={} pos_in_x={} vel_in_x={} class_id={} class_mass={} mass={} aabb_blocks={} partial_ke={} prev_fx={} degree_w={}",
             self.num_nodes, self.allocated_nodes,
             self.pos_in_x.len(), self.vel_in_x.len(),
             self.class_id.len(), self.class_mass.len(), self.mass.len(),

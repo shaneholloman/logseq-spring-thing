@@ -935,12 +935,12 @@ else:
     echo "  ACCESS INFORMATION"
     echo "========================================"
     echo ""
-    echo -e "${GREEN}Agentic Workstation:${NC}"
-    echo "  SSH:         ssh -p 2222 devuser@localhost  (password: turboflow)"
-    echo "  VNC:         vnc://localhost:5901           (password: turboflow)"
-    echo "  code-server: http://localhost:8080"
-    echo "  API:         http://localhost:9090/health"
-    echo "  Swagger:     http://localhost:9090/documentation"
+    echo -e "${GREEN}Agentbox:${NC}"
+    echo "  SSH:         ssh -p 2223 devuser@localhost  (password: turboflow)"
+    echo "  VNC:         vnc://localhost:5902           (password: turboflow)"
+    echo "  code-server: http://localhost:8180"
+    echo "  API:         http://localhost:9190/health"
+    echo "  Swagger:     http://localhost:9190/documentation"
     echo ""
 
     # Check ComfyUI standalone status

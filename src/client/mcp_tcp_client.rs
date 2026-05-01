@@ -26,8 +26,8 @@ impl McpTelemetryClient {
     }
 
     
-    pub fn for_multi_agent_container() -> Self {
-        Self::new("multi-agent-container".to_string(), 9500)
+    pub fn for_agentbox() -> Self {
+        Self::new("localhost".to_string(), 9500)
     }
 
     
@@ -356,15 +356,15 @@ use crate::utils::json::{from_json, to_json};
 
     #[tokio::test]
     async fn test_mcp_client_creation() {
-        let client = McpTelemetryClient::for_multi_agent_container();
-        assert_eq!(client.host, "multi-agent-container");
+        let client = McpTelemetryClient::for_agentbox();
+        assert_eq!(client.host, "localhost");
         assert_eq!(client.port, 9500);
     }
 
     #[tokio::test]
     async fn test_mcp_client_with_timeout() {
         let client =
-            McpTelemetryClient::for_multi_agent_container().with_timeout(Duration::from_secs(5));
+            McpTelemetryClient::for_agentbox().with_timeout(Duration::from_secs(5));
         assert_eq!(client.request_timeout, Duration::from_secs(5));
     }
 }

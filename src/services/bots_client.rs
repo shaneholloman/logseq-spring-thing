@@ -87,7 +87,7 @@ impl BotsClient {
         
         let host = std::env::var("CLAUDE_FLOW_HOST")
             .or_else(|_| std::env::var("MCP_HOST"))
-            .unwrap_or_else(|_| "multi-agent-container".to_string());
+            .unwrap_or_else(|_| "localhost".to_string());
         let port = std::env::var("MCP_TCP_PORT")
             .ok()
             .and_then(|p| p.parse::<u16>().ok())
@@ -214,8 +214,8 @@ impl BotsClient {
 
         Ok(serde_json::json!({
             "connected": connected,
-            "host": "agentic-workstation",
-            "port": 9090, 
+            "host": std::env::var("MANAGEMENT_API_HOST").unwrap_or_else(|_| "localhost".to_string()),
+            "port": std::env::var("MANAGEMENT_API_PORT").ok().and_then(|p| p.parse::<u16>().ok()).unwrap_or(9190),
             "agent_count": agents.len(),
             "agents": agents.iter().map(|a| {
                 serde_json::json!({

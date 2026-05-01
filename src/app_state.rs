@@ -952,7 +952,7 @@ impl AppState {
 
         info!("[AppState::new] Starting AgentMonitorActor for MCP monitoring");
         let mcp_host =
-            std::env::var("MCP_HOST").unwrap_or_else(|_| "agentic-workstation".to_string());
+            std::env::var("MCP_HOST").unwrap_or_else(|_| "localhost".to_string());
         let mcp_port = std::env::var("MCP_TCP_PORT")
             .unwrap_or_else(|_| "9500".to_string())
             .parse::<u16>()
@@ -1014,11 +1014,11 @@ impl AppState {
 
         info!("[AppState::new] Initializing TaskOrchestratorActor with Management API");
         let mgmt_api_host = std::env::var("MANAGEMENT_API_HOST")
-            .unwrap_or_else(|_| "agentic-workstation".to_string());
+            .unwrap_or_else(|_| "localhost".to_string());
         let mgmt_api_port = std::env::var("MANAGEMENT_API_PORT")
-            .unwrap_or_else(|_| "9090".to_string())
+            .unwrap_or_else(|_| "9190".to_string())
             .parse::<u16>()
-            .unwrap_or(9090);
+            .unwrap_or(9190);
         // SECURITY: Validate all security-critical environment variables at startup
         let mgmt_api_key = validate_security_env_vars()?;
 

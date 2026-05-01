@@ -41,8 +41,8 @@ services:
       - VITE_HMR_PORT=24678
       - RUST_LOG_REDIRECT=true
       - SYSTEM_NETWORK_PORT=4000
-      - CLAUDE_FLOW_HOST=agentic-workstation
-      - MCP_HOST=agentic-workstation
+      - CLAUDE_FLOW_HOST=localhost
+      - MCP_HOST=localhost
       - MCP_TCP_PORT=9500
       - MCP_TRANSPORT=tcp
       - MCP_RECONNECT_ATTEMPTS=3
@@ -50,10 +50,10 @@ services:
       - MCP_CONNECTION_TIMEOUT=30000
       - ORCHESTRATOR_WS_URL=ws://mcp-orchestrator:9001/ws
       - MCP_RELAY_FALLBACK_TO_MOCK=true
-      - BOTS_ORCHESTRATOR_URL=ws://agentic-workstation:3002
+      - BOTS_ORCHESTRATOR_URL=ws://localhost:3002
       # REMOVED: SETTINGS_AUTH_BYPASS=true — auth bypass must never ship in compose
-      - MANAGEMENT_API_HOST=agentic-workstation
-      - MANAGEMENT_API_PORT=9090
+      - MANAGEMENT_API_HOST=localhost
+      - MANAGEMENT_API_PORT=9190
       - FORCE_FULL_SYNC=0
     ports:
       - "3001:3001"  # Nginx entry point for dev
@@ -88,8 +88,8 @@ services:
   #     - NODE_ENV=production
   #     - RUST_LOG=warn
   #     - SYSTEM_NETWORK_PORT=4001
-  #     - CLAUDE_FLOW_HOST=agentic-workstation
-  #     - MCP_HOST=agentic-workstation
+  #     - CLAUDE_FLOW_HOST=localhost
+  #     - MCP_HOST=localhost
   #     - MCP_TCP_PORT=9500
   #     - MCP_TRANSPORT=tcp
   #     - MCP_RECONNECT_ATTEMPTS=3
@@ -97,9 +97,9 @@ services:
   #     - MCP_CONNECTION_TIMEOUT=30000
   #     - ORCHESTRATOR_WS_URL=ws://mcp-orchestrator:9001/ws
   #     - MCP_RELAY_FALLBACK_TO_MOCK=true
-  #     - BOTS_ORCHESTRATOR_URL=ws://agentic-workstation:3002
-  #     - MANAGEMENT_API_HOST=agentic-workstation
-  #     - MANAGEMENT_API_PORT=9090
+  #     - BOTS_ORCHESTRATOR_URL=ws://localhost:3002
+  #     - MANAGEMENT_API_HOST=localhost
+  #     - MANAGEMENT_API_PORT=9190
   #   volumes:
   #     - ./client:/app/client
   #     - ./src:/app/src

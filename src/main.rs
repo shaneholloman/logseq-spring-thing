@@ -547,11 +547,11 @@ async fn main() -> std::io::Result<()> {
     
     // --- Briefing + Nostr services ---
     let management_api_client = ManagementApiClient::new(
-        std::env::var("MANAGEMENT_API_HOST").unwrap_or_else(|_| "agentic-workstation".to_string()),
+        std::env::var("MANAGEMENT_API_HOST").unwrap_or_else(|_| "localhost".to_string()),
         std::env::var("MANAGEMENT_API_PORT")
             .ok()
             .and_then(|p| p.parse::<u16>().ok())
-            .unwrap_or(9090),
+            .unwrap_or(9190),
         std::env::var("MANAGEMENT_API_KEY").unwrap_or_default(),
     );
     let briefing_service = web::Data::new(BriefingService::new(management_api_client));

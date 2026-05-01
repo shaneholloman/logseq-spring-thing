@@ -1253,7 +1253,7 @@ impl SpeechService {
         context_manager: Arc<VoiceContextManager>,
     ) -> String {
         let mcp_host =
-            std::env::var("MCP_HOST").unwrap_or_else(|_| "multi-agent-container".to_string());
+            std::env::var("MCP_HOST").unwrap_or_else(|_| "localhost".to_string());
         let mcp_port = std::env::var("MCP_TCP_PORT").unwrap_or_else(|_| "9500".to_string());
 
         

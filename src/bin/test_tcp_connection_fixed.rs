@@ -14,7 +14,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("Starting enhanced TCP connection test for Claude Flow MCP");
 
     let host =
-        std::env::var("CLAUDE_FLOW_HOST").unwrap_or_else(|_| "multi-agent-container".to_string());
+        std::env::var("CLAUDE_FLOW_HOST").unwrap_or_else(|_| "localhost".to_string());
     let port = std::env::var("MCP_TCP_PORT").unwrap_or_else(|_| "9500".to_string());
 
     info!("Connecting to {}:{}...", host, port);

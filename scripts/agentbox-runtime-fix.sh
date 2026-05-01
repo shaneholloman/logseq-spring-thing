@@ -70,7 +70,7 @@ docker exec agentbox bash -c '
 # 4. Health check
 echo ""
 echo -e "${CYAN}=== Health Check ===${NC}"
-health=$(docker exec agentbox curl -sf http://localhost:9090/health 2>/dev/null)
+health=$(docker exec agentbox curl -sf http://localhost:9190/health 2>/dev/null)
 if [ -n "$health" ]; then
     echo -e "${GREEN}Management API: OK${NC}"
     echo "$health" | python3 -m json.tool 2>/dev/null || echo "$health"

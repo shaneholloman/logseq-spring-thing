@@ -1,6 +1,6 @@
 #!/bin/bash
 # agentbox-post-start.sh — Run after agentbox container starts
-# Copies workspace data from MAD to agentbox and validates health
+# Validates health and copies any workspace data from legacy MAD if present
 set -euo pipefail
 
 CYAN='\033[0;36m'
@@ -14,15 +14,15 @@ echo -e "${CYAN}=== Agentbox Post-Start Setup ===${NC}"
 echo -e "${CYAN}Waiting for agentbox health...${NC}"
 deadline=$(($(date +%s) + 120))
 while [ $(date +%s) -lt $deadline ]; do
-    if docker exec agentbox curl -sf http://localhost:9090/health >/dev/null 2>&1; then
+    if docker exec agentbox curl -sf http://localhost:9190/health >/dev/null 2>&1; then
         echo -e "${GREEN}Agentbox is healthy${NC}"
         break
     fi
     sleep 3
 done
 
-# 2. Copy agent templates from MAD
-echo -e "${CYAN}Copying 610 agent templates...${NC}"
+# 2. Copy agent templates from legacy MAD (if still running)
+echo -e "${CYAN}Copying agent templates (if legacy MAD available)...${NC}"
 docker cp agentic-workstation:/home/devuser/agents/. /tmp/agents-transfer/ 2>/dev/null || true
 if [ -d /tmp/agents-transfer ]; then
     docker cp /tmp/agents-transfer/. agentbox:/opt/agentbox/agents/ 2>/dev/null || \
@@ -31,8 +31,8 @@ if [ -d /tmp/agents-transfer ]; then
     rm -rf /tmp/agents-transfer
 fi
 
-# 3. Copy .claude settings from MAD
-echo -e "${CYAN}Syncing Claude settings...${NC}"
+# 3. Copy .claude settings from legacy MAD (if still running)
+echo -e "${CYAN}Syncing Claude settings (if legacy MAD available)...${NC}"
 docker cp agentic-workstation:/home/devuser/.claude/settings.json /tmp/claude-settings.json 2>/dev/null || true
 if [ -f /tmp/claude-settings.json ]; then
     docker cp /tmp/claude-settings.json agentbox:/home/devuser/.claude/settings.json 2>/dev/null || true

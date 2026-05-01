@@ -3,7 +3,7 @@ use crate::utils::ptx;
 use cust::context::Context;
 use cust::device::Device;
 use cust::module::Module;
-use log::{error, info, warn};
+use log::{error, info, trace, warn};
 use std::env;
 use std::io::{Error, ErrorKind};
 use std::path::Path;
@@ -304,7 +304,7 @@ pub fn validate_kernel_launch(
         );
     }
 
-    info!(
+    trace!(
         "Kernel launch validation passed: {} (grid: {}, block: {}, nodes: {})",
         kernel_name, grid_size, block_size, num_nodes
     );

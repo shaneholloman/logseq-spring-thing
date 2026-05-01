@@ -22,8 +22,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         ("localhost".to_string(), 9500),
     );
     servers.insert(
-        "multi-agent-container-9500".to_string(),
-        ("multi-agent-container".to_string(), 9500),
+        "agentbox-9500".to_string(),
+        ("agentbox".to_string(), 9500),
     );
 
     

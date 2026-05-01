@@ -86,7 +86,7 @@ impl McpRelayManager {
         let start_time = Instant::now();
         let correlation_id = CorrelationId::new();
 
-        info!("Checking MCP relay status in multi-agent-container...");
+        info!("Checking MCP relay status in agentbox...");
 
         
         if let Some(logger) = get_telemetry_logger() {
@@ -94,7 +94,7 @@ impl McpRelayManager {
         }
 
         let output = Command::new("docker")
-            .args(&["exec", "multi-agent-container", "pgrep", "-f", "mcp-server"])
+            .args(&["exec", "agentbox", "pgrep", "-f", "mcp-server"])
             .output();
 
         let duration_ms = start_time.elapsed().as_millis() as f64;
@@ -105,9 +105,9 @@ impl McpRelayManager {
                 let status = if is_running { "running" } else { "stopped" };
 
                 if is_running {
-                    info!("MCP relay is running in multi-agent-container");
+                    info!("MCP relay is running in agentbox");
                 } else {
-                    warn!("MCP relay is not running in multi-agent-container");
+                    warn!("MCP relay is not running in agentbox");
                 }
 
                 
@@ -126,7 +126,7 @@ impl McpRelayManager {
                     )
                     .with_duration(duration_ms)
                     .with_metadata("container_status", serde_json::json!(status))
-                    .with_metadata("container_name", serde_json::json!("multi-agent-container"))
+                    .with_metadata("container_name", serde_json::json!("agentbox"))
                     .with_metadata("check_method", serde_json::json!("docker_exec_pgrep"));
 
                     logger.log_event(event);
@@ -185,14 +185,14 @@ impl McpRelayManager {
             return Ok(());
         }
 
-        info!("Starting MCP relay in multi-agent-container...");
+        info!("Starting MCP relay in agentbox...");
 
         
         let output = Command::new("docker")
             .args(&[
                 "exec",
                 "-d",
-                "multi-agent-container",
+                "agentbox",
                 "bash",
                 "-c",
                 "cd /app && npm run mcp:start > /tmp/mcp-server.log 2>&1",
@@ -202,7 +202,7 @@ impl McpRelayManager {
         match output {
             Ok(result) => {
                 if result.status.success() {
-                    info!("Successfully started MCP relay in multi-agent-container");
+                    info!("Successfully started MCP relay in agentbox");
 
                     
                     std::thread::sleep(std::time::Duration::from_secs(2));
@@ -227,7 +227,7 @@ impl McpRelayManager {
         let output = Command::new("docker")
             .args(&[
                 "exec",
-                "multi-agent-container",
+                "agentbox",
                 "tail",
                 "-n",
                 &lines.to_string(),
@@ -280,7 +280,7 @@ impl McpRelayManager {
     
     pub fn check_mcp_container() -> bool {
         let output = Command::new("docker")
-            .args(&["ps", "-q", "-f", "name=multi-agent-container"])
+            .args(&["ps", "-q", "-f", "name=agentbox"])
             .output();
 
         match output {
@@ -293,7 +293,7 @@ impl McpRelayManager {
 pub async fn ensure_mcp_ready() -> Result<(), String> {
     
     if !McpRelayManager::check_mcp_container() {
-        return Err("multi-agent-container is not running".to_string());
+        return Err("agentbox is not running".to_string());
     }
 
     

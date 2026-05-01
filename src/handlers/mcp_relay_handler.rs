@@ -108,7 +108,7 @@ impl MCPRelayActor {
 
     fn connect_to_orchestrator(&mut self, ctx: &mut <Self as Actor>::Context) {
         let orchestrator_url = std::env::var("ORCHESTRATOR_WS_URL")
-            .unwrap_or_else(|_| "ws://multi-agent-container:3002/ws".to_string());
+            .unwrap_or_else(|_| "ws://localhost:3002/ws".to_string());
 
         self.connection_attempts += 1;
         info!(

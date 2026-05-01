@@ -1,12 +1,12 @@
-//! Management API Client for Multi-Agent Docker Container
+//! Management API Client for Agentbox
 //!
-//! This client provides HTTP access to the Management API (port 9090) running in the
-//! agentic-workstation container. It handles all task creation, monitoring, and control
+//! This client provides HTTP access to the Management API (port 9190) running in the
+//! agentbox container. It handles all task creation, monitoring, and control
 //! operations, replacing the legacy DockerHiveMind system.
 //!
 //! ## Architecture
 //!
-//! VisionFlow Container → ManagementApiClient (HTTP) → agentic-workstation:9090 → Management API
+//! VisionFlow Container → ManagementApiClient (HTTP) → agentbox:9190 → Management API
 //!
 //! ## Features
 //!
@@ -583,12 +583,12 @@ mod tests {
     #[test]
     fn test_client_creation() {
         let client = ManagementApiClient::new(
-            "agentic-workstation".to_string(),
-            9090,
+            "localhost".to_string(),
+            9190,
             "test-key".to_string(),
         );
 
-        assert_eq!(client.base_url, "http://agentic-workstation:9090");
+        assert_eq!(client.base_url, "http://localhost:9190");
         assert_eq!(client.api_key, "test-key");
     }
 }

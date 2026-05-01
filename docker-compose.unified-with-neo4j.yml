@@ -10,8 +10,8 @@ x-common-environment: &common-environment
   NEO4J_PASSWORD: ${NEO4J_PASSWORD}
   NEO4J_DATABASE: ${NEO4J_DATABASE:-neo4j}
   # MCP and Claude Flow configuration
-  CLAUDE_FLOW_HOST: ${CLAUDE_FLOW_HOST:-agentic-workstation}
-  MCP_HOST: ${MCP_HOST:-agentic-workstation}
+  CLAUDE_FLOW_HOST: ${CLAUDE_FLOW_HOST:-localhost}
+  MCP_HOST: ${MCP_HOST:-localhost}
   MCP_TCP_PORT: ${MCP_TCP_PORT:-9500}
   MCP_TRANSPORT: ${MCP_TRANSPORT:-tcp}
   MCP_RECONNECT_ATTEMPTS: ${MCP_RECONNECT_ATTEMPTS:-3}
@@ -19,9 +19,9 @@ x-common-environment: &common-environment
   MCP_CONNECTION_TIMEOUT: ${MCP_CONNECTION_TIMEOUT:-30000}
   ORCHESTRATOR_WS_URL: ${ORCHESTRATOR_WS_URL:-ws://mcp-orchestrator:9001/ws}
   MCP_RELAY_FALLBACK_TO_MOCK: ${MCP_RELAY_FALLBACK_TO_MOCK:-true}
-  BOTS_ORCHESTRATOR_URL: ${BOTS_ORCHESTRATOR_URL:-ws://agentic-workstation:3002}
-  MANAGEMENT_API_HOST: ${MANAGEMENT_API_HOST:-agentic-workstation}
-  MANAGEMENT_API_PORT: ${MANAGEMENT_API_PORT:-9090}
+  BOTS_ORCHESTRATOR_URL: ${BOTS_ORCHESTRATOR_URL:-ws://localhost:3002}
+  MANAGEMENT_API_HOST: ${MANAGEMENT_API_HOST:-localhost}
+  MANAGEMENT_API_PORT: ${MANAGEMENT_API_PORT:-9190}
 
 x-common-healthcheck: &common-healthcheck
   test: ["CMD", "curl", "-f", "http://localhost:4000/api/health"]

@@ -5,8 +5,8 @@ x-common-environment: &common-environment
   CUDA_ARCH: ${CUDA_ARCH:-75}
   SYSTEM_NETWORK_PORT: ${SYSTEM_NETWORK_PORT:-4000}
   # MCP and Claude Flow configuration
-  CLAUDE_FLOW_HOST: ${CLAUDE_FLOW_HOST:-agentic-workstation}
-  MCP_HOST: ${MCP_HOST:-agentic-workstation}
+  CLAUDE_FLOW_HOST: ${CLAUDE_FLOW_HOST:-localhost}
+  MCP_HOST: ${MCP_HOST:-localhost}
   MCP_TCP_PORT: ${MCP_TCP_PORT:-9500}
   MCP_TRANSPORT: ${MCP_TRANSPORT:-tcp}
   MCP_RECONNECT_ATTEMPTS: ${MCP_RECONNECT_ATTEMPTS:-3}
@@ -14,9 +14,9 @@ x-common-environment: &common-environment
   MCP_CONNECTION_TIMEOUT: ${MCP_CONNECTION_TIMEOUT:-30000}
   ORCHESTRATOR_WS_URL: ${ORCHESTRATOR_WS_URL:-ws://mcp-orchestrator:9001/ws}
   MCP_RELAY_FALLBACK_TO_MOCK: ${MCP_RELAY_FALLBACK_TO_MOCK:-true}
-  BOTS_ORCHESTRATOR_URL: ${BOTS_ORCHESTRATOR_URL:-ws://agentic-workstation:3002}
-  MANAGEMENT_API_HOST: ${MANAGEMENT_API_HOST:-agentic-workstation}
-  MANAGEMENT_API_PORT: ${MANAGEMENT_API_PORT:-9090}
+  BOTS_ORCHESTRATOR_URL: ${BOTS_ORCHESTRATOR_URL:-ws://localhost:3002}
+  MANAGEMENT_API_HOST: ${MANAGEMENT_API_HOST:-localhost}
+  MANAGEMENT_API_PORT: ${MANAGEMENT_API_PORT:-9190}
   # Solid Pod: served in-process by the external `solid-pod-rs` crate
   # (ADR-053/056). POD_BASE_URL / POD_DATA_ROOT replace the legacy JSS_* vars.
 
@@ -108,7 +108,7 @@ services:
       VITE_API_PORT: ${VITE_API_PORT:-4000}
       VITE_HMR_PORT: ${VITE_HMR_PORT:-24678}
       # Default: quiet. Set RUST_LOG=debug (or module-specific) in .env when debugging.
-      RUST_LOG: ${RUST_LOG:-warn,webxr=info,webxr::adapters::neo4j_ontology_repository=warn,webxr::actors::graph_state_actor=warn,actix_web=warn}
+      RUST_LOG: ${RUST_LOG:-warn,webxr=info,webxr::utils::unified_gpu_compute=error,webxr::utils::gpu_diagnostics=warn,webxr::actors::agent_monitor_actor=warn,webxr::actors::graph_state_actor=warn,webxr::adapters::neo4j_ontology_repository=warn,actix_web=warn}
       RUST_LOG_REDIRECT: ${RUST_LOG_REDIRECT:-true}
       DOCKER_ENV: ${DOCKER_ENV:-true}
       # Dev-only: bypass Nostr auth for settings writes (never set in production)
