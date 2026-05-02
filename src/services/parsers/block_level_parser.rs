@@ -67,24 +67,25 @@ pub fn blocks_to_neo4j_queries(page_urn: &str, blocks: &[BlockNode]) -> Vec<Stri
         let scheduled_str = block.scheduled.as_deref().unwrap_or("");
         let deadline_str = block.deadline.as_deref().unwrap_or("");
 
+        let escaped_content = escape_cypher(&block.content);
+        let escaped_clean = escape_cypher(&block.clean_text);
+        let escaped_urn = escape_cypher(&block.uuid);
+
         queries.push(format!(
-            "MERGE (b:Block {{urn: $urn}}) \
-             SET b.content = $content, \
-                 b.clean_text = $clean_text, \
-                 b.indent_level = $indent_level, \
-                 b.block_index = $block_index, \
-                 b.kind_id = $kind_id, \
-                 b.task_status = $task_status, \
-                 b.scheduled = $scheduled, \
-                 b.deadline = $deadline, \
-                 b.truncated = $truncated, \
-                 b.updated_at = datetime() \
-             /* params: urn={urn}, content={content_preview}, clean_text=..., \
-                indent_level={indent}, block_index={idx}, kind_id={kind}, \
-                task_status={task}, scheduled={sched}, deadline={dl}, \
-                truncated={trunc} */",
-            urn = escape_cypher(&block.uuid),
-            content_preview = escape_cypher(&block.content.chars().take(40).collect::<String>()),
+            "MERGE (b:Block {{urn: '{urn}'}}) \
+             SET b.content = '{content}', \
+                 b.clean_text = '{clean}', \
+                 b.indent_level = {indent}, \
+                 b.block_index = {idx}, \
+                 b.kind_id = {kind}, \
+                 b.task_status = '{task}', \
+                 b.scheduled = '{sched}', \
+                 b.deadline = '{dl}', \
+                 b.truncated = {trunc}, \
+                 b.updated_at = datetime()",
+            urn = escaped_urn,
+            content = escaped_content,
+            clean = escaped_clean,
             indent = block.indent_level,
             idx = block.block_index,
             kind = BLOCK_KIND_ID,
@@ -234,7 +235,7 @@ fn slugify(s: &str) -> String {
 /// through `neo4rs::query(...).param(...)` instead. This helper exists for
 /// the generated query strings that carry their literal values inline.
 fn escape_cypher(s: &str) -> String {
-    s.replace('\'', "\\'").replace('\\', "\\\\")
+    s.replace('\\', "\\\\").replace('\'', "\\'")
 }
 
 #[cfg(test)]

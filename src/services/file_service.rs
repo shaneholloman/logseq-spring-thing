@@ -1160,6 +1160,7 @@ impl FileService {
             node.id = hash_id; // ensure ID matches hash regardless of NEXT_NODE_ID
             node.label = page_name.to_string();
             node.node_type = Some("page".to_string());
+            node.ensure_kind_id();
             node.size = Some(meta.node_size as f32);
             node.color = Some("#888888".to_string());
             let mut rng = rand::thread_rng();

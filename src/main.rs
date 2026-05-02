@@ -826,7 +826,7 @@ async fn main() -> std::io::Result<()> {
             .app_data(agent_events_broadcaster_data.clone())
             .app_data(metrics_data.clone())
             .app_data(app_state_data.feature_access.clone())
-            .app_data(web::Data::new(github_sync_service.clone()))
+            .app_data(web::Data::from(github_sync_service.clone()))
             .app_data(web::Data::new(ontology_query_service.clone()))
             .app_data(web::Data::new(ontology_mutation_service.clone()))
             .app_data(neo4j_repo_data.clone())

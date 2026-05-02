@@ -28,6 +28,7 @@ use crate::services::edge_classifier::EdgeClassifier;
 use crate::services::ontology_pipeline_service::OntologyPipelineService;
 use crate::services::ingest_saga::{saga_enabled, serialise_node_for_pod, IngestSaga, NodeSagaPlan};
 use crate::adapters::whelk_inference_engine::WhelkInferenceEngine;
+use crate::services::parsers::block_level_parser;
 use futures::stream::{FuturesUnordered, StreamExt};
 use log::{debug, error, info, warn};
 use std::sync::Arc;
@@ -675,6 +676,11 @@ impl GitHubSyncService {
                     }
                 }
 
+                // ── ADR-068 D6: Block-level parsing ──
+                // After page-level KG nodes are collected, parse the same file
+                // at block granularity and project block nodes + edges into Neo4j.
+                self.ingest_blocks(content, &file.name, page_name).await;
+
                 Ok(())
             }
             FileType::Ontology => {
@@ -1117,6 +1123,58 @@ impl GitHubSyncService {
         }
 
         FileFormat::PrivateNote
+    }
+
+    /// Parse a Logseq file at block granularity and project blocks into Neo4j
+    /// (ADR-068 D6). Runs after page-level KG ingestion on the same file.
+    async fn ingest_blocks(&self, content: &str, file_name: &str, page_name: &str) {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+
+        // Derive a deterministic owner_hex from the page_name (16 hex chars).
+        let mut hasher = DefaultHasher::new();
+        page_name.hash(&mut hasher);
+        let owner_hex = format!("{:016x}", hasher.finish());
+
+        let rel_path = format!("pages/{}", file_name);
+        let blocks = block_level_parser::parse_file_to_blocks(content, &rel_path, &owner_hex);
+        if blocks.is_empty() {
+            return;
+        }
+
+        let page_urn = format!(
+            "urn:visionclaw:concept:{}:page:{}",
+            &owner_hex,
+            page_name.to_lowercase().replace(' ', "-"),
+        );
+
+        let mut queries = block_level_parser::blocks_to_neo4j_queries(&page_urn, &blocks);
+        queries.extend(block_level_parser::blocks_to_left_sibling_queries(&blocks));
+
+        let neo4j = self.onto_repo.neo4j_graph();
+        let total = queries.len();
+        let mut errors = 0usize;
+
+        for q in &queries {
+            if let Err(e) = neo4j.run(neo4rs::query(q)).await {
+                debug!("Block Cypher error for {}: {}", file_name, e);
+                errors += 1;
+            }
+        }
+
+        if errors > 0 {
+            warn!(
+                "Block ingest for {}: {}/{} queries failed",
+                file_name, errors, total
+            );
+        } else {
+            info!(
+                "📦 Block ingest for {}: {} blocks, {} queries OK",
+                file_name,
+                blocks.len(),
+                total
+            );
+        }
     }
 
     /// Save ontology data to Neo4j and trigger reasoning pipeline

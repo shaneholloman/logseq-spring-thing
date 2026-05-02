@@ -266,6 +266,7 @@ impl Neo4jGraphRepository {
                    n.content_hash as content_hash,
                    n.preferred_term_v2 as preferred_term_v2,
                    n.graph_source as graph_source,
+                   n.kind_id as kind_id,
                    n.metadata as metadata_json
             ORDER BY id
         ", where_clause);
@@ -339,6 +340,9 @@ impl Neo4jGraphRepository {
             let content_hash: Option<String>    = normalize(row.get("content_hash").ok());
             let preferred_term_v2: Option<String> = normalize(row.get("preferred_term_v2").ok());
             let graph_source: Option<String>    = normalize(row.get("graph_source").ok());
+            let kind_id: Option<u8> = row.get::<BoltInteger>("kind_id").ok()
+                .filter(|v| v.value >= 0)
+                .map(|v| v.value as u8);
 
             // Metadata JSON
             let metadata_json: String = row.get("metadata_json").unwrap_or_else(|_| "{}".to_string());
@@ -448,7 +452,7 @@ impl Neo4jGraphRepository {
                 authority_score,
                 preferred_term: preferred_term_v2,
                 graph_source,
-                kind_id: None,
+                kind_id,
             };
             node.ensure_kind_id();
 
@@ -561,6 +565,7 @@ impl GraphRepository for Neo4jGraphRepository {
                 n.color = $colors[i],
                 n.weight = $weights[i],
                 n.node_type = $node_types[i],
+                n.kind_id = CASE WHEN $kind_ids[i] >= 0 THEN $kind_ids[i] ELSE null END,
                 n.quality_score = $quality_scores[i],
                 n.authority_score = $authority_scores[i],
                 n.metadata = $metadatas[i]
@@ -573,6 +578,7 @@ impl GraphRepository for Neo4jGraphRepository {
                 n.color = COALESCE($colors[i], n.color),
                 n.weight = COALESCE($weights[i], n.weight),
                 n.node_type = COALESCE($node_types[i], n.node_type),
+                n.kind_id = CASE WHEN $kind_ids[i] >= 0 THEN $kind_ids[i] ELSE COALESCE(n.kind_id, null) END,
                 n.quality_score = $quality_scores[i],
                 n.authority_score = $authority_scores[i],
                 n.metadata = $metadatas[i]
@@ -594,6 +600,7 @@ impl GraphRepository for Neo4jGraphRepository {
         let mut colors: Vec<String> = Vec::with_capacity(nodes.len());
         let mut weights: Vec<f64> = Vec::with_capacity(nodes.len());
         let mut node_types: Vec<String> = Vec::with_capacity(nodes.len());
+        let mut kind_ids: Vec<i64> = Vec::with_capacity(nodes.len());
         let mut quality_scores: Vec<f64> = Vec::with_capacity(nodes.len());
         let mut authority_scores: Vec<f64> = Vec::with_capacity(nodes.len());
         let mut metadatas: Vec<String> = Vec::with_capacity(nodes.len());
@@ -627,6 +634,7 @@ impl GraphRepository for Neo4jGraphRepository {
             colors.push(node.color.clone().unwrap_or_else(|| "#888888".to_string()));
             weights.push(node.weight.unwrap_or(1.0) as f64);
             node_types.push(node.node_type.clone().unwrap_or_else(|| "default".to_string()));
+            kind_ids.push(node.kind_id.map(|k| k as i64).unwrap_or(-1));
             quality_scores.push(quality_score);
             authority_scores.push(authority_score);
             metadatas.push(metadata_json);
@@ -650,6 +658,7 @@ impl GraphRepository for Neo4jGraphRepository {
                 .param("colors", colors)
                 .param("weights", weights)
                 .param("node_types", node_types)
+                .param("kind_ids", kind_ids)
                 .param("quality_scores", quality_scores)
                 .param("authority_scores", authority_scores)
                 .param("metadatas", metadatas))
