@@ -209,6 +209,8 @@ hive-mind-prompt-*.txt
 agentdb.db
 agentdb.db-shm
 .mcp.json
+agentdb.rvf.lock
+agentdb.rvf
 
 
 # Claude Flow metrics directories
