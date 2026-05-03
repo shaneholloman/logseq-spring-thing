@@ -1,0 +1,49 @@
+Android Export Template Configuration — VisionClaw XR (PRD-008)
+================================================================
+
+OpenXR Loader Libraries (bundled into the Gradle build via the Godot OpenXR
+Vendors plugin — pinned in xr-client/addons/README.md):
+
+  Required runtime loaders inside the APK:
+    libs/arm64-v8a/libopenxr_loader.so      (Meta + Khronos shared loader)
+
+  Vendor-specific extension entry points (auto-resolved at xrCreateInstance):
+    XR_KHR_*    — Khronos core extensions (composition_layer_depth, etc.)
+    XR_FB_*     — Meta passthrough, scene, spatial_entity, foveation
+    XR_EXT_*    — hand_tracking, hand_interaction, performance_settings,
+                  local_floor, eye_gaze_interaction (optional)
+
+  Reference: PRD-008 §5.4 OpenXR Feature Set table.
+
+Gradle build settings:
+    minSdk:        29   (Quest Horizon OS minimum)
+    targetSdk:     34
+    NDK:           r26d (Android target aarch64-linux-android only)
+    JDK:           17
+    ABI filters:   arm64-v8a   (Quest 3 / Quest 2)
+
+Native library staging:
+    Cargo build:    cargo ndk -t aarch64-linux-android build --release
+                    -p visionclaw-xr-gdext
+    Output:         xr-client/rust/target/aarch64-linux-android/release/
+                      libvisionclaw_xr_gdext.so
+    Stage step:     cp into xr-client/addons/visionclaw_xr_gdext/aarch64/
+                    so the .gdextension manifest can resolve at runtime.
+
+APK signing:
+    Debug:    ~/.android/debug.keystore (auto)
+    Release:  signed with key referenced in
+              xr-client/android/release.keystore.properties
+              (path .gitignored — never commit the keystore)
+
+Verification command after install:
+    adb shell dumpsys package uk.xrsystems.visionclaw.xr | grep -E "permission|uses-feature"
+
+Expected output excerpt:
+    uses-feature: name='oculus.software.handtracking' required='true'
+    uses-feature: name='com.oculus.feature.PASSTHROUGH' required='true'
+    permission: name='com.oculus.permission.HAND_TRACKING'
+    permission: name='com.oculus.permission.USE_SCENE'
+    permission: name='com.oculus.permission.USE_ANCHOR_API'
+    permission: name='android.permission.RECORD_AUDIO'
+    permission: name='android.permission.INTERNET'

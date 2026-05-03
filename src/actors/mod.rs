@@ -54,6 +54,9 @@ pub mod workspace_actor;
 pub mod automation_orchestrator_actor;
 pub mod code_analysis_actor;
 
+// PRD-008 §5.3 — per-room XR presence broadcast actor
+pub mod presence_actor;
+
 pub use agent_monitor_actor::AgentMonitorActor;
 pub use broker_actor::BrokerActor;
 pub use client_coordinator_actor::{

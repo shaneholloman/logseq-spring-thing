@@ -88,6 +88,9 @@ pub mod agent_events_ws_handler;
 // ADR-059 §3 Phase 3 — user-interaction REST → broadcaster
 pub mod user_interaction_handler;
 
+// PRD-008: XR presence WebSocket (`/ws/presence`) — Quest 3 native APK multi-user sync
+pub mod presence_handler;
+
 pub use quic_transport_handler::{
     QuicTransportServer, QuicServerConfig,
     PostcardNodeUpdate, PostcardBatchUpdate, PostcardDeltaUpdate,

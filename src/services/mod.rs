@@ -78,6 +78,9 @@ pub mod preset_transition;
 // Epic G: OntoBricks MCP bridge for external ontology axiom ingestion
 pub mod ontobricks_bridge;
 
+// PRD-008: XR presence handshake — Schnorr verification of `(nonce || ts_us)`
+pub mod nostr_identity_verifier;
+
 pub use bridge_edge::{
     bridge_edge_enabled, sigmoid_confidence, BridgeEdgeService, CandidateStatus,
     MigrationCandidate, SignalVector,

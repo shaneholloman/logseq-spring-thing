@@ -1,0 +1,22 @@
+[package]
+name = "visionclaw-xr-presence-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+visionclaw-xr-presence = { path = ".." }
+
+# Ensures fuzz targets are compiled stand-alone, not as part of the workspace.
+[workspace]
+
+[[bin]]
+name = "wire_decode"
+path = "fuzz_targets/wire_decode.rs"
+test = false
+doc = false
+bench = false

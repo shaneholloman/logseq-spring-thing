@@ -1,0 +1,88 @@
+{
+  "_meta": {
+    "schema_version": 2,
+    "captured_at": "2026-05-02",
+    "host": "x86_64 linux dev workstation (release build)",
+    "criterion_version": "0.5.1",
+    "notes": "Captured via cargo bench -p visionclaw-xr-presence --bench wire -- --warm-up-time 1 --measurement-time 3. Targets derived from PRD-008 §6: 90fps -> 11.1ms/frame; pose stack must consume <<1% of that for a 1k-node graph."
+  },
+  "encode_pose_frame": {
+    "ns_per_iter": 200,
+    "budget_ns": 1000,
+    "median_ns": 200.42,
+    "lower_ns": 198.58,
+    "upper_ns": 202.86,
+    "regression_budget_pct": 5,
+    "_note": "PRD-008 §6 budget: wire encode <=1us/frame on Quest 3 ARM. Linux x86_64 dev baseline; Quest 3 ARM expected ~3-5x slower; CI on self-hosted Quest runner replaces this on first green run."
+  },
+  "decode_pose_frame": {
+    "ns_per_iter": 38,
+    "budget_ns": 1000,
+    "median_ns": 37.96,
+    "lower_ns": 37.56,
+    "upper_ns": 38.46,
+    "regression_budget_pct": 5,
+    "_note": "PRD-008 §6 budget: wire decode <=1us/frame on Quest 3 ARM."
+  },
+  "validate_pose": {
+    "ns_per_iter": 10,
+    "budget_ns": 5000,
+    "median_ns": 10.01,
+    "lower_ns": 10.00,
+    "upper_ns": 10.03,
+    "regression_budget_pct": 10,
+    "_note": "Combined velocity_gate + world_bounds + monotonic_timestamp; gate the receive loop."
+  },
+  "delta_compute": {
+    "ns_per_iter": 10,
+    "budget_ns": 2000,
+    "median_ns": 10.34,
+    "lower_ns": 10.34,
+    "upper_ns": 10.34,
+    "regression_budget_pct": 10,
+    "_note": "PoseDelta::between two PoseFrames; runs once per outbound frame."
+  },
+  "decode_position_frame_1k_ns": {
+    "ns_per_iter": 2569,
+    "budget_ns": 1000000,
+    "median_ns": 2569.0,
+    "lower_ns": 2567.4,
+    "upper_ns": 2571.3,
+    "regression_budget_pct": 10,
+    "_note": "1000-node 0x42 frame (28001 bytes) decode; gdext crate. Linux x86_64 dev baseline. Quest 3 ARM expected ~3-5x slower (~7-13us); still well under 1ms/frame budget."
+  },
+  "presence_round_trip_ns": {
+    "ns_per_iter": 234,
+    "budget_ns": 2000,
+    "median_ns": 233.56,
+    "lower_ns": 233.20,
+    "upper_ns": 234.05,
+    "regression_budget_pct": 10,
+    "_note": "Full encode+decode round-trip of one PoseFrame at 0x43; runs once per outbound frame."
+  },
+  "frame_p99_ms": {
+    "target_max": 11.1,
+    "regression_budget_pct": 5,
+    "_note": "PRD-008 G1: 90fps p99 (1000/90 = 11.111ms). Measured by Godot perf scene."
+  },
+  "frame_p50_ms": {
+    "target_max": 8.0,
+    "regression_budget_pct": 5,
+    "_note": "Per-frame CPU+GPU sum target; PRD-008 §6 splits as <=8ms CPU AND <=8ms GPU."
+  },
+  "max_draw_calls": {
+    "target_max": 50,
+    "regression_budget_abs": 5,
+    "_note": "PRD-008 §6: <=50 draw calls per frame."
+  },
+  "max_triangles": {
+    "target_max": 100000,
+    "regression_budget_pct": 10,
+    "_note": "PRD-008 §6: <=100K triangles in view."
+  },
+  "apk_size_mb": {
+    "target_max": 80,
+    "regression_budget_pct": 5,
+    "_note": "PRD-008 §6: APK <80MB."
+  }
+}

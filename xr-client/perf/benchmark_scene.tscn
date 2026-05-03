@@ -1,0 +1,50 @@
+[gd_scene load_steps=8 format=3 uid="uid://b5xr0pfbench001"]
+
+[ext_resource type="Script" path="res://perf/benchmark.gd" id="1_bench"]
+[ext_resource type="Material" path="res://materials/gem.tres" id="2_gem"]
+[ext_resource type="Material" path="res://materials/crystal_orb.tres" id="3_orb"]
+[ext_resource type="Material" path="res://materials/agent_capsule.tres" id="4_caps"]
+
+[sub_resource type="SphereMesh" id="SphereMesh_node_perf"]
+radius = 0.5
+height = 1.0
+radial_segments = 16
+rings = 8
+
+[sub_resource type="MultiMesh" id="MultiMesh_nodes_perf"]
+transform_format = 1
+mesh = SubResource("SphereMesh_node_perf")
+instance_count = 0
+
+[sub_resource type="MultiMesh" id="MultiMesh_ont_perf"]
+transform_format = 1
+mesh = SubResource("SphereMesh_node_perf")
+instance_count = 0
+
+[sub_resource type="MultiMesh" id="MultiMesh_agent_perf"]
+transform_format = 1
+mesh = SubResource("SphereMesh_node_perf")
+instance_count = 0
+
+[node name="BenchmarkScene" type="Node3D"]
+script = ExtResource("1_bench")
+metadata/duration_seconds = 30.0
+metadata/fixture_path = "res://perf/fixtures/perf_graph_1k.json"
+
+[node name="Camera3D" type="Camera3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.7, 15)
+
+[node name="NodesMulti" type="MultiMeshInstance3D" parent="."]
+material_override = ExtResource("2_gem")
+multimesh = SubResource("MultiMesh_nodes_perf")
+
+[node name="OntologyMulti" type="MultiMeshInstance3D" parent="."]
+material_override = ExtResource("3_orb")
+multimesh = SubResource("MultiMesh_ont_perf")
+
+[node name="AgentMulti" type="MultiMeshInstance3D" parent="."]
+material_override = ExtResource("4_caps")
+multimesh = SubResource("MultiMesh_agent_perf")
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+transform = Transform3D(0.866, -0.354, 0.354, 0, 0.707, 0.707, -0.5, -0.612, 0.612, 0, 5, 0)

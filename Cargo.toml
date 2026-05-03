@@ -4,6 +4,8 @@ members = [
     "crates/graph-cognition-core",
     "crates/graph-cognition-physics-presets",
     "crates/graph-cognition-extract",
+    "crates/visionclaw-xr-presence",
+    "xr-client/rust",
 ]
 resolver = "2"
 
@@ -97,6 +99,9 @@ cust_core = { version = "0.1.1" }
 # HTTP client and API
 reqwest = { version = "0.12.23", features = ["json", "stream", "multipart"] }
 nostr-sdk = "0.43.0"
+# PRD-008: direct secp256k1 access for the XR presence Schnorr challenge verifier.
+# Pinned to nostr-sdk 0.43's transitive version to avoid a duplicate compile.
+secp256k1 = { version = "0.29", features = ["rand", "global-context"] }
 
 # OpenAPI/Swagger documentation
 utoipa = { version = "5", features = ["actix_extras", "chrono", "uuid"] }
@@ -159,6 +164,9 @@ graph-cognition-extract = { path = "crates/graph-cognition-extract" }
 
 # Force presets and SimParams validation (ADR-069, ADR-070)
 graph-cognition-physics-presets = { path = "crates/graph-cognition-physics-presets" }
+
+# PRD-008: XR presence aggregate, pose validators, opcode 0x43 wire codec
+visionclaw-xr-presence = { path = "crates/visionclaw-xr-presence" }
 
 # Ontology Reasoning - using local path dependency (always enabled)
 whelk = { path = "./whelk-rs" }

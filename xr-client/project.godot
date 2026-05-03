@@ -1,0 +1,66 @@
+; Engine configuration file.
+; PRD-008: VisionClaw Quest 3 native APK.
+; Generated for Godot 4.3 stable. Edit only via the editor or alongside an ADR.
+
+config_version=5
+
+[application]
+
+config/name="VisionClaw XR"
+config/description="Native Quest 3 immersive client for VisionClaw (PRD-008, ADR-071)."
+run/main_scene="res://scenes/XRBoot.tscn"
+config/features=PackedStringArray("4.3", "Forward Mobile")
+config/icon="res://icon.svg"
+boot_splash/show_image=false
+
+[autoload]
+
+[debug]
+
+settings/stdout/print_fps=true
+settings/stdout/verbose_stdout=true
+
+[display]
+
+window/size/viewport_width=1024
+window/size/viewport_height=768
+window/stretch/mode="canvas_items"
+window/vsync/vsync_mode=0
+
+[gui]
+
+theme/custom_font=""
+
+[input]
+
+ui_accept={
+"deadzone": 0.5,
+"events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":4194309,"physical_keycode":0,"key_label":0,"unicode":0,"location":0,"echo":false,"script":null)]
+}
+
+[physics]
+
+common/physics_ticks_per_second=90
+common/max_physics_steps_per_frame=8
+
+[rendering]
+
+renderer/rendering_method="mobile"
+renderer/rendering_method.mobile="mobile"
+textures/vram_compression/import_etc2_astc=true
+anti_aliasing/quality/msaa_3d=2
+viewport/hdr_2d=false
+
+[xr]
+
+openxr/enabled=true
+openxr/default_action_map="res://addons/godot_openxr_vendors/openxr_action_map.tres"
+openxr/form_factor=0
+openxr/view_configuration=1
+openxr/reference_space=2
+openxr/environment_blend_mode=0
+openxr/foveation_level=2
+openxr/foveation_dynamic=true
+openxr/submit_depth_buffer=true
+openxr/startup_alert=false
+shaders/use_xr_shaders=true

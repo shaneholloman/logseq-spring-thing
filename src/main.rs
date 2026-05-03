@@ -22,6 +22,7 @@ use webxr::{
         socket_flow_handler::{socket_flow_handler, PreReadSocketSettings},
         speech_socket_handler::speech_socket_handler,
         agent_events_ws_handler::{agent_events_handler, new_broadcaster},
+        presence_handler::{new_room_registry, ws_presence, PresenceHandlerState},
         validation_handler,
         workspace_handler,
     },
@@ -723,6 +724,16 @@ async fn main() -> std::io::Result<()> {
     let agent_events_broadcaster_data = web::Data::new(agent_events_broadcaster.clone());
     info!("[agent-events] TransientEdgeActor started + broadcaster initialised");
 
+    // PRD-008 §5.3 — XR presence room registry + Schnorr identity verifier.
+    let presence_registry = new_room_registry();
+    let presence_verifier: std::sync::Arc<dyn visionclaw_xr_presence::ports::IdentityVerifier> =
+        std::sync::Arc::new(webxr::services::nostr_identity_verifier::NostrIdentityVerifier::new());
+    let presence_handler_state = web::Data::new(PresenceHandlerState {
+        registry: presence_registry,
+        identity_verifier: presence_verifier,
+    });
+    info!("[ws-presence] XR presence registry + verifier initialised at /ws/presence");
+
     info!("Starting HTTP server on {}", bind_address);
 
     info!("main: All services and actors initialized. Configuring HTTP server.");
@@ -824,6 +835,8 @@ async fn main() -> std::io::Result<()> {
             // ADR-059 / ADR-014 bidirectional agent events
             .app_data(transient_edge_data.clone())
             .app_data(agent_events_broadcaster_data.clone())
+            // PRD-008 — XR presence handler (Quest 3 native APK)
+            .app_data(presence_handler_state.clone())
             .app_data(metrics_data.clone())
             .app_data(app_state_data.feature_access.clone())
             .app_data(web::Data::from(github_sync_service.clone()))
@@ -852,6 +865,8 @@ async fn main() -> std::io::Result<()> {
             .route("/ws/mcp-relay", web::get().to(mcp_relay_handler)) 
             
             .route("/ws/client-messages", web::get().to(client_messages_handler::websocket_client_messages))
+            // PRD-008 §5.3: XR presence WebSocket — Quest 3 native APK multi-user sync
+            .route("/ws/presence", web::get().to(ws_presence))
             // OpenAPI/Swagger documentation
             .service(
                 SwaggerUi::new("/swagger-ui/{_:.*}")

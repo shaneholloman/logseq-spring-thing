@@ -1,0 +1,34 @@
+[package]
+name = "visionclaw-xr-gdext"
+version = "0.1.0"
+edition = "2021"
+description = "GDExtension hot-path crate for the VisionClaw Quest 3 native APK XR client (PRD-008). Owns binary protocol decode, presence WS, hand interaction, LOD policy, and spatial voice routing as godot-rust classes consumed by the Godot 4.3 scene tree."
+license = "MIT"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+godot = "0.2"
+visionclaw-xr-presence = { path = "../../crates/visionclaw-xr-presence" }
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "sync", "macros", "time"] }
+tokio-tungstenite = "0.21"
+bytes = "1.10"
+tracing = "0.1"
+tracing-android = "0.2"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+nalgebra = "0.34"
+thiserror = "2"
+async-trait = "0.1"
+futures-util = "0.3"
+
+[dev-dependencies]
+mockall = "0.13"
+proptest = "1.5"
+tokio = { version = "1", features = ["full", "test-util"] }
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[[bench]]
+name = "decode_throughput"
+harness = false
