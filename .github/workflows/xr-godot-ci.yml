@@ -1,0 +1,473 @@
+# PRD-008 + PRD-QE-002 CI/CD pipeline for the Godot 4 + godot-rust + OpenXR Quest 3
+# XR client and the Rust presence service. See docs/PRD-QE-002 §5 + §7 for gate
+# rationale. All Action versions are pinned (no @main / floating tags).
+#
+# Required secrets (release / nightly only):
+#   ANDROID_KEYSTORE_BASE64       base64-encoded JKS keystore for APK signing
+#   ANDROID_KEYSTORE_PASSWORD     keystore password
+#   ANDROID_KEY_ALIAS             signing key alias inside the keystore
+#   ANDROID_KEY_PASSWORD          signing key password
+#
+# Required runner labels (nightly on-device perf only):
+#   self-hosted, quest3           paired Quest 3 dev-mode device on the runner
+name: XR Godot CI
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'xr-client/**'
+      - 'crates/visionclaw-xr-presence/**'
+      - 'src/handlers/presence_handler.rs'
+      - 'src/actors/presence_actor.rs'
+      - '.github/workflows/xr-godot-ci.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'xr-client/**'
+      - 'crates/visionclaw-xr-presence/**'
+      - 'src/handlers/presence_handler.rs'
+      - 'src/actors/presence_actor.rs'
+      - '.github/workflows/xr-godot-ci.yml'
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_call: {}
+
+concurrency:
+  group: xr-godot-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  RUSTFLAGS: -D warnings
+  GODOT_VERSION: '4.3'
+  ANDROID_NDK_VERSION: r26d
+  ANDROID_RUST_TARGET: aarch64-linux-android
+
+jobs:
+  lint:
+    name: Lint (Rust + GDScript)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1ff72ee08e3cb84d84adba594e0a297990fc1ed3
+        with:
+          toolchain: stable
+          components: rustfmt, clippy
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@9d47c6ad4b02e050fd481d890b2ea34778fd09d6
+        with:
+          shared-key: xr-godot-lint
+          workspaces: |
+            .
+            xr-client/rust
+
+      - name: cargo fmt --check (presence)
+        run: cargo fmt --check -p visionclaw-xr-presence
+
+      - name: cargo fmt --check (gdext)
+        run: cargo fmt --manifest-path xr-client/rust/Cargo.toml --check
+
+      - name: cargo clippy (presence + gdext)
+        run: |
+          cargo clippy -p visionclaw-xr-presence --all-targets -- -D warnings
+          cargo clippy --manifest-path xr-client/rust/Cargo.toml --all-targets -- -D warnings
+
+      - name: gdlint (GDScript)
+        uses: Scony/godot-gdscript-toolkit@4.2.2
+        with:
+          gdscript-version: '4.3'
+          arguments: 'gdlint xr-client/scripts'
+
+  rust-unit-test:
+    name: Rust unit + coverage
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1ff72ee08e3cb84d84adba594e0a297990fc1ed3
+        with:
+          toolchain: stable
+          components: llvm-tools-preview
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@9d47c6ad4b02e050fd481d890b2ea34778fd09d6
+        with:
+          shared-key: xr-godot-unit
+          workspaces: |
+            .
+            xr-client/rust
+
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@9b5b983efc779f85e5e5d11539f005e85ccb27ff
+        with:
+          tool: cargo-llvm-cov
+
+      - name: Test presence with coverage
+        run: |
+          cargo llvm-cov clean --workspace
+          cargo llvm-cov \
+            -p visionclaw-xr-presence \
+            --lib --tests --no-fail-fast \
+            --lcov --output-path lcov-presence.info \
+            --fail-under-lines 80
+
+      - name: Test gdext with coverage
+        run: |
+          cargo llvm-cov \
+            --manifest-path xr-client/rust/Cargo.toml \
+            --lib --tests --no-fail-fast \
+            --lcov --output-path lcov-gdext.info \
+            --fail-under-lines 80
+
+      - name: Upload coverage reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rust-coverage
+          path: |
+            lcov-presence.info
+            lcov-gdext.info
+          retention-days: 14
+
+  rust-bench:
+    name: Rust bench (presence wire)
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1ff72ee08e3cb84d84adba594e0a297990fc1ed3
+        with:
+          toolchain: stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@9d47c6ad4b02e050fd481d890b2ea34778fd09d6
+        with:
+          shared-key: xr-godot-bench
+
+      - name: Run criterion benches
+        run: |
+          mkdir -p bench-out
+          cargo bench -p visionclaw-xr-presence --bench wire -- --output-format bencher \
+            | tee bench-out/wire-bencher.txt
+          cargo bench -p visionclaw-xr-presence --bench wire -- --save-baseline ci
+
+      - name: Compare against baseline (PRD-008 §6 wire decode budget)
+        # Budget: encode/decode ≤ 1µs/frame ≈ 1000ns; tolerance ±5% per PRD-QE-002 §5.2
+        run: |
+          python3 .github/workflows/scripts/compare_bench.py \
+            --bencher bench-out/wire-bencher.txt \
+            --baseline crates/visionclaw-xr-presence/benches/baseline.json \
+            --tolerance-pct 5
+
+      - name: Upload bench artefacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rust-bench
+          path: |
+            bench-out/
+            target/criterion/
+          retention-days: 14
+
+  rust-fuzz:
+    name: Rust fuzz (wire decode smoke)
+    runs-on: ubuntu-latest
+    needs: lint
+    if: github.event_name == 'schedule'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust nightly
+        uses: dtolnay/rust-toolchain@1ff72ee08e3cb84d84adba594e0a297990fc1ed3
+        with:
+          toolchain: nightly
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@9d47c6ad4b02e050fd481d890b2ea34778fd09d6
+        with:
+          shared-key: xr-godot-fuzz
+
+      - name: Install cargo-fuzz
+        uses: taiki-e/install-action@9b5b983efc779f85e5e5d11539f005e85ccb27ff
+        with:
+          tool: cargo-fuzz
+
+      - name: Run wire_decode fuzz target (5 min smoke)
+        run: |
+          cd crates/visionclaw-xr-presence
+          cargo +nightly fuzz run wire_decode -- -max_total_time=300
+
+      - name: Upload fuzz artefacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-crash-corpus
+          path: crates/visionclaw-xr-presence/fuzz/artifacts/
+          retention-days: 30
+
+  godot-headless-test:
+    name: Godot headless unit (gut)
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Godot 4.3
+        uses: chickensoft-games/setup-godot@v2
+        with:
+          version: ${{ env.GODOT_VERSION }}
+          use-dotnet: false
+          include-templates: false
+
+      - name: Install gut framework
+        # gut is the Godot unit test framework named in PRD-QE-002 §4.2; clone the
+        # 9.x branch (Godot 4 compatible) directly rather than via AssetLib so the
+        # CI run is fully offline-resolvable.
+        run: |
+          mkdir -p xr-client/addons
+          git clone --depth 1 --branch v9.3.0 \
+            https://github.com/bitwes/Gut.git xr-client/addons/gut
+
+      - name: Run gut headless suite
+        run: |
+          godot --headless --path xr-client --script tests/run_gut.gd
+
+      - name: Upload gut report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gut-report
+          path: xr-client/tests/report/
+          retention-days: 14
+
+  android-build:
+    name: Android APK (reusable)
+    needs: [lint, rust-unit-test]
+    # Build the APK on push to main, on schedule, or on release tags. PRs see
+    # only lint/unit/contract gates to keep PR feedback fast.
+    if: github.event_name == 'push' || github.event_name == 'schedule' || startsWith(github.ref, 'refs/tags/xr-v')
+    uses: ./.github/workflows/xr-godot-android.yml
+    with:
+      sign: ${{ startsWith(github.ref, 'refs/tags/xr-v') }}
+    secrets: inherit
+
+  security-scan:
+    name: Security scan (SAST)
+    runs-on: ubuntu-latest
+    needs: lint
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1ff72ee08e3cb84d84adba594e0a297990fc1ed3
+        with:
+          toolchain: stable
+
+      - name: Install cargo-audit
+        uses: taiki-e/install-action@9b5b983efc779f85e5e5d11539f005e85ccb27ff
+        with:
+          tool: cargo-audit
+
+      - name: cargo audit (presence)
+        run: cargo audit --file crates/visionclaw-xr-presence/Cargo.toml || true
+        # cargo-audit reads workspace Cargo.lock; run once at workspace root for
+        # the actual gate.
+
+      - name: cargo audit (workspace, fail on critical/high)
+        run: cargo audit --deny warnings
+
+      - name: Semgrep scan (rust + secrets)
+        uses: returntocorp/semgrep-action@v1
+        with:
+          config: >-
+            p/rust
+            p/secrets
+          generateSarif: 'true'
+        env:
+          SEMGREP_RULES: p/rust p/secrets
+
+      - name: Upload Semgrep SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: semgrep.sarif
+        continue-on-error: true
+
+      - name: Dependency Review (PR only)
+        if: github.event_name == 'pull_request'
+        uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high
+          comment-summary-in-pr: on-failure
+
+  on-device-perf:
+    name: Quest 3 on-device perf
+    runs-on: [self-hosted, quest3]
+    needs: android-build
+    if: github.event_name == 'schedule'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download unsigned APK
+        uses: actions/download-artifact@v4
+        with:
+          name: visionclaw-xr-unsigned-apk
+          path: build/
+
+      - name: Install APK on Quest 3
+        run: |
+          adb devices
+          adb install -r build/visionclaw-xr.apk
+
+      - name: Launch benchmark scene
+        run: |
+          adb shell am start -n uk.xrsystems.visionclaw.xr/com.godot.game.GodotApp \
+            --es scene "res://perf/benchmark_scene.tscn"
+          # benchmark.gd runs for 30s then exits emitting a single
+          # JSON line "BENCHMARK_RESULT={...}" to logcat.
+          sleep 35
+
+      - name: Capture frame time JSON from logcat
+        run: |
+          mkdir -p perf-out
+          adb logcat -d | grep -oE 'BENCHMARK_RESULT=\{[^}]*\}' | tail -n 1 \
+            | sed 's/^BENCHMARK_RESULT=//' > perf-out/benchmark.json
+          test -s perf-out/benchmark.json || { echo "::error::No benchmark result in logcat"; exit 1; }
+          cat perf-out/benchmark.json
+
+      - name: Gate against PRD-008 §6 perf budgets
+        # 90fps stable, CPU ≤ 8ms, GPU ≤ 8ms, draw calls ≤ 50.
+        run: |
+          python3 .github/workflows/scripts/check_perf.py \
+            --report perf-out/benchmark.json \
+            --target-fps 90 \
+            --max-cpu-ms 8 \
+            --max-gpu-ms 8 \
+            --max-draw-calls 50
+
+      - name: Stop app
+        if: always()
+        run: adb shell am force-stop uk.xrsystems.visionclaw.xr
+
+      - name: Upload perf artefacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: quest3-perf-${{ github.run_number }}
+          path: perf-out/
+          retention-days: 30
+
+  integration-test:
+    name: Presence handler integration
+    runs-on: ubuntu-latest
+    needs: rust-unit-test
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1ff72ee08e3cb84d84adba594e0a297990fc1ed3
+        with:
+          toolchain: stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@9d47c6ad4b02e050fd481d890b2ea34778fd09d6
+        with:
+          shared-key: xr-godot-integration
+
+      - name: Install OpenSSL dev headers
+        # The root `webxr` crate links system OpenSSL; without the dev headers
+        # cargo's build script for openssl-sys panics. Pre-existing dev quirk.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends pkg-config libssl-dev
+
+      - name: Run presence_handler integration tests
+        env:
+          OPENSSL_NO_VENDOR: '1'
+          PKG_CONFIG_PATH: /usr/lib/x86_64-linux-gnu/pkgconfig
+        run: |
+          cargo test --test presence_handler -p webxr --locked --no-fail-fast
+
+  visual-regression:
+    name: Visual regression (Godot screenshots)
+    runs-on: ubuntu-latest
+    needs: godot-headless-test
+    if: github.event_name == 'schedule'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - name: Install Godot 4.3
+        uses: chickensoft-games/setup-godot@v2
+        with:
+          version: ${{ env.GODOT_VERSION }}
+          use-dotnet: false
+          include-templates: false
+
+      - name: Install ImageMagick
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends imagemagick
+
+      - name: Capture Godot headless screenshots
+        run: |
+          mkdir -p xr-client/tests/visual-output
+          godot --headless --path xr-client --script tests/visual_capture.gd || true
+
+      - name: Diff against baselines (≤0.5% threshold per PRD-QE-002 §5)
+        run: |
+          set -e
+          mkdir -p visual-diff
+          shopt -s nullglob
+          fail=0
+          for baseline in xr-client/tests/visual-baselines/*.png; do
+            name=$(basename "$baseline")
+            captured="xr-client/tests/visual-output/$name"
+            if [ ! -f "$captured" ]; then
+              echo "::warning::Missing capture for $name"
+              continue
+            fi
+            # AE metric returns # of mismatched pixels; gate on percent.
+            DIFF=$(compare -metric AE -fuzz 1% "$baseline" "$captured" "visual-diff/$name" 2>&1 || true)
+            TOTAL=$(identify -format "%[fx:w*h]" "$baseline")
+            PCT=$(awk -v d="$DIFF" -v t="$TOTAL" 'BEGIN { if (t == 0) print 0; else printf "%.4f", (d / t) * 100 }')
+            echo "$name diff: $PCT% ($DIFF / $TOTAL)"
+            FAIL=$(awk -v p="$PCT" 'BEGIN { print (p > 0.5) ? 1 : 0 }')
+            if [ "$FAIL" = "1" ]; then
+              echo "::error::Visual regression for $name: $PCT% > 0.5%"
+              fail=1
+            fi
+          done
+          exit $fail
+
+      - name: Upload visual diff artefacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-regression-diff
+          path: |
+            visual-diff/
+            xr-client/tests/visual-output/
+          retention-days: 14

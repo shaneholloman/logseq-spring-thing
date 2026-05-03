@@ -1,0 +1,182 @@
+# Reusable Android build + sign workflow for the Quest 3 APK.
+# Invoked from xr-godot-ci.yml for nightly/release builds and from
+# xr-godot-release.yml when an `xr-v*` tag is pushed.
+#
+# Required secrets when `sign: true`:
+#   ANDROID_KEYSTORE_BASE64   base64-encoded JKS keystore
+#   ANDROID_KEYSTORE_PASSWORD keystore password
+#   ANDROID_KEY_ALIAS         signing key alias
+#   ANDROID_KEY_PASSWORD      signing key password
+name: XR Godot Android Build
+
+on:
+  workflow_call:
+    inputs:
+      sign:
+        description: Whether to sign the resulting APK
+        required: false
+        default: false
+        type: boolean
+    outputs:
+      apk-sha256:
+        description: SHA-256 of the produced APK
+        value: ${{ jobs.android-build.outputs.apk-sha256 }}
+    secrets:
+      ANDROID_KEYSTORE_BASE64:
+        required: false
+      ANDROID_KEYSTORE_PASSWORD:
+        required: false
+      ANDROID_KEY_ALIAS:
+        required: false
+      ANDROID_KEY_PASSWORD:
+        required: false
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  GODOT_VERSION: '4.3'
+  ANDROID_NDK_VERSION: r26d
+  ANDROID_RUST_TARGET: aarch64-linux-android
+
+jobs:
+  android-build:
+    name: Android APK build
+    runs-on: ubuntu-latest
+    outputs:
+      apk-sha256: ${{ steps.checksum.outputs.sha256 }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1ff72ee08e3cb84d84adba594e0a297990fc1ed3
+        with:
+          toolchain: stable
+          targets: ${{ env.ANDROID_RUST_TARGET }}
+
+      - name: Cache cargo (Android)
+        uses: Swatinem/rust-cache@9d47c6ad4b02e050fd481d890b2ea34778fd09d6
+        with:
+          shared-key: xr-godot-android
+          workspaces: xr-client/rust
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Android NDK
+        id: ndk
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: ${{ env.ANDROID_NDK_VERSION }}
+
+      - name: Install Godot 4.3 + Android export templates
+        uses: chickensoft-games/setup-godot@v2
+        with:
+          version: ${{ env.GODOT_VERSION }}
+          use-dotnet: false
+          include-templates: true
+
+      - name: Build gdext crate for aarch64-linux-android
+        env:
+          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+          # Direct cargo with linker env keeps the action surface minimal; the
+          # alternative cargo-ndk action adds a dependency for no extra value
+          # at this single-target scope.
+          CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER: ${{ steps.ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android29-clang
+          CC_aarch64_linux_android: ${{ steps.ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android29-clang
+          AR_aarch64_linux_android: ${{ steps.ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar
+        run: |
+          cd xr-client/rust
+          cargo build --release --target ${{ env.ANDROID_RUST_TARGET }} --locked
+
+      - name: Stage gdext .so into addon directory
+        run: |
+          mkdir -p xr-client/addons/visionclaw-xr-gdext/aarch64
+          cp xr-client/rust/target/${{ env.ANDROID_RUST_TARGET }}/release/libvisionclaw_xr_gdext.so \
+             xr-client/addons/visionclaw-xr-gdext/aarch64/libvisionclaw_xr_gdext.so
+
+      - name: Godot import (headless precompile)
+        run: |
+          godot --headless --path xr-client --import || true
+
+      - name: Godot Android export
+        run: |
+          mkdir -p xr-client/build
+          godot --headless --path xr-client \
+            --export-release "Quest 3 arm64" build/visionclaw-xr.apk
+
+      - name: APK size gate (PRD-QE-002 §5.3)
+        # Hard cap 80 * 1024 * 1024 = 83886080 bytes; PRD-QE-002 §5.3 budget row.
+        run: |
+          set -e
+          APK=xr-client/build/visionclaw-xr.apk
+          test -f "$APK" || { echo "::error::APK not produced"; exit 1; }
+          SIZE=$(stat -c %s "$APK")
+          MAX=83886080
+          echo "APK size: $SIZE bytes (cap $MAX)"
+          if [ "$SIZE" -gt "$MAX" ]; then
+            echo "::error::APK size $SIZE exceeds 80MB cap (PRD-QE-002 §5.3)"
+            exit 1
+          fi
+          echo "apk_size_bytes=$SIZE" >> $GITHUB_STEP_SUMMARY
+
+      - name: Compute APK sha256
+        id: checksum
+        run: |
+          SHA=$(sha256sum xr-client/build/visionclaw-xr.apk | awk '{print $1}')
+          echo "sha256=$SHA" >> $GITHUB_OUTPUT
+          echo "$SHA  visionclaw-xr.apk" > xr-client/build/visionclaw-xr.apk.sha256
+
+      - name: Upload unsigned APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: visionclaw-xr-unsigned-apk
+          path: |
+            xr-client/build/visionclaw-xr.apk
+            xr-client/build/visionclaw-xr.apk.sha256
+          retention-days: 14
+
+  apk-sign:
+    name: Sign release APK
+    runs-on: ubuntu-latest
+    needs: android-build
+    if: ${{ inputs.sign }}
+    permissions:
+      contents: read
+    steps:
+      - name: Download unsigned APK
+        uses: actions/download-artifact@v4
+        with:
+          name: visionclaw-xr-unsigned-apk
+          path: build/
+
+      - name: Sign APK
+        uses: r0adkll/sign-android-release@v1
+        id: sign
+        with:
+          releaseDirectory: build
+          signingKeyBase64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          alias: ${{ secrets.ANDROID_KEY_ALIAS }}
+          keyStorePassword: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          keyPassword: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        env:
+          BUILD_TOOLS_VERSION: '34.0.0'
+
+      - name: Stage signed artefacts
+        run: |
+          mkdir -p signed
+          cp "${{ steps.sign.outputs.signedReleaseFile }}" signed/visionclaw-xr-signed.apk
+          sha256sum signed/visionclaw-xr-signed.apk > signed/visionclaw-xr-signed.apk.sha256
+
+      - name: Upload signed APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: visionclaw-xr-signed-apk
+          path: signed/
+          retention-days: 90

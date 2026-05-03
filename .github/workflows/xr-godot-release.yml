@@ -1,0 +1,87 @@
+# PRD-008 release workflow. Trigger: tag matching `xr-v*`.
+# Runs the full pipeline + apk-sign + creates a GitHub Release with the signed APK,
+# its sha256 sum, and auto-generated release notes.
+#
+# Required secrets:
+#   ANDROID_KEYSTORE_BASE64       base64-encoded JKS keystore for APK signing
+#   ANDROID_KEYSTORE_PASSWORD     keystore password
+#   ANDROID_KEY_ALIAS             signing key alias
+#   ANDROID_KEY_PASSWORD          signing key password
+#   GITHUB_TOKEN                  provided automatically; used for gh release create
+name: XR Godot Release
+
+on:
+  push:
+    tags:
+      - 'xr-v*'
+
+concurrency:
+  group: xr-godot-release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  ci:
+    name: Full CI gate
+    uses: ./.github/workflows/xr-godot-ci.yml
+    secrets: inherit
+
+  release:
+    name: Publish GitHub Release
+    runs-on: ubuntu-latest
+    needs: ci
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download signed APK
+        uses: actions/download-artifact@v4
+        with:
+          name: visionclaw-xr-signed-apk
+          path: release-assets/
+
+      - name: Verify signed APK present
+        run: |
+          test -f release-assets/visionclaw-xr-signed.apk
+          test -f release-assets/visionclaw-xr-signed.apk.sha256
+          ls -la release-assets/
+
+      - name: Generate release notes
+        id: notes
+        # Use git log since previous xr-v* tag for the body. `gh release create
+        # --generate-notes` produces auto-notes from PR titles; we prepend the
+        # APK sha256 line for verifiability.
+        run: |
+          PREV_TAG=$(git tag --list 'xr-v*' --sort=-v:refname | sed -n '2p')
+          {
+            echo "## VisionClaw XR ${{ github.ref_name }}"
+            echo ""
+            echo "Native Quest 3 APK built from PRD-008 (Godot 4 + godot-rust + OpenXR)."
+            echo ""
+            echo "### Artefacts"
+            echo ""
+            echo '```'
+            cat release-assets/visionclaw-xr-signed.apk.sha256
+            echo '```'
+            echo ""
+            if [ -n "$PREV_TAG" ]; then
+              echo "### Changes since $PREV_TAG"
+              echo ""
+              git log --pretty=format:"- %s (%h)" "$PREV_TAG..${{ github.ref_name }}" -- xr-client/ crates/visionclaw-xr-presence/ src/handlers/presence_handler.rs src/actors/presence_actor.rs
+            fi
+          } > RELEASE_NOTES.md
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ github.ref_name }}" \
+            release-assets/visionclaw-xr-signed.apk \
+            release-assets/visionclaw-xr-signed.apk.sha256 \
+            --title "VisionClaw XR ${{ github.ref_name }}" \
+            --notes-file RELEASE_NOTES.md \
+            --verify-tag

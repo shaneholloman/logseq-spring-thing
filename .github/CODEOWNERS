@@ -1,0 +1,13 @@
+# CODEOWNERS — see https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-security/about-code-owners
+# Replace @<placeholder> with actual GitHub handles before enabling branch protection.
+
+# PRD-008 / PRD-QE-002: Godot 4 + godot-rust + OpenXR Quest 3 XR client
+xr-client/                                  @<placeholder>
+crates/visionclaw-xr-presence/              @<placeholder>
+src/handlers/presence_handler.rs            @<placeholder>
+src/actors/presence_actor.rs                @<placeholder>
+
+# CI/CD for the XR pipeline
+.github/workflows/xr-godot-ci.yml           @<placeholder>
+.github/workflows/xr-godot-release.yml      @<placeholder>
+.github/workflows/scripts/                  @<placeholder>
