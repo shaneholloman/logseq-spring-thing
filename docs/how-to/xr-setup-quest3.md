@@ -1,308 +1,474 @@
 ---
-title: Quest 3 VR Setup
-description: Step-by-step guide to connecting a Meta Quest 3 to VisionClaw's immersive XR mode
+title: Quest 3 Setup — VisionClaw Native APK
+description: Step-by-step guide to side-loading the Godot 4 + OpenXR VisionClaw XR APK onto a Meta Quest 3, configuring developer mode, paired LiveKit voice, and verifying multi-user presence.
 category: how-to
 difficulty-level: beginner
-updated-date: 2026-04-09
+updated-date: 2026-05-02
+related:
+  - docs/explanation/xr-architecture.md
+  - docs/PRD-008-xr-godot-replacement.md
+  - docs/adr/ADR-071-godot-rust-xr-replacement.md
+  - docs/xr-godot-system-architecture.md
+  - docs/xr-godot-threat-model.md
 ---
 
-# Quest 3 VR Setup
+# Quest 3 Setup — VisionClaw Native APK
 
-This guide walks you through connecting a Meta Quest 3 headset to VisionClaw's immersive XR mode. At the end you will have VisionClaw's Babylon.js-powered knowledge graph rendered at 90fps inside your headset, with full controller interaction.
+This guide walks you through side-loading **`visionclaw-xr.apk`** — the
+native Godot 4 + godot-rust + OpenXR client — onto a Meta Quest 3 headset,
+verifying that it connects to your VisionClaw deployment, and confirming
+multi-user voice and presence work end-to-end.
+
+The browser-hosted WebXR path no longer exists. The APK is the entry point.
 
 ---
 
 ## Prerequisites
 
-Before starting, confirm the following:
+| Requirement | Notes |
+|---|---|
+| Meta Quest 3 (Horizon OS ≥ 71) | Quest 2 works at 72 Hz; Quest Pro untested for v1 |
+| Quest charged ≥ 50 % | Side-load + first launch can take 5 min |
+| Meta Quest mobile app on a paired phone | Required to enable developer mode |
+| Meta developer account at [developer.oculus.com](https://developer.oculus.com) | Free; required to toggle developer mode |
+| USB-C cable (Quest ↔ workstation) | Or wireless ADB if already configured |
+| `adb` (Android Debug Bridge) on workstation | `apt install android-tools-adb` / `brew install android-platform-tools` |
+| VisionClaw deployment reachable from the headset | LAN or public TLS endpoint serving `/wss` and `/ws/presence` |
+| A `did:nostr:<hex-pubkey>` you control | The APK signs NIP-98 challenges with its private half; see Step 5 |
 
-- **Meta Quest 3** headset, charged and updated to the latest system software
-- **Developer mode enabled** on the Quest 3 (covered in Step 1)
-- **VisionClaw running** with the XR profile active — started with:
-  ```bash
-  docker compose -f docker-compose.yml \
-    -f docker-compose.vircadia.yml --profile xr up -d
-  ```
-- **Same local network** — the Quest 3 and the VisionClaw host machine must be on the same Wi-Fi network
-- **Host IP address** — the LAN IP of the machine running VisionClaw (e.g. `192.168.1.42`)
-- **Meta Quest mobile app** installed on your phone (iOS or Android), paired to the headset — required for enabling developer mode
-
-> VisionClaw's XR mode uses the Babylon.js renderer and WebXR Device API. It does not require any native Meta SDK or side-loading.
+> **No browser flags.** The APK ships its own OpenXR runtime via Godot 4.3.
+> The legacy `?force=quest3` URL parameter that existed in the prior browser
+> client is gone — the APK is the entry point and contains the runtime.
 
 ---
 
-## Setup Flowchart
+## Setup flowchart
 
 ```mermaid
 flowchart TD
-    A([Start]) --> B[Enable Developer Mode\non Quest 3]
-    B --> C[Connect Quest 3\nto local Wi-Fi network]
-    C --> D[Find host machine IP\nand form VisionClaw URL]
-    D --> E[Navigate to VisionClaw\nin Quest Browser]
-    E --> F{SSL warning\nshown?}
-    F -->|Yes| G[Trust self-signed cert\nor install mkcert CA]
-    F -->|No| H[VisionClaw UI loads]
-    G --> H
-    H --> I[Click Enter VR button\nin VisionClaw UI]
-    I --> J[Babylon.js initialises\nWebXR session]
-    J --> K([Immersive graph\nrendering at 90fps])
+    A([Start]) --> B[Step 1<br/>Install Godot 4.3 + Android NDK<br/>on workstation if building locally]
+    B --> C[Step 2<br/>Verify backend reachable]
+    C --> D[Step 3<br/>Enable developer mode<br/>on Quest 3]
+    D --> E[Step 4<br/>Connect Quest via ADB]
+    E --> F[Step 5<br/>Provision Nostr key<br/>on device]
+    F --> G[Step 6<br/>adb install -r visionclaw-xr.apk]
+    G --> H[Step 7<br/>Launch from Apps drawer]
+    H --> I{Boot OK?}
+    I -->|Yes| J[Step 8<br/>Verify presence + voice]
+    I -->|No| K[See Troubleshooting]
+    J --> L([Multi-user XR session live])
 ```
 
 ---
 
-## Step 1: Enable Developer Mode
+## Step 1: Workstation toolchain (skip if downloading a pre-built APK)
 
-Developer mode is not required to use VisionClaw in XR mode, but it unlocks useful diagnostics and removes some browser security restrictions that can interfere with WebXR on a local network.
+If you are pulling a release APK from CI artefacts or an internal
+distribution channel, skip to Step 3. Otherwise:
 
-1. Open the **Meta Quest** mobile app on your phone.
-2. Tap the headset icon at the bottom of the screen to open your **Devices** list.
-3. Select your Quest 3 from the device list.
-4. Scroll down and tap **Developer Mode**.
-5. Toggle **Developer Mode** to **on**.
-6. The app may prompt you to agree to the Meta Developer Terms of Service if this is your first time.
-7. Put on the headset. A notification banner confirms developer mode is now active.
-
-> Developer mode must be enabled via a phone that is logged in to the same Meta account that owns the headset. If you do not see the Developer Mode option, you may need to register as a Meta developer at [developer.oculus.com](https://developer.oculus.com) first — registration is free.
-
----
-
-## Step 2: Network Configuration
-
-VisionClaw's XR interface is served over HTTPS on port **3001**. The Quest 3 browser must reach that port over your LAN.
-
-### Find the host machine's IP address
-
-On the machine running VisionClaw:
+### 1.1 Install Godot 4.3 stable
 
 ```bash
-# Linux / macOS
-ip route get 1 | awk '{print $7; exit}'
-# or
-hostname -I | awk '{print $1}'
+# Linux
+mkdir -p ~/godot && cd ~/godot
+wget https://github.com/godotengine/godot/releases/download/4.3-stable/Godot_v4.3-stable_linux.x86_64.zip
+unzip Godot_v4.3-stable_linux.x86_64.zip
+sudo mv Godot_v4.3-stable_linux.x86_64 /usr/local/bin/godot
+godot --version    # → 4.3.stable
+
+# macOS
+brew install --cask godot   # version 4.3+
+
+# Windows: download installer from https://godotengine.org/download
 ```
 
-On Windows (PowerShell):
-
-```powershell
-(Get-NetIPAddress -AddressFamily IPv4 -InterfaceAlias Wi-Fi).IPAddress
-```
-
-### Confirm VisionClaw is listening
+Install the matching **Android export templates** (Godot will prompt on
+first export, or run once to fetch them):
 
 ```bash
-# Verify port 3001 is bound
-ss -tlnp | grep 3001
-# or
-curl -k https://localhost:3001/health
+godot --headless --download-export-templates
 ```
 
-### Form the URL
-
-```
-https://<host-ip>:3001
-```
-
-For example: `https://192.168.1.42:3001`
-
-Port 3001 is the Nginx reverse proxy that serves both the frontend and the Rust API. Do not use port 4000 (direct Actix-web) or 5173 (Vite HMR) from the Quest browser — only port 3001 provides the full VisionClaw application with XR support.
-
-> Ensure the host machine's firewall allows inbound TCP on port 3001 from the LAN subnet. On Ubuntu/Debian: `sudo ufw allow 3001/tcp`.
-
----
-
-## Step 3: SSL Certificate Trust
-
-WebXR requires a secure context (HTTPS). VisionClaw uses a self-signed TLS certificate by default, which triggers a browser warning on the Quest. You have two options.
-
-### Option A: Accept the browser exception (quickest)
-
-1. Put on the Quest 3 and open the **Meta Browser** (the built-in Chromium-based browser).
-2. Navigate to `https://<host-ip>:3001`.
-3. A warning page appears: **"Your connection is not private"** (NET::ERR_CERT_AUTHORITY_INVALID).
-4. Tap **Advanced**, then tap **Proceed to \<host-ip\> (unsafe)**.
-5. The VisionClaw UI loads. This exception persists for the session but resets when you clear browser data.
-
-### Option B: Install a locally trusted CA with mkcert (recommended for regular use)
-
-`mkcert` generates certificates that browsers trust without warnings, using a local CA you install once.
-
-On the VisionClaw host machine:
+### 1.2 Install Android NDK r26d and SDK
 
 ```bash
-# Install mkcert
-brew install mkcert           # macOS
-# or
-sudo apt install libnss3-tools && curl -L https://github.com/FiloSottile/mkcert/releases/latest/download/mkcert-linux-amd64 -o /usr/local/bin/mkcert && sudo chmod +x /usr/local/bin/mkcert
+# Easiest path: Android Studio → SDK Manager → install:
+#   - Android SDK Platform 34
+#   - Android SDK Command-line Tools (latest)
+#   - NDK (Side by Side) → 26.3.11579264 (r26d)
+#   - CMake 3.22+
 
-# Install local CA
-mkcert -install
+export ANDROID_HOME="$HOME/Android/Sdk"
+export ANDROID_NDK_ROOT="$ANDROID_HOME/ndk/26.3.11579264"
+export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
 
-# Generate cert for your LAN IP (replace with your actual IP)
-mkcert 192.168.1.42 localhost 127.0.0.1
-
-# This produces two files:
-#   192.168.1.42+2.pem       (certificate)
-#   192.168.1.42+2-key.pem   (private key)
+adb --version
+$ANDROID_NDK_ROOT/ndk-build --version
 ```
 
-Configure VisionClaw's Nginx (or your TLS termination layer) to use these certificate files, then restart the service.
+Add the same paths in Godot: **Editor → Editor Settings → Export → Android**
+— set `Android SDK Path` and `Android NDK Path`.
 
-To trust the mkcert CA on the Quest 3:
+### 1.3 Install Rust + cargo-ndk for the gdext crate
 
-1. Copy `$(mkcert -CAROOT)/rootCA.pem` to a USB drive or serve it over HTTP on a known URL.
-2. On the Quest 3, open **Settings > Password & Security > Certificates**.
-3. Install the `rootCA.pem` file as a trusted CA.
-4. Restart the Quest Browser.
-
-After installing the CA, `https://<host-ip>:3001` loads without warnings.
-
----
-
-## Step 4: Launch VisionClaw
-
-1. Open the **Meta Browser** on the Quest 3.
-2. Navigate to `https://<host-ip>:3001`.
-3. VisionClaw loads the desktop graph view. At the bottom of the screen (or in the navigation bar area) an **Enter VR** button appears when the browser detects WebXR support.
-
-If you need to append the Quest 3 optimisation flag during testing:
-
-```
-https://<host-ip>:3001?force=quest3
+```bash
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+rustup target add aarch64-linux-android
+cargo install cargo-ndk
 ```
 
-This bypasses user-agent detection and explicitly enables the DPR cap at 1.0 and the Quest layout optimisations, which is useful when connecting from a browser that does not identify as Quest.
+### 1.4 Build the APK locally
 
-> The Meta Browser on Quest 3 reports a Quest user-agent string by default, so `?force=quest3` is typically not needed in normal use.
+```bash
+cd /path/to/visionclaw
 
----
+# Build the gdext shared library for Quest 3 (arm64)
+cargo ndk -t aarch64-linux-android build --release \
+  -p visionclaw-xr-gdext
 
-## Step 5: Enter XR Mode
+# Stage the .so into the Godot addon directory
+mkdir -p xr-client/addons/visionclaw_xr_gdext/aarch64
+cp target/aarch64-linux-android/release/libvisionclaw_xr_gdext.so \
+   xr-client/addons/visionclaw_xr_gdext/aarch64/
 
-1. With VisionClaw loaded in the Quest Browser, click the **Enter VR** button.
-2. The browser displays a permission prompt: **"Allow VisionClaw to use your VR headset?"** — tap **Allow**.
-3. VisionClaw transitions to XR mode:
-   - React Three Fiber desktop rendering is suspended.
-   - The Babylon.js engine initialises and loads graph data via the `useImmersiveData` subscription.
-   - A WebXR `immersive-vr` session is requested with `local-floor` as the reference space.
-4. The VisionClaw knowledge graph appears in 3D space around you, with nodes floating at floor-relative positions.
-5. Controllers are detected automatically. The `WebXRExperienceHelper` registers the `HAND_TRACKING` and `NEAR_INTERACTION` features; if you are using hand tracking without controllers, hand meshes appear in the scene.
+# Strip debug symbols to fit the 80 MB APK budget
+$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip \
+  xr-client/addons/visionclaw_xr_gdext/aarch64/libvisionclaw_xr_gdext.so
 
-**Target performance:** 90fps stable on Quest 3. The renderer caps `devicePixelRatio` at 1.0 automatically to maintain this target and keep the physics tick budget under 11ms per frame.
+# Headless export the APK
+mkdir -p xr-client/export
+godot --headless --path xr-client \
+  --export-release "Quest 3 arm64" export/visionclaw-xr.apk
 
-To exit XR, press the **Quest button** on the right controller, or click **Exit VR** in the VisionClaw in-headset UI panel.
+# Verify size
+ls -lh xr-client/export/visionclaw-xr.apk    # ≤ 80 MB (PRD-008 G4)
+```
 
----
-
-## Controller Bindings
-
-VisionClaw uses the `xr-standard` gamepad mapping. Both controllers are active simultaneously.
-
-| Controller | Button | Action |
-|------------|--------|--------|
-| Right | Trigger | Select the targeted graph node / confirm action |
-| Right | Grip | Grab and reposition a node in world space |
-| Right | Thumbstick (push) | Teleport to aim point |
-| Right | Thumbstick (rotate) | Snap-rotate camera view 45 degrees |
-| Right | A button | Context action 1 (expand node detail panel) |
-| Right | B button | Dismiss in-headset menu / cancel |
-| Left | Trigger | Ray-cast for targeting (secondary pointer) |
-| Left | Grip | Grab and reposition a node (left-hand) |
-| Left | Thumbstick (push) | Teleport (left-hand) |
-| Left | Thumbstick (rotate) | Smooth turn (if enabled) |
-| Left | X button | Context action 1 |
-| Left | Y button | Open in-headset settings panel (XRUI) |
-
-Haptic feedback fires on node selection events. Haptics can be disabled in the VisionClaw settings panel under **XR > Haptic Feedback**.
+CI builds the same artefact via `.github/workflows/xr-godot-apk.yml` — you
+can also download it from the most recent green run on `main`.
 
 ---
 
-## Navigation in XR
+## Step 2: Verify your VisionClaw backend
 
-### Teleportation
+The APK requires both the existing graph WebSocket and the new presence
+WebSocket to be reachable.
 
-The default locomotion mode is teleportation, provided by `WebXRMotionControllerTeleportation`. Point either thumbstick forward to display the parabolic arc indicator. Release to teleport to the arc's landing point. The arc snaps to the floor mesh and avoids teleporting inside nodes.
+```bash
+# Graph stream
+curl -k -i -H "Connection: Upgrade" -H "Upgrade: websocket" \
+  -H "Sec-WebSocket-Version: 13" \
+  -H "Sec-WebSocket-Key: $(openssl rand -base64 16)" \
+  https://your-host:3001/wss
+# Expected: HTTP/1.1 101 Switching Protocols (or 401 if auth required)
 
-Continuous smooth locomotion is available but disabled by default to reduce motion sickness risk. To enable it, open the XRUI settings panel (Left Y button) and toggle **Smooth Locomotion**.
+# Presence stream (added by PRD-008)
+curl -k -i -H "Connection: Upgrade" -H "Upgrade: websocket" \
+  -H "Sec-WebSocket-Version: 13" \
+  -H "Sec-WebSocket-Key: $(openssl rand -base64 16)" \
+  https://your-host:3001/ws/presence
+# Expected: HTTP/1.1 101 (or 401)
 
-### Node Selection
+# Voice (LiveKit, existing service)
+curl -i https://your-host:7880/
+# Expected: HTTP/1.1 200 OK with LiveKit version banner
+```
 
-Point either controller at a graph node. A ray extends from the controller tip. When the ray intersects a node, the node highlights and haptic feedback pulses. Press trigger to select. A selected node displays its label, metadata panel, and connected edges in highlighted colour.
+If `/ws/presence` returns 404, the server is missing
+`src/handlers/presence_handler.rs` from PRD-008 — rebuild the `webxr`
+container:
 
-### Graph Rotation
+```bash
+docker compose --profile dev up -d --build webxr
+docker compose logs --tail=200 webxr | grep -i presence
+```
 
-To rotate the entire graph:
+---
 
-1. Hold both grip buttons simultaneously.
-2. Move your hands apart, together, or in a circular arc.
-3. The graph scales, translates, or rotates correspondingly.
+## Step 3: Enable developer mode on Quest 3
 
-Two-hand gestures are detected by the `WebXRHandTracking` feature when using hand tracking without controllers. The same operations apply:
+1. Open the **Meta Quest** mobile app (the headset must be paired).
+2. Tap the headset icon → **Developer Mode**.
+3. Toggle **Developer Mode** to **On**. Register as a developer at
+   [developer.oculus.com](https://developer.oculus.com) if prompted.
+4. Put the headset on. A small developer-mode notification confirms it is
+   active.
+5. In the headset: **Settings → System → Developer** — confirm USB
+   Connection Dialog and Wireless ADB are toggled to your preference.
+
+---
+
+## Step 4: Connect via ADB
+
+### Wired USB
+
+1. Plug a USB-C cable from your workstation to the Quest 3.
+2. Approve the **Allow USB debugging?** prompt in the headset (tick
+   **Always allow from this computer**).
+3. From the workstation:
+
+```bash
+adb devices
+# List of devices attached
+# 1WMHHxxxxxxxxx    device
+
+adb shell getprop ro.build.version.release
+# A Horizon OS version string (Android 12 base)
+```
+
+### Wireless ADB (optional)
+
+After pairing once via USB:
+
+```bash
+adb tcpip 5555
+# Note the headset's LAN IP from Settings → Wi-Fi → (your network) → details
+adb connect 192.168.x.y:5555
+adb devices    # → 192.168.x.y:5555  device
+```
+
+---
+
+## Step 5: Provision a Nostr key on the device
+
+The APK authenticates to `/wss` and `/ws/presence` via **NIP-98** —
+each connection signs a server-issued nonce with your `did:nostr:<hex-pubkey>`
+private key. The key never leaves the device once provisioned.
+
+### Option A: Generate a fresh key on first launch (default)
+
+If no key exists at the APK's user data path, the APK generates a keypair
+on first launch and stores the private half in the **Android Keystore**
+(hardware-backed where available). You will see a one-time consent
+dialog. Recommended for first-time users.
+
+### Option B: Import an existing key
+
+If you already have a `did:nostr:<hex-pubkey>` (e.g. from your desktop
+client), push it before first launch:
+
+```bash
+# Save your existing private key (nsec/hex form) to a temporary file
+echo "nsec1...." > /tmp/nostr.key
+
+# Push to the APK's per-user data dir
+adb push /tmp/nostr.key \
+  /storage/emulated/0/Android/data/uk.xrsystems.visionclaw.xr/files/nostr.key
+
+# Securely delete the local copy
+shred -u /tmp/nostr.key
+```
+
+The APK reads `nostr.key` on first launch, wraps it in the Android
+Keystore, and **deletes the file**. Subsequent launches use the
+hardware-wrapped copy.
+
+### Option C: External signer (NIP-07-style)
+
+A future release will support a remote signer paired over BT/QR; for v1.0,
+the in-APK Keystore-wrapped key is the only option. See PRD-008 risk R7
+and the threat-model open question 10.5.
+
+---
+
+## Step 6: Install the APK
+
+```bash
+adb install -r xr-client/export/visionclaw-xr.apk
+# Performing Streamed Install
+# Success
+```
+
+Flags:
+- `-r` reinstalls over an existing install, preserving user data
+  (your provisioned Nostr key survives upgrades).
+- Add `-t` if installing a debug-tagged build that lacks a release signature.
+
+If `Failure [INSTALL_FAILED_UPDATE_INCOMPATIBLE]`, the new APK has a
+different signing key than the one already installed. Uninstall the old
+copy first (this **deletes** your provisioned key — re-provision per
+Step 5 after reinstall):
+
+```bash
+adb uninstall uk.xrsystems.visionclaw.xr
+adb install xr-client/export/visionclaw-xr.apk
+```
+
+---
+
+## Step 7: Launch and verify
+
+1. Put the headset on.
+2. Open the **Apps** drawer.
+3. Filter by **Unknown Sources** (top-right dropdown).
+4. Tap **VisionClaw XR** to launch.
+
+The boot sequence is intentionally chatty for the first ~200 ms — see
+[xr-architecture.md §5](../explanation/xr-architecture.md). You will see,
+in order:
+
+1. Splash + OpenXR capability probe (~50 ms).
+2. NIP-98 auth handshake against `/wss` (~80 ms).
+3. Presence room join against `/ws/presence` (~150 ms).
+4. First graph frame received and rendered (~100 ms).
+5. `xrBeginSession` → first compositor frame visible.
+
+Total cold-launch to first immersive frame: **≤ 3 s** on a warm cache
+(PRD-008 M2 exit predicate).
+
+### Configure server endpoints (first launch)
+
+The first launch displays the in-headset **Settings → Connection** panel.
+Defaults are read from `xr-client/scripts/main.gd`:
+
+| Field | Default | Notes |
+|---|---|---|
+| Server URL (graph) | `wss://visionclaw.local:3001/wss` | Same endpoint the desktop client uses |
+| Server URL (presence) | derived: `…:3001/ws/presence` | Override only for split deployments |
+| LiveKit URL | `wss://livekit.visionclaw.local:7880` | Existing voice service |
+| Default room | `default` | Server-side opaque UUID, surfaced as friendly name in `RoomMenu.tscn` |
+| Pose tx Hz | `90` | Match Quest 3 refresh; lower for Quest 2 |
+
+These values are saved to `user://config.toml` (Godot user data dir,
+backed by `/storage/emulated/0/Android/data/uk.xrsystems.visionclaw.xr/files/`).
+
+---
+
+## Step 8: Verify multi-user presence and voice
+
+### Single user
+
+1. With the APK running, verify the HUD shows a green dot for the presence
+   WS (long-press menu button to toggle the HUD).
+2. Pinch your thumb and index finger together — the targeted node should
+   highlight; pinch + drag should reposition it.
+
+### Two users
+
+1. Install the same APK on a second Quest 3 (Steps 5–6).
+2. Both users launch VisionClaw XR and join the **same room id** (defaults
+   to `default`).
+3. Within ~500 ms each user should see the other's avatar with head and
+   hand transforms updating smoothly. (PRD-008 G3.)
+4. Voice should be spatially located at the remote avatar's head — walk
+   around them to confirm HRTF directionality.
+
+### Voice configuration
+
+LiveKit room id is **the same as the presence room id (1:1)**. The token
+is minted server-side by `src/handlers/livekit_token_handler.rs` and
+requested by gdext over HTTPS at session start — there is no client-side
+LiveKit credential to configure.
+
+Mute via the HUD's mic icon (or controller B button). Local mute
+propagates through LiveKit's `participant_muted` event to remote clients
+within ~100 ms, displayed as a strikethrough on the avatar's voice icon.
+
+---
+
+## Hand and controller bindings
+
+VisionClaw XR is **hand-tracking-first**. Controllers work but are not
+required.
+
+### Hand gestures
 
 | Gesture | Action |
-|---------|--------|
-| Pinch (thumb + index) | Select / grab node |
-| Index extended | Ray cast for targeting |
-| Palm open | Open context menu |
-| Both hands moving apart | Scale graph up |
-| Both hands moving together | Scale graph down |
-| Both hands rotating arc | Rotate subgraph |
+|---|---|
+| Pinch (thumb + index) | Select / grab targeted node |
+| Pinch + drag | Reposition node (release to drop) |
+| Open palm + push forward | Dismiss menu |
+| Two-hand pinch + spread | Scale graph |
+| Two-hand pinch + rotate | Rotate subgraph |
 
-### LOD and Performance
+Detection is via `XR_EXT_hand_interaction`'s pinch-strength signal layered
+on top of `XR_EXT_hand_tracking`'s 26-joint pose. The gdext crate's
+`interaction.rs` mirrors a haptic pulse to whichever hand initiated the
+action.
 
-VisionClaw automatically reduces geometry complexity based on camera distance using `useVRConnectionsLOD`. If the graph contains more than 20 active connections or frame rate drops below target, edge opacity reduces and curve segment counts drop. No manual action is needed.
+### Controller bindings (xr-standard mapping)
+
+| Button | Action |
+|---|---|
+| Trigger (either) | Equivalent to pinch — select / grab |
+| Grip (either) | Equivalent to two-hand pinch when held bimanually |
+| Thumbstick (push) | Smooth locomotion (off by default; toggle in HUD) |
+| Menu (left) | Toggle HUD |
+| Quest button (right) | System exit (returns to Apps drawer) |
 
 ---
 
 ## Troubleshooting
 
 | Symptom | Cause | Fix |
-|---------|-------|-----|
-| "Enter VR" button is missing | Browser does not support WebXR | Confirm you are using the built-in **Meta Browser**, not a third-party browser on the headset |
-| "Enter VR" button is greyed out | `navigator.xr.isSessionSupported` returned `false` | Open browser console (`adb logcat` or Meta developer tools), check for WebXR errors; ensure the page is served over HTTPS |
-| SSL certificate error / page won't load | Self-signed cert not trusted | Follow Option A or Option B in Step 3 above |
-| Black screen after entering VR | DPR cap not applied | Append `?force=quest3` to the URL; check the browser console for `effectiveDpr` log to confirm the cap is at 1.0 |
-| VisionClaw loads but graph shows no nodes | WebSocket connection to backend failed | Verify VisionClaw services are running: `docker compose --profile xr ps`; check port 3001 from the Quest browser directly |
-| Frame rate drops below 72fps | Too many draw calls or LOD not active | Reduce the number of visible nodes in the desktop settings panel before entering VR; or enable `aggressiveCulling` via the in-headset settings |
-| Hand tracking not detected | Feature not registered | Hand tracking requires the headset to be in hand tracking mode (Settings > Movement Tracking > Hand and Controller Tracking > Hand Tracking); confirm `WebXRFeatureName.HAND_TRACKING` is enabled in `XRManager.ts` |
-| Controller input not registering | Controller not paired or motion controller not initialised | Remove and reinsert batteries in the controller; re-pair via Quest Settings > Controllers |
-| Spatial audio not working | Microphone permission denied or AudioContext blocked | Tap anywhere on the page before entering VR to unblock the AudioContext autoplay policy; grant microphone permission when prompted |
-| Vircadia multi-user avatars not visible | Vircadia world server unreachable | Run `docker logs vircadia-world-server`; confirm port 3020 is accessible within the Docker network |
+|---|---|---|
+| `adb install` fails with `INSTALL_FAILED_VERIFICATION_FAILURE` | Verify-apps-over-USB blocking dev-signed APK | `adb shell settings put global verifier_verify_adb_installs 0` then retry |
+| `INSTALL_FAILED_UPDATE_INCOMPATIBLE` | Existing install signed by a different key | `adb uninstall uk.xrsystems.visionclaw.xr` then reinstall (deletes Nostr key) |
+| Splash then immediate exit | Required OpenXR extension missing | `adb logcat -d -s visionclaw-xr` — look for `xrEnumerateInstanceExtensionProperties missing: <ext-id>`. Update Horizon OS to ≥ 71. |
+| Stays on splash > 5 s | NIP-98 auth failing or graph WS unreachable | `adb logcat -d -s visionclaw-xr | grep -E 'auth|ws'`. Verify Step 2 reachability; check clock skew (NIP-98 nonce window is 60 s). |
+| HUD shows red presence dot | `/ws/presence` returning 401 or 404 | Verify `presence_handler.rs` is mounted (Step 2); regenerate Nostr key if signature is stale |
+| Frame rate dips below 90 fps | Too many visible nodes for the LOD policy | Reduce node count via desktop settings before launch; or enable `aggressive_culling` in HUD → Performance |
+| Remote avatars freeze / teleport | Pose validation rejecting frames | Check server `presence.invalid_pose.*` counters; widen room policy thresholds for unusually tall users |
+| Voice plays but is not spatial | `AudioStreamPlayer3D` not parented to remote `AvatarRig.HeadPivot` | Restart APK; inspect `avatar_rig.gd::on_voice_track_attached` in logcat |
+| Voice fails entirely (silent) | LiveKit AAR not loading or token rejected | Verify Step 2 LiveKit reachability; check `adb logcat -s visionclaw-xr -s LiveKit`; confirm `livekit_token_handler` is reachable |
+| Hand tracking inactive | Quest in controller-only mode | Settings → Movement Tracking → Hand and Controller Tracking → **Hand Tracking** |
+| Spatial anchors don't persist | `XR_FB_spatial_entity_storage` permission not granted | Re-launch APK; grant the spatial-data permission on first prompt |
 
----
+### Useful logcat filters
 
-## WebXR Session Establishment Sequence
+```bash
+# All VisionClaw events
+adb logcat -s visionclaw-xr
 
-The following diagram shows the full session establishment flow from the moment you tap "Enter VR" to the first rendered frame in the headset.
+# Network + auth only
+adb logcat -s visionclaw-xr | grep -E 'ws|auth|nip98'
 
-```mermaid
-sequenceDiagram
-    participant Browser as Quest Browser
-    participant XRNav as navigator.xr
-    participant BabylonEngine as Babylon.js Engine
-    participant XRHelper as WebXRExperienceHelper
-    participant WebXRSession as WebXR Session (Platform)
-    participant RenderLoop as Babylon.js Render Loop
+# Frame timing (for perf debugging)
+adb logcat -s visionclaw-xr | grep -E 'frame_time|mtp|presence_join_latency'
 
-    Browser->>XRNav: isSessionSupported('immersive-vr')
-    XRNav-->>Browser: true
-    Browser->>BabylonEngine: Initialise engine + scene (BabylonScene.ts)
-    BabylonEngine->>BabylonEngine: Load graph data via useImmersiveData
-    Browser->>XRHelper: new WebXRExperienceHelper(scene)
-    XRHelper->>WebXRSession: xr.requestSession('immersive-vr', {requiredFeatures: ['local-floor'], optionalFeatures: ['hand-tracking']})
-    WebXRSession-->>XRHelper: XRSession granted
-    XRHelper->>XRHelper: Attach HAND_TRACKING feature
-    XRHelper->>XRHelper: Attach NEAR_INTERACTION feature
-    XRHelper->>XRHelper: Attach WebXRMotionControllerTeleportation
-    XRHelper->>XRHelper: Load XRUI (AdvancedDynamicTexture panels)
-    XRHelper->>RenderLoop: Start immersive render loop
-    RenderLoop->>Browser: First frame rendered at local-floor reference space
-    Browser-->>Browser: Quest display showing VisionClaw graph at 90fps
+# Strip everything to a file for the lab CI archive
+adb logcat -d -s visionclaw-xr > "logs/run-$(date +%s).log"
 ```
 
 ---
 
-## See Also
+## Updating the APK
 
-- [XR/VR Immersive Architecture](../explanation/xr-architecture.md) — explains the Babylon.js / React Three Fiber two-renderer design, WebXR session lifecycle, controller bindings implementation, and LOD system in depth
-- [Deployment Guide](deployment-guide.md) — full port table, Docker Compose profiles, and environment variable reference
-- [Client Architecture](../explanation/client-architecture.md) — R3F component reference and WebSocket consumption
+```bash
+# Pull the latest CI APK artefact (or rebuild locally per Step 1)
+adb install -r xr-client/export/visionclaw-xr.apk
+```
+
+The `-r` flag reinstalls over the existing copy, preserving user data —
+your provisioned Nostr key survives. APK upgrades require the same signing
+key (Android default); CI signs all release APKs with the project release
+key (debug builds use a per-developer keystore documented in
+`xr-client/android/local.properties.template`).
+
+---
+
+## Removing the APK
+
+```bash
+adb uninstall uk.xrsystems.visionclaw.xr
+```
+
+This deletes the APK, the provisioned Nostr key, and all `user://` data.
+If you want to keep the key, back it up first via the in-APK
+**Settings → Identity → Export Key** flow (returns a one-time-displayed
+nsec string for paper backup).
+
+---
+
+## See also
+
+- [XR Architecture](../explanation/xr-architecture.md) — Godot + gdext + OpenXR
+  design, boot sequence, frame loop, security baseline
+- [PRD-008 — XR Client Replacement](../PRD-008-xr-godot-replacement.md) — full
+  requirements and 8-week timeline
+- [ADR-071 — Godot 4 + godot-rust + OpenXR](../adr/ADR-071-godot-rust-xr-replacement.md) —
+  decision rationale (six options considered)
+- [XR Godot System Architecture](../xr-godot-system-architecture.md) —
+  authoritative deep-dive
+- [XR Godot Threat Model](../xr-godot-threat-model.md) — security analysis
+- [Deployment Guide](deployment-guide.md) — full port table and Compose profiles

@@ -1,8 +1,16 @@
 # ADR-033: Decouple Vircadia SDK from Quest 3 Auto-Detector
 
+> **Status: Superseded by [ADR-071](../ADR-071-godot-rust-xr-replacement.md) and [PRD-008](../../PRD-008-xr-godot-replacement.md). Archived 2026-05-02.**
+>
+> The entire Vircadia SDK has been removed from VisionClaw. Multi-user XR
+> presence is now provided by the Godot Rust substrate (`xr-client/`,
+> `crates/visionclaw-xr-presence/`, `/ws/presence` route). Restore the original
+> stack from the `feat/preserve-vircadia-stack` branch or the `pre-godot-xr`
+> tag if the historical implementation is needed.
+
 ## Status
 
-Proposed
+Superseded — see notice above.
 
 ## Context
 

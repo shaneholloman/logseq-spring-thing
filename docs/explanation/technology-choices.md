@@ -40,7 +40,8 @@ VisionClaw combines technologies from different ecosystems to achieve a unique b
 |-------|------------|----------------|
 | **Backend** | Rust + Actix Web | Memory safety + native performance |
 | **Database** | Neo4j 5.13 | Native graph storage + Cypher queries |
-| **Frontend** | React + Three.js | Component model + WebGL ecosystem |
+| **Frontend (desktop)** | React + Three.js | Component model + WebGL ecosystem |
+| **XR client (Quest 3)** | Godot 4.3 + godot-rust + OpenXR | Native APK; lifts WebXR ceiling; aligns with Rust substrate ([ADR-071](../adr/ADR-071-godot-rust-xr-replacement.md)) |
 | **GPU Compute** | CUDA 12.4 | 100x speedup + mature ecosystem |
 | **AI Orchestration** | MCP Protocol + Claude | Multi-agent coordination + context management |
 | **Ontology** | OWL/RDF + Whelk | Semantic reasoning + open standards |
@@ -54,9 +55,9 @@ VisionClaw combines technologies from different ecosystems to achieve a unique b
 %%{init: {'theme': 'base', 'themeVariables': {'primaryColor': '#4A90D9', 'primaryTextColor': '#fff', 'lineColor': '#2C3E50'}}}%%
 graph TB
     subgraph "Client Layer"
-        React["React 18\n+ TypeScript"]
-        R3F["React Three Fiber\n+ Three.js"]
-        Babylon["Babylon.js\nXR / WebXR"]
+        React["React 18\n+ TypeScript<br/>(desktop)"]
+        R3F["React Three Fiber\n+ Three.js<br/>(desktop graph)"]
+        Godot["Godot 4.3 APK\n+ godot-rust + OpenXR<br/>(Quest 3 native)"]
         WASM["Rust/WASM\nScene Effects"]
     end
 
@@ -83,7 +84,7 @@ graph TB
 
     React --> WS
     R3F --> WS
-    Babylon --> WS
+    Godot --> WS
     WASM --> R3F
     WS --> Actix
     REST --> Actix
@@ -381,29 +382,20 @@ Use **React 18 + Three.js (React Three Fiber)** instead of vanilla WebGL, Unity 
 - Rich examples (200+ demos covering every use case)
 - Extensions: post-processing, physics (cannon-es), VR (WebXR)
 
-#### 3. XR/VR Support
+#### 3. Desktop Graph View Only
 
-**React Three Fiber + WebXR:**
+React Three Fiber on the desktop renders the **non-XR** graph view —
+2D and 3D orbital cameras, instanced meshes, and the existing GraphManager
+/ GlassEdges / InstancedLabels pipeline. **It does not render XR.**
 
-```tsx
-// Meta Quest 3 VR scene:
-<VRCanvas>
-  <XROrigin>
-    <Controllers />
-    <Hands /> {/* 25-joint hand tracking */}
-  </XROrigin>
+XR has been moved off the browser entirely. The Quest 3 immersive client
+is a **native APK** built from a Godot 4.3 project with godot-rust (gdext)
+hot paths and OpenXR runtime access — see the **XR Client** section
+below ([ADR-071](../adr/ADR-071-godot-rust-xr-replacement.md),
+[PRD-008](../PRD-008-xr-godot-replacement.md)).
 
-  <Graph nodes={graphData.nodes} />
-
-  <XRButton mode="AR" /> {/* AR passthrough */}
-</VRCanvas>
-```
-
-**Built-in support for:**
-- Hand tracking (Meta Quest 3)
-- Controller input (Vive, Index, Quest)
-- AR passthrough (Quest 3, HoloLens)
-- Spatial audio (WebAudio API)
+The desktop R3F path remains the entry point for users without an XR
+headset; it consumes the same 28 B/node binary protocol the APK consumes.
 
 ### Alternatives Considered
 
@@ -421,12 +413,13 @@ Use **React 18 + Three.js (React Three Fiber)** instead of vanilla WebGL, Unity 
 - ❌ Long initial load times (WASM + asset loading)
 - ❌ Difficult to integrate with web ecosystem (HTML, React)
 
-**Babylon.js:**
-- ✅ Comprehensive 3D engine (physics, animation, PBR)
-- ✅ Excellent documentation
-- ❌ Heavier than Three.js (larger bundle)
-- ❌ Smaller ecosystem (fewer React integrations)
-- ❌ Steeper learning curve
+**Other browser 3D engines (e.g. for an alternate XR path):**
+- ✅ Comprehensive 3D engines (physics, animation, PBR) exist
+- ❌ Still browser-bound — same WebXR feature ceiling that pushed us to a native APK
+- **Decision:** XR is not a browser concern in VisionClaw v2. The native Quest 3 APK
+  per [ADR-071](../adr/ADR-071-godot-rust-xr-replacement.md) /
+  [PRD-008](../PRD-008-xr-godot-replacement.md) is the only XR surface — see the
+  **XR Client** section below.
 
 **Svelte + Threlte:**
 - ✅ Faster than React (no virtual DOM)
@@ -448,6 +441,130 @@ Use **React 18 + Three.js (React Three Fiber)** instead of vanilla WebGL, Unity 
 **Learning Curve:**
 - Developers must learn React, Three.js, WebGL concepts, and React Three Fiber
 - Mitigation: Comprehensive documentation, interactive examples
+
+---
+
+## XR Client: Why Godot 4 + godot-rust + OpenXR?
+
+### The Decision
+
+The Quest 3 immersive client is a **native Android APK** built from a
+**Godot 4.3** project, with performance-critical paths in **Rust via
+godot-rust (gdext)** and runtime XR access through **OpenXR**.
+
+The full decision record is [ADR-071](../adr/ADR-071-godot-rust-xr-replacement.md);
+the product spec is [PRD-008](../PRD-008-xr-godot-replacement.md). This
+section summarises the rationale for the technology-choice doc.
+
+### Rationale
+
+#### 1. Lift the WebXR feature ceiling
+
+WebXR on Quest is constrained by the Meta browser's compositor budget and
+exposes only a subset of OpenXR. Native OpenXR via Godot's `OpenXRPlugin`
+gives full access to:
+
+- `XR_FB_passthrough` (Quest passthrough as a compositor layer, not a JS texture)
+- `XR_FB_scene` + `XR_FB_scene_capture` (room mesh for occlusion)
+- `XR_FB_spatial_entity` + `XR_FB_spatial_entity_storage` (anchored graph origin across sessions)
+- `XR_FB_foveation` + `XR_FB_foveation_configuration` (foveated rendering hints)
+- `XR_EXT_hand_tracking` + `XR_EXT_hand_interaction` (26-joint hands + pinch signals)
+- `XR_KHR_composition_layer_depth` (correct passthrough occlusion sorting)
+
+None of these were reachable through the prior browser stack at usable fidelity.
+
+#### 2. Rust substrate alignment
+
+The hot paths the XR client cares about — **binary protocol decode, presence
+WebSocket, pose validation, LOD math** — were previously re-implemented in
+TypeScript. With godot-rust, they are workspace-member crates
+(`crates/binary-protocol`, `crates/visionclaw-xr-presence`,
+`crates/visionclaw-xr-gdext`) that link directly into the APK. The same
+crate that decodes a position frame on the server decodes it on the headset.
+There is no second source of truth.
+
+#### 3. Performance ceiling — no JS GC, direct GPU upload
+
+Quest 3's 11.1 ms / frame budget at 90 Hz is not forgiving for a JS render
+loop competing with the WebXR compositor. Removing JS GC, the DOM, and the
+browser's compositor overhead opens the path to higher node counts at 90 Hz
+(PRD-008 G1: 5 K visible nodes + 4 remote avatars, 99th-pct frame time ≤ 12 ms).
+
+#### 4. Hybrid GDScript + Rust keeps iteration speed where it matters
+
+The split is deliberate:
+
+- **GDScript** owns scenes, signal wiring, UI panels, OpenXR feature toggles —
+  the bits where iteration speed and the scene editor matter.
+- **Rust (gdext)** owns the wire format, presence state machine, NIP-98 auth,
+  pose validation, LOD buckets — the bits where correctness, type safety,
+  and `cargo test` matter.
+
+This avoids both the binding ceremony of pushing the entire UI into Rust
+(which Bevy would force), and the runtime ambiguity of doing protocol
+decode in GDScript.
+
+#### 5. Mature scene editor + Android export pipeline
+
+Godot 4.3's scene editor, GLTF round-trip, and Android export template are
+production-tested. Signing, manifest generation, and OpenXR loader
+integration are well-trodden paths — CI builds the APK in ~6 min and gates
+on the 80 MB size budget.
+
+### Alternatives Considered
+
+ADR-071 §"Considered Options" enumerates six. Summary here:
+
+| Option | Why not |
+|---|---|
+| **Godot 4 HTML5 + WebXR** | Loses the entire reason to switch — still goes through the browser's WebXR layer; no Quest extensions; bundle size larger than the current Three.js bundle |
+| **Bevy + bevy_oxr** | `bevy_oxr` is alpha; no scene editor (every UI panel hand-coded); GLTF tooling not at parity. Right answer in 12 months, not today |
+| **Unity + OpenXR** | C# is two language boundaries from Rust; runtime adds ~250 MB to the APK; closed-source engine with shifting commercial terms is a known long-term risk |
+| **StereoKit (C#)** | Same Rust-distance issue as Unity; Microsoft-ecosystem-anchored; renderer not designed for thousands of instanced graph nodes |
+| **Continue WebXR (incremental)** | Does not address any of the structural failures; each future MR feature reopens the same decision |
+
+### Trade-Offs Accepted
+
+**No browser entry point.**
+Quest users side-load (developer mode) or eventually install via the Quest
+Store. The audience already used the headset that way; the "click-to-enter
+VR from a web page" flow was theoretical. Mitigation: side-load instructions
+in [`docs/how-to/xr-setup-quest3.md`](../how-to/xr-setup-quest3.md);
+Meta Quest Store submission tracked separately.
+
+**godot-rust learning curve.**
+gdext 0.2 is binding-stable but young; the team needs ~1 sprint per
+developer to be fluent. Mitigation: pin a specific gdext commit in
+`Cargo.toml`; explicit bump PRs only after smoke-testing on the lab Quest.
+
+**Separate APK build pipeline in CI.**
+Adds ~6 min to the XR build leg (Godot headless export + Android NDK +
+signing). Runs in parallel with the browser build, so wall-clock CI time
+is unaffected.
+
+**Shader/material porting.**
+Glass edges, instanced labels, and the WASM scene-effects need Godot
+Shading Language equivalents for the XR client. The desktop browser keeps
+its existing Three.js shaders unchanged.
+
+**LiveKit Android AAR binding shim.**
+Voice migrates from `livekit-client` (JS SDK) to `livekit-android-sdk`
+(AAR) wrapped in a small Kotlin/JNI shim exposed to Godot. The shim is
+non-trivial but is a one-time integration cost; HRTF spatialisation runs
+through Godot's `AudioStreamPlayer3D` natively.
+
+### Stack Summary
+
+| Component | Technology | Pin |
+|---|---|---|
+| Engine | Godot | 4.3 stable |
+| Rust ↔ Godot bridge | godot-rust (gdext) | v0.2 (commit-pinned) |
+| Rust toolchain | rustc | stable 1.82+ |
+| Android NDK | Google NDK | r26d |
+| Target ABI | aarch64-linux-android only | Quest 3 is arm64 |
+| OpenXR | bundled with Godot OpenXR plugin | tracks Godot version |
+| Voice transport | LiveKit Android SDK (AAR) | v2.x |
+| Java/Kotlin | JDK | 17 |
 
 ---
 
@@ -869,7 +986,7 @@ VisionClaw's technology choices reflect three core principles:
 
 ### 2. Standards Over Lock-In
 - **OWL/RDF ontologies** - W3C standards, interoperable
-- **WebXR** - Open VR/AR standard, not proprietary
+- **OpenXR** - Khronos standard for XR runtime (Quest, Pico, Index, Vision Pro, ALVR all conform)
 - **Neo4j Cypher** - Industry-standard graph query language
 - **MCP protocol** - Emerging standard for AI agent coordination
 

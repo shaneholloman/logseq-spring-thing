@@ -1,8 +1,15 @@
 # ADR-032: RATK Integration for WebXR Session Feature Handling
 
+> **Status: Superseded by [ADR-071](../ADR-071-godot-rust-xr-replacement.md) and [PRD-008](../../PRD-008-xr-godot-replacement.md). Archived 2026-05-02.**
+>
+> The WebXR + Three.js + RATK runtime described below has been removed from the
+> repository. XR delivery is now a Godot APK (OpenXR) sideloaded onto Quest 3.
+> Restore the original stack from the `feat/preserve-vircadia-stack` branch or
+> the `pre-godot-xr` tag if the historical implementation is needed.
+
 ## Status
 
-Proposed
+Superseded — see notice above.
 
 ## Context
 

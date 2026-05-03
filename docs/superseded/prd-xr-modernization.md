@@ -1,6 +1,12 @@
 # PRD: VisionClaw XR Subsystem Modernization
 
-**Status**: Draft
+> **Status: Superseded by [ADR-071](../adr/ADR-071-godot-rust-xr-replacement.md) and [PRD-008](../PRD-008-xr-godot-replacement.md). Archived 2026-05-02.**
+>
+> This PRD targeted the WebXR / Vircadia / Three.js stack which has now been
+> removed from the repository. Replacement substrate is Godot + Rust gdext
+> (OpenXR) — see PRD-008 and the [removal plan](../xr-vircadia-removal-plan.md).
+
+**Status**: Superseded — see notice above. Original status: Draft
 **Priority**: P1 -- XR subsystem is 4 months stale with 17% test coverage
 **Affects**: `ImmersiveApp.tsx`, `platformManager.ts`, `quest3AutoDetector.ts`,
 `useVRConnectionsLOD.ts`, XR session lifecycle, Vircadia integration

@@ -78,7 +78,7 @@ Don't know which skill? --> /route [describe your task]  (unified dispatcher)
 
 Single file, quick fix? --> Direct Edit (no skill needed)
 Game dev (Godot/Unity/Unreal)? --> /game-dev
-VR/AR (Meta Quest, WebXR, hand tracking, passthrough)? --> /meta-xr-sdk
+XR (Quest 3 native APK, Godot 4 + godot-rust + OpenXR, hand tracking, passthrough)? --> /game-dev or /rust-development (see docs/explanation/xr-architecture.md, ADR-071, PRD-008; XR project lives at xr-client/, gdext crates at crates/visionclaw-xr-{gdext,presence}/)
 Bug/feature/review (single agent)? --> lazy-fetch blueprints
 Multi-file feature with TDD? --> /build-with-quality
 Large codebase structural analysis (call graphs, arch, diff)? --> codebase-memory

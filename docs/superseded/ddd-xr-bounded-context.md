@@ -1,5 +1,10 @@
 # DDD Analysis: XR/Immersive Bounded Context
 
+> **Status: Superseded by [ADR-071](../adr/ADR-071-godot-rust-xr-replacement.md) and [PRD-008](../PRD-008-xr-godot-replacement.md). Archived 2026-05-02.**
+>
+> The bounded context modelled below targeted the Vircadia + WebXR substrate.
+> The new bounded context is documented in [docs/ddd-xr-godot-context.md](../ddd-xr-godot-context.md).
+
 ## 1. Bounded Context Map
 
 ```mermaid

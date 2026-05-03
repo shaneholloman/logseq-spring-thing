@@ -1,517 +1,487 @@
 ---
-title: VisionClaw XR/VR Immersive Architecture
-description: VisionClaw's extended reality architecture — Babylon.js immersive mode for WebXR, Vircadia multi-user integration, and the architectural decision to move XR from React Three Fiber to Babylon.js
+title: VisionClaw XR Architecture (Godot 4 + godot-rust + OpenXR)
+description: VisionClaw's XR architecture. A native Quest 3 APK built on Godot 4.3 + godot-rust (gdext) + OpenXR talks the existing 28 B/node binary protocol and a new presence WebSocket. Replaces the prior browser-based WebXR design.
 category: explanation
-tags: [xr, vr, webxr, babylon.js, vircadia, immersive, three.js]
-updated-date: 2026-04-09
+tags: [xr, vr, godot, godot-rust, gdext, openxr, quest3, presence, livekit, binary-protocol]
+updated-date: 2026-05-02
+status: accepted
+related:
+  - docs/PRD-008-xr-godot-replacement.md
+  - docs/adr/ADR-071-godot-rust-xr-replacement.md
+  - docs/ddd-xr-godot-context.md
+  - docs/xr-godot-system-architecture.md
+  - docs/xr-godot-threat-model.md
+  - docs/binary-protocol.md
+  - docs/adr/ADR-061-binary-protocol-unification.md
+  - docs/how-to/xr-setup-quest3.md
 ---
 
-# VisionClaw XR/VR Immersive Architecture
+# VisionClaw XR Architecture
 
-## Architectural Decision: Babylon.js for All XR Modes
-
-**VisionClaw uses Babylon.js for XR and immersive modes. React Three Fiber (Three.js) is used exclusively for the desktop graph view.**
-
-This is a definitive architectural position established during the Vircadia integration and renderer consolidation analysis. The rationale:
-
-1. **Native WebXR support.** Babylon.js provides `WebXRExperienceHelper`, built-in `WebXRHandTracking`, `WebXRMotionControllerTeleportation`, and `WebXRController` without polyfills. Three.js requires a WebXR polyfill and manual implementation of hand tracking.
-2. **Quest 3 optimisation.** Babylon.js has WASM-accelerated physics, foveated rendering hooks, and a guardian-system integration that match Quest 3's 90fps requirements. The `Quest3Optimizer.ts` module was written specifically against Babylon.js APIs.
-3. **Vircadia native alignment.** The Vircadia SDK (`vircadia-world-sdk-ts`) is renderer-agnostic (pure TypeScript, no 3D engine dependencies), and the existing `VircadiaSceneBridge.ts` creates Babylon.js meshes from Vircadia entity data. Rebuilding this bridge on Three.js would provide no benefit.
-4. **XR UI layer.** Babylon.js `AdvancedDynamicTexture` provides a 3D GUI system used for in-headset control panels. The equivalent in Three.js requires third-party libraries.
-5. **Desktop 3D graph stays on Three.js.** R3F's declarative component model and the existing instanced rendering pipeline (GraphManager, GlassEdges, InstancedLabels) are well-optimised for the desktop use case. There is no reason to migrate them.
-
-The two renderers **coexist but do not overlap**: desktop mode renders via R3F; entering XR suspends R3F rendering and activates the Babylon.js scene.
+> **Architectural decision.** VisionClaw's XR client is a **native Meta Quest 3
+> APK** built from a **Godot 4.3** project, with performance-critical paths
+> implemented in **Rust via godot-rust (gdext)** and runtime XR access through
+> **OpenXR**. Multi-user presence rides a new **`/ws/presence`** WebSocket
+> served by a Rust `PresenceActor`; the existing 28 B/node binary position
+> stream (per [ADR-061](../adr/ADR-061-binary-protocol-unification.md)) is
+> consumed unchanged. Voice continues to ride **LiveKit** (Android AAR on the
+> headset; HRTF spatialised in the Godot audio bus).
+>
+> **Predecessor.** The prior browser-hosted WebXR client is removed wholesale
+> per [PRD-008](../PRD-008-xr-godot-replacement.md) and
+> [ADR-071](../adr/ADR-071-godot-rust-xr-replacement.md); both documents
+> reference the file-by-file removal manifest. The browser entry point is
+> gone. Quest 3 users side-load `visionclaw-xr.apk`; non-XR users continue
+> to use the desktop browser graph view (unchanged).
 
 ---
 
-## Two-Renderer Architecture
+## 1. Why a native APK
+
+The browser-hosted WebXR client could not deliver the headline experience on
+the headline device, for five structural reasons documented in PRD-008 §1:
+
+1. **Silent-fail multi-user coupling** — the prior world-server detector was
+   hard-coded against `ws://localhost:3020`; users entered "VR" against a stub.
+2. **Two competing renderers** — separate immersive and fallback render trees;
+   identity, scene graph, and input pipelines duplicated.
+3. **JS/PostgreSQL multi-user against a Rust substrate** — the prior world
+   server owned its own entity store in its own Postgres; VisionClaw's
+   authoritative graph state lives in Neo4j + RuVector + `GraphStateActor`.
+   Two sources of truth.
+4. **WebXR feature ceiling on Quest 3** — no scene mesh, no spatial anchors,
+   no FB passthrough composition layer, no foveated-rendering hints; JS GC in
+   the render loop competing with the WebXR compositor for an 11.1 ms budget.
+5. **The reach we actually have is Quest Browser** — Safari has no WebXR; the
+   "browser-universal" justification was never real.
+
+The native APK lifts the ceiling: full OpenXR extension surface, no JS GC,
+Rust-substrate alignment, and the same 28 B/node binary protocol the desktop
+client speaks. See
+[ADR-071](../adr/ADR-071-godot-rust-xr-replacement.md) for the full decision
+analysis (six options considered).
+
+---
+
+## 2. System view
 
 ```mermaid
 graph TB
-    subgraph "Desktop Mode (Default)"
-        R3F[React Three Fiber]
-        Three[Three.js]
-        R3F --> Three
-        Three --> Desktop[2D/3D Graph View\nGraphManager, GlassEdges, InstancedLabels]
+    User(["User<br/>(Quest 3 headset)"])
+    DesktopUser(["User<br/>(desktop browser, unchanged)"])
+
+    subgraph QuestDevice ["Meta Quest 3 (Android, Horizon OS)"]
+        APK["Godot 4.3 APK<br/><b>NEW</b>"]
+        GDExt["gdext crate<br/>visionclaw-xr-gdext<br/><b>NEW</b>"]
+        OpenXR["OpenXR runtime<br/>(Meta)"]
+        APK --> GDExt
+        APK --> OpenXR
     end
 
-    subgraph "XR / Immersive Mode"
-        Babylon[Babylon.js 8.28+]
-        WebXR[WebXR Device API]
-        Babylon --> WebXR
-        WebXR --> HMD[VR Headset or AR Device]
+    subgraph DesktopBrowser ["Desktop browser (unchanged)"]
+        R3F["React + R3F client<br/>client/src/"]
     end
 
-    subgraph "Multi-User XR"
-        Vircadia[Vircadia World Server\nws://host:3020/world/ws]
-        VircadiaSDK[vircadia-world-sdk-ts\nRenderer-agnostic TypeScript]
-        VircadiaBridge[VircadiaSceneBridge.ts\nBabylon.js mesh creation]
-        Vircadia --> VircadiaSDK
-        VircadiaSDK --> VircadiaBridge
-        VircadiaBridge --> Babylon
-        Vircadia --> Avatar[Avatar System\nGLB/GLTF + AvatarManager.ts]
-        Vircadia --> Voice[Spatial Audio\nWebRTC + HRTF]
+    subgraph WebxrContainer ["webxr container (Rust / Actix)"]
+        WSGraph["/wss<br/>graph stream<br/>(unchanged)"]
+        WSPresence["/ws/presence<br/><b>NEW</b>"]
+        PresHandler["presence_handler.rs<br/><b>NEW</b>"]
+        PresActor["PresenceActor<br/><b>NEW</b>"]
+        Supervisor["GraphServiceSupervisor<br/>(unchanged)"]
+        ClientCoord["ClientCoordinatorActor<br/>(unchanged)"]
+        Physics["PhysicsOrchestratorActor<br/>(unchanged)"]
+        ForceCompute["ForceComputeActor + CUDA<br/>(unchanged)"]
+        GraphState["GraphStateActor<br/>(unchanged)"]
+
+        WSGraph --> ClientCoord
+        WSPresence --> PresHandler --> PresActor
+        Supervisor --> ClientCoord
+        Supervisor --> Physics
+        Supervisor --> GraphState
+        Supervisor --> PresActor
+        ForceCompute --> ClientCoord
+        Physics --> ForceCompute
     end
 
-    GraphData[Graph Data\nSame Neo4j source\nSame WebSocket binary stream] --> R3F
-    GraphData --> Babylon
+    subgraph LK ["LiveKit (existing voice overlay)"]
+        LiveKit["livekit :7880"]
+    end
+
+    User --> APK
+    DesktopUser --> R3F
+    APK -- "TLS WebSocket" --> WSGraph
+    APK -- "TLS WebSocket" --> WSPresence
+    APK -- "WebRTC" --> LiveKit
+
+    classDef new fill:#c8e6c9,stroke:#2e7d32,stroke-width:2px
+    classDef unchanged fill:#eceff1,stroke:#546e7a
+    class APK,GDExt,WSPresence,PresHandler,PresActor new
+    class WSGraph,Supervisor,ClientCoord,Physics,ForceCompute,GraphState,R3F unchanged
 ```
 
-The Vircadia SDK has **no dependency on Three.js or Babylon.js**. Its `package.json` lists only `postgres`, `zod`, `lodash-es`, `jsonwebtoken`, and Vue utilities — no renderer. This is the technical proof that the SDK is renderer-agnostic and that any future renderer migration would require changing only `VircadiaSceneBridge.ts`.
+The five highlighted components are the entire server-side surface area of
+this work. Neo4j, the GPU physics pipeline, the broadcast optimiser, the
+desktop client, and the LiveKit voice overlay are consumed as-is.
 
 ---
 
-## Babylon.js Client File Structure
+## 3. Repository layout
 
 ```
-client/src/immersive/
-├── components/
-│   └── ImmersiveApp.tsx          # Main XR entry point
-├── babylon/
-│   ├── BabylonScene.ts           # Babylon Engine + Scene setup
-│   ├── XRManager.ts              # WebXRExperienceHelper wrapper
-│   ├── GraphRenderer.ts          # Instanced graph rendering in Babylon
-│   ├── DesktopGraphRenderer.ts   # Babylon desktop fallback (no WebXR)
-│   ├── XRUI.ts                   # AdvancedDynamicTexture in-headset GUI
-│   └── VircadiaSceneBridge.ts    # Vircadia entities → Babylon meshes
-├── hooks/
-│   ├── useImmersiveData.ts       # Graph data subscription for XR
-│   ├── useVRConnectionsLOD.ts    # Distance-based LOD management
-│   └── useVRHandTracking.ts      # Hand and controller state
-└── threejs/
-    ├── VRGraphCanvas.tsx          # R3F XR canvas (legacy path)
-    ├── VRAgentActionScene.tsx     # Agent visualisation in VR
-    ├── VRActionConnectionsLayer.tsx
-    └── VRInteractionManager.tsx   # Node selection and dragging
+xr-client/                              Godot 4.3 project (NEW)
+├── project.godot
+├── scenes/
+│   ├── XRBoot.tscn                    OpenXR init, capability probe, error overlay
+│   ├── GraphScene.tscn                MultiMeshInstance3D nodes + ImmediateMesh edges
+│   ├── AvatarRig.tscn                 Head + 2 hands + nameplate (one per remote user)
+│   ├── LocalRig.tscn                  XROrigin3D + XRCamera3D + XRController3D x2
+│   └── HUD.tscn                       Settings, room picker, mute, debug overlay
+├── scripts/                           GDScript: scene wiring, signal dispatch, UI
+├── addons/
+│   ├── visionclaw_xr_gdext/           Compiled gdext .so, packaged with the APK
+│   └── livekit/                       LiveKit Android AAR + binding shim
+├── export_presets.cfg                 Quest 3 export preset (arm64-v8a, OpenXR)
+└── android/                           Custom Gradle template (NDK r26+)
+
+crates/
+├── visionclaw-xr-gdext/               gdext crate (NEW) — APK hot paths
+│   └── src/{lib,protocol_decoder,presence_client,pose_validator,lod,perf_tap}.rs
+├── visionclaw-xr-presence/            Server presence crate (NEW)
+│   └── src/{lib,room,pose_validator,messages,auth}.rs
+└── binary-protocol/                   (extracted per PRD-007) — workspace member
+
+src/
+├── handlers/presence_handler.rs       Actix WS handler at /ws/presence (NEW)
+└── actors/presence_actor.rs           Wires into GraphServiceSupervisor (NEW)
 ```
 
-The `threejs/` subdirectory under `immersive/` represents an earlier WebXR implementation using `@react-three/xr`. New XR feature development targets `babylon/`.
+The desktop browser tree (`client/src/` non-`immersive/`) is untouched. The
+prior immersive and world-server-bridge trees are deleted per the removal
+plan referenced by [PRD-008 §5.6](../PRD-008-xr-godot-replacement.md) and
+[ADR-071](../adr/ADR-071-godot-rust-xr-replacement.md).
 
 ---
 
-## Mode Switching: Desktop to XR
+## 4. gdext modules (Godot ↔ Rust split)
+
+The split is deliberate:
+
+- **GDScript** owns scene composition, signal wiring, UI state, OpenXR
+  feature toggles, and scene-graph manipulation in response to gdext
+  signals. **No** wire-format parsing, **no** WebSocket state, **no** pose
+  validation.
+- **gdext (Rust)** owns protocol decode, WS lifecycle, NIP-98 auth, pose
+  validation, LOD math, and perf taps. Exposed to GDScript via
+  `#[derive(GodotClass)]` classes that emit signals to the scene tree.
+
+The shared `crates/visionclaw-xr-presence` library is **transport-agnostic**
+— it is consumed by both the gdext crate (on the APK) and
+`presence_actor.rs` (on the server). Wire-level pose semantics cannot drift
+between client and server because both link the same encoder.
+
+---
+
+## 5. Boot sequence
 
 ```mermaid
 sequenceDiagram
-    participant User
-    participant UI as React UI
-    participant R3F as React Three Fiber
-    participant XRCheck as navigator.xr
-    participant Babylon as Babylon.js Engine
-    participant WebXR as WebXR Session
+    autonumber
+    participant APK as Godot APK
+    participant GDExt as gdext crate
+    participant XR as OpenXR (Meta)
+    participant Server as Rust webxr container
 
-    User->>UI: Click "Enter VR"
-    UI->>XRCheck: isSessionSupported('immersive-vr')
-    XRCheck-->>UI: true
-    UI->>R3F: Suspend rendering (unmount Canvas or pause useFrame)
-    UI->>Babylon: Initialize engine + scene (BabylonScene.ts)
-    Babylon->>Babylon: Load graph data via useImmersiveData
-    UI->>WebXR: xr.enterXRAsync('immersive-vr', 'local-floor')
-    WebXR-->>Babylon: XRSession granted
-    Babylon->>Babylon: Attach XRManager, load XRUI
-    Babylon-->>User: VR view active at 72/90fps
+    APK->>GDExt: boot::initialize()
+    GDExt->>XR: xrCreateInstance(required extensions)
+    XR-->>GDExt: XrInstance handle
+    GDExt->>GDExt: capability probe (immutable for process lifetime)
 
-    User->>UI: Click "Exit VR" or remove headset
-    WebXR->>WebXR: Session end event
-    Babylon->>Babylon: Dispose XR scene
-    UI->>R3F: Resume rendering
-    R3F-->>User: Desktop graph view restored
+    GDExt->>Server: GET /api/auth/challenge → nonce
+    GDExt->>GDExt: schnorr_sign(nonce || ts, did_priv)
+    GDExt->>Server: WSS /wss + Authorization: Nostr <NIP-98>
+    Server-->>GDExt: subscription_confirmed
+
+    GDExt->>Server: WSS /ws/presence + Authorization
+    Server-->>GDExt: room_joined{members, spawn_anchor, livekit_token}
+
+    APK->>APK: load GraphScene.tscn
+    Server-->>GDExt: 0x42 frame N=5000
+    GDExt->>GDExt: parse → MultiMeshInstance3D buffers
+    APK->>XR: xrBeginSession() → first compositor frame
 ```
 
-Quest 3 user-agent detection caps `devicePixelRatio` at **1.0** to prevent the render target from exceeding panel resolution and to keep the physics tick budget under 11ms:
-
-```typescript
-function getEffectiveDpr(): number {
-  const isQuest = /Quest/i.test(navigator.userAgent);
-  return isQuest ? Math.min(window.devicePixelRatio, 1.0) : window.devicePixelRatio;
-}
-```
-
-A `?force=quest3` URL parameter bypasses user-agent detection for development testing.
+Graph WS connects before presence WS — graph state is the load-bearing
+context. Presence is allowed to fail without aborting boot; the user enters
+a single-user session and a yellow indicator appears in the HUD. Cold-launch
+to first immersive frame: **≤ 3 s** on warm cache (PRD-008 M2).
 
 ---
 
-## WebXR Setup
+## 6. Frame loop
 
-### Browser Requirements
-
-| Browser | Minimum version | Notes |
-|---------|----------------|-------|
-| Chrome / Edge | 79+ | Full WebXR |
-| Meta Quest Browser | Any | Primary target |
-| Firefox Reality | Any | Supported |
-| Safari | Not supported | No WebXR Device API |
-
-### Session Initialisation
-
-```typescript
-import { WebXRFeatureName, WebXRExperienceHelper } from "@babylonjs/core";
-
-async function setupXR(engine: Engine, scene: Scene) {
-  const xr = new WebXRExperienceHelper(scene);
-  await xr.baseExperience.enterXRAsync(
-    "immersive-vr",
-    "local-floor",
-    xr.teleportation.locomotionType
-  );
-
-  // Hand tracking (Quest 3, Vision Pro)
-  xr.baseExperience.featuresManager.enableFeature(
-    WebXRFeatureName.HAND_TRACKING, "latest"
-  );
-
-  // Near interaction for in-space UI panels
-  xr.baseExperience.featuresManager.enableFeature(
-    WebXRFeatureName.NEAR_INTERACTION, "latest"
-  );
-
-  return xr;
-}
-```
-
-### Supported Devices
-
-| Device | Support level | Target frame rate |
-|--------|--------------|-------------------|
-| Meta Quest 3 | Full | 90fps |
-| Meta Quest 2 / Pro | Full | 72fps (may need `aggressiveCulling: true`) |
-| Apple Vision Pro | Via WebXR polyfill + RealityKit bridge | 90–120fps |
-| HTC Vive / Valve Index | Via SteamVR + Babylon.js OpenVR adapter | 90fps |
-| Windows Mixed Reality | Basic | 60fps |
-
-### WebXR Fallback Chain
-
-```typescript
-async function initializeXR() {
-  try {
-    return await navigator.xr?.requestSession('immersive-vr', {
-      requiredFeatures: ['local-floor'],
-      optionalFeatures: ['hand-tracking'],
-    });
-  } catch {
-    if (isMetaQuest()) return await initializeMetaNative();
-    if (isVisionOS())  return await initializeVisionOSBridge();
-    if (isSteamVR())   return await initializeOpenVR();
-    // Final fallback: Babylon.js desktop renderer (no headset)
-    return await initializeDesktopGraphRenderer();
-  }
-}
-```
-
----
-
-## Vircadia Multi-User Integration
-
-### Architecture
-
-Vircadia provides a multi-user virtual world server. VisionClaw registers as a world script and synchronises graph entities (nodes and edges) into Vircadia world-space. Users with Vircadia clients see the same knowledge graph as VisionClaw users.
-
-```mermaid
-graph TB
-    VisionClawClient[VisionClaw Client\nBabylon.js scene] --> VircadiaClientCore[VircadiaClientCore.ts\nWebSocket + reconnection + heartbeat]
-    VircadiaClientCore --> VircadiaServer[Vircadia World Server\nws://vircadia-world-server:3020/world/ws]
-    VircadiaServer --> PostgreSQL[PostgreSQL\nEntity state store]
-
-    VircadiaClientCore --> EntitySyncMgr[EntitySyncManager.ts\n100ms sync interval]
-    VircadiaClientCore --> AvatarMgr[AvatarManager.ts\nGLB models + nameplates]
-    VircadiaClientCore --> SpatialAudio[SpatialAudioManager.ts\nWebRTC + HRTF]
-
-    EntitySyncMgr --> GraphEntityMapper[GraphEntityMapper.ts\nGraph nodes ↔ Vircadia entities]
-    GraphEntityMapper --> VircadiaSceneBridge[VircadiaSceneBridge.ts\nBabylon.js mesh creation from entity data]
-    VircadiaSceneBridge --> BabylonScene[Babylon.js Scene]
-```
-
-### Graph–Entity Mapping
-
-Each graph node becomes a Vircadia entity:
-
-```
-VisionClaw graph node (id, position, type, label)
-    ↓ GraphEntityMapper.mapGraphToEntities()
-Vircadia entity (uuid, worldPosition, modelUrl, properties)
-    ↓ EntitySyncManager — 100ms batched SQL updates
-Vircadia PostgreSQL
-    ↓ EntitySyncManager → VircadiaSceneBridge
-Babylon.js mesh at entity position
-```
-
-Entity synchronisation uses a 100ms update interval. Lowering this increases network traffic; raising it introduces noticeable lag in collaborative sessions.
-
-### Avatar System
-
-Each connected user is represented by an avatar with:
-- Head mesh and eye gaze direction
-- Left and right hand meshes (or controller representations)
-- Name label above head
-- Spatial voice volume indicator
-
-```typescript
-class UserAvatar {
-  async updateFromNetworkState(state: UserState) {
-    this.headMesh.position = state.headPosition;
-    this.headMesh.rotationQuaternion = state.headRotation;
-    this.leftHand.updatePoses(state.leftHandPoses);
-    this.rightHand.updatePoses(state.rightHandPoses);
-    this.voiceIndicator.setAmplitude(state.voiceAmplitude);
-  }
-}
-```
-
-Avatar state is broadcast at 90Hz. Binary delta compression reduces the per-user bandwidth to approximately 3.24 MB/s for full transforms.
-
-### Spatial Audio (HRTF via LiveKit)
-
-VisionClaw routes participant audio through LiveKit rooms. Each remote audio track is positioned at the corresponding avatar's world coordinates using a Web Audio API `PannerNode`:
-
-```typescript
-const panner = audioCtx.createPanner();
-panner.panningModel = 'HRTF';
-panner.distanceModel = 'inverse';
-panner.refDistance = 1;
-panner.maxDistance = 50;
-panner.rolloffFactor = 1.5;
-```
-
-On every Babylon.js render frame, each panner's position is updated to match the avatar's current world-space coordinates, providing natural distance-based audio attenuation.
-
-### Docker Deployment
-
-```bash
-# Start VisionClaw with Vircadia XR profile
-docker compose -f docker-compose.yml \
-  -f docker-compose.vircadia.yml --profile xr up -d
-```
-
-| Setting | Default | Notes |
-|---------|---------|-------|
-| Vircadia Server URL | `ws://vircadia-world-server:3020/world/ws` | Docker-internal address |
-| Auto-Connect | `true` | Reconnects on page load |
-| Entity Sync Interval | `100ms` | Lower = more traffic |
-
----
-
-## XR Navigation and Input
-
-### Locomotion
-
-Default locomotion is **teleportation** via `WebXRMotionControllerTeleportation`. Continuous movement is available but disabled by default to reduce motion sickness risk.
-
-### Controller Bindings (Quest Controllers)
-
-| Button | Index | XR Action |
-|--------|-------|-----------|
-| Trigger | 0 | Select node / confirm |
-| Grip | 1 | Grab and reposition node |
-| Thumbstick | 3 | Navigation (teleport arc / smooth turn) |
-| A / X | 4 | Context action 1 |
-| B / Y | 5 | Context action 2 / dismiss menu |
-
-```typescript
-import { useXREvent } from '@react-three/xr'; // legacy path
-// Babylon.js path: xr.baseExperience.sessionManager.onXRSessionInit
-
-xr.input.onControllerAddedObservable.add((controller) => {
-  controller.onMotionControllerInitObservable.add((motionController) => {
-    const trigger = motionController.getComponent('xr-standard-trigger');
-    trigger.onButtonStateChangedObservable.add(() => {
-      if (trigger.pressed) handleNodeSelect(currentlyTargetedNode);
-    });
-  });
-});
-```
-
-### Hand Tracking
-
-`useVRHandTracking` (`client/src/immersive/hooks/useVRHandTracking.ts`) manages hand/controller state and ray-cast target detection.
-
-```typescript
-const {
-  primaryHand,        // Right hand state (position, direction, pinchStrength)
-  secondaryHand,      // Left hand state
-  targetedNode,       // Currently targeted graph node
-  previewStart,       // Ray origin
-  previewEnd,         // Ray end or hit position
-  triggerHaptic,      // Trigger controller haptic feedback
-} = useVRHandTracking({
-  maxRayDistance: 30,        // metres
-  targetRadius: 1.0,         // hit detection radius
-  activationThreshold: 0.7,  // pinch strength threshold (0–1)
-  enableHaptics: true,
-});
-```
-
-Supported gestures (Babylon.js `WebXRHandTracking` feature):
-
-| Gesture | Fingers | Action |
-|---------|---------|--------|
-| Pinch | Thumb + index | Select / grab |
-| Point | Index extended | Ray cast for targeting |
-| Palm open | All fingers extended | Menu / dismiss |
-| Two-hand scale | Both hands moving apart | Scale node group |
-| Two-hand rotate | Both hands rotating | Rotate subgraph |
-
-### Spatial Interaction Pipeline
+Quest 3 target: 90 Hz steady state. Render loop splits between Godot's main
+loop and the gdext per-frame Rust callback.
 
 ```mermaid
 sequenceDiagram
-    participant HMD as Platform (WebXR/SDK)
-    participant Input as Input Manager
-    participant Gesture as Gesture Recognizer
-    participant Interact as Interaction Manager
-    participant Physics as Physics Engine (GPU)
+    autonumber
+    participant Godot as Godot main loop (90Hz)
+    participant GDExt as gdext _process(dt)
+    participant LOD as lod.rs
+    participant Multi as MultiMeshInstance3D
 
-    HMD->>Input: Raw controller or hand frame
-    Input->>Gesture: Parsed input frame
-    Gesture->>Gesture: Pattern match against gesture library
-    Gesture->>Interact: Recognised gesture + confidence
-    Interact->>Interact: Ray cast hit test against node spheres
-    Interact->>Physics: Update node position constraint
-    Physics->>Physics: Apply spring force toward new position
-    Physics-->>HMD: Updated transforms via WebSocket → SAB
+    loop every 11.1 ms
+        Godot->>GDExt: _process(dt)
+        GDExt->>GDExt: drain pending position frames (mpsc)
+        alt frame N % 2 == 0
+            GDExt->>LOD: recompute_lod_buckets(camera_pose)
+            LOD-->>GDExt: bucket_assignments
+        end
+        GDExt->>Multi: set_instance_transform_2d(buffer)
+        GDExt->>GDExt: emit local pose (90 Hz, throttled)
+        GDExt-->>Godot: frame complete
+        Godot->>Godot: render compositor layers
+    end
 ```
+
+LOD recomputation is **every 2 frames** to keep CPU under 8 ms. Bucket
+assignments are diffed; only changed instances incur a transform write. If
+the local user is stationary (head pose Δ < 1 cm and quaternion dot >
+0.9999) the frame is dropped server-side by the delta encoder — bandwidth
+stays near zero for AFK users.
 
 ---
 
-## Level of Detail (LOD) System
+## 7. Binary protocol — reuse and extension
 
-`useVRConnectionsLOD` (`client/src/immersive/hooks/useVRConnectionsLOD.ts`) reduces geometry complexity based on camera distance to maintain 72/90fps targets.
+[ADR-061](../adr/ADR-061-binary-protocol-unification.md) fixes the per-frame
+node size at **28 bytes** and forbids version negotiation. The Godot client
+consumes the same position stream byte-for-byte. The avatar pose frame is
+added **as a sibling opcode** dispatched on the existing WS endpoint by
+preamble byte — not a version bump.
 
-| LOD level | Distance | Curve segments | Sphere segments |
-|-----------|----------|----------------|-----------------|
-| High | < 5m | 24 | 12 |
-| Medium | 5–15m | 16 | 8 |
-| Low | 15–30m | 8 | 6 |
-| Culled | > 30m | 0 (not rendered) | 0 |
+### 7.1 Opcode dispatch
 
-```mermaid
-flowchart LR
-    Cam[Camera Position] --> D{Distance}
-    D -->|< 5m| H[High LOD\n24 segments]
-    D -->|5–15m| M[Medium LOD\n16 segments]
-    D -->|15–30m| L[Low LOD\n8 segments]
-    D -->|> 30m| C[Culled\nskip render]
+| Preamble | Opcode | Sender | Description | Spec |
+|---|---|---|---|---|
+| `0x42` | position_frame | server → all subscribed clients | 28 B/node position + velocity | [`docs/binary-protocol.md`](../binary-protocol.md) |
+| `0x50` | avatar_pose_frame | bidirectional, presence-room scoped | Head + hand transforms at 90 Hz | [PRD-008 §5.2](../PRD-008-xr-godot-replacement.md) |
+
+Future opcodes (e.g. spatial annotations) do not break existing clients —
+the dispatch table treats unknown opcodes as a logged drop, not a
+connection close.
+
+### 7.2 Avatar pose frame layout
+
+Per `AvatarPose` (76 bytes fixed):
+
+```
+[u32 user_id_LE]                                         room-local id, server-bound
+[f32 head_x][f32 head_y][f32 head_z]                     12 B head position
+[f32 head_qx][f32 head_qy][f32 head_qz][f32 head_qw]     16 B head orientation (quat)
+[f32 lhand_x][f32 lhand_y][f32 lhand_z]                  12 B left hand position
+[f32 lhand_qx][f32 lhand_qy][f32 lhand_qz][f32 lhand_qw] 16 B left hand orientation
+[f32 rhand_x][f32 rhand_y][f32 rhand_z]                  12 B right hand position
+[f32 rhand_qx][f32 rhand_qy][f32 rhand_qz][f32 rhand_qw] 16 B right hand orientation
+                                                           = 76 B per avatar
 ```
 
-LOD is recalculated every 2 frames (`updateInterval: 2`) and cache is cleared on teleport. `calculateOptimalThresholds(targetFps, connectionCount)` adjusts thresholds dynamically based on device capability and active connection count.
-
-Opacity is also scaled down when many connections are active to reduce GPU fill rate pressure:
-
-```typescript
-const opacity = activeCount > 18 ? 0.6 : activeCount > 12 ? 0.8 : 1.0;
-```
+Steady-state per-avatar wire cost: 76 B × 90 Hz ≈ 6.8 KB/s. A 4-user room
+broadcasts ~27 KB/s of pose to each participant.
 
 ---
 
-## XR Performance Targets
+## 8. Presence service
 
-| Metric | Quest 3 target | Quest 2 target | PCVR target |
-|--------|---------------|---------------|-------------|
-| Frame rate | 90fps stable | 72fps stable | 90fps stable |
-| Input-to-display latency | < 20ms | < 20ms | < 20ms |
-| Max draw calls | < 50 | < 30 | < 80 |
-| Max triangles | < 100K | < 60K | < 200K |
-| Max active connections | 20 | 15 | 30 |
+`PresenceActor` joins the `GraphServiceSupervisor` tree as a sibling of
+`GraphStateActor` and `PhysicsOrchestratorActor`. Per-room state is
+in-memory; an optional audit-trail RuVector entry is written per
+join/leave/kick if `PRESENCE_AUDIT=true`. Room membership does not survive
+a server restart.
 
-Physics simulation budget per frame: < 5ms. WebSocket round-trip for collaborative sync: < 100ms acceptable.
+`src/handlers/presence_handler.rs` mounts at `/ws/presence`:
 
-Memory per user session:
-- Avatar mesh + animations: 15 MB
-- User state buffer: 2 MB
-- Network receive buffer: 5 MB
-- Total: ~25 MB per connected user
+1. **Auth on upgrade.** Inspect `Authorization: Nostr <NIP-98 token>`.
+   Verify Schnorr signature against claimed `did:nostr:<hex-pubkey>`.
+   On failure → HTTP 401, no upgrade. The pubkey is bound to the socket;
+   mid-session impersonation is impossible.
+2. **Init handshake.** First post-upgrade message is JSON
+   `presence_init { room_id, display_name }`. Server replies with
+   `presence_room_state`, establishing the `user_id ↔ did:nostr` mapping.
+3. **Pose ingest.** Inbound `0x50` frames are decoded via the
+   `binary-protocol` crate, validated by `pose_validator`, then forwarded
+   to `PresenceActor`.
+4. **Broadcast.** `PresenceActor` coalesces in-flight poses per room at
+   90 Hz, encodes one `0x50` frame containing all current members'
+   latest pose (with a stale-flag bit for any member whose last pose is
+   older than 200 ms), and sends to each subscribed socket **except** the
+   sender.
+5. **Visibility filter.** Re-broadcast respects [ADR-050](../adr/ADR-050-sovereign-graph-visibility.md)
+   sovereign visibility — invisible avatars are dropped from the frame
+   each receiver sees.
+
+### 8.1 Pose validation
+
+| Check | Bound | Action |
+|---|---|---|
+| Head position within world bounds | per-room (default ±50 m) | Drop frame, increment `presence.invalid_pose.bounds` |
+| Head linear velocity | ≤ 20 m/s | Drop frame, increment `…head_velocity` |
+| Hand-to-head distance | ≤ 1.2 m (anatomical reach) | Drop frame, increment `…hand_reach` |
+| Quaternion magnitude | within [0.99, 1.01] | Drop frame, increment `…bad_quat` |
+| Frame rate per user | ≤ 120 Hz averaged over 1 s | Token-bucket throttle |
+
+A user accumulating > 5 invalid frames in a 10-s window is disconnected
+with a `presence_kick` reason code.
 
 ---
 
-## Development Setup
+## 9. OpenXR feature set
 
-```bash
-# Enable WebXR in Chrome (desktop testing with emulator)
-# Navigate to: chrome://flags/#webxr-runtime-selection
-# Set to "Test (Emulated devices)"
+A missing **required** extension produces a fatal user-visible error;
+there is no degraded mode.
 
-# Pair Quest for developer access
-adb pair <device-ip>:<port>
+| Feature | OpenXR ID | Required? |
+|---|---|---|
+| Hand tracking | `XR_EXT_hand_tracking` | required |
+| Hand interaction | `XR_EXT_hand_interaction` | required |
+| Passthrough | `XR_FB_passthrough` | required |
+| Scene mesh | `XR_FB_scene` + `XR_FB_scene_capture` | required |
+| Spatial anchors | `XR_FB_spatial_entity` + `XR_FB_spatial_entity_storage` | required |
+| Foveated rendering | `XR_FB_foveation` + `XR_FB_foveation_configuration` | required |
+| Composition layer depth | `XR_KHR_composition_layer_depth` | required |
+| Performance settings | `XR_EXT_performance_settings` | required |
+| Display refresh rate | `XR_FB_display_refresh_rate` | required |
+| Local floor reference | `XR_EXT_local_floor` | required |
+| Visibility mask | `XR_KHR_visibility_mask` | optional |
+| Eye tracking | `XR_EXT_eye_gaze_interaction` | optional (Pro variants only; PII-gated) |
 
-# Run dev server accessible to Quest browser (same network)
-npm run dev -- --host 0.0.0.0
+---
 
-# Access from Quest browser:
-# https://<dev-machine-ip>:5173
-# (Self-signed cert required — add exception in Quest browser)
+## 10. Voice routing
 
-# Test with Quest user-agent forced on desktop
-# Add ?force=quest3 to URL to activate DPR capping and Quest layout
+LiveKit is retained. Its Android AAR is exposed to Godot via a binding shim
+in `addons/livekit/`. LiveKit room id is the same as the presence room id
+(1:1). The auth token is minted by `src/handlers/livekit_token_handler.rs`
+(no changes from the existing desktop voice path) and requested by gdext
+over the existing HTTPS API at session start.
+
+```
+[Quest mic] -> AudioStreamMicrophone -> LiveKit AAR encoder (Opus) -> LiveKit room
+                                                                          ^
+[remote audio] <- LiveKit AAR decoder <- LiveKit room <-------------------/
+
+Per remote track: AAR exposes a PCM stream to AudioStreamPlayer3D
+positioned at the remote AvatarRig.HeadPivot. AudioServer applies HRTF
+on the dedicated bus with attenuation_model = ATTENUATION_INVERSE_DISTANCE.
 ```
 
-Enable Vircadia XR integration:
-
-```bash
-docker compose -f docker-compose.yml \
-  -f docker-compose.vircadia.yml --profile xr up -d
-
-# Verify world server is accepting connections
-docker logs vircadia-world-server
-```
+Bandwidth: Opus at 32 kbps mono (default); ~64 kbps wire cost per track
+with redundancy. 4-user room ≈ 256 kbps voice — comfortably inside the
+100 KB/s per-user network budget.
 
 ---
 
-## Security Considerations
+## 11. Performance budget
 
-XR introduces unique attack surfaces that require server-side validation:
+CI gates fail on any sustained breach.
 
-```typescript
-class XRSecurityValidator {
-  validatePose(userId: string, pose: Pose): boolean {
-    // Reject out-of-bounds positions
-    if (!this.isWithinWorldBounds(pose.position)) return false;
+| Resource | Budget |
+|---|---|
+| CPU per frame | 8 ms |
+| GPU per frame | 8 ms |
+| Draw calls | ≤ 50 |
+| Triangles | ≤ 100 K |
+| Allocations per frame | 0 in steady state |
+| Network ingress | < 80 KB/s per user |
+| Network egress | < 30 KB/s per user |
+| Battery drain | < 12 %/hour |
 
-    // Reject physically impossible velocity (teleportation exploit)
-    const maxVelocity = 20; // metres per second
-    const dt = performance.now() - this.lastUpdate[userId];
-    const velocity = Vector3.Distance(pose.position, this.lastPosition[userId]) / (dt / 1000);
-    if (velocity > maxVelocity) return false;
-
-    return true;
-  }
-}
-```
-
-Additional XR-specific concerns:
-- **Spatial injection:** Validate all entity positions against world bounds before applying
-- **Voice spoofing:** Verify audio data originates from authenticated WebRTC track
-- **Eye tracking data:** Per-frame gaze vectors are PII — encrypt in transit and do not persist without consent
-- **Hand kinematics:** Validate joint angles against human anatomical limits to detect spoofed hand data
+Headline targets (PRD-008 G1–G3): **90 fps stable on Quest 3 with 5 K
+visible nodes + 4 remote avatars, 99th-pct frame time ≤ 12 ms, MTP < 20 ms,
+presence join < 500 ms p95.**
 
 ---
 
-## Known Limitations
+## 12. Failure modes and resilience
 
-| Limitation | Status | Notes |
-|------------|--------|-------|
-| R3F nodes not visible in XR mode | By design | Separate renderer; graph data is re-rendered by Babylon.js GraphRenderer |
-| Full server-side physics in XR mode | Working | Same CUDA backend; positions arrive via same WebSocket binary stream |
-| Vircadia multi-user | In development | EntitySyncManager functional; avatar animations in progress |
-| Apple Vision Pro hand gestures | Partial | WebXR polyfill maps basic gestures; eye tracking requires native bridge |
-| WebXR on Safari | Not supported | Apple has not shipped WebXR in Safari; use Firefox Reality or Quest Browser |
+The XR client is more sensitive to transient failure than the desktop
+client — losing positional tracking for 200 ms in VR is nauseating. The
+state machines below degrade gracefully rather than crash or freeze.
+
+| Failure | Behaviour |
+|---|---|
+| **WebSocket disconnect** | Exponential backoff 1 s → 30 s cap, 10 attempts. Last-received graph snapshot continues to render at 90 Hz so the compositor stays alive. After 5 failures, snapshot mode pauses pose tx; the HUD shows a reconnecting spinner. |
+| **OpenXR runtime crash** (`XR_ERROR_INSTANCE_LOST`) | gdext flips to a 2D error overlay and tears down OpenXR. Restart requires a fresh APK launch — Meta's runtime owns process-wide GPU compositor resources. |
+| **Voice failure** (LiveKit `RoomDisconnected`) | Non-fatal. Voice indicators hide; mic-off icon appears in HUD. Pose continues. LiveKit reconnect every 30 s. |
+| **Packet-loss degradation** | Pose tx ladder per remote avatar: 90 Hz → 30 Hz (loss > 5%) → 10 Hz (loss > 15%) → snapshot-on-significant-change (loss > 30%). Recovery on the same thresholds in reverse. |
+
+The full state-diagrams are in
+[`docs/xr-godot-system-architecture.md` §11](../xr-godot-system-architecture.md).
 
 ---
 
-## Troubleshooting
+## 13. Security baseline
+
+Full STRIDE/DREAD analysis: [`docs/xr-godot-threat-model.md`](../xr-godot-threat-model.md).
+Invariants this architecture relies on:
+
+| Invariant | Threat ID |
+|---|---|
+| **NIP-98 challenge handshake** at WS upgrade; HTTP 401 fails closed; pubkey bound to socket | T-WS-1, T-WS-3 |
+| **Server-bound avatar id** — client cannot select its own; any `user_id` in inbound pose is ignored | T-AVATAR-1 |
+| **`validate_pose()` gate** — velocity ≤ 20 m/s, position within world AABB, hand reach ≤ 1.2 m, quat magnitude in [0.99, 1.01] | T-POSE-1, T-HAND-1 |
+| **Rate limit** at 120 Hz/session via token bucket; per-room actor isolation prevents cross-room starvation | T-DOS-1 |
+| **Frame format frozen** — additions require an ADR superseding ADR-061; enforced by `crates/binary-protocol/tests/frame_field_snapshot.rs` | T-PROTO-3 |
+| **Scene mesh stays client-side** — gdext `XR_FB_scene` binding is `pub(crate)` only with no serialiser; CI lints reject `serde::Serialize` on scene-mesh types | T-PII-1 |
+| **Eye tracking is opt-in** — default disabled; consent flow in `XRBoot.tscn`; gaze stays local | T-PII-2 |
+| **Visibility filter** — same per-user rule that drops invisible nodes (ADR-050) drops invisible avatars; anonymous viewers cannot enumerate the room | (architectural) |
+| **APK supply chain** — `cargo-deny` + `cargo-audit` in CI; SBOM per release; v3 APK signing; in-app About screen shows signing fingerprint | T-APK-1, T-APK-3 |
+
+---
+
+## 14. Migration map
+
+The full removal manifest is referenced by [PRD-008 §5.6](../PRD-008-xr-godot-replacement.md)
+and [ADR-071 §"Implementation Plan"](../adr/ADR-071-godot-rust-xr-replacement.md).
+The wholesale removal of the prior browser-hosted XR stack
+(`client/src/immersive/*`, world-server bridges and contexts, WebXR npm
+deps, vendored world-server SDK, and the world-server compose file) lands
+in a single cutover commit; the new layout is `xr-client/` (Godot project)
++ `crates/visionclaw-xr-gdext/` + `crates/visionclaw-xr-presence/` plus the
+two new server files (`src/handlers/presence_handler.rs`,
+`src/actors/presence_actor.rs`). The desktop browser path
+(`client/src/` non-`immersive/`) is **untouched**.
+
+---
+
+## 15. Troubleshooting
 
 | Symptom | Likely cause | Fix |
-|---------|-------------|-----|
-| Black screen in headset | DPR too high | Verify Quest DPR cap is active — check console for `effectiveDpr` log |
-| No spatial audio | Microphone permission denied | Grant mic access; click page to unblock AudioContext autoplay policy |
-| WebXR session fails | Browser lacks WebXR support | Use Quest Browser or Chrome 113+ |
-| Vircadia entities not visible | World server unreachable | `docker logs vircadia-world-server`; check port 3020 is open |
-| 30fps in headset | Too many draw calls or LOD not active | Enable `aggressiveCulling: true` in `useVRConnectionsLOD` |
-| Hand tracking not detected | Feature not enabled | Confirm `WebXRFeatureName.HAND_TRACKING` is registered in `XRManager.ts` |
+|---|---|---|
+| APK fails to launch with OpenXR error | Missing required extension | Confirm Horizon OS ≥ 71; check `adb logcat -s visionclaw-xr` for the failing extension ID |
+| Black screen after first frame | Graph WS not connected before XR session begin | Boot aborts XR begin if `graph_ws_ready` not signalled — check NIP-98 auth in logcat |
+| 401 from `/wss` or `/ws/presence` | NIP-98 signature invalid or replayed nonce | Regenerate Nostr key; verify clock skew < 60 s; check `presence.auth.rejected` server counter |
+| Remote avatars not appearing | Pose frames dropping validation | Inspect `presence.invalid_pose.*` counters; widen room policy thresholds for unusually tall users |
+| Frame rate dips below 90 fps | LOD policy too permissive | Verify `lod.rs` is in Tier2Standalone bucket; enable `aggressive_culling`; reduce visible node count |
+| Voice plays but is not spatial | `AudioStreamPlayer3D` not parented to remote `AvatarRig.HeadPivot` | Inspect `avatar_rig.gd::on_voice_track_attached`; confirm HRTF bus assigned |
+| APK size exceeds 80 MB | Debug symbols not stripped from gdext `.so` | Add `strip xr-client/addons/visionclaw_xr_gdext/aarch64/*.so` to CI |
+| Hand tracking does not detect pinch | Headset in controller mode | Quest Settings → Movement Tracking → Hand and Controller Tracking → Hand Tracking |
+
+CI artefact capture: `adb logcat -d -s visionclaw-xr` is saved to
+`xr-client/build/logs/run-<timestamp>.log` and uploaded to the GitHub
+Actions run. Setup-time troubleshooting lives in
+[`xr-setup-quest3.md`](../how-to/xr-setup-quest3.md).
 
 ---
 
-## See Also
+## 16. See also
 
-- [Client Architecture](client-architecture.md) — React Three Fiber desktop graph, state management, binary WebSocket
-- [Quest 3 VR Setup](../how-to/xr-setup-quest3.md) — Quest DPR capping, LiveKit HRTF, connection settings
-- [Physics & GPU Engine](physics-gpu-engine.md) — GPU force computation pipeline
-- [Deployment Topology](deployment-topology.md) — service containers and XR runtime
+- [PRD-008 — XR Client Replacement](../PRD-008-xr-godot-replacement.md)
+- [ADR-071 — Godot 4 + godot-rust + OpenXR](../adr/ADR-071-godot-rust-xr-replacement.md)
+- [DDD: XR Godot Bounded Context](../ddd-xr-godot-context.md)
+- [XR Godot System Architecture](../xr-godot-system-architecture.md) — authoritative deep-dive
+- [XR Godot Threat Model](../xr-godot-threat-model.md)
+- [Quest 3 APK Setup](../how-to/xr-setup-quest3.md)
+- [Binary Protocol](../binary-protocol.md) — wire format, opcode registry
+- [ADR-061 — Binary Protocol Unification](../adr/ADR-061-binary-protocol-unification.md)
+- [Client Architecture](client-architecture.md) — desktop React Three Fiber graph view (unchanged)
