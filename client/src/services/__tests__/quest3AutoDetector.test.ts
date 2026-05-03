@@ -536,11 +536,9 @@ describe('Quest3AutoDetector', () => {
       setNavigatorXR({ arSupported: true });
 
       // connect() rejection propagates through autoStartQuest3AR's try/catch
-      // and sets autoStartAttempted = false, returning false.
-      // This mirrors the original Vircadia behaviour where the connection
-      // error was caught inside initializeVircadiaConnection and auto-start
-      // still returned true. With the adapter pattern, connect() throwing
-      // now bubbles to the outer catch, which is the correct adapter contract.
+      // and sets autoStartAttempted = false, returning false. With the adapter
+      // pattern, connect() throwing bubbles to the outer catch, which is the
+      // correct adapter contract.
       const result = await detector.autoStartQuest3AR();
 
       // The adapter threw, so the outer catch fires and returns false.
