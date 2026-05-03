@@ -2,13 +2,13 @@
  * LiveKitVoiceService — WebRTC spatial voice chat via LiveKit SFU.
  *
  * Handles Plane 3 (user-to-user voice) and Plane 4 (agent spatial voice):
- *   - Connects to LiveKit room for the current Vircadia world
+ *   - Connects to a LiveKit room scoped to the current XR presence session
  *   - Publishes user microphone as a WebRTC audio track
  *   - Subscribes to remote participants (other users + agent virtual participants)
- *   - Applies spatial audio panning based on Vircadia entity positions
+ *   - Applies spatial audio panning based on presence-actor positions
  *
- * Coordinate flow:
- *   Vircadia entity positions → CollaborativeGraphSync → this service → Web Audio panner
+ * Coordinate flow (post ADR-071 / PRD-008):
+ *   Godot APK → /ws/presence → PresenceActor → updateListenerPosition() → Web Audio panner
  *
  * Audio format: Opus 48kHz mono throughout.
  */
@@ -26,7 +26,7 @@ export interface LiveKitConfig {
   roomName: string;
   /** Enable spatial audio panning */
   spatialAudio: boolean;
-  /** Max distance for audio rolloff (Vircadia units) */
+  /** Max distance for audio rolloff (presence-frame units) */
   maxDistance: number;
 }
 
@@ -88,7 +88,7 @@ export class LiveKitVoiceService {
 
   /**
    * Connect to a LiveKit room for spatial voice chat.
-   * Call this after the user has joined a Vircadia world.
+   * Call this after the user has joined an XR presence session.
    */
   async connect(config: LiveKitConfig): Promise<void> {
     this.config = config;
@@ -150,7 +150,7 @@ export class LiveKitVoiceService {
       // Set up audio context for spatial processing
       if (config.spatialAudio) {
         this.audioContext = new AudioContext({ sampleRate: 48000 });
-        // Set listener position (will be updated from Vircadia)
+        // Set listener position (will be updated from the XR presence stream)
         const listener = this.audioContext.listener;
         if (listener.positionX) {
           listener.positionX.value = 0;
@@ -203,7 +203,7 @@ export class LiveKitVoiceService {
   }
 
   /**
-   * Update the listener's position (the local user's position in Vircadia world).
+   * Update the listener's position (the local user's presence-frame position).
    * This drives the spatial audio panning for all remote participants.
    */
   updateListenerPosition(position: SpatialPosition): void {
@@ -221,7 +221,7 @@ export class LiveKitVoiceService {
 
   /**
    * Update a remote participant's spatial position.
-   * Called when Vircadia entity positions change (from CollaborativeGraphSync).
+   * Called when presence-actor positions change (from the /ws/presence stream).
    */
   updateParticipantPosition(participantId: string, position: SpatialPosition): void {
     const participant = this.remoteParticipants.get(participantId);
