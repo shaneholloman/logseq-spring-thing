@@ -47,14 +47,18 @@ RUN pacman-key --init && \
     rm -rf /var/cache/pacman/pkg/*
 
 # Install base system dependencies (with retry logic for transient failures)
+# gcc14 is pinned alongside the default gcc because CUDA 13.x's nvcc cannot
+# parse libstdc++ from gcc 16+ (template feature mismatch). Used via NVCC_PREPEND_FLAGS.
 RUN for attempt in 1 2 3; do \
         echo "=== Package install attempt $attempt/3 ===" && \
         pacman -S --noconfirm --needed \
             # Core build tools \
             curl \
             git \
-            # Compilers (CachyOS ships modern GCC, no version pinning needed) \
+            # Compilers — default gcc for Rust, gcc14 as nvcc -ccbin (CUDA 13 vs gcc 16) \
             gcc \
+            gcc14 \
+            gcc14-libs \
             base-devel \
             # Libraries (openssl included in base, pkgconf in base-devel) \
             openssl \
@@ -109,7 +113,8 @@ ENV CUDA_PATH="/opt/cuda" \
     LIBRARY_PATH="/opt/cuda/lib64:${LIBRARY_PATH}" \
     CPATH="/opt/cuda/include:${CPATH}" \
     CFLAGS="-I/opt/cuda/include" \
-    LDFLAGS="-L/opt/cuda/lib64"
+    LDFLAGS="-L/opt/cuda/lib64" \
+    NVCC_PREPEND_FLAGS="-ccbin /usr/bin/g++-14"
 
 # Install Rust toolchain (stable channel)
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | \
@@ -131,8 +136,10 @@ COPY Cargo.toml build.rs ./
 COPY Cargo.lock* ./
 COPY whelk-rs ./whelk-rs
 
-# NOTE: `COPY crates ./crates` removed — `crates/` no longer exists in the
-# repo. ADR-053 reference is stale; whelk-rs is the only path dep now.
+# Workspace path-dep crates (re-introduced by VisionClaw XR upgrade).
+# Cargo.toml `[workspace] members` lists these — cargo fetch fails without them.
+COPY crates ./crates
+COPY xr-client/rust ./xr-client/rust
 
 # Copy CUDA source files needed by build.rs for PTX compilation
 COPY src/utils/*.cu src/utils/
@@ -260,10 +267,11 @@ COPY src ./src
 COPY data/schema ./data/schema
 COPY whelk-rs ./whelk-rs
 
-# ADR-053: solid-pod-rs crate externalised (cc4389a56 retired the
-# local crates/ tree). Cargo.toml workspace declares `members = ["."]`
-# only, so there is nothing to copy here. Left as a deliberate no-op
-# so anyone following git-log → Dockerfile line numbers finds the note.
+# Workspace path-dep crates (re-introduced by VisionClaw XR upgrade) —
+# graph-cognition-{core,extract,physics-presets}, visionclaw-xr-presence,
+# xr-client/rust. ADR-064/065/068/069/070 + xr-client. cargo fetch needs these.
+COPY crates ./crates
+COPY xr-client/rust ./xr-client/rust
 
 # Copy client source (not built, will use dev server)
 COPY client ./client
