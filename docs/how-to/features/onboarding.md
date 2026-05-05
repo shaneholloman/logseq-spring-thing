@@ -41,7 +41,7 @@ graph LR
 
 | Step ID | Title | Position | Notes |
 |---------|-------|----------|-------|
-| `welcome` | Welcome to LogSeq Spring Thing! | center | Intro, no target element |
+| `welcome` | Welcome to VisionClaw! | center | Intro, no target element |
 | `graph-view` | Graph Visualization | right | Targets `canvas` |
 | `settings-panel` | Settings Panel | left | Targets `.setting-control` |
 | `command-palette` | Command Palette | center | Fires Ctrl+K, auto-dismisses after 2 s |

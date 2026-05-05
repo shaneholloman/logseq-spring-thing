@@ -121,7 +121,7 @@ JWT email/password login was removed because:
 3. The `VIRCADIA_JWT_SECRET` environment variable default (`change_this_in_production`) was routinely left unchanged in early deployments, invalidating the security guarantee
 4. Nostr NIP-98 provides equivalent session bootstrapping with zero server-side secrets and replay protection built in
 
-**Do not use JWT endpoints in new integrations.** The `VIRCADIA_JWT_SECRET` env var is retained only for legacy Vircadia World Server compatibility.
+**Do not use JWT endpoints in new integrations.** The `VIRCADIA_JWT_SECRET` env var is a dead relic — Vircadia has been fully removed from the stack. It can be safely deleted from compose files.
 
 ### NIP-98 Authentication Sequence
 
@@ -297,7 +297,7 @@ All secrets are injected via environment variables. The following variables MUST
 |----------|---------|------------------------------------------|
 | `SESSION_SECRET` | Session token signing key | none — required |
 | `WS_AUTH_TOKEN` | WebSocket pre-auth token | none — required |
-| `VIRCADIA_JWT_SECRET` | Legacy Vircadia JWT signing | `change_this_in_production` |
+| ~~`VIRCADIA_JWT_SECRET`~~ | ~~Legacy Vircadia JWT~~ (dead — Vircadia removed) | Remove from env |
 | `POSTGRES_PASSWORD` | Neo4j / RuVector DB password | `visionclaw_secure` |
 | `NEO4J_PASSWORD` | Neo4j database password | none — **required** (no default; server fails fast if unset) |
 | `POWER_USER_PUBKEYS` | Comma-separated power user pubkeys | none (no power users) |
@@ -415,17 +415,14 @@ Communication between the Rust backend, Neo4j, JSS, and RuVector uses plain TCP 
 
 `AUTH_TOKEN_EXPIRY` limits session token lifetimes, but rotation of the `SESSION_SECRET` itself is a manual procedure (see Section 6). There is no automated rotation or SOPS integration. Key rotation causes a service restart and session invalidation — the operational cost is acceptable for current deployment scale.
 
-### Vircadia Uses Its Own Authentication
+### XR Client Authentication
 
-The Vircadia World Server validates connections using its own token mechanism (`system` or `nostr` provider via the Vircadia auth layer). This authentication is separate from VisionClaw's NIP-98 flow. A user who authenticates to VisionClaw is not automatically authenticated to the Vircadia World Server. The two auth systems are bridged only when the client explicitly passes its Vircadia session token alongside the VisionClaw bearer token.
+The Godot XR client authenticates to VisionClaw using NIP-98 signed HTTP Authorization headers, identical to the desktop browser client. See [XR Architecture](xr-architecture.md) for the presence WebSocket join handshake.
 
 ### Token in WebSocket URL
 
 WebSocket bearer tokens are passed as a URL query parameter (`?token=…`) because the WebSocket protocol does not support custom headers at upgrade time. This means the token appears in server access logs and browser history. Mitigation: use short-lived tokens (`AUTH_TOKEN_EXPIRY=300` for WebSocket sessions) and ensure WSS is enforced so the URL is not visible in transit.
 
-### Non-Parameterised SQL in Legacy Vircadia Clients
-
-`SpatialAudioManager`, `NetworkOptimizer`, and `Quest3Optimizer` in the Vircadia client layer use string-interpolated SQL for entity names and JSON payloads (see `docs/security.md`). These values originate from trusted client-side state, but the pattern should be migrated to parameterised queries. This is tracked as a known issue.
 
 ---
 

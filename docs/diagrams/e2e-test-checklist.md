@@ -30,7 +30,7 @@
 ## Layer 3 — Real-time Pipeline
 
 - [ ] WebSocket upgrade succeeds at `/wss` (101 Switching Protocols)
-- [ ] V5 binary frames arrive at client — first byte is `0x05`, 9-byte header parsed
+- [ ] Binary frames arrive at client — opcode `0x42`, 24-byte/node payload (position + velocity)
 - [ ] `broadcast_sequence` increments monotonically
 - [ ] No `BroadcastPositions#` diagnostic logs in server (confirms dial-back applied)
 - [ ] Physics simulation running at ~60 Hz — `ForceComputeActor` emitting frames

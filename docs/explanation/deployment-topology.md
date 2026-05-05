@@ -280,9 +280,9 @@ docker compose \
 
 The voice overlay requires additional environment variables: `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`, and `LIVEKIT_URL`. See [Environment Variables Reference](../reference/configuration/environment-variables.md) for the full list.
 
-### XR Profile (`docker-compose.vircadia.yml`)
+### XR Profile (`docker-compose.vircadia.yml`) — DEPRECATED
 
-A separate compose file for Vircadia XR integration. This adds a Vircadia domain server and the VisionClaw XR bridge service. It is experimental and not recommended for production deployments without specific XR hardware requirements.
+> **Deprecated**: Vircadia has been removed from the stack. The XR client is now a native Godot 4 APK that connects directly to the VisionClaw backend via the binary protocol WebSocket and presence WebSocket. See [XR Architecture](xr-architecture.md) and [ADR-071](../adr/ADR-071-godot-rust-xr-replacement.md). This compose file will be removed in a future release.
 
 ---
 

@@ -1,10 +1,10 @@
 # XR / Vircadia / Babylon.js Removal Plan
 
-**Status:** Draft — gated on PRD-008 (Godot Rust XR) reaching parity (W5)
+**Status:** COMPLETED — Vircadia and Babylon.js artefacts removed. Godot XR substrate active (PRD-008 W1–W4 done).
 **Authority:** [ADR-071 — Godot Rust XR Replacement](adr/ADR-071-godot-rust-xr-replacement.md)
-**Supersedes:** [ADR-032 RATK Integration](adr/ADR-032-ratk-integration.md), [ADR-033 Vircadia Decoupling](adr/ADR-033-vircadia-decoupling.md), [prd-xr-modernization.md](prd-xr-modernization.md)
-**Owner:** XR substrate workstream (swarm `swarm-1777757491161-nl2bbv`)
-**Last updated:** 2026-05-02
+**Supersedes:** ADR-032 (deleted), ADR-033 (deleted), prd-xr-modernization (deleted)
+**Owner:** XR substrate workstream
+**Last updated:** 2026-05-05
 
 ---
 

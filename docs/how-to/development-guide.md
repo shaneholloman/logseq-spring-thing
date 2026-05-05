@@ -37,7 +37,7 @@ updated-date: 2026-04-09
 | Git | 2.30+ | Version control |
 
 Optional:
-- Python 3.10+ (MCP tooling in `multi-agent-docker/`)
+- Python 3.10+ (MCP tooling in `agentbox/`)
 - NVIDIA CUDA 12.4 drivers + Container Toolkit (GPU physics)
 
 ### Install Rust

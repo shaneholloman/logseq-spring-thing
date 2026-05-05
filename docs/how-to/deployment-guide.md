@@ -132,7 +132,7 @@ VisionClaw uses several compose files for different deployment scenarios.
 | `docker-compose.voice.yml` | Voice pipeline overlay (LiveKit, Whisper, Kokoro TTS) | `dev`, `prod` |
 | `docker-compose.yml` | Base development services (webxr + Cloudflare tunnel) | `dev` |
 | `docker-compose.production.yml` | Legacy production-only compose | default |
-| `docker-compose.vircadia.yml` | Vircadia XR integration | varies |
+| `docker-compose.vircadia.yml` | ~~Vircadia XR~~ (deprecated — replaced by Godot native APK) | — |
 
 `docker-compose.unified.yml` is the recommended entry point for all deployments.
 

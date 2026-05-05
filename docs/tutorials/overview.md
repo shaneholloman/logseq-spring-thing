@@ -130,8 +130,8 @@ Natural conversation with your AI agents:
 Step into your knowledge graph:
 - **Meta Quest 3 native support** with hand tracking
 - **Force-directed 3D graph physics** for intuitive spatial layouts
-- **Vircadia multi-user integration** for collaborative exploration
-- **WebXR standards-based** (Chrome, Edge, Firefox)
+- **Multi-user spatial presence** via presence WebSocket + LiveKit audio
+- **Godot 4 native APK** with OpenXR hand tracking and passthrough
 
 ### GPU-Accelerated Performance
 Enterprise-scale performance:
@@ -232,7 +232,7 @@ VisionClaw represents the future of collaborative knowledge work—where AI agen
 - ✅ Binary WebSocket protocol
 
 **In Progress (v2.1 - Q1 2026):**
-- 🔄 Vircadia multi-user VR collaboration
+- ✅ Multi-user XR collaboration (Godot 4 + godot-rust native APK)
 - 🔄 Apple Vision Pro native app (Q3 2026)
 - 🔄 WebGPU fallback for non-CUDA systems
 

@@ -187,6 +187,6 @@ neo4j-admin database load neo4j --from=/backups/ontology-20251122.dump --overwri
 
 ## See Also
 
-- [Neo4j Schema V2 Documentation](../../docs/neo4j-rich-ontology-schema-v2.md)
-- [Ontology Parser Implementation](../../docs/enhanced-ontology-parser-implementation.md)
-- [Semantic Forces Guide](../../docs/guides/ontology-semantic-forces.md)
+- [Neo4j Schema Reference](../../docs/reference/neo4j-schema-unified.md)
+- [Ontology Pipeline](../../docs/explanation/ontology-pipeline.md)
+- [Semantic Forces Guide](../../docs/how-to/features/stress-majorization-guide.md)

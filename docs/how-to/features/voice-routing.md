@@ -15,7 +15,7 @@ difficulty-level: intermediate
 
 ## Overview
 
-VisionClaw's AudioRouter provides multi-user voice routing across four audio planes, enabling both private agent interaction and public spatial voice chat within the Vircadia 3D world.
+VisionClaw's AudioRouter provides multi-user voice routing across four audio planes, enabling both private agent interaction and public spatial voice chat within the 3D collaborative space (Godot XR native APK or desktop browser client).
 
 Each user gets an isolated voice session with per-user broadcast channels. Push-to-talk (PTT) controls audio routing between agent commands and spatial voice chat.
 
@@ -91,7 +91,7 @@ pub struct UserVoiceSession {
     pub owned_agents: Vec<String>,                       // Agent IDs owned by user
     pub ptt_active: bool,                                // Current PTT state
     pub livekit_participant_id: Option<String>,          // LiveKit session
-    pub spatial_position: [f32; 3],                      // 3D position in Vircadia
+    pub spatial_position: [f32; 3],                      // 3D position in collaborative space
 }
 ```
 
@@ -155,14 +155,14 @@ livekit:
   command: --dev
 ```
 
-## Integration with Vircadia XR
+## Integration with Spatial Presence
 
-Voice routing integrates with Vircadia's spatial audio system:
+Voice routing integrates with the presence WebSocket for spatial audio:
 
-1. User positions are synced from Vircadia World Server
+1. User positions are synced from the presence WebSocket (opcode 0x43 avatar pose frames)
 2. Agent positions are set when agents are spawned in the 3D world
 3. LiveKit applies HRTF spatialization based on relative positions
-4. Audio volume attenuates with distance
+4. Audio volume attenuates with distance (see `SpatialVoiceRouter` in `xr-client/rust/src/webrtc_audio.rs`)
 
 ## Related Documentation
 

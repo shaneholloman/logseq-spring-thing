@@ -221,9 +221,6 @@ When adding new tests:
 
 ## Documentation
 
-- **Validation Report**: `../docs/VALIDATION_COMPLETE_REPORT.md`
-- **Error Handling Guide**: `../docs/error-handling.md`
-- **GPU Safety Documentation**: `../docs/gpu-safety.md`
 - **Security Guidelines**: `../docs/security.md`
 
 ---

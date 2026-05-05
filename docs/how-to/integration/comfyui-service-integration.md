@@ -14,9 +14,12 @@ related-docs:
   - ASCII_DEPRECATION_COMPLETE.md
 updated-date: 2025-12-18
 difficulty-level: intermediate
+status: deprecated
 dependencies:
   - Docker installation
 ---
+
+> **DEPRECATED**: This document describes the legacy `multi-agent-docker` ComfyUI integration. For the current Nix-based agentbox deployment, see [agentbox ComfyUI docs](../../../agentbox/docs/user/comfyui.md). The paths below reference `multi-agent-docker/` which is on deprecation track per [ADR-058](../../adr/ADR-058-mad-to-agentbox-migration.md).
 
 # ComfyUI Service Integration - Automatic Startup
 

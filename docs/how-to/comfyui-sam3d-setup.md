@@ -25,12 +25,12 @@ dependencies:
 
 ComfyUI container with SAM3D (Segment Anything 3D) nodes pre-configured for 3D object generation from images.
 
-**Location**: `multi-agent-docker/comfyui/`
+**Location**: `agentbox/comfyui/` (migrated from legacy `multi-agent-docker/comfyui/`)
 
 ## Quick Start
 
 ```bash
-cd multi-agent-docker/comfyui
+cd agentbox/comfyui
 docker compose -f docker-compose.comfyui.yml up -d
 ```
 

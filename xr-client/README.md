@@ -2,7 +2,7 @@
 
 Godot 4.3 + godot-rust (gdext) + OpenXR client per
 [PRD-008](../docs/PRD-008-xr-godot-replacement.md) and
-[ADR-071](../docs/adr/ADR-071-xr-godot-replacement.md).
+[ADR-071](../docs/adr/ADR-071-godot-rust-xr-replacement.md).
 
 ## Layout
 
