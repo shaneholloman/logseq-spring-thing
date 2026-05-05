@@ -26,6 +26,7 @@ pub mod voice_context_manager;
 pub mod voice_tag_manager;
 pub mod ontology_converter;
 pub mod edge_classifier;
+pub mod edge_type_physics;
 pub mod ontology_reasoner;
 pub mod ontology_enrichment_service;
 pub mod ontology_reasoning_service;
@@ -80,6 +81,15 @@ pub mod ontobricks_bridge;
 
 // PRD-008: XR presence handshake — Schnorr verification of `(nonce || ts_us)`
 pub mod nostr_identity_verifier;
+
+// Sentence embedding service for ontology nodes (MiniLM-L6-v2 via ruvector)
+pub mod embedding_service;
+
+// N-hop transitive edge materialization for ontology layout coherence
+pub mod nhop_materializer;
+
+// Knowledge Graph Embedding (TransE) training pipeline
+pub mod kge_trainer;
 
 pub use bridge_edge::{
     bridge_edge_enabled, sigmoid_confidence, BridgeEdgeService, CandidateStatus,

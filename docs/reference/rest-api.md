@@ -3,8 +3,8 @@ title: VisionClaw REST API Reference
 description: Complete REST API reference for VisionClaw, covering graph data, settings, authentication, ontology, pathfinding, and Solid Pod endpoints
 category: reference
 tags: [api, rest, http, endpoints, nip-98, sovereign-mesh]
-updated-date: 2026-04-19
-adr-references: [ADR-028-ext, ADR-050, ADR-051, ADR-052]
+updated-date: 2026-05-05
+adr-references: [ADR-028-ext, ADR-050, ADR-051, ADR-052, ADR-072]
 ---
 
 # VisionClaw REST API Reference
@@ -35,6 +35,12 @@ graph LR
     A --> I[/solid/*]
     A --> J[/wss]
     A --> K[Enterprise]
+    A --> L[/api/discovery/*]
+
+    L --> L1[search]
+    L --> L2[related/:iri]
+    L --> L3[gaps]
+    L --> L4[batch, index, train, materialize]
 
     B --> B1[data]
     B --> B2[node/:id]
@@ -982,6 +988,128 @@ Set `FORCE_FULL_SYNC=1` environment variable to bypass SHA1 incremental filterin
 **Sync flow**: `GitHubSyncService::sync_graphs()` → `EnhancedContentAPI::list_markdown_files("")` → `KnowledgeGraphParser::parse()` → Neo4j.
 
 Only files tagged `public:: true` become knowledge graph page nodes. Ontology data is extracted from all files with `### OntologyBlock`, regardless of `public:: true` status.
+
+---
+
+## Discovery & Feature Engineering — `/api/discovery/*`
+
+Configured in `discovery_handler.rs`. Combines content embeddings (MiniLM-L6, 384-dim) with topology embeddings (TransE, 128-dim) for semantic search and ontology gap detection. See [ADR-072](../adr/ADR-072-autordf2gml-feature-engineering.md).
+
+### GET /api/discovery/search
+
+Combined content + topology similarity search.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `q` | string | (required) | Free-text search query |
+| `top_k` | integer | 10 | Maximum results |
+| `content_weight` | float | 0.6 | Weight for content similarity (0.0–1.0) |
+| `topology_weight` | float | 0.4 | Weight for topology similarity (0.0–1.0) |
+
+**Response 200:**
+```json
+{
+  "results": [
+    { "iri": "string", "label": "string", "score": 0.87, "content_score": 0.92, "topology_score": 0.79 }
+  ],
+  "query": "string",
+  "total": 5
+}
+```
+
+### GET /api/discovery/related/{iri}
+
+Find nodes related to a given IRI by combined similarity.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `iri` | path | (required) | Node IRI to find relatives of |
+| `top_k` | integer | 5 | Maximum results |
+
+**Response 200:** Same shape as `/search` results.
+**Response 404:** Node with given IRI not found.
+
+### GET /api/discovery/gaps
+
+Detect ontology gaps — pairs of nodes with high semantic similarity but no direct edge.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `min_score` | float | 0.3 | Minimum combined similarity threshold |
+| `limit` | integer | 20 | Maximum gaps to return |
+
+**Response 200:**
+```json
+{
+  "gaps": [
+    { "source_iri": "string", "target_iri": "string", "score": 0.72, "suggested_relation": "string" }
+  ],
+  "total": 3
+}
+```
+
+### POST /api/discovery/batch
+
+Batch similarity computation for multiple IRIs.
+
+**Request body:**
+```json
+{
+  "iris": ["urn:visionclaw:concept:a", "urn:visionclaw:concept:b"],
+  "top_k": 3
+}
+```
+
+**Response 200:** Per-IRI similarity results.
+
+### POST /api/discovery/index
+
+**Admin.** Trigger content embedding indexing of all ontology nodes via MiniLM-L6-v2.
+
+**Response 200:**
+```json
+{
+  "status": "complete",
+  "nodes_processed": 2834,
+  "nodes_embedded": 2834,
+  "nodes_skipped": 0,
+  "batches_sent": 45
+}
+```
+
+### POST /api/discovery/train
+
+**Admin.** Trigger TransE knowledge graph embedding training on the full edge set. Long-running (may exceed default proxy timeouts for large graphs).
+
+**Response 200:**
+```json
+{
+  "status": "complete",
+  "num_entities": 2834,
+  "num_relations": 12,
+  "num_triples": 8502,
+  "final_loss": 0.312,
+  "epochs_completed": 100,
+  "duration_ms": 45000
+}
+```
+
+### POST /api/discovery/materialize
+
+**Admin.** Trigger N-hop edge materialisation. Requires `NHOP_MATERIALIZATION_ENABLED=true` environment variable.
+
+**Response 200:**
+```json
+{
+  "status": "complete",
+  "two_hop_edges_created": 1250,
+  "three_hop_edges_created": 3400,
+  "nodes_processed": 2834,
+  "duration_ms": 12000
+}
+```
+
+**Response 503:** Materialisation disabled (env var not set).
 
 ---
 

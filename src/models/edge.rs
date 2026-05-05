@@ -23,6 +23,10 @@ pub enum SemanticEdgeType {
     Namespace = 6,
     /// whelk reasoner output
     Inferred = 7,
+    /// 2-hop materialized transitive edge (very weak spring)
+    Materialized2Hop = 8,
+    /// 3-hop materialized transitive edge (barely perceptible)
+    Materialized3Hop = 9,
 }
 
 impl SemanticEdgeType {
@@ -39,6 +43,8 @@ impl SemanticEdgeType {
             "bridges_to" | "bridges_from" | "bridge" => Self::Bridge,
             "namespace" => Self::Namespace,
             "inferred" => Self::Inferred,
+            "MATERIALIZED_2HOP" | "materialized_2hop" => Self::Materialized2Hop,
+            "MATERIALIZED_3HOP" | "materialized_3hop" => Self::Materialized3Hop,
             _ => Self::ExplicitLink,
         }
     }
@@ -53,6 +59,8 @@ impl SemanticEdgeType {
             Self::Inferred => 0.8,
             Self::Bridge => 0.5,
             Self::Namespace => 0.3,
+            Self::Materialized2Hop => 0.15,
+            Self::Materialized3Hop => 0.08,
         }
     }
 
@@ -67,6 +75,8 @@ impl SemanticEdgeType {
             5 => Self::Bridge,
             6 => Self::Namespace,
             7 => Self::Inferred,
+            8 => Self::Materialized2Hop,
+            9 => Self::Materialized3Hop,
             _ => Self::ExplicitLink,
         }
     }
@@ -89,6 +99,8 @@ impl std::fmt::Display for SemanticEdgeType {
             Self::Bridge => write!(f, "bridge"),
             Self::Namespace => write!(f, "namespace"),
             Self::Inferred => write!(f, "inferred"),
+            Self::Materialized2Hop => write!(f, "materialized_2hop"),
+            Self::Materialized3Hop => write!(f, "materialized_3hop"),
         }
     }
 }

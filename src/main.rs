@@ -918,6 +918,9 @@ async fn main() -> std::io::Result<()> {
                     // Ontology agent tools (MCP surface)
                     .configure(webxr::handlers::configure_ontology_agent_routes)
 
+                    // ADR-072: Combined content+topology feature discovery
+                    .configure(webxr::handlers::configure_discovery_routes)
+
                     // Solid Pod routes — native `solid-pod-rs` backend only
                     // (ADR-053/056; JSS proxy retired 2026-04-20).
                     .app_data(native_solid_data.clone())
@@ -943,6 +946,9 @@ async fn main() -> std::io::Result<()> {
 
                     // Layout mode system (ADR-031)
                     .configure(webxr::handlers::configure_layout_routes)
+
+                    // Combined content + topology embedding discovery
+                    .configure(webxr::handlers::configure_discovery_routes)
 
                     // Server Nostr identity — third parties discover the
                     // server's signing pubkey via GET /api/server/identity.

@@ -146,6 +146,7 @@ Practical task-oriented instructions. See [how-to/README.md](how-to/README.md) f
 | [Welcome Tour](how-to/features/onboarding.md) | Welcome tour configuration — steps, flows, skip behaviour, localStorage persistence |
 | [Workspace Management](how-to/features/workspace.md) | Workspace management — save/restore graph configurations, favourites, real-time sync |
 | [Command Palette](how-to/features/command-palette.md) | Command palette — Ctrl+K, fuzzy search, custom command registration |
+| [Discovery & Similarity Search](how-to/features/discovery-search.md) | Semantic similarity search, ontology gap detection, related-node exploration |
 
 ### Operations & Integration
 
@@ -189,6 +190,7 @@ Conceptual deep-dives that build understanding of how and why VisionClaw works.
 | [User-Agent Pod Design](explanation/user-agent-pod-design.md) | Per-user Solid Pod isolation for agent memory |
 | [Technology Choices](explanation/technology-choices.md) | Rationale for Rust, CUDA, Neo4j, OWL 2, and Three.js selections |
 | [RuVector Integration](explanation/ruvector-integration.md) | RuVector PostgreSQL as AI agent memory substrate |
+| [Feature Engineering Pipeline](explanation/feature-engineering-pipeline.md) | Content + topology embeddings, TransE training, N-hop materialisation, per-edge physics |
 | [Blender MCP Architecture](explanation/blender-mcp-unified-architecture.md) | Blender remote-control via WebSocket RPC + MCP tools |
 | [Deployment Topology](explanation/deployment-topology.md) | Multi-container service map, network architecture, dependency chain, scaling |
 | [Agent-Physics Bridge](explanation/agent-physics-bridge.md) | How AI agent lifecycle states synchronise to the 3D physics simulation |
@@ -332,6 +334,12 @@ Design decisions recorded as ADRs in [docs/adr/](adr/).
 |-----|--------|-------|-------------|
 | [ADR-071](adr/ADR-071-godot-rust-xr-replacement.md) | Accepted | Godot 4 + godot-rust + OpenXR Native APK | PRD-008 |
 
+### Feature Engineering (ADR-072)
+
+| ADR | Status | Title | Related PRD |
+|-----|--------|-------|-------------|
+| [ADR-072](adr/ADR-072-autordf2gml-feature-engineering.md) | Accepted | AutoRDF2GML-Inspired Feature Engineering Pipeline | PRD-009 |
+
 ### Superseded ADRs (removed — historical only)
 
 | ADR | Superseded By | Reason |
@@ -378,6 +386,7 @@ This section indexes the three lifecycle document types that govern VisionClaw's
 | 006 | [PRD-006: URI/JSON-LD Federation](PRD-006-visionclaw-agentbox-uri-federation.md) | Draft | ADR-059, ADR-060, ADR-062, ADR-063 | [Agentbox Integration (BC20)](ddd-agentbox-integration-context.md), [QE Traceability](ddd-qe-traceability-graph-context.md) |
 | 007 | [PRD-007: Binary Protocol Unification](PRD-007-binary-protocol-unification.md) | Draft | ADR-061 | [Binary Protocol](ddd-binary-protocol-context.md) |
 | 008 | [PRD-008: XR Godot Replacement](PRD-008-xr-godot-replacement.md) | In Progress | ADR-071 | [XR Godot (BC22)](ddd-xr-godot-context.md) |
+| 009 | [PRD-009: Feature Engineering & Discovery](PRD-009-feature-engineering-discovery.md) | In Progress | ADR-072 | [Feature Engineering](ddd-feature-engineering-context.md) |
 | QE-001 | [PRD-QE-001: Integration Quality Engineering](PRD-QE-001-integration-quality-engineering.md) | Draft | ADR-062 | [QE Traceability (BC21)](ddd-qe-traceability-graph-context.md) |
 | QE-002 | [PRD-QE-002: XR Godot Quality Engineering](PRD-QE-002-xr-godot-quality-engineering.md) | In Progress | ADR-071 | [XR Godot (BC22)](ddd-xr-godot-context.md) |
 | — | [PRD: Agent Orchestration Improvements](PRD-agent-orchestration-improvements.md) | Accepted | ADR-031 | — |
@@ -409,6 +418,7 @@ This section indexes the three lifecycle document types that govern VisionClaw's
 | QE Traceability Graph | BC21 | [DDD QE Traceability](ddd-qe-traceability-graph-context.md) | Draft | PRD-QE-001 |
 | Graph Cognition | BC-GC | [DDD Graph Cognition](ddd-graph-cognition-context.md) | Active | PRD-005 |
 | XR Godot | BC22 | [DDD XR Godot](ddd-xr-godot-context.md) | Implemented | PRD-008 |
+| Feature Engineering | BC23 | [DDD Feature Engineering](ddd-feature-engineering-context.md) | Active | PRD-009 |
 
 #### Superseded DDD Documents
 

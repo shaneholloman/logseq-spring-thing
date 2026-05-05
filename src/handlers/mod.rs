@@ -91,6 +91,10 @@ pub mod user_interaction_handler;
 // PRD-008: XR presence WebSocket (`/ws/presence`) — Quest 3 native APK multi-user sync
 pub mod presence_handler;
 
+// Combined content + topology embedding discovery (384-dim MiniLM + 128-dim TransE)
+pub mod discovery_handler;
+pub use discovery_handler::configure_routes as configure_discovery_routes;
+
 pub use quic_transport_handler::{
     QuicTransportServer, QuicServerConfig,
     PostcardNodeUpdate, PostcardBatchUpdate, PostcardDeltaUpdate,
