@@ -139,6 +139,10 @@ services:
       # per `server_identity.rs:57-91` — APP_ENV must not be "production" for that.
       SERVER_NOSTR_PRIVKEY: ${SERVER_NOSTR_PRIVKEY:-${VISIONCLAW_NOSTR_PRIVKEY:-}}
       SERVER_NOSTR_AUTO_GENERATE: ${SERVER_NOSTR_AUTO_GENERATE:-true}
+      # Feature engineering pipeline (PRD-009, ADR-072)
+      EMBEDDING_ENDPOINT: ${EMBEDDING_ENDPOINT:-}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-bge-small-en-v1.5}
+      NHOP_MATERIALIZATION_ENABLED: ${NHOP_MATERIALIZATION_ENABLED:-false}
       FORUM_RELAY_URL: ${FORUM_RELAY_URL:-}
       # Neo4j Configuration
       NEO4J_URI: ${NEO4J_URI:-bolt://neo4j:7687}

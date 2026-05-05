@@ -33,7 +33,7 @@ pub enum EmbeddingError {
 }
 
 // ---------------------------------------------------------------------------
-// Request / Response DTOs
+// Request / Response DTOs — legacy (ruvector) format
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Serialize)]
@@ -44,6 +44,26 @@ struct EmbedRequest {
 #[derive(Debug, Deserialize)]
 struct EmbedResponse {
     embeddings: Vec<Vec<f32>>,
+}
+
+// ---------------------------------------------------------------------------
+// Request / Response DTOs — OpenAI-compatible format (xinference, ollama, etc.)
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Serialize)]
+struct OpenAIEmbedRequest {
+    model: String,
+    input: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct OpenAIEmbedResponse {
+    data: Vec<OpenAIEmbedData>,
+}
+
+#[derive(Debug, Deserialize)]
+struct OpenAIEmbedData {
+    embedding: Vec<f32>,
 }
 
 // ---------------------------------------------------------------------------
@@ -75,6 +95,21 @@ const DEFAULT_ENDPOINT: &str = "http://ruvector-postgres:8080/embed";
 const EMBEDDING_DIM: usize = 384;
 const DEFAULT_BATCH_SIZE: usize = 64;
 
+#[derive(Debug, Clone, PartialEq)]
+enum EmbeddingBackend {
+    Legacy,
+    OpenAI { model: String },
+}
+
+fn detect_backend() -> (String, EmbeddingBackend) {
+    if let Ok(url) = std::env::var("EMBEDDING_ENDPOINT") {
+        let model = std::env::var("EMBEDDING_MODEL").unwrap_or_else(|_| "bge-small-en-v1.5".to_string());
+        (url, EmbeddingBackend::OpenAI { model })
+    } else {
+        (DEFAULT_ENDPOINT.to_string(), EmbeddingBackend::Legacy)
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Service
 // ---------------------------------------------------------------------------
@@ -82,16 +117,23 @@ const DEFAULT_BATCH_SIZE: usize = 64;
 pub struct EmbeddingService {
     client: Client,
     endpoint_url: String,
+    backend: EmbeddingBackend,
     neo4j: Arc<Graph>,
     batch_size: usize,
 }
 
 impl EmbeddingService {
     /// Create a new EmbeddingService with the given Neo4j graph handle.
+    /// Reads EMBEDDING_ENDPOINT / EMBEDDING_MODEL env vars to select backend.
+    /// If EMBEDDING_ENDPOINT is set, uses OpenAI-compatible API (xinference, ollama, etc.).
+    /// Otherwise falls back to the legacy ruvector format.
     pub fn new(neo4j: Arc<Graph>) -> Self {
+        let (url, backend) = detect_backend();
+        info!("EmbeddingService using {:?} backend at {}", backend, url);
         Self {
             client: Client::new(),
-            endpoint_url: DEFAULT_ENDPOINT.to_string(),
+            endpoint_url: url,
+            backend,
             neo4j,
             batch_size: DEFAULT_BATCH_SIZE,
         }
@@ -114,32 +156,53 @@ impl EmbeddingService {
     // -----------------------------------------------------------------------
 
     /// Embed multiple texts in a single HTTP call. Returns one 384-dim vector per input.
+    /// Dispatches to legacy (ruvector) or OpenAI-compatible (xinference) backend.
     pub async fn embed_texts(&self, texts: &[String]) -> Result<Vec<Vec<f32>>, EmbeddingError> {
         if texts.is_empty() {
             return Err(EmbeddingError::EmptyInput);
         }
 
-        let request_body = EmbedRequest {
-            texts: texts.to_vec(),
+        let embeddings = match &self.backend {
+            EmbeddingBackend::OpenAI { model } => {
+                let request_body = OpenAIEmbedRequest {
+                    model: model.clone(),
+                    input: texts.to_vec(),
+                };
+                let response = self
+                    .client
+                    .post(&self.endpoint_url)
+                    .json(&request_body)
+                    .send()
+                    .await?;
+                if !response.status().is_success() {
+                    let status = response.status();
+                    let body = response.text().await.unwrap_or_default();
+                    return Err(EmbeddingError::EndpointError(format!("HTTP {}: {}", status, body)));
+                }
+                let oai_resp: OpenAIEmbedResponse = response.json().await?;
+                oai_resp.data.into_iter().map(|d| d.embedding).collect::<Vec<_>>()
+            }
+            EmbeddingBackend::Legacy => {
+                let request_body = EmbedRequest {
+                    texts: texts.to_vec(),
+                };
+                let response = self
+                    .client
+                    .post(&self.endpoint_url)
+                    .json(&request_body)
+                    .send()
+                    .await?;
+                if !response.status().is_success() {
+                    let status = response.status();
+                    let body = response.text().await.unwrap_or_default();
+                    return Err(EmbeddingError::EndpointError(format!("HTTP {}: {}", status, body)));
+                }
+                let embed_response: EmbedResponse = response.json().await?;
+                embed_response.embeddings
+            }
         };
 
-        let response = self
-            .client
-            .post(&self.endpoint_url)
-            .json(&request_body)
-            .send()
-            .await?;
-
-        if !response.status().is_success() {
-            let status = response.status();
-            let body = response.text().await.unwrap_or_default();
-            return Err(EmbeddingError::EndpointError(format!(
-                "HTTP {}: {}",
-                status, body
-            )));
-        }
-
-        let embed_response: EmbedResponse = response.json().await?;
+        let embed_response = EmbedResponse { embeddings };
 
         // Validate dimensions
         for (i, emb) in embed_response.embeddings.iter().enumerate() {

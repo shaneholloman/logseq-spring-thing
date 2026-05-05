@@ -84,6 +84,10 @@ services:
       - SERVER_NOSTR_AUTO_GENERATE=true
       # Without NIP98_OPTIONAL_AUTH, /api/graph/data returns 401 in dev
       - NIP98_OPTIONAL_AUTH=true
+      # Feature engineering pipeline (PRD-009, ADR-072)
+      - EMBEDDING_ENDPOINT=http://xinference:9997/v1/embeddings
+      - EMBEDDING_MODEL=bge-small-en-v1.5
+      - NHOP_MATERIALIZATION_ENABLED=true
     deploy: # Indentation: 4 spaces
       resources:
         reservations:
