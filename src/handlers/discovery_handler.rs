@@ -374,39 +374,87 @@ async fn edge_exists(neo4j: &Arc<Neo4jAdapter>, iri_a: &str, iri_b: &str) -> boo
 // ---------------------------------------------------------------------------
 
 /// Call the external embedding service to vectorize query text.
+/// Uses the same dual-backend detection as EmbeddingService:
+///   - EMBEDDING_ENDPOINT set → OpenAI-compatible API (xinference, ollama)
+///   - Otherwise → legacy ruvector format
 async fn embed_text(text: &str) -> Result<Vec<f32>, String> {
-    let embed_url = std::env::var("EMBEDDING_SERVICE_URL")
-        .unwrap_or_else(|_| "http://ruvector-postgres:8080/embed".to_string());
-
     let client = reqwest::Client::new();
 
-    #[derive(Serialize)]
-    struct EmbedRequest<'a> {
-        text: &'a str,
+    if let Ok(endpoint) = std::env::var("EMBEDDING_ENDPOINT") {
+        let model = std::env::var("EMBEDDING_MODEL")
+            .unwrap_or_else(|_| "bge-small-en-v1.5".to_string());
+
+        #[derive(Serialize)]
+        struct OpenAIReq {
+            model: String,
+            input: Vec<String>,
+        }
+        #[derive(Deserialize)]
+        struct OpenAIResp {
+            data: Vec<OpenAIData>,
+        }
+        #[derive(Deserialize)]
+        struct OpenAIData {
+            embedding: Vec<f32>,
+        }
+
+        let resp = client
+            .post(&endpoint)
+            .json(&OpenAIReq {
+                model,
+                input: vec![text.to_string()],
+            })
+            .timeout(std::time::Duration::from_secs(15))
+            .send()
+            .await
+            .map_err(|e| format!("Embedding service request failed: {e}"))?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            return Err(format!("Embedding service returned {status}: {body}"));
+        }
+
+        let parsed: OpenAIResp = resp
+            .json()
+            .await
+            .map_err(|e| format!("Failed to parse embedding response: {e}"))?;
+
+        parsed
+            .data
+            .into_iter()
+            .next()
+            .map(|d| d.embedding)
+            .ok_or_else(|| "Embedding response contained no vectors".to_string())
+    } else {
+        let embed_url = "http://ruvector-postgres:8080/embed".to_string();
+
+        #[derive(Serialize)]
+        struct LegacyReq<'a> {
+            text: &'a str,
+        }
+
+        let resp = client
+            .post(&embed_url)
+            .json(&LegacyReq { text })
+            .timeout(std::time::Duration::from_secs(10))
+            .send()
+            .await
+            .map_err(|e| format!("Embedding service request failed: {e}"))?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            return Err(format!("Embedding service returned {status}: {body}"));
+        }
+
+        let parsed: EmbeddingServiceResponse = resp
+            .json()
+            .await
+            .map_err(|e| format!("Failed to parse embedding response: {e}"))?;
+
+        Ok(parsed.embeddings)
     }
-
-    let resp = client
-        .post(&embed_url)
-        .json(&EmbedRequest { text })
-        .timeout(std::time::Duration::from_secs(10))
-        .send()
-        .await
-        .map_err(|e| format!("Embedding service request failed: {e}"))?;
-
-    if !resp.status().is_success() {
-        let status = resp.status();
-        let body = resp.text().await.unwrap_or_default();
-        return Err(format!(
-            "Embedding service returned {status}: {body}"
-        ));
-    }
-
-    let parsed: EmbeddingServiceResponse = resp
-        .json()
-        .await
-        .map_err(|e| format!("Failed to parse embedding response: {e}"))?;
-
-    Ok(parsed.embeddings)
 }
 
 // ---------------------------------------------------------------------------
