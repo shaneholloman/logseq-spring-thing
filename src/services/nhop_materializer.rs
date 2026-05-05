@@ -412,7 +412,8 @@ impl NHopMaterializer {
                  ORDER BY cnt DESC \
                  WITH a, collect({{target: c, path: path}})[..{limit}] AS targets \
                  UNWIND targets AS t \
-                 CREATE (a)-[:MATERIALIZED_2HOP {{weight: $weight, source_path: t.path, created_at: datetime()}}]->(t.target) \
+                 WITH a, t.target AS tgt, t.path AS tp \
+                 CREATE (a)-[:MATERIALIZED_2HOP {{weight: $weight, source_path: tp, created_at: datetime()}}]->(tgt) \
                  RETURN count(*) AS created",
                 rel = rel_type,
                 limit = self.config.max_edges_per_node,
@@ -454,7 +455,8 @@ impl NHopMaterializer {
              ORDER BY cnt DESC \
              WITH a, collect({{target: c, path: path}})[..{limit}] AS targets \
              UNWIND targets AS t \
-             CREATE (a)-[:MATERIALIZED_2HOP {{weight: $weight, source_path: t.path, created_at: datetime()}}]->(t.target) \
+             WITH a, t.target AS tgt, t.path AS tp \
+             CREATE (a)-[:MATERIALIZED_2HOP {{weight: $weight, source_path: tp, created_at: datetime()}}]->(tgt) \
              RETURN count(*) AS created",
             types = types_literal,
             limit = self.config.max_edges_per_node,
@@ -483,7 +485,8 @@ impl NHopMaterializer {
              ORDER BY paths DESC \
              WITH a, collect({{target: d, paths: paths}})[..{limit}] AS targets \
              UNWIND targets AS t \
-             CREATE (a)-[:MATERIALIZED_3HOP {{weight: $weight, path_count: t.paths, created_at: datetime()}}]->(t.target) \
+             WITH a, t.target AS tgt, t.paths AS tp \
+             CREATE (a)-[:MATERIALIZED_3HOP {{weight: $weight, path_count: tp, created_at: datetime()}}]->(tgt) \
              RETURN count(*) AS created",
             limit = self.config.max_edges_per_node,
         );
@@ -688,7 +691,8 @@ mod tests {
              ORDER BY cnt DESC \
              WITH a, collect({{target: c, path: path}})[..{limit}] AS targets \
              UNWIND targets AS t \
-             CREATE (a)-[:MATERIALIZED_2HOP {{weight: $weight, source_path: t.path, created_at: datetime()}}]->(t.target) \
+             WITH a, t.target AS tgt, t.path AS tp \
+             CREATE (a)-[:MATERIALIZED_2HOP {{weight: $weight, source_path: tp, created_at: datetime()}}]->(tgt) \
              RETURN count(*) AS created",
             rel = rel_type,
             limit = limit,
