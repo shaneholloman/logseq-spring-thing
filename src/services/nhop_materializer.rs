@@ -272,7 +272,9 @@ impl NHopMaterializer {
 
         // 3-hop from this node
         let q3 = query(
-            "MATCH (a:OntologyClass {iri: $iri})-[:SUBCLASS_OF|RELATES*3]->(d:OntologyClass) \
+            "MATCH (a:OntologyClass {iri: $iri})-[:SUBCLASS_OF|RELATES]->(b:OntologyClass) \
+                   -[:SUBCLASS_OF|RELATES]->(c:OntologyClass) \
+                   -[:SUBCLASS_OF|RELATES]->(d:OntologyClass) \
              WHERE a <> d \
                AND NOT (a)-[:MATERIALIZED_3HOP]->(d) \
              WITH a, d, count(*) AS paths \
@@ -478,7 +480,9 @@ impl NHopMaterializer {
     /// Materialize 3-hop edges using variable-length path patterns.
     async fn materialize_3hop(&self) -> Result<usize, NHopError> {
         let cypher = format!(
-            "MATCH (a:OntologyClass)-[:SUBCLASS_OF|RELATES*3]->(d:OntologyClass) \
+            "MATCH (a:OntologyClass)-[:SUBCLASS_OF|RELATES]->(b:OntologyClass) \
+                   -[:SUBCLASS_OF|RELATES]->(c:OntologyClass) \
+                   -[:SUBCLASS_OF|RELATES]->(d:OntologyClass) \
              WHERE a <> d AND NOT (a)-[:MATERIALIZED_3HOP]->(d) \
              WITH a, d, count(*) AS paths \
              WHERE paths >= 1 \
