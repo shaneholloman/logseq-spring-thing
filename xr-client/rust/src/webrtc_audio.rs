@@ -128,6 +128,17 @@ impl SpatialVoiceRouterCore {
             Err(_) => Vec::new(),
         }
     }
+
+    pub fn listener_snapshot(&self) -> ListenerTransform {
+        self.listener
+            .lock()
+            .map(|l| *l)
+            .unwrap_or(ListenerTransform {
+                position: [0.0; 3],
+                forward: [0.0, 0.0, -1.0],
+                up: [0.0, 1.0, 0.0],
+            })
+    }
 }
 
 impl Default for SpatialVoiceRouterCore {
@@ -147,6 +158,9 @@ pub struct SpatialVoiceRouter {
 #[cfg(not(test))]
 #[godot_api]
 impl SpatialVoiceRouter {
+    #[signal]
+    fn voice_activity(did: GString, active: bool);
+
     #[func]
     fn create() -> Gd<Self> {
         Gd::from_init_fn(|base| Self {
@@ -175,6 +189,23 @@ impl SpatialVoiceRouter {
     }
 
     #[func]
+    fn update_track_position(&mut self, did: GString, position: Vector3) -> bool {
+        self.core
+            .update_track_position(&did.to_string(), [position.x, position.y, position.z])
+            .is_ok()
+    }
+
+    #[func]
+    fn set_track_muted(&mut self, did: GString, muted: bool) -> bool {
+        self.core.set_track_muted(&did.to_string(), muted).is_ok()
+    }
+
+    #[func]
+    fn track_count(&self) -> i64 {
+        self.core.track_count() as i64
+    }
+
+    #[func]
     fn update_listener(&mut self, position: Vector3, forward: Vector3, up: Vector3) -> bool {
         self.core
             .update_listener(ListenerTransform {
@@ -189,6 +220,7 @@ impl SpatialVoiceRouter {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Arc;
 
     #[test]
     fn attach_increments_count() {
@@ -228,5 +260,90 @@ mod tests {
         r.attach_track("did:nostr:aaa".into(), [0.0; 3]).unwrap();
         r.set_track_muted("did:nostr:aaa", true).unwrap();
         assert!(r.snapshot()[0].muted);
+    }
+
+    #[test]
+    fn update_listener_changes_state() {
+        let r = SpatialVoiceRouterCore::new();
+        let t = ListenerTransform {
+            position: [5.0, 10.0, 15.0],
+            forward: [1.0, 0.0, 0.0],
+            up: [0.0, 0.0, 1.0],
+        };
+        r.update_listener(t).unwrap();
+        let snap = r.listener_snapshot();
+        assert_eq!(snap.position, [5.0, 10.0, 15.0]);
+        assert_eq!(snap.forward, [1.0, 0.0, 0.0]);
+        assert_eq!(snap.up, [0.0, 0.0, 1.0]);
+    }
+
+    #[test]
+    fn snapshot_returns_all_tracks() {
+        let r = SpatialVoiceRouterCore::new();
+        r.attach_track("did:nostr:aaa".into(), [1.0, 0.0, 0.0]).unwrap();
+        r.attach_track("did:nostr:bbb".into(), [0.0, 1.0, 0.0]).unwrap();
+        r.attach_track("did:nostr:ccc".into(), [0.0, 0.0, 1.0]).unwrap();
+        let snap = r.snapshot();
+        assert_eq!(snap.len(), 3);
+    }
+
+    #[test]
+    fn snapshot_after_detach() {
+        let r = SpatialVoiceRouterCore::new();
+        r.attach_track("did:nostr:aaa".into(), [0.0; 3]).unwrap();
+        r.attach_track("did:nostr:bbb".into(), [1.0; 3]).unwrap();
+        r.detach_track("did:nostr:aaa").unwrap();
+        let snap = r.snapshot();
+        assert_eq!(snap.len(), 1);
+        assert_eq!(snap[0].did, "did:nostr:bbb");
+    }
+
+    #[test]
+    fn default_trait_matches_new() {
+        let r = SpatialVoiceRouterCore::default();
+        assert_eq!(r.track_count(), 0);
+    }
+
+    #[test]
+    fn concurrent_attach_from_two_threads() {
+        let r = Arc::new(SpatialVoiceRouterCore::new());
+        let mut handles = Vec::new();
+        for batch in 0..2 {
+            let r = Arc::clone(&r);
+            handles.push(std::thread::spawn(move || {
+                for i in 0..10 {
+                    let did = format!("did:nostr:t{}n{}", batch, i);
+                    r.attach_track(did, [batch as f32, i as f32, 0.0]).unwrap();
+                }
+            }));
+        }
+        for h in handles {
+            h.join().unwrap();
+        }
+        assert_eq!(r.track_count(), 20);
+    }
+
+    #[test]
+    fn update_position_unknown_track_errors() {
+        let r = SpatialVoiceRouterCore::new();
+        let err = r.update_track_position("did:nostr:ghost", [1.0, 2.0, 3.0]).unwrap_err();
+        assert!(matches!(err, VoiceError::UnknownTrack { .. }));
+    }
+
+    #[test]
+    fn set_muted_unknown_track_errors() {
+        let r = SpatialVoiceRouterCore::new();
+        let err = r.set_track_muted("did:nostr:ghost", true).unwrap_err();
+        assert!(matches!(err, VoiceError::UnknownTrack { .. }));
+    }
+
+    #[test]
+    fn attach_same_did_twice_overwrites() {
+        let r = SpatialVoiceRouterCore::new();
+        r.attach_track("did:nostr:aaa".into(), [0.0, 0.0, 0.0]).unwrap();
+        r.attach_track("did:nostr:aaa".into(), [1.0, 1.0, 1.0]).unwrap();
+        assert_eq!(r.track_count(), 1);
+        let snap = r.snapshot();
+        assert_eq!(snap[0].position, [1.0, 1.0, 1.0]);
     }
 }

@@ -328,4 +328,51 @@ mod tests {
         let decoded = client.decode_pose(&bytes).unwrap();
         assert_eq!(decoded.frame, frame);
     }
+
+    #[test]
+    fn hex_lower_known_vector() {
+        assert_eq!(hex_lower(&[0xde, 0xad, 0xbe, 0xef]), "deadbeef");
+    }
+
+    #[test]
+    fn into_avatar_metadata_valid() {
+        let member = RemoteMember {
+            did: format!("did:nostr:{}", "b".repeat(64)),
+            display_name: "bob".into(),
+            avatar_id: format!("urn:visionclaw:avatar:{}", "b".repeat(64)),
+            model_uri: Some("https://example.com/model.glb".into()),
+        };
+        let meta = into_avatar_metadata(&member).unwrap();
+        assert_eq!(meta.did.as_str(), &format!("did:nostr:{}", "b".repeat(64)));
+        assert_eq!(meta.display_name, "bob");
+        assert_eq!(meta.model_uri, Some("https://example.com/model.glb".into()));
+    }
+
+    #[test]
+    fn into_avatar_metadata_bad_did() {
+        let member = RemoteMember {
+            did: "not-a-did".into(),
+            display_name: "evil".into(),
+            avatar_id: "urn:visionclaw:avatar:abc".into(),
+            model_uri: None,
+        };
+        let err = into_avatar_metadata(&member).unwrap_err();
+        assert!(matches!(err, PresenceError::Protocol(_)));
+    }
+
+    #[tokio::test]
+    async fn handshake_binary_response_errors() {
+        let (transport, inbox) = FakeWsTransport::new();
+        let transport = Arc::new(transport);
+        let signer = Arc::new(FakeSigner::new());
+        let mut client = PresenceClient::new(transport, signer, sample_room());
+
+        inbox
+            .send(WsMessage::Binary(vec![0x42, 0x00]))
+            .await
+            .unwrap();
+
+        let err = client.handshake("alice".into()).await.unwrap_err();
+        assert!(matches!(err, PresenceError::Protocol(_)));
+    }
 }

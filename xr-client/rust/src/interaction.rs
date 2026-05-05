@@ -263,4 +263,66 @@ mod tests {
         let hit = find_target(&ray_forward(), &candidates);
         assert!(hit.is_some(), "node at exact target radius should hit");
     }
+
+    #[test]
+    fn zero_direction_ray_degenerates_safely() {
+        // A ray with direction [0,0,0] normalises to [0,0,-1] per the
+        // normalise() fallback. This should not panic.
+        let ray = HandRay {
+            origin: [0.0, 0.0, 0.0],
+            direction: [0.0, 0.0, 0.0],
+            pinch_strength: 0.0,
+            is_tracking: true,
+        };
+        let candidates = vec![TargetCandidate {
+            node_id: 1,
+            position: [0.0, 0.0, -5.0],
+        }];
+        // The fallback direction is [0,0,-1], so a target at -5z should hit.
+        let hit = find_target(&ray, &candidates);
+        assert!(hit.is_some(), "zero direction should fallback to [0,0,-1]");
+        assert_eq!(hit.unwrap().node_id, 1);
+    }
+
+    #[test]
+    fn empty_candidates_returns_none() {
+        assert!(find_target(&ray_forward(), &[]).is_none());
+    }
+
+    #[test]
+    fn very_large_candidate_count() {
+        // 1000 candidates along the ray, nearest should win.
+        let candidates: Vec<TargetCandidate> = (1..=1000)
+            .map(|i| TargetCandidate {
+                node_id: i,
+                position: [0.0, 0.0, -(i as f32 * 0.02 + 0.5)],
+            })
+            .collect();
+        // Closest is node_id=1 at z = -0.52
+        let hit = find_target(&ray_forward(), &candidates).unwrap();
+        assert_eq!(hit.node_id, 1);
+        assert!(hit.distance < 1.0);
+    }
+
+    #[test]
+    fn diagonal_ray_finds_offset_target() {
+        let inv_sqrt3 = 1.0_f32 / 3.0_f32.sqrt();
+        let ray = HandRay {
+            origin: [0.0, 0.0, 0.0],
+            direction: [inv_sqrt3, inv_sqrt3, -inv_sqrt3],
+            pinch_strength: 0.0,
+            is_tracking: true,
+        };
+        // Place a candidate at (5, 5, -5). This point lies exactly on the ray
+        // direction [1,1,-1]/sqrt(3). Distance from origin along the ray:
+        // dot([5,5,-5], [1,1,-1]/sqrt(3)) = (5+5+5)/sqrt(3) = 15/sqrt(3).
+        // Perpendicular distance should be ~0.
+        let candidates = vec![TargetCandidate {
+            node_id: 42,
+            position: [5.0, 5.0, -5.0],
+        }];
+        let hit = find_target(&ray, &candidates);
+        assert!(hit.is_some(), "diagonal ray should hit target along its direction");
+        assert_eq!(hit.unwrap().node_id, 42);
+    }
 }

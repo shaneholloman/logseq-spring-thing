@@ -211,4 +211,71 @@ mod tests {
         ingest_frame(Bytes::from(frame), |_| count += 1);
         assert_eq!(count, 2);
     }
+
+    #[test]
+    fn decodes_multi_node_frame() {
+        let records = [
+            (1u32, [1.0f32, 2.0, 3.0], [0.1f32, 0.2, 0.3]),
+            (2, [4.0, 5.0, 6.0], [0.4, 0.5, 0.6]),
+            (3, [7.0, 8.0, 9.0], [0.7, 0.8, 0.9]),
+        ];
+        let frame = build_frame(&records);
+        let decoded = decode_position_frame(&frame).unwrap();
+        assert_eq!(decoded.len(), 3);
+        for (i, (id, pos, vel)) in records.iter().enumerate() {
+            assert_eq!(decoded[i].node_id, *id);
+            assert_eq!(decoded[i].position, *pos);
+            assert_eq!(decoded[i].velocity, *vel);
+        }
+    }
+
+    #[test]
+    fn zero_node_frame_is_valid() {
+        let frame = vec![OPCODE_POSITION_FRAME];
+        let decoded = decode_position_frame(&frame).unwrap();
+        assert!(decoded.is_empty());
+    }
+
+    #[test]
+    fn dispatch_opcode_returns_first_byte() {
+        assert_eq!(dispatch_opcode(&[0x42, 0x00, 0x01]), Some(0x42));
+        assert_eq!(dispatch_opcode(&[0x43]), Some(0x43));
+        assert_eq!(dispatch_opcode(&[0x00]), Some(0x00));
+        assert_eq!(dispatch_opcode(&[0xFF]), Some(0xFF));
+    }
+
+    #[test]
+    fn dispatch_opcode_empty_returns_none() {
+        assert_eq!(dispatch_opcode(&[]), None);
+    }
+
+    #[test]
+    fn ingest_frame_bad_opcode_is_silent() {
+        let frame = vec![0x99, 0x00, 0x00, 0x00];
+        let mut count = 0usize;
+        ingest_frame(Bytes::from(frame), |_| count += 1);
+        assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn parse_preserves_negative_values() {
+        let frame = build_frame(&[(
+            42,
+            [-1.5, -2.5, -3.5],
+            [-0.1, -0.2, -0.3],
+        )]);
+        let decoded = decode_position_frame(&frame).unwrap();
+        assert_eq!(decoded.len(), 1);
+        assert_eq!(decoded[0].node_id, 42);
+        assert_eq!(decoded[0].position, [-1.5, -2.5, -3.5]);
+        assert_eq!(decoded[0].velocity, [-0.1, -0.2, -0.3]);
+    }
+
+    #[test]
+    fn max_u32_node_id() {
+        let frame = build_frame(&[(u32::MAX, [0.0, 0.0, 0.0], [0.0, 0.0, 0.0])]);
+        let decoded = decode_position_frame(&frame).unwrap();
+        assert_eq!(decoded.len(), 1);
+        assert_eq!(decoded[0].node_id, u32::MAX);
+    }
 }
