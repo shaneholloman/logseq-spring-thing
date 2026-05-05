@@ -26,7 +26,7 @@ C4Container
         Component(worker, "Physics Worker", "Web Worker", "Receives position updates via SharedArrayBuffer")
         Component(wasm, "WASM Scene Effects", "Rust → WASM", "Particle and environment effect rendering")
         Component(settings, "Settings Panel", "React/Zustand", "User configuration with lazy-load and auto-save")
-        Component(xr, "XR/VR Mode", "Babylon.js", "Immersive mode (optional, see xr-architecture.md)")
+        Component(xr, "XR Mode", "Godot 4 APK", "Native Quest 3 XR client (separate binary, see xr-architecture.md)")
     }
 
     System_Ext(api, "VisionClaw API", "Actix-Web backend — REST and WebSocket endpoints")
@@ -364,7 +364,7 @@ Safari does not support `EXT_color_buffer_float`; bloom is disabled automaticall
 
 ## See Also
 
-- [XR Architecture](xr-architecture.md) — Babylon.js immersive mode, Vircadia multi-user, WebXR
+- [XR Architecture](xr-architecture.md) — Godot 4 + godot-rust + OpenXR native Quest 3 APK, spatial presence
 - [System Overview](system-overview.md) — Hexagonal architecture, CQRS pattern, actor model
 - [Physics & GPU Engine](physics-gpu-engine.md) — CUDA force computation
 - [Backend CQRS Pattern](backend-cqrs-pattern.md) — Rust/Actix backend, command/query separation

@@ -65,51 +65,51 @@ The grammars are compatible in principle and the content-addressing convention a
 
 ## 4. Architecture Overview
 
-```
-┌────────────────────────── Client (browser) ──────────────────────────┐
-│                                                                       │
-│  GraphCanvas + InstancedLabels  ←──── binary protocol ──── (physics) │
-│  AgentControlPanel              ←──── WS /v1/agent-events ──── (NEW) │
-│  Linked-Object Viewer (S12)     ←──── REST /api/v1/uri/* ───── (NEW) │
-│                                                                       │
-└──────────┬──────────────────────────────────────┬─────────────────────┘
-           │                                      │
-           ▼                                      ▼
-┌──────────────────────────────────────────────────────────────────────┐
-│                       VisionClaw Rust substrate                      │
-│                                                                      │
-│  ┌────────────┐   ┌─────────────────┐   ┌─────────────────────────┐  │
-│  │ src/uri/   │   │ /api/v1/uri/*   │   │ AgentEventStream        │  │
-│  │ mod.rs     │──▶│ resolver        │   │ Projector               │  │
-│  │ (mint)     │   │ (307/404/410)   │   │ (NEW — BC20)            │  │
-│  └─────┬──────┘   └─────────────────┘   └────────────┬────────────┘  │
-│        │                                              ▲              │
-│        ▼                                              │              │
-│  ┌─────────────────┐  ┌─────────────────────┐  ┌──────┴──────────┐   │
-│  │ Neo4j adapters  │  │ FederationSession   │  │ stdio bridge    │   │
-│  │ (v2 fields PLUMBED) │ Lifecycle Service │◄─│ reader (NEW)    │   │
-│  │  KGNode↔OClass  │  │ (boot handshake)    │  │ JSON-RPC ←      │   │
-│  │  sync MERGE     │  │                     │  │                 │   │
-│  └─────────────────┘  └─────────────────────┘  └────┬────────────┘   │
-│                                                     │                │
-│  ACL modules (NEW):                                 │                │
-│   beads_acl │ pods_acl │ memory_acl │ events_acl │  │                │
-│   orchestrator_acl │ uris_acl                       │                │
-└─────────────────────────────────────────────────────┼────────────────┘
-                                                      │ stdin/stdout
-                                                      ▼
-                                       ┌────────────────────────────┐
-                                       │ agentbox container (sibling)│
-                                       │  management-api             │
-                                       │   /v1/uri/<urn>             │
-                                       │   /v1/meta                  │
-                                       │   /v1/agent-events          │
-                                       │   stdio-bridge.js           │
-                                       │   local-process-manager.js  │
-                                       │  context catalogue:         │
-                                       │   agentbox-v1.context.jsonld│
-                                       │   visionclaw-v2.context.jsonld (NEW) │
-                                       └────────────────────────────┘
+```mermaid
+graph TD
+    subgraph Client["Client (browser)"]
+        GC["GraphCanvas + InstancedLabels"]
+        ACP["AgentControlPanel"]
+        LOV["Linked-Object Viewer (S12)"]
+    end
+
+    subgraph VC["VisionClaw Rust substrate"]
+        subgraph UriMint["src/uri/mod.rs (mint)"]
+        end
+        subgraph Resolver["/api/v1/uri/* resolver (307/404/410)"]
+        end
+        subgraph EventStream["AgentEventStream Projector (NEW - BC20)"]
+        end
+        subgraph Neo4j["Neo4j adapters (v2 fields PLUMBED, KGNode-OClass sync MERGE)"]
+        end
+        subgraph Federation["FederationSession Lifecycle Service (boot handshake)"]
+        end
+        subgraph Stdio["stdio bridge reader (NEW, JSON-RPC)"]
+        end
+        subgraph ACL["ACL modules (NEW): beads_acl, pods_acl, memory_acl, events_acl, orchestrator_acl, uris_acl"]
+        end
+    end
+
+    subgraph Agentbox["agentbox container (sibling)"]
+        MGMT["management-api"]
+        URI_AB["/v1/uri/urn"]
+        META["/v1/meta"]
+        EVENTS["/v1/agent-events"]
+        STDIO_JS["stdio-bridge.js"]
+        LPM["local-process-manager.js"]
+        CTX["context catalogue: agentbox-v1.context.jsonld, visionclaw-v2.context.jsonld (NEW)"]
+    end
+
+    GC -->|"binary protocol"| VC
+    ACP -->|"WS /v1/agent-events (NEW)"| EventStream
+    LOV -->|"REST /api/v1/uri/* (NEW)"| Resolver
+
+    UriMint --> Resolver
+    UriMint --> Neo4j
+    Stdio --> EventStream
+    Federation -->|"reads"| Stdio
+
+    Stdio -->|"stdin/stdout"| Agentbox
 ```
 
 ---

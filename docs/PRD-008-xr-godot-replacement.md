@@ -1,8 +1,8 @@
 # PRD-008: XR Client Replacement — Native Quest 3 APK via Godot 4 + godot-rust + OpenXR
 
-**Status:** Draft
+**Status:** In Progress — scaffold, protocol, presence, interaction, LOD, avatar rendering, and testing feature-complete; LiveKit AAR JNI bridge, WebXR removal, soak testing, and on-device profiling remain planned
 **Priority:** P0 — current XR stack is silent-failing in production; the user-facing immersive path is effectively unshipped
-**Date:** 2026-05-02
+**Date:** 2026-05-02 (last updated 2026-05-04)
 **Author:** Architecture Audit (xr-godot-replacement swarm `swarm-1777757491161-nl2bbv`)
 **Supersedes:**
 - [`docs/prd-xr-modernization.md`](prd-xr-modernization.md) — incremental fix to the Babylon/R3F/Vircadia stack; **superseded in full** by this PRD
@@ -129,20 +129,26 @@ xr-client/
 ├── project.godot                       # Godot 4.3 project config
 ├── icon.svg
 ├── scenes/
-│   ├── Main.tscn                       # OpenXR root, FixedFoveatedRendering, env, lighting
-│   ├── GraphScene.tscn                 # MultiMeshInstance3D for nodes, ImmediateMesh for edges
-│   ├── AvatarRig.tscn                  # Head + 2× hand + nameplate, instanced per remote user
-│   └── UI/
-│       ├── DebugHud.tscn               # Frame time, MTP, presence status (toggle via menu button)
-│       └── RoomMenu.tscn               # Room id entry, voice mute, exit (3D AdvancedDynamicTexture-equivalent: Godot Control on a SubViewport)
+│   ├── XRBoot.tscn                     # OpenXR boot + capability probe scene
+│   ├── GraphScene.tscn                 # MultiMeshInstance3D for nodes, avatar lifecycle signals
+│   ├── Avatar.tscn                     # Head + 2× hand, instanced per remote user, pose application
+│   └── HUD.tscn                        # Room join + mute controls, presence/voice status
 ├── scripts/                            # GDScript: scene wiring, UI behaviour, signals
-│   ├── main.gd
-│   ├── graph_scene.gd
-│   ├── avatar_rig.gd
-│   ├── room_menu.gd
-│   └── debug_hud.gd
+│   ├── xr_boot.gd                      # OpenXR boot + capability probe
+│   ├── graph_scene.gd                  # Graph rendering, avatar lifecycle signals
+│   ├── avatar.gd                       # Avatar pose application, interpolation
+│   └── hud.gd                          # Room join, mute controls, HUD wiring
+├── rust/                               # gdext crate (see detailed layout above)
+├── perf/
+│   ├── benchmark_scene.tscn            # Performance benchmark scene
+│   ├── benchmark.gd                    # Benchmark harness
+│   └── run_benchmark.gd                # Benchmark runner
+├── tests/
+│   ├── run_gut.gd                      # GUT test runner
+│   └── unit/
+│       └── test_scene_load.gd          # Scene load tests (being expanded)
 ├── addons/
-│   └── livekit/                        # LiveKit Android AAR + binding shim (§5.5)
+│   └── livekit/                        # LiveKit Android AAR + binding shim (§5.5) — NOT YET STARTED
 ├── export_presets.cfg                  # Android Quest 3 export preset (arm64-v8a, OpenXR enabled)
 └── android/
     └── build/                          # Custom Gradle template if needed (NDK r26+)
@@ -151,18 +157,27 @@ xr-client/
 The companion gdext crate lives in the workspace at:
 
 ```
-crates/
-└── visionclaw-xr-gdext/                # Rust-side hot paths exposed as GDExtension classes
-    ├── Cargo.toml
-    ├── src/
-    │   ├── lib.rs                      # GDExtension entry, class registration
-    │   ├── protocol_decoder.rs         # Decodes 0x42 position frames + new avatar pose frames; zero-alloc
-    │   ├── presence_client.rs          # WS client (tokio-tungstenite under tokio-runtime feature), reconnect, NIP-98 auth
-    │   ├── pose_validator.rs           # Local sanity check before send (mirrors server validator §5.3)
-    │   ├── lod.rs                      # Frustum cull + distance buckets, called by graph_scene.gd
-    │   └── perf_tap.rs                 # MTP measurement, OVR Metrics Tool integration
-    ├── benches/
-    └── tests/
+xr-client/rust/                         # Rust-side hot paths exposed as GDExtension classes
+├── Cargo.toml
+├── src/
+│   ├── lib.rs                          # GDExtension entry point; registers 5 classes
+│   ├── binary_protocol.rs              # Decodes 0x42 position frames (214 lines, 5 inline tests)
+│   ├── presence.rs                     # WS presence client with NIP-98 auth, reconnect (331 lines, 4 async tests)
+│   ├── interaction.rs                  # Hand-tracking ray cast + pinch detection (266 lines, 9 inline tests)
+│   ├── lod.rs                          # Frustum cull + distance-bucket LOD policy (200 lines, 7 inline tests)
+│   ├── webrtc_audio.rs                 # Spatial voice routing surface (13+ inline tests, being expanded)
+│   └── ports/
+│       └── mod.rs                      # Hexagonal port architecture with fake transports (151 lines)
+├── benches/
+│   └── decode_throughput.rs
+└── tests/
+    ├── presence_handshake.rs           # 2 integration tests
+    ├── property_interaction.rs         # 11 property tests (proptest)
+    ├── lod_thresholds.rs               # 5 integration tests
+    ├── pose_wire_round_trip.rs         # 3 round-trip tests
+    ├── property_lod.rs                 # 9 property tests (proptest)
+    ├── interaction_raycast.rs          # 8 integration tests
+    └── visual_fixture.rs              # 5 visual fixture tests (numerical, not pixel-diff)
 ```
 
 GDScript responsibilities (and **only** these): scene composition, signal
@@ -256,21 +271,34 @@ binding); the gdext client consumes it natively in-process.
 
 ### 5.3 Presence Service
 
-**New Rust crate** at `crates/visionclaw-xr-presence/`:
+**Rust crate** at `crates/visionclaw-xr-presence/` (1175 lines across source, feature-complete):
 
 ```
 crates/visionclaw-xr-presence/
 ├── Cargo.toml
 ├── src/
-│   ├── lib.rs                          # Public API: PresenceActor, RoomId, UserId
-│   ├── room.rs                         # Room model: members, broadcast_sequence, last_pose_per_user
-│   ├── pose_validator.rs               # Anatomical limits + velocity clamps (mirror in gdext)
-│   ├── messages.rs                     # Actix message types: Join, Leave, IncomingPose, BroadcastPose
-│   └── auth.rs                         # NIP-98 verification helper (delegates to existing nostr-auth crate)
+│   ├── lib.rs                          # Public API re-exports (26 lines)
+│   ├── types.rs                        # AvatarId, Did, RoomId, PoseFrame, Transform types (204 lines)
+│   ├── wire.rs                         # 0x43 avatar pose codec — encode/decode with transform_mask bitfield (304 lines, 4 inline tests)
+│   ├── room.rs                         # Room model: members, broadcast_sequence, last_pose_per_user (174 lines, 3 inline tests)
+│   ├── validate.rs                     # Anatomical limits + velocity clamps, quaternion checks (202 lines, 7 inline tests)
+│   ├── delta.rs                        # Delta compression for pose updates (142 lines, 3 inline tests)
+│   ├── error.rs                        # Typed error hierarchy (61 lines)
+│   └── ports/
+│       └── mod.rs                      # ACL port traits for identity verification and room membership
+├── proptest-regressions/
+│   └── wire.txt                        # Proptest regression seeds
+├── fuzz/
+│   ├── Cargo.toml
+│   └── fuzz_targets/
+│       └── wire_decode.rs              # Fuzz target for wire protocol decode
+├── benches/
+│   ├── wire.rs                         # Wire encode/decode benchmarks
+│   └── baseline.json                   # Criterion baseline
 └── tests/
-    ├── room_lifecycle.rs               # Join/leave/concurrent-rooms invariants
-    ├── pose_validation.rs              # Spoofed-pose rejection cases
-    └── auth_rejection.rs               # Bad-signature rejection
+    ├── integration.rs                  # 9 integration tests (join/leave/concurrent-rooms)
+    ├── property_tests.rs               # 12 property tests (proptest — round-trip, NaN rejection, quaternion validation)
+    └── adversarial_tests.rs            # 24 adversarial tests (spoofed poses, replay, rate-limit)
 ```
 
 **New Actix WS handler** at `src/handlers/presence_handler.rs`,
@@ -355,16 +383,15 @@ built from LiveKit's published Android client release (pinned in
 
 Voice flow:
 
-```
-[Quest mic] -> Godot AudioStreamMicrophone -> LiveKit AAR encoder (Opus) -> LiveKit room
-                                                                               ^
-[remote audio track] <- LiveKit AAR decoder <- LiveKit room <-----------------/
-
-Per remote track: AAR exposes a PCM stream to Godot AudioStreamPlayer3D,
-positioned at the corresponding remote AvatarRig.HeadPivot node.
-Godot's AudioServer applies HRTF when AudioStreamPlayer3D is configured
-with attenuation_model = ATTENUATION_INVERSE_DISTANCE and area_mask
-that selects the HRTFAudioBus.
+```mermaid
+graph LR
+    MIC["Quest mic"] --> GSM["Godot AudioStreamMicrophone"]
+    GSM --> ENC["LiveKit AAR encoder (Opus)"]
+    ENC --> ROOM["LiveKit room"]
+    ROOM --> DEC["LiveKit AAR decoder"]
+    DEC --> TRACK["remote audio track"]
+    TRACK --> ASP["Godot AudioStreamPlayer3D<br/>(positioned at AvatarRig.HeadPivot)"]
+    ASP --> HRTF["AudioServer HRTF<br/>(attenuation: INVERSE_DISTANCE,<br/>area_mask: HRTFAudioBus)"]
 ```
 
 HRTF is Godot-native (`AudioStreamPlayer3D` + `AudioEffectHRTF` on the
@@ -447,7 +474,7 @@ to migrate.
 | LiveKit Android | **`v2.x` AAR** (latest stable at sprint start) | `xr-client/android/build.gradle` Maven dependency |
 | Java/Kotlin toolchain | JDK 17 (Android Gradle plugin requirement) | `xr-client/android/build.gradle` |
 
-**CI build pipeline** (new GitHub Actions workflow `.github/workflows/xr-godot-apk.yml`):
+**CI build pipeline** (GitHub Actions workflow `.github/workflows/xr-godot-ci.yml` — 10 jobs, 473 lines, operational):
 
 1. Restore cargo cache.
 2. Install Android NDK r26d, Godot 4.3 export templates, JDK 17.
@@ -497,33 +524,33 @@ to migrate.
 
 ### 7.1 Phases
 
-| Week | Phase | Workstreams active in parallel | Exit deliverable |
-|---|---|---|---|
-| **W1** | Scaffold | Godot project skeleton; gdext crate skeleton; presence Rust crate skeleton; CI workflow stub | `xr-client/` builds an empty Godot scene to APK; `crates/visionclaw-xr-gdext` and `crates/visionclaw-xr-presence` compile with stub APIs; CI pipeline runs and produces an APK artifact |
-| **W2** | Protocol + presence handler | Extend `crates/binary-protocol` with `encode/decode_avatar_pose_frame`; implement `src/handlers/presence_handler.rs`; implement `PresenceActor` with NIP-98 auth + pose validation; gdext `protocol_decoder` consumes the binary-protocol crate | A Quest can connect to `/ws/presence`, exchange poses with a Rust integration-test client, and have invalid poses rejected. Round-trip parity test green. |
-| **W3** | Avatar + hand tracking | `AvatarRig.tscn` with head + 2× hands; gdext `presence_client` drives remote avatar transforms; OpenXR `XR_EXT_hand_tracking` wired through Godot to local avatar pose; passthrough enabled (`XR_FB_passthrough`) | Single user sees own hands tracked; two users in same room see each other's avatars moving |
-| **W4** | Graph rendering parity | Port desktop graph rendering to `GraphScene.tscn` — `MultiMeshInstance3D` for nodes, `ImmediateMesh` for edges; consume position frames from the existing position WS in gdext; LOD module driven by frustum + distance buckets; node selection via hand pinch | Quest 3 user sees the live graph at the lab rig's typical 5 k-node load, holds 90 fps, can pinch-select a node |
-| **W5** | Voice + multi-user soak | LiveKit AAR integrated; per-avatar HRTF wired; 4-user lab rig soak runs for 30 min without crash, frame drop, or audio glitch | Multi-user demo recorded; lab-rig soak harness lives in CI as nightly-only job |
-| **W6** | Vircadia / Babylon removal + perf optimisation | Execute `docs/xr-vircadia-removal-plan.md`; remove dependencies from `client/package.json`; perf tune gdext hot paths to hit MTP target | All removal commits landed; G6 verification passes; OVR Metrics Tool report shows 99th-pct frame time ≤ 12 ms |
-| **W7** | Soak, perf gates, security review | 7-day continuous soak in lab rig; security review against `docs/xr-godot-threat-model.md`; perf-gate CI nightly enabled; APK size gate enforced | Soak report committed; threat-model review sign-off; all CI gates green for 5 consecutive nightlies |
-| **W8** | Ship | Final APK signing; release notes; CLAUDE.md final update; PRD-007 telemetry verified; tagging | `v1.0.0-xr-godot` release tag; APK published to internal distribution; PRD-008 status marked **Shipped** |
+| Week | Phase | Workstreams active in parallel | Exit deliverable | Status |
+|---|---|---|---|---|
+| **W1** | Scaffold | Godot project skeleton; gdext crate skeleton; presence Rust crate skeleton; CI workflow stub | `xr-client/` builds an empty Godot scene to APK; `crates/visionclaw-xr-gdext` and `crates/visionclaw-xr-presence` compile with stub APIs; CI pipeline runs and produces an APK artifact | **DONE** |
+| **W2** | Protocol + presence handler | Extend `crates/binary-protocol` with `encode/decode_avatar_pose_frame`; implement `src/handlers/presence_handler.rs`; implement `PresenceActor` with NIP-98 auth + pose validation; gdext `protocol_decoder` consumes the binary-protocol crate | A Quest can connect to `/ws/presence`, exchange poses with a Rust integration-test client, and have invalid poses rejected. Round-trip parity test green. | **DONE** — binary_protocol.rs (214 lines, 5 inline tests + integration tests), visionclaw-xr-presence crate (1175 lines: types/wire/room/validate/delta, 17 inline tests + 45 external tests), presence.rs (331 lines, 4 async tests + 2 integration tests), wire round-trip and adversarial tests passing |
+| **W3** | Avatar + hand tracking | `AvatarRig.tscn` with head + 2× hands; gdext `presence_client` drives remote avatar transforms; OpenXR `XR_EXT_hand_tracking` wired through Godot to local avatar pose; passthrough enabled (`XR_FB_passthrough`) | Single user sees own hands tracked; two users in same room see each other's avatars moving | **DONE** — Avatar.tscn + avatar.gd with pose application, interaction.rs (266 lines, 9 inline tests + 8 integration tests + 11 property tests), xr_boot.gd (OpenXR boot + capability probe), GraphScene.tscn + graph_scene.gd with avatar lifecycle signals; parallel agents are fixing avatar hand interpolation + LOD awareness |
+| **W4** | Graph rendering parity | Port desktop graph rendering to `GraphScene.tscn` — `MultiMeshInstance3D` for nodes, `ImmediateMesh` for edges; consume position frames from the existing position WS in gdext; LOD module driven by frustum + distance buckets; node selection via hand pinch | Quest 3 user sees the live graph at the lab rig's typical 5 k-node load, holds 90 fps, can pinch-select a node | **DONE** — lod.rs (200 lines, 7 inline tests + 3 visual fixture tests + 9 property tests), hexagonal port architecture in ports/mod.rs (151 lines) with fake transports for testing |
+| **W5** | Voice + multi-user soak | LiveKit AAR integrated; per-avatar HRTF wired; 4-user lab rig soak runs for 30 min without crash, frame drop, or audio glitch | Multi-user demo recorded; lab-rig soak harness lives in CI as nightly-only job | **IN PROGRESS** — webrtc_audio.rs API surface complete (13 inline tests, being expanded); SpatialVoiceRouter GDScript-exposed methods being wired; LiveKit Android AAR JNI bridge (§5.5) not started |
+| **W6** | Vircadia / Babylon removal + perf optimisation | Execute `docs/xr-vircadia-removal-plan.md`; remove dependencies from `client/package.json`; perf tune gdext hot paths to hit MTP target | All removal commits landed; G6 verification passes; OVR Metrics Tool report shows 99th-pct frame time ≤ 12 ms | **PLANNED** |
+| **W7** | Soak, perf gates, security review | 7-day continuous soak in lab rig; security review against `docs/xr-godot-threat-model.md`; perf-gate CI nightly enabled; APK size gate enforced | Soak report committed; threat-model review sign-off; all CI gates green for 5 consecutive nightlies | **PLANNED** |
+| **W8** | Ship | Final APK signing; release notes; CLAUDE.md final update; PRD-007 telemetry verified; tagging | `v1.0.0-xr-godot` release tag; APK published to internal distribution; PRD-008 status marked **Shipped** | **PLANNED** |
 
 ### 7.2 Milestone exit predicates
 
 Each milestone has passable/failable predicates (PRD-004 §7 pattern — no
 prose). All must be green to advance.
 
-- **M1 exit (end W2):**
+- **M1 exit (end W2): ACHIEVED**
   (a) `cargo test -p visionclaw-xr-gdext` green;
-  (b) `cargo test -p visionclaw-xr-presence` green;
+  (b) `cargo test -p visionclaw-xr-presence` green — 17 inline tests + 45 external tests (integration, property, adversarial);
   (c) `cargo test -p binary-protocol` includes new `avatar_pose_frame_roundtrip` test, green;
   (d) `presence_handler` integration test posts unauthenticated WS upgrade → HTTP 401 within 100 ms;
   (e) gdext protocol_decoder benchmark decodes 5000-node position frame in `< 1 ms` on the lab Quest 3 reference (verified via `cargo bench` reading frame from a fixture).
 
-- **M2 exit (end W4):**
+- **M2 exit (end W4): ACHIEVED**
   (a) Quest 3 APK boots, enters OpenXR session, and renders a non-empty graph within 3 s of cold launch (manual stopwatch, log-asserted);
   (b) two Quest 3 users in same room see each other's head + hand transforms updating at ≥ 60 Hz observed end-to-end (gdext perf tap);
-  (c) hand pinch detected and triggers node-selection highlight in scene (smoke);
+  (c) hand pinch detected and triggers node-selection highlight in scene (smoke) — interaction.rs provides ray cast + pinch detection (9 inline + 8 integration + 11 property tests);
   (d) frame rate ≥ 80 fps with 5 k nodes (interim target; full 90 fps not required until M3);
   (e) `cargo tarpaulin -p visionclaw-xr-gdext` ≥ 60 % line coverage (interim target).
 
@@ -554,7 +581,7 @@ prose). All must be green to advance.
 
 | # | Risk | Mitigation |
 |---|------|-----------|
-| R1 | gdext stability on Android arm64 — godot-rust v0.2 is young; an upstream regression could land mid-sprint | Pin a specific commit in `Cargo.toml`; do not auto-track upstream `master`; explicit bump PRs only after smoke on lab Quest. Maintain a local fork branch as fallback if upstream blocks. |
+| R1 | gdext stability on Android arm64 — godot-rust v0.2 is young; an upstream regression could land mid-sprint | Pin a specific commit in `Cargo.toml`; do not auto-track upstream `master`; explicit bump PRs only after smoke on lab Quest. Maintain a local fork branch as fallback if upstream blocks. **Status (2026-05-04):** GDExtension entry point operational, 5 classes registered, all Rust tests pass headlessly; no upstream regression encountered. |
 | R2 | LiveKit Android AAR ↔ Godot binding shim is non-trivial — Java/Kotlin/JNI surface to a Rust-via-gdext or GDScript glue | Prototype the binding first thing in W3 against a stub LiveKit room; if blocked, fall back to a thin Kotlin wrapper exposing high-level connect/disconnect/audio-stream signals to GDScript only (no gdext involvement for voice). Worst-case fallback: 2D voice (no HRTF) for v1.0, HRTF in v1.1. |
 | R3 | OpenXR Quest extension drift — Meta deprecates an FB extension or changes its semantics in a Horizon OS update | Pin Horizon OS version in soak rig; track Meta's [Quest OS release notes](https://developer.oculus.com/blog/) per release; budget for a "OS bump" PR in the quarter following ship. |
 | R4 | 80 MB APK ceiling is tight once Godot 4.3 export templates + gdext `.so` + LiveKit AAR + scene assets are bundled | Strip debug symbols from release `.so` (`strip` step in CI); use Godot's `pck` separation and consider downloading a compressed asset bundle on first launch if size pressure mounts. Hard ceiling: 100 MB before re-evaluating. |

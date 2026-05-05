@@ -68,35 +68,21 @@ surface.
 
 The system has three layers, and each owns a different kind of problem.
 
-```
-┌───────────────────────────────────────────────────────────┐
-│  MANAGEMENT MESH                                          │
-│  BC11 Broker · BC12 Workflow · BC13 Insight               │
-│  BC15 KPI · BC16 Connectors · BC17 Policy                 │
-│                                                           │
-│  Role: governs, measures, adjudicates                     │
-│  Does not own: daily work, skill authoring                │
-└──────────────────────┬────────────────────────────────────┘
-                       │
-┌──────────────────────┴────────────────────────────────────┐
-│  CONTRIBUTOR AI SUPPORT STRATUM  ◀── THIS DOC             │
-│  BC18 Contributor Enablement · BC19 Skill Lifecycle       │
-│                                                           │
-│  Role: assembles context, guides work,                    │
-│        packages outputs, raises share intents             │
-│  Does not own: governance, the compounding loop itself    │
-└──────────────────────┬────────────────────────────────────┘
-                       │
-┌──────────────────────┴────────────────────────────────────┐
-│  SUBSTRATE                                                │
-│  BC1 Auth · BC2 Graph · BC3 Physics · BC4 WebSocket       │
-│  BC5 Settings · BC6 Analytics · BC7 Ontology              │
-│  BC8 Agent/Bot · BC9 Rendering · BC10 Binary Protocol     │
-│  BC14 Identity · BC30 Agent Memory Pods                   │
-│                                                           │
-│  Role: stores, computes, reasons, renders                 │
-│  Does not own: intent, authorship, review                 │
-└───────────────────────────────────────────────────────────┘
+```mermaid
+graph TD
+    subgraph Mesh["MANAGEMENT MESH"]
+        M["BC11 Broker · BC12 Workflow · BC13 Insight<br/>BC15 KPI · BC16 Connectors · BC17 Policy<br/><i>Role: governs, measures, adjudicates</i><br/><i>Does not own: daily work, skill authoring</i>"]
+    end
+
+    subgraph Stratum["CONTRIBUTOR AI SUPPORT STRATUM"]
+        S["BC18 Contributor Enablement · BC19 Skill Lifecycle<br/><i>Role: assembles context, guides work,</i><br/><i>packages outputs, raises share intents</i><br/><i>Does not own: governance, the compounding loop itself</i>"]
+    end
+
+    subgraph Substrate["SUBSTRATE"]
+        Sub["BC1 Auth · BC2 Graph · BC3 Physics · BC4 WebSocket<br/>BC5 Settings · BC6 Analytics · BC7 Ontology<br/>BC8 Agent/Bot · BC9 Rendering · BC10 Binary Protocol<br/>BC14 Identity · BC30 Agent Memory Pods<br/><i>Role: stores, computes, reasons, renders</i><br/><i>Does not own: intent, authorship, review</i>"]
+    end
+
+    Mesh --> Stratum --> Substrate
 ```
 
 *The three-layer model. The stratum is not the mesh; it is not the

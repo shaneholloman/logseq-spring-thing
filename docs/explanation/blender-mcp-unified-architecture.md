@@ -65,65 +65,36 @@ graph TD
 
 ### 1.1 Component Diagram
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                        Claude Code Client                        │
-│                  (claude.ai/code interface)                      │
-└──────────────────────────┬──────────────────────────────────────┘
-                           │ stdio (MCP protocol)
-                           │
-┌──────────────────────────▼──────────────────────────────────────┐
-│                      MCP Bridge (Node.js)                        │
-│  ┌──────────────────────────────────────────────────────────┐   │
-│  │ MCP Server (stdio)                                       │   │
-│  │  - Tool registry (ping, list_objects, add_primitive...)  │   │
-│  │  - Input validation (requireString, requireVec3...)      │   │
-│  │  - Request ID generation (UUID v4)                       │   │
-│  └───────────────────┬──────────────────────────────────────┘   │
-│                      │                                           │
-│  ┌───────────────────▼──────────────────────────────────────┐   │
-│  │ WebSocket Client                                         │   │
-│  │  - Connection per request (stateless)                    │   │
-│  │  - Timeout handling (1500ms default)                     │   │
-│  │  - Token injection (BLENDER_RPC_TOKEN)                   │   │
-│  └───────────────────┬──────────────────────────────────────┘   │
-└────────────────────────┼──────────────────────────────────────┬─┘
-                         │ ws://127.0.0.1:8765                   │
-                         │ (JSON-RPC over WebSocket)             │
-┌────────────────────────▼──────────────────────────────────────┐│
-│              Blender Addon (Python 3.11+)                      ││
-│  ┌──────────────────────────────────────────────────────────┐ ││
-│  │ Background Thread (asyncio event loop)                   │ ││
-│  │  - WebSocket server (websockets library)                 │ ││
-│  │  - Connection handler (accept/receive/send)              │ ││
-│  │  - Token validation (optional)                           │ ││
-│  │  - Request queueing → CMD_Q                              │ ││
-│  └───────────────────┬──────────────────────────────────────┘ ││
-│                      │ queue (thread-safe)                     ││
-│  ┌───────────────────▼──────────────────────────────────────┐ ││
-│  │ Main Thread (Blender event loop)                         │ ││
-│  │  - bpy.app.timers callback (0.1s interval)               │ ││
-│  │  - Command queue consumer                                │ ││
-│  │  - Operation handler (handle_op)                         │ ││
-│  │  - Response queueing → RESP_Q                            │ ││
-│  └───────────────────┬──────────────────────────────────────┘ ││
-│                      │ bpy API calls (thread-safe)             ││
-│  ┌───────────────────▼──────────────────────────────────────┐ ││
-│  │ Blender Scene Graph                                      │ ││
-│  │  - Objects (meshes, lights, cameras)                     │ ││
-│  │  - Materials & textures                                  │ ││
-│  │  - Modifiers & constraints                               │ ││
-│  │  - Collections & hierarchy                               │ ││
-│  └──────────────────────────────────────────────────────────┘ ││
-└────────────────────────────────────────────────────────────────┘│
-                                                                  │
-┌─────────────────────────────────────────────────────────────────┘
-│ External Asset Integrations (via MCP Bridge)
-│  - PolyHaven API (materials, HDRIs, textures)
-│  - CSM (3D model library, PBR materials)
-│  - Rodin AI (generative 3D models)
-│  - Local file system (FBX, OBJ, glTF import)
-└─────────────────────────────────────────────────────────────────
+```mermaid
+graph TD
+    subgraph Client["Claude Code Client (claude.ai/code interface)"]
+        CC["Claude Code"]
+    end
+
+    subgraph Bridge["MCP Bridge (Node.js)"]
+        MCP["MCP Server (stdio)<br/>- Tool registry (ping, list_objects, add_primitive...)<br/>- Input validation (requireString, requireVec3...)<br/>- Request ID generation (UUID v4)"]
+        WSC["WebSocket Client<br/>- Connection per request (stateless)<br/>- Timeout handling (1500ms default)<br/>- Token injection (BLENDER_RPC_TOKEN)"]
+        MCP --> WSC
+    end
+
+    subgraph Addon["Blender Addon (Python 3.11+)"]
+        BG["Background Thread (asyncio event loop)<br/>- WebSocket server (websockets library)<br/>- Connection handler (accept/receive/send)<br/>- Token validation (optional)<br/>- Request queueing to CMD_Q"]
+        MT["Main Thread (Blender event loop)<br/>- bpy.app.timers callback (0.1s interval)<br/>- Command queue consumer<br/>- Operation handler (handle_op)<br/>- Response queueing to RESP_Q"]
+        SG["Blender Scene Graph<br/>- Objects (meshes, lights, cameras)<br/>- Materials and textures<br/>- Modifiers and constraints<br/>- Collections and hierarchy"]
+        BG -->|"queue (thread-safe)"| MT
+        MT -->|"bpy API calls"| SG
+    end
+
+    subgraph Assets["External Asset Integrations (via MCP Bridge)"]
+        PH["PolyHaven API (materials, HDRIs, textures)"]
+        CSM["CSM (3D model library, PBR materials)"]
+        Rodin["Rodin AI (generative 3D models)"]
+        Local["Local file system (FBX, OBJ, glTF import)"]
+    end
+
+    CC -->|"stdio (MCP protocol)"| MCP
+    WSC -->|"ws://127.0.0.1:8765 (JSON-RPC)"| BG
+    Bridge --> Assets
 ```
 
 ### 1.2 Data Flow Sequence
@@ -783,33 +754,22 @@ function formatErrorForUser(error: BlenderError): string {
 
 ### 5.2 Threading Architecture
 
-```
-┌─────────────────────────────────────────────────────┐
-│ Background Thread (WebSocket I/O)                   │
-│  - asyncio event loop                               │
-│  - WebSocket server (accept, receive, send)         │
-│  - Token validation                                 │
-│  - NO bpy CALLS                                     │
-│  ─────────────────┬─────────────────────────────────┤
-│                   │ CMD_Q.put(cmd)                   │
-│                   │ (thread-safe queue)              │
-└───────────────────┼──────────────────────────────────┘
-                    │
-┌───────────────────▼──────────────────────────────────┐
-│ Main Thread (Blender event loop)                    │
-│  - bpy.app.timers callback (every 0.1s)             │
-│  - CMD_Q.get() → drain commands                     │
-│  - handle_op() → ALL bpy CALLS HERE                 │
-│  - RESP_Q.put(response)                             │
-│  ─────────────────┬─────────────────────────────────┤
-│                   │ RESP_Q.get()                     │
-└───────────────────┼──────────────────────────────────┘
-                    │
-┌───────────────────▼──────────────────────────────────┐
-│ Background Thread (response sender)                 │
-│  - RESP_Q.get() → send via WebSocket                │
-│  - NO bpy CALLS                                     │
-└─────────────────────────────────────────────────────┘
+```mermaid
+graph TD
+    subgraph BG1["Background Thread (WebSocket I/O)"]
+        IO["asyncio event loop<br/>WebSocket server (accept, receive, send)<br/>Token validation<br/>NO bpy CALLS"]
+    end
+
+    subgraph Main["Main Thread (Blender event loop)"]
+        ML["bpy.app.timers callback (every 0.1s)<br/>CMD_Q.get() → drain commands<br/>handle_op() → ALL bpy CALLS HERE<br/>RESP_Q.put(response)"]
+    end
+
+    subgraph BG2["Background Thread (response sender)"]
+        RS["RESP_Q.get() → send via WebSocket<br/>NO bpy CALLS"]
+    end
+
+    BG1 -->|"CMD_Q.put(cmd)<br/>(thread-safe queue)"| Main
+    Main -->|"RESP_Q.get()"| BG2
 ```
 
 ### Thread Safety Data Flow

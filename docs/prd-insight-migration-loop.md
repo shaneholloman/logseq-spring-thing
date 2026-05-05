@@ -5,6 +5,9 @@ date: 2026-04-18
 status: draft
 audience: project owner, engineering, pilot customers
 owner: VisionClaw core
+companion-adrs:
+  - adr/ADR-049-insight-migration-broker-workflow.md
+ddd-context: explanation/ddd-insight-migration-context.md
 relates-to:
   - docs/design/2026-04-18-insight-migration-loop/01-prior-art.md
   - docs/design/2026-04-18-insight-migration-loop/02-bridge-theory.md
@@ -137,48 +140,27 @@ Canonical formula and worked examples: see [05-candidate-scoring.md](design/2026
 
 ## 7. Promotion lifecycle state machine
 
-```
-     discovery                  review                   persistence
-     ─────────                  ──────                   ───────────
+```mermaid
+stateDiagram-v2
+    [*] --> Candidate : Scoring sweep >= 0.60 or ontology_propose call
 
- ┌──────────┐   auto-   ┌──────────────┐  broker   ┌──────────┐
- │Discovered│ surfaced→ │   Candidate   │ opens  → │UnderReview│
- └──────────┘           └──────┬───────┘           └─────┬────┘
-                               │                         │
-                   score<0.35  ▼                         │
-                           (dropped, never                │
-                            re-surfaced)                  │
-                                                          │
-                               defer      reject         approve
-                               ◀────────── ──────▶        │
-                                                 ↓        ▼
-                                           ┌─────────┐┌──────────┐
-                                           │Rejected ││ Approved │
-                                           └─────────┘└────┬─────┘
-                                                            │
-                                                     PR opens automatically
-                                                            ▼
-                                                      ┌───────────┐
-                                                      │PRAssigned │
-                                                      └─────┬─────┘
-                                                            │
-                                                       merge/closed
-                                                            ▼
-                                            ┌──────────┐  ┌────────┐
-                                            │ PRMerged │  │PRClosed│
-                                            └─────┬────┘  └────┬───┘
-                                                  │            │
-                                            re-ingest          │
-                                                  ▼            ▼
-                                          ┌──────────┐  (back to Candidate
-                                          │ Promoted │   on next scan)
-                                          └─────┬────┘
-                                                │
-                                    opens rollback BrokerCase
-                                                ▼
-                                          ┌──────────────┐
-                                          │  Deprecated  │
-                                          └──────────────┘
+    Candidate --> UnderReview : Broker opens (dwell > 5s)
+    Candidate --> [*] : score < 0.35 (dropped, never re-surfaced)
+
+    UnderReview --> Approved : Broker clicks Approve
+    UnderReview --> Deferred : Broker clicks Defer
+    UnderReview --> Rejected : Broker clicks Reject + reason
+    Deferred --> Candidate : After cooldown re-surface
+
+    Approved --> PRAssigned : PR opens automatically
+
+    PRAssigned --> PRMerged : GitHub PR merge webhook
+    PRAssigned --> PRClosed : PR closed without merge
+    PRClosed --> Candidate : Returns on next scan
+
+    PRMerged --> Promoted : Re-ingest completes, OWL class in graph
+
+    Promoted --> Deprecated : Rollback BrokerCase approved + revert PR merged + re-ingest
 ```
 
 Revocation (rollback of a Promoted class) is handled as a new BrokerCase with `category: migration_rollback` — see ADR-049 §Lifecycle. It is NOT a rewind of the original state machine.

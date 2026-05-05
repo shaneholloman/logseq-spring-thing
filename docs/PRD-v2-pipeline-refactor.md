@@ -4,6 +4,8 @@
 **Author:** Architecture Agent
 **Date:** 2026-04-26
 **Priority:** P0 -- blocks ontology correctness for all downstream consumers
+**Companion ADRs:** [ADR-014](adr/ADR-014-semantic-pipeline-unification.md)
+**DDD Context:** [Semantic Pipeline](explanation/ddd-semantic-pipeline.md)
 
 ---
 

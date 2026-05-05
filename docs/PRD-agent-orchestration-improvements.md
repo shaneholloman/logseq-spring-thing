@@ -3,6 +3,7 @@
 **Status**: Accepted
 **Source**: Multica multi-agent analysis (`multica-ai/multica`)
 **Priority**: P1 — reliability and throughput under load
+**Companion ADRs:** [ADR-031](adr/ADR-031-layout-mode-system.md)
 **Affects**: `agent_monitor_actor`, `task_orchestrator_actor`, `websocket_heartbeat`,
 `client_coordinator_actor`, `events/bus`, `supervisor`
 

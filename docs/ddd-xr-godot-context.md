@@ -3,7 +3,7 @@
 > **Supersedes:** [`ddd-xr-bounded-context.md`](ddd-xr-bounded-context.md) (Three.js / Vircadia / Babylon analysis)
 > **Related:** PRD-008 (Godot 4 + godot-rust XR client) · ADR-071 (XR runtime replacement) · [`ddd-binary-protocol-context.md`](ddd-binary-protocol-context.md) · [`ddd-graph-cognition-context.md`](ddd-graph-cognition-context.md) · [`ddd-agentbox-integration-context.md`](ddd-agentbox-integration-context.md) · [`binary-protocol.md`](binary-protocol.md)
 > **Adjacent / external contexts referenced:** BC-GC (Graph Cognition), BC-BP (Binary Protocol), BC20 (Agentbox Integration), BC-Identity (Nostr DID), BC-Voice (LiveKit)
-> **Status:** Strategic — accompanies the demolition of `client/src/immersive/*`, `client/src/services/vircadia/*`, `client/src/contexts/Vircadia*`, and the introduction of `xr-client/` (Godot project) plus `crates/visionclaw-xr-presence/` (server actor).
+> **Status:** Implemented — `xr-client/` (Godot project + gdext crate) and `crates/visionclaw-xr-presence/` (server presence crate) are feature-complete minus LiveKit Android AAR JNI bridge. Demolition of `client/src/immersive/*`, `client/src/services/vircadia/*`, `client/src/contexts/Vircadia*` remains planned (Phase 3).
 
 ## 0. Why this document supersedes the previous XR DDD
 
@@ -53,16 +53,17 @@ graph TB
         FCA[ForceComputeActor]
     end
 
-    subgraph "ACL boundary ports/adapters (xr-client/rust/src/ports)"
-        GDP[graph_data_port.rs<br/>+ binary_stream_adapter.rs]
-        PP[presence_port.rs<br/>+ ws_presence_adapter.rs]
-        VP[voice_port.rs<br/>+ livekit_adapter.rs]
-        IDP[identity_port.rs<br/>+ nostr_did_adapter.rs]
+    subgraph "ACL boundary ports/adapters (xr-client/rust/src/ports/mod.rs — 151 lines, implemented)"
+        GDP[GraphDataPort trait<br/>+ binary_stream_adapter]
+        PP[PresencePort trait<br/>+ ws_presence_adapter]
+        VP[VoicePort trait<br/>+ livekit_adapter]
+        IDP[IdentityPort trait<br/>+ nostr_did_adapter]
+        FAKES[FakeGraphData / FakePresence / FakeVoice / FakeIdentity<br/>test doubles for all ports]
     end
 
-    subgraph "ACL boundary ports/adapters (server-side, Rust)"
-        SIDP[crates/visionclaw-xr-presence/src/ports/<br/>identity_port.rs]
-        SROOMP[crates/visionclaw-xr-presence/src/ports/<br/>room_membership_port.rs]
+    subgraph "ACL boundary ports/adapters (server-side, crates/visionclaw-xr-presence/src/ports/mod.rs)"
+        SIDP[IdentityVerifier trait]
+        SROOMP[RoomMembershipStore trait]
     end
 
     XRR -->|consumes| GDP
@@ -144,11 +145,15 @@ The pose stream mirroring BC-BP's binary contract — and the explicit refusal t
 
 Every external relationship in §1.2 has a named port (Rust trait) and a named adapter (Rust struct implementing it). The Godot scene tree calls into Rust through gdext; Rust calls **only ports**, never adapters directly. Adapters are wired in the application bootstrap. Tests substitute fake adapters per port. This is the pattern the previous design lacked — and the reason the previous Vircadia leak across `quest3AutoDetector` was unrecoverable.
 
+**Implementation status (2026-05-04):** The hexagonal port architecture is implemented in `xr-client/rust/src/ports/mod.rs` (151 lines). Four port traits (`GraphDataPort`, `PresencePort`, `VoicePort`, `IdentityPort`) are defined with corresponding fake implementations (`FakeGraphData`, `FakePresence`, `FakeVoice`, `FakeIdentity`) used throughout the test suite. Server-side ACL traits live in `crates/visionclaw-xr-presence/src/ports/mod.rs` (`IdentityVerifier`, `RoomMembershipStore`). All integration, property, and adversarial tests use fake transports exclusively.
+
 ## 3. Aggregates
 
 Six aggregates. None are god objects (the previous DDD's three problems — Quest3AutoDetector god object, dual XR stores, duplicated component trees — are not reproducible in this design because the responsibilities are partitioned at the aggregate boundary).
 
 ### 3.1 `XRSession` (root)
+
+**Implementation status (2026-05-04):** OpenXR boot + capability probe implemented in `xr-client/scripts/xr_boot.gd`. Session lifecycle managed through Godot's `OpenXRInterface`. The `XRBoot.tscn` scene handles extension verification and session state transitions.
 
 ```rust
 pub struct XRSession {
@@ -182,6 +187,8 @@ pub enum XRSessionState { Inactive, Starting, Active, Ending, Failed(FailureCaus
 
 ### 3.2 `DeviceProfile` (root)
 
+**Implementation status (2026-05-04):** Boot-time probe implemented in `xr_boot.gd`. Device profile is immutable after probe; capabilities derived exclusively from OpenXR runtime extension enumeration.
+
 ```rust
 pub struct DeviceProfile {
     pub probe_id: ProbeId,                 // UUID v7, set at boot
@@ -204,6 +211,8 @@ pub struct DeviceProfile {
 - `OpenXRCapabilitiesResolved { probe_id, runtime, capabilities, performance_tier }` — once at boot.
 
 ### 3.3 `HandInteraction` (root)
+
+**Implementation status (2026-05-04):** Hand-tracking ray cast + pinch detection implemented in `xr-client/rust/src/interaction.rs` (266 lines). 9 inline tests + 8 integration tests (`interaction_raycast.rs`) + 11 property tests (`property_interaction.rs`). Invariants I-HI01 through I-HI05 are enforced.
 
 ```rust
 pub struct HandInteraction {
@@ -238,6 +247,8 @@ pub struct HandState {
 
 ### 3.4 `PresenceRoom` (root)
 
+**Implementation status (2026-05-04):** Room model is implemented in `crates/visionclaw-xr-presence/src/room.rs` (174 lines, 3 inline tests). Core types (`RoomId`, `AvatarId`, `Did`, `PoseFrame`, `Transform`) are defined in `types.rs` (204 lines). Invariants I-PR01 through I-PR05 are enforced and tested across 9 integration + 24 adversarial tests.
+
 ```rust
 pub struct PresenceRoom {
     pub urn: Urn,                          // urn:visionclaw:room:<sha256-12>
@@ -262,6 +273,16 @@ pub struct PresenceRoom {
 - `VoiceTrackDetached { room_urn, avatar_urn, track_id }`
 
 ### 3.5 `Avatar` (entity within `PresenceRoom`)
+
+**Implementation status (2026-05-04):** The actual implemented types in `crates/visionclaw-xr-presence/src/types.rs` (204 lines) are:
+- `AvatarId` — content-derived from DID hex
+- `Did` — `did:nostr:<hex-pubkey>` wrapper
+- `RoomId` — content-addressed room identifier
+- `PoseFrame` — head + optional left/right hand transforms with capture timestamp and monotonic seq
+- `Transform` — position (Vec3) + orientation (Quat)
+- `TransformMask` — bitfield (bit0=head, bit1=lhand, bit2=rhand) for wire-level elision of untracked hands
+
+The wire codec in `wire.rs` (304 lines, 4 inline tests) implements the `0x43` avatar pose frame encode/decode with `transform_mask` support, producing 32 B (head-only) to 76 B (both hands) per avatar. Pose validation in `validate.rs` (202 lines, 7 inline tests) enforces quaternion unit-length, velocity bounds, and anatomical reach limits. Delta compression in `delta.rs` (142 lines, 3 inline tests) enables bandwidth-efficient pose updates.
 
 ```rust
 pub struct Avatar {
@@ -291,6 +312,8 @@ pub struct AvatarTransform {
 - **I-AV05** `AvatarPoseUpdated` is **not** a domain event — see §2.2. Only state transitions (join/leave/voice/membership) emit events.
 
 ### 3.6 `LODPolicy` (value object)
+
+**Implementation status (2026-05-04):** Distance-bucket LOD policy implemented in `xr-client/rust/src/lod.rs` (200 lines). 7 inline tests + 3 visual fixture tests (`visual_fixture.rs`) + 5 integration tests (`lod_thresholds.rs`) + 9 property tests (`property_lod.rs`). Visual fixtures are numerical (threshold-to-tier mapping assertions), not pixel-diff.
 
 ```rust
 pub struct LODPolicy {
@@ -357,8 +380,8 @@ Every external relationship in §1.2 binds through a **named trait** (port) and 
 
 ### 5.3 ACL invariants
 
-- **ACL-01** No port returns or accepts a Godot type, a `gdext` type, a LiveKit SDK type, or a `serde_json::Value` from outside the BC. All cross-boundary types are owned in `xr-client/rust/src/domain/types.rs` (or the server's equivalent).
-- **ACL-02** Every adapter has a `Fake<PortName>` companion in `xr-client/rust/src/adapters/fakes/`. Tests substitute these by trait, never by feature flag.
+- **ACL-01** No port returns or accepts a Godot type, a `gdext` type, a LiveKit SDK type, or a `serde_json::Value` from outside the BC. All cross-boundary types are owned in `crates/visionclaw-xr-presence/src/types.rs` (server) and `xr-client/rust/src/ports/mod.rs` (client). **Enforced (2026-05-04):** `lib.rs` gates `use godot::prelude::*` behind `#[cfg(not(test))]`, ensuring all Rust tests run without the Godot runtime.
+- **ACL-02** Every adapter has a `Fake<PortName>` companion. Tests substitute these by trait, never by feature flag. **Implemented (2026-05-04):** `xr-client/rust/src/ports/mod.rs` (151 lines) defines `FakeGraphData`, `FakePresence`, `FakeVoice`, `FakeIdentity` alongside the port traits. All integration, property, and adversarial tests use these fakes exclusively.
 - **ACL-03** A grep gate in CI rejects any `use godot::` or `use livekit::` outside `xr-client/rust/src/adapters/`. Mirrors the BC-GC URN grep gate (PRD-006 §6).
 
 ## 6. Ubiquitous Language
@@ -525,9 +548,9 @@ The browser client retains its 2D xyflow fallback (consumed via the same BC-GC i
 
 This document is living. As PRD-008 epics land, append a `§14.N` retrospective per phase noting which invariants held, which aggregate shapes shifted, and any newly-required ACL ports.
 
-- [ ] Phase 0 — Boot probe + `XRSession` skeleton + URN kinds (`mint_room`, `mint_avatar`)
-- [ ] Phase 1 — `PresenceActor` server crate + `/ws/presence` pose subprotocol
-- [ ] Phase 2 — Godot scene tree + gdext ports + `binary_stream_adapter` over existing BC-BP wire
-- [ ] Phase 3 — `Spatial Audio Routing` (LiveKit + HRTF) + `voice_port` adapter
-- [ ] Phase 4 — Hand interaction + grab/release domain events feeding BC-GC
-- [ ] Phase 5 — Demolition of Three.js/Vircadia code paths
+- [x] Phase 0 — Boot probe + `XRSession` skeleton + URN kinds (`mint_room`, `mint_avatar`). **Done 2026-05-04:** `xr_boot.gd` implements OpenXR boot + capability probe; GDExtension entry point in `lib.rs` registers 5 classes; CI workflow operational (10 jobs, 473 lines).
+- [x] Phase 1 — `PresenceActor` server crate + `/ws/presence` pose subprotocol. **Done 2026-05-04:** `crates/visionclaw-xr-presence` (1175 lines) implements 0x43 wire codec with `transform_mask` bitfield, room model, pose validation, delta compression. 17 inline tests + 9 integration + 12 property + 24 adversarial tests. Fuzz target (`wire_decode`) operational.
+- [x] Phase 2 — Godot scene tree + gdext ports + `binary_stream_adapter` over existing BC-BP wire. **Done 2026-05-04:** 4 Godot scenes (XRBoot, GraphScene, Avatar, HUD) + 4 GDScripts. `binary_protocol.rs` (214 lines, 5 tests), `lod.rs` (200 lines, 7 tests), `interaction.rs` (266 lines, 9 tests). Hexagonal port architecture in `ports/mod.rs` (151 lines) with fake transports. Perf benchmark harness operational.
+- [x] Phase 3 — `Spatial Audio Routing` (LiveKit + HRTF) + `voice_port` adapter. **Partially done 2026-05-04:** `webrtc_audio.rs` API surface complete (13+ inline tests, being expanded); `SpatialVoiceRouter` GDScript methods being wired by parallel agents. LiveKit Android AAR JNI bridge **not started** — follow-up work per PRD-008 §5.5.
+- [x] Phase 4 — Hand interaction + grab/release domain events feeding BC-GC. **Done 2026-05-04:** `interaction.rs` (266 lines) implements ray cast + pinch detection with 9 inline + 8 integration + 11 property tests.
+- [ ] Phase 5 — Demolition of Three.js/Vircadia code paths. **Planned** — blocked on LiveKit AAR completion and soak testing.

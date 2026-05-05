@@ -66,24 +66,17 @@ signals on an existing one. This preserves the auditable confidence trajectory.
 
 ### MigrationStatus State Machine
 
-```
-Detected
-  │
-  │  confidence crosses threshold
-  ▼
-Surfaced ──────────────────────────────────── Deferred
-  │                                               │
-  │  broker opens review                          │  deferred-until elapses
-  ▼                                               ▼
-UnderReview ──────────────────────────────── Surfaced
-  │             │
-  │ approved    │ rejected
-  ▼             ▼
-Approved      Rejected
-  │
-  │  PR merged, bridge edge created
-  ▼
-Promoted ──── Revoked
+```mermaid
+stateDiagram-v2
+    [*] --> Detected
+    Detected --> Surfaced : confidence crosses threshold
+    Surfaced --> Deferred
+    Surfaced --> UnderReview : broker opens review
+    Deferred --> Surfaced : deferred-until elapses
+    UnderReview --> Approved : approved
+    UnderReview --> Rejected : rejected
+    Approved --> Promoted : PR merged, bridge edge created
+    Promoted --> Revoked
 ```
 
 ---

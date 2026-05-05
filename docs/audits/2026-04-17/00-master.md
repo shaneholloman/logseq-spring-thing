@@ -1,9 +1,11 @@
 # Master Audit — Graph-Loading Failure Session
 
+> **HISTORICAL**: This audit from 2026-04-17 identified issues that have since been resolved. Retained for traceability — do not action these findings without first verifying against current code.
+
 **Date:** 2026-04-17
 **Coordinator:** hierarchical-coordinator (queen)
 **Inputs:** 5 parallel worker reports (01-frontend, 02-backend-routing, 03-silent-failure, 04-regression-risk, 05-tests)
-**Status:** Consolidation only — no fixes applied.
+**Status:** Findings acted upon — see KNOWN_ISSUES.md resolved table.
 
 ---
 

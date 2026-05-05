@@ -11,6 +11,8 @@
 **Author**: Tech Debt Research Fleet
 **Date**: 2026-04-12
 **Priority**: P0 — Blocks correct rendering for all users
+**Companion ADRs:** [ADR-037](adr/superseded/ADR-037-binary-protocol-consolidation.md) (superseded), [ADR-038](adr/ADR-038-position-flow-consolidation.md), [ADR-061](adr/ADR-061-binary-protocol-unification.md)
+**DDD Context:** [Binary Protocol](ddd-binary-protocol-context.md)
 
 ---
 
@@ -172,22 +174,19 @@ VisionFlow's data pipeline from Neo4j through Rust server to TypeScript client h
 
 ### Encoding Function Call Graph (Server)
 
-```
-encode_node_data()
-  └→ encode_node_data_with_types(nodes, &[], &[])          ← no type flags
-      └→ encode_node_data_extended(nodes, agents, knowledge, &[], &[], &[])
-          └→ encode_node_data_extended_with_sssp(... None, None)  ← THE ENCODER
+```mermaid
+graph TD
+    A["encode_node_data()"] --> B["encode_node_data_with_types(nodes, &[], &[])<br/><i>no type flags</i>"]
+    B --> C["encode_node_data_extended(nodes, agents, knowledge, &[], &[], &[])"]
+    C --> D["encode_node_data_extended_with_sssp(... None, None)<br/><b>THE ENCODER</b>"]
 
-encode_node_data_with_flags(nodes, agents)
-  └→ encode_node_data_with_types(nodes, agents, &[])       ← no ontology flags
+    E["encode_node_data_with_flags(nodes, agents)"] --> F["encode_node_data_with_types(nodes, agents, &[])<br/><i>no ontology flags</i>"]
+    F --> C
 
-encode_node_data_with_analytics(nodes, analytics)
-  └→ encode_node_data_with_all(nodes, agents, knowledge, analytics)
-      └→ encode_node_data_extended_with_sssp(...)           ← type arrays from caller
+    G["encode_node_data_with_analytics(nodes, analytics)"] --> H["encode_node_data_with_all(nodes, agents, knowledge, analytics)"]
+    H --> D
 
-encode_node_data_with_live_analytics(nodes, analytics)
-  └→ encode_node_data_extended_with_sssp(nodes, &[], &[], &[], &[], &[], None, analytics)
-     ← ALL TYPE ARRAYS EMPTY → all nodes Unknown on client
+    I["encode_node_data_with_live_analytics(nodes, analytics)"] --> J["encode_node_data_extended_with_sssp(nodes, &[], &[], &[], &[], &[], None, analytics)<br/><i>ALL TYPE ARRAYS EMPTY - all nodes Unknown on client</i>"]
 ```
 
 **Target**: One function: `encode_positions_v3(nodes, type_classification, analytics)`

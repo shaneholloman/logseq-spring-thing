@@ -5,6 +5,8 @@
 **Date:** 2026-04-30
 **Priority:** P0 — fixes per-frame waste of ~36 MB/s on a 25k-node graph; client init hangs traced to JSON bloat have a parallel cause on the WS side
 **Related:** ADR-037 (binary position protocol — to be retired), ADR-038 (push-path consolidation), ADR-050 (sovereign ownership / privacy bits), ADR-031 (broadcast backpressure), PRD-005 (v2 ontology pipeline). Supersedes ADR-037's per-node payload schema.
+**Companion ADR:** [ADR-061](adr/ADR-061-binary-protocol-unification.md)
+**DDD Context:** [Binary Protocol Bounded Context](ddd-binary-protocol-context.md)
 
 ---
 

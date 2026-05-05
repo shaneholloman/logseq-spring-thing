@@ -25,35 +25,29 @@ Without this context, every VisionClaw actor that wants to spawn an agent or rec
 
 ## 3. Strategic placement
 
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                       VisionClaw Rust substrate                     │
-│                                                                     │
-│  ┌─────────────────────┐   ┌─────────────────────┐   ┌───────────┐  │
-│  │ BeadProvenance (BC) │   │ Contributor (BC18)  │   │ Skills    │  │
-│  │ (ddd-bead-...)      │   │ (ADR-057)           │   │ (BC19)    │  │
-│  └──────────┬──────────┘   └──────────┬──────────┘   └─────┬─────┘  │
-│             │                         │                    │        │
-│             ▼                         ▼                    ▼        │
-│  ┌─────────────────────────────────────────────────────────────┐    │
-│  │             AgentboxIntegration (BC20 — this context)       │    │
-│  │                                                             │    │
-│  │  • AgentExecutionRequestHandler                             │    │
-│  │  • AdapterEndpointRegistry                                  │    │
-│  │  • FederationSession aggregate                              │    │
-│  │  • AgentEventStreamProjector                                │    │
-│  │  • AntiCorruptionAdapters (beads, pods, memory, events,     │    │
-│  │    orchestrator) — translate agentbox wire → VC domain      │    │
-│  └──────────────────────────┬──────────────────────────────────┘    │
-│                             │                                       │
-│                             ▼ (docker-compose-internal DNS)         │
-└─────────────────────────────┼───────────────────────────────────────┘
-                              │
-                   ┌──────────▼──────────┐
-                   │   agentbox (sibling │
-                   │   container,        │
-                   │   ADR-005 adapters) │
-                   └─────────────────────┘
+```mermaid
+graph TD
+    subgraph VC["VisionClaw Rust substrate"]
+        BP["BeadProvenance (BC)<br/>(ddd-bead-...)"]
+        CONTRIB["Contributor (BC18)<br/>(ADR-057)"]
+        SKILLS["Skills (BC19)"]
+
+        subgraph BC20["AgentboxIntegration (BC20 - this context)"]
+            AERH["AgentExecutionRequestHandler"]
+            AER["AdapterEndpointRegistry"]
+            FS["FederationSession aggregate"]
+            AESP["AgentEventStreamProjector"]
+            ACA["AntiCorruptionAdapters<br/>(beads, pods, memory, events, orchestrator)<br/>translate agentbox wire to VC domain"]
+        end
+    end
+
+    subgraph AB["agentbox (sibling container, ADR-005 adapters)"]
+    end
+
+    BP --> BC20
+    CONTRIB --> BC20
+    SKILLS --> BC20
+    BC20 -->|"docker-compose-internal DNS"| AB
 ```
 
 ## 4. Aggregates

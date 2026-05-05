@@ -5,6 +5,8 @@
 **Date:** 2026-04-27
 **Priority:** P0 — paired with PRD-006; ships as gate, not as follow-up
 **Pairs with:** PRD-006 (URI federation), PRD-005 (v2 pipeline), DDD-BC20 (anti-corruption layer)
+**Companion ADR:** [ADR-062](adr/ADR-062-qe-prd-adr-ddd-graph-scaffolding.md)
+**DDD Context:** [QE Traceability Graph (BC21)](ddd-qe-traceability-graph-context.md)
 
 ---
 

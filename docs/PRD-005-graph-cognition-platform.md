@@ -237,17 +237,17 @@ A separate `FrameworkRegistry` crate detects React, Django, Express, FastAPI, Fl
 
 **Actor topology (under `GraphCognitionSupervisor`):**
 
-```
-GraphCognitionSupervisor
-├── ProjectScannerActor
-├── FileAnalyzerActor (pool, configurable concurrency, default=8)
-├── BatchMergerActor          ← replaces UA merge-batch-graphs.py
-├── AssembleReviewerActor
-├── LayerDetectorActor        ← replaces UA architecture-analyzer
-├── TourGeneratorActor        ← replaces UA tour-builder
-├── DomainAnalyzerActor       ← replaces UA domain-analyzer (opt-in)
-├── ArticleAnalyzerActor      ← replaces UA article-analyzer (for wikis)
-└── PodPublisherActor         ← writes final graph to user's Solid pod
+```mermaid
+graph TD
+    GCS["GraphCognitionSupervisor"] --> PSA["ProjectScannerActor"]
+    GCS --> FAA["FileAnalyzerActor<br/>(pool, concurrency=8)"]
+    GCS --> BMA["BatchMergerActor<br/><i>replaces UA merge-batch-graphs.py</i>"]
+    GCS --> ARA["AssembleReviewerActor"]
+    GCS --> LDA["LayerDetectorActor<br/><i>replaces UA architecture-analyzer</i>"]
+    GCS --> TGA["TourGeneratorActor<br/><i>replaces UA tour-builder</i>"]
+    GCS --> DAA["DomainAnalyzerActor<br/><i>replaces UA domain-analyzer (opt-in)</i>"]
+    GCS --> AAA["ArticleAnalyzerActor<br/><i>replaces UA article-analyzer (for wikis)</i>"]
+    GCS --> PPA["PodPublisherActor<br/><i>writes final graph to user's Solid pod</i>"]
 ```
 
 **Message contracts (selection):**

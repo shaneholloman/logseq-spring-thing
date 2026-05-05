@@ -10,64 +10,56 @@
 
 ### 1.1 Current System Architecture
 
-```
-                    ┌─────────────────────────────────────────────┐
-                    │            VisionClaw Server                │
-                    │           (Actix-web 4.11)                  │
-                    │                                             │
-                    │  ┌─────────────┐  ┌──────────────────────┐ │
-                    │  │  Ports      │  │  Adapters            │ │
-                    │  │             │  │                      │ │
-                    │  │ KnowledgeGraph──→ Neo4jAdapter        │ │
-                    │  │ Repository  │  │                      │ │
-                    │  │             │  │                      │ │
-                    │  │ Ontology    ──→ Neo4jOntology         │ │
-                    │  │ Repository  │  │ Repository           │ │
-                    │  │             │  │                      │ │
-                    │  │ Inference   ──→ WhelkInference        │ │
-                    │  │ Engine      │  │ Engine               │ │
-                    │  │             │  │                      │ │
-                    │  │ Semantic    ──→ GPUSemantic           │ │
-                    │  │ Analyzer    │  │ Analyzer             │ │
-                    │  │             │  │ (O(N^2) keyword)     │ │
-                    │  │ Settings    ──→ Neo4jSettings         │ │
-                    │  │ Repository  │  │ Repository           │ │
-                    │  └─────────────┘  └──────────────────────┘ │
-                    │                                             │
-                    │  ┌──────────────────────────────────────┐   │
-                    │  │  GPU Actor System (CUDA)             │   │
-                    │  │  ForceCompute | Clustering |         │   │
-                    │  │  Anomaly | PageRank | SSSP |         │   │
-                    │  │  SemanticForces | Communities        │   │
-                    │  └──────────────────────────────────────┘   │
-                    └──────────────┬──────────────────────────────┘
-                                   │
-                    ┌──────────────┴──────────────────────────────┐
-                    │  Transport Layer                            │
-                    │  REST: GET /graph/data (JSON, full graph)   │
-                    │  WS:   Binary V3 (48 bytes/node @ 60Hz)    │
-                    └──────────────┬──────────────────────────────┘
-                                   │
-                    ┌──────────────┴──────────────────────────────┐
-                    │            VisionClaw Client                │
-                    │           (React 19 + Three.js r182)        │
-                    │                                             │
-                    │  graphDataManager → graph.worker (Web Worker)│
-                    │       ↓                                     │
-                    │  SharedArrayBuffer (positions)               │
-                    │       ↓                                     │
-                    │  GemNodes (InstancedMesh) + GlassEdges      │
-                    │  WasmSceneEffects (WASM particles/wisps)    │
-                    │  ClusterHulls                               │
-                    └─────────────────────────────────────────────┘
+```mermaid
+graph TD
+    subgraph Server["VisionClaw Server (Actix-web 4.11)"]
+        subgraph Ports["Ports"]
+            KGR["KnowledgeGraph Repository"]
+            OR["Ontology Repository"]
+            IE["Inference Engine"]
+            SA["Semantic Analyzer"]
+            SR["Settings Repository"]
+        end
+        subgraph Adapters["Adapters"]
+            NA["Neo4jAdapter"]
+            NO["Neo4jOntology Repository"]
+            WI["WhelkInference Engine"]
+            GS["GPUSemantic Analyzer (O(N^2) keyword)"]
+            NS["Neo4jSettings Repository"]
+        end
+        subgraph GPU["GPU Actor System (CUDA)"]
+            FC["ForceCompute"]
+            CL["Clustering"]
+            AN["Anomaly"]
+            PR["PageRank"]
+            SSSP["SSSP"]
+            SF["SemanticForces"]
+            COM["Communities"]
+        end
+        KGR --> NA
+        OR --> NO
+        IE --> WI
+        SA --> GS
+        SR --> NS
+    end
 
-                    ┌─────────────────────────────────────────────┐
-                    │  External: RuVector PostgreSQL              │
-                    │  ruvector-postgres:5432                     │
-                    │  1.17M+ memory_entries (384-dim HNSW)       │
-                    │  Agent memory, reasoning patterns, SONA     │
-                    │  NOT connected to VisionClaw Rust backend   │
-                    └─────────────────────────────────────────────┘
+    subgraph Transport["Transport Layer"]
+        REST["REST: GET /graph/data (JSON, full graph)"]
+        WS["WS: Binary V3 (48 bytes/node @ 60Hz)"]
+    end
+
+    subgraph Client["VisionClaw Client (React 19 + Three.js r182)"]
+        GDM["graphDataManager -> graph.worker (Web Worker)"]
+        SAB["SharedArrayBuffer (positions)"]
+        RENDER["GemNodes (InstancedMesh) + GlassEdges<br/>WasmSceneEffects (WASM particles/wisps)<br/>ClusterHulls"]
+        GDM --> SAB --> RENDER
+    end
+
+    subgraph RuVector["External: RuVector PostgreSQL"]
+        RV["ruvector-postgres:5432<br/>1.17M+ memory_entries (384-dim HNSW)<br/>Agent memory, reasoning patterns, SONA<br/>NOT connected to VisionClaw Rust backend"]
+    end
+
+    Server --> Transport --> Client
 ```
 
 ### 1.2 Key Architectural Properties
@@ -87,63 +79,49 @@
 
 ### 2.1 RVF Integration Points
 
-```
-                    ┌─────────────────────────────────────────────┐
-                    │            VisionClaw Server                │
-                    │                                             │
-                    │  ┌─────────────┐  ┌──────────────────────┐ │
-                    │  │  Ports      │  │  Adapters            │ │
-                    │  │             │  │                      │ │
-                    │  │ KnowledgeGraph──→ Neo4jAdapter         │ │
-                    │  │ Repository  │  │                      │ │
-                    │  │             │  │                      │ │
-                    │  │ Ontology    ──→ Neo4jOntology          │ │
-                    │  │ Repository  │  │ Repository            │ │
-                    │  │             │  │                      │ │
-                    │  │ Inference   ──→ WhelkInference         │ │
-                    │  │ Engine      │  │ Engine                │ │
-                    │  │             │  │                      │ │
-                    │  │ Semantic    ──→ ┌─────────────────┐   │ │
-                    │  │ Analyzer ───│──→│ RvfSemantic     │   │ │
-                    │  │ (port)      │  │ Analyzer        │   │ │
-                    │  │             │  │ (HNSW k-NN)     │   │ │
-                    │  │             │  │ ← rvf-index ──┐ │   │ │
-                    │  │             │  └────────────────│─┘   │ │
-                    │  │ +NEW:       │                   │      │ │
-                    │  │ VectorStore ──→ ┌──────────────┐│      │ │
-                    │  │ (port)      │  │ RvfVector    ││      │ │
-                    │  │             │  │ Store         ││      │ │
-                    │  │             │  │ ← rvf-runtime─┘│      │ │
-                    │  │             │  └────────────────┘      │ │
-                    │  └─────────────┘                          │ │
-                    │                                           │ │
-                    │  ┌────────────────────────────────────┐   │ │
-                    │  │  RVF Export Pipeline               │   │ │
-                    │  │  Neo4j nodes → embed → .rvf file   │   │ │
-                    │  │  Serves: /api/graph/vectors.rvf    │   │ │
-                    │  └────────────────────────────────────┘   │ │
-                    └──────────────┬────────────────────────────┘ │
-                                   │                               │
-                    ┌──────────────┴───────────────────────────────┘
-                    │  Transport Layer
-                    │  REST: /graph/data (JSON) + /graph/vectors.rvf (binary)
-                    │  WS:   Binary V3 (48 bytes/node @ 60Hz)
-                    └──────────────┬──────────────────────────────┐
-                                   │                              │
-                    ┌──────────────┴──────────────────────────────┤
-                    │            VisionClaw Client                │
-                    │                                             │
-                    │  ┌────────────────────────────────────────┐ │
-                    │  │  RvfVectorBridge (WASM)                │ │
-                    │  │  loads vectors.rvf                     │ │
-                    │  │  WasmRvfStore.query(embedding, k)      │ │
-                    │  │  → similar node IDs → highlight        │ │
-                    │  │  Pattern: scene-effects-bridge.ts      │ │
-                    │  └────────────────────────────────────────┘ │
-                    │                                             │
-                    │  graphDataManager → graph.worker            │
-                    │  GemNodes + GlassEdges + ClusterHulls       │
-                    └─────────────────────────────────────────────┘
+```mermaid
+graph TD
+    subgraph Server2["VisionClaw Server (Target)"]
+        subgraph Ports2["Ports"]
+            KGR2["KnowledgeGraph Repository"]
+            OR2["Ontology Repository"]
+            IE2["Inference Engine"]
+            SA2["Semantic Analyzer (port)"]
+            VS2["+NEW: VectorStore (port)"]
+        end
+        subgraph Adapters2["Adapters"]
+            NA2["Neo4jAdapter"]
+            NO2["Neo4jOntology Repository"]
+            WI2["WhelkInference Engine"]
+            RSA["RvfSemantic Analyzer (HNSW k-NN, rvf-index)"]
+            RVS["RvfVector Store (rvf-runtime)"]
+        end
+        subgraph Pipeline["RVF Export Pipeline"]
+            EXP["Neo4j nodes -> embed -> .rvf file<br/>Serves: /api/graph/vectors.rvf"]
+        end
+        KGR2 --> NA2
+        OR2 --> NO2
+        IE2 --> WI2
+        SA2 --> RSA
+        VS2 --> RVS
+    end
+
+    subgraph Transport2["Transport Layer"]
+        REST2["REST: /graph/data (JSON) + /graph/vectors.rvf (binary)"]
+        WS2["WS: Binary V3 (48 bytes/node @ 60Hz)"]
+    end
+
+    subgraph Client2["VisionClaw Client"]
+        subgraph WASM["RvfVectorBridge (WASM)"]
+            LOAD["loads vectors.rvf"]
+            QUERY["WasmRvfStore.query(embedding, k) -> similar node IDs -> highlight"]
+            PAT["Pattern: scene-effects-bridge.ts"]
+        end
+        GDM2["graphDataManager -> graph.worker"]
+        RENDER2["GemNodes + GlassEdges + ClusterHulls"]
+    end
+
+    Server2 --> Transport2 --> Client2
 ```
 
 ### 2.2 New Port: VectorStore

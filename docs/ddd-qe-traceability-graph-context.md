@@ -1,6 +1,6 @@
 # DDD Analysis: QE Traceability Graph Bounded Context
 
-> **Related**: [PRD-QE-001](PRD-QE-001-integration-quality-engineering.md) · [PRD-006](PRD-006-visionclaw-agentbox-uri-federation.md) · [ADR-061](adr/ADR-061-binary-protocol-unification.md) · [DDD BC20](ddd-agentbox-integration-context.md) · [DDD Binary Protocol](ddd-binary-protocol-context.md) · [DDD Bead Provenance](ddd-bead-provenance-context.md) · [DDD XR](ddd-xr-bounded-context.md) · agentbox [ADR-013](../agentbox/docs/reference/adr/ADR-013-canonical-uri-grammar.md)
+> **Related**: [PRD-QE-001](PRD-QE-001-integration-quality-engineering.md) · [PRD-006](PRD-006-visionclaw-agentbox-uri-federation.md) · [ADR-061](adr/ADR-061-binary-protocol-unification.md) · [DDD BC20](ddd-agentbox-integration-context.md) · [DDD Binary Protocol](ddd-binary-protocol-context.md) · [DDD Bead Provenance](ddd-bead-provenance-context.md) · [DDD XR Godot (BC22)](ddd-xr-godot-context.md) · agentbox [ADR-013](../agentbox/docs/reference/adr/ADR-013-canonical-uri-grammar.md)
 
 **Context name:** `QeTraceabilityGraph` (BC21)
 **Date:** 2026-05-01
@@ -267,26 +267,17 @@ UrnKindNode
 
 ### Event Flow
 
-```
-rebuild() triggers:
-  PrdRegistered ──┐
-  AdrLinked ──────┼──> TraceabilityGraphRebuilt
-  DddContextMapped┤
-  UrnKindIndexed ─┘
-                       │
-                       ▼
-             evaluate_all_gates()
-                       │
-              ┌────────┴────────┐
-              ▼                 ▼
-        QeGatePassed      QeGateFailed
-                                │
-                                ▼
-                     CoverageGapDetected
-                                │
-                                ▼
-                       QE Fleet dispatches
-                       test-writing agents
+```mermaid
+graph TD
+    PRD["PrdRegistered"] --> TGR["TraceabilityGraphRebuilt"]
+    ADR["AdrLinked"] --> TGR
+    DDD["DddContextMapped"] --> TGR
+    URN["UrnKindIndexed"] --> TGR
+    TGR --> EAG["evaluate_all_gates()"]
+    EAG --> Pass["QeGatePassed"]
+    EAG --> Fail["QeGateFailed"]
+    Fail --> Gap["CoverageGapDetected"]
+    Gap --> Fleet["QE Fleet dispatches<br/>test-writing agents"]
 ```
 
 ---

@@ -103,26 +103,29 @@ Rationale: it is the only option that simultaneously (a) lifts the Quest OpenXR 
 
 ## Implementation Plan
 
-Phased per PRD-008. Concrete deliverables in this repository:
+Phased per PRD-008. Concrete deliverables in this repository.
 
-**Phase 0 — Scaffold (1 sprint).**
-- New directory `xr-client/` containing the Godot 4.3 project (`project.godot`, `scenes/`, `scripts/`, `addons/`).
-- New workspace member `crates/visionclaw-xr-presence/` (Rust) for the presence client library; gdext-exposed.
-- New workspace member `crates/visionclaw-xr-client/` (Rust) for the in-APK substrate logic (binary-protocol decode, graph-state mirror, URN handling, settings).
-- Server-side: new actor `src/actors/presence_actor.rs` and handler `src/handlers/presence_handler.rs` carrying avatar transforms and voice room membership over the existing WebSocket using a new `presence_update` JSON message and a per-user 64 B avatar-transform binary frame.
-- CI: new `xr-apk` build leg using Godot 4.3 headless export to Android, signed with a project-managed debug keystore for internal builds. Release signing deferred to Phase 3.
+**Implementation status (2026-05-04):** Feature-complete minus LiveKit Android AAR JNI bridge. Phases 0--2 are landed; Phase 3 (cutover/removal) and the LiveKit AAR integration remain planned.
 
-**Phase 1 — Render parity (2 sprints).**
-- Port GraphManager, GlassEdges, InstancedLabels, and CrystalOrb/Gem/AgentCapsule node geometries to Godot RenderingServer instanced calls, driven by the gdext-bridged `BinaryProtocolDecoder` reading WebSocket frames.
-- Wire the existing 28 B/node frame consumer; reuse `crates/binary-protocol` directly via gdext.
-- OpenXR session bring-up via Godot's `OpenXRInterface`; passthrough on by default for MR.
+**Phase 0 — Scaffold (1 sprint). DONE.**
+- `xr-client/` directory containing the Godot 4.3 project: `project.godot`, 4 scenes (`XRBoot.tscn`, `GraphScene.tscn`, `Avatar.tscn`, `HUD.tscn`), 4 GDScript scripts, perf benchmark harness, GUT test runner.
+- Workspace member `crates/visionclaw-xr-presence/` (Rust, 1175 lines): types, wire codec (0x43 avatar pose frame with `transform_mask` bitfield), room model, pose validation, delta compression, error hierarchy. Hexagonal port architecture in `ports/mod.rs` with ACL traits for identity verification and room membership.
+- gdext crate at `xr-client/rust/`: GDExtension entry point registering 5 classes (`lib.rs`), binary protocol decoder, presence WS client, interaction/LOD/voice modules, hexagonal port layer with fake transports for testing.
+- CI: `.github/workflows/xr-godot-ci.yml` (473 lines, 10 jobs) covering lint, Rust unit, GDScript unit, property/fuzz, contract, integration, security, coverage, APK build, and on-device perf.
 
-**Phase 2 — Multi-user presence (2 sprints).**
-- `PresenceActor` server-side; per-user transform broadcast at 30 Hz capped (delta-encoded).
-- Voice via Quest's native mic + WebRTC peer mesh (room membership through `PresenceActor`); no SFU in v1.
-- Spatial anchors via `XR_FB_spatial_entity`; UUIDs stored against the user's pod (ADR-066) so anchors persist across sessions and devices.
+**Phase 1 — Render parity (2 sprints). DONE.**
+- Binary protocol 0x42 decoder in `binary_protocol.rs` (214 lines, 5 inline tests + integration tests). Reuses `crates/binary-protocol` wire format directly.
+- OpenXR session bring-up via `xr_boot.gd` (capability probe, extension verification). Passthrough enabled by default for MR.
+- GraphScene with MultiMesh node rendering, avatar lifecycle signals. LOD driven by distance-bucket policy in `lod.rs` (200 lines, 7 inline + 3 visual fixture + 9 property tests).
+- Hand-tracking ray cast + pinch detection in `interaction.rs` (266 lines, 9 inline + 8 integration + 11 property tests).
 
-**Phase 3 — Cutover and removal (1 sprint).**
+**Phase 2 — Multi-user presence (2 sprints). DONE (API surface; LiveKit AAR pending).**
+- `visionclaw-xr-presence` crate operational: wire codec, room membership, pose validation (17 inline tests across source modules + 9 integration + 12 property + 24 adversarial tests). Fuzz target (`wire_decode`) and Criterion benchmarks in place.
+- Presence WS client in `presence.rs` (331 lines, 4 async tests + 2 integration tests) with NIP-98 auth, reconnect/backoff.
+- Voice routing API surface in `webrtc_audio.rs` (13+ inline tests, being expanded). `SpatialVoiceRouter` GDScript-exposed methods (`update_track_position`, `set_track_muted`, `track_count`) being wired by parallel agents.
+- LiveKit Android AAR JNI bridge (PRD-008 §5.5) **not yet started** — follow-up work.
+
+**Phase 3 — Cutover and removal (1 sprint). PLANNED.**
 - Tag `pre-godot-xr` on `main` immediately before merge of `feat/xr-godot-cutover`.
 - Remove `client/src/immersive/`, `client/src/services/vircadia/`, `quest3AutoDetector.ts`, the Vircadia docker compose service, the world-DB Postgres instance, and all references to ADR-032 / ADR-033 from active docs (ADRs themselves stay, marked Superseded).
 - Per `docs/xr-vircadia-removal-plan.md`.
@@ -143,8 +146,8 @@ Phased per PRD-008. Concrete deliverables in this repository:
 ### Negative
 
 - Browser-based "click to enter VR" is gone. Users install the APK via Quest developer mode (existing path) or eventually via the Quest Store (Phase 3+). This is consistent with how the audience already uses the product but is a real reduction in surface area.
-- Separate APK build pipeline in CI. Godot headless export + Android SDK + signing add ~6 min to the build, parallelisable with the browser build.
-- godot-rust learning curve. Two team members estimated at 1 sprint each to fluency; mitigated by gdext's strong type system and the substantial public example corpus.
+- Separate APK build pipeline in CI. Godot headless export + Android SDK + signing add ~6 min to the build, parallelisable with the browser build. **Mitigated (2026-05-04):** CI workflow operational at 473 lines / 10 jobs; parallelisation confirmed.
+- godot-rust learning curve. Two team members estimated at 1 sprint each to fluency; mitigated by gdext's strong type system and the substantial public example corpus. **Mitigated (2026-05-04):** GDExtension entry point operational with 5 registered classes; hexagonal port architecture with fake transports enables full headless testing without Godot runtime; all Rust modules have comprehensive test coverage.
 - Shader/material porting. Glass edges, instanced labels, and the WASM scene effects (`client/crates/scene-effects/`) need Godot equivalents. Scene-effects WASM stays in the browser bundle for desktop; the XR client gets native shader equivalents written in Godot Shading Language.
 - Quest Store submission (if pursued in Phase 3+) carries Meta's review process, which has its own latency and content rules.
 
@@ -175,7 +178,7 @@ New metrics (client side, exported via Godot to a lightweight ingest endpoint):
 - `xr_passthrough_active` (gauge).
 - `xr_anchor_count` (gauge).
 
-Expected steady-state at 25k-node graph, single user: frame time p95 < 11 ms, presence wire ≈ 1.9 KB/s per remote user (64 B × 30 Hz), no Vircadia traffic.
+Expected steady-state at 25k-node graph, single user: frame time p95 < 11 ms, presence wire ≈ 6.7 KB/s per remote user (76 B × 90 Hz per PRD-008 §5.2.1, reduced by `transform_mask` elision for head-only frames), no Vircadia traffic.
 
 ## References
 

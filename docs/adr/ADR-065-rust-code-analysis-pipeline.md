@@ -84,17 +84,17 @@ Every `LLMClient::send` call:
 
 Pipeline runs under `GraphCognitionSupervisor` (sibling to `PhysicsOrchestratorSupervisor`):
 
-```
-GraphCognitionSupervisor
-├── ProjectScannerActor           ← replaces UA project-scanner agent
-├── FileAnalyzerActor (pool, concurrency=8)
-├── BatchMergerActor              ← replaces UA's three Python merge scripts
-├── AssembleReviewerActor
-├── LayerDetectorActor            ← replaces UA architecture-analyzer
-├── TourGeneratorActor            ← replaces UA tour-builder
-├── DomainAnalyzerActor           ← opt-in
-├── ArticleAnalyzerActor          ← for Karpathy wikis
-└── PodPublisherActor             ← writes final graph to user's Solid pod (per ADR-066)
+```mermaid
+graph TD
+    GCS["GraphCognitionSupervisor"] --> PSA["ProjectScannerActor<br/><i>replaces UA project-scanner agent</i>"]
+    GCS --> FAA["FileAnalyzerActor<br/>(pool, concurrency=8)"]
+    GCS --> BMA["BatchMergerActor<br/><i>replaces UA's three Python merge scripts</i>"]
+    GCS --> ARA["AssembleReviewerActor"]
+    GCS --> LDA["LayerDetectorActor<br/><i>replaces UA architecture-analyzer</i>"]
+    GCS --> TGA["TourGeneratorActor<br/><i>replaces UA tour-builder</i>"]
+    GCS --> DAA["DomainAnalyzerActor<br/><i>opt-in</i>"]
+    GCS --> AAA["ArticleAnalyzerActor<br/><i>for Karpathy wikis</i>"]
+    GCS --> PPA["PodPublisherActor<br/><i>writes final graph to user's Solid pod (per ADR-066)</i>"]
 ```
 
 State checkpoints land in AgentDB keyed by `(session_urn, phase, batch_id)`. An interrupted analysis resumes via `ResumeAnalysis { session_urn }`. UA's `intermediate/` JSON dir is replaced.

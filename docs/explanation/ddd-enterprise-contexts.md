@@ -25,42 +25,54 @@ and Digital Twin Reframing.
 
 ## Full Context Map (BC1--BC17)
 
-```
-                         ENTERPRISE LAYER
-  ┌──────────────────────────────────────────────────────────┐
-  │                                                          │
-  │   BC14              BC11                  BC17           │
-  │  Enterprise  ────> Judgment  <──────── Policy            │
-  │  Identity          Broker              Engine            │
-  │     │                │  ▲                 │              │
-  │     │                │  │                 │              │
-  │     ▼                ▼  │                 ▼              │
-  │   BC12             BC13 │              BC15              │
-  │  Workflow  <────── Insight              KPI              │
-  │  Lifecycle        Discovery        Observability         │
-  │     │                ▲                   ▲              │
-  │     │                │                   │              │
-  │     │              BC16                  │              │
-  │     │            Connector ──────────────┘              │
-  │     │            Ingestion                              │
-  └─────┼────────────────┼──────────────────────────────────┘
-        │                │
-  ══════╪════════════════╪═══════ ANTI-CORRUPTION LAYER ═══
-        │                │
-  ┌─────┼────────────────┼──────────────────────────────────┐
-  │     ▼                ▼          CORE / SUPPORTING       │
-  │   BC1              BC2              BC7                  │
-  │  Auth  ──────── Graph Data ──── Ontology                │
-  │     │              │   │            │                    │
-  │     │              │   │            │                    │
-  │   BC5            BC3   BC8       BC6                    │
-  │  Settings ── Physics  Agent/Bot  Analytics              │
-  │     │              │       │        │                    │
-  │     │              │       │        │                    │
-  │   BC4            BC10    BC9                            │
-  │  WebSocket ── Binary ── Rendering                       │
-  │               Protocol                                  │
-  └──────────────────────────────────────────────────────────┘
+```mermaid
+graph TD
+    subgraph Enterprise["ENTERPRISE LAYER"]
+        BC14["BC14<br/>Enterprise Identity"]
+        BC11["BC11<br/>Judgment Broker"]
+        BC17["BC17<br/>Policy Engine"]
+        BC12["BC12<br/>Workflow Lifecycle"]
+        BC13["BC13<br/>Insight Discovery"]
+        BC15["BC15<br/>KPI Observability"]
+        BC16["BC16<br/>Connector Ingestion"]
+
+        BC14 --> BC11
+        BC17 --> BC11
+        BC13 --> BC11
+        BC11 --> BC12
+        BC13 --> BC12
+        BC14 --> BC12
+        BC16 --> BC13
+        BC16 --> BC15
+    end
+
+    ACL["═══ ANTI-CORRUPTION LAYER ═══"]
+
+    subgraph Core["CORE / SUPPORTING"]
+        BC1["BC1<br/>Auth"]
+        BC2["BC2<br/>Graph Data"]
+        BC7["BC7<br/>Ontology"]
+        BC5["BC5<br/>Settings"]
+        BC3["BC3<br/>Physics"]
+        BC8["BC8<br/>Agent/Bot"]
+        BC6["BC6<br/>Analytics"]
+        BC4["BC4<br/>WebSocket"]
+        BC10["BC10<br/>Binary Protocol"]
+        BC9["BC9<br/>Rendering"]
+
+        BC1 --- BC2
+        BC2 --- BC7
+        BC1 --- BC5
+        BC2 --- BC3
+        BC2 --- BC8
+        BC7 --- BC6
+        BC5 --- BC4
+        BC3 --- BC10
+        BC10 --- BC9
+        BC8 --- BC9
+    end
+
+    Enterprise --> ACL --> Core
 ```
 
 *Context map showing all seventeen bounded contexts across enterprise, core, supporting, and generic layers. The anti-corruption layer isolates enterprise concerns from the existing substrate.*

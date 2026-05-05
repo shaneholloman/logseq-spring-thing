@@ -568,34 +568,30 @@ Extends the KPI Lineage Model (ADR-043). Each of the six KPIs declared in §2 is
 
 ### 12.7 Lineage diagram
 
-```
-contributor.studio.opened ──┐
-contributor.studio.pod.attached ──┐
-sensei.suggestion.* ──────┐       │
-                          ▼       ▼
-                  GuidanceSession (BC18) ──> Activation Rate (12.1)
-                                          └> Hit Rate (12.5)
+```mermaid
+graph LR
+    E1["contributor.studio.opened"] --> GS["GuidanceSession (BC18)"]
+    E2["contributor.studio.pod.attached"] --> GS
+    E3["sensei.suggestion.*"] --> GS
+    GS --> KPI1["Activation Rate (12.1)"]
+    GS --> KPI5["Hit Rate (12.5)"]
 
-contributor.studio.opened (first) ┐
-workspace.saved / skill.installed ┤
-automation.defined / inbox.reviewed┘
-                          ▼
-                  WorkArtifact (BC18) ─────> TTFR (12.2)
+    E4["contributor.studio.opened (first)"] --> WA["WorkArtifact (BC18)"]
+    E5["workspace.saved / skill.installed"] --> WA
+    E6["automation.defined / inbox.reviewed"] --> WA
+    WA --> KPI2["TTFR (12.2)"]
 
-skill.installed ──────────┐
-skill.version.published ──┤
-                          ▼
-            SkillDistribution (BC19) ─────> Reuse Rate (12.3)
+    E7["skill.installed"] --> SD["SkillDistribution (BC19)"]
+    E8["skill.version.published"] --> SD
+    SD --> KPI3["Reuse Rate (12.3)"]
 
-share.intent.* ───────────┐
-broker.case.decided ──────┤
-                          ▼
-                  ShareIntent (BC18) ─────> Conversion Rate (12.4)
+    E9["share.intent.*"] --> SI["ShareIntent (BC18)"]
+    E10["broker.case.decided"] --> SI
+    SI --> KPI4["Conversion Rate (12.4)"]
 
-skill.retired ────────────┐
-skill.package.created ────┤
-                          ▼
-                  SkillPackage (BC19) ────> Retirement Rate (12.6)
+    E11["skill.retired"] --> SP["SkillPackage (BC19)"]
+    E12["skill.package.created"] --> SP
+    SP --> KPI6["Retirement Rate (12.6)"]
 ```
 
 All six KPIs render on the Mesh KPI Dashboard (PRD-002 §8) with a new dimension slicer `Contributor` populated from BC14 EnterpriseUser records; individual contributor drill-down is gated behind `Auditor` or `Admin` roles.

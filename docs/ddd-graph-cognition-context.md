@@ -126,30 +126,36 @@ The **Graph Cognition Bounded Context (BC-GC)** is a *cognitive pipeline*: input
 
 ### 2.4 Layered architecture within BC-GC
 
-```
-Application Layer (use cases)
-  ├── Analyze project use case
-  ├── Federate peer graph use case
-  ├── Switch preset use case
-  ├── Run incremental update use case
-  └── Accept inferred triples use case
-  
-Domain Layer (aggregates + invariants)
-  ├── AnalysisSession aggregate + repository
-  ├── TypedGraph aggregate + repository
-  ├── Block aggregate + repository
-  ├── Inference aggregate (quarantine semantics)
-  ├── PersonaView aggregate (read model)
-  └── ForcePreset aggregate
-  
-Infrastructure Layer (adapters)
-  ├── Tree-sitter sandboxed extractor
-  ├── LLM provider adapters (Ollama, Anthropic, OpenAI, …) behind LLMClient trait
-  ├── Ontobricks MCP client (TLS-pinned, allowlisted)
-  ├── Solid-rs pod adapter (publishes & federates)
-  ├── Neo4j repository (with batched migration)
-  ├── AgentDB checkpoint store
-  └── CUDA kernel bridge (cudarc + DynamicRelationshipBuffer)
+```mermaid
+graph TD
+    subgraph Application["Application Layer (use cases)"]
+        UC1["Analyze project"]
+        UC2["Federate peer graph"]
+        UC3["Switch preset"]
+        UC4["Run incremental update"]
+        UC5["Accept inferred triples"]
+    end
+
+    subgraph Domain["Domain Layer (aggregates + invariants)"]
+        AG1["AnalysisSession aggregate + repository"]
+        AG2["TypedGraph aggregate + repository"]
+        AG3["Block aggregate + repository"]
+        AG4["Inference aggregate (quarantine semantics)"]
+        AG5["PersonaView aggregate (read model)"]
+        AG6["ForcePreset aggregate"]
+    end
+
+    subgraph Infrastructure["Infrastructure Layer (adapters)"]
+        AD1["Tree-sitter sandboxed extractor"]
+        AD2["LLM provider adapters (Ollama, Anthropic, OpenAI) behind LLMClient trait"]
+        AD3["Ontobricks MCP client (TLS-pinned, allowlisted)"]
+        AD4["Solid-rs pod adapter (publishes and federates)"]
+        AD5["Neo4j repository (with batched migration)"]
+        AD6["AgentDB checkpoint store"]
+        AD7["CUDA kernel bridge (cudarc + DynamicRelationshipBuffer)"]
+    end
+
+    Application --> Domain --> Infrastructure
 ```
 
 ## 3. Ubiquitous Language
