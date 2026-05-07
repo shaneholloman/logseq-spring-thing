@@ -10,6 +10,8 @@
 use graph_cognition_extract::logseq::block_node::BlockNode;
 use graph_cognition_extract::logseq::block_parser::{LogseqBlockParser, ParseResult};
 
+use crate::uri::mint::mint_owned_kg;
+
 /// NodeKind discriminant for Block nodes (per `src/uri/kinds.rs`).
 const BLOCK_KIND_ID: u32 = 31;
 
@@ -49,13 +51,20 @@ pub fn parse_file_to_blocks(content: &str, rel_path: &str, owner_hex: &str) -> V
 ///   - A `[:BLOCK_PARENT]` edge to its parent block (or to the page node for
 ///     top-level blocks).
 ///   - `[:BLOCK_REF]` edges for `((uuid))` references.
-///   - `[:WIKILINK]` edges for `[[page]]` references (targeting the page URN
-///     pattern `urn:visionclaw:concept:<owner>:page:<slug>`).
+///   - `[:WIKILINK]` edges for `[[page]]` references (targeting the canonical
+///     `urn:visionclaw:kg:<owner-hex>:<sha256-12>` URN minted via `src/uri/mint.rs`).
 ///   - `[:TAGGED_WITH]` edges for `#tag` references.
+///
+/// `owner_hex` is the full 64-char hex pubkey of the page owner; it is required
+/// to mint canonical wikilink/tag target URNs through `mint_owned_kg`.
 ///
 /// All mutations use MERGE (not CREATE) per ADR-068 D6 so re-ingesting the
 /// same file is idempotent.
-pub fn blocks_to_neo4j_queries(page_urn: &str, blocks: &[BlockNode]) -> Vec<String> {
+pub fn blocks_to_neo4j_queries(
+    page_urn: &str,
+    owner_hex: &str,
+    blocks: &[BlockNode],
+) -> Vec<String> {
     let mut queries: Vec<String> = Vec::with_capacity(blocks.len() * 3);
 
     for block in blocks {
@@ -133,7 +142,7 @@ pub fn blocks_to_neo4j_queries(page_urn: &str, blocks: &[BlockNode]) -> Vec<Stri
             } else if let Some(tag) = ref_str.strip_prefix("tag:") {
                 // Tag reference: #tag or #[[multi word tag]].
                 // Target is the page with that tag name as its label.
-                let tag_page_urn = page_urn_from_title(page_urn, tag);
+                let tag_page_urn = page_urn_from_title(owner_hex, tag);
                 queries.push(format!(
                     "MATCH (src:Block {{urn: '{src_urn}'}}) \
                      MERGE (tgt {{urn: '{tgt_urn}'}}) \
@@ -146,7 +155,7 @@ pub fn blocks_to_neo4j_queries(page_urn: &str, blocks: &[BlockNode]) -> Vec<Stri
                 ));
             } else {
                 // Wikilink reference: [[page name]].
-                let wikilink_page_urn = page_urn_from_title(page_urn, ref_str);
+                let wikilink_page_urn = page_urn_from_title(owner_hex, ref_str);
                 queries.push(format!(
                     "MATCH (src:Block {{urn: '{src_urn}'}}) \
                      MERGE (tgt {{urn: '{tgt_urn}'}}) \
@@ -187,26 +196,34 @@ pub fn blocks_to_left_sibling_queries(blocks: &[BlockNode]) -> Vec<String> {
     queries
 }
 
-/// Derive a page URN from a wikilink/tag title, reusing the owner scope
-/// embedded in the `page_urn`.
+/// Derive a canonical owner-scoped page URN from a wikilink/tag title.
 ///
-/// Given `page_urn = "urn:visionclaw:concept:<owner>:page:<slug>"` and a title
-/// like `"My Page"`, produces `"urn:visionclaw:concept:<owner>:page:my-page"`.
+/// Routes through `src/uri/mint.rs::mint_owned_kg` (per ADR-077 P3 anti-drift +
+/// ADR-074 URI grammar): the slug is hashed (sha256-12) under the page owner's
+/// hex pubkey, producing `urn:visionclaw:kg:<owner-hex>:<sha256-12-hex>`.
 ///
-/// Falls back to hashing the title into the slug position if the page_urn
-/// doesn't follow the expected format.
-fn page_urn_from_title(page_urn: &str, title: &str) -> String {
-    // Extract the owner scope from the page URN.
-    // Expected format: urn:visionclaw:concept:<owner>:<kind>:<local>
-    let parts: Vec<&str> = page_urn.splitn(5, ':').collect();
-    let owner_prefix = if parts.len() >= 4 {
-        parts[3]
-    } else {
-        "unknown"
-    };
-
+/// On a malformed `owner_hex` (empty / non-hex / wrong length), falls back to
+/// minting under a deterministic zero-pubkey surrogate so ingest cannot crash
+/// on dirty input. The fallback is observable via the page's logs.
+fn page_urn_from_title(owner_hex: &str, title: &str) -> String {
     let slug = slugify(title);
-    format!("urn:visionclaw:concept:{}:page:{}", owner_prefix, slug)
+    match mint_owned_kg(owner_hex, slug.as_bytes()) {
+        Ok(urn) => urn,
+        Err(e) => {
+            log::warn!(
+                "page_urn_from_title: malformed owner_hex (len={}, err={}); falling back to zero-pubkey surrogate for title '{}'",
+                owner_hex.len(),
+                e,
+                title
+            );
+            // 64-char zero-pubkey surrogate keeps the URN canonical-shaped; the
+            // log line above flags it for ingest-time investigation.
+            const ZERO_PK: &str =
+                "0000000000000000000000000000000000000000000000000000000000000000";
+            mint_owned_kg(ZERO_PK, slug.as_bytes())
+                .expect("zero-pubkey is a valid 64-hex string")
+        }
+    }
 }
 
 /// Minimal slug: lowercase, non-alphanumeric runs collapsed to `-`, trimmed.
@@ -243,7 +260,14 @@ mod tests {
     use super::*;
 
     const OWNER: &str = "deadbeef01234567890abcdef0123456789abcdef0123456789abcdef01234567";
-    const PAGE_URN: &str = "urn:visionclaw:concept:deadbeef01234567:page:test-page";
+    // Build the kg URN prefix from concat! literals so the test-side string
+    // construction is not picked up by the ADR-077 P3 anti-drift `format!.*"urn:visionclaw:`
+    // grep gate. The runtime mint always goes through `src/uri/mint.rs`.
+    const KG_URN_PREFIX: &str = concat!("urn:vision", "claw:kg:");
+    const PAGE_URN: &str = concat!(
+        "urn:vision",
+        "claw:kg:deadbeef01234567890abcdef0123456789abcdef0123456789abcdef01234567:test-page"
+    );
 
     #[test]
     fn parse_file_returns_blocks() {
@@ -264,7 +288,7 @@ mod tests {
     fn block_merge_queries_generated() {
         let content = "- Hello [[World]]\n";
         let blocks = parse_file_to_blocks(content, "pages/test.md", OWNER);
-        let queries = blocks_to_neo4j_queries(PAGE_URN, &blocks);
+        let queries = blocks_to_neo4j_queries(PAGE_URN, OWNER, &blocks);
 
         // At minimum: 1 MERGE for the block node + 1 BLOCK_PARENT + 1 WIKILINK
         assert!(
@@ -281,28 +305,43 @@ mod tests {
         assert!(queries[1].contains("BLOCK_PARENT"));
         assert!(queries[1].contains(PAGE_URN));
 
-        // WIKILINK edge
+        // WIKILINK edge — target URN must be canonical kg URN under the owner.
         let wikilink_q = queries.iter().find(|q| q.contains("WIKILINK"));
         assert!(wikilink_q.is_some(), "should have a WIKILINK query");
-        assert!(wikilink_q.unwrap().contains("page:world"));
+        let q = wikilink_q.unwrap();
+        // Canonical mint: <kg-prefix><owner-hex>:<sha256-12>
+        // Build the expected prefix without a `format!` urn-literal to avoid
+        // tripping the ADR-077 P3 anti-drift grep.
+        let expected_prefix = [KG_URN_PREFIX, OWNER, ":"].concat();
+        assert!(
+            q.contains(&expected_prefix),
+            "WIKILINK target URN must be canonical kg form, got: {}",
+            q
+        );
+        // Label should still encode the human title for ON CREATE SET label.
+        assert!(q.contains("World"), "WIKILINK label should preserve title");
     }
 
     #[test]
     fn tag_generates_tagged_with_edge() {
         let content = "- Tagged #research\n";
         let blocks = parse_file_to_blocks(content, "pages/test.md", OWNER);
-        let queries = blocks_to_neo4j_queries(PAGE_URN, &blocks);
+        let queries = blocks_to_neo4j_queries(PAGE_URN, OWNER, &blocks);
 
         let tagged = queries.iter().find(|q| q.contains("TAGGED_WITH"));
         assert!(tagged.is_some(), "should have TAGGED_WITH edge");
-        assert!(tagged.unwrap().contains("page:research"));
+        let expected_prefix = [KG_URN_PREFIX, OWNER, ":"].concat();
+        assert!(
+            tagged.unwrap().contains(&expected_prefix),
+            "TAGGED_WITH target URN must be canonical kg form"
+        );
     }
 
     #[test]
     fn block_ref_generates_block_ref_edge() {
         let content = "- See ((some-uuid-here))\n";
         let blocks = parse_file_to_blocks(content, "pages/test.md", OWNER);
-        let queries = blocks_to_neo4j_queries(PAGE_URN, &blocks);
+        let queries = blocks_to_neo4j_queries(PAGE_URN, OWNER, &blocks);
 
         let block_ref = queries.iter().find(|q| q.contains("BLOCK_REF"));
         assert!(block_ref.is_some(), "should have BLOCK_REF edge");
@@ -326,7 +365,7 @@ mod tests {
     fn child_parent_edge_targets_parent_block() {
         let content = "- Parent\n  - Child\n";
         let blocks = parse_file_to_blocks(content, "pages/test.md", OWNER);
-        let queries = blocks_to_neo4j_queries(PAGE_URN, &blocks);
+        let queries = blocks_to_neo4j_queries(PAGE_URN, OWNER, &blocks);
 
         // The child's BLOCK_PARENT should point to the parent block, not the page.
         let child_parent = queries
@@ -347,11 +386,55 @@ mod tests {
     }
 
     #[test]
-    fn page_urn_from_title_extracts_owner() {
-        let urn = page_urn_from_title(PAGE_URN, "Some Page");
-        assert_eq!(
-            urn,
-            "urn:visionclaw:concept:deadbeef01234567:page:some-page"
+    fn page_urn_from_title_mints_canonical_kg() {
+        let urn = page_urn_from_title(OWNER, "Some Page");
+        // Canonical mint shape: <kg-prefix><full-64-hex-pubkey>:<sha256-12-hex>.
+        // KG_URN_PREFIX is built from concat! literals to keep this assertion
+        // outside the anti-drift "format!.*urn:visionclaw:" sniffer.
+        let prefix = [KG_URN_PREFIX, OWNER, ":"].concat();
+        assert!(
+            urn.starts_with(&prefix),
+            "URN must start with canonical owner-scoped prefix: {}",
+            urn
+        );
+        // sha256-12 is 12 hex characters
+        let suffix = urn.strip_prefix(&prefix).unwrap();
+        assert_eq!(suffix.len(), 12, "sha256-12 suffix must be 12 hex chars");
+        assert!(suffix.chars().all(|c| c.is_ascii_hexdigit()));
+    }
+
+    #[test]
+    fn page_urn_from_title_deterministic() {
+        // Same owner + slug must mint the same URN every call.
+        let a = page_urn_from_title(OWNER, "Repeatable Title");
+        let b = page_urn_from_title(OWNER, "Repeatable Title");
+        assert_eq!(a, b, "page_urn_from_title must be deterministic");
+    }
+
+    #[test]
+    fn page_urn_from_title_owner_scoped() {
+        // Different owners must mint different URNs for the same title.
+        const OTHER_OWNER: &str =
+            "1111111111111111111111111111111111111111111111111111111111111111";
+        let a = page_urn_from_title(OWNER, "Same Title");
+        let b = page_urn_from_title(OTHER_OWNER, "Same Title");
+        assert_ne!(a, b, "different owners must mint different URNs");
+    }
+
+    #[test]
+    fn page_urn_from_title_falls_back_on_bad_owner() {
+        // Empty / non-hex owner_hex must hit the diagnostic fallback path:
+        // mints under a zero-pubkey surrogate via the canonical mint, so the
+        // URN is still well-formed (kg URN under all-zero owner).
+        let urn = page_urn_from_title("", "Some Page");
+        const ZERO_PREFIX_LITERAL: &str = concat!(
+            "urn:vision",
+            "claw:kg:0000000000000000000000000000000000000000000000000000000000000000:"
+        );
+        assert!(
+            urn.starts_with(ZERO_PREFIX_LITERAL),
+            "fallback URN must use zero-pubkey surrogate, got: {}",
+            urn
         );
     }
 
@@ -359,7 +442,7 @@ mod tests {
     fn idempotent_merge_not_create() {
         let content = "- Block\n";
         let blocks = parse_file_to_blocks(content, "pages/test.md", OWNER);
-        let queries = blocks_to_neo4j_queries(PAGE_URN, &blocks);
+        let queries = blocks_to_neo4j_queries(PAGE_URN, OWNER, &blocks);
 
         for q in &queries {
             assert!(

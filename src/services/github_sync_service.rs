@@ -1128,13 +1128,15 @@ impl GitHubSyncService {
     /// Parse a Logseq file at block granularity and project blocks into Neo4j
     /// (ADR-068 D6). Runs after page-level KG ingestion on the same file.
     async fn ingest_blocks(&self, content: &str, file_name: &str, page_name: &str) {
-        use std::collections::hash_map::DefaultHasher;
-        use std::hash::{Hash, Hasher};
-
-        // Derive a deterministic owner_hex from the page_name (16 hex chars).
-        let mut hasher = DefaultHasher::new();
-        page_name.hash(&mut hasher);
-        let owner_hex = format!("{:016x}", hasher.finish());
+        // Derive a deterministic surrogate owner pubkey from the page name.
+        // Until per-page Nostr identity is plumbed end-to-end (PRD-006 follow-up),
+        // we use sha256(page_name) → 64-char hex as a synthetic owner key. This
+        // satisfies the canonical mint's hex64 invariant (ADR-074 D1) while
+        // remaining stable across re-ingests of the same page.
+        use sha2::{Digest, Sha256};
+        let mut h = Sha256::new();
+        h.update(page_name.as_bytes());
+        let owner_hex = format!("{:x}", h.finalize());
 
         let rel_path = format!("pages/{}", file_name);
         let blocks = block_level_parser::parse_file_to_blocks(content, &rel_path, &owner_hex);
@@ -1142,13 +1144,23 @@ impl GitHubSyncService {
             return;
         }
 
-        let page_urn = format!(
-            "urn:visionclaw:concept:{}:page:{}",
-            &owner_hex,
-            page_name.to_lowercase().replace(' ', "-"),
-        );
+        // Mint canonical owner-scoped page URN via src/uri/mint.rs (ADR-077 P3).
+        // The page slug is hashed under the synthetic owner pubkey to produce
+        // `urn:visionclaw:kg:<owner-hex>:<sha256-12>`.
+        let page_slug = page_name.to_lowercase().replace(' ', "-");
+        let page_urn = match crate::uri::mint::mint_owned_kg(&owner_hex, page_slug.as_bytes()) {
+            Ok(urn) => urn,
+            Err(e) => {
+                warn!(
+                    "ingest_blocks: failed to mint canonical page URN for '{}': {} — skipping block ingest",
+                    page_name, e
+                );
+                return;
+            }
+        };
 
-        let mut queries = block_level_parser::blocks_to_neo4j_queries(&page_urn, &blocks);
+        let mut queries =
+            block_level_parser::blocks_to_neo4j_queries(&page_urn, &owner_hex, &blocks);
         queries.extend(block_level_parser::blocks_to_left_sibling_queries(&blocks));
 
         let neo4j = self.onto_repo.neo4j_graph();
