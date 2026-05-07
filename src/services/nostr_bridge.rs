@@ -60,10 +60,25 @@ pub struct NostrBridge {
 
 impl NostrBridge {
     /// Load from environment. Returns `None` if required vars are absent.
+    ///
+    /// PRD-010 F1: the secret key is resolved through
+    /// `crate::services::server_identity::resolve_canonical_nostr_privkey`.
+    /// Both `SERVER_NOSTR_PRIVKEY` and `VISIONCLAW_NOSTR_PRIVKEY` are accepted;
+    /// if both are set and DIVERGE, the resolver fails closed and this method
+    /// returns `None` after logging the divergence error so the bridge does
+    /// not silently re-sign forwarded events under a stale identity.
     pub fn from_env() -> Option<Self> {
-        let privkey = std::env::var("VISIONCLAW_NOSTR_PRIVKEY")
-            .ok()
-            .filter(|s| !s.is_empty())?;
+        let privkey = match super::server_identity::resolve_canonical_nostr_privkey() {
+            Ok(Some(k)) => k,
+            Ok(None) => {
+                // No key set — bridge cannot operate. Caller treats as opt-out.
+                return None;
+            }
+            Err(e) => {
+                error!("[NostrBridge] {e}");
+                return None;
+            }
+        };
         let forum_relay_url = std::env::var("FORUM_RELAY_URL")
             .ok()
             .filter(|s| !s.is_empty())?;
@@ -80,8 +95,8 @@ impl NostrBridge {
             return None;
         }
 
-        let secret_key = SecretKey::from_hex(&privkey)
-            .map_err(|e| error!("[NostrBridge] Invalid VISIONCLAW_NOSTR_PRIVKEY: {e}"))
+        let secret_key = super::server_identity::parse_secret_key(&privkey)
+            .map_err(|e| error!("[NostrBridge] Invalid canonical privkey: {e}"))
             .ok()?;
 
         Some(Self {
@@ -300,12 +315,19 @@ fn compute_backoff(iteration: u32) -> u64 {
 mod tests {
     use super::*;
 
+    /// Clear both PRD-010 F1 canonical-key env vars so each test sees
+    /// a deterministic resolver state regardless of inherited environment.
+    fn clear_canonical_keys() {
+        std::env::remove_var("VISIONCLAW_NOSTR_PRIVKEY");
+        std::env::remove_var("SERVER_NOSTR_PRIVKEY");
+    }
+
     // ── from_env ───────────────────────────────────────────────────────
 
     #[test]
     fn from_env_returns_none_without_required_vars() {
-        // GIVEN: no VISIONCLAW_NOSTR_PRIVKEY
-        std::env::remove_var("VISIONCLAW_NOSTR_PRIVKEY");
+        // GIVEN: no canonical privkey on either env var
+        clear_canonical_keys();
         std::env::remove_var("FORUM_RELAY_URL");
 
         // WHEN/THEN: None
@@ -315,6 +337,7 @@ mod tests {
     #[test]
     fn from_env_returns_none_without_forum_relay() {
         // GIVEN: privkey set but no FORUM_RELAY_URL
+        clear_canonical_keys();
         std::env::set_var(
             "VISIONCLAW_NOSTR_PRIVKEY",
             "0000000000000000000000000000000000000000000000000000000000000001",
@@ -324,12 +347,13 @@ mod tests {
         let result = NostrBridge::from_env();
         assert!(result.is_none());
 
-        std::env::remove_var("VISIONCLAW_NOSTR_PRIVKEY");
+        clear_canonical_keys();
     }
 
     #[test]
     fn from_env_rejects_non_ws_jss_url() {
         // GIVEN: valid privkey, valid forum URL, but HTTP jss URL
+        clear_canonical_keys();
         std::env::set_var(
             "VISIONCLAW_NOSTR_PRIVKEY",
             "0000000000000000000000000000000000000000000000000000000000000001",
@@ -340,7 +364,7 @@ mod tests {
         let result = NostrBridge::from_env();
         assert!(result.is_none());
 
-        std::env::remove_var("VISIONCLAW_NOSTR_PRIVKEY");
+        clear_canonical_keys();
         std::env::remove_var("FORUM_RELAY_URL");
         std::env::remove_var("JSS_RELAY_URL");
     }
@@ -348,6 +372,7 @@ mod tests {
     #[test]
     fn from_env_rejects_non_ws_forum_url() {
         // GIVEN: valid privkey and jss but HTTP forum URL
+        clear_canonical_keys();
         std::env::set_var(
             "VISIONCLAW_NOSTR_PRIVKEY",
             "0000000000000000000000000000000000000000000000000000000000000001",
@@ -358,7 +383,7 @@ mod tests {
         let result = NostrBridge::from_env();
         assert!(result.is_none());
 
-        std::env::remove_var("VISIONCLAW_NOSTR_PRIVKEY");
+        clear_canonical_keys();
         std::env::remove_var("FORUM_RELAY_URL");
         std::env::remove_var("JSS_RELAY_URL");
     }

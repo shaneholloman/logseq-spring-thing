@@ -43,11 +43,23 @@ pub struct NostrBeadPublisher {
 }
 
 impl NostrBeadPublisher {
-    /// Load from environment. Returns `None` if `VISIONCLAW_NOSTR_PRIVKEY` is absent.
+    /// Load from environment. Returns `None` if no canonical privkey is set.
+    ///
+    /// PRD-010 F1: the secret key is resolved through
+    /// `crate::services::server_identity::resolve_canonical_nostr_privkey`.
+    /// Both `SERVER_NOSTR_PRIVKEY` and `VISIONCLAW_NOSTR_PRIVKEY` are accepted;
+    /// if both are set and DIVERGE, the resolver fails closed and this method
+    /// returns `None` after logging the divergence error so bead provenance
+    /// is not silently signed under a stale identity.
     pub fn from_env() -> Option<Self> {
-        let privkey = std::env::var("VISIONCLAW_NOSTR_PRIVKEY")
-            .ok()
-            .filter(|s| !s.is_empty())?;
+        let privkey = match super::server_identity::resolve_canonical_nostr_privkey() {
+            Ok(Some(k)) => k,
+            Ok(None) => return None,
+            Err(e) => {
+                error!("[NostrBeadPublisher] {e}");
+                return None;
+            }
+        };
         let relay_url = std::env::var("JSS_RELAY_URL")
             .unwrap_or_else(|_| "ws://jss:3030/relay".to_string());
 
@@ -57,8 +69,8 @@ impl NostrBeadPublisher {
             return None;
         }
 
-        let secret_key = SecretKey::from_hex(&privkey)
-            .map_err(|e| error!("[NostrBeadPublisher] Invalid VISIONCLAW_NOSTR_PRIVKEY: {e}"))
+        let secret_key = super::server_identity::parse_secret_key(&privkey)
+            .map_err(|e| error!("[NostrBeadPublisher] Invalid canonical privkey: {e}"))
             .ok()?;
 
         Some(Self {
@@ -262,12 +274,19 @@ fn classify_error(error: String) -> BeadOutcome {
 mod tests {
     use super::*;
 
+    /// Clear both PRD-010 F1 canonical-key env vars so the resolver behaves
+    /// identically for every test, regardless of inherited environment.
+    fn clear_canonical_keys() {
+        std::env::remove_var("VISIONCLAW_NOSTR_PRIVKEY");
+        std::env::remove_var("SERVER_NOSTR_PRIVKEY");
+    }
+
     // ── from_env ───────────────────────────────────────────────────────
 
     #[test]
     fn from_env_returns_none_without_privkey() {
-        // GIVEN: no VISIONCLAW_NOSTR_PRIVKEY set
-        std::env::remove_var("VISIONCLAW_NOSTR_PRIVKEY");
+        // GIVEN: no canonical privkey set on either env var
+        clear_canonical_keys();
 
         // WHEN: calling from_env
         let result = NostrBeadPublisher::from_env();
@@ -280,6 +299,7 @@ mod tests {
     fn from_env_rejects_non_ws_relay_url() {
         // GIVEN: a valid privkey but an HTTP relay URL (SSRF vector)
         // Use a known-valid 64-char hex key for the nostr-sdk SecretKey parse
+        clear_canonical_keys();
         std::env::set_var(
             "VISIONCLAW_NOSTR_PRIVKEY",
             "0000000000000000000000000000000000000000000000000000000000000001",
@@ -293,13 +313,14 @@ mod tests {
         assert!(result.is_none());
 
         // Cleanup
-        std::env::remove_var("VISIONCLAW_NOSTR_PRIVKEY");
+        clear_canonical_keys();
         std::env::remove_var("JSS_RELAY_URL");
     }
 
     #[test]
     fn from_env_accepts_valid_ws_url() {
         // GIVEN: valid privkey and ws:// relay
+        clear_canonical_keys();
         std::env::set_var(
             "VISIONCLAW_NOSTR_PRIVKEY",
             "0000000000000000000000000000000000000000000000000000000000000001",
@@ -313,13 +334,14 @@ mod tests {
         assert!(result.is_some());
 
         // Cleanup
-        std::env::remove_var("VISIONCLAW_NOSTR_PRIVKEY");
+        clear_canonical_keys();
         std::env::remove_var("JSS_RELAY_URL");
     }
 
     #[test]
     fn from_env_returns_none_for_empty_privkey() {
         // GIVEN: empty VISIONCLAW_NOSTR_PRIVKEY
+        clear_canonical_keys();
         std::env::set_var("VISIONCLAW_NOSTR_PRIVKEY", "");
 
         // WHEN: calling from_env
@@ -330,6 +352,36 @@ mod tests {
 
         // Cleanup
         std::env::remove_var("VISIONCLAW_NOSTR_PRIVKEY");
+    }
+
+    #[test]
+    #[ignore = "PRD-010 F1: env-var divergence test — runs in single-threaded test harness only \
+                because std::env::set_var is process-global and races with other from_env tests"]
+    fn from_env_fails_closed_on_divergent_keys() {
+        // GIVEN: two DIFFERENT canonical keys set on the two env vars
+        clear_canonical_keys();
+        std::env::set_var(
+            "SERVER_NOSTR_PRIVKEY",
+            "0000000000000000000000000000000000000000000000000000000000000001",
+        );
+        std::env::set_var(
+            "VISIONCLAW_NOSTR_PRIVKEY",
+            "0000000000000000000000000000000000000000000000000000000000000002",
+        );
+        std::env::set_var("JSS_RELAY_URL", "ws://localhost:3030/relay");
+
+        // WHEN: calling from_env
+        let result = NostrBeadPublisher::from_env();
+
+        // THEN: None -- divergence is fail-closed per PRD-010 F1
+        assert!(
+            result.is_none(),
+            "Divergent SERVER_NOSTR_PRIVKEY and VISIONCLAW_NOSTR_PRIVKEY \
+             must NOT silently pick one — refuse to start"
+        );
+
+        clear_canonical_keys();
+        std::env::remove_var("JSS_RELAY_URL");
     }
 
     // ── is_transient classification ────────────────────────────────────

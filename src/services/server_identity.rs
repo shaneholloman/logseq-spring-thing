@@ -62,9 +62,10 @@ impl ServerIdentity {
     ///
     /// Relay list comes from `NOSTR_RELAY_URLS` (comma-separated).
     pub fn from_env() -> anyhow::Result<Self> {
-        let privkey_env = std::env::var("SERVER_NOSTR_PRIVKEY")
-            .ok()
-            .filter(|s| !s.trim().is_empty());
+        // PRD-010 F1: collapse SERVER_NOSTR_PRIVKEY and VISIONCLAW_NOSTR_PRIVKEY
+        // onto a single canonical identity. resolve_canonical_nostr_privkey
+        // returns Err iff both vars are set and resolve to different keys.
+        let privkey_env = resolve_canonical_nostr_privkey()?;
 
         let is_production = std::env::var("APP_ENV")
             .map(|v| v == "production")
@@ -264,12 +265,94 @@ impl ServerIdentity {
 
 /// Parse either a `nsec1…` bech32 string or a 64-char hex string into a
 /// `SecretKey`. Trims surrounding whitespace. Returns `Err` for any other form.
-fn parse_secret_key(raw: &str) -> anyhow::Result<SecretKey> {
+///
+/// `pub(crate)` so the canonical privkey resolver and the cross-module
+/// consumers (`nostr_bridge`, `nostr_bead_publisher`) all parse keys
+/// identically — see PRD-010 F1.
+pub(crate) fn parse_secret_key(raw: &str) -> anyhow::Result<SecretKey> {
     let trimmed = raw.trim();
     if trimmed.starts_with("nsec1") {
         SecretKey::from_bech32(trimmed).map_err(|e| anyhow!("nsec decode failed: {e}"))
     } else {
         SecretKey::from_hex(trimmed).map_err(|e| anyhow!("hex decode failed: {e}"))
+    }
+}
+
+/// Resolve the **canonical** server-side Nostr secret key (PRD-010 F1).
+///
+/// VisionClaw historically read two unrelated env vars (`SERVER_NOSTR_PRIVKEY`
+/// for migration / bead provenance / audit signing, and
+/// `VISIONCLAW_NOSTR_PRIVKEY` for the JSS↔forum bridge and bead publisher).
+/// The mesh-federation work in PRD-010 collapses both onto a single canonical
+/// identity so that every event signed by "the VisionClaw server" — whether
+/// it's a migration approval, a bead provenance stamp, or a relay-bridge
+/// republish — comes from the same hex pubkey. Operators that ran the legacy
+/// dual-key configuration get a **fail-closed** error message pointing them
+/// at the migration: keep one key in `SERVER_NOSTR_PRIVKEY`, drop
+/// `VISIONCLAW_NOSTR_PRIVKEY` from the deployment env.
+///
+/// Resolution rules:
+/// - Both vars unset → `Ok(None)` (caller decides whether absence is fatal).
+/// - Only one var set → use it.
+/// - Both vars set AND identical (after trim/case-normalise) → use the value.
+/// - Both vars set AND divergent → `Err`. Refusing to start with two keys is
+///   the entire point of unification: silently picking one would cause a
+///   subset of signed events to come from a stale bridge identity that no
+///   downstream verifier whitelists.
+///
+/// The returned `Option<String>` is the canonical raw form (nsec or hex) that
+/// callers can pass to `parse_secret_key`. Callers must NOT log this value.
+pub fn resolve_canonical_nostr_privkey() -> anyhow::Result<Option<String>> {
+    let server = std::env::var("SERVER_NOSTR_PRIVKEY")
+        .ok()
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty());
+    let bridge = std::env::var("VISIONCLAW_NOSTR_PRIVKEY")
+        .ok()
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty());
+
+    match (server, bridge) {
+        (None, None) => Ok(None),
+        (Some(s), None) => Ok(Some(s)),
+        (None, Some(b)) => {
+            warn!(
+                "[ServerIdentity] VISIONCLAW_NOSTR_PRIVKEY is set but \
+                 SERVER_NOSTR_PRIVKEY is not. PRD-010 F1 unifies these onto \
+                 SERVER_NOSTR_PRIVKEY — the legacy variable will be removed \
+                 in a future release. Falling back to VISIONCLAW_NOSTR_PRIVKEY \
+                 this run."
+            );
+            Ok(Some(b))
+        }
+        (Some(s), Some(b)) => {
+            // Normalise both for the equality check: parse to SecretKey then
+            // compare hex. This rejects the case where one is nsec1… and the
+            // other is hex of the same key (still equal) but accepts the case
+            // where they differ in encoding only. Diverging keys throw.
+            let s_sk = parse_secret_key(&s).context(
+                "SERVER_NOSTR_PRIVKEY is set but did not parse — fix it before deployment",
+            )?;
+            let b_sk = parse_secret_key(&b).context(
+                "VISIONCLAW_NOSTR_PRIVKEY is set but did not parse — fix it before deployment",
+            )?;
+            if s_sk.to_secret_hex() == b_sk.to_secret_hex() {
+                info!(
+                    "[ServerIdentity] SERVER_NOSTR_PRIVKEY and VISIONCLAW_NOSTR_PRIVKEY \
+                     resolve to the same key — using SERVER_NOSTR_PRIVKEY. PRD-010 F1: \
+                     drop VISIONCLAW_NOSTR_PRIVKEY from deployment env."
+                );
+                Ok(Some(s))
+            } else {
+                Err(anyhow!(
+                    "PRD-010 F1: SERVER_NOSTR_PRIVKEY and VISIONCLAW_NOSTR_PRIVKEY are \
+                     both set but resolve to DIFFERENT keys. The mesh federation \
+                     unification mandates a single canonical server identity. Refusing \
+                     to start. Fix: keep one key in SERVER_NOSTR_PRIVKEY and remove \
+                     VISIONCLAW_NOSTR_PRIVKEY from the deployment env."
+                ))
+            }
+        }
     }
 }
 
@@ -342,6 +425,63 @@ mod tests {
         assert!(parse_relay_urls("").is_empty());
         assert!(parse_relay_urls("   ").is_empty());
         assert!(parse_relay_urls(",,,").is_empty());
+    }
+
+    /// PRD-010 F1: the canonical privkey resolver must fail closed when
+    /// `SERVER_NOSTR_PRIVKEY` and `VISIONCLAW_NOSTR_PRIVKEY` are both set
+    /// and resolve to different keys. These tests are `#[ignore]`'d because
+    /// they mutate process-global env vars and would race with other tests
+    /// in the same binary; run them explicitly via:
+    ///   `cargo test -p webxr resolve_canonical_nostr_privkey -- --ignored --test-threads=1`
+    #[test]
+    #[ignore]
+    fn resolve_canonical_nostr_privkey_returns_none_when_unset() {
+        std::env::remove_var("SERVER_NOSTR_PRIVKEY");
+        std::env::remove_var("VISIONCLAW_NOSTR_PRIVKEY");
+        assert!(resolve_canonical_nostr_privkey().expect("ok").is_none());
+    }
+
+    #[test]
+    #[ignore]
+    fn resolve_canonical_nostr_privkey_accepts_single_var() {
+        std::env::remove_var("VISIONCLAW_NOSTR_PRIVKEY");
+        std::env::set_var("SERVER_NOSTR_PRIVKEY", TEST_HEX);
+        assert_eq!(
+            resolve_canonical_nostr_privkey().expect("ok"),
+            Some(TEST_HEX.to_string())
+        );
+        std::env::remove_var("SERVER_NOSTR_PRIVKEY");
+    }
+
+    #[test]
+    #[ignore]
+    fn resolve_canonical_nostr_privkey_accepts_matching_dual_vars() {
+        // Same key, one as hex, the other as nsec — must be accepted.
+        std::env::set_var("SERVER_NOSTR_PRIVKEY", TEST_HEX);
+        let nsec = SecretKey::from_hex(TEST_HEX).unwrap().to_bech32().unwrap();
+        std::env::set_var("VISIONCLAW_NOSTR_PRIVKEY", &nsec);
+        assert!(resolve_canonical_nostr_privkey().is_ok());
+        std::env::remove_var("SERVER_NOSTR_PRIVKEY");
+        std::env::remove_var("VISIONCLAW_NOSTR_PRIVKEY");
+    }
+
+    #[test]
+    #[ignore]
+    fn resolve_canonical_nostr_privkey_fails_closed_on_divergence() {
+        std::env::set_var(
+            "SERVER_NOSTR_PRIVKEY",
+            "0000000000000000000000000000000000000000000000000000000000000001",
+        );
+        std::env::set_var(
+            "VISIONCLAW_NOSTR_PRIVKEY",
+            "0000000000000000000000000000000000000000000000000000000000000002",
+        );
+        let err = resolve_canonical_nostr_privkey()
+            .expect_err("divergent keys must produce an error");
+        let msg = err.to_string();
+        assert!(msg.contains("PRD-010 F1"), "error must cite PRD-010 F1: {msg}");
+        std::env::remove_var("SERVER_NOSTR_PRIVKEY");
+        std::env::remove_var("VISIONCLAW_NOSTR_PRIVKEY");
     }
 
     #[tokio::test]
