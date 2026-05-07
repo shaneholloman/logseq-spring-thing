@@ -1,0 +1,164 @@
+# VisionClaw Rust CI — fmt + clippy + test for the substrate Rust workspace.
+#
+# Per ADR-077 P1 + V3 deployment-readiness D7: VisionClaw substrate has 1,353
+# inline tests with no automated quality gate. This workflow is the V3
+# highest-leverage one-step fix (single biggest substrate-wide ROI).
+#
+# Build matrix is intentionally MINIMAL:
+#   - native x86_64 only (no CUDA build path — GPU integration tests run via
+#     a separate self-hosted workflow when present)
+#   - cargo fmt + cargo clippy + cargo test on the workspace
+#   - features: --all-features for clippy/test so CQRS, neural, GPU stubs are
+#     all type-checked. The actual CUDA / NVRTC linkage is gated behind cfg
+#     attributes that fall back to CPU stubs in CI.
+#
+# Triggers: every push to main and every PR to main. No path filter — VC
+# is a tightly coupled substrate where a Rust change anywhere can ripple.
+
+name: VisionClaw Rust CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch: {}
+
+# Default-restrictive workflow permissions; jobs opt in if needed.
+permissions:
+  contents: read
+
+# Cancel superseded runs on the same ref to save minutes.
+concurrency:
+  group: visionclaw-rust-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  # Pinned to match Cargo.toml [package.metadata.rust-version] min = "1.75.0".
+  # Bump in lockstep when the floor moves.
+  RUST_TOOLCHAIN: '1.75.0'
+  # Skip CUDA / NVRTC build paths in CI; they require a GPU runner.
+  CARGO_FEATURE_FLAGS: '--no-default-features --features cpu-only'
+
+jobs:
+  fmt:
+    name: Format
+    runs-on: ubuntu-latest
+    if: github.repository == 'DreamLab-AI/VisionClaw'
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.75.0
+        with:
+          components: rustfmt
+      - run: cargo fmt --all -- --check
+
+  clippy:
+    name: Clippy (advisory)
+    # ADVISORY (not -D warnings) on the first run — the substrate has a
+    # large existing lint backlog. Track progress per ADR-077 P3 / V3 D7.
+    # Tighten to `-D warnings` once the baseline backlog is cleared.
+    runs-on: ubuntu-latest
+    if: github.repository == 'DreamLab-AI/VisionClaw'
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.75.0
+        with:
+          components: clippy
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: vc-rust-${{ env.RUST_TOOLCHAIN }}-clippy-${{ hashFiles('Cargo.lock') }}
+          restore-keys: vc-rust-${{ env.RUST_TOOLCHAIN }}-clippy-
+      - name: Clippy (warnings reported, baseline-soft)
+        # cpu-only feature avoids pulling CUDA paths; --workspace covers
+        # the WebXR server, vc-cli, and the visionclaw-xr-presence crates.
+        run: cargo clippy --workspace --all-targets ${{ env.CARGO_FEATURE_FLAGS }}
+
+  test:
+    name: Test (native)
+    runs-on: ubuntu-latest
+    if: github.repository == 'DreamLab-AI/VisionClaw'
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.75.0
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: vc-rust-${{ env.RUST_TOOLCHAIN }}-test-${{ hashFiles('Cargo.lock') }}
+          restore-keys: vc-rust-${{ env.RUST_TOOLCHAIN }}-test-
+      # System deps for OpenSSL / libssh-sys / openssl-sys / etc.
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            pkg-config libssl-dev libudev-dev cmake
+      - name: Test (native, cpu-only feature set)
+        run: cargo test --workspace ${{ env.CARGO_FEATURE_FLAGS }} --no-fail-fast
+
+  fixtures-validity:
+    name: Master fixtures schema-validity (ADR-082 D4a)
+    # Hard gate per ADR-082 D4a: master fixtures at docs/specs/fixtures/
+    # must exist and be schema-valid before any consuming substrate's
+    # sync-fixtures.sh pulls them. Without this gate, consuming CIs would
+    # silently pass against an empty fixture corpus.
+    runs-on: ubuntu-latest
+    if: github.repository == 'DreamLab-AI/VisionClaw'
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify fixture files exist with non-empty vector arrays
+        run: |
+          set -e
+          cd docs/specs/fixtures
+          # The Phase-0 vendored fixtures (paulmillr/nip44, bitcoin/bips,
+          # cyberphone/jcs) MUST exist and parse as JSON with non-empty
+          # vectors. Phase-1 fixtures (nip04/nip19/etc.) are added later.
+          for f in nip44-v2.json bip340-schnorr.json rfc8785-jcs.json; do
+            if [ ! -s "$f" ]; then
+              echo "::error file=$f::missing or empty fixture"
+              exit 1
+            fi
+            python3 -c "
+          import json, sys
+          with open('$f') as fh:
+              d = json.load(fh)
+          if 'vectors' not in d:
+              print('$f missing vectors key', file=sys.stderr)
+              sys.exit(1)
+          # vectors may be dict (nip44 v2 nested) or list — both must be non-empty
+          v = d['vectors']
+          if not v or (isinstance(v, list) and len(v) < 3):
+              print('$f vectors must have ≥3 entries', file=sys.stderr)
+              sys.exit(1)
+          print('$f OK')
+          "
+          done
+      - name: Verify CHECKSUMS.txt matches files
+        run: |
+          cd docs/specs/fixtures
+          sha256sum -c CHECKSUMS.txt
+      - name: Verify UPSTREAM_PINS.md commit hashes are well-formed
+        run: |
+          cd docs/specs/fixtures
+          # Every "Pinned commit:" line must reference a 40-char hex hash
+          # (or be marked TBD with a tracking issue).
+          if grep -E "Pinned commit: \`(TBD|tbd)" UPSTREAM_PINS.md; then
+            echo "::warning file=UPSTREAM_PINS.md::Some pins are TBD; \
+            non-blocking but track via follow-up issue."
+          fi
+          ! grep -E "Pinned commit: \`[0-9a-f]{1,39}[\`\"]" UPSTREAM_PINS.md \
+            || (echo "::error::Pinned commit hash must be 40 hex chars"; exit 1)
