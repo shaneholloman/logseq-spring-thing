@@ -82,6 +82,7 @@ VisionClaw treats all three as one problem with one mechanism: **let the work be
 
 ![Full Infographic](./infographic.png)
 
+![Ecosystem Detail](./tryptic.png)
 ## Three Solution Strata
 
 ![Three strata — substrate (graph, ontology, pods, physics) · contributor stratum (Studio, Dojo, Sensei, Automations) · management mesh (broker, workflow, KPI, policy)](./docs/diagrams/01-three-layer-mesh.png)
