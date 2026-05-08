@@ -21,10 +21,9 @@ license = "MIT"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-# ADR-053/056: solid-pod-rs extracted to github.com/DreamLab-AI/solid-pod-rs.
-# Pinned to the JSS-parity release for reproducible builds; bump via PR.
-# Consumed by src/handlers/solid_pod_handler.rs (JSS retired 2026-04-20).
-solid-pod-rs = { git = "https://github.com/DreamLab-AI/solid-pod-rs", tag = "v0.4.0-alpha.1", features = ["fs-backend", "memory-backend"] }
+# ADR-053/056: solid-pod-rs — native Solid Pod library (JSS retired 2026-04-20).
+# Published to crates.io; consumed by src/handlers/solid_pod_handler.rs.
+solid-pod-rs = { version = "0.4.0-alpha.1", features = ["fs-backend", "memory-backend", "nip98-schnorr", "security-primitives"] }
 
 # Web framework and WebSocket
 actix-web = { version = "4.11.0", features = ["compress-zstd", "macros"] }

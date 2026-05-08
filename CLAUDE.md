@@ -238,3 +238,85 @@ Two parallel URI namespaces exist by design:
 **Project ID**: `home-devuser-workspace-project`
 **Session start**: run `index_status` — if `needs_reindex: true`, run `index_repository`.
 **Token savings**: ~99.2% vs grep (3,400 vs 412,000 tokens for 5 structural queries).
+
+## Ecosystem & Federation (mega-sprint 2026-05-07)
+
+VisionClaw (this monorepo) is the **integration substrate** for a 5-project ecosystem federated via did:nostr. Master spec lives here; consuming substrates pull spec via cross-repo references.
+
+### Five-substrate landscape
+
+| Substrate | GitHub | Local path | Role |
+|-----------|--------|------------|------|
+| **VisionClaw** (this repo) | `https://github.com/DreamLab-AI/VisionClaw` | `/home/devuser/workspace/project/` | Integration substrate; master fixture host (per ADR-082); knowledge-graph + XR; mesh peer |
+| **nostr-rust-forum** (kit upstream; product `nostr-bbs-rs`; internal brand "VisionFlow forum") | `https://github.com/DreamLab-AI/nostr-rust-forum` | `/home/devuser/workspace/nostr-rust-forum/` | Generic configurable forum kit; consumed by N operators |
+| **dreamlab-ai-website** (kit's flagship downstream consumer) | `https://github.com/DreamLab-AI/dreamlab-ai-website` | `/home/devuser/workspace/dreamlab-ai-website/` | DreamLab's branded forum deployment; will gain `forum-config/` package per PRD-012 |
+| **agentbox** (sovereign agent container; mesh peer) | `https://github.com/DreamLab-AI/agentbox` | `/home/devuser/workspace/project/agentbox/` (submodule) | Nix-based; pod-bridge + nostr-rs-relay + mesh peer + skill provider |
+| **solid-pod-rs** (foundation library) | `https://github.com/DreamLab-AI/solid-pod-rs` | `/home/devuser/workspace/solid-pod-rs/` | LDP / WAC / WebID / NIP-98 / DID Tier-3 — consumed by all other substrates |
+
+### Spec stack (this monorepo's `docs/`)
+
+3 PRDs, 13 ADRs, 1 DDD context map, ~12,000 lines of cross-substrate research.
+
+| Artefact | Purpose |
+|----------|---------|
+| `docs/PRD-010-did-nostr-mesh-federation.md` | Master spec for cross-substrate did:nostr mesh federation |
+| `docs/PRD-011-visionflow-forum-kit-extraction.md` | Extracting the kit from `dreamlab-ai-website/community-forum-rs/` |
+| `docs/PRD-012-dreamlab-ai-website-kit-adoption.md` | DreamLab website becoming a downstream consumer |
+| `docs/adr/ADR-073-private-nostr-relay-mesh-topology.md` | Mesh topology + NIP-42 AUTH gate |
+| `docs/adr/ADR-074-cross-system-did-nostr-canonicalisation.md` | DID:Nostr canonicalisation + NIP-26 trust pivot |
+| `docs/adr/ADR-075-is-envelope-message-contract.md` | IS-Envelope v1 — cross-system message contract |
+| `docs/adr/ADR-076-nostr-core-absorption-into-upstream.md` | Forum nostr-core → upstream `nostr` crate (rust-nostr.org) |
+| `docs/adr/ADR-077-ecosystem-qe-policy.md` | 10 QE policies (P1-P10) governing all substrates |
+| `docs/adr/ADR-078-cross-substrate-library-convergence.md` | Library convergence registry |
+| `docs/adr/ADR-079-forum-setup-skill-provider-abstraction.md` | AI configurator with provider-abstracted backend |
+| `docs/adr/ADR-080-forum-kit-deployment-topology-patterns.md` | 6 canonical deployment topologies |
+| `docs/adr/ADR-081-federation-key-custody-rotation.md` | Federation key custody (Tier-1/2/3) + rotation protocol |
+| `docs/adr/ADR-082-cross-substrate-test-fixture-sharing.md` | Single source of truth for reference vectors |
+| `docs/adr/ADR-083-dreamlab-ai-website-cutover-migration.md` | Cutover mechanics (feature-flag + dual-deploy) |
+| `docs/adr/ADR-084-cloud-infrastructure-mapping-for-kit-consumers.md` | CF resource ID preservation for kit consumers |
+| `docs/adr/ADR-085-forum-config-package-architecture.md` | `forum-config/` consumer package shape |
+| `docs/ddd-mesh-federation-context.md` | DDD bounded-context map (V1: 4 substrates; V2: 5-substrate kit; V13: consumer aggregates; V14: full ecosystem) |
+| `docs/specs/fixtures/` | 13 cross-substrate reference vector fixtures (paulmillr/nip44, BIP-340, RFC 8785, etc.) |
+| `docs/integration-research/` | 12,000-line audit corpus (6 specialist research + 5-agent QE fleet + 3 validators) |
+
+### Cross-system identity
+
+`did:nostr:<64-lowercase-hex>` is the universal identity primitive (per ADR-074 D1). Every substrate emits DID Documents with `verificationMethod.type = SchnorrSecp256k1VerificationKey2019` and `@context` including `https://w3id.org/security/suites/secp256k1-2019/v1`. NIP-26 delegation is the cross-system trust pivot.
+
+### IS-Envelope v1 (cross-system message contract)
+
+Per ADR-075: 7 envelope kinds (chat / tool_invoke / tool_result / knowledge_link / moderation / mesh_ping / unknown), JCS-canonicalised, NIP-59 gift-wrap on the wire, AS2 LDN mapping at the Solid pod inbox boundary.
+
+### Mega-sprint memory keys (RuVector `project-state` namespace)
+
+For context recovery in future sessions:
+- `mega-sprint-2026-05-07-phase-0-charter` / `phase-0-final-report`
+- `mega-sprint-2026-05-07-phase-1-charter` / `phase-1-final-report`
+- `mega-sprint-2026-05-07-phase-1-charter-addendum-cargo-check`
+- `mega-sprint-2026-05-07-cargo-check-matrix`
+- `mega-sprint-2026-05-07-commit-batches-final` (4-repo branch list + commit hashes)
+- `mega-sprint-phase-2-kit-extraction-charter` / `phase-2-kit-extraction-final-report`
+- `prd-012-adr-084-085-ddd-v13-summary`
+- `qe-fleet-comprehensive-findings-2026-05-07`
+- `prd-010-mesh-federation-summary`
+- `deferred-task-reasoningbank-revisit-2026-05-10` (cron set 2026-05-10T10:37 local)
+- `hybrid-workflow-checkpoint-adr-080-pre-snapshot` / `post-verification` (adr-architect agent eval)
+
+### What's done (2026-05-07 mega-sprint)
+
+Phase 0 — gating crypto fixes (5 critical bugs C1-C5) + sync infra + Rust CI workflow + F1 identity unification + F26 canary spike crate. 13/13 deliverables. 4 cross-repo branches (`mega-sprint/2026-05-07`) with 13 logical commits, NOT pushed.
+
+Phase 1 — vector vendoring (10 of 13 fixtures completing 13/13 corpus) + L1 reference-vector test scaffolds in 4 substrates + block_level_parser:209 URN drift fix. 14/14 deliverables.
+
+Phase 2 (in flight at time of writing) — kit extraction X0: import C1+C5 fixes + F26 canary + L1 tests + scripts into newly-cloned nostr-rust-forum.
+
+### What's next (Phase 3+ roadmap)
+
+- Phase 3 — full Sprint v9-v11 feature absorption into kit (NIP-98 replay store, profiles backfill, username reservations, mesh service-list scaffolding, etc.) — the full PRD-011 X1 workspace restructure
+- Phase 4 — kit GA (`v3.0.0`): crates.io publish + ADR-077 P1-P10 compliance + Sprint Carry-Over Fixture Suite green
+- Phase 5 — `dreamlab-ai-website` `forum-config/` consumer package per PRD-012 X1
+- Phase 6 — production cutover per ADR-083 (14-day window with traffic split + dual-deploy + parity monitoring)
+- Phase 7 — cleanup: `community-forum-rs/` deletion T₇+7
+- Cross-cutting: 2026-05-10 reminder to revisit V3 ReasoningBank + adr-architect re-engineering
+
+Total estimate per PRD-010: ~5 sprints @ 1 FTE post-Phase-2 to reach P5 + cutover.

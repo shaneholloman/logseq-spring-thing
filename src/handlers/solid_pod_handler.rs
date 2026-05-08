@@ -131,6 +131,10 @@ impl NativeSolidService {
         let method = req.method().as_str().to_string();
         let path = extract_solid_path(req);
 
+        if !is_path_allowed(&path) {
+            return HttpResponse::Forbidden().body("dotfile access denied");
+        }
+
         // Authenticate (best-effort — anonymous requests are allowed
         // through WAC if the ACL grants `foaf:Agent` access).
         let agent_uri = match verify_nip98(req, &body, &method).await {
@@ -272,7 +276,7 @@ async fn handle_post<S: Storage>(
     container: &str,
     body: web::Bytes,
 ) -> Result<HttpResponse, PodError> {
-    let slug = ldp::resolve_slug(container, None);
+    let slug = ldp::resolve_slug(container, None)?;
     let meta = storage
         .put(&slug, bytes::Bytes::from(body.to_vec()), "application/octet-stream")
         .await?;
@@ -335,6 +339,10 @@ fn options_response<S: Storage>(
     if ldp::is_container(path) {
         resp.insert_header(("Accept-Post", ldp::ACCEPT_POST));
     }
+    resp.insert_header((
+        "Accept-Patch",
+        "text/n3, application/sparql-update, application/json-patch+json",
+    ));
     for l in ldp_svc.link_headers_for(path) {
         resp.insert_header(("Link", l));
     }
@@ -344,6 +352,16 @@ fn options_response<S: Storage>(
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
+
+fn is_path_allowed(path: &str) -> bool {
+    const ALLOWED_DOT_SEGMENTS: &[&str] = &[".well-known", ".acl", ".meta"];
+    for segment in path.split('/') {
+        if segment.starts_with('.') && !ALLOWED_DOT_SEGMENTS.contains(&segment) {
+            return false;
+        }
+    }
+    true
+}
 
 /// Extract the pod-relative path from the full request. Scopes
 /// mounted at `/solid` or `/api/solid` both trigger: the pod path is
@@ -440,6 +458,15 @@ fn pod_error_to_http(err: &PodError) -> HttpResponse {
         }
         PodError::Unsupported(msg) => {
             HttpResponse::NotImplemented().body(msg.to_string())
+        }
+        PodError::BadRequest(msg) => {
+            HttpResponse::BadRequest().body(msg.to_string())
+        }
+        PodError::PayloadTooLarge(msg) => {
+            HttpResponse::PayloadTooLarge().body(msg.to_string())
+        }
+        PodError::InvalidContentType(msg) => {
+            HttpResponse::UnsupportedMediaType().body(msg.to_string())
         }
         _ => HttpResponse::InternalServerError().body(err.to_string()),
     }
