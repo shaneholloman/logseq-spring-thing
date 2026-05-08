@@ -209,11 +209,28 @@ impl GitIngestService {
             }
         };
 
-        let mut results = Vec::with_capacity(remotes.len());
-        for mut remote in remotes {
-            let id = remote.id.clone();
-            let res = self.sync_remote(&mut remote).await;
-            results.push((id, res));
+        // M2: sync remotes concurrently (bounded to 4 at a time).
+        let semaphore = Arc::new(tokio::sync::Semaphore::new(4));
+        let mut handles = Vec::with_capacity(remotes.len());
+
+        for remote in remotes {
+            let svc = self.clone();
+            let sem = semaphore.clone();
+            handles.push(tokio::spawn(async move {
+                let _permit = sem.acquire().await;
+                let id = remote.id.clone();
+                let mut remote = remote;
+                let res = svc.sync_remote(&mut remote).await;
+                (id, res)
+            }));
+        }
+
+        let mut results = Vec::with_capacity(handles.len());
+        for handle in handles {
+            match handle.await {
+                Ok(pair) => results.push(pair),
+                Err(e) => warn!("git-ingest: sync task panicked: {}", e),
+            }
         }
         results
     }
@@ -501,7 +518,7 @@ async fn handle_get_remote(
 ) -> HttpResponse {
     let id = path.into_inner();
     match registry.get(&id).await {
-        Ok(remote) => HttpResponse::Ok().json(remote),
+        Ok(remote) => HttpResponse::Ok().json(remote_registry::RemoteResponse::from(&remote)),
         Err(remote_registry::RegistryError::NotFound(id)) => {
             HttpResponse::NotFound().json(serde_json::json!({
                 "error": format!("remote not found: {}", id)

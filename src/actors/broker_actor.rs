@@ -39,6 +39,9 @@ use crate::services::git_ingest::writeback_saga::{
 // Actor
 // ---------------------------------------------------------------------------
 
+const INBOX_MAX_CAPACITY: usize = 10_000;
+const INBOX_PRUNE_AGE_SECS: i64 = 86_400; // 24 hours
+
 pub struct BrokerActor {
     inbox: HashMap<String, BrokerCase>,
     orchestrator: DecisionOrchestrator,
@@ -134,6 +137,11 @@ impl Handler<SubmitBrokerCase> for BrokerActor {
     type Result = ResponseFuture<Result<BrokerCase, String>>;
 
     fn handle(&mut self, msg: SubmitBrokerCase, _ctx: &mut Self::Context) -> Self::Result {
+        // M6: prune stale cases when inbox exceeds capacity.
+        if self.inbox.len() >= INBOX_MAX_CAPACITY {
+            let cutoff = chrono::Utc::now() - chrono::Duration::seconds(INBOX_PRUNE_AGE_SECS);
+            self.inbox.retain(|_, c| c.created_at > cutoff);
+        }
         let case = msg.case.clone();
         self.inbox.insert(case.id.clone(), case.clone());
         self.broadcast(

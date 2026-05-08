@@ -170,7 +170,7 @@ impl RemoteRegistry {
 
     /// Delete a remote by id. Also removes its local clone directory.
     pub async fn delete(&self, id: &str) -> Result<(), RegistryError> {
-        let count_result = self
+        let mut result = self
             .graph
             .execute(
                 query(
@@ -180,25 +180,28 @@ impl RemoteRegistry {
                 )
                 .param("id", id),
             )
-            .await;
+            .await?;
 
-        match count_result {
-            Ok(_) => {
-                info!("git-ingest: deleted remote {}", id);
-                // Best-effort cleanup of local clone directory.
-                let local_path = super::ingest_root().join(super::sanitize_id(id));
-                if local_path.exists() {
-                    if let Err(e) = std::fs::remove_dir_all(&local_path) {
-                        warn!(
-                            "git-ingest: failed to remove local clone {:?}: {}",
-                            local_path, e
-                        );
-                    }
-                }
-                Ok(())
-            }
-            Err(e) => Err(RegistryError::Neo4j(e)),
+        let deleted: i64 = match result.next().await {
+            Ok(Some(row)) => row.get("deleted").unwrap_or(0),
+            _ => 0,
+        };
+
+        if deleted == 0 {
+            return Err(RegistryError::NotFound(id.to_string()));
         }
+
+        info!("git-ingest: deleted remote {}", id);
+        let local_path = super::ingest_root().join(super::sanitize_id(id));
+        if local_path.exists() {
+            if let Err(e) = std::fs::remove_dir_all(&local_path) {
+                warn!(
+                    "git-ingest: failed to remove local clone {:?}: {}",
+                    local_path, e
+                );
+            }
+        }
+        Ok(())
     }
 
     /// Check if a remote with the given URL already exists.
@@ -352,7 +355,7 @@ fn row_to_remote(row: &neo4rs::Row) -> Result<GitRemote, RegistryError> {
         owner_did,
         base_paths,
         branch,
-        sync_interval_secs: sync_interval_secs as u64,
+        sync_interval_secs: u64::try_from(sync_interval_secs).unwrap_or(0),
         writeback_enabled,
         last_sync,
         last_commit_sha,
@@ -385,12 +388,52 @@ fn default_branch() -> String {
     "main".to_string()
 }
 
+/// Redacted response DTO — omits auth credentials from API responses.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoteResponse {
+    id: String,
+    url: String,
+    auth_type: &'static str,
+    owner_did: Option<String>,
+    base_paths: Vec<String>,
+    branch: String,
+    sync_interval_secs: u64,
+    writeback_enabled: bool,
+    last_sync: Option<String>,
+    last_commit_sha: Option<String>,
+}
+
+impl From<&GitRemote> for RemoteResponse {
+    fn from(r: &GitRemote) -> Self {
+        Self {
+            id: r.id.clone(),
+            url: r.url.clone(),
+            auth_type: match &r.auth {
+                RemoteAuth::None => "none",
+                RemoteAuth::Pat { .. } => "pat",
+                RemoteAuth::DidNostr { .. } => "did_nostr",
+            },
+            owner_did: r.owner_did.clone(),
+            base_paths: r.base_paths.clone(),
+            branch: r.branch.clone(),
+            sync_interval_secs: r.sync_interval_secs,
+            writeback_enabled: r.writeback_enabled,
+            last_sync: r.last_sync.map(|t| t.to_rfc3339()),
+            last_commit_sha: r.last_commit_sha.clone(),
+        }
+    }
+}
+
 /// `GET /api/ingest/remotes` — list all configured remotes.
 pub async fn handle_list_remotes(
     registry: actix_web::web::Data<RemoteRegistry>,
 ) -> actix_web::HttpResponse {
     match registry.list().await {
-        Ok(remotes) => actix_web::HttpResponse::Ok().json(remotes),
+        Ok(remotes) => {
+            let redacted: Vec<RemoteResponse> = remotes.iter().map(RemoteResponse::from).collect();
+            actix_web::HttpResponse::Ok().json(redacted)
+        }
         Err(e) => {
             log::error!("git-ingest: list remotes failed: {}", e);
             actix_web::HttpResponse::InternalServerError().json(serde_json::json!({

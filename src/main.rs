@@ -966,9 +966,6 @@ async fn main() -> std::io::Result<()> {
                     // Layout mode system (ADR-031)
                     .configure(webxr::handlers::configure_layout_routes)
 
-                    // Combined content + topology embedding discovery
-                    .configure(webxr::handlers::configure_discovery_routes)
-
                     // PRD-013: Git Ingest Surface — remote CRUD, sync trigger, write-back
                     .configure(webxr::services::git_ingest::configure_routes)
 

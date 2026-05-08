@@ -90,15 +90,22 @@ impl ProvenanceTrailer {
     /// Format the trailer block as lines suitable for appending after a blank
     /// line in a git commit message.
     pub fn format_trailers(&self) -> String {
+        // M7: strip newlines from all trailer values to prevent injection.
+        fn safe(v: &str) -> String {
+            v.replace('\n', " ").replace('\r', " ")
+        }
         let mut lines = Vec::with_capacity(8);
-        lines.push(format!("Urn: {}", self.urn));
-        lines.push(format!("Proposed-by: {}", self.proposed_by));
-        lines.push(format!("Approved-by: {}", self.approved_by));
-        lines.push(format!("Broker-case: {}", self.broker_case));
-        lines.push(format!("Decision: {}", self.decision));
-        lines.push(format!("Reasoning-hash: sha256:{}", self.reasoning_hash));
+        lines.push(format!("Urn: {}", safe(&self.urn)));
+        lines.push(format!("Proposed-by: {}", safe(&self.proposed_by)));
+        lines.push(format!("Approved-by: {}", safe(&self.approved_by)));
+        lines.push(format!("Broker-case: {}", safe(&self.broker_case)));
+        lines.push(format!("Decision: {}", safe(&self.decision)));
+        lines.push(format!(
+            "Reasoning-hash: sha256:{}",
+            safe(&self.reasoning_hash)
+        ));
         lines.push(format!("Timestamp: {}", self.timestamp.to_rfc3339()));
-        lines.push(format!("Signed-off-by: {}", self.signed_off_by));
+        lines.push(format!("Signed-off-by: {}", safe(&self.signed_off_by)));
         lines.join("\n")
     }
 }

@@ -22,6 +22,9 @@
 use std::path::Path;
 use std::sync::Arc;
 
+use dashmap::DashMap;
+use tokio::sync::Mutex as AsyncMutex;
+
 use chrono::Utc;
 use git2::{
     Cred, FetchOptions, IndexAddOption, PushOptions, RemoteCallbacks, Repository, Signature,
@@ -120,11 +123,17 @@ pub enum WriteBackError {
 pub struct WriteBackSaga {
     registry: RemoteRegistry,
     graph: Arc<Graph>,
+    /// Per-remote mutex prevents concurrent write-backs from corrupting git state.
+    remote_locks: DashMap<String, Arc<AsyncMutex<()>>>,
 }
 
 impl WriteBackSaga {
     pub fn new(registry: RemoteRegistry, graph: Arc<Graph>) -> Self {
-        Self { registry, graph }
+        Self {
+            registry,
+            graph,
+            remote_locks: DashMap::new(),
+        }
     }
 
     pub async fn execute(
@@ -146,6 +155,14 @@ impl WriteBackSaga {
         if !remote.writeback_enabled {
             return Err(WriteBackError::RemoteDisabled(remote_id.to_string()));
         }
+
+        // H3 fix: acquire per-remote mutex to serialise concurrent write-backs.
+        let lock = self
+            .remote_locks
+            .entry(remote_id.to_string())
+            .or_insert_with(|| Arc::new(AsyncMutex::new(())))
+            .clone();
+        let _guard = lock.lock().await;
 
         let local_path = remote.local_path();
         let url = remote.url.clone();
@@ -411,6 +428,16 @@ fn writeback_blocking(
     debug!("write-back: phase 3 complete — committed {}", commit_sha);
 
     // Phase 4: Push to remote
+    // H4: refuse to send private key material over non-HTTPS transport.
+    if matches!(auth, super::RemoteAuth::DidNostr { .. }) && !url.starts_with("https://") {
+        warn!(
+            "write-back: refusing DidNostr auth over non-HTTPS URL: {}",
+            url
+        );
+        return Err(WriteBackError::PushFailed(
+            "DidNostr auth requires HTTPS remote URL".to_string(),
+        ));
+    }
     let (push_callbacks, push_rejection) = build_push_callbacks(auth)?;
     let mut push_opts = PushOptions::new();
     push_opts.remote_callbacks(push_callbacks);
