@@ -5,12 +5,14 @@
 //! - Apply domain-level operations (`claim`, `decide`, `submit`) via the
 //!   `DecisionOrchestrator` so invariants are enforced consistently.
 //! - Broadcast `broker:*` WebSocket events to subscribed clients through the
-//!   `ClientCoordinatorActor`.
+//!   `ClientCoordinatorActor` (when wired via `with_client_coordinator`;
+//!   currently not wired because the coordinator lives inside
+//!   `GraphServiceSupervisor`).
 //!
-//! The actor is stateless with respect to persistence: it delegates reads /
-//! writes to the `BrokerRepository` port (Neo4j in production, in-memory in
-//! tests). Supervision metadata is exposed via `SupervisedActorInfo` so the
-//! system supervisor can restart it.
+//! The actor's inbox cache is authoritative for the session. Persistence to
+//! Neo4j via the `BrokerRepository` port is not yet wired because the port
+//! uses the legacy `models::enterprise::BrokerCase` type which is structurally
+//! incompatible with the domain model.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -30,7 +32,9 @@ use crate::actors::ServerNostrActor;
 use crate::domain::broker::{
     BrokerCase, CaseCategory, CaseInvariantError, DecisionOrchestrator, DecisionOutcome,
 };
-use crate::ports::broker_repository::BrokerRepository;
+// NOTE: BrokerRepository port uses legacy `models::enterprise::BrokerCase`
+// which is structurally incompatible with `domain::broker::BrokerCase`.
+// Persistence integration is deferred until the legacy model is retired.
 use crate::services::git_ingest::writeback_saga::{
     DecisionReport, EnrichmentPayload, EnrichmentType, WriteBackSaga,
 };
@@ -45,7 +49,6 @@ const INBOX_PRUNE_AGE_SECS: i64 = 86_400; // 24 hours
 pub struct BrokerActor {
     inbox: HashMap<String, BrokerCase>,
     orchestrator: DecisionOrchestrator,
-    repository: Option<Arc<dyn BrokerRepository>>,
     client_coordinator: Option<Addr<ClientCoordinatorActor>>,
     nostr_actor: Option<Addr<ServerNostrActor>>,
     subscribers: HashMap<BrokerChannel, HashSet<String>>,
@@ -63,17 +66,11 @@ impl BrokerActor {
         Self {
             inbox: HashMap::new(),
             orchestrator: DecisionOrchestrator::new(),
-            repository: None,
             client_coordinator: None,
             nostr_actor: None,
             subscribers: HashMap::new(),
             writeback_saga: None,
         }
-    }
-
-    pub fn with_repository(mut self, repo: Arc<dyn BrokerRepository>) -> Self {
-        self.repository = Some(repo);
-        self
     }
 
     pub fn with_client_coordinator(mut self, addr: Addr<ClientCoordinatorActor>) -> Self {
@@ -134,32 +131,21 @@ impl Actor for BrokerActor {
 // ---------------------------------------------------------------------------
 
 impl Handler<SubmitBrokerCase> for BrokerActor {
-    type Result = ResponseFuture<Result<BrokerCase, String>>;
+    type Result = Result<BrokerCase, String>;
 
     fn handle(&mut self, msg: SubmitBrokerCase, _ctx: &mut Self::Context) -> Self::Result {
-        // M6: prune stale cases when inbox exceeds capacity.
         if self.inbox.len() >= INBOX_MAX_CAPACITY {
             let cutoff = chrono::Utc::now() - chrono::Duration::seconds(INBOX_PRUNE_AGE_SECS);
             self.inbox.retain(|_, c| c.created_at > cutoff);
         }
-        let case = msg.case.clone();
+        let case = msg.case;
         self.inbox.insert(case.id.clone(), case.clone());
         self.broadcast(
             &BrokerChannel::Inbox,
             "new_case",
             json!({ "caseId": case.id, "title": case.title, "category": case.category }),
         );
-        let repo = self.repository.clone();
-        Box::pin(async move {
-            if let Some(repo) = repo {
-                // Repository uses the legacy `models::enterprise::BrokerCase`;
-                // for now we only mirror a best-effort persistence hook. The
-                // legacy projection is created via the existing REST handler
-                // path; the actor's cache is authoritative for the session.
-                let _ = repo; // placeholder — wiring to legacy model deferred.
-            }
-            Ok(case)
-        })
+        Ok(case)
     }
 }
 
