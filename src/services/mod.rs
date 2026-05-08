@@ -91,6 +91,9 @@ pub mod nhop_materializer;
 // Knowledge Graph Embedding (TransE) training pipeline
 pub mod kge_trainer;
 
+// PRD-013: Git Ingest Surface — git-over-HTTP ingest pipeline replacing GitHub REST API
+pub mod git_ingest;
+
 pub use bridge_edge::{
     bridge_edge_enabled, sigmoid_confidence, BridgeEdgeService, CandidateStatus,
     MigrationCandidate, SignalVector,

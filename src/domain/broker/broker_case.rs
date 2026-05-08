@@ -73,6 +73,10 @@ pub enum CaseCategory {
     TrustAlert,
     /// Manual broker submission with no pre-existing upstream source.
     ManualSubmission,
+    /// PRD-013 write-back gating: enrichment proposed by an agent or the
+    /// discovery pipeline, requiring broker approval before committing back
+    /// to the source pod/repository via the WriteBackSaga.
+    KnowledgeEnrichment,
 }
 
 /// Discriminator for the subject referenced by a `ContributorMeshShare` case.

@@ -2,14 +2,14 @@
 
 | Field | Value |
 |-------|-------|
-| Status | Draft (2026-05-07) |
-| Drives | PRD-010 |
-| Companion ADRs | ADR-073, ADR-074, ADR-075, ADR-076 |
+| Status | Draft (2026-05-08) |
+| Drives | PRD-010, PRD-013 |
+| Companion ADRs | ADR-073, ADR-074, ADR-075, ADR-076, ADR-086 |
 | Sibling DDDs | `docs/ddd-agentbox-integration-context.md`, `agentbox/docs/reference/ddd/DDD-003-sovereign-messaging-domain.md`, `agentbox/docs/reference/ddd/DDD-004-linked-data-interchange-domain.md` |
 
 ## Purpose
 
-This document maps the bounded contexts involved in PRD-010's DID:Nostr Mesh Federation, names their aggregates, fixes their invariants, and specifies the anti-corruption layers (ACLs) at each context boundary. It is the single source of truth for *who owns what* and *what translates between them*.
+This document maps the bounded contexts involved in PRD-010's DID:Nostr Mesh Federation and PRD-013's Solid Pod Git Ingest Surface, names their aggregates, fixes their invariants, and specifies the anti-corruption layers (ACLs) at each context boundary. It is the single source of truth for *who owns what* and *what translates between them*.
 
 The mesh's architectural challenge is not the wire protocol (ADR-073) nor the message envelope (ADR-075) but the **relational integrity** at boundaries. The forum's user-pubkey, agentbox's agent-pubkey, and VisionClaw's substrate-pubkey are three different identities that must be reasoned about together; the moment a translation drops one, attribution breaks, ACLs misfire, or duplicate side-effects cascade.
 
@@ -112,6 +112,7 @@ The mesh's architectural challenge is not the wire protocol (ADR-073) nor the me
 - **`OntologyClass`**: { `iri`, `urn_solid: Option`, `webid: Option`, `members` }. Persisted in Neo4j.
 - **`FederationSession`** (planned, BC20): { `id`, `peer_substrate_pubkey`, `manifest_checksum`, `expires_at`, `attribution_chain` }.
 - **`MeshBridgeState`** (NEW, PRD-010 F22): { `peer_relays: [{url, connected, last_event_at, lru, fed_session}]`, `subscriptions: [...]` }.
+- **`GitRemote`** (NEW, PRD-013 G2): { `id (uuid)`, `url`, `auth: Pat|DidNostr|None`, `owner_did: Option<did:nostr:<hex>>`, `base_paths: Vec<String>`, `branch`, `sync_interval_secs`, `writeback_enabled: bool`, `last_sync`, `last_commit_sha` }. Persisted in Neo4j. Replaces the implicit single-remote model baked into `GITHUB_*` env vars. Each GitRemote represents a registered knowledge source (GitHub, GitLab, Solid pod, bare git repo). Legacy `GITHUB_TOKEN`/`GITHUB_OWNER`/`GITHUB_REPO` env vars auto-register as a single PAT-authenticated GitRemote with `id = "legacy-github"` at boot.
 
 **Invariants** (BC-MESH-VC-Inv):
 
@@ -122,10 +123,14 @@ The mesh's architectural challenge is not the wire protocol (ADR-073) nor the me
 - **V-Inv-05**: Bead URNs include the original-author hex pubkey in scope; substrate-emitted beads (e.g. server self-record) use the substrate's own `pubkey_hex`.
 - **V-Inv-06** (post-PRD-010 F9): When forwarding events received from peer relays, EITHER the original event is forwarded verbatim with delegation proof OR the substrate refuses to forward (configurable).
 - **V-Inv-07**: Solid pod handler at `/api/solid/*` enforces NIP-98 + WAC; WebID derivation uses `{base}/{pubkey_hex}/profile/card#me` shape.
+- **V-Inv-08** (NEW, PRD-013 G3): Every machine-generated git commit carries structured provenance trailers (`Urn:`, `Proposed-by:`, `Approved-by:`, `Broker-case:`, `Decision:`, `Reasoning-hash:`, `Signed-off-by:`). Commits without valid trailers are rejected by the `WriteBackSaga` before push.
+- **V-Inv-09** (NEW, PRD-013 G4): No write-back push occurs without a `DecisionOutcome::Approve` or `::Promote` from the Judgment Broker (BC11). The proposing agent cannot approve its own enrichment (ADR-041 self-review invariant).
+- **V-Inv-10** (NEW, PRD-013 G1): Git ingest clones are sandboxed under `GIT_INGEST_ROOT` (default `/app/data/git-ingest/`). Path traversal outside this root is structurally impossible (`git2` handles path safety; solid-pod-rs-git's `guard::path_safe` enforces server-side).
 
 **Public surface**:
 
 - HTTPS: `/api/v1/*` (substrate API), `/api/solid/*` (solid-pod-rs), `/wss/agent-events` (agentbox WS), `/wss/visionflow_*` (XR + visualisation).
+- HTTPS: `/api/ingest/remotes` (NEW, PRD-013 G2 — git remote registry CRUD), `/api/ingest/remotes/:id/sync` (trigger manual sync), `/api/ingest/remotes/:id/status` (sync status + last commit).
 - WSS: optional substrate-side relay on `:7777` when `[mesh].mode == "federated"`.
 - DID Documents: `/api/v1/identity/{hex}/did.json` (NEW, PRD-010 F2/F15).
 
@@ -228,6 +233,7 @@ Each ACL is implemented at the boundary between two contexts, owned by the consu
 - `adapter_registry.rs` (cached endpoints from agentbox `GET /v1/meta`)
 - `agent_execution.rs` (AgentExecution aggregate, per-execution receipts)
 - `acl/{beads_acl,pods_acl,memory_acl,events_acl,orchestrator_acl,uris_acl}.rs` (six per-slot ACLs)
+- `pod_bridge.rs` (NEW, PRD-013 G5 — agent git clone/commit/push mediation)
 
 **Translates**:
 
@@ -235,6 +241,7 @@ Each ACL is implemented at the boundary between two contexts, owned by the consu
 - `urn:agentbox:agent:<id>` → `did:nostr:<agent_pubkey_hex>` resolved via agentbox's URN resolver + DID Document.
 - `urn:agentbox:event:<scope>:<local>` → `urn:visionclaw:execution:<sha256-12>` only when the agent execution is mirrored locally; otherwise opaque-record.
 - agentbox `GET /v1/meta` → `AdapterEndpointRegistry` value object cached for federation session lifetime.
+- (NEW, PRD-013 G5) Agent git clone request → VisionClaw-credentialed `git clone` against registered `GitRemote`; worktree mounted into agent sandbox. Agent commits → validated provenance trailers → `BrokerCase(CaseCategory::KnowledgeEnrichment)` submission. Broker approval → NIP-98-signed `git push` to source remote.
 
 **Validates**:
 
@@ -318,6 +325,11 @@ These are the events that flow across context boundaries. Each is an instance of
 | `MemberMuted` | 30911 | BC-MESH-FORUM admin | all | same | with TTL |
 | `MemberWarned` | 30912 | BC-MESH-FORUM admin | BC-MESH-FORUM | local | not federated by default |
 | `MemberReported` | 1984 / 30913 | BC-MESH-FORUM member | BC-MESH-FORUM admin | local | NIP-56 std |
+| `EnrichmentProposed` | 30301 (NEW, PRD-013 G7) | BC-MESH-AGENTBOX (agent) | BC-MESH-VC (BrokerActor) | ACL-VC↔AGENTBOX | IS-Envelope kind=`tool_invoke`; agent submits enrichment for broker review |
+| `BrokerDecisionRecorded` | 30300 (NEW, PRD-013 G7) | BC-MESH-VC (ServerNostrActor) | BC-MESH-AGENTBOX (agent), external subscribers | ACL-VC↔AGENTBOX | IS-Envelope kind=`tool_result`; broker decision audit event |
+| `WriteBackPushed` | internal | BC-MESH-VC (WriteBackSaga) | source GitRemote pod/repo | ACL-VC↔SOLID-POD-RS | NIP-98-signed git push with provenance trailers; triggered only after BC11 approval |
+| `KnowledgeEnrichmentCaseCreated` | internal + WS `broker:new_case` | BC-MESH-VC (BrokerActor) | BC-MESH-VC (Decision Canvas), BC-MESH-AGENTBOX (G6 pane) | local + ACL-VC↔AGENTBOX | New `CaseCategory::KnowledgeEnrichment` case for human review |
+| `GitRemoteSynced` | internal | BC-MESH-VC (GitIngestService) | BC-MESH-VC (IngestSaga) | local | Incremental fetch completed; changed files forwarded to parser pipeline |
 
 ---
 
@@ -416,6 +428,13 @@ Per ADR-075 D2 + D7 + D9 + D5.
 | Federation key | Per-relay key used for relay-relay AUTHed sessions, distinct from any actor key |
 | Canonical hex | 64-char lowercase hex pubkey form (ADR-074 D1) |
 | Tier-3 DID | Full DID Document with service entries (vs. Tier-1 minimal) |
+| Git remote | A registered knowledge source (GitHub, GitLab, Solid pod, bare repo) in VisionClaw's `GitRemote` aggregate; replaces the implicit single-source GitHub model |
+| Write-back | The reverse flow from VisionClaw's enrichment pipeline back to the source pod/repo as a git commit, gated through the Judgment Broker |
+| Knowledge enrichment | A `BrokerCase` category (PRD-013 G4) representing an agent-proposed mutation to the knowledge base (embedding, ontology promotion, edge proposal, annotation) |
+| Provenance trailer | Structured git commit trailer block carrying `Urn:`, `Proposed-by:`, `Approved-by:`, `Reasoning-hash:` fields for non-repudiable audit |
+| Pod Bridge | The BC20 module (PRD-013 G5) mediating agent git clone/commit/push operations through VisionClaw's credentials and broker approval |
+| Broker Review Surface | The agentbox viewer pane (PRD-013 G6) rendering `KnowledgeEnrichment` cases as visual diffs with inline approval actions |
+| Nostr Control Plane | Kind-30300/30301 event layer (PRD-013 G7) carrying broker decisions and enrichment proposals across relay boundaries |
 
 ---
 
@@ -707,6 +726,155 @@ ACLs:
 - **ACL-VC↔FORUM** (V1 §V7) — now applies to the deployed-instance pair (consumer + cloud), not the kit itself
 - **ACL-VC↔AGENTBOX** (V1 §BC20) — unchanged
 
+## V15 — Git Ingest Surface and Agent-Mediated Knowledge Federation (PRD-013)
+
+### Rationale for the extension
+
+PRD-013 replaces VisionClaw's GitHub REST API ingest with a git-over-HTTP ingest surface that treats every knowledge source identically (GitHub, GitLab, Solid pod, bare git repo). It adds a write-back path gated through the Judgment Broker (BC11), and introduces agent-mediated enrichment with full `did:nostr` provenance. This extension touches BC-MESH-VISIONCLAW (BC2 Graph Data), BC11 (Judgment Broker), BC20 (Agentbox Integration), and BC13 (Discovery) without creating new bounded contexts.
+
+### V15.1 — BC2 (Graph Data) gains `GitRemote` aggregate
+
+The `GitRemote` aggregate (defined in BC-MESH-VISIONCLAW aggregates above) is the persistent representation of a registered knowledge source. It replaces the implicit single-remote model expressed by `GITHUB_TOKEN`/`GITHUB_OWNER`/`GITHUB_REPO` env vars with an explicit, multi-remote registry.
+
+The **Git Ingest Adapter** (PRD-013 G1) lives entirely within BC2. It replaces `GitHubClient` + `EnhancedContentAPI` with a local-clone-based pipeline: `GitRemote` registry lookup -> `git2` clone/fetch with auth injection (PAT or NIP-98) -> local worktree on disk -> existing parser pipeline (`KnowledgeGraphParser`, `OntologyParser`, `block_level_parser`) -> `IngestSaga` (ADR-051).
+
+New code location: `src/services/git_ingest/` (modules: `mod.rs`, `remote_registry.rs`, `git_ingest_service.rs`, `provenance.rs`, `writeback_saga.rs`).
+
+### V15.2 — BC11 (Judgment Broker) gains `CaseCategory::KnowledgeEnrichment`
+
+The existing `CaseCategory` enum (ADR-041) gains a new variant:
+
+```rust
+pub enum CaseCategory {
+    ContributorMeshShare,
+    WorkflowReview,
+    PolicyException,
+    TrustAlert,
+    ManualSubmission,
+    KnowledgeEnrichment,  // NEW: PRD-013 — write-back gating
+}
+```
+
+`KnowledgeEnrichment` cases carry a `SubjectRef` pointing at the enriched `KGNode` or `OntologyClass`, with `from_state` and `to_state` representing the enrichment type (e.g., `None -> Embedding`, `KGNode -> OntologyClass`, `None -> ProposedEdge`). All six decision outcomes apply:
+
+- **Approve** triggers `WriteBackSaga` push to source remote.
+- **Reject** blocks the push; enrichment stays in Neo4j only.
+- **Amend** returns to the proposing agent for modification.
+- **Delegate** routes to a domain expert.
+- **Promote** elevates and pushes (ontology-level promotion).
+- **Precedent** flags the enrichment type for future auto-approval (PRD-013 Phase 5 deferred).
+
+### V15.3 — BC20 (Agentbox Integration) gains Pod Bridge (G5)
+
+The BC20 anti-corruption layer gains a new module `pod_bridge.rs` (PRD-013 G5) that mediates agent git clone/commit/push operations. The Pod Bridge:
+
+1. **Exposes git clone** to agents via the management API (port 9190). Agents request a clone of a registered `GitRemote`; the bridge performs the clone using VisionClaw's server identity credentials and mounts the worktree into the agent's sandbox.
+
+2. **Collects agent commits** after reasoning completes. The agent commits to a local branch; the bridge reads the commits, validates provenance trailers (V-Inv-08), and submits a `BrokerCase(CaseCategory::KnowledgeEnrichment)` for human review via BC11.
+
+3. **Relays approval events** via the embedded nostr-rs-relay (kind 30300). When the broker approves, the bridge pushes the approved commits to the source remote with NIP-98-signed transport.
+
+4. **Maps agent identity** to commit provenance: agent commits carry `Proposed-by: did:nostr:<agent-hex>` and `Signed-off-by: did:nostr:<server-hex>` trailers. The agent cannot push autonomously (V-Inv-09).
+
+### V15.4 — New context relationship: BC2 <-> BC11 via KnowledgeEnrichment
+
+Enrichments discovered by the BC13 Discovery Engine (PRD-009 pipeline: embeddings, gap detection, related-node proposals, ontology promotions) flow into BC11 as `KnowledgeEnrichment` cases for broker review. On approval, the decision flows back to BC2 where the `WriteBackSaga` commits the enrichment to the source pod/repo.
+
+```
+BC13 (Discovery Engine)
+    │ discovers enrichment candidates
+    ▼
+BC2 (Graph Data — GitRemote / GitIngestService)
+    │ creates BrokerCase with enrichment payload
+    ▼
+BC11 (Judgment Broker — DecisionOrchestrator)
+    │ human reviews via Decision Canvas / G6 pane
+    │ DecisionOutcome::Approve or ::Promote
+    ▼
+BC2 (Graph Data — WriteBackSaga)
+    │ commits to source remote with provenance (G3)
+    │ records push result in Neo4j audit trail
+    ▼
+Source pod/repo (git push with NIP-98 signed transport)
+```
+
+This is a **customer-supplier** relationship: BC2 defines the enrichment shape and submits it; BC11 reviews it and returns a decision. BC2 is the customer (it needs a decision); BC11 is the supplier (it provides the decision service). Neither context leaks its internals to the other: BC2 submits a `BrokerCase` with opaque `SubjectRef`; BC11 returns a `DecisionOutcome` without knowledge of git or pod semantics.
+
+### V15.5 — Broker Review Surface (G6) as presentation layer
+
+The Broker Review Surface (PRD-013 G6) is a **presentation-layer concern**, not a bounded context. It is an agentbox viewer pane (`enrichment-review-pane.js`) that composes data from BC11 (broker cases, decision outcomes) and BC2 (enrichment payloads, source content) into a two-pane diff view with inline approval actions.
+
+**Data sources:**
+- VisionClaw BrokerActor: WebSocket events `broker:new_case`, `broker:case_decided`, `broker:case_claimed`
+- VisionClaw REST: `GET /api/broker/inbox`, `POST /api/broker/cases/:id/decide`
+- BC2 enrichment payload: `from_state` (source content) and `to_state` (proposed enrichment)
+
+**Rendering:**
+- Markdown rendering for `.md` changes
+- Syntax-highlighted Turtle for `.ttl` OWL fragments
+- Tabular display for `.embeddings.json` vectors
+- Provenance trailer block (G3) shown below the diff
+
+The pane uses the agentbox LOSOS pane contract (existing, surface `S12`). It is pane number 7 alongside the existing 6 panes (VC, provenance, capability, runtime, DCAT, handoff).
+
+### V15.6 — Nostr Control Plane extension (G7)
+
+PRD-013 G7 extends the existing relay topology (ADR-073) with two new event kinds for the git ingest control plane:
+
+| Kind | Name | Purpose | Producer | Consumer |
+|------|------|---------|----------|----------|
+| 30300 | `AuditEvent` (existing scaffold) | Broker decision recorded (approve/reject/amend/delegate/promote/precedent) | VisionClaw ServerNostrActor | Agentbox agents, external subscribers |
+| 30301 | `EnrichmentProposal` (NEW) | Agent submits enrichment for broker review | Agentbox agent (via Pod Bridge) | VisionClaw BrokerActor |
+
+IS-Envelope mapping (per ADR-075):
+- kind 30301 maps to IS-Envelope kind `tool_invoke` (agent submits enrichment)
+- kind 30300 maps to IS-Envelope kind `tool_result` (broker decision result)
+
+The NIP-42 AUTH gate on the agentbox embedded relay restricts kind-30300/30301 subscriptions to known `did:nostr` pubkeys. All events in the control plane carry `did:nostr` identity; no anonymous events are permitted.
+
+The Nostr Control Plane is **optional**. The broker REST API + WebSocket is the primary path for MVP. Nostr adds: push notifications across trust boundaries, human feedback via any Nostr client, agent-to-agent coordination for multi-agent enrichment workflows, and audit event durability (events persisted in relay, not just Neo4j).
+
+### V15.7 — New translation rules
+
+#### TR-Enrichment-Proposal-Ingest
+
+When VisionClaw's BrokerActor receives a kind-30301 event via relay subscription:
+
+1. Verify Schnorr signature (V-Inv-04).
+2. Extract IS-Envelope payload; validate kind = `tool_invoke` (TR-IS-Envelope-Validation).
+3. Parse `subj` field as `urn:agentbox:*` or `urn:visionclaw:*` — apply BC20 URI translation if needed.
+4. Extract `from_state` and `to_state` from envelope body.
+5. Create `BrokerCase(CaseCategory::KnowledgeEnrichment, SubjectRef(translated_urn), from_state, to_state)`.
+6. Emit `broker:new_case` WebSocket event to connected reviewers.
+
+#### TR-WriteBack-Push
+
+When `WriteBackSaga::execute` runs after broker approval:
+
+1. Look up `GitRemote` by `remote_id` from the `BrokerCase` metadata.
+2. `git fetch` latest from remote (detect conflicts; fail-and-notify if diverged).
+3. Apply enrichment to local worktree (file format depends on enrichment type).
+4. Commit with provenance trailers (G3 encoder): `Urn:`, `Proposed-by:`, `Approved-by:`, `Broker-case:`, `Decision:`, `Reasoning-hash:`, `Timestamp:`, `Signed-off-by:`.
+5. `git push` with NIP-98-signed HTTP headers (V-Inv-09 enforced: push blocked if no approval).
+6. Record push result in Neo4j audit trail.
+7. Emit kind-30300 audit event via ServerNostrActor if Nostr Control Plane enabled.
+
+### V15.8 — Open questions (PRD-013)
+
+#### DQ9 — Conflict resolution on write-back push
+
+If the source pod has diverged since the last fetch, should the WriteBackSaga rebase, merge, or fail? Proposal: fail-and-notify on conflict; the broker re-reviews after manual resolution. Auto-merge is dangerous for knowledge bases where structural integrity matters.
+
+#### DQ10 — Multi-remote write-back target
+
+If the same KGNode is ingested from two remotes (e.g., GitHub mirror + Solid pod), which remote receives the write-back? Proposal: the remote explicitly marked `writeback_enabled = true`; if multiple, the one with the most recent `last_sync`.
+
+#### DQ11 — Precedent-based auto-approval scope
+
+The `DecisionOutcome::Precedent` path (ADR-041) could enable auto-approval for enrichment types approved N times, reducing broker fatigue for routine embedding updates. Deferred to PRD-013 Phase 5 + Phase 7. Requires careful scoping: which enrichment types qualify? What is the confidence threshold?
+
+---
+
 ## References (extension)
 
 - PRD-011 — VisionFlow Forum Kit Extraction (drives BC-MESH-FORUM-KIT context)
@@ -724,6 +892,8 @@ ACLs:
 - ADR-083 — `dreamlab-ai-website` Cutover Migration Pattern
 - ADR-084 — Cloud Infrastructure Mapping for Kit Consumers (V13 invariants)
 - ADR-085 — `forum-config/` Package Architecture (V13 aggregates)
+- PRD-013 — Solid Pod Git Ingest Surface (drives V15 extension: GitRemote aggregate, KnowledgeEnrichment case category, Pod Bridge, Nostr Control Plane)
+- ADR-086 — Git Ingest Surface Architecture (companion to PRD-013, to be written on acceptance)
 
 GitHub repos in the 5-substrate ecosystem:
 - https://github.com/DreamLab-AI/VisionClaw (this monorepo, mesh integration substrate, master fixture host)
