@@ -86,7 +86,7 @@ pub use physics_orchestrator_actor::{PhysicsOrchestratorActor, SetClientCoordina
 pub use protected_settings_actor::ProtectedSettingsActor;
 pub use server_nostr_actor::{
     ServerNostrActor, SignAuditRecord, SignBeadStamp, SignBridgePromotion,
-    SignBrokerDecision, SignEnrichmentProposal, SignMigrationApproval,
+    SignBrokerDecision, SignEnrichmentProposal, SignMigrationApproval, SignSealedDM,
 };
 pub use semantic_processor_actor::{
     AISemanticFeatures, SemanticProcessorActor, SemanticProcessorConfig, SemanticStats,

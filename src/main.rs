@@ -732,12 +732,14 @@ async fn main() -> std::io::Result<()> {
     // created earlier alongside the git-ingest surface.
     let broker_actor_addr = {
         webxr::actors::BrokerActor::new()
+            .with_client_coordinator(app_state.client_manager_addr.clone())
+            .with_repository(app_state.broker_repository.clone())
             .with_writeback_saga(writeback_saga_for_broker)
             .with_nostr_actor(server_nostr_addr_for_broker)
             .start()
     };
     let broker_actor_data = web::Data::new(broker_actor_addr);
-    info!("[main] BrokerActor started with WriteBackSaga + Nostr G7 integration");
+    info!("[main] BrokerActor started with ClientCoordinator + Repository + WriteBackSaga + Nostr");
 
     // PRD-008 §5.3 — XR presence room registry + Schnorr identity verifier.
     let presence_registry = new_room_registry();

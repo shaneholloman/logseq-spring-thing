@@ -116,6 +116,14 @@ pub enum WriteBackError {
     RemoteNotFound(String),
 }
 
+impl WriteBackError {
+    /// Returns `true` when the error represents a non-fast-forward conflict,
+    /// i.e. the remote has diverged since the last fetch.
+    pub fn is_conflict(&self) -> bool {
+        matches!(self, WriteBackError::Conflict { .. })
+    }
+}
+
 // ---------------------------------------------------------------------------
 // WriteBackSaga
 // ---------------------------------------------------------------------------
@@ -187,7 +195,7 @@ impl WriteBackSaga {
         let case_id = decision.case_id.clone();
         let remote_id_owned = remote_id.to_string();
 
-        let commit_sha = tokio::task::spawn_blocking(move || {
+        let blocking_result = tokio::task::spawn_blocking(move || {
             writeback_blocking(
                 &local_path,
                 &url,
@@ -201,7 +209,21 @@ impl WriteBackSaga {
             )
         })
         .await
-        .map_err(|e| WriteBackError::Git(format!("spawn_blocking join: {e}")))??;
+        .map_err(|e| WriteBackError::Git(format!("spawn_blocking join: {e}")))?;
+
+        let commit_sha = match blocking_result {
+            Ok(sha) => sha,
+            Err(e) => {
+                if e.is_conflict() {
+                    warn!(
+                        "write-back: case {} remote {} — non-fast-forward conflict; \
+                         remote has diverged since last fetch",
+                        case_id, remote_id_owned
+                    );
+                }
+                return Err(e);
+            }
+        };
 
         let pushed_at = Utc::now();
         self.record_audit(&remote_id_owned, &commit_sha, &case_id, &pushed_at)
@@ -447,13 +469,42 @@ fn writeback_blocking(
         .map_err(|e| WriteBackError::PushFailed(format!("find remote: {e}")))?;
 
     let push_refspec = format!("refs/heads/{}:refs/heads/{}", branch, branch);
+
+    // Capture the local HEAD sha before push for conflict diagnostics.
+    let local_head_sha = repo
+        .head()
+        .ok()
+        .and_then(|h| h.target())
+        .map(|oid| oid.to_string())
+        .unwrap_or_else(|| "unknown".to_string());
+    let remote_ref_name = format!("refs/heads/{}", branch);
+
     origin
         .push(&[&push_refspec], Some(&mut push_opts))
-        .map_err(|e| WriteBackError::PushFailed(format!("push: {e}")))?;
+        .map_err(|e| {
+            let msg = e.to_string();
+            if msg.contains("non-fast-forward")
+                || msg.contains("rejected")
+                || msg.contains("fetch first")
+            {
+                WriteBackError::Conflict {
+                    local: local_head_sha.clone(),
+                    remote: remote_ref_name.clone(),
+                }
+            } else {
+                WriteBackError::PushFailed(format!("push: {e}"))
+            }
+        })?;
 
     // Check if the remote rejected the push (H8 fix).
     if let Ok(guard) = push_rejection.lock() {
         if let Some(ref msg) = *guard {
+            if msg.contains("non-fast-forward") || msg.contains("fetch first") {
+                return Err(WriteBackError::Conflict {
+                    local: local_head_sha,
+                    remote: remote_ref_name,
+                });
+            }
             return Err(WriteBackError::PushFailed(format!(
                 "remote rejected push: {}",
                 msg

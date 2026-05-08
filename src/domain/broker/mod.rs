@@ -16,6 +16,7 @@
 
 pub mod broker_case;
 pub mod broker_decision;
+pub mod precedent_registry;
 
 pub use broker_case::{
     BrokerCase, CaseCategory, CaseInvariantError, CaseState, DecisionHistoryEntry, ShareState,
@@ -25,3 +26,4 @@ pub use broker_decision::{
     DecisionOrchestrator, DecisionOutcome, OrchestrationError, ShareIntentBrokerAdapter,
     ShareTransitionPlan,
 };
+pub use precedent_registry::PrecedentRegistry;

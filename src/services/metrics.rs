@@ -64,6 +64,7 @@ pub struct NostrKindLabels {
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq, EncodeLabelValue)]
 pub enum NostrKind {
+    K14,
     K30023,
     K30100,
     K30200,

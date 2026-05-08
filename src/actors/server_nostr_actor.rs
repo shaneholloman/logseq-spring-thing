@@ -2,7 +2,7 @@
 //!
 //! Provides message-based, non-blocking access to the server's Nostr signing
 //! capability from other actors (physics, ontology, migration, bead lifecycle,
-//! audit, broker). Exposes six strongly-typed message variants:
+//! audit, broker). Exposes seven strongly-typed message variants:
 //!
 //!   * `SignMigrationApproval`   → kind 30023
 //!   * `SignBridgePromotion`     → kind 30100
@@ -10,6 +10,7 @@
 //!   * `SignAuditRecord`         → kind 30300
 //!   * `SignEnrichmentProposal`  → kind 30301 (PRD-013 G7)
 //!   * `SignBrokerDecision`      → kind 30300 (PRD-013 G7, enrichment variant)
+//!   * `SignSealedDM`            → kind 14 (NIP-17 chat message)
 //!
 //! Each handler assembles the appropriate tags + JSON content, signs via the
 //! shared [`ServerIdentity`] (no key copy — identity is held behind `Arc`),
@@ -448,6 +449,50 @@ impl Handler<SignBrokerDecision> for ServerNostrActor {
     }
 }
 
+// ── Message: NIP-17 sealed direct message (kind 14) ───────────────────
+
+/// Send a sealed DM to a specific recipient via NIP-17.
+///
+/// Used for broker-to-agent dialogue (e.g. requesting clarification on an
+/// enrichment proposal). The inner message is a kind 14 chat event with
+/// a `p` tag addressing the recipient. Full NIP-17 gift-wrapping (kind 1059)
+/// can be layered on top by the relay or a future middleware; the actor signs
+/// the plaintext kind 14 rumor which is the semantic payload.
+#[derive(Message, Debug, Clone)]
+#[rtype(result = "Result<Event>")]
+pub struct SignSealedDM {
+    pub recipient_pubkey_hex: String,
+    pub content: String,
+    pub subject: Option<String>,
+}
+
+impl Handler<SignSealedDM> for ServerNostrActor {
+    type Result = ResponseFuture<Result<Event>>;
+
+    fn handle(&mut self, msg: SignSealedDM, _ctx: &mut Self::Context) -> Self::Result {
+        let identity = Arc::clone(&self.identity);
+        let prom = self.prom.clone();
+        Box::pin(async move {
+            let mut tags = vec![
+                Tag::custom(
+                    TagKind::Custom("p".into()),
+                    vec![msg.recipient_pubkey_hex.clone()],
+                ),
+            ];
+            if let Some(ref subj) = msg.subject {
+                tags.push(Tag::custom(
+                    TagKind::Custom("subject".into()),
+                    vec![subj.clone()],
+                ));
+            }
+
+            let out = identity.sign_and_broadcast(14, msg.content, tags).await;
+            Self::observe_sign_outcome(&prom, NostrKind::K14, &out);
+            out
+        })
+    }
+}
+
 // ── tests ──────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -599,5 +644,59 @@ mod tests {
             .iter()
             .any(|t| t.kind() == TagKind::Custom("broker".into()));
         assert!(has_broker);
+    }
+
+    #[actix::test]
+    async fn handles_sealed_dm() {
+        let addr = ServerNostrActor::new(test_identity()).start();
+        let event = addr
+            .send(SignSealedDM {
+                recipient_pubkey_hex:
+                    "0000000000000000000000000000000000000000000000000000000000000004"
+                        .to_string(),
+                content: "Clarification needed on proposal enrich-001".to_string(),
+                subject: Some("Re: enrichment proposal".to_string()),
+            })
+            .await
+            .expect("mailbox")
+            .expect("sign");
+        event.verify().expect("signature");
+        assert_eq!(event.kind.as_u16(), 14);
+        // Must carry a `p` tag for the recipient.
+        let has_p = event
+            .tags
+            .iter()
+            .any(|t| t.kind() == TagKind::Custom("p".into()));
+        assert!(has_p);
+        // Must carry the subject tag when provided.
+        let has_subject = event
+            .tags
+            .iter()
+            .any(|t| t.kind() == TagKind::Custom("subject".into()));
+        assert!(has_subject);
+    }
+
+    #[actix::test]
+    async fn handles_sealed_dm_without_subject() {
+        let addr = ServerNostrActor::new(test_identity()).start();
+        let event = addr
+            .send(SignSealedDM {
+                recipient_pubkey_hex:
+                    "0000000000000000000000000000000000000000000000000000000000000004"
+                        .to_string(),
+                content: "Simple message".to_string(),
+                subject: None,
+            })
+            .await
+            .expect("mailbox")
+            .expect("sign");
+        event.verify().expect("signature");
+        assert_eq!(event.kind.as_u16(), 14);
+        // No subject tag when None.
+        let has_subject = event
+            .tags
+            .iter()
+            .any(|t| t.kind() == TagKind::Custom("subject".into()));
+        assert!(!has_subject);
     }
 }

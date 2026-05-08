@@ -5,14 +5,10 @@
 //! - Apply domain-level operations (`claim`, `decide`, `submit`) via the
 //!   `DecisionOrchestrator` so invariants are enforced consistently.
 //! - Broadcast `broker:*` WebSocket events to subscribed clients through the
-//!   `ClientCoordinatorActor` (when wired via `with_client_coordinator`;
-//!   currently not wired because the coordinator lives inside
-//!   `GraphServiceSupervisor`).
-//!
-//! The actor's inbox cache is authoritative for the session. Persistence to
-//! Neo4j via the `BrokerRepository` port is not yet wired because the port
-//! uses the legacy `models::enterprise::BrokerCase` type which is structurally
-//! incompatible with the domain model.
+//!   `ClientCoordinatorActor`.
+//! - Persist cases and decisions to Neo4j via the `BrokerRepository` port
+//!   (projected from domain types to legacy enterprise types).
+//! - Auto-approve enrichment cases that match a registered precedent scope.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -29,12 +25,12 @@ use crate::actors::messages::BroadcastMessage;
 use crate::actors::server_nostr_actor::SignBrokerDecision;
 use crate::actors::ClientCoordinatorActor;
 use crate::actors::ServerNostrActor;
+use crate::adapters::broker_case_projection;
 use crate::domain::broker::{
     BrokerCase, CaseCategory, CaseInvariantError, DecisionOrchestrator, DecisionOutcome,
+    PrecedentRegistry,
 };
-// NOTE: BrokerRepository port uses legacy `models::enterprise::BrokerCase`
-// which is structurally incompatible with `domain::broker::BrokerCase`.
-// Persistence integration is deferred until the legacy model is retired.
+use crate::ports::broker_repository::BrokerRepository;
 use crate::services::git_ingest::writeback_saga::{
     DecisionReport, EnrichmentPayload, EnrichmentType, WriteBackSaga,
 };
@@ -49,10 +45,12 @@ const INBOX_PRUNE_AGE_SECS: i64 = 86_400; // 24 hours
 pub struct BrokerActor {
     inbox: HashMap<String, BrokerCase>,
     orchestrator: DecisionOrchestrator,
+    repository: Option<Arc<dyn BrokerRepository>>,
     client_coordinator: Option<Addr<ClientCoordinatorActor>>,
     nostr_actor: Option<Addr<ServerNostrActor>>,
     subscribers: HashMap<BrokerChannel, HashSet<String>>,
     writeback_saga: Option<Arc<WriteBackSaga>>,
+    precedent_registry: PrecedentRegistry,
 }
 
 impl Default for BrokerActor {
@@ -66,10 +64,12 @@ impl BrokerActor {
         Self {
             inbox: HashMap::new(),
             orchestrator: DecisionOrchestrator::new(),
+            repository: None,
             client_coordinator: None,
             nostr_actor: None,
             subscribers: HashMap::new(),
             writeback_saga: None,
+            precedent_registry: PrecedentRegistry::default(),
         }
     }
 
@@ -78,8 +78,11 @@ impl BrokerActor {
         self
     }
 
-    /// Wire a `ServerNostrActor` address so the broker can emit kind 30300
-    /// events for `KnowledgeEnrichment` decisions (PRD-013 G7).
+    pub fn with_repository(mut self, repo: Arc<dyn BrokerRepository>) -> Self {
+        self.repository = Some(repo);
+        self
+    }
+
     pub fn with_nostr_actor(mut self, addr: Addr<ServerNostrActor>) -> Self {
         self.nostr_actor = Some(addr);
         self
@@ -90,7 +93,6 @@ impl BrokerActor {
         self
     }
 
-    /// Broadcast a broker channel event to subscribed clients.
     fn broadcast(&self, channel: &BrokerChannel, event_type: &str, payload: serde_json::Value) {
         let Some(ref coordinator) = self.client_coordinator else {
             debug!("broker broadcast dropped: no ClientCoordinatorActor wired");
@@ -105,11 +107,52 @@ impl BrokerActor {
             "channel": channel_name,
             "payload": payload,
         });
-        // NOTE: we fan out to everybody by default; per-client filtering is
-        // a future optimisation — the subscribers map is kept so we can
-        // switch to targeted delivery without changing the message contract.
         if let Ok(message) = serde_json::to_string(&envelope) {
             coordinator.do_send(BroadcastMessage { message });
+        }
+    }
+
+    /// Persist a domain case to the legacy repository (best-effort, fire-and-forget).
+    fn persist_case(&self, case: &BrokerCase) {
+        let Some(ref repo) = self.repository else {
+            return;
+        };
+        let legacy = broker_case_projection::project_case(case);
+        let repo = repo.clone();
+        actix::spawn(async move {
+            if let Err(e) = repo.create_case(&legacy).await {
+                warn!("[BrokerActor] persist case failed: {}", e);
+            }
+        });
+    }
+
+    /// Persist a decision to the legacy repository (best-effort).
+    fn persist_decision(&self, entry: &crate::domain::broker::DecisionHistoryEntry, case_id: &str) {
+        let Some(ref repo) = self.repository else {
+            return;
+        };
+        let legacy = broker_case_projection::project_decision(entry, case_id);
+        let repo = repo.clone();
+        actix::spawn(async move {
+            if let Err(e) = repo.record_decision(&legacy).await {
+                warn!("[BrokerActor] persist decision failed: {}", e);
+            }
+        });
+    }
+
+    /// Check if a KnowledgeEnrichment case qualifies for precedent-based
+    /// auto-approval. Returns the matching scope if so.
+    fn check_auto_approve(&self, case: &BrokerCase) -> Option<String> {
+        if case.category != CaseCategory::KnowledgeEnrichment {
+            return None;
+        }
+        let enrichment_type = case.metadata.get("enrichment_type")?;
+        let entity_urn = case.metadata.get("entity_urn").map(|s| s.as_str()).unwrap_or("");
+        let scope = PrecedentRegistry::scope_from_metadata(enrichment_type, entity_urn);
+        if self.precedent_registry.qualifies(&scope) {
+            Some(scope)
+        } else {
+            None
         }
     }
 }
@@ -118,7 +161,7 @@ impl Actor for BrokerActor {
     type Context = Context<Self>;
 
     fn started(&mut self, _ctx: &mut Self::Context) {
-        info!("[BrokerActor] started (inbox cache capacity=unbounded)");
+        info!("[BrokerActor] started");
     }
 
     fn stopped(&mut self, _ctx: &mut Self::Context) {
@@ -133,18 +176,48 @@ impl Actor for BrokerActor {
 impl Handler<SubmitBrokerCase> for BrokerActor {
     type Result = Result<BrokerCase, String>;
 
-    fn handle(&mut self, msg: SubmitBrokerCase, _ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, msg: SubmitBrokerCase, ctx: &mut Self::Context) -> Self::Result {
         if self.inbox.len() >= INBOX_MAX_CAPACITY {
             let cutoff = chrono::Utc::now() - chrono::Duration::seconds(INBOX_PRUNE_AGE_SECS);
             self.inbox.retain(|_, c| c.created_at > cutoff);
         }
         let case = msg.case;
         self.inbox.insert(case.id.clone(), case.clone());
+        self.persist_case(&case);
         self.broadcast(
             &BrokerChannel::Inbox,
             "new_case",
             json!({ "caseId": case.id, "title": case.title, "category": case.category }),
         );
+
+        // R3: Auto-approve if a matching precedent scope exists.
+        if let Some(scope) = self.check_auto_approve(&case) {
+            info!(
+                "[BrokerActor] auto-approve: case {} matches precedent scope '{}'",
+                case.id, scope
+            );
+            let case_id = case.id.clone();
+            let addr = ctx.address();
+            actix::spawn(async move {
+                let decision_id = format!("auto-{}", uuid::Uuid::new_v4());
+                let _ = addr
+                    .send(ClaimBrokerCase {
+                        case_id: case_id.clone(),
+                        broker_pubkey: "system:auto-precedent".into(),
+                    })
+                    .await;
+                let _ = addr
+                    .send(DecideBrokerCase {
+                        case_id,
+                        decision_id,
+                        outcome: DecisionOutcome::Approve,
+                        broker_pubkey: "system:auto-precedent".into(),
+                        reasoning: format!("auto-approved via precedent scope '{}'", scope),
+                    })
+                    .await;
+            });
+        }
+
         Ok(case)
     }
 }
@@ -176,6 +249,16 @@ impl Handler<DecideBrokerCase> for BrokerActor {
             .get_mut(&msg.case_id)
             .ok_or_else(|| format!("case {} not cached", msg.case_id))?;
 
+        // R3: Register precedent scope when outcome is Precedent.
+        if let DecisionOutcome::Precedent { ref scope } = msg.outcome {
+            self.precedent_registry.register(scope);
+            info!(
+                "[BrokerActor] precedent registered: scope='{}' (count={})",
+                scope,
+                self.precedent_registry.scope_count(scope)
+            );
+        }
+
         let report = self
             .orchestrator
             .decide(
@@ -186,6 +269,8 @@ impl Handler<DecideBrokerCase> for BrokerActor {
                 msg.reasoning.clone(),
             )
             .map_err(|e| e.to_string())?;
+
+        self.persist_decision(&report.entry, &msg.case_id);
 
         let payload = json!({
             "caseId": msg.case_id,
@@ -255,9 +340,7 @@ impl Handler<DecideBrokerCase> for BrokerActor {
                 }
             }
 
-            // PRD-013 G7: emit a kind 30300 Nostr event for the broker decision
-            // so relay watchers can correlate enrichment proposals (30301) with
-            // their outcomes.
+            // PRD-013 G7: emit a kind 30300 Nostr event for the broker decision.
             if case.category == CaseCategory::KnowledgeEnrichment {
                 if let Some(ref nostr) = self.nostr_actor {
                     let entity_urn = case.metadata.get("entity_urn").cloned().unwrap_or_default();
@@ -345,9 +428,6 @@ fn stringify_error(err: CaseInvariantError) -> String {
     err.to_string()
 }
 
-/// Extract enrichment metadata from a `KnowledgeEnrichment` case and build the
-/// types the `WriteBackSaga` expects. Returns an error string if any required
-/// metadata key is missing.
 fn build_writeback_params(
     case: &BrokerCase,
     broker_pubkey: &str,
@@ -465,7 +545,6 @@ mod tests {
         let addr = BrokerActor::new().start();
         let case = seed_case("alice");
         addr.send(SubmitBrokerCase { case }).await.unwrap().unwrap();
-        // Force underlying state by claiming with alice — should fail.
         let err = addr
             .send(ClaimBrokerCase {
                 case_id: "case-a".into(),
@@ -475,5 +554,14 @@ mod tests {
             .unwrap()
             .unwrap_err();
         assert!(err.contains("self-review"));
+    }
+
+    #[test]
+    fn precedent_registry_scope_generation() {
+        let scope = PrecedentRegistry::scope_from_metadata(
+            "embedding_update",
+            "urn:visionclaw:concept:bc:smart-contract",
+        );
+        assert_eq!(scope, "embedding_update:concept:bc");
     }
 }

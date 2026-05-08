@@ -52,6 +52,9 @@ pub mod neo4j_broker_adapter;
 // Workflow repository adapter (ADR-042: workflow proposals and patterns in Neo4j)
 pub mod neo4j_workflow_adapter;
 
+// Projection between domain::broker and models::enterprise broker types
+pub mod broker_case_projection;
+
 pub use neo4j_settings_repository::{Neo4jSettingsRepository, Neo4jSettingsConfig};
 pub use neo4j_ontology_repository::{Neo4jOntologyRepository, Neo4jOntologyConfig};
 pub use neo4j_broker_adapter::Neo4jBrokerRepository;
