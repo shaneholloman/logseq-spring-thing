@@ -200,12 +200,98 @@ pub async fn submit_enrichment_proposal(
 }
 
 // ---------------------------------------------------------------------------
+// Decide handler (BrokerActor path)
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Deserialize)]
+pub struct DecideEnrichmentRequest {
+    pub outcome: String,
+    pub broker_pubkey: String,
+    #[serde(default)]
+    pub reasoning: String,
+}
+
+/// `POST /api/enrichment-proposals/{case_id}/decide`
+///
+/// Routes the decision through the `BrokerActor` (which triggers WriteBackSaga
+/// for approved `KnowledgeEnrichment` cases and emits kind 30300 events).
+pub async fn decide_enrichment_proposal(
+    broker: web::Data<Addr<BrokerActor>>,
+    path: web::Path<String>,
+    body: web::Json<DecideEnrichmentRequest>,
+) -> HttpResponse {
+    use crate::actors::messages::broker_messages::DecideBrokerCase;
+    use crate::domain::broker::DecisionOutcome;
+
+    let case_id = path.into_inner();
+    let req = body.into_inner();
+
+    let outcome = match req.outcome.as_str() {
+        "approve" => DecisionOutcome::Approve,
+        "reject" => DecisionOutcome::Reject,
+        "amend" => DecisionOutcome::Amend {
+            diff: req.reasoning.clone(),
+        },
+        "delegate" => DecisionOutcome::Delegate {
+            delegate_to: req.reasoning.clone(),
+        },
+        "promote" => DecisionOutcome::Promote {
+            pattern_id: format!("pattern-{}", Uuid::new_v4()),
+        },
+        other => {
+            return HttpResponse::BadRequest().json(serde_json::json!({
+                "error": format!("unknown outcome: '{}'. Valid: approve, reject, amend, delegate, promote", other),
+            }));
+        }
+    };
+
+    let decision_id = format!("dec-{}", Uuid::new_v4());
+
+    match broker
+        .send(DecideBrokerCase {
+            case_id: case_id.clone(),
+            decision_id: decision_id.clone(),
+            outcome,
+            broker_pubkey: req.broker_pubkey,
+            reasoning: req.reasoning,
+        })
+        .await
+    {
+        Ok(Ok(id)) => HttpResponse::Ok().json(serde_json::json!({
+            "case_id": case_id,
+            "decision_id": id,
+            "status": "decided",
+        })),
+        Ok(Err(e)) => {
+            error!(
+                "[enrichment_proposal_handler] decide failed for case {}: {}",
+                case_id, e
+            );
+            HttpResponse::UnprocessableEntity().json(serde_json::json!({
+                "error": e,
+            }))
+        }
+        Err(e) => {
+            error!("[enrichment_proposal_handler] broker mailbox error: {}", e);
+            HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "broker unavailable",
+            }))
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Route configuration
 // ---------------------------------------------------------------------------
 
 /// Register enrichment-proposal routes under the `/api` scope.
 pub fn configure_routes(cfg: &mut web::ServiceConfig) {
     cfg.service(
-        web::scope("/enrichment-proposals").route("", web::post().to(submit_enrichment_proposal)),
+        web::scope("/enrichment-proposals")
+            .route("", web::post().to(submit_enrichment_proposal))
+            .route(
+                "/{case_id}/decide",
+                web::post().to(decide_enrichment_proposal),
+            ),
     );
 }

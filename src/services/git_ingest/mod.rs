@@ -85,7 +85,17 @@ pub struct GitRemote {
 
 impl GitRemote {
     pub fn local_path(&self) -> PathBuf {
-        ingest_root().join(&self.id)
+        ingest_root().join(sanitize_id(&self.id))
+    }
+}
+
+pub(super) fn sanitize_id(id: &str) -> &str {
+    // Strip path separators and traversal components — defence-in-depth.
+    let s = id.trim().trim_start_matches('/').trim_start_matches('\\');
+    if s.contains("..") || s.contains('/') || s.contains('\\') {
+        "invalid-id"
+    } else {
+        s
     }
 }
 

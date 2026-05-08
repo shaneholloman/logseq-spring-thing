@@ -210,34 +210,22 @@ impl WriteBackSaga {
         case_id: &str,
         pushed_at: &chrono::DateTime<Utc>,
     ) -> Result<(), WriteBackError> {
+        // H7 fix: single atomic query to create audit node + PUSHED_TO relationship.
         self.graph
             .run(
                 query(
-                    "CREATE (a:WriteBackAudit { \
+                    "MATCH (r:GitRemote {id: $remote_id}) \
+                     CREATE (a:WriteBackAudit { \
                          remote_id: $remote_id, \
                          commit_sha: $commit_sha, \
                          case_id: $case_id, \
                          pushed_at: $pushed_at \
-                     })",
+                     })-[:PUSHED_TO]->(r)",
                 )
                 .param("remote_id", remote_id)
                 .param("commit_sha", commit_sha)
                 .param("case_id", case_id)
                 .param("pushed_at", pushed_at.to_rfc3339()),
-            )
-            .await
-            .map_err(|e| WriteBackError::AuditFailed(e.to_string()))?;
-
-        self.graph
-            .run(
-                query(
-                    "MATCH (a:WriteBackAudit {case_id: $case_id, commit_sha: $commit_sha}), \
-                           (r:GitRemote {id: $remote_id}) \
-                     CREATE (a)-[:PUSHED_TO]->(r)",
-                )
-                .param("case_id", case_id)
-                .param("commit_sha", commit_sha)
-                .param("remote_id", remote_id),
             )
             .await
             .map_err(|e| WriteBackError::AuditFailed(e.to_string()))?;
@@ -265,11 +253,29 @@ fn writeback_blocking(
     commit_body: &str,
     trailer: &ProvenanceTrailer,
 ) -> Result<String, WriteBackError> {
+    // Sanitise commit subject — strip newlines to prevent trailer injection.
+    let commit_subject = commit_subject.replace('\n', " ").replace('\r', " ");
+    let commit_body = commit_body
+        .lines()
+        .filter(|line| {
+            // Reject lines that look like git trailers to prevent injection.
+            !line.contains(": ") || !line.starts_with(|c: char| c.is_ascii_uppercase())
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    // Reject target_path with traversal components.
+    if target_path.contains("..") {
+        return Err(WriteBackError::ApplyFailed(
+            "target_path must not contain '..'".to_string(),
+        ));
+    }
+
     // Phase 1: Fetch latest and verify fast-forward safety
     let repo =
         Repository::open(local_path).map_err(|e| WriteBackError::Git(format!("open: {e}")))?;
 
-    let callbacks = build_push_callbacks(auth)?;
+    let (callbacks, _) = build_push_callbacks(auth)?;
     let mut fetch_opts = FetchOptions::new();
     fetch_opts.remote_callbacks(callbacks);
 
@@ -331,10 +337,38 @@ fn writeback_blocking(
     debug!("write-back: phase 1 complete — local at {}", remote_oid);
 
     // Phase 2: Apply enrichment to worktree
+    // Guard: canonicalise and verify the target stays inside the repo root.
     let file_path = local_path.join(target_path);
+    let canonical_root = local_path
+        .canonicalize()
+        .map_err(|e| WriteBackError::ApplyFailed(format!("canonicalize root: {e}")))?;
     if let Some(parent) = file_path.parent() {
         std::fs::create_dir_all(parent)
             .map_err(|e| WriteBackError::ApplyFailed(format!("mkdir: {e}")))?;
+    }
+    let canonical_file = file_path
+        .canonicalize()
+        .or_else(|_| {
+            // File doesn't exist yet — canonicalise the parent and append the filename.
+            file_path.parent().map_or_else(
+                || {
+                    Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        "no parent",
+                    ))
+                },
+                |p| {
+                    Ok(p.canonicalize()?
+                        .join(file_path.file_name().unwrap_or_default()))
+                },
+            )
+        })
+        .map_err(|e| WriteBackError::ApplyFailed(format!("canonicalize target: {e}")))?;
+    if !canonical_file.starts_with(&canonical_root) {
+        return Err(WriteBackError::ApplyFailed(format!(
+            "path traversal rejected: {} escapes repo root",
+            target_path
+        )));
     }
     std::fs::write(&file_path, content)
         .map_err(|e| WriteBackError::ApplyFailed(format!("write {}: {e}", target_path)))?;
@@ -358,7 +392,7 @@ fn writeback_blocking(
         .find_tree(tree_oid)
         .map_err(|e| WriteBackError::Git(format!("find_tree: {e}")))?;
 
-    let commit_message = encode_commit_message(commit_subject, commit_body, trailer);
+    let commit_message = encode_commit_message(&commit_subject, &commit_body, trailer);
     let sig = Signature::now("VisionClaw Ingest", "ingest@visionclaw.local")
         .map_err(|e| WriteBackError::Git(format!("signature: {e}")))?;
 
@@ -377,7 +411,7 @@ fn writeback_blocking(
     debug!("write-back: phase 3 complete — committed {}", commit_sha);
 
     // Phase 4: Push to remote
-    let push_callbacks = build_push_callbacks(auth)?;
+    let (push_callbacks, push_rejection) = build_push_callbacks(auth)?;
     let mut push_opts = PushOptions::new();
     push_opts.remote_callbacks(push_callbacks);
 
@@ -390,6 +424,16 @@ fn writeback_blocking(
         .push(&[&push_refspec], Some(&mut push_opts))
         .map_err(|e| WriteBackError::PushFailed(format!("push: {e}")))?;
 
+    // Check if the remote rejected the push (H8 fix).
+    if let Ok(guard) = push_rejection.lock() {
+        if let Some(ref msg) = *guard {
+            return Err(WriteBackError::PushFailed(format!(
+                "remote rejected push: {}",
+                msg
+            )));
+        }
+    }
+
     info!(
         "write-back: phase 4 complete — pushed {} to origin",
         commit_sha
@@ -398,7 +442,9 @@ fn writeback_blocking(
     Ok(commit_sha)
 }
 
-fn build_push_callbacks(auth: &RemoteAuth) -> Result<RemoteCallbacks<'_>, WriteBackError> {
+fn build_push_callbacks(
+    auth: &RemoteAuth,
+) -> Result<(RemoteCallbacks<'_>, Arc<std::sync::Mutex<Option<String>>>), WriteBackError> {
     let mut callbacks = RemoteCallbacks::new();
 
     match auth {
@@ -451,14 +497,21 @@ fn build_push_callbacks(auth: &RemoteAuth) -> Result<RemoteCallbacks<'_>, WriteB
         }
     }
 
-    callbacks.push_update_reference(|refname, status| {
+    let push_rejection: Arc<std::sync::Mutex<Option<String>>> =
+        Arc::new(std::sync::Mutex::new(None));
+    let rejection_flag = push_rejection.clone();
+
+    callbacks.push_update_reference(move |refname, status| {
         if let Some(msg) = status {
             warn!("write-back: push rejected for {}: {}", refname, msg);
+            if let Ok(mut guard) = rejection_flag.lock() {
+                *guard = Some(format!("{}: {}", refname, msg));
+            }
         }
         Ok(())
     });
 
-    Ok(callbacks)
+    Ok((callbacks, push_rejection))
 }
 
 // ---------------------------------------------------------------------------

@@ -175,7 +175,7 @@ impl RemoteRegistry {
             .execute(
                 query(
                     "MATCH (r:GitRemote {id: $id}) \
-                     DELETE r \
+                     DETACH DELETE r \
                      RETURN count(r) AS deleted",
                 )
                 .param("id", id),
@@ -186,7 +186,7 @@ impl RemoteRegistry {
             Ok(_) => {
                 info!("git-ingest: deleted remote {}", id);
                 // Best-effort cleanup of local clone directory.
-                let local_path = super::ingest_root().join(id);
+                let local_path = super::ingest_root().join(super::sanitize_id(id));
                 if local_path.exists() {
                     if let Err(e) = std::fs::remove_dir_all(&local_path) {
                         warn!(
@@ -406,6 +406,13 @@ pub async fn handle_create_remote(
     body: actix_web::web::Json<CreateRemoteRequest>,
 ) -> actix_web::HttpResponse {
     let req = body.into_inner();
+
+    // H6 fix: reject non-HTTPS remote URLs to prevent SSRF.
+    if !req.url.starts_with("https://") && !req.url.starts_with("http://") {
+        return actix_web::HttpResponse::BadRequest().json(serde_json::json!({
+            "error": "only http(s) remote URLs are allowed"
+        }));
+    }
 
     let remote = GitRemote {
         id: Uuid::new_v4().to_string(),
