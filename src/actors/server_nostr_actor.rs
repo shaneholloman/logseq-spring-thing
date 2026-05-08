@@ -2,12 +2,14 @@
 //!
 //! Provides message-based, non-blocking access to the server's Nostr signing
 //! capability from other actors (physics, ontology, migration, bead lifecycle,
-//! audit). Exposes four strongly-typed message variants:
+//! audit, broker). Exposes six strongly-typed message variants:
 //!
-//!   * `SignMigrationApproval` → kind 30023
-//!   * `SignBridgePromotion`   → kind 30100
-//!   * `SignBeadStamp`         → kind 30200
-//!   * `SignAuditRecord`       → kind 30300
+//!   * `SignMigrationApproval`   → kind 30023
+//!   * `SignBridgePromotion`     → kind 30100
+//!   * `SignBeadStamp`           → kind 30200
+//!   * `SignAuditRecord`         → kind 30300
+//!   * `SignEnrichmentProposal`  → kind 30301 (PRD-013 G7)
+//!   * `SignBrokerDecision`      → kind 30300 (PRD-013 G7, enrichment variant)
 //!
 //! Each handler assembles the appropriate tags + JSON content, signs via the
 //! shared [`ServerIdentity`] (no key copy — identity is held behind `Arc`),
@@ -46,7 +48,10 @@ impl ServerNostrActor {
     /// Construct a new actor over the given identity. Use
     /// `actix::Actor::start` to get an `Addr<Self>`.
     pub fn new(identity: Arc<ServerIdentity>) -> Self {
-        Self { identity, prom: None }
+        Self {
+            identity,
+            prom: None,
+        }
     }
 
     /// Attach a Prometheus metrics registry. Returns `self` for fluent use.
@@ -126,10 +131,7 @@ impl Handler<SignMigrationApproval> for ServerNostrActor {
             .to_string();
 
             let tags = vec![
-                Tag::custom(
-                    TagKind::Custom("h".into()),
-                    vec![SERVER_H_TAG.to_string()],
-                ),
+                Tag::custom(TagKind::Custom("h".into()), vec![SERVER_H_TAG.to_string()]),
                 Tag::custom(
                     TagKind::Custom("d".into()),
                     vec![format!("migration:{}", msg.migration_id)],
@@ -186,22 +188,13 @@ impl Handler<SignBridgePromotion> for ServerNostrActor {
             .to_string();
 
             let tags = vec![
-                Tag::custom(
-                    TagKind::Custom("h".into()),
-                    vec![SERVER_H_TAG.to_string()],
-                ),
+                Tag::custom(TagKind::Custom("h".into()), vec![SERVER_H_TAG.to_string()]),
                 Tag::custom(
                     TagKind::Custom("d".into()),
                     vec![format!("bridge:{}→{}", msg.from_kg, msg.to_owl)],
                 ),
-                Tag::custom(
-                    TagKind::Custom("from_kg".into()),
-                    vec![msg.from_kg.clone()],
-                ),
-                Tag::custom(
-                    TagKind::Custom("to_owl".into()),
-                    vec![msg.to_owl.clone()],
-                ),
+                Tag::custom(TagKind::Custom("from_kg".into()), vec![msg.from_kg.clone()]),
+                Tag::custom(TagKind::Custom("to_owl".into()), vec![msg.to_owl.clone()]),
                 Tag::custom(
                     TagKind::Custom("event_type".into()),
                     vec!["bridge_promotion".to_string()],
@@ -242,18 +235,12 @@ impl Handler<SignBeadStamp> for ServerNostrActor {
             .to_string();
 
             let tags = vec![
-                Tag::custom(
-                    TagKind::Custom("h".into()),
-                    vec![SERVER_H_TAG.to_string()],
-                ),
+                Tag::custom(TagKind::Custom("h".into()), vec![SERVER_H_TAG.to_string()]),
                 Tag::custom(
                     TagKind::Custom("d".into()),
                     vec![format!("bead-stamp:{}", msg.bead_id)],
                 ),
-                Tag::custom(
-                    TagKind::Custom("bead_id".into()),
-                    vec![msg.bead_id.clone()],
-                ),
+                Tag::custom(TagKind::Custom("bead_id".into()), vec![msg.bead_id.clone()]),
                 Tag::custom(
                     TagKind::Custom("payload_hash".into()),
                     vec![msg.payload_hash.clone()],
@@ -302,18 +289,12 @@ impl Handler<SignAuditRecord> for ServerNostrActor {
             let audit_id = Uuid::new_v4();
 
             let mut tags = vec![
-                Tag::custom(
-                    TagKind::Custom("h".into()),
-                    vec![SERVER_H_TAG.to_string()],
-                ),
+                Tag::custom(TagKind::Custom("h".into()), vec![SERVER_H_TAG.to_string()]),
                 Tag::custom(
                     TagKind::Custom("d".into()),
                     vec![format!("audit:{}", audit_id)],
                 ),
-                Tag::custom(
-                    TagKind::Custom("action".into()),
-                    vec![msg.action.clone()],
-                ),
+                Tag::custom(TagKind::Custom("action".into()), vec![msg.action.clone()]),
                 Tag::custom(
                     TagKind::Custom("audit_id".into()),
                     vec![audit_id.to_string()],
@@ -329,6 +310,136 @@ impl Handler<SignAuditRecord> for ServerNostrActor {
                     vec![pk.clone()],
                 ));
             }
+
+            let out = identity.sign_and_broadcast(30300, content, tags).await;
+            Self::observe_sign_outcome(&prom, NostrKind::K30300, &out);
+            out
+        })
+    }
+}
+
+// ── Message: enrichment proposal (kind 30301) ─────────────────────────
+
+/// Sign an enrichment proposal event (PRD-013 G7 Nostr control plane).
+///
+/// Emitted when an agent (via agentbox git-bridge) submits a knowledge-graph
+/// enrichment for broker gating. The signed event captures the proposal
+/// metadata so third-party watchers on the relay can follow the enrichment
+/// lifecycle.
+#[derive(Message, Debug, Clone)]
+#[rtype(result = "Result<Event>")]
+pub struct SignEnrichmentProposal {
+    pub case_id: String,
+    pub agent_did: String,
+    pub entity_urn: String,
+    pub enrichment_type: String,
+    pub target_path: String,
+    pub reasoning_hash: String,
+}
+
+impl Handler<SignEnrichmentProposal> for ServerNostrActor {
+    type Result = ResponseFuture<Result<Event>>;
+
+    fn handle(&mut self, msg: SignEnrichmentProposal, _ctx: &mut Self::Context) -> Self::Result {
+        let identity = Arc::clone(&self.identity);
+        let prom = self.prom.clone();
+        Box::pin(async move {
+            let content = json!({
+                "case_id": msg.case_id,
+                "agent_did": msg.agent_did,
+                "entity_urn": msg.entity_urn,
+                "enrichment_type": msg.enrichment_type,
+                "target_path": msg.target_path,
+                "reasoning_hash": msg.reasoning_hash,
+                "proposed_at": chrono::Utc::now().to_rfc3339(),
+            })
+            .to_string();
+
+            // Extract the agent pubkey hex from the DID if it follows
+            // `did:nostr:<hex>` convention; fall back to the raw string.
+            let agent_pubkey_hex = msg
+                .agent_did
+                .strip_prefix("did:nostr:")
+                .unwrap_or(&msg.agent_did)
+                .to_string();
+
+            let tags = vec![
+                Tag::custom(TagKind::Custom("d".into()), vec![msg.case_id.clone()]),
+                Tag::custom(TagKind::Custom("p".into()), vec![agent_pubkey_hex]),
+                Tag::custom(TagKind::Custom("urn".into()), vec![msg.entity_urn.clone()]),
+                Tag::custom(
+                    TagKind::Custom("enrichment_type".into()),
+                    vec![msg.enrichment_type.clone()],
+                ),
+                Tag::custom(
+                    TagKind::Custom("target_path".into()),
+                    vec![msg.target_path.clone()],
+                ),
+                Tag::custom(TagKind::Custom("h".into()), vec![SERVER_H_TAG.to_string()]),
+                Tag::custom(
+                    TagKind::Custom("event_type".into()),
+                    vec!["enrichment_proposal".to_string()],
+                ),
+            ];
+
+            let out = identity.sign_and_broadcast(30301, content, tags).await;
+            Self::observe_sign_outcome(&prom, NostrKind::K30301, &out);
+            out
+        })
+    }
+}
+
+// ── Message: broker decision on enrichment (kind 30300) ───────────────
+
+/// Sign a broker decision event specifically for `KnowledgeEnrichment` cases
+/// (PRD-013 G7). Reuses kind 30300 (audit) with enrichment-specific tags so
+/// the relay can correlate proposals (30301) with their decisions.
+#[derive(Message, Debug, Clone)]
+#[rtype(result = "Result<Event>")]
+pub struct SignBrokerDecision {
+    pub case_id: String,
+    pub decision_id: String,
+    pub outcome_action: String,
+    pub broker_pubkey: String,
+    pub entity_urn: String,
+    pub reasoning: String,
+}
+
+impl Handler<SignBrokerDecision> for ServerNostrActor {
+    type Result = ResponseFuture<Result<Event>>;
+
+    fn handle(&mut self, msg: SignBrokerDecision, _ctx: &mut Self::Context) -> Self::Result {
+        let identity = Arc::clone(&self.identity);
+        let prom = self.prom.clone();
+        Box::pin(async move {
+            let content = json!({
+                "case_id": msg.case_id,
+                "decision_id": msg.decision_id,
+                "outcome_action": msg.outcome_action,
+                "broker_pubkey": msg.broker_pubkey,
+                "entity_urn": msg.entity_urn,
+                "reasoning": msg.reasoning,
+                "decided_at": chrono::Utc::now().to_rfc3339(),
+            })
+            .to_string();
+
+            let tags = vec![
+                Tag::custom(TagKind::Custom("d".into()), vec![msg.case_id.clone()]),
+                Tag::custom(
+                    TagKind::Custom("decision".into()),
+                    vec![msg.outcome_action.clone()],
+                ),
+                Tag::custom(
+                    TagKind::Custom("broker".into()),
+                    vec![msg.broker_pubkey.clone()],
+                ),
+                Tag::custom(TagKind::Custom("urn".into()), vec![msg.entity_urn.clone()]),
+                Tag::custom(TagKind::Custom("h".into()), vec![SERVER_H_TAG.to_string()]),
+                Tag::custom(
+                    TagKind::Custom("event_type".into()),
+                    vec!["broker_decision".to_string()],
+                ),
+            ];
 
             let out = identity.sign_and_broadcast(30300, content, tags).await;
             Self::observe_sign_outcome(&prom, NostrKind::K30300, &out);
@@ -408,8 +519,7 @@ mod tests {
             .send(SignAuditRecord {
                 action: "migration_rollback".to_string(),
                 actor_pubkey: Some(
-                    "0000000000000000000000000000000000000000000000000000000000000001"
-                        .to_string(),
+                    "0000000000000000000000000000000000000000000000000000000000000001".to_string(),
                 ),
                 details: json!({"reason": "confidence below threshold"}),
             })
@@ -424,5 +534,70 @@ mod tests {
             .iter()
             .any(|t| t.kind() == TagKind::Custom("action".into()));
         assert!(has_action);
+    }
+
+    #[actix::test]
+    async fn handles_enrichment_proposal() {
+        let addr = ServerNostrActor::new(test_identity()).start();
+        let event = addr
+            .send(SignEnrichmentProposal {
+                case_id: "enrich-001".to_string(),
+                agent_did:
+                    "did:nostr:0000000000000000000000000000000000000000000000000000000000000002"
+                        .to_string(),
+                entity_urn: "urn:visionclaw:concept:abc123".to_string(),
+                enrichment_type: "property_addition".to_string(),
+                target_path: "pages/Quantum_Computing.md".to_string(),
+                reasoning_hash: "blake3:cafebabe".to_string(),
+            })
+            .await
+            .expect("mailbox")
+            .expect("sign");
+        event.verify().expect("signature");
+        assert_eq!(event.kind.as_u16(), 30301);
+        // Must carry the proposer `p` tag.
+        let has_p = event
+            .tags
+            .iter()
+            .any(|t| t.kind() == TagKind::Custom("p".into()));
+        assert!(has_p);
+        // Must carry the entity URN tag.
+        let has_urn = event
+            .tags
+            .iter()
+            .any(|t| t.kind() == TagKind::Custom("urn".into()));
+        assert!(has_urn);
+    }
+
+    #[actix::test]
+    async fn handles_broker_decision() {
+        let addr = ServerNostrActor::new(test_identity()).start();
+        let event = addr
+            .send(SignBrokerDecision {
+                case_id: "enrich-001".to_string(),
+                decision_id: "dec-99".to_string(),
+                outcome_action: "approve".to_string(),
+                broker_pubkey: "0000000000000000000000000000000000000000000000000000000000000003"
+                    .to_string(),
+                entity_urn: "urn:visionclaw:concept:abc123".to_string(),
+                reasoning: "enrichment validated against source".to_string(),
+            })
+            .await
+            .expect("mailbox")
+            .expect("sign");
+        event.verify().expect("signature");
+        assert_eq!(event.kind.as_u16(), 30300);
+        // Must carry the decision tag.
+        let has_decision = event
+            .tags
+            .iter()
+            .any(|t| t.kind() == TagKind::Custom("decision".into()));
+        assert!(has_decision);
+        // Must carry the broker tag.
+        let has_broker = event
+            .tags
+            .iter()
+            .any(|t| t.kind() == TagKind::Custom("broker".into()));
+        assert!(has_broker);
     }
 }

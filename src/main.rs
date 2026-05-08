@@ -2,44 +2,34 @@
 use webxr::ports::ontology_repository::OntologyRepository;
 use webxr::services::nostr_service::NostrService;
 // SettingsActor removed - OptimizedSettingsActor in AppState is the single source of truth
-use webxr::adapters::neo4j_settings_repository::{Neo4jSettingsRepository, Neo4jSettingsConfig};
 use webxr::actors::messages::ReloadGraphFromDatabase;
+use webxr::adapters::neo4j_settings_repository::{Neo4jSettingsConfig, Neo4jSettingsRepository};
 use webxr::{
     config::AppFullSettings,
     handlers::{
         admin_sync_handler,
-        api_handler,
-        bots_visualization_handler,
-        client_log_handler,
-        client_messages_handler,
-        consolidated_health_handler,
-        graph_export_handler,
+        agent_events_ws_handler::{agent_events_handler, new_broadcaster},
+        api_handler, bots_visualization_handler, client_log_handler, client_messages_handler,
+        consolidated_health_handler, graph_export_handler,
         mcp_relay_handler::mcp_relay_handler,
-        metrics_handler,
-        multi_mcp_websocket_handler,
-        nostr_handler,
-        pages_handler,
+        metrics_handler, multi_mcp_websocket_handler, nostr_handler, pages_handler,
+        presence_handler::{new_room_registry, ws_presence, PresenceHandlerState},
         socket_flow_handler::{socket_flow_handler, PreReadSocketSettings},
         speech_socket_handler::speech_socket_handler,
-        agent_events_ws_handler::{agent_events_handler, new_broadcaster},
-        presence_handler::{new_room_registry, ws_presence, PresenceHandlerState},
-        validation_handler,
-        workspace_handler,
+        validation_handler, workspace_handler,
     },
-    services::speech_service::SpeechService,
-    services::briefing_service::BriefingService,
-    services::management_api_client::ManagementApiClient,
     services::bead_lifecycle::BeadLifecycleOrchestrator,
     services::bead_store::NoopBeadStore,
+    services::briefing_service::BriefingService,
+    services::management_api_client::ManagementApiClient,
     services::nostr_bead_publisher::NostrBeadPublisher,
     services::nostr_bridge::NostrBridge,
+    services::speech_service::SpeechService,
     services::{
-
         github::{content_enhanced::EnhancedContentAPI, ContentAPI, GitHubClient, GitHubConfig},
         github_sync_service::GitHubSyncService,
         ragflow_service::RAGFlowService,
     },
-
     AppState,
 };
 
@@ -58,7 +48,7 @@ use std::time::Instant;
 use tokio::signal::unix::{signal, SignalKind};
 use tokio::sync::RwLock;
 use tokio::time::Duration;
-use tracing_subscriber::{fmt, EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
+use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 use webxr::middleware::{RateLimit, TimeoutMiddleware};
 use webxr::telemetry::agent_telemetry::init_telemetry_logger;
 use webxr::utils::advanced_logging::init_advanced_logging;
@@ -72,34 +62,31 @@ use webxr::utils::json::to_json;
 /// In dev mode, missing required vars emit warnings and the server continues with defaults.
 fn validate_required_env_vars() -> Result<(), String> {
     let mut missing = Vec::new();
-    let required = [
-        "NEO4J_URI",
-        "NEO4J_PASSWORD",
-        "SYSTEM_NETWORK_PORT",
-    ];
+    let required = ["NEO4J_URI", "NEO4J_PASSWORD", "SYSTEM_NETWORK_PORT"];
     for var in &required {
         if std::env::var(var).is_err() {
             missing.push(*var);
         }
     }
     // Warn about optional but recommended vars
-    let recommended = [
-        "MANAGEMENT_API_KEY",
-        "JWT_SECRET",
-        "CORS_ALLOWED_ORIGINS",
-    ];
+    let recommended = ["MANAGEMENT_API_KEY", "JWT_SECRET", "CORS_ALLOWED_ORIGINS"];
     for var in &recommended {
         if std::env::var(var).is_err() {
             log::warn!("Recommended env var {} is not set", var);
         }
     }
     // Check ALLOW_INSECURE_DEFAULTS is not set in production
-    let is_production = std::env::var("APP_ENV").map(|v| v == "production").unwrap_or(false);
+    let is_production = std::env::var("APP_ENV")
+        .map(|v| v == "production")
+        .unwrap_or(false);
     if is_production {
         if std::env::var("ALLOW_INSECURE_DEFAULTS").is_ok() {
             log::error!("ALLOW_INSECURE_DEFAULTS is set in production — this is a security risk");
         }
-        if std::env::var("SETTINGS_AUTH_BYPASS").map(|v| v == "true").unwrap_or(false) {
+        if std::env::var("SETTINGS_AUTH_BYPASS")
+            .map(|v| v == "true")
+            .unwrap_or(false)
+        {
             return Err("SETTINGS_AUTH_BYPASS=true is not allowed in production".to_string());
         }
     }
@@ -111,7 +98,10 @@ fn validate_required_env_vars() -> Result<(), String> {
             Err(format!("Missing required env vars: {}", missing.join(", ")))
         } else {
             for var in &missing {
-                log::warn!("Required env var {} is not set — using defaults (dev mode)", var);
+                log::warn!(
+                    "Required env var {} is not set — using defaults (dev mode)",
+                    var
+                );
             }
             Ok(())
         }
@@ -143,28 +133,27 @@ async fn main() -> std::io::Result<()> {
     // RUST_LOG env var controls filtering (e.g. RUST_LOG=debug or RUST_LOG=webxr=debug,actix_web=info).
     tracing_subscriber::registry()
         .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")))
-        .with(
-            fmt::layer()
-                .with_target(true)
-                .with_thread_ids(true),
-        )
+        .with(fmt::layer().with_target(true).with_thread_ids(true))
         .init();
 
     // Validate required environment variables (after tracing init so log macros work)
     if let Err(e) = validate_required_env_vars() {
         error!("Environment validation failed: {}", e);
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::InvalidInput,
-            e,
-        ));
+        return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, e));
     }
 
     // Record process start time for uptime reporting via /api/metrics
     let process_start_time = Instant::now();
 
     info!("--- Configuration Verification ---");
-    info!("MARKDOWN_DIR: {}", webxr::services::file_service::MARKDOWN_DIR);
-    info!("METADATA_PATH: {}", "/workspace/ext/data/metadata/metadata.json");
+    info!(
+        "MARKDOWN_DIR: {}",
+        webxr::services::file_service::MARKDOWN_DIR
+    );
+    info!(
+        "METADATA_PATH: {}",
+        "/workspace/ext/data/metadata/metadata.json"
+    );
     info!("---------------------------------");
 
     // REMOVED: init_logging()? call - using advanced_logging instead
@@ -178,14 +167,11 @@ async fn main() -> std::io::Result<()> {
         info!("Advanced logging system initialized successfully");
     }
 
-    
-    
     let log_dir = if std::path::Path::new("/app/logs").exists() {
         "/app/logs".to_string()
     } else if std::path::Path::new("/workspace/ext/logs").exists() {
         "/workspace/ext/logs".to_string()
     } else {
-        
         std::env::temp_dir()
             .join("webxr_telemetry")
             .to_string_lossy()
@@ -200,7 +186,6 @@ async fn main() -> std::io::Result<()> {
         info!("Telemetry logger initialized with directory: {}", log_dir);
     }
 
-    
     let settings = match AppFullSettings::new() {
         Ok(s) => {
             info!(
@@ -209,7 +194,6 @@ async fn main() -> std::io::Result<()> {
                     .unwrap_or_else(|_| "/app/settings.yaml".to_string())
             );
 
-            
             match to_json(&s.visualisation.rendering) {
                 Ok(json_output) => {
                     info!(
@@ -217,14 +201,12 @@ async fn main() -> std::io::Result<()> {
                         json_output
                     );
 
-                    
                     if json_output.contains("ambientLightIntensity")
                         && !json_output.contains("ambient_light_intensity")
                     {
                         info!("✅ CONFIRMED: JSON uses camelCase field names for REST API compatibility");
                     }
 
-                    
                     info!("✅ CONFIRMED: Values loaded from snake_case YAML:");
                     info!(
                         "   - ambient_light_intensity -> {}",
@@ -245,7 +227,7 @@ async fn main() -> std::io::Result<()> {
                 }
             }
 
-            Arc::new(RwLock::new(s)) 
+            Arc::new(RwLock::new(s))
         }
         Err(e) => {
             error!("❌ Failed to load AppFullSettings: {:?}", e);
@@ -256,7 +238,6 @@ async fn main() -> std::io::Result<()> {
         }
     };
 
-    
     info!("GPU compute will be initialized by GPUComputeActor when needed");
 
     debug!("Successfully loaded AppFullSettings");
@@ -282,11 +263,8 @@ async fn main() -> std::io::Result<()> {
     let neo4j_repo_data = web::Data::new(settings_repository.clone());
     info!("Neo4j settings repository initialized successfully");
 
-
-
     let settings_data = web::Data::new(settings.clone());
 
-    
     let github_config = match GitHubConfig::from_env() {
         Ok(config) => {
             info!("[main] GitHub config loaded from environment");
@@ -297,8 +275,6 @@ async fn main() -> std::io::Result<()> {
             GitHubConfig::disabled()
         }
     };
-
-
 
     let github_client = match GitHubClient::new(github_config, settings.clone()).await {
         Ok(client) => Arc::new(client),
@@ -312,14 +288,11 @@ async fn main() -> std::io::Result<()> {
 
     let content_api = Arc::new(ContentAPI::new(github_client.clone()));
 
-    
-    
     let speech_service = {
         let service = SpeechService::new(settings.clone());
         Some(Arc::new(service))
     };
 
-    
     info!("[main] Attempting to initialize RAGFlowService...");
     let ragflow_service_option = match RAGFlowService::new(settings.clone()).await {
         Ok(service) => {
@@ -338,8 +311,6 @@ async fn main() -> std::io::Result<()> {
         error!("[main] ragflow_service_option is None after RAGFlowService::new attempt. Chat functionality will be unavailable.");
     }
 
-    
-    
     let settings_value = {
         let settings_read = settings.read().await;
         settings_read.clone()
@@ -349,10 +320,10 @@ async fn main() -> std::io::Result<()> {
         settings_value,
         github_client.clone(),
         content_api.clone(),
-        None,                   
-        ragflow_service_option, 
+        None,
+        ragflow_service_option,
         speech_service,
-        "default_session".to_string(), 
+        "default_session".to_string(),
     )
     .await
     {
@@ -372,7 +343,6 @@ async fn main() -> std::io::Result<()> {
     nostr_handler::init_nostr_service(&mut app_state).await;
     info!("[main] Nostr service initialized");
 
-    
     info!("[main] Initializing GitHub Sync Service...");
     let enhanced_content_api = Arc::new(EnhancedContentAPI::new(github_client.clone()));
     let mut github_sync_service_inner = GitHubSyncService::new(
@@ -390,11 +360,16 @@ async fn main() -> std::io::Result<()> {
             let handle = webxr::services::ingest_saga::spawn_resumption_task(saga);
             // Task is held by the runtime; handle intentionally dropped.
             std::mem::forget(handle);
-            info!("[main] IngestSaga wired (POD_SAGA_ENABLED={})",
-                  std::env::var("POD_SAGA_ENABLED").unwrap_or_else(|_| "unset".to_string()));
+            info!(
+                "[main] IngestSaga wired (POD_SAGA_ENABLED={})",
+                std::env::var("POD_SAGA_ENABLED").unwrap_or_else(|_| "unset".to_string())
+            );
         }
         Err(e) => {
-            warn!("[main] IngestSaga not wired: {} — legacy ingest path active", e);
+            warn!(
+                "[main] IngestSaga not wired: {} — legacy ingest path active",
+                e
+            );
         }
     }
 
@@ -402,18 +377,15 @@ async fn main() -> std::io::Result<()> {
     info!("[main] GitHub Sync Service initialized");
 
     // PRD-013: Git Ingest Surface — git-over-HTTP ingest pipeline.
-    let git_ingest_registry = webxr::services::git_ingest::RemoteRegistry::new(
+    let git_ingest_registry =
+        webxr::services::git_ingest::RemoteRegistry::new(app_state.neo4j_adapter.graph().clone());
+    let git_ingest_service = Arc::new(webxr::services::git_ingest::GitIngestService::new(
+        git_ingest_registry.clone(),
+    ));
+    let writeback_saga = Arc::new(webxr::services::git_ingest::WriteBackSaga::new(
+        git_ingest_registry.clone(),
         app_state.neo4j_adapter.graph().clone(),
-    );
-    let git_ingest_service = Arc::new(
-        webxr::services::git_ingest::GitIngestService::new(git_ingest_registry.clone()),
-    );
-    let writeback_saga = Arc::new(
-        webxr::services::git_ingest::WriteBackSaga::new(
-            git_ingest_registry.clone(),
-            app_state.neo4j_adapter.graph().clone(),
-        ),
-    );
+    ));
     // Auto-register legacy GITHUB_* env vars as a PAT remote (idempotent).
     if webxr::services::git_ingest::git_ingest_enabled() {
         if let Err(e) = git_ingest_registry.legacy_github_shim().await {
@@ -422,9 +394,12 @@ async fn main() -> std::io::Result<()> {
     }
     let git_ingest_data = web::Data::new(git_ingest_service);
     let git_ingest_registry_data = web::Data::new(git_ingest_registry);
+    let writeback_saga_for_broker = writeback_saga.clone();
     let writeback_saga_data = web::Data::new(writeback_saga);
-    info!("[main] Git Ingest Service initialized (enabled={})",
-          webxr::services::git_ingest::git_ingest_enabled());
+    info!(
+        "[main] Git Ingest Service initialized (enabled={})",
+        webxr::services::git_ingest::git_ingest_enabled()
+    );
 
     // Initialize SchemaService for natural language query support
     info!("[main] Initializing Schema Service...");
@@ -432,16 +407,21 @@ async fn main() -> std::io::Result<()> {
     info!("[main] Schema Service initialized");
     // Initialize Natural Language Query Service
     info!("[main] Initializing Natural Language Query Service...");
-    let perplexity_service = Arc::new(webxr::services::perplexity_service::PerplexityService::new());
-    let nl_query_service = Arc::new(webxr::services::natural_language_query_service::NaturalLanguageQueryService::new(
-        schema_service.clone(),
-        perplexity_service.clone(),
-    ));
+    let perplexity_service =
+        Arc::new(webxr::services::perplexity_service::PerplexityService::new());
+    let nl_query_service = Arc::new(
+        webxr::services::natural_language_query_service::NaturalLanguageQueryService::new(
+            schema_service.clone(),
+            perplexity_service.clone(),
+        ),
+    );
     info!("[main] Natural Language Query Service initialized");
 
     // Initialize Semantic Pathfinding Service
     info!("[main] Initializing Semantic Pathfinding Service...");
-    let pathfinding_service = Arc::new(webxr::services::semantic_pathfinding_service::SemanticPathfindingService::default());
+    let pathfinding_service = Arc::new(
+        webxr::services::semantic_pathfinding_service::SemanticPathfindingService::default(),
+    );
     info!("[main] Semantic Pathfinding Service initialized");
 
     // Initialize Ontology Agent Services (query + mutation + GitHub PR)
@@ -450,25 +430,34 @@ async fn main() -> std::io::Result<()> {
         webxr::adapters::whelk_inference_engine::WhelkInferenceEngine::new(),
     ));
     let github_pr_service = Arc::new(webxr::services::github_pr_service::GitHubPRService::new());
-    let ontology_query_service = Arc::new(webxr::services::ontology_query_service::OntologyQueryService::new(
-        app_state.ontology_repository.clone(),
-        app_state.neo4j_adapter.clone(),
-        whelk_engine.clone(),
-        schema_service.clone(),
-    ));
-    let ontology_mutation_service = Arc::new(webxr::services::ontology_mutation_service::OntologyMutationService::new(
-        app_state.ontology_repository.clone(),
-        whelk_engine.clone(),
-        github_pr_service.clone(),
-    ));
+    let ontology_query_service = Arc::new(
+        webxr::services::ontology_query_service::OntologyQueryService::new(
+            app_state.ontology_repository.clone(),
+            app_state.neo4j_adapter.clone(),
+            whelk_engine.clone(),
+            schema_service.clone(),
+        ),
+    );
+    let ontology_mutation_service = Arc::new(
+        webxr::services::ontology_mutation_service::OntologyMutationService::new(
+            app_state.ontology_repository.clone(),
+            whelk_engine.clone(),
+            github_pr_service.clone(),
+        ),
+    );
     info!("[main] Ontology Agent Services initialized");
 
     info!("--- Starting Data Orchestration Sequence ---");
 
     // Step 1: Sync Files from GitHub.
     info!("[Startup] Step 1: Syncing files from GitHub to local storage...");
-    let github_sync_failed = if let Err(e) = webxr::services::file_service::FileService::initialize_local_storage(settings.clone()).await {
-        error!("[Startup] FAILED to sync from GitHub: {}. Will try local files.", e);
+    let github_sync_failed = if let Err(e) =
+        webxr::services::file_service::FileService::initialize_local_storage(settings.clone()).await
+    {
+        error!(
+            "[Startup] FAILED to sync from GitHub: {}. Will try local files.",
+            e
+        );
         true
     } else {
         info!("[Startup] SUCCESS: Local file storage is synchronized with GitHub.");
@@ -476,12 +465,16 @@ async fn main() -> std::io::Result<()> {
     };
 
     // Step 1b: If GitHub sync failed or metadata is empty, scan local files
-    let metadata = webxr::services::file_service::FileService::load_or_create_metadata().unwrap_or_default();
+    let metadata =
+        webxr::services::file_service::FileService::load_or_create_metadata().unwrap_or_default();
     if github_sync_failed || metadata.is_empty() {
         info!("[Startup] Step 1b: Scanning local markdown files as fallback...");
         match webxr::services::file_service::FileService::scan_local_files_to_metadata() {
             Ok(local_metadata) => {
-                info!("[Startup] SUCCESS: Scanned {} public files from local storage.", local_metadata.len());
+                info!(
+                    "[Startup] SUCCESS: Scanned {} public files from local storage.",
+                    local_metadata.len()
+                );
             }
             Err(e) => {
                 error!("[Startup] FAILED to scan local files: {}", e);
@@ -491,8 +484,15 @@ async fn main() -> std::io::Result<()> {
 
     // Step 2: Load Files into Neo4j.
     info!("[Startup] Step 2: Populating Neo4j from local files...");
-    if let Err(e) = webxr::services::file_service::FileService::load_graph_from_files_into_neo4j(&app_state.neo4j_adapter).await {
-        error!("[Startup] FATAL: Failed to populate Neo4j: {}. Application is in DEGRADED state.", e);
+    if let Err(e) = webxr::services::file_service::FileService::load_graph_from_files_into_neo4j(
+        &app_state.neo4j_adapter,
+    )
+    .await
+    {
+        error!(
+            "[Startup] FATAL: Failed to populate Neo4j: {}. Application is in DEGRADED state.",
+            e
+        );
         app_state.set_degraded(format!("Neo4j init failed: {}", e));
     } else {
         info!("[Startup] SUCCESS: Neo4j database is populated and ready.");
@@ -500,21 +500,13 @@ async fn main() -> std::io::Result<()> {
 
     // Step 3: Notify Actors.
     info!("[Startup] Step 3: Notifying actors to reload graph state from database...");
-    app_state.graph_service_addr.do_send(ReloadGraphFromDatabase);
+    app_state
+        .graph_service_addr
+        .do_send(ReloadGraphFromDatabase);
     info!("[Startup] SUCCESS: Actors notified.");
     info!("--- Data Orchestration Sequence Complete ---");
 
-
-
-
-
-
-
-
-
-
     info!("Skipping bots orchestrator connection during startup (will connect on-demand)");
-
 
     info!("Loading ontology graph from Neo4j...");
 
@@ -542,7 +534,6 @@ async fn main() -> std::io::Result<()> {
         }
     };
 
-
     // CRITICAL FIX: Do NOT send ontology graph via UpdateGraphData!
     // This would overwrite the KG nodes that should be loaded via ReloadGraphFromDatabase.
     // The architecture is: KG nodes (from GitHub sync) with owl_class_iri links to ontology.
@@ -561,16 +552,8 @@ async fn main() -> std::io::Result<()> {
 
     info!("Starting HTTP server...");
 
-    
-    
-    
-    
-    
-    
-    
     info!("Skipping redundant StartSimulation message to GraphServiceSupervisor for debugging stack overflow. Simulation should already be running from supervisor's started() method.");
 
-    
     // --- Briefing + Nostr services ---
     let management_api_client = ManagementApiClient::new(
         std::env::var("MANAGEMENT_API_HOST").unwrap_or_else(|_| "localhost".to_string()),
@@ -584,29 +567,28 @@ async fn main() -> std::io::Result<()> {
 
     let nostr_publisher = NostrBeadPublisher::from_env()
         .map(|p| p.with_neo4j(app_state.neo4j_adapter.graph().clone()));
-    let bead_orchestrator = web::Data::new(std::sync::Arc::new(
-        BeadLifecycleOrchestrator::new(
-            std::sync::Arc::new(NoopBeadStore),
-            nostr_publisher,
-        ),
-    ));
+    let bead_orchestrator = web::Data::new(std::sync::Arc::new(BeadLifecycleOrchestrator::new(
+        std::sync::Arc::new(NoopBeadStore),
+        nostr_publisher,
+    )));
 
     // Spawn bridge as background task (no-op if FORUM_RELAY_URL is not set).
     if let Some(bridge) = NostrBridge::from_env() {
         tokio::spawn(bridge.run());
         info!("[main] NostrBridge spawned");
     } else {
-        info!("[main] NostrBridge not started (VISIONCLAW_NOSTR_PRIVKEY or FORUM_RELAY_URL not set)");
+        info!(
+            "[main] NostrBridge not started (VISIONCLAW_NOSTR_PRIVKEY or FORUM_RELAY_URL not set)"
+        );
     }
 
     // Server's own Nostr identity (kinds 30023/30100/30200/30300).
     // In APP_ENV=production a missing SERVER_NOSTR_PRIVKEY aborts startup — fail fast.
     let server_identity = {
-        let mut si = webxr::services::server_identity::ServerIdentity::from_env()
-            .map_err(|e| {
-                log::error!("[main] ServerIdentity initialisation failed: {e:#}");
-                std::io::Error::new(std::io::ErrorKind::Other, format!("{e:#}"))
-            })?;
+        let mut si = webxr::services::server_identity::ServerIdentity::from_env().map_err(|e| {
+            log::error!("[main] ServerIdentity initialisation failed: {e:#}");
+            std::io::Error::new(std::io::ErrorKind::Other, format!("{e:#}"))
+        })?;
         si.connect_relays().await;
         std::sync::Arc::new(si)
     };
@@ -621,6 +603,7 @@ async fn main() -> std::io::Result<()> {
     let server_identity_data = web::Data::new(server_identity.clone());
     let server_nostr_addr_for_visibility = server_nostr_addr.clone();
     let server_nostr_addr_for_bridge = server_nostr_addr.clone();
+    let server_nostr_addr_for_broker = server_nostr_addr.clone();
     let server_nostr_addr_data = web::Data::new(server_nostr_addr);
 
     // Prometheus metrics registry (task #18) — shared Arc so every handler and
@@ -639,14 +622,12 @@ async fn main() -> std::io::Result<()> {
     // the call site by VISIBILITY_TRANSITIONS.
     let visibility_transition_service = match webxr::services::pod_client::PodClient::from_env() {
         Ok(pc) => {
-            let svc = std::sync::Arc::new(
-                webxr::sovereign::VisibilityTransitionService::new(
-                    std::sync::Arc::new(pc),
-                    app_state.neo4j_adapter.clone(),
-                    server_nostr_addr_for_visibility,
-                    Some(metrics_registry.clone()),
-                ),
-            );
+            let svc = std::sync::Arc::new(webxr::sovereign::VisibilityTransitionService::new(
+                std::sync::Arc::new(pc),
+                app_state.neo4j_adapter.clone(),
+                server_nostr_addr_for_visibility,
+                Some(metrics_registry.clone()),
+            ));
             info!(
                 "[main] VisibilityTransitionService wired (VISIBILITY_TRANSITIONS={})",
                 std::env::var("VISIBILITY_TRANSITIONS").unwrap_or_else(|_| "unset".to_string())
@@ -671,11 +652,9 @@ async fn main() -> std::io::Result<()> {
     // site by BRIDGE_EDGE_ENABLED.
     let bridge_edge_service = {
         let svc = std::sync::Arc::new(
-            webxr::services::bridge_edge::BridgeEdgeService::new(
-                app_state.neo4j_adapter.clone(),
-            )
-            .with_prom(metrics_registry.clone())
-            .with_server_nostr(server_nostr_addr_for_bridge),
+            webxr::services::bridge_edge::BridgeEdgeService::new(app_state.neo4j_adapter.clone())
+                .with_prom(metrics_registry.clone())
+                .with_server_nostr(server_nostr_addr_for_bridge),
         );
         info!(
             "[main] BridgeEdgeService wired with kind-30100 fan-out (BRIDGE_EDGE_ENABLED={})",
@@ -699,9 +678,7 @@ async fn main() -> std::io::Result<()> {
         let event_bus = Arc::new(tokio::sync::RwLock::new(EventBus::new()));
         web::Data::new(Arc::new(PhysicsService::new(adapter, event_bus)))
     };
-    
 
-    
     let bind_address = std::env::var("BIND_ADDRESS").unwrap_or_else(|_| "0.0.0.0".to_string());
     let port = std::env::var("SYSTEM_NETWORK_PORT")
         .ok()
@@ -709,7 +686,6 @@ async fn main() -> std::io::Result<()> {
         .unwrap_or(4000);
     let bind_address = format!("{}:{}", bind_address, port);
 
-    
     let pre_read_ws_settings = {
         let s = settings.read().await;
         PreReadSocketSettings {
@@ -717,8 +693,8 @@ async fn main() -> std::io::Result<()> {
             max_update_rate: s.system.websocket.max_update_rate,
             motion_threshold: s.system.websocket.motion_threshold,
             motion_damping: s.system.websocket.motion_damping,
-            heartbeat_interval_ms: s.system.websocket.heartbeat_interval, 
-            heartbeat_timeout_ms: s.system.websocket.heartbeat_timeout,   
+            heartbeat_interval_ms: s.system.websocket.heartbeat_interval,
+            heartbeat_timeout_ms: s.system.websocket.heartbeat_timeout,
         }
     };
     let pre_read_ws_settings_data = web::Data::new(pre_read_ws_settings);
@@ -743,11 +719,25 @@ async fn main() -> std::io::Result<()> {
     // TransientEdgeActor manages beam+gluon visual lifecycle (≤1ms reap @ 10Hz).
     // Broadcaster fans user_interaction events out to subscribed agentbox WS sessions.
     use actix::Actor;
-    let transient_edge_addr = webxr::actors::transient_edge_actor::TransientEdgeActor::new().start();
+    let transient_edge_addr =
+        webxr::actors::transient_edge_actor::TransientEdgeActor::new().start();
     let agent_events_broadcaster = new_broadcaster();
     let transient_edge_data = web::Data::new(transient_edge_addr);
     let agent_events_broadcaster_data = web::Data::new(agent_events_broadcaster.clone());
     info!("[agent-events] TransientEdgeActor started + broadcaster initialised");
+
+    // PRD-013 G4 — BrokerActor with WriteBackSaga integration.
+    // The actor caches the hot inbox and triggers write-back sagas when
+    // KnowledgeEnrichment cases are approved. The writeback_saga Arc was
+    // created earlier alongside the git-ingest surface.
+    let broker_actor_addr = {
+        webxr::actors::BrokerActor::new()
+            .with_writeback_saga(writeback_saga_for_broker)
+            .with_nostr_actor(server_nostr_addr_for_broker)
+            .start()
+    };
+    let broker_actor_data = web::Data::new(broker_actor_addr);
+    info!("[main] BrokerActor started with WriteBackSaga + Nostr G7 integration");
 
     // PRD-008 §5.3 — XR presence room registry + Schnorr identity verifier.
     let presence_registry = new_room_registry();
@@ -835,7 +825,7 @@ async fn main() -> std::io::Result<()> {
             .wrap(middleware::Logger::default())
             .wrap(cors)
             .wrap(middleware::Compress::default())
-            .wrap(TimeoutMiddleware::new(Duration::from_secs(30))) 
+            .wrap(TimeoutMiddleware::new(Duration::from_secs(30)))
 
 
             .app_data(settings_data.clone())
@@ -874,7 +864,8 @@ async fn main() -> std::io::Result<()> {
             .app_data(physics_service.clone())
             .app_data(git_ingest_data.clone())
             .app_data(git_ingest_registry_data.clone())
-            .app_data(writeback_saga_data.clone());
+            .app_data(writeback_saga_data.clone())
+            .app_data(broker_actor_data.clone());
 
             // ADR-051: optional VisibilityTransitionService web::Data. When
             // absent (PodClient couldn't be constructed at startup), the
@@ -890,8 +881,8 @@ async fn main() -> std::io::Result<()> {
             // ADR-059 §1: bidirectional agent events. Subprotocol vc-agent-events.v1.
             .route("/wss/agent-events", web::get().to(agent_events_handler))
             .route("/ws/speech", web::get().to(speech_socket_handler))
-            .route("/ws/mcp-relay", web::get().to(mcp_relay_handler)) 
-            
+            .route("/ws/mcp-relay", web::get().to(mcp_relay_handler))
+
             .route("/ws/client-messages", web::get().to(client_messages_handler::websocket_client_messages))
             // PRD-008 §5.3: XR presence WebSocket — Quest 3 native APK multi-user sync
             .route("/ws/presence", web::get().to(ws_presence))
@@ -981,6 +972,9 @@ async fn main() -> std::io::Result<()> {
                     // PRD-013: Git Ingest Surface — remote CRUD, sync trigger, write-back
                     .configure(webxr::services::git_ingest::configure_routes)
 
+                    // PRD-013 G7: Enrichment proposal inbound (agentbox git-bridge)
+                    .configure(webxr::handlers::configure_enrichment_proposal_routes)
+
                     // Server Nostr identity — third parties discover the
                     // server's signing pubkey via GET /api/server/identity.
                     .service(
@@ -993,12 +987,11 @@ async fn main() -> std::io::Result<()> {
             app
         })
         .bind(&bind_address)?
-        .workers(4) 
+        .workers(4)
         .run();
 
     let server_handle = server.handle();
 
-    
     let mut sigterm = signal(SignalKind::terminate())?;
     let mut sigint = signal(SignalKind::interrupt())?;
 
