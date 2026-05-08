@@ -1,6 +1,6 @@
 # PRD-013: Solid Pod Git Ingest Surface — Agent-Mediated Knowledge Federation
 
-**Status:** Phases 1-3 Complete (G1-G4 implemented); Phases 4-7 Planned
+**Status:** G1-G7 Implemented; Phase 7 (GitHub REST deprecation) Planned
 **Priority:** P1
 **Author:** Architecture Agent / Dr John O'Hare
 **Date:** 2026-05-08
@@ -509,28 +509,32 @@ All events are NIP-59 gift-wrapped on the wire when crossing relay boundaries. W
 - REST route wired: `POST /api/ingest/writeback`
 - Feature flag: `WRITEBACK_ENABLED=true` opt-in per remote
 
-### Phase 4: Agentbox Bridge (G5) — Planned
+### Phase 4: Agentbox Bridge (G5) — Implemented
 
-- BC20 adapter for agent git clone requests
-- Agent commit collection and broker submission
-- Nostr event relay for approval notifications
+- BC20 adapter: `agentbox/management-api/routes/git-bridge.js`
+- Agent clone, commit collection, and enrichment submission via `/api/enrichment-proposals`
+- Agent DID identity binding (impersonation guard)
+- Webhook HMAC-SHA256 verification, filtered git subprocess env
+- Path traversal and argument injection defences
 - Agent provenance trailers (`Proposed-by: did:nostr:<agent>`)
 
-### Phase 5: Broker Review Surface (G6) — Planned
+### Phase 5: Broker Review Surface (G6) — Implemented
 
 - `enrichment-review-pane.js` in agentbox viewer panes
-- WebSocket bridge from VisionClaw BrokerActor to agentbox management API
-- Two-pane diff rendering (markdown, Turtle, JSON sidecar)
-- Inline approval actions wired to broker REST API
+- `agentbox/management-api/routes/broker-bridge.js`: SSE bridge from VisionClaw BrokerActor
+- Decide endpoint calls `POST /api/enrichment-proposals/{id}/decide`
+- SSE connection cap (MAX_SSE_CONNECTIONS), event type sanitisation
+- .git/ path blocking, 5xx error scrubbing, CORS origin allowlist
 - Real-time case delivery via `broker:new_case` WebSocket event
 
-### Phase 6: Nostr Control Plane (G7) — Planned
+### Phase 6: Nostr Control Plane (G7) — Implemented
 
-- Kind 30300/30301 event emission from VisionClaw ServerNostrActor
+- Kind 30300 event emission from VisionClaw `ServerNostrActor` (`SignBrokerDecision`)
+- BrokerActor emits Nostr events for all KnowledgeEnrichment decisions
 - Agent subscription to approval events via agentbox embedded relay
 - NIP-42 AUTH gate on agentbox relay (did:nostr pubkey allowlist)
 - IS-Envelope v1 mapping for cross-relay event federation
-- Optional: NIP-17 human ↔ agent text coordination
+- HTTPS enforcement for DidNostr auth transport
 
 ### Phase 7: Deprecate GitHub REST API + Convergence — Planned
 
