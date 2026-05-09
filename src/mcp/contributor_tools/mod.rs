@@ -187,10 +187,7 @@ impl ContributorToolRegistry {
         Value::Array(tools)
     }
 
-    pub fn dispatch(
-        &self,
-        invocation: &ToolInvocation,
-    ) -> Result<ToolOutcome, ToolDispatchError> {
+    pub fn dispatch(&self, invocation: &ToolInvocation) -> Result<ToolOutcome, ToolDispatchError> {
         let def = self
             .get(&invocation.tool)
             .ok_or_else(|| ToolDispatchError::UnknownTool(invocation.tool.clone()))?;
@@ -205,11 +202,7 @@ impl ContributorToolRegistry {
 
         // Required-fields shallow check — belt-and-braces even though MCP
         // runtime validates. Keeps the stub honest during integration tests.
-        if let Some(required) = def
-            .input_schema
-            .get("required")
-            .and_then(|r| r.as_array())
-        {
+        if let Some(required) = def.input_schema.get("required").and_then(|r| r.as_array()) {
             let obj = invocation.arguments.as_object().unwrap();
             for req in required {
                 if let Some(key) = req.as_str() {

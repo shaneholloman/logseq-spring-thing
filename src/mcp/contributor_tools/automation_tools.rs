@@ -6,14 +6,13 @@
 use serde_json::json;
 use std::sync::Arc;
 
-use super::{not_implemented_stub, OwnerSlice, ToolDefinition, ToolDispatchError, ToolInvocation, ToolOutcome};
+use super::{not_implemented_stub, OwnerSlice, ToolDefinition, ToolInvocation, ToolOutcome};
 
 pub fn automation_schedule_definition() -> ToolDefinition {
     ToolDefinition {
         name: "automation_schedule",
         aliases: &[],
-        description:
-            "Install a cron definition to /private/automations/ and register it with \
+        description: "Install a cron definition to /private/automations/ and register it with \
              AutomationOrchestratorActor. Delivery targets /inbox/ via a NIP-26 delegated key.",
         input_schema: json!({
             "$schema": "http://json-schema.org/draft-07/schema#",
@@ -123,7 +122,9 @@ pub fn automation_schedule_definition() -> ToolDefinition {
             log::info!(
                 "[automation_schedule] payload accepted: routine={}, target_skill={}, \
                  schedule_type={}; AutomationOrchestratorActor does not exist yet",
-                routine_name, target_skill, if has_cron { "cron" } else { "interval" }
+                routine_name,
+                target_skill,
+                if has_cron { "cron" } else { "interval" }
             );
 
             Ok(not_implemented_stub(

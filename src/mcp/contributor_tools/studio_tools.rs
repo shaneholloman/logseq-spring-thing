@@ -6,7 +6,7 @@
 use serde_json::json;
 use std::sync::Arc;
 
-use super::{not_implemented_stub, OwnerSlice, ToolDefinition, ToolDispatchError, ToolInvocation, ToolOutcome};
+use super::{not_implemented_stub, OwnerSlice, ToolDefinition, ToolInvocation, ToolOutcome};
 
 pub fn studio_context_assemble_definition() -> ToolDefinition {
     ToolDefinition {
@@ -224,7 +224,8 @@ pub fn sensei_nudge_definition() -> ToolDefinition {
             log::info!(
                 "[sensei_nudge] payload accepted: workspace_id={}, focus_kind={}; \
                  backing actor exists (OntologyGuidanceActor) but async wiring pending",
-                workspace_id, focus_kind
+                workspace_id,
+                focus_kind
             );
 
             Ok(not_implemented_stub(
@@ -354,7 +355,8 @@ pub fn share_intent_create_definition() -> ToolDefinition {
             log::info!(
                 "[share_intent_create] payload accepted: artifact_uri={}, target={}; \
                  backing actor exists (ShareOrchestratorActor) but async wiring pending",
-                artifact_uri, target_share_state
+                artifact_uri,
+                target_share_state
             );
 
             Ok(not_implemented_stub(
@@ -455,7 +457,9 @@ pub fn studio_run_skill_definition() -> ToolDefinition {
             log::info!(
                 "[studio_run_skill] payload accepted: workspace_id={}, skill_id={}, dry_run={}; \
                  PartnerOrchestrationActor does not exist yet",
-                workspace_id, skill_id, dry_run
+                workspace_id,
+                skill_id,
+                dry_run
             );
 
             Ok(not_implemented_stub(

@@ -8,7 +8,7 @@
 use serde_json::json;
 use std::sync::Arc;
 
-use super::{not_implemented_stub, OwnerSlice, ToolDefinition, ToolDispatchError, ToolInvocation, ToolOutcome};
+use super::{not_implemented_stub, OwnerSlice, ToolDefinition, ToolInvocation, ToolOutcome};
 
 pub fn skill_publish_definition() -> ToolDefinition {
     ToolDefinition {
@@ -255,7 +255,9 @@ pub fn skill_evals_run_definition() -> ToolDefinition {
             log::info!(
                 "[skill_evals_run] accepted payload: skill_id={}, mode={}, model_tier={}; \
                  backing actor exists (SkillEvaluationActor) but async dispatcher wiring pending",
-                skill_id, mode, model_tier
+                skill_id,
+                mode,
+                model_tier
             );
 
             Ok(not_implemented_stub(
