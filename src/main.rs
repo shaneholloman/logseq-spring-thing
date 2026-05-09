@@ -938,6 +938,9 @@ async fn main() -> std::io::Result<()> {
                     // Health and monitoring
                     .configure(consolidated_health_handler::configure_routes)
 
+                    // Ecosystem health aggregator (concurrent substrate checks)
+                    .configure(webxr::handlers::configure_ecosystem_health_routes)
+
                     // Observability metrics endpoint
                     .configure(metrics_handler::configure_routes)
 

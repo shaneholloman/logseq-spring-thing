@@ -1,6 +1,6 @@
 [package]
 name = "graph-cognition-extract"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 description = "Graph extraction: Logseq block parser, code analysis (ADR-065, ADR-068)"
 license = "MIT"

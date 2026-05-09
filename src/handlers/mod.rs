@@ -98,6 +98,10 @@ pub mod presence_handler;
 pub mod discovery_handler;
 pub use discovery_handler::configure_routes as configure_discovery_routes;
 
+// Ecosystem health aggregator — concurrent substrate liveness checks
+pub mod ecosystem_health_handler;
+pub use ecosystem_health_handler::configure_routes as configure_ecosystem_health_routes;
+
 pub use quic_transport_handler::{
     QuicTransportServer, QuicServerConfig,
     PostcardNodeUpdate, PostcardBatchUpdate, PostcardDeltaUpdate,

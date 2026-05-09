@@ -1,6 +1,7 @@
 use crate::actors::messages::{GetSettings, UpdateSettings};
 use crate::app_state::AppState;
 use crate::config::ClusteringConfiguration;
+use crate::settings::auth_extractor::AuthenticatedUser;
 use crate::{ok_json, error_json, bad_request, service_unavailable};
 use actix_web::{web, HttpRequest, HttpResponse};
 use log::{debug, error, info, warn};
@@ -40,6 +41,7 @@ pub fn config(cfg: &mut web::ServiceConfig) {
 }
 
 async fn configure_clustering(
+    _user: AuthenticatedUser,
     _req: HttpRequest,
     state: web::Data<AppState>,
     payload: web::Json<ClusteringConfiguration>,
@@ -125,6 +127,7 @@ async fn configure_clustering(
 }
 
 async fn start_clustering(
+    _user: AuthenticatedUser,
     _req: HttpRequest,
     state: web::Data<AppState>,
     payload: web::Json<Value>,
@@ -474,6 +477,7 @@ use crate::{ok_json, error_json, service_unavailable};
 }
 
 async fn export_cluster_assignments(
+    _user: AuthenticatedUser,
     _req: HttpRequest,
     state: web::Data<AppState>,
     payload: web::Json<Value>,
@@ -745,6 +749,7 @@ async fn export_cluster_assignments(
 /// { "epsilon": 0.5, "minPoints": 5 }
 /// ```
 async fn run_dbscan(
+    _user: AuthenticatedUser,
     _req: HttpRequest,
     state: web::Data<AppState>,
     payload: web::Json<Value>,

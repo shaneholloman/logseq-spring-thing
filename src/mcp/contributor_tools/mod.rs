@@ -246,18 +246,21 @@ pub fn dispatch_contributor_tool(
     registry.dispatch(invocation)
 }
 
-/// Builds a `ToolOutcome::NotImplemented` carrying the owning slice. Used by
-/// every stub until C1–C5 wire real services.
+/// Builds a `ToolOutcome::NotImplemented` carrying the owning slice and a
+/// tool-specific `reason` describing what service needs to exist and what
+/// wiring is required. Used by stubs until C1-C5 wire real services.
 pub(crate) fn not_implemented_stub(
     owner_slice: OwnerSlice,
     tool_name: &str,
+    reason: &str,
     invocation: &ToolInvocation,
 ) -> ToolOutcome {
     log::warn!(
         "[mcp::contributor_tools] stub dispatch for `{tool}` (owner {owner}); \
-         payload keys={keys:?}",
+         reason={reason}; payload keys={keys:?}",
         tool = tool_name,
         owner = owner_slice.as_str(),
+        reason = reason,
         keys = invocation
             .arguments
             .as_object()
@@ -267,10 +270,10 @@ pub(crate) fn not_implemented_stub(
     ToolOutcome::NotImplemented {
         owner_slice: owner_slice.as_str(),
         message: format!(
-            "Tool `{}` registered but backing service ({}) not yet wired. \
-             Schema validated; payload accepted.",
-            tool_name,
-            owner_slice.as_str()
+            "Tool `{tool}` is registered (owner: {owner}) but not yet wired. {reason}",
+            tool = tool_name,
+            owner = owner_slice.as_str(),
+            reason = reason,
         ),
     }
 }

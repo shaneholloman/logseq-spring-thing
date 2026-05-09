@@ -8,7 +8,7 @@
 use serde_json::json;
 use std::sync::Arc;
 
-use super::{not_implemented_stub, OwnerSlice, ToolDefinition, ToolInvocation, ToolOutcome};
+use super::{not_implemented_stub, OwnerSlice, ToolDefinition, ToolDispatchError, ToolInvocation, ToolOutcome};
 
 pub fn skill_publish_definition() -> ToolDefinition {
     ToolDefinition {
@@ -96,9 +96,27 @@ pub fn skill_publish_definition() -> ToolDefinition {
         }),
         owner_slice: OwnerSlice::C2SkillRegistry,
         dispatcher: Arc::new(|inv: &ToolInvocation| {
+            // Wiring assessment: SkillRegistrySupervisor (src/actors/skill_registry_supervisor.rs)
+            // has RegisterPackage for in-memory registration, but skill_publish requires:
+            //   1. Pod write to /private/skills/{name}/ (SKILL.md + skill.jsonld + skill.evals.jsonl)
+            //      via solid-pod-rs (PodContributorPort production adapter not yet authored)
+            //   2. Public Type Index registration (urn:solid:AgentSkill entry)
+            //   3. NIP-98 content-hash signing
+            //   4. SkillPublished domain event emission
+            // OntologyGuidanceActor (src/actors/ontology_guidance_actor.rs) does not expose a
+            // publish method — it is read-only (ComposeNudge). The ontology_agent_handler
+            // (src/handlers/ontology_agent_handler.rs) has propose/validate endpoints but these
+            // operate on ontology terms, not skill packages.
             Ok(not_implemented_stub(
                 OwnerSlice::C2SkillRegistry,
                 "skill_publish",
+                "Requires: (1) PodContributorPort production adapter (src/adapters/) to write \
+                 SKILL.md + skill.jsonld + skill.evals.jsonl atomically to \
+                 /private/skills/{name}/ via solid-pod-rs; (2) TypeIndexWriter to register the \
+                 skill in the contributor's publicTypeIndex.jsonld as urn:solid:AgentSkill; \
+                 (3) NIP-98 signing service for content-hash attestation; (4) async dispatcher \
+                 upgrade (current ToolDispatcher is sync but SkillRegistrySupervisor::RegisterPackage \
+                 requires Actix actor send). ADR-029 Phase 3 tracks this work.",
                 inv,
             ))
         }),
@@ -140,9 +158,27 @@ pub fn skill_install_definition() -> ToolDefinition {
         }),
         owner_slice: OwnerSlice::C2SkillRegistry,
         dispatcher: Arc::new(|inv: &ToolInvocation| {
+            // Wiring assessment: SkillRegistrySupervisor has RegisterPackage (in-memory),
+            // but skill_install requires:
+            //   1. HTTP fetch of the skill_uri to retrieve the peer's skill.jsonld
+            //   2. Pod write to /private/skills/{cloned-name}/ with version pin
+            //   3. Compatibility scan via SkillCompatibilityScanner (actor exists,
+            //      message ScanAllInstalled at src/actors/skill_compatibility_scanner.rs)
+            //   4. Optional local calibration benchmark via SkillEvaluationActor
+            //   5. SkillInstalled domain event emission
+            // DojoDiscoveryActor (src/actors/dojo_discovery_actor.rs) handles peer crawling
+            // but does not expose a single-skill fetch path.
             Ok(not_implemented_stub(
                 OwnerSlice::C2SkillRegistry,
                 "skill_install",
+                "Requires: (1) PodClient-based skill_uri fetcher to retrieve peer skill.jsonld \
+                 and SKILL.md from the target URI; (2) PodContributorPort write adapter to clone \
+                 the skill into /private/skills/ with version pin; (3) SkillCompatibilityScanner \
+                 integration (actor exists at src/actors/skill_compatibility_scanner.rs, message \
+                 ScanAllInstalled); (4) optional local eval via SkillEvaluationActor \
+                 (src/actors/skill_evaluation_actor.rs, message SubmitEvalRun); (5) async \
+                 dispatcher upgrade. DojoDiscoveryActor handles periodic crawls but not \
+                 single-skill fetch.",
                 inv,
             ))
         }),
@@ -191,9 +227,52 @@ pub fn skill_evals_run_definition() -> ToolDefinition {
         }),
         owner_slice: OwnerSlice::C2SkillRegistry,
         dispatcher: Arc::new(|inv: &ToolInvocation| {
+            // Wiring assessment: SkillRegistrySupervisor (src/actors/skill_registry_supervisor.rs)
+            // exposes RunSkillEval which forwards to SkillEvaluationActor (SubmitEvalRun).
+            // The actor exists and the FSM is scaffolded (Idle -> Allocating -> Running ->
+            // Grading -> Analysing -> Recording -> Idle). However:
+            //   1. The ToolDispatcher type is sync; RunSkillEval requires async actor send
+            //   2. The eval suite needs to be constructed from the tool payload (skill_id lookup
+            //      in the SkillRegistrySupervisor's in-memory package map)
+            //   3. The response needs a benchmark_uri (pod write path) which doesn't exist yet
+            //
+            // Pre-validation: extract and echo back the skill_id and mode so callers can
+            // verify payload round-trips correctly while the async wiring is pending.
+            let args = inv.arguments.as_object();
+            let skill_id = args
+                .and_then(|a| a.get("skill_id"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown");
+            let mode = args
+                .and_then(|a| a.get("mode"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("baseline");
+            let model_tier = args
+                .and_then(|a| a.get("model_tier"))
+                .and_then(|v| v.as_u64())
+                .unwrap_or(2);
+
+            log::info!(
+                "[skill_evals_run] accepted payload: skill_id={}, mode={}, model_tier={}; \
+                 backing actor exists (SkillEvaluationActor) but async dispatcher wiring pending",
+                skill_id, mode, model_tier
+            );
+
             Ok(not_implemented_stub(
                 OwnerSlice::C2SkillRegistry,
                 "skill_evals_run",
+                &format!(
+                    "Backing actor EXISTS: SkillEvaluationActor (src/actors/skill_evaluation_actor.rs) \
+                     accepts SubmitEvalRun via SkillRegistrySupervisor::RunSkillEval. Payload \
+                     validated (skill_id={skill_id}, mode={mode}, tier={model_tier}). Blocked on: \
+                     (1) ToolDispatcher type must become async (Future<Output=Result<ToolOutcome, \
+                     ToolDispatchError>>) so actor mailbox sends are possible; (2) SkillEvalSuite \
+                     construction from the tool payload's suite_id (requires GetPackage lookup in \
+                     SkillRegistrySupervisor); (3) benchmark_uri pod write path for completed results.",
+                    skill_id = skill_id,
+                    mode = mode,
+                    model_tier = model_tier,
+                ),
                 inv,
             ))
         }),
