@@ -142,14 +142,7 @@ pub async fn initialize_event_coordinator(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::Utc;
-use crate::utils::time;
-
-    #[tokio::test]
-    async fn test_event_coordinator_creation() {
-        
-        
-    }
+    use crate::utils::time;
 
     #[test]
     fn test_graph_saved_event() {

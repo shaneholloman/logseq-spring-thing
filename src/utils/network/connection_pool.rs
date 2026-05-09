@@ -634,12 +634,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_pooled_connection_validation() {
-        
-        
-    }
-
-    #[tokio::test]
     async fn test_connection_expiry() {
         let stream = tokio::net::TcpStream::connect("127.0.0.1:80").await;
 
