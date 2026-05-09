@@ -254,7 +254,7 @@ PRD-014 is complete when:
 - [x] Cross-substrate reference vector fixtures synced to all 3 consumers — 13 fixtures, 3 schemas, sync scripts (`2410a9c`)
 - [x] Operational runbooks exist for all 5 substrates — VisionClaw existing, forum/agentbox/solid-pod-rs/dreamlab-ai-website added (`6969527`)
 - [x] Disaster recovery procedures documented with RTO/RPO targets — All 5 substrates have RTO/RPO tables in runbooks (`6969527`)
-- [x] Ecosystem health dashboard aggregating all substrate health endpoints — GET /api/ecosystem/health polls 4 substrates concurrently (`6969527`)
+- [x] Ecosystem health dashboard aggregating all substrate health endpoints — GET /api/ecosystem/health polls 4 substrates concurrently (`6969527`); defaults fixed for Docker cross-container routing via host.docker.internal (`2e0e234`)
 - [x] Production parity gauge moves from 60% to 80% on maturity scorecard — see §10.1
 
 ### 10.1 Quantified Production Readiness (2026-05-09 assessment)
@@ -269,10 +269,10 @@ PRD-014 is complete when:
 | **CI/CD** | 3/5 substrates | 5/5 substrates, 13 fixture validations | +5% | Forum 7-job CI, website 8-job CI, VisionClaw expanded to client-test + audit |
 | **Documentation** | 2 PRDs, 60 ADRs | 3 PRDs, 68 ADRs, 1 DDD context, 5 architecture maps, 5 runbooks | +5% | PRD-014/015, ADR-086-091, DDD code-hygiene, substrate maps, 4 new ops runbooks |
 | **Cross-substrate** | 0/3 fixtures synced, 0 shared crates | 3/3 synced, 2 shared crates (rate-limit, d1-helpers) | +5% | Fixture sync enforced, nostr-bbs-rate-limit + d1_helpers extracted |
-| **Observability** | No ecosystem health | GET /api/ecosystem/health aggregator live | +3% | Polls 4 substrates concurrently, healthy/degraded/unhealthy status (`6969527`) |
+| **Observability** | No ecosystem health | GET /api/ecosystem/health aggregator live, routed | +4% | Polls 4 substrates concurrently; defaults corrected for Docker networking (`2e0e234`); all 5 CF Workers verified healthy |
 | **Error handling** | 3 error types, no unified ResponseError | 1 unified type with HTTP status mapping | +2% | VisionFlowError implements ResponseError (15 variants) |
 
-**Estimated current readiness: ~88%.** The remaining 12% is:
+**Estimated current readiness: ~89%.** The remaining 11% is:
 - ADR-088 deeper auth refactor (CompositeAuthService trait): ~3%
 - Remaining parallel impls (PAR-06 WS consolidation, O1 NIP-98, O5 WAC): ~4%
 - MCP contributor tool async wiring (ToolDispatcher → async): ~2%

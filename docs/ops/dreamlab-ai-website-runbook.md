@@ -4,16 +4,39 @@
 |-------|-------|
 | Substrate | dreamlab-ai-website |
 | Repo | github.com/DreamLab-AI/dreamlab-ai-website |
-| Runtime | Cloudflare Workers (downstream consumer of nostr-rust-forum kit) |
+| Runtime | GitHub Pages (React SPA + Trunk WASM) + Cloudflare Workers (APIs) |
+| Domain | dreamlab-ai.com (CNAME → GitHub Pages) |
 | Status | Pre-cutover (PRD-012, ADR-083) |
+| Verified (2026-05-09) | Main site 200 (9.4KB), /community/ 200 (5.1KB), WASM binary 3.4MB loads OK |
+
+### Live URL Map
+
+| Path | Served by | Content |
+|------|-----------|---------|
+| `/` | GitHub Pages | React SPA (marketing, workshops, research) |
+| `/community/` | GitHub Pages + Trunk WASM | Leptos forum client (nostr-bbs-forum-client) |
+| `wss://dreamlab-nostr-relay.*.workers.dev` | CF Workers | Nostr relay (NIP-01, 16 NIPs) |
+| `https://dreamlab-auth-api.*.workers.dev` | CF Workers | NIP-98 auth + WebAuthn |
+| `https://dreamlab-pod-api.*.workers.dev` | CF Workers | Solid Pod bridge |
+| `https://dreamlab-search-api.*.workers.dev` | CF Workers | Vector search (all-MiniLM-L6-v2) |
+| `https://dreamlab-link-preview.*.workers.dev` | CF Workers | OpenGraph link preview |
+
+### Runtime Env Injection
+
+The deploy workflow (`.github/workflows/deploy.yml`) injects `window.__ENV__` into the community/index.html with all CF Workers URLs. The `.env` file is for local development only and does NOT affect production.
+
+### Deprecated GCR References
+
+The `.env` file previously pointed to Google Cloud Run services which are now dead (503/500). Updated 2026-05-09 to point to CF Workers URLs for local development consistency.
 
 ## Architecture
 
 DreamLab's branded deployment of the nostr-bbs-rs forum kit:
-- Inherits all workers from nostr-rust-forum (auth, relay, pod, search, preview)
-- Custom `community-forum-rs/` overlay (being migrated to kit consumer model)
-- Will gain `forum-config/` package per PRD-012 / ADR-085
-- Static site content (landing pages, docs) served via Cloudflare Pages
+- React marketing site (Vite build, GitHub Pages)
+- Leptos WASM forum client at /community/ (Trunk build, GitHub Pages)
+- 5 CF Workers (relay, auth, pod, search, link-preview) — all verified healthy
+- `forum-config/` package provides operator config (dreamlab.toml per ADR-085)
+- `forum-config/deploy/` contains per-worker wrangler manifests
 
 ## Deployment
 

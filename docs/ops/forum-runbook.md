@@ -7,6 +7,25 @@
 | Repo | github.com/DreamLab-AI/nostr-rust-forum |
 | Version | 3.0.0-rc5 |
 | Runtime | Cloudflare Workers (WASM) |
+| DreamLab deployment | dreamlab-ai.com/community/ (GitHub Pages + CF Workers) |
+| Verified (2026-05-09) | All 5 CF Workers healthy: relay v3.0.0 (16 NIPs), auth 200, pod 200, search healthy (10 vectors), link-preview 200 |
+
+### Production CF Workers Endpoints
+
+| Worker | URL | Status |
+|--------|-----|--------|
+| Relay | wss://dreamlab-nostr-relay.solitary-paper-764d.workers.dev | HEALTHY v3.0.0, 16 NIPs, auth_required=false, restricted_writes=true |
+| Auth | https://dreamlab-auth-api.solitary-paper-764d.workers.dev | HEALTHY (/health → 200) |
+| Pod | https://dreamlab-pod-api.solitary-paper-764d.workers.dev | HEALTHY (/health → 200) |
+| Search | https://dreamlab-search-api.solitary-paper-764d.workers.dev | HEALTHY (10 vectors, all-MiniLM-L6-v2, 384-dim) |
+| Link Preview | https://dreamlab-link-preview.solitary-paper-764d.workers.dev | HEALTHY (/health → 200, OpenGraph extraction working) |
+
+### Deprecated GCR Services (scaled to zero)
+
+The following Google Cloud Run services were the original deployment target and are now superseded by CF Workers. They should be decommissioned:
+- `nostr-relay-617806532906.us-central1.run.app` — 503 (scaled to zero)
+- `embedding-api-617806532906.us-central1.run.app` — 500 (server error)
+- `image-api-617806532906.us-central1.run.app` — 500 (server error)
 
 ## Architecture
 

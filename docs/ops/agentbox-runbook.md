@@ -5,16 +5,25 @@
 | Substrate | agentbox |
 | Repo | github.com/DreamLab-AI/agentbox (submodule in VisionClaw) |
 | Runtime | Nix-based container (Docker) |
-| Ports | 9190 (mgmt API), 8180 (code-server), 5902 (VNC), 2223 (SSH), 8484 (Solid Pod), 9700 (agent events), 9191 (metrics) |
+| Ports (host-mapped) | 9090→9090 (mgmt API), 8080→8080 (code-server), 5901→5901 (VNC), 8484→8484 (Solid Pod), 8888→8888 (Jupyter), 9091→9091 (mgmt secondary), 9700→9700 (agent events) |
+| Internal-only | 7777 (nostr-relay, localhost bind), 9092 (opf-router), 9876 (blender-mcp), 9877 (qgis-mcp) |
+| Container name | agentbox |
+| Docker networks | agentbox_default, docker_ragflow |
+| Verified (2026-05-09) | 13 services RUNNING, management API healthy (uptime 4000s+), Solid Pod 3 npub-scoped pods, nostr-relay v0.9.0 (NIP-42) |
 
 ## Architecture
 
 Sovereign agentic container with pluggable adapter architecture (ADR-005):
-- Management API (Express.js, port 9190)
-- nostr-rs-relay (embedded, NIP-42 AUTH)
-- Solid Pod server (solid-pod-rs, port 8484)
-- Process manager (supervisord)
-- Agent events WebSocket (port 9700)
+- Management API (Express.js, port 9090, NIP-98 auth enforced on /api/v1/)
+- nostr-rs-relay v0.9.0 (port 7777, localhost-only, NIP-42 AUTH, 12 NIPs)
+- Solid Pod server (solid-pod-rs, port 8484, LDP + WebID + OIDC)
+- Process manager (supervisord, 13 services)
+- HTTPS bridge (port 3001)
+- Code Server (port 8080)
+- Jupyter Lab (port 8888)
+- Xvnc desktop (port 5901)
+- MCP tools: blender-mcp (9876), qgis-mcp (9877), imagemagick-mcp, playwright-mcp
+- OPF router (port 9092)
 
 ## Startup / Shutdown
 
