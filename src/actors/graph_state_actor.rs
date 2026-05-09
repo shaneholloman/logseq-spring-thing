@@ -163,43 +163,22 @@ impl GraphStateActor {
     fn remap_to_compact_ids(&mut self) {
         let graph_data = Arc::make_mut(&mut self.graph_data);
 
-        // Build neo4j_id → compact_id mapping
-        let mut neo4j_to_compact: HashMap<u32, u32> = HashMap::with_capacity(graph_data.nodes.len());
-        self.compact_to_neo4j = Vec::with_capacity(graph_data.nodes.len());
+        // Identity mapping: keep original Neo4j IDs throughout so the
+        // binary position stream and REST /api/graph/data share the
+        // same ID space. compact_to_neo4j[i] is the Neo4j ID of the
+        // i-th node (for edge write-back compatibility).
+        self.compact_to_neo4j = graph_data.nodes.iter().map(|n| n.id).collect();
 
-        for (compact_id, node) in graph_data.nodes.iter_mut().enumerate() {
-            let neo4j_id = node.id;
-            let compact = compact_id as u32;
-            neo4j_to_compact.insert(neo4j_id, compact);
-            self.compact_to_neo4j.push(neo4j_id);
-            node.id = compact;
-        }
-
-        // Remap edge source/target
-        for edge in &mut graph_data.edges {
-            if let Some(&compact_src) = neo4j_to_compact.get(&edge.source) {
-                edge.source = compact_src;
-            } else {
-                warn!("Edge source {} has no compact mapping — orphan edge", edge.source);
-            }
-            if let Some(&compact_tgt) = neo4j_to_compact.get(&edge.target) {
-                edge.target = compact_tgt;
-            } else {
-                warn!("Edge target {} has no compact mapping — orphan edge", edge.target);
-            }
-        }
-
-        // Rebuild node_map with compact IDs
+        // Rebuild node_map keyed by original IDs
         let mut new_node_map = HashMap::with_capacity(graph_data.nodes.len());
         for node in &graph_data.nodes {
             new_node_map.insert(node.id, node.clone());
         }
         self.node_map = Arc::new(new_node_map);
 
-        info!(
-            "Remapped {} nodes to compact IDs 0..{} (edges: {})",
-            self.compact_to_neo4j.len(),
-            self.compact_to_neo4j.len().saturating_sub(1),
+        debug!(
+            "Graph loaded: {} nodes (IDs preserved), {} edges",
+            graph_data.nodes.len(),
             graph_data.edges.len()
         );
     }
@@ -767,27 +746,21 @@ impl Actor for GraphStateActor {
 
                     // ADR-014: No fallback edge generation. Edges come from Neo4j.
 
-                    // Remap all node IDs to compact 0..N-1 and translate edge src/tgt.
-                    // This MUST happen before node_map rebuild and classification.
+                    // Rebuild node_map and compact_to_neo4j (identity mapping).
                     act.remap_to_compact_ids();
 
-                    // Update next_node_id to continue from compact range
-                    act.next_node_id.store(act.graph_data.nodes.len() as u32, std::sync::atomic::Ordering::SeqCst);
+                    // Next ID must exceed the max existing Neo4j ID
+                    let max_id = act.graph_data.nodes.iter().map(|n| n.id).max().unwrap_or(0);
+                    act.next_node_id.store(max_id + 1, std::sync::atomic::Ordering::SeqCst);
 
                     // Classify all loaded nodes into type sets (using compact IDs)
                     act.reclassify_all_nodes();
 
-                    // Persist generated edges to Neo4j using ORIGINAL Neo4j IDs (fire-and-forget)
+                    // Persist edges to Neo4j (fire-and-forget) — IDs are
+                    // already the original Neo4j IDs (no remap to undo).
                     if !act.graph_data.edges.is_empty() {
                         let repo = Arc::clone(&act.repository);
-                        // Translate compact edge IDs back to Neo4j IDs for persistence
-                        let c2n = act.compact_to_neo4j.clone();
-                        let edges_to_save: Vec<Edge> = act.graph_data.edges.iter().map(|e| {
-                            let mut neo4j_edge = e.clone();
-                            neo4j_edge.source = c2n.get(e.source as usize).copied().unwrap_or(e.source);
-                            neo4j_edge.target = c2n.get(e.target as usize).copied().unwrap_or(e.target);
-                            neo4j_edge
-                        }).collect();
+                        let edges_to_save: Vec<Edge> = act.graph_data.edges.to_vec();
                         let node_count = act.graph_data.nodes.len();
                         actix::spawn(async move {
                             for edge in &edges_to_save {
@@ -795,13 +768,12 @@ impl Actor for GraphStateActor {
                                     error!("Failed to persist edge {}->{}: {}", edge.source, edge.target, e);
                                 }
                             }
-                            info!("Persisted {} edges to Neo4j for {} nodes", edges_to_save.len(), node_count);
+                            debug!("Persisted {} edges to Neo4j for {} nodes", edges_to_save.len(), node_count);
                         });
                     }
 
-                    info!("GraphStateActor initialized with {} nodes, {} edges from Neo4j (compact IDs 0..{})",
-                          act.graph_data.nodes.len(), act.graph_data.edges.len(),
-                          act.graph_data.nodes.len().saturating_sub(1));
+                    debug!("GraphStateActor initialized with {} nodes, {} edges from Neo4j",
+                          act.graph_data.nodes.len(), act.graph_data.edges.len());
                 } else {
                     warn!("GraphStateActor starting with empty graph due to load failure");
                 }
@@ -1136,40 +1108,35 @@ impl Handler<ReloadGraphFromDatabase> for GraphStateActor {
 
                         // ADR-014: No fallback edge generation. Edges come from Neo4j.
 
-                        // Remap all IDs to compact 0..N-1
+                        // Rebuild node_map (identity mapping, no ID rewrite)
                         act.remap_to_compact_ids();
 
-                        // Update next_node_id
-                        act.next_node_id.store(act.graph_data.nodes.len() as u32, std::sync::atomic::Ordering::SeqCst);
+                        // Next ID must exceed the max existing Neo4j ID
+                        let max_id = act.graph_data.nodes.iter().map(|n| n.id).max().unwrap_or(0);
+                        act.next_node_id.store(max_id + 1, std::sync::atomic::Ordering::SeqCst);
 
                         // Reclassify all nodes after reload (using compact IDs)
                         act.reclassify_all_nodes();
 
-                        // Persist generated edges to Neo4j with original IDs (fire-and-forget)
+                        // Persist edges to Neo4j (fire-and-forget) — IDs
+                        // are the original Neo4j IDs, no translation needed.
                         if !act.graph_data.edges.is_empty() {
                             let repo = Arc::clone(&act.repository);
-                            let c2n = act.compact_to_neo4j.clone();
-                            let edges_to_save: Vec<Edge> = act.graph_data.edges.iter().map(|e| {
-                                let mut neo4j_edge = e.clone();
-                                neo4j_edge.source = c2n.get(e.source as usize).copied().unwrap_or(e.source);
-                                neo4j_edge.target = c2n.get(e.target as usize).copied().unwrap_or(e.target);
-                                neo4j_edge
-                            }).collect();
+                            let edges_to_save: Vec<Edge> = act.graph_data.edges.to_vec();
                             actix::spawn(async move {
                                 for edge in &edges_to_save {
                                     if let Err(e) = repo.add_edge(edge).await {
                                         error!("Failed to persist edge: {}", e);
                                     }
                                 }
-                                info!("Persisted {} generated edges to Neo4j", edges_to_save.len());
+                                debug!("Persisted {} generated edges to Neo4j", edges_to_save.len());
                             });
                         }
 
-                        info!(
-                            "GraphStateActor: State updated after reload - {} nodes, {} edges (compact IDs 0..{})",
+                        debug!(
+                            "GraphStateActor: State updated after reload - {} nodes, {} edges",
                             act.graph_data.nodes.len(),
                             act.graph_data.edges.len(),
-                            act.graph_data.nodes.len().saturating_sub(1),
                         );
                         Ok(())
                     }

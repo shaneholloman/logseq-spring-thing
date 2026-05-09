@@ -5,7 +5,7 @@ use crate::handlers::utils::execute_in_thread;
 use crate::{ok_json, error_json, not_found};
 use crate::AppState;
 use actix_web::{web, Responder};
-use log::{debug, error, info};
+use log::{debug, error};
 use serde::{Deserialize, Serialize};
 
 // Import CQRS handlers
@@ -80,7 +80,7 @@ pub struct BatchPositionsRequest {
 }
 
 pub async fn get_graph_state(state: web::Data<AppState>) -> impl Responder {
-    info!("Received request for complete graph state via CQRS");
+    debug!("Received request for complete graph state via CQRS");
 
     
     let load_handler = LoadGraphHandler::new(state.neo4j_adapter.clone());
@@ -143,7 +143,7 @@ pub async fn get_graph_state(state: web::Data<AppState>) -> impl Responder {
 }
 
 pub async fn get_graph_statistics(state: web::Data<AppState>) -> impl Responder {
-    info!("Received request for graph statistics via CQRS");
+    debug!("Received request for graph statistics via CQRS");
 
     
     let handler = GetGraphStatisticsHandler::new(state.neo4j_adapter.clone());
@@ -162,7 +162,7 @@ pub async fn get_graph_statistics(state: web::Data<AppState>) -> impl Responder 
                 }
             };
 
-            info!("Graph statistics retrieved successfully via CQRS");
+            debug!("Graph statistics retrieved successfully via CQRS");
             ok_json!(statistics)
         }
         Ok(Err(e)) => {
@@ -183,7 +183,7 @@ pub async fn add_node(
 ) -> impl Responder {
     let node = request.into_inner().node;
     let node_id = node.id;
-    info!(
+    debug!(
         "Adding node via CQRS directive: metadata_id={}",
         node.metadata_id
     );
@@ -196,7 +196,7 @@ pub async fn add_node(
 
     match result {
         Ok(Ok(())) => {
-            info!("Node added successfully via CQRS: id={}", node_id);
+            debug!("Node added successfully via CQRS: id={}", node_id);
             ok_json!(serde_json::json!({
                 "success": true,
                 "node_id": node_id
@@ -219,7 +219,7 @@ pub async fn update_node(
     request: web::Json<UpdateNodeRequest>,
 ) -> impl Responder {
     let node = request.into_inner().node;
-    info!("Updating node via CQRS directive: id={}", node.id);
+    debug!("Updating node via CQRS directive: id={}", node.id);
 
     
     let handler = UpdateNodeHandler::new(state.neo4j_adapter.clone());
@@ -229,7 +229,7 @@ pub async fn update_node(
 
     match result {
         Ok(Ok(())) => {
-            info!("Node updated successfully via CQRS");
+            debug!("Node updated successfully via CQRS");
             ok_json!(serde_json::json!({
                 "success": true
             }))
@@ -247,7 +247,7 @@ pub async fn update_node(
 
 pub async fn remove_node(_auth: crate::settings::auth_extractor::AuthenticatedUser, state: web::Data<AppState>, node_id: web::Path<u32>) -> impl Responder {
     let id = node_id.into_inner();
-    info!("Removing node via CQRS directive: id={}", id);
+    debug!("Removing node via CQRS directive: id={}", id);
 
     
     let handler = RemoveNodeHandler::new(state.neo4j_adapter.clone());
@@ -257,7 +257,7 @@ pub async fn remove_node(_auth: crate::settings::auth_extractor::AuthenticatedUs
 
     match result {
         Ok(Ok(())) => {
-            info!("Node removed successfully via CQRS");
+            debug!("Node removed successfully via CQRS");
             ok_json!(serde_json::json!({
                 "success": true
             }))
@@ -275,7 +275,7 @@ pub async fn remove_node(_auth: crate::settings::auth_extractor::AuthenticatedUs
 
 pub async fn get_node(state: web::Data<AppState>, node_id: web::Path<u32>) -> impl Responder {
     let id = node_id.into_inner();
-    info!("Getting node via CQRS query: id={}", id);
+    debug!("Getting node via CQRS query: id={}", id);
 
     
     let handler = GetNodeHandler::new(state.neo4j_adapter.clone());
@@ -296,11 +296,11 @@ pub async fn get_node(state: web::Data<AppState>, node_id: web::Path<u32>) -> im
 
             match node_opt {
                 Some(node) => {
-                    info!("Node found via CQRS: id={}", id);
+                    debug!("Node found via CQRS: id={}", id);
                     ok_json!(node)
                 }
                 None => {
-                    info!("Node not found: id={}", id);
+                    debug!("Node not found: id={}", id);
                     not_found!("Node not found")
                 }
             }
@@ -325,7 +325,7 @@ pub async fn add_edge(
     let edge_id = edge.id.clone();
     let edge_source = edge.source;
     let edge_target = edge.target;
-    info!(
+    debug!(
         "Adding edge via CQRS directive: source={}, target={}",
         edge_source, edge_target
     );
@@ -338,7 +338,7 @@ pub async fn add_edge(
 
     match result {
         Ok(Ok(())) => {
-            info!("Edge added successfully via CQRS: id={}", edge_id);
+            debug!("Edge added successfully via CQRS: id={}", edge_id);
             ok_json!(serde_json::json!({
                 "success": true,
                 "edge_id": edge_id
@@ -357,7 +357,7 @@ pub async fn add_edge(
 
 pub async fn update_edge(_auth: crate::settings::auth_extractor::AuthenticatedUser, state: web::Data<AppState>, request: web::Json<Edge>) -> impl Responder {
     let edge = request.into_inner();
-    info!("Updating edge via CQRS directive: id={}", edge.id);
+    debug!("Updating edge via CQRS directive: id={}", edge.id);
 
     
     let handler = UpdateEdgeHandler::new(state.neo4j_adapter.clone());
@@ -367,7 +367,7 @@ pub async fn update_edge(_auth: crate::settings::auth_extractor::AuthenticatedUs
 
     match result {
         Ok(Ok(())) => {
-            info!("Edge updated successfully via CQRS");
+            debug!("Edge updated successfully via CQRS");
             ok_json!(serde_json::json!({
                 "success": true
             }))
@@ -389,7 +389,7 @@ pub async fn batch_update_positions(
     request: web::Json<BatchPositionsRequest>,
 ) -> impl Responder {
     let positions = request.into_inner().positions;
-    info!(
+    debug!(
         "Batch updating {} positions via CQRS directive",
         positions.len()
     );
@@ -403,7 +403,7 @@ pub async fn batch_update_positions(
 
     match result {
         Ok(Ok(())) => {
-            info!("Positions updated successfully via CQRS");
+            debug!("Positions updated successfully via CQRS");
             ok_json!(serde_json::json!({
                 "success": true
             }))

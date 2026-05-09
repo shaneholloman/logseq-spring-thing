@@ -108,7 +108,7 @@ services:
       VITE_API_PORT: ${VITE_API_PORT:-4000}
       VITE_HMR_PORT: ${VITE_HMR_PORT:-24678}
       # Default: quiet. Set RUST_LOG=debug (or module-specific) in .env when debugging.
-      RUST_LOG: ${RUST_LOG:-warn,webxr=info,webxr::utils::unified_gpu_compute=error,webxr::utils::gpu_diagnostics=warn,webxr::actors::agent_monitor_actor=warn,webxr::actors::graph_state_actor=warn,webxr::adapters::neo4j_ontology_repository=warn,actix_web=warn}
+      RUST_LOG: ${RUST_LOG:-warn,webxr=warn,webxr::main=info,webxr::actors::gpu::force_compute_actor=warn,webxr::actors::client_coordinator_actor=warn,webxr::actors::physics_orchestrator_actor=warn,webxr::actors::graph_state_actor=warn,webxr::actors::agent_monitor_actor=warn,webxr::adapters::neo4j_ontology_repository=warn,webxr::utils::unified_gpu_compute=error,webxr::utils::gpu_diagnostics=warn,actix_web=warn}
       RUST_LOG_REDIRECT: ${RUST_LOG_REDIRECT:-true}
       DOCKER_ENV: ${DOCKER_ENV:-true}
       # Dev-only: bypass Nostr auth for settings writes (never set in production)
@@ -143,6 +143,11 @@ services:
       EMBEDDING_ENDPOINT: ${EMBEDDING_ENDPOINT:-}
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-bge-small-en-v1.5}
       NHOP_MATERIALIZATION_ENABLED: ${NHOP_MATERIALIZATION_ENABLED:-false}
+      # Ecosystem health check URLs (PRD-014)
+      ECOSYSTEM_HEALTH_VISIONCLAW_URL: ${ECOSYSTEM_HEALTH_VISIONCLAW_URL:-http://localhost:4000/api/health}
+      ECOSYSTEM_HEALTH_FORUM_URL: ${ECOSYSTEM_HEALTH_FORUM_URL:-https://dreamlab-nostr-relay.solitary-paper-764d.workers.dev/}
+      ECOSYSTEM_HEALTH_AGENTBOX_URL: ${ECOSYSTEM_HEALTH_AGENTBOX_URL:-http://host.docker.internal:9090/health}
+      ECOSYSTEM_HEALTH_SOLIDPOD_URL: ${ECOSYSTEM_HEALTH_SOLIDPOD_URL:-http://host.docker.internal:8484/.well-known/solid}
       FORUM_RELAY_URL: ${FORUM_RELAY_URL:-}
       # Neo4j Configuration
       NEO4J_URI: ${NEO4J_URI:-bolt://neo4j:7687}
@@ -182,6 +187,8 @@ services:
       # permissions: Read-only file system" error observed on startup.
       - ${HOST_PROJECT_ROOT:-.}/data/markdown:/workspace/ext/data/markdown:rw
       - ${HOST_PROJECT_ROOT:-.}/data/metadata:/workspace/ext/data/metadata:rw
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       # Development: Nginx entry point + API port
       - "${DEV_NGINX_PORT:-3001}:3001"

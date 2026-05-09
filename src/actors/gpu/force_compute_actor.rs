@@ -505,10 +505,12 @@ impl ForceComputeActor {
         let mut pop_counts = [0usize; 3]; // [knowledge, ontology, agent]
         for (i, node) in graph_data.nodes.iter().enumerate() {
             node_indices.insert(node.id, i);
-            // Use compact wire ID (= GPU index) instead of Neo4j ID.
-            // This keeps IDs within 26 bits so binary protocol type flags
-            // in bits 26-31 don't collide with real node IDs.
-            self.gpu_index_to_node_id.push(i as u32);
+            // Wire ID = node.id (which is the Neo4j ID after remap
+            // removal, or a compact ID if remap is active). Either way,
+            // this must match what REST /api/graph/data returns to the
+            // client so the binary position stream and JSON init payload
+            // share the same ID space.
+            self.gpu_index_to_node_id.push(node.id);
             self.gpu_index_to_graph_id.push(node.id);
             self.gpu_index_to_metadata_id.push(node.metadata_id.clone());
 
