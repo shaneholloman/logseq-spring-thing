@@ -44,19 +44,19 @@ fn load_substrate_configs() -> Vec<SubstrateHealthConfig> {
         SubstrateHealthConfig {
             name: "forum".to_string(),
             url: env::var("ECOSYSTEM_HEALTH_FORUM_URL")
-                .unwrap_or_else(|_| "http://localhost:8787/health".to_string()),
+                .unwrap_or_else(|_| "https://dreamlab-nostr-relay.solitary-paper-764d.workers.dev/".to_string()),
             timeout_ms: default_timeout,
         },
         SubstrateHealthConfig {
             name: "agentbox".to_string(),
             url: env::var("ECOSYSTEM_HEALTH_AGENTBOX_URL")
-                .unwrap_or_else(|_| "http://localhost:9190/health".to_string()),
+                .unwrap_or_else(|_| "http://host.docker.internal:9090/health".to_string()),
             timeout_ms: default_timeout,
         },
         SubstrateHealthConfig {
             name: "solidpod".to_string(),
             url: env::var("ECOSYSTEM_HEALTH_SOLIDPOD_URL")
-                .unwrap_or_else(|_| "http://localhost:8484/.well-known/solid".to_string()),
+                .unwrap_or_else(|_| "http://host.docker.internal:8484/.well-known/solid".to_string()),
             timeout_ms: default_timeout,
         },
     ]

@@ -27,6 +27,8 @@ services:
 
   webxr:
     container_name: visionflow_container
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       neo4j:
         condition: service_healthy
@@ -88,6 +90,11 @@ services:
       - EMBEDDING_ENDPOINT=http://xinference:9997/v1/embeddings
       - EMBEDDING_MODEL=bge-small-en-v1.5
       - NHOP_MATERIALIZATION_ENABLED=true
+      # Ecosystem health aggregator (PRD-014)
+      - ECOSYSTEM_HEALTH_VISIONCLAW_URL=http://localhost:4000/api/health
+      - ECOSYSTEM_HEALTH_FORUM_URL=https://dreamlab-nostr-relay.solitary-paper-764d.workers.dev/
+      - ECOSYSTEM_HEALTH_AGENTBOX_URL=http://host.docker.internal:9090/health
+      - ECOSYSTEM_HEALTH_SOLIDPOD_URL=http://host.docker.internal:8484/.well-known/solid
     deploy: # Indentation: 4 spaces
       resources:
         reservations:
