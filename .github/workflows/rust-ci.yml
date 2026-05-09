@@ -108,6 +108,87 @@ jobs:
       - name: Test (native, cpu-only feature set)
         run: cargo test --workspace ${{ env.CARGO_FEATURE_FLAGS }} --no-fail-fast
 
+  # ---------------------------------------------------------------------------
+  # cargo-audit: RustSec advisory database
+  # ---------------------------------------------------------------------------
+  audit:
+    name: Security audit
+    runs-on: ubuntu-latest
+    if: github.repository == 'DreamLab-AI/VisionClaw'
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+      - name: cargo audit
+        run: cargo audit
+
+  # ---------------------------------------------------------------------------
+  # cargo-deny: licence policy + advisories + bans + sources
+  # ---------------------------------------------------------------------------
+  deny:
+    name: cargo-deny
+    runs-on: ubuntu-latest
+    if: github.repository == 'DreamLab-AI/VisionClaw'
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check
+          arguments: --all-features
+
+  # ---------------------------------------------------------------------------
+  # Client (TypeScript/React) — vitest unit tests
+  # ---------------------------------------------------------------------------
+  client-test:
+    name: Client tests (vitest)
+    runs-on: ubuntu-latest
+    if: github.repository == 'DreamLab-AI/VisionClaw'
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: client
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: client/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Run vitest
+        run: npx vitest run --reporter=verbose
+
+  # ---------------------------------------------------------------------------
+  # Client lint — ESLint
+  # ---------------------------------------------------------------------------
+  client-lint:
+    name: Client lint (ESLint)
+    runs-on: ubuntu-latest
+    if: github.repository == 'DreamLab-AI/VisionClaw'
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: client
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: client/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: ESLint
+        run: npm run lint
+
   fixtures-validity:
     name: Master fixtures schema-validity (ADR-082 D4a)
     # Hard gate per ADR-082 D4a: master fixtures at docs/specs/fixtures/
@@ -120,14 +201,13 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v4
-      - name: Verify fixture files exist with non-empty vector arrays
+      - name: Verify all 13 fixture files exist with non-empty vector arrays
         run: |
           set -e
           cd docs/specs/fixtures
-          # The Phase-0 vendored fixtures (paulmillr/nip44, bitcoin/bips,
-          # cyberphone/jcs) MUST exist and parse as JSON with non-empty
-          # vectors. Phase-1 fixtures (nip04/nip19/etc.) are added later.
-          for f in nip44-v2.json bip340-schnorr.json rfc8785-jcs.json; do
+          # All 13 cross-substrate fixtures (Phase 0 + Phase 1) MUST exist,
+          # parse as valid JSON, and have non-empty vectors.
+          for f in *.json; do
             if [ ! -s "$f" ]; then
               echo "::error file=$f::missing or empty fixture"
               exit 1
@@ -136,13 +216,32 @@ jobs:
           import json, sys
           with open('$f') as fh:
               d = json.load(fh)
+          if '_meta' not in d:
+              print('$f missing _meta key', file=sys.stderr)
+              sys.exit(1)
           if 'vectors' not in d:
               print('$f missing vectors key', file=sys.stderr)
               sys.exit(1)
           # vectors may be dict (nip44 v2 nested) or list — both must be non-empty
           v = d['vectors']
-          if not v or (isinstance(v, list) and len(v) < 3):
-              print('$f vectors must have ≥3 entries', file=sys.stderr)
+          if isinstance(v, list):
+              if len(v) < 3:
+                  print(f'$f vectors must have >=3 entries, got {len(v)}', file=sys.stderr)
+                  sys.exit(1)
+          elif isinstance(v, dict):
+              total = 0
+              for bucket in v.values():
+                  if isinstance(bucket, list):
+                      total += len(bucket)
+                  elif isinstance(bucket, dict):
+                      for sub in bucket.values():
+                          if isinstance(sub, list):
+                              total += len(sub)
+              if total < 3:
+                  print(f'$f nested vectors must have >=3 entries total, got {total}', file=sys.stderr)
+                  sys.exit(1)
+          else:
+              print(f'$f vectors must be array or object', file=sys.stderr)
               sys.exit(1)
           print('$f OK')
           "
@@ -162,3 +261,47 @@ jobs:
           fi
           ! grep -E "Pinned commit: \`[0-9a-f]{1,39}[\`\"]" UPSTREAM_PINS.md \
             || (echo "::error::Pinned commit hash must be 40 hex chars"; exit 1)
+
+  # ---------------------------------------------------------------------------
+  # Aggregator — single required status check for branch protection.
+  # Point GitHub branch protection at this job name: "CI required".
+  # ---------------------------------------------------------------------------
+  ci-pass:
+    name: CI required
+    runs-on: ubuntu-latest
+    if: always()
+    needs:
+      - fmt
+      - clippy
+      - test
+      - audit
+      - deny
+      - client-test
+      - client-lint
+      - fixtures-validity
+    steps:
+      - name: Verify all jobs succeeded
+        run: |
+          echo "fmt:              ${{ needs.fmt.result }}"
+          echo "clippy:           ${{ needs.clippy.result }}"
+          echo "test:             ${{ needs.test.result }}"
+          echo "audit:            ${{ needs.audit.result }}"
+          echo "deny:             ${{ needs.deny.result }}"
+          echo "client-test:      ${{ needs.client-test.result }}"
+          echo "client-lint:      ${{ needs.client-lint.result }}"
+          echo "fixtures-validity: ${{ needs.fixtures-validity.result }}"
+
+          for result in \
+            "${{ needs.fmt.result }}" \
+            "${{ needs.clippy.result }}" \
+            "${{ needs.test.result }}" \
+            "${{ needs.audit.result }}" \
+            "${{ needs.deny.result }}" \
+            "${{ needs.client-test.result }}" \
+            "${{ needs.client-lint.result }}" \
+            "${{ needs.fixtures-validity.result }}"; do
+            if [[ "$result" != "success" ]]; then
+              echo "::error::One or more required jobs did not succeed."
+              exit 1
+            fi
+          done
