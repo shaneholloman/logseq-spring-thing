@@ -665,6 +665,8 @@ async fn main() -> std::io::Result<()> {
     };
     let bridge_edge_data = web::Data::new(bridge_edge_service);
 
+    let broker_client_manager_addr = app_state.client_manager_addr.clone();
+    let broker_repository = app_state.broker_repository.clone();
     let app_state_data = web::Data::new(app_state);
     let validation_service = web::Data::new(validation_handler::ValidationService::new());
 
@@ -733,8 +735,8 @@ async fn main() -> std::io::Result<()> {
     // created earlier alongside the git-ingest surface.
     let broker_actor_addr = {
         webxr::actors::BrokerActor::new()
-            .with_client_coordinator(app_state.client_manager_addr.clone())
-            .with_repository(app_state.broker_repository.clone())
+            .with_client_coordinator(broker_client_manager_addr)
+            .with_repository(broker_repository)
             .with_writeback_saga(writeback_saga_for_broker)
             .with_nostr_actor(server_nostr_addr_for_broker)
             .start()
