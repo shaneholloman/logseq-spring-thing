@@ -33,6 +33,7 @@ use crate::models::{
     metadata::MetadataStore,
     node::Node,
 };
+use crate::utils::math;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SemanticConstraintConfig {
@@ -494,21 +495,8 @@ impl SemanticConstraintGenerator {
         }
     }
 
-    
     fn cosine_similarity(&self, vec_a: &[f32], vec_b: &[f32]) -> f32 {
-        if vec_a.len() != vec_b.len() || vec_a.is_empty() {
-            return 0.0;
-        }
-
-        let dot_product: f32 = vec_a.iter().zip(vec_b.iter()).map(|(a, b)| a * b).sum();
-        let norm_a: f32 = vec_a.iter().map(|x| x * x).sum::<f32>().sqrt();
-        let norm_b: f32 = vec_b.iter().map(|x| x * x).sum::<f32>().sqrt();
-
-        if norm_a > 0.0 && norm_b > 0.0 {
-            (dot_product / (norm_a * norm_b)).max(0.0).min(1.0)
-        } else {
-            0.0
-        }
+        math::cosine_similarity(vec_a, vec_b).max(0.0).min(1.0)
     }
 
     

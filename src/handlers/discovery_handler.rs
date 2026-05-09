@@ -12,6 +12,7 @@ use std::sync::Arc;
 use tracing::{info, warn};
 
 use crate::adapters::neo4j_adapter::Neo4jAdapter;
+use crate::utils::math::cosine_similarity;
 use crate::AppState;
 
 // ---------------------------------------------------------------------------
@@ -170,35 +171,6 @@ struct EmbeddedNode {
     kge_embedding: Vec<f32>,
 }
 
-// ---------------------------------------------------------------------------
-// Math utilities
-// ---------------------------------------------------------------------------
-
-/// Cosine similarity between two vectors. Returns 0.0 if either is zero-length.
-pub fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
-    if a.len() != b.len() || a.is_empty() {
-        return 0.0;
-    }
-
-    let mut dot = 0.0f64;
-    let mut norm_a = 0.0f64;
-    let mut norm_b = 0.0f64;
-
-    for (x, y) in a.iter().zip(b.iter()) {
-        let xf = *x as f64;
-        let yf = *y as f64;
-        dot += xf * yf;
-        norm_a += xf * xf;
-        norm_b += yf * yf;
-    }
-
-    let denom = norm_a.sqrt() * norm_b.sqrt();
-    if denom < 1e-12 {
-        return 0.0;
-    }
-
-    (dot / denom) as f32
-}
 
 /// Normalize weights so they sum to 1.0. If both are zero, returns (0.5, 0.5).
 pub fn normalize_weights(content_weight: f32, topology_weight: f32) -> (f32, f32) {
@@ -960,65 +932,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_cosine_similarity_identical_vectors() {
-        let a = vec![1.0, 0.0, 0.0];
-        let b = vec![1.0, 0.0, 0.0];
-        let sim = cosine_similarity(&a, &b);
-        assert!((sim - 1.0).abs() < 1e-6, "Expected 1.0, got {sim}");
-    }
-
-    #[test]
-    fn test_cosine_similarity_orthogonal_vectors() {
-        let a = vec![1.0, 0.0, 0.0];
-        let b = vec![0.0, 1.0, 0.0];
-        let sim = cosine_similarity(&a, &b);
-        assert!(sim.abs() < 1e-6, "Expected 0.0, got {sim}");
-    }
-
-    #[test]
-    fn test_cosine_similarity_opposite_vectors() {
-        let a = vec![1.0, 0.0, 0.0];
-        let b = vec![-1.0, 0.0, 0.0];
-        let sim = cosine_similarity(&a, &b);
-        assert!((sim + 1.0).abs() < 1e-6, "Expected -1.0, got {sim}");
-    }
-
-    #[test]
-    fn test_cosine_similarity_known_vectors() {
-        // 45-degree angle in 2D → cos(45°) ≈ 0.7071
-        let a = vec![1.0, 0.0];
-        let b = vec![1.0, 1.0];
-        let sim = cosine_similarity(&a, &b);
-        let expected = 1.0f32 / 2.0f32.sqrt();
-        assert!(
-            (sim - expected).abs() < 1e-5,
-            "Expected {expected}, got {sim}"
-        );
-    }
-
-    #[test]
-    fn test_cosine_similarity_empty_vectors() {
-        let a: Vec<f32> = vec![];
-        let b: Vec<f32> = vec![];
-        assert_eq!(cosine_similarity(&a, &b), 0.0);
-    }
-
-    #[test]
-    fn test_cosine_similarity_zero_vector() {
-        let a = vec![0.0, 0.0, 0.0];
-        let b = vec![1.0, 2.0, 3.0];
-        let sim = cosine_similarity(&a, &b);
-        assert_eq!(sim, 0.0);
-    }
-
-    #[test]
-    fn test_cosine_similarity_mismatched_lengths() {
-        let a = vec![1.0, 2.0];
-        let b = vec![1.0, 2.0, 3.0];
-        assert_eq!(cosine_similarity(&a, &b), 0.0);
-    }
-
-    #[test]
     fn test_normalize_weights_standard() {
         let (cw, tw) = normalize_weights(0.6, 0.4);
         assert!((cw - 0.6).abs() < 1e-6);
@@ -1072,25 +985,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_cosine_similarity_high_dimensional() {
-        // 384-dim vectors (MiniLM size) — random normalized
-        let mut a = vec![0.0f32; 384];
-        let mut b = vec![0.0f32; 384];
-        // Set a pattern: a and b share first 192 dims
-        for i in 0..384 {
-            a[i] = ((i as f32) * 0.01).sin();
-            b[i] = if i < 192 {
-                a[i]
-            } else {
-                ((i as f32) * 0.03).cos()
-            };
-        }
-        let sim = cosine_similarity(&a, &b);
-        // Should be positive (partial overlap) but less than 1.0
-        assert!(sim > 0.0 && sim < 1.0, "Expected (0,1), got {sim}");
-    }
-
     // ---- normalize_weights edge cases ----
 
     #[test]
@@ -1114,41 +1008,6 @@ mod tests {
         // Both effectively zero, should return (0.5, 0.5)
         assert!((cw - 0.5).abs() < 1e-6);
         assert!((tw - 0.5).abs() < 1e-6);
-    }
-
-    // ---- cosine_similarity numerical stability ----
-
-    #[test]
-    fn test_cosine_similarity_very_small_values() {
-        let a = vec![1e-20f32, 1e-20, 1e-20];
-        let b = vec![1e-20f32, 1e-20, 1e-20];
-        let sim = cosine_similarity(&a, &b);
-        // f64 accumulation handles this; should return ~1.0
-        assert!((sim - 1.0).abs() < 1e-4, "Expected ~1.0, got {sim}");
-    }
-
-    #[test]
-    fn test_cosine_similarity_large_values() {
-        let a = vec![1e30f32, 0.0, 0.0];
-        let b = vec![1e30f32, 0.0, 0.0];
-        let sim = cosine_similarity(&a, &b);
-        assert!((sim - 1.0).abs() < 1e-4, "Expected ~1.0, got {sim}");
-    }
-
-    #[test]
-    fn test_cosine_similarity_single_element() {
-        let a = vec![5.0f32];
-        let b = vec![3.0f32];
-        let sim = cosine_similarity(&a, &b);
-        assert!((sim - 1.0).abs() < 1e-6, "Parallel single-dim should be 1.0");
-    }
-
-    #[test]
-    fn test_cosine_similarity_negative_parallel() {
-        let a = vec![5.0f32];
-        let b = vec![-3.0f32];
-        let sim = cosine_similarity(&a, &b);
-        assert!((sim + 1.0).abs() < 1e-6, "Anti-parallel single-dim should be -1.0");
     }
 
     // ---- DiscoveryQuery deserialization ----

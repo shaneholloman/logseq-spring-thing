@@ -6,6 +6,7 @@
 //!
 //! Integrates with Neo4j to index OntologyClass nodes and perform similarity search.
 
+use crate::utils::math::cosine_similarity;
 use log::{debug, info, warn};
 use neo4rs::Graph;
 use reqwest::Client;
@@ -529,28 +530,6 @@ fn build_embedding_text(preferred_term: &str, definition: &str, scope_note: &str
     parts.join(". ")
 }
 
-/// Compute cosine similarity between two vectors.
-/// Returns 0.0 if either vector has zero norm.
-pub fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
-    debug_assert_eq!(a.len(), b.len(), "Vectors must have equal length");
-
-    let mut dot = 0.0f32;
-    let mut norm_a = 0.0f32;
-    let mut norm_b = 0.0f32;
-
-    for (x, y) in a.iter().zip(b.iter()) {
-        dot += x * y;
-        norm_a += x * x;
-        norm_b += y * y;
-    }
-
-    let denom = norm_a.sqrt() * norm_b.sqrt();
-    if denom < f32::EPSILON {
-        return 0.0;
-    }
-
-    dot / denom
-}
 
 /// Compute L2 norm of a vector.
 fn l2_norm(v: &[f32]) -> f32 {
@@ -564,67 +543,6 @@ fn l2_norm(v: &[f32]) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_cosine_similarity_identical() {
-        let a = vec![1.0, 0.0, 0.0];
-        let b = vec![1.0, 0.0, 0.0];
-        let sim = cosine_similarity(&a, &b);
-        assert!((sim - 1.0).abs() < 1e-6);
-    }
-
-    #[test]
-    fn test_cosine_similarity_orthogonal() {
-        let a = vec![1.0, 0.0, 0.0];
-        let b = vec![0.0, 1.0, 0.0];
-        let sim = cosine_similarity(&a, &b);
-        assert!(sim.abs() < 1e-6);
-    }
-
-    #[test]
-    fn test_cosine_similarity_opposite() {
-        let a = vec![1.0, 0.0, 0.0];
-        let b = vec![-1.0, 0.0, 0.0];
-        let sim = cosine_similarity(&a, &b);
-        assert!((sim + 1.0).abs() < 1e-6);
-    }
-
-    #[test]
-    fn test_cosine_similarity_scaled() {
-        let a = vec![3.0, 4.0];
-        let b = vec![6.0, 8.0]; // same direction, different magnitude
-        let sim = cosine_similarity(&a, &b);
-        assert!((sim - 1.0).abs() < 1e-6);
-    }
-
-    #[test]
-    fn test_cosine_similarity_zero_vector() {
-        let a = vec![0.0, 0.0, 0.0];
-        let b = vec![1.0, 2.0, 3.0];
-        let sim = cosine_similarity(&a, &b);
-        assert_eq!(sim, 0.0);
-    }
-
-    #[test]
-    fn test_cosine_similarity_384_dim() {
-        // Simulate two normalized 384-dim vectors
-        let mut a = vec![0.0f32; EMBEDDING_DIM];
-        let mut b = vec![0.0f32; EMBEDDING_DIM];
-
-        // Set up partially overlapping directions
-        for i in 0..192 {
-            a[i] = 1.0;
-            b[i] = 1.0;
-        }
-        for i in 192..384 {
-            a[i] = 1.0;
-            b[i] = -1.0;
-        }
-
-        let sim = cosine_similarity(&a, &b);
-        // Expected: dot = 192 - 192 = 0, norms = sqrt(384) each
-        assert!(sim.abs() < 1e-6);
-    }
 
     #[test]
     fn test_build_embedding_text_full() {

@@ -10,6 +10,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;
 
+use crate::utils::math::cosine_similarity;
 use neo4rs::{query, Graph};
 use rand::Rng;
 use rayon::prelude::*;
@@ -531,16 +532,6 @@ pub fn l2_normalize(v: &[f32]) -> Vec<f32> {
     v.iter().map(|x| x / norm).collect()
 }
 
-/// Cosine similarity between two vectors.
-pub fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
-    let dot: f32 = a.iter().zip(b.iter()).map(|(x, y)| x * y).sum();
-    let norm_a = a.iter().map(|x| x.powi(2)).sum::<f32>().sqrt();
-    let norm_b = b.iter().map(|x| x.powi(2)).sum::<f32>().sqrt();
-    if norm_a < 1e-8 || norm_b < 1e-8 {
-        return 0.0;
-    }
-    dot / (norm_a * norm_b)
-}
 
 /// Corrupt a triple by replacing head or tail with a random entity.
 fn corrupt_triple(triple: &Triple, num_entities: usize, rng: &mut impl Rng) -> Triple {
@@ -636,38 +627,6 @@ mod tests {
         assert!(
             (norm - 1.0).abs() < 1e-5,
             "128-dim normalized vector should have unit norm, got {norm}"
-        );
-    }
-
-    #[test]
-    fn test_cosine_similarity_identical() {
-        let v = vec![1.0, 2.0, 3.0, 4.0];
-        let sim = cosine_similarity(&v, &v);
-        assert!(
-            (sim - 1.0).abs() < 1e-6,
-            "Identical vectors should have cosine similarity 1.0, got {sim}"
-        );
-    }
-
-    #[test]
-    fn test_cosine_similarity_orthogonal() {
-        let a = vec![1.0, 0.0, 0.0];
-        let b = vec![0.0, 1.0, 0.0];
-        let sim = cosine_similarity(&a, &b);
-        assert!(
-            sim.abs() < 1e-6,
-            "Orthogonal vectors should have cosine similarity 0.0, got {sim}"
-        );
-    }
-
-    #[test]
-    fn test_cosine_similarity_opposite() {
-        let a = vec![1.0, 2.0, 3.0];
-        let b = vec![-1.0, -2.0, -3.0];
-        let sim = cosine_similarity(&a, &b);
-        assert!(
-            (sim + 1.0).abs() < 1e-6,
-            "Opposite vectors should have cosine similarity -1.0, got {sim}"
         );
     }
 

@@ -41,6 +41,7 @@ pub mod socket_flow_messages;
 pub mod standard_websocket_messages;
 pub mod unified_gpu_compute;
 pub mod time;
+pub mod math;
 pub mod validation;
 pub mod websocket_heartbeat;
 pub mod nip98; // NIP-98 HTTP authentication for Solid Server integration

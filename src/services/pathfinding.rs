@@ -6,6 +6,7 @@
 
 use crate::models::graph::GraphData;
 use crate::models::node::Node;
+use crate::utils::math;
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::collections::{BinaryHeap, HashMap, HashSet};
@@ -482,23 +483,8 @@ pub trait EmbeddingProvider: Send + Sync {
     /// Produce an embedding vector for a text string.
     fn embed_text(&self, text: &str) -> Result<Vec<f32>, String>;
 
-    /// Cosine similarity between two vectors. Returns value in [-1, 1].
     fn cosine_similarity(&self, a: &[f32], b: &[f32]) -> f32 {
-        if a.len() != b.len() || a.is_empty() {
-            return 0.0;
-        }
-        let (mut dot, mut mag_a, mut mag_b) = (0.0f32, 0.0f32, 0.0f32);
-        for i in 0..a.len() {
-            dot += a[i] * b[i];
-            mag_a += a[i] * a[i];
-            mag_b += b[i] * b[i];
-        }
-        let denom = mag_a.sqrt() * mag_b.sqrt();
-        if denom < 1e-9 {
-            0.0
-        } else {
-            dot / denom
-        }
+        math::cosine_similarity(a, b)
     }
 }
 
