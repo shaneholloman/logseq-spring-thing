@@ -1,4 +1,12 @@
 /**
+ * @deprecated DORMANT SERVICE -- imported only by gnnPhysicsConnector.ts,
+ * whose sole export (checkAndApplyGNNPhysics) is never called from any
+ * component, hook, or render loop. The settings UI toggle
+ * (qualityGates.gnnPhysics) exists in unifiedSettingsConfig.ts and
+ * settings.ts, but no code path reads that flag and invokes computation.
+ * 335 lines of unused GAT implementation. Consider removing in the next
+ * dead-code cleanup pass.  Audited 2026-05-09.
+ *
  * GNN-Enhanced Physics Module
  *
  * Implements a simplified Graph Attention Network (GAT) for computing

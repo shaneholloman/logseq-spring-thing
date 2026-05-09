@@ -1,4 +1,10 @@
-
+/**
+ * @deprecated DORMANT SERVICE -- registered in InnovationManager but never
+ * imported or called by any UI component, hook, or other module outside of
+ * InnovationManager.initialize(). 677 lines of unused code (graph diff,
+ * node matching, structural similarity analysis). Consider removing in
+ * the next dead-code cleanup pass.  Audited 2026-05-09.
+ */
 
 import { Vector3, Color } from 'three';
 import { createLogger } from '../../../utils/loggerConfig';

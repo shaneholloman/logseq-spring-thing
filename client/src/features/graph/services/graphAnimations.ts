@@ -1,4 +1,11 @@
-
+/**
+ * @deprecated DORMANT SERVICE -- registered in InnovationManager and its
+ * start()/stop()/dispose() methods are called from InnovationManager, but
+ * no UI component or hook outside InnovationManager ever imports or invokes
+ * graphAnimations. 661 lines of unused code (transition animations, camera
+ * flight paths, morphing, particle effects). Consider removing in the next
+ * dead-code cleanup pass.  Audited 2026-05-09.
+ */
 
 import { Vector3, Color, Camera, Quaternion, AnimationMixer, Clock } from 'three';
 import { createLogger } from '../../../utils/loggerConfig';

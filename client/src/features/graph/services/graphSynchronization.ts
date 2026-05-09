@@ -1,4 +1,10 @@
-
+/**
+ * @deprecated DORMANT SERVICE -- registered in InnovationManager but never
+ * imported or called by any UI component, hook, or other module outside of
+ * InnovationManager.initialize(). 276 lines of unused code (camera sync,
+ * selection sync, cross-graph state synchronisation). Consider removing
+ * in the next dead-code cleanup pass.  Audited 2026-05-09.
+ */
 
 import { Camera, Vector3, OrthographicCamera, PerspectiveCamera } from 'three';
 import { createLogger } from '../../../utils/loggerConfig';

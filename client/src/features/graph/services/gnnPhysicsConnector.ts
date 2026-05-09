@@ -1,4 +1,10 @@
 /**
+ * @deprecated DORMANT SERVICE -- checkAndApplyGNNPhysics() is exported but
+ * never imported or called from any component, hook, or render loop in the
+ * codebase. The settings toggle (qualityGates.gnnPhysics) exists but is
+ * unconnected. 52 lines of unused glue code. Consider removing alongside
+ * gnnPhysics.ts in the next dead-code cleanup pass.  Audited 2026-05-09.
+ *
  * GNN Physics Connector
  *
  * Connects the GNN physics module to VisionFlow's settings system.

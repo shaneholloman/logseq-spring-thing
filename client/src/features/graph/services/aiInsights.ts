@@ -1,4 +1,12 @@
-
+/**
+ * @deprecated DORMANT SERVICE -- registered in InnovationManager but never
+ * called by any UI component or hook outside of InnovationManager.initialize().
+ * The only external surface referencing the name "aiInsights" is a local state
+ * variable in GraphOptimisationTab.tsx, which does NOT import this module.
+ * 1,109 lines of unused code (cluster detection, pattern recognition, anomaly
+ * detection, layout optimisation). Consider removing in the next dead-code
+ * cleanup pass.  Audited 2026-05-09.
+ */
 
 import { Vector3, Color } from 'three';
 import { createLogger } from '../../../utils/loggerConfig';

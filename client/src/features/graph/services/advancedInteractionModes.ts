@@ -1,4 +1,10 @@
-
+/**
+ * @deprecated DORMANT SERVICE -- registered in InnovationManager but never
+ * imported or called by any UI component, hook, or other module outside of
+ * InnovationManager.initialize(). 862 lines of unused code (time-travel,
+ * collaborative editing, VR/AR spatial UI, guided exploration). Consider
+ * removing in the next dead-code cleanup pass.  Audited 2026-05-09.
+ */
 
 import { Vector3, Color, Camera, Raycaster, Object3D } from 'three';
 import { createLogger } from '../../../utils/loggerConfig';
