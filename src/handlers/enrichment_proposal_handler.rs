@@ -20,6 +20,7 @@ use crate::actors::broker_actor::BrokerActor;
 use crate::actors::messages::broker_messages::SubmitBrokerCase;
 use crate::actors::server_nostr_actor::{ServerNostrActor, SignEnrichmentProposal};
 use crate::domain::broker::{BrokerCase, CaseCategory, SubjectKind, SubjectRef};
+use crate::settings::auth_extractor::AuthenticatedUser;
 
 // ---------------------------------------------------------------------------
 // Request / response types
@@ -87,6 +88,7 @@ pub struct EnrichmentProposalResponse {
 /// Creates a `KnowledgeEnrichment` broker case and optionally signs a kind
 /// 30301 Nostr event. Returns 201 with the case id on success.
 pub async fn submit_enrichment_proposal(
+    _user: AuthenticatedUser,
     broker: web::Data<Addr<BrokerActor>>,
     nostr: Option<web::Data<Addr<ServerNostrActor>>>,
     body: web::Json<EnrichmentProposalRequest>,
@@ -216,6 +218,7 @@ pub struct DecideEnrichmentRequest {
 /// Routes the decision through the `BrokerActor` (which triggers WriteBackSaga
 /// for approved `KnowledgeEnrichment` cases and emits kind 30300 events).
 pub async fn decide_enrichment_proposal(
+    _user: AuthenticatedUser,
     broker: web::Data<Addr<BrokerActor>>,
     path: web::Path<String>,
     body: web::Json<DecideEnrichmentRequest>,
@@ -294,4 +297,216 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
                 web::post().to(decide_enrichment_proposal),
             ),
     );
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ---- EnrichmentProposalRequest deserialization ----
+
+    #[test]
+    fn test_enrichment_proposal_request_minimal() {
+        let json = r#"{
+            "agent_did": "did:nostr:abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
+            "entity_urn": "urn:visionclaw:concept:quantum-computing",
+            "enrichment_type": "property_addition",
+            "target_path": "pages/Quantum_Computing.md",
+            "reasoning_hash": "abc123def456"
+        }"#;
+        let req: EnrichmentProposalRequest = serde_json::from_str(json).unwrap();
+        assert!(req.agent_did.starts_with("did:nostr:"));
+        assert_eq!(req.enrichment_type, "property_addition");
+        assert_eq!(req.priority, 50); // default_priority()
+        assert!(req.title.is_none());
+        assert!(req.summary.is_none());
+        assert!(req.content.is_none());
+        assert!(req.commit_subject.is_none());
+        assert!(req.commit_body.is_none());
+        assert!(req.remote_id.is_none());
+    }
+
+    #[test]
+    fn test_enrichment_proposal_request_full() {
+        let json = r#"{
+            "agent_did": "did:nostr:aaaa",
+            "entity_urn": "urn:visionclaw:concept:ai",
+            "enrichment_type": "ontology_promotion",
+            "target_path": "pages/AI.md",
+            "reasoning_hash": "deadbeef",
+            "title": "Promote AI concept",
+            "summary": "AI should be top-level ontology class",
+            "priority": 90,
+            "content": "Artificial Intelligence overview content",
+            "commit_subject": "feat: promote AI to owl:Class",
+            "commit_body": "This enrichment promotes...",
+            "remote_id": "remote-github-001"
+        }"#;
+        let req: EnrichmentProposalRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.priority, 90);
+        assert_eq!(req.title.as_deref(), Some("Promote AI concept"));
+        assert!(req.content.is_some());
+        assert!(req.commit_subject.is_some());
+        assert!(req.remote_id.is_some());
+    }
+
+    #[test]
+    fn test_default_priority() {
+        assert_eq!(default_priority(), 50);
+    }
+
+    // ---- EnrichmentProposalResponse serialization ----
+
+    #[test]
+    fn test_enrichment_response_serialization() {
+        let resp = EnrichmentProposalResponse {
+            case_id: "enrich-test-001".to_string(),
+            status: "submitted",
+        };
+        let json = serde_json::to_string(&resp).unwrap();
+        assert!(json.contains("enrich-test-001"));
+        assert!(json.contains("submitted"));
+    }
+
+    // ---- DecideEnrichmentRequest deserialization ----
+
+    #[test]
+    fn test_decide_request_approve() {
+        let json = r#"{
+            "outcome": "approve",
+            "broker_pubkey": "abcdef",
+            "reasoning": "Looks correct"
+        }"#;
+        let req: DecideEnrichmentRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.outcome, "approve");
+        assert_eq!(req.broker_pubkey, "abcdef");
+        assert_eq!(req.reasoning, "Looks correct");
+    }
+
+    #[test]
+    fn test_decide_request_with_empty_reasoning() {
+        let json = r#"{
+            "outcome": "reject",
+            "broker_pubkey": "abcdef"
+        }"#;
+        let req: DecideEnrichmentRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.outcome, "reject");
+        assert_eq!(req.reasoning, ""); // default
+    }
+
+    // ---- BrokerCase construction logic ----
+
+    #[test]
+    fn test_broker_case_construction_from_request() {
+        let req = EnrichmentProposalRequest {
+            agent_did: "did:nostr:1234".to_string(),
+            entity_urn: "urn:visionclaw:concept:test".to_string(),
+            enrichment_type: "embedding_update".to_string(),
+            target_path: "pages/Test.md".to_string(),
+            reasoning_hash: "hash123".to_string(),
+            title: None,
+            summary: None,
+            priority: 75,
+            content: Some("test content".to_string()),
+            commit_subject: Some("feat: test".to_string()),
+            commit_body: None,
+            remote_id: None,
+        };
+
+        let case_id = "enrich-test-case";
+        let title = req
+            .title
+            .clone()
+            .unwrap_or_else(|| format!("{} on {}", req.enrichment_type, req.entity_urn));
+        let summary = req
+            .summary
+            .clone()
+            .unwrap_or_else(|| format!("Agent {} proposes {}", req.agent_did, req.enrichment_type));
+
+        let mut case = BrokerCase::new(
+            case_id,
+            CaseCategory::KnowledgeEnrichment,
+            SubjectRef {
+                kind: SubjectKind::Opaque,
+                id: req.entity_urn.clone(),
+                from_state: None,
+                to_state: None,
+            },
+            &title,
+            &summary,
+            &req.agent_did,
+            req.priority,
+        );
+
+        case.metadata
+            .insert("entity_urn".to_string(), req.entity_urn.clone());
+        case.metadata
+            .insert("enrichment_type".to_string(), req.enrichment_type.clone());
+        case.metadata
+            .insert("target_path".to_string(), req.target_path.clone());
+        case.metadata
+            .insert("reasoning_hash".to_string(), req.reasoning_hash.clone());
+        if let Some(ref content) = req.content {
+            case.metadata.insert("content".to_string(), content.clone());
+        }
+        if let Some(ref subject) = req.commit_subject {
+            case.metadata
+                .insert("commit_subject".to_string(), subject.clone());
+        }
+
+        assert_eq!(case.id, "enrich-test-case");
+        assert_eq!(case.category, CaseCategory::KnowledgeEnrichment);
+        assert_eq!(case.subject.kind, SubjectKind::Opaque);
+        assert_eq!(case.priority, 75);
+        assert_eq!(case.title, "embedding_update on urn:visionclaw:concept:test");
+        assert!(case.summary.contains("did:nostr:1234"));
+        assert_eq!(case.metadata.get("content").unwrap(), "test content");
+        assert_eq!(case.metadata.get("commit_subject").unwrap(), "feat: test");
+        assert!(!case.metadata.contains_key("commit_body"));
+        assert!(!case.metadata.contains_key("remote_id"));
+    }
+
+    // ---- Decision outcome parsing (matches handler logic) ----
+
+    #[test]
+    fn test_decision_outcome_parsing() {
+        use crate::domain::broker::DecisionOutcome;
+
+        let cases = vec![
+            ("approve", true),
+            ("reject", true),
+            ("amend", true),
+            ("delegate", true),
+            ("promote", true),
+            ("unknown", false),
+            ("", false),
+        ];
+
+        for (input, should_match) in cases {
+            let result = match input {
+                "approve" => Some(DecisionOutcome::Approve),
+                "reject" => Some(DecisionOutcome::Reject),
+                "amend" => Some(DecisionOutcome::Amend {
+                    diff: "test".to_string(),
+                }),
+                "delegate" => Some(DecisionOutcome::Delegate {
+                    delegate_to: "test".to_string(),
+                }),
+                "promote" => Some(DecisionOutcome::Promote {
+                    pattern_id: "test".to_string(),
+                }),
+                _ => None,
+            };
+            assert_eq!(
+                result.is_some(),
+                should_match,
+                "Failed for input: '{}'",
+                input
+            );
+        }
+    }
 }

@@ -294,3 +294,218 @@ pub fn create_test_reasoning_service() -> crate::services::ontology_reasoning_se
     let repo = create_test_ontology_repo();
     crate::services::ontology_reasoning_service::OntologyReasoningService::new(engine, repo)
 }
+
+// ---------------------------------------------------------------------------
+// Graph fixture factories
+// ---------------------------------------------------------------------------
+
+/// Create a test `Node` with sensible defaults.
+/// The `id` field is deterministic (from `provided_id`), avoiding the global
+/// `NEXT_NODE_ID` atomic counter so tests don't interfere with each other.
+pub fn make_test_node(id: u32, label: &str) -> crate::models::node::Node {
+    use crate::utils::socket_flow_messages::BinaryNodeData;
+    crate::models::node::Node {
+        id,
+        metadata_id: format!("test-meta-{}", id),
+        label: label.to_string(),
+        data: BinaryNodeData {
+            node_id: id,
+            x: 0.0,
+            y: 0.0,
+            z: 0.0,
+            vx: 0.0,
+            vy: 0.0,
+            vz: 0.0,
+        },
+        x: Some(0.0),
+        y: Some(0.0),
+        z: Some(0.0),
+        vx: Some(0.0),
+        vy: Some(0.0),
+        vz: Some(0.0),
+        mass: Some(1.0),
+        owl_class_iri: None,
+        metadata: HashMap::new(),
+        file_size: 0,
+        node_type: None,
+        size: None,
+        color: None,
+        weight: None,
+        group: None,
+        user_data: None,
+        visibility: crate::models::node::Visibility::Public,
+        owner_pubkey: None,
+        opaque_id: None,
+        pod_url: None,
+        canonical_iri: None,
+        visionclaw_uri: None,
+        rdf_type: None,
+        same_as: None,
+        domain: None,
+        content_hash: None,
+        quality_score: None,
+        authority_score: None,
+        preferred_term: None,
+        graph_source: None,
+        kind_id: None,
+    }
+}
+
+/// Create a test `Edge` between two node IDs with a given weight.
+pub fn make_test_edge(source: u32, target: u32, weight: f32) -> crate::models::edge::Edge {
+    crate::models::edge::Edge::new(source, target, weight)
+}
+
+/// Create a `GraphData` with the given number of nodes and a chain of edges.
+/// Useful for layout and physics tests.
+pub fn make_test_graph(node_count: u32) -> GraphData {
+    let mut gd = GraphData::new();
+    for i in 1..=node_count {
+        gd.nodes.push(make_test_node(i, &format!("node_{}", i)));
+    }
+    for i in 1..node_count {
+        gd.edges.push(make_test_edge(i, i + 1, 1.0));
+    }
+    gd
+}
+
+/// Create a test `UserContext` for handler tests.
+pub fn make_test_user_context() -> crate::types::user_context::UserContext {
+    crate::types::user_context::UserContext {
+        user_id: "npub1testuser00000000000000000000000000000000000000000000000000".to_string(),
+        pubkey: "a".repeat(64),
+        display_name: "test_user".to_string(),
+        session_id: "test-session-001".to_string(),
+        is_power_user: false,
+    }
+}
+
+/// Create a test `NostrUser` with deterministic values.
+pub fn make_test_nostr_user(pubkey: &str) -> crate::models::protected_settings::NostrUser {
+    crate::models::protected_settings::NostrUser {
+        pubkey: pubkey.to_string(),
+        npub: format!("npub1{}", &pubkey[..pubkey.len().min(58)]),
+        is_power_user: false,
+        api_keys: crate::models::protected_settings::ApiKeys::default(),
+        last_seen: crate::utils::time::timestamp_seconds(),
+        session_token: Some("test-token-12345".to_string()),
+    }
+}
+
+/// Create a test `BriefingRequest` with standard values.
+pub fn make_test_briefing_request() -> crate::types::user_context::BriefingRequest {
+    crate::types::user_context::BriefingRequest {
+        content: "Test briefing content for analysis".to_string(),
+        roles: vec!["architect".to_string(), "dev".to_string()],
+        version: Some("v0.1.0".to_string()),
+        brief_type: Some("feature-request".to_string()),
+        slug: Some("test-brief".to_string()),
+    }
+}
+
+/// Create a test `RoleTask`.
+pub fn make_test_role_task(role: &str) -> crate::types::user_context::RoleTask {
+    crate::types::user_context::RoleTask {
+        role: role.to_string(),
+        task_id: format!("task-{}-001", role),
+        bead_id: Some(format!("bead-{}-001", role)),
+        response_path: format!("/briefs/test/{}_response.md", role),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Self-tests for test_helpers
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_make_test_node_deterministic_id() {
+        let node = make_test_node(42, "hello");
+        assert_eq!(node.id, 42);
+        assert_eq!(node.label, "hello");
+        assert_eq!(node.metadata_id, "test-meta-42");
+    }
+
+    #[test]
+    fn test_make_test_edge() {
+        let edge = make_test_edge(1, 2, 0.75);
+        assert_eq!(edge.source, 1);
+        assert_eq!(edge.target, 2);
+        assert!((edge.weight - 0.75).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn test_make_test_graph_structure() {
+        let graph = make_test_graph(5);
+        assert_eq!(graph.nodes.len(), 5);
+        assert_eq!(graph.edges.len(), 4); // chain: 1-2, 2-3, 3-4, 4-5
+    }
+
+    #[test]
+    fn test_make_test_user_context() {
+        let ctx = make_test_user_context();
+        assert_eq!(ctx.display_name, "test_user");
+        assert!(!ctx.is_power_user);
+        assert_eq!(ctx.pubkey.len(), 64);
+    }
+
+    #[test]
+    fn test_make_test_nostr_user() {
+        let pubkey = "b".repeat(64);
+        let user = make_test_nostr_user(&pubkey);
+        assert_eq!(user.pubkey, pubkey);
+        assert!(!user.is_power_user);
+        assert!(user.session_token.is_some());
+    }
+
+    #[test]
+    fn test_make_test_briefing_request() {
+        let req = make_test_briefing_request();
+        assert_eq!(req.roles.len(), 2);
+        assert!(req.content.contains("briefing"));
+    }
+
+    #[test]
+    fn test_make_test_role_task() {
+        let task = make_test_role_task("architect");
+        assert_eq!(task.role, "architect");
+        assert!(task.task_id.contains("architect"));
+        assert!(task.bead_id.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_mock_ontology_repo_roundtrip() {
+        let repo = create_test_ontology_repo();
+        let classes = repo.list_owl_classes().await.unwrap();
+        assert_eq!(classes.len(), 6); // 6 pre-loaded classes
+        let person = repo.get_owl_class("mv:Person").await.unwrap();
+        assert!(person.is_some());
+        assert_eq!(person.unwrap().label, Some("Person".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_mock_ontology_repo_add_and_remove() {
+        let repo = MockOntologyRepository::new();
+        let cls = OwlClass {
+            iri: "test:Foo".to_string(),
+            label: Some("Foo".to_string()),
+            ..OwlClass::default()
+        };
+        repo.add_owl_class(&cls).await.unwrap();
+        assert!(repo.get_owl_class("test:Foo").await.unwrap().is_some());
+        repo.remove_owl_class("test:Foo").await.unwrap();
+        assert!(repo.get_owl_class("test:Foo").await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn test_mock_ontology_repo_metrics() {
+        let repo = create_test_ontology_repo();
+        let metrics = repo.get_metrics().await.unwrap();
+        assert_eq!(metrics.class_count, 6);
+        assert_eq!(metrics.property_count, 0);
+        assert_eq!(metrics.axiom_count, 0);
+    }
+}

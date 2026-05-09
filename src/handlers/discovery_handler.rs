@@ -1090,4 +1090,161 @@ mod tests {
         // Should be positive (partial overlap) but less than 1.0
         assert!(sim > 0.0 && sim < 1.0, "Expected (0,1), got {sim}");
     }
+
+    // ---- normalize_weights edge cases ----
+
+    #[test]
+    fn test_normalize_weights_negative_values() {
+        // Negatives should be treated as absolute values
+        let (cw, tw) = normalize_weights(-0.6, -0.4);
+        assert!((cw - 0.6).abs() < 1e-6);
+        assert!((tw - 0.4).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_normalize_weights_one_zero() {
+        let (cw, tw) = normalize_weights(1.0, 0.0);
+        assert!((cw - 1.0).abs() < 1e-6);
+        assert!(tw.abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_normalize_weights_very_small() {
+        let (cw, tw) = normalize_weights(1e-15, 1e-15);
+        // Both effectively zero, should return (0.5, 0.5)
+        assert!((cw - 0.5).abs() < 1e-6);
+        assert!((tw - 0.5).abs() < 1e-6);
+    }
+
+    // ---- cosine_similarity numerical stability ----
+
+    #[test]
+    fn test_cosine_similarity_very_small_values() {
+        let a = vec![1e-20f32, 1e-20, 1e-20];
+        let b = vec![1e-20f32, 1e-20, 1e-20];
+        let sim = cosine_similarity(&a, &b);
+        // f64 accumulation handles this; should return ~1.0
+        assert!((sim - 1.0).abs() < 1e-4, "Expected ~1.0, got {sim}");
+    }
+
+    #[test]
+    fn test_cosine_similarity_large_values() {
+        let a = vec![1e30f32, 0.0, 0.0];
+        let b = vec![1e30f32, 0.0, 0.0];
+        let sim = cosine_similarity(&a, &b);
+        assert!((sim - 1.0).abs() < 1e-4, "Expected ~1.0, got {sim}");
+    }
+
+    #[test]
+    fn test_cosine_similarity_single_element() {
+        let a = vec![5.0f32];
+        let b = vec![3.0f32];
+        let sim = cosine_similarity(&a, &b);
+        assert!((sim - 1.0).abs() < 1e-6, "Parallel single-dim should be 1.0");
+    }
+
+    #[test]
+    fn test_cosine_similarity_negative_parallel() {
+        let a = vec![5.0f32];
+        let b = vec![-3.0f32];
+        let sim = cosine_similarity(&a, &b);
+        assert!((sim + 1.0).abs() < 1e-6, "Anti-parallel single-dim should be -1.0");
+    }
+
+    // ---- DiscoveryQuery deserialization ----
+
+    #[test]
+    fn test_discovery_query_defaults() {
+        let json = r#"{"q": "quantum"}"#;
+        let query: DiscoveryQuery = serde_json::from_str(json).unwrap();
+        assert_eq!(query.q, "quantum");
+        assert_eq!(query.top_k, 10);
+        assert!((query.content_weight - 0.6).abs() < f32::EPSILON);
+        assert!((query.topology_weight - 0.4).abs() < f32::EPSILON);
+        assert!(query.node_type.is_none());
+        assert!(query.domain.is_none());
+    }
+
+    #[test]
+    fn test_discovery_query_with_filters() {
+        let json = r#"{
+            "q": "neural",
+            "top_k": 20,
+            "content_weight": 0.8,
+            "topology_weight": 0.2,
+            "node_type": "owl_class",
+            "domain": "ai"
+        }"#;
+        let query: DiscoveryQuery = serde_json::from_str(json).unwrap();
+        assert_eq!(query.top_k, 20);
+        assert!((query.content_weight - 0.8).abs() < f32::EPSILON);
+        assert_eq!(query.node_type.as_deref(), Some("owl_class"));
+        assert_eq!(query.domain.as_deref(), Some("ai"));
+    }
+
+    // ---- GapsQuery deserialization ----
+
+    #[test]
+    fn test_gaps_query_defaults() {
+        let json = r#"{}"#;
+        let query: GapsQuery = serde_json::from_str(json).unwrap();
+        assert!(query.domain.is_none());
+        assert!((query.min_score - 0.3).abs() < f32::EPSILON);
+        assert_eq!(query.top_k, 10);
+    }
+
+    // ---- BatchRequest validation ----
+
+    #[test]
+    fn test_batch_request_deserialization() {
+        let json = r#"{"iris": ["urn:a", "urn:b"], "top_k": 3}"#;
+        let req: BatchRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.iris.len(), 2);
+        assert_eq!(req.top_k, 3);
+    }
+
+    #[test]
+    fn test_batch_request_default_top_k() {
+        let json = r#"{"iris": ["urn:a"]}"#;
+        let req: BatchRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.top_k, 5); // default_related_k()
+    }
+
+    // ---- DiscoveryResult serialization ----
+
+    #[test]
+    fn test_discovery_result_serialization() {
+        let result = DiscoveryResult {
+            iri: "mv:AI".to_string(),
+            label: "Artificial Intelligence".to_string(),
+            score: 0.95,
+            content_score: 0.9,
+            topology_score: 0.85,
+            node_type: "owl_class".to_string(),
+            domain: Some("technology".to_string()),
+            definition: Some("The study of...".to_string()),
+        };
+        let json = serde_json::to_string(&result).unwrap();
+        assert!(json.contains("mv:AI"));
+        assert!(json.contains("Artificial Intelligence"));
+        assert!(json.contains("0.95"));
+    }
+
+    // ---- DiscoveryResponse serialization ----
+
+    #[test]
+    fn test_discovery_response_serialization() {
+        let resp = DiscoveryResponse {
+            results: vec![],
+            query: "test".to_string(),
+            total_candidates: 0,
+            weights: WeightConfig {
+                content: 0.6,
+                topology: 0.4,
+            },
+        };
+        let json = serde_json::to_string(&resp).unwrap();
+        assert!(json.contains("\"results\":[]"));
+        assert!(json.contains("\"query\":\"test\""));
+    }
 }

@@ -213,8 +213,13 @@ pub async fn validate(
     let mut all_hints = Vec::new();
 
     for axiom in &req.axioms {
-        // Validate subject exists
-        let subject_check = format!("MATCH (n:{}) RETURN n", axiom.subject.split(':').last().unwrap_or(&axiom.subject));
+        // Validate subject exists — sanitise label to prevent Cypher injection (NEW-S3)
+        let label = axiom.subject.split(':').last().unwrap_or(&axiom.subject);
+        if !is_safe_cypher_label(label) {
+            all_errors.push(format!("Invalid axiom subject: {}", axiom.subject));
+            continue;
+        }
+        let subject_check = format!("MATCH (n:{}) RETURN n", label);
         if let Ok(validation) = query_service.validate_and_execute_cypher(&subject_check).await {
             all_errors.extend(validation.errors);
             all_hints.extend(validation.hints);
@@ -247,6 +252,14 @@ pub async fn status() -> Result<HttpResponse, Error> {
 }
 
 // ---------- Helpers ----------
+
+/// Returns `true` when `s` is safe to interpolate as a Neo4j node label.
+/// Rejects empty strings, strings over 128 chars, and anything outside `[A-Za-z0-9_]`.
+fn is_safe_cypher_label(s: &str) -> bool {
+    !s.is_empty()
+        && s.len() <= 128
+        && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+}
 
 /// Build a traversal result by walking the ontology graph via read_note relationships.
 async fn build_traversal(
@@ -333,4 +346,170 @@ pub fn configure_ontology_agent_routes(cfg: &mut web::ServiceConfig) {
             .route("/validate", web::post().to(validate))
             .route("/status", web::get().to(status))
     );
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ---- is_safe_cypher_label unit tests ----
+
+    #[test]
+    fn test_safe_label_alphanumeric() {
+        assert!(is_safe_cypher_label("Person"));
+        assert!(is_safe_cypher_label("OWL_Class"));
+        assert!(is_safe_cypher_label("node123"));
+        assert!(is_safe_cypher_label("A"));
+    }
+
+    #[test]
+    fn test_safe_label_underscore_allowed() {
+        assert!(is_safe_cypher_label("my_label"));
+        assert!(is_safe_cypher_label("_leading"));
+        assert!(is_safe_cypher_label("trailing_"));
+    }
+
+    #[test]
+    fn test_unsafe_label_empty() {
+        assert!(!is_safe_cypher_label(""));
+    }
+
+    #[test]
+    fn test_unsafe_label_special_chars() {
+        assert!(!is_safe_cypher_label("DROP;--"));
+        assert!(!is_safe_cypher_label("label with spaces"));
+        assert!(!is_safe_cypher_label("label\ttab"));
+        assert!(!is_safe_cypher_label("label\nnewline"));
+        assert!(!is_safe_cypher_label("label'quote"));
+        assert!(!is_safe_cypher_label("label\"doublequote"));
+        assert!(!is_safe_cypher_label("label{brace}"));
+        assert!(!is_safe_cypher_label("label(paren)"));
+    }
+
+    #[test]
+    fn test_unsafe_label_too_long() {
+        let long_label = "a".repeat(129);
+        assert!(!is_safe_cypher_label(&long_label));
+        // Exactly 128 should be fine
+        let max_label = "a".repeat(128);
+        assert!(is_safe_cypher_label(&max_label));
+    }
+
+    #[test]
+    fn test_unsafe_label_unicode() {
+        assert!(!is_safe_cypher_label("cafe\u{0301}")); // unicode accent
+        assert!(!is_safe_cypher_label("\u{4e16}\u{754c}")); // Chinese chars
+    }
+
+    #[test]
+    fn test_unsafe_label_cypher_injection_attempts() {
+        assert!(!is_safe_cypher_label("Person` DETACH DELETE n //"));
+        assert!(!is_safe_cypher_label("Person OR 1=1"));
+        assert!(!is_safe_cypher_label("MATCH (n) RETURN n"));
+    }
+
+    // ---- DiscoverRequest deserialization ----
+
+    #[test]
+    fn test_discover_request_defaults() {
+        let json = r#"{"query": "neural network"}"#;
+        let req: DiscoverRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.query, "neural network");
+        assert_eq!(req.limit, 20); // default_limit()
+        assert!(req.domain.is_none());
+    }
+
+    #[test]
+    fn test_discover_request_with_domain() {
+        let json = r#"{"query": "ai", "limit": 5, "domain": "technology"}"#;
+        let req: DiscoverRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.limit, 5);
+        assert_eq!(req.domain.as_deref(), Some("technology"));
+    }
+
+    // ---- QueryRequest deserialization ----
+
+    #[test]
+    fn test_query_request_deser() {
+        let json = r#"{"cypher": "MATCH (n:Person) RETURN n LIMIT 10"}"#;
+        let req: QueryRequest = serde_json::from_str(json).unwrap();
+        assert!(req.cypher.contains("Person"));
+    }
+
+    // ---- ReadNoteRequest deserialization ----
+
+    #[test]
+    fn test_read_note_request_deser() {
+        let json = r#"{"iri": "mv:Person"}"#;
+        let req: ReadNoteRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.iri, "mv:Person");
+    }
+
+    // ---- TraverseRequest deserialization ----
+
+    #[test]
+    fn test_traverse_request_defaults() {
+        let json = r#"{"startIri": "mv:Person"}"#;
+        let req: TraverseRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.start_iri, "mv:Person");
+        assert_eq!(req.depth, 3); // default_depth()
+        assert!(req.relationship_types.is_none());
+    }
+
+    #[test]
+    fn test_traverse_request_with_filters() {
+        let json = r#"{"startIri": "mv:Tech", "depth": 5, "relationshipTypes": ["SUBCLASS_OF"]}"#;
+        let req: TraverseRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.depth, 5);
+        assert_eq!(req.relationship_types.as_ref().unwrap().len(), 1);
+    }
+
+    // ---- ValidateRequest deserialization ----
+
+    #[test]
+    fn test_validate_request_deser() {
+        let json = r#"{"axioms": [{"subject": "mv:Person", "predicate": "rdfs:subClassOf", "object": "mv:Entity"}]}"#;
+        let req: ValidateRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.axioms.len(), 1);
+        assert_eq!(req.axioms[0].subject, "mv:Person");
+    }
+
+    // ---- StatusResponse serialization ----
+
+    #[test]
+    fn test_status_response_serialization() {
+        let resp = StatusResponse {
+            service: "ontology-agent".to_string(),
+            status: "healthy".to_string(),
+            capabilities: vec!["ontology_discover".to_string()],
+        };
+        let json = serde_json::to_string(&resp).unwrap();
+        assert!(json.contains("ontology-agent"));
+        assert!(json.contains("healthy"));
+        assert!(json.contains("ontology_discover"));
+    }
+
+    // ---- status handler returns correct capabilities ----
+
+    #[tokio::test]
+    async fn test_status_handler_returns_all_capabilities() {
+        let resp = status().await.unwrap();
+        assert_eq!(resp.status(), actix_web::http::StatusCode::OK);
+
+        let body = actix_web::body::to_bytes(resp.into_body()).await.unwrap();
+        let parsed: StatusResponse = serde_json::from_slice(&body).unwrap();
+        assert_eq!(parsed.service, "ontology-agent");
+        assert_eq!(parsed.status, "healthy");
+        assert_eq!(parsed.capabilities.len(), 6);
+        assert!(parsed.capabilities.contains(&"ontology_discover".to_string()));
+        assert!(parsed.capabilities.contains(&"ontology_read".to_string()));
+        assert!(parsed.capabilities.contains(&"ontology_query".to_string()));
+        assert!(parsed.capabilities.contains(&"ontology_traverse".to_string()));
+        assert!(parsed.capabilities.contains(&"ontology_propose".to_string()));
+        assert!(parsed.capabilities.contains(&"ontology_validate".to_string()));
+    }
 }

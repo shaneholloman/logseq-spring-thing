@@ -1,13 +1,14 @@
 use crate::config::feature_access::FeatureAccess;
 use crate::models::protected_settings::{ApiKeys, NostrUser};
 use crate::utils::nip98::{
-    parse_auth_header, validate_nip98_token, Nip98ValidationResult,
+    parse_auth_header, validate_nip98_token, Nip98ValidationError, Nip98ValidationResult,
 };
 use log::{debug, error, info, warn};
 use nostr_sdk::{event::Error as EventError, prelude::*};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Instant;
 use thiserror::Error;
 use tokio::sync::RwLock;
 use uuid::Uuid;
@@ -110,6 +111,61 @@ mod redis_keys {
     pub const USER_SESSION: &str = "nostr:user:session:";
 }
 
+/// In-memory replay cache for NIP-98 event IDs.
+///
+/// Prevents replay attacks within the 60-second token validity window by
+/// tracking seen event IDs with their insertion time.  Entries older than
+/// `ttl` are evicted lazily on each `check_and_insert` call.
+///
+/// This is intentionally a simple HashMap with TTL-based eviction rather
+/// than an LRU — the 60-second window means the map stays small (bounded
+/// by request rate * 120s) and a full scan every N insertions is cheap.
+#[derive(Debug)]
+struct Nip98ReplayCache {
+    /// event_id -> wall-clock instant when first seen
+    seen: HashMap<String, Instant>,
+    /// How long to retain entries.  Set to 2x the token max age so that
+    /// entries survive the entire window even if inserted at the boundary.
+    ttl: std::time::Duration,
+    /// Counter to amortise eviction — run cleanup every N inserts.
+    ops_since_eviction: u32,
+}
+
+impl Nip98ReplayCache {
+    fn new() -> Self {
+        Self {
+            seen: HashMap::new(),
+            // 2x the 60-second token validity window
+            ttl: std::time::Duration::from_secs(120),
+            ops_since_eviction: 0,
+        }
+    }
+
+    /// Returns `true` if the event ID was already seen (replay detected).
+    /// If not seen, inserts it and returns `false`.
+    fn check_and_insert(&mut self, event_id: &str) -> bool {
+        // Amortised eviction: every 64 inserts, sweep expired entries.
+        self.ops_since_eviction += 1;
+        if self.ops_since_eviction >= 64 {
+            self.evict_expired();
+            self.ops_since_eviction = 0;
+        }
+
+        if self.seen.contains_key(event_id) {
+            return true; // replay
+        }
+
+        self.seen.insert(event_id.to_string(), Instant::now());
+        false
+    }
+
+    /// Remove all entries older than `self.ttl`.
+    fn evict_expired(&mut self) {
+        let cutoff = Instant::now() - self.ttl;
+        self.seen.retain(|_, inserted_at| *inserted_at > cutoff);
+    }
+}
+
 #[derive(Clone)]
 pub struct NostrService {
     /// In-memory user cache (always maintained for fast access)
@@ -117,6 +173,8 @@ pub struct NostrService {
     power_user_pubkeys: Vec<String>,
     token_expiry: i64,
     feature_access: Arc<RwLock<FeatureAccess>>,
+    /// NIP-98 replay protection — prevents the same event ID being accepted twice
+    nip98_replay_cache: Arc<std::sync::Mutex<Nip98ReplayCache>>,
     /// Redis client for persistent session storage (optional)
     #[cfg(feature = "redis")]
     redis_client: Option<RedisClient>,
@@ -162,6 +220,7 @@ impl NostrService {
             power_user_pubkeys: power_users,
             feature_access,
             token_expiry,
+            nip98_replay_cache: Arc::new(std::sync::Mutex::new(Nip98ReplayCache::new())),
             #[cfg(feature = "redis")]
             redis_client,
         }
@@ -560,6 +619,21 @@ impl NostrService {
         let validation = validate_nip98_token(token, request_url, request_method, request_body)
             .map_err(|e| NostrError::Nip98Error(e.to_string()))?;
 
+        // Replay protection: reject if this event ID was already accepted
+        {
+            let mut cache = self.nip98_replay_cache.lock().unwrap_or_else(|e| e.into_inner());
+            if cache.check_and_insert(&validation.event_id) {
+                warn!(
+                    "NIP-98 replay detected: event_id={}, pubkey={}...",
+                    validation.event_id,
+                    &validation.pubkey[..16.min(validation.pubkey.len())]
+                );
+                return Err(NostrError::Nip98Error(
+                    Nip98ValidationError::TokenReplayed(validation.event_id).to_string(),
+                ));
+            }
+        }
+
         debug!(
             "NIP-98 token validated for pubkey: {}..., url: {}, method: {}",
             &validation.pubkey[..16.min(validation.pubkey.len())],
@@ -664,5 +738,256 @@ impl NostrService {
 impl Default for NostrService {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ---- Nip98ReplayCache unit tests ----
+
+    #[test]
+    fn test_replay_cache_insert_returns_false_on_first_see() {
+        let mut cache = Nip98ReplayCache::new();
+        assert!(!cache.check_and_insert("event-001"));
+    }
+
+    #[test]
+    fn test_replay_cache_insert_returns_true_on_replay() {
+        let mut cache = Nip98ReplayCache::new();
+        assert!(!cache.check_and_insert("event-002"));
+        assert!(cache.check_and_insert("event-002")); // replay
+    }
+
+    #[test]
+    fn test_replay_cache_distinct_events_not_confused() {
+        let mut cache = Nip98ReplayCache::new();
+        assert!(!cache.check_and_insert("event-a"));
+        assert!(!cache.check_and_insert("event-b"));
+        assert!(!cache.check_and_insert("event-c"));
+        assert!(cache.check_and_insert("event-a")); // replay of a
+        assert!(!cache.check_and_insert("event-d")); // new
+    }
+
+    #[test]
+    fn test_replay_cache_eviction_clears_old_entries() {
+        let mut cache = Nip98ReplayCache {
+            seen: HashMap::new(),
+            ttl: std::time::Duration::from_millis(0), // immediate expiry
+            ops_since_eviction: 0,
+        };
+        cache.check_and_insert("old-event");
+        // Force eviction
+        cache.evict_expired();
+        // After eviction, the event should be gone (ttl=0 means everything is old)
+        assert!(!cache.check_and_insert("old-event")); // no longer a replay
+    }
+
+    #[test]
+    fn test_replay_cache_default_ttl_is_120s() {
+        let cache = Nip98ReplayCache::new();
+        assert_eq!(cache.ttl, std::time::Duration::from_secs(120));
+    }
+
+    #[test]
+    fn test_replay_cache_amortised_eviction_interval() {
+        let mut cache = Nip98ReplayCache::new();
+        // Insert 63 events — no eviction yet
+        for i in 0..63 {
+            cache.check_and_insert(&format!("e{}", i));
+        }
+        assert_eq!(cache.seen.len(), 63);
+        // 64th insert triggers eviction (but entries are still fresh so nothing removed)
+        cache.check_and_insert("e63");
+        assert_eq!(cache.ops_since_eviction, 0); // reset after eviction
+    }
+
+    // ---- NostrService construction ----
+
+    #[tokio::test]
+    async fn test_nostr_service_default_construction() {
+        let service = NostrService::new();
+        // No users initially
+        let user = service.get_user("nonexistent").await;
+        assert!(user.is_none());
+        assert!(!service.has_redis());
+    }
+
+    // ---- Session validation ----
+
+    #[tokio::test]
+    async fn test_validate_session_nonexistent_user() {
+        let service = NostrService::new();
+        let valid = service.validate_session("no-such-pubkey", "no-such-token").await;
+        assert!(!valid);
+    }
+
+    // ---- Power user detection ----
+
+    #[tokio::test]
+    async fn test_is_power_user_returns_false_for_unknown() {
+        let service = NostrService::new();
+        assert!(!service.is_power_user("unknown-pubkey").await);
+    }
+
+    // ---- Session lookup by token ----
+
+    #[tokio::test]
+    async fn test_get_session_nonexistent_token() {
+        let service = NostrService::new();
+        let session = service.get_session("nonexistent-token").await;
+        assert!(session.is_none());
+    }
+
+    // ---- Update API keys for nonexistent user ----
+
+    #[tokio::test]
+    async fn test_update_api_keys_user_not_found() {
+        let service = NostrService::new();
+        let result = service
+            .update_user_api_keys("no-such-user", ApiKeys::default())
+            .await;
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            NostrError::UserNotFound => {}
+            other => panic!("Expected UserNotFound, got {:?}", other),
+        }
+    }
+
+    // ---- Refresh session for nonexistent user ----
+
+    #[tokio::test]
+    async fn test_refresh_session_user_not_found() {
+        let service = NostrService::new();
+        let result = service.refresh_session("no-such-user").await;
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            NostrError::UserNotFound => {}
+            other => panic!("Expected UserNotFound, got {:?}", other),
+        }
+    }
+
+    // ---- Logout for nonexistent user ----
+
+    #[tokio::test]
+    async fn test_logout_user_not_found() {
+        let service = NostrService::new();
+        let result = service.logout("no-such-user").await;
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            NostrError::UserNotFound => {}
+            other => panic!("Expected UserNotFound, got {:?}", other),
+        }
+    }
+
+    // ---- Cleanup sessions ----
+
+    #[tokio::test]
+    async fn test_cleanup_sessions_removes_old() {
+        let service = NostrService::new();
+        // Manually insert a user with very old last_seen
+        {
+            let mut users = service.users.write().await;
+            users.insert(
+                "old-user".to_string(),
+                NostrUser {
+                    pubkey: "old-user".to_string(),
+                    npub: "npub1old".to_string(),
+                    is_power_user: false,
+                    api_keys: ApiKeys::default(),
+                    last_seen: 0, // epoch = very old
+                    session_token: Some("token".to_string()),
+                },
+            );
+        }
+        // Should exist before cleanup
+        assert!(service.get_user("old-user").await.is_some());
+        // Cleanup with 1 hour max age
+        service.cleanup_sessions(1).await;
+        // Should be removed (last_seen=0 is far more than 1 hour ago)
+        assert!(service.get_user("old-user").await.is_none());
+    }
+
+    // ---- NIP-98 token validation (stateless, invalid header) ----
+
+    #[test]
+    fn test_validate_nip98_token_only_invalid_header() {
+        let service = NostrService::new();
+        let result = service.validate_nip98_token_only(
+            "Bearer invalid-not-nostr",
+            "https://example.com/api",
+            "GET",
+            None,
+        );
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_validate_nip98_token_only_empty_header() {
+        let service = NostrService::new();
+        let result = service.validate_nip98_token_only(
+            "",
+            "https://example.com/api",
+            "GET",
+            None,
+        );
+        assert!(result.is_err());
+    }
+
+    // ---- NostrError serialization ----
+
+    #[test]
+    fn test_nostr_error_serialization() {
+        let errors: Vec<NostrError> = vec![
+            NostrError::InvalidEvent("bad event".to_string()),
+            NostrError::InvalidSignature,
+            NostrError::UserNotFound,
+            NostrError::InvalidToken,
+            NostrError::SessionExpired,
+            NostrError::PowerUserOperation,
+            NostrError::Nip98Error("replay".to_string()),
+        ];
+
+        for err in errors {
+            let json = serde_json::to_string(&err).unwrap();
+            let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+            assert!(parsed.get("type").is_some(), "Missing 'type' field in {:?}", err);
+            assert!(parsed.get("message").is_some(), "Missing 'message' field in {:?}", err);
+        }
+    }
+
+    // ---- AuthEvent deserialization ----
+
+    #[test]
+    fn test_auth_event_deserialization() {
+        let json = r#"{
+            "id": "event123",
+            "pubkey": "aabbccdd",
+            "content": "auth",
+            "sig": "sig123",
+            "created_at": 1700000000,
+            "kind": 27235,
+            "tags": [["u", "https://example.com"], ["method", "GET"]]
+        }"#;
+        let event: AuthEvent = serde_json::from_str(json).unwrap();
+        assert_eq!(event.id, "event123");
+        assert_eq!(event.kind, 27235);
+        assert_eq!(event.tags.len(), 2);
+        assert_eq!(event.tags[0][0], "u");
+    }
+
+    // ---- Initialize without Redis ----
+
+    #[tokio::test]
+    async fn test_initialize_without_redis() {
+        let service = NostrService::new();
+        let result = service.initialize().await;
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 0);
     }
 }
