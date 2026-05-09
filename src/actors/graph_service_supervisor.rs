@@ -1555,7 +1555,7 @@ impl Handler<msgs::GetGraphStateActor> for GraphServiceSupervisor {
     }
 }
 
-// Handler to get PhysicsOrchestratorActor from supervisor (used for CQRS physics handler registration)
+// Handler to get PhysicsOrchestratorActor from supervisor
 impl Handler<msgs::GetPhysicsOrchestratorActor> for GraphServiceSupervisor {
     type Result = Result<Addr<PhysicsOrchestratorActor>, String>;
 
