@@ -64,9 +64,8 @@ pub use uri_resolver_handler::configure_routes as configure_uri_resolver_routes;
 pub mod layout_handler;
 pub use layout_handler::configure_layout_routes;
 
-// High-Performance Networking (QUIC/WebTransport + fastwebsockets)
+// High-Performance Networking (QUIC/WebTransport)
 pub mod quic_transport_handler;
-pub mod fastwebsockets_handler;
 
 // Solid Pod server — native `solid-pod-rs` backend (ADR-053/056).
 // JSS proxy + shadow comparator retired 2026-04-20; the external
@@ -106,9 +105,3 @@ pub use quic_transport_handler::{
     encode_postcard_batch, decode_postcard_batch, calculate_deltas,
 };
 
-pub use fastwebsockets_handler::{
-    FastWebSocketServer, FastWebSocketConfig,
-    StandaloneFastWsHandler,
-    TransportProtocol, SerializationFormat, NegotiatedProtocol,
-    negotiate_protocol,
-};
