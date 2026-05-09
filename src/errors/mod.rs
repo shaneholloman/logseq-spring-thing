@@ -46,8 +46,6 @@ pub enum VisionFlowError {
 
     Database(DatabaseError),
 
-    Validation(ValidationError),
-
     Parse(ParseError),
 
     Generic {
@@ -255,22 +253,6 @@ pub enum DatabaseError {
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
-pub enum ValidationError {
-
-    FieldValidation { field: String, reason: String },
-
-    RequiredField { field: String },
-
-    InvalidFormat { field: String, expected: String, actual: String },
-
-    OutOfRange { field: String, min: String, max: String, actual: String },
-
-    InvalidLength { field: String, min: Option<usize>, max: Option<usize>, actual: usize },
-
-    Custom(String),
-}
-
-#[derive(Debug, Clone, serde::Serialize)]
 pub enum ParseError {
 
     JSON { input: String, reason: String },
@@ -308,7 +290,6 @@ impl fmt::Display for VisionFlowError {
             VisionFlowError::Performance(e) => write!(f, "Performance Error: {}", e),
             VisionFlowError::Protocol(e) => write!(f, "Protocol Error: {}", e),
             VisionFlowError::Database(e) => write!(f, "Database Error: {}", e),
-            VisionFlowError::Validation(e) => write!(f, "Validation Error: {}", e),
             VisionFlowError::Parse(e) => write!(f, "Parse Error: {}", e),
             VisionFlowError::Generic { message, .. } => write!(f, "Error: {}", message),
         }
@@ -608,39 +589,6 @@ impl fmt::Display for DatabaseError {
     }
 }
 
-impl fmt::Display for ValidationError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            ValidationError::FieldValidation { field, reason } => {
-                write!(f, "Field '{}' validation failed: {}", field, reason)
-            }
-            ValidationError::RequiredField { field } => {
-                write!(f, "Required field '{}' is missing", field)
-            }
-            ValidationError::InvalidFormat { field, expected, actual } => write!(
-                f,
-                "Field '{}' has invalid format: expected {}, got {}",
-                field, expected, actual
-            ),
-            ValidationError::OutOfRange { field, min, max, actual } => write!(
-                f,
-                "Field '{}' out of range: expected {}-{}, got {}",
-                field, min, max, actual
-            ),
-            ValidationError::InvalidLength { field, min, max, actual } => {
-                let range = match (min, max) {
-                    (Some(min), Some(max)) => format!("{}-{}", min, max),
-                    (Some(min), None) => format!(">= {}", min),
-                    (None, Some(max)) => format!("<= {}", max),
-                    (None, None) => "unknown".to_string(),
-                };
-                write!(f, "Field '{}' invalid length: expected {}, got {}", field, range, actual)
-            }
-            ValidationError::Custom(msg) => write!(f, "Validation failed: {}", msg),
-        }
-    }
-}
-
 impl fmt::Display for ParseError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
@@ -701,7 +649,6 @@ impl std::error::Error for ResourceError {}
 impl std::error::Error for PerformanceError {}
 impl std::error::Error for ProtocolError {}
 impl std::error::Error for DatabaseError {}
-impl std::error::Error for ValidationError {}
 impl std::error::Error for ParseError {}
 
 impl From<std::io::Error> for VisionFlowError {
@@ -776,12 +723,6 @@ impl From<DatabaseError> for VisionFlowError {
     }
 }
 
-impl From<ValidationError> for VisionFlowError {
-    fn from(e: ValidationError) -> Self {
-        VisionFlowError::Validation(e)
-    }
-}
-
 impl From<ParseError> for VisionFlowError {
     fn from(e: ParseError) -> Self {
         VisionFlowError::Parse(e)
@@ -827,131 +768,46 @@ impl From<&str> for VisionFlowError {
 // Convenience type alias for Results
 pub type VisionFlowResult<T> = Result<T, VisionFlowError>;
 
-pub trait ErrorContext<T> {
-    fn with_context<F>(self, f: F) -> VisionFlowResult<T>
-    where
-        F: FnOnce() -> String;
-
-    fn with_actor_context(self, actor_name: &str) -> VisionFlowResult<T>;
-
-    fn with_gpu_context(self, operation: &str) -> VisionFlowResult<T>;
-}
-
-impl<T, E> ErrorContext<T> for Result<T, E>
-where
-    E: std::error::Error + Send + Sync + 'static,
-{
-    fn with_context<F>(self, f: F) -> VisionFlowResult<T>
-    where
-        F: FnOnce() -> String,
-    {
-        self.map_err(|e| VisionFlowError::Generic {
-            message: f(),
-            source: Some(std::sync::Arc::new(e)),
-        })
+impl actix_web::ResponseError for VisionFlowError {
+    fn status_code(&self) -> actix_web::http::StatusCode {
+        use actix_web::http::StatusCode;
+        match self {
+            Self::Parse(_) => StatusCode::BAD_REQUEST,
+            Self::Protocol(_) => StatusCode::BAD_REQUEST,
+            Self::Settings(e) => match e {
+                SettingsError::ValidationFailed { .. } => StatusCode::BAD_REQUEST,
+                _ => StatusCode::INTERNAL_SERVER_ERROR,
+            },
+            Self::Network(e) => match e {
+                NetworkError::Timeout { .. } => StatusCode::GATEWAY_TIMEOUT,
+                _ => StatusCode::BAD_GATEWAY,
+            },
+            Self::Database(e) => match e {
+                DatabaseError::NotFound { .. } => StatusCode::NOT_FOUND,
+                _ => StatusCode::INTERNAL_SERVER_ERROR,
+            },
+            Self::GitHub(e) => match e {
+                GitHubError::AuthenticationFailed(_) => StatusCode::UNAUTHORIZED,
+                _ => StatusCode::BAD_GATEWAY,
+            },
+            Self::Actor(_)
+            | Self::GPU(_)
+            | Self::IO(_)
+            | Self::Serialization(_)
+            | Self::Resource(_)
+            | Self::Performance(_)
+            | Self::Audio(_)
+            | Self::Speech(_)
+            | Self::Generic { .. } => StatusCode::INTERNAL_SERVER_ERROR,
+        }
     }
 
-    fn with_actor_context(self, actor_name: &str) -> VisionFlowResult<T> {
-        self.map_err(|e| {
-            VisionFlowError::Actor(ActorError::RuntimeFailure {
-                actor_name: actor_name.to_string(),
-                reason: e.to_string(),
-            })
-        })
-    }
-
-    fn with_gpu_context(self, operation: &str) -> VisionFlowResult<T> {
-        self.map_err(|e| {
-            VisionFlowError::GPU(GPUError::KernelExecutionFailed {
-                kernel_name: operation.to_string(),
-                reason: e.to_string(),
-            })
-        })
-    }
-}
-
-/// Helper macros for common error patterns
-
-/// Create a validation error
-#[macro_export]
-macro_rules! validation_error {
-    ($field:expr, $reason:expr) => {
-        $crate::errors::VisionFlowError::Validation($crate::errors::ValidationError::FieldValidation {
-            field: $field.to_string(),
-            reason: $reason.to_string(),
-        })
-    };
-}
-
-/// Create a parse error
-#[macro_export]
-macro_rules! parse_error {
-    (json, $input:expr, $reason:expr) => {
-        $crate::errors::VisionFlowError::Parse($crate::errors::ParseError::JSON {
-            input: $input.to_string(),
-            reason: $reason.to_string(),
-        })
-    };
-    (integer, $input:expr) => {
-        $crate::errors::VisionFlowError::Parse($crate::errors::ParseError::Integer {
-            input: $input.to_string(),
-            reason: "invalid integer format".to_string(),
-        })
-    };
-}
-
-/// Create a database error
-#[macro_export]
-macro_rules! db_error {
-    (not_found, $entity:expr, $id:expr) => {
-        $crate::errors::VisionFlowError::Database($crate::errors::DatabaseError::NotFound {
-            entity: $entity.to_string(),
-            id: $id.to_string(),
-        })
-    };
-    (query_failed, $query:expr, $reason:expr) => {
-        $crate::errors::VisionFlowError::Database($crate::errors::DatabaseError::QueryFailed {
-            query: $query.to_string(),
-            reason: $reason.to_string(),
-        })
-    };
-}
-
-/// Helper function to convert Option to Result with better error messages
-pub trait OptionExt<T> {
-    /// Convert Option to Result with a custom error message
-    fn ok_or_error(self, message: impl Into<String>) -> VisionFlowResult<T>;
-
-    /// Convert Option to Result with a validation error
-    fn ok_or_validation(self, field: impl Into<String>) -> VisionFlowResult<T>;
-
-    /// Convert Option to Result with a not found error
-    fn ok_or_not_found(self, entity: impl Into<String>, id: impl Into<String>) -> VisionFlowResult<T>;
-}
-
-impl<T> OptionExt<T> for Option<T> {
-    fn ok_or_error(self, message: impl Into<String>) -> VisionFlowResult<T> {
-        self.ok_or_else(|| VisionFlowError::Generic {
-            message: message.into(),
-            source: None,
-        })
-    }
-
-    fn ok_or_validation(self, field: impl Into<String>) -> VisionFlowResult<T> {
-        self.ok_or_else(|| {
-            VisionFlowError::Validation(ValidationError::RequiredField {
-                field: field.into(),
-            })
-        })
-    }
-
-    fn ok_or_not_found(self, entity: impl Into<String>, id: impl Into<String>) -> VisionFlowResult<T> {
-        self.ok_or_else(|| {
-            VisionFlowError::Database(DatabaseError::NotFound {
-                entity: entity.into(),
-                id: id.into(),
-            })
-        })
+    fn error_response(&self) -> actix_web::HttpResponse {
+        let status = self.status_code();
+        actix_web::HttpResponse::build(status).json(serde_json::json!({
+            "error": status.canonical_reason().unwrap_or("Unknown Error"),
+            "message": self.to_string(),
+        }))
     }
 }
 
@@ -970,20 +826,4 @@ mod tests {
         assert!(actor_error.to_string().contains("Init failed"));
     }
 
-    #[test]
-    fn test_error_context() {
-        let result: Result<(), std::io::Error> = Err(std::io::Error::new(
-            std::io::ErrorKind::NotFound,
-            "File not found",
-        ));
-
-        let with_context = result.with_context(|| "Failed to read configuration".to_string());
-        assert!(with_context.is_err());
-
-        if let Err(VisionFlowError::Generic { message, .. }) = with_context {
-            assert_eq!(message, "Failed to read configuration");
-        } else {
-            panic!("Expected Generic error with context");
-        }
-    }
 }
