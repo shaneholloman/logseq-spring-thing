@@ -1,3 +1,5 @@
+//! Utility modules for validation, networking, and math.
+
 // REMOVED: advanced_gpu_compute module - functionality moved to unified_gpu_compute
 // REMOVED: gpu_compute module - legacy implementation replaced by unified_gpu_compute
 pub mod actor_timeout;

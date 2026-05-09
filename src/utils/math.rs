@@ -1,3 +1,5 @@
+//! Shared vector math utilities (cosine similarity, distance, normalization).
+
 pub fn dot_product(a: &[f32], b: &[f32]) -> f32 {
     if a.len() != b.len() {
         return 0.0;

@@ -1,3 +1,5 @@
+//! HTTP middleware: rate limiting (token-bucket) and security headers.
+
 use crate::utils::validation::rate_limit::{
     create_rate_limit_response, extract_client_id_from_service_request, RateLimitConfig,
     RateLimiter,
