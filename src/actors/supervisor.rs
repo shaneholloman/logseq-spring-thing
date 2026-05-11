@@ -519,7 +519,7 @@ pub trait SupervisedActorTrait: Actor {
 mod tests {
     use super::*;
     use tokio::time::sleep;
-use crate::utils::time;
+    use crate::utils::time;
 
     #[actix::test]
     async fn test_actor_registration() {
@@ -549,7 +549,6 @@ use crate::utils::time;
     async fn test_actor_failure_handling() {
         let supervisor = SupervisorActor::new("TestSupervisor".to_string()).start();
 
-        
         let register_msg = RegisterActor {
             actor_name: "TestActor".to_string(),
             strategy: SupervisionStrategy::Restart,
@@ -559,7 +558,6 @@ use crate::utils::time;
         };
 
         supervisor.send(register_msg).await.unwrap().unwrap();
-
 
         let failure_msg = ActorFailed {
             actor_name: "TestActor".to_string(),
@@ -571,7 +569,6 @@ use crate::utils::time;
 
         supervisor.send(failure_msg).await.unwrap();
 
-        
         sleep(Duration::from_millis(100)).await;
 
         let status = supervisor
@@ -580,5 +577,316 @@ use crate::utils::time;
             .unwrap()
             .unwrap();
         assert_eq!(status.total_actors, 1);
+    }
+
+    #[actix::test]
+    async fn test_stop_strategy_marks_actor_permanently_stopped() {
+        let supervisor = SupervisorActor::new("StopSupervisor".to_string()).start();
+
+        supervisor
+            .send(RegisterActor {
+                actor_name: "StopActor".to_string(),
+                strategy: SupervisionStrategy::Stop,
+                max_restart_count: 3,
+                restart_window: Duration::from_secs(60),
+                actor_factory: None,
+            })
+            .await
+            .unwrap()
+            .unwrap();
+
+        // Trigger failure -- Stop strategy should NOT restart
+        supervisor
+            .send(ActorFailed {
+                actor_name: "StopActor".to_string(),
+                error: VisionFlowError::Actor(ActorError::RuntimeFailure {
+                    actor_name: "StopActor".to_string(),
+                    reason: "fatal".to_string(),
+                }),
+            })
+            .await
+            .unwrap();
+
+        sleep(Duration::from_millis(50)).await;
+
+        let status = supervisor
+            .send(GetSupervisionStatus)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(status.total_actors, 1);
+        assert_eq!(status.running_actors, 0);
+        assert_eq!(status.failed_actors, 1);
+    }
+
+    #[actix::test]
+    async fn test_restart_with_factory_succeeds() {
+        let supervisor = SupervisorActor::new("FactorySupervisor".to_string()).start();
+
+        // A factory that "restarts" the actor (returns a dummy value)
+        let factory: ActorFactory = Arc::new(|| Box::new(42u32) as Box<dyn std::any::Any + Send>);
+
+        supervisor
+            .send(RegisterActor {
+                actor_name: "FactoryActor".to_string(),
+                strategy: SupervisionStrategy::Restart,
+                max_restart_count: 5,
+                restart_window: Duration::from_secs(60),
+                actor_factory: Some(factory),
+            })
+            .await
+            .unwrap()
+            .unwrap();
+
+        // Fail the actor
+        supervisor
+            .send(ActorFailed {
+                actor_name: "FactoryActor".to_string(),
+                error: VisionFlowError::Actor(ActorError::RuntimeFailure {
+                    actor_name: "FactoryActor".to_string(),
+                    reason: "transient".to_string(),
+                }),
+            })
+            .await
+            .unwrap();
+
+        // Wait for the restart to be scheduled and executed (Restart has 0ms delay)
+        sleep(Duration::from_millis(150)).await;
+
+        let status = supervisor
+            .send(GetSupervisionStatus)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(status.total_actors, 1);
+        // Factory ran, so the actor should be running again
+        let actor_info = &status.actors[0];
+        assert!(actor_info.is_running, "Actor should be running after factory restart");
+        assert_eq!(actor_info.restart_count, 1);
+    }
+
+    #[actix::test]
+    async fn test_restart_without_factory_marks_not_running() {
+        let supervisor = SupervisorActor::new("NoFactorySupervisor".to_string()).start();
+
+        supervisor
+            .send(RegisterActor {
+                actor_name: "NoFactoryActor".to_string(),
+                strategy: SupervisionStrategy::Restart,
+                max_restart_count: 5,
+                restart_window: Duration::from_secs(60),
+                actor_factory: None, // No factory
+            })
+            .await
+            .unwrap()
+            .unwrap();
+
+        supervisor
+            .send(ActorFailed {
+                actor_name: "NoFactoryActor".to_string(),
+                error: VisionFlowError::Actor(ActorError::RuntimeFailure {
+                    actor_name: "NoFactoryActor".to_string(),
+                    reason: "transient".to_string(),
+                }),
+            })
+            .await
+            .unwrap();
+
+        // Wait for RestartAttempt to be processed
+        sleep(Duration::from_millis(150)).await;
+
+        let status = supervisor
+            .send(GetSupervisionStatus)
+            .await
+            .unwrap()
+            .unwrap();
+        // Without a factory, the actor should NOT be running
+        let actor_info = &status.actors[0];
+        assert!(!actor_info.is_running, "Actor without factory should not be running after restart attempt");
+    }
+
+    #[actix::test]
+    async fn test_backoff_strategy_increases_delay() {
+        let supervisor = SupervisorActor::new("BackoffSupervisor".to_string()).start();
+
+        let factory: ActorFactory = Arc::new(|| Box::new(0u32) as Box<dyn std::any::Any + Send>);
+
+        supervisor
+            .send(RegisterActor {
+                actor_name: "BackoffActor".to_string(),
+                strategy: SupervisionStrategy::RestartWithBackoff {
+                    initial_delay: Duration::from_millis(50),
+                    max_delay: Duration::from_secs(5),
+                    multiplier: 2.0,
+                },
+                max_restart_count: 10,
+                restart_window: Duration::from_secs(60),
+                actor_factory: Some(factory),
+            })
+            .await
+            .unwrap()
+            .unwrap();
+
+        // Fail twice in sequence
+        for _ in 0..2 {
+            supervisor
+                .send(ActorFailed {
+                    actor_name: "BackoffActor".to_string(),
+                    error: VisionFlowError::Actor(ActorError::RuntimeFailure {
+                        actor_name: "BackoffActor".to_string(),
+                        reason: "transient".to_string(),
+                    }),
+                })
+                .await
+                .unwrap();
+            // Wait long enough for the delayed restart to execute
+            sleep(Duration::from_millis(300)).await;
+        }
+
+        let status = supervisor
+            .send(GetSupervisionStatus)
+            .await
+            .unwrap()
+            .unwrap();
+        let actor_info = &status.actors[0];
+        // Should have restarted at least twice
+        assert!(actor_info.restart_count >= 2, "Expected at least 2 restarts, got {}", actor_info.restart_count);
+    }
+
+    #[actix::test]
+    async fn test_multiple_actors_independent_status() {
+        let supervisor = SupervisorActor::new("MultiSupervisor".to_string()).start();
+
+        // Register two actors
+        for name in &["ActorA", "ActorB"] {
+            supervisor
+                .send(RegisterActor {
+                    actor_name: name.to_string(),
+                    strategy: SupervisionStrategy::Stop,
+                    max_restart_count: 3,
+                    restart_window: Duration::from_secs(60),
+                    actor_factory: None,
+                })
+                .await
+                .unwrap()
+                .unwrap();
+        }
+
+        // Fail only ActorA
+        supervisor
+            .send(ActorFailed {
+                actor_name: "ActorA".to_string(),
+                error: VisionFlowError::Actor(ActorError::RuntimeFailure {
+                    actor_name: "ActorA".to_string(),
+                    reason: "test".to_string(),
+                }),
+            })
+            .await
+            .unwrap();
+
+        sleep(Duration::from_millis(50)).await;
+
+        let status = supervisor
+            .send(GetSupervisionStatus)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(status.total_actors, 2);
+        assert_eq!(status.running_actors, 1);
+        assert_eq!(status.failed_actors, 1);
+    }
+
+    #[actix::test]
+    async fn test_actor_started_message_restores_running() {
+        let supervisor = SupervisorActor::new("StartedSupervisor".to_string()).start();
+
+        supervisor
+            .send(RegisterActor {
+                actor_name: "ManualActor".to_string(),
+                strategy: SupervisionStrategy::Stop,
+                max_restart_count: 3,
+                restart_window: Duration::from_secs(60),
+                actor_factory: None,
+            })
+            .await
+            .unwrap()
+            .unwrap();
+
+        // Fail the actor (Stop strategy, so it stays down)
+        supervisor
+            .send(ActorFailed {
+                actor_name: "ManualActor".to_string(),
+                error: VisionFlowError::Actor(ActorError::RuntimeFailure {
+                    actor_name: "ManualActor".to_string(),
+                    reason: "down".to_string(),
+                }),
+            })
+            .await
+            .unwrap();
+
+        sleep(Duration::from_millis(50)).await;
+
+        // Manually signal ActorStarted to simulate external restart
+        supervisor
+            .send(ActorStarted {
+                actor_name: "ManualActor".to_string(),
+            })
+            .await
+            .unwrap();
+
+        let status = supervisor
+            .send(GetSupervisionStatus)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(status.running_actors, 1);
+    }
+
+    #[actix::test]
+    async fn test_graceful_shutdown_rejects_registration() {
+        let supervisor = SupervisorActor::new("DrainSupervisor".to_string()).start();
+
+        // Initiate graceful shutdown with long timeout (won't fire during test)
+        supervisor
+            .send(InitiateGracefulShutdown { timeout_secs: 300 })
+            .await
+            .unwrap();
+
+        // Attempt registration during drain -- should be rejected
+        let result = supervisor
+            .send(RegisterActor {
+                actor_name: "LateActor".to_string(),
+                strategy: SupervisionStrategy::Restart,
+                max_restart_count: 3,
+                restart_window: Duration::from_secs(60),
+                actor_factory: None,
+            })
+            .await
+            .unwrap();
+        assert!(result.is_err(), "Registration during drain should fail");
+    }
+
+    #[actix::test]
+    async fn test_unregistered_actor_failure_is_harmless() {
+        let supervisor = SupervisorActor::new("GhostSupervisor".to_string()).start();
+
+        // Sending a failure for an unregistered actor should not panic
+        supervisor
+            .send(ActorFailed {
+                actor_name: "GhostActor".to_string(),
+                error: VisionFlowError::Actor(ActorError::RuntimeFailure {
+                    actor_name: "GhostActor".to_string(),
+                    reason: "phantom".to_string(),
+                }),
+            })
+            .await
+            .unwrap();
+
+        let status = supervisor
+            .send(GetSupervisionStatus)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(status.total_actors, 0);
     }
 }

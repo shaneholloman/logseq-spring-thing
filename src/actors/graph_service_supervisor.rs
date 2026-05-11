@@ -404,29 +404,30 @@ impl GraphServiceSupervisor {
             act.perform_health_check(ctx);
         });
 
-        // Periodic heartbeat emission: every 15 seconds, send ActorHeartbeat for each
-        // child actor that is alive, keeping last_heartbeat fresh so the health check
-        // (60-second timeout) does not falsely mark actors as Degraded.
+        // P1-22 fix: Verify actual actor liveness via Addr::connected() instead
+        // of the old self-heartbeat pattern which sent heartbeats to ourselves and
+        // unconditionally stamped actors as alive. A dead actor whose Addr is
+        // disconnected will no longer have its heartbeat refreshed.
         let heartbeat_interval = Duration::from_secs(15);
-        ctx.run_interval(heartbeat_interval, |act, ctx| {
+        ctx.run_interval(heartbeat_interval, |act, _ctx| {
             let now = Instant::now();
-            let self_addr = ctx.address();
 
-            let actor_types = [
-                (ActorType::GraphState, act.graph_state.is_some()),
-                (ActorType::PhysicsOrchestrator, act.physics.is_some()),
-                (ActorType::SemanticProcessor, act.semantic.is_some()),
-                (ActorType::ClientCoordinator, act.client.is_some()),
+            let actor_liveness: [(ActorType, bool); 4] = [
+                (ActorType::GraphState, act.graph_state.as_ref().map_or(false, |a| a.connected())),
+                (ActorType::PhysicsOrchestrator, act.physics.as_ref().map_or(false, |a| a.connected())),
+                (ActorType::SemanticProcessor, act.semantic.as_ref().map_or(false, |a| a.connected())),
+                (ActorType::ClientCoordinator, act.client.as_ref().map_or(false, |a| a.connected())),
             ];
 
-            for (actor_type, is_alive) in &actor_types {
-                if *is_alive {
-                    self_addr.do_send(ActorHeartbeat {
-                        actor_type: actor_type.clone(),
-                        timestamp: now,
-                        health: ActorHealth::Healthy,
-                        stats: None,
-                    });
+            for (actor_type, is_connected) in &actor_liveness {
+                if let Some(info) = act.actor_info.get_mut(actor_type) {
+                    if *is_connected {
+                        info.last_heartbeat = Some(now);
+                        info.health = ActorHealth::Healthy;
+                    }
+                    // If not connected, do NOT refresh the heartbeat timestamp.
+                    // The health check timer will detect the stale timestamp and
+                    // mark the actor as Degraded, triggering supervisor action.
                 }
             }
         });
@@ -499,17 +500,36 @@ impl GraphServiceSupervisor {
     fn restart_actor(&mut self, actor_type: ActorType, ctx: &mut Context<Self>) {
         warn!("Restarting failed actor: {:?}", actor_type);
 
-        
         if let Some(info) = self.actor_info.get_mut(&actor_type) {
             info.health = ActorHealth::Restarting;
-            info.restart_count += 1;
-            info.last_restart = Some(Instant::now());
+            let now = Instant::now();
 
-            
+            // P1-21 fix: enforce within_time_period for restart storm detection.
+            // If the first restart in the current window is older than the configured
+            // period, reset the counter — the storm has passed. Otherwise, if N
+            // restarts have occurred within the window, escalate.
+            if let Some(first_restart) = info.last_restart {
+                if now.duration_since(first_restart) > self.restart_policy.within_time_period {
+                    // Window elapsed — reset the counter for a fresh window.
+                    info.restart_count = 0;
+                }
+            }
+
+            info.restart_count += 1;
+
+            // Record the start of the window on the first restart; subsequent
+            // restarts within the window keep the original timestamp so we
+            // measure from the window's start, not the most recent restart.
+            if info.restart_count == 1 {
+                info.last_restart = Some(now);
+            }
+
             if info.restart_count > self.restart_policy.max_restarts {
                 error!(
-                    "Actor {:?} exceeded maximum restarts ({}), escalating",
-                    actor_type, self.restart_policy.max_restarts
+                    "Actor {:?} exceeded maximum restarts ({}) within {:?}, escalating",
+                    actor_type,
+                    self.restart_policy.max_restarts,
+                    self.restart_policy.within_time_period,
                 );
                 self.escalate_failure(actor_type, ctx);
                 return;
@@ -546,13 +566,39 @@ impl GraphServiceSupervisor {
     }
 
     
+    /// P2-04 fix: Escalation no longer blindly restarts ALL actors (OneForAll).
+    ///
+    /// The previous implementation used `restart_all_actors()` for the `OneForAll`
+    /// strategy, which disconnected every active WebSocket client when any single
+    /// actor (e.g. SemanticProcessor) failed beyond its restart limit.
+    ///
+    /// New behaviour:
+    /// - **OneForOne** (default): only the failed actor is marked as failed.
+    /// - **OneForAll**: restarts only *interdependent* actors (GraphState +
+    ///   PhysicsOrchestrator) via `restart_interdependent_actors()`. The
+    ///   ClientCoordinator is left running so WebSocket clients stay connected.
+    /// - **RestForOne**: restarts the failed actor and actors started after it.
+    /// - **Escalate**: forwards failure to parent supervisor if wired.
     fn escalate_failure(&mut self, actor_type: ActorType, ctx: &mut Context<Self>) {
         error!("Escalating failure for actor: {:?}", actor_type);
 
         match self.strategy {
             GraphSupervisionStrategy::OneForAll => {
-                warn!("Restarting all actors due to escalation");
-                self.restart_all_actors(ctx);
+                // P2-04: Only restart the interdependent state/physics sub-group.
+                // ClientCoordinator (WebSocket clients) is left untouched.
+                warn!(
+                    "OneForAll escalation for {:?}: restarting interdependent actors \
+                     (GraphState + PhysicsOrchestrator) — ClientCoordinator preserved",
+                    actor_type
+                );
+                self.restart_interdependent_actors(ctx);
+            }
+            GraphSupervisionStrategy::RestForOne => {
+                warn!(
+                    "RestForOne escalation for {:?}: restarting failed actor and dependants",
+                    actor_type
+                );
+                self.restart_rest_for_one(actor_type, ctx);
             }
             GraphSupervisionStrategy::Escalate => {
                 if let Some(ref parent) = self.parent_supervisor {
@@ -575,12 +621,56 @@ impl GraphServiceSupervisor {
                     ctx.stop();
                 }
             }
-            _ => {
-                error!("Actor {:?} failed beyond recovery limits", actor_type);
+            GraphSupervisionStrategy::OneForOne => {
+                // OneForOne: only the failed actor is affected. Mark it as permanently
+                // failed so health checks report accurately.
+                error!("Actor {:?} failed beyond recovery limits (OneForOne — no cascade)", actor_type);
                 if let Some(info) = self.actor_info.get_mut(&actor_type) {
                     info.health = ActorHealth::Failed;
                 }
             }
+        }
+    }
+
+    /// P2-04: Restart only the interdependent actor sub-group (GraphState +
+    /// PhysicsOrchestrator + SemanticProcessor) while leaving ClientCoordinator
+    /// running so WebSocket clients stay connected.
+    fn restart_interdependent_actors(&mut self, ctx: &mut Context<Self>) {
+        info!("Restarting interdependent actors (preserving ClientCoordinator)");
+
+        // Drop only the interdependent actors
+        self.graph_state = None;
+        self.physics = None;
+        self.semantic = None;
+        // self.client intentionally NOT reset
+
+        // Restart the interdependent group
+        self.start_actor(ActorType::GraphState, ctx);
+        self.start_actor(ActorType::PhysicsOrchestrator, ctx);
+        self.start_actor(ActorType::SemanticProcessor, ctx);
+    }
+
+    /// P2-04: RestForOne — restart the failed actor and all actors started
+    /// after it in the initialization order (ClientCoordinator, Physics,
+    /// Semantic, GraphState).
+    fn restart_rest_for_one(&mut self, failed: ActorType, ctx: &mut Context<Self>) {
+        // Initialization order (from initialize_actors):
+        // ClientCoordinator, PhysicsOrchestrator, SemanticProcessor, GraphState
+        let order = [
+            ActorType::ClientCoordinator,
+            ActorType::PhysicsOrchestrator,
+            ActorType::SemanticProcessor,
+            ActorType::GraphState,
+        ];
+        let start_idx = order.iter().position(|a| *a == failed).unwrap_or(0);
+        for actor_type in &order[start_idx..] {
+            match actor_type {
+                ActorType::GraphState => self.graph_state = None,
+                ActorType::PhysicsOrchestrator => self.physics = None,
+                ActorType::SemanticProcessor => self.semantic = None,
+                ActorType::ClientCoordinator => self.client = None,
+            }
+            self.start_actor(actor_type.clone(), ctx);
         }
     }
 
@@ -1507,25 +1597,123 @@ impl Handler<msgs::NodeInteractionMessage> for GraphServiceSupervisor {
 }
 
 // ============================================================================
-// NOTE: Tests disabled due to:
-// 1. GraphServiceSupervisor::new() requires 1 argument but tests pass 0
-// 2. GraphSupervisionStrategy doesn't implement PartialEq for assert_eq!
-// To re-enable: Update tests to match current API signatures
-/*
+// Unit tests — re-enabled with a stub KG repo to match current API signatures.
+// ============================================================================
 #[cfg(test)]
 mod tests {
     use super::*;
-    use actix::System;
+    use crate::ports::knowledge_graph_repository::{
+        GraphStatistics, KnowledgeGraphRepository,
+    };
+    use async_trait::async_trait;
+    use crate::models::graph::GraphData;
+    use crate::models::node::Node;
+    use crate::models::edge::Edge;
+
+    // ── Stub repository (no-op persistence for unit tests) ──────────
+    struct StubKgRepo;
+
+    #[async_trait]
+    impl KnowledgeGraphRepository for StubKgRepo {
+        async fn load_graph(&self) -> crate::ports::knowledge_graph_repository::Result<Arc<GraphData>> {
+            Ok(Arc::new(GraphData::new()))
+        }
+        async fn save_graph(&self, _graph: &GraphData) -> crate::ports::knowledge_graph_repository::Result<()> {
+            Ok(())
+        }
+        async fn add_node(&self, _node: &Node) -> crate::ports::knowledge_graph_repository::Result<u32> {
+            Ok(0)
+        }
+        async fn batch_add_nodes(&self, _nodes: Vec<Node>) -> crate::ports::knowledge_graph_repository::Result<Vec<u32>> {
+            Ok(vec![])
+        }
+        async fn update_node(&self, _node: &Node) -> crate::ports::knowledge_graph_repository::Result<()> {
+            Ok(())
+        }
+        async fn batch_update_nodes(&self, _nodes: Vec<Node>) -> crate::ports::knowledge_graph_repository::Result<()> {
+            Ok(())
+        }
+        async fn remove_node(&self, _node_id: u32) -> crate::ports::knowledge_graph_repository::Result<()> {
+            Ok(())
+        }
+        async fn batch_remove_nodes(&self, _node_ids: Vec<u32>) -> crate::ports::knowledge_graph_repository::Result<()> {
+            Ok(())
+        }
+        async fn get_node(&self, _node_id: u32) -> crate::ports::knowledge_graph_repository::Result<Option<Node>> {
+            Ok(None)
+        }
+        async fn get_nodes(&self, _node_ids: Vec<u32>) -> crate::ports::knowledge_graph_repository::Result<Vec<Node>> {
+            Ok(vec![])
+        }
+        async fn get_nodes_by_metadata_id(&self, _metadata_id: &str) -> crate::ports::knowledge_graph_repository::Result<Vec<Node>> {
+            Ok(vec![])
+        }
+        async fn get_nodes_by_owl_class_iri(&self, _iri: &str) -> crate::ports::knowledge_graph_repository::Result<Vec<Node>> {
+            Ok(vec![])
+        }
+        async fn search_nodes_by_label(&self, _label: &str) -> crate::ports::knowledge_graph_repository::Result<Vec<Node>> {
+            Ok(vec![])
+        }
+        async fn add_edge(&self, _edge: &Edge) -> crate::ports::knowledge_graph_repository::Result<String> {
+            Ok(String::new())
+        }
+        async fn batch_add_edges(&self, _edges: Vec<Edge>) -> crate::ports::knowledge_graph_repository::Result<Vec<String>> {
+            Ok(vec![])
+        }
+        async fn update_edge(&self, _edge: &Edge) -> crate::ports::knowledge_graph_repository::Result<()> {
+            Ok(())
+        }
+        async fn remove_edge(&self, _edge_id: &str) -> crate::ports::knowledge_graph_repository::Result<()> {
+            Ok(())
+        }
+        async fn batch_remove_edges(&self, _edge_ids: Vec<String>) -> crate::ports::knowledge_graph_repository::Result<()> {
+            Ok(())
+        }
+        async fn get_node_edges(&self, _node_id: u32) -> crate::ports::knowledge_graph_repository::Result<Vec<Edge>> {
+            Ok(vec![])
+        }
+        async fn get_edges_between(&self, _source_id: u32, _target_id: u32) -> crate::ports::knowledge_graph_repository::Result<Vec<Edge>> {
+            Ok(vec![])
+        }
+        async fn batch_update_positions(&self, _positions: Vec<(u32, f32, f32, f32)>) -> crate::ports::knowledge_graph_repository::Result<()> {
+            Ok(())
+        }
+        async fn get_all_positions(&self) -> crate::ports::knowledge_graph_repository::Result<std::collections::HashMap<u32, (f32, f32, f32)>> {
+            Ok(std::collections::HashMap::new())
+        }
+        async fn query_nodes(&self, _query: &str) -> crate::ports::knowledge_graph_repository::Result<Vec<Node>> {
+            Ok(vec![])
+        }
+        async fn get_neighbors(&self, _node_id: u32) -> crate::ports::knowledge_graph_repository::Result<Vec<Node>> {
+            Ok(vec![])
+        }
+        async fn get_statistics(&self) -> crate::ports::knowledge_graph_repository::Result<GraphStatistics> {
+            Ok(GraphStatistics {
+                node_count: 0,
+                edge_count: 0,
+                average_degree: 0.0,
+                connected_components: 0,
+                last_updated: chrono::Utc::now(),
+            })
+        }
+        async fn clear_graph(&self) -> crate::ports::knowledge_graph_repository::Result<()> {
+            Ok(())
+        }
+        async fn health_check(&self) -> crate::ports::knowledge_graph_repository::Result<bool> {
+            Ok(true)
+        }
+    }
+
+    fn stub_repo() -> Arc<dyn KnowledgeGraphRepository> {
+        Arc::new(StubKgRepo)
+    }
 
     #[actix_rt::test]
     async fn test_supervisor_initialization() {
-        let system = System::new();
-
-        system.block_on(async {
-            let supervisor = GraphServiceSupervisor::new();
-            assert_eq!(supervisor.strategy, GraphSupervisionStrategy::OneForOne);
-            assert_eq!(supervisor.actor_info.len(), 0);
-        });
+        let supervisor = GraphServiceSupervisor::new(stub_repo());
+        // GraphSupervisionStrategy doesn't derive PartialEq, so match instead
+        assert!(matches!(supervisor.strategy, GraphSupervisionStrategy::OneForOne));
+        assert_eq!(supervisor.actor_info.len(), 0);
     }
 
     #[actix_rt::test]
@@ -1536,15 +1724,40 @@ mod tests {
     }
 
     #[actix_rt::test]
-    async fn test_backoff_calculation() {
-        let supervisor = GraphServiceSupervisor::new();
-
-
+    async fn test_backoff_calculation_no_actor_info() {
+        let supervisor = GraphServiceSupervisor::new(stub_repo());
+        // No actor_info registered yet, so calculate_backoff returns the 1s default
         let backoff = supervisor.calculate_backoff(&ActorType::GraphState);
         assert_eq!(backoff, Duration::from_secs(1));
     }
+
+    #[actix_rt::test]
+    async fn test_with_config_overrides() {
+        let custom_policy = RestartPolicy {
+            max_restarts: 10,
+            within_time_period: Duration::from_secs(120),
+            backoff_strategy: BackoffStrategy::Fixed(Duration::from_secs(2)),
+            escalation_threshold: 5,
+        };
+        let supervisor = GraphServiceSupervisor::with_config(
+            stub_repo(),
+            GraphSupervisionStrategy::RestForOne,
+            custom_policy.clone(),
+            Duration::from_secs(15),
+        );
+        assert!(matches!(supervisor.strategy, GraphSupervisionStrategy::RestForOne));
+        assert_eq!(supervisor.restart_policy.max_restarts, 10);
+        assert_eq!(supervisor.health_check_interval, Duration::from_secs(15));
+    }
+
+    #[actix_rt::test]
+    async fn test_supervision_stats_initial() {
+        let supervisor = GraphServiceSupervisor::new(stub_repo());
+        assert_eq!(supervisor.supervision_stats.total_restarts, 0);
+        assert_eq!(supervisor.supervision_stats.actors_supervised, 0);
+        assert_eq!(supervisor.supervision_stats.messages_routed, 0);
+    }
 }
-*/
 
 // Handler to get GraphStateActor from supervisor
 impl Handler<msgs::GetGraphStateActor> for GraphServiceSupervisor {
