@@ -34,6 +34,10 @@ use solid_pod_rs::payments::{
     PayConfig as UpstreamPayConfig, PaymentError, WebLedger,
 };
 
+// P2-06: File-level advisory locking for cross-process safety.
+#[cfg(unix)]
+use std::os::unix::io::AsRawFd;
+
 // ---------------------------------------------------------------------------
 // PayConfig — local config loaded from env / config.yml
 // ---------------------------------------------------------------------------
@@ -127,6 +131,36 @@ impl VcPayConfig {
             chains: Vec::new(),
         }
     }
+
+    /// P2-05: Build a JSON map of per-endpoint GPU cost tiers suitable for
+    /// inclusion in upstream request headers or the `/pay/.info` response.
+    ///
+    /// Tier multipliers relative to `cost_sats`:
+    /// - inference = 10x base rate
+    /// - image-gen = 100x base rate
+    /// - analytics = 5x base rate
+    pub fn cost_tiers_json(&self) -> serde_json::Value {
+        serde_json::json!({
+            "default_sats": self.cost_sats,
+            "tiers": {
+                "inference": {
+                    "cost_sats": self.inference_cost_sats,
+                    "multiplier": if self.cost_sats > 0 { self.inference_cost_sats / self.cost_sats } else { 10 },
+                    "endpoints": ["/api/inference/*"]
+                },
+                "image-gen": {
+                    "cost_sats": self.image_gen_cost_sats,
+                    "multiplier": if self.cost_sats > 0 { self.image_gen_cost_sats / self.cost_sats } else { 100 },
+                    "endpoints": ["/api/image-gen/*"]
+                },
+                "analytics": {
+                    "cost_sats": self.analytics_cost_sats,
+                    "multiplier": if self.cost_sats > 0 { self.analytics_cost_sats / self.cost_sats } else { 5 },
+                    "endpoints": ["/api/analytics/*"]
+                }
+            }
+        })
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -135,14 +169,51 @@ impl VcPayConfig {
 
 /// Filesystem-backed payment store using a single `WebLedger` JSON file.
 ///
-/// The ledger lives at `{ledger_dir}/ledger.json`. All mutations acquire an
-/// exclusive file lock (`flock(2)` via `fs2`) to prevent concurrent writes
-/// from corrupting the file. Since `fs2` is a heavyweight dep, we use a
-/// `tokio::sync::Mutex` as the serialisation primitive instead — suitable
-/// for single-process deployments.
+/// The ledger lives at `{ledger_dir}/ledger.json`. Mutations acquire BOTH a
+/// `tokio::sync::Mutex` (in-process serialization) AND an advisory file lock
+/// via `flock(2)` on `{ledger_dir}/ledger.lock` (cross-process safety, P2-06).
+///
+/// The file lock prevents concurrent writes from multiple server processes
+/// sharing the same ledger directory (e.g. blue-green deployments, multiple
+/// workers). The in-process mutex prevents the tokio task from holding the
+/// file lock across an await point.
 pub struct FsPaymentStore {
     ledger_path: PathBuf,
+    lock_path: PathBuf,
     lock: tokio::sync::Mutex<()>,
+}
+
+/// RAII guard for an advisory file lock. Releases on drop.
+#[cfg(unix)]
+struct FileLockGuard {
+    file: std::fs::File,
+}
+
+#[cfg(unix)]
+impl FileLockGuard {
+    /// Acquire an exclusive advisory lock on the given path. Creates the
+    /// lock file if it does not exist.
+    fn lock_exclusive(path: &Path) -> std::io::Result<Self> {
+        let file = std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .open(path)?;
+        // SAFETY: flock operates on a valid fd from an open File.
+        let rc = unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX) };
+        if rc != 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+        Ok(Self { file })
+    }
+}
+
+#[cfg(unix)]
+impl Drop for FileLockGuard {
+    fn drop(&mut self) {
+        // Best-effort unlock; failure here is benign (fd close also releases).
+        unsafe { libc::flock(self.file.as_raw_fd(), libc::LOCK_UN) };
+    }
 }
 
 impl FsPaymentStore {
@@ -150,10 +221,21 @@ impl FsPaymentStore {
     pub fn new(ledger_dir: &Path) -> std::io::Result<Self> {
         std::fs::create_dir_all(ledger_dir)?;
         let ledger_path = ledger_dir.join("ledger.json");
+        let lock_path = ledger_dir.join("ledger.lock");
         Ok(Self {
             ledger_path,
+            lock_path,
             lock: tokio::sync::Mutex::new(()),
         })
+    }
+
+    /// Acquire both the in-process mutex and the cross-process file lock,
+    /// then run `f` synchronously. Returns the file lock guard alongside
+    /// the mutex guard so both are held for the caller's scope.
+    #[cfg(unix)]
+    fn acquire_file_lock(&self) -> Result<FileLockGuard, PaymentError> {
+        FileLockGuard::lock_exclusive(&self.lock_path)
+            .map_err(|e| PaymentError::Store(format!("flock: {e}")))
     }
 
     /// Read the ledger from disk. Returns a fresh empty ledger if the file
@@ -193,8 +275,13 @@ impl FsPaymentStore {
     }
 
     /// Atomically credit an account. Returns the new balance.
+    ///
+    /// Acquires both the tokio mutex (in-process) and an advisory flock
+    /// (cross-process) before touching the ledger.
     pub async fn credit(&self, did: &str, amount: u64) -> Result<u64, PaymentError> {
         let _guard = self.lock.lock().await;
+        #[cfg(unix)]
+        let _flock = self.acquire_file_lock()?;
         let mut ledger = self.read_ledger().await;
         ledger.credit(did, amount);
         self.write_ledger(&ledger).await?;
@@ -204,8 +291,13 @@ impl FsPaymentStore {
     /// Atomically debit an account. Returns the new balance on success,
     /// or `PaymentError::InsufficientBalance` if the account cannot cover
     /// the cost.
+    ///
+    /// Acquires both the tokio mutex (in-process) and an advisory flock
+    /// (cross-process) before touching the ledger.
     pub async fn debit(&self, did: &str, amount: u64) -> Result<u64, PaymentError> {
         let _guard = self.lock.lock().await;
+        #[cfg(unix)]
+        let _flock = self.acquire_file_lock()?;
         let mut ledger = self.read_ledger().await;
         let remaining = ledger.debit(did, amount)?;
         self.write_ledger(&ledger).await?;
@@ -219,6 +311,10 @@ impl FsPaymentStore {
 
 /// Extract the caller's hex pubkey from a NIP-98 `Authorization` header.
 /// Returns `None` if the header is missing or verification fails.
+///
+/// The actual HTTP method is derived from the request so that POST endpoints
+/// (e.g. `/pay/.deposit`, `/pay/.estimate`) verify correctly against the
+/// method tag in the NIP-98 token.
 async fn extract_caller_pubkey(req: &HttpRequest) -> Option<String> {
     let header = req
         .headers()
@@ -226,10 +322,11 @@ async fn extract_caller_pubkey(req: &HttpRequest) -> Option<String> {
         .and_then(|h| h.to_str().ok())?;
 
     let url = req.uri().to_string();
-    match solid_pod_rs::auth::nip98::verify(header, &url, "GET", None).await {
+    let method = req.method().as_str();
+    match solid_pod_rs::auth::nip98::verify(header, &url, method, None).await {
         Ok(pubkey) => Some(pubkey),
         Err(e) => {
-            debug!("[pay] NIP-98 verify failed: {e}");
+            debug!("[pay] NIP-98 verify failed for {method} {url}: {e}");
             None
         }
     }
@@ -240,6 +337,10 @@ async fn extract_caller_pubkey(req: &HttpRequest) -> Option<String> {
 // ---------------------------------------------------------------------------
 
 /// `GET /pay/.info` — public endpoint, returns payment configuration.
+///
+/// P2-05: The response now includes per-endpoint GPU cost tiers so downstream
+/// consumers (including solid-pod-rs) can discover tiered pricing without a
+/// separate `/pay/.costs` call.
 async fn pay_info_handler(
     config: web::Data<VcPayConfig>,
 ) -> HttpResponse {
@@ -248,6 +349,8 @@ async fn pay_info_handler(
     // Augment with VisionClaw-specific fields
     info["enabled"] = serde_json::json!(config.enabled);
     info["methods"] = serde_json::json!(["lightning"]);
+    // P2-05: propagate per-endpoint GPU cost tiers
+    info["cost_tiers"] = config.cost_tiers_json();
     HttpResponse::Ok().json(info)
 }
 
@@ -257,6 +360,12 @@ async fn pay_balance_handler(
     config: web::Data<VcPayConfig>,
     store: web::Data<Arc<FsPaymentStore>>,
 ) -> HttpResponse {
+    if !config.enabled {
+        return HttpResponse::Forbidden().json(serde_json::json!({
+            "error": "Payment system is disabled"
+        }));
+    }
+
     let pubkey = match extract_caller_pubkey(&req).await {
         Some(pk) => pk,
         None => {
@@ -273,7 +382,13 @@ async fn pay_balance_handler(
 }
 
 /// `POST /pay/.deposit` — stub: manual funding instructions.
-async fn pay_deposit_handler() -> HttpResponse {
+async fn pay_deposit_handler(config: web::Data<VcPayConfig>) -> HttpResponse {
+    if !config.enabled {
+        return HttpResponse::Forbidden().json(serde_json::json!({
+            "error": "Payment system is disabled"
+        }));
+    }
+
     HttpResponse::NotImplemented().json(serde_json::json!({
         "error": "Deposit not yet available via API",
         "message": "Contact the server operator for manual funding. \
@@ -299,6 +414,12 @@ async fn pay_resource_handler(
     config: web::Data<VcPayConfig>,
     store: web::Data<Arc<FsPaymentStore>>,
 ) -> HttpResponse {
+    if !config.enabled {
+        return HttpResponse::Forbidden().json(serde_json::json!({
+            "error": "Payment system is disabled"
+        }));
+    }
+
     let pubkey = match extract_caller_pubkey(&req).await {
         Some(pk) => pk,
         None => {
@@ -310,7 +431,9 @@ async fn pay_resource_handler(
 
     let did = pubkey_to_did(&pubkey);
     let resource = path.into_inner();
-    let cost = config.cost_sats;
+    // P2-05: Use per-endpoint cost tier instead of flat cost_sats
+    let endpoint_path = format!("/{resource}");
+    let cost = config.cost_for_endpoint(&endpoint_path);
 
     match store.debit(&did, cost).await {
         Ok(remaining) => {
@@ -364,6 +487,12 @@ async fn pay_estimate_handler(
     body: web::Json<EstimateRequest>,
     config: web::Data<VcPayConfig>,
 ) -> HttpResponse {
+    if !config.enabled {
+        return HttpResponse::Forbidden().json(serde_json::json!({
+            "error": "Payment system is disabled"
+        }));
+    }
+
     let pubkey = match extract_caller_pubkey(&req).await {
         Some(pk) => pk,
         None => {
@@ -504,6 +633,9 @@ mod tests {
             enabled: true,
             cost_sats: 10,
             ledger_dir: PathBuf::from("/tmp"),
+            inference_cost_sats: 100,
+            image_gen_cost_sats: 1000,
+            analytics_cost_sats: 50,
         };
         let upstream = config.to_upstream();
         assert!(upstream.enabled);
@@ -613,6 +745,9 @@ mod tests {
             enabled: true,
             cost_sats: 5,
             ledger_dir: PathBuf::from("/tmp"),
+            inference_cost_sats: 50,
+            image_gen_cost_sats: 500,
+            analytics_cost_sats: 25,
         };
         let upstream = config.to_upstream();
         let info = pay_info(&upstream);
