@@ -57,7 +57,9 @@ async fn orchestrator_receives_update_simulation_params_on_settings_change() {
 
     let send_res = timeout(
         Duration::from_secs(1),
-        addr.send(UpdateSimulationParams { params: updated.clone() }),
+        addr.send(UpdateSimulationParams {
+            params: updated.clone(),
+        }),
     )
     .await;
     assert!(send_res.is_ok(), "orchestrator mailbox timed out");

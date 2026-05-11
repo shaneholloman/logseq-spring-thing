@@ -16,19 +16,21 @@
 //! - Selective data wipe: only clears Neo4j data for graph sources removed from config
 
 use crate::adapters::neo4j_ontology_repository::Neo4jOntologyRepository;
+use crate::adapters::whelk_inference_engine::WhelkInferenceEngine;
 use crate::ports::knowledge_graph_repository::KnowledgeGraphRepository;
 use crate::ports::ontology_repository::OntologyRepository;
+use crate::services::edge_classifier::EdgeClassifier;
 use crate::services::github::config::GitHubConfig;
 use crate::services::github::content_enhanced::EnhancedContentAPI;
 use crate::services::github::types::GitHubFileBasicMetadata;
-use crate::services::parsers::{KnowledgeGraphParser, OntologyParser};
+use crate::services::ingest_saga::{
+    saga_enabled, serialise_node_for_pod, IngestSaga, NodeSagaPlan,
+};
 use crate::services::ontology_enrichment_service::OntologyEnrichmentService;
-use crate::services::ontology_reasoner::OntologyReasoner;
-use crate::services::edge_classifier::EdgeClassifier;
 use crate::services::ontology_pipeline_service::OntologyPipelineService;
-use crate::services::ingest_saga::{saga_enabled, serialise_node_for_pod, IngestSaga, NodeSagaPlan};
-use crate::adapters::whelk_inference_engine::WhelkInferenceEngine;
+use crate::services::ontology_reasoner::OntologyReasoner;
 use crate::services::parsers::block_level_parser;
+use crate::services::parsers::{KnowledgeGraphParser, OntologyParser};
 use futures::stream::{FuturesUnordered, StreamExt};
 use log::{debug, error, info, warn};
 use std::sync::Arc;
@@ -93,10 +95,7 @@ impl GitHubSyncService {
             onto_repo.clone() as Arc<dyn OntologyRepository>,
         ));
         let classifier = Arc::new(EdgeClassifier::new());
-        let enrichment_service = Arc::new(OntologyEnrichmentService::new(
-            reasoner,
-            classifier,
-        ));
+        let enrichment_service = Arc::new(OntologyEnrichmentService::new(reasoner, classifier));
 
         Self {
             content_api,
@@ -152,15 +151,19 @@ impl GitHubSyncService {
         // Detect base path change — clear stale Neo4j data for removed graph sources
         let any_path_changed = self.detect_and_handle_base_paths_change(&base_paths).await;
 
-        let force_full_sync = any_path_changed || std::env::var("FORCE_FULL_SYNC")
-            .map(|v| v == "1" || v.to_lowercase() == "true")
-            .unwrap_or(false);
+        let force_full_sync = any_path_changed
+            || std::env::var("FORCE_FULL_SYNC")
+                .map(|v| v == "1" || v.to_lowercase() == "true")
+                .unwrap_or(false);
 
         let mut all_files_to_update: Vec<GitHubFileBasicMetadata> = Vec::new();
 
         for base_path in &base_paths {
             let graph_source = GitHubConfig::graph_source_for_path(base_path);
-            info!("Syncing graph source '{}' from base path '{}'", graph_source, base_path);
+            info!(
+                "Syncing graph source '{}' from base path '{}'",
+                graph_source, base_path
+            );
 
             // Fetch files for this base path
             let files = match self.fetch_markdown_files_for_path(base_path).await {
@@ -180,13 +183,21 @@ impl GitHubSyncService {
 
             // SHA1 filtering
             let files_to_process = if force_full_sync {
-                info!("Full sync required for '{}' — processing ALL {} files", base_path, files.len());
+                info!(
+                    "Full sync required for '{}' — processing ALL {} files",
+                    base_path,
+                    files.len()
+                );
                 files.clone()
             } else {
                 match self.filter_changed_files(&files).await {
                     Ok(filtered) => {
-                        info!("Processing {} changed files ({} unchanged) in '{}'",
-                            filtered.len(), files.len() - filtered.len(), base_path);
+                        info!(
+                            "Processing {} changed files ({} unchanged) in '{}'",
+                            filtered.len(),
+                            files.len() - filtered.len(),
+                            base_path
+                        );
                         stats.skipped_files += files.len() - filtered.len();
                         filtered
                     }
@@ -203,17 +214,39 @@ impl GitHubSyncService {
             for (batch_idx, batch) in files_to_process.chunks(BATCH_SIZE).enumerate() {
                 let batch_start = Instant::now();
                 let total_batches = (files_to_process.len() + BATCH_SIZE - 1) / BATCH_SIZE;
-                info!("Processing batch {}/{} ({} files) for graph '{}'",
-                    batch_idx + 1, total_batches, batch.len(), graph_source);
+                info!(
+                    "Processing batch {}/{} ({} files) for graph '{}'",
+                    batch_idx + 1,
+                    total_batches,
+                    batch.len(),
+                    graph_source
+                );
 
-                match self.process_batch_with_source(batch, &graph_source, &mut stats).await {
+                match self
+                    .process_batch_with_source(batch, &graph_source, &mut stats)
+                    .await
+                {
                     Ok(_) => {
-                        info!("Batch {} for '{}' completed in {:?}",
-                            batch_idx + 1, graph_source, batch_start.elapsed());
+                        info!(
+                            "Batch {} for '{}' completed in {:?}",
+                            batch_idx + 1,
+                            graph_source,
+                            batch_start.elapsed()
+                        );
                     }
                     Err(e) => {
-                        error!("Batch {} for '{}' failed: {}", batch_idx + 1, graph_source, e);
-                        stats.errors.push(format!("Batch {} [{}]: {}", batch_idx + 1, graph_source, e));
+                        error!(
+                            "Batch {} for '{}' failed: {}",
+                            batch_idx + 1,
+                            graph_source,
+                            e
+                        );
+                        stats.errors.push(format!(
+                            "Batch {} [{}]: {}",
+                            batch_idx + 1,
+                            graph_source,
+                            e
+                        ));
                     }
                 }
             }
@@ -225,8 +258,10 @@ impl GitHubSyncService {
         }
 
         stats.duration = start_time.elapsed();
-        info!("Sync complete: {} nodes, {} edges in {:?}",
-            stats.total_nodes, stats.total_edges, stats.duration);
+        info!(
+            "Sync complete: {} nodes, {} edges in {:?}",
+            stats.total_nodes, stats.total_edges, stats.duration
+        );
 
         Ok(stats)
     }
@@ -262,13 +297,24 @@ impl GitHubSyncService {
         base_path: &str,
     ) -> Result<Vec<GitHubFileBasicMetadata>, String> {
         // Try the Trees API first — it returns the entire repo tree; we filter client-side
-        match self.content_api.list_markdown_files_via_tree_for_path(base_path).await {
+        match self
+            .content_api
+            .list_markdown_files_via_tree_for_path(base_path)
+            .await
+        {
             Ok(files) => {
-                info!("Trees API returned {} markdown files for '{}'", files.len(), base_path);
+                info!(
+                    "Trees API returned {} markdown files for '{}'",
+                    files.len(),
+                    base_path
+                );
                 Ok(files)
             }
             Err(e) => {
-                warn!("Trees API failed for '{}' ({}), falling back to Contents API", base_path, e);
+                warn!(
+                    "Trees API failed for '{}' ({}), falling back to Contents API",
+                    base_path, e
+                );
                 self.content_api
                     .list_markdown_files(base_path)
                     .await
@@ -301,7 +347,10 @@ impl GitHubSyncService {
         let mut batch_edges = std::collections::HashMap::new();
         let mut public_pages = std::collections::HashSet::new();
 
-        info!("🔍 [DEBUG] Starting batch with {} files (parallel fetch)", files.len());
+        info!(
+            "🔍 [DEBUG] Starting batch with {} files (parallel fetch)",
+            files.len()
+        );
 
         // Phase 1: Fetch all file contents in parallel
         const PARALLEL_FETCHES: usize = 8;
@@ -310,17 +359,25 @@ impl GitHubSyncService {
         fn create_fetch_future(
             content_api: Arc<EnhancedContentAPI>,
             file: GitHubFileBasicMetadata,
-        ) -> std::pin::Pin<Box<dyn std::future::Future<Output = (GitHubFileBasicMetadata, Result<String, String>)> + Send>> {
+        ) -> std::pin::Pin<
+            Box<
+                dyn std::future::Future<Output = (GitHubFileBasicMetadata, Result<String, String>)>
+                    + Send,
+            >,
+        > {
             let download_url = file.download_url.clone();
             Box::pin(async move {
-                let result = content_api.fetch_file_content(&download_url).await
+                let result = content_api
+                    .fetch_file_content(&download_url)
+                    .await
                     .map_err(|e| format!("Failed to fetch content: {}", e));
                 (file, result)
             })
         }
 
         let mut fetch_futures: FuturesUnordered<_> = FuturesUnordered::new();
-        let mut fetched_contents: Vec<(GitHubFileBasicMetadata, Result<String, String>)> = Vec::with_capacity(files.len());
+        let mut fetched_contents: Vec<(GitHubFileBasicMetadata, Result<String, String>)> =
+            Vec::with_capacity(files.len());
         let mut file_iter = files.iter().cloned().peekable();
 
         // Seed initial batch of parallel fetches
@@ -342,22 +399,43 @@ impl GitHubSyncService {
             }
         }
 
-        info!("🔍 [DEBUG] Fetched {} files, now processing", fetched_contents.len());
+        info!(
+            "🔍 [DEBUG] Fetched {} files, now processing",
+            fetched_contents.len()
+        );
 
         // Phase 2: Process fetched contents sequentially (modifies shared state)
         for (idx, (file, content_result)) in fetched_contents.into_iter().enumerate() {
             if idx % 10 == 0 && idx > 0 {
-                info!("  Progress: {}/{} files in batch (nodes so far: {}, edges: {})",
-                    idx, files.len(), batch_nodes.len(), batch_edges.len());
+                info!(
+                    "  Progress: {}/{} files in batch (nodes so far: {}, edges: {})",
+                    idx,
+                    files.len(),
+                    batch_nodes.len(),
+                    batch_edges.len()
+                );
             }
 
             match content_result {
                 Ok(content) => {
-                    match self.process_fetched_file(&file, &content, &mut batch_nodes, &mut batch_edges, &mut public_pages).await {
+                    match self
+                        .process_fetched_file(
+                            &file,
+                            &content,
+                            &mut batch_nodes,
+                            &mut batch_edges,
+                            &mut public_pages,
+                        )
+                        .await
+                    {
                         Ok(()) => {
                             stats.kg_files_processed += 1;
-                            debug!("✓ Processed {}: {} nodes total, {} edges total",
-                                file.name, batch_nodes.len(), batch_edges.len());
+                            debug!(
+                                "✓ Processed {}: {} nodes total, {} edges total",
+                                file.name,
+                                batch_nodes.len(),
+                                batch_edges.len()
+                            );
                         }
                         Err(e) => {
                             warn!("Error processing {}: {}", file.name, e);
@@ -372,8 +450,12 @@ impl GitHubSyncService {
             }
         }
 
-        info!("🔍 [DEBUG] After processing: {} nodes, {} edges, {} public_pages",
-            batch_nodes.len(), batch_edges.len(), public_pages.len());
+        info!(
+            "🔍 [DEBUG] After processing: {} nodes, {} edges, {} public_pages",
+            batch_nodes.len(),
+            batch_edges.len(),
+            public_pages.len()
+        );
 
         // Don't filter nodes/edges - save everything to maintain graph connectivity
         // Edge cross-references between batches should be preserved
@@ -391,7 +473,8 @@ impl GitHubSyncService {
         if !graph_source.is_empty() {
             for node in batch_nodes.values_mut() {
                 node.graph_source = Some(graph_source.to_string());
-                node.metadata.insert("graph_source".to_string(), graph_source.to_string());
+                node.metadata
+                    .insert("graph_source".to_string(), graph_source.to_string());
             }
         }
 
@@ -403,7 +486,11 @@ impl GitHubSyncService {
             stats.total_nodes += node_vec.len();
             stats.total_edges += edge_vec.len();
 
-            info!("💾 Saving batch: {} nodes, {} edges", node_vec.len(), edge_vec.len());
+            info!(
+                "💾 Saving batch: {} nodes, {} edges",
+                node_vec.len(),
+                edge_vec.len()
+            );
 
             // ADR-051: Pod-first-Neo4j-second saga
             // When the saga is wired AND POD_SAGA_ENABLED=true, route nodes
@@ -414,31 +501,44 @@ impl GitHubSyncService {
 
             if use_saga {
                 let saga = self.saga.as_ref().expect("saga is Some").clone();
-                let plans: Vec<NodeSagaPlan> = node_vec.iter().map(|n| {
-                    let pod_url = saga.default_pod_url_for(n);
-                    NodeSagaPlan {
-                        node: n.clone(),
-                        pod_url,
-                        content: serialise_node_for_pod(n),
-                        content_type: "application/json".to_string(),
-                        auth_header: None, // server-Nostr signing path
-                    }
-                }).collect();
+                let plans: Vec<NodeSagaPlan> = node_vec
+                    .iter()
+                    .map(|n| {
+                        let pod_url = saga.default_pod_url_for(n);
+                        NodeSagaPlan {
+                            node: n.clone(),
+                            pod_url,
+                            content: serialise_node_for_pod(n),
+                            content_type: "application/json".to_string(),
+                            auth_header: None, // server-Nostr signing path
+                        }
+                    })
+                    .collect();
 
-                info!("🔐 [saga] Executing Pod-first-Neo4j-second saga for {} nodes", plans.len());
+                info!(
+                    "🔐 [saga] Executing Pod-first-Neo4j-second saga for {} nodes",
+                    plans.len()
+                );
                 let result = saga.execute_batch(plans).await;
                 info!(
                     "🔐 [saga] Result: {} complete, {} pending, {} failed (duration: {:?})",
-                    result.complete.len(), result.pending.len(), result.failed.len(), result.duration
+                    result.complete.len(),
+                    result.pending.len(),
+                    result.failed.len(),
+                    result.duration
                 );
                 if !result.pending.is_empty() {
                     for (node_id, err) in &result.pending {
-                        stats.errors.push(format!("Saga pending node {}: {}", node_id, err));
+                        stats
+                            .errors
+                            .push(format!("Saga pending node {}: {}", node_id, err));
                     }
                 }
                 if !result.failed.is_empty() {
                     for (node_id, err) in &result.failed {
-                        stats.errors.push(format!("Saga failed node {}: {}", node_id, err));
+                        stats
+                            .errors
+                            .push(format!("Saga failed node {}: {}", node_id, err));
                     }
                 }
 
@@ -458,8 +558,11 @@ impl GitHubSyncService {
                 graph.nodes = node_vec;
                 graph.edges = edge_vec;
 
-                info!("🔍 [DEBUG] Calling save_graph() with {} nodes, {} edges",
-                    graph.nodes.len(), graph.edges.len());
+                info!(
+                    "🔍 [DEBUG] Calling save_graph() with {} nodes, {} edges",
+                    graph.nodes.len(),
+                    graph.edges.len()
+                );
 
                 self.kg_repo.save_graph(&graph).await.map_err(|e| {
                     error!("❌ save_graph() failed: {}", e);
@@ -497,39 +600,63 @@ impl GitHubSyncService {
             FileType::KnowledgeGraph => {
                 // Process public:: true files as knowledge graph nodes
                 debug!("🔍 Parsing knowledge graph from {}", file.name);
-                let mut parsed = self.kg_parser.parse(&content, &file.name)
+                let mut parsed = self
+                    .kg_parser
+                    .parse(&content, &file.name)
                     .map_err(|e| format!("Parse error: {}", e))?;
 
-                info!("📊 Parsed {}: {} nodes, {} edges",
-                    file.name, parsed.nodes.len(), parsed.edges.len());
+                info!(
+                    "📊 Parsed {}: {} nodes, {} edges",
+                    file.name,
+                    parsed.nodes.len(),
+                    parsed.edges.len()
+                );
 
                 // ✅ ENRICH WITH ONTOLOGY DATA
                 debug!("🦉 Enriching graph with ontology data for {}", file.name);
-                match self.enrichment_service.enrich_graph(&mut parsed, &file.path, &content).await {
+                match self
+                    .enrichment_service
+                    .enrich_graph(&mut parsed, &file.path, &content)
+                    .await
+                {
                     Ok((nodes_enriched, edges_enriched)) => {
                         debug!("✅ Enriched {}: {} nodes with owl_class_iri, {} edges with owl_property_iri",
                             file.name, nodes_enriched, edges_enriched);
                     }
                     Err(e) => {
-                        warn!("⚠️  Failed to enrich {}: {} (continuing with unenriched data)", file.name, e);
+                        warn!(
+                            "⚠️  Failed to enrich {}: {} (continuing with unenriched data)",
+                            file.name, e
+                        );
                     }
                 }
 
                 // Add to public pages
                 public_pages.insert(page_name.to_string());
-                debug!("✓ Added '{}' to public_pages (total: {})", page_name, public_pages.len());
+                debug!(
+                    "✓ Added '{}' to public_pages (total: {})",
+                    page_name,
+                    public_pages.len()
+                );
 
                 // Add nodes from KG parser
                 let nodes_before = nodes.len();
                 for node in parsed.nodes {
-                    debug!("  → Node {}: {} (type: {:?})",
-                        node.id, node.label,
-                        node.metadata.get("type"));
+                    debug!(
+                        "  → Node {}: {} (type: {:?})",
+                        node.id,
+                        node.label,
+                        node.metadata.get("type")
+                    );
                     nodes.insert(node.id, node);
                 }
                 let kg_nodes_added = nodes.len() - nodes_before;
-                info!("✓ Added {} KG nodes from {} (total now: {})",
-                    kg_nodes_added, file.name, nodes.len());
+                info!(
+                    "✓ Added {} KG nodes from {} (total now: {})",
+                    kg_nodes_added,
+                    file.name,
+                    nodes.len()
+                );
 
                 // Add edges from KG parser
                 let edges_before = edges.len();
@@ -537,7 +664,11 @@ impl GitHubSyncService {
                     edges.insert(edge.id.clone(), edge);
                 }
                 if edges.len() > edges_before {
-                    debug!("✓ Added {} edges from {}", edges.len() - edges_before, file.name);
+                    debug!(
+                        "✓ Added {} edges from {}",
+                        edges.len() - edges_before,
+                        file.name
+                    );
                 }
 
                 // Also check for and parse ontology blocks in this file.
@@ -555,7 +686,10 @@ impl GitHubSyncService {
                     FileFormat::OntologyV4 | FileFormat::VisionClawV2
                 );
                 if has_ontology_data {
-                    debug!("🦉 Detected ontology data ({:?}) in {}, extracting", onto_format, file.name);
+                    debug!(
+                        "🦉 Detected ontology data ({:?}) in {}, extracting",
+                        onto_format, file.name
+                    );
 
                     // Use parse_enhanced to get the full OntologyBlock with relationships
                     match self.onto_parser.parse_enhanced(&content, &file.name) {
@@ -565,15 +699,20 @@ impl GitHubSyncService {
                             let source_id = self.kg_parser.page_name_to_id(page_name);
 
                             let relationship_types: Vec<(&str, &[String], f32, &str)> = vec![
-                                ("hierarchical",  &block.is_subclass_of, 2.5, "rdfs:subClassOf"),
-                                ("structural",    &block.has_part,       1.5, "mv:hasPart"),
-                                ("structural",    &block.is_part_of,     1.5, "mv:isPartOf"),
-                                ("dependency",    &block.requires,       1.5, "mv:requires"),
-                                ("dependency",    &block.depends_on,     1.5, "mv:dependsOn"),
-                                ("dependency",    &block.enables,        1.5, "mv:enables"),
-                                ("associative",   &block.relates_to,     1.0, "mv:relatedTo"),
-                                ("bridge",        &block.bridges_to,     1.0, "mv:bridgesTo"),
-                                ("bridge",        &block.bridges_from,   1.0, "mv:bridgesFrom"),
+                                (
+                                    "hierarchical",
+                                    &block.is_subclass_of,
+                                    2.5,
+                                    "rdfs:subClassOf",
+                                ),
+                                ("structural", &block.has_part, 1.5, "mv:hasPart"),
+                                ("structural", &block.is_part_of, 1.5, "mv:isPartOf"),
+                                ("dependency", &block.requires, 1.5, "mv:requires"),
+                                ("dependency", &block.depends_on, 1.5, "mv:dependsOn"),
+                                ("dependency", &block.enables, 1.5, "mv:enables"),
+                                ("associative", &block.relates_to, 1.0, "mv:relatedTo"),
+                                ("bridge", &block.bridges_to, 1.0, "mv:bridgesTo"),
+                                ("bridge", &block.bridges_from, 1.0, "mv:bridgesFrom"),
                             ];
 
                             let mut onto_edges_added = 0usize;
@@ -584,14 +723,18 @@ impl GitHubSyncService {
                                         .trim_start_matches("[[")
                                         .trim_end_matches("]]")
                                         .trim();
-                                    if clean_name.is_empty() { continue; }
+                                    if clean_name.is_empty() {
+                                        continue;
+                                    }
 
                                     let target_id = self.kg_parser.page_name_to_id(clean_name);
                                     // Avoid self-loops
-                                    if target_id == source_id { continue; }
+                                    if target_id == source_id {
+                                        continue;
+                                    }
 
-                                    let edge_id = format!("{}_{}_{}",
-                                        source_id, target_id, edge_type);
+                                    let edge_id =
+                                        format!("{}_{}_{}", source_id, target_id, edge_type);
                                     let edge = crate::models::edge::Edge {
                                         id: edge_id.clone(),
                                         source: source_id,
@@ -613,21 +756,24 @@ impl GitHubSyncService {
                                         .trim_start_matches("[[")
                                         .trim_end_matches("]]")
                                         .trim();
-                                    if clean_name.is_empty() { continue; }
+                                    if clean_name.is_empty() {
+                                        continue;
+                                    }
 
                                     let target_id = self.kg_parser.page_name_to_id(clean_name);
-                                    if target_id == source_id { continue; }
+                                    if target_id == source_id {
+                                        continue;
+                                    }
 
-                                    let edge_id = format!("{}_{}_{}",
-                                        source_id, target_id, rel_name);
+                                    let edge_id =
+                                        format!("{}_{}_{}", source_id, target_id, rel_name);
                                     let edge = crate::models::edge::Edge {
                                         id: edge_id.clone(),
                                         source: source_id,
                                         target: target_id,
                                         weight: 1.0,
                                         edge_type: Some("associative".to_string()),
-                                        owl_property_iri: Some(
-                                            format!("mv:{}", rel_name)),
+                                        owl_property_iri: Some(format!("mv:{}", rel_name)),
                                         metadata: None,
                                     };
                                     edges.insert(edge_id, edge);
@@ -637,14 +783,23 @@ impl GitHubSyncService {
 
                             if onto_edges_added > 0 {
                                 let total_rels = block.is_subclass_of.len()
-                                    + block.has_part.len() + block.is_part_of.len()
-                                    + block.requires.len() + block.depends_on.len()
-                                    + block.enables.len() + block.relates_to.len()
-                                    + block.bridges_to.len() + block.bridges_from.len()
-                                    + block.other_relationships.values()
-                                        .map(|v| v.len()).sum::<usize>();
-                                debug!("🔗 Created {} ontology edges from {} relationships in {}",
-                                    onto_edges_added, total_rels, file.name);
+                                    + block.has_part.len()
+                                    + block.is_part_of.len()
+                                    + block.requires.len()
+                                    + block.depends_on.len()
+                                    + block.enables.len()
+                                    + block.relates_to.len()
+                                    + block.bridges_to.len()
+                                    + block.bridges_from.len()
+                                    + block
+                                        .other_relationships
+                                        .values()
+                                        .map(|v| v.len())
+                                        .sum::<usize>();
+                                debug!(
+                                    "🔗 Created {} ontology edges from {} relationships in {}",
+                                    onto_edges_added, total_rels, file.name
+                                );
                             }
 
                             // Also save ontology data to Neo4j (legacy path)
@@ -656,7 +811,10 @@ impl GitHubSyncService {
                                         onto_data.properties.len(),
                                         onto_data.axioms.len());
                                     if let Err(e) = self.save_ontology_data(onto_data).await {
-                                        error!("Failed to save ontology data from {}: {}", file.name, e);
+                                        error!(
+                                            "Failed to save ontology data from {}: {}",
+                                            file.name, e
+                                        );
                                     }
                                 }
                                 Err(e) => {
@@ -669,7 +827,10 @@ impl GitHubSyncService {
                             // Fallback: try legacy parse
                             if let Ok(onto_data) = self.onto_parser.parse(&content, &file.name) {
                                 if let Err(e2) = self.save_ontology_data(onto_data).await {
-                                    error!("Failed to save ontology data from {}: {}", file.name, e2);
+                                    error!(
+                                        "Failed to save ontology data from {}: {}",
+                                        file.name, e2
+                                    );
                                 }
                             }
                         }
@@ -688,11 +849,13 @@ impl GitHubSyncService {
                 debug!("🦉 Processing ontology file {}", file.name);
                 match self.onto_parser.parse(&content, &file.name) {
                     Ok(onto_data) => {
-                        debug!("🦉 Extracted from {}: {} classes, {} properties, {} axioms",
+                        debug!(
+                            "🦉 Extracted from {}: {} classes, {} properties, {} axioms",
                             file.name,
                             onto_data.classes.len(),
                             onto_data.properties.len(),
-                            onto_data.axioms.len());
+                            onto_data.axioms.len()
+                        );
 
                         // Save ontology data immediately
                         if let Err(e) = self.save_ontology_data(onto_data).await {
@@ -709,7 +872,10 @@ impl GitHubSyncService {
             }
             FileType::Skip => {
                 // Skip regular notes without public:: true or ontology blocks
-                debug!("⏭️  Skipped regular note: {} (no public:: true or ontology block)", file.name);
+                debug!(
+                    "⏭️  Skipped regular note: {} (no public:: true or ontology block)",
+                    file.name
+                );
                 Ok(())
             }
         }
@@ -723,13 +889,13 @@ impl GitHubSyncService {
         public_pages: &std::collections::HashSet<String>,
     ) {
         let before = nodes.len();
-        nodes.retain(|_, node| {
-            match node.metadata.get("type").map(|s| s.as_str()) {
+        nodes.retain(
+            |_, node| match node.metadata.get("type").map(|s| s.as_str()) {
                 Some("page") => true,
                 Some("linked_page") => public_pages.contains(&node.metadata_id),
                 _ => true,
-            }
-        });
+            },
+        );
         let filtered = before - nodes.len();
         if filtered > 0 {
             info!("🔍 Filtered {} linked_page nodes", filtered);
@@ -744,9 +910,8 @@ impl GitHubSyncService {
         nodes: &std::collections::HashMap<u32, crate::models::node::Node>,
     ) {
         let before = edges.len();
-        edges.retain(|_, edge| {
-            nodes.contains_key(&edge.source) && nodes.contains_key(&edge.target)
-        });
+        edges
+            .retain(|_, edge| nodes.contains_key(&edge.source) && nodes.contains_key(&edge.target));
         let filtered = before - edges.len();
         if filtered > 0 {
             info!("🔍 Filtered {} orphan edges", filtered);
@@ -762,11 +927,9 @@ impl GitHubSyncService {
 
         Ok(files
             .iter()
-            .filter(|file| {
-                match existing.get(&file.name) {
-                    Some(existing_sha) if existing_sha == &file.sha => false,
-                    _ => true,
-                }
+            .filter(|file| match existing.get(&file.name) {
+                Some(existing_sha) if existing_sha == &file.sha => false,
+                _ => true,
             })
             .cloned()
             .collect())
@@ -780,11 +943,17 @@ impl GitHubSyncService {
         // Try the Trees API first — single call returns all file SHAs
         match self.content_api.list_markdown_files_via_tree().await {
             Ok(files) => {
-                info!("📂 Trees API returned {} markdown files in a single call", files.len());
+                info!(
+                    "📂 Trees API returned {} markdown files in a single call",
+                    files.len()
+                );
                 Ok(files)
             }
             Err(e) => {
-                warn!("Trees API failed ({}), falling back to recursive Contents API", e);
+                warn!(
+                    "Trees API failed ({}), falling back to recursive Contents API",
+                    e
+                );
                 self.content_api
                     .list_markdown_files("")
                     .await
@@ -804,58 +973,75 @@ impl GitHubSyncService {
         let query_str = "MATCH (f:FileMetadata) RETURN f.filename AS filename, f.sha1 AS sha1";
 
         let graph = self.onto_repo.graph();
-        let mut result = graph.execute(query(query_str)).await
+        let mut result = graph
+            .execute(query(query_str))
+            .await
             .map_err(|e| format!("Failed to query file metadata: {}", e))?;
 
         let mut metadata = std::collections::HashMap::new();
-        while let Some(row) = result.next().await.map_err(|e| format!("Row iteration error: {}", e))? {
-            if let (Ok(filename), Ok(sha1)) = (
-                row.get::<String>("filename"),
-                row.get::<String>("sha1")
-            ) {
+        while let Some(row) = result
+            .next()
+            .await
+            .map_err(|e| format!("Row iteration error: {}", e))?
+        {
+            if let (Ok(filename), Ok(sha1)) =
+                (row.get::<String>("filename"), row.get::<String>("sha1"))
+            {
                 metadata.insert(filename, sha1);
             }
         }
 
-        info!("[GitHubSync][SHA1] Found {} existing file SHA1 hashes in Neo4j", metadata.len());
+        info!(
+            "[GitHubSync][SHA1] Found {} existing file SHA1 hashes in Neo4j",
+            metadata.len()
+        );
         Ok(metadata)
     }
 
-    async fn update_file_metadata(
-        &self,
-        files: &[GitHubFileBasicMetadata],
-    ) -> Result<(), String> {
+    async fn update_file_metadata(&self, files: &[GitHubFileBasicMetadata]) -> Result<(), String> {
         use neo4rs::query;
 
         if files.is_empty() {
             return Ok(());
         }
 
-        info!("[GitHubSync][SHA1] Updating {} file SHA1 hashes in Neo4j...", files.len());
+        info!(
+            "[GitHubSync][SHA1] Updating {} file SHA1 hashes in Neo4j...",
+            files.len()
+        );
 
         let graph = self.onto_repo.graph();
 
         // Ensure FileMetadata index exists (idempotent)
         let index_query = "CREATE INDEX file_metadata_filename IF NOT EXISTS FOR (f:FileMetadata) ON (f.filename)";
         if let Err(e) = graph.run(query(index_query)).await {
-            warn!("[GitHubSync] Failed to create FileMetadata index (may already exist): {}", e);
+            warn!(
+                "[GitHubSync] Failed to create FileMetadata index (may already exist): {}",
+                e
+            );
         }
 
         // MERGE each file metadata (update if exists, create if not)
         for file in files {
             let merge_query = query(
                 "MERGE (f:FileMetadata {filename: $filename})
-                 SET f.sha1 = $sha1, f.last_synced = datetime()"
+                 SET f.sha1 = $sha1, f.last_synced = datetime()",
             )
             .param("filename", file.name.clone())
             .param("sha1", file.sha.clone());
 
             if let Err(e) = graph.run(merge_query).await {
-                warn!("[GitHubSync] Failed to update metadata for {}: {}", file.name, e);
+                warn!(
+                    "[GitHubSync] Failed to update metadata for {}: {}",
+                    file.name, e
+                );
             }
         }
 
-        info!("[GitHubSync][SHA1] Updated {} file SHA1 hashes", files.len());
+        info!(
+            "[GitHubSync][SHA1] Updated {} file SHA1 hashes",
+            files.len()
+        );
         Ok(())
     }
 
@@ -880,23 +1066,21 @@ impl GitHubSyncService {
         let graph = self.onto_repo.graph();
 
         // Read the previously stored graph sources from Neo4j
-        let read_query = query(
-            "MATCH (c:SyncConfig {key: 'github_graph_sources'}) RETURN c.value AS value"
-        );
-        let stored_sources: Option<std::collections::HashSet<String>> = match graph.execute(read_query).await {
-            Ok(mut result) => {
-                match result.next().await {
-                    Ok(Some(row)) => {
-                        row.get::<String>("value").ok().map(|v| {
-                            v.split(',')
-                                .map(|s| s.trim().to_string())
-                                .filter(|s| !s.is_empty())
-                                .collect()
-                        })
-                    }
-                    _ => None,
-                }
-            }
+        let read_query =
+            query("MATCH (c:SyncConfig {key: 'github_graph_sources'}) RETURN c.value AS value");
+        let stored_sources: Option<std::collections::HashSet<String>> = match graph
+            .execute(read_query)
+            .await
+        {
+            Ok(mut result) => match result.next().await {
+                Ok(Some(row)) => row.get::<String>("value").ok().map(|v| {
+                    v.split(',')
+                        .map(|s| s.trim().to_string())
+                        .filter(|s| !s.is_empty())
+                        .collect()
+                }),
+                _ => None,
+            },
             Err(e) => {
                 warn!("[GitHubSync] Failed to read SyncConfig graph_sources: {} (treating as first run)", e);
                 None
@@ -909,7 +1093,10 @@ impl GitHubSyncService {
                 // Find removed graph sources and selectively wipe their data
                 let removed: Vec<&String> = stored.difference(&current_sources).collect();
                 if !removed.is_empty() {
-                    info!("Graph sources removed: {:?} — clearing their Neo4j data", removed);
+                    info!(
+                        "Graph sources removed: {:?} — clearing their Neo4j data",
+                        removed
+                    );
                     for source in &removed {
                         if let Err(e) = self.clear_graph_source_data(source).await {
                             error!("Failed to clear data for graph source '{}': {}", source, e);
@@ -923,16 +1110,18 @@ impl GitHubSyncService {
                 true
             }
             None => {
-                info!("First sync run — recording graph sources: {:?}", current_sources);
+                info!(
+                    "First sync run — recording graph sources: {:?}",
+                    current_sources
+                );
                 false
             }
         };
 
         // Also check legacy single-path SyncConfig for backward compat migration
         if stored_sources.is_none() {
-            let legacy_query = query(
-                "MATCH (c:SyncConfig {key: 'github_base_path'}) RETURN c.value AS value"
-            );
+            let legacy_query =
+                query("MATCH (c:SyncConfig {key: 'github_base_path'}) RETURN c.value AS value");
             if let Ok(mut result) = graph.execute(legacy_query).await {
                 if let Ok(Some(row)) = result.next().await {
                     if let Ok(old_path) = row.get::<String>("value") {
@@ -941,7 +1130,10 @@ impl GitHubSyncService {
                             info!("Legacy base path '{}' (source '{}') not in current config — clearing",
                                 old_path, old_source);
                             if let Err(e) = self.clear_graph_source_data(&old_source).await {
-                                error!("Failed to clear legacy graph source '{}': {}", old_source, e);
+                                error!(
+                                    "Failed to clear legacy graph source '{}': {}",
+                                    old_source, e
+                                );
                             }
                         }
                     }
@@ -950,25 +1142,31 @@ impl GitHubSyncService {
         }
 
         // Update the stored graph sources
-        let sources_str = current_sources.iter()
+        let sources_str = current_sources
+            .iter()
             .cloned()
             .collect::<Vec<_>>()
             .join(",");
         let upsert_query = query(
             "MERGE (c:SyncConfig {key: 'github_graph_sources'})
-             SET c.value = $value, c.updated_at = datetime()"
-        ).param("value", sources_str);
+             SET c.value = $value, c.updated_at = datetime()",
+        )
+        .param("value", sources_str);
 
         if let Err(e) = graph.run(upsert_query).await {
-            warn!("[GitHubSync] Failed to save SyncConfig graph_sources: {}", e);
+            warn!(
+                "[GitHubSync] Failed to save SyncConfig graph_sources: {}",
+                e
+            );
         }
 
         // Also update legacy key for backward compat (use first path)
         if let Some(first_path) = current_paths.first() {
             let legacy_upsert = query(
                 "MERGE (c:SyncConfig {key: 'github_base_path'})
-                 SET c.value = $value, c.updated_at = datetime()"
-            ).param("value", first_path.clone());
+                 SET c.value = $value, c.updated_at = datetime()",
+            )
+            .param("value", first_path.clone());
 
             if let Err(e) = graph.run(legacy_upsert).await {
                 warn!("[GitHubSync] Failed to save legacy SyncConfig: {}", e);
@@ -986,9 +1184,8 @@ impl GitHubSyncService {
         let graph = self.onto_repo.graph();
 
         // Remove KGNodes with matching graph_source
-        let kg_query = query(
-            "MATCH (n:KGNode {graph_source: $source}) DETACH DELETE n"
-        ).param("source", graph_source.to_string());
+        let kg_query = query("MATCH (n:KGNode {graph_source: $source}) DETACH DELETE n")
+            .param("source", graph_source.to_string());
 
         match graph.run(kg_query).await {
             Ok(_) => info!("  Cleared KGNode nodes for graph source '{}'", graph_source),
@@ -996,13 +1193,15 @@ impl GitHubSyncService {
         }
 
         // Remove FileMetadata for files from this graph source
-        let fm_query = query(
-            "MATCH (f:FileMetadata {graph_source: $source}) DETACH DELETE f"
-        ).param("source", graph_source.to_string());
+        let fm_query = query("MATCH (f:FileMetadata {graph_source: $source}) DETACH DELETE f")
+            .param("source", graph_source.to_string());
 
         match graph.run(fm_query).await {
             Ok(_) => info!("  Cleared FileMetadata for graph source '{}'", graph_source),
-            Err(e) => warn!("  Failed to clear FileMetadata for '{}': {}", graph_source, e),
+            Err(e) => warn!(
+                "  Failed to clear FileMetadata for '{}': {}",
+                graph_source, e
+            ),
         }
 
         info!("Cleared stale data for graph source '{}'", graph_source);
@@ -1017,14 +1216,17 @@ impl GitHubSyncService {
         let graph = self.onto_repo.graph();
 
         let queries = vec![
-            ("KGNode",          "MATCH (n:KGNode) DETACH DELETE n"),
-            ("FileMetadata",    "MATCH (n:FileMetadata) DETACH DELETE n"),
+            ("KGNode", "MATCH (n:KGNode) DETACH DELETE n"),
+            ("FileMetadata", "MATCH (n:FileMetadata) DETACH DELETE n"),
             // Match either label during the OwlClass→OntologyClass transition
             // (ADR-048; see migration 0045). Once the soak window strips the
             // legacy label, the OwlClass disjunct becomes a no-op.
-            ("OntologyClass",   "MATCH (n) WHERE n:OntologyClass OR n:OwlClass DETACH DELETE n"),
-            ("OwlProperty",     "MATCH (n:OwlProperty) DETACH DELETE n"),
-            ("Axiom",           "MATCH (n:Axiom) DETACH DELETE n"),
+            (
+                "OntologyClass",
+                "MATCH (n) WHERE n:OntologyClass OR n:OwlClass DETACH DELETE n",
+            ),
+            ("OwlProperty", "MATCH (n:OwlProperty) DETACH DELETE n"),
+            ("Axiom", "MATCH (n:Axiom) DETACH DELETE n"),
         ];
 
         for (label, cypher) in queries {
@@ -1055,8 +1257,7 @@ impl GitHubSyncService {
         // count as a flag.
         let has_public = content.lines().take(80).any(|line| {
             let trimmed = line.trim_start_matches(|c: char| c == '-' || c.is_whitespace());
-            trimmed.starts_with("public:: true")
-                && trimmed.trim_end() == "public:: true"
+            trimmed.starts_with("public:: true") && trimmed.trim_end() == "public:: true"
         });
 
         // Two ontology-data formats qualify a file as Ontology:
@@ -1195,11 +1396,16 @@ impl GitHubSyncService {
     /// 2. Triggers OntologyPipelineService for automatic reasoning
     /// 3. Pipeline generates semantic constraints and uploads to GPU
     /// The reasoning pipeline runs asynchronously to avoid blocking sync.
-    async fn save_ontology_data(&self, onto_data: crate::services::parsers::ontology_parser::OntologyData) -> Result<(), String> {
+    async fn save_ontology_data(
+        &self,
+        onto_data: crate::services::parsers::ontology_parser::OntologyData,
+    ) -> Result<(), String> {
         use crate::ports::ontology_repository::OntologyRepository;
 
         // Save all ontology data to Neo4j graph database
-        self.onto_repo.save_ontology(&onto_data.classes, &onto_data.properties, &onto_data.axioms).await
+        self.onto_repo
+            .save_ontology(&onto_data.classes, &onto_data.properties, &onto_data.axioms)
+            .await
             .map_err(|e| format!("Failed to save ontology data: {}", e))?;
 
         // Log class hierarchy
@@ -1233,7 +1439,8 @@ impl GitHubSyncService {
             use crate::ports::ontology_repository::AxiomType;
             for axiom in &onto_data.axioms {
                 if matches!(axiom.axiom_type, AxiomType::SubClassOf) {
-                    ontology.subclass_of
+                    ontology
+                        .subclass_of
                         .entry(axiom.subject.clone())
                         .or_insert_with(std::collections::HashSet::new)
                         .insert(axiom.object.clone());
@@ -1245,7 +1452,10 @@ impl GitHubSyncService {
             let pipeline_clone = Arc::clone(pipeline);
 
             tokio::spawn(async move {
-                match pipeline_clone.on_ontology_modified(ontology_id, ontology).await {
+                match pipeline_clone
+                    .on_ontology_modified(ontology_id, ontology)
+                    .await
+                {
                     Ok(stats) => {
                         info!(
                             "✅ Ontology pipeline complete: {} axioms inferred, {} constraints generated, GPU upload: {}",

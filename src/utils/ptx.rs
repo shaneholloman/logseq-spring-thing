@@ -170,7 +170,9 @@ fn query_cuda_version_isa() -> Option<(u32, u32)> {
     let cuda_marker = "CUDA Version: ";
     let pos = stdout.find(cuda_marker)?;
     let after = &stdout[pos + cuda_marker.len()..];
-    let end = after.find(|c: char| !c.is_ascii_digit() && c != '.').unwrap_or(after.len());
+    let end = after
+        .find(|c: char| !c.is_ascii_digit() && c != '.')
+        .unwrap_or(after.len());
     let ver_str = &after[..end];
     let parts: Vec<&str> = ver_str.split('.').collect();
     if parts.len() >= 2 {
@@ -269,8 +271,10 @@ pub static COMPILED_PTX_PATH: Option<&'static str> = option_env!("VISIONFLOW_UNI
 
 /// Content hashes of CUDA source files at build time. Used to detect stale PTX
 /// from Docker cached target volumes when bind-mounted source has changed.
-pub static VISIONFLOW_UNIFIED_CUDA_HASH: Option<&'static str> = option_env!("VISIONFLOW_UNIFIED_CUDA_HASH");
-pub static GPU_CLUSTERING_KERNELS_CUDA_HASH: Option<&'static str> = option_env!("GPU_CLUSTERING_KERNELS_CUDA_HASH");
+pub static VISIONFLOW_UNIFIED_CUDA_HASH: Option<&'static str> =
+    option_env!("VISIONFLOW_UNIFIED_CUDA_HASH");
+pub static GPU_CLUSTERING_KERNELS_CUDA_HASH: Option<&'static str> =
+    option_env!("GPU_CLUSTERING_KERNELS_CUDA_HASH");
 
 /// Verify CUDA source hash matches the build-time hash. Returns true if hashes
 /// match or if verification is unavailable (no hash compiled in).
@@ -282,7 +286,9 @@ pub fn verify_cuda_source_hash(module: PTXModule) -> bool {
         _ => None, // Other modules don't have hash verification yet
     };
 
-    let Some(expected) = build_hash else { return true };
+    let Some(expected) = build_hash else {
+        return true;
+    };
 
     let source_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("src/utils")
@@ -334,7 +340,9 @@ pub fn downgrade_ptx_isa_if_needed(ptx: String) -> String {
     if let Some(ver_start) = ptx.find(".version ") {
         let after = &ptx[ver_start + 9..];
         // Extract the version string (e.g. "9.2")
-        let ver_end = after.find(|c: char| !c.is_ascii_digit() && c != '.').unwrap_or(after.len());
+        let ver_end = after
+            .find(|c: char| !c.is_ascii_digit() && c != '.')
+            .unwrap_or(after.len());
         let ver_str = &after[..ver_end];
         let parts: Vec<&str> = ver_str.split('.').collect();
         if parts.len() == 2 {
@@ -439,7 +447,10 @@ fn load_precompiled_ptx(module: PTXModule) -> Result<String, String> {
     // 2. Build output directory (recompiled by build.rs from current .cu source)
     //    OUT_DIR is only available at build time, so scan target/*/build/*/out/
     for profile in &["release", "debug"] {
-        let build_dir = PathBuf::from(manifest_dir).join("target").join(profile).join("build");
+        let build_dir = PathBuf::from(manifest_dir)
+            .join("target")
+            .join(profile)
+            .join("build");
         if let Ok(entries) = std::fs::read_dir(&build_dir) {
             for entry in entries.flatten() {
                 let candidate = entry.path().join("out").join(&ptx_file);
@@ -452,7 +463,9 @@ fn load_precompiled_ptx(module: PTXModule) -> Result<String, String> {
 
     // 3. Pre-compiled source tree copies (may be stale in Docker overlay)
     ptx_paths.extend([
-        PathBuf::from(manifest_dir).join("src/utils/ptx").join(&ptx_file),
+        PathBuf::from(manifest_dir)
+            .join("src/utils/ptx")
+            .join(&ptx_file),
         PathBuf::from("/app/src/utils/ptx").join(&ptx_file),
         PathBuf::from("./src/utils/ptx").join(&ptx_file),
     ]);
@@ -514,8 +527,6 @@ pub fn load_all_ptx_modules_sync() -> Result<HashMap<PTXModule, String>, String>
 }
 
 pub async fn load_ptx() -> Result<String, String> {
-    
-    
     load_ptx_sync()
 }
 
@@ -527,7 +538,6 @@ pub fn compile_ptx_fallback_sync_module(module: PTXModule) -> Result<String, Str
     let arch = effective_cuda_arch();
     info!("Using CUDA architecture: sm_{}", arch);
 
-    
     let manifest_dir = env!("CARGO_MANIFEST_DIR");
     let cu_path = Path::new(manifest_dir)
         .join("src")

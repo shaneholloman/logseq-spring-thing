@@ -9,9 +9,7 @@
 //! infers N from `(payload.len() / 28)`.
 
 use proptest::prelude::*;
-use visionclaw_xr_gdext::binary_protocol::{
-    decode_position_frame, OPCODE_POSITION_FRAME,
-};
+use visionclaw_xr_gdext::binary_protocol::{decode_position_frame, OPCODE_POSITION_FRAME};
 
 /// Build a valid 0x42 frame from a slice of (node_id, position, velocity).
 fn build_frame(records: &[(u32, [f32; 3], [f32; 3])]) -> Vec<u8> {

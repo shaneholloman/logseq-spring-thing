@@ -43,8 +43,9 @@ fn load_substrate_configs() -> Vec<SubstrateHealthConfig> {
         },
         SubstrateHealthConfig {
             name: "forum".to_string(),
-            url: env::var("ECOSYSTEM_HEALTH_FORUM_URL")
-                .unwrap_or_else(|_| "https://dreamlab-nostr-relay.solitary-paper-764d.workers.dev/".to_string()),
+            url: env::var("ECOSYSTEM_HEALTH_FORUM_URL").unwrap_or_else(|_| {
+                "https://dreamlab-nostr-relay.solitary-paper-764d.workers.dev/".to_string()
+            }),
             timeout_ms: default_timeout,
         },
         SubstrateHealthConfig {
@@ -55,8 +56,9 @@ fn load_substrate_configs() -> Vec<SubstrateHealthConfig> {
         },
         SubstrateHealthConfig {
             name: "solidpod".to_string(),
-            url: env::var("ECOSYSTEM_HEALTH_SOLIDPOD_URL")
-                .unwrap_or_else(|_| "http://host.docker.internal:8484/.well-known/solid".to_string()),
+            url: env::var("ECOSYSTEM_HEALTH_SOLIDPOD_URL").unwrap_or_else(|_| {
+                "http://host.docker.internal:8484/.well-known/solid".to_string()
+            }),
             timeout_ms: default_timeout,
         },
     ]
@@ -122,10 +124,7 @@ pub async fn ecosystem_health() -> Result<HttpResponse> {
     let futures: Vec<_> = configs.iter().map(|c| check_substrate(c)).collect();
     let substrates = join_all(futures).await;
 
-    let healthy_count = substrates
-        .iter()
-        .filter(|s| s.status == "healthy")
-        .count();
+    let healthy_count = substrates.iter().filter(|s| s.status == "healthy").count();
     let total = substrates.len();
 
     let overall = if healthy_count == total {
@@ -147,7 +146,5 @@ pub async fn ecosystem_health() -> Result<HttpResponse> {
 }
 
 pub fn configure_routes(cfg: &mut web::ServiceConfig) {
-    cfg.service(
-        web::scope("/ecosystem").route("/health", web::get().to(ecosystem_health)),
-    );
+    cfg.service(web::scope("/ecosystem").route("/health", web::get().to(ecosystem_health)));
 }

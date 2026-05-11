@@ -19,13 +19,13 @@ use std::time::Duration;
 
 use actix::prelude::*;
 
-use webxr::actors::presence_actor::{
-    BroadcastFrame, IngestOutcome, IngestPose, JoinRoom, LeaveRoom, ListMembers, PresenceActor,
-    RoomEventEnvelope, RoomStats,
-};
 use visionclaw_xr_presence::{
     types::{AvatarMetadata, Did, PoseFrame, RoomId, Transform},
     wire::encode,
+};
+use webxr::actors::presence_actor::{
+    BroadcastFrame, IngestOutcome, IngestPose, JoinRoom, LeaveRoom, ListMembers, PresenceActor,
+    RoomEventEnvelope, RoomStats,
 };
 
 const ROOM_URN: &str = "urn:visionclaw:room:sha256-12-c0nc0a1234567";
@@ -214,7 +214,11 @@ async fn ten_avatars_sustained_pose_stream_no_leaks() {
                 })
                 .await
                 .expect("ingest mailbox");
-            assert_eq!(outcome, IngestOutcome::Accepted, "tick={tick} avatar={i} rejected");
+            assert_eq!(
+                outcome,
+                IngestOutcome::Accepted,
+                "tick={tick} avatar={i} rejected"
+            );
         }
     }
 
@@ -322,7 +326,9 @@ async fn burst_broadcast_preserves_peer_only_invariant() {
     for tick in 0..burst_frames {
         let ts = (tick + 1) * 10_000;
         let f = pose(ts, (tick as f32) * 0.005);
-        let bytes = encode(&f, &room, &ack_a.avatar_id).expect("encode").to_vec();
+        let bytes = encode(&f, &room, &ack_a.avatar_id)
+            .expect("encode")
+            .to_vec();
         let outcome = actor
             .send(IngestPose {
                 avatar_id: ack_a.avatar_id.clone(),

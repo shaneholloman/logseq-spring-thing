@@ -447,7 +447,11 @@ impl Default for CameraSettings {
             fov: 75.0,
             near: 0.1,
             far: 2000.0,
-            position: Position { x: 0.0, y: 10.0, z: 50.0 },
+            position: Position {
+                x: 0.0,
+                y: 10.0,
+                z: 50.0,
+            },
             look_at: Position::default(),
         }
     }
@@ -517,7 +521,6 @@ pub struct GraphsSettings {
 #[derive(Debug, Serialize, Deserialize, Clone, Default, Type, Validate)]
 #[serde(rename_all = "camelCase")]
 pub struct VisualisationSettings {
-
     #[validate(nested)]
     pub rendering: RenderingSettings,
     #[validate(nested)]

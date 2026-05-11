@@ -64,10 +64,7 @@ fn full_lifecycle_candidate_to_promoted() {
 
     c.on_pr_assigned("https://github.com/o/r/pull/142").unwrap();
     assert_eq!(c.state, MigrationCandidateState::PrAssigned);
-    assert_eq!(
-        c.pr_url.as_deref(),
-        Some("https://github.com/o/r/pull/142")
-    );
+    assert_eq!(c.pr_url.as_deref(), Some("https://github.com/o/r/pull/142"));
 
     c.on_pr_merged().unwrap();
     assert_eq!(c.state, MigrationCandidateState::Promoted);
@@ -154,8 +151,14 @@ fn cannot_skip_states() {
 #[test]
 fn below_threshold_is_rejected_at_construction() {
     let err = MigrationCandidateAggregate::new(
-        "x", "insight://low", "Low", "https://ex.org/owl#Low", 0.59,
-        vec![], None, "{}",
+        "x",
+        "insight://low",
+        "Low",
+        "https://ex.org/owl#Low",
+        0.59,
+        vec![],
+        None,
+        "{}",
     )
     .unwrap_err();
     match err {
@@ -190,7 +193,9 @@ fn broker_case_carries_canonical_discriminators() {
     let case = adapt_to_broker_case(&c);
 
     assert_eq!(
-        case.metadata.get(meta_keys::SUBJECT_KIND).map(String::as_str),
+        case.metadata
+            .get(meta_keys::SUBJECT_KIND)
+            .map(String::as_str),
         Some(SUBJECT_KIND_ONTOLOGY_TERM)
     );
     assert_eq!(c.broker_category(), CATEGORY_CONTRIBUTOR_MESH_SHARE);
@@ -224,12 +229,10 @@ fn broker_case_carries_canonical_discriminators() {
 #[test]
 fn priority_reflects_confidence_band() {
     let mk = |conf: f64| {
-        MigrationCandidateAggregate::new(
-            "x", "note", "L", "iri", conf, vec![], None, "{}",
-        )
-        .unwrap()
-        .to_broker_case()
-        .priority
+        MigrationCandidateAggregate::new("x", "note", "L", "iri", conf, vec![], None, "{}")
+            .unwrap()
+            .to_broker_case()
+            .priority
     };
     assert_eq!(mk(0.95), CasePriority::High);
     assert_eq!(mk(0.75), CasePriority::Medium);

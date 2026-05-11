@@ -39,16 +39,20 @@ impl Handler<BroadcastPositionUpdate> for SocketFlowServer {
 
         // Filter to only nodes that have actually moved (epsilon check using squared distance)
         let epsilon_sq = self.delta_epsilon_sq;
-        let changed_nodes: Vec<&(u32, BinaryNodeData)> = msg.0.iter().filter(|(node_id, node)| {
-            if let Some(prev) = self.delta_previous_nodes.get(node_id) {
-                let dx = node.x - prev.x;
-                let dy = node.y - prev.y;
-                let dz = node.z - prev.z;
-                (dx * dx + dy * dy + dz * dz) > epsilon_sq
-            } else {
-                true // New node, always include
-            }
-        }).collect();
+        let changed_nodes: Vec<&(u32, BinaryNodeData)> = msg
+            .0
+            .iter()
+            .filter(|(node_id, node)| {
+                if let Some(prev) = self.delta_previous_nodes.get(node_id) {
+                    let dx = node.x - prev.x;
+                    let dy = node.y - prev.y;
+                    let dz = node.z - prev.z;
+                    (dx * dx + dy * dy + dz * dz) > epsilon_sq
+                } else {
+                    true // New node, always include
+                }
+            })
+            .collect();
 
         // If graph has fully converged (0 nodes changed) and not a full sync frame, skip broadcast
         if changed_nodes.is_empty() && !is_full_sync {
@@ -79,12 +83,15 @@ impl Handler<BroadcastPositionUpdate> for SocketFlowServer {
             if is_full_sync {
                 debug!(
                     "[WebSocket] Full sync sent (frame {}): {} nodes",
-                    frame, msg.0.len()
+                    frame,
+                    msg.0.len()
                 );
             } else {
                 trace!(
                     "[WebSocket] Delta update sent (frame {}): {} changed of {} total nodes",
-                    frame, changed_nodes.len(), msg.0.len()
+                    frame,
+                    changed_nodes.len(),
+                    msg.0.len()
                 );
             }
         }

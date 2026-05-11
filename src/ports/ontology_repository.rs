@@ -268,15 +268,10 @@ pub struct PathfindingCacheEntry {
 
 #[async_trait]
 pub trait OntologyRepository: Send + Sync {
-    
     async fn load_ontology_graph(&self) -> Result<Arc<GraphData>>;
 
-    
     async fn save_ontology_graph(&self, graph: &GraphData) -> Result<()>;
 
-    
-    
-    
     async fn save_ontology(
         &self,
         classes: &[OwlClass],
@@ -284,51 +279,35 @@ pub trait OntologyRepository: Send + Sync {
         axioms: &[OwlAxiom],
     ) -> Result<()>;
 
-    
-    
     async fn add_owl_class(&self, class: &OwlClass) -> Result<String>;
 
-    
     async fn get_owl_class(&self, iri: &str) -> Result<Option<OwlClass>>;
 
-    
     async fn list_owl_classes(&self) -> Result<Vec<OwlClass>>;
 
-    
-    
     async fn add_owl_property(&self, property: &OwlProperty) -> Result<String>;
 
-    
     async fn get_owl_property(&self, iri: &str) -> Result<Option<OwlProperty>>;
 
-    
     async fn list_owl_properties(&self) -> Result<Vec<OwlProperty>>;
 
-    
     async fn get_classes(&self) -> Result<Vec<OwlClass>>;
 
-    
     async fn get_axioms(&self) -> Result<Vec<OwlAxiom>>;
 
-    
-    
     async fn add_axiom(&self, axiom: &OwlAxiom) -> Result<u64>;
 
-    
     async fn get_class_axioms(&self, class_iri: &str) -> Result<Vec<OwlAxiom>>;
-
 
     /// Default: No-op (not all implementations support inference)
     async fn store_inference_results(&self, _results: &InferenceResults) -> Result<()> {
         Ok(())
     }
 
-
     /// Default: None (not all implementations support inference)
     async fn get_inference_results(&self) -> Result<Option<InferenceResults>> {
         Ok(None)
     }
-
 
     /// Default: Valid report (override for actual validation)
     async fn validate_ontology(&self) -> Result<ValidationReport> {
@@ -340,12 +319,10 @@ pub trait OntologyRepository: Send + Sync {
         })
     }
 
-
     /// Default: Empty results (override when query support added)
     async fn query_ontology(&self, _query: &str) -> Result<Vec<HashMap<String, String>>> {
         Ok(Vec::new())
     }
-
 
     /// Remove an OWL class by IRI
     async fn remove_owl_class(&self, iri: &str) -> Result<()>;
@@ -355,32 +332,25 @@ pub trait OntologyRepository: Send + Sync {
 
     async fn get_metrics(&self) -> Result<OntologyMetrics>;
 
-
-
-
     /// Default: No-op (not all implementations support caching)
     async fn cache_sssp_result(&self, _entry: &PathfindingCacheEntry) -> Result<()> {
         Ok(())
     }
-
 
     /// Default: None (not all implementations support caching)
     async fn get_cached_sssp(&self, _source_node_id: u32) -> Result<Option<PathfindingCacheEntry>> {
         Ok(None)
     }
 
-
     /// Default: No-op (not all implementations support caching)
     async fn cache_apsp_result(&self, _distance_matrix: &Vec<Vec<f32>>) -> Result<()> {
         Ok(())
     }
 
-
     /// Default: None (not all implementations support caching)
     async fn get_cached_apsp(&self) -> Result<Option<Vec<Vec<f32>>>> {
         Ok(None)
     }
-
 
     /// Default: No-op (not all implementations support caching)
     async fn invalidate_pathfinding_caches(&self) -> Result<()> {

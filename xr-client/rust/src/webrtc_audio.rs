@@ -53,10 +53,7 @@ impl SpatialVoiceRouterCore {
     }
 
     pub fn attach_track(&self, did: String, position: [f32; 3]) -> Result<(), VoiceError> {
-        let mut tracks = self
-            .tracks
-            .lock()
-            .map_err(|_| VoiceError::NotImplemented)?;
+        let mut tracks = self.tracks.lock().map_err(|_| VoiceError::NotImplemented)?;
         tracks.insert(
             did.clone(),
             VoiceTrackState {
@@ -69,23 +66,15 @@ impl SpatialVoiceRouterCore {
     }
 
     pub fn detach_track(&self, did: &str) -> Result<(), VoiceError> {
-        let mut tracks = self
-            .tracks
-            .lock()
-            .map_err(|_| VoiceError::NotImplemented)?;
-        tracks
-            .remove(did)
-            .ok_or_else(|| VoiceError::UnknownTrack {
-                did: did.to_owned(),
-            })?;
+        let mut tracks = self.tracks.lock().map_err(|_| VoiceError::NotImplemented)?;
+        tracks.remove(did).ok_or_else(|| VoiceError::UnknownTrack {
+            did: did.to_owned(),
+        })?;
         Ok(())
     }
 
     pub fn update_track_position(&self, did: &str, position: [f32; 3]) -> Result<(), VoiceError> {
-        let mut tracks = self
-            .tracks
-            .lock()
-            .map_err(|_| VoiceError::NotImplemented)?;
+        let mut tracks = self.tracks.lock().map_err(|_| VoiceError::NotImplemented)?;
         let track = tracks
             .get_mut(did)
             .ok_or_else(|| VoiceError::UnknownTrack {
@@ -96,10 +85,7 @@ impl SpatialVoiceRouterCore {
     }
 
     pub fn set_track_muted(&self, did: &str, muted: bool) -> Result<(), VoiceError> {
-        let mut tracks = self
-            .tracks
-            .lock()
-            .map_err(|_| VoiceError::NotImplemented)?;
+        let mut tracks = self.tracks.lock().map_err(|_| VoiceError::NotImplemented)?;
         let track = tracks
             .get_mut(did)
             .ok_or_else(|| VoiceError::UnknownTrack {
@@ -226,7 +212,8 @@ mod tests {
     fn attach_increments_count() {
         let r = SpatialVoiceRouterCore::new();
         assert_eq!(r.track_count(), 0);
-        r.attach_track("did:nostr:aaa".into(), [1.0, 2.0, 3.0]).unwrap();
+        r.attach_track("did:nostr:aaa".into(), [1.0, 2.0, 3.0])
+            .unwrap();
         assert_eq!(r.track_count(), 1);
     }
 
@@ -249,7 +236,8 @@ mod tests {
     fn update_position_changes_snapshot() {
         let r = SpatialVoiceRouterCore::new();
         r.attach_track("did:nostr:aaa".into(), [0.0; 3]).unwrap();
-        r.update_track_position("did:nostr:aaa", [9.0, 8.0, 7.0]).unwrap();
+        r.update_track_position("did:nostr:aaa", [9.0, 8.0, 7.0])
+            .unwrap();
         let snap = r.snapshot();
         assert_eq!(snap[0].position, [9.0, 8.0, 7.0]);
     }
@@ -280,9 +268,12 @@ mod tests {
     #[test]
     fn snapshot_returns_all_tracks() {
         let r = SpatialVoiceRouterCore::new();
-        r.attach_track("did:nostr:aaa".into(), [1.0, 0.0, 0.0]).unwrap();
-        r.attach_track("did:nostr:bbb".into(), [0.0, 1.0, 0.0]).unwrap();
-        r.attach_track("did:nostr:ccc".into(), [0.0, 0.0, 1.0]).unwrap();
+        r.attach_track("did:nostr:aaa".into(), [1.0, 0.0, 0.0])
+            .unwrap();
+        r.attach_track("did:nostr:bbb".into(), [0.0, 1.0, 0.0])
+            .unwrap();
+        r.attach_track("did:nostr:ccc".into(), [0.0, 0.0, 1.0])
+            .unwrap();
         let snap = r.snapshot();
         assert_eq!(snap.len(), 3);
     }
@@ -326,7 +317,9 @@ mod tests {
     #[test]
     fn update_position_unknown_track_errors() {
         let r = SpatialVoiceRouterCore::new();
-        let err = r.update_track_position("did:nostr:ghost", [1.0, 2.0, 3.0]).unwrap_err();
+        let err = r
+            .update_track_position("did:nostr:ghost", [1.0, 2.0, 3.0])
+            .unwrap_err();
         assert!(matches!(err, VoiceError::UnknownTrack { .. }));
     }
 
@@ -340,8 +333,10 @@ mod tests {
     #[test]
     fn attach_same_did_twice_overwrites() {
         let r = SpatialVoiceRouterCore::new();
-        r.attach_track("did:nostr:aaa".into(), [0.0, 0.0, 0.0]).unwrap();
-        r.attach_track("did:nostr:aaa".into(), [1.0, 1.0, 1.0]).unwrap();
+        r.attach_track("did:nostr:aaa".into(), [0.0, 0.0, 0.0])
+            .unwrap();
+        r.attach_track("did:nostr:aaa".into(), [1.0, 1.0, 1.0])
+            .unwrap();
         assert_eq!(r.track_count(), 1);
         let snap = r.snapshot();
         assert_eq!(snap[0].position, [1.0, 1.0, 1.0]);

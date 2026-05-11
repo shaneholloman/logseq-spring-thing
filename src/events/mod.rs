@@ -17,9 +17,8 @@ pub use types::{
 pub use domain_events::*;
 
 pub use enterprise_events::{
-    CaseCreatedEvent, CaseDecidedEvent, PolicyEvaluatedEvent,
+    emit_enterprise_event, CaseCreatedEvent, CaseDecidedEvent, PolicyEvaluatedEvent,
     ProposalCreatedEvent, ProposalStatusChangedEvent, WorkflowPromotedEvent,
-    emit_enterprise_event,
 };
 
 pub use bus::{DeadLetterEntry, DeadLetterQueue, EventBus};
@@ -41,6 +40,5 @@ pub use handlers::{
 };
 
 pub use inference_triggers::{
-    InferenceTriggerHandler, AutoInferenceConfig, OntologyEvent,
-    register_inference_triggers,
+    register_inference_triggers, AutoInferenceConfig, InferenceTriggerHandler, OntologyEvent,
 };

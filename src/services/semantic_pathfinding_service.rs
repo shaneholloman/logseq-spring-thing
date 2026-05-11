@@ -5,8 +5,8 @@
 use crate::models::graph::GraphData;
 use log::info;
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet, BinaryHeap, VecDeque};
 use std::cmp::Ordering;
+use std::collections::{BinaryHeap, HashMap, HashSet, VecDeque};
 
 /// Path search result
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -70,7 +70,9 @@ impl Ord for PathNode {
         // Reverse ordering for min-heap (prioritize lower cost + higher relevance)
         let self_score = self.cost - self.relevance;
         let other_score = other.cost - other.relevance;
-        other_score.partial_cmp(&self_score).unwrap_or(Ordering::Equal)
+        other_score
+            .partial_cmp(&self_score)
+            .unwrap_or(Ordering::Equal)
     }
 }
 
@@ -252,7 +254,9 @@ impl SemanticPathfindingService {
                 // Sort by relevance (descending)
                 neighbor_scores.sort_by(|a, b| b.3.partial_cmp(&a.3).unwrap_or(Ordering::Equal));
 
-                for (neighbor_id, _edge_weight, edge_type, neighbor_relevance) in neighbor_scores.iter().take(5) {
+                for (neighbor_id, _edge_weight, edge_type, neighbor_relevance) in
+                    neighbor_scores.iter().take(5)
+                {
                     if visited.contains(neighbor_id) {
                         continue;
                     }
@@ -281,7 +285,11 @@ impl SemanticPathfindingService {
         }
 
         // Sort results by relevance
-        results.sort_by(|a, b| b.relevance.partial_cmp(&a.relevance).unwrap_or(Ordering::Equal));
+        results.sort_by(|a, b| {
+            b.relevance
+                .partial_cmp(&a.relevance)
+                .unwrap_or(Ordering::Equal)
+        });
 
         results
     }
@@ -311,7 +319,8 @@ impl SemanticPathfindingService {
         let adjacency = self.build_adjacency_list(graph);
 
         // Get start node type for similarity calculation
-        let start_node_type = graph.nodes
+        let start_node_type = graph
+            .nodes
             .iter()
             .find(|n| n.id == start_id)
             .and_then(|n| n.node_type.as_ref().map(|s| s.as_str()));
@@ -369,16 +378,18 @@ impl SemanticPathfindingService {
         for edge in &graph.edges {
             let edge_type = self.edge_type_to_int(&edge.edge_type);
 
-            adjacency
-                .entry(edge.source)
-                .or_insert_with(Vec::new)
-                .push((edge.target, edge.weight, edge_type));
+            adjacency.entry(edge.source).or_insert_with(Vec::new).push((
+                edge.target,
+                edge.weight,
+                edge_type,
+            ));
 
             // Undirected - add reverse edge
-            adjacency
-                .entry(edge.target)
-                .or_insert_with(Vec::new)
-                .push((edge.source, edge.weight, edge_type));
+            adjacency.entry(edge.target).or_insert_with(Vec::new).push((
+                edge.source,
+                edge.weight,
+                edge_type,
+            ));
         }
 
         adjacency
@@ -452,9 +463,10 @@ impl SemanticPathfindingService {
         };
 
         // Check metadata for matches
-        let metadata_match = node.metadata.values().any(|v| {
-            v.to_lowercase().contains(&query_lower)
-        });
+        let metadata_match = node
+            .metadata
+            .values()
+            .any(|v| v.to_lowercase().contains(&query_lower));
 
         if metadata_match {
             (label_match + 0.5).min(1.0)
@@ -512,8 +524,8 @@ impl Default for SemanticPathfindingService {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::node::Node;
     use crate::models::edge::Edge;
+    use crate::models::node::Node;
 
     #[test]
     fn test_semantic_pathfinding_creation() {

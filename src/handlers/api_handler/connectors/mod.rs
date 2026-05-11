@@ -9,8 +9,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::sync::RwLock;
 
-use crate::{ok_json, bad_request, not_found, created_json};
 use crate::AppState;
+use crate::{bad_request, created_json, not_found, ok_json};
 
 // In-memory store for connectors (Neo4j adapter can follow later)
 lazy_static::lazy_static! {
@@ -65,7 +65,10 @@ pub async fn create_connector(
 
     let entry = ConnectorEntry {
         id: format!("conn-{}", uuid::Uuid::new_v4()),
-        connector_type: body.connector_type.clone().unwrap_or_else(|| "github".to_string()),
+        connector_type: body
+            .connector_type
+            .clone()
+            .unwrap_or_else(|| "github".to_string()),
         name: body.name.clone(),
         status: "configuring".to_string(),
         config: body.config.clone().unwrap_or(json!({})),

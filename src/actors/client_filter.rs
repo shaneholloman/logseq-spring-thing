@@ -36,25 +36,32 @@ pub fn recompute_filtered_nodes(filter: &mut ClientFilter, graph_data: &GraphDat
     for node in &graph_data.nodes {
         // Extract quality and authority scores from node.metadata HashMap (where Neo4j stores them)
         // Falls back to graph_data.metadata if not found in node
-        let quality = node.metadata.get("quality_score")
+        let quality = node
+            .metadata
+            .get("quality_score")
             .and_then(|s| s.parse::<f64>().ok())
             .or_else(|| {
-                graph_data.metadata.get(&node.metadata_id)
+                graph_data
+                    .metadata
+                    .get(&node.metadata_id)
                     .and_then(|m| m.quality_score)
             })
             .unwrap_or(0.5); // Default to middle value
 
-        let authority = node.metadata.get("authority_score")
+        let authority = node
+            .metadata
+            .get("authority_score")
             .and_then(|s| s.parse::<f64>().ok())
             .or_else(|| {
-                graph_data.metadata.get(&node.metadata_id)
+                graph_data
+                    .metadata
+                    .get(&node.metadata_id)
                     .and_then(|m| m.authority_score)
             })
             .unwrap_or(0.5);
 
         // Check individual thresholds
-        let passes_quality =
-            !filter.filter_by_quality || quality >= filter.quality_threshold;
+        let passes_quality = !filter.filter_by_quality || quality >= filter.quality_threshold;
         let passes_authority =
             !filter.filter_by_authority || authority >= filter.authority_threshold;
 
@@ -126,8 +133,7 @@ pub fn node_passes_filter(
     let authority = authority_score.unwrap_or(0.5);
 
     let passes_quality = !filter.filter_by_quality || quality >= filter.quality_threshold;
-    let passes_authority =
-        !filter.filter_by_authority || authority >= filter.authority_threshold;
+    let passes_authority = !filter.filter_by_authority || authority >= filter.authority_threshold;
 
     match filter.filter_mode {
         FilterMode::And => passes_quality && passes_authority,
@@ -289,7 +295,7 @@ mod tests {
         filter.filter_by_quality = true;
         filter.filter_by_authority = false;
         filter.quality_threshold = 0.6; // Above default 0.5
-        // Use And mode for single-criterion filtering
+                                        // Use And mode for single-criterion filtering
         filter.filter_mode = FilterMode::And;
 
         recompute_filtered_nodes(&mut filter, &graph);

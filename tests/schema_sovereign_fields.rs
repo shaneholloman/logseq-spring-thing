@@ -19,16 +19,15 @@ use std::collections::HashSet;
 
 use webxr::models::node::{Node, Visibility};
 use webxr::utils::binary_protocol::{
-    decode_node_data, encode_node_id, encode_positions_v3_with_privacy,
-    is_private_opaque, node_id_base, sovereign_schema_enabled, PRIVATE_OPAQUE_FLAG,
+    decode_node_data, encode_node_id, encode_positions_v3_with_privacy, is_private_opaque,
+    node_id_base, sovereign_schema_enabled, PRIVATE_OPAQUE_FLAG,
 };
 use webxr::utils::canonical_iri::{canonical_iri, encode_npub, sha256_hex};
 use webxr::utils::opaque_id::opaque_id;
 use webxr::utils::socket_flow_messages::BinaryNodeData;
 
 // secp256k1 generator x-coord — a valid hex pubkey accepted by nostr_sdk.
-const TEST_PUBKEY: &str =
-    "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+const TEST_PUBKEY: &str = "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
 
 // ---------------------------------------------------------------------------
 // 1) Visibility serde round-trip
@@ -140,7 +139,11 @@ fn canonical_iri_npub_is_bech32() {
     let iri = canonical_iri(TEST_PUBKEY, "a.md").unwrap();
     // After the "visionclaw:owner:" prefix comes the npub1... part.
     let rest = iri.trim_start_matches("visionclaw:owner:");
-    assert!(rest.starts_with("npub1"), "IRI did not embed bech32 npub: {}", iri);
+    assert!(
+        rest.starts_with("npub1"),
+        "IRI did not embed bech32 npub: {}",
+        iri
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -182,8 +185,10 @@ fn opaque_id_resists_dictionary_inversion_without_salt() {
             attacker_hits += 1;
         }
     }
-    assert_eq!(attacker_hits, 0,
-        "HMAC output must not collide without the real salt");
+    assert_eq!(
+        attacker_hits, 0,
+        "HMAC output must not collide without the real salt"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -199,7 +204,7 @@ fn private_opaque_flag_is_bit_29() {
 #[test]
 fn bit29_encode_decode_roundtrip() {
     let base: u32 = 0x00ABCDEF; // fits inside 26 bits.
-    // Private case
+                                // Private case
     let wire = encode_node_id(base, true);
     assert!(is_private_opaque(wire));
     assert_eq!(node_id_base(wire), base);
@@ -233,13 +238,34 @@ fn binary_v3_output_contains_no_strings() {
     // would indicate a leaked label.
 
     let nodes: Vec<(u32, BinaryNodeData)> = vec![
-        (42, BinaryNodeData { node_id: 42, x: 1.0, y: 2.0, z: 3.0, vx: 0.0, vy: 0.0, vz: 0.0 }),
-        (99, BinaryNodeData { node_id: 99, x: 4.0, y: 5.0, z: 6.0, vx: 0.1, vy: 0.2, vz: 0.3 }),
+        (
+            42,
+            BinaryNodeData {
+                node_id: 42,
+                x: 1.0,
+                y: 2.0,
+                z: 3.0,
+                vx: 0.0,
+                vy: 0.0,
+                vz: 0.0,
+            },
+        ),
+        (
+            99,
+            BinaryNodeData {
+                node_id: 99,
+                x: 4.0,
+                y: 5.0,
+                z: 6.0,
+                vx: 0.1,
+                vy: 0.2,
+                vz: 0.3,
+            },
+        ),
     ];
 
-    let encoded = encode_positions_v3_with_privacy(
-        &nodes, &[], &[], &[], &[], &[], None, None, None
-    );
+    let encoded =
+        encode_positions_v3_with_privacy(&nodes, &[], &[], &[], &[], &[], None, None, None);
 
     // Skip the 1-byte protocol header.
     let payload = &encoded[1..];
@@ -267,9 +293,11 @@ fn binary_v3_output_contains_no_strings() {
             run = 0;
         }
     }
-    assert!(max_run < 4,
+    assert!(
+        max_run < 4,
         "binary V3 wire contained a run of {} consecutive letters — string leak?",
-        max_run);
+        max_run
+    );
 }
 
 #[test]
@@ -281,24 +309,36 @@ fn binary_v3_private_opaque_flag_gated_by_env() {
     // Setting the env var from within this test would race with other
     // parallel tests, so we just assert the two branches behave
     // symmetrically under the *current* env value.
-    let nodes: Vec<(u32, BinaryNodeData)> = vec![
-        (7, BinaryNodeData { node_id: 7, x: 0.0, y: 0.0, z: 0.0, vx: 0.0, vy: 0.0, vz: 0.0 }),
-    ];
+    let nodes: Vec<(u32, BinaryNodeData)> = vec![(
+        7,
+        BinaryNodeData {
+            node_id: 7,
+            x: 0.0,
+            y: 0.0,
+            z: 0.0,
+            vx: 0.0,
+            vy: 0.0,
+            vz: 0.0,
+        },
+    )];
     let mut privs = HashSet::new();
     privs.insert(7u32);
 
-    let encoded = encode_positions_v3_with_privacy(
-        &nodes, &[], &[], &[], &[], &[], None, None, Some(&privs),
-    );
+    let encoded =
+        encode_positions_v3_with_privacy(&nodes, &[], &[], &[], &[], &[], None, None, Some(&privs));
     // First 4 bytes after the 1-byte header are the wire id, little-endian.
     let wire_id = u32::from_le_bytes([encoded[1], encoded[2], encoded[3], encoded[4]]);
 
     if sovereign_schema_enabled() {
-        assert!(is_private_opaque(wire_id),
-            "with SOVEREIGN_SCHEMA=true, bit 29 must be set for private nodes");
+        assert!(
+            is_private_opaque(wire_id),
+            "with SOVEREIGN_SCHEMA=true, bit 29 must be set for private nodes"
+        );
     } else {
-        assert!(!is_private_opaque(wire_id),
-            "with SOVEREIGN_SCHEMA off, bit 29 must not be set");
+        assert!(
+            !is_private_opaque(wire_id),
+            "with SOVEREIGN_SCHEMA off, bit 29 must not be set"
+        );
     }
 
     // Round-trip decoding strips bit 29 via NODE_ID_MASK so the server-side

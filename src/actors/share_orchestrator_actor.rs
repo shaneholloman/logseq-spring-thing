@@ -58,7 +58,10 @@ pub struct ShareOrchestratorActor {
 
 impl ShareOrchestratorActor {
     pub fn new(orchestrator: Arc<ShareOrchestrator>) -> Self {
-        Self { orchestrator, ready: true }
+        Self {
+            orchestrator,
+            ready: true,
+        }
     }
 }
 
@@ -75,7 +78,9 @@ impl Actor for ShareOrchestratorActor {
 }
 
 impl SupervisedActorTrait for ShareOrchestratorActor {
-    fn actor_name() -> &'static str { "ShareOrchestratorActor" }
+    fn actor_name() -> &'static str {
+        "ShareOrchestratorActor"
+    }
     fn supervision_strategy() -> SupervisionStrategy {
         SupervisionStrategy::RestartWithBackoff {
             initial_delay: Duration::from_millis(500),
@@ -83,8 +88,12 @@ impl SupervisedActorTrait for ShareOrchestratorActor {
             multiplier: 2.0,
         }
     }
-    fn max_restart_count() -> u32 { 5 }
-    fn restart_window() -> Duration { Duration::from_secs(300) }
+    fn max_restart_count() -> u32 {
+        5
+    }
+    fn restart_window() -> Duration {
+        Duration::from_secs(300)
+    }
 }
 
 impl Handler<RouteShareIntent> for ShareOrchestratorActor {
@@ -115,9 +124,7 @@ impl Handler<ApplyBrokerDecision> for ShareOrchestratorActor {
         // intent — the transition classifier reads `source_state` +
         // `target_scope` to decide between promote / demote / retract.
         let orch = Arc::clone(&self.orchestrator);
-        Box::pin(async move {
-            orch.handle_intent(msg.intent, msg.extras).await
-        })
+        Box::pin(async move { orch.handle_intent(msg.intent, msg.extras).await })
     }
 }
 

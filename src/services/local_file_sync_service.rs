@@ -12,17 +12,19 @@ use crate::adapters::neo4j_ontology_repository::Neo4jOntologyRepository;
 use crate::ports::knowledge_graph_repository::KnowledgeGraphRepository;
 use crate::services::github::content_enhanced::EnhancedContentAPI;
 use crate::services::github::types::{OntologyFileMetadata, OntologyPriority};
-use crate::services::parsers::{KnowledgeGraphParser, OntologyParser};
-use crate::services::ontology_enrichment_service::OntologyEnrichmentService;
 use crate::services::ontology_content_analyzer::OntologyContentAnalyzer;
-use crate::services::ontology_file_cache::{OntologyFileCache, OntologyCacheConfig, CachedOntologyFile};
+use crate::services::ontology_enrichment_service::OntologyEnrichmentService;
+use crate::services::ontology_file_cache::{
+    CachedOntologyFile, OntologyCacheConfig, OntologyFileCache,
+};
+use crate::services::parsers::{KnowledgeGraphParser, OntologyParser};
 use log::{debug, error, info, warn};
+use sha1::{Digest, Sha1};
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use sha1::{Sha1, Digest};
 
 const BATCH_SIZE: usize = 50;
 const LOCAL_PAGES_DIR: &str = "/app/data/pages";
@@ -52,9 +54,9 @@ pub struct SyncStatistics {
     pub duration: Duration,
 
     // Ontology-specific statistics
-    pub priority1_files: usize,  // public:: true AND OntologyBlock
-    pub priority2_files: usize,  // OntologyBlock only
-    pub priority3_files: usize,  // public:: true only
+    pub priority1_files: usize, // public:: true AND OntologyBlock
+    pub priority2_files: usize, // OntologyBlock only
+    pub priority3_files: usize, // public:: true only
     pub total_classes: usize,
     pub total_properties: usize,
     pub total_relationships: usize,
@@ -110,17 +112,27 @@ impl LocalFileSyncService {
         // Step 1: Read all local markdown files
         let local_files = self.scan_local_pages()?;
         stats.total_files = local_files.len();
-        info!("📂 Found {} local markdown files in {}", local_files.len(), LOCAL_PAGES_DIR);
+        info!(
+            "📂 Found {} local markdown files in {}",
+            local_files.len(),
+            LOCAL_PAGES_DIR
+        );
 
         // Step 2: Get SHA1 hashes from GitHub (lightweight API call - only metadata, not content)
         info!("🔍 Fetching GitHub SHA1 hashes for comparison...");
         let github_sha_map = match self.fetch_github_sha_map().await {
             Ok(map) => {
-                info!("✅ Retrieved SHA1 hashes for {} files from GitHub", map.len());
+                info!(
+                    "✅ Retrieved SHA1 hashes for {} files from GitHub",
+                    map.len()
+                );
                 map
             }
             Err(e) => {
-                warn!("⚠️  Failed to fetch GitHub SHA1 map: {}. Proceeding with local files only.", e);
+                warn!(
+                    "⚠️  Failed to fetch GitHub SHA1 map: {}. Proceeding with local files only.",
+                    e
+                );
                 HashMap::new()
             }
         };
@@ -132,7 +144,8 @@ impl LocalFileSyncService {
         let mut batch_count = 0;
 
         for (index, local_file) in local_files.iter().enumerate() {
-            let file_name = local_file.file_name()
+            let file_name = local_file
+                .file_name()
                 .and_then(|n| n.to_str())
                 .unwrap_or("unknown");
 
@@ -141,13 +154,16 @@ impl LocalFileSyncService {
                 Ok(sha) => sha,
                 Err(e) => {
                     error!("Failed to calculate SHA1 for {:?}: {}", local_file, e);
-                    stats.errors.push(format!("SHA1 calculation failed: {}", file_name));
+                    stats
+                        .errors
+                        .push(format!("SHA1 calculation failed: {}", file_name));
                     continue;
                 }
             };
 
             // Check if file needs update from GitHub
-            let needs_github_update = github_sha_map.get(file_name)
+            let needs_github_update = github_sha_map
+                .get(file_name)
                 .map(|github_sha| github_sha != &local_sha)
                 .unwrap_or(false);
 
@@ -161,7 +177,9 @@ impl LocalFileSyncService {
                     }
                     Err(e) => {
                         error!("Failed to update {} from GitHub: {}", file_name, e);
-                        stats.errors.push(format!("GitHub update failed: {}", file_name));
+                        stats
+                            .errors
+                            .push(format!("GitHub update failed: {}", file_name));
                         // Fallback to local file
                         match fs::read_to_string(&local_file) {
                             Ok(c) => c,
@@ -188,24 +206,33 @@ impl LocalFileSyncService {
             };
 
             // Process file content with ontology-aware filtering
-            if let Err(e) = self.process_file_content(
-                file_name,
-                &content,
-                &local_sha,
-                &mut nodes,
-                &mut edges,
-                &mut public_pages,
-                &mut stats
-            ).await {
+            if let Err(e) = self
+                .process_file_content(
+                    file_name,
+                    &content,
+                    &local_sha,
+                    &mut nodes,
+                    &mut edges,
+                    &mut public_pages,
+                    &mut stats,
+                )
+                .await
+            {
                 error!("Failed to process {}: {}", file_name, e);
-                stats.errors.push(format!("Processing error: {}", file_name));
+                stats
+                    .errors
+                    .push(format!("Processing error: {}", file_name));
             }
 
             // Batch save every BATCH_SIZE files
             if (index + 1) % BATCH_SIZE == 0 || index == local_files.len() - 1 {
                 batch_count += 1;
-                info!("💾 Saving batch {} ({}/{} files processed)",
-                    batch_count, index + 1, local_files.len());
+                info!(
+                    "💾 Saving batch {} ({}/{} files processed)",
+                    batch_count,
+                    index + 1,
+                    local_files.len()
+                );
 
                 if let Err(e) = self.save_batch(&nodes, &edges).await {
                     error!("Failed to save batch {}: {}", batch_count, e);
@@ -217,7 +244,11 @@ impl LocalFileSyncService {
             }
 
             if (index + 1) % 100 == 0 {
-                info!("Progress: {}/{} files processed", index + 1, local_files.len());
+                info!(
+                    "Progress: {}/{} files processed",
+                    index + 1,
+                    local_files.len()
+                );
             }
         }
 
@@ -228,8 +259,10 @@ impl LocalFileSyncService {
         stats.cache_hits = cache_stats.hits;
         stats.cache_misses = cache_stats.misses;
 
-        info!("✅ Sync complete! {} files from local, {} updated from GitHub in {:?}",
-            stats.files_synced_from_local, stats.files_updated_from_github, stats.duration);
+        info!(
+            "✅ Sync complete! {} files from local, {} updated from GitHub in {:?}",
+            stats.files_synced_from_local, stats.files_updated_from_github, stats.duration
+        );
 
         self.log_ontology_statistics(&stats);
 
@@ -239,13 +272,23 @@ impl LocalFileSyncService {
     /// Log detailed ontology statistics
     fn log_ontology_statistics(&self, stats: &SyncStatistics) {
         info!("📊 Ontology Sync Statistics:");
-        info!("   Priority 1 files (public + ontology): {}", stats.priority1_files);
-        info!("   Priority 2 files (ontology only): {}", stats.priority2_files);
-        info!("   Priority 3 files (public only): {}", stats.priority3_files);
+        info!(
+            "   Priority 1 files (public + ontology): {}",
+            stats.priority1_files
+        );
+        info!(
+            "   Priority 2 files (ontology only): {}",
+            stats.priority2_files
+        );
+        info!(
+            "   Priority 3 files (public only): {}",
+            stats.priority3_files
+        );
         info!("   Total classes extracted: {}", stats.total_classes);
         info!("   Total properties extracted: {}", stats.total_properties);
         info!("   Total relationships: {}", stats.total_relationships);
-        info!("   Cache performance: {} hits, {} misses ({:.2}% hit rate)",
+        info!(
+            "   Cache performance: {} hits, {} misses ({:.2}% hit rate)",
             stats.cache_hits,
             stats.cache_misses,
             if stats.cache_hits + stats.cache_misses > 0 {
@@ -254,7 +297,10 @@ impl LocalFileSyncService {
                 0.0
             }
         );
-        info!("   Files with commit dates: {}", stats.files_with_commit_dates);
+        info!(
+            "   Files with commit dates: {}",
+            stats.files_with_commit_dates
+        );
     }
 
     /// Scan local pages directory for markdown files
@@ -262,7 +308,10 @@ impl LocalFileSyncService {
         let pages_dir = Path::new(LOCAL_PAGES_DIR);
 
         if !pages_dir.exists() {
-            return Err(format!("Local pages directory does not exist: {}", LOCAL_PAGES_DIR));
+            return Err(format!(
+                "Local pages directory does not exist: {}",
+                LOCAL_PAGES_DIR
+            ));
         }
 
         let mut md_files = Vec::new();
@@ -289,7 +338,10 @@ impl LocalFileSyncService {
 
         // For now, use the existing list_markdown_files (with pagination fix)
         // Future: Implement git tree API for better efficiency
-        let github_files = self.content_api.list_markdown_files("").await
+        let github_files = self
+            .content_api
+            .list_markdown_files("")
+            .await
             .map_err(|e| format!("GitHub API error: {}", e))?;
 
         let mut sha_map = HashMap::new();
@@ -302,8 +354,7 @@ impl LocalFileSyncService {
 
     /// Calculate SHA1 hash of local file
     fn calculate_file_sha1(&self, file_path: &Path) -> Result<String, String> {
-        let content = fs::read(file_path)
-            .map_err(|e| format!("Failed to read file: {}", e))?;
+        let content = fs::read(file_path).map_err(|e| format!("Failed to read file: {}", e))?;
 
         let mut hasher = Sha1::new();
         hasher.update(&content);
@@ -313,12 +364,16 @@ impl LocalFileSyncService {
     }
 
     /// Fetch updated file from GitHub and save to local filesystem
-    async fn fetch_and_update_file(&self, local_path: &Path, file_name: &str) -> Result<String, String> {
+    async fn fetch_and_update_file(
+        &self,
+        local_path: &Path,
+        file_name: &str,
+    ) -> Result<String, String> {
         // Construct GitHub download URL from env vars (no hardcoded fallbacks)
         let owner = std::env::var("GITHUB_OWNER")
             .map_err(|_| "GITHUB_OWNER not set in .env".to_string())?;
-        let repo = std::env::var("GITHUB_REPO")
-            .map_err(|_| "GITHUB_REPO not set in .env".to_string())?;
+        let repo =
+            std::env::var("GITHUB_REPO").map_err(|_| "GITHUB_REPO not set in .env".to_string())?;
         let branch = std::env::var("GITHUB_BRANCH")
             .map_err(|_| "GITHUB_BRANCH not set in .env".to_string())?;
         let base_path = std::env::var("GITHUB_BASE_PATH")
@@ -329,7 +384,10 @@ impl LocalFileSyncService {
         );
 
         // Fetch content from GitHub
-        let content = self.content_api.fetch_file_content(&download_url).await
+        let content = self
+            .content_api
+            .fetch_file_content(&download_url)
+            .await
             .map_err(|e| format!("Failed to fetch from GitHub: {}", e))?;
 
         // Write updated content to local file
@@ -364,14 +422,17 @@ impl LocalFileSyncService {
                 OntologyPriority::Priority1 => stats.priority1_files += 1,
                 OntologyPriority::Priority2 => stats.priority2_files += 1,
                 OntologyPriority::Priority3 => stats.priority3_files += 1,
-                OntologyPriority::None => {},
+                OntologyPriority::None => {}
             }
 
             stats.total_classes += metadata.class_count;
             stats.total_properties += metadata.property_count;
             stats.total_relationships += metadata.relationship_count;
 
-            debug!("Cache hit for {}: priority={:?}", file_name, metadata.priority);
+            debug!(
+                "Cache hit for {}: priority={:?}",
+                file_name, metadata.priority
+            );
         } else {
             stats.cache_misses += 1;
 
@@ -403,7 +464,7 @@ impl LocalFileSyncService {
                 OntologyPriority::Priority1 => stats.priority1_files += 1,
                 OntologyPriority::Priority2 => stats.priority2_files += 1,
                 OntologyPriority::Priority3 => stats.priority3_files += 1,
-                OntologyPriority::None => {},
+                OntologyPriority::None => {}
             }
 
             stats.total_classes += metadata.class_count;
@@ -416,10 +477,14 @@ impl LocalFileSyncService {
                 analysis.clone(),
                 content_sha.to_string(),
             );
-            self.ontology_cache.put(file_name.to_string(), cached_entry).await;
+            self.ontology_cache
+                .put(file_name.to_string(), cached_entry)
+                .await;
 
-            debug!("Analyzed {}: priority={:?}, domain={:?}",
-                file_name, metadata.priority, metadata.source_domain);
+            debug!(
+                "Analyzed {}: priority={:?}, domain={:?}",
+                file_name, metadata.priority, metadata.source_domain
+            );
         }
 
         // Process based on content type (Priority 1, 2, or 3)
@@ -428,13 +493,22 @@ impl LocalFileSyncService {
             let trimmed = line.trim().to_lowercase();
             trimmed == "public:: true" || trimmed == "public::true"
         }) {
-            let mut parsed = self.kg_parser.parse(content, file_name)
+            let mut parsed = self
+                .kg_parser
+                .parse(content, file_name)
                 .map_err(|e| format!("Parse error: {}", e))?;
 
             // Enrich with ontology
-            match self.enrichment_service.enrich_graph(&mut parsed, file_name, content).await {
+            match self
+                .enrichment_service
+                .enrich_graph(&mut parsed, file_name, content)
+                .await
+            {
                 Ok((nodes_enriched, edges_enriched)) => {
-                    debug!("Enriched {}: {} nodes, {} edges", file_name, nodes_enriched, edges_enriched);
+                    debug!(
+                        "Enriched {}: {} nodes, {} edges",
+                        file_name, nodes_enriched, edges_enriched
+                    );
                 }
                 Err(e) => {
                     warn!("Failed to enrich {}: {}", file_name, e);
@@ -460,8 +534,12 @@ impl LocalFileSyncService {
         if content.contains("### OntologyBlock") {
             match self.onto_parser.parse(content, file_name) {
                 Ok(onto_data) => {
-                    info!("🦉 Extracted ontology from {}: {} classes, {} properties",
-                        file_name, onto_data.classes.len(), onto_data.properties.len());
+                    info!(
+                        "🦉 Extracted ontology from {}: {} classes, {} properties",
+                        file_name,
+                        onto_data.classes.len(),
+                        onto_data.properties.len()
+                    );
 
                     // Save ontology data to Neo4j
                     // Note: Current Neo4jOntologyRepository focuses on graph-based queries.
@@ -507,13 +585,11 @@ impl LocalFileSyncService {
                 }
 
                 // Extract just the filename from the full path
-                let file_name = file_path
-                    .split('/')
-                    .last()
-                    .unwrap_or(&file_path);
+                let file_name = file_path.split('/').last().unwrap_or(&file_path);
 
                 // Fetch commit date from GitHub API
-                match self.content_api
+                match self
+                    .content_api
                     .get_file_content_last_modified(file_name, true)
                     .await
                 {
@@ -538,7 +614,10 @@ impl LocalFileSyncService {
             }
         }
 
-        info!("✅ Enriched {} ontology files with commit dates", enriched_count);
+        info!(
+            "✅ Enriched {} ontology files with commit dates",
+            enriched_count
+        );
         Ok(enriched_count)
     }
 
@@ -556,7 +635,9 @@ impl LocalFileSyncService {
     }
 
     /// Get cache statistics for monitoring
-    pub async fn get_cache_statistics(&self) -> crate::services::ontology_file_cache::OntologyCacheStats {
+    pub async fn get_cache_statistics(
+        &self,
+    ) -> crate::services::ontology_file_cache::OntologyCacheStats {
         self.ontology_cache.get_stats().await
     }
 
@@ -583,7 +664,9 @@ impl LocalFileSyncService {
             id_to_metadata: std::collections::HashMap::new(),
         };
 
-        self.kg_repo.save_graph(&graph).await
+        self.kg_repo
+            .save_graph(&graph)
+            .await
             .map_err(|e| format!("Failed to save graph: {}", e))?;
 
         Ok(())

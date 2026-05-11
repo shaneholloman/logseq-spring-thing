@@ -2,7 +2,7 @@ use crate::actors::messages::{GetSettings, UpdateSettings};
 use crate::app_state::AppState;
 use crate::config::ClusteringConfiguration;
 use crate::settings::auth_extractor::AuthenticatedUser;
-use crate::{ok_json, error_json, bad_request, service_unavailable};
+use crate::{bad_request, error_json, ok_json, service_unavailable};
 use actix_web::{web, HttpRequest, HttpResponse};
 use log::{debug, error, info, warn};
 use serde_json::{json, Value};
@@ -53,12 +53,10 @@ async fn configure_clustering(
         config.algorithm, config.num_clusters
     );
 
-    
     if let Err(e) = validate_clustering_config(&config) {
         return bad_request!("Invalid clustering configuration: {}", e);
     }
 
-    
     let settings_update = json!({
         "visualisation": {
             "graphs": {
@@ -82,7 +80,6 @@ async fn configure_clustering(
         }
     });
 
-    
     let mut app_settings = match state.settings_addr.send(GetSettings).await {
         Ok(Ok(s)) => s,
         Ok(Err(e)) => {
@@ -100,7 +97,6 @@ async fn configure_clustering(
         return error_json!("Failed to update clustering configuration: {}", e);
     }
 
-    
     match state
         .settings_addr
         .send(UpdateSettings {
@@ -155,11 +151,17 @@ async fn start_clustering(
                 )
             }
             Ok(Err(e)) => {
-                warn!("Failed to get settings for clustering defaults, using hardcoded: {}", e);
+                warn!(
+                    "Failed to get settings for clustering defaults, using hardcoded: {}",
+                    e
+                );
                 (None, None, None, None)
             }
             Err(e) => {
-                warn!("Settings actor unavailable for clustering defaults, using hardcoded: {}", e);
+                warn!(
+                    "Settings actor unavailable for clustering defaults, using hardcoded: {}",
+                    e
+                );
                 (None, None, None, None)
             }
         };
@@ -192,7 +194,6 @@ async fn start_clustering(
 
     // Route PerformGPUClustering through GPUManagerActor → AnalyticsSupervisor → ClusteringActor
     if let Some(gpu_manager) = state.gpu_manager_addr.as_ref() {
-
         use crate::actors::messages::PerformGPUClustering;
 
         let request = PerformGPUClustering {
@@ -313,7 +314,6 @@ async fn get_clustering_status(
 
         match gpu_addr.send(GetClusteringResults).await {
             Ok(Ok(cluster_results)) => {
-                
                 let algorithm = cluster_results
                     .get("algorithm_used")
                     .and_then(|v| v.as_str())
@@ -382,11 +382,8 @@ async fn get_clustering_results(
 
     if let Some(gpu_addr) = state.get_gpu_compute_addr().await {
         use crate::actors::messages::{GetClusteringResults, GetGraphData};
-use crate::{ok_json, error_json, service_unavailable};
+        use crate::{error_json, ok_json, service_unavailable};
 
-
-
-        
         let graph_data = match state.graph_service_addr.send(GetGraphData).await {
             Ok(Ok(data)) => data,
             Ok(Err(e)) => {
@@ -399,10 +396,8 @@ use crate::{ok_json, error_json, service_unavailable};
             }
         };
 
-        
         match gpu_addr.send(GetClusteringResults).await {
             Ok(Ok(cluster_results)) => {
-                
                 let clusters = if let Some(clusters_array) =
                     cluster_results.get("clusters").and_then(|v| v.as_array())
                 {
@@ -420,7 +415,6 @@ use crate::{ok_json, error_json, service_unavailable};
                     vec![]
                 };
 
-                
                 let algorithm = cluster_results
                     .get("algorithm_used")
                     .and_then(|v| v.as_str())
@@ -503,7 +497,6 @@ async fn export_cluster_assignments(
     if let Some(gpu_addr) = state.get_gpu_compute_addr().await {
         info!("Attempting to get clustering data from GPU compute actor");
 
-        
         match gpu_addr
             .send(crate::actors::messages::GetClusteringResults)
             .await
@@ -520,7 +513,7 @@ async fn export_cluster_assignments(
                                 let cluster_id = cluster.get("id").and_then(|v| v.as_u64()).unwrap_or(0);
                                 for node_id in node_ids {
                                     if let Some(id) = node_id.as_u64() {
-                                        
+
                                         let position = cluster.get("centroid").and_then(|v| v.as_array())
                                             .map(|arr| (
                                                 arr.get(0).and_then(|v| v.as_f64()).unwrap_or(0.0),
@@ -534,7 +527,7 @@ async fn export_cluster_assignments(
                                 }
                             }
                         }
-                        } 
+                        }
                         csv_content
                     },
                     "graphml" => {
@@ -556,7 +549,7 @@ async fn export_cluster_assignments(
                                 }
                             }
                         }
-                        } 
+                        }
 
                         graphml.push_str("  </graph>\n</graphml>\n");
                         graphml
@@ -596,7 +589,6 @@ async fn export_cluster_assignments(
         }
     }
 
-    
     match state
         .graph_service_addr
         .send(crate::actors::messages::GetGraphData)
@@ -609,10 +601,8 @@ async fn export_cluster_assignments(
                     graph_data.nodes.len()
                 );
 
-                
                 let mut clusters = HashMap::new();
                 for node in &graph_data.nodes {
-                    
                     let cluster_key = node
                         .node_type
                         .as_ref()
@@ -706,7 +696,6 @@ async fn export_cluster_assignments(
         }
     }
 
-    
     let empty_response = match format {
         "csv" => "# No clustering data available\n# Try running clustering analysis first\nnode_id,cluster_id\n".to_string(),
         "graphml" => format!(
@@ -784,8 +773,8 @@ async fn run_dbscan(
     let start = Instant::now();
 
     if let Some(gpu_manager) = state.gpu_manager_addr.as_ref() {
-        use crate::actors::messages::RunDBSCAN;
         use crate::actors::messages::DBSCANParams;
+        use crate::actors::messages::RunDBSCAN;
 
         let msg = RunDBSCAN {
             params: DBSCANParams {
@@ -804,7 +793,9 @@ async fn run_dbscan(
                         for &node_id in &cluster.nodes {
                             let entry = analytics.entry(node_id).or_insert((0, 0.0, 0));
                             // Use the cluster label from the DBSCAN result
-                            entry.0 = cluster.label.split_whitespace()
+                            entry.0 = cluster
+                                .label
+                                .split_whitespace()
                                 .last()
                                 .and_then(|s| s.parse::<u32>().ok())
                                 .unwrap_or(0);
@@ -864,7 +855,6 @@ async fn run_dbscan(
 }
 
 fn validate_clustering_config(config: &ClusteringConfiguration) -> Result<(), String> {
-    
     if ![
         "none",
         "kmeans",
@@ -878,17 +868,14 @@ fn validate_clustering_config(config: &ClusteringConfiguration) -> Result<(), St
         return Err("algorithm must be 'none', 'kmeans', 'spectral', 'louvain', 'hierarchical', or 'dbscan'".to_string());
     }
 
-    
     if config.num_clusters < 2 || config.num_clusters > 50 {
         return Err("num_clusters must be between 2 and 50".to_string());
     }
 
-    
     if config.resolution < 0.1 || config.resolution > 5.0 {
         return Err("resolution must be between 0.1 and 5.0".to_string());
     }
 
-    
     if config.iterations < 10 || config.iterations > 1000 {
         return Err("iterations must be between 10 and 1000".to_string());
     }

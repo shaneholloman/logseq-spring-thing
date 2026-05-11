@@ -265,9 +265,10 @@ pub struct ClientManager {
     pub active_connections: usize,
 }
 
-
 /// Helper to convert RwLock poison errors to ActorError
-fn handle_rwlock_error<T>(result: Result<T, std::sync::PoisonError<T>>) -> Result<T, crate::errors::ActorError> {
+fn handle_rwlock_error<T>(
+    result: Result<T, std::sync::PoisonError<T>>,
+) -> Result<T, crate::errors::ActorError> {
     result.map_err(|_| crate::errors::ActorError::RuntimeFailure {
         actor_name: "ClientCoordinatorActor".to_string(),
         reason: "RwLock poisoned - a thread panicked while holding the lock".to_string(),
@@ -365,7 +366,9 @@ impl ClientManager {
                     sent += 1;
                     // Successful push — clear the sustained-Full counter so a
                     // client that briefly stalls but recovers isn't penalised.
-                    client_state.consecutive_full_frames.store(0, Ordering::Relaxed);
+                    client_state
+                        .consecutive_full_frames
+                        .store(0, Ordering::Relaxed);
                 }
                 Err(actix::prelude::SendError::Full(_)) => {
                     // Drop frame on transient backpressure but track sustained pressure.
@@ -373,7 +376,10 @@ impl ClientManager {
                     // (the original Fix D bug). Eviction never strands the client when
                     // pressure is transient (initial-burst stall), but a permanently
                     // stuck client is removed after ~1s of continuous Fulls.
-                    let n = client_state.consecutive_full_frames.fetch_add(1, Ordering::Relaxed) + 1;
+                    let n = client_state
+                        .consecutive_full_frames
+                        .fetch_add(1, Ordering::Relaxed)
+                        + 1;
                     if n >= MAILBOX_FULL_EVICTION_THRESHOLD {
                         warn!(
                             "[ClientCoordinator] Client {} mailbox full for {} consecutive frames — evicting",
@@ -433,7 +439,9 @@ impl ClientManager {
                 let mut key_vec: Vec<u32> = private_hidden_ids.iter().copied().collect();
                 key_vec.sort_unstable();
                 let mut key_bytes = Vec::with_capacity(key_vec.len() * 4);
-                for id in &key_vec { key_bytes.extend_from_slice(&id.to_le_bytes()); }
+                for id in &key_vec {
+                    key_bytes.extend_from_slice(&id.to_le_bytes());
+                }
                 let entry = unfiltered_cache.entry(key_bytes).or_insert_with(|| {
                     let visible: Vec<BinaryNodeDataClient> = positions
                         .iter()
@@ -466,7 +474,9 @@ impl ClientManager {
                 match client_state.addr.try_send(SendToClientBinary(data)) {
                     Ok(()) => {
                         sent += 1;
-                        client_state.consecutive_full_frames.store(0, Ordering::Relaxed);
+                        client_state
+                            .consecutive_full_frames
+                            .store(0, Ordering::Relaxed);
                     }
                     Err(actix::prelude::SendError::Full(_)) => {
                         // Drop the frame; track sustained pressure so a permanently
@@ -524,10 +534,8 @@ impl ClientManager {
     ) -> Vec<u8> {
         use crate::utils::binary_protocol::encode_position_frame;
         use crate::utils::socket_flow_messages::BinaryNodeData;
-        let nodes: Vec<(u32, BinaryNodeData)> = positions
-            .iter()
-            .map(|pos| (pos.node_id, *pos))
-            .collect();
+        let nodes: Vec<(u32, BinaryNodeData)> =
+            positions.iter().map(|pos| (pos.node_id, *pos)).collect();
         encode_position_frame(&nodes, broadcast_sequence)
     }
 
@@ -554,24 +562,17 @@ impl ClientManager {
 }
 
 pub struct ClientCoordinatorActor {
-    
     client_manager: Arc<RwLock<ClientManager>>,
 
-    
     last_broadcast: Instant,
 
-    
     broadcast_interval: Duration,
 
-    
     active_broadcast_interval: Duration,
 
-    
     stable_broadcast_interval: Duration,
 
-    
     initial_positions_sent: bool,
-
 
     graph_service_addr: Option<Addr<crate::actors::GraphServiceSupervisor>>,
 
@@ -582,23 +583,19 @@ pub struct ClientCoordinatorActor {
     broadcast_sequence: u64,
 
     // Neo4j settings repository for loading/saving user filters
-    neo4j_settings_repository: Option<Arc<crate::adapters::neo4j_settings_repository::Neo4jSettingsRepository>>,
-
+    neo4j_settings_repository:
+        Option<Arc<crate::adapters::neo4j_settings_repository::Neo4jSettingsRepository>>,
 
     position_cache: HashMap<u32, BinaryNodeDataClient>,
 
-    
     broadcast_count: u64,
     bytes_sent: u64,
 
-    
     force_broadcast_requests: u32,
 
-    
     connection_stats: ConnectionStats,
 
-    
-    bandwidth_limit_bytes_per_sec: usize, 
+    bandwidth_limit_bytes_per_sec: usize,
     bytes_sent_this_second: usize,
     last_bandwidth_check: Instant,
 
@@ -667,8 +664,8 @@ impl ClientCoordinatorActor {
             node_type_arrays: crate::actors::messages::NodeTypeArrays::default(),
             node_analytics: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
             disconnected_queue: DisconnectedClientQueue::new(
-                64,                          // max 64 messages buffered per client
-                Duration::from_secs(30),     // 30-second TTL
+                64,                      // max 64 messages buffered per client
+                Duration::from_secs(30), // 30-second TTL
             ),
             last_analytics_emit: HashMap::new(),
             pending_analytics_emit: HashMap::new(),
@@ -692,7 +689,8 @@ impl ClientCoordinatorActor {
         if !messages.is_empty() {
             info!(
                 "Replayed {} buffered messages to reconnected client {}",
-                messages.len(), old_client_id
+                messages.len(),
+                old_client_id
             );
             for msg in messages {
                 addr.do_send(SendToClientBinary(msg));
@@ -701,17 +699,22 @@ impl ClientCoordinatorActor {
     }
 
     /// Set the shared node analytics map (cluster_id, anomaly_score, community_id)
-    pub fn set_node_analytics(&mut self, analytics: Arc<std::sync::RwLock<std::collections::HashMap<u32, (u32, f32, u32)>>>) {
+    pub fn set_node_analytics(
+        &mut self,
+        analytics: Arc<std::sync::RwLock<std::collections::HashMap<u32, (u32, f32, u32)>>>,
+    ) {
         self.node_analytics = analytics;
         info!("Node analytics configured for ClientCoordinatorActor");
     }
 
     /// Set the GPU compute actor address for backpressure acknowledgements
-    pub fn set_gpu_compute_addr(&mut self, addr: Addr<crate::actors::gpu::force_compute_actor::ForceComputeActor>) {
+    pub fn set_gpu_compute_addr(
+        &mut self,
+        addr: Addr<crate::actors::gpu::force_compute_actor::ForceComputeActor>,
+    ) {
         self.gpu_compute_addr = Some(addr);
         info!("GPU compute address configured for ClientCoordinatorActor backpressure acks");
     }
-
 
     pub fn set_bandwidth_limit(&mut self, bytes_per_sec: usize) {
         self.bandwidth_limit_bytes_per_sec = bytes_per_sec;
@@ -719,34 +722,32 @@ impl ClientCoordinatorActor {
     }
 
     /// Set the Neo4j settings repository for loading user filters
-    pub fn set_neo4j_repository(&mut self, repo: Arc<crate::adapters::neo4j_settings_repository::Neo4jSettingsRepository>) {
+    pub fn set_neo4j_repository(
+        &mut self,
+        repo: Arc<crate::adapters::neo4j_settings_repository::Neo4jSettingsRepository>,
+    ) {
         self.neo4j_settings_repository = Some(repo);
         info!("Neo4j settings repository configured for ClientCoordinatorActor");
     }
 
-    
     fn check_bandwidth_available(&mut self, bytes_needed: usize) -> bool {
         if self.bandwidth_limit_bytes_per_sec == 0 {
-            return true; 
+            return true;
         }
 
-        
         if self.last_bandwidth_check.elapsed() >= Duration::from_secs(1) {
             self.bytes_sent_this_second = 0;
             self.last_bandwidth_check = Instant::now();
         }
 
-        
         self.bytes_sent_this_second + bytes_needed <= self.bandwidth_limit_bytes_per_sec
     }
 
-    
     fn record_bytes_sent(&mut self, bytes: usize) {
         self.bytes_sent_this_second += bytes;
         self.bytes_sent += bytes as u64;
     }
 
-    
     pub fn queue_voice_data(&mut self, audio: Vec<u8>) {
         let audio_len = audio.len();
         self.voice_data_queued_bytes += audio_len;
@@ -757,19 +758,15 @@ impl ClientCoordinatorActor {
         );
     }
 
-    
     fn send_prioritized_broadcasts(&mut self) -> Result<usize, String> {
         use crate::utils::binary_protocol::BinaryProtocol;
 
         let mut total_sent = 0;
 
-        
         while !self.pending_voice_data.is_empty() {
-            
             let voice_data_len = self.pending_voice_data[0].len();
             let encoded = BinaryProtocol::encode_voice_data(&self.pending_voice_data[0]);
 
-            
             if !self.check_bandwidth_available(encoded.len()) {
                 debug!(
                     "Bandwidth limit reached, deferring {} voice messages",
@@ -778,7 +775,6 @@ impl ClientCoordinatorActor {
                 break;
             }
 
-            
             let broadcast_result = {
                 let manager = match handle_rwlock_error(self.client_manager.read()) {
                     Ok(manager) => manager,
@@ -793,7 +789,10 @@ impl ClientCoordinatorActor {
             if !broadcast_result.slow_clients.is_empty() {
                 if let Ok(mut manager) = self.client_manager.write() {
                     for id in &broadcast_result.slow_clients {
-                        warn!("[ClientCoordinator] Evicting slow client {} (voice broadcast)", id);
+                        warn!(
+                            "[ClientCoordinator] Evicting slow client {} (voice broadcast)",
+                            id
+                        );
                         manager.unregister_client(*id);
                     }
                 }
@@ -801,7 +800,6 @@ impl ClientCoordinatorActor {
             self.record_bytes_sent(encoded.len());
             total_sent += broadcast_result.sent;
 
-            
             self.voice_data_queued_bytes -= voice_data_len;
             self.pending_voice_data.remove(0);
 
@@ -812,43 +810,41 @@ impl ClientCoordinatorActor {
             );
         }
 
-        
         if !self.position_cache.is_empty() && self.should_broadcast() {
-            
             let mut position_data = Vec::new();
             for (_, node_data) in &self.position_cache {
                 position_data.push(*node_data);
             }
 
-
             let binary_data = self.serialize_positions(&position_data);
 
-
             if self.check_bandwidth_available(binary_data.len()) {
-
                 let broadcast_result = {
-                let manager = match handle_rwlock_error(self.client_manager.read()) {
-                    Ok(manager) => manager,
-                    Err(e) => {
-                        error!("RwLock error: {}", e);
-                        return Err(format!("Failed to acquire client manager lock: {}", e));
-                    }
+                    let manager = match handle_rwlock_error(self.client_manager.read()) {
+                        Ok(manager) => manager,
+                        Err(e) => {
+                            error!("RwLock error: {}", e);
+                            return Err(format!("Failed to acquire client manager lock: {}", e));
+                        }
+                    };
+                    manager.broadcast_to_all(binary_data.clone())
                 };
-                manager.broadcast_to_all(binary_data.clone())
-            };
-            // ADR-031 item 5: evict slow clients.
-            if !broadcast_result.slow_clients.is_empty() {
-                if let Ok(mut manager) = self.client_manager.write() {
-                    for id in &broadcast_result.slow_clients {
-                        warn!("[ClientCoordinator] Evicting slow client {} (position cache)", id);
-                        manager.unregister_client(*id);
+                // ADR-031 item 5: evict slow clients.
+                if !broadcast_result.slow_clients.is_empty() {
+                    if let Ok(mut manager) = self.client_manager.write() {
+                        for id in &broadcast_result.slow_clients {
+                            warn!(
+                                "[ClientCoordinator] Evicting slow client {} (position cache)",
+                                id
+                            );
+                            manager.unregister_client(*id);
+                        }
                     }
                 }
-            }
-            self.record_bytes_sent(binary_data.len());
-            self.broadcast_count += 1;
-            self.last_broadcast = Instant::now();
-            total_sent += broadcast_result.sent;
+                self.record_bytes_sent(binary_data.len());
+                self.broadcast_count += 1;
+                self.last_broadcast = Instant::now();
+                total_sent += broadcast_result.sent;
 
                 debug!(
                     "Sent graph update: {} nodes, {} bytes to {} clients",
@@ -864,16 +860,11 @@ impl ClientCoordinatorActor {
         Ok(total_sent)
     }
 
-
-    pub fn set_graph_service_addr(
-        &mut self,
-        addr: Addr<crate::actors::GraphServiceSupervisor>,
-    ) {
+    pub fn set_graph_service_addr(&mut self, addr: Addr<crate::actors::GraphServiceSupervisor>) {
         self.graph_service_addr = Some(addr);
         debug!("Graph service address set in client coordinator");
     }
 
-    
     pub fn update_broadcast_interval(&mut self, is_stable: bool) {
         let new_interval = if is_stable {
             self.stable_broadcast_interval
@@ -891,12 +882,10 @@ impl ClientCoordinatorActor {
         }
     }
 
-    
     pub fn should_broadcast(&self) -> bool {
         self.last_broadcast.elapsed() >= self.broadcast_interval
     }
 
-    
     pub fn force_broadcast(&mut self, reason: &str) -> bool {
         info!("Force broadcasting positions: {}", reason);
         self.force_broadcast_requests += 1;
@@ -917,7 +906,6 @@ impl ClientCoordinatorActor {
             return false;
         }
 
-        
         let mut position_data = Vec::new();
         for (_, node_data) in &self.position_cache {
             position_data.push(*node_data);
@@ -951,7 +939,10 @@ impl ClientCoordinatorActor {
         if !result.slow_clients.is_empty() {
             if let Ok(mut manager) = self.client_manager.write() {
                 for id in &result.slow_clients {
-                    warn!("[ClientCoordinator] Evicting slow client {} (force broadcast)", id);
+                    warn!(
+                        "[ClientCoordinator] Evicting slow client {} (force broadcast)",
+                        id
+                    );
                     manager.unregister_client(*id);
                 }
             }
@@ -1041,7 +1032,6 @@ impl ClientCoordinatorActor {
         );
     }
 
-    
     pub fn broadcast_positions(&mut self, is_stable: bool) -> Result<usize, String> {
         self.update_broadcast_interval(is_stable);
 
@@ -1060,14 +1050,12 @@ impl ClientCoordinatorActor {
             return Ok(0);
         }
 
-        
         let force_broadcast = !self.initial_positions_sent;
 
         if !force_broadcast && !self.should_broadcast() {
-            return Ok(0); 
+            return Ok(0);
         }
 
-        
         let mut position_data = Vec::new();
         for (_, node_data) in &self.position_cache {
             position_data.push(*node_data);
@@ -1097,7 +1085,10 @@ impl ClientCoordinatorActor {
         if !result.slow_clients.is_empty() {
             if let Ok(mut manager) = self.client_manager.write() {
                 for id in &result.slow_clients {
-                    warn!("[ClientCoordinator] Evicting slow client {} (position broadcast)", id);
+                    warn!(
+                        "[ClientCoordinator] Evicting slow client {} (position broadcast)",
+                        id
+                    );
                     manager.unregister_client(*id);
                 }
             }
@@ -1160,13 +1151,11 @@ impl ClientCoordinatorActor {
         Ok(broadcast_count)
     }
 
-    
     fn generate_initial_position(&self, client_id: usize) -> Position3D {
         use rand::prelude::*;
 
         let mut rng = thread_rng();
 
-        
         let radius = rng.gen_range(50.0..200.0);
         let theta = rng.gen_range(0.0..std::f32::consts::PI * 2.0);
         let phi = rng.gen_range(0.0..std::f32::consts::PI);
@@ -1182,7 +1171,6 @@ impl ClientCoordinatorActor {
             client_id, position.x, position.y, position.z, position.magnitude
         );
 
-        
         if position.is_origin() {
             warn!(
                 "ORIGIN POSITION BUG DETECTED: Client {} generated at origin despite parameters",
@@ -1193,15 +1181,14 @@ impl ClientCoordinatorActor {
         position
     }
 
-    
     fn update_connection_stats(&mut self) {
         let manager = match handle_rwlock_error(self.client_manager.read()) {
-                Ok(manager) => manager,
-                Err(e) => {
-                    error!("RwLock error: {}", e);
-                    return;
-                }
-            };
+            Ok(manager) => manager,
+            Err(e) => {
+                error!("RwLock error: {}", e);
+                return;
+            }
+        };
         self.connection_stats.current_clients = manager.get_client_count();
 
         if self.connection_stats.current_clients > self.connection_stats.peak_clients {
@@ -1209,24 +1196,23 @@ impl ClientCoordinatorActor {
         }
     }
 
-    
     pub fn get_stats(&self) -> ClientCoordinatorStats {
         let manager = match handle_rwlock_error(self.client_manager.read()) {
-                Ok(manager) => manager,
-                Err(e) => {
-                    error!("RwLock error: {}", e);
-                    return ClientCoordinatorStats {
-                        active_clients: 0,
-                        total_broadcasts: self.broadcast_count,
-                        bytes_sent: self.bytes_sent,
-                        force_broadcasts: self.force_broadcast_requests,
-                        position_cache_size: self.position_cache.len(),
-                        initial_positions_sent: self.initial_positions_sent,
-                        current_broadcast_interval: self.broadcast_interval,
-                        connection_stats: self.connection_stats.clone(),
-                    };
-                }
-            };
+            Ok(manager) => manager,
+            Err(e) => {
+                error!("RwLock error: {}", e);
+                return ClientCoordinatorStats {
+                    active_clients: 0,
+                    total_broadcasts: self.broadcast_count,
+                    bytes_sent: self.bytes_sent,
+                    force_broadcasts: self.force_broadcast_requests,
+                    position_cache_size: self.position_cache.len(),
+                    initial_positions_sent: self.initial_positions_sent,
+                    current_broadcast_interval: self.broadcast_interval,
+                    connection_stats: self.connection_stats.clone(),
+                };
+            }
+        };
         ClientCoordinatorStats {
             active_clients: manager.get_client_count(),
             total_broadcasts: self.broadcast_count,
@@ -1280,7 +1266,9 @@ impl Actor for ClientCoordinatorActor {
         // client carries proper flags. 5 s cadence keeps stale-after-sync
         // windows short without flooding GraphStateActor.
         ctx.run_interval(Duration::from_secs(5), |act, ctx| {
-            let Some(graph_addr) = act.graph_service_addr.clone() else { return };
+            let Some(graph_addr) = act.graph_service_addr.clone() else {
+                return;
+            };
             let self_addr = ctx.address();
             actix::spawn(async move {
                 use crate::actors::messages::{GetNodeTypeArrays, UpdateNodeTypeArrays};
@@ -1294,7 +1282,9 @@ impl Actor for ClientCoordinatorActor {
         });
         // Fire one refresh ~immediately at boot (don't wait for the 5-s tick).
         ctx.run_later(Duration::from_secs(1), |act, ctx| {
-            let Some(graph_addr) = act.graph_service_addr.clone() else { return };
+            let Some(graph_addr) = act.graph_service_addr.clone() else {
+                return;
+            };
             let self_addr = ctx.address();
             actix::spawn(async move {
                 use crate::actors::messages::{GetNodeTypeArrays, UpdateNodeTypeArrays};
@@ -1304,7 +1294,6 @@ impl Actor for ClientCoordinatorActor {
             });
         });
 
-        
         if let Some(logger) = get_telemetry_logger() {
             let correlation_id = CorrelationId::new();
             logger.log_event(
@@ -1339,7 +1328,6 @@ impl Actor for ClientCoordinatorActor {
             stats.active_clients, stats.total_broadcasts, stats.bytes_sent
         );
 
-        
         if let Some(logger) = get_telemetry_logger() {
             let correlation_id = CorrelationId::new();
             logger.log_event(
@@ -1380,14 +1368,11 @@ impl Handler<RegisterClient> for ClientCoordinatorActor {
             manager.register_client(msg.addr)
         };
 
-        
         let initial_position = self.generate_initial_position(client_id);
 
-        
         self.connection_stats.total_registrations += 1;
         self.update_connection_stats();
 
-        
         if let Some(logger) = get_telemetry_logger() {
             let mut metadata = std::collections::HashMap::new();
             metadata.insert("client_id".to_string(), serde_json::json!(client_id));
@@ -1402,13 +1387,12 @@ impl Handler<RegisterClient> for ClientCoordinatorActor {
 
             logger.log_agent_spawn(
                 &format!("client_{}", client_id),
-                None, 
+                None,
                 initial_position,
                 metadata,
             );
         }
 
-        
         if !self.position_cache.is_empty() {
             self.force_broadcast(&format!("new_client_{}", client_id));
         } else {
@@ -1419,7 +1403,11 @@ impl Handler<RegisterClient> for ClientCoordinatorActor {
         // If this client_id was previously tracked in the disconnected queue
         // (e.g. from a rapid disconnect/reconnect cycle that reuses the same
         // slot, or from pubkey-matched reconnection), drain and replay.
-        if self.disconnected_queue.tracked_client_ids().contains(&client_id) {
+        if self
+            .disconnected_queue
+            .tracked_client_ids()
+            .contains(&client_id)
+        {
             // Extract the addr under a short-lived read lock, then replay
             // outside the lock so the &mut self borrow doesn't conflict.
             let reconnected_addr = {
@@ -1468,7 +1456,6 @@ impl Handler<UnregisterClient> for ClientCoordinatorActor {
             self.connection_stats.total_unregistrations += 1;
             self.update_connection_stats();
 
-            
             if let Some(logger) = get_telemetry_logger() {
                 let correlation_id =
                     CorrelationId::from_agent_id(&format!("client_{}", msg.client_id));
@@ -1523,7 +1510,10 @@ impl Handler<BroadcastNodePositions> for ClientCoordinatorActor {
         if !broadcast_result.slow_clients.is_empty() {
             if let Ok(mut manager) = self.client_manager.write() {
                 for id in &broadcast_result.slow_clients {
-                    warn!("[ClientCoordinator] Evicting slow client {} (node positions)", id);
+                    warn!(
+                        "[ClientCoordinator] Evicting slow client {} (node positions)",
+                        id
+                    );
                     manager.unregister_client(*id);
                 }
             }
@@ -1531,7 +1521,6 @@ impl Handler<BroadcastNodePositions> for ClientCoordinatorActor {
         let client_count = broadcast_result.sent;
 
         if client_count > 0 {
-            
             self.broadcast_count += 1;
             self.bytes_sent += msg.positions.len() as u64;
             self.last_broadcast = Instant::now();
@@ -1542,7 +1531,6 @@ impl Handler<BroadcastNodePositions> for ClientCoordinatorActor {
                 client_count
             );
 
-            
             if msg.positions.len() > 1000 || client_count > 10 {
                 info!(
                     "Large broadcast: {} bytes to {} clients",
@@ -1605,7 +1593,10 @@ impl Handler<BroadcastPositions> for ClientCoordinatorActor {
         if !result.slow_clients.is_empty() {
             if let Ok(mut manager) = self.client_manager.write() {
                 for id in &result.slow_clients {
-                    warn!("[ClientCoordinator] Evicting slow client {} (BroadcastPositions)", id);
+                    warn!(
+                        "[ClientCoordinator] Evicting slow client {} (BroadcastPositions)",
+                        id
+                    );
                     manager.unregister_client(*id);
                 }
             }
@@ -1653,10 +1644,7 @@ const ANALYTICS_RATE_CAP: Duration = Duration::from_secs(1);
 impl ClientCoordinatorActor {
     /// Emit a single `analytics_update` envelope to all subscribed clients.
     /// Updates `last_analytics_emit` so the rate-cap window restarts.
-    fn emit_analytics_update(
-        &mut self,
-        msg: crate::actors::messages::BroadcastAnalyticsUpdate,
-    ) {
+    fn emit_analytics_update(&mut self, msg: crate::actors::messages::BroadcastAnalyticsUpdate) {
         self.last_analytics_emit.insert(msg.source, Instant::now());
         let envelope = serde_json::json!({
             "type": "analytics_update",
@@ -1667,7 +1655,10 @@ impl ClientCoordinatorActor {
         let serialised = match serde_json::to_string(&envelope) {
             Ok(s) => s,
             Err(e) => {
-                error!("[ClientCoordinator] failed to serialise analytics_update: {}", e);
+                error!(
+                    "[ClientCoordinator] failed to serialise analytics_update: {}",
+                    e
+                );
                 return;
             }
         };
@@ -1823,22 +1814,20 @@ impl Handler<InitialClientSync> for ClientCoordinatorActor {
             msg.client_identifier, msg.trigger_source
         );
 
-        
         let broadcast_reason = format!(
             "initial_sync_{}_{}",
             msg.client_identifier, msg.trigger_source
         );
 
         if self.force_broadcast(&broadcast_reason) {
-            
             if let Ok(client_id) = msg.client_identifier.parse::<usize>() {
                 let mut manager = match handle_rwlock_error(self.client_manager.write()) {
-                Ok(manager) => manager,
-                Err(e) => {
-                    error!("RwLock error: {}", e);
-                    return Err(format!("Failed to acquire client manager lock: {}", e));
-                }
-            };
+                    Ok(manager) => manager,
+                    Err(e) => {
+                        error!("RwLock error: {}", e);
+                        return Err(format!("Failed to acquire client manager lock: {}", e));
+                    }
+                };
                 manager.mark_client_synced(client_id);
             }
 
@@ -1862,7 +1851,6 @@ impl Handler<UpdateNodePositions> for ClientCoordinatorActor {
     type Result = Result<(), String>;
 
     fn handle(&mut self, msg: UpdateNodePositions, _ctx: &mut Self::Context) -> Self::Result {
-        
         let mut client_positions = Vec::new();
         for (node_id, node_data) in msg.positions {
             let client_data = BinaryNodeDataClient {
@@ -1877,10 +1865,8 @@ impl Handler<UpdateNodePositions> for ClientCoordinatorActor {
             client_positions.push((node_id, client_data));
         }
 
-        
         self.update_position_cache(client_positions);
 
-        
         let client_count = {
             let manager = match handle_rwlock_error(self.client_manager.read()) {
                 Ok(manager) => manager,
@@ -1893,15 +1879,14 @@ impl Handler<UpdateNodePositions> for ClientCoordinatorActor {
         };
 
         if client_count > 0 {
-
             let unsynced_clients = {
                 let manager = match handle_rwlock_error(self.client_manager.read()) {
-                Ok(manager) => manager,
-                Err(e) => {
-                    error!("RwLock error: {}", e);
-                    return Err(format!("Failed to acquire client manager lock: {}", e));
-                }
-            };
+                    Ok(manager) => manager,
+                    Err(e) => {
+                        error!("RwLock error: {}", e);
+                        return Err(format!("Failed to acquire client manager lock: {}", e));
+                    }
+                };
                 manager.get_unsynced_clients()
             };
 
@@ -1910,8 +1895,7 @@ impl Handler<UpdateNodePositions> for ClientCoordinatorActor {
             if force_broadcast {
                 self.force_broadcast("position_update_with_unsynced_clients");
             } else {
-                
-                self.broadcast_positions(false)?; 
+                self.broadcast_positions(false)?;
             }
         }
 
@@ -2009,7 +1993,6 @@ impl Handler<QueueVoiceData> for ClientCoordinatorActor {
     fn handle(&mut self, msg: QueueVoiceData, _ctx: &mut Self::Context) -> Self::Result {
         self.queue_voice_data(msg.audio);
 
-        
         match self.send_prioritized_broadcasts() {
             Ok(count) => {
                 debug!("Voice data queued and {} broadcasts sent", count);
@@ -2020,7 +2003,7 @@ impl Handler<QueueVoiceData> for ClientCoordinatorActor {
                     "Failed to send prioritized broadcasts after queuing voice: {}",
                     e
                 );
-                Ok(()) 
+                Ok(())
             }
         }
     }
@@ -2149,7 +2132,10 @@ impl Handler<AuthenticateClient> for ClientCoordinatorActor {
                 }).map(|_, _, _| ()));
             } else {
                 // Fallback: No Neo4j repo configured, use default filter behavior
-                warn!("Neo4j repository not configured, using default filter for client {}", msg.client_id);
+                warn!(
+                    "Neo4j repository not configured, using default filter for client {}",
+                    msg.client_id
+                );
             }
 
             // Original behavior: recompute if filter is enabled (kept for non-Neo4j fallback)
@@ -2201,7 +2187,9 @@ impl Handler<UpdateClientFilter> for ClientCoordinatorActor {
         };
 
         if let Some(client) = manager.get_client_mut(msg.client_id) {
-            let filter_mode = msg.filter_mode.parse::<FilterMode>()
+            let filter_mode = msg
+                .filter_mode
+                .parse::<FilterMode>()
                 .map_err(|e| format!("Invalid filter mode: {}", e))?;
 
             client.filter.enabled = msg.enabled;
@@ -2265,9 +2253,6 @@ mod tests {
     fn test_client_manager_registration() {
         let mut manager = ClientManager::new();
         assert_eq!(manager.get_client_count(), 0);
-
-        
-        
     }
 
     #[test]

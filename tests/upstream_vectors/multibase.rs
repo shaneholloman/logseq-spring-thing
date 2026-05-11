@@ -12,7 +12,10 @@ fn multibase_fixture_loads_and_metadata_is_canonical() {
     let f = load_fixture("multibase.json");
     assert_meta_block(&f, "Multibase");
     let vectors = f["vectors"].as_array().expect("vectors must be array");
-    assert!(vectors.len() >= 27, "multibase fixture must have >= 27 vectors");
+    assert!(
+        vectors.len() >= 27,
+        "multibase fixture must have >= 27 vectors"
+    );
 }
 
 #[test]

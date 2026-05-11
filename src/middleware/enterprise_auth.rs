@@ -220,9 +220,8 @@ where
                 );
 
                 // Store verified role in extensions for handler use
-                req.extensions_mut().insert(EnterpriseRoleExt {
-                    role: actual,
-                });
+                req.extensions_mut()
+                    .insert(EnterpriseRoleExt { role: actual });
 
                 let resp = svc.call(req).await?;
                 Ok(resp.map_into_boxed_body())

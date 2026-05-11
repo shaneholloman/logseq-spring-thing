@@ -17,9 +17,7 @@ use neo4rs::{Graph, Query};
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::models::enterprise::{
-    WorkflowPattern, WorkflowProposal, WorkflowStatus, WorkflowStep,
-};
+use crate::models::enterprise::{WorkflowPattern, WorkflowProposal, WorkflowStatus, WorkflowStep};
 use crate::ports::workflow_repository::{Result as WfResult, WorkflowError, WorkflowRepository};
 
 /// Neo4j-backed workflow proposal and pattern repository.
@@ -176,9 +174,8 @@ impl Neo4jWorkflowRepository {
         let deployed_at: String = row.get("deployed_at").unwrap_or_default();
         let deployed_by: String = row.get("deployed_by").unwrap_or_default();
         let adoption_count: i64 = row.get("adoption_count").unwrap_or(0);
-        let rollback_target_id: String = row
-            .get::<String>("rollback_target_id")
-            .unwrap_or_default();
+        let rollback_target_id: String =
+            row.get::<String>("rollback_target_id").unwrap_or_default();
 
         Ok(WorkflowPattern {
             id,
@@ -250,9 +247,11 @@ impl WorkflowRepository for Neo4jWorkflowRepository {
         })?;
 
         let mut proposals = Vec::new();
-        while let Some(row) = result.next().await.map_err(|e| {
-            WorkflowError::DatabaseError(format!("Failed to fetch row: {}", e))
-        })? {
+        while let Some(row) = result
+            .next()
+            .await
+            .map_err(|e| WorkflowError::DatabaseError(format!("Failed to fetch row: {}", e)))?
+        {
             proposals.push(Self::row_to_proposal(&row)?);
         }
 
@@ -271,13 +270,16 @@ impl WorkflowRepository for Neo4jWorkflowRepository {
 
         let q = Query::new(cypher.to_string()).param("id", proposal_id.to_string());
 
-        let mut result = self.graph.execute(q).await.map_err(|e| {
-            WorkflowError::DatabaseError(format!("Failed to get proposal: {}", e))
-        })?;
+        let mut result =
+            self.graph.execute(q).await.map_err(|e| {
+                WorkflowError::DatabaseError(format!("Failed to get proposal: {}", e))
+            })?;
 
-        match result.next().await.map_err(|e| {
-            WorkflowError::DatabaseError(format!("Failed to fetch row: {}", e))
-        })? {
+        match result
+            .next()
+            .await
+            .map_err(|e| WorkflowError::DatabaseError(format!("Failed to fetch row: {}", e)))?
+        {
             Some(row) => Ok(Some(Self::row_to_proposal(&row)?)),
             None => Ok(None),
         }
@@ -309,10 +311,7 @@ impl WorkflowRepository for Neo4jWorkflowRepository {
             .param("steps_json", steps_json)
             .param(
                 "source_insight_id",
-                proposal
-                    .source_insight_id
-                    .clone()
-                    .unwrap_or_default(),
+                proposal.source_insight_id.clone().unwrap_or_default(),
             )
             .param("submitted_by", proposal.submitted_by.clone())
             .param("created_at", proposal.created_at.clone())
@@ -320,10 +319,7 @@ impl WorkflowRepository for Neo4jWorkflowRepository {
             .param("risk_score", proposal.risk_score.unwrap_or(-1.0))
             .param(
                 "expected_benefit",
-                proposal
-                    .expected_benefit
-                    .clone()
-                    .unwrap_or_default(),
+                proposal.expected_benefit.clone().unwrap_or_default(),
             )
             .param("metadata_json", metadata_json);
 
@@ -379,18 +375,17 @@ impl WorkflowRepository for Neo4jWorkflowRepository {
             limit
         );
 
-        let mut result = self
-            .graph
-            .execute(Query::new(cypher))
-            .await
-            .map_err(|e| {
+        let mut result =
+            self.graph.execute(Query::new(cypher)).await.map_err(|e| {
                 WorkflowError::DatabaseError(format!("Failed to list patterns: {}", e))
             })?;
 
         let mut patterns = Vec::new();
-        while let Some(row) = result.next().await.map_err(|e| {
-            WorkflowError::DatabaseError(format!("Failed to fetch row: {}", e))
-        })? {
+        while let Some(row) = result
+            .next()
+            .await
+            .map_err(|e| WorkflowError::DatabaseError(format!("Failed to fetch row: {}", e)))?
+        {
             patterns.push(Self::row_to_pattern(&row)?);
         }
 
@@ -442,10 +437,7 @@ impl WorkflowRepository for Neo4jWorkflowRepository {
             .param("adoption_count", pattern.adoption_count as i64)
             .param(
                 "rollback_target_id",
-                pattern
-                    .rollback_target_id
-                    .clone()
-                    .unwrap_or_default(),
+                pattern.rollback_target_id.clone().unwrap_or_default(),
             )
             .param("updated_at", now);
 

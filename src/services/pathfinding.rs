@@ -69,7 +69,7 @@ impl Default for PathAlgorithm {
 #[derive(Clone)]
 struct HeapEntry {
     node_id: u32,
-    f_score: f32,   // For A*: g + h.  For Dijkstra: g.
+    f_score: f32, // For A*: g + h.  For Dijkstra: g.
     g_score: f32,
 }
 

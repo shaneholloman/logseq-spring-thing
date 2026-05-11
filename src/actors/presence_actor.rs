@@ -17,8 +17,8 @@ use serde::Serialize;
 use tracing::{debug, info, warn};
 
 use visionclaw_xr_presence::{
-    joint_anatomy, monotonic_timestamp, ports::Broadcaster, types::HandPose, velocity_gate,
-    wire, world_bounds, Aabb, AvatarId, AvatarMetadata, Did, PresenceRoom, RoomId, Transform,
+    joint_anatomy, monotonic_timestamp, ports::Broadcaster, types::HandPose, velocity_gate, wire,
+    world_bounds, Aabb, AvatarId, AvatarMetadata, Did, PresenceRoom, RoomId, Transform,
     ValidationError,
 };
 
@@ -247,7 +247,9 @@ impl PresenceActor {
         }
         self.broadcast_sequence = self.broadcast_sequence.wrapping_add(1);
         let user_count = self.pending_poses.len() as u16;
-        let mut buf: Vec<u8> = Vec::with_capacity(1 + 8 + 4 + 2 + self.pending_poses.values().map(|v| v.len()).sum::<usize>());
+        let mut buf: Vec<u8> = Vec::with_capacity(
+            1 + 8 + 4 + 2 + self.pending_poses.values().map(|v| v.len()).sum::<usize>(),
+        );
         buf.push(PREAMBLE_OPCODE);
         buf.extend_from_slice(&self.broadcast_sequence.to_le_bytes());
         let room_id_u32 = u32::from_le_bytes([
@@ -494,10 +496,7 @@ impl PresenceActor {
             return IngestOutcome::ValidationFailed(e.to_string());
         }
 
-        if let Err(e) = self
-            .room
-            .update_pose(&msg.avatar_id, decoded.frame.clone())
-        {
+        if let Err(e) = self.room.update_pose(&msg.avatar_id, decoded.frame.clone()) {
             return IngestOutcome::ValidationFailed(e.to_string());
         }
 
@@ -618,7 +617,12 @@ mod tests {
             .unwrap();
         assert_eq!(ack.members.len(), 1);
 
-        actor.send(LeaveRoom { avatar_id: ack.avatar_id }).await.unwrap();
+        actor
+            .send(LeaveRoom {
+                avatar_id: ack.avatar_id,
+            })
+            .await
+            .unwrap();
     }
 
     #[actix::test]
@@ -679,7 +683,10 @@ mod tests {
         assert_eq!(outcome, IngestOutcome::Accepted);
 
         actix_rt::time::sleep(Duration::from_millis(50)).await;
-        assert!(frames_a.lock().unwrap().is_empty(), "sender must not receive own frame");
+        assert!(
+            frames_a.lock().unwrap().is_empty(),
+            "sender must not receive own frame"
+        );
         assert_eq!(frames_b.lock().unwrap().len(), 1);
         Arbiter::current().stop();
     }

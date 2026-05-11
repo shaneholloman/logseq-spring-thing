@@ -150,8 +150,11 @@ pub trait VisibilityNeo4jOps: Send + Sync + 'static {
 
     /// Upsert a `:PodTombstone {path}` row. The proxy handler consults this
     /// before forwarding GETs to JSS.
-    async fn write_tombstone(&self, old_public_path: &str, owner_pubkey: &str)
-        -> Result<(), String>;
+    async fn write_tombstone(
+        &self,
+        old_public_path: &str,
+        owner_pubkey: &str,
+    ) -> Result<(), String>;
 
     /// Returns `true` if a `:PodTombstone` exists for the given public path.
     /// Used by the proxy's GET handler.
@@ -240,10 +243,8 @@ impl VisibilityNeo4jOps for Neo4jAdapter {
     }
 
     async fn is_tombstoned(&self, old_public_path: &str) -> Result<bool, String> {
-        let q = query(
-            "MATCH (t:PodTombstone {path: $path}) RETURN count(t) AS c",
-        )
-        .param("path", old_public_path.to_string());
+        let q = query("MATCH (t:PodTombstone {path: $path}) RETURN count(t) AS c")
+            .param("path", old_public_path.to_string());
 
         let mut result = self
             .graph()
@@ -262,10 +263,7 @@ impl VisibilityNeo4jOps for Neo4jAdapter {
         Ok(false)
     }
 
-    async fn tombstone_sunset(
-        &self,
-        old_public_path: &str,
-    ) -> Result<Option<String>, String> {
+    async fn tombstone_sunset(&self, old_public_path: &str) -> Result<Option<String>, String> {
         let q = query(
             "MATCH (t:PodTombstone {path: $path}) \
              RETURN toString(t.deleted_at) AS ts",
@@ -375,7 +373,10 @@ impl VisibilityTransitionService {
                     );
                 }
             }
-            Err(e) => warn!("[urn-solid] corpus regen for {} failed: {}", owner_pubkey, e),
+            Err(e) => warn!(
+                "[urn-solid] corpus regen for {} failed: {}",
+                owner_pubkey, e
+            ),
         }
     }
 

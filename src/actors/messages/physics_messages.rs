@@ -84,7 +84,9 @@ pub struct StoreGPUComputeAddress {
 pub struct GetForceComputeActor;
 
 #[derive(Message)]
-#[rtype(result = "Result<Addr<crate::actors::physics_orchestrator_actor::PhysicsOrchestratorActor>, String>")]
+#[rtype(
+    result = "Result<Addr<crate::actors::physics_orchestrator_actor::PhysicsOrchestratorActor>, String>"
+)]
 pub struct GetPhysicsOrchestratorActor;
 
 #[derive(Message)]
@@ -98,7 +100,8 @@ pub struct InitializeGPUConnection {
 #[derive(Message)]
 #[rtype(result = "()")]
 pub struct SetAppGpuComputeAddr {
-    pub addr: std::sync::Arc<tokio::sync::RwLock<Option<Addr<crate::actors::gpu::ForceComputeActor>>>>,
+    pub addr:
+        std::sync::Arc<tokio::sync::RwLock<Option<Addr<crate::actors::gpu::ForceComputeActor>>>>,
 }
 
 #[derive(Message)]

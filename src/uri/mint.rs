@@ -56,9 +56,8 @@ pub fn mint_bead(pubkey_hex: &str, payload: &serde_json::Value) -> Result<String
         return Err(UriError::EmptyPubkey);
     }
     let normalised = normalise_pubkey(pubkey_hex)?;
-    let bytes = serde_json::to_vec(payload).map_err(|e| {
-        UriError::ParseFailed(format!("bead payload serialisation: {}", e))
-    })?;
+    let bytes = serde_json::to_vec(payload)
+        .map_err(|e| UriError::ParseFailed(format!("bead payload serialisation: {}", e)))?;
     let hash12 = content_hash_12(&bytes);
     Ok(format!("urn:visionclaw:bead:{}:{}", normalised, hash12))
 }
@@ -81,4 +80,3 @@ pub fn mint_execution(
     let hash12 = content_hash_12(composite.as_bytes());
     Ok(format!("urn:visionclaw:execution:{}", hash12))
 }
-

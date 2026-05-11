@@ -1,33 +1,29 @@
+use chrono::Utc;
 use regex::Regex;
 use std::fs;
 use std::path::Path;
-use chrono::Utc;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("🔧 Generating TypeScript types from Rust structs...");
 
-
     let typescript_interfaces = generate_typescript_interfaces();
-
 
     let header = format!(
         "// Auto-generated TypeScript type definitions\n// Generated: {}\n\n",
         Utc::now().format("%Y-%m-%d %H:%M:%S UTC")
     );
 
-    
     let camel_case_code = convert_to_camel_case(format!("{}{}", header, typescript_interfaces));
 
-
     let output_path = Path::new("client/src/types/generated/settings.ts");
-    let output_dir = output_path.parent()
+    let output_dir = output_path
+        .parent()
         .expect("output_path has a known parent directory");
     if !output_dir.exists() {
         fs::create_dir_all(output_dir)?;
         println!("📁 Created output directory: {}", output_dir.display());
     }
 
-    
     fs::write(output_path, &camel_case_code)?;
 
     println!(
@@ -35,13 +31,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         output_path.display()
     );
 
-
     let metadata = fs::metadata(output_path)?;
     println!("📊 Generated file size: {} bytes", metadata.len());
 
     if metadata.len() > 1000 {
         println!("🎉 Type generation completed successfully!");
-
 
         let preview: String = camel_case_code
             .lines()
@@ -588,7 +582,8 @@ export default AppFullSettings;
 }
 
 fn convert_to_camel_case(typescript_code: String) -> String {
-    let field_regex = Regex::new(r"(\s+)([a-z][a-z0-9_]*[a-z0-9])(\s*:\s*)").expect("Invalid regex pattern");
+    let field_regex =
+        Regex::new(r"(\s+)([a-z][a-z0-9_]*[a-z0-9])(\s*:\s*)").expect("Invalid regex pattern");
 
     field_regex
         .replace_all(&typescript_code, |caps: &regex::Captures| {
@@ -596,7 +591,6 @@ fn convert_to_camel_case(typescript_code: String) -> String {
             let field_name = &caps[2];
             let colon_and_space = &caps[3];
 
-            
             let camel_case = snake_to_camel_case(field_name);
 
             format!("{}{}{}", indent, camel_case, colon_and_space)
@@ -625,7 +619,7 @@ fn snake_to_camel_case(snake_str: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-// NOTE: `use crate::utils::time;` removed - module doesn't exist in bin crate
+    // NOTE: `use crate::utils::time;` removed - module doesn't exist in bin crate
 
     #[test]
     fn test_snake_to_camel_case() {

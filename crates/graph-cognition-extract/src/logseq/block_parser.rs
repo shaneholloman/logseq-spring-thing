@@ -59,9 +59,12 @@ impl LogseqBlockParser {
                 if line.trim() == ":END:" {
                     if drawer_name.as_deref() == Some("LOGBOOK") {
                         if let Some(last) = blocks.last_mut() {
-                            let remaining = MAX_CLOCK_ENTRIES.saturating_sub(last.clock_entries.len());
-                            last.clock_entries
-                                .extend(current_clock_entries.drain(..remaining.min(current_clock_entries.len())));
+                            let remaining =
+                                MAX_CLOCK_ENTRIES.saturating_sub(last.clock_entries.len());
+                            last.clock_entries.extend(
+                                current_clock_entries
+                                    .drain(..remaining.min(current_clock_entries.len())),
+                            );
                             if !current_clock_entries.is_empty() {
                                 last.truncated = true;
                                 current_clock_entries.clear();
@@ -133,9 +136,9 @@ impl LogseqBlockParser {
                     }
                 }
 
-                let parent_id = indent_stack.last().map(|&(_, idx)| {
-                    blocks[idx].uuid.clone()
-                });
+                let parent_id = indent_stack
+                    .last()
+                    .map(|&(_, idx)| blocks[idx].uuid.clone());
 
                 // left_id: previous sibling at same indent level
                 let left_id = find_left_sibling(&blocks, &indent_stack, indent);
@@ -240,8 +243,7 @@ impl LogseqBlockParser {
         let bytes = hash.as_bytes();
         // Take 8 bytes for a u64-width hex representation matching the old format.
         let hash_u64 = u64::from_le_bytes([
-            bytes[0], bytes[1], bytes[2], bytes[3],
-            bytes[4], bytes[5], bytes[6], bytes[7],
+            bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
         ]);
 
         format!(
@@ -297,16 +299,21 @@ fn parse_bullet_line(line: &str) -> Option<(u32, &str)> {
 
 fn extract_task_marker(text: &str) -> (Option<TaskStatus>, &str) {
     let markers = [
-        "TODO", "DOING", "DONE", "NOW", "LATER", "WAIT", "WAITING", "CANCELLED", "CANCELED",
+        "TODO",
+        "DOING",
+        "DONE",
+        "NOW",
+        "LATER",
+        "WAIT",
+        "WAITING",
+        "CANCELLED",
+        "CANCELED",
     ];
     for marker in &markers {
         if text.starts_with(marker) {
             let rest = &text[marker.len()..];
             if rest.is_empty() || rest.starts_with(' ') {
-                return (
-                    TaskStatus::from_marker(marker),
-                    rest.trim_start(),
-                );
+                return (TaskStatus::from_marker(marker), rest.trim_start());
             }
         }
     }
@@ -413,12 +420,10 @@ fn parse_clock_line(line: &str) -> Option<ClockEntry> {
         let end_bracket = after_dash.find(']').unwrap_or(after_dash.len());
         let end = after_dash[..end_bracket].trim_start_matches('[');
 
-        let duration = after_dash[end_bracket..]
-            .find("=>")
-            .and_then(|p| {
-                let dur_str = after_dash[end_bracket + p + 2..].trim();
-                parse_duration_to_min(dur_str)
-            });
+        let duration = after_dash[end_bracket..].find("=>").and_then(|p| {
+            let dur_str = after_dash[end_bracket + p + 2..].trim();
+            parse_duration_to_min(dur_str)
+        });
 
         Some(ClockEntry {
             start: start.to_string(),
@@ -485,7 +490,7 @@ fn strip_formatting(text: &str) -> String {
             }
             '[' if chars.peek() == Some(&'[') => {
                 chars.next(); // skip [[
-                // Copy content until ]]
+                              // Copy content until ]]
                 while let Some(inner) = chars.next() {
                     if inner == ']' && chars.peek() == Some(&']') {
                         chars.next();
@@ -514,7 +519,11 @@ fn strip_formatting(text: &str) -> String {
     result.trim().to_string()
 }
 
-fn find_left_sibling(blocks: &[BlockNode], indent_stack: &[(u32, usize)], indent: u32) -> Option<String> {
+fn find_left_sibling(
+    blocks: &[BlockNode],
+    indent_stack: &[(u32, usize)],
+    indent: u32,
+) -> Option<String> {
     // Find the most recent block at the same indent level with the same parent
     let parent_idx = indent_stack.last().map(|&(_, idx)| idx);
 
@@ -687,7 +696,8 @@ mod tests {
 
     #[test]
     fn scheduled_and_deadline() {
-        let content = "- TODO Review\n  SCHEDULED: <2024-02-01 Thu>\n  DEADLINE: <2024-02-15 Thu>\n";
+        let content =
+            "- TODO Review\n  SCHEDULED: <2024-02-01 Thu>\n  DEADLINE: <2024-02-15 Thu>\n";
         let result = parser().parse_file(content, "pages/test.md");
         assert!(result.blocks[0].scheduled.is_some());
         assert!(result.blocks[0].deadline.is_some());

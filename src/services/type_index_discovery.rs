@@ -103,7 +103,10 @@ pub struct TypeIndexDocument {
 impl TypeIndexDocument {
     /// Build an empty Type Index at the given URL.
     pub fn empty(url: impl Into<String>) -> Self {
-        Self { url: url.into(), registrations: Vec::new() }
+        Self {
+            url: url.into(),
+            registrations: Vec::new(),
+        }
     }
 
     /// Parse a JSON-LD Type Index document. Tolerant of both the array-form
@@ -134,13 +137,20 @@ impl TypeIndexDocument {
             }
         };
 
-        Ok(Self { url: url.into(), registrations })
+        Ok(Self {
+            url: url.into(),
+            registrations,
+        })
     }
 
     /// Serialise to canonical JSON-LD. Order-preserving on registrations so
     /// round-trips stay stable.
     pub fn to_jsonld(&self) -> Value {
-        let regs: Vec<Value> = self.registrations.iter().map(registration_to_jsonld).collect();
+        let regs: Vec<Value> = self
+            .registrations
+            .iter()
+            .map(registration_to_jsonld)
+            .collect();
         json!({
             "@context": {
                 "solid": "http://www.w3.org/ns/solid/terms#",
@@ -156,9 +166,10 @@ impl TypeIndexDocument {
     /// `instance` already exists, replace it; otherwise append. Returns
     /// `true` if a new entry was inserted, `false` if it replaced one.
     pub fn upsert(&mut self, reg: TypeRegistration) -> bool {
-        let existing = self.registrations.iter_mut().find(|r| {
-            r.for_class == reg.for_class && r.instance == reg.instance
-        });
+        let existing = self
+            .registrations
+            .iter_mut()
+            .find(|r| r.for_class == reg.for_class && r.instance == reg.instance);
         match existing {
             Some(slot) => {
                 *slot = reg;
@@ -172,8 +183,13 @@ impl TypeIndexDocument {
     }
 
     /// Filter registrations by `for_class` URI.
-    pub fn filter_by_class<'a>(&'a self, class_uri: &'a str) -> impl Iterator<Item = &'a TypeRegistration> {
-        self.registrations.iter().filter(move |r| r.for_class == class_uri)
+    pub fn filter_by_class<'a>(
+        &'a self,
+        class_uri: &'a str,
+    ) -> impl Iterator<Item = &'a TypeRegistration> {
+        self.registrations
+            .iter()
+            .filter(move |r| r.for_class == class_uri)
     }
 }
 
@@ -216,13 +232,24 @@ fn parse_registration(value: &Value) -> TypeIndexResult<TypeRegistration> {
         }
     }
 
-    Ok(TypeRegistration { for_class, instance, registered_at, extra })
+    Ok(TypeRegistration {
+        for_class,
+        instance,
+        registered_at,
+        extra,
+    })
 }
 
 fn registration_to_jsonld(reg: &TypeRegistration) -> Value {
     let mut obj = Map::new();
-    obj.insert("@type".into(), Value::String(uris::SOLID_TYPE_REGISTRATION.into()));
-    obj.insert("solid:forClass".into(), Value::String(reg.for_class.clone()));
+    obj.insert(
+        "@type".into(),
+        Value::String(uris::SOLID_TYPE_REGISTRATION.into()),
+    );
+    obj.insert(
+        "solid:forClass".into(),
+        Value::String(reg.for_class.clone()),
+    );
     if let Some(inst) = &reg.instance {
         obj.insert("solid:instance".into(), Value::String(inst.clone()));
     }
@@ -268,7 +295,10 @@ pub async fn ensure_public_type_index(
 ) -> TypeIndexResult<TypeIndexDocument> {
     let url = type_index_url_for(webid);
 
-    match client.get_resource(&url, Some("application/ld+json"), auth_header).await? {
+    match client
+        .get_resource(&url, Some("application/ld+json"), auth_header)
+        .await?
+    {
         Some((body, _ct)) => {
             debug!("[type_index] ensure: fetched existing index at {url}");
             TypeIndexDocument::from_jsonld(&url, &body)
@@ -324,7 +354,10 @@ pub async fn discover_peer_registrations(
     auth_header: Option<&str>,
 ) -> Vec<TypeRegistration> {
     let url = type_index_url_for(peer_webid);
-    match client.get_resource(&url, Some("application/ld+json"), auth_header).await {
+    match client
+        .get_resource(&url, Some("application/ld+json"), auth_header)
+        .await
+    {
         Ok(Some((body, _ct))) => match TypeIndexDocument::from_jsonld(&url, &body) {
             Ok(doc) => doc.filter_by_class(class_filter).cloned().collect(),
             Err(e) => {
@@ -371,11 +404,7 @@ async fn link_type_index_in_profile(
     type_index_url: &str,
     auth_header: Option<&str>,
 ) -> TypeIndexResult<()> {
-    let profile_url = webid
-        .split('#')
-        .next()
-        .unwrap_or(webid)
-        .to_string();
+    let profile_url = webid.split('#').next().unwrap_or(webid).to_string();
 
     let (existing_body, _ct) = match client
         .get_resource(&profile_url, Some("application/ld+json"), auth_header)
@@ -452,7 +481,8 @@ mod tests {
 
     #[test]
     fn empty_document_round_trips() {
-        let doc = TypeIndexDocument::empty("https://pod.example.org/a/settings/publicTypeIndex.jsonld");
+        let doc =
+            TypeIndexDocument::empty("https://pod.example.org/a/settings/publicTypeIndex.jsonld");
         let ser = serde_json::to_string(&doc.to_jsonld()).unwrap();
         let parsed = TypeIndexDocument::from_jsonld(&doc.url, &ser).unwrap();
         assert_eq!(parsed.registrations.len(), 0);
@@ -536,7 +566,10 @@ mod tests {
         let doc = TypeIndexDocument::from_jsonld("http://p/ti", body).unwrap();
         let reg = &doc.registrations[0];
         assert!(reg.extra.contains_key("vf:capabilities"));
-        assert_eq!(reg.extra.get("vf:label").and_then(Value::as_str), Some("Reviewer"));
+        assert_eq!(
+            reg.extra.get("vf:label").and_then(Value::as_str),
+            Some("Reviewer")
+        );
     }
 
     #[test]

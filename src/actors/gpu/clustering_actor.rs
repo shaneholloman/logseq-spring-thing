@@ -46,9 +46,7 @@ pub struct Community {
 type NodeAnalyticsMap = Arc<std::sync::RwLock<std::collections::HashMap<u32, (u32, f32, u32)>>>;
 
 pub struct ClusteringActor {
-
     gpu_state: GPUState,
-
 
     shared_context: Option<Arc<SharedGPUContext>>,
 
@@ -138,7 +136,6 @@ impl ClusteringActor {
             return vec!["empty".to_string()];
         }
 
-        
         let mut keywords = Vec::new();
         match nodes.len() {
             1 => keywords.push("singleton".to_string()),
@@ -147,12 +144,10 @@ impl ClusteringActor {
             _ => keywords.push("large".to_string()),
         }
 
-        
         keywords.push(format!("cluster-{}", nodes[0] % 10));
         keywords
     }
 
-    
     async fn perform_kmeans_clustering(
         &mut self,
         params: KMeansParams,
@@ -188,12 +183,7 @@ impl ClusteringActor {
             let start_time = Instant::now();
 
             let gpu_result = unified_compute
-                .run_kmeans_clustering_with_metrics(
-                    num_clusters,
-                    max_iterations,
-                    tolerance,
-                    seed,
-                )
+                .run_kmeans_clustering_with_metrics(num_clusters, max_iterations, tolerance, seed)
                 .map_err(|e| {
                     error!("GPU K-means clustering failed: {}", e);
                     format!("K-means clustering failed: {}", e)
@@ -206,7 +196,8 @@ impl ClusteringActor {
             );
 
             Ok((gpu_result, computation_time))
-        }).await;
+        })
+        .await;
 
         let (gpu_result, computation_time) = match blocking_result {
             Ok(inner_result) => inner_result?,
@@ -230,7 +221,6 @@ impl ClusteringActor {
             0.0
         };
 
-        
         let silhouette_score = if clusters.len() > 1 && !assignments.is_empty() {
             self.calculate_silhouette_score(&assignments, &centroids, &clusters)?
         } else {
@@ -266,7 +256,10 @@ impl ClusteringActor {
 
         // ADR-061 §D2: emit analytics_update side-channel message.
         if let Some(ref coord) = self.client_coordinator_addr {
-            let generation = self.analytics_generation.fetch_add(1, AtomicOrdering::Relaxed) + 1;
+            let generation = self
+                .analytics_generation
+                .fetch_add(1, AtomicOrdering::Relaxed)
+                + 1;
             let entries: Vec<AnalyticsEntry> = assignments
                 .iter()
                 .enumerate()
@@ -298,7 +291,6 @@ impl ClusteringActor {
         })
     }
 
-    
     async fn perform_community_detection(
         &mut self,
         params: CommunityDetectionParams,
@@ -334,26 +326,17 @@ impl ClusteringActor {
 
             let gpu_result = match algorithm {
                 CommunityDetectionAlgorithm::LabelPropagation => unified_compute
-                    .run_community_detection_label_propagation(
-                        max_iterations,
-                        seed,
-                    )
+                    .run_community_detection_label_propagation(max_iterations, seed)
                     .map_err(|e| {
                         error!("GPU label propagation failed: {}", e);
                         format!("Label propagation failed: {}", e)
                     })?,
-                CommunityDetectionAlgorithm::Louvain => {
-                    unified_compute
-                        .run_louvain_community_detection(
-                            max_iterations,
-                            1.0,
-                            seed,
-                        )
-                        .map_err(|e| {
-                            error!("GPU Louvain community detection failed: {}", e);
-                            format!("Louvain community detection failed: {}", e)
-                        })?
-                }
+                CommunityDetectionAlgorithm::Louvain => unified_compute
+                    .run_louvain_community_detection(max_iterations, 1.0, seed)
+                    .map_err(|e| {
+                        error!("GPU Louvain community detection failed: {}", e);
+                        format!("Louvain community detection failed: {}", e)
+                    })?,
             };
 
             let computation_time = start_time.elapsed();
@@ -363,7 +346,8 @@ impl ClusteringActor {
             );
 
             Ok((gpu_result, computation_time))
-        }).await;
+        })
+        .await;
 
         let (gpu_result, computation_time) = match blocking_result {
             Ok(inner_result) => inner_result?,
@@ -379,7 +363,6 @@ impl ClusteringActor {
             node_labels.iter().map(|&x| x as u32).collect(),
         )?;
 
-        
         let actual_community_sizes: Vec<usize> =
             communities.iter().map(|c| c.nodes.len()).collect();
         let actual_modularity = self.calculate_modularity(&communities);
@@ -405,7 +388,10 @@ impl ClusteringActor {
 
         // ADR-061 §D2: emit analytics_update side-channel message.
         if let Some(ref coord) = self.client_coordinator_addr {
-            let generation = self.analytics_generation.fetch_add(1, AtomicOrdering::Relaxed) + 1;
+            let generation = self
+                .analytics_generation
+                .fetch_add(1, AtomicOrdering::Relaxed)
+                + 1;
             let entries: Vec<AnalyticsEntry> = node_labels
                 .iter()
                 .enumerate()
@@ -570,7 +556,10 @@ impl ClusteringActor {
         // ADR-061 §D2: emit analytics_update for DBSCAN under the
         // Clustering source.
         if let Some(ref coord) = self.client_coordinator_addr {
-            let generation = self.analytics_generation.fetch_add(1, AtomicOrdering::Relaxed) + 1;
+            let generation = self
+                .analytics_generation
+                .fetch_add(1, AtomicOrdering::Relaxed)
+                + 1;
             let entries: Vec<AnalyticsEntry> = labels
                 .iter()
                 .enumerate()
@@ -614,7 +603,6 @@ impl ClusteringActor {
         })
     }
 
-
     fn convert_gpu_kmeans_result_to_clusters(
         &self,
         gpu_result: Vec<u32>,
@@ -639,7 +627,6 @@ impl ClusteringActor {
             }
         }
 
-
         let mut clusters = Vec::new();
         for (cluster_id, nodes) in cluster_nodes.into_iter().enumerate() {
             if !nodes.is_empty() {
@@ -648,7 +635,6 @@ impl ClusteringActor {
                     label: format!("Cluster {}", cluster_id),
                     node_count: nodes.len() as u32,
                     coherence: {
-                        
                         let assignments_i32: Vec<i32> =
                             gpu_result.iter().map(|&x| x as i32).collect();
                         self.calculate_cluster_coherence(&nodes, &assignments_i32)
@@ -673,7 +659,6 @@ impl ClusteringActor {
         Ok(clusters)
     }
 
-    
     fn convert_gpu_community_result_to_communities(
         &self,
         gpu_result: Vec<u32>,
@@ -697,7 +682,6 @@ impl ClusteringActor {
                 .push(graph_node_id);
         }
 
-        
         let mut communities = Vec::new();
         for (community_id, nodes) in community_nodes {
             let internal_edges = self.calculate_internal_edges(&nodes);
@@ -720,17 +704,14 @@ impl ClusteringActor {
         Ok(communities)
     }
 
-    
     #[allow(dead_code)]
     fn generate_cluster_color(cluster_id: usize) -> [f32; 3] {
         let mut rng = rand::thread_rng();
 
-        
-        let hue = (cluster_id as f32 * 137.5) % 360.0; 
-        let saturation = 0.7 + (rng.gen::<f32>() * 0.3); 
-        let value = 0.8 + (rng.gen::<f32>() * 0.2); 
+        let hue = (cluster_id as f32 * 137.5) % 360.0;
+        let saturation = 0.7 + (rng.gen::<f32>() * 0.3);
+        let value = 0.8 + (rng.gen::<f32>() * 0.2);
 
-        
         let c = value * saturation;
         let x = c * (1.0 - ((hue / 60.0) % 2.0 - 1.0).abs());
         let m = value - c;
@@ -747,8 +728,6 @@ impl ClusteringActor {
         [r + m, g + m, b + m]
     }
 
-    
-    
     fn calculate_silhouette_score(
         &self,
         assignments: &[i32],
@@ -759,7 +738,6 @@ impl ClusteringActor {
             return Ok(0.0);
         }
 
-        
         let mut total_silhouette = 0.0;
         let mut valid_samples = 0;
 
@@ -768,7 +746,6 @@ impl ClusteringActor {
                 continue;
             }
 
-            
             let own_cluster_nodes: Vec<usize> = assignments
                 .iter()
                 .enumerate()
@@ -795,7 +772,6 @@ impl ClusteringActor {
                 0.0
             };
 
-            
             let mut min_inter_cluster_distance = f32::INFINITY;
             for other_cluster_id in 0..centroids.len() {
                 if other_cluster_id != cluster_id as usize {
@@ -818,7 +794,6 @@ impl ClusteringActor {
                 }
             }
 
-            
             if min_inter_cluster_distance.is_finite() && intra_cluster_distance.is_finite() {
                 let max_distance = intra_cluster_distance.max(min_inter_cluster_distance);
                 if max_distance > 0.0 {
@@ -878,7 +853,6 @@ impl ClusteringActor {
         }
     }
 
-    
     fn calculate_modularity(&self, communities: &[Community]) -> f32 {
         let _num_nodes = self.gpu_state.num_nodes as f32;
         let total_edges = communities
@@ -893,10 +867,10 @@ impl ClusteringActor {
         let mut modularity = 0.0;
 
         for community in communities {
-            let m = total_edges / 2.0; 
-            let e_in = community.internal_edges as f32 / (2.0 * m); 
+            let m = total_edges / 2.0;
+            let e_in = community.internal_edges as f32 / (2.0 * m);
             let degree_sum = (community.internal_edges + community.external_edges) as f32;
-            let a_sq = (degree_sum / (2.0 * m)).powi(2); 
+            let a_sq = (degree_sum / (2.0 * m)).powi(2);
 
             modularity += e_in - a_sq;
         }
@@ -1094,7 +1068,6 @@ impl ClusteringActor {
         0
     }
 
-    
     fn calculate_community_density(&self, nodes: &[u32]) -> f32 {
         let n = nodes.len();
         if n < 2 {
@@ -1144,7 +1117,6 @@ impl Handler<RunKMeans> for ClusteringActor {
             msg.params.num_clusters
         );
 
-        
         let mut actor_clone = Self {
             gpu_state: self.gpu_state.clone(),
             shared_context: self.shared_context.clone(),
@@ -1164,7 +1136,6 @@ impl Handler<RunCommunityDetection> for ClusteringActor {
     fn handle(&mut self, msg: RunCommunityDetection, _ctx: &mut Self::Context) -> Self::Result {
         info!("ClusteringActor: Received RunCommunityDetection request");
 
-        
         let mut actor_clone = Self {
             gpu_state: self.gpu_state.clone(),
             shared_context: self.shared_context.clone(),
@@ -1251,7 +1222,6 @@ impl Handler<PerformGPUClustering> for ClusteringActor {
             msg.method
         );
 
-        
         let mut actor_clone = Self {
             gpu_state: self.gpu_state.clone(),
             shared_context: self.shared_context.clone(),
@@ -1280,10 +1250,14 @@ impl Handler<PerformGPUClustering> for ClusteringActor {
                         synchronous: None,
                         seed: msg.params.seed.map(|s| s as u32),
                     };
-                    let result = actor_clone.perform_community_detection(community_params).await?;
+                    let result = actor_clone
+                        .perform_community_detection(community_params)
+                        .await?;
                     // Convert communities to Cluster format
-                    Ok(result.communities.into_iter().map(|c| {
-                        crate::handlers::api_handler::analytics::Cluster {
+                    Ok(result
+                        .communities
+                        .into_iter()
+                        .map(|c| crate::handlers::api_handler::analytics::Cluster {
                             id: c.id.clone(),
                             label: format!("Community {}", c.id),
                             node_count: c.nodes.len() as u32,
@@ -1297,8 +1271,8 @@ impl Handler<PerformGPUClustering> for ClusteringActor {
                             keywords: vec![format!("community-{}", c.id)],
                             centroid: None,
                             nodes: c.nodes,
-                        }
-                    }).collect())
+                        })
+                        .collect())
                 }
                 _ => {
                     // Default: K-means

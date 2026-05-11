@@ -21,7 +21,10 @@ pub fn validate_gpu_params(params: &GpuParamsView) -> Result<(), Vec<String>> {
 
     // damping ∈ (0.0, 1.0)
     if params.damping <= 0.0 || params.damping >= 1.0 {
-        errors.push(format!("damping must be in (0.0, 1.0), got {}", params.damping));
+        errors.push(format!(
+            "damping must be in (0.0, 1.0), got {}",
+            params.damping
+        ));
     }
 
     // spring_k >= 0
@@ -41,7 +44,10 @@ pub fn validate_gpu_params(params: &GpuParamsView) -> Result<(), Vec<String>> {
 
     // max_velocity > 0
     if params.max_velocity <= 0.0 {
-        errors.push(format!("max_velocity must be > 0, got {}", params.max_velocity));
+        errors.push(format!(
+            "max_velocity must be > 0, got {}",
+            params.max_velocity
+        ));
     }
 
     // gravity magnitude <= 100 (sanity ceiling)
@@ -54,7 +60,10 @@ pub fn validate_gpu_params(params: &GpuParamsView) -> Result<(), Vec<String>> {
 
     // rest_length > 0
     if params.rest_length <= 0.0 {
-        errors.push(format!("rest_length must be > 0, got {}", params.rest_length));
+        errors.push(format!(
+            "rest_length must be > 0, got {}",
+            params.rest_length
+        ));
     }
 
     // All fields finite (NaN / ±Inf check)

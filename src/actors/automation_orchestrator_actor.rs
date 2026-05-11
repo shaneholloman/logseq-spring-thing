@@ -34,16 +34,13 @@ use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::sync::Arc;
 use std::time::Duration;
 
-use crate::services::automation_routine::{
-    OutputTarget, Routine, RoutineError, RoutineTrigger,
-};
+use crate::services::automation_routine::{OutputTarget, Routine, RoutineError, RoutineTrigger};
 use crate::services::inbox_service::{
     InMemoryInboxWriter, InboxItem, InboxPath, InboxService, InboxStatus, InboxWriter,
     ProvenanceStep, SuggestedAction,
 };
 use crate::services::nip26_cap::{
-    CapCheck, CapDenyReason, CapValidator, CapVerdict, DelegationCap, Nip98Verdict,
-    OwnerSigVerdict,
+    CapCheck, CapDenyReason, CapValidator, CapVerdict, DelegationCap, Nip98Verdict, OwnerSigVerdict,
 };
 
 /// Default tick cadence — 1 second keeps minute-granular cron firings accurate.
@@ -60,10 +57,7 @@ pub const DEFAULT_DAILY_RATE_LIMIT: u32 = 200;
 pub trait AutomationDispatcher: Send + Sync {
     /// Run a skill invocation and return a summary string (used as the
     /// inbox item's `summary`). Errors are captured by the caller.
-    async fn dispatch(
-        &self,
-        routine: &Routine,
-    ) -> Result<DispatchOutcome, String>;
+    async fn dispatch(&self, routine: &Routine) -> Result<DispatchOutcome, String>;
 }
 
 /// The outcome of a skill dispatch.
@@ -98,7 +92,10 @@ impl AutomationDispatcher for StubDispatcher {
             return Err(err);
         }
         Ok(DispatchOutcome {
-            summary: format!("Ran {} v{}", routine.action.skill_id, routine.action.version),
+            summary: format!(
+                "Ran {} v{}",
+                routine.action.skill_id, routine.action.version
+            ),
             content_ref: match &routine.output_target {
                 OutputTarget::PodPath { path } => Some(format!("pod:{}", path)),
                 _ => None,
@@ -271,11 +268,7 @@ impl<D: AutomationDispatcher, W: InboxWriter> SchedulerCore<D, W> {
     pub async fn tick(&mut self, now: DateTime<Utc>) -> Vec<(String, FireDecision)> {
         // Collect due routine ids, then mutate self.
         let mut due: Vec<String> = Vec::new();
-        let fire_keys: Vec<DateTime<Utc>> = self
-            .wheel
-            .range(..=now)
-            .map(|(k, _)| *k)
-            .collect();
+        let fire_keys: Vec<DateTime<Utc>> = self.wheel.range(..=now).map(|(k, _)| *k).collect();
         for k in fire_keys {
             if let Some(list) = self.wheel.remove(&k) {
                 due.extend(list);
@@ -321,11 +314,13 @@ impl<D: AutomationDispatcher, W: InboxWriter> SchedulerCore<D, W> {
         // Cap check
         let cap = match self.caps.get(&routine.delegated_cap_id).cloned() {
             Some(c) => c,
-            None => {
-                return FireDecision::Skipped(SkipReason::CapDenied(CapDenyReason::Inactive))
-            }
+            None => return FireDecision::Skipped(SkipReason::CapDenied(CapDenyReason::Inactive)),
         };
-        let kill = self.kill_switched.get(&routine.owner_webid).copied().unwrap_or(false);
+        let kill = self
+            .kill_switched
+            .get(&routine.owner_webid)
+            .copied()
+            .unwrap_or(false);
         let paths = routine.permissions.data_scopes.clone();
         // We use the first tool_scope as the "requested tool" for the cap check
         // (the dispatcher enforces the actual tool-scope chain per call).
@@ -346,7 +341,9 @@ impl<D: AutomationDispatcher, W: InboxWriter> SchedulerCore<D, W> {
         };
         match CapValidator::validate(&check) {
             CapVerdict::Allow => {}
-            CapVerdict::Deny(reason) => return FireDecision::Skipped(SkipReason::CapDenied(reason)),
+            CapVerdict::Deny(reason) => {
+                return FireDecision::Skipped(SkipReason::CapDenied(reason))
+            }
         }
 
         // Offline gate — design 03 §5.3. Compute is_offline and check
@@ -370,10 +367,7 @@ impl<D: AutomationDispatcher, W: InboxWriter> SchedulerCore<D, W> {
 
         // Renewal nudge?
         if cap.needs_renewal_nudge(now) {
-            let ns = routine
-                .output_target
-                .inbox_ns()
-                .unwrap_or("automation");
+            let ns = routine.output_target.inbox_ns().unwrap_or("automation");
             let path = InboxPath::new(&routine.owner_webid, ns);
             let notice = InboxItem::new_system_notice(
                 format!("Cap renewal due — {}", cap.cap_id),
@@ -403,8 +397,11 @@ impl<D: AutomationDispatcher, W: InboxWriter> SchedulerCore<D, W> {
                     .and_then(|r| r.split('/').next())
                     .unwrap_or("automation");
                 let path = InboxPath::new(&routine.owner_webid, ns);
-                let agent_webid =
-                    format!("{}/agents/{}#id", routine.owner_webid.trim_end_matches("#me"), ns);
+                let agent_webid = format!(
+                    "{}/agents/{}#id",
+                    routine.owner_webid.trim_end_matches("#me"),
+                    ns
+                );
                 let mut item = InboxItem::new_from_routine(
                     routine.name.clone(),
                     outcome.summary.clone(),
@@ -450,10 +447,7 @@ impl<D: AutomationDispatcher, W: InboxWriter> SchedulerCore<D, W> {
     }
 
     async fn write_error_inbox(&self, routine: &Routine, now: DateTime<Utc>, reason: &str) {
-        let ns = routine
-            .output_target
-            .inbox_ns()
-            .unwrap_or("automation");
+        let ns = routine.output_target.inbox_ns().unwrap_or("automation");
         let path = InboxPath::new(&routine.owner_webid, ns);
         let notice = InboxItem::new_system_notice(
             format!("Routine error — {}", routine.name),
@@ -467,7 +461,9 @@ impl<D: AutomationDispatcher, W: InboxWriter> SchedulerCore<D, W> {
     pub async fn sweep_all(&self, now: DateTime<Utc>) {
         let mut seen: std::collections::HashSet<(String, String)> = Default::default();
         for r in self.routines.values() {
-            let Some(ns) = r.output_target.inbox_ns() else { continue };
+            let Some(ns) = r.output_target.inbox_ns() else {
+                continue;
+            };
             let key = (r.owner_webid.clone(), ns.to_string());
             if seen.insert(key.clone()) {
                 let path = InboxPath::new(&r.owner_webid, ns);
@@ -531,7 +527,10 @@ impl Actor for AutomationOrchestratorActor {
     type Context = Context<Self>;
 
     fn started(&mut self, ctx: &mut Self::Context) {
-        info!("[AutomationOrchestratorActor] started; tick={:?}", TICK_INTERVAL);
+        info!(
+            "[AutomationOrchestratorActor] started; tick={:?}",
+            TICK_INTERVAL
+        );
         ctx.run_interval(TICK_INTERVAL, |_act, ctx| {
             ctx.notify(Tick);
         });
@@ -641,8 +640,7 @@ mod tests {
         );
         let r = example_research_brief("https://alice.pods/profile/card#me", "cap-1");
         core.register_cap(cap_for(&r));
-        core.presence
-            .note_heartbeat(&r.owner_webid, Utc::now());
+        core.presence.note_heartbeat(&r.owner_webid, Utc::now());
         core.upsert_routine(r.clone()).unwrap();
 
         // Force a fire by calling fire_once at an in-range time.
@@ -662,8 +660,14 @@ mod tests {
         core.presence.note_heartbeat(&r.owner_webid, Utc::now());
         core.upsert_routine(r.clone()).unwrap();
 
-        assert_eq!(core.fire_once(&r.routine_id, Utc::now()).await, FireDecision::Fired);
-        assert_eq!(core.fire_once(&r.routine_id, Utc::now()).await, FireDecision::Fired);
+        assert_eq!(
+            core.fire_once(&r.routine_id, Utc::now()).await,
+            FireDecision::Fired
+        );
+        assert_eq!(
+            core.fire_once(&r.routine_id, Utc::now()).await,
+            FireDecision::Fired
+        );
         let d = core.fire_once(&r.routine_id, Utc::now()).await;
         assert_eq!(d, FireDecision::Skipped(SkipReason::RateLimited));
     }

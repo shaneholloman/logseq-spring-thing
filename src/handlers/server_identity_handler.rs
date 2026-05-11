@@ -26,9 +26,7 @@ pub struct ServerIdentityResponse {
 }
 
 #[get("/identity")]
-pub async fn get_server_identity(
-    identity: web::Data<Arc<ServerIdentity>>,
-) -> impl Responder {
+pub async fn get_server_identity(identity: web::Data<Arc<ServerIdentity>>) -> impl Responder {
     HttpResponse::Ok().json(ServerIdentityResponse {
         pubkey_hex: identity.pubkey_hex(),
         pubkey_npub: identity.pubkey_npub(),

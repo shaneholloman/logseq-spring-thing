@@ -65,8 +65,7 @@ struct KindEntry {
     notes: &'static str,
 }
 
-const GRAMMAR_HINT: &str =
-    "URN forms: urn:visionclaw:concept:<domain>:<slug> | \
+const GRAMMAR_HINT: &str = "URN forms: urn:visionclaw:concept:<domain>:<slug> | \
      urn:visionclaw:group:<team>#members | \
      urn:visionclaw:kg:<hex-pubkey>:<sha256-12-hex> | \
      urn:visionclaw:bead:<hex-pubkey>:<sha256-12-hex> | \
@@ -148,25 +147,19 @@ async fn resolve_by_curie(path: web::Path<String>) -> impl Responder {
 fn resolve_inner(urn: &str) -> HttpResponse {
     match parse(urn) {
         Ok(parsed) => match parsed {
-            ParsedUri::Concept { .. } => redirect_307(format!(
-                "/api/v1/nodes/by-uri/{}/jsonld",
-                urlencoded(urn)
-            )),
-            ParsedUri::OwnedKg { .. } => redirect_307(format!(
-                "/api/v1/nodes/by-uri/{}/jsonld",
-                urlencoded(urn)
-            )),
-            ParsedUri::Did { pubkey_hex } => redirect_307(format!(
-                "/api/v1/identity/{}/did.json",
-                pubkey_hex
-            )),
-            ParsedUri::Group { team } => redirect_307(format!(
-                "/api/v1/wac/groups/{}",
-                urlencoded(&team)
-            )),
-            ParsedUri::Bead { .. } | ParsedUri::AgentExecution { .. } => {
-                federation_hop(urn)
+            ParsedUri::Concept { .. } => {
+                redirect_307(format!("/api/v1/nodes/by-uri/{}/jsonld", urlencoded(urn)))
             }
+            ParsedUri::OwnedKg { .. } => {
+                redirect_307(format!("/api/v1/nodes/by-uri/{}/jsonld", urlencoded(urn)))
+            }
+            ParsedUri::Did { pubkey_hex } => {
+                redirect_307(format!("/api/v1/identity/{}/did.json", pubkey_hex))
+            }
+            ParsedUri::Group { team } => {
+                redirect_307(format!("/api/v1/wac/groups/{}", urlencoded(&team)))
+            }
+            ParsedUri::Bead { .. } | ParsedUri::AgentExecution { .. } => federation_hop(urn),
         },
         Err(e) => malformed(urn, e),
     }
@@ -256,7 +249,10 @@ mod tests {
     #[test]
     fn urlencoded_passes_safe_chars_through() {
         assert_eq!(urlencoded("vc:bc/smart-contract"), "vc:bc/smart-contract");
-        assert_eq!(urlencoded("urn:visionclaw:concept:bc:foo"), "urn:visionclaw:concept:bc:foo");
+        assert_eq!(
+            urlencoded("urn:visionclaw:concept:bc:foo"),
+            "urn:visionclaw:concept:bc:foo"
+        );
     }
 
     #[test]

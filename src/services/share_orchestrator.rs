@@ -18,8 +18,8 @@ use thiserror::Error;
 use tokio::sync::Mutex;
 
 use crate::models::enterprise::{
-    BrokerCase, CasePriority, CaseStatus, EscalationSource, EvidenceItem,
-    PolicyEvaluation, PolicyOutcome,
+    BrokerCase, CasePriority, CaseStatus, EscalationSource, EvidenceItem, PolicyEvaluation,
+    PolicyOutcome,
 };
 use crate::ports::broker_repository::{BrokerError, BrokerRepository};
 use crate::services::share_policy::{
@@ -53,10 +53,10 @@ impl ShareTransition {
     pub fn classify(src: ShareState, target: &TargetScope) -> Option<Self> {
         match (src, target) {
             (ShareState::Private, TargetScope::Team(_)) => Some(ShareTransition::PrivateToTeam),
-            (ShareState::Private, TargetScope::Mesh)    => Some(ShareTransition::PrivateToMesh),
-            (ShareState::Team,    TargetScope::Mesh)    => Some(ShareTransition::TeamToMesh),
-            (ShareState::Team,    TargetScope::Private) => Some(ShareTransition::TeamToPrivate),
-            (ShareState::Mesh,    TargetScope::Team(_)) => Some(ShareTransition::MeshToTeam),
+            (ShareState::Private, TargetScope::Mesh) => Some(ShareTransition::PrivateToMesh),
+            (ShareState::Team, TargetScope::Mesh) => Some(ShareTransition::TeamToMesh),
+            (ShareState::Team, TargetScope::Private) => Some(ShareTransition::TeamToPrivate),
+            (ShareState::Mesh, TargetScope::Team(_)) => Some(ShareTransition::MeshToTeam),
             _ => None,
         }
     }
@@ -87,7 +87,10 @@ pub enum ShareOutcome {
     Retracted {
         intent_id: String,
     },
-    Cancelled { intent_id: String, reason: String },
+    Cancelled {
+        intent_id: String,
+        reason: String,
+    },
 }
 
 /// Serde-friendly WAC plan — mirrors [`WacMutationPlan`] without exposing
@@ -236,7 +239,9 @@ pub fn build_broker_payload(
         item_type: "share_intent".into(),
         source_id: intent.intent_id.clone(),
         description: format!(
-            "ShareIntent for {} → {:?}", intent.artifact_ref, intent.target_scope),
+            "ShareIntent for {} → {:?}",
+            intent.artifact_ref, intent.target_scope
+        ),
         timestamp: Utc::now().to_rfc3339(),
     });
 
@@ -304,7 +309,10 @@ pub fn broker_case_from_payload(payload: &BrokerCasePayload) -> BrokerCase {
     let mut metadata = HashMap::new();
     metadata.insert("category".into(), payload.category.clone());
     metadata.insert("subject_kind".into(), payload.subject_kind.clone());
-    metadata.insert("contributor_webid".into(), payload.contributor_webid.clone());
+    metadata.insert(
+        "contributor_webid".into(),
+        payload.contributor_webid.clone(),
+    );
     metadata.insert("share_intent_id".into(), payload.share_intent_id.clone());
     if let Some(p) = &payload.policy_eval_id {
         metadata.insert("policy_eval_id".into(), p.clone());
@@ -314,14 +322,15 @@ pub fn broker_case_from_payload(payload: &BrokerCasePayload) -> BrokerCase {
     }
 
     BrokerCase {
-        id: format!("bc-{}-{}",
-            payload.subject_kind,
-            &payload.share_intent_id),
-        title: format!("Mesh share: {} ({})",
-            payload.subject_ref, payload.subject_kind),
+        id: format!("bc-{}-{}", payload.subject_kind, &payload.share_intent_id),
+        title: format!(
+            "Mesh share: {} ({})",
+            payload.subject_ref, payload.subject_kind
+        ),
         description: format!(
             "Contributor {} proposes mesh promotion of {} (subject_kind={})",
-            payload.contributor_webid, payload.subject_ref, payload.subject_kind),
+            payload.contributor_webid, payload.subject_ref, payload.subject_kind
+        ),
         priority: CasePriority::Medium,
         source: EscalationSource::WorkflowProposal,
         status: CaseStatus::Open,
@@ -380,7 +389,13 @@ impl ShareOrchestrator {
         audit: Arc<InMemoryShareAuditLog>,
         pod_base: impl Into<String>,
     ) -> Self {
-        Self { policy, wac, broker, audit, pod_base: pod_base.into() }
+        Self {
+            policy,
+            wac,
+            broker,
+            audit,
+            pod_base: pod_base.into(),
+        }
     }
 
     /// Route a ShareIntent through the full transition pipeline.
@@ -412,22 +427,36 @@ impl ShareOrchestrator {
         };
         let decision = self.policy.evaluate_intent(&ctx).await;
 
-        let entry = self.audit.new_entry(
-            "share-intent-created", &intent, "created",
-            Some(decision.policy_eval_id.clone())).await;
+        let entry = self
+            .audit
+            .new_entry(
+                "share-intent-created",
+                &intent,
+                "created",
+                Some(decision.policy_eval_id.clone()),
+            )
+            .await;
         self.audit.append(entry).await?;
 
         // 3. Branch on outcome.
         match (decision.outcome.clone(), transition) {
             // Hard denial.
             (PolicyOutcome::Deny, _) => {
-                let reason = decision.evaluations.iter()
+                let reason = decision
+                    .evaluations
+                    .iter()
                     .find(|e| e.outcome == PolicyOutcome::Deny)
                     .map(|e| e.reasoning.clone())
                     .unwrap_or_else(|| "policy denied".into());
-                let entry = self.audit.new_entry(
-                    "share-intent-rejected", &intent, "rejected",
-                    Some(decision.policy_eval_id.clone())).await;
+                let entry = self
+                    .audit
+                    .new_entry(
+                        "share-intent-rejected",
+                        &intent,
+                        "rejected",
+                        Some(decision.policy_eval_id.clone()),
+                    )
+                    .await;
                 self.audit.append(entry).await?;
                 Ok(ShareOutcome::Rejected {
                     intent_id: intent.intent_id,
@@ -439,9 +468,15 @@ impl ShareOrchestrator {
             // Forward Private → Team (no broker, apply WAC).
             (PolicyOutcome::Allow | PolicyOutcome::Warn, ShareTransition::PrivateToTeam) => {
                 let plan = self.wac.apply(&intent, &self.pod_base).await?;
-                let entry = self.audit.new_entry(
-                    "share-intent-approved", &intent, "team_approved",
-                    Some(decision.policy_eval_id.clone())).await;
+                let entry = self
+                    .audit
+                    .new_entry(
+                        "share-intent-approved",
+                        &intent,
+                        "team_approved",
+                        Some(decision.policy_eval_id.clone()),
+                    )
+                    .await;
                 self.audit.append(entry).await?;
                 Ok(ShareOutcome::TeamApproved {
                     intent_id: intent.intent_id,
@@ -452,15 +487,22 @@ impl ShareOrchestrator {
             // Team → Mesh (or escalated Private → Mesh with fast-path):
             // open a BrokerCase, no WAC change yet. Warn is treated like
             // Allow for Mesh routes — the broker is the next gate.
-            (PolicyOutcome::Escalate | PolicyOutcome::Allow | PolicyOutcome::Warn,
-                ShareTransition::TeamToMesh | ShareTransition::PrivateToMesh) => {
-                let payload = build_broker_payload(&intent,
-                    Some(decision.policy_eval_id.clone()));
+            (
+                PolicyOutcome::Escalate | PolicyOutcome::Allow | PolicyOutcome::Warn,
+                ShareTransition::TeamToMesh | ShareTransition::PrivateToMesh,
+            ) => {
+                let payload = build_broker_payload(&intent, Some(decision.policy_eval_id.clone()));
                 let case = broker_case_from_payload(&payload);
                 self.broker.create_case(&case).await?;
-                let entry = self.audit.new_entry(
-                    "share-intent-broker-opened", &intent, "broker_opened",
-                    Some(decision.policy_eval_id.clone())).await;
+                let entry = self
+                    .audit
+                    .new_entry(
+                        "share-intent-broker-opened",
+                        &intent,
+                        "broker_opened",
+                        Some(decision.policy_eval_id.clone()),
+                    )
+                    .await;
                 self.audit.append(entry).await?;
                 Ok(ShareOutcome::BrokerOpened {
                     intent_id: intent.intent_id,
@@ -470,16 +512,22 @@ impl ShareOrchestrator {
             }
 
             // ContributorRevocation / demotion paths.
-            (_, ShareTransition::TeamToPrivate) |
-            (_, ShareTransition::MeshToTeam) => {
+            (_, ShareTransition::TeamToPrivate) | (_, ShareTransition::MeshToTeam) => {
                 let plan = self.wac.revoke(&intent, &self.pod_base).await?;
                 let event = if transition == ShareTransition::TeamToPrivate {
                     "team-share-revoked"
                 } else {
                     "mesh-revoked"
                 };
-                let entry = self.audit.new_entry(event, &intent, "revoked",
-                    Some(decision.policy_eval_id.clone())).await;
+                let entry = self
+                    .audit
+                    .new_entry(
+                        event,
+                        &intent,
+                        "revoked",
+                        Some(decision.policy_eval_id.clone()),
+                    )
+                    .await;
                 self.audit.append(entry).await?;
                 Ok(ShareOutcome::Revoked {
                     intent_id: intent.intent_id,
@@ -491,24 +539,37 @@ impl ShareOrchestrator {
             (_, ShareTransition::MeshRemoved) => {
                 // Retract: move out of /public/ back to /private/archive/.
                 let plan = self.wac.revoke(&intent, &self.pod_base).await?;
-                let entry = self.audit.new_entry(
-                    "mesh-retracted", &intent, "retracted",
-                    Some(decision.policy_eval_id.clone())).await;
+                let entry = self
+                    .audit
+                    .new_entry(
+                        "mesh-retracted",
+                        &intent,
+                        "retracted",
+                        Some(decision.policy_eval_id.clone()),
+                    )
+                    .await;
                 self.audit.append(entry).await?;
                 let _ = plan; // destination used in Revoked variant; Retracted is terminal
-                Ok(ShareOutcome::Retracted { intent_id: intent.intent_id })
+                Ok(ShareOutcome::Retracted {
+                    intent_id: intent.intent_id,
+                })
             }
 
             // Escalate for Private→Team: should not normally happen; surface
             // as broker-opened so contributor does not lose the intent.
             (PolicyOutcome::Escalate, ShareTransition::PrivateToTeam) => {
-                let payload = build_broker_payload(&intent,
-                    Some(decision.policy_eval_id.clone()));
+                let payload = build_broker_payload(&intent, Some(decision.policy_eval_id.clone()));
                 let case = broker_case_from_payload(&payload);
                 self.broker.create_case(&case).await?;
-                let entry = self.audit.new_entry(
-                    "share-intent-broker-opened", &intent, "escalated",
-                    Some(decision.policy_eval_id.clone())).await;
+                let entry = self
+                    .audit
+                    .new_entry(
+                        "share-intent-broker-opened",
+                        &intent,
+                        "escalated",
+                        Some(decision.policy_eval_id.clone()),
+                    )
+                    .await;
                 self.audit.append(entry).await?;
                 Ok(ShareOutcome::BrokerOpened {
                     intent_id: intent.intent_id,
@@ -535,7 +596,7 @@ pub struct ShareContextExtras {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::services::share_policy::{PiiScanStatus};
+    use crate::services::share_policy::PiiScanStatus;
     use crate::services::wac_mutator::InMemoryWacMutator;
 
     // In-memory broker repo for unit tests.
@@ -543,26 +604,43 @@ mod tests {
         cases: Mutex<Vec<BrokerCase>>,
     }
     impl InMemoryBroker {
-        fn new() -> Arc<Self> { Arc::new(Self { cases: Mutex::new(Vec::new()) }) }
+        fn new() -> Arc<Self> {
+            Arc::new(Self {
+                cases: Mutex::new(Vec::new()),
+            })
+        }
     }
     #[async_trait]
     impl BrokerRepository for InMemoryBroker {
-        async fn list_cases(&self, _s: Option<CaseStatus>, _l: usize)
-            -> Result<Vec<BrokerCase>, BrokerError> {
+        async fn list_cases(
+            &self,
+            _s: Option<CaseStatus>,
+            _l: usize,
+        ) -> Result<Vec<BrokerCase>, BrokerError> {
             Ok(self.cases.lock().await.clone())
         }
         async fn get_case(&self, id: &str) -> Result<Option<BrokerCase>, BrokerError> {
             Ok(self.cases.lock().await.iter().find(|c| c.id == id).cloned())
         }
         async fn create_case(&self, c: &BrokerCase) -> Result<(), BrokerError> {
-            self.cases.lock().await.push(c.clone()); Ok(())
+            self.cases.lock().await.push(c.clone());
+            Ok(())
         }
-        async fn update_case_status(&self, _id: &str, _st: CaseStatus)
-            -> Result<(), BrokerError> { Ok(()) }
-        async fn record_decision(&self, _d: &crate::models::enterprise::BrokerDecision)
-            -> Result<(), BrokerError> { Ok(()) }
-        async fn get_decisions(&self, _cid: &str)
-            -> Result<Vec<crate::models::enterprise::BrokerDecision>, BrokerError> { Ok(vec![]) }
+        async fn update_case_status(&self, _id: &str, _st: CaseStatus) -> Result<(), BrokerError> {
+            Ok(())
+        }
+        async fn record_decision(
+            &self,
+            _d: &crate::models::enterprise::BrokerDecision,
+        ) -> Result<(), BrokerError> {
+            Ok(())
+        }
+        async fn get_decisions(
+            &self,
+            _cid: &str,
+        ) -> Result<Vec<crate::models::enterprise::BrokerDecision>, BrokerError> {
+            Ok(vec![])
+        }
     }
 
     fn team_intent() -> ShareIntent {
@@ -596,7 +674,9 @@ mod tests {
             Arc::new(SharePolicyEngine::new()),
             Arc::new(InMemoryWacMutator::default()),
             InMemoryBroker::new(),
-            Arc::new(InMemoryShareAuditLog::new("https://alice.pod/profile/card#me")),
+            Arc::new(InMemoryShareAuditLog::new(
+                "https://alice.pod/profile/card#me",
+            )),
             "https://alice.pod",
         )
     }
@@ -604,11 +684,18 @@ mod tests {
     #[tokio::test]
     async fn hash_chain_links_entries() {
         let log = InMemoryShareAuditLog::new("https://alice/profile/card#me");
-        let e1 = log.new_entry("share-intent-created", &team_intent(),
-            "created", None).await;
+        let e1 = log
+            .new_entry("share-intent-created", &team_intent(), "created", None)
+            .await;
         log.append(e1).await.unwrap();
-        let e2 = log.new_entry("share-intent-approved", &team_intent(),
-            "team_approved", None).await;
+        let e2 = log
+            .new_entry(
+                "share-intent-approved",
+                &team_intent(),
+                "team_approved",
+                None,
+            )
+            .await;
         log.append(e2).await.unwrap();
         let entries = log.entries().await;
         assert_eq!(entries.len(), 2);
@@ -622,7 +709,10 @@ mod tests {
         i.target_scope = TargetScope::Mesh;
         i.distribution_scope_manifest = Some("mesh".into());
         i.metadata.insert("skill_version".into(), "1.3.0".into());
-        i.metadata.insert("benchmark_ref".into(), "pod:/private/skill-evals/x.jsonl".into());
+        i.metadata.insert(
+            "benchmark_ref".into(),
+            "pod:/private/skill-evals/x.jsonl".into(),
+        );
         let payload = build_broker_payload(&i, Some("pe-1".into()));
         assert_eq!(payload.category, "contributor_mesh_share");
         assert_eq!(payload.subject_kind, "skill");
@@ -665,7 +755,11 @@ mod tests {
         i.distribution_scope_manifest = Some("mesh".into());
         let out = o.handle_intent(i, extras_ok()).await.unwrap();
         match out {
-            ShareOutcome::BrokerOpened { case_id, subject_kind, .. } => {
+            ShareOutcome::BrokerOpened {
+                case_id,
+                subject_kind,
+                ..
+            } => {
                 assert!(case_id.starts_with("bc-skill-"));
                 assert_eq!(subject_kind, SubjectKind::Skill);
             }
@@ -701,8 +795,8 @@ mod tests {
         // manifest + allow_list deliberately mismatch.
         i.distribution_scope_manifest = Some("team".into());
         i.allow_list = vec!["team-beta".into()]; // but target is team-alpha
-        // Team scope rule catches this in policy (deny), so we test the
-        // WAC-level gate via a bypass: skip policy scope check.
+                                                 // Team scope rule catches this in policy (deny), so we test the
+                                                 // WAC-level gate via a bypass: skip policy scope check.
         let ctx = ShareContextExtras {
             delegation_cap_valid: true,
             separation_of_duty_ok: true,

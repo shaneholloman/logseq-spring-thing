@@ -6,26 +6,22 @@ use tokio::net::TcpStream;
 use uuid::Uuid;
 use webxr::utils::json::to_json;
 
-
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::init();
 
     info!("Starting enhanced TCP connection test for Claude Flow MCP");
 
-    let host =
-        std::env::var("CLAUDE_FLOW_HOST").unwrap_or_else(|_| "localhost".to_string());
+    let host = std::env::var("CLAUDE_FLOW_HOST").unwrap_or_else(|_| "localhost".to_string());
     let port = std::env::var("MCP_TCP_PORT").unwrap_or_else(|_| "9500".to_string());
 
     info!("Connecting to {}:{}...", host, port);
 
-    
     let initial_fd_count = count_open_fds().await;
     info!("Initial file descriptors: {}", initial_fd_count);
 
     let start = Instant::now();
 
-    
     let stream = match TcpStream::connect(format!("{}:{}", host, port)).await {
         Ok(stream) => {
             info!("Successfully connected to {}:{}", host, port);
@@ -40,15 +36,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let connect_time = start.elapsed();
     info!("Connected in {:?}", connect_time);
 
-    
     stream.set_nodelay(true)?;
 
-    
     let (read_half, write_half) = stream.into_split();
     let mut reader = BufReader::new(read_half);
     let mut writer = BufWriter::new(write_half);
 
-    
     let post_connect_fd_count = count_open_fds().await;
     info!(
         "File descriptors after connect: {} (delta: +{})",
@@ -56,7 +49,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         post_connect_fd_count - initial_fd_count
     );
 
-    
     let init_msg = json!({
         "jsonrpc": "2.0",
         "id": Uuid::new_v4().to_string(),
@@ -80,7 +72,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     info!("Sent initialization message");
 
-    
     let mut response = String::new();
     let read_result = tokio::time::timeout(
         std::time::Duration::from_secs(10),
@@ -94,7 +85,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Err(_) => error!("Timeout waiting for response"),
     }
 
-    
     let list_tools = json!({
         "jsonrpc": "2.0",
         "id": Uuid::new_v4().to_string(),
@@ -107,7 +97,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     info!("Requested tool list");
 
-    
     let mut tools_response = String::new();
     let read_result = tokio::time::timeout(
         std::time::Duration::from_secs(10),
@@ -121,7 +110,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Err(_) => error!("Timeout waiting for tools response"),
     }
 
-    
     let swarm_init = json!({
         "jsonrpc": "2.0",
         "id": Uuid::new_v4().to_string(),
@@ -144,7 +132,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     info!("Swarm initialization sent in {:?}", send_time);
 
-    
     let mut swarm_response = String::new();
     let read_result = tokio::time::timeout(
         std::time::Duration::from_secs(15),
@@ -158,19 +145,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Err(_) => error!("Timeout waiting for swarm response"),
     }
 
-    
     info!("Shutting down TCP connection gracefully...");
     match writer.shutdown().await {
         Ok(_) => info!("TCP writer shutdown successfully"),
         Err(e) => error!("Error shutting down TCP writer: {}", e),
     }
 
-    
     drop(reader);
 
     let total_time = start.elapsed();
 
-    
     let final_fd_count = count_open_fds().await;
     let fd_delta = final_fd_count as i32 - initial_fd_count as i32;
 
@@ -188,7 +172,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         info!("✅ No file descriptor leaks detected");
     }
 
-    
     println!("\n=== Performance & Resource Summary ===");
     println!("Connection time: {:?}", connect_time);
     println!("Message send time: {:?}", send_time);
@@ -216,22 +199,19 @@ async fn count_open_fds() -> usize {
                 while let Ok(Some(_)) = entries.next_entry().await {
                     count += 1;
                 }
-                count.saturating_sub(1) 
+                count.saturating_sub(1)
             }
             Err(_) => {
-                
                 match tokio::process::Command::new("lsof")
                     .args(["-p", &std::process::id().to_string()])
                     .output()
                     .await
                 {
-                    Ok(output) => {
-                        String::from_utf8_lossy(&output.stdout)
-                            .lines()
-                            .skip(1) 
-                            .count()
-                    }
-                    Err(_) => 0, 
+                    Ok(output) => String::from_utf8_lossy(&output.stdout)
+                        .lines()
+                        .skip(1)
+                        .count(),
+                    Err(_) => 0,
                 }
             }
         }
@@ -239,7 +219,6 @@ async fn count_open_fds() -> usize {
 
     #[cfg(not(target_os = "linux"))]
     {
-        
         10
     }
 }

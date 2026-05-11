@@ -12,9 +12,7 @@
 //!   4. `has_identity()` is true iff at least one of `pubkey` / `source_urn`
 //!      is `Some` (truth-table coverage).
 
-use webxr::agent_events::{
-    AgentActionEnvelope, UserInteractionEvent, UserInteractionKind,
-};
+use webxr::agent_events::{AgentActionEnvelope, UserInteractionEvent, UserInteractionKind};
 
 fn make_envelope(
     source_urn: Option<&str>,
@@ -80,9 +78,18 @@ fn round_trip_handles_optional_field_omission() {
     // None values must be elided (skip_serializing_if = "Option::is_none").
     let env = make_envelope(None, None, None, 1);
     let json = serde_json::to_string(&env).unwrap();
-    assert!(!json.contains("source_urn"), "source_urn should be elided when None");
-    assert!(!json.contains("target_urn"), "target_urn should be elided when None");
-    assert!(!json.contains("pubkey"), "pubkey should be elided when None");
+    assert!(
+        !json.contains("source_urn"),
+        "source_urn should be elided when None"
+    );
+    assert!(
+        !json.contains("target_urn"),
+        "target_urn should be elided when None"
+    );
+    assert!(
+        !json.contains("pubkey"),
+        "pubkey should be elided when None"
+    );
 
     // And inverse: re-parsing the elided form yields all-None.
     let back: AgentActionEnvelope = serde_json::from_str(&json).unwrap();
@@ -123,19 +130,17 @@ fn user_interaction_kind_rejects_uppercase_input() {
 
 #[test]
 fn user_interaction_event_round_trip_with_optional_pubkey() {
-    let mut evt = UserInteractionEvent::new(
-        UserInteractionKind::Drag,
-        "session-uuid",
-        99,
-        500,
-    );
+    let mut evt = UserInteractionEvent::new(UserInteractionKind::Drag, "session-uuid", 99, 500);
     evt.session_pubkey = Some("deadbeef".into());
     evt.target_urn = Some("urn:visionclaw:kg:npub1xyz:sha256-12-abc123".into());
 
     let json = serde_json::to_string(&evt).unwrap();
     let back: UserInteractionEvent = serde_json::from_str(&json).unwrap();
     assert_eq!(back.session_pubkey.as_deref(), Some("deadbeef"));
-    assert_eq!(back.target_urn.as_deref(), Some("urn:visionclaw:kg:npub1xyz:sha256-12-abc123"));
+    assert_eq!(
+        back.target_urn.as_deref(),
+        Some("urn:visionclaw:kg:npub1xyz:sha256-12-abc123")
+    );
     assert_eq!(back.duration_ms, 500);
 }
 
@@ -148,7 +153,11 @@ fn beam_color_is_total_over_u8() {
     for action_type in 0u8..=255u8 {
         let env = make_envelope(None, None, None, action_type);
         let color = env.beam_color();
-        assert!(!color.is_empty(), "color must be non-empty for action_type={}", action_type);
+        assert!(
+            !color.is_empty(),
+            "color must be non-empty for action_type={}",
+            action_type
+        );
         // Exact spec: 0..=5 are mapped colours, 6..=255 are unknown grey.
         match action_type {
             0 => assert_eq!(color, "#3b82f6"),
@@ -174,14 +183,14 @@ fn beam_color_is_total_over_u8() {
 fn has_identity_truth_table() {
     let cases = [
         // (pubkey,        source_urn,    expected)
-        (None,             None,          false),
-        (Some("p"),        None,          true),
-        (None,             Some("urn:x"), true),
-        (Some("p"),        Some("urn:x"), true),
+        (None, None, false),
+        (Some("p"), None, true),
+        (None, Some("urn:x"), true),
+        (Some("p"), Some("urn:x"), true),
         // Empty string is still Some(_), so identity counts as present.
         // (Validating non-emptiness is a Phase 5 concern per ADR-059.)
-        (Some(""),         None,          true),
-        (None,             Some(""),      true),
+        (Some(""), None, true),
+        (None, Some(""), true),
     ];
     for (pubkey, source_urn, expected) in cases {
         let env = make_envelope(source_urn, None, pubkey, 0);
@@ -189,7 +198,9 @@ fn has_identity_truth_table() {
             env.has_identity(),
             expected,
             "has_identity({:?}, {:?}) should be {}",
-            pubkey, source_urn, expected
+            pubkey,
+            source_urn,
+            expected
         );
     }
 }

@@ -1,7 +1,6 @@
 pub mod actors;
 pub mod adapters;
 pub mod agent_events;
-pub mod layout;
 pub mod app_state;
 pub mod application;
 pub mod client;
@@ -13,6 +12,7 @@ pub mod events;
 pub mod gpu;
 pub mod handlers;
 pub mod inference;
+pub mod layout;
 /// Locally-dispatched MCP tool registry (ADR-057 Contributor Studio + Skill Dojo).
 ///
 /// The existing `handlers::mcp_relay_handler` handles WebSocket transport;
@@ -24,9 +24,9 @@ pub mod middleware;
 pub mod models;
 pub mod ontology;
 pub mod openapi;
-pub mod reasoning;
 pub mod physics;
 pub mod ports;
+pub mod reasoning;
 pub mod repositories;
 pub mod services;
 pub mod settings;
@@ -45,9 +45,7 @@ pub mod validation;
 
 pub mod test_helpers;
 
-pub use actors::{
-    ClientCoordinatorActor, MetadataActor, OptimizedSettingsActor,
-};
+pub use actors::{ClientCoordinatorActor, MetadataActor, OptimizedSettingsActor};
 pub use app_state::AppState;
 pub use models::metadata::MetadataStore;
 pub use models::protected_settings::ProtectedSettings;
@@ -56,7 +54,7 @@ pub use models::simulation_params::SimulationParams;
 pub use models::user_settings::UserSettings;
 
 // Re-export commonly used utilities for easier access
-pub use utils::json::{to_json, from_json};
+pub use utils::json::{from_json, to_json};
 pub use utils::result_helpers::safe_json_number;
 pub use utils::time;
 // Re-export HandlerResponse trait for response macros

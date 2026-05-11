@@ -1,5 +1,5 @@
-use webxr::models::graph_types::GraphType;
 use std::str::FromStr;
+use webxr::models::graph_types::GraphType;
 
 #[test]
 fn test_ontology_graph_type_variant_exists() {

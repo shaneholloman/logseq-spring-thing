@@ -37,7 +37,8 @@ fn comfyui_salad() -> String {
 
 fn solid_base() -> String {
     // Internal base — goes through nginx→Rust solid proxy
-    std::env::var("SOLID_INTERNAL_URL").unwrap_or_else(|_| "http://127.0.0.1:4001/api/solid".to_string())
+    std::env::var("SOLID_INTERNAL_URL")
+        .unwrap_or_else(|_| "http://127.0.0.1:4001/api/solid".to_string())
 }
 
 fn jss_base() -> String {
@@ -78,12 +79,24 @@ pub struct ImageGenRequest {
     pub pod_folder: String,
 }
 
-fn default_width() -> u32 { 1024 }
-fn default_height() -> u32 { 1024 }
-fn default_steps() -> u32 { 20 }
-fn default_guidance() -> f32 { 3.5 }
-fn default_seed() -> i64 { -1 }
-fn default_folder() -> String { "images".to_string() }
+fn default_width() -> u32 {
+    1024
+}
+fn default_height() -> u32 {
+    1024
+}
+fn default_steps() -> u32 {
+    20
+}
+fn default_guidance() -> f32 {
+    3.5
+}
+fn default_seed() -> i64 {
+    -1
+}
+fn default_folder() -> String {
+    "images".to_string()
+}
 
 #[derive(Debug, Serialize)]
 pub struct ImageGenResponse {
@@ -234,7 +247,8 @@ fn build_flux2_workflow(req: &ImageGenRequest, seed: u64, filename_prefix: &str)
 
 async fn get_user_npub(req: &HttpRequest, nostr_service: &NostrService) -> Option<String> {
     // Extract session token from Authorization header or cookie
-    let token = req.headers()
+    let token = req
+        .headers()
         .get("authorization")
         .and_then(|v| v.to_str().ok())
         .and_then(|s| s.strip_prefix("Bearer "))
@@ -244,7 +258,9 @@ async fn get_user_npub(req: &HttpRequest, nostr_service: &NostrService) -> Optio
 
     // Split "pubkey:token"
     let parts: Vec<&str> = token.splitn(2, ':').collect();
-    if parts.len() != 2 { return None; }
+    if parts.len() != 2 {
+        return None;
+    }
 
     let pubkey = parts[0];
     if nostr_service.validate_session(pubkey, parts[1]).await {
@@ -289,7 +305,11 @@ pub async fn submit_image_job(
         .unwrap_or_default();
 
     let comfyui_url = format!("{}/prompt", comfyui_base());
-    info!("Submitting image job {} for user {} to ComfyUI", job_id, &user_npub[..8]);
+    info!(
+        "Submitting image job {} for user {} to ComfyUI",
+        job_id,
+        &user_npub[..8]
+    );
 
     // Submit to ComfyUI native API
     let submit_resp = match client
@@ -361,17 +381,21 @@ pub async fn submit_image_job(
                 for (_node_id, node_out) in outputs.as_object().unwrap_or(&Default::default()) {
                     if let Some(images) = node_out.get("images").and_then(|v| v.as_array()) {
                         if let Some(first) = images.first() {
-                            output_filename = first.get("filename")
+                            output_filename = first
+                                .get("filename")
                                 .and_then(|v| v.as_str())
                                 .map(|s| s.to_string());
-                            output_subfolder = first.get("subfolder")
+                            output_subfolder = first
+                                .get("subfolder")
                                 .and_then(|v| v.as_str())
                                 .map(|s| s.to_string());
                             break;
                         }
                     }
                 }
-                if output_filename.is_some() { break; }
+                if output_filename.is_some() {
+                    break;
+                }
             }
         }
     }
@@ -390,8 +414,12 @@ pub async fn submit_image_job(
 
     // Fetch the PNG bytes from ComfyUI
     let subfolder = output_subfolder.as_deref().unwrap_or("");
-    let view_url = format!("{}/view?filename={}&subfolder={}&type=output",
-        comfyui_base(), urlencoding::encode(&filename), urlencoding::encode(subfolder));
+    let view_url = format!(
+        "{}/view?filename={}&subfolder={}&type=output",
+        comfyui_base(),
+        urlencoding::encode(&filename),
+        urlencoding::encode(subfolder)
+    );
     let image_bytes = match client.get(&view_url).send().await {
         Ok(r) => match r.bytes().await {
             Ok(b) => b,
@@ -411,17 +439,26 @@ pub async fn submit_image_job(
     };
 
     // PUT to Solid pod — path: /solid/{user}/images/{job_id}.png
-    let pod_path = format!("/api/solid/pods/{}/{}/{}.png",
-        user_npub, body.pod_folder, job_id);
-    let solid_url = format!("{}{}", solid_base().trim_end_matches("/api/solid"), &pod_path);
+    let pod_path = format!(
+        "/api/solid/pods/{}/{}/{}.png",
+        user_npub, body.pod_folder, job_id
+    );
+    let solid_url = format!(
+        "{}{}",
+        solid_base().trim_end_matches("/api/solid"),
+        &pod_path
+    );
 
     let pod_store_resp = client
         .put(&solid_url)
         .header("Content-Type", "image/png")
-        .header("Authorization", req.headers()
-            .get("authorization")
-            .and_then(|v| v.to_str().ok())
-            .unwrap_or(""))
+        .header(
+            "Authorization",
+            req.headers()
+                .get("authorization")
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or(""),
+        )
         .body(image_bytes)
         .send()
         .await;
@@ -464,7 +501,8 @@ pub async fn agent_submit_image_job(
     body: web::Json<AgentImageGenRequest>,
 ) -> HttpResponse {
     // Check agent key
-    let provided = req.headers()
+    let provided = req
+        .headers()
         .get("x-agent-key")
         .and_then(|v| v.to_str().ok())
         .unwrap_or("");
@@ -474,8 +512,15 @@ pub async fn agent_submit_image_job(
         }));
     }
 
-    let user_npub = body.user_npub.clone().unwrap_or_else(|| "agent".to_string());
-    let seed: u64 = if body.seed < 0 { rand::random() } else { body.seed as u64 };
+    let user_npub = body
+        .user_npub
+        .clone()
+        .unwrap_or_else(|| "agent".to_string());
+    let seed: u64 = if body.seed < 0 {
+        rand::random()
+    } else {
+        body.seed as u64
+    };
     let job_id = Uuid::new_v4().to_string();
     let filename_prefix = format!("visionflow/{}/{}", user_npub, job_id);
 
@@ -498,8 +543,11 @@ pub async fn agent_submit_image_job(
 
     // Salad API: synchronous — one POST, get base64 images back directly
     let salad_url = format!("{}/prompt", comfyui_salad());
-    info!("[agent] Submitting image job {} for npub {} to ComfyUI Salad API",
-        job_id, &user_npub[..8.min(user_npub.len())]);
+    info!(
+        "[agent] Submitting image job {} for npub {} to ComfyUI Salad API",
+        job_id,
+        &user_npub[..8.min(user_npub.len())]
+    );
 
     let salad_resp = match client
         .post(&salad_url)
@@ -526,49 +574,62 @@ pub async fn agent_submit_image_job(
     // Salad response: { "id": "...", "images": ["base64..."], "filenames": ["..."], "stats": {...} }
     let salad_json: Value = match salad_resp.json().await {
         Ok(v) => v,
-        Err(e) => return HttpResponse::InternalServerError().json(json!({
-            "error": "Failed to parse Salad response", "details": e.to_string()
-        })),
+        Err(e) => {
+            return HttpResponse::InternalServerError().json(json!({
+                "error": "Failed to parse Salad response", "details": e.to_string()
+            }))
+        }
     };
 
-    let prompt_id = salad_json.get("id")
+    let prompt_id = salad_json
+        .get("id")
         .and_then(|v| v.as_str())
         .unwrap_or(&job_id)
         .to_string();
 
     // Extract first base64 image
-    let b64_image = match salad_json.get("images")
+    let b64_image = match salad_json
+        .get("images")
         .and_then(|v| v.as_array())
         .and_then(|arr| arr.first())
         .and_then(|v| v.as_str())
     {
         Some(b64) => b64,
-        None => return HttpResponse::InternalServerError().json(json!({
-            "error": "No images in Salad response",
-            "raw": salad_json
-        })),
+        None => {
+            return HttpResponse::InternalServerError().json(json!({
+                "error": "No images in Salad response",
+                "raw": salad_json
+            }))
+        }
     };
 
-    let comfyui_filename = salad_json.get("filenames")
+    let comfyui_filename = salad_json
+        .get("filenames")
         .and_then(|v| v.as_array())
         .and_then(|arr| arr.first())
         .and_then(|v| v.as_str())
         .map(|s| s.to_string());
 
-    info!("[agent] ComfyUI Salad returned image ({} base64 chars), file: {:?}",
-        b64_image.len(), comfyui_filename);
+    info!(
+        "[agent] ComfyUI Salad returned image ({} base64 chars), file: {:?}",
+        b64_image.len(),
+        comfyui_filename
+    );
 
     // Decode base64 → PNG bytes
     use base64::Engine;
     let image_bytes = match base64::engine::general_purpose::STANDARD.decode(b64_image) {
         Ok(bytes) => bytes,
-        Err(e) => return HttpResponse::InternalServerError().json(json!({
-            "error": "Failed to decode base64 image", "details": e.to_string()
-        })),
+        Err(e) => {
+            return HttpResponse::InternalServerError().json(json!({
+                "error": "Failed to decode base64 image", "details": e.to_string()
+            }))
+        }
     };
 
     // Store in JSS directly using server-signed NIP-98
-    let pod_image_url = try_store_in_jss(&client, image_bytes, &user_npub, &body.pod_folder, &job_id).await;
+    let pod_image_url =
+        try_store_in_jss(&client, image_bytes, &user_npub, &body.pod_folder, &job_id).await;
 
     HttpResponse::Ok().json(ImageGenResponse {
         job_id: prompt_id,
@@ -631,10 +692,16 @@ async fn try_store_in_jss(
         Ok(r) if r.status().is_success() || r.status().as_u16() == 201 => {
             info!("[agent] Stored image in JSS pod: {}", resource_path);
             // Return the path via the nginx-proxied /solid/ route
-            Some(format!("/solid/pods/{}/{}/{}.png", user_npub, pod_folder, job_id))
+            Some(format!(
+                "/solid/pods/{}/{}/{}.png",
+                user_npub, pod_folder, job_id
+            ))
         }
         Ok(r) => {
-            warn!("[agent] JSS PUT returned {}: pod storage skipped", r.status());
+            warn!(
+                "[agent] JSS PUT returned {}: pod storage skipped",
+                r.status()
+            );
             None
         }
         Err(e) => {
@@ -645,9 +712,7 @@ async fn try_store_in_jss(
 }
 
 /// GET /api/image-gen/status/{job_id}
-pub async fn get_job_status(
-    path: web::Path<String>,
-) -> HttpResponse {
+pub async fn get_job_status(path: web::Path<String>) -> HttpResponse {
     let job_id = path.into_inner();
     let client = Client::new();
     let history_url = format!("{}/history/{}", comfyui_base(), job_id);
@@ -665,7 +730,11 @@ pub async fn get_job_status(
             } else {
                 HttpResponse::Ok().json(JobStatusResponse {
                     job_id,
-                    status: if status.is_success() { "pending".to_string() } else { "unknown".to_string() },
+                    status: if status.is_success() {
+                        "pending".to_string()
+                    } else {
+                        "unknown".to_string()
+                    },
                     outputs: None,
                 })
             }
@@ -684,7 +753,11 @@ pub async fn health() -> HttpResponse {
         .build()
         .unwrap_or_default();
 
-    match client.get(format!("{}/system_stats", comfyui_base())).send().await {
+    match client
+        .get(format!("{}/system_stats", comfyui_base()))
+        .send()
+        .await
+    {
         Ok(r) if r.status().is_success() => {
             let stats: Value = r.json().await.unwrap_or_default();
             HttpResponse::Ok().json(json!({

@@ -1,10 +1,20 @@
 use serde::{Deserialize, Serialize};
-use strum::{EnumIter, EnumString, Display, AsRefStr};
+use strum::{AsRefStr, Display, EnumIter, EnumString};
 
 /// 8 edge categories per ADR-064, grouping the 35 EdgeKinds.
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize,
-    EnumIter, EnumString, Display, AsRefStr,
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Hash,
+    Serialize,
+    Deserialize,
+    EnumIter,
+    EnumString,
+    Display,
+    AsRefStr,
 )]
 #[serde(rename_all = "snake_case")]
 #[strum(serialize_all = "snake_case")]

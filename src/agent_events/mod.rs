@@ -211,12 +211,8 @@ mod tests {
 
     #[test]
     fn user_interaction_round_trip() {
-        let evt = UserInteractionEvent::new(
-            UserInteractionKind::Focus,
-            "session-uuid-1",
-            4242,
-            1500,
-        );
+        let evt =
+            UserInteractionEvent::new(UserInteractionKind::Focus, "session-uuid-1", 4242, 1500);
         let json = serde_json::to_string(&evt).unwrap();
         let back: UserInteractionEvent = serde_json::from_str(&json).unwrap();
         assert_eq!(back.kind, UserInteractionKind::Focus);

@@ -171,7 +171,6 @@ struct EmbeddedNode {
     kge_embedding: Vec<f32>,
 }
 
-
 /// Normalize weights so they sum to 1.0. If both are zero, returns (0.5, 0.5).
 pub fn normalize_weights(content_weight: f32, topology_weight: f32) -> (f32, f32) {
     let sum = content_weight.abs() + topology_weight.abs();
@@ -220,10 +219,16 @@ async fn fetch_embedded_nodes(
 
     let mut nodes = Vec::new();
 
-    while let Some(row) = stream.next().await.map_err(|e| format!("Row fetch error: {e}"))? {
+    while let Some(row) = stream
+        .next()
+        .await
+        .map_err(|e| format!("Row fetch error: {e}"))?
+    {
         let iri: String = row.get("iri").unwrap_or_default();
         let label: String = row.get("label").unwrap_or_default();
-        let node_type_val: String = row.get("node_type").unwrap_or_else(|_| "unknown".to_string());
+        let node_type_val: String = row
+            .get("node_type")
+            .unwrap_or_else(|_| "unknown".to_string());
         let domain_val: Option<String> = row.get("domain").ok();
         let definition: Option<String> = row.get("definition").ok();
 
@@ -281,10 +286,16 @@ async fn fetch_node_by_iri(
         .await
         .map_err(|e| format!("Neo4j query failed: {e}"))?;
 
-    if let Some(row) = stream.next().await.map_err(|e| format!("Row fetch error: {e}"))? {
+    if let Some(row) = stream
+        .next()
+        .await
+        .map_err(|e| format!("Row fetch error: {e}"))?
+    {
         let iri_val: String = row.get("iri").unwrap_or_default();
         let label: String = row.get("label").unwrap_or_default();
-        let node_type_val: String = row.get("node_type").unwrap_or_else(|_| "unknown".to_string());
+        let node_type_val: String = row
+            .get("node_type")
+            .unwrap_or_else(|_| "unknown".to_string());
         let domain_val: Option<String> = row.get("domain").ok();
         let definition: Option<String> = row.get("definition").ok();
 
@@ -353,8 +364,8 @@ async fn embed_text(text: &str) -> Result<Vec<f32>, String> {
     let client = reqwest::Client::new();
 
     if let Ok(endpoint) = std::env::var("EMBEDDING_ENDPOINT") {
-        let model = std::env::var("EMBEDDING_MODEL")
-            .unwrap_or_else(|_| "bge-small-en-v1.5".to_string());
+        let model =
+            std::env::var("EMBEDDING_MODEL").unwrap_or_else(|_| "bge-small-en-v1.5".to_string());
 
         #[derive(Serialize)]
         struct OpenAIReq {
@@ -635,21 +646,16 @@ pub async fn gaps(
     app_state: web::Data<AppState>,
     query: web::Query<GapsQuery>,
 ) -> Result<HttpResponse, actix_web::Error> {
-    let nodes = match fetch_embedded_nodes(
-        &app_state.neo4j_adapter,
-        None,
-        query.domain.as_deref(),
-    )
-    .await
-    {
-        Ok(n) => n,
-        Err(e) => {
-            return Ok(HttpResponse::InternalServerError().json(serde_json::json!({
-                "error": "Failed to fetch nodes",
-                "details": e
-            })));
-        }
-    };
+    let nodes =
+        match fetch_embedded_nodes(&app_state.neo4j_adapter, None, query.domain.as_deref()).await {
+            Ok(n) => n,
+            Err(e) => {
+                return Ok(HttpResponse::InternalServerError().json(serde_json::json!({
+                    "error": "Failed to fetch nodes",
+                    "details": e
+                })));
+            }
+        };
 
     let total_checked = nodes.len();
     let min_score = query.min_score;
@@ -659,10 +665,7 @@ pub async fn gaps(
 
     for i in 0..nodes.len() {
         for j in (i + 1)..nodes.len() {
-            let cs = cosine_similarity(
-                &nodes[i].content_embedding,
-                &nodes[j].content_embedding,
-            );
+            let cs = cosine_similarity(&nodes[i].content_embedding, &nodes[j].content_embedding);
             if cs >= min_score {
                 candidate_gaps.push((cs, i, j));
             }
@@ -753,8 +756,7 @@ pub async fn batch_similar(
             if &node.iri == iri {
                 continue;
             }
-            let cs =
-                cosine_similarity(&source.content_embedding, &node.content_embedding);
+            let cs = cosine_similarity(&source.content_embedding, &node.content_embedding);
             let ts = cosine_similarity(&source.kge_embedding, &node.kge_embedding);
             let combined = 0.5 * cs + 0.5 * ts;
             ranked.push((combined, cs, ts, node));
@@ -954,13 +956,7 @@ mod tests {
 
     #[test]
     fn test_normalize_weights_sum_to_one() {
-        let cases = vec![
-            (0.3, 0.7),
-            (1.0, 1.0),
-            (0.9, 0.1),
-            (5.0, 3.0),
-            (0.01, 99.0),
-        ];
+        let cases = vec![(0.3, 0.7), (1.0, 1.0), (0.9, 0.1), (5.0, 3.0), (0.01, 99.0)];
         for (a, b) in cases {
             let (cw, tw) = normalize_weights(a, b);
             let sum = cw + tw;

@@ -147,7 +147,11 @@ impl BrokerActor {
             return None;
         }
         let enrichment_type = case.metadata.get("enrichment_type")?;
-        let entity_urn = case.metadata.get("entity_urn").map(|s| s.as_str()).unwrap_or("");
+        let entity_urn = case
+            .metadata
+            .get("entity_urn")
+            .map(|s| s.as_str())
+            .unwrap_or("");
         let scope = PrecedentRegistry::scope_from_metadata(enrichment_type, entity_urn);
         if self.precedent_registry.qualifies(&scope) {
             Some(scope)

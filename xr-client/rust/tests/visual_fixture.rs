@@ -19,12 +19,12 @@ use visionclaw_xr_gdext::lod::{classify, LodLevel, LodPolicyState};
 fn lod_fixture_star_at_origin() {
     let camera = [0.0_f32, 0.0, 0.0];
     let avatars = vec![
-        [1.0, 0.0, 0.0],   // 1m → High
-        [0.0, 4.99, 0.0],  // 4.99m → High
-        [0.0, 0.0, 5.0],   // 5m → Medium (boundary)
-        [10.0, 0.0, 0.0],  // 10m → Medium
-        [0.0, 15.0, 0.0],  // 15m → Low (boundary)
-        [0.0, 0.0, 30.0],  // 30m → Culled (boundary)
+        [1.0, 0.0, 0.0],  // 1m → High
+        [0.0, 4.99, 0.0], // 4.99m → High
+        [0.0, 0.0, 5.0],  // 5m → Medium (boundary)
+        [10.0, 0.0, 0.0], // 10m → Medium
+        [0.0, 15.0, 0.0], // 15m → Low (boundary)
+        [0.0, 0.0, 30.0], // 30m → Culled (boundary)
     ];
     let mut state = LodPolicyState::new();
     let levels = state.classify_avatars(camera, &avatars).to_vec();
@@ -44,10 +44,10 @@ fn lod_fixture_star_at_origin() {
 fn lod_fixture_offset_camera() {
     let camera = [5.0_f32, 0.0, 0.0];
     let avatars = vec![
-        [5.0, 0.0, 0.0],   // 0m → High
-        [10.0, 0.0, 0.0],  // 5m → Medium
-        [25.0, 0.0, 0.0],  // 20m → Low
-        [40.0, 0.0, 0.0],  // 35m → Culled
+        [5.0, 0.0, 0.0],  // 0m → High
+        [10.0, 0.0, 0.0], // 5m → Medium
+        [25.0, 0.0, 0.0], // 20m → Low
+        [40.0, 0.0, 0.0], // 35m → Culled
     ];
     let mut state = LodPolicyState::new();
     let levels = state.classify_avatars(camera, &avatars).to_vec();
@@ -80,7 +80,10 @@ fn lod_fixture_distance_table() {
     ];
     for (d, expected) in cases {
         let actual = classify(d);
-        assert_eq!(actual, expected, "drift at d = {d}: got {actual:?}, want {expected:?}");
+        assert_eq!(
+            actual, expected,
+            "drift at d = {d}: got {actual:?}, want {expected:?}"
+        );
     }
 }
 
@@ -110,10 +113,8 @@ fn avatar_transform_fixture_round_trip() {
             rotation: [0.0, 0.0, 0.0, 1.0],
         }),
     };
-    let room = RoomId::parse("urn:visionclaw:room:sha256-12-feedface0001")
-        .expect("fixture room");
-    let did =
-        Did::parse(format!("did:nostr:{}", "0".repeat(64))).expect("fixture did");
+    let room = RoomId::parse("urn:visionclaw:room:sha256-12-feedface0001").expect("fixture room");
+    let did = Did::parse(format!("did:nostr:{}", "0".repeat(64))).expect("fixture did");
     let avatar = AvatarId::from_did(&did);
 
     let bytes = encode(&frame, &room, &avatar).expect("encode");
@@ -147,10 +148,8 @@ fn avatar_transform_fixture_identity() {
         left_hand: None,
         right_hand: None,
     };
-    let room = RoomId::parse("urn:visionclaw:room:sha256-12-feedface0002")
-        .expect("fixture room");
-    let did =
-        Did::parse(format!("did:nostr:{}", "f".repeat(64))).expect("fixture did");
+    let room = RoomId::parse("urn:visionclaw:room:sha256-12-feedface0002").expect("fixture room");
+    let did = Did::parse(format!("did:nostr:{}", "f".repeat(64))).expect("fixture did");
     let avatar = AvatarId::from_did(&did);
 
     let bytes = encode(&frame, &room, &avatar).expect("encode");

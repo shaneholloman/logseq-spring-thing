@@ -15,8 +15,8 @@ use tokio::sync::RwLock;
 use crate::models::graph::GraphData;
 use crate::ports::ontology_repository::{
     AxiomType, InferenceResults, OntologyMetrics, OntologyRepository, OntologyRepositoryError,
-    OwlAxiom, OwlClass, OwlProperty, PathfindingCacheEntry, PropertyType, ValidationReport,
-    Result as OntResult,
+    OwlAxiom, OwlClass, OwlProperty, PathfindingCacheEntry, PropertyType, Result as OntResult,
+    ValidationReport,
 };
 
 // ---------------------------------------------------------------------------
@@ -36,8 +36,7 @@ impl Default for Neo4jTestConfig {
         Self {
             uri: std::env::var("NEO4J_TEST_URI")
                 .unwrap_or_else(|_| "bolt://localhost:7687".to_string()),
-            username: std::env::var("NEO4J_TEST_USER")
-                .unwrap_or_else(|_| "neo4j".to_string()),
+            username: std::env::var("NEO4J_TEST_USER").unwrap_or_else(|_| "neo4j".to_string()),
             password: std::env::var("NEO4J_TEST_PASSWORD")
                 .unwrap_or_else(|_| "testpassword".to_string()),
         }
@@ -257,7 +256,10 @@ pub fn create_test_ontology_repo() -> Arc<MockOntologyRepository> {
 
     // Use try_write since this may be called from within a tokio runtime (e.g. #[tokio::test])
     // where blocking_write() would panic with "Cannot block the current thread"
-    let mut class_map = repo.classes.try_write().expect("RwLock should be available in test setup");
+    let mut class_map = repo
+        .classes
+        .try_write()
+        .expect("RwLock should be available in test setup");
     for (iri, label) in classes {
         class_map.insert(
             iri.to_string(),
@@ -282,10 +284,13 @@ pub fn create_test_reasoner() -> crate::services::ontology_reasoner::OntologyRea
 }
 
 /// Create an `OntologyEnrichmentService` backed by mock implementations for unit testing.
-pub fn create_test_enrichment_service() -> crate::services::ontology_enrichment_service::OntologyEnrichmentService {
+pub fn create_test_enrichment_service(
+) -> crate::services::ontology_enrichment_service::OntologyEnrichmentService {
     let reasoner = Arc::new(create_test_reasoner());
     let classifier = Arc::new(crate::services::edge_classifier::EdgeClassifier::new());
-    crate::services::ontology_enrichment_service::OntologyEnrichmentService::new(reasoner, classifier)
+    crate::services::ontology_enrichment_service::OntologyEnrichmentService::new(
+        reasoner, classifier,
+    )
 }
 
 // ---------------------------------------------------------------------------

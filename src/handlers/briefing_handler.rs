@@ -290,14 +290,12 @@ mod tests {
 
     #[test]
     fn test_bead_id_fallback_to_brief_id() {
-        let tasks = vec![
-            RoleTask {
-                role: "architect".to_string(),
-                task_id: "t1".to_string(),
-                bead_id: None,
-                response_path: "/r1".to_string(),
-            },
-        ];
+        let tasks = vec![RoleTask {
+            role: "architect".to_string(),
+            task_id: "t1".to_string(),
+            bead_id: None,
+            response_path: "/r1".to_string(),
+        }];
 
         let brief_id = "brief-fallback";
         let bead_id = tasks

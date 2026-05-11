@@ -97,8 +97,14 @@ mod tests {
     #[test]
     fn language_from_extension() {
         assert_eq!(Language::from_extension("foo.rs"), Some(Language::Rust));
-        assert_eq!(Language::from_extension("bar.ts"), Some(Language::TypeScript));
-        assert_eq!(Language::from_extension("baz.tsx"), Some(Language::TypeScript));
+        assert_eq!(
+            Language::from_extension("bar.ts"),
+            Some(Language::TypeScript)
+        );
+        assert_eq!(
+            Language::from_extension("baz.tsx"),
+            Some(Language::TypeScript)
+        );
         assert_eq!(Language::from_extension("qux.py"), Some(Language::Python));
         assert_eq!(Language::from_extension("main.go"), Some(Language::Go));
         assert_eq!(Language::from_extension("App.java"), Some(Language::Java));
@@ -133,7 +139,10 @@ mod tests {
     #[test]
     fn mint_urn_normalizes_backslashes() {
         let urn = mint_code_urn("src\\actors\\graph.rs", "handle");
-        assert_eq!(urn, "urn:visionclaw:concept:code:src/actors/graph.rs:handle");
+        assert_eq!(
+            urn,
+            "urn:visionclaw:concept:code:src/actors/graph.rs:handle"
+        );
     }
 
     #[test]

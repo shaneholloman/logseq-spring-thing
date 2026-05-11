@@ -380,10 +380,7 @@ impl MigrationCandidateAggregate {
             metadata.insert(meta_keys::DEFER_UNTIL.to_string(), defer.to_rfc3339());
         }
 
-        let title = format!(
-            "Promote `{}` → `{}`",
-            self.kg_note_label, self.ontology_iri
-        );
+        let title = format!("Promote `{}` → `{}`", self.kg_note_label, self.ontology_iri);
         let description = format!(
             "Migration candidate (confidence {:.2}). Signals: {}. Agent: {}.",
             self.confidence,
@@ -527,9 +524,8 @@ mod unit_tests {
         let err = MigrationCandidateAggregate::new("x", "", "L", "iri", 0.7, vec![], None, "{}")
             .unwrap_err();
         assert_eq!(err, MigrationError::EmptyKgNoteId);
-        let err =
-            MigrationCandidateAggregate::new("x", "note", "L", "", 0.7, vec![], None, "{}")
-                .unwrap_err();
+        let err = MigrationCandidateAggregate::new("x", "note", "L", "", 0.7, vec![], None, "{}")
+            .unwrap_err();
         assert_eq!(err, MigrationError::EmptyIri);
     }
 
@@ -623,7 +619,9 @@ mod unit_tests {
         let c = new_candidate();
         let case = c.to_broker_case();
         assert_eq!(
-            case.metadata.get(meta_keys::SUBJECT_KIND).map(String::as_str),
+            case.metadata
+                .get(meta_keys::SUBJECT_KIND)
+                .map(String::as_str),
             Some(SUBJECT_KIND_ONTOLOGY_TERM)
         );
         assert_eq!(c.broker_category(), CATEGORY_CONTRIBUTOR_MESH_SHARE);
@@ -649,12 +647,10 @@ mod unit_tests {
     #[test]
     fn priority_mapping_uses_confidence_bands() {
         let make = |conf: f64| {
-            MigrationCandidateAggregate::new(
-                "x", "note", "L", "iri", conf, vec![], None, "{}",
-            )
-            .unwrap()
-            .to_broker_case()
-            .priority
+            MigrationCandidateAggregate::new("x", "note", "L", "iri", conf, vec![], None, "{}")
+                .unwrap()
+                .to_broker_case()
+                .priority
         };
         assert_eq!(make(0.90), CasePriority::High);
         assert_eq!(make(0.75), CasePriority::Medium);

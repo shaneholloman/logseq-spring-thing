@@ -17,7 +17,9 @@ use webxr::services::bridge_edge::{
     W_S4_AGENT_PROPOSAL, W_S5_MATURITY_MARKER, W_S6_CENTRALITY_IN_KG, W_S7_AUTHORING_RECENCY,
     W_S8_AUTHORITY_SCORE,
 };
-use webxr::services::orphan_retraction::{period_from_env, OrphanRetractionTask, DEFAULT_PERIOD_SECS};
+use webxr::services::orphan_retraction::{
+    period_from_env, OrphanRetractionTask, DEFAULT_PERIOD_SECS,
+};
 
 // ── Pure-computation tests (always run) ────────────────────────────────────
 
@@ -31,7 +33,11 @@ fn weights_sum_to_one() {
         + W_S6_CENTRALITY_IN_KG
         + W_S7_AUTHORING_RECENCY
         + W_S8_AUTHORITY_SCORE;
-    assert!((total - 1.0).abs() < 1e-9, "weights must sum to 1.0, got {}", total);
+    assert!(
+        (total - 1.0).abs() < 1e-9,
+        "weights must sum to 1.0, got {}",
+        total
+    );
 }
 
 #[test]
@@ -42,7 +48,7 @@ fn weighted_sum_computes_correctly() {
         s3_explicit_owl_declaration: 0.0,
         s4_agent_proposal: 1.0, // 0.20
         s5_maturity_marker: 0.0,
-        s6_centrality_in_kg: 0.4, // 0.04
+        s6_centrality_in_kg: 0.4,  // 0.04
         s7_authoring_recency: 1.0, // 0.05
         s8_authority_score: 1.0,   // 0.05
     };
@@ -72,7 +78,14 @@ fn sigmoid_is_monotonic_increasing() {
     for pair in values.windows(2) {
         let a = sigmoid_confidence(pair[0]);
         let b = sigmoid_confidence(pair[1]);
-        assert!(b > a, "sigmoid({}) = {} should exceed sigmoid({}) = {}", pair[1], b, pair[0], a);
+        assert!(
+            b > a,
+            "sigmoid({}) = {} should exceed sigmoid({}) = {}",
+            pair[1],
+            b,
+            pair[0],
+            a
+        );
     }
 }
 
@@ -144,7 +157,11 @@ fn bridge_edge_disabled_by_default() {
 fn promote_confidence_is_monotonic_nondecreasing() {
     // Simulate the Cypher CASE branch: confidence may only rise.
     fn next_confidence(current: f64, new: f64) -> f64 {
-        if new > current { new } else { current }
+        if new > current {
+            new
+        } else {
+            current
+        }
     }
 
     let initial = 0.98_f64;
@@ -193,10 +210,22 @@ fn candidate_status_promoted_is_terminal_advance() {
             _ => false,
         }
     }
-    assert!(can_advance(CandidateStatus::Surfaced, CandidateStatus::Promoted));
-    assert!(!can_advance(CandidateStatus::Promoted, CandidateStatus::Surfaced));
-    assert!(!can_advance(CandidateStatus::Promoted, CandidateStatus::Reviewing));
-    assert!(!can_advance(CandidateStatus::Promoted, CandidateStatus::Expired));
+    assert!(can_advance(
+        CandidateStatus::Surfaced,
+        CandidateStatus::Promoted
+    ));
+    assert!(!can_advance(
+        CandidateStatus::Promoted,
+        CandidateStatus::Surfaced
+    ));
+    assert!(!can_advance(
+        CandidateStatus::Promoted,
+        CandidateStatus::Reviewing
+    ));
+    assert!(!can_advance(
+        CandidateStatus::Promoted,
+        CandidateStatus::Expired
+    ));
 }
 
 #[test]
@@ -227,7 +256,9 @@ async fn neo4j_adapter() -> Option<std::sync::Arc<webxr::adapters::neo4j_adapter
 #[tokio::test]
 #[ignore = "requires live Neo4j; set NEO4J_URI/USER/PASSWORD and run with --ignored"]
 async fn surface_below_threshold_is_noop() {
-    let Some(neo) = neo4j_adapter().await else { return };
+    let Some(neo) = neo4j_adapter().await else {
+        return;
+    };
     std::env::set_var("BRIDGE_EDGE_ENABLED", "true");
 
     let svc = BridgeEdgeService::new(neo);
@@ -250,13 +281,18 @@ async fn surface_below_threshold_is_noop() {
         last_updated_at: chrono::Utc::now(),
     };
     let surfaced = svc.surface(&candidate).await.unwrap();
-    assert!(!surfaced, "below-threshold candidates must not create edges");
+    assert!(
+        !surfaced,
+        "below-threshold candidates must not create edges"
+    );
 }
 
 #[tokio::test]
 #[ignore = "requires live Neo4j; set NEO4J_URI/USER/PASSWORD and run with --ignored"]
 async fn promote_creates_bridge_to_and_is_monotonic() {
-    let Some(neo) = neo4j_adapter().await else { return };
+    let Some(neo) = neo4j_adapter().await else {
+        return;
+    };
     std::env::set_var("BRIDGE_EDGE_ENABLED", "true");
 
     let svc = BridgeEdgeService::new(neo.clone());
@@ -284,7 +320,10 @@ async fn promote_creates_bridge_to_and_is_monotonic() {
     svc.promote(&high).await.unwrap();
 
     // Re-score with LOWER confidence — edge must remain at 0.98.
-    let low = MigrationCandidate { confidence: 0.70, ..high.clone() };
+    let low = MigrationCandidate {
+        confidence: 0.70,
+        ..high.clone()
+    };
     svc.promote(&low).await.unwrap();
 
     // Verify
@@ -304,7 +343,10 @@ async fn promote_creates_bridge_to_and_is_monotonic() {
     );
 
     // Higher re-score lifts it.
-    let higher = MigrationCandidate { confidence: 0.995, ..high };
+    let higher = MigrationCandidate {
+        confidence: 0.995,
+        ..high
+    };
     svc.promote(&higher).await.unwrap();
     let q2 = neo4rs::query(
         "MATCH (k:KGNode {iri: $kg})-[r:BRIDGE_TO]->(o:OntologyClass {iri: $owl})
@@ -315,13 +357,19 @@ async fn promote_creates_bridge_to_and_is_monotonic() {
     let mut res2 = neo.graph().execute(q2).await.unwrap();
     let row2 = res2.next().await.unwrap().unwrap();
     let c2: f64 = row2.get("c").unwrap();
-    assert!((c2 - 0.995).abs() < 1e-6, "higher rescore must raise confidence, got {}", c2);
+    assert!(
+        (c2 - 0.995).abs() < 1e-6,
+        "higher rescore must raise confidence, got {}",
+        c2
+    );
 }
 
 #[tokio::test]
 #[ignore = "requires live Neo4j; set NEO4J_URI/USER/PASSWORD and run with --ignored"]
 async fn auto_expire_sweeps_stale_candidates() {
-    let Some(neo) = neo4j_adapter().await else { return };
+    let Some(neo) = neo4j_adapter().await else {
+        return;
+    };
     std::env::set_var("BRIDGE_EDGE_ENABLED", "true");
 
     // Seed a stale low-confidence candidate.
@@ -337,13 +385,19 @@ async fn auto_expire_sweeps_stale_candidates() {
 
     let svc = BridgeEdgeService::new(neo.clone());
     let n = svc.auto_expire().await.unwrap();
-    assert!(n >= 1, "expected at least one candidate to expire, got {}", n);
+    assert!(
+        n >= 1,
+        "expected at least one candidate to expire, got {}",
+        n
+    );
 }
 
 #[tokio::test]
 #[ignore = "requires live Neo4j; set NEO4J_URI/USER/PASSWORD and run with --ignored"]
 async fn orphan_retraction_removes_stale_wikilinks_and_orphan_private_stubs() {
-    let Some(neo) = neo4j_adapter().await else { return };
+    let Some(neo) = neo4j_adapter().await else {
+        return;
+    };
 
     // Seed a stale WikilinkRef and an orphaned private stub.
     let seed = neo4rs::query(

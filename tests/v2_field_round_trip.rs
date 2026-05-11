@@ -97,7 +97,9 @@ async fn writer() -> Option<Neo4jAdapter> {
 #[tokio::test]
 #[ignore = "requires live Neo4j; set NEO4J_URI/USER/PASSWORD and run with --ignored"]
 async fn v2_fields_survive_neo4j_round_trip() {
-    let Some(adapter) = writer().await else { return };
+    let Some(adapter) = writer().await else {
+        return;
+    };
 
     let original = make_v2_node();
     let graph_data = GraphData {
@@ -132,18 +134,35 @@ async fn v2_fields_survive_neo4j_round_trip() {
     assert_eq!(read_back.label, original.label, "label");
 
     // v2 ontology fields — the F1 surface area
-    assert_eq!(read_back.canonical_iri, original.canonical_iri, "canonical_iri");
-    assert_eq!(read_back.visionclaw_uri, original.visionclaw_uri, "visionclaw_uri");
+    assert_eq!(
+        read_back.canonical_iri, original.canonical_iri,
+        "canonical_iri"
+    );
+    assert_eq!(
+        read_back.visionclaw_uri, original.visionclaw_uri,
+        "visionclaw_uri"
+    );
     assert_eq!(read_back.rdf_type, original.rdf_type, "rdf_type");
     assert_eq!(read_back.same_as, original.same_as, "same_as");
     assert_eq!(read_back.domain, original.domain, "domain");
-    assert_eq!(read_back.content_hash, original.content_hash, "content_hash");
-    assert_eq!(read_back.preferred_term, original.preferred_term, "preferred_term (v2)");
-    assert_eq!(read_back.graph_source, original.graph_source, "graph_source");
+    assert_eq!(
+        read_back.content_hash, original.content_hash,
+        "content_hash"
+    );
+    assert_eq!(
+        read_back.preferred_term, original.preferred_term,
+        "preferred_term (v2)"
+    );
+    assert_eq!(
+        read_back.graph_source, original.graph_source,
+        "graph_source"
+    );
 
     // Numeric scores: tolerate a small float delta from f64↔f32 trips.
     let q_orig = original.quality_score.expect("orig quality_score set");
-    let q_read = read_back.quality_score.expect("read-back quality_score must be Some");
+    let q_read = read_back
+        .quality_score
+        .expect("read-back quality_score must be Some");
     assert!(
         (q_orig - q_read).abs() < 1e-5,
         "quality_score: orig={} read={}",
@@ -151,7 +170,9 @@ async fn v2_fields_survive_neo4j_round_trip() {
         q_read
     );
     let a_orig = original.authority_score.expect("orig authority_score set");
-    let a_read = read_back.authority_score.expect("read-back authority_score must be Some");
+    let a_read = read_back
+        .authority_score
+        .expect("read-back authority_score must be Some");
     assert!(
         (a_orig - a_read).abs() < 1e-5,
         "authority_score: orig={} read={}",
@@ -167,7 +188,9 @@ async fn v2_absent_fields_round_trip_as_none() {
     // write. The write path persists empty strings via .unwrap_or_default(),
     // and the read path normalises empty strings back to None — this asserts
     // we don't leak `Some("")` to callers.
-    let Some(adapter) = writer().await else { return };
+    let Some(adapter) = writer().await else {
+        return;
+    };
 
     let mut bare = make_v2_node();
     bare.id = TEST_NODE_ID + 1;
@@ -201,12 +224,30 @@ async fn v2_absent_fields_round_trip_as_none() {
         .find(|n| n.id == bare.id)
         .expect("bare node must round-trip");
 
-    assert_eq!(read_back.canonical_iri, None, "canonical_iri must normalise empty→None");
-    assert_eq!(read_back.visionclaw_uri, None, "visionclaw_uri must normalise empty→None");
-    assert_eq!(read_back.rdf_type, None, "rdf_type must normalise empty→None");
+    assert_eq!(
+        read_back.canonical_iri, None,
+        "canonical_iri must normalise empty→None"
+    );
+    assert_eq!(
+        read_back.visionclaw_uri, None,
+        "visionclaw_uri must normalise empty→None"
+    );
+    assert_eq!(
+        read_back.rdf_type, None,
+        "rdf_type must normalise empty→None"
+    );
     assert_eq!(read_back.same_as, None, "same_as must normalise empty→None");
     assert_eq!(read_back.domain, None, "domain must normalise empty→None");
-    assert_eq!(read_back.content_hash, None, "content_hash must normalise empty→None");
-    assert_eq!(read_back.preferred_term, None, "preferred_term must normalise empty→None");
-    assert_eq!(read_back.graph_source, None, "graph_source must normalise empty→None");
+    assert_eq!(
+        read_back.content_hash, None,
+        "content_hash must normalise empty→None"
+    );
+    assert_eq!(
+        read_back.preferred_term, None,
+        "preferred_term must normalise empty→None"
+    );
+    assert_eq!(
+        read_back.graph_source, None,
+        "graph_source must normalise empty→None"
+    );
 }

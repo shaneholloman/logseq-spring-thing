@@ -3,10 +3,10 @@
 //! the lib test crate (which currently has pre-existing E0063/E0369 errors
 //! in unrelated services).
 
+use webxr::agent_events::transient::{BeamEdge, ChargeModulation};
 use webxr::agent_events::{
     AgentActionEnvelope, UserInteractionEvent, UserInteractionKind, WS_SUBPROTOCOL,
 };
-use webxr::agent_events::transient::{BeamEdge, ChargeModulation};
 
 #[test]
 fn phase_1_envelope_round_trip_minimal() {
@@ -47,7 +47,10 @@ fn phase_1_envelope_round_trip_full() {
     }"#;
     let env: AgentActionEnvelope = serde_json::from_str(json).expect("parse");
     assert_eq!(env.source_urn.as_deref(), Some("did:nostr:abc123"));
-    assert_eq!(env.target_urn.as_deref(), Some("urn:visionclaw:kg:npub1xyz:sha256-12-deadbeef"));
+    assert_eq!(
+        env.target_urn.as_deref(),
+        Some("urn:visionclaw:kg:npub1xyz:sha256-12-deadbeef")
+    );
     assert_eq!(env.pubkey.as_deref(), Some("abc123"));
     assert!(env.has_identity());
     assert_eq!(env.beam_color(), "#a855f7");
@@ -104,12 +107,7 @@ fn phase_2_charge_modulation_default_multiplier() {
 
 #[test]
 fn phase_3_user_interaction_round_trip() {
-    let evt = UserInteractionEvent::new(
-        UserInteractionKind::Focus,
-        "session-uuid-1",
-        4242,
-        1500,
-    );
+    let evt = UserInteractionEvent::new(UserInteractionKind::Focus, "session-uuid-1", 4242, 1500);
     assert_eq!(evt.version, 1);
     assert_eq!(evt.event_type, "user_interaction");
     assert_eq!(evt.kind, UserInteractionKind::Focus);
@@ -131,7 +129,11 @@ fn phase_3_user_interaction_kind_lowercase_serialization() {
         (UserInteractionKind::Drag, "\"drag\""),
     ] {
         let s = serde_json::to_string(&kind).unwrap();
-        assert_eq!(s, expected, "kind {:?} should serialize as {}", kind, expected);
+        assert_eq!(
+            s, expected,
+            "kind {:?} should serialize as {}",
+            kind, expected
+        );
     }
 }
 
@@ -160,5 +162,8 @@ fn phase_4_visibility_filter_flag_default_off() {
     let enabled = std::env::var("PUBKEY_VISIBILITY_FILTER")
         .map(|v| v == "true" || v == "1")
         .unwrap_or(false);
-    assert!(!enabled, "feature flag must default to off for backward compat");
+    assert!(
+        !enabled,
+        "feature flag must default to off for backward compat"
+    );
 }

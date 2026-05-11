@@ -1,7 +1,7 @@
 use crate::actors::messages::{GetMetadata, GetSettings};
 use crate::models::metadata::Metadata;
-use crate::services::github::content_enhanced::ExtendedFileMetadata;
 use crate::ok_json;
+use crate::services::github::content_enhanced::ExtendedFileMetadata;
 use crate::AppState;
 use actix_web::{web, HttpResponse, Result};
 use futures::future::join_all;

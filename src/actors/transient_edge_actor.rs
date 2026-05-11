@@ -59,7 +59,8 @@ impl Handler<SpawnBeam> for TransientEdgeActor {
     fn handle(&mut self, msg: SpawnBeam, _: &mut Self::Context) -> Self::Result {
         // Coalesce: a new action against the same target replaces any prior
         // modulation on the same agent (ADR-059 backpressure recommendation).
-        self.modulations.insert(msg.modulation.agent_node_id, msg.modulation);
+        self.modulations
+            .insert(msg.modulation.agent_node_id, msg.modulation);
         self.beams.insert(msg.beam.edge_id.clone(), msg.beam);
     }
 }
@@ -81,7 +82,11 @@ where
     A: Actor,
     M: Message<Result = TransientSnapshot>,
 {
-    fn handle(self, _ctx: &mut A::Context, tx: Option<actix::dev::OneshotSender<TransientSnapshot>>) {
+    fn handle(
+        self,
+        _ctx: &mut A::Context,
+        tx: Option<actix::dev::OneshotSender<TransientSnapshot>>,
+    ) {
         if let Some(tx) = tx {
             let _ = tx.send(self);
         }

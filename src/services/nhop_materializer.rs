@@ -25,9 +25,9 @@
 use std::sync::Arc;
 use std::time::Instant;
 
-use neo4rs::{Graph, query};
+use neo4rs::{query, Graph};
 use thiserror::Error;
-use tracing::{info, warn, instrument};
+use tracing::{info, instrument, warn};
 
 // ── Feature Flag ────────────────────────────────────────────────────────────
 
@@ -85,10 +85,7 @@ impl Default for NHopConfig {
             two_hop_weight: 0.05,
             three_hop_weight: 0.02,
             max_edges_per_node: 20,
-            traverse_types: vec![
-                "SUBCLASS_OF".to_string(),
-                "RELATES".to_string(),
-            ],
+            traverse_types: vec!["SUBCLASS_OF".to_string(), "RELATES".to_string()],
             cross_type_hops: false,
         }
     }
@@ -193,7 +190,10 @@ impl NHopMaterializer {
     #[instrument(skip(self), fields(cross_type = self.config.cross_type_hops))]
     pub async fn materialize_all(&self) -> Result<MaterializationStats, NHopError> {
         if !nhop_enabled() {
-            warn!("N-hop materialization disabled (set {}=true to enable)", NHOP_ENABLED_ENV);
+            warn!(
+                "N-hop materialization disabled (set {}=true to enable)",
+                NHOP_ENABLED_ENV
+            );
             return Err(NHopError::Disabled);
         }
 
@@ -238,7 +238,9 @@ impl NHopMaterializer {
         let mut total = 0usize;
 
         // Build relationship type filter as a Cypher-safe list literal
-        let types_literal = self.config.traverse_types
+        let types_literal = self
+            .config
+            .traverse_types
             .iter()
             .map(|t| format!("'{}'", t))
             .collect::<Vec<_>>()
@@ -305,14 +307,16 @@ impl NHopMaterializer {
         // Fetch 2-hop edges
         let q2 = query(
             "MATCH (a:OntologyClass)-[r:MATERIALIZED_2HOP]->(c:OntologyClass) \
-             RETURN a.iri AS source, c.iri AS target, r.weight AS weight, r.source_path AS path"
+             RETURN a.iri AS source, c.iri AS target, r.weight AS weight, r.source_path AS path",
         );
 
         let mut result2 = self.neo4j.execute(q2).await.map_err(neo4j_err)?;
         while let Some(row) = result2.next().await.map_err(neo4j_err)? {
             let source_iri: String = row.get("source").unwrap_or_default();
             let target_iri: String = row.get("target").unwrap_or_default();
-            let weight: f64 = row.get("weight").unwrap_or(self.config.two_hop_weight as f64);
+            let weight: f64 = row
+                .get("weight")
+                .unwrap_or(self.config.two_hop_weight as f64);
             let source_path: String = row.get("path").unwrap_or_default();
 
             if !source_iri.is_empty() && !target_iri.is_empty() {
@@ -329,14 +333,16 @@ impl NHopMaterializer {
         // Fetch 3-hop edges
         let q3 = query(
             "MATCH (a:OntologyClass)-[r:MATERIALIZED_3HOP]->(d:OntologyClass) \
-             RETURN a.iri AS source, d.iri AS target, r.weight AS weight"
+             RETURN a.iri AS source, d.iri AS target, r.weight AS weight",
         );
 
         let mut result3 = self.neo4j.execute(q3).await.map_err(neo4j_err)?;
         while let Some(row) = result3.next().await.map_err(neo4j_err)? {
             let source_iri: String = row.get("source").unwrap_or_default();
             let target_iri: String = row.get("target").unwrap_or_default();
-            let weight: f64 = row.get("weight").unwrap_or(self.config.three_hop_weight as f64);
+            let weight: f64 = row
+                .get("weight")
+                .unwrap_or(self.config.three_hop_weight as f64);
 
             if !source_iri.is_empty() && !target_iri.is_empty() {
                 edges.push(MaterializedEdge {
@@ -349,7 +355,10 @@ impl NHopMaterializer {
             }
         }
 
-        info!("Retrieved {} materialized edges for GPU upload", edges.len());
+        info!(
+            "Retrieved {} materialized edges for GPU upload",
+            edges.len()
+        );
         Ok(edges)
     }
 
@@ -358,9 +367,7 @@ impl NHopMaterializer {
     /// Use before re-running materialization with new config, or to clean up.
     #[instrument(skip(self))]
     pub async fn clear_materialized(&self) -> Result<(), NHopError> {
-        let q2 = query(
-            "MATCH ()-[r:MATERIALIZED_2HOP]->() DELETE r RETURN count(r) AS deleted"
-        );
+        let q2 = query("MATCH ()-[r:MATERIALIZED_2HOP]->() DELETE r RETURN count(r) AS deleted");
         let mut res2 = self.neo4j.execute(q2).await.map_err(neo4j_err)?;
         let deleted_2: i64 = if let Some(row) = res2.next().await.map_err(neo4j_err)? {
             row.get("deleted").unwrap_or(0)
@@ -368,9 +375,7 @@ impl NHopMaterializer {
             0
         };
 
-        let q3 = query(
-            "MATCH ()-[r:MATERIALIZED_3HOP]->() DELETE r RETURN count(r) AS deleted"
-        );
+        let q3 = query("MATCH ()-[r:MATERIALIZED_3HOP]->() DELETE r RETURN count(r) AS deleted");
         let mut res3 = self.neo4j.execute(q3).await.map_err(neo4j_err)?;
         let deleted_3: i64 = if let Some(row) = res3.next().await.map_err(neo4j_err)? {
             row.get("deleted").unwrap_or(0)
@@ -421,8 +426,7 @@ impl NHopMaterializer {
                 limit = self.config.max_edges_per_node,
             );
 
-            let q = query(&cypher)
-                .param("weight", self.config.two_hop_weight as f64);
+            let q = query(&cypher).param("weight", self.config.two_hop_weight as f64);
 
             let mut result = self.neo4j.execute(q).await.map_err(neo4j_err)?;
             if let Some(row) = result.next().await.map_err(neo4j_err)? {
@@ -440,7 +444,9 @@ impl NHopMaterializer {
     /// Creates MATERIALIZED_2HOP edges where the two hops may follow different
     /// relationship types from traverse_types.
     async fn materialize_2hop_cross_type(&self) -> Result<usize, NHopError> {
-        let types_literal = self.config.traverse_types
+        let types_literal = self
+            .config
+            .traverse_types
             .iter()
             .map(|t| format!("'{}'", t))
             .collect::<Vec<_>>()
@@ -464,8 +470,7 @@ impl NHopMaterializer {
             limit = self.config.max_edges_per_node,
         );
 
-        let q = query(&cypher)
-            .param("weight", self.config.two_hop_weight as f64);
+        let q = query(&cypher).param("weight", self.config.two_hop_weight as f64);
 
         let mut result = self.neo4j.execute(q).await.map_err(neo4j_err)?;
         if let Some(row) = result.next().await.map_err(neo4j_err)? {
@@ -495,8 +500,7 @@ impl NHopMaterializer {
             limit = self.config.max_edges_per_node,
         );
 
-        let q = query(&cypher)
-            .param("weight", self.config.three_hop_weight as f64);
+        let q = query(&cypher).param("weight", self.config.three_hop_weight as f64);
 
         let mut result = self.neo4j.execute(q).await.map_err(neo4j_err)?;
         if let Some(row) = result.next().await.map_err(neo4j_err)? {

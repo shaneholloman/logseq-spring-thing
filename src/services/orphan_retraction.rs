@@ -187,8 +187,7 @@ impl OrphanRetractionTask {
                     .inc_by(report.wikilinks_deleted);
             }
             if report.stubs_deleted > 0 {
-                prom.orphan_stubs_removed_total
-                    .inc_by(report.stubs_deleted);
+                prom.orphan_stubs_removed_total.inc_by(report.stubs_deleted);
             }
         }
 

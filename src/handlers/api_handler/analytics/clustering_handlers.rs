@@ -6,17 +6,16 @@ use uuid::Uuid;
 use crate::actors::messages::GetGraphData;
 use crate::services::agent_visualization_protocol::McpServerType;
 use crate::utils::mcp_tcp_client::create_mcp_client;
-use crate::{ok_json, not_found};
 use crate::AppState;
+use crate::{not_found, ok_json};
 
+use super::params_handlers::set_focus;
 use super::real_gpu_functions::*;
 use super::state::CLUSTERING_TASKS;
 use super::types::{
-    Cluster, ClusterFocusRequest, ClusteringParams, ClusteringRequest,
-    ClusteringResponse, ClusteringStatusResponse, ClusteringTask,
-    FocusRegion, SetFocusRequest,
+    Cluster, ClusterFocusRequest, ClusteringParams, ClusteringRequest, ClusteringResponse,
+    ClusteringStatusResponse, ClusteringTask, FocusRegion, SetFocusRequest,
 };
-use super::params_handlers::set_focus;
 
 pub async fn run_clustering(
     _auth: crate::settings::auth_extractor::AuthenticatedUser,
@@ -31,7 +30,6 @@ pub async fn run_clustering(
     let task_id = Uuid::new_v4().to_string();
     let method = request.method.clone();
 
-
     let task = ClusteringTask {
         task_id: task_id.clone(),
         method: method.clone(),
@@ -42,12 +40,10 @@ pub async fn run_clustering(
         error: None,
     };
 
-
     {
         let mut tasks = CLUSTERING_TASKS.lock().await;
         tasks.insert(task_id.clone(), task);
     }
-
 
     let app_state_clone = app_state.clone();
     let task_id_clone = task_id.clone();
@@ -141,7 +137,6 @@ pub async fn focus_cluster(
 ) -> Result<HttpResponse> {
     info!("Focusing on cluster: {}", request.cluster_id);
 
-
     let tasks = CLUSTERING_TASKS.lock().await;
     let cluster = tasks
         .values()
@@ -151,7 +146,6 @@ pub async fn focus_cluster(
         .cloned();
 
     if let Some(cluster) = cluster {
-
         if let Some(centroid) = cluster.centroid {
             let focus_request = SetFocusRequest {
                 node_id: None,
@@ -164,7 +158,6 @@ pub async fn focus_cluster(
                 radius: Some(request.zoom_level.unwrap_or(5.0)),
                 intensity: Some(1.0),
             };
-
 
             let focus_response = set_focus(auth, app_state, web::Json(focus_request)).await?;
             return Ok(focus_response);
@@ -249,7 +242,7 @@ pub async fn run_dbscan_clustering(
     let task_id = Uuid::new_v4().to_string();
 
     if let Some(gpu_manager) = app_state.gpu_manager_addr.as_ref() {
-        use crate::actors::messages::{RunDBSCAN, DBSCANParams};
+        use crate::actors::messages::{DBSCANParams, RunDBSCAN};
 
         let msg = RunDBSCAN {
             params: DBSCANParams {
@@ -336,14 +329,12 @@ pub(crate) async fn perform_clustering(
 ) -> Result<Vec<Cluster>, String> {
     info!("Performing real clustering analysis using MCP agent data");
 
-
     let graph_data = {
         match app_state.graph_service_addr.send(GetGraphData).await {
             Ok(Ok(data)) => data,
             _ => return Err("Failed to get graph data".to_string()),
         }
     };
-
 
     let host = std::env::var("MCP_HOST").unwrap_or_else(|_| "localhost".to_string());
     let port = std::env::var("MCP_TCP_PORT")
@@ -352,7 +343,6 @@ pub(crate) async fn perform_clustering(
         .unwrap_or(9500);
 
     let mcp_client = create_mcp_client(&McpServerType::ClaudeFlow, &host, port);
-
 
     let agents = match mcp_client.query_agent_list().await {
         Ok(agent_list) => {
@@ -370,7 +360,6 @@ pub(crate) async fn perform_clustering(
             Vec::new()
         }
     };
-
 
     let clusters = match request.method.as_str() {
         "spectral" => {
@@ -390,13 +379,11 @@ pub(crate) async fn perform_clustering(
         }
     };
 
-
     let mut tasks = CLUSTERING_TASKS.lock().await;
     if let Some(task) = tasks.get_mut(task_id) {
         task.progress = 0.5;
     }
     drop(tasks);
-
 
     let processing_time = std::cmp::min(agents.len() / 10, 5) as u64;
     tokio::time::sleep(tokio::time::Duration::from_secs(processing_time)).await;
@@ -463,7 +450,6 @@ pub(crate) fn generate_agent_based_clusters(
         method
     );
 
-
     let mut agent_type_groups: std::collections::HashMap<
         String,
         Vec<&crate::services::agent_visualization_protocol::MultiMcpAgentStatus>,
@@ -483,12 +469,10 @@ pub(crate) fn generate_agent_based_clusters(
     let mut clusters = Vec::new();
     let mut cluster_id = 0;
 
-
     for (agent_type, type_agents) in agent_type_groups {
         if cluster_id >= num_clusters {
             break;
         }
-
 
         let _avg_cpu = type_agents
             .iter()
@@ -510,14 +494,12 @@ pub(crate) fn generate_agent_based_clusters(
             .map(|a| a.performance.tasks_completed)
             .sum::<u32>();
 
-
         let cluster_nodes: Vec<u32> = type_agents
             .iter()
             .enumerate()
             .map(|(idx, _)| cluster_id * 100 + idx as u32)
             .take(graph_data.nodes.len() / num_clusters as usize)
             .collect();
-
 
         let centroid = if !cluster_nodes.is_empty() && !graph_data.nodes.is_empty() {
             let node_subset: Vec<_> = cluster_nodes
@@ -537,7 +519,6 @@ pub(crate) fn generate_agent_based_clusters(
         } else {
             None
         };
-
 
         let keywords: Vec<String> = type_agents
             .iter()
@@ -564,7 +545,6 @@ pub(crate) fn generate_agent_based_clusters(
 
         cluster_id += 1;
     }
-
 
     while clusters.len() < num_clusters as usize && cluster_id < num_clusters {
         clusters.push(Cluster {

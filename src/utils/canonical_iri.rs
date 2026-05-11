@@ -63,7 +63,8 @@ pub fn canonical_iri(
 pub fn encode_npub(pubkey_hex: &str) -> Result<String, CanonicalIriError> {
     let pk = PublicKey::from_hex(pubkey_hex)
         .map_err(|e| CanonicalIriError::InvalidPubkey(e.to_string()))?;
-    pk.to_bech32().map_err(|e| CanonicalIriError::Bech32(e.to_string()))
+    pk.to_bech32()
+        .map_err(|e| CanonicalIriError::Bech32(e.to_string()))
 }
 
 /// Lowercase hex SHA-256 of the given bytes. Separate function so callers and

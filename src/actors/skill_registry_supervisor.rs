@@ -171,11 +171,7 @@ impl Handler<AttachBenchmark> for SkillRegistrySupervisor {
 impl Handler<TriggerConfigChangeScan> for SkillRegistrySupervisor {
     type Result = ResponseFuture<usize>;
 
-    fn handle(
-        &mut self,
-        msg: TriggerConfigChangeScan,
-        _ctx: &mut Self::Context,
-    ) -> Self::Result {
+    fn handle(&mut self, msg: TriggerConfigChangeScan, _ctx: &mut Self::Context) -> Self::Result {
         let ids: Vec<String> = self.packages.keys().cloned().collect();
         let scanner = self.scanner.clone();
         Box::pin(async move {

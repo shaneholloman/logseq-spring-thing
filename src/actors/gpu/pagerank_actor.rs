@@ -139,10 +139,7 @@ impl PageRankActor {
 
     /// Perform PageRank computation on GPU
     #[allow(dead_code)]
-    async fn compute_pagerank(
-        &mut self,
-        params: PageRankParams,
-    ) -> Result<PageRankResult, String> {
+    async fn compute_pagerank(&mut self, params: PageRankParams) -> Result<PageRankResult, String> {
         info!("PageRankActor: Starting PageRank computation");
 
         let mut unified_compute = match &self.shared_context {
@@ -279,7 +276,8 @@ impl PageRankActor {
             .collect();
 
         // Sort by PageRank descending
-        nodes_with_values.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        nodes_with_values
+            .sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
 
         // Take top K
         nodes_with_values
@@ -337,8 +335,7 @@ impl Handler<ComputePageRank> for PageRankActor {
             Some(ctx) => Arc::clone(ctx),
             None => {
                 return Box::pin(
-                    async { Err("GPU context not initialized".to_string()) }
-                        .into_actor(self)
+                    async { Err("GPU context not initialized".to_string()) }.into_actor(self),
                 );
             }
         };
@@ -386,8 +383,15 @@ impl Handler<ComputePageRank> for PageRankActor {
                 let (pagerank_values, iterations, converged, convergence_value) = gpu_result;
                 let iterations = iterations as u32;
 
-                Ok((pagerank_values, iterations, converged, convergence_value, computation_time))
-            }).await;
+                Ok((
+                    pagerank_values,
+                    iterations,
+                    converged,
+                    convergence_value,
+                    computation_time,
+                ))
+            })
+            .await;
 
             // Handle spawn_blocking join result
             match blocking_result {
@@ -397,42 +401,44 @@ impl Handler<ComputePageRank> for PageRankActor {
         };
 
         // Use into_actor to re-enter actor context and finish processing
-        Box::pin(
-            future
-                .into_actor(self)
-                .map(|result, actor, _ctx| {
-                    match result {
-                        Ok((pagerank_values, iterations, converged, convergence_value, computation_time)) => {
-                            // Compute statistics in actor context
-                            let stats = actor.calculate_statistics(
-                                &pagerank_values,
-                                iterations,
-                                converged,
-                                computation_time.as_millis() as u64,
-                            );
+        Box::pin(future.into_actor(self).map(|result, actor, _ctx| {
+            match result {
+                Ok((
+                    pagerank_values,
+                    iterations,
+                    converged,
+                    convergence_value,
+                    computation_time,
+                )) => {
+                    // Compute statistics in actor context
+                    let stats = actor.calculate_statistics(
+                        &pagerank_values,
+                        iterations,
+                        converged,
+                        computation_time.as_millis() as u64,
+                    );
 
-                            // Extract top K nodes (top 10 by default)
-                            let top_nodes = actor.extract_top_nodes(&pagerank_values, 10);
+                    // Extract top K nodes (top 10 by default)
+                    let top_nodes = actor.extract_top_nodes(&pagerank_values, 10);
 
-                            let result = PageRankResult {
-                                pagerank_values,
-                                iterations,
-                                converged,
-                                convergence_value,
-                                top_nodes,
-                                stats,
-                            };
+                    let result = PageRankResult {
+                        pagerank_values,
+                        iterations,
+                        converged,
+                        convergence_value,
+                        top_nodes,
+                        stats,
+                    };
 
-                            // Cache the result
-                            actor.last_result = Some(result.clone());
-                            actor.gpu_state.record_utilization(0.8);
+                    // Cache the result
+                    actor.last_result = Some(result.clone());
+                    actor.gpu_state.record_utilization(0.8);
 
-                            Ok(result)
-                        }
-                        Err(e) => Err(e),
-                    }
-                })
-        )
+                    Ok(result)
+                }
+                Err(e) => Err(e),
+            }
+        }))
     }
 }
 

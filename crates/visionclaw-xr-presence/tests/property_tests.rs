@@ -37,10 +37,8 @@ fn arb_unit_quat() -> impl Strategy<Value = [f32; 4]> {
 }
 
 fn arb_transform(extent: f32) -> impl Strategy<Value = Transform> {
-    (arb_position(extent), arb_unit_quat()).prop_map(|(position, rotation)| Transform {
-        position,
-        rotation,
-    })
+    (arb_position(extent), arb_unit_quat())
+        .prop_map(|(position, rotation)| Transform { position, rotation })
 }
 
 fn arb_pose_frame(extent: f32) -> impl Strategy<Value = PoseFrame> {
@@ -59,8 +57,7 @@ fn arb_pose_frame(extent: f32) -> impl Strategy<Value = PoseFrame> {
 }
 
 fn fixed_room() -> RoomId {
-    RoomId::parse("urn:visionclaw:room:sha256-12-cafef00d1234")
-        .expect("fixed room URN must parse")
+    RoomId::parse("urn:visionclaw:room:sha256-12-cafef00d1234").expect("fixed room URN must parse")
 }
 
 fn fixed_avatar() -> AvatarId {

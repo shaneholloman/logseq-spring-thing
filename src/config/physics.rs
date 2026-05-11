@@ -8,13 +8,25 @@ fn default_auto_balance_interval() -> u32 {
     500
 }
 
-fn default_lin_log_mode() -> bool { true }
-fn default_scaling_ratio() -> f32 { 10.0 }
-fn default_adaptive_speed() -> bool { true }
+fn default_lin_log_mode() -> bool {
+    true
+}
+fn default_scaling_ratio() -> f32 {
+    10.0
+}
+fn default_adaptive_speed() -> bool {
+    true
+}
 
-fn default_physicality_strength() -> f32 { 0.40 }
-fn default_role_strength() -> f32 { 0.30 }
-fn default_maturity_strength() -> f32 { 0.15 }
+fn default_physicality_strength() -> f32 {
+    0.40
+}
+fn default_role_strength() -> f32 {
+    0.30
+}
+fn default_maturity_strength() -> f32 {
+    0.15
+}
 
 fn default_constraint_ramp_frames() -> u32 {
     60
@@ -93,7 +105,6 @@ pub struct AutoBalanceConfig {
     #[serde(alias = "min_oscillation_changes")]
     pub min_oscillation_changes: usize,
 
-
     #[serde(alias = "parameter_adjustment_rate")]
     pub parameter_adjustment_rate: f32,
     #[serde(alias = "max_adjustment_factor")]
@@ -108,7 +119,6 @@ pub struct AutoBalanceConfig {
     pub parameter_dampening_factor: f32,
     #[serde(alias = "hysteresis_delay_frames")]
     pub hysteresis_delay_frames: u32,
-
 
     #[serde(alias = "grid_cell_size_min")]
     pub grid_cell_size_min: f32,
@@ -126,7 +136,6 @@ pub struct AutoBalanceConfig {
     pub center_gravity_min: f32,
     #[serde(alias = "center_gravity_max")]
     pub center_gravity_max: f32,
-
 
     #[serde(alias = "spatial_hash_efficiency_threshold")]
     pub spatial_hash_efficiency_threshold: f32,
@@ -154,7 +163,6 @@ impl AutoBalanceConfig {
             oscillation_change_threshold: 10.0,
             min_oscillation_changes: 8,
 
-
             parameter_adjustment_rate: 0.1,
             max_adjustment_factor: 0.2,
             min_adjustment_factor: -0.2,
@@ -162,7 +170,6 @@ impl AutoBalanceConfig {
             state_change_cooldown_ms: 1000,
             parameter_dampening_factor: 0.05,
             hysteresis_delay_frames: 30,
-
 
             grid_cell_size_min: 1.0,
             grid_cell_size_max: 50.0,
@@ -172,7 +179,6 @@ impl AutoBalanceConfig {
             repulsion_softening_max: 1.0,
             center_gravity_min: 0.0,
             center_gravity_max: 0.1,
-
 
             spatial_hash_efficiency_threshold: 0.3,
             cluster_density_threshold: 50.0,
@@ -235,7 +241,6 @@ pub struct PhysicsSettings {
     #[serde(alias = "compute_mode")]
     pub compute_mode: i32,
 
-
     #[serde(alias = "rest_length")]
     pub rest_length: f32,
     #[serde(alias = "repulsion_cutoff")]
@@ -266,7 +271,6 @@ pub struct PhysicsSettings {
     #[serde(alias = "boundary_force_strength")]
     pub boundary_force_strength: f32,
 
-
     #[serde(
         alias = "constraint_ramp_frames",
         default = "default_constraint_ramp_frames"
@@ -277,7 +281,6 @@ pub struct PhysicsSettings {
         default = "default_constraint_max_force_per_node"
     )]
     pub constraint_max_force_per_node: f32,
-
 
     #[serde(alias = "clustering_algorithm")]
     pub clustering_algorithm: String,
@@ -315,7 +318,10 @@ pub struct PhysicsSettings {
     /// Semantic force strength for physicality clustering (OWL physicality codes).
     /// Nodes with the same physicality code attract; disparate codes repel.
     /// 0.0 = disabled, 1.0 = maximum. Default 0.40.
-    #[serde(default = "default_physicality_strength", alias = "physicality_strength")]
+    #[serde(
+        default = "default_physicality_strength",
+        alias = "physicality_strength"
+    )]
     pub physicality_strength: f32,
 
     /// Semantic force strength for role clustering (OWL role codes).

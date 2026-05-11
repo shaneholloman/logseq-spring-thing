@@ -8,8 +8,8 @@
 // assert against `KGNodeDraft` as emitted by the parser today.
 
 use webxr::services::parsers::knowledge_graph_parser::{
-    canonical_iri, deterministic_id_from_iri, pod_url_for, resolve_wikilink_to_iri,
-    slugify_title, FileBundle, KnowledgeGraphParser,
+    canonical_iri, deterministic_id_from_iri, pod_url_for, resolve_wikilink_to_iri, slugify_title,
+    FileBundle, KnowledgeGraphParser,
 };
 use webxr::services::parsers::visibility::{classify_visibility, Visibility};
 
@@ -85,7 +85,11 @@ fn deterministic_id_is_nonzero_and_no_bit29() {
     let iri = canonical_iri(OWNER, "pages/demo.md");
     let id = deterministic_id_from_iri(&iri);
     assert_ne!(id, 0, "id must never be the 0 sentinel");
-    assert_eq!(id & 0x2000_0000, 0, "bit 29 is reserved for on-wire opacity");
+    assert_eq!(
+        id & 0x2000_0000,
+        0,
+        "bit 29 is reserved for on-wire opacity"
+    );
 }
 
 #[test]
@@ -169,11 +173,7 @@ fn parse_bundle_private_page_is_private_but_keeps_label() {
     // A page the owner can still see — has its real label, but the
     // schema fields say private. Opacification is the projection
     // layer's job (per ADR-050); the parser just classifies.
-    let file = FileBundle::new(
-        "Beta.md",
-        "pages/Beta.md",
-        "title:: Beta\n\n- body\n",
-    );
+    let file = FileBundle::new("Beta.md", "pages/Beta.md", "title:: Beta\n\n- body\n");
     let out = parser().parse_bundle(&[file]).expect("parse ok");
     assert_eq!(out.nodes.len(), 1);
     let n = &out.nodes[0];
@@ -213,11 +213,7 @@ fn wikilink_to_known_public_page_does_not_duplicate() {
         "pages/Alpha.md",
         "public:: true\ntitle:: Alpha\n\n- see [[Beta]]\n",
     );
-    let b = FileBundle::new(
-        "Beta.md",
-        "pages/Beta.md",
-        "public:: true\ntitle:: Beta\n",
-    );
+    let b = FileBundle::new("Beta.md", "pages/Beta.md", "public:: true\ntitle:: Beta\n");
     let out = parser().parse_bundle(&[a, b]).expect("parse ok");
 
     assert_eq!(out.nodes.len(), 2, "two pages, no duplicate");

@@ -27,12 +27,12 @@
 //! an additional grace window so in-flight client sessions don't break at the
 //! rotation boundary.
 
+use chrono::{DateTime, Utc};
 use hmac::{Hmac, Mac};
 use sha2::Sha256;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::RwLock;
-use chrono::{DateTime, Utc};
 
 use sha2::Digest;
 
@@ -123,7 +123,11 @@ impl SessionSalt {
             + chrono::Duration::from_std(SALT_ROTATION_INTERVAL + SALT_GRACE_WINDOW)
                 .unwrap_or(chrono::Duration::hours(48));
         let mut prev_w = self.previous.write().await;
-        *prev_w = if Utc::now() < keep_until { Some(old) } else { None };
+        *prev_w = if Utc::now() < keep_until {
+            Some(old)
+        } else {
+            None
+        };
     }
 
     /// Spawn the background rotation task. Returns the `JoinHandle` so the
@@ -164,8 +168,7 @@ fn derive_salt(seed: &[u8], at: DateTime<Utc>) -> Vec<u8> {
 /// but cheap, and keeps the id comfortably below the JS `Number` safe range
 /// if the client ever parses it as an integer.
 pub fn opaque_id(salt: &[u8], owner_pubkey: &str, canonical_iri: &str) -> String {
-    let mut mac = HmacSha256::new_from_slice(salt)
-        .expect("HMAC-SHA256 accepts keys of any length");
+    let mut mac = HmacSha256::new_from_slice(salt).expect("HMAC-SHA256 accepts keys of any length");
     mac.update(owner_pubkey.as_bytes());
     mac.update(b"|");
     mac.update(canonical_iri.as_bytes());
@@ -199,7 +202,9 @@ mod tests {
     fn opaque_id_has_correct_shape() {
         let id = opaque_id(b"salt-0123456789ab", OWNER, IRI);
         assert_eq!(id.len(), 24);
-        assert!(id.chars().all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase()));
+        assert!(id
+            .chars()
+            .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase()));
     }
 
     #[test]
@@ -229,7 +234,11 @@ mod tests {
     fn opaque_id_changes_for_different_owner() {
         let salt = b"salt-xx-1234567890abcd";
         let a = opaque_id(salt, OWNER, IRI);
-        let b = opaque_id(salt, "0000000000000000000000000000000000000000000000000000000000000001", IRI);
+        let b = opaque_id(
+            salt,
+            "0000000000000000000000000000000000000000000000000000000000000001",
+            IRI,
+        );
         assert_ne!(a, b);
     }
 
@@ -242,8 +251,10 @@ mod tests {
         let attacker_salt = b"attackers-guess-salt-XYZ";
         let real = opaque_id(secret_salt, OWNER, IRI);
         let guess = opaque_id(attacker_salt, OWNER, IRI);
-        assert_ne!(real, guess,
-            "HMAC output must depend on the salt; two salts must not collide");
+        assert_ne!(
+            real, guess,
+            "HMAC output must depend on the salt; two salts must not collide"
+        );
     }
 
     #[test]
@@ -255,7 +266,10 @@ mod tests {
             let before = s.current_salt().await;
             // Derive a salt based on a later day and inject manually so the
             // test doesn't depend on wall-clock.
-            let future_salt = derive_salt(b"seed-for-rotation-test-000000", Utc::now() + chrono::Duration::days(2));
+            let future_salt = derive_salt(
+                b"seed-for-rotation-test-000000",
+                Utc::now() + chrono::Duration::days(2),
+            );
             {
                 let mut cur_w = s.current.write().await;
                 cur_w.salt = future_salt.clone();

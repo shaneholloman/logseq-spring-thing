@@ -36,10 +36,7 @@ use crate::AppState;
 /// Check whether a pubkey is known to the system. The server's own Nostr
 /// identity is always considered "known"; for other pubkeys we probe Neo4j
 /// for any node whose owner matches `did:nostr:<pubkey>`.
-async fn pubkey_exists(
-    neo4j: &Neo4jAdapter,
-    pubkey_hex: &str,
-) -> bool {
+async fn pubkey_exists(neo4j: &Neo4jAdapter, pubkey_hex: &str) -> bool {
     let cypher = "MATCH (n) WHERE n.owner = $owner RETURN n LIMIT 1";
     let did_uri = format!("did:nostr:{}", pubkey_hex);
     let q = neo4rs::Query::new(cypher.to_string()).param("owner", did_uri);
@@ -71,9 +68,7 @@ pub async fn get_did_document(
     let raw_pubkey = path.into_inner();
 
     // Strip the `.json` suffix if present (the route captures it as part of {pubkey}).
-    let pubkey = raw_pubkey
-        .strip_suffix(".json")
-        .unwrap_or(&raw_pubkey);
+    let pubkey = raw_pubkey.strip_suffix(".json").unwrap_or(&raw_pubkey);
 
     // Validate: must be 64-char hex.
     let pubkey_lower = pubkey.to_lowercase();

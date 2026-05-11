@@ -35,10 +35,8 @@ pub fn json_to_bolt(value: JsonValue) -> BoltType {
         }
         JsonValue::Object(obj) => {
             // HashMap<String, BoltType> automatically converts to BoltType::Map via From trait
-            let map: HashMap<String, BoltType> = obj
-                .into_iter()
-                .map(|(k, v)| (k, json_to_bolt(v)))
-                .collect();
+            let map: HashMap<String, BoltType> =
+                obj.into_iter().map(|(k, v)| (k, json_to_bolt(v))).collect();
             BoltType::from(map)
         }
     }

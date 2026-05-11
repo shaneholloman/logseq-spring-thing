@@ -462,7 +462,10 @@ mod tests {
         assert_eq!(case.category, CaseCategory::KnowledgeEnrichment);
         assert_eq!(case.subject.kind, SubjectKind::Opaque);
         assert_eq!(case.priority, 75);
-        assert_eq!(case.title, "embedding_update on urn:visionclaw:concept:test");
+        assert_eq!(
+            case.title,
+            "embedding_update on urn:visionclaw:concept:test"
+        );
         assert!(case.summary.contains("did:nostr:1234"));
         assert_eq!(case.metadata.get("content").unwrap(), "test content");
         assert_eq!(case.metadata.get("commit_subject").unwrap(), "feat: test");

@@ -34,21 +34,20 @@ use crate::models::{
 
 #[derive(Debug, Clone)]
 pub struct StressMajorizationConfig {
-    
     pub max_iterations: u32,
-    
+
     pub tolerance: f32,
-    
+
     pub step_size: f32,
-    
+
     pub adaptive_step: bool,
-    
+
     pub constraint_weight: f32,
-    
+
     pub use_gpu: bool,
-    
+
     pub min_improvement: f32,
-    
+
     pub convergence_check_interval: u32,
 }
 
@@ -69,15 +68,14 @@ impl Default for StressMajorizationConfig {
 
 #[derive(Debug, Clone)]
 pub struct OptimizationResult {
-    
     pub final_stress: f32,
-    
+
     pub iterations: u32,
-    
+
     pub converged: bool,
-    
+
     pub constraint_scores: HashMap<ConstraintKind, f32>,
-    
+
     pub computation_time: u64,
 }
 
@@ -93,7 +91,7 @@ impl Clone for StressMajorizationSolver {
     fn clone(&self) -> Self {
         Self {
             config: self.config.clone(),
-            _gpu_context: self._gpu_context.clone(), 
+            _gpu_context: self._gpu_context.clone(),
             cached_distance_matrix: self.cached_distance_matrix.clone(),
             cached_weight_matrix: self.cached_weight_matrix.clone(),
             iteration_history: self.iteration_history.clone(),
@@ -102,12 +100,10 @@ impl Clone for StressMajorizationSolver {
 }
 
 impl StressMajorizationSolver {
-    
     pub fn new() -> Self {
         Self::with_config(StressMajorizationConfig::default())
     }
 
-    
     pub fn with_config(config: StressMajorizationConfig) -> Self {
         let gpu_context = if config.use_gpu {
             match Self::initialize_gpu() {
@@ -130,7 +126,6 @@ impl StressMajorizationSolver {
         }
     }
 
-    
     pub fn from_advanced_params(params: &AdvancedParams) -> Self {
         let config = StressMajorizationConfig {
             max_iterations: params.stress_step_interval_frames * 10,
@@ -144,7 +139,6 @@ impl StressMajorizationSolver {
         Self::with_config(config)
     }
 
-    
     fn initialize_gpu() -> Result<Arc<CudaDevice>, Box<dyn std::error::Error>> {
         info!("Initializing GPU device for stress majorization");
         let device = CudaDevice::new(0)?;
@@ -152,7 +146,6 @@ impl StressMajorizationSolver {
         Ok(device)
     }
 
-    
     /// Maximum number of nodes for which a dense (N x N) matrix is allocated.
     /// At 10,000 nodes the distance + weight matrices consume ~800 MB of f32
     /// storage (2 x 10000^2 x 4 bytes). Beyond this threshold the solver
@@ -200,7 +193,6 @@ impl StressMajorizationSolver {
         self.compute_distance_matrix(graph_data)?;
         self.compute_weight_matrix(graph_data)?;
 
-        
         self.initialize_positions(graph_data)?;
 
         let mut best_stress = f32::INFINITY;
@@ -213,22 +205,17 @@ impl StressMajorizationSolver {
             constraints.constraints.len()
         );
 
-        
         while iterations < self.config.max_iterations && !converged {
-            
             let current_stress = self.compute_stress(&current_positions, graph_data)?;
 
-            
             if current_stress < best_stress {
                 best_stress = current_stress;
                 self.apply_positions(graph_data, &current_positions)?;
             }
 
-            
             let gradient = self.compute_gradient(&current_positions, graph_data, constraints)?;
             let new_positions = self.update_positions(&current_positions, &gradient)?;
 
-            
             if iterations % self.config.convergence_check_interval == 0 {
                 let improvement = (best_stress - current_stress) / best_stress.max(1e-10);
                 converged = improvement < self.config.tolerance;
@@ -246,10 +233,8 @@ impl StressMajorizationSolver {
             self.iteration_history.push(current_stress);
         }
 
-        
         self.apply_positions(graph_data, &current_positions)?;
 
-        
         let constraint_scores = self.compute_constraint_scores(graph_data, constraints)?;
 
         let result = OptimizationResult {
@@ -268,7 +253,6 @@ impl StressMajorizationSolver {
         Ok(result)
     }
 
-    
     fn compute_distance_matrix(
         &mut self,
         graph_data: &GraphData,
@@ -276,14 +260,11 @@ impl StressMajorizationSolver {
         let n = graph_data.nodes.len();
         let mut distance_matrix = DMatrix::zeros(n, n);
 
-        
-        
         for (i, node_a) in graph_data.nodes.iter().enumerate() {
             for (j, node_b) in graph_data.nodes.iter().enumerate() {
                 if i == j {
                     distance_matrix[(i, j)] = 0.0;
                 } else {
-                    
                     let direct_distance = graph_data
                         .edges
                         .iter()
@@ -291,7 +272,7 @@ impl StressMajorizationSolver {
                             (edge.source == node_a.id && edge.target == node_b.id)
                                 || (edge.source == node_b.id && edge.target == node_a.id)
                         })
-                        .map(|_| 1.0) 
+                        .map(|_| 1.0)
                         .unwrap_or(f32::INFINITY);
 
                     distance_matrix[(i, j)] = direct_distance;
@@ -299,10 +280,8 @@ impl StressMajorizationSolver {
             }
         }
 
-        
-        
         let num_landmarks = (n as f32).sqrt().ceil() as usize;
-        let num_landmarks = num_landmarks.min(n).max(10); 
+        let num_landmarks = num_landmarks.min(n).max(10);
 
         let mut landmarks = Vec::new();
         let stride = n / num_landmarks;
@@ -310,14 +289,11 @@ impl StressMajorizationSolver {
             landmarks.push(i * stride);
         }
 
-        
         let mut landmark_distances = vec![vec![f32::INFINITY; n]; num_landmarks];
         for (k_idx, &landmark) in landmarks.iter().enumerate() {
-            
             let mut dist = vec![f32::INFINITY; n];
             dist[landmark] = 0.0;
 
-            
             let mut queue = std::collections::VecDeque::new();
             queue.push_back(landmark);
 
@@ -336,7 +312,6 @@ impl StressMajorizationSolver {
             landmark_distances[k_idx] = dist;
         }
 
-        
         for i in 0..n {
             for j in 0..n {
                 if i != j {
@@ -348,7 +323,7 @@ impl StressMajorizationSolver {
                             min_dist = min_dist.min(dist_ki + dist_kj);
                         }
                     }
-                    
+
                     if min_dist < distance_matrix[(i, j)] {
                         distance_matrix[(i, j)] = min_dist;
                     }
@@ -356,11 +331,10 @@ impl StressMajorizationSolver {
             }
         }
 
-        
         for i in 0..n {
             for j in 0..n {
                 if distance_matrix[(i, j)].is_infinite() {
-                    distance_matrix[(i, j)] = (n as f32) * 2.0; 
+                    distance_matrix[(i, j)] = (n as f32) * 2.0;
                 }
             }
         }
@@ -370,7 +344,6 @@ impl StressMajorizationSolver {
         Ok(())
     }
 
-    
     fn compute_weight_matrix(
         &mut self,
         graph_data: &GraphData,
@@ -383,7 +356,6 @@ impl StressMajorizationSolver {
         let n = graph_data.nodes.len();
         let mut weight_matrix = DMatrix::zeros(n, n);
 
-        
         for i in 0..n {
             for j in 0..n {
                 if i != j {
@@ -400,7 +372,6 @@ impl StressMajorizationSolver {
         Ok(())
     }
 
-    
     fn initialize_positions(
         &self,
         graph_data: &mut GraphData,
@@ -408,12 +379,10 @@ impl StressMajorizationSolver {
         let mut rng = rand::thread_rng();
 
         for node in &mut graph_data.nodes {
-            
             if node.data.x.abs() < f32::EPSILON
                 && node.data.y.abs() < f32::EPSILON
                 && node.data.z.abs() < f32::EPSILON
             {
-                
                 use rand::Rng;
                 let theta = rng.gen_range(0.0..2.0 * std::f32::consts::PI);
                 let phi = rng.gen_range(0.0..std::f32::consts::PI);
@@ -429,7 +398,6 @@ impl StressMajorizationSolver {
         Ok(())
     }
 
-    
     fn extract_positions(&self, graph_data: &GraphData) -> DMatrix<f32> {
         let n = graph_data.nodes.len();
         let mut positions = DMatrix::zeros(n, 3);
@@ -443,7 +411,6 @@ impl StressMajorizationSolver {
         positions
     }
 
-    
     fn apply_positions(
         &self,
         graph_data: &mut GraphData,
@@ -462,7 +429,6 @@ impl StressMajorizationSolver {
         Ok(())
     }
 
-    
     fn compute_stress(
         &self,
         positions: &DMatrix<f32>,
@@ -537,7 +503,6 @@ impl StressMajorizationSolver {
         Ok(stress)
     }
 
-    
     fn compute_gradient(
         &self,
         positions: &DMatrix<f32>,
@@ -653,7 +618,6 @@ impl StressMajorizationSolver {
             gradient[(i, 2)] += grad_z;
         }
 
-        
         for constraint in constraints.active_constraints() {
             self.add_constraint_gradient(&mut gradient, positions, constraint)?;
         }
@@ -661,7 +625,6 @@ impl StressMajorizationSolver {
         Ok(gradient)
     }
 
-    
     fn add_constraint_gradient(
         &self,
         gradient: &mut DMatrix<f32>,
@@ -729,7 +692,6 @@ impl StressMajorizationSolver {
                     let strength = constraint.params[1];
                     let weight = constraint.weight * self.config.constraint_weight * strength;
 
-                    
                     let mut centroid = [0.0f32; 3];
                     let mut valid_nodes = 0;
 
@@ -748,7 +710,6 @@ impl StressMajorizationSolver {
                             centroid[dim] /= valid_nodes as f32;
                         }
 
-                        
                         for &node_idx in &constraint.node_indices {
                             if node_idx < positions.nrows() as u32 {
                                 let node_idx = node_idx as usize;
@@ -763,7 +724,6 @@ impl StressMajorizationSolver {
             }
 
             _ => {
-                
                 debug!(
                     "Constraint type {:?} not yet implemented in gradient computation",
                     constraint.kind
@@ -774,7 +734,6 @@ impl StressMajorizationSolver {
         Ok(())
     }
 
-    
     fn update_positions(
         &self,
         positions: &DMatrix<f32>,
@@ -792,7 +751,6 @@ impl StressMajorizationSolver {
         Ok(new_positions)
     }
 
-    
     fn euclidean_distance(&self, positions: &DMatrix<f32>, i: usize, j: usize) -> f32 {
         let mut sum = 0.0;
         for dim in 0..3 {
@@ -802,7 +760,6 @@ impl StressMajorizationSolver {
         sum.sqrt()
     }
 
-    
     fn compute_constraint_scores(
         &self,
         graph_data: &GraphData,
@@ -821,7 +778,7 @@ impl StressMajorizationSolver {
                     self.score_alignment_horizontal(&positions, constraint)?
                 }
                 ConstraintKind::Clustering => self.score_clustering(&positions, constraint)?,
-                _ => 0.5, 
+                _ => 0.5,
             };
 
             scores
@@ -833,7 +790,6 @@ impl StressMajorizationSolver {
         Ok(scores)
     }
 
-    
     fn score_fixed_position(
         &self,
         positions: &DMatrix<f32>,
@@ -847,14 +803,12 @@ impl StressMajorizationSolver {
                     + (positions[(node_idx, 2)] - constraint.params[2]).powi(2))
                 .sqrt();
 
-                
                 return Ok((1.0 / (1.0 + distance / 10.0)).max(0.0).min(1.0));
             }
         }
         Ok(0.0)
     }
 
-    
     fn score_separation(
         &self,
         positions: &DMatrix<f32>,
@@ -877,7 +831,6 @@ impl StressMajorizationSolver {
         Ok(0.0)
     }
 
-    
     fn score_alignment_horizontal(
         &self,
         positions: &DMatrix<f32>,
@@ -904,14 +857,12 @@ impl StressMajorizationSolver {
         Ok(0.0)
     }
 
-    
     fn score_clustering(
         &self,
         positions: &DMatrix<f32>,
         constraint: &Constraint,
     ) -> Result<f32, Box<dyn std::error::Error>> {
         if constraint.node_indices.len() > 1 {
-            
             let mut total_distance = 0.0;
             let mut count = 0;
 
@@ -929,19 +880,17 @@ impl StressMajorizationSolver {
 
             if count > 0 {
                 let avg_distance = total_distance / count as f32;
-                
+
                 return Ok((1.0 / (1.0 + avg_distance / 50.0)).max(0.0).min(1.0));
             }
         }
         Ok(0.0)
     }
 
-    
     pub fn get_iteration_history(&self) -> &[f32] {
         &self.iteration_history
     }
 
-    
     pub fn clear_cache(&mut self) {
         self.cached_distance_matrix = None;
         self.cached_weight_matrix = None;
@@ -949,7 +898,6 @@ impl StressMajorizationSolver {
         trace!("Cleared stress majorization cache");
     }
 
-    
     pub fn update_config(&mut self, config: StressMajorizationConfig) {
         self.config = config;
         info!("Updated stress majorization configuration");
@@ -980,7 +928,6 @@ mod tests {
             id_to_metadata: std::collections::HashMap::new(),
         };
 
-        
         graph.nodes[0].data.x = 0.0;
         graph.nodes[0].data.y = 0.0;
         graph.nodes[0].data.z = 0.0;
@@ -1011,11 +958,13 @@ mod tests {
         solver.compute_distance_matrix(&graph).unwrap();
         assert!(solver.cached_distance_matrix.is_some());
 
-        let distance_matrix = solver.cached_distance_matrix.as_ref().expect("Expected value to be present");
+        let distance_matrix = solver
+            .cached_distance_matrix
+            .as_ref()
+            .expect("Expected value to be present");
         assert_eq!(distance_matrix.nrows(), 3);
         assert_eq!(distance_matrix.ncols(), 3);
 
-        
         for i in 0..3 {
             assert_eq!(distance_matrix[(i, i)], 0.0);
         }
@@ -1032,7 +981,6 @@ mod tests {
         assert_eq!(positions[(0, 0)], 0.0);
         assert_eq!(positions[(1, 0)], 100.0);
 
-        
         let mut new_positions = positions.clone();
         new_positions[(0, 0)] = 50.0;
 
@@ -1046,7 +994,6 @@ mod tests {
         let graph = create_test_graph();
         let mut constraint_set = ConstraintSet::default();
 
-        
         constraint_set.add(Constraint::separation(1, 2, 50.0));
 
         let scores = solver

@@ -60,12 +60,14 @@ impl NostrBeadPublisher {
                 return None;
             }
         };
-        let relay_url = std::env::var("JSS_RELAY_URL")
-            .unwrap_or_else(|_| "ws://jss:3030/relay".to_string());
+        let relay_url =
+            std::env::var("JSS_RELAY_URL").unwrap_or_else(|_| "ws://jss:3030/relay".to_string());
 
         // Validate relay URL scheme to prevent SSRF via env var injection.
         if !relay_url.starts_with("ws://") && !relay_url.starts_with("wss://") {
-            error!("[NostrBeadPublisher] JSS_RELAY_URL must start with ws:// or wss://: {relay_url}");
+            error!(
+                "[NostrBeadPublisher] JSS_RELAY_URL must start with ws:// or wss://: {relay_url}"
+            );
             return None;
         }
 
@@ -106,11 +108,20 @@ impl NostrBeadPublisher {
         debrief_path: &str,
     ) -> BeadOutcome {
         let mut tags = vec![
-            Tag::custom(TagKind::Custom("h".into()), vec!["visionclaw-activity".to_string()]),
+            Tag::custom(
+                TagKind::Custom("h".into()),
+                vec!["visionclaw-activity".to_string()],
+            ),
             Tag::custom(TagKind::Custom("d".into()), vec![bead_id.to_string()]),
             Tag::custom(TagKind::Custom("bead_id".into()), vec![bead_id.to_string()]),
-            Tag::custom(TagKind::Custom("brief_id".into()), vec![brief_id.to_string()]),
-            Tag::custom(TagKind::Custom("debrief_path".into()), vec![debrief_path.to_string()]),
+            Tag::custom(
+                TagKind::Custom("brief_id".into()),
+                vec![brief_id.to_string()],
+            ),
+            Tag::custom(
+                TagKind::Custom("debrief_path".into()),
+                vec![debrief_path.to_string()],
+            ),
         ];
 
         if let Some(pk) = user_pubkey {
@@ -135,9 +146,15 @@ impl NostrBeadPublisher {
         let outcome = self.send_with_retry(&event).await;
 
         if outcome.is_success() {
-            debug!("[NostrBeadPublisher] Published bead {bead_id} (event {})", event.id);
+            debug!(
+                "[NostrBeadPublisher] Published bead {bead_id} (event {})",
+                event.id
+            );
             if let Some(ref graph) = self.neo4j {
-                if let Err(e) = self.write_provenance(graph, &event, bead_id, brief_id, debrief_path).await {
+                if let Err(e) = self
+                    .write_provenance(graph, &event, bead_id, brief_id, debrief_path)
+                    .await
+                {
                     warn!("[NostrBeadPublisher] Neo4j provenance write failed for bead {bead_id}: {e}");
                     return BeadOutcome::Neo4jWriteFailed { error: e };
                 }
@@ -227,7 +244,7 @@ impl NostrBeadPublisher {
              MERGE (b:Bead {bead_id: $bead_id}) \
              ON CREATE SET b.brief_id = $brief_id, b.debrief_path = $debrief_path \
              MERGE (e)-[:PROVENANCE_OF]->(b)"
-            .to_string(),
+                .to_string(),
         )
         .param("event_id", event.id.to_string())
         .param("pubkey", event.pubkey.to_string())

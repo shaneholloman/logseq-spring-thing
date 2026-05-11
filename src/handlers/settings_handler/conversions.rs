@@ -1,7 +1,7 @@
 // Conversion functions between AppFullSettings config types and DTOs
 
-use crate::config::AppFullSettings;
 use super::types::*;
+use crate::config::AppFullSettings;
 
 // Conversion functions between AppFullSettings and DTOs
 impl From<&AppFullSettings> for SettingsResponseDTO {
@@ -37,7 +37,6 @@ impl From<&crate::config::VisualisationSettings> for VisualisationSettingsDTO {
 
 impl From<&crate::config::RenderingSettings> for RenderingSettingsDTO {
     fn from(settings: &crate::config::RenderingSettings) -> Self {
-
         let dev_config = crate::config::dev_config::rendering();
         let agent_colors = Some(AgentColorsDTO {
             coordinator: dev_config.agent_colors.coordinator.clone(),

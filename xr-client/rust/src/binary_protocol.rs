@@ -64,23 +64,15 @@ fn parse_node_record(bytes: &[u8]) -> NodeUpdate {
     let mut position = [0f32; 3];
     let mut velocity = [0f32; 3];
     for (i, off) in (4usize..16).step_by(4).enumerate() {
-        position[i] = f32::from_le_bytes([
-            bytes[off],
-            bytes[off + 1],
-            bytes[off + 2],
-            bytes[off + 3],
-        ]);
+        position[i] =
+            f32::from_le_bytes([bytes[off], bytes[off + 1], bytes[off + 2], bytes[off + 3]]);
     }
     for (i, off) in (16usize..28).step_by(4).enumerate() {
         if off + 4 > bytes.len() {
             break;
         }
-        velocity[i] = f32::from_le_bytes([
-            bytes[off],
-            bytes[off + 1],
-            bytes[off + 2],
-            bytes[off + 3],
-        ]);
+        velocity[i] =
+            f32::from_le_bytes([bytes[off], bytes[off + 1], bytes[off + 2], bytes[off + 3]]);
     }
     NodeUpdate {
         node_id,
@@ -203,10 +195,7 @@ mod tests {
 
     #[test]
     fn ingest_fires_callback_per_record() {
-        let frame = build_frame(&[
-            (1, [0.0; 3], [0.0; 3]),
-            (2, [1.0, 0.0, 0.0], [0.0; 3]),
-        ]);
+        let frame = build_frame(&[(1, [0.0; 3], [0.0; 3]), (2, [1.0, 0.0, 0.0], [0.0; 3])]);
         let mut count = 0usize;
         ingest_frame(Bytes::from(frame), |_| count += 1);
         assert_eq!(count, 2);
@@ -259,11 +248,7 @@ mod tests {
 
     #[test]
     fn parse_preserves_negative_values() {
-        let frame = build_frame(&[(
-            42,
-            [-1.5, -2.5, -3.5],
-            [-0.1, -0.2, -0.3],
-        )]);
+        let frame = build_frame(&[(42, [-1.5, -2.5, -3.5], [-0.1, -0.2, -0.3])]);
         let decoded = decode_position_frame(&frame).unwrap();
         assert_eq!(decoded.len(), 1);
         assert_eq!(decoded[0].node_id, 42);

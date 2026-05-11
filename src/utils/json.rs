@@ -3,8 +3,8 @@
 //! This module provides standardized JSON operations with consistent error handling
 //! to replace the 154+ duplicate serde_json calls throughout the codebase.
 
-use serde::{de::DeserializeOwned, Serialize};
 use crate::errors::{VisionFlowError, VisionFlowResult};
+use serde::{de::DeserializeOwned, Serialize};
 
 /// Deserialize JSON string into a typed value with standard error handling
 /// # Example
@@ -16,9 +16,8 @@ use crate::errors::{VisionFlowError, VisionFlowResult};
 /// # Ok::<(), visionflow::errors::VisionFlowError>(())
 /// ```
 pub fn from_json<T: DeserializeOwned>(s: &str) -> VisionFlowResult<T> {
-    serde_json::from_str(s).map_err(|e| {
-        VisionFlowError::Serialization(format!("JSON deserialization failed: {}", e))
-    })
+    serde_json::from_str(s)
+        .map_err(|e| VisionFlowError::Serialization(format!("JSON deserialization failed: {}", e)))
 }
 
 /// Serialize a value into a JSON string with standard error handling
@@ -32,9 +31,8 @@ pub fn from_json<T: DeserializeOwned>(s: &str) -> VisionFlowResult<T> {
 /// # Ok::<(), visionflow::errors::VisionFlowError>(())
 /// ```
 pub fn to_json<T: Serialize + ?Sized>(value: &T) -> VisionFlowResult<String> {
-    serde_json::to_string(value).map_err(|e| {
-        VisionFlowError::Serialization(format!("JSON serialization failed: {}", e))
-    })
+    serde_json::to_string(value)
+        .map_err(|e| VisionFlowError::Serialization(format!("JSON serialization failed: {}", e)))
 }
 
 /// Deserialize JSON string with custom context for better error messages
@@ -49,13 +47,9 @@ pub fn to_json<T: Serialize + ?Sized>(value: &T) -> VisionFlowResult<String> {
 /// )?;
 /// # Ok::<(), visionflow::errors::VisionFlowError>(())
 /// ```
-pub fn from_json_with_context<T: DeserializeOwned>(
-    s: &str,
-    context: &str,
-) -> VisionFlowResult<T> {
-    serde_json::from_str(s).map_err(|e| {
-        VisionFlowError::Serialization(format!("{}: {}", context, e))
-    })
+pub fn from_json_with_context<T: DeserializeOwned>(s: &str, context: &str) -> VisionFlowResult<T> {
+    serde_json::from_str(s)
+        .map_err(|e| VisionFlowError::Serialization(format!("{}: {}", context, e)))
 }
 
 /// Serialize a value into a pretty-printed JSON string

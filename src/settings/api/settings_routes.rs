@@ -4,17 +4,22 @@
 //! All PUT routes validate input before applying. (QE Fix #1, #2, #3, #5)
 
 use actix_web::{web, HttpResponse, Responder};
-use serde::{Deserialize, Serialize};
 use log::{debug, error, info, warn};
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
-use crate::config::{PhysicsSettings, RenderingSettings};
-use crate::actors::messages::{BroadcastMessage, ForceResumePhysics, GetSettings, SetComputeMode, UpdateConstraints, UpdateSettings, UpdateSimulationParams};
-use crate::utils::unified_gpu_compute::ComputeMode;
-use crate::settings::models::{ConstraintSettings, NodeFilterSettings, QualityGateSettings, AllSettings};
-use crate::settings::auth_extractor::{AuthenticatedUser, OptionalAuth};
+use crate::actors::messages::{
+    BroadcastMessage, ForceResumePhysics, GetSettings, SetComputeMode, UpdateConstraints,
+    UpdateSettings, UpdateSimulationParams,
+};
 use crate::adapters::neo4j_settings_repository::{Neo4jSettingsRepository, UserFilter};
+use crate::config::{PhysicsSettings, RenderingSettings};
 use crate::ports::settings_repository::{SettingValue, SettingsRepository};
+use crate::settings::auth_extractor::{AuthenticatedUser, OptionalAuth};
+use crate::settings::models::{
+    AllSettings, ConstraintSettings, NodeFilterSettings, QualityGateSettings,
+};
+use crate::utils::unified_gpu_compute::ComputeMode;
 use crate::AppState;
 
 // ============================================================================
@@ -51,37 +56,37 @@ pub struct ErrorResponse {
 fn canonical_physics_key(key: &str) -> &str {
     match key {
         // snake_case → camelCase mappings
-        "spring_k"          => "springK",
-        "repel_k"           => "repelK",
-        "spring_strength"   => "springK",
-        "repulsion_strength"=> "repelK",
-        "center_gravity_k"  => "centerGravityK",
-        "max_velocity"      => "maxVelocity",
-        "max_force"         => "maxForce",
-        "enable_bounds"     => "enableBounds",
-        "bounds_size"       => "boundsSize",
+        "spring_k" => "springK",
+        "repel_k" => "repelK",
+        "spring_strength" => "springK",
+        "repulsion_strength" => "repelK",
+        "center_gravity_k" => "centerGravityK",
+        "max_velocity" => "maxVelocity",
+        "max_force" => "maxForce",
+        "enable_bounds" => "enableBounds",
+        "bounds_size" => "boundsSize",
         "separation_radius" => "separationRadius",
-        "boundary_damping"  => "boundaryDamping",
-        "update_threshold"  => "updateThreshold",
-        "rest_length"       => "restLength",
-        "repulsion_cutoff"  => "repulsionCutoff",
-        "grid_cell_size"    => "gridCellSize",
+        "boundary_damping" => "boundaryDamping",
+        "update_threshold" => "updateThreshold",
+        "rest_length" => "restLength",
+        "repulsion_cutoff" => "repulsionCutoff",
+        "grid_cell_size" => "gridCellSize",
         "warmup_iterations" => "warmupIterations",
-        "cooling_rate"      => "coolingRate",
-        "max_repulsion_dist"=> "maxRepulsionDist",
-        "min_distance"      => "minDistance",
-        "auto_balance"      => "autoBalance",
-        "compute_mode"      => "computeMode",
-        "cluster_strength"  => "clusterStrength",
-        "alignment_strength"=> "alignmentStrength",
+        "cooling_rate" => "coolingRate",
+        "max_repulsion_dist" => "maxRepulsionDist",
+        "min_distance" => "minDistance",
+        "auto_balance" => "autoBalance",
+        "compute_mode" => "computeMode",
+        "cluster_strength" => "clusterStrength",
+        "alignment_strength" => "alignmentStrength",
         // Legacy/client aliases
-        "springStrength"    => "springK",
+        "springStrength" => "springK",
         "repulsionStrength" => "repelK",
-        "springStiffness"   => "springK",
-        "springDamping"     => "damping",
-        "deltaTime"         => "dt",
-        "graph_separation_x"=> "graphSeparationX",
-        "z_damping"         => "zDamping",
+        "springStiffness" => "springK",
+        "springDamping" => "damping",
+        "deltaTime" => "dt",
+        "graph_separation_x" => "graphSeparationX",
+        "z_damping" => "zDamping",
         // Already canonical or unrecognised — pass through.
         // Unrecognised keys fall through to PhysicsSettings deserialisation, which
         // silently drops unknown fields (no `deny_unknown_fields`). Orphan UI sliders
@@ -101,7 +106,9 @@ fn canonical_physics_key(key: &str) -> &str {
 /// set. Without this guard, a previous regression (Fix E, 2026-04-29) showed
 /// alphabetical BTreeMap iteration could let an alias clobber the user's
 /// explicit value depending entirely on key alphabet — a load-bearing accident.
-fn normalize_physics_keys(patch: serde_json::Map<String, serde_json::Value>) -> serde_json::Map<String, serde_json::Value> {
+fn normalize_physics_keys(
+    patch: serde_json::Map<String, serde_json::Value>,
+) -> serde_json::Map<String, serde_json::Value> {
     use std::collections::HashSet;
 
     // Set of canonical keys the client provided EXPLICITLY (i.e. names where the
@@ -122,7 +129,8 @@ fn normalize_physics_keys(patch: serde_json::Map<String, serde_json::Value>) -> 
         if is_alias && explicit_canonicals.contains(canonical) {
             log::debug!(
                 "normalize_physics_keys: dropping alias {} because canonical {} is explicit",
-                key, canonical
+                key,
+                canonical
             );
             continue;
         }
@@ -149,16 +157,25 @@ pub fn validate_physics_settings(settings: &PhysicsSettings) -> Result<(), Strin
     // Helper closure: check finite
     let check_finite = |val: f32, name: &str, errs: &mut Vec<String>| {
         if !val.is_finite() {
-            errs.push(format!("{} must be a finite number (not NaN or Infinity)", name));
+            errs.push(format!(
+                "{} must be a finite number (not NaN or Infinity)",
+                name
+            ));
         }
     };
 
     // Helper closure: check range (inclusive)
     let check_range = |val: f32, name: &str, min: f32, max: f32, errs: &mut Vec<String>| {
         if !val.is_finite() {
-            errs.push(format!("{} must be a finite number (not NaN or Infinity)", name));
+            errs.push(format!(
+                "{} must be a finite number (not NaN or Infinity)",
+                name
+            ));
         } else if val < min || val > max {
-            errs.push(format!("{} must be between {} and {} (got {})", name, min, max, val));
+            errs.push(format!(
+                "{} must be between {} and {} (got {})",
+                name, min, max, val
+            ));
         }
     };
 
@@ -166,7 +183,13 @@ pub fn validate_physics_settings(settings: &PhysicsSettings) -> Result<(), Strin
     check_range(settings.gravity, "gravity", -10.0, 10.0, &mut errors);
     check_range(settings.damping, "damping", 0.0, 1.0, &mut errors);
     check_range(settings.spring_k, "spring_k", 0.0, 1000.0, &mut errors);
-    check_range(settings.max_velocity, "max_velocity", 0.0, 10000.0, &mut errors);
+    check_range(
+        settings.max_velocity,
+        "max_velocity",
+        0.0,
+        10000.0,
+        &mut errors,
+    );
     check_range(settings.max_force, "max_force", 0.0, 10000.0, &mut errors);
     check_range(settings.dt, "timestep (dt)", 0.001, 1.0, &mut errors);
 
@@ -177,23 +200,59 @@ pub fn validate_physics_settings(settings: &PhysicsSettings) -> Result<(), Strin
     check_finite(settings.boundary_damping, "boundary_damping", &mut errors);
     check_finite(settings.update_threshold, "update_threshold", &mut errors);
     check_finite(settings.temperature, "temperature", &mut errors);
-    check_finite(settings.alignment_strength, "alignment_strength", &mut errors);
+    check_finite(
+        settings.alignment_strength,
+        "alignment_strength",
+        &mut errors,
+    );
     check_finite(settings.cluster_strength, "cluster_strength", &mut errors);
     check_finite(settings.rest_length, "rest_length", &mut errors);
     check_finite(settings.repulsion_cutoff, "repulsion_cutoff", &mut errors);
-    check_finite(settings.repulsion_softening_epsilon, "repulsion_softening_epsilon", &mut errors);
+    check_finite(
+        settings.repulsion_softening_epsilon,
+        "repulsion_softening_epsilon",
+        &mut errors,
+    );
     check_finite(settings.center_gravity_k, "center_gravity_k", &mut errors);
     check_finite(settings.grid_cell_size, "grid_cell_size", &mut errors);
     check_finite(settings.cooling_rate, "cooling_rate", &mut errors);
-    check_finite(settings.boundary_extreme_multiplier, "boundary_extreme_multiplier", &mut errors);
-    check_finite(settings.boundary_extreme_force_multiplier, "boundary_extreme_force_multiplier", &mut errors);
-    check_finite(settings.boundary_velocity_damping, "boundary_velocity_damping", &mut errors);
+    check_finite(
+        settings.boundary_extreme_multiplier,
+        "boundary_extreme_multiplier",
+        &mut errors,
+    );
+    check_finite(
+        settings.boundary_extreme_force_multiplier,
+        "boundary_extreme_force_multiplier",
+        &mut errors,
+    );
+    check_finite(
+        settings.boundary_velocity_damping,
+        "boundary_velocity_damping",
+        &mut errors,
+    );
     check_finite(settings.min_distance, "min_distance", &mut errors);
-    check_finite(settings.max_repulsion_dist, "max_repulsion_dist", &mut errors);
+    check_finite(
+        settings.max_repulsion_dist,
+        "max_repulsion_dist",
+        &mut errors,
+    );
     check_finite(settings.boundary_margin, "boundary_margin", &mut errors);
-    check_finite(settings.boundary_force_strength, "boundary_force_strength", &mut errors);
-    check_finite(settings.constraint_max_force_per_node, "constraint_max_force_per_node", &mut errors);
-    check_finite(settings.clustering_resolution, "clustering_resolution", &mut errors);
+    check_finite(
+        settings.boundary_force_strength,
+        "boundary_force_strength",
+        &mut errors,
+    );
+    check_finite(
+        settings.constraint_max_force_per_node,
+        "constraint_max_force_per_node",
+        &mut errors,
+    );
+    check_finite(
+        settings.clustering_resolution,
+        "clustering_resolution",
+        &mut errors,
+    );
 
     if errors.is_empty() {
         Ok(())
@@ -217,7 +276,9 @@ pub fn validate_constraint_settings(settings: &ConstraintSettings) -> Result<(),
     if !settings.near_threshold.is_finite() || settings.near_threshold < 0.0 {
         return Err("near_threshold must be finite and non-negative".into());
     }
-    if settings.near_threshold >= settings.medium_threshold || settings.medium_threshold >= settings.far_threshold {
+    if settings.near_threshold >= settings.medium_threshold
+        || settings.medium_threshold >= settings.far_threshold
+    {
         return Err("Thresholds must be ordered: near < medium < far".into());
     }
     Ok(())
@@ -236,9 +297,18 @@ pub fn validate_rendering_settings(settings: &RenderingSettings) -> Result<(), S
             Ok(())
         }
     };
-    check_finite(settings.ambient_light_intensity as f64, "ambient_light_intensity")?;
-    check_finite(settings.directional_light_intensity as f64, "directional_light_intensity")?;
-    check_finite(settings.environment_intensity as f64, "environment_intensity")?;
+    check_finite(
+        settings.ambient_light_intensity as f64,
+        "ambient_light_intensity",
+    )?;
+    check_finite(
+        settings.directional_light_intensity as f64,
+        "directional_light_intensity",
+    )?;
+    check_finite(
+        settings.environment_intensity as f64,
+        "environment_intensity",
+    )?;
     Ok(())
 }
 
@@ -304,7 +374,10 @@ pub async fn update_physics_settings(
     auth: AuthenticatedUser,
     neo4j_repo: web::Data<Arc<Neo4jSettingsRepository>>,
 ) -> impl Responder {
-    debug!("User {} updating physics settings — request body: {:?}", auth.pubkey, body);
+    debug!(
+        "User {} updating physics settings — request body: {:?}",
+        auth.pubkey, body
+    );
 
     // Reject non-object bodies up-front. Previously these silently became a no-op
     // (the merge fell through to a clone) and the endpoint still returned 200, which
@@ -337,31 +410,32 @@ pub async fn update_physics_settings(
     let current_physics = &full_settings.visualisation.graphs.logseq.physics;
     let current_json = serde_json::to_value(current_physics).unwrap_or_default();
 
-    let new_physics = if let (serde_json::Value::Object(mut base), serde_json::Value::Object(patch)) =
-        (current_json, body.into_inner())
-    {
-        // Normalize incoming keys: map common aliases (snake_case, legacy names)
-        // to the canonical camelCase field names used by PhysicsSettings.
-        let normalized_patch = normalize_physics_keys(patch);
-        for (k, v) in normalized_patch {
-            base.insert(k, v);
-        }
-        match serde_json::from_value::<PhysicsSettings>(serde_json::Value::Object(base)) {
-            Ok(merged) => merged,
-            Err(e) => {
-                warn!("Physics settings merge failed: {}", e);
-                return HttpResponse::BadRequest().json(ErrorResponse {
-                    error: format!("Invalid settings value: {}", e),
-                });
+    let new_physics =
+        if let (serde_json::Value::Object(mut base), serde_json::Value::Object(patch)) =
+            (current_json, body.into_inner())
+        {
+            // Normalize incoming keys: map common aliases (snake_case, legacy names)
+            // to the canonical camelCase field names used by PhysicsSettings.
+            let normalized_patch = normalize_physics_keys(patch);
+            for (k, v) in normalized_patch {
+                base.insert(k, v);
             }
-        }
-    } else {
-        // Unreachable: we validated `body.is_object()` above. Keep as a defensive
-        // fallback so a future refactor doesn't silently re-introduce the no-op path.
-        return HttpResponse::BadRequest().json(ErrorResponse {
-            error: "Physics settings update body must be a JSON object".to_string(),
-        });
-    };
+            match serde_json::from_value::<PhysicsSettings>(serde_json::Value::Object(base)) {
+                Ok(merged) => merged,
+                Err(e) => {
+                    warn!("Physics settings merge failed: {}", e);
+                    return HttpResponse::BadRequest().json(ErrorResponse {
+                        error: format!("Invalid settings value: {}", e),
+                    });
+                }
+            }
+        } else {
+            // Unreachable: we validated `body.is_object()` above. Keep as a defensive
+            // fallback so a future refactor doesn't silently re-introduce the no-op path.
+            return HttpResponse::BadRequest().json(ErrorResponse {
+                error: "Physics settings update body must be a JSON object".to_string(),
+            });
+        };
 
     // Validate before applying
     if let Err(validation_err) = validate_physics_settings(&new_physics) {
@@ -373,7 +447,13 @@ pub async fn update_physics_settings(
 
     // Apply merged physics to the same snapshot and write back atomically
     full_settings.visualisation.graphs.logseq.physics = new_physics.clone();
-    match state.settings_addr.send(UpdateSettings { settings: full_settings }).await {
+    match state
+        .settings_addr
+        .send(UpdateSettings {
+            settings: full_settings,
+        })
+        .await
+    {
         Ok(Ok(())) => {
             info!("Physics settings updated successfully by {}", auth.pubkey);
 
@@ -384,7 +464,8 @@ pub async fn update_physics_settings(
             // here was silently logged while the API still returned `Ok`, exactly
             // recreating the original "settings PUT 200 but viewport doesn't update"
             // bug class even after Fix C/D/E shipped.
-            let sim_params: crate::models::simulation_params::SimulationParams = (&new_physics).into();
+            let sim_params: crate::models::simulation_params::SimulationParams =
+                (&new_physics).into();
             info!(
                 "Propagating SimulationParams: spring_k={}, repel_k={}, damping={}",
                 sim_params.spring_k, sim_params.repel_k, sim_params.damping
@@ -417,7 +498,10 @@ pub async fn update_physics_settings(
                     }
                     Err(e) => {
                         let m = format!("GPUComputeActor mailbox: {}", e);
-                        warn!("Direct send mailbox error ({}), trying GPUManagerActor fallback", e);
+                        warn!(
+                            "Direct send mailbox error ({}), trying GPUManagerActor fallback",
+                            e
+                        );
                         propagation_errors.push(m);
                     }
                 }
@@ -449,7 +533,7 @@ pub async fn update_physics_settings(
                 } else {
                     error!("No GPUComputeActor or GPUManagerActor available — physics won't propagate to GPU!");
                     propagation_errors.push(
-                        "No GPU actor address available — physics did not reach GPU".to_string()
+                        "No GPU actor address available — physics did not reach GPU".to_string(),
                     );
                 }
             }
@@ -464,9 +548,13 @@ pub async fn update_physics_settings(
             // Force-resume physics so the new parameters actually take effect.
             // Without this, a converged system stays paused and param changes are invisible.
             info!("Sending ForceResumePhysics to GraphServiceSupervisor");
-            if let Err(e) = state.graph_service_addr.send(
-                ForceResumePhysics { reason: "Physics settings updated via API".to_string() }
-            ).await {
+            if let Err(e) = state
+                .graph_service_addr
+                .send(ForceResumePhysics {
+                    reason: "Physics settings updated via API".to_string(),
+                })
+                .await
+            {
                 warn!("Failed to send ForceResumePhysics: {}", e);
                 propagation_errors.push(format!("ForceResumePhysics: {}", e));
             } else {
@@ -492,16 +580,22 @@ pub async fn update_physics_settings(
             // Persist physics settings to Neo4j for cross-restart survival
             match serde_json::to_value(&new_physics) {
                 Ok(physics_json) => {
-                    if let Err(e) = neo4j_repo.set_setting(
-                        "physics",
-                        SettingValue::Json(physics_json),
-                        Some("Physics simulation settings"),
-                    ).await {
+                    if let Err(e) = neo4j_repo
+                        .set_setting(
+                            "physics",
+                            SettingValue::Json(physics_json),
+                            Some("Physics simulation settings"),
+                        )
+                        .await
+                    {
                         warn!("Failed to persist physics settings to Neo4j: {}", e);
                     }
                 }
                 Err(e) => {
-                    warn!("Failed to serialize physics settings for persistence: {}", e);
+                    warn!(
+                        "Failed to serialize physics settings for persistence: {}",
+                        e
+                    );
                 }
             }
 
@@ -538,7 +632,10 @@ pub async fn get_constraint_settings(
             match serde_json::from_value::<ConstraintSettings>(json) {
                 Ok(settings) => HttpResponse::Ok().json(settings),
                 Err(e) => {
-                    warn!("Failed to parse stored constraint settings, returning defaults: {}", e);
+                    warn!(
+                        "Failed to parse stored constraint settings, returning defaults: {}",
+                        e
+                    );
                     HttpResponse::Ok().json(ConstraintSettings::default())
                 }
             }
@@ -583,36 +680,50 @@ pub async fn update_constraint_settings(
         }
     };
 
-    if let Err(e) = neo4j_repo.set_setting(
-        "constraints",
-        crate::ports::settings_repository::SettingValue::Json(settings_json),
-        Some("Constraint settings for physics simulation"),
-    ).await {
+    if let Err(e) = neo4j_repo
+        .set_setting(
+            "constraints",
+            crate::ports::settings_repository::SettingValue::Json(settings_json),
+            Some("Constraint settings for physics simulation"),
+        )
+        .await
+    {
         error!("Failed to persist constraint settings: {}", e);
         return HttpResponse::InternalServerError().json(ErrorResponse {
             error: format!("Failed to persist constraint settings: {}", e),
         });
     }
 
-    info!("Constraint settings updated and persisted for user {}", auth.pubkey);
+    info!(
+        "Constraint settings updated and persisted for user {}",
+        auth.pubkey
+    );
 
     // Propagate constraint settings to GPU actors so physics simulation reflects changes
     let constraint_json = match serde_json::to_value(&settings) {
         Ok(json) => json,
         Err(e) => {
-            error!("Failed to serialize constraint settings for GPU propagation: {}", e);
+            error!(
+                "Failed to serialize constraint settings for GPU propagation: {}",
+                e
+            );
             // Settings are already persisted; return success but log the propagation failure
             return HttpResponse::Ok().json(&settings);
         }
     };
 
-    let constraint_msg = UpdateConstraints { constraint_data: constraint_json };
+    let constraint_msg = UpdateConstraints {
+        constraint_data: constraint_json,
+    };
 
     if let Some(ref gpu_manager) = state.gpu_manager_addr {
         if let Err(e) = gpu_manager.send(constraint_msg).await {
             error!("Failed to propagate constraints to GPUManagerActor: {}", e);
         } else {
-            info!("Constraint settings propagated to GPUManagerActor for user {}", auth.pubkey);
+            info!(
+                "Constraint settings propagated to GPUManagerActor for user {}",
+                auth.pubkey
+            );
         }
     } else {
         warn!("GPUManagerActor not available; constraint settings persisted but not propagated to GPU");
@@ -669,7 +780,13 @@ pub async fn update_rendering_settings(
     match state.settings_addr.send(GetSettings).await {
         Ok(Ok(mut full_settings)) => {
             full_settings.visualisation.rendering = new_rendering.clone();
-            match state.settings_addr.send(UpdateSettings { settings: full_settings }).await {
+            match state
+                .settings_addr
+                .send(UpdateSettings {
+                    settings: full_settings,
+                })
+                .await
+            {
                 Ok(Ok(())) => {
                     info!("Rendering settings updated successfully by {}", auth.pubkey);
 
@@ -683,7 +800,9 @@ pub async fn update_rendering_settings(
                         "timestamp": chrono::Utc::now().timestamp_millis()
                     });
                     if let Ok(msg_str) = serde_json::to_string(&broadcast_payload) {
-                        state.client_manager_addr.do_send(BroadcastMessage { message: msg_str });
+                        state
+                            .client_manager_addr
+                            .do_send(BroadcastMessage { message: msg_str });
                         info!("Rendering settings change broadcast sent to connected clients");
                     }
 
@@ -734,7 +853,10 @@ pub async fn get_node_filter_settings(
             match serde_json::from_value::<NodeFilterSettings>(json) {
                 Ok(settings) => HttpResponse::Ok().json(settings),
                 Err(e) => {
-                    warn!("Failed to parse stored node filter settings, returning defaults: {}", e);
+                    warn!(
+                        "Failed to parse stored node filter settings, returning defaults: {}",
+                        e
+                    );
                     HttpResponse::Ok().json(NodeFilterSettings::default())
                 }
             }
@@ -756,8 +878,10 @@ pub async fn update_node_filter_settings(
     body: web::Json<NodeFilterSettings>,
     auth: AuthenticatedUser,
 ) -> impl Responder {
-    info!("User {} updating node filter settings: enabled={}, threshold={}",
-          auth.pubkey, body.enabled, body.quality_threshold);
+    info!(
+        "User {} updating node filter settings: enabled={}, threshold={}",
+        auth.pubkey, body.enabled, body.quality_threshold
+    );
 
     let settings = body.into_inner();
 
@@ -780,11 +904,14 @@ pub async fn update_node_filter_settings(
         }
     };
 
-    if let Err(e) = neo4j_repo.set_setting(
-        "node_filter",
-        crate::ports::settings_repository::SettingValue::Json(settings_json),
-        Some("Node confidence filter settings"),
-    ).await {
+    if let Err(e) = neo4j_repo
+        .set_setting(
+            "node_filter",
+            crate::ports::settings_repository::SettingValue::Json(settings_json),
+            Some("Node confidence filter settings"),
+        )
+        .await
+    {
         error!("Failed to persist node filter settings: {}", e);
         return HttpResponse::InternalServerError().json(ErrorResponse {
             error: format!("Failed to persist node filter settings: {}", e),
@@ -809,12 +936,16 @@ pub async fn update_node_filter_settings(
         "timestamp": chrono::Utc::now().timestamp_millis()
     });
     if let Ok(msg_str) = serde_json::to_string(&broadcast_payload) {
-        state.client_manager_addr.do_send(BroadcastMessage { message: msg_str });
+        state
+            .client_manager_addr
+            .do_send(BroadcastMessage { message: msg_str });
         info!("Node filter settings change broadcast sent to connected clients");
     }
 
-    info!("Node filter settings updated and persisted for user {}: enabled={}, quality_threshold={}",
-          auth.pubkey, settings.enabled, settings.quality_threshold);
+    info!(
+        "Node filter settings updated and persisted for user {}: enabled={}, quality_threshold={}",
+        auth.pubkey, settings.enabled, settings.quality_threshold
+    );
     HttpResponse::Ok().json(&settings)
 }
 
@@ -834,14 +965,20 @@ pub async fn get_quality_gate_settings(
             match serde_json::from_value::<QualityGateSettings>(json) {
                 Ok(settings) => HttpResponse::Ok().json(settings),
                 Err(e) => {
-                    warn!("Failed to parse stored quality gate settings, returning defaults: {}", e);
+                    warn!(
+                        "Failed to parse stored quality gate settings, returning defaults: {}",
+                        e
+                    );
                     HttpResponse::Ok().json(QualityGateSettings::default())
                 }
             }
         }
         Ok(_) => HttpResponse::Ok().json(QualityGateSettings::default()),
         Err(e) => {
-            warn!("Failed to load quality gate settings from repository: {}", e);
+            warn!(
+                "Failed to load quality gate settings from repository: {}",
+                e
+            );
             HttpResponse::Ok().json(QualityGateSettings::default())
         }
     }
@@ -895,11 +1032,14 @@ pub async fn update_quality_gate_settings(
         }
     };
 
-    if let Err(e) = neo4j_repo.set_setting(
-        "quality_gates",
-        crate::ports::settings_repository::SettingValue::Json(settings_json),
-        Some("Quality gate settings for feature toggles and performance thresholds"),
-    ).await {
+    if let Err(e) = neo4j_repo
+        .set_setting(
+            "quality_gates",
+            crate::ports::settings_repository::SettingValue::Json(settings_json),
+            Some("Quality gate settings for feature toggles and performance thresholds"),
+        )
+        .await
+    {
         error!("Failed to persist quality gate settings: {}", e);
         return HttpResponse::InternalServerError().json(ErrorResponse {
             error: format!("Failed to persist quality gate settings: {}", e),
@@ -931,7 +1071,10 @@ pub async fn update_quality_gate_settings(
             // Type-clustering enables cluster/alignment forces for grouping.
             match settings.layout_mode.as_str() {
                 "dag-topdown" | "dag-radial" | "dag-leftright" => {
-                    info!("Quality gates: applying DAG layout overrides for mode: {}", settings.layout_mode);
+                    info!(
+                        "Quality gates: applying DAG layout overrides for mode: {}",
+                        settings.layout_mode
+                    );
                     sim_params.center_gravity_k = sim_params.center_gravity_k.max(0.1);
                     sim_params.use_sssp_distances = true;
                     sim_params.sssp_alpha = Some(sim_params.sssp_alpha.unwrap_or(0.0).max(0.5));
@@ -958,25 +1101,41 @@ pub async fn update_quality_gate_settings(
                     ComputeMode::Basic
                 };
                 if let Err(e) = gpu_addr.send(SetComputeMode { mode: compute_mode }).await {
-                    error!("Quality gates: failed to propagate ComputeMode to ForceComputeActor: {}", e);
+                    error!(
+                        "Quality gates: failed to propagate ComputeMode to ForceComputeActor: {}",
+                        e
+                    );
                 }
             }
 
             if let Err(e) = state.graph_service_addr.send(update_msg).await {
-                error!("Quality gates: failed to propagate SimulationParams to GraphServiceActor: {}", e);
+                error!(
+                    "Quality gates: failed to propagate SimulationParams to GraphServiceActor: {}",
+                    e
+                );
             }
 
-            info!("Quality gates propagated to physics engine: gpu={}, compute_mode={}, layout={}",
-                  settings.gpu_acceleration,
-                  if settings.gpu_acceleration { "Advanced" } else { "Basic" },
-                  settings.layout_mode);
+            info!(
+                "Quality gates propagated to physics engine: gpu={}, compute_mode={}, layout={}",
+                settings.gpu_acceleration,
+                if settings.gpu_acceleration {
+                    "Advanced"
+                } else {
+                    "Basic"
+                },
+                settings.layout_mode
+            );
 
             // --- Propagate semantic forces configuration to SemanticForcesActor ---
             if let Some(ref gpu_manager) = state.gpu_manager_addr {
-                use crate::actors::messages::{ConfigureDAG, ConfigureTypeClustering, AdjustConstraintWeights};
+                use crate::actors::messages::{
+                    AdjustConstraintWeights, ConfigureDAG, ConfigureTypeClustering,
+                };
 
-                let is_dag_mode = matches!(settings.layout_mode.as_str(),
-                    "dag-topdown" | "dag-radial" | "dag-leftright");
+                let is_dag_mode = matches!(
+                    settings.layout_mode.as_str(),
+                    "dag-topdown" | "dag-radial" | "dag-leftright"
+                );
                 let is_type_clustering = settings.layout_mode == "type-clustering";
 
                 // Configure DAG layout forces
@@ -996,10 +1155,16 @@ pub async fn update_quality_gate_settings(
                     cluster_attraction: Some(settings.type_cluster_attraction),
                     cluster_radius: Some(settings.type_cluster_radius),
                     inter_cluster_repulsion: None,
-                    enabled: Some(settings.semantic_forces && (is_type_clustering || settings.layout_mode == "force-directed")),
+                    enabled: Some(
+                        settings.semantic_forces
+                            && (is_type_clustering || settings.layout_mode == "force-directed"),
+                    ),
                 };
                 if let Err(e) = gpu_manager.send(cluster_msg).await {
-                    warn!("Quality gates: failed to propagate type clustering config: {}", e);
+                    warn!(
+                        "Quality gates: failed to propagate type clustering config: {}",
+                        e
+                    );
                 }
 
                 // Adjust ontology constraint weights when strength changes
@@ -1019,10 +1184,16 @@ pub async fn update_quality_gate_settings(
             }
         }
         Ok(Err(e)) => {
-            warn!("Quality gates persisted but failed to read settings for propagation: {}", e);
+            warn!(
+                "Quality gates persisted but failed to read settings for propagation: {}",
+                e
+            );
         }
         Err(e) => {
-            warn!("Quality gates persisted but settings actor unreachable for propagation: {}", e);
+            warn!(
+                "Quality gates persisted but settings actor unreachable for propagation: {}",
+                e
+            );
         }
     }
 
@@ -1036,7 +1207,9 @@ pub async fn update_quality_gate_settings(
 /// Recursively deep-merge `patch` into `base`. Values in `patch` take priority.
 /// Both must be JSON objects; non-object values in `patch` replace `base` wholesale.
 fn deep_merge_json(base: &mut serde_json::Value, patch: serde_json::Value) {
-    if let (serde_json::Value::Object(base_map), serde_json::Value::Object(patch_map)) = (base, patch) {
+    if let (serde_json::Value::Object(base_map), serde_json::Value::Object(patch_map)) =
+        (base, patch)
+    {
         for (key, value) in patch_map {
             let entry = base_map.entry(key).or_insert(serde_json::Value::Null);
             if value.is_object() && entry.is_object() {
@@ -1106,7 +1279,10 @@ pub async fn update_visual_settings(
         });
     }
 
-    info!("Visual settings updated and persisted for user {}", auth.pubkey);
+    info!(
+        "Visual settings updated and persisted for user {}",
+        auth.pubkey
+    );
     HttpResponse::Ok().json(current)
 }
 
@@ -1123,17 +1299,26 @@ pub async fn get_all_settings(
 ) -> impl Responder {
     match auth.0 {
         Some(user) => {
-            info!("GET /api/settings/all for authenticated user: {}", user.pubkey);
+            info!(
+                "GET /api/settings/all for authenticated user: {}",
+                user.pubkey
+            );
             match neo4j_repo.get_user_settings(&user.pubkey).await {
                 Ok(Some(user_settings)) => {
                     info!("Returning user-specific settings for: {}", user.pubkey);
                     return HttpResponse::Ok().json(user_settings);
                 }
                 Ok(None) => {
-                    info!("No user-specific settings found, returning global for: {}", user.pubkey);
+                    info!(
+                        "No user-specific settings found, returning global for: {}",
+                        user.pubkey
+                    );
                 }
                 Err(e) => {
-                    error!("Failed to query user settings: {}, falling back to global", e);
+                    error!(
+                        "Failed to query user settings: {}, falling back to global",
+                        e
+                    );
                 }
             }
             get_all_from_actor(&state, &neo4j_repo).await
@@ -1228,7 +1413,10 @@ pub async fn get_user_filter(
             HttpResponse::Ok().json(filter)
         }
         Ok(None) => {
-            info!("No user filter found, returning defaults for: {}", auth.pubkey);
+            info!(
+                "No user filter found, returning defaults for: {}",
+                auth.pubkey
+            );
             HttpResponse::Ok().json(UserFilter::default())
         }
         Err(e) => {
@@ -1275,7 +1463,10 @@ pub async fn save_profile(
     body: web::Json<SaveProfileRequest>,
     auth: AuthenticatedUser,
 ) -> impl Responder {
-    info!("User {} saving settings profile: {}", auth.pubkey, body.name);
+    info!(
+        "User {} saving settings profile: {}",
+        auth.pubkey, body.name
+    );
     HttpResponse::Created().json(ProfileIdResponse { id: 1 })
 }
 
@@ -1293,10 +1484,7 @@ pub async fn load_profile(
 }
 
 /// GET /api/settings/profiles
-pub async fn list_profiles(
-    _state: web::Data<AppState>,
-    _auth: OptionalAuth,
-) -> impl Responder {
+pub async fn list_profiles(_state: web::Data<AppState>, _auth: OptionalAuth) -> impl Responder {
     HttpResponse::Ok().json(Vec::<crate::settings::models::SettingsProfile>::new())
 }
 
@@ -1307,7 +1495,10 @@ pub async fn delete_profile(
     auth: AuthenticatedUser,
 ) -> impl Responder {
     let profile_id = path.into_inner();
-    info!("User {} deleting settings profile: {}", auth.pubkey, profile_id);
+    info!(
+        "User {} deleting settings profile: {}",
+        auth.pubkey, profile_id
+    );
     HttpResponse::Ok().finish()
 }
 
@@ -1340,7 +1531,7 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/user")
             .route("/filter", web::get().to(get_user_filter))
-            .route("/filter", web::put().to(update_user_filter))
+            .route("/filter", web::put().to(update_user_filter)),
     );
 
     log::info!("Settings routes configuration complete (single actor, validated PUT routes)");

@@ -13,9 +13,7 @@ use super::events::{
     GuidanceSessionEndedEvent, GuidanceSessionStartedEvent, NudgeEmittedEvent, PartnerBoundEvent,
     SuggestionAcceptedEvent, SuggestionDismissedEvent,
 };
-use super::value_objects::{
-    NudgeEnvelope, PartnerBinding, SuggestionKind, WorkspaceFocus,
-};
+use super::value_objects::{NudgeEnvelope, PartnerBinding, SuggestionKind, WorkspaceFocus};
 use crate::utils::time;
 
 #[derive(Error, Debug, PartialEq, Eq)]
@@ -197,7 +195,8 @@ mod tests {
     #[test]
     fn session_lifecycle_accumulates_counts() {
         let (mut s, _) = GuidanceSession::start("ws-1", focus());
-        s.accept_suggestion(SuggestionKind::CanonicalTerm, "term:1", 40).unwrap();
+        s.accept_suggestion(SuggestionKind::CanonicalTerm, "term:1", 40)
+            .unwrap();
         s.dismiss_suggestion("term:2", None).unwrap();
         s.record_artifact_produced().unwrap();
         let envelope = NudgeEnvelope::new(

@@ -13,11 +13,11 @@ use webxr::{
         consolidated_health_handler, graph_export_handler,
         mcp_relay_handler::mcp_relay_handler,
         metrics_handler, multi_mcp_websocket_handler, nostr_handler, pages_handler,
+        pay_handler::{FsExchangeStore, FsPaymentStore, VcPayConfig},
         presence_handler::{new_room_registry, ws_presence, PresenceHandlerState},
         socket_flow_handler::{socket_flow_handler, PreReadSocketSettings},
         speech_socket_handler::speech_socket_handler,
         validation_handler, workspace_handler,
-        pay_handler::{VcPayConfig, FsPaymentStore, FsExchangeStore},
     },
     services::bead_lifecycle::BeadLifecycleOrchestrator,
     services::bead_store::NoopBeadStore,
@@ -51,10 +51,10 @@ use tokio::sync::RwLock;
 use tokio::time::Duration;
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 use webxr::middleware::{RateLimit, RateLimitConfig, TimeoutMiddleware};
-use webxr::utils::validation::middleware::SecurityHeaders;
 use webxr::telemetry::agent_telemetry::init_telemetry_logger;
 use webxr::utils::advanced_logging::init_advanced_logging;
 use webxr::utils::json::to_json;
+use webxr::utils::validation::middleware::SecurityHeaders;
 // REMOVED: use webxr::utils::logging::init_logging; - legacy logging superseded by advanced_logging
 
 // DEPRECATED: ErrorRecoveryMiddleware removed - NetworkRecoveryManager deleted
@@ -760,7 +760,9 @@ async fn main() -> std::io::Result<()> {
     let pay_config = VcPayConfig::from_env();
     info!(
         "[pay] Payment config: enabled={}, cost_sats={}, ledger_dir={}",
-        pay_config.enabled, pay_config.cost_sats, pay_config.ledger_dir.display()
+        pay_config.enabled,
+        pay_config.cost_sats,
+        pay_config.ledger_dir.display()
     );
     let pay_store: Arc<FsPaymentStore> = match FsPaymentStore::new(&pay_config.ledger_dir) {
         Ok(store) => Arc::new(store),

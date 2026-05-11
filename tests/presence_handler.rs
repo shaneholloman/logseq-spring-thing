@@ -10,16 +10,16 @@ use std::time::Duration;
 
 use actix::prelude::*;
 
-use webxr::actors::presence_actor::{
-    BroadcastFrame, IngestOutcome, IngestPose, JoinRoom, LeaveRoom, PresenceActor,
-    RoomEventEnvelope,
-};
-use webxr::services::nostr_identity_verifier::WellFormedOnlyVerifier;
 use visionclaw_xr_presence::{
     ports::{IdentityVerifier, SignedChallenge},
     types::{Aabb, AvatarMetadata, Did, PoseFrame, RoomId, Transform},
     wire::encode,
 };
+use webxr::actors::presence_actor::{
+    BroadcastFrame, IngestOutcome, IngestPose, JoinRoom, LeaveRoom, PresenceActor,
+    RoomEventEnvelope,
+};
+use webxr::services::nostr_identity_verifier::WellFormedOnlyVerifier;
 
 const ROOM_URN: &str = "urn:visionclaw:room:sha256-12-deadbeef1234";
 
@@ -137,7 +137,12 @@ async fn ingest_broadcasts_to_peer_only() {
     assert_eq!(received.len(), 1, "peer should receive one broadcast");
     assert_eq!(received[0].bytes[0], 0x43, "preamble must be opcode 0x43");
 
-    actor.send(LeaveRoom { avatar_id: ack_a.avatar_id }).await.unwrap();
+    actor
+        .send(LeaveRoom {
+            avatar_id: ack_a.avatar_id,
+        })
+        .await
+        .unwrap();
     System::current().stop();
 }
 

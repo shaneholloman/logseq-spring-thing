@@ -13,7 +13,10 @@ fn nip26_fixture_loads_and_metadata_is_canonical() {
     let f = load_fixture("nip26-delegation.json");
     assert_meta_block(&f, "NIP-26");
     let vectors = f["vectors"].as_array().expect("vectors must be array");
-    assert!(vectors.len() >= 5, "nip26-delegation fixture must have >= 5 vectors");
+    assert!(
+        vectors.len() >= 5,
+        "nip26-delegation fixture must have >= 5 vectors"
+    );
 }
 
 #[test]
@@ -35,11 +38,19 @@ fn nip26_canonical_delegation_string_format() {
         );
         // Format: nostr:delegation:<delegatee_pk_hex>:<conditions>
         let parts: Vec<&str> = delegation_string.splitn(4, ':').collect();
-        assert_eq!(parts.len(), 4, "delegation_string must have 4 colon-separated parts");
+        assert_eq!(
+            parts.len(),
+            4,
+            "delegation_string must have 4 colon-separated parts"
+        );
         assert_eq!(parts[0], "nostr");
         assert_eq!(parts[1], "delegation");
         let pk = parts[2];
-        assert_eq!(pk.len(), 64, "delegatee pubkey segment must be 64 hex chars");
+        assert_eq!(
+            pk.len(),
+            64,
+            "delegatee pubkey segment must be 64 hex chars"
+        );
         assert!(pk.chars().all(|c| c.is_ascii_hexdigit()));
     }
 }

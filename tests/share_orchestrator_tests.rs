@@ -11,12 +11,10 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-use webxr::models::enterprise::{
-    BrokerCase, BrokerDecision, CaseStatus, PolicyOutcome,
-};
+use webxr::models::enterprise::{BrokerCase, BrokerDecision, CaseStatus, PolicyOutcome};
 use webxr::ports::broker_repository::{BrokerError, BrokerRepository};
 use webxr::services::share_orchestrator::{
-    build_broker_payload, broker_case_from_payload, InMemoryShareAuditLog, ShareContextExtras,
+    broker_case_from_payload, build_broker_payload, InMemoryShareAuditLog, ShareContextExtras,
     ShareOrchestrator, ShareOutcome, ShareTransition,
 };
 use webxr::services::share_policy::{
@@ -46,8 +44,11 @@ impl InMemoryBroker {
 }
 #[async_trait]
 impl BrokerRepository for InMemoryBroker {
-    async fn list_cases(&self, _s: Option<CaseStatus>, _l: usize)
-        -> Result<Vec<BrokerCase>, BrokerError> {
+    async fn list_cases(
+        &self,
+        _s: Option<CaseStatus>,
+        _l: usize,
+    ) -> Result<Vec<BrokerCase>, BrokerError> {
         Ok(self.cases.lock().await.clone())
     }
     async fn get_case(&self, id: &str) -> Result<Option<BrokerCase>, BrokerError> {
@@ -57,15 +58,14 @@ impl BrokerRepository for InMemoryBroker {
         self.cases.lock().await.push(c.clone());
         Ok(())
     }
-    async fn update_case_status(&self, _id: &str, _st: CaseStatus)
-        -> Result<(), BrokerError> { Ok(()) }
-    async fn record_decision(&self, d: &BrokerDecision)
-        -> Result<(), BrokerError> {
+    async fn update_case_status(&self, _id: &str, _st: CaseStatus) -> Result<(), BrokerError> {
+        Ok(())
+    }
+    async fn record_decision(&self, d: &BrokerDecision) -> Result<(), BrokerError> {
         self.decisions.lock().await.push(d.clone());
         Ok(())
     }
-    async fn get_decisions(&self, _cid: &str)
-        -> Result<Vec<BrokerDecision>, BrokerError> {
+    async fn get_decisions(&self, _cid: &str) -> Result<Vec<BrokerDecision>, BrokerError> {
         Ok(self.decisions.lock().await.clone())
     }
 }
@@ -102,10 +102,17 @@ fn extras_ok() -> ShareContextExtras {
     }
 }
 
-async fn orchestrator() -> (ShareOrchestrator, Arc<InMemoryWacMutator>, Arc<InMemoryBroker>, Arc<InMemoryShareAuditLog>) {
+async fn orchestrator() -> (
+    ShareOrchestrator,
+    Arc<InMemoryWacMutator>,
+    Arc<InMemoryBroker>,
+    Arc<InMemoryShareAuditLog>,
+) {
     let wac: Arc<InMemoryWacMutator> = Arc::new(InMemoryWacMutator::default());
     let broker = InMemoryBroker::new();
-    let audit = Arc::new(InMemoryShareAuditLog::new("https://alice.pod/profile/card#me"));
+    let audit = Arc::new(InMemoryShareAuditLog::new(
+        "https://alice.pod/profile/card#me",
+    ));
     let o = ShareOrchestrator::new(
         Arc::new(SharePolicyEngine::new()),
         Arc::clone(&wac) as Arc<dyn webxr::services::wac_mutator::WacMutator>,
@@ -126,8 +133,10 @@ async fn transition_private_to_team_approves_and_writes_wac() {
     let out = o.handle_intent(base_intent(), extras_ok()).await.unwrap();
     match out {
         ShareOutcome::TeamApproved { plan, .. } => {
-            assert_eq!(plan.destination_path,
-                "/shared/skills/team-alpha/research-brief.md");
+            assert_eq!(
+                plan.destination_path,
+                "/shared/skills/team-alpha/research-brief.md"
+            );
             assert!(plan.agent_group.unwrap().contains("team-alpha"));
         }
         _ => panic!("expected TeamApproved, got {:?}", out),
@@ -198,19 +207,31 @@ async fn transition_mesh_to_team_revokes_wac() {
 #[tokio::test]
 async fn transition_classifier_covers_six_cases() {
     use ShareTransition::*;
-    assert_eq!(ShareTransition::classify(ShareState::Private,
-        &TargetScope::Team("t".into())), Some(PrivateToTeam));
-    assert_eq!(ShareTransition::classify(ShareState::Private,
-        &TargetScope::Mesh), Some(PrivateToMesh));
-    assert_eq!(ShareTransition::classify(ShareState::Team,
-        &TargetScope::Mesh), Some(TeamToMesh));
-    assert_eq!(ShareTransition::classify(ShareState::Team,
-        &TargetScope::Private), Some(TeamToPrivate));
-    assert_eq!(ShareTransition::classify(ShareState::Mesh,
-        &TargetScope::Team("t".into())), Some(MeshToTeam));
+    assert_eq!(
+        ShareTransition::classify(ShareState::Private, &TargetScope::Team("t".into())),
+        Some(PrivateToTeam)
+    );
+    assert_eq!(
+        ShareTransition::classify(ShareState::Private, &TargetScope::Mesh),
+        Some(PrivateToMesh)
+    );
+    assert_eq!(
+        ShareTransition::classify(ShareState::Team, &TargetScope::Mesh),
+        Some(TeamToMesh)
+    );
+    assert_eq!(
+        ShareTransition::classify(ShareState::Team, &TargetScope::Private),
+        Some(TeamToPrivate)
+    );
+    assert_eq!(
+        ShareTransition::classify(ShareState::Mesh, &TargetScope::Team("t".into())),
+        Some(MeshToTeam)
+    );
     // Mesh→Private not directly supported (broker-driven retraction only).
-    assert_eq!(ShareTransition::classify(ShareState::Mesh,
-        &TargetScope::Private), None);
+    assert_eq!(
+        ShareTransition::classify(ShareState::Mesh, &TargetScope::Private),
+        None
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -319,7 +340,10 @@ async fn adapter_builds_payload_for_all_five_subject_kinds() {
 
         let case = broker_case_from_payload(&payload);
         assert!(case.id.contains(kind.as_str()));
-        assert_eq!(case.metadata.get("category").unwrap(), "contributor_mesh_share");
+        assert_eq!(
+            case.metadata.get("category").unwrap(),
+            "contributor_mesh_share"
+        );
         assert_eq!(case.metadata.get("subject_kind").unwrap(), kind.as_str());
     }
 }
@@ -330,11 +354,17 @@ async fn adapter_ontology_term_delegates_to_migration_candidate() {
     i.subject_kind = SubjectKind::OntologyTerm;
     i.source_state = ShareState::Team;
     i.target_scope = TargetScope::Mesh;
-    i.metadata.insert("ontology_iri".into(),
-        "urn:visionclaw:ont/capability-compounding".into());
-    i.metadata.insert("parent_class".into(), "Capability".into());
+    i.metadata.insert(
+        "ontology_iri".into(),
+        "urn:visionclaw:ont/capability-compounding".into(),
+    );
+    i.metadata
+        .insert("parent_class".into(), "Capability".into());
     let payload = build_broker_payload(&i, Some("pe-1".into()));
-    assert_eq!(payload.payload.get("delegates_to").unwrap(), "migration_candidate");
+    assert_eq!(
+        payload.payload.get("delegates_to").unwrap(),
+        "migration_candidate"
+    );
     assert!(payload.payload.contains_key("ontology_iri"));
 }
 
@@ -344,7 +374,8 @@ async fn adapter_workflow_advances_workflow_proposal() {
     i.subject_kind = SubjectKind::Workflow;
     i.source_state = ShareState::Team;
     i.target_scope = TargetScope::Mesh;
-    i.metadata.insert("workflow_proposal_id".into(), "wp-123".into());
+    i.metadata
+        .insert("workflow_proposal_id".into(), "wp-123".into());
     let payload = build_broker_payload(&i, Some("pe-1".into()));
     assert_eq!(payload.payload.get("advances").unwrap(), "WorkflowProposal");
 }
@@ -357,7 +388,10 @@ async fn adapter_graph_view_routes_to_insight_candidate() {
     i.target_scope = TargetScope::Mesh;
     i.metadata.insert("confidence".into(), "0.84".into());
     let payload = build_broker_payload(&i, Some("pe-1".into()));
-    assert_eq!(payload.payload.get("routes_to").unwrap(), "InsightCandidate");
+    assert_eq!(
+        payload.payload.get("routes_to").unwrap(),
+        "InsightCandidate"
+    );
 }
 
 // ---------------------------------------------------------------------------

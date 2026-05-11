@@ -82,11 +82,7 @@ impl LodPolicyState {
         self.frame_counter % RECOMPUTE_INTERVAL_FRAMES == 0
     }
 
-    pub fn classify_avatars(
-        &mut self,
-        camera: [f32; 3],
-        avatars: &[[f32; 3]],
-    ) -> &[LodLevel] {
+    pub fn classify_avatars(&mut self, camera: [f32; 3], avatars: &[[f32; 3]]) -> &[LodLevel] {
         self.last_levels.clear();
         for pos in avatars {
             let d_sq = distance_squared(camera, *pos);

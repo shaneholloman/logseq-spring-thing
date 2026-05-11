@@ -4,9 +4,9 @@
 //! held in the repository ports. Returns a [`KpiSnapshot`] with four metrics:
 //! mesh velocity, augmentation ratio, trust variance, and HITL precision.
 
+use log::info;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use log::info;
 
 use crate::models::enterprise::*;
 use crate::ports::broker_repository::BrokerRepository;
@@ -110,8 +110,7 @@ impl KpiComputationService {
                     CasePriority::Low => 1.0,
                 })
                 .collect();
-            let mean =
-                priority_values.iter().sum::<f64>() / priority_values.len() as f64;
+            let mean = priority_values.iter().sum::<f64>() / priority_values.len() as f64;
             let variance = priority_values
                 .iter()
                 .map(|v| (v - mean).powi(2))
@@ -158,8 +157,8 @@ impl KpiComputationService {
             augmentation_ratio: KpiValue {
                 value: augmentation_ratio,
                 unit: "ratio".to_string(),
-                description:
-                    "Proportion of decision volume resolved without escalation".to_string(),
+                description: "Proportion of decision volume resolved without escalation"
+                    .to_string(),
                 status: if augmentation_ratio.is_some() {
                     "computed".to_string()
                 } else {
@@ -170,8 +169,7 @@ impl KpiComputationService {
             trust_variance: KpiValue {
                 value: trust_variance,
                 unit: "sigma".to_string(),
-                description:
-                    "Rolling variance in decision quality across workflows".to_string(),
+                description: "Rolling variance in decision quality across workflows".to_string(),
                 status: if trust_variance.is_some() {
                     "computed".to_string()
                 } else {
@@ -182,9 +180,8 @@ impl KpiComputationService {
             hitl_precision: KpiValue {
                 value: hitl_precision,
                 unit: "percentage".to_string(),
-                description:
-                    "Percentage of escalations where human intervention changed outcome"
-                        .to_string(),
+                description: "Percentage of escalations where human intervention changed outcome"
+                    .to_string(),
                 status: if hitl_precision.is_some() {
                     "computed".to_string()
                 } else {

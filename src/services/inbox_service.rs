@@ -44,7 +44,10 @@ pub enum InboxStatus {
 
 impl InboxStatus {
     pub fn is_terminal(self) -> bool {
-        matches!(self, InboxStatus::Accepted | InboxStatus::Dismissed | InboxStatus::Escalated)
+        matches!(
+            self,
+            InboxStatus::Accepted | InboxStatus::Dismissed | InboxStatus::Escalated
+        )
     }
 }
 
@@ -52,16 +55,9 @@ impl InboxStatus {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum InboxSource {
-    Routine {
-        ref_: String,
-        agent_webid: String,
-    },
-    Agent {
-        agent_webid: String,
-    },
-    System {
-        reason: String,
-    },
+    Routine { ref_: String, agent_webid: String },
+    Agent { agent_webid: String },
+    System { reason: String },
 }
 
 /// One step in the provenance manifest (spec §6.2).
@@ -263,7 +259,10 @@ impl InMemoryInboxWriter {
         self.items
             .read()
             .ok()
-            .and_then(|m| m.get(&(path.owner_webid.clone(), path.agent_ns.clone())).map(|v| v.len()))
+            .and_then(|m| {
+                m.get(&(path.owner_webid.clone(), path.agent_ns.clone()))
+                    .map(|v| v.len())
+            })
             .unwrap_or(0)
     }
 
@@ -271,7 +270,10 @@ impl InMemoryInboxWriter {
         self.dlq
             .read()
             .ok()
-            .and_then(|m| m.get(&(path.owner_webid.clone(), path.agent_ns.clone())).map(|v| v.len()))
+            .and_then(|m| {
+                m.get(&(path.owner_webid.clone(), path.agent_ns.clone()))
+                    .map(|v| v.len())
+            })
             .unwrap_or(0)
     }
 }
@@ -391,15 +393,18 @@ impl<W: InboxWriter> InboxService<W> {
 
     /// Triage actions (spec §6.3).
     pub async fn accept(&self, path: &InboxPath, item_id: &str) -> Result<(), InboxError> {
-        self.transition(path, item_id, InboxStatus::Accepted, None).await
+        self.transition(path, item_id, InboxStatus::Accepted, None)
+            .await
     }
 
     pub async fn dismiss(&self, path: &InboxPath, item_id: &str) -> Result<(), InboxError> {
-        self.transition(path, item_id, InboxStatus::Dismissed, None).await
+        self.transition(path, item_id, InboxStatus::Dismissed, None)
+            .await
     }
 
     pub async fn escalate(&self, path: &InboxPath, item_id: &str) -> Result<(), InboxError> {
-        self.transition(path, item_id, InboxStatus::Escalated, None).await
+        self.transition(path, item_id, InboxStatus::Escalated, None)
+            .await
     }
 
     pub async fn snooze(
@@ -543,7 +548,10 @@ mod tests {
     async fn write_and_list() {
         let svc = InboxService::new(InMemoryInboxWriter::new());
         let path = InboxPath::new("https://alice.pods/profile/card#me", "research-brief");
-        let id = svc.write_item(&path, mk_item("urn:nip26:cap:1")).await.unwrap();
+        let id = svc
+            .write_item(&path, mk_item("urn:nip26:cap:1"))
+            .await
+            .unwrap();
         let items = svc.writer.list(&path).await.unwrap();
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].item_id, id);

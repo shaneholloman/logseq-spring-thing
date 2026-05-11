@@ -9,7 +9,6 @@ use cust::memory::{CopyDestination, DeviceBuffer};
 use log::info;
 
 impl UnifiedGPUCompute {
-
     pub fn run_community_detection(
         &mut self,
         max_iterations: u32,
@@ -24,7 +23,10 @@ impl UnifiedGPUCompute {
         let stream = &self.stream;
 
         // All community/clustering kernels are in the clustering PTX module
-        let clust_mod = self.clustering_module.as_ref().ok_or(anyhow!("Clustering PTX module not loaded"))?;
+        let clust_mod = self
+            .clustering_module
+            .as_ref()
+            .ok_or(anyhow!("Clustering PTX module not loaded"))?;
 
         let init_random_kernel = clust_mod.get_function("init_random_states_kernel")?;
         // SAFETY: Random state initialization kernel is safe because:
@@ -70,15 +72,12 @@ impl UnifiedGPUCompute {
             )?;
         }
 
-
         self.stream.synchronize()?;
         let node_degrees_host = safe_download(&self.node_degrees, self.num_nodes)?;
         let total_weight: f32 = node_degrees_host.iter().sum::<f32>() / 2.0;
 
-
         let mut iterations = 0;
         let mut converged = false;
-
 
         let propagate_kernel = if synchronous {
             clust_mod.get_function("propagate_labels_sync_kernel")?
@@ -87,7 +86,6 @@ impl UnifiedGPUCompute {
         };
 
         let check_convergence_kernel = clust_mod.get_function("check_convergence_kernel")?;
-
 
         let mut shared_mem_size = block_size * (self.max_labels + 1) * 4;
         // Cap shared memory to 48KB (safe default for all CUDA architectures).
@@ -104,7 +102,6 @@ impl UnifiedGPUCompute {
 
         for iter in 0..max_iterations {
             iterations = iter + 1;
-
 
             let convergence_flag_host = vec![1i32];
             self.convergence_flag.copy_from(&convergence_flag_host)?;
@@ -170,7 +167,6 @@ impl UnifiedGPUCompute {
                 }
             }
 
-
             if synchronous {
                 self.stream.synchronize()?;
                 let mut convergence_flag_host = vec![0i32];
@@ -183,7 +179,6 @@ impl UnifiedGPUCompute {
             }
         }
 
-
         if !synchronous {
             // In async mode, we don't check convergence per iteration,
             // so the algorithm runs for max_iterations
@@ -191,7 +186,6 @@ impl UnifiedGPUCompute {
             log::warn!("Async community detection runs max_iterations without convergence check");
             converged = false;
         }
-
 
         let modularity_kernel = clust_mod.get_function("compute_modularity_kernel")?;
         // SAFETY: Modularity computation kernel is safe because:
@@ -218,11 +212,9 @@ impl UnifiedGPUCompute {
 
         self.stream.synchronize()?;
 
-
-        let modularity_contributions = safe_download(&self.modularity_contributions, self.num_nodes)?;
+        let modularity_contributions =
+            safe_download(&self.modularity_contributions, self.num_nodes)?;
         let modularity: f32 = modularity_contributions.iter().sum::<f32>() / (2.0 * total_weight);
-
-
 
         let zero_communities = vec![0i32; self.max_labels];
         safe_upload(&mut self.community_sizes, &zero_communities)?;
@@ -245,10 +237,8 @@ impl UnifiedGPUCompute {
 
         self.stream.synchronize()?;
 
-
         let mut labels = safe_download(&self.labels_current, self.num_nodes)?;
         let community_sizes_host = safe_download(&self.community_sizes, self.max_labels)?;
-
 
         let mut label_map = vec![-1i32; self.max_labels];
         let mut compact_community_sizes = Vec::new();
@@ -261,7 +251,6 @@ impl UnifiedGPUCompute {
                 num_communities += 1;
             }
         }
-
 
         if num_communities < self.max_labels {
             safe_upload(&mut self.label_mapping, &label_map)?;
@@ -296,16 +285,13 @@ impl UnifiedGPUCompute {
         ))
     }
 
-
     pub fn run_community_detection_label_propagation(
         &mut self,
         max_iterations: u32,
         seed: u32,
     ) -> Result<(Vec<i32>, usize, f32, u32, Vec<i32>, bool)> {
-
         self.run_community_detection(max_iterations, true, seed)
     }
-
 
     pub fn run_louvain_community_detection(
         &mut self,
@@ -321,11 +307,9 @@ impl UnifiedGPUCompute {
         let block_size = 256;
         let grid_size = (self.num_nodes as u32 + block_size - 1) / block_size;
 
-
         let mut node_communities = (0..self.num_nodes as i32).collect::<Vec<i32>>();
         let community_weights = vec![1.0f32; self.num_nodes];
         let node_weights = vec![1.0f32; self.num_nodes];
-
 
         let d_node_communities = DeviceBuffer::from_slice(&node_communities)?;
         let d_community_weights = DeviceBuffer::from_slice(&community_weights)?;
@@ -339,11 +323,12 @@ impl UnifiedGPUCompute {
         for iteration in 0..max_iterations {
             actual_iterations = iteration + 1;
 
-
             d_improvement_flag.copy_from(&[false])?;
 
-
-            let clust_mod = self.clustering_module.as_ref().ok_or(anyhow!("Clustering PTX module not loaded"))?;
+            let clust_mod = self
+                .clustering_module
+                .as_ref()
+                .ok_or(anyhow!("Clustering PTX module not loaded"))?;
             let louvain_kernel = clust_mod.get_function("louvain_local_pass_kernel")?;
 
             // SAFETY: Louvain community detection kernel launch is safe because:
@@ -371,7 +356,6 @@ impl UnifiedGPUCompute {
 
             self.stream.synchronize()?;
 
-
             let mut improvement = vec![false];
             d_improvement_flag.copy_to(&mut improvement)?;
 
@@ -381,15 +365,12 @@ impl UnifiedGPUCompute {
             }
         }
 
-
         d_node_communities.copy_to(&mut node_communities)?;
-
 
         let mut unique_communities = node_communities.clone();
         unique_communities.sort_unstable();
         unique_communities.dedup();
         let num_communities = unique_communities.len();
-
 
         let mut community_sizes = vec![0usize; num_communities];
         for &community in &node_communities {
@@ -397,7 +378,6 @@ impl UnifiedGPUCompute {
                 community_sizes[idx] += 1;
             }
         }
-
 
         let modularity = self.calculate_modularity(&node_communities, total_weight);
 
@@ -411,7 +391,6 @@ impl UnifiedGPUCompute {
         ))
     }
 
-
     pub fn run_dbscan_clustering(&mut self, eps: f32, min_pts: i32) -> Result<Vec<i32>> {
         let _ctx = Context::new(self.device.clone())
             .map_err(|e| anyhow!("Failed to set CUDA context for DBSCAN: {}", e))?;
@@ -421,7 +400,6 @@ impl UnifiedGPUCompute {
         let block_size = 256;
         let grid_size = (self.num_nodes as u32 + block_size - 1) / block_size;
 
-
         let mut labels = vec![0i32; self.num_nodes];
         let neighbor_counts = vec![0i32; self.num_nodes];
         let max_neighbors = 64;
@@ -430,14 +408,15 @@ impl UnifiedGPUCompute {
             .map(|i| (i * max_neighbors) as i32)
             .collect::<Vec<i32>>();
 
-
         let d_labels = DeviceBuffer::from_slice(&labels)?;
         let d_neighbors = DeviceBuffer::from_slice(&neighbors)?;
         let d_neighbor_counts = DeviceBuffer::from_slice(&neighbor_counts)?;
         let d_neighbor_offsets = DeviceBuffer::from_slice(&neighbor_offsets)?;
 
-
-        let clustering_mod = self.clustering_module.as_ref().ok_or(anyhow!("Clustering PTX module not loaded"))?;
+        let clustering_mod = self
+            .clustering_module
+            .as_ref()
+            .ok_or(anyhow!("Clustering PTX module not loaded"))?;
         let find_neighbors_kernel = clustering_mod.get_function("dbscan_find_neighbors_kernel")?;
 
         // SAFETY: DBSCAN neighbor finding kernel launch is safe because:
@@ -464,9 +443,7 @@ impl UnifiedGPUCompute {
 
         self.stream.synchronize()?;
 
-
-        let mark_core_kernel = clustering_mod
-            .get_function("dbscan_mark_core_points_kernel")?;
+        let mark_core_kernel = clustering_mod.get_function("dbscan_mark_core_points_kernel")?;
 
         // SAFETY: DBSCAN core point marking kernel is safe because:
         // 1. d_neighbor_counts contains neighbor counts from previous kernel
@@ -487,8 +464,7 @@ impl UnifiedGPUCompute {
         self.stream.synchronize()?;
 
         // Phase 3: Propagate cluster labels until convergence
-        let propagate_kernel = clustering_mod
-            .get_function("dbscan_propagate_labels_kernel")?;
+        let propagate_kernel = clustering_mod.get_function("dbscan_propagate_labels_kernel")?;
 
         let mut changed = vec![0i32; 1];
         let mut d_changed = DeviceBuffer::from_slice(&changed)?;
@@ -527,8 +503,7 @@ impl UnifiedGPUCompute {
         }
 
         // Phase 4: Finalize noise points
-        let finalize_kernel = clustering_mod
-            .get_function("dbscan_finalize_noise_kernel")?;
+        let finalize_kernel = clustering_mod.get_function("dbscan_finalize_noise_kernel")?;
 
         // SAFETY: DBSCAN finalization kernel is safe because:
         // 1. d_labels contains cluster labels from propagation phase
@@ -551,7 +526,6 @@ impl UnifiedGPUCompute {
         Ok(labels)
     }
 
-
     pub(crate) fn calculate_modularity(&self, communities: &[i32], total_weight: f32) -> f32 {
         if communities.is_empty() || total_weight <= 0.0 {
             return 0.0;
@@ -559,7 +533,6 @@ impl UnifiedGPUCompute {
 
         let _num_nodes = communities.len();
         let mut modularity = 0.0;
-
 
         let mut community_map: std::collections::HashMap<i32, Vec<usize>> =
             std::collections::HashMap::new();
@@ -570,25 +543,20 @@ impl UnifiedGPUCompute {
                 .push(node_idx);
         }
 
-
         for (_community_id, nodes) in community_map.iter() {
             if nodes.len() < 2 {
                 continue;
             }
 
-
             let internal_edges = (nodes.len() * (nodes.len() - 1)) as f32 * 0.1;
 
-
             let degree_sum = nodes.len() as f32 * 2.0;
-
 
             let e_ii = internal_edges / (2.0 * total_weight);
             let a_i = degree_sum / (2.0 * total_weight);
 
             modularity += e_ii - (a_i * a_i);
         }
-
 
         modularity.max(-1.0).min(1.0)
     }

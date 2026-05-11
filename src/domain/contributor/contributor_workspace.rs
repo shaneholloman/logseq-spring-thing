@@ -85,7 +85,10 @@ impl ContributorWorkspace {
         self.focus = Some(focus);
     }
 
-    pub fn attach_artifact(&mut self, artifact: WorkArtifact) -> Result<(), ContributorWorkspaceError> {
+    pub fn attach_artifact(
+        &mut self,
+        artifact: WorkArtifact,
+    ) -> Result<(), ContributorWorkspaceError> {
         if self.is_closed() {
             return Err(ContributorWorkspaceError::AlreadyClosed);
         }
@@ -94,11 +97,15 @@ impl ContributorWorkspace {
                 artifact.artifact_id.clone(),
             ));
         }
-        self.artifacts.insert(artifact.artifact_id.clone(), artifact);
+        self.artifacts
+            .insert(artifact.artifact_id.clone(), artifact);
         Ok(())
     }
 
-    pub fn attach_session(&mut self, session: GuidanceSession) -> Result<(), ContributorWorkspaceError> {
+    pub fn attach_session(
+        &mut self,
+        session: GuidanceSession,
+    ) -> Result<(), ContributorWorkspaceError> {
         if self.is_closed() {
             return Err(ContributorWorkspaceError::AlreadyClosed);
         }
@@ -111,7 +118,10 @@ impl ContributorWorkspace {
         Ok(())
     }
 
-    pub fn attach_share_intent(&mut self, intent: ShareIntent) -> Result<(), ContributorWorkspaceError> {
+    pub fn attach_share_intent(
+        &mut self,
+        intent: ShareIntent,
+    ) -> Result<(), ContributorWorkspaceError> {
         if self.is_closed() {
             return Err(ContributorWorkspaceError::AlreadyClosed);
         }
@@ -148,7 +158,12 @@ mod tests {
     use crate::domain::contributor::value_objects::{ArtifactKind, GraphSelection};
 
     fn focus() -> WorkspaceFocus {
-        WorkspaceFocus::new(Some("proj:x".into()), GraphSelection::default(), vec![], vec![])
+        WorkspaceFocus::new(
+            Some("proj:x".into()),
+            GraphSelection::default(),
+            vec![],
+            vec![],
+        )
     }
 
     #[test]
@@ -161,8 +176,7 @@ mod tests {
         );
         assert_eq!(opened.workspace_id, ws.workspace_id);
 
-        let (art, _) =
-            WorkArtifact::new(&ws.workspace_id, ArtifactKind::Note, "n", "uri").unwrap();
+        let (art, _) = WorkArtifact::new(&ws.workspace_id, ArtifactKind::Note, "n", "uri").unwrap();
         ws.attach_artifact(art).unwrap();
 
         let (sess, _) = GuidanceSession::start(&ws.workspace_id, focus());

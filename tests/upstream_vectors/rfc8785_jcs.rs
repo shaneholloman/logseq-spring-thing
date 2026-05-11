@@ -12,7 +12,10 @@ fn rfc8785_fixture_loads_and_metadata_is_canonical() {
     let f = load_fixture("rfc8785-jcs.json");
     assert_meta_block(&f, "RFC 8785");
     let vectors = f["vectors"].as_array().expect("vectors must be array");
-    assert!(vectors.len() >= 6, "rfc8785-jcs fixture must have >= 6 vectors");
+    assert!(
+        vectors.len() >= 6,
+        "rfc8785-jcs fixture must have >= 6 vectors"
+    );
 }
 
 #[test]
@@ -21,7 +24,10 @@ fn rfc8785_each_vector_has_input_and_expected_output() {
     let vectors = f["vectors"].as_array().unwrap();
     for v in vectors {
         assert!(v["name"].is_string(), "name required");
-        assert!(v["input"].is_object() || v["input"].is_array(), "input required");
+        assert!(
+            v["input"].is_object() || v["input"].is_array(),
+            "input required"
+        );
         assert!(
             v["expected_output"].is_string(),
             "expected_output (canonical UTF-8 string) required"

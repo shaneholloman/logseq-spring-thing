@@ -87,7 +87,7 @@ pub struct PhysicsParameters {
 impl Default for PhysicsParameters {
     fn default() -> Self {
         Self {
-            time_step: 0.016, 
+            time_step: 0.016,
             damping: 0.8,
             spring_constant: 0.01,
             repulsion_strength: 100.0,
@@ -101,52 +101,32 @@ impl Default for PhysicsParameters {
 
 #[async_trait]
 pub trait GpuPhysicsAdapter: Send + Sync {
-    
     async fn initialize(&mut self, graph: Arc<GraphData>, params: PhysicsParameters) -> Result<()>;
 
-    
-    
     async fn compute_forces(&mut self) -> Result<Vec<NodeForce>>;
 
-    
-    
     async fn update_positions(&mut self, forces: &[NodeForce])
         -> Result<Vec<(u32, f32, f32, f32)>>;
 
-    
-    
     async fn step(&mut self) -> Result<PhysicsStepResult>;
 
-    
-    
     async fn simulate_until_convergence(&mut self) -> Result<PhysicsStepResult>;
 
-    
-    
     async fn apply_external_forces(&mut self, forces: Vec<(u32, f32, f32, f32)>) -> Result<()>;
 
-    
-    
     async fn pin_nodes(&mut self, nodes: Vec<(u32, f32, f32, f32)>) -> Result<()>;
 
-    
     async fn unpin_nodes(&mut self, node_ids: Vec<u32>) -> Result<()>;
 
-    
     async fn update_parameters(&mut self, params: PhysicsParameters) -> Result<()>;
 
-    
     async fn update_graph_data(&mut self, graph: Arc<GraphData>) -> Result<()>;
 
-    
     async fn get_gpu_status(&self) -> Result<GpuDeviceInfo>;
 
-    
     async fn get_statistics(&self) -> Result<PhysicsStatistics>;
 
-    
     async fn reset(&mut self) -> Result<()>;
 
-    
     async fn cleanup(&mut self) -> Result<()>;
 }

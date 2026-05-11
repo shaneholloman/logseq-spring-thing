@@ -438,9 +438,7 @@ async fn extract_caller_pubkey(req: &HttpRequest) -> Option<String> {
 /// P2-05: The response now includes per-endpoint GPU cost tiers so downstream
 /// consumers (including solid-pod-rs) can discover tiered pricing without a
 /// separate `/pay/.costs` call.
-async fn pay_info_handler(
-    config: web::Data<VcPayConfig>,
-) -> HttpResponse {
+async fn pay_info_handler(config: web::Data<VcPayConfig>) -> HttpResponse {
     let upstream = config.to_upstream();
     let mut info = pay_info(&upstream);
     // Augment with VisionClaw-specific fields
@@ -544,10 +542,8 @@ async fn pay_resource_handler(
             let mut resp = HttpResponse::Ok().json(body);
             for (name, value) in headers {
                 if let Ok(hv) = actix_web::http::header::HeaderValue::from_str(&value) {
-                    resp.headers_mut().insert(
-                        actix_web::http::header::HeaderName::from_static(name),
-                        hv,
-                    );
+                    resp.headers_mut()
+                        .insert(actix_web::http::header::HeaderName::from_static(name), hv);
                 }
             }
             resp
@@ -556,11 +552,9 @@ async fn pay_resource_handler(
             let body = payment_required_body(balance, cost);
             HttpResponse::build(actix_web::http::StatusCode::PAYMENT_REQUIRED).json(body)
         }
-        Err(e) => {
-            HttpResponse::InternalServerError().json(serde_json::json!({
-                "error": format!("Payment store error: {e}")
-            }))
-        }
+        Err(e) => HttpResponse::InternalServerError().json(serde_json::json!({
+            "error": format!("Payment store error: {e}")
+        })),
     }
 }
 
@@ -585,19 +579,32 @@ async fn pay_sell_handler(
     exchange_store: web::Data<Arc<FsExchangeStore>>,
 ) -> HttpResponse {
     if !config.enabled {
-        return HttpResponse::Forbidden().json(serde_json::json!({"error": "Payment system is disabled"}));
+        return HttpResponse::Forbidden()
+            .json(serde_json::json!({"error": "Payment system is disabled"}));
     }
     let pubkey = match extract_caller_pubkey(&req).await {
         Some(pk) => pk,
-        None => return HttpResponse::Unauthorized().json(serde_json::json!({"error": "Authentication required"})),
+        None => {
+            return HttpResponse::Unauthorized()
+                .json(serde_json::json!({"error": "Authentication required"}))
+        }
     };
     let did = pubkey_to_did(&pubkey);
     let b = body.into_inner();
 
-    match exchange_store.with_exchange_and_ledger(&ledger_store, |exchange, _ledger| {
-        let order = exchange.order_book.create_order(&did, &b.sell_currency, b.sell_amount, &b.buy_currency, b.price);
-        Ok(order)
-    }).await {
+    match exchange_store
+        .with_exchange_and_ledger(&ledger_store, |exchange, _ledger| {
+            let order = exchange.order_book.create_order(
+                &did,
+                &b.sell_currency,
+                b.sell_amount,
+                &b.buy_currency,
+                b.price,
+            );
+            Ok(order)
+        })
+        .await
+    {
         Ok(order) => HttpResponse::Created().json(serde_json::json!({
             "order": order,
         })),
@@ -612,11 +619,19 @@ async fn pay_offers_handler(
     query: web::Query<HashMap<String, String>>,
 ) -> HttpResponse {
     if !config.enabled {
-        return HttpResponse::Forbidden().json(serde_json::json!({"error": "Payment system is disabled"}));
+        return HttpResponse::Forbidden()
+            .json(serde_json::json!({"error": "Payment system is disabled"}));
     }
     let exchange = exchange_store.read_only().await;
-    let pair = query.get("sell").and_then(|s| query.get("buy").map(|b| (s.as_str(), b.as_str())));
-    let offers: Vec<_> = exchange.order_book.list_offers(pair).into_iter().cloned().collect();
+    let pair = query
+        .get("sell")
+        .and_then(|s| query.get("buy").map(|b| (s.as_str(), b.as_str())));
+    let offers: Vec<_> = exchange
+        .order_book
+        .list_offers(pair)
+        .into_iter()
+        .cloned()
+        .collect();
     HttpResponse::Ok().json(serde_json::json!({"offers": offers, "count": offers.len()}))
 }
 
@@ -634,22 +649,31 @@ async fn pay_swap_handler(
     exchange_store: web::Data<Arc<FsExchangeStore>>,
 ) -> HttpResponse {
     if !config.enabled {
-        return HttpResponse::Forbidden().json(serde_json::json!({"error": "Payment system is disabled"}));
+        return HttpResponse::Forbidden()
+            .json(serde_json::json!({"error": "Payment system is disabled"}));
     }
     let pubkey = match extract_caller_pubkey(&req).await {
         Some(pk) => pk,
-        None => return HttpResponse::Unauthorized().json(serde_json::json!({"error": "Authentication required"})),
+        None => {
+            return HttpResponse::Unauthorized()
+                .json(serde_json::json!({"error": "Authentication required"}))
+        }
     };
     let did = pubkey_to_did(&pubkey);
     let order_id = body.into_inner().order_id;
 
-    match exchange_store.with_exchange_and_ledger(&ledger_store, |exchange, ledger| {
-        exchange.order_book.execute_swap(&order_id, &did, ledger)
-    }).await {
+    match exchange_store
+        .with_exchange_and_ledger(&ledger_store, |exchange, ledger| {
+            exchange.order_book.execute_swap(&order_id, &did, ledger)
+        })
+        .await
+    {
         Ok(result) => HttpResponse::Ok().json(result),
         Err(e) => {
             let status = match &e {
-                PaymentError::InsufficientBalance { .. } => actix_web::http::StatusCode::PAYMENT_REQUIRED,
+                PaymentError::InsufficientBalance { .. } => {
+                    actix_web::http::StatusCode::PAYMENT_REQUIRED
+                }
                 _ => actix_web::http::StatusCode::BAD_REQUEST,
             };
             HttpResponse::build(status).json(serde_json::json!({"error": format!("{e}")}))
@@ -673,7 +697,9 @@ struct AddLiquidityRequest {
     fee_bps: u64,
 }
 
-fn default_fee_bps() -> u64 { 30 }
+fn default_fee_bps() -> u64 {
+    30
+}
 
 /// `GET /pay/.pool?a={}&b={}` — pool info for a currency pair.
 /// `POST /pay/.pool` with body `{"from_currency": ..., "amount": ...}` — AMM swap.
@@ -683,7 +709,8 @@ async fn pay_pool_get_handler(
     query: web::Query<HashMap<String, String>>,
 ) -> HttpResponse {
     if !config.enabled {
-        return HttpResponse::Forbidden().json(serde_json::json!({"error": "Payment system is disabled"}));
+        return HttpResponse::Forbidden()
+            .json(serde_json::json!({"error": "Payment system is disabled"}));
     }
     let exchange = exchange_store.read_only().await;
     match (query.get("a"), query.get("b")) {
@@ -708,25 +735,34 @@ async fn pay_pool_swap_handler(
     query: web::Query<HashMap<String, String>>,
 ) -> HttpResponse {
     if !config.enabled {
-        return HttpResponse::Forbidden().json(serde_json::json!({"error": "Payment system is disabled"}));
+        return HttpResponse::Forbidden()
+            .json(serde_json::json!({"error": "Payment system is disabled"}));
     }
     let pubkey = match extract_caller_pubkey(&req).await {
         Some(pk) => pk,
-        None => return HttpResponse::Unauthorized().json(serde_json::json!({"error": "Authentication required"})),
+        None => {
+            return HttpResponse::Unauthorized()
+                .json(serde_json::json!({"error": "Authentication required"}))
+        }
     };
     let did = pubkey_to_did(&pubkey);
     let b = body.into_inner();
     let currency_a = query.get("a").cloned().unwrap_or_default();
     let currency_b = query.get("b").cloned().unwrap_or_default();
 
-    match exchange_store.with_exchange_and_ledger(&ledger_store, |exchange, ledger| {
-        let pool = exchange.get_or_create_pool(&currency_a, &currency_b, 30);
-        pool.swap(&did, &b.from_currency, b.amount, ledger)
-    }).await {
+    match exchange_store
+        .with_exchange_and_ledger(&ledger_store, |exchange, ledger| {
+            let pool = exchange.get_or_create_pool(&currency_a, &currency_b, 30);
+            pool.swap(&did, &b.from_currency, b.amount, ledger)
+        })
+        .await
+    {
         Ok(result) => HttpResponse::Ok().json(result),
         Err(e) => {
             let status = match &e {
-                PaymentError::InsufficientBalance { .. } => actix_web::http::StatusCode::PAYMENT_REQUIRED,
+                PaymentError::InsufficientBalance { .. } => {
+                    actix_web::http::StatusCode::PAYMENT_REQUIRED
+                }
                 _ => actix_web::http::StatusCode::BAD_REQUEST,
             };
             HttpResponse::build(status).json(serde_json::json!({"error": format!("{e}")}))
@@ -743,23 +779,30 @@ async fn pay_pool_liquidity_handler(
     exchange_store: web::Data<Arc<FsExchangeStore>>,
 ) -> HttpResponse {
     if !config.enabled {
-        return HttpResponse::Forbidden().json(serde_json::json!({"error": "Payment system is disabled"}));
+        return HttpResponse::Forbidden()
+            .json(serde_json::json!({"error": "Payment system is disabled"}));
     }
     let pubkey = match extract_caller_pubkey(&req).await {
         Some(pk) => pk,
-        None => return HttpResponse::Unauthorized().json(serde_json::json!({"error": "Authentication required"})),
+        None => {
+            return HttpResponse::Unauthorized()
+                .json(serde_json::json!({"error": "Authentication required"}))
+        }
     };
     let did = pubkey_to_did(&pubkey);
     let b = body.into_inner();
 
-    match exchange_store.with_exchange_and_ledger(&ledger_store, |exchange, ledger| {
-        let pool = exchange.get_or_create_pool(&b.currency_a, &b.currency_b, b.fee_bps);
-        let shares = pool.add_liquidity(&did, b.amount_a, b.amount_b, ledger)?;
-        Ok(serde_json::json!({
-            "shares_issued": shares,
-            "pool": pool.pool_info(),
-        }))
-    }).await {
+    match exchange_store
+        .with_exchange_and_ledger(&ledger_store, |exchange, ledger| {
+            let pool = exchange.get_or_create_pool(&b.currency_a, &b.currency_b, b.fee_bps);
+            let shares = pool.add_liquidity(&did, b.amount_a, b.amount_b, ledger)?;
+            Ok(serde_json::json!({
+                "shares_issued": shares,
+                "pool": pool.pool_info(),
+            }))
+        })
+        .await
+    {
         Ok(body) => HttpResponse::Ok().json(body),
         Err(e) => HttpResponse::BadRequest().json(serde_json::json!({"error": format!("{e}")})),
     }
@@ -848,7 +891,10 @@ pub fn configure_pay_routes(cfg: &mut web::ServiceConfig) {
             .route("/.swap", web::post().to(pay_swap_handler))
             .route("/.pool", web::get().to(pay_pool_get_handler))
             .route("/.pool/swap", web::post().to(pay_pool_swap_handler))
-            .route("/.pool/liquidity", web::post().to(pay_pool_liquidity_handler))
+            .route(
+                "/.pool/liquidity",
+                web::post().to(pay_pool_liquidity_handler),
+            )
             .route("/{resource_path:.*}", web::get().to(pay_resource_handler)),
     );
 }

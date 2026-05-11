@@ -7,7 +7,6 @@ pub async fn get_real_gpu_physics_stats(app_state: &AppState) -> Option<GPUPhysi
     if let Some(gpu_addr) = app_state.get_gpu_compute_addr().await {
         use crate::actors::messages::{GetGPUStatus, GetStressMajorizationStats};
 
-        
         let gpu_stats = match gpu_addr.send(GetGPUStatus).await {
             Ok(stats) => stats,
             Err(e) => {
@@ -16,10 +15,9 @@ pub async fn get_real_gpu_physics_stats(app_state: &AppState) -> Option<GPUPhysi
             }
         };
 
-        
         let stress_stats = match gpu_addr.send(GetStressMajorizationStats).await {
             Ok(Ok(stats)) => StressMajorizationStats {
-                total_runs: 1, 
+                total_runs: 1,
                 successful_runs: if stats.converged { 1 } else { 0 },
                 failed_runs: if stats.converged { 0 } else { 1 },
                 consecutive_failures: 0,
@@ -31,12 +29,12 @@ pub async fn get_real_gpu_physics_stats(app_state: &AppState) -> Option<GPUPhysi
                 emergency_stop_reason: "None".to_string(),
                 avg_computation_time_ms: stats.computation_time_ms,
                 avg_stress: stats.stress_value,
-                avg_displacement: 0.1, 
+                avg_displacement: 0.1,
                 is_converging: stats.converged,
             },
             Ok(Err(e)) => {
                 warn!("Failed to get stress majorization stats: {}", e);
-                
+
                 StressMajorizationStats {
                     total_runs: 0,
                     successful_runs: 0,
@@ -54,33 +52,30 @@ pub async fn get_real_gpu_physics_stats(app_state: &AppState) -> Option<GPUPhysi
                     is_converging: true,
                 }
             }
-            Err(_) => {
-                
-                StressMajorizationStats {
-                    total_runs: 0,
-                    successful_runs: 0,
-                    failed_runs: 0,
-                    consecutive_failures: 0,
-                    emergency_stopped: false,
-                    last_error: "Communication error".to_string(),
-                    average_computation_time_ms: 16,
-                    success_rate: 1.0,
-                    is_emergency_stopped: false,
-                    emergency_stop_reason: "None".to_string(),
-                    avg_computation_time_ms: 16,
-                    avg_stress: 0.1,
-                    avg_displacement: 0.01,
-                    is_converging: true,
-                }
-            }
+            Err(_) => StressMajorizationStats {
+                total_runs: 0,
+                successful_runs: 0,
+                failed_runs: 0,
+                consecutive_failures: 0,
+                emergency_stopped: false,
+                last_error: "Communication error".to_string(),
+                average_computation_time_ms: 16,
+                success_rate: 1.0,
+                is_emergency_stopped: false,
+                emergency_stop_reason: "None".to_string(),
+                avg_computation_time_ms: 16,
+                avg_stress: 0.1,
+                avg_displacement: 0.01,
+                is_converging: true,
+            },
         };
 
         Some(GPUPhysicsStats {
             iteration_count: gpu_stats.iteration_count,
             nodes_count: gpu_stats.num_nodes,
-            edges_count: gpu_stats.num_nodes * 2, 
-            kinetic_energy: 0.1,                  
-            total_forces: 1.0,                    
+            edges_count: gpu_stats.num_nodes * 2,
+            kinetic_energy: 0.1,
+            total_forces: 1.0,
             gpu_enabled: gpu_stats.is_initialized,
             compute_mode: "WGSL".to_string(),
             kernel_mode: "unified".to_string(),
@@ -113,11 +108,9 @@ pub async fn perform_gpu_spectral_clustering(
         graph_data.nodes.len()
     );
 
-
     if let Some(gpu_manager) = &app_state.gpu_manager_addr {
         info!("GPU manager available, executing spectral clustering on GPU");
 
-        
         use crate::actors::messages::PerformGPUClustering;
 
         let clustering_msg = PerformGPUClustering {
@@ -126,7 +119,6 @@ pub async fn perform_gpu_spectral_clustering(
             task_id: format!("spectral_{}", uuid::Uuid::new_v4()),
         };
 
-        
         match gpu_manager.send(clustering_msg).await {
             Ok(Ok(gpu_result)) => {
                 info!(
@@ -146,16 +138,13 @@ pub async fn perform_gpu_spectral_clustering(
             }
             Ok(Err(e)) => {
                 error!("GPU spectral clustering failed: {}", e);
-                
             }
             Err(e) => {
                 error!("Failed to communicate with GPU manager: {}", e);
-                
             }
         }
     }
 
-    
     warn!("GPU clustering failed, falling back to CPU spectral clustering");
     generate_cpu_fallback_clustering(
         graph_data,
@@ -176,11 +165,9 @@ pub async fn perform_gpu_kmeans_clustering(
         graph_data.nodes.len()
     );
 
-
     if let Some(gpu_manager) = &app_state.gpu_manager_addr {
         info!("GPU manager available, executing K-means clustering on GPU");
 
-        
         use crate::actors::messages::PerformGPUClustering;
 
         let clustering_msg = PerformGPUClustering {
@@ -189,7 +176,6 @@ pub async fn perform_gpu_kmeans_clustering(
             task_id: format!("kmeans_{}", uuid::Uuid::new_v4()),
         };
 
-        
         match gpu_manager.send(clustering_msg).await {
             Ok(Ok(gpu_result)) => {
                 info!(
@@ -208,16 +194,13 @@ pub async fn perform_gpu_kmeans_clustering(
             }
             Ok(Err(e)) => {
                 error!("GPU K-means clustering failed: {}", e);
-                
             }
             Err(e) => {
                 error!("Failed to communicate with GPU manager: {}", e);
-                
             }
         }
     }
 
-    
     warn!("GPU clustering failed, falling back to CPU K-means clustering");
     generate_cpu_fallback_clustering(
         graph_data,
@@ -238,11 +221,9 @@ pub async fn perform_gpu_louvain_clustering(
         graph_data.nodes.len()
     );
 
-
     if let Some(gpu_manager) = &app_state.gpu_manager_addr {
         info!("GPU manager available, executing Louvain clustering on GPU");
 
-        
         use crate::actors::messages::PerformGPUClustering;
 
         let clustering_msg = PerformGPUClustering {
@@ -251,7 +232,6 @@ pub async fn perform_gpu_louvain_clustering(
             task_id: format!("louvain_{}", uuid::Uuid::new_v4()),
         };
 
-        
         match gpu_manager.send(clustering_msg).await {
             Ok(Ok(gpu_result)) => {
                 info!(
@@ -270,16 +250,13 @@ pub async fn perform_gpu_louvain_clustering(
             }
             Ok(Err(e)) => {
                 error!("GPU Louvain clustering failed: {}", e);
-                
             }
             Err(e) => {
                 error!("Failed to communicate with GPU manager: {}", e);
-                
             }
         }
     }
 
-    
     warn!("GPU clustering failed, falling back to CPU Louvain clustering");
     generate_cpu_fallback_clustering(
         graph_data,
@@ -297,15 +274,11 @@ pub async fn perform_gpu_default_clustering(
 ) -> Vec<Cluster> {
     let node_count = graph_data.nodes.len();
 
-    
     if node_count < 100 {
-        
         perform_gpu_kmeans_clustering(app_state, graph_data, agents, params).await
     } else if node_count < 1000 {
-        
         perform_gpu_spectral_clustering(app_state, graph_data, agents, params).await
     } else {
-        
         perform_gpu_louvain_clustering(app_state, graph_data, agents, params).await
     }
 }
@@ -324,7 +297,6 @@ fn convert_gpu_clusters_to_response(
         .into_iter()
         .enumerate()
         .map(|(i, cluster)| {
-            
             let centroid = if !cluster.nodes.is_empty() {
                 let sum_x: f32 = cluster
                     .nodes
@@ -381,7 +353,12 @@ fn generate_cpu_fallback_clustering(
     method: &str,
 ) -> Vec<Cluster> {
     if !agents.is_empty() {
-        super::clustering_handlers::generate_agent_based_clusters(graph_data, agents, num_clusters, method)
+        super::clustering_handlers::generate_agent_based_clusters(
+            graph_data,
+            agents,
+            num_clusters,
+            method,
+        )
     } else {
         super::clustering_handlers::generate_graph_based_clusters(graph_data, num_clusters, method)
     }

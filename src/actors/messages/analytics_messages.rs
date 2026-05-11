@@ -281,7 +281,8 @@ pub struct UpdateComponentEdges {
 #[derive(Message, Clone)]
 #[rtype(result = "()")]
 pub struct SetNodeAnalytics {
-    pub node_analytics: std::sync::Arc<std::sync::RwLock<std::collections::HashMap<u32, (u32, f32, u32)>>>,
+    pub node_analytics:
+        std::sync::Arc<std::sync::RwLock<std::collections::HashMap<u32, (u32, f32, u32)>>>,
 }
 
 // ---------------------------------------------------------------------------

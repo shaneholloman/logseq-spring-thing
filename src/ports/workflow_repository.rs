@@ -42,19 +42,12 @@ pub trait WorkflowRepository: Send + Sync {
     async fn create_proposal(&self, proposal: &WorkflowProposal) -> Result<()>;
 
     /// Update proposal status
-    async fn update_proposal_status(
-        &self,
-        proposal_id: &str,
-        status: WorkflowStatus,
-    ) -> Result<()>;
+    async fn update_proposal_status(&self, proposal_id: &str, status: WorkflowStatus)
+        -> Result<()>;
 
     /// Get all promoted workflow patterns
     async fn get_patterns(&self, limit: usize) -> Result<Vec<WorkflowPattern>>;
 
     /// Promote a proposal to a reusable pattern
-    async fn promote_to_pattern(
-        &self,
-        proposal_id: &str,
-        pattern: &WorkflowPattern,
-    ) -> Result<()>;
+    async fn promote_to_pattern(&self, proposal_id: &str, pattern: &WorkflowPattern) -> Result<()>;
 }

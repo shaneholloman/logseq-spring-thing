@@ -7,11 +7,11 @@ use actix_web::{web, HttpRequest, Responder};
 use log::info;
 use serde_json::json;
 
-use crate::events::enterprise_events::{PolicyEvaluatedEvent, emit_enterprise_event};
+use crate::events::enterprise_events::{emit_enterprise_event, PolicyEvaluatedEvent};
 use crate::middleware::enterprise_auth::require_role;
 use crate::models::enterprise::{EnterpriseRole, PolicyContext, PolicyOutcome};
-use crate::{error_json, ok_json};
 use crate::AppState;
+use crate::{error_json, ok_json};
 
 /// POST /api/policy/evaluate
 ///
@@ -29,10 +29,7 @@ pub async fn evaluate_policy(
 
     match state.policy_engine.evaluate(&body).await {
         Ok(evaluations) => {
-            let decision = if evaluations
-                .iter()
-                .any(|e| e.outcome == PolicyOutcome::Deny)
-            {
+            let decision = if evaluations.iter().any(|e| e.outcome == PolicyOutcome::Deny) {
                 PolicyOutcome::Deny
             } else if evaluations
                 .iter()

@@ -1,12 +1,10 @@
 use super::app_settings::AppFullSettings;
+use super::path_access::{parse_path, PathAccessible};
 use super::physics::PhysicsSettings;
 use super::services::AuthSettings;
 use super::system::SystemSettings;
-use super::visualisation::{
-    GraphSettings, GraphsSettings, VisualisationSettings,
-};
+use super::visualisation::{GraphSettings, GraphsSettings, VisualisationSettings};
 use super::xr::XRSettings;
-use super::path_access::{parse_path, PathAccessible};
 
 // PathAccessible implementation for AppFullSettings
 impl PathAccessible for AppFullSettings {

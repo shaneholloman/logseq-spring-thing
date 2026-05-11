@@ -63,10 +63,7 @@ impl SocketFlowServer {
                 debug!("Ignoring non-ack binary protocol message on main WS");
             }
             Err(e) => {
-                debug!(
-                    "New protocol decode failed ({}), trying position frame",
-                    e
-                );
+                debug!("New protocol decode failed ({}), trying position frame", e);
             }
         }
 
@@ -107,7 +104,8 @@ impl SocketFlowServer {
                         {
                             if let Ok(Ok(_spring_val)) = settings_addr
                                 .send(GetSettingByPath {
-                                    path: "visualisation.graphs.logseq.physics.spring_k".to_string(),
+                                    path: "visualisation.graphs.logseq.physics.spring_k"
+                                        .to_string(),
                                 })
                                 .await
                             {
@@ -119,10 +117,8 @@ impl SocketFlowServer {
                                     .await
                                 {
                                     use crate::actors::messages::SimulationStep;
-                                    if let Err(e) = app_state
-                                        .graph_service_addr
-                                        .send(SimulationStep)
-                                        .await
+                                    if let Err(e) =
+                                        app_state.graph_service_addr.send(SimulationStep).await
                                     {
                                         error!("Failed to trigger simulation step: {}", e);
                                     } else {

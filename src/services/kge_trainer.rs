@@ -116,9 +116,7 @@ impl KGETrainer {
 
     /// Load triples from Neo4j. Returns `(triples, entity_iris, relation_names)`.
     #[instrument(skip(self))]
-    pub async fn load_triples(
-        &self,
-    ) -> Result<(Vec<Triple>, Vec<String>, Vec<String>), KGEError> {
+    pub async fn load_triples(&self) -> Result<(Vec<Triple>, Vec<String>, Vec<String>), KGEError> {
         let cypher = "MATCH (a)-[r]->(b) \
                       WHERE (a:OntologyClass OR a:KGNode) AND (b:OntologyClass OR b:KGNode) \
                       RETURN a.iri AS head_iri, type(r) AS rel_type, b.iri AS tail_iri";
@@ -135,16 +133,14 @@ impl KGETrainer {
         let mut relation_names: Vec<String> = Vec::new();
         let mut triples: Vec<Triple> = Vec::new();
 
-        while let Some(row) = result.next().await.map_err(|e| KGEError::Neo4j(e.to_string()))? {
-            let head_iri: String = row
-                .get("head_iri")
-                .unwrap_or_default();
-            let rel_type: String = row
-                .get("rel_type")
-                .unwrap_or_default();
-            let tail_iri: String = row
-                .get("tail_iri")
-                .unwrap_or_default();
+        while let Some(row) = result
+            .next()
+            .await
+            .map_err(|e| KGEError::Neo4j(e.to_string()))?
+        {
+            let head_iri: String = row.get("head_iri").unwrap_or_default();
+            let rel_type: String = row.get("rel_type").unwrap_or_default();
+            let tail_iri: String = row.get("tail_iri").unwrap_or_default();
 
             if head_iri.is_empty() || tail_iri.is_empty() || rel_type.is_empty() {
                 continue;
@@ -260,16 +256,13 @@ impl KGETrainer {
                 // neo4rs expects the list as a parameter
                 let embedding_vec: Vec<f64> = embedding.iter().map(|&v| v as f64).collect();
 
-                let q = query(
-                    "MATCH (c {iri: $iri}) SET c.kge_embedding_128 = $embedding",
-                )
-                .param("iri", iri.as_str())
-                .param("embedding", embedding_vec);
+                let q = query("MATCH (c {iri: $iri}) SET c.kge_embedding_128 = $embedding")
+                    .param("iri", iri.as_str())
+                    .param("embedding", embedding_vec);
 
-                self.neo4j
-                    .run(q)
-                    .await
-                    .map_err(|e| KGEError::Neo4j(format!("Failed to store embedding for {iri}: {e}")))?;
+                self.neo4j.run(q).await.map_err(|e| {
+                    KGEError::Neo4j(format!("Failed to store embedding for {iri}: {e}"))
+                })?;
             }
         }
 
@@ -333,12 +326,7 @@ impl KGETrainer {
     }
 
     /// Cosine similarity between two entity embeddings.
-    pub fn entity_similarity(
-        &self,
-        result: &KGEResult,
-        iri_a: &str,
-        iri_b: &str,
-    ) -> Option<f32> {
+    pub fn entity_similarity(&self, result: &KGEResult, iri_a: &str, iri_b: &str) -> Option<f32> {
         let idx_a = *result.iri_to_entity.get(iri_a)?;
         let idx_b = *result.iri_to_entity.get(iri_b)?;
         Some(cosine_similarity(
@@ -355,12 +343,7 @@ struct KGETrainerInner {
 }
 
 impl KGETrainerInner {
-    fn train(
-        &self,
-        triples: &[Triple],
-        num_entities: usize,
-        num_relations: usize,
-    ) -> KGEResult {
+    fn train(&self, triples: &[Triple], num_entities: usize, num_relations: usize) -> KGEResult {
         let dim = self.config.embedding_dim;
         let bound = 6.0_f32 / (dim as f32).sqrt();
         let mut rng = rand::thread_rng();
@@ -469,7 +452,11 @@ impl KGETrainerInner {
             epochs_completed = epoch + 1;
 
             if (epoch + 1) % 50 == 0 {
-                info!(epoch = epoch + 1, loss = final_loss, "KGE training progress");
+                info!(
+                    epoch = epoch + 1,
+                    loss = final_loss,
+                    "KGE training progress"
+                );
             }
         }
 
@@ -532,7 +519,6 @@ pub fn l2_normalize(v: &[f32]) -> Vec<f32> {
     v.iter().map(|x| x / norm).collect()
 }
 
-
 /// Corrupt a triple by replacing head or tail with a random entity.
 fn corrupt_triple(triple: &Triple, num_entities: usize, rng: &mut impl Rng) -> Triple {
     if rng.gen_bool(0.5) {
@@ -576,7 +562,10 @@ mod tests {
         let r = vec![0.0, 1.0, 0.0];
         let t = vec![1.0, 1.0, 0.0];
         let score = transe_score(&h, &r, &t);
-        assert!(score < 1e-6, "Perfect triple should have near-zero score, got {score}");
+        assert!(
+            score < 1e-6,
+            "Perfect triple should have near-zero score, got {score}"
+        );
     }
 
     #[test]
@@ -674,9 +663,21 @@ mod tests {
     fn test_training_reduces_loss() {
         // Small synthetic graph: A -r0-> B, B -r0-> C, A -r1-> C
         let triples = vec![
-            Triple { head: 0, relation: 0, tail: 1 },
-            Triple { head: 1, relation: 0, tail: 2 },
-            Triple { head: 0, relation: 1, tail: 2 },
+            Triple {
+                head: 0,
+                relation: 0,
+                tail: 1,
+            },
+            Triple {
+                head: 1,
+                relation: 0,
+                tail: 2,
+            },
+            Triple {
+                head: 0,
+                relation: 1,
+                tail: 2,
+            },
         ];
 
         let config = KGEConfig {
@@ -689,7 +690,9 @@ mod tests {
             normalize_embeddings: true,
         };
 
-        let trainer = KGETrainerInner { config: config.clone() };
+        let trainer = KGETrainerInner {
+            config: config.clone(),
+        };
 
         // Train briefly and check loss decreased
         let result = trainer.train(&triples, 3, 2);
@@ -750,23 +753,26 @@ mod tests {
         };
 
         // Test pure cosine_similarity function using the result's embeddings
-        let sim_self = cosine_similarity(
-            &result.entity_embeddings[0],
-            &result.entity_embeddings[0],
+        let sim_self =
+            cosine_similarity(&result.entity_embeddings[0], &result.entity_embeddings[0]);
+        assert!(
+            (sim_self - 1.0).abs() < 1e-6,
+            "Self-similarity should be 1.0"
         );
-        assert!((sim_self - 1.0).abs() < 1e-6, "Self-similarity should be 1.0");
 
-        let sim_same = cosine_similarity(
-            &result.entity_embeddings[0],
-            &result.entity_embeddings[2],
+        let sim_same =
+            cosine_similarity(&result.entity_embeddings[0], &result.entity_embeddings[2]);
+        assert!(
+            (sim_same - 1.0).abs() < 1e-6,
+            "Same-vector similarity should be 1.0"
         );
-        assert!((sim_same - 1.0).abs() < 1e-6, "Same-vector similarity should be 1.0");
 
-        let sim_ortho = cosine_similarity(
-            &result.entity_embeddings[0],
-            &result.entity_embeddings[1],
+        let sim_ortho =
+            cosine_similarity(&result.entity_embeddings[0], &result.entity_embeddings[1]);
+        assert!(
+            sim_ortho.abs() < 1e-6,
+            "Orthogonal similarity should be 0.0"
         );
-        assert!(sim_ortho.abs() < 1e-6, "Orthogonal similarity should be 0.0");
     }
 
     #[test]

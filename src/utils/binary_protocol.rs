@@ -136,9 +136,7 @@ pub fn encode_position_frame(
 /// Decode a position frame produced by `encode_position_frame`.
 ///
 /// Returns `(broadcast_sequence, [(id, BinaryNodeData), ...])`.
-pub fn decode_position_frame(
-    bytes: &[u8],
-) -> Result<(u64, Vec<(u32, BinaryNodeData)>), String> {
+pub fn decode_position_frame(bytes: &[u8]) -> Result<(u64, Vec<(u32, BinaryNodeData)>), String> {
     if bytes.len() > MAX_PAYLOAD_SIZE {
         return Err(format!(
             "Payload size {} exceeds maximum {}",
@@ -161,8 +159,7 @@ pub fn decode_position_frame(
     }
 
     let seq = u64::from_le_bytes([
-        bytes[1], bytes[2], bytes[3], bytes[4],
-        bytes[5], bytes[6], bytes[7], bytes[8],
+        bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7], bytes[8],
     ]);
 
     let body = &bytes[FRAME_HEADER_SIZE..];
@@ -191,13 +188,23 @@ pub fn decode_position_frame(
         let vx = f32::from_le_bytes([chunk[16], chunk[17], chunk[18], chunk[19]]);
         let vy = f32::from_le_bytes([chunk[20], chunk[21], chunk[22], chunk[23]]);
         let vz = f32::from_le_bytes([chunk[24], chunk[25], chunk[26], chunk[27]]);
-        let node = BinaryNodeData { node_id: id, x, y, z, vx, vy, vz };
+        let node = BinaryNodeData {
+            node_id: id,
+            x,
+            y,
+            z,
+            vx,
+            vy,
+            vz,
+        };
         out.push((id, node));
     }
 
     debug!(
         "decode_position_frame: seq={}, {} nodes, {} bytes",
-        seq, out.len(), bytes.len()
+        seq,
+        out.len(),
+        bytes.len()
     );
     Ok((seq, out))
 }
@@ -215,12 +222,12 @@ pub fn calculate_message_size(updates: &[(u32, BinaryNodeData)]) -> usize {
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum AgentActionType {
-    Query = 0,      // Agent querying data node (blue)
-    Update = 1,     // Agent updating data node (yellow)
-    Create = 2,     // Agent creating data node (green)
-    Delete = 3,     // Agent deleting data node (red)
-    Link = 4,       // Agent linking nodes (purple)
-    Transform = 5,  // Agent transforming data (cyan)
+    Query = 0,     // Agent querying data node (blue)
+    Update = 1,    // Agent updating data node (yellow)
+    Create = 2,    // Agent creating data node (green)
+    Delete = 3,    // Agent deleting data node (red)
+    Link = 4,      // Agent linking nodes (purple)
+    Transform = 5, // Agent transforming data (cyan)
 }
 
 impl From<u8> for AgentActionType {
@@ -242,12 +249,12 @@ impl From<u8> for AgentActionType {
 #[repr(C)]
 #[derive(Debug, Clone)]
 pub struct AgentActionEvent {
-    pub source_agent_id: u32,   // 4 bytes - ID of the acting agent
-    pub target_node_id: u32,    // 4 bytes - ID of the target data node
-    pub action_type: u8,        // 1 byte - AgentActionType
-    pub timestamp: u32,         // 4 bytes - Event timestamp (ms)
-    pub duration_ms: u16,       // 2 bytes - Animation duration hint
-    pub payload: Vec<u8>,       // Variable - Optional metadata
+    pub source_agent_id: u32, // 4 bytes - ID of the acting agent
+    pub target_node_id: u32,  // 4 bytes - ID of the target data node
+    pub action_type: u8,      // 1 byte - AgentActionType
+    pub timestamp: u32,       // 4 bytes - Event timestamp (ms)
+    pub duration_ms: u16,     // 2 bytes - Animation duration hint
+    pub payload: Vec<u8>,     // Variable - Optional metadata
 }
 
 // Wire format size (fixed header only, payload is variable)
@@ -334,7 +341,7 @@ impl AgentActionEvent {
 /// Batch encode multiple agent action events
 pub fn encode_agent_actions(events: &[AgentActionEvent]) -> Vec<u8> {
     let mut buffer = Vec::with_capacity(
-        1 + events.len() * (AGENT_ACTION_HEADER_SIZE + 16) // Estimate with avg payload
+        1 + events.len() * (AGENT_ACTION_HEADER_SIZE + 16), // Estimate with avg payload
     );
 
     // Message type
@@ -397,7 +404,6 @@ pub fn decode_agent_actions(data: &[u8]) -> Result<Vec<AgentActionEvent>, String
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum ControlFrame {
-
     #[serde(rename = "constraints_update")]
     ConstraintsUpdate {
         version: u32,
@@ -406,13 +412,11 @@ pub enum ControlFrame {
         advanced_params: Option<AdvancedParams>,
     },
 
-
     #[serde(rename = "lens_request")]
     LensRequest {
         lens_type: String,
         parameters: serde_json::Value,
     },
-
 
     #[serde(rename = "control_ack")]
     ControlAck {
@@ -422,26 +426,21 @@ pub enum ControlFrame {
         message: Option<String>,
     },
 
-
     #[serde(rename = "physics_params")]
     PhysicsParams { advanced_params: AdvancedParams },
-
 
     #[serde(rename = "preset_request")]
     PresetRequest { preset_name: String },
 }
 
 impl ControlFrame {
-
     pub fn to_bytes(&self) -> Result<Vec<u8>, serde_json::Error> {
         serde_json::to_vec(self)
     }
 
-
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, serde_json::Error> {
         serde_json::from_slice(bytes)
     }
-
 
     pub fn constraints_update(
         constraints: Vec<Constraint>,
@@ -454,7 +453,6 @@ impl ControlFrame {
         }
     }
 
-
     pub fn ack(frame_type: &str, success: bool, message: Option<String>) -> Self {
         ControlFrame::ControlAck {
             frame_type: frame_type.to_string(),
@@ -466,7 +464,6 @@ impl ControlFrame {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum MessageType {
-
     /// Binary position frame: `preamble(0x42) + broadcast_seq(8) + N×28B nodes`.
     /// See `encode_position_frame`.
     BinaryPositions = 0,
@@ -487,7 +484,9 @@ pub enum MessageType {
 /// WebSocket message types for voice and acknowledgements
 #[derive(Debug, Clone, PartialEq)]
 pub enum Message {
-    VoiceData { audio: Vec<u8> },
+    VoiceData {
+        audio: Vec<u8>,
+    },
 
     /// Client acknowledgement of position broadcast for backpressure flow control
     BroadcastAck {
@@ -563,19 +562,15 @@ impl BinaryProtocol {
 
         // Decode sequence_id (u64, little-endian)
         let sequence_id = u64::from_le_bytes([
-            data[0], data[1], data[2], data[3],
-            data[4], data[5], data[6], data[7],
+            data[0], data[1], data[2], data[3], data[4], data[5], data[6], data[7],
         ]);
 
         // Decode nodes_received (u32, little-endian)
-        let nodes_received = u32::from_le_bytes([
-            data[8], data[9], data[10], data[11],
-        ]);
+        let nodes_received = u32::from_le_bytes([data[8], data[9], data[10], data[11]]);
 
         // Decode timestamp (u64, little-endian)
         let timestamp = u64::from_le_bytes([
-            data[12], data[13], data[14], data[15],
-            data[16], data[17], data[18], data[19],
+            data[12], data[13], data[14], data[15], data[16], data[17], data[18], data[19],
         ]);
 
         Ok(Message::BroadcastAck {
@@ -584,8 +579,6 @@ impl BinaryProtocol {
             timestamp,
         })
     }
-
-
 
     pub fn encode_voice_data(audio: &[u8]) -> Vec<u8> {
         let mut buffer = Vec::with_capacity(1 + audio.len());
@@ -601,7 +594,6 @@ pub struct MultiplexedMessage {
 }
 
 impl MultiplexedMessage {
-
     /// Build a binary-positions multiplexed message from a list of nodes.
     /// Uses sequence number 0 (intended for tests / non-broadcast paths).
     pub fn positions(node_data: &[(u32, BinaryNodeData)]) -> Self {
@@ -611,14 +603,12 @@ impl MultiplexedMessage {
         }
     }
 
-
     pub fn control(frame: &ControlFrame) -> Result<Self, serde_json::Error> {
         Ok(Self {
             msg_type: MessageType::ControlFrame,
             data: frame.to_bytes()?,
         })
     }
-
 
     pub fn encode(&self) -> Vec<u8> {
         let mut result = Vec::with_capacity(1 + self.data.len());

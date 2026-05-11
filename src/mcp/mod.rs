@@ -20,6 +20,6 @@
 pub mod contributor_tools;
 
 pub use contributor_tools::{
-    contributor_tool_registry, dispatch_contributor_tool, ContributorToolRegistry,
-    ToolDefinition, ToolDispatchError, ToolInvocation, ToolOutcome,
+    contributor_tool_registry, dispatch_contributor_tool, ContributorToolRegistry, ToolDefinition,
+    ToolDispatchError, ToolInvocation, ToolOutcome,
 };

@@ -18,8 +18,7 @@ use solid_pod_rs::ldp;
 use solid_pod_rs::storage::fs::FsBackend;
 use solid_pod_rs::storage::Storage;
 use solid_pod_rs::wac::{
-    evaluate_access, method_to_mode, wac_allow_header, AclDocument, AclResolver,
-    StorageAclResolver,
+    evaluate_access, method_to_mode, wac_allow_header, AclDocument, AclResolver, StorageAclResolver,
 };
 use solid_pod_rs::PodError;
 
@@ -81,8 +80,8 @@ impl NativeSolidService {
     /// with `?`. Must be called from within a Tokio runtime context
     /// (main awaits it before starting the `HttpServer`).
     pub async fn from_env() -> anyhow::Result<Self> {
-        let root = std::env::var("POD_DATA_ROOT")
-            .unwrap_or_else(|_| "/app/data/solid-pod-rs".to_string());
+        let root =
+            std::env::var("POD_DATA_ROOT").unwrap_or_else(|_| "/app/data/solid-pod-rs".to_string());
         let root_path: PathBuf = root.into();
 
         // Eager directory creation is handled inside `FsBackend::new`.
@@ -123,11 +122,7 @@ impl NativeSolidService {
     /// 4. Hand off to the LDP dispatcher (`dispatch_ldp`) which
     ///    returns a fully-formed `HttpResponse` including Solid
     ///    headers (`Link`, `WAC-Allow`, `Accept-Post`, ETag, etc.).
-    pub async fn handle_request(
-        &self,
-        req: &HttpRequest,
-        body: web::Bytes,
-    ) -> HttpResponse {
+    pub async fn handle_request(&self, req: &HttpRequest, body: web::Bytes) -> HttpResponse {
         let method = req.method().as_str().to_string();
         let path = extract_solid_path(req);
 
@@ -164,12 +159,7 @@ impl NativeSolidService {
 
         match dispatch_ldp(&self.storage, &self.ldp, &method, &path, body).await {
             Ok(mut resp) => {
-                attach_wac_allow(
-                    &mut resp,
-                    acl.as_ref(),
-                    agent_uri.as_deref(),
-                    &path,
-                );
+                attach_wac_allow(&mut resp, acl.as_ref(), agent_uri.as_deref(), &path);
                 resp
             }
             Err(e) => pod_error_to_http(&e),
@@ -212,11 +202,7 @@ async fn handle_get<S: Storage>(
 ) -> Result<HttpResponse, PodError> {
     if ldp::is_container(path) {
         let members = storage.list(path).await?;
-        let body = ldp::render_container_turtle(
-            path,
-            &members,
-            ldp::PreferHeader::default(),
-        );
+        let body = ldp::render_container_turtle(path, &members, ldp::PreferHeader::default());
         let mut resp = HttpResponse::Ok();
         resp.content_type("text/turtle");
         for l in ldp_svc.link_headers_for(path) {
@@ -278,7 +264,11 @@ async fn handle_post<S: Storage>(
 ) -> Result<HttpResponse, PodError> {
     let slug = ldp::resolve_slug(container, None)?;
     let meta = storage
-        .put(&slug, bytes::Bytes::from(body.to_vec()), "application/octet-stream")
+        .put(
+            &slug,
+            bytes::Bytes::from(body.to_vec()),
+            "application/octet-stream",
+        )
         .await?;
     Ok(HttpResponse::Created()
         .insert_header(("ETag", meta.etag))
@@ -286,10 +276,7 @@ async fn handle_post<S: Storage>(
         .finish())
 }
 
-async fn handle_delete<S: Storage>(
-    storage: &Arc<S>,
-    path: &str,
-) -> Result<HttpResponse, PodError> {
+async fn handle_delete<S: Storage>(storage: &Arc<S>, path: &str) -> Result<HttpResponse, PodError> {
     storage.delete(path).await?;
     Ok(HttpResponse::NoContent().finish())
 }
@@ -311,8 +298,8 @@ async fn handle_patch<S: Storage>(
         Err(e) => return Err(e),
     };
     let target = ldp::Graph::parse_ntriples(std::str::from_utf8(&current).unwrap_or(""))?;
-    let patch = std::str::from_utf8(&body)
-        .map_err(|e| PodError::Nip98(format!("patch utf8: {e}")))?;
+    let patch =
+        std::str::from_utf8(&body).map_err(|e| PodError::Nip98(format!("patch utf8: {e}")))?;
     let outcome = ldp::apply_n3_patch(target, patch)?;
     let new_body = outcome.graph.to_ntriples();
     let new_meta = storage
@@ -327,15 +314,9 @@ async fn handle_patch<S: Storage>(
         .finish())
 }
 
-fn options_response<S: Storage>(
-    ldp_svc: &Arc<LdpService<S>>,
-    path: &str,
-) -> HttpResponse {
+fn options_response<S: Storage>(ldp_svc: &Arc<LdpService<S>>, path: &str) -> HttpResponse {
     let mut resp = HttpResponse::Ok();
-    resp.insert_header((
-        "Allow",
-        "GET, HEAD, PUT, POST, DELETE, PATCH, OPTIONS",
-    ));
+    resp.insert_header(("Allow", "GET, HEAD, PUT, POST, DELETE, PATCH, OPTIONS"));
     if ldp::is_container(path) {
         resp.insert_header(("Accept-Post", ldp::ACCEPT_POST));
     }
@@ -383,11 +364,7 @@ fn extract_solid_path(req: &HttpRequest) -> String {
 
 /// Verify a NIP-98 `Authorization` header using the crate's structural
 /// validator. On success, returns the signer pubkey in hex.
-async fn verify_nip98(
-    req: &HttpRequest,
-    body: &[u8],
-    method: &str,
-) -> Result<String, PodError> {
+async fn verify_nip98(req: &HttpRequest, body: &[u8], method: &str) -> Result<String, PodError> {
     let header = req
         .headers()
         .get(actix_web::http::header::AUTHORIZATION)
@@ -450,21 +427,13 @@ fn pod_error_to_http(err: &PodError) -> HttpResponse {
         PodError::AlreadyExists(_) => HttpResponse::Conflict().finish(),
         PodError::Forbidden => HttpResponse::Forbidden().finish(),
         PodError::Unauthenticated => HttpResponse::Unauthorized().finish(),
-        PodError::InvalidPath(p) => {
-            HttpResponse::BadRequest().body(format!("invalid path: {p}"))
-        }
+        PodError::InvalidPath(p) => HttpResponse::BadRequest().body(format!("invalid path: {p}")),
         PodError::PreconditionFailed(msg) => {
             HttpResponse::PreconditionFailed().body(msg.to_string())
         }
-        PodError::Unsupported(msg) => {
-            HttpResponse::NotImplemented().body(msg.to_string())
-        }
-        PodError::BadRequest(msg) => {
-            HttpResponse::BadRequest().body(msg.to_string())
-        }
-        PodError::PayloadTooLarge(msg) => {
-            HttpResponse::PayloadTooLarge().body(msg.to_string())
-        }
+        PodError::Unsupported(msg) => HttpResponse::NotImplemented().body(msg.to_string()),
+        PodError::BadRequest(msg) => HttpResponse::BadRequest().body(msg.to_string()),
+        PodError::PayloadTooLarge(msg) => HttpResponse::PayloadTooLarge().body(msg.to_string()),
         PodError::InvalidContentType(msg) => {
             HttpResponse::UnsupportedMediaType().body(msg.to_string())
         }
@@ -490,11 +459,5 @@ pub async fn handle_native_solid(
 /// cleanly under `/api` (e.g. `/api/solid/alice/public/...`).
 pub fn configure_routes(cfg: &mut web::ServiceConfig) {
     info!("=== REGISTERING SOLID-POD-RS NATIVE ROUTES ===");
-    cfg.service(
-        web::scope("/solid").route(
-            "/{path:.*}",
-            web::route().to(handle_native_solid),
-        ),
-    );
+    cfg.service(web::scope("/solid").route("/{path:.*}", web::route().to(handle_native_solid)));
 }
-

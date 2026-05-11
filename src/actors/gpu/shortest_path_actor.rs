@@ -209,7 +209,10 @@ impl Handler<ComputeSSP> for ShortestPathActor {
     type Result = Result<SSSPResult, String>;
 
     fn handle(&mut self, msg: ComputeSSP, _ctx: &mut Self::Context) -> Self::Result {
-        info!("ShortestPathActor: Computing SSSP from node {}", msg.source_idx);
+        info!(
+            "ShortestPathActor: Computing SSSP from node {}",
+            msg.source_idx
+        );
 
         // Acquire lock, compute, then drop lock before calling update_stats
         let (filtered_distances, nodes_reached, max_distance, computation_time) = {
@@ -248,14 +251,20 @@ impl Handler<ComputeSSP> for ShortestPathActor {
 
             // Apply max_distance filter if specified
             let filtered_distances = if let Some(max_dist) = msg.max_distance {
-                distances.into_iter().map(|d| {
-                    if d <= max_dist { d } else { f32::MAX }
-                }).collect()
+                distances
+                    .into_iter()
+                    .map(|d| if d <= max_dist { d } else { f32::MAX })
+                    .collect()
             } else {
                 distances
             };
 
-            (filtered_distances, nodes_reached, max_distance, computation_time)
+            (
+                filtered_distances,
+                nodes_reached,
+                max_distance,
+                computation_time,
+            )
         }; // unified_compute lock dropped here
 
         // Now we can safely call update_stats with mutable borrow
@@ -263,7 +272,9 @@ impl Handler<ComputeSSP> for ShortestPathActor {
 
         info!(
             "ShortestPathActor: SSSP completed in {}ms, reached {}/{} nodes",
-            computation_time, nodes_reached, filtered_distances.len()
+            computation_time,
+            nodes_reached,
+            filtered_distances.len()
         );
 
         // ADR-061 §D2: emit analytics_update side channel. SSSP doesn't
@@ -322,7 +333,10 @@ impl Handler<ComputeAPSP> for ShortestPathActor {
     type Result = Result<APSPResult, String>;
 
     fn handle(&mut self, msg: ComputeAPSP, _ctx: &mut Self::Context) -> Self::Result {
-        info!("ShortestPathActor: Computing APSP with {} landmarks", msg.num_landmarks);
+        info!(
+            "ShortestPathActor: Computing APSP with {} landmarks",
+            msg.num_landmarks
+        );
 
         // Acquire lock, compute, then drop lock before calling update_stats
         let (apsp_distances, num_nodes, landmarks, computation_time) = {
@@ -354,17 +368,16 @@ impl Handler<ComputeAPSP> for ShortestPathActor {
             let seed = msg.seed.unwrap_or(42);
 
             for i in 0..msg.num_landmarks {
-                let landmark = (i * stride + ((seed + i as u64) % stride as u64) as usize) % num_nodes;
+                let landmark =
+                    (i * stride + ((seed + i as u64) % stride as u64) as usize) % num_nodes;
                 landmarks.push(landmark);
             }
 
             // Run batched SSSP from all landmarks at once (keeps CSR on device)
-            let landmark_vecs = unified_compute
-                .run_sssp_batch(&landmarks)
-                .map_err(|e| {
-                    error!("GPU batched SSSP computation failed: {}", e);
-                    format!("Batched SSSP computation failed: {}", e)
-                })?;
+            let landmark_vecs = unified_compute.run_sssp_batch(&landmarks).map_err(|e| {
+                error!("GPU batched SSSP computation failed: {}", e);
+                format!("Batched SSSP computation failed: {}", e)
+            })?;
 
             // Flatten landmark distances into [num_landmarks][num_nodes] layout
             let mut landmark_distances = Vec::with_capacity(msg.num_landmarks * num_nodes);
@@ -373,38 +386,34 @@ impl Handler<ComputeAPSP> for ShortestPathActor {
             }
 
             // Try GPU kernel for APSP assembly; fall back to CPU if module unavailable
-            let apsp_distances = match unified_compute
-                .run_apsp_gpu(&landmark_distances, msg.num_landmarks)
-            {
-                Ok(gpu_result) => {
-                    info!("APSP assembly completed on GPU");
-                    gpu_result
-                }
-                Err(e) => {
-                    info!(
-                        "GPU APSP kernel unavailable ({}), using CPU fallback",
-                        e
-                    );
-                    // CPU fallback: triangle inequality approximation
-                    let mut dists = vec![f32::MAX; num_nodes * num_nodes];
-                    for i in 0..num_nodes {
-                        dists[i * num_nodes + i] = 0.0;
-                        for j in (i + 1)..num_nodes {
-                            let mut min_dist = f32::MAX;
-                            for k_idx in 0..msg.num_landmarks {
-                                let dist_ki = landmark_distances[k_idx * num_nodes + i];
-                                let dist_kj = landmark_distances[k_idx * num_nodes + j];
-                                if dist_ki < f32::MAX && dist_kj < f32::MAX {
-                                    min_dist = min_dist.min(dist_ki + dist_kj);
-                                }
-                            }
-                            dists[i * num_nodes + j] = min_dist;
-                            dists[j * num_nodes + i] = min_dist;
-                        }
+            let apsp_distances =
+                match unified_compute.run_apsp_gpu(&landmark_distances, msg.num_landmarks) {
+                    Ok(gpu_result) => {
+                        info!("APSP assembly completed on GPU");
+                        gpu_result
                     }
-                    dists
-                }
-            };
+                    Err(e) => {
+                        info!("GPU APSP kernel unavailable ({}), using CPU fallback", e);
+                        // CPU fallback: triangle inequality approximation
+                        let mut dists = vec![f32::MAX; num_nodes * num_nodes];
+                        for i in 0..num_nodes {
+                            dists[i * num_nodes + i] = 0.0;
+                            for j in (i + 1)..num_nodes {
+                                let mut min_dist = f32::MAX;
+                                for k_idx in 0..msg.num_landmarks {
+                                    let dist_ki = landmark_distances[k_idx * num_nodes + i];
+                                    let dist_kj = landmark_distances[k_idx * num_nodes + j];
+                                    if dist_ki < f32::MAX && dist_kj < f32::MAX {
+                                        min_dist = min_dist.min(dist_ki + dist_kj);
+                                    }
+                                }
+                                dists[i * num_nodes + j] = min_dist;
+                                dists[j * num_nodes + i] = min_dist;
+                            }
+                        }
+                        dists
+                    }
+                };
 
             let computation_time = start_time.elapsed().as_millis() as u64;
 

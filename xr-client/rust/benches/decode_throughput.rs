@@ -1,5 +1,7 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughput};
-use visionclaw_xr_gdext::binary_protocol::{decode_position_frame, NODE_RECORD_BYTES, OPCODE_POSITION_FRAME};
+use visionclaw_xr_gdext::binary_protocol::{
+    decode_position_frame, NODE_RECORD_BYTES, OPCODE_POSITION_FRAME,
+};
 use visionclaw_xr_presence::types::{PoseFrame, Transform};
 use visionclaw_xr_presence::{decode, encode, AvatarId, Did, RoomId};
 

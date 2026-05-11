@@ -13,9 +13,8 @@ use webxr::services::type_index_discovery::{
 
 #[test]
 fn full_round_trip_preserves_agent_skill_registration() {
-    let mut doc = TypeIndexDocument::empty(
-        "https://pod.example.org/alice/settings/publicTypeIndex.jsonld",
-    );
+    let mut doc =
+        TypeIndexDocument::empty("https://pod.example.org/alice/settings/publicTypeIndex.jsonld");
     let mut extra = serde_json::Map::new();
     extra.insert(
         "vf:capabilities".into(),
@@ -120,7 +119,10 @@ fn type_index_url_handles_all_webid_shapes() {
 fn serialised_document_has_solid_type_index_type() {
     let doc = TypeIndexDocument::empty("http://p/ti");
     let v = doc.to_jsonld();
-    assert_eq!(v.get("@type").and_then(Value::as_str), Some("solid:TypeIndex"));
+    assert_eq!(
+        v.get("@type").and_then(Value::as_str),
+        Some("solid:TypeIndex")
+    );
     assert!(v.get("solid:typeRegistration").is_some());
     assert!(v.get("@context").is_some());
 }

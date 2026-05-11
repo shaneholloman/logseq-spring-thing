@@ -27,7 +27,9 @@ async fn handshake_and_pose_round_trip_through_fake_transport() {
         }],
     };
     inbox
-        .send(WsMessage::Text(serde_json::to_string(&server_state).unwrap()))
+        .send(WsMessage::Text(
+            serde_json::to_string(&server_state).unwrap(),
+        ))
         .await
         .unwrap();
 
@@ -72,11 +74,7 @@ async fn server_close_during_init_yields_rejected() {
 #[tokio::test]
 async fn send_pose_before_handshake_is_rejected() {
     let (transport, _inbox) = FakeWsTransport::new();
-    let client = PresenceClient::new(
-        Arc::new(transport),
-        Arc::new(FakeSigner::new()),
-        room(),
-    );
+    let client = PresenceClient::new(Arc::new(transport), Arc::new(FakeSigner::new()), room());
     let frame = PoseFrame {
         timestamp_us: 1,
         head: Transform::identity(),
@@ -102,7 +100,9 @@ async fn handshake_with_empty_members_succeeds() {
         members: vec![],
     };
     inbox
-        .send(WsMessage::Text(serde_json::to_string(&server_state).unwrap()))
+        .send(WsMessage::Text(
+            serde_json::to_string(&server_state).unwrap(),
+        ))
         .await
         .unwrap();
 

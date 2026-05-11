@@ -104,7 +104,8 @@ enum EmbeddingBackend {
 
 fn detect_backend() -> (String, EmbeddingBackend) {
     if let Ok(url) = std::env::var("EMBEDDING_ENDPOINT") {
-        let model = std::env::var("EMBEDDING_MODEL").unwrap_or_else(|_| "bge-small-en-v1.5".to_string());
+        let model =
+            std::env::var("EMBEDDING_MODEL").unwrap_or_else(|_| "bge-small-en-v1.5".to_string());
         (url, EmbeddingBackend::OpenAI { model })
     } else {
         (DEFAULT_ENDPOINT.to_string(), EmbeddingBackend::Legacy)
@@ -178,10 +179,17 @@ impl EmbeddingService {
                 if !response.status().is_success() {
                     let status = response.status();
                     let body = response.text().await.unwrap_or_default();
-                    return Err(EmbeddingError::EndpointError(format!("HTTP {}: {}", status, body)));
+                    return Err(EmbeddingError::EndpointError(format!(
+                        "HTTP {}: {}",
+                        status, body
+                    )));
                 }
                 let oai_resp: OpenAIEmbedResponse = response.json().await?;
-                oai_resp.data.into_iter().map(|d| d.embedding).collect::<Vec<_>>()
+                oai_resp
+                    .data
+                    .into_iter()
+                    .map(|d| d.embedding)
+                    .collect::<Vec<_>>()
             }
             EmbeddingBackend::Legacy => {
                 let request_body = EmbedRequest {
@@ -196,7 +204,10 @@ impl EmbeddingService {
                 if !response.status().is_success() {
                     let status = response.status();
                     let body = response.text().await.unwrap_or_default();
-                    return Err(EmbeddingError::EndpointError(format!("HTTP {}: {}", status, body)));
+                    return Err(EmbeddingError::EndpointError(format!(
+                        "HTTP {}: {}",
+                        status, body
+                    )));
                 }
                 let embed_response: EmbedResponse = response.json().await?;
                 embed_response.embeddings
@@ -256,11 +267,9 @@ impl EmbeddingService {
                     c.scope_note AS scope_note",
         );
 
-        let mut result = self
-            .neo4j
-            .execute(query)
-            .await
-            .map_err(|e| EmbeddingError::Neo4j(format!("Failed to query OntologyClass nodes: {}", e)))?;
+        let mut result = self.neo4j.execute(query).await.map_err(|e| {
+            EmbeddingError::Neo4j(format!("Failed to query OntologyClass nodes: {}", e))
+        })?;
 
         // Collect nodes to embed
         let mut nodes: Vec<(String, String)> = Vec::new(); // (iri, concatenated_text)
@@ -270,18 +279,10 @@ impl EmbeddingService {
             .await
             .map_err(|e| EmbeddingError::Neo4j(format!("Row iteration error: {}", e)))?
         {
-            let iri: String = row
-                .get("iri")
-                .unwrap_or_default();
-            let preferred_term: String = row
-                .get("preferred_term")
-                .unwrap_or_default();
-            let definition: String = row
-                .get("definition")
-                .unwrap_or_default();
-            let scope_note: String = row
-                .get("scope_note")
-                .unwrap_or_default();
+            let iri: String = row.get("iri").unwrap_or_default();
+            let preferred_term: String = row.get("preferred_term").unwrap_or_default();
+            let definition: String = row.get("definition").unwrap_or_default();
+            let scope_note: String = row.get("scope_note").unwrap_or_default();
 
             let text = build_embedding_text(&preferred_term, &definition, &scope_note);
             if text.trim().is_empty() {
@@ -291,7 +292,10 @@ impl EmbeddingService {
             nodes.push((iri, text));
         }
 
-        info!("Found {} OntologyClass nodes with text content", nodes.len());
+        info!(
+            "Found {} OntologyClass nodes with text content",
+            nodes.len()
+        );
 
         let total = nodes.len();
         let mut embedded = 0usize;
@@ -328,9 +332,7 @@ impl EmbeddingService {
 
             debug!(
                 "Batch {}: embedded {}/{} nodes",
-                batches_sent,
-                embedded,
-                total
+                batches_sent, embedded, total
             );
         }
 
@@ -391,11 +393,10 @@ impl EmbeddingService {
                     c.content_embedding_384 AS embedding",
         );
 
-        let mut result = self
-            .neo4j
-            .execute(cypher)
-            .await
-            .map_err(|e| EmbeddingError::Neo4j(format!("Similarity search query failed: {}", e)))?;
+        let mut result =
+            self.neo4j.execute(cypher).await.map_err(|e| {
+                EmbeddingError::Neo4j(format!("Similarity search query failed: {}", e))
+            })?;
 
         let mut scored: Vec<SimilarityResult> = Vec::new();
 
@@ -420,7 +421,11 @@ impl EmbeddingService {
         }
 
         // Sort descending by score
-        scored.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        scored.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         scored.truncate(top_k);
 
         Ok(scored)
@@ -450,11 +455,10 @@ impl EmbeddingService {
                     c.topology_embedding_384 AS topo_embedding",
         );
 
-        let mut result = self
-            .neo4j
-            .execute(cypher)
-            .await
-            .map_err(|e| EmbeddingError::Neo4j(format!("Combined search query failed: {}", e)))?;
+        let mut result =
+            self.neo4j.execute(cypher).await.map_err(|e| {
+                EmbeddingError::Neo4j(format!("Combined search query failed: {}", e))
+            })?;
 
         let mut scored: Vec<SimilarityResult> = Vec::new();
 
@@ -494,7 +498,11 @@ impl EmbeddingService {
             });
         }
 
-        scored.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        scored.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         scored.truncate(top_k);
 
         Ok(scored)
@@ -529,7 +537,6 @@ fn build_embedding_text(preferred_term: &str, definition: &str, scope_note: &str
 
     parts.join(". ")
 }
-
 
 /// Compute L2 norm of a vector.
 fn l2_norm(v: &[f32]) -> f32 {
@@ -619,7 +626,11 @@ mod tests {
             },
         ];
 
-        results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        results.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         results.truncate(2);
 
         assert_eq!(results.len(), 2);

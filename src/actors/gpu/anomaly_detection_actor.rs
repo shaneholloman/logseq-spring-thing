@@ -35,9 +35,7 @@ pub struct AnomalyNode {
 type NodeAnalyticsMap = Arc<std::sync::RwLock<std::collections::HashMap<u32, (u32, f32, u32)>>>;
 
 pub struct AnomalyDetectionActor {
-
     gpu_state: GPUState,
-
 
     shared_context: Option<Arc<SharedGPUContext>>,
 
@@ -94,79 +92,136 @@ impl AnomalyDetectionActor {
         // Move blocking GPU operations to dedicated blocking thread pool
         // This prevents std::sync::Mutex::lock() from blocking Tokio worker threads
         // (method, lof_scores, z_scores, dbscan_labels, threshold, num_nodes, isolation_features)
-        type BlockingResult = (String, Option<Vec<f32>>, Option<Vec<f32>>, Option<Vec<i32>>, f32, u32, Option<Vec<f32>>);
-        let blocking_result = tokio::task::spawn_blocking(move || -> Result<BlockingResult, String> {
-            let mut unified_compute = match unified_compute_arc.lock() {
-                Ok(guard) => guard,
-                Err(poisoned) => {
-                    warn!("AnomalyDetectionActor: GPU mutex was poisoned, recovering");
-                    poisoned.into_inner()
-                }
-            };
-
-            match method {
-                AnomalyDetectionMethod::LOF => {
-                    let k = k_neighbors.unwrap_or(5);
-                    let thresh = threshold.unwrap_or(0.5);
-                    let lof_result = unified_compute
-                        .run_lof_anomaly_detection(k, thresh)
-                        .map_err(|e| format!("LOF detection failed: {}", e))?;
-                    Ok(("LOF".to_string(), Some(lof_result.0), None, None, thresh, num_nodes, None))
-                }
-                AnomalyDetectionMethod::ZScore => {
-                    let thresh = threshold.unwrap_or(3.0);
-                    let data = match feature_data {
-                        Some(fd) => fd,
-                        None => {
-                            // Download GPU positions and use as feature data
-                            let (pos_x, pos_y, pos_z) = unified_compute
-                                .get_node_positions()
-                                .map_err(|e| format!("Failed to get node positions for ZScore features: {}", e))?;
-                            // Use position magnitudes as the feature vector
-                            (0..num_nodes as usize)
-                                .map(|i| {
-                                    if i < pos_x.len() {
-                                        (pos_x[i] * pos_x[i] + pos_y[i] * pos_y[i] + pos_z[i] * pos_z[i]).sqrt()
-                                    } else {
-                                        0.0
-                                    }
-                                })
-                                .collect()
-                        }
-                    };
-                    let z_scores = unified_compute
-                        .run_zscore_anomaly_detection(&data)
-                        .map_err(|e| format!("Z-Score detection failed: {}", e))?;
-                    Ok(("ZScore".to_string(), None, Some(z_scores), None, thresh, num_nodes, None))
-                }
-                AnomalyDetectionMethod::IsolationForest => {
-                    let thresh = threshold.unwrap_or(0.5);
-                    let (pos_x, pos_y, pos_z) = unified_compute
-                        .get_node_positions()
-                        .map_err(|e| format!("Failed to get node positions: {}", e))?;
-                    // Flatten positions into feature vector [x0,y0,z0, x1,y1,z1, ...]
-                    let mut features = Vec::with_capacity(num_nodes as usize * 3);
-                    for i in 0..num_nodes as usize {
-                        if i < pos_x.len() {
-                            features.push(pos_x[i]);
-                            features.push(pos_y[i]);
-                            features.push(pos_z[i]);
-                        }
+        type BlockingResult = (
+            String,
+            Option<Vec<f32>>,
+            Option<Vec<f32>>,
+            Option<Vec<i32>>,
+            f32,
+            u32,
+            Option<Vec<f32>>,
+        );
+        let blocking_result =
+            tokio::task::spawn_blocking(move || -> Result<BlockingResult, String> {
+                let mut unified_compute = match unified_compute_arc.lock() {
+                    Ok(guard) => guard,
+                    Err(poisoned) => {
+                        warn!("AnomalyDetectionActor: GPU mutex was poisoned, recovering");
+                        poisoned.into_inner()
                     }
-                    Ok(("IsolationForest".to_string(), None, None, None, thresh, num_nodes, Some(features)))
-                }
-                AnomalyDetectionMethod::DBSCAN => {
-                    let eps = threshold.unwrap_or(50.0);
-                    let min_pts = 3;
-                    let cluster_labels = unified_compute
-                        .run_dbscan_clustering(eps, min_pts)
-                        .map_err(|e| format!("DBSCAN clustering failed: {}", e))?;
-                    Ok(("DBSCAN".to_string(), None, None, Some(cluster_labels), eps, num_nodes, None))
-                }
-            }
-        }).await;
+                };
 
-        let (_method_name, lof_scores, z_scores, dbscan_labels, used_threshold, _num_nodes, isolation_features) = match blocking_result {
+                match method {
+                    AnomalyDetectionMethod::LOF => {
+                        let k = k_neighbors.unwrap_or(5);
+                        let thresh = threshold.unwrap_or(0.5);
+                        let lof_result = unified_compute
+                            .run_lof_anomaly_detection(k, thresh)
+                            .map_err(|e| format!("LOF detection failed: {}", e))?;
+                        Ok((
+                            "LOF".to_string(),
+                            Some(lof_result.0),
+                            None,
+                            None,
+                            thresh,
+                            num_nodes,
+                            None,
+                        ))
+                    }
+                    AnomalyDetectionMethod::ZScore => {
+                        let thresh = threshold.unwrap_or(3.0);
+                        let data = match feature_data {
+                            Some(fd) => fd,
+                            None => {
+                                // Download GPU positions and use as feature data
+                                let (pos_x, pos_y, pos_z) =
+                                    unified_compute.get_node_positions().map_err(|e| {
+                                        format!(
+                                            "Failed to get node positions for ZScore features: {}",
+                                            e
+                                        )
+                                    })?;
+                                // Use position magnitudes as the feature vector
+                                (0..num_nodes as usize)
+                                    .map(|i| {
+                                        if i < pos_x.len() {
+                                            (pos_x[i] * pos_x[i]
+                                                + pos_y[i] * pos_y[i]
+                                                + pos_z[i] * pos_z[i])
+                                                .sqrt()
+                                        } else {
+                                            0.0
+                                        }
+                                    })
+                                    .collect()
+                            }
+                        };
+                        let z_scores = unified_compute
+                            .run_zscore_anomaly_detection(&data)
+                            .map_err(|e| format!("Z-Score detection failed: {}", e))?;
+                        Ok((
+                            "ZScore".to_string(),
+                            None,
+                            Some(z_scores),
+                            None,
+                            thresh,
+                            num_nodes,
+                            None,
+                        ))
+                    }
+                    AnomalyDetectionMethod::IsolationForest => {
+                        let thresh = threshold.unwrap_or(0.5);
+                        let (pos_x, pos_y, pos_z) = unified_compute
+                            .get_node_positions()
+                            .map_err(|e| format!("Failed to get node positions: {}", e))?;
+                        // Flatten positions into feature vector [x0,y0,z0, x1,y1,z1, ...]
+                        let mut features = Vec::with_capacity(num_nodes as usize * 3);
+                        for i in 0..num_nodes as usize {
+                            if i < pos_x.len() {
+                                features.push(pos_x[i]);
+                                features.push(pos_y[i]);
+                                features.push(pos_z[i]);
+                            }
+                        }
+                        Ok((
+                            "IsolationForest".to_string(),
+                            None,
+                            None,
+                            None,
+                            thresh,
+                            num_nodes,
+                            Some(features),
+                        ))
+                    }
+                    AnomalyDetectionMethod::DBSCAN => {
+                        let eps = threshold.unwrap_or(50.0);
+                        let min_pts = 3;
+                        let cluster_labels = unified_compute
+                            .run_dbscan_clustering(eps, min_pts)
+                            .map_err(|e| format!("DBSCAN clustering failed: {}", e))?;
+                        Ok((
+                            "DBSCAN".to_string(),
+                            None,
+                            None,
+                            Some(cluster_labels),
+                            eps,
+                            num_nodes,
+                            None,
+                        ))
+                    }
+                }
+            })
+            .await;
+
+        let (
+            _method_name,
+            lof_scores,
+            z_scores,
+            dbscan_labels,
+            used_threshold,
+            _num_nodes,
+            isolation_features,
+        ) = match blocking_result {
             Ok(inner_result) => inner_result?,
             Err(join_err) => return Err(format!("GPU blocking task panicked: {}", join_err)),
         };
@@ -201,7 +256,6 @@ impl AnomalyDetectionActor {
         Ok(AnomalyResult {
             lof_scores: match params.method {
                 AnomalyDetectionMethod::LOF => {
-                    
                     let _lof_scores: Vec<f32> = anomalies
                         .iter()
                         .enumerate()
@@ -209,7 +263,6 @@ impl AnomalyDetectionActor {
                             if anomaly.node_id == idx as u32 {
                                 anomaly.anomaly_score
                             } else {
-                                
                                 anomalies
                                     .iter()
                                     .find(|a| a.node_id == idx as u32)
@@ -218,7 +271,7 @@ impl AnomalyDetectionActor {
                             }
                         })
                         .collect();
-                    
+
                     let mut full_scores = vec![0.0; self.gpu_state.num_nodes as usize];
                     for anomaly in &anomalies {
                         if (anomaly.node_id as usize) < full_scores.len() {
@@ -232,7 +285,6 @@ impl AnomalyDetectionActor {
             local_densities: None,
             zscore_values: match params.method {
                 AnomalyDetectionMethod::ZScore => {
-                    
                     let mut full_scores = vec![0.0; self.gpu_state.num_nodes as usize];
                     for anomaly in &anomalies {
                         if (anomaly.node_id as usize) < full_scores.len() {
@@ -261,7 +313,7 @@ impl AnomalyDetectionActor {
         })
     }
 
-        #[allow(dead_code)]
+    #[allow(dead_code)]
     async fn perform_lof_detection(
         &self,
         unified_compute: &mut UnifiedGPUCompute,
@@ -275,7 +327,6 @@ impl AnomalyDetectionActor {
         let k_neighbors = params.k_neighbors.unwrap_or(5);
         let threshold = params.threshold.unwrap_or(0.5);
 
-        
         let lof_scores = unified_compute
             .run_lof_anomaly_detection(k_neighbors, threshold)
             .map_err(|e| {
@@ -291,7 +342,6 @@ impl AnomalyDetectionActor {
             ));
         }
 
-        
         let mut anomalies = Vec::new();
         let mut _scores_sum = 0.0;
         let mut _max_score = f32::NEG_INFINITY;
@@ -325,7 +375,6 @@ impl AnomalyDetectionActor {
             }
         }
 
-        
         anomalies.sort_by(|a, b| {
             b.anomaly_score
                 .partial_cmp(&a.anomaly_score)
@@ -345,10 +394,7 @@ impl AnomalyDetectionActor {
             } else {
                 0.0
             },
-            min_anomaly_score: anomalies
-                .last()
-                .map(|a| a.anomaly_score)
-                .unwrap_or(0.0),
+            min_anomaly_score: anomalies.last().map(|a| a.anomaly_score).unwrap_or(0.0),
         };
 
         Ok((anomalies, stats))
@@ -362,16 +408,15 @@ impl AnomalyDetectionActor {
     ) -> Result<(Vec<AnomalyNode>, AnomalyStats), String> {
         info!("AnomalyDetectionActor: Running Z-Score anomaly detection");
 
-        let threshold = params.threshold.unwrap_or(3.0); 
+        let threshold = params.threshold.unwrap_or(3.0);
 
-        
         let feature_data = match params.feature_data.as_ref().cloned() {
             Some(fd) => fd,
             None => {
                 // Download GPU positions and use position magnitudes as features
-                let (pos_x, pos_y, pos_z) = unified_compute
-                    .get_node_positions()
-                    .map_err(|e| format!("Failed to get node positions for ZScore features: {}", e))?;
+                let (pos_x, pos_y, pos_z) = unified_compute.get_node_positions().map_err(|e| {
+                    format!("Failed to get node positions for ZScore features: {}", e)
+                })?;
                 (0..self.gpu_state.num_nodes as usize)
                     .map(|i| {
                         if i < pos_x.len() {
@@ -399,7 +444,6 @@ impl AnomalyDetectionActor {
             ));
         }
 
-        
         let mut anomalies = Vec::new();
         let mut _scores_sum = 0.0;
         let mut _max_score = f32::NEG_INFINITY;
@@ -435,7 +479,6 @@ impl AnomalyDetectionActor {
             }
         }
 
-        
         anomalies.sort_by(|a, b| {
             b.anomaly_score
                 .partial_cmp(&a.anomaly_score)
@@ -455,10 +498,7 @@ impl AnomalyDetectionActor {
             } else {
                 0.0
             },
-            min_anomaly_score: anomalies
-                .last()
-                .map(|a| a.anomaly_score)
-                .unwrap_or(0.0),
+            min_anomaly_score: anomalies.last().map(|a| a.anomaly_score).unwrap_or(0.0),
         };
 
         Ok((anomalies, stats))
@@ -473,20 +513,17 @@ impl AnomalyDetectionActor {
         info!("AnomalyDetectionActor: Running Isolation Forest anomaly detection");
 
         let threshold = params.threshold.unwrap_or(0.5);
-        let num_trees = 100; 
+        let num_trees = 100;
 
-        
         let (pos_x, pos_y, pos_z) = unified_compute
             .get_node_positions()
             .map_err(|e| format!("Failed to get node positions: {}", e))?;
 
-        
         let mut features = Vec::new();
         for i in 0..self.gpu_state.num_nodes as usize {
             features.extend_from_slice(&[pos_x[i], pos_y[i], pos_z[i]]);
         }
 
-        
         let isolation_scores = self.compute_isolation_scores(&features, num_trees);
 
         if isolation_scores.len() != self.gpu_state.num_nodes as usize {
@@ -497,7 +534,6 @@ impl AnomalyDetectionActor {
             ));
         }
 
-        
         let mut anomalies = Vec::new();
         let mut _scores_sum = 0.0;
         let mut _max_score = f32::NEG_INFINITY;
@@ -527,7 +563,6 @@ impl AnomalyDetectionActor {
             }
         }
 
-        
         anomalies.sort_by(|a, b| {
             b.anomaly_score
                 .partial_cmp(&a.anomaly_score)
@@ -547,10 +582,7 @@ impl AnomalyDetectionActor {
             } else {
                 0.0
             },
-            min_anomaly_score: anomalies
-                .last()
-                .map(|a| a.anomaly_score)
-                .unwrap_or(0.0),
+            min_anomaly_score: anomalies.last().map(|a| a.anomaly_score).unwrap_or(0.0),
         };
 
         Ok((anomalies, stats))
@@ -564,10 +596,9 @@ impl AnomalyDetectionActor {
     ) -> Result<(Vec<AnomalyNode>, AnomalyStats), String> {
         info!("AnomalyDetectionActor: Running DBSCAN anomaly detection");
 
-        let eps = params.threshold.unwrap_or(50.0); 
-        let min_pts = 3; 
+        let eps = params.threshold.unwrap_or(50.0);
+        let min_pts = 3;
 
-        
         let cluster_labels = unified_compute
             .run_dbscan_clustering(eps, min_pts)
             .map_err(|e| format!("DBSCAN clustering failed: {}", e))?;
@@ -580,15 +611,13 @@ impl AnomalyDetectionActor {
             ));
         }
 
-        
         let mut anomalies = Vec::new();
         let mut _noise_count = 0;
 
         for (node_id, &label) in cluster_labels.iter().enumerate() {
             if label == -1 {
-                
                 _noise_count += 1;
-                let anomaly_score = 1.0; 
+                let anomaly_score = 1.0;
 
                 anomalies.push(AnomalyNode {
                     node_id: node_id as u32,
@@ -607,7 +636,7 @@ impl AnomalyDetectionActor {
             }
         }
 
-        let threshold = 0.5; 
+        let threshold = 0.5;
         let stats = AnomalyStats {
             anomalies_found: anomalies.len(),
             detection_threshold: threshold,
@@ -619,19 +648,16 @@ impl AnomalyDetectionActor {
         Ok((anomalies, stats))
     }
 
-    
     fn compute_isolation_scores(&self, features: &[f32], num_trees: usize) -> Vec<f32> {
         let num_nodes = self.gpu_state.num_nodes as usize;
-        let feature_dim = 3; 
+        let feature_dim = 3;
         let mut isolation_scores = vec![0.0f32; num_nodes];
 
         let mut rng = rand::thread_rng();
 
-        
         for _tree in 0..num_trees {
             let mut path_lengths = vec![0.0f32; num_nodes];
 
-            
             for node_idx in 0..num_nodes {
                 let node_features = &features[node_idx * feature_dim..(node_idx + 1) * feature_dim];
                 path_lengths[node_idx] = self.compute_isolation_path_length(
@@ -642,7 +668,6 @@ impl AnomalyDetectionActor {
                 );
             }
 
-            
             let max_depth = (num_nodes as f32).log2().ceil() as usize;
             for node_idx in 0..num_nodes {
                 let normalized_score = 1.0 - (path_lengths[node_idx] / max_depth as f32);
@@ -650,7 +675,6 @@ impl AnomalyDetectionActor {
             }
         }
 
-        
         for score in &mut isolation_scores {
             *score /= num_trees as f32;
         }
@@ -658,7 +682,6 @@ impl AnomalyDetectionActor {
         isolation_scores
     }
 
-    
     fn compute_isolation_path_length(
         &self,
         point: &[f32],
@@ -667,12 +690,11 @@ impl AnomalyDetectionActor {
         rng: &mut rand::rngs::ThreadRng,
     ) -> f32 {
         let _num_nodes = all_features.len() / feature_dim;
-        let max_depth = 10; 
+        let max_depth = 10;
 
         self.isolation_path_recursive(point, all_features, feature_dim, 0, max_depth, rng)
     }
 
-    
     fn isolation_path_recursive(
         &self,
         point: &[f32],
@@ -688,10 +710,8 @@ impl AnomalyDetectionActor {
             return depth as f32;
         }
 
-        
         let split_feature = rng.gen_range(0..feature_dim);
 
-        
         let mut min_val = f32::INFINITY;
         let mut max_val = f32::NEG_INFINITY;
 
@@ -707,9 +727,7 @@ impl AnomalyDetectionActor {
 
         let split_val = rng.gen_range(min_val..max_val);
 
-        
         if point[split_feature] < split_val {
-            
             let mut left_features = Vec::new();
             for node_idx in 0..(features.len() / feature_dim) {
                 let node_features = &features[node_idx * feature_dim..(node_idx + 1) * feature_dim];
@@ -726,7 +744,6 @@ impl AnomalyDetectionActor {
                 rng,
             )
         } else {
-            
             let mut right_features = Vec::new();
             for node_idx in 0..(features.len() / feature_dim) {
                 let node_features = &features[node_idx * feature_dim..(node_idx + 1) * feature_dim];
@@ -745,10 +762,13 @@ impl AnomalyDetectionActor {
         }
     }
 
-    
     /// Build LOF anomaly results from raw GPU scores (CPU-only post-processing)
     #[allow(dead_code)]
-    fn build_lof_anomalies(&self, lof_scores: &[f32], threshold: f32) -> (Vec<AnomalyNode>, AnomalyStats) {
+    fn build_lof_anomalies(
+        &self,
+        lof_scores: &[f32],
+        threshold: f32,
+    ) -> (Vec<AnomalyNode>, AnomalyStats) {
         let mut anomalies = Vec::new();
 
         for (node_id, &score) in lof_scores.iter().enumerate() {
@@ -759,20 +779,33 @@ impl AnomalyDetectionActor {
                     reason: format!("LOF score {:.3} exceeds threshold {:.3}", score, threshold),
                     anomaly_type: "outlier".to_string(),
                     severity: Self::calculate_severity(score, threshold),
-                    explanation: format!("LOF score {:.3} exceeds threshold {:.3}", score, threshold),
-                    features: vec!["lof_score".to_string(), "local_density".to_string(), "reachability".to_string()],
+                    explanation: format!(
+                        "LOF score {:.3} exceeds threshold {:.3}",
+                        score, threshold
+                    ),
+                    features: vec![
+                        "lof_score".to_string(),
+                        "local_density".to_string(),
+                        "reachability".to_string(),
+                    ],
                 });
             }
         }
 
-        anomalies.sort_by(|a, b| b.anomaly_score.partial_cmp(&a.anomaly_score).unwrap_or(std::cmp::Ordering::Equal));
+        anomalies.sort_by(|a, b| {
+            b.anomaly_score
+                .partial_cmp(&a.anomaly_score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
 
         let stats = AnomalyStats {
             anomalies_found: anomalies.len(),
             detection_threshold: threshold,
             average_anomaly_score: if !anomalies.is_empty() {
                 anomalies.iter().map(|a| a.anomaly_score).sum::<f32>() / anomalies.len() as f32
-            } else { 0.0 },
+            } else {
+                0.0
+            },
             max_anomaly_score: anomalies.first().map(|a| a.anomaly_score).unwrap_or(0.0),
             min_anomaly_score: anomalies.last().map(|a| a.anomaly_score).unwrap_or(0.0),
         };
@@ -782,7 +815,11 @@ impl AnomalyDetectionActor {
 
     /// Build Z-Score anomaly results from raw GPU scores (CPU-only post-processing)
     #[allow(dead_code)]
-    fn build_zscore_anomalies(&self, z_scores: &[f32], threshold: f32) -> (Vec<AnomalyNode>, AnomalyStats) {
+    fn build_zscore_anomalies(
+        &self,
+        z_scores: &[f32],
+        threshold: f32,
+    ) -> (Vec<AnomalyNode>, AnomalyStats) {
         let mut anomalies = Vec::new();
 
         for (node_id, &z_score) in z_scores.iter().enumerate() {
@@ -791,23 +828,40 @@ impl AnomalyDetectionActor {
                 anomalies.push(AnomalyNode {
                     node_id: node_id as u32,
                     anomaly_score: abs_z_score,
-                    reason: format!("Z-score {:.3} (abs {:.3}) exceeds threshold {:.3}", z_score, abs_z_score, threshold),
-                    anomaly_type: if z_score > threshold { "high_outlier" } else { "low_outlier" }.to_string(),
+                    reason: format!(
+                        "Z-score {:.3} (abs {:.3}) exceeds threshold {:.3}",
+                        z_score, abs_z_score, threshold
+                    ),
+                    anomaly_type: if z_score > threshold {
+                        "high_outlier"
+                    } else {
+                        "low_outlier"
+                    }
+                    .to_string(),
                     severity: Self::calculate_severity(abs_z_score, threshold),
-                    explanation: format!("Z-score {:.3} (abs {:.3}) exceeds threshold {:.3}", z_score, abs_z_score, threshold),
+                    explanation: format!(
+                        "Z-score {:.3} (abs {:.3}) exceeds threshold {:.3}",
+                        z_score, abs_z_score, threshold
+                    ),
                     features: vec!["z_score".to_string(), "statistical_deviation".to_string()],
                 });
             }
         }
 
-        anomalies.sort_by(|a, b| b.anomaly_score.partial_cmp(&a.anomaly_score).unwrap_or(std::cmp::Ordering::Equal));
+        anomalies.sort_by(|a, b| {
+            b.anomaly_score
+                .partial_cmp(&a.anomaly_score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
 
         let stats = AnomalyStats {
             anomalies_found: anomalies.len(),
             detection_threshold: threshold,
             average_anomaly_score: if !anomalies.is_empty() {
                 anomalies.iter().map(|a| a.anomaly_score).sum::<f32>() / anomalies.len() as f32
-            } else { 0.0 },
+            } else {
+                0.0
+            },
             max_anomaly_score: anomalies.first().map(|a| a.anomaly_score).unwrap_or(0.0),
             min_anomaly_score: anomalies.last().map(|a| a.anomaly_score).unwrap_or(0.0),
         };
@@ -817,7 +871,11 @@ impl AnomalyDetectionActor {
 
     /// Build DBSCAN anomaly results from cluster labels (CPU-only post-processing)
     #[allow(dead_code)]
-    fn build_dbscan_anomalies(&self, cluster_labels: &[i32], eps: f32) -> (Vec<AnomalyNode>, AnomalyStats) {
+    fn build_dbscan_anomalies(
+        &self,
+        cluster_labels: &[i32],
+        eps: f32,
+    ) -> (Vec<AnomalyNode>, AnomalyStats) {
         let mut anomalies = Vec::new();
         let min_pts = 3;
 
@@ -826,10 +884,15 @@ impl AnomalyDetectionActor {
                 anomalies.push(AnomalyNode {
                     node_id: node_id as u32,
                     anomaly_score: 1.0,
-                    reason: format!("Node classified as noise by DBSCAN (eps={:.2}, min_pts={})", eps, min_pts),
+                    reason: format!(
+                        "Node classified as noise by DBSCAN (eps={:.2}, min_pts={})",
+                        eps, min_pts
+                    ),
                     anomaly_type: "noise_outlier".to_string(),
                     severity: "high".to_string(),
-                    explanation: "DBSCAN identified this node as noise (not belonging to any cluster)".to_string(),
+                    explanation:
+                        "DBSCAN identified this node as noise (not belonging to any cluster)"
+                            .to_string(),
                     features: vec!["spatial_isolation".to_string()],
                 });
             }
@@ -864,7 +927,10 @@ impl AnomalyDetectionActor {
             Some(f) if f.len() >= num_nodes * 3 => f,
             Some(f) if !f.is_empty() => f,
             _ => {
-                return Err("Isolation Forest requires GPU node positions but they are unavailable.".to_string());
+                return Err(
+                    "Isolation Forest requires GPU node positions but they are unavailable."
+                        .to_string(),
+                );
             }
         };
 
@@ -876,23 +942,35 @@ impl AnomalyDetectionActor {
                 anomalies.push(AnomalyNode {
                     node_id: node_id as u32,
                     anomaly_score: score,
-                    reason: format!("Isolation score {:.3} exceeds threshold {:.3}", score, threshold),
+                    reason: format!(
+                        "Isolation score {:.3} exceeds threshold {:.3}",
+                        score, threshold
+                    ),
                     anomaly_type: "isolated_outlier".to_string(),
                     severity: Self::calculate_severity(score, threshold),
-                    explanation: format!("Isolation Forest score {:.3} indicates anomalous behavior", score),
+                    explanation: format!(
+                        "Isolation Forest score {:.3} indicates anomalous behavior",
+                        score
+                    ),
                     features: vec!["position".to_string()],
                 });
             }
         }
 
-        anomalies.sort_by(|a, b| b.anomaly_score.partial_cmp(&a.anomaly_score).unwrap_or(std::cmp::Ordering::Equal));
+        anomalies.sort_by(|a, b| {
+            b.anomaly_score
+                .partial_cmp(&a.anomaly_score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
 
         let stats = AnomalyStats {
             anomalies_found: anomalies.len(),
             detection_threshold: threshold,
             average_anomaly_score: if !anomalies.is_empty() {
                 anomalies.iter().map(|a| a.anomaly_score).sum::<f32>() / anomalies.len() as f32
-            } else { 0.0 },
+            } else {
+                0.0
+            },
             max_anomaly_score: anomalies.first().map(|a| a.anomaly_score).unwrap_or(0.0),
             min_anomaly_score: anomalies.last().map(|a| a.anomaly_score).unwrap_or(0.0),
         };
@@ -938,7 +1016,6 @@ impl Handler<RunAnomalyDetection> for AnomalyDetectionActor {
             msg.params.method
         );
 
-        
         if self.shared_context.is_none() {
             error!("AnomalyDetectionActor: GPU not initialized for anomaly detection");
             return Box::pin(
@@ -956,7 +1033,6 @@ impl Handler<RunAnomalyDetection> for AnomalyDetectionActor {
 
         let params = msg.params;
 
-        
         let num_nodes = self.gpu_state.num_nodes;
         let k_neighbors = params.k_neighbors;
         if k_neighbors as u32 >= num_nodes {
@@ -967,7 +1043,6 @@ impl Handler<RunAnomalyDetection> for AnomalyDetectionActor {
             return Box::pin(async move { Err(error_msg) }.into_actor(self));
         }
 
-        
         let internal_params = AnomalyDetectionParams {
             method: match params.method {
                 crate::actors::messages::AnomalyMethod::LocalOutlierFactor => {
@@ -977,7 +1052,7 @@ impl Handler<RunAnomalyDetection> for AnomalyDetectionActor {
             },
             threshold: Some(params.threshold),
             k_neighbors: Some(params.k_neighbors),
-            window_size: Some(100), 
+            window_size: Some(100),
             feature_data: None,
         };
 
@@ -987,7 +1062,12 @@ impl Handler<RunAnomalyDetection> for AnomalyDetectionActor {
         let shared_ctx = match self.shared_context.as_ref() {
             Some(ctx) => Arc::clone(ctx),
             None => {
-                return Box::pin(async move { Err("Shared context not initialized for anomaly detection".to_string()) }.into_actor(self));
+                return Box::pin(
+                    async move {
+                        Err("Shared context not initialized for anomaly detection".to_string())
+                    }
+                    .into_actor(self),
+                );
             }
         };
         let num_nodes = self.gpu_state.num_nodes;
@@ -1114,7 +1194,8 @@ impl Handler<RunAnomalyDetection> for AnomalyDetectionActor {
             }).await;
 
             // Handle spawn_blocking join result
-            let result: Result<(Option<Vec<f32>>, Vec<AnomalyNode>), String> = match blocking_result {
+            let result: Result<(Option<Vec<f32>>, Vec<AnomalyNode>), String> = match blocking_result
+            {
                 Ok(inner_result) => inner_result,
                 Err(join_err) => Err(format!("GPU blocking task panicked: {}", join_err)),
             };
@@ -1125,7 +1206,8 @@ impl Handler<RunAnomalyDetection> for AnomalyDetectionActor {
                 Ok((scores, anomalies)) => {
                     let anomalies_count = anomalies.len();
                     let avg_score = if !anomalies.is_empty() {
-                        anomalies.iter().map(|a| a.anomaly_score).sum::<f32>() / anomalies.len() as f32
+                        anomalies.iter().map(|a| a.anomaly_score).sum::<f32>()
+                            / anomalies.len() as f32
                     } else {
                         0.0
                     };
@@ -1142,7 +1224,8 @@ impl Handler<RunAnomalyDetection> for AnomalyDetectionActor {
                               internal_params_method, computation_time, anomalies_count);
 
                     Ok(AnomalyResult {
-                        lof_scores: if matches!(internal_params_method, AnomalyDetectionMethod::LOF) {
+                        lof_scores: if matches!(internal_params_method, AnomalyDetectionMethod::LOF)
+                        {
                             scores.clone()
                         } else {
                             None

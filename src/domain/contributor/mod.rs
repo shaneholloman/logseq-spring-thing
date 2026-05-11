@@ -30,26 +30,25 @@
 //! Public API re-exports the aggregates, value objects and the context-assembly
 //! domain service; domain events are re-exported as `events`.
 
+pub mod context_assembly;
 pub mod contributor_profile;
 pub mod contributor_workspace;
-pub mod context_assembly;
 pub mod events;
 pub mod guidance_session;
 pub mod share_intent;
 pub mod value_objects;
 pub mod work_artifact;
 
-pub use contributor_profile::ContributorProfile;
-pub use contributor_workspace::ContributorWorkspace;
 pub use context_assembly::{
     ContextAssemblyError, ContextAssemblyService, EpisodicMemoryPort, GraphSelectionPort,
     OntologyNeighbourPort, PodContributorPort,
 };
+pub use contributor_profile::ContributorProfile;
+pub use contributor_workspace::ContributorWorkspace;
 pub use guidance_session::{GuidanceSession, GuidanceSessionError};
 pub use share_intent::{ShareIntent, ShareIntentError, ShareIntentStatus};
 pub use value_objects::{
-    ArtifactKind, ArtifactLineage, ArtifactRef, GraphSelection, GuidanceSuggestion,
-    LineageEntry, NudgeEnvelope, PartnerBinding, PartnerKind, ShareState, SuggestionKind,
-    WorkspaceFocus,
+    ArtifactKind, ArtifactLineage, ArtifactRef, GraphSelection, GuidanceSuggestion, LineageEntry,
+    NudgeEnvelope, PartnerBinding, PartnerKind, ShareState, SuggestionKind, WorkspaceFocus,
 };
 pub use work_artifact::{WorkArtifact, WorkArtifactError};

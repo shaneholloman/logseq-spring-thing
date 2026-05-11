@@ -76,9 +76,9 @@ impl ServerIdentity {
             .unwrap_or(false);
 
         let keys = match privkey_env {
-            Some(raw) => parse_secret_key(&raw)
-                .map(Keys::new)
-                .context("SERVER_NOSTR_PRIVKEY is set but invalid (expected nsec1… or 64-char hex)")?,
+            Some(raw) => parse_secret_key(&raw).map(Keys::new).context(
+                "SERVER_NOSTR_PRIVKEY is set but invalid (expected nsec1… or 64-char hex)",
+            )?,
             None => {
                 if is_production {
                     return Err(anyhow!(
@@ -102,16 +102,13 @@ impl ServerIdentity {
             }
         };
 
-        let relay_urls = parse_relay_urls(
-            &std::env::var("NOSTR_RELAY_URLS").unwrap_or_default(),
-        );
+        let relay_urls = parse_relay_urls(&std::env::var("NOSTR_RELAY_URLS").unwrap_or_default());
 
         // NEVER log the private key. Log only the public identity.
         info!(
             "[ServerIdentity] Loaded server identity: pubkey_hex={}, pubkey_npub={}, relays={}",
             keys.public_key().to_hex(),
-            keys
-                .public_key()
+            keys.public_key()
                 .to_bech32()
                 .unwrap_or_else(|_| "<bech32 failed>".to_string()),
             if relay_urls.is_empty() {
@@ -384,8 +381,7 @@ mod tests {
     use super::*;
 
     /// A deterministic hex secret key for reproducible tests. 32 bytes of 0x42.
-    const TEST_HEX: &str =
-        "4242424242424242424242424242424242424242424242424242424242424242";
+    const TEST_HEX: &str = "4242424242424242424242424242424242424242424242424242424242424242";
 
     #[test]
     fn parse_secret_key_accepts_hex() {
@@ -476,10 +472,13 @@ mod tests {
             "VISIONCLAW_NOSTR_PRIVKEY",
             "0000000000000000000000000000000000000000000000000000000000000002",
         );
-        let err = resolve_canonical_nostr_privkey()
-            .expect_err("divergent keys must produce an error");
+        let err =
+            resolve_canonical_nostr_privkey().expect_err("divergent keys must produce an error");
         let msg = err.to_string();
-        assert!(msg.contains("PRD-010 F1"), "error must cite PRD-010 F1: {msg}");
+        assert!(
+            msg.contains("PRD-010 F1"),
+            "error must cite PRD-010 F1: {msg}"
+        );
         std::env::remove_var("SERVER_NOSTR_PRIVKEY");
         std::env::remove_var("VISIONCLAW_NOSTR_PRIVKEY");
     }

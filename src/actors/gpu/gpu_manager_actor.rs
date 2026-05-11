@@ -22,15 +22,15 @@ use log::{debug, error, info, warn};
 use std::sync::Arc;
 use std::time::Duration;
 
-use super::supervisor_messages::*;
-use super::shared::{GPUState, SharedGPUContext};
-use super::physics_supervisor::PhysicsSupervisor;
 use super::analytics_supervisor::AnalyticsSupervisor;
-use super::graph_analytics_supervisor::GraphAnalyticsSupervisor;
-use super::resource_supervisor::{ResourceSupervisor, SetSubsystemSupervisors};
-use super::ForceComputeActor;
 use super::force_compute_actor::PhysicsStats;
+use super::graph_analytics_supervisor::GraphAnalyticsSupervisor;
 use super::pagerank_actor::PageRankResult;
+use super::physics_supervisor::PhysicsSupervisor;
+use super::resource_supervisor::{ResourceSupervisor, SetSubsystemSupervisors};
+use super::shared::{GPUState, SharedGPUContext};
+use super::supervisor_messages::*;
+use super::ForceComputeActor;
 use crate::actors::messages::*;
 use crate::telemetry::agent_telemetry::{
     get_telemetry_logger, CorrelationId, LogLevel, TelemetryEvent,
@@ -122,7 +122,10 @@ impl GPUManagerActor {
     }
 
     /// Get subsystem supervisors, spawning if needed
-    fn get_supervisors(&mut self, ctx: &mut Context<Self>) -> Result<&SubsystemSupervisors, String> {
+    fn get_supervisors(
+        &mut self,
+        ctx: &mut Context<Self>,
+    ) -> Result<&SubsystemSupervisors, String> {
         if !self.supervisors_spawned {
             self.spawn_supervisors(ctx)?;
         }
@@ -181,12 +184,15 @@ impl Handler<GetGPUSystemHealth> for GPUManagerActor {
         let supervisors = match self.get_supervisors(ctx) {
             Ok(s) => s.clone(),
             Err(_) => {
-                return Box::pin(async {
-                    GPUSystemHealth {
-                        overall_status: SubsystemStatus::Failed,
-                        subsystems: vec![],
+                return Box::pin(
+                    async {
+                        GPUSystemHealth {
+                            overall_status: SubsystemStatus::Failed,
+                            subsystems: vec![],
+                        }
                     }
-                }.into_actor(self));
+                    .into_actor(self),
+                );
             }
         };
 
@@ -209,11 +215,20 @@ impl Handler<GetGPUSystemHealth> for GPUManagerActor {
                 }
 
                 // Determine overall status
-                let overall_status = if subsystems.iter().all(|s| s.status == SubsystemStatus::Healthy) {
+                let overall_status = if subsystems
+                    .iter()
+                    .all(|s| s.status == SubsystemStatus::Healthy)
+                {
                     SubsystemStatus::Healthy
-                } else if subsystems.iter().any(|s| s.status == SubsystemStatus::Failed) {
+                } else if subsystems
+                    .iter()
+                    .any(|s| s.status == SubsystemStatus::Failed)
+                {
                     SubsystemStatus::Degraded
-                } else if subsystems.iter().any(|s| s.status == SubsystemStatus::Initializing) {
+                } else if subsystems
+                    .iter()
+                    .any(|s| s.status == SubsystemStatus::Initializing)
+                {
                     SubsystemStatus::Initializing
                 } else {
                     SubsystemStatus::Degraded
@@ -224,7 +239,7 @@ impl Handler<GetGPUSystemHealth> for GPUManagerActor {
                     subsystems,
                 }
             }
-            .into_actor(self)
+            .into_actor(self),
         )
     }
 }
@@ -255,10 +270,9 @@ impl Handler<InitializeGPU> for GPUManagerActor {
         // Delegate to ResourceSupervisor which handles timeout
         Box::pin(
             async move {
-                match tokio::time::timeout(
-                    Duration::from_secs(60),
-                    supervisors.resource.send(msg)
-                ).await {
+                match tokio::time::timeout(Duration::from_secs(60), supervisors.resource.send(msg))
+                    .await
+                {
                     Ok(Ok(result)) => result,
                     Ok(Err(e)) => Err(format!("ResourceSupervisor communication failed: {}", e)),
                     Err(_) => Err("GPU initialization timed out at coordinator level".to_string()),
@@ -270,7 +284,7 @@ impl Handler<InitializeGPU> for GPUManagerActor {
                     info!("GPUManagerActor: GPU initialization completed successfully");
                 }
                 result
-            })
+            }),
         )
     }
 }
@@ -284,17 +298,26 @@ impl Handler<UpdateGPUGraphData> for GPUManagerActor {
 
         // Send to ResourceSupervisor (forwards to GPUResourceActor)
         if let Err(e) = supervisors.resource.try_send(msg.clone()) {
-            error!("Failed to send UpdateGPUGraphData to ResourceSupervisor: {}", e);
+            error!(
+                "Failed to send UpdateGPUGraphData to ResourceSupervisor: {}",
+                e
+            );
         }
 
         // Send to PhysicsSupervisor (forwards to ForceComputeActor)
         if let Err(e) = supervisors.physics.try_send(msg.clone()) {
-            error!("Failed to send UpdateGPUGraphData to PhysicsSupervisor: {}", e);
+            error!(
+                "Failed to send UpdateGPUGraphData to PhysicsSupervisor: {}",
+                e
+            );
         }
 
         // Send to AnalyticsSupervisor (forwards to ClusteringActor)
         if let Err(e) = supervisors.analytics.try_send(msg) {
-            error!("Failed to send UpdateGPUGraphData to AnalyticsSupervisor: {}", e);
+            error!(
+                "Failed to send UpdateGPUGraphData to AnalyticsSupervisor: {}",
+                e
+            );
         }
 
         Ok(())
@@ -330,10 +353,13 @@ impl Handler<RunKMeans> for GPUManagerActor {
 
         Box::pin(
             async move {
-                supervisors.analytics.send(msg).await
+                supervisors
+                    .analytics
+                    .send(msg)
+                    .await
                     .map_err(|e| format!("AnalyticsSupervisor communication failed: {}", e))?
             }
-            .into_actor(self)
+            .into_actor(self),
         )
     }
 }
@@ -350,10 +376,13 @@ impl Handler<RunCommunityDetection> for GPUManagerActor {
 
         Box::pin(
             async move {
-                supervisors.analytics.send(msg).await
+                supervisors
+                    .analytics
+                    .send(msg)
+                    .await
                     .map_err(|e| format!("AnalyticsSupervisor communication failed: {}", e))?
             }
-            .into_actor(self)
+            .into_actor(self),
         )
     }
 }
@@ -370,10 +399,13 @@ impl Handler<RunDBSCAN> for GPUManagerActor {
 
         Box::pin(
             async move {
-                supervisors.analytics.send(msg).await
+                supervisors
+                    .analytics
+                    .send(msg)
+                    .await
                     .map_err(|e| format!("AnalyticsSupervisor communication failed: {}", e))?
             }
-            .into_actor(self)
+            .into_actor(self),
         )
     }
 }
@@ -390,10 +422,13 @@ impl Handler<RunAnomalyDetection> for GPUManagerActor {
 
         Box::pin(
             async move {
-                supervisors.analytics.send(msg).await
+                supervisors
+                    .analytics
+                    .send(msg)
+                    .await
                     .map_err(|e| format!("AnalyticsSupervisor communication failed: {}", e))?
             }
-            .into_actor(self)
+            .into_actor(self),
         )
     }
 }
@@ -418,10 +453,13 @@ impl Handler<PerformGPUClustering> for GPUManagerActor {
 
         Box::pin(
             async move {
-                supervisors.analytics.send(msg).await
+                supervisors
+                    .analytics
+                    .send(msg)
+                    .await
                     .map_err(|e| format!("AnalyticsSupervisor communication failed: {}", e))?
             }
-            .into_actor(self)
+            .into_actor(self),
         )
     }
 }
@@ -480,10 +518,13 @@ impl Handler<GetForceComputeActor> for GPUManagerActor {
 
         Box::pin(
             async move {
-                supervisors.physics.send(msg).await
+                supervisors
+                    .physics
+                    .send(msg)
+                    .await
                     .map_err(|e| format!("PhysicsSupervisor communication failed: {}", e))?
             }
-            .into_actor(self)
+            .into_actor(self),
         )
     }
 }
@@ -514,10 +555,13 @@ impl Handler<GetNodeData> for GPUManagerActor {
 
         Box::pin(
             async move {
-                supervisors.physics.send(msg).await
+                supervisors
+                    .physics
+                    .send(msg)
+                    .await
                     .map_err(|e| format!("PhysicsSupervisor communication failed: {}", e))?
             }
-            .into_actor(self)
+            .into_actor(self),
         )
     }
 }
@@ -569,7 +613,10 @@ impl Handler<SetSharedGPUContext> for GPUManagerActor {
                 Ok(())
             }
             Err(e) => {
-                error!("Failed to forward SharedGPUContext to ResourceSupervisor: {}", e);
+                error!(
+                    "Failed to forward SharedGPUContext to ResourceSupervisor: {}",
+                    e
+                );
                 Err(format!("Failed to distribute context: {}", e))
             }
         }
@@ -604,18 +651,22 @@ impl Handler<GetOntologyConstraintStats> for GPUManagerActor {
             Ok(s) => s.clone(),
             Err(e) => {
                 error!("Failed to get supervisors: {}", e);
-                return Box::pin(async move {
-                    Err(format!("Failed to get supervisors: {}", e))
-                }.into_actor(self));
+                return Box::pin(
+                    async move { Err(format!("Failed to get supervisors: {}", e)) }
+                        .into_actor(self),
+                );
             }
         };
 
         Box::pin(
             async move {
-                supervisors.physics.send(msg).await
+                supervisors
+                    .physics
+                    .send(msg)
+                    .await
                     .map_err(|e| format!("PhysicsSupervisor communication failed: {}", e))?
             }
-            .into_actor(self)
+            .into_actor(self),
         )
     }
 }
@@ -632,10 +683,13 @@ impl Handler<ComputeShortestPaths> for GPUManagerActor {
 
         Box::pin(
             async move {
-                supervisors.graph_analytics.send(msg).await
+                supervisors
+                    .graph_analytics
+                    .send(msg)
+                    .await
                     .map_err(|e| format!("GraphAnalyticsSupervisor communication failed: {}", e))?
             }
-            .into_actor(self)
+            .into_actor(self),
         )
     }
 }
@@ -652,10 +706,13 @@ impl Handler<ComputePageRank> for GPUManagerActor {
 
         Box::pin(
             async move {
-                supervisors.analytics.send(msg).await
+                supervisors
+                    .analytics
+                    .send(msg)
+                    .await
                     .map_err(|e| format!("AnalyticsSupervisor communication failed: {}", e))?
             }
-            .into_actor(self)
+            .into_actor(self),
         )
     }
 }
@@ -672,10 +729,13 @@ impl Handler<GetPhysicsStats> for GPUManagerActor {
 
         Box::pin(
             async move {
-                supervisors.physics.send(msg).await
+                supervisors
+                    .physics
+                    .send(msg)
+                    .await
                     .map_err(|e| format!("PhysicsSupervisor communication failed: {}", e))?
             }
-            .into_actor(self)
+            .into_actor(self),
         )
     }
 }
@@ -685,7 +745,10 @@ impl Handler<GetPhysicsStats> for GPUManagerActor {
 // ============================================================================
 
 impl Handler<GetSemanticConfig> for GPUManagerActor {
-    type Result = ResponseActFuture<Self, Result<crate::actors::gpu::semantic_forces_actor::SemanticConfig, String>>;
+    type Result = ResponseActFuture<
+        Self,
+        Result<crate::actors::gpu::semantic_forces_actor::SemanticConfig, String>,
+    >;
 
     fn handle(&mut self, msg: GetSemanticConfig, ctx: &mut Self::Context) -> Self::Result {
         let supervisors = match self.get_supervisors(ctx) {
@@ -695,16 +758,22 @@ impl Handler<GetSemanticConfig> for GPUManagerActor {
 
         Box::pin(
             async move {
-                supervisors.physics.send(msg).await
+                supervisors
+                    .physics
+                    .send(msg)
+                    .await
                     .map_err(|e| format!("PhysicsSupervisor communication failed: {}", e))?
             }
-            .into_actor(self)
+            .into_actor(self),
         )
     }
 }
 
 impl Handler<GetHierarchyLevels> for GPUManagerActor {
-    type Result = ResponseActFuture<Self, Result<crate::actors::gpu::semantic_forces_actor::HierarchyLevels, String>>;
+    type Result = ResponseActFuture<
+        Self,
+        Result<crate::actors::gpu::semantic_forces_actor::HierarchyLevels, String>,
+    >;
 
     fn handle(&mut self, msg: GetHierarchyLevels, ctx: &mut Self::Context) -> Self::Result {
         let supervisors = match self.get_supervisors(ctx) {
@@ -714,10 +783,13 @@ impl Handler<GetHierarchyLevels> for GPUManagerActor {
 
         Box::pin(
             async move {
-                supervisors.physics.send(msg).await
+                supervisors
+                    .physics
+                    .send(msg)
+                    .await
                     .map_err(|e| format!("PhysicsSupervisor communication failed: {}", e))?
             }
-            .into_actor(self)
+            .into_actor(self),
         )
     }
 }
@@ -733,10 +805,13 @@ impl Handler<RecalculateHierarchy> for GPUManagerActor {
 
         Box::pin(
             async move {
-                supervisors.physics.send(msg).await
+                supervisors
+                    .physics
+                    .send(msg)
+                    .await
                     .map_err(|e| format!("PhysicsSupervisor communication failed: {}", e))?
             }
-            .into_actor(self)
+            .into_actor(self),
         )
     }
 }
@@ -752,10 +827,13 @@ impl Handler<ConfigureDAG> for GPUManagerActor {
 
         Box::pin(
             async move {
-                supervisors.physics.send(msg).await
+                supervisors
+                    .physics
+                    .send(msg)
+                    .await
                     .map_err(|e| format!("PhysicsSupervisor communication failed: {}", e))?
             }
-            .into_actor(self)
+            .into_actor(self),
         )
     }
 }
@@ -771,10 +849,13 @@ impl Handler<ConfigureTypeClustering> for GPUManagerActor {
 
         Box::pin(
             async move {
-                supervisors.physics.send(msg).await
+                supervisors
+                    .physics
+                    .send(msg)
+                    .await
                     .map_err(|e| format!("PhysicsSupervisor communication failed: {}", e))?
             }
-            .into_actor(self)
+            .into_actor(self),
         )
     }
 }
@@ -790,10 +871,13 @@ impl Handler<ConfigureCollision> for GPUManagerActor {
 
         Box::pin(
             async move {
-                supervisors.physics.send(msg).await
+                supervisors
+                    .physics
+                    .send(msg)
+                    .await
                     .map_err(|e| format!("PhysicsSupervisor communication failed: {}", e))?
             }
-            .into_actor(self)
+            .into_actor(self),
         )
     }
 }
@@ -810,10 +894,13 @@ impl Handler<AdjustConstraintWeights> for GPUManagerActor {
 
         Box::pin(
             async move {
-                supervisors.physics.send(msg).await
+                supervisors
+                    .physics
+                    .send(msg)
+                    .await
                     .map_err(|e| format!("PhysicsSupervisor communication failed: {}", e))?
             }
-            .into_actor(self)
+            .into_actor(self),
         )
     }
 }

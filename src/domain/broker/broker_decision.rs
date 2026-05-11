@@ -313,10 +313,7 @@ mod tests {
             "reassign",
         )
         .unwrap();
-        assert_eq!(
-            c.state,
-            super::super::broker_case::CaseState::Delegated
-        );
+        assert_eq!(c.state, super::super::broker_case::CaseState::Delegated);
     }
 
     #[test]

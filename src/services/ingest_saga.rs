@@ -65,8 +65,7 @@ pub fn saga_enabled() -> bool {
 
 /// Resolves the Pod base URL from the environment, with a sensible in-cluster default.
 pub fn pod_base_url() -> String {
-    std::env::var(POD_BASE_URL_ENV)
-        .unwrap_or_else(|_| "http://jss:3030".to_string())
+    std::env::var(POD_BASE_URL_ENV).unwrap_or_else(|_| "http://jss:3030".to_string())
 }
 
 /// A single step in a saga. The orchestrator executes them in order; any
@@ -91,7 +90,11 @@ pub enum SagaStep {
     Neo4jCommit { node: KGNode },
     /// Audit event — emitted by the sibling Nostr agent. Placeholder until
     /// `server-Nostr kind 30300` lands; for now we log the intent.
-    AuditEvent { kind: u16, content: String, node_id: u32 },
+    AuditEvent {
+        kind: u16,
+        content: String,
+        node_id: u32,
+    },
 }
 
 /// Outcome of executing a saga's step list.
@@ -100,7 +103,10 @@ pub enum SagaOutcome {
     /// All steps succeeded. Pod + Neo4j are in sync.
     Complete,
     /// Some Pod writes succeeded and the Neo4j commit is pending retry.
-    PendingRetry { last_successful_step: usize, error: String },
+    PendingRetry {
+        last_successful_step: usize,
+        error: String,
+    },
     /// Unrecoverable failure. No pending marker was written.
     Failed { error: String },
 }
@@ -254,20 +260,38 @@ impl IngestSaga {
 
         for (i, step) in steps.into_iter().enumerate() {
             match step {
-                SagaStep::PodWrite { pod_url, content, content_type, auth_header, node } => {
+                SagaStep::PodWrite {
+                    pod_url,
+                    content,
+                    content_type,
+                    auth_header,
+                    node,
+                } => {
                     // Idempotent replay: if the Pod already has a resource with
                     // any ETag we accept that as "already written" — callers that
                     // want strict content-equality can pass a precomputed ETag
                     // and compare before skipping.
-                    match self.pod_client.get_etag(&pod_url, auth_header.as_deref()).await {
+                    match self
+                        .pod_client
+                        .get_etag(&pod_url, auth_header.as_deref())
+                        .await
+                    {
                         Ok(Some(_)) => {
-                            debug!("[saga] Pod resource {} already exists — skipping PUT", pod_url);
+                            debug!(
+                                "[saga] Pod resource {} already exists — skipping PUT",
+                                pod_url
+                            );
                         }
                         Ok(None) | Err(_) => {
                             // 404 or HEAD failure → attempt PUT.
                             if let Err(e) = self
                                 .pod_client
-                                .put_resource(&pod_url, content, &content_type, auth_header.as_deref())
+                                .put_resource(
+                                    &pod_url,
+                                    content,
+                                    &content_type,
+                                    auth_header.as_deref(),
+                                )
                                 .await
                             {
                                 return self.finish_failed(start, e.to_string()).await;
@@ -283,21 +307,35 @@ impl IngestSaga {
                     if let Err(e) = self.neo4j.save_graph(&gd).await {
                         // Pod written, Neo4j failed → pending marker.
                         if let Some(nid) = pod_written_node {
-                            if let Err(marker_err) = self.mark_pending(nid, "pod_written", &e.to_string()).await {
-                                warn!("[saga] Failed to write pending marker for node {}: {}", nid, marker_err);
+                            if let Err(marker_err) =
+                                self.mark_pending(nid, "pod_written", &e.to_string()).await
+                            {
+                                warn!(
+                                    "[saga] Failed to write pending marker for node {}: {}",
+                                    nid, marker_err
+                                );
                             }
                         }
-                        return self.finish_pending(start, last_success.unwrap_or(0), e.to_string()).await;
+                        return self
+                            .finish_pending(start, last_success.unwrap_or(0), e.to_string())
+                            .await;
                     }
                     // After commit, clear any stale pending marker.
                     let _ = self.clear_pending(node.id).await;
                     last_success = Some(i);
                 }
-                SagaStep::AuditEvent { kind, content, node_id } => {
+                SagaStep::AuditEvent {
+                    kind,
+                    content,
+                    node_id,
+                } => {
                     // Placeholder: real Nostr kind-30300 publish lives in the
                     // sibling agent. Log the intent so downstream tooling can
                     // pick it up.
-                    info!("[saga][audit] kind={} node_id={} content={}", kind, node_id, content);
+                    info!(
+                        "[saga][audit] kind={} node_id={} content={}",
+                        kind, node_id, content
+                    );
                     last_success = Some(i);
                 }
             }
@@ -335,7 +373,14 @@ impl IngestSaga {
             let auth = plan.auth_header.clone();
             let node_id = plan.node.id;
             pod_futures.push(async move {
-                let outcome = Self::pod_write_with_replay(&client, &pod_url, content, &content_type, auth.as_deref()).await;
+                let outcome = Self::pod_write_with_replay(
+                    &client,
+                    &pod_url,
+                    content,
+                    &content_type,
+                    auth.as_deref(),
+                )
+                .await;
                 (node_id, outcome)
             });
         }
@@ -397,11 +442,19 @@ impl IngestSaga {
                 // Neo4j commit failed for the whole batch → mark each
                 // Pod-successful node pending so the resumption task retries.
                 let err_msg = e.to_string();
-                warn!("[saga] Neo4j batch commit failed: {} — marking {} nodes pending", err_msg, committed_nodes.len());
+                warn!(
+                    "[saga] Neo4j batch commit failed: {} — marking {} nodes pending",
+                    err_msg,
+                    committed_nodes.len()
+                );
                 let mut pending_vec = Vec::with_capacity(committed_nodes.len());
                 for n in &committed_nodes {
-                    if let Err(marker_err) = self.mark_pending(n.id, "pod_written", &err_msg).await {
-                        warn!("[saga] Could not write pending marker for node {}: {}", n.id, marker_err);
+                    if let Err(marker_err) = self.mark_pending(n.id, "pod_written", &err_msg).await
+                    {
+                        warn!(
+                            "[saga] Could not write pending marker for node {}: {}",
+                            n.id, marker_err
+                        );
                     }
                     pending_vec.push((n.id, err_msg.clone()));
                 }
@@ -459,15 +512,16 @@ impl IngestSaga {
         // This keeps retry cycles O(1) network calls per already-written node.
         match client.get_etag(pod_url, auth_header).await {
             Ok(Some(_etag)) => {
-                debug!("[saga] Pod resource {} already exists — idempotent skip", pod_url);
+                debug!(
+                    "[saga] Pod resource {} already exists — idempotent skip",
+                    pod_url
+                );
                 Ok(())
             }
-            Ok(None) => {
-                client
-                    .put_resource(pod_url, content, content_type, auth_header)
-                    .await
-                    .map(|_| ())
-            }
+            Ok(None) => client
+                .put_resource(pod_url, content, content_type, auth_header)
+                .await
+                .map(|_| ()),
             Err(_) => {
                 // HEAD failed — attempt PUT anyway, let the PUT surface the
                 // real error if the Pod is actually broken.
@@ -556,11 +610,7 @@ impl IngestSaga {
         .param("step", step.to_string())
         .param("err", err.to_string());
 
-        self.neo4j
-            .graph()
-            .run(q)
-            .await
-            .map_err(|e| e.to_string())
+        self.neo4j.graph().run(q).await.map_err(|e| e.to_string())
     }
 
     /// Remove the pending marker once the node is fully committed.
@@ -571,11 +621,7 @@ impl IngestSaga {
         )
         .param("id", node_id as i64);
 
-        self.neo4j
-            .graph()
-            .run(q)
-            .await
-            .map_err(|e| e.to_string())
+        self.neo4j.graph().run(q).await.map_err(|e| e.to_string())
     }
 
     /// Fetch KGNodes with `saga_pending: true`, up to `limit`.
@@ -608,8 +654,8 @@ impl IngestSaga {
             let label: String = row.get("label").unwrap_or_default();
             let metadata_str: String = row.get("metadata").unwrap_or_default();
 
-            let metadata: HashMap<String, String> = serde_json::from_str(&metadata_str)
-                .unwrap_or_default();
+            let metadata: HashMap<String, String> =
+                serde_json::from_str(&metadata_str).unwrap_or_default();
 
             let mut node = KGNode::new_with_id(metadata_id.clone(), Some(id as u32));
             node.label = label;
@@ -741,11 +787,7 @@ impl IngestSaga {
             .map_err(|e| format!("fetch_public_nodes: {}", e))?;
 
         let mut out = Vec::new();
-        while let Some(row) = result
-            .next()
-            .await
-            .map_err(|e| format!("row: {}", e))?
-        {
+        while let Some(row) = result.next().await.map_err(|e| format!("row: {}", e))? {
             let id: i64 = row.get("id").unwrap_or(0);
             let metadata_id: String = row.get("metadata_id").unwrap_or_default();
             let label: String = row.get("label").unwrap_or_default();
@@ -822,7 +864,10 @@ pub fn build_corpus_jsonl(
         let doc = build_corpus_jsonld_document(node, owner_pubkey, pod_base, mapper);
         match serde_json::to_string(&doc) {
             Ok(s) => lines.push(s),
-            Err(e) => warn!("[urn-solid] serialise corpus line for node {}: {}", node.id, e),
+            Err(e) => warn!(
+                "[urn-solid] serialise corpus line for node {}: {}",
+                node.id, e
+            ),
         }
     }
     lines.join("\n")
@@ -837,11 +882,7 @@ pub fn build_corpus_jsonld_document(
 ) -> serde_json::Value {
     use serde_json::json;
 
-    let canonical_iri = format!(
-        "visionclaw:owner:{}/kg/{}",
-        owner_pubkey,
-        node.metadata_id
-    );
+    let canonical_iri = format!("visionclaw:owner:{}/kg/{}", owner_pubkey, node.metadata_id);
 
     // Resolve URN-Solid alias for stable mappings only.
     let urn_alias: Option<String> = match (mapper, node.owl_class_iri.as_deref()) {
@@ -860,13 +901,12 @@ pub fn build_corpus_jsonld_document(
         types.push(a);
     }
 
-    let pod_url = node
-        .pod_url
-        .clone()
-        .unwrap_or_else(|| corpus_jsonl_url(pod_base, owner_pubkey)
+    let pod_url = node.pod_url.clone().unwrap_or_else(|| {
+        corpus_jsonl_url(pod_base, owner_pubkey)
             .trim_end_matches("corpus.jsonl")
             .trim_end_matches('/')
-            .to_string());
+            .to_string()
+    });
 
     let mut doc = json!({
         "@context": "https://visionclaw.org/context.jsonld",
@@ -876,9 +916,8 @@ pub fn build_corpus_jsonld_document(
     });
 
     if !types.is_empty() {
-        doc["@type"] = serde_json::Value::Array(
-            types.into_iter().map(serde_json::Value::String).collect(),
-        );
+        doc["@type"] =
+            serde_json::Value::Array(types.into_iter().map(serde_json::Value::String).collect());
     }
 
     if let Some(a) = urn_alias {
@@ -911,10 +950,22 @@ pub fn spawn_resumption_task(saga: Arc<IngestSaga>) -> tokio::task::JoinHandle<(
                 true => {
                     let outcomes = saga.resume_pending().await;
                     if !outcomes.is_empty() {
-                        let complete = outcomes.iter().filter(|o| matches!(o, SagaOutcome::Complete)).count();
-                        let pending = outcomes.iter().filter(|o| matches!(o, SagaOutcome::PendingRetry { .. })).count();
-                        let failed = outcomes.iter().filter(|o| matches!(o, SagaOutcome::Failed { .. })).count();
-                        debug!("[saga][resume] Tick finished: {} complete, {} pending, {} failed", complete, pending, failed);
+                        let complete = outcomes
+                            .iter()
+                            .filter(|o| matches!(o, SagaOutcome::Complete))
+                            .count();
+                        let pending = outcomes
+                            .iter()
+                            .filter(|o| matches!(o, SagaOutcome::PendingRetry { .. }))
+                            .count();
+                        let failed = outcomes
+                            .iter()
+                            .filter(|o| matches!(o, SagaOutcome::Failed { .. }))
+                            .count();
+                        debug!(
+                            "[saga][resume] Tick finished: {} complete, {} pending, {} failed",
+                            complete, pending, failed
+                        );
                     }
                 }
                 false => {

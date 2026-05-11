@@ -14,7 +14,11 @@ fn bip340_fixture_loads_and_metadata_is_canonical() {
     let f = load_fixture("bip340-schnorr.json");
     assert_meta_block(&f, "BIP-340");
     let vectors = f["vectors"].as_array().expect("vectors must be array");
-    assert_eq!(vectors.len(), 19, "bip340 fixture must have exactly 19 reference vectors");
+    assert_eq!(
+        vectors.len(),
+        19,
+        "bip340 fixture must have exactly 19 reference vectors"
+    );
 }
 
 #[test]
@@ -22,10 +26,20 @@ fn bip340_each_vector_has_deterministic_fields() {
     let f = load_fixture("bip340-schnorr.json");
     let vectors = f["vectors"].as_array().unwrap();
     for v in vectors {
-        let pk = v["public_key_hex"].as_str().expect("public_key_hex required");
-        assert_eq!(pk.len(), 64, "public_key_hex must be 64 hex chars (32-byte x-only)");
+        let pk = v["public_key_hex"]
+            .as_str()
+            .expect("public_key_hex required");
+        assert_eq!(
+            pk.len(),
+            64,
+            "public_key_hex must be 64 hex chars (32-byte x-only)"
+        );
         let sig = v["signature_hex"].as_str().expect("signature_hex required");
-        assert_eq!(sig.len(), 128, "signature_hex must be 128 hex chars (64-byte BIP-340 sig)");
+        assert_eq!(
+            sig.len(),
+            128,
+            "signature_hex must be 128 hex chars (64-byte BIP-340 sig)"
+        );
         assert!(
             v["verification_result"].is_boolean(),
             "verification_result must be a boolean for vector index {}",

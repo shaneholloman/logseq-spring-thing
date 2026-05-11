@@ -5,7 +5,7 @@
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use webxr::adapters::neo4j_adapter::{Neo4jAdapter, Neo4jConfig};
-use webxr::adapters::neo4j_ontology_repository::{Neo4jOntologyRepository, Neo4jOntologyConfig};
+use webxr::adapters::neo4j_ontology_repository::{Neo4jOntologyConfig, Neo4jOntologyRepository};
 use webxr::config::AppFullSettings;
 use webxr::services::github::api::GitHubClient;
 use webxr::services::github::config::GitHubConfig;
@@ -72,7 +72,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("{}", "=".repeat(50));
     println!("  Total files found:        {}", stats.total_files);
     println!("  KG files processed:       {}", stats.kg_files_processed);
-    println!("  Ontology files processed: {}", stats.ontology_files_processed);
+    println!(
+        "  Ontology files processed: {}",
+        stats.ontology_files_processed
+    );
     println!("  Skipped (unchanged):      {}", stats.skipped_files);
     println!("  Total nodes:              {}", stats.total_nodes);
     println!("  Total edges:              {}", stats.total_edges);

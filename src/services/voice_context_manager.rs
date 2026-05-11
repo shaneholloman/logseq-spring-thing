@@ -15,49 +15,46 @@ use crate::actors::voice_commands::{ConversationContext, SwarmIntent};
 use crate::utils::time;
 
 pub struct VoiceContextManager {
-    
     sessions: Arc<RwLock<HashMap<String, VoiceSession>>>,
-    
+
     max_session_duration: ChronoDuration,
-    
+
     max_sessions: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VoiceSession {
-    
     pub session_id: String,
-    
+
     pub user_id: Option<String>,
-    
+
     pub created_at: DateTime<Utc>,
-    
+
     pub last_activity: DateTime<Utc>,
-    
+
     pub conversation_history: Vec<(String, String)>,
-    
+
     pub context: ConversationContext,
-    
+
     pub metadata: HashMap<String, String>,
-    
+
     pub active_swarms: Vec<String>,
-    
+
     pub pending_operations: Vec<PendingOperation>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PendingOperation {
-    
     pub operation_id: String,
-    
+
     pub operation_type: String,
-    
+
     pub parameters: HashMap<String, String>,
-    
+
     pub created_at: DateTime<Utc>,
-    
+
     pub expected_completion: Option<DateTime<Utc>>,
-    
+
     pub status: OperationStatus,
 }
 
@@ -70,16 +67,14 @@ pub enum OperationStatus {
 }
 
 impl VoiceContextManager {
-    
     pub fn new() -> Self {
         Self {
             sessions: Arc::new(RwLock::new(HashMap::new())),
-            max_session_duration: ChronoDuration::hours(2), 
-            max_sessions: 100,                              
+            max_session_duration: ChronoDuration::hours(2),
+            max_sessions: 100,
         }
     }
 
-    
     pub async fn get_or_create_session(
         &self,
         session_id: Option<String>,
@@ -89,14 +84,12 @@ impl VoiceContextManager {
 
         let mut sessions = self.sessions.write().await;
 
-        
         if let Some(session) = sessions.get_mut(&session_id) {
             session.last_activity = time::now();
             debug!("Retrieved existing voice session: {}", session_id);
             return session_id;
         }
 
-        
         let session = VoiceSession {
             session_id: session_id.clone(),
             user_id,
@@ -115,7 +108,6 @@ impl VoiceContextManager {
             pending_operations: Vec::new(),
         };
 
-        
         if sessions.len() >= self.max_sessions {
             self.cleanup_old_sessions_internal(&mut sessions).await;
         }
@@ -126,7 +118,6 @@ impl VoiceContextManager {
         session_id
     }
 
-    
     pub async fn add_conversation_turn(
         &self,
         session_id: &str,
@@ -147,7 +138,6 @@ impl VoiceContextManager {
             session.context.turn_count += 1;
             session.last_activity = time::now();
 
-            
             if let Some(intent) = intent {
                 match intent {
                     SwarmIntent::SpawnAgent { agent_type, .. } => {
@@ -167,7 +157,6 @@ impl VoiceContextManager {
         }
     }
 
-    
     pub async fn add_pending_operation(
         &self,
         session_id: &str,
@@ -201,7 +190,6 @@ impl VoiceContextManager {
         }
     }
 
-    
     pub async fn update_operation_status(
         &self,
         session_id: &str,
@@ -234,7 +222,6 @@ impl VoiceContextManager {
         }
     }
 
-    
     pub async fn get_context(&self, session_id: &str) -> Option<ConversationContext> {
         let sessions = self.sessions.read().await;
         sessions
@@ -242,7 +229,6 @@ impl VoiceContextManager {
             .map(|session| session.context.clone())
     }
 
-    
     pub async fn get_session_metadata(&self, session_id: &str) -> Option<HashMap<String, String>> {
         let sessions = self.sessions.read().await;
         sessions
@@ -250,7 +236,6 @@ impl VoiceContextManager {
             .map(|session| session.metadata.clone())
     }
 
-    
     pub async fn add_session_metadata(
         &self,
         session_id: &str,
@@ -268,7 +253,6 @@ impl VoiceContextManager {
         }
     }
 
-    
     pub async fn get_pending_operations(&self, session_id: &str) -> Vec<PendingOperation> {
         let sessions = self.sessions.read().await;
         sessions
@@ -277,13 +261,11 @@ impl VoiceContextManager {
             .unwrap_or_default()
     }
 
-    
     pub async fn cleanup_expired_sessions(&self) {
         let mut sessions = self.sessions.write().await;
         self.cleanup_old_sessions_internal(&mut sessions).await;
     }
 
-    
     async fn cleanup_old_sessions_internal(&self, sessions: &mut HashMap<String, VoiceSession>) {
         let now = time::now();
         let mut expired_sessions = Vec::new();
@@ -301,31 +283,25 @@ impl VoiceContextManager {
         }
     }
 
-    
     pub async fn get_active_session_count(&self) -> usize {
         let sessions = self.sessions.read().await;
         sessions.len()
     }
 
-    
     pub async fn needs_follow_up(&self, session_id: &str) -> bool {
         let sessions = self.sessions.read().await;
 
         if let Some(session) = sessions.get(session_id) {
-            
             if !session.pending_operations.is_empty() {
                 return true;
             }
 
-            
             if session.context.pending_clarification.is_some() {
                 return true;
             }
 
-            
             if session.context.turn_count > 0 {
                 if let Some((_, last_response)) = session.conversation_history.last() {
-                    
                     if last_response.ends_with('?') {
                         return true;
                     }
@@ -336,7 +312,6 @@ impl VoiceContextManager {
         false
     }
 
-    
     pub async fn generate_contextual_response(
         &self,
         session_id: &str,
@@ -347,7 +322,6 @@ impl VoiceContextManager {
         if let Some(session) = sessions.get(session_id) {
             let mut response = base_response.to_string();
 
-            
             if !session.pending_operations.is_empty() {
                 let pending_count = session
                     .pending_operations
@@ -368,7 +342,6 @@ impl VoiceContextManager {
                 }
             }
 
-            
             if session.context.turn_count > 3 {
                 response.push_str(" We've been working together for a while on this.");
             }

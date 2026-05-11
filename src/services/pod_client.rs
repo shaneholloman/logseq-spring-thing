@@ -101,7 +101,10 @@ impl PodClient {
                 Some(Arc::new(Keys::new(sk)))
             }
             _ => {
-                debug!("PodClient::from_env: {} not set; calls must supply auth_header", SERVER_NOSTR_PRIVKEY_ENV);
+                debug!(
+                    "PodClient::from_env: {} not set; calls must supply auth_header",
+                    SERVER_NOSTR_PRIVKEY_ENV
+                );
                 None
             }
         };
@@ -123,7 +126,12 @@ impl PodClient {
 
     /// Compute a NIP-98 auth header bound to the given request, using the
     /// server keys. Returns `Err` if no keys are configured.
-    fn sign_with_server_keys(&self, method: &str, url: &str, body: Option<&str>) -> PodResult<String> {
+    fn sign_with_server_keys(
+        &self,
+        method: &str,
+        url: &str,
+        body: Option<&str>,
+    ) -> PodResult<String> {
         let keys = self
             .server_keys
             .as_ref()
@@ -177,7 +185,12 @@ impl PodClient {
 
         let auth = self.resolve_auth("PUT", pod_url, body_for_sign.as_deref(), auth_header)?;
 
-        debug!("[pod_client] PUT {} ({} bytes, {})", pod_url, content.len(), content_type);
+        debug!(
+            "[pod_client] PUT {} ({} bytes, {})",
+            pod_url,
+            content.len(),
+            content_type
+        );
 
         let resp = self
             .http
@@ -210,7 +223,11 @@ impl PodClient {
             });
         }
 
-        Ok(PodResponse { status: status.as_u16(), etag, location })
+        Ok(PodResponse {
+            status: status.as_u16(),
+            etag,
+            location,
+        })
     }
 
     /// DELETE a resource.
@@ -351,7 +368,10 @@ impl PodClient {
         if !resp.status().is_success() {
             let status = resp.status().as_u16();
             let body = resp.text().await.unwrap_or_default();
-            warn!("[pod_client] HEAD {} returned {} — treating as unknown", pod_url, status);
+            warn!(
+                "[pod_client] HEAD {} returned {} — treating as unknown",
+                pod_url, status
+            );
             return Err(PodClientError::Status {
                 method: "HEAD".into(),
                 url: pod_url.into(),
@@ -436,7 +456,10 @@ mod tests {
             "Photosynthesis",
             Visibility::Public,
         );
-        assert_eq!(url, "https://pod.example.org/npub1abc/public/kg/Photosynthesis");
+        assert_eq!(
+            url,
+            "https://pod.example.org/npub1abc/public/kg/Photosynthesis"
+        );
     }
 
     #[test]
@@ -447,7 +470,10 @@ mod tests {
             "Recipe Book",
             Visibility::Private,
         );
-        assert_eq!(url, "https://pod.example.org/npub1xyz/private/kg/Recipe_Book");
+        assert_eq!(
+            url,
+            "https://pod.example.org/npub1xyz/private/kg/Recipe_Book"
+        );
     }
 
     #[test]

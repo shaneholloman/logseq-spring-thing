@@ -39,10 +39,10 @@ use webxr::sovereign::visibility::{
 
 #[derive(Default, Debug, Clone)]
 struct FakeNeo4jState {
-    pub flip_public: Vec<(u32, String, String)>,   // (id, label, new_url)
-    pub flip_private: Vec<(u32, String)>,          // (id, new_url)
-    pub saga_pending: Vec<(u32, String, String)>,  // (id, step, err)
-    pub tombstones: Vec<(String, String)>,         // (path, owner)
+    pub flip_public: Vec<(u32, String, String)>, // (id, label, new_url)
+    pub flip_private: Vec<(u32, String)>,        // (id, new_url)
+    pub saga_pending: Vec<(u32, String, String)>, // (id, step, err)
+    pub tombstones: Vec<(String, String)>,       // (path, owner)
     /// If set, `flip_to_public` / `flip_to_private` returns this error.
     pub flip_error: Option<String>,
 }
@@ -128,10 +128,7 @@ impl VisibilityNeo4jOps for FakeNeo4j {
         Ok(s.tombstones.iter().any(|(p, _)| p == old_public_path))
     }
 
-    async fn tombstone_sunset(
-        &self,
-        old_public_path: &str,
-    ) -> Result<Option<String>, String> {
+    async fn tombstone_sunset(&self, old_public_path: &str) -> Result<Option<String>, String> {
         let s = self.state.lock().await;
         if s.tombstones.iter().any(|(p, _)| p == old_public_path) {
             Ok(Some("2026-04-20T00:00:00Z".to_string()))
@@ -217,7 +214,10 @@ async fn publish_happy_path_flips_neo4j_and_signs_audit() {
     assert_eq!(snap.flip_public[0].1, "Page A");
     assert!(snap.flip_public[0].2.contains("/public/kg/page"));
     assert!(snap.saga_pending.is_empty(), "no pending marker on success");
-    assert!(snap.tombstones.is_empty(), "publish must not write tombstone");
+    assert!(
+        snap.tombstones.is_empty(),
+        "publish must not write tombstone"
+    );
 
     disable_flag();
 }
@@ -353,7 +353,10 @@ async fn unpublish_happy_path_writes_tombstone() {
     assert_eq!(snap.flip_private[0].1, target);
 
     assert_eq!(snap.tombstones.len(), 1);
-    assert_eq!(snap.tombstones[0].0, current, "tombstone keyed by old public URL");
+    assert_eq!(
+        snap.tombstones[0].0, current,
+        "tombstone keyed by old public URL"
+    );
     assert_eq!(snap.tombstones[0].1, "feed", "owner pubkey recorded");
 
     // And then a subsequent GET-tombstone lookup should return 410 semantics
@@ -403,7 +406,10 @@ async fn unpublish_pod_failure_leaves_state_untouched() {
     );
 
     let snap = neo.snapshot().await;
-    assert!(snap.flip_private.is_empty(), "no Neo4j change on pod failure");
+    assert!(
+        snap.flip_private.is_empty(),
+        "no Neo4j change on pod failure"
+    );
     assert!(snap.tombstones.is_empty(), "no tombstone on pod failure");
 
     disable_flag();
@@ -418,7 +424,10 @@ async fn tombstone_lookup_returns_sunset_for_unpublished_path() {
     neo.write_tombstone(&path, "owner").await.unwrap();
 
     assert!(neo.is_tombstoned(&path).await.unwrap());
-    assert!(!neo.is_tombstoned("http://pod/npub1/public/kg/other").await.unwrap());
+    assert!(!neo
+        .is_tombstoned("http://pod/npub1/public/kg/other")
+        .await
+        .unwrap());
 
     let sunset = neo.tombstone_sunset(&path).await.unwrap();
     assert!(sunset.is_some());

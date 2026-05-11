@@ -1,18 +1,18 @@
 pub mod dev_config;
+pub mod feature_access;
 pub mod oidc;
 pub mod path_access;
-pub mod feature_access;
 
 // Submodules split from the original monolithic mod.rs
-pub mod validation;
-pub mod field_mappings;
-pub mod physics;
-pub mod visualisation;
-pub mod system;
-pub mod xr;
-pub mod services;
 pub mod app_settings;
+pub mod field_mappings;
 mod path_accessible_impls;
+pub mod physics;
+pub mod services;
+pub mod system;
+pub mod validation;
+pub mod visualisation;
+pub mod xr;
 
 /// Canonical default for max_velocity across the entire codebase.
 /// All modules MUST use this constant instead of hardcoded values.
@@ -36,9 +36,9 @@ pub use physics::{
 };
 
 pub use visualisation::{
-    AnimationSettings, BloomSettings, CameraSettings, EdgeSettings, GlowSettings,
-    GraphSettings, GraphsSettings, HologramSettings, LabelSettings, NodeSettings, Position,
-    RenderingSettings, Sensitivity, SpacePilotSettings, VisualisationSettings,
+    AnimationSettings, BloomSettings, CameraSettings, EdgeSettings, GlowSettings, GraphSettings,
+    GraphsSettings, HologramSettings, LabelSettings, NodeSettings, Position, RenderingSettings,
+    Sensitivity, SpacePilotSettings, VisualisationSettings,
 };
 
 pub use system::{
@@ -53,9 +53,7 @@ pub use services::{
     VoiceRoutingSettings, WhisperSettings,
 };
 
-pub use app_settings::{
-    AppFullSettings, DeveloperConfig, FeatureFlags, UserPreferences,
-};
+pub use app_settings::{AppFullSettings, DeveloperConfig, FeatureFlags, UserPreferences};
 
 // Re-export path_access trait
 pub use path_access::{JsonPathAccessible, PathAccessible};

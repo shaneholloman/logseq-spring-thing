@@ -183,9 +183,9 @@ fn dispatch_returns_not_implemented_for_each_tool() {
                     "{name} not_implemented message must mention the tool name"
                 );
             }
-            ToolOutcome::Ok { .. } => panic!(
-                "{name} must still be a stub — no service is wired in this scaffold"
-            ),
+            ToolOutcome::Ok { .. } => {
+                panic!("{name} must still be a stub — no service is wired in this scaffold")
+            }
         }
     }
 }
@@ -220,10 +220,7 @@ fn dispatch_rejects_missing_required_field() {
         arguments: json!({}),
     };
     let err = reg.dispatch(&inv).unwrap_err();
-    assert!(matches!(
-        err,
-        ToolDispatchError::SchemaInvalid { .. }
-    ));
+    assert!(matches!(err, ToolDispatchError::SchemaInvalid { .. }));
 }
 
 #[test]

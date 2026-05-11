@@ -460,8 +460,8 @@ fn collect_files_recursive(
 // REST handlers + Actix route config
 // ---------------------------------------------------------------------------
 
-use actix_web::{web, HttpResponse};
 use crate::settings::auth_extractor::AuthenticatedUser;
+use actix_web::{web, HttpResponse};
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]

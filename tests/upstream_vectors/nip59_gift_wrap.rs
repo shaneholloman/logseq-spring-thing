@@ -10,7 +10,10 @@ fn nip59_fixture_loads_and_metadata_is_canonical() {
     let f = load_fixture("nip59-gift-wrap.json");
     assert_meta_block(&f, "NIP-59");
     let vectors = f["vectors"].as_array().expect("vectors must be array");
-    assert!(vectors.len() >= 6, "nip59-gift-wrap fixture must have >= 6 vectors");
+    assert!(
+        vectors.len() >= 6,
+        "nip59-gift-wrap fixture must have >= 6 vectors"
+    );
 }
 
 #[test]
@@ -59,9 +62,12 @@ fn nip59_wrap_layer_must_have_p_tag() {
             continue;
         }
         let tags = v["event"]["tags"].as_array().unwrap();
-        let has_p = tags
-            .iter()
-            .any(|t| t.as_array().and_then(|a| a.first()).and_then(|s| s.as_str()) == Some("p"));
+        let has_p = tags.iter().any(|t| {
+            t.as_array()
+                .and_then(|a| a.first())
+                .and_then(|s| s.as_str())
+                == Some("p")
+        });
         assert!(
             has_p,
             "valid wrap '{}' MUST have a [\"p\", recipient] tag for relay routing",

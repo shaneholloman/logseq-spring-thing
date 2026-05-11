@@ -4,10 +4,10 @@ use serde::Deserialize;
 use serde_json::json;
 use std::collections::HashMap;
 
-use crate::events::enterprise_events::{ProposalCreatedEvent, emit_enterprise_event};
+use crate::events::enterprise_events::{emit_enterprise_event, ProposalCreatedEvent};
 use crate::models::enterprise::{WorkflowPattern, WorkflowProposal, WorkflowStatus, WorkflowStep};
-use crate::{ok_json, bad_request, not_found, created_json, error_json};
 use crate::AppState;
+use crate::{bad_request, created_json, error_json, not_found, ok_json};
 
 /// GET /api/workflows/proposals
 pub async fn list_proposals(
@@ -31,7 +31,11 @@ pub async fn list_proposals(
 
     let limit = query.limit.unwrap_or(100).min(1000);
 
-    match state.workflow_repository.list_proposals(status_filter, limit).await {
+    match state
+        .workflow_repository
+        .list_proposals(status_filter, limit)
+        .await
+    {
         Ok(proposals) => {
             let total = proposals.len();
             ok_json!(json!({
@@ -90,7 +94,10 @@ pub async fn create_proposal(
                         .and_then(|n| n.as_str())
                         .unwrap_or("unknown")
                         .to_string(),
-                    config: v.get("config").cloned().unwrap_or(serde_json::Value::Object(Default::default())),
+                    config: v
+                        .get("config")
+                        .cloned()
+                        .unwrap_or(serde_json::Value::Object(Default::default())),
                 })
                 .collect()
         })
@@ -162,9 +169,7 @@ pub async fn get_proposal(
 }
 
 /// GET /api/workflows/patterns
-pub async fn list_patterns(
-    state: web::Data<AppState>,
-) -> impl Responder {
+pub async fn list_patterns(state: web::Data<AppState>) -> impl Responder {
     info!("GET /api/workflows/patterns");
 
     match state.workflow_repository.get_patterns(100).await {
@@ -224,7 +229,11 @@ pub async fn promote_proposal(
     };
 
     // 3. Promote in the repository (creates pattern + transitions status)
-    if let Err(e) = state.workflow_repository.promote_to_pattern(&proposal_id, &pattern).await {
+    if let Err(e) = state
+        .workflow_repository
+        .promote_to_pattern(&proposal_id, &pattern)
+        .await
+    {
         warn!("Failed to promote proposal {}: {}", proposal_id, e);
         return error_json!("Failed to promote proposal", e.to_string());
     }

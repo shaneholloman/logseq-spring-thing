@@ -118,11 +118,21 @@ impl UnifiedGPUCompute {
         let node_grid = (num_nodes as u32 + BLOCK_SIZE - 1) / BLOCK_SIZE;
 
         // Group constraints by type to decide which kernels to launch
-        let has_disjoint = constraints.iter().any(|c| c.constraint_type == CONSTRAINT_DISJOINT_CLASSES);
-        let has_subclass = constraints.iter().any(|c| c.constraint_type == CONSTRAINT_SUBCLASS_OF);
-        let has_sameas = constraints.iter().any(|c| c.constraint_type == CONSTRAINT_SAMEAS);
-        let has_inverse = constraints.iter().any(|c| c.constraint_type == CONSTRAINT_INVERSE_OF);
-        let has_functional = constraints.iter().any(|c| c.constraint_type == CONSTRAINT_FUNCTIONAL);
+        let has_disjoint = constraints
+            .iter()
+            .any(|c| c.constraint_type == CONSTRAINT_DISJOINT_CLASSES);
+        let has_subclass = constraints
+            .iter()
+            .any(|c| c.constraint_type == CONSTRAINT_SUBCLASS_OF);
+        let has_sameas = constraints
+            .iter()
+            .any(|c| c.constraint_type == CONSTRAINT_SAMEAS);
+        let has_inverse = constraints
+            .iter()
+            .any(|c| c.constraint_type == CONSTRAINT_INVERSE_OF);
+        let has_functional = constraints
+            .iter()
+            .any(|c| c.constraint_type == CONSTRAINT_FUNCTIONAL);
 
         // Kernel 1: DisjointClasses — repulsion between disjoint class instances
         if has_disjoint {
@@ -146,7 +156,10 @@ impl UnifiedGPUCompute {
                     )
                 )?;
             }
-            debug!("Launched apply_disjoint_classes_kernel ({} constraints)", num_constraints);
+            debug!(
+                "Launched apply_disjoint_classes_kernel ({} constraints)",
+                num_constraints
+            );
         }
 
         // Kernel 2: SubClassOf — hierarchical spring alignment
@@ -168,7 +181,10 @@ impl UnifiedGPUCompute {
                     )
                 )?;
             }
-            debug!("Launched apply_subclass_hierarchy_kernel ({} constraints)", num_constraints);
+            debug!(
+                "Launched apply_subclass_hierarchy_kernel ({} constraints)",
+                num_constraints
+            );
         }
 
         // Kernel 3: SameAs — strong co-location attraction
@@ -190,7 +206,10 @@ impl UnifiedGPUCompute {
                     )
                 )?;
             }
-            debug!("Launched apply_sameas_colocate_kernel ({} constraints)", num_constraints);
+            debug!(
+                "Launched apply_sameas_colocate_kernel ({} constraints)",
+                num_constraints
+            );
         }
 
         // Kernel 4: InverseOf — symmetric positioning
@@ -212,7 +231,10 @@ impl UnifiedGPUCompute {
                     )
                 )?;
             }
-            debug!("Launched apply_inverse_symmetry_kernel ({} constraints)", num_constraints);
+            debug!(
+                "Launched apply_inverse_symmetry_kernel ({} constraints)",
+                num_constraints
+            );
         }
 
         // Kernel 5: Functional — cardinality penalty (iterates over nodes, not constraints)
@@ -235,7 +257,10 @@ impl UnifiedGPUCompute {
                     )
                 )?;
             }
-            debug!("Launched apply_functional_cardinality_kernel ({} nodes)", num_nodes);
+            debug!(
+                "Launched apply_functional_cardinality_kernel ({} nodes)",
+                num_nodes
+            );
         }
 
         // Synchronize to ensure all kernels complete before the buffers are dropped

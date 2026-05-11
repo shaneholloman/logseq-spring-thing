@@ -1,18 +1,20 @@
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum LayoutMode {
-    ForceDirected,   // ForceAtlas2 with LinLog (default)
-    Hierarchical,    // Sugiyama DAG layers
-    Radial,          // Centrality rings
-    Spectral,        // Graph Laplacian eigenvectors
-    Temporal,        // Z-axis = timestamp
-    Clustered,       // ForceAtlas2 + Louvain metanodes
+    ForceDirected, // ForceAtlas2 with LinLog (default)
+    Hierarchical,  // Sugiyama DAG layers
+    Radial,        // Centrality rings
+    Spectral,      // Graph Laplacian eigenvectors
+    Temporal,      // Z-axis = timestamp
+    Clustered,     // ForceAtlas2 + Louvain metanodes
 }
 
 impl Default for LayoutMode {
-    fn default() -> Self { LayoutMode::ForceDirected }
+    fn default() -> Self {
+        LayoutMode::ForceDirected
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -69,7 +71,7 @@ pub struct ConstraintZone {
     pub center: [f32; 3],
     pub radius: f32,
     pub strength: f32,
-    pub node_types: Vec<String>,  // e.g. ["owl_class", "ontology_node"]
+    pub node_types: Vec<String>, // e.g. ["owl_class", "ontology_node"]
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

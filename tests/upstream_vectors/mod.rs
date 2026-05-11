@@ -26,17 +26,15 @@ pub fn fixture_path(name: &str) -> PathBuf {
 /// Load a fixture as parsed JSON. Panics with a clear message on miss/parse-fail.
 pub fn load_fixture(name: &str) -> serde_json::Value {
     let path = fixture_path(name);
-    let bytes = fs::read(&path)
-        .unwrap_or_else(|e| panic!("fixture missing at {}: {}", path.display(), e));
+    let bytes =
+        fs::read(&path).unwrap_or_else(|e| panic!("fixture missing at {}: {}", path.display(), e));
     serde_json::from_slice(&bytes)
         .unwrap_or_else(|e| panic!("fixture {} is not valid JSON: {}", path.display(), e))
 }
 
 /// Assert the fixture has the expected wrapper shape.
 pub fn assert_meta_block(fixture: &serde_json::Value, expected_spec_substring: &str) {
-    let meta = fixture
-        .get("_meta")
-        .expect("fixture must have _meta block");
+    let meta = fixture.get("_meta").expect("fixture must have _meta block");
     let spec = meta
         .get("spec")
         .and_then(|v| v.as_str())
@@ -47,8 +45,5 @@ pub fn assert_meta_block(fixture: &serde_json::Value, expected_spec_substring: &
         spec,
         expected_spec_substring
     );
-    assert!(
-        meta.get("commit").is_some(),
-        "_meta.commit must be present"
-    );
+    assert!(meta.get("commit").is_some(), "_meta.commit must be present");
 }

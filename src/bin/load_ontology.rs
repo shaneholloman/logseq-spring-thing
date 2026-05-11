@@ -4,13 +4,15 @@
 //! Loads OWL ontology data from GitHub repository markdown files
 //! and populates the Neo4j graph database.
 
-use std::sync::Arc;
-use std::collections::HashMap;
 use log::info;
+use std::collections::HashMap;
+use std::sync::Arc;
 
-use webxr::adapters::neo4j_ontology_repository::{Neo4jOntologyRepository, Neo4jOntologyConfig};
+use webxr::adapters::neo4j_ontology_repository::{Neo4jOntologyConfig, Neo4jOntologyRepository};
+use webxr::ports::ontology_repository::{
+    AxiomType, OntologyRepository, OwlAxiom, OwlClass, OwlProperty, PropertyType,
+};
 use webxr::services::parsers::ontology_parser::OntologyParser;
-use webxr::ports::ontology_repository::{OntologyRepository, OwlClass, OwlProperty, PropertyType, OwlAxiom, AxiomType};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -36,9 +38,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         database: Some(neo4j_database),
     };
 
-    let ontology_repo = Arc::new(
-        Neo4jOntologyRepository::new(config).await?
-    );
+    let ontology_repo = Arc::new(Neo4jOntologyRepository::new(config).await?);
 
     // 2. Initialize parser
     let _parser = OntologyParser::new();
@@ -49,10 +49,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create sample OWL classes for testing
     let sample_classes = vec![
         ("mv:Person", "Person", "A human individual", vec![]),
-        ("mv:Company", "Company", "A business organization", vec!["mv:Concept".to_string()]),
-        ("mv:Project", "Project", "A collaborative endeavor", vec!["mv:Concept".to_string()]),
+        (
+            "mv:Company",
+            "Company",
+            "A business organization",
+            vec!["mv:Concept".to_string()],
+        ),
+        (
+            "mv:Project",
+            "Project",
+            "A collaborative endeavor",
+            vec!["mv:Concept".to_string()],
+        ),
         ("mv:Concept", "Concept", "An abstract idea", vec![]),
-        ("mv:Technology", "Technology", "A technical tool or system", vec![]),
+        (
+            "mv:Technology",
+            "Technology",
+            "A technical tool or system",
+            vec![],
+        ),
     ];
 
     let mut _total_classes = 0;

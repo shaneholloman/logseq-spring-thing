@@ -32,7 +32,11 @@ pub fn estimate_physics_metrics(
     let estimated_velocity = sim_params.max_velocity * 0.3;
     let estimated_kinetic_energy = 0.5 * (num_nodes as f32) * estimated_velocity.powi(2);
     let estimated_total_forces = sim_params.spring_k * (num_edges as f32) * 0.5;
-    (estimated_velocity, estimated_kinetic_energy, estimated_total_forces)
+    (
+        estimated_velocity,
+        estimated_kinetic_energy,
+        estimated_total_forces,
+    )
 }
 
 /// Compute physics metrics from downloaded GPU velocity buffers.

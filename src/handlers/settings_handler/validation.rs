@@ -7,10 +7,8 @@ use serde_json::Value;
 use crate::handlers::settings_validation_fix::validate_physics_settings_complete;
 
 pub fn validate_settings_update(update: &Value) -> Result<(), String> {
-
     if let Some(vis) = update.get("visualisation") {
         if let Some(graphs) = vis.get("graphs") {
-
             for (graph_name, graph_settings) in
                 graphs.as_object().ok_or("graphs must be an object")?.iter()
             {
@@ -18,11 +16,9 @@ pub fn validate_settings_update(update: &Value) -> Result<(), String> {
                     return Err(format!("Invalid graph name: {}", graph_name));
                 }
 
-
                 if let Some(physics) = graph_settings.get("physics") {
                     validate_physics_settings(physics)?;
                 }
-
 
                 if let Some(nodes) = graph_settings.get("nodes") {
                     validate_node_settings(nodes)?;
@@ -30,22 +26,18 @@ pub fn validate_settings_update(update: &Value) -> Result<(), String> {
             }
         }
 
-
         if let Some(rendering) = vis.get("rendering") {
             validate_rendering_settings(rendering)?;
         }
-
 
         if let Some(hologram) = vis.get("hologram") {
             validate_hologram_settings(hologram)?;
         }
     }
 
-
     if let Some(xr) = update.get("xr") {
         validate_xr_settings(xr)?;
     }
-
 
     if let Some(system) = update.get("system") {
         validate_system_settings(system)?;
@@ -55,9 +47,7 @@ pub fn validate_settings_update(update: &Value) -> Result<(), String> {
 }
 
 fn validate_physics_settings(physics: &Value) -> Result<(), String> {
-
     validate_physics_settings_complete(physics)?;
-
 
     if let Some(obj) = physics.as_object() {
         debug!(
@@ -65,7 +55,6 @@ fn validate_physics_settings(physics: &Value) -> Result<(), String> {
             obj.keys().collect::<Vec<_>>()
         );
     }
-
 
     if let Some(iterations) = physics.get("iterations") {
         let val = iterations
@@ -78,7 +67,6 @@ fn validate_physics_settings(physics: &Value) -> Result<(), String> {
         }
     }
 
-
     if let Some(auto_balance_interval) = physics.get("autoBalanceIntervalMs") {
         let val = auto_balance_interval
             .as_u64()
@@ -89,12 +77,10 @@ fn validate_physics_settings(physics: &Value) -> Result<(), String> {
         }
     }
 
-
     Ok(())
 }
 
 fn validate_node_settings(nodes: &Value) -> Result<(), String> {
-
     if let Some(color) = nodes.get("baseColor") {
         let color_str = color.as_str().ok_or("baseColor must be a string")?;
         if !color_str.starts_with('#') || (color_str.len() != 7 && color_str.len() != 4) {
@@ -123,7 +109,6 @@ fn validate_node_settings(nodes: &Value) -> Result<(), String> {
         }
     }
 
-
     if let Some(node_size) = nodes.get("nodeSize") {
         let val = node_size.as_f64().ok_or("nodeSize must be a number")?;
         if val <= 0.0 || val > 1000.0 {
@@ -142,7 +127,6 @@ fn validate_node_settings(nodes: &Value) -> Result<(), String> {
 }
 
 fn validate_rendering_settings(rendering: &Value) -> Result<(), String> {
-
     if let Some(ambient) = rendering.get("ambientLightIntensity") {
         let val = ambient
             .as_f64()
@@ -152,7 +136,6 @@ fn validate_rendering_settings(rendering: &Value) -> Result<(), String> {
         }
     }
 
-
     if let Some(glow) = rendering.get("glow") {
         validate_glow_settings(glow)?;
     }
@@ -161,13 +144,11 @@ fn validate_rendering_settings(rendering: &Value) -> Result<(), String> {
 }
 
 fn validate_glow_settings(glow: &Value) -> Result<(), String> {
-
     if let Some(enabled) = glow.get("enabled") {
         if !enabled.is_boolean() {
             return Err("glow enabled must be a boolean".to_string());
         }
     }
-
 
     for field_name in ["intensity", "strength"] {
         if let Some(intensity) = glow.get(field_name) {
@@ -180,14 +161,12 @@ fn validate_glow_settings(glow: &Value) -> Result<(), String> {
         }
     }
 
-
     if let Some(radius) = glow.get("radius") {
         let val = radius.as_f64().ok_or("glow radius must be a number")?;
         if val < 0.0 || val > 5.0 {
             return Err("glow radius must be between 0.0 and 5.0".to_string());
         }
     }
-
 
     if let Some(threshold) = glow.get("threshold") {
         let val = threshold
@@ -197,7 +176,6 @@ fn validate_glow_settings(glow: &Value) -> Result<(), String> {
             return Err("glow threshold must be between 0.0 and 2.0".to_string());
         }
     }
-
 
     for field_name in [
         "edgeGlowStrength",
@@ -218,9 +196,7 @@ fn validate_glow_settings(glow: &Value) -> Result<(), String> {
 }
 
 fn validate_hologram_settings(hologram: &Value) -> Result<(), String> {
-
     if let Some(ring_count) = hologram.get("ringCount") {
-
         let val = ring_count
             .as_f64()
             .map(|f| f.round() as u64)
@@ -232,7 +208,6 @@ fn validate_hologram_settings(hologram: &Value) -> Result<(), String> {
         }
     }
 
-
     if let Some(color) = hologram.get("ringColor") {
         let color_str = color.as_str().ok_or("ringColor must be a string")?;
         if !color_str.starts_with('#') || (color_str.len() != 7 && color_str.len() != 4) {
@@ -240,14 +215,12 @@ fn validate_hologram_settings(hologram: &Value) -> Result<(), String> {
         }
     }
 
-
     if let Some(opacity) = hologram.get("ringOpacity") {
         let val = opacity.as_f64().ok_or("ringOpacity must be a number")?;
         if !(0.0..=1.0).contains(&val) {
             return Err("ringOpacity must be between 0.0 and 1.0".to_string());
         }
     }
-
 
     if let Some(speed) = hologram.get("ringRotationSpeed") {
         let val = speed.as_f64().ok_or("ringRotationSpeed must be a number")?;
@@ -260,10 +233,8 @@ fn validate_hologram_settings(hologram: &Value) -> Result<(), String> {
 }
 
 fn validate_system_settings(system: &Value) -> Result<(), String> {
-
     if let Some(debug) = system.get("debug") {
         if let Some(debug_obj) = debug.as_object() {
-
             let boolean_fields = [
                 "enabled",
                 "showFPS",
@@ -286,7 +257,6 @@ fn validate_system_settings(system: &Value) -> Result<(), String> {
                 }
             }
 
-
             if let Some(log_level) = debug_obj.get("logLevel") {
                 if let Some(val) = log_level.as_f64() {
                     if val < 0.0 || val > 3.0 {
@@ -297,11 +267,8 @@ fn validate_system_settings(system: &Value) -> Result<(), String> {
                         return Err("debug.logLevel must be between 0 and 3".to_string());
                     }
                 } else if let Some(val) = log_level.as_str() {
-
                     match val {
-                        "error" | "warn" | "info" | "debug" => {
-
-                        }
+                        "error" | "warn" | "info" | "debug" => {}
                         _ => {
                             return Err(
                                 "debug.logLevel must be 'error', 'warn', 'info', or 'debug'"
@@ -316,13 +283,11 @@ fn validate_system_settings(system: &Value) -> Result<(), String> {
         }
     }
 
-
     if let Some(persist) = system.get("persistSettingsOnServer") {
         if !persist.is_boolean() {
             return Err("system.persistSettingsOnServer must be a boolean".to_string());
         }
     }
-
 
     if let Some(url) = system.get("customBackendUrl") {
         if !url.is_string() && !url.is_null() {
@@ -334,13 +299,11 @@ fn validate_system_settings(system: &Value) -> Result<(), String> {
 }
 
 pub fn validate_xr_settings(xr: &Value) -> Result<(), String> {
-
     if let Some(enabled) = xr.get("enabled") {
         if !enabled.is_boolean() {
             return Err("XR enabled must be a boolean".to_string());
         }
     }
-
 
     if let Some(quality) = xr.get("quality") {
         if let Some(q) = quality.as_str() {
@@ -352,7 +315,6 @@ pub fn validate_xr_settings(xr: &Value) -> Result<(), String> {
         }
     }
 
-
     if let Some(render_scale) = xr.get("renderScale") {
         let val = render_scale
             .as_f64()
@@ -362,14 +324,12 @@ pub fn validate_xr_settings(xr: &Value) -> Result<(), String> {
         }
     }
 
-
     if let Some(room_scale) = xr.get("roomScale") {
         let val = room_scale.as_f64().ok_or("roomScale must be a number")?;
         if val <= 0.0 || val > 100.0 {
             return Err("roomScale must be between 0.0 and 100.0".to_string());
         }
     }
-
 
     if let Some(hand_tracking) = xr.get("handTracking") {
         if let Some(ht_obj) = hand_tracking.as_object() {
@@ -380,7 +340,6 @@ pub fn validate_xr_settings(xr: &Value) -> Result<(), String> {
             }
         }
     }
-
 
     if let Some(interactions) = xr.get("interactions") {
         if let Some(int_obj) = interactions.as_object() {
@@ -396,7 +355,6 @@ pub fn validate_xr_settings(xr: &Value) -> Result<(), String> {
 }
 
 pub fn validate_constraints(constraints: &Value) -> Result<(), String> {
-
     if let Some(obj) = constraints.as_object() {
         for (constraint_type, constraint_data) in obj {
             if !["separation", "boundary", "alignment", "cluster"]

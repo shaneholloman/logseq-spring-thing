@@ -34,9 +34,7 @@ impl SemanticEdgeType {
     /// into the corresponding SemanticEdgeType variant.
     pub fn from_relation_type(s: &str) -> Self {
         match s {
-            "is_subclass_of" | "subclass_of" | "hierarchical" | "SUBCLASS_OF" => {
-                Self::Hierarchical
-            }
+            "is_subclass_of" | "subclass_of" | "hierarchical" | "SUBCLASS_OF" => Self::Hierarchical,
             "has_part" | "is_part_of" | "structural" => Self::Structural,
             "requires" | "depends_on" | "enables" | "dependency" => Self::Dependency,
             "relates_to" | "associative" => Self::Associative,
@@ -108,14 +106,13 @@ impl std::fmt::Display for SemanticEdgeType {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct Edge {
-    pub id: String, 
+    pub id: String,
     pub source: u32,
     pub target: u32,
     pub weight: f32,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub edge_type: Option<String>,
 
-    
     #[serde(skip_serializing_if = "Option::is_none")]
     pub owl_property_iri: Option<String>,
 
@@ -125,7 +122,6 @@ pub struct Edge {
 
 impl Edge {
     pub fn new(source: u32, target: u32, weight: f32) -> Self {
-        
         let id = format!("{}-{}", source, target);
         Self {
             id,
@@ -138,24 +134,20 @@ impl Edge {
         }
     }
 
-    
     pub fn with_owl_property_iri(mut self, iri: String) -> Self {
         self.owl_property_iri = Some(iri);
         self
     }
 
-    
     pub fn with_edge_type(mut self, edge_type: String) -> Self {
         self.edge_type = Some(edge_type);
         self
     }
 
-    
     pub fn with_metadata(mut self, metadata: HashMap<String, String>) -> Self {
         self.metadata = Some(metadata);
         self
     }
-
 
     pub fn add_metadata(mut self, key: String, value: String) -> Self {
         if let Some(ref mut map) = self.metadata {

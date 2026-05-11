@@ -322,7 +322,10 @@ mod tests {
             position: [5.0, 5.0, -5.0],
         }];
         let hit = find_target(&ray, &candidates);
-        assert!(hit.is_some(), "diagonal ray should hit target along its direction");
+        assert!(
+            hit.is_some(),
+            "diagonal ray should hit target along its direction"
+        );
         assert_eq!(hit.unwrap().node_id, 42);
     }
 }

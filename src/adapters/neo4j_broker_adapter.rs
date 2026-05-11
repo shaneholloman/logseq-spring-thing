@@ -48,8 +48,8 @@ impl Neo4jBrokerRepository {
 
     /// Serialize an enum via serde_json to its snake_case string representation.
     fn enum_to_str<T: serde::Serialize>(val: &T) -> std::result::Result<String, BrokerError> {
-        let json = serde_json::to_value(val)
-            .map_err(|e| BrokerError::ValidationError(e.to_string()))?;
+        let json =
+            serde_json::to_value(val).map_err(|e| BrokerError::ValidationError(e.to_string()))?;
         Ok(json.as_str().unwrap_or("unknown").to_string())
     }
 
@@ -102,9 +102,11 @@ impl BrokerRepository for Neo4jBrokerRepository {
             query = query.param("status", status_val.as_str());
         }
 
-        let mut result = self.graph.execute(query).await.map_err(|e| {
-            BrokerError::DatabaseError(format!("Failed to list cases: {}", e))
-        })?;
+        let mut result = self
+            .graph
+            .execute(query)
+            .await
+            .map_err(|e| BrokerError::DatabaseError(format!("Failed to list cases: {}", e)))?;
 
         let mut cases = Vec::new();
         while let Ok(Some(row)) = result.next().await {
@@ -112,12 +114,16 @@ impl BrokerRepository for Neo4jBrokerRepository {
             let title: String = row.get("title").unwrap_or_default();
             let description: String = row.get("description").unwrap_or_default();
             let priority_str: String = row.get("priority").unwrap_or_else(|_| "medium".to_string());
-            let source_str: String =
-                row.get("source").unwrap_or_else(|_| "manual_submission".to_string());
+            let source_str: String = row
+                .get("source")
+                .unwrap_or_else(|_| "manual_submission".to_string());
             let status_str: String = row.get("status").unwrap_or_else(|_| "open".to_string());
             let created_at: String = row.get("created_at").unwrap_or_default();
             let updated_at: String = row.get("updated_at").unwrap_or_default();
-            let assigned_to: Option<String> = row.get::<String>("assigned_to").ok().filter(|s| !s.is_empty());
+            let assigned_to: Option<String> = row
+                .get::<String>("assigned_to")
+                .ok()
+                .filter(|s| !s.is_empty());
 
             cases.push(BrokerCase {
                 id,
@@ -149,21 +155,27 @@ impl BrokerRepository for Neo4jBrokerRepository {
         )
         .param("id", case_id);
 
-        let mut result = self.graph.execute(query).await.map_err(|e| {
-            BrokerError::DatabaseError(format!("Failed to get case: {}", e))
-        })?;
+        let mut result = self
+            .graph
+            .execute(query)
+            .await
+            .map_err(|e| BrokerError::DatabaseError(format!("Failed to get case: {}", e)))?;
 
         if let Ok(Some(row)) = result.next().await {
             let id: String = row.get("id").unwrap_or_default();
             let title: String = row.get("title").unwrap_or_default();
             let description: String = row.get("description").unwrap_or_default();
             let priority_str: String = row.get("priority").unwrap_or_else(|_| "medium".to_string());
-            let source_str: String =
-                row.get("source").unwrap_or_else(|_| "manual_submission".to_string());
+            let source_str: String = row
+                .get("source")
+                .unwrap_or_else(|_| "manual_submission".to_string());
             let status_str: String = row.get("status").unwrap_or_else(|_| "open".to_string());
             let created_at: String = row.get("created_at").unwrap_or_default();
             let updated_at: String = row.get("updated_at").unwrap_or_default();
-            let assigned_to: Option<String> = row.get::<String>("assigned_to").ok().filter(|s| !s.is_empty());
+            let assigned_to: Option<String> = row
+                .get::<String>("assigned_to")
+                .ok()
+                .filter(|s| !s.is_empty());
 
             Ok(Some(BrokerCase {
                 id,
@@ -213,9 +225,10 @@ impl BrokerRepository for Neo4jBrokerRepository {
         .param("updated_at", case.updated_at.as_str())
         .param("assigned_to", assigned_to);
 
-        self.graph.run(query).await.map_err(|e| {
-            BrokerError::DatabaseError(format!("Failed to create case: {}", e))
-        })?;
+        self.graph
+            .run(query)
+            .await
+            .map_err(|e| BrokerError::DatabaseError(format!("Failed to create case: {}", e)))?;
 
         info!("Created BrokerCase {} in Neo4j", case.id);
         Ok(())
@@ -266,9 +279,10 @@ impl BrokerRepository for Neo4jBrokerRepository {
         .param("decided_by", decision.decided_by.as_str())
         .param("decided_at", decision.decided_at.as_str());
 
-        self.graph.run(query).await.map_err(|e| {
-            BrokerError::DatabaseError(format!("Failed to record decision: {}", e))
-        })?;
+        self.graph
+            .run(query)
+            .await
+            .map_err(|e| BrokerError::DatabaseError(format!("Failed to record decision: {}", e)))?;
 
         info!(
             "Recorded BrokerDecision {} for case {}",
@@ -288,9 +302,10 @@ impl BrokerRepository for Neo4jBrokerRepository {
         )
         .param("case_id", case_id);
 
-        let mut result = self.graph.execute(query).await.map_err(|e| {
-            BrokerError::DatabaseError(format!("Failed to get decisions: {}", e))
-        })?;
+        let mut result =
+            self.graph.execute(query).await.map_err(|e| {
+                BrokerError::DatabaseError(format!("Failed to get decisions: {}", e))
+            })?;
 
         let mut decisions = Vec::new();
         while let Ok(Some(row)) = result.next().await {
@@ -312,7 +327,11 @@ impl BrokerRepository for Neo4jBrokerRepository {
             });
         }
 
-        debug!("get_decisions({}): returned {} decisions", case_id, decisions.len());
+        debug!(
+            "get_decisions({}): returned {} decisions",
+            case_id,
+            decisions.len()
+        );
         Ok(decisions)
     }
 }

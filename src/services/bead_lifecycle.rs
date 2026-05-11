@@ -53,7 +53,10 @@ impl BeadLifecycleOrchestrator {
         }
 
         // 2. Update state to Publishing
-        let _ = self.store.update_state(bead_id, BeadState::Publishing).await;
+        let _ = self
+            .store
+            .update_state(bead_id, BeadState::Publishing)
+            .await;
 
         // 3. Publish via NostrBeadPublisher
         let outcome = match &self.publisher {
@@ -85,10 +88,7 @@ impl BeadLifecycleOrchestrator {
         match outcome {
             BeadOutcome::Success => {
                 info!("[BeadLifecycle] Bead {bead_id} published successfully");
-                let _ = self
-                    .store
-                    .update_state(bead_id, BeadState::Published)
-                    .await;
+                let _ = self.store.update_state(bead_id, BeadState::Published).await;
                 // Neo4j persistence happens inside the publisher -- update state
                 let _ = self
                     .store
@@ -291,10 +291,7 @@ mod tests {
             Ok(())
         }
 
-        async fn get_learnings(
-            &self,
-            bead_id: &str,
-        ) -> Result<Vec<BeadLearning>, BeadStoreError> {
+        async fn get_learnings(&self, bead_id: &str) -> Result<Vec<BeadLearning>, BeadStoreError> {
             Ok(self.learnings_for(bead_id).await)
         }
 

@@ -64,20 +64,14 @@ impl SettingsRepository for InMemSettingsRepo {
     async fn has_setting(&self, key: &str) -> SRResult<bool> {
         Ok(self.data.read().await.contains_key(key))
     }
-    async fn get_settings_batch(
-        &self,
-        keys: &[String],
-    ) -> SRResult<HashMap<String, SettingValue>> {
+    async fn get_settings_batch(&self, keys: &[String]) -> SRResult<HashMap<String, SettingValue>> {
         let d = self.data.read().await;
         Ok(keys
             .iter()
             .filter_map(|k| d.get(k).map(|v| (k.clone(), v.clone())))
             .collect())
     }
-    async fn set_settings_batch(
-        &self,
-        updates: HashMap<String, SettingValue>,
-    ) -> SRResult<()> {
+    async fn set_settings_batch(&self, updates: HashMap<String, SettingValue>) -> SRResult<()> {
         let mut d = self.data.write().await;
         for (k, v) in updates {
             d.insert(k, v);
@@ -202,7 +196,11 @@ async fn merge_settings_updates_protected_partition() {
         .send(MergeSettings { settings: patch })
         .await
         .expect("mailbox");
-    assert!(result.is_ok(), "merge must accept valid patch: {:?}", result);
+    assert!(
+        result.is_ok(),
+        "merge must accept valid patch: {:?}",
+        result
+    );
 }
 
 #[actix_rt::test]

@@ -1,8 +1,8 @@
+use visionclaw_xr_presence::types::PoseFrame;
 use visionclaw_xr_presence::{
     decode, encode, monotonic_timestamp, velocity_gate, AvatarId, AvatarMetadata, Did,
     PresenceRoom, RoomError, RoomId, Transform, ValidationError,
 };
-use visionclaw_xr_presence::types::PoseFrame;
 
 fn room() -> RoomId {
     RoomId::parse("urn:visionclaw:room:sha256-12-0123456789ab").unwrap()
@@ -70,7 +70,10 @@ fn velocity_gate_edge_cases() {
 
     let zero_dt = PoseFrame { ..prev.clone() };
     let err2 = velocity_gate(&prev, &zero_dt, 20.0).unwrap_err();
-    assert!(matches!(err2, ValidationError::NonMonotonicTimestamp { .. }));
+    assert!(matches!(
+        err2,
+        ValidationError::NonMonotonicTimestamp { .. }
+    ));
 }
 
 #[test]

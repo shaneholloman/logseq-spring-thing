@@ -111,13 +111,18 @@ impl MockNeo4jGraph {
     }
 
     pub async fn add_edge(&self, edge: MockEdge) {
-        self.edges.write().await.insert((edge.source, edge.target), edge);
+        self.edges
+            .write()
+            .await
+            .insert((edge.source, edge.target), edge);
         *self.query_count.write().await += 1;
     }
 
     pub async fn get_edges_for_node(&self, node_id: u32) -> Vec<MockEdge> {
         *self.query_count.write().await += 1;
-        self.edges.read().await
+        self.edges
+            .read()
+            .await
             .values()
             .filter(|e| e.source == node_id || e.target == node_id)
             .cloned()
@@ -125,7 +130,14 @@ impl MockNeo4jGraph {
     }
 
     pub async fn set_setting(&self, key: String, value_type: String, value: String) {
-        self.settings.write().await.insert(key.clone(), MockSetting { key, value_type, value });
+        self.settings.write().await.insert(
+            key.clone(),
+            MockSetting {
+                key,
+                value_type,
+                value,
+            },
+        );
         *self.query_count.write().await += 1;
     }
 
@@ -135,7 +147,10 @@ impl MockNeo4jGraph {
     }
 
     pub async fn add_owl_class(&self, class: MockOwlClass) {
-        self.owl_classes.write().await.insert(class.iri.clone(), class);
+        self.owl_classes
+            .write()
+            .await
+            .insert(class.iri.clone(), class);
         *self.query_count.write().await += 1;
     }
 
@@ -278,11 +293,11 @@ mod neo4j_adapter_tests {
     #[test]
     fn test_invalid_edge_id_format() {
         let invalid_ids = vec![
-            "123",           // Missing separator
-            "abc-def",       // Non-numeric
-            "123-456-789",   // Too many parts
-            "-123",          // Missing source
-            "123-",          // Missing target
+            "123",         // Missing separator
+            "abc-def",     // Non-numeric
+            "123-456-789", // Too many parts
+            "-123",        // Missing source
+            "123-",        // Missing target
         ];
 
         for edge_id in invalid_ids {
@@ -326,7 +341,10 @@ mod neo4j_adapter_tests {
 
         assert_eq!(parsed.get("quality_score"), Some(&"0.85".to_string()));
         assert_eq!(parsed.get("authority_score"), Some(&"0.92".to_string()));
-        assert_eq!(parsed.get("custom_field"), Some(&"custom value".to_string()));
+        assert_eq!(
+            parsed.get("custom_field"),
+            Some(&"custom value".to_string())
+        );
     }
 }
 
@@ -384,17 +402,23 @@ mod neo4j_graph_repository_tests {
 
         // Add two nodes first
         for id in 1..=2 {
-            mock_graph.add_node(MockKGNode {
-                id,
-                metadata_id: format!("node-{}", id),
-                label: format!("Node {}", id),
-                x: 0.0, y: 0.0, z: 0.0,
-                vx: 0.0, vy: 0.0, vz: 0.0,
-                mass: 1.0,
-                color: None,
-                node_type: None,
-                metadata: HashMap::new(),
-            }).await;
+            mock_graph
+                .add_node(MockKGNode {
+                    id,
+                    metadata_id: format!("node-{}", id),
+                    label: format!("Node {}", id),
+                    x: 0.0,
+                    y: 0.0,
+                    z: 0.0,
+                    vx: 0.0,
+                    vy: 0.0,
+                    vz: 0.0,
+                    mass: 1.0,
+                    color: None,
+                    node_type: None,
+                    metadata: HashMap::new(),
+                })
+                .await;
         }
 
         // Add edge
@@ -450,7 +474,11 @@ mod neo4j_graph_repository_tests {
 
         // AND mode - conditions joined with AND
         let filter_mode = "and";
-        let join_op = if filter_mode == "and" { " AND " } else { " OR " };
+        let join_op = if filter_mode == "and" {
+            " AND "
+        } else {
+            " OR "
+        };
         let combined = conditions.join(join_op);
 
         assert!(combined.contains(" AND "));
@@ -459,7 +487,11 @@ mod neo4j_graph_repository_tests {
 
         // OR mode - conditions joined with OR
         let filter_mode = "or";
-        let join_op = if filter_mode == "and" { " AND " } else { " OR " };
+        let join_op = if filter_mode == "and" {
+            " AND "
+        } else {
+            " OR "
+        };
         let combined = conditions.join(join_op);
 
         assert!(combined.contains(" OR "));
@@ -475,8 +507,12 @@ mod neo4j_graph_repository_tests {
                 id: 1,
                 metadata_id: "node-1".to_string(),
                 label: "Node 1".to_string(),
-                x: 10.0, y: 20.0, z: 30.0,
-                vx: 0.0, vy: 0.0, vz: 0.0,
+                x: 10.0,
+                y: 20.0,
+                z: 30.0,
+                vx: 0.0,
+                vy: 0.0,
+                vz: 0.0,
                 mass: 1.0,
                 color: Some("#ff0000".to_string()),
                 node_type: Some("type_a".to_string()),
@@ -486,8 +522,12 @@ mod neo4j_graph_repository_tests {
                 id: 2,
                 metadata_id: "node-2".to_string(),
                 label: "Node 2".to_string(),
-                x: 40.0, y: 50.0, z: 60.0,
-                vx: 0.0, vy: 0.0, vz: 0.0,
+                x: 40.0,
+                y: 50.0,
+                z: 60.0,
+                vx: 0.0,
+                vy: 0.0,
+                vz: 0.0,
                 mass: 2.0,
                 color: Some("#00ff00".to_string()),
                 node_type: Some("type_b".to_string()),
@@ -512,17 +552,23 @@ mod neo4j_graph_repository_tests {
 
         // Add initial nodes
         for id in 1..=5 {
-            mock_graph.add_node(MockKGNode {
-                id,
-                metadata_id: format!("node-{}", id),
-                label: format!("Node {}", id),
-                x: 0.0, y: 0.0, z: 0.0,
-                vx: 0.0, vy: 0.0, vz: 0.0,
-                mass: 1.0,
-                color: None,
-                node_type: None,
-                metadata: HashMap::new(),
-            }).await;
+            mock_graph
+                .add_node(MockKGNode {
+                    id,
+                    metadata_id: format!("node-{}", id),
+                    label: format!("Node {}", id),
+                    x: 0.0,
+                    y: 0.0,
+                    z: 0.0,
+                    vx: 0.0,
+                    vy: 0.0,
+                    vz: 0.0,
+                    mass: 1.0,
+                    color: None,
+                    node_type: None,
+                    metadata: HashMap::new(),
+                })
+                .await;
         }
 
         assert_eq!(mock_graph.node_count().await, 5);
@@ -542,17 +588,23 @@ mod neo4j_graph_repository_tests {
         let initial_count = mock_graph.get_query_count().await;
         assert_eq!(initial_count, 0);
 
-        mock_graph.add_node(MockKGNode {
-            id: 1,
-            metadata_id: "node-1".to_string(),
-            label: "Node 1".to_string(),
-            x: 0.0, y: 0.0, z: 0.0,
-            vx: 0.0, vy: 0.0, vz: 0.0,
-            mass: 1.0,
-            color: None,
-            node_type: None,
-            metadata: HashMap::new(),
-        }).await;
+        mock_graph
+            .add_node(MockKGNode {
+                id: 1,
+                metadata_id: "node-1".to_string(),
+                label: "Node 1".to_string(),
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+                vx: 0.0,
+                vy: 0.0,
+                vz: 0.0,
+                mass: 1.0,
+                color: None,
+                node_type: None,
+                metadata: HashMap::new(),
+            })
+            .await;
 
         assert_eq!(mock_graph.get_query_count().await, 1);
 
@@ -638,11 +690,13 @@ mod neo4j_settings_repository_tests {
         let mock_graph = MockNeo4jGraph::new();
 
         // Set a setting
-        mock_graph.set_setting(
-            "test.setting".to_string(),
-            "string".to_string(),
-            "test_value".to_string(),
-        ).await;
+        mock_graph
+            .set_setting(
+                "test.setting".to_string(),
+                "string".to_string(),
+                "test_value".to_string(),
+            )
+            .await;
 
         // Retrieve it
         let setting = mock_graph.get_setting("test.setting").await;
@@ -712,9 +766,18 @@ mod neo4j_settings_repository_tests {
     #[test]
     fn test_batch_settings_update_construction() {
         let mut updates: HashMap<String, (String, String)> = HashMap::new();
-        updates.insert("physics.gravity".to_string(), ("float".to_string(), "9.81".to_string()));
-        updates.insert("render.quality".to_string(), ("string".to_string(), "high".to_string()));
-        updates.insert("system.debug".to_string(), ("boolean".to_string(), "true".to_string()));
+        updates.insert(
+            "physics.gravity".to_string(),
+            ("float".to_string(), "9.81".to_string()),
+        );
+        updates.insert(
+            "render.quality".to_string(),
+            ("string".to_string(), "high".to_string()),
+        );
+        updates.insert(
+            "system.debug".to_string(),
+            ("boolean".to_string(), "true".to_string()),
+        );
 
         assert_eq!(updates.len(), 3);
         assert!(updates.contains_key("physics.gravity"));
@@ -761,7 +824,9 @@ mod neo4j_ontology_repository_tests {
 
         mock_graph.add_owl_class(owl_class.clone()).await;
 
-        let retrieved = mock_graph.get_owl_class("http://example.org/ontology#TestClass").await;
+        let retrieved = mock_graph
+            .get_owl_class("http://example.org/ontology#TestClass")
+            .await;
         assert!(retrieved.is_some());
         let retrieved = retrieved.unwrap();
         assert_eq!(retrieved.label, Some("Test Class".to_string()));
@@ -847,7 +912,8 @@ mod neo4j_ontology_repository_tests {
         ];
 
         let min_score = 0.6;
-        let filtered: Vec<_> = classes.iter()
+        let filtered: Vec<_> = classes
+            .iter()
             .filter(|(_, score)| *score >= min_score)
             .collect();
 
@@ -876,7 +942,10 @@ mod neo4j_ontology_repository_tests {
     /// Test domain JSON serialization for properties
     #[test]
     fn test_domain_range_serialization() {
-        let domain = vec!["http://example.org/Class1".to_string(), "http://example.org/Class2".to_string()];
+        let domain = vec![
+            "http://example.org/Class1".to_string(),
+            "http://example.org/Class2".to_string(),
+        ];
         let range = vec!["http://www.w3.org/2001/XMLSchema#string".to_string()];
 
         let domain_json = serde_json::to_string(&domain).unwrap();
@@ -936,7 +1005,10 @@ mod error_handling_tests {
     fn test_complex_serialization() {
         let mut annotations: HashMap<String, String> = HashMap::new();
         annotations.insert("rdfs:label".to_string(), "Test Label".to_string());
-        annotations.insert("rdfs:comment".to_string(), "A comment with \"quotes\" and 'apostrophes'".to_string());
+        annotations.insert(
+            "rdfs:comment".to_string(),
+            "A comment with \"quotes\" and 'apostrophes'".to_string(),
+        );
 
         let json = serde_json::to_string(&annotations).unwrap();
         let parsed: HashMap<String, String> = serde_json::from_str(&json).unwrap();
@@ -1066,7 +1138,8 @@ mod cypher_query_tests {
     /// Test constraint creation query format
     #[test]
     fn test_constraint_query_format() {
-        let constraint = "CREATE CONSTRAINT kg_node_id IF NOT EXISTS FOR (n:KGNode) REQUIRE n.id IS UNIQUE";
+        let constraint =
+            "CREATE CONSTRAINT kg_node_id IF NOT EXISTS FOR (n:KGNode) REQUIRE n.id IS UNIQUE";
 
         assert!(constraint.contains("CONSTRAINT"));
         assert!(constraint.contains("IF NOT EXISTS"));
@@ -1076,7 +1149,8 @@ mod cypher_query_tests {
     /// Test index creation query format
     #[test]
     fn test_index_query_format() {
-        let index = "CREATE INDEX kg_node_metadata_id IF NOT EXISTS FOR (n:KGNode) ON (n.metadata_id)";
+        let index =
+            "CREATE INDEX kg_node_metadata_id IF NOT EXISTS FOR (n:KGNode) ON (n.metadata_id)";
 
         assert!(index.contains("INDEX"));
         assert!(index.contains("IF NOT EXISTS"));
@@ -1141,10 +1215,10 @@ mod physics_position_tests {
             id: 1,
             metadata_id: "test".to_string(),
             label: "Test".to_string(),
-            x: 100.0,  // Content position
+            x: 100.0, // Content position
             y: 200.0,
             z: 0.0,
-            vx: 0.0,   // Velocity
+            vx: 0.0, // Velocity
             vy: 0.0,
             vz: 0.0,
             mass: 1.0,
@@ -1194,20 +1268,23 @@ mod physics_position_tests {
     fn test_position_bounds() {
         let bounds_size = 1000.0f32;
         let positions: Vec<(f32, f32, f32)> = vec![
-            (0.0, 0.0, 0.0),           // Center
-            (500.0, 500.0, 500.0),     // Within bounds
-            (1001.0, 0.0, 0.0),        // Out of bounds X
-            (0.0, -1001.0, 0.0),       // Out of bounds Y
-            (0.0, 0.0, 1001.0),        // Out of bounds Z
+            (0.0, 0.0, 0.0),       // Center
+            (500.0, 500.0, 500.0), // Within bounds
+            (1001.0, 0.0, 0.0),    // Out of bounds X
+            (0.0, -1001.0, 0.0),   // Out of bounds Y
+            (0.0, 0.0, 1001.0),    // Out of bounds Z
         ];
 
         for (x, y, z) in positions {
-            let in_bounds = x.abs() <= bounds_size
-                && y.abs() <= bounds_size
-                && z.abs() <= bounds_size;
+            let in_bounds =
+                x.abs() <= bounds_size && y.abs() <= bounds_size && z.abs() <= bounds_size;
 
             if x.abs() > bounds_size || y.abs() > bounds_size || z.abs() > bounds_size {
-                assert!(!in_bounds, "Expected ({}, {}, {}) to be out of bounds", x, y, z);
+                assert!(
+                    !in_bounds,
+                    "Expected ({}, {}, {}) to be out of bounds",
+                    x, y, z
+                );
             } else {
                 assert!(in_bounds, "Expected ({}, {}, {}) to be in bounds", x, y, z);
             }
@@ -1375,7 +1452,7 @@ mod lru_cache_tests {
         assert_eq!(access_order.len(), cache_size);
         assert!(!access_order.contains(&1)); // 1 was evicted
         assert!(!access_order.contains(&3)); // 3 was evicted
-        assert!(access_order.contains(&2));  // 2 still present (recently accessed)
+        assert!(access_order.contains(&2)); // 2 still present (recently accessed)
     }
 
     /// Test cache hit/miss tracking
@@ -1396,7 +1473,7 @@ mod lru_cache_tests {
             }
         }
 
-        assert_eq!(hits, 3);  // 1, 2, 1 were hits
+        assert_eq!(hits, 3); // 1, 2, 1 were hits
         assert_eq!(misses, 4); // 1, 2, 3, 4 were misses
 
         let hit_rate = hits as f64 / (hits + misses) as f64;
@@ -1458,8 +1535,12 @@ mod edge_id_parsing_tests {
             let parts: Vec<&str> = id.split('-').collect();
             assert_eq!(parts.len(), 2, "Failed for id: {}", id);
 
-            let source: u32 = parts[0].parse().expect(&format!("Failed to parse source for: {}", id));
-            let target: u32 = parts[1].parse().expect(&format!("Failed to parse target for: {}", id));
+            let source: u32 = parts[0]
+                .parse()
+                .expect(&format!("Failed to parse source for: {}", id));
+            let target: u32 = parts[1]
+                .parse()
+                .expect(&format!("Failed to parse target for: {}", id));
 
             assert_eq!(source, expected_source);
             assert_eq!(target, expected_target);
@@ -1483,13 +1564,7 @@ mod edge_id_parsing_tests {
     /// Test edge ID with whitespace (should fail)
     #[test]
     fn test_edge_id_whitespace_invalid() {
-        let invalid_ids = vec![
-            " 1-2",
-            "1 -2",
-            "1- 2",
-            "1-2 ",
-            "1 - 2",
-        ];
+        let invalid_ids = vec![" 1-2", "1 -2", "1- 2", "1-2 ", "1 - 2"];
 
         for id in invalid_ids {
             let parts: Vec<&str> = id.split('-').collect();
@@ -1692,13 +1767,8 @@ mod batch_operation_tests {
     /// Test batch with partial failure recovery
     #[test]
     fn test_batch_partial_failure() {
-        let items: Vec<Result<u32, &str>> = vec![
-            Ok(1),
-            Ok(2),
-            Err("Failed"),
-            Ok(4),
-            Err("Also failed"),
-        ];
+        let items: Vec<Result<u32, &str>> =
+            vec![Ok(1), Ok(2), Err("Failed"), Ok(4), Err("Also failed")];
 
         let successful: Vec<u32> = items
             .iter()
@@ -1779,7 +1849,8 @@ mod complex_filter_tests {
         }
 
         if !node_types.is_empty() {
-            let types_list = node_types.iter()
+            let types_list = node_types
+                .iter()
                 .map(|t| format!("'{}'", t))
                 .collect::<Vec<_>>()
                 .join(", ");
@@ -1799,7 +1870,7 @@ mod complex_filter_tests {
     #[test]
     fn test_or_filter_with_fallback() {
         let conditions = vec![
-            "n.quality_score >= 0.9",  // High quality
+            "n.quality_score >= 0.9",   // High quality
             "n.authority_score >= 0.8", // High authority
             "n.is_verified = true",     // Verified
         ];
@@ -1918,10 +1989,8 @@ mod ontology_metrics_tests {
         let relationships = vec![("B", "A"), ("C", "B"), ("D", "A")];
         // E has no parent relationship
 
-        let with_parents: std::collections::HashSet<&str> = relationships
-            .iter()
-            .map(|(child, _)| *child)
-            .collect();
+        let with_parents: std::collections::HashSet<&str> =
+            relationships.iter().map(|(child, _)| *child).collect();
 
         let orphans: Vec<&&str> = classes
             .iter()
@@ -1943,7 +2012,10 @@ mod ontology_metrics_tests {
         ];
 
         let total_usage: usize = property_usages.iter().map(|(_, count)| count).sum();
-        let unused_count = property_usages.iter().filter(|(_, count)| *count == 0).count();
+        let unused_count = property_usages
+            .iter()
+            .filter(|(_, count)| *count == 0)
+            .count();
         let avg_usage = total_usage as f64 / property_usages.len() as f64;
 
         assert_eq!(total_usage, 430);
@@ -1982,9 +2054,9 @@ mod ontology_metrics_tests {
 
         // Deduct points for issues
         let mut score = 100.0f64;
-        score -= (orphan_classes as f64 / total_classes as f64) * 20.0;  // -1%
-        score -= (circular_dependencies as f64) * 10.0;                   // -0%
-        score -= (missing_labels as f64 / total_classes as f64) * 15.0;  // -1.5%
+        score -= (orphan_classes as f64 / total_classes as f64) * 20.0; // -1%
+        score -= (circular_dependencies as f64) * 10.0; // -0%
+        score -= (missing_labels as f64 / total_classes as f64) * 15.0; // -1.5%
         score -= (missing_descriptions as f64 / total_classes as f64) * 5.0; // -1.5%
 
         assert!(score > 95.0 && score < 100.0);

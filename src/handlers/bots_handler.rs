@@ -19,7 +19,7 @@ use tokio::sync::RwLock;
 #[serde(rename_all = "camelCase")]
 pub struct BotsDataRequest {
     pub nodes: Vec<Agent>,
-    pub edges: Vec<serde_json::Value>, 
+    pub edges: Vec<serde_json::Value>,
 }
 
 #[derive(Serialize)]
@@ -47,7 +47,7 @@ pub struct InitializeSwarmRequest {
 pub struct SpawnAgentHybridRequest {
     pub agent_type: String,
     pub swarm_id: String,
-    pub method: String, 
+    pub method: String,
     pub priority: Option<String>,
     pub strategy: Option<String>,
     pub config: Option<SpawnAgentConfig>,
@@ -72,10 +72,8 @@ pub struct SpawnAgentResponse {
 }
 
 // Static bots graph data storage
+use crate::{accepted, error_json, ok_json};
 use once_cell::sync::Lazy;
-use crate::{
-    ok_json, error_json, accepted,
-};
 
 static BOTS_GRAPH: Lazy<Arc<RwLock<GraphData>>> =
     Lazy::new(|| Arc::new(RwLock::new(GraphData::new())));
@@ -86,10 +84,8 @@ static CURRENT_SWARM_ID: Lazy<Arc<RwLock<Option<String>>>> =
 
 pub async fn fetch_hive_mind_agents(
     state: &AppState,
-    _hybrid_manager: Option<()>, 
+    _hybrid_manager: Option<()>,
 ) -> Result<Vec<Agent>, Box<dyn std::error::Error>> {
-    
-    
     match state.bots_client.get_agents_snapshot().await {
         Ok(agents) => {
             info!("Retrieved {} agents from BotsClient cache", agents.len());
@@ -108,12 +104,10 @@ fn convert_agents_to_nodes(agents: Vec<Agent>) -> Vec<Node> {
         .into_iter()
         .enumerate()
         .map(|(idx, agent)| {
-            
-            let node_id = (idx + 1000) as u32; 
+            let node_id = (idx + 1000) as u32;
 
-            
             let (_radius, vertical_offset) = match agent.agent_type.as_str() {
-                "queen" => (0.0, 0.0), 
+                "queen" => (0.0, 0.0),
                 "coordinator" => (20.0, 2.0),
                 "researcher" => (30.0, 0.0),
                 "analyst" => (30.0, 0.0),
@@ -123,17 +117,16 @@ fn convert_agents_to_nodes(agents: Vec<Agent>) -> Vec<Node> {
                 _ => (60.0, -3.0),
             };
 
-            
             let (color, size) = match agent.agent_type.as_str() {
-                "queen" => ("#FFD700", 25.0),       
-                "coordinator" => ("#FF6B6B", 20.0), 
-                "researcher" => ("#4ECDC4", 18.0),  
-                "analyst" => ("#45B7D1", 18.0),     
-                "coder" => ("#95E1D3", 16.0),       
-                "optimizer" => ("#F38181", 16.0),   
-                "tester" => ("#F6B93B", 14.0),      
-                "worker" => ("#B8E994", 12.0),      
-                _ => ("#DFE4EA", 10.0),             
+                "queen" => ("#FFD700", 25.0),
+                "coordinator" => ("#FF6B6B", 20.0),
+                "researcher" => ("#4ECDC4", 18.0),
+                "analyst" => ("#45B7D1", 18.0),
+                "coder" => ("#95E1D3", 16.0),
+                "optimizer" => ("#F38181", 16.0),
+                "tester" => ("#F6B93B", 14.0),
+                "worker" => ("#B8E994", 12.0),
+                _ => ("#DFE4EA", 10.0),
             };
 
             Node {
@@ -210,7 +203,7 @@ pub async fn update_bots_graph(
     );
 
     let nodes = convert_agents_to_nodes(request.nodes.clone());
-    let edges = vec![]; 
+    let edges = vec![];
 
     let mut graph = BOTS_GRAPH.write().await;
     graph.nodes = nodes;
@@ -226,7 +219,6 @@ pub async fn update_bots_graph(
 }
 
 pub async fn get_bots_data(state: web::Data<AppState>) -> Result<impl Responder> {
-    
     if let Ok(graph_data) = state.graph_service_addr.send(GetBotsGraphData).await {
         if let Ok(graph) = graph_data {
             let nodes = &graph.nodes;
@@ -245,7 +237,6 @@ pub async fn get_bots_data(state: web::Data<AppState>) -> Result<impl Responder>
         }
     }
 
-    
     let graph = BOTS_GRAPH.read().await;
     info!(
         "Retrieved bots data from static storage: {} nodes",
@@ -271,7 +262,6 @@ pub async fn initialize_hive_mind_swarm(
         request.topology
     );
 
-    
     let base_task = if let Some(custom_prompt) = &request.custom_prompt {
         if !custom_prompt.trim().is_empty() {
             custom_prompt.trim().to_string()
@@ -296,7 +286,6 @@ pub async fn initialize_hive_mind_swarm(
         )
     };
 
-    
     let task = format!(
         "{}\n\n**IMPORTANT COMMUNICATION PROTOCOL:**\n\
         Messages will be displayed in the user's telemetry panel in real-time.\n\
@@ -306,18 +295,15 @@ pub async fn initialize_hive_mind_swarm(
 
     info!("🔧 Swarm initialization task: {}", task);
 
-    
-    
     let agent_type = match request.strategy.as_str() {
-        "strategic" => "planner",   
-        "tactical" => "coder",      
-        "adaptive" => "researcher", 
-        _ => "coder",               
+        "strategic" => "planner",
+        "tactical" => "coder",
+        "adaptive" => "researcher",
+        _ => "coder",
     };
 
     let provider = std::env::var("PRIMARY_PROVIDER").unwrap_or_else(|_| "gemini".to_string());
 
-    
     let create_task_msg = CreateTask {
         agent: agent_type.to_string(),
         task: task.clone(),
@@ -335,12 +321,10 @@ pub async fn initialize_hive_mind_swarm(
                 task_response.task_id
             );
 
-            
             {
                 let mut current_id = CURRENT_SWARM_ID.write().await;
                 *current_id = Some(task_response.task_id.clone());
             }
-
 
             accepted!(json!({
                 "success": true,
@@ -382,7 +366,7 @@ pub async fn get_bots_connection_status(state: web::Data<AppState>) -> Result<im
 
 pub async fn get_bots_agents(
     state: web::Data<AppState>,
-    _hybrid_manager: Option<()>, 
+    _hybrid_manager: Option<()>,
 ) -> Result<impl Responder> {
     match fetch_hive_mind_agents(&state, None).await {
         Ok(agents) => ok_json!(json!({
@@ -424,7 +408,6 @@ pub async fn spawn_agent_hybrid(
     let task = format!("Spawn {} agent for swarm {}", req.agent_type, req.swarm_id);
     let provider = std::env::var("PRIMARY_PROVIDER").unwrap_or_else(|_| "gemini".to_string());
 
-    
     let create_task_msg = CreateTask {
         agent: req.agent_type.clone(),
         task,
@@ -461,7 +444,7 @@ pub async fn spawn_agent_hybrid(
                     error: Some(format!("Failed to create task: {}", e)),
                     method_used: None,
                     message: None,
-                })
+                }),
             )
         }
         Err(e) => {
@@ -473,7 +456,7 @@ pub async fn spawn_agent_hybrid(
                     error: Some(format!("Actor communication error: {}", e)),
                     method_used: None,
                     message: None,
-                })
+                }),
             )
         }
     }
@@ -498,7 +481,6 @@ pub async fn remove_task(
     let task_id = path.into_inner();
     info!("Stopping task via Management API: {}", task_id);
 
-    
     let stop_task_msg = StopTask {
         task_id: task_id.clone(),
     };
@@ -539,25 +521,21 @@ pub async fn remove_task(
 // Helper function for socket handler to get bot positions
 pub async fn get_bots_positions(bots_client: &Arc<BotsClient>) -> Vec<BotsNodeData> {
     match bots_client.get_agents_snapshot().await {
-        Ok(agents) => {
-            agents
-                .into_iter()
-                .enumerate()
-                .map(|(idx, agent)| {
-                    BotsNodeData {
-                        id: (idx as u32) + 1000, 
-                        data: BotData {
-                            x: agent.x,
-                            y: agent.y,
-                            z: agent.z,
-                            vx: 0.0, 
-                            vy: 0.0,
-                            vz: 0.0,
-                        },
-                    }
-                })
-                .collect()
-        }
+        Ok(agents) => agents
+            .into_iter()
+            .enumerate()
+            .map(|(idx, agent)| BotsNodeData {
+                id: (idx as u32) + 1000,
+                data: BotData {
+                    x: agent.x,
+                    y: agent.y,
+                    z: agent.z,
+                    vx: 0.0,
+                    vy: 0.0,
+                    vz: 0.0,
+                },
+            })
+            .collect(),
         Err(e) => {
             error!("Failed to get bots positions: {}", e);
             vec![]

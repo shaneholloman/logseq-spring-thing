@@ -31,14 +31,16 @@ pub mod graph_actor {
 }
 pub mod metadata_actor;
 pub mod optimized_settings_actor;
-pub mod transient_edge_actor;
 pub mod physics_orchestrator_actor;
 pub mod protected_settings_actor;
 pub mod server_nostr_actor;
 pub mod supervisor;
+pub mod transient_edge_actor;
 pub mod voice_commands;
-// pub mod supervisor_voice; 
+// pub mod supervisor_voice;
 // graph_messages module removed - AutoBalanceNotification consolidated into messages.rs
+pub mod automation_orchestrator_actor;
+pub mod code_analysis_actor;
 pub mod graph_service_supervisor;
 pub mod messages;
 pub mod messaging;
@@ -51,8 +53,6 @@ pub mod skill_evaluation_actor;
 pub mod skill_registry_supervisor;
 pub mod task_orchestrator_actor;
 pub mod workspace_actor;
-pub mod automation_orchestrator_actor;
-pub mod code_analysis_actor;
 
 // PRD-008 §5.3 — per-room XR presence broadcast actor
 pub mod presence_actor;
@@ -63,14 +63,16 @@ pub use client_coordinator_actor::{
     ClientCoordinatorActor, ClientCoordinatorStats, ClientManager, ClientState,
 };
 pub use gpu::GPUManagerActor;
-pub use graph_state_actor::GraphStateActor;
 pub use graph_service_supervisor::{
     ActorHealth, ActorHeartbeat, ActorType, BackoffStrategy, GetSupervisorStatus,
     GraphServiceSupervisor, GraphSupervisionStrategy, RestartActor, RestartAllActors,
     RestartPolicy, SetParentSupervisor, SupervisorMessage, SupervisorStatus,
 };
+pub use graph_state_actor::GraphStateActor;
 pub use messages::*;
-pub use messaging::{AckStatus, MessageAck, MessageId, MessageKind, MessageMetrics, MessageTracker};
+pub use messaging::{
+    AckStatus, MessageAck, MessageId, MessageKind, MessageMetrics, MessageTracker,
+};
 pub use metadata_actor::MetadataActor;
 pub use multi_mcp_visualization_actor::MultiMcpVisualizationActor;
 pub use ontology_actor::{
@@ -81,20 +83,31 @@ pub use ontology_actor::{
 // `OptimizedSettingsActor` name is retained as the underlying type for now
 // to keep diff size small; `ProtectedSettingsActor` is a type alias that
 // resolves to the same actor (see protected_settings_actor.rs).
-pub use optimized_settings_actor::{OptimizedSettingsActor, SettingsActor};
-pub use physics_orchestrator_actor::{PhysicsOrchestratorActor, SetClientCoordinator, UserNodeInteraction};
-pub use protected_settings_actor::ProtectedSettingsActor;
-pub use server_nostr_actor::{
-    ServerNostrActor, SignAuditRecord, SignBeadStamp, SignBridgePromotion,
-    SignBrokerDecision, SignEnrichmentProposal, SignMigrationApproval, SignSealedDM,
+pub use automation_orchestrator_actor::{
+    AutomationDispatcher, AutomationOrchestratorActor, DispatchOutcome, FireDecision, GetWheelSize,
+    HeartbeatWebId, OfflineBlock, PresenceTracker, RegisterCap, RegisterRoutine, SchedulerCore,
+    SkipReason, StubDispatcher, Tick, DEFAULT_DAILY_RATE_LIMIT, OFFLINE_THRESHOLD_MIN,
+    TICK_INTERVAL,
 };
+pub use code_analysis_actor::{
+    AnalysisStats, AnalyzeBatch, AnalyzeBatchResult, AnalyzeFile, AnalyzeFileResult,
+    CodeAnalysisActor, GetAnalysisStats,
+};
+pub use optimized_settings_actor::{OptimizedSettingsActor, SettingsActor};
+pub use physics_orchestrator_actor::{
+    PhysicsOrchestratorActor, SetClientCoordinator, UserNodeInteraction,
+};
+pub use protected_settings_actor::ProtectedSettingsActor;
 pub use semantic_processor_actor::{
     AISemanticFeatures, SemanticProcessorActor, SemanticProcessorConfig, SemanticStats,
 };
+pub use server_nostr_actor::{
+    ServerNostrActor, SignAuditRecord, SignBeadStamp, SignBridgePromotion, SignBrokerDecision,
+    SignEnrichmentProposal, SignMigrationApproval, SignSealedDM,
+};
 pub use share_orchestrator_actor::{
-    register_share_orchestrator_actor, ApplyBrokerDecision,
-    IsReady as ShareOrchIsReady, RouteShareIntent, ShareOrchestratorActor,
-    Shutdown as ShareOrchShutdown,
+    register_share_orchestrator_actor, ApplyBrokerDecision, IsReady as ShareOrchIsReady,
+    RouteShareIntent, ShareOrchestratorActor, Shutdown as ShareOrchShutdown,
 };
 pub use skill_compatibility_scanner::{
     BenchmarkDispatcher, NoopBenchmarkDispatcher, ScanAllInstalled, SkillCompatibilityScanner,
@@ -114,18 +127,8 @@ pub use task_orchestrator_actor::{
     CreateTask, GetSystemStatus, GetTaskStatus, ListActiveTasks, StopTask, SystemStatusInfo,
     TaskOrchestratorActor, TaskState,
 };
-pub use automation_orchestrator_actor::{
-    AutomationDispatcher, AutomationOrchestratorActor, DispatchOutcome, FireDecision,
-    GetWheelSize, HeartbeatWebId, OfflineBlock, PresenceTracker, RegisterCap, RegisterRoutine,
-    SchedulerCore, SkipReason, StubDispatcher, Tick, DEFAULT_DAILY_RATE_LIMIT,
-    OFFLINE_THRESHOLD_MIN, TICK_INTERVAL,
-};
 pub use voice_commands::{SwarmIntent, SwarmVoiceResponse, VoiceCommand, VoicePreamble};
 pub use workspace_actor::WorkspaceActor;
-pub use code_analysis_actor::{
-    AnalysisStats, AnalyzeBatch, AnalyzeBatchResult, AnalyzeFile, AnalyzeFileResult,
-    CodeAnalysisActor, GetAnalysisStats,
-};
 
 // Phase 5: Actor lifecycle management and coordination
 pub mod event_coordination;

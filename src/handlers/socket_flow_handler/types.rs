@@ -346,8 +346,13 @@ impl SocketFlowServer {
                             })
                             .collect();
 
-                        addr.do_send(super::actor_messages::BroadcastPositionUpdate(node_data.clone()));
-                        info!("Sent initial binary position snapshot for {} nodes", node_data.len());
+                        addr.do_send(super::actor_messages::BroadcastPositionUpdate(
+                            node_data.clone(),
+                        ));
+                        info!(
+                            "Sent initial binary position snapshot for {} nodes",
+                            node_data.len()
+                        );
                     }
                 }
             }

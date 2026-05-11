@@ -8,6 +8,9 @@ use std::time::Instant;
 
 use super::shared::{GPUOperation, GPUState, SharedGPUContext};
 use crate::actors::messages::*;
+use crate::gpu::backpressure::{BackpressureConfig, NetworkBackpressure};
+use crate::gpu::broadcast_optimizer::{BroadcastConfig, BroadcastOptimizer};
+use crate::models::graph_types::{classify_node_population, effective_node_type, NodePopulation};
 use crate::models::simulation_params::SimulationParams;
 use crate::telemetry::agent_telemetry::{
     get_telemetry_logger, CorrelationId, LogLevel, TelemetryEvent,
@@ -15,9 +18,6 @@ use crate::telemetry::agent_telemetry::{
 use crate::utils::socket_flow_messages::{glam_to_vec3data, BinaryNodeDataClient};
 use crate::utils::unified_gpu_compute::ComputeMode;
 use crate::utils::unified_gpu_compute::SimParams;
-use crate::gpu::broadcast_optimizer::{BroadcastConfig, BroadcastOptimizer};
-use crate::gpu::backpressure::{BackpressureConfig, NetworkBackpressure};
-use crate::models::graph_types::{NodePopulation, classify_node_population, effective_node_type};
 use glam::Vec3;
 
 use cudarc::driver::CudaDevice;
@@ -34,51 +34,37 @@ pub struct PhysicsStats {
     pub nodes_count: u32,
     pub edges_count: u32,
 
-    
     pub average_velocity: f32,
     pub kinetic_energy: f32,
     pub total_forces: f32,
 
-    
     pub last_step_duration_ms: f32,
     pub fps: f32,
 
-    
     pub num_edges: u32,
     pub total_force_calculations: u32,
 }
 
 #[allow(dead_code)]
 pub struct ForceComputeActor {
-
     gpu_state: GPUState,
-
 
     shared_context: Option<Arc<SharedGPUContext>>,
 
-
     simulation_params: SimulationParams,
-
 
     unified_params: SimParams,
 
-
     compute_mode: ComputeMode,
-
 
     last_step_start: Option<Instant>,
     last_step_duration_ms: f32,
 
-
     is_computing: bool,
-
 
     skipped_frames: u32,
 
-
-
     reheat_factor: f32,
-
 
     stability_iterations: u32,
 
@@ -86,11 +72,10 @@ pub struct ForceComputeActor {
     /// When >0, stability_threshold is forced to 0.0 so physics always runs.
     stability_warmup_remaining: u32,
 
-
     graph_service_addr: Option<Addr<crate::actors::GraphServiceSupervisor>>,
 
-
-    ontology_constraint_addr: Option<Addr<super::ontology_constraint_actor::OntologyConstraintActor>>,
+    ontology_constraint_addr:
+        Option<Addr<super::ontology_constraint_actor::OntologyConstraintActor>>,
 
     /// Cached constraint buffer from OntologyConstraintActor for GPU upload
     cached_constraint_buffer: Vec<crate::models::constraints::ConstraintData>,
@@ -152,7 +137,8 @@ pub struct ForceComputeActor {
     /// When set, a PhysicsStepCompleted message is sent after each ComputeForces
     /// step, enabling the orchestrator to drive the next step instead of using
     /// an independent timer.
-    physics_orchestrator_addr: Option<Addr<crate::actors::physics_orchestrator_actor::PhysicsOrchestratorActor>>,
+    physics_orchestrator_addr:
+        Option<Addr<crate::actors::physics_orchestrator_actor::PhysicsOrchestratorActor>>,
 
     /// Number of GPU self-initialization attempts made so far.
     gpu_self_init_attempts: u32,
@@ -182,8 +168,8 @@ impl ForceComputeActor {
     pub fn new() -> Self {
         // Initialize broadcast optimizer with default config
         let broadcast_config = BroadcastConfig {
-            target_fps: 25, // 25fps broadcast, 60fps physics
-            delta_threshold: 0.01, // 1cm movement threshold
+            target_fps: 25,                // 25fps broadcast, 60fps physics
+            delta_threshold: 0.01,         // 1cm movement threshold
             enable_spatial_culling: false, // Disabled by default, can be enabled via API
             camera_bounds: None,
         };
@@ -344,11 +330,17 @@ impl ForceComputeActor {
             crate::utils::ptx::PTXModule::OntologyConstraints,
         ) {
             Ok(c) => {
-                info!("ForceComputeActor: Ontology constraints PTX loaded ({} bytes)", c.len());
+                info!(
+                    "ForceComputeActor: Ontology constraints PTX loaded ({} bytes)",
+                    c.len()
+                );
                 Some(c)
             }
             Err(e) => {
-                warn!("ForceComputeActor: Ontology PTX not available, will use generic path: {}", e);
+                warn!(
+                    "ForceComputeActor: Ontology PTX not available, will use generic path: {}",
+                    e
+                );
                 None
             }
         };
@@ -357,25 +349,26 @@ impl ForceComputeActor {
         // 23 of 67 DeviceBuffers are not resized by resize_buffers() — they must
         // be large enough at construction to cover the actual graph size.
         // 8192 nodes / 16384 edges covers most knowledge graphs.
-        let unified_compute = match crate::utils::unified_gpu_compute::UnifiedGPUCompute::new_with_all_modules(
-            8192,
-            16384,
-            &ptx_content,
-            clustering_ptx.as_deref(),
-            apsp_ptx.as_deref(),
-            ontology_ptx.as_deref(),
-        ) {
-            Ok(c) => {
-                info!("ForceComputeActor: UnifiedGPUCompute engine created successfully");
-                c
-            }
-            Err(e) => {
-                let reason = format!("Failed to create UnifiedGPUCompute: {}", e);
-                error!("ForceComputeActor: {}", reason);
-                self.notify_gpu_init_failed(reason);
-                return;
-            }
-        };
+        let unified_compute =
+            match crate::utils::unified_gpu_compute::UnifiedGPUCompute::new_with_all_modules(
+                8192,
+                16384,
+                &ptx_content,
+                clustering_ptx.as_deref(),
+                apsp_ptx.as_deref(),
+                ontology_ptx.as_deref(),
+            ) {
+                Ok(c) => {
+                    info!("ForceComputeActor: UnifiedGPUCompute engine created successfully");
+                    c
+                }
+                Err(e) => {
+                    let reason = format!("Failed to create UnifiedGPUCompute: {}", e);
+                    error!("ForceComputeActor: {}", reason);
+                    self.notify_gpu_init_failed(reason);
+                    return;
+                }
+            };
 
         // 2. Now create CudaDevice — attaches to the already-active primary context
         let device = match CudaDevice::new(0) {
@@ -417,24 +410,31 @@ impl ForceComputeActor {
                 6 * 1024 * 1024 * 1024
             }
         };
-        let memory_manager = match crate::gpu::memory_manager::GpuMemoryManager::with_limit(memory_limit) {
-            Ok(mgr) => {
-                info!("ForceComputeActor: GpuMemoryManager initialized with {} byte limit", memory_limit);
-                Arc::new(std::sync::Mutex::new(mgr))
-            }
-            Err(e) => {
-                warn!("ForceComputeActor: GpuMemoryManager init failed ({}), creating with default", e);
-                match crate::gpu::memory_manager::GpuMemoryManager::new() {
-                    Ok(mgr) => Arc::new(std::sync::Mutex::new(mgr)),
-                    Err(e2) => {
-                        let reason = format!("GpuMemoryManager completely failed: {}", e2);
-                        error!("ForceComputeActor: {}", reason);
-                        self.notify_gpu_init_failed(reason);
-                        return;
+        let memory_manager =
+            match crate::gpu::memory_manager::GpuMemoryManager::with_limit(memory_limit) {
+                Ok(mgr) => {
+                    info!(
+                        "ForceComputeActor: GpuMemoryManager initialized with {} byte limit",
+                        memory_limit
+                    );
+                    Arc::new(std::sync::Mutex::new(mgr))
+                }
+                Err(e) => {
+                    warn!(
+                    "ForceComputeActor: GpuMemoryManager init failed ({}), creating with default",
+                    e
+                );
+                    match crate::gpu::memory_manager::GpuMemoryManager::new() {
+                        Ok(mgr) => Arc::new(std::sync::Mutex::new(mgr)),
+                        Err(e2) => {
+                            let reason = format!("GpuMemoryManager completely failed: {}", e2);
+                            error!("ForceComputeActor: {}", reason);
+                            self.notify_gpu_init_failed(reason);
+                            return;
+                        }
                     }
                 }
-            }
-        };
+            };
 
         let shared_context = Arc::new(SharedGPUContext {
             device: device.clone(),
@@ -483,7 +483,9 @@ impl ForceComputeActor {
     /// Upload pending graph data to the GPU compute engine.
     /// Called when both shared_context and pending_graph_data become available.
     fn try_upload_pending_graph_data(&mut self) {
-        let (Some(ref ctx), Some(ref graph_data)) = (&self.shared_context, &self.pending_graph_data) else {
+        let (Some(ref ctx), Some(ref graph_data)) =
+            (&self.shared_context, &self.pending_graph_data)
+        else {
             return;
         };
 
@@ -494,7 +496,10 @@ impl ForceComputeActor {
             return;
         }
 
-        info!("ForceComputeActor: Uploading {} nodes, {} edges to GPU", num_nodes, num_edges);
+        info!(
+            "ForceComputeActor: Uploading {} nodes, {} edges to GPU",
+            num_nodes, num_edges
+        );
 
         // Build CSR representation, GPU-index-to-node-ID mapping, and population classification
         let mut node_indices = std::collections::HashMap::new();
@@ -528,11 +533,15 @@ impl ForceComputeActor {
             }
             self.node_population.push(pop);
         }
-        info!("ForceComputeActor: GPU index→wire_id mapping: 0..{} ({} entries, compact IDs)",
-              self.gpu_index_to_node_id.len().saturating_sub(1),
-              self.gpu_index_to_node_id.len());
-        info!("ForceComputeActor: Node populations — knowledge: {}, ontology: {}, agent: {}",
-              pop_counts[0], pop_counts[1], pop_counts[2]);
+        info!(
+            "ForceComputeActor: GPU index→wire_id mapping: 0..{} ({} entries, compact IDs)",
+            self.gpu_index_to_node_id.len().saturating_sub(1),
+            self.gpu_index_to_node_id.len()
+        );
+        info!(
+            "ForceComputeActor: Node populations — knowledge: {}, ontology: {}, agent: {}",
+            pop_counts[0], pop_counts[1], pop_counts[2]
+        );
 
         let mut positions_x: Vec<f32> = graph_data.nodes.iter().map(|n| n.data.x).collect();
         let mut positions_y: Vec<f32> = graph_data.nodes.iter().map(|n| n.data.y).collect();
@@ -544,9 +553,14 @@ impl ForceComputeActor {
             let mut cache_preserved = 0usize;
             for (i, node) in graph_data.nodes.iter().enumerate() {
                 if let Some(cached) = self.cached_positions_by_key.get(&node.metadata_id) {
-                    let neo_mag = positions_x[i]*positions_x[i] + positions_y[i]*positions_y[i] + positions_z[i]*positions_z[i];
+                    let neo_mag = positions_x[i] * positions_x[i]
+                        + positions_y[i] * positions_y[i]
+                        + positions_z[i] * positions_z[i];
                     // Only use cache if Neo4j position is zero/near-zero (stale)
-                    if neo_mag < 1.0 || (cached[0]*cached[0] + cached[1]*cached[1] + cached[2]*cached[2]) > neo_mag {
+                    if neo_mag < 1.0
+                        || (cached[0] * cached[0] + cached[1] * cached[1] + cached[2] * cached[2])
+                            > neo_mag
+                    {
                         positions_x[i] = cached[0];
                         positions_y[i] = cached[1];
                         positions_z[i] = cached[2];
@@ -570,11 +584,17 @@ impl ForceComputeActor {
                     let mut gpu_x = vec![0.0f32; compute.num_nodes];
                     let mut gpu_y = vec![0.0f32; compute.num_nodes];
                     let mut gpu_z = vec![0.0f32; compute.num_nodes];
-                    if compute.download_positions(&mut gpu_x, &mut gpu_y, &mut gpu_z).is_ok() {
+                    if compute
+                        .download_positions(&mut gpu_x, &mut gpu_y, &mut gpu_z)
+                        .is_ok()
+                    {
                         let mut preserved = 0usize;
                         for i in 0..num_nodes.min(compute.num_nodes) {
-                            let gpu_mag = gpu_x[i]*gpu_x[i] + gpu_y[i]*gpu_y[i] + gpu_z[i]*gpu_z[i];
-                            let neo_mag = positions_x[i]*positions_x[i] + positions_y[i]*positions_y[i] + positions_z[i]*positions_z[i];
+                            let gpu_mag =
+                                gpu_x[i] * gpu_x[i] + gpu_y[i] * gpu_y[i] + gpu_z[i] * gpu_z[i];
+                            let neo_mag = positions_x[i] * positions_x[i]
+                                + positions_y[i] * positions_y[i]
+                                + positions_z[i] * positions_z[i];
                             // If GPU has real positions but Neo4j has zeros, keep GPU positions
                             if gpu_mag > 1.0 && neo_mag < 1.0 {
                                 positions_x[i] = gpu_x[i];
@@ -597,13 +617,21 @@ impl ForceComputeActor {
         let initial_radius = 200.0f32;
         let mut randomized = 0usize;
         for i in 0..num_nodes {
-            let mag_sq = positions_x[i] * positions_x[i] + positions_y[i] * positions_y[i] + positions_z[i] * positions_z[i];
+            let mag_sq = positions_x[i] * positions_x[i]
+                + positions_y[i] * positions_y[i]
+                + positions_z[i] * positions_z[i];
             if mag_sq < 1.0 {
-                let mut s: u64 = (i as u64).wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+                let mut s: u64 = (i as u64)
+                    .wrapping_mul(6364136223846793005)
+                    .wrapping_add(1442695040888963407);
                 let u1 = ((s >> 33) as f32) / ((1u64 << 31) as f32);
-                s = s.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+                s = s
+                    .wrapping_mul(6364136223846793005)
+                    .wrapping_add(1442695040888963407);
                 let u2 = ((s >> 33) as f32) / ((1u64 << 31) as f32);
-                s = s.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+                s = s
+                    .wrapping_mul(6364136223846793005)
+                    .wrapping_add(1442695040888963407);
                 let u3 = ((s >> 33) as f32) / ((1u64 << 31) as f32);
 
                 let theta = u1 * 2.0 * std::f32::consts::PI;
@@ -617,13 +645,18 @@ impl ForceComputeActor {
             }
         }
         if randomized > 0 {
-            info!("ForceComputeActor: Randomized {}/{} zero-position nodes to 3D sphere (radius {})",
-                  randomized, num_nodes, initial_radius);
+            info!(
+                "ForceComputeActor: Randomized {}/{} zero-position nodes to 3D sphere (radius {})",
+                randomized, num_nodes, initial_radius
+            );
         }
 
         let mut adjacency_lists: Vec<Vec<(u32, f32)>> = vec![Vec::new(); num_nodes];
         for edge in &graph_data.edges {
-            if let (Some(&src), Some(&tgt)) = (node_indices.get(&edge.source), node_indices.get(&edge.target)) {
+            if let (Some(&src), Some(&tgt)) = (
+                node_indices.get(&edge.source),
+                node_indices.get(&edge.target),
+            ) {
                 adjacency_lists[src].push((tgt as u32, edge.weight));
                 if src != tgt {
                     adjacency_lists[tgt].push((src as u32, edge.weight));
@@ -667,7 +700,7 @@ impl ForceComputeActor {
             let avg_dist = if connected_count > 0 {
                 sum_dist / connected_count as f64
             } else {
-                100.0  // fallback if everything is isolated
+                100.0 // fallback if everything is isolated
             };
             let shell_radius = (avg_dist * 2.0).max(200.0) as f32;
 
@@ -721,7 +754,8 @@ impl ForceComputeActor {
                 // zeroes the buffer so we must re-upload it explicitly.
                 debug!("ForceComputeActor: [DIAG] About to upload node_graph_id ({} entries, buffer len {})",
                       self.gpu_index_to_node_id.len(), compute.node_graph_id.len());
-                let mut node_graph_ids: Vec<i32> = self.gpu_index_to_node_id
+                let mut node_graph_ids: Vec<i32> = self
+                    .gpu_index_to_node_id
                     .iter()
                     .map(|&id| id as i32)
                     .collect();
@@ -732,12 +766,20 @@ impl ForceComputeActor {
                         node_graph_ids.resize(compute.node_graph_id.len(), 0);
                     }
                     if let Err(e) = compute.node_graph_id.copy_from(&node_graph_ids) {
-                        error!("ForceComputeActor: Failed to upload node_graph_id buffer: {}", e);
+                        error!(
+                            "ForceComputeActor: Failed to upload node_graph_id buffer: {}",
+                            e
+                        );
                     } else {
-                        info!("ForceComputeActor: Uploaded node_graph_id mapping ({} entries)", node_graph_ids.len());
+                        info!(
+                            "ForceComputeActor: Uploaded node_graph_id mapping ({} entries)",
+                            node_graph_ids.len()
+                        );
                     }
                 }
-                debug!("ForceComputeActor: [DIAG] node_graph_id done, about to upload class metadata");
+                debug!(
+                    "ForceComputeActor: [DIAG] node_graph_id done, about to upload class metadata"
+                );
 
                 // Upload domain-based class_id and class_charge for domain clustering.
                 if let Some(ref graph_data) = self.pending_graph_data {
@@ -746,7 +788,9 @@ impl ForceComputeActor {
                     let class_masses = vec![1.0f32; num_nodes];
 
                     for node in &graph_data.nodes {
-                        let domain = node.metadata.get("source_domain")
+                        let domain = node
+                            .metadata
+                            .get("source_domain")
                             .map(|s| s.as_str())
                             .unwrap_or("");
                         let (id, charge) = match domain {
@@ -762,10 +806,15 @@ impl ForceComputeActor {
                         class_charges.push(charge);
                     }
 
-                    if let Err(e) = compute.upload_class_metadata(&class_ids, &class_charges, &class_masses) {
+                    if let Err(e) =
+                        compute.upload_class_metadata(&class_ids, &class_charges, &class_masses)
+                    {
                         warn!("ForceComputeActor: Failed to upload class metadata: {}", e);
                     } else {
-                        info!("ForceComputeActor: Uploaded class metadata ({} entries)", class_ids.len());
+                        info!(
+                            "ForceComputeActor: Uploaded class metadata ({} entries)",
+                            class_ids.len()
+                        );
                     }
                 }
 
@@ -775,28 +824,37 @@ impl ForceComputeActor {
                 // the center more strongly and isolates (degree 0) to receive
                 // peripheral shell forces instead of uniform centering.
                 {
-                    let degree_weights: Vec<f32> = (0..num_nodes).map(|i| {
-                        let start = row_offsets[i] as usize;
-                        let end = row_offsets[i + 1] as usize;
-                        let degree = end - start;
-                        (1.0f32 + degree as f32).ln()
-                    }).collect();
+                    let degree_weights: Vec<f32> = (0..num_nodes)
+                        .map(|i| {
+                            let start = row_offsets[i] as usize;
+                            let end = row_offsets[i + 1] as usize;
+                            let degree = end - start;
+                            (1.0f32 + degree as f32).ln()
+                        })
+                        .collect();
 
                     // Normalize so the median-degree node gets weight ~1.0
                     // This preserves the overall gravity magnitude while redistributing it
-                    let mut sorted_weights: Vec<f32> = degree_weights.iter()
+                    let mut sorted_weights: Vec<f32> = degree_weights
+                        .iter()
                         .copied()
                         .filter(|&w| w > 1e-6)
                         .collect();
-                    sorted_weights.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+                    sorted_weights
+                        .sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
                     let median_weight = if sorted_weights.is_empty() {
                         1.0f32
                     } else {
                         sorted_weights[sorted_weights.len() / 2]
                     };
-                    let norm_factor = if median_weight > 1e-6 { 1.0 / median_weight } else { 1.0 };
+                    let norm_factor = if median_weight > 1e-6 {
+                        1.0 / median_weight
+                    } else {
+                        1.0
+                    };
 
-                    let normalized_weights: Vec<f32> = degree_weights.iter()
+                    let normalized_weights: Vec<f32> = degree_weights
+                        .iter()
                         .map(|&w| if w < 1e-6 { 0.0 } else { w * norm_factor })
                         .collect();
 
@@ -816,13 +874,18 @@ impl ForceComputeActor {
                     // to ~5.0 (max hub), clamped to prevent extreme sluggishness.
                     // Pad mass weights to allocated_nodes to match class_mass buffer size.
                     let alloc = compute.class_mass.len();
-                    let mut mass_weights: Vec<f32> = normalized_weights.iter()
+                    let mut mass_weights: Vec<f32> = normalized_weights
+                        .iter()
                         .map(|w| (0.5 + w * 2.0).min(5.0))
                         .collect();
                     mass_weights.resize(alloc, 1.0); // pad with default mass 1.0
                     match cust::memory::DeviceBuffer::from_slice(&mass_weights) {
-                        Ok(new_mass) => { compute.class_mass = new_mass; }
-                        Err(e) => { warn!("ForceComputeActor: Failed to upload mass weights: {}", e); }
+                        Ok(new_mass) => {
+                            compute.class_mass = new_mass;
+                        }
+                        Err(e) => {
+                            warn!("ForceComputeActor: Failed to upload mass weights: {}", e);
+                        }
                     }
                 }
 
@@ -850,7 +913,8 @@ impl ForceComputeActor {
                 if let Some(ref gpu_ctx) = self.shared_context {
                     if let Ok(mgr) = gpu_ctx.memory_manager.lock() {
                         let pos_vel_bytes = num_nodes * std::mem::size_of::<f32>() * 12;
-                        let csr_bytes = ((num_nodes + 1) + edge_count as usize) * std::mem::size_of::<i32>()
+                        let csr_bytes = ((num_nodes + 1) + edge_count as usize)
+                            * std::mem::size_of::<i32>()
                             + edge_count as usize * std::mem::size_of::<f32>();
                         mgr.track_external_allocation("positions", pos_vel_bytes);
                         mgr.track_external_allocation("edges_csr", csr_bytes);
@@ -876,7 +940,6 @@ impl ForceComputeActor {
     }
 
     fn sync_simulation_to_unified_params(&self, unified_params: &mut SimParams) {
-        
         unified_params.spring_k = self.simulation_params.spring_k;
         unified_params.repel_k = self.simulation_params.repel_k;
         unified_params.damping = self.simulation_params.damping;
@@ -884,28 +947,19 @@ impl ForceComputeActor {
         unified_params.max_velocity = self.simulation_params.max_velocity;
         unified_params.center_gravity_k = self.simulation_params.center_gravity_k;
 
-        
         match self.compute_mode {
-            ComputeMode::Basic => {
-                
-                
-            }
+            ComputeMode::Basic => {}
             ComputeMode::Advanced => {
-                
-                
                 unified_params.temperature = self.simulation_params.temperature;
                 unified_params.alignment_strength = self.simulation_params.alignment_strength;
                 unified_params.cluster_strength = self.simulation_params.cluster_strength;
             }
             ComputeMode::DualGraph => {
-                
-                
                 unified_params.temperature = self.simulation_params.temperature;
                 unified_params.alignment_strength = self.simulation_params.alignment_strength;
                 unified_params.cluster_strength = self.simulation_params.cluster_strength;
             }
             ComputeMode::Constraints => {
-                
                 unified_params.temperature = self.simulation_params.temperature;
                 unified_params.alignment_strength = self.simulation_params.alignment_strength;
                 unified_params.cluster_strength = self.simulation_params.cluster_strength;
@@ -920,12 +974,10 @@ impl ForceComputeActor {
                unified_params.spring_k, unified_params.repel_k, unified_params.center_gravity_k, unified_params.damping);
     }
 
-    
     fn iteration_count(&self) -> u32 {
         self.gpu_state.iteration_count
     }
 
-    
     fn update_simulation_parameters(&mut self, params: SimulationParams) {
         info!("ForceComputeActor: Updating simulation parameters");
         info!(
@@ -978,7 +1030,8 @@ impl ForceComputeActor {
             unified_params.viewport_bounds = self.simulation_params.viewport_bounds;
             unified_params.boundary_damping = self.simulation_params.boundary_damping;
             unified_params.constraint_ramp_frames = self.simulation_params.constraint_ramp_frames;
-            unified_params.constraint_max_force_per_node = self.simulation_params.constraint_max_force_per_node;
+            unified_params.constraint_max_force_per_node =
+                self.simulation_params.constraint_max_force_per_node;
             // Rebuild feature flags from current params
             let new_sim_params = self.simulation_params.to_sim_params();
             unified_params.feature_flags = new_sim_params.feature_flags;
@@ -988,7 +1041,6 @@ impl ForceComputeActor {
         }
     }
 
-    
     /// Build a `PhysicsStats` snapshot.
     ///
     /// Delegates to `super::physics_metrics` for the pure computation.
@@ -1099,7 +1151,9 @@ impl ForceComputeActor {
         let mut unified_compute = match shared_context.unified_compute.try_lock() {
             Ok(guard) => guard,
             Err(_) => {
-                trace!("ForceComputeActor: GPU mutex busy, deferring constraint upload to next frame");
+                trace!(
+                    "ForceComputeActor: GPU mutex busy, deferring constraint upload to next frame"
+                );
                 return Ok(()); // Not an error, will retry next frame
             }
         };
@@ -1221,11 +1275,17 @@ impl Handler<ComputeForces> for ForceComputeActor {
             None => {
                 // GPU init failed — this is a hard error, not transient
                 if self.skipped_frames % 300 == 0 {
-                    error!("ForceComputeActor: GPU context unavailable after init attempt (frame {})", self.skipped_frames);
+                    error!(
+                        "ForceComputeActor: GPU context unavailable after init attempt (frame {})",
+                        self.skipped_frames
+                    );
                 }
                 self.skipped_frames += 1;
                 notify_skip!(self);
-                return Box::pin(futures::future::ready(Err("GPU context not initialized".to_string())).into_actor(self));
+                return Box::pin(
+                    futures::future::ready(Err("GPU context not initialized".to_string()))
+                        .into_actor(self),
+                );
             }
         };
 
@@ -1240,7 +1300,8 @@ impl Handler<ComputeForces> for ForceComputeActor {
         }
 
         self.is_computing = true;
-        self.gpu_state.start_operation(GPUOperation::ForceComputation);
+        self.gpu_state
+            .start_operation(GPUOperation::ForceComputation);
 
         // Apply ontology forces before async GPU access
         if let Err(e) = self.apply_ontology_forces() {
@@ -1388,14 +1449,20 @@ impl Handler<ComputeForces> for ForceComputeActor {
 
             // Handle spawn_blocking join result
             match blocking_result {
-                Ok(inner_result) => {
-                    inner_result.map(|(gpu_result, execution_duration, positions_result, velocities_result)| {
-                        (gpu_result, execution_duration, positions_result, velocities_result, correlation_id, iteration, step_start)
-                    })
-                }
-                Err(join_err) => {
-                    Err(format!("GPU blocking task panicked: {}", join_err))
-                }
+                Ok(inner_result) => inner_result.map(
+                    |(gpu_result, execution_duration, positions_result, velocities_result)| {
+                        (
+                            gpu_result,
+                            execution_duration,
+                            positions_result,
+                            velocities_result,
+                            correlation_id,
+                            iteration,
+                            step_start,
+                        )
+                    },
+                ),
+                Err(join_err) => Err(format!("GPU blocking task panicked: {}", join_err)),
             }
         };
 
@@ -1956,7 +2023,10 @@ impl Handler<UpdateSimulationParams> for ForceComputeActor {
                 "ForceComputeActor: UpdateSimulationParams REJECTED — validation failed: {}",
                 validation_errors
             );
-            return Err(format!("Parameter validation failed: {}", validation_errors));
+            return Err(format!(
+                "Parameter validation failed: {}",
+                validation_errors
+            ));
         }
 
         // Idempotency: skip reset if ALL GPU-relevant params haven't changed.
@@ -1964,17 +2034,16 @@ impl Handler<UpdateSimulationParams> for ForceComputeActor {
         // Compare the full set of GPU-relevant fields, not just the original 6.
         let cur = &self.simulation_params;
         let eps = 1e-5_f32; // Slightly larger than EPSILON to catch floating-point round-trips
-        // Every user-tunable physics field MUST be in this comparison.
-        // Omitting a field means dragging only that slider triggers `physics_unchanged ==
-        // true` → handler returns Ok with no reheat → the GPU keeps using the old value
-        // → user sees PUT 200 with no visible re-layout. That is exactly the silent-
-        // failure class the surrounding fixes (C/D/E + canonical-beats-alias + fail-loud
-        // + sustained-Full eviction) were shipped to eliminate. Audit catch 2026-04-29:
-        // gravity/rest_length/grid_cell_size/repulsion_cutoff/repulsion_softening_epsilon/
-        // max_repulsion_dist/min_distance were missing and re-introduced the bug for
-        // users who only adjusted gravity or repulsion-shaping sliders.
-        let physics_unchanged =
-            (cur.spring_k - msg.params.spring_k).abs() < eps
+                            // Every user-tunable physics field MUST be in this comparison.
+                            // Omitting a field means dragging only that slider triggers `physics_unchanged ==
+                            // true` → handler returns Ok with no reheat → the GPU keeps using the old value
+                            // → user sees PUT 200 with no visible re-layout. That is exactly the silent-
+                            // failure class the surrounding fixes (C/D/E + canonical-beats-alias + fail-loud
+                            // + sustained-Full eviction) were shipped to eliminate. Audit catch 2026-04-29:
+                            // gravity/rest_length/grid_cell_size/repulsion_cutoff/repulsion_softening_epsilon/
+                            // max_repulsion_dist/min_distance were missing and re-introduced the bug for
+                            // users who only adjusted gravity or repulsion-shaping sliders.
+        let physics_unchanged = (cur.spring_k - msg.params.spring_k).abs() < eps
             && (cur.repel_k - msg.params.repel_k).abs() < eps
             && (cur.damping - msg.params.damping).abs() < eps
             && (cur.dt - msg.params.dt).abs() < eps
@@ -2099,7 +2168,10 @@ impl Handler<ForceFullBroadcast> for ForceComputeActor {
             let _gpu_guard = match shared_context.acquire_gpu_access().await {
                 Ok(guard) => guard,
                 Err(e) => {
-                    warn!("ForceComputeActor: ForceFullBroadcast — failed to acquire GPU lock: {}", e);
+                    warn!(
+                        "ForceComputeActor: ForceFullBroadcast — failed to acquire GPU lock: {}",
+                        e
+                    );
                     return Err(());
                 }
             };
@@ -2124,7 +2196,10 @@ impl Handler<ForceFullBroadcast> for ForceComputeActor {
             match blocking_result {
                 Ok(inner) => inner,
                 Err(join_err) => {
-                    warn!("ForceComputeActor: ForceFullBroadcast — spawn_blocking panicked: {}", join_err);
+                    warn!(
+                        "ForceComputeActor: ForceFullBroadcast — spawn_blocking panicked: {}",
+                        join_err
+                    );
                     Err(())
                 }
             }
@@ -2178,7 +2253,6 @@ impl Handler<SetComputeMode> for ForceComputeActor {
 
         self.compute_mode = msg.mode;
 
-        
         let mut temp_params = self.unified_params.clone();
         self.sync_simulation_to_unified_params(&mut temp_params);
         self.unified_params = temp_params;
@@ -2300,8 +2374,11 @@ impl Handler<InitializeGPU> for ForceComputeActor {
     type Result = Result<(), String>;
 
     fn handle(&mut self, msg: InitializeGPU, _ctx: &mut Self::Context) -> Self::Result {
-        info!("ForceComputeActor: InitializeGPU received with {} nodes, {} edges",
-            msg.graph.nodes.len(), msg.graph.edges.len());
+        info!(
+            "ForceComputeActor: InitializeGPU received with {} nodes, {} edges",
+            msg.graph.nodes.len(),
+            msg.graph.edges.len()
+        );
 
         // NOTE: Do NOT set gpu_state.num_nodes here — only set it after successful GPU upload
         // in try_upload_pending_graph_data(). This prevents ComputeForces from running on
@@ -2337,7 +2414,9 @@ impl Handler<InitializeGPU> for ForceComputeActor {
                 orchestrator_addr.do_send(crate::actors::messages::GPUInitialized);
                 info!("ForceComputeActor: GPUInitialized confirmation sent to PhysicsOrchestratorActor");
             }
-        } else if self.shared_context.is_none() && self.gpu_self_init_attempts >= self.gpu_self_init_max_retries {
+        } else if self.shared_context.is_none()
+            && self.gpu_self_init_attempts >= self.gpu_self_init_max_retries
+        {
             // GPU init permanently failed — notify orchestrator immediately so it
             // does not defer GPUInitialized indefinitely.
             error!(
@@ -2363,9 +2442,11 @@ impl Handler<InitializeGPU> for ForceComputeActor {
         if let Some(correlation_id) = msg.correlation_id {
             use crate::actors::messaging::MessageAck;
             if let Some(ref orchestrator_addr) = msg.physics_orchestrator_addr {
-                orchestrator_addr.do_send(MessageAck::success(correlation_id)
-                    .with_metadata("nodes", self.gpu_state.num_nodes.to_string())
-                    .with_metadata("edges", self.gpu_state.num_edges.to_string()));
+                orchestrator_addr.do_send(
+                    MessageAck::success(correlation_id)
+                        .with_metadata("nodes", self.gpu_state.num_nodes.to_string())
+                        .with_metadata("edges", self.gpu_state.num_edges.to_string()),
+                );
             }
         }
 
@@ -2377,8 +2458,11 @@ impl Handler<UpdateGPUGraphData> for ForceComputeActor {
     type Result = Result<(), String>;
 
     fn handle(&mut self, msg: UpdateGPUGraphData, _ctx: &mut Self::Context) -> Self::Result {
-        info!("ForceComputeActor: UpdateGPUGraphData received with {} nodes, {} edges",
-            msg.graph.nodes.len(), msg.graph.edges.len());
+        info!(
+            "ForceComputeActor: UpdateGPUGraphData received with {} nodes, {} edges",
+            msg.graph.nodes.len(),
+            msg.graph.edges.len()
+        );
 
         // Store graph data and attempt upload (num_nodes set only after successful upload)
         self.pending_graph_data = Some(msg.graph);
@@ -2389,7 +2473,10 @@ impl Handler<UpdateGPUGraphData> for ForceComputeActor {
 
         // H4: Send acknowledgment
         if let Some(correlation_id) = msg.correlation_id {
-            debug!("UpdateGPUGraphData completed with correlation_id: {}", correlation_id);
+            debug!(
+                "UpdateGPUGraphData completed with correlation_id: {}",
+                correlation_id
+            );
         }
 
         Ok(())
@@ -2400,7 +2487,6 @@ impl Handler<GetNodeData> for ForceComputeActor {
     type Result = Result<Vec<crate::utils::socket_flow_messages::BinaryNodeData>, String>;
 
     fn handle(&mut self, _msg: GetNodeData, _ctx: &mut Self::Context) -> Self::Result {
-        
         Ok(Vec::new())
     }
 }
@@ -2437,15 +2523,31 @@ impl Handler<GetCurrentPositions> for ForceComputeActor {
         let mut total_ke: f64 = 0.0;
 
         for (i, (pos, vel)) in self.position_velocity_buffer.iter().enumerate() {
-            let node_id = self.gpu_index_to_node_id.get(i).copied().unwrap_or(i as u32);
+            let node_id = self
+                .gpu_index_to_node_id
+                .get(i)
+                .copied()
+                .unwrap_or(i as u32);
             positions.push((node_id, pos.x, pos.y, pos.z));
 
-            if pos.x < min_x { min_x = pos.x; }
-            if pos.y < min_y { min_y = pos.y; }
-            if pos.z < min_z { min_z = pos.z; }
-            if pos.x > max_x { max_x = pos.x; }
-            if pos.y > max_y { max_y = pos.y; }
-            if pos.z > max_z { max_z = pos.z; }
+            if pos.x < min_x {
+                min_x = pos.x;
+            }
+            if pos.y < min_y {
+                min_y = pos.y;
+            }
+            if pos.z < min_z {
+                min_z = pos.z;
+            }
+            if pos.x > max_x {
+                max_x = pos.x;
+            }
+            if pos.y > max_y {
+                max_y = pos.y;
+            }
+            if pos.z > max_z {
+                max_z = pos.z;
+            }
 
             let v2 = (vel.x as f64).powi(2) + (vel.y as f64).powi(2) + (vel.z as f64).powi(2);
             total_ke += 0.5 * v2;
@@ -2494,7 +2596,6 @@ impl Handler<RunCommunityDetection> for ForceComputeActor {
     type Result = Result<CommunityDetectionResult, String>;
 
     fn handle(&mut self, _msg: RunCommunityDetection, _ctx: &mut Self::Context) -> Self::Result {
-        
         Err("Community detection should be handled by ClusteringActor".to_string())
     }
 }
@@ -2516,7 +2617,6 @@ impl Handler<GetConstraints> for ForceComputeActor {
     type Result = Result<crate::models::constraints::ConstraintSet, String>;
 
     fn handle(&mut self, _msg: GetConstraints, _ctx: &mut Self::Context) -> Self::Result {
-        
         Err("Constraints should be handled by ConstraintActor".to_string())
     }
 }
@@ -2547,7 +2647,6 @@ impl Handler<TriggerStressMajorization> for ForceComputeActor {
         _msg: TriggerStressMajorization,
         _ctx: &mut Self::Context,
     ) -> Self::Result {
-        
         Err("Stress majorization should be handled by StressMajorizationActor".to_string())
     }
 }
@@ -2561,7 +2660,6 @@ impl Handler<GetStressMajorizationStats> for ForceComputeActor {
         _msg: GetStressMajorizationStats,
         _ctx: &mut Self::Context,
     ) -> Self::Result {
-        
         Err(
             "Stress majorization stats should be retrieved from StressMajorizationActor"
                 .to_string(),
@@ -2577,7 +2675,6 @@ impl Handler<ResetStressMajorizationSafety> for ForceComputeActor {
         _msg: ResetStressMajorizationSafety,
         _ctx: &mut Self::Context,
     ) -> Self::Result {
-        
         Err(
             "Stress majorization safety reset should be handled by StressMajorizationActor"
                 .to_string(),
@@ -2603,8 +2700,7 @@ impl Handler<PerformGPUClustering> for ForceComputeActor {
 
     fn handle(&mut self, _msg: PerformGPUClustering, _ctx: &mut Self::Context) -> Self::Result {
         info!("ForceComputeActor: PerformGPUClustering received - forwarding to ClusteringActor would be done by GPUManagerActor");
-        
-        
+
         Err("Clustering should be handled by ClusteringActor, not ForceComputeActor".to_string())
     }
 }
@@ -2614,7 +2710,6 @@ impl Handler<GetClusteringResults> for ForceComputeActor {
 
     fn handle(&mut self, _msg: GetClusteringResults, _ctx: &mut Self::Context) -> Self::Result {
         info!("ForceComputeActor: GetClusteringResults received - forwarding to ClusteringActor would be done by GPUManagerActor");
-
 
         Err(
             "Clustering results should be retrieved from ClusteringActor, not ForceComputeActor"
@@ -2628,9 +2723,15 @@ impl Handler<GetClusteringResults> for ForceComputeActor {
 impl Handler<crate::actors::messages::UpdateOntologyConstraintBuffer> for ForceComputeActor {
     type Result = ();
 
-    fn handle(&mut self, msg: crate::actors::messages::UpdateOntologyConstraintBuffer, _ctx: &mut Self::Context) -> Self::Result {
-        info!("ForceComputeActor: Received updated ontology constraint buffer with {} constraints",
-              msg.constraint_buffer.len());
+    fn handle(
+        &mut self,
+        msg: crate::actors::messages::UpdateOntologyConstraintBuffer,
+        _ctx: &mut Self::Context,
+    ) -> Self::Result {
+        info!(
+            "ForceComputeActor: Received updated ontology constraint buffer with {} constraints",
+            msg.constraint_buffer.len()
+        );
 
         // Update the cached constraint buffer
         self.cached_constraint_buffer = msg.constraint_buffer;
@@ -2680,7 +2781,10 @@ impl Handler<SetSharedGPUContext> for ForceComputeActor {
 
         // H4: Send acknowledgment
         if let Some(correlation_id) = msg.correlation_id {
-            debug!("SetSharedGPUContext completed with correlation_id: {}", correlation_id);
+            debug!(
+                "SetSharedGPUContext completed with correlation_id: {}",
+                correlation_id
+            );
         }
 
         Ok(())
@@ -2693,7 +2797,11 @@ impl Handler<SetSharedGPUContext> for ForceComputeActor {
 impl Handler<crate::actors::messages::SetPhysicsOrchestratorAddr> for ForceComputeActor {
     type Result = ();
 
-    fn handle(&mut self, msg: crate::actors::messages::SetPhysicsOrchestratorAddr, _ctx: &mut Self::Context) -> Self::Result {
+    fn handle(
+        &mut self,
+        msg: crate::actors::messages::SetPhysicsOrchestratorAddr,
+        _ctx: &mut Self::Context,
+    ) -> Self::Result {
         info!("ForceComputeActor: PhysicsOrchestratorActor address set for sequential pipeline");
         self.physics_orchestrator_addr = Some(msg.addr);
     }
@@ -2704,11 +2812,17 @@ impl Handler<crate::actors::messages::SetPhysicsOrchestratorAddr> for ForceCompu
 impl Handler<crate::actors::messages::ResetPositions> for ForceComputeActor {
     type Result = Result<(), String>;
 
-    fn handle(&mut self, _msg: crate::actors::messages::ResetPositions, _ctx: &mut Self::Context) -> Self::Result {
+    fn handle(
+        &mut self,
+        _msg: crate::actors::messages::ResetPositions,
+        _ctx: &mut Self::Context,
+    ) -> Self::Result {
         let ctx = match &self.shared_context {
             Some(c) => c.clone(),
             None => {
-                warn!("ForceComputeActor: ResetPositions received but GPU context is not initialized");
+                warn!(
+                    "ForceComputeActor: ResetPositions received but GPU context is not initialized"
+                );
                 return Err("GPU context not available".to_string());
             }
         };
@@ -2754,7 +2868,8 @@ impl Handler<crate::actors::messages::ResetPositions> for ForceComputeActor {
             }
         };
 
-        compute.upload_positions(&positions_x, &positions_y, &positions_z)
+        compute
+            .upload_positions(&positions_x, &positions_y, &positions_z)
             .map_err(|e| format!("Failed to upload reset positions to GPU: {}", e))?;
 
         drop(compute);
@@ -2780,7 +2895,11 @@ impl Handler<crate::actors::messages::ResetPositions> for ForceComputeActor {
 impl Handler<ConfigureStressMajorization> for ForceComputeActor {
     type Result = Result<(), String>;
 
-    fn handle(&mut self, msg: ConfigureStressMajorization, _ctx: &mut Self::Context) -> Self::Result {
+    fn handle(
+        &mut self,
+        msg: ConfigureStressMajorization,
+        _ctx: &mut Self::Context,
+    ) -> Self::Result {
         info!("ForceComputeActor: ConfigureStressMajorization received");
 
         // Store stress majorization configuration in unified params
@@ -2817,16 +2936,20 @@ impl Handler<ConfigureStressMajorization> for ForceComputeActor {
 impl Handler<GetStressMajorizationConfig> for ForceComputeActor {
     type Result = Result<StressMajorizationConfig, String>;
 
-    fn handle(&mut self, _msg: GetStressMajorizationConfig, _ctx: &mut Self::Context) -> Self::Result {
+    fn handle(
+        &mut self,
+        _msg: GetStressMajorizationConfig,
+        _ctx: &mut Self::Context,
+    ) -> Self::Result {
         info!("ForceComputeActor: GetStressMajorizationConfig received");
 
         // Return current stress majorization configuration based on unified params
         let config = StressMajorizationConfig {
             learning_rate: self.unified_params.temperature / 100.0,
             momentum: 1.0 - self.unified_params.damping,
-            max_iterations: 100, // Default value
-            auto_run_interval: 60, // Default: every 60 frames
-            current_stress: 0.0, // Would be computed from current layout
+            max_iterations: 100,                        // Default value
+            auto_run_interval: 60,                      // Default: every 60 frames
+            current_stress: 0.0,                        // Would be computed from current layout
             converged: self.stability_iterations > 600, // Converged after stability
             iterations_completed: self.gpu_state.iteration_count as usize,
         };
@@ -2846,7 +2969,11 @@ impl Handler<GetStressMajorizationConfig> for ForceComputeActor {
 impl Handler<crate::actors::messages::ConfigureBroadcastOptimization> for ForceComputeActor {
     type Result = Result<(), String>;
 
-    fn handle(&mut self, msg: crate::actors::messages::ConfigureBroadcastOptimization, _ctx: &mut Self::Context) -> Self::Result {
+    fn handle(
+        &mut self,
+        msg: crate::actors::messages::ConfigureBroadcastOptimization,
+        _ctx: &mut Self::Context,
+    ) -> Self::Result {
         info!("ForceComputeActor: ConfigureBroadcastOptimization received");
 
         // Get current stats before update
@@ -2862,15 +2989,27 @@ impl Handler<crate::actors::messages::ConfigureBroadcastOptimization> for ForceC
 
         // Validate parameters
         if new_config.target_fps == 0 || new_config.target_fps > 60 {
-            return Err(format!("Invalid target_fps: {} (must be 1-60)", new_config.target_fps));
+            return Err(format!(
+                "Invalid target_fps: {} (must be 1-60)",
+                new_config.target_fps
+            ));
         }
 
         if new_config.delta_threshold < 0.0 {
-            return Err(format!("Invalid delta_threshold: {} (must be >= 0.0)", new_config.delta_threshold));
+            return Err(format!(
+                "Invalid delta_threshold: {} (must be >= 0.0)",
+                new_config.delta_threshold
+            ));
         }
 
-        info!("  Target FPS: {} -> {}", old_stats.target_fps, new_config.target_fps);
-        info!("  Delta threshold: {:.4} -> {:.4}", old_stats.delta_threshold, new_config.delta_threshold);
+        info!(
+            "  Target FPS: {} -> {}",
+            old_stats.target_fps, new_config.target_fps
+        );
+        info!(
+            "  Delta threshold: {:.4} -> {:.4}",
+            old_stats.delta_threshold, new_config.delta_threshold
+        );
         info!("  Spatial culling: {}", new_config.enable_spatial_culling);
 
         // Apply new configuration
@@ -2884,9 +3023,15 @@ impl Handler<crate::actors::messages::ConfigureBroadcastOptimization> for ForceC
 impl Handler<crate::actors::messages::UpdateCameraFrustum> for ForceComputeActor {
     type Result = Result<(), String>;
 
-    fn handle(&mut self, msg: crate::actors::messages::UpdateCameraFrustum, _ctx: &mut Self::Context) -> Self::Result {
-        debug!("ForceComputeActor: UpdateCameraFrustum received - min: {:?}, max: {:?}",
-               msg.min, msg.max);
+    fn handle(
+        &mut self,
+        msg: crate::actors::messages::UpdateCameraFrustum,
+        _ctx: &mut Self::Context,
+    ) -> Self::Result {
+        debug!(
+            "ForceComputeActor: UpdateCameraFrustum received - min: {:?}, max: {:?}",
+            msg.min, msg.max
+        );
 
         let min = Vec3::new(msg.min.0, msg.min.1, msg.min.2);
         let max = Vec3::new(msg.max.0, msg.max.1, msg.max.2);
@@ -2899,7 +3044,11 @@ impl Handler<crate::actors::messages::UpdateCameraFrustum> for ForceComputeActor
 impl Handler<crate::actors::messages::GetBroadcastStats> for ForceComputeActor {
     type Result = Result<crate::actors::messages::BroadcastPerformanceStats, String>;
 
-    fn handle(&mut self, _msg: crate::actors::messages::GetBroadcastStats, _ctx: &mut Self::Context) -> Self::Result {
+    fn handle(
+        &mut self,
+        _msg: crate::actors::messages::GetBroadcastStats,
+        _ctx: &mut Self::Context,
+    ) -> Self::Result {
         let stats = self.broadcast_optimizer.get_performance_stats();
 
         // Convert from gpu::broadcast_optimizer::BroadcastPerformanceStats
@@ -2925,7 +3074,10 @@ impl Handler<RunAnomalyDetection> for ForceComputeActor {
     type Result = ResponseActFuture<Self, Result<AnomalyResult, String>>;
 
     fn handle(&mut self, msg: RunAnomalyDetection, _ctx: &mut Self::Context) -> Self::Result {
-        info!("ForceComputeActor: RunAnomalyDetection received for method {:?}", msg.params.method);
+        info!(
+            "ForceComputeActor: RunAnomalyDetection received for method {:?}",
+            msg.params.method
+        );
 
         let shared_context = match &self.shared_context {
             Some(ctx) => ctx.clone(),
@@ -3133,9 +3285,14 @@ impl Handler<RunAnomalyDetection> for ForceComputeActor {
 impl Handler<crate::actors::messages::PositionBroadcastAck> for ForceComputeActor {
     type Result = ();
 
-    fn handle(&mut self, msg: crate::actors::messages::PositionBroadcastAck, _ctx: &mut Self::Context) -> Self::Result {
+    fn handle(
+        &mut self,
+        msg: crate::actors::messages::PositionBroadcastAck,
+        _ctx: &mut Self::Context,
+    ) -> Self::Result {
         // Acknowledge to backpressure controller - this restores tokens
-        self.backpressure.acknowledge(msg.clients_delivered as usize);
+        self.backpressure
+            .acknowledge(msg.clients_delivered as usize);
 
         // Log token restoration at debug level (every 300 acks to avoid spam)
         if msg.correlation_id % 300 == 0 {

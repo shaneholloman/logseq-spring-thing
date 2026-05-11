@@ -1,12 +1,14 @@
 // Physics-related handlers and GPU propagation logic
 
-use crate::actors::messages::{ForceResumePhysics, GetSettings, UpdateSettings, UpdateSimulationParams};
+use crate::actors::messages::{
+    ForceResumePhysics, GetSettings, UpdateSettings, UpdateSimulationParams,
+};
 use crate::app_state::AppState;
 use crate::config::AppFullSettings;
+use crate::{bad_request, error_json, ok_json, service_unavailable};
 use actix_web::{web, Error, HttpRequest, HttpResponse};
 use log::{debug, error, info, warn};
 use serde_json::{json, Value};
-use crate::{ok_json, error_json, bad_request, service_unavailable};
 
 use super::helpers::create_physics_settings_update;
 use super::validation::validate_constraints;
@@ -29,7 +31,6 @@ pub async fn propagate_physics_to_gpu_with_layout(
     layout_mode_override: Option<&str>,
 ) {
     let physics = settings.get_physics(graph);
-
 
     info!("[PHYSICS UPDATE] Propagating {} physics to actors:", graph);
     info!(
@@ -63,7 +64,6 @@ pub async fn propagate_physics_to_gpu_with_layout(
         debug!("  - update_threshold: {:.3}", physics.update_threshold);
         debug!("  - iterations: {}", physics.iterations);
         debug!("  - enabled: {}", physics.enabled);
-
 
         debug!("  - min_distance: {:.3}", physics.min_distance);
         debug!("  - max_repulsion_dist: {:.1}", physics.max_repulsion_dist);
@@ -100,7 +100,10 @@ pub async fn propagate_physics_to_gpu_with_layout(
 
     match layout_mode {
         "dag-topdown" | "dag-radial" | "dag-leftright" => {
-            info!("[PHYSICS UPDATE] Applying DAG layout overrides for mode: {}", layout_mode);
+            info!(
+                "[PHYSICS UPDATE] Applying DAG layout overrides for mode: {}",
+                layout_mode
+            );
             sim_params.center_gravity_k = sim_params.center_gravity_k.max(0.1);
             sim_params.use_sssp_distances = true;
             sim_params.sssp_alpha = Some(sim_params.sssp_alpha.unwrap_or(0.0).max(0.5));
@@ -124,7 +127,6 @@ pub async fn propagate_physics_to_gpu_with_layout(
         params: sim_params.clone(),
     };
 
-
     if let Some(gpu_addr) = state.get_gpu_compute_addr().await {
         info!("[PHYSICS UPDATE] Sending to GPUComputeActor...");
         if let Err(e) = gpu_addr.send(update_msg.clone()).await {
@@ -136,7 +138,6 @@ pub async fn propagate_physics_to_gpu_with_layout(
         warn!("[PHYSICS UPDATE] No GPUComputeActor available");
     }
 
-
     info!("[PHYSICS UPDATE] Sending to GraphServiceActor...");
     if let Err(e) = state.graph_service_addr.send(update_msg).await {
         error!("[PHYSICS UPDATE] FAILED to update GraphServiceActor: {}", e);
@@ -147,9 +148,13 @@ pub async fn propagate_physics_to_gpu_with_layout(
     // Force-resume physics so updated parameters take effect even if simulation
     // auto-paused at equilibrium.
     info!("[PHYSICS UPDATE] Sending ForceResumePhysics...");
-    if let Err(e) = state.graph_service_addr.send(
-        ForceResumePhysics { reason: format!("Physics propagated for graph '{}'", graph) }
-    ).await {
+    if let Err(e) = state
+        .graph_service_addr
+        .send(ForceResumePhysics {
+            reason: format!("Physics propagated for graph '{}'", graph),
+        })
+        .await
+    {
         warn!("[PHYSICS UPDATE] Failed to send ForceResumePhysics: {}", e);
     } else {
         info!("[PHYSICS UPDATE] ForceResumePhysics sent successfully");
@@ -169,7 +174,6 @@ pub async fn update_compute_mode(
         serde_json::to_string_pretty(&update).unwrap_or_default()
     );
 
-
     let compute_mode = update
         .get("computeMode")
         .and_then(|v| v.as_u64())
@@ -181,13 +185,11 @@ pub async fn update_compute_mode(
         return bad_request!("computeMode must be between 0 and 3");
     }
 
-
     let physics_update = json!({
         "computeMode": compute_mode
     });
 
     let settings_update = create_physics_settings_update(physics_update);
-
 
     let mut app_settings = match state.settings_addr.send(GetSettings).await {
         Ok(Ok(s)) => s,
@@ -206,7 +208,6 @@ pub async fn update_compute_mode(
         return error_json!("Failed to update compute mode: {}", e);
     }
 
-
     match state
         .settings_addr
         .send(UpdateSettings {
@@ -216,7 +217,6 @@ pub async fn update_compute_mode(
     {
         Ok(Ok(())) => {
             info!("Compute mode updated successfully to: {}", compute_mode);
-
 
             propagate_physics_to_gpu(&state, &app_settings, "logseq").await;
             propagate_physics_to_gpu(&state, &app_settings, "visionflow").await;
@@ -250,7 +250,6 @@ pub async fn update_clustering_algorithm(
         serde_json::to_string_pretty(&update).unwrap_or_default()
     );
 
-
     let algorithm = update
         .get("algorithm")
         .and_then(|v| v.as_str())
@@ -259,7 +258,6 @@ pub async fn update_clustering_algorithm(
     if !["none", "kmeans", "spectral", "louvain"].contains(&algorithm) {
         return bad_request!("algorithm must be 'none', 'kmeans', 'spectral', or 'louvain'");
     }
-
 
     let cluster_count = update
         .get("clusterCount")
@@ -274,7 +272,6 @@ pub async fn update_clustering_algorithm(
         .and_then(|v| v.as_u64())
         .unwrap_or(30);
 
-
     let physics_update = json!({
         "clusteringAlgorithm": algorithm,
         "clusterCount": cluster_count,
@@ -283,7 +280,6 @@ pub async fn update_clustering_algorithm(
     });
 
     let settings_update = create_physics_settings_update(physics_update);
-
 
     let mut app_settings = match state.settings_addr.send(GetSettings).await {
         Ok(Ok(s)) => s,
@@ -302,7 +298,6 @@ pub async fn update_clustering_algorithm(
         return error_json!("Failed to update clustering algorithm: {}", e);
     }
 
-
     match state
         .settings_addr
         .send(UpdateSettings {
@@ -315,7 +310,6 @@ pub async fn update_clustering_algorithm(
                 "Clustering algorithm updated successfully to: {}",
                 algorithm
             );
-
 
             propagate_physics_to_gpu(&state, &app_settings, "logseq").await;
             propagate_physics_to_gpu(&state, &app_settings, "visionflow").await;
@@ -352,12 +346,9 @@ pub async fn update_constraints(
         serde_json::to_string_pretty(&update).unwrap_or_default()
     );
 
-
     if let Err(e) = validate_constraints(&update) {
         return bad_request!("Invalid constraints: {}", e);
     }
-
-
 
     let settings_update = json!({
         "visualisation": {
@@ -376,7 +367,6 @@ pub async fn update_constraints(
         }
     });
 
-
     let mut app_settings = match state.settings_addr.send(GetSettings).await {
         Ok(Ok(s)) => s,
         Ok(Err(e)) => {
@@ -394,7 +384,6 @@ pub async fn update_constraints(
         return error_json!("Failed to update constraints: {}", e);
     }
 
-
     match state
         .settings_addr
         .send(UpdateSettings {
@@ -404,7 +393,6 @@ pub async fn update_constraints(
     {
         Ok(Ok(())) => {
             info!("Constraints updated successfully");
-
 
             propagate_physics_to_gpu(&state, &app_settings, "logseq").await;
             propagate_physics_to_gpu(&state, &app_settings, "visionflow").await;
@@ -430,11 +418,8 @@ pub async fn get_cluster_analytics(
 ) -> Result<HttpResponse, Error> {
     info!("Cluster analytics request received");
 
-
     if let Some(_gpu_addr) = state.get_gpu_compute_addr().await {
-
         use crate::actors::messages::GetGraphData;
-
 
         let graph_data = match state.graph_service_addr.send(GetGraphData).await {
             Ok(Ok(data)) => data,
@@ -448,11 +433,9 @@ pub async fn get_cluster_analytics(
             }
         };
 
-
         info!("GPU compute actor available but clustering not handled by force compute actor");
         get_cpu_fallback_analytics(&graph_data).await
     } else {
-
         use crate::actors::messages::GetGraphData;
         match state.graph_service_addr.send(GetGraphData).await {
             Ok(Ok(graph_data)) => get_cpu_fallback_analytics(&graph_data).await,
@@ -473,11 +456,8 @@ async fn get_cpu_fallback_analytics(
 ) -> Result<HttpResponse, Error> {
     use std::collections::HashMap;
 
-
-
     let node_count = graph_data.nodes.len();
     let _edge_count = graph_data.edges.len();
-
 
     let mut type_clusters: HashMap<String, Vec<&crate::models::node::Node>> = HashMap::new();
 
@@ -493,12 +473,10 @@ async fn get_cpu_fallback_analytics(
             .push(node);
     }
 
-
     let clusters: Vec<_> = type_clusters
         .into_iter()
         .enumerate()
         .map(|(i, (type_name, nodes))| {
-
             let centroid = if !nodes.is_empty() {
                 let sum_x: f32 = nodes.iter().map(|n| n.data.x).sum();
                 let sum_y: f32 = nodes.iter().map(|n| n.data.y).sum();

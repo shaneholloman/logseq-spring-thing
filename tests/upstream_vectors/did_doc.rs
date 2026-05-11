@@ -29,9 +29,9 @@ fn did_doc_canonical_has_required_contexts() {
         let has_did_v1 = ctx
             .iter()
             .any(|c| c.as_str() == Some("https://www.w3.org/ns/did/v1"));
-        let has_secp = ctx.iter().any(|c| {
-            c.as_str() == Some("https://w3id.org/security/suites/secp256k1-2019/v1")
-        });
+        let has_secp = ctx
+            .iter()
+            .any(|c| c.as_str() == Some("https://w3id.org/security/suites/secp256k1-2019/v1"));
         assert!(
             has_did_v1,
             "valid DID Doc '{}' MUST include https://www.w3.org/ns/did/v1",
@@ -74,7 +74,8 @@ fn did_doc_no_stale_suite_identifiers_in_valid_cases() {
         for vm in vms {
             let suite = vm["type"].as_str().unwrap();
             assert_eq!(
-                suite, "SchnorrSecp256k1VerificationKey2019",
+                suite,
+                "SchnorrSecp256k1VerificationKey2019",
                 "valid case '{}' MUST use canonical suite 2019, found {}",
                 v["case"].as_str().unwrap_or(""),
                 suite

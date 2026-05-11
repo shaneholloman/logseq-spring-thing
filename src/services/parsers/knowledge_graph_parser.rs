@@ -37,12 +37,10 @@ impl PageFormat {
     pub fn detect(content: &str) -> Self {
         let first_line = content.lines().next().unwrap_or("");
         let has_iri_line1 = first_line.starts_with("iri::");
-        let has_rdf_type_owl_class = content
-            .lines()
-            .any(|l| {
-                let t = l.trim();
-                t.starts_with("rdf-type::") && t.contains("owl:Class")
-            });
+        let has_rdf_type_owl_class = content.lines().any(|l| {
+            let t = l.trim();
+            t.starts_with("rdf-type::") && t.contains("owl:Class")
+        });
         let has_ontology_block = content.contains("### OntologyBlock");
 
         if has_iri_line1 && has_rdf_type_owl_class {
@@ -139,8 +137,8 @@ fn extract_relationship_wikilinks(content: &str) -> Vec<String> {
         "sources",
     ];
 
-    let link_re = regex::Regex::new(r"\[\[([^\]|]+)(?:\|[^\]]+)?\]\]")
-        .expect("invalid wikilink regex");
+    let link_re =
+        regex::Regex::new(r"\[\[([^\]|]+)(?:\|[^\]]+)?\]\]").expect("invalid wikilink regex");
     let mut out = Vec::new();
 
     for line in content.lines() {
@@ -180,7 +178,11 @@ pub struct FileBundle {
 }
 
 impl FileBundle {
-    pub fn new(name: impl Into<String>, path: impl Into<String>, content: impl Into<String>) -> Self {
+    pub fn new(
+        name: impl Into<String>,
+        path: impl Into<String>,
+        content: impl Into<String>,
+    ) -> Self {
         Self {
             name: name.into(),
             path: path.into(),
@@ -320,14 +322,11 @@ impl KnowledgeGraphParser {
     /// is unset or `false`, the caller must fall back to the legacy
     /// single-pass `parse()` entry point instead.
     pub fn parse_bundle(&self, files: &[FileBundle]) -> Result<ParseOutput, String> {
-        let owner = self
-            .owner_pubkey
-            .as_deref()
-            .ok_or_else(|| {
-                "KnowledgeGraphParser::parse_bundle requires owner_pubkey — \
+        let owner = self.owner_pubkey.as_deref().ok_or_else(|| {
+            "KnowledgeGraphParser::parse_bundle requires owner_pubkey — \
                  construct with new_with_owner(...)"
-                    .to_string()
-            })?;
+                .to_string()
+        })?;
 
         let run_id = generate_run_id();
         info!(
@@ -383,9 +382,7 @@ impl KnowledgeGraphParser {
 
                 // If the target isn't an already-indexed page AND we haven't
                 // already emitted a stub for it in this batch, emit a stub.
-                if !adjacency.contains_key(&target_iri)
-                    && !emitted_iris.contains(&target_iri)
-                {
+                if !adjacency.contains_key(&target_iri) && !emitted_iris.contains(&target_iri) {
                     let stub = self.build_private_stub(&target_iri, wikilink, owner);
                     emitted_iris.insert(target_iri.clone());
                     nodes.push(stub);
@@ -403,7 +400,9 @@ impl KnowledgeGraphParser {
                     continue;
                 }
 
-                edges.push(build_wikilink_ref_edge(source_id, target_id, wikilink, &run_id));
+                edges.push(build_wikilink_ref_edge(
+                    source_id, target_id, wikilink, &run_id,
+                ));
             }
         }
 
@@ -440,10 +439,8 @@ impl KnowledgeGraphParser {
 
         // Canonical IRI: v2 pages carry it as a property; legacy pages compute it.
         let canonical_iri = match format {
-            PageFormat::V2Ontology | PageFormat::V2Note => {
-                extract_property(&file.content, "iri")
-                    .unwrap_or_else(|| canonical_iri(owner, &file.path))
-            }
+            PageFormat::V2Ontology | PageFormat::V2Note => extract_property(&file.content, "iri")
+                .unwrap_or_else(|| canonical_iri(owner, &file.path)),
             _ => canonical_iri(owner, &file.path),
         };
 
@@ -476,12 +473,7 @@ impl KnowledgeGraphParser {
     }
 
     /// Build a `KGNodeDraft` for an indexed page (public or private).
-    fn build_kg_node(
-        &self,
-        meta: &PageMeta,
-        visibility: Visibility,
-        owner: &str,
-    ) -> KGNodeDraft {
+    fn build_kg_node(&self, meta: &PageMeta, visibility: Visibility, owner: &str) -> KGNodeDraft {
         // Reuse the legacy create_page_node logic for all the metadata /
         // ontology / position plumbing — we're not rewriting that.
         let mut node = self.create_page_node(&meta.title, &meta.raw_content);
@@ -554,10 +546,7 @@ impl KnowledgeGraphParser {
         let mut metadata = HashMap::new();
         metadata.insert("type".into(), "kg_stub".into());
         metadata.insert("canonical_iri".into(), target_iri.to_string());
-        metadata.insert(
-            "visibility".into(),
-            Visibility::Private.as_str().into(),
-        );
+        metadata.insert("visibility".into(), Visibility::Private.as_str().into());
         metadata.insert("owner_pubkey".into(), owner.to_string());
         // Preserve the authoring intent for the retraction job so it can
         // surface a useful audit trail if the stub is later pruned.
@@ -692,21 +681,15 @@ impl KnowledgeGraphParser {
         )
     }
 
-    
     pub fn parse(&self, content: &str, filename: &str) -> Result<GraphData, String> {
         info!("Parsing knowledge graph file: {}", filename);
 
-        
         let page_name = filename.strip_suffix(".md").unwrap_or(filename).to_string();
 
-        
         let nodes = vec![self.create_page_node(&page_name, content)];
         let mut id_to_metadata = HashMap::new();
         id_to_metadata.insert(nodes[0].id.to_string(), page_name.clone());
 
-        
-        
-        
         // Wikilink edges-only: create Edge objects for [[WikiLinks]] without
         // inflating the node count. Only edges are emitted; target nodes are NOT
         // created here. Edges whose target doesn't exist as a page node will
@@ -755,7 +738,9 @@ impl KnowledgeGraphParser {
             .expect("invalid property regex");
         let mut owl_class_iri: Option<String> = None;
         for cap in prop_re.captures_iter(content) {
-            let (Some(k), Some(v)) = (cap.get(1), cap.get(2)) else { continue };
+            let (Some(k), Some(v)) = (cap.get(1), cap.get(2)) else {
+                continue;
+            };
             let key = k.as_str();
             let mut value = v.as_str().trim().to_string();
             if matches!(key, "source-domain" | "domain" | "source_domain") {
@@ -781,11 +766,13 @@ impl KnowledgeGraphParser {
         // regex only runs once.  The `maturity` key is checked first, then
         // `status` as a fallback (some older pages use `status::` instead).
         let physicality = PhysicalityCode::from_logseq(
-            metadata.get("owl:physicality").map(|s| s.as_str()).unwrap_or(""),
+            metadata
+                .get("owl:physicality")
+                .map(|s| s.as_str())
+                .unwrap_or(""),
         );
-        let role = RoleCode::from_logseq(
-            metadata.get("owl:role").map(|s| s.as_str()).unwrap_or(""),
-        );
+        let role =
+            RoleCode::from_logseq(metadata.get("owl:role").map(|s| s.as_str()).unwrap_or(""));
         let maturity = MaturityLevel::from_logseq(
             metadata
                 .get("maturity")
@@ -827,14 +814,17 @@ impl KnowledgeGraphParser {
         // Node fields so they serialize to JSON / propagate to Neo4j
         // without downstream consumers needing to dig into the generic map.
         let preferred_term_field = metadata.get("preferred-term").cloned();
-        let domain_field = metadata.get("domain")
+        let domain_field = metadata
+            .get("domain")
             .or_else(|| metadata.get("source-domain"))
             .or_else(|| metadata.get("source_domain"))
             .cloned()
             .map(|d| d.to_lowercase());
-        let quality_score_field = metadata.get("quality-score")
+        let quality_score_field = metadata
+            .get("quality-score")
             .and_then(|v| v.parse::<f32>().ok());
-        let authority_score_field = metadata.get("authority-score")
+        let authority_score_field = metadata
+            .get("authority-score")
             .and_then(|v| v.parse::<f32>().ok());
         let content_hash_field = metadata.get("content-hash").cloned();
         let rdf_type_field = metadata.get("rdf-type").cloned();
@@ -884,8 +874,7 @@ impl KnowledgeGraphParser {
             authority_score: authority_score_field,
             preferred_term: preferred_term_field,
             graph_source: None,
-            kind_id: graph_cognition_core::NodeKind::from_legacy_type("page")
-                .map(|k| k.kind_id()),
+            kind_id: graph_cognition_core::NodeKind::from_legacy_type("page").map(|k| k.kind_id()),
         }
     }
 
@@ -912,8 +901,8 @@ impl KnowledgeGraphParser {
         // Strip OntologyBlock section so taxonomy references don't become edges
         let content = Self::strip_ontology_block(content);
 
-        let link_pattern = regex::Regex::new(r"\[\[([^\]|]+)(?:\|[^\]]+)?\]\]")
-            .expect("Invalid regex pattern");
+        let link_pattern =
+            regex::Regex::new(r"\[\[([^\]|]+)(?:\|[^\]]+)?\]\]").expect("Invalid regex pattern");
 
         for cap in link_pattern.captures_iter(content) {
             if let Some(link_match) = cap.get(1) {
@@ -954,7 +943,8 @@ impl KnowledgeGraphParser {
         let mut nodes = Vec::new();
         let mut edges = Vec::new();
 
-        let link_pattern = regex::Regex::new(r"\[\[([^\]|]+)(?:\|[^\]]+)?\]\]").expect("Invalid regex pattern");
+        let link_pattern =
+            regex::Regex::new(r"\[\[([^\]|]+)(?:\|[^\]]+)?\]\]").expect("Invalid regex pattern");
 
         for cap in link_pattern.captures_iter(content) {
             if let Some(link_match) = cap.get(1) {
@@ -1051,14 +1041,17 @@ impl KnowledgeGraphParser {
         m.node_id = self.page_name_to_id(page_name).to_string();
 
         for cap in prop_re.captures_iter(content) {
-            let (Some(k), Some(v)) = (cap.get(1), cap.get(2)) else { continue };
+            let (Some(k), Some(v)) = (cap.get(1), cap.get(2)) else {
+                continue;
+            };
             let key = k.as_str();
             let value = v.as_str().trim().to_string();
             match key {
                 "term-id" => m.term_id = Some(value),
                 "preferred-term" => m.preferred_term = Some(value),
-                "source-domain" | "domain" | "source_domain" =>
-                    m.source_domain = Some(value.to_lowercase()),
+                "source-domain" | "domain" | "source_domain" => {
+                    m.source_domain = Some(value.to_lowercase())
+                }
                 "status" | "ontology-status" => m.ontology_status = Some(value),
                 "owl:class" => m.owl_class = Some(value),
                 "owl:physicality" => m.owl_physicality = Some(value),
@@ -1067,8 +1060,7 @@ impl KnowledgeGraphParser {
                 "authority-score" => m.authority_score = value.parse().ok(),
                 "maturity" => m.maturity = Some(value),
                 "definition" => m.definition = Some(value),
-                "belongsToDomain" | "belongs-to-domain" =>
-                    m.belongs_to_domain.push(value),
+                "belongsToDomain" | "belongs-to-domain" => m.belongs_to_domain.push(value),
                 "is-subclass-of" => m.is_subclass_of.push(value),
                 _ => { /* preserved via node.metadata HashMap in create_page_node */ }
             }
@@ -1078,13 +1070,11 @@ impl KnowledgeGraphParser {
         store
     }
 
-    
     fn extract_tags(&self, content: &str) -> Vec<String> {
         let mut tags = Vec::new();
 
-        
-        let tag_pattern =
-            regex::Regex::new(r"#([a-zA-Z0-9_-]+)|tag::\s*#?([a-zA-Z0-9_-]+)").expect("Invalid regex pattern");
+        let tag_pattern = regex::Regex::new(r"#([a-zA-Z0-9_-]+)|tag::\s*#?([a-zA-Z0-9_-]+)")
+            .expect("Invalid regex pattern");
 
         for cap in tag_pattern.captures_iter(content) {
             if let Some(tag) = cap.get(1).or_else(|| cap.get(2)) {
@@ -1096,7 +1086,6 @@ impl KnowledgeGraphParser {
         tags
     }
 
-    
     /// Produce a stable u32 node ID from a page name.
     ///
     /// Uses BLAKE3 instead of `DefaultHasher` so the output is identical across
@@ -1225,8 +1214,7 @@ pub fn slugify_title(title: &str) -> String {
 /// Extract `[[Wikilink]]` targets from a page body. Handles the pipe
 /// alias form `[[Target|Display]]` — we keep `Target`.
 fn extract_wikilink_titles(content: &str) -> Vec<String> {
-    let re = regex::Regex::new(r"\[\[([^\]|]+)(?:\|[^\]]+)?\]\]")
-        .expect("invalid wikilink regex");
+    let re = regex::Regex::new(r"\[\[([^\]|]+)(?:\|[^\]]+)?\]\]").expect("invalid wikilink regex");
     let mut out = Vec::new();
     for cap in re.captures_iter(content) {
         if let Some(m) = cap.get(1) {
@@ -1242,8 +1230,8 @@ fn extract_wikilink_titles(content: &str) -> Vec<String> {
 /// Pod URL builder per ADR-051 §"Publish saga" step 2: owner-namespaced
 /// container (`public/` vs `private/`) with the slug as the resource name.
 pub fn pod_url_for(owner: &str, relative_path: &str, visibility: Visibility) -> String {
-    let base = std::env::var("POD_BASE_URL")
-        .unwrap_or_else(|_| "https://pods.visionclaw.org".to_string());
+    let base =
+        std::env::var("POD_BASE_URL").unwrap_or_else(|_| "https://pods.visionclaw.org".to_string());
     let container = match visibility {
         Visibility::Public => "public",
         Visibility::Private => "private",
@@ -1268,13 +1256,15 @@ pub fn pod_url_for(owner: &str, relative_path: &str, visibility: Visibility) -> 
 /// (because no matching node was supplied in this batch), the ON CREATE
 /// branch has a human-readable label to set instead of leaving the stub
 /// unlabelled — which causes the client to render the numeric node id.
-fn build_wikilink_ref_edge(source_id: u32, target_id: u32, wikilink_text: &str, run_id: &str) -> Edge {
+fn build_wikilink_ref_edge(
+    source_id: u32,
+    target_id: u32,
+    wikilink_text: &str,
+    run_id: &str,
+) -> Edge {
     let mut metadata = HashMap::new();
     metadata.insert("last_seen_run_id".to_string(), run_id.to_string());
-    metadata.insert(
-        "neo4j_relationship".to_string(),
-        "WikilinkRef".to_string(),
-    );
+    metadata.insert("neo4j_relationship".to_string(), "WikilinkRef".to_string());
     metadata.insert("target_wikilink".to_string(), wikilink_text.to_string());
 
     Edge {

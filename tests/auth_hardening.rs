@@ -19,9 +19,7 @@
 //! the isolation mechanism.
 
 use actix_web::{
-    body::to_bytes,
-    http::StatusCode,
-    test, web, App, HttpRequest, HttpResponse, Responder,
+    body::to_bytes, http::StatusCode, test, web, App, HttpRequest, HttpResponse, Responder,
 };
 use nostr_sdk::prelude::Keys;
 use std::sync::Mutex;

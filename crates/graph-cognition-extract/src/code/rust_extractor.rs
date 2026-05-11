@@ -453,7 +453,10 @@ mod tests {
 
     #[test]
     fn parse_use_glob() {
-        assert_eq!(parse_use_path("crate::prelude::*"), vec!["crate::prelude::*"]);
+        assert_eq!(
+            parse_use_path("crate::prelude::*"),
+            vec!["crate::prelude::*"]
+        );
     }
 
     // ── Full extraction tests ──
@@ -544,7 +547,10 @@ async fn fetch_remote_data(url: &str) -> Result<String, Box<dyn std::error::Erro
             .map(|n| n.label.as_str())
             .collect();
         assert!(fn_names.contains(&"process_graph"), "missing process_graph");
-        assert!(fn_names.contains(&"fetch_remote_data"), "missing fetch_remote_data");
+        assert!(
+            fn_names.contains(&"fetch_remote_data"),
+            "missing fetch_remote_data"
+        );
         assert!(fn_names.contains(&"new"), "missing new");
         assert!(fn_names.contains(&"node_count"), "missing node_count");
     }
@@ -559,7 +565,10 @@ async fn fetch_remote_data(url: &str) -> Result<String, Box<dyn std::error::Erro
             .map(|n| n.label.as_str())
             .collect();
         assert!(struct_names.contains(&"GraphNode"), "missing GraphNode");
-        assert!(struct_names.contains(&"GraphService"), "missing GraphService");
+        assert!(
+            struct_names.contains(&"GraphService"),
+            "missing GraphService"
+        );
     }
 
     #[test]
@@ -615,9 +624,7 @@ async fn fetch_remote_data(url: &str) -> Result<String, Box<dyn std::error::Erro
             "file module should contain process_graph"
         );
         assert!(
-            contains_targets
-                .iter()
-                .any(|u| u.ends_with(":GraphNode")),
+            contains_targets.iter().any(|u| u.ends_with(":GraphNode")),
             "file module should contain GraphNode"
         );
     }
@@ -638,7 +645,9 @@ async fn fetch_remote_data(url: &str) -> Result<String, Box<dyn std::error::Erro
             "should import HashMap"
         );
         assert!(
-            import_targets.iter().any(|u| u.contains("serde::Serialize")),
+            import_targets
+                .iter()
+                .any(|u| u.contains("serde::Serialize")),
             "should import Serialize"
         );
         assert!(

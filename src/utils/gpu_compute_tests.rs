@@ -59,7 +59,13 @@ mod tests {
             }
         };
 
-        match UnifiedGPUCompute::new_with_modules(100, 50, &main_ptx, clustering_ptx.as_deref(), None) {
+        match UnifiedGPUCompute::new_with_modules(
+            100,
+            50,
+            &main_ptx,
+            clustering_ptx.as_deref(),
+            None,
+        ) {
             Ok(compute) => {
                 println!("✓ Created UnifiedGPUCompute with modules successfully");
                 println!(
@@ -112,10 +118,7 @@ mod tests {
             ),
             (PTXModule::OntologyConstraints, "OntologyConstraints"),
             (PTXModule::Pagerank, "Pagerank"),
-            (
-                PTXModule::GpuConnectedComponents,
-                "GpuConnectedComponents",
-            ),
+            (PTXModule::GpuConnectedComponents, "GpuConnectedComponents"),
         ];
 
         let mut loaded_count = 0;
@@ -139,7 +142,6 @@ mod tests {
 
     #[test]
     fn test_gpu_compute_backward_compatibility() {
-        
         match load_ptx_module_sync(PTXModule::VisionflowUnified) {
             Ok(ptx_content) => match UnifiedGPUCompute::new(50, 25, &ptx_content) {
                 Ok(_compute) => {

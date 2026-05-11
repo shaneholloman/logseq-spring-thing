@@ -40,33 +40,21 @@ pub struct InferenceStatistics {
 
 #[async_trait]
 pub trait InferenceEngine: Send + Sync {
-    
     async fn load_ontology(&mut self, classes: Vec<OwlClass>, axioms: Vec<OwlAxiom>) -> Result<()>;
 
-    
     async fn infer(&mut self) -> Result<InferenceResults>;
 
-    
     async fn is_entailed(&self, axiom: &OwlAxiom) -> Result<bool>;
 
-    
-    
     async fn get_subclass_hierarchy(&self) -> Result<Vec<(String, String)>>;
 
-    
-    
     async fn classify_instance(&self, instance_iri: &str) -> Result<Vec<String>>;
 
-    
     async fn check_consistency(&self) -> Result<bool>;
 
-    
-    
     async fn explain_entailment(&self, axiom: &OwlAxiom) -> Result<Vec<OwlAxiom>>;
 
-    
     async fn clear(&mut self) -> Result<()>;
 
-    
     async fn get_statistics(&self) -> Result<InferenceStatistics>;
 }

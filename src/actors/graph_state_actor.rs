@@ -50,22 +50,23 @@
 //! ```
 
 use actix::prelude::*;
+use log::{debug, error, info, warn};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use log::{debug, info, warn, error};
 
 use crate::actors::messages::*;
-use crate::models::node::Node;
 use crate::models::edge::Edge;
-use crate::models::metadata::{MetadataStore, FileMetadata};
 use crate::models::graph::GraphData;
-use crate::models::graph_types::{classify_node_population, classify_ontology_subtype, NodePopulation, OntologySubtype};
+use crate::models::graph_types::{
+    classify_node_population, classify_ontology_subtype, NodePopulation, OntologySubtype,
+};
+use crate::models::metadata::{FileMetadata, MetadataStore};
+use crate::models::node::Node;
 
 // Ports (hexagonal architecture)
 use crate::ports::knowledge_graph_repository::KnowledgeGraphRepository;
 
 pub struct GraphStateActor {
-
     repository: Arc<dyn KnowledgeGraphRepository>,
 
     graph_data: Arc<GraphData>,
@@ -93,7 +94,6 @@ pub struct GraphStateActor {
 }
 
 impl GraphStateActor {
-    
     pub fn new(repository: Arc<dyn KnowledgeGraphRepository>) -> Self {
         info!("Initializing GraphStateActor with repository injection");
         Self {
@@ -112,7 +112,6 @@ impl GraphStateActor {
         }
     }
 
-    
     pub fn get_graph_data(&self) -> &GraphData {
         &self.graph_data
     }
@@ -179,13 +178,16 @@ impl GraphStateActor {
                 && n.label.is_empty())
         });
         let retained_ids: HashSet<u32> = filtered.nodes.iter().map(|n| n.id).collect();
-        filtered.edges.retain(|e| {
-            retained_ids.contains(&e.source) && retained_ids.contains(&e.target)
-        });
+        filtered
+            .edges
+            .retain(|e| retained_ids.contains(&e.source) && retained_ids.contains(&e.target));
         let after = filtered.nodes.len();
         info!(
             "GraphStateActor: Filtered {} empty kg_stub orphans ({} → {} nodes, {} edges)",
-            before - after, before, after, filtered.edges.len()
+            before - after,
+            before,
+            after,
+            filtered.edges.len()
         );
         Arc::new(filtered)
     }
@@ -260,7 +262,10 @@ impl GraphStateActor {
         self.agent_node_ids.clear();
 
         // ADR-036: Use canonical classify_node via collected node refs to avoid borrow conflict
-        let node_refs: Vec<(u32, Option<String>, Option<String>)> = self.graph_data.nodes.iter()
+        let node_refs: Vec<(u32, Option<String>, Option<String>)> = self
+            .graph_data
+            .nodes
+            .iter()
             .map(|n| (n.id, n.node_type.clone(), n.owl_class_iri.clone()))
             .collect();
 
@@ -274,19 +279,17 @@ impl GraphStateActor {
                         self.knowledge_node_ids.insert(*node_id);
                     }
                 }
-                NodePopulation::Ontology => {
-                    match classify_ontology_subtype(node_type.as_deref()) {
-                        OntologySubtype::Class | OntologySubtype::Unspecified => {
-                            self.ontology_class_ids.insert(*node_id);
-                        }
-                        OntologySubtype::Individual => {
-                            self.ontology_individual_ids.insert(*node_id);
-                        }
-                        OntologySubtype::Property => {
-                            self.ontology_property_ids.insert(*node_id);
-                        }
+                NodePopulation::Ontology => match classify_ontology_subtype(node_type.as_deref()) {
+                    OntologySubtype::Class | OntologySubtype::Unspecified => {
+                        self.ontology_class_ids.insert(*node_id);
                     }
-                }
+                    OntologySubtype::Individual => {
+                        self.ontology_individual_ids.insert(*node_id);
+                    }
+                    OntologySubtype::Property => {
+                        self.ontology_property_ids.insert(*node_id);
+                    }
+                },
                 NodePopulation::Agent => {
                     self.agent_node_ids.insert(*node_id);
                 }
@@ -330,13 +333,14 @@ impl GraphStateActor {
         info!("Added node {} to graph", node_id);
     }
 
-    
     fn remove_node(&mut self, node_id: u32) {
         if Arc::make_mut(&mut self.node_map).remove(&node_id).is_some() {
             let graph_data_mut = Arc::make_mut(&mut self.graph_data);
             graph_data_mut.nodes.retain(|n| n.id != node_id);
 
-            graph_data_mut.edges.retain(|e| e.source != node_id && e.target != node_id);
+            graph_data_mut
+                .edges
+                .retain(|e| e.source != node_id && e.target != node_id);
 
             // Remove from all type classification sets
             self.knowledge_node_ids.remove(&node_id);
@@ -359,18 +363,21 @@ impl GraphStateActor {
         }
     }
 
-    
     fn add_edge(&mut self, edge: Edge) {
-
         if !self.node_map.contains_key(&edge.source) {
-            warn!("Cannot add edge: source node {} does not exist", edge.source);
+            warn!(
+                "Cannot add edge: source node {} does not exist",
+                edge.source
+            );
             return;
         }
         if !self.node_map.contains_key(&edge.target) {
-            warn!("Cannot add edge: target node {} does not exist", edge.target);
+            warn!(
+                "Cannot add edge: target node {} does not exist",
+                edge.target
+            );
             return;
         }
-
 
         Arc::make_mut(&mut self.graph_data).edges.push(edge.clone());
 
@@ -379,14 +386,19 @@ impl GraphStateActor {
         let edge_clone = edge.clone();
         actix::spawn(async move {
             if let Err(e) = repository.add_edge(&edge_clone).await {
-                error!("Failed to persist add_edge({}->{}) to Neo4j: {}", edge_clone.source, edge_clone.target, e);
+                error!(
+                    "Failed to persist add_edge({}->{}) to Neo4j: {}",
+                    edge_clone.source, edge_clone.target, e
+                );
             }
         });
 
-        info!("Added edge from {} to {} with weight {}", edge.source, edge.target, edge.weight);
+        info!(
+            "Added edge from {} to {} with weight {}",
+            edge.source, edge.target, edge.weight
+        );
     }
 
-    
     fn remove_edge(&mut self, edge_id: &str) {
         let graph_data_mut = Arc::make_mut(&mut self.graph_data);
         let initial_count = graph_data_mut.edges.len();
@@ -400,7 +412,10 @@ impl GraphStateActor {
             let edge_id_owned = edge_id.to_string();
             actix::spawn(async move {
                 if let Err(e) = repository.remove_edge(&edge_id_owned).await {
-                    error!("Failed to persist remove_edge({}) to Neo4j: {}", edge_id_owned, e);
+                    error!(
+                        "Failed to persist remove_edge({}) to Neo4j: {}",
+                        edge_id_owned, e
+                    );
                 }
             });
 
@@ -410,14 +425,19 @@ impl GraphStateActor {
         }
     }
 
-    
     fn build_from_metadata(&mut self, metadata: MetadataStore) -> Result<(), String> {
         let mut new_graph_data = GraphData::new();
 
         // Preserve existing positions by metadata_id
-        let mut existing_positions: HashMap<String, (crate::types::vec3::Vec3Data, crate::types::vec3::Vec3Data)> = HashMap::new();
+        let mut existing_positions: HashMap<
+            String,
+            (crate::types::vec3::Vec3Data, crate::types::vec3::Vec3Data),
+        > = HashMap::new();
         for node in &self.graph_data.nodes {
-            existing_positions.insert(node.metadata_id.clone(), (node.data.position(), node.data.velocity()));
+            existing_positions.insert(
+                node.metadata_id.clone(),
+                (node.data.position(), node.data.velocity()),
+            );
         }
 
         // Assign compact IDs directly (0..N-1)
@@ -451,7 +471,8 @@ impl GraphStateActor {
         // neo4j_ontology_repository). No client-side edge generation.
 
         self.graph_data = Arc::new(new_graph_data);
-        self.next_node_id.store(compact_id, std::sync::atomic::Ordering::SeqCst);
+        self.next_node_id
+            .store(compact_id, std::sync::atomic::Ordering::SeqCst);
         self.metadata_store = metadata.clone();
 
         // Rebuild node_map with compact IDs
@@ -472,22 +493,27 @@ impl GraphStateActor {
                 if let Err(e) = repo.save_graph(&graph_snapshot).await {
                     error!("Failed to persist graph with edges to Neo4j: {}", e);
                 } else {
-                    info!("Persisted {} edges to Neo4j after metadata build", graph_snapshot.edges.len());
+                    info!(
+                        "Persisted {} edges to Neo4j after metadata build",
+                        graph_snapshot.edges.len()
+                    );
                 }
             });
         }
 
-        info!("Built graph from metadata: {} nodes, {} edges (compact IDs 0..{})",
-              self.graph_data.nodes.len(), self.graph_data.edges.len(),
-              self.graph_data.nodes.len().saturating_sub(1));
+        info!(
+            "Built graph from metadata: {} nodes, {} edges (compact IDs 0..{})",
+            self.graph_data.nodes.len(),
+            self.graph_data.edges.len(),
+            self.graph_data.nodes.len().saturating_sub(1)
+        );
 
         Ok(())
     }
 
-    
     fn generate_random_position(&self, node: &mut Node) {
+        use rand::rngs::{OsRng, StdRng};
         use rand::{Rng, SeedableRng};
-        use rand::rngs::{StdRng, OsRng};
 
         let mut rng = StdRng::from_seed(OsRng.gen());
         // Initial scatter within bounds_size (≈±80 units) — keeps the warmup
@@ -507,9 +533,7 @@ impl GraphStateActor {
         node.data.vz = rng.gen_range(-0.2..0.2);
     }
 
-    
     fn configure_node_from_metadata(&self, node: &mut Node, metadata: &FileMetadata) {
-
         node.label = metadata.file_name.clone();
 
         let path = std::path::Path::new(&metadata.file_name);
@@ -528,28 +552,38 @@ impl GraphStateActor {
             }
         }
 
-        node.metadata.insert("file_name".to_string(), metadata.file_name.clone());
-        node.metadata.insert("file_size".to_string(), size.to_string());
-        node.metadata.insert("last_modified".to_string(), metadata.last_modified.to_string());
+        node.metadata
+            .insert("file_name".to_string(), metadata.file_name.clone());
+        node.metadata
+            .insert("file_size".to_string(), size.to_string());
+        node.metadata.insert(
+            "last_modified".to_string(),
+            metadata.last_modified.to_string(),
+        );
 
         // Copy ontology fields to node metadata for edge generation and client display
         if let Some(ref domain) = metadata.source_domain {
-            node.metadata.insert("source_domain".to_string(), domain.clone());
+            node.metadata
+                .insert("source_domain".to_string(), domain.clone());
         }
         if !metadata.is_subclass_of.is_empty() {
-            node.metadata.insert("is_subclass_of".to_string(), metadata.is_subclass_of.join(","));
+            node.metadata.insert(
+                "is_subclass_of".to_string(),
+                metadata.is_subclass_of.join(","),
+            );
         }
 
         // Copy quality and authority scores to node.metadata for filtering
         if let Some(quality) = metadata.quality_score {
-            node.metadata.insert("quality_score".to_string(), quality.to_string());
+            node.metadata
+                .insert("quality_score".to_string(), quality.to_string());
         }
         if let Some(authority) = metadata.authority_score {
-            node.metadata.insert("authority_score".to_string(), authority.to_string());
+            node.metadata
+                .insert("authority_score".to_string(), authority.to_string());
         }
     }
 
-    
     fn color_for_extension(path: &std::path::Path) -> String {
         match path.extension().and_then(|s| s.to_str()) {
             Some("rs") => "#CE422B".to_string(),
@@ -572,8 +606,11 @@ impl GraphStateActor {
         let mut current_id = self.next_node_id.load(std::sync::atomic::Ordering::SeqCst);
 
         for (metadata_id, file_metadata) in metadata.iter() {
-
-            if self.node_map.values().any(|n| n.metadata_id == *metadata_id) {
+            if self
+                .node_map
+                .values()
+                .any(|n| n.metadata_id == *metadata_id)
+            {
                 continue;
             }
 
@@ -586,7 +623,8 @@ impl GraphStateActor {
             added_count += 1;
         }
 
-        self.next_node_id.store(current_id, std::sync::atomic::Ordering::SeqCst);
+        self.next_node_id
+            .store(current_id, std::sync::atomic::Ordering::SeqCst);
         info!("Added {} new nodes from metadata", added_count);
 
         // Merge new metadata into stored metadata for node configuration.
@@ -598,9 +636,11 @@ impl GraphStateActor {
         Ok(())
     }
 
-    
-    fn update_node_from_metadata(&mut self, metadata_id: String, metadata: FileMetadata) -> Result<(), String> {
-        
+    fn update_node_from_metadata(
+        &mut self,
+        metadata_id: String,
+        metadata: FileMetadata,
+    ) -> Result<(), String> {
         let mut node_found = false;
 
         // Scope the mutable borrow of node_map
@@ -614,15 +654,19 @@ impl GraphStateActor {
                     node.color = Some(Self::color_for_extension(path));
                     let size = metadata.file_size;
                     node.size = Some(10.0 + (size as f32 / 1000.0).min(50.0));
-                    node.metadata.insert("file_name".to_string(), metadata.file_name.clone());
-                    node.metadata.insert("file_size".to_string(), size.to_string());
-                    node.metadata.insert("last_modified".to_string(), metadata.last_modified.to_string());
+                    node.metadata
+                        .insert("file_name".to_string(), metadata.file_name.clone());
+                    node.metadata
+                        .insert("file_size".to_string(), size.to_string());
+                    node.metadata.insert(
+                        "last_modified".to_string(),
+                        metadata.last_modified.to_string(),
+                    );
                     node_found = true;
                     break;
                 }
             }
         } // Release mutable borrow
-
 
         if node_found {
             // Scope the mutable borrow of graph_data
@@ -636,9 +680,14 @@ impl GraphStateActor {
                         node.color = Some(Self::color_for_extension(path));
                         let size = metadata.file_size;
                         node.size = Some(10.0 + (size as f32 / 1000.0).min(50.0));
-                        node.metadata.insert("file_name".to_string(), metadata.file_name.clone());
-                        node.metadata.insert("file_size".to_string(), size.to_string());
-                        node.metadata.insert("last_modified".to_string(), metadata.last_modified.to_string());
+                        node.metadata
+                            .insert("file_name".to_string(), metadata.file_name.clone());
+                        node.metadata
+                            .insert("file_size".to_string(), size.to_string());
+                        node.metadata.insert(
+                            "last_modified".to_string(),
+                            metadata.last_modified.to_string(),
+                        );
                         break;
                     }
                 }
@@ -651,10 +700,10 @@ impl GraphStateActor {
         }
     }
 
-    
     fn remove_node_by_metadata(&mut self, metadata_id: String) -> Result<(), String> {
-        
-        let node_id = self.node_map.values()
+        let node_id = self
+            .node_map
+            .values()
             .find(|n| n.metadata_id == metadata_id)
             .map(|n| n.id);
 
@@ -662,24 +711,33 @@ impl GraphStateActor {
             self.remove_node(id);
             Ok(())
         } else {
-            warn!("Node with metadata_id {} not found for removal", metadata_id);
+            warn!(
+                "Node with metadata_id {} not found for removal",
+                metadata_id
+            );
             Err(format!("Node with metadata_id {} not found", metadata_id))
         }
     }
 
-    
-    fn compute_shortest_paths(&self, source_node_id: u32) -> Result<HashMap<u32, (f32, Vec<u32>)>, String> {
+    fn compute_shortest_paths(
+        &self,
+        source_node_id: u32,
+    ) -> Result<HashMap<u32, (f32, Vec<u32>)>, String> {
         if !self.node_map.contains_key(&source_node_id) {
             return Err(format!("Source node {} not found", source_node_id));
         }
 
         let mut distances: HashMap<u32, f32> = HashMap::new();
         let mut predecessors: HashMap<u32, u32> = HashMap::new();
-        let mut unvisited: std::collections::BTreeSet<(ordered_float::OrderedFloat<f32>, u32)> = std::collections::BTreeSet::new();
+        let mut unvisited: std::collections::BTreeSet<(ordered_float::OrderedFloat<f32>, u32)> =
+            std::collections::BTreeSet::new();
 
-        
         for &node_id in self.node_map.keys() {
-            let distance = if node_id == source_node_id { 0.0 } else { f32::INFINITY };
+            let distance = if node_id == source_node_id {
+                0.0
+            } else {
+                f32::INFINITY
+            };
             distances.insert(node_id, distance);
             unvisited.insert((ordered_float::OrderedFloat(distance), node_id));
         }
@@ -688,10 +746,9 @@ impl GraphStateActor {
             let current_distance = current_distance.into_inner();
 
             if current_distance == f32::INFINITY {
-                break; 
+                break;
             }
 
-            
             for edge in &self.graph_data.edges {
                 let (neighbor, edge_weight) = if edge.source == current_node {
                     (edge.target, edge.weight)
@@ -705,20 +762,16 @@ impl GraphStateActor {
                 let old_distance = distances.get(&neighbor).copied().unwrap_or(f32::INFINITY);
 
                 if new_distance < old_distance {
-                    
                     unvisited.remove(&(ordered_float::OrderedFloat(old_distance), neighbor));
 
-                    
                     distances.insert(neighbor, new_distance);
                     predecessors.insert(neighbor, current_node);
 
-                    
                     unvisited.insert((ordered_float::OrderedFloat(new_distance), neighbor));
                 }
             }
         }
 
-        
         let mut result: HashMap<u32, (f32, Vec<u32>)> = HashMap::new();
 
         for (&target_node, &distance) in &distances {
@@ -726,7 +779,6 @@ impl GraphStateActor {
                 let mut path = Vec::new();
                 let mut current = target_node;
 
-                
                 while current != source_node_id {
                     path.push(current);
                     if let Some(&prev) = predecessors.get(&current) {
@@ -742,8 +794,11 @@ impl GraphStateActor {
             }
         }
 
-        info!("Computed shortest paths from node {} to {} reachable nodes",
-              source_node_id, result.len());
+        info!(
+            "Computed shortest paths from node {} to {} reachable nodes",
+            source_node_id,
+            result.len()
+        );
 
         Ok(result)
     }
@@ -762,8 +817,11 @@ impl Actor for GraphStateActor {
             async move {
                 match repository.load_graph().await {
                     Ok(arc_graph_data) => {
-                        info!("Successfully loaded graph from Neo4j: {} nodes, {} edges",
-                              arc_graph_data.nodes.len(), arc_graph_data.edges.len());
+                        info!(
+                            "Successfully loaded graph from Neo4j: {} nodes, {} edges",
+                            arc_graph_data.nodes.len(),
+                            arc_graph_data.edges.len()
+                        );
                         Some(arc_graph_data)
                     }
                     Err(e) => {
@@ -785,7 +843,8 @@ impl Actor for GraphStateActor {
 
                     // Next ID must exceed the max existing Neo4j ID
                     let max_id = act.graph_data.nodes.iter().map(|n| n.id).max().unwrap_or(0);
-                    act.next_node_id.store(max_id + 1, std::sync::atomic::Ordering::SeqCst);
+                    act.next_node_id
+                        .store(max_id + 1, std::sync::atomic::Ordering::SeqCst);
 
                     // Classify all loaded nodes into type sets (using compact IDs)
                     act.reclassify_all_nodes();
@@ -799,15 +858,25 @@ impl Actor for GraphStateActor {
                         actix::spawn(async move {
                             for edge in &edges_to_save {
                                 if let Err(e) = repo.add_edge(edge).await {
-                                    error!("Failed to persist edge {}->{}: {}", edge.source, edge.target, e);
+                                    error!(
+                                        "Failed to persist edge {}->{}: {}",
+                                        edge.source, edge.target, e
+                                    );
                                 }
                             }
-                            debug!("Persisted {} edges to Neo4j for {} nodes", edges_to_save.len(), node_count);
+                            debug!(
+                                "Persisted {} edges to Neo4j for {} nodes",
+                                edges_to_save.len(),
+                                node_count
+                            );
                         });
                     }
 
-                    debug!("GraphStateActor initialized with {} nodes, {} edges from Neo4j",
-                          act.graph_data.nodes.len(), act.graph_data.edges.len());
+                    debug!(
+                        "GraphStateActor initialized with {} nodes, {} edges from Neo4j",
+                        act.graph_data.nodes.len(),
+                        act.graph_data.edges.len()
+                    );
                 } else {
                     warn!("GraphStateActor starting with empty graph due to load failure");
                 }
@@ -834,14 +903,18 @@ impl Handler<UpdateNodePositions> for GraphStateActor {
 
         // Build a lookup using real graph node IDs (from gpu_index_to_graph_id)
         // when available, otherwise fall back to wire IDs from the tuple.
-        let pos_map: std::collections::HashMap<u32, &crate::utils::socket_flow_messages::BinaryNodeDataClient> =
-            if let Some(ref graph_ids) = msg.graph_node_ids {
-                graph_ids.iter().zip(msg.positions.iter())
-                    .map(|(gid, (_, data))| (*gid, data))
-                    .collect()
-            } else {
-                msg.positions.iter().map(|(id, data)| (*id, data)).collect()
-            };
+        let pos_map: std::collections::HashMap<
+            u32,
+            &crate::utils::socket_flow_messages::BinaryNodeDataClient,
+        > = if let Some(ref graph_ids) = msg.graph_node_ids {
+            graph_ids
+                .iter()
+                .zip(msg.positions.iter())
+                .map(|(gid, (_, data))| (*gid, data))
+                .collect()
+        } else {
+            msg.positions.iter().map(|(id, data)| (*id, data)).collect()
+        };
 
         // Mutate the Arc<GraphData> in-place (clones on first mutation if shared)
         let graph_data = Arc::make_mut(&mut self.graph_data);
@@ -885,7 +958,10 @@ impl Handler<UpdateNodePositions> for GraphStateActor {
         }
 
         if updated > 0 {
-            debug!("GraphStateActor: Updated {} node positions from GPU", updated);
+            debug!(
+                "GraphStateActor: Updated {} node positions from GPU",
+                updated
+            );
         }
         Ok(())
     }
@@ -949,7 +1025,10 @@ impl Handler<BuildGraphFromMetadata> for GraphStateActor {
     type Result = Result<(), String>;
 
     fn handle(&mut self, msg: BuildGraphFromMetadata, _ctx: &mut Self::Context) -> Self::Result {
-        info!("BuildGraphFromMetadata handler called with {} metadata entries", msg.metadata.len());
+        info!(
+            "BuildGraphFromMetadata handler called with {} metadata entries",
+            msg.metadata.len()
+        );
         self.build_from_metadata(msg.metadata)
     }
 }
@@ -982,8 +1061,11 @@ impl Handler<UpdateGraphData> for GraphStateActor {
     type Result = Result<(), String>;
 
     fn handle(&mut self, msg: UpdateGraphData, _ctx: &mut Self::Context) -> Self::Result {
-        info!("Updating graph data with {} nodes, {} edges",
-              msg.graph_data.nodes.len(), msg.graph_data.edges.len());
+        info!(
+            "Updating graph data with {} nodes, {} edges",
+            msg.graph_data.nodes.len(),
+            msg.graph_data.edges.len()
+        );
 
         self.graph_data = msg.graph_data;
 
@@ -1012,25 +1094,27 @@ impl Handler<UpdateBotsGraph> for GraphStateActor {
     type Result = ();
 
     fn handle(&mut self, msg: UpdateBotsGraph, _ctx: &mut Context<Self>) -> Self::Result {
-        
         let mut nodes = vec![];
         let mut edges = vec![];
 
         let bot_id_offset = 10000;
 
-        
-        let mut existing_positions: HashMap<String, (crate::types::vec3::Vec3Data, crate::types::vec3::Vec3Data)> = HashMap::new();
+        let mut existing_positions: HashMap<
+            String,
+            (crate::types::vec3::Vec3Data, crate::types::vec3::Vec3Data),
+        > = HashMap::new();
         for node in &self.bots_graph_data.nodes {
-            existing_positions.insert(node.metadata_id.clone(), (node.data.position(), node.data.velocity()));
+            existing_positions.insert(
+                node.metadata_id.clone(),
+                (node.data.position(), node.data.velocity()),
+            );
         }
 
-        
         for (i, agent) in msg.agents.iter().enumerate() {
             let node_id = bot_id_offset + i as u32;
             let mut node = Node::new_with_id(agent.id.clone(), Some(node_id));
 
             if let Some((saved_position, saved_velocity)) = existing_positions.get(&agent.id) {
-                
                 node.data.x = saved_position.x;
                 node.data.y = saved_position.y;
                 node.data.z = saved_position.z;
@@ -1041,7 +1125,6 @@ impl Handler<UpdateBotsGraph> for GraphStateActor {
                 self.generate_random_position(&mut node);
             }
 
-            
             node.color = Some(match agent.agent_type.as_str() {
                 "coordinator" => "#FF6B6B".to_string(),
                 "researcher" => "#4ECDC4".to_string(),
@@ -1055,25 +1138,31 @@ impl Handler<UpdateBotsGraph> for GraphStateActor {
             node.label = agent.name.clone();
             node.size = Some(20.0 + (agent.workload * 25.0));
 
-            
-            node.metadata.insert("agent_type".to_string(), agent.agent_type.clone());
-            node.metadata.insert("status".to_string(), agent.status.clone());
-            node.metadata.insert("cpu_usage".to_string(), agent.cpu_usage.to_string());
-            node.metadata.insert("memory_usage".to_string(), agent.memory_usage.to_string());
-            node.metadata.insert("health".to_string(), agent.health.to_string());
-            node.metadata.insert("is_agent".to_string(), "true".to_string());
+            node.metadata
+                .insert("agent_type".to_string(), agent.agent_type.clone());
+            node.metadata
+                .insert("status".to_string(), agent.status.clone());
+            node.metadata
+                .insert("cpu_usage".to_string(), agent.cpu_usage.to_string());
+            node.metadata
+                .insert("memory_usage".to_string(), agent.memory_usage.to_string());
+            node.metadata
+                .insert("health".to_string(), agent.health.to_string());
+            node.metadata
+                .insert("is_agent".to_string(), "true".to_string());
 
             nodes.push(node);
         }
 
-        
         for (i, source_agent) in msg.agents.iter().enumerate() {
             for (j, target_agent) in msg.agents.iter().enumerate() {
                 if i != j {
                     let source_node_id = bot_id_offset + i as u32;
                     let target_node_id = bot_id_offset + j as u32;
 
-                    let communication_intensity = if source_agent.agent_type == "coordinator" || target_agent.agent_type == "coordinator" {
+                    let communication_intensity = if source_agent.agent_type == "coordinator"
+                        || target_agent.agent_type == "coordinator"
+                    {
                         0.8
                     } else if source_agent.status == "active" && target_agent.status == "active" {
                         0.5
@@ -1082,17 +1171,21 @@ impl Handler<UpdateBotsGraph> for GraphStateActor {
                     };
 
                     if communication_intensity > 0.1 {
-                        let mut edge = Edge::new(source_node_id, target_node_id, communication_intensity);
+                        let mut edge =
+                            Edge::new(source_node_id, target_node_id, communication_intensity);
                         let metadata = edge.metadata.get_or_insert_with(HashMap::new);
-                        metadata.insert("communication_type".to_string(), "agent_collaboration".to_string());
-                        metadata.insert("intensity".to_string(), communication_intensity.to_string());
+                        metadata.insert(
+                            "communication_type".to_string(),
+                            "agent_collaboration".to_string(),
+                        );
+                        metadata
+                            .insert("intensity".to_string(), communication_intensity.to_string());
                         edges.push(edge);
                     }
                 }
             }
         }
 
-        
         let bots_graph_data_mut = Arc::make_mut(&mut self.bots_graph_data);
         bots_graph_data_mut.nodes = nodes;
         bots_graph_data_mut.edges = edges;
@@ -1103,8 +1196,12 @@ impl Handler<UpdateBotsGraph> for GraphStateActor {
             self.agent_node_ids.insert(node.id);
         }
 
-        info!("Updated bots graph with {} agents and {} edges (agent_node_ids={})",
-             msg.agents.len(), self.bots_graph_data.edges.len(), self.agent_node_ids.len());
+        info!(
+            "Updated bots graph with {} agents and {} edges (agent_node_ids={})",
+            msg.agents.len(),
+            self.bots_graph_data.edges.len(),
+            self.agent_node_ids.len()
+        );
     }
 }
 
@@ -1147,7 +1244,8 @@ impl Handler<ReloadGraphFromDatabase> for GraphStateActor {
 
                         // Next ID must exceed the max existing Neo4j ID
                         let max_id = act.graph_data.nodes.iter().map(|n| n.id).max().unwrap_or(0);
-                        act.next_node_id.store(max_id + 1, std::sync::atomic::Ordering::SeqCst);
+                        act.next_node_id
+                            .store(max_id + 1, std::sync::atomic::Ordering::SeqCst);
 
                         // Reclassify all nodes after reload (using compact IDs)
                         act.reclassify_all_nodes();
@@ -1163,7 +1261,10 @@ impl Handler<ReloadGraphFromDatabase> for GraphStateActor {
                                         error!("Failed to persist edge: {}", e);
                                     }
                                 }
-                                debug!("Persisted {} generated edges to Neo4j", edges_to_save.len());
+                                debug!(
+                                    "Persisted {} generated edges to Neo4j",
+                                    edges_to_save.len()
+                                );
                             });
                         }
 
@@ -1208,8 +1309,11 @@ impl Handler<ComputeShortestPaths> for GraphStateActor {
 
         match self.compute_shortest_paths(msg.source_node_id) {
             Ok(paths) => {
-                info!("Computed shortest paths from node {}: {} reachable nodes",
-                      msg.source_node_id, paths.len());
+                info!(
+                    "Computed shortest paths from node {}: {} reachable nodes",
+                    msg.source_node_id,
+                    paths.len()
+                );
 
                 // Convert HashMap<u32, Option<f32>> to HashMap<u32, f32> and Vec<u32>
                 let mut distances = HashMap::new();
@@ -1252,9 +1356,7 @@ impl Handler<ComputeShortestPaths> for GraphStateActor {
 mod tests {
     use super::*;
     use crate::models::metadata::Metadata;
-    use crate::ports::knowledge_graph_repository::{
-        GraphStatistics, KnowledgeGraphRepository,
-    };
+    use crate::ports::knowledge_graph_repository::{GraphStatistics, KnowledgeGraphRepository};
     use async_trait::async_trait;
     use std::collections::HashMap;
     use std::sync::Arc;
@@ -1264,79 +1366,153 @@ mod tests {
 
     #[async_trait]
     impl KnowledgeGraphRepository for StubRepository {
-        async fn load_graph(&self) -> crate::ports::knowledge_graph_repository::Result<Arc<GraphData>> {
+        async fn load_graph(
+            &self,
+        ) -> crate::ports::knowledge_graph_repository::Result<Arc<GraphData>> {
             Ok(Arc::new(GraphData::new()))
         }
-        async fn save_graph(&self, _graph: &GraphData) -> crate::ports::knowledge_graph_repository::Result<()> {
+        async fn save_graph(
+            &self,
+            _graph: &GraphData,
+        ) -> crate::ports::knowledge_graph_repository::Result<()> {
             Ok(())
         }
-        async fn add_node(&self, _node: &Node) -> crate::ports::knowledge_graph_repository::Result<u32> {
+        async fn add_node(
+            &self,
+            _node: &Node,
+        ) -> crate::ports::knowledge_graph_repository::Result<u32> {
             Ok(0)
         }
-        async fn batch_add_nodes(&self, _nodes: Vec<Node>) -> crate::ports::knowledge_graph_repository::Result<Vec<u32>> {
+        async fn batch_add_nodes(
+            &self,
+            _nodes: Vec<Node>,
+        ) -> crate::ports::knowledge_graph_repository::Result<Vec<u32>> {
             Ok(vec![])
         }
-        async fn update_node(&self, _node: &Node) -> crate::ports::knowledge_graph_repository::Result<()> {
+        async fn update_node(
+            &self,
+            _node: &Node,
+        ) -> crate::ports::knowledge_graph_repository::Result<()> {
             Ok(())
         }
-        async fn batch_update_nodes(&self, _nodes: Vec<Node>) -> crate::ports::knowledge_graph_repository::Result<()> {
+        async fn batch_update_nodes(
+            &self,
+            _nodes: Vec<Node>,
+        ) -> crate::ports::knowledge_graph_repository::Result<()> {
             Ok(())
         }
-        async fn remove_node(&self, _node_id: u32) -> crate::ports::knowledge_graph_repository::Result<()> {
+        async fn remove_node(
+            &self,
+            _node_id: u32,
+        ) -> crate::ports::knowledge_graph_repository::Result<()> {
             Ok(())
         }
-        async fn batch_remove_nodes(&self, _node_ids: Vec<u32>) -> crate::ports::knowledge_graph_repository::Result<()> {
+        async fn batch_remove_nodes(
+            &self,
+            _node_ids: Vec<u32>,
+        ) -> crate::ports::knowledge_graph_repository::Result<()> {
             Ok(())
         }
-        async fn get_node(&self, _node_id: u32) -> crate::ports::knowledge_graph_repository::Result<Option<Node>> {
+        async fn get_node(
+            &self,
+            _node_id: u32,
+        ) -> crate::ports::knowledge_graph_repository::Result<Option<Node>> {
             Ok(None)
         }
-        async fn get_nodes(&self, _node_ids: Vec<u32>) -> crate::ports::knowledge_graph_repository::Result<Vec<Node>> {
+        async fn get_nodes(
+            &self,
+            _node_ids: Vec<u32>,
+        ) -> crate::ports::knowledge_graph_repository::Result<Vec<Node>> {
             Ok(vec![])
         }
-        async fn get_nodes_by_metadata_id(&self, _metadata_id: &str) -> crate::ports::knowledge_graph_repository::Result<Vec<Node>> {
+        async fn get_nodes_by_metadata_id(
+            &self,
+            _metadata_id: &str,
+        ) -> crate::ports::knowledge_graph_repository::Result<Vec<Node>> {
             Ok(vec![])
         }
-        async fn get_nodes_by_owl_class_iri(&self, _iri: &str) -> crate::ports::knowledge_graph_repository::Result<Vec<Node>> {
+        async fn get_nodes_by_owl_class_iri(
+            &self,
+            _iri: &str,
+        ) -> crate::ports::knowledge_graph_repository::Result<Vec<Node>> {
             Ok(vec![])
         }
-        async fn search_nodes_by_label(&self, _label: &str) -> crate::ports::knowledge_graph_repository::Result<Vec<Node>> {
+        async fn search_nodes_by_label(
+            &self,
+            _label: &str,
+        ) -> crate::ports::knowledge_graph_repository::Result<Vec<Node>> {
             Ok(vec![])
         }
-        async fn add_edge(&self, _edge: &Edge) -> crate::ports::knowledge_graph_repository::Result<String> {
+        async fn add_edge(
+            &self,
+            _edge: &Edge,
+        ) -> crate::ports::knowledge_graph_repository::Result<String> {
             Ok(String::new())
         }
-        async fn batch_add_edges(&self, _edges: Vec<Edge>) -> crate::ports::knowledge_graph_repository::Result<Vec<String>> {
+        async fn batch_add_edges(
+            &self,
+            _edges: Vec<Edge>,
+        ) -> crate::ports::knowledge_graph_repository::Result<Vec<String>> {
             Ok(vec![])
         }
-        async fn update_edge(&self, _edge: &Edge) -> crate::ports::knowledge_graph_repository::Result<()> {
+        async fn update_edge(
+            &self,
+            _edge: &Edge,
+        ) -> crate::ports::knowledge_graph_repository::Result<()> {
             Ok(())
         }
-        async fn remove_edge(&self, _edge_id: &str) -> crate::ports::knowledge_graph_repository::Result<()> {
+        async fn remove_edge(
+            &self,
+            _edge_id: &str,
+        ) -> crate::ports::knowledge_graph_repository::Result<()> {
             Ok(())
         }
-        async fn batch_remove_edges(&self, _edge_ids: Vec<String>) -> crate::ports::knowledge_graph_repository::Result<()> {
+        async fn batch_remove_edges(
+            &self,
+            _edge_ids: Vec<String>,
+        ) -> crate::ports::knowledge_graph_repository::Result<()> {
             Ok(())
         }
-        async fn get_node_edges(&self, _node_id: u32) -> crate::ports::knowledge_graph_repository::Result<Vec<Edge>> {
+        async fn get_node_edges(
+            &self,
+            _node_id: u32,
+        ) -> crate::ports::knowledge_graph_repository::Result<Vec<Edge>> {
             Ok(vec![])
         }
-        async fn get_edges_between(&self, _src: u32, _tgt: u32) -> crate::ports::knowledge_graph_repository::Result<Vec<Edge>> {
+        async fn get_edges_between(
+            &self,
+            _src: u32,
+            _tgt: u32,
+        ) -> crate::ports::knowledge_graph_repository::Result<Vec<Edge>> {
             Ok(vec![])
         }
-        async fn batch_update_positions(&self, _positions: Vec<(u32, f32, f32, f32)>) -> crate::ports::knowledge_graph_repository::Result<()> {
+        async fn batch_update_positions(
+            &self,
+            _positions: Vec<(u32, f32, f32, f32)>,
+        ) -> crate::ports::knowledge_graph_repository::Result<()> {
             Ok(())
         }
-        async fn get_all_positions(&self) -> crate::ports::knowledge_graph_repository::Result<HashMap<u32, (f32, f32, f32)>> {
+        async fn get_all_positions(
+            &self,
+        ) -> crate::ports::knowledge_graph_repository::Result<HashMap<u32, (f32, f32, f32)>>
+        {
             Ok(HashMap::new())
         }
-        async fn query_nodes(&self, _query: &str) -> crate::ports::knowledge_graph_repository::Result<Vec<Node>> {
+        async fn query_nodes(
+            &self,
+            _query: &str,
+        ) -> crate::ports::knowledge_graph_repository::Result<Vec<Node>> {
             Ok(vec![])
         }
-        async fn get_neighbors(&self, _node_id: u32) -> crate::ports::knowledge_graph_repository::Result<Vec<Node>> {
+        async fn get_neighbors(
+            &self,
+            _node_id: u32,
+        ) -> crate::ports::knowledge_graph_repository::Result<Vec<Node>> {
             Ok(vec![])
         }
-        async fn get_statistics(&self) -> crate::ports::knowledge_graph_repository::Result<GraphStatistics> {
+        async fn get_statistics(
+            &self,
+        ) -> crate::ports::knowledge_graph_repository::Result<GraphStatistics> {
             Ok(GraphStatistics {
                 node_count: 0,
                 edge_count: 0,

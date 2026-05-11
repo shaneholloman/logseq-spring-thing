@@ -8,6 +8,8 @@
 //! - Applying inferences to the graph
 //! - System health monitoring and cache management
 
+use crate::ports::ontology_repository::OntologyRepository;
+use crate::{accepted, ok_json};
 use actix::Addr;
 use actix_web::{web, Error as ActixError, HttpRequest, HttpResponse, Responder};
 use actix_web_actors::ws;
@@ -17,8 +19,6 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::time::Duration as StdDuration;
 use uuid::Uuid;
-use crate::{ok_json, accepted};
-use crate::ports::ontology_repository::OntologyRepository;
 
 use crate::actors::messages::{
     ApplyInferences, ClearOntologyCaches, GetOntologyHealth, GetOntologyReport, LoadOntologyAxioms,
@@ -36,16 +36,14 @@ use crate::AppState;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LoadOntologyRequest {
-    
     pub content: String,
-    
+
     pub format: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LoadOntologyResponse {
-
     pub ontology_id: String,
 
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -55,67 +53,62 @@ pub struct LoadOntologyResponse {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LoadAxiomsRequest {
-    
     pub source: String,
-    
+
     pub format: Option<String>,
-    
+
     pub validate_immediately: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LoadAxiomsResponse {
-    
     pub ontology_id: String,
-    
+
     pub loaded_at: DateTime<Utc>,
-    
+
     pub axiom_count: Option<u32>,
-    
+
     pub loading_time_ms: u64,
-    
+
     pub validation_job_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ValidateRequest {
-    
     pub ontology_id: Option<String>,
-    
+
     pub mode: Option<ValidationModeDto>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MappingRequest {
-    
     pub config: ValidationConfigDto,
-    
+
     pub apply_to_all: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ValidationConfigDto {
-    
     pub enable_reasoning: Option<bool>,
-    
+
     pub reasoning_timeout_seconds: Option<u64>,
-    
+
     pub enable_inference: Option<bool>,
-    
+
     pub max_inference_depth: Option<usize>,
-    
+
     pub enable_caching: Option<bool>,
-    
+
     pub cache_ttl_seconds: Option<u64>,
-    
+
     pub validate_cardinality: Option<bool>,
-    
+
     pub validate_domains_ranges: Option<bool>,
-    
+
     pub validate_disjoint_classes: Option<bool>,
 }
 
@@ -138,15 +131,14 @@ impl From<ValidationConfigDto> for ValidationConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ValidationRequest {
-    
     pub ontology_id: String,
-    
+
     pub mode: ValidationModeDto,
-    
+
     pub priority: Option<u8>,
-    
+
     pub enable_websocket_updates: Option<bool>,
-    
+
     pub client_id: Option<String>,
 }
 
@@ -171,26 +163,24 @@ impl From<ValidationModeDto> for ValidationMode {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ValidationResponse {
-    
     pub job_id: String,
-    
+
     pub status: String,
-    
+
     pub estimated_completion: Option<DateTime<Utc>>,
-    
+
     pub queue_position: Option<usize>,
-    
+
     pub websocket_url: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ApplyInferencesRequest {
-    
     pub rdf_triples: Vec<RdfTripleDto>,
-    
+
     pub max_depth: Option<usize>,
-    
+
     pub update_graph: Option<bool>,
 }
 
@@ -234,26 +224,24 @@ impl From<RdfTriple> for RdfTripleDto {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct InferenceResult {
-    
     pub input_count: usize,
-    
+
     pub inferred_triples: Vec<RdfTripleDto>,
-    
+
     pub processing_time_ms: u64,
-    
+
     pub graph_updated: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HealthStatusResponse {
-    
     pub status: String,
-    
+
     pub health: OntologyHealthDto,
-    
+
     pub ontology_validation_enabled: bool,
-    
+
     pub timestamp: DateTime<Utc>,
 }
 
@@ -367,32 +355,38 @@ fn actor_timeout() -> StdDuration {
 }
 
 async fn extract_property_graph(state: &AppState) -> Result<PropertyGraph, ErrorResponse> {
-    use crate::services::owl_validator::{KGNode, GraphEdge};
+    use crate::services::owl_validator::{GraphEdge, KGNode};
 
     match state.ontology_repository.load_ontology_graph().await {
         Ok(graph_data) => {
-            let nodes: Vec<KGNode> = graph_data.nodes.iter().map(|n| {
-                let mut properties = HashMap::new();
-                properties.insert("label".to_string(), serde_json::json!(n.label));
-                if let Some(ref iri) = n.owl_class_iri {
-                    properties.insert("owl_class_iri".to_string(), serde_json::json!(iri));
-                }
-                KGNode {
-                    id: n.metadata_id.clone(),
-                    labels: vec![n.label.clone()],
-                    properties,
-                }
-            }).collect();
+            let nodes: Vec<KGNode> = graph_data
+                .nodes
+                .iter()
+                .map(|n| {
+                    let mut properties = HashMap::new();
+                    properties.insert("label".to_string(), serde_json::json!(n.label));
+                    if let Some(ref iri) = n.owl_class_iri {
+                        properties.insert("owl_class_iri".to_string(), serde_json::json!(iri));
+                    }
+                    KGNode {
+                        id: n.metadata_id.clone(),
+                        labels: vec![n.label.clone()],
+                        properties,
+                    }
+                })
+                .collect();
 
-            let edges: Vec<GraphEdge> = graph_data.edges.iter().map(|e| {
-                GraphEdge {
+            let edges: Vec<GraphEdge> = graph_data
+                .edges
+                .iter()
+                .map(|e| GraphEdge {
                     id: format!("{}-{}", e.source, e.target),
                     source: e.source.to_string(),
                     target: e.target.to_string(),
                     relationship_type: e.edge_type.clone().unwrap_or_else(|| "RELATES".to_string()),
                     properties: HashMap::new(),
-                }
-            }).collect();
+                })
+                .collect();
 
             Ok(PropertyGraph {
                 nodes,
@@ -400,12 +394,10 @@ async fn extract_property_graph(state: &AppState) -> Result<PropertyGraph, Error
                 metadata: HashMap::new(),
             })
         }
-        Err(e) => {
-            Err(ErrorResponse::new(
-                &format!("Failed to extract property graph: {}", e),
-                "PROPERTY_GRAPH_EXTRACTION_FAILED",
-            ))
-        }
+        Err(e) => Err(ErrorResponse::new(
+            &format!("Failed to extract property graph: {}", e),
+            "PROPERTY_GRAPH_EXTRACTION_FAILED",
+        )),
     }
 }
 
@@ -425,10 +417,16 @@ pub async fn load_axioms(state: web::Data<AppState>, body: web::Bytes) -> impl R
             MAX_AXIOM_CONTENT_SIZE
         );
         let error_response = ErrorResponse::new(
-            &format!("Payload too large: {} bytes exceeds maximum of {} bytes", body.len(), MAX_AXIOM_CONTENT_SIZE),
+            &format!(
+                "Payload too large: {} bytes exceeds maximum of {} bytes",
+                body.len(),
+                MAX_AXIOM_CONTENT_SIZE
+            ),
             "PAYLOAD_TOO_LARGE",
         );
-        return Ok::<HttpResponse, actix_web::Error>(HttpResponse::PayloadTooLarge().json(error_response));
+        return Ok::<HttpResponse, actix_web::Error>(
+            HttpResponse::PayloadTooLarge().json(error_response),
+        );
     }
 
     let (source, format) = if let Ok(req) = serde_json::from_slice::<LoadOntologyRequest>(&body) {
@@ -439,29 +437,32 @@ pub async fn load_axioms(state: web::Data<AppState>, body: web::Bytes) -> impl R
         (req.source, req.format)
     } else {
         let error_response = ErrorResponse::new("Invalid request format", "INVALID_REQUEST");
-        return Ok::<HttpResponse, actix_web::Error>(HttpResponse::BadRequest().json(error_response));
+        return Ok::<HttpResponse, actix_web::Error>(
+            HttpResponse::BadRequest().json(error_response),
+        );
     };
 
-
     if let Err(error) = check_feature_enabled().await {
-        return Ok::<HttpResponse, actix_web::Error>(HttpResponse::ServiceUnavailable().json(error));
+        return Ok::<HttpResponse, actix_web::Error>(
+            HttpResponse::ServiceUnavailable().json(error),
+        );
     }
 
     let start_time = std::time::Instant::now();
-
 
     let load_msg = LoadOntologyAxioms { source, format };
 
     let Some(ref ontology_addr) = state.ontology_actor_addr else {
         let error_response =
             ErrorResponse::new("Ontology actor not available", "ACTOR_UNAVAILABLE");
-        return Ok::<HttpResponse, actix_web::Error>(HttpResponse::ServiceUnavailable().json(error_response));
+        return Ok::<HttpResponse, actix_web::Error>(
+            HttpResponse::ServiceUnavailable().json(error_response),
+        );
     };
 
     match ontology_addr.send(load_msg).await {
         Ok(Ok(ontology_id)) => {
             let _loading_time_ms = start_time.elapsed().as_millis() as u64;
-
 
             let response = LoadOntologyResponse {
                 ontology_id: ontology_id.clone(),
@@ -490,11 +491,11 @@ pub async fn update_mapping(
 ) -> impl Responder {
     info!("Updating ontology mapping configuration");
 
-
     if let Err(error) = check_feature_enabled().await {
-        return Ok::<HttpResponse, actix_web::Error>(HttpResponse::ServiceUnavailable().json(error));
+        return Ok::<HttpResponse, actix_web::Error>(
+            HttpResponse::ServiceUnavailable().json(error),
+        );
     }
-
 
     let config = ValidationConfig::from(req.config.clone());
 
@@ -503,7 +504,9 @@ pub async fn update_mapping(
     let Some(ref ontology_addr) = state.ontology_actor_addr else {
         let error_response =
             ErrorResponse::new("Ontology actor not available", "ACTOR_UNAVAILABLE");
-        return Ok::<HttpResponse, actix_web::Error>(HttpResponse::ServiceUnavailable().json(error_response));
+        return Ok::<HttpResponse, actix_web::Error>(
+            HttpResponse::ServiceUnavailable().json(error_response),
+        );
     };
 
     match ontology_addr.send(update_msg).await {
@@ -537,15 +540,19 @@ pub async fn validate_ontology(
         req.ontology_id, req.mode
     );
 
-
     if let Err(error) = check_feature_enabled().await {
-        return Ok::<HttpResponse, actix_web::Error>(HttpResponse::ServiceUnavailable().json(error));
+        return Ok::<HttpResponse, actix_web::Error>(
+            HttpResponse::ServiceUnavailable().json(error),
+        );
     }
-
 
     let property_graph = match extract_property_graph(&state).await {
         Ok(graph) => graph,
-        Err(error) => return Ok::<HttpResponse, actix_web::Error>(HttpResponse::InternalServerError().json(error)),
+        Err(error) => {
+            return Ok::<HttpResponse, actix_web::Error>(
+                HttpResponse::InternalServerError().json(error),
+            )
+        }
     };
 
     let validation_msg = ValidateOntology {
@@ -557,13 +564,13 @@ pub async fn validate_ontology(
     let Some(ref ontology_addr) = state.ontology_actor_addr else {
         let error_response =
             ErrorResponse::new("Ontology actor not available", "ACTOR_UNAVAILABLE");
-        return Ok::<HttpResponse, actix_web::Error>(HttpResponse::ServiceUnavailable().json(error_response));
+        return Ok::<HttpResponse, actix_web::Error>(
+            HttpResponse::ServiceUnavailable().json(error_response),
+        );
     };
 
     match ontology_addr.send(validation_msg).await {
         Ok(Ok(report)) => {
-
-
             let response = ValidationResponse {
                 job_id: report.id.clone(),
                 status: "completed".to_string(),
@@ -603,9 +610,10 @@ pub async fn get_validation_report(
 
     info!("Retrieving validation report: {:?}", report_id);
 
-
     if let Err(error) = check_feature_enabled().await {
-        return Ok::<HttpResponse, actix_web::Error>(HttpResponse::ServiceUnavailable().json(error));
+        return Ok::<HttpResponse, actix_web::Error>(
+            HttpResponse::ServiceUnavailable().json(error),
+        );
     }
 
     let report_msg = GetOntologyReport { report_id };
@@ -613,7 +621,9 @@ pub async fn get_validation_report(
     let Some(ref ontology_addr) = state.ontology_actor_addr else {
         let error_response =
             ErrorResponse::new("Ontology actor not available", "ACTOR_UNAVAILABLE");
-        return Ok::<HttpResponse, actix_web::Error>(HttpResponse::ServiceUnavailable().json(error_response));
+        return Ok::<HttpResponse, actix_web::Error>(
+            HttpResponse::ServiceUnavailable().json(error_response),
+        );
     };
 
     match ontology_addr.send(report_msg).await {
@@ -645,13 +655,13 @@ pub async fn apply_inferences(
 ) -> impl Responder {
     info!("Applying inferences to {} triples", req.rdf_triples.len());
 
-
     if let Err(error) = check_feature_enabled().await {
-        return Ok::<HttpResponse, actix_web::Error>(HttpResponse::ServiceUnavailable().json(error));
+        return Ok::<HttpResponse, actix_web::Error>(
+            HttpResponse::ServiceUnavailable().json(error),
+        );
     }
 
     let start_time = std::time::Instant::now();
-
 
     let triples: Vec<RdfTriple> = req
         .rdf_triples
@@ -667,7 +677,9 @@ pub async fn apply_inferences(
     let Some(ref ontology_addr) = state.ontology_actor_addr else {
         let error_response =
             ErrorResponse::new("Ontology actor not available", "ACTOR_UNAVAILABLE");
-        return Ok::<HttpResponse, actix_web::Error>(HttpResponse::ServiceUnavailable().json(error_response));
+        return Ok::<HttpResponse, actix_web::Error>(
+            HttpResponse::ServiceUnavailable().json(error_response),
+        );
     };
 
     match ontology_addr.send(apply_msg).await {
@@ -711,7 +723,9 @@ pub async fn get_health_status(state: web::Data<AppState>) -> impl Responder {
     let Some(ref ontology_addr) = state.ontology_actor_addr else {
         let error_response =
             ErrorResponse::new("Ontology actor not available", "ACTOR_UNAVAILABLE");
-        return Ok::<HttpResponse, actix_web::Error>(HttpResponse::ServiceUnavailable().json(error_response));
+        return Ok::<HttpResponse, actix_web::Error>(
+            HttpResponse::ServiceUnavailable().json(error_response),
+        );
     };
 
     match ontology_addr.send(health_msg).await {
@@ -746,9 +760,10 @@ pub async fn get_health_status(state: web::Data<AppState>) -> impl Responder {
 pub async fn clear_caches(state: web::Data<AppState>) -> impl Responder {
     info!("Clearing ontology caches");
 
-
     if let Err(error) = check_feature_enabled().await {
-        return Ok::<HttpResponse, actix_web::Error>(HttpResponse::ServiceUnavailable().json(error));
+        return Ok::<HttpResponse, actix_web::Error>(
+            HttpResponse::ServiceUnavailable().json(error),
+        );
     }
 
     let clear_msg = ClearOntologyCaches;
@@ -756,7 +771,9 @@ pub async fn clear_caches(state: web::Data<AppState>) -> impl Responder {
     let Some(ref ontology_addr) = state.ontology_actor_addr else {
         let error_response =
             ErrorResponse::new("Ontology actor not available", "ACTOR_UNAVAILABLE");
-        return Ok::<HttpResponse, actix_web::Error>(HttpResponse::ServiceUnavailable().json(error_response));
+        return Ok::<HttpResponse, actix_web::Error>(
+            HttpResponse::ServiceUnavailable().json(error_response),
+        );
     };
 
     match ontology_addr.send(clear_msg).await {
@@ -784,9 +801,10 @@ pub async fn clear_caches(state: web::Data<AppState>) -> impl Responder {
 pub async fn list_axioms(state: web::Data<AppState>) -> impl Responder {
     info!("Listing all loaded axioms");
 
-
     if let Err(error) = check_feature_enabled().await {
-        return Ok::<HttpResponse, actix_web::Error>(HttpResponse::ServiceUnavailable().json(error));
+        return Ok::<HttpResponse, actix_web::Error>(
+            HttpResponse::ServiceUnavailable().json(error),
+        );
     }
 
     use crate::actors::messages::GetCachedOntologies;
@@ -795,7 +813,9 @@ pub async fn list_axioms(state: web::Data<AppState>) -> impl Responder {
     let Some(ref ontology_addr) = state.ontology_actor_addr else {
         let error_response =
             ErrorResponse::new("Ontology actor not available", "ACTOR_UNAVAILABLE");
-        return Ok::<HttpResponse, actix_web::Error>(HttpResponse::ServiceUnavailable().json(error_response));
+        return Ok::<HttpResponse, actix_web::Error>(
+            HttpResponse::ServiceUnavailable().json(error_response),
+        );
     };
 
     match ontology_addr.send(list_msg).await {
@@ -826,9 +846,10 @@ pub async fn get_inferences(
 ) -> impl Responder {
     info!("Retrieving inferred relationships");
 
-
     if let Err(error) = check_feature_enabled().await {
-        return Ok::<HttpResponse, actix_web::Error>(HttpResponse::ServiceUnavailable().json(error));
+        return Ok::<HttpResponse, actix_web::Error>(
+            HttpResponse::ServiceUnavailable().json(error),
+        );
     }
 
     let ontology_id = query.get("ontology_id").cloned();
@@ -836,9 +857,10 @@ pub async fn get_inferences(
     let Some(ref ontology_addr) = state.ontology_actor_addr else {
         let error_response =
             ErrorResponse::new("Ontology actor not available", "ACTOR_UNAVAILABLE");
-        return Ok::<HttpResponse, actix_web::Error>(HttpResponse::ServiceUnavailable().json(error_response));
+        return Ok::<HttpResponse, actix_web::Error>(
+            HttpResponse::ServiceUnavailable().json(error_response),
+        );
     };
-
 
     let report_msg = GetOntologyReport {
         report_id: ontology_id,
@@ -847,7 +869,6 @@ pub async fn get_inferences(
     match ontology_addr.send(report_msg).await {
         Ok(Ok(Some(report))) => {
             info!("Retrieved inferences from report: {}", report.id);
-
 
             let inferences = serde_json::json!({
                 "report_id": report.id,
@@ -891,15 +912,19 @@ pub async fn validate_graph(
         req.ontology_id, req.mode
     );
 
-
     if let Err(error) = check_feature_enabled().await {
-        return Ok::<HttpResponse, actix_web::Error>(HttpResponse::ServiceUnavailable().json(error));
+        return Ok::<HttpResponse, actix_web::Error>(
+            HttpResponse::ServiceUnavailable().json(error),
+        );
     }
-
 
     let property_graph = match extract_property_graph(&state).await {
         Ok(graph) => graph,
-        Err(error) => return Ok::<HttpResponse, actix_web::Error>(HttpResponse::InternalServerError().json(error)),
+        Err(error) => {
+            return Ok::<HttpResponse, actix_web::Error>(
+                HttpResponse::InternalServerError().json(error),
+            )
+        }
     };
 
     let validation_msg = ValidateOntology {
@@ -911,13 +936,13 @@ pub async fn validate_graph(
     let Some(ref ontology_addr) = state.ontology_actor_addr else {
         let error_response =
             ErrorResponse::new("Ontology actor not available", "ACTOR_UNAVAILABLE");
-        return Ok::<HttpResponse, actix_web::Error>(HttpResponse::ServiceUnavailable().json(error_response));
+        return Ok::<HttpResponse, actix_web::Error>(
+            HttpResponse::ServiceUnavailable().json(error_response),
+        );
     };
-
 
     let job_id = Uuid::new_v4().to_string();
     let job_id_clone = job_id.clone();
-
 
     let ontology_addr_clone = ontology_addr.clone();
     actix::spawn(async move {
@@ -1014,11 +1039,11 @@ pub async fn get_hierarchy(
 ) -> impl Responder {
     info!("Retrieving ontology class hierarchy");
 
-
     if let Err(error) = check_feature_enabled().await {
-        return Ok::<HttpResponse, actix_web::Error>(HttpResponse::ServiceUnavailable().json(error));
+        return Ok::<HttpResponse, actix_web::Error>(
+            HttpResponse::ServiceUnavailable().json(error),
+        );
     }
-
 
     use crate::application::ontology::{ListOwlClasses, ListOwlClassesHandler};
     use hexser::QueryHandler;
@@ -1028,23 +1053,16 @@ pub async fn get_hierarchy(
 
     match handler.handle(list_query) {
         Ok(classes) => {
-            info!(
-                "Building class hierarchy from {} classes",
-                classes.len()
-            );
-
+            info!("Building class hierarchy from {} classes", classes.len());
 
             let mut hierarchy_map: HashMap<String, ClassNode> = HashMap::new();
             let mut root_classes: Vec<String> = Vec::new();
             let mut children_map: HashMap<String, Vec<String>> = HashMap::new();
 
-
             for class in &classes {
-
                 if class.parent_classes.is_empty() {
                     root_classes.push(class.iri.clone());
                 }
-
 
                 for parent_iri in &class.parent_classes {
                     children_map
@@ -1053,7 +1071,6 @@ pub async fn get_hierarchy(
                         .push(class.iri.clone());
                 }
             }
-
 
             fn calculate_depth(
                 iri: &str,
@@ -1090,7 +1107,6 @@ pub async fn get_hierarchy(
                 depth
             }
 
-
             fn count_descendants(
                 iri: &str,
                 children_map: &HashMap<String, Vec<String>>,
@@ -1126,10 +1142,15 @@ pub async fn get_hierarchy(
             let mut depth_visiting = std::collections::HashSet::new();
             let mut count_visiting = std::collections::HashSet::new();
 
-
             for class in &classes {
-                let depth = calculate_depth(&class.iri, &classes, &mut depth_memo, &mut depth_visiting);
-                let node_count = count_descendants(&class.iri, &children_map, &mut count_memo, &mut count_visiting);
+                let depth =
+                    calculate_depth(&class.iri, &classes, &mut depth_memo, &mut depth_visiting);
+                let node_count = count_descendants(
+                    &class.iri,
+                    &children_map,
+                    &mut count_memo,
+                    &mut count_visiting,
+                );
                 let children_iris = children_map.get(&class.iri).cloned().unwrap_or_default();
 
                 let parent_iri = if class.parent_classes.is_empty() {
@@ -1186,9 +1207,10 @@ pub async fn get_report_by_id(
     let report_id = path.into_inner();
     info!("Retrieving validation report by ID: {}", report_id);
 
-
     if let Err(error) = check_feature_enabled().await {
-        return Ok::<HttpResponse, actix_web::Error>(HttpResponse::ServiceUnavailable().json(error));
+        return Ok::<HttpResponse, actix_web::Error>(
+            HttpResponse::ServiceUnavailable().json(error),
+        );
     }
 
     let report_msg = GetOntologyReport {
@@ -1198,7 +1220,9 @@ pub async fn get_report_by_id(
     let Some(ref ontology_addr) = state.ontology_actor_addr else {
         let error_response =
             ErrorResponse::new("Ontology actor not available", "ACTOR_UNAVAILABLE");
-        return Ok::<HttpResponse, actix_web::Error>(HttpResponse::ServiceUnavailable().json(error_response));
+        return Ok::<HttpResponse, actix_web::Error>(
+            HttpResponse::ServiceUnavailable().json(error_response),
+        );
     };
 
     match ontology_addr.send(report_msg).await {
@@ -1230,7 +1254,6 @@ pub async fn get_report_by_id(
 
 #[allow(dead_code)]
 pub struct OntologyWebSocket {
-
     client_id: String,
 
     ontology_addr: Addr<OntologyActor>,
@@ -1254,7 +1277,6 @@ impl actix::Actor for OntologyWebSocket {
             self.client_id
         );
 
-        
         let msg = serde_json::json!({
             "type": "connection_established",
             "client_id": self.client_id,
@@ -1280,7 +1302,6 @@ impl actix::StreamHandler<Result<ws::Message, ws::ProtocolError>> for OntologyWe
                     self.client_id, text
                 );
 
-                
                 let response = serde_json::json!({
                     "type": "echo",
                     "original": &*text,
@@ -1311,9 +1332,10 @@ pub async fn websocket_handler(
 ) -> Result<HttpResponse, ActixError> {
     info!("WebSocket upgrade request for ontology updates");
 
-    
     if let Err(error) = check_feature_enabled().await {
-        return Ok::<HttpResponse, actix_web::Error>(HttpResponse::ServiceUnavailable().json(error));
+        return Ok::<HttpResponse, actix_web::Error>(
+            HttpResponse::ServiceUnavailable().json(error),
+        );
     }
 
     let client_id = query
@@ -1324,7 +1346,9 @@ pub async fn websocket_handler(
     let Some(ref ontology_addr) = state.ontology_actor_addr else {
         let error_response =
             ErrorResponse::new("Ontology actor not available", "ACTOR_UNAVAILABLE");
-        return Ok::<HttpResponse, actix_web::Error>(HttpResponse::ServiceUnavailable().json(error_response));
+        return Ok::<HttpResponse, actix_web::Error>(
+            HttpResponse::ServiceUnavailable().json(error_response),
+        );
     };
 
     let websocket = OntologyWebSocket::new(client_id, ontology_addr.clone());
@@ -1342,24 +1366,16 @@ pub fn config(cfg: &mut web::ServiceConfig) {
 
     cfg.service(
         web::scope("/ontology")
-            .wrap(RequireAuth::authenticated())  // Require authentication for all ontology operations
-
+            .wrap(RequireAuth::authenticated()) // Require authentication for all ontology operations
             .route("/load", web::post().to(load_axioms))
             .route("/load-axioms", web::post().to(load_axioms))
-
             .route("/validate", web::post().to(validate_graph))
-
             .route("/reports/{id}", web::get().to(get_report_by_id))
             .route("/report", web::get().to(get_validation_report))
-
             .route("/axioms", web::get().to(list_axioms))
-
             .route("/inferences", web::get().to(get_inferences))
-
             .route("/hierarchy", web::get().to(get_hierarchy))
-
             .route("/cache", web::delete().to(clear_caches))
-
             .route("/mapping", web::post().to(update_mapping))
             .route("/apply", web::post().to(apply_inferences))
             .route("/health", web::get().to(get_health_status))
@@ -1379,7 +1395,6 @@ mod tests {
 
     #[actix_web::test]
     async fn test_health_endpoint_structure() {
-        
         let health = OntologyHealthDto {
             loaded_ontologies: 5,
             cached_reports: 10,
@@ -1398,9 +1413,8 @@ mod tests {
             timestamp: Utc::now(),
         };
 
-        
-        let json = serde_json::to_value(&response)
-            .expect("HealthStatusResponse should serialize to JSON");
+        let json =
+            serde_json::to_value(&response).expect("HealthStatusResponse should serialize to JSON");
         assert!(json.get("status").is_some());
         assert!(json.get("health").is_some());
         assert!(json.get("ontologyValidationEnabled").is_some());

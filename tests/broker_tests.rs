@@ -155,7 +155,9 @@ fn all_six_outcomes_representable() {
     let outcomes = vec![
         DecisionOutcome::Approve,
         DecisionOutcome::Reject,
-        DecisionOutcome::Amend { diff: "+1 line".into() },
+        DecisionOutcome::Amend {
+            diff: "+1 line".into(),
+        },
         DecisionOutcome::Delegate {
             delegate_to: "pubkey".into(),
         },
@@ -169,6 +171,13 @@ fn all_six_outcomes_representable() {
     let actions: Vec<&str> = outcomes.iter().map(|o| o.action_str()).collect();
     assert_eq!(
         actions,
-        vec!["approve", "reject", "amend", "delegate", "promote", "precedent"]
+        vec![
+            "approve",
+            "reject",
+            "amend",
+            "delegate",
+            "promote",
+            "precedent"
+        ]
     );
 }

@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use strum::{EnumIter, EnumString, Display, AsRefStr};
+use strum::{AsRefStr, Display, EnumIter, EnumString};
 
 use crate::edge_category::EdgeCategory;
 
@@ -8,8 +8,18 @@ use crate::edge_category::EdgeCategory;
 /// Organized into 8 categories matching UA's relationship model,
 /// extended for VisionClaw's knowledge graph and ontology needs.
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize,
-    EnumIter, EnumString, Display, AsRefStr,
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Hash,
+    Serialize,
+    Deserialize,
+    EnumIter,
+    EnumString,
+    Display,
+    AsRefStr,
 )]
 #[serde(rename_all = "snake_case")]
 #[strum(serialize_all = "snake_case")]
@@ -74,7 +84,10 @@ impl EdgeKind {
 
     pub fn category(self) -> EdgeCategory {
         match self {
-            Self::Contains | Self::InheritsFrom | Self::Implements | Self::ComposedOf
+            Self::Contains
+            | Self::InheritsFrom
+            | Self::Implements
+            | Self::ComposedOf
             | Self::Nests => EdgeCategory::Structural,
 
             Self::Calls | Self::Overrides | Self::Triggers | Self::Subscribes => {
@@ -89,7 +102,10 @@ impl EdgeKind {
                 EdgeCategory::Dependencies
             }
 
-            Self::SubClassOf | Self::InstanceOf | Self::EquivalentTo | Self::DisjointWith
+            Self::SubClassOf
+            | Self::InstanceOf
+            | Self::EquivalentTo
+            | Self::DisjointWith
             | Self::SameAs => EdgeCategory::Semantic,
 
             Self::DeploysTo | Self::RoutesTo | Self::ReplicatesTo | Self::Monitors => {
@@ -100,7 +116,10 @@ impl EdgeKind {
                 EdgeCategory::Domain
             }
 
-            Self::WikiLink | Self::BlockRef | Self::BlockParent | Self::TaggedWith
+            Self::WikiLink
+            | Self::BlockRef
+            | Self::BlockParent
+            | Self::TaggedWith
             | Self::CitedBy => EdgeCategory::Knowledge,
         }
     }
@@ -108,7 +127,10 @@ impl EdgeKind {
     /// Whether this edge kind naturally has direction (source→target).
     pub fn is_directed(self) -> bool {
         match self {
-            Self::EquivalentTo | Self::DisjointWith | Self::SameAs | Self::BridgesTo
+            Self::EquivalentTo
+            | Self::DisjointWith
+            | Self::SameAs
+            | Self::BridgesTo
             | Self::WikiLink => false,
             _ => true,
         }
@@ -267,10 +289,22 @@ mod tests {
 
     #[test]
     fn registry_uri_mapping() {
-        assert_eq!(EdgeKind::from_registry_uri("ngm:requires"), Some(EdgeKind::Requires));
-        assert_eq!(EdgeKind::from_registry_uri("rdfs:subClassOf"), Some(EdgeKind::SubClassOf));
-        assert_eq!(EdgeKind::from_registry_uri("owl:disjointWith"), Some(EdgeKind::DisjointWith));
-        assert_eq!(EdgeKind::from_registry_uri("WIKILINK"), Some(EdgeKind::WikiLink));
+        assert_eq!(
+            EdgeKind::from_registry_uri("ngm:requires"),
+            Some(EdgeKind::Requires)
+        );
+        assert_eq!(
+            EdgeKind::from_registry_uri("rdfs:subClassOf"),
+            Some(EdgeKind::SubClassOf)
+        );
+        assert_eq!(
+            EdgeKind::from_registry_uri("owl:disjointWith"),
+            Some(EdgeKind::DisjointWith)
+        );
+        assert_eq!(
+            EdgeKind::from_registry_uri("WIKILINK"),
+            Some(EdgeKind::WikiLink)
+        );
     }
 
     #[test]

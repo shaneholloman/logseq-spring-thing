@@ -245,7 +245,10 @@ mod tests {
         let cfg = OidcConfig::default();
         assert_eq!(cfg.role_mapping.get("broker"), Some(&"broker".to_string()));
         assert_eq!(cfg.role_mapping.get("admin"), Some(&"admin".to_string()));
-        assert_eq!(cfg.role_mapping.get("auditor"), Some(&"auditor".to_string()));
+        assert_eq!(
+            cfg.role_mapping.get("auditor"),
+            Some(&"auditor".to_string())
+        );
     }
 
     #[test]

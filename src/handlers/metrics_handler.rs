@@ -7,8 +7,8 @@ use std::time::Instant;
 
 use crate::ok_json;
 use crate::services::metrics::MetricsRegistry;
-use crate::AppState;
 use crate::utils::network::CircuitBreakerStats;
+use crate::AppState;
 
 /// Wrapper around `Instant` so it can be registered as Actix app data.
 #[derive(Clone)]
@@ -99,9 +99,7 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
 /// Intentionally mounted at the server root (not under `/api`) to match
 /// Prometheus scraping conventions. No auth — Prometheus targets should be
 /// firewalled at the network layer; the body carries only aggregate counters.
-pub async fn prometheus_export(
-    metrics: web::Data<Arc<MetricsRegistry>>,
-) -> impl Responder {
+pub async fn prometheus_export(metrics: web::Data<Arc<MetricsRegistry>>) -> impl Responder {
     let body = metrics.render_text();
     HttpResponse::Ok()
         .content_type("application/openmetrics-text; version=1.0.0; charset=utf-8")

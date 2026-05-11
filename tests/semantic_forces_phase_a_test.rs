@@ -170,10 +170,7 @@ fn parser_physicality_case_insensitive() {
 #[test]
 fn parser_role_case_insensitive() {
     for raw in &["Concept", "concept"] {
-        let md = format!(
-            "- owl:role:: {}\n- public:: true\n",
-            raw
-        );
+        let md = format!("- owl:role:: {}\n- public:: true\n", raw);
         let meta = parse_first_node_metadata(&md);
         assert_eq!(
             meta.get("role_code").map(|s| s.as_str()),
@@ -303,8 +300,7 @@ fn test_phase_a_gpu_context_initialises_without_panic() {
     #[cfg(feature = "gpu")]
     {
         let ptx_path = concat!(env!("OUT_DIR"), "/visionflow_unified.ptx");
-        let ptx_content =
-            std::fs::read_to_string(ptx_path).expect("failed to read PTX file");
+        let ptx_content = std::fs::read_to_string(ptx_path).expect("failed to read PTX file");
 
         let num_nodes = 4;
         let num_edges = 0;
@@ -312,14 +308,9 @@ fn test_phase_a_gpu_context_initialises_without_panic() {
         // Constructing the GPU context is sufficient to confirm the PTX loads
         // and the device buffers for physicality_code / role_code / maturity_level
         // are allocated (they default to zeroed i32 buffers).
-        let _gpu = UnifiedGPUCompute::new_with_modules(
-            num_nodes,
-            num_edges,
-            &ptx_content,
-            None,
-            None,
-        )
-        .expect("failed to initialise UnifiedGPUCompute");
+        let _gpu =
+            UnifiedGPUCompute::new_with_modules(num_nodes, num_edges, &ptx_content, None, None)
+                .expect("failed to initialise UnifiedGPUCompute");
 
         // TODO: once upload_semantic_metadata lands, add:
         //   _gpu.upload_semantic_metadata(&[0; 4], &[0; 4], &[0; 4]).unwrap();
@@ -342,24 +333,58 @@ fn test_physicality_kernel_noop_on_none_coded_nodes() {
         let codes = vec![0i32; num_nodes];
 
         let positions = vec![
-            Float3 { x: 0.0,  y: 0.0,  z: 0.0 },
-            Float3 { x: 1.0,  y: 0.0,  z: 0.0 },
-            Float3 { x: 0.0,  y: 1.0,  z: 0.0 },
-            Float3 { x: -1.0, y: 0.0,  z: 0.0 },
+            Float3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            Float3 {
+                x: 1.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            Float3 {
+                x: 0.0,
+                y: 1.0,
+                z: 0.0,
+            },
+            Float3 {
+                x: -1.0,
+                y: 0.0,
+                z: 0.0,
+            },
         ];
         let mut pos = positions.clone();
 
         // 4 physicality buckets × 3 components = 12 f32 centroids
-        let mut centroids = vec![Float3 { x: 0.0, y: 0.0, z: 0.0 }; 4];
-        let mut counts    = vec![0i32; 4];
-        let mut forces    = vec![Float3 { x: 0.0, y: 0.0, z: 0.0 }; num_nodes];
+        let mut centroids = vec![
+            Float3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0
+            };
+            4
+        ];
+        let mut counts = vec![0i32; 4];
+        let mut forces = vec![
+            Float3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0
+            };
+            num_nodes
+        ];
 
         calculate_physicality_centroids(&codes, &positions, &mut centroids, &mut counts, num_nodes);
         finalize_physicality_centroids(&mut centroids, &counts);
 
         // All codes are None (0) so every count should remain 0.
         for (i, &c) in counts.iter().enumerate() {
-            assert_eq!(c, 0, "physicality bucket {} should have zero members (all None)", i);
+            assert_eq!(
+                c, 0,
+                "physicality bucket {} should have zero members (all None)",
+                i
+            );
         }
 
         apply_physicality_cluster_force(&codes, &centroids, &mut pos, &mut forces, num_nodes);
@@ -369,7 +394,10 @@ fn test_physicality_kernel_noop_on_none_coded_nodes() {
             assert!(
                 f.x == 0.0 && f.y == 0.0 && f.z == 0.0,
                 "node {} should receive zero physicality force when code=None, got ({},{},{})",
-                i, f.x, f.y, f.z
+                i,
+                f.x,
+                f.y,
+                f.z
             );
         }
     }
@@ -389,23 +417,57 @@ fn test_role_kernel_noop_on_none_coded_nodes() {
         let codes = vec![0i32; num_nodes];
 
         let positions = vec![
-            Float3 { x: 0.0, y: 0.0, z: 0.0 },
-            Float3 { x: 2.0, y: 1.0, z: 0.0 },
-            Float3 { x: 1.0, y: 2.0, z: 0.0 },
-            Float3 { x: 0.0, y: 3.0, z: 0.0 },
+            Float3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            Float3 {
+                x: 2.0,
+                y: 1.0,
+                z: 0.0,
+            },
+            Float3 {
+                x: 1.0,
+                y: 2.0,
+                z: 0.0,
+            },
+            Float3 {
+                x: 0.0,
+                y: 3.0,
+                z: 0.0,
+            },
         ];
         let mut pos = positions.clone();
 
         // 7 role buckets × 3 components = 21 floats
-        let mut centroids = vec![Float3 { x: 0.0, y: 0.0, z: 0.0 }; 7];
-        let mut counts    = vec![0i32; 7];
-        let mut forces    = vec![Float3 { x: 0.0, y: 0.0, z: 0.0 }; num_nodes];
+        let mut centroids = vec![
+            Float3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0
+            };
+            7
+        ];
+        let mut counts = vec![0i32; 7];
+        let mut forces = vec![
+            Float3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0
+            };
+            num_nodes
+        ];
 
         calculate_role_centroids(&codes, &positions, &mut centroids, &mut counts, num_nodes);
         finalize_role_centroids(&mut centroids, &counts);
 
         for (i, &c) in counts.iter().enumerate() {
-            assert_eq!(c, 0, "role bucket {} should have zero members (all None)", i);
+            assert_eq!(
+                c, 0,
+                "role bucket {} should have zero members (all None)",
+                i
+            );
         }
 
         apply_role_cluster_force(&codes, &centroids, &mut pos, &mut forces, num_nodes);
@@ -414,7 +476,10 @@ fn test_role_kernel_noop_on_none_coded_nodes() {
             assert!(
                 f.x == 0.0 && f.y == 0.0 && f.z == 0.0,
                 "node {} should receive zero role force when code=None, got ({},{},{})",
-                i, f.x, f.y, f.z
+                i,
+                f.x,
+                f.y,
+                f.z
             );
         }
     }
@@ -435,12 +500,35 @@ fn test_maturity_kernel_noop_on_none_coded_nodes() {
         let codes = vec![0i32; num_nodes];
 
         let mut positions = vec![
-            Float3 { x: 0.0, y: 0.0, z: 0.0 },
-            Float3 { x: 1.0, y: 1.0, z: 0.0 },
-            Float3 { x: 2.0, y: 0.0, z: 0.0 },
-            Float3 { x: 3.0, y: 2.0, z: 0.0 },
+            Float3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            Float3 {
+                x: 1.0,
+                y: 1.0,
+                z: 0.0,
+            },
+            Float3 {
+                x: 2.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            Float3 {
+                x: 3.0,
+                y: 2.0,
+                z: 0.0,
+            },
         ];
-        let mut forces = vec![Float3 { x: 0.0, y: 0.0, z: 0.0 }; num_nodes];
+        let mut forces = vec![
+            Float3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0
+            };
+            num_nodes
+        ];
 
         apply_maturity_layout_force(&codes, &mut positions, &mut forces, num_nodes);
 
@@ -448,7 +536,10 @@ fn test_maturity_kernel_noop_on_none_coded_nodes() {
             assert!(
                 f.x == 0.0 && f.y == 0.0 && f.z == 0.0,
                 "node {} should receive zero maturity force when code=None, got ({},{},{})",
-                i, f.x, f.y, f.z
+                i,
+                f.x,
+                f.y,
+                f.z
             );
         }
     }
@@ -476,16 +567,46 @@ fn test_phase_a_physicality_forces_apply_without_panic() {
         // Run one physics tick equivalent using the kernel bridge directly
         // (avoids needing a full SimulationParams round-trip just for smoke).
         let positions = vec![
-            Float3 { x: -10.0, y: -10.0, z: 0.0 },
-            Float3 { x:  10.0, y: -10.0, z: 0.0 },
-            Float3 { x: -10.0, y:  10.0, z: 0.0 },
-            Float3 { x:  10.0, y:  10.0, z: 0.0 },
+            Float3 {
+                x: -10.0,
+                y: -10.0,
+                z: 0.0,
+            },
+            Float3 {
+                x: 10.0,
+                y: -10.0,
+                z: 0.0,
+            },
+            Float3 {
+                x: -10.0,
+                y: 10.0,
+                z: 0.0,
+            },
+            Float3 {
+                x: 10.0,
+                y: 10.0,
+                z: 0.0,
+            },
         ];
         let mut pos_buf = positions.clone();
 
-        let mut centroids = vec![Float3 { x: 0.0, y: 0.0, z: 0.0 }; 4];
-        let mut counts    = vec![0i32; 4];
-        let mut forces    = vec![Float3 { x: 0.0, y: 0.0, z: 0.0 }; num_nodes];
+        let mut centroids = vec![
+            Float3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0
+            };
+            4
+        ];
+        let mut counts = vec![0i32; 4];
+        let mut forces = vec![
+            Float3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0
+            };
+            num_nodes
+        ];
 
         calculate_physicality_centroids(&phys, &positions, &mut centroids, &mut counts, num_nodes);
         finalize_physicality_centroids(&mut centroids, &counts);
@@ -497,7 +618,10 @@ fn test_phase_a_physicality_forces_apply_without_panic() {
             assert!(
                 f.x.is_finite() && f.y.is_finite() && f.z.is_finite(),
                 "node {} physicality force contains non-finite value: ({},{},{})",
-                i, f.x, f.y, f.z
+                i,
+                f.x,
+                f.y,
+                f.z
             );
         }
 
@@ -517,8 +641,12 @@ fn test_phase_a_physicality_forces_apply_without_panic() {
             force_0_mag > 0.0 || force_1_mag > 0.0,
             "Abstract-coded nodes 0 and 1 should experience non-zero physicality forces, \
              got ({},{},{}) and ({},{},{})",
-            forces[0].x, forces[0].y, forces[0].z,
-            forces[1].x, forces[1].y, forces[1].z,
+            forces[0].x,
+            forces[0].y,
+            forces[0].z,
+            forces[1].x,
+            forces[1].y,
+            forces[1].z,
         );
     }
     #[cfg(not(feature = "gpu"))]
@@ -541,15 +669,45 @@ fn test_phase_a_role_forces_apply_without_panic() {
         let role = vec![1i32, 1, 3, 3];
 
         let positions = vec![
-            Float3 { x: -5.0, y:  0.0, z: 0.0 },
-            Float3 { x:  5.0, y:  0.0, z: 0.0 },
-            Float3 { x: -5.0, y: 10.0, z: 0.0 },
-            Float3 { x:  5.0, y: 10.0, z: 0.0 },
+            Float3 {
+                x: -5.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            Float3 {
+                x: 5.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            Float3 {
+                x: -5.0,
+                y: 10.0,
+                z: 0.0,
+            },
+            Float3 {
+                x: 5.0,
+                y: 10.0,
+                z: 0.0,
+            },
         ];
         let mut pos_buf = positions.clone();
-        let mut centroids = vec![Float3 { x: 0.0, y: 0.0, z: 0.0 }; 7];
-        let mut counts    = vec![0i32; 7];
-        let mut forces    = vec![Float3 { x: 0.0, y: 0.0, z: 0.0 }; num_nodes];
+        let mut centroids = vec![
+            Float3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0
+            };
+            7
+        ];
+        let mut counts = vec![0i32; 7];
+        let mut forces = vec![
+            Float3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0
+            };
+            num_nodes
+        ];
 
         calculate_role_centroids(&role, &positions, &mut centroids, &mut counts, num_nodes);
         finalize_role_centroids(&mut centroids, &counts);
@@ -560,7 +718,10 @@ fn test_phase_a_role_forces_apply_without_panic() {
             assert!(
                 f.x.is_finite() && f.y.is_finite() && f.z.is_finite(),
                 "node {} role force contains non-finite value: ({},{},{})",
-                i, f.x, f.y, f.z
+                i,
+                f.x,
+                f.y,
+                f.z
             );
         }
     }
@@ -582,15 +743,38 @@ fn test_phase_a_maturity_forces_apply_without_panic() {
         let num_nodes = 4;
 
         // Node 0: Emerging (1), Node 1: Mature (2), Node 2: Declining (3), Node 3: None (0).
-        let mat  = vec![1i32, 2, 3, 0];
+        let mat = vec![1i32, 2, 3, 0];
 
         let mut positions = vec![
-            Float3 { x: 0.0, y: 0.0, z:  0.0 },
-            Float3 { x: 1.0, y: 0.0, z:  5.0 },
-            Float3 { x: 2.0, y: 0.0, z: 10.0 },
-            Float3 { x: 3.0, y: 0.0, z:  0.0 },
+            Float3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            Float3 {
+                x: 1.0,
+                y: 0.0,
+                z: 5.0,
+            },
+            Float3 {
+                x: 2.0,
+                y: 0.0,
+                z: 10.0,
+            },
+            Float3 {
+                x: 3.0,
+                y: 0.0,
+                z: 0.0,
+            },
         ];
-        let mut forces = vec![Float3 { x: 0.0, y: 0.0, z: 0.0 }; num_nodes];
+        let mut forces = vec![
+            Float3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0
+            };
+            num_nodes
+        ];
 
         apply_maturity_layout_force(&mat, &mut positions, &mut forces, num_nodes);
 
@@ -599,7 +783,10 @@ fn test_phase_a_maturity_forces_apply_without_panic() {
             assert!(
                 f.x.is_finite() && f.y.is_finite() && f.z.is_finite(),
                 "node {} maturity force contains non-finite value: ({},{},{})",
-                i, f.x, f.y, f.z
+                i,
+                f.x,
+                f.y,
+                f.z
             );
         }
 
@@ -608,15 +795,17 @@ fn test_phase_a_maturity_forces_apply_without_panic() {
         assert!(
             f3.x == 0.0 && f3.y == 0.0 && f3.z == 0.0,
             "None-coded node 3 should receive zero maturity force, got ({},{},{})",
-            f3.x, f3.y, f3.z
+            f3.x,
+            f3.y,
+            f3.z
         );
 
         // Nodes 0-2 with non-None maturity codes should experience some force
         // (specifically a Z-component that drives vertical stratification).
         // We assert at least one non-None node has a non-zero force magnitude.
-        let any_nonzero = forces[..3].iter().any(|f| {
-            f.x != 0.0 || f.y != 0.0 || f.z != 0.0
-        });
+        let any_nonzero = forces[..3]
+            .iter()
+            .any(|f| f.x != 0.0 || f.y != 0.0 || f.z != 0.0);
         assert!(
             any_nonzero,
             "at least one non-None maturity node should receive a non-zero force; \

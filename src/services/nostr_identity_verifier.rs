@@ -33,8 +33,8 @@ fn fail(claimed: &str) -> RoomError {
 
 impl IdentityVerifier for NostrIdentityVerifier {
     fn verify_signed_challenge(&self, challenge: &SignedChallenge) -> Result<Did, RoomError> {
-        let pubkey_bytes =
-            hex::decode(&challenge.claimed_pubkey_hex).map_err(|_| fail(&challenge.claimed_pubkey_hex))?;
+        let pubkey_bytes = hex::decode(&challenge.claimed_pubkey_hex)
+            .map_err(|_| fail(&challenge.claimed_pubkey_hex))?;
         if pubkey_bytes.len() != 32 {
             return Err(fail(&challenge.claimed_pubkey_hex));
         }
@@ -56,7 +56,10 @@ impl IdentityVerifier for NostrIdentityVerifier {
         let message = Message::from_digest(digest);
 
         if let Err(e) = SECP256K1.verify_schnorr(&signature, &message, &xonly) {
-            warn!("schnorr verify failed for {}: {e}", challenge.claimed_pubkey_hex);
+            warn!(
+                "schnorr verify failed for {}: {e}",
+                challenge.claimed_pubkey_hex
+            );
             return Err(fail(&challenge.claimed_pubkey_hex));
         }
         Did::parse(format!("did:nostr:{}", challenge.claimed_pubkey_hex))

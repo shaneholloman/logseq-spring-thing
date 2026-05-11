@@ -26,9 +26,7 @@ use std::time::Duration;
 
 use crate::actors::supervisor::SupervisedActorTrait;
 use crate::services::pod_client::PodClient;
-use crate::services::type_index_discovery::{
-    discover_peer_registrations, TypeRegistration,
-};
+use crate::services::type_index_discovery::{discover_peer_registrations, TypeRegistration};
 
 /// Default tick interval — intentionally slow; agent C2 will calibrate this
 /// against the eventual peer-count and freshness SLA.
@@ -140,7 +138,11 @@ impl DojoDiscoveryActor {
         let subs = self.subscribers.clone();
         let class_filter = self.class_filter.clone();
 
-        debug!("[dojo-discovery] crawl starting: {} peers, class={}", peers.len(), class_filter);
+        debug!(
+            "[dojo-discovery] crawl starting: {} peers, class={}",
+            peers.len(),
+            class_filter
+        );
 
         let fut = async move {
             let mut events = Vec::with_capacity(peers.len());
@@ -155,17 +157,15 @@ impl DojoDiscoveryActor {
             events
         };
 
-        ctx.spawn(
-            fut.into_actor(self).map(|events, act, _ctx| {
-                for ev in events {
-                    for sub in &act.subscribers {
-                        if sub.try_send(ev.clone()).is_err() {
-                            warn!("[dojo-discovery] subscriber dropped; will be pruned next pass");
-                        }
+        ctx.spawn(fut.into_actor(self).map(|events, act, _ctx| {
+            for ev in events {
+                for sub in &act.subscribers {
+                    if sub.try_send(ev.clone()).is_err() {
+                        warn!("[dojo-discovery] subscriber dropped; will be pruned next pass");
                     }
                 }
-            }),
-        );
+            }
+        }));
     }
 }
 
@@ -228,7 +228,9 @@ mod tests {
         let mut peers = HashSet::new();
         peers.insert("https://pod.example/alice/profile/card#me".to_string());
         peers.insert("https://pod.example/bob/profile/card#me".to_string());
-        let src = StaticPeerSource { peers: peers.clone() };
+        let src = StaticPeerSource {
+            peers: peers.clone(),
+        };
         assert_eq!(src.peers(), peers);
     }
 

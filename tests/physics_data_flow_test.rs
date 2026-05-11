@@ -14,9 +14,8 @@ use std::collections::HashMap;
 // Re-export types used across all test scenarios
 use webxr::utils::binary_protocol::{
     self, decode_node_data, encode_node_data_extended, encode_node_data_extended_with_sssp,
-    get_actual_node_id, get_node_type, is_agent_node,
-    is_knowledge_node, set_agent_flag, set_knowledge_flag, BinaryProtocol, Message, MessageType,
-    MultiplexedMessage, NodeType,
+    get_actual_node_id, get_node_type, is_agent_node, is_knowledge_node, set_agent_flag,
+    set_knowledge_flag, BinaryProtocol, Message, MessageType, MultiplexedMessage, NodeType,
 };
 use webxr::utils::socket_flow_messages::BinaryNodeData;
 
@@ -200,7 +199,10 @@ fn broadcast_ack_too_short_payload_rejected() {
     payload.extend_from_slice(&[0u8; 10]); // only 10 bytes, need 20
 
     let result = BinaryProtocol::decode_message(&payload);
-    assert!(result.is_err(), "Short BroadcastAck payload should be rejected");
+    assert!(
+        result.is_err(),
+        "Short BroadcastAck payload should be rejected"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -223,12 +225,19 @@ fn nan_position_rejected_by_sanitize() {
 
     let nodes = vec![nan_node, inf_node, neg_inf_node];
     let encoded = encode_node_data_extended(&nodes, &[], &[], &[], &[], &[]);
-    let decoded = decode_node_data(&encoded).expect("Encoding/decoding should not panic on NaN/Inf");
+    let decoded =
+        decode_node_data(&encoded).expect("Encoding/decoding should not panic on NaN/Inf");
 
     // Verify the decoded values are still NaN/Inf (protocol preserves raw bytes)
     assert!(decoded[0].1.x.is_nan(), "NaN should survive roundtrip");
-    assert!(decoded[1].1.x.is_infinite(), "Infinity should survive roundtrip");
-    assert!(decoded[2].1.y.is_infinite(), "Neg infinity should survive roundtrip");
+    assert!(
+        decoded[1].1.x.is_infinite(),
+        "Infinity should survive roundtrip"
+    );
+    assert!(
+        decoded[2].1.y.is_infinite(),
+        "Neg infinity should survive roundtrip"
+    );
 }
 
 // NaN / delta i16 overflow tests removed along with the V4 delta encoder (ADR-037).
@@ -247,7 +256,10 @@ fn multiplexed_positions_encode_decode() {
     assert_eq!(wire[0], 0x00);
 
     let decoded_mux = MultiplexedMessage::decode(&wire).expect("mux decode must succeed");
-    assert_eq!(decoded_mux.msg_type as u8, MessageType::BinaryPositions as u8);
+    assert_eq!(
+        decoded_mux.msg_type as u8,
+        MessageType::BinaryPositions as u8
+    );
 
     // Inner payload is a valid V3 binary frame
     let inner_decoded = decode_node_data(&decoded_mux.data).expect("inner decode must succeed");
@@ -258,7 +270,10 @@ fn multiplexed_positions_encode_decode() {
 #[test]
 fn unknown_multiplexed_type_rejected() {
     let result = MultiplexedMessage::decode(&[0xFF, 0x00, 0x01]);
-    assert!(result.is_err(), "Unknown message type 0xFF should be rejected");
+    assert!(
+        result.is_err(),
+        "Unknown message type 0xFF should be rejected"
+    );
 }
 
 // History limit + bandwidth savings tests removed with the V4 delta encoder (ADR-037).
@@ -408,7 +423,9 @@ fn voice_data_roundtrip() {
 
     let decoded = BinaryProtocol::decode_message(&encoded).expect("voice decode must succeed");
     match decoded {
-        Message::VoiceData { audio: decoded_audio } => {
+        Message::VoiceData {
+            audio: decoded_audio,
+        } => {
             assert_eq!(decoded_audio, audio);
         }
         _ => panic!("Expected VoiceData"),

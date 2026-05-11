@@ -82,8 +82,8 @@ impl NostrBridge {
         let forum_relay_url = std::env::var("FORUM_RELAY_URL")
             .ok()
             .filter(|s| !s.is_empty())?;
-        let jss_relay_url = std::env::var("JSS_RELAY_URL")
-            .unwrap_or_else(|_| "ws://jss:3030/relay".to_string());
+        let jss_relay_url =
+            std::env::var("JSS_RELAY_URL").unwrap_or_else(|_| "ws://jss:3030/relay".to_string());
 
         // Validate relay URL schemes to prevent SSRF via env var injection.
         if !jss_relay_url.starts_with("ws://") && !jss_relay_url.starts_with("wss://") {
@@ -91,7 +91,9 @@ impl NostrBridge {
             return None;
         }
         if !forum_relay_url.starts_with("ws://") && !forum_relay_url.starts_with("wss://") {
-            error!("[NostrBridge] FORUM_RELAY_URL must start with ws:// or wss://: {forum_relay_url}");
+            error!(
+                "[NostrBridge] FORUM_RELAY_URL must start with ws:// or wss://: {forum_relay_url}"
+            );
             return None;
         }
 
@@ -198,10 +200,16 @@ impl NostrBridge {
         // by any party that can write to the JSS relay.
         let event_json = match serde_json::to_string(original) {
             Ok(s) => s,
-            Err(e) => { warn!(target: "bead_bridge", "[NostrBridge] Serialise failed: {e}"); return; }
+            Err(e) => {
+                warn!(target: "bead_bridge", "[NostrBridge] Serialise failed: {e}");
+                return;
+            }
         };
         let verified = match Event::from_json(&event_json) {
-            Err(e) => { warn!(target: "bead_bridge", "[NostrBridge] Unparseable event: {e}"); return; }
+            Err(e) => {
+                warn!(target: "bead_bridge", "[NostrBridge] Unparseable event: {e}");
+                return;
+            }
             Ok(ev) => ev,
         };
         if let Err(e) = verified.verify() {
@@ -221,10 +229,7 @@ impl NostrBridge {
                 TagKind::Custom("h".into()),
                 vec!["visionclaw-activity".to_string()],
             ),
-            Tag::custom(
-                TagKind::Custom("bead_id".into()),
-                vec![bead_id.to_string()],
-            ),
+            Tag::custom(TagKind::Custom("bead_id".into()), vec![bead_id.to_string()]),
             Tag::custom(
                 TagKind::Custom("source_event".into()),
                 vec![source_event_id.to_string()],
@@ -487,10 +492,10 @@ mod tests {
     fn backoff_doubles_correctly() {
         // GIVEN: initial backoff of 5s, multiplier 2.0
         // WHEN: computing successive backoffs
-        assert_eq!(compute_backoff(0), 5);   // 5 * 2^0 = 5
-        assert_eq!(compute_backoff(1), 10);  // 5 * 2^1 = 10
-        assert_eq!(compute_backoff(2), 20);  // 5 * 2^2 = 20
-        assert_eq!(compute_backoff(3), 40);  // 5 * 2^3 = 40
+        assert_eq!(compute_backoff(0), 5); // 5 * 2^0 = 5
+        assert_eq!(compute_backoff(1), 10); // 5 * 2^1 = 10
+        assert_eq!(compute_backoff(2), 20); // 5 * 2^2 = 20
+        assert_eq!(compute_backoff(3), 40); // 5 * 2^3 = 40
     }
 
     #[test]

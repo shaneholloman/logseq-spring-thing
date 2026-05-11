@@ -16,7 +16,7 @@
 
 use async_trait::async_trait;
 use log::{debug, info, warn};
-use neo4rs::{Graph, Query, Node as Neo4jNode, ConfigBuilder};
+use neo4rs::{ConfigBuilder, Graph, Node as Neo4jNode, Query};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tracing::instrument;
@@ -24,12 +24,13 @@ use tracing::instrument;
 use crate::models::edge::Edge;
 use crate::models::graph::GraphData;
 use crate::models::node::Node;
-use crate::utils::json::{to_json, from_json};
 use crate::ports::knowledge_graph_repository::{
-    GraphStatistics, KnowledgeGraphRepository, KnowledgeGraphRepositoryError,
-    Result as RepoResult,
+    GraphStatistics, KnowledgeGraphRepository, KnowledgeGraphRepositoryError, Result as RepoResult,
 };
-use crate::utils::network::circuit_breaker::{CircuitBreaker, CircuitBreakerConfig, CircuitBreakerError};
+use crate::utils::json::{from_json, to_json};
+use crate::utils::network::circuit_breaker::{
+    CircuitBreaker, CircuitBreakerConfig, CircuitBreakerError,
+};
 use crate::utils::time;
 
 /// Neo4j configuration with security and performance settings
@@ -55,7 +56,9 @@ impl Neo4jConfig {
         let password = std::env::var("NEO4J_PASSWORD").unwrap_or_else(|_| {
             // In development/test mode, allow default only if explicitly set
             if std::env::var("ALLOW_INSECURE_DEFAULTS").is_ok() {
-                log::warn!("NEO4J_PASSWORD not set - using insecure default (ALLOW_INSECURE_DEFAULTS=1)");
+                log::warn!(
+                    "NEO4J_PASSWORD not set - using insecure default (ALLOW_INSECURE_DEFAULTS=1)"
+                );
                 "password".to_string()
             } else {
                 String::new()
@@ -74,7 +77,9 @@ impl Neo4jConfig {
             && std::env::var("ALLOW_INSECURE_DEFAULTS").is_err()
         {
             log::error!("CRITICAL: NEO4J_PASSWORD is too weak or uses a default value!");
-            return Err("NEO4J_PASSWORD must be at least 8 characters and not a default value".to_string());
+            return Err(
+                "NEO4J_PASSWORD must be at least 8 characters and not a default value".to_string(),
+            );
         }
 
         Ok(Self {
@@ -144,12 +149,14 @@ impl Neo4jAdapter {
 
         if config.max_connections == 0 {
             return Err(KnowledgeGraphRepositoryError::DatabaseError(
-                "Invalid configuration: max_connections must be > 0".to_string()
+                "Invalid configuration: max_connections must be > 0".to_string(),
             ));
         }
 
-        info!("Connecting to Neo4j at {} (max_connections: {}, query_timeout: {}s)",
-              config.uri, config.max_connections, config.query_timeout_secs);
+        info!(
+            "Connecting to Neo4j at {} (max_connections: {}, query_timeout: {}s)",
+            config.uri, config.max_connections, config.query_timeout_secs
+        );
 
         // PERF: Configure connection pool for high-throughput graph operations
         let neo4j_config = ConfigBuilder::default()
@@ -165,15 +172,17 @@ impl Neo4jAdapter {
                 ))
             })?;
 
-        let graph = Graph::connect(neo4j_config)
-            .map_err(|e| {
-                KnowledgeGraphRepositoryError::DatabaseError(format!(
-                    "Failed to connect to Neo4j: {}",
-                    e
-                ))
-            })?;
+        let graph = Graph::connect(neo4j_config).map_err(|e| {
+            KnowledgeGraphRepositoryError::DatabaseError(format!(
+                "Failed to connect to Neo4j: {}",
+                e
+            ))
+        })?;
 
-        info!("Connected to Neo4j successfully with {} connection pool", config.max_connections);
+        info!(
+            "Connected to Neo4j successfully with {} connection pool",
+            config.max_connections
+        );
 
         let adapter = Self {
             graph: Arc::new(graph),
@@ -211,7 +220,8 @@ impl Neo4jAdapter {
 
         // 1a) Add :KGNode to any row still labelled :GraphNode but not :KGNode.
         let add_label_query = Query::new(
-            "MATCH (n:GraphNode) WHERE NOT n:KGNode SET n:KGNode RETURN count(n) AS migrated".to_string()
+            "MATCH (n:GraphNode) WHERE NOT n:KGNode SET n:KGNode RETURN count(n) AS migrated"
+                .to_string(),
         );
         match self.graph.execute(add_label_query).await {
             Ok(mut res) => {
@@ -224,23 +234,33 @@ impl Neo4jAdapter {
                     }
                 }
             }
-            Err(e) => warn!("KGNode migration: add-label step failed (continuing): {}", e),
+            Err(e) => warn!(
+                "KGNode migration: add-label step failed (continuing): {}",
+                e
+            ),
         }
 
         // 1b) Strip legacy :GraphNode label now that :KGNode is present.
         let strip_label_query = Query::new(
-            "MATCH (n:KGNode) WHERE n:GraphNode REMOVE n:GraphNode RETURN count(n) AS stripped".to_string()
+            "MATCH (n:KGNode) WHERE n:GraphNode REMOVE n:GraphNode RETURN count(n) AS stripped"
+                .to_string(),
         );
         match self.graph.execute(strip_label_query).await {
             Ok(mut res) => {
                 if let Ok(Some(row)) = res.next().await {
                     let stripped: i64 = row.get("stripped").unwrap_or(0);
                     if stripped > 0 {
-                        info!("KGNode migration: stripped :GraphNode label from {} rows", stripped);
+                        info!(
+                            "KGNode migration: stripped :GraphNode label from {} rows",
+                            stripped
+                        );
                     }
                 }
             }
-            Err(e) => warn!("KGNode migration: strip-label step failed (continuing): {}", e),
+            Err(e) => warn!(
+                "KGNode migration: strip-label step failed (continuing): {}",
+                e
+            ),
         }
 
         // 1c) Drop legacy graph_node_* indexes/constraints so the new kg_node_*
@@ -316,14 +336,18 @@ impl Neo4jAdapter {
             "MATCH (n:KGNode) WHERE n.node_type IS NULL OR n.node_type = '' \
              SET n.node_type = 'kg_stub', \
                  n.visibility = COALESCE(n.visibility, 'private') \
-             RETURN count(n) AS backfilled".to_string()
+             RETURN count(n) AS backfilled"
+                .to_string(),
         );
         match self.graph.execute(kgstub_backfill).await {
             Ok(mut res) => {
                 if let Ok(Some(row)) = res.next().await {
                     let n: i64 = row.get("backfilled").unwrap_or(0);
                     if n > 0 {
-                        info!("KGNode stub backfill: classified {} bare rows as private kg_stub", n);
+                        info!(
+                            "KGNode stub backfill: classified {} bare rows as private kg_stub",
+                            n
+                        );
                     } else {
                         debug!("KGNode stub backfill: no bare rows found");
                     }
@@ -337,38 +361,58 @@ impl Neo4jAdapter {
         // ------------------------------------------------------------------
 
         // Create uniqueness constraint on KGNode.id
-        let constraint_query = Query::new("CREATE CONSTRAINT kg_node_id IF NOT EXISTS FOR (n:KGNode) REQUIRE n.id IS UNIQUE".to_string());
+        let constraint_query = Query::new(
+            "CREATE CONSTRAINT kg_node_id IF NOT EXISTS FOR (n:KGNode) REQUIRE n.id IS UNIQUE"
+                .to_string(),
+        );
 
         if let Err(e) = self.graph.run(constraint_query).await {
             warn!("Failed to create constraint (may already exist): {}", e);
         }
 
         // Create index on metadata_id for faster lookups
-        let index_query = Query::new("CREATE INDEX kg_node_metadata_id IF NOT EXISTS FOR (n:KGNode) ON (n.metadata_id)".to_string());
+        let index_query = Query::new(
+            "CREATE INDEX kg_node_metadata_id IF NOT EXISTS FOR (n:KGNode) ON (n.metadata_id)"
+                .to_string(),
+        );
 
         if let Err(e) = self.graph.run(index_query).await {
             warn!("Failed to create index (may already exist): {}", e);
         }
 
         // Create index on owl_class_iri for semantic queries
-        let owl_index_query = Query::new("CREATE INDEX kg_node_owl_class IF NOT EXISTS FOR (n:KGNode) ON (n.owl_class_iri)".to_string());
+        let owl_index_query = Query::new(
+            "CREATE INDEX kg_node_owl_class IF NOT EXISTS FOR (n:KGNode) ON (n.owl_class_iri)"
+                .to_string(),
+        );
 
         if let Err(e) = self.graph.run(owl_index_query).await {
             warn!("Failed to create OWL index (may already exist): {}", e);
         }
 
         // Create index on node_type for semantic force filtering
-        let node_type_index_query = Query::new("CREATE INDEX kg_node_type IF NOT EXISTS FOR (n:KGNode) ON (n.node_type)".to_string());
+        let node_type_index_query = Query::new(
+            "CREATE INDEX kg_node_type IF NOT EXISTS FOR (n:KGNode) ON (n.node_type)".to_string(),
+        );
 
         if let Err(e) = self.graph.run(node_type_index_query).await {
-            warn!("Failed to create node_type index (may already exist): {}", e);
+            warn!(
+                "Failed to create node_type index (may already exist): {}",
+                e
+            );
         }
 
         // Create index on edge relation_type for semantic pathfinding
-        let edge_type_index_query = Query::new("CREATE INDEX edge_relation_type IF NOT EXISTS FOR ()-[r:EDGE]-() ON (r.relation_type)".to_string());
+        let edge_type_index_query = Query::new(
+            "CREATE INDEX edge_relation_type IF NOT EXISTS FOR ()-[r:EDGE]-() ON (r.relation_type)"
+                .to_string(),
+        );
 
         if let Err(e) = self.graph.run(edge_type_index_query).await {
-            warn!("Failed to create edge relation_type index (may already exist): {}", e);
+            warn!(
+                "Failed to create edge relation_type index (may already exist): {}",
+                e
+            );
         }
 
         // Semantic-code indexes: these properties were previously only present
@@ -439,7 +483,10 @@ impl Neo4jAdapter {
                 ));
                 match self.graph.run(q).await {
                     Ok(_) => info!("Created sovereign-schema index {}", name),
-                    Err(e) => warn!("Failed to create sovereign index {} (may already exist): {}", name, e),
+                    Err(e) => warn!(
+                        "Failed to create sovereign index {} (may already exist): {}",
+                        name, e
+                    ),
                 }
             }
         } else {
@@ -460,8 +507,14 @@ impl Neo4jAdapter {
         // self-healing: after every wipe + resync, the next startup
         // detects un-coloured rows and re-runs the visual setup.
         for (id, content) in [
-            ("0043_render_ontology_tier",  include_str!("../../queries/migrations/0043_render_ontology_tier.cypher")),
-            ("0044_ontology_tier_layout",  include_str!("../../queries/migrations/0044_ontology_tier_layout.cypher")),
+            (
+                "0043_render_ontology_tier",
+                include_str!("../../queries/migrations/0043_render_ontology_tier.cypher"),
+            ),
+            (
+                "0044_ontology_tier_layout",
+                include_str!("../../queries/migrations/0044_ontology_tier_layout.cypher"),
+            ),
         ] {
             self.apply_numbered_migration(id, content).await;
         }
@@ -485,7 +538,7 @@ impl Neo4jAdapter {
     async fn apply_numbered_migration(&self, id: &str, content: &str) {
         // Probe: count :OntologyClass rows that lack a `color` property.
         let probe = Query::new(
-            "MATCH (n:OntologyClass) WHERE n.color IS NULL RETURN count(n) AS n".to_string()
+            "MATCH (n:OntologyClass) WHERE n.color IS NULL RETURN count(n) AS n".to_string(),
         );
         let uncoloured = match self.graph.execute(probe).await {
             Ok(mut res) => res
@@ -501,11 +554,17 @@ impl Neo4jAdapter {
             }
         };
         if uncoloured == 0 {
-            debug!("Migration {}: skip (all :OntologyClass rows already coloured)", id);
+            debug!(
+                "Migration {}: skip (all :OntologyClass rows already coloured)",
+                id
+            );
             return;
         }
 
-        info!("Migration {}: applying ({} :OntologyClass rows lack render props)", id, uncoloured);
+        info!(
+            "Migration {}: applying ({} :OntologyClass rows lack render props)",
+            id, uncoloured
+        );
         let mut applied = 0usize;
         let mut errors = 0usize;
         for raw_stmt in content.split(";\n") {
@@ -530,14 +589,22 @@ impl Neo4jAdapter {
                 Ok(_) => applied += 1,
                 Err(e) => {
                     errors += 1;
-                    warn!("Migration {} statement failed: {} — query: {}", id, e, stmt.lines().next().unwrap_or("(empty)"));
+                    warn!(
+                        "Migration {} statement failed: {} — query: {}",
+                        id,
+                        e,
+                        stmt.lines().next().unwrap_or("(empty)")
+                    );
                 }
             }
         }
         if errors == 0 {
             info!("Migration {}: applied {} statements cleanly", id, applied);
         } else {
-            warn!("Migration {}: applied {} statements with {} errors", id, applied, errors);
+            warn!(
+                "Migration {}: applied {} statements with {} errors",
+                id, applied, errors
+            );
         }
     }
 
@@ -547,8 +614,14 @@ impl Neo4jAdapter {
     /// the next process restart.
     pub async fn apply_render_tier_migrations(&self) {
         for (id, content) in [
-            ("0043_render_ontology_tier",  include_str!("../../queries/migrations/0043_render_ontology_tier.cypher")),
-            ("0044_ontology_tier_layout",  include_str!("../../queries/migrations/0044_ontology_tier_layout.cypher")),
+            (
+                "0043_render_ontology_tier",
+                include_str!("../../queries/migrations/0043_render_ontology_tier.cypher"),
+            ),
+            (
+                "0044_ontology_tier_layout",
+                include_str!("../../queries/migrations/0044_ontology_tier_layout.cypher"),
+            ),
         ] {
             self.apply_numbered_migration(id, content).await;
         }
@@ -558,52 +631,105 @@ impl Neo4jAdapter {
     fn node_to_properties(node: &Node) -> HashMap<String, neo4rs::BoltType> {
         let mut props = HashMap::new();
 
-        props.insert("id".to_string(), neo4rs::BoltType::Integer(neo4rs::BoltInteger::new(node.id as i64)));
-        props.insert("metadata_id".to_string(), neo4rs::BoltType::String(neo4rs::BoltString::from(node.metadata_id.clone())));
-        props.insert("label".to_string(), neo4rs::BoltType::String(neo4rs::BoltString::from(node.label.clone())));
-        props.insert("x".to_string(), neo4rs::BoltType::Float(neo4rs::BoltFloat::new(node.data.x as f64)));
-        props.insert("y".to_string(), neo4rs::BoltType::Float(neo4rs::BoltFloat::new(node.data.y as f64)));
-        props.insert("z".to_string(), neo4rs::BoltType::Float(neo4rs::BoltFloat::new(node.data.z as f64)));
-        props.insert("vx".to_string(), neo4rs::BoltType::Float(neo4rs::BoltFloat::new(node.data.vx as f64)));
-        props.insert("vy".to_string(), neo4rs::BoltType::Float(neo4rs::BoltFloat::new(node.data.vy as f64)));
-        props.insert("vz".to_string(), neo4rs::BoltType::Float(neo4rs::BoltFloat::new(node.data.vz as f64)));
-        props.insert("mass".to_string(), neo4rs::BoltType::Float(neo4rs::BoltFloat::new(node.mass.unwrap_or(1.0) as f64)));
+        props.insert(
+            "id".to_string(),
+            neo4rs::BoltType::Integer(neo4rs::BoltInteger::new(node.id as i64)),
+        );
+        props.insert(
+            "metadata_id".to_string(),
+            neo4rs::BoltType::String(neo4rs::BoltString::from(node.metadata_id.clone())),
+        );
+        props.insert(
+            "label".to_string(),
+            neo4rs::BoltType::String(neo4rs::BoltString::from(node.label.clone())),
+        );
+        props.insert(
+            "x".to_string(),
+            neo4rs::BoltType::Float(neo4rs::BoltFloat::new(node.data.x as f64)),
+        );
+        props.insert(
+            "y".to_string(),
+            neo4rs::BoltType::Float(neo4rs::BoltFloat::new(node.data.y as f64)),
+        );
+        props.insert(
+            "z".to_string(),
+            neo4rs::BoltType::Float(neo4rs::BoltFloat::new(node.data.z as f64)),
+        );
+        props.insert(
+            "vx".to_string(),
+            neo4rs::BoltType::Float(neo4rs::BoltFloat::new(node.data.vx as f64)),
+        );
+        props.insert(
+            "vy".to_string(),
+            neo4rs::BoltType::Float(neo4rs::BoltFloat::new(node.data.vy as f64)),
+        );
+        props.insert(
+            "vz".to_string(),
+            neo4rs::BoltType::Float(neo4rs::BoltFloat::new(node.data.vz as f64)),
+        );
+        props.insert(
+            "mass".to_string(),
+            neo4rs::BoltType::Float(neo4rs::BoltFloat::new(node.mass.unwrap_or(1.0) as f64)),
+        );
 
         if let Some(ref iri) = node.owl_class_iri {
-            props.insert("owl_class_iri".to_string(), neo4rs::BoltType::String(neo4rs::BoltString::from(iri.clone())));
+            props.insert(
+                "owl_class_iri".to_string(),
+                neo4rs::BoltType::String(neo4rs::BoltString::from(iri.clone())),
+            );
         }
 
         if let Some(ref color) = node.color {
-            props.insert("color".to_string(), neo4rs::BoltType::String(neo4rs::BoltString::from(color.clone())));
+            props.insert(
+                "color".to_string(),
+                neo4rs::BoltType::String(neo4rs::BoltString::from(color.clone())),
+            );
         }
 
         if let Some(size) = node.size {
-            props.insert("size".to_string(), neo4rs::BoltType::Float(neo4rs::BoltFloat::new(size as f64)));
+            props.insert(
+                "size".to_string(),
+                neo4rs::BoltType::Float(neo4rs::BoltFloat::new(size as f64)),
+            );
         }
 
         if let Some(ref node_type) = node.node_type {
-            props.insert("node_type".to_string(), neo4rs::BoltType::String(neo4rs::BoltString::from(node_type.clone())));
+            props.insert(
+                "node_type".to_string(),
+                neo4rs::BoltType::String(neo4rs::BoltString::from(node_type.clone())),
+            );
         }
 
         if let Some(weight) = node.weight {
-            props.insert("weight".to_string(), neo4rs::BoltType::Float(neo4rs::BoltFloat::new(weight as f64)));
+            props.insert(
+                "weight".to_string(),
+                neo4rs::BoltType::Float(neo4rs::BoltFloat::new(weight as f64)),
+            );
         }
 
         if let Some(ref group) = node.group {
-            props.insert("group_name".to_string(), neo4rs::BoltType::String(neo4rs::BoltString::from(group.clone())));
+            props.insert(
+                "group_name".to_string(),
+                neo4rs::BoltType::String(neo4rs::BoltString::from(group.clone())),
+            );
         }
 
         // Serialize metadata as JSON string
         if !node.metadata.is_empty() {
             if let Ok(json) = to_json(&node.metadata) {
-                props.insert("metadata".to_string(), neo4rs::BoltType::String(neo4rs::BoltString::from(json)));
+                props.insert(
+                    "metadata".to_string(),
+                    neo4rs::BoltType::String(neo4rs::BoltString::from(json)),
+                );
             }
         }
 
         // ADR-050 sovereign-model fields.
         props.insert(
             "visibility".to_string(),
-            neo4rs::BoltType::String(neo4rs::BoltString::from(node.visibility.as_str().to_string())),
+            neo4rs::BoltType::String(neo4rs::BoltString::from(
+                node.visibility.as_str().to_string(),
+            )),
         );
         if let Some(ref owner) = node.owner_pubkey {
             props.insert(
@@ -630,14 +756,14 @@ impl Neo4jAdapter {
     /// Map ontology source_domain to a display color for visual grouping
     fn domain_to_color(domain: &str) -> String {
         match domain {
-            "AI" => "#4FC3F7".to_string(),   // Light blue
-            "BC" => "#81C784".to_string(),   // Green
-            "RB" => "#FFB74D".to_string(),   // Orange
-            "MV" => "#CE93D8".to_string(),   // Purple
-            "TC" => "#FFD54F".to_string(),   // Yellow
-            "DT" => "#EF5350".to_string(),   // Red
-            "NGM" => "#4DB6AC".to_string(),  // Teal
-            _ => "#90A4AE".to_string(),      // Grey for unknown
+            "AI" => "#4FC3F7".to_string(),  // Light blue
+            "BC" => "#81C784".to_string(),  // Green
+            "RB" => "#FFB74D".to_string(),  // Orange
+            "MV" => "#CE93D8".to_string(),  // Purple
+            "TC" => "#FFD54F".to_string(),  // Yellow
+            "DT" => "#EF5350".to_string(),  // Red
+            "NGM" => "#4DB6AC".to_string(), // Teal
+            _ => "#90A4AE".to_string(),     // Grey for unknown
         }
     }
 
@@ -652,16 +778,26 @@ impl Neo4jAdapter {
             KnowledgeGraphRepositoryError::DatabaseError(format!("Missing metadata_id: {}", e))
         })?;
 
-        let label: String = neo4j_node.get("label")
+        let label: String = neo4j_node
+            .get("label")
             .ok()
             .filter(|s: &String| !s.is_empty() && s != "UNKNOWN")
             .unwrap_or_else(|| metadata_id.clone());
 
         // Prefer sim_* properties (GPU physics state) over x/y/z (initial/content positions)
         // This preserves the calculated layout during content sync
-        let x: f64 = neo4j_node.get("sim_x").or_else(|_| neo4j_node.get("x")).unwrap_or(0.0);
-        let y: f64 = neo4j_node.get("sim_y").or_else(|_| neo4j_node.get("y")).unwrap_or(0.0);
-        let z: f64 = neo4j_node.get("sim_z").or_else(|_| neo4j_node.get("z")).unwrap_or(0.0);
+        let x: f64 = neo4j_node
+            .get("sim_x")
+            .or_else(|_| neo4j_node.get("x"))
+            .unwrap_or(0.0);
+        let y: f64 = neo4j_node
+            .get("sim_y")
+            .or_else(|_| neo4j_node.get("y"))
+            .unwrap_or(0.0);
+        let z: f64 = neo4j_node
+            .get("sim_z")
+            .or_else(|_| neo4j_node.get("z"))
+            .unwrap_or(0.0);
         let vx: f64 = neo4j_node.get("vx").unwrap_or(0.0);
         let vy: f64 = neo4j_node.get("vy").unwrap_or(0.0);
         let vz: f64 = neo4j_node.get("vz").unwrap_or(0.0);
@@ -671,11 +807,14 @@ impl Neo4jAdapter {
         let color: Option<String> = neo4j_node.get("color").ok();
         let size: Option<f64> = neo4j_node.get("size").ok();
         let raw_node_type: Result<String, _> = neo4j_node.get("node_type");
-        let node_type: Option<String> = raw_node_type.ok()
-            .filter(|s: &String| !s.is_empty());  // Treat empty string as None
-        // Log first few nodes for debugging type propagation
+        let node_type: Option<String> = raw_node_type.ok().filter(|s: &String| !s.is_empty()); // Treat empty string as None
+                                                                                               // Log first few nodes for debugging type propagation
         if id <= 3 {
-            log::info!("Neo4jAdapter::neo4j_node_to_node: id={} node_type={:?}", id, node_type);
+            log::info!(
+                "Neo4jAdapter::neo4j_node_to_node: id={} node_type={:?}",
+                id,
+                node_type
+            );
         }
         let weight: Option<f64> = neo4j_node.get("weight").ok();
         let group_name: Option<String> = neo4j_node.get("group_name").ok();
@@ -771,40 +910,44 @@ impl Neo4jAdapter {
             std::env::var("NEO4J_QUERY_TIMEOUT_SECS")
                 .ok()
                 .and_then(|s| s.parse().ok())
-                .unwrap_or(30)
+                .unwrap_or(30),
         );
 
         // Clone graph Arc for use in closure
         let graph = self.graph.clone();
 
         // Wrap query execution with circuit breaker for network resilience
-        let execute_result = self.circuit_breaker.execute(async {
-            let result = tokio::time::timeout(
-                query_timeout,
-                graph.execute(query_obj)
-            ).await;
+        let execute_result = self
+            .circuit_breaker
+            .execute(async {
+                let result = tokio::time::timeout(query_timeout, graph.execute(query_obj)).await;
 
-            match result {
-                Ok(Ok(r)) => Ok(r),
-                Ok(Err(e)) => {
-                    log::error!("Cypher query failed: {}", e);
-                    Err(KnowledgeGraphRepositoryError::DatabaseError(format!("Cypher query failed: {}", e)))
+                match result {
+                    Ok(Ok(r)) => Ok(r),
+                    Ok(Err(e)) => {
+                        log::error!("Cypher query failed: {}", e);
+                        Err(KnowledgeGraphRepositoryError::DatabaseError(format!(
+                            "Cypher query failed: {}",
+                            e
+                        )))
+                    }
+                    Err(_) => {
+                        log::error!("Cypher query timed out after {:?}", query_timeout);
+                        Err(KnowledgeGraphRepositoryError::DatabaseError(format!(
+                            "Query timed out after {:?}",
+                            query_timeout
+                        )))
+                    }
                 }
-                Err(_) => {
-                    log::error!("Cypher query timed out after {:?}", query_timeout);
-                    Err(KnowledgeGraphRepositoryError::DatabaseError(
-                        format!("Query timed out after {:?}", query_timeout)
-                    ))
-                }
-            }
-        }).await;
+            })
+            .await;
 
         let mut result = match execute_result {
             Ok(r) => r,
             Err(CircuitBreakerError::CircuitOpen) => {
                 log::warn!("Circuit breaker is open - Neo4j queries temporarily blocked");
                 return Err(KnowledgeGraphRepositoryError::DatabaseError(
-                    "Circuit breaker open: Neo4j service temporarily unavailable".to_string()
+                    "Circuit breaker open: Neo4j service temporarily unavailable".to_string(),
                 ));
             }
             Err(CircuitBreakerError::OperationFailed(e)) => {
@@ -852,12 +995,16 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
                     n.owner_pubkey AS owner_pubkey,
                     n.opaque_id AS opaque_id,
                     n.pod_url AS pod_url
-             ORDER BY id".to_string()
+             ORDER BY id"
+                .to_string(),
         );
 
         let mut nodes = Vec::new();
         let mut result = self.graph.execute(nodes_query).await.map_err(|e| {
-            KnowledgeGraphRepositoryError::DatabaseError(format!("Failed to load KGNode nodes: {}", e))
+            KnowledgeGraphRepositoryError::DatabaseError(format!(
+                "Failed to load KGNode nodes: {}",
+                e
+            ))
         })?;
 
         let mut skipped = 0u32;
@@ -865,7 +1012,9 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
             let id: i64 = match row.get("id") {
                 Ok(v) => v,
                 Err(e) => {
-                    if skipped < 3 { log::warn!("Skipping KGNode row (missing id): {}", e); }
+                    if skipped < 3 {
+                        log::warn!("Skipping KGNode row (missing id): {}", e);
+                    }
                     skipped += 1;
                     continue;
                 }
@@ -883,13 +1032,17 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
             let color: Option<String> = row.get("color").ok();
             let weight: Option<f64> = row.get("weight").ok();
             // Normalize empty strings to None for correct classification
-            let node_type: Option<String> = row.get::<String>("node_type").ok()
+            let node_type: Option<String> = row
+                .get::<String>("node_type")
+                .ok()
                 .filter(|s| !s.trim().is_empty());
             let owl_class_iri: Option<String> = row.get("owl_class_iri").ok();
             let group_name: Option<String> = row.get("group_name").ok();
-            let metadata_json: String = row.get("metadata_json").unwrap_or_else(|_| "{}".to_string());
-            let mut metadata: HashMap<String, String> = serde_json::from_str(&metadata_json)
-                .unwrap_or_default();
+            let metadata_json: String = row
+                .get("metadata_json")
+                .unwrap_or_else(|_| "{}".to_string());
+            let mut metadata: HashMap<String, String> =
+                serde_json::from_str(&metadata_json).unwrap_or_default();
             if let Ok(qs) = row.get::<f64>("quality_score") {
                 metadata.insert("quality_score".to_string(), qs.to_string());
             }
@@ -899,8 +1052,12 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
 
             let mut node = Node::new_with_id(metadata_id, Some(id as u32));
             node.label = label;
-            node.data.x = x as f32; node.data.y = y as f32; node.data.z = z as f32;
-            node.data.vx = vx as f32; node.data.vy = vy as f32; node.data.vz = vz as f32;
+            node.data.x = x as f32;
+            node.data.y = y as f32;
+            node.data.z = z as f32;
+            node.data.vx = vx as f32;
+            node.data.vy = vy as f32;
+            node.data.vz = vz as f32;
             node.mass = Some(mass as f32);
             node.size = size.map(|s| s as f32);
             node.color = color;
@@ -912,21 +1069,30 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
 
             // ADR-050 sovereign-model fields. Empty strings -> None so the
             // JSON projection matches the `skip_serializing_if` semantics.
-            node.visibility = row.get::<String>("visibility").ok()
+            node.visibility = row
+                .get::<String>("visibility")
+                .ok()
                 .as_deref()
                 .and_then(crate::models::node::Visibility::from_str)
                 .unwrap_or_default();
-            node.owner_pubkey = row.get::<String>("owner_pubkey").ok()
+            node.owner_pubkey = row
+                .get::<String>("owner_pubkey")
+                .ok()
                 .filter(|s| !s.is_empty());
-            node.opaque_id = row.get::<String>("opaque_id").ok()
+            node.opaque_id = row
+                .get::<String>("opaque_id")
+                .ok()
                 .filter(|s| !s.is_empty());
-            node.pod_url = row.get::<String>("pod_url").ok()
-                .filter(|s| !s.is_empty());
+            node.pod_url = row.get::<String>("pod_url").ok().filter(|s| !s.is_empty());
 
             nodes.push(node);
         }
 
-        info!("Loaded {} KGNode nodes via flat projection (skipped {})", nodes.len(), skipped);
+        info!(
+            "Loaded {} KGNode nodes via flat projection (skipped {})",
+            nodes.len(),
+            skipped
+        );
 
         // If KGNode load returns 0 during a transient state (e.g. mid-MERGE by
         // file_service), return empty graph instead of falling back to OwlClass.
@@ -947,19 +1113,27 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
         // Post-load population sanity check
         {
             use crate::models::graph_types::{classify_node_population, NodePopulation};
-            let mut k = 0u32; let mut o = 0u32; let mut a = 0u32; let mut none_count = 0u32;
+            let mut k = 0u32;
+            let mut o = 0u32;
+            let mut a = 0u32;
+            let mut none_count = 0u32;
             for n in &nodes {
                 match classify_node_population(n.node_type.as_deref()) {
                     NodePopulation::Knowledge => k += 1,
                     NodePopulation::Ontology => o += 1,
                     NodePopulation::Agent => a += 1,
                 }
-                if n.node_type.is_none() { none_count += 1; }
+                if n.node_type.is_none() {
+                    none_count += 1;
+                }
             }
             info!("Graph population sanity: total={}, knowledge={}, ontology={}, agent={}, node_type=None: {}",
                   nodes.len(), k, o, a, none_count);
             if o == 0 && nodes.len() > 100 {
-                warn!("Zero ontology nodes in {} total — node_type mapping may be broken", nodes.len());
+                warn!(
+                    "Zero ontology nodes in {} total — node_type mapping may be broken",
+                    nodes.len()
+                );
             }
         }
 
@@ -999,13 +1173,17 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
                         COALESCE(o.node_type, 'owl_class') AS node_type,
                         o.iri AS iri,
                         o.source_domain AS source_domain,
-                        COALESCE(o.group_name, 'ontology') AS group_name".to_string()
+                        COALESCE(o.group_name, 'ontology') AS group_name"
+                    .to_string(),
             );
             match self.graph.execute(owl_query).await {
                 Ok(mut result) => {
                     let pre = nodes.len();
                     while let Ok(Some(row)) = result.next().await {
-                        let id: i64 = match row.get("id") { Ok(v) => v, Err(_) => continue };
+                        let id: i64 = match row.get("id") {
+                            Ok(v) => v,
+                            Err(_) => continue,
+                        };
                         let metadata_id: String = row.get("metadata_id").unwrap_or_default();
                         let label: String = row.get("label").unwrap_or_default();
                         let x: f64 = row.get("x").unwrap_or(0.0);
@@ -1018,15 +1196,23 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
                         let size: f64 = row.get("size").unwrap_or(1.4);
                         let color: Option<String> = row.get("color").ok();
                         let weight: f64 = row.get("weight").unwrap_or(1.0);
-                        let node_type: String = row.get("node_type").unwrap_or_else(|_| "owl_class".to_string());
+                        let node_type: String = row
+                            .get("node_type")
+                            .unwrap_or_else(|_| "owl_class".to_string());
                         let iri: Option<String> = row.get("iri").ok();
                         let source_domain: Option<String> = row.get("source_domain").ok();
-                        let group_name: String = row.get("group_name").unwrap_or_else(|_| "ontology".to_string());
+                        let group_name: String = row
+                            .get("group_name")
+                            .unwrap_or_else(|_| "ontology".to_string());
 
                         let mut node = Node::new_with_id(metadata_id, Some(id as u32));
                         node.label = label;
-                        node.data.x = x as f32; node.data.y = y as f32; node.data.z = z as f32;
-                        node.data.vx = vx as f32; node.data.vy = vy as f32; node.data.vz = vz as f32;
+                        node.data.x = x as f32;
+                        node.data.y = y as f32;
+                        node.data.z = z as f32;
+                        node.data.vx = vx as f32;
+                        node.data.vy = vy as f32;
+                        node.data.vz = vz as f32;
                         node.mass = Some(mass as f32);
                         node.size = Some(size as f32);
                         node.color = color;
@@ -1041,7 +1227,10 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
                         }
                         nodes.push(node);
                     }
-                    info!("ADR-048: loaded {} :OntologyClass nodes (ontology tier, shell r=600)", nodes.len() - pre);
+                    info!(
+                        "ADR-048: loaded {} :OntologyClass nodes (ontology tier, shell r=600)",
+                        nodes.len() - pre
+                    );
                 }
                 Err(e) => warn!("Failed to load :OntologyClass nodes: {}", e),
             }
@@ -1054,7 +1243,10 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
             }
         }
         if !iri_to_id.is_empty() {
-            info!("ONT-001: Built iri_to_id map — {} nodes have owl_class_iri", iri_to_id.len());
+            info!(
+                "ONT-001: Built iri_to_id map — {} nodes have owl_class_iri",
+                iri_to_id.len()
+            );
         }
 
         // ADR-014: Always load ALL edge types — no either/or branching.
@@ -1076,8 +1268,7 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
                 let owl_property_iri: Option<String> = row.get("owl_property_iri").ok();
                 let metadata_json: Option<String> = row.get("metadata").ok();
 
-                let metadata = metadata_json
-                    .and_then(|json| from_json(&json).ok());
+                let metadata = metadata_json.and_then(|json| from_json(&json).ok());
 
                 let mut edge = Edge::new(source as u32, target as u32, weight as f32);
                 edge.edge_type = relation_type;
@@ -1097,19 +1288,29 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
         if load_ontology {
             let q = Query::new(
                 "MATCH (s:OntologyClass)-[r:SUBCLASS_OF]->(t:OntologyClass)
-                 RETURN s.id AS source, t.id AS target".to_string()
+                 RETURN s.id AS source, t.id AS target"
+                    .to_string(),
             );
             match self.graph.execute(q).await {
                 Ok(mut result) => {
                     let pre = edges.len();
                     while let Ok(Some(row)) = result.next().await {
-                        let src: i64 = match row.get("source") { Ok(v) => v, Err(_) => continue };
-                        let tgt: i64 = match row.get("target") { Ok(v) => v, Err(_) => continue };
+                        let src: i64 = match row.get("source") {
+                            Ok(v) => v,
+                            Err(_) => continue,
+                        };
+                        let tgt: i64 = match row.get("target") {
+                            Ok(v) => v,
+                            Err(_) => continue,
+                        };
                         let mut e = Edge::new(src as u32, tgt as u32, 0.15_f32);
                         e.edge_type = Some("hierarchical".to_string());
                         edges.push(e);
                     }
-                    info!("ADR-048: loaded {} SUBCLASS_OF edges (weight=0.15)", edges.len() - pre);
+                    info!(
+                        "ADR-048: loaded {} SUBCLASS_OF edges (weight=0.15)",
+                        edges.len() - pre
+                    );
                 }
                 Err(e) => warn!("Failed to load SUBCLASS_OF edges: {}", e),
             }
@@ -1120,20 +1321,31 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
             let q = Query::new(
                 "MATCH (k:KGNode)-[r:BRIDGE_TO]->(o:OntologyClass)
                  RETURN k.id AS source, o.id AS target,
-                        COALESCE(r.kind, 'colocated') AS kind".to_string()
+                        COALESCE(r.kind, 'colocated') AS kind"
+                    .to_string(),
             );
             match self.graph.execute(q).await {
                 Ok(mut result) => {
                     let pre = edges.len();
                     while let Ok(Some(row)) = result.next().await {
-                        let src: i64 = match row.get("source") { Ok(v) => v, Err(_) => continue };
-                        let tgt: i64 = match row.get("target") { Ok(v) => v, Err(_) => continue };
-                        let kind: String = row.get("kind").unwrap_or_else(|_| "colocated".to_string());
+                        let src: i64 = match row.get("source") {
+                            Ok(v) => v,
+                            Err(_) => continue,
+                        };
+                        let tgt: i64 = match row.get("target") {
+                            Ok(v) => v,
+                            Err(_) => continue,
+                        };
+                        let kind: String =
+                            row.get("kind").unwrap_or_else(|_| "colocated".to_string());
                         let mut e = Edge::new(src as u32, tgt as u32, 0.02_f32);
                         e.edge_type = Some(format!("bridge_{}", kind));
                         edges.push(e);
                     }
-                    info!("ADR-048: loaded {} BRIDGE_TO edges (weight=0.02)", edges.len() - pre);
+                    info!(
+                        "ADR-048: loaded {} BRIDGE_TO edges (weight=0.02)",
+                        edges.len() - pre
+                    );
                 }
                 Err(e) => warn!("Failed to load BRIDGE_TO edges: {}", e),
             }
@@ -1151,17 +1363,20 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
                         r.relationship_type AS relationship_type,
                         r.weight AS weight,
                         r.owl_property_iri AS owl_property_iri
-                 ".to_string()
+                 "
+                .to_string(),
             );
 
             let mut onto_result = self.graph.execute(onto_edges_query).await.map_err(|e| {
-                KnowledgeGraphRepositoryError::DatabaseError(format!("Failed to load ontology edges: {}", e))
+                KnowledgeGraphRepositoryError::DatabaseError(format!(
+                    "Failed to load ontology edges: {}",
+                    e
+                ))
             })?;
 
             // Dedup against direct SUBCLASS_OF/BRIDGE_TO edges loaded above.
-            let mut onto_edge_set: std::collections::HashSet<(u32, u32)> = edges.iter()
-                .map(|e| (e.source, e.target))
-                .collect();
+            let mut onto_edge_set: std::collections::HashSet<(u32, u32)> =
+                edges.iter().map(|e| (e.source, e.target)).collect();
 
             let pre_count = edges.len();
             while let Ok(Some(row)) = onto_result.next().await {
@@ -1184,7 +1399,9 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
                     None => continue,
                 };
 
-                let rel_type: String = row.get("rel_type").unwrap_or_else(|_| "RELATES".to_string());
+                let rel_type: String = row
+                    .get("rel_type")
+                    .unwrap_or_else(|_| "RELATES".to_string());
                 let relationship_type: Option<String> = row.get("relationship_type").ok();
                 let weight: f64 = row.get("weight").unwrap_or(1.0);
                 let owl_property_iri: Option<String> = row.get("owl_property_iri").ok();
@@ -1201,7 +1418,10 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
                 edges.push(edge);
             }
 
-            info!("Loaded {} ontology edges via IRI remap (legacy, deduped)", edges.len() - pre_count);
+            info!(
+                "Loaded {} ontology edges via IRI remap (legacy, deduped)",
+                edges.len() - pre_count
+            );
         }
 
         debug!("Loaded {} total base edges from Neo4j", edges.len());
@@ -1210,7 +1430,8 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
         // map them into the current graph by matching KGNode labels to loaded node labels.
         // This gives knowledge/page nodes their wikilink edges in the ontology graph.
         if !iri_to_id.is_empty() {
-            let label_to_id: std::collections::HashMap<String, u32> = nodes.iter()
+            let label_to_id: std::collections::HashMap<String, u32> = nodes
+                .iter()
                 .map(|n| (n.label.to_lowercase(), n.id))
                 .collect();
 
@@ -1218,23 +1439,31 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
                 "MATCH (s:KGNode)-[r:EDGE]->(t:KGNode)
                  RETURN s.label AS source_label, t.label AS target_label,
                         r.weight AS weight, r.relation_type AS relation_type
-                ".to_string()
+                "
+                .to_string(),
             );
 
-            let mut edge_set: std::collections::HashSet<(u32, u32)> = edges.iter()
-                .map(|e| (e.source, e.target))
-                .collect();
+            let mut edge_set: std::collections::HashSet<(u32, u32)> =
+                edges.iter().map(|e| (e.source, e.target)).collect();
 
             let mut wikilink_count = 0u32;
             match self.graph.execute(wikilink_query).await {
                 Ok(mut result) => {
                     while let Ok(Some(row)) = result.next().await {
-                        let src_label: String = match row.get("source_label") { Ok(v) => v, Err(_) => continue };
-                        let tgt_label: String = match row.get("target_label") { Ok(v) => v, Err(_) => continue };
+                        let src_label: String = match row.get("source_label") {
+                            Ok(v) => v,
+                            Err(_) => continue,
+                        };
+                        let tgt_label: String = match row.get("target_label") {
+                            Ok(v) => v,
+                            Err(_) => continue,
+                        };
                         let src_key = src_label.to_lowercase();
                         let tgt_key = tgt_label.to_lowercase();
 
-                        if let (Some(&src_id), Some(&tgt_id)) = (label_to_id.get(&src_key), label_to_id.get(&tgt_key)) {
+                        if let (Some(&src_id), Some(&tgt_id)) =
+                            (label_to_id.get(&src_key), label_to_id.get(&tgt_key))
+                        {
                             if src_id != tgt_id && edge_set.insert((src_id, tgt_id)) {
                                 let weight: f64 = row.get("weight").unwrap_or(1.0);
                                 let rel_type: Option<String> = row.get("relation_type").ok();
@@ -1250,7 +1479,10 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
             }
 
             if wikilink_count > 0 {
-                info!("Bridged {} wikilink edges from KGNode EDGE to ontology graph", wikilink_count);
+                info!(
+                    "Bridged {} wikilink edges from KGNode EDGE to ontology graph",
+                    wikilink_count
+                );
             }
         }
 
@@ -1258,7 +1490,8 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
         // OwlClass nodes have labels that match KGNode labels — use this to bridge
         // the ontology hierarchy into the force-directed graph for meaningful clustering.
         {
-            let label_to_id: HashMap<String, u32> = nodes.iter()
+            let label_to_id: HashMap<String, u32> = nodes
+                .iter()
                 .map(|n| (n.label.to_lowercase(), n.id))
                 .collect();
 
@@ -1281,12 +1514,12 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
                    AND child_label <> '' AND parent_label <> ''
                  RETURN child_label, parent_label, child_domain, parent_domain,
                         rel_type, sub_type, rel_weight
-                ".to_string()
+                "
+                .to_string(),
             );
 
-            let mut edge_set: std::collections::HashSet<(u32, u32)> = edges.iter()
-                .map(|e| (e.source, e.target))
-                .collect();
+            let mut edge_set: std::collections::HashSet<(u32, u32)> =
+                edges.iter().map(|e| (e.source, e.target)).collect();
 
             let mut enrich_count = 0u32;
             match self.graph.execute(enrich_query).await {
@@ -1309,13 +1542,18 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
                         {
                             if src_id != tgt_id && edge_set.insert((src_id, tgt_id)) {
                                 // Use the relationship sub-type if available, else the Neo4j type
-                                let rel_type: String = row.get("rel_type").unwrap_or_else(|_| "SUBCLASS_OF".to_string());
+                                let rel_type: String = row
+                                    .get("rel_type")
+                                    .unwrap_or_else(|_| "SUBCLASS_OF".to_string());
                                 let sub_type: Option<String> = row.get("sub_type").ok();
                                 let weight: f64 = row.get("rel_weight").unwrap_or(0.8);
 
                                 let edge_type_str = sub_type.unwrap_or_else(|| {
-                                    if rel_type == "SUBCLASS_OF" { "hierarchical".to_string() }
-                                    else { "associative".to_string() }
+                                    if rel_type == "SUBCLASS_OF" {
+                                        "hierarchical".to_string()
+                                    } else {
+                                        "associative".to_string()
+                                    }
                                 });
 
                                 let mut edge = Edge::new(src_id, tgt_id, weight as f32);
@@ -1331,7 +1569,10 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
                     }
                 }
                 Err(e) => {
-                    warn!("Failed to load ontology enrichment edges: {} (continuing without them)", e);
+                    warn!(
+                        "Failed to load ontology enrichment edges: {} (continuing without them)",
+                        e
+                    );
                 }
             }
 
@@ -1355,14 +1596,17 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
                       c.source_domain AS domain
                  WHERE label IS NOT NULL AND label <> ''
                  RETURN label, domain
-                ".to_string()
+                "
+                .to_string(),
             );
 
             let mut domain_map: HashMap<String, String> = HashMap::new();
             match self.graph.execute(domain_query).await {
                 Ok(mut domain_result) => {
                     while let Ok(Some(row)) = domain_result.next().await {
-                        if let (Ok(label), Ok(domain)) = (row.get::<String>("label"), row.get::<String>("domain")) {
+                        if let (Ok(label), Ok(domain)) =
+                            (row.get::<String>("label"), row.get::<String>("domain"))
+                        {
                             domain_map.insert(label.to_lowercase(), domain);
                         }
                     }
@@ -1375,15 +1619,24 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
             if !domain_map.is_empty() {
                 let mut enriched = 0u32;
                 for node in &mut nodes {
-                    if node.metadata.get("source_domain").map(|d| d == "unknown" || d.is_empty()).unwrap_or(true) {
+                    if node
+                        .metadata
+                        .get("source_domain")
+                        .map(|d| d == "unknown" || d.is_empty())
+                        .unwrap_or(true)
+                    {
                         if let Some(domain) = domain_map.get(&node.label.to_lowercase()) {
-                            node.metadata.insert("source_domain".to_string(), domain.clone());
+                            node.metadata
+                                .insert("source_domain".to_string(), domain.clone());
                             enriched += 1;
                         }
                     }
                 }
                 if enriched > 0 {
-                    info!("Enriched {} nodes with source_domain from ontology", enriched);
+                    info!(
+                        "Enriched {} nodes with source_domain from ontology",
+                        enriched
+                    );
                 }
             }
         }
@@ -1406,29 +1659,43 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
             // Codes use the u8 enum mapping from src/models/metadata.rs:
             //   0 = None (property absent), 255 = Unknown (property present
             //   but unrecognised), 1..N = canonical values.
-            let physicality_code: i64 = node.metadata.get("physicality_code")
+            let physicality_code: i64 = node
+                .metadata
+                .get("physicality_code")
                 .and_then(|s| s.parse::<i64>().ok())
                 .unwrap_or(0);
-            let role_code: i64 = node.metadata.get("role_code")
+            let role_code: i64 = node
+                .metadata
+                .get("role_code")
                 .and_then(|s| s.parse::<i64>().ok())
                 .unwrap_or(0);
-            let maturity_level: i64 = node.metadata.get("maturity_level")
+            let maturity_level: i64 = node
+                .metadata
+                .get("maturity_level")
                 .and_then(|s| s.parse::<i64>().ok())
                 .unwrap_or(0);
-            let source_domain: String = node.metadata.get("source_domain")
+            let source_domain: String = node
+                .metadata
+                .get("source_domain")
                 .or_else(|| node.metadata.get("source-domain"))
                 .or_else(|| node.metadata.get("domain"))
                 .cloned()
                 .unwrap_or_default();
-            let preferred_term: String = node.metadata.get("preferred-term")
+            let preferred_term: String = node
+                .metadata
+                .get("preferred-term")
                 .or_else(|| node.metadata.get("preferred_term"))
                 .cloned()
                 .unwrap_or_default();
-            let term_id: String = node.metadata.get("term-id")
+            let term_id: String = node
+                .metadata
+                .get("term-id")
                 .or_else(|| node.metadata.get("term_id"))
                 .cloned()
                 .unwrap_or_default();
-            let source_file: String = node.metadata.get("source_file")
+            let source_file: String = node
+                .metadata
+                .get("source_file")
                 .or_else(|| node.metadata.get("source-file"))
                 .cloned()
                 .unwrap_or_default();
@@ -1511,7 +1778,8 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
                      n.graph_source = COALESCE($graph_source, n.graph_source)
                  // NEVER overwrite sim_x/sim_y/sim_z or vx/vy/vz on MATCH
                  // These are the GPU-calculated physics positions
-                ".to_string()
+                "
+                .to_string(),
             )
             .param("id", node.id as i64)
             .param("metadata_id", node.metadata_id.clone())
@@ -1523,7 +1791,10 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
             .param("vy", node.data.vy as f64)
             .param("vz", node.data.vz as f64)
             .param("mass", node.mass.unwrap_or(1.0) as f64)
-            .param("owl_class_iri", node.owl_class_iri.clone().unwrap_or_default())
+            .param(
+                "owl_class_iri",
+                node.owl_class_iri.clone().unwrap_or_default(),
+            )
             .param("color", node.color.clone().unwrap_or_default())
             .param("size", node.size.unwrap_or(1.0) as f64)
             .param("node_type", node.node_type.clone().unwrap_or_default())
@@ -1536,25 +1807,49 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
             .param("preferred_term", preferred_term)
             .param("term_id", term_id)
             .param("source_file", source_file)
-            .param("metadata", serde_json::to_string(&node.metadata).unwrap_or_default())
+            .param(
+                "metadata",
+                serde_json::to_string(&node.metadata).unwrap_or_default(),
+            )
             // ADR-050 sovereign-model fields. Writes occur regardless of the
             // SOVEREIGN_SCHEMA feature flag so the data is preserved if/when
             // the flag is flipped on later.
             .param("visibility", node.visibility.as_str())
-            .param("owner_pubkey", node.owner_pubkey.clone().unwrap_or_default())
+            .param(
+                "owner_pubkey",
+                node.owner_pubkey.clone().unwrap_or_default(),
+            )
             .param("opaque_id", node.opaque_id.clone().unwrap_or_default())
             .param("pod_url", node.pod_url.clone().unwrap_or_default())
             // VisionClaw v2 ontology fields
-            .param("canonical_iri", node.canonical_iri.clone().unwrap_or_default())
-            .param("visionclaw_uri", node.visionclaw_uri.clone().unwrap_or_default())
+            .param(
+                "canonical_iri",
+                node.canonical_iri.clone().unwrap_or_default(),
+            )
+            .param(
+                "visionclaw_uri",
+                node.visionclaw_uri.clone().unwrap_or_default(),
+            )
             .param("rdf_type", node.rdf_type.clone().unwrap_or_default())
             .param("same_as", node.same_as.clone().unwrap_or_default())
             .param("domain", node.domain.clone().unwrap_or_default())
-            .param("content_hash", node.content_hash.clone().unwrap_or_default())
+            .param(
+                "content_hash",
+                node.content_hash.clone().unwrap_or_default(),
+            )
             .param("quality_score", node.quality_score.unwrap_or(0.0) as f64)
-            .param("authority_score", node.authority_score.unwrap_or(0.0) as f64)
-            .param("preferred_term_v2", node.preferred_term.clone().unwrap_or_default())
-            .param("graph_source", node.graph_source.clone().unwrap_or_default());
+            .param(
+                "authority_score",
+                node.authority_score.unwrap_or(0.0) as f64,
+            )
+            .param(
+                "preferred_term_v2",
+                node.preferred_term.clone().unwrap_or_default(),
+            )
+            .param(
+                "graph_source",
+                node.graph_source.clone().unwrap_or_default(),
+            );
 
             self.graph.run(query).await.map_err(|e| {
                 KnowledgeGraphRepositoryError::DatabaseError(format!(
@@ -1618,9 +1913,14 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
             query = query.param("target_wikilink", target_wikilink);
             query = query.param("weight", edge.weight as f64);
             query = query.param("relation_type", edge.edge_type.clone().unwrap_or_default());
-            query = query.param("owl_property_iri", edge.owl_property_iri.clone().unwrap_or_default());
+            query = query.param(
+                "owl_property_iri",
+                edge.owl_property_iri.clone().unwrap_or_default(),
+            );
 
-            let metadata_json = edge.metadata.as_ref()
+            let metadata_json = edge
+                .metadata
+                .as_ref()
                 .and_then(|m| to_json(m).ok())
                 .unwrap_or_default();
             query = query.param("metadata", metadata_json);
@@ -1633,14 +1933,19 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
             })?;
         }
 
-        info!("Saved graph to Neo4j: {} nodes, {} edges", graph.nodes.len(), graph.edges.len());
+        info!(
+            "Saved graph to Neo4j: {} nodes, {} edges",
+            graph.nodes.len(),
+            graph.edges.len()
+        );
         Ok(())
     }
 
     async fn add_node(&self, node: &Node) -> RepoResult<u32> {
         let props = Self::node_to_properties(node);
 
-        let mut query = Query::new("CREATE (n:KGNode) SET n = $props RETURN n.id AS id".to_string());
+        let mut query =
+            Query::new("CREATE (n:KGNode) SET n = $props RETURN n.id AS id".to_string());
 
         query = query.param("props", props);
 
@@ -1688,7 +1993,8 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
     }
 
     async fn remove_node(&self, node_id: u32) -> RepoResult<()> {
-        let query = Query::new("MATCH (n:KGNode {id: $id}) DETACH DELETE n".to_string()).param("id", node_id as i64);
+        let query = Query::new("MATCH (n:KGNode {id: $id}) DETACH DELETE n".to_string())
+            .param("id", node_id as i64);
 
         self.graph.run(query).await.map_err(|e| {
             KnowledgeGraphRepositoryError::DatabaseError(format!("Failed to remove node: {}", e))
@@ -1705,7 +2011,8 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
     }
 
     async fn get_node(&self, node_id: u32) -> RepoResult<Option<Node>> {
-        let query = Query::new("MATCH (n:KGNode {id: $id}) RETURN n".to_string()).param("id", node_id as i64);
+        let query = Query::new("MATCH (n:KGNode {id: $id}) RETURN n".to_string())
+            .param("id", node_id as i64);
 
         let mut result = self.graph.execute(query).await.map_err(|e| {
             KnowledgeGraphRepositoryError::DatabaseError(format!("Failed to get node: {}", e))
@@ -1723,7 +2030,8 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
     async fn get_nodes(&self, node_ids: Vec<u32>) -> RepoResult<Vec<Node>> {
         let ids: Vec<i64> = node_ids.iter().map(|&id| id as i64).collect();
 
-        let query = Query::new("MATCH (n:KGNode) WHERE n.id IN $ids RETURN n".to_string()).param("ids", ids);
+        let query = Query::new("MATCH (n:KGNode) WHERE n.id IN $ids RETURN n".to_string())
+            .param("ids", ids);
 
         let mut nodes = Vec::new();
         let mut result = self.graph.execute(query).await.map_err(|e| {
@@ -1740,7 +2048,8 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
     }
 
     async fn get_nodes_by_metadata_id(&self, metadata_id: &str) -> RepoResult<Vec<Node>> {
-        let query = Query::new("MATCH (n:KGNode {metadata_id: $metadata_id}) RETURN n".to_string()).param("metadata_id", metadata_id.to_string());
+        let query = Query::new("MATCH (n:KGNode {metadata_id: $metadata_id}) RETURN n".to_string())
+            .param("metadata_id", metadata_id.to_string());
 
         let mut nodes = Vec::new();
         let mut result = self.graph.execute(query).await.map_err(|e| {
@@ -1757,7 +2066,9 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
     }
 
     async fn search_nodes_by_label(&self, label: &str) -> RepoResult<Vec<Node>> {
-        let query = Query::new("MATCH (n:KGNode) WHERE n.label CONTAINS $label RETURN n".to_string()).param("label", label.to_string());
+        let query =
+            Query::new("MATCH (n:KGNode) WHERE n.label CONTAINS $label RETURN n".to_string())
+                .param("label", label.to_string());
 
         let mut nodes = Vec::new();
         let mut result = self.graph.execute(query).await.map_err(|e| {
@@ -1793,9 +2104,14 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
         query = query.param("target", edge.target as i64);
         query = query.param("weight", edge.weight as f64);
         query = query.param("relation_type", edge.edge_type.clone().unwrap_or_default());
-        query = query.param("owl_property_iri", edge.owl_property_iri.clone().unwrap_or_default());
+        query = query.param(
+            "owl_property_iri",
+            edge.owl_property_iri.clone().unwrap_or_default(),
+        );
 
-        let metadata_json = edge.metadata.as_ref()
+        let metadata_json = edge
+            .metadata
+            .as_ref()
             .and_then(|m| to_json(m).ok())
             .unwrap_or_default();
         query = query.param("metadata", metadata_json);
@@ -1823,9 +2139,14 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
         query = query.param("target", edge.target as i64);
         query = query.param("weight", edge.weight as f64);
         query = query.param("relation_type", edge.edge_type.clone().unwrap_or_default());
-        query = query.param("owl_property_iri", edge.owl_property_iri.clone().unwrap_or_default());
+        query = query.param(
+            "owl_property_iri",
+            edge.owl_property_iri.clone().unwrap_or_default(),
+        );
 
-        let metadata_json = edge.metadata.as_ref()
+        let metadata_json = edge
+            .metadata
+            .as_ref()
             .and_then(|m| to_json(m).ok())
             .unwrap_or_default();
         query = query.param("metadata", metadata_json);
@@ -1841,9 +2162,10 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
         // Parse edge_id format "source-target"
         let parts: Vec<&str> = edge_id.split('-').collect();
         if parts.len() != 2 {
-            return Err(KnowledgeGraphRepositoryError::InvalidData(
-                format!("Invalid edge_id format: {}", edge_id)
-            ));
+            return Err(KnowledgeGraphRepositoryError::InvalidData(format!(
+                "Invalid edge_id format: {}",
+                edge_id
+            )));
         }
 
         let source: u32 = parts[0].parse().map_err(|_| {
@@ -1854,9 +2176,12 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
             KnowledgeGraphRepositoryError::InvalidData(format!("Invalid target id: {}", parts[1]))
         })?;
 
-        let query = Query::new("MATCH (s:KGNode {id: $source})-[r:EDGE]->(t:KGNode {id: $target}) DELETE r".to_string())
-            .param("source", source as i64)
-            .param("target", target as i64);
+        let query = Query::new(
+            "MATCH (s:KGNode {id: $source})-[r:EDGE]->(t:KGNode {id: $target}) DELETE r"
+                .to_string(),
+        )
+        .param("source", source as i64)
+        .param("target", target as i64);
 
         self.graph.run(query).await.map_err(|e| {
             KnowledgeGraphRepositoryError::DatabaseError(format!("Failed to remove edge: {}", e))
@@ -1888,8 +2213,7 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
             let owl_property_iri: Option<String> = row.get("owl_property_iri").ok();
             let metadata_json: Option<String> = row.get("metadata").ok();
 
-            let metadata = metadata_json
-                .and_then(|json| from_json(&json).ok());
+            let metadata = metadata_json.and_then(|json| from_json(&json).ok());
 
             let mut edge = Edge::new(source as u32, target as u32, weight as f32);
             edge.edge_type = relation_type;
@@ -1909,7 +2233,10 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
 
         let mut edges = Vec::new();
         let mut result = self.graph.execute(query).await.map_err(|e| {
-            KnowledgeGraphRepositoryError::DatabaseError(format!("Failed to get edges between: {}", e))
+            KnowledgeGraphRepositoryError::DatabaseError(format!(
+                "Failed to get edges between: {}",
+                e
+            ))
         })?;
 
         while let Ok(Some(row)) = result.next().await {
@@ -1920,8 +2247,7 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
             let owl_property_iri: Option<String> = row.get("owl_property_iri").ok();
             let metadata_json: Option<String> = row.get("metadata").ok();
 
-            let metadata = metadata_json
-                .and_then(|json| from_json(&json).ok());
+            let metadata = metadata_json.and_then(|json| from_json(&json).ok());
 
             let mut edge = Edge::new(source as u32, target as u32, weight as f32);
             edge.edge_type = relation_type;
@@ -1934,21 +2260,19 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
         Ok(edges)
     }
 
-    async fn batch_update_positions(
-        &self,
-        positions: Vec<(u32, f32, f32, f32)>,
-    ) -> RepoResult<()> {
+    async fn batch_update_positions(&self, positions: Vec<(u32, f32, f32, f32)>) -> RepoResult<()> {
         // Update sim_* properties (physics state) - these are the GPU-calculated positions
         // x/y/z remain as initial/content positions and are not overwritten by physics
         for (node_id, x, y, z) in positions {
             let query = Query::new(
                 "MATCH (n:KGNode {id: $id})
-                 SET n.sim_x = $x, n.sim_y = $y, n.sim_z = $z".to_string()
+                 SET n.sim_x = $x, n.sim_y = $y, n.sim_z = $z"
+                    .to_string(),
             )
-                .param("id", node_id as i64)
-                .param("x", x as f64)
-                .param("y", y as f64)
-                .param("z", z as f64);
+            .param("id", node_id as i64)
+            .param("x", x as f64)
+            .param("y", y as f64)
+            .param("z", z as f64);
 
             self.graph.run(query).await.map_err(|e| {
                 KnowledgeGraphRepositoryError::DatabaseError(format!(
@@ -1964,11 +2288,14 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
     async fn query_nodes(&self, cypher_query: &str) -> RepoResult<Vec<Node>> {
         // SECURITY: Reject write operations through the read-only query_nodes path
         let upper = cypher_query.to_uppercase();
-        for keyword in &["CREATE", "MERGE", "DELETE", "SET ", "REMOVE", "DROP", "CALL {", "LOAD CSV"] {
+        for keyword in &[
+            "CREATE", "MERGE", "DELETE", "SET ", "REMOVE", "DROP", "CALL {", "LOAD CSV",
+        ] {
             if upper.contains(keyword) {
-                return Err(KnowledgeGraphRepositoryError::InvalidData(
-                    format!("query_nodes rejects write/mutating Cypher keywords: {}", keyword.trim()),
-                ));
+                return Err(KnowledgeGraphRepositoryError::InvalidData(format!(
+                    "query_nodes rejects write/mutating Cypher keywords: {}",
+                    keyword.trim()
+                )));
             }
         }
         info!("query_nodes: executing read-only Cypher query");
@@ -1998,7 +2325,11 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
     }
 
     async fn get_neighbors(&self, node_id: u32) -> RepoResult<Vec<Node>> {
-        let query = Query::new("MATCH (n:KGNode {id: $id})-[:EDGE]-(neighbor:KGNode) RETURN DISTINCT neighbor AS n".to_string()).param("id", node_id as i64);
+        let query = Query::new(
+            "MATCH (n:KGNode {id: $id})-[:EDGE]-(neighbor:KGNode) RETURN DISTINCT neighbor AS n"
+                .to_string(),
+        )
+        .param("id", node_id as i64);
 
         let mut nodes = Vec::new();
         let mut result = self.graph.execute(query).await.map_err(|e| {
@@ -2039,7 +2370,7 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
                  OPTIONAL MATCH path = (node)-[*]-(connected)
                  WITH node, COLLECT(DISTINCT connected) AS component
                  RETURN COUNT(DISTINCT component) AS component_count"
-                    .to_string()
+                    .to_string(),
             );
 
             let mut component_count = 1; // Default to 1 if query fails
@@ -2112,12 +2443,16 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
              RETURN n.id AS id,
                     COALESCE(n.sim_x, n.x, 0.0) AS x,
                     COALESCE(n.sim_y, n.y, 0.0) AS y,
-                    COALESCE(n.sim_z, n.z, 0.0) AS z".to_string()
+                    COALESCE(n.sim_z, n.z, 0.0) AS z"
+                .to_string(),
         );
 
         let mut positions = HashMap::new();
         let mut result = self.graph.execute(query).await.map_err(|e| {
-            KnowledgeGraphRepositoryError::DatabaseError(format!("Failed to get all positions: {}", e))
+            KnowledgeGraphRepositoryError::DatabaseError(format!(
+                "Failed to get all positions: {}",
+                e
+            ))
         })?;
 
         while let Ok(Some(row)) = result.next().await {
@@ -2129,22 +2464,24 @@ impl KnowledgeGraphRepository for Neo4jAdapter {
             positions.insert(id as u32, (x as f32, y as f32, z as f32));
         }
 
-        debug!("Retrieved {} node positions from Neo4j (using sim_* where available)", positions.len());
+        debug!(
+            "Retrieved {} node positions from Neo4j (using sim_* where available)",
+            positions.len()
+        );
         Ok(positions)
     }
 
     async fn get_nodes_by_owl_class_iri(&self, owl_class_iri: &str) -> RepoResult<Vec<Node>> {
-        let query = Query::new("MATCH (n:KGNode) WHERE n.owl_class_iri = $iri RETURN n".to_string()).param("iri", owl_class_iri);
+        let query =
+            Query::new("MATCH (n:KGNode) WHERE n.owl_class_iri = $iri RETURN n".to_string())
+                .param("iri", owl_class_iri);
 
-        let mut result = self.graph
-            .execute(query)
-            .await
-            .map_err(|e| {
-                KnowledgeGraphRepositoryError::DatabaseError(format!(
-                    "Failed to query nodes by owl_class_iri: {}",
-                    e
-                ))
-            })?;
+        let mut result = self.graph.execute(query).await.map_err(|e| {
+            KnowledgeGraphRepositoryError::DatabaseError(format!(
+                "Failed to query nodes by owl_class_iri: {}",
+                e
+            ))
+        })?;
 
         let mut nodes = Vec::new();
 

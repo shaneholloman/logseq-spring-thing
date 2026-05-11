@@ -5,9 +5,7 @@
 //! creating briefs, spawning role-specific agents, and consolidating debriefs.
 
 use crate::services::management_api_client::ManagementApiClient;
-use crate::types::user_context::{
-    BriefingRequest, BriefingResponse, RoleTask, UserContext,
-};
+use crate::types::user_context::{BriefingRequest, BriefingResponse, RoleTask, UserContext};
 use log::info;
 
 pub struct BriefingService {
@@ -96,10 +94,7 @@ impl BriefingService {
             .await
             .map_err(|e| BriefingError::ApiError(format!("Failed to create debrief: {}", e)))?;
 
-        info!(
-            "[BriefingService] Debrief created at {}",
-            debrief_path
-        );
+        info!("[BriefingService] Debrief created at {}", debrief_path);
 
         Ok(debrief_path)
     }
@@ -158,7 +153,11 @@ mod tests {
     fn test_briefing_request_serde_roundtrip() {
         let req = BriefingRequest {
             content: "Analyze security posture for Q3".to_string(),
-            roles: vec!["architect".to_string(), "ciso".to_string(), "dev".to_string()],
+            roles: vec![
+                "architect".to_string(),
+                "ciso".to_string(),
+                "dev".to_string(),
+            ],
             version: Some("v0.3.0".to_string()),
             brief_type: Some("security-review".to_string()),
             slug: Some("q3-security".to_string()),
@@ -193,14 +192,12 @@ mod tests {
             brief_id: "brief-001".to_string(),
             brief_path: "/briefs/2026/brief-001.md".to_string(),
             bead_id: Some("bead-epic-001".to_string()),
-            role_tasks: vec![
-                RoleTask {
-                    role: "architect".to_string(),
-                    task_id: "task-arch-001".to_string(),
-                    bead_id: Some("bead-arch-001".to_string()),
-                    response_path: "/briefs/2026/architect_response.md".to_string(),
-                },
-            ],
+            role_tasks: vec![RoleTask {
+                role: "architect".to_string(),
+                task_id: "task-arch-001".to_string(),
+                bead_id: Some("bead-arch-001".to_string()),
+                response_path: "/briefs/2026/architect_response.md".to_string(),
+            }],
         };
 
         let json = serde_json::to_string(&resp).unwrap();
@@ -264,11 +261,8 @@ mod tests {
     fn test_briefing_service_can_be_constructed() {
         // Verify the ManagementApiClient can be constructed with test values
         // (it won't connect, but the struct should build)
-        let client = ManagementApiClient::new(
-            "localhost".to_string(),
-            9190,
-            "test-api-key".to_string(),
-        );
+        let client =
+            ManagementApiClient::new("localhost".to_string(), 9190, "test-api-key".to_string());
         let _service = BriefingService::new(client);
         // Service is constructed without panicking — success
     }

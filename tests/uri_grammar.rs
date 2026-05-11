@@ -9,8 +9,8 @@
 
 use webxr::uri::{
     content_hash_12, from_curie, is_canonical, mint_bead, mint_concept, mint_did_nostr,
-    mint_execution, mint_group_members, mint_owned_kg, normalise_pubkey, parse, to_curie,
-    Kind, ParsedUri, UriError,
+    mint_execution, mint_group_members, mint_owned_kg, normalise_pubkey, parse, to_curie, Kind,
+    ParsedUri, UriError,
 };
 
 // secp256k1 generator x-coord — a real 32-byte hex pubkey accepted by
@@ -209,7 +209,9 @@ fn content_hash_12_has_correct_shape() {
     assert!(h.starts_with("sha256-12-"));
     let hex = h.trim_start_matches("sha256-12-");
     assert_eq!(hex.len(), 12);
-    assert!(hex.chars().all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase()));
+    assert!(hex
+        .chars()
+        .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase()));
 }
 
 #[test]
@@ -296,17 +298,31 @@ fn parse_did_nostr_roundtrip() {
 
 #[test]
 fn parsed_uri_kind_matches_variant() {
-    assert_eq!(parse(&mint_concept("bc", "x")).unwrap().kind(), Kind::Concept);
+    assert_eq!(
+        parse(&mint_concept("bc", "x")).unwrap().kind(),
+        Kind::Concept
+    );
     assert_eq!(parse(&mint_group_members("t")).unwrap().kind(), Kind::Group);
-    assert_eq!(parse(&mint_did_nostr(TEST_PUBKEY).unwrap()).unwrap().kind(), Kind::Did);
+    assert_eq!(
+        parse(&mint_did_nostr(TEST_PUBKEY).unwrap()).unwrap().kind(),
+        Kind::Did
+    );
 }
 
 #[test]
 fn parsed_uri_owner_scoped_classifier() {
-    assert!(parse(&mint_owned_kg(TEST_PUBKEY, b"x").unwrap()).unwrap().is_owner_scoped());
-    assert!(parse(&mint_bead(TEST_PUBKEY, &serde_json::json!({})).unwrap()).unwrap().is_owner_scoped());
+    assert!(parse(&mint_owned_kg(TEST_PUBKEY, b"x").unwrap())
+        .unwrap()
+        .is_owner_scoped());
+    assert!(
+        parse(&mint_bead(TEST_PUBKEY, &serde_json::json!({})).unwrap())
+            .unwrap()
+            .is_owner_scoped()
+    );
     assert!(!parse(&mint_concept("bc", "x")).unwrap().is_owner_scoped());
-    assert!(!parse(&mint_did_nostr(TEST_PUBKEY).unwrap()).unwrap().is_owner_scoped());
+    assert!(!parse(&mint_did_nostr(TEST_PUBKEY).unwrap())
+        .unwrap()
+        .is_owner_scoped());
 }
 
 // ---------------------------------------------------------------------------
@@ -333,10 +349,7 @@ fn from_curie_passes_did_through() {
 
 #[test]
 fn from_curie_rejects_missing_slug() {
-    assert!(matches!(
-        from_curie("vc:bc"),
-        Err(UriError::ParseFailed(_))
-    ));
+    assert!(matches!(from_curie("vc:bc"), Err(UriError::ParseFailed(_))));
 }
 
 #[test]
@@ -379,8 +392,14 @@ fn parse_rejects_empty_input() {
 
 #[test]
 fn parse_rejects_unknown_scheme() {
-    assert!(matches!(parse("http://example.com/foo"), Err(UriError::ParseFailed(_))));
-    assert!(matches!(parse("urn:agentbox:bead:scope:hash"), Err(UriError::ParseFailed(_))));
+    assert!(matches!(
+        parse("http://example.com/foo"),
+        Err(UriError::ParseFailed(_))
+    ));
+    assert!(matches!(
+        parse("urn:agentbox:bead:scope:hash"),
+        Err(UriError::ParseFailed(_))
+    ));
 }
 
 #[test]
@@ -418,7 +437,11 @@ fn parse_rejects_owned_with_non_hex_scope() {
 #[test]
 fn parse_rejects_owned_with_bad_hash() {
     assert!(parse(&format!("urn:visionclaw:kg:{}:sha256-12-abc", TEST_PUBKEY)).is_err());
-    assert!(parse(&format!("urn:visionclaw:kg:{}:sha256-12-ABCDEF012345", TEST_PUBKEY)).is_err());
+    assert!(parse(&format!(
+        "urn:visionclaw:kg:{}:sha256-12-ABCDEF012345",
+        TEST_PUBKEY
+    ))
+    .is_err());
     assert!(parse(&format!("urn:visionclaw:kg:{}:abcdef012345", TEST_PUBKEY)).is_err());
 }
 

@@ -63,7 +63,6 @@ pub struct TaskOrchestratorActor {
 }
 
 impl TaskOrchestratorActor {
-
     pub fn new(api_client: ManagementApiClient) -> Self {
         info!("[TaskOrchestratorActor] Initializing");
         let max_concurrent_tasks = std::env::var("MAX_CONCURRENT_TASKS")
@@ -133,7 +132,6 @@ impl Actor for TaskOrchestratorActor {
     fn started(&mut self, ctx: &mut Self::Context) {
         info!("[TaskOrchestratorActor] Actor started");
 
-        
         ctx.address()
             .do_send(crate::actors::messages::InitializeActor);
     }
@@ -153,13 +151,11 @@ impl Handler<crate::actors::messages::InitializeActor> for TaskOrchestratorActor
     ) -> Self::Result {
         info!("[TaskOrchestratorActor] Initializing periodic cleanup (deferred from started)");
 
-        
         ctx.run_interval(Duration::from_secs(300), |act, _ctx| {
             let now = time::now();
             let mut to_remove = Vec::new();
 
             for (task_id, task) in &act.active_tasks {
-                
                 if (task.status == ApiTaskState::Completed || task.status == ApiTaskState::Failed)
                     && (now - task.last_updated).num_minutes() > 5
                 {
@@ -288,17 +284,10 @@ impl Handler<CreateTask> for TaskOrchestratorActor {
 
         Box::pin(
             async move {
-                create_task_with_retry(
-                    client,
-                    &agent,
-                    &task,
-                    &provider,
-                    max_retries,
-                    retry_delay,
-                )
-                .await
-                .map(|(response, attempts)| (response, attempts, agent, task, provider))
-                .map_err(|e| e.to_string())
+                create_task_with_retry(client, &agent, &task, &provider, max_retries, retry_delay)
+                    .await
+                    .map(|(response, attempts)| (response, attempts, agent, task, provider))
+                    .map_err(|e| e.to_string())
             }
             .into_actor(self)
             .map(|result, act, _ctx| {
@@ -327,9 +316,7 @@ impl Handler<CreateTask> for TaskOrchestratorActor {
                         let running = act
                             .active_tasks
                             .values()
-                            .filter(|t| {
-                                t.status == ApiTaskState::Running && t.agent == agent_type
-                            })
+                            .filter(|t| t.status == ApiTaskState::Running && t.agent == agent_type)
                             .count();
                         if let Some(ref addr) = act.agent_monitor_addr {
                             addr.do_send(crate::actors::messages::TaskStatusChanged {
@@ -523,8 +510,7 @@ impl Handler<DrainTasksBeforeShutdown> for TaskOrchestratorActor {
         );
         self.accepting_tasks = false;
 
-        let deadline =
-            std::time::Instant::now() + std::time::Duration::from_secs(msg.timeout_secs);
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(msg.timeout_secs);
 
         ctx.run_interval(std::time::Duration::from_secs(1), move |act, ctx| {
             let remaining = act
@@ -570,11 +556,8 @@ mod tests {
 
     #[test]
     fn test_actor_creation() {
-        let client = ManagementApiClient::new(
-            "localhost".to_string(),
-            9190,
-            "test-key".to_string(),
-        );
+        let client =
+            ManagementApiClient::new("localhost".to_string(), 9190, "test-key".to_string());
 
         let actor = TaskOrchestratorActor::new(client);
         assert_eq!(actor.max_retries, 3);

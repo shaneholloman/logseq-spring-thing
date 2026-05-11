@@ -3,26 +3,20 @@ pub mod knowledge_graph_parser;
 pub mod ontology_parser;
 pub mod visibility;
 
-pub use knowledge_graph_parser::{
-    FileBundle, KGNodeDraft, KnowledgeGraphParser, ParseOutput,
-};
+pub use knowledge_graph_parser::{FileBundle, KGNodeDraft, KnowledgeGraphParser, ParseOutput};
 pub use ontology_parser::OntologyParser;
 pub use visibility::{classify_visibility, Visibility};
 
 #[derive(Debug, Clone)]
 pub struct OntologyData {
-    
     pub classes: Vec<crate::ports::ontology_repository::OwlClass>,
 
-    
     pub properties: Vec<crate::ports::ontology_repository::OwlProperty>,
 
-    
     pub axioms: Vec<crate::ports::ontology_repository::OwlAxiom>,
 }
 
 impl OntologyData {
-    
     pub fn new() -> Self {
         Self {
             classes: Vec::new(),
@@ -31,7 +25,6 @@ impl OntologyData {
         }
     }
 
-    
     pub fn with_capacity(classes: usize, properties: usize, axioms: usize) -> Self {
         Self {
             classes: Vec::with_capacity(classes),
@@ -40,12 +33,10 @@ impl OntologyData {
         }
     }
 
-    
     pub fn is_empty(&self) -> bool {
         self.classes.is_empty() && self.properties.is_empty() && self.axioms.is_empty()
     }
 
-    
     pub fn total_elements(&self) -> usize {
         self.classes.len() + self.properties.len() + self.axioms.len()
     }

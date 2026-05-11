@@ -88,7 +88,11 @@ async fn reaper_removes_expired_beams_within_250ms() {
 
     let snap = addr.send(GetTransients).await.unwrap();
     assert_eq!(snap.beams.len(), 0, "expired beams must be reaped");
-    assert_eq!(snap.charge_multipliers.len(), 0, "expired modulations must be reaped");
+    assert_eq!(
+        snap.charge_multipliers.len(),
+        0,
+        "expired modulations must be reaped"
+    );
 }
 
 #[actix::test]

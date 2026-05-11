@@ -49,8 +49,15 @@ pub struct PresenceHandlerState {
 #[derive(Debug, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 enum ServerHandshake {
-    Challenge { nonce: String, ts: u64 },
-    Joined { room_id: String, avatar_id: String, members: Vec<MemberDescriptor> },
+    Challenge {
+        nonce: String,
+        ts: u64,
+    },
+    Joined {
+        room_id: String,
+        avatar_id: String,
+        members: Vec<MemberDescriptor>,
+    },
 }
 
 #[derive(Debug, Serialize)]
@@ -79,8 +86,14 @@ struct ClientMetadata {
 
 #[derive(Debug)]
 enum SessionPhase {
-    Challenged { nonce: [u8; 32], ts_us: u64 },
-    Joined { avatar_id: AvatarId, room_addr: actix::Addr<PresenceActor> },
+    Challenged {
+        nonce: [u8; 32],
+        ts_us: u64,
+    },
+    Joined {
+        avatar_id: AvatarId,
+        room_addr: actix::Addr<PresenceActor>,
+    },
 }
 
 pub struct PresenceSession {
@@ -138,11 +151,7 @@ impl PresenceSession {
         true
     }
 
-    fn handle_auth(
-        &mut self,
-        text: &str,
-        ctx: &mut ws::WebsocketContext<Self>,
-    ) {
+    fn handle_auth(&mut self, text: &str, ctx: &mut ws::WebsocketContext<Self>) {
         let SessionPhase::Challenged { nonce, ts_us } = &self.phase else {
             warn!("auth attempted in wrong phase");
             close_with(ctx, CLOSE_CODE_VALIDATION, "auth in wrong phase");
@@ -172,7 +181,11 @@ impl PresenceSession {
             claimed_pubkey_hex: did.strip_prefix("did:nostr:").unwrap_or(&did).to_owned(),
             signature_hex: signature,
         };
-        let verified = match self.state.identity_verifier.verify_signed_challenge(&challenge) {
+        let verified = match self
+            .state
+            .identity_verifier
+            .verify_signed_challenge(&challenge)
+        {
             Ok(d) => d,
             Err(e) => {
                 warn!("identity verification failed: {e}");
@@ -219,50 +232,52 @@ impl PresenceSession {
         let room_for_join = room.clone();
         let room_addr_for_state = room_addr.clone();
         ctx.spawn(
-            join.into_actor(self).map(move |res, act, inner_ctx| match res {
-                Ok(Ok(ack)) => {
-                    let descriptors: Vec<MemberDescriptor> = ack
-                        .members
-                        .iter()
-                        .map(|m| MemberDescriptor {
-                            did: m.did.to_string(),
-                            display_name: m.display_name.clone(),
-                            model_uri: m.model_uri.clone(),
-                        })
-                        .collect();
-                    let msg = ServerHandshake::Joined {
-                        room_id: room_for_join.as_str().to_owned(),
-                        avatar_id: ack.avatar_id.to_string(),
-                        members: descriptors,
-                    };
-                    if let Ok(json) = serde_json::to_string(&msg) {
-                        inner_ctx.text(json);
+            join.into_actor(self)
+                .map(move |res, act, inner_ctx| match res {
+                    Ok(Ok(ack)) => {
+                        let descriptors: Vec<MemberDescriptor> = ack
+                            .members
+                            .iter()
+                            .map(|m| MemberDescriptor {
+                                did: m.did.to_string(),
+                                display_name: m.display_name.clone(),
+                                model_uri: m.model_uri.clone(),
+                            })
+                            .collect();
+                        let msg = ServerHandshake::Joined {
+                            room_id: room_for_join.as_str().to_owned(),
+                            avatar_id: ack.avatar_id.to_string(),
+                            members: descriptors,
+                        };
+                        if let Ok(json) = serde_json::to_string(&msg) {
+                            inner_ctx.text(json);
+                        }
+                        act.phase = SessionPhase::Joined {
+                            avatar_id: ack.avatar_id,
+                            room_addr: room_addr_for_state.clone(),
+                        };
+                        info!(room = %room_for_join, "presence session joined");
                     }
-                    act.phase = SessionPhase::Joined {
-                        avatar_id: ack.avatar_id,
-                        room_addr: room_addr_for_state.clone(),
-                    };
-                    info!(room = %room_for_join, "presence session joined");
-                }
-                Ok(Err(JoinRejection::DuplicateMember)) => {
-                    close_with(inner_ctx, CLOSE_CODE_VALIDATION, "duplicate member");
-                }
-                Ok(Err(other)) => {
-                    close_with(inner_ctx, CLOSE_CODE_VALIDATION, &other.to_string());
-                }
-                Err(e) => {
-                    warn!("join mailbox error: {e}");
-                    close_with(inner_ctx, CLOSE_CODE_VALIDATION, "join failed");
-                }
-            }),
+                    Ok(Err(JoinRejection::DuplicateMember)) => {
+                        close_with(inner_ctx, CLOSE_CODE_VALIDATION, "duplicate member");
+                    }
+                    Ok(Err(other)) => {
+                        close_with(inner_ctx, CLOSE_CODE_VALIDATION, &other.to_string());
+                    }
+                    Err(e) => {
+                        warn!("join mailbox error: {e}");
+                        close_with(inner_ctx, CLOSE_CODE_VALIDATION, "join failed");
+                    }
+                }),
         );
     }
 
     fn handle_pose_frame(&mut self, bin: bytes::Bytes, ctx: &mut ws::WebsocketContext<Self>) {
         let (avatar, addr) = match &self.phase {
-            SessionPhase::Joined { avatar_id, room_addr } => {
-                (avatar_id.clone(), room_addr.clone())
-            }
+            SessionPhase::Joined {
+                avatar_id,
+                room_addr,
+            } => (avatar_id.clone(), room_addr.clone()),
             _ => {
                 close_with(ctx, CLOSE_CODE_VALIDATION, "binary before auth");
                 return;
@@ -284,8 +299,7 @@ impl PresenceSession {
             .into_actor(self)
             .map(|res, _act, inner_ctx| match res {
                 Ok(IngestOutcome::Accepted) => {}
-                Ok(IngestOutcome::Decode(reason))
-                | Ok(IngestOutcome::ValidationFailed(reason)) => {
+                Ok(IngestOutcome::Decode(reason)) | Ok(IngestOutcome::ValidationFailed(reason)) => {
                     warn!("pose rejected: {reason}");
                 }
                 Ok(IngestOutcome::Kick(reason)) => {
@@ -348,7 +362,11 @@ impl Actor for PresenceSession {
     }
 
     fn stopping(&mut self, _ctx: &mut Self::Context) -> actix::Running {
-        if let SessionPhase::Joined { avatar_id, room_addr } = &self.phase {
+        if let SessionPhase::Joined {
+            avatar_id,
+            room_addr,
+        } = &self.phase
+        {
             room_addr.do_send(LeaveRoom {
                 avatar_id: avatar_id.clone(),
             });
@@ -358,11 +376,7 @@ impl Actor for PresenceSession {
 }
 
 impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for PresenceSession {
-    fn handle(
-        &mut self,
-        msg: Result<ws::Message, ws::ProtocolError>,
-        ctx: &mut Self::Context,
-    ) {
+    fn handle(&mut self, msg: Result<ws::Message, ws::ProtocolError>, ctx: &mut Self::Context) {
         match msg {
             Ok(ws::Message::Text(text)) => self.handle_auth(&text, ctx),
             Ok(ws::Message::Binary(bin)) => self.handle_pose_frame(bin, ctx),

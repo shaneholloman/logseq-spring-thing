@@ -346,8 +346,7 @@ impl PresetTransition {
         if self.active {
             return false;
         }
-        max_velocity < self.stability.velocity_epsilon
-            && max_force < self.stability.force_epsilon
+        max_velocity < self.stability.velocity_epsilon && max_force < self.stability.force_epsilon
             || iteration >= self.stability.max_iterations
     }
 

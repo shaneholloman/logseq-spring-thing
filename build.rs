@@ -74,7 +74,11 @@ fn main() {
     if let Ok(nvcc_out) = Command::new("nvcc").arg("--version").output() {
         let nvcc_version = String::from_utf8_lossy(&nvcc_out.stdout);
         if let Ok(smi_out) = Command::new("nvidia-smi")
-            .args(["--query-gpu=driver_version", "--format=csv,noheader", "--id=0"])
+            .args([
+                "--query-gpu=driver_version",
+                "--format=csv,noheader",
+                "--id=0",
+            ])
             .output()
         {
             let driver_version = String::from_utf8_lossy(&smi_out.stdout);
@@ -94,7 +98,9 @@ fn main() {
     let is_docker = env::var("DOCKER_ENV").is_ok();
     let cuda_arch = env::var("CUDA_ARCH").unwrap_or_else(|_| {
         if is_docker {
-            println!("Docker build detected — skipping nvidia-smi GPU detection, using portable sm_75");
+            println!(
+                "Docker build detected — skipping nvidia-smi GPU detection, using portable sm_75"
+            );
             return "75".to_string();
         }
         // Native (non-Docker) build: try to auto-detect GPU compute capability
@@ -109,7 +115,10 @@ fn main() {
                     // nvidia-smi returns "8.6" → we need "86"
                     let arch = cap.replace('.', "");
                     if !arch.is_empty() {
-                        println!("Auto-detected GPU compute capability: {} (sm_{})", cap, arch);
+                        println!(
+                            "Auto-detected GPU compute capability: {} (sm_{})",
+                            cap, arch
+                        );
                         return arch;
                     }
                 }
@@ -224,7 +233,10 @@ fn main() {
         ("src/utils/visionflow_unified.cu", "thrust_wrapper"),
         ("src/utils/semantic_forces.cu", "semantic_forces"),
         ("src/utils/pagerank.cu", "pagerank"),
-        ("src/utils/gpu_connected_components.cu", "gpu_connected_components"),
+        (
+            "src/utils/gpu_connected_components.cu",
+            "gpu_connected_components",
+        ),
         ("src/utils/nan_guard.cu", "nan_guard"),
     ];
 
@@ -242,7 +254,10 @@ fn main() {
             "-gencode=arch=compute_{0},code=[sm_{0},compute_{0}]",
             cuda_arch
         );
-        println!("Compiling {} to object file (gencode: {})...", obj_name, gencode_flag);
+        println!(
+            "Compiling {} to object file (gencode: {})...",
+            obj_name, gencode_flag
+        );
         let obj_status = Command::new("nvcc")
             .args([
                 "-c",
@@ -268,12 +283,16 @@ fn main() {
 
     // Device link all object files together (required for cross-module device calls)
     let dlink_output = PathBuf::from(&out_dir).join("cuda_dlink.o");
-    let dlink_gencode = format!("-gencode=arch=compute_{0},code=[sm_{0},compute_{0}]", cuda_arch);
-    println!("Device linking {} CUDA object files ({})...", obj_files.len(), dlink_gencode);
-    let mut dlink_args: Vec<String> = vec![
-        "-dlink".to_string(),
-        dlink_gencode,
-    ];
+    let dlink_gencode = format!(
+        "-gencode=arch=compute_{0},code=[sm_{0},compute_{0}]",
+        cuda_arch
+    );
+    println!(
+        "Device linking {} CUDA object files ({})...",
+        obj_files.len(),
+        dlink_gencode
+    );
+    let mut dlink_args: Vec<String> = vec!["-dlink".to_string(), dlink_gencode];
     for obj in &obj_files {
         dlink_args.push(obj.to_str().unwrap().to_string());
     }
@@ -292,10 +311,8 @@ fn main() {
     // Create static library from all object files + device link output
     let lib_output = PathBuf::from(&out_dir).join("libthrust_wrapper.a");
     println!("Creating static library...");
-    let mut ar_args: Vec<String> = vec![
-        "rcs".to_string(),
-        lib_output.to_str().unwrap().to_string(),
-    ];
+    let mut ar_args: Vec<String> =
+        vec!["rcs".to_string(), lib_output.to_str().unwrap().to_string()];
     for obj in &obj_files {
         ar_args.push(obj.to_str().unwrap().to_string());
     }

@@ -26,11 +26,8 @@ pub enum BrokerError {
 #[async_trait]
 pub trait BrokerRepository: Send + Sync {
     /// Get all open cases, ordered by priority
-    async fn list_cases(
-        &self,
-        status: Option<CaseStatus>,
-        limit: usize,
-    ) -> Result<Vec<BrokerCase>>;
+    async fn list_cases(&self, status: Option<CaseStatus>, limit: usize)
+        -> Result<Vec<BrokerCase>>;
 
     /// Get a single case by ID
     async fn get_case(&self, case_id: &str) -> Result<Option<BrokerCase>>;

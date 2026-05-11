@@ -19,9 +19,7 @@
 //! middleware around a dummy handler that echoes the authenticated pubkey.
 
 use actix_web::{
-    body::to_bytes,
-    http::StatusCode,
-    test, web, App, HttpRequest, HttpResponse, Responder,
+    body::to_bytes, http::StatusCode, test, web, App, HttpRequest, HttpResponse, Responder,
 };
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -261,8 +259,7 @@ async fn authenticated_no_auth_returns_unauthorized_or_forbidden() {
     // the legacy branch; the key invariant is that anonymous is rejected
     // (not 200). Accept either 401 or 403 — both block the request.
     assert!(
-        resp.status() == StatusCode::UNAUTHORIZED
-            || resp.status() == StatusCode::FORBIDDEN,
+        resp.status() == StatusCode::UNAUTHORIZED || resp.status() == StatusCode::FORBIDDEN,
         "anonymous must be rejected for authenticated scope, got {}",
         resp.status()
     );
@@ -339,8 +336,7 @@ async fn flag_disabled_demotes_optional_to_authenticated() {
     let resp = test::call_service(&app, req).await;
 
     assert!(
-        resp.status() == StatusCode::UNAUTHORIZED
-            || resp.status() == StatusCode::FORBIDDEN,
+        resp.status() == StatusCode::UNAUTHORIZED || resp.status() == StatusCode::FORBIDDEN,
         "flag-off Optional must reject anonymous (got {})",
         resp.status()
     );
@@ -382,12 +378,12 @@ fn anonymous_sees_public_only_signed_sees_own_private() {
     let rows = [&public_row, &alice_private, &bob_private];
 
     // Case 1: anonymous — public only.
-    let anon_visible: Vec<_> = rows
-        .iter()
-        .filter(|m| visibility_allows(m, None))
-        .collect();
+    let anon_visible: Vec<_> = rows.iter().filter(|m| visibility_allows(m, None)).collect();
     assert_eq!(anon_visible.len(), 1);
-    assert!(std::ptr::eq(*anon_visible[0] as *const _, &public_row as *const _));
+    assert!(std::ptr::eq(
+        *anon_visible[0] as *const _,
+        &public_row as *const _
+    ));
 
     // Case 2: alice — public + own private, never Bob's.
     let alice_visible: Vec<_> = rows

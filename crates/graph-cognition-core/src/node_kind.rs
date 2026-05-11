@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use strum::{EnumIter, EnumString, Display, AsRefStr};
+use strum::{AsRefStr, Display, EnumIter, EnumString};
 
 /// 21-variant node kind taxonomy per ADR-064.
 ///
@@ -12,8 +12,18 @@ use strum::{EnumIter, EnumString, Display, AsRefStr};
 /// - Domain (3): Entity, ValueObject, Aggregate
 /// - Knowledge (5): Page, Block, Concept, OntologyClass, OntologyIndividual
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize,
-    EnumIter, EnumString, Display, AsRefStr,
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Hash,
+    Serialize,
+    Deserialize,
+    EnumIter,
+    EnumString,
+    Display,
+    AsRefStr,
 )]
 #[serde(rename_all = "snake_case")]
 #[strum(serialize_all = "snake_case")]
@@ -59,10 +69,19 @@ impl NodeKind {
             Self::Function | Self::Module | Self::Class | Self::Interface | Self::Variable => {
                 NodeGroup::Code
             }
-            Self::Service | Self::Container | Self::Database | Self::Queue | Self::Cache
-            | Self::Gateway | Self::LoadBalancer | Self::Cdn => NodeGroup::Infrastructure,
+            Self::Service
+            | Self::Container
+            | Self::Database
+            | Self::Queue
+            | Self::Cache
+            | Self::Gateway
+            | Self::LoadBalancer
+            | Self::Cdn => NodeGroup::Infrastructure,
             Self::Entity | Self::ValueObject | Self::Aggregate => NodeGroup::Domain,
-            Self::Page | Self::Block | Self::Concept | Self::OntologyClass
+            Self::Page
+            | Self::Block
+            | Self::Concept
+            | Self::OntologyClass
             | Self::OntologyIndividual => NodeGroup::Knowledge,
         }
     }
@@ -131,13 +150,22 @@ mod tests {
     #[test]
     fn legacy_mapping_page() {
         assert_eq!(NodeKind::from_legacy_type("page"), Some(NodeKind::Page));
-        assert_eq!(NodeKind::from_legacy_type("linked_page"), Some(NodeKind::Page));
+        assert_eq!(
+            NodeKind::from_legacy_type("linked_page"),
+            Some(NodeKind::Page)
+        );
     }
 
     #[test]
     fn legacy_mapping_ontology() {
-        assert_eq!(NodeKind::from_legacy_type("owl_class"), Some(NodeKind::OntologyClass));
-        assert_eq!(NodeKind::from_legacy_type("OwlClass"), Some(NodeKind::OntologyClass));
+        assert_eq!(
+            NodeKind::from_legacy_type("owl_class"),
+            Some(NodeKind::OntologyClass)
+        );
+        assert_eq!(
+            NodeKind::from_legacy_type("OwlClass"),
+            Some(NodeKind::OntologyClass)
+        );
     }
 
     #[test]

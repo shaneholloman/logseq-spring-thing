@@ -10,7 +10,10 @@ fn is_envelope_fixture_loads_and_metadata_is_canonical() {
     let f = load_fixture("is-envelope-v1.json");
     assert_meta_block(&f, "ADR-075");
     let vectors = f["vectors"].as_array().expect("vectors must be array");
-    assert!(vectors.len() >= 11, "is-envelope-v1 must have >= 11 vectors");
+    assert!(
+        vectors.len() >= 11,
+        "is-envelope-v1 must have >= 11 vectors"
+    );
 }
 
 #[test]

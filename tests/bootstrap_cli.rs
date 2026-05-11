@@ -31,12 +31,10 @@ fn write_env(contents: &str) -> NamedTempFile {
 }
 
 /// A 64-char hex Nostr pubkey — deterministic so tests are stable.
-const TEST_PUBKEY: &str =
-    "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+const TEST_PUBKEY: &str = "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
 
 /// A 64-char hex secret key for NIP-98 signing.  NOT a real key.
-const TEST_SERVER_SK: &str =
-    "0000000000000000000000000000000000000000000000000000000000000001";
+const TEST_SERVER_SK: &str = "0000000000000000000000000000000000000000000000000000000000000001";
 
 const GOOD_ENV: &str = "\
 # Example comment
@@ -82,7 +80,10 @@ fn dry_run_produces_expected_payload() {
         stdout.contains("PUT https://pods.example.org/foo/private/config/github"),
         "stdout missing target line: {stdout}"
     );
-    assert!(stdout.contains("\"owner\": \"jjohare\""), "stdout = {stdout}");
+    assert!(
+        stdout.contains("\"owner\": \"jjohare\""),
+        "stdout = {stdout}"
+    );
     assert!(stdout.contains("\"repo\": \"logseq\""), "stdout = {stdout}");
     assert!(stdout.contains("\"branch\": \"main\""), "stdout = {stdout}");
     assert!(
@@ -199,10 +200,7 @@ fn invalid_pubkey_errors_clearly() {
         .expect("run cli");
     assert!(!out.status.success());
     let stderr = String::from_utf8_lossy(&out.stderr);
-    assert!(
-        stderr.contains("invalid owner pubkey"),
-        "stderr={stderr}"
-    );
+    assert!(stderr.contains("invalid owner pubkey"), "stderr={stderr}");
 }
 
 #[test]

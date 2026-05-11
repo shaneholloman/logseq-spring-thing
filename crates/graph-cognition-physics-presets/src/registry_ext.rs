@@ -13,19 +13,13 @@ pub fn all_edge_kind_registry_entries() -> Vec<EdgeKindRegistryEntry> {
         .map(|kind| {
             let defaults = kind.default_force_params();
             let force_type = match kind.category() {
-                graph_cognition_core::EdgeCategory::Domain
-                    if kind == EdgeKind::HasPart =>
-                {
+                graph_cognition_core::EdgeCategory::Domain if kind == EdgeKind::HasPart => {
                     1 // orbit clustering
                 }
-                graph_cognition_core::EdgeCategory::Domain
-                    if kind == EdgeKind::BridgesTo =>
-                {
+                graph_cognition_core::EdgeCategory::Domain if kind == EdgeKind::BridgesTo => {
                     2 // cross-domain long-range
                 }
-                graph_cognition_core::EdgeCategory::Semantic
-                    if kind == EdgeKind::DisjointWith =>
-                {
+                graph_cognition_core::EdgeCategory::Semantic if kind == EdgeKind::DisjointWith => {
                     3 // repulsion
                 }
                 _ => 0, // standard spring
@@ -73,14 +67,20 @@ mod tests {
     #[test]
     fn has_part_is_orbit() {
         let entries = all_edge_kind_registry_entries();
-        let hp = entries.iter().find(|e| e.kind == EdgeKind::HasPart).unwrap();
+        let hp = entries
+            .iter()
+            .find(|e| e.kind == EdgeKind::HasPart)
+            .unwrap();
         assert_eq!(hp.force_type, 1);
     }
 
     #[test]
     fn disjoint_is_repulsion() {
         let entries = all_edge_kind_registry_entries();
-        let dj = entries.iter().find(|e| e.kind == EdgeKind::DisjointWith).unwrap();
+        let dj = entries
+            .iter()
+            .find(|e| e.kind == EdgeKind::DisjointWith)
+            .unwrap();
         assert_eq!(dj.force_type, 3);
     }
 }

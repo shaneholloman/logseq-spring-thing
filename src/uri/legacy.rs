@@ -34,13 +34,10 @@ use sha2::{Digest, Sha256};
             shim only exists so existing callers and ADR-054 rows keep \
             their column values"
 )]
-pub fn canonical_iri_npub(
-    pubkey_hex: &str,
-    relative_path: &str,
-) -> Result<String, UriError> {
+pub fn canonical_iri_npub(pubkey_hex: &str, relative_path: &str) -> Result<String, UriError> {
     let normalised = normalise_pubkey(pubkey_hex)?;
-    let pk = PublicKey::from_hex(&normalised)
-        .map_err(|e| UriError::InvalidPubkeyHex(e.to_string()))?;
+    let pk =
+        PublicKey::from_hex(&normalised).map_err(|e| UriError::InvalidPubkeyHex(e.to_string()))?;
     let npub = pk
         .to_bech32()
         .map_err(|e| UriError::Bech32Error(e.to_string()))?;

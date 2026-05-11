@@ -101,7 +101,10 @@ impl SkillPackage {
             .get_mut(&benchmark.version_ref)
             .ok_or_else(|| SkillPackageError::UnknownVersion(benchmark.version_ref.clone()))?;
         version.mark_benchmarked(benchmark.run_at);
-        let entry = self.benchmarks.entry(benchmark.version_ref.clone()).or_default();
+        let entry = self
+            .benchmarks
+            .entry(benchmark.version_ref.clone())
+            .or_default();
         entry.push(benchmark);
         Ok(entry.len())
     }

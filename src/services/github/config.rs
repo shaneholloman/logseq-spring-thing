@@ -253,7 +253,10 @@ mod tests {
         env::set_var("GITHUB_OWNER", "owner");
         env::set_var("GITHUB_REPO", "repo");
         env::set_var("GITHUB_BASE_PATH", "mainKnowledgeGraph/pages");
-        env::set_var("GITHUB_BASE_PATHS", "mainKnowledgeGraph/pages, workingGraph/pages");
+        env::set_var(
+            "GITHUB_BASE_PATHS",
+            "mainKnowledgeGraph/pages, workingGraph/pages",
+        );
         env::remove_var("GITHUB_BRANCH");
         env::remove_var("GITHUB_RATE_LIMIT");
         env::remove_var("GITHUB_API_VERSION");

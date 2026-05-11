@@ -55,8 +55,11 @@ fn bench_validate_pose(c: &mut Criterion) {
         b.iter(|| {
             validate::velocity_gate(black_box(&prev), black_box(&next), 20.0).unwrap();
             validate::world_bounds(black_box(&next.head), black_box(&bounds)).unwrap();
-            validate::monotonic_timestamp(black_box(prev.timestamp_us), black_box(next.timestamp_us))
-                .unwrap();
+            validate::monotonic_timestamp(
+                black_box(prev.timestamp_us),
+                black_box(next.timestamp_us),
+            )
+            .unwrap();
         })
     });
 }

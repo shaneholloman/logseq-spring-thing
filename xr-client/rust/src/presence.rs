@@ -11,9 +11,7 @@ use tracing::info;
 use tracing::warn;
 
 use visionclaw_xr_presence::wire::{decode, encode, DecodedFrame};
-use visionclaw_xr_presence::{
-    AvatarId, AvatarMetadata, Did, PoseFrame, RoomId, WireError,
-};
+use visionclaw_xr_presence::{AvatarId, AvatarMetadata, Did, PoseFrame, RoomId, WireError};
 
 use crate::ports::{Signer, SignerError, TransportError, WsMessage, WsTransport};
 
@@ -83,7 +81,10 @@ impl<T: WsTransport, S: Signer> PresenceClient<T, S> {
         }
     }
 
-    pub async fn handshake(&mut self, display_name: String) -> Result<PresenceRoomState, PresenceError> {
+    pub async fn handshake(
+        &mut self,
+        display_name: String,
+    ) -> Result<PresenceRoomState, PresenceError> {
         let did = self.signer.did()?;
         let nonce = [0u8; 32];
         let timestamp_us = current_micros();
@@ -243,7 +244,9 @@ mod tests {
             }],
         };
         inbox
-            .send(WsMessage::Text(serde_json::to_string(&server_state).unwrap()))
+            .send(WsMessage::Text(
+                serde_json::to_string(&server_state).unwrap(),
+            ))
             .await
             .unwrap();
 
@@ -290,7 +293,9 @@ mod tests {
             members: vec![],
         };
         inbox
-            .send(WsMessage::Text(serde_json::to_string(&server_state).unwrap()))
+            .send(WsMessage::Text(
+                serde_json::to_string(&server_state).unwrap(),
+            ))
             .await
             .unwrap();
         client.handshake("alice".into()).await.unwrap();

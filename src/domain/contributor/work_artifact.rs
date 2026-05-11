@@ -192,7 +192,9 @@ mod tests {
     #[test]
     fn advance_is_step_by_step() {
         let mut a = fresh();
-        let e = a.advance_share_state(ShareState::Mesh, "intent-1").unwrap_err();
+        let e = a
+            .advance_share_state(ShareState::Mesh, "intent-1")
+            .unwrap_err();
         assert!(matches!(e, WorkArtifactError::SkipTransition { .. }));
         assert_eq!(a.share_state, ShareState::Private);
 
@@ -210,9 +212,14 @@ mod tests {
         let err = a
             .advance_share_state(ShareState::Private, "intent-bad")
             .unwrap_err();
-        assert!(matches!(err, WorkArtifactError::NonMonotonicTransition { .. }));
+        assert!(matches!(
+            err,
+            WorkArtifactError::NonMonotonicTransition { .. }
+        ));
 
-        let evt = a.record_revocation(ShareState::Private, "intent-rev").unwrap();
+        let evt = a
+            .record_revocation(ShareState::Private, "intent-rev")
+            .unwrap();
         assert_eq!(a.share_state, ShareState::Private);
         assert_eq!(evt.from_state, ShareState::Team);
         assert_eq!(evt.to_state, ShareState::Private);

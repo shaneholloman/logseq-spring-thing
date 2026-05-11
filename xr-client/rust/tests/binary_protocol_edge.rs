@@ -2,7 +2,7 @@
 
 use bytes::Bytes;
 use visionclaw_xr_gdext::binary_protocol::{
-    decode_position_frame, ingest_frame, OPCODE_POSITION_FRAME, NODE_RECORD_BYTES,
+    decode_position_frame, ingest_frame, NODE_RECORD_BYTES, OPCODE_POSITION_FRAME,
 };
 
 /// Helper: build a valid 0x42 frame from a slice of (node_id, position, velocity).
@@ -63,9 +63,8 @@ fn header_only_zero_nodes() {
 
 #[test]
 fn ingest_frame_100_nodes_fires_all_callbacks() {
-    let records: Vec<(u32, [f32; 3], [f32; 3])> = (0u32..100)
-        .map(|i| (i, [i as f32; 3], [0.0; 3]))
-        .collect();
+    let records: Vec<(u32, [f32; 3], [f32; 3])> =
+        (0u32..100).map(|i| (i, [i as f32; 3], [0.0; 3])).collect();
     let frame = build_frame(&records);
     let mut count = 0usize;
     let mut last_id: Option<u32> = None;

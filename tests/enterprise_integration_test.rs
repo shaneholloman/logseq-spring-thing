@@ -487,10 +487,7 @@ fn broker_decision_roundtrip() {
     assert_eq!(back.id, "dec-001");
     assert_eq!(back.case_id, "case-001");
     assert_eq!(back.action, DecisionAction::Approve);
-    assert_eq!(
-        back.provenance_event_id,
-        Some("prov-001".to_string())
-    );
+    assert_eq!(back.provenance_event_id, Some("prov-001".to_string()));
 }
 
 #[test]
@@ -1194,7 +1191,10 @@ fn broker_case_from_json_with_missing_required_field() {
         // missing description, priority, source, status, etc.
     });
     let result = serde_json::from_value::<BrokerCase>(incomplete);
-    assert!(result.is_err(), "Should reject JSON missing required fields");
+    assert!(
+        result.is_err(),
+        "Should reject JSON missing required fields"
+    );
 }
 
 #[test]
@@ -1222,7 +1222,10 @@ fn unicode_in_string_fields() {
 #[test]
 fn special_characters_in_metadata() {
     let mut metadata = HashMap::new();
-    metadata.insert("key with spaces".to_string(), "value\nwith\nnewlines".to_string());
+    metadata.insert(
+        "key with spaces".to_string(),
+        "value\nwith\nnewlines".to_string(),
+    );
     metadata.insert("quotes\"here".to_string(), "backslash\\there".to_string());
 
     let case = BrokerCase {
@@ -1241,6 +1244,12 @@ fn special_characters_in_metadata() {
 
     let json = serde_json::to_string(&case).expect("serialize");
     let back: BrokerCase = serde_json::from_str(&json).expect("deserialize");
-    assert_eq!(back.metadata.get("key with spaces").unwrap(), "value\nwith\nnewlines");
-    assert_eq!(back.metadata.get("quotes\"here").unwrap(), "backslash\\there");
+    assert_eq!(
+        back.metadata.get("key with spaces").unwrap(),
+        "value\nwith\nnewlines"
+    );
+    assert_eq!(
+        back.metadata.get("quotes\"here").unwrap(),
+        "backslash\\there"
+    );
 }

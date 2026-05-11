@@ -38,9 +38,8 @@ static V2_SECTION_PROPERTY_PATTERN: Lazy<Regex> = Lazy::new(|| {
         .expect("Invalid V2_SECTION_PROPERTY_PATTERN regex")
 });
 
-static WIKI_LINK_PATTERN: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"\[\[([^\]]+)\]\]").expect("Invalid WIKI_LINK_PATTERN regex")
-});
+static WIKI_LINK_PATTERN: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"\[\[([^\]]+)\]\]").expect("Invalid WIKI_LINK_PATTERN regex"));
 
 #[allow(dead_code)]
 static SECTION_HEADER_PATTERN: Lazy<Regex> = Lazy::new(|| {
@@ -48,7 +47,8 @@ static SECTION_HEADER_PATTERN: Lazy<Regex> = Lazy::new(|| {
 });
 
 static OWL_AXIOM_PATTERN: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"(?s)```(?:clojure|owl)\s*\n(.*?)\n\s*```").expect("Invalid OWL_AXIOM_PATTERN regex")
+    Regex::new(r"(?s)```(?:clojure|owl)\s*\n(.*?)\n\s*```")
+        .expect("Invalid OWL_AXIOM_PATTERN regex")
 });
 
 static BRIDGE_PATTERN: Lazy<Regex> = Lazy::new(|| {
@@ -82,18 +82,12 @@ static DOMAIN_NAMESPACES: Lazy<HashMap<&'static str, &'static str>> = Lazy::new(
         "artificial-intelligence",
         "http://narrativegoldmine.com/artificial-intelligence#",
     );
-    m.insert(
-        "blockchain",
-        "http://narrativegoldmine.com/blockchain#",
-    );
+    m.insert("blockchain", "http://narrativegoldmine.com/blockchain#");
     m.insert(
         "spatial-computing",
         "http://narrativegoldmine.com/spatial-computing#",
     );
-    m.insert(
-        "robotics",
-        "http://narrativegoldmine.com/robotics#",
-    );
+    m.insert("robotics", "http://narrativegoldmine.com/robotics#");
     m.insert(
         "distributed-collaboration",
         "http://narrativegoldmine.com/distributed-collaboration#",
@@ -418,15 +412,16 @@ impl OntologyBlock {
         }
 
         if self.is_subclass_of.is_empty() {
-            errors.push("Missing required property: is-subclass-of (at least one parent class)".to_string());
+            errors.push(
+                "Missing required property: is-subclass-of (at least one parent class)".to_string(),
+            );
         }
 
         // Validate term-id format (v4 only — v2 uses legacy-term-id)
         if let Some(ref term_id) = self.term_id {
             if let Some(domain) = self.get_domain() {
-                if let Some((&expected_prefix, _)) = DOMAIN_PREFIXES
-                    .iter()
-                    .find(|(_, &d)| d == domain.as_str())
+                if let Some((&expected_prefix, _)) =
+                    DOMAIN_PREFIXES.iter().find(|(_, &d)| d == domain.as_str())
                 {
                     if !term_id.starts_with(expected_prefix) {
                         errors.push(format!(
@@ -709,10 +704,7 @@ impl OntologyParser {
     /// Extract properties grouped by `### Section` header.
     ///
     /// Returns a map of section name → (property name → raw value string).
-    fn extract_v2_sections(
-        &self,
-        content: &str,
-    ) -> HashMap<String, HashMap<String, String>> {
+    fn extract_v2_sections(&self, content: &str) -> HashMap<String, HashMap<String, String>> {
         let mut sections: HashMap<String, HashMap<String, String>> = HashMap::new();
         let mut current_section: Option<String> = None;
 
@@ -1033,7 +1025,9 @@ impl OntologyParser {
     fn extract_owl_axioms(&self, content: &str, block: &mut OntologyBlock) {
         for caps in OWL_AXIOM_PATTERN.captures_iter(content) {
             if let Some(axiom_match) = caps.get(1) {
-                block.owl_axioms.push(axiom_match.as_str().trim().to_string());
+                block
+                    .owl_axioms
+                    .push(axiom_match.as_str().trim().to_string());
             }
         }
     }
@@ -1214,10 +1208,7 @@ impl OntologyParser {
         let mut axioms = Vec::new();
 
         // Determine the subject: prefer owl_class, fall back to iri
-        let subject = block
-            .owl_class
-            .clone()
-            .or_else(|| block.iri.clone());
+        let subject = block.owl_class.clone().or_else(|| block.iri.clone());
 
         // SubClassOf axioms
         if let Some(ref subj) = subject {
@@ -1491,17 +1482,14 @@ public:: true
         let iri = block.get_full_iri();
         assert_eq!(
             iri,
-            Some(
-                "http://narrativegoldmine.com/artificial-intelligence#TestConcept".to_string()
-            )
+            Some("http://narrativegoldmine.com/artificial-intelligence#TestConcept".to_string())
         );
     }
 
     #[test]
     fn test_v2_iri_field_takes_precedence() {
         let mut block = OntologyBlock::new("test.md".to_string());
-        block.iri =
-            Some("http://narrativegoldmine.com/robotics#TestRobot".to_string());
+        block.iri = Some("http://narrativegoldmine.com/robotics#TestRobot".to_string());
         block.owl_class = Some("robotics:TestRobot".to_string());
 
         let iri = block.get_full_iri();

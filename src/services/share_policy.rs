@@ -211,20 +211,14 @@ impl SharePolicyEngine {
             }
         }
 
-        let outcome = if evaluations
-            .iter()
-            .any(|e| e.outcome == PolicyOutcome::Deny)
-        {
+        let outcome = if evaluations.iter().any(|e| e.outcome == PolicyOutcome::Deny) {
             PolicyOutcome::Deny
         } else if evaluations
             .iter()
             .any(|e| e.outcome == PolicyOutcome::Escalate)
         {
             PolicyOutcome::Escalate
-        } else if evaluations
-            .iter()
-            .any(|e| e.outcome == PolicyOutcome::Warn)
-        {
+        } else if evaluations.iter().any(|e| e.outcome == PolicyOutcome::Warn) {
             PolicyOutcome::Warn
         } else {
             PolicyOutcome::Allow
@@ -256,7 +250,11 @@ fn uuid_v4_like() -> String {
     format!("{:x}", nanos)
 }
 
-fn eval(rule_id: &'static str, outcome: PolicyOutcome, reason: impl Into<String>) -> PolicyEvaluation {
+fn eval(
+    rule_id: &'static str,
+    outcome: PolicyOutcome,
+    reason: impl Into<String>,
+) -> PolicyEvaluation {
     PolicyEvaluation {
         rule_id: rule_id.to_string(),
         outcome,
@@ -273,16 +271,30 @@ fn eval(rule_id: &'static str, outcome: PolicyOutcome, reason: impl Into<String>
 struct PiiScanRule;
 #[async_trait]
 impl ShareRule for PiiScanRule {
-    fn rule_id(&self) -> &'static str { "share_private_to_team.pii_scan" }
+    fn rule_id(&self) -> &'static str {
+        "share_private_to_team.pii_scan"
+    }
     fn applies_to(&self, ctx: &ShareEvaluationContext) -> bool {
         matches!(ctx.intent.target_scope, TargetScope::Team(_))
     }
     async fn evaluate(&self, ctx: &ShareEvaluationContext) -> PolicyEvaluation {
         match ctx.intent.pii_scan_status {
             PiiScanStatus::Clean => eval(self.rule_id(), PolicyOutcome::Allow, "pii_scan clean"),
-            PiiScanStatus::Warned => eval(self.rule_id(), PolicyOutcome::Warn, "pii_scan warnings; redact and retry"),
-            PiiScanStatus::Flagged => eval(self.rule_id(), PolicyOutcome::Escalate, "pii_scan flagged; contributor may redact"),
-            PiiScanStatus::NotScanned => eval(self.rule_id(), PolicyOutcome::Deny, "pii_scan required before team share"),
+            PiiScanStatus::Warned => eval(
+                self.rule_id(),
+                PolicyOutcome::Warn,
+                "pii_scan warnings; redact and retry",
+            ),
+            PiiScanStatus::Flagged => eval(
+                self.rule_id(),
+                PolicyOutcome::Escalate,
+                "pii_scan flagged; contributor may redact",
+            ),
+            PiiScanStatus::NotScanned => eval(
+                self.rule_id(),
+                PolicyOutcome::Deny,
+                "pii_scan required before team share",
+            ),
         }
     }
 }
@@ -290,19 +302,32 @@ impl ShareRule for PiiScanRule {
 struct TeamScopeValidatedRule;
 #[async_trait]
 impl ShareRule for TeamScopeValidatedRule {
-    fn rule_id(&self) -> &'static str { "share_private_to_team.team_scope_validated" }
+    fn rule_id(&self) -> &'static str {
+        "share_private_to_team.team_scope_validated"
+    }
     fn applies_to(&self, ctx: &ShareEvaluationContext) -> bool {
         matches!(ctx.intent.target_scope, TargetScope::Team(_))
     }
     async fn evaluate(&self, ctx: &ShareEvaluationContext) -> PolicyEvaluation {
         if let TargetScope::Team(team) = &ctx.intent.target_scope {
-            let manifest_scope = ctx.intent.distribution_scope_manifest.as_deref().unwrap_or("");
+            let manifest_scope = ctx
+                .intent
+                .distribution_scope_manifest
+                .as_deref()
+                .unwrap_or("");
             let in_allow_list = ctx.intent.allow_list.iter().any(|t| t == team);
             if manifest_scope.starts_with("team") && in_allow_list {
-                return eval(self.rule_id(), PolicyOutcome::Allow, "manifest + allow_list aligned");
+                return eval(
+                    self.rule_id(),
+                    PolicyOutcome::Allow,
+                    "manifest + allow_list aligned",
+                );
             }
-            return eval(self.rule_id(), PolicyOutcome::Deny,
-                format!("manifest/allow_list mismatch for team={}", team));
+            return eval(
+                self.rule_id(),
+                PolicyOutcome::Deny,
+                format!("manifest/allow_list mismatch for team={}", team),
+            );
         }
         eval(self.rule_id(), PolicyOutcome::Allow, "not a team share")
     }
@@ -311,15 +336,24 @@ impl ShareRule for TeamScopeValidatedRule {
 struct DelegationCapValidRule;
 #[async_trait]
 impl ShareRule for DelegationCapValidRule {
-    fn rule_id(&self) -> &'static str { "share_private_to_team.delegation_cap_valid" }
+    fn rule_id(&self) -> &'static str {
+        "share_private_to_team.delegation_cap_valid"
+    }
     fn applies_to(&self, ctx: &ShareEvaluationContext) -> bool {
-        matches!(ctx.intent.target_scope, TargetScope::Team(_) | TargetScope::Mesh)
+        matches!(
+            ctx.intent.target_scope,
+            TargetScope::Team(_) | TargetScope::Mesh
+        )
     }
     async fn evaluate(&self, ctx: &ShareEvaluationContext) -> PolicyEvaluation {
         if ctx.delegation_cap_valid {
             eval(self.rule_id(), PolicyOutcome::Allow, "delegation cap valid")
         } else {
-            eval(self.rule_id(), PolicyOutcome::Deny, "delegation cap invalid/expired")
+            eval(
+                self.rule_id(),
+                PolicyOutcome::Deny,
+                "delegation cap invalid/expired",
+            )
         }
     }
 }
@@ -327,14 +361,22 @@ impl ShareRule for DelegationCapValidRule {
 struct RateLimitRule;
 #[async_trait]
 impl ShareRule for RateLimitRule {
-    fn rule_id(&self) -> &'static str { "share.rate_limit" }
-    fn applies_to(&self, _ctx: &ShareEvaluationContext) -> bool { true }
+    fn rule_id(&self) -> &'static str {
+        "share.rate_limit"
+    }
+    fn applies_to(&self, _ctx: &ShareEvaluationContext) -> bool {
+        true
+    }
     async fn evaluate(&self, ctx: &ShareEvaluationContext) -> PolicyEvaluation {
         if ctx.history.rate_limit_window_count >= ctx.preferences.rate_limit_per_hour {
-            eval(self.rule_id(), PolicyOutcome::Deny,
-                format!("rate limit exceeded ({}>={}/hour)",
-                    ctx.history.rate_limit_window_count,
-                    ctx.preferences.rate_limit_per_hour))
+            eval(
+                self.rule_id(),
+                PolicyOutcome::Deny,
+                format!(
+                    "rate limit exceeded ({}>={}/hour)",
+                    ctx.history.rate_limit_window_count, ctx.preferences.rate_limit_per_hour
+                ),
+            )
         } else {
             eval(self.rule_id(), PolicyOutcome::Allow, "within rate limit")
         }
@@ -344,14 +386,20 @@ impl ShareRule for RateLimitRule {
 struct OfflineTeamShareBlockRule;
 #[async_trait]
 impl ShareRule for OfflineTeamShareBlockRule {
-    fn rule_id(&self) -> &'static str { "share_private_to_team.offline_team_share_block" }
+    fn rule_id(&self) -> &'static str {
+        "share_private_to_team.offline_team_share_block"
+    }
     fn applies_to(&self, ctx: &ShareEvaluationContext) -> bool {
         matches!(ctx.intent.target_scope, TargetScope::Team(_))
             && ctx.preferences.offline_team_share_block
     }
     async fn evaluate(&self, ctx: &ShareEvaluationContext) -> PolicyEvaluation {
         if ctx.is_offline {
-            eval(self.rule_id(), PolicyOutcome::Deny, "offline-team share blocked")
+            eval(
+                self.rule_id(),
+                PolicyOutcome::Deny,
+                "offline-team share blocked",
+            )
         } else {
             eval(self.rule_id(), PolicyOutcome::Allow, "online")
         }
@@ -365,27 +413,39 @@ impl ShareRule for OfflineTeamShareBlockRule {
 struct BrokerReviewRequiredRule;
 #[async_trait]
 impl ShareRule for BrokerReviewRequiredRule {
-    fn rule_id(&self) -> &'static str { "share_team_to_mesh.broker_review_required" }
+    fn rule_id(&self) -> &'static str {
+        "share_team_to_mesh.broker_review_required"
+    }
     fn applies_to(&self, ctx: &ShareEvaluationContext) -> bool {
         matches!(ctx.intent.target_scope, TargetScope::Mesh)
     }
     async fn evaluate(&self, _ctx: &ShareEvaluationContext) -> PolicyEvaluation {
         // Mesh promotion always escalates — broker decides (spec §7.2).
-        eval(self.rule_id(), PolicyOutcome::Escalate, "mesh promotion requires broker review")
+        eval(
+            self.rule_id(),
+            PolicyOutcome::Escalate,
+            "mesh promotion requires broker review",
+        )
     }
 }
 
 struct PiiRescanRule;
 #[async_trait]
 impl ShareRule for PiiRescanRule {
-    fn rule_id(&self) -> &'static str { "share_team_to_mesh.pii_rescan" }
+    fn rule_id(&self) -> &'static str {
+        "share_team_to_mesh.pii_rescan"
+    }
     fn applies_to(&self, ctx: &ShareEvaluationContext) -> bool {
         matches!(ctx.intent.target_scope, TargetScope::Mesh)
     }
     async fn evaluate(&self, ctx: &ShareEvaluationContext) -> PolicyEvaluation {
         match ctx.intent.pii_scan_status {
             PiiScanStatus::Clean => eval(self.rule_id(), PolicyOutcome::Allow, "pii_rescan clean"),
-            _ => eval(self.rule_id(), PolicyOutcome::Deny, "mesh share requires clean PII rescan"),
+            _ => eval(
+                self.rule_id(),
+                PolicyOutcome::Deny,
+                "mesh share requires clean PII rescan",
+            ),
         }
     }
 }
@@ -393,15 +453,25 @@ impl ShareRule for PiiRescanRule {
 struct MeshEligibilityRule;
 #[async_trait]
 impl ShareRule for MeshEligibilityRule {
-    fn rule_id(&self) -> &'static str { "share_team_to_mesh.mesh_eligibility" }
+    fn rule_id(&self) -> &'static str {
+        "share_team_to_mesh.mesh_eligibility"
+    }
     fn applies_to(&self, ctx: &ShareEvaluationContext) -> bool {
         matches!(ctx.intent.target_scope, TargetScope::Mesh)
     }
     async fn evaluate(&self, ctx: &ShareEvaluationContext) -> PolicyEvaluation {
         if ctx.mesh_eligible {
-            eval(self.rule_id(), PolicyOutcome::Allow, "subject IRI resolvable in ontology")
+            eval(
+                self.rule_id(),
+                PolicyOutcome::Allow,
+                "subject IRI resolvable in ontology",
+            )
         } else {
-            eval(self.rule_id(), PolicyOutcome::Deny, "subject not mesh-eligible")
+            eval(
+                self.rule_id(),
+                PolicyOutcome::Deny,
+                "subject not mesh-eligible",
+            )
         }
     }
 }
@@ -409,22 +479,29 @@ impl ShareRule for MeshEligibilityRule {
 struct PriorRejectionCooldownRule;
 #[async_trait]
 impl ShareRule for PriorRejectionCooldownRule {
-    fn rule_id(&self) -> &'static str { "share_team_to_mesh.prior_rejection_cooldown" }
+    fn rule_id(&self) -> &'static str {
+        "share_team_to_mesh.prior_rejection_cooldown"
+    }
     fn applies_to(&self, ctx: &ShareEvaluationContext) -> bool {
         matches!(ctx.intent.target_scope, TargetScope::Mesh)
     }
     async fn evaluate(&self, ctx: &ShareEvaluationContext) -> PolicyEvaluation {
-        let cooldown = chrono::Duration::hours(
-            ctx.preferences.prior_rejection_cooldown_hours as i64);
+        let cooldown =
+            chrono::Duration::hours(ctx.preferences.prior_rejection_cooldown_hours as i64);
         let now = Utc::now();
         let in_cooldown = ctx.history.prior_rejections.iter().any(|r| {
             r.artifact_ref == ctx.intent.artifact_ref
                 && now.signed_duration_since(r.rejected_at) < cooldown
         });
         if in_cooldown {
-            eval(self.rule_id(), PolicyOutcome::Deny,
-                format!("artefact in {}h cooldown after prior rejection",
-                    ctx.preferences.prior_rejection_cooldown_hours))
+            eval(
+                self.rule_id(),
+                PolicyOutcome::Deny,
+                format!(
+                    "artefact in {}h cooldown after prior rejection",
+                    ctx.preferences.prior_rejection_cooldown_hours
+                ),
+            )
         } else {
             eval(self.rule_id(), PolicyOutcome::Allow, "no active cooldown")
         }
@@ -434,15 +511,25 @@ impl ShareRule for PriorRejectionCooldownRule {
 struct SeparationOfDutyRule;
 #[async_trait]
 impl ShareRule for SeparationOfDutyRule {
-    fn rule_id(&self) -> &'static str { "share_team_to_mesh.separation_of_duty" }
+    fn rule_id(&self) -> &'static str {
+        "share_team_to_mesh.separation_of_duty"
+    }
     fn applies_to(&self, ctx: &ShareEvaluationContext) -> bool {
         matches!(ctx.intent.target_scope, TargetScope::Mesh)
     }
     async fn evaluate(&self, ctx: &ShareEvaluationContext) -> PolicyEvaluation {
         if ctx.separation_of_duty_ok {
-            eval(self.rule_id(), PolicyOutcome::Allow, "separation of duty satisfied")
+            eval(
+                self.rule_id(),
+                PolicyOutcome::Allow,
+                "separation of duty satisfied",
+            )
         } else {
-            eval(self.rule_id(), PolicyOutcome::Deny, "proposer cannot approve own share")
+            eval(
+                self.rule_id(),
+                PolicyOutcome::Deny,
+                "proposer cannot approve own share",
+            )
         }
     }
 }
@@ -454,14 +541,19 @@ impl ShareRule for SeparationOfDutyRule {
 struct OfflineMeshBlockRule;
 #[async_trait]
 impl ShareRule for OfflineMeshBlockRule {
-    fn rule_id(&self) -> &'static str { "share.offline_mesh_block" }
+    fn rule_id(&self) -> &'static str {
+        "share.offline_mesh_block"
+    }
     fn applies_to(&self, ctx: &ShareEvaluationContext) -> bool {
-        matches!(ctx.intent.target_scope, TargetScope::Mesh)
-            && ctx.preferences.offline_mesh_block
+        matches!(ctx.intent.target_scope, TargetScope::Mesh) && ctx.preferences.offline_mesh_block
     }
     async fn evaluate(&self, ctx: &ShareEvaluationContext) -> PolicyEvaluation {
         if ctx.is_offline {
-            eval(self.rule_id(), PolicyOutcome::Deny, "offline mesh share blocked")
+            eval(
+                self.rule_id(),
+                PolicyOutcome::Deny,
+                "offline mesh share blocked",
+            )
         } else {
             eval(self.rule_id(), PolicyOutcome::Allow, "online")
         }
@@ -471,10 +563,15 @@ impl ShareRule for OfflineMeshBlockRule {
 struct SkillWideningRule;
 #[async_trait]
 impl ShareRule for SkillWideningRule {
-    fn rule_id(&self) -> &'static str { "share_skill_widening" }
+    fn rule_id(&self) -> &'static str {
+        "share_skill_widening"
+    }
     fn applies_to(&self, ctx: &ShareEvaluationContext) -> bool {
         ctx.intent.subject_kind == SubjectKind::Skill
-            && matches!(ctx.intent.target_scope, TargetScope::Team(_) | TargetScope::Mesh)
+            && matches!(
+                ctx.intent.target_scope,
+                TargetScope::Team(_) | TargetScope::Mesh
+            )
     }
     async fn evaluate(&self, ctx: &ShareEvaluationContext) -> PolicyEvaluation {
         // Widening a skill's allow_list beyond the previously-approved set
@@ -482,14 +579,16 @@ impl ShareRule for SkillWideningRule {
         // We flag Warn when the allow_list is non-empty at team granularity;
         // Escalate when mesh.
         match ctx.intent.target_scope {
-            TargetScope::Team(_) if !ctx.intent.allow_list.is_empty() => {
-                eval(self.rule_id(), PolicyOutcome::Warn,
-                    "skill team widening logged for audit")
-            }
-            TargetScope::Mesh => {
-                eval(self.rule_id(), PolicyOutcome::Escalate,
-                    "skill mesh widening requires broker review")
-            }
+            TargetScope::Team(_) if !ctx.intent.allow_list.is_empty() => eval(
+                self.rule_id(),
+                PolicyOutcome::Warn,
+                "skill team widening logged for audit",
+            ),
+            TargetScope::Mesh => eval(
+                self.rule_id(),
+                PolicyOutcome::Escalate,
+                "skill mesh widening requires broker review",
+            ),
             _ => eval(self.rule_id(), PolicyOutcome::Allow, "no widening"),
         }
     }
@@ -498,18 +597,26 @@ impl ShareRule for SkillWideningRule {
 struct FastPathMeshShareRule;
 #[async_trait]
 impl ShareRule for FastPathMeshShareRule {
-    fn rule_id(&self) -> &'static str { "share.fast_path_mesh_share" }
+    fn rule_id(&self) -> &'static str {
+        "share.fast_path_mesh_share"
+    }
     fn applies_to(&self, ctx: &ShareEvaluationContext) -> bool {
         matches!(ctx.intent.target_scope, TargetScope::Mesh)
             && ctx.intent.source_state == ShareState::Private
     }
     async fn evaluate(&self, ctx: &ShareEvaluationContext) -> PolicyEvaluation {
         if ctx.preferences.fast_path_mesh_share {
-            eval(self.rule_id(), PolicyOutcome::Escalate,
-                "fast-path mesh enabled: bypass Team → broker direct")
+            eval(
+                self.rule_id(),
+                PolicyOutcome::Escalate,
+                "fast-path mesh enabled: bypass Team → broker direct",
+            )
         } else {
-            eval(self.rule_id(), PolicyOutcome::Deny,
-                "private → mesh forbidden; must route via team first")
+            eval(
+                self.rule_id(),
+                PolicyOutcome::Deny,
+                "private → mesh forbidden; must route via team first",
+            )
         }
     }
 }

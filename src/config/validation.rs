@@ -54,7 +54,6 @@ pub fn validate_bloom_glow_settings(
     glow: &GlowSettings,
     bloom: &BloomSettings,
 ) -> Result<(), ValidationError> {
-
     if glow.intensity < 0.0 || glow.intensity > 10.0 {
         return Err(ValidationError::new("glow_intensity_out_of_range"));
     }
@@ -68,10 +67,8 @@ pub fn validate_bloom_glow_settings(
         return Err(ValidationError::new("glow_opacity_out_of_range"));
     }
 
-
     validate_hex_color(&glow.base_color)?;
     validate_hex_color(&glow.emission_color)?;
-
 
     if !glow.intensity.is_finite() {
         return Err(ValidationError::new("glow_intensity_not_finite"));
@@ -82,7 +79,6 @@ pub fn validate_bloom_glow_settings(
     if !glow.threshold.is_finite() {
         return Err(ValidationError::new("glow_threshold_not_finite"));
     }
-
 
     if bloom.intensity < 0.0 || bloom.intensity > 10.0 {
         return Err(ValidationError::new("bloom_intensity_out_of_range"));
@@ -100,10 +96,8 @@ pub fn validate_bloom_glow_settings(
         return Err(ValidationError::new("bloom_knee_out_of_range"));
     }
 
-
     validate_hex_color(&bloom.color)?;
     validate_hex_color(&bloom.tint_color)?;
-
 
     if !bloom.intensity.is_finite() {
         return Err(ValidationError::new("bloom_intensity_not_finite"));

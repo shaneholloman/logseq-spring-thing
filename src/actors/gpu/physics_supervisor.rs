@@ -14,8 +14,8 @@ use log::{debug, error, info, warn};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use super::supervisor_messages::*;
 use super::shared::SharedGPUContext;
+use super::supervisor_messages::*;
 use super::{
     ConstraintActor, ForceComputeActor, OntologyConstraintActor, SemanticForcesActor,
     StressMajorizationActor,
@@ -159,7 +159,9 @@ impl PhysicsSupervisor {
         debug!("PhysicsSupervisor: SemanticForcesActor spawned");
 
         // Wire ForceComputeActor address to OntologyConstraintActor for constraint synchronization
-        if let (Some(ref force_addr), Some(ref onto_addr)) = (&self.force_compute_actor, &self.ontology_constraint_actor) {
+        if let (Some(ref force_addr), Some(ref onto_addr)) =
+            (&self.force_compute_actor, &self.ontology_constraint_actor)
+        {
             onto_addr.do_send(crate::actors::messages::SetForceComputeAddr {
                 addr: force_addr.clone(),
             });
@@ -269,7 +271,10 @@ impl PhysicsSupervisor {
 
     /// Handle actor failure with supervision policy
     fn handle_actor_failure(&mut self, actor_name: &str, error: &str, ctx: &mut Context<Self>) {
-        error!("PhysicsSupervisor: Actor '{}' failed: {}", actor_name, error);
+        error!(
+            "PhysicsSupervisor: Actor '{}' failed: {}",
+            actor_name, error
+        );
 
         let state = match actor_name {
             "ForceComputeActor" => &mut self.force_compute_state,
@@ -306,8 +311,9 @@ impl PhysicsSupervisor {
         // Schedule restart with backoff
         let delay = state.current_delay;
         state.current_delay = Duration::from_millis(
-            (state.current_delay.as_millis() as f64 * self.policy.backoff_multiplier) as u64
-        ).min(self.policy.max_delay);
+            (state.current_delay.as_millis() as f64 * self.policy.backoff_multiplier) as u64,
+        )
+        .min(self.policy.max_delay);
 
         let actor_name_clone = actor_name.to_string();
         info!(
@@ -406,9 +412,7 @@ impl PhysicsSupervisor {
             info!("PhysicsSupervisor: AllForOne — re-wired OntologyConstraintActor with new ForceComputeActor address");
         }
 
-        info!(
-            "PhysicsSupervisor: AllForOne — all 5 physics actors re-spawned successfully"
-        );
+        info!("PhysicsSupervisor: AllForOne — all 5 physics actors re-spawned successfully");
 
         // Re-distribute context if available
         if self.shared_context.is_some() {
@@ -526,7 +530,10 @@ impl Handler<GetSubsystemHealth> for PhysicsSupervisor {
             self.semantic_forces_state.to_health_state(),
         ];
 
-        let healthy = actor_states.iter().filter(|s| s.is_running && s.has_context).count() as u32;
+        let healthy = actor_states
+            .iter()
+            .filter(|s| s.is_running && s.has_context)
+            .count() as u32;
 
         MessageResult(SubsystemHealth {
             subsystem_name: "physics".to_string(),
@@ -569,7 +576,10 @@ impl Handler<RestartActor> for PhysicsSupervisor {
     type Result = Result<(), String>;
 
     fn handle(&mut self, msg: RestartActor, ctx: &mut Self::Context) -> Self::Result {
-        info!("PhysicsSupervisor: Manual restart requested for: {}", msg.actor_name);
+        info!(
+            "PhysicsSupervisor: Manual restart requested for: {}",
+            msg.actor_name
+        );
         self.restart_actor(&msg.actor_name, ctx);
         Ok(())
     }
@@ -587,15 +597,15 @@ impl Handler<ComputeForces> for PhysicsSupervisor {
             Some(a) if self.force_compute_state.is_running => a.clone(),
             _ => {
                 return Box::pin(
-                    async { Err("ForceComputeActor not available".to_string()) }
-                        .into_actor(self)
+                    async { Err("ForceComputeActor not available".to_string()) }.into_actor(self),
                 );
             }
         };
 
         Box::pin(
             async move {
-                addr.send(msg).await
+                addr.send(msg)
+                    .await
                     .map_err(|e| format!("Communication failed: {}", e))?
             }
             .into_actor(self)
@@ -604,7 +614,7 @@ impl Handler<ComputeForces> for PhysicsSupervisor {
                     actor.last_success = Some(Instant::now());
                 }
                 result
-            })
+            }),
         )
     }
 }
@@ -618,17 +628,18 @@ impl Handler<TriggerStressMajorization> for PhysicsSupervisor {
             _ => {
                 return Box::pin(
                     async { Err("StressMajorizationActor not available".to_string()) }
-                        .into_actor(self)
+                        .into_actor(self),
                 );
             }
         };
 
         Box::pin(
             async move {
-                addr.send(msg).await
+                addr.send(msg)
+                    .await
                     .map_err(|e| format!("Communication failed: {}", e))?
             }
-            .into_actor(self)
+            .into_actor(self),
         )
     }
 }
@@ -641,18 +652,18 @@ impl Handler<UpdateConstraints> for PhysicsSupervisor {
             Some(a) if self.constraint_state.is_running => a.clone(),
             _ => {
                 return Box::pin(
-                    async { Err("ConstraintActor not available".to_string()) }
-                        .into_actor(self)
+                    async { Err("ConstraintActor not available".to_string()) }.into_actor(self),
                 );
             }
         };
 
         Box::pin(
             async move {
-                addr.send(msg).await
+                addr.send(msg)
+                    .await
                     .map_err(|e| format!("Communication failed: {}", e))?
             }
-            .into_actor(self)
+            .into_actor(self),
         )
     }
 }
@@ -666,17 +677,18 @@ impl Handler<ApplyOntologyConstraints> for PhysicsSupervisor {
             _ => {
                 return Box::pin(
                     async { Err("OntologyConstraintActor not available".to_string()) }
-                        .into_actor(self)
+                        .into_actor(self),
                 );
             }
         };
 
         Box::pin(
             async move {
-                addr.send(msg).await
+                addr.send(msg)
+                    .await
                     .map_err(|e| format!("Communication failed: {}", e))?
             }
-            .into_actor(self)
+            .into_actor(self),
         )
     }
 }
@@ -716,18 +728,18 @@ impl Handler<UpdateSimulationParams> for PhysicsSupervisor {
             Some(a) if self.force_compute_state.is_running => a.clone(),
             _ => {
                 return Box::pin(
-                    async { Err("ForceComputeActor not available".to_string()) }
-                        .into_actor(self)
+                    async { Err("ForceComputeActor not available".to_string()) }.into_actor(self),
                 );
             }
         };
 
         Box::pin(
             async move {
-                addr.send(msg).await
+                addr.send(msg)
+                    .await
                     .map_err(|e| format!("Communication failed: {}", e))?
             }
-            .into_actor(self)
+            .into_actor(self),
         )
     }
 }
@@ -740,18 +752,18 @@ impl Handler<GetPhysicsStats> for PhysicsSupervisor {
             Some(a) if self.force_compute_state.is_running => a.clone(),
             _ => {
                 return Box::pin(
-                    async { Err("ForceComputeActor not available".to_string()) }
-                        .into_actor(self)
+                    async { Err("ForceComputeActor not available".to_string()) }.into_actor(self),
                 );
             }
         };
 
         Box::pin(
             async move {
-                addr.send(msg).await
+                addr.send(msg)
+                    .await
                     .map_err(|e| format!("Communication failed: {}", e))?
             }
-            .into_actor(self)
+            .into_actor(self),
         )
     }
 }
@@ -778,18 +790,18 @@ impl Handler<UpdateAdvancedParams> for PhysicsSupervisor {
             Some(a) if self.force_compute_state.is_running => a.clone(),
             _ => {
                 return Box::pin(
-                    async { Err("ForceComputeActor not available".to_string()) }
-                        .into_actor(self)
+                    async { Err("ForceComputeActor not available".to_string()) }.into_actor(self),
                 );
             }
         };
 
         Box::pin(
             async move {
-                addr.send(msg).await
+                addr.send(msg)
+                    .await
                     .map_err(|e| format!("Communication failed: {}", e))?
             }
-            .into_actor(self)
+            .into_actor(self),
         )
     }
 }
@@ -802,42 +814,45 @@ impl Handler<UploadConstraintsToGPU> for PhysicsSupervisor {
             Some(a) if self.constraint_state.is_running => a.clone(),
             _ => {
                 return Box::pin(
-                    async { Err("ConstraintActor not available".to_string()) }
-                        .into_actor(self)
+                    async { Err("ConstraintActor not available".to_string()) }.into_actor(self),
                 );
             }
         };
 
         Box::pin(
             async move {
-                addr.send(msg).await
+                addr.send(msg)
+                    .await
                     .map_err(|e| format!("Communication failed: {}", e))?
             }
-            .into_actor(self)
+            .into_actor(self),
         )
     }
 }
 
 impl Handler<GetNodeData> for PhysicsSupervisor {
-    type Result = ResponseActFuture<Self, Result<Vec<crate::utils::socket_flow_messages::BinaryNodeData>, String>>;
+    type Result = ResponseActFuture<
+        Self,
+        Result<Vec<crate::utils::socket_flow_messages::BinaryNodeData>, String>,
+    >;
 
     fn handle(&mut self, msg: GetNodeData, _ctx: &mut Self::Context) -> Self::Result {
         let addr = match &self.force_compute_actor {
             Some(a) if self.force_compute_state.is_running => a.clone(),
             _ => {
                 return Box::pin(
-                    async { Err("ForceComputeActor not available".to_string()) }
-                        .into_actor(self)
+                    async { Err("ForceComputeActor not available".to_string()) }.into_actor(self),
                 );
             }
         };
 
         Box::pin(
             async move {
-                addr.send(msg).await
+                addr.send(msg)
+                    .await
                     .map_err(|e| format!("Communication failed: {}", e))?
             }
-            .into_actor(self)
+            .into_actor(self),
         )
     }
 }
@@ -845,23 +860,28 @@ impl Handler<GetNodeData> for PhysicsSupervisor {
 impl Handler<GetOntologyConstraintStats> for PhysicsSupervisor {
     type Result = ResponseActFuture<Self, Result<OntologyConstraintStats, String>>;
 
-    fn handle(&mut self, msg: GetOntologyConstraintStats, _ctx: &mut Self::Context) -> Self::Result {
+    fn handle(
+        &mut self,
+        msg: GetOntologyConstraintStats,
+        _ctx: &mut Self::Context,
+    ) -> Self::Result {
         let addr = match &self.ontology_constraint_actor {
             Some(a) if self.ontology_constraint_state.is_running => a.clone(),
             _ => {
                 return Box::pin(
                     async { Err("OntologyConstraintActor not available".to_string()) }
-                        .into_actor(self)
+                        .into_actor(self),
                 );
             }
         };
 
         Box::pin(
             async move {
-                addr.send(msg).await
+                addr.send(msg)
+                    .await
                     .map_err(|e| format!("Communication failed: {}", e))?
             }
-            .into_actor(self)
+            .into_actor(self),
         )
     }
 }
@@ -871,49 +891,55 @@ impl Handler<GetOntologyConstraintStats> for PhysicsSupervisor {
 // ============================================================================
 
 impl Handler<GetSemanticConfig> for PhysicsSupervisor {
-    type Result = ResponseActFuture<Self, Result<crate::actors::gpu::semantic_forces_actor::SemanticConfig, String>>;
+    type Result = ResponseActFuture<
+        Self,
+        Result<crate::actors::gpu::semantic_forces_actor::SemanticConfig, String>,
+    >;
 
     fn handle(&mut self, msg: GetSemanticConfig, _ctx: &mut Self::Context) -> Self::Result {
         let addr = match &self.semantic_forces_actor {
             Some(a) if self.semantic_forces_state.is_running => a.clone(),
             _ => {
                 return Box::pin(
-                    async { Err("SemanticForcesActor not available".to_string()) }
-                        .into_actor(self)
+                    async { Err("SemanticForcesActor not available".to_string()) }.into_actor(self),
                 );
             }
         };
 
         Box::pin(
             async move {
-                addr.send(msg).await
+                addr.send(msg)
+                    .await
                     .map_err(|e| format!("Communication failed: {}", e))?
             }
-            .into_actor(self)
+            .into_actor(self),
         )
     }
 }
 
 impl Handler<GetHierarchyLevels> for PhysicsSupervisor {
-    type Result = ResponseActFuture<Self, Result<crate::actors::gpu::semantic_forces_actor::HierarchyLevels, String>>;
+    type Result = ResponseActFuture<
+        Self,
+        Result<crate::actors::gpu::semantic_forces_actor::HierarchyLevels, String>,
+    >;
 
     fn handle(&mut self, msg: GetHierarchyLevels, _ctx: &mut Self::Context) -> Self::Result {
         let addr = match &self.semantic_forces_actor {
             Some(a) if self.semantic_forces_state.is_running => a.clone(),
             _ => {
                 return Box::pin(
-                    async { Err("SemanticForcesActor not available".to_string()) }
-                        .into_actor(self)
+                    async { Err("SemanticForcesActor not available".to_string()) }.into_actor(self),
                 );
             }
         };
 
         Box::pin(
             async move {
-                addr.send(msg).await
+                addr.send(msg)
+                    .await
                     .map_err(|e| format!("Communication failed: {}", e))?
             }
-            .into_actor(self)
+            .into_actor(self),
         )
     }
 }
@@ -926,18 +952,18 @@ impl Handler<RecalculateHierarchy> for PhysicsSupervisor {
             Some(a) if self.semantic_forces_state.is_running => a.clone(),
             _ => {
                 return Box::pin(
-                    async { Err("SemanticForcesActor not available".to_string()) }
-                        .into_actor(self)
+                    async { Err("SemanticForcesActor not available".to_string()) }.into_actor(self),
                 );
             }
         };
 
         Box::pin(
             async move {
-                addr.send(msg).await
+                addr.send(msg)
+                    .await
                     .map_err(|e| format!("Communication failed: {}", e))?
             }
-            .into_actor(self)
+            .into_actor(self),
         )
     }
 }
@@ -950,18 +976,18 @@ impl Handler<ConfigureDAG> for PhysicsSupervisor {
             Some(a) if self.semantic_forces_state.is_running => a.clone(),
             _ => {
                 return Box::pin(
-                    async { Err("SemanticForcesActor not available".to_string()) }
-                        .into_actor(self)
+                    async { Err("SemanticForcesActor not available".to_string()) }.into_actor(self),
                 );
             }
         };
 
         Box::pin(
             async move {
-                addr.send(msg).await
+                addr.send(msg)
+                    .await
                     .map_err(|e| format!("Communication failed: {}", e))?
             }
-            .into_actor(self)
+            .into_actor(self),
         )
     }
 }
@@ -974,18 +1000,18 @@ impl Handler<ConfigureTypeClustering> for PhysicsSupervisor {
             Some(a) if self.semantic_forces_state.is_running => a.clone(),
             _ => {
                 return Box::pin(
-                    async { Err("SemanticForcesActor not available".to_string()) }
-                        .into_actor(self)
+                    async { Err("SemanticForcesActor not available".to_string()) }.into_actor(self),
                 );
             }
         };
 
         Box::pin(
             async move {
-                addr.send(msg).await
+                addr.send(msg)
+                    .await
                     .map_err(|e| format!("Communication failed: {}", e))?
             }
-            .into_actor(self)
+            .into_actor(self),
         )
     }
 }
@@ -998,18 +1024,18 @@ impl Handler<ConfigureCollision> for PhysicsSupervisor {
             Some(a) if self.semantic_forces_state.is_running => a.clone(),
             _ => {
                 return Box::pin(
-                    async { Err("SemanticForcesActor not available".to_string()) }
-                        .into_actor(self)
+                    async { Err("SemanticForcesActor not available".to_string()) }.into_actor(self),
                 );
             }
         };
 
         Box::pin(
             async move {
-                addr.send(msg).await
+                addr.send(msg)
+                    .await
                     .map_err(|e| format!("Communication failed: {}", e))?
             }
-            .into_actor(self)
+            .into_actor(self),
         )
     }
 }
@@ -1023,17 +1049,18 @@ impl Handler<AdjustConstraintWeights> for PhysicsSupervisor {
             _ => {
                 return Box::pin(
                     async { Err("OntologyConstraintActor not available".to_string()) }
-                        .into_actor(self)
+                        .into_actor(self),
                 );
             }
         };
 
         Box::pin(
             async move {
-                addr.send(msg).await
+                addr.send(msg)
+                    .await
                     .map_err(|e| format!("Communication failed: {}", e))?
             }
-            .into_actor(self)
+            .into_actor(self),
         )
     }
 }

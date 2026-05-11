@@ -42,7 +42,6 @@ impl UnifiedGPUCompute {
         let block_size = Self::kernel_block_size();
         let grid_size = (self.num_nodes as u32 + block_size - 1) / block_size;
 
-
         if self.num_nodes > self.allocated_nodes {
             return Err(anyhow!("CRITICAL: num_nodes ({}) exceeds allocated_nodes ({}). This would cause buffer overflow!", self.num_nodes, self.allocated_nodes));
         }
@@ -54,26 +53,21 @@ impl UnifiedGPUCompute {
             self.aabb_block_results.len(), self.partial_kinetic_energy.len(),
             self.prev_force_x.len(), self.degree_weight.len());
 
-
         self.params = params;
 
-
-        let mut c_params_global = self
-            ._module
-            .get_global(CStr::from_bytes_with_nul(b"c_params\0").expect("static null-terminated byte literal is always valid"))?;
+        let mut c_params_global = self._module.get_global(
+            CStr::from_bytes_with_nul(b"c_params\0")
+                .expect("static null-terminated byte literal is always valid"),
+        )?;
         c_params_global.copy_from(&[params])?;
-
-
 
         if self.num_nodes > 0 && params.stability_threshold > 0.0 {
             let num_blocks = (self.num_nodes + block_size as usize - 1) / block_size as usize;
             let shared_mem_size =
                 block_size * (std::mem::size_of::<f32>() + std::mem::size_of::<i32>()) as u32;
 
-
             self.active_node_count.copy_from(&[0i32])?;
             self.should_skip_physics.copy_from(&[0i32])?;
-
 
             let ke_kernel = self
                 ._module
@@ -101,7 +95,6 @@ impl UnifiedGPUCompute {
                 )?;
             }
 
-
             let stability_kernel = self._module.get_function("check_system_stability_kernel")?;
             let reduction_blocks = (num_blocks as u32).min(256);
             // SAFETY: Kernel launch is safe because:
@@ -125,17 +118,14 @@ impl UnifiedGPUCompute {
                 )?;
             }
 
-
             let mut skip_physics = vec![0i32; 1];
             self.should_skip_physics.copy_to(&mut skip_physics)?;
 
             if skip_physics[0] != 0 {
-
                 self.iteration += 1;
                 return Ok(());
             }
         }
-
 
         crate::utils::gpu_diagnostics::validate_kernel_launch(
             "unified_gpu_execute",
@@ -144,7 +134,6 @@ impl UnifiedGPUCompute {
             self.num_nodes,
         )
         .map_err(|e| anyhow::anyhow!(e))?;
-
 
         let aabb_kernel = self._module.get_function("compute_aabb_reduction_kernel")?;
         let aabb_block_size = 256u32;
@@ -169,7 +158,6 @@ impl UnifiedGPUCompute {
             )?;
         }
 
-
         let mut block_results = vec![AABB::default(); self.aabb_num_blocks];
         self.aabb_block_results.copy_to(&mut block_results)?;
 
@@ -192,7 +180,6 @@ impl UnifiedGPUCompute {
         let optimal_cells = self.num_nodes as f32 / target_neighbors_per_cell;
         let optimal_cell_size = (scene_volume / optimal_cells).powf(1.0 / 3.0);
 
-
         let mut auto_tuned_cell_size = if optimal_cell_size > 10.0 && optimal_cell_size < 1000.0 {
             optimal_cell_size
         } else {
@@ -209,14 +196,12 @@ impl UnifiedGPUCompute {
             scene_volume, optimal_cell_size, auto_tuned_cell_size
         );
 
-
         aabb.min[0] -= auto_tuned_cell_size;
         aabb.max[0] += auto_tuned_cell_size;
         aabb.min[1] -= auto_tuned_cell_size;
         aabb.max[1] += auto_tuned_cell_size;
         aabb.min[2] -= auto_tuned_cell_size;
         aabb.max[2] += auto_tuned_cell_size;
-
 
         let grid_dims = int3 {
             x: ((aabb.max[0] - aabb.min[0]) / auto_tuned_cell_size).ceil() as i32,
@@ -248,7 +233,6 @@ impl UnifiedGPUCompute {
             grid_dims
         };
 
-
         let occupancy = self.get_grid_occupancy(num_grid_cells);
         if occupancy < 0.1 {
             warn!("Low grid occupancy detected: {:.1}% (avg {:.1} nodes/cell). Consider larger cell size.",
@@ -258,7 +242,6 @@ impl UnifiedGPUCompute {
                   occupancy * 100.0, self.num_nodes as f32 / num_grid_cells as f32);
         }
 
-
         if num_grid_cells > self.max_grid_cells {
             self.resize_cell_buffers(num_grid_cells)?;
             debug!(
@@ -266,7 +249,6 @@ impl UnifiedGPUCompute {
                 grid_dims.x, grid_dims.y, grid_dims.z, num_grid_cells
             );
         }
-
 
         crate::utils::gpu_diagnostics::validate_kernel_launch(
             self.build_grid_kernel_name,
@@ -310,7 +292,6 @@ impl UnifiedGPUCompute {
             ))?;
         }
 
-
         let d_keys_in = self.cell_keys.as_slice();
         let d_values_in = self.sorted_node_indices.as_slice();
 
@@ -341,9 +322,6 @@ impl UnifiedGPUCompute {
 
         std::mem::swap(&mut self.sorted_node_indices, &mut d_values_out);
 
-
-
-
         // Reset cell buffers to -1 sentinel (empty cell marker) before each physics step.
         // Using -1 instead of 0 so the CUDA kernel can distinguish "empty cell" from
         // "cell starting at index 0". The zero_buffer field stores -1 sentinels.
@@ -351,7 +329,8 @@ impl UnifiedGPUCompute {
         if self.zero_buffer.len() != cell_buf_len {
             self.zero_buffer = vec![-1i32; cell_buf_len];
         }
-        self.cell_start.copy_from(&self.zero_buffer[..cell_buf_len])?;
+        self.cell_start
+            .copy_from(&self.zero_buffer[..cell_buf_len])?;
         self.cell_end.copy_from(&self.zero_buffer[..cell_buf_len])?;
 
         let cell_block_size = block_size;
@@ -380,8 +359,6 @@ impl UnifiedGPUCompute {
             ))?;
         }
 
-
-
         let force_kernel_name = if params.stability_threshold > 0.0 {
             "force_pass_with_stability_kernel"
         } else {
@@ -389,7 +366,6 @@ impl UnifiedGPUCompute {
         };
         let force_pass_kernel = self._module.get_function(force_kernel_name)?;
         let stream = &self.stream;
-
 
         let d_sssp = if (self.sssp_available || self.sssp_device_distances.is_some())
             && (params.feature_flags
@@ -451,7 +427,6 @@ impl UnifiedGPUCompute {
                     d_node_degrees
                 ))?;
             } else {
-
                 launch!(
                     force_pass_kernel<<<grid_size as u32, block_size as u32, 0, stream>>>(
                     self.pos_in_x.as_device_ptr(),
@@ -519,13 +494,16 @@ impl UnifiedGPUCompute {
         // degree-aware gravity for connected nodes and peripheral shell force
         // for isolated nodes. Only runs when degree weights have been uploaded.
         if self.degree_weights_available && params.center_gravity_k > 0.0 {
-            if let Ok(dw_gravity_kernel) = self._module.get_function("degree_weighted_gravity_kernel") {
+            if let Ok(dw_gravity_kernel) =
+                self._module.get_function("degree_weighted_gravity_kernel")
+            {
                 // Compute peripheral radius as 2x the average connected-node distance from origin.
                 // We use a simple heuristic: 2x the AABB extent diagonal / 2.
                 let extent_x = aabb.max[0] - aabb.min[0];
                 let extent_y = aabb.max[1] - aabb.min[1];
                 let extent_z = aabb.max[2] - aabb.min[2];
-                let peripheral_radius = (extent_x * extent_x + extent_y * extent_y + extent_z * extent_z).sqrt();
+                let peripheral_radius =
+                    (extent_x * extent_x + extent_y * extent_y + extent_z * extent_z).sqrt();
                 let isolated_spring_k = 0.01f32; // Gentle spring toward peripheral shell
 
                 let stream = &self.stream;
@@ -593,11 +571,8 @@ impl UnifiedGPUCompute {
             ))?;
         }
 
-
-
         let completion_event = cust::event::Event::new(cust::event::EventFlags::DEFAULT)?;
         completion_event.record(&self.stream)?;
-
 
         let poll_start = std::time::Instant::now();
         while completion_event
@@ -613,7 +588,6 @@ impl UnifiedGPUCompute {
 
         self.swap_buffers();
         self.iteration += 1;
-
 
         if self.iteration % 100 == 0 {
             let (memory_used, utilization, resize_count) = self.get_memory_metrics();
@@ -652,7 +626,8 @@ impl UnifiedGPUCompute {
         }
         // Honour both the SimulationParams flag and the runtime toggle
         if params.use_sssp_distances || self.sssp_spring_adjust_enabled {
-            feature_flags |= crate::models::simulation_params::FeatureFlags::ENABLE_SSSP_SPRING_ADJUST;
+            feature_flags |=
+                crate::models::simulation_params::FeatureFlags::ENABLE_SSSP_SPRING_ADJUST;
         }
 
         // Use SimulationParams::to_sim_params() which correctly maps ALL user-facing
@@ -687,17 +662,13 @@ impl UnifiedGPUCompute {
     }
 
     pub fn get_node_positions(&mut self) -> Result<(Vec<f32>, Vec<f32>, Vec<f32>)> {
-
-
         let mut pos_x = vec![0.0f32; self.allocated_nodes];
         let mut pos_y = vec![0.0f32; self.allocated_nodes];
         let mut pos_z = vec![0.0f32; self.allocated_nodes];
 
-
         self.pos_in_x.copy_to(&mut pos_x)?;
         self.pos_in_y.copy_to(&mut pos_y)?;
         self.pos_in_z.copy_to(&mut pos_z)?;
-
 
         pos_x.truncate(self.num_nodes);
         pos_y.truncate(self.num_nodes);
@@ -707,17 +678,13 @@ impl UnifiedGPUCompute {
     }
 
     pub fn get_node_velocities(&mut self) -> Result<(Vec<f32>, Vec<f32>, Vec<f32>)> {
-
-
         let mut vel_x = vec![0.0f32; self.allocated_nodes];
         let mut vel_y = vec![0.0f32; self.allocated_nodes];
         let mut vel_z = vec![0.0f32; self.allocated_nodes];
 
-
         self.vel_in_x.copy_to(&mut vel_x)?;
         self.vel_in_y.copy_to(&mut vel_y)?;
         self.vel_in_z.copy_to(&mut vel_z)?;
-
 
         vel_x.truncate(self.num_nodes);
         vel_y.truncate(self.num_nodes);

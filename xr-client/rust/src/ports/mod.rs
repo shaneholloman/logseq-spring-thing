@@ -116,8 +116,8 @@ pub mod fakes {
 
     impl FakeSigner {
         pub fn new() -> Self {
-            let did = Did::parse(format!("did:nostr:{}", "a".repeat(64)))
-                .expect("FakeSigner DID parse");
+            let did =
+                Did::parse(format!("did:nostr:{}", "a".repeat(64))).expect("FakeSigner DID parse");
             Self { did }
         }
     }

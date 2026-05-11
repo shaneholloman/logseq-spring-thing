@@ -313,7 +313,6 @@ pub struct SaveGraph {
 
 impl Directive for SaveGraph {
     fn validate(&self) -> HexResult<()> {
-        
         Ok(())
     }
 }
@@ -356,7 +355,7 @@ impl<R: KnowledgeGraphRepository + Send + Sync + 'static> DirectiveHandler<SaveG
 
 #[derive(Debug, Clone)]
 pub struct BatchUpdatePositions {
-    pub positions: Vec<(u32, f32, f32, f32)>, 
+    pub positions: Vec<(u32, f32, f32, f32)>,
 }
 
 impl Directive for BatchUpdatePositions {

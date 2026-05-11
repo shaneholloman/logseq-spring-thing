@@ -82,10 +82,8 @@ pub use crate::config::AppFullSettings;
 
 #[async_trait]
 pub trait SettingsRepository: Send + Sync {
-    
     async fn get_setting(&self, key: &str) -> Result<Option<SettingValue>>;
 
-    
     async fn set_setting(
         &self,
         key: &str,
@@ -93,52 +91,37 @@ pub trait SettingsRepository: Send + Sync {
         description: Option<&str>,
     ) -> Result<()>;
 
-    
     async fn delete_setting(&self, key: &str) -> Result<()>;
 
-    
     async fn has_setting(&self, key: &str) -> Result<bool>;
 
-    
     async fn get_settings_batch(&self, keys: &[String]) -> Result<HashMap<String, SettingValue>>;
 
-    
     async fn set_settings_batch(&self, updates: HashMap<String, SettingValue>) -> Result<()>;
 
-    
     async fn list_settings(&self, prefix: Option<&str>) -> Result<Vec<String>>;
 
-    
     async fn load_all_settings(&self) -> Result<Option<AppFullSettings>>;
 
-    
     async fn save_all_settings(&self, settings: &AppFullSettings) -> Result<()>;
 
-    
     async fn get_physics_settings(&self, profile_name: &str) -> Result<PhysicsSettings>;
 
-    
     async fn save_physics_settings(
         &self,
         profile_name: &str,
         settings: &PhysicsSettings,
     ) -> Result<()>;
 
-    
     async fn list_physics_profiles(&self) -> Result<Vec<String>>;
 
-    
     async fn delete_physics_profile(&self, profile_name: &str) -> Result<()>;
 
-    
     async fn export_settings(&self) -> Result<serde_json::Value>;
 
-    
     async fn import_settings(&self, settings_json: &serde_json::Value) -> Result<()>;
 
-    
     async fn clear_cache(&self) -> Result<()>;
 
-    
     async fn health_check(&self) -> Result<bool>;
 }

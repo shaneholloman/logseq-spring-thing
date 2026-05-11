@@ -23,7 +23,9 @@ use crate::services::share_policy::{ShareIntent, SubjectKind, TargetScope};
 
 #[derive(Debug, Error)]
 pub enum WacMutatorError {
-    #[error("double-gate mismatch: manifest={manifest_scope:?} allow_list={allow_list:?} path={path}")]
+    #[error(
+        "double-gate mismatch: manifest={manifest_scope:?} allow_list={allow_list:?} path={path}"
+    )]
     DoubleGateMismatch {
         manifest_scope: Option<String>,
         allow_list: Vec<String>,
@@ -62,14 +64,26 @@ pub struct WacMutationPlan {
 pub trait WacMutator: Send + Sync {
     /// Plan the mutation without writing (used by the orchestrator to
     /// validate both gates before any Pod side-effect).
-    fn plan(&self, intent: &ShareIntent, pod_base: &str) -> Result<WacMutationPlan, WacMutatorError>;
+    fn plan(
+        &self,
+        intent: &ShareIntent,
+        pod_base: &str,
+    ) -> Result<WacMutationPlan, WacMutatorError>;
 
     /// Apply the plan: write the artefact manifest + body MOVE + ACL upsert.
-    async fn apply(&self, intent: &ShareIntent, pod_base: &str) -> Result<WacMutationPlan, WacMutatorError>;
+    async fn apply(
+        &self,
+        intent: &ShareIntent,
+        pod_base: &str,
+    ) -> Result<WacMutationPlan, WacMutatorError>;
 
     /// Revoke a previously-applied plan (used by ContributorRevocation /
     /// BrokerRevocation paths).
-    async fn revoke(&self, intent: &ShareIntent, pod_base: &str) -> Result<WacMutationPlan, WacMutatorError>;
+    async fn revoke(
+        &self,
+        intent: &ShareIntent,
+        pod_base: &str,
+    ) -> Result<WacMutationPlan, WacMutatorError>;
 }
 
 /// Convert a [`SubjectKind`] to the container segment used under `/shared/`
@@ -205,16 +219,26 @@ pub struct PodWacMutator {
 }
 
 impl PodWacMutator {
-    pub fn new(client: Arc<PodClient>) -> Self { Self { client } }
+    pub fn new(client: Arc<PodClient>) -> Self {
+        Self { client }
+    }
 }
 
 #[async_trait]
 impl WacMutator for PodWacMutator {
-    fn plan(&self, intent: &ShareIntent, pod_base: &str) -> Result<WacMutationPlan, WacMutatorError> {
+    fn plan(
+        &self,
+        intent: &ShareIntent,
+        pod_base: &str,
+    ) -> Result<WacMutationPlan, WacMutatorError> {
         plan_mutation(intent, pod_base)
     }
 
-    async fn apply(&self, intent: &ShareIntent, pod_base: &str) -> Result<WacMutationPlan, WacMutatorError> {
+    async fn apply(
+        &self,
+        intent: &ShareIntent,
+        pod_base: &str,
+    ) -> Result<WacMutationPlan, WacMutatorError> {
         let plan = plan_mutation(intent, pod_base)?;
         verify_double_gate(intent, &plan.destination_path)?;
 
@@ -227,21 +251,28 @@ impl WacMutator for PodWacMutator {
         // 2. Write / upsert the ACL document for the destination container.
         let acl_url = abs_pod_url(pod_base, &plan.acl_document_path);
         self.client
-            .put_resource(&acl_url, plan.acl_turtle.clone().into_bytes().into(),
-                "text/turtle", None)
+            .put_resource(
+                &acl_url,
+                plan.acl_turtle.clone().into_bytes().into(),
+                "text/turtle",
+                None,
+            )
             .await?;
 
         Ok(plan)
     }
 
-    async fn revoke(&self, intent: &ShareIntent, pod_base: &str) -> Result<WacMutationPlan, WacMutatorError> {
+    async fn revoke(
+        &self,
+        intent: &ShareIntent,
+        pod_base: &str,
+    ) -> Result<WacMutationPlan, WacMutatorError> {
         // Revocation moves the artefact back to /private/{kind}/... and
         // writes an owner-only ACL. Callers route through this symmetric
         // operation to preserve the double-gate invariant.
         let kind_seg = container_kind_segment(intent.subject_kind)?;
         let file = artifact_file_name(&intent.artifact_ref);
-        let destination_path = format!("/private/{kind}/{name}",
-            kind = kind_seg, name = file);
+        let destination_path = format!("/private/{kind}/{name}", kind = kind_seg, name = file);
         let acl_document_path = format!("/private/{kind}/.acl", kind = kind_seg);
         let acl_turtle = render_private_acl(&intent.contributor_webid);
 
@@ -259,24 +290,34 @@ impl WacMutator for PodWacMutator {
 
         let acl_url = abs_pod_url(pod_base, &acl_document_path);
         self.client
-            .put_resource(&acl_url, acl_turtle.into_bytes().into(),
-                "text/turtle", None)
+            .put_resource(
+                &acl_url,
+                acl_turtle.into_bytes().into(),
+                "text/turtle",
+                None,
+            )
             .await?;
 
         Ok(plan)
     }
 }
 
-fn plan_mutation(intent: &ShareIntent, _pod_base: &str) -> Result<WacMutationPlan, WacMutatorError> {
+fn plan_mutation(
+    intent: &ShareIntent,
+    _pod_base: &str,
+) -> Result<WacMutationPlan, WacMutatorError> {
     match &intent.target_scope {
         TargetScope::Team(team) => {
             let kind_seg = container_kind_segment(intent.subject_kind)?;
             let file = artifact_file_name(&intent.artifact_ref);
             let destination_path = format!(
                 "/shared/{kind}/{team}/{name}",
-                kind = kind_seg, team = team, name = file);
-            let acl_document_path = format!(
-                "/shared/{kind}/{team}/.acl", kind = kind_seg, team = team);
+                kind = kind_seg,
+                team = team,
+                name = file
+            );
+            let acl_document_path =
+                format!("/shared/{kind}/{team}/.acl", kind = kind_seg, team = team);
             let group_iri = crate::uri::mint_group_members(team);
             let acl_turtle = render_team_acl(&intent.contributor_webid, &group_iri);
             verify_double_gate(intent, &destination_path)?;
@@ -290,10 +331,8 @@ fn plan_mutation(intent: &ShareIntent, _pod_base: &str) -> Result<WacMutationPla
         TargetScope::Mesh => {
             let kind_seg = container_kind_segment(intent.subject_kind)?;
             let file = artifact_file_name(&intent.artifact_ref);
-            let destination_path = format!(
-                "/public/{kind}/{name}", kind = kind_seg, name = file);
-            let acl_document_path = format!(
-                "/public/{kind}/.acl", kind = kind_seg);
+            let destination_path = format!("/public/{kind}/{name}", kind = kind_seg, name = file);
+            let acl_document_path = format!("/public/{kind}/.acl", kind = kind_seg);
             let acl_turtle = render_public_acl(&intent.contributor_webid);
             verify_double_gate(intent, &destination_path)?;
             Ok(WacMutationPlan {
@@ -303,9 +342,7 @@ fn plan_mutation(intent: &ShareIntent, _pod_base: &str) -> Result<WacMutationPla
                 acl_turtle,
             })
         }
-        TargetScope::Private => {
-            Err(WacMutatorError::UnexpectedTargetScope(TargetScope::Private))
-        }
+        TargetScope::Private => Err(WacMutatorError::UnexpectedTargetScope(TargetScope::Private)),
     }
 }
 
@@ -315,7 +352,11 @@ fn pod_ref_path(pod_ref: &str) -> &str {
 
 fn abs_pod_url(pod_base: &str, path: &str) -> String {
     let base = pod_base.trim_end_matches('/');
-    let suffix = if path.starts_with('/') { path.to_string() } else { format!("/{}", path) };
+    let suffix = if path.starts_with('/') {
+        path.to_string()
+    } else {
+        format!("/{}", path)
+    };
     format!("{}{}", base, suffix)
 }
 
@@ -332,22 +373,33 @@ pub struct InMemoryWacMutator {
 
 #[async_trait]
 impl WacMutator for InMemoryWacMutator {
-    fn plan(&self, intent: &ShareIntent, pod_base: &str) -> Result<WacMutationPlan, WacMutatorError> {
+    fn plan(
+        &self,
+        intent: &ShareIntent,
+        pod_base: &str,
+    ) -> Result<WacMutationPlan, WacMutatorError> {
         plan_mutation(intent, pod_base)
     }
 
-    async fn apply(&self, intent: &ShareIntent, pod_base: &str) -> Result<WacMutationPlan, WacMutatorError> {
+    async fn apply(
+        &self,
+        intent: &ShareIntent,
+        pod_base: &str,
+    ) -> Result<WacMutationPlan, WacMutatorError> {
         let plan = plan_mutation(intent, pod_base)?;
         verify_double_gate(intent, &plan.destination_path)?;
         self.applied.lock().unwrap().push(plan.clone());
         Ok(plan)
     }
 
-    async fn revoke(&self, intent: &ShareIntent, pod_base: &str) -> Result<WacMutationPlan, WacMutatorError> {
+    async fn revoke(
+        &self,
+        intent: &ShareIntent,
+        pod_base: &str,
+    ) -> Result<WacMutationPlan, WacMutatorError> {
         let kind_seg = container_kind_segment(intent.subject_kind)?;
         let file = artifact_file_name(&intent.artifact_ref);
-        let destination_path = format!("/private/{kind}/{name}",
-            kind = kind_seg, name = file);
+        let destination_path = format!("/private/{kind}/{name}", kind = kind_seg, name = file);
         let plan = WacMutationPlan {
             destination_path: destination_path.clone(),
             acl_document_path: format!("/private/{kind}/.acl", kind = kind_seg),
@@ -387,11 +439,16 @@ mod tests {
     #[tokio::test]
     async fn team_apply_writes_named_group_acl() {
         let mut_: InMemoryWacMutator = Default::default();
-        let i = intent(TargetScope::Team("team-alpha".into()),
-            vec!["team-alpha"], Some("team"));
+        let i = intent(
+            TargetScope::Team("team-alpha".into()),
+            vec!["team-alpha"],
+            Some("team"),
+        );
         let plan = mut_.apply(&i, "https://alice.pod").await.unwrap();
-        assert_eq!(plan.destination_path,
-            "/shared/skills/team-alpha/research-brief.md");
+        assert_eq!(
+            plan.destination_path,
+            "/shared/skills/team-alpha/research-brief.md"
+        );
         assert!(plan.agent_group.as_deref().unwrap().contains("team-alpha"));
         assert!(plan.acl_turtle.contains("acl:agentGroup"));
     }
@@ -400,8 +457,11 @@ mod tests {
     async fn team_manifest_missing_fails_double_gate() {
         let mut_: InMemoryWacMutator = Default::default();
         // manifest None — gate 1 fails
-        let i = intent(TargetScope::Team("team-alpha".into()),
-            vec!["team-alpha"], None);
+        let i = intent(
+            TargetScope::Team("team-alpha".into()),
+            vec!["team-alpha"],
+            None,
+        );
         let err = mut_.apply(&i, "https://alice.pod").await.unwrap_err();
         matches!(err, WacMutatorError::DoubleGateMismatch { .. });
     }
@@ -409,8 +469,11 @@ mod tests {
     #[tokio::test]
     async fn team_allow_list_mismatch_fails_double_gate() {
         let mut_: InMemoryWacMutator = Default::default();
-        let i = intent(TargetScope::Team("team-alpha".into()),
-            vec!["team-beta"], Some("team"));
+        let i = intent(
+            TargetScope::Team("team-alpha".into()),
+            vec!["team-beta"],
+            Some("team"),
+        );
         let err = mut_.apply(&i, "https://alice.pod").await.unwrap_err();
         matches!(err, WacMutatorError::DoubleGateMismatch { .. });
     }
@@ -435,8 +498,11 @@ mod tests {
     #[tokio::test]
     async fn revoke_writes_owner_only_acl() {
         let mut_: InMemoryWacMutator = Default::default();
-        let i = intent(TargetScope::Team("team-alpha".into()),
-            vec!["team-alpha"], Some("team"));
+        let i = intent(
+            TargetScope::Team("team-alpha".into()),
+            vec!["team-alpha"],
+            Some("team"),
+        );
         let plan = mut_.revoke(&i, "https://alice.pod").await.unwrap();
         assert!(plan.destination_path.starts_with("/private/skills/"));
         assert!(plan.agent_group.is_none());
@@ -446,8 +512,11 @@ mod tests {
     #[tokio::test]
     async fn ontology_term_not_supported_for_wac_move() {
         let mut_: InMemoryWacMutator = Default::default();
-        let mut i = intent(TargetScope::Team("team-alpha".into()),
-            vec!["team-alpha"], Some("team"));
+        let mut i = intent(
+            TargetScope::Team("team-alpha".into()),
+            vec!["team-alpha"],
+            Some("team"),
+        );
         i.subject_kind = SubjectKind::OntologyTerm;
         let err = mut_.apply(&i, "https://alice.pod").await.unwrap_err();
         matches!(err, WacMutatorError::UnsupportedSubjectKind(_));

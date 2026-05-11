@@ -129,8 +129,7 @@ impl AgentMonitorActor {
     ) -> Self {
         info!("[AgentMonitorActor] Initializing with Management API monitoring");
 
-        let host = std::env::var("MANAGEMENT_API_HOST")
-            .unwrap_or_else(|_| "localhost".to_string());
+        let host = std::env::var("MANAGEMENT_API_HOST").unwrap_or_else(|_| "localhost".to_string());
         let port = std::env::var("MANAGEMENT_API_PORT")
             .ok()
             .and_then(|p| p.parse::<u16>().ok())
@@ -176,10 +175,8 @@ impl AgentMonitorActor {
         ctx.spawn(
             async move {
                 // Fetch tasks and system status concurrently
-                let (tasks_result, status_result) = tokio::join!(
-                    api_client.list_tasks(),
-                    api_client.get_system_status()
-                );
+                let (tasks_result, status_result) =
+                    tokio::join!(api_client.list_tasks(), api_client.get_system_status());
 
                 // Extract container telemetry from system status
                 let telemetry = match &status_result {
@@ -227,10 +224,7 @@ impl AgentMonitorActor {
                             .map(|task| task_to_agent_status(task, &telemetry))
                             .collect();
 
-                        ctx_addr.do_send(ProcessAgentStatuses {
-                            agents,
-                            telemetry,
-                        });
+                        ctx_addr.do_send(ProcessAgentStatuses { agents, telemetry });
                     }
                     Err(e) => {
                         error!("[AgentMonitorActor] Management API query failed: {}", e);
@@ -290,11 +284,41 @@ fn build_mock_swarm_agents() -> Vec<AgentStatus> {
     use crate::utils::time;
 
     let mock_defs: Vec<(&str, &str, &str, &str, &str)> = vec![
-        ("mock-coordinator", "Claude Opus 4.6 (Coordinator)", "coordinator", "active", "Orchestrating swarm topology and task routing"),
-        ("mock-coder-1", "Coder Agent", "coder", "active", "Implementing feature branch with TDD"),
-        ("mock-reviewer-1", "QE Reviewer", "reviewer", "active", "Reviewing PR #42 for security and correctness"),
-        ("mock-researcher-1", "Research Agent", "researcher", "active", "Searching RuVector memory for related patterns"),
-        ("mock-memory-1", "RuVector Memory Specialist", "memory", "idle", "Indexing 384-dim embeddings into HNSW graph"),
+        (
+            "mock-coordinator",
+            "Claude Opus 4.6 (Coordinator)",
+            "coordinator",
+            "active",
+            "Orchestrating swarm topology and task routing",
+        ),
+        (
+            "mock-coder-1",
+            "Coder Agent",
+            "coder",
+            "active",
+            "Implementing feature branch with TDD",
+        ),
+        (
+            "mock-reviewer-1",
+            "QE Reviewer",
+            "reviewer",
+            "active",
+            "Reviewing PR #42 for security and correctness",
+        ),
+        (
+            "mock-researcher-1",
+            "Research Agent",
+            "researcher",
+            "active",
+            "Searching RuVector memory for related patterns",
+        ),
+        (
+            "mock-memory-1",
+            "RuVector Memory Specialist",
+            "memory",
+            "idle",
+            "Indexing 384-dim embeddings into HNSW graph",
+        ),
     ];
 
     mock_defs
@@ -368,7 +392,9 @@ impl Handler<ProcessAgentStatuses> for AgentMonitorActor {
                 .map(|v| v == "true" || v == "1")
                 .unwrap_or(false)
         {
-            info!("[AgentMonitorActor] No real agents found, MOCK_AGENTS=true — injecting mock swarm");
+            info!(
+                "[AgentMonitorActor] No real agents found, MOCK_AGENTS=true — injecting mock swarm"
+            );
             build_mock_swarm_agents()
         } else {
             msg.agents
@@ -422,7 +448,9 @@ impl Handler<ProcessAgentStatuses> for AgentMonitorActor {
             })
             .collect();
 
-        let message = UpdateBotsGraph { agents: agents_list };
+        let message = UpdateBotsGraph {
+            agents: agents_list,
+        };
         info!(
             "[AgentMonitorActor] Sending graph update with {} agents",
             agents.len()

@@ -260,7 +260,10 @@ mod tests {
         let cap = base_cap();
         let paths = vec!["pod:/inbox/sensei/item-1.jsonld".to_string()];
         let v = CapValidator::validate(&ok_check(&cap, "broker_decide", &paths));
-        assert!(matches!(v, CapVerdict::Deny(CapDenyReason::ToolOutOfScope(_))));
+        assert!(matches!(
+            v,
+            CapVerdict::Deny(CapDenyReason::ToolOutOfScope(_))
+        ));
     }
 
     #[test]
@@ -268,7 +271,10 @@ mod tests {
         let cap = base_cap();
         let paths = vec!["pod:/public/skills/x.md".to_string()];
         let v = CapValidator::validate(&ok_check(&cap, "sensei_nudge", &paths));
-        assert!(matches!(v, CapVerdict::Deny(CapDenyReason::DataOutOfScope(_))));
+        assert!(matches!(
+            v,
+            CapVerdict::Deny(CapDenyReason::DataOutOfScope(_))
+        ));
     }
 
     #[test]

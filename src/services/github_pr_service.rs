@@ -152,10 +152,18 @@ impl GitHubPRService {
         if let Ok(auth_value) = format!("Bearer {}", self.token).parse() {
             headers.insert(AUTHORIZATION, auth_value);
         }
-        headers.insert(ACCEPT, "application/vnd.github+json".parse()
-            .expect("static header value is always valid"));
-        headers.insert(USER_AGENT, "VisionFlow-OntologyAgent/1.0".parse()
-            .expect("static header value is always valid"));
+        headers.insert(
+            ACCEPT,
+            "application/vnd.github+json"
+                .parse()
+                .expect("static header value is always valid"),
+        );
+        headers.insert(
+            USER_AGENT,
+            "VisionFlow-OntologyAgent/1.0"
+                .parse()
+                .expect("static header value is always valid"),
+        );
         headers
     }
 
@@ -174,10 +182,7 @@ impl GitHubPRService {
             return Err("GITHUB_TOKEN not configured — cannot create PR".to_string());
         }
 
-        info!(
-            "Creating ontology PR: '{}' for file '{}'",
-            title, file_path
-        );
+        info!("Creating ontology PR: '{}' for file '{}'", title, file_path);
 
         // 1. Get base branch SHA
         let base_sha = self.get_ref_sha(&self.base_branch).await?;
@@ -197,7 +202,9 @@ impl GitHubPRService {
             agent_ctx.user_id,
             agent_ctx.task_description
         );
-        let commit_sha = self.create_commit(&commit_message, &tree_sha, &base_sha).await?;
+        let commit_sha = self
+            .create_commit(&commit_message, &tree_sha, &base_sha)
+            .await?;
 
         // 5. Create branch
         let branch_name = format!(
@@ -208,9 +215,7 @@ impl GitHubPRService {
         self.create_ref(&branch_name, &commit_sha).await?;
 
         // 6. Create PR
-        let pr_url = self
-            .create_pull_request(title, body, &branch_name)
-            .await?;
+        let pr_url = self.create_pull_request(title, body, &branch_name).await?;
 
         info!("Created ontology PR: {}", pr_url);
         Ok(pr_url)
@@ -420,10 +425,7 @@ impl GitHubPRService {
             body: body.to_string(),
             head: head_branch.to_string(),
             base: self.base_branch.clone(),
-            labels: Some(vec![
-                "ontology".to_string(),
-                "agent-proposed".to_string(),
-            ]),
+            labels: Some(vec!["ontology".to_string(), "agent-proposed".to_string()]),
         };
 
         let resp = self
@@ -485,13 +487,11 @@ impl GitHubPRService {
             .await
             .map_err(|e| format!("Failed to parse PR list response: {}", e))?;
 
-        prs.first()
-            .map(|pr| pr.html_url.clone())
-            .ok_or_else(|| {
-                format!(
-                    "PR creation returned 422 but no open PR found for branch '{}'",
-                    head_branch
-                )
-            })
+        prs.first().map(|pr| pr.html_url.clone()).ok_or_else(|| {
+            format!(
+                "PR creation returned 422 but no open PR found for branch '{}'",
+                head_branch
+            )
+        })
     }
 }

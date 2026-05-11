@@ -44,7 +44,7 @@ pub struct BroadcastConfig {
 impl Default for BroadcastConfig {
     fn default() -> Self {
         Self {
-            target_fps: 25, // 25fps broadcast, 60fps physics
+            target_fps: 25,        // 25fps broadcast, 60fps physics
             delta_threshold: 0.01, // 1cm movement threshold
             enable_spatial_culling: false,
             camera_bounds: None,
@@ -185,9 +185,12 @@ impl SpatialCuller {
 
         for (idx, pos) in positions.iter().enumerate() {
             // Simple AABB test
-            if pos.x >= min.x && pos.x <= max.x
-                && pos.y >= min.y && pos.y <= max.y
-                && pos.z >= min.z && pos.z <= max.z
+            if pos.x >= min.x
+                && pos.x <= max.x
+                && pos.y >= min.y
+                && pos.y <= max.y
+                && pos.z >= min.z
+                && pos.z <= max.z
             {
                 visible_indices.push(idx);
             }
@@ -245,14 +248,9 @@ impl BroadcastOptimizer {
         }
 
         // Filter visible nodes by delta threshold
-        let visible_positions: Vec<(Vec3, Vec3)> = visible_indices
-            .iter()
-            .map(|&idx| positions[idx])
-            .collect();
-        let visible_ids: Vec<u32> = visible_indices
-            .iter()
-            .map(|&idx| node_ids[idx])
-            .collect();
+        let visible_positions: Vec<(Vec3, Vec3)> =
+            visible_indices.iter().map(|&idx| positions[idx]).collect();
+        let visible_ids: Vec<u32> = visible_indices.iter().map(|&idx| node_ids[idx]).collect();
 
         let delta_indices = self.delta_compressor.filter_delta_updates(
             &visible_positions,
@@ -276,7 +274,8 @@ impl BroadcastOptimizer {
     pub fn get_performance_stats(&self) -> BroadcastPerformanceStats {
         let avg_reduction = if self.total_nodes_processed > 0 {
             ((self.total_nodes_processed - self.total_nodes_sent) as f64
-                / self.total_nodes_processed as f64) * 100.0
+                / self.total_nodes_processed as f64)
+                * 100.0
         } else {
             0.0
         };
@@ -294,8 +293,14 @@ impl BroadcastOptimizer {
     /// Update configuration at runtime
     pub fn update_config(&mut self, config: BroadcastConfig) {
         info!("BroadcastOptimizer: Updating configuration");
-        info!("  Target FPS: {} -> {}", self.config.target_fps, config.target_fps);
-        info!("  Delta threshold: {:.4} -> {:.4}", self.config.delta_threshold, config.delta_threshold);
+        info!(
+            "  Target FPS: {} -> {}",
+            self.config.target_fps, config.target_fps
+        );
+        info!(
+            "  Delta threshold: {:.4} -> {:.4}",
+            self.config.delta_threshold, config.delta_threshold
+        );
 
         self.config = config;
         self.delta_compressor = DeltaCompressor::new(&self.config);
@@ -305,7 +310,10 @@ impl BroadcastOptimizer {
     /// Update camera bounds for spatial culling
     pub fn update_camera_bounds(&mut self, min: Vec3, max: Vec3) {
         self.spatial_culler.update_camera_bounds(min, max);
-        debug!("BroadcastOptimizer: Camera bounds updated to [{:?}, {:?}]", min, max);
+        debug!(
+            "BroadcastOptimizer: Camera bounds updated to [{:?}, {:?}]",
+            min, max
+        );
     }
 
     /// Reset delta compressor state so the next frame sends ALL positions.
@@ -389,10 +397,10 @@ mod tests {
         let culler = SpatialCuller::new(&config);
 
         let positions = vec![
-            Vec3::new(0.0, 0.0, 0.0),    // Inside
-            Vec3::new(15.0, 0.0, 0.0),   // Outside
-            Vec3::new(5.0, 5.0, 5.0),    // Inside
-            Vec3::new(0.0, 20.0, 0.0),   // Outside
+            Vec3::new(0.0, 0.0, 0.0),  // Inside
+            Vec3::new(15.0, 0.0, 0.0), // Outside
+            Vec3::new(5.0, 5.0, 5.0),  // Inside
+            Vec3::new(0.0, 20.0, 0.0), // Outside
         ];
         let node_ids = vec![0, 1, 2, 3];
 

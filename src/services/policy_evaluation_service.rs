@@ -151,10 +151,7 @@ impl PolicyEngine for InMemoryPolicyEngine {
         let evaluations = self.evaluate(context).await?;
 
         // First Deny wins, then Escalate, else Allow
-        if evaluations
-            .iter()
-            .any(|e| e.outcome == PolicyOutcome::Deny)
-        {
+        if evaluations.iter().any(|e| e.outcome == PolicyOutcome::Deny) {
             return Ok(PolicyOutcome::Deny);
         }
         if evaluations

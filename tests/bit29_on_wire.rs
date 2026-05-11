@@ -125,7 +125,9 @@ fn h1a_anonymous_caller_gets_opacified_stub_not_drop() {
     let v = serde_json::to_value(&opaque).unwrap();
     assert_eq!(v["label"], "");
     assert_eq!(v["metadataId"], "");
-    assert!(v.get("metadata").is_none() || v["metadata"].as_object().map_or(true, |o| o.is_empty()));
+    assert!(
+        v.get("metadata").is_none() || v["metadata"].as_object().map_or(true, |o| o.is_empty())
+    );
     assert!(v["opaqueId"].is_string());
     assert_eq!(v["ownerPubkey"], OWNER_ALICE);
     assert!(v.get("podUrl").is_none());
@@ -217,7 +219,15 @@ fn h2a_three_nodes_mixed_visibility_produces_exactly_one_bit29() {
     private_set.insert(2u32);
 
     let encoded = encode_positions_v3_with_privacy(
-        &nodes, &[], &[], &[], &[], &[], None, None, Some(&private_set),
+        &nodes,
+        &[],
+        &[],
+        &[],
+        &[],
+        &[],
+        None,
+        None,
+        Some(&private_set),
     );
 
     // Parse the 3 wire ids. V3 frame layout: 1 header + N * 48 bytes, with
@@ -229,7 +239,10 @@ fn h2a_three_nodes_mixed_visibility_produces_exactly_one_bit29() {
         .map(|i| {
             let base = i * 48;
             u32::from_le_bytes([
-                payload[base], payload[base + 1], payload[base + 2], payload[base + 3],
+                payload[base],
+                payload[base + 1],
+                payload[base + 2],
+                payload[base + 3],
             ])
         })
         .collect();
@@ -282,7 +295,12 @@ fn h2b_caller_owns_all_private_no_bit29_set() {
                 id,
                 BinaryNodeData {
                     node_id: id,
-                    x: 0.0, y: 0.0, z: 0.0, vx: 0.0, vy: 0.0, vz: 0.0,
+                    x: 0.0,
+                    y: 0.0,
+                    z: 0.0,
+                    vx: 0.0,
+                    vy: 0.0,
+                    vz: 0.0,
                 },
             )
         })
@@ -292,19 +310,31 @@ fn h2b_caller_owns_all_private_no_bit29_set() {
     let private_set: HashSet<u32> = HashSet::new();
 
     let encoded = encode_positions_v3_with_privacy(
-        &nodes, &[], &[], &[], &[], &[], None, None, Some(&private_set),
+        &nodes,
+        &[],
+        &[],
+        &[],
+        &[],
+        &[],
+        None,
+        None,
+        Some(&private_set),
     );
 
     let payload = &encoded[1..];
     for i in 0..3 {
         let base = i * 48;
         let wire_id = u32::from_le_bytes([
-            payload[base], payload[base + 1], payload[base + 2], payload[base + 3],
+            payload[base],
+            payload[base + 1],
+            payload[base + 2],
+            payload[base + 3],
         ]);
         assert!(
             !is_private_opaque(wire_id),
             "caller-owned node {} must NOT have bit 29 set (wire_id=0x{:08X})",
-            i, wire_id
+            i,
+            wire_id
         );
     }
 }
@@ -330,11 +360,16 @@ fn h2c_opaque_id_is_deterministic_and_rotates_on_salt_change() {
 
     // Shape: 24 lowercase hex chars.
     assert_eq!(a1.len(), 24);
-    assert!(a1.chars().all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase()));
+    assert!(a1
+        .chars()
+        .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase()));
 
     // Rotation: changing the salt produces a different id.
     let b = opaque_id(salt_b, owner, iri);
-    assert_ne!(a1, b, "salt rotation must change the opaque id (unlinkability)");
+    assert_ne!(
+        a1, b,
+        "salt rotation must change the opaque id (unlinkability)"
+    );
 
     // Isolation: different owner under same salt -> different id.
     let other = opaque_id(salt_a, OWNER_BOB, iri);

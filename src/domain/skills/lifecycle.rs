@@ -81,7 +81,10 @@ pub struct BenchmarkSummary {
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum LifecycleTransitionError {
     #[error("illegal transition from {from:?} to {to:?}")]
-    IllegalTransition { from: SkillLifecycleState, to: SkillLifecycleState },
+    IllegalTransition {
+        from: SkillLifecycleState,
+        to: SkillLifecycleState,
+    },
 
     #[error("TeamShared requires at least one passing benchmark within the last 30 days")]
     TeamSharedNeedsPassingBaseline,
@@ -92,7 +95,9 @@ pub enum LifecycleTransitionError {
     #[error("MeshCandidate requires a broker review marker (BC11/ADR-041)")]
     MeshCandidateNeedsBrokerReview,
 
-    #[error("Retirement requires either a successor_ref or BaseModelAbsorbed rationale (BC19 inv. 2)")]
+    #[error(
+        "Retirement requires either a successor_ref or BaseModelAbsorbed rationale (BC19 inv. 2)"
+    )]
     RetirementNeedsJustification,
 
     #[error("Retired is terminal; no outbound transition possible")]

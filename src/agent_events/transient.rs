@@ -33,7 +33,10 @@ impl BeamEdge {
             .map(|d| d.as_millis() as i64)
             .unwrap_or(0);
         Self {
-            edge_id: format!("beam-{}-{}-{}", source_agent_id, target_node_id, spawned_at_ms),
+            edge_id: format!(
+                "beam-{}-{}-{}",
+                source_agent_id, target_node_id, spawned_at_ms
+            ),
             source_agent_id,
             target_node_id,
             action_type,

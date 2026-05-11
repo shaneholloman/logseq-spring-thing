@@ -4,15 +4,13 @@
 //! error handling, and edge cases.
 //!
 
-
 use std::sync::Arc;
 
 use webxr::gpu::streaming_pipeline::{
     ClientLOD, CompressedEdge, FrameBuffer, SimplifiedNode, StreamingPipeline,
 };
 use webxr::gpu::visual_analytics::{
-    IsolationLayer, TSEdge, TSNode, Vec4, VisualAnalyticsGPU,
-    VisualAnalyticsParams,
+    IsolationLayer, TSEdge, TSNode, Vec4, VisualAnalyticsGPU, VisualAnalyticsParams,
 };
 use webxr::gpu::RenderData;
 use webxr::utils::gpu_safety::{
@@ -1309,7 +1307,8 @@ mod phase1_stability_tests {
     fn test_buffer_resizing_live_data() {
         println!("📈 Testing buffer resizing with live data preservation...");
 
-        let initial_positions: Vec<(f32, f32, f32)> = vec![(1.0, 2.0, 3.0), (4.0, 5.0, 6.0), (7.0, 8.0, 9.0)];
+        let initial_positions: Vec<(f32, f32, f32)> =
+            vec![(1.0, 2.0, 3.0), (4.0, 5.0, 6.0), (7.0, 8.0, 9.0)];
 
         let resize_scenarios = vec![
             ("grow", 5),        // Growth

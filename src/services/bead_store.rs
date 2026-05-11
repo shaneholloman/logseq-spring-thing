@@ -29,11 +29,8 @@ pub trait BeadStore: Send + Sync {
     ) -> Result<(), BeadStoreError>;
 
     /// Link a Nostr event ID to a bead after successful relay publish.
-    async fn set_nostr_event_id(
-        &self,
-        bead_id: &str,
-        event_id: &str,
-    ) -> Result<(), BeadStoreError>;
+    async fn set_nostr_event_id(&self, bead_id: &str, event_id: &str)
+        -> Result<(), BeadStoreError>;
 
     /// Fetch a single bead by ID.
     async fn get(&self, bead_id: &str) -> Result<Option<BeadMetadata>, BeadStoreError>;
@@ -104,10 +101,7 @@ impl BeadStore for NoopBeadStore {
         Ok(None)
     }
 
-    async fn list_by_state(
-        &self,
-        _state: &BeadState,
-    ) -> Result<Vec<BeadMetadata>, BeadStoreError> {
+    async fn list_by_state(&self, _state: &BeadState) -> Result<Vec<BeadMetadata>, BeadStoreError> {
         Ok(Vec::new())
     }
 
@@ -246,8 +240,7 @@ impl BeadStore for Neo4jBeadStore {
         bead_id: &str,
         outcome: &BeadOutcome,
     ) -> Result<(), BeadStoreError> {
-        let outcome_json =
-            serde_json::to_string(outcome).unwrap_or_else(|_| "unknown".to_string());
+        let outcome_json = serde_json::to_string(outcome).unwrap_or_else(|_| "unknown".to_string());
 
         let query = Query::new(
             "MATCH (b:Bead {bead_id: $bead_id}) \
@@ -810,10 +803,7 @@ mod tests {
             Ok(())
         }
 
-        async fn get_learnings(
-            &self,
-            bead_id: &str,
-        ) -> Result<Vec<BeadLearning>, BeadStoreError> {
+        async fn get_learnings(&self, bead_id: &str) -> Result<Vec<BeadLearning>, BeadStoreError> {
             Ok(self
                 .learnings
                 .read()
@@ -940,10 +930,7 @@ mod tests {
         store.create(&make_bead("a")).await.unwrap();
         store.create(&make_bead("b")).await.unwrap();
         store.create(&make_bead("c")).await.unwrap();
-        store
-            .update_state("b", BeadState::Published)
-            .await
-            .unwrap();
+        store.update_state("b", BeadState::Published).await.unwrap();
 
         // WHEN: listing Created beads
         let created = store.list_by_state(&BeadState::Created).await.unwrap();
@@ -1147,10 +1134,7 @@ mod tests {
         let store = MockBeadStore::new();
         store.create(&make_bead("ev-1")).await.unwrap();
 
-        store
-            .set_nostr_event_id("ev-1", "abc123")
-            .await
-            .unwrap();
+        store.set_nostr_event_id("ev-1", "abc123").await.unwrap();
 
         let bead = store.get("ev-1").await.unwrap().unwrap();
         assert_eq!(bead.nostr_event_id, Some("abc123".to_string()));

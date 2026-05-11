@@ -132,10 +132,18 @@ pub struct Routine {
     pub schema_version: String,
 }
 
-fn default_active() -> bool { true }
-fn default_max_runs() -> u32 { 3 }
-fn default_failure_threshold() -> u32 { 3 }
-fn default_schema_version() -> String { "1.0".to_string() }
+fn default_active() -> bool {
+    true
+}
+fn default_max_runs() -> u32 {
+    3
+}
+fn default_failure_threshold() -> u32 {
+    3
+}
+fn default_schema_version() -> String {
+    "1.0".to_string()
+}
 
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum RoutineError {
@@ -190,9 +198,9 @@ impl Routine {
     /// by the event bus, not the time wheel).
     pub fn next_fire_at(&self, now: DateTime<Utc>) -> Option<DateTime<Utc>> {
         match &self.trigger {
-            RoutineTrigger::Time { cron, .. } => CronExpr::parse(cron)
-                .ok()
-                .and_then(|c| c.next_after(now)),
+            RoutineTrigger::Time { cron, .. } => {
+                CronExpr::parse(cron).ok().and_then(|c| c.next_after(now))
+            }
             _ => None,
         }
     }
@@ -202,7 +210,9 @@ impl Routine {
     /// UTC wall-clock for the MVP (the orchestrator applies a tz
     /// conversion when it loads the routine in prod).
     pub fn is_quiet(&self, now: DateTime<Utc>) -> bool {
-        let Some(qh) = &self.quiet_hours else { return false };
+        let Some(qh) = &self.quiet_hours else {
+            return false;
+        };
         let (Ok(start), Ok(end)) = (parse_hm(&qh.start), parse_hm(&qh.end)) else {
             return false;
         };
@@ -251,8 +261,15 @@ fn scopes_match(req: &str, have: &str) -> bool {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CronExpr {
     Every(ChronoDuration),
-    Daily { hour: u32, minute: u32 },
-    Weekly { hour: u32, minute: u32, weekdays: Vec<Weekday> },
+    Daily {
+        hour: u32,
+        minute: u32,
+    },
+    Weekly {
+        hour: u32,
+        minute: u32,
+        weekdays: Vec<Weekday>,
+    },
 }
 
 impl CronExpr {
@@ -261,7 +278,9 @@ impl CronExpr {
         if let Some(rest) = expr.strip_prefix("@every ") {
             // @every 30s, @every 5m, @every 2h
             let (num, unit) = rest.split_at(rest.len() - 1);
-            let n: i64 = num.parse().map_err(|_| RoutineError::BadCron(expr.into()))?;
+            let n: i64 = num
+                .parse()
+                .map_err(|_| RoutineError::BadCron(expr.into()))?;
             let dur = match unit {
                 "s" => ChronoDuration::seconds(n),
                 "m" => ChronoDuration::minutes(n),
@@ -275,8 +294,12 @@ impl CronExpr {
             return Err(RoutineError::BadCron(expr.into()));
         }
         // Minute, hour are literal digits.
-        let minute: u32 = parts[0].parse().map_err(|_| RoutineError::BadCron(expr.into()))?;
-        let hour: u32 = parts[1].parse().map_err(|_| RoutineError::BadCron(expr.into()))?;
+        let minute: u32 = parts[0]
+            .parse()
+            .map_err(|_| RoutineError::BadCron(expr.into()))?;
+        let hour: u32 = parts[1]
+            .parse()
+            .map_err(|_| RoutineError::BadCron(expr.into()))?;
         if parts[2] != "*" || parts[3] != "*" {
             // Only day-of-month=* and month=* are supported for MVP.
             return Err(RoutineError::BadCron(format!(
@@ -510,7 +533,11 @@ mod tests {
     fn parse_weekdays_cron() {
         let c = CronExpr::parse("0 8 * * 1-5").unwrap();
         match c {
-            CronExpr::Weekly { hour, minute, weekdays } => {
+            CronExpr::Weekly {
+                hour,
+                minute,
+                weekdays,
+            } => {
                 assert_eq!(hour, 8);
                 assert_eq!(minute, 0);
                 assert_eq!(weekdays.len(), 5);
@@ -531,7 +558,9 @@ mod tests {
     #[test]
     fn daily_next_after_today_midnight() {
         let base = Utc.with_ymd_and_hms(2026, 4, 20, 0, 0, 0).single().unwrap();
-        let nxt = CronExpr::Daily { hour: 8, minute: 0 }.next_after(base).unwrap();
+        let nxt = CronExpr::Daily { hour: 8, minute: 0 }
+            .next_after(base)
+            .unwrap();
         assert_eq!(nxt.hour(), 8);
         assert_eq!(nxt.day(), 20);
     }
@@ -539,7 +568,9 @@ mod tests {
     #[test]
     fn daily_next_wraps_to_tomorrow() {
         let base = Utc.with_ymd_and_hms(2026, 4, 20, 9, 0, 0).single().unwrap();
-        let nxt = CronExpr::Daily { hour: 8, minute: 0 }.next_after(base).unwrap();
+        let nxt = CronExpr::Daily { hour: 8, minute: 0 }
+            .next_after(base)
+            .unwrap();
         assert_eq!(nxt.day(), 21);
         assert_eq!(nxt.hour(), 8);
     }
@@ -582,9 +613,15 @@ mod tests {
     #[test]
     fn quiet_hours_wraparound() {
         let r = example_research_brief("w", "cap-1");
-        let t = Utc.with_ymd_and_hms(2026, 4, 20, 23, 0, 0).single().unwrap();
+        let t = Utc
+            .with_ymd_and_hms(2026, 4, 20, 23, 0, 0)
+            .single()
+            .unwrap();
         assert!(r.is_quiet(t));
-        let t = Utc.with_ymd_and_hms(2026, 4, 20, 12, 0, 0).single().unwrap();
+        let t = Utc
+            .with_ymd_and_hms(2026, 4, 20, 12, 0, 0)
+            .single()
+            .unwrap();
         assert!(!r.is_quiet(t));
         let t = Utc.with_ymd_and_hms(2026, 4, 20, 5, 0, 0).single().unwrap();
         assert!(r.is_quiet(t));
@@ -605,8 +642,14 @@ mod tests {
             "pod:/private/agent-memory/*".into(),
             "pod:/private/contributor-profile/share-log.jsonld".into(),
         ];
-        assert!(example_research_brief("w", "c").validate_invariants(&caps).is_ok());
-        assert!(example_stale_sweep("w", "c").validate_invariants(&caps).is_ok());
-        assert!(example_broker_audit("w", "c").validate_invariants(&caps).is_ok());
+        assert!(example_research_brief("w", "c")
+            .validate_invariants(&caps)
+            .is_ok());
+        assert!(example_stale_sweep("w", "c")
+            .validate_invariants(&caps)
+            .is_ok());
+        assert!(example_broker_audit("w", "c")
+            .validate_invariants(&caps)
+            .is_ok());
     }
 }

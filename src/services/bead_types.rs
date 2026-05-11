@@ -302,14 +302,23 @@ mod tests {
     fn is_transient_returns_true_for_retryable_errors() {
         // GIVEN: transient outcomes
         assert!(BeadOutcome::RelayTimeout { attempts: 1 }.is_transient());
-        assert!(BeadOutcome::RelayUnreachable { error: "dns".into() }.is_transient());
+        assert!(BeadOutcome::RelayUnreachable {
+            error: "dns".into()
+        }
+        .is_transient());
     }
 
     #[test]
     fn is_transient_returns_false_for_permanent_errors() {
         // GIVEN: permanent outcomes
-        assert!(!BeadOutcome::SigningFailed { error: "bad key".into() }.is_transient());
-        assert!(!BeadOutcome::RelayRejected { reason: "blocked".into() }.is_transient());
+        assert!(!BeadOutcome::SigningFailed {
+            error: "bad key".into()
+        }
+        .is_transient());
+        assert!(!BeadOutcome::RelayRejected {
+            reason: "blocked".into()
+        }
+        .is_transient());
         assert!(!BeadOutcome::Neo4jWriteFailed { error: "x".into() }.is_transient());
         assert!(!BeadOutcome::BridgeFailed { error: "x".into() }.is_transient());
         assert!(!BeadOutcome::Success.is_transient());
@@ -318,12 +327,30 @@ mod tests {
     #[test]
     fn label_returns_correct_string_for_each_variant() {
         assert_eq!(BeadOutcome::Success.label(), "Success");
-        assert_eq!(BeadOutcome::RelayTimeout { attempts: 1 }.label(), "RelayTimeout");
-        assert_eq!(BeadOutcome::RelayRejected { reason: "x".into() }.label(), "RelayRejected");
-        assert_eq!(BeadOutcome::RelayUnreachable { error: "x".into() }.label(), "RelayUnreachable");
-        assert_eq!(BeadOutcome::SigningFailed { error: "x".into() }.label(), "SigningFailed");
-        assert_eq!(BeadOutcome::Neo4jWriteFailed { error: "x".into() }.label(), "Neo4jWriteFailed");
-        assert_eq!(BeadOutcome::BridgeFailed { error: "x".into() }.label(), "BridgeFailed");
+        assert_eq!(
+            BeadOutcome::RelayTimeout { attempts: 1 }.label(),
+            "RelayTimeout"
+        );
+        assert_eq!(
+            BeadOutcome::RelayRejected { reason: "x".into() }.label(),
+            "RelayRejected"
+        );
+        assert_eq!(
+            BeadOutcome::RelayUnreachable { error: "x".into() }.label(),
+            "RelayUnreachable"
+        );
+        assert_eq!(
+            BeadOutcome::SigningFailed { error: "x".into() }.label(),
+            "SigningFailed"
+        );
+        assert_eq!(
+            BeadOutcome::Neo4jWriteFailed { error: "x".into() }.label(),
+            "Neo4jWriteFailed"
+        );
+        assert_eq!(
+            BeadOutcome::BridgeFailed { error: "x".into() }.label(),
+            "BridgeFailed"
+        );
     }
 
     // ── Display impls ──────────────────────────────────────────────────
@@ -335,11 +362,17 @@ mod tests {
         assert_eq!(format!("{}", BeadState::Published), "Published");
         assert_eq!(format!("{}", BeadState::Archived), "Archived");
         assert_eq!(
-            format!("{}", BeadState::Failed(BeadFailure::Transient("timeout".into()))),
+            format!(
+                "{}",
+                BeadState::Failed(BeadFailure::Transient("timeout".into()))
+            ),
             "Failed(Transient: timeout)"
         );
         assert_eq!(
-            format!("{}", BeadState::Failed(BeadFailure::Permanent("bad sig".into()))),
+            format!(
+                "{}",
+                BeadState::Failed(BeadFailure::Permanent("bad sig".into()))
+            ),
             "Failed(Permanent: bad sig)"
         );
     }
@@ -361,12 +394,7 @@ mod tests {
     #[test]
     fn bead_metadata_serde_roundtrip() {
         // GIVEN: a metadata instance
-        let meta = BeadMetadata::new(
-            "bead-rt".into(),
-            "brief-rt".into(),
-            "/debrief".into(),
-            None,
-        );
+        let meta = BeadMetadata::new("bead-rt".into(), "brief-rt".into(), "/debrief".into(), None);
 
         // WHEN: serialized and deserialized
         let json = serde_json::to_string(&meta).expect("serialize");
@@ -396,11 +424,21 @@ mod tests {
         let outcomes = vec![
             BeadOutcome::Success,
             BeadOutcome::RelayTimeout { attempts: 3 },
-            BeadOutcome::RelayRejected { reason: "spam".into() },
-            BeadOutcome::RelayUnreachable { error: "dns".into() },
-            BeadOutcome::SigningFailed { error: "bad hex".into() },
-            BeadOutcome::Neo4jWriteFailed { error: "conn".into() },
-            BeadOutcome::BridgeFailed { error: "forum".into() },
+            BeadOutcome::RelayRejected {
+                reason: "spam".into(),
+            },
+            BeadOutcome::RelayUnreachable {
+                error: "dns".into(),
+            },
+            BeadOutcome::SigningFailed {
+                error: "bad hex".into(),
+            },
+            BeadOutcome::Neo4jWriteFailed {
+                error: "conn".into(),
+            },
+            BeadOutcome::BridgeFailed {
+                error: "forum".into(),
+            },
         ];
 
         for outcome in outcomes {

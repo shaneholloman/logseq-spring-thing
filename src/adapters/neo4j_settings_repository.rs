@@ -13,13 +13,13 @@
 //! - Relationships: `(:SettingsRoot)-[:HAS_PHYSICS_SETTINGS]->(:PhysicsSettings)`
 
 use async_trait::async_trait;
-use neo4rs::{Graph, query, ConfigBuilder};
+use chrono::{DateTime, Utc};
+use neo4rs::{query, ConfigBuilder, Graph};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tracing::{debug, info, warn, instrument};
-use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
+use tracing::{debug, info, instrument, warn};
 
 use crate::config::PhysicsSettings;
 use crate::ports::settings_repository::{
@@ -91,11 +91,16 @@ pub struct Neo4jSettingsConfig {
 impl Default for Neo4jSettingsConfig {
     fn default() -> Self {
         let password = std::env::var("NEO4J_PASSWORD").unwrap_or_else(|_| {
-            if std::env::var("ALLOW_INSECURE_DEFAULTS").map(|v| v == "true" || v == "1").unwrap_or(false) {
+            if std::env::var("ALLOW_INSECURE_DEFAULTS")
+                .map(|v| v == "true" || v == "1")
+                .unwrap_or(false)
+            {
                 warn!("Using insecure default Neo4j password — NOT for production");
                 "password".to_string()
             } else {
-                panic!("NEO4J_PASSWORD must be set. Use ALLOW_INSECURE_DEFAULTS=true for development.");
+                panic!(
+                    "NEO4J_PASSWORD must be set. Use ALLOW_INSECURE_DEFAULTS=true for development."
+                );
             }
         });
 
@@ -172,7 +177,10 @@ pub struct Neo4jSettingsRepository {
 impl Neo4jSettingsRepository {
     /// Create a new Neo4j settings repository with configuration
     pub async fn new(config: Neo4jSettingsConfig) -> RepoResult<Self> {
-        info!("Initializing Neo4jSettingsRepository with URI: {}", config.uri);
+        info!(
+            "Initializing Neo4jSettingsRepository with URI: {}",
+            config.uri
+        );
 
         // Build Neo4j configuration
         let mut builder = ConfigBuilder::default()
@@ -186,16 +194,14 @@ impl Neo4jSettingsRepository {
             builder = builder.db(neo4rs::Database::from(db.as_str()));
         }
 
-        let neo4j_config = builder.build()
-            .map_err(|e| SettingsRepositoryError::DatabaseError(
-                format!("Failed to build Neo4j config: {}", e)
-            ))?;
+        let neo4j_config = builder.build().map_err(|e| {
+            SettingsRepositoryError::DatabaseError(format!("Failed to build Neo4j config: {}", e))
+        })?;
 
         // Connect to Neo4j
-        let graph = Graph::connect(neo4j_config)
-            .map_err(|e| SettingsRepositoryError::DatabaseError(
-                format!("Failed to connect to Neo4j: {}", e)
-            ))?;
+        let graph = Graph::connect(neo4j_config).map_err(|e| {
+            SettingsRepositoryError::DatabaseError(format!("Failed to connect to Neo4j: {}", e))
+        })?;
 
         let repository = Self {
             graph: Arc::new(graph),
@@ -221,11 +227,12 @@ impl Neo4jSettingsRepository {
         ];
 
         for constraint_query in constraints {
-            self.graph.run(query(constraint_query))
-                .await
-                .map_err(|e| SettingsRepositoryError::DatabaseError(
-                    format!("Failed to create constraint: {}", e)
-                ))?;
+            self.graph.run(query(constraint_query)).await.map_err(|e| {
+                SettingsRepositoryError::DatabaseError(format!(
+                    "Failed to create constraint: {}",
+                    e
+                ))
+            })?;
         }
 
         // Create indices for performance
@@ -237,25 +244,24 @@ impl Neo4jSettingsRepository {
         ];
 
         for index_query in indices {
-            self.graph.run(query(index_query))
-                .await
-                .map_err(|e| SettingsRepositoryError::DatabaseError(
-                    format!("Failed to create index: {}", e)
-                ))?;
+            self.graph.run(query(index_query)).await.map_err(|e| {
+                SettingsRepositoryError::DatabaseError(format!("Failed to create index: {}", e))
+            })?;
         }
 
         // Create root settings node if it doesn't exist
         let init_query = query(
             "MERGE (s:SettingsRoot {id: 'default'})
              ON CREATE SET s.created_at = datetime(), s.version = '1.0.0'
-             RETURN s"
+             RETURN s",
         );
 
-        self.graph.run(init_query)
-            .await
-            .map_err(|e| SettingsRepositoryError::DatabaseError(
-                format!("Failed to initialize settings root: {}", e)
-            ))?;
+        self.graph.run(init_query).await.map_err(|e| {
+            SettingsRepositoryError::DatabaseError(format!(
+                "Failed to initialize settings root: {}",
+                e
+            ))
+        })?;
 
         info!("✅ Neo4j settings schema initialized with user support");
         Ok(())
@@ -310,7 +316,11 @@ impl Neo4jSettingsRepository {
     }
 
     /// Parse setting value from Neo4j result
-    fn parse_setting_value(&self, value_type: &str, value: &serde_json::Value) -> Option<SettingValue> {
+    fn parse_setting_value(
+        &self,
+        value_type: &str,
+        value: &serde_json::Value,
+    ) -> Option<SettingValue> {
         match value_type {
             "string" => value.as_str().map(|s| SettingValue::String(s.to_string())),
             "integer" => value.as_i64().map(SettingValue::Integer),
@@ -330,8 +340,7 @@ impl Neo4jSettingsRepository {
     /// Get or create a user node
     #[instrument(skip(self), level = "debug")]
     pub async fn get_or_create_user(&self, pubkey: &str) -> RepoResult<User> {
-        let query_str =
-            "MERGE (u:User {pubkey: $pubkey})
+        let query_str = "MERGE (u:User {pubkey: $pubkey})
              ON CREATE SET
                 u.is_power_user = false,
                 u.created_at = datetime(),
@@ -342,18 +351,23 @@ impl Neo4jSettingsRepository {
                     u.created_at AS created_at, u.last_seen AS last_seen,
                     u.display_name AS display_name";
 
-        let mut result = self.graph.execute(
-            query(query_str).param("pubkey", pubkey)
-        ).await.map_err(|e| SettingsRepositoryError::DatabaseError(
-            format!("Failed to get or create user: {}", e)
-        ))?;
+        let mut result = self
+            .graph
+            .execute(query(query_str).param("pubkey", pubkey))
+            .await
+            .map_err(|e| {
+                SettingsRepositoryError::DatabaseError(format!(
+                    "Failed to get or create user: {}",
+                    e
+                ))
+            })?;
 
-        if let Some(row) = result.next().await.map_err(|e|
+        if let Some(row) = result.next().await.map_err(|e| {
             SettingsRepositoryError::DatabaseError(format!("Failed to fetch user row: {}", e))
-        )? {
-            let pubkey: String = row.get("pubkey").map_err(|e|
+        })? {
+            let pubkey: String = row.get("pubkey").map_err(|e| {
                 SettingsRepositoryError::DatabaseError(format!("Failed to get pubkey: {}", e))
-            )?;
+            })?;
 
             let is_power_user: bool = row.get("is_power_user").unwrap_or(false);
             let display_name: Option<String> = row.get("display_name").ok();
@@ -367,7 +381,7 @@ impl Neo4jSettingsRepository {
             })
         } else {
             Err(SettingsRepositoryError::DatabaseError(
-                "Failed to create or retrieve user".to_string()
+                "Failed to create or retrieve user".to_string(),
             ))
         }
     }
@@ -375,16 +389,19 @@ impl Neo4jSettingsRepository {
     /// Update user's last seen timestamp
     #[instrument(skip(self), level = "debug")]
     pub async fn update_user_last_seen(&self, pubkey: &str) -> RepoResult<()> {
-        let query_str =
-            "MATCH (u:User {pubkey: $pubkey})
+        let query_str = "MATCH (u:User {pubkey: $pubkey})
              SET u.last_seen = datetime()
              RETURN u";
 
-        self.graph.run(
-            query(query_str).param("pubkey", pubkey)
-        ).await.map_err(|e| SettingsRepositoryError::DatabaseError(
-            format!("Failed to update user last seen: {}", e)
-        ))?;
+        self.graph
+            .run(query(query_str).param("pubkey", pubkey))
+            .await
+            .map_err(|e| {
+                SettingsRepositoryError::DatabaseError(format!(
+                    "Failed to update user last seen: {}",
+                    e
+                ))
+            })?;
 
         Ok(())
     }
@@ -392,22 +409,29 @@ impl Neo4jSettingsRepository {
     /// Get user settings (full AppFullSettings)
     #[instrument(skip(self), level = "debug")]
     pub async fn get_user_settings(&self, pubkey: &str) -> RepoResult<Option<AppFullSettings>> {
-        let query_str =
-            "MATCH (u:User {pubkey: $pubkey})-[:HAS_SETTINGS]->(us:UserSettings)
+        let query_str = "MATCH (u:User {pubkey: $pubkey})-[:HAS_SETTINGS]->(us:UserSettings)
              RETURN us.settings_json AS settings_json";
 
-        let mut result = self.graph.execute(
-            query(query_str).param("pubkey", pubkey)
-        ).await.map_err(|e| SettingsRepositoryError::DatabaseError(
-            format!("Failed to query user settings: {}", e)
-        ))?;
+        let mut result = self
+            .graph
+            .execute(query(query_str).param("pubkey", pubkey))
+            .await
+            .map_err(|e| {
+                SettingsRepositoryError::DatabaseError(format!(
+                    "Failed to query user settings: {}",
+                    e
+                ))
+            })?;
 
-        if let Some(row) = result.next().await.map_err(|e|
+        if let Some(row) = result.next().await.map_err(|e| {
             SettingsRepositoryError::DatabaseError(format!("Failed to fetch settings row: {}", e))
-        )? {
-            let settings_json: String = row.get("settings_json").map_err(|e|
-                SettingsRepositoryError::DatabaseError(format!("Failed to get settings_json: {}", e))
-            )?;
+        })? {
+            let settings_json: String = row.get("settings_json").map_err(|e| {
+                SettingsRepositoryError::DatabaseError(format!(
+                    "Failed to get settings_json: {}",
+                    e
+                ))
+            })?;
 
             let settings: AppFullSettings = from_json(&settings_json)
                 .map_err(|e| SettingsRepositoryError::SerializationError(e.to_string()))?;
@@ -420,12 +444,15 @@ impl Neo4jSettingsRepository {
 
     /// Save user settings (full AppFullSettings)
     #[instrument(skip(self, settings), level = "debug")]
-    pub async fn save_user_settings(&self, pubkey: &str, settings: &AppFullSettings) -> RepoResult<()> {
+    pub async fn save_user_settings(
+        &self,
+        pubkey: &str,
+        settings: &AppFullSettings,
+    ) -> RepoResult<()> {
         let settings_json = to_json(settings)
             .map_err(|e| SettingsRepositoryError::SerializationError(e.to_string()))?;
 
-        let query_str =
-            "MATCH (u:User {pubkey: $pubkey})
+        let query_str = "MATCH (u:User {pubkey: $pubkey})
              MERGE (u)-[:HAS_SETTINGS]->(us:UserSettings {pubkey: $pubkey})
              ON CREATE SET
                 us.settings_json = $settings_json,
@@ -435,13 +462,19 @@ impl Neo4jSettingsRepository {
                 us.updated_at = datetime()
              RETURN us";
 
-        self.graph.run(
-            query(query_str)
-                .param("pubkey", pubkey)
-                .param("settings_json", settings_json)
-        ).await.map_err(|e| SettingsRepositoryError::DatabaseError(
-            format!("Failed to save user settings: {}", e)
-        ))?;
+        self.graph
+            .run(
+                query(query_str)
+                    .param("pubkey", pubkey)
+                    .param("settings_json", settings_json),
+            )
+            .await
+            .map_err(|e| {
+                SettingsRepositoryError::DatabaseError(format!(
+                    "Failed to save user settings: {}",
+                    e
+                ))
+            })?;
 
         info!("Saved user settings for pubkey: {}", pubkey);
         Ok(())
@@ -457,15 +490,20 @@ impl Neo4jSettingsRepository {
                     uf.filter_by_authority AS filter_by_authority, uf.filter_mode AS filter_mode,
                     uf.max_nodes AS max_nodes";
 
-        let mut result = self.graph.execute(
-            query(query_str).param("pubkey", pubkey)
-        ).await.map_err(|e| SettingsRepositoryError::DatabaseError(
-            format!("Failed to query user filter: {}", e)
-        ))?;
+        let mut result = self
+            .graph
+            .execute(query(query_str).param("pubkey", pubkey))
+            .await
+            .map_err(|e| {
+                SettingsRepositoryError::DatabaseError(format!(
+                    "Failed to query user filter: {}",
+                    e
+                ))
+            })?;
 
-        if let Some(row) = result.next().await.map_err(|e|
+        if let Some(row) = result.next().await.map_err(|e| {
             SettingsRepositoryError::DatabaseError(format!("Failed to fetch filter row: {}", e))
-        )? {
+        })? {
             let filter = UserFilter {
                 pubkey: pubkey.to_string(),
                 enabled: row.get("enabled").unwrap_or(true),
@@ -487,8 +525,7 @@ impl Neo4jSettingsRepository {
     /// Save user's filter settings
     #[instrument(skip(self, filter), level = "debug")]
     pub async fn save_user_filter(&self, pubkey: &str, filter: &UserFilter) -> RepoResult<()> {
-        let query_str =
-            "MATCH (u:User {pubkey: $pubkey})
+        let query_str = "MATCH (u:User {pubkey: $pubkey})
              MERGE (u)-[:HAS_FILTER]->(uf:UserFilter {pubkey: $pubkey})
              ON CREATE SET
                 uf.enabled = $enabled,
@@ -510,19 +547,22 @@ impl Neo4jSettingsRepository {
                 uf.updated_at = datetime()
              RETURN uf";
 
-        self.graph.run(
-            query(query_str)
-                .param("pubkey", pubkey)
-                .param("enabled", filter.enabled)
-                .param("quality_threshold", filter.quality_threshold)
-                .param("authority_threshold", filter.authority_threshold)
-                .param("filter_by_quality", filter.filter_by_quality)
-                .param("filter_by_authority", filter.filter_by_authority)
-                .param("filter_mode", filter.filter_mode.as_str())
-                .param("max_nodes", filter.max_nodes.unwrap_or(10000))
-        ).await.map_err(|e| SettingsRepositoryError::DatabaseError(
-            format!("Failed to save user filter: {}", e)
-        ))?;
+        self.graph
+            .run(
+                query(query_str)
+                    .param("pubkey", pubkey)
+                    .param("enabled", filter.enabled)
+                    .param("quality_threshold", filter.quality_threshold)
+                    .param("authority_threshold", filter.authority_threshold)
+                    .param("filter_by_quality", filter.filter_by_quality)
+                    .param("filter_by_authority", filter.filter_by_authority)
+                    .param("filter_mode", filter.filter_mode.as_str())
+                    .param("max_nodes", filter.max_nodes.unwrap_or(10000)),
+            )
+            .await
+            .map_err(|e| {
+                SettingsRepositoryError::DatabaseError(format!("Failed to save user filter: {}", e))
+            })?;
 
         info!("Saved user filter for pubkey: {}", pubkey);
         Ok(())
@@ -531,19 +571,23 @@ impl Neo4jSettingsRepository {
     /// Check if user is a power user
     #[instrument(skip(self), level = "debug")]
     pub async fn is_power_user(&self, pubkey: &str) -> RepoResult<bool> {
-        let query_str =
-            "MATCH (u:User {pubkey: $pubkey})
+        let query_str = "MATCH (u:User {pubkey: $pubkey})
              RETURN u.is_power_user AS is_power_user";
 
-        let mut result = self.graph.execute(
-            query(query_str).param("pubkey", pubkey)
-        ).await.map_err(|e| SettingsRepositoryError::DatabaseError(
-            format!("Failed to query power user status: {}", e)
-        ))?;
+        let mut result = self
+            .graph
+            .execute(query(query_str).param("pubkey", pubkey))
+            .await
+            .map_err(|e| {
+                SettingsRepositoryError::DatabaseError(format!(
+                    "Failed to query power user status: {}",
+                    e
+                ))
+            })?;
 
-        if let Some(row) = result.next().await.map_err(|e|
+        if let Some(row) = result.next().await.map_err(|e| {
             SettingsRepositoryError::DatabaseError(format!("Failed to fetch power user row: {}", e))
-        )? {
+        })? {
             return Ok(row.get("is_power_user").unwrap_or(false));
         }
 
@@ -553,18 +597,23 @@ impl Neo4jSettingsRepository {
     /// Set user as power user (or revoke)
     #[instrument(skip(self), level = "debug")]
     pub async fn set_power_user(&self, pubkey: &str, is_power: bool) -> RepoResult<()> {
-        let query_str =
-            "MATCH (u:User {pubkey: $pubkey})
+        let query_str = "MATCH (u:User {pubkey: $pubkey})
              SET u.is_power_user = $is_power
              RETURN u";
 
-        self.graph.run(
-            query(query_str)
-                .param("pubkey", pubkey)
-                .param("is_power", is_power)
-        ).await.map_err(|e| SettingsRepositoryError::DatabaseError(
-            format!("Failed to set power user status: {}", e)
-        ))?;
+        self.graph
+            .run(
+                query(query_str)
+                    .param("pubkey", pubkey)
+                    .param("is_power", is_power),
+            )
+            .await
+            .map_err(|e| {
+                SettingsRepositoryError::DatabaseError(format!(
+                    "Failed to set power user status: {}",
+                    e
+                ))
+            })?;
 
         info!("Set power user status for pubkey {}: {}", pubkey, is_power);
         Ok(())
@@ -581,30 +630,32 @@ impl SettingsRepository for Neo4jSettingsRepository {
         }
 
         // Query Neo4j
-        let query_str =
-            "MATCH (s:Setting {key: $key})
+        let query_str = "MATCH (s:Setting {key: $key})
              RETURN s.value_type AS value_type, s.value AS value";
 
-        let mut result = self.graph.execute(
-            query(query_str).param("key", key)
-        ).await.map_err(|e| SettingsRepositoryError::DatabaseError(
-            format!("Failed to query setting: {}", e)
-        ))?;
+        let mut result = self
+            .graph
+            .execute(query(query_str).param("key", key))
+            .await
+            .map_err(|e| {
+                SettingsRepositoryError::DatabaseError(format!("Failed to query setting: {}", e))
+            })?;
 
-        if let Some(row) = result.next().await.map_err(|e|
+        if let Some(row) = result.next().await.map_err(|e| {
             SettingsRepositoryError::DatabaseError(format!("Failed to fetch row: {}", e))
-        )? {
-            let value_type: String = row.get("value_type").map_err(|e|
+        })? {
+            let value_type: String = row.get("value_type").map_err(|e| {
                 SettingsRepositoryError::DatabaseError(format!("Failed to get value_type: {}", e))
-            )?;
+            })?;
 
-            let value: serde_json::Value = row.get("value").map_err(|e|
+            let value: serde_json::Value = row.get("value").map_err(|e| {
                 SettingsRepositoryError::DatabaseError(format!("Failed to get value: {}", e))
-            )?;
+            })?;
 
             if let Some(setting_value) = self.parse_setting_value(&value_type, &value) {
                 // Update cache
-                self.update_cache(key.to_string(), setting_value.clone()).await;
+                self.update_cache(key.to_string(), setting_value.clone())
+                    .await;
                 return Ok(Some(setting_value));
             }
         }
@@ -623,8 +674,7 @@ impl SettingsRepository for Neo4jSettingsRepository {
         let value_type = value_param["type"].as_str().unwrap_or("unknown");
         let value_data = &value_param["value"];
 
-        let query_str =
-            "MERGE (s:Setting {key: $key})
+        let query_str = "MERGE (s:Setting {key: $key})
              ON CREATE SET
                 s.created_at = datetime(),
                 s.value_type = $value_type,
@@ -637,15 +687,18 @@ impl SettingsRepository for Neo4jSettingsRepository {
                 s.description = COALESCE($description, s.description)
              RETURN s";
 
-        self.graph.run(
-            query(query_str)
-                .param("key", key)
-                .param("value_type", value_type)
-                .param("value", json_to_bolt(value_data.clone()))
-                .param("description", description.unwrap_or(""))
-        ).await.map_err(|e| SettingsRepositoryError::DatabaseError(
-            format!("Failed to set setting: {}", e)
-        ))?;
+        self.graph
+            .run(
+                query(query_str)
+                    .param("key", key)
+                    .param("value_type", value_type)
+                    .param("value", json_to_bolt(value_data.clone()))
+                    .param("description", description.unwrap_or("")),
+            )
+            .await
+            .map_err(|e| {
+                SettingsRepositoryError::DatabaseError(format!("Failed to set setting: {}", e))
+            })?;
 
         // Invalidate cache
         self.invalidate_cache(key).await;
@@ -667,26 +720,31 @@ impl SettingsRepository for Neo4jSettingsRepository {
         }
 
         // Get remaining keys from database
-        let remaining_keys: Vec<String> = keys.iter()
+        let remaining_keys: Vec<String> = keys
+            .iter()
             .filter(|k| !results.contains_key(*k))
             .cloned()
             .collect();
 
         if !remaining_keys.is_empty() {
-            let query_str =
-                "MATCH (s:Setting)
+            let query_str = "MATCH (s:Setting)
                  WHERE s.key IN $keys
                  RETURN s.key AS key, s.value_type AS value_type, s.value AS value";
 
-            let mut result = self.graph.execute(
-                query(query_str).param("keys", remaining_keys)
-            ).await.map_err(|e| SettingsRepositoryError::DatabaseError(
-                format!("Failed to query batch settings: {}", e)
-            ))?;
+            let mut result = self
+                .graph
+                .execute(query(query_str).param("keys", remaining_keys))
+                .await
+                .map_err(|e| {
+                    SettingsRepositoryError::DatabaseError(format!(
+                        "Failed to query batch settings: {}",
+                        e
+                    ))
+                })?;
 
-            while let Some(row) = result.next().await.map_err(|e|
+            while let Some(row) = result.next().await.map_err(|e| {
                 SettingsRepositoryError::DatabaseError(format!("Failed to fetch row: {}", e))
-            )? {
+            })? {
                 let key: String = row.get("key").unwrap_or_default();
                 let value_type: String = row.get("value_type").unwrap_or_default();
                 let value: serde_json::Value = row.get("value").unwrap_or_default();
@@ -703,17 +761,16 @@ impl SettingsRepository for Neo4jSettingsRepository {
 
     async fn set_settings_batch(&self, updates: HashMap<String, SettingValue>) -> RepoResult<()> {
         // Use transaction for batch updates
-        let mut txn = self.graph.start_txn().await.map_err(|e|
+        let mut txn = self.graph.start_txn().await.map_err(|e| {
             SettingsRepositoryError::DatabaseError(format!("Failed to start transaction: {}", e))
-        )?;
+        })?;
 
         for (key, value) in &updates {
             let value_param = self.setting_value_to_param(value);
             let value_type = value_param["type"].as_str().unwrap_or("unknown");
             let value_data = &value_param["value"];
 
-            let query_str =
-                "MERGE (s:Setting {key: $key})
+            let query_str = "MERGE (s:Setting {key: $key})
                  ON CREATE SET
                     s.created_at = datetime(),
                     s.value_type = $value_type,
@@ -723,19 +780,22 @@ impl SettingsRepository for Neo4jSettingsRepository {
                     s.value_type = $value_type,
                     s.value = $value";
 
-            txn.run_queries(vec![
-                query(query_str)
-                    .param("key", key.as_str())
-                    .param("value_type", value_type)
-                    .param("value", json_to_bolt(value_data.clone()))
-            ]).await.map_err(|e| SettingsRepositoryError::DatabaseError(
-                format!("Failed to execute batch update: {}", e)
-            ))?;
+            txn.run_queries(vec![query(query_str)
+                .param("key", key.as_str())
+                .param("value_type", value_type)
+                .param("value", json_to_bolt(value_data.clone()))])
+                .await
+                .map_err(|e| {
+                    SettingsRepositoryError::DatabaseError(format!(
+                        "Failed to execute batch update: {}",
+                        e
+                    ))
+                })?;
         }
 
-        txn.commit().await.map_err(|e|
+        txn.commit().await.map_err(|e| {
             SettingsRepositoryError::DatabaseError(format!("Failed to commit transaction: {}", e))
-        )?;
+        })?;
 
         // Clear cache after batch update
         self.clear_cache_internal().await?;
@@ -748,8 +808,7 @@ impl SettingsRepository for Neo4jSettingsRepository {
         info!("Loading all settings: trying Neo4j first, then YAML fallback");
 
         // Step 1: Try loading from Neo4j SettingsRoot node
-        let query_str =
-            "MATCH (s:SettingsRoot {id: 'default'})
+        let query_str = "MATCH (s:SettingsRoot {id: 'default'})
              WHERE s.full_settings IS NOT NULL
              RETURN s.full_settings AS full_settings";
 
@@ -820,25 +879,32 @@ impl SettingsRepository for Neo4jSettingsRepository {
             .map_err(|e| SettingsRepositoryError::SerializationError(e.to_string()))?;
 
         // Store as JSON on root node for now
-        let query_str =
-            "MERGE (s:SettingsRoot {id: 'default'})
+        let query_str = "MERGE (s:SettingsRoot {id: 'default'})
              SET s.full_settings = $settings,
                  s.updated_at = datetime(),
                  s.version = $version
              RETURN s";
 
-        let settings_str = to_json(&settings_json)
-            .map_err(|e| SettingsRepositoryError::SerializationError(
-                format!("Failed to serialize settings JSON: {}", e)
-            ))?;
+        let settings_str = to_json(&settings_json).map_err(|e| {
+            SettingsRepositoryError::SerializationError(format!(
+                "Failed to serialize settings JSON: {}",
+                e
+            ))
+        })?;
 
-        self.graph.run(
-            query(query_str)
-                .param("settings", settings_str)
-                .param("version", settings.version.as_str())
-        ).await.map_err(|e| SettingsRepositoryError::DatabaseError(
-            format!("Failed to save all settings: {}", e)
-        ))?;
+        self.graph
+            .run(
+                query(query_str)
+                    .param("settings", settings_str)
+                    .param("version", settings.version.as_str()),
+            )
+            .await
+            .map_err(|e| {
+                SettingsRepositoryError::DatabaseError(format!(
+                    "Failed to save all settings: {}",
+                    e
+                ))
+            })?;
 
         // Clear cache
         self.clear_cache_internal().await?;
@@ -848,19 +914,23 @@ impl SettingsRepository for Neo4jSettingsRepository {
 
     #[instrument(skip(self), level = "debug")]
     async fn get_physics_settings(&self, profile_name: &str) -> RepoResult<PhysicsSettings> {
-        let query_str =
-            "MATCH (p:PhysicsProfile {name: $profile_name})
+        let query_str = "MATCH (p:PhysicsProfile {name: $profile_name})
              RETURN p.settings AS settings";
 
-        let mut result = self.graph.execute(
-            query(query_str).param("profile_name", profile_name)
-        ).await.map_err(|e| SettingsRepositoryError::DatabaseError(
-            format!("Failed to query physics settings: {}", e)
-        ))?;
+        let mut result = self
+            .graph
+            .execute(query(query_str).param("profile_name", profile_name))
+            .await
+            .map_err(|e| {
+                SettingsRepositoryError::DatabaseError(format!(
+                    "Failed to query physics settings: {}",
+                    e
+                ))
+            })?;
 
-        if let Some(row) = result.next().await.map_err(|e|
+        if let Some(row) = result.next().await.map_err(|e| {
             SettingsRepositoryError::DatabaseError(format!("Failed to fetch row: {}", e))
-        )? {
+        })? {
             let settings_json: String = row.get("settings").unwrap_or_default();
             let settings: PhysicsSettings = from_json(&settings_json)
                 .map_err(|e| SettingsRepositoryError::SerializationError(e.to_string()))?;
@@ -880,8 +950,7 @@ impl SettingsRepository for Neo4jSettingsRepository {
         let settings_json = to_json(settings)
             .map_err(|e| SettingsRepositoryError::SerializationError(e.to_string()))?;
 
-        let query_str =
-            "MERGE (p:PhysicsProfile {name: $profile_name})
+        let query_str = "MERGE (p:PhysicsProfile {name: $profile_name})
              ON CREATE SET
                 p.created_at = datetime(),
                 p.settings = $settings
@@ -890,13 +959,19 @@ impl SettingsRepository for Neo4jSettingsRepository {
                 p.settings = $settings
              RETURN p";
 
-        self.graph.run(
-            query(query_str)
-                .param("profile_name", profile_name)
-                .param("settings", settings_json)
-        ).await.map_err(|e| SettingsRepositoryError::DatabaseError(
-            format!("Failed to save physics settings: {}", e)
-        ))?;
+        self.graph
+            .run(
+                query(query_str)
+                    .param("profile_name", profile_name)
+                    .param("settings", settings_json),
+            )
+            .await
+            .map_err(|e| {
+                SettingsRepositoryError::DatabaseError(format!(
+                    "Failed to save physics settings: {}",
+                    e
+                ))
+            })?;
 
         Ok(())
     }
@@ -904,11 +979,12 @@ impl SettingsRepository for Neo4jSettingsRepository {
     async fn delete_setting(&self, key: &str) -> RepoResult<()> {
         let query_str = "MATCH (s:Setting {key: $key}) DELETE s";
 
-        self.graph.run(
-            query(query_str).param("key", key)
-        ).await.map_err(|e| SettingsRepositoryError::DatabaseError(
-            format!("Failed to delete setting: {}", e)
-        ))?;
+        self.graph
+            .run(query(query_str).param("key", key))
+            .await
+            .map_err(|e| {
+                SettingsRepositoryError::DatabaseError(format!("Failed to delete setting: {}", e))
+            })?;
 
         self.invalidate_cache(key).await;
         Ok(())
@@ -930,15 +1006,14 @@ impl SettingsRepository for Neo4jSettingsRepository {
             query_obj = query_obj.param("prefix", p);
         }
 
-        let mut result = self.graph.execute(query_obj)
-            .await.map_err(|e| SettingsRepositoryError::DatabaseError(
-                format!("Failed to list settings: {}", e)
-            ))?;
+        let mut result = self.graph.execute(query_obj).await.map_err(|e| {
+            SettingsRepositoryError::DatabaseError(format!("Failed to list settings: {}", e))
+        })?;
 
         let mut keys = Vec::new();
-        while let Some(row) = result.next().await.map_err(|e|
+        while let Some(row) = result.next().await.map_err(|e| {
             SettingsRepositoryError::DatabaseError(format!("Failed to fetch row: {}", e))
-        )? {
+        })? {
             if let Ok(key) = row.get::<String>("key") {
                 keys.push(key);
             }
@@ -950,15 +1025,17 @@ impl SettingsRepository for Neo4jSettingsRepository {
     async fn list_physics_profiles(&self) -> RepoResult<Vec<String>> {
         let query_str = "MATCH (p:PhysicsProfile) RETURN p.name AS name ORDER BY p.name";
 
-        let mut result = self.graph.execute(query(query_str))
-            .await.map_err(|e| SettingsRepositoryError::DatabaseError(
-                format!("Failed to list physics profiles: {}", e)
-            ))?;
+        let mut result = self.graph.execute(query(query_str)).await.map_err(|e| {
+            SettingsRepositoryError::DatabaseError(format!(
+                "Failed to list physics profiles: {}",
+                e
+            ))
+        })?;
 
         let mut profiles = Vec::new();
-        while let Some(row) = result.next().await.map_err(|e|
+        while let Some(row) = result.next().await.map_err(|e| {
             SettingsRepositoryError::DatabaseError(format!("Failed to fetch row: {}", e))
-        )? {
+        })? {
             if let Ok(name) = row.get::<String>("name") {
                 profiles.push(name);
             }
@@ -970,11 +1047,15 @@ impl SettingsRepository for Neo4jSettingsRepository {
     async fn delete_physics_profile(&self, profile_name: &str) -> RepoResult<()> {
         let query_str = "MATCH (p:PhysicsProfile {name: $name}) DELETE p";
 
-        self.graph.run(
-            query(query_str).param("name", profile_name)
-        ).await.map_err(|e| SettingsRepositoryError::DatabaseError(
-            format!("Failed to delete physics profile: {}", e)
-        ))?;
+        self.graph
+            .run(query(query_str).param("name", profile_name))
+            .await
+            .map_err(|e| {
+                SettingsRepositoryError::DatabaseError(format!(
+                    "Failed to delete physics profile: {}",
+                    e
+                ))
+            })?;
 
         Ok(())
     }
@@ -984,25 +1065,27 @@ impl SettingsRepository for Neo4jSettingsRepository {
             "MATCH (s:Setting)
              RETURN s.key AS key, s.value_type AS value_type, s.value AS value, s.description AS description";
 
-        let mut result = self.graph.execute(query(query_str))
-            .await.map_err(|e| SettingsRepositoryError::DatabaseError(
-                format!("Failed to export settings: {}", e)
-            ))?;
+        let mut result = self.graph.execute(query(query_str)).await.map_err(|e| {
+            SettingsRepositoryError::DatabaseError(format!("Failed to export settings: {}", e))
+        })?;
 
         let mut settings = serde_json::Map::new();
-        while let Some(row) = result.next().await.map_err(|e|
+        while let Some(row) = result.next().await.map_err(|e| {
             SettingsRepositoryError::DatabaseError(format!("Failed to fetch row: {}", e))
-        )? {
+        })? {
             let key: String = row.get("key").unwrap_or_default();
             let value_type: String = row.get("value_type").unwrap_or_default();
             let value: serde_json::Value = row.get("value").unwrap_or_default();
             let description: String = row.get("description").unwrap_or_default();
 
-            settings.insert(key, serde_json::json!({
-                "type": value_type,
-                "value": value,
-                "description": description
-            }));
+            settings.insert(
+                key,
+                serde_json::json!({
+                    "type": value_type,
+                    "value": value,
+                    "description": description
+                }),
+            );
         }
 
         Ok(serde_json::Value::Object(settings))
@@ -1036,11 +1119,9 @@ impl SettingsRepository for Neo4jSettingsRepository {
     async fn health_check(&self) -> RepoResult<bool> {
         let query_str = "RETURN 1 AS health";
 
-        self.graph.run(query(query_str))
-            .await
-            .map_err(|e| SettingsRepositoryError::DatabaseError(
-                format!("Health check failed: {}", e)
-            ))?;
+        self.graph.run(query(query_str)).await.map_err(|e| {
+            SettingsRepositoryError::DatabaseError(format!("Health check failed: {}", e))
+        })?;
 
         Ok(true)
     }
@@ -1057,8 +1138,13 @@ mod tests {
         let repo = Neo4jSettingsRepository::new(config).await.unwrap();
 
         // Test set and get
-        repo.set_setting("test.key", SettingValue::String("test_value".to_string()), Some("Test setting"))
-            .await.unwrap();
+        repo.set_setting(
+            "test.key",
+            SettingValue::String("test_value".to_string()),
+            Some("Test setting"),
+        )
+        .await
+        .unwrap();
 
         let value = repo.get_setting("test.key").await.unwrap();
         assert_eq!(value, Some(SettingValue::String("test_value".to_string())));
@@ -1104,7 +1190,9 @@ mod tests {
 
         // Test save and get user settings
         let settings = AppFullSettings::default();
-        repo.save_user_settings(test_pubkey, &settings).await.unwrap();
+        repo.save_user_settings(test_pubkey, &settings)
+            .await
+            .unwrap();
 
         let loaded_settings = repo.get_user_settings(test_pubkey).await.unwrap();
         assert!(loaded_settings.is_some());

@@ -17,14 +17,16 @@
 //!     `cargo test --release -- --ignored`.
 
 use std::net::TcpListener;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 
-use actix_web::{web, App, HttpResponse, HttpServer, HttpRequest};
+use actix_web::{web, App, HttpRequest, HttpResponse, HttpServer};
 use bytes::Bytes;
 use nostr_sdk::Keys;
 
-use webxr::services::pod_client::{pod_url_for, sanitise_slug, PodClient, PodClientError, Visibility};
+use webxr::services::pod_client::{
+    pod_url_for, sanitise_slug, PodClient, PodClientError, Visibility,
+};
 
 /// Spawn a minimal mock Pod HTTP server. Handlers:
 ///   PUT /*  → 201 (echoes body length in response)
@@ -107,7 +109,12 @@ async fn put_resource_happy_path() {
     let client = pod_client_with_local_keys();
     let url = format!("{}/npub1test/public/kg/page1", base);
     let resp = client
-        .put_resource(&url, Bytes::from_static(b"{\"hello\":\"world\"}"), "application/json", None)
+        .put_resource(
+            &url,
+            Bytes::from_static(b"{\"hello\":\"world\"}"),
+            "application/json",
+            None,
+        )
         .await
         .expect("put should succeed");
     assert_eq!(resp.status, 201);
@@ -195,15 +202,34 @@ async fn move_resource_sends_destination_header() {
 
 #[test]
 fn pod_url_routing_matches_visibility() {
-    let public_url = pod_url_for("https://pod.example", "npub1abc", "TestPage", Visibility::Public);
-    assert_eq!(public_url, "https://pod.example/npub1abc/public/kg/TestPage");
-    let private_url = pod_url_for("https://pod.example", "npub1abc", "TestPage", Visibility::Private);
-    assert_eq!(private_url, "https://pod.example/npub1abc/private/kg/TestPage");
+    let public_url = pod_url_for(
+        "https://pod.example",
+        "npub1abc",
+        "TestPage",
+        Visibility::Public,
+    );
+    assert_eq!(
+        public_url,
+        "https://pod.example/npub1abc/public/kg/TestPage"
+    );
+    let private_url = pod_url_for(
+        "https://pod.example",
+        "npub1abc",
+        "TestPage",
+        Visibility::Private,
+    );
+    assert_eq!(
+        private_url,
+        "https://pod.example/npub1abc/private/kg/TestPage"
+    );
 }
 
 #[test]
 fn slug_sanitisation() {
-    assert_eq!(sanitise_slug("Alice's Cookbook/Vol.1"), "Alice's_Cookbook-Vol.1");
+    assert_eq!(
+        sanitise_slug("Alice's Cookbook/Vol.1"),
+        "Alice's_Cookbook-Vol.1"
+    );
     assert_eq!(sanitise_slug(" "), "_");
     assert_eq!(sanitise_slug(""), "_unnamed");
 }
@@ -229,7 +255,12 @@ async fn one_thousand_concurrent_writes() {
         handles.push(tokio::spawn(async move {
             let url = format!("{}/npub1test/public/kg/page-{}", base, i);
             client
-                .put_resource(&url, Bytes::from(format!("{{\"n\":{}}}", i)), "application/json", None)
+                .put_resource(
+                    &url,
+                    Bytes::from(format!("{{\"n\":{}}}", i)),
+                    "application/json",
+                    None,
+                )
                 .await
         }));
     }
@@ -243,7 +274,11 @@ async fn one_thousand_concurrent_writes() {
         }
     }
     assert_eq!(ok + err, N);
-    assert!(err < N / 100, "failure rate must be <1%: got {} failures", err);
+    assert!(
+        err < N / 100,
+        "failure rate must be <1%: got {} failures",
+        err
+    );
     assert_eq!(puts.load(Ordering::SeqCst), ok);
 
     server.abort();
@@ -254,13 +289,14 @@ async fn one_thousand_concurrent_writes() {
 // ------------------------------------------------------------------
 
 use webxr::models::node::Node as KGNode;
-use webxr::services::ingest_saga::{serialise_node_for_pod, SagaStep, NodeSagaPlan};
+use webxr::services::ingest_saga::{serialise_node_for_pod, NodeSagaPlan, SagaStep};
 
 #[test]
 fn serialise_produces_valid_json() {
     let mut node = KGNode::new("page-a".to_string());
     node.label = "Page A".to_string();
-    node.metadata.insert("visibility".to_string(), "public".to_string());
+    node.metadata
+        .insert("visibility".to_string(), "public".to_string());
     let body = serialise_node_for_pod(&node);
     let v: serde_json::Value = serde_json::from_slice(&body).expect("valid JSON");
     assert_eq!(v.get("label").and_then(|l| l.as_str()), Some("Page A"));
@@ -297,7 +333,11 @@ fn saga_step_variants_are_distinct() {
         node: node.clone(),
     };
     let b = SagaStep::Neo4jCommit { node: node.clone() };
-    let c = SagaStep::AuditEvent { kind: 30300, content: "x".into(), node_id: 1 };
+    let c = SagaStep::AuditEvent {
+        kind: 30300,
+        content: "x".into(),
+        node_id: 1,
+    };
     // Debug is derived — ensure each variant stringifies differently.
     let sa = format!("{:?}", a);
     let sb = format!("{:?}", b);

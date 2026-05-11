@@ -11,8 +11,8 @@ use log::{debug, error, info, warn};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use super::supervisor_messages::*;
 use super::shared::SharedGPUContext;
+use super::supervisor_messages::*;
 use super::{AnomalyDetectionActor, ClusteringActor, PageRankActor};
 use crate::actors::messages::*;
 
@@ -250,7 +250,10 @@ impl AnalyticsSupervisor {
 
     /// Handle actor failure with supervision policy
     fn handle_actor_failure(&mut self, actor_name: &str, error: &str, ctx: &mut Context<Self>) {
-        error!("AnalyticsSupervisor: Actor '{}' failed: {}", actor_name, error);
+        error!(
+            "AnalyticsSupervisor: Actor '{}' failed: {}",
+            actor_name, error
+        );
 
         let state = match actor_name {
             "ClusteringActor" => &mut self.clustering_state,
@@ -285,8 +288,9 @@ impl AnalyticsSupervisor {
         // Schedule restart with backoff
         let delay = state.current_delay;
         state.current_delay = Duration::from_millis(
-            (state.current_delay.as_millis() as f64 * self.policy.backoff_multiplier) as u64
-        ).min(self.policy.max_delay);
+            (state.current_delay.as_millis() as f64 * self.policy.backoff_multiplier) as u64,
+        )
+        .min(self.policy.max_delay);
 
         let actor_name_clone = actor_name.to_string();
         info!(
@@ -325,7 +329,10 @@ impl AnalyticsSupervisor {
                 self.pagerank_state.last_restart = Some(Instant::now());
             }
             _ => {
-                warn!("AnalyticsSupervisor: Unknown actor for restart: {}", actor_name);
+                warn!(
+                    "AnalyticsSupervisor: Unknown actor for restart: {}",
+                    actor_name
+                );
                 return;
             }
         }
@@ -393,7 +400,10 @@ impl Handler<GetSubsystemHealth> for AnalyticsSupervisor {
             self.pagerank_state.to_health_state(),
         ];
 
-        let healthy = actor_states.iter().filter(|s| s.is_running && s.has_context).count() as u32;
+        let healthy = actor_states
+            .iter()
+            .filter(|s| s.is_running && s.has_context)
+            .count() as u32;
 
         MessageResult(SubsystemHealth {
             subsystem_name: "analytics".to_string(),
@@ -472,7 +482,10 @@ impl Handler<RestartActor> for AnalyticsSupervisor {
     type Result = Result<(), String>;
 
     fn handle(&mut self, msg: RestartActor, ctx: &mut Self::Context) -> Self::Result {
-        info!("AnalyticsSupervisor: Manual restart requested for: {}", msg.actor_name);
+        info!(
+            "AnalyticsSupervisor: Manual restart requested for: {}",
+            msg.actor_name
+        );
         self.restart_actor(&msg.actor_name, ctx);
         Ok(())
     }
@@ -490,15 +503,15 @@ impl Handler<RunKMeans> for AnalyticsSupervisor {
             Some(a) if self.clustering_state.is_running => a.clone(),
             _ => {
                 return Box::pin(
-                    async { Err("ClusteringActor not available".to_string()) }
-                        .into_actor(self)
+                    async { Err("ClusteringActor not available".to_string()) }.into_actor(self),
                 );
             }
         };
 
         Box::pin(
             async move {
-                addr.send(msg).await
+                addr.send(msg)
+                    .await
                     .map_err(|e| format!("Communication failed: {}", e))?
             }
             .into_actor(self)
@@ -507,7 +520,7 @@ impl Handler<RunKMeans> for AnalyticsSupervisor {
                     actor.last_success = Some(Instant::now());
                 }
                 result
-            })
+            }),
         )
     }
 }
@@ -520,18 +533,18 @@ impl Handler<RunCommunityDetection> for AnalyticsSupervisor {
             Some(a) if self.clustering_state.is_running => a.clone(),
             _ => {
                 return Box::pin(
-                    async { Err("ClusteringActor not available".to_string()) }
-                        .into_actor(self)
+                    async { Err("ClusteringActor not available".to_string()) }.into_actor(self),
                 );
             }
         };
 
         Box::pin(
             async move {
-                addr.send(msg).await
+                addr.send(msg)
+                    .await
                     .map_err(|e| format!("Communication failed: {}", e))?
             }
-            .into_actor(self)
+            .into_actor(self),
         )
     }
 }
@@ -544,15 +557,15 @@ impl Handler<RunDBSCAN> for AnalyticsSupervisor {
             Some(a) if self.clustering_state.is_running => a.clone(),
             _ => {
                 return Box::pin(
-                    async { Err("ClusteringActor not available".to_string()) }
-                        .into_actor(self)
+                    async { Err("ClusteringActor not available".to_string()) }.into_actor(self),
                 );
             }
         };
 
         Box::pin(
             async move {
-                addr.send(msg).await
+                addr.send(msg)
+                    .await
                     .map_err(|e| format!("Communication failed: {}", e))?
             }
             .into_actor(self)
@@ -561,7 +574,7 @@ impl Handler<RunDBSCAN> for AnalyticsSupervisor {
                     actor.last_success = Some(Instant::now());
                 }
                 result
-            })
+            }),
         )
     }
 }
@@ -575,17 +588,18 @@ impl Handler<RunAnomalyDetection> for AnalyticsSupervisor {
             _ => {
                 return Box::pin(
                     async { Err("AnomalyDetectionActor not available".to_string()) }
-                        .into_actor(self)
+                        .into_actor(self),
                 );
             }
         };
 
         Box::pin(
             async move {
-                addr.send(msg).await
+                addr.send(msg)
+                    .await
                     .map_err(|e| format!("Communication failed: {}", e))?
             }
-            .into_actor(self)
+            .into_actor(self),
         )
     }
 }
@@ -598,18 +612,18 @@ impl Handler<ComputePageRank> for AnalyticsSupervisor {
             Some(a) if self.pagerank_state.is_running => a.clone(),
             _ => {
                 return Box::pin(
-                    async { Err("PageRankActor not available".to_string()) }
-                        .into_actor(self)
+                    async { Err("PageRankActor not available".to_string()) }.into_actor(self),
                 );
             }
         };
 
         Box::pin(
             async move {
-                addr.send(msg).await
+                addr.send(msg)
+                    .await
                     .map_err(|e| format!("Communication failed: {}", e))?
             }
-            .into_actor(self)
+            .into_actor(self),
         )
     }
 }
@@ -640,15 +654,17 @@ impl Handler<UpdateGPUGraphData> for AnalyticsSupervisor {
 }
 
 impl Handler<PerformGPUClustering> for AnalyticsSupervisor {
-    type Result = ResponseActFuture<Self, Result<Vec<crate::handlers::api_handler::analytics::Cluster>, String>>;
+    type Result = ResponseActFuture<
+        Self,
+        Result<Vec<crate::handlers::api_handler::analytics::Cluster>, String>,
+    >;
 
     fn handle(&mut self, msg: PerformGPUClustering, _ctx: &mut Self::Context) -> Self::Result {
         let addr = match &self.clustering_actor {
             Some(a) if self.clustering_state.is_running => a.clone(),
             _ => {
                 return Box::pin(
-                    async { Err("ClusteringActor not available".to_string()) }
-                        .into_actor(self)
+                    async { Err("ClusteringActor not available".to_string()) }.into_actor(self),
                 );
             }
         };
@@ -656,10 +672,11 @@ impl Handler<PerformGPUClustering> for AnalyticsSupervisor {
         // Forward directly to ClusteringActor which dispatches by method
         Box::pin(
             async move {
-                addr.send(msg).await
+                addr.send(msg)
+                    .await
                     .map_err(|e| format!("Communication failed: {}", e))?
             }
-            .into_actor(self)
+            .into_actor(self),
         )
     }
 }

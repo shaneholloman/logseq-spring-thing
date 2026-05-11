@@ -8,21 +8,20 @@
 //! SQL deprecation effort. See ADR-001 for architectural decision rationale.
 
 use async_trait::async_trait;
-use neo4rs::{Graph, query, Node as Neo4jNode};
+use neo4rs::{query, Graph, Node as Neo4jNode};
 use std::collections::HashMap;
 use std::sync::Arc;
-use tracing::{debug, info, warn, instrument};
+use tracing::{debug, info, instrument, warn};
 
 use crate::models::edge::Edge;
 use crate::models::graph::GraphData;
 use crate::models::node::Node;
 use crate::ports::ontology_repository::{
-    AxiomType, InferenceResults, OntologyMetrics, OntologyRepository,
-    OntologyRepositoryError, OwlAxiom, OwlClass, OwlProperty,
-    PathfindingCacheEntry, PropertyType, Result as RepoResult,
+    AxiomType, InferenceResults, OntologyMetrics, OntologyRepository, OntologyRepositoryError,
+    OwlAxiom, OwlClass, OwlProperty, PathfindingCacheEntry, PropertyType, Result as RepoResult,
     ValidationReport,
 };
-use crate::utils::json::{to_json, from_json};
+use crate::utils::json::{from_json, to_json};
 
 /// Neo4j configuration for ontology repository
 #[derive(Debug, Clone)]
@@ -51,10 +50,8 @@ impl Neo4jOntologyConfig {
             .map_err(|_| "NEO4J_PASSWORD environment variable not set. Set NEO4J_PASSWORD or set ALLOW_INSECURE_DEFAULTS=true for development.".to_string())?;
 
         Ok(Self {
-            uri: std::env::var("NEO4J_URI")
-                .unwrap_or_else(|_| "bolt://localhost:7687".to_string()),
-            user: std::env::var("NEO4J_USER")
-                .unwrap_or_else(|_| "neo4j".to_string()),
+            uri: std::env::var("NEO4J_URI").unwrap_or_else(|_| "bolt://localhost:7687".to_string()),
+            user: std::env::var("NEO4J_USER").unwrap_or_else(|_| "neo4j".to_string()),
             password,
             database: std::env::var("NEO4J_DATABASE").ok(),
         })
@@ -70,7 +67,7 @@ impl Default for Neo4jOntologyConfig {
     fn default() -> Self {
         Self::from_env().expect(
             "NEO4J_PASSWORD environment variable not set. \
-             Set NEO4J_PASSWORD or set ALLOW_INSECURE_DEFAULTS=true for development."
+             Set NEO4J_PASSWORD or set ALLOW_INSECURE_DEFAULTS=true for development.",
         )
     }
 }
@@ -103,13 +100,9 @@ impl Neo4jOntologyRepository {
     /// # Returns
     /// Initialized repository with schema created
     pub async fn new(config: Neo4jOntologyConfig) -> RepoResult<Self> {
-        let graph = Graph::new(&config.uri, &config.user, &config.password)
-            .map_err(|e| {
-                OntologyRepositoryError::DatabaseError(format!(
-                    "Failed to connect to Neo4j: {}",
-                    e
-                ))
-            })?;
+        let graph = Graph::new(&config.uri, &config.user, &config.password).map_err(|e| {
+            OntologyRepositoryError::DatabaseError(format!("Failed to connect to Neo4j: {}", e))
+        })?;
 
         info!("Connected to Neo4j ontology database at {}", config.uri);
 
@@ -197,16 +190,18 @@ impl Neo4jOntologyRepository {
             }
         }
 
-        info!("✅ Neo4j ontology schema V2 created with {} indexes", query_count);
+        info!(
+            "✅ Neo4j ontology schema V2 created with {} indexes",
+            query_count
+        );
         Ok(())
     }
 
     /// Convert Neo4j node to OwlClass with rich metadata (Schema V2)
     fn node_to_owl_class(&self, node: Neo4jNode) -> RepoResult<OwlClass> {
-        let iri: String = node.get("iri")
-            .map_err(|_| OntologyRepositoryError::DeserializationError(
-                "Missing iri field".to_string()
-            ))?;
+        let iri: String = node.get("iri").map_err(|_| {
+            OntologyRepositoryError::DeserializationError("Missing iri field".to_string())
+        })?;
 
         // Core identification
         let term_id: Option<String> = node.get("term_id").ok();
@@ -366,39 +361,83 @@ impl OntologyRepository for Neo4jOntologyRepository {
         ";
 
         self.graph
-            .run(query(query_str)
-                .param("iri", class.iri.clone())
-                .param("term_id", class.term_id.clone().unwrap_or_default())
-                .param("preferred_term", class.preferred_term.clone().unwrap_or_default())
-                .param("label", class.label.clone().unwrap_or_default())
-                .param("description", class.description.clone().unwrap_or_default())
-                .param("source_domain", class.source_domain.clone().unwrap_or_default())
-                .param("version", class.version.clone().unwrap_or_default())
-                .param("class_type", class.class_type.clone().unwrap_or_default())
-                .param("status", class.status.clone().unwrap_or_default())
-                .param("maturity", class.maturity.clone().unwrap_or_default())
-                .param("quality_score", class.quality_score.map(|s| s as f64).unwrap_or(0.0))
-                .param("authority_score", class.authority_score.map(|s| s as f64).unwrap_or(0.0))
-                .param("public_access", class.public_access.unwrap_or(false))
-                .param("content_status", class.content_status.clone().unwrap_or_default())
-                .param("owl_physicality", class.owl_physicality.clone().unwrap_or_default())
-                .param("owl_role", class.owl_role.clone().unwrap_or_default())
-                .param("belongs_to_domain", class.belongs_to_domain.clone().unwrap_or_default())
-                .param("bridges_to_domain", class.bridges_to_domain.clone().unwrap_or_default())
-                .param("source_file", class.source_file.clone().unwrap_or_default())
-                .param("file_sha1", class.file_sha1.clone().unwrap_or_default())
-                .param("markdown_content", class.markdown_content.clone().unwrap_or_default())
-                .param("last_synced", class.last_synced.map(|dt| dt.to_rfc3339()).unwrap_or_default())
-                .param("additional_metadata", class.additional_metadata.clone().unwrap_or_default())
-                .param("canonical_iri", class.canonical_iri.clone().unwrap_or_default())
-                .param("visionclaw_uri", class.visionclaw_uri.clone().unwrap_or_default())
-                .param("content_hash", class.content_hash.clone().unwrap_or_default()))
+            .run(
+                query(query_str)
+                    .param("iri", class.iri.clone())
+                    .param("term_id", class.term_id.clone().unwrap_or_default())
+                    .param(
+                        "preferred_term",
+                        class.preferred_term.clone().unwrap_or_default(),
+                    )
+                    .param("label", class.label.clone().unwrap_or_default())
+                    .param("description", class.description.clone().unwrap_or_default())
+                    .param(
+                        "source_domain",
+                        class.source_domain.clone().unwrap_or_default(),
+                    )
+                    .param("version", class.version.clone().unwrap_or_default())
+                    .param("class_type", class.class_type.clone().unwrap_or_default())
+                    .param("status", class.status.clone().unwrap_or_default())
+                    .param("maturity", class.maturity.clone().unwrap_or_default())
+                    .param(
+                        "quality_score",
+                        class.quality_score.map(|s| s as f64).unwrap_or(0.0),
+                    )
+                    .param(
+                        "authority_score",
+                        class.authority_score.map(|s| s as f64).unwrap_or(0.0),
+                    )
+                    .param("public_access", class.public_access.unwrap_or(false))
+                    .param(
+                        "content_status",
+                        class.content_status.clone().unwrap_or_default(),
+                    )
+                    .param(
+                        "owl_physicality",
+                        class.owl_physicality.clone().unwrap_or_default(),
+                    )
+                    .param("owl_role", class.owl_role.clone().unwrap_or_default())
+                    .param(
+                        "belongs_to_domain",
+                        class.belongs_to_domain.clone().unwrap_or_default(),
+                    )
+                    .param(
+                        "bridges_to_domain",
+                        class.bridges_to_domain.clone().unwrap_or_default(),
+                    )
+                    .param("source_file", class.source_file.clone().unwrap_or_default())
+                    .param("file_sha1", class.file_sha1.clone().unwrap_or_default())
+                    .param(
+                        "markdown_content",
+                        class.markdown_content.clone().unwrap_or_default(),
+                    )
+                    .param(
+                        "last_synced",
+                        class
+                            .last_synced
+                            .map(|dt| dt.to_rfc3339())
+                            .unwrap_or_default(),
+                    )
+                    .param(
+                        "additional_metadata",
+                        class.additional_metadata.clone().unwrap_or_default(),
+                    )
+                    .param(
+                        "canonical_iri",
+                        class.canonical_iri.clone().unwrap_or_default(),
+                    )
+                    .param(
+                        "visionclaw_uri",
+                        class.visionclaw_uri.clone().unwrap_or_default(),
+                    )
+                    .param(
+                        "content_hash",
+                        class.content_hash.clone().unwrap_or_default(),
+                    ),
+            )
             .await
             .map_err(|e| {
-                OntologyRepositoryError::DatabaseError(format!(
-                    "Failed to store OWL class: {}",
-                    e
-                ))
+                OntologyRepositoryError::DatabaseError(format!("Failed to store OWL class: {}", e))
             })?;
 
         // Store parent relationships (SUBCLASS_OF).
@@ -415,9 +454,11 @@ impl OntologyRepository for Neo4jOntologyRepository {
             ";
 
             self.graph
-                .run(query(rel_query)
-                    .param("child_iri", class.iri.clone())
-                    .param("parent_iri", parent_iri.clone()))
+                .run(
+                    query(rel_query)
+                        .param("child_iri", class.iri.clone())
+                        .param("parent_iri", parent_iri.clone()),
+                )
                 .await
                 .map_err(|e| {
                     OntologyRepositoryError::DatabaseError(format!(
@@ -430,13 +471,13 @@ impl OntologyRepository for Neo4jOntologyRepository {
         // ADR-014: Store ALL semantic relationship types as :RELATES edges.
         // Each relationship type maps to a RELATES edge with typed metadata.
         let typed_relationships: Vec<(&str, &str, f64, &[String])> = vec![
-            ("has_part",     "mv:hasPart",     1.5, &class.has_part),
-            ("is_part_of",   "mv:isPartOf",    1.5, &class.is_part_of),
-            ("requires",     "mv:requires",    1.5, &class.requires),
-            ("depends_on",   "mv:dependsOn",   1.5, &class.depends_on),
-            ("enables",      "mv:enables",     1.5, &class.enables),
-            ("relates_to",   "mv:relatedTo",   1.0, &class.relates_to),
-            ("bridges_to",   "mv:bridgesTo",   1.0, &class.bridges_to),
+            ("has_part", "mv:hasPart", 1.5, &class.has_part),
+            ("is_part_of", "mv:isPartOf", 1.5, &class.is_part_of),
+            ("requires", "mv:requires", 1.5, &class.requires),
+            ("depends_on", "mv:dependsOn", 1.5, &class.depends_on),
+            ("enables", "mv:enables", 1.5, &class.enables),
+            ("relates_to", "mv:relatedTo", 1.0, &class.relates_to),
+            ("bridges_to", "mv:bridgesTo", 1.0, &class.bridges_to),
             ("bridges_from", "mv:bridgesFrom", 1.0, &class.bridges_from),
         ];
 
@@ -446,7 +487,9 @@ impl OntologyRepository for Neo4jOntologyRepository {
                     .trim_start_matches("[[")
                     .trim_end_matches("]]")
                     .trim();
-                if clean_target.is_empty() { continue; }
+                if clean_target.is_empty() {
+                    continue;
+                }
 
                 let relates_query = "
                     MATCH (child:OntologyClass {iri: $child_iri})
@@ -459,12 +502,14 @@ impl OntologyRepository for Neo4jOntologyRepository {
                 ";
 
                 self.graph
-                    .run(query(relates_query)
-                        .param("child_iri", class.iri.clone())
-                        .param("target_label", clean_target.to_string())
-                        .param("rel_type", rel_type.to_string())
-                        .param("owl_iri", owl_iri.to_string())
-                        .param("weight", *weight))
+                    .run(
+                        query(relates_query)
+                            .param("child_iri", class.iri.clone())
+                            .param("target_label", clean_target.to_string())
+                            .param("rel_type", rel_type.to_string())
+                            .param("owl_iri", owl_iri.to_string())
+                            .param("weight", *weight),
+                    )
                     .await
                     .map_err(|e| {
                         OntologyRepositoryError::DatabaseError(format!(
@@ -482,7 +527,9 @@ impl OntologyRepository for Neo4jOntologyRepository {
                     .trim_start_matches("[[")
                     .trim_end_matches("]]")
                     .trim();
-                if clean_target.is_empty() { continue; }
+                if clean_target.is_empty() {
+                    continue;
+                }
 
                 let other_query = "
                     MATCH (child:OntologyClass {iri: $child_iri})
@@ -495,12 +542,14 @@ impl OntologyRepository for Neo4jOntologyRepository {
                 ";
 
                 self.graph
-                    .run(query(other_query)
-                        .param("child_iri", class.iri.clone())
-                        .param("target_label", clean_target.to_string())
-                        .param("rel_type", rel_name.clone())
-                        .param("owl_iri", format!("mv:{}", rel_name))
-                        .param("weight", 1.0_f64))
+                    .run(
+                        query(other_query)
+                            .param("child_iri", class.iri.clone())
+                            .param("target_label", clean_target.to_string())
+                            .param("rel_type", rel_name.clone())
+                            .param("owl_iri", format!("mv:{}", rel_name))
+                            .param("weight", 1.0_f64),
+                    )
                     .await
                     .map_err(|e| {
                         OntologyRepositoryError::DatabaseError(format!(
@@ -524,29 +573,25 @@ impl OntologyRepository for Neo4jOntologyRepository {
             RETURN c, collect(p.iri) as parent_iris
         ";
 
-        let mut result = self.graph
+        let mut result = self
+            .graph
             .execute(query(query_str).param("iri", iri.to_string()))
             .await
             .map_err(|e| {
-                OntologyRepositoryError::DatabaseError(format!(
-                    "Failed to get OWL class: {}",
-                    e
-                ))
+                OntologyRepositoryError::DatabaseError(format!("Failed to get OWL class: {}", e))
             })?;
 
         if let Some(row) = result.next().await.map_err(|e| {
             OntologyRepositoryError::DatabaseError(format!("Failed to fetch row: {}", e))
         })? {
-            let node: Neo4jNode = row.get("c")
-                .map_err(|_| OntologyRepositoryError::DeserializationError(
-                    "Missing node in result".to_string()
-                ))?;
+            let node: Neo4jNode = row.get("c").map_err(|_| {
+                OntologyRepositoryError::DeserializationError("Missing node in result".to_string())
+            })?;
 
             let mut owl_class = self.node_to_owl_class(node)?;
 
             // Get parent IRIs
-            let parent_iris: Vec<String> = row.get("parent_iris")
-                .unwrap_or_else(|_| Vec::new());
+            let parent_iris: Vec<String> = row.get("parent_iris").unwrap_or_else(|_| Vec::new());
             owl_class.parent_classes = parent_iris;
 
             Ok(Some(owl_class))
@@ -567,15 +612,9 @@ impl OntologyRepository for Neo4jOntologyRepository {
 
         let query_obj = query(query_str);
 
-        let mut result = self.graph
-            .execute(query_obj)
-            .await
-            .map_err(|e| {
-                OntologyRepositoryError::DatabaseError(format!(
-                    "Failed to list OWL classes: {}",
-                    e
-                ))
-            })?;
+        let mut result = self.graph.execute(query_obj).await.map_err(|e| {
+            OntologyRepositoryError::DatabaseError(format!("Failed to list OWL classes: {}", e))
+        })?;
 
         let mut classes = Vec::new();
         while let Some(row) = result.next().await.map_err(|e| {
@@ -586,8 +625,7 @@ impl OntologyRepository for Neo4jOntologyRepository {
             })?;
             let mut owl_class = self.node_to_owl_class(node)?;
 
-            let parent_iris: Vec<String> = row.get("parent_iris")
-                .unwrap_or_else(|_| Vec::new());
+            let parent_iris: Vec<String> = row.get("parent_iris").unwrap_or_else(|_| Vec::new());
             owl_class.parent_classes = parent_iris;
 
             classes.push(owl_class);
@@ -610,10 +648,7 @@ impl OntologyRepository for Neo4jOntologyRepository {
             .run(query(query_str).param("iri", iri.to_string()))
             .await
             .map_err(|e| {
-                OntologyRepositoryError::DatabaseError(format!(
-                    "Failed to remove OWL class: {}",
-                    e
-                ))
+                OntologyRepositoryError::DatabaseError(format!("Failed to remove OWL class: {}", e))
             })?;
 
         info!("Removed OWL class and its relationships: {}", iri);
@@ -633,10 +668,7 @@ impl OntologyRepository for Neo4jOntologyRepository {
             .run(query(query_str).param("id", axiom_id as i64))
             .await
             .map_err(|e| {
-                OntologyRepositoryError::DatabaseError(format!(
-                    "Failed to remove OWL axiom: {}",
-                    e
-                ))
+                OntologyRepositoryError::DatabaseError(format!("Failed to remove OWL axiom: {}", e))
             })?;
 
         info!("Removed OWL axiom: {}", axiom_id);
@@ -649,7 +681,10 @@ impl OntologyRepository for Neo4jOntologyRepository {
 
     #[instrument(skip(self), level = "trace")]
     async fn add_owl_property(&self, property: &OwlProperty) -> RepoResult<String> {
-        debug!("Storing OWL property with quality metrics: {}", property.iri);
+        debug!(
+            "Storing OWL property with quality metrics: {}",
+            property.iri
+        );
 
         let query_str = "
             MERGE (p:OwlProperty {iri: $iri})
@@ -679,15 +714,26 @@ impl OntologyRepository for Neo4jOntologyRepository {
             .map_err(|e| OntologyRepositoryError::SerializationError(e.to_string()))?;
 
         self.graph
-            .run(query(query_str)
-                .param("iri", property.iri.clone())
-                .param("label", property.label.clone().unwrap_or_default())
-                .param("property_type", format!("{:?}", property.property_type))
-                .param("domain", domain_json)
-                .param("range", range_json)
-                .param("quality_score", property.quality_score.map(|s| s as f64).unwrap_or(0.0))
-                .param("authority_score", property.authority_score.map(|s| s as f64).unwrap_or(0.0))
-                .param("source_file", property.source_file.clone().unwrap_or_default()))
+            .run(
+                query(query_str)
+                    .param("iri", property.iri.clone())
+                    .param("label", property.label.clone().unwrap_or_default())
+                    .param("property_type", format!("{:?}", property.property_type))
+                    .param("domain", domain_json)
+                    .param("range", range_json)
+                    .param(
+                        "quality_score",
+                        property.quality_score.map(|s| s as f64).unwrap_or(0.0),
+                    )
+                    .param(
+                        "authority_score",
+                        property.authority_score.map(|s| s as f64).unwrap_or(0.0),
+                    )
+                    .param(
+                        "source_file",
+                        property.source_file.clone().unwrap_or_default(),
+                    ),
+            )
             .await
             .map_err(|e| {
                 OntologyRepositoryError::DatabaseError(format!(
@@ -708,14 +754,12 @@ impl OntologyRepository for Neo4jOntologyRepository {
             RETURN p
         ";
 
-        let mut result = self.graph
+        let mut result = self
+            .graph
             .execute(query(query_str).param("iri", iri.to_string()))
             .await
             .map_err(|e| {
-                OntologyRepositoryError::DatabaseError(format!(
-                    "Failed to get OWL property: {}",
-                    e
-                ))
+                OntologyRepositoryError::DatabaseError(format!("Failed to get OWL property: {}", e))
             })?;
 
         if let Some(row) = result.next().await.map_err(|e| {
@@ -730,7 +774,10 @@ impl OntologyRepository for Neo4jOntologyRepository {
             })?;
             let label: Option<String> = node.get("label").ok();
             let property_type_str: String = node.get("property_type").map_err(|e| {
-                OntologyRepositoryError::DatabaseError(format!("Failed to get property_type: {}", e))
+                OntologyRepositoryError::DatabaseError(format!(
+                    "Failed to get property_type: {}",
+                    e
+                ))
             })?;
             let domain_json: String = node.get("domain").unwrap_or_else(|_| "[]".to_string());
             let range_json: String = node.get("range").unwrap_or_else(|_| "[]".to_string());
@@ -773,15 +820,9 @@ impl OntologyRepository for Neo4jOntologyRepository {
 
         let query_str = "MATCH (p:OwlProperty) RETURN p";
 
-        let mut result = self.graph
-            .execute(query(query_str))
-            .await
-            .map_err(|e| {
-                OntologyRepositoryError::DatabaseError(format!(
-                    "Failed to list OWL properties: {}",
-                    e
-                ))
-            })?;
+        let mut result = self.graph.execute(query(query_str)).await.map_err(|e| {
+            OntologyRepositoryError::DatabaseError(format!("Failed to list OWL properties: {}", e))
+        })?;
 
         let mut properties = Vec::new();
         while let Some(row) = result.next().await.map_err(|e| {
@@ -796,7 +837,10 @@ impl OntologyRepository for Neo4jOntologyRepository {
             })?;
             let label: Option<String> = node.get("label").ok();
             let property_type_str: String = node.get("property_type").map_err(|e| {
-                OntologyRepositoryError::DatabaseError(format!("Failed to get property_type: {}", e))
+                OntologyRepositoryError::DatabaseError(format!(
+                    "Failed to get property_type: {}",
+                    e
+                ))
             })?;
             let domain_json: String = node.get("domain").unwrap_or_else(|_| "[]".to_string());
             let range_json: String = node.get("range").unwrap_or_else(|_| "[]".to_string());
@@ -869,18 +913,17 @@ impl OntologyRepository for Neo4jOntologyRepository {
         ";
 
         self.graph
-            .run(query(query_str)
-                .param("id", axiom_id as i64)
-                .param("axiom_type", format!("{:?}", axiom.axiom_type))
-                .param("subject", axiom.subject.clone())
-                .param("object", axiom.object.clone())
-                .param("annotations", annotations_json))
+            .run(
+                query(query_str)
+                    .param("id", axiom_id as i64)
+                    .param("axiom_type", format!("{:?}", axiom.axiom_type))
+                    .param("subject", axiom.subject.clone())
+                    .param("object", axiom.object.clone())
+                    .param("annotations", annotations_json),
+            )
             .await
             .map_err(|e| {
-                OntologyRepositoryError::DatabaseError(format!(
-                    "Failed to store OWL axiom: {}",
-                    e
-                ))
+                OntologyRepositoryError::DatabaseError(format!("Failed to store OWL axiom: {}", e))
             })?;
 
         Ok(axiom_id)
@@ -893,15 +936,9 @@ impl OntologyRepository for Neo4jOntologyRepository {
         let query_str = "MATCH (a:OwlAxiom) RETURN a";
         let query_obj = query(query_str);
 
-        let mut result = self.graph
-            .execute(query_obj)
-            .await
-            .map_err(|e| {
-                OntologyRepositoryError::DatabaseError(format!(
-                    "Failed to get OWL axioms: {}",
-                    e
-                ))
-            })?;
+        let mut result = self.graph.execute(query_obj).await.map_err(|e| {
+            OntologyRepositoryError::DatabaseError(format!("Failed to get OWL axioms: {}", e))
+        })?;
 
         let mut axioms = Vec::new();
         while let Some(row) = result.next().await.map_err(|e| {
@@ -923,7 +960,8 @@ impl OntologyRepository for Neo4jOntologyRepository {
             let object: String = node.get("object").map_err(|e| {
                 OntologyRepositoryError::DatabaseError(format!("Failed to get object: {}", e))
             })?;
-            let annotations_json: String = node.get("annotations").unwrap_or_else(|_| "{}".to_string());
+            let annotations_json: String =
+                node.get("annotations").unwrap_or_else(|_| "{}".to_string());
 
             let axiom_type = match axiom_type_str.as_str() {
                 "SubClassOf" => AxiomType::SubClassOf,
@@ -976,11 +1014,17 @@ impl OntologyRepository for Neo4jOntologyRepository {
         // Count classes
         let class_count_query = query("MATCH (c:OntologyClass) RETURN count(c) as count");
 
-        let mut result = self.graph.execute(class_count_query).await
+        let mut result = self
+            .graph
+            .execute(class_count_query)
+            .await
             .map_err(|e| OntologyRepositoryError::DatabaseError(e.to_string()))?;
 
-        let class_count: i64 = if let Some(row) = result.next().await
-            .map_err(|e| OntologyRepositoryError::DatabaseError(e.to_string()))? {
+        let class_count: i64 = if let Some(row) = result
+            .next()
+            .await
+            .map_err(|e| OntologyRepositoryError::DatabaseError(e.to_string()))?
+        {
             row.get("count").unwrap_or(0)
         } else {
             0
@@ -988,11 +1032,17 @@ impl OntologyRepository for Neo4jOntologyRepository {
 
         // Count properties
         let property_count_query = query("MATCH (p:OwlProperty) RETURN count(p) as count");
-        let mut result = self.graph.execute(property_count_query).await
+        let mut result = self
+            .graph
+            .execute(property_count_query)
+            .await
             .map_err(|e| OntologyRepositoryError::DatabaseError(e.to_string()))?;
 
-        let property_count: i64 = if let Some(row) = result.next().await
-            .map_err(|e| OntologyRepositoryError::DatabaseError(e.to_string()))? {
+        let property_count: i64 = if let Some(row) = result
+            .next()
+            .await
+            .map_err(|e| OntologyRepositoryError::DatabaseError(e.to_string()))?
+        {
             row.get("count").unwrap_or(0)
         } else {
             0
@@ -1000,45 +1050,67 @@ impl OntologyRepository for Neo4jOntologyRepository {
 
         // Count axioms
         let axiom_count_query = query("MATCH (a:OwlAxiom) RETURN count(a) as count");
-        let mut result = self.graph.execute(axiom_count_query).await
+        let mut result = self
+            .graph
+            .execute(axiom_count_query)
+            .await
             .map_err(|e| OntologyRepositoryError::DatabaseError(e.to_string()))?;
 
-        let axiom_count: i64 = if let Some(row) = result.next().await
-            .map_err(|e| OntologyRepositoryError::DatabaseError(e.to_string()))? {
+        let axiom_count: i64 = if let Some(row) = result
+            .next()
+            .await
+            .map_err(|e| OntologyRepositoryError::DatabaseError(e.to_string()))?
+        {
             row.get("count").unwrap_or(0)
         } else {
             0
         };
 
         // Calculate max depth by finding longest path in class hierarchy
-        let depth_query = query("
+        let depth_query = query(
+            "
             MATCH path = (root:OntologyClass)-[:SUBCLASS_OF*]->(leaf:OntologyClass)
             WHERE NOT (root)-[:SUBCLASS_OF]->()
             RETURN length(path) as depth
             ORDER BY depth DESC
             LIMIT 1
-        ");
-        let mut result = self.graph.execute(depth_query).await
+        ",
+        );
+        let mut result = self
+            .graph
+            .execute(depth_query)
+            .await
             .map_err(|e| OntologyRepositoryError::DatabaseError(e.to_string()))?;
 
-        let max_depth: usize = if let Some(row) = result.next().await
-            .map_err(|e| OntologyRepositoryError::DatabaseError(e.to_string()))? {
+        let max_depth: usize = if let Some(row) = result
+            .next()
+            .await
+            .map_err(|e| OntologyRepositoryError::DatabaseError(e.to_string()))?
+        {
             row.get::<i64>("depth").unwrap_or(0) as usize
         } else {
             0
         };
 
         // Calculate average branching factor: avg number of direct subclasses
-        let branching_query = query("
+        let branching_query = query(
+            "
             MATCH (parent:OntologyClass)<-[:SUBCLASS_OF]-(child:OntologyClass)
             WITH parent, count(child) as children
             RETURN avg(children) as avg_branching
-        ");
-        let mut result = self.graph.execute(branching_query).await
+        ",
+        );
+        let mut result = self
+            .graph
+            .execute(branching_query)
+            .await
             .map_err(|e| OntologyRepositoryError::DatabaseError(e.to_string()))?;
 
-        let average_branching_factor: f32 = if let Some(row) = result.next().await
-            .map_err(|e| OntologyRepositoryError::DatabaseError(e.to_string()))? {
+        let average_branching_factor: f32 = if let Some(row) = result
+            .next()
+            .await
+            .map_err(|e| OntologyRepositoryError::DatabaseError(e.to_string()))?
+        {
             row.get::<f64>("avg_branching").unwrap_or(0.0) as f32
         } else {
             0.0
@@ -1061,20 +1133,31 @@ impl OntologyRepository for Neo4jOntologyRepository {
         let mut warnings = Vec::new();
 
         // Check for orphaned classes (no relationships)
-        let orphan_query = query("
+        let orphan_query = query(
+            "
             MATCH (c:OntologyClass)
             WHERE NOT (c)-[:SUBCLASS_OF]->() AND NOT ()-[:SUBCLASS_OF]->(c)
             RETURN count(c) as count
-        ");
+        ",
+        );
 
-        let mut result = self.graph.execute(orphan_query).await
+        let mut result = self
+            .graph
+            .execute(orphan_query)
+            .await
             .map_err(|e| OntologyRepositoryError::DatabaseError(e.to_string()))?;
 
-        if let Some(row) = result.next().await
-            .map_err(|e| OntologyRepositoryError::DatabaseError(e.to_string()))? {
+        if let Some(row) = result
+            .next()
+            .await
+            .map_err(|e| OntologyRepositoryError::DatabaseError(e.to_string()))?
+        {
             let orphan_count: i64 = row.get("count").unwrap_or(0);
             if orphan_count > 0 {
-                warnings.push(format!("{} orphaned classes found (no hierarchy relationships)", orphan_count));
+                warnings.push(format!(
+                    "{} orphaned classes found (no hierarchy relationships)",
+                    orphan_count
+                ));
             }
         }
 
@@ -1101,7 +1184,10 @@ impl OntologyRepository for Neo4jOntologyRepository {
     }
 
     #[instrument(skip(self), level = "trace")]
-    async fn get_cached_sssp(&self, _source_node_id: u32) -> RepoResult<Option<PathfindingCacheEntry>> {
+    async fn get_cached_sssp(
+        &self,
+        _source_node_id: u32,
+    ) -> RepoResult<Option<PathfindingCacheEntry>> {
         // Pathfinding cache not yet implemented
         // Returns None, forcing recomputation
         Ok(None)
@@ -1138,7 +1224,10 @@ impl OntologyRepository for Neo4jOntologyRepository {
 
         // Query all nodes
         let nodes_query = query("MATCH (n) RETURN n, id(n) as neo4j_id");
-        let mut result = self.graph.execute(nodes_query).await
+        let mut result = self
+            .graph
+            .execute(nodes_query)
+            .await
             .map_err(|e| OntologyRepositoryError::DatabaseError(e.to_string()))?;
 
         let mut nodes = Vec::new();
@@ -1154,8 +1243,13 @@ impl OntologyRepository for Neo4jOntologyRepository {
         }
 
         // Query all edges
-        let edges_query = query("MATCH (n)-[r]->(m) RETURN id(n) as source, id(m) as target, type(r) as rel_type");
-        let mut result = self.graph.execute(edges_query).await
+        let edges_query = query(
+            "MATCH (n)-[r]->(m) RETURN id(n) as source, id(m) as target, type(r) as rel_type",
+        );
+        let mut result = self
+            .graph
+            .execute(edges_query)
+            .await
             .map_err(|e| OntologyRepositoryError::DatabaseError(e.to_string()))?;
 
         let mut edges = Vec::new();
@@ -1165,8 +1259,7 @@ impl OntologyRepository for Neo4jOntologyRepository {
                 row.get::<i64>("target"),
                 row.get::<String>("rel_type"),
             ) {
-                let edge = Edge::new(source as u32, target as u32, 1.0)
-                    .with_edge_type(rel_type);
+                let edge = Edge::new(source as u32, target as u32, 1.0).with_edge_type(rel_type);
                 edges.push(edge);
             }
         }
@@ -1185,7 +1278,10 @@ impl OntologyRepository for Neo4jOntologyRepository {
 
         // Clear existing graph
         let clear_query = query("MATCH (n) DETACH DELETE n");
-        let _ = self.graph.execute(clear_query).await
+        let _ = self
+            .graph
+            .execute(clear_query)
+            .await
             .map_err(|e| OntologyRepositoryError::DatabaseError(e.to_string()))?;
 
         // Insert nodes
@@ -1193,22 +1289,31 @@ impl OntologyRepository for Neo4jOntologyRepository {
             let node_query = query("CREATE (n {id: $id, label: $label})")
                 .param("id", node.id as i64)
                 .param("label", node.label.clone());
-            let _ = self.graph.execute(node_query).await
+            let _ = self
+                .graph
+                .execute(node_query)
+                .await
                 .map_err(|e| OntologyRepositoryError::DatabaseError(e.to_string()))?;
         }
 
         // Insert edges
         for edge in &graph.edges {
-            let rel_type = edge.edge_type.clone().unwrap_or_else(|| "RELATES".to_string());
+            let rel_type = edge
+                .edge_type
+                .clone()
+                .unwrap_or_else(|| "RELATES".to_string());
             let edge_query = query(
                 "MATCH (n {id: $source}), (m {id: $target}) \
-                 CREATE (n)-[r:RELATES {relationship: $rel_type}]->(m)"
+                 CREATE (n)-[r:RELATES {relationship: $rel_type}]->(m)",
             )
             .param("source", edge.source as i64)
             .param("target", edge.target as i64)
             .param("rel_type", rel_type);
 
-            let _ = self.graph.execute(edge_query).await
+            let _ = self
+                .graph
+                .execute(edge_query)
+                .await
                 .map_err(|e| OntologyRepositoryError::DatabaseError(e.to_string()))?;
         }
 
@@ -1222,8 +1327,12 @@ impl OntologyRepository for Neo4jOntologyRepository {
         properties: &[OwlProperty],
         axioms: &[OwlAxiom],
     ) -> RepoResult<()> {
-        debug!("Saving ontology: {} classes, {} properties, {} axioms",
-               classes.len(), properties.len(), axioms.len());
+        debug!(
+            "Saving ontology: {} classes, {} properties, {} axioms",
+            classes.len(),
+            properties.len(),
+            axioms.len()
+        );
 
         // Save classes
         for class in classes {
@@ -1258,10 +1367,14 @@ impl OntologyRepository for Neo4jOntologyRepository {
                     a.subject as subject, \
                     a.predicate as predicate, \
                     a.object as object, \
-                    a.axiom_json as axiom_json"
-        ).param("iri", class_iri);
+                    a.axiom_json as axiom_json",
+        )
+        .param("iri", class_iri);
 
-        let mut result = self.graph.execute(query_str).await
+        let mut result = self
+            .graph
+            .execute(query_str)
+            .await
             .map_err(|e| OntologyRepositoryError::DatabaseError(e.to_string()))?;
 
         let mut axioms = Vec::new();
@@ -1276,8 +1389,12 @@ impl OntologyRepository for Neo4jOntologyRepository {
                     "SubClassOf" => AxiomType::SubClassOf,
                     "EquivalentClass" | "EquivalentClasses" => AxiomType::EquivalentClass,
                     "DisjointWith" | "DisjointClasses" => AxiomType::DisjointWith,
-                    "ObjectPropertyAssertion" | "SubObjectProperty" => AxiomType::ObjectPropertyAssertion,
-                    "DataPropertyAssertion" | "Domain" | "Range" => AxiomType::DataPropertyAssertion,
+                    "ObjectPropertyAssertion" | "SubObjectProperty" => {
+                        AxiomType::ObjectPropertyAssertion
+                    }
+                    "DataPropertyAssertion" | "Domain" | "Range" => {
+                        AxiomType::DataPropertyAssertion
+                    }
                     _ => AxiomType::SubClassOf,
                 };
 
@@ -1314,7 +1431,8 @@ impl Neo4jOntologyRepository {
             ORDER BY combined_score DESC
         ";
 
-        let mut result = self.graph
+        let mut result = self
+            .graph
             .execute(query(query_str).param("min_score", min_score as f64))
             .await
             .map_err(|e| OntologyRepositoryError::DatabaseError(e.to_string()))?;
@@ -1326,7 +1444,11 @@ impl Neo4jOntologyRepository {
             }
         }
 
-        debug!("Found {} classes with quality >= {}", classes.len(), min_score);
+        debug!(
+            "Found {} classes with quality >= {}",
+            classes.len(),
+            min_score
+        );
         Ok(classes)
     }
 
@@ -1342,7 +1464,8 @@ impl Neo4jOntologyRepository {
             ORDER BY c.belongs_to_domain, c.bridges_to_domain
         ";
 
-        let mut result = self.graph
+        let mut result = self
+            .graph
             .execute(query(query_str))
             .await
             .map_err(|e| OntologyRepositoryError::DatabaseError(e.to_string()))?;
@@ -1370,7 +1493,8 @@ impl Neo4jOntologyRepository {
             ORDER BY c.quality_score DESC
         ";
 
-        let mut result = self.graph
+        let mut result = self
+            .graph
             .execute(query(query_str).param("domain", domain.to_string()))
             .await
             .map_err(|e| OntologyRepositoryError::DatabaseError(e.to_string()))?;
@@ -1398,7 +1522,8 @@ impl Neo4jOntologyRepository {
             ORDER BY c.quality_score DESC
         ";
 
-        let mut result = self.graph
+        let mut result = self
+            .graph
             .execute(query(query_str).param("maturity", maturity.to_string()))
             .await
             .map_err(|e| OntologyRepositoryError::DatabaseError(e.to_string()))?;
@@ -1426,7 +1551,8 @@ impl Neo4jOntologyRepository {
             ORDER BY c.label
         ";
 
-        let mut result = self.graph
+        let mut result = self
+            .graph
             .execute(query(query_str).param("physicality", physicality.to_string()))
             .await
             .map_err(|e| OntologyRepositoryError::DatabaseError(e.to_string()))?;
@@ -1438,7 +1564,11 @@ impl Neo4jOntologyRepository {
             }
         }
 
-        debug!("Found {} classes with physicality {}", classes.len(), physicality);
+        debug!(
+            "Found {} classes with physicality {}",
+            classes.len(),
+            physicality
+        );
         Ok(classes)
     }
 
@@ -1454,7 +1584,8 @@ impl Neo4jOntologyRepository {
             ORDER BY c.label
         ";
 
-        let mut result = self.graph
+        let mut result = self
+            .graph
             .execute(query(query_str).param("role", role.to_string()))
             .await
             .map_err(|e| OntologyRepositoryError::DatabaseError(e.to_string()))?;
@@ -1480,7 +1611,10 @@ impl Neo4jOntologyRepository {
         confidence: f32,
         is_inferred: bool,
     ) -> RepoResult<()> {
-        debug!("Adding relationship: {} -[{}]-> {}", source_iri, relationship_type, target_iri);
+        debug!(
+            "Adding relationship: {} -[{}]-> {}",
+            source_iri, relationship_type, target_iri
+        );
 
         let query_str = "
             MATCH (s:OntologyClass {iri: $source_iri})
@@ -1492,18 +1626,17 @@ impl Neo4jOntologyRepository {
         ";
 
         self.graph
-            .run(query(query_str)
-                .param("source_iri", source_iri.to_string())
-                .param("target_iri", target_iri.to_string())
-                .param("relationship_type", relationship_type.to_string())
-                .param("confidence", confidence as f64)
-                .param("is_inferred", is_inferred))
+            .run(
+                query(query_str)
+                    .param("source_iri", source_iri.to_string())
+                    .param("target_iri", target_iri.to_string())
+                    .param("relationship_type", relationship_type.to_string())
+                    .param("confidence", confidence as f64)
+                    .param("is_inferred", is_inferred),
+            )
             .await
             .map_err(|e| {
-                OntologyRepositoryError::DatabaseError(format!(
-                    "Failed to add relationship: {}",
-                    e
-                ))
+                OntologyRepositoryError::DatabaseError(format!("Failed to add relationship: {}", e))
             })?;
 
         Ok(())
@@ -1511,7 +1644,10 @@ impl Neo4jOntologyRepository {
 
     /// Query relationships by type
     /// Returns all relationships of a specific type
-    pub async fn query_relationships_by_type(&self, relationship_type: &str) -> RepoResult<Vec<(String, String, f32, bool)>> {
+    pub async fn query_relationships_by_type(
+        &self,
+        relationship_type: &str,
+    ) -> RepoResult<Vec<(String, String, f32, bool)>> {
         debug!("Querying relationships of type: {}", relationship_type);
 
         let query_str = "
@@ -1520,7 +1656,8 @@ impl Neo4jOntologyRepository {
             ORDER BY r.confidence DESC
         ";
 
-        let mut result = self.graph
+        let mut result = self
+            .graph
             .execute(query(query_str).param("relationship_type", relationship_type.to_string()))
             .await
             .map_err(|e| OntologyRepositoryError::DatabaseError(e.to_string()))?;
@@ -1537,7 +1674,11 @@ impl Neo4jOntologyRepository {
             }
         }
 
-        debug!("Found {} relationships of type {}", relationships.len(), relationship_type);
+        debug!(
+            "Found {} relationships of type {}",
+            relationships.len(),
+            relationship_type
+        );
         Ok(relationships)
     }
 
@@ -1580,7 +1721,10 @@ impl Neo4jOntologyRepository {
             debug!("Added batch of {} relationships", chunk.len());
         }
 
-        info!("Successfully batch added {} relationships", relationships.len());
+        info!(
+            "Successfully batch added {} relationships",
+            relationships.len()
+        );
         Ok(())
     }
 
@@ -1608,12 +1752,16 @@ impl Neo4jOntologyRepository {
             ORDER BY c.iri
         ";
 
-        let mut result = self.graph
+        let mut result = self
+            .graph
             .execute(query(nodes_query_str))
             .await
-            .map_err(|e| OntologyRepositoryError::DatabaseError(format!(
-                "Failed to query OwlClass nodes: {}", e
-            )))?;
+            .map_err(|e| {
+                OntologyRepositoryError::DatabaseError(format!(
+                    "Failed to query OwlClass nodes: {}",
+                    e
+                ))
+            })?;
 
         let mut nodes: Vec<Node> = Vec::new();
         let mut iri_set: std::collections::HashSet<String> = std::collections::HashSet::new();
@@ -1634,7 +1782,8 @@ impl Neo4jOntologyRepository {
 
             // Use last fragment of IRI as display label when label is absent
             let display_label = label.unwrap_or_else(|| {
-                iri.rsplit(|c| c == '#' || c == '/').next()
+                iri.rsplit(|c| c == '#' || c == '/')
+                    .next()
                     .unwrap_or(&iri)
                     .to_string()
             });
@@ -1712,12 +1861,16 @@ impl Neo4jOntologyRepository {
             RETURN s.iri AS src, t.iri AS tgt
         ";
 
-        let mut result = self.graph
+        let mut result = self
+            .graph
             .execute(query(subclass_query_str))
             .await
-            .map_err(|e| OntologyRepositoryError::DatabaseError(format!(
-                "Failed to query SUBCLASS_OF edges: {}", e
-            )))?;
+            .map_err(|e| {
+                OntologyRepositoryError::DatabaseError(format!(
+                    "Failed to query SUBCLASS_OF edges: {}",
+                    e
+                ))
+            })?;
 
         let mut edges: Vec<Edge> = Vec::new();
 
@@ -1743,12 +1896,16 @@ impl Neo4jOntologyRepository {
             RETURN s.iri AS src, t.iri AS tgt, r.relationship_type AS rel
         ";
 
-        let mut result = self.graph
+        let mut result = self
+            .graph
             .execute(query(relates_query_str))
             .await
-            .map_err(|e| OntologyRepositoryError::DatabaseError(format!(
-                "Failed to query RELATES edges: {}", e
-            )))?;
+            .map_err(|e| {
+                OntologyRepositoryError::DatabaseError(format!(
+                    "Failed to query RELATES edges: {}",
+                    e
+                ))
+            })?;
 
         while let Ok(Some(row)) = result.next().await {
             if let (Ok(src), Ok(tgt)) = (row.get::<String>("src"), row.get::<String>("tgt")) {
@@ -1783,7 +1940,9 @@ impl Neo4jOntologyRepository {
 
     /// Get clustering by physicality and role
     /// Returns a grouped view of classes organized by physicality and role
-    pub async fn get_physicality_role_clustering(&self) -> RepoResult<HashMap<String, HashMap<String, Vec<OwlClass>>>> {
+    pub async fn get_physicality_role_clustering(
+        &self,
+    ) -> RepoResult<HashMap<String, HashMap<String, Vec<OwlClass>>>> {
         debug!("Computing physicality-role clustering");
 
         let query_str = "
@@ -1793,7 +1952,8 @@ impl Neo4jOntologyRepository {
             ORDER BY physicality, role
         ";
 
-        let mut result = self.graph
+        let mut result = self
+            .graph
             .execute(query(query_str))
             .await
             .map_err(|e| OntologyRepositoryError::DatabaseError(e.to_string()))?;
@@ -1820,7 +1980,10 @@ impl Neo4jOntologyRepository {
             }
         }
 
-        debug!("Computed clustering with {} physicality groups", clustering.len());
+        debug!(
+            "Computed clustering with {} physicality groups",
+            clustering.len()
+        );
         Ok(clustering)
     }
 }

@@ -43,8 +43,8 @@ pub use gpu_semantic_analyzer::GpuSemanticAnalyzerAdapter;
 
 // Settings repository adapters
 // REMOVED: sqlite_settings_repository - migrated to Neo4j
-pub mod neo4j_settings_repository;
 pub mod neo4j_ontology_repository;
+pub mod neo4j_settings_repository;
 
 // Broker repository adapter (ADR-041: persistent broker cases in Neo4j)
 pub mod neo4j_broker_adapter;
@@ -55,9 +55,9 @@ pub mod neo4j_workflow_adapter;
 // Projection between domain::broker and models::enterprise broker types
 pub mod broker_case_projection;
 
-pub use neo4j_settings_repository::{Neo4jSettingsRepository, Neo4jSettingsConfig};
-pub use neo4j_ontology_repository::{Neo4jOntologyRepository, Neo4jOntologyConfig};
 pub use neo4j_broker_adapter::Neo4jBrokerRepository;
+pub use neo4j_ontology_repository::{Neo4jOntologyConfig, Neo4jOntologyRepository};
+pub use neo4j_settings_repository::{Neo4jSettingsConfig, Neo4jSettingsRepository};
 pub use neo4j_workflow_adapter::Neo4jWorkflowRepository;
 
 // Inference engine exports

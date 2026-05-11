@@ -47,30 +47,18 @@ pub enum ConstraintKind {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Constraint {
-    
     pub kind: ConstraintKind,
-    
+
     pub node_indices: Vec<u32>,
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
+
     pub params: Vec<f32>,
-    
+
     pub weight: f32,
-    
+
     pub active: bool,
 }
 
 impl Constraint {
-    
     pub fn fixed_position(node_idx: u32, x: f32, y: f32, z: f32) -> Self {
         Self {
             kind: ConstraintKind::FixedPosition,
@@ -81,7 +69,6 @@ impl Constraint {
         }
     }
 
-    
     pub fn separation(node_a: u32, node_b: u32, min_distance: f32) -> Self {
         Self {
             kind: ConstraintKind::Separation,
@@ -92,7 +79,6 @@ impl Constraint {
         }
     }
 
-    
     pub fn align_horizontal(node_indices: Vec<u32>, y_coord: f32) -> Self {
         Self {
             kind: ConstraintKind::AlignmentHorizontal,
@@ -103,7 +89,6 @@ impl Constraint {
         }
     }
 
-    
     pub fn cluster(node_indices: Vec<u32>, cluster_id: f32, strength: f32) -> Self {
         Self {
             kind: ConstraintKind::Clustering,
@@ -114,7 +99,6 @@ impl Constraint {
         }
     }
 
-    
     pub fn boundary(
         node_indices: Vec<u32>,
         min_x: f32,
@@ -133,7 +117,6 @@ impl Constraint {
         }
     }
 
-    
     pub fn to_gpu_format(&self) -> ConstraintData {
         let mut gpu_constraint = ConstraintData {
             kind: self.kind as i32,
@@ -141,15 +124,13 @@ impl Constraint {
             node_idx: [0, 0, 0, 0],
             params: [0.0; 8],
             weight: self.weight,
-            activation_frame: 0, 
+            activation_frame: 0,
         };
 
-        
         for (i, &node_idx) in self.node_indices.iter().take(4).enumerate() {
             gpu_constraint.node_idx[i] = node_idx as i32;
         }
 
-        
         for (i, &param) in self.params.iter().take(8).enumerate() {
             gpu_constraint.params[i] = param;
         }
@@ -160,35 +141,34 @@ impl Constraint {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AdvancedParams {
-    
     pub semantic_force_weight: f32,
-    
+
     pub temporal_force_weight: f32,
-    
+
     pub structural_force_weight: f32,
-    
+
     pub constraint_force_weight: f32,
-    
+
     pub stress_step_interval_frames: u32,
-    
+
     pub separation_factor: f32,
-    
+
     pub boundary_force_weight: f32,
-    
+
     pub knowledge_force_weight: f32,
-    
+
     pub agent_communication_weight: f32,
-    
+
     pub adaptive_force_scaling: bool,
-    
+
     pub target_edge_length: f32,
-    
+
     pub max_velocity: f32,
-    
+
     pub collision_threshold: f32,
-    
+
     pub hierarchical_mode: bool,
-    
+
     pub layer_separation: f32,
 }
 
@@ -199,7 +179,7 @@ impl Default for AdvancedParams {
             temporal_force_weight: 0.3,
             structural_force_weight: 0.5,
             constraint_force_weight: 0.8,
-            stress_step_interval_frames: 600, 
+            stress_step_interval_frames: 600,
             separation_factor: 1.5,
             boundary_force_weight: 0.7,
             knowledge_force_weight: 0.4,
@@ -215,7 +195,6 @@ impl Default for AdvancedParams {
 }
 
 impl AdvancedParams {
-    
     pub fn semantic_optimized() -> Self {
         Self {
             semantic_force_weight: 0.9,
@@ -225,7 +204,6 @@ impl AdvancedParams {
         }
     }
 
-    
     pub fn agent_swarm_optimized() -> Self {
         Self {
             agent_communication_weight: 0.9,
@@ -236,7 +214,6 @@ impl AdvancedParams {
         }
     }
 
-    
     pub fn hierarchical_optimized() -> Self {
         Self {
             hierarchical_mode: true,
@@ -251,17 +228,16 @@ impl AdvancedParams {
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct ConstraintData {
-    
     pub kind: i32,
-    
+
     pub count: i32,
-    
+
     pub node_idx: [i32; 4],
-    
+
     pub params: [f32; 8],
-    
+
     pub weight: f32,
-    
+
     pub activation_frame: i32,
 }
 
@@ -282,7 +258,6 @@ impl Default for ConstraintData {
 unsafe impl cust::memory::DeviceCopy for ConstraintData {}
 
 impl ConstraintData {
-    
     pub fn from_constraint(constraint: &Constraint) -> Self {
         let mut node_idx = [-1i32; 4];
         for (i, &idx) in constraint.node_indices.iter().take(4).enumerate() {
@@ -300,21 +275,19 @@ impl ConstraintData {
             node_idx,
             params,
             weight: constraint.weight,
-            activation_frame: 0, 
+            activation_frame: 0,
         }
     }
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ConstraintSet {
-    
     pub constraints: Vec<Constraint>,
-    
+
     pub groups: std::collections::HashMap<String, Vec<usize>>,
 }
 
 impl ConstraintSet {
-
     pub fn new() -> Self {
         Self {
             constraints: Vec::new(),
@@ -328,7 +301,6 @@ impl ConstraintSet {
         idx
     }
 
-    
     pub fn add_to_group(&mut self, group_name: &str, constraint: Constraint) {
         let idx = self.add(constraint);
         self.groups
@@ -337,7 +309,6 @@ impl ConstraintSet {
             .push(idx);
     }
 
-    
     pub fn set_group_active(&mut self, group_name: &str, active: bool) {
         if let Some(indices) = self.groups.get(group_name) {
             for &idx in indices {
@@ -348,12 +319,10 @@ impl ConstraintSet {
         }
     }
 
-    
     pub fn active_constraints(&self) -> Vec<&Constraint> {
         self.constraints.iter().filter(|c| c.active).collect()
     }
 
-    
     pub fn to_gpu_data(&self) -> Vec<ConstraintData> {
         self.active_constraints()
             .into_iter()
@@ -402,7 +371,13 @@ mod tests {
         set.add_to_group("separation", Constraint::separation(2, 3, 75.0));
 
         assert_eq!(set.constraints.len(), 3);
-        assert_eq!(set.groups.get("fixed").expect("Missing required key: fixed").len(), 2);
+        assert_eq!(
+            set.groups
+                .get("fixed")
+                .expect("Missing required key: fixed")
+                .len(),
+            2
+        );
 
         set.set_group_active("fixed", false);
         assert_eq!(set.active_constraints().len(), 1);

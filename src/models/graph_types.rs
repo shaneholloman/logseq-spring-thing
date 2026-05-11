@@ -64,7 +64,6 @@ pub enum EdgeType {
     Custom(String),
 }
 
-
 impl std::fmt::Display for GraphType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -93,7 +92,6 @@ impl std::str::FromStr for GraphType {
         }
     }
 }
-
 
 impl std::fmt::Display for NodeType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -128,7 +126,6 @@ impl std::str::FromStr for NodeType {
         }
     }
 }
-
 
 impl std::fmt::Display for EdgeType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -264,22 +261,34 @@ mod tests {
 
     #[test]
     fn classify_population_page() {
-        assert_eq!(classify_node_population(Some("page")), NodePopulation::Knowledge);
+        assert_eq!(
+            classify_node_population(Some("page")),
+            NodePopulation::Knowledge
+        );
     }
 
     #[test]
     fn classify_population_linked_page() {
-        assert_eq!(classify_node_population(Some("linked_page")), NodePopulation::Knowledge);
+        assert_eq!(
+            classify_node_population(Some("linked_page")),
+            NodePopulation::Knowledge
+        );
     }
 
     #[test]
     fn classify_population_block() {
-        assert_eq!(classify_node_population(Some("block")), NodePopulation::Knowledge);
+        assert_eq!(
+            classify_node_population(Some("block")),
+            NodePopulation::Knowledge
+        );
     }
 
     #[test]
     fn classify_population_knowledge_node() {
-        assert_eq!(classify_node_population(Some("knowledge_node")), NodePopulation::Knowledge);
+        assert_eq!(
+            classify_node_population(Some("knowledge_node")),
+            NodePopulation::Knowledge
+        );
     }
 
     // GIVEN: Ontology-type strings (various casings)
@@ -288,47 +297,74 @@ mod tests {
 
     #[test]
     fn classify_population_owl_class_lower() {
-        assert_eq!(classify_node_population(Some("owl_class")), NodePopulation::Ontology);
+        assert_eq!(
+            classify_node_population(Some("owl_class")),
+            NodePopulation::Ontology
+        );
     }
 
     #[test]
     fn classify_population_owl_class_camel() {
-        assert_eq!(classify_node_population(Some("OwlClass")), NodePopulation::Ontology);
+        assert_eq!(
+            classify_node_population(Some("OwlClass")),
+            NodePopulation::Ontology
+        );
     }
 
     #[test]
     fn classify_population_owlclass_lower() {
-        assert_eq!(classify_node_population(Some("owlclass")), NodePopulation::Ontology);
+        assert_eq!(
+            classify_node_population(Some("owlclass")),
+            NodePopulation::Ontology
+        );
     }
 
     #[test]
     fn classify_population_owlclass_upper() {
-        assert_eq!(classify_node_population(Some("OWLCLASS")), NodePopulation::Ontology);
+        assert_eq!(
+            classify_node_population(Some("OWLCLASS")),
+            NodePopulation::Ontology
+        );
     }
 
     #[test]
     fn classify_population_ontology_node() {
-        assert_eq!(classify_node_population(Some("ontology_node")), NodePopulation::Ontology);
+        assert_eq!(
+            classify_node_population(Some("ontology_node")),
+            NodePopulation::Ontology
+        );
     }
 
     #[test]
     fn classify_population_owl_individual() {
-        assert_eq!(classify_node_population(Some("owl_individual")), NodePopulation::Ontology);
+        assert_eq!(
+            classify_node_population(Some("owl_individual")),
+            NodePopulation::Ontology
+        );
     }
 
     #[test]
     fn classify_population_owl_property() {
-        assert_eq!(classify_node_population(Some("owl_property")), NodePopulation::Ontology);
+        assert_eq!(
+            classify_node_population(Some("owl_property")),
+            NodePopulation::Ontology
+        );
     }
 
     #[test]
     fn classify_population_ontology_class_camel() {
-        assert_eq!(classify_node_population(Some("OntologyClass")), NodePopulation::Ontology);
+        assert_eq!(
+            classify_node_population(Some("OntologyClass")),
+            NodePopulation::Ontology
+        );
     }
 
     #[test]
     fn classify_population_ontologyclass_lower() {
-        assert_eq!(classify_node_population(Some("ontologyclass")), NodePopulation::Ontology);
+        assert_eq!(
+            classify_node_population(Some("ontologyclass")),
+            NodePopulation::Ontology
+        );
     }
 
     // GIVEN: Agent-type strings (various casings)
@@ -337,7 +373,10 @@ mod tests {
 
     #[test]
     fn classify_population_agent_lower() {
-        assert_eq!(classify_node_population(Some("agent")), NodePopulation::Agent);
+        assert_eq!(
+            classify_node_population(Some("agent")),
+            NodePopulation::Agent
+        );
     }
 
     #[test]
@@ -347,7 +386,10 @@ mod tests {
 
     #[test]
     fn classify_population_agent_title_case() {
-        assert_eq!(classify_node_population(Some("Agent")), NodePopulation::Agent);
+        assert_eq!(
+            classify_node_population(Some("Agent")),
+            NodePopulation::Agent
+        );
     }
 
     #[test]
@@ -366,17 +408,26 @@ mod tests {
 
     #[test]
     fn classify_population_empty_string() {
-        assert_eq!(classify_node_population(Some("")), NodePopulation::Knowledge);
+        assert_eq!(
+            classify_node_population(Some("")),
+            NodePopulation::Knowledge
+        );
     }
 
     #[test]
     fn classify_population_unknown_type() {
-        assert_eq!(classify_node_population(Some("unknown_type")), NodePopulation::Knowledge);
+        assert_eq!(
+            classify_node_population(Some("unknown_type")),
+            NodePopulation::Knowledge
+        );
     }
 
     #[test]
     fn classify_population_custom_thing() {
-        assert_eq!(classify_node_population(Some("custom_thing")), NodePopulation::Knowledge);
+        assert_eq!(
+            classify_node_population(Some("custom_thing")),
+            NodePopulation::Knowledge
+        );
     }
 
     // GIVEN: Case-insensitive inputs for all populations
@@ -385,17 +436,26 @@ mod tests {
 
     #[test]
     fn classify_population_page_upper() {
-        assert_eq!(classify_node_population(Some("PAGE")), NodePopulation::Knowledge);
+        assert_eq!(
+            classify_node_population(Some("PAGE")),
+            NodePopulation::Knowledge
+        );
     }
 
     #[test]
     fn classify_population_owl_class_upper() {
-        assert_eq!(classify_node_population(Some("OWL_CLASS")), NodePopulation::Ontology);
+        assert_eq!(
+            classify_node_population(Some("OWL_CLASS")),
+            NodePopulation::Ontology
+        );
     }
 
     #[test]
     fn classify_population_agent_upper() {
-        assert_eq!(classify_node_population(Some("AGENT")), NodePopulation::Agent);
+        assert_eq!(
+            classify_node_population(Some("AGENT")),
+            NodePopulation::Agent
+        );
     }
 
     // ── classify_ontology_subtype ────────────────────────────────────
@@ -406,22 +466,34 @@ mod tests {
 
     #[test]
     fn classify_subtype_owl_class() {
-        assert_eq!(classify_ontology_subtype(Some("owl_class")), OntologySubtype::Class);
+        assert_eq!(
+            classify_ontology_subtype(Some("owl_class")),
+            OntologySubtype::Class
+        );
     }
 
     #[test]
     fn classify_subtype_owlclass() {
-        assert_eq!(classify_ontology_subtype(Some("owlclass")), OntologySubtype::Class);
+        assert_eq!(
+            classify_ontology_subtype(Some("owlclass")),
+            OntologySubtype::Class
+        );
     }
 
     #[test]
     fn classify_subtype_ontology_node() {
-        assert_eq!(classify_ontology_subtype(Some("ontology_node")), OntologySubtype::Class);
+        assert_eq!(
+            classify_ontology_subtype(Some("ontology_node")),
+            OntologySubtype::Class
+        );
     }
 
     #[test]
     fn classify_subtype_ontologyclass() {
-        assert_eq!(classify_ontology_subtype(Some("ontologyclass")), OntologySubtype::Class);
+        assert_eq!(
+            classify_ontology_subtype(Some("ontologyclass")),
+            OntologySubtype::Class
+        );
     }
 
     // GIVEN: Individual-type ontology strings
@@ -430,12 +502,18 @@ mod tests {
 
     #[test]
     fn classify_subtype_owl_individual() {
-        assert_eq!(classify_ontology_subtype(Some("owl_individual")), OntologySubtype::Individual);
+        assert_eq!(
+            classify_ontology_subtype(Some("owl_individual")),
+            OntologySubtype::Individual
+        );
     }
 
     #[test]
     fn classify_subtype_ontologyindividual() {
-        assert_eq!(classify_ontology_subtype(Some("ontologyindividual")), OntologySubtype::Individual);
+        assert_eq!(
+            classify_ontology_subtype(Some("ontologyindividual")),
+            OntologySubtype::Individual
+        );
     }
 
     // GIVEN: Property-type ontology strings
@@ -444,12 +522,18 @@ mod tests {
 
     #[test]
     fn classify_subtype_owl_property() {
-        assert_eq!(classify_ontology_subtype(Some("owl_property")), OntologySubtype::Property);
+        assert_eq!(
+            classify_ontology_subtype(Some("owl_property")),
+            OntologySubtype::Property
+        );
     }
 
     #[test]
     fn classify_subtype_ontologyproperty() {
-        assert_eq!(classify_ontology_subtype(Some("ontologyproperty")), OntologySubtype::Property);
+        assert_eq!(
+            classify_ontology_subtype(Some("ontologyproperty")),
+            OntologySubtype::Property
+        );
     }
 
     // GIVEN: Non-ontology or absent type strings
@@ -458,17 +542,26 @@ mod tests {
 
     #[test]
     fn classify_subtype_none() {
-        assert_eq!(classify_ontology_subtype(None), OntologySubtype::Unspecified);
+        assert_eq!(
+            classify_ontology_subtype(None),
+            OntologySubtype::Unspecified
+        );
     }
 
     #[test]
     fn classify_subtype_page() {
-        assert_eq!(classify_ontology_subtype(Some("page")), OntologySubtype::Unspecified);
+        assert_eq!(
+            classify_ontology_subtype(Some("page")),
+            OntologySubtype::Unspecified
+        );
     }
 
     #[test]
     fn classify_subtype_agent() {
-        assert_eq!(classify_ontology_subtype(Some("agent")), OntologySubtype::Unspecified);
+        assert_eq!(
+            classify_ontology_subtype(Some("agent")),
+            OntologySubtype::Unspecified
+        );
     }
 
     // ── effective_node_type ──────────────────────────────────────────
@@ -479,9 +572,7 @@ mod tests {
 
     #[test]
     fn effective_type_returns_node_type_when_present() {
-        let meta = HashMap::from([
-            ("type".to_string(), "ignored".to_string()),
-        ]);
+        let meta = HashMap::from([("type".to_string(), "ignored".to_string())]);
         assert_eq!(
             effective_node_type(Some("owl_class"), Some(&meta)),
             Some("owl_class"),
@@ -490,10 +581,7 @@ mod tests {
 
     #[test]
     fn effective_type_returns_node_type_without_metadata() {
-        assert_eq!(
-            effective_node_type(Some("agent"), None),
-            Some("agent"),
-        );
+        assert_eq!(effective_node_type(Some("agent"), None), Some("agent"),);
     }
 
     // GIVEN: node_type is None, metadata has "type" key
@@ -502,13 +590,8 @@ mod tests {
 
     #[test]
     fn effective_type_falls_back_to_metadata_type() {
-        let meta = HashMap::from([
-            ("type".to_string(), "owl_class".to_string()),
-        ]);
-        assert_eq!(
-            effective_node_type(None, Some(&meta)),
-            Some("owl_class"),
-        );
+        let meta = HashMap::from([("type".to_string(), "owl_class".to_string())]);
+        assert_eq!(effective_node_type(None, Some(&meta)), Some("owl_class"),);
     }
 
     // GIVEN: node_type is None, metadata has "node_type" key (no "type")
@@ -517,13 +600,8 @@ mod tests {
 
     #[test]
     fn effective_type_falls_back_to_metadata_node_type() {
-        let meta = HashMap::from([
-            ("node_type".to_string(), "page".to_string()),
-        ]);
-        assert_eq!(
-            effective_node_type(None, Some(&meta)),
-            Some("page"),
-        );
+        let meta = HashMap::from([("node_type".to_string(), "page".to_string())]);
+        assert_eq!(effective_node_type(None, Some(&meta)), Some("page"),);
     }
 
     // GIVEN: node_type is None, metadata has both "type" and "node_type"
@@ -536,10 +614,7 @@ mod tests {
             ("type".to_string(), "owl_class".to_string()),
             ("node_type".to_string(), "page".to_string()),
         ]);
-        assert_eq!(
-            effective_node_type(None, Some(&meta)),
-            Some("owl_class"),
-        );
+        assert_eq!(effective_node_type(None, Some(&meta)), Some("owl_class"),);
     }
 
     // GIVEN: node_type is None, no metadata

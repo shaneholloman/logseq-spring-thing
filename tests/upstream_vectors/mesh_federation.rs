@@ -24,7 +24,13 @@ fn mesh_federation_scenarios_cover_the_five_categories() {
         .iter()
         .filter_map(|v| v["scenario"].as_str())
         .collect();
-    let expected = ["fanout", "lru-dedup", "loop-avoidance", "service-list", "mode-config"];
+    let expected = [
+        "fanout",
+        "lru-dedup",
+        "loop-avoidance",
+        "service-list",
+        "mode-config",
+    ];
     for s in &expected {
         assert!(
             scenarios.contains(s),

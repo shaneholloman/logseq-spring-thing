@@ -85,8 +85,8 @@ impl PresetConfig {
 
     /// Load a preset from a file path.
     pub fn from_file(path: &Path) -> Result<Self, PresetLoadError> {
-        let content = std::fs::read_to_string(path)
-            .map_err(|e| PresetLoadError::Io(e.to_string()))?;
+        let content =
+            std::fs::read_to_string(path).map_err(|e| PresetLoadError::Io(e.to_string()))?;
         Self::from_toml(&content).map_err(|e| PresetLoadError::Parse(e.to_string()))
     }
 
@@ -342,7 +342,10 @@ mod tests {
         let p = PresetConfig::load_builtin_preset(ForcePreset::Default);
         assert_eq!(p.name, ForcePreset::Default);
         assert_eq!(p.version, 1);
-        assert!(p.edge_kinds.is_empty(), "default preset should have no edge_kind overrides");
+        assert!(
+            p.edge_kinds.is_empty(),
+            "default preset should have no edge_kind overrides"
+        );
     }
 
     #[test]
@@ -362,8 +365,14 @@ mod tests {
         assert_eq!(p.name, ForcePreset::LogseqLarge);
         assert_eq!(p.version, 1);
         // Verify matryca calibration: gravity should be ~100x smaller than pixel-space -50
-        assert!(p.global.gravity.abs() < 1.0, "gravity should be metre-scale");
-        assert!(p.global.rest_length <= 2.0, "rest_length should be metre-scale");
+        assert!(
+            p.global.gravity.abs() < 1.0,
+            "gravity should be metre-scale"
+        );
+        assert!(
+            p.global.rest_length <= 2.0,
+            "rest_length should be metre-scale"
+        );
         // Verify edge_kinds are present
         assert!(p.edge_kinds.contains_key("block_parent"));
         assert!(p.edge_kinds.contains_key("wiki_link"));
@@ -371,7 +380,10 @@ mod tests {
         assert!(p.edge_kinds.contains_key("disjoint_with"));
         // Verify matryca-derived block_parent rest_length
         let bp = &p.edge_kinds["block_parent"];
-        assert!((bp.rest_length - 0.3).abs() < 0.01, "block_parent rest_length should be 0.3m (matryca 30px /100)");
+        assert!(
+            (bp.rest_length - 0.3).abs() < 0.01,
+            "block_parent rest_length should be 0.3m (matryca 30px /100)"
+        );
     }
 
     #[test]
@@ -400,7 +412,10 @@ mod tests {
         assert!(p.edge_kinds["bridges_to"].rest_length > 2.0);
         // disjoint_with should be repulsive
         let dw = &p.edge_kinds["disjoint_with"];
-        assert!(dw.spring_k < 0.0, "disjoint_with should have negative spring_k");
+        assert!(
+            dw.spring_k < 0.0,
+            "disjoint_with should have negative spring_k"
+        );
         assert!(dw.repulsion_strength > 0.0);
     }
 
@@ -435,12 +450,32 @@ mod tests {
             // dt must be positive
             assert!(p.global.dt > 0.0, "{:?}: dt must be positive", preset);
             // max_velocity and max_force must be positive
-            assert!(p.global.max_velocity > 0.0, "{:?}: max_velocity must be positive", preset);
-            assert!(p.global.max_force > 0.0, "{:?}: max_force must be positive", preset);
+            assert!(
+                p.global.max_velocity > 0.0,
+                "{:?}: max_velocity must be positive",
+                preset
+            );
+            assert!(
+                p.global.max_force > 0.0,
+                "{:?}: max_force must be positive",
+                preset
+            );
             // stability thresholds must be positive
-            assert!(p.stability.velocity_epsilon > 0.0, "{:?}: velocity_epsilon must be positive", preset);
-            assert!(p.stability.force_epsilon > 0.0, "{:?}: force_epsilon must be positive", preset);
-            assert!(p.stability.max_iterations > 0, "{:?}: max_iterations must be > 0", preset);
+            assert!(
+                p.stability.velocity_epsilon > 0.0,
+                "{:?}: velocity_epsilon must be positive",
+                preset
+            );
+            assert!(
+                p.stability.force_epsilon > 0.0,
+                "{:?}: force_epsilon must be positive",
+                preset
+            );
+            assert!(
+                p.stability.max_iterations > 0,
+                "{:?}: max_iterations must be > 0",
+                preset
+            );
         }
     }
 

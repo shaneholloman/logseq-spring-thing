@@ -10,7 +10,10 @@ fn nip98_fixture_loads_and_metadata_is_canonical() {
     let f = load_fixture("nip98-tokens.json");
     assert_meta_block(&f, "NIP-98");
     let vectors = f["vectors"].as_array().expect("vectors must be array");
-    assert!(vectors.len() >= 6, "nip98-tokens fixture must have >= 6 vectors");
+    assert!(
+        vectors.len() >= 6,
+        "nip98-tokens fixture must have >= 6 vectors"
+    );
 }
 
 #[test]

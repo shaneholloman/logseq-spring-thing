@@ -8,12 +8,12 @@
 
 use async_trait::async_trait;
 use lru::LruCache;
-use neo4rs::{Graph, query, BoltInteger, BoltFloat};
+use neo4rs::{query, BoltFloat, BoltInteger, Graph};
 use std::collections::{HashMap, HashSet};
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tracing::{debug, info, warn, instrument};
+use tracing::{debug, info, instrument, warn};
 
 use crate::actors::graph_actor::{AutoBalanceNotification, PhysicsState};
 use crate::models::constraints::ConstraintSet;
@@ -24,7 +24,7 @@ use crate::models::node::Node;
 use crate::ports::graph_repository::{
     GraphRepository, GraphRepositoryError, PathfindingParams, PathfindingResult, Result,
 };
-use crate::ports::settings_repository::{SettingsRepository, SettingValue};
+use crate::ports::settings_repository::{SettingValue, SettingsRepository};
 use crate::settings::models::NodeFilterSettings;
 use glam::Vec3;
 
@@ -59,12 +59,12 @@ impl Neo4jGraphRepository {
     pub fn new(graph: Arc<Graph>) -> Self {
         Self {
             graph,
-            node_cache: Arc::new(RwLock::new(
-                LruCache::new(NonZeroUsize::new(CACHE_SIZE).expect("CACHE_SIZE constant is non-zero"))
-            )),
-            edge_cache: Arc::new(RwLock::new(
-                LruCache::new(NonZeroUsize::new(CACHE_SIZE).expect("CACHE_SIZE constant is non-zero"))
-            )),
+            node_cache: Arc::new(RwLock::new(LruCache::new(
+                NonZeroUsize::new(CACHE_SIZE).expect("CACHE_SIZE constant is non-zero"),
+            ))),
+            edge_cache: Arc::new(RwLock::new(LruCache::new(
+                NonZeroUsize::new(CACHE_SIZE).expect("CACHE_SIZE constant is non-zero"),
+            ))),
             graph_snapshot: Arc::new(RwLock::new(None)),
             is_loaded: Arc::new(RwLock::new(false)),
             settings_repository: None,
@@ -73,15 +73,18 @@ impl Neo4jGraphRepository {
     }
 
     /// Create repository with settings support for node filtering
-    pub fn with_settings(graph: Arc<Graph>, settings_repository: Arc<dyn SettingsRepository>) -> Self {
+    pub fn with_settings(
+        graph: Arc<Graph>,
+        settings_repository: Arc<dyn SettingsRepository>,
+    ) -> Self {
         Self {
             graph,
-            node_cache: Arc::new(RwLock::new(
-                LruCache::new(NonZeroUsize::new(CACHE_SIZE).expect("CACHE_SIZE constant is non-zero"))
-            )),
-            edge_cache: Arc::new(RwLock::new(
-                LruCache::new(NonZeroUsize::new(CACHE_SIZE).expect("CACHE_SIZE constant is non-zero"))
-            )),
+            node_cache: Arc::new(RwLock::new(LruCache::new(
+                NonZeroUsize::new(CACHE_SIZE).expect("CACHE_SIZE constant is non-zero"),
+            ))),
+            edge_cache: Arc::new(RwLock::new(LruCache::new(
+                NonZeroUsize::new(CACHE_SIZE).expect("CACHE_SIZE constant is non-zero"),
+            ))),
             graph_snapshot: Arc::new(RwLock::new(None)),
             is_loaded: Arc::new(RwLock::new(false)),
             settings_repository: Some(settings_repository),
@@ -91,8 +94,10 @@ impl Neo4jGraphRepository {
 
     /// Update node filter settings (called from settings actor when settings change)
     pub async fn set_node_filter_settings(&self, settings: NodeFilterSettings) {
-        info!("Updating node filter settings: enabled={}, quality_threshold={}",
-              settings.enabled, settings.quality_threshold);
+        info!(
+            "Updating node filter settings: enabled={}, quality_threshold={}",
+            settings.enabled, settings.quality_threshold
+        );
         *self.node_filter_settings.write().await = settings;
         // Invalidate graph cache to force reload with new filters
         self.invalidate_cache().await;
@@ -110,8 +115,10 @@ impl Neo4jGraphRepository {
                 Ok(Some(SettingValue::Json(json))) => {
                     match serde_json::from_value::<NodeFilterSettings>(json) {
                         Ok(settings) => {
-                            info!("Loaded node filter settings: enabled={}, threshold={}",
-                                  settings.enabled, settings.quality_threshold);
+                            info!(
+                                "Loaded node filter settings: enabled={}, threshold={}",
+                                settings.enabled, settings.quality_threshold
+                            );
                             return settings;
                         }
                         Err(e) => {
@@ -139,16 +146,24 @@ impl Neo4jGraphRepository {
         let filter_settings = self.load_node_filter_settings().await;
         *self.node_filter_settings.write().await = filter_settings.clone();
 
-        info!("Node filter: enabled={}, quality_threshold={}, filter_by_quality={}",
-              filter_settings.enabled, filter_settings.quality_threshold, filter_settings.filter_by_quality);
+        info!(
+            "Node filter: enabled={}, quality_threshold={}, filter_by_quality={}",
+            filter_settings.enabled,
+            filter_settings.quality_threshold,
+            filter_settings.filter_by_quality
+        );
 
         // Load nodes with filter applied
         let nodes = self.load_all_nodes_filtered(&filter_settings).await?;
         let edges = self.load_all_edges().await?;
         let metadata = self.load_all_metadata().await?;
 
-        info!("Loaded {} nodes (filtered), {} edges, {} metadata entries",
-              nodes.len(), edges.len(), metadata.len());
+        info!(
+            "Loaded {} nodes (filtered), {} edges, {} metadata entries",
+            nodes.len(),
+            edges.len(),
+            metadata.len()
+        );
 
         // Update cache
         {
@@ -202,13 +217,15 @@ impl Neo4jGraphRepository {
             if filter.enabled {
                 if filter.filter_by_quality {
                     conditions.push(
-                        "(n.quality_score IS NULL OR n.quality_score >= $quality_threshold)".to_string()
+                        "(n.quality_score IS NULL OR n.quality_score >= $quality_threshold)"
+                            .to_string(),
                     );
                 }
 
                 if filter.filter_by_authority {
                     conditions.push(
-                        "(n.authority_score IS NULL OR n.authority_score >= $authority_threshold)".to_string()
+                        "(n.authority_score IS NULL OR n.authority_score >= $authority_threshold)"
+                            .to_string(),
                     );
                 }
             }
@@ -234,7 +251,8 @@ impl Neo4jGraphRepository {
 
         // Use COALESCE to prefer sim_* (GPU physics state) over x/y/z (initial positions)
         // This preserves the calculated layout during content sync
-        let query_str = format!("
+        let query_str = format!(
+            "
             MATCH (n:KGNode)
             {}
             RETURN n.id as id,
@@ -269,27 +287,38 @@ impl Neo4jGraphRepository {
                    n.kind_id as kind_id,
                    n.metadata as metadata_json
             ORDER BY id
-        ", where_clause);
+        ",
+            where_clause
+        );
 
-        info!("Executing node query with filter: {}", if filter.enabled { "enabled" } else { "disabled" });
+        info!(
+            "Executing node query with filter: {}",
+            if filter.enabled {
+                "enabled"
+            } else {
+                "disabled"
+            }
+        );
 
         // Bind thresholds as parameters -- safe from Cypher injection
         let parameterized_query = query(&query_str)
             .param("quality_threshold", filter.quality_threshold)
             .param("authority_threshold", filter.authority_threshold);
 
-        let mut result = self.graph
-            .execute(parameterized_query)
-            .await
-            .map_err(|e| GraphRepositoryError::AccessError(format!("Failed to query nodes: {}", e)))?;
+        let mut result = self.graph.execute(parameterized_query).await.map_err(|e| {
+            GraphRepositoryError::AccessError(format!("Failed to query nodes: {}", e))
+        })?;
 
         let mut nodes = Vec::new();
 
-        while let Some(row) = result.next().await
+        while let Some(row) = result
+            .next()
+            .await
             .map_err(|e| GraphRepositoryError::AccessError(format!("Failed to fetch row: {}", e)))?
         {
-            let id: BoltInteger = row.get("id")
-                .map_err(|e| GraphRepositoryError::DeserializationError(format!("Missing id: {}", e)))?;
+            let id: BoltInteger = row.get("id").map_err(|e| {
+                GraphRepositoryError::DeserializationError(format!("Missing id: {}", e))
+            })?;
 
             let metadata_id: String = row.get("metadata_id").unwrap_or_default();
             let label: String = row.get("label").unwrap_or_default();
@@ -309,7 +338,9 @@ impl Neo4jGraphRepository {
             let size: BoltFloat = row.get("size").unwrap_or(BoltFloat { value: 1.0 });
             let color: String = row.get("color").unwrap_or_else(|_| "#888888".to_string());
             let weight: BoltFloat = row.get("weight").unwrap_or(BoltFloat { value: 1.0 });
-            let node_type: String = row.get("node_type").unwrap_or_else(|_| "default".to_string());
+            let node_type: String = row
+                .get("node_type")
+                .unwrap_or_else(|_| "default".to_string());
             let cluster: Option<i64> = row.get("cluster").ok();
 
             // Analytics fields (P0-4)
@@ -322,32 +353,40 @@ impl Neo4jGraphRepository {
             // value is available both for the metadata HashMap (legacy) and for
             // the typed Node fields (PRD-006 P1 / F1) without moving issues —
             // BoltFloat is Clone but not Copy.
-            let quality_score: Option<f32> = row.get::<BoltFloat>("quality_score").ok().map(|f| f.value as f32);
-            let authority_score: Option<f32> = row.get::<BoltFloat>("authority_score").ok().map(|f| f.value as f32);
+            let quality_score: Option<f32> = row
+                .get::<BoltFloat>("quality_score")
+                .ok()
+                .map(|f| f.value as f32);
+            let authority_score: Option<f32> = row
+                .get::<BoltFloat>("authority_score")
+                .ok()
+                .map(|f| f.value as f32);
 
             // VisionClaw v2 ontology fields (PRD-006 P1 / F1: round-trip plumbing).
             // The write path in neo4j_adapter.rs persists these via .unwrap_or_default(),
             // so a Rust None becomes an empty Cypher string. We normalise back to None
             // here so callers get an honest "absent" signal rather than `Some("")`.
-            let normalize = |s: Option<String>| -> Option<String> {
-                s.filter(|v| !v.is_empty())
-            };
-            let canonical_iri: Option<String>   = normalize(row.get("canonical_iri").ok());
-            let visionclaw_uri: Option<String>  = normalize(row.get("visionclaw_uri").ok());
-            let rdf_type: Option<String>        = normalize(row.get("rdf_type").ok());
-            let same_as: Option<String>         = normalize(row.get("same_as").ok());
-            let domain: Option<String>          = normalize(row.get("domain").ok());
-            let content_hash: Option<String>    = normalize(row.get("content_hash").ok());
+            let normalize = |s: Option<String>| -> Option<String> { s.filter(|v| !v.is_empty()) };
+            let canonical_iri: Option<String> = normalize(row.get("canonical_iri").ok());
+            let visionclaw_uri: Option<String> = normalize(row.get("visionclaw_uri").ok());
+            let rdf_type: Option<String> = normalize(row.get("rdf_type").ok());
+            let same_as: Option<String> = normalize(row.get("same_as").ok());
+            let domain: Option<String> = normalize(row.get("domain").ok());
+            let content_hash: Option<String> = normalize(row.get("content_hash").ok());
             let preferred_term_v2: Option<String> = normalize(row.get("preferred_term_v2").ok());
-            let graph_source: Option<String>    = normalize(row.get("graph_source").ok());
-            let kind_id: Option<u8> = row.get::<BoltInteger>("kind_id").ok()
+            let graph_source: Option<String> = normalize(row.get("graph_source").ok());
+            let kind_id: Option<u8> = row
+                .get::<BoltInteger>("kind_id")
+                .ok()
                 .filter(|v| v.value >= 0)
                 .map(|v| v.value as u8);
 
             // Metadata JSON
-            let metadata_json: String = row.get("metadata_json").unwrap_or_else(|_| "{}".to_string());
-            let mut metadata: HashMap<String, String> = serde_json::from_str(&metadata_json)
-                .unwrap_or_default();
+            let metadata_json: String = row
+                .get("metadata_json")
+                .unwrap_or_else(|_| "{}".to_string());
+            let mut metadata: HashMap<String, String> =
+                serde_json::from_str(&metadata_json).unwrap_or_default();
 
             // Store analytics in metadata for now (Node struct doesn't have dedicated fields yet)
             if let Some(cid) = cluster_id {
@@ -395,7 +434,9 @@ impl Neo4jGraphRepository {
                     {
                         const ALLOWLIST: &[&str] = &["type"];
                         for k in ALLOWLIST {
-                            if metadata.contains_key(*k) { continue; }
+                            if metadata.contains_key(*k) {
+                                continue;
+                            }
                             if let Some(v) = map.get(*k) {
                                 let s = match v {
                                     serde_json::Value::String(s) => s.clone(),
@@ -483,23 +524,28 @@ impl Neo4jGraphRepository {
                    COALESCE(r.edge_type, r.relation_type, type(r)) as edge_type
         ";
 
-        let mut result = self.graph
-            .execute(query(query_str))
-            .await
-            .map_err(|e| GraphRepositoryError::AccessError(format!("Failed to query edges: {}", e)))?;
+        let mut result = self.graph.execute(query(query_str)).await.map_err(|e| {
+            GraphRepositoryError::AccessError(format!("Failed to query edges: {}", e))
+        })?;
 
         let mut edges = Vec::new();
 
-        while let Some(row) = result.next().await
+        while let Some(row) = result
+            .next()
+            .await
             .map_err(|e| GraphRepositoryError::AccessError(format!("Failed to fetch row: {}", e)))?
         {
-            let source_id: BoltInteger = row.get("source_id")
-                .map_err(|e| GraphRepositoryError::DeserializationError(format!("Missing source_id: {}", e)))?;
-            let target_id: BoltInteger = row.get("target_id")
-                .map_err(|e| GraphRepositoryError::DeserializationError(format!("Missing target_id: {}", e)))?;
+            let source_id: BoltInteger = row.get("source_id").map_err(|e| {
+                GraphRepositoryError::DeserializationError(format!("Missing source_id: {}", e))
+            })?;
+            let target_id: BoltInteger = row.get("target_id").map_err(|e| {
+                GraphRepositoryError::DeserializationError(format!("Missing target_id: {}", e))
+            })?;
 
             let weight: BoltFloat = row.get("weight").unwrap_or(BoltFloat { value: 1.0 });
-            let edge_type: String = row.get("edge_type").unwrap_or_else(|_| "default".to_string());
+            let edge_type: String = row
+                .get("edge_type")
+                .unwrap_or_else(|_| "default".to_string());
 
             let edge = Edge {
                 id: format!("{}-{}", source_id.value, target_id.value),
@@ -607,15 +653,21 @@ impl GraphRepository for Neo4jGraphRepository {
         let mut added_ids = Vec::with_capacity(nodes.len());
 
         for node in &nodes {
-            let metadata_json = serde_json::to_string(&node.metadata)
-                .map_err(|e| GraphRepositoryError::SerializationError(format!("Failed to serialize metadata: {}", e)))?;
+            let metadata_json = serde_json::to_string(&node.metadata).map_err(|e| {
+                GraphRepositoryError::SerializationError(format!(
+                    "Failed to serialize metadata: {}",
+                    e
+                ))
+            })?;
 
-            let quality_score: f64 = node.metadata
+            let quality_score: f64 = node
+                .metadata
                 .get("quality_score")
                 .and_then(|s| s.parse::<f64>().ok())
                 .unwrap_or(1.0);
 
-            let authority_score: f64 = node.metadata
+            let authority_score: f64 = node
+                .metadata
                 .get("authority_score")
                 .and_then(|s| s.parse::<f64>().ok())
                 .unwrap_or(1.0);
@@ -633,7 +685,11 @@ impl GraphRepository for Neo4jGraphRepository {
             sizes.push(node.size.unwrap_or(1.0) as f64);
             colors.push(node.color.clone().unwrap_or_else(|| "#888888".to_string()));
             weights.push(node.weight.unwrap_or(1.0) as f64);
-            node_types.push(node.node_type.clone().unwrap_or_else(|| "default".to_string()));
+            node_types.push(
+                node.node_type
+                    .clone()
+                    .unwrap_or_else(|| "default".to_string()),
+            );
             kind_ids.push(node.kind_id.map(|k| k as i64).unwrap_or(-1));
             quality_scores.push(quality_score);
             authority_scores.push(authority_score);
@@ -643,27 +699,31 @@ impl GraphRepository for Neo4jGraphRepository {
 
         // Execute single batch query with parallel arrays
         self.graph
-            .run(query(query_str)
-                .param("ids", ids)
-                .param("metadata_ids", metadata_ids)
-                .param("labels", labels)
-                .param("xs", xs)
-                .param("ys", ys)
-                .param("zs", zs)
-                .param("vxs", vxs)
-                .param("vys", vys)
-                .param("vzs", vzs)
-                .param("masses", masses)
-                .param("sizes", sizes)
-                .param("colors", colors)
-                .param("weights", weights)
-                .param("node_types", node_types)
-                .param("kind_ids", kind_ids)
-                .param("quality_scores", quality_scores)
-                .param("authority_scores", authority_scores)
-                .param("metadatas", metadatas))
+            .run(
+                query(query_str)
+                    .param("ids", ids)
+                    .param("metadata_ids", metadata_ids)
+                    .param("labels", labels)
+                    .param("xs", xs)
+                    .param("ys", ys)
+                    .param("zs", zs)
+                    .param("vxs", vxs)
+                    .param("vys", vys)
+                    .param("vzs", vzs)
+                    .param("masses", masses)
+                    .param("sizes", sizes)
+                    .param("colors", colors)
+                    .param("weights", weights)
+                    .param("node_types", node_types)
+                    .param("kind_ids", kind_ids)
+                    .param("quality_scores", quality_scores)
+                    .param("authority_scores", authority_scores)
+                    .param("metadatas", metadatas),
+            )
             .await
-            .map_err(|e| GraphRepositoryError::AccessError(format!("Failed to batch add nodes: {}", e)))?;
+            .map_err(|e| {
+                GraphRepositoryError::AccessError(format!("Failed to batch add nodes: {}", e))
+            })?;
 
         // Update cache for all nodes
         {
@@ -733,20 +793,28 @@ impl GraphRepository for Neo4jGraphRepository {
             source_ids.push(edge.source as i64);
             target_ids.push(edge.target as i64);
             weights.push(edge.weight as f64);
-            edge_types.push(edge.edge_type.clone().unwrap_or_else(|| "default".to_string()));
+            edge_types.push(
+                edge.edge_type
+                    .clone()
+                    .unwrap_or_else(|| "default".to_string()),
+            );
             added_ids.push(edge.id.clone());
         }
 
         // Execute single batch query with parallel arrays
         self.graph
-            .run(query(query_str)
-                .param("edge_ids", edge_ids)
-                .param("source_ids", source_ids)
-                .param("target_ids", target_ids)
-                .param("weights", weights)
-                .param("edge_types", edge_types))
+            .run(
+                query(query_str)
+                    .param("edge_ids", edge_ids)
+                    .param("source_ids", source_ids)
+                    .param("target_ids", target_ids)
+                    .param("weights", weights)
+                    .param("edge_types", edge_types),
+            )
             .await
-            .map_err(|e| GraphRepositoryError::AccessError(format!("Failed to batch add edges: {}", e)))?;
+            .map_err(|e| {
+                GraphRepositoryError::AccessError(format!("Failed to batch add edges: {}", e))
+            })?;
 
         // Update cache for all edges
         {
@@ -769,16 +837,16 @@ impl GraphRepository for Neo4jGraphRepository {
         }
 
         // Return cached snapshot
-        self.graph_snapshot.read().await
+        self.graph_snapshot
+            .read()
+            .await
             .clone()
             .ok_or_else(|| GraphRepositoryError::AccessError("Graph not loaded".to_string()))
     }
 
     async fn get_node_map(&self) -> Result<Arc<HashMap<u32, Node>>> {
         let graph = self.get_graph().await?;
-        let map: HashMap<u32, Node> = graph.nodes.iter()
-            .map(|n| (n.id, n.clone()))
-            .collect();
+        let map: HashMap<u32, Node> = graph.nodes.iter().map(|n| (n.id, n.clone())).collect();
         Ok(Arc::new(map))
     }
 
@@ -829,18 +897,23 @@ impl GraphRepository for Neo4jGraphRepository {
         }
 
         self.graph
-            .run(query(query_str)
-                .param("ids", ids)
-                .param("xs", xs)
-                .param("ys", ys)
-                .param("zs", zs)
-                .param("vxs", vxs)
-                .param("vys", vys)
-                .param("vzs", vzs))
+            .run(
+                query(query_str)
+                    .param("ids", ids)
+                    .param("xs", xs)
+                    .param("ys", ys)
+                    .param("zs", zs)
+                    .param("vxs", vxs)
+                    .param("vys", vys)
+                    .param("vzs", vzs),
+            )
             .await
-            .map_err(|e| GraphRepositoryError::AccessError(
-                format!("Failed to batch update positions/velocities: {}", e)
-            ))?;
+            .map_err(|e| {
+                GraphRepositoryError::AccessError(format!(
+                    "Failed to batch update positions/velocities: {}",
+                    e
+                ))
+            })?;
 
         Ok(())
     }
@@ -859,7 +932,10 @@ impl GraphRepository for Neo4jGraphRepository {
         Ok(ConstraintSet::default())
     }
 
-    async fn compute_shortest_paths(&self, _params: PathfindingParams) -> Result<PathfindingResult> {
+    async fn compute_shortest_paths(
+        &self,
+        _params: PathfindingParams,
+    ) -> Result<PathfindingResult> {
         Err(GraphRepositoryError::NotImplemented)
     }
 
@@ -871,12 +947,15 @@ impl GraphRepository for Neo4jGraphRepository {
         // The graph already uses sim_* positions via COALESCE in load query
         // So this returns GPU physics state when available
         let graph = self.get_graph().await?;
-        let positions = graph.nodes.iter()
-            .map(|n| (n.id, Vec3::new(
-                n.x.unwrap_or(0.0),
-                n.y.unwrap_or(0.0),
-                n.z.unwrap_or(0.0)
-            )))
+        let positions = graph
+            .nodes
+            .iter()
+            .map(|n| {
+                (
+                    n.id,
+                    Vec3::new(n.x.unwrap_or(0.0), n.y.unwrap_or(0.0), n.z.unwrap_or(0.0)),
+                )
+            })
             .collect();
         Ok(positions)
     }

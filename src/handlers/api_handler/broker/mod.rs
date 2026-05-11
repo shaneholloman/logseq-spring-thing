@@ -1,19 +1,17 @@
 use actix_web::{web, HttpRequest, Responder};
-use log::{info, error};
+use log::{error, info};
 use serde::Deserialize;
 use serde_json::json;
 
-use crate::events::enterprise_events::{
-    CaseCreatedEvent, CaseDecidedEvent, emit_enterprise_event,
-};
+use crate::events::enterprise_events::{emit_enterprise_event, CaseCreatedEvent, CaseDecidedEvent};
 use crate::middleware::enterprise_auth::require_role;
 use crate::models::enterprise::*;
 use crate::services::migration_broker::{
     is_migration_candidate_case, meta_keys, MigrationCandidateAggregate,
     CATEGORY_CONTRIBUTOR_MESH_SHARE, SUBJECT_KIND_ONTOLOGY_TERM,
 };
-use crate::{ok_json, bad_request, not_found, created_json, error_json};
 use crate::AppState;
+use crate::{bad_request, created_json, error_json, not_found, ok_json};
 
 /// GET /api/broker/inbox
 /// Returns broker cases, optionally filtered by status.
@@ -28,13 +26,18 @@ pub async fn get_inbox(
     }
     info!("GET /api/broker/inbox");
 
-    let status_filter: Option<CaseStatus> = query.status.as_deref().and_then(|s| {
-        serde_json::from_value(serde_json::Value::String(s.to_string())).ok()
-    });
+    let status_filter: Option<CaseStatus> = query
+        .status
+        .as_deref()
+        .and_then(|s| serde_json::from_value(serde_json::Value::String(s.to_string())).ok());
 
     let limit = query.limit.unwrap_or(50).min(200);
 
-    match state.broker_repository.list_cases(status_filter, limit).await {
+    match state
+        .broker_repository
+        .list_cases(status_filter, limit)
+        .await
+    {
         Ok(cases) => {
             let total = cases.len();
             ok_json!(json!({
@@ -57,10 +60,7 @@ pub struct InboxQuery {
 }
 
 /// GET /api/broker/cases/{id}
-pub async fn get_case(
-    state: web::Data<AppState>,
-    case_id: web::Path<String>,
-) -> impl Responder {
+pub async fn get_case(state: web::Data<AppState>, case_id: web::Path<String>) -> impl Responder {
     info!("GET /api/broker/cases/{}", case_id);
 
     match state.broker_repository.get_case(case_id.as_str()).await {
@@ -427,7 +427,11 @@ pub async fn get_case_history(
     case_id: web::Path<String>,
 ) -> impl Responder {
     info!("GET /api/broker/cases/{}/history", case_id);
-    match state.broker_repository.get_decisions(case_id.as_str()).await {
+    match state
+        .broker_repository
+        .get_decisions(case_id.as_str())
+        .await
+    {
         Ok(decisions) => ok_json!(json!({
             "caseId": case_id.into_inner(),
             "decisions": decisions,

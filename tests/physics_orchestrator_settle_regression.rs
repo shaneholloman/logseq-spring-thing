@@ -65,7 +65,9 @@ async fn fast_settle_cap_does_not_deadlock_actor() {
 
     // Kick the simulation so the fast-settle loop begins (no GPU wired, but
     // the actor should still remain message-responsive).
-    addr.send(StartSimulation).await.expect("StartSimulation mailbox");
+    addr.send(StartSimulation)
+        .await
+        .expect("StartSimulation mailbox");
 
     // Give the actor a moment to attempt ticks. In no-GPU mode it returns
     // immediately from physics_step; in a real run FastSettle would hit the

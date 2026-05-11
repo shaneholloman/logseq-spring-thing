@@ -17,17 +17,16 @@ use crate::utils::time;
 
 #[derive(Debug, Clone)]
 pub enum SupervisionStrategy {
-    
     Restart,
-    
+
     RestartWithBackoff {
         initial_delay: Duration,
         max_delay: Duration,
         multiplier: f64,
     },
-    
+
     Escalate,
-    
+
     Stop,
 }
 
@@ -141,7 +140,6 @@ impl SupervisorActor {
 
     #[allow(dead_code)]
     fn should_restart(&self, actor_name: &str, state: &ActorState) -> bool {
-        
         if state.restart_count >= state.actor_info.max_restart_count {
             if let Some(last_restart) = state.last_restart {
                 if last_restart.elapsed() < state.actor_info.restart_window {
@@ -153,7 +151,6 @@ impl SupervisorActor {
                     );
                     return false;
                 }
-                
             }
         }
         true
@@ -198,9 +195,6 @@ impl SupervisorActor {
             ctx.run_later(delay, move |_act, ctx| {
                 info!("Attempting to restart actor '{}'", actor_name_clone);
 
-                
-                
-                
                 ctx.notify(RestartAttempt {
                     actor_name: actor_name_clone,
                     supervisor_name,
@@ -303,10 +297,8 @@ impl Handler<ActorFailed> for SupervisorActor {
             state.is_running = false;
             let strategy = state.actor_info.strategy.clone();
 
-            
             let should_restart = match &strategy {
                 SupervisionStrategy::Restart | SupervisionStrategy::RestartWithBackoff { .. } => {
-                    
                     if state.restart_count >= state.actor_info.max_restart_count {
                         if let Some(last_restart) = state.last_restart {
                             if last_restart.elapsed() < state.actor_info.restart_window {
@@ -315,7 +307,6 @@ impl Handler<ActorFailed> for SupervisorActor {
                                       state.actor_info.restart_window);
                                 false
                             } else {
-                                
                                 state.restart_count = 0;
                                 true
                             }
@@ -329,7 +320,6 @@ impl Handler<ActorFailed> for SupervisorActor {
                 _ => false,
             };
 
-            
             match strategy {
                 SupervisionStrategy::Restart => {
                     if should_restart {
@@ -356,7 +346,6 @@ impl Handler<ActorFailed> for SupervisorActor {
                         "Escalating failure of actor '{}' to parent supervisor",
                         msg.actor_name
                     );
-                    
                 }
                 SupervisionStrategy::Stop => {
                     info!(
@@ -442,9 +431,7 @@ impl Handler<RestartAttempt> for SupervisorActor {
                 // The factory itself is responsible for starting the new Actix
                 // actor (e.g. via `.start()`) and wiring it into the system.
                 let factory_clone = Arc::clone(factory);
-                match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    factory_clone()
-                })) {
+                match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| factory_clone())) {
                     Ok(_new_actor) => {
                         state.is_running = true;
                         info!(
@@ -457,11 +444,7 @@ impl Handler<RestartAttempt> for SupervisorActor {
                         let panic_msg = panic_payload
                             .downcast_ref::<&str>()
                             .map(|s| s.to_string())
-                            .or_else(|| {
-                                panic_payload
-                                    .downcast_ref::<String>()
-                                    .cloned()
-                            })
+                            .or_else(|| panic_payload.downcast_ref::<String>().cloned())
                             .unwrap_or_else(|| "unknown panic".to_string());
                         error!(
                             "Actor '{}' factory panicked during restart: {}",
@@ -485,8 +468,6 @@ impl Handler<RestartAttempt> for SupervisorActor {
 // DEPRECATED: Voice command handler removed - uses legacy DockerHiveMind
 // Replace with TaskOrchestratorActor integration
 
-
-
 pub trait SupervisedActorTrait: Actor {
     fn actor_name() -> &'static str;
 
@@ -503,10 +484,9 @@ pub trait SupervisedActorTrait: Actor {
     }
 
     fn restart_window() -> Duration {
-        Duration::from_secs(300) 
+        Duration::from_secs(300)
     }
 
-    
     fn report_error(&self, supervisor: &Addr<SupervisorActor>, error: VisionFlowError) {
         supervisor.do_send(ActorFailed {
             actor_name: Self::actor_name().to_string(),
@@ -518,8 +498,8 @@ pub trait SupervisedActorTrait: Actor {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tokio::time::sleep;
     use crate::utils::time;
+    use tokio::time::sleep;
 
     #[actix::test]
     async fn test_actor_registration() {
@@ -661,7 +641,10 @@ mod tests {
         assert_eq!(status.total_actors, 1);
         // Factory ran, so the actor should be running again
         let actor_info = &status.actors[0];
-        assert!(actor_info.is_running, "Actor should be running after factory restart");
+        assert!(
+            actor_info.is_running,
+            "Actor should be running after factory restart"
+        );
         assert_eq!(actor_info.restart_count, 1);
     }
 
@@ -702,7 +685,10 @@ mod tests {
             .unwrap();
         // Without a factory, the actor should NOT be running
         let actor_info = &status.actors[0];
-        assert!(!actor_info.is_running, "Actor without factory should not be running after restart attempt");
+        assert!(
+            !actor_info.is_running,
+            "Actor without factory should not be running after restart attempt"
+        );
     }
 
     #[actix::test]
@@ -750,7 +736,11 @@ mod tests {
             .unwrap();
         let actor_info = &status.actors[0];
         // Should have restarted at least twice
-        assert!(actor_info.restart_count >= 2, "Expected at least 2 restarts, got {}", actor_info.restart_count);
+        assert!(
+            actor_info.restart_count >= 2,
+            "Expected at least 2 restarts, got {}",
+            actor_info.restart_count
+        );
     }
 
     #[actix::test]

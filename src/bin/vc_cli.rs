@@ -217,9 +217,7 @@ async fn run_bootstrap(args: &BootstrapArgs) -> Result<(), BootstrapError> {
     let pod_url = resolve_pod_url(args.pod_url.as_deref(), &pubkey)?;
 
     // 5. Build payload JSON
-    let created_at = chrono::Utc::now()
-        .format("%Y-%m-%dT%H:%M:%SZ")
-        .to_string();
+    let created_at = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
     let payload = GithubConfigPayload {
         owner: &inputs.owner,
         repo: &inputs.repo,
@@ -455,9 +453,7 @@ fn resolve_pod_url(flag: Option<&str>, pubkey: &str) -> Result<String, Bootstrap
         }
     }
     match std::env::var("POD_BASE_URL") {
-        Ok(base) if !base.is_empty() => {
-            Ok(format!("{}/{}", base.trim_end_matches('/'), pubkey))
-        }
+        Ok(base) if !base.is_empty() => Ok(format!("{}/{}", base.trim_end_matches('/'), pubkey)),
         _ => Err(BootstrapError::MissingPodUrl),
     }
 }
@@ -500,8 +496,8 @@ fn load_nsec_keys() -> Result<nostr_sdk::prelude::Keys, BootstrapError> {
         return Err(BootstrapError::MissingSigningKey);
     }
     let nsec = Zeroizing::new(nsec.trim().to_string());
-    let secret_key = SecretKey::parse(nsec.as_str())
-        .map_err(|e| BootstrapError::InvalidNsec(e.to_string()))?;
+    let secret_key =
+        SecretKey::parse(nsec.as_str()).map_err(|e| BootstrapError::InvalidNsec(e.to_string()))?;
     Ok(Keys::new(secret_key))
 }
 

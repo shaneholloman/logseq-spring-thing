@@ -28,7 +28,7 @@ use crate::actors::{
     ProtectedSettingsActor, TaskOrchestratorActor, WorkspaceActor,
 };
 use crate::config::feature_access::FeatureAccess;
-use crate::config::AppFullSettings; 
+use crate::config::AppFullSettings;
 use crate::models::metadata::MetadataStore;
 use crate::models::protected_settings::{ApiKeys, NostrUser, ProtectedSettings};
 use crate::services::bots_client::BotsClient;
@@ -45,13 +45,13 @@ use tokio::sync::mpsc;
 use tokio::time::Duration;
 
 // Repository trait imports for hexagonal architecture
-use crate::adapters::neo4j_settings_repository::Neo4jSettingsRepository;
-use crate::adapters::neo4j_ontology_repository::{Neo4jOntologyRepository, Neo4jOntologyConfig};
 use crate::adapters::neo4j_broker_adapter::Neo4jBrokerRepository;
+use crate::adapters::neo4j_ontology_repository::{Neo4jOntologyConfig, Neo4jOntologyRepository};
+use crate::adapters::neo4j_settings_repository::Neo4jSettingsRepository;
 use crate::adapters::neo4j_workflow_adapter::Neo4jWorkflowRepository;
 use crate::ports::broker_repository::BrokerRepository;
-use crate::ports::workflow_repository::WorkflowRepository;
 use crate::ports::settings_repository::SettingsRepository;
+use crate::ports::workflow_repository::WorkflowRepository;
 
 /// SECURITY: List of known insecure default values that must be rejected
 /// Note: Do NOT include empty string - use separate length check instead
@@ -85,7 +85,9 @@ fn validate_security_env_vars() -> Result<String, Box<dyn std::error::Error + Se
     let mgmt_api_key = match std::env::var("MANAGEMENT_API_KEY") {
         Ok(key) => {
             let key_lower = key.to_lowercase();
-            if INSECURE_DEFAULT_KEYS.iter().any(|&insecure| !insecure.is_empty() && (key_lower == insecure || key_lower.contains(insecure))) {
+            if INSECURE_DEFAULT_KEYS.iter().any(|&insecure| {
+                !insecure.is_empty() && (key_lower == insecure || key_lower.contains(insecure))
+            }) {
                 errors.push(format!(
                     "MANAGEMENT_API_KEY contains an insecure default value. \
                      Please set a strong, unique API key (minimum 32 characters recommended)."
@@ -116,7 +118,9 @@ fn validate_security_env_vars() -> Result<String, Box<dyn std::error::Error + Se
     // Validate JWT_SECRET if it exists (optional but must be secure if set)
     if let Ok(jwt_secret) = std::env::var("JWT_SECRET") {
         let jwt_lower = jwt_secret.to_lowercase();
-        if INSECURE_DEFAULT_KEYS.iter().any(|&insecure| !insecure.is_empty() && (jwt_lower == insecure || jwt_lower.contains(insecure))) {
+        if INSECURE_DEFAULT_KEYS.iter().any(|&insecure| {
+            !insecure.is_empty() && (jwt_lower == insecure || jwt_lower.contains(insecure))
+        }) {
             errors.push(format!(
                 "JWT_SECRET contains an insecure default value. \
                  Please set a strong, unique secret (minimum 32 characters recommended)."
@@ -324,11 +328,10 @@ pub struct AppState {
 
     pub graph_repository: Arc<ActorGraphRepository>,
     pub graph_query_handlers: GraphQueryHandlers,
-    
+
     pub event_bus: Arc<RwLock<EventBus>>,
     pub event_store: Arc<EventStore>,
-    
-    
+
     pub settings_addr: Addr<OptimizedSettingsActor>,
     pub protected_settings_addr: Addr<ProtectedSettingsActor>,
     pub metadata_addr: Addr<MetadataActor>,
@@ -350,7 +353,8 @@ pub struct AppState {
     pub debug_enabled: bool,
     pub client_message_tx: mpsc::UnboundedSender<ClientMessage>,
     pub client_message_rx: Arc<tokio::sync::Mutex<mpsc::UnboundedReceiver<ClientMessage>>>,
-    pub ontology_pipeline_service: Option<Arc<crate::services::ontology_pipeline_service::OntologyPipelineService>>,
+    pub ontology_pipeline_service:
+        Option<Arc<crate::services::ontology_pipeline_service::OntologyPipelineService>>,
     /// Health degradation reason. `None` means healthy; `Some(reason)` means degraded.
     /// Uses `std::sync::RwLock` (not tokio) so it can be read synchronously in health checks.
     pub degraded_reason: Arc<std::sync::RwLock<Option<String>>>,
@@ -376,7 +380,6 @@ impl AppState {
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         info!("[AppState::new] Initializing actor system");
         tokio::time::sleep(Duration::from_millis(50)).await;
-
 
         info!("[AppState::new] Creating repository adapters for hexagonal architecture");
 
@@ -408,12 +411,12 @@ impl AppState {
         // Neo4j is now the primary graph repository
         let neo4j_adapter = {
             info!("[AppState::new] Initializing Neo4j as primary knowledge graph repository");
-            let config = Neo4jConfig::from_env()
-                .unwrap_or_else(|e| {
-                    log::warn!("Neo4jConfig::from_env() failed ({}), using defaults", e);
-                    Neo4jConfig::default()
-                });
-            let adapter = Neo4jAdapter::new(config).await
+            let config = Neo4jConfig::from_env().unwrap_or_else(|e| {
+                log::warn!("Neo4jConfig::from_env() failed ({}), using defaults", e);
+                Neo4jConfig::default()
+            });
+            let adapter = Neo4jAdapter::new(config)
+                .await
                 .map_err(|e| format!("Failed to initialize Neo4j adapter: {}", e))?;
             info!("✅ Neo4j adapter initialized successfully");
             Arc::new(adapter)
@@ -423,7 +426,8 @@ impl AppState {
         info!("[AppState::new] Creating Neo4j broker repository...");
         let broker_repository: Arc<dyn BrokerRepository> = {
             let repo = Neo4jBrokerRepository::new(neo4j_adapter.graph().clone());
-            repo.create_schema().await
+            repo.create_schema()
+                .await
                 .map_err(|e| format!("Failed to create broker schema: {}", e))?;
             Arc::new(repo)
         };
@@ -433,7 +437,8 @@ impl AppState {
         info!("[AppState::new] Creating Neo4j workflow repository...");
         let workflow_repository: Arc<dyn WorkflowRepository> = {
             let repo = Neo4jWorkflowRepository::new(neo4j_adapter.graph().clone());
-            repo.create_schema().await
+            repo.create_schema()
+                .await
                 .map_err(|e| format!("Failed to create workflow schema: {}", e))?;
             Arc::new(repo)
         };
@@ -441,16 +446,15 @@ impl AppState {
 
         // Create ontology pipeline service with semantic physics
         info!("[AppState::new] Creating ontology pipeline service");
-        let mut pipeline_service = crate::services::ontology_pipeline_service::OntologyPipelineService::new(
-            crate::services::ontology_pipeline_service::SemanticPhysicsConfig::default()
-        );
+        let mut pipeline_service =
+            crate::services::ontology_pipeline_service::OntologyPipelineService::new(
+                crate::services::ontology_pipeline_service::SemanticPhysicsConfig::default(),
+            );
 
         // CRITICAL: Set graph repository for IRI → node ID resolution
         pipeline_service.set_graph_repository(neo4j_adapter.clone());
 
         let ontology_pipeline_service = Some(Arc::new(pipeline_service));
-
-
 
         info!("[AppState::new] Initializing GitHubSyncService for data ingestion");
 
@@ -480,16 +484,15 @@ impl AppState {
         let neo4j_adapter_for_migrations = neo4j_adapter.clone();
 
         // Will be initialized before spawn
-        let graph_service_addr_ref: std::sync::Arc<tokio::sync::Mutex<Option<Addr<GraphServiceSupervisor>>>> =
-            std::sync::Arc::new(tokio::sync::Mutex::new(None));
+        let graph_service_addr_ref: std::sync::Arc<
+            tokio::sync::Mutex<Option<Addr<GraphServiceSupervisor>>>,
+        > = std::sync::Arc::new(tokio::sync::Mutex::new(None));
         let graph_service_addr_clone_for_sync = graph_service_addr_ref.clone();
 
         let sync_handle = tokio::spawn(async move {
             info!("🔄 Background GitHub sync task spawned successfully");
             info!("🔄 Task ID: {:?}", std::thread::current().id());
             info!("🔄 Starting sync_graphs() execution...");
-
-
 
             info!("📡 Calling sync_service.sync_graphs()...");
             let sync_start = std::time::Instant::now();
@@ -519,11 +522,15 @@ impl AppState {
                     // first ingest. Idempotent (gated on rows lacking colour),
                     // safe to call repeatedly.
                     info!("🎨 [GitHub Sync] Applying render-tier migrations to fresh ontology data...");
-                    neo4j_adapter_for_migrations.apply_render_tier_migrations().await;
+                    neo4j_adapter_for_migrations
+                        .apply_render_tier_migrations()
+                        .await;
 
                     // Load synced data into graph actor (if it's ready)
                     if let Some(graph_addr) = &*graph_service_addr_clone_for_sync.lock().await {
-                        info!("📥 [GitHub Sync] Notifying GraphServiceActor to reload synced data...");
+                        info!(
+                            "📥 [GitHub Sync] Notifying GraphServiceActor to reload synced data..."
+                        );
                         graph_addr.do_send(crate::actors::messages::ReloadGraphFromDatabase);
                         info!("✅ [GitHub Sync] Reload notification sent to GraphServiceActor");
                     } else {
@@ -532,42 +539,49 @@ impl AppState {
                 }
                 Err(e) => {
                     let elapsed = sync_start.elapsed();
-                    log::error!("❌ Background GitHub sync failed after {:?}: {}", elapsed, e);
+                    log::error!(
+                        "❌ Background GitHub sync failed after {:?}: {}",
+                        elapsed,
+                        e
+                    );
                     log::error!("❌ Error details: {:?}", e);
-                    log::error!("⚠️  Databases may have partial data - use manual import API if needed");
+                    log::error!(
+                        "⚠️  Databases may have partial data - use manual import API if needed"
+                    );
                 }
             }
         });
 
-        
         tokio::spawn(async move {
             tokio::time::sleep(Duration::from_millis(100)).await;
             info!("👀 GitHub sync monitor: Checking task status...");
 
-            
-            let timeout_duration = Duration::from_secs(300); 
+            let timeout_duration = Duration::from_secs(300);
             match tokio::time::timeout(timeout_duration, sync_handle).await {
-                Ok(join_result) => {
-                    match join_result {
-                        Ok(_sync_result) => {
-                            info!("👀 GitHub sync monitor: Task completed successfully");
-                        }
-                        Err(join_error) => {
-                            if join_error.is_cancelled() {
-                                log::error!("👀 GitHub sync monitor: Task was CANCELLED");
-                            } else if join_error.is_panic() {
-                                log::error!("👀 GitHub sync monitor: Task PANICKED");
-                                log::error!("👀 JoinError details: {:?}", join_error);
-                            } else {
-                                log::error!("👀 GitHub sync monitor: Task failed with unknown error");
-                                log::error!("👀 JoinError: {:?}", join_error);
-                            }
+                Ok(join_result) => match join_result {
+                    Ok(_sync_result) => {
+                        info!("👀 GitHub sync monitor: Task completed successfully");
+                    }
+                    Err(join_error) => {
+                        if join_error.is_cancelled() {
+                            log::error!("👀 GitHub sync monitor: Task was CANCELLED");
+                        } else if join_error.is_panic() {
+                            log::error!("👀 GitHub sync monitor: Task PANICKED");
+                            log::error!("👀 JoinError details: {:?}", join_error);
+                        } else {
+                            log::error!("👀 GitHub sync monitor: Task failed with unknown error");
+                            log::error!("👀 JoinError: {:?}", join_error);
                         }
                     }
-                }
+                },
                 Err(_timeout_error) => {
-                    log::error!("👀 GitHub sync monitor: Task TIMED OUT after {:?}", timeout_duration);
-                    log::error!("👀 This likely indicates a deadlock or infinite loop in sync_graphs()");
+                    log::error!(
+                        "👀 GitHub sync monitor: Task TIMED OUT after {:?}",
+                        timeout_duration
+                    );
+                    log::error!(
+                        "👀 This likely indicates a deadlock or infinite loop in sync_graphs()"
+                    );
                 }
             }
 
@@ -577,8 +591,9 @@ impl AppState {
         info!("[AppState::new] GitHub sync running in background with enhanced monitoring, proceeding with actor initialization");
 
         // Create shared node analytics map early so it can be shared with ClientCoordinatorActor
-        let node_analytics: Arc<std::sync::RwLock<std::collections::HashMap<u32, (u32, f32, u32)>>> =
-            Arc::new(std::sync::RwLock::new(std::collections::HashMap::new()));
+        let node_analytics: Arc<
+            std::sync::RwLock<std::collections::HashMap<u32, (u32, f32, u32)>>,
+        > = Arc::new(std::sync::RwLock::new(std::collections::HashMap::new()));
 
         info!("[AppState::new] Starting ClientCoordinatorActor");
         let mut client_coordinator = ClientCoordinatorActor::new();
@@ -586,21 +601,12 @@ impl AppState {
         client_coordinator.set_node_analytics(node_analytics.clone());
         let client_manager_addr = client_coordinator.start();
 
-
         let physics_settings = settings.visualisation.graphs.logseq.physics.clone();
 
         info!("[AppState::new] Starting MetadataActor");
         let metadata_addr = MetadataActor::new(MetadataStore::new()).start();
 
-
         info!("[AppState::new] Starting GraphServiceSupervisor (refactored architecture)");
-
-
-
-
-
-
-
 
         // Share the ClientCoordinatorActor instance: without this the supervisor
         // creates its own, and clients registered here would never receive
@@ -621,7 +627,6 @@ impl AppState {
             info!("[AppState::new] GitHub sync task notified - graph service address available");
         });
 
-
         info!("[AppState::new] Retrieving GraphStateActor from GraphServiceSupervisor");
         let graph_actor_addr = graph_service_addr
             .send(crate::actors::messages::GetGraphStateActor)
@@ -631,24 +636,35 @@ impl AppState {
 
         info!("[AppState::new] Creating Neo4j graph repository adapter");
         // Professional, scalable approach: Query Neo4j directly with intelligent caching
-        let neo4j_graph_repository = Arc::new(crate::adapters::Neo4jGraphRepository::new(neo4j_adapter.graph().clone()));
+        let neo4j_graph_repository = Arc::new(crate::adapters::Neo4jGraphRepository::new(
+            neo4j_adapter.graph().clone(),
+        ));
 
         // Create ActorGraphRepository using the graph actor
-        let graph_repository = Arc::new(crate::adapters::ActorGraphRepository::new(graph_actor_addr.clone()));
+        let graph_repository = Arc::new(crate::adapters::ActorGraphRepository::new(
+            graph_actor_addr.clone(),
+        ));
 
         // Load existing data from Neo4j into repository cache on startup
         info!("[AppState::new] Loading graph data from Neo4j into repository cache...");
-        neo4j_graph_repository.load_graph().await
+        neo4j_graph_repository
+            .load_graph()
+            .await
             .map_err(|e| format!("Failed to load graph from Neo4j: {:?}", e))?;
 
         // Get node count by calling the trait method through the GraphRepository trait
         let node_count = {
             use crate::ports::graph_repository::GraphRepository;
-            graph_repository.get_graph().await
+            graph_repository
+                .get_graph()
+                .await
                 .map(|g| g.nodes.len())
                 .unwrap_or(0)
         };
-        info!("[AppState::new] ✅ Graph data loaded from Neo4j ({} nodes)", node_count);
+        info!(
+            "[AppState::new] ✅ Graph data loaded from Neo4j ({} nodes)",
+            node_count
+        );
 
         info!("[AppState::new] Initializing query handlers for graph domain");
         let graph_query_handlers = GraphQueryHandlers {
@@ -668,7 +684,6 @@ impl AppState {
             )),
         };
 
-        
         info!("[AppState::new] Initializing event buses");
         let event_bus = Arc::new(RwLock::new(EventBus::new()));
 
@@ -677,15 +692,22 @@ impl AppState {
             .map(PathBuf::from)
             .unwrap_or_else(|_| PathBuf::from("/tmp/visionflow-events"));
         let event_store = Arc::new(EventStore::with_file_backend(event_store_path.clone()));
-        info!("[AppState::new] EventStore initialized with file backend at {:?}", event_store_path);
+        info!(
+            "[AppState::new] EventStore initialized with file backend at {:?}",
+            event_store_path
+        );
 
         // Register event handlers on the EventBus
         {
-            use crate::events::handlers::{AuditEventHandler, NotificationEventHandler, GraphEventHandler, OntologyEventHandler};
+            use crate::events::handlers::{
+                AuditEventHandler, GraphEventHandler, NotificationEventHandler,
+                OntologyEventHandler,
+            };
 
             let bus = event_bus.write().await;
             let audit_handler = Arc::new(AuditEventHandler::new("global-audit"));
-            let notification_handler = Arc::new(NotificationEventHandler::new("global-notifications"));
+            let notification_handler =
+                Arc::new(NotificationEventHandler::new("global-notifications"));
             let graph_handler = Arc::new(GraphEventHandler::new("global-graph"));
             let ontology_handler = Arc::new(OntologyEventHandler::new("global-ontology"));
             bus.subscribe(audit_handler).await;
@@ -719,21 +741,25 @@ impl AppState {
         }
 
         info!("[AppState::new] Linking ClientCoordinatorActor to GraphServiceSupervisor for settling fix");
-        
+
         let graph_supervisor_clone = graph_service_addr.clone();
         let client_manager_clone = client_manager_addr.clone();
         actix::spawn(async move {
-            
             tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
             // Set the GraphServiceSupervisor address in ClientManagerActor
             info!("Setting GraphServiceSupervisor address in ClientManagerActor");
-            client_manager_clone
-                .do_send(crate::actors::messages::SetGraphServiceAddress { addr: graph_supervisor_clone.clone() });
+            client_manager_clone.do_send(crate::actors::messages::SetGraphServiceAddress {
+                addr: graph_supervisor_clone.clone(),
+            });
         });
 
-
-        let (gpu_manager_addr, stress_majorization_addr, shortest_path_actor, connected_components_actor) = {
+        let (
+            gpu_manager_addr,
+            stress_majorization_addr,
+            shortest_path_actor,
+            connected_components_actor,
+        ) = {
             info!("[AppState::new] Starting GPUManagerActor (modular architecture)");
             let gpu_manager = GPUManagerActor::new().start();
 
@@ -766,16 +792,20 @@ impl AppState {
             });
             info!("[AppState::new] Wired ClientCoordinator addr into GPU analytics producers");
 
-            (Some(gpu_manager), None, Some(shortest_path), Some(connected_components))
+            (
+                Some(gpu_manager),
+                None,
+                Some(shortest_path),
+                Some(connected_components),
+            )
         };
-
 
         // Create shared gpu_compute_addr that will be populated asynchronously
         let gpu_compute_addr: Arc<RwLock<Option<Addr<gpu::ForceComputeActor>>>> =
             Arc::new(RwLock::new(None));
 
         {
-            use crate::actors::messages::{InitializeGPUConnection, GetForceComputeActor};
+            use crate::actors::messages::{GetForceComputeActor, InitializeGPUConnection};
 
             info!("[AppState] Initializing GPU connection with GPUManagerActor for proper message delegation");
             if let Some(ref gpu_manager) = gpu_manager_addr {
@@ -788,12 +818,20 @@ impl AppState {
                 actix::spawn(async move {
                     // Wait for initial ontology sync to drain
                     tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
-                    info!("[AppState] Sending InitializeGPUConnection (delayed, post-ontology-sync)");
-                    match graph_service_for_gpu.send(InitializeGPUConnection {
-                        gpu_manager: Some(gpu_manager_for_conn),
-                    }).await {
+                    info!(
+                        "[AppState] Sending InitializeGPUConnection (delayed, post-ontology-sync)"
+                    );
+                    match graph_service_for_gpu
+                        .send(InitializeGPUConnection {
+                            gpu_manager: Some(gpu_manager_for_conn),
+                        })
+                        .await
+                    {
                         Ok(_) => info!("[AppState] InitializeGPUConnection delivered successfully"),
-                        Err(e) => error!("[AppState] Failed to deliver InitializeGPUConnection: {}", e),
+                        Err(e) => error!(
+                            "[AppState] Failed to deliver InitializeGPUConnection: {}",
+                            e
+                        ),
                     }
                 });
 
@@ -883,25 +921,14 @@ impl AppState {
         .with_protected(ProtectedSettings::default());
         let settings_addr = settings_actor.start();
 
-        
         info!("[AppState::new] Starting settings hot-reload watcher");
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
+
         info!(
             "[AppState::new] Settings hot-reload watcher DISABLED (was causing database deadlocks)"
         );
 
         info!("[AppState::new] Starting AgentMonitorActor for MCP monitoring");
-        let mcp_host =
-            std::env::var("MCP_HOST").unwrap_or_else(|_| "localhost".to_string());
+        let mcp_host = std::env::var("MCP_HOST").unwrap_or_else(|_| "localhost".to_string());
         let mcp_port = std::env::var("MCP_TCP_PORT")
             .unwrap_or_else(|_| "9500".to_string())
             .parse::<u16>()
@@ -916,22 +943,14 @@ impl AppState {
         let agent_monitor_addr =
             AgentMonitorActor::new(claude_flow_client, graph_service_addr.clone()).start();
 
-        
-        
-        
         let sim_params =
             crate::models::simulation_params::SimulationParams::from(&physics_settings);
 
         let update_msg = crate::actors::messages::UpdateSimulationParams { params: sim_params };
 
-
         graph_service_addr.do_send(update_msg.clone());
 
-
-        if let Some(ref _gpu_addr) = gpu_manager_addr {
-
-
-        }
+        if let Some(ref _gpu_addr) = gpu_manager_addr {}
 
         // ADR-039: ProtectedSettingsActor is now a type alias for the unified
         // SettingsActor. Instead of spawning a second actor, reuse the already
@@ -962,8 +981,8 @@ impl AppState {
         let bots_client = Arc::new(BotsClient::with_graph_service(graph_service_addr.clone()));
 
         info!("[AppState::new] Initializing TaskOrchestratorActor with Management API");
-        let mgmt_api_host = std::env::var("MANAGEMENT_API_HOST")
-            .unwrap_or_else(|_| "localhost".to_string());
+        let mgmt_api_host =
+            std::env::var("MANAGEMENT_API_HOST").unwrap_or_else(|_| "localhost".to_string());
         let mgmt_api_port = std::env::var("MANAGEMENT_API_PORT")
             .unwrap_or_else(|_| "9190".to_string())
             .parse::<u16>()
@@ -974,19 +993,14 @@ impl AppState {
         let mgmt_client = ManagementApiClient::new(mgmt_api_host, mgmt_api_port, mgmt_api_key);
         let task_orchestrator_addr = TaskOrchestratorActor::new(mgmt_client).start();
 
-        
-        
         info!("[AppState] GPU manager will self-initialize when needed");
-
 
         info!("[AppState::new] Actor system initialization complete (GPU initialization sent earlier)");
 
-        
         let debug_enabled = crate::utils::logging::is_debug_enabled();
 
         info!("[AppState::new] Debug mode enabled: {}", debug_enabled);
 
-        
         let (client_message_tx, client_message_rx) = mpsc::unbounded_channel::<ClientMessage>();
         info!("[AppState::new] Client message channel created");
 
@@ -1014,13 +1028,17 @@ impl AppState {
             components: connected_components_actor.clone(),
         };
 
-        info!("[AppState::new] GPU subsystems initialized (physics={}, analytics={}, graph_ops={})",
-            physics.active_count(), analytics.active_count(), graph_ops.active_count());
+        info!(
+            "[AppState::new] GPU subsystems initialized (physics={}, analytics={}, graph_ops={})",
+            physics.active_count(),
+            analytics.active_count(),
+            graph_ops.active_count()
+        );
 
         let state = Self {
             graph_service_addr,
             gpu_manager_addr,
-            gpu_compute_addr,  // Now Arc<RwLock<Option<...>>>, populated asynchronously
+            gpu_compute_addr, // Now Arc<RwLock<Option<...>>>, populated asynchronously
             stress_majorization_addr,
             shortest_path_actor,
             connected_components_actor,
@@ -1082,7 +1100,9 @@ impl AppState {
         validation_report.log();
 
         if !validation_report.is_valid() {
-            return Err(format!("AppState validation failed: {:?}", validation_report.errors).into());
+            return Err(
+                format!("AppState validation failed: {:?}", validation_report.errors).into(),
+            );
         }
 
         info!("[AppState::new] ✅ All validation checks passed");
@@ -1107,7 +1127,8 @@ impl AppState {
             });
 
             // gpu_compute_addr is populated asynchronously - check via try_read
-            let gpu_compute_present = self.gpu_compute_addr
+            let gpu_compute_present = self
+                .gpu_compute_addr
                 .try_read()
                 .map(|guard| guard.is_some())
                 .unwrap_or(false);
@@ -1146,7 +1167,11 @@ impl AppState {
             name: "PerplexityService".to_string(),
             expected: perplexity_expected,
             present: self.perplexity_service.is_some(),
-            severity: if perplexity_expected { Severity::Warning } else { Severity::Info },
+            severity: if perplexity_expected {
+                Severity::Warning
+            } else {
+                Severity::Info
+            },
             reason: if perplexity_expected {
                 "PERPLEXITY_API_KEY is set".to_string()
             } else {
@@ -1160,7 +1185,11 @@ impl AppState {
             name: "RAGFlowService".to_string(),
             expected: ragflow_expected,
             present: self.ragflow_service.is_some(),
-            severity: if ragflow_expected { Severity::Warning } else { Severity::Info },
+            severity: if ragflow_expected {
+                Severity::Warning
+            } else {
+                Severity::Info
+            },
             reason: if ragflow_expected {
                 "RAGFLOW_API_KEY is set".to_string()
             } else {
@@ -1174,7 +1203,11 @@ impl AppState {
             name: "SpeechService".to_string(),
             expected: speech_expected,
             present: self.speech_service.is_some(),
-            severity: if speech_expected { Severity::Warning } else { Severity::Info },
+            severity: if speech_expected {
+                Severity::Warning
+            } else {
+                Severity::Info
+            },
             reason: if speech_expected {
                 "SPEECH_SERVICE_ENABLED is set".to_string()
             } else {
@@ -1210,7 +1243,11 @@ impl AppState {
     pub fn decrement_connections(&self) -> usize {
         self.active_connections
             .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |current| {
-                if current > 0 { Some(current - 1) } else { None }
+                if current > 0 {
+                    Some(current - 1)
+                } else {
+                    None
+                }
             })
             .unwrap_or(0)
     }
@@ -1328,10 +1365,7 @@ impl AppState {
 
     /// Returns the current degradation reason, if any.
     pub fn get_degraded_reason(&self) -> Option<String> {
-        self.degraded_reason
-            .read()
-            .ok()
-            .and_then(|g| g.clone())
+        self.degraded_reason.read().ok().and_then(|g| g.clone())
     }
 
     /// Try to get the ForceComputeActor address synchronously (non-blocking).

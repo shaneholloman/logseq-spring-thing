@@ -36,21 +36,24 @@ fn baseline_frame(ts_us: u64) -> PoseFrame {
 
 #[test]
 fn truncated_frame_rejected() {
-    let bytes = wire::encode(&baseline_frame(1), &fixed_room(), &fixed_avatar())
-        .expect("baseline encode");
+    let bytes =
+        wire::encode(&baseline_frame(1), &fixed_room(), &fixed_avatar()).expect("baseline encode");
     // Lop off the last 4 bytes of the transform payload.
     let truncated = &bytes[..bytes.len() - 4];
     let res = wire::decode(truncated);
     assert!(
-        matches!(res, Err(WireError::LengthMismatch { .. } | WireError::TooShort { .. })),
+        matches!(
+            res,
+            Err(WireError::LengthMismatch { .. } | WireError::TooShort { .. })
+        ),
         "truncated frame must reject (got {res:?})"
     );
 }
 
 #[test]
 fn oversized_declared_length_rejected() {
-    let bytes = wire::encode(&baseline_frame(1), &fixed_room(), &fixed_avatar())
-        .expect("baseline encode");
+    let bytes =
+        wire::encode(&baseline_frame(1), &fixed_room(), &fixed_avatar()).expect("baseline encode");
     let mut tampered = bytes.to_vec();
     // Patch the u16-LE frame_len at bytes [1..3] to claim 10 extra bytes.
     let new_len = u16::from_le_bytes([tampered[1], tampered[2]]).saturating_add(10);
@@ -100,8 +103,7 @@ fn wrong_opcode_rejected() {
 fn invalid_transform_mask_rejected() {
     // Mask bits 3-7 are reserved; setting them must reject (decoder enforces
     // mask == valid SLOT bits only).
-    let bytes = wire::encode(&baseline_frame(1), &fixed_room(), &fixed_avatar())
-        .expect("encode");
+    let bytes = wire::encode(&baseline_frame(1), &fixed_room(), &fixed_avatar()).expect("encode");
     let mut tampered = bytes.to_vec();
     // Find the mask byte: layout is [opcode 1][len 2][hash 16][id_len 1][id N][ts 8][mask 1].
     let id_len = tampered[1 + 2 + 16] as usize;
@@ -116,8 +118,7 @@ fn invalid_transform_mask_rejected() {
 
 #[test]
 fn mask_with_no_head_rejected() {
-    let bytes = wire::encode(&baseline_frame(1), &fixed_room(), &fixed_avatar())
-        .expect("encode");
+    let bytes = wire::encode(&baseline_frame(1), &fixed_room(), &fixed_avatar()).expect("encode");
     let mut tampered = bytes.to_vec();
     let id_len = tampered[1 + 2 + 16] as usize;
     let mask_idx = 1 + 2 + 16 + 1 + id_len + 8;

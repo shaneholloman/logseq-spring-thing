@@ -74,7 +74,12 @@ fn lifecycle_draft_to_personal_ok() {
         now: Utc::now(),
         ..TransitionContext::default()
     };
-    let out = transition(SkillLifecycleState::Draft, SkillLifecycleState::Personal, &ctx).unwrap();
+    let out = transition(
+        SkillLifecycleState::Draft,
+        SkillLifecycleState::Personal,
+        &ctx,
+    )
+    .unwrap();
     assert_eq!(out, SkillLifecycleState::Personal);
 }
 
@@ -90,7 +95,10 @@ fn lifecycle_personal_to_team_requires_passing_baseline() {
         &ctx,
     )
     .unwrap_err();
-    assert!(matches!(err, LifecycleTransitionError::TeamSharedNeedsPassingBaseline));
+    assert!(matches!(
+        err,
+        LifecycleTransitionError::TeamSharedNeedsPassingBaseline
+    ));
 }
 
 #[test]
@@ -130,7 +138,10 @@ fn lifecycle_stale_benchmark_fails_team_gate() {
         &ctx,
     )
     .unwrap_err();
-    assert!(matches!(err, LifecycleTransitionError::TeamSharedNeedsPassingBaseline));
+    assert!(matches!(
+        err,
+        LifecycleTransitionError::TeamSharedNeedsPassingBaseline
+    ));
 }
 
 #[test]
@@ -152,7 +163,10 @@ fn lifecycle_benchmarked_to_mesh_candidate_needs_three_benchmarks_and_broker() {
         &one,
     )
     .unwrap_err();
-    assert!(matches!(err, LifecycleTransitionError::MeshCandidateNeedsBenchmarks));
+    assert!(matches!(
+        err,
+        LifecycleTransitionError::MeshCandidateNeedsBenchmarks
+    ));
 
     // Three fresh benchmarks, no broker.
     let three_no_broker = TransitionContext {
@@ -173,7 +187,10 @@ fn lifecycle_benchmarked_to_mesh_candidate_needs_three_benchmarks_and_broker() {
         &three_no_broker,
     )
     .unwrap_err();
-    assert!(matches!(err, LifecycleTransitionError::MeshCandidateNeedsBrokerReview));
+    assert!(matches!(
+        err,
+        LifecycleTransitionError::MeshCandidateNeedsBrokerReview
+    ));
 
     // Three fresh benchmarks + broker — pass.
     let three_with_broker = TransitionContext {
@@ -195,9 +212,16 @@ fn lifecycle_retirement_needs_successor_or_absorbed() {
         now: Utc::now(),
         ..TransitionContext::default()
     };
-    let err = transition(SkillLifecycleState::Promoted, SkillLifecycleState::Retired, &bare)
-        .unwrap_err();
-    assert!(matches!(err, LifecycleTransitionError::RetirementNeedsJustification));
+    let err = transition(
+        SkillLifecycleState::Promoted,
+        SkillLifecycleState::Retired,
+        &bare,
+    )
+    .unwrap_err();
+    assert!(matches!(
+        err,
+        LifecycleTransitionError::RetirementNeedsJustification
+    ));
 
     let absorbed = TransitionContext {
         base_model_absorbed: true,
@@ -240,7 +264,10 @@ fn lifecycle_cannot_skip_states() {
         &ctx,
     )
     .unwrap_err();
-    assert!(matches!(err, LifecycleTransitionError::IllegalTransition { .. }));
+    assert!(matches!(
+        err,
+        LifecycleTransitionError::IllegalTransition { .. }
+    ));
 }
 
 // ───────────── SkillVersion immutability ─────────────
@@ -267,7 +294,8 @@ fn skill_version_is_mutable_before_benchmark_and_frozen_after() {
 fn package_attach_benchmark_freezes_version() {
     let mut pkg = base_pkg();
     pkg.upsert_version(draft_version("v1")).unwrap();
-    pkg.attach_benchmark(passing_benchmark("bm1", "v1", 1)).unwrap();
+    pkg.attach_benchmark(passing_benchmark("bm1", "v1", 1))
+        .unwrap();
     assert!(pkg.versions.get("v1").unwrap().is_frozen());
 }
 
@@ -275,14 +303,20 @@ fn package_attach_benchmark_freezes_version() {
 fn package_promote_to_mesh_candidate_requires_share_intent() {
     let mut pkg = base_pkg();
     pkg.upsert_version(draft_version("v1")).unwrap();
-    pkg.attach_benchmark(passing_benchmark("b1", "v1", 1)).unwrap();
-    pkg.attach_benchmark(passing_benchmark("b2", "v1", 2)).unwrap();
-    pkg.attach_benchmark(passing_benchmark("b3", "v1", 3)).unwrap();
+    pkg.attach_benchmark(passing_benchmark("b1", "v1", 1))
+        .unwrap();
+    pkg.attach_benchmark(passing_benchmark("b2", "v1", 2))
+        .unwrap();
+    pkg.attach_benchmark(passing_benchmark("b3", "v1", 3))
+        .unwrap();
 
     // Walk: Draft → Personal → TeamShared → Benchmarked.
-    pkg.transition(SkillLifecycleState::Personal, false).unwrap();
-    pkg.transition(SkillLifecycleState::TeamShared, false).unwrap();
-    pkg.transition(SkillLifecycleState::Benchmarked, false).unwrap();
+    pkg.transition(SkillLifecycleState::Personal, false)
+        .unwrap();
+    pkg.transition(SkillLifecycleState::TeamShared, false)
+        .unwrap();
+    pkg.transition(SkillLifecycleState::Benchmarked, false)
+        .unwrap();
 
     // No share intent — rejected.
     let err = pkg
@@ -373,7 +407,10 @@ impl BenchmarkDispatcher for CountingDispatcher {
         let cur = self.in_flight.fetch_add(1, Ordering::SeqCst) + 1;
         let mut prev = self.peak.load(Ordering::SeqCst);
         while cur > prev {
-            match self.peak.compare_exchange(prev, cur, Ordering::SeqCst, Ordering::SeqCst) {
+            match self
+                .peak
+                .compare_exchange(prev, cur, Ordering::SeqCst, Ordering::SeqCst)
+            {
                 Ok(_) => break,
                 Err(observed) => prev = observed,
             }

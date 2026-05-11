@@ -15,9 +15,7 @@ use std::time::Instant;
 use crate::adapters::neo4j_settings_repository::{
     Neo4jSettingsConfig, Neo4jSettingsRepository, User, UserFilter, UserSettingsNode,
 };
-use crate::ports::settings_repository::{
-    SettingValue, SettingsRepositoryError,
-};
+use crate::ports::settings_repository::{SettingValue, SettingsRepositoryError};
 
 // ============================================================
 // SettingsCache Unit Tests (Pure Logic, No Neo4j Required)
@@ -67,11 +65,17 @@ impl TestCache {
 fn test_cache_insert_and_get() {
     let mut cache = TestCache::new(300);
 
-    cache.insert("test.key".to_string(), SettingValue::String("test_value".to_string()));
+    cache.insert(
+        "test.key".to_string(),
+        SettingValue::String("test_value".to_string()),
+    );
 
     let value = cache.get("test.key");
     assert!(value.is_some());
-    assert_eq!(value.unwrap(), SettingValue::String("test_value".to_string()));
+    assert_eq!(
+        value.unwrap(),
+        SettingValue::String("test_value".to_string())
+    );
 }
 
 #[test]
@@ -115,13 +119,22 @@ fn test_cache_clear() {
 fn test_cache_multiple_types() {
     let mut cache = TestCache::new(300);
 
-    cache.insert("string".to_string(), SettingValue::String("hello".to_string()));
+    cache.insert(
+        "string".to_string(),
+        SettingValue::String("hello".to_string()),
+    );
     cache.insert("integer".to_string(), SettingValue::Integer(42));
     cache.insert("float".to_string(), SettingValue::Float(3.14159));
     cache.insert("boolean".to_string(), SettingValue::Boolean(true));
-    cache.insert("json".to_string(), SettingValue::Json(serde_json::json!({"nested": "value"})));
+    cache.insert(
+        "json".to_string(),
+        SettingValue::Json(serde_json::json!({"nested": "value"})),
+    );
 
-    assert_eq!(cache.get("string"), Some(SettingValue::String("hello".to_string())));
+    assert_eq!(
+        cache.get("string"),
+        Some(SettingValue::String("hello".to_string()))
+    );
     assert_eq!(cache.get("integer"), Some(SettingValue::Integer(42)));
     assert_eq!(cache.get("float"), Some(SettingValue::Float(3.14159)));
     assert_eq!(cache.get("boolean"), Some(SettingValue::Boolean(true)));
@@ -355,7 +368,8 @@ fn test_setting_value_serialization() {
 
     for value in values {
         let json = serde_json::to_string(&value).expect("Serialization failed");
-        let deserialized: SettingValue = serde_json::from_str(&json).expect("Deserialization failed");
+        let deserialized: SettingValue =
+            serde_json::from_str(&json).expect("Deserialization failed");
         assert_eq!(value, deserialized);
     }
 }
@@ -695,31 +709,43 @@ fn test_cache_ttl_expiry_logic() {
 fn test_batch_settings_preparation() {
     let mut updates: HashMap<String, SettingValue> = HashMap::new();
     updates.insert("physics.gravity".to_string(), SettingValue::Float(9.81));
-    updates.insert("render.quality".to_string(), SettingValue::String("high".to_string()));
+    updates.insert(
+        "render.quality".to_string(),
+        SettingValue::String("high".to_string()),
+    );
     updates.insert("system.debug".to_string(), SettingValue::Boolean(false));
     updates.insert("nodes.max_count".to_string(), SettingValue::Integer(10000));
 
     assert_eq!(updates.len(), 4);
 
     // Verify each type is correctly stored
-    assert!(matches!(updates.get("physics.gravity"), Some(SettingValue::Float(_))));
-    assert!(matches!(updates.get("render.quality"), Some(SettingValue::String(_))));
-    assert!(matches!(updates.get("system.debug"), Some(SettingValue::Boolean(_))));
-    assert!(matches!(updates.get("nodes.max_count"), Some(SettingValue::Integer(_))));
+    assert!(matches!(
+        updates.get("physics.gravity"),
+        Some(SettingValue::Float(_))
+    ));
+    assert!(matches!(
+        updates.get("render.quality"),
+        Some(SettingValue::String(_))
+    ));
+    assert!(matches!(
+        updates.get("system.debug"),
+        Some(SettingValue::Boolean(_))
+    ));
+    assert!(matches!(
+        updates.get("nodes.max_count"),
+        Some(SettingValue::Integer(_))
+    ));
 }
 
 #[test]
 fn test_batch_keys_extraction() {
-    let keys = vec![
-        "key1".to_string(),
-        "key2".to_string(),
-        "key3".to_string(),
-    ];
+    let keys = vec!["key1".to_string(), "key2".to_string(), "key3".to_string()];
 
     // Simulate partial cache hit
     let cached_keys = vec!["key1".to_string()];
 
-    let remaining_keys: Vec<String> = keys.iter()
+    let remaining_keys: Vec<String> = keys
+        .iter()
         .filter(|k| !cached_keys.contains(k))
         .cloned()
         .collect();
@@ -738,17 +764,23 @@ fn test_batch_keys_extraction() {
 fn test_export_format() {
     let mut exported = serde_json::Map::new();
 
-    exported.insert("setting1".to_string(), serde_json::json!({
-        "type": "string",
-        "value": "test_value",
-        "description": "A test setting"
-    }));
+    exported.insert(
+        "setting1".to_string(),
+        serde_json::json!({
+            "type": "string",
+            "value": "test_value",
+            "description": "A test setting"
+        }),
+    );
 
-    exported.insert("setting2".to_string(), serde_json::json!({
-        "type": "integer",
-        "value": 42,
-        "description": "An integer setting"
-    }));
+    exported.insert(
+        "setting2".to_string(),
+        serde_json::json!({
+            "type": "integer",
+            "value": 42,
+            "description": "An integer setting"
+        }),
+    );
 
     let export_json = serde_json::Value::Object(exported);
 
@@ -824,21 +856,31 @@ async fn test_neo4j_settings_crud_operations() {
         "test.integration.key",
         SettingValue::String("integration_test_value".to_string()),
         Some("Integration test setting"),
-    ).await.unwrap();
+    )
+    .await
+    .unwrap();
 
     // Read
     let value = repo.get_setting("test.integration.key").await.unwrap();
-    assert_eq!(value, Some(SettingValue::String("integration_test_value".to_string())));
+    assert_eq!(
+        value,
+        Some(SettingValue::String("integration_test_value".to_string()))
+    );
 
     // Update
     repo.set_setting(
         "test.integration.key",
         SettingValue::String("updated_value".to_string()),
         None,
-    ).await.unwrap();
+    )
+    .await
+    .unwrap();
 
     let updated = repo.get_setting("test.integration.key").await.unwrap();
-    assert_eq!(updated, Some(SettingValue::String("updated_value".to_string())));
+    assert_eq!(
+        updated,
+        Some(SettingValue::String("updated_value".to_string()))
+    );
 
     // Delete
     repo.delete_setting("test.integration.key").await.unwrap();
@@ -907,9 +949,18 @@ async fn test_neo4j_batch_operations() {
 
     // Batch set
     let mut updates = HashMap::new();
-    updates.insert(format!("batch.{}.key1", timestamp), SettingValue::Integer(1));
-    updates.insert(format!("batch.{}.key2", timestamp), SettingValue::Integer(2));
-    updates.insert(format!("batch.{}.key3", timestamp), SettingValue::Integer(3));
+    updates.insert(
+        format!("batch.{}.key1", timestamp),
+        SettingValue::Integer(1),
+    );
+    updates.insert(
+        format!("batch.{}.key2", timestamp),
+        SettingValue::Integer(2),
+    );
+    updates.insert(
+        format!("batch.{}.key3", timestamp),
+        SettingValue::Integer(3),
+    );
 
     repo.set_settings_batch(updates.clone()).await.unwrap();
 
@@ -928,8 +979,8 @@ async fn test_neo4j_batch_operations() {
 #[tokio::test]
 #[ignore = "Requires live Neo4j instance"]
 async fn test_neo4j_physics_profiles() {
-    use crate::ports::settings_repository::SettingsRepository;
     use crate::config::PhysicsSettings;
+    use crate::ports::settings_repository::SettingsRepository;
 
     let config = Neo4jSettingsConfig::default();
     let repo = Neo4jSettingsRepository::new(config).await.unwrap();
@@ -938,7 +989,9 @@ async fn test_neo4j_physics_profiles() {
 
     // Save physics settings
     let physics = PhysicsSettings::default();
-    repo.save_physics_settings(&profile_name, &physics).await.unwrap();
+    repo.save_physics_settings(&profile_name, &physics)
+        .await
+        .unwrap();
 
     // Get physics settings
     let loaded = repo.get_physics_settings(&profile_name).await.unwrap();

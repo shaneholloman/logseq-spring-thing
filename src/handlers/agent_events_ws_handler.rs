@@ -9,9 +9,9 @@
 //! Outbound: `UserInteractionEvent` broadcast to all connected agentbox
 //!   subscribers (Phase 3 — `BroadcastUserInteraction` message).
 
+use crate::actors::transient_edge_actor::{SpawnBeam, TransientEdgeActor};
 use crate::agent_events::transient::{BeamEdge, ChargeModulation};
 use crate::agent_events::{AgentActionEnvelope, UserInteractionEvent, WS_SUBPROTOCOL};
-use crate::actors::transient_edge_actor::{SpawnBeam, TransientEdgeActor};
 use actix::{Actor, ActorContext, Addr, AsyncContext, Handler, Message, StreamHandler};
 use actix_web::{web, HttpRequest, HttpResponse};
 use actix_web_actors::ws;
@@ -166,7 +166,8 @@ pub async fn agent_events_handler(
         .map(|s| s.trim())
         .any(|p| p == WS_SUBPROTOCOL);
 
-    let session = AgentEventsSession::new(transient.get_ref().clone(), broadcaster.get_ref().clone());
+    let session =
+        AgentEventsSession::new(transient.get_ref().clone(), broadcaster.get_ref().clone());
 
     let mut response = ws::start(session, &req, stream)?;
     if accepts {

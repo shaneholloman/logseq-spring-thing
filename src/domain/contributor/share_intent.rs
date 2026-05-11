@@ -194,13 +194,11 @@ mod tests {
     #[test]
     fn open_requires_forward_motion() {
         assert_eq!(
-            ShareIntent::open(aref(), ShareState::Team, ShareState::Team, "r", None)
-                .unwrap_err(),
+            ShareIntent::open(aref(), ShareState::Team, ShareState::Team, "r", None).unwrap_err(),
             ShareIntentError::NoOpIntent
         );
         assert_eq!(
-            ShareIntent::open(aref(), ShareState::Mesh, ShareState::Team, "r", None)
-                .unwrap_err(),
+            ShareIntent::open(aref(), ShareState::Mesh, ShareState::Team, "r", None).unwrap_err(),
             ShareIntentError::NonMonotonicIntent {
                 from: ShareState::Mesh,
                 to: ShareState::Team
@@ -212,11 +210,14 @@ mod tests {
     fn approve_is_terminal() {
         let (mut i, _) =
             ShareIntent::open(aref(), ShareState::Private, ShareState::Team, "r", None).unwrap();
-        i.approve("pol-1", Some("case-1".into()), Some("broker".into())).unwrap();
+        i.approve("pol-1", Some("case-1".into()), Some("broker".into()))
+            .unwrap();
         assert_eq!(i.status, ShareIntentStatus::Approved);
         assert!(matches!(
             i.reject(None, "late"),
-            Err(ShareIntentError::AlreadyResolved(ShareIntentStatus::Approved))
+            Err(ShareIntentError::AlreadyResolved(
+                ShareIntentStatus::Approved
+            ))
         ));
     }
 
@@ -228,7 +229,9 @@ mod tests {
         assert_eq!(i.status, ShareIntentStatus::Revoked);
         assert!(matches!(
             i.revoke("did:alice", "again"),
-            Err(ShareIntentError::AlreadyResolved(ShareIntentStatus::Revoked))
+            Err(ShareIntentError::AlreadyResolved(
+                ShareIntentStatus::Revoked
+            ))
         ));
     }
 }

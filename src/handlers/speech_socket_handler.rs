@@ -37,7 +37,7 @@ struct SetProviderRequest {
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct STTActionRequest {
-    action: String, 
+    action: String,
     language: Option<String>,
     model: Option<String>,
 }
@@ -53,7 +53,7 @@ struct VoiceCommandRequest {
 pub struct SpeechSocket {
     id: String,
     app_state: Arc<AppState>,
-    _hybrid_manager: Option<()>, 
+    _hybrid_manager: Option<()>,
     heartbeat: Instant,
     audio_rx: Option<broadcast::Receiver<Vec<u8>>>,
     transcription_rx: Option<broadcast::Receiver<String>>,
@@ -80,7 +80,6 @@ impl SpeechSocket {
         }
     }
 
-    
     fn start_heartbeat(&self, ctx: &mut ws::WebsocketContext<Self>) {
         ctx.run_interval(HEARTBEAT_INTERVAL, |act, ctx| {
             if Instant::now().duration_since(act.heartbeat) > CLIENT_TIMEOUT {
@@ -92,32 +91,25 @@ impl SpeechSocket {
         });
     }
 
-    
     async fn process_tts_request(
         app_state: Arc<AppState>,
         req: TextToSpeechRequest,
     ) -> Result<(), String> {
         if let Some(speech_service) = &app_state.speech_service {
-            
             let settings = app_state
                 .settings_addr
                 .send(GetSettings)
                 .await
                 .map_err(|e| format!("Settings actor mailbox error: {}", e))?
                 .map_err(|e| format!("Failed to get settings: {}", e))?;
-            let kokoro_config = settings.kokoro.as_ref(); 
+            let kokoro_config = settings.kokoro.as_ref();
 
-            
             let default_voice = kokoro_config
                 .and_then(|k| k.default_voice.clone())
-                .unwrap_or_else(|| {
-                    
-                    "af_sarah".to_string() 
-                });
+                .unwrap_or_else(|| "af_sarah".to_string());
             let default_speed = kokoro_config.and_then(|k| k.default_speed).unwrap_or(1.0);
-            let default_stream = kokoro_config.and_then(|k| k.stream).unwrap_or(true); 
+            let default_stream = kokoro_config.and_then(|k| k.stream).unwrap_or(true);
 
-            
             let options = SpeechOptions {
                 voice: req.voice.unwrap_or(default_voice),
                 speed: req.speed.unwrap_or(default_speed),
@@ -125,7 +117,6 @@ impl SpeechSocket {
                 format: "opus".to_string(),
             };
 
-            
             match speech_service.text_to_speech(req.text, options).await {
                 Ok(_) => Ok(()),
                 Err(e) => Err(format!("Failed to process TTS request: {}", e)),
@@ -135,7 +126,6 @@ impl SpeechSocket {
         }
     }
 
-    
     fn is_swarm_command(&self, text: &str) -> bool {
         let text_lower = text.to_lowercase();
         text_lower.contains("swarm")
@@ -147,17 +137,13 @@ impl SpeechSocket {
             || text_lower.contains("docker hive")
     }
 
-    
     fn handle_swarm_voice_command(&self, _text: &str, ctx: &mut ws::WebsocketContext<Self>) {
-        
         let error_msg = json!({
             "type": "error",
             "message": "Swarm voice commands deprecated - use API endpoints instead"
         })
         .to_string();
         ctx.text(error_msg);
-
-        
     }
 }
 
@@ -167,10 +153,8 @@ impl Actor for SpeechSocket {
     fn started(&mut self, ctx: &mut Self::Context) {
         info!("[SpeechSocket] Client connected: {}", self.id);
 
-        
         self.start_heartbeat(ctx);
 
-        
         let welcome = json!({
             "type": "connected",
             "message": "Connected to speech service"
@@ -178,14 +162,12 @@ impl Actor for SpeechSocket {
 
         ctx.text(welcome.to_string());
 
-        
         if let Some(mut rx) = self.audio_rx.take() {
             let addr = ctx.address();
 
             ctx.spawn(Box::pin(
                 async move {
                     while let Ok(audio_data) = rx.recv().await {
-                        
                         if addr.try_send(AudioChunkMessage(audio_data)).is_err() {
                             break;
                         }
@@ -195,14 +177,12 @@ impl Actor for SpeechSocket {
             ));
         }
 
-        
         if let Some(mut rx) = self.transcription_rx.take() {
             let addr = ctx.address();
 
             ctx.spawn(Box::pin(
                 async move {
                     while let Ok(transcription_text) = rx.recv().await {
-                        
                         if addr
                             .try_send(TranscriptionMessage(transcription_text))
                             .is_err()
@@ -228,7 +208,6 @@ impl Handler<AudioChunkMessage> for SpeechSocket {
     type Result = ();
 
     fn handle(&mut self, msg: AudioChunkMessage, ctx: &mut Self::Context) -> Self::Result {
-        
         ctx.binary(msg.0);
     }
 }
@@ -244,7 +223,6 @@ impl Handler<TranscriptionMessage> for SpeechSocket {
     type Result = ();
 
     fn handle(&mut self, msg: TranscriptionMessage, ctx: &mut Self::Context) -> Self::Result {
-        
         let message = json!({
             "type": "transcription",
             "data": {
@@ -271,7 +249,6 @@ impl Handler<ErrorMessage> for SpeechSocket {
     type Result = ();
 
     fn handle(&mut self, msg: ErrorMessage, ctx: &mut Self::Context) -> Self::Result {
-        
         ctx.text(msg.0);
     }
 }
@@ -296,18 +273,14 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SpeechSocket {
                 debug!("[SpeechSocket] Received text: {}", text);
                 self.heartbeat = Instant::now();
 
-
                 match serde_json::from_str::<serde_json::Value>(&text) {
                     Ok(msg) => {
-                        
                         let msg_type = msg.get("type").and_then(|t| t.as_str());
                         match msg_type {
                             Some("tts") => {
-                                
                                 if let Ok(tts_req) =
                                     serde_json::from_value::<TextToSpeechRequest>(msg)
                                 {
-                                    
                                     let app_state = self.app_state.clone();
                                     let addr = ctx.address();
                                     let fut = async move {
@@ -328,7 +301,6 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SpeechSocket {
                                 }
                             }
                             Some("stt") => {
-                                
                                 if let Ok(stt_req) = serde_json::from_value::<STTActionRequest>(msg)
                                 {
                                     match stt_req.action.as_str() {
@@ -413,11 +385,9 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SpeechSocket {
                                 }
                             }
                             Some("voice_command") => {
-                                
                                 if let Ok(voice_req) =
                                     serde_json::from_value::<VoiceCommandRequest>(msg)
                                 {
-                                    
                                     if self.is_swarm_command(&voice_req.text) {
                                         self.handle_swarm_voice_command(&voice_req.text, ctx);
                                     } else if let Some(speech_service) =
@@ -426,7 +396,6 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SpeechSocket {
                                         let speech_service = speech_service.clone();
                                         let addr = ctx.address();
                                         let fut = async move {
-                                            
                                             let session_id =
                                                 voice_req.session_id.unwrap_or_else(|| {
                                                     uuid::Uuid::new_v4().to_string()
@@ -454,7 +423,6 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SpeechSocket {
                                                     let _ = addr.try_send(ErrorMessage(msg));
                                                 }
                                                 Err(_) => {
-                                                    
                                                     match speech_service
                                                         .process_voice_command(voice_req.text)
                                                         .await
@@ -517,11 +485,9 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SpeechSocket {
                 );
                 self.heartbeat = Instant::now();
 
-                
                 if let Some(speech_service) = &self.app_state.speech_service {
                     let audio_data = bin.to_vec();
 
-                    
                     let speech_service = speech_service.clone();
                     let fut = async move {
                         if let Err(e) = speech_service.process_audio_chunk(audio_data).await {
@@ -556,7 +522,9 @@ pub async fn speech_socket_handler(
     // Currently allows but logs unauthenticated connections -- enforcement will come
     // when all clients send tokens.
     {
-        let token = req.headers().get("Authorization")
+        let token = req
+            .headers()
+            .get("Authorization")
             .and_then(|h| h.to_str().ok())
             .and_then(|s| s.strip_prefix("Bearer "))
             .map(|s| s.to_string())
@@ -568,12 +536,16 @@ pub async fn speech_socket_handler(
             });
 
         if token.as_deref().unwrap_or("").is_empty() {
-            let client_ip = req.peer_addr().map(|a| a.to_string()).unwrap_or_else(|| "unknown".to_string());
+            let client_ip = req
+                .peer_addr()
+                .map(|a| a.to_string())
+                .unwrap_or_else(|| "unknown".to_string());
             log::warn!(
                 "SECURITY: Rejected unauthenticated WebSocket upgrade on /ws/speech from {}",
                 client_ip
             );
-            return Ok(HttpResponse::Unauthorized().json(serde_json::json!({"error": "Authentication required"})));
+            return Ok(HttpResponse::Unauthorized()
+                .json(serde_json::json!({"error": "Authentication required"})));
         }
     }
 

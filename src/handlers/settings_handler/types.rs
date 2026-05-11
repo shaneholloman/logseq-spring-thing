@@ -137,10 +137,22 @@ impl SettingsUpdateDTO {
 
             // Validate opacity values
             validate_range(vis.glow.opacity, "visualisation.glow.opacity")?;
-            validate_range(vis.hologram.ring_opacity, "visualisation.hologram.ring_opacity")?;
-            validate_range(vis.hologram.buckminster_opacity, "visualisation.hologram.buckminster_opacity")?;
-            validate_range(vis.hologram.geodesic_opacity, "visualisation.hologram.geodesic_opacity")?;
-            validate_range(vis.hologram.triangle_sphere_opacity, "visualisation.hologram.triangle_sphere_opacity")?;
+            validate_range(
+                vis.hologram.ring_opacity,
+                "visualisation.hologram.ring_opacity",
+            )?;
+            validate_range(
+                vis.hologram.buckminster_opacity,
+                "visualisation.hologram.buckminster_opacity",
+            )?;
+            validate_range(
+                vis.hologram.geodesic_opacity,
+                "visualisation.hologram.geodesic_opacity",
+            )?;
+            validate_range(
+                vis.hologram.triangle_sphere_opacity,
+                "visualisation.hologram.triangle_sphere_opacity",
+            )?;
         }
 
         // Validate XR settings if present

@@ -1,10 +1,10 @@
 use crate::types::vec3::Vec3Data;
+use crate::utils::time;
 use bytemuck::{Pod, Zeroable};
 #[cfg(feature = "gpu")]
 use cudarc::driver::{DeviceRepr, ValidAsZeroBits};
 use glam::Vec3;
 use serde::{Deserialize, Serialize};
-use crate::utils::time;
 
 // ===== CLIENT-SIDE BINARY DATA (28 bytes) =====
 // Optimized for network transmission - contains only what clients need
@@ -12,13 +12,13 @@ use crate::utils::time;
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Pod, Zeroable, Serialize, Deserialize)]
 pub struct BinaryNodeDataClient {
-    pub node_id: u32, 
-    pub x: f32,       
-    pub y: f32,       
-    pub z: f32,       
-    pub vx: f32,      
-    pub vy: f32,      
-    pub vz: f32,      
+    pub node_id: u32,
+    pub x: f32,
+    pub y: f32,
+    pub z: f32,
+    pub vx: f32,
+    pub vy: f32,
+    pub vz: f32,
 }
 
 // Compile-time assertion to ensure client format is exactly 28 bytes
@@ -33,18 +33,18 @@ pub type BinaryNodeData = BinaryNodeDataClient;
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Pod, Zeroable, Serialize, Deserialize)]
 pub struct BinaryNodeDataGPU {
-    pub node_id: u32,       
-    pub x: f32,             
-    pub y: f32,             
-    pub z: f32,             
-    pub vx: f32,            
-    pub vy: f32,            
-    pub vz: f32,            
-    pub sssp_distance: f32, 
-    pub sssp_parent: i32,   
-    pub cluster_id: i32,    
-    pub centrality: f32,    
-    pub mass: f32,          
+    pub node_id: u32,
+    pub x: f32,
+    pub y: f32,
+    pub z: f32,
+    pub vx: f32,
+    pub vy: f32,
+    pub vz: f32,
+    pub sssp_distance: f32,
+    pub sssp_parent: i32,
+    pub cluster_id: i32,
+    pub centrality: f32,
+    pub mass: f32,
 }
 
 // Compile-time assertion to ensure GPU format is exactly 48 bytes

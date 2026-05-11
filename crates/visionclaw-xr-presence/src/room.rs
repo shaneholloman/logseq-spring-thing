@@ -39,11 +39,7 @@ impl PresenceRoom {
         &self.id
     }
 
-    pub fn join(
-        &mut self,
-        did: Did,
-        metadata: AvatarMetadata,
-    ) -> Result<AvatarId, RoomError> {
+    pub fn join(&mut self, did: Did, metadata: AvatarMetadata) -> Result<AvatarId, RoomError> {
         if let Some(existing) = self.did_index.get(&did) {
             warn!(did = %did, existing = %existing, "duplicate join attempted");
             return Err(RoomError::DuplicateDid {
@@ -140,9 +136,8 @@ mod tests {
 
     #[test]
     fn join_then_leave() {
-        let mut room = PresenceRoom::new(
-            RoomId::parse("urn:visionclaw:room:sha256-12-aaaaaaaaaaaa").unwrap(),
-        );
+        let mut room =
+            PresenceRoom::new(RoomId::parse("urn:visionclaw:room:sha256-12-aaaaaaaaaaaa").unwrap());
         let d = did(0x11);
         let id = room.join(d.clone(), meta(&d, "alice")).unwrap();
         assert_eq!(room.len(), 1);
@@ -152,9 +147,8 @@ mod tests {
 
     #[test]
     fn duplicate_did_rejected() {
-        let mut room = PresenceRoom::new(
-            RoomId::parse("urn:visionclaw:room:sha256-12-bbbbbbbbbbbb").unwrap(),
-        );
+        let mut room =
+            PresenceRoom::new(RoomId::parse("urn:visionclaw:room:sha256-12-bbbbbbbbbbbb").unwrap());
         let d = did(0x22);
         room.join(d.clone(), meta(&d, "bob")).unwrap();
         let err = room.join(d.clone(), meta(&d, "bob2")).unwrap_err();
@@ -163,9 +157,8 @@ mod tests {
 
     #[test]
     fn leave_unknown_avatar_rejected() {
-        let mut room = PresenceRoom::new(
-            RoomId::parse("urn:visionclaw:room:sha256-12-cccccccccccc").unwrap(),
-        );
+        let mut room =
+            PresenceRoom::new(RoomId::parse("urn:visionclaw:room:sha256-12-cccccccccccc").unwrap());
         let d = did(0x33);
         let id = AvatarId::from_did(&d);
         let err = room.leave(&id).unwrap_err();

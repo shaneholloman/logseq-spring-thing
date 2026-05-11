@@ -22,7 +22,10 @@ pub fn safe_json_number(value: f64) -> serde_json::Number {
         Number::from_f64(value).unwrap_or(zero)
     } else {
         // NaN or Infinity - replace with 0.0
-        warn!("safe_json_number: Replacing non-finite value ({}) with 0.0", value);
+        warn!(
+            "safe_json_number: Replacing non-finite value ({}) with 0.0",
+            value
+        );
         zero
     }
 }

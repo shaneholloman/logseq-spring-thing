@@ -176,7 +176,11 @@ impl Handler<ScanAllInstalled> for SkillCompatibilityScanner {
                         total.fetch_add(1, Ordering::SeqCst);
                     }
                     in_flight.fetch_sub(1, Ordering::SeqCst);
-                    if ok { 1 } else { 0 }
+                    if ok {
+                        1
+                    } else {
+                        0
+                    }
                 }
             });
 

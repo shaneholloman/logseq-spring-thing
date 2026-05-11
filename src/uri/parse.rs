@@ -210,7 +210,10 @@ pub fn validate_hash12(s: &str) -> Result<(), UriError> {
             s
         )));
     }
-    if !hex.chars().all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase()) {
+    if !hex
+        .chars()
+        .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase())
+    {
         return Err(UriError::ParseFailed(format!(
             "hash12 must be lowercase hex: {}",
             s
@@ -242,9 +245,7 @@ fn validate_hex64(s: &str) -> Result<(), UriError> {
 /// Normalise any accepted pubkey form to 64-char lowercase hex.
 /// Accepts: 64-char hex (any case), `did:nostr:<hex>`, `npub1...`.
 pub fn normalise_pubkey(input: &str) -> Result<String, UriError> {
-    let stripped = input
-        .strip_prefix("did:nostr:")
-        .unwrap_or(input);
+    let stripped = input.strip_prefix("did:nostr:").unwrap_or(input);
     if let Some(_npub) = stripped.strip_prefix("npub1") {
         return decode_npub(stripped);
     }
@@ -255,8 +256,7 @@ pub fn normalise_pubkey(input: &str) -> Result<String, UriError> {
 /// Bech32 (NIP-19) decode for `npub1...` → 64-char lowercase hex.
 pub fn decode_npub(npub: &str) -> Result<String, UriError> {
     use nostr_sdk::{FromBech32, PublicKey};
-    let pk = PublicKey::from_bech32(npub)
-        .map_err(|e| UriError::Bech32Error(e.to_string()))?;
+    let pk = PublicKey::from_bech32(npub).map_err(|e| UriError::Bech32Error(e.to_string()))?;
     Ok(pk.to_hex())
 }
 

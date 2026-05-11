@@ -106,11 +106,7 @@ mod tests {
 
     #[test]
     fn typed_edge_kind_id_matches() {
-        let edge = TypedEdge::new(
-            "urn:a".into(),
-            "urn:b".into(),
-            EdgeKind::WikiLink,
-        );
+        let edge = TypedEdge::new("urn:a".into(), "urn:b".into(), EdgeKind::WikiLink);
         assert_eq!(edge.kind_id, EdgeKind::WikiLink.kind_id());
     }
 
@@ -119,7 +115,11 @@ mod tests {
         let mut g = TypedGraph::new();
         g.add_node(TypedNode::new("urn:a".into(), NodeKind::Page, "A".into()));
         g.add_node(TypedNode::new("urn:b".into(), NodeKind::Block, "B".into()));
-        g.add_edge(TypedEdge::new("urn:a".into(), "urn:b".into(), EdgeKind::BlockParent));
+        g.add_edge(TypedEdge::new(
+            "urn:a".into(),
+            "urn:b".into(),
+            EdgeKind::BlockParent,
+        ));
         assert_eq!(g.node_count(), 2);
         assert_eq!(g.edge_count(), 1);
     }

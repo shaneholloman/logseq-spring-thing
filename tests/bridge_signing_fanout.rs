@@ -61,10 +61,9 @@ use webxr::services::server_identity::ServerIdentity;
 // but we need to pass the real actor — so we use the real actor here.
 
 fn fixed_identity() -> Arc<ServerIdentity> {
-    let sk = SecretKey::from_hex(
-        "2222222222222222222222222222222222222222222222222222222222222222",
-    )
-    .unwrap();
+    let sk =
+        SecretKey::from_hex("2222222222222222222222222222222222222222222222222222222222222222")
+            .unwrap();
     Arc::new(ServerIdentity::for_test(sk))
 }
 
@@ -192,12 +191,12 @@ async fn promote_without_server_nostr_does_not_dispatch() {
     // The safer assertion is that the snapshot does not contain a non-zero
     // sample line for either kind-30100 counter.
     let snapshot = prom.render_text();
-    let signed_nonzero = snapshot
-        .lines()
-        .any(|l| l.contains("bridge_kind30100_signed_total") && !l.starts_with('#') && !l.ends_with(" 0"));
-    let err_nonzero = snapshot
-        .lines()
-        .any(|l| l.contains("bridge_kind30100_errors_total") && !l.starts_with('#') && !l.ends_with(" 0"));
+    let signed_nonzero = snapshot.lines().any(|l| {
+        l.contains("bridge_kind30100_signed_total") && !l.starts_with('#') && !l.ends_with(" 0")
+    });
+    let err_nonzero = snapshot.lines().any(|l| {
+        l.contains("bridge_kind30100_errors_total") && !l.starts_with('#') && !l.ends_with(" 0")
+    });
     assert!(
         !signed_nonzero,
         "signed counter must remain zero when actor is None"

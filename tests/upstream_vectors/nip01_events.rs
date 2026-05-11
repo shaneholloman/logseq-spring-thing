@@ -45,7 +45,8 @@ fn nip01_serialised_strings_hash_consistently() {
         assert_eq!(id_hex.len(), 64, "sha256 hex must be 64 chars");
         if let Some(expected) = v["expected_id"].as_str() {
             assert_eq!(
-                id_hex, expected,
+                id_hex,
+                expected,
                 "case '{}': computed event id {} did not match expected {}",
                 v["case"].as_str().unwrap_or(""),
                 id_hex,
@@ -54,7 +55,11 @@ fn nip01_serialised_strings_hash_consistently() {
         }
         checked += 1;
     }
-    assert!(checked >= 5, "expected to check >=5 positive vectors, got {}", checked);
+    assert!(
+        checked >= 5,
+        "expected to check >=5 positive vectors, got {}",
+        checked
+    );
 }
 
 #[test]

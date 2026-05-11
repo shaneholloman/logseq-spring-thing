@@ -4,7 +4,7 @@
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use webxr::adapters::neo4j_adapter::{Neo4jAdapter, Neo4jConfig};
-use webxr::adapters::neo4j_ontology_repository::{Neo4jOntologyRepository, Neo4jOntologyConfig};
+use webxr::adapters::neo4j_ontology_repository::{Neo4jOntologyConfig, Neo4jOntologyRepository};
 use webxr::config::AppFullSettings;
 use webxr::services::github::api::GitHubClient;
 use webxr::services::github::config::GitHubConfig;
@@ -66,7 +66,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let content_api = Arc::new(EnhancedContentAPI::new(github_client));
 
     // Initialize whelk inference engine for ontology reasoning
-    let whelk_engine = Arc::new(webxr::adapters::whelk_inference_engine::WhelkInferenceEngine::new());
+    let whelk_engine =
+        Arc::new(webxr::adapters::whelk_inference_engine::WhelkInferenceEngine::new());
     let reasoner = Arc::new(webxr::services::ontology_reasoner::OntologyReasoner::new(
         whelk_engine,
         onto_repo.clone() as Arc<dyn webxr::ports::ontology_repository::OntologyRepository>,
@@ -75,18 +76,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize edge classifier (no arguments needed)
     let edge_classifier = Arc::new(webxr::services::edge_classifier::EdgeClassifier::new());
 
-    let enrichment_service = Arc::new(OntologyEnrichmentService::new(
-        reasoner,
-        edge_classifier,
-    ));
+    let enrichment_service = Arc::new(OntologyEnrichmentService::new(reasoner, edge_classifier));
 
     // Create sync service
-    let sync_service = LocalFileSyncService::new(
-        content_api,
-        kg_repo,
-        onto_repo,
-        enrichment_service,
-    );
+    let sync_service =
+        LocalFileSyncService::new(content_api, kg_repo, onto_repo, enrichment_service);
 
     log::info!("🔄 Starting sync operation...");
 
@@ -106,10 +100,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "  • Files updated from GitHub: {}",
         stats.files_updated_from_github
     );
-    println!(
-        "  • Knowledge graph files:    {}",
-        stats.kg_files_processed
-    );
+    println!("  • Knowledge graph files:    {}", stats.kg_files_processed);
     println!(
         "  • Ontology files processed: {}",
         stats.ontology_files_processed

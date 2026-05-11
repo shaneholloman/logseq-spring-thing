@@ -173,8 +173,7 @@ fn auth_before_challenge_must_not_decode_as_challenge_response() {
     // client. The mirror enum treats both as valid `ServerHandshakeMirror`
     // variants — but the gdext client's session FSM rejects `joined` in the
     // pre-challenge state.
-    let joined_first =
-        r#"{"type":"joined","room_id":"urn:visionclaw:room:sha256-12-deadbeefcafe","avatar_id":"urn:visionclaw:avatar:aaaa","members":[]}"#;
+    let joined_first = r#"{"type":"joined","room_id":"urn:visionclaw:room:sha256-12-deadbeefcafe","avatar_id":"urn:visionclaw:avatar:aaaa","members":[]}"#;
     let parsed: ServerHandshakeMirror = serde_json::from_str(joined_first).expect("decode");
     assert!(
         matches!(parsed, ServerHandshakeMirror::Joined { .. }),

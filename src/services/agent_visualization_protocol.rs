@@ -6,47 +6,37 @@ use std::collections::HashMap;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum AgentVisualizationMessage {
-    
     #[serde(rename = "init")]
     Initialize(InitializeMessage),
 
-    
     #[serde(rename = "positions")]
     PositionUpdate(PositionUpdateMessage),
 
-    
     #[serde(rename = "state")]
     StateUpdate(StateUpdateMessage),
 
-    
     #[serde(rename = "connections")]
     ConnectionUpdate(ConnectionUpdateMessage),
 
-    
     #[serde(rename = "metrics")]
     MetricsUpdate(MetricsUpdateMessage),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InitializeMessage {
-    pub timestamp: i64, 
+    pub timestamp: i64,
     pub swarm_id: String,
-    pub session_uuid: Option<String>, 
+    pub session_uuid: Option<String>,
     pub topology: String,
 
-    
     pub agents: Vec<AgentInit>,
 
-    
     pub connections: Vec<ConnectionInit>,
 
-    
     pub visual_config: VisualConfig,
 
-    
     pub physics_config: PhysicsConfig,
 
-    
     pub positions: HashMap<String, Position>,
 }
 
@@ -58,26 +48,21 @@ pub struct AgentInit {
     pub agent_type: String,
     pub status: String,
 
-    
     pub color: String,
-    pub shape: String, 
+    pub shape: String,
     pub size: f32,
 
-    
     pub health: f32,
     pub cpu: f32,
     pub memory: f32,
     pub activity: f32,
 
-    
     pub tasks_active: u32,
     pub tasks_completed: u32,
     pub success_rate: f32,
 
-    
     pub tokens: u64,
     pub token_rate: f32,
-
 
     pub capabilities: Vec<String>,
     pub created_at: i64,
@@ -97,8 +82,8 @@ pub struct ConnectionInit {
     pub id: String,
     pub source: String,
     pub target: String,
-    pub strength: f32,  
-    pub flow_rate: f32, 
+    pub strength: f32,
+    pub flow_rate: f32,
     pub color: String,
     pub active: bool,
 }
@@ -115,7 +100,7 @@ pub struct PositionUpdate {
     pub x: f32,
     pub y: f32,
     pub z: f32,
-    
+
     pub vx: Option<f32>,
     pub vy: Option<f32>,
     pub vz: Option<f32>,
@@ -143,7 +128,7 @@ pub struct AgentStateUpdate {
 pub struct ConnectionUpdateMessage {
     pub timestamp: i64,
     pub added: Vec<ConnectionInit>,
-    pub removed: Vec<String>, 
+    pub removed: Vec<String>,
     pub updated: Vec<ConnectionStateUpdate>,
 }
 
@@ -228,7 +213,7 @@ impl Default for PhysicsConfig {
             spring_k: 0.05,
             link_distance: 50.0,
             damping: 0.9,
-            repel_k: 5000.0, 
+            repel_k: 5000.0,
             gravity_k: 0.01,
             max_velocity: crate::config::CANONICAL_MAX_VELOCITY,
         }
@@ -288,7 +273,7 @@ pub struct AgentExtendedMetadata {
 pub struct TopologyPosition {
     pub layer: u32,
     pub index_in_layer: u32,
-    pub connections: Vec<String>, 
+    pub connections: Vec<String>,
     pub is_coordinator: bool,
     pub coordination_level: u32,
 }
@@ -361,27 +346,21 @@ pub struct Bottleneck {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum MultiMcpVisualizationMessage {
-    
     #[serde(rename = "discovery")]
     Discovery(DiscoveryMessage),
 
-    
     #[serde(rename = "multi_agent_update")]
     MultiAgentUpdate(MultiAgentUpdateMessage),
 
-    
     #[serde(rename = "topology_update")]
     TopologyUpdate(TopologyUpdateMessage),
 
-    
     #[serde(rename = "neural_update")]
     NeuralUpdate(NeuralUpdateMessage),
 
-    
     #[serde(rename = "performance_analysis")]
     PerformanceAnalysis(PerformanceAnalysisMessage),
 
-    
     #[serde(rename = "coordination_event")]
     CoordinationEvent(CoordinationEventMessage),
 }
@@ -393,7 +372,7 @@ pub struct DiscoveryMessage {
     pub total_agents: u32,
     pub swarms: Vec<SwarmInfo>,
     pub global_topology: GlobalTopology,
-    
+
     pub session_registry: std::collections::HashMap<String, SessionInfo>,
 }
 
@@ -597,8 +576,7 @@ pub struct AgentVisualizationProtocol {
     topology_cache: std::collections::HashMap<String, SwarmTopologyData>,
     last_discovery: Option<chrono::DateTime<chrono::Utc>>,
 
-    
-    session_uuid_map: std::collections::HashMap<String, String>, 
+    session_uuid_map: std::collections::HashMap<String, String>,
     session_metadata: std::collections::HashMap<String, SessionMetadata>,
 }
 
@@ -615,7 +593,7 @@ pub struct SessionMetadata {
 impl AgentVisualizationProtocol {
     pub fn new() -> Self {
         Self {
-            _update_interval_ms: 16, 
+            _update_interval_ms: 16,
             position_buffer: Vec::new(),
             mcp_servers: std::collections::HashMap::new(),
             agent_cache: std::collections::HashMap::new(),
@@ -626,35 +604,29 @@ impl AgentVisualizationProtocol {
         }
     }
 
-    
     pub fn register_session(&mut self, uuid: String, metadata: SessionMetadata) {
         log::info!("Registering session {} with metadata", uuid);
         self.session_metadata.insert(uuid, metadata);
     }
 
-    
     pub fn link_swarm_to_session(&mut self, swarm_id: String, session_uuid: String) {
         log::info!("Linking swarm {} to session {}", swarm_id, session_uuid);
         self.session_uuid_map
             .insert(swarm_id.clone(), session_uuid.clone());
 
-        
         if let Some(metadata) = self.session_metadata.get_mut(&session_uuid) {
             metadata.swarm_id = Some(swarm_id);
         }
     }
 
-    
     pub fn get_session_for_swarm(&self, swarm_id: &str) -> Option<&String> {
         self.session_uuid_map.get(swarm_id)
     }
 
-    
     pub fn get_session_metadata(&self, uuid: &str) -> Option<&SessionMetadata> {
         self.session_metadata.get(uuid)
     }
 
-    
     pub fn register_mcp_server(&mut self, server_info: McpServerInfo) {
         log::info!(
             "Registering MCP server: {} ({}:{})",
@@ -666,7 +638,6 @@ impl AgentVisualizationProtocol {
             .insert(server_info.server_id.clone(), server_info);
     }
 
-    
     pub fn update_agents_from_server(
         &mut self,
         server_type: McpServerType,
@@ -682,7 +653,6 @@ impl AgentVisualizationProtocol {
         );
     }
 
-    
     pub fn create_discovery_message(&mut self) -> String {
         let timestamp = time::now();
         self.last_discovery = Some(timestamp);
@@ -690,7 +660,6 @@ impl AgentVisualizationProtocol {
         let servers: Vec<McpServerInfo> = self.mcp_servers.values().cloned().collect();
         let total_agents = self.agent_cache.len() as u32;
 
-        
         let mut swarms: std::collections::HashMap<String, Vec<&MultiMcpAgentStatus>> =
             std::collections::HashMap::new();
         for agent in self.agent_cache.values() {
@@ -753,7 +722,6 @@ impl AgentVisualizationProtocol {
             data_flow_patterns: self.analyze_data_flow_patterns(),
         };
 
-        
         let session_registry: std::collections::HashMap<String, SessionInfo> = self
             .session_metadata
             .iter()
@@ -765,7 +733,7 @@ impl AgentVisualizationProtocol {
                         swarm_id: metadata.swarm_id.clone(),
                         task: metadata.task.clone(),
                         created_at: metadata.created_at.timestamp(),
-                        status: "running".to_string(), 
+                        status: "running".to_string(),
                     },
                 )
             })
@@ -784,7 +752,6 @@ impl AgentVisualizationProtocol {
         to_json(&message).unwrap_or_default()
     }
 
-    
     pub fn create_agent_update_message(&self, updated_agents: Vec<MultiMcpAgentStatus>) -> String {
         let differential_updates: Vec<AgentDifferentialUpdate> = updated_agents
             .iter()
@@ -825,7 +792,6 @@ impl AgentVisualizationProtocol {
         to_json(&message).unwrap_or_default()
     }
 
-    
     pub fn create_topology_update(
         &mut self,
         swarm_id: String,
@@ -847,7 +813,6 @@ impl AgentVisualizationProtocol {
         to_json(&message).unwrap_or_default()
     }
 
-    
     pub fn create_performance_analysis(&self) -> String {
         let agents: Vec<&MultiMcpAgentStatus> = self.agent_cache.values().collect();
 
@@ -882,7 +847,6 @@ impl AgentVisualizationProtocol {
             coordination_overhead: self.calculate_coordination_overhead(&agents),
         };
 
-        
         let bottlenecks: Vec<Bottleneck> = agents
             .iter()
             .filter_map(|agent| {
@@ -922,7 +886,6 @@ impl AgentVisualizationProtocol {
         to_json(&message).unwrap_or_default()
     }
 
-    
     pub fn get_agent_count_by_server(&self, server_type: &McpServerType) -> u32 {
         self.agent_cache
             .values()
@@ -932,21 +895,19 @@ impl AgentVisualizationProtocol {
             .count() as u32
     }
 
-    
     pub fn needs_discovery(&self) -> bool {
         self.last_discovery.map_or(true, |last| {
             time::now().signed_duration_since(last).num_seconds() > 30
         })
     }
 
-    
     pub fn create_init_message(
         swarm_id: &str,
         topology: &str,
         agents: Vec<crate::types::claude_flow::AgentStatus>,
     ) -> String {
         use crate::services::agent_visualization_processor::AgentVisualizationProcessor;
-use crate::utils::json::to_json;
+        use crate::utils::json::to_json;
 
         let mut processor = AgentVisualizationProcessor::new();
         let viz_data = processor.create_visualization_packet(
@@ -955,7 +916,6 @@ use crate::utils::json::to_json;
             topology.to_string(),
         );
 
-        
         let init_agents: Vec<AgentInit> = viz_data
             .agents
             .into_iter()
@@ -1055,20 +1015,19 @@ use crate::utils::json::to_json;
         let init_msg = InitializeMessage {
             timestamp: time::timestamp_seconds(),
             swarm_id: swarm_id.to_string(),
-            session_uuid: None, 
+            session_uuid: None,
             topology: topology.to_string(),
             agents: init_agents,
             connections: init_connections,
             visual_config,
             physics_config: viz_data.physics_config,
-            positions: HashMap::new(), 
+            positions: HashMap::new(),
         };
 
         let message = AgentVisualizationMessage::Initialize(init_msg);
         to_json(&message).unwrap_or_default()
     }
 
-    
     pub fn add_position_update(
         &mut self,
         id: String,
@@ -1090,7 +1049,6 @@ use crate::utils::json::to_json;
         });
     }
 
-    
     pub fn create_position_update(&mut self) -> Option<String> {
         if self.position_buffer.is_empty() {
             return None;
@@ -1105,7 +1063,6 @@ use crate::utils::json::to_json;
         Some(to_json(&message).unwrap_or_default())
     }
 
-    
     pub fn create_state_update(updates: Vec<AgentStateUpdate>) -> String {
         let msg = StateUpdateMessage {
             timestamp: time::timestamp_millis(),
@@ -1116,7 +1073,6 @@ use crate::utils::json::to_json;
         to_json(&message).unwrap_or_default()
     }
 
-    
     fn discover_inter_swarm_connections(&self) -> Vec<InterSwarmConnection> {
         let mut connections = Vec::new();
         let swarm_ids: std::collections::HashSet<String> = self
@@ -1125,15 +1081,14 @@ use crate::utils::json::to_json;
             .map(|a| a.swarm_id.clone())
             .collect();
 
-        
         let swarm_list: Vec<_> = swarm_ids.into_iter().collect();
         for i in 0..swarm_list.len() {
             for j in (i + 1)..swarm_list.len() {
                 connections.push(InterSwarmConnection {
                     source_swarm: swarm_list[i].clone(),
                     target_swarm: swarm_list[j].clone(),
-                    connection_strength: 0.3, 
-                    message_rate: 1.5,        
+                    connection_strength: 0.3,
+                    message_rate: 1.5,
                     coordination_type: "peer".to_string(),
                 });
             }
@@ -1155,7 +1110,6 @@ use crate::utils::json::to_json;
 
         let mut levels = Vec::new();
 
-        
         let top_coordinators: Vec<String> = coordinators
             .iter()
             .filter(|c| {
@@ -1189,7 +1143,6 @@ use crate::utils::json::to_json;
     fn analyze_data_flow_patterns(&self) -> Vec<DataFlowPattern> {
         let mut patterns = Vec::new();
 
-        
         let coordinators: Vec<_> = self
             .agent_cache
             .values()
@@ -1226,13 +1179,10 @@ use crate::utils::json::to_json;
     }
 
     fn calculate_cpu_delta(&self, _agent_id: &str, current_cpu: f32) -> f32 {
-        
-        
         (current_cpu - 0.5).clamp(-0.2, 0.2)
     }
 
     fn calculate_memory_delta(&self, _agent_id: &str, current_memory: f32) -> f32 {
-        
         (current_memory - 0.4).clamp(-0.1, 0.1)
     }
 
@@ -1248,28 +1198,22 @@ use crate::utils::json::to_json;
             0.0
         };
 
-        
         (current_error_rate - 0.05).clamp(-0.1, 0.1)
     }
 
     fn get_removed_agents(&self) -> Vec<String> {
-        
-        
         Vec::new()
     }
 
     fn detect_topology_changes(&self, _topology_data: &SwarmTopologyData) -> Vec<TopologyChange> {
-        
         Vec::new()
     }
 
     fn get_new_connections(&self) -> Vec<AgentConnection> {
-        
         Vec::new()
     }
 
     fn get_removed_connections(&self) -> Vec<String> {
-        
         Vec::new()
     }
 
@@ -1334,13 +1278,12 @@ use crate::utils::json::to_json;
     }
 
     fn calculate_bottleneck_impact(&self, agent_id: &str) -> Vec<String> {
-        
         if let Some(agent) = self.agent_cache.get(agent_id) {
             self.agent_cache
                 .values()
                 .filter(|a| a.swarm_id == agent.swarm_id && a.agent_id != agent_id)
                 .map(|a| a.agent_id.clone())
-                .take(3) 
+                .take(3)
                 .collect()
         } else {
             Vec::new()
@@ -1365,7 +1308,6 @@ use crate::utils::json::to_json;
         let total_agents = agents.len() as f32;
         let coordinator_ratio = coordinator_count / total_agents;
 
-        
         (coordinator_ratio * 0.3 + 0.05).min(0.8)
     }
 
@@ -1376,7 +1318,6 @@ use crate::utils::json::to_json;
     ) -> Vec<OptimizationSuggestion> {
         let mut suggestions = Vec::new();
 
-        
         for bottleneck in bottlenecks {
             suggestions.push(OptimizationSuggestion {
                 suggestion_id: format!("scale-{}", bottleneck.agent_id),
@@ -1388,7 +1329,6 @@ use crate::utils::json::to_json;
             });
         }
 
-        
         let avg_cpu: f32 =
             agents.iter().map(|a| a.performance.cpu_usage).sum::<f32>() / agents.len() as f32;
         let high_load_agents: Vec<_> = agents

@@ -2,54 +2,23 @@
 // Uses Ontology application layer for all OWL operations
 
 use crate::handlers::utils::execute_in_thread;
-use crate::{ok_json, error_json, not_found};
 use crate::AppState;
+use crate::{error_json, not_found, ok_json};
 use actix_web::{web, HttpResponse};
 use log::{error, info};
 use serde::Deserialize;
 
 // Import CQRS handlers
 use crate::application::ontology::{
-    AddAxiom,
-    AddAxiomHandler,
-    
-    AddOwlClass,
-    AddOwlClassHandler,
-    AddOwlProperty,
-    AddOwlPropertyHandler,
-    GetClassAxioms,
-    GetClassAxiomsHandler,
-    GetInferenceResults,
-    GetInferenceResultsHandler,
-    GetOntologyMetrics,
-    GetOntologyMetricsHandler,
-    GetOwlClass,
-    GetOwlClassHandler,
-    GetOwlProperty,
-    GetOwlPropertyHandler,
-    ListOwlClasses,
-    ListOwlClassesHandler,
-    ListOwlProperties,
-    ListOwlPropertiesHandler,
-    
-    LoadOntologyGraph,
-    LoadOntologyGraphHandler,
-    QueryOntology,
-    QueryOntologyHandler,
-    RemoveAxiom,
-    RemoveAxiomHandler,
-    RemoveOwlClass,
-    RemoveOwlClassHandler,
-    SaveOntologyGraph,
-    SaveOntologyGraphHandler,
-    StoreInferenceResults,
-    StoreInferenceResultsHandler,
-    UpdateOwlClass,
-    UpdateOwlClassHandler,
-    UpdateOwlProperty,
-    UpdateOwlPropertyHandler,
-    ValidateOntology,
-    ValidateOntologyHandler,
+    AddAxiom, AddAxiomHandler, AddOwlClass, AddOwlClassHandler, AddOwlProperty,
+    AddOwlPropertyHandler, GetClassAxioms, GetClassAxiomsHandler, GetInferenceResults,
+    GetInferenceResultsHandler, GetOntologyMetrics, GetOntologyMetricsHandler, GetOwlClass,
+    GetOwlClassHandler, GetOwlProperty, GetOwlPropertyHandler, ListOwlClasses,
+    ListOwlClassesHandler, ListOwlProperties, ListOwlPropertiesHandler, LoadOntologyGraph,
+    LoadOntologyGraphHandler, QueryOntology, QueryOntologyHandler, RemoveAxiom, RemoveAxiomHandler,
+    RemoveOwlClass, RemoveOwlClassHandler, SaveOntologyGraph, SaveOntologyGraphHandler,
+    StoreInferenceResults, StoreInferenceResultsHandler, UpdateOwlClass, UpdateOwlClassHandler,
+    UpdateOwlProperty, UpdateOwlPropertyHandler, ValidateOntology, ValidateOntologyHandler,
 };
 use crate::models::graph::GraphData;
 use crate::ports::ontology_repository::{InferenceResults, OwlAxiom, OwlClass, OwlProperty};
@@ -103,16 +72,15 @@ pub struct SaveGraphRequest {
     pub graph: GraphData,
 }
 
-pub async fn get_ontology_graph(state: web::Data<AppState>) -> Result<HttpResponse, actix_web::Error> {
+pub async fn get_ontology_graph(
+    state: web::Data<AppState>,
+) -> Result<HttpResponse, actix_web::Error> {
     info!("Getting ontology graph via CQRS query");
 
-    
     let handler = LoadOntologyGraphHandler::new(state.ontology_repository.clone());
 
-    
     let result = execute_in_thread(move || handler.handle(LoadOntologyGraph)).await;
 
-    
     match result {
         Ok(Ok(graph)) => {
             info!("Ontology graph loaded successfully via CQRS");
@@ -136,10 +104,8 @@ pub async fn save_ontology_graph(
     let graph = request.into_inner().graph;
     info!("Saving ontology graph via CQRS directive");
 
-    
     let handler = SaveOntologyGraphHandler::new(state.ontology_repository.clone());
 
-    
     let result = execute_in_thread(move || handler.handle(SaveOntologyGraph { graph })).await;
 
     match result {
@@ -160,14 +126,15 @@ pub async fn save_ontology_graph(
     }
 }
 
-pub async fn get_owl_class(state: web::Data<AppState>, iri: web::Path<String>) -> Result<HttpResponse, actix_web::Error> {
+pub async fn get_owl_class(
+    state: web::Data<AppState>,
+    iri: web::Path<String>,
+) -> Result<HttpResponse, actix_web::Error> {
     let class_iri = iri.into_inner();
     info!("Getting OWL class via CQRS query: iri={}", class_iri);
 
-    
     let handler = GetOwlClassHandler::new(state.ontology_repository.clone());
 
-    
     let iri_clone = class_iri.clone();
     let result = execute_in_thread(move || handler.handle(GetOwlClass { iri: iri_clone })).await;
 
@@ -191,13 +158,13 @@ pub async fn get_owl_class(state: web::Data<AppState>, iri: web::Path<String>) -
     }
 }
 
-pub async fn list_owl_classes(state: web::Data<AppState>) -> Result<HttpResponse, actix_web::Error> {
+pub async fn list_owl_classes(
+    state: web::Data<AppState>,
+) -> Result<HttpResponse, actix_web::Error> {
     info!("Listing all OWL classes via CQRS query");
 
-    
     let handler = ListOwlClassesHandler::new(state.ontology_repository.clone());
 
-    
     let result = execute_in_thread(move || handler.handle(ListOwlClasses)).await;
 
     match result {
@@ -219,9 +186,11 @@ pub async fn list_owl_classes(state: web::Data<AppState>) -> Result<HttpResponse
     }
 }
 
-pub async fn get_class_hierarchy(state: web::Data<AppState>) -> Result<HttpResponse, actix_web::Error> {
-    use std::collections::HashMap;
+pub async fn get_class_hierarchy(
+    state: web::Data<AppState>,
+) -> Result<HttpResponse, actix_web::Error> {
     use serde::Serialize;
+    use std::collections::HashMap;
 
     #[derive(Serialize)]
     #[serde(rename_all = "camelCase")]
@@ -258,22 +227,49 @@ pub async fn get_class_hierarchy(state: web::Data<AppState>) -> Result<HttpRespo
             root_classes.push(class.iri.clone());
         }
         for parent_iri in &class.parent_classes {
-            children_map.entry(parent_iri.clone()).or_default().push(class.iri.clone());
+            children_map
+                .entry(parent_iri.clone())
+                .or_default()
+                .push(class.iri.clone());
         }
     }
 
     fn depth_of(iri: &str, classes: &[OwlClass], memo: &mut HashMap<String, usize>) -> usize {
-        if let Some(&d) = memo.get(iri) { return d; }
-        let d = classes.iter().find(|c| c.iri == iri)
-            .map(|c| c.parent_classes.iter().map(|p| depth_of(p, classes, memo) + 1).max().unwrap_or(0))
+        if let Some(&d) = memo.get(iri) {
+            return d;
+        }
+        let d = classes
+            .iter()
+            .find(|c| c.iri == iri)
+            .map(|c| {
+                c.parent_classes
+                    .iter()
+                    .map(|p| depth_of(p, classes, memo) + 1)
+                    .max()
+                    .unwrap_or(0)
+            })
             .unwrap_or(0);
         memo.insert(iri.to_string(), d);
         d
     }
 
-    fn descendants(iri: &str, children_map: &HashMap<String, Vec<String>>, memo: &mut HashMap<String, usize>) -> usize {
-        if let Some(&n) = memo.get(iri) { return n; }
-        let n = children_map.get(iri).map(|ch| ch.len() + ch.iter().map(|c| descendants(c, children_map, memo)).sum::<usize>()).unwrap_or(0);
+    fn descendants(
+        iri: &str,
+        children_map: &HashMap<String, Vec<String>>,
+        memo: &mut HashMap<String, usize>,
+    ) -> usize {
+        if let Some(&n) = memo.get(iri) {
+            return n;
+        }
+        let n = children_map
+            .get(iri)
+            .map(|ch| {
+                ch.len()
+                    + ch.iter()
+                        .map(|c| descendants(c, children_map, memo))
+                        .sum::<usize>()
+            })
+            .unwrap_or(0);
         memo.insert(iri.to_string(), n);
         n
     }
@@ -288,12 +284,31 @@ pub async fn get_class_hierarchy(state: web::Data<AppState>) -> Result<HttpRespo
         let children_iris = children_map.get(&class.iri).cloned().unwrap_or_default();
         let parent_iri = class.parent_classes.first().cloned();
         let label = class.label.clone().unwrap_or_else(|| {
-            class.iri.split('#').last().or_else(|| class.iri.split('/').last()).unwrap_or(&class.iri).to_string()
+            class
+                .iri
+                .split('#')
+                .last()
+                .or_else(|| class.iri.split('/').last())
+                .unwrap_or(&class.iri)
+                .to_string()
         });
-        hierarchy.insert(class.iri.clone(), ClassNode { iri: class.iri.clone(), label, parent_iri, children_iris, node_count, depth });
+        hierarchy.insert(
+            class.iri.clone(),
+            ClassNode {
+                iri: class.iri.clone(),
+                label,
+                parent_iri,
+                children_iris,
+                node_count,
+                depth,
+            },
+        );
     }
 
-    ok_json!(ClassHierarchy { root_classes, hierarchy })
+    ok_json!(ClassHierarchy {
+        root_classes,
+        hierarchy
+    })
 }
 
 pub async fn add_owl_class(
@@ -304,10 +319,8 @@ pub async fn add_owl_class(
     let class = request.into_inner().class;
     info!("Adding OWL class via CQRS directive: iri={}", class.iri);
 
-    
     let handler = AddOwlClassHandler::new(state.ontology_repository.clone());
 
-    
     let class_iri = class.iri.clone();
     let result = execute_in_thread(move || handler.handle(AddOwlClass { class })).await;
 
@@ -338,10 +351,8 @@ pub async fn update_owl_class(
     let class = request.into_inner().class;
     info!("Updating OWL class via CQRS directive: iri={}", class.iri);
 
-    
     let handler = UpdateOwlClassHandler::new(state.ontology_repository.clone());
 
-    
     let result = execute_in_thread(move || handler.handle(UpdateOwlClass { class })).await;
 
     match result {
@@ -370,10 +381,8 @@ pub async fn remove_owl_class(
     let class_iri = iri.into_inner();
     info!("Removing OWL class via CQRS directive: iri={}", class_iri);
 
-    
     let handler = RemoveOwlClassHandler::new(state.ontology_repository.clone());
 
-    
     let result = execute_in_thread(move || handler.handle(RemoveOwlClass { iri: class_iri })).await;
 
     match result {
@@ -401,10 +410,8 @@ pub async fn get_owl_property(
     let property_iri = iri.into_inner();
     info!("Getting OWL property via CQRS query: iri={}", property_iri);
 
-    
     let handler = GetOwlPropertyHandler::new(state.ontology_repository.clone());
 
-    
     match handler.handle(GetOwlProperty {
         iri: property_iri.clone(),
     }) {
@@ -423,13 +430,13 @@ pub async fn get_owl_property(
     }
 }
 
-pub async fn list_owl_properties(state: web::Data<AppState>) -> Result<HttpResponse, actix_web::Error> {
+pub async fn list_owl_properties(
+    state: web::Data<AppState>,
+) -> Result<HttpResponse, actix_web::Error> {
     info!("Listing all OWL properties via CQRS query");
 
-    
     let handler = ListOwlPropertiesHandler::new(state.ontology_repository.clone());
 
-    
     let result = execute_in_thread(move || handler.handle(ListOwlProperties)).await;
 
     match result {
@@ -462,10 +469,8 @@ pub async fn add_owl_property(
         property.iri
     );
 
-    
     let handler = AddOwlPropertyHandler::new(state.ontology_repository.clone());
 
-    
     let property_iri = property.iri.clone();
     match handler.handle(AddOwlProperty { property }) {
         Ok(()) => {
@@ -496,10 +501,8 @@ pub async fn update_owl_property(
         property.iri
     );
 
-    
     let handler = UpdateOwlPropertyHandler::new(state.ontology_repository.clone());
 
-    
     let result = execute_in_thread(move || handler.handle(UpdateOwlProperty { property })).await;
 
     match result {
@@ -527,10 +530,8 @@ pub async fn get_class_axioms(
     let class_iri = iri.into_inner();
     info!("Getting class axioms via CQRS query: iri={}", class_iri);
 
-    
     let handler = GetClassAxiomsHandler::new(state.ontology_repository.clone());
 
-    
     let result = execute_in_thread(move || handler.handle(GetClassAxioms { class_iri })).await;
 
     match result {
@@ -563,10 +564,8 @@ pub async fn add_axiom(
         axiom.axiom_type
     );
 
-    
     let handler = AddAxiomHandler::new(state.ontology_repository.clone());
 
-    
     let axiom_type = format!("{:?}", axiom.axiom_type);
     match handler.handle(AddAxiom { axiom }) {
         Ok(()) => {
@@ -583,14 +582,16 @@ pub async fn add_axiom(
     }
 }
 
-pub async fn remove_axiom(_auth: crate::settings::auth_extractor::AuthenticatedUser, state: web::Data<AppState>, axiom_id: web::Path<u64>) -> Result<HttpResponse, actix_web::Error> {
+pub async fn remove_axiom(
+    _auth: crate::settings::auth_extractor::AuthenticatedUser,
+    state: web::Data<AppState>,
+    axiom_id: web::Path<u64>,
+) -> Result<HttpResponse, actix_web::Error> {
     let id = axiom_id.into_inner();
     info!("Removing axiom via CQRS directive: id={}", id);
 
-    
     let handler = RemoveAxiomHandler::new(state.ontology_repository.clone());
 
-    
     let result = execute_in_thread(move || handler.handle(RemoveAxiom { axiom_id: id })).await;
 
     match result {
@@ -611,13 +612,13 @@ pub async fn remove_axiom(_auth: crate::settings::auth_extractor::AuthenticatedU
     }
 }
 
-pub async fn get_inference_results(state: web::Data<AppState>) -> Result<HttpResponse, actix_web::Error> {
+pub async fn get_inference_results(
+    state: web::Data<AppState>,
+) -> Result<HttpResponse, actix_web::Error> {
     info!("Getting inference results via CQRS query");
 
-    
     let handler = GetInferenceResultsHandler::new(state.ontology_repository.clone());
 
-    
     let result = execute_in_thread(move || handler.handle(GetInferenceResults)).await;
 
     match result {
@@ -651,10 +652,8 @@ pub async fn store_inference_results(
         results.inferred_axioms.len()
     );
 
-    
     let handler = StoreInferenceResultsHandler::new(state.ontology_repository.clone());
 
-    
     let result = execute_in_thread(move || handler.handle(StoreInferenceResults { results })).await;
 
     match result {
@@ -675,13 +674,13 @@ pub async fn store_inference_results(
     }
 }
 
-pub async fn validate_ontology(state: web::Data<AppState>) -> Result<HttpResponse, actix_web::Error> {
+pub async fn validate_ontology(
+    state: web::Data<AppState>,
+) -> Result<HttpResponse, actix_web::Error> {
     info!("Validating ontology via CQRS query");
 
-    
     let handler = ValidateOntologyHandler::new(state.ontology_repository.clone());
 
-    
     let result = execute_in_thread(move || handler.handle(ValidateOntology)).await;
 
     match result {
@@ -710,10 +709,8 @@ pub async fn query_ontology(
     let query = request.into_inner().query;
     info!("Querying ontology via CQRS query");
 
-    
     let handler = QueryOntologyHandler::new(state.ontology_repository.clone());
 
-    
     let result = execute_in_thread(move || handler.handle(QueryOntology { query })).await;
 
     match result {
@@ -735,13 +732,13 @@ pub async fn query_ontology(
     }
 }
 
-pub async fn get_ontology_metrics(state: web::Data<AppState>) -> Result<HttpResponse, actix_web::Error> {
+pub async fn get_ontology_metrics(
+    state: web::Data<AppState>,
+) -> Result<HttpResponse, actix_web::Error> {
     info!("Getting ontology metrics via CQRS query");
 
-    
     let handler = GetOntologyMetricsHandler::new(state.ontology_repository.clone());
 
-    
     let result = execute_in_thread(move || handler.handle(GetOntologyMetrics)).await;
 
     match result {
@@ -763,32 +760,25 @@ pub async fn get_ontology_metrics(state: web::Data<AppState>) -> Result<HttpResp
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/ontology")
-            
             .route("/graph", web::get().to(get_ontology_graph))
             .route("/graph", web::post().to(save_ontology_graph))
-            
             .route("/classes", web::get().to(list_owl_classes))
             .route("/classes", web::post().to(add_owl_class))
             .route("/classes/{iri}", web::get().to(get_owl_class))
             .route("/classes/{iri}", web::put().to(update_owl_class))
             .route("/classes/{iri}", web::delete().to(remove_owl_class))
             .route("/classes/{iri}/axioms", web::get().to(get_class_axioms))
-            
             .route("/properties", web::get().to(list_owl_properties))
             .route("/properties", web::post().to(add_owl_property))
             .route("/properties/{iri}", web::get().to(get_owl_property))
             .route("/properties/{iri}", web::put().to(update_owl_property))
-            
             .route("/axioms", web::post().to(add_axiom))
             .route("/axioms/{id}", web::delete().to(remove_axiom))
-            
             .route("/inference", web::get().to(get_inference_results))
             .route("/inference", web::post().to(store_inference_results))
-            
             .route("/validate", web::get().to(validate_ontology))
             .route("/query", web::post().to(query_ontology))
             .route("/metrics", web::get().to(get_ontology_metrics))
-
             .route("/hierarchy", web::get().to(get_class_hierarchy)),
     );
 }

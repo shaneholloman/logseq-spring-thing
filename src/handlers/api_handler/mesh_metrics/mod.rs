@@ -4,8 +4,8 @@ use serde::Deserialize;
 use serde_json::json;
 
 use crate::ok_json;
-use crate::AppState;
 use crate::services::kpi_computation_service::KpiComputationService;
+use crate::AppState;
 
 #[derive(Debug, Deserialize)]
 pub struct MetricsQuery {

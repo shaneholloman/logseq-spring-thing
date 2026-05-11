@@ -220,8 +220,7 @@ fn page_urn_from_title(owner_hex: &str, title: &str) -> String {
             // log line above flags it for ingest-time investigation.
             const ZERO_PK: &str =
                 "0000000000000000000000000000000000000000000000000000000000000000";
-            mint_owned_kg(ZERO_PK, slug.as_bytes())
-                .expect("zero-pubkey is a valid 64-hex string")
+            mint_owned_kg(ZERO_PK, slug.as_bytes()).expect("zero-pubkey is a valid 64-hex string")
         }
     }
 }

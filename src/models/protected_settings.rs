@@ -1,7 +1,7 @@
-use serde::{Deserialize, Serialize};
-use std::fmt;
 use crate::utils::json::from_json;
 use crate::utils::time;
+use serde::{Deserialize, Serialize};
+use std::fmt;
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -114,7 +114,7 @@ impl Default for ProtectedSettings {
                 enable_http2: true,
                 enable_tls: false,
                 min_tls_version: "TLS1.2".to_string(),
-                max_request_size: 10 * 1024 * 1024, 
+                max_request_size: 10 * 1024 * 1024,
                 enable_rate_limiting: true,
                 rate_limit_requests: 100,
                 rate_limit_window: 60,
@@ -133,7 +133,7 @@ impl Default for ProtectedSettings {
             },
             websocket_server: WebSocketServerSettings {
                 max_connections: 100,
-                max_message_size: 32 * 1024 * 1024, 
+                max_message_size: 32 * 1024 * 1024,
                 url: String::new(),
             },
             users: std::collections::HashMap::new(),
@@ -152,35 +152,50 @@ impl ProtectedSettings {
 
         if let Some(network) = other.get("network") {
             match serde_json::from_value(network.clone()) {
-                Ok(v) => { self.network = v; successes += 1; }
+                Ok(v) => {
+                    self.network = v;
+                    successes += 1;
+                }
                 Err(e) => failures.push(format!("network: {}", e)),
             }
         }
 
         if let Some(security) = other.get("security") {
             match serde_json::from_value(security.clone()) {
-                Ok(v) => { self.security = v; successes += 1; }
+                Ok(v) => {
+                    self.security = v;
+                    successes += 1;
+                }
                 Err(e) => failures.push(format!("security: {}", e)),
             }
         }
 
         if let Some(websocket) = other.get("websocketServer") {
             match serde_json::from_value(websocket.clone()) {
-                Ok(v) => { self.websocket_server = v; successes += 1; }
+                Ok(v) => {
+                    self.websocket_server = v;
+                    successes += 1;
+                }
                 Err(e) => failures.push(format!("websocketServer: {}", e)),
             }
         }
 
         if let Some(users) = other.get("users") {
             match serde_json::from_value(users.clone()) {
-                Ok(v) => { self.users = v; successes += 1; }
+                Ok(v) => {
+                    self.users = v;
+                    successes += 1;
+                }
                 Err(e) => failures.push(format!("users: {}", e)),
             }
         }
 
         if let Some(api_keys) = other.get("defaultApiKeys") {
             match serde_json::from_value(api_keys.clone()) {
-                Ok(v) => { self.default_api_keys = v; successes += 1; }
+                Ok(v) => {
+                    self.default_api_keys = v;
+                    successes += 1;
+                }
                 Err(e) => failures.push(format!("defaultApiKeys: {}", e)),
             }
         }
@@ -192,7 +207,9 @@ impl ProtectedSettings {
         if !failures.is_empty() {
             log::warn!(
                 "ProtectedSettings.merge: partial failure - {} succeeded, {} failed: {}",
-                successes, failures.len(), failures.join("; ")
+                successes,
+                failures.len(),
+                failures.join("; ")
             );
         }
 
@@ -213,18 +230,15 @@ impl ProtectedSettings {
     pub fn get_api_keys(&self, pubkey: &str) -> ApiKeys {
         if let Some(user) = self.users.get(pubkey) {
             if user.is_power_user {
-                
                 ApiKeys {
                     perplexity: std::env::var("PERPLEXITY_API_KEY").ok(),
                     openai: std::env::var("OPENAI_API_KEY").ok(),
                     ragflow: std::env::var("RAGFLOW_API_KEY").ok(),
                 }
             } else {
-                
                 user.api_keys.clone()
             }
         } else {
-            
             self.default_api_keys.clone()
         }
     }
@@ -275,8 +289,7 @@ impl ProtectedSettings {
         let content = std::fs::read_to_string(path)
             .map_err(|e| format!("Failed to read protected settings: {}", e))?;
 
-        from_json(&content)
-            .map_err(|e| format!("Failed to parse protected settings: {}", e))
+        from_json(&content).map_err(|e| format!("Failed to parse protected settings: {}", e))
     }
 
     pub fn save(&self, path: &str) -> Result<(), String> {

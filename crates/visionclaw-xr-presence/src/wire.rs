@@ -147,9 +147,7 @@ pub fn decode(bytes: &[u8]) -> Result<DecodedFrame, WireError> {
     let mask = body[cursor];
     cursor += 1;
     if mask & SLOT_HEAD == 0 || mask & !(SLOT_HEAD | SLOT_LEFT | SLOT_RIGHT) != 0 {
-        return Err(WireError::BadTransformCount {
-            count: mask,
-        });
+        return Err(WireError::BadTransformCount { count: mask });
     }
     let count = (mask & SLOT_HEAD != 0) as u8
         + (mask & SLOT_LEFT != 0) as u8

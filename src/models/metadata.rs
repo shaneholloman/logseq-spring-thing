@@ -239,26 +239,47 @@ mod tests {
 
     #[test]
     fn physicality_abstract() {
-        assert_eq!(PhysicalityCode::from_logseq("abstract"), PhysicalityCode::Abstract);
-        assert_eq!(PhysicalityCode::from_logseq("Abstract"), PhysicalityCode::Abstract);
+        assert_eq!(
+            PhysicalityCode::from_logseq("abstract"),
+            PhysicalityCode::Abstract
+        );
+        assert_eq!(
+            PhysicalityCode::from_logseq("Abstract"),
+            PhysicalityCode::Abstract
+        );
     }
 
     #[test]
     fn physicality_virtual() {
-        assert_eq!(PhysicalityCode::from_logseq("virtual"), PhysicalityCode::Virtual);
-        assert_eq!(PhysicalityCode::from_logseq("VirtualEntity"), PhysicalityCode::Virtual);
+        assert_eq!(
+            PhysicalityCode::from_logseq("virtual"),
+            PhysicalityCode::Virtual
+        );
+        assert_eq!(
+            PhysicalityCode::from_logseq("VirtualEntity"),
+            PhysicalityCode::Virtual
+        );
     }
 
     #[test]
     fn physicality_conceptual() {
-        assert_eq!(PhysicalityCode::from_logseq("conceptual"), PhysicalityCode::Conceptual);
+        assert_eq!(
+            PhysicalityCode::from_logseq("conceptual"),
+            PhysicalityCode::Conceptual
+        );
         // Observed corpus value (3 occurrences)
-        assert_eq!(PhysicalityCode::from_logseq("ConceptualEntity"), PhysicalityCode::Conceptual);
+        assert_eq!(
+            PhysicalityCode::from_logseq("ConceptualEntity"),
+            PhysicalityCode::Conceptual
+        );
     }
 
     #[test]
     fn physicality_unknown_for_unrecognised() {
-        assert_eq!(PhysicalityCode::from_logseq("tangible"), PhysicalityCode::Unknown);
+        assert_eq!(
+            PhysicalityCode::from_logseq("tangible"),
+            PhysicalityCode::Unknown
+        );
     }
 
     #[test]
@@ -341,28 +362,52 @@ mod tests {
     #[test]
     fn maturity_emerging_group() {
         assert_eq!(MaturityLevel::from_logseq("draft"), MaturityLevel::Emerging);
-        assert_eq!(MaturityLevel::from_logseq("developing"), MaturityLevel::Emerging);
-        assert_eq!(MaturityLevel::from_logseq("emerging"), MaturityLevel::Emerging);
+        assert_eq!(
+            MaturityLevel::from_logseq("developing"),
+            MaturityLevel::Emerging
+        );
+        assert_eq!(
+            MaturityLevel::from_logseq("emerging"),
+            MaturityLevel::Emerging
+        );
     }
 
     #[test]
     fn maturity_mature_group() {
         assert_eq!(MaturityLevel::from_logseq("mature"), MaturityLevel::Mature);
-        assert_eq!(MaturityLevel::from_logseq("established"), MaturityLevel::Mature);
-        assert_eq!(MaturityLevel::from_logseq("reviewed"), MaturityLevel::Mature);
+        assert_eq!(
+            MaturityLevel::from_logseq("established"),
+            MaturityLevel::Mature
+        );
+        assert_eq!(
+            MaturityLevel::from_logseq("reviewed"),
+            MaturityLevel::Mature
+        );
         assert_eq!(MaturityLevel::from_logseq("stable"), MaturityLevel::Mature);
-        assert_eq!(MaturityLevel::from_logseq("production"), MaturityLevel::Mature);
+        assert_eq!(
+            MaturityLevel::from_logseq("production"),
+            MaturityLevel::Mature
+        );
     }
 
     #[test]
     fn maturity_declining_group() {
-        assert_eq!(MaturityLevel::from_logseq("production-ready"), MaturityLevel::Declining);
-        assert_eq!(MaturityLevel::from_logseq("deprecated"), MaturityLevel::Declining);
+        assert_eq!(
+            MaturityLevel::from_logseq("production-ready"),
+            MaturityLevel::Declining
+        );
+        assert_eq!(
+            MaturityLevel::from_logseq("deprecated"),
+            MaturityLevel::Declining
+        );
     }
 
     #[test]
     fn maturity_unknown_for_unrecognised() {
-        assert_eq!(MaturityLevel::from_logseq("experimental"), MaturityLevel::Unknown);
+        assert_eq!(
+            MaturityLevel::from_logseq("experimental"),
+            MaturityLevel::Unknown
+        );
     }
 
     #[test]

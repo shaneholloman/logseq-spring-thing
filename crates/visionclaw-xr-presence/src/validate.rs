@@ -83,17 +83,16 @@ pub fn monotonic_timestamp(prev_us: u64, next_us: u64) -> Result<(), ValidationE
             Ok(())
         }
         std::cmp::Ordering::Equal => Err(ValidationError::DuplicateTimestamp { ts_us: next_us }),
-        std::cmp::Ordering::Less => Err(ValidationError::NonMonotonicTimestamp { prev_us, next_us }),
+        std::cmp::Ordering::Less => {
+            Err(ValidationError::NonMonotonicTimestamp { prev_us, next_us })
+        }
     }
 }
 
 /// Anatomical sanity check on hand poses. v1 enforces only the wrist quaternion
 /// unit-norm; full MANO joint flexion gates per `xr-godot-threat-model.md`
 /// T-HAND-1 land once the gdext hand tracker exposes joint angles.
-pub fn joint_anatomy(
-    left_hand: &HandPose,
-    right_hand: &HandPose,
-) -> Result<(), ValidationError> {
+pub fn joint_anatomy(left_hand: &HandPose, right_hand: &HandPose) -> Result<(), ValidationError> {
     for hand in [left_hand, right_hand] {
         let mag = hand.wrist.quaternion_magnitude();
         if !(QUAT_UNIT_LO..=QUAT_UNIT_HI).contains(&mag) {

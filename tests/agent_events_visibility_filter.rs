@@ -153,7 +153,10 @@ fn anonymous_caller_with_flag_yields_public_only() {
 
     let out = apply_visibility_filter(&nodes, &opaque_ids, flag);
     let out_ids: HashSet<u32> = out.iter().map(|n| n.id).collect();
-    assert!(!out_ids.contains(&1), "Alice's private dropped (anon caller)");
+    assert!(
+        !out_ids.contains(&1),
+        "Alice's private dropped (anon caller)"
+    );
     assert!(!out_ids.contains(&2), "Bob's private dropped (anon caller)");
     assert!(out_ids.contains(&3), "public retained");
     assert!(out_ids.contains(&4), "public retained");
@@ -192,7 +195,11 @@ fn owner_of_all_private_nodes_sees_everything() {
     let flag = read_flag(Some("true"));
 
     let out = apply_visibility_filter(&nodes, &opaque_ids, flag);
-    assert_eq!(out.len(), nodes.len(), "owner sees full graph even with flag on");
+    assert_eq!(
+        out.len(),
+        nodes.len(),
+        "owner sees full graph even with flag on"
+    );
 }
 
 #[test]

@@ -17,8 +17,7 @@ use serde_json::json;
 use uuid::Uuid;
 
 use webxr::actors::{
-    ServerNostrActor, SignAuditRecord, SignBeadStamp, SignBridgePromotion,
-    SignMigrationApproval,
+    ServerNostrActor, SignAuditRecord, SignBeadStamp, SignBridgePromotion, SignMigrationApproval,
 };
 use webxr::services::server_identity::{ServerIdentity, SUPPORTED_KINDS};
 
@@ -81,10 +80,9 @@ fn from_env_loads_hex_privkey() {
 
 #[test]
 fn from_env_loads_nsec_privkey() {
-    let sk = SecretKey::from_hex(
-        "5151515151515151515151515151515151515151515151515151515151515151",
-    )
-    .unwrap();
+    let sk =
+        SecretKey::from_hex("5151515151515151515151515151515151515151515151515151515151515151")
+            .unwrap();
     let nsec = sk.to_bech32().unwrap();
     with_env_vars(
         &[
@@ -197,10 +195,9 @@ fn from_env_parses_relay_urls() {
 
 fn fixed_identity() -> Arc<ServerIdentity> {
     // Hermetic: no env, no relays.
-    let sk = SecretKey::from_hex(
-        "7777777777777777777777777777777777777777777777777777777777777777",
-    )
-    .unwrap();
+    let sk =
+        SecretKey::from_hex("7777777777777777777777777777777777777777777777777777777777777777")
+            .unwrap();
     Arc::new(ServerIdentity::for_test(sk))
 }
 
@@ -208,11 +205,7 @@ fn fixed_identity() -> Arc<ServerIdentity> {
 async fn sign_event_kind_30023_verifies() {
     let id = fixed_identity();
     let event = id
-        .sign_event(
-            30023,
-            json!({"migration_id": "abc"}).to_string(),
-            vec![],
-        )
+        .sign_event(30023, json!({"migration_id": "abc"}).to_string(), vec![])
         .await
         .unwrap();
     event.verify().unwrap();
@@ -330,8 +323,7 @@ async fn actor_audit_record_includes_actor_pubkey_when_present() {
         .send(SignAuditRecord {
             action: "migration_rollback".into(),
             actor_pubkey: Some(
-                "0000000000000000000000000000000000000000000000000000000000000001"
-                    .into(),
+                "0000000000000000000000000000000000000000000000000000000000000001".into(),
             ),
             details: json!({"reason": "low confidence"}),
         })

@@ -1,9 +1,9 @@
-use actix_web::{web, HttpResponse, Result};
-use crate::layout::types::*;
 use crate::layout::engines::compute_layout;
+use crate::layout::types::*;
+use crate::ok_json;
 use crate::settings::auth_extractor::AuthenticatedUser;
 use crate::AppState;
-use crate::ok_json;
+use actix_web::{web, HttpResponse, Result};
 
 pub async fn get_layout_modes(_data: web::Data<AppState>) -> Result<HttpResponse> {
     ok_json!(serde_json::json!({
@@ -18,13 +18,20 @@ pub async fn set_layout_mode(
     data: web::Data<AppState>,
     body: web::Json<serde_json::Value>,
 ) -> Result<HttpResponse> {
-    let mode_str = body.get("mode").and_then(|m| m.as_str()).unwrap_or("forceDirected");
-    let transition_ms = body.get("transitionMs").and_then(|t| t.as_u64()).unwrap_or(500);
+    let mode_str = body
+        .get("mode")
+        .and_then(|m| m.as_str())
+        .unwrap_or("forceDirected");
+    let transition_ms = body
+        .get("transitionMs")
+        .and_then(|t| t.as_u64())
+        .unwrap_or(500);
 
-    let mode: LayoutMode = match serde_json::from_value(serde_json::Value::String(mode_str.to_string())) {
-        Ok(m) => m,
-        Err(_) => LayoutMode::ForceDirected,
-    };
+    let mode: LayoutMode =
+        match serde_json::from_value(serde_json::Value::String(mode_str.to_string())) {
+            Ok(m) => m,
+            Err(_) => LayoutMode::ForceDirected,
+        };
 
     // ForceDirected is handled by the GPU physics engine; no CPU layout needed.
     if mode == LayoutMode::ForceDirected {
@@ -82,22 +89,27 @@ pub async fn set_layout_mode(
     let positions: Vec<serde_json::Value> = nodes
         .iter()
         .zip(raw_positions.iter())
-        .map(|((id, _label), &(x, y, z))| {
-            serde_json::json!({ "id": id, "x": x, "y": y, "z": z })
-        })
+        .map(|((id, _label), &(x, y, z))| serde_json::json!({ "id": id, "x": x, "y": y, "z": z }))
         .collect();
 
     // Pause physics for non-ForceDirected layouts so the GPU engine does not
     // immediately override the computed layout positions.
     use crate::actors::messages::{GetPhysicsOrchestratorActor, PhysicsPauseMessage};
-    match data.graph_service_addr.send(GetPhysicsOrchestratorActor).await {
+    match data
+        .graph_service_addr
+        .send(GetPhysicsOrchestratorActor)
+        .await
+    {
         Ok(Ok(orch_addr)) => {
             let pause_msg = PhysicsPauseMessage {
                 pause: true,
                 reason: format!("layout mode changed to {}", mode_str),
             };
             if let Err(e) = orch_addr.send(pause_msg).await {
-                log::warn!("set_layout_mode: failed to pause physics via orchestrator: {}", e);
+                log::warn!(
+                    "set_layout_mode: failed to pause physics via orchestrator: {}",
+                    e
+                );
             }
         }
         _ => {
@@ -150,7 +162,10 @@ pub async fn get_zones(_data: web::Data<AppState>) -> Result<HttpResponse> {
     }))
 }
 
-pub async fn reset_layout(_user: AuthenticatedUser, data: web::Data<AppState>) -> Result<HttpResponse> {
+pub async fn reset_layout(
+    _user: AuthenticatedUser,
+    data: web::Data<AppState>,
+) -> Result<HttpResponse> {
     use crate::actors::messages::ResetPositions;
 
     if let Some(addr) = data.get_gpu_compute_addr().await {
@@ -190,7 +205,7 @@ pub fn configure_layout_routes(cfg: &mut web::ServiceConfig) {
             .route("/status", web::get().to(get_layout_status))
             .route("/zones", web::post().to(set_zones))
             .route("/zones", web::get().to(get_zones))
-            .route("/reset", web::post().to(reset_layout))
+            .route("/reset", web::post().to(reset_layout)),
     );
 }
 
@@ -223,9 +238,8 @@ mod tests {
     #[test]
     fn test_layout_mode_invalid_falls_through() {
         // When an invalid mode string is parsed, the handler defaults to ForceDirected
-        let result: Result<LayoutMode, _> = serde_json::from_value(
-            serde_json::Value::String("invalid_mode".to_string()),
-        );
+        let result: Result<LayoutMode, _> =
+            serde_json::from_value(serde_json::Value::String("invalid_mode".to_string()));
         assert!(result.is_err());
         // The handler uses fallback:
         let fallback = match result {
@@ -316,10 +330,9 @@ mod tests {
         use actix_web::test;
         use actix_web::App;
 
-        let app = test::init_service(
-            App::new().route("/zones", actix_web::web::get().to(get_zones)),
-        )
-        .await;
+        let app =
+            test::init_service(App::new().route("/zones", actix_web::web::get().to(get_zones)))
+                .await;
 
         let req = test::TestRequest::get().uri("/zones").to_request();
         let resp = test::call_service(&app, req).await;
@@ -382,8 +395,14 @@ mod tests {
         // Verify the JSON body parsing logic the handler uses
         let body: serde_json::Value =
             serde_json::from_str(r#"{"mode": "hierarchical", "transitionMs": 1000}"#).unwrap();
-        let mode_str = body.get("mode").and_then(|m| m.as_str()).unwrap_or("forceDirected");
-        let transition_ms = body.get("transitionMs").and_then(|t| t.as_u64()).unwrap_or(500);
+        let mode_str = body
+            .get("mode")
+            .and_then(|m| m.as_str())
+            .unwrap_or("forceDirected");
+        let transition_ms = body
+            .get("transitionMs")
+            .and_then(|t| t.as_u64())
+            .unwrap_or(500);
         assert_eq!(mode_str, "hierarchical");
         assert_eq!(transition_ms, 1000);
     }
@@ -391,8 +410,14 @@ mod tests {
     #[test]
     fn test_set_layout_mode_body_defaults() {
         let body: serde_json::Value = serde_json::from_str(r#"{}"#).unwrap();
-        let mode_str = body.get("mode").and_then(|m| m.as_str()).unwrap_or("forceDirected");
-        let transition_ms = body.get("transitionMs").and_then(|t| t.as_u64()).unwrap_or(500);
+        let mode_str = body
+            .get("mode")
+            .and_then(|m| m.as_str())
+            .unwrap_or("forceDirected");
+        let transition_ms = body
+            .get("transitionMs")
+            .and_then(|t| t.as_u64())
+            .unwrap_or(500);
         assert_eq!(mode_str, "forceDirected");
         assert_eq!(transition_ms, 500);
     }

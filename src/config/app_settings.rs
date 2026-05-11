@@ -5,7 +5,9 @@ use specta::Type;
 use std::collections::HashMap;
 use validator::{Validate, ValidationError};
 
-use super::field_mappings::{convert_empty_strings_to_null, merge_json_values, normalize_field_names_to_camel_case};
+use super::field_mappings::{
+    convert_empty_strings_to_null, merge_json_values, normalize_field_names_to_camel_case,
+};
 use super::physics::PhysicsSettings;
 use super::services::{
     AuthSettings, KokoroSettings, OntologyAgentSettings, OpenAISettings, PerplexitySettings,
@@ -145,29 +147,19 @@ impl Default for AppFullSettings {
 }
 
 impl AppFullSettings {
-
-
     pub fn new() -> Result<Self, ConfigError> {
         debug!("Initializing AppFullSettings with defaults (database-first architecture)");
         info!("IMPORTANT: Settings should be loaded from database via DatabaseService");
         info!("Legacy YAML file loading has been removed - all settings are now in Neo4j");
 
-
         Ok(Self::default())
     }
-
-
 
     pub fn save(&self) -> Result<(), String> {
         debug!("save() called but ignored - settings are now automatically persisted to database");
         info!("Legacy YAML file saving has been removed - all settings are now in Neo4j");
         Ok(())
     }
-
-
-
-
-
 
     pub fn get_physics(&self, graph: &str) -> &PhysicsSettings {
         match graph {
@@ -183,12 +175,7 @@ impl AppFullSettings {
         }
     }
 
-
-
-
-
     pub fn merge_update(&mut self, update: serde_json::Value) -> Result<(), String> {
-
         if crate::utils::logging::is_debug_enabled() {
             debug!(
                 "merge_update: Incoming update (camelCase): {}",
@@ -196,7 +183,6 @@ impl AppFullSettings {
                     .unwrap_or_else(|_| "Could not serialize".to_string())
             );
         }
-
 
         let processed_update = convert_empty_strings_to_null(update.clone());
         if crate::utils::logging::is_debug_enabled() {
@@ -207,11 +193,8 @@ impl AppFullSettings {
             );
         }
 
-
-
         let current_value = serde_json::to_value(&self)
             .map_err(|e| format!("Failed to serialize current settings: {}", e))?;
-
 
         let normalized_current = normalize_field_names_to_camel_case(current_value)?;
         let normalized_update = normalize_field_names_to_camel_case(processed_update)?;
@@ -238,7 +221,6 @@ impl AppFullSettings {
             );
         }
 
-
         *self = serde_json::from_value(merged.clone()).map_err(|e| {
             if crate::utils::logging::is_debug_enabled() {
                 error!(
@@ -258,28 +240,22 @@ impl AppFullSettings {
         Ok(())
     }
 
-
     pub fn validate_config_camel_case(&self) -> Result<(), validator::ValidationErrors> {
-
         self.validate()?;
-
 
         self.validate_cross_field_constraints()?;
 
         Ok(())
     }
 
-
     fn validate_cross_field_constraints(&self) -> Result<(), validator::ValidationErrors> {
         let mut errors = validator::ValidationErrors::new();
-
 
         if self.visualisation.graphs.logseq.physics.gravity != 0.0
             && !self.visualisation.graphs.logseq.physics.enabled
         {
             errors.add("physics", ValidationError::new("physics_enabled_required"));
         }
-
 
         if let Err(validation_error) =
             validate_bloom_glow_settings(&self.visualisation.glow, &self.visualisation.bloom)
@@ -293,7 +269,6 @@ impl AppFullSettings {
             Err(errors)
         }
     }
-
 
     pub fn get_validation_errors_camel_case(
         errors: &validator::ValidationErrors,

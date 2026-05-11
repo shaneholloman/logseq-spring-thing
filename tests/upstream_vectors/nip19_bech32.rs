@@ -13,7 +13,10 @@ fn nip19_fixture_loads_and_metadata_is_canonical() {
     let f = load_fixture("nip19-bech32.json");
     assert_meta_block(&f, "NIP-19");
     let vectors = f["vectors"].as_array().expect("vectors must be array");
-    assert!(vectors.len() >= 12, "nip19-bech32 fixture must have >= 12 vectors");
+    assert!(
+        vectors.len() >= 12,
+        "nip19-bech32 fixture must have >= 12 vectors"
+    );
 }
 
 #[test]

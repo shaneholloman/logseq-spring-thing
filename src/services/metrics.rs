@@ -387,7 +387,10 @@ impl MetricsRegistry {
 /// "false" / "0" (metrics are on by default).
 pub fn metrics_enabled() -> bool {
     match std::env::var("METRICS_ENABLED") {
-        Ok(v) => !matches!(v.to_ascii_lowercase().as_str(), "false" | "0" | "off" | "no"),
+        Ok(v) => !matches!(
+            v.to_ascii_lowercase().as_str(),
+            "false" | "0" | "off" | "no"
+        ),
         Err(_) => true,
     }
 }

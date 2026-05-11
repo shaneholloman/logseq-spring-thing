@@ -42,8 +42,12 @@ impl FromRequest for AuthenticatedUser {
         // SECURITY: Bypass is IGNORED when APP_ENV=production or RUST_ENV=production
         let bypass_enabled = std::env::var("SETTINGS_AUTH_BYPASS").unwrap_or_default() == "true";
         if bypass_enabled {
-            let is_production = std::env::var("APP_ENV").map(|v| v == "production").unwrap_or(false)
-                || std::env::var("RUST_ENV").map(|v| v == "production").unwrap_or(false);
+            let is_production = std::env::var("APP_ENV")
+                .map(|v| v == "production")
+                .unwrap_or(false)
+                || std::env::var("RUST_ENV")
+                    .map(|v| v == "production")
+                    .unwrap_or(false);
             if is_production {
                 warn!("SETTINGS_AUTH_BYPASS is set but ignored in production mode");
                 // fall through to normal auth
@@ -63,7 +67,9 @@ impl FromRequest for AuthenticatedUser {
             Some(service) => service.clone(),
             None => {
                 warn!("NostrService not found in app data");
-                return Box::pin(async { Err(ErrorUnauthorized("Authentication service unavailable")) });
+                return Box::pin(async {
+                    Err(ErrorUnauthorized("Authentication service unavailable"))
+                });
             }
         };
 
@@ -73,7 +79,9 @@ impl FromRequest for AuthenticatedUser {
                 Ok(s) => s.to_string(),
                 Err(_) => {
                     debug!("Invalid Authorization header format");
-                    return Box::pin(async { Err(ErrorUnauthorized("Invalid authorization header")) });
+                    return Box::pin(async {
+                        Err(ErrorUnauthorized("Invalid authorization header"))
+                    });
                 }
             },
             None => {
@@ -88,12 +96,14 @@ impl FromRequest for AuthenticatedUser {
             // Behind a TLS-terminating proxy, connection_info returns internal
             // scheme/host; prefer X-Forwarded-* headers from the proxy.
             let conn_info = req.connection_info();
-            let scheme = req.headers()
+            let scheme = req
+                .headers()
                 .get("X-Forwarded-Proto")
                 .and_then(|v| v.to_str().ok())
                 .unwrap_or_else(|| conn_info.scheme())
                 .to_string();
-            let host = req.headers()
+            let host = req
+                .headers()
                 .get("X-Forwarded-Host")
                 .and_then(|v| v.to_str().ok())
                 .unwrap_or_else(|| conn_info.host())
@@ -102,12 +112,18 @@ impl FromRequest for AuthenticatedUser {
                 "{}://{}{}",
                 scheme,
                 host,
-                req.uri().path_and_query().map(|pq| pq.as_str()).unwrap_or("/")
+                req.uri()
+                    .path_and_query()
+                    .map(|pq| pq.as_str())
+                    .unwrap_or("/")
             );
             let method = req.method().as_str().to_string();
 
             return Box::pin(async move {
-                match nostr_service.verify_nip98_auth(&auth_header, &url, &method, None).await {
+                match nostr_service
+                    .verify_nip98_auth(&auth_header, &url, &method, None)
+                    .await
+                {
                     Ok(user) => {
                         info!("NIP-98 authenticated user: {}", user.pubkey);
                         Ok(AuthenticatedUser {
@@ -152,8 +168,12 @@ impl FromRequest for AuthenticatedUser {
         if std::env::var("SETTINGS_AUTH_BYPASS").unwrap_or_default() == "true"
             && token == "dev-session-token"
         {
-            let is_production = std::env::var("APP_ENV").map(|v| v == "production").unwrap_or(false)
-                || std::env::var("RUST_ENV").map(|v| v == "production").unwrap_or(false);
+            let is_production = std::env::var("APP_ENV")
+                .map(|v| v == "production")
+                .unwrap_or(false)
+                || std::env::var("RUST_ENV")
+                    .map(|v| v == "production")
+                    .unwrap_or(false);
             if is_production {
                 warn!("SETTINGS_AUTH_BYPASS session bypass ignored in production mode");
                 // fall through to normal session validation

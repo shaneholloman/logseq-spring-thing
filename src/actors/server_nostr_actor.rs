@@ -473,12 +473,10 @@ impl Handler<SignSealedDM> for ServerNostrActor {
         let identity = Arc::clone(&self.identity);
         let prom = self.prom.clone();
         Box::pin(async move {
-            let mut tags = vec![
-                Tag::custom(
-                    TagKind::Custom("p".into()),
-                    vec![msg.recipient_pubkey_hex.clone()],
-                ),
-            ];
+            let mut tags = vec![Tag::custom(
+                TagKind::Custom("p".into()),
+                vec![msg.recipient_pubkey_hex.clone()],
+            )];
             if let Some(ref subj) = msg.subject {
                 tags.push(Tag::custom(
                     TagKind::Custom("subject".into()),
@@ -652,8 +650,7 @@ mod tests {
         let event = addr
             .send(SignSealedDM {
                 recipient_pubkey_hex:
-                    "0000000000000000000000000000000000000000000000000000000000000004"
-                        .to_string(),
+                    "0000000000000000000000000000000000000000000000000000000000000004".to_string(),
                 content: "Clarification needed on proposal enrich-001".to_string(),
                 subject: Some("Re: enrichment proposal".to_string()),
             })
@@ -682,8 +679,7 @@ mod tests {
         let event = addr
             .send(SignSealedDM {
                 recipient_pubkey_hex:
-                    "0000000000000000000000000000000000000000000000000000000000000004"
-                        .to_string(),
+                    "0000000000000000000000000000000000000000000000000000000000000004".to_string(),
                 content: "Simple message".to_string(),
                 subject: None,
             })

@@ -73,10 +73,7 @@ pub fn generate_nip98_token(keys: &Keys, config: &Nip98Config) -> Result<String,
     // Add payload hash if body is provided
     if let Some(body) = &config.body {
         let hash = compute_payload_hash(body);
-        tags.push(Tag::custom(
-            TagKind::Custom("payload".into()),
-            vec![hash],
-        ));
+        tags.push(Tag::custom(TagKind::Custom("payload".into()), vec![hash]));
     }
 
     // Build the event
@@ -122,8 +119,8 @@ pub fn generate_nip98_token_from_hex(
     secret_key_hex: &str,
     config: &Nip98Config,
 ) -> Result<String, Nip98Error> {
-    let secret_key = SecretKey::from_hex(secret_key_hex)
-        .map_err(|e| Nip98Error::KeyCreation(e.to_string()))?;
+    let secret_key =
+        SecretKey::from_hex(secret_key_hex).map_err(|e| Nip98Error::KeyCreation(e.to_string()))?;
     let keys = Keys::new(secret_key);
     generate_nip98_token(&keys, config)
 }
@@ -217,8 +214,7 @@ pub fn validate_nip98_token(
         .decode(token)
         .map_err(|_| Nip98ValidationError::InvalidBase64)?;
 
-    let json_str =
-        String::from_utf8(decoded).map_err(|_| Nip98ValidationError::InvalidUtf8)?;
+    let json_str = String::from_utf8(decoded).map_err(|_| Nip98ValidationError::InvalidUtf8)?;
 
     // Parse the event
     let nip98_event: Nip98Event = serde_json::from_str(&json_str)
@@ -350,7 +346,12 @@ fn normalize_url(url: &str) -> String {
         if let Some(path_idx) = rest.find('/') {
             let host = &rest[..path_idx];
             let path = &rest[path_idx..];
-            normalized = format!("{}://{}{}", scheme.to_lowercase(), host.to_lowercase(), path);
+            normalized = format!(
+                "{}://{}{}",
+                scheme.to_lowercase(),
+                host.to_lowercase(),
+                path
+            );
         } else {
             normalized = format!("{}://{}", scheme.to_lowercase(), rest.to_lowercase());
         }
@@ -611,7 +612,10 @@ mod tests {
         let token = generate_nip98_token(&keys, &config).expect("Failed to generate token");
         let result = validate_nip98_token(&token, "http://localhost:3030/pods/bob/", "GET", None);
 
-        assert!(matches!(result, Err(Nip98ValidationError::UrlMismatch { .. })));
+        assert!(matches!(
+            result,
+            Err(Nip98ValidationError::UrlMismatch { .. })
+        ));
     }
 
     #[test]

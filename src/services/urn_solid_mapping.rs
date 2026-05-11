@@ -108,8 +108,8 @@ impl UrnSolidMapper {
     /// error only if the file cannot be read; malformed rows are skipped with
     /// a warning.
     pub fn from_file(path: &Path) -> Result<Self, String> {
-        let text = std::fs::read_to_string(path)
-            .map_err(|e| format!("read {}: {}", path.display(), e))?;
+        let text =
+            std::fs::read_to_string(path).map_err(|e| format!("read {}: {}", path.display(), e))?;
         let map = parse_markdown(&text);
         info!(
             "[urn-solid] Loaded {} mappings from {}",
@@ -182,7 +182,11 @@ impl UrnSolidMapper {
             .write()
             .map_err(|e| format!("mapper write lock poisoned: {}", e))?;
         *guard = new_map;
-        info!("[urn-solid] Hot-reloaded {} mappings from {}", n, path.display());
+        info!(
+            "[urn-solid] Hot-reloaded {} mappings from {}",
+            n,
+            path.display()
+        );
         Ok(n)
     }
 
@@ -202,15 +206,14 @@ impl UrnSolidMapper {
 
         let (tx, rx) = std::sync::mpsc::channel();
 
-        let mut watcher: RecommendedWatcher = notify::recommended_watcher(
-            move |res: notify::Result<notify::Event>| {
+        let mut watcher: RecommendedWatcher =
+            notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
                 // Forward events to the mpsc receiver.
                 if let Err(e) = tx.send(res) {
                     warn!("[urn-solid] watcher channel closed: {}", e);
                 }
-            },
-        )
-        .map_err(|e| format!("notify watcher: {}", e))?;
+            })
+            .map_err(|e| format!("notify watcher: {}", e))?;
 
         watcher
             .watch(&*path, RecursiveMode::NonRecursive)
@@ -222,10 +225,7 @@ impl UrnSolidMapper {
                 while let Ok(res) = rx.recv() {
                     match res {
                         Ok(ev)
-                            if matches!(
-                                ev.kind,
-                                EventKind::Modify(_) | EventKind::Create(_)
-                            ) =>
+                            if matches!(ev.kind, EventKind::Modify(_) | EventKind::Create(_)) =>
                         {
                             if let Err(e) = this.reload() {
                                 warn!("[urn-solid] reload failed: {}", e);

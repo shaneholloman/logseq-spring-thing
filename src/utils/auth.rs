@@ -1,10 +1,10 @@
+use crate::services::metrics::MetricsRegistry;
+use crate::services::nostr_service::NostrService;
 use actix_web::{web, HttpRequest, HttpResponse};
 use log::warn;
 use std::sync::{Arc, Once};
 use tracing::{debug, info};
 use uuid::Uuid;
-use crate::services::metrics::MetricsRegistry;
-use crate::services::nostr_service::NostrService;
 
 use solid_pod_rs::auth::lws_cid::{LwsCidVerifier, ProfileFetcher};
 use solid_pod_rs::auth::self_signed::{ProofEnvelope, SelfSignedVerifier};
@@ -184,7 +184,7 @@ impl AccessLevel {
             // a hypothetical "no auth" caller) satisfies it. The actual
             // presence-vs-absence branching happens in `verify_access`.
             Optional => true,
-            ReadOnly => true, // every authenticated level can read
+            ReadOnly => true,      // every authenticated level can read
             Authenticated => true, // same as ReadOnly for permission checks
             WriteGraph => matches!(self, WriteGraph | Admin | Authenticated | PowerUser),
             WriteSettings => matches!(self, WriteSettings | Admin | PowerUser),
@@ -320,11 +320,13 @@ pub async fn verify_access_with_body(
             // Skip dev-session-token (handled above) and empty tokens.
             if bearer_token != "dev-session-token" && !bearer_token.is_empty() {
                 let conn_info = req.connection_info();
-                let scheme = req.headers()
+                let scheme = req
+                    .headers()
                     .get("X-Forwarded-Proto")
                     .and_then(|v| v.to_str().ok())
                     .unwrap_or_else(|| conn_info.scheme());
-                let host = req.headers()
+                let host = req
+                    .headers()
                     .get("X-Forwarded-Host")
                     .and_then(|v| v.to_str().ok())
                     .unwrap_or_else(|| conn_info.host());
@@ -395,11 +397,13 @@ pub async fn verify_access_with_body(
             // Behind a TLS-terminating proxy, connection_info returns internal
             // scheme/host; prefer X-Forwarded-* headers from the proxy.
             let conn_info = req.connection_info();
-            let scheme = req.headers()
+            let scheme = req
+                .headers()
                 .get("X-Forwarded-Proto")
                 .and_then(|v| v.to_str().ok())
                 .unwrap_or_else(|| conn_info.scheme());
-            let host = req.headers()
+            let host = req
+                .headers()
                 .get("X-Forwarded-Host")
                 .and_then(|v| v.to_str().ok())
                 .unwrap_or_else(|| conn_info.host());

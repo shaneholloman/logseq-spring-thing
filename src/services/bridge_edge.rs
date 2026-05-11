@@ -324,15 +324,15 @@ impl BridgeEdgeService {
         .param("status", CandidateStatus::Surfaced.as_str().to_string())
         .param(
             "signals",
-            serde_json::to_string(&candidate.signals)
-                .unwrap_or_else(|_| "{}".to_string()),
+            serde_json::to_string(&candidate.signals).unwrap_or_else(|_| "{}".to_string()),
         );
 
-        self.neo4j
-            .graph()
-            .run(q)
-            .await
-            .with_context(|| format!("surface: MERGE BRIDGE_CANDIDATE for {}", candidate.candidate_id()))?;
+        self.neo4j.graph().run(q).await.with_context(|| {
+            format!(
+                "surface: MERGE BRIDGE_CANDIDATE for {}",
+                candidate.candidate_id()
+            )
+        })?;
 
         info!(
             "surface: BRIDGE_CANDIDATE {} confidence={:.3}",
@@ -384,15 +384,12 @@ impl BridgeEdgeService {
         .param("confidence", candidate.confidence)
         .param(
             "signals",
-            serde_json::to_string(&candidate.signals)
-                .unwrap_or_else(|_| "{}".to_string()),
+            serde_json::to_string(&candidate.signals).unwrap_or_else(|_| "{}".to_string()),
         );
 
-        self.neo4j
-            .graph()
-            .run(promote_q)
-            .await
-            .with_context(|| format!("promote: MERGE BRIDGE_TO for {}", candidate.candidate_id()))?;
+        self.neo4j.graph().run(promote_q).await.with_context(|| {
+            format!("promote: MERGE BRIDGE_TO for {}", candidate.candidate_id())
+        })?;
 
         // Step 2: retire the BRIDGE_CANDIDATE edge if present. Keep the
         // audit trail on the :BRIDGE_TO edge instead.
@@ -420,7 +417,8 @@ impl BridgeEdgeService {
         );
         if let Some(prom) = self.prom.as_ref() {
             prom.bridge_promotions_total.inc();
-            prom.bridge_confidence_histogram.observe(candidate.confidence);
+            prom.bridge_confidence_histogram
+                .observe(candidate.confidence);
         }
 
         // Step 3 (ADR-050 §server-identity + ADR-051 §audit): fan out a
@@ -519,7 +517,10 @@ impl BridgeEdgeService {
             expired = row.get::<i64>("expired").unwrap_or(0) as u64;
         }
         if expired > 0 {
-            info!("auto_expire: retired {} stale BRIDGE_CANDIDATE edges", expired);
+            info!(
+                "auto_expire: retired {} stale BRIDGE_CANDIDATE edges",
+                expired
+            );
             if let Some(prom) = self.prom.as_ref() {
                 prom.bridge_expired_total.inc_by(expired);
             }
@@ -624,10 +625,7 @@ mod unit_tests {
             first_seen_at: Utc::now(),
             last_updated_at: Utc::now(),
         };
-        assert_eq!(
-            c.candidate_id(),
-            "logseq://page/Foo→https://ex.org/owl#Foo"
-        );
+        assert_eq!(c.candidate_id(), "logseq://page/Foo→https://ex.org/owl#Foo");
     }
 
     #[test]

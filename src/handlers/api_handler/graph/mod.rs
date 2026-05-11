@@ -2,8 +2,8 @@ use crate::models::metadata::Metadata;
 use crate::models::node::Node;
 use crate::services::file_service::FileService;
 use crate::types::vec3::Vec3Data;
-use crate::{ok_json, error_json, bad_request};
 use crate::AppState;
+use crate::{bad_request, error_json, ok_json};
 use actix_web::{web, HttpRequest, HttpResponse, Responder};
 use log::{debug, error, info, warn};
 use serde::{Deserialize, Serialize};
@@ -11,14 +11,14 @@ use std::collections::HashMap;
 use std::sync::Arc;
 // GraphService direct import is no longer needed as we use actors
 // use crate::services::graph_service::GraphService;
+use crate::actors::graph_actor::PhysicsState;
 use crate::actors::messages::{AddNodesFromMetadata, GetPhysicsStats, GetSettings};
-use crate::models::graph_types::{classify_node_population, NodePopulation};
 use crate::application::graph::queries::{
     GetAutoBalanceNotifications, GetGraphData, GetNodeMap, GetPhysicsState,
 };
-use crate::actors::graph_actor::PhysicsState;
-use crate::models::graph::GraphData;
 use crate::handlers::utils::execute_in_thread;
+use crate::models::graph::GraphData;
+use crate::models::graph_types::{classify_node_population, NodePopulation};
 use hexser::{Hexserror, QueryHandler};
 
 #[derive(Serialize, Debug, Clone)]
@@ -32,7 +32,6 @@ pub struct SettlementState {
 #[derive(Serialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct NodeWithPosition {
-
     pub id: u32,
     pub metadata_id: String,
     pub label: String,
@@ -45,10 +44,8 @@ pub struct NodeWithPosition {
     #[serde(skip)]
     pub velocity: Vec3Data,
 
-
     #[serde(skip_serializing_if = "HashMap::is_empty")]
     pub metadata: HashMap<String, String>,
-
 
     #[serde(rename = "type")]
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -137,10 +134,7 @@ pub struct GraphQuery {
 /// Replicates the Cypher form `COALESCE(n.visibility, 'public')` planned for
 /// the sibling ADR-050 schema rollout; applying it here keeps the auth
 /// sprint deliverable self-contained while the schema lands.
-pub fn visibility_allows(
-    metadata: &HashMap<String, String>,
-    caller_pubkey: Option<&str>,
-) -> bool {
+pub fn visibility_allows(metadata: &HashMap<String, String>, caller_pubkey: Option<&str>) -> bool {
     let visibility = metadata
         .get("visibility")
         .map(|s| s.as_str())
@@ -172,10 +166,7 @@ pub fn visibility_allows(
 /// When `salt` is `None` (e.g. `OPAQUE_ID_SALT_SEED` unset), the opaque id is
 /// left as `None` and the caller gets a structurally-opacified placeholder
 /// with no stable handle. This fails closed — no leakage either way.
-pub fn opacify_for_caller(
-    node: &NodeWithPosition,
-    salt: Option<&[u8]>,
-) -> NodeWithPosition {
+pub fn opacify_for_caller(node: &NodeWithPosition, salt: Option<&[u8]>) -> NodeWithPosition {
     let owner = node.metadata.get("owner_pubkey").cloned();
     let canonical_iri = node
         .metadata
@@ -295,7 +286,6 @@ pub async fn get_graph_data(
     let node_map_handler = state.graph_query_handlers.get_node_map.clone();
     let physics_handler = state.graph_query_handlers.get_physics_state.clone();
 
-    
     let graph_future = execute_in_thread(move || graph_handler.handle(GetGraphData));
     let node_map_future = execute_in_thread(move || node_map_handler.handle(GetNodeMap));
     let physics_future = execute_in_thread(move || physics_handler.handle(GetPhysicsState));
@@ -314,7 +304,6 @@ pub async fn get_graph_data(
                 graph_data.edges.len(),
                 physics_state
             );
-
 
             let nodes_with_positions: Vec<NodeWithPosition> = graph_data
                 .nodes
@@ -386,14 +375,17 @@ pub async fn get_graph_data(
                     // Graph-type filter — applies regardless of visibility.
                     let type_matches = match query.graph_type.as_deref() {
                         Some("knowledge") => {
-                            classify_node_population(node.node_type.as_deref()) == NodePopulation::Knowledge
+                            classify_node_population(node.node_type.as_deref())
+                                == NodePopulation::Knowledge
                         }
                         Some("ontology") => {
-                            classify_node_population(node.node_type.as_deref()) == NodePopulation::Ontology
+                            classify_node_population(node.node_type.as_deref())
+                                == NodePopulation::Ontology
                                 || node.metadata.contains_key("owl_class_iri")
                         }
                         Some("agent") => {
-                            classify_node_population(node.node_type.as_deref()) == NodePopulation::Agent
+                            classify_node_population(node.node_type.as_deref())
+                                == NodePopulation::Agent
                                 || node.metadata.contains_key("agentType")
                         }
                         _ => true, // No type filter; admit all remaining types.
@@ -435,8 +427,7 @@ pub async fn get_graph_data(
                 .edges
                 .iter()
                 .filter(|e| {
-                    filtered_node_ids.contains(&e.source)
-                        && filtered_node_ids.contains(&e.target)
+                    filtered_node_ids.contains(&e.source) && filtered_node_ids.contains(&e.target)
                 })
                 .map(|e| {
                     let mut e2 = e.clone();
@@ -505,8 +496,10 @@ pub async fn get_graph_data(
         }
         (Err(e), _, _) | (_, Err(e), _) | (_, _, Err(e)) => {
             error!("Thread execution error: {}", e);
-            Ok::<HttpResponse, actix_web::Error>(HttpResponse::InternalServerError()
-                .json(serde_json::json!({"error": "Internal server error"})))
+            Ok::<HttpResponse, actix_web::Error>(
+                HttpResponse::InternalServerError()
+                    .json(serde_json::json!({"error": "Internal server error"})),
+            )
         }
         (Ok(Err(e)), _, _) | (_, Ok(Err(e)), _) | (_, _, Ok(Err(e))) => {
             error!("Failed to fetch graph data (CQRS): {}", e);
@@ -533,7 +526,6 @@ pub async fn get_paginated_graph_data(
         return bad_request!("Page size must be greater than 0");
     }
 
-    
     let graph_handler = state.graph_query_handlers.get_graph_data.clone();
     let graph_result = execute_in_thread(move || graph_handler.handle(GetGraphData)).await;
 
@@ -574,7 +566,11 @@ pub async fn get_paginated_graph_data(
             page + 1,
             total_pages
         );
-        return bad_request!("Page {} exceeds total available pages {}", page + 1, total_pages);
+        return bad_request!(
+            "Page {} exceeds total available pages {}",
+            page + 1,
+            total_pages
+        );
     }
 
     let start = page * page_size;
@@ -618,7 +614,6 @@ pub async fn get_paginated_graph_data(
 pub async fn refresh_graph(state: web::Data<AppState>) -> impl Responder {
     info!("Received request to refresh graph (CQRS Phase 1D)");
 
-    
     let graph_handler = state.graph_query_handlers.get_graph_data.clone();
     let graph_result = execute_in_thread(move || graph_handler.handle(GetGraphData)).await;
 
@@ -693,7 +688,6 @@ pub async fn update_graph(state: web::Data<AppState>) -> impl Responder {
             debug!("Processing {} new files", processed_files.len());
 
             {
-                
                 if let Err(e) = state
                     .metadata_addr
                     .send(crate::actors::messages::UpdateMetadata {
@@ -702,18 +696,15 @@ pub async fn update_graph(state: web::Data<AppState>) -> impl Responder {
                     .await
                 {
                     error!("Failed to send UpdateMetadata to MetadataActor: {}", e);
-                    
                 }
             }
 
-            
             match state
                 .graph_service_addr
                 .send(AddNodesFromMetadata { metadata })
                 .await
             {
                 Ok(Ok(())) => {
-                    
                     debug!(
                         "Graph updated successfully via GraphServiceActor after file processing"
                     );
@@ -760,7 +751,6 @@ pub async fn get_auto_balance_notifications(
 
     info!("Fetching auto-balance notifications (CQRS Phase 1D)");
 
-    
     let handler = state
         .graph_query_handlers
         .get_auto_balance_notifications
@@ -788,9 +778,7 @@ pub async fn get_auto_balance_notifications(
 /// Return the current GPU-computed node positions (not the initial Neo4j zeros).
 ///
 /// `GET /api/graph/positions`
-pub async fn get_graph_positions(
-    state: web::Data<AppState>,
-) -> impl Responder {
+pub async fn get_graph_positions(state: web::Data<AppState>) -> impl Responder {
     // Acquire ForceComputeActor address
     let gpu_addr = match state.get_gpu_compute_addr().await {
         Some(addr) => addr,
@@ -873,13 +861,17 @@ pub fn config(cfg: &mut web::ServiceConfig) {
 
     cfg.service(
         web::scope("/graph")
-            .wrap(RateLimit::new(RateLimitConfig { requests_per_minute: 600, burst_size: 100, ..Default::default() }))  // 600 req/min for public reads
+            .wrap(RateLimit::new(RateLimitConfig {
+                requests_per_minute: 600,
+                burst_size: 100,
+                ..Default::default()
+            })) // 600 req/min for public reads
             // Ownership-aware read — optional auth: anonymous gets public-only,
             // signed gets public + own-private. Handler-side filter enforced.
             .service(
                 web::scope("")
                     .wrap(RequireAuth::optional())
-                    .route("/data", web::get().to(get_graph_data))
+                    .route("/data", web::get().to(get_graph_data)),
             )
             // Other reads are not ownership-scoped; leave public.
             .route("/data/paginated", web::get().to(get_paginated_graph_data))
@@ -887,13 +879,17 @@ pub fn config(cfg: &mut web::ServiceConfig) {
             .route(
                 "/auto-balance-notifications",
                 web::get().to(get_auto_balance_notifications),
-            )
+            ),
     )
     .service(
         web::scope("/graph")
-            .wrap(RequireAuth::authenticated())  // Write operations require auth
-            .wrap(RateLimit::new(RateLimitConfig { requests_per_minute: 60, burst_size: 10, ..Default::default() }))     // 60 req/min for writes
+            .wrap(RequireAuth::authenticated()) // Write operations require auth
+            .wrap(RateLimit::new(RateLimitConfig {
+                requests_per_minute: 60,
+                burst_size: 10,
+                ..Default::default()
+            })) // 60 req/min for writes
             .route("/update", web::post().to(update_graph))
-            .route("/refresh", web::post().to(refresh_graph))
+            .route("/refresh", web::post().to(refresh_graph)),
     );
 }
