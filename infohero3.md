@@ -326,9 +326,9 @@ Each gauge is a thin horizontal bar (full width of container) with a filled port
 | Domain Model | 90% | Magenta | "19 bounded contexts, DDD context map" |
 | Test Fixtures | 85% | Green | "13 cross-substrate reference vectors" |
 | Payment System | 90% | Gold | "HTTP 402, MRC20, BIP-341, agent job CRUD, D1 atomic ledger, cost-estimation skill, agentbox /v1/pay/* routes" |
-| Security Posture | 80% | Amber | "QE hardened: 13 Rust + 9 JS items. DID-gated. NIP-98 D1 replay store. Payment cost gate." |
-| Federation Ready | 80% | Purple | "Mesh topology designed. NIP-42 AUTH. IS-Envelope v1. Kind 38200/38201 job events. Payment federation." |
-| Production Parity | 70% | White | "Phases 3-4 complete. Kit GA + consumer package in progress." |
+| Security Posture | 92% | Green | "6-repo ecosystem audit: 63 fixes (17 P0, 16 P1, 13 P2, 8 P3, 9 R2). PRF salt, SSRF, TOCTOU, admin model, GDPR, blake3, typestate verification." |
+| Federation Ready | 85% | Purple | "Mesh topology designed. NIP-42 AUTH. IS-Envelope v1. Kind 38200/38201 job events. 4 integration jobs shipped (E2/E4/E5/E6)." |
+| Production Parity | 75% | White | "Phases 3-5 security audit complete. Kit GA + consumer package in progress." |
 
 **Below gauges:** Small italic text: "Scores reflect architectural documentation and implementation completeness, not runtime SLAs."
 
@@ -341,11 +341,12 @@ Each gauge is a thin horizontal bar (full width of container) with a filled port
 **Three columns of closing statements:**
 
 **Column 1 — "WHAT EXISTS":**
-- "697K SLOC across 4,662 files (5 substrates)"
+- "697K SLOC across 4,662 files (6 substrates)"
 - "130K lines of architectural documentation (85 ADRs)"
-- "5 federated substrates sharing did:nostr identity"
-- "Real-time GPU-accelerated knowledge graph (52 CUDA kernels)"
-- "Full payment system: HTTP 402, MRC20, BIP-341, agent job pricing"
+- "6 federated substrates sharing did:nostr identity (E4 consolidated)"
+- "Real-time GPU-accelerated knowledge graph (52 CUDA kernels, blake3-hashed)"
+- "Full payment system: HTTP 402, MRC20, BIP-341, TOCTOU-safe D1 atomic settle/cancel"
+- "63-fix security audit: SSRF, PRF salt, admin model, GDPR, Schnorr typestate"
 
 **Column 2 — "WHAT IT'S WORTH":**
 - "$72M replacement value (COCOMO II + 2.0× METR AI deflator)"
@@ -355,10 +356,10 @@ Each gauge is a thin horizontal bar (full width of container) with a filled port
 - "Infrastructure-as-capability: 8×–20× on usage revenue"
 
 **Column 3 — "WHAT'S NEXT":**
-- "Kit GA (v3.0.0) + crates.io publish"
-- "Two-phase GPU metering middleware"
+- "Kit GA (v3.0.0-rc7) + crates.io publish"
+- "E1: Unify payment ledger across VisionClaw/NRF/agentbox"
+- "E3: BC20 actor mesh — IS-Envelope federation"
 - "Production cutover (14-day window)"
-- "Full mesh federation (5 substrates)"
 - "Agent-to-agent commerce via x402-compatible rails"
 
 ---

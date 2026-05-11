@@ -59,7 +59,7 @@ Create a high-resolution portrait-orientation (2:3 aspect ratio, minimum 2400×3
 
 **Top level (single node, double cyan border, largest):**
 - "GRAPH SERVICE SUPERVISOR" with crown/star icon
-- Label: "Root supervisor. Heartbeat monitoring. Backoff restart."
+- Label: "Root supervisor. Heartbeat via Addr::connected(). Restart storm protection (burst window + backoff). OneForOne strategy preserving WebSocket clients."
 - Small badge: "GraphSupervisionStrategy"
 
 **Second level (5 nodes in a row, connected by downward lines from supervisor):**
@@ -258,7 +258,7 @@ Box 1: "LDP (Linked Data Platform)" — "Container/resource CRUD. RDF turtle ser
 
 Box 2: "WAC (Web Access Control)" — "ACL resources. Agent/group/public modes. Read/write/append/control."
 
-Box 3: "WebID / DID" — "did:nostr canonical format. SchnorrSecp256k1VerificationKey2019. z-form base58btc multibase. NIP-98 HTTP auth."
+Box 3: "WebID / DID" — "did:nostr canonical format (E4: single source for 3 repos). SchnorrSecp256k1VerificationKey2019. z-form base58btc multibase. NIP-98 HTTP auth (E2: canonical verify_nip98 API). UncheckedEvent→VerifiedEvent typestate (E5)."
 
 Box 4: "HTTP 402 WEB LEDGERS" — "PayConfig, WebLedger, PaymentStore trait. Multi-chain TXO deposit verification. balance_response(), payment_required_body(). Agents and humans share the same DID-keyed ledger."
 
@@ -266,7 +266,7 @@ Box 5: "MRC20 TOKEN ENGINE" — "RFC 8785 JCS canonicalisation. SHA-256 hash cha
 
 Box 6: "TIER-3 KEY CUSTODY" — "HSM-backed private keys. WAC-gated key material. BIP-341 per-user deposit address derivation. Rotation protocol (ADR-081)."
 
-**Connecting annotation between columns:** "solid-pod-rs is consumed by agentbox's CSS instance, VisionClaw's pay_handler.rs, and nostr-rust-forum's pod-worker — single source of truth for all Solid + payment operations"
+**Connecting annotation between columns:** "solid-pod-rs is consumed by agentbox's CSS instance, VisionClaw's pay_handler.rs, and nostr-rust-forum's pod-worker — single source of truth for all Solid + payment + SSRF (E6) + DID (E4) + Schnorr (E5) operations"
 
 ---
 

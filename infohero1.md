@@ -196,9 +196,9 @@ A stylized envelope/packet diagram showing the message structure:
 
 **Bottom of zone:** Four small stat boxes in a row:
 - "7 GOALS DELIVERED" (green) — "G1-G7: Git ingest, DID registry, provenance, write-back, pod bridge, broker, Nostr control"
-- "5 HARDENING ITEMS" (amber) — "R1-R5: Broadcast wiring, persistence, precedent, conflict handling, NIP-17 DMs"
-- "13+9 QE FIXES" (magenta) — "13 Rust security items, 9 JS hardening items across agentbox bridge"
-- "PAYMENT SYSTEM" (gold) — "MRC20 tokens, per-endpoint GPU pricing (10×/100×/5×), agent job CRUD lifecycle, D1 atomic ledger (24 tables), kind 38200/38201 settlement events, cost-estimation skill"
+- "63 SECURITY FIXES" (magenta) — "6-repo ecosystem audit: 17 P0 critical, 16 P1 high, 13 P2 medium, 8 P3 low + 9 R2 findings. PRF salt bypass, SSRF, TOCTOU, admin model, GDPR, blake3 migration."
+- "4 INTEGRATION JOBS" (amber) — "E2: NIP-98 canonical API. E4: did:nostr consolidation. E5: Schnorr typestate. E6: SSRF crate unification."
+- "PAYMENT SYSTEM" (gold) — "MRC20 tokens, per-endpoint GPU pricing (10×/100×/5×), agent job CRUD lifecycle, D1 atomic ledger with TOCTOU-safe settle/cancel (24 tables), kind 38200/38201 settlement events, CSPRNG job IDs, cost-estimation skill"
 
 ---
 
@@ -228,16 +228,17 @@ A stylized envelope/packet diagram showing the message structure:
 
 **Column 3 — "LIBRARY CONVERGENCE" (amber border):**
 - Icon: merge/consolidate arrows
-- Label: "ADR-078 convergence registry"
+- Label: "ADR-078 convergence registry + security audit consolidation"
 - Small table:
-  - "nostr-core → rust-nostr upstream"
-  - "solid-pod-rs → all 5 substrates (incl. agentbox)"
-  - "did:nostr → canonical 64-hex-lowercase"
+  - "NIP-98 → nostr-bbs-core canonical API (E2: 4 impls → 1 source)"
+  - "did:nostr → solid-pod-rs canonical types (E4: VisionClaw delegated)"
+  - "Schnorr → UncheckedEvent→VerifiedEvent typestate (E5)"
+  - "SSRF → solid-pod-rs::security::ssrf (E6: AP re-exports core)"
   - "payments → solid-pod-rs::payments upstream"
   - "mrc20 → solid-pod-rs::mrc20 (JCS + BIP-341)"
   - "cost-estimation → agentbox skill (GPU tiers + job lifecycle)"
   - "kind 38200/38201 → nostr relay job events"
-- Footer: "Eliminates 10K+ duplicate lines, single payment model + cost model across ecosystem"
+- Footer: "Eliminates 10K+ duplicate lines. 4 ecosystem integration jobs shipped (E2/E4/E5/E6)."
 
 ---
 
