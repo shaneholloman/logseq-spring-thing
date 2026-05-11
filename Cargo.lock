@@ -2223,7 +2223,7 @@ dependencies = [
 
 [[package]]
 name = "graph-cognition-core"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -2233,7 +2233,7 @@ dependencies = [
 
 [[package]]
 name = "graph-cognition-extract"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "blake3",
  "graph-cognition-core",
@@ -2248,7 +2248,7 @@ dependencies = [
 
 [[package]]
 name = "graph-cognition-physics-presets"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "graph-cognition-core",
  "serde",
@@ -5221,9 +5221,7 @@ dependencies = [
 
 [[package]]
 name = "solid-pod-rs"
-version = "0.4.0-alpha.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7026f4f63f64cc99d3738589f998b1da10a0c3f0ce5263ce703403eace03d9d3"
+version = "0.4.0-alpha.9"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -6330,7 +6328,7 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "visionclaw-xr-gdext"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "async-trait",
  "bytes",
@@ -6352,7 +6350,7 @@ dependencies = [
 
 [[package]]
 name = "visionclaw-xr-presence"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "bytes",
  "criterion",
@@ -6539,7 +6537,7 @@ dependencies = [
 
 [[package]]
 name = "webxr"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "actix",
  "actix-cors",

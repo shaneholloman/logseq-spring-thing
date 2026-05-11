@@ -23,7 +23,7 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 # ADR-053/056: solid-pod-rs — native Solid Pod library (JSS retired 2026-04-20).
 # Published to crates.io; consumed by src/handlers/solid_pod_handler.rs.
-solid-pod-rs = { version = "0.4.0-alpha.8", features = ["fs-backend", "memory-backend", "nip98-schnorr", "security-primitives", "did-nostr", "config-loader", "acl-origin", "webhook-signing", "lws-cid"] }
+solid-pod-rs = { path = "../solid-pod-rs/crates/solid-pod-rs", features = ["fs-backend", "memory-backend", "nip98-schnorr", "security-primitives", "did-nostr", "config-loader", "acl-origin", "webhook-signing", "lws-cid"] }
 
 # PRD-013 G1: libgit2 bindings for git clone/fetch/push (Git Ingest Adapter)
 git2 = "0.19"
