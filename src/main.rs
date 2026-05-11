@@ -17,7 +17,7 @@ use webxr::{
         socket_flow_handler::{socket_flow_handler, PreReadSocketSettings},
         speech_socket_handler::speech_socket_handler,
         validation_handler, workspace_handler,
-        pay_handler::{VcPayConfig, FsPaymentStore},
+        pay_handler::{VcPayConfig, FsPaymentStore, FsExchangeStore},
     },
     services::bead_lifecycle::BeadLifecycleOrchestrator,
     services::bead_store::NoopBeadStore,
@@ -781,8 +781,19 @@ async fn main() -> std::io::Result<()> {
             }
         }
     };
+    let exchange_store: Arc<FsExchangeStore> = match FsExchangeStore::new(&pay_config.ledger_dir) {
+        Ok(store) => Arc::new(store),
+        Err(e) => {
+            warn!("[pay] FsExchangeStore init failed: {e} — using fallback");
+            Arc::new(
+                FsExchangeStore::new(&std::env::temp_dir().join("vc-pay-fallback"))
+                    .expect("fallback exchange store"),
+            )
+        }
+    };
     let pay_config_data = web::Data::new(pay_config);
     let pay_store_data = web::Data::new(pay_store);
+    let exchange_store_data = web::Data::new(exchange_store);
 
     info!("Starting HTTP server on {}", bind_address);
 
@@ -907,7 +918,8 @@ async fn main() -> std::io::Result<()> {
             .app_data(broker_actor_data.clone())
             // HTTP 402 payment gating (Web Ledgers / solid-pod-rs)
             .app_data(pay_config_data.clone())
-            .app_data(pay_store_data.clone());
+            .app_data(pay_store_data.clone())
+            .app_data(exchange_store_data.clone());
 
             // ADR-051: optional VisibilityTransitionService web::Data. When
             // absent (PodClient couldn't be constructed at startup), the
