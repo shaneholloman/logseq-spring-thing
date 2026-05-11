@@ -12,10 +12,15 @@
 //! | 4 (InverseOf)      | `apply_inverse_symmetry_kernel`     | Symmetry          |
 //! | 5 (Functional)     | `apply_functional_cardinality_kernel`| Cardinality      |
 
+#[cfg(feature = "gpu")]
 use super::construction::UnifiedGPUCompute;
+#[cfg(feature = "gpu")]
 use anyhow::{anyhow, Result};
+#[cfg(feature = "gpu")]
 use cust::launch;
+#[cfg(feature = "gpu")]
 use cust::memory::{CopyDestination, DeviceBuffer};
+#[cfg(feature = "gpu")]
 use log::{debug, info};
 
 /// GPU-side representation of an ontology node.
@@ -38,6 +43,7 @@ pub struct GpuOntologyNode {
 
 // SAFETY: GpuOntologyNode is repr(C), contains no pointers/references, and any bit
 // pattern represents a valid (if possibly meaningless) value — matching the CUDA struct.
+#[cfg(feature = "gpu")]
 unsafe impl cust::memory::DeviceCopy for GpuOntologyNode {}
 
 /// GPU-side representation of an ontology constraint.
@@ -57,6 +63,7 @@ pub struct GpuOntologyConstraint {
 }
 
 // SAFETY: Same rationale as GpuOntologyNode — repr(C), no pointers, POD type.
+#[cfg(feature = "gpu")]
 unsafe impl cust::memory::DeviceCopy for GpuOntologyConstraint {}
 
 /// CUDA constraint type constants — must match `#define`s in `ontology_constraints.cu`.
@@ -67,14 +74,21 @@ pub const CONSTRAINT_INVERSE_OF: u32 = 4;
 pub const CONSTRAINT_FUNCTIONAL: u32 = 5;
 
 /// Default strength multipliers for each constraint type.
+#[cfg(feature = "gpu")]
 const DEFAULT_SEPARATION_STRENGTH: f32 = 50.0;
+#[cfg(feature = "gpu")]
 const DEFAULT_ALIGNMENT_STRENGTH: f32 = 30.0;
+#[cfg(feature = "gpu")]
 const DEFAULT_COLOCATE_STRENGTH: f32 = 80.0;
+#[cfg(feature = "gpu")]
 const DEFAULT_SYMMETRY_STRENGTH: f32 = 40.0;
+#[cfg(feature = "gpu")]
 const DEFAULT_CARDINALITY_PENALTY: f32 = 20.0;
 
+#[cfg(feature = "gpu")]
 const BLOCK_SIZE: u32 = 256;
 
+#[cfg(feature = "gpu")]
 impl UnifiedGPUCompute {
     /// Returns `true` if the ontology constraints PTX module is loaded and ready.
     pub fn has_ontology_module(&self) -> bool {

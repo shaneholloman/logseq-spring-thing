@@ -128,23 +128,36 @@
 //! - **Latency**: 1-frame delay for data freshness (usually imperceptible)
 //! - **GPU streams**: Dedicated transfer stream prevents interference with compute kernels
 
-// Submodules
+// Submodules — GPU-only submodules gated behind the "gpu" feature
+#[cfg(feature = "gpu")]
 mod async_transfer;
+#[cfg(feature = "gpu")]
 mod clustering;
+#[cfg(feature = "gpu")]
 mod community;
+#[cfg(feature = "gpu")]
 mod construction;
+#[cfg(feature = "gpu")]
 mod execution;
+#[cfg(feature = "gpu")]
 mod memory;
+#[cfg(feature = "gpu")]
 mod metrics;
 pub mod ontology;
+#[cfg(feature = "gpu")]
 mod sssp;
 mod types;
 
 // Re-export all public types from types module
 pub use types::{curandState, ComputeMode, GPUPerformanceMetrics};
 
-// Re-export the main struct from construction
+// Re-export the main struct from construction (GPU-only)
+#[cfg(feature = "gpu")]
 pub use construction::UnifiedGPUCompute;
+#[cfg(not(feature = "gpu"))]
+mod unified_gpu_compute_stub;
+#[cfg(not(feature = "gpu"))]
+pub use unified_gpu_compute_stub::UnifiedGPUCompute;
 
 // Re-export ontology GPU types for constraint kernel dispatch
 pub use ontology::{

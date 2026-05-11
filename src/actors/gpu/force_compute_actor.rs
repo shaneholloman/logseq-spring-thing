@@ -20,6 +20,7 @@ use crate::utils::unified_gpu_compute::ComputeMode;
 use crate::utils::unified_gpu_compute::SimParams;
 use glam::Vec3;
 
+#[cfg(feature = "gpu")]
 use cudarc::driver::CudaDevice;
 
 // Node population classification now uses crate::models::graph_types::NodePopulation

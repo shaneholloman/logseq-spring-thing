@@ -1,7 +1,9 @@
 use crate::config::{AutoBalanceConfig, AutoPauseConfig, PhysicsSettings};
 use crate::layout::types::LayoutMode;
 use bytemuck::{Pod, Zeroable};
+#[cfg(feature = "gpu")]
 use cudarc::driver::DeviceRepr;
+#[cfg(feature = "gpu")]
 use cust_core::DeviceCopy;
 use serde::{Deserialize, Serialize};
 
@@ -145,10 +147,12 @@ pub struct SimParams {
 
 // SAFETY: SimParams is repr(C) with only POD types, safe for GPU transfer
 // All fields are primitives (f32, u32, i32) with well-defined memory layout
+#[cfg(feature = "gpu")]
 unsafe impl DeviceRepr for SimParams {}
 
 // SAFETY: SimParams is repr(C) with only POD types, safe for GPU transfer
 // All fields are primitives (f32, u32, i32) with well-defined memory layout
+#[cfg(feature = "gpu")]
 unsafe impl DeviceCopy for SimParams {}
 
 pub struct FeatureFlags;

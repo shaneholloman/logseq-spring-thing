@@ -18,6 +18,7 @@ pub mod edge_data;
 #[cfg(test)]
 mod gpu_compute_tests;
 pub mod gpu_diagnostics;
+#[cfg(feature = "gpu")]
 pub mod gpu_memory;
 pub mod gpu_safety;
 pub mod handler_commons;

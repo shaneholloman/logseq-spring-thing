@@ -5,6 +5,12 @@ pub mod broker_actor;
 pub mod client_coordinator_actor;
 pub mod client_filter;
 pub mod dojo_discovery_actor;
+#[cfg(feature = "gpu")]
+#[path = "gpu/mod.rs"]
+pub mod gpu;
+
+#[cfg(not(feature = "gpu"))]
+#[path = "gpu_stubs.rs"]
 pub mod gpu;
 pub mod graph_state_actor;
 pub mod graph_actor {

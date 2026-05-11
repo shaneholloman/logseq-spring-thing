@@ -21,6 +21,7 @@
 //! - Multi-threaded CPU fallback for smaller graphs
 //! - Memory-efficient algorithms for very large datasets
 
+#[cfg(feature = "gpu")]
 use cudarc::driver::CudaDevice;
 use log::{debug, info, trace, warn};
 use nalgebra::DMatrix;
@@ -81,6 +82,7 @@ pub struct OptimizationResult {
 
 pub struct StressMajorizationSolver {
     config: StressMajorizationConfig,
+    #[cfg(feature = "gpu")]
     _gpu_context: Option<Arc<CudaDevice>>,
     cached_distance_matrix: Option<DMatrix<f32>>,
     cached_weight_matrix: Option<DMatrix<f32>>,
@@ -91,6 +93,7 @@ impl Clone for StressMajorizationSolver {
     fn clone(&self) -> Self {
         Self {
             config: self.config.clone(),
+            #[cfg(feature = "gpu")]
             _gpu_context: self._gpu_context.clone(),
             cached_distance_matrix: self.cached_distance_matrix.clone(),
             cached_weight_matrix: self.cached_weight_matrix.clone(),
@@ -105,6 +108,7 @@ impl StressMajorizationSolver {
     }
 
     pub fn with_config(config: StressMajorizationConfig) -> Self {
+        #[cfg(feature = "gpu")]
         let gpu_context = if config.use_gpu {
             match Self::initialize_gpu() {
                 Ok(device) => Some(device),
@@ -119,6 +123,7 @@ impl StressMajorizationSolver {
 
         Self {
             config,
+            #[cfg(feature = "gpu")]
             _gpu_context: gpu_context,
             cached_distance_matrix: None,
             cached_weight_matrix: None,
@@ -139,6 +144,7 @@ impl StressMajorizationSolver {
         Self::with_config(config)
     }
 
+    #[cfg(feature = "gpu")]
     fn initialize_gpu() -> Result<Arc<CudaDevice>, Box<dyn std::error::Error>> {
         info!("Initializing GPU device for stress majorization");
         let device = CudaDevice::new(0)?;

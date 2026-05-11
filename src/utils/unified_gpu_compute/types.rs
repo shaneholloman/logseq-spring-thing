@@ -1,5 +1,6 @@
 //! Core types, FFI declarations, and constants for the unified GPU compute module.
 
+#[cfg(feature = "gpu")]
 use cust_core::DeviceCopy;
 use std::collections::HashMap;
 
@@ -15,6 +16,7 @@ pub struct curandState {
 // 2. The struct contains only plain bytes with no pointers or references
 // 3. The CUDA runtime treats this as opaque state that can be safely memcpy'd
 // 4. The 48-byte size matches the curandState size in the CUDA runtime headers
+#[cfg(feature = "gpu")]
 unsafe impl DeviceCopy for curandState {}
 
 // GPU Performance Metrics tracking structure
@@ -76,6 +78,7 @@ impl Default for GPUPerformanceMetrics {
 // 2. The pointers have sufficient allocated size for num_items elements
 // 3. The stream pointer is a valid CUDA stream handle or null for default stream
 // 4. The caller ensures proper synchronization before reading output buffers
+#[cfg(feature = "gpu")]
 unsafe extern "C" {
     pub(crate) fn thrust_sort_key_value(
         d_keys_in: *const ::std::os::raw::c_void,
@@ -89,7 +92,8 @@ unsafe extern "C" {
 
 // Define AABB and int3 structs to match CUDA
 #[repr(C)]
-#[derive(Debug, Default, Clone, Copy, DeviceCopy)]
+#[derive(Debug, Default, Clone, Copy)]
+#[cfg_attr(feature = "gpu", derive(DeviceCopy))]
 pub(crate) struct AABB {
     pub min: [f32; 3],
     pub max: [f32; 3],
@@ -109,7 +113,8 @@ unsafe impl bytemuck::Zeroable for AABB {}
 unsafe impl bytemuck::Pod for AABB {}
 
 #[repr(C)]
-#[derive(Debug, Default, Clone, Copy, DeviceCopy)]
+#[derive(Debug, Default, Clone, Copy)]
+#[cfg_attr(feature = "gpu", derive(DeviceCopy))]
 pub(crate) struct int3 {
     pub x: i32,
     pub y: i32,
@@ -134,6 +139,7 @@ pub enum ComputeMode {
 // 4. num_items is a non-negative count of elements to scan
 // 5. stream is a valid CUDA stream handle or null for default stream
 // 6. The caller ensures synchronization before reading d_out
+#[cfg(feature = "gpu")]
 #[allow(dead_code)]
 unsafe extern "C" {
     pub(crate) fn thrust_exclusive_scan(
@@ -154,6 +160,7 @@ unsafe extern "C" {
 // 4. num_nodes > 0
 // 5. stream is a valid CUDA stream handle or null for default stream
 // 6. The caller ensures proper synchronization before reading output buffers
+#[cfg(feature = "gpu")]
 unsafe extern "C" {
     pub(crate) fn pagerank_init(
         pagerank: *mut f32,
@@ -213,6 +220,7 @@ unsafe extern "C" {
 // 5. num_nodes > 0 and matches the graph size used to construct the CSR arrays
 // 6. max_iterations > 0
 // 7. stream is a valid CUDA stream handle or null for default stream
+#[cfg(feature = "gpu")]
 unsafe extern "C" {
     pub(crate) fn compute_connected_components_gpu(
         edge_row_offsets: *const ::std::os::raw::c_int,

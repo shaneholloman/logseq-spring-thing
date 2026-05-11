@@ -18,7 +18,8 @@ pub mod conversion_utils;
 
 // Unified GPU memory management
 pub mod dynamic_buffer_manager;
-pub mod memory_manager; // Legacy - use memory_manager instead
+#[cfg(feature = "gpu")]
+pub mod memory_manager;
 
 // Canonical type exports (AUTHORITATIVE SOURCE)
 pub use types::{BinaryNodeData, RenderData};
@@ -26,8 +27,10 @@ pub use types::{BinaryNodeData, RenderData};
 // Primary exports (safe by default)
 pub use visual_analytics::{
     IsolationLayer, PerformanceMetrics, TSEdge, TSNode, Vec4, VisualAnalyticsBuilder,
-    VisualAnalyticsEngine, VisualAnalyticsGPU, VisualAnalyticsParams,
+    VisualAnalyticsParams,
 };
+#[cfg(feature = "gpu")]
+pub use visual_analytics::{VisualAnalyticsEngine, VisualAnalyticsGPU};
 
 pub use streaming_pipeline::{
     ClientConnection, ClientLOD, ClientStats, CompressedEdge, DeltaCompressor, FrameBuffer,
@@ -46,6 +49,7 @@ pub use conversion_utils::{
 };
 
 // Unified memory management exports (NEW - recommended)
+#[cfg(feature = "gpu")]
 pub use memory_manager::{BufferConfig, BufferStats, GpuBuffer, GpuMemoryManager, MemoryStats};
 
 // Semantic forces exports

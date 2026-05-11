@@ -3,6 +3,7 @@
 //! Enhanced version with comprehensive GPU safety measures, memory bounds checking,
 //! overflow protection, robust error handling, and designed to maximize A6000 throughput.
 
+#[cfg(feature = "gpu")]
 use cudarc::driver::{CudaDevice, CudaSlice, DeviceRepr, ValidAsZeroBits};
 use log::{debug, info, warn};
 use serde::{Deserialize, Serialize};
@@ -73,7 +74,9 @@ impl Vec4 {
     }
 }
 
+#[cfg(feature = "gpu")]
 unsafe impl DeviceRepr for Vec4 {}
+#[cfg(feature = "gpu")]
 unsafe impl ValidAsZeroBits for Vec4 {}
 
 #[repr(C)]
@@ -259,7 +262,9 @@ impl TSNode {
     }
 }
 
+#[cfg(feature = "gpu")]
 unsafe impl DeviceRepr for TSNode {}
+#[cfg(feature = "gpu")]
 unsafe impl ValidAsZeroBits for TSNode {}
 
 impl Default for TSNode {
@@ -398,7 +403,9 @@ impl TSEdge {
     }
 }
 
+#[cfg(feature = "gpu")]
 unsafe impl DeviceRepr for TSEdge {}
+#[cfg(feature = "gpu")]
 unsafe impl ValidAsZeroBits for TSEdge {}
 
 #[repr(C)]
@@ -524,7 +531,9 @@ impl IsolationLayer {
     }
 }
 
+#[cfg(feature = "gpu")]
 unsafe impl DeviceRepr for IsolationLayer {}
+#[cfg(feature = "gpu")]
 unsafe impl ValidAsZeroBits for IsolationLayer {}
 
 impl Default for IsolationLayer {
@@ -827,6 +836,7 @@ impl VisualAnalyticsParams {
     }
 }
 
+#[cfg(feature = "gpu")]
 pub struct VisualAnalyticsGPU {
     device: Arc<CudaDevice>,
 
@@ -852,6 +862,7 @@ pub struct VisualAnalyticsGPU {
     last_validation_time: Option<Instant>,
 }
 
+#[cfg(feature = "gpu")]
 impl VisualAnalyticsGPU {
     pub async fn new(
         max_nodes: usize,
@@ -1476,6 +1487,7 @@ impl VisualAnalyticsBuilder {
     }
 }
 
+#[cfg(feature = "gpu")]
 pub struct VisualAnalyticsEngine {
     gpu: VisualAnalyticsGPU,
     params: VisualAnalyticsParams,
@@ -1484,6 +1496,7 @@ pub struct VisualAnalyticsEngine {
     layers: Vec<IsolationLayer>,
 }
 
+#[cfg(feature = "gpu")]
 impl VisualAnalyticsEngine {
     pub async fn new(max_nodes: usize, max_edges: usize) -> Result<Self, GPUSafetyError> {
         let gpu = VisualAnalyticsGPU::new(

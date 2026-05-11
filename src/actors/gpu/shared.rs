@@ -2,6 +2,7 @@
 
 use super::cuda_stream_wrapper::SafeCudaStream;
 use actix::Addr;
+#[cfg(feature = "gpu")]
 use cudarc::driver::CudaDevice;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -9,6 +10,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
 
+#[cfg(feature = "gpu")]
 use crate::gpu::memory_manager::GpuMemoryManager;
 use crate::models::constraints::Constraint;
 use crate::models::simulation_params::SimulationParams;
@@ -119,6 +121,7 @@ impl GPUOperationBatch {
 /// use `try_lock()` instead to avoid blocking entirely.
 // Note: SafeCudaStream provides thread safety guarantees
 pub struct SharedGPUContext {
+    #[cfg(feature = "gpu")]
     pub device: Arc<CudaDevice>,
     /// CUDA stream for GPU operations. Use spawn_blocking() for access in async contexts.
     pub stream: Arc<std::sync::Mutex<SafeCudaStream>>,
@@ -127,6 +130,7 @@ pub struct SharedGPUContext {
 
     /// Unified GPU memory manager with pool-based allocation, leak detection,
     /// and configurable memory limits. Wraps all GPU buffer lifecycle operations.
+    #[cfg(feature = "gpu")]
     pub memory_manager: Arc<Mutex<GpuMemoryManager>>,
 
     pub gpu_access_lock: Arc<RwLock<()>>,

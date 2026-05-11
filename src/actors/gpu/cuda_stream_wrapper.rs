@@ -3,12 +3,20 @@
 //! CUDA streams are thread-safe at the CUDA level when properly synchronized.
 //! This wrapper provides Rust thread safety guarantees.
 
+#[cfg(feature = "gpu")]
 use cudarc::driver::CudaStream;
 
+#[cfg(feature = "gpu")]
 pub struct SafeCudaStream {
     inner: CudaStream,
 }
 
+#[cfg(not(feature = "gpu"))]
+pub struct SafeCudaStream {
+    _private: (),
+}
+
+#[cfg(feature = "gpu")]
 impl SafeCudaStream {
     pub fn new(stream: CudaStream) -> Self {
         Self { inner: stream }

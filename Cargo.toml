@@ -97,12 +97,12 @@ xml = "0.8"
 blake3 = "1.5"
 bcrypt = "0.15"
 
-# GPU/Compute (always enabled)
+# GPU/Compute
 bytemuck = { version = "1.21", features = ["derive"] }
 pollster = "0.4"
-cudarc = { version = "0.12.1", features = ["driver", "cuda-12040"] }
-cust = { version = "0.3.2" }
-cust_core = { version = "0.1.1" }
+cudarc = { version = "0.12.1", features = ["driver", "cuda-12040"], optional = true }
+cust = { version = "0.3.2", optional = true }
+cust_core = { version = "0.1.1", optional = true }
 
 # HTTP client and API
 reqwest = { version = "0.12.23", features = ["json", "stream", "multipart"] }
@@ -213,7 +213,8 @@ blake3 = "1.5"
 # GPU and ontology features for conditional compilation
 # Enable by default for full system capabilities
 default = ["gpu", "ontology"]
-gpu = []  # GPU acceleration with CUDA kernels
+gpu = ["dep:cudarc", "dep:cust", "dep:cust_core"]  # GPU acceleration with CUDA kernels
+cpu-only = []  # Marker feature for CI: build without GPU/CUDA dependencies
 ontology = []  # Ontology validation and reasoning
 redis = ["dep:redis"]  # Enable Redis distributed caching
 test-utils = []  # Expose `for_test` constructors for integration tests

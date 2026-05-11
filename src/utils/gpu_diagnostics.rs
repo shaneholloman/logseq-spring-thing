@@ -1,7 +1,10 @@
 // use crate::utils::unified_gpu_compute::UnifiedGPUCompute;
 use crate::utils::ptx;
+#[cfg(feature = "gpu")]
 use cust::context::Context;
+#[cfg(feature = "gpu")]
 use cust::device::Device;
+#[cfg(feature = "gpu")]
 use cust::module::Module;
 use log::{error, info, trace, warn};
 use std::env;
@@ -9,73 +12,81 @@ use std::io::{Error, ErrorKind};
 use std::path::Path;
 
 pub fn ptx_module_smoke_test() -> String {
-    let mut report = String::new();
-    report.push_str("==== GPU PTX MODULE SMOKE TEST ====\n");
+    #[cfg(not(feature = "gpu"))]
+    {
+        return "==== GPU PTX MODULE SMOKE TEST ====\nSkipped: GPU feature not enabled\n".to_string();
+    }
 
-    match ptx::load_ptx_sync() {
-        Ok(ptx_content) => {
-            report.push_str(&format!("PTX loaded ({} bytes)\n", ptx_content.len()));
+    #[cfg(feature = "gpu")]
+    {
+        let mut report = String::new();
+        report.push_str("==== GPU PTX MODULE SMOKE TEST ====\n");
 
-            let device = match Device::get_device(0) {
-                Ok(d) => {
-                    report.push_str("CUDA device(0) acquired\n");
-                    d
-                }
-                Err(e) => {
-                    report.push_str(&format!("❌ Failed to get CUDA device: {}\n", e));
-                    return report;
-                }
-            };
-            let _ctx = match Context::new(device) {
-                Ok(c) => {
-                    report.push_str("CUDA context created\n");
-                    c
-                }
-                Err(e) => {
-                    report.push_str(&format!("❌ Failed to create CUDA context: {}\n", e));
-                    return report;
-                }
-            };
+        match ptx::load_ptx_sync() {
+            Ok(ptx_content) => {
+                report.push_str(&format!("PTX loaded ({} bytes)\n", ptx_content.len()));
 
-            match Module::from_ptx(&ptx_content, &[]) {
-                Ok(module) => {
-                    report.push_str("PTX module created successfully\n");
+                let device = match Device::get_device(0) {
+                    Ok(d) => {
+                        report.push_str("CUDA device(0) acquired\n");
+                        d
+                    }
+                    Err(e) => {
+                        report.push_str(&format!("Failed to get CUDA device: {}\n", e));
+                        return report;
+                    }
+                };
+                let _ctx = match Context::new(device) {
+                    Ok(c) => {
+                        report.push_str("CUDA context created\n");
+                        c
+                    }
+                    Err(e) => {
+                        report.push_str(&format!("Failed to create CUDA context: {}\n", e));
+                        return report;
+                    }
+                };
 
-                    let kernels = [
-                        "build_grid_kernel",
-                        "compute_cell_bounds_kernel",
-                        "force_pass_kernel",
-                        "integrate_pass_kernel",
-                        "relaxation_step_kernel",
-                    ];
-                    let mut missing = Vec::new();
-                    for k in kernels {
-                        if module.get_function(k).is_err() {
-                            missing.push(k.to_string());
+                match Module::from_ptx(&ptx_content, &[]) {
+                    Ok(module) => {
+                        report.push_str("PTX module created successfully\n");
+
+                        let kernels = [
+                            "build_grid_kernel",
+                            "compute_cell_bounds_kernel",
+                            "force_pass_kernel",
+                            "integrate_pass_kernel",
+                            "relaxation_step_kernel",
+                        ];
+                        let mut missing = Vec::new();
+                        for k in kernels {
+                            if module.get_function(k).is_err() {
+                                missing.push(k.to_string());
+                            }
+                        }
+                        if missing.is_empty() {
+                            report.push_str("Smoke test PASSED: all expected kernels found\n");
+                        } else {
+                            report.push_str(&format!(
+                                "Smoke test PARTIAL: missing kernels: {:?}\n",
+                                missing
+                            ));
                         }
                     }
-                    if missing.is_empty() {
-                        report.push_str("✅ Smoke test PASSED: all expected kernels found\n");
-                    } else {
-                        report.push_str(&format!(
-                            "⚠️ Smoke test PARTIAL: missing kernels: {:?}\n",
-                            missing
-                        ));
+                    Err(e) => {
+                        let diag = diagnose_ptx_error(&format!("Module::from_ptx error: {}", e));
+                        report.push_str(&format!("Failed to create module: {}\n{}", e, diag));
+                        return report;
                     }
                 }
-                Err(e) => {
-                    let diag = diagnose_ptx_error(&format!("Module::from_ptx error: {}", e));
-                    report.push_str(&format!("❌ Failed to create module: {}\n{}", e, diag));
-                    return report;
-                }
+            }
+            Err(e) => {
+                report.push_str(&format!("Failed to load PTX: {}\n", e));
+                return report;
             }
         }
-        Err(e) => {
-            report.push_str(&format!("❌ Failed to load PTX: {}\n", e));
-            return report;
-        }
+        report
     }
-    report
 }
 
 pub fn run_gpu_diagnostics() -> String {
