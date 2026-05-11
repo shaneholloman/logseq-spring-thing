@@ -153,6 +153,13 @@ impl StressMajorizationSolver {
     }
 
     
+    /// Maximum number of nodes for which a dense (N x N) matrix is allocated.
+    /// At 10,000 nodes the distance + weight matrices consume ~800 MB of f32
+    /// storage (2 x 10000^2 x 4 bytes). Beyond this threshold the solver
+    /// refuses to allocate and returns an error directing the caller to use a
+    /// sparse representation (see P1-23).
+    const DENSE_MATRIX_NODE_LIMIT: usize = 10_000;
+
     pub fn optimize(
         &mut self,
         graph_data: &mut GraphData,
@@ -164,12 +171,32 @@ impl StressMajorizationSolver {
             graph_data.nodes.len()
         );
 
-        
         if graph_data.nodes.is_empty() {
             return Err("Cannot optimize empty graph".into());
         }
 
-        
+        // P1-23: Guard against OOM from dense N x N matrix allocation.
+        let n = graph_data.nodes.len();
+        if n > Self::DENSE_MATRIX_NODE_LIMIT {
+            let estimated_mb = (2 * n * n * std::mem::size_of::<f32>()) / (1024 * 1024);
+            error!(
+                "Stress majorization: refusing dense matrix allocation for {} nodes \
+                 (~{} MB). Use sparse mode for graphs exceeding {} nodes.",
+                n,
+                estimated_mb,
+                Self::DENSE_MATRIX_NODE_LIMIT,
+            );
+            return Err(format!(
+                "Graph has {} nodes, exceeding the dense matrix limit of {}. \
+                 Dense distance+weight matrices would require ~{} MB. \
+                 A sparse solver is required for graphs of this size.",
+                n,
+                Self::DENSE_MATRIX_NODE_LIMIT,
+                estimated_mb,
+            )
+            .into());
+        }
+
         self.compute_distance_matrix(graph_data)?;
         self.compute_weight_matrix(graph_data)?;
 

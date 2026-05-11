@@ -12,6 +12,23 @@ pub fn velocity_gate(
     next: &PoseFrame,
     max_mps: f32,
 ) -> Result<(), ValidationError> {
+    // P2-07: NaN positions bypass the comparison (NaN > X is always false).
+    // Reject any frame containing NaN or infinite coordinates before computing
+    // velocity, since such positions are physically impossible.
+    for (_label, pos) in [
+        ("prev.head", &prev.head.position),
+        ("next.head", &next.head.position),
+    ] {
+        for &v in pos.iter() {
+            if v.is_nan() || v.is_infinite() {
+                return Err(ValidationError::VelocityExceeded {
+                    observed_mps: f32::INFINITY,
+                    limit_mps: max_mps,
+                });
+            }
+        }
+    }
+
     if next.timestamp_us <= prev.timestamp_us {
         return Err(ValidationError::NonMonotonicTimestamp {
             prev_us: prev.timestamp_us,
@@ -146,6 +163,24 @@ mod tests {
     fn velocity_above_gate_rejected() {
         let prev = pf(0, 0.0);
         let next = pf(10_000, 5.0);
+        let err = velocity_gate(&prev, &next, 20.0).unwrap_err();
+        assert!(matches!(err, ValidationError::VelocityExceeded { .. }));
+    }
+
+    #[test]
+    fn velocity_gate_rejects_nan_position() {
+        let prev = pf(0, 0.0);
+        let mut next = pf(100_000, 0.5);
+        next.head.position[0] = f32::NAN;
+        let err = velocity_gate(&prev, &next, 20.0).unwrap_err();
+        assert!(matches!(err, ValidationError::VelocityExceeded { .. }));
+    }
+
+    #[test]
+    fn velocity_gate_rejects_infinity_position() {
+        let prev = pf(0, 0.0);
+        let mut next = pf(100_000, 0.5);
+        next.head.position[1] = f32::INFINITY;
         let err = velocity_gate(&prev, &next, 20.0).unwrap_err();
         assert!(matches!(err, ValidationError::VelocityExceeded { .. }));
     }

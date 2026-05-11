@@ -183,10 +183,13 @@ fn nan_position_rejected_by_velocity_gate() {
     let mut next = baseline_frame(100_000);
     next.head.position[0] = f32::NAN;
     let res = velocity_gate(&prev, &next, 20.0);
-    // NaN compares > 20.0 as `false`, so the validator reports OK in current
-    // impl. We document this and rely on `world_bounds` to catch it; assert
-    // world_bounds DOES reject.
-    let _ = res;
+    // P2-07 fix: velocity_gate now explicitly checks for NaN/Inf before the
+    // velocity comparison, so NaN positions are rejected directly.
+    assert!(
+        matches!(res, Err(ValidationError::VelocityExceeded { .. })),
+        "NaN coord must be rejected by velocity_gate (got {res:?})"
+    );
+    // world_bounds should also reject as a secondary defense.
     let bounds = Aabb::symmetric(50.0);
     let res2 = world_bounds(&next.head, &bounds);
     assert!(

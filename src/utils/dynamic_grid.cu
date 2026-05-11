@@ -176,9 +176,17 @@ __host__ DynamicGridConfig calculate_grid_config(
 }
 
 // Adaptive grid configuration based on performance feedback
+//
+// P2-08 fix: The original implementation locked the grid configuration after
+// only 3 samples (`sample_count >= 3`), which was far too few to establish a
+// reliable performance baseline. The buffer is enlarged to 32 entries and the
+// lock threshold raised to MIN_ADAPTIVE_SAMPLES (default 30) so the grid has
+// time to explore the configuration space as the layout evolves during warmup.
+#define MIN_ADAPTIVE_SAMPLES 30
+
 struct PerformanceHistory {
-    float execution_times[16]; // Circular buffer of recent execution times
-    DynamicGridConfig configs[16]; // Corresponding configurations
+    float execution_times[32]; // Circular buffer of recent execution times
+    DynamicGridConfig configs[32]; // Corresponding configurations
     int current_index;
     int sample_count;
     float best_time;
@@ -201,8 +209,8 @@ __host__ void update_performance_history(DynamicGridConfig config, float executi
     g_perf_history.execution_times[idx] = execution_time_ms;
     g_perf_history.configs[idx] = config;
 
-    g_perf_history.current_index = (idx + 1) % 16;
-    g_perf_history.sample_count = min(g_perf_history.sample_count + 1, 16);
+    g_perf_history.current_index = (idx + 1) % 32;
+    g_perf_history.sample_count = min(g_perf_history.sample_count + 1, 32);
 
     // Update best configuration if this one is better
     if (execution_time_ms < g_perf_history.best_time) {
@@ -223,8 +231,10 @@ __host__ DynamicGridConfig get_adaptive_grid_config(
         num_elements, kernel_func, shared_memory_per_thread, min_blocks_per_sm
     );
 
-    // If we have performance history, consider using the best known configuration
-    if (g_perf_history.initialized && g_perf_history.sample_count >= 3) {
+    // If we have performance history, consider using the best known configuration.
+    // P2-08 fix: raised threshold from 3 to MIN_ADAPTIVE_SAMPLES (30) so the grid
+    // has adequate exploration before locking to the best observed configuration.
+    if (g_perf_history.initialized && g_perf_history.sample_count >= MIN_ADAPTIVE_SAMPLES) {
         // Use best known configuration if it's significantly better
         return g_perf_history.best_config;
     }
