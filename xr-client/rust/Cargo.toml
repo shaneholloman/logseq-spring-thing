@@ -1,6 +1,6 @@
 [package]
 name = "visionclaw-xr-gdext"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
 description = "GDExtension hot-path crate for the VisionClaw Quest 3 native APK XR client (PRD-008). Owns binary protocol decode, presence WS, hand interaction, LOD policy, and spatial voice routing as godot-rust classes consumed by the Godot 4.3 scene tree."
 license = "MIT"

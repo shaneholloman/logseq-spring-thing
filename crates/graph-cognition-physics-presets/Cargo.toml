@@ -1,6 +1,6 @@
 [package]
 name = "graph-cognition-physics-presets"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
 description = "Force presets and SimParams validation for GPU physics (ADR-069, ADR-070)"
 license = "MIT"

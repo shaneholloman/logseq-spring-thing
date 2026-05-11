@@ -1,6 +1,6 @@
 [package]
 name = "visionclaw-xr-presence"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
 description = "Transport-agnostic XR presence library for VisionClaw (PRD-008). Defines PresenceRoom aggregate, PoseFrame wire codec (opcode 0x43), pose validators, and port traits shared between the Rust server (Actix WS handler) and the Godot client (godot-rust crate)."
 license = "MIT"

@@ -11,7 +11,7 @@ resolver = "2"
 
 [package]
 name = "webxr"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
 description = "A WebXR graph visualisation server with GPU-accelerated physics"
 authors = ["Your Name <your.email@example.com>"]
@@ -23,7 +23,7 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 # ADR-053/056: solid-pod-rs — native Solid Pod library (JSS retired 2026-04-20).
 # Published to crates.io; consumed by src/handlers/solid_pod_handler.rs.
-solid-pod-rs = { version = "0.4.0-alpha.7", features = ["fs-backend", "memory-backend", "nip98-schnorr", "security-primitives", "did-nostr", "config-loader", "acl-origin", "webhook-signing", "lws-cid"] }
+solid-pod-rs = { version = "0.4.0-alpha.8", features = ["fs-backend", "memory-backend", "nip98-schnorr", "security-primitives", "did-nostr", "config-loader", "acl-origin", "webhook-signing", "lws-cid"] }
 
 # PRD-013 G1: libgit2 bindings for git clone/fetch/push (Git Ingest Adapter)
 git2 = "0.19"
@@ -187,6 +187,8 @@ clap = { version = "4.5", features = ["derive"] }
 zeroize = { version = "1.8", features = ["derive"] }
 hex = "0.4"
 
+# P2-06: flock(2) advisory file locking for FsPaymentStore cross-process safety.
+libc = "0.2"
 
 [dev-dependencies]
 tokio-test = "0.4"
@@ -205,6 +207,7 @@ js-sys = "0.3"
 
 [build-dependencies]
 tempfile = "3.14"
+blake3 = "1.5"
 
 [features]
 # GPU and ontology features for conditional compilation
