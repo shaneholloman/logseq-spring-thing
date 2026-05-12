@@ -149,7 +149,7 @@ and inform every requirement in §5.
   silently fail.
 - **No subscription** — the only persistent Nostr subscription is `NostrBridge`
   reading kind 30001 from JSS; `nostr_sdk::Client` in `ServerIdentity` is publish-only.
-  The substrate **never reads back** kinds 30023/30100/30200/30300 it itself emits.
+  The substrate **never reads back** kinds 30023/30100/30200/30300/30301/31400/31402 it itself emits. (Note: kinds 31400/31402 are Agent Control Surface Protocol events intended for Forum Kit UI consumption, not VisionClaw read-back.)
 - **URI resolver redirects to non-existent endpoints** —
   `src/handlers/uri_resolver_handler.rs:148-173` issues 307s to
   `/api/v1/nodes/by-uri/{urn}/jsonld`, `/api/v1/identity/{hex}/did.json`,
@@ -712,7 +712,7 @@ Activate the previously-documented but inactive lints:
   uses `SchnorrSecp256k1VerificationKey2019`.
 
 ### F24 — Substrate-emitted bead republishing
-VisionClaw substrate-emitted kinds (30023/30100/30200/30300) MUST be re-publishable
+VisionClaw substrate-emitted kinds (30023/30100/30200/30300/30301/31400/31402) MUST be re-publishable
 via the mesh per F11 if `mesh.federated_pubkeys` includes the substrate's hex.
 `server_nostr_actor.rs` event signing path adds `["mesh", "v1"]` tag so receivers know
 this is a cross-mesh substrate event.

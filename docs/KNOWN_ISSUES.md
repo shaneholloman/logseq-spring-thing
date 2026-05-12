@@ -19,17 +19,16 @@ None currently active.
 
 ## P2 Issues (Degraded Feature)
 
-### AUTH-001: Enterprise SSO Not Supported
+### AUTH-001: Enterprise SSO — Partial (RBAC Implemented, OIDC Pending)
 
-**Status**: Gap / Architecture Decision Pending
-**Impact**: VisionClaw's authentication stack is built on Nostr NIP-98 (cryptographic keypairs, browser extension, npubs). There is no OIDC, SAML, or LDAP integration. Enterprise deployments in regulated industries (healthcare, finance) cannot use Nostr browser extensions for staff authentication.
+**Status**: Partially resolved — ADR-040 accepted, RBAC middleware implemented, OIDC integration pending
+**Impact**: VisionClaw's enterprise RBAC middleware (`src/middleware/enterprise_auth.rs`) now supports two authentication paths: (1) NIP-98 Schnorr signature verification with pubkey-to-role resolution via `Nip98RoleResolver` (enabled by the `nip98-auth` compile-time feature), and (2) `X-Enterprise-Role` header extraction for dev/gateway deployments. The four-tier role hierarchy (Admin > Broker > Auditor > Contributor) is enforced on all enterprise-gated routes.
 
-**Workaround**: None currently. JWT was fully removed in November 2025 (not deprecated — removed). The `VIRCADIA_JWT_SECRET` env var can be removed from compose files — Vircadia is no longer part of the stack. See `docs/explanation/security-model.md`.
+**Remaining gap**: Full OIDC/SAML SSO integration (ADR-040 Phase 1) is not yet implemented. Enterprise users cannot log in via Entra ID, Okta, or Google Workspace. The server-side ephemeral Nostr keypair delegation (OIDC session to secp256k1 key) described in ADR-040 remains unimplemented. SCIM provisioning (ADR-040 Phase 2) is deferred.
 
-**Fix Direction**: An ADR is required before any implementation work begins. The three candidate approaches are:
-- (a) Wrap NIP-98 behind a SAML-to-Nostr proxy so enterprise identity providers map to Nostr keypairs transparently.
-- (b) Add a first-class OIDC port alongside NIP-98, with NIP-98 remaining the default for open deployments.
-- (c) Scope enterprise auth to API-key-per-service for M2M use cases only, leaving human auth as Nostr-only.
+**Workaround**: Deploy behind a trusted API gateway that sets the `X-Enterprise-Role` header based on its own SSO verification, or enable the `nip98-auth` feature and populate the `Nip98RoleResolver` with pubkey-to-role mappings for known enterprise users.
+
+**Fix Direction**: Implement ADR-040 Phase 1 (OIDC login flow, ephemeral keypair generation, session management). See [ADR-040](adr/ADR-040-enterprise-identity-strategy.md) and [ADR-088](adr/ADR-088-auth-service-extraction.md) for the auth consolidation plan.
 
 ---
 

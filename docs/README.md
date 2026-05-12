@@ -36,7 +36,19 @@ Recent ship: **Pod-backed knowledge graph sovereignty with Solid Pod integration
 - **NIP-98 Enterprise Auth**: Optional auth mode with AccessLevel, caller-aware filters, legacy session deprecation
 - **Solid WAC Default**: /private, /public, /shared, /profile containers with double-gated writes
 
-See [Sovereign Mesh ADRs](#sovereign-mesh-pod-integration-adr-028-ext-to-adr-052) below. New tutorials: [Power-User Bootstrap CLI](ops/power-user-bootstrap.md) (stable), [Nostr Server Identity](ops/server-nostr-identity.md) (pending), Sovereign Ingest (pending — not yet written).
+See [Sovereign Mesh ADRs](#sovereign-mesh-pod-integration-adr-028-ext-to-adr-052) below. New tutorials: [Power-User Bootstrap CLI](ops/power-user-bootstrap.md) (stable), [Nostr Server Identity](ops/server-nostr-identity.md) (pending), Sovereign Ingest (pending -- not yet written).
+
+---
+
+## Agent Control Surface Protocol Integration (2026-05-12)
+
+**Governance bridge between VisionClaw BrokerActor and Forum Kit relay mesh**. Two new server-signed Nostr event kinds:
+
+- **Kind 31400 — PanelDefinition**: `PublishGovernancePanel` registers/updates control panels (ActionInbox, Dashboard, ConfigForm, StatusBoard, ChatBridge) with schema, fields, actions, layout hints. NIP-33 replaceable by `d` tag.
+- **Kind 31402 — ActionRequest**: `PublishActionRequest` submits cases for human review with priority, category, structured fields, and agent reasoning.
+- **Dual-path enterprise RBAC**: `RequireRole` middleware now supports NIP-98 Schnorr auth (`nip98-auth` feature gate) alongside the existing `X-Enterprise-Role` header path. `Nip98RoleResolver` trait maps verified pubkeys to enterprise roles.
+
+Source: `src/actors/server_nostr_actor.rs`, `src/middleware/enterprise_auth.rs` | Kinds added to `server_identity.rs` `SUPPORTED_KINDS` and `metrics.rs` `NostrKind` enum.
 
 ---
 

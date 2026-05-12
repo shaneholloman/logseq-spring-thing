@@ -244,7 +244,7 @@
 |---|---|---|---|---|
 | 11.1 | active panel selector | **KEEP** | 1 | |
 | 11.2–11.3 | drawer state | **KEEP** | 1 | |
-| 11.4–11.6 | broker case submit / inbox / timeline | **WIRE** | 1 | Stub-backed; either implement or drop. Aspirationally implement. |
+| 11.4–11.6 | broker case submit / inbox / timeline | **WIRED** | 1 | BrokerActor now publishes cases via `PublishActionRequest` (kind 31402) to Nostr relay; panel definitions via `PublishGovernancePanel` (kind 31400). Wire from Nostr subscription to UI panel rendering. |
 | 11.7–11.9 | workflow proposals / patterns | **WIRE** | 1 | Same. |
 | 11.10 | KPI time window | **KEEP** | 1 | |
 | 11.11 | KPI sparklines | **WIRE → real metrics** | 1 | Currently locally seeded; should pull real history. |

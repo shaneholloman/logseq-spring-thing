@@ -44,7 +44,7 @@ graph TD
         A_ONTOLOGY[OntologyActor<br/>1155 lines]
         A_SETTINGS[OptimizedSettingsActor<br/>1428 lines]
         A_BROKER[BrokerActor<br/>567 lines]
-        A_NOSTR[ServerNostrActor<br/>702 lines]
+        A_NOSTR[ServerNostrActor<br/>1041 lines]
         A_MCP_VIZ[MultiMcpVisualizationActor<br/>1206 lines]
         A_WORKSPACE[WorkspaceActor<br/>626 lines]
         A_PRESENCE[PresenceActor<br/>721 lines]
@@ -254,7 +254,7 @@ flowchart LR
 | [x] | actors/presence_actor.rs | 721 |
 | [x] | actors/protected_settings_actor.rs | 75 |
 | [x] | actors/semantic_processor_actor.rs | 1829 |
-| [x] | actors/server_nostr_actor.rs | 702 |
+| [x] | actors/server_nostr_actor.rs | 1041 |
 | [x] | actors/share_orchestrator_actor.rs | 180 |
 | [x] | actors/skill_compatibility_scanner.rs | 186 |
 | [x] | actors/skill_evaluation_actor.rs | 114 |
@@ -339,7 +339,7 @@ flowchart LR
 | Location | Purpose |
 |----------|---------|
 | `middleware/auth.rs` (241 lines) | `AuthGuard` middleware, `AccessLevel` enum, `get_authenticated_user()` |
-| `middleware/enterprise_auth.rs` (297 lines) | `EnterpriseRole` extraction, `RoleGuard` middleware |
+| `middleware/enterprise_auth.rs` (603 lines) | `EnterpriseRole` extraction, `RequireRole` middleware, dual-path NIP-98 / header auth |
 | `utils/auth.rs` (497 lines) | `verify_access()`, `verify_admin()`, etc. helper functions |
 | `utils/nip98.rs` (640 lines) | NIP-98 token generation/validation |
 | `settings/auth_extractor.rs` (234 lines) | Settings-specific `require_power_user()` |

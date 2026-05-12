@@ -296,7 +296,7 @@ POWER_USER_PUBKEYS=pubkey1,pubkey2  # comma-separated power user pubkeys
 | `POD_DEFAULT_PRIVATE` | false | New Pods default to private visibility |
 | `VISIBILITY_CLASSIFICATION` | false | Enable 4-state visibility enum (public, pod, private, opaque) |
 | `POD_SAGA_ENABLED` | false | Enable Pod provisioning saga pattern with retry |
-| `SOVEREIGN_SCHEMA` | false | Enable sovereign schema (ADR-050: kinds 30023/30100/30200/30300) |
+| `SOVEREIGN_SCHEMA` | false | Enable sovereign schema (ADR-050: kinds 30023/30100/30200/30300/30301/31400/31402) |
 
 ---
 
@@ -1250,12 +1250,13 @@ Retrieve server identity, supported event kinds, and relay information. Public e
   "pubkey_hex": "abc123def456...",
   "pubkey_npub": "npub1abc123def456...",
   "supported_kinds": [
-    1,
     30023,
     30100,
     30200,
     30300,
-    27235
+    30301,
+    31400,
+    31402
   ],
   "relay_urls": [
     "wss://relay.example.org",
@@ -1264,7 +1265,7 @@ Retrieve server identity, supported event kinds, and relay information. Public e
 }
 ```
 
-**Schema reference**: See ADR-050 for sovereign schema kinds (30023: long-form content, 30100: graphs, 30200: schemas, 30300: ontologies).
+**Schema reference**: See ADR-050 for sovereign schema kinds (30023: migration approval, 30100: bridge promotion, 30200: bead stamp, 30300: audit/broker decision, 30301: enrichment proposal). Kinds 31400 (governance panel definition) and 31402 (action request) are Agent Control Surface Protocol events used by the BrokerActor for governance integration with the Forum Kit relay mesh.
 
 ---
 

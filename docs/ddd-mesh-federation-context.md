@@ -830,11 +830,17 @@ PRD-013 G7 extends the existing relay topology (ADR-073) with two new event kind
 | Kind | Name | Purpose | Producer | Consumer |
 |------|------|---------|----------|----------|
 | 30300 | `AuditEvent` (implemented) | Broker decision recorded (approve/reject/amend/delegate/promote/precedent) | VisionClaw ServerNostrActor | Agentbox agents, external subscribers |
-| 30301 | `EnrichmentProposal` (NEW) | Agent submits enrichment for broker review | Agentbox agent (via Pod Bridge) | VisionClaw BrokerActor |
+| 30301 | `EnrichmentProposal` (implemented) | Agent submits enrichment for broker review | Agentbox agent (via Pod Bridge) | VisionClaw BrokerActor |
+| 31400 | `PanelDefinition` (implemented) | Register/update governance control panel (NIP-33 replaceable, keyed by `d` tag) | VisionClaw ServerNostrActor via BrokerActor | Forum Kit UI, any Nostr client |
+| 31402 | `ActionRequest` (implemented) | Case submitted for human review with priority, category, fields, reasoning | VisionClaw ServerNostrActor via BrokerActor | Forum Kit UI, broker clients |
+
+Kinds 31400 and 31402 are Agent Control Surface Protocol events (compatible with `nostr-bbs-core` from the Forum Kit). They extend the control plane with structured governance UI primitives, enabling the Forum Kit relay to render broker inboxes and action panels directly from Nostr events.
 
 IS-Envelope mapping (per ADR-075):
 - kind 30301 maps to IS-Envelope kind `tool_invoke` (agent submits enrichment)
 - kind 30300 maps to IS-Envelope kind `tool_result` (broker decision result)
+- kind 31400 maps to IS-Envelope kind `panel_register` (governance panel definition)
+- kind 31402 maps to IS-Envelope kind `action_submit` (action request for human review)
 
 The NIP-42 AUTH gate on the agentbox embedded relay restricts kind-30300/30301 subscriptions to known `did:nostr` pubkeys. All events in the control plane carry `did:nostr` identity; no anonymous events are permitted.
 

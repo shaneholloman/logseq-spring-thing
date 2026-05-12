@@ -26,7 +26,7 @@ When an anonymous caller requests a public page that wikilinks to a private stub
 
 ## Prometheus label cardinality (`src/services/metrics.rs`)
 
-24 metrics, all label sets are enumerated (`SagaOutcomeLabel::{Complete|Pending|Failed}`, `PodContainer::{Public|Private|Config}`, `NostrKind::{K30023|K30100|K30200|K30300}`). **No pubkey, IRI, or path label anywhere.** Cardinality is bounded at roughly 20-30 distinct time series across the full registry. Scrape body stays small; no secret-adjacent values ever appear as labels. Compliance is good.
+24+ metrics, all label sets are enumerated (`SagaOutcomeLabel::{Complete|Pending|Failed}`, `PodContainer::{Public|Private|Config}`, `NostrKind::{K14|K30023|K30100|K30200|K30300|K30301|K31400|K31402}`). **No pubkey, IRI, or path label anywhere.** Cardinality is bounded at roughly 20-35 distinct time series across the full registry. Scrape body stays small; no secret-adjacent values ever appear as labels. Compliance is good.
 
 ## Verdict
 

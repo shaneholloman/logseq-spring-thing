@@ -138,7 +138,7 @@
 | ADR-039 | Canonical PhysicsSettings struct | Implemented (2026-04-20) |
 | ADR-039 | Field-name migration aliases (`repel_k`→`repulsion_strength`) | Active alias phase |
 | ADR-040 | SERVER_NOSTR_PRIVKEY auto-gen | Implemented |
-| ADR-040 | Server signing kind 30023/30100/30200/30300 | Implemented |
+| ADR-040 | Server signing kind 30023/30100/30200/30300/30301/31400/31402 | Implemented |
 | ADR-048 | :KGNode data plane (numeric IDs) | Ratified |
 | ADR-048 | :OntologyClass T-Box | Ratified |
 | ADR-050 | Visibility enum (Public/Private) | Ratified |

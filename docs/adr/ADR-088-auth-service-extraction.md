@@ -15,7 +15,7 @@ VisionClaw has **6 auth-related modules** (2,349 lines) that evolved independent
 | Module | Lines | Mechanism | Used by |
 |--------|-------|-----------|---------|
 | `middleware/auth.rs` | 312 | Nostr pubkey extraction from NIP-98 | Most API handlers |
-| `middleware/enterprise_auth.rs` | 486 | OIDC + JWT bearer tokens | Enterprise routes |
+| `middleware/enterprise_auth.rs` | 603 | Dual-path: NIP-98 Schnorr auth (`nip98-auth` feature) or `X-Enterprise-Role` header | Enterprise routes |
 | `utils/auth.rs` | 289 | Auth utility functions | Internal services |
 | `utils/nip98.rs` | 640 | NIP-98 token generation/validation | Middleware, services |
 | `settings/auth_extractor.rs` | 134 | Settings-aware auth extractor | Settings endpoints |

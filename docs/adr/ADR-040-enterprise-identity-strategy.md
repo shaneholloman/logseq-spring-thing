@@ -196,13 +196,46 @@ Key lifecycle:
 - Binary protocol (BC10) is unaffected
 - Graph data model (BC2) stores the signing pubkey on provenance nodes regardless of how the key was obtained
 
+## Implementation Status (2026-05-12)
+
+The `RequireRole` middleware in `src/middleware/enterprise_auth.rs` now implements
+dual-path authentication as described in the Decision section:
+
+- **NIP-98 path** (compile-time `nip98-auth` feature): `RequireRole` reads a
+  `Nostr <base64>` Authorization header, verifies the NIP-98 Schnorr signature
+  via `extract_role_from_nip98()`, and resolves the signer's pubkey to an
+  `EnterpriseRole` through the `Nip98RoleResolver` trait. A `Nip98IdentityExt`
+  request extension carries the verified pubkey and role to downstream handlers.
+  `InMemoryRoleMap` provides a dev/test resolver; production deployments should
+  implement `Nip98RoleResolver` against a persistent store.
+
+- **Header path** (default, no feature gate): `RequireRole` reads the
+  `X-Enterprise-Role` header for role extraction. This is the dev/gateway mode
+  described in the original Decision and remains the default when the
+  `nip98-auth` feature is not compiled in.
+
+Both paths enforce the hierarchical role model defined above: Admin (4) >
+Broker (3) > Auditor (2) > Contributor (1). A per-handler helper
+`require_role_nip98()` is also available for handlers that need direct NIP-98
+verification without the middleware.
+
+### Agent Control Surface Protocol
+
+The `ServerNostrActor` now publishes governance events (kinds 31400, 31402) on
+behalf of the `BrokerActor`, bridging VisionClaw's broker workflow with the
+Forum Kit's Agent Control Surface Protocol. These events carry the server's
+Nostr identity and are subject to the same role-based access control when
+submitted via the HTTP API.
+
 ## Related Decisions
 
 - ADR-011: Universal Authentication Enforcement (extended, not replaced)
+- ADR-028-ext: NIP-98 as Enterprise Auth -- Optional-Auth Extension
 - ADR-034: Needle Bead Provenance (provenance signing model preserved)
 - ADR-027: Pod-Backed Graph Views (Solid Pod used for ephemeral key storage)
 - ADR-041: Judgment Broker Workbench Architecture (depends on role model defined here)
 - ADR-045: Policy Engine Approach (policies reference roles defined here)
+- ADR-088: Auth Service Extraction (proposed consolidation of auth modules)
 
 ## References
 

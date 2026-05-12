@@ -173,6 +173,57 @@ Every axis of this tool has good prior art. Obsidian and Logseq do wikilinks. Pr
 
 ---
 
+## Agent Control Surface Protocol Integration
+
+VisionClaw's `BrokerActor` now publishes governance events to the Nostr relay mesh using the Agent Control Surface Protocol (kinds 31400-31405), bridging the VisionClaw broker workflow with the `nostr-bbs-core` governance primitives from the Forum Kit.
+
+### New Nostr Event Kinds
+
+| Kind | Name | Purpose | Actor Message |
+|:-----|:-----|:--------|:-------------|
+| 31400 | `PanelDefinition` | Register/update a control panel on the relay (NIP-33 replaceable) | `PublishGovernancePanel` |
+| 31402 | `ActionRequest` | Submit a case for human review (enrichment, manual submission) | `PublishActionRequest` |
+
+Both are NIP-33 parameterized replaceable events keyed by a `d` tag (`panel_id` or `case_id`). The `ServerNostrActor` signs them with the server identity and broadcasts to configured relays.
+
+### Panel Definition Schema
+
+A `PanelDefinitionPayload` describes a governance control surface:
+
+- **Schema types**: `ActionInbox`, `Dashboard`, `ConfigForm`, `StatusBoard`, `ChatBridge`
+- **Layout hints**: `InboxTable`, `Kanban`, `CardGrid`, `SplitDetail`
+- **Field types**: `String`, `Int`, `Float`, `Bool`, `Json`, `Enum`, `Timestamp`
+- **Action styles**: `Primary`, `Secondary`, `Destructive`
+- **Capabilities**: extensible string list (e.g. `bulk-action`, `filter`)
+
+### Server-Signed Event Kind Summary
+
+The server identity (`ServerNostrActor`) now signs 9 event types across 7 distinct kinds:
+
+| Kind | Event Type | Source |
+|:-----|:-----------|:-------|
+| 14 | Sealed DM (NIP-17) | `SignSealedDM` |
+| 30023 | Migration approval | `SignMigrationApproval` |
+| 30100 | Bridge promotion | `SignBridgePromotion` |
+| 30200 | Bead provenance stamp | `SignBeadStamp` |
+| 30300 | Audit record / Broker decision | `SignAuditRecord`, `SignBrokerDecision` |
+| 30301 | Enrichment proposal | `SignEnrichmentProposal` |
+| 31400 | Governance panel definition | `PublishGovernancePanel` |
+| 31402 | Action request | `PublishActionRequest` |
+
+### Dual-Path Enterprise Auth
+
+The `RequireRole` middleware (ADR-040) now supports two authentication paths via compile-time feature gate:
+
+- **`nip98-auth` feature enabled**: Reads `Authorization: Nostr <base64>`, verifies the NIP-98 Schnorr signature, resolves pubkey to `EnterpriseRole` via a `Nip98RoleResolver`. The `X-Enterprise-Role` header is ignored. A `Nip98IdentityExt` extension is inserted into request extensions carrying the verified pubkey and role.
+- **Default (feature disabled)**: Reads `X-Enterprise-Role` header for role extraction. Suitable for development behind a trusted gateway.
+
+Both paths enforce the same hierarchical role model: Admin (4) > Broker (3) > Auditor (2) > Contributor (1).
+
+Source: `src/middleware/enterprise_auth.rs` | ADR: [ADR-040](docs/adr/ADR-040-enterprise-identity-strategy.md) | [ADR-028-ext](docs/adr/ADR-028-ext-optional-auth.md)
+
+---
+
 ## Quick Start
 
 ```bash
@@ -227,7 +278,7 @@ Each user's content lives in their own Solid Pod: `/public/kg/` for published pa
 | Two-pass parser | Build wikilink adjacency, classify visibility per page, emit private stubs | `src/services/parsers/knowledge_graph_parser.rs`, `src/services/parsers/visibility.rs` |
 | Pod-first ingest saga | Pod write → Neo4j commit, crash-safe with pending markers | `src/services/ingest_saga.rs`, `src/services/pod_client.rs` |
 | BRIDGE_TO promotion | 8-signal sigmoid scoring, monotonic confidence invariant, orphan retraction | `src/services/bridge_edge.rs`, `src/services/orphan_retraction.rs` |
-| Server-as-identity | Server signs kind 30023/30100/30200/30300 events (migration / bridge / bead / audit) | `src/services/server_identity.rs`, `src/actors/server_nostr_actor.rs` |
+| Server-as-identity | Server signs kind 30023/30100/30200/30300/30301/31400/31402 events (migration / bridge / bead / audit / enrichment / governance panel / action request) | `src/services/server_identity.rs`, `src/actors/server_nostr_actor.rs` |
 | Share-to-Mesh funnel | Private → Team → Mesh transitions with Policy Engine check + WAC mutation + broker intake | `src/services/share_orchestrator.rs`, `src/actors/share_orchestrator_actor.rs` |
 | Pod-Native automations | Cron routines with NIP-26 scoped delegation caps + `/inbox/` delivery | `src/actors/automation_orchestrator_actor.rs`, `src/services/nip26_cap.rs` |
 | `solid-pod-rs` crate | Rust-native Solid Pod server (WAC + LDP + NIP-98 + FS/Memory backends) | `crates/solid-pod-rs/` |
@@ -312,10 +363,11 @@ This alignment is behind feature flag `URN_SOLID_ALIGNMENT=true`. Full specifica
 **🔐 Dual-Stack Identity**
 - Enterprise OIDC/SAML (Entra, Okta, Google)
 - Nostr NIP-98 signed HTTP auth for provenance
+- Dual-path enterprise RBAC: NIP-98 Schnorr auth (`nip98-auth` feature) or `X-Enterprise-Role` header (dev/gateway mode)
 - Ephemeral keypair delegation (OIDC → secp256k1)
 - NIP-26 scoped caps for automations (path + tool + TTL 24h)
 - Solid Pods · per-user data sovereignty
-- 5 roles: Broker · Admin · Auditor · Contributor · Power Contributor
+- 4 hierarchical roles: Admin > Broker > Auditor > Contributor
 
 </td>
 </tr>

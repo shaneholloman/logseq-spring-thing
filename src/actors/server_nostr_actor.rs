@@ -2,15 +2,17 @@
 //!
 //! Provides message-based, non-blocking access to the server's Nostr signing
 //! capability from other actors (physics, ontology, migration, bead lifecycle,
-//! audit, broker). Exposes seven strongly-typed message variants:
+//! audit, broker). Exposes nine strongly-typed message variants:
 //!
-//!   * `SignMigrationApproval`   → kind 30023
-//!   * `SignBridgePromotion`     → kind 30100
-//!   * `SignBeadStamp`           → kind 30200
-//!   * `SignAuditRecord`         → kind 30300
-//!   * `SignEnrichmentProposal`  → kind 30301 (PRD-013 G7)
-//!   * `SignBrokerDecision`      → kind 30300 (PRD-013 G7, enrichment variant)
-//!   * `SignSealedDM`            → kind 14 (NIP-17 chat message)
+//!   * `SignMigrationApproval`     → kind 30023
+//!   * `SignBridgePromotion`       → kind 30100
+//!   * `SignBeadStamp`             → kind 30200
+//!   * `SignAuditRecord`           → kind 30300
+//!   * `SignEnrichmentProposal`    → kind 30301 (PRD-013 G7)
+//!   * `SignBrokerDecision`        → kind 30300 (PRD-013 G7, enrichment variant)
+//!   * `SignSealedDM`              → kind 14 (NIP-17 chat message)
+//!   * `PublishGovernancePanel`    → kind 31400 (Agent Control Surface panel definition)
+//!   * `PublishActionRequest`      → kind 31402 (Agent Control Surface action request)
 //!
 //! Each handler assembles the appropriate tags + JSON content, signs via the
 //! shared [`ServerIdentity`] (no key copy — identity is held behind `Arc`),
@@ -491,6 +493,234 @@ impl Handler<SignSealedDM> for ServerNostrActor {
     }
 }
 
+// ── Agent Control Surface Protocol types ──────────────────────────────
+//
+// Local struct definitions that produce JSON matching the nostr-bbs-core
+// PanelDefinition / ActionRequest schema. Kept local to avoid coupling
+// VisionClaw's dependency tree to the nostr-bbs crate.
+
+/// Panel schema type. Matches `nostr-bbs-core::governance::PanelSchema`.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum PanelSchema {
+    ActionInbox,
+    Dashboard,
+    ConfigForm,
+    StatusBoard,
+    ChatBridge,
+}
+
+/// Layout hint. Matches `nostr-bbs-core::governance::LayoutHint`.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum LayoutHint {
+    InboxTable,
+    Kanban,
+    CardGrid,
+    SplitDetail,
+}
+
+/// Field type tag. Matches `nostr-bbs-core::governance::FieldType`.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum FieldType {
+    String,
+    Int,
+    Float,
+    Bool,
+    Json,
+    Enum,
+    Timestamp,
+}
+
+/// Field definition inside a panel.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct FieldDef {
+    pub name: String,
+    pub field_type: FieldType,
+    pub label: String,
+}
+
+/// Button style for panel actions.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum ActionStyle {
+    Primary,
+    Secondary,
+    Destructive,
+}
+
+/// An action button on a panel.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ActionDef {
+    pub id: String,
+    pub label: String,
+    pub style: ActionStyle,
+}
+
+/// Full panel definition payload — serialised to JSON as the `content` of
+/// a kind 31400 event. Wire-compatible with `nostr-bbs-core`'s
+/// `PanelDefinition`.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct PanelDefinitionPayload {
+    pub title: String,
+    pub description: String,
+    #[serde(default = "default_panel_version")]
+    pub version: String,
+    pub schema: PanelSchema,
+    pub fields: Vec<FieldDef>,
+    pub actions: Vec<ActionDef>,
+    pub layout: LayoutHint,
+    #[serde(default)]
+    pub capabilities: Vec<String>,
+    #[serde(default = "default_refresh_secs")]
+    pub refresh_secs: u32,
+}
+
+fn default_panel_version() -> String {
+    "1.0.0".into()
+}
+
+fn default_refresh_secs() -> u32 {
+    30
+}
+
+/// Priority level for action requests.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ActionPriority {
+    Critical,
+    High,
+    Medium,
+    Low,
+}
+
+// ── Message: publish governance panel definition (kind 31400) ─────────
+
+/// Publish a PanelDefinition event (kind 31400) to the relay.
+///
+/// The BrokerActor sends this when it wants to register or update a
+/// control panel on the Nostr forum. The `panel_id` becomes the `d` tag
+/// so the event is a NIP-33 parameterized replaceable event.
+#[derive(Message, Debug, Clone)]
+#[rtype(result = "Result<Event>")]
+pub struct PublishGovernancePanel {
+    /// Stable identifier for the panel (`d` tag value).
+    pub panel_id: String,
+    /// The full panel definition payload.
+    pub panel: PanelDefinitionPayload,
+}
+
+impl Handler<PublishGovernancePanel> for ServerNostrActor {
+    type Result = ResponseFuture<Result<Event>>;
+
+    fn handle(&mut self, msg: PublishGovernancePanel, _ctx: &mut Self::Context) -> Self::Result {
+        let identity = Arc::clone(&self.identity);
+        let prom = self.prom.clone();
+        Box::pin(async move {
+            let content = serde_json::to_string(&msg.panel)
+                .unwrap_or_else(|e| format!("{{\"error\":\"{}\"}}", e));
+
+            let tags = vec![
+                Tag::custom(TagKind::Custom("h".into()), vec![SERVER_H_TAG.to_string()]),
+                Tag::custom(TagKind::Custom("d".into()), vec![msg.panel_id.clone()]),
+                Tag::custom(
+                    TagKind::Custom("schema".into()),
+                    vec![serde_json::to_value(&msg.panel.schema)
+                        .ok()
+                        .and_then(|v| v.as_str().map(|s| s.to_string()))
+                        .unwrap_or_else(|| "action-inbox".to_string())],
+                ),
+                Tag::custom(
+                    TagKind::Custom("layout".into()),
+                    vec![serde_json::to_value(&msg.panel.layout)
+                        .ok()
+                        .and_then(|v| v.as_str().map(|s| s.to_string()))
+                        .unwrap_or_else(|| "inbox-table".to_string())],
+                ),
+                Tag::custom(
+                    TagKind::Custom("event_type".into()),
+                    vec!["panel_definition".to_string()],
+                ),
+            ];
+
+            let out = identity.sign_and_broadcast(31400, content, tags).await;
+            Self::observe_sign_outcome(&prom, NostrKind::K31400, &out);
+            out
+        })
+    }
+}
+
+// ── Message: publish action request (kind 31402) ──────────────────────
+
+/// Publish an ActionRequest event (kind 31402) to the relay.
+///
+/// The BrokerActor sends this when a new case needs human review. The
+/// event content is a JSON object with the case fields and reasoning,
+/// matching the `ActionRequest` schema from nostr-bbs-core.
+#[derive(Message, Debug, Clone)]
+#[rtype(result = "Result<Event>")]
+pub struct PublishActionRequest {
+    /// Case identifier — used as `d` tag value.
+    pub case_id: String,
+    /// Human-readable title for the action request.
+    pub title: String,
+    /// Case category (e.g. "knowledge_enrichment", "manual_submission").
+    pub category: String,
+    /// Priority level.
+    pub priority: ActionPriority,
+    /// Structured fields for the action (JSON object).
+    pub fields: serde_json::Value,
+    /// Agent's reasoning / justification for the request.
+    pub reasoning: String,
+}
+
+impl Handler<PublishActionRequest> for ServerNostrActor {
+    type Result = ResponseFuture<Result<Event>>;
+
+    fn handle(&mut self, msg: PublishActionRequest, _ctx: &mut Self::Context) -> Self::Result {
+        let identity = Arc::clone(&self.identity);
+        let prom = self.prom.clone();
+        Box::pin(async move {
+            let content = json!({
+                "fields": msg.fields,
+                "reasoning": msg.reasoning,
+            })
+            .to_string();
+
+            let priority_str = serde_json::to_value(&msg.priority)
+                .ok()
+                .and_then(|v| v.as_str().map(|s| s.to_string()))
+                .unwrap_or_else(|| "medium".to_string());
+
+            let tags = vec![
+                Tag::custom(TagKind::Custom("h".into()), vec![SERVER_H_TAG.to_string()]),
+                Tag::custom(TagKind::Custom("d".into()), vec![msg.case_id.clone()]),
+                Tag::custom(
+                    TagKind::Custom("title".into()),
+                    vec![msg.title.clone()],
+                ),
+                Tag::custom(
+                    TagKind::Custom("category".into()),
+                    vec![msg.category.clone()],
+                ),
+                Tag::custom(
+                    TagKind::Custom("priority".into()),
+                    vec![priority_str],
+                ),
+                Tag::custom(
+                    TagKind::Custom("event_type".into()),
+                    vec!["action_request".to_string()],
+                ),
+            ];
+
+            let out = identity.sign_and_broadcast(31402, content, tags).await;
+            Self::observe_sign_outcome(&prom, NostrKind::K31402, &out);
+            out
+        })
+    }
+}
+
 // ── tests ──────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -694,5 +924,117 @@ mod tests {
             .iter()
             .any(|t| t.kind() == TagKind::Custom("subject".into()));
         assert!(!has_subject);
+    }
+
+    #[actix::test]
+    async fn handles_publish_governance_panel() {
+        let addr = ServerNostrActor::new(test_identity()).start();
+        let event = addr
+            .send(PublishGovernancePanel {
+                panel_id: "broker-inbox-v1".to_string(),
+                panel: PanelDefinitionPayload {
+                    title: "Broker Inbox".to_string(),
+                    description: "Cases awaiting broker review".to_string(),
+                    version: "1.0.0".to_string(),
+                    schema: PanelSchema::ActionInbox,
+                    fields: vec![
+                        FieldDef {
+                            name: "case_id".to_string(),
+                            field_type: FieldType::String,
+                            label: "Case ID".to_string(),
+                        },
+                        FieldDef {
+                            name: "priority".to_string(),
+                            field_type: FieldType::Enum,
+                            label: "Priority".to_string(),
+                        },
+                    ],
+                    actions: vec![
+                        ActionDef {
+                            id: "approve".to_string(),
+                            label: "Approve".to_string(),
+                            style: ActionStyle::Primary,
+                        },
+                        ActionDef {
+                            id: "reject".to_string(),
+                            label: "Reject".to_string(),
+                            style: ActionStyle::Destructive,
+                        },
+                    ],
+                    layout: LayoutHint::InboxTable,
+                    capabilities: vec!["bulk-action".to_string(), "filter".to_string()],
+                    refresh_secs: 15,
+                },
+            })
+            .await
+            .expect("mailbox")
+            .expect("sign");
+        event.verify().expect("signature");
+        assert_eq!(event.kind.as_u16(), 31400);
+        // Must carry a `d` tag with the panel id.
+        let has_d = event
+            .tags
+            .iter()
+            .any(|t| t.kind() == TagKind::Custom("d".into()));
+        assert!(has_d);
+        // Must carry the schema tag.
+        let has_schema = event
+            .tags
+            .iter()
+            .any(|t| t.kind() == TagKind::Custom("schema".into()));
+        assert!(has_schema);
+        // Content must be valid JSON containing the title.
+        let parsed: serde_json::Value = serde_json::from_str(&event.content).expect("valid JSON");
+        assert_eq!(parsed["title"], "Broker Inbox");
+        assert_eq!(parsed["fields"].as_array().unwrap().len(), 2);
+    }
+
+    #[actix::test]
+    async fn handles_publish_action_request() {
+        let addr = ServerNostrActor::new(test_identity()).start();
+        let event = addr
+            .send(PublishActionRequest {
+                case_id: "case-enrich-042".to_string(),
+                title: "Review enrichment proposal for Quantum Computing".to_string(),
+                category: "knowledge_enrichment".to_string(),
+                priority: ActionPriority::High,
+                fields: json!({
+                    "entity_urn": "urn:visionclaw:concept:quantum_computing",
+                    "enrichment_type": "property_addition",
+                    "agent_did": "did:nostr:deadbeef",
+                }),
+                reasoning: "Agent proposes adding 3 new properties based on source analysis"
+                    .to_string(),
+            })
+            .await
+            .expect("mailbox")
+            .expect("sign");
+        event.verify().expect("signature");
+        assert_eq!(event.kind.as_u16(), 31402);
+        // Must carry `d` tag with case_id.
+        let has_d = event
+            .tags
+            .iter()
+            .any(|t| t.kind() == TagKind::Custom("d".into()));
+        assert!(has_d);
+        // Must carry category tag.
+        let has_category = event
+            .tags
+            .iter()
+            .any(|t| t.kind() == TagKind::Custom("category".into()));
+        assert!(has_category);
+        // Must carry priority tag.
+        let has_priority = event
+            .tags
+            .iter()
+            .any(|t| t.kind() == TagKind::Custom("priority".into()));
+        assert!(has_priority);
+        // Content must contain the fields and reasoning.
+        let parsed: serde_json::Value = serde_json::from_str(&event.content).expect("valid JSON");
+        assert!(parsed["fields"]["entity_urn"].is_string());
+        assert_eq!(
+            parsed["reasoning"],
+            "Agent proposes adding 3 new properties based on source analysis"
+        );
     }
 }

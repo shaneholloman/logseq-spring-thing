@@ -167,12 +167,15 @@ without the JSS→Forum relay hop.
 | ----- | --------------------------------------- | ---------------------------------------------------------- | ---------------------------------------------------------- |
 | 9     | `NostrBridge::send_to_forum`            | re-signs JSS 30001 → forum                                 | `src/services/nostr_bridge.rs:219-247`                     |
 | 30001 | `NostrBeadPublisher::publish_bead_complete` | direct WS to JSS                                       | `src/services/nostr_bead_publisher.rs:111-122`             |
-| 30023 | `ServerNostrActor::SignMigrationApproval`   | `nostr-sdk` to `NOSTR_RELAY_URLS`                      | `src/actors/server_nostr_actor.rs:113-160`                 |
-| 30100 | `ServerNostrActor::SignBridgePromotion`     | `nostr-sdk` to `NOSTR_RELAY_URLS`                      | `src/actors/server_nostr_actor.rs:173-216`                 |
-| 30200 | `ServerNostrActor::SignBeadStamp`           | `nostr-sdk` to `NOSTR_RELAY_URLS`                      | `src/actors/server_nostr_actor.rs:230-272`                 |
-| 30300 | `ServerNostrActor::SignAuditRecord`         | `nostr-sdk` to `NOSTR_RELAY_URLS`                      | `src/actors/server_nostr_actor.rs:286-338`                 |
+| 30023 | `ServerNostrActor::SignMigrationApproval`   | `nostr-sdk` to `NOSTR_RELAY_URLS`                      | `src/actors/server_nostr_actor.rs`                 |
+| 30100 | `ServerNostrActor::SignBridgePromotion`     | `nostr-sdk` to `NOSTR_RELAY_URLS`                      | `src/actors/server_nostr_actor.rs`                 |
+| 30200 | `ServerNostrActor::SignBeadStamp`           | `nostr-sdk` to `NOSTR_RELAY_URLS`                      | `src/actors/server_nostr_actor.rs`                 |
+| 30300 | `ServerNostrActor::SignAuditRecord` / `SignBrokerDecision` | `nostr-sdk` to `NOSTR_RELAY_URLS`           | `src/actors/server_nostr_actor.rs`                 |
+| 30301 | `ServerNostrActor::SignEnrichmentProposal`  | `nostr-sdk` to `NOSTR_RELAY_URLS`                      | `src/actors/server_nostr_actor.rs`                 |
+| 31400 | `ServerNostrActor::PublishGovernancePanel`  | `nostr-sdk` to `NOSTR_RELAY_URLS`                      | `src/actors/server_nostr_actor.rs` (Agent Control Surface) |
+| 31402 | `ServerNostrActor::PublishActionRequest`    | `nostr-sdk` to `NOSTR_RELAY_URLS`                      | `src/actors/server_nostr_actor.rs` (Agent Control Surface) |
 
-Note: kinds 30001 and 30023/30100/30200/30300 take **different transports**.
+Note: kinds 30001 and 30023/30100/30200/30300/30301/31400/31402 take **different transports**.
 The JSS bead path is hand-rolled tungstenite; the server-identity path uses
 `nostr_sdk::Client`. There is no shared relay pool.
 
@@ -250,10 +253,11 @@ accept it.
 
 ### PLANNED-BUT-NOT-DONE
 
-- A relay-side subscription that reads kinds 30023/30100/30200/30300 (server's
-  own published events). The substrate emits these to relays but never reads
-  them back — there is no "inbox" for ack from another VisionClaw or for
-  audit-log replay.
+- A relay-side subscription that reads kinds 30023/30100/30200/30300/30301/31400/31402
+  (server's own published events). The substrate emits these to relays but never
+  reads them back -- there is no "inbox" for ack from another VisionClaw or for
+  audit-log replay. Note: kinds 31400/31402 (Agent Control Surface) are designed
+  to be consumed by Forum Kit UI clients subscribing to the relay.
 - A subscription to `urn:agentbox:bead:*` events from the agentbox sibling
   (federation hop in PRD-006 §5.2). This would be a precondition for the BC20
   ACL (§6).
@@ -689,10 +693,12 @@ A relay added to "the substrate's relay set" must be added in two places.
 ### G3 — `nostr_sdk::Client` is publish-only
 
 `src/services/server_identity.rs:138-155` connects relays but never subscribes.
-Server-issued kinds 30023/30100/30200/30300 are written but never read back —
-there is no audit-log replay path that consumes its own events. PRD-006
-implicitly expects this for cross-substrate verification (§5.6 LocalFallbackProbe);
-no code reads them.
+Server-issued kinds 30023/30100/30200/30300/30301/31400/31402 are written but
+never read back -- there is no audit-log replay path that consumes its own
+events. Note: kinds 31400/31402 (Agent Control Surface Protocol) are specifically
+designed for consumption by Forum Kit UI clients, not by VisionClaw itself.
+PRD-006 implicitly expects read-back for cross-substrate verification (§5.6
+LocalFallbackProbe); no code reads them.
 
 ### G4 — NIP-42 AUTH not implemented anywhere
 
@@ -782,10 +788,12 @@ implements it.
 
 - `NostrBridge` re-signs JSS kind 30001 events as kind 9 with `h="visionclaw-activity"`
   and forwards them to `FORUM_RELAY_URL` (`src/services/nostr_bridge.rs:182-247`).
-- Server-signed kinds 30023/30100/30200/30300 carry the `h="visionclaw-server"`
-  group tag (`src/actors/server_nostr_actor.rs:31, :128-132, :188-192,
-  :244-248, :305-309`) so a forum relay running NIP-29 group filters can
-  accept them on the same whitelist.
+- Server-signed kinds 30023/30100/30200/30300/30301/31400/31402 carry the
+  `h="visionclaw-server"` group tag (`src/actors/server_nostr_actor.rs`,
+  `SERVER_H_TAG` constant) so a forum relay running NIP-29 group filters can
+  accept them on the same whitelist. Kinds 31400 (governance panel) and 31402
+  (action request) are Agent Control Surface Protocol events designed for
+  consumption by `nostr-bbs-core` governance UI components.
 
 The forum is **a destination, not a peer**. The substrate writes to the forum
 relay; it does not read from it.

@@ -232,11 +232,31 @@ Concrete changes:
   the sovereign-mesh Wave 1; Pod-side WAC enforces what this ADR enforces
   at the backend read boundary.
 
+## Implementation Note (2026-05-12)
+
+The enterprise RBAC middleware (`src/middleware/enterprise_auth.rs`) now implements
+a compile-time dual-path model complementary to this ADR's optional-auth
+extension:
+
+- **`nip98-auth` feature gate**: When enabled, the `RequireRole` middleware reads
+  `Authorization: Nostr <base64>`, verifies the NIP-98 signature, and resolves
+  the pubkey to an `EnterpriseRole` via `Nip98RoleResolver`. This path replaces
+  the `X-Enterprise-Role` header extraction when a resolver is attached.
+
+- **Default path**: Without the feature gate, `RequireRole` reads
+  `X-Enterprise-Role` from request headers (dev/gateway mode).
+
+This is orthogonal to the `AccessLevel::Optional` variant described in this ADR:
+the optional-auth extension controls whether authentication is required or
+optional on a given route, while the `nip98-auth` feature gate controls how
+the enterprise role is determined once the caller is authenticated.
+
 ## References
 
 - `src/utils/auth.rs:104-168` — NIP-98 primary verifier
 - `src/utils/auth.rs:170-248` — legacy session path
 - `src/middleware/auth.rs` — `RequireAuth` middleware
+- `src/middleware/enterprise_auth.rs` — `RequireRole` middleware with dual NIP-98 / header path
 - `src/handlers/graph_handler.rs` — `/api/graph/data` read path
 - `src/handlers/ontology_agent_handler.rs` — `/ontology-agent/*` scope
 - `tests/auth_sovereign_mesh.rs` — three-tier matrix

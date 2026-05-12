@@ -39,7 +39,7 @@ A comprehensive architecture audit of the DreamLab 5-substrate ecosystem reveals
 | ID | Concern | Locations | Total lines | Recommended action |
 |----|---------|-----------|-------------|-------------------|
 | PAR-01 | **Rate limiting** (VisionClaw) | `middleware/rate_limit.rs` (423), `utils/validation/rate_limit.rs` (561), `utils/validation/middleware.rs` (489) | 1,473 | Unify into single `RateLimitService` with configurable backends. Delete `middleware/rate_limit.rs`. |
-| PAR-02 | **Auth/access control** (VisionClaw) | `middleware/auth.rs`, `middleware/enterprise_auth.rs`, `utils/auth.rs`, `utils/nip98.rs`, `settings/auth_extractor.rs`, `socket_flow_handler/filter_auth.rs` | 2,349 | Extract `AuthService` trait with OIDC/NIP-98/Enterprise impls. Single middleware dispatches. |
+| PAR-02 | **Auth/access control** (VisionClaw) | `middleware/auth.rs`, `middleware/enterprise_auth.rs` (603 lines, dual NIP-98/header path), `utils/auth.rs`, `utils/nip98.rs`, `settings/auth_extractor.rs`, `socket_flow_handler/filter_auth.rs` | 2,655 | Extract `AuthService` trait with OIDC/NIP-98/Enterprise impls. Single middleware dispatches. See ADR-088. |
 | PAR-03 | **Rate limiting** (nostr-rust-forum) | 3 identical `rate_limit.rs` in auth/preview/search workers | 138 | Extract to shared `nostr-bbs-rate-limit` crate. |
 
 ### Tier 2: HIGH -- Technical debt, should unify within 2 sprints

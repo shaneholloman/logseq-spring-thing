@@ -92,15 +92,17 @@ The `BrokerActor` has no persistence — its inbox cache is session-scoped. Case
 - `src/services/git_ingest/writeback_saga.rs`: classify push errors
 - `src/actors/broker_actor.rs`: handle conflict notification
 
-### R5: NIP-17 Human-Agent Messaging Surface
+### R5: NIP-17 Human-Agent Messaging Surface (DONE)
 
-**What:** PRD-013 §G7 notes "Optional: NIP-17 human ↔ agent text coordination" as deferred. The Nostr control plane emits kind 30300/30301 events but does not support sealed DMs for broker-agent dialogue.
+**Implemented.** `SignSealedDM` (kind 14) on `ServerNostrActor` supports broker-to-agent sealed DMs with optional subject tags.
 
-**Design:** Agentbox already has NIP-17 plumbing in its embedded relay (see agentbox PRD-004, DDD-003). VisionClaw would need a `SignSealedDM` message on `ServerNostrActor` and a subscription path for incoming DMs.
+### R6: Agent Control Surface Protocol Integration (DONE)
 
-**Impact:** Low — broker decisions flow through REST/SSE today. NIP-17 adds a Nostr-native alternative for operators already running relay infrastructure.
+**What:** `ServerNostrActor` now signs and publishes two Agent Control Surface Protocol event types:
+- `PublishGovernancePanel` (kind 31400): NIP-33 parameterized replaceable event that registers/updates governance control panels on the Nostr relay. `BrokerActor` sends this to define panel schemas (ActionInbox, Dashboard, ConfigForm, StatusBoard, ChatBridge) with field definitions, actions, layout hints, and capabilities.
+- `PublishActionRequest` (kind 31402): NIP-33 event submitted when a case needs human review, carrying case fields, category, priority, and agent reasoning.
 
-**Effort:** ~4h if building on existing agentbox NIP-17 relay support.
+Both kinds are added to `SUPPORTED_KINDS` in `server_identity.rs` and tracked by `NostrKind::K31400`/`K31402` Prometheus counters in `metrics.rs`. Wire format is compatible with `nostr-bbs-core`'s `PanelDefinition` and `ActionRequest` schemas.
 
 ---
 
@@ -156,7 +158,8 @@ Remove the legacy GitHub REST API ingest path and require all knowledge sources 
 | R3 | Precedent auto-approval | **Done** | `PrecedentRegistry` in domain, auto-approve in BrokerActor |
 | R4 | Push conflict notification | **Done** | `is_conflict()` + classified errors in writeback_saga |
 | R5 | NIP-17 messaging | **Done** | `SignSealedDM` (kind 14) on ServerNostrActor |
-| Phase 7 | GitHub REST deprecation | **Planned** | ~2-3 days, not blocked by R1-R5 |
+| R6 | Agent Control Surface Protocol | **Done** | `PublishGovernancePanel` (kind 31400), `PublishActionRequest` (kind 31402) on ServerNostrActor |
+| Phase 7 | GitHub REST deprecation | **Planned** | ~2-3 days, not blocked by R1-R6 |
 
 ---
 

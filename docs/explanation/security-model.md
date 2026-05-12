@@ -153,7 +153,9 @@ VisionClaw follows a CQRS pattern (see `docs/explanation/backend-cqrs-pattern.md
 
 ### RBAC Roles
 
-VisionClaw uses a four-tier role-based access control model:
+VisionClaw uses two complementary role systems:
+
+**NIP-98 auth roles** (graph/settings/ontology handlers in `middleware/auth.rs`):
 
 | Role | How assigned | Capabilities |
 |------|-------------|--------------|
@@ -164,7 +166,23 @@ VisionClaw uses a four-tier role-based access control model:
 
 There is no role stored in a database. Admin status is determined solely by membership in the comma-separated `POWER_USER_PUBKEYS` list at startup. This eliminates privilege escalation via database mutation.
 
-Auth guards are applied to 17 write endpoints across graph mutations, ontology modifications, admin sync triggers, and settings updates. Each guarded endpoint checks the caller's role before dispatching the command through the CQRS bus.
+**Enterprise RBAC roles** (enterprise/broker handlers in `middleware/enterprise_auth.rs`):
+
+| Role | Level | Capabilities |
+|------|-------|--------------|
+| `Admin` | 4 | Full platform configuration, user management, policy editing |
+| `Broker` | 3 | Read all, decide on assigned cases, promote workflows |
+| `Auditor` | 2 | Read all, export compliance evidence, no mutation |
+| `Contributor` | 1 | Read assigned scope, propose workflows, execute approved workflows |
+
+Enterprise roles are resolved via two compile-time paths controlled by the `nip98-auth` Cargo feature:
+
+- **`nip98-auth` enabled**: The `RequireRole` middleware reads an `Authorization: Nostr <base64>` header, verifies the NIP-98 Schnorr signature, and resolves the signer's pubkey to an `EnterpriseRole` via the `Nip98RoleResolver` trait. A `Nip98IdentityExt` request extension carries the verified pubkey and role to downstream handlers. The `X-Enterprise-Role` header is ignored.
+- **Default (feature disabled)**: The `RequireRole` middleware reads the `X-Enterprise-Role` header for role extraction. This is the dev/gateway mode, suitable for deployments behind a trusted reverse proxy.
+
+Both paths enforce a strict hierarchy: a request is allowed if the caller's role level is >= the required level. See [ADR-040](../adr/ADR-040-enterprise-identity-strategy.md) for the full identity strategy.
+
+Auth guards are applied to 17+ write endpoints across graph mutations, ontology modifications, admin sync triggers, settings updates, and enterprise governance operations. Each guarded endpoint checks the caller's role before dispatching the command through the CQRS bus.
 
 ### Public vs Protected Operations
 

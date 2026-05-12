@@ -218,6 +218,7 @@ cpu-only = []  # Marker feature for CI: build without GPU/CUDA dependencies
 ontology = []  # Ontology validation and reasoning
 redis = ["dep:redis"]  # Enable Redis distributed caching
 test-utils = []  # Expose `for_test` constructors for integration tests
+nip98-auth = []  # Enable NIP-98 Schnorr auth for enterprise RBAC middleware (replaces X-Enterprise-Role header)
 
 [profile.release]
 opt-level = 3

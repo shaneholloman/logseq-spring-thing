@@ -418,9 +418,9 @@
 | 11.1 | active panel selector | enum | local React state | ENT | B | LIVE | broker/workflows/kpi/connectors/policy |
 | 11.2 | drawer open/closed | bool | localStorage `visionflow.enterprise.drawer` | ENT | B | LIVE | |
 | 11.3 | drawer activeSection | string | same | ENT | B | LIVE | |
-| 11.4 | broker case submit (title, description, priority) | form | none → POST `/api/broker/cases` | ENT.Broker | B | STUB | endpoint scaffolded |
-| 11.5 | broker inbox load | GET `/api/broker/cases` | – | ENT.Broker | B | STUB | |
-| 11.6 | broker timeline load | GET `/api/broker/timeline` | – | ENT.Broker | B | STUB | |
+| 11.4 | broker case submit (title, description, priority) | form | BrokerActor -> `PublishActionRequest` (kind 31402) -> Nostr relay | ENT.Broker | B | WIRED (backend) | Server signs and broadcasts to relay; UI subscription pending |
+| 11.5 | broker inbox load | Nostr subscription (kind 31402) + REST fallback | Relay + BrokerActor | ENT.Broker | B | WIRED (backend) | Relay stores NIP-33 events; REST polling fallback |
+| 11.6 | broker panel definition | Nostr event (kind 31400) | BrokerActor -> `PublishGovernancePanel` -> Nostr relay | ENT.Broker | B | WIRED (backend) | Panel schema defines inbox layout, fields, actions |
 | 11.7 | workflow proposals create | POST `/api/workflows/proposals` | – | ENT.Workflows | B | STUB | |
 | 11.8 | workflow proposals promote | POST `/api/workflows/proposals/{id}/promote` | – | ENT.Workflows | B | STUB | |
 | 11.9 | workflow proposals/patterns list | GET | – | ENT.Workflows | B | STUB | mock |

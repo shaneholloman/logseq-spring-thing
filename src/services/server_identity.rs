@@ -30,7 +30,7 @@ use nostr_sdk::prelude::*;
 ///
 /// Exposed via `GET /api/server/identity` so third parties know which kinds
 /// to trust from this server pubkey.
-pub const SUPPORTED_KINDS: &[u16] = &[30023, 30100, 30200, 30300, 30301];
+pub const SUPPORTED_KINDS: &[u16] = &[30023, 30100, 30200, 30300, 30301, 31400, 31402];
 
 /// Timeout applied to each relay publish attempt.
 const BROADCAST_TIMEOUT: Duration = Duration::from_secs(8);
