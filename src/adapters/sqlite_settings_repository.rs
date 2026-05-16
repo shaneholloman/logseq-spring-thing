@@ -116,6 +116,99 @@ fn current_owner_pubkey() -> Option<String> {
         .unwrap_or(None)
 }
 
+// ---------------------------------------------------------------------------
+// Error-mapping helpers
+// ---------------------------------------------------------------------------
+
+/// Map `tokio_rusqlite::Error` into the trait error type.
+fn map_db_err(e: tokio_rusqlite::Error) -> SettingsRepositoryError {
+    SettingsRepositoryError::DatabaseError(e.to_string())
+}
+
+/// Map a raw `rusqlite::Error` (occurring inside a `call` closure) into
+/// the trait error type.
+fn map_rusqlite_err(e: rusqlite::Error) -> SettingsRepositoryError {
+    SettingsRepositoryError::DatabaseError(e.to_string())
+}
+
+/// Map a JSON (de)serialisation error into the trait error type.
+fn map_json_err<E: std::fmt::Display>(e: E) -> SettingsRepositoryError {
+    SettingsRepositoryError::SerializationError(e.to_string())
+}
+
+/// Decode a TEXT column that contains a JSON-encoded `SettingValue`.
+fn decode_setting_value(json_text: &str) -> RepoResult<SettingValue> {
+    serde_json::from_str::<SettingValue>(json_text).map_err(map_json_err)
+}
+
+/// Encode a `SettingValue` to a JSON string for storage in TEXT.
+fn encode_setting_value(value: &SettingValue) -> RepoResult<String> {
+    serde_json::to_string(value).map_err(map_json_err)
+}
+
+/// Flatten a JSON object into dotted key paths → leaf JSON values.
+/// Used by `save_all_settings` / `import_settings` to project the
+/// `AppFullSettings` document into the `settings` table's key/value rows.
+///
+/// Arrays and primitive leaves are stored as a single JSON value at the
+/// path leading to them; only object branches recurse.
+fn flatten_json(value: &serde_json::Value, prefix: &str, out: &mut Vec<(String, serde_json::Value)>) {
+    match value {
+        serde_json::Value::Object(map) => {
+            for (k, v) in map {
+                let key = if prefix.is_empty() {
+                    k.clone()
+                } else {
+                    format!("{}.{}", prefix, k)
+                };
+                flatten_json(v, &key, out);
+            }
+        }
+        // Arrays and primitives are leaves — store the JSON at this path.
+        _ => out.push((prefix.to_string(), value.clone())),
+    }
+}
+
+/// Inverse of `flatten_json`: take dotted key paths → JSON values and
+/// reconstruct a nested `serde_json::Value` object.
+fn unflatten_pairs(pairs: Vec<(String, serde_json::Value)>) -> serde_json::Value {
+    let mut root = serde_json::Value::Object(serde_json::Map::new());
+    for (path, leaf) in pairs {
+        insert_at_path(&mut root, &path, leaf);
+    }
+    root
+}
+
+fn insert_at_path(root: &mut serde_json::Value, path: &str, leaf: serde_json::Value) {
+    let segments: Vec<&str> = path.split('.').filter(|s| !s.is_empty()).collect();
+    if segments.is_empty() {
+        *root = leaf;
+        return;
+    }
+
+    let mut current = root;
+    for (i, seg) in segments.iter().enumerate() {
+        // Promote the current node to an object if it isn't one.
+        if !current.is_object() {
+            *current = serde_json::Value::Object(serde_json::Map::new());
+        }
+        let obj = current.as_object_mut().expect("just promoted to object");
+
+        if i == segments.len() - 1 {
+            obj.insert((*seg).to_string(), leaf);
+            return;
+        }
+
+        current = obj
+            .entry((*seg).to_string())
+            .or_insert_with(|| serde_json::Value::Object(serde_json::Map::new()));
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Repository
+// ---------------------------------------------------------------------------
+
 /// SQLite-backed `SettingsRepository`. Holds one `tokio-rusqlite`
 /// connection in `Arc` so it can be cheaply cloned into handlers and
 /// background actors.
@@ -131,20 +224,17 @@ pub struct SqliteSettingsRepository {
 impl SqliteSettingsRepository {
     /// Open (or create) a SQLite database at `db_path`, apply the embedded
     /// [`CREATE_SCHEMA`], and return a new adapter handle.
-    ///
-    /// Phase 1: signature is final, body is `todo!`. The Phase 2 body
-    /// will be roughly:
-    ///
-    /// ```ignore
-    /// let conn = Connection::open(db_path).await
-    ///     .map_err(|e| SettingsRepositoryError::DatabaseError(e.to_string()))?;
-    /// conn.call(|c| { c.execute_batch(CREATE_SCHEMA)?; Ok(()) }).await
-    ///     .map_err(|e| SettingsRepositoryError::DatabaseError(e.to_string()))?;
-    /// Ok(Self { conn: Arc::new(conn) })
-    /// ```
     pub async fn open(db_path: &Path) -> RepoResult<Self> {
-        // SQL: applies CREATE_SCHEMA via execute_batch (PRAGMA + DDL + idempotent INSERT).
-        todo!("Open SQLite at {db_path:?}; execute_batch(CREATE_SCHEMA); wrap in Arc<Connection>")
+        let conn = Connection::open(db_path).await.map_err(map_db_err)?;
+        conn.call(|c| {
+            c.execute_batch(CREATE_SCHEMA)?;
+            Ok(())
+        })
+        .await
+        .map_err(map_db_err)?;
+        Ok(Self {
+            conn: Arc::new(conn),
+        })
     }
 
     /// Construct over an already-opened connection (used by tests).
@@ -164,17 +254,34 @@ impl SettingsRepository for SqliteSettingsRepository {
     // ------------------------------------------------------------------
     // 1. get_setting — per-user layered read
     // ------------------------------------------------------------------
-    async fn get_setting(&self, _key: &str) -> RepoResult<Option<SettingValue>> {
-        // SQL (per-user resolution, ADR-11 §D5):
-        //   SELECT value FROM settings
-        //   WHERE key = ?1
-        //     AND (owner_pubkey = ?2 OR owner_pubkey IS NULL)
-        //   ORDER BY owner_pubkey IS NULL ASC   -- non-NULL first
-        //   LIMIT 1;
-        // params: (key, current_owner_pubkey())
-        // Decode `value` (JSON) into SettingValue via serde_json.
-        let _ = current_owner_pubkey();
-        todo!("SQL: SELECT value FROM settings WHERE key=?1 AND (owner_pubkey=?2 OR owner_pubkey IS NULL) ORDER BY owner_pubkey IS NULL ASC LIMIT 1")
+    async fn get_setting(&self, key: &str) -> RepoResult<Option<SettingValue>> {
+        let key_owned = key.to_string();
+        let pubkey = current_owner_pubkey();
+        self.conn
+            .call(move |c| {
+                // Per-user resolution (ADR-11 §D5):
+                //   * If a row exists at (key, pubkey) return it.
+                //   * Else if a row exists at (key, NULL) return it.
+                //   * `ORDER BY owner_pubkey IS NULL ASC` puts non-NULL first.
+                let mut stmt = c.prepare_cached(
+                    "SELECT value FROM settings
+                     WHERE key = ?1
+                       AND (owner_pubkey = ?2 OR owner_pubkey IS NULL)
+                     ORDER BY (owner_pubkey IS NULL) ASC
+                     LIMIT 1",
+                )?;
+                let mut rows = stmt.query(rusqlite::params![&key_owned, &pubkey])?;
+                if let Some(row) = rows.next()? {
+                    let json_text: String = row.get(0)?;
+                    Ok(Some(json_text))
+                } else {
+                    Ok(None)
+                }
+            })
+            .await
+            .map_err(map_db_err)?
+            .map(|text| decode_setting_value(&text))
+            .transpose()
     }
 
     // ------------------------------------------------------------------
@@ -182,126 +289,385 @@ impl SettingsRepository for SqliteSettingsRepository {
     // ------------------------------------------------------------------
     async fn set_setting(
         &self,
-        _key: &str,
-        _value: SettingValue,
-        _description: Option<&str>,
+        key: &str,
+        value: SettingValue,
+        description: Option<&str>,
     ) -> RepoResult<()> {
-        // SQL (UPSERT on the WITHOUT ROWID PK):
-        //   INSERT INTO settings (key, owner_pubkey, value, description, updated_at)
-        //   VALUES (?1, ?2, ?3, ?4, unixepoch())
-        //   ON CONFLICT(key, owner_pubkey)
-        //   DO UPDATE SET value = excluded.value,
-        //                 description = COALESCE(excluded.description, description),
-        //                 updated_at = unixepoch();
-        // params: (key, current_owner_pubkey(), json(value), description)
-        todo!("SQL: UPSERT INTO settings(key, owner_pubkey, value, description, updated_at)")
+        let key_owned = key.to_string();
+        let description_owned = description.map(|s| s.to_string());
+        let pubkey = current_owner_pubkey();
+        let value_json = encode_setting_value(&value)?;
+
+        self.conn
+            .call(move |c| {
+                let mut stmt = c.prepare_cached(
+                    "INSERT INTO settings (key, owner_pubkey, value, description, updated_at)
+                     VALUES (?1, ?2, ?3, ?4, unixepoch())
+                     ON CONFLICT(key, owner_pubkey)
+                     DO UPDATE SET value       = excluded.value,
+                                   description = COALESCE(excluded.description, settings.description),
+                                   updated_at  = unixepoch()",
+                )?;
+                stmt.execute(rusqlite::params![
+                    &key_owned,
+                    &pubkey,
+                    &value_json,
+                    &description_owned,
+                ])?;
+                Ok(())
+            })
+            .await
+            .map_err(map_db_err)
     }
 
     // ------------------------------------------------------------------
     // 3. delete_setting
     // ------------------------------------------------------------------
-    async fn delete_setting(&self, _key: &str) -> RepoResult<()> {
-        // SQL:
-        //   DELETE FROM settings
-        //   WHERE key = ?1
-        //     AND (owner_pubkey = ?2 OR (?2 IS NULL AND owner_pubkey IS NULL));
-        todo!("SQL: DELETE FROM settings WHERE key=?1 AND owner_pubkey matches current pubkey (or NULL)")
+    async fn delete_setting(&self, key: &str) -> RepoResult<()> {
+        let key_owned = key.to_string();
+        let pubkey = current_owner_pubkey();
+        self.conn
+            .call(move |c| {
+                let mut stmt = c.prepare_cached(
+                    "DELETE FROM settings
+                     WHERE key = ?1
+                       AND ((owner_pubkey = ?2)
+                            OR (?2 IS NULL AND owner_pubkey IS NULL))",
+                )?;
+                stmt.execute(rusqlite::params![&key_owned, &pubkey])?;
+                Ok(())
+            })
+            .await
+            .map_err(map_db_err)
     }
 
     // ------------------------------------------------------------------
     // 4. has_setting
     // ------------------------------------------------------------------
-    async fn has_setting(&self, _key: &str) -> RepoResult<bool> {
-        // SQL:
-        //   SELECT 1 FROM settings
-        //   WHERE key = ?1
-        //     AND (owner_pubkey = ?2 OR owner_pubkey IS NULL)
-        //   LIMIT 1;
-        todo!("SQL: SELECT 1 FROM settings WHERE key=?1 AND (owner_pubkey=?2 OR owner_pubkey IS NULL) LIMIT 1")
+    async fn has_setting(&self, key: &str) -> RepoResult<bool> {
+        let key_owned = key.to_string();
+        let pubkey = current_owner_pubkey();
+        self.conn
+            .call(move |c| {
+                let mut stmt = c.prepare_cached(
+                    "SELECT 1 FROM settings
+                     WHERE key = ?1
+                       AND (owner_pubkey = ?2 OR owner_pubkey IS NULL)
+                     LIMIT 1",
+                )?;
+                let mut rows = stmt.query(rusqlite::params![&key_owned, &pubkey])?;
+                Ok(rows.next()?.is_some())
+            })
+            .await
+            .map_err(map_db_err)
     }
 
     // ------------------------------------------------------------------
     // 5. get_settings_batch
     // ------------------------------------------------------------------
-    async fn get_settings_batch(&self, _keys: &[String]) -> RepoResult<HashMap<String, SettingValue>> {
-        // SQL (parameterised IN clause; Phase 2 builds the placeholders
-        // dynamically or uses sqlite carray extension):
-        //   SELECT key, value
-        //   FROM settings
-        //   WHERE key IN (?1, ?2, ..., ?N)
-        //     AND (owner_pubkey = ?M OR owner_pubkey IS NULL)
-        // Then per-key reduce to non-NULL owner first, NULL owner fallback.
-        todo!("SQL: SELECT key,value FROM settings WHERE key IN (?...) AND owner_pubkey layered; fold")
+    async fn get_settings_batch(
+        &self,
+        keys: &[String],
+    ) -> RepoResult<HashMap<String, SettingValue>> {
+        if keys.is_empty() {
+            return Ok(HashMap::new());
+        }
+        let keys_owned: Vec<String> = keys.to_vec();
+        let pubkey = current_owner_pubkey();
+
+        // Build a parameterised IN clause: ?1, ?2, ... ?N plus the pubkey
+        // placeholder. We assemble all params dynamically into a Vec.
+        let raw_rows: Vec<(String, String)> = self
+            .conn
+            .call(move |c| {
+                let placeholders = (1..=keys_owned.len())
+                    .map(|i| format!("?{}", i))
+                    .collect::<Vec<_>>()
+                    .join(",");
+                let pubkey_idx = keys_owned.len() + 1;
+                let sql = format!(
+                    "SELECT key, owner_pubkey, value FROM settings
+                     WHERE key IN ({})
+                       AND (owner_pubkey = ?{p} OR owner_pubkey IS NULL)",
+                    placeholders,
+                    p = pubkey_idx
+                );
+                let mut stmt = c.prepare(&sql)?;
+                let mut params: Vec<&dyn rusqlite::ToSql> = Vec::with_capacity(pubkey_idx);
+                for k in &keys_owned {
+                    params.push(k);
+                }
+                params.push(&pubkey);
+
+                let mut out: Vec<(String, String)> = Vec::new();
+                let mut owners: Vec<Option<String>> = Vec::new();
+                let mut rows = stmt.query(params.as_slice())?;
+                while let Some(row) = rows.next()? {
+                    let k: String = row.get(0)?;
+                    let owner: Option<String> = row.get(1)?;
+                    let v: String = row.get(2)?;
+                    out.push((k, v));
+                    owners.push(owner);
+                }
+                // Tag each row with owner flag so we can fold in Rust:
+                // pack owner-flag into the value-string prefix is fragile;
+                // instead return a parallel structure by encoding owner
+                // presence into a third tuple element via re-collecting.
+                let tagged: Vec<(String, String)> = out
+                    .into_iter()
+                    .zip(owners.into_iter())
+                    .map(|((k, v), owner)| {
+                        // Use a delimiter that cannot appear in JSON: NUL byte.
+                        let tag = if owner.is_some() { "U" } else { "G" };
+                        (k, format!("{}\u{0}{}", tag, v))
+                    })
+                    .collect();
+                Ok(tagged)
+            })
+            .await
+            .map_err(map_db_err)?;
+
+        // Per-user resolution fold: prefer the non-NULL-owner row when both
+        // are present for the same key.
+        let mut layered: HashMap<String, (bool, String)> = HashMap::new();
+        for (k, tagged) in raw_rows {
+            let mut parts = tagged.splitn(2, '\u{0}');
+            let tag = parts.next().unwrap_or("G");
+            let json = parts.next().unwrap_or("").to_string();
+            let is_user = tag == "U";
+            match layered.get(&k) {
+                Some((existing_is_user, _)) if *existing_is_user => {
+                    // Already have the user-level value, ignore the global.
+                }
+                _ => {
+                    layered.insert(k, (is_user, json));
+                }
+            }
+        }
+
+        let mut out: HashMap<String, SettingValue> = HashMap::with_capacity(layered.len());
+        for (k, (_is_user, json)) in layered {
+            out.insert(k, decode_setting_value(&json)?);
+        }
+        Ok(out)
     }
 
     // ------------------------------------------------------------------
     // 6. set_settings_batch — atomic UPSERT batch
     // ------------------------------------------------------------------
-    async fn set_settings_batch(&self, _updates: HashMap<String, SettingValue>) -> RepoResult<()> {
-        // SQL: a single transaction containing one UPSERT per entry,
-        // all using the same `owner_pubkey` from the task-local context.
-        //   BEGIN;
-        //   INSERT INTO settings (...) VALUES (...) ON CONFLICT(...) DO UPDATE ...;
-        //   -- repeated for each (key, value) pair
-        //   COMMIT;
-        todo!("SQL: BEGIN; bulk UPSERT INTO settings; COMMIT")
+    async fn set_settings_batch(
+        &self,
+        updates: HashMap<String, SettingValue>,
+    ) -> RepoResult<()> {
+        if updates.is_empty() {
+            return Ok(());
+        }
+
+        // Pre-encode all values outside the worker thread so we can map
+        // serialisation failures to the right error variant.
+        let mut encoded: Vec<(String, String)> = Vec::with_capacity(updates.len());
+        for (k, v) in updates {
+            encoded.push((k, encode_setting_value(&v)?));
+        }
+        let pubkey = current_owner_pubkey();
+
+        self.conn
+            .call(move |c| {
+                let tx = c.transaction()?;
+                {
+                    let mut stmt = tx.prepare_cached(
+                        "INSERT INTO settings (key, owner_pubkey, value, updated_at)
+                         VALUES (?1, ?2, ?3, unixepoch())
+                         ON CONFLICT(key, owner_pubkey)
+                         DO UPDATE SET value      = excluded.value,
+                                       updated_at = unixepoch()",
+                    )?;
+                    for (k, v) in &encoded {
+                        stmt.execute(rusqlite::params![k, &pubkey, v])?;
+                    }
+                }
+                tx.commit()?;
+                Ok(())
+            })
+            .await
+            .map_err(map_db_err)
     }
 
     // ------------------------------------------------------------------
     // 7. list_settings
     // ------------------------------------------------------------------
-    async fn list_settings(&self, _prefix: Option<&str>) -> RepoResult<Vec<String>> {
-        // SQL:
-        //   SELECT DISTINCT key FROM settings
-        //   WHERE (owner_pubkey = ?1 OR owner_pubkey IS NULL)
-        //     AND (?2 IS NULL OR key LIKE (?2 || '%'))
-        //   ORDER BY key;
-        todo!("SQL: SELECT DISTINCT key FROM settings WHERE owner layered AND key LIKE prefix")
+    async fn list_settings(&self, prefix: Option<&str>) -> RepoResult<Vec<String>> {
+        let prefix_owned = prefix.map(|s| s.to_string());
+        let pubkey = current_owner_pubkey();
+        self.conn
+            .call(move |c| {
+                let mut stmt = c.prepare_cached(
+                    "SELECT DISTINCT key FROM settings
+                     WHERE (owner_pubkey = ?1 OR owner_pubkey IS NULL)
+                       AND (?2 IS NULL OR key LIKE (?2 || '%'))
+                     ORDER BY key",
+                )?;
+                let mut rows = stmt.query(rusqlite::params![&pubkey, &prefix_owned])?;
+                let mut out: Vec<String> = Vec::new();
+                while let Some(row) = rows.next()? {
+                    out.push(row.get(0)?);
+                }
+                Ok(out)
+            })
+            .await
+            .map_err(map_db_err)
     }
 
     // ------------------------------------------------------------------
     // 8. load_all_settings — composite document load
     // ------------------------------------------------------------------
     async fn load_all_settings(&self) -> RepoResult<Option<AppFullSettings>> {
-        // SQL (composite document load):
-        //   SELECT key, value FROM settings
-        //   WHERE (owner_pubkey = ?1 OR owner_pubkey IS NULL)
-        //   ORDER BY owner_pubkey IS NULL ASC;
-        // Then in Rust: fold (key, value) rows into a flat JSON object,
-        // applying the layered-resolution rule (non-NULL wins), then
-        // deserialize via `serde_json::from_value::<AppFullSettings>(...)`.
-        // The shape conversion (key-path -> nested JSON) uses the same
-        // path-accessor utility as the existing Neo4j adapter.
-        todo!("SQL: SELECT key,value FROM settings WHERE owner layered; fold into AppFullSettings via path-accessor")
+        let pubkey = current_owner_pubkey();
+        let rows: Vec<(String, bool, String)> = self
+            .conn
+            .call(move |c| {
+                // `(owner_pubkey IS NULL) ASC` orders user-level rows before
+                // global rows. Combined with the fold below, this means the
+                // user value wins for any key that exists at both layers.
+                let mut stmt = c.prepare_cached(
+                    "SELECT key, (owner_pubkey IS NOT NULL) AS is_user, value
+                     FROM settings
+                     WHERE (owner_pubkey = ?1 OR owner_pubkey IS NULL)
+                     ORDER BY (owner_pubkey IS NULL) ASC",
+                )?;
+                let mut rows = stmt.query(rusqlite::params![&pubkey])?;
+                let mut out: Vec<(String, bool, String)> = Vec::new();
+                while let Some(row) = rows.next()? {
+                    let key: String = row.get(0)?;
+                    let is_user: i64 = row.get(1)?;
+                    let value: String = row.get(2)?;
+                    out.push((key, is_user != 0, value));
+                }
+                Ok(out)
+            })
+            .await
+            .map_err(map_db_err)?;
+
+        if rows.is_empty() {
+            return Ok(None);
+        }
+
+        // Fold rows into (key → leaf JSON), preferring user-level values.
+        let mut layered: HashMap<String, (bool, serde_json::Value)> = HashMap::new();
+        for (key, is_user, json_text) in rows {
+            // `value` is a JSON-encoded SettingValue. Convert to a plain
+            // serde_json::Value so the resulting document is shaped like
+            // the AppFullSettings struct serialises to.
+            let setting: SettingValue = decode_setting_value(&json_text)?;
+            let leaf: serde_json::Value = match setting {
+                SettingValue::String(s) => serde_json::Value::String(s),
+                SettingValue::Integer(i) => serde_json::Value::from(i),
+                SettingValue::Float(f) => serde_json::Number::from_f64(f)
+                    .map(serde_json::Value::Number)
+                    .unwrap_or(serde_json::Value::Null),
+                SettingValue::Boolean(b) => serde_json::Value::Bool(b),
+                SettingValue::Json(v) => v,
+            };
+            match layered.get(&key) {
+                Some((existing_is_user, _)) if *existing_is_user => {
+                    // user-level already recorded — global must not overwrite
+                }
+                _ => {
+                    layered.insert(key, (is_user, leaf));
+                }
+            }
+        }
+
+        let pairs: Vec<(String, serde_json::Value)> = layered
+            .into_iter()
+            .map(|(k, (_is_user, v))| (k, v))
+            .collect();
+        let root = unflatten_pairs(pairs);
+        let settings: AppFullSettings = serde_json::from_value(root).map_err(map_json_err)?;
+        Ok(Some(settings))
     }
 
     // ------------------------------------------------------------------
     // 9. save_all_settings — composite document save
     // ------------------------------------------------------------------
-    async fn save_all_settings(&self, _settings: &AppFullSettings) -> RepoResult<()> {
-        // SQL: flatten AppFullSettings into (key, value) leaf pairs via
-        // the path-accessor, then within a single transaction:
-        //   BEGIN;
-        //   DELETE FROM settings WHERE owner_pubkey = ?1;  -- replace
-        //   INSERT INTO settings(key, owner_pubkey, value, updated_at)
-        //   VALUES (?, ?, ?, unixepoch()) ...;
-        //   COMMIT;
-        todo!("SQL: flatten settings; BEGIN; DELETE+INSERT bulk; COMMIT")
+    async fn save_all_settings(&self, settings: &AppFullSettings) -> RepoResult<()> {
+        // Project AppFullSettings → JSON → flat leaf pairs.
+        let root = serde_json::to_value(settings).map_err(map_json_err)?;
+        let mut leaves: Vec<(String, serde_json::Value)> = Vec::new();
+        flatten_json(&root, "", &mut leaves);
+
+        // Encode each leaf as a JSON-encoded SettingValue::Json so the on-disk
+        // representation matches the `set_setting` write path.
+        let encoded: Vec<(String, String)> = leaves
+            .into_iter()
+            .map(|(k, v)| {
+                let sv = SettingValue::Json(v);
+                let json = serde_json::to_string(&sv).map_err(map_json_err)?;
+                Ok::<_, SettingsRepositoryError>((k, json))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let pubkey = current_owner_pubkey();
+
+        self.conn
+            .call(move |c| {
+                let tx = c.transaction()?;
+                {
+                    // Replace this owner's slice atomically. NULL-owner rows
+                    // (global defaults) are left intact when a user is writing.
+                    let mut del = tx.prepare_cached(
+                        "DELETE FROM settings
+                         WHERE (owner_pubkey = ?1)
+                            OR (?1 IS NULL AND owner_pubkey IS NULL)",
+                    )?;
+                    del.execute(rusqlite::params![&pubkey])?;
+
+                    let mut ins = tx.prepare_cached(
+                        "INSERT INTO settings (key, owner_pubkey, value, updated_at)
+                         VALUES (?1, ?2, ?3, unixepoch())",
+                    )?;
+                    for (k, v) in &encoded {
+                        ins.execute(rusqlite::params![k, &pubkey, v])?;
+                    }
+                }
+                tx.commit()?;
+                Ok(())
+            })
+            .await
+            .map_err(map_db_err)
     }
 
     // ------------------------------------------------------------------
     // 10. get_physics_settings
     // ------------------------------------------------------------------
-    async fn get_physics_settings(&self, _profile_name: &str) -> RepoResult<PhysicsSettings> {
-        // SQL:
-        //   SELECT settings_json FROM physics_profiles
-        //   WHERE profile_name = ?1
-        //     AND (owner_pubkey = ?2 OR owner_pubkey IS NULL)
-        //   ORDER BY owner_pubkey IS NULL ASC
-        //   LIMIT 1;
-        // Deserialize the JSON column into PhysicsSettings.
-        // Not-found maps to SettingsRepositoryError::NotFound(profile_name).
-        todo!("SQL: SELECT settings_json FROM physics_profiles WHERE profile_name=?1 AND owner layered LIMIT 1")
+    async fn get_physics_settings(&self, profile_name: &str) -> RepoResult<PhysicsSettings> {
+        let name = profile_name.to_string();
+        let pubkey = current_owner_pubkey();
+        let json: Option<String> = self
+            .conn
+            .call(move |c| {
+                let mut stmt = c.prepare_cached(
+                    "SELECT settings_json FROM physics_profiles
+                     WHERE profile_name = ?1
+                       AND (owner_pubkey = ?2 OR owner_pubkey IS NULL)
+                     ORDER BY (owner_pubkey IS NULL) ASC
+                     LIMIT 1",
+                )?;
+                let mut rows = stmt.query(rusqlite::params![&name, &pubkey])?;
+                if let Some(row) = rows.next()? {
+                    let s: String = row.get(0)?;
+                    Ok(Some(s))
+                } else {
+                    Ok(None)
+                }
+            })
+            .await
+            .map_err(map_db_err)?;
+
+        match json {
+            Some(text) => serde_json::from_str::<PhysicsSettings>(&text).map_err(map_json_err),
+            None => Err(SettingsRepositoryError::NotFound(profile_name.to_string())),
+        }
     }
 
     // ------------------------------------------------------------------
@@ -309,66 +675,190 @@ impl SettingsRepository for SqliteSettingsRepository {
     // ------------------------------------------------------------------
     async fn save_physics_settings(
         &self,
-        _profile_name: &str,
-        _settings: &PhysicsSettings,
+        profile_name: &str,
+        settings: &PhysicsSettings,
     ) -> RepoResult<()> {
-        // SQL:
-        //   INSERT INTO physics_profiles(profile_name, owner_pubkey, settings_json, updated_at)
-        //   VALUES (?1, ?2, ?3, unixepoch())
-        //   ON CONFLICT(profile_name, owner_pubkey)
-        //   DO UPDATE SET settings_json = excluded.settings_json,
-        //                 updated_at = unixepoch();
-        todo!("SQL: UPSERT INTO physics_profiles(profile_name, owner_pubkey, settings_json)")
+        let name = profile_name.to_string();
+        let pubkey = current_owner_pubkey();
+        let json = serde_json::to_string(settings).map_err(map_json_err)?;
+
+        self.conn
+            .call(move |c| {
+                let mut stmt = c.prepare_cached(
+                    "INSERT INTO physics_profiles (profile_name, owner_pubkey, settings_json, updated_at)
+                     VALUES (?1, ?2, ?3, unixepoch())
+                     ON CONFLICT(profile_name, owner_pubkey)
+                     DO UPDATE SET settings_json = excluded.settings_json,
+                                   updated_at    = unixepoch()",
+                )?;
+                stmt.execute(rusqlite::params![&name, &pubkey, &json])?;
+                Ok(())
+            })
+            .await
+            .map_err(map_db_err)
     }
 
     // ------------------------------------------------------------------
     // 12. list_physics_profiles
     // ------------------------------------------------------------------
     async fn list_physics_profiles(&self) -> RepoResult<Vec<String>> {
-        // SQL:
-        //   SELECT DISTINCT profile_name FROM physics_profiles
-        //   WHERE (owner_pubkey = ?1 OR owner_pubkey IS NULL)
-        //   ORDER BY profile_name;
-        todo!("SQL: SELECT DISTINCT profile_name FROM physics_profiles WHERE owner layered")
+        let pubkey = current_owner_pubkey();
+        self.conn
+            .call(move |c| {
+                let mut stmt = c.prepare_cached(
+                    "SELECT DISTINCT profile_name FROM physics_profiles
+                     WHERE (owner_pubkey = ?1 OR owner_pubkey IS NULL)
+                     ORDER BY profile_name",
+                )?;
+                let mut rows = stmt.query(rusqlite::params![&pubkey])?;
+                let mut out: Vec<String> = Vec::new();
+                while let Some(row) = rows.next()? {
+                    out.push(row.get(0)?);
+                }
+                Ok(out)
+            })
+            .await
+            .map_err(map_db_err)
     }
 
     // ------------------------------------------------------------------
     // 13. delete_physics_profile
     // ------------------------------------------------------------------
-    async fn delete_physics_profile(&self, _profile_name: &str) -> RepoResult<()> {
-        // SQL:
-        //   DELETE FROM physics_profiles
-        //   WHERE profile_name = ?1
-        //     AND (owner_pubkey = ?2 OR (?2 IS NULL AND owner_pubkey IS NULL));
-        todo!("SQL: DELETE FROM physics_profiles WHERE profile_name=?1 AND owner_pubkey matches current")
+    async fn delete_physics_profile(&self, profile_name: &str) -> RepoResult<()> {
+        let name = profile_name.to_string();
+        let pubkey = current_owner_pubkey();
+        self.conn
+            .call(move |c| {
+                let mut stmt = c.prepare_cached(
+                    "DELETE FROM physics_profiles
+                     WHERE profile_name = ?1
+                       AND ((owner_pubkey = ?2)
+                            OR (?2 IS NULL AND owner_pubkey IS NULL))",
+                )?;
+                stmt.execute(rusqlite::params![&name, &pubkey])?;
+                Ok(())
+            })
+            .await
+            .map_err(map_db_err)
     }
 
     // ------------------------------------------------------------------
     // 14. export_settings
     // ------------------------------------------------------------------
     async fn export_settings(&self) -> RepoResult<serde_json::Value> {
-        // SQL:
-        //   SELECT key, owner_pubkey, value, description, updated_at
-        //   FROM settings
-        //   ORDER BY owner_pubkey, key;
-        // Build a serde_json::Value with shape:
-        //   { "global": { key: value, ... },
-        //     "users":  { "<pubkey-hex>": { key: value, ... }, ... } }
-        // Phase 2 will decide whether physics_profiles is included.
-        todo!("SQL: SELECT * FROM settings; group by owner_pubkey into JSON {{global,users}}")
+        // Pull everything, regardless of current pubkey.
+        let rows: Vec<(String, Option<String>, String, Option<String>, i64)> = self
+            .conn
+            .call(|c| {
+                let mut stmt = c.prepare_cached(
+                    "SELECT key, owner_pubkey, value, description, updated_at
+                     FROM settings
+                     ORDER BY owner_pubkey, key",
+                )?;
+                let mut rows = stmt.query([])?;
+                let mut out: Vec<(String, Option<String>, String, Option<String>, i64)> = Vec::new();
+                while let Some(row) = rows.next()? {
+                    let key: String = row.get(0)?;
+                    let owner: Option<String> = row.get(1)?;
+                    let value: String = row.get(2)?;
+                    let description: Option<String> = row.get(3)?;
+                    let updated_at: i64 = row.get(4)?;
+                    out.push((key, owner, value, description, updated_at));
+                }
+                Ok(out)
+            })
+            .await
+            .map_err(map_db_err)?;
+
+        let mut global = serde_json::Map::new();
+        let mut users: serde_json::Map<String, serde_json::Value> = serde_json::Map::new();
+
+        for (key, owner, value_json, description, updated_at) in rows {
+            let value: serde_json::Value =
+                serde_json::from_str(&value_json).unwrap_or(serde_json::Value::Null);
+            let mut row_obj = serde_json::Map::new();
+            row_obj.insert("value".to_string(), value);
+            if let Some(d) = description {
+                row_obj.insert("description".to_string(), serde_json::Value::String(d));
+            }
+            row_obj.insert("updated_at".to_string(), serde_json::Value::from(updated_at));
+
+            let row_value = serde_json::Value::Object(row_obj);
+            match owner {
+                None => {
+                    global.insert(key, row_value);
+                }
+                Some(pk) => {
+                    let user_entry = users
+                        .entry(pk)
+                        .or_insert_with(|| serde_json::Value::Object(serde_json::Map::new()));
+                    if let Some(obj) = user_entry.as_object_mut() {
+                        obj.insert(key, row_value);
+                    }
+                }
+            }
+        }
+
+        let mut bundle = serde_json::Map::new();
+        bundle.insert("global".to_string(), serde_json::Value::Object(global));
+        bundle.insert("users".to_string(), serde_json::Value::Object(users));
+        Ok(serde_json::Value::Object(bundle))
     }
 
     // ------------------------------------------------------------------
     // 15. import_settings
     // ------------------------------------------------------------------
-    async fn import_settings(&self, _settings_json: &serde_json::Value) -> RepoResult<()> {
-        // SQL: inverse of export. Transactional:
-        //   BEGIN;
-        //   DELETE FROM settings;
-        //   INSERT INTO settings(...) VALUES (?, ?, ?, ?, unixepoch()) -- per leaf;
-        //   COMMIT;
-        // Failure rolls back; either we have the new bundle or the old.
-        todo!("SQL: BEGIN; DELETE FROM settings; bulk INSERT from JSON; COMMIT")
+    async fn import_settings(&self, settings_json: &serde_json::Value) -> RepoResult<()> {
+        let bundle = settings_json.as_object().ok_or_else(|| {
+            SettingsRepositoryError::InvalidValue(
+                "import_settings expects a JSON object with 'global' and 'users' keys".into(),
+            )
+        })?;
+
+        // Pre-encode rows so we can hand a fully-owned Vec to the worker
+        // thread. Each row is (key, owner_pubkey, value_json, description).
+        let mut staged: Vec<(String, Option<String>, String, Option<String>)> = Vec::new();
+
+        if let Some(serde_json::Value::Object(globals)) = bundle.get("global") {
+            for (key, entry) in globals {
+                let (value_json, description) = stage_row_entry(entry)?;
+                staged.push((key.clone(), None, value_json, description));
+            }
+        }
+        if let Some(serde_json::Value::Object(users)) = bundle.get("users") {
+            for (pubkey, settings_for_user) in users {
+                if let serde_json::Value::Object(map) = settings_for_user {
+                    for (key, entry) in map {
+                        let (value_json, description) = stage_row_entry(entry)?;
+                        staged.push((
+                            key.clone(),
+                            Some(pubkey.clone()),
+                            value_json,
+                            description,
+                        ));
+                    }
+                }
+            }
+        }
+
+        self.conn
+            .call(move |c| {
+                let tx = c.transaction()?;
+                tx.execute("DELETE FROM settings", [])?;
+                {
+                    let mut ins = tx.prepare_cached(
+                        "INSERT INTO settings (key, owner_pubkey, value, description, updated_at)
+                         VALUES (?1, ?2, ?3, ?4, unixepoch())",
+                    )?;
+                    for (k, owner, v, desc) in &staged {
+                        ins.execute(rusqlite::params![k, owner, v, desc])?;
+                    }
+                }
+                tx.commit()?;
+                Ok(())
+            })
+            .await
+            .map_err(map_db_err)
     }
 
     // ------------------------------------------------------------------
@@ -386,17 +876,61 @@ impl SettingsRepository for SqliteSettingsRepository {
     // 17. health_check
     // ------------------------------------------------------------------
     async fn health_check(&self) -> RepoResult<bool> {
-        // SQL: a trivial round-trip plus an integrity check on startup
-        // hardening (ADR-11 §D10 demands `PRAGMA integrity_check` on
-        // restore). For per-request health we just SELECT 1.
-        //   SELECT 1;
-        todo!("SQL: SELECT 1; (optionally PRAGMA integrity_check on startup)")
+        self.conn
+            .call(|c| {
+                let mut stmt = c.prepare_cached("SELECT 1")?;
+                let mut rows = stmt.query([])?;
+                let ok = if let Some(row) = rows.next()? {
+                    let v: i64 = row.get(0)?;
+                    v == 1
+                } else {
+                    false
+                };
+                Ok(ok)
+            })
+            .await
+            .map_err(map_db_err)
     }
 }
 
-// Silence unused-error-variant warning on scaffold builds where the
-// errors are not yet constructed.
+/// Pull `(value_json, description)` out of one row of the export bundle.
+///
+/// Two input shapes are accepted:
+///   * the canonical export shape — an object with `value` and optional
+///     `description` fields, or
+///   * a bare value — interpreted as the JSON-encoded value with no
+///     description.
+fn stage_row_entry(
+    entry: &serde_json::Value,
+) -> RepoResult<(String, Option<String>)> {
+    if let serde_json::Value::Object(obj) = entry {
+        if let Some(value) = obj.get("value") {
+            // Canonical shape. The stored `value` column holds a JSON-encoded
+            // SettingValue; wrap whatever leaf JSON we got into `SettingValue::Json`
+            // so reads round-trip cleanly.
+            let sv = SettingValue::Json(value.clone());
+            let value_json = serde_json::to_string(&sv).map_err(map_json_err)?;
+            let description = obj
+                .get("description")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+            return Ok((value_json, description));
+        }
+    }
+    // Fallback: treat the entry itself as the leaf value.
+    let sv = SettingValue::Json(entry.clone());
+    let value_json = serde_json::to_string(&sv).map_err(map_json_err)?;
+    Ok((value_json, None))
+}
+
+// Silence unused-error-variant warnings in scaffold builds where some
+// error variants are not yet exercised by the code paths above.
 #[allow(dead_code)]
 fn _silence_unused_error_variant() -> SettingsRepositoryError {
     SettingsRepositoryError::NotFound(String::new())
+}
+
+#[allow(dead_code)]
+fn _silence_unused_rusqlite_helper(e: rusqlite::Error) -> SettingsRepositoryError {
+    map_rusqlite_err(e)
 }
