@@ -11,7 +11,8 @@ import type { GemMaterialSettings, GraphTypeVisualsSettings, QualityGatesSetting
 import type { Edge } from '../managers/graphDataManager';
 import type { ThreeEvent } from '@react-three/fiber';
 import { createLogger } from '../../../utils/loggerConfig';
-import { graphWorkerProxy } from '../managers/graphWorkerProxy';
+// ADR-03 D7: analytics buffer no longer lives in the worker.
+// import { graphWorkerProxy } from '../managers/graphWorkerProxy';
 
 const logger = createLogger('GemNodes');
 import { computeNodeScale } from '../utils/nodeScaling';
@@ -314,9 +315,9 @@ const GemNodesInner: React.ForwardRefRenderFunction<GemNodesHandle, GemNodesProp
     analyticsFrameRef.current++;
     if (analyticsFrameRef.current % 30 === 1 &&
         (qualityGates?.showClusters || qualityGates?.showAnomalies || qualityGates?.showCommunities)) {
-      graphWorkerProxy.getAnalyticsBuffer().then(buf => {
-        analyticsRef.current = buf.length > 0 ? buf : null;
-      }).catch(() => { /* ignore worker errors */ });
+      // ADR-03 D7: analytics no longer live in the worker. Wire to the
+      // main-thread analytics store in Phase 5; buffer remains stale until then.
+      void analyticsFrameRef;
     }
 
     // Delayed diagnostic — fires at frame 60 when positions are loaded (dev only)

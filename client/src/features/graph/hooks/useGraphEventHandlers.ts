@@ -3,7 +3,8 @@ import { ThreeEvent } from '@react-three/fiber';
 import * as THREE from 'three';
 import { throttle } from 'lodash';
 import { graphDataManager, type GraphData, type Node } from '../managers/graphDataManager';
-import { graphWorkerProxy } from '../managers/graphWorkerProxy';
+// ADR-03 D7: graphWorkerProxy pin/unpin/position calls are server-authoritative now.
+// import { graphWorkerProxy } from '../managers/graphWorkerProxy';
 import { createBinaryNodeData, BinaryNodeData } from '../../../types/binaryProtocol';
 import { createLogger } from '../../../utils/loggerConfig';
 import { debugState } from '../../../utils/clientDebugState';
@@ -142,7 +143,9 @@ export const useGraphEventHandlers = (
 
         const numericId = graphDataManager.nodeIdMap.get(drag.nodeId!);
         if (numericId !== undefined) {
-          graphWorkerProxy.pinNode(numericId);
+          // ADR-03 D7: pin state is server-authoritative; the websocket
+          // `nodeDragStart` message below pins the node server-side.
+          // graphWorkerProxy.pinNode was removed.
 
           // Notify server of drag start so it can pin the node server-side
           if (graphDataManager.webSocketService?.isReady()) {
@@ -189,7 +192,9 @@ export const useGraphEventHandlers = (
       if (intersectionFound && intersection) {
         const numericId = graphDataManager.nodeIdMap.get(drag.nodeId!);
         if (numericId !== undefined) {
-          graphWorkerProxy.updateUserDrivenNodePosition(numericId, intersection);
+          // ADR-03 D7: positions flow through the binary WebSocket protocol
+          // (throttledWebSocketUpdate below); worker no longer owns positions.
+          void numericId;
         }
 
         drag.currentNodePos3D.copy(intersection);
@@ -237,7 +242,8 @@ export const useGraphEventHandlers = (
 
       const numericId = graphDataManager.nodeIdMap.get(drag.nodeId!);
       if (numericId !== undefined) {
-        graphWorkerProxy.unpinNode(numericId);
+        // ADR-03 D7: unpin is server-authoritative via the websocket
+        // `nodeDragEnd` message below; graphWorkerProxy.unpinNode was removed.
         flushPositionUpdates();
 
         // Notify server of drag end so it can unpin the node and run final settle

@@ -2,7 +2,8 @@ import React, { useRef, useMemo, useEffect, useState } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { ConvexGeometry } from 'three/examples/jsm/geometries/ConvexGeometry.js';
-import { graphWorkerProxy } from '../managers/graphWorkerProxy';
+// ADR-03 D7: analytics buffer no longer lives in the worker.
+// import { graphWorkerProxy } from '../managers/graphWorkerProxy';
 
 // ============================================================================
 // Types
@@ -169,10 +170,9 @@ export const ClusterHulls: React.FC<ClusterHullsProps> = ({
     frameCounter.current += 1;
     if (frameCounter.current >= TICK_INTERVAL) {
       frameCounter.current = 0;
-      // Refresh analytics buffer from worker
-      graphWorkerProxy.getAnalyticsBuffer().then(buf => {
-        analyticsRef.current = buf.length > 0 ? buf : null;
-      }).catch(() => { /* ignore worker errors */ });
+      // ADR-03 D7: analytics no longer live in the worker. Analytics now come
+      // from the main-thread analytics store (Phase 5 wires this); leave the
+      // buffer at its last value until that pipeline is connected.
       setTick((t) => t + 1);
     }
   });

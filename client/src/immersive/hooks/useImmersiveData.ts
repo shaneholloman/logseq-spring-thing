@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { graphDataManager } from '../../features/graph/managers/graphDataManager';
-import { graphWorkerProxy } from '../../features/graph/managers/graphWorkerProxy';
+// ADR-03 D7: graphWorkerProxy position/pin calls are server-authoritative now.
+// import { graphWorkerProxy } from '../../features/graph/managers/graphWorkerProxy';
 import { useSettingsStore } from '../../store/settingsStore';
 import type { GraphData } from '../../features/graph/managers/graphDataManager';
 import { createLogger } from '../../utils/loggerConfig';
@@ -86,11 +87,16 @@ export const useImmersiveData = (initialData?: any) => {
     };
   }, []);
 
-  const updateNodePosition = (nodeId: string, position: { x: number; y: number; z: number }) => {
+  // ADR-03 D7: position/pin RPCs are server-authoritative; client should
+  // send these via the binary WebSocket protocol (nodeDragStart/nodeDragEnd
+  // text frames + binary position uploads). These helpers retain the same
+  // signature but are no-ops in the new pipeline. Wire them to the websocket
+  // adapter once the binary upload path is consolidated.
+  const updateNodePosition = (nodeId: string, _position: { x: number; y: number; z: number }) => {
     const numericId = graphDataManager.nodeIdMap.get(nodeId);
     if (numericId !== undefined) {
-      graphWorkerProxy.pinNode(numericId);
-      graphWorkerProxy.updateUserDrivenNodePosition(numericId, position);
+      // TODO: route through websocket binary protocol (Phase 5).
+      void numericId;
     }
   };
 
@@ -104,14 +110,16 @@ export const useImmersiveData = (initialData?: any) => {
   const pinNode = (nodeId: string) => {
     const numericId = graphDataManager.nodeIdMap.get(nodeId);
     if (numericId !== undefined) {
-      graphWorkerProxy.pinNode(numericId);
+      // TODO: send nodeDragStart via websocket (Phase 5).
+      void numericId;
     }
   };
 
   const unpinNode = (nodeId: string) => {
     const numericId = graphDataManager.nodeIdMap.get(nodeId);
     if (numericId !== undefined) {
-      graphWorkerProxy.unpinNode(numericId);
+      // TODO: send nodeDragEnd via websocket (Phase 5).
+      void numericId;
     }
   };
 

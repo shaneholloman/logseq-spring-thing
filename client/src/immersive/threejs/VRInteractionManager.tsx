@@ -5,7 +5,8 @@ import type { XRControllerEvent } from '@react-three/xr';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { createLogger } from '../../utils/loggerConfig';
-import { graphWorkerProxy } from '../../features/graph/managers/graphWorkerProxy';
+// ADR-03 D7: graphWorkerProxy position calls are server-authoritative now.
+// import { graphWorkerProxy } from '../../features/graph/managers/graphWorkerProxy';
 import { graphDataManager } from '../../features/graph/managers/graphDataManager';
 
 const logger = createLogger('VRInteractionManager');
@@ -178,10 +179,11 @@ export function VRInteractionManager({
 
     const dragPosition = controllerPos.clone().add(controllerDir.multiplyScalar(2));
 
-    // Send drag position directly to the worker proxy with numeric ID
+    // ADR-03 D7: positions are server-authoritative; route via websocket
+    // binary protocol instead of the worker (TODO Phase 5).
     const numericId = graphDataManager.nodeIdMap.get(grabbedNodeRef.current.nodeId);
     if (numericId !== undefined) {
-      graphWorkerProxy.updateUserDrivenNodePosition(numericId, dragPosition);
+      void numericId;
     }
 
     onNodeDrag?.(grabbedNodeRef.current.nodeId, dragPosition);
