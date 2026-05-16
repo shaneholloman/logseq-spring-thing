@@ -366,6 +366,14 @@ const GraphManager: React.FC<GraphManagerProps> = ({ onDragStateChange }) => {
   const [labelUpdateTick, setLabelUpdateTick] = useState(0)
   const labelTickRef = useRef(0)
 
+  // ADR-03 D6: identity short-circuit for topology rebuilds.
+  // lastProcessedGraphRef tracks the last GraphData reference handled by
+  // handleGraphUpdate (fast path: reference equality).
+  // lastShapeRef tracks a cheap topology hash; if the shape matches, we
+  // adopt the new reference but skip the edge-buffer rebuild.
+  const lastProcessedGraphRef = useRef<GraphData | null>(null)
+  const lastShapeRef = useRef<{ nodeCount: number; edgeCount: number; hash: string } | null>(null)
+
   // Frustum for label culling
   const frustum = useMemo(() => new THREE.Frustum(), [])
   const cameraViewProjectionMatrix = useMemo(() => new THREE.Matrix4(), [])
@@ -472,8 +480,12 @@ const GraphManager: React.FC<GraphManagerProps> = ({ onDragStateChange }) => {
     lq: logseqPhysics,
   }), [visionflowPhysics, logseqPhysics]);
 
+  // ADR-03 D7: the worker no longer owns settings; physics is server-authoritative
+  // and tweening (if any) is a main-thread concern. Physics settings reach the
+  // server via autoSaveManager → settingsApi.updatePhysics(), so no client-side
+  // forwarding is needed. Effect retained as a marker for the dependency.
   useEffect(() => {
-    graphWorkerProxy.updateSettings(settingsRef.current);
+    void physicsFingerprint;
   }, [physicsFingerprint]);
 
   // Subscribe to layoutMode changes and call the layout API when the value changes.
@@ -532,9 +544,11 @@ const GraphManager: React.FC<GraphManagerProps> = ({ onDragStateChange }) => {
       setLabelUpdateTick(prev => prev + 1);
     }
 
-    // Position reading from SharedArrayBuffer (GemNodes reads from nodePositionsRef)
+    // Position reading from SharedArrayBuffer (GemNodes reads from nodePositionsRef).
+    // ADR-03 D3: in SAB mode the worker writes positions on every binary frame;
+    // main thread reads the SAB view directly each `useFrame`. In Comlink mode
+    // the view is updated by graphWorkerProxy after each transferred frame.
     if (graphData.nodes.length > 0) {
-      graphWorkerProxy.requestTick(delta);
       const positions = graphWorkerProxy.getPositionsSync();
       if (!positions) return;
 
@@ -894,7 +908,30 @@ const GraphManager: React.FC<GraphManagerProps> = ({ onDragStateChange }) => {
         return undefined;
       }
 
-      
+      // ADR-03 D6: identity short-circuit. Reference equality is the fast
+      // path; a cheap topology hash is the slow path for cases where
+      // graphDataManager produces a new reference for the same topology
+      // (e.g. metadata-only update).
+      if (data === lastProcessedGraphRef.current) {
+        return lastProcessedGraphRef.current ?? undefined;
+      }
+      const firstId = data.nodes.length > 0 ? String(data.nodes[0].id) : '';
+      const lastId = data.nodes.length > 0 ? String(data.nodes[data.nodes.length - 1].id) : '';
+      const shape = {
+        nodeCount: data.nodes.length,
+        edgeCount: data.edges.length,
+        hash: `${data.nodes.length}-${data.edges.length}-${firstId}-${lastId}`,
+      };
+      const prevShape = lastShapeRef.current;
+      if (prevShape &&
+          prevShape.nodeCount === shape.nodeCount &&
+          prevShape.edgeCount === shape.edgeCount &&
+          prevShape.hash === shape.hash) {
+        // Same topology, fresh reference. Adopt the new ref; skip rebuild.
+        lastProcessedGraphRef.current = data;
+        return data;
+      }
+
       const dataWithPositions = {
         ...data,
         nodes: data.nodes.map((node, i) => {
@@ -982,45 +1019,43 @@ const GraphManager: React.FC<GraphManagerProps> = ({ onDragStateChange }) => {
 
       setEdgePoints(newEdgePoints)
 
+      // ADR-03 D6: persist the processed reference + shape for the next call.
+      lastProcessedGraphRef.current = data
+      lastShapeRef.current = shape
+
       return dataWithPositions
     }
 
+    // ADR-03 D5/D6: single delivery path through graphDataManager. The
+    // manager replays cached lastGraphData to new subscribers via microtask,
+    // so the previous legacy `.getGraphData().then(...)` redundant fetch is
+    // removed (graphDataManager.onGraphDataChange now handles initial replay).
     const unsubscribe = graphDataManager.onGraphDataChange((data) => {
-      // Process data locally only — do NOT send back to graphWorkerProxy.setGraphData()
-      // as that triggers notifyGraphDataListeners → this callback → infinite loop.
-      // The worker already has the data from graphDataManager.fetchInitialData().
       handleGraphUpdate(data)
     })
 
-
-    graphDataManager.getGraphData().then((data) => {
-
-      const debugSettings = settings?.system?.debug;
-      if (debugSettings?.enableNodeDebug) {
-        logger.debug('Initial graph data loaded', {
-          nodeCount: data.nodes.length,
-          edgeCount: data.edges.length
-        });
+    // Fallback: if no data arrives within a short grace window (e.g. REST
+    // fetch failed entirely), seed a placeholder so the renderer has
+    // something to draw.
+    const fallbackTimer = window.setTimeout(() => {
+      if (!lastProcessedGraphRef.current) {
+        const fallbackData = {
+          nodes: [
+            { id: 'fallback1', label: 'Test Node 1', position: { x: -5, y: 0, z: 0 } },
+            { id: 'fallback2', label: 'Test Node 2', position: { x: 5, y: 0, z: 0 } },
+            { id: 'fallback3', label: 'Test Node 3', position: { x: 0, y: 5, z: 0 } }
+          ],
+          edges: [
+            { id: 'fallback_edge1', source: 'fallback1', target: 'fallback2' },
+            { id: 'fallback_edge2', source: 'fallback2', target: 'fallback3' }
+          ]
+        };
+        handleGraphUpdate(fallbackData);
       }
-      handleGraphUpdate(data)
-    }).then(() => {
-    }).catch((error) => {
-
-      const fallbackData = {
-        nodes: [
-          { id: 'fallback1', label: 'Test Node 1', position: { x: -5, y: 0, z: 0 } },
-          { id: 'fallback2', label: 'Test Node 2', position: { x: 5, y: 0, z: 0 } },
-          { id: 'fallback3', label: 'Test Node 3', position: { x: 0, y: 5, z: 0 } }
-        ],
-        edges: [
-          { id: 'fallback_edge1', source: 'fallback1', target: 'fallback2' },
-          { id: 'fallback_edge2', source: 'fallback2', target: 'fallback3' }
-        ]
-      };
-      handleGraphUpdate(fallbackData);
-    })
+    }, 5000);
 
     return () => {
+      window.clearTimeout(fallbackTimer)
       unsubscribe()
     }
   }, [])
