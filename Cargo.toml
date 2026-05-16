@@ -166,38 +166,36 @@ horned-functional = { version = "0.4.0" }
 # walkdir = { version = "2.4" }  # Unused - removed during cleanup
 clap = { version = "4.5", features = ["derive"] }
 
-# --- Solid Pod (ADR-032 M1) — embed solid-pod-rs as in-process library ---
-# Pinned to a single git rev (target: v0.4.0-alpha.7+sprint10 once JSS Phase 1
-# features land in solid-pod-rs). For M1 we use `branch = "main"` as a placeholder
-# so the dep graph compiles; M2 wires the consumer code and pins the rev.
+# --- Solid Pod (ADR-032 M1+M2) — embed solid-pod-rs as in-process library ---
+# Pinned to the crates.io release `0.4.0-alpha.11` (audit 2026-05-16).
+# Previously tracked `branch = "main"` of the DreamLab-AI fork as an M1
+# placeholder; alpha.11 is now published on crates.io (see commits
+# f8a696e — `[patch.crates-io]` removal — and 874524f — phase1 feature).
 # AGPL-3.0-only — see ADR-032 §"Licence implications".
 #
-# Crates added (per ADR-032 §"Dependency surface"):
+# Crates pulled in (per ADR-032 §"Dependency surface"):
 #   - solid-pod-rs        (core LDP/WAC/NIP-98/fs-backend/Notifications)
 #   - solid-pod-rs-nostr  (did:nostr resolver, NIP-05 endpoint, Schnorr verify)
 #   - solid-pod-rs-idp    (pod + key provisioning — JSS Phase 1)
 #
-# Deferred (NOT added in M1):
+# Deferred (NOT added; tracked separately):
 #   - solid-pod-rs-server      — reference only (HTTP route templates), never depended on directly
 #   - solid-pod-rs-activitypub — follow-up ADR (only if VisionClaw federates via AP)
-#   - solid-pod-rs-git         — separate graph-as-git workstream
+#   - solid-pod-rs-git         — graph-as-git workstream (see ADR-033 proposal — git bead provenance)
+#   - solid-pod-rs-didkey      — not in scope for VisionClaw (Nostr-first)
 #
 # All three deps are `optional = true` and only pulled in when the
-# `solid-pod-embed` feature is enabled. M1 lands the dep graph entries;
-# M2 flips consumers on.
+# `solid-pod-embed` feature is enabled. M1 (dep-graph) ✅. M2 (registry
+# pin) ✅ as of 2026-05-16. M3 (consumer wiring + JSS sidecar removal)
+# remains — that's the next ADR-032 milestone, not this audit pass.
 #
-# TODO(M2): pin to actual rev when JSS Phase 1 features land in solid-pod-rs
-# (target `v0.4.0-alpha.7+sprint10`).
-# M1: dep-graph-only — NO feature flags. The features named in ADR-032
-# §"Dependency surface" (fs-backend, nip98-schnorr, did-nostr, nip05-endpoint,
-# schnorr-verifier, pod-provisioning, key-provisioning) reflect the INTENDED
-# surface once JSS Phase 1 features land in upstream solid-pod-rs. At current
-# branch=main HEAD (v0.4.0-alpha.11) several of these features (notably
-# key-provisioning) don't yet exist as Cargo features, which fails feature
-# resolution. M2 will re-enable features per consumer as it wires them in.
-solid-pod-rs = { git = "https://github.com/DreamLab-AI/solid-pod-rs", branch = "main", default-features = false, optional = true }
-solid-pod-rs-nostr = { git = "https://github.com/DreamLab-AI/solid-pod-rs", branch = "main", default-features = false, optional = true }
-solid-pod-rs-idp = { git = "https://github.com/DreamLab-AI/solid-pod-rs", branch = "main", default-features = false, optional = true }
+# `default-features = false` is retained: alpha.11 still does not expose all
+# of the intended feature surface (fs-backend, nip98-schnorr, did-nostr,
+# nip05-endpoint, schnorr-verifier, pod-provisioning, key-provisioning). M3
+# will re-enable features per consumer as they get wired.
+solid-pod-rs = { version = "0.4.0-alpha.11", default-features = false, optional = true }
+solid-pod-rs-nostr = { version = "0.4.0-alpha.11", default-features = false, optional = true }
+solid-pod-rs-idp = { version = "0.4.0-alpha.11", default-features = false, optional = true }
 
 
 [dev-dependencies]

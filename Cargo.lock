@@ -2575,7 +2575,7 @@ dependencies = [
  "libc",
  "percent-encoding",
  "pin-project-lite",
- "socket2 0.6.0",
+ "socket2 0.5.10",
  "system-configuration",
  "tokio",
  "tower-service",
@@ -2871,7 +2871,7 @@ checksum = "3640c1c38b8e4e43584d8df18be5fc6b0aa314ce6ebf51b53313d4306cca8e46"
 dependencies = [
  "hermit-abi 0.5.2",
  "libc",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -3064,7 +3064,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "07033963ba89ebaf1584d767badaa2e8fcec21aedea6b8c0346d487d49c28667"
 dependencies = [
  "cfg-if",
- "windows-targets 0.53.3",
+ "windows-targets 0.48.5",
 ]
 
 [[package]]
@@ -4386,7 +4386,7 @@ dependencies = [
  "quinn-udp",
  "rustc-hash",
  "rustls",
- "socket2 0.6.0",
+ "socket2 0.5.10",
  "thiserror 2.0.16",
  "tokio",
  "tracing",
@@ -4425,7 +4425,7 @@ dependencies = [
  "cfg_aliases",
  "libc",
  "once_cell",
- "socket2 0.6.0",
+ "socket2 0.5.10",
  "tracing",
  "windows-sys 0.60.2",
 ]
@@ -4951,7 +4951,7 @@ dependencies = [
  "security-framework 3.5.1",
  "security-framework-sys",
  "webpki-root-certs",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -5449,7 +5449,8 @@ dependencies = [
 [[package]]
 name = "solid-pod-rs"
 version = "0.4.0-alpha.11"
-source = "git+https://github.com/DreamLab-AI/solid-pod-rs?branch=main#d8a1c81a7f5c5ea2cc6ea5260852ef4396bb80d6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c244660430bbad47f926db3715b2c4090c94d21e05ff080045bab53a2280da86"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -5479,7 +5480,8 @@ dependencies = [
 [[package]]
 name = "solid-pod-rs-idp"
 version = "0.4.0-alpha.11"
-source = "git+https://github.com/DreamLab-AI/solid-pod-rs?branch=main#d8a1c81a7f5c5ea2cc6ea5260852ef4396bb80d6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a6de86fc6dd1eb424eb2b89360ebdcef3eed40e5b9dbd3f86a5ddf6e8ab9fa14"
 dependencies = [
  "argon2",
  "async-trait",
@@ -5507,7 +5509,8 @@ dependencies = [
 [[package]]
 name = "solid-pod-rs-nostr"
 version = "0.4.0-alpha.11"
-source = "git+https://github.com/DreamLab-AI/solid-pod-rs?branch=main#d8a1c81a7f5c5ea2cc6ea5260852ef4396bb80d6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "22202dc5de3492363106117319d4f7830de047bb5f98873332127790278df163"
 dependencies = [
  "async-trait",
  "futures-util",
@@ -6918,7 +6921,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.60.2",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]
