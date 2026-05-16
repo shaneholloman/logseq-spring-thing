@@ -1,0 +1,3 @@
+/target
+# Cargo.lock is excluded for library crates per the root .gitignore policy.
+# Root project pins versions via `--locked` builds in CI.
