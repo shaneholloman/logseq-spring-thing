@@ -26,19 +26,25 @@ class GraphDataManager {
   private static instance: GraphDataManager;
   private binaryUpdatesEnabled: boolean = false;
   public webSocketService: WebSocketAdapter | null = null;
-  private graphDataListeners: GraphDataChangeListener[] = [];
-  private positionUpdateListeners: PositionUpdateListener[] = [];
+  // ADR-03 D5: Set<Listener> deduplicates registrations; single delivery path
+  // via _setData → queueMicrotask.
+  private graphDataListeners: Set<GraphDataChangeListener> = new Set();
+  private positionUpdateListeners: Set<PositionUpdateListener> = new Set();
+  // ADR-03 D5 cache: lastGraphData + lastGraphDataHash short-circuit identical
+  // re-deliveries from REST, WebSocket, retry, and manual-refresh paths.
+  private lastGraphData: GraphData | null = null;
+  private lastGraphDataHash: string | null = null;
   private lastBinaryUpdateTime: number = 0;
   private retryTimeout: number | null = null;
   public nodeIdMap: Map<string, number> = new Map();
   private reverseNodeIdMap: Map<number, string> = new Map();
   private workerInitialized: boolean = false;
-  private graphType: 'logseq' | 'visionflow' = 'logseq'; 
-  private isUserInteracting: boolean = false; 
+  private graphType: 'logseq' | 'visionflow' = 'logseq';
+  private isUserInteracting: boolean = false;
   private interactionTimeoutRef: number | null = null;
-  private updateCount: number = 0; 
+  private updateCount: number = 0;
 
-  // Track worker subscription unsubscribe functions for cleanup
+  // Track external event-listener unsubscribers for cleanup
   private workerUnsubscribers: Array<() => void> = [];
 
   private constructor() {
@@ -92,66 +98,15 @@ class GraphDataManager {
   }
 
   private setupWorkerListeners(): void {
-    // Clean up any previous subscriptions before re-subscribing
+    // ADR-03 D7: the worker no longer emits graph-data or position-update
+    // events. Topology delivery flows through `_setData` directly; positions
+    // flow through SAB / Comlink transfer and are read in `useFrame`. Physics
+    // settings and tweening settings are owned by the main thread now.
+    //
+    // This method is retained as a no-op for legacy call paths (e.g.
+    // ensureWorkerReady) but performs no subscription setup.
     this.workerUnsubscribers.forEach(unsub => unsub());
     this.workerUnsubscribers = [];
-
-    const unsubGraphData = graphWorkerProxy.onGraphDataChange((data) => {
-      this.graphDataListeners.forEach(listener => {
-        try {
-          startTransition(() => {
-            listener(data);
-          });
-        } catch (error) {
-          logger.error('Error in forwarded graph data listener:', createErrorMetadata(error));
-        }
-      });
-    });
-    this.workerUnsubscribers.push(unsubGraphData);
-
-    const unsubPositions = graphWorkerProxy.onPositionUpdate((positions) => {
-      this.positionUpdateListeners.forEach(listener => {
-        try {
-          listener(positions);
-        } catch (error) {
-          logger.error('Error in forwarded position update listener:', createErrorMetadata(error));
-        }
-      });
-    });
-    this.workerUnsubscribers.push(unsubPositions);
-
-    // Listen for physics parameter updates from settingsStore and forward to worker.
-    // settingsStore.notifyPhysicsUpdate() dispatches a CustomEvent with the latest
-    // physics settings; we forward them to the worker so tweening/interpolation
-    // parameters stay in sync with the UI controls.
-    const handlePhysicsUpdate = (e: Event) => {
-      const detail = (e as CustomEvent)?.detail;
-      if (detail && this.workerInitialized) {
-        graphWorkerProxy.updateSettings(detail).catch((err: unknown) => {
-          logger.warn('Failed to forward physics settings to worker:', createErrorMetadata(err));
-        });
-        // Server sync handled by autoSaveManager -> settingsApi.updatePhysics() (GET-merge-PUT)
-      }
-    };
-    window.addEventListener('physicsParametersUpdated', handlePhysicsUpdate);
-    this.workerUnsubscribers.push(() => {
-      window.removeEventListener('physicsParametersUpdated', handlePhysicsUpdate);
-    });
-
-    // Listen for client-side tweening setting changes and forward to worker.
-    // Tweening controls how smoothly the client interpolates toward server positions.
-    const handleTweeningUpdate = (e: Event) => {
-      const detail = (e as CustomEvent)?.detail;
-      if (detail && this.workerInitialized) {
-        graphWorkerProxy.setTweeningSettings(detail).catch((err: unknown) => {
-          logger.warn('Failed to forward tweening settings to worker:', createErrorMetadata(err));
-        });
-      }
-    };
-    window.addEventListener('tweeningSettingsUpdated', handleTweeningUpdate);
-    this.workerUnsubscribers.push(() => {
-      window.removeEventListener('tweeningSettingsUpdated', handleTweeningUpdate);
-    });
   }
 
   public static getInstance(): GraphDataManager {
@@ -343,7 +298,9 @@ class GraphDataManager {
 
         await this.setGraphData(validatedData);
 
-        const currentData = await graphWorkerProxy.getGraphData();
+        // ADR-03 D5: read from the cached lastGraphData instead of a worker
+        // round-trip. The cache was set by setGraphData → _setData above.
+        const currentData = this.lastGraphData ?? validatedData;
         if (debugState.isEnabled()) {
           logger.info(`Graph data loaded: ${currentData.nodes.length} nodes`);
         }
@@ -450,13 +407,68 @@ class GraphDataManager {
         this.reverseNodeIdMap.set(mappedId, node.id);
       }
     });
-    
-    
-    await graphWorkerProxy.setGraphData(validatedData);
-    
+
+    // ADR-03 D5: route through the single cached delivery path.
+    this._setData(validatedData);
+
+    // ADR-03 D7: hand topology to the worker so it can resolve binary
+    // frame node-ids and compute edge lengths on demand.
+    if (graphWorkerProxy.isReady()) {
+      try {
+        await graphWorkerProxy.setGraphTopology(validatedData);
+      } catch (err) {
+        logger.warn('Failed to deliver topology to worker:', createErrorMetadata(err));
+      }
+    }
+
     if (debugState.isDataDebugEnabled()) {
       logger.debug(`Graph data updated: ${validatedData.nodes.length} nodes, ${validatedData.edges.length} edges`);
     }
+  }
+
+  /**
+   * ADR-03 D5: single internal delivery path.
+   *
+   * Computes a cheap topology hash (nodeCount + edgeCount + first/last node id).
+   * If the hash matches the cached value, the call is a no-op — duplicate
+   * deliveries from REST/WebSocket/retry/manual-refresh collapse here.
+   *
+   * Otherwise updates `lastGraphData` + `lastGraphDataHash`, then fires
+   * subscribers via `queueMicrotask` (one notification per genuine change).
+   */
+  private _setData(incoming: GraphData): void {
+    const hash = this._topologyHash(incoming);
+    if (hash === this.lastGraphDataHash) {
+      // Dedup short-circuit: identical topology, skip notification.
+      return;
+    }
+    this.lastGraphData = incoming;
+    this.lastGraphDataHash = hash;
+    const snapshot = incoming;
+    queueMicrotask(() => {
+      this.graphDataListeners.forEach(listener => {
+        try {
+          startTransition(() => {
+            listener(snapshot);
+          });
+        } catch (error) {
+          logger.error('Error in graph data listener:', createErrorMetadata(error));
+        }
+      });
+    });
+  }
+
+  private _topologyHash(g: GraphData): string {
+    const nodes = g.nodes || [];
+    const edges = g.edges || [];
+    const first = nodes.length > 0 ? String(nodes[0].id) : '';
+    const last = nodes.length > 0 ? String(nodes[nodes.length - 1].id) : '';
+    return `${nodes.length}-${edges.length}-${first}-${last}`;
+  }
+
+  /** Public read-only accessor for the cached topology (ADR-03 D5). */
+  public getLastGraphData(): GraphData | null {
+    return this.lastGraphData;
   }
 
   
@@ -509,31 +521,15 @@ class GraphDataManager {
 
   
   public async getGraphData(): Promise<GraphData> {
-    // Check both local flag AND proxy ready state (handles race condition)
-    if (!this.workerInitialized && !graphWorkerProxy.isReady()) {
-      if (debugState.isEnabled()) {
-        logger.warn('Worker not initialized, returning empty data');
-      }
-      return { nodes: [], edges: [] };
+    // ADR-03 D5: serve from the main-thread cache. No worker round-trip.
+    if (this.lastGraphData) {
+      return this.lastGraphData;
     }
-
-    // Update local flag if proxy is ready but we missed initialization
-    if (!this.workerInitialized && graphWorkerProxy.isReady()) {
-      this.workerInitialized = true;
-      this.setupWorkerListeners();
-    }
-
-    try {
-      return await graphWorkerProxy.getGraphData();
-    } catch (error) {
-      logger.error('Error getting graph data from worker:', createErrorMetadata(error));
-      return { nodes: [], edges: [] };
-    }
+    return { nodes: [], edges: [] };
   }
 
   
   public async addNode(node: Node): Promise<void> {
-    
     const numericId = parseInt(node.id, 10);
     if (!isNaN(numericId)) {
       this.nodeIdMap.set(node.id, numericId);
@@ -546,48 +542,46 @@ class GraphDataManager {
       this.nodeIdMap.set(node.id, mappedId);
       this.reverseNodeIdMap.set(mappedId, node.id);
     }
-    
-    await graphWorkerProxy.updateNode(node);
+
+    // ADR-03 D5: mutate the cached topology and route through setGraphData.
+    const current = this.lastGraphData ?? { nodes: [], edges: [] };
+    const nodes = [...current.nodes.filter(n => n.id !== node.id), node];
+    await this.setGraphData({ nodes, edges: current.edges });
   }
 
-  
   public async addEdge(edge: Edge): Promise<void> {
-    
-    const currentData = await graphWorkerProxy.getGraphData();
-    const existingIndex = currentData.edges.findIndex(e => e.id === edge.id);
-    
+    const current = this.lastGraphData ?? { nodes: [], edges: [] };
+    const existingIndex = current.edges.findIndex(e => e.id === edge.id);
+    const edges = [...current.edges];
     if (existingIndex >= 0) {
-      currentData.edges[existingIndex] = {
-        ...currentData.edges[existingIndex],
-        ...edge
-      };
+      edges[existingIndex] = { ...edges[existingIndex], ...edge };
     } else {
-      currentData.edges.push(edge);
+      edges.push(edge);
     }
-    
-    await graphWorkerProxy.setGraphData(currentData);
+    await this.setGraphData({ nodes: current.nodes, edges });
   }
 
-  
   public async removeNode(nodeId: string): Promise<void> {
-    
     const numericId = this.nodeIdMap.get(nodeId);
-    
-    await graphWorkerProxy.removeNode(nodeId);
-    
-    
+    const current = this.lastGraphData ?? { nodes: [], edges: [] };
+    const nodes = current.nodes.filter(n => n.id !== nodeId);
+    const edges = current.edges.filter(
+      e => String(e.source) !== String(nodeId) && String(e.target) !== String(nodeId)
+    );
+    await this.setGraphData({ nodes, edges });
+
     if (numericId !== undefined) {
       this.nodeIdMap.delete(nodeId);
       this.reverseNodeIdMap.delete(numericId);
     }
   }
 
-  
   public async removeEdge(edgeId: string): Promise<void> {
-    
-    const currentData = await graphWorkerProxy.getGraphData();
-    currentData.edges = currentData.edges.filter(edge => edge.id !== edgeId);
-    await graphWorkerProxy.setGraphData(currentData);
+    const current = this.lastGraphData ?? { nodes: [], edges: [] };
+    await this.setGraphData({
+      nodes: current.nodes,
+      edges: current.edges.filter(e => e.id !== edgeId),
+    });
   }
 
   
@@ -622,34 +616,13 @@ class GraphDataManager {
         }
       }
 
-      await graphWorkerProxy.processBinaryData(positionData);
+      // ADR-03 D7: single binary entry point. processBinaryFrame applies
+      // single-flight discipline (newest-wins slot) internally — caller does
+      // not need to gate. Frame is transferred zero-copy.
+      const frame = new Uint8Array(positionData);
+      await graphWorkerProxy.processBinaryFrame(frame);
       // Successful processing — reset transient error counter
       useWorkerErrorStore.getState().resetTransientErrors();
-
-      // FIX 2: Periodically check if the binary stream delivered positions for
-      // unknown node IDs (graph mutation on server). If so, re-fetch graph data
-      // via REST to pick up new nodes and edges. Checked every ~100 binary frames
-      // to avoid excessive async overhead.
-      this.updateCount = (this.updateCount || 0) + 1;
-      if (this.updateCount % 100 === 0) {
-        graphWorkerProxy.hasUnknownNodes().then(async (hasUnknown) => {
-          if (hasUnknown) {
-            logger.info('[graphDataManager] Unknown nodes detected in binary stream — re-fetching graph data via REST');
-            try {
-              const response = await fetch('/api/graph/data');
-              if (response.ok) {
-                const freshData = await response.json();
-                if (freshData.nodes && freshData.nodes.length > 0) {
-                  await this.setGraphData(freshData);
-                  logger.info(`[graphDataManager] REST re-fetch complete: ${freshData.nodes.length} nodes, ${freshData.edges?.length ?? 0} edges`);
-                }
-              }
-            } catch (err) {
-              logger.error('[graphDataManager] REST re-fetch failed:', err);
-            }
-          }
-        }).catch(() => { /* ignore polling errors */ });
-      }
 
       const settings = useSettingsStore.getState().settings;
       const debugEnabled = settings?.system?.debug?.enabled;
@@ -703,10 +676,9 @@ class GraphDataManager {
     }
 
     try {
-      
-      const currentData = await graphWorkerProxy.getGraphData();
-      
-      
+      // ADR-03 D5: read from the main-thread cache, not from the worker.
+      const currentData = this.lastGraphData ?? { nodes: [], edges: [] };
+
       const binaryNodes: BinaryNodeData[] = currentData.nodes
         .filter(node => node && node.id) 
         .map(node => {
@@ -750,52 +722,59 @@ class GraphDataManager {
   }
 
   
+  /**
+   * Subscribe to graph-data changes (ADR-03 D5).
+   *
+   * Uses a Set internally — duplicate registrations of the same callback are
+   * coalesced (the Set's add semantics make repeated `add(cb)` a no-op).
+   * Delivers the cached lastGraphData via `queueMicrotask` if present, so
+   * new subscribers see the current topology one microtask after subscribing.
+   */
   public onGraphDataChange(listener: GraphDataChangeListener): () => void {
-    this.graphDataListeners.push(listener);
+    const alreadyRegistered = this.graphDataListeners.has(listener);
+    this.graphDataListeners.add(listener);
 
-    // Provide initial data to new listener
-    graphWorkerProxy.getGraphData().then(data => {
-      if (debugState.isEnabled()) {
-        logger.debug(`Calling listener with current data: ${data.nodes.length} nodes`);
-      }
-      listener(data);
-    }).catch(error => {
-      logger.error('Error getting initial graph data for listener:', createErrorMetadata(error));
-      listener({ nodes: [], edges: [] });
-    });
-
-    return () => {
-      this.graphDataListeners = this.graphDataListeners.filter(l => l !== listener);
-    };
-  }
-
-  
-  public onPositionUpdate(listener: PositionUpdateListener): () => void {
-    this.positionUpdateListeners.push(listener);
-    
-    
-    return () => {
-      this.positionUpdateListeners = this.positionUpdateListeners.filter(l => l !== listener);
-    };
-  }
-
-  
-  private async notifyGraphDataListeners(): Promise<void> {
-    try {
-      const currentData = await graphWorkerProxy.getGraphData();
-      this.graphDataListeners.forEach(listener => {
+    // Replay current cached data to new subscriber (deferred to microtask so
+    // subscribe + initial fire don't race within a single synchronous tick).
+    if (!alreadyRegistered && this.lastGraphData) {
+      const snapshot = this.lastGraphData;
+      queueMicrotask(() => {
         try {
-          listener(currentData);
+          listener(snapshot);
         } catch (error) {
-          logger.error('Error in graph data listener:', createErrorMetadata(error));
+          logger.error('Error in initial graph data listener:', createErrorMetadata(error));
         }
       });
-    } catch (error) {
-      logger.error('Error getting graph data for listeners:', createErrorMetadata(error));
     }
+
+    return () => {
+      this.graphDataListeners.delete(listener);
+    };
   }
 
-  
+  public onPositionUpdate(listener: PositionUpdateListener): () => void {
+    this.positionUpdateListeners.add(listener);
+    return () => {
+      this.positionUpdateListeners.delete(listener);
+    };
+  }
+
+  /**
+   * Fire all subscribers with the current cached data. Subscriber set
+   * iteration order is insertion order (stable across runs).
+   */
+  private notifyGraphDataListeners(): void {
+    if (!this.lastGraphData) return;
+    const snapshot = this.lastGraphData;
+    this.graphDataListeners.forEach(listener => {
+      try {
+        listener(snapshot);
+      } catch (error) {
+        logger.error('Error in graph data listener:', createErrorMetadata(error));
+      }
+    });
+  }
+
   private notifyPositionUpdateListeners(positions: Float32Array): void {
     this.positionUpdateListeners.forEach(listener => {
       try {
@@ -846,13 +825,8 @@ class GraphDataManager {
    * Previously this was synchronous and always returned [] because of an async race.
    */
   public async getVisibleNodes(): Promise<Node[]> {
-    try {
-      const data = await graphWorkerProxy.getGraphData();
-      return data.nodes;
-    } catch (error) {
-      logger.error('Error getting visible nodes:', createErrorMetadata(error));
-      return [];
-    }
+    // ADR-03 D5: read from the cached topology, no worker round-trip.
+    return this.lastGraphData?.nodes ?? [];
   }
 
   
@@ -912,12 +886,14 @@ class GraphDataManager {
       this.interactionTimeoutRef = null;
     }
 
-    // Clean up worker subscriptions to prevent leaks
+    // Clean up window event listeners (if any were registered)
     this.workerUnsubscribers.forEach(unsub => unsub());
     this.workerUnsubscribers = [];
 
-    this.graphDataListeners = [];
-    this.positionUpdateListeners = [];
+    this.graphDataListeners.clear();
+    this.positionUpdateListeners.clear();
+    this.lastGraphData = null;
+    this.lastGraphDataHash = null;
     this.webSocketService = null;
     this.nodeIdMap.clear();
     this.reverseNodeIdMap.clear();
