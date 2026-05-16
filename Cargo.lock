@@ -5715,6 +5715,7 @@ dependencies = [
 [[package]]
 name = "whelk"
 version = "0.1.0"
+source = "git+https://github.com/jjohare/whelk-rs?rev=79a1ee21789add5a66faa0ec1a830c32dba9b539#79a1ee21789add5a66faa0ec1a830c32dba9b539"
 dependencies = [
  "clap 4.5.49",
  "curie",

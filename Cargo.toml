@@ -132,8 +132,13 @@ rayon = "1.11.0"
 # Hexagonal Architecture
 hexser = { version = "0.4.7", features = ["full"] }
 
-# Ontology Reasoning - using local path dependency (always enabled)
-whelk = { path = "./whelk-rs" }
+# Ontology Reasoning — git dep on jjohare/whelk-rs fork (always enabled).
+# Pinned to commit 79a1ee2 ("Made compatible with latest horned-owl"). The
+# fork carries horned-owl 1.x compatibility patches that INCATools/whelk-rs
+# upstream may not yet have merged.
+# TODO: switch to git = "https://github.com/INCATools/whelk-rs" once upstream
+# lands the horned-owl 1.x compat (track via PR from the jjohare fork).
+whelk = { git = "https://github.com/jjohare/whelk-rs", rev = "79a1ee21789add5a66faa0ec1a830c32dba9b539" }
 
 # Ontology dependencies (always enabled)
 # Note: Using 1.2.0 for ArcStr support (thread-safe string type)
