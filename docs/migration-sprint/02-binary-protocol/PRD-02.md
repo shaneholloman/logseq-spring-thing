@@ -43,8 +43,8 @@ A1. **V3 full-sync only.** The protocol carries one wire format: V3 full
 
 A2. **Settlement-gated cadence.** While `LayoutDestabilised` is the most
     recent physics event, frames emit at up to 10 Hz. Once `LayoutSettled`
-    fires, frames drop to heartbeat cadence (`LayoutHeartbeat` every 5s by
-    default).
+    fires, frames drop to the broadcast-owned heartbeat cadence
+    (`broadcast_heartbeat_secs`, default 5 s; see ADR-02 D2 and A8).
 
 A3. **Backpressure-honouring.** If the WebSocket buffer is above 64KB on a
     given client, the broadcast layer drops the *current* frame for that
@@ -59,13 +59,20 @@ A5. **Single broadcast path.** The polling REST endpoint
     (`GET /graph/positions`) reads from the same `GraphStateActor` snapshot
     as the WebSocket broadcast. They cannot diverge.
 
-A6. **Bounded latency.** Time from `LayoutHeartbeat` event firing on the
-    physics side to position frame appearing on the WebSocket wire is
+A6. **Bounded latency.** Time from the broadcast actor's heartbeat
+    `tokio::time::interval` tick firing in SETTLED state to the
+    corresponding position frame appearing on the WebSocket wire is
     ≤50ms p99.
 
 A7. **Auth interaction**: in `?skipAuth=true` mode the WebSocket accepts
     without Nostr token. Production mode requires Nostr token in the
     upgrade handshake. There is no third mode.
+
+A8. **Heartbeat is wall-clock, not iteration-driven.** In the SETTLED
+    state, full-position frames emit every `broadcast_heartbeat_secs` of
+    wall-clock time (default 5 s), independent of physics tick rate.
+    Verified by a test that pauses physics entirely and observes a
+    heartbeat within 5.5 s.
 
 ## 5. Non-goals
 

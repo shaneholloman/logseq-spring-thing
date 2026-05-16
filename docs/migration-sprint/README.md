@@ -119,13 +119,41 @@ Once these documents are approved, implementation phases proceed in this order:
    in tests before any switch-over.
 2. **Ontology + KG data model** (Section 8) — adopt the OntologyClass rename,
    migration queries (replaced with SPARQL Update equivalents).
+2.5. **Auth compile-gates** (Section 6, D1+D2 only) — land ADR-06 D1
+   (`dev-auth` Cargo feature) and D2 (compile-time gating of
+   `--allow-skip-auth` and any bypass surface). Section 6's remaining
+   decisions D3-D11 ship in Phase 7. This split is mandated by ADR-06
+   §Phasing: ADR-02 D8 depends on the `--allow-skip-auth` flag existing
+   in the codebase as of Phase 3.
 3. **Binary protocol + broadcast** (Section 2) — adopt V3 full-sync semantics
    and settlement-gated cadence at the server. Removes the freeze surface.
 4. **Client state + workers** (Section 3) — Comlink zero-copy, narrow selectors,
    single-flight. Removes the second freeze surface.
 5. **GPU physics** (Section 1) — bring forward layout engines and force kernels.
 6. **Rendering** (Section 4) — node geometries, edges, labels, Environment.
-7. **Settings, Auth, Bots, Ecosystem, External, XR** in parallel.
+7. **Settings (D3-D11 of Section 6 only — D1+D2 landed in Phase 2.5), Bots,
+   Ecosystem, External, XR** in parallel.
+
+## Glossary of overloaded terms
+
+The sprint documents use several terms with multiple meanings depending
+on section. At first use within any document, write the qualified form;
+subsequent in-document uses may shorten if context is unambiguous.
+
+| Term | Disambiguated forms |
+|------|---------------------|
+| snapshot | **position-frame snapshot** (ADR-02 D4 — V3 binary frame from `GraphStateActor::current_snapshot()`); **telemetry snapshot** (ADR-10 D1, DDD-07 — `SwarmSnapshot` JSON on agent reconnect); **persistence snapshot** (ADR-11 D4/D10 — operator backup); **position-triple snapshot** (DDD-11 — per-60 s `:hasX/Y/Z` Oxigraph write). |
+
+## Future docs
+
+When authoring new PRDs or ADRs in this tree, follow the canonical
+heading shape established by PRD-12 (`F1..Fn` for functional
+requirements, `A1..An` for acceptance criteria) and ADR-01..ADR-11
+(`D1..Dn` for decisions, plus `Options considered`, `Risks`, `Rejected
+from main`, `Bugs and smells at the reset point`). Templates land at
+`docs/migration-sprint/_templates/PRD-template.md` and `ADR-template.md`.
+Existing documents are not retrofitted — the residual inconsistency is
+not load-bearing.
 
 ## Out of scope
 

@@ -115,9 +115,8 @@ transmission falloff, schlick term), the XR client tunes to look
 *similar enough* and documents the divergence.
 
 Class membership is computed in the gdext bridge from the V3 payload's
-node_id type-flag bits — the same scheme the web client uses (per
-Section 8 / Section 2). The XR client does not re-classify nodes; it
-reads the bits.
+node_id type-flag bits. See ADR-08 §D6 for the canonical class-bit
+allocation. The XR client does not re-classify nodes; it reads the bits.
 
 ### D5. Hand-tracking-first interaction, controllers as fallback
 
@@ -186,7 +185,8 @@ The Nostr challenge-response flow defined in ADR-06 applies unchanged:
 1. Client: `GET /auth/challenge` → returns challenge (random nonce + ts).
 2. Client: signs challenge with nsec using `nostr-sdk` (BIP-340 Schnorr).
 3. Client: `POST /auth/verify` with signature + npub → returns JWT.
-4. Client: connects `wss://<host>/ws?token=<jwt>`.
+4. Client: connects `wss://<host>/wss?token=<jwt>` (canonical path per
+   ADR-06 §D12).
 
 The XR client stores the nsec in the platform secret store:
 
@@ -210,7 +210,8 @@ Nostr-only auth posture (ADR-06).
 ### D9. XR presence as a separate WebSocket endpoint
 
 PRD-12 F11's presence stream goes to `/ws/xr-presence`, distinct from
-`/ws`. Reasons:
+`/wss` (the canonical V3 position broadcast endpoint per ADR-06 §D12).
+Reasons:
 
 - **Backpressure isolation**: if the presence path is dropping frames
   (the network is congested), the graph data path must not be affected.
@@ -226,7 +227,8 @@ The presence frame format is defined in `crates/visionclaw-xr-presence`
 as a public stable type. Server-side, the endpoint is a *sink* in v1
 that logs to metrics and discards; v2 will add the relay. Adding a
 second WebSocket endpoint is a server change — but a trivial one,
-documented in ADR-06 as an auth-protected route, no protocol changes.
+documented in ADR-06 §D12's canonical WebSocket enumeration as an
+auth-protected route, no protocol changes.
 
 ### D10. Build target: Android (Quest) primary, desktop OpenXR secondary
 

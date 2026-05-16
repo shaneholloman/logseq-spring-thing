@@ -19,7 +19,8 @@ has grown a high accidental complexity surface.
 ### D1. V3 full-sync, single wire format
 
 The protocol carries one frame type. Header (`magic = 0xV3F0`, `frame_id`),
-per-node payload (28 bytes), trailer (`node_count`). V4 delta encoding,
+per-node payload (28 bytes, leading `u32 node_id` is a NodeId per
+ADR-08 §D6), trailer (`node_count`). V4 delta encoding,
 attempted in `8a7610a00`, is rejected. Reasons:
 
 - Deltas require client to maintain authoritative state matching the
@@ -34,8 +35,19 @@ attempted in `8a7610a00`, is rejected. Reasons:
 The broadcast actor subscribes to physics domain events:
 
 - On `LayoutDestabilised`: enter ACTIVE state, broadcast up to 10 Hz.
-- On `LayoutSettled`: enter SETTLED state, broadcast on `LayoutHeartbeat`
-  only (every 5s by default).
+- On `LayoutSettled`: enter SETTLED state. The broadcast actor starts a
+  `tokio::time::interval(Duration::from_secs(broadcast_heartbeat_secs))`
+  (default 5 s); each tick reads `GraphStateActor::current_snapshot()`
+  and emits a full V3 position-frame snapshot to all connected clients.
+  The interval is cancelled on `LayoutDestabilised` and on shutdown.
+  This `BroadcastHeartbeat` is owned wholly by the broadcast actor;
+  physics emits no time-based heartbeat (see ADR-01 D9).
+- On `LayoutStarted`: the broadcast actor resets `frame_id = 0` for the
+  current epoch, immediately emits a position-frame snapshot to all
+  connected clients, and transitions to ACTIVE. The next emitted frame
+  carries `frame_id = 1`. Coordinated with D7 drop-detection: a client
+  whose previous epoch's `frame_id` was non-zero MUST treat the reset
+  as a hard reload, not a gap.
 - On `PhysicsClamped`: log only; no protocol change.
 
 There is no `broadcast_interval_ms` knob. Cadence is event-driven.
@@ -69,7 +81,8 @@ while polling returned stale positions).
 
 The optimiser layer that filtered "nodes that haven't moved" is removed.
 It existed to reduce bandwidth; under D1 + D2 the bandwidth concern is
-gone (heartbeat at 0.2Hz on the SETTLED state is the bandwidth floor).
+gone (the broadcast-owned heartbeat at 0.2 Hz on the SETTLED state is
+the bandwidth floor).
 The optimiser's delta-filter was the proximate cause of the freeze.
 
 ### D6. No reactor / coalescer pipelines on the client
@@ -88,12 +101,16 @@ is full state anyway. The metric is for observability, not correction.
 
 ### D8. Auth model
 
-WebSocket upgrade handshake requires a `?token=<nostr_jwt>` query param in
-production. In dev mode (`?skipAuth=true` request to the HTML shell), the
-client emits no token; the server, if running with `--allow-skip-auth`,
-accepts. There is no third mode. The `--allow-skip-auth` flag is gated by
-`build = debug || env(VISIONFLOW_DEV_MODE)`. Release builds reject it
-outright. (Section 6 owns the broader auth posture.)
+WebSocket upgrade requires a `?token=<nostr_jwt>` query param in production.
+In dev mode (`?skipAuth=true` to the HTML shell) the client emits no token;
+the server, if launched with `--allow-skip-auth`, accepts.
+
+The `--allow-skip-auth` flag is gated *exclusively* by the compile-time
+mechanism specified in ADR-06 D2:
+`#[cfg(any(debug_assertions, feature = "dev-auth"))]`. Release binaries
+built without the `dev-auth` feature physically cannot honour the flag —
+the flag-handling code is absent from the binary. There is no runtime
+env-var path. Section 6 owns this surface; this section defers.
 
 ## Options considered
 

@@ -63,8 +63,7 @@ Each class is a single instanced mesh with one geometry and one material:
 
 Each class instance is positioned, scaled (`computeNodeScale * nodeSize`),
 and tinted from a per-node colour buffer. Class membership is determined
-by the node's type bits (see Section 8's data model and Section 2's
-26-bit-NODE_ID_MASK / type-flag-bits scheme).
+by the node's type bits. See ADR-08 §D6.
 
 ### F2. Single edge visual class with per-instance category colour
 

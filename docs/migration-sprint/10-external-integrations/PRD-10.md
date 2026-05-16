@@ -2,7 +2,7 @@
 
 ## 1. Capability statement
 
-VisionFlow integrates with three external systems through narrowly-scoped,
+VisionFlow integrates with four external systems through narrowly-scoped,
 versioned contracts:
 
 - **agentbox** — the agent runtime. Hosts the broker, agent control panel,
@@ -16,6 +16,9 @@ versioned contracts:
 - **whelk-rs** — the OWL EL reasoner, vendored in-tree but used through a
   pure-data contract: TBox in, inferred ABox triples out. Whelk does not
   reach into VisionFlow state and VisionFlow does not patch whelk.
+- **GitHub (Logseq corpus)** — `jjohare/logseq` markdown source-of-truth
+  for the knowledge graph. Read-only HTTPS via `octocrab`. Section 8 owns
+  the parse; this section owns the transport. See ADR-10 §D11.
 
 This PRD defines the contracts. It does not specify the producer
 implementations (those live in agentbox / forum / whelk repositories). It
@@ -139,6 +142,7 @@ Direction      Transport             Surface
 INBOUND        WebSocket             AgentTelemetryEnvelope
 INBOUND        WebSocket             EnterpriseEventEnvelope
 INBOUND        Signed challenge      NostrAuthBridge (one-shot)
+INBOUND        HTTPS (octocrab)      ParsedMarkdown (GitHub / Logseq corpus)
 OUTBOUND       BroadcastChannel API  AgentActionMessage (same-origin)
 OUTBOUND       Window deep-link      AgentActionMessage (cross-origin)
 INTERNAL       Function call         WhelkInferenceRequest / Response

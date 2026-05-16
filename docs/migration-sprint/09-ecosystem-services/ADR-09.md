@@ -75,7 +75,7 @@ greps the tree for it and fails the build.
 
 ### D3. Multi-stage Dockerfile.unified with promoted CUDA_ARCH
 
-The Dockerfile has six explicit stages plus two target stages:
+The Dockerfile has seven explicit stages plus two target stages:
 
 1. `base` — CachyOS-v3 + pacman keyring + system deps + CUDA via
    pacman (lands at `/opt/cuda`) + Rust + Node 20.
@@ -85,11 +85,18 @@ The Dockerfile has six explicit stages plus two target stages:
    This layer caches the 300+ dep compile across source edits.
 3. `rust-builder` — copy real `src/`; `touch` all `.rs` files to
    defeat the COPY-mtime-preservation gotcha; `cargo build` again.
-4. `node-deps` — `npm ci` for client.
-5. `node-builder` — `npx vite build`.
-6. `development` — full toolchain, source mounted, runs
+4. `wasm-builder` (after `rust-deps`, before `node-builder`): runs
+   `wasm-pack build --target web --release client/crates/scene-effects/`
+   and outputs JS/wasm glue to `client/src/wasm/scene-effects/`. The
+   `node-builder` stage `COPY --from=wasm-builder` consumes this path
+   before `vite build` runs. The `node-builder`'s output therefore
+   contains the compiled WASM as part of the static bundle. PRD-04 F7's
+   versioning contract holds via the same `client/dist` artefact.
+5. `node-deps` — `npm ci` for client.
+6. `node-builder` — `npx vite build` (consumes `wasm-builder` output).
+7. `development` — full toolchain, source mounted, runs
    `dev-entrypoint.sh` which starts supervisord.
-7. `production` — minimal runtime, copies only the compiled `webxr`
+8. `production` — minimal runtime, copies only the compiled `webxr`
    binary and built frontend `dist`, runs `prod-entrypoint.sh`,
    non-root user `appuser`.
 
@@ -160,6 +167,20 @@ upstream service ships a `docker-compose.yaml` (Whisper, Xinference
 are typical), `launch.sh` prefers it. Where no compose file exists
 or the path is missing, it falls back to `docker run`. This is the
 current behaviour in commits `73e2d8209` / `28c3521bb`; codify it.
+
+**D5d — Consumers**: each ecosystem service maps to exactly one
+VisionFlow consumer surface. The table below is exhaustive for the
+sprint; adding a new ecosystem service requires adding a row here in
+the same PR.
+
+| Ecosystem service | VisionFlow consumer | WS endpoint | ADR-06 D4 handler |
+|-------------------|---------------------|-------------|-------------------|
+| Kokoro TTS (8880) | TTS dispatch in speech actor | `/ws/speech` (egress) | `speech_socket_handler` |
+| Whisper STT (8000) | STT dispatch in speech actor | `/ws/speech` (ingress) | `speech_socket_handler` |
+| Xinference (9997) | RAG embeddings + completion | n/a (HTTP) | `inference_handler`, `ragflow_handler` |
+
+Out-of-scope for this sprint: any expansion of this consumer list.
+Adding a new ecosystem service requires a row here in the same PR.
 
 ### D6. PTX ISA version downgrade is part of build.rs
 

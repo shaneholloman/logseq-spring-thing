@@ -66,12 +66,8 @@ status field on the context type is removed. Any UI surface displaying
 The static `BOTS_GRAPH: Lazy<Arc<RwLock<GraphData>>>` in
 `bots_handler.rs` is deleted. Agent nodes and edges live in the same
 `GraphStateActor` instance that owns the knowledge graph, discriminated
-by class-flag bits on the node id:
-
-- `0x80000000` = agent
-- `0x40000000` = knowledge
-- `0x1C000000` = ontology subtype mask (see ADR-08)
-- low 26 bits = sequential id
+by class-flag bits on the node id. See ADR-08 §D6 for the canonical
+class-bit allocation.
 
 Justification: two graphs in one actor share the physics simulation
 (ADR-01), share the broadcast pipeline (ADR-02), and share the
@@ -93,7 +89,8 @@ side branching.
 
 ### D5. Communication edges are transient with linear decay
 
-A telemetry `CommunicationEvent { from, to, weight, timestamp }` creates
+A telemetry `AgentCommunicated { from_agent_id, to_agent_id, weight, timestamp }`
+event (per DDD-07 and ADR-10 D1's `communication` wire envelope) creates
 an edge in the agent graph with TTL `bots.communication_edge_decay`
 (default 5.0s). Edge alpha falls linearly to zero over the TTL window.
 On the next event between the same pair, the edge is refreshed in place;
@@ -127,19 +124,15 @@ client-side timeout).
 
 ### D8. Click-through delegates to Section 10
 
-Clicking an agent capsule emits an intent:
+Clicking an agent capsule constructs an `AgentActionEnvelope` (ADR-10
+D3 plus `crates/visionclaw-contracts/src/agent_action.rs`) and
+dispatches it via the session's chosen transport. VisionFlow does not
+render a control panel in-process and does not embed an iframe of one;
+the renderer's responsibility ends at envelope dispatch.
 
-```
-RequestAgentControlSurface {
-    agent_id: NodeId,
-    swarm_id: SwarmId,
-    cursor_world_position: Vec3,  // for the forwarder to position popovers
-}
-```
-
-Section 10 owns the resolver. The resolver returns a URL (agentbox or
-forum), opened in a new tab. VisionFlow does not render a control panel
-in-process and does not embed an iframe of one.
+The `crates/visionclaw-contracts` Rust crate is the source-of-truth
+contract surface created in the implementation phase; ADR-10 D3 owns
+the envelope schema.
 
 ### D9. Type metadata flows in telemetry; rendering never branches on type
 
@@ -169,21 +162,48 @@ within an agent: the most recent event for a given agent id wins for
 status fields, while position updates apply in arrival order to feed
 the physics actor.
 
-### D12. Control-plane routes are removed from `bots_handler.rs`
+### D12. Control-plane routes removed via two-phase deprecation
 
-Routes removed:
+Removal is staged. Phase 7a freezes each route at `410 Gone` with a
+`Link: <successor>; rel="successor-version"` header and a structured
+JSON body; the route remains registered so external callers receive a
+machine-readable failure. Phase 7b (~30 days after Phase 7a lands)
+deletes the route, handler, and request types entirely.
 
-- `POST /api/bots/initialize-swarm` (`InitializeSwarmRequest`)
-- `POST /api/bots/spawn-agent` (`SpawnAgentHybridRequest`)
-- `POST /api/bots/graph` (client-driven graph write)
-- `POST /api/bots/create-task`, `POST /api/bots/stop-task`
+| Baseline route | Successor (agentbox) | Phase 7a | Phase 7b |
+|----------------|----------------------|----------|----------|
+| POST /api/bots/initialize-swarm | POST {agentbox}/swarms/initialize | 410+Link | Deleted |
+| POST /api/bots/spawn-agent-hybrid | POST {agentbox}/agents/spawn | 410+Link | Deleted |
+| POST /api/bots/spawn-agent (legacy) | (same) | 410+Link | Deleted |
+| POST /api/bots/data, POST /api/bots/update | (no successor — was inverted client→server graph write; see D3) | 410+Link to D3 | Deleted |
+| DELETE /api/bots/remove-task/{id} | DELETE {agentbox}/tasks/{id} | 410+Link | Deleted |
 
-Routes retained (and re-homed under `src/handlers/telemetry_handler.rs`):
+Phase 7a response body shape:
+
+```json
+{
+  "status": 410,
+  "error": "route_deprecated",
+  "successor": "POST {agentbox}/swarms/initialize",
+  "deprecated_since": "<ISO-8601 date when Phase 7a landed>",
+  "scheduled_removal": "<ISO-8601 date Phase 7b is scheduled>"
+}
+```
+
+Routes retained (read-only telemetry until `/ws/agent-telemetry` reaches
+parity) and re-homed under `src/handlers/telemetry_handler.rs`:
 
 - `GET /api/agents/identity/{id}` — read-only lookup of durable agent
   identity (display name, persistent capability metadata) from Section
   11's Oxigraph store. No mutation.
+- `GET /api/bots/{status,agents,data}` — read-only snapshots of the same
+  data the WebSocket telemetry stream carries; retained as a polling
+  fallback while clients migrate.
 - The Section 10-owned WebSocket telemetry intake. Stays a thin adapter.
+
+ADR-10 D7 mirrors the deprecated-route names as a CI guard against
+re-introduction; after Phase 7b, the grep gate hard-fails on any of
+these names appearing under `src/handlers/`.
 
 ## Options considered
 
@@ -278,10 +298,9 @@ To flag for migration awareness:
   and spawn-agent routes. These are out of scope for VisionFlow from
   day one; the baseline contains them but agentbox was not yet ready.
   Migration removes them now that agentbox is.
-- The class-flag bit layout (`0x80000000` agent, `0x40000000`
-  knowledge, `0x1C000000` ontology) is already in place at baseline
-  and survives forward unchanged. Document it as the cross-section
-  invariant.
+- The class-flag bit layout is already in place at baseline and
+  survives forward unchanged. See ADR-08 §D6 for the canonical
+  class-bit allocation; document it as the cross-section invariant.
 - `BotsVisualizationDebugInfo.tsx` exists at baseline and is fine
   (read-only debug overlay). Survives forward.
 - `AgentTelemetryStream.tsx` at baseline mixes telemetry rendering

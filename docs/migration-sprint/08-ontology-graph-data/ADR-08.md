@@ -83,8 +83,10 @@ PropertyAssertion, DefinedIn, BridgeTo, AgentControls }`.
 
 The 623 `SUBCLASS_OF` edges are present in the projection by
 construction: the SPARQL query that builds the topology selects
-`?s rdfs:subClassOf ?o` over both `asserted` and `inference` named
-graphs and emits a `SubClassOf` edge for each binding. The filtering
+`?s rdfs:subClassOf ?o` over both
+`<urn:visionflow:graph:ontology:assert>` and
+`<urn:visionflow:graph:ontology:inferred>` named graphs (per ADR-11 §D2)
+and emits a `SubClassOf` edge for each binding. The filtering
 that produced the gap on `main` is rejected outright; there is no
 filter step between repository and topology.
 
@@ -166,12 +168,20 @@ impl From<NodeId> for String { ... }   // explicit, named "wire form"
 impl TryFrom<&str> for NodeId { ... }  // fallible parse, anchored on u32
 ```
 
-Class bits: `0x80000000 = Agent`, `0x40000000 = Page (knowledge)`,
-`0x20000000 = OntologyClass`, `0x10000000 = OntologyProperty`,
-`0x08000000 = LinkedPage` (placeholder), `0x04000000 = Axiom`. The
-remaining 26 bits are the sequence. Headroom: 67M IDs per class — more
-than enough for any plausible corpus. The atomic counter in
-`GraphStateActor` allocates sequences per-class.
+Class bits encode `NodeClass` in the top 6 bits of the `u32` id:
+`0x80000000 = Agent` (bit 31), `0x40000000 = Page` (bit 30). The
+ontology region uses the mask `ONTOLOGY_TYPE_MASK = 0x1C000000`
+(bits 26-28) with these allocations: `0x04000000 = OntologyClass`,
+`0x08000000 = LinkedPage` (placeholder), `0x0C000000 = Axiom`,
+`0x10000000 = OntologyProperty`. Values `0x14000000`, `0x18000000`,
+`0x1C000000` are reserved for future ontology subtypes. The remaining
+26 bits (`NODE_ID_MASK = 0x03FFFFFF`) are the per-class sequence,
+allocated by the atomic counter in `GraphStateActor`. Per DDD-08 §C2
+the sequence is stable across a `LinkedPage → Page` or
+`LinkedPage → OntologyClass` upgrade — only the class bits change.
+
+This mirrors the constants in `src/utils/binary_protocol.rs:16-27`,
+which are the canonical wire-format source of truth.
 
 The wire form (numeric `u32`) is used in the binary protocol and the
 WebSocket payloads. The string form is used in JSON payloads and in
@@ -193,13 +203,16 @@ gating. It does not cause the repository to *delete and recreate*
 records; events are upserts, idempotent by IRI. Re-emission is enough to
 flush the topology projection downstream.
 
-### D9. Whelk-rs inference materialised into the `inference` named graph
+### D9. Whelk-rs inference materialised into the inferred named graph
 
-Whelk-rs runs over the asserted axioms (OWL EL profile). Inferred
-triples are written into a separate named graph `<urn:visionflow:inference>`
-in Oxigraph. The default `GraphTopology` query unions `<asserted>` and
-`<inference>`. When attribution matters (e.g. operator tooling), a
-query parameter switches the source.
+The Oxigraph dataset uses two named graphs:
+`<urn:visionflow:graph:ontology:assert>` for asserted triples and
+`<urn:visionflow:graph:ontology:inferred>` for whelk-rs-derived
+inferences (see ADR-11 §D2). Whelk-rs runs over the asserted axioms
+(OWL EL profile) and writes its output into the inferred named graph.
+The default `GraphTopology` query unions the two graphs. When
+attribution matters (e.g. operator tooling), a query parameter switches
+the source.
 
 ### D10. Anti-corruption layer at the GitHub adapter boundary
 

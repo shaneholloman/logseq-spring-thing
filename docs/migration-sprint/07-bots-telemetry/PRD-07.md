@@ -72,8 +72,9 @@ A2. **No polling path in active code**. The file
 A3. **Dual-graph X-offset placement**. Agent nodes are placed in a
     distinct world-space region (default `+X = 600 units`) so the agent
     graph and the knowledge graph do not overlap. The offset is a
-    config-level constant, not a per-frame calculation. Class flag bit
-    `0x80000000` on the node id is the authoritative discriminator.
+    config-level constant, not a per-frame calculation. See ADR-08 §D6
+    for the canonical class-bit allocation that discriminates agent vs
+    knowledge nodes.
 
 A4. **AgentCapsule rendering is data-driven**. Section 4 owns the
     `AgentCapsule` geometry and material. This section provides the
@@ -82,7 +83,8 @@ A4. **AgentCapsule rendering is data-driven**. Section 4 owns the
     expressed by the colour token and the capability bitmask, both
     derived from telemetry on the server side.
 
-A5. **Communication edges decay**. A `CommunicationEvent` from agent A to
+A5. **Communication edges decay**. An `AgentCommunicated` event (DDD-07;
+    `communication` wire envelope per ADR-10 D1) from agent A to
     agent B causes a transient edge between A and B with a configurable
     decay (default 5s linear fade). After decay the edge disappears
     unless renewed by a fresh event. Parent/child swarm membership edges
@@ -95,9 +97,11 @@ A6. **Hover overlay shows live telemetry**. Hovering over an agent capsule
     data older than `agent_ttl`.
 
 A7. **Click forwards to external control surface**. Clicking an agent
-    capsule emits a `RequestAgentControlSurface { agent_id, swarm_id }`
-    intent. Section 10 owns the resolution of this intent to an agentbox
-    or forum URL. VisionFlow does not render the control UI in-process.
+    capsule dispatches an `AgentActionEnvelope` (ADR-10 D3 plus
+    `crates/visionclaw-contracts/src/agent_action.rs`) on the session's
+    chosen transport (BroadcastChannel, deep-link, or postMessage).
+    Section 10 owns the envelope schema and the transport selection.
+    VisionFlow does not render the control UI in-process.
 
 A8. **Empty-swarm bandwidth floor**. With no agents reported, the
     telemetry WebSocket sends at most one heartbeat per 30s. No idle
@@ -137,9 +141,10 @@ A9. **Backpressure tolerance**. A burst of 500 telemetry events in <1s
 - Removal commit removing `AgentPollingService.ts`, `useAgentPolling.ts`,
   `pollingConfig.ts`, `pollingPerformance.ts`, and the `polling-system.md`
   doc, with no remaining import references.
-- Click-through trace showing the `RequestAgentControlSurface` intent
-  reaching the Section 10 forwarder with both `agent_id` and `swarm_id`
-  populated.
+- Click-through trace showing a well-formed `AgentActionEnvelope`
+  (`type === "visionflow:agent-action"`, `schema_version === 1`,
+  required `agent_id`, `kind`, `node_class`) dispatched on the session's
+  chosen transport per ADR-10 D3.
 
 ## 7. Out-of-scope smells flagged for ADR review
 
@@ -181,9 +186,12 @@ suggests the wrong architecture; the ADR resolves each:
   on the 32-bit node id let the client de-multiplex without a separate
   channel.
 
-- **Section 3 (Client State)**: The agent telemetry stream uses the
-  same Comlink-bridged worker pipeline as knowledge-graph updates and
-  is subject to the same single-flight discipline.
+- **Section 3 (Client State)**: The agent telemetry stream is delivered
+  via WebSocket and decoded on the main thread (text-frame path; see
+  ADR-03 §D9). The worker proxy surface is closed to four methods per
+  ADR-03 §D7 and does not handle telemetry. Single-flight discipline for
+  telemetry updates is enforced by the Section-7 coalescer (DDD-07 D11),
+  not by the worker's frame guard.
 
 - **Section 4 (Rendering)**: Owns `AgentCapsule` geometry, material,
   hover overlay glass, edge cylinder geometry. This section provides

@@ -117,10 +117,13 @@ This replaces ad-hoc per-kernel safety code from `908f7f728`.
 ### D9. Broadcast cadence governed by settlement, not FPS
 
 ADR-02 owns this in detail. From the physics-side perspective: the actor
-emits a `LayoutSettled { iteration, rms_velocity }` event whenever
-`rms_velocity` crosses below a configured threshold, and a
-`LayoutHeartbeat` event every N iterations (default 300). The broadcast
-layer decides what to do with these.
+emits **state-transition events only** — `LayoutStarted`,
+`LayoutSettled { iteration, rms_velocity }`, and
+`LayoutDestabilised { iteration, rms_velocity }`. Settlement is detected
+via RMS-velocity hysteresis across the last N ticks. The physics actor
+emits **no time-based heartbeat**: wall-clock heartbeat cadence is a
+broadcast concern (see ADR-02 D2) and is wholly owned by the broadcast
+actor.
 
 ## Options considered
 

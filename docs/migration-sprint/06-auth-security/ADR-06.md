@@ -180,9 +180,10 @@ Single CSP, delivered three ways for defence in depth:
    and kept in lockstep with `client/index.html` via a build-script check.
 
 Notes:
-- `wss:` and `ws:` bare schemes removed. The WebSocket endpoint is at
-  `wss://<host>/api/ws/...` — same origin — and falls under `'self'`.
-  External wss is not used.
+- `wss:` and `ws:` bare schemes removed. WebSocket endpoints are
+  enumerated in §D12. All endpoints are same-origin
+  (`wss://<host>/wss`, `wss://<host>/ws/...`, `wss://<host>/api/<section>/ws`)
+  and fall under `'self'`. External `wss:` is not used.
 - `'unsafe-inline'` removed from style-src. Replaced with nonce-based
   styles. The build emits a unique nonce per response and injects it
   into the HTML and the CSP header simultaneously.
@@ -291,6 +292,51 @@ stripped. Client and server share a `canonicalise_url` function
 spec (Rust in `src/services/nostr_service.rs`, TypeScript in
 `client/src/services/nostrAuthService.ts`); unit tests cross-validate
 on a fixed corpus.
+
+### D11. Startup refusal of dev-mode env vars in release
+
+The release binary, in `main.rs` after `dotenv().ok()` and before binding
+any socket, refuses to start if any of `SETTINGS_AUTH_BYPASS`,
+`VISIONFLOW_DEV_MODE`, `ALLOW_INSECURE_DEFAULTS`, or `NODE_ENV=development`
+with `DOCKER_ENV` set are present. Logs each offending var to stderr,
+exits with status 2. Wrapped in
+`#[cfg(not(any(debug_assertions, feature = "dev-auth")))]` so dev builds
+skip it. The release binary cannot *honour* these vars (no code reads
+them) but their presence is signal of an ops promotion that brought dev
+settings forward.
+
+### D12. WebSocket endpoint enumeration
+
+The WebSocket surface is enumerated below. Every endpoint enforces the
+auth model from ADR-02 D8 and rejects anonymous upgrades outside
+compile-time-gated dev builds. New endpoints add a row here in the same
+PR that introduces them.
+
+| Path | Direction | Auth | Owning section | Protocol version | Purpose |
+|------|-----------|------|----------------|------------------|---------|
+| `/wss` | bidir | RequireAuth | Section 2 | V3 (`magic=0xV3F0`) | Binary position broadcast (PRD-04 + PRD-12 consumers). Settlement-gated cadence. |
+| `/ws/speech` | bidir | RequireAuth | Section 9 | JSON | Mic-in (Whisper STT) + agent TTS (Kokoro). PTT-gated. |
+| `/ws/client-messages` | server→client | RequireAuth | Section 3 | JSON | `filter_update_success`, `initialGraphLoad`, `memory_flash`, settings sync. |
+| `/ws/mcp-relay` | bidir | RequireAuth::power_user | Section 7 | JSON-RPC | MCP tool-call relay. **REMOVE Phase 7** — re-homed in agentbox. |
+| `/ws/xr-presence` | client→server | RequireAuth | Section 12 | `visionclaw-xr-presence` v1 | XR head/hand/gaze pose 30Hz. v1 sink-only; v2 adds relay. |
+| `/ws/agent-telemetry` | server→client | RequireAuth | Section 10 | `AgentTelemetryEnvelope` v1 (ADR-10 D1) | Agent state from agentbox. **NEW** — replaces baseline `/api/visualization/agents/ws`. |
+| `/ws/enterprise-events` | server→client | RequireAuth | Section 10 | `EnterpriseEventEnvelope` v1 (ADR-10 D5) | Forum events: membership / role / session_revoked. |
+| `/api/multi-mcp/ws` | bidir | RequireAuth::power_user | Section 7 | JSON | Multi-MCP discovery. **REMOVE Phase 7** — agentbox. |
+| `/api/analytics/ws` | server→client | RequireAuth | Section 1 | JSON | PageRank progress, clustering ticks. |
+| `/api/ontology/ws` | bidir | RequireAuth | Section 8 | JSON | Reasoning progress + validation events. |
+| `/api/visualization/agents/ws` | server→client | OptionalAuth | Section 7 | JSON | **DEPRECATED Phase 7a** → `410 Gone` with `Link` to `/ws/agent-telemetry`. **REMOVE Phase 7b.** |
+
+Cross-section ownership:
+- §D12 owns the URL space and the auth posture per endpoint.
+- Each owning section defines the wire format for its endpoint.
+- Default backpressure is drop-never-queue (ADR-02 D3); deviations
+  documented in the owning ADR.
+
+A CI route-drift check (`scripts/ci/check-ws-route-enumeration.sh`)
+parses `App::new()` route registrations in `src/main.rs` and asserts
+every registered `.route("/ws...")` and `.route("/wss")` appears as a
+row in this table. PRs that add a WebSocket endpoint without an
+accompanying table row fail CI.
 
 ## Options considered
 

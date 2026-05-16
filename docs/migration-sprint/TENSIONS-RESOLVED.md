@@ -886,6 +886,39 @@ These follow-ups are not new tensions; they consolidate engineering work that mu
 
 ---
 
+## Coverage follow-ups (unowned surfaces)
+
+These five surfaces surfaced during audit but are not owned by any
+section as of this commit. They are listed here so the coordinator
+does not lose them; each is targeted for resolution during the
+affected section's implementation phase.
+
+1. **Cloudflared tunnel ownership.** ADR-09 D12 punts to Section 6;
+   ADR-06 currently has no tunnel section. Recommended owner: ADR-06
+   (auth surface). Add a one-paragraph subsection covering tunnel
+   config + secret rotation, or explicitly hand back to Section 9.
+2. **`/auth/*` path roots inconsistency.** PRD-12 F2 / ADR-12 D8 use
+   `/auth/challenge` and `/auth/verify`; ADR-06 D4 uses `/challenge`
+   and `/session`. Reconcile to `/api/auth/*` in ADR-06 D4; ADR-12
+   follows. Should be folded into T4's §D11 route enumeration when
+   the BLOCKER lands.
+3. **Migration tool fate post-cutover.** DDD-11 line 509 says
+   removed from workspace; ADR-11 step 8 deletes only adapter files.
+   Add an explicit "delete `tools/migrate-neo4j-to-oxigraph/` 14 days
+   after cutover, after one successful re-run verifies the backup
+   path" to ADR-11 §Implementation order.
+4. **`computeEdgeLengths` consumer.** ADR-03 D7 surfaces it on the
+   worker proxy's four-method surface; no section calls it. Verify
+   during Section 3 implementation. If dead, drop from D7's surface
+   (now three methods).
+5. **NIP-98 canonical URL spec location.** ADR-06 D10 says client
+   and server share `canonicalise_url` but the spec is in prose only.
+   Promote the trailing-slash / param-order / fragment-handling rules
+   to a numbered list inside D10; cite by anchor from D11's auth-bridge
+   discussion.
+
+---
+
 ## Style and structural observations
 
 From CROSS-CUTTING.md §"Style / structural observations":

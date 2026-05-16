@@ -116,8 +116,8 @@ classified into one of: `needs-auth` (gets `RequireAuth`), `intentionally-public
 A4. **WebSocket auth aligned.** WebSocket upgrade requires the same Nostr
 token as REST in production. Dev-mode bypass uses the same single
 compile-time flag as A1 — `--allow-skip-auth` is the runtime CLI flag,
-gated by `cfg(debug_assertions) || env(VISIONFLOW_DEV_MODE)`. Release
-binaries refuse the flag with `exit(1)`.
+gated by `cfg(any(debug_assertions, feature = "dev-auth"))`. There is no
+runtime env-var path. Release binaries refuse the flag with `exit(1)`.
 
 A5. **CSP tightened end-to-end.** The CSP delivered to the browser:
 - Restricts `connect-src` to `'self'` plus an explicit allowlist of

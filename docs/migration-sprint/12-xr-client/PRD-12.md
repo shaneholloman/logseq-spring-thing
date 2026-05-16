@@ -106,11 +106,11 @@ Three node visual classes, geometries identical to PRD-04 F1:
   tint, opaque.
 
 Each class is a `MultiMeshInstance3D` (Godot's equivalent of three.js
-`InstancedMesh`). Class membership is derived from the same type-flag
-bits the web client uses (Section 2's 26-bit `NODE_ID_MASK` plus
-`0x80000000` agent / `0x40000000` knowledge / `0x1C000000` ontology
-subtypes). The XR client must not duplicate the classification logic; it
-reads the flag bits from the V3 payload's `node_id` field.
+`InstancedMesh`). Class membership is derived from the type-flag bits in
+the V3 payload's `node_id` field. See ADR-08 §D6 for the canonical
+class-bit allocation. The XR client must not duplicate the classification
+logic; it reads the flag bits from the `node_id` field exactly as the
+web client does.
 
 ### F4. Edges with surface-to-surface offset
 

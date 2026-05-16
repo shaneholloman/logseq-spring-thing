@@ -90,8 +90,6 @@ layers:
   hysteresis crosses the configured threshold downward.
 - `LayoutDestabilised { iteration, rms_velocity }` — fires when it crosses
   back upward (re-heat from settings change).
-- `LayoutHeartbeat { iteration, rms_velocity }` — every 300 iterations
-  unconditionally.
 - `PhysicsClamped { kind, count }` — kind ∈ `{ NaN, Inf, VelocityCap }`.
   Emitted at most once per tick per kind.
 

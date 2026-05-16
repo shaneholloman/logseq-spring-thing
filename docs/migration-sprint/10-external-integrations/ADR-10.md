@@ -46,7 +46,7 @@ Single envelope shape, top-level discriminated union by `type`:
 ```json
 {
   "schema_version": 1,
-  "type": "snapshot" | "delta" | "agent_added" | "agent_removed" | "heartbeat",
+  "type": "snapshot" | "delta" | "agent_added" | "agent_removed" | "heartbeat" | "communication",
   "session_id": "<agentbox session uuid>",
   "frame_id": 0,
   "timestamp_ms": 1715856000000,
@@ -102,6 +102,17 @@ Type-specific payloads:
   "type": "heartbeat",
   "payload": {}
 }
+
+// communication — emitted when one agent communicates with another.
+// Maps to DDD-07's `AgentCommunicated` internal event.
+{
+  "type": "communication",
+  "payload": {
+    "from_agent_id": "agent-abc123",
+    "to_agent_id": "agent-def456",
+    "weight": 1.0
+  }
+}
 ```
 
 Receiver rules: unknown `type` → log once, ignore, continue. Schema
@@ -120,21 +131,133 @@ herd. (3) On reconnect, agentbox sends `snapshot` first; client
 reconciles add/remove against local state and clears stale. (4) Client
 never replays local state to agentbox — agentbox is authoritative.
 
-### D3. Outbound action: click → BroadcastChannel API (preferred) or deep-link
+### D3. Outbound action: click → `AgentActionEnvelope`
 
-When the user clicks an agent node in VisionFlow, the renderer dispatches
-an `AgentActionMessage`:
+When the user clicks an agent node in VisionFlow, the renderer
+dispatches an `AgentActionEnvelope`. The envelope shape,
+BroadcastChannel constant, deep-link template, and
+`AgentActionTargetOrigin` allowlist type are defined in
+`crates/visionclaw-contracts/src/agent_action.rs` and generated as
+`client/src/types/contracts/agent-action.d.ts`. The full schema is
+reproduced in `_resolutions/T4-T6-T7-api-contracts.md` §T7. Receivers
+MUST verify `type === "visionflow:agent-action"` and
+`schema_version === 1`; postMessage receivers additionally enforce
+`event.origin` against the allowlist. Unknown `kind` values are no-ops
+(forward-compatible). This envelope supersedes ADR-07 D8's
+`RequestAgentControlSurface` intent.
 
-```json
-{
-  "schema_version": 1,
-  "kind": "open_panel" | "show_logs" | "show_swarm",
-  "agent_id": "agent-abc123",
-  "swarm_id": "<optional>",
-  "issued_at_ms": 1715856010000,
-  "issued_by_pubkey": "npub1..."
+```typescript
+// Source of truth: crates/visionclaw-contracts/src/agent_action.rs
+// Generated:       client/src/types/contracts/agent-action.d.ts
+//                  also published as @visionflow/contracts for agentbox/forum
+
+/**
+ * AgentActionEnvelope — outbound message from VisionFlow to agentbox/forum
+ * dispatched when the user interacts with an agent node in the 3D scene.
+ *
+ * Transport selection happens once per session at handshake time:
+ *   - same-origin: BroadcastChannel(AGENT_ACTION_CHANNEL)
+ *   - cross-origin: window.open(deep-link)
+ *   - embedded (window.parent !== window): window.parent.postMessage
+ *
+ * Receivers MUST:
+ *   1. Verify `type === "visionflow:agent-action"`
+ *   2. Verify `schema_version === 1` (refuse with structured log otherwise)
+ *   3. For postMessage delivery: verify event.origin against allowlist
+ *   4. Treat any unknown `kind` as no-op (forward-compatible)
+ *
+ * Receivers MUST NOT:
+ *   - Re-broadcast the envelope (one-way contract)
+ *   - Trust `issued_by_pubkey` as auth (informational only; auth is
+ *     established via the ADR-10 D4 bridge JWT)
+ */
+export interface AgentActionEnvelope {
+  /** Discriminator. Always exactly this literal. */
+  readonly type: "visionflow:agent-action";
+
+  /** Schema version. Bumped per ADR-10 D8 when payload semantics change. */
+  readonly schema_version: 1;
+
+  /** UUID v4, generated per click. Receivers MAY use this for dedup. */
+  readonly message_id: string;
+
+  /** Unix milliseconds at click time. */
+  readonly issued_at_ms: number;
+
+  /** Pubkey of the clicking user, npub format. Informational only —
+   *  receiver verifies authorisation via its own bridge session. */
+  readonly issued_by_pubkey: string;
+
+  /** Action kind. Forward-compatible: receivers ignore unknowns. */
+  readonly kind:
+    | "open_panel"     // primary — open the agent's control panel
+    | "show_logs"      // open the agent's log view
+    | "show_swarm"     // open the parent swarm overview
+    | "show_lineage";  // open the agent's parent-chain trace
+
+  /** Agent identity. Required for every kind. */
+  readonly agent_id: string;
+
+  /** Swarm identity, when known. Not all agents belong to swarms. */
+  readonly swarm_id?: string;
+
+  /** Class flag bits from the V3 node id (ADR-08 §D6). Lets the receiver
+   *  short-circuit if the click target is not actually an agent. */
+  readonly node_class: "agent" | "knowledge" | "ontology";
+
+  /** Click modifiers, for receivers that distinguish primary/secondary
+   *  actions. All optional; receivers default to "primary" semantics. */
+  readonly modifiers?: {
+    readonly shift?: boolean;
+    readonly ctrl?: boolean;
+    readonly alt?: boolean;
+    readonly meta?: boolean;
+    readonly button?: 0 | 1 | 2; // 0=primary, 1=middle, 2=secondary
+  };
+
+  /** Cursor in scene world-space at click time. Used by the receiver to
+   *  position popovers when rendering inside the same browser tab. */
+  readonly cursor_world_position?: {
+    readonly x: number;
+    readonly y: number;
+    readonly z: number;
+  };
+
+  /** Bridge session id from the ADR-10 D4 auth flow. Receivers MAY use
+   *  this to correlate the click with the bridge session that issued
+   *  the Authorization for the originating VisionFlow tab. */
+  readonly bridge_id?: string;
 }
+
+/** BroadcastChannel constant. Both sides import this literal. */
+export const AGENT_ACTION_CHANNEL = "visionflow:agent-actions" as const;
+
+/** Deep-link template. Receivers parse incoming requests at this path.
+ *  Deep-link is structurally untrusted (URL bar); receivers validate
+ *  every field as if it arrived via BroadcastChannel. The `bridge_id`
+ *  is the only field linking the click to an authenticated session;
+ *  if absent or invalid, the receiver SHOULD challenge for re-auth. */
+export const AGENT_ACTION_DEEP_LINK_TEMPLATE =
+  "/agents/{agent_id}?source=visionflow&kind={kind}" +
+  "&issued_at={issued_at_ms}&issued_by={issued_by_pubkey}" +
+  "&message_id={message_id}&node_class={node_class}" +
+  "&bridge_id={bridge_id?}&swarm_id={swarm_id?}";
+
+/** Allowed postMessage target origins. The bridge handshake (ADR-10 D4)
+ *  establishes this list at session start; the receiver enforces it.
+ *  Empty list => BroadcastChannel-only mode. */
+export type AgentActionTargetOrigin =
+  | "https://agentbox.example.com"
+  | "https://forum.example.com";
 ```
+
+**Origin-check requirement (normative)**:
+
+| Transport | Required verification |
+|-----------|----------------------|
+| `BroadcastChannel` | `data.type === "visionflow:agent-action"` AND `data.schema_version === 1`. Browser guarantees same-origin. |
+| `window.postMessage` | All of the above PLUS `event.origin` matches `AgentActionTargetOrigin`. Allowlist established at bridge handshake. |
+| Deep-link (URL) | All envelope checks PLUS treat every field as untrusted user input. `bridge_id` is the only authenticated link; if absent/invalid, challenge for re-auth before honouring `kind`. |
 
 Delivery selection at session start (one transport per session, no
 runtime fallback):
@@ -142,22 +265,27 @@ runtime fallback):
 - If `BroadcastChannel` is available *and* the forum/agentbox window is
   detected as same-origin (via `window.open` handle returned from forum
   during auth handshake), the action is published on a
-  `BroadcastChannel('visionflow:agent-actions')`. Agentbox/forum
-  subscribes and renders the panel.
-- Otherwise, the click opens a deep-link URL of the form
-  `<agentbox-base-url>/agents/<agent_id>?source=visionflow&issued_at=...`
-  via `window.open(url, 'agentbox')`. The browser focuses the existing
-  agentbox tab if present, otherwise opens a new one.
+  `BroadcastChannel(AGENT_ACTION_CHANNEL)`. Agentbox/forum subscribes
+  and renders the panel.
+- Otherwise, the click opens a deep-link URL composed from
+  `AGENT_ACTION_DEEP_LINK_TEMPLATE` via `window.open(url, 'agentbox')`.
+  The browser focuses the existing agentbox tab if present, otherwise
+  opens a new one.
+- If VisionFlow is itself iframed (`window.parent !== window` at load),
+  the click dispatches via `window.parent.postMessage(envelope, origin)`
+  where `origin` is selected from the `AgentActionTargetOrigin`
+  allowlist. This is not a fallback — it is the embedded-case primary
+  transport. Selection happens once at session start.
 
 Iframe embedding of agentbox UI inside VisionFlow is explicitly
 rejected (PRD-10 §9). VisionFlow does not render the agent panel under
 any circumstance.
 
-`postMessage` between VisionFlow and a parent window (in case VisionFlow
-is itself iframed inside agentbox) is permitted as an additional
-delivery path but only if VisionFlow detects `window.parent !== window`
-at load. This is not a fallback — it is the embedded-case primary
-transport. Selection happens once at session start.
+`crates/visionclaw-contracts` is the source-of-truth Rust crate created
+in the implementation phase; it owns this envelope and every other
+cross-boundary contract (telemetry, enterprise events, binary-protocol
+header constants). `ts-rs` generates the `.d.ts` consumed by the client
+and published as `@visionflow/contracts` for agentbox/forum.
 
 ### D4. Auth bridge: signed challenge, never shared cookies
 
@@ -310,6 +438,12 @@ of the following names under disallowed paths:
 The check is a `cargo xtask check-no-enterprise` step in CI. PRs that
 trip it are blocked.
 
+Additionally, scan for re-introduction of deprecated bots control-plane
+route names (`/initialize-swarm`, `/spawn-agent`, `/spawn-agent-hybrid`,
+`/remove-task`, `/bots/data` POST, `/bots/update` POST) under
+`src/handlers/`. The Phase 7b removal date in ADR-07 D12 is the date
+these become hard CI failures.
+
 ### D8. Versioning policy for the contracts
 
 Every envelope carries `schema_version`. Bump rules:
@@ -326,6 +460,35 @@ Every envelope carries `schema_version`. Bump rules:
 
 Contract test fixtures live in `tests/contracts/external-integrations/`
 and are versioned alongside the schema.
+
+### D11. GitHub adapter (Logseq corpus)
+
+Transport: `octocrab` REST client. Auth: `GITHUB_TOKEN` from environment.
+Output value object: `ParsedMarkdown` as defined by DDD-08 §"Anti-corruption
+layer to Section 10" — Section 10 is the transport, Section 8 owns the
+parse and the value-object shape.
+
+Sync gating: `GitHubSyncService::sync_graphs()` SHA1-compares each file's
+blob against the cached hash and skips unchanged files. The
+`FORCE_FULL_SYNC=1` environment variable bypasses gating and forces full
+reparse — used for content-format migrations. Set back to `0` after use.
+
+Parse-error envelope: errors carry
+`{ path: string, sha: string, error_kind: "yaml" | "wikilink" | "ontology-block" | "io", message: string }`.
+Errors are logged but do not fail the sync; the failed file is retained
+at its previous good version in Neo4j and surfaced as an operator metric
+`github_sync_parse_errors_total{error_kind}`.
+
+Implementation already exists at `src/services/github_sync_service.rs`;
+this decision codifies the existing contract so Section 8 has a named
+upstream rather than a phantom one.
+
+### BroadcastChannel naming convention
+
+Prefix: `visionflow:`. Suffix: kebab-case noun describing the channel's
+payload. Current channels: `visionflow:agent-actions` (D3),
+`visionflow:auth` (D4). New channels register here in the same PR that
+introduces them.
 
 ## Options considered
 

@@ -129,7 +129,15 @@ random on every binary restart.
 
 ### D5. SQLite settings schema
 
-A single table covers all 44 SettingsRepository methods:
+This ADR is the sole authority for every table in `settings.sqlite3`,
+including the audit log catalogued from Section 6. ADR-05 (Settings &
+Control Panel) and ADR-06 (Auth & Security) defer to this section for
+all storage and operational concerns; those sections own only their
+domain types (Section 5: `AppFullSettings`, `PhysicsSettings`;
+Section 6: audit event semantics) persisted via the unchanged
+`SettingsRepository` trait surface (17 methods).
+
+A single table covers all 17 SettingsRepository methods:
 
 ```sql
 CREATE TABLE IF NOT EXISTS settings (
@@ -156,20 +164,51 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
     id          TEXT PRIMARY KEY,
     applied_at  INTEGER NOT NULL DEFAULT (unixepoch())
 );
+
+-- Audit log (semantics owned by ADR-06 §D6; storage owned here).
+CREATE TABLE IF NOT EXISTS audit_log (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    occurred_at     INTEGER NOT NULL DEFAULT (unixepoch()),
+    actor_pubkey    TEXT,                      -- NULL = anonymous / system
+    request_method  TEXT    NOT NULL,
+    request_path    TEXT    NOT NULL,
+    status_code     INTEGER NOT NULL,
+    detail_json     TEXT
+);
+
+CREATE INDEX IF NOT EXISTS audit_log_occurred_idx
+    ON audit_log(occurred_at);
+CREATE INDEX IF NOT EXISTS audit_log_actor_idx
+    ON audit_log(actor_pubkey, occurred_at);
+
+-- Monthly archive tables (`audit_log_archive_yyyymm`) are created on
+-- rotation by the audit-log adapter and follow the same column layout
+-- as `audit_log`. See ADR-06 §D6 for audit event semantics and the
+-- retention policy that drives rotation.
 ```
 
 - `WITHOUT ROWID` keeps the table B-tree-organised by primary key.
 - `value` is a JSON-encoded `SettingValue` (the existing serde tag
   shape). SQLite's JSON1 extension allows ad-hoc inspection without
   schema rework.
+- The `schema_migrations` table tracks which SQL migrations the
+  database has applied. It is independent of the per-document
+  `AppFullSettings::schema_version` field owned by ADR-05; the table
+  answers "which migrations did this DB receive?", while the embedded
+  field answers "which shape is this row in?". The two counters are
+  distinct by name and tested for non-conflation.
 - Per-user resolution is layered in the adapter: a read for key K
   by user U returns the row with `(K, U)` if present, else
   `(K, NULL)`. Writes always specify the pubkey explicitly.
 - The owner pubkey is sourced from the per-request auth context
   (NIP-98 verified), not from a new method parameter. The
-  SettingsRepository trait surface (44 methods) is unchanged. The
+  SettingsRepository trait surface (17 methods) is unchanged. The
   adapter holds a thread-local or task-local `current_owner_pubkey`
   set by middleware.
+- The audit-log adapter co-locates with the settings adapter so all
+  tables share one connection pool, one pragma set, and one backup
+  procedure (D10). See ADR-06 §D6 for audit event semantics and the
+  retention policy.
 
 ### D6. Constraints expressed in code, not in the store
 
@@ -412,6 +451,15 @@ exactly these queries.
   network filesystem (NFS), SQLite WAL mode can corrupt. Mitigation:
   document that `<data-dir>` must be on a local filesystem and add
   a startup check that the volume is not NFS-mounted.
+- **R6: Audit archive table growth.** ADR-06 §D6 creates monthly
+  archive tables `audit_log_archive_yyyymm` that accumulate
+  indefinitely. SQLite has no `OFFLINE PARTITION` story; the only
+  retention mechanism is `DROP TABLE`. Mitigation: operator runbook
+  at `docs/operations/audit-log-retention.md` covers
+  `DROP TABLE audit_log_archive_yyyymm` for retired months
+  (default retention 24 months) and integrates with the backup
+  procedure so a dropped archive is captured on the next snapshot
+  before deletion.
 
 ## Rejected from main as buggy / unjustified
 

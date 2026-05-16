@@ -108,33 +108,30 @@ construction. A regression test in
 feeds an object into a primitive widget and asserts the mismatch cell
 renders.
 
-### D5. Persistence: SQLite, one row per Nostr pubkey
+### D5. Persistence: SQLite, schema per ADR-11
 
-Per ADR-11, settings persist in SQLite. The schema:
+Settings persist in SQLite. **The schema, primary-key layout, per-user
+resolution order, pragmas, and backup mechanics are owned by ADR-11 §D5
+and DDD-11 §"Settings per-user resolution"** — this ADR does not
+duplicate them. Section 5 owns only the contents of what gets stored:
 
-```sql
-CREATE TABLE user_settings (
-  pubkey      TEXT PRIMARY KEY,
-  settings    TEXT NOT NULL,   -- JSON, validated on write
-  schema_ver  INTEGER NOT NULL,
-  updated_at  INTEGER NOT NULL -- unix seconds
-);
-CREATE INDEX user_settings_updated ON user_settings(updated_at);
-```
-
-`settings` is a JSON blob conforming to the generated Rust struct.
-`schema_ver` carries the schema version embedded in the generated
-file; on read, the server upgrades older `schema_ver` rows via a
-migration table of `fn(&mut Value, from_ver: u32) -> u32` functions.
-
-Anonymous sessions read defaults and receive 401 on save. Authenticated
-sessions read and write their own row.
-
-The repository trait `SettingsRepository` (`src/ports/settings.rs`)
-isolates the SQLite adapter from the actor layer. The actor sees
-`load(pubkey) -> AppSettings`, `save(pubkey, AppSettings)`, and
-`save_partial(pubkey, JsonPatch)`. This trait is the only thing the
-HTTP handler depends on. ADR-11's adapter discipline carries here.
+- The `AppFullSettings` Rust type (generated from `settings.ts` per D1)
+  is the domain-level shape. ADR-11's adapter persists it via the
+  17-method `SettingsRepository` trait at
+  `src/ports/settings_repository.rs`.
+- `AppFullSettings` embeds its own `schema_version: u32` field,
+  generated from the `settings.ts` AST. This is distinct from ADR-11's
+  `schema_migrations` table: the table tracks which SQL migrations the
+  database has applied; the embedded version tracks the shape of an
+  individual user's stored document. Section 5 owns the document-shape
+  migration ladder (`fn(&mut Value, from: u32) -> u32`); ADR-11's
+  adapter invokes it on read when the embedded version is lower than
+  current.
+- Anonymous sessions read defaults and receive 401 on save (FR-7).
+  Authenticated sessions read and write their own settings; the pubkey
+  threads through ADR-11's task-local context, not as a method parameter.
+- The repository trait is frozen by ADR-11 PRD A2. Changes require
+  coordinated edits to both ADRs.
 
 ### D6. Settings save is a normal authenticated HTTP route
 
@@ -235,11 +232,10 @@ WebSocket stays focused on graph telemetry.
   simultaneously can produce a lost update. Mitigation: server applies
   patches with optimistic concurrency on `updated_at`; client retries
   once on conflict by re-reading and re-merging. Documented in PRD-05.
-- **R3. SQLite migration story.** Schema versioning by integer
-  embedded in the JSON blob is conventional but easy to mismanage.
-  Mitigation: a typed `SettingsMigrator` with a unit test per
-  migration step (`v0_to_v1`, `v1_to_v2`, …) is part of ADR-11's
-  acceptance.
+- **R3. Per-document `schema_version` drift.** `AppFullSettings::schema_version`
+  (Section 5) and `schema_migrations.id` (Section 11) are independent
+  counters answering different questions. Mitigation: distinct names in
+  code, plus a unit test asserting they cannot be conflated.
 - **R4. UI definition becomes a god file.** 227 entries in one
   TypeScript file is borderline. Mitigation: shard
   `settingsUIDefinition.ts` by tab (one file per tab, re-exported by

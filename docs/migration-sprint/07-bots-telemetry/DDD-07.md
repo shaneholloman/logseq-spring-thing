@@ -45,13 +45,13 @@ and Section 4 react to.
 | **Membership edge**    | A persistent edge from a queen agent to a child agent expressing parent/queen relationship.       |
 | **Communication edge** | A transient edge between two agents created by an `AgentCommunicated` event; decays linearly over `bots.communication_edge_decay`. |
 | **Hop-relation**       | The general term for "A talks to B" used in product / UX copy. Internally, every hop-relation is a communication edge. |
-| **Class flag**         | The high bits of the 32-bit node id distinguishing agent (`0x80000000`) from knowledge (`0x40000000`) and ontology subtypes (`0x1C000000` mask). |
+| **Class flag**         | The high bits of the 32-bit node id distinguishing agent, knowledge, and ontology subtypes. See ADR-08 §D6 for the canonical class-bit allocation. |
 | **Dual-graph X-offset**| The world-space offset (`bots.agent_x_offset`, default 600u) that places the agent graph beside the knowledge graph rather than on top of it. |
 | **Coalescer**          | The client-side batch buffer that flushes telemetry events on `requestAnimationFrame` boundaries. |
 | **TTL sweeper**        | The server-side process that emits `AgentDeparted` for agents whose last telemetry is older than `bots.agent_ttl_seconds`. |
 | **Identity record**    | A durable Oxigraph triple about a long-lived agent (display name, owner Nostr key, persistent capabilities). Read-only from this context. |
 | **Control surface**    | The agentbox/forum UI for actually doing something to an agent. Lives outside VisionFlow. |
-| **Click-through intent**| The `RequestAgentControlSurface { agent_id, swarm_id }` event emitted on user click; resolved by Section 10. |
+| **Click-through intent**| The `AgentActionEnvelope` (ADR-10 D3) constructed on user click and dispatched via the session's chosen transport; receiver and schema owned by Section 10. |
 
 ## Aggregates
 
@@ -223,8 +223,10 @@ it does not): `AgentSpawnRequested`, `AgentKilled`, `SwarmInitialised`,
 This context's command surface is intentionally tiny. The only commands
 are user-driven UI intents that originate inside VisionFlow:
 
-- `ResolveClickThrough { node_id, cursor_world_position }` — emits a
-  `RequestAgentControlSurface` intent; resolution is owned by Section 10.
+- `ResolveClickThrough { node_id, cursor_world_position }` — constructs
+  an `AgentActionEnvelope` (ADR-10 D3) and dispatches it on the
+  session's chosen transport. Section 10 owns the envelope schema and
+  the transport.
 - `RequestHoverDetails { node_id }` — returns the latest `AgentStatus`
   plus an `IdentityReadModel` lookup. Pure read.
 
@@ -250,6 +252,20 @@ event vocabulary (above) and an `IngressAdapter` that translates Section
   differences are tolerated by ignoring unknown fields.
 
 The adapter is the only code in this context that knows the wire format.
+
+Wire → internal event mapping (the only authoritative dispatch table):
+
+| Wire `type` (ADR-10 D1) | Internal event (this DDD) | Notes |
+|--------------------------|----------------------------|-------|
+| `snapshot` | `SwarmSnapshot` | Full-state, used on connect / reconnect. |
+| `delta` | `AgentPositionUpdated` and/or `AgentStatusChanged` | Dispatch per changed field in payload. |
+| `agent_added` | `AgentJoined` | Pure rename. |
+| `agent_removed` | `AgentDeparted` | Pure rename. |
+| `heartbeat` | `Heartbeat` | Liveness only; no graph mutation. |
+| `communication` | `AgentCommunicated` | New in this sprint. |
+
+Any unmapped wire `type` is logged once and dropped per D1's receiver
+rules. The contract test exercises every row.
 
 ## Anti-corruption layer to Section 1 (GPU Physics)
 
