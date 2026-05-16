@@ -34,6 +34,19 @@ use crate::actors::messages::{
 use crate::actors::GraphStateActor;
 use crate::protocol::v3_frame::{BinaryV3Frame, NodeRow};
 
+/// Type-erased snapshot source. Production wiring passes
+/// `graph_state_actor.recipient::<GetPositionFrameSnapshot>()`; tests pass
+/// a stub actor implementing the same handler. Decoupling here keeps the
+/// state-machine test surface free of `KnowledgeGraphRepository` mock
+/// boilerplate.
+pub type SnapshotSource = Recipient<GetPositionFrameSnapshot>;
+
+// `GraphStateActor` is kept in scope only as the canonical production
+// snapshot source; suppress the dead-import warning when this module is
+// linked without the full app stack.
+#[allow(dead_code)]
+fn _gs_marker(_: Addr<GraphStateActor>) {}
+
 /// `BroadcastActor` configuration. Tuned by `--broadcast-heartbeat-secs`
 /// CLI flag (default 5 s) — see ADR-02 D2.
 #[derive(Debug, Clone)]
@@ -71,7 +84,7 @@ pub struct BroadcastActor {
     config: BroadcastConfig,
     state: BroadcastState,
 
-    graph_state: Addr<GraphStateActor>,
+    snapshot_source: SnapshotSource,
 
     clients: HashMap<BroadcastClientId, ClientEntry>,
 
@@ -92,11 +105,14 @@ pub struct BroadcastActor {
 }
 
 impl BroadcastActor {
-    pub fn new(graph_state: Addr<GraphStateActor>, config: BroadcastConfig) -> Self {
+    /// Construct a new actor wired to a snapshot source. In production
+    /// callers pass `graph_state_addr.recipient()`. Tests can pass any
+    /// actor that implements `Handler<GetPositionFrameSnapshot>`.
+    pub fn new(snapshot_source: SnapshotSource, config: BroadcastConfig) -> Self {
         Self {
             config,
             state: BroadcastState::Settled,
-            graph_state,
+            snapshot_source,
             clients: HashMap::new(),
             last_encoded_epoch: 0,
             encode_buf: Vec::with_capacity(64 * 1024),
@@ -108,8 +124,9 @@ impl BroadcastActor {
         }
     }
 
-    pub fn with_defaults(graph_state: Addr<GraphStateActor>) -> Self {
-        Self::new(graph_state, BroadcastConfig::default())
+    /// Production helper: wire to a real `GraphStateActor` with defaults.
+    pub fn with_graph_state(graph_state: Addr<GraphStateActor>) -> Self {
+        Self::new(graph_state.recipient(), BroadcastConfig::default())
     }
 
     /// Convert a snapshot's `PositionRow` array into wire-format `NodeRow`s.
@@ -178,8 +195,8 @@ impl BroadcastActor {
 
     /// Pull the current snapshot from `GraphStateActor` and fan out to clients.
     fn fetch_and_fan_out(&mut self, ctx: &mut Context<Self>) {
-        let graph_state = self.graph_state.clone();
-        let fut = async move { graph_state.send(GetPositionFrameSnapshot).await };
+        let source = self.snapshot_source.clone();
+        let fut = async move { source.send(GetPositionFrameSnapshot).await };
         let fut = actix::fut::wrap_future::<_, Self>(fut).map(
             |res, act, _ctx| match res {
                 Ok(Ok(snapshot)) => act.fan_out(snapshot),
@@ -198,8 +215,8 @@ impl BroadcastActor {
         client_id: BroadcastClientId,
         ctx: &mut Context<Self>,
     ) {
-        let graph_state = self.graph_state.clone();
-        let fut = async move { graph_state.send(GetPositionFrameSnapshot).await };
+        let source = self.snapshot_source.clone();
+        let fut = async move { source.send(GetPositionFrameSnapshot).await };
         let fut = actix::fut::wrap_future::<_, Self>(fut).map(
             move |res, act, _ctx| {
                 let snapshot = match res {
