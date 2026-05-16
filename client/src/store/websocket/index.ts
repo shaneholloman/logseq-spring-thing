@@ -233,35 +233,47 @@ export const useWebSocketStore = create<WebSocketState>()(
             processMessageQueue(get, set);
           };
 
-          // --- Binary frame velocity management ---
-          let _pendingBinaryFrame: ArrayBuffer | null = null;
-          let _binaryFrameScheduled = false;
+          // ADR-03 D2: single-flight binary-frame discipline.
+          //
+          // At most one frame is being processed across the `await` inside
+          // processBinaryData (which crosses the Comlink boundary into the
+          // worker). A second frame arriving during in-flight processing
+          // replaces _pendingLatest (newest-wins, max one pending). Drained
+          // via queueMicrotask once the in-flight promise settles.
+          //
+          // Replaces the previous _pendingBinaryFrame/_binaryFrameScheduled
+          // pair, which was synchronous-slot-only and did not guard against
+          // re-entry across the Comlink await.
+          let _binaryFrameInFlight = false;
+          let _pendingLatest: ArrayBuffer | null = null;
           let _binaryDropCount = 0;
 
-          const scheduleBinaryProcessing = (buffer: ArrayBuffer) => {
-            if (_pendingBinaryFrame !== null) {
-              _binaryDropCount++;
-              if (_binaryDropCount % 100 === 1) {
-                logger.debug(`[BinaryVelocity] Dropped ${_binaryDropCount} stale binary frames (keeping latest)`);
+          const handleBinaryFrame = (buffer: ArrayBuffer): void => {
+            if (_binaryFrameInFlight) {
+              if (_pendingLatest !== null) {
+                _binaryDropCount++;
+                if (_binaryDropCount % 100 === 1) {
+                  logger.debug(`[BinaryVelocity] Dropped ${_binaryDropCount} stale binary frames (newest-wins)`);
+                }
               }
+              _pendingLatest = buffer;
+              return;
             }
-            _pendingBinaryFrame = buffer;
 
-            if (!_binaryFrameScheduled) {
-              _binaryFrameScheduled = true;
-              queueMicrotask(() => {
-                _binaryFrameScheduled = false;
-                const frame = _pendingBinaryFrame;
-                _pendingBinaryFrame = null;
-                if (frame) {
-                  try {
-                    processBinaryData(frame, get, set);
-                  } catch (err) {
-                    logger.error('Error in binary frame processing:', createErrorMetadata(err));
-                  }
+            _binaryFrameInFlight = true;
+            Promise.resolve(processBinaryData(buffer, get, set))
+              .catch(err => {
+                logger.error('Error in binary frame processing:', createErrorMetadata(err));
+              })
+              .finally(() => {
+                _binaryFrameInFlight = false;
+                if (_pendingLatest !== null) {
+                  const next = _pendingLatest;
+                  _pendingLatest = null;
+                  // Microtask yield between frames so React render loop gets a chance.
+                  queueMicrotask(() => handleBinaryFrame(next));
                 }
               });
-            }
           };
 
           socket.onmessage = (event: MessageEvent) => {
@@ -279,7 +291,7 @@ export const useWebSocketStore = create<WebSocketState>()(
 
               event.data.arrayBuffer().then(buffer => {
                 if (validateBinaryData(buffer)) {
-                  scheduleBinaryProcessing(buffer);
+                  handleBinaryFrame(buffer);
                 } else {
                   logger.warn('Invalid binary data received, skipping processing');
                 }
@@ -294,7 +306,7 @@ export const useWebSocketStore = create<WebSocketState>()(
                 logger.debug(`Received binary ArrayBuffer data: ${event.data.byteLength} bytes`);
               }
               if (validateBinaryData(event.data)) {
-                scheduleBinaryProcessing(event.data);
+                handleBinaryFrame(event.data);
               } else {
                 logger.warn('Invalid binary data received, skipping processing');
               }
