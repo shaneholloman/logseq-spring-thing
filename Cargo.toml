@@ -268,6 +268,14 @@ path = "src/bin/sync_local.rs"
 name = "sync_github"
 path = "src/bin/sync_github.rs"
 
+# Data Sprint Phase D-2: JSON-LD validator CLI. Pre-commit hook
+# (`scripts/pre-commit-validate.sh`) invokes this binary against
+# staged markdown files. Exits 0 if no Error-severity issues, 1
+# otherwise.
+[[bin]]
+name = "validate-md"
+path = "src/bin/validate_md.rs"
+
 # REMOVED: migrate_settings_to_neo4j binary - migration complete
 # [[bin]]
 # name = "migrate_settings_to_neo4j"
