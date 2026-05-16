@@ -156,7 +156,7 @@ clap = { version = "4.5", features = ["derive"] }
 
 # --- Solid Pod (ADR-032 M1) — embed solid-pod-rs as in-process library ---
 # Pinned to a single git rev (target: v0.4.0-alpha.7+sprint10 once JSS Phase 1
-# features land in solid-pod-rs). For M1 we use `rev = "main"` as a placeholder
+# features land in solid-pod-rs). For M1 we use `branch = "main"` as a placeholder
 # so the dep graph compiles; M2 wires the consumer code and pins the rev.
 # AGPL-3.0-only — see ADR-032 §"Licence implications".
 #
@@ -176,9 +176,9 @@ clap = { version = "4.5", features = ["derive"] }
 #
 # TODO(M2): pin to actual rev when JSS Phase 1 features land in solid-pod-rs
 # (target `v0.4.0-alpha.7+sprint10`).
-solid-pod-rs = { git = "https://github.com/DreamLab-AI/solid-pod-rs", rev = "main", default-features = false, features = ["fs-backend", "nip98-schnorr"], optional = true }
-solid-pod-rs-nostr = { git = "https://github.com/DreamLab-AI/solid-pod-rs", rev = "main", default-features = false, features = ["did-nostr", "nip05-endpoint", "schnorr-verifier"], optional = true }
-solid-pod-rs-idp = { git = "https://github.com/DreamLab-AI/solid-pod-rs", rev = "main", default-features = false, features = ["pod-provisioning", "key-provisioning"], optional = true }
+solid-pod-rs = { git = "https://github.com/DreamLab-AI/solid-pod-rs", branch = "main", default-features = false, features = ["fs-backend", "nip98-schnorr"], optional = true }
+solid-pod-rs-nostr = { git = "https://github.com/DreamLab-AI/solid-pod-rs", branch = "main", default-features = false, features = ["did-nostr", "nip05-endpoint", "schnorr-verifier"], optional = true }
+solid-pod-rs-idp = { git = "https://github.com/DreamLab-AI/solid-pod-rs", branch = "main", default-features = false, features = ["pod-provisioning", "key-provisioning"], optional = true }
 
 
 [dev-dependencies]
