@@ -1,0 +1,48 @@
+# An empty `[workspace]` table makes this crate its own workspace root when
+# built standalone (`cargo build --manifest-path crates/visionclaw-contracts/
+# Cargo.toml`). It is still listed under `[workspace.members]` in the root
+# `Cargo.toml`; both modes coexist because Cargo prefers the closest
+# `[workspace]` table when resolving. This sidesteps the pre-existing
+# `solid-pod-rs { rev = "main" }` resolution failure in the root webxr crate
+# (a baseline bug tracked separately under ADR-032 M1).
+[workspace]
+
+[package]
+name = "visionclaw-contracts"
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0-only"
+description = "Cross-boundary typed contracts for VisionFlow <-> agentbox <-> forum <-> XR client"
+authors = ["jjohare <github@thedreamlab.uk>"]
+repository = "https://github.com/jjohare/AR-AI-Knowledge-Graph"
+readme = "README.md"
+
+# This crate is a leaf node in the workspace: it pulls no actix, no neo4rs,
+# no GPU deps. It must remain trivially buildable from a clean checkout so
+# every consumer (visionflow server, agentbox, forum, XR client) can depend
+# on it without dragging the host's dependency graph in.
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+chrono = { version = "0.4", default-features = false, features = ["serde", "clock"] }
+uuid = { version = "1.0", features = ["serde", "v4"] }
+
+[dependencies.ts-rs]
+version = "10"
+features = ["serde-compat", "chrono-impl", "uuid-impl"]
+optional = true
+
+[dev-dependencies]
+insta = { version = "1.39", features = ["json"] }
+serde_json = "1.0"
+
+[features]
+default = []
+# Opt-in feature that turns on ts-rs derives and the `cargo test --features
+# typescript-export ts_export` flow that emits .d.ts files into ./bindings.
+# Default builds do NOT pull ts-rs, keeping consumer build times unaffected.
+typescript-export = ["dep:ts-rs"]

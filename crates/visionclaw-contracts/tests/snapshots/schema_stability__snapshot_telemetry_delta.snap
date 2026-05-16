@@ -1,0 +1,17 @@
+---
+source: tests/schema_stability.rs
+expression: env
+---
+{
+  "schema_version": 1,
+  "session_id": "session-1",
+  "frame_id": 1,
+  "timestamp_ms": 1715856002000,
+  "type": "delta",
+  "payload": {
+    "agent_id": "agent-a",
+    "fields": {
+      "status": "idle"
+    }
+  }
+}

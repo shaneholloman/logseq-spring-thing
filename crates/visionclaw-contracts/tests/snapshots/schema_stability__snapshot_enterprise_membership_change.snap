@@ -1,0 +1,14 @@
+---
+source: tests/schema_stability.rs
+expression: env
+---
+{
+  "schema_version": 1,
+  "issued_at_ms": 1715856020000,
+  "type": "membership_change",
+  "payload": {
+    "npub": "npub1example",
+    "org_id": "org-1",
+    "action": "joined"
+  }
+}

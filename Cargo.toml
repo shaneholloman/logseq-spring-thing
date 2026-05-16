@@ -1,3 +1,15 @@
+[workspace]
+members = [
+    ".",
+    "crates/visionclaw-contracts",
+]
+# Note: visionclaw-contracts is independently buildable. To work around the
+# pre-existing `solid-pod-rs { rev = "main" }` resolution error in the root
+# webxr package (which Cargo treats as a commit SHA, not a branch), run:
+#   cargo build --manifest-path crates/visionclaw-contracts/Cargo.toml
+# from a fresh checkout. The baseline fix for solid-pod-rs is tracked separately
+# (ADR-032 M1 follow-up).
+
 [package]
 name = "webxr"
 version = "0.1.0"

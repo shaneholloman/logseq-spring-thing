@@ -1,0 +1,13 @@
+---
+source: tests/schema_stability.rs
+expression: env
+---
+{
+  "schema_version": 1,
+  "issued_at_ms": 1715856020000,
+  "type": "role_change",
+  "payload": {
+    "npub": "npub1example",
+    "new_role": "operator"
+  }
+}
