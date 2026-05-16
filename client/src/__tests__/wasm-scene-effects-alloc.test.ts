@@ -189,15 +189,23 @@ describe('Phase 6 (ADR-04 D8/T7) — scene-effects bridge allocation discipline'
     const bridge = new ParticleFieldBridge(inner as any, memory);
     const v1 = bridge.getPositions();
     expect(v1.length).toBe(256 * 3);
+    const v1BufferRef = v1.buffer;
 
-    // Grow memory — this typically detaches/replaces the underlying ArrayBuffer.
+    // Grow memory — detaches the previous ArrayBuffer. After this point,
+    // touching v1 directly throws. We compare bridge-returned identities.
     memory.grow(2);
 
     const v2 = bridge.getPositions();
-    // After growth, the cached view becomes detached (length 0) so the bridge
-    // MUST rebuild against the new buffer. v2 is a distinct instance.
-    expect(v2).not.toBe(v1);
+    // After growth, the new view backs a fresh ArrayBuffer; the bridge must
+    // have rebuilt. The cached `v2` object is a new Float32Array instance —
+    // compare against the captured v1 reference variable (not a direct .buffer
+    // access, which would touch v1).
+    expect(Object.is(v2, v1)).toBe(false);
     expect(v2.length).toBe(256 * 3);
+    // The cached view's underlying buffer must be the live memory.buffer.
+    expect(v2.buffer).toBe(memory.buffer);
+    // The previous view was over the detached buffer (not the live one).
+    expect(v1BufferRef).not.toBe(memory.buffer);
   });
 
   it('dispose() releases cached views and reports isDisposed', () => {

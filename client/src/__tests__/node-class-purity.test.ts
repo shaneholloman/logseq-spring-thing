@@ -41,9 +41,9 @@ describe('Phase 6 (ADR-04 D9/T8) — node class geometry & material contract', (
     const geo = createAgentCapsuleGeometry();
     expect(geo).toBeInstanceOf(THREE.CapsuleGeometry);
     const params = (geo as THREE.CapsuleGeometry).parameters as
-      { radius: number; length: number; capSegments: number; radialSegments: number };
+      { radius: number; height: number; capSegments: number; radialSegments: number };
     expect(params.radius).toBe(0.3);
-    expect(params.length).toBe(0.6);
+    expect(params.height).toBe(0.6);
     geo.dispose();
   });
 
