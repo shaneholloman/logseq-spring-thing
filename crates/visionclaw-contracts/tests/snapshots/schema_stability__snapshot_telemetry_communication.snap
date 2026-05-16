@@ -1,0 +1,16 @@
+---
+source: tests/schema_stability.rs
+expression: env
+---
+{
+  "schema_version": 1,
+  "session_id": "session-1",
+  "frame_id": 5,
+  "timestamp_ms": 1715856005000,
+  "type": "communication",
+  "payload": {
+    "from_agent_id": "a",
+    "to_agent_id": "b",
+    "weight": 0.75
+  }
+}

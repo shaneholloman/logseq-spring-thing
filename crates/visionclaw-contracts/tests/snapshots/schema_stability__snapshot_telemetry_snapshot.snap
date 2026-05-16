@@ -1,0 +1,23 @@
+---
+source: tests/schema_stability.rs
+expression: env
+---
+{
+  "schema_version": 1,
+  "session_id": "session-1",
+  "frame_id": 0,
+  "timestamp_ms": 1715856000000,
+  "type": "snapshot",
+  "payload": {
+    "agents": [
+      {
+        "agent_id": "agent-a",
+        "kind": "researcher",
+        "status": "running",
+        "swarm_id": "swarm-1",
+        "spawned_at_ms": 1715856000000,
+        "last_activity_ms": 1715856001000
+      }
+    ]
+  }
+}

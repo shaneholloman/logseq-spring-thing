@@ -1,0 +1,10 @@
+---
+source: tests/schema_stability.rs
+expression: r
+---
+{
+  "path": "broken.md",
+  "sha": "deadbeef",
+  "error_kind": "ontology-block",
+  "message": "missing @type"
+}

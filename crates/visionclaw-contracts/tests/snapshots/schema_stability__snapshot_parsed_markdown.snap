@@ -1,0 +1,21 @@
+---
+source: tests/schema_stability.rs
+expression: v
+---
+{
+  "canonical_path": "mainKnowledgeGraph/pages/example.md",
+  "raw": "public:: true\n\n# Example\n",
+  "frontmatter_json": {
+    "public": true,
+    "tags": [
+      "renaissance"
+    ]
+  },
+  "jsonld_blocks": [
+    {
+      "@id": "x",
+      "@type": "Thing"
+    }
+  ],
+  "commit_sha": "0000000000000000000000000000000000000000"
+}

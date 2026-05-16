@@ -1,0 +1,12 @@
+---
+source: tests/schema_stability.rs
+expression: env
+---
+{
+  "schema_version": 1,
+  "session_id": "session-1",
+  "frame_id": 99,
+  "timestamp_ms": 1715856099000,
+  "type": "heartbeat",
+  "payload": {}
+}

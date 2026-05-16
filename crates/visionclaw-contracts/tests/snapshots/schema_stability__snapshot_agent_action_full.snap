@@ -1,0 +1,28 @@
+---
+source: tests/schema_stability.rs
+expression: action.into_envelope()
+---
+{
+  "type": "visionflow:agent-action",
+  "schema_version": 1,
+  "message_id": "00000000-0000-4000-8000-000000000000",
+  "issued_at_ms": 1715856000000,
+  "issued_by_pubkey": "npub1example",
+  "kind": "show_lineage",
+  "agent_id": "agent-abc",
+  "swarm_id": "swarm-1",
+  "node_class": "agent",
+  "modifiers": {
+    "ctrl": true,
+    "shift": false,
+    "alt": false,
+    "meta": false,
+    "button": 0
+  },
+  "cursor_world_position": {
+    "x": 1.0,
+    "y": 2.0,
+    "z": -3.5
+  },
+  "bridge_id": "bridge-1"
+}
