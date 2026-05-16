@@ -216,3 +216,29 @@ multi-agent-docker/.env
 **/credentials.json
 **/.env.local
 client/public/embedding-cloud.json
+
+# Ecosystem service repos (cloned independently, not vendored)
+Kokoros/
+Whisper-WebUI/
+xinference/
+
+# Agentbox — external on radical-rollback by design (rejoins as submodule on main)
+agentbox/
+
+# Local utility binaries (downloaded, not committed)
+scripts/age/
+scripts/age-bin
+scripts/age-keygen-bin
+scripts/sops
+
+# Diagram render artifacts (generated outputs)
+docs/diagrams/rendered/
+docs/diagrams/upgraded/
+
+# Worktree / extraction scratch directories
+extraction/
+
+# Oxigraph + SQLite local data (ADR-PM-001 persistence migration)
+data/oxigraph/
+data/sqlite/
+*.sqlite3
