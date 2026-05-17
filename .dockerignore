@@ -47,7 +47,7 @@ multi-agent-docker/comfyui/storage-output/
 multi-agent-docker/comfyui/storage-input/
 screenshots/
 output/
-docs/
+# docs/ used by Dockerfile.unified COPY (docs/ -> /docs in image)
 examples/*.md
 JavaScriptSolidServer/
 *.md
