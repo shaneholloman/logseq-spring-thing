@@ -28,7 +28,7 @@ services:
 
     # Network - join ragflow network
     networks:
-      docker_ragflow:
+      visionclaw_network:
         aliases:
           - comfyui.ragflow
           - comfyui.local
@@ -76,9 +76,9 @@ services:
 
 # Networks
 networks:
-  docker_ragflow:
+  visionclaw_network:
     external: true
-    name: docker_ragflow
+    name: visionclaw_network
 
 # Volumes (models/input/output use host bind mounts)
 volumes:

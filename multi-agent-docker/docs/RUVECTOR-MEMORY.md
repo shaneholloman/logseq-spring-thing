@@ -2,7 +2,7 @@
 
 ## Overview
 
-RuVector PostgreSQL is the centralized persistent memory for all agentic orchestration. It runs as a companion container (`ruvector-postgres`) alongside the agentic workstation, connected via the `docker_ragflow` network. All agents, swarms, and sessions share this single store. Data survives container rebuilds via an external Docker volume.
+RuVector PostgreSQL is the centralized persistent memory for all agentic orchestration. It runs as a companion container (`ruvector-postgres`) alongside the agentic workstation, connected via the `visionclaw_network` network. All agents, swarms, and sessions share this single store. Data survives container rebuilds via an external Docker volume.
 
 ## Architecture
 
@@ -147,7 +147,7 @@ services:
     volumes:
       - ruvector-data:/var/lib/postgresql/data
     networks:
-      docker_ragflow:
+      visionclaw_network:
         aliases:
           - ruvector-postgres
     shm_size: 256m

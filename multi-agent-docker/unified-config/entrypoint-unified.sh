@@ -1259,7 +1259,7 @@ _Add new experiments here with hypothesis and metrics_
 ### Container Environment
 - Container: turbo-flow-unified
 - External memory: ruvector-postgres:5432
-- Docker network: docker_ragflow
+- Docker network: visionclaw_network
 
 ### Known Issues
 - supervisorctl requires sudo in this container

@@ -46,7 +46,7 @@ services:
       - "3021:3021"  # HTTP API (optional)
 
     networks:
-      docker_ragflow:
+      visionclaw_network:
         aliases:
           - vircadia-world-server
 
@@ -83,11 +83,11 @@ services:
     ports:
       - "5432:5432"
     networks:
-      - docker_ragflow
+      - visionclaw_network
     restart: unless-stopped
 
 networks:
-  docker_ragflow:
+  visionclaw_network:
     external: true
 
 volumes:

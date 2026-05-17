@@ -35,7 +35,7 @@ services:
       - ruvector-data:/var/lib/postgresql/data
 
     networks:
-      docker_ragflow:
+      visionclaw_network:
         aliases:
           - ruvector-postgres
 
@@ -103,7 +103,7 @@ services:
 
     # Network configuration - join ragflow network
     networks:
-      docker_ragflow:
+      visionclaw_network:
         aliases:
           - agentic-workstation.ragflow
           - agentic-workstation.local
@@ -333,9 +333,9 @@ services:
 # ============================================================================
 
 networks:
-  docker_ragflow:
+  visionclaw_network:
     external: true
-    name: docker_ragflow
+    name: visionclaw_network
 
 # ============================================================================
 # Volumes

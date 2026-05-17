@@ -195,11 +195,11 @@ Attach: `tmux attach -t workspace`
 
 ## Network Architecture
 
-All containers connect to the shared `docker_ragflow` network for inter-service communication.
+All containers connect to the shared `visionclaw_network` network for inter-service communication.
 
 | Network | Subnet | Purpose |
 |---------|--------|---------|
-| docker_ragflow | 172.19.0.0/16 | Shared container network |
+| visionclaw_network | 172.19.0.0/16 | Shared container network |
 
 Service discovery uses Docker DNS with container names as hostnames.
 

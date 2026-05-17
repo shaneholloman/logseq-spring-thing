@@ -302,13 +302,13 @@ Depends on: Auth D7 (Docker socket scoping decision coordination).
 
 Tasks:
 
-E09-1. Finish docker_ragflow migration (ADR-09 D2)
-  - Grep tree for `docker_ragflow`; replace every occurrence with
+E09-1. Finish visionclaw_network migration (ADR-09 D2)
+  - Grep tree for `visionclaw_network`; replace every occurrence with
     `${EXTERNAL_NETWORK:-visionclaw_network}` or delete containing file.
   - Confirm `docker-compose.unified.yml` default changed.
   - Delete `scripts/fix_kokoro_network.sh` (reconnect logic moved into
     `start_kokoro` per ADR-09 D5a).
-  - Add CI gate: `! grep -rn docker_ragflow . --exclude-dir=.git`.
+  - Add CI gate: `! grep -rn visionclaw_network . --exclude-dir=.git`.
 
 E09-2. Ecosystem service GPU device configurability (ADR-09 D5b)
   - Replace hardcoded `device=2` for Kokoro with `${KOKORO_GPU_DEVICE:-2}`.
@@ -354,8 +354,8 @@ E09-7. Docker socket coordination (ADR-06 D7)
   - Deliverable: ADR-09 records final decision.
 
 Acceptance gates (PRD-09):
-  - AC4: no `docker_ragflow` literal in tree (E09-1)
-  - AC5: `docker_ragflow` CI grep gate passes (E09-1)
+  - AC4: no `visionclaw_network` literal in tree (E09-1)
+  - AC5: `visionclaw_network` CI grep gate passes (E09-1)
   - AC6: rust-backend-wrapper preserves cargo caches (E09-6)
   - AC7: production image contains WASM artefacts (E09-5)
 
@@ -714,7 +714,7 @@ Internal Wave 3 ordering constraints (within-branch only, not cross-worktree):
 - `impl/phase-7-settings`: S05-1 (generator) must land before S05-3 or S05-5.
 - `impl/phase-7-bots`: B07-1 (delete polling) before B07-3 (add consumer) to
   avoid two-source-of-truth period. B07-6 (click-through) requires crates/visionclaw-contracts.
-- `impl/phase-7-ecosystem`: E09-1 (docker_ragflow grep) before E09-3 or E09-7.
+- `impl/phase-7-ecosystem`: E09-1 (visionclaw_network grep) before E09-3 or E09-7.
 - `impl/phase-7-xr`: XR12-1 (scaffold) before XR12-2 (gdext bridge).
   XR12-9 (perf benchmark) required before merge gate.
 
@@ -723,7 +723,7 @@ Internal Wave 3 ordering constraints (within-branch only, not cross-worktree):
 Each sub-worktree requires a passing merge gate before landing on
 `impl/phase-7-parallel`:
 1. All acceptance criteria above verified by test output.
-2. CI lint passes (generator check, docker_ragflow grep, auth lint, enterprise guard).
+2. CI lint passes (generator check, visionclaw_network grep, auth lint, enterprise guard).
 3. Phase 7b deprecation dates set in ADR-07 D12 (30 days post Phase 7a merge date).
 
 ---
@@ -881,8 +881,8 @@ Mitigation:
 - `src/handlers/bots_handler.rs` — delete static BOTS_GRAPH (B07-2)
 - `client/index.html` — CSP tightening (A06-D5)
 - `client/dist/index.html` — CSP meta-tag restore (A06-D5)
-- `docker-compose.unified.yml` — docker_ragflow → visionclaw_network, socket scope (E09-1, E09-7)
-- `scripts/launch.sh` — docker_ragflow literals, GPU device env vars (E09-1, E09-2)
+- `docker-compose.unified.yml` — visionclaw_network → visionclaw_network, socket scope (E09-1, E09-7)
+- `scripts/launch.sh` — visionclaw_network literals, GPU device env vars (E09-1, E09-2)
 - `scripts/rust-backend-wrapper.sh` — content-hash incremental rebuild (E09-6)
 - `Dockerfile.unified` — wasm-builder stage addition (E09-5)
 - `client/src/features/settings/config/settings.ts` — bots.* settings, Quality Gate removal (B07-8, S05-6)

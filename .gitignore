@@ -223,8 +223,6 @@ Kokoros/
 Whisper-WebUI/
 xinference/
 
-# Agentbox — external on radical-rollback by design (rejoins as submodule on main)
-agentbox/
 
 # Local utility binaries (downloaded, not committed)
 scripts/age/

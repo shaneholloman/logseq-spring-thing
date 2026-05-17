@@ -131,7 +131,7 @@ ZAI_ANTHROPIC_API_KEY=sk-ant-xxxxx  # Separate key for Z.AI
 ## Architecture
 
 ### Network
-- **Docker network**: `docker_ragflow` (bridge)
+- **Docker network**: `visionclaw_network` (bridge)
 - **Hostname**: `agentic-workstation`
 - **Exposed ports**: 2222 (SSH), 5901 (VNC), 8080 (code-server), 9090 (Management API)
 - **Internal ports**: 9600 (Z.AI - not exposed)

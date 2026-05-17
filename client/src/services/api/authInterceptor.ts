@@ -90,13 +90,14 @@ export async function authRequestInterceptor(config: RequestConfig, url: string)
  * token, and emits a one-shot console.warn so dev users immediately understand
  * why `?skipAuth=true` is not working.
  */
-export async function authResponseInterceptor(
-  response: { status: number; headers?: Record<string, string> },
-  config: RequestConfig,
-): Promise<void> {
-  const headers = (config.headers || {}) as Record<string, string>;
+export async function authResponseInterceptor<T>(
+  response: { status: number; headers?: Record<string, string> } & T,
+  config?: RequestConfig,
+): Promise<typeof response> {
+  const headers = (config?.headers || {}) as Record<string, string>;
   const sentDevToken = headers['Authorization'] === 'Bearer dev-session-token';
   warnIfServerInReleaseMode(response.status, sentDevToken);
+  return response;
 }
 
 export function initializeAuthInterceptor(apiClient: any): void {

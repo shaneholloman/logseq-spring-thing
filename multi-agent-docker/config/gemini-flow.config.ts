@@ -282,7 +282,7 @@ export default {
     // RAGFlow integration
     ragflow: {
       enabled: true,
-      network: 'docker_ragflow',
+      network: 'visionclaw_network',
       xinferenceUrl: 'http://172.18.0.11:9997/v1'
     }
   },

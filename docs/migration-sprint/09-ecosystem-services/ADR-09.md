@@ -19,10 +19,10 @@ migration, and cargo cache hygiene. Each commit fixed a real problem
 the invariants are implicit.
 
 This ADR documents those invariants and resolves the one inconsistency
-the rollback exposes: the network migration from `docker_ragflow` to
+the rollback exposes: the network migration from `visionclaw_network` to
 `visionclaw_network` (commit `d2f77703c`) is **incomplete** on `main`.
 Every `docker-compose*.yml` and parts of `launch.sh` /
-`scripts/fix_kokoro_network.sh` still contain `docker_ragflow`
+`scripts/fix_kokoro_network.sh` still contain `visionclaw_network`
 literals. This ADR finishes the migration.
 
 ## Decision
@@ -55,13 +55,13 @@ This name appears in exactly two places:
 2. `docker-compose.unified.yml` `networks:` section as the external
    network reference.
 
-All `docker_ragflow` literals are removed from:
+All `visionclaw_network` literals are removed from:
 
 - `scripts/launch.sh` (lines 628–632, 746–749 currently still
   reference it directly — those must be changed to use
   `${EXTERNAL_NETWORK:-visionclaw_network}`).
 - `docker-compose.unified.yml` (current ref:
-  `name: ${EXTERNAL_NETWORK:-docker_ragflow}` → change default).
+  `name: ${EXTERNAL_NETWORK:-visionclaw_network}` → change default).
 - `scripts/fix_kokoro_network.sh` — either deleted (Kokoro reconnect
   is now in `launch.sh`) or updated to use the env var.
 - All other compose files: deleted under D1.
@@ -70,7 +70,7 @@ The default is `visionclaw_network`. The legacy name remains
 overridable for an interop window (one release cycle) but is not the
 default.
 
-Anti-pattern rejected: hardcoding `docker_ragflow` anywhere. CI gate
+Anti-pattern rejected: hardcoding `visionclaw_network` anywhere. CI gate
 greps the tree for it and fails the build.
 
 ### D3. Multi-stage Dockerfile.unified with promoted CUDA_ARCH
@@ -331,7 +331,7 @@ no payoff for the freeze-fix work. Defer indefinitely.
 
 ### O3. One script, explicit invariants, finished migration (this ADR)
 
-Adopted. Codify the existing behaviour, finish the `docker_ragflow`
+Adopted. Codify the existing behaviour, finish the `visionclaw_network`
 → `visionclaw_network` migration, and promote the PTX fix from
 workaround to documented requirement.
 
@@ -339,7 +339,7 @@ workaround to documented requirement.
 
 | ID  | Risk                                                              | Mitigation |
 |-----|-------------------------------------------------------------------|------------|
-| R1  | A `docker_ragflow` literal slips back in via a new compose file   | CI grep gate (`! grep -r docker_ragflow .`); pre-commit hook |
+| R1  | A `visionclaw_network` literal slips back in via a new compose file   | CI grep gate (`! grep -r visionclaw_network .`); pre-commit hook |
 | R2  | `needs_image_rebuild()` allow-list goes stale                     | List is reviewed when Dockerfile changes; covered by ADR-09 D8 |
 | R3  | `rust-backend-wrapper.sh` content hash misses a file type         | Hash all `.rs` and `.cu` under `src/`; review list when a new file extension appears in `build.rs` |
 | R4  | Ecosystem services drift to different network names per service   | Single `ECOSYSTEM_NETWORK` variable, used by all three start functions |
@@ -352,7 +352,7 @@ workaround to documented requirement.
   (current `start_kokoro` does this) — replace with configurable
   `KOKORO_GPU_DEVICE` per D5b.
 - `scripts/fix_kokoro_network.sh` as a standalone script that uses
-  the hardcoded legacy `docker_ragflow` name — the reconnect logic
+  the hardcoded legacy `visionclaw_network` name — the reconnect logic
   belongs inside `start_kokoro` (D5a) using the configurable network
   name (D2). The standalone script is deleted.
 - `cargo clean` as the default recovery in `rust-backend-wrapper.sh`
@@ -368,7 +368,7 @@ To flag for migration awareness:
 - The rollback baseline predates the ecosystem subcommands
   (`73e2d8209`). Bringing this section forward is *additive* —
   no existing ecosystem code is being replaced.
-- The rollback baseline uses `docker_ragflow` as the network name
+- The rollback baseline uses `visionclaw_network` as the network name
   throughout. This ADR D2 is the new state.
 - The rollback baseline's `rust-backend-wrapper.sh` does
   `cargo clean` more aggressively than D7 specifies. Tighten on
@@ -382,10 +382,10 @@ To flag for migration awareness:
 
 ## Implementation checklist (post-sprint)
 
-1. Grep the tree for `docker_ragflow`; replace every occurrence
+1. Grep the tree for `visionclaw_network`; replace every occurrence
    with `${EXTERNAL_NETWORK:-visionclaw_network}` or delete the
    containing file under D1.
-2. Add a CI gate: `! grep -rn docker_ragflow . --exclude-dir=.git`.
+2. Add a CI gate: `! grep -rn visionclaw_network . --exclude-dir=.git`.
 3. Delete `scripts/fix_kokoro_network.sh`; verify the in-script
    reconnect (D5a) covers its use case.
 4. Add `KOKORO_GPU_DEVICE`, `WHISPER_GPU_DEVICE`,

@@ -53,7 +53,7 @@ services:
               capabilities: [gpu, compute, utility]
 
     networks:
-      docker_ragflow:
+      visionclaw_network:
         aliases:
           - comfyui.ragflow
           - comfyui.local
@@ -125,7 +125,7 @@ services:
           cpus: '1'
 
     networks:
-      docker_ragflow:
+      visionclaw_network:
         aliases:
           - claude-zai.ragflow
           - claude-zai.local
@@ -177,9 +177,9 @@ services:
 # ============================================================================
 
 networks:
-  docker_ragflow:
+  visionclaw_network:
     external: true
-    name: docker_ragflow
+    name: visionclaw_network
 
 # ============================================================================
 # Volumes

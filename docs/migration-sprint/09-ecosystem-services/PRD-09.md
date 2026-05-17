@@ -31,7 +31,7 @@ The freeze regression that triggered the migration sprint cost days because
 the build / launch pipeline was unpredictable: source edits silently failed
 to land in the running container (DinD bind-mount issue), full rebuilds
 took 15+ minutes for what should have been a 2-minute incremental, and the
-ecosystem services (TTS, STT, embeddings) drifted between `docker_ragflow`
+ecosystem services (TTS, STT, embeddings) drifted between `visionclaw_network`
 and `visionclaw_network` without a single source of truth. A reliable
 launch surface is a prerequisite for fast iteration on every other section
 in this sprint.
@@ -176,7 +176,7 @@ Acceptance:
    documented in ADR-09 D2) and is the single network for all ecosystem
    services and VisionFlow.
 5. After this sprint, no compose file, script, or .env contains the
-   string `docker_ragflow`. The migration commit `d2f77703c` is
+   string `visionclaw_network`. The migration commit `d2f77703c` is
    considered the start of this work; this PRD/ADR are the finish.
 6. `rust-backend-wrapper.sh` re-uses cargo registry / git caches across
    runs and only wipes the target cache when source has changed.
@@ -190,7 +190,7 @@ Acceptance:
 
 | ID  | Risk                                                        | Mitigation |
 |-----|-------------------------------------------------------------|------------|
-| R1  | Ecosystem services drift back to `docker_ragflow`           | ADR-09 D2: configurable network name with single default, grep gate in CI |
+| R1  | Ecosystem services drift back to `visionclaw_network`           | ADR-09 D2: configurable network name with single default, grep gate in CI |
 | R2  | Devs run `launch.sh` from inside the agent container (DinD) | Documented in this PRD + visible warning in agent container README |
 | R3  | `needs_image_rebuild()` misses a relevant file              | Explicit allow-list, reviewed when Dockerfile changes |
 | R4  | Different GPUs between build and runtime produce non-portable PTX | ADR-09 D6: build defaults to sm_75 baseline + runtime arch detection |
