@@ -1,9 +1,9 @@
 ---
 title: VisionClaw Database Schema Reference
-description: Unified schema reference for VisionClaw's data layer — Neo4j graph database, Solid Pod storage, and ontology triple store with bounded context organisation
+description: Unified schema reference for VisionClaw's data layer — Neo4j graph database, Solid Pod storage, and ontology triple store with bounded context organisation, including sovereign-mesh KGNode schema
 category: reference
-tags: [database, neo4j, solid, schema, ontology, graph]
-updated-date: 2026-04-09
+tags: [database, neo4j, solid, schema, ontology, graph, sovereign-mesh]
+updated-date: 2026-04-19
 ---
 
 # VisionClaw Database Schema Reference
@@ -62,10 +62,12 @@ Three bounded contexts live within a single Neo4j instance. Each has distinct no
 
 Populated by `GitHubSyncService` → `KnowledgeGraphParser`. Only files tagged `public:: true` in Logseq produce `:Node` records; `[[wikilink]]` targets produce `:Node` records for the target even when the target file lacks the tag.
 
-#### Node label: `:Node`
+#### Node label: `:KGNode`
+
+Modern sovereign-mesh schema (as of commit 715f91c9f):
 
 ```cypher
-(:Node {
+(:KGNode {
   id:          INTEGER,      // Internal VisionClaw u32 ID from NEXT_NODE_ID atomic
   metadata_id: STRING,       // UUID stable cross-system reference
   label:       STRING,       // Display name / page title
@@ -84,9 +86,26 @@ Populated by `GitHubSyncService` → `KnowledgeGraphParser`. Only files tagged `
   anomaly_score: FLOAT,
   hierarchy_level: INTEGER,
   created_at:  DATETIME,
-  updated_at:  DATETIME
+  updated_at:  DATETIME,
+  
+  // Sovereign-mesh fields (ADR-050, ADR-051)
+  visibility:  STRING,       // "Public" | "Private" (enum, serialised lowercase)
+  owner_pubkey: STRING,      // Optional: hex Nostr pubkey; required for private nodes
+  opaque_id:   STRING,       // Optional: 24 hex chars = HMAC-SHA256(session_salt, owner_pubkey "|" canonical_iri)
+  pod_url:     STRING        // Optional: URI in owner's Pod (/public/kg/{slug} or /private/kg/{slug})
 })
 ```
+
+Legacy `:Node` label continues to work via compatibility layer.
+
+**Sovereign-mesh fields:**
+
+| Field | Type | Nullability | Description |
+|-------|------|-------------|-------------|
+| `visibility` | STRING | Not null, default 'public' | Access level: "public" or "private". Drives caller-aware filtering. |
+| `owner_pubkey` | STRING | Optional | Hex-encoded Nostr public key of the Knowledge Graph owner. Required for `visibility = 'private'`; optional for server-owned canon. |
+| `opaque_id` | STRING | Optional | 24 hex characters = HMAC-SHA256(daily_salt, owner_pubkey \| canonical_iri). Supports 48h dual-salt overlap window for rotation. |
+| `pod_url` | STRING | Optional | URI in owner's Solid Pod (either `/public/kg/{slug}` or `/private/kg/{slug}` route). |
 
 **Node types:**
 
@@ -101,27 +120,46 @@ Populated by `GitHubSyncService` → `KnowledgeGraphParser`. Only files tagged `
 
 ```cypher
 // Primary link type — wiki links between pages
-(:Node)-[:EDGE {
+(:KGNode)-[:EDGE {
   relationship: STRING,  // "hyperlink" | "depends_on" | custom label
   weight:       FLOAT,
   created_at:   DATETIME
-}]->(:Node)
+}]->(:KGNode)
+
+// WikilinkRef edge type (ADR-051, introduced with sovereign-mesh parser)
+// Represents wikilink references discovered during parse runs with lifecycle tracking
+(:KGNode)-[:WikilinkRef {
+  last_seen_run_id: STRING  // UUID per parse run; stale edges pruned by orphan retraction job
+}]->(:KGNode)
 ```
 
 **Constraints and indexes:**
 
 ```cypher
-CREATE INDEX node_id_index IF NOT EXISTS
-  FOR (n:Node) ON (n.id);
+CREATE INDEX kg_node_id_index IF NOT EXISTS
+  FOR (n:KGNode) ON (n.id);
 
-CREATE INDEX node_metadata_id IF NOT EXISTS
-  FOR (n:Node) ON (n.metadata_id);
+CREATE INDEX kg_node_metadata_id IF NOT EXISTS
+  FOR (n:KGNode) ON (n.metadata_id);
 
-CREATE INDEX node_public IF NOT EXISTS
-  FOR (n:Node) ON (n.public);
+CREATE INDEX kg_node_public IF NOT EXISTS
+  FOR (n:KGNode) ON (n.public);
 
-CREATE INDEX node_label IF NOT EXISTS
-  FOR (n:Node) ON (n.label);
+CREATE INDEX kg_node_label IF NOT EXISTS
+  FOR (n:KGNode) ON (n.label);
+
+// Sovereign-mesh indexes (ADR-050)
+CREATE INDEX kg_node_visibility IF NOT EXISTS
+  FOR (n:KGNode) ON (n.visibility);
+
+CREATE INDEX kg_node_owner IF NOT EXISTS
+  FOR (n:KGNode) ON (n.owner_pubkey);
+
+CREATE INDEX kg_node_opaque IF NOT EXISTS
+  FOR (n:KGNode) ON (n.opaque_id);
+
+CREATE INDEX kg_node_pod_url IF NOT EXISTS
+  FOR (n:KGNode) ON (n.pod_url);
 ```
 
 ---
@@ -205,7 +243,7 @@ Populated from `### OntologyBlock` sections in Logseq markdown files (all files,
 
 #### Edge types in this context
 
-There are **623 `SUBCLASS_OF` relationships** among `OwlClass` nodes. These were historically excluded from the client graph, leaving 62 % of ontology nodes isolated. The fix maps `OwlClass` → `GraphNode` via label matching.
+There are **623 `SUBCLASS_OF` relationships** among `OwlClass` nodes. These were historically excluded from the client graph, leaving 62 % of ontology nodes isolated. The fix maps `OwlClass` → `KGNode` via label matching.
 
 ```cypher
 (:OwlClass)-[:SUBCLASS_OF]->(:OwlClass)
@@ -371,7 +409,9 @@ CREATE INDEX settings_user_key_index IF NOT EXISTS
 
 ### 2d. Provenance Context (Nostr Beads)
 
-Written by `NostrBeadPublisher` after a successful `POST /api/briefs/{id}/debrief`. All writes are idempotent via `MERGE`.
+Written by `BeadLifecycleOrchestrator` (via `NostrBeadPublisher`) after a successful
+`POST /api/briefs/{id}/debrief`. All writes are idempotent via `MERGE`.
+See ADR-034 for the NEEDLE-inspired architectural upgrade.
 
 #### Node label: `:NostrEvent`
 
@@ -388,28 +428,82 @@ Written by `NostrBeadPublisher` after a successful `POST /api/briefs/{id}/debrie
 
 ```cypher
 (:Bead {
-  bead_id:      STRING,  // Unique bead ID (also the Nostr `d` tag) — unique
-  brief_id:     STRING,  // Parent brief ID
-  debrief_path: STRING   // Filesystem path of consolidated debrief file
+  bead_id:       STRING,    // Unique bead ID (also the Nostr `d` tag) — unique
+  brief_id:      STRING,    // Parent brief ID
+  debrief_path:  STRING,    // Filesystem path of consolidated debrief file
+  state:         STRING,    // Lifecycle state: Created|Publishing|Published|Neo4jPersisted|Bridged|Archived|Failed(*)
+  outcome:       STRING,    // Publish outcome: Success|RelayTimeout|RelayRejected|RelayUnreachable|SigningFailed|Neo4jWriteFailed|BridgeFailed
+  created_at:    DATETIME,  // When the bead was created
+  published_at:  DATETIME,  // When the relay accepted the event (null if unpublished)
+  persisted_at:  DATETIME,  // When Neo4j write was confirmed
+  bridged_at:    DATETIME,  // When forum relay forwarding was confirmed (null if bridge disabled)
+  archived_at:   DATETIME,  // When the bead was archived (null if active)
+  retry_count:   INTEGER,   // Number of publish retry attempts (0 on first success)
+  nostr_event_id: STRING    // Hex Nostr event ID (null until published)
 })
 ```
 
-**Edge type:**
+#### Node label: `:BeadLearning`
+
+```cypher
+(:BeadLearning {
+  bead_id:          STRING,   // Parent bead ID
+  what_worked:      STRING,   // Structured retrospective: what succeeded
+  what_failed:      STRING,   // Structured retrospective: what failed
+  reusable_pattern: STRING,   // Extractable pattern for future use
+  confidence:       FLOAT,    // Confidence score 0.0–1.0
+  recorded_at:      DATETIME  // When the learning was recorded
+})
+```
+
+#### Edge types
 
 ```cypher
 (:NostrEvent)-[:PROVENANCE_OF]->(:Bead)
+(:Bead)-[:HAS_LEARNING]->(:BeadLearning)
 ```
 
-**Idempotent write pattern:**
+#### Idempotent write pattern (lifecycle-aware)
 
 ```cypher
+// Bead creation (state: Created)
+MERGE (b:Bead {bead_id: $bead_id})
+ON CREATE SET b.brief_id = $brief_id, b.debrief_path = $debrief_path,
+              b.state = 'Created', b.created_at = datetime(), b.retry_count = 0
+
+// State transition (e.g. Publishing → Published)
+MATCH (b:Bead {bead_id: $bead_id})
+SET b.state = $state, b.published_at = CASE WHEN $state = 'Published' THEN datetime() ELSE b.published_at END
+
+// Provenance link (after successful relay publish)
 MERGE (e:NostrEvent {id: $event_id})
 SET e.pubkey = $pubkey, e.kind = $kind, e.created_at = $created_at
 WITH e
-MERGE (b:Bead {bead_id: $bead_id})
-ON CREATE SET b.brief_id = $brief_id, b.debrief_path = $debrief_path
+MATCH (b:Bead {bead_id: $bead_id})
+SET b.nostr_event_id = $event_id
 MERGE (e)-[:PROVENANCE_OF]->(b)
+
+// Learning capture
+CREATE (l:BeadLearning {
+    bead_id: $bead_id, what_worked: $what_worked, what_failed: $what_failed,
+    reusable_pattern: $reusable_pattern, confidence: $confidence, recorded_at: datetime()
+})
+WITH l
+MATCH (b:Bead {bead_id: $bead_id})
+MERGE (b)-[:HAS_LEARNING]->(l)
 ```
+
+#### Bead lifecycle state machine
+
+```
+Created → Publishing → Published → Neo4jPersisted → Bridged → Archived
+                  ↘ Failed(Transient) → [retry] → Publishing
+                  ↘ Failed(Permanent)
+```
+
+Retry uses exponential backoff (default: 3 attempts, 1s/2s/4s). Only transient
+failures (timeout, connection error) are retried. Permanent failures (signing
+error, relay rejection) fail immediately. See `BeadRetryConfig` in `bead_types.rs`.
 
 ---
 
@@ -475,6 +569,23 @@ erDiagram
         string bead_id
         string brief_id
         string debrief_path
+        string state
+        string outcome
+        datetime created_at
+        datetime published_at
+        datetime persisted_at
+        datetime bridged_at
+        datetime archived_at
+        integer retry_count
+        string nostr_event_id
+    }
+    BeadLearning {
+        string bead_id
+        string what_worked
+        string what_failed
+        string reusable_pattern
+        float confidence
+        datetime recorded_at
     }
 
     Node ||--o{ Node : "EDGE"
@@ -486,6 +597,7 @@ erDiagram
     User ||--o| UserSettings : "HAS_SETTINGS"
     User ||--o| UserFilter : "HAS_FILTER"
     NostrEvent ||--|| Bead : "PROVENANCE_OF"
+    Bead ||--o{ BeadLearning : "HAS_LEARNING"
 ```
 
 ---
@@ -516,6 +628,42 @@ block-beta
 The 26-bit sequential space supports up to ~67 million nodes before the flag region is encroached. Current production graphs are well within this range.
 
 Node IDs are used as GPU buffer indices in the CUDA physics kernel. The flag bits are read by the kernel via `class_id` and `class_charge` per-node buffers for ontology constraint forces; they are **not** used for general rendering logic.
+
+### 4a. Binary V5 Opacity Flag (Sovereign-Mesh Private Nodes)
+
+The binary protocol (V5, commit 715f91c9f) adds an **opacity flag** on the 32-bit node ID field to signal private nodes to the client without serialising labels, metadata, or content.
+
+**Bit 29 Opacity Encoding:**
+
+```
+node_id (u32) with Bit 29 Flag:
+
+Bit 31  | Bit 30  | Bit 29 (OPACITY) | Bits 28–26 | Bits 25–0
+--------|---------|------------------|-----------|------------
+Agent   | KGNode  | Private Opaque   | Ontology  | Sequential ID
+        |         |                  | Subtype   | (0–67M)
+```
+
+**Flag manipulation (binary_protocol.rs):**
+
+- `PRIVATE_OPAQUE_FLAG = 0x20000000` — bit 29 set
+- `node_id_base(raw)` — strips flag to recover sequential ID
+- `is_private_opaque(raw)` — checks `(raw & 0x20000000) != 0`
+- `encode_node_id(base, is_private)` — sets flag if `is_private = true`
+
+**Serialisation rule (post-[ADR-061](../adr/ADR-061-binary-protocol-unification.md), 2026-04-30):**
+
+Visibility is enforced at the broadcast boundary, not on the wire. The binary
+protocol carries the raw u32 node id with no flag bits (see
+[docs/binary-protocol.md](../binary-protocol.md)):
+
+- `ClientCoordinator::broadcast_with_filter` drops positions for private nodes
+  the caller cannot see; non-owner callers therefore receive **no** position
+  frame, **no** label, **no** metadata for those nodes.
+- Owner callers receive full node data via the normal broadcast path.
+- The `is_private_opaque` / bit-29 wire mechanism (historical, pre-ADR-061) has
+  been removed; the helper functions above remain for the `node_id_base` /
+  `encode_node_id` accessors used in storage-layer joins.
 
 ---
 
@@ -641,8 +789,8 @@ ForceComputeActor (GPU)
 ### Unique Constraints
 
 ```cypher
-CREATE CONSTRAINT graph_node_id IF NOT EXISTS
-  FOR (n:Node) REQUIRE n.id IS UNIQUE;
+CREATE CONSTRAINT kg_node_id IF NOT EXISTS
+  FOR (n:KGNode) REQUIRE n.id IS UNIQUE;
 
 CREATE CONSTRAINT user_pubkey_unique IF NOT EXISTS
   FOR (u:User) REQUIRE u.pubkey IS UNIQUE;
@@ -658,6 +806,13 @@ CREATE CONSTRAINT nostr_event_id IF NOT EXISTS
 
 CREATE CONSTRAINT bead_id IF NOT EXISTS
   FOR (b:Bead) REQUIRE b.bead_id IS UNIQUE;
+
+// Index for lifecycle queries (ADR-034)
+CREATE INDEX bead_state IF NOT EXISTS
+  FOR (b:Bead) ON (b.state);
+
+CREATE INDEX bead_created_at IF NOT EXISTS
+  FOR (b:Bead) ON (b.created_at);
 ```
 
 ### Standard Indexes
@@ -831,6 +986,32 @@ RETURN a.subject    AS subject,
 ORDER BY a.subject;
 ```
 
+### 8i. Caller-Aware Filtering (Sovereign-Mesh Private Nodes)
+
+**Pattern: Filter by visibility and owner (ADR-028-ext, ADR-050)**
+
+All KGNode reads that cross trust boundaries (public APIs, anonymous callers) must apply this filter:
+
+```cypher
+MATCH (n:KGNode)
+WHERE COALESCE(n.visibility, 'public') = 'public'
+   OR ($caller IS NOT NULL AND n.owner_pubkey = $caller)
+RETURN n
+LIMIT 100;
+```
+
+**Usage:**
+
+- `$caller` is the authenticated caller's Nostr public key (hex string), or `NULL` for anonymous
+- Nodes without `visibility` field (legacy rows) are treated as `'public'` via `COALESCE`
+- Private nodes are visible **only** to their owner
+- Public nodes are visible to everyone
+
+**Backwards compatibility:**
+
+- New fields use `#[serde(default)]` in Rust structs; missing fields deserialise to safe defaults
+- Legacy `:Node` label queries may not filter visibility; migrate to `:KGNode` for access control
+
 ---
 
 ## 9. Performance Benchmarks
@@ -919,3 +1100,10 @@ NEO4J_HEAP_MAX=4G
 - `docs/explanation/solid-sidecar-architecture.md` — JSS sidecar configuration and data flows
 - `docs/reference/neo4j-schema-unified.md` — User settings Rust structs and API methods
 - `docs/reference/neo4j-schema-unified.md` — Extended OwlClass metadata (24+ fields)
+
+## Sovereign-Mesh Architecture (ADRs)
+
+- **ADR-050**: Sovereign KG schema — introduces `:KGNode` label, visibility, owner_pubkey, opaque_id, pod_url fields
+- **ADR-051**: Sovereign transitions and credentials — `:WikilinkRef` edge type with parse-run lifecycle tracking
+- **ADR-028-ext**: NIP-98 optional + caller-aware filtering — COALESCE pattern for backwards-compatible access control
+- See `docs/adr/ADR-050.md`, `docs/adr/ADR-051.md`, `docs/adr/ADR-028-ext.md` for full specifications

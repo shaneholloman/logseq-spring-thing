@@ -18,40 +18,36 @@ Each user authenticates via Nostr (npub), and their agent memories should be:
 
 ## Architecture Overview
 
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                         Docker Container                                 │
-│  ┌─────────────────────────────────────────────────────────────────┐   │
-│  │  Agent Swarm (54 agent types)                                    │   │
-│  │                                                                   │   │
-│  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐              │   │
-│  │  │ coder-agent │  │ tester-agent│  │ researcher  │  ...         │   │
-│  │  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘              │   │
-│  │         │                │                │                      │   │
-│  │         └────────────────┴────────────────┘                      │   │
-│  │                          │                                        │   │
-│  │              ┌───────────▼───────────┐                           │   │
-│  │              │  AgentPodClient       │                           │   │
-│  │              │  (per-user context)   │                           │   │
-│  │              └───────────┬───────────┘                           │   │
-│  └──────────────────────────┼───────────────────────────────────────┘   │
-│                             │                                            │
-│                             │ NIP-98 + Delegation Token                  │
-│                             ▼                                            │
-│  ┌─────────────────────────────────────────────────────────────────┐   │
-│  │  JSS (JavaScript Solid Server) :3030                             │   │
-│  │                                                                   │   │
-│  │  /pods/{npub}/                    # User's pod root              │   │
-│  │    ├── profile/card               # WebID with Nostr pubkey      │   │
-│  │    ├── agent-memory/              # Agent memories               │   │
-│  │    │   ├── episodic/              # Session memories             │   │
-│  │    │   ├── semantic/              # Facts/knowledge              │   │
-│  │    │   ├── procedural/            # Learned procedures           │   │
-│  │    │   └── sessions/              # Session summaries            │   │
-│  │    ├── .acl                       # Access control               │   │
-│  │    └── delegations/               # Agent delegation tokens      │   │
-│  └─────────────────────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────────────────┘
+```mermaid
+graph TD
+    subgraph Container["Docker Container"]
+        subgraph Swarm["Agent Swarm (54 agent types)"]
+            A1["coder-agent"]
+            A2["tester-agent"]
+            A3["researcher"]
+            A4["..."]
+        end
+
+        APC["AgentPodClient<br/>(per-user context)"]
+
+        A1 --> APC
+        A2 --> APC
+        A3 --> APC
+
+        subgraph JSS["JSS (JavaScript Solid Server) :3030"]
+            Pod["/pods/{npub}/"]
+            Profile["profile/card — WebID with Nostr pubkey"]
+            Memory["agent-memory/"]
+            Episodic["episodic/ — Session memories"]
+            Semantic["semantic/ — Facts/knowledge"]
+            Procedural["procedural/ — Learned procedures"]
+            Sessions["sessions/ — Session summaries"]
+            ACL[".acl — Access control"]
+            Deleg["delegations/ — Agent delegation tokens"]
+        end
+
+        APC -->|"NIP-98 + Delegation Token"| JSS
+    end
 ```
 
 *Component diagram showing the per-user Solid Pod directory structure, resources, and ACL layout within JSS.*

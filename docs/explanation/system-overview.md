@@ -38,7 +38,7 @@ This document provides a complete architectural blueprint for migrating the Visi
    - Queries (read operations)
    - Handlers for all domains
 
-4. **[schemas.md](./schemas.md)** - Complete database designs
+4. **Database Schemas** - Complete database designs
    - Neo4j schema (graph nodes, edges, ontology, user settings)
 
 ## Ontology Reasoning Pipeline
@@ -104,7 +104,7 @@ sequenceDiagram
 - **Semantic Visualization**: Graph layouts reflect ontological structure
 - **LRU Caching**: 90x speedup for repeated reasoning operations
 
-**[📖 Complete Reasoning Documentation](../reasoning-engine.md)**
+**See the ontology pipeline explanation for reasoning details: [Ontology Pipeline](ontology-pipeline.md)**
 
 ---
 
@@ -702,11 +702,10 @@ neo4j-admin database dump neo4j --to-path=data/backups/neo4j-$DATE
 
 ## Related Documentation
 
-- [Hexagonal/CQRS Architecture Design](architecture/hexagonal-cqrs.md)
-- [User Settings Implementation Summary](../archive/reports/2025-12-02-user-settings-summary.md)
-- [Documentation Restructuring Complete](../archive/reports/2025-12-02-restructuring-complete.md)
-- [QA Validation Final Report](../QA_VALIDATION_FINAL.md)
-- [Pipeline Integration Architecture](architecture/pipeline-integration.md)
+- [Backend CQRS Pattern](backend-cqrs-pattern.md)
+- [DDD Bounded Contexts](ddd-bounded-contexts.md)
+- [Technology Choices](technology-choices.md)
+- [Deployment Topology](deployment-topology.md)
 
 ## Conclusion
 

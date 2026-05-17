@@ -761,9 +761,6 @@ sudo supervisorctl status claude-zai
 
 ## Related Documentation
 
-- [Working with AI Agents](agents/working-with-agents.md) — MCP tool invocation patterns
-- [Ontology Agent Tools](agents/ontology-agent-tools.md) — full API reference
-- [Orchestrating Agents](agents/orchestrating-agents.md) — topology patterns
-- [Agent Skills Catalog](../reference/agents-catalog.md) — all 83 skills
-- [AI Models & Services](ai-integration/README.md) — DeepSeek, Perplexity, RAGFlow, Z.AI
-- [Multi-Agent System](../explanation/concepts/multi-agent-system.md) — architecture concepts
+- [Agent Skills Catalog](../reference/agents-catalog.md) — all registered agent skills
+- [System Overview](../explanation/system-overview.md) — hexagonal architecture and actor model
+- [Actor Hierarchy](../explanation/actor-hierarchy.md) — 21-actor Actix supervision tree

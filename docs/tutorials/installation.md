@@ -633,10 +633,10 @@ After installation, verify these components:
 
 Now that VisionClaw is installed, proceed to:
 
-1. **[Quick Start Guide](creating-first-graph.md)** - Create your first graph in 5 minutes
+1. **[Quick Start Guide](first-graph.md)** - Create your first graph in 5 minutes
 2. **[Configuration Guide](../how-to/operations/configuration.md)** - Customise VisionClaw for your needs
 3. **[API Documentation](../reference/)** - Integrate with your applications
-4. **[Architecture Overview](../architecture/ARCHITECTURE.md)** - Understand the system design
+4. **[Architecture Overview](../explanation/system-overview.md)** - Understand the system design
 
 ## Getting Help
 
@@ -654,8 +654,8 @@ If you encounter issues during installation:
 ## Related Topics
 
 - [Configuration Guide](../how-to/operations/configuration.md)
-- [Architecture Overview](../architecture/ARCHITECTURE.md)
-- [Quick Start Guide](creating-first-graph.md)
+- [Architecture Overview](../explanation/system-overview.md)
+- [Quick Start Guide](first-graph.md)
 
 ---
 

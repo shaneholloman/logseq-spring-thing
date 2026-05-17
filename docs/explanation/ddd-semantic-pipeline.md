@@ -28,7 +28,7 @@ Markdown Source (Aggregate Root)
   └── Namespace Prefix (derived)            → "namespace" edge, weight 0.3
 
 Neo4j (Repository)
-  ├── :GraphNode — display nodes
+  ├── :KGNode — display nodes
   ├── :OwlClass — ontology concepts
   ├── :EDGE — wikilink + relationship edges (with relation_type, owl_property_iri)
   ├── :SUBCLASS_OF — hierarchy edges
@@ -72,7 +72,7 @@ flowchart TD
     end
 
     subgraph Neo4j["Neo4j Repository"]
-        GN[":GraphNode\ndisplay node"]
+        GN[":KGNode\ndisplay node"]
         OC[":OwlClass\nontology concept"]
         EDGE[":EDGE\nwikilink + relation\ntype · weight"]
         SUB[":SUBCLASS_OF\nhierarchy edge"]

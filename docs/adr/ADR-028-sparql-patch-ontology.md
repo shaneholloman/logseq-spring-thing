@@ -51,3 +51,7 @@ Successful PATCH responses (2xx) invalidate the JSON-LD and Turtle caches, ensur
 - **Positive**: Atomic conditional updates via SPARQL DELETE/INSERT WHERE.
 - **Negative**: Callers must construct valid SPARQL or N3 for low-level methods. Mitigated by the high-level triple helpers.
 - **Negative**: Requires JSS sidecar with PATCH support (already available in current deployment).
+
+## Related Decisions
+
+- ADR-048: Dual-tier identity model — relies on SPARQL PATCH for ontology mutations triggered by approved migrations

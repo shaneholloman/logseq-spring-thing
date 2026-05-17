@@ -5,6 +5,80 @@ All notable changes to VisionClaw will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] - 2026-05-12
+
+### Added — Agent Control Surface Protocol Integration
+
+- **Governance panel publishing** (`src/actors/server_nostr_actor.rs`): `PublishGovernancePanel` message (kind 31400) — BrokerActor sends NIP-33 parameterized replaceable events to register/update control panels on the Nostr relay. Panel definitions include schema type (ActionInbox, Dashboard, ConfigForm, StatusBoard, ChatBridge), field definitions, action buttons, layout hints, and capabilities. Wire-compatible with `nostr-bbs-core::PanelDefinition`.
+- **Action request publishing** (`src/actors/server_nostr_actor.rs`): `PublishActionRequest` message (kind 31402) — BrokerActor sends when cases need human review. Carries case ID, title, category, priority, structured fields, and agent reasoning. Wire-compatible with `nostr-bbs-core::ActionRequest`.
+- **BrokerActor startup panel** (`src/actors/broker_actor.rs`): On `Actor::started()`, publishes a PanelDefinition (kind 31400, d-tag `visionclaw-broker`) to the forum relay with 5 fields (case_id, title, category, priority, state), 3 actions (approve, reject, escalate), table layout, and 30-second refresh interval. The forum governance UI discovers this panel via its relay subscription.
+- **BrokerActor → forum ActionRequest** (`src/actors/broker_actor.rs`): Every `SubmitBrokerCase` now publishes a kind-31402 ActionRequest to the forum relay (all case categories, not just KnowledgeEnrichment). Priority mapping: u8 90+ → Critical, 70+ → High, 40+ → Medium, else → Low.
+- **Broadened Nostr decision events**: `SignBrokerDecision` (kind 30300) is now emitted for all case categories on `DecideBrokerCase`, not just `KnowledgeEnrichment`.
+- **NIP-98 enterprise RBAC** (`src/middleware/enterprise_auth.rs`): `nip98-auth` feature gate adds a Nostr NIP-98 authentication path to the `RequireRole` middleware. When enabled, reads `Authorization: Nostr <base64>`, verifies the Schnorr signature, and resolves the signer's pubkey to an `EnterpriseRole` via the `Nip98RoleResolver` trait. `InMemoryRoleMap` provided for dev/test; `Nip98IdentityExt` request extension carries verified pubkey and role. The `X-Enterprise-Role` header path remains as the default when the feature is disabled.
+- **Prometheus counters**: `NostrKind::K31400` and `K31402` variants added to `src/services/metrics.rs` for governance event observability.
+- **Supported kinds extended**: `SUPPORTED_KINDS` in `src/services/server_identity.rs` now includes 31400 and 31402.
+- **Tests**: `handles_publish_governance_panel` and `handles_publish_action_request` in `server_nostr_actor.rs`; 3 NIP-98 tests in `enterprise_auth.rs` (feature-gated).
+
+### Changed
+
+- `RequireRole` middleware now supports dual-path auth: NIP-98 Schnorr verification (when `nip98-auth` feature enabled and resolver attached) or `X-Enterprise-Role` header extraction (default).
+- `ServerNostrActor` module doc updated to list 9 message variants across 7 event kinds (was 7 variants across 5 kinds).
+- `BrokerActor` imports consolidated: all governance types (`PublishGovernancePanel`, `PublishActionRequest`, `ActionPriority`, `PanelDefinitionPayload`, etc.) imported at module level.
+
+---
+
+## [Unreleased] - 2026-04-23
+
+### Added — Agentbox integration planning
+
+- **PRD-004** (`docs/PRD-004-agentbox-visionclaw-integration.md`): deprecate `multi-agent-docker/` in favour of `agentbox/` as VisionClaw's agent-container subsystem. 5 milestones (M1-M5), 17 port-in rows (P0-P3), 13 agentbox-design-improvement rows (D.1-D.13), 11 explicit rejections, 10 resolved open questions. All milestone exit criteria are now passable predicates.
+- **ADR-058** (`docs/adr/ADR-058-mad-to-agentbox-migration.md`): MAD deprecation with four predicate-based gates, mid-cutover rollback protocol (< 5 min target, CI-verified), 30-day post-cutover window with frozen-MAD container.
+- **DDD-BC20 AgentboxIntegration** (`docs/ddd-agentbox-integration-context.md`): new bounded context acting as Anti-Corruption Layer between agentbox's adapter protocol and VisionClaw Rust aggregates. `FederationSession` + `AgentExecution` aggregates, five ACL translator modules, composed `SessionHealth` with per-slot degrade policies, `/v1/meta` handshake protocol, signed Ed25519 `LocalFallbackProbe`.
+- **Agentbox subdir**: `agentbox/` added as sibling to `multi-agent-docker/` for in-situ radical-upgrade work. Slated for promotion to standalone repo `github.com/DreamLab-AI/agentbox` once stable.
+- **QE fleet pre-implementation audit** (RuVector `agentbox-comparison :: qe-fleet-review-2026-04-23`): verdict **Conditional GO** for M1; five P0 doc edits landed before any code work.
+
+### Changed
+
+- `multi-agent-docker/` is on a deprecation track per ADR-058; no new features land there.
+- Durable state (beads, pods, memory) is henceforth a VisionClaw-Rust concern, not a container-internal concern. Agentbox is a federation client (see agentbox ADR-005).
+
+## [Unreleased] - 2026-04-18
+
+### Added
+
+#### Insight Migration Loop design corpus
+- Phase 1 research: 9 artefacts totalling ~19,700 words defining the dual-tier identity, sigmoid scoring, broker workflow, physics forces, acceptance tests
+- ADR-048 Dual-tier identity model (KGNode + OntologyClass with BRIDGE_TO edges)
+- ADR-049 Insight-migration broker workflow (MigrationCase subtype, DecisionOrchestrator contract)
+- PRD: Insight Migration Loop (3 personas, 10 capabilities, 6 migration KPIs)
+- DDD context refinement (BC13 MigrationCandidate aggregate, BC11 MigrationCase)
+- 00-master.md: synthesised reconciliation resolving 5 cross-artefact contradictions, 8 blocking questions for owner decision
+
+#### Enterprise & Regression Testing
+- Enterprise drawer (`EnterpriseDrawerMount`, `EnterpriseDrawer`) — full-viewport slide-out panel with frosted-glass alpha blend, Ctrl+Shift+E / Cmd+Shift+E toggle, floating FAB button
+- `drawer-fx` WASM crate (`client/src/wasm/drawer-fx/`) — Rust flow-field ambient effect for enterprise drawer canvas layer; zero-copy `Float32Array` pattern matching `scene-effects`
+- Regression tests: `tests/physics_orchestrator_settle_regression.rs`, `tests/settings_physics_propagation_regression.rs`
+- `tests/smoke/nginx-coep-headers.sh` — COEP header smoke test
+- Enterprise drawer design document: `docs/design/2026-04-17-enterprise-drawer.md`
+- QE audit report: `docs/audits/2026-04-17/` (master, frontend graph loading, backend settings routing, failure patterns, regression risk, regression tests — 6 files)
+- `enterprise-standalone.tsx` with `#/drawer-demo` hash route for isolated drawer preview
+
+### Fixed
+- **PHYSICS: Dual `ClientCoordinatorActor` instances** — `SocketFlowServer` registered clients in one coordinator instance while `PhysicsOrchestratorActor` broadcast to a second internally-created instance, causing 0 binary frames to reach any connected client. Fixed by injecting the shared `ClientCoordinatorActor` address into `GraphServiceSupervisor::with_client()` and skipping internal creation when an external instance is provided.
+- **PHYSICS: `ClientFilter` default filter to zero** — `ClientFilter::default()` had `enabled: true` with empty `filtered_node_ids`, causing `broadcast_with_filter` to produce no payload for fresh clients. Fixed by setting `enabled: false` as the default (opt-in filtering, not opt-out).
+- **PHYSICS: `FastSettle` permanent latch** — `FastSettle` mode set `fast_settle_complete = true` and `is_physics_paused = true` on reaching the iteration cap even when energy had not converged, preventing subsequent physics parameter changes from resuming simulation. Fixed by falling back to `Continuous` mode on non-convergent exhaustion rather than halting.
+- **PHYSICS: Boundary-pinned node rescue** — Added detection for nodes oscillating at viewport boundary (`|coord| >= viewport_bounds - 1` for 60+ consecutive frames) and teleporting them to randomised interior positions, complementing the existing runaway-node rescue (nodes beyond 10× viewport bounds).
+- **SLIDER RANGES: Calibrated physics UI sliders** — Attraction (`attractionK`) capped at 10, Dual Graph Separation (`graphSeparationX`) capped at 500, Flatten to Planes (`zDamping`) capped at 0.1. Previous maximums were orders of magnitude too wide.
+- **AUTH: Enterprise endpoints returning 403** — `apiFetch` was not injecting auth headers; added auth header injection mirroring `authRequestInterceptor`. Backend `verify_access` now accepts `Bearer dev-session-token` in non-production environments before NIP-98 path.
+- **NGINX: COEP headers lost on Vite proxy routes** — Per-location `add_header` now set for all Vite module proxy paths (`/.vite`, `/node_modules`, `/@vite`, etc.) because `add_header` in a `location` block drops server-level headers.
+- **DEBUG: Console spam from RemoteLogger** — Gated `originalConsole.log/debug/info` echo behind `localStorage.debug.consoleLogging === 'true'`; `warn` and `error` continue to echo unconditionally.
+- **DEBUG: BotsDataProvider polling churn** — `pollingConfig` literal re-created on every render caused `useAgentPolling` to stop and restart every 2 seconds. Fixed with `useMemo` + `useCallback`.
+- **WebSocket: `permessage-deflate` misused as subprotocol** — Removed `.protocols(&["permessage-deflate"])` from WebSocket upgrade handler (it is a WebSocket extension, not a subprotocol; placing it in `.protocols()` produced a malformed negotiation header).
+- **WebSocket: Frame size limit** — Added `.frame_size(4 * 1024 * 1024)` to WebSocket upgrade handler; default 64 KiB was silently truncating large V5 broadcasts.
+- **First-frame render** — `GraphManager` now polls via `window.setInterval` for non-zero positions from `graphWorkerProxy` and calls R3F `invalidate()` when data arrives, fixing the case where the graph was invisible until window resize triggered a re-render.
+
+---
+
 ## [Unreleased] - 2026-04-12
 
 ### Added

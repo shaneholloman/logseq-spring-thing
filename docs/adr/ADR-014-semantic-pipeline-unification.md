@@ -15,7 +15,7 @@ The VisionClaw codebase contains a complete semantic pipeline — parsers, Neo4j
 ### Principles
 1. **Markdown is truth** — every relationship in an OntologyBlock becomes a Neo4j edge
 2. **No fallback edge generation** — delete `generate_edges_from_metadata()` and `generate_edges_from_labels()`
-3. **No dual-path loading** — `load_graph()` loads ONE unified graph (GraphNode + OwlClass edges combined)
+3. **No dual-path loading** — `load_graph()` loads ONE unified graph (KGNode + OwlClass edges combined)
 4. **Edge type flows to GPU** — CSR carries edge_type buffer alongside col_indices
 5. **Analytics flow back** — ClusteringActor writes results, binary protocol carries them, client reads them
 6. **Edge colour = relationship power** — gradient from source domain colour to target domain colour, weighted by relationship strength
@@ -30,7 +30,7 @@ The VisionClaw codebase contains a complete semantic pipeline — parsers, Neo4j
 - `neo4j_ontology_repository::add_owl_class()` → store ALL relationship types as `:RELATES` edges
 - `neo4j_adapter::load_graph()` → single query: EDGE + SUBCLASS_OF + RELATES
 - `force_compute_actor` → CSR with `edge_types: DeviceBuffer<u8>`
-- `clustering_actor` → `ClientCoordinatorActor` → `node_analytics` → binary V3
+- `clustering_actor` → `ClientCoordinatorActor` → `analytics_update` JSON message (post-[ADR-061](ADR-061-binary-protocol-unification.md); historically rode the per-frame binary)
 - `ontology_constraint_actor` → `apply_ontology_constraints()` (remove dead_code annotation)
 - `semantic_forces_actor` → receive `source_domain` as type_id, activate type clustering
 

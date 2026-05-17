@@ -121,7 +121,7 @@ JWT email/password login was removed because:
 3. The `VIRCADIA_JWT_SECRET` environment variable default (`change_this_in_production`) was routinely left unchanged in early deployments, invalidating the security guarantee
 4. Nostr NIP-98 provides equivalent session bootstrapping with zero server-side secrets and replay protection built in
 
-**Do not use JWT endpoints in new integrations.** The `VIRCADIA_JWT_SECRET` env var is retained only for legacy Vircadia World Server compatibility.
+**Do not use JWT endpoints in new integrations.** The `VIRCADIA_JWT_SECRET` env var is a dead relic — Vircadia has been fully removed from the stack. It can be safely deleted from compose files.
 
 ### NIP-98 Authentication Sequence
 
@@ -153,7 +153,9 @@ VisionClaw follows a CQRS pattern (see `docs/explanation/backend-cqrs-pattern.md
 
 ### RBAC Roles
 
-VisionClaw uses a four-tier role-based access control model:
+VisionClaw uses two complementary role systems:
+
+**NIP-98 auth roles** (graph/settings/ontology handlers in `middleware/auth.rs`):
 
 | Role | How assigned | Capabilities |
 |------|-------------|--------------|
@@ -164,7 +166,23 @@ VisionClaw uses a four-tier role-based access control model:
 
 There is no role stored in a database. Admin status is determined solely by membership in the comma-separated `POWER_USER_PUBKEYS` list at startup. This eliminates privilege escalation via database mutation.
 
-Auth guards are applied to 17 write endpoints across graph mutations, ontology modifications, admin sync triggers, and settings updates. Each guarded endpoint checks the caller's role before dispatching the command through the CQRS bus.
+**Enterprise RBAC roles** (enterprise/broker handlers in `middleware/enterprise_auth.rs`):
+
+| Role | Level | Capabilities |
+|------|-------|--------------|
+| `Admin` | 4 | Full platform configuration, user management, policy editing |
+| `Broker` | 3 | Read all, decide on assigned cases, promote workflows |
+| `Auditor` | 2 | Read all, export compliance evidence, no mutation |
+| `Contributor` | 1 | Read assigned scope, propose workflows, execute approved workflows |
+
+Enterprise roles are resolved via two compile-time paths controlled by the `nip98-auth` Cargo feature:
+
+- **`nip98-auth` enabled**: The `RequireRole` middleware reads an `Authorization: Nostr <base64>` header, verifies the NIP-98 Schnorr signature, and resolves the signer's pubkey to an `EnterpriseRole` via the `Nip98RoleResolver` trait. A `Nip98IdentityExt` request extension carries the verified pubkey and role to downstream handlers. The `X-Enterprise-Role` header is ignored.
+- **Default (feature disabled)**: The `RequireRole` middleware reads the `X-Enterprise-Role` header for role extraction. This is the dev/gateway mode, suitable for deployments behind a trusted reverse proxy.
+
+Both paths enforce a strict hierarchy: a request is allowed if the caller's role level is >= the required level. See [ADR-040](../adr/ADR-040-enterprise-identity-strategy.md) for the full identity strategy.
+
+Auth guards are applied to 17+ write endpoints across graph mutations, ontology modifications, admin sync triggers, settings updates, and enterprise governance operations. Each guarded endpoint checks the caller's role before dispatching the command through the CQRS bus.
 
 ### Public vs Protected Operations
 
@@ -264,9 +282,9 @@ The WebSocket upgrade request is validated before the connection is accepted:
 
 ### Binary Protocol Security
 
-The binary position update protocol (V2/V3) carries only numeric node IDs and f32 position/velocity components. No user-identifying information, pubkeys, or session tokens appear in binary frames. An eavesdropper on the binary channel learns only that nodes moved — no identity linkage is possible from the binary stream alone.
+The binary position update protocol (single unified format — see [docs/binary-protocol.md](../binary-protocol.md) and [ADR-061](../adr/ADR-061-binary-protocol-unification.md)) carries only numeric node IDs and f32 position/velocity components. No user-identifying information, pubkeys, or session tokens appear in binary frames. An eavesdropper on the binary channel learns only that nodes moved — no identity linkage is possible from the binary stream alone.
 
-Protocol version is validated on every frame (only V2 and V3 accepted). Payload length declared in the header must match actual buffer size; mismatches are rejected, not truncated. The client also validates the binary protocol version on receipt, rejecting frames with unexpected version bytes to guard against protocol downgrade or corruption.
+The fixed preamble byte (0x42) is validated on every frame as a sanity check; mismatches are rejected, not truncated. Payload length must match `9 + 24 × node_count`. The preamble is not a version dispatch — there is one binary protocol, and any future evolution gets a new endpoint.
 
 ### Content Security Policy
 
@@ -297,7 +315,7 @@ All secrets are injected via environment variables. The following variables MUST
 |----------|---------|------------------------------------------|
 | `SESSION_SECRET` | Session token signing key | none — required |
 | `WS_AUTH_TOKEN` | WebSocket pre-auth token | none — required |
-| `VIRCADIA_JWT_SECRET` | Legacy Vircadia JWT signing | `change_this_in_production` |
+| ~~`VIRCADIA_JWT_SECRET`~~ | ~~Legacy Vircadia JWT~~ (dead — Vircadia removed) | Remove from env |
 | `POSTGRES_PASSWORD` | Neo4j / RuVector DB password | `visionclaw_secure` |
 | `NEO4J_PASSWORD` | Neo4j database password | none — **required** (no default; server fails fast if unset) |
 | `POWER_USER_PUBKEYS` | Comma-separated power user pubkeys | none (no power users) |
@@ -415,17 +433,14 @@ Communication between the Rust backend, Neo4j, JSS, and RuVector uses plain TCP 
 
 `AUTH_TOKEN_EXPIRY` limits session token lifetimes, but rotation of the `SESSION_SECRET` itself is a manual procedure (see Section 6). There is no automated rotation or SOPS integration. Key rotation causes a service restart and session invalidation — the operational cost is acceptable for current deployment scale.
 
-### Vircadia Uses Its Own Authentication
+### XR Client Authentication
 
-The Vircadia World Server validates connections using its own token mechanism (`system` or `nostr` provider via the Vircadia auth layer). This authentication is separate from VisionClaw's NIP-98 flow. A user who authenticates to VisionClaw is not automatically authenticated to the Vircadia World Server. The two auth systems are bridged only when the client explicitly passes its Vircadia session token alongside the VisionClaw bearer token.
+The Godot XR client authenticates to VisionClaw using NIP-98 signed HTTP Authorization headers, identical to the desktop browser client. See [XR Architecture](xr-architecture.md) for the presence WebSocket join handshake.
 
 ### Token in WebSocket URL
 
 WebSocket bearer tokens are passed as a URL query parameter (`?token=…`) because the WebSocket protocol does not support custom headers at upgrade time. This means the token appears in server access logs and browser history. Mitigation: use short-lived tokens (`AUTH_TOKEN_EXPIRY=300` for WebSocket sessions) and ensure WSS is enforced so the URL is not visible in transit.
 
-### Non-Parameterised SQL in Legacy Vircadia Clients
-
-`SpatialAudioManager`, `NetworkOptimizer`, and `Quest3Optimizer` in the Vircadia client layer use string-interpolated SQL for entity names and JSON payloads (see `docs/security.md`). These values originate from trusted client-side state, but the pattern should be migrated to parameterised queries. This is tracked as a known issue.
 
 ---
 

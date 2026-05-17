@@ -100,7 +100,7 @@ If you can't connect to the GUI environment using a VNC client, follow these ste
 ## Related Documentation
 
 - [VisionClaw Guides](../index.md)
-- [Project Structure](../developer/02-project-structure.md)
+- [Development Guide](../development-guide.md)
 - [Goalie Integration - Goal-Oriented AI Research](goalie-integration.md)
 - [Natural Language Queries Tutorial](../features/natural-language-queries.md)
 - [Intelligent Pathfinding Guide](../features/intelligent-pathfinding.md)

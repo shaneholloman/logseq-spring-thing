@@ -275,13 +275,13 @@ Connect to the Neo4j Browser at `http://localhost:7474` (or via `cypher-shell`) 
 
 ```cypher
 -- Dry run: shows query plan without executing
-EXPLAIN MATCH (n:GraphNode)-[r:LINKED_TO]->(m:GraphNode)
+EXPLAIN MATCH (n:KGNode)-[r:LINKED_TO]->(m:KGNode)
 WHERE n.graph_type = 'knowledge'
 RETURN n.id, m.id, r.weight
 LIMIT 1000;
 
 -- Execute and measure: shows actual row counts and db hits
-PROFILE MATCH (n:GraphNode)-[r:LINKED_TO]->(m:GraphNode)
+PROFILE MATCH (n:KGNode)-[r:LINKED_TO]->(m:KGNode)
 WHERE n.graph_type = 'knowledge'
 RETURN n.id, m.id, r.weight
 LIMIT 1000;
@@ -299,7 +299,7 @@ In the `PROFILE` output, look for:
 
 ```cypher
 -- Slow without index on id
-MATCH (n:GraphNode) RETURN n.id, n.label, n.node_type, n.x, n.y, n.z;
+MATCH (n:KGNode) RETURN n.id, n.label, n.node_type, n.x, n.y, n.z;
 
 -- With index, this should return in < 100 ms for 100K nodes
 -- Target: < 3.2 s for initial 100K-node load (benchmark baseline)
@@ -331,10 +331,10 @@ Apply these indexes after any fresh Neo4j install or graph schema migration:
 
 ```cypher
 -- Node lookups by ID (used by every graph fetch)
-CREATE INDEX node_id_index FOR (n:GraphNode) ON (n.id);
+CREATE INDEX node_id_index FOR (n:KGNode) ON (n.id);
 
 -- Node type filtering (used by /api/graph/data?graph_type=...)
-CREATE INDEX node_type_index FOR (n:GraphNode) ON (n.node_type);
+CREATE INDEX node_type_index FOR (n:KGNode) ON (n.node_type);
 
 -- OWL class label lookups (used by ontology edge mapping)
 CREATE INDEX owl_class_label FOR (o:OwlClass) ON (o.label);

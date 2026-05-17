@@ -644,8 +644,5 @@ docker exec agentic-workstation nc -zv gui-tools-container 9876
 ## Related Documentation
 
 - [Agent Orchestration Guide](../how-to/agent-orchestration.md) — deploying and configuring agents
-- [Working with AI Agents](../how-to/agent-orchestration.md) — MCP tool invocation patterns
-- [Ontology Agent Tools](../how-to/agent-orchestration.md) — full 7-tool API reference
-- [AI Models & Services](../how-to/ai-integration/README.md) — Perplexity, DeepSeek, RAGFlow, Z.AI
-- [Multi-Agent System](../explanation/concepts/multi-agent-system.md) — architecture overview
-- [SKILL-DIRECTORY.md](../multi-agent-docker/SKILLS.md) — current skill inventory
+- [Actor Hierarchy](../explanation/actor-hierarchy.md) — 21-actor Actix supervision tree
+- [System Overview](../explanation/system-overview.md) — architecture overview

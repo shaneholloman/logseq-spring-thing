@@ -61,9 +61,7 @@ Complete technical reference documentation for VisionClaw APIs, protocols, confi
 
 | Document | Description |
 |----------|-------------|
-| [Database Schemas](./neo4j-schema-unified.md) | Schema definitions |
-| [Neo4j Schema](./neo4j-schema-unified.md) | Graph database schema |
-| [Ontology Schema](./database/ontology-schema-v2.md) | OWL ontology storage |
+| [Neo4j Schema (Unified)](./neo4j-schema-unified.md) | Graph database schema including ontology storage |
 
 ### CLI
 
@@ -80,6 +78,7 @@ Complete technical reference documentation for VisionClaw APIs, protocols, confi
 
 | Document | Description |
 |----------|-------------|
+| [Physics Parameters](./physics-parameters.md) | UI slider → settings key → CUDA kernel mapping with effective ranges |
 | [Performance Benchmarks](./performance-benchmarks.md) | Performance metrics and targets |
 | Implementation Status | Feature implementation status (see main README) |
 | Code Quality | Code quality metrics (see main README) |
@@ -88,9 +87,7 @@ Complete technical reference documentation for VisionClaw APIs, protocols, confi
 
 | Document | Description |
 |----------|-------------|
-| [Pathfinding Examples](./api/pathfinding-examples.md) | Graph pathfinding API examples |
-| [Semantic Features API](./api/semantic-features-api.md) | Analytics and ML features |
-| [Solid API](./api/solid-api.md) | Solid pod integration |
+| [REST API](./rest-api.md) | All REST endpoints including pathfinding, semantic features, and Solid pod integration |
 
 ---
 
@@ -136,7 +133,7 @@ updated-date: 2025-01-29
 ### Getting Started
 
 - [Installation Guide](../tutorials/installation.md) - Setup instructions
-- [First Graph](../tutorials/creating-first-graph.md) - Quick start tutorial
+- [First Graph](../tutorials/first-graph.md) - Quick start tutorial
 
 ---
 

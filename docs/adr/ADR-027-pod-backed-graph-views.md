@@ -1,6 +1,8 @@
 # ADR-027: Pod-backed Graph Views
 
 ## Status
+
+Implemented 2026-04-20 — `SolidPodService.saveGraphView/loadGraphView/listGraphViews/deleteGraphView/subscribeToGraphViewChanges` already present from ADR-027 design; `shareGraphView` added in this wave.
 Proposed
 
 ## Context
@@ -45,3 +47,7 @@ Store named graph views as JSON-LD documents in each user's Pod at `/settings/gr
 - **Positive**: No server-side schema changes (LDP handles storage)
 - **Negative**: Requires JSS sidecar running (graceful degradation to localStorage)
 - **Negative**: Additional WebSocket connection to JSS for sync
+
+## Related Decisions
+
+- ADR-048: Dual-tier identity model — extends the Pod-backed graph view with a KGNode / OntologyClass split

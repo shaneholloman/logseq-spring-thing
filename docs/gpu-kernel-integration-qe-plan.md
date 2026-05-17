@@ -123,7 +123,7 @@ POST /api/analytics/clustering/dbscan    (alias endpoint)
 
 **Client visualization deployed**:
 - `client/src/features/analytics/ConnectedComponentsPanel.tsx` — component visualization
-- `graphDataManager.ts` — node coloring by component_id (from binary protocol V3 field 44-47)
+- `graphDataManager.ts` — node coloring by component_id (sourced from the `analytics_update` JSON channel post-[ADR-061](adr/ADR-061-binary-protocol-unification.md); historically rode the per-frame binary as bytes 44-47)
 - Analytics panel now renders component count and largest component size
 
 ---
@@ -276,8 +276,8 @@ F_attr  = k_a * ln(r)             # Logarithmic attraction (reveals communities)
 4. **Symmetry**: Inverse property symmetry
 5. **Cardinality**: Functional property enforcement
 
-**Zone storage** (binary protocol V3):
-- Node zone_id field (32-bit)
+**Zone storage** (post-[ADR-061](adr/ADR-061-binary-protocol-unification.md): off-wire — zone_id rides the `analytics_update` JSON channel, not the per-frame binary):
+- Node zone_id field (32-bit) on the analytics side-table
 - Spatial bounding box per zone
 
 **GPU dispatch**: Specialized kernel per constraint type (3-8x faster than generic)
@@ -377,7 +377,7 @@ Currently `build.rs` compiles for single arch. For portability:
 
 1. `docs/gpu-physics-architecture.md` missing `semantic_forces.cu` from PTX module table
 2. `gpu_landmark_apsp.cu` kernels marked "unused" but ARE called — update comments
-3. No architecture doc for the binary protocol V3/V4 wire format
+3. ~~No architecture doc for the binary protocol wire format~~ — closed by [docs/binary-protocol.md](binary-protocol.md) (single-source spec under [ADR-061](adr/ADR-061-binary-protocol-unification.md))
 4. No doc for the FastSettle convergence algorithm parameters
 
 ---

@@ -22,7 +22,7 @@ Alphabetically sorted definitions of technical terms used in VisionClaw document
 An autonomous software entity that can perform tasks, make decisions, and coordinate with other agents. In VisionClaw, agents are managed through the [MCP Protocol](./protocols/mcp-protocol.md).
 
 ### API Key
-A long-lived authentication credential for programmatic access to VisionClaw APIs. Unlike JWT tokens, API keys do not expire. See [Authentication Reference](./api/authentication.md).
+A long-lived authentication credential for programmatic access to VisionClaw APIs. Unlike JWT tokens, API keys do not expire. See [Authentication Reference](./rest-api.md).
 
 ### Axiom
 In OWL ontologies, a statement that defines relationships between classes, properties, or individuals. Examples include SubClassOf, EquivalentClass, and PropertyAssertion. See [Database Schema](./neo4j-schema-unified.md).
@@ -42,10 +42,10 @@ VisionClaw's compact wire format for WebSocket communication. Version 2 uses 36 
 ## C
 
 ### Community Detection
-Graph algorithm that identifies clusters of densely connected nodes. VisionClaw supports Louvain, Label Propagation, and Modularity optimization algorithms. See [REST API](./api/rest-api.md).
+Graph algorithm that identifies clusters of densely connected nodes. VisionClaw supports Louvain, Label Propagation, and Modularity optimization algorithms. See [REST API](./rest-api.md).
 
 ### Cypher
-Neo4j's declarative query language for graph databases. Used for traversal, pattern matching, and analytics queries. See [Neo4j Schema](./database/neo4j-schema.md).
+Neo4j's declarative query language for graph databases. Used for traversal, pattern matching, and analytics queries. See [Neo4j Schema](./neo4j-schema-unified.md).
 
 ---
 
@@ -82,7 +82,7 @@ The update rate for real-time graph visualization. VisionClaw targets 60 FPS wit
 ## G
 
 ### GDS (Graph Data Science)
-Neo4j's library for graph algorithms including centrality measures, community detection, and pathfinding. See [Neo4j Schema](./database/neo4j-schema.md).
+Neo4j's library for graph algorithms including centrality measures, community detection, and pathfinding. See [Neo4j Schema](./neo4j-schema-unified.md).
 
 ### GPU Acceleration
 Using graphics processing units for parallel computation. VisionClaw supports CUDA (NVIDIA) for physics simulation. See [Configuration Reference](./configuration/README.md).
@@ -115,7 +115,7 @@ The process of deriving new knowledge from existing axioms using reasoning rules
 VisionClaw's sidecar service providing Solid pod functionality for decentralized data storage. See [Configuration Reference](./configuration/README.md).
 
 ### JWT (JSON Web Token)
-A compact, URL-safe token format for authentication. Contains claims about the user and is signed with a secret key. See [Authentication Reference](./api/authentication.md).
+A compact, URL-safe token format for authentication. Contains claims about the user and is signed with a secret key. See [Authentication Reference](./rest-api.md).
 
 ---
 
@@ -155,7 +155,7 @@ A measure of the quality of graph clustering. Higher modularity indicates denser
 ## N
 
 ### NIP-98
-A Nostr Improvement Proposal for HTTP authentication using event signatures. Enables decentralized identity verification. See [Authentication Reference](./api/authentication.md).
+A Nostr Improvement Proposal for HTTP authentication using event signatures. Enables decentralized identity verification. See [Authentication Reference](./rest-api.md).
 
 ### Node
 A vertex in the knowledge graph representing an entity, concept, or class. Stored with 3D position data for visualization. See [Database Schema](./neo4j-schema-unified.md).
@@ -168,7 +168,7 @@ A decentralized protocol for social networking and identity. VisionClaw uses Nos
 ## O
 
 ### OWL (Web Ontology Language)
-A W3C standard for representing ontologies with formal semantics. VisionClaw supports OWL 2 including classes, properties, and axioms. See [Ontology Schema](./database/ontology-schema-v2.md).
+A W3C standard for representing ontologies with formal semantics. VisionClaw supports OWL 2 including classes, properties, and axioms. See [Ontology Schema](./neo4j-schema-unified.md).
 
 ### Ontology
 A formal representation of knowledge that defines concepts, relationships, and rules within a domain.
@@ -181,7 +181,7 @@ A formal representation of knowledge that defines concepts, relationships, and r
 A graph centrality algorithm that measures node importance based on incoming links. Named after Larry Page of Google.
 
 ### Pod
-In Solid, a personal online data store that users control. VisionClaw integrates with pods for decentralized data storage. See [Solid Pod Schema](./database/solid-pod-schema.md).
+In Solid, a personal online data store that users control. VisionClaw integrates with pods for decentralized data storage. See [Solid Pod Schema](./neo4j-schema-unified.md).
 
 ### Protocol Version
 The first byte of binary WebSocket messages identifying the format. V2 is current standard, V3 adds analytics, V4 is experimental delta encoding.
@@ -198,7 +198,7 @@ A request for data from Neo4j. VisionClaw uses Cypher for all graph queries. See
 ## R
 
 ### Rate Limiting
-Restricting the number of API requests within a time window to prevent abuse. VisionClaw enforces limits per IP and per user. See [REST API](./api/rest-api.md).
+Restricting the number of API requests within a time window to prevent abuse. VisionClaw enforces limits per IP and per user. See [REST API](./rest-api.md).
 
 ### Reasoner
 A component that applies logical rules to derive new facts from existing axioms. Used in ontology validation and inference.
@@ -217,7 +217,7 @@ A digital signature scheme used in Nostr for event authentication. More efficien
 The state when graph physics simulation reaches equilibrium (low kinetic energy). Indicates stable node positions.
 
 ### Solid
-A specification for decentralized data storage and identity. See [Solid Pod Schema](./database/solid-pod-schema.md).
+A specification for decentralized data storage and identity. See [Solid Pod Schema](./neo4j-schema-unified.md).
 
 ### SSSP (Single-Source Shortest Path)
 A graph algorithm finding the shortest paths from one node to all others. Results included in binary protocol messages.
@@ -257,7 +257,7 @@ The rate of change of position over time. Used in physics simulation for smooth 
 ## W
 
 ### WebSocket
-A protocol providing full-duplex communication over a single TCP connection. VisionClaw uses WebSocket for real-time updates. See [WebSocket API](./api/websocket-api.md).
+A protocol providing full-duplex communication over a single TCP connection. VisionClaw uses WebSocket for real-time updates. See [WebSocket API](./websocket-binary.md).
 
 ### Wire Format
 The binary layout of data transmitted over the network. VisionClaw's V2 format uses 36 bytes per node.
@@ -273,6 +273,6 @@ An umbrella term covering VR (virtual reality), AR (augmented reality), and MR (
 
 ## Related Documentation
 
-- [API Reference](./api/README.md)
+- [API Reference](./rest-api.md)
 - [Protocol Reference](./protocols/README.md)
 - [Configuration Reference](./configuration/README.md)

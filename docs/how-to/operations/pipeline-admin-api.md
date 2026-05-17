@@ -375,6 +375,59 @@ Metrics are tracked for:
 
 ---
 
+## Feature Engineering Pipeline — `/api/discovery/*`
+
+Three admin endpoints control the feature engineering pipeline (ADR-072, PRD-009). These are long-running batch operations designed to run post-sync.
+
+### Trigger Embedding Indexing
+
+Encodes all ontology node text (preferred_term, definition, scope_note) into 384-dim MiniLM-L6-v2 vectors:
+
+```bash
+curl -X POST http://localhost:4000/api/discovery/index
+```
+
+Returns `nodes_processed`, `nodes_embedded`, `nodes_skipped`, `batches_sent`.
+
+### Trigger KGE Training
+
+Trains TransE embeddings (128-dim) on the full edge set. CPU-only, takes 30–90s depending on graph size:
+
+```bash
+curl -X POST http://localhost:4000/api/discovery/train
+```
+
+Returns `num_entities`, `num_relations`, `num_triples`, `final_loss`, `epochs_completed`, `duration_ms`.
+
+### Trigger N-Hop Materialisation
+
+Creates transitive 2-hop and 3-hop edges as weak springs. Requires `NHOP_MATERIALIZATION_ENABLED=true`:
+
+```bash
+curl -X POST http://localhost:4000/api/discovery/materialize
+```
+
+Returns `two_hop_edges_created`, `three_hop_edges_created`, `nodes_processed`, `duration_ms`.
+
+### Recommended Execution Order
+
+After a fresh ontology sync:
+
+```bash
+# 1. Index content embeddings
+curl -X POST http://localhost:4000/api/discovery/index
+
+# 2. Train topology embeddings
+curl -X POST http://localhost:4000/api/discovery/train
+
+# 3. Materialise transitive edges (if enabled)
+curl -X POST http://localhost:4000/api/discovery/materialize
+```
+
+Each is idempotent — re-running overwrites previous results.
+
+---
+
 ## Future Enhancements
 
 ### Planned Features
@@ -383,6 +436,7 @@ Metrics are tracked for:
 - [ ] Performance profiling
 - [ ] WebSocket event streaming
 - [ ] Pipeline analytics dashboard
+- [ ] Async job tracking for long-running feature engineering operations
 
 ---
 

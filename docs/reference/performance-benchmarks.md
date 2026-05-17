@@ -292,7 +292,7 @@ xychart-beta
 
 4. **Optimize Neo4j Indexes**
    ```cypher
-   CREATE INDEX node_id_index FOR (n:GraphNode) ON (n.id);
+   CREATE INDEX node_id_index FOR (n:KGNode) ON (n.id);
    ```
 
 5. **Enable WebSocket Compression**
@@ -392,7 +392,7 @@ VisionClaw delivers production-grade performance across all tiers:
 ## References
 
 - [Binary Protocol Specification](./websocket-binary.md)
-- [WebSocket API Documentation](./api/03-websocket.md)
+- [WebSocket Binary Protocol](./websocket-binary.md)
 - 
 - 
 

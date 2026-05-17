@@ -2,7 +2,7 @@
 title: Known Issues
 description: Active P1/P2 issues in VisionClaw — read before debugging unexpected behaviour
 category: reference
-updated-date: 2026-04-12
+updated-date: 2026-05-05
 ---
 
 # Known Issues
@@ -13,58 +13,22 @@ This file tracks active production issues and design limitations in VisionClaw. 
 
 ## P1 Issues (Production Impact)
 
-### ONT-001: Ontology Edge Gap — 62% of Ontology Nodes Isolated
-
-**Status**: In Progress
-**Impact**: 623 `SUBCLASS_OF` relationships originating from `OwlClass` nodes in Neo4j are excluded from the client graph. 62% of ontology nodes appear visually isolated with no edges in the 3D visualisation. SemanticForcesActor receives incomplete constraint data, so GPU-enforced semantic clustering and disjointness forces have no effect on the affected nodes.
-
-**Root Cause**: `OwlClass` nodes in Neo4j use a different label scheme from the `GraphNode` entries the client constructs. The 623 `SUBCLASS_OF` relationships originate from `OwlClass` source nodes, but client-side graph construction expects `GraphNode`-to-`GraphNode` edges. The mapping between `OwlClass` nodes and `GraphNode` entries requires `owl_class_iri` field matching that is not currently implemented. Without this mapping, the edges are silently dropped during graph state loading; no error is logged.
-
-**Symptom**: The dense ontology subgraph appears as a cloud of disconnected nodes in the 3D view. The knowledge graph (`public:: true` files) and agent nodes are unaffected and render correctly.
-
-**Workaround**: None currently available for end users.
-
-**Fix Direction**: Map `OwlClass` → `GraphNode` via `owl_class_iri` field at the `GraphStateActor` level using the following Cypher pattern:
-
-```cypher
-MATCH (oc:OwlClass)-[:SUBCLASS_OF]->(parent:OwlClass)
-MATCH (gn_child:GraphNode {owl_class_iri: oc.iri})
-MATCH (gn_parent:GraphNode {owl_class_iri: parent.iri})
-CREATE (gn_child)-[:SUBCLASS_OF]->(gn_parent)
-```
-
-Full details including the node schema, Neo4j index definitions, and the full pipeline sequence diagram are in `docs/explanation/ontology-pipeline.md` — specifically sections 4 (Neo4j Storage) and 8 (The Ontology Edge Gap Problem).
+None currently active.
 
 ---
 
 ## P2 Issues (Degraded Feature)
 
-### WS-001: V4 Delta Encoding — Not Production Ready
+### AUTH-001: Enterprise SSO — Partial (RBAC Implemented, OIDC Pending)
 
-**Status**: Experimental / Do Not Use
-**Impact**: V4 (16-byte per-changed-node delta frames) causes position state divergence and latency spikes every 60 frames due to resync overhead. Nodes gradually drift to incorrect positions on the client, then snap back on the forced full-state resync that fires every 60 frames. Under packet loss or reconnect scenarios, client-side delta accumulation diverges further from server state before the next resync corrects it.
+**Status**: Partially resolved — ADR-040 accepted, RBAC middleware implemented, OIDC integration pending
+**Impact**: VisionClaw's enterprise RBAC middleware (`src/middleware/enterprise_auth.rs`) now supports two authentication paths: (1) NIP-98 Schnorr signature verification with pubkey-to-role resolution via `Nip98RoleResolver` (enabled by the `nip98-auth` compile-time feature), and (2) `X-Enterprise-Role` header extraction for dev/gateway deployments. The four-tier role hierarchy (Admin > Broker > Auditor > Contributor) is enforced on all enterprise-gated routes.
 
-**Root Cause**: The V4 resync strategy (full V2 frame at frame 0 and every 60 frames) is insufficient to bound drift under real network conditions. The `i16` delta encoding (`position × 100.0`) provides 0.01-unit precision, which accumulates rounding error across many frames. There is no sequence-number-based consistency check; the client has no way to detect a missed delta frame other than waiting for the next scheduled resync.
+**Remaining gap**: Full OIDC/SAML SSO integration (ADR-040 Phase 1) is not yet implemented. Enterprise users cannot log in via Entra ID, Okta, or Google Workspace. The server-side ephemeral Nostr keypair delegation (OIDC session to secp256k1 key) described in ADR-040 remains unimplemented. SCIM provisioning (ADR-040 Phase 2) is deferred.
 
-**Symptom**: Intermittent "all nodes at origin" visual glitch. Nodes drifting slowly then snapping. Latency spikes at 60-frame intervals visible in browser devtools WebSocket frame timing.
+**Workaround**: Deploy behind a trusted API gateway that sets the `X-Enterprise-Role` header based on its own SSO verification, or enable the `nip98-auth` feature and populate the `Nip98RoleResolver` with pubkey-to-role mappings for known enterprise users.
 
-**Workaround**: Use V2 (36-byte standard format) or V3 (48-byte analytics format) in all production and staging deployments. V4 is disabled by default and must be explicitly opted into. Do not enable it.
-
-**Fix Direction**: Implement sequence-number-based resync without full-broadcast penalty. See `docs/reference/websocket-binary.md` (V4 Delta Format section, around line 284) for the current frame layout. No ETA.
-
----
-
-### AUTH-001: Enterprise SSO Not Supported
-
-**Status**: Gap / Architecture Decision Pending
-**Impact**: VisionClaw's authentication stack is built on Nostr NIP-98 (cryptographic keypairs, browser extension, npubs). There is no OIDC, SAML, or LDAP integration. Enterprise deployments in regulated industries (healthcare, finance) cannot use Nostr browser extensions for staff authentication.
-
-**Workaround**: None currently. JWT was fully removed in November 2025 (not deprecated — removed). The `VIRCADIA_JWT_SECRET` env var retained in the compose file is solely for legacy Vircadia World Server compatibility and does not re-enable VisionClaw API auth. See `docs/explanation/security-model.md`.
-
-**Fix Direction**: An ADR is required before any implementation work begins. The three candidate approaches are:
-- (a) Wrap NIP-98 behind a SAML-to-Nostr proxy so enterprise identity providers map to Nostr keypairs transparently.
-- (b) Add a first-class OIDC port alongside NIP-98, with NIP-98 remaining the default for open deployments.
-- (c) Scope enterprise auth to API-key-per-service for M2M use cases only, leaving human auth as Nostr-only.
+**Fix Direction**: Implement ADR-040 Phase 1 (OIDC login flow, ephemeral keypair generation, session management). See [ADR-040](adr/ADR-040-enterprise-identity-strategy.md) and [ADR-088](adr/ADR-088-auth-service-extraction.md) for the auth consolidation plan.
 
 ---
 
@@ -79,56 +43,18 @@ Full details including the node schema, Neo4j index definitions, and the full pi
 
 ---
 
-### GPU-002: Analytics Actors Missing SharedGPUContext
-
-**Status**: Resolved
-**Impact**: PageRank, SSSP, APSP, and Connected Components endpoints return "GPU context not initialized" or "actor not available". The GPU context is created by `ForceComputeActor` but not shared to `PageRankActor`, `ShortestPathActor`, or `ConnectedComponentsActor` in the analytics subsystem.
-
-**Root Cause**: `AnalyticsSupervisor` spawns analytics actors but does not forward the `SetSharedGPUContext` message from the physics supervisor. Only `ForceComputeActor` receives the GPU context.
-
-**Workaround**: Clustering (K-means, DBSCAN, Louvain) works because `ClusteringActor` accesses the GPU via `UnifiedGPUCompute` which self-initializes. Other analytics actors use a different initialization path.
-
-**Fix Direction**: Forward `SetSharedGPUContext` from `PhysicsSupervisor` to `AnalyticsSupervisor` → all child actors. Estimated 50 lines.
-
----
-
-### PHYS-001: No Graph Position Reset Endpoint
-
-**Status**: Resolved
-**Impact**: When physics parameters change, the layout evolves from the current positions. If a previous extreme parameter set pushed nodes to boundary extremes, moderate parameters cannot recover them (gravity too weak at distance). The only reset is a full container restart.
-
-**Root Cause**: `POST /api/physics/reset` exists but depends on `PhysicsService` which is not injected into AppState. `POST /api/admin/sync` triggers `ReloadGraphFromDatabase` but requires power user auth and the full GitHub sync pipeline.
-
-**Fix Direction**: Add `POST /api/graph/reset-positions` that randomizes GPU positions and triggers a reheat. Estimated 30 lines in `force_compute_actor.rs`.
-
----
-
-### UI-001: Client Slider Init Race — Settings Pushed Before Server Load
-
-**Status**: Resolved
-**Impact**: On first client connect, sliders may send values before fetching server state. With the old max ranges (repelK: 50000), this produced extreme physics parameters. Slider ranges are now capped to sane values (repelK: 2000, centerGravityK: 10) which limits damage, but the race condition remains.
-
-**Fix Direction**: Client should fetch `GET /api/settings/physics` and populate slider values before enabling any PUT calls. Add a `settingsLoaded` flag to gate writes.
-
----
-
-### UI-002: `SETTINGS_AUTH_BYPASS` Not Picked Up by Docker Compose
-
-**Status**: Resolved
-**Impact**: `.env` contains `SETTINGS_AUTH_BYPASS=true` but `docker compose config` resolves it to `false`. Settings PUT calls return 401.
-
-**Root Cause**: Docker Compose `.env` file resolution depends on the working directory of the `docker compose` command, which may differ from the project root when invoked via `launch.sh` from a DinD container.
-
-**Workaround**: Auth bypass now also triggers on `DOCKER_ENV=1 + NODE_ENV=development` (added to `auth_extractor.rs`).
-
----
-
 ## Resolved Issues
 
 Previously known issues that are now fixed. Listed here so that old bug reports, forum threads, or git blame comments referencing these symptoms can be traced to their resolution.
 
 | Issue | Status | Fixed In | Reference |
 |-------|--------|----------|-----------|
+| ONT-001: Ontology Edge Gap — 62% of ontology nodes isolated due to empty `iri_to_id` map in `neo4j_adapter.rs` | Fixed Apr 2026 | `neo4j_adapter.rs` — added `iri_to_id` population loop after KGNode loading | `docs/explanation/ontology-pipeline.md` |
+| WS-001: Delta Encoding — permanently retired; caused position state divergence and latency spikes | Resolved by design | [ADR-037](adr/superseded/ADR-037-binary-protocol-consolidation.md), [ADR-061](adr/ADR-061-binary-protocol-unification.md) | [docs/binary-protocol.md](binary-protocol.md) |
+| GPU-002: Analytics actors missing SharedGPUContext — PageRank, SSSP, APSP endpoints returned "GPU context not initialized" | Fixed Apr 2026 | Forward `SetSharedGPUContext` from `PhysicsSupervisor` to `AnalyticsSupervisor` | `src/actors/gpu/` |
+| PHYS-001: No graph position reset endpoint — extreme parameters could not be recovered without container restart | Fixed Apr 2026 | `POST /api/graph/reset-positions` randomizes GPU positions and triggers reheat | `src/actors/gpu/force_compute_actor.rs` |
+| UI-001: Client slider init race — sliders sent values before fetching server state | Fixed Apr 2026 | Slider ranges capped; `settingsLoaded` gate added | `client/src/features/physics/` |
+| UI-002: `SETTINGS_AUTH_BYPASS` not picked up by Docker Compose | Fixed Apr 2026 | Auth bypass also triggers on `DOCKER_ENV=1 + NODE_ENV=development` | `src/auth_extractor.rs` |
 | Periodic full broadcast — nodes that converged before client connection never received positions; late-connecting clients saw all nodes at origin | Fixed Mar 2026 | `force_compute_actor.rs` — periodic full broadcast now fires inside the non-empty delta branch every 300 iterations, not only when all nodes are stopped | `docs/explanation/physics-gpu-engine.md` |
 | PTX ISA version mismatch — CUDA kernel failed to load on drivers supporting only PTX 9.0 when nvcc 13.2 emitted `.version 9.2` | Fixed Mar 2026 | `build.rs` auto-downgrade: detects driver PTX cap at build time and passes `--gpu-architecture` accordingly | `docs/explanation/physics-gpu-engine.md` |
 | Worker position data race — all edges vanished on the first rendered frame because the physics worker initialised all nodes at origin (0, 0, 0) | Fixed | `handleGraphUpdate` now returns `dataWithPositions` (with generated positions); the caller sends this to the worker instead of the original position-free `data` | `docs/explanation/client-architecture.md` |
@@ -136,4 +62,8 @@ Previously known issues that are now fixed. Listed here so that old bug reports,
 | CUDA thrust SM_890 error in GPU initialization — cuBlas context creation failed intermittently on Ada Lovelace GPUs | Fixed Apr 2026 | `force_compute_actor.rs` — added device synchronization before context creation and PTX module cache invalidation on arch mismatch | `src/actors/gpu/force_compute_actor.rs` |
 | PTX module lookup in community.rs — clustering kernels referenced incorrect module path causing kernel dispatch failures | Fixed Apr 2026 | `src/utils/ptx.rs` — added module name mapping for `gpu_clustering_kernels`, `ontology_constraints`, `pagerank` | `src/utils/ptx.rs` |
 | Slider range degeneration — max values capped at 50000 produced extreme physics parameters on first client connect | Fixed Apr 2026 | `client/src/features/physics/components/SettingsPanel.tsx` — slider ranges capped to sane defaults (repelK: 2000, centerGravityK: 10, damping: 0.98) | `docs/KNOWN_ISSUES.md` |
-| Clustering visualization missing analytics — DBSCAN and Louvain results not appearing in client analytics panel | Fixed Apr 2026 | Binary protocol V3 frame now writes cluster_id to node_analytics; clustering_actor writes to both `cluster_id` and `community_id` slots | `src/actors/gpu/clustering_actor.rs` |
+| Clustering visualization missing analytics — DBSCAN and Louvain results not appearing in client analytics panel | Fixed Apr 2026 (analytics moved off the per-frame wire by ADR-061) | Historical: prior wire format wrote cluster_id to node_analytics. Post-ADR-061: cluster_id rides the `analytics_update` JSON message at recompute cadence; the per-frame binary protocol carries position+velocity only. | `src/actors/gpu/clustering_actor.rs` |
+| **Dual ClientCoordinatorActor instances** — `SocketFlowServer` registered clients in one actor while `PhysicsOrchestratorActor` broadcast to a second internally-created instance; result: "2241 positions, 0 clients in manager", zero binary frames delivered to any client | Fixed Apr 2026 (commit fcfc1a166) | `graph_service_supervisor.rs` — new `with_client()` constructor accepts externally-injected `ClientCoordinatorActor`; `app_state.rs` passes shared address; internal creation skipped when external instance provided | `src/actors/graph_service_supervisor.rs` |
+| **ClientFilter default filtering to zero** — `ClientFilter::default()` had `enabled: true` with empty `filtered_node_ids`, causing every new client to receive zero nodes from `broadcast_with_filter` | Fixed Apr 2026 (commit fcfc1a166) | `client_filter.rs` — default changed to `enabled: false`; opt-in filtering semantics | `src/actors/client_filter.rs` |
+| **FastSettle permanent physics halt** — `FastSettle` mode latched `fast_settle_complete = true` and `is_physics_paused = true` on reaching the iteration cap even without energy convergence; subsequent settings changes could not resume simulation | Fixed Apr 2026 (commit fcfc1a166) | `physics_orchestrator_actor.rs` — non-convergent exhaustion falls back to `Continuous` mode rather than halting | `src/actors/physics_orchestrator_actor.rs` |
+| **Boundary-pinned nodes** — 468 nodes oscillating at ±2000 (viewport bounds) on Y/Z axes; runaway rescue threshold of 10× bounds did not catch nodes already at the wall | Fixed Apr 2026 (commit fcfc1a166) | `force_compute_actor.rs` — added `boundary_stuck_frames` counter (per node); nodes at boundary for ≥60 frames are teleported to randomised interior position with zeroed velocity | `src/actors/gpu/force_compute_actor.rs` |

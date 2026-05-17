@@ -684,6 +684,6 @@ Sessions automatically:
 
 ## Related Documentation
 
-- [Swarm Orchestration Guide](../how-to/agent-orchestration.md)
-- [WebSocket API Reference](../reference/websocket-binary.md)
-- [Configuration Reference](../reference/configuration/environment-variables.md)
+- [Agent Orchestration Guide](../agent-orchestration.md)
+- [WebSocket API Reference](../../reference/websocket-binary.md)
+- [Configuration Reference](../../reference/configuration/environment-variables.md)

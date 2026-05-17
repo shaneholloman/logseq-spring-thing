@@ -20,17 +20,16 @@ Welcome to the VisionClaw guides section. These practical, task-oriented guides 
 ## Quick Navigation
 
 ### Getting Started
-- **[Deployment Guide](deployment/deployment.md)** - Deploy VisionClaw in various environments
-- **[Development Workflow](development/development-workflow.md)** - Best practices for developing with VisionClaw
+- **[Deployment Guide](deployment-guide.md)** - Deploy VisionClaw in various environments
+- **[Development Guide](development-guide.md)** - Best practices for developing with VisionClaw
 - **[Configuration Guide](operations/configuration.md)** - Configuration scenarios and use cases
 
-### ️ Working with Agents
-- **[Orchestrating Agents](agents/orchestrating-agents.md)** - Manage and coordinate AI agents
-- **[Agent Control Panel](agents/agent-orchestration.md)** - Agent control panel user guide
+### Working with Agents
+- **[Agent Orchestration](agent-orchestration.md)** - Manage and coordinate AI agents
 
 ## Guide Overview
 
-### [Deployment Guide](deployment/deployment.md)
+### [Deployment Guide](deployment-guide.md)
 Learn how to deploy VisionClaw in different environments:
 - Local development setup
 - Docker-based deployment
@@ -38,7 +37,7 @@ Learn how to deploy VisionClaw in different environments:
 - Cloud deployment strategies
 - Multi-agent container orchestration
 
-### [Development Workflow](development/development-workflow.md)
+### [Development Guide](development-guide.md)
 Master the development workflow:
 - Setting up your development environment
 - Code organization and best practices
@@ -54,7 +53,7 @@ Configure VisionClaw for your needs:
 - Security hardening
 - AI service configuration
 
-### [Orchestrating Agents](agents/orchestrating-agents.md)
+### [Agent Orchestration](agent-orchestration.md)
 Manage AI agent systems:
 - Agent architecture overview
 - Spawning and managing agents
@@ -62,18 +61,10 @@ Manage AI agent systems:
 - Task distribution strategies
 - Monitoring agent performance
 
-### [Agent Control Panel](agents/agent-orchestration.md)
-Use the agent control panel:
-- Agent spawner
-- Active agents monitor
-- Agent settings (20+ configuration options)
-- Agent telemetry stream
-- GOAP mode
-
 ## Getting Help
 
 If you encounter issues not covered in these guides:
-1. Review the 
+1. Review the [Known Issues](../KNOWN_ISSUES.md)
 2. Search existing GitHub issues
 3. Join our community Discord
 4. Submit a new issue with detailed information
@@ -83,8 +74,6 @@ If you encounter issues not covered in these guides:
 ## Related Documentation
 
 - [Troubleshooting Guide](infrastructure/troubleshooting.md)
-- [Project Structure](development/02-project-structure.md)
-- [OntologyReasoningService Integration Guide](features/ontology-reasoning-integration.md)
 - [Intelligent Pathfinding Guide](features/intelligent-pathfinding.md)
 - [Natural Language Queries Tutorial](features/natural-language-queries.md)
 
@@ -96,7 +85,6 @@ We welcome contributions to improve these guides:
 - Share your deployment experiences
 - Suggest new guide topics
 
-See our [Contributing Guide](development/contributing.md) for details.
+See our [Contributing Guide](../CONTRIBUTING.md) for details.
 
 ---
-

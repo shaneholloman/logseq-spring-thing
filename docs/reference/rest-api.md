@@ -2,8 +2,9 @@
 title: VisionClaw REST API Reference
 description: Complete REST API reference for VisionClaw, covering graph data, settings, authentication, ontology, pathfinding, and Solid Pod endpoints
 category: reference
-tags: [api, rest, http, endpoints]
-updated-date: 2026-04-09
+tags: [api, rest, http, endpoints, nip-98, sovereign-mesh]
+updated-date: 2026-05-05
+adr-references: [ADR-028-ext, ADR-050, ADR-051, ADR-052, ADR-072]
 ---
 
 # VisionClaw REST API Reference
@@ -33,6 +34,14 @@ graph LR
     A --> H[/api/health/*]
     A --> I[/solid/*]
     A --> J[/wss]
+    A --> K[Enterprise]
+    A --> L[/api/discovery/*]
+    A --> M[/api/broker/*]
+
+    L --> L1[search]
+    L --> L2[related/:iri]
+    L --> L3[gaps]
+    L --> L4[batch, index, train, materialize]
 
     B --> B1[data]
     B --> B2[node/:id]
@@ -45,7 +54,133 @@ graph LR
     E --> E2[pagerank, clustering, community]
     I --> I1[pods/*]
     I --> I2[LDP resources]
+    K --> K1[/api/broker/*]
+    K --> K2[/api/workflows/*]
+    K --> K3[/api/connectors/*]
+    K --> K4[/api/policy/evaluate]
+    K --> K5[/api/mesh-metrics]
 ```
+
+---
+
+## Enterprise API Endpoints
+
+The enterprise control plane surfaces five API groups, all requiring the `Broker`, `Admin`, or `Auditor` role.
+
+### Judgment Broker — `/api/broker/*`
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/api/broker/inbox` | Broker/Admin | List open escalation cases for the authenticated broker |
+| GET | `/api/broker/cases` | Broker/Admin/Auditor | List all cases (filterable by status, priority, date) |
+| POST | `/api/broker/cases` | Broker/Admin | Submit a new escalation case |
+| GET | `/api/broker/cases/:id` | Broker/Admin/Auditor | Get a single case with full provenance chain |
+| POST | `/api/broker/cases/:id/decide` | Broker/Admin | Record a decision (Approve/Reject/Escalate/Defer) on a case |
+
+**Case submit body:**
+```json
+{
+  "title": "string",
+  "description": "string",
+  "priority": "P1 | P2 | P3",
+  "context": { "agentId": "string", "workflowId": "string", "ruleId": "string" }
+}
+```
+
+**Decide body:**
+```json
+{
+  "outcome": "Approved | Rejected | Escalated | Deferred",
+  "justification": "string",
+  "overrideRuleId": "string | null"
+}
+```
+
+---
+
+### Workflow Proposals — `/api/workflows/*`
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/api/workflows/proposals` | All authenticated | List workflow proposals (status filter: Draft/Submitted/UnderReview/Approved/...) |
+| POST | `/api/workflows/proposals` | Contributor+ | Submit a new workflow proposal |
+| GET | `/api/workflows/proposals/:id` | All authenticated | Get proposal detail with step graph |
+| POST | `/api/workflows/proposals/:id/promote` | Admin | Promote an Approved proposal to active workflow pattern |
+| GET | `/api/workflows/patterns` | All authenticated | List approved, reusable workflow patterns |
+
+---
+
+### Connectors — `/api/connectors/*`
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/api/connectors` | Admin/Auditor | List configured connectors |
+| POST | `/api/connectors` | Admin | Register a new connector (GitHub, Slack, Jira, Confluence, Notion) |
+| GET | `/api/connectors/:id` | Admin/Auditor | Get connector config and last-sync status |
+| DELETE | `/api/connectors/:id` | Admin | Remove connector and revoke credentials |
+
+**Connector create body:**
+```json
+{
+  "name": "string",
+  "type": "GitHub | Slack | Jira | Confluence | Notion",
+  "credentials": { "token": "string" },
+  "redactionRules": [{ "field": "string", "pattern": "string", "action": "Redact | Hash | Drop" }],
+  "syncIntervalMinutes": 60
+}
+```
+
+---
+
+### Policy Engine — `/api/policy/*`
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/api/policy/evaluate` | All authenticated | Evaluate an action against the current rule set |
+| GET | `/api/policy/rules` | Admin/Auditor | List configured policy rules |
+| PUT | `/api/policy/rules/:id` | Admin | Update a policy rule (Allow/Deny/Escalate, conditions, priority) |
+
+**Evaluate body:**
+```json
+{
+  "action": "string",
+  "subjectRole": "Broker | Admin | Auditor | Contributor",
+  "resourceType": "string",
+  "context": {}
+}
+```
+
+**Evaluate response:**
+```json
+{
+  "result": "Allow | Deny | Escalate",
+  "matchedRuleId": "string | null",
+  "justification": "string"
+}
+```
+
+---
+
+### Mesh KPIs — `/api/mesh-metrics`
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/api/mesh-metrics` | Admin/Auditor | Current four KPI values with 30-day trend |
+| GET | `/api/mesh-metrics?window=7d` | Admin/Auditor | KPI values for specified time window |
+
+**Response:**
+```json
+{
+  "meshVelocity": { "value": 36.5, "unit": "hours", "trend": [...] },
+  "augmentationRatio": { "value": 0.71, "trend": [...] },
+  "trustVariance": { "value": 0.09, "trend": [...] },
+  "hitlPrecision": { "value": 0.94, "trend": [...] },
+  "window": "30d",
+  "computedAt": "2026-04-18T12:00:00Z"
+}
+```
+
+See [DDD Enterprise Contexts](../explanation/ddd-enterprise-contexts.md) for the KPI definitions and lineage model.
 
 ### Authentication Summary
 
@@ -59,7 +194,17 @@ All mutation endpoints (POST, PUT, DELETE) require authentication. GET endpoints
 
 ## Authentication
 
-VisionClaw uses Nostr-based identity (NIP-98). Clients authenticate using a Nostr keypair; the server issues a session token bound to the Nostr pubkey.
+VisionClaw uses Nostr-based identity (NIP-98) with optional, authenticated, and admin access levels. Clients can authenticate using a Nostr keypair; the server issues a session token bound to the Nostr pubkey. Anonymous access is permitted for public endpoints.
+
+### Authentication Levels
+
+VisionClaw supports three authentication modes via `AccessLevel` enum:
+
+| Mode | Description | Use Case |
+|------|-------------|----------|
+| **Optional** | Client may authenticate but not required | Public graph data with optional caller-aware filtering |
+| **Authenticated** | Client must authenticate (NIP-98 or Bearer token) | User-scoped operations, workspace mutations |
+| **Admin** | Special roles only (Broker, Admin, Auditor) | System administration, policy enforcement |
 
 ### Authentication Flow
 
@@ -70,13 +215,13 @@ sequenceDiagram
     participant Neo4j
     participant Solid as Solid Pod
 
-    Client->>API: GET /api/graph/data
-    API->>API: Validate Nostr DID/keypair
-    API->>Neo4j: Query graph data
-    Neo4j-->>API: Graph nodes + edges
-    API->>Solid: Fetch user overlay (optional)
+    Client->>API: GET /api/graph/data (optional auth)
+    API->>API: Check auth level + caller pubkey
+    API->>Neo4j: Query graph data (filtered by visibility)
+    Neo4j-->>API: Public nodes (all) + private nodes (if caller owns)
+    API->>Solid: Fetch user overlay (if authenticated)
     Solid-->>API: Pod data
-    API-->>Client: Binary graph response
+    API-->>Client: Filtered graph response
 ```
 
 ### Nostr NIP-98 Authentication
@@ -127,6 +272,8 @@ X-Nostr-Pubkey: <hex_pubkey>
 
 Session validated via `nostr_service.validate_session(&pubkey, &token)`. Expiry controlled by `AUTH_TOKEN_EXPIRY` env var (default: 3600 seconds).
 
+**Legacy session path**: `X-Nostr-Pubkey + X-Nostr-Token` headers are gated behind `APP_ENV != production` (returns 401 in production unless explicitly enabled via feature flag). Use NIP-98 + Bearer for production integrations.
+
 ### 401 Error Response
 
 ```json
@@ -142,6 +289,16 @@ SETTINGS_AUTH_BYPASS=true  # treats all requests as power user dev-user
 POWER_USER_PUBKEYS=pubkey1,pubkey2  # comma-separated power user pubkeys
 ```
 
+### Feature Flags
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `NIP98_OPTIONAL_AUTH` | false | Enable optional-auth behaviour on wrappable endpoints (rollout safety) |
+| `POD_DEFAULT_PRIVATE` | false | New Pods default to private visibility |
+| `VISIBILITY_CLASSIFICATION` | false | Enable 4-state visibility enum (public, pod, private, opaque) |
+| `POD_SAGA_ENABLED` | false | Enable Pod provisioning saga pattern with retry |
+| `SOVEREIGN_SCHEMA` | false | Enable sovereign schema (ADR-050: kinds 30023/30100/30200/30300/30301/31400/31402) |
+
 ---
 
 ## Graph Endpoints
@@ -150,13 +307,23 @@ Configured in `api_handler/graph/mod.rs`.
 
 ### GET /api/graph/data
 
-Retrieve the full graph (all nodes and edges). Optionally filter by graph type.
+Retrieve the full graph (all nodes and edges). Optionally filter by graph type. Supports optional authentication with caller-aware visibility filtering (requires `NIP98_OPTIONAL_AUTH=true` feature flag).
 
 **Query parameters**:
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `graph_type` | string | all | Filter: `knowledge`, `ontology`, `agent` |
+
+**Authentication**: Optional. Unauthenticated callers receive public nodes only. Authenticated callers receive public + own-private nodes. Other users' private nodes are opacified.
+
+#### Caller-aware Filtering
+
+When `NIP98_OPTIONAL_AUTH=true` and caller is authenticated:
+
+- **Public nodes** (`visibility='public'`): Returned unchanged for all callers
+- **Own-private nodes** (`visibility='private'` AND `n.owner_pubkey == caller_pubkey`): Returned with full metadata
+- **Other-user private nodes**: Opacified (bit 29 set on node_id, label/metadata/pod_url cleared, replaced with opaque_id hash)
 
 **Response** (200 OK):
 
@@ -167,10 +334,21 @@ Retrieve the full graph (all nodes and edges). Optionally filter by graph type.
       "id": "42",
       "label": "Design Patterns",
       "node_type": "page",
-      "metadata": {
-        "classIri": "http://example.org/KnowledgePage",
-        "file_path": "mainKnowledgeGraph/pages/design-patterns.md"
-      }
+      "metadata_id": "design-patterns.md",
+      "visibility": "public",
+      "owner_pubkey": "abc123def456...",
+      "opaque_id": null,
+      "pod_url": "https://alice.pods.visionclaw.org/public/kg/design-patterns"
+    },
+    {
+      "id": "199",
+      "label": "Internal Strategy",
+      "node_type": "page",
+      "metadata_id": "internal-strategy.md",
+      "visibility": "private",
+      "owner_pubkey": "abc123def456...",
+      "opaque_id": null,
+      "pod_url": "https://alice.pods.visionclaw.org/private/kg/internal-strategy"
     }
   ],
   "edges": [
@@ -187,7 +365,26 @@ Retrieve the full graph (all nodes and edges). Optionally filter by graph type.
 }
 ```
 
-**Note**: Node IDs are sequential u32 starting at 1. High bits encode type flags (see WebSocket binary protocol for flag definitions). Client must use `String()` coercion when comparing IDs.
+#### Opacified Node Example
+
+When caller requests graph but does not own node 545 (which is private to user XYZ):
+
+```json
+{
+  "id": 545259521,
+  "label": "",
+  "node_type": "page",
+  "metadata_id": "",
+  "visibility": "private",
+  "owner_pubkey": "xyz789...",
+  "opaque_id": "a1b2c3d4e5f67890abcdef1234567890abcdef123456",
+  "pod_url": null
+}
+```
+
+**Note**: Opaque node ID = `0x20000000 | base_id` (bit 29 set). The `opaque_id` is a deterministic hash used for deduplication; label, metadata, and pod_url are cleared to prevent leakage. Edges to opacified nodes are also filtered.
+
+Node IDs are sequential u32 starting at 1. High bits encode type and visibility flags (see WebSocket binary protocol for flag definitions). Client must use `String()` coercion when comparing IDs.
 
 ### GET /api/graph/stats
 
@@ -385,7 +582,7 @@ Content-Type: application/json
 
 ## Ontology Endpoints
 
-Configured in `ontology_handler.rs`.
+Configured in `ontology_handler.rs`. Note: `/api/ontology-agent/*` endpoints are now authentication-gated (previously unwrapped, critical security fix per ADR-028-ext).
 
 ### GET /api/ontology/classes
 
@@ -558,7 +755,7 @@ Content-Type: application/json
 
 ## Analytics and Pathfinding Endpoints
 
-Configured in `api_handler/analytics/mod.rs`. All pathfinding and GPU analytics endpoints require the `gpu` feature flag at compile time and a CUDA-capable GPU.
+Configured in `api_handler/analytics/mod.rs`. All pathfinding and GPU analytics endpoints require the `gpu` feature flag at compile time and a CUDA-capable GPU. Analytics routes are now re-enabled (previously commented-out for testing; authentication fully restored).
 
 ### Standard Analytics
 
@@ -795,6 +992,128 @@ Only files tagged `public:: true` become knowledge graph page nodes. Ontology da
 
 ---
 
+## Discovery & Feature Engineering — `/api/discovery/*`
+
+Configured in `discovery_handler.rs`. Combines content embeddings (MiniLM-L6, 384-dim) with topology embeddings (TransE, 128-dim) for semantic search and ontology gap detection. See [ADR-072](../adr/ADR-072-autordf2gml-feature-engineering.md).
+
+### GET /api/discovery/search
+
+Combined content + topology similarity search.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `q` | string | (required) | Free-text search query |
+| `top_k` | integer | 10 | Maximum results |
+| `content_weight` | float | 0.6 | Weight for content similarity (0.0–1.0) |
+| `topology_weight` | float | 0.4 | Weight for topology similarity (0.0–1.0) |
+
+**Response 200:**
+```json
+{
+  "results": [
+    { "iri": "string", "label": "string", "score": 0.87, "content_score": 0.92, "topology_score": 0.79 }
+  ],
+  "query": "string",
+  "total": 5
+}
+```
+
+### GET /api/discovery/related/{iri}
+
+Find nodes related to a given IRI by combined similarity.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `iri` | path | (required) | Node IRI to find relatives of |
+| `top_k` | integer | 5 | Maximum results |
+
+**Response 200:** Same shape as `/search` results.
+**Response 404:** Node with given IRI not found.
+
+### GET /api/discovery/gaps
+
+Detect ontology gaps — pairs of nodes with high semantic similarity but no direct edge.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `min_score` | float | 0.3 | Minimum combined similarity threshold |
+| `limit` | integer | 20 | Maximum gaps to return |
+
+**Response 200:**
+```json
+{
+  "gaps": [
+    { "source_iri": "string", "target_iri": "string", "score": 0.72, "suggested_relation": "string" }
+  ],
+  "total": 3
+}
+```
+
+### POST /api/discovery/batch
+
+Batch similarity computation for multiple IRIs.
+
+**Request body:**
+```json
+{
+  "iris": ["urn:visionclaw:concept:a", "urn:visionclaw:concept:b"],
+  "top_k": 3
+}
+```
+
+**Response 200:** Per-IRI similarity results.
+
+### POST /api/discovery/index
+
+**Admin.** Trigger content embedding indexing of all ontology nodes via MiniLM-L6-v2.
+
+**Response 200:**
+```json
+{
+  "status": "complete",
+  "nodes_processed": 2834,
+  "nodes_embedded": 2834,
+  "nodes_skipped": 0,
+  "batches_sent": 45
+}
+```
+
+### POST /api/discovery/train
+
+**Admin.** Trigger TransE knowledge graph embedding training on the full edge set. Long-running (may exceed default proxy timeouts for large graphs).
+
+**Response 200:**
+```json
+{
+  "status": "complete",
+  "num_entities": 2834,
+  "num_relations": 12,
+  "num_triples": 8502,
+  "final_loss": 0.312,
+  "epochs_completed": 100,
+  "duration_ms": 45000
+}
+```
+
+### POST /api/discovery/materialize
+
+**Admin.** Trigger N-hop edge materialisation. Requires `NHOP_MATERIALIZATION_ENABLED=true` environment variable.
+
+**Response 200:**
+```json
+{
+  "status": "complete",
+  "two_hop_edges_created": 1250,
+  "three_hop_edges_created": 3400,
+  "nodes_processed": 2834,
+  "duration_ms": 12000
+}
+```
+
+**Response 503:** Materialisation disabled (env var not set).
+
+---
+
 ## AI / Agent Endpoints
 
 ### Bots — `/api/bots/*`
@@ -886,7 +1205,12 @@ Content-Type: application/json
 
 #### POST /api/briefs/:brief_id/debrief
 
-Request a consolidated debrief. On success, publishes a Nostr kind 30001 provenance event (if `VISIONCLAW_NOSTR_PRIVKEY` is set) and writes a `(:NostrEvent)-[:PROVENANCE_OF]->(:Bead)` record to Neo4j (if available).
+Request a consolidated debrief. On success, the `BeadLifecycleOrchestrator` (ADR-034)
+creates a bead in `Created` state, publishes a Nostr kind 30001 provenance event with
+retry (configurable via `BEAD_RETRY_*` env vars), persists the `(:NostrEvent)-[:PROVENANCE_OF]->(:Bead)`
+record to Neo4j, and tracks the full lifecycle. Every publish attempt produces a typed
+`BeadOutcome` (Success, RelayTimeout, RelayRejected, RelayUnreachable, SigningFailed,
+Neo4jWriteFailed, BridgeFailed) — no silent failures. Requires `VISIONCLAW_NOSTR_PRIVKEY`.
 
 ```http
 POST /api/briefs/brief-abc123/debrief
@@ -914,6 +1238,38 @@ Content-Type: application/json
 
 ---
 
+## Server Identity Endpoint
+
+### GET /api/server/identity
+
+Retrieve server identity, supported event kinds, and relay information. Public endpoint, no authentication required. This endpoint is foundational for ADR-050 sovereign schema support.
+
+**Response** (200 OK):
+
+```json
+{
+  "pubkey_hex": "abc123def456...",
+  "pubkey_npub": "npub1abc123def456...",
+  "supported_kinds": [
+    30023,
+    30100,
+    30200,
+    30300,
+    30301,
+    31400,
+    31402
+  ],
+  "relay_urls": [
+    "wss://relay.example.org",
+    "wss://relay.visionclaw.org"
+  ]
+}
+```
+
+**Schema reference**: See ADR-050 for sovereign schema kinds (30023: migration approval, 30100: bridge promotion, 30200: bead stamp, 30300: audit/broker decision, 30301: enrichment proposal). Kinds 31400 (governance panel definition) and 31402 (action request) are Agent Control Surface Protocol events used by the BrokerActor for governance integration with the Forum Kit relay mesh.
+
+---
+
 ## Constraints and Workspace Endpoints
 
 ### Constraints — `/api/constraints/*`
@@ -930,18 +1286,86 @@ Configured in `constraints_handler.rs`.
 | POST | `/api/constraints/validate` | Yes | Validate constraint set |
 | POST | `/api/constraints/generate` | No | Generate from ontology (see Ontology Physics section) |
 
-### Workspace — `/api/workspace/*`
+### Workspace API — `/api/workspace/*`
 
-Configured in `workspace_handler.rs`.
+Configured in `workspace_handler.rs`. All endpoints require authentication (Nostr session or Bearer token via `RequireAuth` middleware). Rate limit: 60 requests/minute per authenticated user.
 
-| Method | Path | Auth | Description |
-|--------|------|------|-------------|
-| GET | `/api/workspace` | No | Get current workspace state |
-| POST | `/api/workspace/save` | Yes | Save workspace snapshot |
-| POST | `/api/workspace/load` | Yes | Load workspace by ID |
-| POST | `/api/workspace/export` | Yes | Export workspace (JSON format) |
-| POST | `/api/workspace/import` | Yes | Import workspace |
-| DELETE | `/api/workspace/:id` | Yes | Delete saved workspace |
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/workspace/list` | List workspaces with pagination and filtering |
+| POST | `/api/workspace/create` | Create a new workspace |
+| GET | `/api/workspace/count` | Count workspaces matching current filter |
+| GET | `/api/workspace/{id}` | Get a single workspace by ID |
+| PUT | `/api/workspace/{id}` | Update workspace metadata |
+| DELETE | `/api/workspace/{id}` | Soft-delete workspace (sets `status = deleted`, data retained) |
+| POST | `/api/workspace/{id}/favorite` | Toggle favourite status |
+| POST | `/api/workspace/{id}/archive` | Archive or unarchive workspace |
+
+**List query parameters** (`GET /api/workspace/list`):
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `page` | integer | Page number (default: 0) |
+| `page_size` | integer | Results per page (default: 20) |
+| `sort_by` | string | `name \| lastAccessed \| createdAt \| updatedAt` |
+| `sort_direction` | string | `asc \| desc` |
+| `status` | string | Filter by status: `active \| archived` |
+| `type` | string | Filter by type: `personal \| team \| public` |
+| `search` | string | Text search across name and description |
+
+**Create body** (`POST /api/workspace/create`):
+
+```json
+{
+  "name": "string",
+  "description": "string",
+  "type": "personal | team | public",
+  "settings": {
+    "autoSave": true,
+    "syncEnabled": false,
+    "collaborationEnabled": false,
+    "backupEnabled": true,
+    "maxMembers": 10
+  }
+}
+```
+
+**Update body** (`PUT /api/workspace/{id}`) — all fields optional:
+
+```json
+{
+  "name": "string",
+  "description": "string",
+  "type": "personal | team | public",
+  "settings": { }
+}
+```
+
+**Workspace model**:
+
+```typescript
+interface Workspace {
+  id: string;
+  name: string;
+  description: string;
+  type: 'personal' | 'team' | 'public';
+  status: 'active' | 'archived';
+  memberCount: number;
+  lastAccessed: Date;
+  createdAt: Date;
+  updatedAt: Date;
+  favorite: boolean;
+  settings?: {
+    autoSave: boolean;
+    syncEnabled: boolean;
+    collaborationEnabled: boolean;
+    backupEnabled: boolean;
+    maxMembers: number;
+  };
+}
+```
+
+**Soft delete**: `DELETE /api/workspace/{id}` sets `status = deleted` and retains all data. Deleted workspaces do not appear in list results by default but can be recovered by an admin. This differs from the constraints `DELETE` which performs a hard delete.
 
 ---
 
@@ -1224,6 +1648,38 @@ WebSocket binary position updates are rate-limited to 60 frames/second per clien
 **Development**: `Access-Control-Allow-Origin: *`
 
 **Production**: Restricted to specific origins. Configure via reverse proxy.
+
+---
+
+## Broker / Governance Endpoints
+
+Broker endpoints serve the Judgment Broker Workbench (ADR-041). Cases submitted
+here are also published as kind-31402 ActionRequest events to the forum relay
+via the Agent Control Surface Protocol.
+
+| Method | Path | Auth | Purpose |
+|--------|------|------|---------|
+| GET | `/api/broker/inbox` | NIP-98 / Enterprise | List open broker cases |
+| GET | `/api/broker/cases/:id` | NIP-98 / Enterprise | Get a single case |
+| GET | `/api/broker/cases/:id/history` | NIP-98 / Enterprise | Decision history for a case |
+| POST | `/api/broker/cases` | NIP-98 / Enterprise | Submit a new case |
+| POST | `/api/broker/cases/:id/decide` | NIP-98 / Enterprise (Broker role) | Record a decision |
+| GET | `/api/broker/subscribe` | WebSocket upgrade | Real-time broker inbox events |
+
+### Nostr Event Integration
+
+The `BrokerActor` publishes governance events alongside the REST API:
+
+| Event Kind | Direction | Trigger |
+|------------|-----------|---------|
+| 31400 (PanelDefinition) | Outbound | `BrokerActor::started()` — registers the panel on boot |
+| 31402 (ActionRequest) | Outbound | `POST /api/broker/cases` — every new case |
+| 31403 (ActionResponse) | Inbound | Human approves/rejects via forum governance UI |
+| 30300 (BrokerDecision) | Outbound | `POST /api/broker/cases/:id/decide` — every decision |
+
+The forum relay at `wss://dreamlab-nostr-relay...workers.dev` is the
+bidirectional transport. The agentbox relay-consumer bridges events between the
+embedded relay and the forum relay via `external_fanout = "bidirectional"`.
 
 ---
 

@@ -1,6 +1,8 @@
 # Turbo Flow Infrastructure Inventory
 
-> Container: `multi-agent-docker-agentic-workstation` | OS: CachyOS Linux 6.18.6 | CUDA 13.0 | 32 CPU / 64GB RAM | Generated 2026-03-07
+> Container: `agentbox` (Nix-based, replacing legacy `multi-agent-docker-agentic-workstation`) | OS: CachyOS Linux 7.0.1 | CUDA 13.2 | 32 CPU / 64GB RAM | Updated 2026-05-05
+>
+> **Note:** `multi-agent-docker` is on deprecation track per [ADR-058](adr/ADR-058-mad-to-agentbox-migration.md). New features land in `agentbox/`.
 
 ## Users & Accounts
 

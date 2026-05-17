@@ -217,11 +217,10 @@ docker exec multi-agent-container supervisorctl status
 
 ## Related Documentation
 
-- [Multi-Agent Docker Environment Architecture](architecture.md)
-- [Multi-Agent Docker Environment - Complete Documentation](../deployment-guide.md)
+- [Deployment Guide](../deployment-guide.md)
 - [Pipeline Operator Runbook](../operations/pipeline-operator-runbook.md)
 - [Troubleshooting Guide](troubleshooting.md)
-- [Vircadia Multi-User XR Integration - User Guide](../explanation/xr-architecture.md)
+- [XR Architecture](../../explanation/xr-architecture.md)
 
 ## Quick Reference
 

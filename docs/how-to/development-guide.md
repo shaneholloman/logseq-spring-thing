@@ -37,7 +37,7 @@ updated-date: 2026-04-09
 | Git | 2.30+ | Version control |
 
 Optional:
-- Python 3.10+ (MCP tooling in `multi-agent-docker/`)
+- Python 3.10+ (MCP tooling in `agentbox/`)
 - NVIDIA CUDA 12.4 drivers + Container Toolkit (GPU physics)
 
 ### Install Rust
@@ -527,7 +527,7 @@ Use `rename_all` to bridge Rust snake_case to TypeScript camelCase:
 ```rust
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct GraphNode {
+pub struct KGNode {
     pub node_id: String,           // serialises as "nodeId"
     pub label: String,
     pub owl_class_iri: Option<String>, // serialises as "owlClassIri"
@@ -1171,10 +1171,9 @@ docker logs visionclaw_container 2>&1 | grep -i "ptx\|cuda\|nvcc"
 ## See Also
 
 - [Deployment Guide](./deployment-guide.md) — Docker Compose deployment reference
-- [Actor System Guide](./development/actor-system.md) — Actix actor patterns in depth
-- [Testing Guide](./development/testing-guide.md) — Full test suite reference
-- [Docker Environment Setup](./deployment/docker-environment-setup.md) — Local dev container setup
-- [Project Structure](./development/02-project-structure.md) — Complete directory reference (46 KB)
+- [Actor Hierarchy](../explanation/actor-hierarchy.md) — Actix actor patterns in depth
+- [Backend CQRS Pattern](../explanation/backend-cqrs-pattern.md) — Hexagonal architecture details
+- [Contributing Guide](../CONTRIBUTING.md) — Contribution standards and testing workflow
 
 ---
 

@@ -1,7 +1,15 @@
 # ADR-029: Type Index for Agent and View Discovery
 
 ## Status
-Proposed
+Implemented 2026-04-20
+
+Implementation notes:
+- `src/services/type_index_discovery.rs` — parse/serialise + `ensure_public_type_index`, `register_agent_in_type_index`, `discover_peer_registrations`. Recognised class URIs: `urn:solid:AgentSkill`, `urn:solid:ContributorProfile` (open to extension).
+- `src/actors/dojo_discovery_actor.rs` — supervised read-side crawler with stub periodic scheduler; fans out `PeerRegistrationsDiscovered` events for `SkillRegistrySupervisor` (agent C2) to consume.
+- `src/services/pod_client.rs` — added `get_resource` helper for profile + Type Index reads.
+- Registration payload is JSON-LD with `solid:TypeIndex` / `solid:TypeRegistration` matching the structure below; registrations can point at a `solid:instance` container OR carry inline agent metadata (capabilities, label) via extension fields, which this module round-trips verbatim.
+- WAC enforcement already landed under ADR-052; unauthorised peer fetches silently yield empty results (best-effort discovery per §Mitigations).
+- Follow-ups: (C2) wire `PeerRegistrationsDiscovered` into `SkillIndex` read model + calibrate crawl scheduler; (X1) expose `dojo_refresh` MCP tool mapping to `CrawlNow`.
 
 ## Context
 VisionClaw users can save graph views to their Solid Pods (ADR-027) and interact with agents, but there is no standardized way for users to discover what views or agents another user has made available. Without a discovery mechanism, collaboration requires out-of-band URL sharing.

@@ -36,32 +36,38 @@ constraint zone system, and smooth animated transitions between modes.
 
 ### Architecture
 
-```
-LayoutModeManager (Rust actor)
-    ├── current_mode: LayoutMode enum
-    ├── target_mode: Option<LayoutMode>  (during transition)
-    ├── transition_progress: f32 (0.0 → 1.0)
-    ├── position_buffers: HashMap<LayoutMode, Vec<Vec3>>
-    │
-    ├── ForceAtlas2Engine (GPU)
-    │   ├── octree_build_kernel
-    │   ├── octree_summarize_kernel
-    │   ├── force_accumulate_kernel (LinLog + degree-scaled repulsion)
-    │   └── adaptive_integrate_kernel (per-node speed)
-    │
-    ├── SugiyamaEngine (CPU → GPU placement)
-    │   ├── cycle_removal
-    │   ├── layer_assignment
-    │   ├── crossing_reduction
-    │   └── coordinate_assignment
-    │
-    ├── SpectralEngine (GPU)
-    │   ├── laplacian_construction (cuSPARSE)
-    │   └── lobpcg_eigensolver (cuSolver)
-    │
-    └── ConstraintZoneSystem (GPU overlay)
-        ├── zone_definitions: Vec<Zone>
-        └── zone_force_kernel
+```mermaid
+graph TD
+    LMM["LayoutModeManager (Rust actor)<br/>current_mode: LayoutMode enum<br/>target_mode: Option&lt;LayoutMode&gt;<br/>transition_progress: f32 (0.0-1.0)<br/>position_buffers: HashMap&lt;LayoutMode, Vec&lt;Vec3&gt;&gt;"]
+
+    subgraph FA2["ForceAtlas2Engine (GPU)"]
+        FA2_1["octree_build_kernel"]
+        FA2_2["octree_summarize_kernel"]
+        FA2_3["force_accumulate_kernel<br/>(LinLog + degree-scaled repulsion)"]
+        FA2_4["adaptive_integrate_kernel<br/>(per-node speed)"]
+    end
+
+    subgraph SUG["SugiyamaEngine (CPU - GPU placement)"]
+        SUG_1["cycle_removal"]
+        SUG_2["layer_assignment"]
+        SUG_3["crossing_reduction"]
+        SUG_4["coordinate_assignment"]
+    end
+
+    subgraph SPEC["SpectralEngine (GPU)"]
+        SPEC_1["laplacian_construction (cuSPARSE)"]
+        SPEC_2["lobpcg_eigensolver (cuSolver)"]
+    end
+
+    subgraph CZS["ConstraintZoneSystem (GPU overlay)"]
+        CZS_1["zone_definitions: Vec&lt;Zone&gt;"]
+        CZS_2["zone_force_kernel"]
+    end
+
+    LMM --> FA2
+    LMM --> SUG
+    LMM --> SPEC
+    LMM --> CZS
 ```
 
 ### Transition System

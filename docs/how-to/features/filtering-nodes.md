@@ -328,7 +328,7 @@ Result: Shows up to 10,000 nodes with quality ≥ 0.7
 - [Per-User Settings Implementation](auth-user-settings.md)
 
 - [Nostr Authentication Implementation](nostr-auth.md)
-- [Vircadia Multi-User XR Integration - User Guide](../explanation/xr-architecture.md)
+- [XR Architecture](../../explanation/xr-architecture.md)
 - [Multi-Agent Docker Environment - Complete Documentation](../infrastructure/../deployment-guide.md)
 
 ## Future Enhancements

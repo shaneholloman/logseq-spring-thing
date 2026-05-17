@@ -29,7 +29,7 @@ VisionClaw integrates with [Solid](https://solidproject.org/) (Social Linked Dat
 
 ### About JSS
 
-**JavaScript Solid Server** (v0.0.86) by [Melvin Carvalho](https://melvin.me/) is a minimal, fast, JSON-LD native Solid server. Unlike heavier alternatives, JSS is ~1MB with ~15 dependencies, runs on Node.js (including Android/Termux), and stores data as plain files — no database required.
+**JavaScriptSolidServer** (v0.0.86), maintained by the JavaScriptSolidServer contributors, is a minimal, fast, JSON-LD native Solid server. Unlike heavier alternatives, JSS is ~1MB with ~15 dependencies, runs on Node.js (including Android/Termux), and stores data as plain files — no database required.
 
 JSS provides capabilities far beyond basic LDP storage:
 
@@ -288,7 +288,7 @@ Ensure your Nostr session is active and the NIP-98 signature is valid. Try loggi
 
 ## Credits
 
-- **[JavaScript Solid Server (JSS)](https://github.com/JavaScriptSolidServer/JavaScriptSolidServer)** by [Melvin Carvalho](https://melvin.me/) — AGPL-3.0
+- **[JavaScriptSolidServer (JSS)](https://github.com/JavaScriptSolidServer/JavaScriptSolidServer)** by the JavaScriptSolidServer contributors — AGPL-3.0-only
 - **[Solid Project](https://solidproject.org/)** — W3C Community Group specifications
 - **[Nostr Protocol](https://nostr.com/)** — NIP-98 HTTP Auth, NIP-07 browser signing
 - **VisionClaw Solid Integration** — Rust proxy, TypeScript client, Nostr↔WebID bridge

@@ -130,8 +130,8 @@ Natural conversation with your AI agents:
 Step into your knowledge graph:
 - **Meta Quest 3 native support** with hand tracking
 - **Force-directed 3D graph physics** for intuitive spatial layouts
-- **Vircadia multi-user integration** for collaborative exploration
-- **WebXR standards-based** (Chrome, Edge, Firefox)
+- **Multi-user spatial presence** via presence WebSocket + LiveKit audio
+- **Godot 4 native APK** with OpenXR hand tracking and passthrough
 
 ### GPU-Accelerated Performance
 Enterprise-scale performance:
@@ -202,8 +202,8 @@ For custom deployments or development, VisionClaw supports:
 ## Getting Started
 
 1. **[Installation Guide](installation.md)** - Docker or native setup
-2. **[First Graph Tutorial](creating-first-graph.md)** - Create your first visualization
-3. **[Architecture Overview](../architecture/ARCHITECTURE.md)** - Understand the system design
+2. **[First Graph Tutorial](first-graph.md)** - Create your first visualization
+3. **[Architecture Overview](../explanation/system-overview.md)** - Understand the system design
 4. **[Developer Journey](../explanation/system-overview.md)** - Navigate the codebase
 
 ## Community & Support
@@ -217,8 +217,8 @@ For custom deployments or development, VisionClaw supports:
 
 ## Related Documentation
 
-- [VisionClaw Complete Architecture Documentation](../architecture/ARCHITECTURE.md)
-- [Agent/Bot System Architecture](../diagrams/server/agents/agent-system-architecture.md)
+- [VisionClaw Complete Architecture Documentation](../explanation/system-overview.md)
+- [Actor Hierarchy](../explanation/actor-hierarchy.md)
 
 ## Vision & Roadmap
 
@@ -232,7 +232,7 @@ VisionClaw represents the future of collaborative knowledge work—where AI agen
 - ✅ Binary WebSocket protocol
 
 **In Progress (v2.1 - Q1 2026):**
-- 🔄 Vircadia multi-user VR collaboration
+- ✅ Multi-user XR collaboration (Godot 4 + godot-rust native APK)
 - 🔄 Apple Vision Pro native app (Q3 2026)
 - 🔄 WebGPU fallback for non-CUDA systems
 
@@ -246,4 +246,4 @@ VisionClaw represents the future of collaborative knowledge work—where AI agen
 
 **Transform how your team discovers knowledge. Start exploring VisionClaw today.**
 
-**[Get Started](installation.md)** | **[Architecture](../architecture/ARCHITECTURE.md)** | **[Star on GitHub](https://github.com/DreamLab-AI/VisionClaw)**
+**[Get Started](installation.md)** | **[Architecture](../explanation/system-overview.md)** | **[Star on GitHub](https://github.com/DreamLab-AI/VisionClaw)**

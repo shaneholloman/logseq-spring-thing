@@ -132,7 +132,7 @@ VisionClaw uses several compose files for different deployment scenarios.
 | `docker-compose.voice.yml` | Voice pipeline overlay (LiveKit, Whisper, Kokoro TTS) | `dev`, `prod` |
 | `docker-compose.yml` | Base development services (webxr + Cloudflare tunnel) | `dev` |
 | `docker-compose.production.yml` | Legacy production-only compose | default |
-| `docker-compose.vircadia.yml` | Vircadia XR integration | varies |
+| `docker-compose.vircadia.yml` | ~~Vircadia XR~~ (deprecated — replaced by Godot native APK) | — |
 
 `docker-compose.unified.yml` is the recommended entry point for all deployments.
 
@@ -990,9 +990,8 @@ sudo certbot renew --nginx
 
 ## See Also
 
-- [Docker Compose Guide](./deployment-guide.md) — Compose file reference
-- [Docker Environment Setup](./deployment/docker-environment-setup.md) — Local dev walkthrough
 - [Environment Variables Reference](../reference/configuration/environment-variables.md) — Complete variable list
+- [Docker Compose Options](../reference/configuration/docker-compose-options.md) — Compose options reference
 - [Development Guide](./development-guide.md) — Developer setup and workflow
 - `docker-compose.unified.yml` — Primary compose file (source of truth)
 - `Dockerfile.production` — Production multi-stage build

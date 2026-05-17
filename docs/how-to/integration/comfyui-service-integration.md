@@ -14,9 +14,12 @@ related-docs:
   - ASCII_DEPRECATION_COMPLETE.md
 updated-date: 2025-12-18
 difficulty-level: intermediate
+status: deprecated
 dependencies:
   - Docker installation
 ---
+
+> **DEPRECATED**: This document describes the legacy `multi-agent-docker` ComfyUI integration. For the current Nix-based agentbox deployment, see [agentbox ComfyUI docs](../../../agentbox/docs/user/comfyui.md). The paths below reference `multi-agent-docker/` which is on deprecation track per [ADR-058](../../adr/ADR-058-mad-to-agentbox-migration.md).
 
 # ComfyUI Service Integration - Automatic Startup
 
@@ -373,10 +376,8 @@ Then rebuild and access at http://localhost:8188
 
 ## Related Documentation
 
-- [ComfyUI SAM3D Docker Setup](multi-agent-docker/comfyui-sam3d-setup.md)
-- [RAGFlow Knowledge Management Integration](../ai-integration/ragflow-integration.md)
-- [Perplexity AI Integration](../ai-integration/perplexity-integration.md)
-- [Development Setup Guide](../development/01-development-setup.md)
+- [ComfyUI SAM3D Setup](../comfyui-sam3d-setup.md)
+- [Development Guide](../development-guide.md)
 - [Pipeline Operator Runbook](../operations/pipeline-operator-runbook.md)
 
 ## Status

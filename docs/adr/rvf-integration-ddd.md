@@ -8,48 +8,41 @@
 
 ## 1. Strategic Design: Bounded Context Map
 
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                        VisionClaw System                                │
-│                                                                         │
-│  ┌──────────────────┐    ┌──────────────────┐    ┌────────────────────┐ │
-│  │  GRAPH CONTEXT    │    │  VECTOR CONTEXT   │    │  AGENT MEMORY     │ │
-│  │  (Existing)       │    │  (NEW - RVF)      │    │  CONTEXT          │ │
-│  │                   │    │                   │    │  (Evolving)        │ │
-│  │  Node             │    │  Embedding        │    │                    │ │
-│  │  Edge             │◄──►│  VectorIndex      │    │  MemoryEntry       │ │
-│  │  Metadata         │    │  SimilarityResult │    │  ReasoningPattern  │ │
-│  │  GraphData        │    │  VectorStore      │    │  Trajectory        │ │
-│  │  OntologyClass    │    │  SnapshotFile     │    │  SessionState      │ │
-│  │                   │    │                   │    │                    │ │
-│  │  Storage: Neo4j   │    │  Storage: .rvf    │    │  Storage: PG → .rvf│ │
-│  └────────┬──────────┘    └────────┬──────────┘    └────────┬───────────┘ │
-│           │                        │                         │             │
-│           │    Conformist          │    Shared Kernel         │             │
-│           └────────────────────────┘    (node_id: u32)       │             │
-│                        │                                     │             │
-│  ┌─────────────────────┴─────────────────────────────────────┤             │
-│  │  PHYSICS CONTEXT (Existing)                               │             │
-│  │                                                           │             │
-│  │  ForceCompute ← SemanticForces ← VectorStore.query_knn() │             │
-│  │  Clustering, Anomaly, PageRank, SSSP                      │             │
-│  │                                                           │             │
-│  │  Storage: In-memory + CUDA GPU                            │             │
-│  └───────────────────────────────────────────────────────────┘             │
-│                                                                           │
-│  ┌──────────────────┐    ┌──────────────────┐    ┌────────────────────┐   │
-│  │  RENDERING       │    │  ONTOLOGY         │    │  AI SERVICES       │   │
-│  │  CONTEXT          │    │  CONTEXT          │    │  CONTEXT           │   │
-│  │  (Existing)       │    │  (Existing)       │    │  (Existing)        │   │
-│  │                   │    │                   │    │                    │   │
-│  │  GemNodes         │    │  OWL Classes      │    │  RAGFlow           │   │
-│  │  GlassEdges       │    │  Whelk Reasoner   │    │  Perplexity        │   │
-│  │  SceneEffects     │    │  Subsumption      │    │  NL Query          │   │
-│  │  ClusterHulls     │    │                   │    │  Semantic Search   │   │
-│  │                   │    │  Storage: Neo4j   │    │                    │   │
-│  │  Storage: GPU     │    │  + Whelk in-mem   │    │  Storage: External │   │
-│  └──────────────────┘    └──────────────────┘    └────────────────────┘   │
-└─────────────────────────────────────────────────────────────────────────────┘
+```mermaid
+graph TB
+    subgraph VCS["VisionClaw System"]
+        subgraph GC["GRAPH CONTEXT (Existing)"]
+            GC_N["Node, Edge, Metadata<br/>GraphData, OntologyClass<br/>Storage: Neo4j"]
+        end
+
+        subgraph VEC["VECTOR CONTEXT (NEW - RVF)"]
+            VEC_N["Embedding, VectorIndex<br/>SimilarityResult, VectorStore<br/>SnapshotFile<br/>Storage: .rvf"]
+        end
+
+        subgraph AM["AGENT MEMORY CONTEXT (Evolving)"]
+            AM_N["MemoryEntry, ReasoningPattern<br/>Trajectory, SessionState<br/>Storage: PG -> .rvf"]
+        end
+
+        subgraph PHYS["PHYSICS CONTEXT (Existing)"]
+            PHYS_N["ForceCompute <- SemanticForces <- VectorStore.query_knn()<br/>Clustering, Anomaly, PageRank, SSSP<br/>Storage: In-memory + CUDA GPU"]
+        end
+
+        subgraph REND["RENDERING CONTEXT (Existing)"]
+            REND_N["GemNodes, GlassEdges<br/>SceneEffects, ClusterHulls<br/>Storage: GPU"]
+        end
+
+        subgraph ONT["ONTOLOGY CONTEXT (Existing)"]
+            ONT_N["OWL Classes, Whelk Reasoner<br/>Subsumption<br/>Storage: Neo4j + Whelk in-mem"]
+        end
+
+        subgraph AI["AI SERVICES CONTEXT (Existing)"]
+            AI_N["RAGFlow, Perplexity<br/>NL Query, Semantic Search<br/>Storage: External"]
+        end
+    end
+
+    GC <-->|"Conformist"| VEC
+    VEC -->|"Shared Kernel (node_id: u32)"| PHYS
+    VEC -->|"Customer-Supplier"| AM
 ```
 
 ### 1.1 Context Relationships
@@ -69,81 +62,99 @@
 
 ### 2.1 Domain Model
 
-```
-┌─────────────────────────────────────────────────┐
-│                 Vector Context                   │
-│                                                  │
-│  ┌──────────────────────────────────────────┐   │
-│  │  «aggregate root»                        │   │
-│  │  VectorIndex                              │   │
-│  │                                           │   │
-│  │  - id: VectorIndexId                      │   │
-│  │  - dimension: u16         (384)           │   │
-│  │  - metric: DistanceMetric (Cosine)        │   │
-│  │  - count: usize                           │   │
-│  │  - hnsw_params: HnswParams               │   │
-│  │  - status: IndexStatus                    │   │
-│  │                                           │   │
-│  │  + build(embeddings: &[Embedding])        │   │
-│  │  + query(vector: &[f32], k: usize)        │   │
-│  │       → Vec<SimilarityResult>             │   │
-│  │  + upsert(id: NodeId, embedding)          │   │
-│  │  + remove(id: NodeId)                     │   │
-│  │  + export(path: &Path) → SnapshotFile     │   │
-│  │  + status() → IndexStatus                 │   │
-│  └──────────────┬───────────────────────────┘   │
-│                 │ contains                       │
-│  ┌──────────────▼───────────────────────────┐   │
-│  │  «entity»                                │   │
-│  │  Embedding                                │   │
-│  │                                           │   │
-│  │  - node_id: NodeId (u32)                  │   │
-│  │  - vector: Vec<f32>                       │   │
-│  │  - source: EmbeddingSource                │   │
-│  │  - generated_at: Timestamp                │   │
-│  │  - model: ModelIdentifier                 │   │
-│  └──────────────────────────────────────────┘   │
-│                                                  │
-│  ┌──────────────────────────────────────────┐   │
-│  │  «value object»                          │   │
-│  │  SimilarityResult                         │   │
-│  │                                           │   │
-│  │  - node_id: NodeId                        │   │
-│  │  - distance: f32                          │   │
-│  │  - score: f32  (1.0 - distance)           │   │
-│  └──────────────────────────────────────────┘   │
-│                                                  │
-│  ┌──────────────────────────────────────────┐   │
-│  │  «value object»                          │   │
-│  │  SnapshotFile                             │   │
-│  │                                           │   │
-│  │  - path: PathBuf                          │   │
-│  │  - file_id: [u8; 16]                      │   │
-│  │  - segment_count: usize                   │   │
-│  │  - segments: Vec<SegmentType>             │   │
-│  │  - lineage_hash: [u8; 32]                 │   │
-│  │  - created_at: Timestamp                  │   │
-│  │  - vector_count: usize                    │   │
-│  │  - dimension: u16                         │   │
-│  └──────────────────────────────────────────┘   │
-│                                                  │
-│  ┌──────────────────────────────────────────┐   │
-│  │  «value object»                          │   │
-│  │  HnswParams                               │   │
-│  │                                           │   │
-│  │  - m: usize             (16)              │   │
-│  │  - ef_construction: usize (64)            │   │
-│  │  - ef_search: usize     (100)             │   │
-│  │  - max_elements: usize  (100_000)         │   │
-│  └──────────────────────────────────────────┘   │
-│                                                  │
-│  «enumerations»                                  │
-│                                                  │
-│  IndexStatus: Building | Ready | Degraded | Empty│
-│  DistanceMetric: Cosine | Euclidean | DotProduct │
-│  EmbeddingSource: SimHash | Model(String) | Import│
-│  SegmentType: Vec | Index | Meta | Graph | Witness│
-└──────────────────────────────────────────────────┘
+```mermaid
+classDiagram
+    class VectorIndex {
+        <<aggregate root>>
+        -id: VectorIndexId
+        -dimension: u16 = 384
+        -metric: DistanceMetric = Cosine
+        -count: usize
+        -hnsw_params: HnswParams
+        -status: IndexStatus
+        +build(embeddings: Embedding[])
+        +query(vector: f32[], k: usize) SimilarityResult[]
+        +upsert(id: NodeId, embedding: Embedding)
+        +remove(id: NodeId)
+        +export(path: Path) SnapshotFile
+        +status() IndexStatus
+    }
+
+    class Embedding {
+        <<entity>>
+        -node_id: NodeId (u32)
+        -vector: Vec~f32~
+        -source: EmbeddingSource
+        -generated_at: Timestamp
+        -model: ModelIdentifier
+    }
+
+    class SimilarityResult {
+        <<value object>>
+        -node_id: NodeId
+        -distance: f32
+        -score: f32
+    }
+
+    class SnapshotFile {
+        <<value object>>
+        -path: PathBuf
+        -file_id: u8[16]
+        -segment_count: usize
+        -segments: Vec~SegmentType~
+        -lineage_hash: u8[32]
+        -created_at: Timestamp
+        -vector_count: usize
+        -dimension: u16
+    }
+
+    class HnswParams {
+        <<value object>>
+        -m: usize = 16
+        -ef_construction: usize = 64
+        -ef_search: usize = 100
+        -max_elements: usize = 100000
+    }
+
+    class IndexStatus {
+        <<enumeration>>
+        Building
+        Ready
+        Degraded
+        Empty
+    }
+
+    class DistanceMetric {
+        <<enumeration>>
+        Cosine
+        Euclidean
+        DotProduct
+    }
+
+    class EmbeddingSource {
+        <<enumeration>>
+        SimHash
+        Model(String)
+        Import
+    }
+
+    class SegmentType {
+        <<enumeration>>
+        Vec
+        Index
+        Meta
+        Graph
+        Witness
+    }
+
+    VectorIndex "1" *-- "*" Embedding : contains
+    VectorIndex --> HnswParams
+    VectorIndex --> IndexStatus
+    VectorIndex --> DistanceMetric
+    Embedding --> EmbeddingSource
+    VectorIndex ..> SimilarityResult : returns
+    VectorIndex ..> SnapshotFile : exports
+    SnapshotFile --> SegmentType
 ```
 
 ### 2.2 Aggregate Invariants
@@ -159,47 +170,34 @@
 
 ### 3.1 Domain Model
 
-```
-┌──────────────────────────────────────────────────┐
-│              Embedding Pipeline                   │
-│                                                   │
-│  ┌───────────────────────────────────────────┐   │
-│  │  «domain service»                         │   │
-│  │  EmbeddingGenerator                        │   │
-│  │                                            │   │
-│  │  + generate(text: &str) → Vec<f32>         │   │
-│  │  + generate_batch(texts: &[&str])          │   │
-│  │       → Vec<Vec<f32>>                      │   │
-│  │  + dimension() → u16                       │   │
-│  │  + model_id() → ModelIdentifier            │   │
-│  └───────────────────────────────────────────┘   │
-│                                                   │
-│  «implementations»                                │
-│                                                   │
-│  ┌───────────────────────────────────────────┐   │
-│  │  SimHashEmbedder                           │   │
-│  │  - dimension: 384                          │   │
-│  │  - Based on existing topic_counts hashing  │   │
-│  │  - Deterministic, no external dependency   │   │
-│  │  - Low quality but instant                 │   │
-│  └───────────────────────────────────────────┘   │
-│                                                   │
-│  ┌───────────────────────────────────────────┐   │
-│  │  ApiEmbedder                               │   │
-│  │  - model: "text-embedding-3-small"         │   │
-│  │  - Uses existing OpenAI config             │   │
-│  │  - High quality, requires API call         │   │
-│  │  - Batched for throughput                  │   │
-│  └───────────────────────────────────────────┘   │
-│                                                   │
-│  ┌───────────────────────────────────────────┐   │
-│  │  LocalEmbedder                             │   │
-│  │  - model: all-MiniLM-L6-v2 via candle     │   │
-│  │  - Runs in-process, no external dep        │   │
-│  │  - High quality, moderate latency          │   │
-│  │  - Requires model file download            │   │
-│  └───────────────────────────────────────────┘   │
-└──────────────────────────────────────────────────┘
+```mermaid
+classDiagram
+    class EmbeddingGenerator {
+        <<domain service>>
+        +generate(text: str) Vec~f32~
+        +generate_batch(texts: str[]) Vec~Vec~f32~~
+        +dimension() u16
+        +model_id() ModelIdentifier
+    }
+
+    class SimHashEmbedder {
+        -dimension: 384
+    }
+    note for SimHashEmbedder "Based on existing topic_counts hashing\nDeterministic, no external dependency\nLow quality but instant"
+
+    class ApiEmbedder {
+        -model: text-embedding-3-small
+    }
+    note for ApiEmbedder "Uses existing OpenAI config\nHigh quality, requires API call\nBatched for throughput"
+
+    class LocalEmbedder {
+        -model: all-MiniLM-L6-v2 via candle
+    }
+    note for LocalEmbedder "Runs in-process, no external dep\nHigh quality, moderate latency\nRequires model file download"
+
+    EmbeddingGenerator <|.. SimHashEmbedder : implements
+    EmbeddingGenerator <|.. ApiEmbedder : implements
+    EmbeddingGenerator <|.. LocalEmbedder : implements
 ```
 
 ### 3.2 Embedding Trigger Points
@@ -282,27 +280,16 @@ impl VectorSyncService {
 
 ### 5.2 Event Flow for Semantic Discovery
 
-```
-User clicks "Discover" on a node
-    │
-    ▼
-OntologyQueryService::discover(query)
-    │
-    ├── [existing] Whelk OWL class hierarchy expansion
-    │
-    ├── [NEW] VectorStore::query(query_embedding, k=20)
-    │       │
-    │       ▼
-    │   HNSW search in rvf-index
-    │       │
-    │       ▼
-    │   Vec<SimilarityResult> { node_id, distance, score }
-    │
-    ▼
-Merge + rank results (OWL hierarchy + embedding similarity)
-    │
-    ▼
-Return DiscoverResponse with similarity_score field
+```mermaid
+graph TD
+    A["User clicks 'Discover' on a node"] --> B["OntologyQueryService::discover(query)"]
+    B --> C["[existing] Whelk OWL class hierarchy expansion"]
+    B --> D["[NEW] VectorStore::query(query_embedding, k=20)"]
+    D --> E["HNSW search in rvf-index"]
+    E --> F["Vec&lt;SimilarityResult&gt; { node_id, distance, score }"]
+    C --> G["Merge + rank results (OWL hierarchy + embedding similarity)"]
+    F --> G
+    G --> H["Return DiscoverResponse with similarity_score field"]
 ```
 
 ---

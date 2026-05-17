@@ -10,16 +10,20 @@ updated-date: 2026-04-09
 
 ## Context Map
 
-```
-Authentication ─── Graph Data ─── Physics Compute
-      │                │                │
-      │                │                │
-  Settings ──── WebSocket Comm ──── GPU Compute
-      │                │                │
-      │                │                │
-  Analytics ──── Ontology ──── Agent/Bot Mgmt
-      │                │
-  Rendering ──── Binary Protocol
+```mermaid
+graph LR
+    Auth["Authentication"] --- GD["Graph Data"] --- PC["Physics Compute"]
+    Auth --- Set["Settings"]
+    GD --- WS["WebSocket Comm"]
+    PC --- GPU["GPU Compute"]
+    Set --- WS --- GPU
+    Set --- An["Analytics"]
+    WS --- Ont["Ontology"]
+    GPU --- AB["Agent/Bot Mgmt"]
+    An --- Ont --- AB
+    An --- Ren["Rendering"]
+    Ont --- BP["Binary Protocol"]
+    Ren --- BP
 ```
 
 *Context map showing the ten bounded contexts and their upstream/downstream relationships across Authentication, Data, Physics, and Presentation layers.*

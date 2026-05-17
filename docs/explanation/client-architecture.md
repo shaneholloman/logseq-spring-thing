@@ -26,7 +26,7 @@ C4Container
         Component(worker, "Physics Worker", "Web Worker", "Receives position updates via SharedArrayBuffer")
         Component(wasm, "WASM Scene Effects", "Rust → WASM", "Particle and environment effect rendering")
         Component(settings, "Settings Panel", "React/Zustand", "User configuration with lazy-load and auto-save")
-        Component(xr, "XR/VR Mode", "Babylon.js", "Immersive mode (optional, see xr-architecture.md)")
+        Component(xr, "XR Mode", "Godot 4 APK", "Native Quest 3 XR client (separate binary, see xr-architecture.md)")
     }
 
     System_Ext(api, "VisionClaw API", "Actix-Web backend — REST and WebSocket endpoints")
@@ -82,7 +82,10 @@ graph TD
     UI --> Search[SemanticSearch]
     UI --> Agents[AgentPanel]
     UI --> CommandPalette[CommandPalette]
+    UI --> EnterpriseDrawerMount[EnterpriseDrawerMount]
 ```
+
+`EnterpriseDrawerMount` is the top-level mount for the enterprise slide-out drawer. It renders the drawer itself, a floating trigger button, and registers a global keyboard shortcut: **Ctrl+Shift+E** (Windows/Linux) or **Cmd+Shift+E** (Mac) toggles the drawer open/closed (defined in `EnterpriseDrawerMount.tsx` line ~25). The shortcut is suppressed when focus is inside an `<input>`, `<textarea>`, or `contenteditable` element.
 
 ---
 
@@ -361,11 +364,8 @@ Safari does not support `EXT_color_buffer_float`; bloom is disabled automaticall
 
 ## See Also
 
-- [XR Architecture](xr-architecture.md) — Babylon.js immersive mode, Vircadia multi-user, WebXR
-- [Server Architecture](concepts/architecture/core/server.md) — Rust/Actix backend
-- [Physics Engine](architecture/physics-engine.md) — CUDA force computation
-- [Data Flow](architecture/data-flow.md) — GitHub → Neo4j → GPU → Client pipeline
-- [Three.js Rendering Guide](../how-to/development/three-js-rendering.md) — instanced rendering, shaders, bloom
-- [State Management Guide](../how-to/development/state-management.md) — Zustand patterns, lazy loading
-- [WebSocket Best Practices](../how-to/development/websocket-best-practices.md) — connection management, binary protocol
-- [C4 Container Diagram](architecture/diagrams/c4-container.md) — system-level context
+- [XR Architecture](xr-architecture.md) — Godot 4 + godot-rust + OpenXR native Quest 3 APK, spatial presence
+- [System Overview](system-overview.md) — Hexagonal architecture, CQRS pattern, actor model
+- [Physics & GPU Engine](physics-gpu-engine.md) — CUDA force computation
+- [Backend CQRS Pattern](backend-cqrs-pattern.md) — Rust/Actix backend, command/query separation
+- [Deployment Topology](deployment-topology.md) — Service containers and data flow
