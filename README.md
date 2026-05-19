@@ -13,6 +13,8 @@
 
 **92 CUDA kernels · GPU clustering, anomaly detection & PageRank · Multi-user immersive XR · 83 agent skills · OWL 2 ontology governance · Nostr DID identity · Solid Pod sovereignty**
 
+**Maintainer**: [John O'Hare](https://github.com/jjohare) · **Upstream IP**: [Melvin Carvalho](https://github.com/melvincarvalho) ([JSS](https://github.com/JavaScriptSolidServer/JavaScriptSolidServer), [DID:Nostr](https://github.com/nicholasgasior/did-nostr)) · [MAINTAINERS.md](MAINTAINERS.md)
+
 <br/>
 
 https://github.com/user-attachments/assets/f45c92dc-4800-4b57-a6e2-178da6bb0a38
