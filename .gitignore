@@ -219,9 +219,9 @@ multi-agent-docker/.env
 client/public/embedding-cloud.json
 
 # Ecosystem service repos (cloned independently, not vendored)
-Kokoros/
-Whisper-WebUI/
-xinference/
+Kokoros
+Whisper-WebUI
+xinference
 
 
 # Local utility binaries (downloaded, not committed)
