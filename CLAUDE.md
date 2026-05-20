@@ -80,7 +80,7 @@ AEC (building architecture)? --> /studio [task]
 SEO / content optimisation? --> /toprank
 ```
 
-Full routing with all 88 active skills: see `multi-agent-docker/skills/SKILL-DIRECTORY.md`
+Full routing with all 88 active skills: see `agentbox/skills/SKILL-DIRECTORY.md`
 
 ### Skill Capabilities Matrix
 
@@ -166,7 +166,7 @@ For massive parallelisable work (migrations, bulk refactors), use `/batch` — i
 
 ## RuVector PostgreSQL
 
-See `multi-agent-docker/CLAUDE.md` for full RuVector connection details, schema,
+See `agentbox/CLAUDE.md` for full RuVector connection details, schema,
 SQL examples, and extension capabilities. Summary:
 
 - Host: `ruvector-postgres:5432` | DB: `ruvector` | Connection: `$RUVECTOR_PG_CONNINFO`

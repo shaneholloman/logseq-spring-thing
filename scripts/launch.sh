@@ -429,13 +429,13 @@ needs_image_rebuild() {
 
     local image_epoch=$(date -d "$image_created" +%s 2>/dev/null || echo 0)
 
-    # Only check files that affect the IMAGE (not source — that's volume-mounted)
+    # Only check files/dirs that affect the IMAGE layer.
+    # Cargo.toml, Cargo.lock, src/ and client/src/ are bind-mounted in dev —
+    # they never need an image rebuild; cargo picks them up at container start.
     local image_files=(
         "$PROJECT_ROOT/Dockerfile.unified"
         "$PROJECT_ROOT/Dockerfile.production"
         "$PROJECT_ROOT/Dockerfile.dev"
-        "$PROJECT_ROOT/Cargo.toml"
-        "$PROJECT_ROOT/Cargo.lock"
         "$PROJECT_ROOT/client/package.json"
         "$PROJECT_ROOT/client/package-lock.json"
         "$PROJECT_ROOT/supervisord.dev.conf"
@@ -506,9 +506,9 @@ needs_recompile() {
 is_container_running() {
     local container_name="$1"
     if docker ps --format '{{.Names}}' | grep -q "^${container_name}$"; then
-        # Check if container is healthy (or has no health check)
+        # Accept healthy, starting (healthcheck in progress = compiling), or no healthcheck
         local health=$(docker inspect --format='{{.State.Health.Status}}' "$container_name" 2>/dev/null || echo "none")
-        if [[ "$health" == "healthy" ]] || [[ "$health" == "none" ]]; then
+        if [[ "$health" == "healthy" ]] || [[ "$health" == "starting" ]] || [[ "$health" == "none" ]]; then
             return 0
         fi
     fi
@@ -525,9 +525,7 @@ start_environment() {
         if [[ "$source_changed" == "true" ]]; then
             warning "Source code changes detected — restarting container to recompile..."
             # Source is volume-mounted, so just restart. The wrapper rebuilds on startup.
-            # Clean target cache to avoid stale incremental artifacts.
             docker_compose stop visionflow
-            clean_cargo_target
             docker_compose start visionflow
             sleep 3
         else
@@ -557,8 +555,6 @@ start_environment() {
 
     if [[ "$image_rebuild" == "true" ]]; then
         warning "Image-level changes detected (Dockerfile/deps) — rebuilding image..."
-        # Only clean target cache, preserve registry downloads for speed
-        clean_cargo_target
         build_containers
     elif ! docker images | grep -q "visionflow"; then
         info "Container images not found. Building first..."
@@ -570,7 +566,7 @@ start_environment() {
     # Conditionally start cloudflared based on environment
     if [[ "$ENVIRONMENT" == "dev" ]]; then
         info "Development mode: Skipping cloudflared tunnel (local access only)"
-        docker_compose up -d --remove-orphans --scale cloudflared=0
+        docker_compose up -d --remove-orphans
 
         # Wait for containers to be ready
         sleep 3

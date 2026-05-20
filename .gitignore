@@ -241,3 +241,5 @@ extraction/
 data/oxigraph/
 data/sqlite/
 *.sqlite3
+
+agentbox/.env.solid-pods

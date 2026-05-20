@@ -1277,7 +1277,7 @@ class ClaudeFlowMCPServer {
         protocolVersion: '2024-11-05',
         capabilities: this.capabilities,
         serverInfo: {
-          name: 'claude-flow',
+          name: 'ruvector',
           version: this.version,
         },
       },
@@ -2677,20 +2677,8 @@ async function startMCPServer() {
     version: server.version,
   });
 
-  // Send server capabilities
-  console.log(
-    JSON.stringify({
-      jsonrpc: '2.0',
-      method: 'server.initialized',
-      params: {
-        serverInfo: {
-          name: 'claude-flow',
-          version: server.version,
-          capabilities: server.capabilities,
-        },
-      },
-    }),
-  );
+  // MCP spec: server must NOT send unsolicited messages before the client's
+  // initialize request. Wait for client handshake on stdin.
 
   // Handle stdin messages
   let buffer = '';

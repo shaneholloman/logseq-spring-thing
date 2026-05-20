@@ -1,74 +1,83 @@
 #!/bin/bash
-# Wrapper script for rust-backend that ensures rebuild on startup
-# This is used by supervisord in development mode
+# Wrapper script for rust-backend used by supervisord in development mode.
+# Skips cargo entirely when binary is already up-to-date — restarts with no
+# source changes take ~1s instead of ~30s.
 
 set -e
 
-# Set Docker environment variable to ensure PTX compilation at runtime
 export DOCKER_ENV=1
 
 log() {
     echo "[RUST-WRAPPER][$(date '+%Y-%m-%d %H:%M:%S')] $1"
 }
 
-# Auto-detect GPU compute capability at runtime (GPU is accessible in container).
-# ALWAYS prefer runtime detection over .env/compose values — the .env may contain
-# a stale arch from a different GPU (e.g. sm_89 when the actual GPU is sm_86).
+# Auto-detect GPU compute capability at runtime.
+# ALWAYS prefer runtime detection over .env/compose values — .env may be stale.
 DETECTED_ARCH=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader --id=0 2>/dev/null | head -1 | tr -d '.' | tr -d '[:space:]')
-if [ -n "$DETECTED_ARCH" ] && [ "$DETECTED_ARCH" != "" ]; then
+if [ -n "$DETECTED_ARCH" ]; then
     if [ -n "${CUDA_ARCH:-}" ] && [ "$CUDA_ARCH" != "$DETECTED_ARCH" ]; then
-        log "WARNING: .env CUDA_ARCH=${CUDA_ARCH} does not match GPU (sm_${DETECTED_ARCH}). Overriding to sm_${DETECTED_ARCH}"
+        log "WARNING: .env CUDA_ARCH=${CUDA_ARCH} != GPU sm_${DETECTED_ARCH}. Overriding."
     fi
     export CUDA_ARCH="$DETECTED_ARCH"
     log "GPU compute capability: sm_${CUDA_ARCH} (runtime-detected)"
 else
-    if [ -n "${CUDA_ARCH:-}" ]; then
-        log "WARNING: nvidia-smi failed, using .env CUDA_ARCH=${CUDA_ARCH}"
-    else
-        export CUDA_ARCH="75"
-        log "WARNING: nvidia-smi failed, no .env CUDA_ARCH, falling back to sm_75"
-    fi
+    export CUDA_ARCH="${CUDA_ARCH:-75}"
+    log "WARNING: nvidia-smi failed, using sm_${CUDA_ARCH}"
 fi
 
-# Truncate stale error log from previous runs
 > /app/logs/rust-error.log
 
-# Always rebuild in dev mode unless explicitly skipped
+RUST_BINARY="/app/target/release/webxr"
+
 if [ "${SKIP_RUST_REBUILD:-false}" != "true" ]; then
-    log "Rebuilding Rust backend with GPU support to apply code changes..."
     cd /app
 
-    # Clean stale incremental cache if fingerprints look corrupt
-    if [ -d "/app/target/release/.fingerprint" ]; then
-        FINGERPRINT_AGE=$(find /app/target/release/.fingerprint -maxdepth 1 -type d -mmin +1440 2>/dev/null | head -1)
-        if [ -n "$FINGERPRINT_AGE" ]; then
-            log "Stale fingerprints detected (>24h old), cleaning incremental cache..."
-            cargo clean 2>/dev/null || true
+    # Check if binary is already newer than all source inputs.
+    # If so, skip cargo entirely — saves ~30s of fingerprint scanning per restart.
+    NEEDS_BUILD=true
+    if [ -f "$RUST_BINARY" ]; then
+        BIN_MTIME=$(stat -c %Y "$RUST_BINARY" 2>/dev/null || echo 0)
+
+        # Latest mtime across Rust sources, Cargo manifests, build script, and CUDA kernels
+        LATEST_SRC=$(find /app/src /app/crates -name "*.rs" -printf '%T@\n' 2>/dev/null | sort -n | tail -1 | cut -d. -f1)
+        LATEST_SRC=${LATEST_SRC:-0}
+
+        for f in /app/Cargo.toml /app/Cargo.lock /app/build.rs; do
+            T=$(stat -c %Y "$f" 2>/dev/null || echo 0)
+            [ "$T" -gt "$LATEST_SRC" ] && LATEST_SRC=$T
+        done
+
+        LATEST_CUDA=$(find /app/src -name "*.cu" -printf '%T@\n' 2>/dev/null | sort -n | tail -1 | cut -d. -f1)
+        LATEST_CUDA=${LATEST_CUDA:-0}
+        [ "$LATEST_CUDA" -gt "$LATEST_SRC" ] && LATEST_SRC=$LATEST_CUDA
+
+        if [ "$BIN_MTIME" -gt "$LATEST_SRC" ] && [ "$LATEST_SRC" -gt 0 ]; then
+            log "Binary is up-to-date (no source changes since last build). Skipping cargo."
+            NEEDS_BUILD=false
         fi
     fi
 
-    # Build release with GPU features (matches dev-entrypoint.sh)
-    if cargo build --release --features gpu,dev-auth 2>&1; then
-        log "✓ Rust backend rebuilt successfully (release build with GPU)"
-    else
-        log "ERROR: Failed to rebuild Rust backend"
-        log "Attempting clean build..."
-        cargo clean 2>/dev/null || true
+    if [ "$NEEDS_BUILD" = "true" ]; then
+        log "Source changes detected — building with cargo..."
+
         if cargo build --release --features gpu,dev-auth 2>&1; then
-            log "✓ Clean rebuild succeeded"
+            log "✓ Build succeeded"
         else
-            log "FATAL: Clean rebuild also failed"
-            exit 1
+            log "ERROR: Build failed. Attempting clean rebuild..."
+            cargo clean 2>/dev/null || true
+            if cargo build --release --features gpu,dev-auth 2>&1; then
+                log "✓ Clean rebuild succeeded"
+            else
+                log "FATAL: Clean rebuild also failed"
+                exit 1
+            fi
         fi
     fi
-
-    RUST_BINARY="/app/target/release/webxr"
 else
     log "Skipping Rust rebuild (SKIP_RUST_REBUILD=true)"
     RUST_BINARY="/app/webxr"
 fi
 
-# Verify binary exists
 if [ ! -f "${RUST_BINARY}" ]; then
     log "ERROR: Rust binary not found at ${RUST_BINARY}"
     exit 1

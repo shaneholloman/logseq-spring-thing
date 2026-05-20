@@ -678,15 +678,9 @@ RUN mkdir -p /var/run/sshd && \
 # Copy skills (build context is parent directory, so paths include multi-agent-docker/)
 # NOTE: At runtime ~/.claude/ is bind-mounted from the host (HOST_CLAUDE_DIR), which overrides
 # this image layer. Skills here are for fresh deploys only; the host mount is the live source.
-# agentic-qe@latest (installed above) also populates ~/.claude/agents/ subdirectories
-# (consensus/, v3/, optimization/, flow-nexus/, swarm/) in the image layer, but these are
-# intentionally not carried over to the host mount — they have been consolidated into
-# swarm-advanced skill progressive discovery. On a fresh deploy, initialise the host
-# ~/.claude/agents/ from the curated state rather than from the image layer.
+# DEPRECATED: multi-agent-docker is being replaced by agentbox (Nix-based).
+# Canonical skills source is agentbox/skills/ (git submodule).
 COPY --chown=devuser:devuser multi-agent-docker/skills/ /home/devuser/.claude/skills/
-
-# Docker manager and chrome-devtools are already in skills/ directory
-# No separate copy needed - they're included in the skills/ copy above
 
 # ============================================================================
 # Bake CLAUDE.md hierarchy into the image

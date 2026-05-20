@@ -17,11 +17,8 @@ x-common-environment: &common-environment
   BOTS_ORCHESTRATOR_URL: ${BOTS_ORCHESTRATOR_URL:-ws://agentic-workstation:3002}
   MANAGEMENT_API_HOST: ${MANAGEMENT_API_HOST:-agentic-workstation}
   MANAGEMENT_API_PORT: ${MANAGEMENT_API_PORT:-9090}
-  # JavaScript Solid Server (JSS) configuration
-  JSS_URL: ${JSS_URL:-http://jss:3030}
-  JSS_WS_URL: ${JSS_WS_URL:-ws://jss:3030/.notifications}
-  # JavaScript Solid Server relay (used by all services that query JSS)
-  JSS_RELAY_URL: ${JSS_RELAY_URL:-ws://jss:3030/relay}
+  # Solid pod storage (embedded solid-pod-rs, replaces JSS sidecar)
+  SOLID_DATA_ROOT: ${SOLID_DATA_ROOT:-/data/solid}
 
 x-common-healthcheck: &common-healthcheck
   test: ["CMD", "curl", "-f", "http://localhost:4000/api/health"]
@@ -45,91 +42,10 @@ x-gpu-resources: &gpu-resources
           capabilities: [gpu, compute, utility]
 
 services:
-  # Neo4j Graph Database - Required for all profiles
-  neo4j:
-    container_name: visionflow-neo4j
-    image: neo4j:5.13.0
-    environment:
-      - NEO4J_AUTH=${NEO4J_USER}/${NEO4J_PASSWORD}
-      - NEO4J_server_memory_pagecache_size=512M
-      - NEO4J_server_memory_heap_max__size=1G
-      - NEO4J_dbms_security_procedures_unrestricted=apoc.*
-      - NEO4J_dbms_security_procedures_allowlist=apoc.*
-    ports:
-      - "7474:7474"  # HTTP
-      - "7687:7687"  # Bolt
-    volumes:
-      - neo4j-data:/data
-      - neo4j-logs:/logs
-      - neo4j-conf:/conf
-      - neo4j-plugins:/plugins
-    networks:
-      - visionclaw_network
-    healthcheck:
-      test: ["CMD-SHELL", "wget --spider --quiet http://localhost:7474 || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
-    restart: unless-stopped
-    logging:
-      <<: *common-logging
-
-  # JavaScript Solid Server (JSS) - Federated Solid Pods
-  # Provides: LDP CRUD, JSON-LD native storage, WebSocket notifications,
-  # Nostr NIP-98 auth, Web Access Control (WAC), content negotiation
-  jss:
-    container_name: visionflow-jss
-    build:
-      context: ./JavaScriptSolidServer
-      dockerfile: Dockerfile.jss
-    environment:
-      - JSS_PORT=3030
-      - JSS_HOST=0.0.0.0
-      - JSS_ROOT=/data
-      - JSS_NOTIFICATIONS=true
-      - JSS_CONNEG=true
-      - JSS_MULTIUSER=true
-      - JSS_IDP=false
-      # Disable CDN fetch at startup — required for air-gapped deployments (Sellafield).
-      # Set JSS_MASHLIB=false so the browser UI does not load at all (API-only mode).
-      - JSS_MASHLIB_CDN=false
-      - JSS_MASHLIB=false
-      # Disable git HTTP backend (attack surface, not needed).
-      - JSS_GIT=false
-      # Per-pod storage quota (500 MB). Prevents unbounded growth on shared infra.
-      - JSS_DEFAULT_QUOTA=${JSS_DEFAULT_QUOTA:-524288000}
-      # Invite-only mode: off by default, can be enabled for closed beta.
-      - JSS_INVITE_ONLY=${JSS_INVITE_ONLY:-false}
-      - JSS_NOSTR=true
-    volumes:
-      - jss-data:/data
-    ports:
-      - "${JSS_PORT:-3030}:3030"
-    networks:
-      - visionclaw_network
-    healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3030/"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
-    restart: unless-stopped
-    logging:
-      <<: *common-logging
-    profiles:
-      - development
-      - dev
-      - production
-      - prod
-
   # Unified VisionFlow service with profile-based configuration
   visionflow:
     container_name: ${CONTAINER_NAME:-visionflow_container}
     hostname: ${HOSTNAME:-webxr}
-    depends_on:
-      neo4j:
-        condition: service_healthy
     build:
       context: .
       dockerfile: ${DOCKERFILE:-Dockerfile.unified}
@@ -147,20 +63,17 @@ services:
       VITE_DEV_SERVER_PORT: ${VITE_DEV_SERVER_PORT:-5173}
       VITE_API_PORT: ${VITE_API_PORT:-4000}
       VITE_HMR_PORT: ${VITE_HMR_PORT:-24678}
-      RUST_LOG: ${RUST_LOG:-info,webxr::actors::gpu=debug,webxr::actors::physics_orchestrator_actor=debug,webxr::actors::graph_service_supervisor=debug,webxr::utils::ptx=debug,webxr::adapters::neo4j_ontology_repository=warn,webxr::actors::graph_state_actor=warn,actix_web=warn}
+      RUST_LOG: ${RUST_LOG:-info,actix_web=warn,actix_server=warn,actix_http=warn,h2=warn,hyper=warn,rustls=warn,reqwest=warn,oxigraph=warn,horned_owl=warn,whelk=warn,solid_pod_rs=warn,webxr::actors::gpu::force_compute_actor=warn,webxr::handlers::socket_flow_handler=warn}
       RUST_LOG_REDIRECT: ${RUST_LOG_REDIRECT:-true}
       DOCKER_ENV: ${DOCKER_ENV:-true}
       # Dev-only: bypass Nostr auth for settings writes (never set in production)
       SETTINGS_AUTH_BYPASS: "${SETTINGS_AUTH_BYPASS:-false}"
+      # Solid pod storage (embedded solid-pod-rs)
+      SOLID_DATA_ROOT: ${SOLID_DATA_ROOT:-/data/solid}
       # Nostr bead provenance bridge — scoped to visionflow only (privkey must not leak to other containers)
       # Bridge pubkey: eb47d8a792a4709329270a9f85f012326c61867a913791dc5f89dc7a0a760754
       VISIONCLAW_NOSTR_PRIVKEY: ${VISIONCLAW_NOSTR_PRIVKEY:-}
       FORUM_RELAY_URL: ${FORUM_RELAY_URL:-}
-      # Neo4j Configuration
-      NEO4J_URI: ${NEO4J_URI:-bolt://neo4j:7687}
-      NEO4J_USER: ${NEO4J_USER:-neo4j}
-      NEO4J_PASSWORD: ${NEO4J_PASSWORD}
-      NEO4J_DATABASE: ${NEO4J_DATABASE:-neo4j}
     volumes:
       # Data volumes - ALWAYS mounted (both dev and prod)
       - visionflow-data:/app/data
@@ -174,7 +87,7 @@ services:
       - ${HOST_PROJECT_ROOT:-.}/build.rs:/app/build.rs:ro
       - ${HOST_PROJECT_ROOT:-.}/crates:/app/crates:ro
       - ${HOST_PROJECT_ROOT:-.}/docs:/app/docs:ro
-      # whelk-rs is a git dep (9af9315a2) — fetched into cargo cache, no bind mount needed.
+      # solid-pod-rs + whelk-rs are crates.io deps — fetched into cargo cache, no bind mount needed.
       - ${HOST_PROJECT_ROOT:-.}/client/src:/app/client/src:ro
       - ${HOST_PROJECT_ROOT:-.}/client/public:/app/client/public:ro
       - ${HOST_PROJECT_ROOT:-.}/client/index.html:/app/client/index.html:ro
@@ -218,9 +131,6 @@ services:
   visionflow-production:
     container_name: ${CONTAINER_NAME:-visionflow_prod_container}
     hostname: ${HOSTNAME:-webxr-prod}
-    depends_on:
-      neo4j:
-        condition: service_healthy
     build:
       context: .
       dockerfile: Dockerfile.production
@@ -237,11 +147,6 @@ services:
       RUST_LOG: ${RUST_LOG:-info}
       GIT_HASH: ${GIT_HASH:-production}
       VITE_DEBUG: "false"
-      # Neo4j Configuration
-      NEO4J_URI: ${NEO4J_URI:-bolt://neo4j:7687}
-      NEO4J_USER: ${NEO4J_USER:-neo4j}
-      NEO4J_PASSWORD: ${NEO4J_PASSWORD}
-      NEO4J_DATABASE: ${NEO4J_DATABASE:-neo4j}
       # CORS — must include production domain so nginx can pass real Origin
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-https://www.visionflow.info,https://visionflow.info,http://localhost:3000,http://localhost:3001}
       # ComfyUI image generation
@@ -309,8 +214,6 @@ services:
     logging:
       <<: *common-logging
     profiles:
-      - development
-      - dev
       - production
       - prod
 
@@ -339,21 +242,4 @@ volumes:
     driver: local
   cargo-target-cache:
     name: ${CARGO_TARGET_CACHE_VOLUME:-visionflow-cargo-target-cache}
-    driver: local
-  # Neo4j volumes
-  neo4j-data:
-    name: ${NEO4J_DATA_VOLUME:-visionflow-neo4j-data}
-    driver: local
-  neo4j-logs:
-    name: ${NEO4J_LOGS_VOLUME:-visionflow-neo4j-logs}
-    driver: local
-  neo4j-conf:
-    name: ${NEO4J_CONF_VOLUME:-visionflow-neo4j-conf}
-    driver: local
-  neo4j-plugins:
-    name: ${NEO4J_PLUGINS_VOLUME:-visionflow-neo4j-plugins}
-    driver: local
-  # JavaScript Solid Server data volume
-  jss-data:
-    name: ${JSS_DATA_VOLUME:-visionflow-jss-data}
     driver: local

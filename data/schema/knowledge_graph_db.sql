@@ -102,7 +102,12 @@ CREATE TABLE IF NOT EXISTS edges (
 
     -- Edge properties
     weight REAL NOT NULL DEFAULT 1.0,
-    edge_type TEXT DEFAULT 'link' CHECK (edge_type IN ('link', 'tag', 'parent', 'reference', 'related')),
+    edge_type TEXT DEFAULT 'explicit_link' CHECK (edge_type IN (
+        'explicit_link', 'hierarchical', 'structural', 'dependency',
+        'associative', 'bridge', 'namespace', 'inferred',
+        'implements', 'enhancement', 'security', 'goal',
+        'tracking', 'similarity', 'provenance'
+    )),
 
     -- Visual properties
     color TEXT,
