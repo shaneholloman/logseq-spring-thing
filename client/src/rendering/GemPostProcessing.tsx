@@ -132,12 +132,7 @@ export const GemPostProcessing: React.FC<GemPostProcessingProps> = ({ enabled = 
         const { Node: NodeClass } = await import('three/webgpu');
         const bloomPass = bloom(bloomInput as InstanceType<typeof NodeClass>, strength, radius, threshold);
 
-        // Compose: scene + attenuated bloom. Raw `add` blows out bright nodes
-        // because bloom(scene) at strength 0.8 pushes HDR values > 1.0 into
-        // ACES compression territory, causing white-out and desaturation.
-        // Scaling bloom by 0.5 preserves the glow effect while keeping values
-        // in a range where ACES tone mapping retains color distinction.
-        const outputNode = scenePassColor.add(bloomPass.mul(tslMod.float(0.5)));
+        const outputNode = scenePassColor.add(bloomPass);
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any -- RenderPipeline constructor types don't match R3F's renderer type
         const postProcessing = new RenderPipeline(gl as any, outputNode);

@@ -29,13 +29,17 @@ export const QUALITY_PRESETS: QualityPreset[] = [
     settings: {
       
       'visualisation.graphs.logseq.physics.iterations': 100,
-      'visualisation.graphs.logseq.physics.warmupIterations': 50,
-      'visualisation.graphs.logseq.physics.dt': 0.02,
-      'visualisation.graphs.logseq.physics.gravity': -0.5,
-      'visualisation.graphs.logseq.physics.springK': 0.05,
-      'visualisation.graphs.logseq.physics.damping': 0.5,
-      'visualisation.graphs.logseq.physics.repelK': 50,
-      'visualisation.graphs.logseq.physics.centerGravityK': 0.01,
+      'visualisation.graphs.logseq.physics.warmupIterations': 100,
+      'visualisation.graphs.logseq.physics.dt': 0.016,
+      'visualisation.graphs.logseq.physics.gravity': 0.0001,
+      'visualisation.graphs.logseq.physics.springK': 5.0,
+      'visualisation.graphs.logseq.physics.damping': 0.9,
+      'visualisation.graphs.logseq.physics.repelK': 600.0,
+      'visualisation.graphs.logseq.physics.centerGravityK': 0.03,
+      'visualisation.graphs.logseq.physics.temperature': 0.005,
+      'visualisation.graphs.logseq.physics.maxVelocity': 100.0,
+      'visualisation.graphs.logseq.physics.maxForce': 30.0,
+      'visualisation.graphs.logseq.physics.restLength': 80.0,
 
       
       'performance.targetFPS': 30,
@@ -105,14 +109,18 @@ export const QUALITY_PRESETS: QualityPreset[] = [
     },
     settings: {
       
-      'visualisation.graphs.logseq.physics.iterations': 300,
-      'visualisation.graphs.logseq.physics.warmupIterations': 100,
+      'visualisation.graphs.logseq.physics.iterations': 200,
+      'visualisation.graphs.logseq.physics.warmupIterations': 200,
       'visualisation.graphs.logseq.physics.dt': 0.016,
-      'visualisation.graphs.logseq.physics.gravity': -1.0,
-      'visualisation.graphs.logseq.physics.springK': 0.1,
-      'visualisation.graphs.logseq.physics.damping': 0.3,
-      'visualisation.graphs.logseq.physics.repelK': 100,
-      'visualisation.graphs.logseq.physics.centerGravityK': 0.02,
+      'visualisation.graphs.logseq.physics.gravity': 0.0001,
+      'visualisation.graphs.logseq.physics.springK': 12.0,
+      'visualisation.graphs.logseq.physics.damping': 0.85,
+      'visualisation.graphs.logseq.physics.repelK': 800.0,
+      'visualisation.graphs.logseq.physics.centerGravityK': 0.05,
+      'visualisation.graphs.logseq.physics.temperature': 0.01,
+      'visualisation.graphs.logseq.physics.maxVelocity': 200.0,
+      'visualisation.graphs.logseq.physics.maxForce': 50.0,
+      'visualisation.graphs.logseq.physics.restLength': 80.0,
 
       
       'performance.targetFPS': 60,
@@ -183,14 +191,18 @@ export const QUALITY_PRESETS: QualityPreset[] = [
     },
     settings: {
       
-      'visualisation.graphs.logseq.physics.iterations': 500,
+      'visualisation.graphs.logseq.physics.iterations': 300,
       'visualisation.graphs.logseq.physics.warmupIterations': 200,
-      'visualisation.graphs.logseq.physics.dt': 0.01,
-      'visualisation.graphs.logseq.physics.gravity': -1.5,
-      'visualisation.graphs.logseq.physics.springK': 0.15,
-      'visualisation.graphs.logseq.physics.damping': 0.2,
-      'visualisation.graphs.logseq.physics.repelK': 150,
-      'visualisation.graphs.logseq.physics.centerGravityK': 0.03,
+      'visualisation.graphs.logseq.physics.dt': 0.016,
+      'visualisation.graphs.logseq.physics.gravity': 0.0001,
+      'visualisation.graphs.logseq.physics.springK': 15.0,
+      'visualisation.graphs.logseq.physics.damping': 0.82,
+      'visualisation.graphs.logseq.physics.repelK': 1000.0,
+      'visualisation.graphs.logseq.physics.centerGravityK': 0.08,
+      'visualisation.graphs.logseq.physics.temperature': 0.01,
+      'visualisation.graphs.logseq.physics.maxVelocity': 200.0,
+      'visualisation.graphs.logseq.physics.maxForce': 50.0,
+      'visualisation.graphs.logseq.physics.restLength': 80.0,
 
       
       'performance.targetFPS': 60,
@@ -262,14 +274,18 @@ export const QUALITY_PRESETS: QualityPreset[] = [
     },
     settings: {
       
-      'visualisation.graphs.logseq.physics.iterations': 1000,
-      'visualisation.graphs.logseq.physics.warmupIterations': 500,
-      'visualisation.graphs.logseq.physics.dt': 0.008,
-      'visualisation.graphs.logseq.physics.gravity': -2.0,
-      'visualisation.graphs.logseq.physics.springK': 0.2,
-      'visualisation.graphs.logseq.physics.damping': 0.1,
-      'visualisation.graphs.logseq.physics.repelK': 200,
-      'visualisation.graphs.logseq.physics.centerGravityK': 0.05,
+      'visualisation.graphs.logseq.physics.iterations': 400,
+      'visualisation.graphs.logseq.physics.warmupIterations': 300,
+      'visualisation.graphs.logseq.physics.dt': 0.012,
+      'visualisation.graphs.logseq.physics.gravity': 0.0001,
+      'visualisation.graphs.logseq.physics.springK': 20.0,
+      'visualisation.graphs.logseq.physics.damping': 0.80,
+      'visualisation.graphs.logseq.physics.repelK': 1200.0,
+      'visualisation.graphs.logseq.physics.centerGravityK': 0.1,
+      'visualisation.graphs.logseq.physics.temperature': 0.01,
+      'visualisation.graphs.logseq.physics.maxVelocity': 200.0,
+      'visualisation.graphs.logseq.physics.maxForce': 80.0,
+      'visualisation.graphs.logseq.physics.restLength': 80.0,
 
       
       'performance.targetFPS': 120,

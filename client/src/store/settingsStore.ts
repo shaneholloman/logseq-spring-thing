@@ -7,7 +7,7 @@ import { debugState } from '../utils/clientDebugState'
 import { produce } from 'immer';
 import { toast } from '../features/design-system/components/Toast';
 import { isViewportSetting } from '../features/settings/config/viewportSettings';
-import { settingsApi } from '../api/settingsApi';
+import { settingsApi, PhysicsSettings } from '../api/settingsApi';
 import { nostrAuth } from '../services/nostrAuthService';
 import { autoSaveManager } from './autoSaveManager';
 
@@ -897,17 +897,11 @@ export const useSettingsStore = create<SettingsState>()(
       },
 
 
-      notifyPhysicsUpdate: (graphName: string, params: Partial<GPUPhysicsParams>) => {
-        if (typeof window !== 'undefined') {
-          // Include session pubkey so the server can scope physics to this user
-          const sessionPubkey = nostrAuth.getCurrentUser()?.pubkey
-            || sessionStorage.getItem('ephemeral_session_pubkey')
-            || undefined;
-          const event = new CustomEvent('physicsParametersUpdated', {
-            detail: { graphName, params, pubkey: sessionPubkey }
+      notifyPhysicsUpdate: (_graphName: string, params: Partial<GPUPhysicsParams>) => {
+        settingsApi.updatePhysics(params as Partial<PhysicsSettings>)
+          .catch((err: unknown) => {
+            logger.error('Failed to persist physics update to backend:', err);
           });
-          window.dispatchEvent(event);
-        }
       },
 
       updateTweening: (graphName: string, params: Partial<{ enabled: boolean; lerpBase: number; snapThreshold: number; maxDivergence: number }>) => {

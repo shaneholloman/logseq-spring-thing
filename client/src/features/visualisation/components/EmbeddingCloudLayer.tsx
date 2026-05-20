@@ -374,7 +374,6 @@ const EmbeddingCloudLayer: React.FC<EmbeddingCloudProps> = ({ enabled }) => {
           vertexColors
           sizeAttenuation
           depthWrite={false}
-          blending={THREE.AdditiveBlending}
         />
       </points>
       {/* Burst ring pool — lives inside the cloud group so it scales/rotates with it */}

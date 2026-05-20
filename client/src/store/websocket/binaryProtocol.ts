@@ -176,9 +176,8 @@ export function validateBinaryData(data: ArrayBuffer): boolean {
   }
 
   const version = new DataView(data).getUint8(0);
-  const VALID_VERSIONS = [2, 3, 5];
-  if (!VALID_VERSIONS.includes(version)) {
-    console.warn(`[WS] Invalid binary protocol version: ${version}`);
+  if (version !== 3 && version !== 5) {
+    console.warn(`[WS] Unexpected binary protocol version: ${version}`);
     return false;
   }
 

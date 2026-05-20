@@ -151,6 +151,15 @@ export async function createGemRenderer(defaultProps: Record<string, unknown>) {
       renderer.outputColorSpace = THREE.SRGBColorSpace;
       renderer.setPixelRatio(Math.min(window.devicePixelRatio, maxDPR));
 
+      // Force the WebGPU surface to match the canvas dimensions.
+      // R3F measures the container before the async init() resolves, so the
+      // WebGPU backend's internal surface may be 0×0 until a resize event.
+      // Explicit setSize() here eliminates the "black until resize" bug.
+      const rect = canvas.getBoundingClientRect();
+      if (rect.width > 0 && rect.height > 0) {
+        renderer.setSize(rect.width, rect.height, false);
+      }
+
       // Expose renderer type for components to check
       (renderer as WebGPURendererInstance).__isWebGPURenderer = true;
       isWebGPURenderer = true;

@@ -145,6 +145,7 @@ export function useGraphVisualState(graphData: GraphData): GraphVisualStateResul
       // Priority 2: Node type field from API (set by GraphStateActor classify_node)
       const nodeType = (node as unknown as { type?: string }).type || '';
       if (nodeType === 'ontology_node' || nodeType === 'owl_class' || nodeType === 'OwlClass'
+          || nodeType === 'owl_individual' || nodeType === 'domain_root'
           || nodeType.includes(':') // OWL class IRI like "mv:Avatar", "ai:BdiModel"
       ) {
         map.set(String(node.id), 'ontology');

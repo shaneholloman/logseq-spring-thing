@@ -58,15 +58,36 @@ export interface PhysicsSettings {
     enabled: boolean;
     inactivityThresholdMs: number;
   };
-  boundsSize: number;
-  separationRadius: number;
+  // Core spring/repulsion
+  springK: number;
+  repelK: number;
   damping: number;
-  enableBounds: boolean;
-  enabled: boolean;
-  iterations: number;
+  dt: number;
+  gravity: number;
+  centerGravityK: number;
+  temperature: number;
+  restLength: number;
+  // Velocity / force limits
   maxVelocity: number;
   maxForce: number;
-  repelK: number;
+  // Spatial
+  boundsSize: number;
+  boundaryDamping: number;
+  separationRadius: number;
+  gridCellSize: number;
+  maxRepulsionDist: number;
+  // Simulation schedule
+  warmupIterations: number;
+  iterations: number;
+  coolingRate: number;
+  // ForceAtlas2 / layout
+  linLogMode: boolean;
+  scalingRatio: number;
+  adaptiveSpeed: boolean;
+  graphSeparationX: number;
+  // Operational flags
+  enableBounds: boolean;
+  enabled: boolean;
 }
 
 export type PriorityWeighting = 'linear' | 'exponential' | 'quadratic';
@@ -107,6 +128,7 @@ export interface NodeFilterSettings {
   filterByQuality: boolean;
   filterByAuthority: boolean;
   filterMode: 'or' | 'and';
+  includeLinkedPages: boolean;
 }
 
 export interface QualityGateSettings {
@@ -122,11 +144,12 @@ export interface QualityGateSettings {
   minFpsThreshold: number;
   maxNodeCount: number;
   autoAdjust: boolean;
-  ontologyStrength?: number;
-  dagLevelAttraction?: number;
-  dagSiblingRepulsion?: number;
-  typeClusterAttraction?: number;
-  typeClusterRadius?: number;
+  // Semantic / layout force strengths (required — defaults applied server-side)
+  ontologyStrength: number;
+  dagLevelAttraction: number;
+  dagSiblingRepulsion: number;
+  typeClusterAttraction: number;
+  typeClusterRadius: number;
 }
 
 export interface AllSettings {
@@ -156,6 +179,37 @@ export interface ProfileIdResponse {
 export interface ErrorResponse {
   error: string;
 }
+
+// ============================================================================
+// Physics defaults — must mirror Rust SimParams defaults exactly
+// ============================================================================
+
+export const DEFAULT_PHYSICS_SETTINGS: Partial<PhysicsSettings> = {
+  springK: 12.0,
+  repelK: 800.0,
+  damping: 0.85,
+  dt: 0.016,
+  gravity: 0.0001,
+  centerGravityK: 0.05,
+  temperature: 0.01,
+  restLength: 80.0,
+  maxVelocity: 200.0,
+  maxForce: 50.0,
+  boundsSize: 1200.0,
+  boundaryDamping: 0.8,
+  separationRadius: 3.0,
+  gridCellSize: 40.0,
+  maxRepulsionDist: 2000.0,
+  warmupIterations: 200,
+  iterations: 200,
+  coolingRate: 0.002,
+  linLogMode: true,
+  scalingRatio: 10.0,
+  adaptiveSpeed: true,
+  graphSeparationX: 0.0,
+  enabled: true,
+  enableBounds: true,
+};
 
 // ============================================================================
 // Default settings for visualisation effects (used when API doesn't provide them)
@@ -439,13 +493,17 @@ function transformApiToClientSettings(apiResponse: AllSettings): Record<string, 
       typeClusterAttraction: 0.3,
       typeClusterRadius: 100,
     },
-    nodeFilter: apiResponse.nodeFilter || {
-      enabled: true,
-      qualityThreshold: 0.7,
-      authorityThreshold: 0.5,
-      filterByQuality: true,
-      filterByAuthority: false,
-      filterMode: 'or' as const
+    nodeFilter: {
+      ...{
+        enabled: true,
+        qualityThreshold: 0.7,
+        authorityThreshold: 0.5,
+        filterByQuality: true,
+        filterByAuthority: false,
+        filterMode: 'or' as const,
+        includeLinkedPages: true,
+      },
+      ...(apiResponse.nodeFilter || {}),
     }
   };
 }
@@ -781,15 +839,7 @@ export const settingsApi = {
     // Also reset server-side settings to defaults
     try {
       const defaultPhysics: Partial<PhysicsSettings> = {
-        enabled: true,
-        damping: 0.5,
-        boundsSize: 1000,
-        enableBounds: true,
-        maxVelocity: 10,
-        maxForce: 50,
-        repelK: 1.0,
-        iterations: 1,
-        separationRadius: 50,
+        ...DEFAULT_PHYSICS_SETTINGS,
         autoBalance: false,
         autoBalanceIntervalMs: 5000,
         autoBalanceConfig: { maxIterations: 100, threshold: 0.01 },

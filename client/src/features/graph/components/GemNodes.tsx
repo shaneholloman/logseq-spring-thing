@@ -381,7 +381,8 @@ const GemNodesInner: React.ForwardRefRenderFunction<GemNodesHandle, GemNodesProp
       }
     }
     const visSettings = settings?.visualisation as Record<string, unknown> | undefined;
-    const nodeSettings = visSettings?.nodes as Record<string, unknown> | undefined;
+    const graphsLogseq = (visSettings?.graphs as Record<string, unknown> | undefined)?.logseq as Record<string, unknown> | undefined;
+    const nodeSettings = graphsLogseq?.nodes as Record<string, unknown> | undefined;
     const baseScale = ((nodeSettings?.nodeSize as number | undefined) ?? 0.5) / 0.5;
     const texBuf = metaTexRef.current?.image?.data as Float32Array | undefined;
 

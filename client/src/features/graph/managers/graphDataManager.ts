@@ -759,22 +759,6 @@ class GraphDataManager {
     };
   }
 
-  /**
-   * Fire all subscribers with the current cached data. Subscriber set
-   * iteration order is insertion order (stable across runs).
-   */
-  private notifyGraphDataListeners(): void {
-    if (!this.lastGraphData) return;
-    const snapshot = this.lastGraphData;
-    this.graphDataListeners.forEach(listener => {
-      try {
-        listener(snapshot);
-      } catch (error) {
-        logger.error('Error in graph data listener:', createErrorMetadata(error));
-      }
-    });
-  }
-
   private notifyPositionUpdateListeners(positions: Float32Array): void {
     this.positionUpdateListeners.forEach(listener => {
       try {
