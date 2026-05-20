@@ -2,7 +2,7 @@
 
 # VisionClaw
 
-### The knowledge engineering substrate of the VisionFlow coordination platform.
+### GPU-accelerated knowledge engineering with OWL 2 reasoning and immersive XR
 
 [![Build](https://img.shields.io/github/actions/workflow/status/DreamLab-AI/VisionClaw/ci.yml?branch=main&style=flat-square&logo=github)](https://github.com/DreamLab-AI/VisionClaw/actions)
 [![Version](https://img.shields.io/github/v/release/DreamLab-AI/VisionClaw?style=flat-square&logo=semantic-release)](https://github.com/DreamLab-AI/VisionClaw/releases)
@@ -19,7 +19,7 @@ https://github.com/user-attachments/assets/f45c92dc-4800-4b57-a6e2-178da6bb0a38
 
 <br/>
 
-[VisionFlow Platform](#visionflow--coordination-engineering) · [Why VisionClaw?](#hard-problems-need-shared-reasoning) · [Quick Start](#quick-start) · [Capabilities](#capabilities) · [Architecture](#architecture) · [Performance](#performance) · [Documentation](#documentation)
+[Why VisionClaw?](#why-visionclaw) · [Quick Start](#quick-start) · [Capabilities](#capabilities) · [Architecture](#architecture) · [Performance](#performance) · [Documentation](#documentation)
 
 </div>
 
@@ -45,35 +45,7 @@ Every agent decision is semantically grounded, every mutation passes consistency
 
 When agents know their authority boundary and surface exceptions cleanly, the 90% of decisions that don't need human judgment flow without friction. The 10% that do get clean, contextualised escalation with full provenance.
 
-<details>
-<summary><strong>VisionFlow — the wider coordination platform</strong></summary>
-
-VisionClaw is the knowledge engineering substrate of **VisionFlow**, a distributed coordination platform where autonomous AI agents, human judgment, and institutional knowledge work together through shared protocols and self-sovereign data. No single repository is VisionFlow — it emerges when five independent systems mesh together:
-
-| Substrate | Repository | Role |
-|---|---|---|
-| **VisionClaw** | [DreamLab-AI/VisionClaw](https://github.com/DreamLab-AI/VisionClaw) | Knowledge engineering — OWL 2 reasoning, GPU physics, immersive collaboration, human-in-the-loop governance |
-| **Agentbox** | [DreamLab-AI/agentbox](https://github.com/DreamLab-AI/agentbox) | Harness engineering — sovereign agent runtime, Nix reproducibility, 180+ tools, privacy filter |
-| **solid-pod-rs** | [DreamLab-AI/solid-pod-rs](https://github.com/DreamLab-AI/solid-pod-rs) | Cryptographic foundation — Rust port of JSS (~98% parity), DID:Nostr, WAC, Web Ledger micropayments |
-| **nostr-rust-forum** | [DreamLab-AI/nostr-rust-forum](https://github.com/DreamLab-AI/nostr-rust-forum) | Forum kit — passkey-first auth, Agent Control Surface protocol (kinds 31400-31405) |
-| **dreamlab-ai-website** | [DreamLab-AI/dreamlab-ai-website](https://github.com/DreamLab-AI/dreamlab-ai-website) | Branded deployment — React SPA, WASM forum, operator overlay, Cloudflare Workers |
-
-Every actor — human, agent, server — is identified by a single `did:nostr:<secp256k1-pubkey>`. The same keypair authenticates at every layer: Nostr relay (NIP-42), HTTP requests (NIP-98 Schnorr), Solid pod access (WAC ACL), and DID resolution. No shared session store. No token exchange between tiers.
-
-See [VisionFlow Coordination Platform](docs/explanation/visionflow-coordination-platform.md) for the full architectural narrative.
-
-</details>
-
-<details>
-<summary><strong>Strategic Wardley Map — ecosystem positioning along the evolution axis</strong></summary>
-
-<br/>
-
-![VisionFlow Strategic Wardley Map](docs/explanation/visionflow-wardley-map.png)
-
-Components are colour-coded by layer: user-visible capabilities (red), core differentiators (cyan), platform components (purple), protocol infrastructure (green), open standards (amber), and commodity infrastructure (grey). Red arrows show active evolution direction. See [Wardley Map Analysis](docs/explanation/visionflow-wardley-map.md) for the full strategic reading.
-
-</details>
+VisionClaw is the knowledge engineering substrate of the **[VisionFlow](https://github.com/DreamLab-AI/VisionFlow)** coordination platform — the federated mesh where autonomous agents, human judgment, and institutional knowledge collaborate through shared protocols and self-sovereign data.
 
 ![VisionClaw GPU-accelerated force-directed graph with Control Center](./graph-physics-live.png)
 
@@ -695,8 +667,8 @@ See the [Contributing Guide](docs/CONTRIBUTING.md). Check [Known Issues](docs/KN
 
 <div align="center">
 
-**VisionClaw is the knowledge engineering substrate of the [VisionFlow](docs/explanation/visionflow-coordination-platform.md) coordination platform, built by [DreamLab AI](https://www.dreamlab-ai.com).**
+**VisionClaw is the knowledge engineering substrate of [VisionFlow](https://github.com/DreamLab-AI/VisionFlow), built by [DreamLab AI](https://www.dreamlab-ai.com).**
 
-[VisionFlow Architecture](docs/explanation/visionflow-coordination-platform.md) · [Documentation](docs/README.md) · [Known Issues](docs/KNOWN_ISSUES.md) · [Discussions](https://github.com/DreamLab-AI/VisionClaw/discussions)
+[VisionFlow Platform](https://github.com/DreamLab-AI/VisionFlow) · [Documentation](docs/README.md) · [Known Issues](docs/KNOWN_ISSUES.md) · [Discussions](https://github.com/DreamLab-AI/VisionClaw/discussions)
 
 </div>
