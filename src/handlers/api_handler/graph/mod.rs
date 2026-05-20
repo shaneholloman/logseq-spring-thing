@@ -491,7 +491,7 @@ pub async fn get_auto_balance_notifications(
     }
 }
 
-/// Return the current GPU-computed node positions (not the initial Neo4j zeros).
+/// Return the current GPU-computed node positions (not the initial loaded zeros).
 ///
 /// `GET /api/graph/positions`
 pub async fn get_graph_positions(

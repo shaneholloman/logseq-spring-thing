@@ -4,7 +4,7 @@
 //! 1. Generates valid Logseq markdown with OntologyBlock headers
 //! 2. Validates via OntologyParser round-trip
 //! 3. Checks Whelk EL++ consistency (rejects inconsistent proposals)
-//! 4. Stages in Neo4j as OntologyProposal
+//! 4. Stages in Oxigraph as OntologyProposal
 //! 5. Writes directly to GitHub (agents are authorized) as a PR for human review
 //!
 //! Notes are per-user — each user's agents write to their own namespace.
@@ -479,7 +479,7 @@ impl OntologyMutationService {
             term = proposal.preferred_term,
             domain = proposal.domain,
             parents = proposal.is_subclass_of.join(", "),
-            consistency_status = if consistency.consistent { "✅ **Consistent**" } else { "❌ **Inconsistent**" },
+            consistency_status = if consistency.consistent { "**Consistent**" } else { "❌ **Inconsistent**" },
             consistency_detail = consistency.explanation.as_deref().unwrap_or("No logical contradictions"),
             quality = quality,
             confidence = agent_ctx.confidence,
@@ -531,7 +531,7 @@ impl OntologyMutationService {
             agent_id = agent_ctx.agent_id,
             user_id = agent_ctx.user_id,
             changes = changes.iter().map(|c| format!("- {}", c)).collect::<Vec<_>>().join("\n"),
-            consistency_status = if consistency.consistent { "✅ Consistent" } else { "❌ Inconsistent" },
+            consistency_status = if consistency.consistent { "Consistent" } else { "❌ Inconsistent" },
         )
     }
 }

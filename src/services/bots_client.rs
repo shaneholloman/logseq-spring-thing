@@ -117,12 +117,12 @@ impl BotsClient {
         
         match self.mcp_client.test_connection().await {
             Ok(true) => {
-                info!("✓ MCP server is reachable");
+                info!("MCP server is reachable");
 
                 
                 match self.mcp_client.initialize_session().await {
                     Ok(_) => {
-                        info!("✓ MCP session initialized successfully");
+                        info!("MCP session initialized successfully");
                     }
                     Err(e) => {
                         warn!("Failed to initialize MCP session: {}", e);
@@ -160,7 +160,7 @@ impl BotsClient {
                 match mcp_client.query_agent_list().await {
                     Ok(mcp_agents) => {
                         if !mcp_agents.is_empty() {
-                            info!("📊 Received {} agents from MCP server", mcp_agents.len());
+                            info!("Received {} agents from MCP server", mcp_agents.len());
 
                             
                             let converted_agents: Vec<Agent> =

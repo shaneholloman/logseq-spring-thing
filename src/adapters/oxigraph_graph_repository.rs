@@ -3,7 +3,7 @@
 //!
 //! Implements [`GraphRepository`] over the same Oxigraph store as
 //! [`OxigraphOntologyRepository`], but operates on the
-//! `<urn:visionflow:graph:knowledge>` and `<urn:visionflow:graph:agent>`
+//! `<urn:ngm:graph:knowledge>` and `<urn:ngm:graph:agent>`
 //! named graphs (ADR-11 §D2).
 //!
 //! ## Named graph routing (ADR-11 §D2 + T1-class-bits resolution)
@@ -13,9 +13,9 @@
 //! `0x1C000000` mask = OntologyClass / LinkedPage / Axiom /
 //! OntologyProperty.
 //!
-//! - Agent-flagged nodes are written to `<urn:visionflow:graph:agent>`.
+//! - Agent-flagged nodes are written to `<urn:ngm:graph:agent>`.
 //! - All other nodes (Knowledge, Ontology subtypes, unclassified) are
-//!   written to `<urn:visionflow:graph:knowledge>`.
+//!   written to `<urn:ngm:graph:knowledge>`.
 //!
 //! Cross-graph edges (one endpoint Agent, other endpoint Knowledge) are
 //! written into the **default graph** with an integrity ASK guard that
@@ -32,8 +32,6 @@
 //! split into multiple transactions to fit Oxigraph SPARQL parser
 //! limits — the cross-batch atomicity is documented as best-effort in
 //! PORTS-AUDIT §"top-3 highest-risk".
-
-#![cfg(feature = "persistence-oxigraph")]
 
 use async_trait::async_trait;
 use std::collections::{HashMap, HashSet};
@@ -89,7 +87,7 @@ fn graph_for_node_id(id: u32) -> &'static str {
 /// included) so the IRI round-trips losslessly to `NodeId`.
 #[inline]
 fn node_iri(id: u32) -> String {
-    format!("urn:visionflow:node:{}", id)
+    format!("urn:ngm:node:{}", id)
 }
 
 /// Mint the canonical edge IRI. The predicate-hash component is the
@@ -99,7 +97,7 @@ fn node_iri(id: u32) -> String {
 #[inline]
 fn edge_iri(edge: &Edge) -> String {
     format!(
-        "urn:visionflow:edge:{}:{}:{}",
+        "urn:ngm:edge:{}:{}:{}",
         edge.source, edge.target, edge.id
     )
 }
@@ -261,7 +259,7 @@ impl OxigraphGraphRepository {
     /// emits. Kept inline (no PREFIX) for cold-path simplicity; Oxigraph
     /// has no measurable benefit from PREFIX vs full IRIs.
     const PROLOGUE: &'static str = concat!(
-        "PREFIX vc: <https://visionflow.dreamlab/ns/>\n",
+        "PREFIX vc: <https://narrativegoldmine.com/ns/v1#>\n",
         "PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>\n",
         "PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>\n",
     );
@@ -675,7 +673,7 @@ impl GraphRepository for OxigraphGraphRepository {
     async fn get_constraints(&self) -> RepoResult<ConstraintSet> {
         // Constraints are owned by the constraint-set actor (Section 1).
         // Persisted constraints (cold start) live as triples under
-        //   GRAPH <urn:visionflow:graph:knowledge> { ?c a vc:Constraint ; ... }
+        //   GRAPH <urn:ngm:graph:knowledge> { ?c a vc:Constraint ; ... }
         // but loading them is a Phase 2 task. Default to empty.
         Ok(ConstraintSet::default())
     }
@@ -707,6 +705,337 @@ impl GraphRepository for OxigraphGraphRepository {
         // See `clear_dirty_nodes` rationale. The adapter has no notion of
         // dirtiness; return empty.
         Ok(HashSet::new())
+    }
+}
+
+// ----------------------------------------------------------------------
+// KnowledgeGraphRepository implementation — bridges the fine-grained
+// CQRS port to the Oxigraph SPARQL store.
+// ----------------------------------------------------------------------
+
+use crate::ports::knowledge_graph_repository::{
+    GraphStatistics, KnowledgeGraphRepository,
+    KnowledgeGraphRepositoryError,
+    Result as KgResult,
+};
+
+fn kg_err(e: GraphRepositoryError) -> KnowledgeGraphRepositoryError {
+    match e {
+        GraphRepositoryError::NotFound => KnowledgeGraphRepositoryError::NotFound,
+        GraphRepositoryError::InvalidData(s) => KnowledgeGraphRepositoryError::InvalidData(s),
+        other => KnowledgeGraphRepositoryError::DatabaseError(other.to_string()),
+    }
+}
+
+#[async_trait]
+impl KnowledgeGraphRepository for OxigraphGraphRepository {
+    async fn load_graph(&self) -> KgResult<Arc<GraphData>> {
+        self.get_graph().await.map_err(kg_err)
+    }
+
+    async fn save_graph(&self, graph: &GraphData) -> KgResult<()> {
+        self.clear_graph().await?;
+        if !graph.nodes.is_empty() {
+            self.batch_add_nodes(graph.nodes.clone()).await?;
+        }
+        if !graph.edges.is_empty() {
+            self.batch_add_edges(graph.edges.clone()).await?;
+        }
+        Ok(())
+    }
+
+    async fn add_node(&self, node: &Node) -> KgResult<u32> {
+        let ids = GraphRepository::add_nodes(self, vec![node.clone()])
+            .await
+            .map_err(kg_err)?;
+        ids.into_iter()
+            .next()
+            .ok_or(KnowledgeGraphRepositoryError::DatabaseError(
+                "add_nodes returned empty".into(),
+            ))
+    }
+
+    async fn batch_add_nodes(&self, nodes: Vec<Node>) -> KgResult<Vec<u32>> {
+        GraphRepository::add_nodes(self, nodes).await.map_err(kg_err)
+    }
+
+    async fn update_node(&self, node: &Node) -> KgResult<()> {
+        self.remove_node(node.id).await?;
+        self.add_node(node).await?;
+        Ok(())
+    }
+
+    async fn batch_update_nodes(&self, nodes: Vec<Node>) -> KgResult<()> {
+        for node in &nodes {
+            self.remove_node(node.id).await?;
+        }
+        self.batch_add_nodes(nodes).await?;
+        Ok(())
+    }
+
+    async fn remove_node(&self, node_id: u32) -> KgResult<()> {
+        let iri = node_iri(node_id);
+        let graph = graph_for_node_id(node_id);
+        let store = self.store.clone();
+        let update = format!(
+            "{p}DELETE WHERE {{ GRAPH <{graph}> {{ <{iri}> ?p ?o }} }}",
+            p = Self::PROLOGUE,
+            graph = graph,
+            iri = iri,
+        );
+        tokio::task::spawn_blocking(move || {
+            store.update(update.as_str()).map_err(access)
+        })
+        .await
+        .map_err(|e| KnowledgeGraphRepositoryError::DatabaseError(format!("join: {e}")))?
+        .map_err(kg_err)
+    }
+
+    async fn batch_remove_nodes(&self, node_ids: Vec<u32>) -> KgResult<()> {
+        for id in node_ids {
+            self.remove_node(id).await?;
+        }
+        Ok(())
+    }
+
+    async fn get_node(&self, node_id: u32) -> KgResult<Option<Node>> {
+        let store = self.store.clone();
+        let graph = graph_for_node_id(node_id);
+        tokio::task::spawn_blocking(move || -> KgResult<Option<Node>> {
+            let nodes = load_nodes_in_graph(&store, graph).map_err(kg_err)?;
+            Ok(nodes.into_iter().find(|n| n.id == node_id))
+        })
+        .await
+        .map_err(|e| KnowledgeGraphRepositoryError::DatabaseError(format!("join: {e}")))?
+    }
+
+    async fn get_nodes(&self, node_ids: Vec<u32>) -> KgResult<Vec<Node>> {
+        let graph = self.load_graph().await?;
+        let id_set: HashSet<u32> = node_ids.into_iter().collect();
+        Ok(graph.nodes.iter().filter(|n| id_set.contains(&n.id)).cloned().collect())
+    }
+
+    async fn get_nodes_by_metadata_id(&self, metadata_id: &str) -> KgResult<Vec<Node>> {
+        let store = self.store.clone();
+        let mid = metadata_id.to_string();
+        tokio::task::spawn_blocking(move || -> KgResult<Vec<Node>> {
+            let mut out = Vec::new();
+            for graph_iri in [GRAPH_KNOWLEDGE, GRAPH_AGENT] {
+                let nodes = load_nodes_in_graph(&store, graph_iri).map_err(kg_err)?;
+                out.extend(nodes.into_iter().filter(|n| n.metadata_id == mid));
+            }
+            Ok(out)
+        })
+        .await
+        .map_err(|e| KnowledgeGraphRepositoryError::DatabaseError(format!("join: {e}")))?
+    }
+
+    async fn get_nodes_by_owl_class_iri(&self, owl_class_iri: &str) -> KgResult<Vec<Node>> {
+        let store = self.store.clone();
+        let iri = owl_class_iri.to_string();
+        tokio::task::spawn_blocking(move || -> KgResult<Vec<Node>> {
+            let mut out = Vec::new();
+            for graph_iri in [GRAPH_KNOWLEDGE, GRAPH_AGENT] {
+                let nodes = load_nodes_in_graph(&store, graph_iri).map_err(kg_err)?;
+                out.extend(
+                    nodes
+                        .into_iter()
+                        .filter(|n| n.owl_class_iri.as_deref() == Some(iri.as_str())),
+                );
+            }
+            Ok(out)
+        })
+        .await
+        .map_err(|e| KnowledgeGraphRepositoryError::DatabaseError(format!("join: {e}")))?
+    }
+
+    async fn search_nodes_by_label(&self, label: &str) -> KgResult<Vec<Node>> {
+        let store = self.store.clone();
+        let needle = label.to_lowercase();
+        tokio::task::spawn_blocking(move || -> KgResult<Vec<Node>> {
+            let mut out = Vec::new();
+            for graph_iri in [GRAPH_KNOWLEDGE, GRAPH_AGENT] {
+                let nodes = load_nodes_in_graph(&store, graph_iri).map_err(kg_err)?;
+                out.extend(
+                    nodes
+                        .into_iter()
+                        .filter(|n| n.label.to_lowercase().contains(&needle)),
+                );
+            }
+            Ok(out)
+        })
+        .await
+        .map_err(|e| KnowledgeGraphRepositoryError::DatabaseError(format!("join: {e}")))?
+    }
+
+    async fn add_edge(&self, edge: &Edge) -> KgResult<String> {
+        let ids = GraphRepository::add_edges(self, vec![edge.clone()])
+            .await
+            .map_err(kg_err)?;
+        ids.into_iter()
+            .next()
+            .ok_or(KnowledgeGraphRepositoryError::DatabaseError(
+                "add_edges returned empty".into(),
+            ))
+    }
+
+    async fn batch_add_edges(&self, edges: Vec<Edge>) -> KgResult<Vec<String>> {
+        GraphRepository::add_edges(self, edges).await.map_err(kg_err)
+    }
+
+    async fn update_edge(&self, edge: &Edge) -> KgResult<()> {
+        self.remove_edge(&edge.id).await?;
+        self.add_edge(edge).await?;
+        Ok(())
+    }
+
+    async fn remove_edge(&self, edge_id: &str) -> KgResult<()> {
+        let iri = format!("urn:ngm:edge:{}", edge_id);
+        let prologue = Self::PROLOGUE;
+
+        // Delete from default graph (bridge edges)
+        let store = self.store.clone();
+        let del_default = format!(
+            "{prologue}DELETE WHERE {{ <{iri}> ?p ?o }}",
+        );
+        tokio::task::spawn_blocking(move || {
+            store.update(del_default.as_str()).map_err(access)
+        })
+        .await
+        .map_err(|e| KnowledgeGraphRepositoryError::DatabaseError(format!("join: {e}")))?
+        .map_err(kg_err)?;
+
+        // Delete from named graphs
+        for graph_iri in [GRAPH_KNOWLEDGE, GRAPH_AGENT] {
+            let s = self.store.clone();
+            let del = format!(
+                "{prologue}DELETE WHERE {{ GRAPH <{graph_iri}> {{ <{iri}> ?p ?o }} }}",
+            );
+            tokio::task::spawn_blocking(move || {
+                s.update(del.as_str()).map_err(access)
+            })
+            .await
+            .map_err(|e| KnowledgeGraphRepositoryError::DatabaseError(format!("join: {e}")))?
+            .map_err(kg_err)?;
+        }
+        Ok(())
+    }
+
+    async fn batch_remove_edges(&self, edge_ids: Vec<String>) -> KgResult<()> {
+        for id in edge_ids {
+            self.remove_edge(&id).await?;
+        }
+        Ok(())
+    }
+
+    async fn get_node_edges(&self, node_id: u32) -> KgResult<Vec<Edge>> {
+        let graph = self.load_graph().await?;
+        Ok(graph
+            .edges
+            .iter()
+            .filter(|e| e.source == node_id || e.target == node_id)
+            .cloned()
+            .collect())
+    }
+
+    async fn get_edges_between(&self, source_id: u32, target_id: u32) -> KgResult<Vec<Edge>> {
+        let graph = self.load_graph().await?;
+        Ok(graph
+            .edges
+            .iter()
+            .filter(|e| e.source == source_id && e.target == target_id)
+            .cloned()
+            .collect())
+    }
+
+    async fn batch_update_positions(&self, positions: Vec<(u32, f32, f32, f32)>) -> KgResult<()> {
+        let updates: Vec<(u32, BinaryNodeData)> = positions
+            .into_iter()
+            .map(|(id, x, y, z)| (id, (x, y, z, 0.0, 0.0, 0.0)))
+            .collect();
+        GraphRepository::update_positions(self, updates)
+            .await
+            .map_err(kg_err)
+    }
+
+    async fn get_all_positions(&self) -> KgResult<HashMap<u32, (f32, f32, f32)>> {
+        let positions = self.get_node_positions().await.map_err(kg_err)?;
+        Ok(positions
+            .into_iter()
+            .map(|(id, v)| (id, (v.x, v.y, v.z)))
+            .collect())
+    }
+
+    async fn query_nodes(&self, query: &str) -> KgResult<Vec<Node>> {
+        self.search_nodes_by_label(query).await
+    }
+
+    async fn get_neighbors(&self, node_id: u32) -> KgResult<Vec<Node>> {
+        let graph = self.load_graph().await?;
+        let neighbor_ids: HashSet<u32> = graph
+            .edges
+            .iter()
+            .filter_map(|e| {
+                if e.source == node_id {
+                    Some(e.target)
+                } else if e.target == node_id {
+                    Some(e.source)
+                } else {
+                    None
+                }
+            })
+            .collect();
+        Ok(graph
+            .nodes
+            .iter()
+            .filter(|n| neighbor_ids.contains(&n.id))
+            .cloned()
+            .collect())
+    }
+
+    async fn get_statistics(&self) -> KgResult<GraphStatistics> {
+        let graph = self.load_graph().await?;
+        let node_count = graph.nodes.len();
+        let edge_count = graph.edges.len();
+        let avg_degree = if node_count > 0 {
+            (2.0 * edge_count as f32) / node_count as f32
+        } else {
+            0.0
+        };
+        Ok(GraphStatistics {
+            node_count,
+            edge_count,
+            average_degree: avg_degree,
+            connected_components: 1,
+            last_updated: chrono::Utc::now(),
+        })
+    }
+
+    async fn clear_graph(&self) -> KgResult<()> {
+        let store = self.store.clone();
+        tokio::task::spawn_blocking(move || -> KgResult<()> {
+            for graph_iri in [GRAPH_KNOWLEDGE, GRAPH_AGENT] {
+                let drop = format!("DROP SILENT GRAPH <{}>", graph_iri);
+                store
+                    .update(drop.as_str())
+                    .map_err(|e| KnowledgeGraphRepositoryError::DatabaseError(e.to_string()))?;
+            }
+            Ok(())
+        })
+        .await
+        .map_err(|e| KnowledgeGraphRepositoryError::DatabaseError(format!("join: {e}")))?
+    }
+
+    async fn health_check(&self) -> KgResult<bool> {
+        let store = self.store.clone();
+        tokio::task::spawn_blocking(move || -> KgResult<bool> {
+            match store.query("ASK { ?s ?p ?o }") {
+                Ok(_) => Ok(true),
+                Err(e) => Err(KnowledgeGraphRepositoryError::DatabaseError(e.to_string())),
+            }
+        })
+        .await
+        .map_err(|e| KnowledgeGraphRepositoryError::DatabaseError(format!("join: {e}")))?
     }
 }
 
@@ -800,7 +1129,7 @@ fn load_nodes_in_graph(store: &Store, graph_iri: &str) -> RepoResult<Vec<Node>> 
         grouped.entry(node).or_default().push((prop, val));
     }
 
-    let vc = "https://visionflow.dreamlab/ns/";
+    let vc = "https://narrativegoldmine.com/ns/v1#";
     let rdfs_label = "http://www.w3.org/2000/01/rdf-schema#label";
 
     let mut out = Vec::with_capacity(grouped.len());
@@ -1028,6 +1357,6 @@ fn load_bridge_edges(store: &Store) -> RepoResult<Vec<Edge>> {
 
 /// Parse a node IRI back into its full `u32` id (class bits + sequence).
 fn iri_to_node_id(iri: &str) -> Option<u32> {
-    iri.strip_prefix("urn:visionflow:node:")
+    iri.strip_prefix("urn:ngm:node:")
         .and_then(|tail| tail.parse::<u32>().ok())
 }

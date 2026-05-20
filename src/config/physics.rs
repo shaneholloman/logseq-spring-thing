@@ -8,9 +8,15 @@ fn default_auto_balance_interval() -> u32 {
     500
 }
 
-fn default_lin_log_mode() -> bool { true }
-fn default_scaling_ratio() -> f32 { 10.0 }
-fn default_adaptive_speed() -> bool { true }
+fn default_lin_log_mode() -> bool {
+    true
+}
+fn default_scaling_ratio() -> f32 {
+    10.0
+}
+fn default_adaptive_speed() -> bool {
+    true
+}
 
 fn default_constraint_ramp_frames() -> u32 {
     60
@@ -89,7 +95,6 @@ pub struct AutoBalanceConfig {
     #[serde(alias = "min_oscillation_changes")]
     pub min_oscillation_changes: usize,
 
-
     #[serde(alias = "parameter_adjustment_rate")]
     pub parameter_adjustment_rate: f32,
     #[serde(alias = "max_adjustment_factor")]
@@ -104,7 +109,6 @@ pub struct AutoBalanceConfig {
     pub parameter_dampening_factor: f32,
     #[serde(alias = "hysteresis_delay_frames")]
     pub hysteresis_delay_frames: u32,
-
 
     #[serde(alias = "grid_cell_size_min")]
     pub grid_cell_size_min: f32,
@@ -122,7 +126,6 @@ pub struct AutoBalanceConfig {
     pub center_gravity_min: f32,
     #[serde(alias = "center_gravity_max")]
     pub center_gravity_max: f32,
-
 
     #[serde(alias = "spatial_hash_efficiency_threshold")]
     pub spatial_hash_efficiency_threshold: f32,
@@ -150,7 +153,6 @@ impl AutoBalanceConfig {
             oscillation_change_threshold: 10.0,
             min_oscillation_changes: 8,
 
-
             parameter_adjustment_rate: 0.1,
             max_adjustment_factor: 0.2,
             min_adjustment_factor: -0.2,
@@ -158,7 +160,6 @@ impl AutoBalanceConfig {
             state_change_cooldown_ms: 1000,
             parameter_dampening_factor: 0.05,
             hysteresis_delay_frames: 30,
-
 
             grid_cell_size_min: 1.0,
             grid_cell_size_max: 50.0,
@@ -168,7 +169,6 @@ impl AutoBalanceConfig {
             repulsion_softening_max: 1.0,
             center_gravity_min: 0.0,
             center_gravity_max: 0.1,
-
 
             spatial_hash_efficiency_threshold: 0.3,
             cluster_density_threshold: 50.0,
@@ -213,13 +213,8 @@ pub struct PhysicsSettings {
     pub repel_k: f32,
     #[serde(alias = "spring_k")]
     pub spring_k: f32,
-    #[deprecated(note = "Not wired to physics engine")]
-    #[serde(alias = "mass_scale")]
-    pub mass_scale: f32,
     #[serde(alias = "boundary_damping")]
     pub boundary_damping: f32,
-    #[serde(alias = "update_threshold")]
-    pub update_threshold: f32,
     #[serde(alias = "dt")]
     pub dt: f32,
     #[serde(alias = "temperature")]
@@ -227,22 +222,12 @@ pub struct PhysicsSettings {
     #[serde(alias = "gravity")]
     pub gravity: f32,
 
-    #[deprecated(note = "Not wired to physics engine")]
-    #[serde(alias = "stress_weight")]
-    pub stress_weight: f32,
-    #[deprecated(note = "Not wired to physics engine")]
-    #[serde(alias = "stress_alpha")]
-    pub stress_alpha: f32,
-    #[deprecated(note = "Not wired to physics engine")]
-    #[serde(alias = "boundary_limit")]
-    pub boundary_limit: f32,
     #[serde(alias = "alignment_strength")]
     pub alignment_strength: f32,
     #[serde(alias = "cluster_strength")]
     pub cluster_strength: f32,
     #[serde(alias = "compute_mode")]
     pub compute_mode: i32,
-
 
     #[serde(alias = "rest_length")]
     pub rest_length: f32,
@@ -269,17 +254,6 @@ pub struct PhysicsSettings {
     pub min_distance: f32,
     #[serde(alias = "max_repulsion_dist")]
     pub max_repulsion_dist: f32,
-    #[serde(alias = "boundary_margin")]
-    pub boundary_margin: f32,
-    #[serde(alias = "boundary_force_strength")]
-    pub boundary_force_strength: f32,
-    #[deprecated(note = "Not wired to physics engine")]
-    #[serde(alias = "warmup_curve")]
-    pub warmup_curve: String,
-    #[deprecated(note = "Not wired to physics engine")]
-    #[serde(alias = "zero_velocity_iterations")]
-    pub zero_velocity_iterations: u32,
-
 
     #[serde(
         alias = "constraint_ramp_frames",
@@ -291,7 +265,6 @@ pub struct PhysicsSettings {
         default = "default_constraint_max_force_per_node"
     )]
     pub constraint_max_force_per_node: f32,
-
 
     #[serde(alias = "clustering_algorithm")]
     pub clustering_algorithm: String,
@@ -321,7 +294,6 @@ pub struct PhysicsSettings {
     pub adaptive_speed: bool,
 }
 
-#[allow(deprecated)]
 impl Default for PhysicsSettings {
     fn default() -> Self {
         Self {
@@ -331,23 +303,18 @@ impl Default for PhysicsSettings {
             auto_pause: AutoPauseConfig::default(),
             bounds_size: 1200.0,
             separation_radius: 3.0,
-            damping: 0.93,
+            damping: 0.85,
             enable_bounds: true,
             enabled: true,
             iterations: 200,
-            max_velocity: 50.0,
-            max_force: 500.0,
-            repel_k: 1200.0,
+            max_velocity: CANONICAL_MAX_VELOCITY,
+            max_force: CANONICAL_MAX_FORCE,
+            repel_k: 800.0,
             spring_k: 12.0,
-            mass_scale: 1.0,
-            boundary_damping: 0.92,
-            update_threshold: 0.01,
+            boundary_damping: 0.8,
             dt: 0.016,
             temperature: 0.01,
             gravity: 0.0001,
-            stress_weight: 0.1,
-            stress_alpha: 0.1,
-            boundary_limit: 490.0,
             alignment_strength: 0.5,
             cluster_strength: 1.0,
             compute_mode: 0,
@@ -355,7 +322,7 @@ impl Default for PhysicsSettings {
             rest_length: 80.0,
             repulsion_cutoff: 200.0,
             repulsion_softening_epsilon: 0.001,
-            center_gravity_k: 2.0,
+            center_gravity_k: 0.05,
             grid_cell_size: 40.0,
             warmup_iterations: 200,
             cooling_rate: 0.002,
@@ -365,10 +332,6 @@ impl Default for PhysicsSettings {
 
             min_distance: 0.15,
             max_repulsion_dist: 2000.0,
-            boundary_margin: 0.85,
-            boundary_force_strength: 2.0,
-            warmup_curve: "quadratic".to_string(),
-            zero_velocity_iterations: 5,
 
             constraint_ramp_frames: default_constraint_ramp_frames(),
             constraint_max_force_per_node: default_constraint_max_force_per_node(),
@@ -462,8 +425,6 @@ pub struct PhysicsUpdate {
     pub max_force: Option<f32>,
     #[serde(alias = "separation_radius")]
     pub separation_radius: Option<f32>,
-    #[serde(alias = "mass_scale")]
-    pub mass_scale: Option<f32>,
     #[serde(alias = "boundary_damping")]
     pub boundary_damping: Option<f32>,
     #[serde(alias = "dt")]
@@ -472,15 +433,7 @@ pub struct PhysicsUpdate {
     pub temperature: Option<f32>,
     #[serde(alias = "gravity")]
     pub gravity: Option<f32>,
-    #[serde(alias = "update_threshold")]
-    pub update_threshold: Option<f32>,
 
-    #[serde(alias = "stress_weight")]
-    pub stress_weight: Option<f32>,
-    #[serde(alias = "stress_alpha")]
-    pub stress_alpha: Option<f32>,
-    #[serde(alias = "boundary_limit")]
-    pub boundary_limit: Option<f32>,
     #[serde(alias = "alignment_strength")]
     pub alignment_strength: Option<f32>,
     #[serde(alias = "cluster_strength")]
@@ -492,16 +445,8 @@ pub struct PhysicsUpdate {
     pub min_distance: Option<f32>,
     #[serde(alias = "max_repulsion_dist")]
     pub max_repulsion_dist: Option<f32>,
-    #[serde(alias = "boundary_margin")]
-    pub boundary_margin: Option<f32>,
-    #[serde(alias = "boundary_force_strength")]
-    pub boundary_force_strength: Option<f32>,
     #[serde(alias = "warmup_iterations")]
     pub warmup_iterations: Option<u32>,
-    #[serde(alias = "warmup_curve")]
-    pub warmup_curve: Option<String>,
-    #[serde(alias = "zero_velocity_iterations")]
-    pub zero_velocity_iterations: Option<u32>,
     #[serde(alias = "cooling_rate")]
     pub cooling_rate: Option<f32>,
 

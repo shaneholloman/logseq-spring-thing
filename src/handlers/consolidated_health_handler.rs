@@ -6,7 +6,6 @@ use actix_web::{web, Error, HttpResponse, Result};
 use chrono::Utc;
 use log::{error, info, warn};
 use serde::{Deserialize, Serialize};
-use std::future::Future;
 use std::process::Command;
 use sysinfo::System;
 use tokio::time::Duration;
@@ -65,7 +64,7 @@ pub async fn unified_health_check(app_state: web::Data<AppState>) -> Result<Http
     let mut health_status = "healthy".to_string();
     let mut issues = Vec::new();
 
-    // Check application-level degraded state (e.g. Neo4j init failure)
+    // Check application-level degraded state (e.g. Oxigraph store init failure)
     if let Some(reason) = app_state.get_degraded_reason() {
         health_status = "degraded".to_string();
         issues.push(reason);
@@ -128,40 +127,6 @@ fn check_system_metrics(health_status: &mut String, issues: &mut Vec<String>) ->
     }
 }
 
-/// Result of a subsystem health check
-#[derive(Debug)]
-#[allow(dead_code)]
-struct SubsystemHealth {
-    name: String,
-    healthy: bool,
-    error: Option<String>,
-}
-
-/// Check a subsystem with timeout protection
-#[allow(dead_code)]
-async fn check_subsystem_health<F, Fut>(name: &str, check: F) -> SubsystemHealth
-where
-    F: FnOnce() -> Fut,
-    Fut: Future<Output = std::result::Result<bool, String>>,
-{
-    match tokio::time::timeout(HEALTH_CHECK_TIMEOUT, check()).await {
-        Ok(Ok(healthy)) => SubsystemHealth {
-            name: name.to_string(),
-            healthy,
-            error: None,
-        },
-        Ok(Err(e)) => SubsystemHealth {
-            name: name.to_string(),
-            healthy: false,
-            error: Some(e),
-        },
-        Err(_) => SubsystemHealth {
-            name: name.to_string(),
-            healthy: false,
-            error: Some("timeout".to_string()),
-        },
-    }
-}
 
 async fn check_service_metrics(
     app_state: &web::Data<AppState>,
@@ -484,7 +449,7 @@ pub async fn liveness_probe() -> HttpResponse {
 }
 
 /// Readiness probe — returns 200 if the application is ready to serve traffic,
-/// 503 if critical subsystems (e.g. Neo4j) are unavailable.
+/// 503 if critical subsystems (e.g. Oxigraph store) are unavailable.
 pub async fn readiness_probe(app_state: web::Data<AppState>) -> HttpResponse {
     if let Some(reason) = app_state.get_degraded_reason() {
         HttpResponse::ServiceUnavailable().json(serde_json::json!({

@@ -131,7 +131,7 @@ impl NaturalLanguageQueryService {
     // Private helper methods
 
     fn get_system_prompt(&self) -> String {
-        r#"You are an expert Cypher query generator for Neo4j graph databases.
+        r#"You are an expert SPARQL query generator for Oxigraph RDF graph databases.
 
 Your task is to translate natural language queries into valid Cypher queries.
 

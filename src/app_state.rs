@@ -8,8 +8,8 @@ use std::sync::{
 };
 use tokio::sync::RwLock;
 
-// Neo4j feature imports - now the primary graph repository
-use crate::adapters::neo4j_adapter::{Neo4jAdapter, Neo4jConfig};
+// Oxigraph adapters — canonical persistence layer (ADR-11)
+use crate::adapters::{OxigraphGraphRepository, OxigraphOntologyRepository, SqliteSettingsRepository};
 
 // CQRS Phase 1D: Graph domain imports
 use crate::adapters::actor_graph_repository::ActorGraphRepository;
@@ -46,8 +46,6 @@ use tokio::sync::mpsc;
 use tokio::time::Duration;
 
 // Repository trait imports for hexagonal architecture
-use crate::adapters::neo4j_settings_repository::Neo4jSettingsRepository;
-use crate::adapters::neo4j_ontology_repository::{Neo4jOntologyRepository, Neo4jOntologyConfig};
 use crate::ports::settings_repository::SettingsRepository;
 
 /// SECURITY: List of known insecure default values that must be rejected
@@ -304,14 +302,14 @@ pub struct AppState {
 
     pub settings_repository: Arc<dyn SettingsRepository>,
 
-    // Concrete Neo4j settings repository for user-specific operations (filters, etc.)
-    pub neo4j_settings_repository: Arc<Neo4jSettingsRepository>,
+    // Concrete SQLite settings repository for user-specific operations (filters, etc.) — ADR-11
+    pub sqlite_settings_repository: Arc<SqliteSettingsRepository>,
 
-    // Neo4j is now the primary knowledge graph repository
-    pub neo4j_adapter: Arc<Neo4jAdapter>,
+    // Oxigraph graph repository — canonical knowledge graph store (ADR-11)
+    pub graph_adapter: Arc<OxigraphGraphRepository>,
 
-    // Neo4j ontology repository (replaces UnifiedOntologyRepository)
-    pub ontology_repository: Arc<Neo4jOntologyRepository>,
+    // Oxigraph ontology repository (ADR-11)
+    pub ontology_repository: Arc<OxigraphOntologyRepository>,
 
     pub graph_repository: Arc<ActorGraphRepository>,
     pub graph_query_handlers: GraphQueryHandlers,
@@ -368,46 +366,33 @@ impl AppState {
         tokio::time::sleep(Duration::from_millis(50)).await;
 
 
-        info!("[AppState::new] Creating repository adapters for hexagonal architecture");
+        info!("[AppState::new] Creating repository adapters for hexagonal architecture (ADR-11 Oxigraph)");
 
-        // Phase 3: Using Neo4j settings repository
-        use crate::adapters::neo4j_settings_repository::Neo4jSettingsConfig;
-        let settings_config = Neo4jSettingsConfig::default();
-        let neo4j_settings_repository = Arc::new(
-            Neo4jSettingsRepository::new(settings_config)
+        // Open Oxigraph store — shared across ontology + graph repositories (ADR-11 §D1)
+        let data_dir = std::env::var("DATA_DIR").unwrap_or_else(|_| "./data".to_string());
+        let oxigraph_path = std::path::Path::new(&data_dir).join("oxigraph");
+        let onto_repo = Arc::new(
+            OxigraphOntologyRepository::open(&oxigraph_path)
                 .await
-                .map_err(|e| format!("Failed to create Neo4j settings repository: {}", e))?,
+                .map_err(|e| format!("Failed to open Oxigraph store: {}", e))?,
         );
-        // Keep both trait object and concrete type for different use cases
-        let settings_repository: Arc<dyn SettingsRepository> = neo4j_settings_repository.clone();
+        let oxigraph_store = onto_repo.store().clone();
+        let graph_repo = Arc::new(OxigraphGraphRepository::from_store(oxigraph_store));
 
-        info!("[AppState::new] Creating Neo4j ontology repository...");
-        let ontology_config = Neo4jOntologyConfig::default();
-        let ontology_repository: Arc<Neo4jOntologyRepository> = Arc::new(
-            Neo4jOntologyRepository::new(ontology_config)
+        // SQLite settings repository (ADR-11 §D5)
+        let settings_db_path = std::path::Path::new(&data_dir).join("settings.sqlite3");
+        let sqlite_settings_repo = Arc::new(
+            SqliteSettingsRepository::open(&settings_db_path)
                 .await
-                .map_err(|e| format!("Failed to create Neo4j ontology repository: {}", e))?,
+                .map_err(|e| format!("Failed to open SQLite settings: {}", e))?,
         );
+        let settings_repository: Arc<dyn SettingsRepository> = sqlite_settings_repo.clone();
+        let sqlite_settings_repository = sqlite_settings_repo;
+        let ontology_repository = onto_repo;
+        let graph_adapter = graph_repo;
 
-        info!("[AppState::new] Neo4j ontology repository initialized successfully");
+        info!("[AppState::new] Oxigraph + SQLite repositories initialized successfully");
         info!("[AppState::new] Database and settings service initialized successfully");
-        info!(
-            "[AppState::new] IMPORTANT: UI now connects directly to database via SettingsService"
-        );
-
-        // Neo4j is now the primary graph repository
-        let neo4j_adapter = {
-            info!("[AppState::new] Initializing Neo4j as primary knowledge graph repository");
-            let config = Neo4jConfig::from_env()
-                .unwrap_or_else(|e| {
-                    log::warn!("Neo4jConfig::from_env() failed ({}), using defaults", e);
-                    Neo4jConfig::default()
-                });
-            let adapter = Neo4jAdapter::new(config).await
-                .map_err(|e| format!("Failed to initialize Neo4j adapter: {}", e))?;
-            info!("✅ Neo4j adapter initialized successfully");
-            Arc::new(adapter)
-        };
 
         // Create ontology pipeline service with semantic physics
         info!("[AppState::new] Creating ontology pipeline service");
@@ -415,8 +400,10 @@ impl AppState {
             crate::services::ontology_pipeline_service::SemanticPhysicsConfig::default()
         );
 
-        // CRITICAL: Set graph repository for IRI → node ID resolution
-        pipeline_service.set_graph_repository(neo4j_adapter.clone());
+        // CRITICAL: Set graph repository for IRI → node ID resolution (Oxigraph, ADR-11)
+        pipeline_service.set_graph_repository(
+            graph_adapter.clone() as Arc<dyn crate::ports::knowledge_graph_repository::KnowledgeGraphRepository>
+        );
 
         let ontology_pipeline_service = Some(Arc::new(pipeline_service));
 
@@ -425,19 +412,12 @@ impl AppState {
         info!("[AppState::new] Initializing GitHubSyncService for data ingestion");
 
         let enhanced_content_api = Arc::new(EnhancedContentAPI::new(github_client.clone()));
-        let mut github_sync_service = GitHubSyncService::new(
+        let github_sync_service = Arc::new(GitHubSyncService::new(
             enhanced_content_api,
-            neo4j_adapter.clone(),
+            graph_adapter.clone() as Arc<dyn crate::ports::knowledge_graph_repository::KnowledgeGraphRepository>,
             ontology_repository.clone(),
-        );
-
-        // Connect pipeline service to GitHub sync
-        if let Some(ref pipeline) = ontology_pipeline_service {
-            github_sync_service.set_pipeline_service(pipeline.clone());
-            info!("[AppState::new] Ontology pipeline connected to GitHub sync");
-        }
-
-        let github_sync_service = Arc::new(github_sync_service);
+            sqlite_settings_repository.clone(),
+        ));
 
         info!("[AppState::new] Starting GitHub data sync in background (non-blocking)...");
 
@@ -449,23 +429,23 @@ impl AppState {
         let graph_service_addr_clone_for_sync = graph_service_addr_ref.clone();
 
         let sync_handle = tokio::spawn(async move {
-            info!("🔄 Background GitHub sync task spawned successfully");
-            info!("🔄 Task ID: {:?}", std::thread::current().id());
-            info!("🔄 Starting sync_graphs() execution...");
+            info!("Background GitHub sync task spawned successfully");
+            debug!("Task ID: {:?}", std::thread::current().id());
+            info!("Starting sync_graphs() execution...");
 
 
 
-            info!("📡 Calling sync_service.sync_graphs()...");
+            info!("Calling sync_service.sync_graphs()...");
             let sync_start = std::time::Instant::now();
 
             match sync_service_clone.sync_graphs().await {
                 Ok(stats) => {
                     let elapsed = sync_start.elapsed();
-                    info!("✅ GitHub sync complete! (elapsed: {:?})", elapsed);
-                    info!("  📊 Total files scanned: {}", stats.total_files);
-                    info!("  🔗 Knowledge graph files: {}", stats.kg_files_processed);
-                    info!("  🏛️  Ontology files: {}", stats.ontology_files_processed);
-                    info!("  ⏱️  Duration: {:?}", stats.duration);
+                    info!("GitHub sync complete! (elapsed: {:?})", elapsed);
+                    debug!("  Total files scanned: {}", stats.total_files);
+                    debug!("  Knowledge graph files: {}", stats.kg_files_processed);
+                    debug!("  Ontology files: {}", stats.ontology_files_processed);
+                    debug!("  Duration: {:?}", stats.duration);
                     if !stats.errors.is_empty() {
                         warn!("  ⚠️  Errors encountered: {}", stats.errors.len());
                         for (i, error) in stats.errors.iter().enumerate().take(5) {
@@ -478,11 +458,11 @@ impl AppState {
 
                     // Load synced data into graph actor (if it's ready)
                     if let Some(graph_addr) = &*graph_service_addr_clone_for_sync.lock().await {
-                        info!("📥 [GitHub Sync] Notifying GraphServiceActor to reload synced data...");
+                        info!("[GitHub Sync] Notifying GraphServiceActor to reload synced data...");
                         graph_addr.do_send(crate::actors::messages::ReloadGraphFromDatabase);
-                        info!("✅ [GitHub Sync] Reload notification sent to GraphServiceActor");
+                        info!("[GitHub Sync] Reload notification sent to GraphServiceActor");
                     } else {
-                        info!("ℹ️  [GitHub Sync] Graph service not yet initialized - will load on startup");
+                        info!("[GitHub Sync] Graph service not yet initialized - will load on startup");
                     }
                 }
                 Err(e) => {
@@ -497,7 +477,7 @@ impl AppState {
         
         tokio::spawn(async move {
             tokio::time::sleep(Duration::from_millis(100)).await;
-            info!("👀 GitHub sync monitor: Checking task status...");
+            debug!("GitHub sync monitor: Checking task status...");
 
             
             let timeout_duration = Duration::from_secs(300); 
@@ -505,28 +485,28 @@ impl AppState {
                 Ok(join_result) => {
                     match join_result {
                         Ok(_sync_result) => {
-                            info!("👀 GitHub sync monitor: Task completed successfully");
+                            debug!("GitHub sync monitor: Task completed successfully");
                         }
                         Err(join_error) => {
                             if join_error.is_cancelled() {
-                                log::error!("👀 GitHub sync monitor: Task was CANCELLED");
+                                log::error!("GitHub sync monitor: Task was CANCELLED");
                             } else if join_error.is_panic() {
-                                log::error!("👀 GitHub sync monitor: Task PANICKED");
-                                log::error!("👀 JoinError details: {:?}", join_error);
+                                log::error!("GitHub sync monitor: Task PANICKED");
+                                log::error!("JoinError details: {:?}", join_error);
                             } else {
-                                log::error!("👀 GitHub sync monitor: Task failed with unknown error");
-                                log::error!("👀 JoinError: {:?}", join_error);
+                                log::error!("GitHub sync monitor: Task failed with unknown error");
+                                log::error!("JoinError: {:?}", join_error);
                             }
                         }
                     }
                 }
                 Err(_timeout_error) => {
-                    log::error!("👀 GitHub sync monitor: Task TIMED OUT after {:?}", timeout_duration);
-                    log::error!("👀 This likely indicates a deadlock or infinite loop in sync_graphs()");
+                    log::error!("GitHub sync monitor: Task TIMED OUT after {:?}", timeout_duration);
+                    log::error!("This likely indicates a deadlock or infinite loop in sync_graphs()");
                 }
             }
 
-            info!("👀 GitHub sync monitor: Monitoring complete");
+            debug!("GitHub sync monitor: Monitoring complete");
         });
 
         info!("[AppState::new] GitHub sync running in background with enhanced monitoring, proceeding with actor initialization");
@@ -537,7 +517,7 @@ impl AppState {
 
         info!("[AppState::new] Starting ClientCoordinatorActor");
         let mut client_coordinator = ClientCoordinatorActor::new();
-        client_coordinator.set_neo4j_repository(neo4j_settings_repository.clone());
+        client_coordinator.set_settings_repository(sqlite_settings_repository.clone());
         client_coordinator.set_node_analytics(node_analytics.clone());
         let client_manager_addr = client_coordinator.start();
 
@@ -557,9 +537,10 @@ impl AppState {
 
 
 
-        let graph_service_addr = GraphServiceSupervisor::new(neo4j_adapter.clone()).start();
-
-        // Neo4j feature is now required - removed legacy SQLite path
+        // GraphServiceSupervisor uses the Oxigraph-backed graph repository (ADR-11)
+        let graph_service_addr = GraphServiceSupervisor::new(
+            graph_adapter.clone() as Arc<dyn crate::ports::knowledge_graph_repository::KnowledgeGraphRepository>
+        ).start();
 
         // Store graph service address in Arc for GitHub sync task to use
         let graph_service_addr_clone = graph_service_addr.clone();
@@ -577,26 +558,28 @@ impl AppState {
             .map_err(|e| format!("Failed to send GetGraphStateActor message: {}", e))?
             .ok_or_else(|| "GraphStateActor not initialized in supervisor".to_string())?;
 
-        info!("[AppState::new] Creating Neo4j graph repository adapter (CQRS Phase 2: Direct Query)");
-        // Professional, scalable approach: Query Neo4j directly with intelligent caching
-        let neo4j_graph_repository = Arc::new(crate::adapters::Neo4jGraphRepository::new(neo4j_adapter.graph().clone()));
-
-        // Create ActorGraphRepository using the graph actor
+        // Create ActorGraphRepository using the graph actor (Oxigraph-backed, ADR-11)
         let graph_repository = Arc::new(crate::adapters::ActorGraphRepository::new(graph_actor_addr.clone()));
 
-        // Load existing data from Neo4j into repository cache on startup
-        info!("[AppState::new] Loading graph data from Neo4j into repository cache...");
-        neo4j_graph_repository.load_graph().await
-            .map_err(|e| format!("Failed to load graph from Neo4j: {:?}", e))?;
+        // Load existing data from Oxigraph into repository cache on startup
+        info!("[AppState::new] Loading graph data from Oxigraph store into repository cache...");
+        // Migrated to SPARQL — see OxigraphGraphRepository (ADR-11)
+        {
+            use crate::ports::graph_repository::GraphRepository;
+            match graph_adapter.get_graph().await {
+                Ok(g) => info!("[AppState::new] Oxigraph store has {} nodes", g.nodes.len()),
+                Err(e) => warn!("[AppState::new] Could not count Oxigraph nodes at startup: {}", e),
+            }
+        }
 
-        // Get node count by calling the trait method through the GraphRepository trait
+        // Get node count via actor graph repository
         let node_count = {
             use crate::ports::graph_repository::GraphRepository;
             graph_repository.get_graph().await
                 .map(|g| g.nodes.len())
                 .unwrap_or(0)
         };
-        info!("[AppState::new] ✅ Graph data loaded from Neo4j ({} nodes)", node_count);
+        info!("[AppState::new] Graph data loaded from Oxigraph store ({} nodes)", node_count);
 
         info!("[AppState::new] Initializing CQRS query handlers for graph domain");
         let graph_query_handlers = GraphQueryHandlers {
@@ -650,10 +633,11 @@ impl AppState {
             info!("[AppState::new] Registering CQRS command and query handlers");
             let cmd_bus = command_bus.write().await;
             let qry_bus = query_bus.write().await;
+            // Migrated to Oxigraph (ADR-11) — OxigraphGraphRepository implements KnowledgeGraphRepository
             crate::cqrs::register_all_handlers(
                 &cmd_bus,
                 &qry_bus,
-                neo4j_adapter.clone() as Arc<dyn crate::ports::KnowledgeGraphRepository>,
+                graph_adapter.clone() as Arc<dyn crate::ports::KnowledgeGraphRepository>,
                 ontology_repository.clone() as Arc<dyn crate::ports::OntologyRepository>,
                 settings_repository.clone(),
             )
@@ -840,18 +824,11 @@ impl AppState {
             info!("[AppState] Registered gpu_compute_addr with GraphServiceSupervisor for periodic refresh");
         }
 
-        info!("[AppState::new] Starting OptimizedSettingsActor with repository injection (hexagonal architecture)");
+        info!("[AppState::new] Starting OptimizedSettingsActor with repository injection (hexagonal architecture, ADR-11)");
 
-        // Phase 3: Using Neo4j settings repository for actor (reusing config from above)
-        let actor_config = Neo4jSettingsConfig::default();
-        let actor_settings_repository = Arc::new(
-            Neo4jSettingsRepository::new(actor_config)
-                .await
-                .map_err(|e| format!("Failed to create Neo4j actor settings repository: {}", e))?,
-        );
-
+        // Reuse the already-opened SQLite settings repository (ADR-11 §D5)
         let settings_actor = OptimizedSettingsActor::with_actors(
-            actor_settings_repository,
+            sqlite_settings_repository.clone() as Arc<dyn SettingsRepository>,
             Some(graph_service_addr.clone()),
             None,
         )
@@ -1006,9 +983,9 @@ impl AppState {
             gpu_context_bus,
 
             settings_repository,
-            neo4j_settings_repository,
+            sqlite_settings_repository,
 
-            neo4j_adapter,
+            graph_adapter,
 
             ontology_repository,
 
@@ -1055,7 +1032,7 @@ impl AppState {
             return Err(format!("AppState validation failed: {:?}", validation_report.errors).into());
         }
 
-        info!("[AppState::new] ✅ All validation checks passed");
+        info!("[AppState::new] All validation checks passed");
 
         Ok(state)
     }

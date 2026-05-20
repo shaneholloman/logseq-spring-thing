@@ -737,50 +737,43 @@ __global__ void integrate_pass_kernel(
     pos.y = fmaf(vel.y, c_params.dt, pos.y);
     pos.z = fmaf(vel.z, c_params.dt, pos.z);
 
-    // Apply enhanced boundary constraints with progressive repulsion
+    // Soft boundary: progressive repulsion force, no hard position clamping.
+    // Nodes approaching the boundary get pushed back with increasing strength.
     float boundary_limit = c_params.viewport_bounds;
     if (boundary_limit > 0.0f) {
-        // Use boundary damping from settings for margin and strength
-        float boundary_margin = boundary_limit * c_params.boundary_damping;
-        float boundary_repulsion_strength = c_params.max_force * c_params.boundary_damping;
-        
-        // Check X boundary
-        if (fabsf(pos.x) > boundary_margin) {
-            float boundary_dist = fabsf(pos.x) - boundary_margin;
-            float boundary_force = boundary_repulsion_strength * (boundary_dist / (boundary_limit - boundary_margin));
-            boundary_force = fminf(boundary_force, c_params.max_force); // Cap using max_force setting
-            pos.x = pos.x > 0 ? fminf(pos.x, boundary_limit) : fmaxf(pos.x, -boundary_limit);
-            vel.x *= c_params.boundary_damping; // Apply boundary damping from settings
-            // Add reflection for strong collisions
-            if (fabsf(pos.x) >= boundary_limit) {
-                vel.x = -vel.x * c_params.boundary_damping; // Reflect with boundary damping
-            }
+        // Soft zone starts at 80% of the boundary
+        float soft_zone = boundary_limit * 0.8f;
+        float inv_zone = 1.0f / fmaxf(boundary_limit - soft_zone, 1.0f);
+        float max_boundary_force = c_params.max_force;
+
+        // X axis
+        float abs_x = fabsf(pos.x);
+        if (abs_x > soft_zone) {
+            float penetration = (abs_x - soft_zone) * inv_zone;
+            float bf = max_boundary_force * penetration * penetration;
+            bf = fminf(bf, max_boundary_force);
+            vel.x -= copysignf(bf * c_params.dt, pos.x);
+            vel.x *= c_params.boundary_damping;
         }
-        
-        // Check Y boundary
-        if (fabsf(pos.y) > boundary_margin) {
-            float boundary_dist = fabsf(pos.y) - boundary_margin;
-            float boundary_force = boundary_repulsion_strength * (boundary_dist / (boundary_limit - boundary_margin));
-            // Use max_force instead of hardcoded 15.0f
-            boundary_force = fminf(boundary_force, c_params.max_force);
-            pos.y = pos.y > 0 ? fminf(pos.y, boundary_limit) : fmaxf(pos.y, -boundary_limit);
+
+        // Y axis
+        float abs_y = fabsf(pos.y);
+        if (abs_y > soft_zone) {
+            float penetration = (abs_y - soft_zone) * inv_zone;
+            float bf = max_boundary_force * penetration * penetration;
+            bf = fminf(bf, max_boundary_force);
+            vel.y -= copysignf(bf * c_params.dt, pos.y);
             vel.y *= c_params.boundary_damping;
-            if (fabsf(pos.y) >= boundary_limit) {
-                vel.y = -vel.y * c_params.boundary_damping;
-            }
         }
-        
-        // Check Z boundary
-        if (fabsf(pos.z) > boundary_margin) {
-            float boundary_dist = fabsf(pos.z) - boundary_margin;
-            float boundary_force = boundary_repulsion_strength * (boundary_dist / (boundary_limit - boundary_margin));
-            // Use max_force instead of hardcoded 15.0f
-            boundary_force = fminf(boundary_force, c_params.max_force);
-            pos.z = pos.z > 0 ? fminf(pos.z, boundary_limit) : fmaxf(pos.z, -boundary_limit);
+
+        // Z axis
+        float abs_z = fabsf(pos.z);
+        if (abs_z > soft_zone) {
+            float penetration = (abs_z - soft_zone) * inv_zone;
+            float bf = max_boundary_force * penetration * penetration;
+            bf = fminf(bf, max_boundary_force);
+            vel.z -= copysignf(bf * c_params.dt, pos.z);
             vel.z *= c_params.boundary_damping;
-            if (fabsf(pos.z) >= boundary_limit) {
-                vel.z = -vel.z * c_params.boundary_damping;
-            }
         }
     }
 

@@ -35,7 +35,7 @@ pub fn class_bit_for_type(type_name: &str) -> Option<u32> {
     match type_name {
         "Page" | "schema:WebPage" => Some(bits::PAGE),
         "LinkedPage" | "vc:LinkedPage" => Some(bits::LINKED_PAGE),
-        "OntologyClass" | "owl:Class" => Some(bits::ONTOLOGY),
+        "OntologyClass" | "owl:Class" | "Class" => Some(bits::ONTOLOGY),
         "OntologyProperty"
         | "DataProperty"
         | "AnnotationProperty"

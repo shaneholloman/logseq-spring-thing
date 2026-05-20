@@ -387,7 +387,7 @@ impl Handler<UpdateNodeFilterSettings> for SettingsActor {
         let settings = msg.0;
 
         Box::pin(async move {
-            // Persist to Neo4j as JSON
+            // Persist to SQLite as JSON
             let settings_json = serde_json::to_value(&settings)
                 .map_err(|e| anyhow::anyhow!("Failed to serialize node filter settings: {}", e))?;
 
@@ -421,7 +421,7 @@ impl Handler<UpdateQualityGateSettings> for SettingsActor {
         let settings = msg.0;
 
         Box::pin(async move {
-            // Persist to Neo4j as JSON
+            // Persist to SQLite as JSON
             let settings_json = serde_json::to_value(&settings)
                 .map_err(|e| anyhow::anyhow!("Failed to serialize quality gate settings: {}", e))?;
 

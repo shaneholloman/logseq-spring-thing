@@ -1,11 +1,9 @@
-//! Shared test helpers for Neo4j-dependent tests
+//! Shared test helpers for repository-backed tests
 //!
 //! Provides:
 //! - `MockOntologyRepository`: In-memory implementation of `OntologyRepository` for unit tests
-//! - `Neo4jTestConfig`: Connection config for integration tests against a real Neo4j instance
-//! - `neo4j_available()`: Async check for Neo4j availability (skips tests in CI without Neo4j)
 //! - `create_test_ontology_repo()`: Convenience factory for mock repos pre-loaded with test data
-
+//!
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -20,47 +18,23 @@ use crate::ports::ontology_repository::{
 };
 
 // ---------------------------------------------------------------------------
-// Neo4j test connection config (for integration tests)
+// Oxigraph test store helpers (for integration tests)
 // ---------------------------------------------------------------------------
 
-/// Neo4j test connection configuration.
-/// Reads from environment variables with sensible defaults for local dev.
-pub struct Neo4jTestConfig {
-    pub uri: String,
-    pub username: String,
-    pub password: String,
+/// Check if an Oxigraph in-memory store is available for testing.
+/// Always returns `true` — Oxigraph is embedded and requires no external service.
+pub async fn oxigraph_available() -> bool {
+    true
 }
 
-impl Default for Neo4jTestConfig {
-    fn default() -> Self {
-        Self {
-            uri: std::env::var("NEO4J_TEST_URI")
-                .unwrap_or_else(|_| "bolt://localhost:7687".to_string()),
-            username: std::env::var("NEO4J_TEST_USER")
-                .unwrap_or_else(|_| "neo4j".to_string()),
-            password: std::env::var("NEO4J_TEST_PASSWORD")
-                .unwrap_or_else(|_| "testpassword".to_string()),
-        }
-    }
-}
-
-/// Check if a Neo4j test instance is reachable.
-/// Returns `false` when unavailable so tests can be skipped gracefully.
-pub async fn neo4j_available() -> bool {
-    let config = Neo4jTestConfig::default();
-    match neo4rs::Graph::new(&config.uri, &config.username, &config.password) {
-        Ok(graph) => graph.run(neo4rs::query("RETURN 1")).await.is_ok(),
-        Err(_) => false,
-    }
-}
-
-/// Skip the current test if Neo4j is not available.
-/// Usage: `skip_without_neo4j!();` at the top of an async test.
+/// Skip the current test if the Oxigraph store cannot be opened.
+/// In practice this never fires — Oxigraph is embedded (ADR-11).
+/// Usage: `skip_without_oxigraph!();` at the top of an async test.
 #[macro_export]
-macro_rules! skip_without_neo4j {
+macro_rules! skip_without_oxigraph {
     () => {
-        if !crate::test_helpers::neo4j_available().await {
-            eprintln!("SKIPPED: Neo4j test instance not available");
+        if !crate::test_helpers::oxigraph_available().await {
+            eprintln!("SKIPPED: Oxigraph store not available");
             return;
         }
     };
@@ -71,7 +45,7 @@ macro_rules! skip_without_neo4j {
 // ---------------------------------------------------------------------------
 
 /// In-memory `OntologyRepository` implementation for unit testing.
-/// No Neo4j connection required.
+/// No external database required — backed entirely by in-process HashMaps.
 pub struct MockOntologyRepository {
     pub classes: RwLock<HashMap<String, OwlClass>>,
     pub properties: RwLock<HashMap<String, OwlProperty>>,

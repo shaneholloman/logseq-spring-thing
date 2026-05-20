@@ -22,7 +22,7 @@ pub enum IriScheme {
     Axiom,
     /// `urn:visionflow:agent:<run>:<step>`
     Agent,
-    /// `urn:visionflow:graph:<name>` (rarely used as `@id`)
+    /// `urn:ngm:graph:<name>` (rarely used as `@id`)
     Graph,
     /// `urn:visionflow:bridge:<id>`
     Bridge,
@@ -69,7 +69,9 @@ pub fn is_well_formed(value: &str) -> bool {
     let scheme = &value[..colon_at];
     // Scheme: ALPHA *( ALPHA / DIGIT / "+" / "-" / "." )
     let mut scheme_chars = scheme.chars();
-    let first = scheme_chars.next().unwrap();
+    let Some(first) = scheme_chars.next() else {
+        return false;
+    };
     if !first.is_ascii_alphabetic() {
         return false;
     }
@@ -102,9 +104,13 @@ pub fn classify(value: &str) -> Option<IriScheme> {
         ("urn:visionflow:owl:axiom:", IriScheme::Axiom),
         ("urn:visionflow:axiom:", IriScheme::Axiom),
         ("urn:visionflow:agent:", IriScheme::Agent),
-        ("urn:visionflow:graph:", IriScheme::Graph),
+        ("urn:ngm:graph:", IriScheme::Graph),
         ("urn:visionflow:bridge:", IriScheme::Bridge),
         ("urn:visionflow:nostr:event:", IriScheme::NostrEvent),
+        // v2 urn:ngm: scheme variants
+        ("urn:ngm:class:", IriScheme::OwlClass),
+        ("urn:ngm:property:", IriScheme::OwlProperty),
+        ("urn:ngm:axiom:", IriScheme::Axiom),
         ("did:nostr:", IriScheme::DidNostr),
     ];
     for (prefix, scheme) in prefixes {

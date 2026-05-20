@@ -3,36 +3,27 @@ use serde_json::Value;
 use std::collections::HashMap;
 
 pub fn validate_physics_settings_complete(physics: &Value) -> Result<(), String> {
-    
-
-    
     if let Some(dt) = physics.get("dt").or_else(|| physics.get("timeStep")) {
         let val = dt.as_f64().ok_or("dt must be a number")?;
         if val <= 0.0 || val > 0.1 {
-            
             return Err("dt must be between 0.001 and 0.1 for GPU stability".to_string());
         }
     }
 
-    
     if let Some(max_vel) = physics.get("maxVelocity") {
         let val = max_vel.as_f64().ok_or("maxVelocity must be a number")?;
         if val <= 0.0 || val > 100.0 {
-            
             return Err("maxVelocity must be between 0.1 and 100.0".to_string());
         }
     }
 
-    
     if let Some(repel_k) = physics.get("repelK") {
         let val = repel_k.as_f64().ok_or("repelK must be a number")?;
         if val <= 0.0 || val > 500.0 {
-            
             return Err("repelK must be between 0.001 and 500.0".to_string());
         }
     }
 
-    
     if let Some(spring_k) = physics.get("springK") {
         let val = spring_k.as_f64().ok_or("springK must be a number")?;
         if val <= 0.0 || val > 10.0 {
@@ -40,16 +31,13 @@ pub fn validate_physics_settings_complete(physics: &Value) -> Result<(), String>
         }
     }
 
-    
     if let Some(damping) = physics.get("damping") {
         let val = damping.as_f64().ok_or("damping must be a number")?;
         if val < 0.0 || val >= 1.0 {
-            
             return Err("damping must be between 0.0 and 0.999".to_string());
         }
     }
 
-    
     if let Some(max_force) = physics.get("maxForce") {
         let val = max_force.as_f64().ok_or("maxForce must be a number")?;
         if val <= 0.0 || val > 1000.0 {
@@ -57,7 +45,6 @@ pub fn validate_physics_settings_complete(physics: &Value) -> Result<(), String>
         }
     }
 
-    
     if let Some(sssp_alpha) = physics.get("ssspAlpha") {
         let val = sssp_alpha.as_f64().ok_or("ssspAlpha must be a number")?;
         if val < 0.0 || val > 5.0 {
@@ -65,7 +52,6 @@ pub fn validate_physics_settings_complete(physics: &Value) -> Result<(), String>
         }
     }
 
-    
     if let Some(constraint_strength) = physics.get("constraintStrength") {
         let val = constraint_strength
             .as_f64()
@@ -79,19 +65,16 @@ pub fn validate_physics_settings_complete(physics: &Value) -> Result<(), String>
 }
 
 pub fn validate_constraint(constraint: &Value) -> Result<(), String> {
-    
     if let Some(kind) = constraint.get("kind") {
         let val = kind
             .as_u64()
             .or_else(|| kind.as_i64().map(|i| i as u64))
             .ok_or("constraint kind must be an integer")?;
         if val > 10 {
-            
             return Err("Invalid constraint kind".to_string());
         }
     }
 
-    
     if let Some(nodes) = constraint.get("nodeIndices") {
         let indices = nodes.as_array().ok_or("nodeIndices must be an array")?;
         for (i, idx) in indices.iter().enumerate() {
@@ -99,13 +82,11 @@ pub fn validate_constraint(constraint: &Value) -> Result<(), String> {
                 .as_u64()
                 .ok_or(format!("nodeIndices[{}] must be a positive integer", i))?;
             if val > 1_000_000 {
-                
                 return Err(format!("nodeIndices[{}] is too large", i));
             }
         }
     }
 
-    
     if let Some(frame) = constraint.get("activationFrame") {
         let val = frame.as_i64().ok_or("activationFrame must be an integer")?;
         if val < 0 {
@@ -113,7 +94,6 @@ pub fn validate_constraint(constraint: &Value) -> Result<(), String> {
         }
     }
 
-    
     if let Some(strength) = constraint.get("strength") {
         let val = strength.as_f64().ok_or("strength must be a number")?;
         if val < 0.0 || val > 10.0 {
@@ -161,7 +141,6 @@ fn camel_to_snake_case(s: &str) -> String {
         }
     }
 
-    
     match result.as_str() {
         "s_s_s_p_alpha" => "sssp_alpha".to_string(),
         "s_s_s_p_enabled" => "sssp_enabled".to_string(),
@@ -172,7 +151,6 @@ fn camel_to_snake_case(s: &str) -> String {
 pub fn get_complete_field_mappings() -> HashMap<String, String> {
     let mut mappings = HashMap::new();
 
-    
     mappings.insert("springK".to_string(), "spring_k".to_string());
     mappings.insert("repelK".to_string(), "repel_k".to_string());
     mappings.insert("attractionK".to_string(), "spring_k".to_string());
@@ -185,17 +163,10 @@ pub fn get_complete_field_mappings() -> HashMap<String, String> {
         "boundaryDamping".to_string(),
         "boundary_damping".to_string(),
     );
-    mappings.insert("massScale".to_string(), "mass_scale".to_string());
     mappings.insert(
         "separationRadius".to_string(),
         "separation_radius".to_string(),
     );
-    mappings.insert(
-        "updateThreshold".to_string(),
-        "update_threshold".to_string(),
-    );
-    mappings.insert("stressWeight".to_string(), "stress_weight".to_string());
-    mappings.insert("stressAlpha".to_string(), "stress_alpha".to_string());
     mappings.insert(
         "alignmentStrength".to_string(),
         "alignment_strength".to_string(),
@@ -210,7 +181,6 @@ pub fn get_complete_field_mappings() -> HashMap<String, String> {
         "maxRepulsionDist".to_string(),
         "max_repulsion_dist".to_string(),
     );
-    mappings.insert("boundaryMargin".to_string(), "boundary_margin".to_string());
     mappings.insert("ssspAlpha".to_string(), "sssp_alpha".to_string());
     mappings.insert("ssspEnabled".to_string(), "sssp_enabled".to_string());
     mappings.insert(
@@ -222,7 +192,6 @@ pub fn get_complete_field_mappings() -> HashMap<String, String> {
         "constraint_strength".to_string(),
     );
 
-    
     mappings.insert("enableHologram".to_string(), "enable_hologram".to_string());
     mappings.insert("showLabels".to_string(), "show_labels".to_string());
     mappings.insert("nodeSize".to_string(), "node_size".to_string());
@@ -285,7 +254,6 @@ pub fn get_complete_field_mappings() -> HashMap<String, String> {
     mappings.insert("shadowBias".to_string(), "shadow_bias".to_string());
     mappings.insert("agentColors".to_string(), "agent_colors".to_string());
 
-    
     mappings.insert("autoBalance".to_string(), "auto_balance".to_string());
     mappings.insert(
         "autoBalanceIntervalMs".to_string(),
@@ -311,13 +279,11 @@ pub fn apply_field_mappings(value: &mut Value, mappings: &HashMap<String, String
             }
         }
 
-        
         for (old_key, new_key, val) in updates {
             map.remove(&old_key);
             map.insert(new_key, val);
         }
 
-        
         for (_, val) in map.iter_mut() {
             apply_field_mappings(val, mappings);
         }
@@ -352,10 +318,10 @@ mod tests {
         });
         assert!(validate_physics_settings_complete(&valid).is_ok());
 
-        let invalid_dt = json!({"dt": 1.0}); 
+        let invalid_dt = json!({"dt": 1.0});
         assert!(validate_physics_settings_complete(&invalid_dt).is_err());
 
-        let invalid_repel = json!({"repelK": -10.0}); 
+        let invalid_repel = json!({"repelK": -10.0});
         assert!(validate_physics_settings_complete(&invalid_repel).is_err());
     }
 

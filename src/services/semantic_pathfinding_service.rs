@@ -490,16 +490,8 @@ impl SemanticPathfindingService {
     }
 
     fn edge_type_to_int(&self, edge_type: &Option<String>) -> i32 {
-        match edge_type.as_deref() {
-            None | Some("generic") => 0,
-            Some("dependency") => 1,
-            Some("hierarchy") => 2,
-            Some("association") => 3,
-            Some("sequence") => 4,
-            Some("subClassOf") => 5,
-            Some("instanceOf") => 6,
-            Some(_) => 7,
-        }
+        use crate::services::semantic_type_registry::SEMANTIC_TYPE_REGISTRY;
+        SEMANTIC_TYPE_REGISTRY.edge_type_to_int(edge_type)
     }
 }
 

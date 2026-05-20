@@ -1,6 +1,7 @@
 // src/handlers/admin_sync_handler.rs
 //! Admin endpoint for triggering GitHub synchronization
 
+use std::sync::Arc;
 use actix_web::{web, Responder, Result};
 use log::{error, info};
 use serde::Serialize;
@@ -55,7 +56,7 @@ impl From<SyncStatistics> for SyncStatisticsDto {
 
 pub async fn trigger_sync(
     _auth: crate::settings::auth_extractor::AuthenticatedUser,
-    sync_service: web::Data<GitHubSyncService>,
+    sync_service: web::Data<Arc<GitHubSyncService>>,
     app_state: web::Data<AppState>,
 ) -> Result<impl Responder> {
     _auth.require_power_user()?;
@@ -69,9 +70,9 @@ pub async fn trigger_sync(
             );
 
             // Notify graph actor to reload from database
-            info!("📥 Notifying GraphServiceActor to reload data from database...");
+            info!("Notifying GraphServiceActor to reload data from database...");
             app_state.graph_service_addr.do_send(crate::actors::messages::ReloadGraphFromDatabase);
-            info!("✅ Reload notification sent to GraphServiceActor");
+            info!("Reload notification sent to GraphServiceActor");
 
             ok_json!(SyncResponse {
                 success: true,
@@ -94,12 +95,10 @@ pub async fn trigger_sync(
 }
 
 /// SECURITY: Admin sync endpoints require power user authentication
+/// Auth is enforced by the AuthenticatedUser extractor + require_power_user() in the handler.
 pub fn configure_routes(cfg: &mut web::ServiceConfig) {
-    use crate::middleware::RequireAuth;
-
     cfg.service(
         web::scope("/admin")
-            .wrap(RequireAuth::power_user())  // Admin operations require power user
             .route("/sync", web::post().to(trigger_sync))
     );
 }

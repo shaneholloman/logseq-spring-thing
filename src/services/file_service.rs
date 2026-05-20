@@ -323,7 +323,7 @@ impl FileService {
         // Detect base path change — wipe local cache if target directory changed
         let current_base_path = github_config.base_path.clone();
         if Self::base_path_changed(&current_base_path) {
-            info!("🔄 GITHUB_BASE_PATH changed to '{}' — clearing local file cache for fresh ingest", current_base_path);
+            info!("GITHUB_BASE_PATH changed to '{}' — clearing local file cache for fresh ingest", current_base_path);
             Self::clear_local_cache();
             Self::save_base_path_marker(&current_base_path);
         }
@@ -1097,25 +1097,28 @@ impl FileService {
         Ok(processed_files)
     }
 
-    /// Load complete graph from local markdown files into Neo4j database
-    pub async fn load_graph_from_files_into_neo4j(
-        neo4j_adapter: &Arc<crate::adapters::neo4j_adapter::Neo4jAdapter>,
+    /// Load complete graph from local markdown files into the Oxigraph store (ADR-11).
+    ///
+    /// Routes through the `KnowledgeGraphRepository` port (`OxigraphGraphRepository`).
+    ///
+    /// Phase 2 note: stale-node pruning via SPARQL DELETE is not yet implemented.
+    /// todo!("Phase 2: stale node pruning via OxigraphGraphRepository")
+    pub async fn load_graph_from_files(
+        graph_repo: &Arc<dyn crate::ports::knowledge_graph_repository::KnowledgeGraphRepository>,
     ) -> Result<(), String> {
-        info!("Starting to load graph from local files into Neo4j...");
+        info!("Starting to load graph from local files into Oxigraph store (ADR-11)...");
 
         let metadata = Self::load_or_create_metadata()?;
         if metadata.is_empty() {
-            warn!("metadata.json is empty. No data to load into Neo4j.");
+            warn!("metadata.json is empty. No data to load into Oxigraph store.");
             return Ok(());
         }
 
         let mut graph_data = GraphData::new();
 
         // Phase 1: Create nodes and collect file contents + actual IDs.
-        // new_with_id auto-increments when nodeId is 0, so we capture the real ID.
         let mut term_to_id: HashMap<String, u32> = HashMap::new();
-        let mut filename_to_id: HashMap<String, u32> = HashMap::new();
-        let mut file_contents: Vec<(String, u32)> = Vec::new(); // (content, actual_node_id)
+        let mut file_contents: Vec<(String, u32)> = Vec::new();
 
         for (filename, meta) in metadata.iter() {
             let file_path = Path::new(MARKDOWN_DIR).join(filename);
@@ -1128,11 +1131,7 @@ impl FileService {
             };
 
             let meta_node_id = meta.node_id.parse::<u32>().unwrap_or(0);
-
-            let mut node = AppNode::new_with_id(
-                filename.clone(),
-                Some(meta_node_id)
-            );
+            let mut node = AppNode::new_with_id(filename.clone(), Some(meta_node_id));
             node.label = meta.file_name.trim_end_matches(".md").to_string();
             node.size = Some(meta.node_size as f32);
             node.color = Some("#888888".to_string());
@@ -1141,11 +1140,7 @@ impl FileService {
             node.data.y = rng.gen_range(-100.0..100.0);
             node.data.z = rng.gen_range(-100.0..100.0);
 
-            // Capture the actual assigned ID (may differ from meta_node_id due to auto-increment)
             let actual_id = node.id;
-            filename_to_id.insert(filename.clone(), actual_id);
-
-            // Map preferred term → actual node ID for wikilink resolution
             if let Some(ref term) = meta.preferred_term {
                 term_to_id.insert(term.to_lowercase(), actual_id);
             }
@@ -1159,7 +1154,7 @@ impl FileService {
             graph_data.nodes.len(), term_to_id.len()
         );
 
-        // Phase 2: Extract edges from wikilinks using the preferred_term mapping.
+        // Phase 2: Extract edges from wikilinks.
         let wikilink_re = Regex::new(r"\[\[([^\]|]+)(?:\|[^\]]+)?\]\]")
             .expect("Invalid wikilink regex");
         let mut seen_edges = std::collections::HashSet::new();
@@ -1179,78 +1174,19 @@ impl FileService {
         }
 
         info!(
-            "Phase 2: Extracted {} edges from wikilinks across {} files.",
-            graph_data.edges.len(), file_contents.len()
-        );
-        info!(
-            "Total: {} nodes and {} edges ready for Neo4j.",
-            graph_data.nodes.len(),
-            graph_data.edges.len()
+            "Total: {} nodes and {} edges ready for Oxigraph store.",
+            graph_data.nodes.len(), graph_data.edges.len()
         );
 
-        // Collect metadata_ids of all nodes we're about to upsert
-        let current_metadata_ids: Vec<String> = graph_data
-            .nodes
-            .iter()
-            .map(|n| n.metadata_id.clone())
-            .collect();
-
-        // Remove only nodes whose source files no longer exist (not in current set)
-        // This preserves nodes from prior syncs that still have valid source files
-        info!("Removing stale nodes from Neo4j (nodes whose source files were removed)...");
-        {
-            use neo4rs::BoltType;
-            let id_list: Vec<BoltType> = current_metadata_ids
-                .iter()
-                .map(|s| BoltType::from(s.clone()))
-                .collect();
-            let mut params = HashMap::new();
-            params.insert("current_ids".to_string(), BoltType::from(id_list));
-
-            match neo4j_adapter.execute_cypher_safe(
-                "MATCH (n:GraphNode)
-                 WHERE n.metadata_id IS NOT NULL
-                   AND NOT n.metadata_id IN $current_ids
-                 WITH n, n.metadata_id AS mid
-                 DETACH DELETE n
-                 RETURN count(*) AS removed, collect(mid) AS removed_ids",
-                params,
-            ).await {
-                Ok(rows) => {
-                    if let Some(row) = rows.first() {
-                        let removed = row.get("removed")
-                            .and_then(|v| v.as_i64())
-                            .unwrap_or(0);
-                        if removed > 0 {
-                            let removed_ids: Vec<&str> = row.get("removed_ids")
-                                .and_then(|v| v.as_array())
-                                .map(|arr| arr.iter()
-                                    .filter_map(|v| v.as_str())
-                                    .take(10)
-                                    .collect())
-                                .unwrap_or_default();
-                            info!(
-                                "Removed {} stale nodes from Neo4j: {:?}",
-                                removed, removed_ids
-                            );
-                        } else {
-                            info!("No stale nodes to remove.");
-                        }
-                    }
-                }
-                Err(e) => {
-                    warn!("Failed to remove stale nodes: {}. Continuing with upsert.", e);
-                }
-            }
-        }
-
-        info!("Upserting {} nodes into Neo4j (preserving existing physics state)...", graph_data.nodes.len());
-        if let Err(e) = neo4j_adapter.save_graph(&graph_data).await {
-            return Err(format!("Failed to save graph to Neo4j: {}", e));
+        // Persist via KnowledgeGraphRepository port (OxigraphGraphRepository).
+        // todo!("Phase 2: implement stale-node pruning via SPARQL DELETE WHERE")
+        info!("Upserting {} nodes into Oxigraph store...", graph_data.nodes.len());
+        if let Err(e) = graph_repo.save_graph(&graph_data).await {
+            return Err(format!("Failed to save graph to Oxigraph store: {}", e));
         }
 
         info!(
-            "✅ Successfully synced Neo4j: {} nodes upserted from local files.",
+            "Successfully synced Oxigraph store: {} nodes upserted from local files.",
             graph_data.nodes.len()
         );
         Ok(())

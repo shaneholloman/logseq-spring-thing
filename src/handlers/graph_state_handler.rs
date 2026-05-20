@@ -83,7 +83,7 @@ pub async fn get_graph_state(state: web::Data<AppState>) -> impl Responder {
     info!("Received request for complete graph state via CQRS");
 
     
-    let load_handler = LoadGraphHandler::new(state.neo4j_adapter.clone());
+    let load_handler = LoadGraphHandler::new(state.graph_adapter.clone());
 
     
     let result = execute_in_thread(move || load_handler.handle(LoadGraph)).await;
@@ -146,7 +146,7 @@ pub async fn get_graph_statistics(state: web::Data<AppState>) -> impl Responder 
     info!("Received request for graph statistics via CQRS");
 
     
-    let handler = GetGraphStatisticsHandler::new(state.neo4j_adapter.clone());
+    let handler = GetGraphStatisticsHandler::new(state.graph_adapter.clone());
 
     
     let result = execute_in_thread(move || handler.handle(GetGraphStatistics)).await;
@@ -189,7 +189,7 @@ pub async fn add_node(
     );
 
     
-    let handler = AddNodeHandler::new(state.neo4j_adapter.clone());
+    let handler = AddNodeHandler::new(state.graph_adapter.clone());
 
     
     let result = execute_in_thread(move || handler.handle(AddNode { node })).await;
@@ -222,7 +222,7 @@ pub async fn update_node(
     info!("Updating node via CQRS directive: id={}", node.id);
 
     
-    let handler = UpdateNodeHandler::new(state.neo4j_adapter.clone());
+    let handler = UpdateNodeHandler::new(state.graph_adapter.clone());
 
     
     let result = execute_in_thread(move || handler.handle(UpdateNode { node })).await;
@@ -250,7 +250,7 @@ pub async fn remove_node(_auth: crate::settings::auth_extractor::AuthenticatedUs
     info!("Removing node via CQRS directive: id={}", id);
 
     
-    let handler = RemoveNodeHandler::new(state.neo4j_adapter.clone());
+    let handler = RemoveNodeHandler::new(state.graph_adapter.clone());
 
     
     let result = execute_in_thread(move || handler.handle(RemoveNode { node_id: id })).await;
@@ -278,7 +278,7 @@ pub async fn get_node(state: web::Data<AppState>, node_id: web::Path<u32>) -> im
     info!("Getting node via CQRS query: id={}", id);
 
     
-    let handler = GetNodeHandler::new(state.neo4j_adapter.clone());
+    let handler = GetNodeHandler::new(state.graph_adapter.clone());
 
     
     let result = execute_in_thread(move || handler.handle(GetNode { node_id: id })).await;
@@ -331,7 +331,7 @@ pub async fn add_edge(
     );
 
     
-    let handler = AddEdgeHandler::new(state.neo4j_adapter.clone());
+    let handler = AddEdgeHandler::new(state.graph_adapter.clone());
 
     
     let result = execute_in_thread(move || handler.handle(AddEdge { edge })).await;
@@ -360,7 +360,7 @@ pub async fn update_edge(_auth: crate::settings::auth_extractor::AuthenticatedUs
     info!("Updating edge via CQRS directive: id={}", edge.id);
 
     
-    let handler = UpdateEdgeHandler::new(state.neo4j_adapter.clone());
+    let handler = UpdateEdgeHandler::new(state.graph_adapter.clone());
 
     
     let result = execute_in_thread(move || handler.handle(UpdateEdge { edge })).await;
@@ -395,7 +395,7 @@ pub async fn batch_update_positions(
     );
 
     
-    let handler = BatchUpdatePositionsHandler::new(state.neo4j_adapter.clone());
+    let handler = BatchUpdatePositionsHandler::new(state.graph_adapter.clone());
 
     
     let result =

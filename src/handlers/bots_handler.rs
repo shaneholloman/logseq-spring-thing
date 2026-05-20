@@ -288,7 +288,7 @@ pub async fn initialize_hive_mind_swarm(
         base_task
     );
 
-    info!("🔧 Swarm initialization task: {}", task);
+    info!("Swarm initialization task: {}", task);
 
     
     
@@ -315,7 +315,7 @@ pub async fn initialize_hive_mind_swarm(
     {
         Ok(Ok(task_response)) => {
             info!(
-                "✓ Successfully created task via Management API - Task ID: {}",
+                "Successfully created task via Management API - Task ID: {}",
                 task_response.task_id
             );
 

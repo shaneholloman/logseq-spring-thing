@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 /// GPU-friendly edge type for semantic pipeline (ADR-014 Phase 2).
-/// Maps relationship strings from Neo4j/OntologyParser to a compact u8
+/// Maps relationship strings from Oxigraph/OntologyParser to a compact u8
 /// discriminant suitable for GPU buffers and spring-force differentiation.
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -23,22 +23,54 @@ pub enum SemanticEdgeType {
     Namespace = 6,
     /// whelk reasoner output
     Inferred = 7,
+    /// implements/implementedBy — strong coupling
+    Implements = 8,
+    /// enhances/enhancedBy, optimizes/optimizedBy — medium
+    Enhancement = 9,
+    /// secures/securedBy, validates/validatedBy — medium
+    Security = 10,
+    /// achievesObjective/isAchievedBy — medium
+    Goal = 11,
+    /// trackedOn/tracks, freezes/frozenBy — weak cross-domain
+    Tracking = 12,
+    /// similarTo, simulatedIn/simulates — gentle
+    Similarity = 13,
+    /// prov:wasAttributedTo, prov:wasDerivedFrom — metadata
+    Provenance = 14,
+    /// uses, supports, utilises — weaker than dependency
+    Utilisation = 15,
+    /// standardizedBy — governance link
+    Standardisation = 16,
 }
 
 impl SemanticEdgeType {
-    /// Convert a Neo4j relation_type or OntologyParser relationship string
+    /// Convert an Oxigraph relation_type or OntologyParser relationship string
     /// into the corresponding SemanticEdgeType variant.
     pub fn from_relation_type(s: &str) -> Self {
         match s {
-            "is_subclass_of" | "subclass_of" | "hierarchical" | "SUBCLASS_OF" => {
-                Self::Hierarchical
-            }
-            "has_part" | "is_part_of" | "structural" => Self::Structural,
+            "is_subclass_of" | "subclass_of" | "hierarchical" | "SUBCLASS_OF"
+            | "equivalent_class" | "same_as" | "sub_property_of" => Self::Hierarchical,
+            "has_part" | "is_part_of" | "structural" | "domain" | "range" => Self::Structural,
             "requires" | "depends_on" | "enables" | "dependency" => Self::Dependency,
-            "relates_to" | "associative" => Self::Associative,
-            "bridges_to" | "bridges_from" | "bridge" => Self::Bridge,
+            "relates_to" | "associative" | "inverse_of" | "related_to" => Self::Associative,
+            "bridges_to" | "bridges_from" | "bridge" | "disjoint_with" | "contrasts_with" => {
+                Self::Bridge
+            }
             "namespace" => Self::Namespace,
             "inferred" => Self::Inferred,
+            "implements" | "implemented_by" => Self::Implements,
+            "enhances" | "enhanced_by" | "optimizes" | "optimized_by" | "enhancement" => {
+                Self::Enhancement
+            }
+            "secures" | "secured_by" | "validates" | "validated_by" | "security" => Self::Security,
+            "achieves_objective" | "is_achieved_by" | "goal" => Self::Goal,
+            "tracked_on" | "tracks" | "freezes" | "frozen_by" | "tracking" => Self::Tracking,
+            "similar_to" | "simulated_in" | "simulates" | "similarity" => Self::Similarity,
+            "provenance" | "was_attributed_to" | "was_derived_from" | "was_generated_by" => {
+                Self::Provenance
+            }
+            "uses" | "supports" | "utilises" | "utilisation" | "enabled_by" => Self::Utilisation,
+            "standardized_by" | "standardisation" => Self::Standardisation,
             _ => Self::ExplicitLink,
         }
     }
@@ -52,7 +84,16 @@ impl SemanticEdgeType {
             Self::ExplicitLink | Self::Associative => 1.0,
             Self::Inferred => 0.8,
             Self::Bridge => 0.5,
-            Self::Namespace => 0.3,
+            Self::Namespace => 0.5,
+            Self::Implements => 1.8,
+            Self::Enhancement => 1.2,
+            Self::Security => 1.3,
+            Self::Goal => 1.0,
+            Self::Tracking => 0.6,
+            Self::Similarity => 0.8,
+            Self::Provenance => 0.4,
+            Self::Utilisation => 1.1,
+            Self::Standardisation => 1.3,
         }
     }
 
@@ -67,6 +108,15 @@ impl SemanticEdgeType {
             5 => Self::Bridge,
             6 => Self::Namespace,
             7 => Self::Inferred,
+            8 => Self::Implements,
+            9 => Self::Enhancement,
+            10 => Self::Security,
+            11 => Self::Goal,
+            12 => Self::Tracking,
+            13 => Self::Similarity,
+            14 => Self::Provenance,
+            15 => Self::Utilisation,
+            16 => Self::Standardisation,
             _ => Self::ExplicitLink,
         }
     }
@@ -89,6 +139,15 @@ impl std::fmt::Display for SemanticEdgeType {
             Self::Bridge => write!(f, "bridge"),
             Self::Namespace => write!(f, "namespace"),
             Self::Inferred => write!(f, "inferred"),
+            Self::Implements => write!(f, "implements"),
+            Self::Enhancement => write!(f, "enhancement"),
+            Self::Security => write!(f, "security"),
+            Self::Goal => write!(f, "goal"),
+            Self::Tracking => write!(f, "tracking"),
+            Self::Similarity => write!(f, "similarity"),
+            Self::Provenance => write!(f, "provenance"),
+            Self::Utilisation => write!(f, "utilisation"),
+            Self::Standardisation => write!(f, "standardisation"),
         }
     }
 }
@@ -96,14 +155,13 @@ impl std::fmt::Display for SemanticEdgeType {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct Edge {
-    pub id: String, 
+    pub id: String,
     pub source: u32,
     pub target: u32,
     pub weight: f32,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub edge_type: Option<String>,
 
-    
     #[serde(skip_serializing_if = "Option::is_none")]
     pub owl_property_iri: Option<String>,
 
@@ -113,7 +171,6 @@ pub struct Edge {
 
 impl Edge {
     pub fn new(source: u32, target: u32, weight: f32) -> Self {
-        
         let id = format!("{}-{}", source, target);
         Self {
             id,
@@ -126,24 +183,20 @@ impl Edge {
         }
     }
 
-    
     pub fn with_owl_property_iri(mut self, iri: String) -> Self {
         self.owl_property_iri = Some(iri);
         self
     }
 
-    
     pub fn with_edge_type(mut self, edge_type: String) -> Self {
         self.edge_type = Some(edge_type);
         self
     }
 
-    
     pub fn with_metadata(mut self, metadata: HashMap<String, String>) -> Self {
         self.metadata = Some(metadata);
         self
     }
-
 
     pub fn add_metadata(mut self, key: String, value: String) -> Self {
         if let Some(ref mut map) = self.metadata {

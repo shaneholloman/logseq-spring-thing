@@ -464,7 +464,7 @@ impl ForceComputeActor {
         let mut pop_counts = [0usize; 3]; // [knowledge, ontology, agent]
         for (i, node) in graph_data.nodes.iter().enumerate() {
             node_indices.insert(node.id, i);
-            // Use compact wire ID (= GPU index) instead of Neo4j ID.
+            // Use compact wire ID (= GPU index) instead of persistent store ID.
             // This keeps IDs within 26 bits so binary protocol type flags
             // in bits 26-31 don't collide with real node IDs.
             self.gpu_index_to_node_id.push(i as u32);
@@ -492,10 +492,10 @@ impl ForceComputeActor {
             };
             self.node_population.push(pop);
         }
-        info!("ForceComputeActor: GPU index→wire_id mapping: 0..{} ({} entries, compact IDs)",
+        debug!("ForceComputeActor: GPU index→wire_id mapping: 0..{} ({} entries, compact IDs)",
               self.gpu_index_to_node_id.len().saturating_sub(1),
               self.gpu_index_to_node_id.len());
-        info!("ForceComputeActor: Node populations — knowledge: {}, ontology: {}, agent: {}",
+        debug!("ForceComputeActor: Node populations — knowledge: {}, ontology: {}, agent: {}",
               pop_counts[0], pop_counts[1], pop_counts[2]);
 
         let mut positions_x: Vec<f32> = graph_data.nodes.iter().map(|n| n.data.x).collect();
@@ -615,7 +615,7 @@ impl ForceComputeActor {
                     if let Err(e) = compute.node_graph_id.copy_from(&node_graph_ids) {
                         error!("ForceComputeActor: Failed to upload node_graph_id buffer: {}", e);
                     } else {
-                        info!("ForceComputeActor: Uploaded node_graph_id mapping ({} entries)", node_graph_ids.len());
+                        debug!("ForceComputeActor: Uploaded node_graph_id mapping ({} entries)", node_graph_ids.len());
                     }
                 }
                 debug!("ForceComputeActor: [DIAG] node_graph_id done, about to upload class metadata");
@@ -646,7 +646,7 @@ impl ForceComputeActor {
                     if let Err(e) = compute.upload_class_metadata(&class_ids, &class_charges, &class_masses) {
                         warn!("ForceComputeActor: Failed to upload class metadata: {}", e);
                     } else {
-                        info!("ForceComputeActor: Uploaded class metadata ({} entries)", class_ids.len());
+                        debug!("ForceComputeActor: Uploaded class metadata ({} entries)", class_ids.len());
                     }
                 }
 
@@ -717,7 +717,7 @@ impl ForceComputeActor {
                 let warmup = if edge_count == 0 { 1200 } else { 600 };
                 self.stability_warmup_remaining = warmup;
                 self.broadcast_optimizer.reset_delta_state();
-                info!("ForceComputeActor: Stability warmup reset to {} frames after graph upload ({} edges)",
+                debug!("ForceComputeActor: Stability warmup reset to {} frames after graph upload ({} edges)",
                       warmup, edge_count);
 
                 // ADR-031: Track GPU buffer allocations in GpuMemoryManager
@@ -732,7 +732,7 @@ impl ForceComputeActor {
                             + edge_count as usize * std::mem::size_of::<f32>();
                         mgr.track_external_allocation("positions", pos_vel_bytes);
                         mgr.track_external_allocation("edges_csr", csr_bytes);
-                        info!("ForceComputeActor: Tracked GPU allocations — positions: {} bytes, CSR: {} bytes",
+                        debug!("ForceComputeActor: Tracked GPU allocations — positions: {} bytes, CSR: {} bytes",
                               pos_vel_bytes, csr_bytes);
                     }
                 }
@@ -743,7 +743,7 @@ impl ForceComputeActor {
                 if was_uninitialized {
                     if let Some(ref orchestrator_addr) = self.physics_orchestrator_addr {
                         orchestrator_addr.do_send(crate::actors::messages::GPUInitialized);
-                        info!("ForceComputeActor: Deferred GPUInitialized confirmation sent after successful graph upload");
+                        debug!("ForceComputeActor: Deferred GPUInitialized confirmation sent after successful graph upload");
                     }
                 }
             }
@@ -805,7 +805,7 @@ impl ForceComputeActor {
 
     
     fn update_simulation_parameters(&mut self, params: SimulationParams) {
-        info!("ForceComputeActor: Updating simulation parameters");
+        debug!("ForceComputeActor: Updating simulation parameters");
         info!(
             "  spring_k: {:.3} -> {:.3}",
             self.simulation_params.spring_k, params.spring_k
@@ -1124,7 +1124,7 @@ impl Handler<ComputeForces> for ForceComputeActor {
         if self.gpu_state.is_gpu_overloaded() {
             self.skipped_frames += 1;
             if self.skipped_frames % 60 == 0 {
-                info!("ForceComputeActor: Skipped {} frames due to GPU overload (utilization: {:.1}%, concurrent ops: {})",
+                debug!("ForceComputeActor: Skipped {} frames due to GPU overload (utilization: {:.1}%, concurrent ops: {})",
                       self.skipped_frames, self.gpu_state.get_average_utilization(), self.gpu_state.concurrent_access_count);
             }
             notify_skip!(self);
@@ -1341,19 +1341,36 @@ impl Handler<ComputeForces> for ForceComputeActor {
                                 actor.position_velocity_buffer.clear();
                                 actor.node_id_buffer.clear();
 
-                                // Reserve capacity if graph grew beyond initial allocation
-                                if pos_x.len() > actor.position_velocity_buffer.capacity() {
-                                    actor.position_velocity_buffer.reserve(pos_x.len() - actor.position_velocity_buffer.capacity());
-                                    actor.node_id_buffer.reserve(pos_x.len() - actor.node_id_buffer.capacity());
-                                }
+                                // Guard: GPU may have resized during graph reload.
+                                // Clamp iteration count to the id map to prevent
+                                // out-of-bounds access on gpu_index_to_node_id.
+                                let usable_len = pos_x.len().min(pos_y.len()).min(pos_z.len())
+                                    .min(vel_x.len()).min(vel_y.len()).min(vel_z.len());
 
-                                for i in 0..pos_x.len() {
-                                    let position = Vec3::new(pos_x[i], pos_y[i], pos_z[i]);
-                                    let velocity = Vec3::new(vel_x[i], vel_y[i], vel_z[i]);
-                                    actor.position_velocity_buffer.push((position, velocity));
-                                    // Use actual graph node IDs, not buffer indices
-                                    let node_id = actor.gpu_index_to_node_id.get(i).copied().unwrap_or(i as u32);
-                                    actor.node_id_buffer.push(node_id);
+                                if usable_len == 0 {
+                                    warn!("ForceComputeActor: GPU returned 0-length position arrays — skipping broadcast");
+                                } else {
+                                    if usable_len != actor.gpu_index_to_node_id.len() {
+                                        warn!(
+                                            "ForceComputeActor: GPU buffer size ({}) != node id map size ({}) — clamping to min",
+                                            usable_len, actor.gpu_index_to_node_id.len()
+                                        );
+                                    }
+                                    let safe_len = usable_len.min(actor.gpu_index_to_node_id.len());
+
+                                    // Reserve capacity if graph grew beyond initial allocation
+                                    if safe_len > actor.position_velocity_buffer.capacity() {
+                                        actor.position_velocity_buffer.reserve(safe_len - actor.position_velocity_buffer.capacity());
+                                        actor.node_id_buffer.reserve(safe_len - actor.node_id_buffer.capacity());
+                                    }
+
+                                    for i in 0..safe_len {
+                                        let position = Vec3::new(pos_x[i], pos_y[i], pos_z[i]);
+                                        let velocity = Vec3::new(vel_x[i], vel_y[i], vel_z[i]);
+                                        actor.position_velocity_buffer.push((position, velocity));
+                                        let node_id = actor.gpu_index_to_node_id.get(i).copied().unwrap_or(i as u32);
+                                        actor.node_id_buffer.push(node_id);
+                                    }
                                 }
 
                                 // Apply dual-graph X-axis separation offset.
@@ -1391,7 +1408,7 @@ impl Handler<ComputeForces> for ForceComputeActor {
                                     let n = actor.position_velocity_buffer.len().min(3);
                                     for i in 0..n {
                                         let (p, v) = actor.position_velocity_buffer[i];
-                                        info!("ForceComputeActor: iter={} node[{}] pos=({:.2},{:.2},{:.2}) vel=({:.6},{:.6},{:.6})",
+                                        debug!("ForceComputeActor: iter={} node[{}] pos=({:.2},{:.2},{:.2}) vel=({:.6},{:.6},{:.6})",
                                             actor.gpu_state.iteration_count, actor.node_id_buffer[i],
                                             p.x, p.y, p.z, v.x, v.y, v.z);
                                     }
@@ -1578,7 +1595,7 @@ impl Handler<ComputeForces> for ForceComputeActor {
                             actor.last_step_duration_ms = step_start.elapsed().as_millis() as f32;
 
                             if actor.iteration_count() % 300 == 0 {
-                                info!("ForceComputeActor: {} iterations completed, {} GPU failures, {} skipped frames, last step: {:.2}ms",
+                                debug!("ForceComputeActor: {} iterations completed, {} GPU failures, {} skipped frames, last step: {:.2}ms",
                                       actor.iteration_count(), actor.gpu_state.gpu_failure_count, actor.skipped_frames, actor.last_step_duration_ms);
                             }
 
@@ -1706,7 +1723,7 @@ impl Handler<UpdateSimulationParams> for ForceComputeActor {
         }
 
         info!("ForceComputeActor: UpdateSimulationParams received — params CHANGED");
-        info!(
+        debug!(
             "  New params - spring_k: {:.3}, repel_k: {:.3}, damping: {:.3}, center_gravity_k: {:.3}, cluster: {:.3}, align: {:.3}",
             msg.params.spring_k, msg.params.repel_k, msg.params.damping,
             msg.params.center_gravity_k, msg.params.cluster_strength, msg.params.alignment_strength
@@ -1740,11 +1757,11 @@ impl Handler<UpdateSimulationParams> for ForceComputeActor {
         self.suppress_intermediate_broadcasts = false;
         self.force_full_broadcast = true;
 
-        info!(
+        debug!(
             "ForceComputeActor: Stability warmup=600, reheat=1.0, force_full_broadcast=true (visible re-layout)"
         );
 
-        info!(
+        debug!(
             "ForceComputeActor: Parameters updated (iteration_count={}, stability={})",
             self.gpu_state.iteration_count, self.stability_iterations
         );

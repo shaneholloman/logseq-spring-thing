@@ -598,7 +598,7 @@ pub async fn test_mcp_connectivity(
             Ok(connected) => {
                 results.insert(server_id.clone(), connected);
                 if connected {
-                    info!("✓ MCP server {} is reachable at {}:{}", server_id, host, port);
+                    info!("MCP server {} is reachable at {}:{}", server_id, host, port);
                 } else {
                     warn!("✗ MCP server {} is not reachable at {}:{}", server_id, host, port);
                 }

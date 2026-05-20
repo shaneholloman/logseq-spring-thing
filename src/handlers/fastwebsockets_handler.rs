@@ -501,7 +501,6 @@ pub struct NegotiatedProtocol {
     pub protocol: TransportProtocol,
     pub serialization: SerializationFormat,
     pub supports_datagrams: bool,
-    pub supports_delta_encoding: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -519,7 +518,7 @@ pub fn negotiate_protocol(client_capabilities: &[String]) -> NegotiatedProtocol 
             protocol: TransportProtocol::QuicWebTransport,
             serialization: SerializationFormat::Postcard,
             supports_datagrams: true,
-            supports_delta_encoding: true,
+
         };
     }
 
@@ -529,7 +528,7 @@ pub fn negotiate_protocol(client_capabilities: &[String]) -> NegotiatedProtocol 
             protocol: TransportProtocol::FastWebSocketPostcard,
             serialization: SerializationFormat::Postcard,
             supports_datagrams: false,
-            supports_delta_encoding: true,
+
         };
     }
 
@@ -538,7 +537,6 @@ pub fn negotiate_protocol(client_capabilities: &[String]) -> NegotiatedProtocol 
         protocol: TransportProtocol::LegacyWebSocket,
         serialization: SerializationFormat::LegacyBinary,
         supports_datagrams: false,
-        supports_delta_encoding: false,
     }
 }
 

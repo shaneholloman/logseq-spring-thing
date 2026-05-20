@@ -8,13 +8,13 @@ mod tests {
         match load_ptx_module_sync(PTXModule::VisionflowUnified) {
             Ok(ptx_content) => {
                 println!(
-                    "✓ Loaded VisionflowUnified PTX: {} bytes",
+                    "Loaded VisionflowUnified PTX: {} bytes",
                     ptx_content.len()
                 );
 
                 match UnifiedGPUCompute::new(100, 50, &ptx_content) {
                     Ok(compute) => {
-                        println!("✓ Created UnifiedGPUCompute successfully");
+                        println!("Created UnifiedGPUCompute successfully");
                         println!(
                             "  Nodes: {}, Edges: {}",
                             compute.num_nodes, compute.num_edges
@@ -39,7 +39,7 @@ mod tests {
     fn test_load_and_create_gpu_compute_with_clustering() {
         let main_ptx = match load_ptx_module_sync(PTXModule::VisionflowUnified) {
             Ok(content) => {
-                println!("✓ Loaded VisionflowUnified PTX: {} bytes", content.len());
+                println!("Loaded VisionflowUnified PTX: {} bytes", content.len());
                 content
             }
             Err(e) => {
@@ -50,7 +50,7 @@ mod tests {
 
         let clustering_ptx = match load_ptx_module_sync(PTXModule::GpuClusteringKernels) {
             Ok(content) => {
-                println!("✓ Loaded GpuClusteringKernels PTX: {} bytes", content.len());
+                println!("Loaded GpuClusteringKernels PTX: {} bytes", content.len());
                 Some(content)
             }
             Err(e) => {
@@ -61,13 +61,13 @@ mod tests {
 
         match UnifiedGPUCompute::new_with_modules(100, 50, &main_ptx, clustering_ptx.as_deref(), None) {
             Ok(compute) => {
-                println!("✓ Created UnifiedGPUCompute with modules successfully");
+                println!("Created UnifiedGPUCompute with modules successfully");
                 println!(
                     "  Nodes: {}, Edges: {}",
                     compute.num_nodes, compute.num_edges
                 );
                 if clustering_ptx.is_some() {
-                    println!("  ✓ Clustering module loaded");
+                    println!("  Clustering module loaded");
                 } else {
                     println!("  ⚠ Clustering module not available (fallback mode)");
                 }
@@ -83,7 +83,7 @@ mod tests {
     fn test_all_ptx_modules_available() {
         match load_all_ptx_modules_sync() {
             Ok(modules) => {
-                println!("✓ Loaded all {} PTX modules:", modules.len());
+                println!("Loaded all {} PTX modules:", modules.len());
                 for (module, content) in &modules {
                     println!("  {:?}: {} bytes", module, content.len());
                 }
@@ -122,7 +122,7 @@ mod tests {
         for (module, name) in modules_to_test {
             match load_ptx_module_sync(module) {
                 Ok(content) => {
-                    println!("✓ {}: {} bytes", name, content.len());
+                    println!("{}: {} bytes", name, content.len());
                     loaded_count += 1;
                 }
                 Err(e) => {
@@ -143,7 +143,7 @@ mod tests {
         match load_ptx_module_sync(PTXModule::VisionflowUnified) {
             Ok(ptx_content) => match UnifiedGPUCompute::new(50, 25, &ptx_content) {
                 Ok(_compute) => {
-                    println!("✓ Backward compatibility maintained - old API works");
+                    println!("Backward compatibility maintained - old API works");
                 }
                 Err(e) => {
                     println!("⚠ GPU compute creation failed: {}", e);

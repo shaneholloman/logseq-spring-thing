@@ -516,7 +516,7 @@ pub struct FileContext {
     pub metadata: Option<std::collections::HashMap<String, String>>,
 }
 
-// Uses Neo4j test helpers from test_helpers when NEO4J_TEST_URI is set
+// Uses Oxigraph test helpers from test_helpers (ADR-11)
 #[cfg(test)]
 mod tests {
     use super::*;

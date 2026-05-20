@@ -2,7 +2,6 @@
 use webxr::ports::ontology_repository::OntologyRepository;
 use webxr::services::nostr_service::NostrService;
 // SettingsActor removed - OptimizedSettingsActor in AppState is the single source of truth
-use webxr::adapters::neo4j_settings_repository::{Neo4jSettingsRepository, Neo4jSettingsConfig};
 use webxr::actors::messages::ReloadGraphFromDatabase;
 use webxr::{
     config::AppFullSettings,
@@ -69,8 +68,6 @@ use webxr::utils::json::to_json;
 fn validate_required_env_vars() -> Result<(), String> {
     let mut missing = Vec::new();
     let required = [
-        "NEO4J_URI",
-        "NEO4J_PASSWORD",
         "SYSTEM_NETWORK_PORT",
     ];
     for var in &required {
@@ -209,7 +206,24 @@ async fn main() -> std::io::Result<()> {
     // This replaces env_logger and bridges to the `log` crate, so existing log::info! etc. still work.
     // RUST_LOG env var controls filtering (e.g. RUST_LOG=debug or RUST_LOG=webxr=debug,actix_web=info).
     tracing_subscriber::registry()
-        .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")))
+        .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(
+            "info,\
+             actix_web=warn,\
+             actix_server=warn,\
+             actix_http=warn,\
+             h2=warn,\
+             hyper=warn,\
+             rustls=warn,\
+             reqwest=warn,\
+             oxigraph=warn,\
+             horned_owl=warn,\
+             whelk=warn,\
+             solid_pod_rs=warn,\
+             webxr::actors::gpu::force_compute_actor=warn,\
+             webxr::actors::physics_orchestrator_actor=info,\
+             webxr::actors::client_coordinator_actor=info,\
+             webxr::handlers::socket_flow_handler=warn"
+        )))
         .with(
             fmt::layer()
                 .with_target(true)
@@ -271,7 +285,7 @@ async fn main() -> std::io::Result<()> {
     let settings = match AppFullSettings::new() {
         Ok(s) => {
             info!(
-                "✅ AppFullSettings loaded successfully from: {}",
+                "AppFullSettings loaded successfully from: {}",
                 std::env::var("SETTINGS_FILE_PATH")
                     .unwrap_or_else(|_| "/app/settings.yaml".to_string())
             );
@@ -280,7 +294,7 @@ async fn main() -> std::io::Result<()> {
             match to_json(&s.visualisation.rendering) {
                 Ok(json_output) => {
                     info!(
-                        "✅ SERDE ALIAS FIX WORKS! JSON serialization (camelCase): {}",
+                        "SERDE ALIAS FIX WORKS! JSON serialization (camelCase): {}",
                         json_output
                     );
 
@@ -288,11 +302,11 @@ async fn main() -> std::io::Result<()> {
                     if json_output.contains("ambientLightIntensity")
                         && !json_output.contains("ambient_light_intensity")
                     {
-                        info!("✅ CONFIRMED: JSON uses camelCase field names for REST API compatibility");
+                        debug!("CONFIRMED: JSON uses camelCase field names for REST API compatibility");
                     }
 
                     
-                    info!("✅ CONFIRMED: Values loaded from snake_case YAML:");
+                    debug!("CONFIRMED: Values loaded from snake_case YAML:");
                     info!(
                         "   - ambient_light_intensity -> {}",
                         s.visualisation.rendering.ambient_light_intensity
@@ -305,7 +319,7 @@ async fn main() -> std::io::Result<()> {
                         "   - background_color -> {}",
                         s.visualisation.rendering.background_color
                     );
-                    info!("🎉 SERDE ALIAS FIX IS WORKING: YAML (snake_case) loads successfully, JSON serializes as camelCase!");
+                    debug!("SERDE ALIAS FIX IS WORKING: YAML (snake_case) loads successfully, JSON serializes as camelCase!");
                 }
                 Err(e) => {
                     error!("❌ JSON serialization failed: {}", e);
@@ -331,23 +345,23 @@ async fn main() -> std::io::Result<()> {
     info!("Starting WebXR application...");
     debug!("main: Beginning application startup sequence.");
 
-    // Phase 3: Initialize Neo4j settings repository and actor
+    // SQLite settings repository for routes (ADR-11 §D5).
     // SettingsActor removed: OptimizedSettingsActor in AppState is the single source of truth.
-    // Settings routes now use AppState.settings_addr (OptimizedSettingsActor) directly.
-    info!("Initializing Neo4j settings repository for routes");
-    let settings_config = Neo4jSettingsConfig::default();
-    let settings_repository = match Neo4jSettingsRepository::new(settings_config).await {
+    info!("Initializing SQLite settings repository for routes");
+    let data_dir = std::env::var("DATA_DIR").unwrap_or_else(|_| "./data".to_string());
+    let settings_db_path = std::path::Path::new(&data_dir).join("settings.sqlite3");
+    let settings_repository = match webxr::adapters::SqliteSettingsRepository::open(&settings_db_path).await {
         Ok(repo) => Arc::new(repo),
         Err(e) => {
-            error!("Failed to create Neo4j settings repository: {}", e);
+            error!("Failed to open SQLite settings repository: {}", e);
             return Err(std::io::Error::new(
                 std::io::ErrorKind::Other,
-                format!("Failed to create Neo4j settings repository: {}", e),
+                format!("Failed to open SQLite settings repository: {}", e),
             ));
         }
     };
-    let neo4j_repo_data = web::Data::new(settings_repository.clone());
-    info!("Neo4j settings repository initialized successfully");
+    let settings_repo_data = web::Data::new(settings_repository.clone());
+    info!("SQLite settings repository initialized successfully");
 
 
 
@@ -400,7 +414,7 @@ async fn main() -> std::io::Result<()> {
     };
 
     if ragflow_service_option.is_some() {
-        info!("[main] ragflow_service_option is Some after RAGFlowService::new attempt.");
+        debug!("[main] ragflow_service_option is Some after RAGFlowService::new attempt.");
     } else {
         error!("[main] ragflow_service_option is None after RAGFlowService::new attempt. Chat functionality will be unavailable.");
     }
@@ -437,22 +451,23 @@ async fn main() -> std::io::Result<()> {
 
     info!("[main] About to initialize Nostr service");
     nostr_handler::init_nostr_service(&mut app_state).await;
-    info!("[main] Nostr service initialized");
+    debug!("[main] Nostr service initialized");
 
     
     info!("[main] Initializing GitHub Sync Service...");
     let enhanced_content_api = Arc::new(EnhancedContentAPI::new(github_client.clone()));
     let github_sync_service = Arc::new(GitHubSyncService::new(
         enhanced_content_api,
-        app_state.neo4j_adapter.clone(),
+        app_state.graph_adapter.clone() as Arc<dyn webxr::ports::knowledge_graph_repository::KnowledgeGraphRepository>,
         app_state.ontology_repository.clone(),
+        app_state.sqlite_settings_repository.clone(),
     ));
     info!("[main] GitHub Sync Service initialized");
 
     // Initialize SchemaService for natural language query support
     info!("[main] Initializing Schema Service...");
     let schema_service = Arc::new(webxr::services::schema_service::SchemaService::new());
-    info!("[main] Schema Service initialized");
+    debug!("[main] Schema Service initialized");
     // Initialize Natural Language Query Service
     info!("[main] Initializing Natural Language Query Service...");
     let perplexity_service = Arc::new(webxr::services::perplexity_service::PerplexityService::new());
@@ -475,7 +490,7 @@ async fn main() -> std::io::Result<()> {
     let github_pr_service = Arc::new(webxr::services::github_pr_service::GitHubPRService::new());
     let ontology_query_service = Arc::new(webxr::services::ontology_query_service::OntologyQueryService::new(
         app_state.ontology_repository.clone(),
-        app_state.neo4j_adapter.clone(),
+        app_state.graph_adapter.clone() as Arc<dyn webxr::ports::knowledge_graph_repository::KnowledgeGraphRepository>,
         whelk_engine.clone(),
         schema_service.clone(),
     ));
@@ -512,13 +527,17 @@ async fn main() -> std::io::Result<()> {
         }
     }
 
-    // Step 2: Load Files into Neo4j.
-    info!("[Startup] Step 2: Populating Neo4j from local files...");
-    if let Err(e) = webxr::services::file_service::FileService::load_graph_from_files_into_neo4j(&app_state.neo4j_adapter).await {
-        error!("[Startup] FATAL: Failed to populate Neo4j: {}. Application is in DEGRADED state.", e);
-        app_state.set_degraded(format!("Neo4j init failed: {}", e));
-    } else {
-        info!("[Startup] SUCCESS: Neo4j database is populated and ready.");
+    // Step 2: Load Files into Oxigraph store (ADR-11).
+    info!("[Startup] Step 2: Populating Oxigraph store from local files...");
+    {
+        use webxr::ports::knowledge_graph_repository::KnowledgeGraphRepository;
+        let kg_repo: Arc<dyn KnowledgeGraphRepository> = app_state.graph_adapter.clone() as Arc<dyn KnowledgeGraphRepository>;
+        if let Err(e) = webxr::services::file_service::FileService::load_graph_from_files(&kg_repo).await {
+            error!("[Startup] FATAL: Failed to populate Oxigraph store: {}. Application is in DEGRADED state.", e);
+            app_state.set_degraded(format!("Oxigraph init failed: {}", e));
+        } else {
+            info!("[Startup] SUCCESS: Oxigraph store is populated and ready.");
+        }
     }
 
     // Step 3: Notify Actors.
@@ -539,22 +558,22 @@ async fn main() -> std::io::Result<()> {
     info!("Skipping bots orchestrator connection during startup (will connect on-demand)");
 
 
-    info!("Loading ontology graph from Neo4j...");
+    info!("Loading ontology graph from Oxigraph store (ADR-11)...");
 
     let graph_data_option = match app_state.ontology_repository.load_ontology_graph().await {
         Ok(graph_arc) => {
             let graph = graph_arc.as_ref();
             if !graph.nodes.is_empty() {
                 info!(
-                    "✅ Loaded ontology graph from database: {} nodes, {} edges",
+                    "Loaded ontology graph from database: {} nodes, {} edges",
                     graph.nodes.len(),
                     graph.edges.len()
                 );
-                info!("ℹ️  Ontology classes loaded but NOT sent to actor (KG nodes will be loaded via ReloadGraphFromDatabase)");
+                info!("Ontology classes loaded but NOT sent to actor (KG nodes will be loaded via ReloadGraphFromDatabase)");
                 Some((*graph_arc).clone())
             } else {
                 info!("📂 Ontology database is empty - waiting for GitHub sync to populate");
-                info!("ℹ️  Ontology classes will be loaded after sync extracts OWL data");
+                info!("Ontology classes will be loaded after sync extracts OWL data");
                 None
             }
         }
@@ -576,10 +595,10 @@ async fn main() -> std::io::Result<()> {
 
     if let Some(_graph_data) = graph_data_option {
         info!("⏭️  Ontology graph loaded but not sent to actor (will use KG nodes from ReloadGraphFromDatabase instead)");
-        info!("ℹ️  Ontology classes are available via API endpoints but nodes come from KG sync");
+        info!("Ontology classes are available via API endpoints but nodes come from KG sync");
     } else {
         info!("⏳ GraphServiceActor will be populated by ReloadGraphFromDatabase from existing KG nodes");
-        info!("ℹ️  If no KG nodes exist, you can trigger GitHub sync via /api/admin/sync endpoint");
+        info!("If no KG nodes exist, you can trigger GitHub sync via /api/admin/sync endpoint");
     }
 
     info!("Starting HTTP server...");
@@ -605,9 +624,10 @@ async fn main() -> std::io::Result<()> {
     );
     let briefing_service = web::Data::new(BriefingService::new(management_api_client));
 
+    // Oxigraph provenance for NostrBeadPublisher deferred to Phase 2 (ADR-11).
+    // todo!("Phase 2: wire OxigraphOntologyRepository into NostrBeadPublisher for provenance triples")
     let nostr_publisher = web::Data::new(
-        NostrBeadPublisher::from_env()
-            .map(|p| p.with_neo4j(app_state.neo4j_adapter.graph().clone())),
+        NostrBeadPublisher::from_env(),
     );
 
     // Spawn bridge as background task (no-op if FORUM_RELAY_URL is not set).
@@ -657,6 +677,12 @@ async fn main() -> std::io::Result<()> {
     let pre_read_ws_settings_data = web::Data::new(pre_read_ws_settings);
 
     info!("Starting HTTP server on {}", bind_address);
+
+    // Pre-initialise Solid pod state in the main async context (FsBackend::new
+    // is async). The state is injected via app_data so Actix workers don't need
+    // to run async init inside their sync configure closure.
+    #[cfg(feature = "solid-pod-embed")]
+    let solid_state = webxr::handlers::init_solid_state().await;
 
     info!("main: All services and actors initialized. Configuring HTTP server.");
     let server =
@@ -739,7 +765,10 @@ async fn main() -> std::io::Result<()> {
             .wrap(middleware::Logger::default())
             .wrap(cors)
             .wrap(middleware::Compress::default())
-            .wrap(TimeoutMiddleware::new(Duration::from_secs(30))) 
+            .wrap(TimeoutMiddleware::with_config(
+                webxr::middleware::TimeoutConfig::new(Duration::from_secs(30))
+                    .with_override("/api/admin/sync", Duration::from_secs(600))
+            ))
 
 
             .app_data(settings_data.clone())
@@ -762,13 +791,17 @@ async fn main() -> std::io::Result<()> {
             .app_data(web::Data::new(github_sync_service.clone()))
             .app_data(web::Data::new(ontology_query_service.clone()))
             .app_data(web::Data::new(ontology_mutation_service.clone()))
-            .app_data(neo4j_repo_data.clone())
+            .app_data(settings_repo_data.clone())
             .app_data(briefing_service.clone())
             .app_data(nostr_publisher.clone())
             .app_data(validation_service.clone())
-            .app_data(physics_service.clone())
-            
-            
+            .app_data(physics_service.clone());
+
+            // Inject pre-initialised Solid pod state (avoids async init in worker threads)
+            #[cfg(feature = "solid-pod-embed")]
+            let app = app.app_data(solid_state.clone());
+
+            let app = app
             .route("/wss", web::get().to(socket_flow_handler)) 
             .route("/ws/speech", web::get().to(speech_socket_handler))
             .route("/ws/mcp-relay", web::get().to(mcp_relay_handler)) 
@@ -793,8 +826,8 @@ async fn main() -> std::io::Result<()> {
                     .configure(admin_sync_handler::configure_routes)
                     .configure(validation_handler::config)
 
-                    // Pipeline admin routes removed (SQLite-specific handlers deleted in Neo4j migration)
-                    // Cypher query endpoint removed (handler deleted in Neo4j migration)
+                    // Pipeline admin routes removed (SQLite-specific handlers deleted in Oxigraph migration, ADR-11)
+                    // Cypher query endpoint removed (handler deleted in Oxigraph migration, ADR-11)
 
                     // Phase 5: Hexagonal architecture handlers
                     .configure(webxr::handlers::configure_physics_routes)
@@ -821,7 +854,7 @@ async fn main() -> std::io::Result<()> {
                     // Ontology agent tools (MCP surface)
                     .configure(webxr::handlers::configure_ontology_agent_routes)
 
-                    // JavaScript Solid Server (JSS) integration
+                    // Solid Pod (embedded solid-pod-rs)
                     .configure(webxr::handlers::configure_solid_routes)
 
                     // Image generation via ComfyUI (Flux2)

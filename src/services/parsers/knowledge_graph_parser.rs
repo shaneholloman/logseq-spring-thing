@@ -75,7 +75,7 @@ impl KnowledgeGraphParser {
         // Wikilink edges-only: create Edge objects for [[WikiLinks]] without
         // inflating the node count. Only edges are emitted; target nodes are NOT
         // created here. Edges whose target doesn't exist as a page node will
-        // still be stored — the Neo4j MERGE will create stubs or the edge will
+        // still be stored — the Oxigraph SPARQL INSERT will create stubs or the edge will
         // dangle harmlessly until the target page is synced.
         let wikilink_edges = self.extract_wikilink_edges(content, &nodes[0].id);
 

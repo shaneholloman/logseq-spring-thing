@@ -30,10 +30,10 @@
 //! ## Named-graph routing (ADR-D01 §D7)
 //!
 //! Routes by `@type`:
-//!   - Page / LinkedPage / NostrSignedPage → `urn:visionflow:graph:knowledge`
-//!   - OntologyClass / OntologyProperty / Axiom / LinkResolved → `urn:visionflow:graph:ontology:assert`
+//!   - Page / LinkedPage / NostrSignedPage → `urn:ngm:graph:knowledge`
+//!   - OntologyClass / OntologyProperty / Axiom / LinkResolved → `urn:ngm:graph:ontology:assert`
 //!     EXCEPT when `vc:namedGraph` overrides to `:inferred`.
-//!   - AgentTelemetry → `urn:visionflow:graph:agent`
+//!   - AgentTelemetry → `urn:ngm:graph:agent`
 //!   - BridgeRecord → default graph (no named graph)
 //!   - prov:Activity / prov:Agent (PROV-O nodes via @included) → default graph
 
@@ -41,10 +41,10 @@ use oxigraph::model::{GraphName, Literal, NamedNode, Quad, Subject, Term};
 
 use super::expander::{ExpandedDocument, ExpandedNode, ExpandedValue, OWL_NS, PROV_NS, VC_NS};
 
-pub const GRAPH_KNOWLEDGE: &str = "urn:visionflow:graph:knowledge";
-pub const GRAPH_ONTOLOGY_ASSERT: &str = "urn:visionflow:graph:ontology:assert";
-pub const GRAPH_ONTOLOGY_INFERRED: &str = "urn:visionflow:graph:ontology:inferred";
-pub const GRAPH_AGENT: &str = "urn:visionflow:graph:agent";
+pub const GRAPH_KNOWLEDGE: &str = "urn:ngm:graph:knowledge";
+pub const GRAPH_ONTOLOGY_ASSERT: &str = "urn:ngm:graph:ontology:assert";
+pub const GRAPH_ONTOLOGY_INFERRED: &str = "urn:ngm:graph:ontology:inferred";
+pub const GRAPH_AGENT: &str = "urn:ngm:graph:agent";
 
 /// Walk an `ExpandedDocument`, emitting one or more `Quad`s per node.
 pub fn emit_quads(doc: &ExpandedDocument) -> Vec<Quad> {
@@ -67,7 +67,10 @@ fn emit_node(node: &ExpandedNode, out: &mut Vec<Quad>) {
 
     let graph_iri = route_graph(node);
     let graph_name = match &graph_iri {
-        Some(g) => GraphName::NamedNode(NamedNode::new_unchecked(g)),
+        Some(g) => match NamedNode::new(g) {
+            Ok(n) => GraphName::NamedNode(n),
+            Err(_) => return,
+        },
         None => GraphName::DefaultGraph,
     };
 
@@ -113,6 +116,7 @@ fn route_graph(node: &ExpandedNode) -> Option<String> {
             return Some(GRAPH_KNOWLEDGE.to_string());
         }
         if t == &format!("{}Class", OWL_NS)
+            || t == &format!("{}NamedIndividual", OWL_NS)
             || t == &format!("{}OntologyClass", VC_NS)
             || t == &format!("{}ObjectProperty", OWL_NS)
             || t == &format!("{}DatatypeProperty", OWL_NS)
@@ -219,7 +223,10 @@ fn emit_value_for_predicate(
     graph_name: &GraphName,
     out: &mut Vec<Quad>,
 ) {
-    let pred = NamedNode::new_unchecked(predicate.to_string());
+    let pred = match NamedNode::new(predicate) {
+        Ok(n) => n,
+        Err(_) => return,
+    };
     match value {
         ExpandedValue::Iri(iri) => {
             if NamedNode::new(iri).is_ok() {
@@ -391,7 +398,10 @@ fn emit_repeated_literal(
     graph_name: &GraphName,
     out: &mut Vec<Quad>,
 ) {
-    let pred = NamedNode::new_unchecked(predicate.to_string());
+    let pred = match NamedNode::new(predicate) {
+        Ok(n) => n,
+        Err(_) => return,
+    };
     let arr = match value {
         ExpandedValue::Multi(a) => a.clone(),
         single => vec![single.clone()],

@@ -43,10 +43,10 @@ pub struct ExtractedBlock {
 /// in document order. Empty result is legitimate (no JSON-LD = no events)
 /// and the caller decides whether to flag it.
 pub fn extract_jsonld_blocks(markdown: &str) -> Vec<ExtractedBlock> {
+    let markdown = markdown.strip_prefix('\u{FEFF}').unwrap_or(markdown);
     let mut blocks = Vec::new();
     let mut idx = 0_usize;
 
-    // Iterate by line, tracking 1-based line number.
     let lines: Vec<&str> = markdown.split_inclusive('\n').collect();
     let mut i = 0_usize;
     while i < lines.len() {

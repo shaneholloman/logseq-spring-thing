@@ -99,14 +99,6 @@ pub struct SocketFlowServer {
     // Set via subscribe_position_updates { data: { nodeTypes: ["knowledge", "agent"] } }.
     pub(crate) subscribed_node_types: HashSet<String>,
 
-    // Delta encoding state (per-connection)
-    /// Frame counter for delta encoding (0..59, wraps at DELTA_RESYNC_INTERVAL)
-    pub(crate) delta_frame_counter: u64,
-    /// Previous frame's node positions, used to compute deltas
-    pub(crate) delta_previous_nodes: HashMap<u32, BinaryNodeData>,
-    /// Position epsilon squared for delta detection (configurable, default 0.001^2)
-    pub(crate) delta_epsilon_sq: f32,
-
     /// ADR-031 item 4: Pending server-to-client directives embedded in pong frames.
     /// Drained on each `send_pong` call via the `WebSocketHeartbeat` trait override.
     pub(crate) pending_directives: Vec<HeartbeatDirective>,
@@ -168,9 +160,6 @@ impl SocketFlowServer {
             drag_last_update: HashMap::new(),
             drag_timeout_ms: 500,
             subscribed_node_types: HashSet::new(),
-            delta_frame_counter: 0,
-            delta_previous_nodes: HashMap::new(),
-            delta_epsilon_sq: 0.001 * 0.001, // epsilon = 0.001, stored as squared
             pending_directives: Vec::new(),
         }
     }
@@ -528,9 +517,8 @@ impl Actor for SocketFlowServer {
             "is_reconnection": is_reconnection,
             "state_sync_sent": true,
             "protocol": {
-                "supported": [2, 3, 4],
-                "preferred": 3,
-                "delta_encoding": true
+                "supported": [3, 5],
+                "preferred": 3
             }
         });
 

@@ -2,13 +2,13 @@
 //! Ontology Loader Binary
 //!
 //! Loads OWL ontology data from GitHub repository markdown files
-//! and populates the Neo4j graph database.
+//! and populates the Oxigraph quad-store (ADR-11).
 
 use std::sync::Arc;
 use std::collections::HashMap;
 use log::info;
 
-use webxr::adapters::neo4j_ontology_repository::{Neo4jOntologyRepository, Neo4jOntologyConfig};
+use webxr::adapters::OxigraphOntologyRepository;
 use webxr::services::parsers::ontology_parser::OntologyParser;
 use webxr::ports::ontology_repository::{OntologyRepository, OwlClass, OwlProperty, PropertyType, OwlAxiom, AxiomType};
 
@@ -17,28 +17,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize logging
     env_logger::init();
 
-    info!("Starting ontology loader...");
+    info!("Starting ontology loader (Oxigraph backend, ADR-11)...");
 
-    // 1. Initialize repository
+    // 1. Initialize Oxigraph store
     use std::env;
 
-    let neo4j_uri = env::var("NEO4J_URI").unwrap_or_else(|_| "bolt://localhost:7687".to_string());
-    let neo4j_user = env::var("NEO4J_USER").unwrap_or_else(|_| "neo4j".to_string());
-    let neo4j_password = env::var("NEO4J_PASSWORD").expect("NEO4J_PASSWORD must be set");
-    let neo4j_database = env::var("NEO4J_DATABASE").unwrap_or_else(|_| "neo4j".to_string());
-
-    info!("Connecting to Neo4j at: {}", neo4j_uri);
-
-    let config = Neo4jOntologyConfig {
-        uri: neo4j_uri.clone(),
-        user: neo4j_user,
-        password: neo4j_password,
-        database: Some(neo4j_database),
-    };
+    let data_dir = env::var("DATA_DIR").unwrap_or_else(|_| "./data".to_string());
+    let oxigraph_path = std::path::Path::new(&data_dir).join("oxigraph");
+    info!("Opening Oxigraph store at: {}", oxigraph_path.display());
 
     let ontology_repo = Arc::new(
-        Neo4jOntologyRepository::new(config).await?
+        OxigraphOntologyRepository::open(&oxigraph_path).await?
     );
+
+    info!("Oxigraph store opened successfully");
 
     // 2. Initialize parser
     let _parser = OntologyParser::new();
@@ -98,9 +90,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // 6. Verify data
     let all_classes = ontology_repo.get_classes().await?;
-    info!("\nOntology loaded successfully!");
+    info!("Ontology loaded successfully!");
     info!("Classes: {}", all_classes.len());
-    info!("Stored in Neo4j graph database at: {}", neo4j_uri);
+    info!("Stored in Oxigraph store at: {}", oxigraph_path.display());
 
     Ok(())
 }

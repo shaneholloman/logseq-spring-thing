@@ -13,7 +13,7 @@
 //! 2. **The seed N-Quads dictate a stricter emission contract than full
 //!    JSON-LD 1.1 yields.** The seed file at
 //!    `tests/fixtures/data-model/seed/expected-triples.nq` is the ground
-//!    truth: `vc:slug` expands to `https://visionflow.dreamlab/ns/slug`
+//!    truth: `vc:slug` expands to `https://narrativegoldmine.com/ns/v1#slug`
 //!    (no aliasing to `dcterms:title` even though context-v1.jsonld
 //!    describes such aliases). The seed was hand-curated as the contract.
 //!    Direct prefix expansion (vc:, owl:, rdfs:, rdf:, prov:, dcterms:,
@@ -45,9 +45,10 @@ use super::errors::{JsonLdIngestError, Result};
 
 /// Canonical `@context` URLs the parser accepts. ADR-D01 §D11.
 pub const ACCEPTED_CONTEXT_V1: &str = "https://narrativegoldmine.com/context/v1.jsonld";
+pub const ACCEPTED_CONTEXT_V2: &str = "https://narrativegoldmine.com/ns/v2.jsonld";
 
 /// `vc:` prefix expansion. ADR-11 §D3 + Phase 1 adapter constant `VC_NS`.
-pub const VC_NS: &str = "https://visionflow.dreamlab/ns/";
+pub const VC_NS: &str = "https://narrativegoldmine.com/ns/v1#";
 pub const RDF_NS: &str = "http://www.w3.org/1999/02/22-rdf-syntax-ns#";
 pub const RDFS_NS: &str = "http://www.w3.org/2000/01/rdf-schema#";
 pub const OWL_NS: &str = "http://www.w3.org/2002/07/owl#";
@@ -265,7 +266,7 @@ fn expand_node(
         match k.as_str() {
             "@id" | "id" => {
                 if let Value::String(s) = v {
-                    node.id = Some(s.clone());
+                    node.id = Some(expand_iri_or_keep(s));
                 }
             }
             "@type" | "type" => match v {
@@ -281,6 +282,40 @@ fn expand_node(
             },
             "@context" | "context" | "@graph" | "@included" | "@version" | "graph" => {
                 // Handled at the document level.
+            }
+            // v2 format: nested "relations" object — flatten each
+            // relation type as a top-level predicate on this node.
+            "relations" => {
+                if let Value::Object(rels) = v {
+                    for (rel_key, rel_val) in rels {
+                        let predicate_iri = expand_iri_or_keep(rel_key);
+                        let value = expand_value(rel_val, block_index, features);
+                        node.fields.push((predicate_iri, value));
+                    }
+                }
+            }
+            // v2 format: nested "provenance" object — map fields to
+            // canonical prov: predicates.
+            "provenance" => {
+                if let Value::Object(prov) = v {
+                    for (prov_key, prov_val) in prov {
+                        let (predicate_iri, val) = match prov_key.as_str() {
+                            "attributedTo" => (
+                                format!("{}wasAttributedTo", PROV_NS),
+                                expand_value(prov_val, block_index, features),
+                            ),
+                            "generatedAt" => (
+                                format!("{}generatedAtTime", PROV_NS),
+                                expand_value(prov_val, block_index, features),
+                            ),
+                            other => (
+                                expand_iri_or_keep(other),
+                                expand_value(prov_val, block_index, features),
+                            ),
+                        };
+                        node.fields.push((predicate_iri, val));
+                    }
+                }
             }
             other => {
                 // ADR-D01 §D7: explicit override via `vc:namedGraph` is
@@ -464,7 +499,9 @@ pub fn expand_iri_or_keep(s: &str) -> String {
     // These are bare tokens (no prefix). The seed N-Quads show what each
     // expands to:
     match s {
-        // OWL profile types
+        // OWL profile types (v2 "Individual" maps to owl:NamedIndividual)
+        "Individual" => return format!("{}NamedIndividual", OWL_NS),
+        // v1 "OntologyClass" and v2 "Class" both map to owl:Class
         "OntologyClass" | "Class" => return format!("{}Class", OWL_NS),
         "OntologyProperty" | "ObjectProperty" => return format!("{}ObjectProperty", OWL_NS),
         "DataProperty" | "DatatypeProperty" => return format!("{}DatatypeProperty", OWL_NS),
@@ -484,6 +521,11 @@ pub fn expand_iri_or_keep(s: &str) -> String {
 
         // Asserted / Inferred / Activity / Agent — sourceKind / prov types
         "Asserted" | "Inferred" => return s.to_string(),
+
+        // v2 bare predicate keys that map to well-known RDF predicates
+        "subClassOf" => return format!("{}subClassOf", RDFS_NS),
+        "label" => return format!("{}label", RDFS_NS),
+        "definition" => return format!("{}definition", SKOS_NS),
         _ => {}
     }
 
@@ -547,7 +589,7 @@ mod tests {
     fn expands_vc_prefix() {
         assert_eq!(
             expand_iri_or_keep("vc:slug"),
-            "https://visionflow.dreamlab/ns/slug"
+            "https://narrativegoldmine.com/ns/v1#slug"
         );
     }
 

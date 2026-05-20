@@ -35,12 +35,14 @@ use std::collections::HashSet;
 use super::errors::{JsonLdIngestError, Result};
 use super::expander::{
     ExpandedDocument, ExpandedNode, ExpandedValue, NodeOrigin, V11Feature,
-    ACCEPTED_CONTEXT_V1, OWL_NS, PROV_NS, VC_NS,
+    ACCEPTED_CONTEXT_V1, ACCEPTED_CONTEXT_V2, OWL_NS, PROV_NS, VC_NS,
 };
 
 /// The declared root of the ontology class hierarchy (D-08 §C3 / fixture 103).
 /// Every OntologyClass except this one MUST carry an `rdfs:subClassOf`.
+/// Accepts both legacy `urn:visionflow:owl:class:` and new `urn:ngm:class:` schemes.
 pub const ONTOLOGY_ROOT_IRI: &str = "urn:visionflow:owl:class:built-environment";
+pub const ONTOLOGY_ROOT_IRI_NGM: &str = "urn:ngm:class:built-environment";
 
 /// OWL constructs outside the OWL 2 EL profile (ADR-D01 §D4).
 const OWL_OUT_OF_PROFILE: &[(&str, &str)] = &[
@@ -63,6 +65,17 @@ const OWL_OUT_OF_PROFILE: &[(&str, &str)] = &[
 /// Returns the expected class bit for an `@id` based on its URN scheme
 /// fragment after `urn:visionflow:`.
 fn iri_scheme_class_bit(iri: &str) -> Option<&'static str> {
+    // Support both legacy urn:visionflow: and new urn:ngm: schemes.
+    if let Some(rest) = iri.strip_prefix("urn:ngm:") {
+        // urn:ngm:{class,property,axiom}:<slug>
+        let scheme = rest.split(':').next()?;
+        return match scheme {
+            "class" => Some("0x04000000"),
+            "property" => Some("0x10000000"),
+            "axiom" => Some("0x0C000000"),
+            _ => None,
+        };
+    }
     let rest = iri.strip_prefix("urn:visionflow:")?;
     let scheme = rest.split(':').next()?;
     match scheme {
@@ -135,7 +148,7 @@ fn type_display_name(types: &[String]) -> String {
 
 /// Permitted `@context` URLs. Currently only v1 (D11).
 pub fn accepted_contexts() -> Vec<String> {
-    vec![ACCEPTED_CONTEXT_V1.to_string()]
+    vec![ACCEPTED_CONTEXT_V1.to_string(), ACCEPTED_CONTEXT_V2.to_string()]
 }
 
 /// Run every check from the inventory. Returns the first error encountered
@@ -266,7 +279,7 @@ fn check_node(
         .types
         .iter()
         .any(|t| t == &format!("{}Class", OWL_NS) || t == &format!("{}OntologyClass", VC_NS));
-    if is_ontology_class && iri != ONTOLOGY_ROOT_IRI {
+    if is_ontology_class && iri != ONTOLOGY_ROOT_IRI && iri != ONTOLOGY_ROOT_IRI_NGM {
         let has_subclass = node
             .fields
             .iter()
@@ -310,7 +323,7 @@ fn check_node(
             block_index,
             construct: construct_with_ref.0,
             spec_reference: construct_with_ref.1,
-            suggestion: "Model in <urn:visionflow:graph:annotation> if the assertion is intent rather than reasoned-over fact.",
+            suggestion: "Model in <urn:ngm:graph:annotation> if the assertion is intent rather than reasoned-over fact.",
         });
         return;
     }

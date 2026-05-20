@@ -158,7 +158,7 @@ pub(crate) fn handle_authenticate(
     }
 }
 
-/// Handle "filter_update" message -- per-client node filtering with optional Neo4j persistence.
+/// Handle "filter_update" message -- per-client node filtering with optional SQLite persistence (ADR-11).
 pub(crate) fn handle_filter_update(
     act: &mut SocketFlowServer,
     msg: &serde_json::Value,
@@ -202,6 +202,11 @@ pub(crate) fn handle_filter_update(
                 .get("max_nodes")
                 .and_then(|v| v.as_i64())
                 .map(|n| n as i32),
+            include_linked_pages: filter_data
+                .get("includeLinkedPages")
+                .or_else(|| filter_data.get("include_linked_pages"))
+                .and_then(|v| v.as_bool())
+                .unwrap_or(true),
         };
 
         info!(
@@ -228,47 +233,15 @@ pub(crate) fn handle_filter_update(
             })
             .map(|(success, pubkey_opt, update), act, ctx| {
                 if success {
-                    // Persist to Neo4j if authenticated
+                    // Persist filter to SQLite settings repository if authenticated (ADR-11).
+                    // Phase 2 pending: save_user_filter not yet implemented on SqliteSettingsRepository.
+                    // todo!("Phase 2: implement save_user_filter on SqliteSettingsRepository")
                     if let Some(pubkey) = pubkey_opt {
                         info!(
-                            "Filter updated for pubkey {}: enabled={}, max_nodes={:?}",
+                            "Filter updated for pubkey {}: enabled={}, max_nodes={:?} (SQLite persistence pending Phase 2)",
                             pubkey, update.enabled, update.max_nodes
                         );
-
-                        let neo4j_repo = act.app_state.neo4j_settings_repository.clone();
-                        let pubkey_clone = pubkey.clone();
-                        use crate::adapters::neo4j_settings_repository::UserFilter;
-                        let filter = UserFilter {
-                            pubkey: pubkey_clone.clone(),
-                            enabled: update.enabled,
-                            quality_threshold: update.quality_threshold,
-                            authority_threshold: update.authority_threshold,
-                            filter_by_quality: update.filter_by_quality,
-                            filter_by_authority: update.filter_by_authority,
-                            filter_mode: update.filter_mode.clone(),
-                            max_nodes: update.max_nodes,
-                            updated_at: chrono::Utc::now(),
-                        };
-
-                        ctx.spawn(
-                            actix::fut::wrap_future::<_, SocketFlowServer>(async move {
-                                match neo4j_repo
-                                    .save_user_filter(&pubkey_clone, &filter)
-                                    .await
-                                {
-                                    Ok(()) => {
-                                        info!(
-                                            "Filter persisted to Neo4j for pubkey: {}",
-                                            pubkey_clone
-                                        );
-                                    }
-                                    Err(e) => {
-                                        error!("Failed to persist filter to Neo4j: {}", e);
-                                    }
-                                }
-                            })
-                            .map(|_result, _act, _ctx| ()),
-                        );
+                        // Filter is applied in-memory only until Phase 2 SQLite migration is complete.
                     }
 
                     let response = serde_json::json!({

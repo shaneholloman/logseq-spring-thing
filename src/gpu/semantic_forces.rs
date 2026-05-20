@@ -1216,6 +1216,10 @@ impl SemanticForcesEngine {
     }
 
     fn apply_cross_domain_forces_cpu(&self, graph: &mut GraphData) {
+        let bridge_id = self.registry.get_id("bridge")
+            .map(|id| id as i32)
+            .unwrap_or(i32::MAX);
+
         // Build node ID to index map
         let node_id_to_idx: HashMap<u32, usize> = graph.nodes.iter()
             .enumerate()
@@ -1225,8 +1229,7 @@ impl SemanticForcesEngine {
         for (edge_idx, edge) in graph.edges.iter().enumerate() {
             let edge_type = self.edge_types[edge_idx];
 
-            // Only process bridges-to edges
-            if edge_type != 10 {
+            if edge_type != bridge_id {
                 continue;
             }
 

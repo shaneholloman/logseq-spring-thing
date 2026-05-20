@@ -31,7 +31,10 @@ pub fn validate_entry_shape(entry: &Value) -> Vec<ErrorCategory> {
             .get("@id")
             .or_else(|| map.get("id"))
             .and_then(|v| v.as_str())
-            .map(|s| s == "urn:visionflow:owl:class:built-environment")
+            .map(|s| {
+                s == "urn:visionflow:owl:class:built-environment"
+                    || s == "urn:ngm:class:built-environment"
+            })
             .unwrap_or(false);
         let has_parent = has_any_key(
             entry,
@@ -86,7 +89,7 @@ fn has_any_key(entry: &Value, keys: &[&str]) -> bool {
 }
 
 fn is_ontology_class_type(t: &str) -> bool {
-    matches!(t, "OntologyClass" | "owl:Class")
+    matches!(t, "OntologyClass" | "owl:Class" | "Class")
 }
 
 fn is_bridge_type(t: &str) -> bool {

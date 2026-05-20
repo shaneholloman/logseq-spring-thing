@@ -107,7 +107,7 @@ mod tests {
         for module in PTXModule::all_modules() {
             match load_ptx_module_sync(module) {
                 Ok(content) => {
-                    println!("✓ Loaded {:?}: {} bytes", module, content.len());
+                    println!("Loaded {:?}: {} bytes", module, content.len());
                     assert!(
                         !content.is_empty(),
                         "PTX content should not be empty for {:?}",
@@ -133,7 +133,7 @@ mod tests {
     fn test_load_all_ptx_modules() {
         match load_all_ptx_modules_sync() {
             Ok(modules) => {
-                println!("✓ Loaded {} modules", modules.len());
+                println!("Loaded {} modules", modules.len());
 
                 for (module, content) in modules {
                     assert!(
@@ -161,7 +161,7 @@ mod tests {
         
         match load_ptx_sync() {
             Ok(content) => {
-                println!("✓ Legacy load_ptx_sync: {} bytes", content.len());
+                println!("Legacy load_ptx_sync: {} bytes", content.len());
                 assert!(!content.is_empty());
                 assert!(validate_ptx(&content).is_ok());
             }

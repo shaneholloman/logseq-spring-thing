@@ -7,7 +7,6 @@ pub mod auth;
 pub mod async_improvements;
 pub mod audio_processor;
 pub mod binary_protocol;
-pub mod delta_encoding;
 pub mod client_message_extractor;
 pub mod edge_data;
 #[cfg(test)]
@@ -44,4 +43,3 @@ pub mod websocket_heartbeat;
 pub mod nip98; // NIP-98 HTTP authentication for Solid Server integration
 pub mod result_helpers;
 // REMOVED: result_mappers module - no longer exists
-pub mod neo4j_helpers;

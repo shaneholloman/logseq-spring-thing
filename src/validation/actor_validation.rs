@@ -83,9 +83,9 @@ impl ValidationReport {
             .collect();
 
         if !successful.is_empty() {
-            info!("✅ Validated {} components:", successful.len());
+            info!("Validated {} components:", successful.len());
             for item in successful {
-                info!("  ✓ {}: {}", item.name, item.reason);
+                info!("  {}: {}", item.name, item.reason);
             }
         }
 
@@ -107,7 +107,7 @@ impl ValidationReport {
 
         // Log infos
         if !self.infos.is_empty() {
-            info!("ℹ️  {} info messages:", self.infos.len());
+            info!("{} info messages:", self.infos.len());
             for info_msg in &self.infos {
                 info!("  ℹ {}", info_msg);
             }

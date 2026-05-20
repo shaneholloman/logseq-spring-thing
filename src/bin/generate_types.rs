@@ -1,47 +1,41 @@
+use chrono::Utc;
 use regex::Regex;
 use std::fs;
 use std::path::Path;
-use chrono::Utc;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    println!("🔧 Generating TypeScript types from Rust structs...");
-
+    println!("Generating TypeScript types from Rust structs...");
 
     let typescript_interfaces = generate_typescript_interfaces();
-
 
     let header = format!(
         "// Auto-generated TypeScript type definitions\n// Generated: {}\n\n",
         Utc::now().format("%Y-%m-%d %H:%M:%S UTC")
     );
 
-    
     let camel_case_code = convert_to_camel_case(format!("{}{}", header, typescript_interfaces));
 
-
     let output_path = Path::new("client/src/types/generated/settings.ts");
-    let output_dir = output_path.parent()
+    let output_dir = output_path
+        .parent()
         .expect("output_path has a known parent directory");
     if !output_dir.exists() {
         fs::create_dir_all(output_dir)?;
         println!("📁 Created output directory: {}", output_dir.display());
     }
 
-    
     fs::write(output_path, &camel_case_code)?;
 
     println!(
-        "✅ Successfully generated TypeScript types at: {}",
+        "Successfully generated TypeScript types at: {}",
         output_path.display()
     );
 
-
     let metadata = fs::metadata(output_path)?;
-    println!("📊 Generated file size: {} bytes", metadata.len());
+    println!("Generated file size: {} bytes", metadata.len());
 
     if metadata.len() > 1000 {
-        println!("🎉 Type generation completed successfully!");
-
+        println!("Type generation completed successfully!");
 
         let preview: String = camel_case_code
             .lines()
@@ -149,15 +143,10 @@ export interface PhysicsSettings {
   max_force: number;
   repel_k: number;
   spring_k: number;
-  mass_scale: number;
   boundary_damping: number;
-  update_threshold: number;
   dt: number;
   temperature: number;
   gravity: number;
-  stress_weight: number;
-  stress_alpha: number;
-  boundary_limit: number;
   alignment_strength: number;
   cluster_strength: number;
   compute_mode: number;
@@ -173,10 +162,6 @@ export interface PhysicsSettings {
   boundary_velocity_damping: number;
   min_distance: number;
   max_repulsion_dist: number;
-  boundary_margin: number;
-  boundary_force_strength: number;
-  warmup_curve: string;
-  zero_velocity_iterations: number;
   clustering_algorithm: string;
   cluster_count: number;
   clustering_resolution: number;
@@ -522,25 +507,16 @@ export interface PhysicsUpdate {
   max_velocity?: number;
   max_force?: number;
   separation_radius?: number;
-  mass_scale?: number;
   boundary_damping?: number;
   dt?: number;
   temperature?: number;
   gravity?: number;
-  update_threshold?: number;
-  stress_weight?: number;
-  stress_alpha?: number;
-  boundary_limit?: number;
   alignment_strength?: number;
   cluster_strength?: number;
   compute_mode?: number;
   min_distance?: number;
   max_repulsion_dist?: number;
-  boundary_margin?: number;
-  boundary_force_strength?: number;
   warmup_iterations?: number;
-  warmup_curve?: string;
-  zero_velocity_iterations?: number;
   cooling_rate?: number;
   clustering_algorithm?: string;
   cluster_count?: number;
@@ -600,7 +576,8 @@ export default AppFullSettings;
 }
 
 fn convert_to_camel_case(typescript_code: String) -> String {
-    let field_regex = Regex::new(r"(\s+)([a-z][a-z0-9_]*[a-z0-9])(\s*:\s*)").expect("Invalid regex pattern");
+    let field_regex =
+        Regex::new(r"(\s+)([a-z][a-z0-9_]*[a-z0-9])(\s*:\s*)").expect("Invalid regex pattern");
 
     field_regex
         .replace_all(&typescript_code, |caps: &regex::Captures| {
@@ -608,7 +585,6 @@ fn convert_to_camel_case(typescript_code: String) -> String {
             let field_name = &caps[2];
             let colon_and_space = &caps[3];
 
-            
             let camel_case = snake_to_camel_case(field_name);
 
             format!("{}{}{}", indent, camel_case, colon_and_space)
@@ -637,7 +613,7 @@ fn snake_to_camel_case(snake_str: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-// NOTE: `use crate::utils::time;` removed - module doesn't exist in bin crate
+    // NOTE: `use crate::utils::time;` removed - module doesn't exist in bin crate
 
     #[test]
     fn test_snake_to_camel_case() {

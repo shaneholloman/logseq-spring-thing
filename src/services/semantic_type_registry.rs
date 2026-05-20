@@ -97,27 +97,39 @@ pub struct SemanticTypeRegistry {
 // Lock helper methods that recover from poisoned locks
 impl SemanticTypeRegistry {
     fn read_uri_map(&self) -> std::sync::RwLockReadGuard<'_, HashMap<String, u32>> {
-        self.uri_to_id.read().unwrap_or_else(|poisoned| poisoned.into_inner())
+        self.uri_to_id
+            .read()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
     fn write_uri_map(&self) -> std::sync::RwLockWriteGuard<'_, HashMap<String, u32>> {
-        self.uri_to_id.write().unwrap_or_else(|poisoned| poisoned.into_inner())
+        self.uri_to_id
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
     fn read_configs(&self) -> std::sync::RwLockReadGuard<'_, Vec<RelationshipForceConfig>> {
-        self.id_to_config.read().unwrap_or_else(|poisoned| poisoned.into_inner())
+        self.id_to_config
+            .read()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
     fn write_configs(&self) -> std::sync::RwLockWriteGuard<'_, Vec<RelationshipForceConfig>> {
-        self.id_to_config.write().unwrap_or_else(|poisoned| poisoned.into_inner())
+        self.id_to_config
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
     fn read_uris(&self) -> std::sync::RwLockReadGuard<'_, Vec<String>> {
-        self.id_to_uri.read().unwrap_or_else(|poisoned| poisoned.into_inner())
+        self.id_to_uri
+            .read()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
     fn write_uris(&self) -> std::sync::RwLockWriteGuard<'_, Vec<String>> {
-        self.id_to_uri.write().unwrap_or_else(|poisoned| poisoned.into_inner())
+        self.id_to_uri
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 }
 
@@ -133,163 +145,438 @@ impl SemanticTypeRegistry {
 
         // Register default relationship types
         // Generic/unknown type
-        registry.register_internal("generic", RelationshipForceConfig {
-            strength: 0.3,
-            rest_length: 100.0,
-            is_directional: false,
-            force_type: 0,
-        });
+        registry.register_internal(
+            "generic",
+            RelationshipForceConfig {
+                strength: 0.3,
+                rest_length: 100.0,
+                is_directional: false,
+                force_type: 0,
+            },
+        );
 
         // Basic relationship types
-        registry.register_internal("dependency", RelationshipForceConfig {
-            strength: 0.6,
-            rest_length: 80.0,
-            is_directional: true,
-            force_type: 0,
-        });
+        registry.register_internal(
+            "dependency",
+            RelationshipForceConfig {
+                strength: 0.6,
+                rest_length: 80.0,
+                is_directional: true,
+                force_type: 0,
+            },
+        );
 
-        registry.register_internal("hierarchy", RelationshipForceConfig {
-            strength: 0.8,
-            rest_length: 60.0,
-            is_directional: true,
-            force_type: 0,
-        });
+        registry.register_internal(
+            "hierarchy",
+            RelationshipForceConfig {
+                strength: 0.8,
+                rest_length: 60.0,
+                is_directional: true,
+                force_type: 0,
+            },
+        );
 
-        registry.register_internal("association", RelationshipForceConfig {
-            strength: 0.4,
-            rest_length: 120.0,
-            is_directional: false,
-            force_type: 0,
-        });
+        registry.register_internal(
+            "association",
+            RelationshipForceConfig {
+                strength: 0.4,
+                rest_length: 120.0,
+                is_directional: false,
+                force_type: 0,
+            },
+        );
 
-        registry.register_internal("sequence", RelationshipForceConfig {
-            strength: 0.5,
-            rest_length: 90.0,
-            is_directional: true,
-            force_type: 0,
-        });
+        registry.register_internal(
+            "sequence",
+            RelationshipForceConfig {
+                strength: 0.5,
+                rest_length: 90.0,
+                is_directional: true,
+                force_type: 0,
+            },
+        );
 
         // OWL relationship types
-        registry.register_internal("subClassOf", RelationshipForceConfig {
-            strength: 0.8,
-            rest_length: 60.0,
-            is_directional: true,
-            force_type: 0,
-        });
+        registry.register_internal(
+            "subClassOf",
+            RelationshipForceConfig {
+                strength: 0.8,
+                rest_length: 60.0,
+                is_directional: true,
+                force_type: 0,
+            },
+        );
 
-        registry.register_internal("rdfs:subClassOf", RelationshipForceConfig {
-            strength: 0.8,
-            rest_length: 60.0,
-            is_directional: true,
-            force_type: 0,
-        });
+        registry.register_internal(
+            "rdfs:subClassOf",
+            RelationshipForceConfig {
+                strength: 0.8,
+                rest_length: 60.0,
+                is_directional: true,
+                force_type: 0,
+            },
+        );
 
-        registry.register_internal("instanceOf", RelationshipForceConfig {
-            strength: 0.7,
-            rest_length: 70.0,
-            is_directional: true,
-            force_type: 0,
-        });
+        registry.register_internal(
+            "instanceOf",
+            RelationshipForceConfig {
+                strength: 0.7,
+                rest_length: 70.0,
+                is_directional: true,
+                force_type: 0,
+            },
+        );
 
-        registry.register_internal("rdf:type", RelationshipForceConfig {
-            strength: 0.7,
-            rest_length: 70.0,
-            is_directional: true,
-            force_type: 0,
-        });
+        registry.register_internal(
+            "rdf:type",
+            RelationshipForceConfig {
+                strength: 0.7,
+                rest_length: 70.0,
+                is_directional: true,
+                force_type: 0,
+            },
+        );
 
         // NGM ontology relationship types
-        registry.register_internal("ngm:requires", RelationshipForceConfig {
-            strength: 0.7,
-            rest_length: 80.0,
-            is_directional: true,
-            force_type: 0,
-        });
+        registry.register_internal(
+            "ngm:requires",
+            RelationshipForceConfig {
+                strength: 0.7,
+                rest_length: 80.0,
+                is_directional: true,
+                force_type: 0,
+            },
+        );
 
-        registry.register_internal("requires", RelationshipForceConfig {
-            strength: 0.7,
-            rest_length: 80.0,
-            is_directional: true,
-            force_type: 0,
-        });
+        registry.register_internal(
+            "requires",
+            RelationshipForceConfig {
+                strength: 0.7,
+                rest_length: 80.0,
+                is_directional: true,
+                force_type: 0,
+            },
+        );
 
-        registry.register_internal("ngm:enables", RelationshipForceConfig {
-            strength: 0.4,
-            rest_length: 120.0,
-            is_directional: false,
-            force_type: 0,
-        });
+        registry.register_internal(
+            "ngm:enables",
+            RelationshipForceConfig {
+                strength: 0.4,
+                rest_length: 120.0,
+                is_directional: false,
+                force_type: 0,
+            },
+        );
 
-        registry.register_internal("enables", RelationshipForceConfig {
-            strength: 0.4,
-            rest_length: 120.0,
-            is_directional: false,
-            force_type: 0,
-        });
+        registry.register_internal(
+            "enables",
+            RelationshipForceConfig {
+                strength: 0.4,
+                rest_length: 120.0,
+                is_directional: false,
+                force_type: 0,
+            },
+        );
 
-        registry.register_internal("ngm:has-part", RelationshipForceConfig {
-            strength: 0.9,
-            rest_length: 40.0,
-            is_directional: true,
-            force_type: 1, // Orbit clustering
-        });
+        registry.register_internal(
+            "ngm:has-part",
+            RelationshipForceConfig {
+                strength: 0.9,
+                rest_length: 40.0,
+                is_directional: true,
+                force_type: 1, // Orbit clustering
+            },
+        );
 
-        registry.register_internal("has-part", RelationshipForceConfig {
-            strength: 0.9,
-            rest_length: 40.0,
-            is_directional: true,
-            force_type: 1,
-        });
+        registry.register_internal(
+            "has-part",
+            RelationshipForceConfig {
+                strength: 0.9,
+                rest_length: 40.0,
+                is_directional: true,
+                force_type: 1,
+            },
+        );
 
-        registry.register_internal("ngm:bridges-to", RelationshipForceConfig {
-            strength: 0.3,
-            rest_length: 200.0,
-            is_directional: false,
-            force_type: 2, // Cross-domain long-range
-        });
+        registry.register_internal(
+            "ngm:bridges-to",
+            RelationshipForceConfig {
+                strength: 0.3,
+                rest_length: 200.0,
+                is_directional: false,
+                force_type: 2, // Cross-domain long-range
+            },
+        );
 
-        registry.register_internal("bridges-to", RelationshipForceConfig {
-            strength: 0.3,
-            rest_length: 200.0,
-            is_directional: false,
-            force_type: 2,
-        });
+        registry.register_internal(
+            "bridges-to",
+            RelationshipForceConfig {
+                strength: 0.3,
+                rest_length: 200.0,
+                is_directional: false,
+                force_type: 2,
+            },
+        );
 
         // Additional common relationship types
-        registry.register_internal("owl:equivalentClass", RelationshipForceConfig {
-            strength: 0.9,
-            rest_length: 30.0,
-            is_directional: false,
-            force_type: 0,
-        });
+        registry.register_internal(
+            "owl:equivalentClass",
+            RelationshipForceConfig {
+                strength: 0.9,
+                rest_length: 30.0,
+                is_directional: false,
+                force_type: 0,
+            },
+        );
 
-        registry.register_internal("owl:disjointWith", RelationshipForceConfig {
-            strength: -0.3, // Repulsive
-            rest_length: 150.0,
-            is_directional: false,
-            force_type: 3, // Repulsion
-        });
+        registry.register_internal(
+            "owl:disjointWith",
+            RelationshipForceConfig {
+                strength: -0.3, // Repulsive
+                rest_length: 150.0,
+                is_directional: false,
+                force_type: 3, // Repulsion
+            },
+        );
 
-        registry.register_internal("skos:broader", RelationshipForceConfig {
-            strength: 0.6,
-            rest_length: 70.0,
-            is_directional: true,
-            force_type: 0,
-        });
+        registry.register_internal(
+            "skos:broader",
+            RelationshipForceConfig {
+                strength: 0.6,
+                rest_length: 70.0,
+                is_directional: true,
+                force_type: 0,
+            },
+        );
 
-        registry.register_internal("skos:narrower", RelationshipForceConfig {
-            strength: 0.6,
-            rest_length: 70.0,
-            is_directional: true,
-            force_type: 0,
-        });
+        registry.register_internal(
+            "skos:narrower",
+            RelationshipForceConfig {
+                strength: 0.6,
+                rest_length: 70.0,
+                is_directional: true,
+                force_type: 0,
+            },
+        );
 
-        registry.register_internal("skos:related", RelationshipForceConfig {
-            strength: 0.4,
-            rest_length: 100.0,
-            is_directional: false,
-            force_type: 0,
-        });
+        registry.register_internal(
+            "skos:related",
+            RelationshipForceConfig {
+                strength: 0.4,
+                rest_length: 100.0,
+                is_directional: false,
+                force_type: 0,
+            },
+        );
+
+        // ── Canonical edge-type strings ─────────────────────────────
+        // These are the labels that predicate_to_edge_type() emits and
+        // that Edge.edge_type carries at runtime. Force configs align
+        // with SemanticEdgeType::spring_multiplier() values, normalised
+        // to the registry's 0.0–1.0 strength scale.
+        //
+        // Any IRI not in this list auto-registers via get_or_register_id()
+        // with default config — the system is domain-agnostic.
+
+        registry.register_internal(
+            "explicit_link",
+            RelationshipForceConfig {
+                strength: 0.5,
+                rest_length: 100.0,
+                is_directional: false,
+                force_type: 0,
+            },
+        );
+
+        registry.register_internal(
+            "hierarchical",
+            RelationshipForceConfig {
+                strength: 0.8,
+                rest_length: 60.0,
+                is_directional: true,
+                force_type: 0,
+            },
+        );
+
+        registry.register_internal(
+            "structural",
+            RelationshipForceConfig {
+                strength: 0.7,
+                rest_length: 50.0,
+                is_directional: true,
+                force_type: 1, // Orbit clustering (has-part)
+            },
+        );
+
+        registry.register_internal(
+            "dependency",
+            RelationshipForceConfig {
+                strength: 0.7,
+                rest_length: 70.0,
+                is_directional: true,
+                force_type: 0,
+            },
+        );
+
+        registry.register_internal(
+            "associative",
+            RelationshipForceConfig {
+                strength: 0.4,
+                rest_length: 120.0,
+                is_directional: false,
+                force_type: 0,
+            },
+        );
+
+        registry.register_internal(
+            "bridge",
+            RelationshipForceConfig {
+                strength: 0.3,
+                rest_length: 200.0,
+                is_directional: false,
+                force_type: 2, // Cross-domain long-range
+            },
+        );
+
+        registry.register_internal(
+            "namespace",
+            RelationshipForceConfig {
+                strength: 0.3,
+                rest_length: 180.0,
+                is_directional: false,
+                force_type: 0,
+            },
+        );
+
+        registry.register_internal(
+            "inferred",
+            RelationshipForceConfig {
+                strength: 0.4,
+                rest_length: 130.0,
+                is_directional: false,
+                force_type: 0,
+            },
+        );
+
+        registry.register_internal(
+            "implements",
+            RelationshipForceConfig {
+                strength: 0.8,
+                rest_length: 55.0,
+                is_directional: true,
+                force_type: 0,
+            },
+        );
+
+        registry.register_internal(
+            "enhancement",
+            RelationshipForceConfig {
+                strength: 0.55,
+                rest_length: 90.0,
+                is_directional: true,
+                force_type: 0,
+            },
+        );
+
+        registry.register_internal(
+            "security",
+            RelationshipForceConfig {
+                strength: 0.6,
+                rest_length: 80.0,
+                is_directional: true,
+                force_type: 0,
+            },
+        );
+
+        registry.register_internal(
+            "goal",
+            RelationshipForceConfig {
+                strength: 0.5,
+                rest_length: 100.0,
+                is_directional: true,
+                force_type: 0,
+            },
+        );
+
+        registry.register_internal(
+            "tracking",
+            RelationshipForceConfig {
+                strength: 0.35,
+                rest_length: 150.0,
+                is_directional: false,
+                force_type: 0,
+            },
+        );
+
+        registry.register_internal(
+            "similarity",
+            RelationshipForceConfig {
+                strength: 0.4,
+                rest_length: 120.0,
+                is_directional: false,
+                force_type: 0,
+            },
+        );
+
+        registry.register_internal(
+            "provenance",
+            RelationshipForceConfig {
+                strength: 0.25,
+                rest_length: 200.0,
+                is_directional: true,
+                force_type: 0,
+            },
+        );
+
+        registry.register_internal(
+            "utilisation",
+            RelationshipForceConfig {
+                strength: 0.45,
+                rest_length: 95.0,
+                is_directional: true,
+                force_type: 0,
+            },
+        );
+
+        registry.register_internal(
+            "standardisation",
+            RelationshipForceConfig {
+                strength: 0.55,
+                rest_length: 85.0,
+                is_directional: true,
+                force_type: 0,
+            },
+        );
+
+        registry.register_internal(
+            "contrastsWith",
+            RelationshipForceConfig {
+                strength: 0.35,
+                rest_length: 150.0,
+                is_directional: false,
+                force_type: 2,
+            },
+        );
+
+        registry.register_internal(
+            "standardizedBy",
+            RelationshipForceConfig {
+                strength: 0.55,
+                rest_length: 85.0,
+                is_directional: true,
+                force_type: 0,
+            },
+        );
+
+        registry.register_internal(
+            "enabledBy",
+            RelationshipForceConfig {
+                strength: 0.6,
+                rest_length: 75.0,
+                is_directional: true,
+                force_type: 0,
+            },
+        );
 
         registry
     }
@@ -381,7 +668,10 @@ impl SemanticTypeRegistry {
     /// for the dynamic relationship system in semantic_forces.cu
     pub fn build_dynamic_gpu_buffer(&self) -> Vec<DynamicForceConfigGPU> {
         let configs = self.read_configs();
-        configs.iter().map(|c| DynamicForceConfigGPU::from(c)).collect()
+        configs
+            .iter()
+            .map(|c| DynamicForceConfigGPU::from(c))
+            .collect()
     }
 
     /// Get the buffer version (incremented on each registration/update)
@@ -444,13 +734,38 @@ mod tests {
     fn test_default_types_registered() {
         let registry = SemanticTypeRegistry::new();
 
-        // Check that default types are registered
+        // Legacy prefixed types
         assert!(registry.get_id("generic").is_some());
         assert!(registry.get_id("ngm:requires").is_some());
         assert!(registry.get_id("ngm:enables").is_some());
         assert!(registry.get_id("ngm:has-part").is_some());
         assert!(registry.get_id("ngm:bridges-to").is_some());
         assert!(registry.get_id("rdfs:subClassOf").is_some());
+
+        // Canonical edge-type labels (from predicate_to_edge_type)
+        for label in &[
+            "explicit_link",
+            "hierarchical",
+            "structural",
+            "dependency",
+            "associative",
+            "bridge",
+            "namespace",
+            "inferred",
+            "implements",
+            "enhancement",
+            "security",
+            "goal",
+            "tracking",
+            "similarity",
+            "provenance",
+        ] {
+            assert!(
+                registry.get_id(label).is_some(),
+                "missing canonical type: {}",
+                label
+            );
+        }
     }
 
     #[test]
@@ -458,12 +773,15 @@ mod tests {
         let registry = SemanticTypeRegistry::new();
         let initial_len = registry.len();
 
-        let id = registry.register("custom:test-type", RelationshipForceConfig {
-            strength: 0.5,
-            rest_length: 100.0,
-            is_directional: true,
-            force_type: 0,
-        });
+        let id = registry.register(
+            "custom:test-type",
+            RelationshipForceConfig {
+                strength: 0.5,
+                rest_length: 100.0,
+                is_directional: true,
+                force_type: 0,
+            },
+        );
 
         assert_eq!(registry.len(), initial_len + 1);
         assert_eq!(registry.get_id("custom:test-type"), Some(id));
@@ -484,12 +802,15 @@ mod tests {
     fn test_update_config() {
         let registry = SemanticTypeRegistry::new();
 
-        let updated = registry.update_config("ngm:requires", RelationshipForceConfig {
-            strength: 0.9,
-            rest_length: 50.0,
-            is_directional: true,
-            force_type: 0,
-        });
+        let updated = registry.update_config(
+            "ngm:requires",
+            RelationshipForceConfig {
+                strength: 0.9,
+                rest_length: 50.0,
+                is_directional: true,
+                force_type: 0,
+            },
+        );
 
         assert!(updated);
 

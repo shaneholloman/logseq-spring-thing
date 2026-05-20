@@ -736,7 +736,7 @@ impl Actor for OptimizedSettingsActor {
     fn started(&mut self, ctx: &mut Self::Context) {
         info!("OptimizedSettingsActor started — loading settings from repository");
 
-        // Load settings from repository (Neo4j → YAML fallback → defaults)
+        // Load settings from repository (SQLite → YAML fallback → defaults, ADR-11)
         // This replaces the in-memory defaults with persisted values
         let repository = self.repository.clone();
         let settings = self.settings.clone();
@@ -1149,7 +1149,7 @@ impl Handler<UpdatePhysicsFromAutoBalance> for OptimizedSettingsActor {
                     return;
                 }
 
-                info!("[AUTO-BALANCE] Physics parameters updated in settings from auto-tuning");
+                debug!("[AUTO-BALANCE] Physics parameters updated in settings from auto-tuning");
 
                 
                 if let Some(physics) = msg
@@ -1162,13 +1162,13 @@ impl Handler<UpdatePhysicsFromAutoBalance> for OptimizedSettingsActor {
                     info!("[AUTO-BALANCE] Auto-tune complete - optimized settings updated");
 
                     if let Some(repel_k) = physics.get("repelK").and_then(|v| v.as_f64()) {
-                        info!("[AUTO-BALANCE] Final repelK: {:.3}", repel_k);
+                        debug!("[AUTO-BALANCE] Final repelK: {:.3}", repel_k);
                     }
                     if let Some(damping) = physics.get("damping").and_then(|v| v.as_f64()) {
-                        info!("[AUTO-BALANCE] Final damping: {:.3}", damping);
+                        debug!("[AUTO-BALANCE] Final damping: {:.3}", damping);
                     }
                     if let Some(max_vel) = physics.get("maxVelocity").and_then(|v| v.as_f64()) {
-                        info!("[AUTO-BALANCE] Final maxVelocity: {:.3}", max_vel);
+                        debug!("[AUTO-BALANCE] Final maxVelocity: {:.3}", max_vel);
                     }
                 }
 
@@ -1180,10 +1180,10 @@ impl Handler<UpdatePhysicsFromAutoBalance> for OptimizedSettingsActor {
                             e
                         );
                     } else {
-                        info!("[AUTO-BALANCE] Auto-tuned settings saved to settings.yaml");
+                        debug!("[AUTO-BALANCE] Auto-tuned settings saved to settings.yaml");
                     }
                 } else {
-                    info!("[AUTO-BALANCE] Settings persistence disabled, not saving to file");
+                    debug!("[AUTO-BALANCE] Settings persistence disabled, not saving to file");
                 }
             })
             .into_actor(self),
@@ -1228,7 +1228,7 @@ impl Handler<ReloadSettings> for OptimizedSettingsActor {
     type Result = Result<(), String>;
 
     fn handle(&mut self, _msg: ReloadSettings, ctx: &mut Self::Context) -> Self::Result {
-        info!("🔄 Hot-reload triggered: reloading settings from database...");
+        info!("Hot-reload triggered: reloading settings from database...");
 
         let repository = self.repository.clone();
         let settings = self.settings.clone();
@@ -1259,7 +1259,7 @@ impl Handler<ReloadSettings> for OptimizedSettingsActor {
                             m.cache_misses += 1; 
                         }
 
-                        info!("✓ Settings hot-reloaded successfully from database");
+                        info!("Settings hot-reloaded successfully from database");
                     }
                     Ok(None) => {
                         warn!("⚠️  No settings found in database during hot-reload");

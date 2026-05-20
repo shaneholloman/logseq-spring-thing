@@ -46,9 +46,7 @@ pub mod jsonld_validator;
 
 // JSON-LD ingest pipeline (Migration Sprint Phase 2 M1). Parses Logseq
 // markdown JSON-LD blocks → oxigraph::model::Quad sets routed to Phase 1
-// repository ports. Gated by `persistence-oxigraph` because it depends on
-// the oxigraph model crate.
-#[cfg(feature = "persistence-oxigraph")]
+// repository ports.
 pub mod jsonld_ingest;
 
 // Re-export semantic type registry types for convenience

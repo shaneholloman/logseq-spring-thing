@@ -63,6 +63,22 @@ pub async fn verify_access(
         .unwrap_or(&Uuid::new_v4().to_string())
         .to_string();
 
+    // --- Dev bypass (dev builds only) ---
+    #[cfg(any(debug_assertions, feature = "dev-auth"))]
+    {
+        if let Some(auth_value) = req.headers().get("Authorization").and_then(|h| h.to_str().ok()) {
+            if auth_value == "Bearer dev-session-token" {
+                debug!("dev-auth: Bearer dev-session-token accepted in middleware (dev build)");
+                let pubkey = req.headers()
+                    .get("X-Nostr-Pubkey")
+                    .and_then(|h| h.to_str().ok())
+                    .unwrap_or("dev-user")
+                    .to_string();
+                return Ok(pubkey);
+            }
+        }
+    }
+
     // --- NIP-98 Schnorr auth (primary path) ---
     if let Some(auth_value) = req
         .headers()

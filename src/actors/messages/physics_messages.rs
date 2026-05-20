@@ -527,7 +527,7 @@ pub struct BroadcastPerformanceStats {
 // GPU position snapshot (REST API)
 // ---------------------------------------------------------------------------
 
-/// Retrieve the current GPU-computed node positions (not the initial Neo4j positions).
+/// Retrieve the current GPU-computed node positions (not the initial Oxigraph-loaded positions).
 /// Returns a tuple per node: (node_id, x, y, z).
 #[derive(Message)]
 #[rtype(result = "Result<CurrentPositionsSnapshot, String>")]

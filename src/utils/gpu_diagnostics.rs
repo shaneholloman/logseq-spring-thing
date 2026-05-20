@@ -55,7 +55,7 @@ pub fn ptx_module_smoke_test() -> String {
                         }
                     }
                     if missing.is_empty() {
-                        report.push_str("✅ Smoke test PASSED: all expected kernels found\n");
+                        report.push_str("Smoke test PASSED: all expected kernels found\n");
                     } else {
                         report.push_str(&format!(
                             "⚠️ Smoke test PARTIAL: missing kernels: {:?}\n",
@@ -91,7 +91,7 @@ pub fn run_gpu_diagnostics() -> String {
                 match std::fs::metadata(&path) {
                     Ok(metadata) => {
                         report.push_str(&format!(
-                            "  ✅ PTX file exists, size: {} bytes\n",
+                            "  PTX file exists, size: {} bytes\n",
                             metadata.len()
                         ));
                         info!(
@@ -151,7 +151,7 @@ pub fn run_gpu_diagnostics() -> String {
     for path in &ptx_paths {
         if Path::new(path).exists() {
             ptx_found = true;
-            report.push_str(&format!("  ✅ PTX file found at: {}\n", path));
+            report.push_str(&format!("  PTX file found at: {}\n", path));
             info!("GPU Diagnostic: PTX file found at {}", path);
             
             match std::fs::metadata(path) {
@@ -244,7 +244,7 @@ pub fn diagnose_ptx_error(error: &str) -> String {
 
     if error.contains("device kernel image is invalid") {
         diagnosis.push_str("  ⚠️  'device kernel image is invalid' error detected\n");
-        diagnosis.push_str("  🔧 Possible causes:\n");
+        diagnosis.push_str("  Possible causes:\n");
         diagnosis.push_str("    - PTX architecture mismatch (check CUDA_ARCH)\n");
         diagnosis.push_str("    - Corrupted PTX file\n");
         diagnosis.push_str("    - CUDA driver/runtime version mismatch\n");
@@ -254,7 +254,7 @@ pub fn diagnose_ptx_error(error: &str) -> String {
         diagnosis.push_str("    - Verify PTX file integrity\n");
     } else if error.contains("no kernel image is available") {
         diagnosis.push_str("  ⚠️  'no kernel image is available' error detected\n");
-        diagnosis.push_str("  🔧 Possible causes:\n");
+        diagnosis.push_str("  Possible causes:\n");
         diagnosis.push_str("    - PTX compilation failed\n");
         diagnosis.push_str("    - Wrong GPU architecture target\n");
         diagnosis.push_str("  🛠️  Solutions:\n");
@@ -262,7 +262,7 @@ pub fn diagnose_ptx_error(error: &str) -> String {
         diagnosis.push_str("    - Set correct CUDA_ARCH environment variable\n");
     } else if error.contains("Module::from_ptx") {
         diagnosis.push_str("  ⚠️  Module creation from PTX failed\n");
-        diagnosis.push_str("  🔧 Possible causes:\n");
+        diagnosis.push_str("  Possible causes:\n");
         diagnosis.push_str("    - Invalid PTX syntax\n");
         diagnosis.push_str("    - Missing kernel functions\n");
         diagnosis.push_str("  🛠️  Solutions:\n");

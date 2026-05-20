@@ -185,7 +185,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             fd_delta
         );
     } else {
-        info!("✅ No file descriptor leaks detected");
+        info!("No file descriptor leaks detected");
     }
 
     

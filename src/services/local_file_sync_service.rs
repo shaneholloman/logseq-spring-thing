@@ -8,7 +8,7 @@
 //!
 //! This avoids pagination issues with 250k+ files by using local baseline.
 
-use crate::adapters::neo4j_ontology_repository::Neo4jOntologyRepository;
+use crate::adapters::OxigraphOntologyRepository;
 use crate::ports::knowledge_graph_repository::KnowledgeGraphRepository;
 use crate::services::github::content_enhanced::EnhancedContentAPI;
 use crate::services::github::types::{OntologyFileMetadata, OntologyPriority};
@@ -34,7 +34,7 @@ pub struct LocalFileSyncService {
     onto_parser: Arc<OntologyParser>,
     kg_repo: Arc<dyn KnowledgeGraphRepository>,
     #[allow(dead_code)]
-    onto_repo: Arc<Neo4jOntologyRepository>,
+    onto_repo: Arc<OxigraphOntologyRepository>,
     enrichment_service: Arc<OntologyEnrichmentService>,
     content_analyzer: Arc<OntologyContentAnalyzer>,
     ontology_cache: Arc<OntologyFileCache>,
@@ -67,7 +67,7 @@ impl LocalFileSyncService {
     pub fn new(
         content_api: Arc<EnhancedContentAPI>,
         kg_repo: Arc<dyn KnowledgeGraphRepository>,
-        onto_repo: Arc<Neo4jOntologyRepository>,
+        onto_repo: Arc<OxigraphOntologyRepository>,
         enrichment_service: Arc<OntologyEnrichmentService>,
     ) -> Self {
         Self {
@@ -84,7 +84,7 @@ impl LocalFileSyncService {
 
     /// Main sync operation: Use local files as baseline, update from GitHub if SHA1 differs
     pub async fn sync_with_github_delta(&self) -> Result<SyncStatistics, String> {
-        info!("🔄 Starting local file sync with GitHub SHA1 delta check");
+        info!("Starting local file sync with GitHub SHA1 delta check");
         let start_time = Instant::now();
 
         let mut stats = SyncStatistics {
@@ -116,7 +116,7 @@ impl LocalFileSyncService {
         info!("🔍 Fetching GitHub SHA1 hashes for comparison...");
         let github_sha_map = match self.fetch_github_sha_map().await {
             Ok(map) => {
-                info!("✅ Retrieved SHA1 hashes for {} files from GitHub", map.len());
+                info!("Retrieved SHA1 hashes for {} files from GitHub", map.len());
                 map
             }
             Err(e) => {
@@ -153,7 +153,7 @@ impl LocalFileSyncService {
 
             let content = if needs_github_update {
                 // Download updated content from GitHub
-                info!("🔄 Updating {} from GitHub (SHA1 mismatch)", file_name);
+                info!("Updating {} from GitHub (SHA1 mismatch)", file_name);
                 match self.fetch_and_update_file(&local_file, file_name).await {
                     Ok(content) => {
                         stats.files_updated_from_github += 1;
@@ -228,7 +228,7 @@ impl LocalFileSyncService {
         stats.cache_hits = cache_stats.hits;
         stats.cache_misses = cache_stats.misses;
 
-        info!("✅ Sync complete! {} files from local, {} updated from GitHub in {:?}",
+        info!("Sync complete! {} files from local, {} updated from GitHub in {:?}",
             stats.files_synced_from_local, stats.files_updated_from_github, stats.duration);
 
         self.log_ontology_statistics(&stats);
@@ -238,7 +238,7 @@ impl LocalFileSyncService {
 
     /// Log detailed ontology statistics
     fn log_ontology_statistics(&self, stats: &SyncStatistics) {
-        info!("📊 Ontology Sync Statistics:");
+        info!("Ontology Sync Statistics:");
         info!("   Priority 1 files (public + ontology): {}", stats.priority1_files);
         info!("   Priority 2 files (ontology only): {}", stats.priority2_files);
         info!("   Priority 3 files (public only): {}", stats.priority3_files);
@@ -336,7 +336,7 @@ impl LocalFileSyncService {
         fs::write(local_path, &content)
             .map_err(|e| format!("Failed to write local file: {}", e))?;
 
-        info!("✅ Updated local file: {:?}", local_path);
+        info!("Updated local file: {:?}", local_path);
         Ok(content)
     }
 
@@ -463,13 +463,9 @@ impl LocalFileSyncService {
                     info!("🦉 Extracted ontology from {}: {} classes, {} properties",
                         file_name, onto_data.classes.len(), onto_data.properties.len());
 
-                    // Save ontology data to Neo4j
-                    // Note: Current Neo4jOntologyRepository focuses on graph-based queries.
-                    // Full OWL ontology persistence (classes, properties, axioms) requires:
-                    // 1. Schema design for OWL semantics in Neo4j
-                    // 2. Cypher queries for creating class/property nodes
-                    // 3. Relationship creation for class hierarchies
-                    // 4. Axiom representation (complex, may need JSON storage)
+                    // Save ontology data to Oxigraph store (ADR-11).
+                    // OxigraphOntologyRepository implements save_ontology() via SPARQL INSERT.
+                    // todo!("Phase 2: wire onto_data → OxigraphOntologyRepository::save_ontology() here")
                     // For now, ontology data is available in memory via the parser
                     // and can be queried through the enrichment service.
                     stats.ontology_files_processed += 1;
@@ -538,7 +534,7 @@ impl LocalFileSyncService {
             }
         }
 
-        info!("✅ Enriched {} ontology files with commit dates", enriched_count);
+        info!("Enriched {} ontology files with commit dates", enriched_count);
         Ok(enriched_count)
     }
 
@@ -566,7 +562,7 @@ impl LocalFileSyncService {
         info!("🗑️  Ontology cache cleared");
     }
 
-    /// Save batch to Neo4j
+    /// Save batch to Oxigraph store (ADR-11)
     async fn save_batch(
         &self,
         nodes: &HashMap<u32, crate::models::node::Node>,

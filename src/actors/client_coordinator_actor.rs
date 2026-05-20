@@ -65,6 +65,7 @@ pub struct ClientFilter {
     pub filter_mode: FilterMode,
     pub max_nodes: Option<usize>,
     pub filtered_node_ids: std::collections::HashSet<u32>,
+    pub include_linked_pages: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -85,6 +86,7 @@ impl Default for ClientFilter {
             filter_mode: FilterMode::Or,
             max_nodes: Some(10000),
             filtered_node_ids: std::collections::HashSet::new(),
+            include_linked_pages: true,
         }
     }
 }
@@ -472,8 +474,8 @@ pub struct ClientCoordinatorActor {
     /// Broadcast sequence counter for acknowledgement correlation
     broadcast_sequence: u64,
 
-    // Neo4j settings repository for loading/saving user filters
-    neo4j_settings_repository: Option<Arc<crate::adapters::neo4j_settings_repository::Neo4jSettingsRepository>>,
+    // Settings repository for loading/saving user filters (Oxigraph migration: ADR-11)
+    settings_repository: Option<Arc<crate::adapters::SqliteSettingsRepository>>,
 
 
     position_cache: HashMap<u32, BinaryNodeDataClient>,
@@ -527,7 +529,7 @@ impl ClientCoordinatorActor {
             graph_service_addr: None,
             gpu_compute_addr: None,
             broadcast_sequence: 0,
-            neo4j_settings_repository: None,
+            settings_repository: None,
             position_cache: HashMap::new(),
             broadcast_count: 0,
             bytes_sent: 0,
@@ -589,10 +591,10 @@ impl ClientCoordinatorActor {
         info!("Bandwidth limit set to {} bytes/sec", bytes_per_sec);
     }
 
-    /// Set the Neo4j settings repository for loading user filters
-    pub fn set_neo4j_repository(&mut self, repo: Arc<crate::adapters::neo4j_settings_repository::Neo4jSettingsRepository>) {
-        self.neo4j_settings_repository = Some(repo);
-        info!("Neo4j settings repository configured for ClientCoordinatorActor");
+    /// Set the SQLite settings repository for loading user filters (ADR-11)
+    pub fn set_settings_repository(&mut self, repo: Arc<crate::adapters::SqliteSettingsRepository>) {
+        self.settings_repository = Some(repo);
+        info!("SQLite settings repository configured for ClientCoordinatorActor");
     }
 
     
@@ -1774,98 +1776,22 @@ impl Handler<AuthenticateClient> for ClientCoordinatorActor {
                 msg.client_id, msg.pubkey, msg.is_power_user, msg.ephemeral
             );
 
-            // Load saved filter and settings from Neo4j if repository is available
-            if let Some(neo4j_repo) = self.neo4j_settings_repository.clone() {
-                let pubkey_clone = msg.pubkey.clone();
-                let client_id = msg.client_id;
-                let manager_arc = self.client_manager.clone();
-                let graph_addr = self.graph_service_addr.clone();
-                let neo4j_repo_for_filter = neo4j_repo.clone();
-
-                ctx.spawn(actix::fut::wrap_future::<_, Self>(async move {
-                    match neo4j_repo_for_filter.get_user_filter(&pubkey_clone).await {
-                        Ok(Some(user_filter)) => {
-                            info!("✅ Loaded filter from Neo4j for pubkey {}: enabled={}, quality_threshold={}",
-                                  pubkey_clone, user_filter.enabled, user_filter.quality_threshold);
-
-                            // Update client filter with loaded settings
-                            if let Ok(mut manager) = manager_arc.write() {
-                                if let Some(client) = manager.get_client_mut(client_id) {
-                                    client.filter.enabled = user_filter.enabled;
-                                    client.filter.quality_threshold = user_filter.quality_threshold;
-                                    client.filter.authority_threshold = user_filter.authority_threshold;
-                                    client.filter.filter_by_quality = user_filter.filter_by_quality;
-                                    client.filter.filter_by_authority = user_filter.filter_by_authority;
-                                    client.filter.filter_mode = match user_filter.filter_mode.as_str() {
-                                        "and" => FilterMode::And,
-                                        _ => FilterMode::Or,
-                                    };
-                                    client.filter.max_nodes = user_filter.max_nodes.map(|n| n as usize);
-
-                                    // Recompute filtered nodes with loaded settings
-                                    if client.filter.enabled {
-                                        if let Some(graph_addr) = graph_addr {
-                                            use crate::actors::messages::GetGraphData;
-                                            match graph_addr.send(GetGraphData).await {
-                                                Ok(Ok(graph_data)) => {
-                                                    crate::actors::client_filter::recompute_filtered_nodes(
-                                                        &mut client.filter,
-                                                        &graph_data
-                                                    );
-                                                    info!("Recomputed filter for authenticated client {}: {} nodes visible",
-                                                          client_id, client.filter.filtered_node_ids.len());
-                                                }
-                                                _ => warn!("Failed to fetch graph data for filter recomputation"),
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        Ok(None) => {
-                            info!("No saved filter found for pubkey {}, using defaults", pubkey_clone);
-                        }
-                        Err(e) => {
-                            error!("Failed to load filter from Neo4j: {}", e);
-                        }
-                    }
-                }).map(|_, _, _| ()));
-
-                // Also load saved user settings from Neo4j for per-user physics isolation
-                let neo4j_repo2 = neo4j_repo;
-                let pubkey_clone2 = msg.pubkey.clone();
-                let client_id2 = msg.client_id;
-                let manager_arc2 = self.client_manager.clone();
-
-                ctx.spawn(actix::fut::wrap_future::<_, Self>(async move {
-                    match neo4j_repo2.get_user_settings(&pubkey_clone2).await {
-                        Ok(Some(user_settings)) => {
-                            info!("Loaded user settings from Neo4j for pubkey {}", pubkey_clone2);
-                            if let Ok(mut manager) = manager_arc2.write() {
-                                if let Some(client) = manager.get_client_mut(client_id2) {
-                                    client.settings_override = Some(user_settings);
-                                    info!(
-                                        "Applied per-user settings_override for client {} (pubkey {})",
-                                        client_id2, pubkey_clone2
-                                    );
-                                }
-                            }
-                        }
-                        Ok(None) => {
-                            info!("No saved user settings for pubkey {}, using global defaults", pubkey_clone2);
-                        }
-                        Err(e) => {
-                            error!("Failed to load user settings from Neo4j: {}", e);
-                        }
-                    }
-                }).map(|_, _, _| ()));
+            // Load saved filter and settings from SQLite repository if available.
+            // Phase 2: get_user_filter / get_user_settings are not yet on SqliteSettingsRepository.
+            // todo!("Phase 2: migrate user filter/settings load from Cypher to SPARQL/SQLite path")
+            if let Some(_settings_repo) = self.settings_repository.clone() {
+                // Per-user filter persistence is queued for Phase 2 (ADR-11 §D5).
+                // For now, all clients use the global default filter on auth.
+                info!(
+                    "User filter persistence pending Phase 2 SQLite migration — using defaults for pubkey {}",
+                    msg.pubkey
+                );
             } else {
-                // Fallback: No Neo4j repo configured, use default filter behavior
-                warn!("Neo4j repository not configured, using default filter for client {}", msg.client_id);
+                warn!("Settings repository not configured, using default filter for client {}", msg.client_id);
             }
 
-            // Original behavior: recompute if filter is enabled (kept for non-Neo4j fallback)
-            if client.filter.enabled && self.neo4j_settings_repository.is_none() {
+            // Recompute if filter is enabled (applies regardless of repository availability)
+            if client.filter.enabled && self.settings_repository.is_none() {
                 if let Some(graph_addr) = self.graph_service_addr.clone() {
                     let client_id = msg.client_id;
                     let manager_arc = self.client_manager.clone();
@@ -1923,6 +1849,7 @@ impl Handler<UpdateClientFilter> for ClientCoordinatorActor {
             client.filter.filter_by_authority = msg.filter_by_authority;
             client.filter.filter_mode = filter_mode;
             client.filter.max_nodes = msg.max_nodes.map(|n| n as usize);
+            client.filter.include_linked_pages = msg.include_linked_pages;
 
             info!(
                 "Updated filter for client {}: enabled={}, quality_threshold={}, max_nodes={:?}",

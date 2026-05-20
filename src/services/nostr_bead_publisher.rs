@@ -1,6 +1,6 @@
 //! Nostr Bead Provenance Publisher
 //!
-//! Publishes bead lifecycle events (kind 30001) to the JSS Nostr relay for
+//! Publishes bead lifecycle events (kind 30001) to a Nostr relay for
 //! cryptographic provenance tracking. Each completed brief → debrief cycle
 //! emits one signed event carrying the bead_id, brief_id, user pubkey, and
 //! debrief path as tags.
@@ -9,29 +9,29 @@
 //! bead_id as the `d` tag — so a re-published bead overwrites the previous
 //! entry on the relay rather than creating duplicates.
 //!
-//! Optionally writes provenance to Neo4j when an `Arc<neo4rs::Graph>` is
-//! injected via `with_neo4j`. Schema written:
-//!   (:NostrEvent {id, pubkey, kind, created_at})-[:PROVENANCE_OF]->(:Bead {bead_id, brief_id, debrief_path})
+//! Provenance persistence is queued for Phase 2 (ADR-11): the former Neo4j
+//! write path has been removed. Future versions will write provenance triples
+//! to the Oxigraph quad-store via OxigraphOntologyRepository.
+//!   todo!("Phase 2: Oxigraph provenance triples for NostrBeadPublisher")
 //!
 //! Configure via environment:
 //!   VISIONCLAW_NOSTR_PRIVKEY  — 64-char hex secret key for the bridge bot
-//!   JSS_RELAY_URL             — WebSocket relay URL (default: ws://jss:3030/relay)
+//!   NOSTR_RELAY_URL           — WebSocket relay URL (default: ws://localhost:7000)
 
 use std::sync::Arc;
 
 use futures_util::{SinkExt, StreamExt};
 use log::{debug, error, warn};
-use neo4rs::{Graph, Query};
 use nostr_sdk::prelude::*;
 use serde_json::json;
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 
-/// Publishes provenance events to the JSS Nostr relay.
+/// Publishes provenance events to the configured Nostr relay.
 #[derive(Clone)]
 pub struct NostrBeadPublisher {
     keys: Keys,
     relay_url: String,
-    neo4j: Option<Arc<Graph>>,
+    _oxigraph_provenance: Option<Arc<()>>,
 }
 
 impl NostrBeadPublisher {
@@ -40,12 +40,12 @@ impl NostrBeadPublisher {
         let privkey = std::env::var("VISIONCLAW_NOSTR_PRIVKEY")
             .ok()
             .filter(|s| !s.is_empty())?;
-        let relay_url = std::env::var("JSS_RELAY_URL")
-            .unwrap_or_else(|_| "ws://jss:3030/relay".to_string());
+        let relay_url = std::env::var("NOSTR_RELAY_URL")
+            .unwrap_or_else(|_| "ws://localhost:7000".to_string());
 
         // Validate relay URL scheme to prevent SSRF via env var injection.
         if !relay_url.starts_with("ws://") && !relay_url.starts_with("wss://") {
-            error!("[NostrBeadPublisher] JSS_RELAY_URL must start with ws:// or wss://: {relay_url}");
+            error!("[NostrBeadPublisher] NOSTR_RELAY_URL must start with ws:// or wss://: {relay_url}");
             return None;
         }
 
@@ -56,13 +56,13 @@ impl NostrBeadPublisher {
         Some(Self {
             keys: Keys::new(secret_key),
             relay_url,
-            neo4j: None,
+            _oxigraph_provenance: None,
         })
     }
 
-    /// Inject a Neo4j graph handle for provenance writes. Call before first publish.
-    pub fn with_neo4j(mut self, graph: Arc<Graph>) -> Self {
-        self.neo4j = Some(graph);
+    /// Inject a graph handle for provenance writes.
+    /// Phase 2 (ADR-11): will accept an OxigraphOntologyRepository handle.
+    pub fn with_provenance_store(self, _graph: Arc<()>) -> Self {
         self
     }
 
@@ -107,48 +107,10 @@ impl NostrBeadPublisher {
         match self.send_to_relay(&event).await {
             Ok(()) => {
                 debug!("[NostrBeadPublisher] Published bead {bead_id} (event {})", event.id);
-                if let Some(ref graph) = self.neo4j {
-                    self.write_provenance(graph, &event, bead_id, brief_id, debrief_path).await;
-                }
+                // Oxigraph provenance write: Phase 2 (ADR-11) — not yet implemented.
+                // todo!("Phase 2: write SPARQL provenance triples via OxigraphOntologyRepository")
             }
             Err(e) => warn!("[NostrBeadPublisher] Relay publish failed for bead {bead_id}: {e}"),
-        }
-    }
-
-    /// Write a (:NostrEvent)-[:PROVENANCE_OF]->(:Bead) pair to Neo4j.
-    async fn write_provenance(
-        &self,
-        graph: &Arc<Graph>,
-        event: &Event,
-        bead_id: &str,
-        brief_id: &str,
-        debrief_path: &str,
-    ) {
-        let query = Query::new(
-            "MERGE (e:NostrEvent {id: $event_id}) \
-             SET e.pubkey = $pubkey, e.kind = $kind, e.created_at = $created_at \
-             WITH e \
-             MERGE (b:Bead {bead_id: $bead_id}) \
-             ON CREATE SET b.brief_id = $brief_id, b.debrief_path = $debrief_path \
-             MERGE (e)-[:PROVENANCE_OF]->(b)"
-            .to_string(),
-        )
-        .param("event_id", event.id.to_string())
-        .param("pubkey", event.pubkey.to_string())
-        .param("kind", event.kind.as_u16() as i64)
-        .param("created_at", event.created_at.as_u64() as i64)
-        .param("bead_id", bead_id.to_string())
-        .param("brief_id", brief_id.to_string())
-        .param("debrief_path", debrief_path.to_string());
-
-        match graph.run(query).await {
-            Ok(()) => debug!(
-                "[NostrBeadPublisher] Provenance written to Neo4j: bead={bead_id} event={}",
-                event.id
-            ),
-            Err(e) => warn!(
-                "[NostrBeadPublisher] Neo4j provenance write failed for bead {bead_id}: {e}"
-            ),
         }
     }
 

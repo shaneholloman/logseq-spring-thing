@@ -29,8 +29,6 @@
 //! See `oxigraph_ontology_repository.rs` header. Method bodies are
 //! mostly `todo!(SQL: ...)`; type signatures match the trait exactly.
 
-#![cfg(feature = "persistence-oxigraph")]
-
 use async_trait::async_trait;
 use std::collections::HashMap;
 use std::path::Path;
@@ -58,7 +56,7 @@ PRAGMA temp_store   = MEMORY;
 
 CREATE TABLE IF NOT EXISTS settings (
     key            TEXT    NOT NULL,
-    owner_pubkey   TEXT,
+    owner_pubkey   TEXT    NOT NULL DEFAULT '',
     value          TEXT    NOT NULL,
     description    TEXT,
     updated_at     INTEGER NOT NULL DEFAULT (unixepoch()),
@@ -70,7 +68,7 @@ CREATE INDEX IF NOT EXISTS settings_owner_idx
 
 CREATE TABLE IF NOT EXISTS physics_profiles (
     profile_name   TEXT    NOT NULL,
-    owner_pubkey   TEXT,
+    owner_pubkey   TEXT    NOT NULL DEFAULT '',
     settings_json  TEXT    NOT NULL,
     updated_at     INTEGER NOT NULL DEFAULT (unixepoch()),
     PRIMARY KEY (profile_name, owner_pubkey)
@@ -98,22 +96,36 @@ CREATE INDEX IF NOT EXISTS audit_log_actor_idx
     ON audit_log(actor_pubkey, occurred_at);
 
 INSERT OR IGNORE INTO schema_migrations (id) VALUES ('0001_initial');
+
+CREATE TABLE IF NOT EXISTS sync_file_metadata (
+    file_name   TEXT PRIMARY KEY,
+    sha1        TEXT NOT NULL,
+    updated_at  INTEGER NOT NULL DEFAULT (unixepoch())
+) WITHOUT ROWID;
+
+CREATE TABLE IF NOT EXISTS sync_config (
+    key    TEXT PRIMARY KEY,
+    value  TEXT NOT NULL
+) WITHOUT ROWID;
+
+INSERT OR IGNORE INTO schema_migrations (id) VALUES ('0002_sync_metadata');
 "#;
 
 tokio::task_local! {
     /// Per-request owner pubkey for layered resolution (ADR-11 §D5).
     /// Set by NIP-98 middleware (Section 6) before any handler runs.
-    /// Unset → adapter reads/writes the global layer (NULL owner_pubkey).
+    /// Unset → adapter reads/writes the global layer (empty string sentinel).
     pub static CURRENT_OWNER_PUBKEY: Option<String>;
 }
 
-/// Helper: pull the current owner pubkey from the task-local, falling back
-/// to `None` (global). Wrapped in a free function so non-async sites
-/// (Drop impls, sync helpers) can use it via `try_with`.
-fn current_owner_pubkey() -> Option<String> {
+/// Pull the current owner pubkey from the task-local, falling back to
+/// empty string (global layer). Empty string is the PK sentinel for
+/// "no specific user" — avoids NULL in composite PK which breaks ON CONFLICT.
+fn current_owner_pubkey() -> String {
     CURRENT_OWNER_PUBKEY
         .try_with(|cell| cell.clone())
         .unwrap_or(None)
+        .unwrap_or_default()
 }
 
 // ---------------------------------------------------------------------------
@@ -247,6 +259,114 @@ impl SqliteSettingsRepository {
     pub fn connection(&self) -> &Arc<Connection> {
         &self.conn
     }
+
+    // ------------------------------------------------------------------
+    // Sync metadata methods (inherent, not on SettingsRepository trait)
+    // ------------------------------------------------------------------
+
+    /// Retrieve all file SHA1 hashes from sync_file_metadata.
+    pub async fn get_file_sha1s(&self) -> Result<HashMap<String, String>, SettingsRepositoryError> {
+        self.conn
+            .call(|c| {
+                let mut stmt = c.prepare_cached(
+                    "SELECT file_name, sha1 FROM sync_file_metadata",
+                )?;
+                let mut rows = stmt.query([])?;
+                let mut map: HashMap<String, String> = HashMap::new();
+                while let Some(row) = rows.next()? {
+                    let name: String = row.get(0)?;
+                    let sha1: String = row.get(1)?;
+                    map.insert(name, sha1);
+                }
+                Ok(map)
+            })
+            .await
+            .map_err(map_db_err)
+    }
+
+    /// Batch upsert file SHA1 hashes into sync_file_metadata.
+    pub async fn upsert_file_sha1s(
+        &self,
+        files: &[(String, String)],
+    ) -> Result<(), SettingsRepositoryError> {
+        if files.is_empty() {
+            return Ok(());
+        }
+        let files_owned: Vec<(String, String)> = files.to_vec();
+        self.conn
+            .call(move |c| {
+                let tx = c.transaction()?;
+                {
+                    let mut stmt = tx.prepare_cached(
+                        "INSERT OR REPLACE INTO sync_file_metadata (file_name, sha1, updated_at)
+                         VALUES (?1, ?2, unixepoch())",
+                    )?;
+                    for (name, sha1) in &files_owned {
+                        stmt.execute(rusqlite::params![name, sha1])?;
+                    }
+                }
+                tx.commit()?;
+                Ok(())
+            })
+            .await
+            .map_err(map_db_err)
+    }
+
+    /// Read a sync config value by key.
+    pub async fn get_sync_config(
+        &self,
+        key: &str,
+    ) -> Result<Option<String>, SettingsRepositoryError> {
+        let key_owned = key.to_string();
+        self.conn
+            .call(move |c| {
+                let mut stmt = c.prepare_cached(
+                    "SELECT value FROM sync_config WHERE key = ?1",
+                )?;
+                let mut rows = stmt.query(rusqlite::params![&key_owned])?;
+                if let Some(row) = rows.next()? {
+                    let val: String = row.get(0)?;
+                    Ok(Some(val))
+                } else {
+                    Ok(None)
+                }
+            })
+            .await
+            .map_err(map_db_err)
+    }
+
+    /// Write a sync config value by key (upsert).
+    pub async fn set_sync_config(
+        &self,
+        key: &str,
+        value: &str,
+    ) -> Result<(), SettingsRepositoryError> {
+        let key_owned = key.to_string();
+        let value_owned = value.to_string();
+        self.conn
+            .call(move |c| {
+                let mut stmt = c.prepare_cached(
+                    "INSERT OR REPLACE INTO sync_config (key, value)
+                     VALUES (?1, ?2)",
+                )?;
+                stmt.execute(rusqlite::params![&key_owned, &value_owned])?;
+                Ok(())
+            })
+            .await
+            .map_err(map_db_err)
+    }
+
+    /// Delete all sync metadata (file hashes and config).
+    pub async fn clear_sync_metadata(&self) -> Result<(), SettingsRepositoryError> {
+        self.conn
+            .call(|c| {
+                c.execute("DELETE FROM sync_file_metadata", [])?;
+                c.execute("DELETE FROM sync_config", [])?;
+                Ok(())
+            })
+            .await
+            .map_err(map_db_err)
+    }
 }
 
 #[async_trait]
@@ -262,12 +382,12 @@ impl SettingsRepository for SqliteSettingsRepository {
                 // Per-user resolution (ADR-11 §D5):
                 //   * If a row exists at (key, pubkey) return it.
                 //   * Else if a row exists at (key, NULL) return it.
-                //   * `ORDER BY owner_pubkey IS NULL ASC` puts non-NULL first.
+                //   * `ORDER BY owner_pubkey = '' ASC` puts non-NULL first.
                 let mut stmt = c.prepare_cached(
                     "SELECT value FROM settings
                      WHERE key = ?1
-                       AND (owner_pubkey = ?2 OR owner_pubkey IS NULL)
-                     ORDER BY (owner_pubkey IS NULL) ASC
+                       AND (owner_pubkey = ?2 OR owner_pubkey = '')
+                     ORDER BY (owner_pubkey = '') ASC
                      LIMIT 1",
                 )?;
                 let mut rows = stmt.query(rusqlite::params![&key_owned, &pubkey])?;
@@ -332,7 +452,7 @@ impl SettingsRepository for SqliteSettingsRepository {
                     "DELETE FROM settings
                      WHERE key = ?1
                        AND ((owner_pubkey = ?2)
-                            OR (?2 IS NULL AND owner_pubkey IS NULL))",
+                            OR (?2 = '' AND owner_pubkey = ''))",
                 )?;
                 stmt.execute(rusqlite::params![&key_owned, &pubkey])?;
                 Ok(())
@@ -352,7 +472,7 @@ impl SettingsRepository for SqliteSettingsRepository {
                 let mut stmt = c.prepare_cached(
                     "SELECT 1 FROM settings
                      WHERE key = ?1
-                       AND (owner_pubkey = ?2 OR owner_pubkey IS NULL)
+                       AND (owner_pubkey = ?2 OR owner_pubkey = '')
                      LIMIT 1",
                 )?;
                 let mut rows = stmt.query(rusqlite::params![&key_owned, &pubkey])?;
@@ -388,7 +508,7 @@ impl SettingsRepository for SqliteSettingsRepository {
                 let sql = format!(
                     "SELECT key, owner_pubkey, value FROM settings
                      WHERE key IN ({})
-                       AND (owner_pubkey = ?{p} OR owner_pubkey IS NULL)",
+                       AND (owner_pubkey = ?{p} OR owner_pubkey = '')",
                     placeholders,
                     p = pubkey_idx
                 );
@@ -400,25 +520,20 @@ impl SettingsRepository for SqliteSettingsRepository {
                 params.push(&pubkey);
 
                 let mut out: Vec<(String, String)> = Vec::new();
-                let mut owners: Vec<Option<String>> = Vec::new();
+                let mut owners: Vec<String> = Vec::new();
                 let mut rows = stmt.query(params.as_slice())?;
                 while let Some(row) = rows.next()? {
                     let k: String = row.get(0)?;
-                    let owner: Option<String> = row.get(1)?;
+                    let owner: String = row.get(1)?;
                     let v: String = row.get(2)?;
                     out.push((k, v));
                     owners.push(owner);
                 }
-                // Tag each row with owner flag so we can fold in Rust:
-                // pack owner-flag into the value-string prefix is fragile;
-                // instead return a parallel structure by encoding owner
-                // presence into a third tuple element via re-collecting.
                 let tagged: Vec<(String, String)> = out
                     .into_iter()
                     .zip(owners.into_iter())
                     .map(|((k, v), owner)| {
-                        // Use a delimiter that cannot appear in JSON: NUL byte.
-                        let tag = if owner.is_some() { "U" } else { "G" };
+                        let tag = if !owner.is_empty() { "U" } else { "G" };
                         (k, format!("{}\u{0}{}", tag, v))
                     })
                     .collect();
@@ -503,7 +618,7 @@ impl SettingsRepository for SqliteSettingsRepository {
             .call(move |c| {
                 let mut stmt = c.prepare_cached(
                     "SELECT DISTINCT key FROM settings
-                     WHERE (owner_pubkey = ?1 OR owner_pubkey IS NULL)
+                     WHERE (owner_pubkey = ?1 OR owner_pubkey = '')
                        AND (?2 IS NULL OR key LIKE (?2 || '%'))
                      ORDER BY key",
                 )?;
@@ -526,14 +641,14 @@ impl SettingsRepository for SqliteSettingsRepository {
         let rows: Vec<(String, bool, String)> = self
             .conn
             .call(move |c| {
-                // `(owner_pubkey IS NULL) ASC` orders user-level rows before
+                // `(owner_pubkey = '') ASC` orders user-level rows before
                 // global rows. Combined with the fold below, this means the
                 // user value wins for any key that exists at both layers.
                 let mut stmt = c.prepare_cached(
-                    "SELECT key, (owner_pubkey IS NOT NULL) AS is_user, value
+                    "SELECT key, (owner_pubkey != '') AS is_user, value
                      FROM settings
-                     WHERE (owner_pubkey = ?1 OR owner_pubkey IS NULL)
-                     ORDER BY (owner_pubkey IS NULL) ASC",
+                     WHERE (owner_pubkey = ?1 OR owner_pubkey = '')
+                     ORDER BY (owner_pubkey = '') ASC",
                 )?;
                 let mut rows = stmt.query(rusqlite::params![&pubkey])?;
                 let mut out: Vec<(String, bool, String)> = Vec::new();
@@ -618,7 +733,7 @@ impl SettingsRepository for SqliteSettingsRepository {
                     let mut del = tx.prepare_cached(
                         "DELETE FROM settings
                          WHERE (owner_pubkey = ?1)
-                            OR (?1 IS NULL AND owner_pubkey IS NULL)",
+                            OR (?1 = '' AND owner_pubkey = '')",
                     )?;
                     del.execute(rusqlite::params![&pubkey])?;
 
@@ -649,8 +764,8 @@ impl SettingsRepository for SqliteSettingsRepository {
                 let mut stmt = c.prepare_cached(
                     "SELECT settings_json FROM physics_profiles
                      WHERE profile_name = ?1
-                       AND (owner_pubkey = ?2 OR owner_pubkey IS NULL)
-                     ORDER BY (owner_pubkey IS NULL) ASC
+                       AND (owner_pubkey = ?2 OR owner_pubkey = '')
+                     ORDER BY (owner_pubkey = '') ASC
                      LIMIT 1",
                 )?;
                 let mut rows = stmt.query(rusqlite::params![&name, &pubkey])?;
@@ -707,7 +822,7 @@ impl SettingsRepository for SqliteSettingsRepository {
             .call(move |c| {
                 let mut stmt = c.prepare_cached(
                     "SELECT DISTINCT profile_name FROM physics_profiles
-                     WHERE (owner_pubkey = ?1 OR owner_pubkey IS NULL)
+                     WHERE (owner_pubkey = ?1 OR owner_pubkey = '')
                      ORDER BY profile_name",
                 )?;
                 let mut rows = stmt.query(rusqlite::params![&pubkey])?;
@@ -733,7 +848,7 @@ impl SettingsRepository for SqliteSettingsRepository {
                     "DELETE FROM physics_profiles
                      WHERE profile_name = ?1
                        AND ((owner_pubkey = ?2)
-                            OR (?2 IS NULL AND owner_pubkey IS NULL))",
+                            OR (?2 = '' AND owner_pubkey = ''))",
                 )?;
                 stmt.execute(rusqlite::params![&name, &pubkey])?;
                 Ok(())
@@ -747,7 +862,7 @@ impl SettingsRepository for SqliteSettingsRepository {
     // ------------------------------------------------------------------
     async fn export_settings(&self) -> RepoResult<serde_json::Value> {
         // Pull everything, regardless of current pubkey.
-        let rows: Vec<(String, Option<String>, String, Option<String>, i64)> = self
+        let rows: Vec<(String, String, String, Option<String>, i64)> = self
             .conn
             .call(|c| {
                 let mut stmt = c.prepare_cached(
@@ -756,10 +871,10 @@ impl SettingsRepository for SqliteSettingsRepository {
                      ORDER BY owner_pubkey, key",
                 )?;
                 let mut rows = stmt.query([])?;
-                let mut out: Vec<(String, Option<String>, String, Option<String>, i64)> = Vec::new();
+                let mut out: Vec<(String, String, String, Option<String>, i64)> = Vec::new();
                 while let Some(row) = rows.next()? {
                     let key: String = row.get(0)?;
-                    let owner: Option<String> = row.get(1)?;
+                    let owner: String = row.get(1)?;
                     let value: String = row.get(2)?;
                     let description: Option<String> = row.get(3)?;
                     let updated_at: i64 = row.get(4)?;
@@ -784,17 +899,14 @@ impl SettingsRepository for SqliteSettingsRepository {
             row_obj.insert("updated_at".to_string(), serde_json::Value::from(updated_at));
 
             let row_value = serde_json::Value::Object(row_obj);
-            match owner {
-                None => {
-                    global.insert(key, row_value);
-                }
-                Some(pk) => {
-                    let user_entry = users
-                        .entry(pk)
-                        .or_insert_with(|| serde_json::Value::Object(serde_json::Map::new()));
-                    if let Some(obj) = user_entry.as_object_mut() {
-                        obj.insert(key, row_value);
-                    }
+            if owner.is_empty() {
+                global.insert(key, row_value);
+            } else {
+                let user_entry = users
+                    .entry(owner)
+                    .or_insert_with(|| serde_json::Value::Object(serde_json::Map::new()));
+                if let Some(obj) = user_entry.as_object_mut() {
+                    obj.insert(key, row_value);
                 }
             }
         }
@@ -817,12 +929,12 @@ impl SettingsRepository for SqliteSettingsRepository {
 
         // Pre-encode rows so we can hand a fully-owned Vec to the worker
         // thread. Each row is (key, owner_pubkey, value_json, description).
-        let mut staged: Vec<(String, Option<String>, String, Option<String>)> = Vec::new();
+        let mut staged: Vec<(String, String, String, Option<String>)> = Vec::new();
 
         if let Some(serde_json::Value::Object(globals)) = bundle.get("global") {
             for (key, entry) in globals {
                 let (value_json, description) = stage_row_entry(entry)?;
-                staged.push((key.clone(), None, value_json, description));
+                staged.push((key.clone(), String::new(), value_json, description));
             }
         }
         if let Some(serde_json::Value::Object(users)) = bundle.get("users") {
@@ -832,7 +944,7 @@ impl SettingsRepository for SqliteSettingsRepository {
                         let (value_json, description) = stage_row_entry(entry)?;
                         staged.push((
                             key.clone(),
-                            Some(pubkey.clone()),
+                            pubkey.clone(),
                             value_json,
                             description,
                         ));
@@ -867,7 +979,7 @@ impl SettingsRepository for SqliteSettingsRepository {
     async fn clear_cache(&self) -> RepoResult<()> {
         // SQLite page cache is internal; ADR-11 §D5 explicitly rejects
         // an application-level read-through cache at our scale. The
-        // method exists on the trait for parity with the Neo4j adapter;
+        // method exists on the trait for parity with the original adapter;
         // here it is a no-op.
         Ok(())
     }

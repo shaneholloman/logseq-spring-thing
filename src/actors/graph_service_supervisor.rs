@@ -1039,12 +1039,12 @@ impl Handler<msgs::GetGraphData> for GraphServiceSupervisor {
     }
 }
 
-/// Handler for ReloadGraphFromDatabase - tells GraphStateActor to reload from Neo4j,
+/// Handler for ReloadGraphFromDatabase - tells GraphStateActor to reload from Oxigraph,
 /// then forwards the fresh data to PhysicsOrchestratorActor.
 ///
 /// Previously this handler only read stale cached data from GraphStateActor without
 /// triggering an actual reload, causing "0 links" when the actor loaded before
-/// Neo4j was populated by load_graph_from_files_into_neo4j.
+/// Oxigraph was populated by load_graph_from_files.
 impl Handler<msgs::ReloadGraphFromDatabase> for GraphServiceSupervisor {
     type Result = ResponseFuture<Result<(), String>>;
 
@@ -1057,9 +1057,9 @@ impl Handler<msgs::ReloadGraphFromDatabase> for GraphServiceSupervisor {
 
         Box::pin(async move {
             if let Some(graph_state) = graph_state_addr {
-                // Step 1: Tell GraphStateActor to reload its data from Neo4j.
+                // Step 1: Tell GraphStateActor to reload its data from Oxigraph.
                 // This replaces the old approach of just reading stale cached data.
-                info!("GraphServiceSupervisor: Sending ReloadGraphFromDatabase to GraphStateActor");
+                debug!("GraphServiceSupervisor: Sending ReloadGraphFromDatabase to GraphStateActor");
                 match graph_state.send(msgs::ReloadGraphFromDatabase).await {
                     Ok(Ok(())) => {
                         info!("GraphServiceSupervisor: GraphStateActor reloaded successfully");
@@ -1089,10 +1089,10 @@ impl Handler<msgs::ReloadGraphFromDatabase> for GraphServiceSupervisor {
                             physics.do_send(UpdateGraphData {
                                 graph_data: graph_data.clone(),
                             });
-                            info!("GraphServiceSupervisor: Forwarded graph data to PhysicsOrchestratorActor for GPU initialization");
+                            debug!("GraphServiceSupervisor: Forwarded graph data to PhysicsOrchestratorActor for GPU initialization");
 
                             // Auto-start physics simulation after graph data is loaded
-                            info!("GraphServiceSupervisor: Auto-starting physics simulation after graph data load");
+                            debug!("GraphServiceSupervisor: Auto-starting physics simulation after graph data load");
                             physics.do_send(crate::actors::messages::StartSimulation);
                         } else {
                             warn!("GraphServiceSupervisor: PhysicsOrchestratorActor not available to receive graph data");
@@ -1194,7 +1194,7 @@ impl Handler<msgs::StartSimulation> for GraphServiceSupervisor {
 
     fn handle(&mut self, _msg: msgs::StartSimulation, _ctx: &mut Self::Context) -> Self::Result {
         if let Some(ref physics) = self.physics {
-            info!("Forwarding StartSimulation to PhysicsOrchestratorActor");
+            debug!("Forwarding StartSimulation to PhysicsOrchestratorActor");
             physics.do_send(msgs::StartSimulation);
             Box::pin(actix::fut::ready(Ok(())))
         } else {

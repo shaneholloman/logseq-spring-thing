@@ -8,11 +8,13 @@
 ///
 /// Flow (agent / MCP):
 ///   POST /api/image-gen/agent-submit  (X-Agent-Key auth, no user session)
-///   → same ComfyUI pipeline → PUT directly to JSS for target user_npub pod
+///   → same ComfyUI pipeline → PUT to embedded solid-pod-rs for target user_npub pod
 ///   → return { job_id, pod_image_url, comfyui_filename, seed }
 ///
 ///   GET  /api/image-gen/status/{job_id} → proxy to ComfyUI /history/{job_id}
 use actix_web::{web, HttpRequest, HttpResponse};
+#[cfg(feature = "solid-pod-embed")]
+use solid_pod_rs::Storage;
 use log::{error, info, warn};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -22,7 +24,6 @@ use tokio::time::sleep;
 use uuid::Uuid;
 
 use crate::services::nostr_service::NostrService;
-use crate::utils::nip98::{build_auth_header, generate_nip98_token_from_hex, Nip98Config};
 
 // ─── env helpers ──────────────────────────────────────────────────────────────
 
@@ -38,11 +39,6 @@ fn comfyui_salad() -> String {
 fn solid_base() -> String {
     // Internal base — goes through nginx→Rust solid proxy
     std::env::var("SOLID_INTERNAL_URL").unwrap_or_else(|_| "http://127.0.0.1:4001/api/solid".to_string())
-}
-
-fn jss_base() -> String {
-    // Direct JSS URL for server-side writes (bypasses Rust solid proxy)
-    std::env::var("JSS_URL").unwrap_or_else(|_| "http://visionflow-jss:3030".to_string())
 }
 
 fn agent_key() -> String {
@@ -458,7 +454,7 @@ pub async fn submit_image_job(
 /// in a single request. No polling needed.
 ///
 /// Used by MCP agents in the agentic-workstation container — no user Nostr session needed.
-/// Images are stored directly in JSS under the `user_npub` pod using server NIP-98 signing.
+/// Images are stored in the embedded solid-pod-rs storage under the `user_npub` pod.
 pub async fn agent_submit_image_job(
     req: HttpRequest,
     body: web::Json<AgentImageGenRequest>,
@@ -567,8 +563,8 @@ pub async fn agent_submit_image_job(
         })),
     };
 
-    // Store in JSS directly using server-signed NIP-98
-    let pod_image_url = try_store_in_jss(&client, image_bytes, &user_npub, &body.pod_folder, &job_id).await;
+    // Store in embedded solid-pod-rs
+    let pod_image_url = try_store_in_pod(&image_bytes, &user_npub, &body.pod_folder, &job_id).await;
 
     HttpResponse::Ok().json(ImageGenResponse {
         job_id: prompt_id,
@@ -582,66 +578,64 @@ pub async fn agent_submit_image_job(
     })
 }
 
-/// Store PNG bytes directly in JSS under the user's pod using server NIP-98 signing.
+/// Store PNG bytes in the embedded solid-pod-rs storage.
 /// Returns the pod-relative URL on success, None on any failure.
-async fn try_store_in_jss(
-    client: &Client,
-    image_bytes: Vec<u8>,
+///
+/// When `solid-pod-embed` is enabled, this writes directly to the in-process
+/// Solid storage backend. No HTTP round-trip or NIP-98 signing needed.
+#[cfg(feature = "solid-pod-embed")]
+async fn try_store_in_pod(
+    image_bytes: &[u8],
     user_npub: &str,
     pod_folder: &str,
     job_id: &str,
 ) -> Option<String> {
-    let secret_key_hex = match std::env::var("SOLID_PROXY_SECRET_KEY") {
-        Ok(k) => k,
-        Err(_) => {
-            warn!("[agent] SOLID_PROXY_SECRET_KEY not set — skipping Solid pod storage");
+    let storage = match crate::handlers::solid_proxy_handler::get_global_storage() {
+        Some(s) => s,
+        None => {
+            warn!("[agent] solid-pod-rs storage not initialised — skipping pod storage");
             return None;
         }
     };
 
-    // JSS resource URL: {jss}/pods/{user_npub}/{folder}/{job_id}.png
-    let resource_path = format!("/pods/{}/{}/{}.png", user_npub, pod_folder, job_id);
-    let jss_url = format!("{}{}", jss_base(), resource_path);
+    let resource_path = format!("/{}/{}/{}.png", user_npub, pod_folder, job_id);
 
-    // Generate NIP-98 token for this PUT
-    let nip98_config = Nip98Config {
-        url: jss_url.clone(),
-        method: "PUT".to_string(),
-        body: None,
-    };
-
-    let token = match generate_nip98_token_from_hex(&secret_key_hex, &nip98_config) {
-        Ok(t) => t,
-        Err(e) => {
-            warn!("[agent] NIP-98 token generation failed: {}", e);
-            return None;
+    // Ensure the user's pod container exists before writing
+    let container_path = format!("/{}/{}/", user_npub, pod_folder);
+    if !storage.exists(&container_path).await.unwrap_or(false) {
+        if let Err(e) = storage.create_container(&container_path).await {
+            warn!("[agent] Failed to create pod container {}: {}", container_path, e);
         }
-    };
+    }
 
-    let auth_header_value = build_auth_header(&token);
-
-    match client
-        .put(&jss_url)
-        .header("Content-Type", "image/png")
-        .header("Authorization", auth_header_value)
-        .body(image_bytes)
-        .send()
+    match storage
+        .put(
+            &resource_path,
+            bytes::Bytes::from(image_bytes.to_vec()),
+            "image/png",
+        )
         .await
     {
-        Ok(r) if r.status().is_success() || r.status().as_u16() == 201 => {
-            info!("[agent] Stored image in JSS pod: {}", resource_path);
-            // Return the path via the nginx-proxied /solid/ route
-            Some(format!("/solid/pods/{}/{}/{}.png", user_npub, pod_folder, job_id))
-        }
-        Ok(r) => {
-            warn!("[agent] JSS PUT returned {}: pod storage skipped", r.status());
-            None
+        Ok(_) => {
+            info!("[agent] Stored image in pod: {}", resource_path);
+            Some(format!("/solid{}", resource_path))
         }
         Err(e) => {
-            warn!("[agent] JSS PUT failed: {}", e);
+            warn!("[agent] Pod PUT failed: {}", e);
             None
         }
     }
+}
+
+#[cfg(not(feature = "solid-pod-embed"))]
+async fn try_store_in_pod(
+    _image_bytes: &[u8],
+    _user_npub: &str,
+    _pod_folder: &str,
+    _job_id: &str,
+) -> Option<String> {
+    warn!("[agent] solid-pod-embed feature not enabled, cannot store image");
+    None
 }
 
 /// GET /api/image-gen/status/{job_id}

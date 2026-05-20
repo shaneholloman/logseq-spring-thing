@@ -85,10 +85,10 @@ pub struct GraphStateActor {
     ontology_property_ids: HashSet<u32>,
     agent_node_ids: HashSet<u32>,
 
-    /// Maps compact ID (index) → original Neo4j ID for write-back operations.
-    /// After remapping, graph_data.nodes[i].id == i, so compact_to_neo4j[i] gives
-    /// the original Neo4j ID needed when persisting changes back to the database.
-    compact_to_neo4j: Vec<u32>,
+    /// Maps compact ID (index) → original persistent node ID for write-back operations.
+    /// After remapping, graph_data.nodes[i].id == i, so compact_to_original[i] gives
+    /// the original node ID needed when persisting changes back to the Oxigraph store.
+    compact_to_persistent: Vec<u32>,
 
     /// Phase 3 (ADR-02 D4): canonical position snapshot. Updated atomically on
     /// every `UpdateNodePositions` apply. Read by `BroadcastActor` and the
@@ -117,7 +117,7 @@ impl GraphStateActor {
             ontology_individual_ids: HashSet::new(),
             ontology_property_ids: HashSet::new(),
             agent_node_ids: HashSet::new(),
-            compact_to_neo4j: Vec::new(),
+            compact_to_persistent: Vec::new(),
             position_snapshot: Arc::new(crate::actors::messages::PositionFrameSnapshot::default()),
             position_epoch: 0,
         }
@@ -177,38 +177,38 @@ impl GraphStateActor {
         }
     }
 
-    /// Returns the compact-to-Neo4j reverse mapping for write-back operations.
-    pub fn get_compact_to_neo4j(&self) -> &Vec<u32> {
-        &self.compact_to_neo4j
+    /// Returns the compact-to-original-id reverse mapping for write-back operations.
+    pub fn get_compact_to_persistent(&self) -> &Vec<u32> {
+        &self.compact_to_persistent
     }
 
     /// Remap all node IDs to compact sequential IDs (0..N-1) and translate
     /// edge source/target through the same mapping. After this call,
     /// `graph_data.nodes[i].id == i` and all edges reference compact IDs.
-    /// The original Neo4j IDs are preserved in `compact_to_neo4j` for write-back.
+    /// The original persistent IDs are preserved in `compact_to_persistent` for write-back to Oxigraph.
     fn remap_to_compact_ids(&mut self) {
         let graph_data = Arc::make_mut(&mut self.graph_data);
 
-        // Build neo4j_id → compact_id mapping
-        let mut neo4j_to_compact: HashMap<u32, u32> = HashMap::with_capacity(graph_data.nodes.len());
-        self.compact_to_neo4j = Vec::with_capacity(graph_data.nodes.len());
+        // Build original_id → compact_id mapping
+        let mut persistent_to_compact: HashMap<u32, u32> = HashMap::with_capacity(graph_data.nodes.len());
+        self.compact_to_persistent = Vec::with_capacity(graph_data.nodes.len());
 
         for (compact_id, node) in graph_data.nodes.iter_mut().enumerate() {
-            let neo4j_id = node.id;
+            let persistent_id = node.id;
             let compact = compact_id as u32;
-            neo4j_to_compact.insert(neo4j_id, compact);
-            self.compact_to_neo4j.push(neo4j_id);
+            persistent_to_compact.insert(persistent_id, compact);
+            self.compact_to_persistent.push(persistent_id);
             node.id = compact;
         }
 
         // Remap edge source/target
         for edge in &mut graph_data.edges {
-            if let Some(&compact_src) = neo4j_to_compact.get(&edge.source) {
+            if let Some(&compact_src) = persistent_to_compact.get(&edge.source) {
                 edge.source = compact_src;
             } else {
                 warn!("Edge source {} has no compact mapping — orphan edge", edge.source);
             }
-            if let Some(&compact_tgt) = neo4j_to_compact.get(&edge.target) {
+            if let Some(&compact_tgt) = persistent_to_compact.get(&edge.target) {
                 edge.target = compact_tgt;
             } else {
                 warn!("Edge target {} has no compact mapping — orphan edge", edge.target);
@@ -224,8 +224,8 @@ impl GraphStateActor {
 
         info!(
             "Remapped {} nodes to compact IDs 0..{} (edges: {})",
-            self.compact_to_neo4j.len(),
-            self.compact_to_neo4j.len().saturating_sub(1),
+            self.compact_to_persistent.len(),
+            self.compact_to_persistent.len().saturating_sub(1),
             graph_data.edges.len()
         );
     }
@@ -321,21 +321,21 @@ impl GraphStateActor {
         Arc::make_mut(&mut self.node_map).insert(node_id, node.clone());
         Arc::make_mut(&mut self.graph_data).nodes.push(node.clone());
 
-        // Track compact→neo4j mapping (for metadata-built nodes, compact == neo4j)
-        if self.compact_to_neo4j.len() <= node_id as usize {
-            self.compact_to_neo4j.resize(node_id as usize + 1, 0);
+        // Track compact→original mapping (for metadata-built nodes, compact == original)
+        if self.compact_to_persistent.len() <= node_id as usize {
+            self.compact_to_persistent.resize(node_id as usize + 1, 0);
         }
-        self.compact_to_neo4j[node_id as usize] = node_id;
+        self.compact_to_persistent[node_id as usize] = node_id;
 
-        // Persist to Neo4j (fire-and-forget)
+        // Persist to Oxigraph store (fire-and-forget)
         let repository = Arc::clone(&self.repository);
         actix::spawn(async move {
             if let Err(e) = repository.add_node(&node).await {
-                error!("Failed to persist add_node({}) to Neo4j: {}", node_id, e);
+                error!("Failed to persist add_node({}) to Oxigraph store: {}", node_id, e);
             }
         });
 
-        info!("Added node {} to graph", node_id);
+        debug!("Added node {} to graph", node_id);
     }
 
     
@@ -353,15 +353,15 @@ impl GraphStateActor {
             self.ontology_property_ids.remove(&node_id);
             self.agent_node_ids.remove(&node_id);
 
-            // Persist to Neo4j (fire-and-forget)
+            // Persist removal to Oxigraph (fire-and-forget)
             let repository = Arc::clone(&self.repository);
             actix::spawn(async move {
                 if let Err(e) = repository.remove_node(node_id).await {
-                    error!("Failed to persist remove_node({}) to Neo4j: {}", node_id, e);
+                    error!("Failed to persist remove_node({}) to Oxigraph: {}", node_id, e);
                 }
             });
 
-            info!("Removed node {} and its edges from graph", node_id);
+            debug!("Removed node {} and its edges from graph", node_id);
         } else {
             warn!("Attempted to remove non-existent node {}", node_id);
         }
@@ -382,16 +382,16 @@ impl GraphStateActor {
 
         Arc::make_mut(&mut self.graph_data).edges.push(edge.clone());
 
-        // Persist to Neo4j (fire-and-forget)
+        // Persist to Oxigraph (fire-and-forget)
         let repository = Arc::clone(&self.repository);
         let edge_clone = edge.clone();
         actix::spawn(async move {
             if let Err(e) = repository.add_edge(&edge_clone).await {
-                error!("Failed to persist add_edge({}->{}) to Neo4j: {}", edge_clone.source, edge_clone.target, e);
+                error!("Failed to persist add_edge({}->{}) to Oxigraph: {}", edge_clone.source, edge_clone.target, e);
             }
         });
 
-        info!("Added edge from {} to {} with weight {}", edge.source, edge.target, edge.weight);
+        debug!("Added edge from {} to {} with weight {}", edge.source, edge.target, edge.weight);
     }
 
     
@@ -403,16 +403,16 @@ impl GraphStateActor {
 
         let removed_count = initial_count - graph_data_mut.edges.len();
         if removed_count > 0 {
-            // Persist to Neo4j (fire-and-forget)
+            // Persist to Oxigraph (fire-and-forget)
             let repository = Arc::clone(&self.repository);
             let edge_id_owned = edge_id.to_string();
             actix::spawn(async move {
                 if let Err(e) = repository.remove_edge(&edge_id_owned).await {
-                    error!("Failed to persist remove_edge({}) to Neo4j: {}", edge_id_owned, e);
+                    error!("Failed to persist remove_edge({}) to Oxigraph: {}", edge_id_owned, e);
                 }
             });
 
-            info!("Removed {} edge(s) with ID {}", removed_count, edge_id);
+            debug!("Removed {} edge(s) with ID {}", removed_count, edge_id);
         } else {
             warn!("No edges found with ID {}", edge_id);
         }
@@ -430,9 +430,9 @@ impl GraphStateActor {
 
         // Assign compact IDs directly (0..N-1)
         let mut compact_id: u32 = 0;
-        // compact_to_neo4j not meaningful here (metadata-built nodes don't come from Neo4j)
-        // but we keep the vector consistent: compact_to_neo4j[i] = compact_id = i
-        self.compact_to_neo4j = Vec::with_capacity(metadata.len());
+        // compact_to_persistent not meaningful here (metadata-built nodes are assigned fresh IDs)
+        // but we keep the vector consistent: compact_to_persistent[i] = compact_id = i
+        self.compact_to_persistent = Vec::with_capacity(metadata.len());
 
         for (metadata_id, file_metadata) in metadata.iter() {
             let mut node = Node::new_with_id(metadata_id.clone(), Some(compact_id));
@@ -450,13 +450,13 @@ impl GraphStateActor {
 
             self.configure_node_from_metadata(&mut node, file_metadata);
 
-            self.compact_to_neo4j.push(compact_id);
+            self.compact_to_persistent.push(compact_id);
             new_graph_data.nodes.push(node);
             compact_id += 1;
         }
 
-        // ADR-014: Edges come from Neo4j (stored by github_sync_service and
-        // neo4j_ontology_repository). No client-side edge generation.
+        // ADR-014: Edges come from Oxigraph (stored by github_sync_service and
+        // OxigraphOntologyRepository). No client-side edge generation.
 
         self.graph_data = Arc::new(new_graph_data);
         self.next_node_id.store(compact_id, std::sync::atomic::Ordering::SeqCst);
@@ -477,15 +477,15 @@ impl GraphStateActor {
         // serve positions immediately after reload.
         self.rebuild_position_snapshot();
 
-        // Persist edges to Neo4j so they survive restart
+        // Persist edges to Oxigraph so they survive restart
         if !self.graph_data.edges.is_empty() {
             let repo = Arc::clone(&self.repository);
             let graph_snapshot = Arc::clone(&self.graph_data);
             actix::spawn(async move {
                 if let Err(e) = repo.save_graph(&graph_snapshot).await {
-                    error!("Failed to persist graph with edges to Neo4j: {}", e);
+                    error!("Failed to persist graph with edges to Oxigraph: {}", e);
                 } else {
-                    info!("Persisted {} edges to Neo4j after metadata build", graph_snapshot.edges.len());
+                    debug!("Persisted {} edges to Oxigraph after metadata build", graph_snapshot.edges.len());
                 }
             });
         }
@@ -568,7 +568,7 @@ impl GraphStateActor {
     }
 
     // ADR-014: generate_edges_from_metadata() and generate_edges_from_labels() deleted.
-    // All edges now come from Neo4j (stored by github_sync_service + neo4j_ontology_repository).
+    // All edges now come from Oxigraph (stored by github_sync_service + OxigraphOntologyRepository).
 
     fn add_nodes_from_metadata(&mut self, metadata: MetadataStore) -> Result<(), String> {
         let mut added_count = 0;
@@ -596,7 +596,7 @@ impl GraphStateActor {
         for (id, meta) in metadata {
             self.metadata_store.insert(id, meta);
         }
-        // ADR-014: Edges come from Neo4j, not generated client-side.
+        // ADR-014: Edges come from Oxigraph, not generated client-side.
 
         Ok(())
     }
@@ -646,7 +646,7 @@ impl GraphStateActor {
                     }
                 }
             } // Release mutable borrow
-            info!("Updated node with metadata_id: {}", metadata_id);
+            debug!("Updated node with metadata_id: {}", metadata_id);
             Ok(())
         } else {
             warn!("Node with metadata_id {} not found for update", metadata_id);
@@ -756,21 +756,21 @@ impl Actor for GraphStateActor {
     type Context = Context<Self>;
 
     fn started(&mut self, ctx: &mut Self::Context) {
-        info!("GraphStateActor started - loading graph from Neo4j");
+        info!("GraphStateActor started - loading graph from Oxigraph");
 
         let repository = Arc::clone(&self.repository);
 
-        // Spawn async task to load graph from Neo4j
+        // Spawn async task to load graph from Oxigraph
         ctx.spawn(
             async move {
                 match repository.load_graph().await {
                     Ok(arc_graph_data) => {
-                        info!("Successfully loaded graph from Neo4j: {} nodes, {} edges",
+                        info!("Successfully loaded graph from Oxigraph: {} nodes, {} edges",
                               arc_graph_data.nodes.len(), arc_graph_data.edges.len());
                         Some(arc_graph_data)
                     }
                     Err(e) => {
-                        error!("Failed to load graph from Neo4j: {}", e);
+                        error!("Failed to load graph from Oxigraph: {}", e);
                         None
                     }
                 }
@@ -781,7 +781,7 @@ impl Actor for GraphStateActor {
                     // Update actor state with loaded graph (already Arc'd)
                     act.graph_data = arc_graph_data.clone();
 
-                    // ADR-014: No fallback edge generation. Edges come from Neo4j.
+                    // ADR-014: No fallback edge generation. Edges come from Oxigraph.
 
                     // Remap all node IDs to compact 0..N-1 and translate edge src/tgt.
                     // This MUST happen before node_map rebuild and classification.
@@ -793,16 +793,16 @@ impl Actor for GraphStateActor {
                     // Classify all loaded nodes into type sets (using compact IDs)
                     act.reclassify_all_nodes();
 
-                    // Persist generated edges to Neo4j using ORIGINAL Neo4j IDs (fire-and-forget)
+                    // Persist translated edges to Oxigraph using ORIGINAL persistent IDs (fire-and-forget)
                     if !act.graph_data.edges.is_empty() {
                         let repo = Arc::clone(&act.repository);
-                        // Translate compact edge IDs back to Neo4j IDs for persistence
-                        let c2n = act.compact_to_neo4j.clone();
+                        // Translate compact edge IDs back to persistent IDs for storage
+                        let c2n = act.compact_to_persistent.clone();
                         let edges_to_save: Vec<Edge> = act.graph_data.edges.iter().map(|e| {
-                            let mut neo4j_edge = e.clone();
-                            neo4j_edge.source = c2n.get(e.source as usize).copied().unwrap_or(e.source);
-                            neo4j_edge.target = c2n.get(e.target as usize).copied().unwrap_or(e.target);
-                            neo4j_edge
+                            let mut persistent_edge = e.clone();
+                            persistent_edge.source = c2n.get(e.source as usize).copied().unwrap_or(e.source);
+                            persistent_edge.target = c2n.get(e.target as usize).copied().unwrap_or(e.target);
+                            persistent_edge
                         }).collect();
                         let node_count = act.graph_data.nodes.len();
                         actix::spawn(async move {
@@ -811,11 +811,11 @@ impl Actor for GraphStateActor {
                                     error!("Failed to persist edge {}->{}: {}", edge.source, edge.target, e);
                                 }
                             }
-                            info!("Persisted {} edges to Neo4j for {} nodes", edges_to_save.len(), node_count);
+                            debug!("Persisted {} edges to Oxigraph for {} nodes", edges_to_save.len(), node_count);
                         });
                     }
 
-                    info!("GraphStateActor initialized with {} nodes, {} edges from Neo4j (compact IDs 0..{})",
+                    info!("GraphStateActor initialized with {} nodes, {} edges from Oxigraph (compact IDs 0..{})",
                           act.graph_data.nodes.len(), act.graph_data.edges.len(),
                           act.graph_data.nodes.len().saturating_sub(1));
                 } else {
@@ -891,7 +891,7 @@ impl Handler<UpdateNodePositions> for GraphStateActor {
         // from this single source.
         self.rebuild_position_snapshot();
 
-        info!("GraphStateActor: Updated {} node positions from GPU", updated);
+        debug!("GraphStateActor: Updated {} node positions from GPU", updated);
         Ok(())
     }
 }
@@ -1134,7 +1134,7 @@ impl Handler<ReloadGraphFromDatabase> for GraphStateActor {
     type Result = ResponseActFuture<Self, Result<(), String>>;
 
     fn handle(&mut self, _msg: ReloadGraphFromDatabase, _ctx: &mut Self::Context) -> Self::Result {
-        info!("GraphStateActor: ReloadGraphFromDatabase - reloading graph from Neo4j");
+        info!("GraphStateActor: ReloadGraphFromDatabase - reloading graph from Oxigraph");
 
         let repository = Arc::clone(&self.repository);
 
@@ -1143,14 +1143,14 @@ impl Handler<ReloadGraphFromDatabase> for GraphStateActor {
                 match repository.load_graph().await {
                     Ok(arc_graph_data) => {
                         info!(
-                            "GraphStateActor: Reloaded graph from Neo4j: {} nodes, {} edges",
+                            "GraphStateActor: Reloaded graph from Oxigraph: {} nodes, {} edges",
                             arc_graph_data.nodes.len(),
                             arc_graph_data.edges.len()
                         );
                         Ok(arc_graph_data)
                     }
                     Err(e) => {
-                        error!("GraphStateActor: Failed to reload graph from Neo4j: {}", e);
+                        error!("GraphStateActor: Failed to reload graph from Oxigraph: {}", e);
                         Err(format!("Failed to reload graph: {}", e))
                     }
                 }
@@ -1162,7 +1162,7 @@ impl Handler<ReloadGraphFromDatabase> for GraphStateActor {
                         // Update actor state with reloaded graph
                         act.graph_data = arc_graph_data.clone();
 
-                        // ADR-014: No fallback edge generation. Edges come from Neo4j.
+                        // ADR-014: No fallback edge generation. Edges come from Oxigraph.
 
                         // Remap all IDs to compact 0..N-1
                         act.remap_to_compact_ids();
@@ -1173,15 +1173,15 @@ impl Handler<ReloadGraphFromDatabase> for GraphStateActor {
                         // Reclassify all nodes after reload (using compact IDs)
                         act.reclassify_all_nodes();
 
-                        // Persist generated edges to Neo4j with original IDs (fire-and-forget)
+                        // Persist edges to Oxigraph with original persistent IDs (fire-and-forget)
                         if !act.graph_data.edges.is_empty() {
                             let repo = Arc::clone(&act.repository);
-                            let c2n = act.compact_to_neo4j.clone();
+                            let c2n = act.compact_to_persistent.clone();
                             let edges_to_save: Vec<Edge> = act.graph_data.edges.iter().map(|e| {
-                                let mut neo4j_edge = e.clone();
-                                neo4j_edge.source = c2n.get(e.source as usize).copied().unwrap_or(e.source);
-                                neo4j_edge.target = c2n.get(e.target as usize).copied().unwrap_or(e.target);
-                                neo4j_edge
+                                let mut persistent_edge = e.clone();
+                                persistent_edge.source = c2n.get(e.source as usize).copied().unwrap_or(e.source);
+                                persistent_edge.target = c2n.get(e.target as usize).copied().unwrap_or(e.target);
+                                persistent_edge
                             }).collect();
                             actix::spawn(async move {
                                 for edge in &edges_to_save {
@@ -1189,7 +1189,7 @@ impl Handler<ReloadGraphFromDatabase> for GraphStateActor {
                                         error!("Failed to persist edge: {}", e);
                                     }
                                 }
-                                info!("Persisted {} generated edges to Neo4j", edges_to_save.len());
+                                info!("Persisted {} edges to Oxigraph", edges_to_save.len());
                             });
                         }
 

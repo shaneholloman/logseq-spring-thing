@@ -13,8 +13,10 @@ use super::iri;
 
 /// Accepted `@context` URL values. ADR-D01 §D11: bump on breaking
 /// changes; v1 is currently the only accepted version.
-pub const ACCEPTED_CONTEXT_URLS: &[&str] =
-    &["https://narrativegoldmine.com/context/v1.jsonld"];
+pub const ACCEPTED_CONTEXT_URLS: &[&str] = &[
+    "https://narrativegoldmine.com/context/v1.jsonld",
+    "https://narrativegoldmine.com/ns/v2.jsonld",
+];
 
 /// Result of inspecting one JSON-LD node within a block.
 #[derive(Debug, Default)]
@@ -161,8 +163,12 @@ fn validate_single_entry(entry: &Value, issues: &mut FrameIssues, root: &Value) 
 
     // --- Provenance (ADR-D01 §D8): every block MUST carry both
     // attribution and timestamp.
-    let has_attribution = has_keyed(entry, &["prov:wasAttributedTo", "wasAttributedTo"]);
-    let has_timestamp = has_keyed(entry, &["prov:generatedAtTime", "generatedAtTime"]);
+    // v1 format: top-level prov:wasAttributedTo / prov:generatedAtTime
+    // v2 format: nested "provenance" object with "attributedTo" / "generatedAt"
+    let has_attribution = has_keyed(entry, &["prov:wasAttributedTo", "wasAttributedTo"])
+        || has_provenance_field(entry, "attributedTo");
+    let has_timestamp = has_keyed(entry, &["prov:generatedAtTime", "generatedAtTime"])
+        || has_provenance_field(entry, "generatedAt");
     if !has_attribution {
         issues.push(ErrorCategory::ProvAttributionMissing);
     }
@@ -201,6 +207,17 @@ fn has_keyed(entry: &Value, keys: &[&str]) -> bool {
         return false;
     };
     keys.iter().any(|k| map.contains_key(*k))
+}
+
+/// Check whether a v2-style nested `"provenance"` object contains a given field.
+fn has_provenance_field(entry: &Value, field: &str) -> bool {
+    let Value::Object(map) = entry else {
+        return false;
+    };
+    let Some(Value::Object(prov)) = map.get("provenance") else {
+        return false;
+    };
+    prov.contains_key(field)
 }
 
 #[cfg(test)]

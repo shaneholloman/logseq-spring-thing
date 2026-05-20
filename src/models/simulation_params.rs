@@ -5,9 +5,15 @@ use cudarc::driver::DeviceRepr;
 use cust_core::DeviceCopy;
 use serde::{Deserialize, Serialize};
 
-fn default_lin_log_mode() -> bool { true }
-fn default_scaling_ratio() -> f32 { 10.0 }
-fn default_adaptive_speed() -> bool { true }
+fn default_lin_log_mode() -> bool {
+    true
+}
+fn default_scaling_ratio() -> f32 {
+    10.0
+}
+fn default_adaptive_speed() -> bool {
+    true
+}
 
 /// Controls how the physics simulation converges.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -41,8 +47,8 @@ impl Default for SettleMode {
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub enum SimulationMode {
-    Remote, 
-    Local,  
+    Remote,
+    Local,
 }
 
 impl Default for SimulationMode {
@@ -54,9 +60,9 @@ impl Default for SimulationMode {
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub enum SimulationPhase {
-    Initial,  
-    Dynamic,  
-    Finalize, 
+    Initial,
+    Dynamic,
+    Finalize,
 }
 
 impl Default for SimulationPhase {
@@ -69,60 +75,49 @@ impl Default for SimulationPhase {
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Pod, Zeroable)]
 pub struct SimParams {
-    
     pub dt: f32,
     pub damping: f32,
     pub warmup_iterations: u32,
     pub cooling_rate: f32,
 
-    
     pub spring_k: f32,
     pub rest_length: f32,
 
-    
     pub repel_k: f32,
     pub repulsion_cutoff: f32,
     pub repulsion_softening_epsilon: f32,
 
-    
     pub center_gravity_k: f32,
     pub max_force: f32,
     pub max_velocity: f32,
 
-    
     pub grid_cell_size: f32,
 
-    
     pub feature_flags: u32,
     pub seed: u32,
     pub iteration: i32,
 
-    
     pub separation_radius: f32,
     pub cluster_strength: f32,
     pub alignment_strength: f32,
     pub temperature: f32,
     pub viewport_bounds: f32,
-    pub sssp_alpha: f32,       
-    pub boundary_damping: f32, 
+    pub sssp_alpha: f32,
+    pub boundary_damping: f32,
 
-    
-    pub constraint_ramp_frames: u32, 
-    pub constraint_max_force_per_node: f32, 
+    pub constraint_ramp_frames: u32,
+    pub constraint_max_force_per_node: f32,
 
-    
-    pub stability_threshold: f32, 
-    pub min_velocity_threshold: f32, 
+    pub stability_threshold: f32,
+    pub min_velocity_threshold: f32,
 
-    
-    pub world_bounds_min: f32,         
-    pub world_bounds_max: f32,         
-    pub cell_size_lod: f32,            
-    pub k_neighbors_max: u32,          
-    pub anomaly_detection_radius: f32, 
-    pub learning_rate_default: f32,    
+    pub world_bounds_min: f32,
+    pub world_bounds_max: f32,
+    pub cell_size_lod: f32,
+    pub k_neighbors_max: u32,
+    pub anomaly_detection_radius: f32,
+    pub learning_rate_default: f32,
 
-    
     pub norm_delta_cap: f32,
     pub position_constraint_attraction: f32,
     pub lof_score_min: f32,
@@ -130,7 +125,6 @@ pub struct SimParams {
     pub weight_precision_multiplier: f32,
     // NOTE: Stress majorization params removed from GPU SimParams (not used by GPU kernels).
     // Stress optimization is handled by SemanticProcessorActor on CPU.
-
     /// Gravity pull toward origin (center-pull force). Added at end to preserve repr(C) layout.
     pub gravity: f32,
 
@@ -159,62 +153,47 @@ impl FeatureFlags {
     pub const ENABLE_SPRINGS: u32 = 1 << 1;
     pub const ENABLE_CENTERING: u32 = 1 << 2;
     pub const ENABLE_TEMPORAL_COHERENCE: u32 = 1 << 3;
-    pub const ENABLE_CONSTRAINTS: u32 = 1 << 4; 
+    pub const ENABLE_CONSTRAINTS: u32 = 1 << 4;
     pub const ENABLE_STRESS_MAJORIZATION: u32 = 1 << 5;
-    pub const ENABLE_SSSP_SPRING_ADJUST: u32 = 1 << 6; 
+    pub const ENABLE_SSSP_SPRING_ADJUST: u32 = 1 << 6;
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct SimulationParams {
-    
-    pub enabled: bool, 
+    pub enabled: bool,
 
-    
-    pub auto_balance: bool,                     
-    pub auto_balance_interval_ms: u32,          
-    pub auto_balance_config: AutoBalanceConfig, 
+    pub auto_balance: bool,
+    pub auto_balance_interval_ms: u32,
+    pub auto_balance_config: AutoBalanceConfig,
 
-    
-    pub auto_pause_config: AutoPauseConfig, 
-    pub is_physics_paused: bool,            
-    pub equilibrium_stability_counter: u32, 
+    pub auto_pause_config: AutoPauseConfig,
+    pub is_physics_paused: bool,
+    pub equilibrium_stability_counter: u32,
 
-    
-    pub iterations: u32, 
-    pub dt: f32,         
+    pub iterations: u32,
+    pub dt: f32,
 
-    
-    pub spring_k: f32, 
-    pub repel_k: f32,  
+    pub spring_k: f32,
+    pub repel_k: f32,
 
-    
-    pub mass_scale: f32,       
-    pub damping: f32,          
-    pub boundary_damping: f32, 
+    pub damping: f32,
+    pub boundary_damping: f32,
 
-    
-    pub viewport_bounds: f32, 
-    pub enable_bounds: bool,  
+    pub viewport_bounds: f32,
+    pub enable_bounds: bool,
 
-    
-    pub max_velocity: f32,      
-    pub max_force: f32,         
-    pub separation_radius: f32, 
-    pub temperature: f32,       
-    pub center_gravity_k: f32,  
+    pub max_velocity: f32,
+    pub max_force: f32,
+    pub separation_radius: f32,
+    pub temperature: f32,
+    pub center_gravity_k: f32,
 
-    
-    pub stress_weight: f32,
-    pub stress_alpha: f32,
-    pub boundary_limit: f32,
     pub alignment_strength: f32,
     pub cluster_strength: f32,
     pub compute_mode: i32,
     pub min_distance: f32,
     pub max_repulsion_dist: f32,
-    pub boundary_margin: f32,
-    pub boundary_force_strength: f32,
     pub warmup_iterations: u32,
     pub cooling_rate: f32,
 
@@ -225,16 +204,13 @@ pub struct SimulationParams {
     /// Gravity pull toward center (defaults to 0.0001)
     pub gravity: f32,
 
-    
     pub rest_length: f32,
     pub use_sssp_distances: bool,
     pub sssp_alpha: Option<f32>,
 
-    
-    pub constraint_ramp_frames: u32, 
-    pub constraint_max_force_per_node: f32, 
+    pub constraint_ramp_frames: u32,
+    pub constraint_max_force_per_node: f32,
 
-    
     pub phase: SimulationPhase,
     pub mode: SimulationMode,
 
@@ -300,7 +276,10 @@ impl SimulationParams {
         }
         // Max velocity: must be positive to clamp motion
         if self.max_velocity <= 0.0 {
-            errors.push(format!("max_velocity must be > 0, got {}", self.max_velocity));
+            errors.push(format!(
+                "max_velocity must be > 0, got {}",
+                self.max_velocity
+            ));
         }
         // Max force: must be positive to clamp forces
         if self.max_force <= 0.0 {
@@ -308,19 +287,31 @@ impl SimulationParams {
         }
         // Cooling rate: must be in [0, 1] (fraction of temperature retained per step)
         if self.cooling_rate < 0.0 || self.cooling_rate > 1.0 {
-            errors.push(format!("cooling_rate must be in [0, 1], got {}", self.cooling_rate));
+            errors.push(format!(
+                "cooling_rate must be in [0, 1], got {}",
+                self.cooling_rate
+            ));
         }
         // Boundary damping: must be in [0, 1]
         if self.boundary_damping < 0.0 || self.boundary_damping > 1.0 {
-            errors.push(format!("boundary_damping must be in [0, 1], got {}", self.boundary_damping));
+            errors.push(format!(
+                "boundary_damping must be in [0, 1], got {}",
+                self.boundary_damping
+            ));
         }
         // Temperature: must be non-negative
         if self.temperature < 0.0 {
-            errors.push(format!("temperature must be >= 0, got {}", self.temperature));
+            errors.push(format!(
+                "temperature must be >= 0, got {}",
+                self.temperature
+            ));
         }
         // Center gravity: must be non-negative
         if self.center_gravity_k < 0.0 {
-            errors.push(format!("center_gravity_k must be >= 0, got {}", self.center_gravity_k));
+            errors.push(format!(
+                "center_gravity_k must be >= 0, got {}",
+                self.center_gravity_k
+            ));
         }
         // Rest length: must be positive for spring equilibrium
         if self.rest_length <= 0.0 {
@@ -328,7 +319,10 @@ impl SimulationParams {
         }
         // Separation radius: must be non-negative
         if self.separation_radius < 0.0 {
-            errors.push(format!("separation_radius must be >= 0, got {}", self.separation_radius));
+            errors.push(format!(
+                "separation_radius must be >= 0, got {}",
+                self.separation_radius
+            ));
         }
         // Gravity: must be non-negative
         if self.gravity < 0.0 {
@@ -341,7 +335,6 @@ impl SimulationParams {
             ("damping", self.damping),
             ("spring_k", self.spring_k),
             ("repel_k", self.repel_k),
-            ("mass_scale", self.mass_scale),
             ("max_velocity", self.max_velocity),
             ("max_force", self.max_force),
             ("temperature", self.temperature),
@@ -354,16 +347,17 @@ impl SimulationParams {
             ("alignment_strength", self.alignment_strength),
             ("rest_length", self.rest_length),
             ("gravity", self.gravity),
-            ("repulsion_softening_epsilon", self.repulsion_softening_epsilon),
+            (
+                "repulsion_softening_epsilon",
+                self.repulsion_softening_epsilon,
+            ),
             ("grid_cell_size", self.grid_cell_size),
-            ("stress_weight", self.stress_weight),
-            ("stress_alpha", self.stress_alpha),
-            ("boundary_limit", self.boundary_limit),
             ("min_distance", self.min_distance),
             ("max_repulsion_dist", self.max_repulsion_dist),
-            ("boundary_margin", self.boundary_margin),
-            ("boundary_force_strength", self.boundary_force_strength),
-            ("constraint_max_force_per_node", self.constraint_max_force_per_node),
+            (
+                "constraint_max_force_per_node",
+                self.constraint_max_force_per_node,
+            ),
         ];
         for &(name, value) in float_fields {
             if !value.is_finite() {
@@ -379,7 +373,6 @@ impl SimulationParams {
     }
 
     pub fn new() -> Self {
-
         let default_physics = PhysicsSettings::default();
         Self::from(&default_physics)
     }
@@ -388,19 +381,13 @@ impl SimulationParams {
         let mut params = Self::new();
         params.phase = phase;
 
-        
-        
         match phase {
             SimulationPhase::Initial => {
-                
                 params.iterations = params.iterations.max(500);
                 params.warmup_iterations = params.warmup_iterations.max(300);
             }
-            SimulationPhase::Dynamic => {
-                
-            }
+            SimulationPhase::Dynamic => {}
             SimulationPhase::Finalize => {
-                
                 params.iterations = params.iterations.max(300);
             }
         }
@@ -408,9 +395,7 @@ impl SimulationParams {
         params
     }
 
-    
     pub fn to_sim_params(&self) -> SimParams {
-        
         let mut feature_flags = 0;
         if self.repel_k > 0.0 {
             feature_flags |= FeatureFlags::ENABLE_REPULSION;
@@ -418,15 +403,14 @@ impl SimulationParams {
         if self.spring_k > 0.0 {
             feature_flags |= FeatureFlags::ENABLE_SPRINGS;
         }
-        
+
         if self.center_gravity_k > 0.0 {
             feature_flags |= FeatureFlags::ENABLE_CENTERING;
         }
-        
+
         if self.use_sssp_distances {
             feature_flags |= FeatureFlags::ENABLE_SSSP_SPRING_ADJUST;
         }
-        
 
         SimParams {
             dt: self.dt,
@@ -444,21 +428,24 @@ impl SimulationParams {
             grid_cell_size: self.grid_cell_size,
             feature_flags,
             seed: 1337,
-            iteration: 0, 
+            iteration: 0,
             separation_radius: self.separation_radius,
             cluster_strength: self.cluster_strength,
             alignment_strength: self.alignment_strength,
             temperature: self.temperature,
-            viewport_bounds: self.viewport_bounds,
+            viewport_bounds: if self.enable_bounds {
+                self.viewport_bounds
+            } else {
+                0.0
+            },
             sssp_alpha: self.sssp_alpha.unwrap_or(0.0),
             boundary_damping: self.boundary_damping,
             constraint_ramp_frames: self.constraint_ramp_frames,
             constraint_max_force_per_node: self.constraint_max_force_per_node,
-            
+
             stability_threshold: crate::config::dev_config::physics().stability_threshold,
             min_velocity_threshold: crate::config::dev_config::physics().min_velocity_threshold,
 
-            
             world_bounds_min: crate::config::dev_config::physics().world_bounds_min,
             world_bounds_max: crate::config::dev_config::physics().world_bounds_max,
             cell_size_lod: crate::config::dev_config::physics().cell_size_lod,
@@ -466,7 +453,6 @@ impl SimulationParams {
             anomaly_detection_radius: crate::config::dev_config::physics().anomaly_detection_radius,
             learning_rate_default: crate::config::dev_config::physics().learning_rate_default,
 
-            
             norm_delta_cap: crate::config::dev_config::physics().norm_delta_cap,
             position_constraint_attraction: crate::config::dev_config::physics()
                 .position_constraint_attraction,
@@ -492,17 +478,14 @@ impl Default for SimParams {
 
 impl SimParams {
     pub fn new() -> Self {
-        
         let params = SimulationParams::new();
         params.to_sim_params()
     }
 
-    
     pub fn set_iteration(&mut self, iteration: i32) {
         self.iteration = iteration;
     }
 
-    
     pub fn to_simulation_params(&self) -> SimulationParams {
         SimulationParams {
             enabled: true,
@@ -515,27 +498,21 @@ impl SimParams {
             iterations: 100,
             dt: self.dt,
             repel_k: self.repel_k,
-            mass_scale: 1.0,
             damping: self.damping,
             boundary_damping: 0.9,
             viewport_bounds: self.viewport_bounds,
             enable_bounds: true,
             max_velocity: self.max_velocity,
             max_force: self.max_force,
-            spring_k: 0.0, 
+            spring_k: 0.0,
             separation_radius: self.separation_radius,
-            center_gravity_k: self.center_gravity_k, 
+            center_gravity_k: self.center_gravity_k,
             temperature: self.temperature,
-            stress_weight: 1.0,
-            stress_alpha: 0.1,
-            boundary_limit: 1000.0,
             alignment_strength: self.alignment_strength,
             cluster_strength: self.cluster_strength,
             compute_mode: 0,
             min_distance: 1.0,
             max_repulsion_dist: self.repulsion_cutoff,
-            boundary_margin: 50.0,
-            boundary_force_strength: 1.0,
             warmup_iterations: self.warmup_iterations,
             cooling_rate: self.cooling_rate,
             rest_length: self.rest_length,
@@ -612,8 +589,12 @@ impl From<&PhysicsSettings> for SimParams {
             cluster_strength: physics.cluster_strength,
             alignment_strength: physics.alignment_strength,
             temperature: physics.temperature,
-            viewport_bounds: physics.bounds_size,
-            sssp_alpha: 1.5,  // Enable SSSP-adaptive rest lengths for ontology edges
+            viewport_bounds: if physics.enable_bounds {
+                physics.bounds_size
+            } else {
+                0.0
+            },
+            sssp_alpha: 1.5,
             boundary_damping: physics.boundary_damping,
             constraint_ramp_frames: physics.constraint_ramp_frames,
             constraint_max_force_per_node: physics.constraint_max_force_per_node,
@@ -621,14 +602,12 @@ impl From<&PhysicsSettings> for SimParams {
             stability_threshold: crate::config::dev_config::physics().stability_threshold,
             min_velocity_threshold: crate::config::dev_config::physics().min_velocity_threshold,
 
-
             world_bounds_min: crate::config::dev_config::physics().world_bounds_min,
             world_bounds_max: crate::config::dev_config::physics().world_bounds_max,
             cell_size_lod: crate::config::dev_config::physics().cell_size_lod,
             k_neighbors_max: crate::config::dev_config::physics().k_neighbors_max,
             anomaly_detection_radius: crate::config::dev_config::physics().anomaly_detection_radius,
             learning_rate_default: crate::config::dev_config::physics().learning_rate_default,
-
 
             norm_delta_cap: crate::config::dev_config::physics().norm_delta_cap,
             position_constraint_attraction: crate::config::dev_config::physics()
@@ -655,38 +634,31 @@ impl From<&PhysicsSettings> for SimulationParams {
             auto_balance_interval_ms: physics.auto_balance_interval_ms,
             auto_balance_config: physics.auto_balance_config.clone(),
             auto_pause_config: physics.auto_pause.clone(),
-            is_physics_paused: false, 
+            is_physics_paused: false,
             equilibrium_stability_counter: 0,
             iterations: physics.iterations,
             dt: physics.dt,
             spring_k: physics.spring_k,
             repel_k: physics.repel_k,
-            mass_scale: physics.mass_scale,
             damping: physics.damping,
             boundary_damping: physics.boundary_damping,
             viewport_bounds: physics.bounds_size,
             enable_bounds: physics.enable_bounds,
             max_velocity: physics.max_velocity,
-            max_force: physics.max_force, 
+            max_force: physics.max_force,
             separation_radius: physics.separation_radius,
             temperature: physics.temperature,
             center_gravity_k: physics.center_gravity_k,
-            
-            stress_weight: physics.stress_weight,
-            stress_alpha: physics.stress_alpha,
-            boundary_limit: physics.boundary_limit,
             alignment_strength: physics.alignment_strength,
             cluster_strength: physics.cluster_strength,
             compute_mode: physics.compute_mode,
             min_distance: physics.min_distance,
             max_repulsion_dist: physics.max_repulsion_dist,
-            boundary_margin: physics.boundary_margin,
-            boundary_force_strength: physics.boundary_force_strength,
             warmup_iterations: physics.warmup_iterations,
             cooling_rate: physics.cooling_rate,
             rest_length: physics.rest_length,
             use_sssp_distances: true,
-            sssp_alpha: Some(1.5),     // SSSP-adaptive rest lengths
+            sssp_alpha: Some(1.5), // SSSP-adaptive rest lengths
             constraint_ramp_frames: physics.constraint_ramp_frames,
             constraint_max_force_per_node: physics.constraint_max_force_per_node,
             repulsion_softening_epsilon: physics.repulsion_softening_epsilon,

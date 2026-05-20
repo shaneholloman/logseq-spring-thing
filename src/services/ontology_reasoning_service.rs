@@ -3,7 +3,7 @@
 //!
 //! Provides complete OWL reasoning using CustomReasoner with caching and persistence.
 //! Infers missing axioms, computes class hierarchies, and identifies disjoint classes.
-//! All data is stored in Neo4j using Neo4jOntologyRepository.
+//! All data is stored in Oxigraph using OxigraphOntologyRepository (ADR-11).
 
 use log::{debug, info, warn};
 use serde::{Deserialize, Serialize};
@@ -23,7 +23,7 @@ use crate::utils::time;
 pub struct InferredAxiom {
     pub id: String,
     pub ontology_id: String,
-    pub axiom_type: String,  // "SubClassOf", "DisjointWith", "InverseOf"
+    pub axiom_type: String, // "SubClassOf", "DisjointWith", "InverseOf"
     pub subject_iri: String,
     pub object_iri: Option<String>,
     pub property_iri: Option<String>,
@@ -71,7 +71,7 @@ struct InferenceCacheEntry {
 /// Ontology Reasoning Service with CustomReasoner integration
 /// Uses CustomReasoner for actual inference operations. The WhelkInferenceEngine
 /// is currently maintained for API compatibility but will be phased out.
-/// All ontology data is persisted in Neo4j via Neo4jOntologyRepository.
+/// All ontology data is persisted in Oxigraph via OxigraphOntologyRepository (ADR-11).
 #[allow(dead_code)]
 pub struct OntologyReasoningService {
     inference_engine: Arc<WhelkInferenceEngine>, // Legacy - to be removed
@@ -95,10 +95,10 @@ impl OntologyReasoningService {
 
     /// Infer axioms from the ontology using CustomReasoner
     /// This method:
-    /// 1. Loads ontology data from Neo4j
+    /// 1. Loads ontology data from Oxigraph
     /// 2. Runs CustomReasoner for EL++ inference
     /// 3. Caches results with checksum validation
-    /// 4. Stores inferred axioms back to Neo4j
+    /// 4. Stores inferred axioms back to Oxigraph
     /// # Arguments
     /// * `ontology_id` - Ontology identifier
     /// # Returns
@@ -129,7 +129,7 @@ impl OntologyReasoningService {
         );
 
         // Build ontology for reasoning
-        use crate::reasoning::custom_reasoner::{Ontology, OWLClass};
+        use crate::reasoning::custom_reasoner::{OWLClass, Ontology};
         use std::collections::HashSet;
 
         let mut ontology = Ontology::default();
@@ -147,7 +147,8 @@ impl OntologyReasoningService {
         // Build subclass relationships from axioms
         for axiom in &axioms {
             if matches!(axiom.axiom_type, AxiomType::SubClassOf) {
-                ontology.subclass_of
+                ontology
+                    .subclass_of
                     .entry(axiom.subject.clone())
                     .or_insert_with(HashSet::new)
                     .insert(axiom.object.clone());
@@ -157,7 +158,8 @@ impl OntologyReasoningService {
         // Run inference using CustomReasoner
         use crate::reasoning::custom_reasoner::{CustomReasoner, OntologyReasoner as _};
         let reasoner = CustomReasoner::new();
-        let inference_results = reasoner.infer_axioms(&ontology)
+        let inference_results = reasoner
+            .infer_axioms(&ontology)
             .map_err(|e| OntologyRepositoryError::InvalidData(format!("Inference error: {}", e)))?;
 
         // Convert inferred axioms to our format
@@ -398,6 +400,11 @@ impl OntologyReasoningService {
             AxiomType::DisjointWith => "DisjointWith".to_string(),
             AxiomType::ObjectPropertyAssertion => "ObjectPropertyAssertion".to_string(),
             AxiomType::DataPropertyAssertion => "DataPropertyAssertion".to_string(),
+            AxiomType::SubPropertyOf => "SubPropertyOf".to_string(),
+            AxiomType::TransitiveProperty => "TransitiveProperty".to_string(),
+            AxiomType::SymmetricProperty => "SymmetricProperty".to_string(),
+            AxiomType::InverseProperties => "InverseProperties".to_string(),
+            AxiomType::SomeValuesFrom => "SomeValuesFrom".to_string(),
         }
     }
 
@@ -409,7 +416,12 @@ impl OntologyReasoningService {
             "DisjointWith" => AxiomType::DisjointWith,
             "ObjectPropertyAssertion" => AxiomType::ObjectPropertyAssertion,
             "DataPropertyAssertion" => AxiomType::DataPropertyAssertion,
-            _ => AxiomType::SubClassOf, // default
+            "SubPropertyOf" => AxiomType::SubPropertyOf,
+            "TransitiveProperty" => AxiomType::TransitiveProperty,
+            "SymmetricProperty" => AxiomType::SymmetricProperty,
+            "InverseProperties" => AxiomType::InverseProperties,
+            "SomeValuesFrom" => AxiomType::SomeValuesFrom,
+            _ => AxiomType::SubClassOf,
         }
     }
 
@@ -448,7 +460,7 @@ impl OntologyReasoningService {
     }
 }
 
-// Uses Neo4j test helpers from test_helpers when NEO4J_TEST_URI is set
+// Uses Oxigraph test helpers from test_helpers (ADR-11)
 #[cfg(test)]
 mod tests {
     use super::*;

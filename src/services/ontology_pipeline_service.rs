@@ -2,12 +2,12 @@
 //! Ontology Pipeline Service
 //!
 //! Orchestrates the end-to-end semantic physics pipeline:
-//! 1. GitHub Sync → Parse Ontology → Save to Neo4j (Neo4jOntologyRepository)
+//! 1. GitHub Sync → Parse Ontology → Save to Oxigraph (OxigraphOntologyRepository, ADR-11)
 //! 2. Trigger Reasoning via ReasoningActor → CustomReasoner inference → Cache results
 //! 3. Generate Constraints from axioms → ConstraintSet with Semantic kind
 //! 4. Upload to GPU via OntologyConstraintActor → Apply semantic forces → Stream to client
 //!
-//! All ontology data persists in Neo4j. Constraints use ConstraintKind::Semantic = 10.
+//! All ontology data persists in Oxigraph (RDF quad-store). Constraints use ConstraintKind::Semantic = 10.
 
 use actix::Addr;
 use log::{debug, error, info, warn};
@@ -72,7 +72,7 @@ pub struct OntologyPipelineStats {
 /// This service coordinates between:
 /// - ReasoningActor: Runs CustomReasoner for OWL inference
 /// - OntologyConstraintActor: Applies semantic constraints to GPU physics
-/// - GraphStateActor: Manages Neo4j graph data
+/// - GraphStateActor: Manages Oxigraph-backed graph data
 /// The pipeline automatically triggers after ontology modifications from GitHub sync.
 pub struct OntologyPipelineService {
     config: SemanticPhysicsConfig,
@@ -143,7 +143,7 @@ impl OntologyPipelineService {
         ontology_id: i64,
         ontology: Ontology,
     ) -> Result<OntologyPipelineStats, String> {
-        info!("🔄 Ontology modification detected for ID: {}", ontology_id);
+        info!("Ontology modification detected for ID: {}", ontology_id);
 
         let start_time = std::time::Instant::now();
         let mut stats = OntologyPipelineStats {
@@ -161,21 +161,21 @@ impl OntologyPipelineService {
                 Ok(axioms) => {
                     stats.reasoning_triggered = true;
                     stats.inferred_axioms_count = axioms.len();
-                    info!("✅ Reasoning complete: {} inferred axioms", axioms.len());
+                    info!("Reasoning complete: {} inferred axioms", axioms.len());
 
                     // Step 2: Generate constraints from inferred axioms
                     if self.config.auto_generate_constraints && !axioms.is_empty() {
                         match self.generate_constraints_from_axioms(&axioms).await {
                             Ok(constraint_set) => {
                                 stats.constraints_generated = constraint_set.constraints.len();
-                                info!("✅ Generated {} constraints", stats.constraints_generated);
+                                info!("Generated {} constraints", stats.constraints_generated);
 
                                 // Step 3: Upload constraints to GPU
                                 if self.config.use_gpu_constraints {
                                     match self.upload_constraints_to_gpu(constraint_set).await {
                                         Ok(_) => {
                                             stats.gpu_upload_success = true;
-                                            info!("✅ Constraints uploaded to GPU successfully");
+                                            info!("Constraints uploaded to GPU successfully");
                                         }
                                         Err(e) => {
                                             error!("❌ Failed to upload constraints to GPU: {}", e);
@@ -197,7 +197,7 @@ impl OntologyPipelineService {
         }
 
         stats.total_time_ms = start_time.elapsed().as_millis() as u64;
-        info!("🎉 Ontology pipeline complete in {}ms", stats.total_time_ms);
+        info!("Ontology pipeline complete in {}ms", stats.total_time_ms);
 
         Ok(stats)
     }
@@ -216,7 +216,7 @@ impl OntologyPipelineService {
 
         match reasoner.infer_axioms(&ontology) {
             Ok(axioms) => {
-                info!("✅ Reasoning succeeded: {} axioms inferred", axioms.len());
+                info!("Reasoning succeeded: {} axioms inferred", axioms.len());
                 Ok(axioms)
             }
             Err(e) => {
@@ -241,7 +241,7 @@ impl OntologyPipelineService {
         &self,
         axioms: &[crate::reasoning::custom_reasoner::InferredAxiom],
     ) -> Result<ConstraintSet, String> {
-        info!("🔧 Generating constraints from {} axioms", axioms.len());
+        info!("Generating constraints from {} axioms", axioms.len());
 
         use crate::models::constraints::{Constraint, ConstraintKind};
         use crate::reasoning::custom_reasoner::AxiomType;
@@ -398,7 +398,7 @@ impl OntologyPipelineService {
             warn!("⚠️  Skipped {} axioms due to missing nodes in graph", skipped_count);
         }
 
-        info!("✅ Generated {} constraints from {} axioms ({} skipped)",
+        info!("Generated {} constraints from {} axioms ({} skipped)",
               constraints.len(), axioms.len(), skipped_count);
 
         Ok(ConstraintSet {
@@ -429,7 +429,7 @@ impl OntologyPipelineService {
 
         match constraint_actor.send(msg).await {
             Ok(Ok(_)) => {
-                info!("✅ Constraints uploaded to GPU successfully");
+                info!("Constraints uploaded to GPU successfully");
                 Ok(())
             }
             Ok(Err(e)) => {

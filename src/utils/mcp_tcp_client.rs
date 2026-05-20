@@ -870,7 +870,7 @@ pub async fn test_mcp_connectivity(
                 results.insert(server_id.clone(), connected);
                 if connected {
                     info!(
-                        "✓ MCP server {} is reachable at {}:{}",
+                        "MCP server {} is reachable at {}:{}",
                         server_id, host, port
                     );
                 } else {

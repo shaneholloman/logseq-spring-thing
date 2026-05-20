@@ -270,7 +270,7 @@ impl GPUResourceActor {
                 self.gpu_state.csr_structure_uploaded = true;
             }
             Err(e) => {
-                // Empty graph at startup is expected — graph data loads from Neo4j asynchronously.
+                // Empty graph at startup is expected — graph data loads from Oxigraph asynchronously.
                 // SharedGPUContext will still be created so ForceComputeActor can receive it.
                 // Graph data will be uploaded later via UpdateGPUGraphData or reinitialize_with_graph.
                 warn!(

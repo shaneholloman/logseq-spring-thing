@@ -3,6 +3,8 @@
 //!
 //! This module contains utility modules for repository implementations.
 //!
-//! NOTE: UnifiedOntologyRepository and SQL-based repositories have been deprecated
-//! and replaced with Neo4j-based repositories as part of the SQL deprecation effort.
-//! See ADR-001 for details.
+//! NOTE: All legacy Neo4j-based and SQL-based repositories have been removed.
+//! The canonical adapters are:
+//!   - `OxigraphOntologyRepository`  (ADR-11)
+//!   - `OxigraphGraphRepository`     (ADR-11)
+//!   - `SqliteSettingsRepository`    (ADR-11)

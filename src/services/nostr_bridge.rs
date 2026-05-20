@@ -1,9 +1,8 @@
-//! Nostr Bridge: JSS relay → DreamLab Forum relay
+//! Nostr Bridge: source relay → DreamLab Forum relay
 //!
-//! Subscribes to VisionClaw's ephemeral JSS relay for kind 30001 bead
-//! provenance events and republishes them as NIP-29 group messages (kind 9)
-//! to the DreamLab forum relay, where admin and whitelisted forum users can
-//! query them.
+//! Subscribes to a source Nostr relay for kind 30001 bead provenance events
+//! and republishes them as NIP-29 group messages (kind 9) to the DreamLab
+//! forum relay, where admin and whitelisted forum users can query them.
 //!
 //! The bridge re-signs events with its own keypair so it satisfies the forum
 //! relay's whitelist check. The original event ID is preserved in a
@@ -11,8 +10,11 @@
 //!
 //! Configure via environment:
 //!   VISIONCLAW_NOSTR_PRIVKEY  — bridge bot signing key (same as publisher)
-//!   JSS_RELAY_URL             — ws://jss:3030/relay (default)
+//!   NOSTR_RELAY_URL           — source relay URL (default: ws://localhost:7000)
 //!   FORUM_RELAY_URL           — wss://relay.dreamlab-ai.com (required)
+//!
+//! When `solid-pod-embed` is enabled, the bridge reads from NOSTR_RELAY_URL
+//! (the bead publisher's target) instead of the former JSS sidecar relay.
 //!
 //! The bridge is designed as a long-running background task. Spawn with:
 //!   tokio::spawn(NostrBridge::from_env().unwrap().run());
@@ -25,7 +27,7 @@ use tokio_tungstenite::{connect_async, tungstenite::Message};
 
 pub struct NostrBridge {
     keys: Keys,
-    jss_relay_url: String,
+    source_relay_url: String,
     forum_relay_url: String,
 }
 
@@ -38,12 +40,12 @@ impl NostrBridge {
         let forum_relay_url = std::env::var("FORUM_RELAY_URL")
             .ok()
             .filter(|s| !s.is_empty())?;
-        let jss_relay_url = std::env::var("JSS_RELAY_URL")
-            .unwrap_or_else(|_| "ws://jss:3030/relay".to_string());
+        let source_relay_url = std::env::var("NOSTR_RELAY_URL")
+            .unwrap_or_else(|_| "ws://localhost:7000".to_string());
 
         // Validate relay URL schemes to prevent SSRF via env var injection.
-        if !jss_relay_url.starts_with("ws://") && !jss_relay_url.starts_with("wss://") {
-            error!("[NostrBridge] JSS_RELAY_URL must start with ws:// or wss://: {jss_relay_url}");
+        if !source_relay_url.starts_with("ws://") && !source_relay_url.starts_with("wss://") {
+            error!("[NostrBridge] NOSTR_RELAY_URL must start with ws:// or wss://: {source_relay_url}");
             return None;
         }
         if !forum_relay_url.starts_with("ws://") && !forum_relay_url.starts_with("wss://") {
@@ -57,7 +59,7 @@ impl NostrBridge {
 
         Some(Self {
             keys: Keys::new(secret_key),
-            jss_relay_url,
+            source_relay_url,
             forum_relay_url,
         })
     }
@@ -67,7 +69,7 @@ impl NostrBridge {
     pub async fn run(self) {
         info!(
             "[NostrBridge] Starting {} → {}",
-            self.jss_relay_url, self.forum_relay_url
+            self.source_relay_url, self.forum_relay_url
         );
         loop {
             match self.run_once().await {
@@ -79,23 +81,23 @@ impl NostrBridge {
     }
 
     async fn run_once(&self) -> Result<(), String> {
-        let (jss_stream, _) = connect_async(&self.jss_relay_url)
+        let (source_stream, _) = connect_async(&self.source_relay_url)
             .await
-            .map_err(|e| format!("JSS connect failed: {e}"))?;
+            .map_err(|e| format!("Source relay connect failed: {e}"))?;
 
-        let (mut jss_write, mut jss_read) = jss_stream.split();
+        let (mut src_write, mut src_read) = source_stream.split();
 
         // Subscribe to kind 30001 bead provenance events only.
-        jss_write
+        src_write
             .send(Message::Text(
                 json!(["REQ", "bridge-sub", {"kinds": [30001]}]).to_string(),
             ))
             .await
             .map_err(|e| format!("REQ send failed: {e}"))?;
 
-        info!("[NostrBridge] Subscribed to JSS relay for kind 30001");
+        info!("[NostrBridge] Subscribed to source relay for kind 30001");
 
-        while let Some(msg) = jss_read.next().await {
+        while let Some(msg) = src_read.next().await {
             match msg {
                 Ok(Message::Text(txt)) => {
                     if let Ok(parsed) = serde_json::from_str::<Value>(&txt) {
@@ -107,18 +109,18 @@ impl NostrBridge {
                         }
                     }
                 }
-                Ok(Message::Close(_)) => return Err("JSS relay closed connection".to_string()),
+                Ok(Message::Close(_)) => return Err("Source relay closed connection".to_string()),
                 Err(e) => return Err(format!("WebSocket error: {e}")),
                 _ => {}
             }
         }
 
-        Err("JSS relay stream ended".to_string())
+        Err("Source relay stream ended".to_string())
     }
 
     async fn forward_to_forum(&self, original: &Value) {
         // Verify the Nostr event signature before forwarding. Without this, any party
-        // that can write to the JSS relay could inject arbitrary content into the forum.
+        // that can write to the source relay could inject arbitrary content into the forum.
         let event_json = match serde_json::to_string(original) {
             Ok(s) => s,
             Err(e) => {

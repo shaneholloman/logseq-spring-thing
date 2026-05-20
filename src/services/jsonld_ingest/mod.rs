@@ -37,10 +37,9 @@
 //! `json-ld` / `sophia_jsonld` crates pull large dep trees that the seed
 //! emission contract does not exercise.
 //!
-//! ## Feature gating
+//! ## Persistence pipeline
 //!
-//! Compiled only when `persistence-oxigraph` is enabled (this module imports
-//! `oxigraph::model::Quad`).
+//! Part of the canonical persistence pipeline (ADR-11).
 
 pub mod errors;
 pub mod expander;

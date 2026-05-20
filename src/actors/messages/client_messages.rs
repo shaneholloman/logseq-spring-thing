@@ -104,6 +104,8 @@ pub struct UpdateClientFilter {
     pub filter_by_authority: bool,
     pub filter_mode: String,
     pub max_nodes: Option<i32>,
+    #[serde(default = "default_include_linked_pages")]
+    pub include_linked_pages: bool,
 }
 
 // ---------------------------------------------------------------------------
@@ -148,3 +150,5 @@ pub struct ClientBroadcastAck {
     /// Client ID that sent this ACK (set by handler)
     pub client_id: Option<usize>,
 }
+
+fn default_include_linked_pages() -> bool { true }

@@ -153,9 +153,9 @@ pub fn extract_pubkey_from_token(token: &str) -> Option<String> {
     Some(event.pubkey)
 }
 
-/// Maximum age for NIP-98 tokens (5 minutes to accommodate clock skew)
-/// Must match JSS's TIMESTAMP_TOLERANCE (60s). Tokens 61-300s old passed our
-/// check but were rejected by JSS, causing 401s on legitimate requests.
+/// Maximum age for NIP-98 tokens (60 seconds).
+/// Tight window prevents replay attacks. Clients with clock skew beyond
+/// this threshold will receive 401s and must re-authenticate.
 const TOKEN_MAX_AGE_SECONDS: i64 = 60;
 
 /// Result of NIP-98 token validation

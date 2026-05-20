@@ -4,7 +4,6 @@ use log::{debug, info, trace, warn};
 use std::time::Instant;
 
 use crate::utils::binary_protocol;
-use crate::utils::delta_encoding;
 use crate::utils::socket_flow_messages::{BinaryNodeData, BinaryNodeDataClient};
 use crate::utils::validation::rate_limit::EndpointRateLimits;
 
@@ -524,93 +523,49 @@ pub(crate) fn handle_subscribe_position_updates(
                     });
                 }
 
-                let frame = act.delta_frame_counter;
-                let is_full_sync = frame == 0;
-                let epsilon_sq = act.delta_epsilon_sq;
+                // Single full-state frame per tick. No delta encoding, no
+                // per-client previous-state, no version dispatch. Physics is
+                // whole-graph (all nodes settle together) and the client lerps
+                // toward the latest received positions — deltas add cost
+                // without bandwidth savings under that workload.
+                let analytics = act.app_state.node_analytics.read().ok();
+                let analytics_ref = analytics.as_deref();
+                let binary_data = binary_protocol::encode_node_data_extended_with_sssp(
+                    &nodes,
+                    &[], // agent_node_ids — fetch_nodes() already flagged IDs
+                    &[], // knowledge_node_ids — fetch_nodes() already flagged IDs
+                    &[], // ontology_class_ids
+                    &[], // ontology_individual_ids
+                    &[], // ontology_property_ids
+                    None, // sssp_data
+                    analytics_ref,
+                );
 
-                // Count nodes that have actually moved (squared distance epsilon check)
-                let changed_count = nodes.iter().filter(|(node_id, node_data)| {
-                    if let Some(prev) = act.delta_previous_nodes.get(node_id) {
-                        let dx = node_data.x - prev.x;
-                        let dy = node_data.y - prev.y;
-                        let dz = node_data.z - prev.z;
-                        (dx * dx + dy * dy + dz * dz) > epsilon_sq
-                    } else {
-                        true // New node always counts as changed
-                    }
-                }).count();
+                act.total_node_count = nodes.len();
+                let moving_nodes = nodes
+                    .iter()
+                    .filter(|(_, node_data)| {
+                        let vel = node_data.velocity();
+                        vel.x.abs() > 0.001 || vel.y.abs() > 0.001 || vel.z.abs() > 0.001
+                    })
+                    .count();
+                act.nodes_in_motion = moving_nodes;
 
-                // Skip broadcast entirely when graph has converged (0 changes) and not a full sync frame
-                if changed_count == 0 && !is_full_sync {
-                    act.delta_frame_counter = (frame + 1) % 60;
-                } else {
-                    // Delta encoding: V4 for delta frames (1-59), V3 for full sync (0, 60, 120, ...)
-                    // On full sync frames, analytics data from shared store is included in V3 wire format.
-                    let analytics = act.app_state.node_analytics.read().ok();
-                    let analytics_ref = analytics.as_deref();
-                    // FIX 5: Double type-flagging contract documentation.
-                    // fetch_nodes() already applies type flags (agent/knowledge/ontology)
-                    // to node IDs via binary_protocol::set_*_flag(). The encoder MUST
-                    // receive empty type arrays to avoid double-flagging. If the encoder
-                    // receives non-empty type arrays AND the node IDs already have flag
-                    // bits set, the flag bits would be applied twice, corrupting node IDs.
-                    debug_assert!(
-                        nodes.iter().all(|(id, _)| {
-                            let has_flags = (*id & 0xFC000000) != 0;
-                            // If ID has flags, type arrays must be empty (no double-flag)
-                            !has_flags || true // arrays below are empty, so this always holds
-                        }),
-                        "BUG: fetch_nodes() applied type flags but encoder also received non-empty type arrays"
+                act.last_transfer_size = binary_data.len();
+                act.total_bytes_sent += binary_data.len();
+                act.update_count += 1;
+                act.nodes_sent_count += nodes.len();
+
+                if detailed_debug {
+                    debug!(
+                        "[Position Updates] Broadcast: {} nodes, {} moving, {} bytes",
+                        nodes.len(),
+                        moving_nodes,
+                        binary_data.len()
                     );
-                    let binary_data = delta_encoding::encode_node_data_delta_with_analytics(
-                        &nodes,
-                        &act.delta_previous_nodes,
-                        frame,
-                        &[], // Empty: fetch_nodes() already flagged IDs
-                        &[], // Empty: fetch_nodes() already flagged IDs
-                        analytics_ref,
-                    );
-
-                    act.total_node_count = nodes.len();
-                    let moving_nodes = nodes
-                        .iter()
-                        .filter(|(_, node_data)| {
-                            let vel = node_data.velocity();
-                            vel.x.abs() > 0.001 || vel.y.abs() > 0.001 || vel.z.abs() > 0.001
-                        })
-                        .count();
-                    act.nodes_in_motion = moving_nodes;
-
-                    act.last_transfer_size = binary_data.len();
-                    act.total_bytes_sent += binary_data.len();
-                    act.update_count += 1;
-                    act.nodes_sent_count += changed_count;
-
-                    // hot-path: trace only (fires every update cycle per client)
-                    if detailed_debug {
-                        debug!(
-                            "[Position Updates] Frame {} ({}): {} changed of {} total, {} bytes",
-                            frame,
-                            if is_full_sync { "full" } else { "delta" },
-                            changed_count,
-                            nodes.len(),
-                            binary_data.len()
-                        );
-                    }
-
-                    ctx.binary(binary_data);
-
-                    // Update previous node state for next delta computation.
-                    // On full sync frames, clear and repopulate to prevent stale
-                    // entries for deleted nodes from accumulating (VULN-09).
-                    if is_full_sync {
-                        act.delta_previous_nodes.clear();
-                    }
-                    for (node_id, node_data) in &nodes {
-                        act.delta_previous_nodes.insert(*node_id, node_data.clone());
-                    }
-                    act.delta_frame_counter = (frame + 1) % 60;
                 }
+
+                ctx.binary(binary_data);
 
                 let next_interval = std::time::Duration::from_millis(actual_interval);
                 ctx.run_later(next_interval, move |act, ctx| {
@@ -988,13 +943,7 @@ pub(crate) fn handle_node_drag_update(
         }
     };
 
-    ctx.spawn(actix::fut::wrap_future::<_, SocketFlowServer>(fut).map(|_, act, _ctx| {
-        // Fix: drag broadcast bypasses delta state -- clear delta_previous_nodes so
-        // the next subscription-tick broadcast computes a full V3 frame, re-syncing
-        // all clients that received the out-of-band drag broadcast.
-        act.delta_previous_nodes.clear();
-        act.delta_frame_counter = 0;
-    }));
+    ctx.spawn(actix::fut::wrap_future::<_, SocketFlowServer>(fut).map(|_, _act, _ctx| {}));
 }
 
 /// Handle `nodeDragEnd` from client.
@@ -1114,13 +1063,7 @@ pub(crate) fn handle_node_drag_end(
         }
     };
 
-    ctx.spawn(actix::fut::wrap_future::<_, SocketFlowServer>(fut).map(|_, act, _ctx| {
-        // Fix: drag broadcast bypasses delta state -- clear delta_previous_nodes so
-        // the next subscription-tick broadcast computes a full V3 frame, re-syncing
-        // all clients that received the out-of-band drag broadcast.
-        act.delta_previous_nodes.clear();
-        act.delta_frame_counter = 0;
-    }));
+    ctx.spawn(actix::fut::wrap_future::<_, SocketFlowServer>(fut).map(|_, _act, _ctx| {}));
 
     // Acknowledge drag end
     let ack = serde_json::json!({

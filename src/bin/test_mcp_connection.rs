@@ -31,7 +31,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     for (server_id, is_connected) in &connectivity_results {
         if *is_connected {
-            info!("✓ Server {} is reachable", server_id);
+            info!("Server {} is reachable", server_id);
         } else {
             error!("✗ Server {} is not reachable", server_id);
         }
@@ -46,21 +46,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             
             match client.test_connection().await {
-                Ok(true) => info!("✓ Basic connection test passed"),
+                Ok(true) => info!("Basic connection test passed"),
                 Ok(false) => error!("✗ Basic connection test failed"),
                 Err(e) => error!("✗ Connection test error: {}", e),
             }
 
             
             match client.initialize_session().await {
-                Ok(()) => info!("✓ MCP session initialization passed"),
+                Ok(()) => info!("MCP session initialization passed"),
                 Err(e) => error!("✗ MCP session initialization failed: {}", e),
             }
 
             
             match client.query_server_info().await {
                 Ok(server_info) => {
-                    info!("✓ Server info query passed");
+                    info!("Server info query passed");
                     info!("  Server ID: {}", server_info.server_id);
                     info!("  Server Type: {:?}", server_info.server_type);
                     info!("  Supported Tools: {:?}", server_info.supported_tools);
@@ -72,7 +72,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             
             match client.query_agent_list().await {
                 Ok(agents) => {
-                    info!("✓ Agent list query passed");
+                    info!("Agent list query passed");
                     info!("  Retrieved {} agents", agents.len());
                     for (i, agent) in agents.iter().take(3).enumerate() {
                         info!("  Agent {}: {} ({})", i + 1, agent.name, agent.agent_type);
@@ -84,7 +84,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             
             match client.query_swarm_status().await {
                 Ok(topology) => {
-                    info!("✓ Swarm status query passed");
+                    info!("Swarm status query passed");
                     info!("  Topology: {}", topology.topology_type);
                     info!("  Total Agents: {}", topology.total_agents);
                     info!("  Efficiency: {:.2}", topology.efficiency_score);

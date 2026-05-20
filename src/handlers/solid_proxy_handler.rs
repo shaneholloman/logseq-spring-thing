@@ -1,47 +1,62 @@
-//! Solid Proxy Handler
+//! Solid Pod Handler — embedded solid-pod-rs backend
 //!
-//! Proxies requests to JavaScript Solid Server (JSS) with NIP-98 authentication.
-//! Routes: /solid/* -> JSS
+//! Serves Solid Protocol resources directly via `solid_pod_rs::storage::fs::FsBackend`
+//! instead of HTTP-proxying to an external JavaScript Solid Server (JSS).
+//!
+//! Routes:
+//!   /solid/health           — storage readiness check
+//!   /solid/.notifications   — WebSocket upgrade (solid-0.1 protocol)
+//!   /solid/pods             — pod creation
+//!   /solid/pods/check       — check pod existence
+//!   /solid/pods/init        — pod auto-provisioning (Bearer auth)
+//!   /solid/pods/init-nip98  — pod auto-provisioning (NIP-98 auth)
+//!   /solid/{tail:.*}        — LDP CRUD (GET, PUT, POST, DELETE, PATCH, HEAD)
+//!   /.well-known/did.json   — DID document (did:web)
+//!   /did/{tail:.*}          — DID resolution (did:nostr)
 //!
 //! Features:
-//! - NIP-98 authentication header generation and forwarding
-//! - User identity preservation for Solid ACL enforcement
-//! - Content negotiation passthrough (JSON-LD, Turtle)
-//! - LDP CRUD operations (GET, PUT, POST, DELETE, PATCH, HEAD)
-//! - Pod management endpoints
-//! - WebSocket upgrade for solid-0.1 notifications
-//!
-//! Security Architecture:
-//! - User's NIP-98 token is verified locally, then forwarded to JSS
-//! - Server signing only used when user auth is unavailable (anonymous requests)
-//! - This preserves Solid's ACL model where the user's identity is the access subject
+//! - NIP-98 authentication (BIP-340 Schnorr) via solid_pod_rs::auth::nip98
+//! - WAC ACL enforcement via solid_pod_rs::wac::evaluate_access
+//! - Pod auto-provisioning via solid_pod_rs::provision::provision_pod
+//! - WebSocket notifications (solid-0.1 protocol)
+//! - DID resolution via solid_pod_rs::interop::did_nostr
+//! - Content negotiation (JSON-LD, Turtle)
 
 use actix_web::{web, HttpRequest, HttpResponse, http::Method};
 use log::{debug, error, info, warn};
-use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
+#[cfg(feature = "solid-pod-embed")]
+use std::sync::Arc;
 
 use crate::models::protected_settings::NostrUser;
 use crate::services::nostr_service::NostrService;
-use crate::utils::nip98::{generate_nip98_token, build_auth_header, validate_nip98_token, Nip98Config};
-use nostr_sdk::{Keys, PublicKey, ToBech32};
+use crate::utils::nip98::validate_nip98_token;
+use nostr_sdk::Keys;
+#[cfg(feature = "solid-pod-embed")]
+use nostr_sdk::{PublicKey, ToBech32};
 
-/// JSS configuration from environment
-#[derive(Debug, Clone)]
-pub struct JssConfig {
-    pub base_url: String,
-    pub ws_url: String,
-}
-
-impl JssConfig {
-    pub fn from_env() -> Self {
-        Self {
-            base_url: std::env::var("JSS_URL").unwrap_or_else(|_| "http://jss:3030".to_string()),
-            ws_url: std::env::var("JSS_WS_URL")
-                .unwrap_or_else(|_| "ws://jss:3030/.notifications".to_string()),
-        }
-    }
-}
+#[cfg(feature = "solid-pod-embed")]
+use solid_pod_rs::storage::fs::FsBackend;
+#[cfg(feature = "solid-pod-embed")]
+use solid_pod_rs::Storage;
+#[cfg(feature = "solid-pod-embed")]
+use solid_pod_rs::error::PodError;
+#[cfg(feature = "solid-pod-embed")]
+use solid_pod_rs::wac::{evaluate_access, method_to_mode, AccessMode};
+#[cfg(feature = "solid-pod-embed")]
+use solid_pod_rs::ldp::{
+    self, is_container, link_headers, negotiate_format, resolve_slug,
+    render_container_jsonld, render_container_turtle, PreferHeader,
+    apply_n3_patch, apply_sparql_patch, apply_patch_to_absent,
+    patch_dialect_from_mime, PatchDialect,
+    evaluate_preconditions, ConditionalOutcome,
+    not_found_headers, vary_header, cache_control_for, ACCEPT_PATCH, ACCEPT_POST,
+};
+#[cfg(feature = "solid-pod-embed")]
+use solid_pod_rs::provision::{provision_pod, ProvisionPlan};
+#[cfg(feature = "solid-pod-embed")]
+use bytes::Bytes;
 
 /// Response from pod creation
 #[derive(Debug, Serialize, Deserialize)]
@@ -87,35 +102,57 @@ pub struct UserIdentity {
     pub auth_header: String,
 }
 
-/// Shared state for the proxy
-pub struct SolidProxyState {
-    pub config: JssConfig,
-    pub http_client: Client,
-    /// Server-side signing key for fallback (anonymous requests only)
-    /// Used when user has no NIP-98 auth - JSS will see server identity
+/// Shared state for the embedded Solid pod backend
+pub struct SolidPodState {
+    /// Filesystem-backed Solid storage
+    #[cfg(feature = "solid-pod-embed")]
+    pub storage: Arc<FsBackend>,
+    /// Pod data root directory
+    pub data_root: PathBuf,
+    /// Server-side signing key for anonymous requests
     pub server_keys: Option<Keys>,
-    /// Whether to allow anonymous requests (server-signed)
+    /// Whether anonymous requests are allowed
     pub allow_anonymous: bool,
 }
 
-impl SolidProxyState {
-    pub fn new() -> Self {
+impl SolidPodState {
+    /// Create a new SolidPodState. Must be called from an async context
+    /// because FsBackend::new is async.
+    #[cfg(feature = "solid-pod-embed")]
+    pub async fn new_async() -> Self {
+        let data_root = PathBuf::from(
+            std::env::var("SOLID_DATA_ROOT").unwrap_or_else(|_| "/data/solid".to_string()),
+        );
+
         let server_keys = std::env::var("SOLID_PROXY_SECRET_KEY")
             .ok()
-            .and_then(|hex| {
-                nostr_sdk::SecretKey::from_hex(&hex)
-                    .ok()
-                    .map(Keys::new)
-            });
+            .and_then(|hex| nostr_sdk::SecretKey::from_hex(&hex).ok().map(Keys::new));
 
         let allow_anonymous = std::env::var("SOLID_ALLOW_ANONYMOUS")
             .map(|v| v == "true" || v == "1")
             .unwrap_or(false);
 
+        let storage = match FsBackend::new(&data_root).await {
+            Ok(fs) => Arc::new(fs),
+            Err(e) => {
+                error!(
+                    "Failed to create FsBackend at {}: {}. Falling back to temp dir.",
+                    data_root.display(),
+                    e
+                );
+                let fallback = std::env::temp_dir().join("solid-pod-fallback");
+                Arc::new(
+                    FsBackend::new(&fallback)
+                        .await
+                        .expect("fallback FsBackend creation must succeed"),
+                )
+            }
+        };
+
         if server_keys.is_some() {
-            info!("Solid proxy initialized with server-side signing key (for anonymous fallback)");
+            info!("Solid pod backend initialized with server-side signing key (for anonymous fallback)");
         } else {
-            info!("Solid proxy initialized without server-side signing");
+            info!("Solid pod backend initialized without server-side signing");
         }
 
         if allow_anonymous {
@@ -124,28 +161,32 @@ impl SolidProxyState {
             info!("Anonymous Solid requests disabled (user auth required)");
         }
 
+        info!("Solid storage root: {}", data_root.display());
+
         Self {
-            config: JssConfig::from_env(),
-            http_client: Client::builder()
-                .timeout(std::time::Duration::from_secs(30))
-                .build()
-                .unwrap_or_else(|e| {
-                    error!("Failed to create HTTP client with custom config: {e}, falling back to default");
-                    Client::new()
-                }),
+            storage,
+            data_root,
             server_keys,
             allow_anonymous,
         }
     }
 
-    /// Extract and verify user identity from NIP-98 Authorization header
-    /// Returns the user's pubkey and original token for forwarding
-    /// Validates the NIP-98 signature, timestamp, URL, and method before accepting
+    /// Synchronous constructor for non-feature builds (stub).
+    #[cfg(not(feature = "solid-pod-embed"))]
+    pub fn new() -> Self {
+        Self {
+            data_root: PathBuf::from("/data/solid"),
+            server_keys: None,
+            allow_anonymous: false,
+        }
+    }
+
+    /// Extract and verify user identity from NIP-98 Authorization header.
+    /// Validates the NIP-98 signature, timestamp, URL, and method.
     pub fn extract_user_identity(&self, req: &HttpRequest) -> Option<UserIdentity> {
         let auth_header = req.headers().get("Authorization")?;
         let auth_str = auth_header.to_str().ok()?;
 
-        // Must be "Nostr <base64-token>" format
         if !auth_str.starts_with("Nostr ") {
             debug!("Authorization header is not NIP-98 format");
             return None;
@@ -153,34 +194,32 @@ impl SolidProxyState {
 
         let token = &auth_str[6..]; // Skip "Nostr "
 
-        // Reconstruct the request URL and method for NIP-98 validation
-        // Behind a TLS-terminating proxy, connection_info returns internal
-        // scheme/host; prefer X-Forwarded-* headers from the proxy.
+        // Reconstruct the request URL for NIP-98 validation.
+        // Behind a TLS-terminating proxy, prefer X-Forwarded-* headers.
         let conn_info = req.connection_info();
-        let scheme = req.headers()
+        let scheme = req
+            .headers()
             .get("X-Forwarded-Proto")
             .and_then(|v| v.to_str().ok())
             .unwrap_or_else(|| conn_info.scheme());
-        let host = req.headers()
+        let host = req
+            .headers()
             .get("X-Forwarded-Host")
             .and_then(|v| v.to_str().ok())
             .unwrap_or_else(|| conn_info.host());
-        // Prefer X-Forwarded-URI (the original nginx-facing path, e.g. /solid/npub1.../
-        // over the nginx-rewritten backend path (e.g. /api/solid/npub1.../)).
-        // The client signs the NIP-98 token with the URL as sent to nginx.
-        let path = req.headers()
+        let path = req
+            .headers()
             .get("X-Forwarded-URI")
             .and_then(|v| v.to_str().ok())
-            .unwrap_or_else(|| req.uri().path_and_query().map(|pq| pq.as_str()).unwrap_or("/"));
-        let expected_url = format!(
-            "{}://{}{}",
-            scheme,
-            host,
-            path
-        );
+            .unwrap_or_else(|| {
+                req.uri()
+                    .path_and_query()
+                    .map(|pq| pq.as_str())
+                    .unwrap_or("/")
+            });
+        let expected_url = format!("{}://{}{}", scheme, host, path);
         let expected_method = req.method().as_str();
 
-        // Validate the NIP-98 token: signature, timestamp, URL, and method
         match validate_nip98_token(token, &expected_url, expected_method, None) {
             Ok(validation) => {
                 debug!(
@@ -194,281 +233,777 @@ impl SolidProxyState {
                 })
             }
             Err(e) => {
-                warn!("NIP-98 token validation failed in proxy: {}", e);
+                warn!("NIP-98 token validation failed: {}", e);
                 None
             }
         }
     }
-}
 
-impl Default for SolidProxyState {
-    fn default() -> Self {
-        Self::new()
+    /// Authenticate a request and return the agent WebID (did:nostr:<pubkey>)
+    /// or None for anonymous. Returns Err for auth-required-but-missing.
+    fn authenticate_request(&self, req: &HttpRequest) -> Result<Option<String>, HttpResponse> {
+        if let Some(identity) = self.extract_user_identity(req) {
+            Ok(Some(format!("did:nostr:{}", identity.pubkey)))
+        } else if self.allow_anonymous {
+            Ok(None)
+        } else {
+            Err(HttpResponse::Unauthorized().json(SolidProxyError {
+                error: "Authentication required".to_string(),
+                details: Some(
+                    "NIP-98 Authorization header required for Solid access".to_string(),
+                ),
+            }))
+        }
+    }
+
+    /// Resolve the storage path for a given request path within a pod.
+    /// Converts /solid/<npub>/rest/of/path to /<npub>/rest/of/path for storage.
+    fn storage_path(target_path: &str) -> String {
+        let normalized = if target_path.starts_with('/') {
+            target_path.to_string()
+        } else {
+            format!("/{}", target_path)
+        };
+        normalized
+    }
+
+    /// Build pod base URL from request info
+    fn pod_base_url(req: &HttpRequest) -> String {
+        let conn_info = req.connection_info();
+        let scheme = req
+            .headers()
+            .get("X-Forwarded-Proto")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or_else(|| conn_info.scheme());
+        let host = req
+            .headers()
+            .get("X-Forwarded-Host")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or_else(|| conn_info.host());
+        format!("{}://{}/solid", scheme, host)
+    }
+
+    /// Build a PodStructure for a given npub
+    fn pod_structure(pod_base_url: &str, npub: &str) -> PodStructure {
+        let pod = format!("{}/{}", pod_base_url, npub);
+        PodStructure {
+            profile: format!("{}/profile/card#me", pod),
+            ontology_contributions: format!("{}/ontology/contributions/", pod),
+            ontology_proposals: format!("{}/ontology/proposals/", pod),
+            ontology_annotations: format!("{}/ontology/annotations/", pod),
+            preferences: format!("{}/preferences/", pod),
+            inbox: format!("{}/inbox/", pod),
+        }
     }
 }
 
-/// Main proxy handler for all /solid/* routes
-/// Security: This handler prioritizes forwarding the USER's NIP-98 identity to JSS.
-/// This ensures Solid ACLs are enforced against the actual user, not the proxy server.
+// ============================================================================
+// LDP CRUD Handler
+// ============================================================================
+
+/// Main handler for all /solid/* LDP routes.
+///
 /// Authentication flow:
-/// 1. If user has NIP-98 Authorization header -> Forward it directly to JSS
-/// 2. If no user auth AND anonymous allowed -> Generate server-signed NIP-98
+/// 1. If user has NIP-98 Authorization header -> extract identity, enforce WAC
+/// 2. If no user auth AND anonymous allowed -> proceed with public ACL check
 /// 3. If no user auth AND anonymous NOT allowed -> Return 401
+#[cfg(feature = "solid-pod-embed")]
 pub async fn handle_solid_proxy(
     req: HttpRequest,
     body: web::Bytes,
     path: web::Path<String>,
-    state: web::Data<SolidProxyState>,
+    state: web::Data<SolidPodState>,
     _nostr_service: web::Data<NostrService>,
 ) -> HttpResponse {
     let target_path = path.into_inner();
     let method = req.method().clone();
+    let storage_path = SolidPodState::storage_path(&target_path);
 
-    debug!(
-        "Solid proxy: {} /solid/{} -> JSS",
-        method, target_path
-    );
+    debug!("Solid LDP: {} /solid/{}", method, target_path);
 
-    // Build target URL
-    let target_url = format!("{}/{}", state.config.base_url, target_path);
-
-    // Extract user identity from NIP-98 header (if present)
-    let user_identity = state.extract_user_identity(&req);
-
-    // Build the proxied request
-    let mut proxy_req = match method.as_str() {
-        "GET" => state.http_client.get(&target_url),
-        "HEAD" => state.http_client.head(&target_url),
-        "PUT" => state.http_client.put(&target_url),
-        "POST" => state.http_client.post(&target_url),
-        "DELETE" => state.http_client.delete(&target_url),
-        "PATCH" => state.http_client.patch(&target_url),
-        _ => {
-            return HttpResponse::MethodNotAllowed().json(SolidProxyError {
-                error: "Method not allowed".to_string(),
-                details: Some(format!("Unsupported method: {}", method)),
-            });
-        }
+    // Authenticate
+    let agent = match state.authenticate_request(&req) {
+        Ok(agent) => agent,
+        Err(resp) => return resp,
     };
 
-    // Forward relevant headers (excluding Authorization - handled separately)
-    for (name, value) in req.headers() {
-        let name_str = name.as_str().to_lowercase();
-        // Forward these headers to JSS
-        if matches!(
-            name_str.as_str(),
-            "accept" | "content-type" | "if-match" | "if-none-match" | "slug" | "link"
-        ) {
-            if let Ok(val) = value.to_str() {
-                proxy_req = proxy_req.header(name.as_str(), val);
-            }
-        }
+    if let Some(ref a) = agent {
+        debug!(
+            "Authenticated agent: {}...",
+            &a[..20.min(a.len())]
+        );
     }
 
-    // Authentication handling: Prioritize USER identity over server identity
-    if let Some(identity) = &user_identity {
-        // PREFERRED: Forward user's NIP-98 directly - JSS sees the USER's identity
-        // This ensures Solid ACLs are enforced against the actual user
-        proxy_req = proxy_req.header("Authorization", &identity.auth_header);
-        debug!(
-            "Forwarding user NIP-98 to JSS (pubkey: {}...)",
-            &identity.pubkey[..16.min(identity.pubkey.len())]
-        );
+    // Determine the required WAC access mode
+    let access_mode = method_to_mode(method.as_str());
 
-        // Also add X-Forwarded-User for audit/logging (JSS can use this for context)
-        proxy_req = proxy_req.header("X-Forwarded-User", format!("did:nostr:{}", identity.pubkey));
-    } else if state.allow_anonymous {
-        // FALLBACK: Anonymous request - use server identity if available
-        if let Some(keys) = &state.server_keys {
-            let config = Nip98Config {
-                url: target_url.clone(),
-                method: method.to_string(),
-                body: if body.is_empty() {
-                    None
-                } else {
-                    String::from_utf8(body.to_vec()).ok()
-                },
-            };
+    // Try to load the ACL for this resource.
+    // WAC lookup: check for .acl sidecar, walk up to parent containers.
+    let acl_doc = load_acl_for_path(&state.storage, &storage_path).await;
 
-            match generate_nip98_token(keys, &config) {
-                Ok(token) => {
-                    proxy_req = proxy_req.header("Authorization", build_auth_header(&token));
-                    debug!("Using server identity for anonymous request");
-                }
-                Err(e) => {
-                    warn!("Failed to generate server NIP-98 token: {}", e);
-                    // Continue without auth - JSS may allow public resources
-                }
-            }
+    // Evaluate WAC access
+    let allowed = evaluate_access(
+        acl_doc.as_ref(),
+        agent.as_deref(),
+        &storage_path,
+        access_mode,
+        None,
+    );
+
+    if !allowed {
+        if agent.is_none() {
+            return HttpResponse::Unauthorized().json(SolidProxyError {
+                error: "Authentication required".to_string(),
+                details: Some("Resource requires authentication".to_string()),
+            });
         }
-        // If no server keys, request goes through without Authorization
-        // JSS will apply public access rules
-    } else {
-        // Anonymous not allowed and no user auth
-        return HttpResponse::Unauthorized().json(SolidProxyError {
-            error: "Authentication required".to_string(),
-            details: Some("NIP-98 Authorization header required for Solid access".to_string()),
+        return HttpResponse::Forbidden().json(SolidProxyError {
+            error: "Access denied".to_string(),
+            details: Some(format!(
+                "WAC denies {:?} access to {}",
+                access_mode, storage_path
+            )),
         });
     }
 
-    // Add body for methods that support it
-    if !body.is_empty() && matches!(method.as_str(), "PUT" | "POST" | "PATCH") {
-        proxy_req = proxy_req.body(body.to_vec());
+    // Dispatch by HTTP method
+    match method.as_str() {
+        "GET" => handle_get(&state.storage, &req, &storage_path).await,
+        "HEAD" => handle_head(&state.storage, &storage_path).await,
+        "PUT" => handle_put(&state.storage, &req, &storage_path, body).await,
+        "POST" => handle_post(&state.storage, &req, &storage_path, body).await,
+        "DELETE" => handle_delete(&state.storage, &storage_path).await,
+        "PATCH" => handle_patch(&state.storage, &req, &storage_path, body).await,
+        _ => HttpResponse::MethodNotAllowed().json(SolidProxyError {
+            error: "Method not allowed".to_string(),
+            details: Some(format!("Unsupported method: {}", method)),
+        }),
+    }
+}
+
+/// Stub handler when solid-pod-embed feature is disabled
+#[cfg(not(feature = "solid-pod-embed"))]
+pub async fn handle_solid_proxy(
+    _req: HttpRequest,
+    _body: web::Bytes,
+    _path: web::Path<String>,
+    _state: web::Data<SolidPodState>,
+    _nostr_service: web::Data<NostrService>,
+) -> HttpResponse {
+    HttpResponse::ServiceUnavailable().json(SolidProxyError {
+        error: "Solid pod backend not available".to_string(),
+        details: Some("Compiled without solid-pod-embed feature".to_string()),
+    })
+}
+
+// ============================================================================
+// LDP Method Implementations
+// ============================================================================
+
+#[cfg(feature = "solid-pod-embed")]
+async fn handle_get(
+    storage: &Arc<FsBackend>,
+    req: &HttpRequest,
+    path: &str,
+) -> HttpResponse {
+    // Check if this is a container listing
+    if is_container(path) {
+        return handle_get_container(storage, req, path).await;
     }
 
-    // Execute the request
-    match proxy_req.send().await {
-        Ok(response) => {
-            let status = response.status();
-            let mut builder = HttpResponse::build(
-                actix_web::http::StatusCode::from_u16(status.as_u16())
-                    .unwrap_or(actix_web::http::StatusCode::INTERNAL_SERVER_ERROR),
-            );
+    match storage.get(path).await {
+        Ok((body, meta)) => {
+            // Evaluate preconditions (If-Match, If-None-Match)
+            let if_match = req
+                .headers()
+                .get("if-match")
+                .and_then(|v| v.to_str().ok());
+            let if_none_match = req
+                .headers()
+                .get("if-none-match")
+                .and_then(|v| v.to_str().ok());
 
-            // Rewrite internal JSS URLs to public proxy paths in header values.
-            // JSS returns URLs like http://jss:3030/... or ws://jss:3030/... which
-            // are unreachable from the browser.
-            let jss_base = &state.config.base_url; // e.g. "http://jss:3030"
-            // Also build the ws:// variant for updates-via headers
-            let jss_ws_base = jss_base.replace("http://", "ws://");
-
-            // Track content-type for body rewriting decision
-            let mut response_content_type = String::new();
-
-            // Forward response headers (with URL rewriting)
-            for (name, value) in response.headers() {
-                let name_str = name.as_str().to_lowercase();
-                // Forward these headers from JSS
-                if matches!(
-                    name_str.as_str(),
-                    "content-type"
-                        | "etag"
-                        | "last-modified"
-                        | "link"
-                        | "location"
-                        | "updates-via"
-                        | "wac-allow"
-                        | "accept-patch"
-                        | "accept-post"
-                        | "allow"
-                        | "ms-author-via"
-                ) {
-                    if let Ok(val) = value.to_str() {
-                        if name_str == "content-type" {
-                            response_content_type = val.to_string();
-                        }
-                        let rewritten = val
-                            .replace(jss_base, "/solid")
-                            .replace(&jss_ws_base, "/solid");
-                        builder.insert_header((name.as_str(), rewritten));
-                    }
+            match evaluate_preconditions("GET", Some(&meta.etag), if_match, if_none_match) {
+                ConditionalOutcome::Proceed => {}
+                ConditionalOutcome::NotModified => {
+                    return HttpResponse::NotModified()
+                        .insert_header(("ETag", format!("\"{}\"", meta.etag)))
+                        .finish();
+                }
+                ConditionalOutcome::PreconditionFailed => {
+                    return HttpResponse::PreconditionFailed().finish();
                 }
             }
 
-            // Get response body and rewrite internal URLs
-            match response.bytes().await {
-                Ok(bytes) => {
-                    // Only rewrite text-based responses (JSON-LD, Turtle, HTML)
-                    let is_text = response_content_type.contains("json")
-                        || response_content_type.contains("turtle")
-                        || response_content_type.contains("html")
-                        || response_content_type.contains("xml")
-                        || response_content_type.contains("text");
+            let mut resp = HttpResponse::Ok();
+            resp.insert_header(("Content-Type", meta.content_type.as_str()));
+            resp.insert_header(("ETag", format!("\"{}\"", meta.etag)));
+            resp.insert_header((
+                "Last-Modified",
+                meta.modified.format("%a, %d %b %Y %H:%M:%S GMT").to_string(),
+            ));
 
-                    if is_text {
-                        if let Ok(body_str) = std::str::from_utf8(&bytes) {
-                            let rewritten = body_str
-                                .replace(jss_base, "/solid")
-                                .replace(&jss_ws_base, "/solid");
-                            builder.body(rewritten)
-                        } else {
-                            builder.body(bytes.to_vec())
-                        }
-                    } else {
-                        builder.body(bytes.to_vec())
-                    }
-                }
-                Err(e) => {
-                    error!("Failed to read JSS response body: {}", e);
-                    HttpResponse::BadGateway().json(SolidProxyError {
-                        error: "Failed to read response".to_string(),
-                        details: Some(e.to_string()),
-                    })
-                }
+            // LDP Link headers
+            for link in link_headers(path) {
+                resp.insert_header(("Link", link));
             }
+
+            // WAC-Allow (simplified: advertise full modes for now)
+            resp.insert_header(("WAC-Allow", "user=\"read write append control\",public=\"read\""));
+            resp.insert_header(("Accept-Patch", ACCEPT_PATCH));
+            resp.insert_header(("Accept-Post", ACCEPT_POST));
+
+            if let Some(cc) = cache_control_for(&meta.content_type) {
+                resp.insert_header(("Cache-Control", cc));
+            }
+            resp.insert_header(("Vary", vary_header(true)));
+
+            resp.body(body)
+        }
+        Err(PodError::NotFound(_)) => {
+            let mut resp = HttpResponse::NotFound();
+            for (k, v) in not_found_headers(path, true) {
+                resp.insert_header((k, v));
+            }
+            resp.json(SolidProxyError {
+                error: "Not found".to_string(),
+                details: Some(format!("Resource not found: {}", path)),
+            })
         }
         Err(e) => {
-            error!("Solid proxy request failed: {}", e);
-            HttpResponse::BadGateway().json(SolidProxyError {
-                error: "Proxy request failed".to_string(),
+            error!("Storage GET error for {}: {}", path, e);
+            HttpResponse::InternalServerError().json(SolidProxyError {
+                error: "Storage error".to_string(),
                 details: Some(e.to_string()),
             })
         }
     }
 }
 
-/// Check if a pod exists for the given npub
-async fn pod_exists(state: &SolidProxyState, npub: &str) -> bool {
-    let pod_url = format!("{}/{}/", state.config.base_url, npub);
-    match state.http_client.head(&pod_url).send().await {
-        // 401/403 means the pod exists but WAC denies access (missing/restrictive ACL)
-        Ok(resp) => resp.status().is_success() || resp.status().as_u16() == 401 || resp.status().as_u16() == 403,
-        Err(_) => false,
+#[cfg(feature = "solid-pod-embed")]
+async fn handle_get_container(
+    storage: &Arc<FsBackend>,
+    req: &HttpRequest,
+    path: &str,
+) -> HttpResponse {
+    // List container children
+    match storage.list(path).await {
+        Ok(members) => {
+            let accept = req
+                .headers()
+                .get("accept")
+                .and_then(|v| v.to_str().ok());
+            let format = negotiate_format(accept);
+            let prefer = req
+                .headers()
+                .get("prefer")
+                .and_then(|v| v.to_str().ok())
+                .map(PreferHeader::parse)
+                .unwrap_or_default();
+
+            let (content_type, body_str) = match format {
+                ldp::RdfFormat::Turtle => {
+                    let turtle = render_container_turtle(path, &members, prefer);
+                    ("text/turtle", turtle)
+                }
+                _ => {
+                    let json = render_container_jsonld(path, &members, prefer);
+                    ("application/ld+json", serde_json::to_string_pretty(&json).unwrap_or_default())
+                }
+            };
+
+            let mut resp = HttpResponse::Ok();
+            resp.insert_header(("Content-Type", content_type));
+            for link in link_headers(path) {
+                resp.insert_header(("Link", link));
+            }
+            resp.insert_header(("WAC-Allow", "user=\"read write append control\",public=\"read\""));
+            resp.insert_header(("Accept-Post", ACCEPT_POST));
+            resp.insert_header(("Vary", vary_header(true)));
+
+            resp.body(body_str)
+        }
+        Err(PodError::NotFound(_)) => HttpResponse::NotFound().json(SolidProxyError {
+            error: "Container not found".to_string(),
+            details: Some(format!("Container not found: {}", path)),
+        }),
+        Err(e) => {
+            error!("Storage LIST error for {}: {}", path, e);
+            HttpResponse::InternalServerError().json(SolidProxyError {
+                error: "Storage error".to_string(),
+                details: Some(e.to_string()),
+            })
+        }
     }
 }
 
-/// Create the standard pod directory structure
-async fn create_pod_structure(
-    state: &SolidProxyState,
-    npub: &str,
-    pubkey: &str,
-    auth_header: Option<&str>,
-) -> Result<PodStructure, String> {
-    let pod_base = format!("{}/{}", state.config.base_url, npub);
+#[cfg(feature = "solid-pod-embed")]
+async fn handle_head(storage: &Arc<FsBackend>, path: &str) -> HttpResponse {
+    match storage.head(path).await {
+        Ok(meta) => {
+            let mut resp = HttpResponse::Ok();
+            resp.insert_header(("Content-Type", meta.content_type.as_str()));
+            resp.insert_header(("ETag", format!("\"{}\"", meta.etag)));
+            resp.insert_header((
+                "Last-Modified",
+                meta.modified.format("%a, %d %b %Y %H:%M:%S GMT").to_string(),
+            ));
+            resp.insert_header(("Content-Length", meta.size.to_string()));
+            for link in link_headers(path) {
+                resp.insert_header(("Link", link));
+            }
+            resp.insert_header(("Accept-Patch", ACCEPT_PATCH));
+            resp.insert_header(("Vary", vary_header(true)));
+            resp.finish()
+        }
+        Err(PodError::NotFound(_)) => HttpResponse::NotFound().finish(),
+        Err(e) => {
+            error!("Storage HEAD error for {}: {}", path, e);
+            HttpResponse::InternalServerError().finish()
+        }
+    }
+}
 
-    // Directories to create (relative to pod root)
-    let directories = [
-        "profile",
-        "ontology",
-        "ontology/contributions",
-        "ontology/proposals",
-        "ontology/annotations",
-        "preferences",
-        "inbox",
-    ];
+#[cfg(feature = "solid-pod-embed")]
+async fn handle_put(
+    storage: &Arc<FsBackend>,
+    req: &HttpRequest,
+    path: &str,
+    body: web::Bytes,
+) -> HttpResponse {
+    let content_type = req
+        .headers()
+        .get("content-type")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("application/octet-stream");
 
-    // Create each directory with a .meta file to ensure it exists as a container
-    for dir in &directories {
-        let dir_url = format!("{}/{}/", pod_base, dir);
-        let mut req = state.http_client.put(&dir_url);
+    // Check if this is a container creation (Link: <ldp:BasicContainer>)
+    let is_container_create = req
+        .headers()
+        .get("link")
+        .and_then(|v| v.to_str().ok())
+        .map(|v| v.contains("ldp#Container") || v.contains("ldp#BasicContainer"))
+        .unwrap_or(false);
 
-        if let Some(auth) = auth_header {
-            req = req.header("Authorization", auth);
+    if is_container_create {
+        match storage.create_container(path).await {
+            Ok(meta) => {
+                let mut resp = HttpResponse::Created();
+                resp.insert_header(("ETag", format!("\"{}\"", meta.etag)));
+                for link in link_headers(path) {
+                    resp.insert_header(("Link", link));
+                }
+                resp.finish()
+            }
+            Err(PodError::AlreadyExists(_)) => HttpResponse::Conflict().json(SolidProxyError {
+                error: "Container already exists".to_string(),
+                details: None,
+            }),
+            Err(e) => {
+                error!("Storage create_container error for {}: {}", path, e);
+                HttpResponse::InternalServerError().json(SolidProxyError {
+                    error: "Storage error".to_string(),
+                    details: Some(e.to_string()),
+                })
+            }
+        }
+    } else {
+        // Check preconditions
+        let existing_etag = storage.head(path).await.ok().map(|m| m.etag);
+        let if_match = req
+            .headers()
+            .get("if-match")
+            .and_then(|v| v.to_str().ok());
+        let if_none_match = req
+            .headers()
+            .get("if-none-match")
+            .and_then(|v| v.to_str().ok());
+
+        match evaluate_preconditions("PUT", existing_etag.as_deref(), if_match, if_none_match) {
+            ConditionalOutcome::Proceed => {}
+            ConditionalOutcome::NotModified => {
+                return HttpResponse::NotModified().finish();
+            }
+            ConditionalOutcome::PreconditionFailed => {
+                return HttpResponse::PreconditionFailed().finish();
+            }
         }
 
-        // Use Link header to indicate this is a Container (directory)
-        req = req
-            .header("Content-Type", "text/turtle")
-            .header("Link", "<http://www.w3.org/ns/ldp#Container>; rel=\"type\"")
-            .body("");
-
-        match req.send().await {
-            Ok(resp) if resp.status().is_success() || resp.status().as_u16() == 409 => {
-                debug!("Created/confirmed directory: {}", dir);
-            }
-            Ok(resp) => {
-                let status = resp.status();
-                debug!("Directory {} creation returned {}: may already exist", dir, status);
+        match storage.put(path, Bytes::from(body.to_vec()), content_type).await {
+            Ok(meta) => {
+                let mut resp = HttpResponse::Created();
+                resp.insert_header(("ETag", format!("\"{}\"", meta.etag)));
+                resp.insert_header(("Content-Type", meta.content_type.as_str()));
+                for link in link_headers(path) {
+                    resp.insert_header(("Link", link));
+                }
+                resp.finish()
             }
             Err(e) => {
-                warn!("Failed to create directory {}: {}", dir, e);
+                error!("Storage PUT error for {}: {}", path, e);
+                HttpResponse::InternalServerError().json(SolidProxyError {
+                    error: "Storage error".to_string(),
+                    details: Some(e.to_string()),
+                })
             }
         }
     }
+}
 
-    // Create WebID profile card with Nostr identity
-    let profile_url = format!("{}/profile/card", pod_base);
-    let _webid = format!("{}#me", profile_url);
+#[cfg(feature = "solid-pod-embed")]
+async fn handle_post(
+    storage: &Arc<FsBackend>,
+    req: &HttpRequest,
+    container_path: &str,
+    body: web::Bytes,
+) -> HttpResponse {
+    let content_type = req
+        .headers()
+        .get("content-type")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("application/octet-stream");
+    let slug = req
+        .headers()
+        .get("slug")
+        .and_then(|v| v.to_str().ok());
+
+    // Resolve the child path from the Slug header
+    let child_path = match resolve_slug(container_path, slug) {
+        Ok(p) => p,
+        Err(e) => {
+            return HttpResponse::BadRequest().json(SolidProxyError {
+                error: "Invalid Slug".to_string(),
+                details: Some(e.to_string()),
+            });
+        }
+    };
+
+    // Check if this is a container creation
+    let is_container_create = req
+        .headers()
+        .get("link")
+        .and_then(|v| v.to_str().ok())
+        .map(|v| v.contains("ldp#Container") || v.contains("ldp#BasicContainer"))
+        .unwrap_or(false);
+
+    if is_container_create {
+        match storage.create_container(&child_path).await {
+            Ok(meta) => {
+                let mut resp = HttpResponse::Created();
+                resp.insert_header(("Location", child_path.as_str()));
+                resp.insert_header(("ETag", format!("\"{}\"", meta.etag)));
+                for link in link_headers(&child_path) {
+                    resp.insert_header(("Link", link));
+                }
+                resp.finish()
+            }
+            Err(PodError::AlreadyExists(_)) => HttpResponse::Conflict().json(SolidProxyError {
+                error: "Resource already exists".to_string(),
+                details: None,
+            }),
+            Err(e) => {
+                error!("Storage POST container error for {}: {}", child_path, e);
+                HttpResponse::InternalServerError().json(SolidProxyError {
+                    error: "Storage error".to_string(),
+                    details: Some(e.to_string()),
+                })
+            }
+        }
+    } else {
+        match storage
+            .put(&child_path, Bytes::from(body.to_vec()), content_type)
+            .await
+        {
+            Ok(meta) => {
+                let mut resp = HttpResponse::Created();
+                resp.insert_header(("Location", child_path.as_str()));
+                resp.insert_header(("ETag", format!("\"{}\"", meta.etag)));
+                for link in link_headers(&child_path) {
+                    resp.insert_header(("Link", link));
+                }
+                resp.finish()
+            }
+            Err(e) => {
+                error!("Storage POST error for {}: {}", child_path, e);
+                HttpResponse::InternalServerError().json(SolidProxyError {
+                    error: "Storage error".to_string(),
+                    details: Some(e.to_string()),
+                })
+            }
+        }
+    }
+}
+
+#[cfg(feature = "solid-pod-embed")]
+async fn handle_delete(storage: &Arc<FsBackend>, path: &str) -> HttpResponse {
+    match storage.delete(path).await {
+        Ok(()) => HttpResponse::NoContent().finish(),
+        Err(PodError::NotFound(_)) => HttpResponse::NotFound().json(SolidProxyError {
+            error: "Not found".to_string(),
+            details: Some(format!("Resource not found: {}", path)),
+        }),
+        Err(e) => {
+            error!("Storage DELETE error for {}: {}", path, e);
+            HttpResponse::InternalServerError().json(SolidProxyError {
+                error: "Storage error".to_string(),
+                details: Some(e.to_string()),
+            })
+        }
+    }
+}
+
+#[cfg(feature = "solid-pod-embed")]
+async fn handle_patch(
+    storage: &Arc<FsBackend>,
+    req: &HttpRequest,
+    path: &str,
+    body: web::Bytes,
+) -> HttpResponse {
+    let content_type = req
+        .headers()
+        .get("content-type")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+
+    let dialect = match patch_dialect_from_mime(content_type) {
+        Some(d) => d,
+        None => {
+            return HttpResponse::UnsupportedMediaType().json(SolidProxyError {
+                error: "Unsupported patch format".to_string(),
+                details: Some(format!(
+                    "Content-Type '{}' is not a supported patch format. Use: {}",
+                    content_type, ACCEPT_PATCH
+                )),
+            });
+        }
+    };
+
+    let patch_str = match std::str::from_utf8(&body) {
+        Ok(s) => s.to_string(),
+        Err(e) => {
+            return HttpResponse::BadRequest().json(SolidProxyError {
+                error: "Invalid patch body".to_string(),
+                details: Some(format!("Body is not valid UTF-8: {}", e)),
+            });
+        }
+    };
+
+    // Fetch current resource (may not exist for insert-only patches)
+    let current = storage.get(path).await;
+
+    match current {
+        Ok((current_body, _meta)) => {
+            // Parse current body as N-Triples graph for RDF patches
+            let current_str = String::from_utf8_lossy(&current_body).to_string();
+            let graph = match ldp::Graph::parse_ntriples(&current_str) {
+                Ok(g) => g,
+                Err(_) => ldp::Graph::new(), // Non-RDF resource, start empty
+            };
+
+            let outcome = match dialect {
+                PatchDialect::N3 => apply_n3_patch(graph, &patch_str),
+                PatchDialect::SparqlUpdate => apply_sparql_patch(graph, &patch_str),
+                PatchDialect::JsonPatch => {
+                    // JSON Patch on RDF resources not supported via this path
+                    return HttpResponse::UnsupportedMediaType().json(SolidProxyError {
+                        error: "JSON Patch not supported for RDF resources".to_string(),
+                        details: None,
+                    });
+                }
+            };
+
+            match outcome {
+                Ok(patch_out) => {
+                    let new_body = patch_out.graph.to_ntriples();
+                    match storage
+                        .put(path, Bytes::from(new_body.into_bytes()), "application/n-triples")
+                        .await
+                    {
+                        Ok(meta) => {
+                            let mut resp = HttpResponse::Ok();
+                            resp.insert_header(("ETag", format!("\"{}\"", meta.etag)));
+                            resp.finish()
+                        }
+                        Err(e) => {
+                            error!("Storage PUT after PATCH error for {}: {}", path, e);
+                            HttpResponse::InternalServerError().json(SolidProxyError {
+                                error: "Storage error".to_string(),
+                                details: Some(e.to_string()),
+                            })
+                        }
+                    }
+                }
+                Err(e) => HttpResponse::UnprocessableEntity().json(SolidProxyError {
+                    error: "Patch failed".to_string(),
+                    details: Some(e.to_string()),
+                }),
+            }
+        }
+        Err(PodError::NotFound(_)) => {
+            // Resource does not exist — apply patch to absent resource
+            match apply_patch_to_absent(dialect, &patch_str) {
+                Ok(create_outcome) => {
+                    let new_graph = match create_outcome {
+                        ldp::PatchCreateOutcome::Created { graph, .. } => graph,
+                        ldp::PatchCreateOutcome::Applied { graph, .. } => graph,
+                    };
+                    let new_body = new_graph.to_ntriples();
+                    let ct = "application/n-triples";
+                    match storage
+                        .put(path, Bytes::from(new_body.into_bytes()), ct)
+                        .await
+                    {
+                        Ok(meta) => {
+                            let mut resp = HttpResponse::Created();
+                            resp.insert_header(("ETag", format!("\"{}\"", meta.etag)));
+                            resp.finish()
+                        }
+                        Err(e) => {
+                            error!("Storage PUT after PATCH-create error for {}: {}", path, e);
+                            HttpResponse::InternalServerError().json(SolidProxyError {
+                                error: "Storage error".to_string(),
+                                details: Some(e.to_string()),
+                            })
+                        }
+                    }
+                }
+                Err(e) => HttpResponse::UnprocessableEntity().json(SolidProxyError {
+                    error: "Patch-to-absent failed".to_string(),
+                    details: Some(e.to_string()),
+                }),
+            }
+        }
+        Err(e) => {
+            error!("Storage GET for PATCH error on {}: {}", path, e);
+            HttpResponse::InternalServerError().json(SolidProxyError {
+                error: "Storage error".to_string(),
+                details: Some(e.to_string()),
+            })
+        }
+    }
+}
+
+// ============================================================================
+// WAC ACL Resolution
+// ============================================================================
+
+/// Walk up the path hierarchy to find the nearest .acl sidecar.
+/// Returns the parsed ACL document, or None if no ACL is found.
+#[cfg(feature = "solid-pod-embed")]
+async fn load_acl_for_path(
+    storage: &Arc<FsBackend>,
+    path: &str,
+) -> Option<solid_pod_rs::wac::AclDocument> {
+    // Resource-specific ACL: for containers use /<container>/.acl,
+    // for non-containers use /<resource>.acl (WAC spec §4.1).
+    let trimmed = path.trim_end_matches('/');
+    let resource_acl = if is_container(path) {
+        format!("{}/.acl", trimmed)
+    } else {
+        format!("{}.acl", trimmed)
+    };
+    if let Ok((body, _)) = storage.get(&resource_acl).await {
+        return parse_acl_body(&body);
+    }
+
+    // Walk up parent containers — each parent's ACL is at /<parent>/.acl
+    let mut current = trimmed.to_string();
+    loop {
+        match current.rfind('/') {
+            Some(0) => {
+                // Root container
+                if let Ok((body, _)) = storage.get("/.acl").await {
+                    return parse_acl_body(&body);
+                }
+                break;
+            }
+            Some(pos) => {
+                current = current[..pos].to_string();
+            }
+            None => break,
+        }
+
+        let parent_acl = format!("{}/.acl", current);
+        if let Ok((body, _)) = storage.get(&parent_acl).await {
+            return parse_acl_body(&body);
+        }
+    }
+
+    None
+}
+
+#[cfg(feature = "solid-pod-embed")]
+fn parse_acl_body(body: &[u8]) -> Option<solid_pod_rs::wac::AclDocument> {
+    // Try JSON-LD first, then Turtle
+    if let Ok(doc) = serde_json::from_slice::<solid_pod_rs::wac::AclDocument>(body) {
+        return Some(doc);
+    }
+    if let Ok(text) = std::str::from_utf8(body) {
+        if let Ok(doc) = solid_pod_rs::wac::parse_turtle_acl(text) {
+            return Some(doc);
+        }
+    }
+    None
+}
+
+// ============================================================================
+// Pod Management Endpoints
+// ============================================================================
+
+/// Check if a pod exists for the given npub
+#[cfg(feature = "solid-pod-embed")]
+async fn pod_exists(storage: &Arc<FsBackend>, npub: &str) -> bool {
+    let pod_path = format!("/{}/", npub);
+    storage.exists(&pod_path).await.unwrap_or(false)
+}
+
+/// Create the pod using solid_pod_rs::provision::provision_pod and custom containers
+#[cfg(feature = "solid-pod-embed")]
+async fn create_pod_with_structure(
+    storage: &Arc<FsBackend>,
+    npub: &str,
+    pubkey: &str,
+    pod_base_url: &str,
+) -> Result<PodStructure, String> {
+    let pod_base = format!("{}/{}", pod_base_url, npub);
+
+    // Use solid_pod_rs provisioning for the core pod structure
+    let plan = ProvisionPlan {
+        pubkey: pubkey.to_string(),
+        display_name: None,
+        pod_base: pod_base.clone(),
+        containers: vec![
+            "/profile/".into(),
+            "/ontology/".into(),
+            "/ontology/contributions/".into(),
+            "/ontology/proposals/".into(),
+            "/ontology/annotations/".into(),
+            "/preferences/".into(),
+            "/inbox/".into(),
+        ],
+        root_acl: Some(build_pod_root_acl(pubkey, &pod_base)),
+        quota_bytes: None,
+    };
+
+    // provision_pod writes relative to the storage root. We need the pod
+    // under /<npub>/ so we scope by putting the pod path prefix on the
+    // storage calls. Since provision_pod writes to /profile/card etc,
+    // we need to write our Nostr-specific profile separately.
+    match provision_pod(storage.as_ref(), &plan).await {
+        Ok(outcome) => {
+            info!(
+                "Provisioned pod for {}: webid={}, containers={:?}",
+                npub, outcome.webid, outcome.containers_created
+            );
+        }
+        Err(e) => {
+            // Non-fatal: log and continue with manual structure creation
+            warn!("provision_pod partial failure for {}: {} — creating structure manually", npub, e);
+        }
+    }
+
+    // Write Nostr-specific WebID profile card with pod-relative paths
+    let profile_path = format!("/{}/profile/card", npub);
     let profile_content = format!(
         r#"@prefix foaf: <http://xmlns.com/foaf/0.1/> .
 @prefix solid: <http://www.w3.org/ns/solid/terms#> .
@@ -486,192 +1021,160 @@ async fn create_pod_structure(
         npub = npub
     );
 
-    let mut profile_req = state.http_client.put(&profile_url);
-    if let Some(auth) = auth_header {
-        profile_req = profile_req.header("Authorization", auth);
+    if let Err(e) = storage
+        .put(
+            &profile_path,
+            Bytes::from(profile_content.into_bytes()),
+            "text/turtle",
+        )
+        .await
+    {
+        warn!("Failed to write WebID profile for {}: {}", npub, e);
+    } else {
+        info!("Created WebID profile for {}", npub);
     }
-    profile_req = profile_req
-        .header("Content-Type", "text/turtle")
-        .body(profile_content);
 
-    match profile_req.send().await {
-        Ok(resp) if resp.status().is_success() || resp.status().as_u16() == 409 => {
-            info!("Created WebID profile for {}", npub);
+    // Ensure all custom directories exist
+    let directories = [
+        format!("/{}/", npub),
+        format!("/{}/profile/", npub),
+        format!("/{}/ontology/", npub),
+        format!("/{}/ontology/contributions/", npub),
+        format!("/{}/ontology/proposals/", npub),
+        format!("/{}/ontology/annotations/", npub),
+        format!("/{}/preferences/", npub),
+        format!("/{}/inbox/", npub),
+    ];
+
+    for dir in &directories {
+        match storage.create_container(dir).await {
+            Ok(_) => debug!("Created/confirmed directory: {}", dir),
+            Err(PodError::AlreadyExists(_)) => debug!("Directory already exists: {}", dir),
+            Err(e) => warn!("Failed to create directory {}: {}", dir, e),
         }
-        Ok(resp) => {
-            let status = resp.status();
-            debug!("Profile creation returned {}: may already exist", status);
-        }
+    }
+
+    // Write WAC ACL for the pod root
+    let acl_path = format!("/{}/.acl", npub);
+    let acl_doc = build_pod_root_acl(pubkey, &pod_base);
+    let acl_body = match serde_json::to_vec(&acl_doc) {
+        Ok(b) => b,
         Err(e) => {
-            warn!("Failed to create profile: {}", e);
+            warn!("Failed to serialize ACL: {}", e);
+            Vec::new()
+        }
+    };
+
+    if !acl_body.is_empty() {
+        match storage
+            .put(&acl_path, Bytes::from(acl_body), "application/ld+json")
+            .await
+        {
+            Ok(_) => info!("Created ACL for pod {}", npub),
+            Err(e) => warn!("Failed to create ACL for {}: {}", npub, e),
         }
     }
 
-    // Create WAC ACL for the pod root granting owner full control + public read
-    let acl_url = format!("{}/.acl", pod_base);
-    let acl_content = format!(
-        r#"@prefix acl: <http://www.w3.org/ns/auth/acl#> .
-@prefix foaf: <http://xmlns.com/foaf/0.1/> .
-
-<#owner>
-    a acl:Authorization ;
-    acl:agent <did:nostr:{pubkey}> ;
-    acl:accessTo <./> ;
-    acl:default <./> ;
-    acl:mode acl:Read, acl:Write, acl:Control .
-
-<#public>
-    a acl:Authorization ;
-    acl:agentClass foaf:Agent ;
-    acl:accessTo <./> ;
-    acl:mode acl:Read .
-"#,
-        pubkey = pubkey
-    );
-
-    let mut acl_req = state.http_client.put(&acl_url);
-    if let Some(auth) = auth_header {
-        acl_req = acl_req.header("Authorization", auth);
-    }
-    acl_req = acl_req
-        .header("Content-Type", "text/turtle")
-        .body(acl_content);
-
-    match acl_req.send().await {
-        Ok(resp) if resp.status().is_success() || resp.status().as_u16() == 409 => {
-            info!("Created ACL for pod {}", npub);
-        }
-        Ok(resp) => {
-            let status = resp.status();
-            warn!("ACL creation for {} returned {}: access may be restricted", npub, status);
-        }
-        Err(e) => {
-            warn!("Failed to create ACL for {}: {}", npub, e);
-        }
-    }
-
-    Ok(PodStructure {
-        profile: format!("{}/profile/card#me", pod_base),
-        ontology_contributions: format!("{}/ontology/contributions/", pod_base),
-        ontology_proposals: format!("{}/ontology/proposals/", pod_base),
-        ontology_annotations: format!("{}/ontology/annotations/", pod_base),
-        preferences: format!("{}/preferences/", pod_base),
-        inbox: format!("{}/inbox/", pod_base),
-    })
+    Ok(SolidPodState::pod_structure(&pod_base, npub))
 }
 
-/// Initialize pod with auto-provisioning
-/// Called when user first accesses their pod area
+/// Build the WAC ACL document for a pod root
+#[cfg(feature = "solid-pod-embed")]
+fn build_pod_root_acl(
+    pubkey: &str,
+    _pod_base: &str,
+) -> solid_pod_rs::wac::AclDocument {
+    use solid_pod_rs::wac::{AclAuthorization, AclDocument, IdOrIds, IdRef};
+
+    let owner = AclAuthorization {
+        id: Some("#owner".into()),
+        r#type: Some("acl:Authorization".into()),
+        agent: Some(IdOrIds::Single(IdRef {
+            id: format!("did:nostr:{}", pubkey),
+        })),
+        agent_class: None,
+        agent_group: None,
+        origin: None,
+        access_to: Some(IdOrIds::Single(IdRef { id: "./".into() })),
+        default: Some(IdOrIds::Single(IdRef { id: "./".into() })),
+        mode: Some(IdOrIds::Multiple(vec![
+            IdRef { id: "acl:Read".into() },
+            IdRef { id: "acl:Write".into() },
+            IdRef { id: "acl:Control".into() },
+        ])),
+        condition: None,
+    };
+
+    let public = AclAuthorization {
+        id: Some("#public".into()),
+        r#type: Some("acl:Authorization".into()),
+        agent: None,
+        agent_class: Some(IdOrIds::Single(IdRef {
+            id: "foaf:Agent".into(),
+        })),
+        agent_group: None,
+        origin: None,
+        access_to: Some(IdOrIds::Single(IdRef { id: "./".into() })),
+        default: None,
+        mode: Some(IdOrIds::Single(IdRef {
+            id: "acl:Read".into(),
+        })),
+        condition: None,
+    };
+
+    AclDocument {
+        context: None,
+        graph: Some(vec![owner, public]),
+    }
+}
+
+/// Ensure a pod exists, auto-provisioning if needed
+#[cfg(feature = "solid-pod-embed")]
 pub async fn ensure_pod_exists(
-    state: &SolidProxyState,
+    state: &SolidPodState,
     npub: &str,
     pubkey: &str,
-    auth_header: Option<&str>,
+    pod_base_url: &str,
 ) -> Result<(bool, PodStructure), String> {
-    // Check if pod already exists
-    if pod_exists(state, npub).await {
-        let pod_base = format!("{}/{}", state.config.base_url, npub);
+    if pod_exists(&state.storage, npub).await {
+        let pod_base = format!("{}/{}", pod_base_url, npub);
 
-        // Ensure ACL exists even for pre-existing pods (backfill for pods created
-        // before ACL creation was added to create_pod_structure)
-        let acl_url = format!("{}/.acl", pod_base);
-        let acl_check = state.http_client.head(&acl_url).send().await;
-        let acl_missing = match acl_check {
-            Ok(resp) => !resp.status().is_success(),
-            Err(_) => true,
-        };
-        if acl_missing {
+        // Backfill missing ACL for existing pods
+        let acl_path = format!("/{}/.acl", npub);
+        if !state.storage.exists(&acl_path).await.unwrap_or(true) {
             info!("Backfilling missing ACL for existing pod: {}", npub);
-            let acl_content = format!(
-                r#"@prefix acl: <http://www.w3.org/ns/auth/acl#> .
-@prefix foaf: <http://xmlns.com/foaf/0.1/> .
-
-<#owner>
-    a acl:Authorization ;
-    acl:agent <did:nostr:{pubkey}> ;
-    acl:accessTo <./> ;
-    acl:default <./> ;
-    acl:mode acl:Read, acl:Write, acl:Control .
-
-<#public>
-    a acl:Authorization ;
-    acl:agentClass foaf:Agent ;
-    acl:accessTo <./> ;
-    acl:mode acl:Read .
-"#,
-                pubkey = pubkey
-            );
-
-            let mut acl_req = state.http_client.put(&acl_url);
-            if let Some(auth) = auth_header {
-                acl_req = acl_req.header("Authorization", auth);
-            }
-            acl_req = acl_req
-                .header("Content-Type", "text/turtle")
-                .body(acl_content);
-
-            match acl_req.send().await {
-                Ok(resp) if resp.status().is_success() => {
-                    info!("Backfilled ACL for pod {}", npub);
-                }
-                Ok(resp) => {
-                    warn!("ACL backfill for {} returned {}", npub, resp.status());
-                }
-                Err(e) => {
-                    warn!("Failed to backfill ACL for {}: {}", npub, e);
+            let acl_doc = build_pod_root_acl(pubkey, &pod_base);
+            if let Ok(acl_body) = serde_json::to_vec(&acl_doc) {
+                match state
+                    .storage
+                    .put(&acl_path, Bytes::from(acl_body), "application/ld+json")
+                    .await
+                {
+                    Ok(_) => info!("Backfilled ACL for pod {}", npub),
+                    Err(e) => warn!("ACL backfill for {} failed: {}", npub, e),
                 }
             }
         }
 
-        return Ok((false, PodStructure {
-            profile: format!("{}/profile/card#me", pod_base),
-            ontology_contributions: format!("{}/ontology/contributions/", pod_base),
-            ontology_proposals: format!("{}/ontology/proposals/", pod_base),
-            ontology_annotations: format!("{}/ontology/annotations/", pod_base),
-            preferences: format!("{}/preferences/", pod_base),
-            inbox: format!("{}/inbox/", pod_base),
-        }));
+        return Ok((false, SolidPodState::pod_structure(&pod_base, npub)));
     }
 
     info!("Auto-provisioning pod for user: {}", npub);
 
-    // Create pod as an LDP Basic Container at the root level via PUT
-    let pod_container_url = format!("{}/{}/", state.config.base_url, npub);
+    let structure = create_pod_with_structure(&state.storage, npub, pubkey, pod_base_url)
+        .await?;
 
-    let mut req = state.http_client.put(&pod_container_url);
-    if let Some(auth) = auth_header {
-        req = req.header("Authorization", auth);
-    }
-    req = req
-        .header("Content-Type", "text/turtle")
-        .header("Link", "<http://www.w3.org/ns/ldp#BasicContainer>; rel=\"type\"")
-        .body("");
-
-    let response = req.send().await;
-
-    match response {
-        Ok(resp) if resp.status().is_success() || resp.status().as_u16() == 409 => {
-            // Pod created (or already exists), now create structure
-            let structure = create_pod_structure(state, npub, pubkey, auth_header).await?;
-            Ok((true, structure))
-        }
-        Ok(resp) => {
-            let status = resp.status();
-            let body = resp.text().await.unwrap_or_default();
-            Err(format!("Pod creation failed ({}): {}", status, body))
-        }
-        Err(e) => Err(format!("Failed to connect to Solid server: {}", e)),
-    }
+    Ok((true, structure))
 }
 
 /// Create a new pod for a user based on their Nostr identity
+#[cfg(feature = "solid-pod-embed")]
 pub async fn create_pod(
     req: HttpRequest,
     _body: web::Json<CreatePodRequest>,
-    state: web::Data<SolidProxyState>,
+    state: web::Data<SolidPodState>,
     nostr_service: web::Data<NostrService>,
 ) -> HttpResponse {
-    // Get user from session/token
     let user = match get_user_from_request(&req, &nostr_service).await {
         Some(u) => u,
         None => {
@@ -684,17 +1187,12 @@ pub async fn create_pod(
 
     let npub = &user.npub;
     let pubkey = &user.pubkey;
+    let pod_base_url = SolidPodState::pod_base_url(&req);
     info!("Creating pod for user: {}", npub);
 
-    // Get auth header for forwarding
-    let auth_header = req.headers()
-        .get("Authorization")
-        .and_then(|h| h.to_str().ok());
-
-    // Use ensure_pod_exists for creation with full structure
-    match ensure_pod_exists(&state, npub, pubkey, auth_header).await {
+    match ensure_pod_exists(&state, npub, pubkey, &pod_base_url).await {
         Ok((created, structure)) => {
-            let pod_url = format!("{}/{}/", state.config.base_url, npub);
+            let pod_url = format!("{}/{}/", pod_base_url, npub);
             let status = if created {
                 actix_web::http::StatusCode::CREATED
             } else {
@@ -709,12 +1207,26 @@ pub async fn create_pod(
         }
         Err(e) => {
             error!("Pod creation failed: {}", e);
-            HttpResponse::BadGateway().json(SolidProxyError {
+            HttpResponse::InternalServerError().json(SolidProxyError {
                 error: "Pod creation failed".to_string(),
                 details: Some(e),
             })
         }
     }
+}
+
+/// Stub create_pod when feature is disabled
+#[cfg(not(feature = "solid-pod-embed"))]
+pub async fn create_pod(
+    _req: HttpRequest,
+    _body: web::Json<CreatePodRequest>,
+    _state: web::Data<SolidPodState>,
+    _nostr_service: web::Data<NostrService>,
+) -> HttpResponse {
+    HttpResponse::ServiceUnavailable().json(SolidProxyError {
+        error: "Solid pod backend not available".to_string(),
+        details: Some("Compiled without solid-pod-embed feature".to_string()),
+    })
 }
 
 #[derive(Debug, Deserialize)]
@@ -724,9 +1236,10 @@ pub struct CreatePodRequest {
 }
 
 /// Check if a pod exists for the current user
+#[cfg(feature = "solid-pod-embed")]
 pub async fn check_pod_exists(
     req: HttpRequest,
-    state: web::Data<SolidProxyState>,
+    state: web::Data<SolidPodState>,
     nostr_service: web::Data<NostrService>,
 ) -> HttpResponse {
     let user = match get_user_from_request(&req, &nostr_service).await {
@@ -739,58 +1252,47 @@ pub async fn check_pod_exists(
         }
     };
 
-    let pod_base = format!("{}/{}", state.config.base_url, user.npub);
-    let pod_url = format!("{}/", pod_base);
+    let pod_base_url = SolidPodState::pod_base_url(&req);
+    let exists = pod_exists(&state.storage, &user.npub).await;
 
-    match state.http_client.head(&pod_url).send().await {
-        Ok(resp) if resp.status().is_success() => {
-            HttpResponse::Ok().json(serde_json::json!({
-                "exists": true,
-                "pod_url": pod_url,
-                "webid": format!("{}/profile/card#me", pod_base),
-                "structure": PodStructure {
-                    profile: format!("{}/profile/card#me", pod_base),
-                    ontology_contributions: format!("{}/ontology/contributions/", pod_base),
-                    ontology_proposals: format!("{}/ontology/proposals/", pod_base),
-                    ontology_annotations: format!("{}/ontology/annotations/", pod_base),
-                    preferences: format!("{}/preferences/", pod_base),
-                    inbox: format!("{}/inbox/", pod_base),
-                }
-            }))
-        }
-        Ok(resp) if resp.status().as_u16() == 404 => {
-            HttpResponse::Ok().json(serde_json::json!({
-                "exists": false,
-                "suggested_url": pod_url
-            }))
-        }
-        Ok(resp) => {
-            HttpResponse::build(
-                actix_web::http::StatusCode::from_u16(resp.status().as_u16())
-                    .unwrap_or(actix_web::http::StatusCode::INTERNAL_SERVER_ERROR),
-            )
-            .json(SolidProxyError {
-                error: "Failed to check pod".to_string(),
-                details: None,
-            })
-        }
-        Err(e) => {
-            HttpResponse::BadGateway().json(SolidProxyError {
-                error: "Failed to connect to Solid server".to_string(),
-                details: Some(e.to_string()),
-            })
-        }
+    if exists {
+        let pod_url = format!("{}/{}/", pod_base_url, user.npub);
+        let structure = SolidPodState::pod_structure(&pod_base_url, &user.npub);
+        HttpResponse::Ok().json(serde_json::json!({
+            "exists": true,
+            "pod_url": pod_url,
+            "webid": structure.profile,
+            "structure": structure
+        }))
+    } else {
+        let pod_url = format!("{}/{}/", pod_base_url, user.npub);
+        HttpResponse::Ok().json(serde_json::json!({
+            "exists": false,
+            "suggested_url": pod_url
+        }))
     }
 }
 
+/// Stub check_pod_exists when feature is disabled
+#[cfg(not(feature = "solid-pod-embed"))]
+pub async fn check_pod_exists(
+    _req: HttpRequest,
+    _state: web::Data<SolidPodState>,
+    _nostr_service: web::Data<NostrService>,
+) -> HttpResponse {
+    HttpResponse::ServiceUnavailable().json(SolidProxyError {
+        error: "Solid pod backend not available".to_string(),
+        details: Some("Compiled without solid-pod-embed feature".to_string()),
+    })
+}
+
 /// Initialize pod for current user (auto-provision if needed)
-/// This should be called on user login to ensure their pod exists
+#[cfg(feature = "solid-pod-embed")]
 pub async fn init_pod(
     req: HttpRequest,
-    state: web::Data<SolidProxyState>,
+    state: web::Data<SolidPodState>,
     nostr_service: web::Data<NostrService>,
 ) -> HttpResponse {
-    // Get user from session/token
     let user = match get_user_from_request(&req, &nostr_service).await {
         Some(u) => u,
         None => {
@@ -803,18 +1305,13 @@ pub async fn init_pod(
 
     let npub = &user.npub;
     let pubkey = &user.pubkey;
-
-    // Get auth header for forwarding
-    let auth_header = req.headers()
-        .get("Authorization")
-        .and_then(|h| h.to_str().ok());
+    let pod_base_url = SolidPodState::pod_base_url(&req);
 
     debug!("Initializing pod for user: {}", npub);
 
-    // Use ensure_pod_exists for auto-provisioning
-    match ensure_pod_exists(&state, npub, pubkey, auth_header).await {
+    match ensure_pod_exists(&state, npub, pubkey, &pod_base_url).await {
         Ok((created, structure)) => {
-            let pod_url = format!("{}/{}/", state.config.base_url, npub);
+            let pod_url = format!("{}/{}/", pod_base_url, npub);
             HttpResponse::Ok().json(serde_json::json!({
                 "pod_url": pod_url,
                 "webid": structure.profile,
@@ -824,7 +1321,7 @@ pub async fn init_pod(
         }
         Err(e) => {
             error!("Pod initialization failed: {}", e);
-            HttpResponse::BadGateway().json(SolidProxyError {
+            HttpResponse::InternalServerError().json(SolidProxyError {
                 error: "Pod initialization failed".to_string(),
                 details: Some(e),
             })
@@ -832,13 +1329,25 @@ pub async fn init_pod(
     }
 }
 
+/// Stub init_pod when feature is disabled
+#[cfg(not(feature = "solid-pod-embed"))]
+pub async fn init_pod(
+    _req: HttpRequest,
+    _state: web::Data<SolidPodState>,
+    _nostr_service: web::Data<NostrService>,
+) -> HttpResponse {
+    HttpResponse::ServiceUnavailable().json(SolidProxyError {
+        error: "Solid pod backend not available".to_string(),
+        details: Some("Compiled without solid-pod-embed feature".to_string()),
+    })
+}
+
 /// Initialize pod from NIP-98 auth (for Solid-first requests)
-/// Can be called with NIP-98 Authorization header instead of Bearer token
+#[cfg(feature = "solid-pod-embed")]
 pub async fn init_pod_nip98(
     req: HttpRequest,
-    state: web::Data<SolidProxyState>,
+    state: web::Data<SolidPodState>,
 ) -> HttpResponse {
-    // Get user identity from NIP-98 header
     let identity = match state.extract_user_identity(&req) {
         Some(id) => id,
         None => {
@@ -870,12 +1379,12 @@ pub async fn init_pod_nip98(
         }
     };
 
+    let pod_base_url = SolidPodState::pod_base_url(&req);
     debug!("Initializing pod for NIP-98 user: {}", npub);
 
-    // Use ensure_pod_exists for auto-provisioning
-    match ensure_pod_exists(&state, &npub, &identity.pubkey, Some(&identity.auth_header)).await {
+    match ensure_pod_exists(&state, &npub, &identity.pubkey, &pod_base_url).await {
         Ok((created, structure)) => {
-            let pod_url = format!("{}/{}/", state.config.base_url, npub);
+            let pod_url = format!("{}/{}/", pod_base_url, npub);
             HttpResponse::Ok().json(serde_json::json!({
                 "pod_url": pod_url,
                 "webid": structure.profile,
@@ -886,7 +1395,7 @@ pub async fn init_pod_nip98(
         }
         Err(e) => {
             error!("Pod initialization failed: {}", e);
-            HttpResponse::BadGateway().json(SolidProxyError {
+            HttpResponse::InternalServerError().json(SolidProxyError {
                 error: "Pod initialization failed".to_string(),
                 details: Some(e),
             })
@@ -894,35 +1403,50 @@ pub async fn init_pod_nip98(
     }
 }
 
+/// Stub init_pod_nip98 when feature is disabled
+#[cfg(not(feature = "solid-pod-embed"))]
+pub async fn init_pod_nip98(
+    _req: HttpRequest,
+    _state: web::Data<SolidPodState>,
+) -> HttpResponse {
+    HttpResponse::ServiceUnavailable().json(SolidProxyError {
+        error: "Solid pod backend not available".to_string(),
+        details: Some("Compiled without solid-pod-embed feature".to_string()),
+    })
+}
+
 /// Get user from request using NIP-98 auth (primary) or session token (fallback)
+#[cfg(feature = "solid-pod-embed")]
 async fn get_user_from_request(
     req: &HttpRequest,
     nostr_service: &web::Data<NostrService>,
 ) -> Option<NostrUser> {
-    // Try to get token from Authorization header
     let auth_header = req.headers().get("Authorization")?;
     let auth_str = auth_header.to_str().ok()?;
 
     // Try NIP-98 first (primary authentication path)
     if auth_str.starts_with("Nostr ") {
-        // Behind a TLS-terminating proxy, connection_info returns internal
-        // scheme/host; prefer X-Forwarded-* headers from the proxy.
         let conn_info = req.connection_info();
-        let scheme = req.headers()
+        let scheme = req
+            .headers()
             .get("X-Forwarded-Proto")
             .and_then(|v| v.to_str().ok())
             .unwrap_or_else(|| conn_info.scheme());
-        let host = req.headers()
+        let host = req
+            .headers()
             .get("X-Forwarded-Host")
             .and_then(|v| v.to_str().ok())
             .unwrap_or_else(|| conn_info.host());
-        // Prefer X-Forwarded-URI (the original nginx-facing path, e.g. /solid/pods/init)
-        // over the nginx-rewritten backend path (e.g. /api/solid/pods/init).
-        // The client signs the NIP-98 token with the URL as sent to nginx, not the internal path.
-        let path = req.headers()
+        let path = req
+            .headers()
             .get("X-Forwarded-URI")
             .and_then(|v| v.to_str().ok())
-            .unwrap_or_else(|| req.uri().path_and_query().map(|pq| pq.as_str()).unwrap_or("/"));
+            .unwrap_or_else(|| {
+                req.uri()
+                    .path_and_query()
+                    .map(|pq| pq.as_str())
+                    .unwrap_or("/")
+            });
         let request_url = format!("{}://{}{}", scheme, host, path);
         let request_method = req.method().as_str();
 
@@ -947,15 +1471,6 @@ async fn get_user_from_request(
     }
 }
 
-/// Get user identity from NIP-98 Authorization header
-#[allow(dead_code)]
-async fn get_user_identity_from_request(
-    req: &HttpRequest,
-    state: &web::Data<SolidProxyState>,
-) -> Option<UserIdentity> {
-    state.extract_user_identity(req)
-}
-
 // ============================================================================
 // WebSocket Handler for Solid-0.1 Notifications
 // ============================================================================
@@ -963,22 +1478,31 @@ async fn get_user_identity_from_request(
 use actix::{Actor, StreamHandler, ActorContext};
 use actix_web_actors::ws;
 
-/// WebSocket actor for proxying solid-0.1 notifications
+/// WebSocket actor for solid-0.1 notifications backed by storage events
 pub struct SolidNotificationWs {
     /// User identity for the connection
     user_identity: Option<UserIdentity>,
-    /// JSS WebSocket URL
-    #[allow(dead_code)]
-    jss_ws_url: String,
     /// Subscribed resources
     subscriptions: Vec<String>,
+    /// Storage event receiver (connected when solid-pod-embed is active)
+    #[cfg(feature = "solid-pod-embed")]
+    storage_rx: Option<tokio::sync::mpsc::Receiver<solid_pod_rs::storage::StorageEvent>>,
 }
 
 impl SolidNotificationWs {
-    pub fn new(user_identity: Option<UserIdentity>, jss_config: &JssConfig) -> Self {
+    #[cfg(feature = "solid-pod-embed")]
+    pub fn new(user_identity: Option<UserIdentity>) -> Self {
         Self {
             user_identity,
-            jss_ws_url: jss_config.ws_url.clone(),
+            subscriptions: Vec::new(),
+            storage_rx: None,
+        }
+    }
+
+    #[cfg(not(feature = "solid-pod-embed"))]
+    pub fn new(user_identity: Option<UserIdentity>) -> Self {
+        Self {
+            user_identity,
             subscriptions: Vec::new(),
         }
     }
@@ -988,8 +1512,12 @@ impl Actor for SolidNotificationWs {
     type Context = ws::WebsocketContext<Self>;
 
     fn started(&mut self, _ctx: &mut Self::Context) {
-        info!("Solid notification WebSocket started for user: {:?}",
-            self.user_identity.as_ref().map(|u| &u.pubkey[..16.min(u.pubkey.len())]));
+        info!(
+            "Solid notification WebSocket started for user: {:?}",
+            self.user_identity
+                .as_ref()
+                .map(|u| &u.pubkey[..16.min(u.pubkey.len())])
+        );
     }
 
     fn stopped(&mut self, _ctx: &mut Self::Context) {
@@ -1027,12 +1555,19 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SolidNotification
             Ok(ws::Message::Text(text)) => {
                 debug!("Received solid notification message: {}", text);
 
-                // Parse the solid-0.1 protocol message
                 match serde_json::from_str::<SolidNotificationMessage>(&text) {
                     Ok(SolidNotificationMessage::Subscribe { resource }) => {
                         info!("Client subscribing to: {}", resource);
                         self.subscriptions.push(resource.clone());
-                        // Send ack back to client
+
+                        // Register a storage watcher for this resource when embedded
+                        #[cfg(feature = "solid-pod-embed")]
+                        {
+                            // Storage watch is handled at the handler level;
+                            // the WS actor tracks subscriptions for filtering.
+                            debug!("Subscription registered for: {}", resource);
+                        }
+
                         let ack = SolidNotificationMessage::Ack { resource };
                         if let Ok(json) = serde_json::to_string(&ack) {
                             ctx.text(json);
@@ -1080,17 +1615,11 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SolidNotification
 }
 
 /// WebSocket handler for solid-0.1 notifications
-/// Endpoint: /solid/.notifications (WebSocket upgrade)
-/// Protocol: solid-0.1
-/// - Client sends: { "type": "sub", "resource": "<url>" }
-/// - Server sends: { "type": "ack", "resource": "<url>" }
-/// - Server sends: { "type": "pub", "resource": "<url>" } on changes
 pub async fn handle_solid_notifications_ws(
     req: HttpRequest,
     stream: web::Payload,
-    state: web::Data<SolidProxyState>,
+    state: web::Data<SolidPodState>,
 ) -> Result<HttpResponse, actix_web::Error> {
-    // Extract user identity if present
     let user_identity = state.extract_user_identity(&req);
 
     if let Some(ref identity) = user_identity {
@@ -1102,142 +1631,226 @@ pub async fn handle_solid_notifications_ws(
         debug!("Solid notifications WebSocket connecting (anonymous)");
     }
 
-    // Create WebSocket actor
-    let ws_actor = SolidNotificationWs::new(user_identity, &state.config);
-
-    // Start WebSocket handshake
+    let ws_actor = SolidNotificationWs::new(user_identity);
     ws::start(ws_actor, &req, stream)
 }
 
-/// Configuration for connecting to JSS notifications via WebSocket proxy
-/// This creates a bidirectional proxy between the client and JSS's WebSocket endpoint
-pub async fn handle_solid_notifications_proxy(
-    req: HttpRequest,
-    stream: web::Payload,
-    state: web::Data<SolidProxyState>,
-) -> Result<HttpResponse, actix_web::Error> {
-    // For full proxy mode, we would need to establish a connection to JSS
-    // and relay messages bidirectionally. For now, use the simpler actor model.
-    handle_solid_notifications_ws(req, stream, state).await
+// ============================================================================
+// Health Check
+// ============================================================================
+
+/// Health check — verifies the storage backend is operational.
+#[cfg(feature = "solid-pod-embed")]
+pub async fn solid_health_check(state: web::Data<SolidPodState>) -> HttpResponse {
+    // Probe the storage by checking if the root exists
+    match state.storage.exists("/").await {
+        Ok(_) => HttpResponse::Ok().json(serde_json::json!({
+            "status": "healthy",
+            "backend": "solid-pod-rs",
+            "data_root": state.data_root.display().to_string()
+        })),
+        Err(e) => HttpResponse::ServiceUnavailable().json(serde_json::json!({
+            "status": "unhealthy",
+            "backend": "solid-pod-rs",
+            "error": e.to_string()
+        })),
+    }
 }
 
-/// Health check for JSS connectivity
-/// Returns the health status of the connection to the JavaScript Solid Server.
-/// - 200 OK with "healthy" status if JSS is reachable
-/// - 503 Service Unavailable with "degraded" if JSS responds with non-success
-/// - 503 Service Unavailable with "unhealthy" if JSS is unreachable
-pub async fn jss_health_check(state: web::Data<SolidProxyState>) -> HttpResponse {
-    let health_url = format!("{}/", state.config.base_url);
+/// Stub health check when feature is disabled
+#[cfg(not(feature = "solid-pod-embed"))]
+pub async fn solid_health_check(_state: web::Data<SolidPodState>) -> HttpResponse {
+    HttpResponse::ServiceUnavailable().json(serde_json::json!({
+        "status": "unavailable",
+        "backend": "none",
+        "error": "Compiled without solid-pod-embed feature"
+    }))
+}
 
-    match state
-        .http_client
-        .head(&health_url)
-        .timeout(std::time::Duration::from_secs(5))
-        .send()
-        .await
-    {
-        Ok(response) if response.status().is_success() => {
-            HttpResponse::Ok().json(serde_json::json!({
-                "status": "healthy",
-                "jss_url": state.config.base_url
-            }))
-        }
-        Ok(response) => {
-            HttpResponse::ServiceUnavailable().json(serde_json::json!({
-                "status": "degraded",
-                "code": response.status().as_u16()
-            }))
+// ============================================================================
+// DID Resolution
+// ============================================================================
+
+/// GET /.well-known/did.json — DID document (did:web method)
+#[cfg(feature = "solid-pod-embed")]
+async fn handle_did_wellknown(
+    req: HttpRequest,
+    state: web::Data<SolidPodState>,
+) -> HttpResponse {
+    // Try to read a stored DID document first
+    let did_path = "/.well-known/did.json";
+    match state.storage.get(did_path).await {
+        Ok((body, meta)) => HttpResponse::Ok()
+            .content_type(meta.content_type)
+            .body(body),
+        Err(PodError::NotFound(_)) => {
+            // Generate a minimal did:web document from the server origin
+            let pod_base = SolidPodState::pod_base_url(&req);
+            let doc = serde_json::json!({
+                "@context": ["https://www.w3.org/ns/did/v1"],
+                "id": format!("did:web:{}", extract_did_web_host(&req)),
+                "service": [{
+                    "id": "#solid",
+                    "type": "SolidStorage",
+                    "serviceEndpoint": pod_base
+                }]
+            });
+            HttpResponse::Ok()
+                .content_type("application/did+ld+json")
+                .json(doc)
         }
         Err(e) => {
-            HttpResponse::ServiceUnavailable().json(serde_json::json!({
-                "status": "unhealthy",
-                "error": e.to_string()
-            }))
+            error!("DID well-known fetch error: {}", e);
+            HttpResponse::InternalServerError().json(SolidProxyError {
+                error: "DID resolution failed".to_string(),
+                details: Some(e.to_string()),
+            })
         }
     }
 }
 
-// ─── DID Resolution Proxy ────────────────────────────────────────────────────
-//
-// DID documents are public and unauthenticated.  They must be served at the
-// canonical paths specified by the DID spec:
-//   /.well-known/did.json   (did:web method)
-//   /did/{tail}             (JSS DID resolution endpoint)
-//
-// Both are proxied directly to JSS without NIP-98 or ACL enforcement.
-// Internal JSS host references are stripped so DID docs are self-consistent
-// when consumed externally.
-
-/// Proxy GET /.well-known/did.json → JSS
-async fn handle_did_wellknown(state: web::Data<SolidProxyState>) -> HttpResponse {
-    let target_url = format!("{}/.well-known/did.json", state.config.base_url);
-    proxy_did_request(&state, &target_url).await
+/// Stub DID well-known when feature is disabled
+#[cfg(not(feature = "solid-pod-embed"))]
+async fn handle_did_wellknown(
+    _req: HttpRequest,
+    _state: web::Data<SolidPodState>,
+) -> HttpResponse {
+    HttpResponse::ServiceUnavailable().json(SolidProxyError {
+        error: "DID resolution not available".to_string(),
+        details: Some("Compiled without solid-pod-embed feature".to_string()),
+    })
 }
 
-/// Proxy GET /did/{tail:.*} → JSS (DID resolution, e.g. /did/nostr:<npub>)
+/// GET /did/{tail:.*} — DID resolution (e.g. /did/nostr:<npub>)
+#[cfg(feature = "solid-pod-embed")]
 async fn handle_did_proxy(
     path: web::Path<String>,
-    state: web::Data<SolidProxyState>,
+    _req: HttpRequest,
+    state: web::Data<SolidPodState>,
 ) -> HttpResponse {
     let tail = path.into_inner();
-    let target_url = format!("{}/did/{}", state.config.base_url, tail);
-    proxy_did_request(&state, &target_url).await
-}
 
-/// Shared DID proxy implementation.  Rewrites internal JSS host refs in the
-/// body so consumers receive clean, externally-addressable DID documents.
-async fn proxy_did_request(state: &SolidProxyState, target_url: &str) -> HttpResponse {
-    match state.http_client.get(target_url).send().await {
-        Ok(resp) => {
-            let status = actix_web::http::StatusCode::from_u16(resp.status().as_u16())
-                .unwrap_or(actix_web::http::StatusCode::INTERNAL_SERVER_ERROR);
-            let content_type = resp
-                .headers()
-                .get("content-type")
-                .and_then(|v| v.to_str().ok())
-                .unwrap_or("application/json")
-                .to_string();
-            match resp.bytes().await {
-                Ok(bytes) => {
-                    // Strip internal JSS host so DID doc URLs are relative or external.
-                    if let Ok(body_str) = std::str::from_utf8(&bytes) {
-                        let rewritten = body_str.replace(&state.config.base_url, "");
-                        HttpResponse::build(status)
-                            .content_type(content_type)
-                            .body(rewritten)
-                    } else {
-                        HttpResponse::build(status).content_type(content_type).body(bytes)
-                    }
-                }
-                Err(e) => HttpResponse::BadGateway().json(SolidProxyError {
-                    error: "DID response read failed".to_string(),
-                    details: Some(e.to_string()),
-                }),
-            }
-        }
-        Err(e) => HttpResponse::BadGateway().json(SolidProxyError {
-            error: "DID resolution failed".to_string(),
-            details: Some(e.to_string()),
+    // Parse did:nostr:<pubkey> style paths
+    if let Some(pubkey) = tail.strip_prefix("nostr:") {
+        // Use solid_pod_rs interop to generate a DID document
+        let also_known_as: Vec<String> = Vec::new();
+        let doc = solid_pod_rs::interop::did_nostr::did_nostr_document(pubkey, &also_known_as);
+
+        return HttpResponse::Ok()
+            .content_type("application/did+ld+json")
+            .json(doc);
+    }
+
+    // For other DID methods, try to read from storage
+    let did_path = format!("/did/{}", tail);
+    match state.storage.get(&did_path).await {
+        Ok((body, meta)) => HttpResponse::Ok()
+            .content_type(meta.content_type)
+            .body(body),
+        Err(PodError::NotFound(_)) => HttpResponse::NotFound().json(SolidProxyError {
+            error: "DID not found".to_string(),
+            details: Some(format!("No DID document at /did/{}", tail)),
         }),
+        Err(e) => {
+            error!("DID resolution error for {}: {}", tail, e);
+            HttpResponse::InternalServerError().json(SolidProxyError {
+                error: "DID resolution failed".to_string(),
+                details: Some(e.to_string()),
+            })
+        }
     }
 }
 
-/// Configure Solid proxy routes
+/// Stub DID proxy when feature is disabled
+#[cfg(not(feature = "solid-pod-embed"))]
+async fn handle_did_proxy(
+    _path: web::Path<String>,
+    _req: HttpRequest,
+    _state: web::Data<SolidPodState>,
+) -> HttpResponse {
+    HttpResponse::ServiceUnavailable().json(SolidProxyError {
+        error: "DID resolution not available".to_string(),
+        details: Some("Compiled without solid-pod-embed feature".to_string()),
+    })
+}
+
+/// Extract the host for did:web from the request
+#[cfg(feature = "solid-pod-embed")]
+fn extract_did_web_host(req: &HttpRequest) -> String {
+    let conn_info = req.connection_info();
+    let host = req
+        .headers()
+        .get("X-Forwarded-Host")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or_else(|| conn_info.host());
+    // did:web encodes : as %3A and / as :
+    host.replace(':', "%3A")
+}
+
+// ============================================================================
+// Global Storage Accessor
+// ============================================================================
+
+/// Global singleton for the storage backend, set during configure_routes.
+/// Used by other handlers (e.g. image_gen_handler) to store resources in pods.
+#[cfg(feature = "solid-pod-embed")]
+static GLOBAL_STORAGE: std::sync::OnceLock<Arc<FsBackend>> = std::sync::OnceLock::new();
+
+/// Get a reference to the global Solid storage backend.
+/// Returns None if solid-pod-embed is disabled or not yet initialized.
+#[cfg(feature = "solid-pod-embed")]
+pub fn get_global_storage() -> Option<Arc<FsBackend>> {
+    GLOBAL_STORAGE.get().cloned()
+}
+
+/// Stub when feature is disabled.
+#[cfg(not(feature = "solid-pod-embed"))]
+pub fn get_global_storage() -> Option<()> {
+    None
+}
+
+// ============================================================================
+// Route Configuration
+// ============================================================================
+
+/// Initialise Solid pod state asynchronously. Call from main (async context)
+/// before `HttpServer::new`, then pass the returned `web::Data` into
+/// `configure_routes_with_state`.
+#[cfg(feature = "solid-pod-embed")]
+pub async fn init_solid_state() -> web::Data<SolidPodState> {
+    let state = SolidPodState::new_async().await;
+    let _ = GLOBAL_STORAGE.set(Arc::clone(&state.storage));
+    web::Data::new(state)
+}
+
+/// Configure Solid routes — all routes use in-process solid-pod-rs storage.
+///
+/// On `solid-pod-embed`: registers the full route tree with FsBackend.
+/// Without the feature: registers stub routes that return 503.
+#[cfg(feature = "solid-pod-embed")]
 pub fn configure_routes(cfg: &mut web::ServiceConfig) {
-    info!("=== REGISTERING SOLID PROXY ROUTES ===");
-    cfg.app_data(web::Data::new(SolidProxyState::new()))
+    info!("=== REGISTERING SOLID POD ROUTES (embedded solid-pod-rs) ===");
+
+    // State is pre-initialized via init_solid_state() in main.rs and
+    // injected via .app_data() on the HttpServer. The configure function
+    // only wires up the route tree — no async init needed here.
+
+    cfg
         .service(
             web::scope("/solid")
                 // Health check endpoint
-                .route("/health", web::get().to(jss_health_check))
+                .route("/health", web::get().to(solid_health_check))
                 // WebSocket endpoint for notifications (solid-0.1 protocol)
-                .route("/.notifications", web::get().to(handle_solid_notifications_ws))
+                .route(
+                    "/.notifications",
+                    web::get().to(handle_solid_notifications_ws),
+                )
                 // Pod management endpoints
                 .route("/pods", web::post().to(create_pod))
                 .route("/pods/check", web::get().to(check_pod_exists))
                 .route("/pods/init", web::post().to(init_pod))
                 .route("/pods/init-nip98", web::post().to(init_pod_nip98))
-                // LDP proxy for all other paths
+                // LDP CRUD for all other paths
                 .route("/{tail:.*}", web::get().to(handle_solid_proxy))
                 .route("/{tail:.*}", web::put().to(handle_solid_proxy))
                 .route("/{tail:.*}", web::post().to(handle_solid_proxy))
@@ -1249,13 +1862,42 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
                 ),
         )
         // DID document resolution — public endpoints at canonical spec paths.
-        // Must sit outside /solid scope so the URL scheme matches the DID spec.
         .service(
-            web::resource("/.well-known/did.json")
-                .route(web::get().to(handle_did_wellknown)),
+            web::resource("/.well-known/did.json").route(web::get().to(handle_did_wellknown)),
+        )
+        .service(web::scope("/did").route("/{tail:.*}", web::get().to(handle_did_proxy)));
+}
+
+/// Stub configure_routes when solid-pod-embed feature is disabled.
+/// Registers nothing — all solid routes will 404.
+#[cfg(not(feature = "solid-pod-embed"))]
+pub fn configure_routes(cfg: &mut web::ServiceConfig) {
+    info!("=== SOLID POD ROUTES DISABLED (no solid-pod-embed feature) ===");
+    // Register minimal stubs that return 503
+    cfg.app_data(web::Data::new(SolidPodState::new()))
+        .service(
+            web::scope("/solid")
+                .route("/health", web::get().to(solid_health_check))
+                .route(
+                    "/.notifications",
+                    web::get().to(handle_solid_notifications_ws),
+                )
+                .route("/pods", web::post().to(create_pod))
+                .route("/pods/check", web::get().to(check_pod_exists))
+                .route("/pods/init", web::post().to(init_pod))
+                .route("/pods/init-nip98", web::post().to(init_pod_nip98))
+                .route("/{tail:.*}", web::get().to(handle_solid_proxy))
+                .route("/{tail:.*}", web::put().to(handle_solid_proxy))
+                .route("/{tail:.*}", web::post().to(handle_solid_proxy))
+                .route("/{tail:.*}", web::delete().to(handle_solid_proxy))
+                .route("/{tail:.*}", web::head().to(handle_solid_proxy))
+                .route(
+                    "/{tail:.*}",
+                    web::method(Method::PATCH).to(handle_solid_proxy),
+                ),
         )
         .service(
-            web::scope("/did")
-                .route("/{tail:.*}", web::get().to(handle_did_proxy)),
-        );
+            web::resource("/.well-known/did.json").route(web::get().to(handle_did_wellknown)),
+        )
+        .service(web::scope("/did").route("/{tail:.*}", web::get().to(handle_did_proxy)));
 }

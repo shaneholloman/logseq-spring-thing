@@ -77,11 +77,6 @@ const DELTA_POSITION_CHANGED: u8 = 0x01;
 const DELTA_VELOCITY_CHANGED: u8 = 0x02;
 const DELTA_ALL_CHANGED: u8 = DELTA_POSITION_CHANGED | DELTA_VELOCITY_CHANGED;
 
-// Delta encoding constants
-const DELTA_SCALE_FACTOR: f32 = 100.0; // Scale factor for i16 precision
-const DELTA_ITEM_SIZE: usize = 20;     // Size of DeltaNodeData in bytes: 4(id) + 1(flags) + 3(padding) + 6*2(deltas) = 20
-const DELTA_RESYNC_INTERVAL: u64 = 60; // Full state every 60 frames
-
 // Safety limits for decode functions
 const MAX_PAYLOAD_SIZE: usize = 10 * 1024 * 1024; // 10 MB
 const MAX_NODE_COUNT: usize = 100_000;
@@ -92,7 +87,6 @@ const WIRE_VEC3_SIZE: usize = 12;
 const WIRE_F32_SIZE: usize = 4;
 const WIRE_I32_SIZE: usize = 4;
 const WIRE_U32_SIZE: usize = 4;
-// V2 decode no longer supported but size constant retained for delta_encoding savings calculations
 const WIRE_V2_ITEM_SIZE: usize = WIRE_V2_ID_SIZE + WIRE_VEC3_SIZE + WIRE_VEC3_SIZE + WIRE_F32_SIZE + WIRE_I32_SIZE; // 4+12+12+4+4 = 36
 const WIRE_V3_ITEM_SIZE: usize =
     WIRE_V2_ID_SIZE + WIRE_VEC3_SIZE + WIRE_VEC3_SIZE + WIRE_F32_SIZE + WIRE_I32_SIZE +
@@ -381,7 +375,7 @@ pub fn encode_node_data_extended_with_sssp(
         } else {
             debug_assert!(
                 *node_id <= NODE_ID_MASK,
-                "Unflagged node ID {} (0x{:08X}) exceeds 26-bit limit (max {}). Raw Neo4j ID leaked to wire.",
+                "Unflatten node ID {} (0x{:08X}) exceeds 26-bit limit (max {}). Raw persistent ID may have leaked to wire.",
                 node_id, node_id, NODE_ID_MASK
             );
             *node_id

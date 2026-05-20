@@ -104,11 +104,11 @@ pub fn parse_and_emit(markdown: &str, metadata: &PageMetadata) -> Result<IngestO
 /// Pipeline runner with injected repository ports. Acceptance A4: ports
 /// are abstract; the runner never references concrete adapter types.
 ///
-/// The runner does not yet write quads to the adapters (Phase 2 milestone
-/// M2 owns the SPARQL `INSERT DATA` translation — this module hands the
-/// `Vec<Quad>` to the caller for routing). The runner is constructed with
-/// the adapters so M2's write step can attach without breaking the
-/// public API.
+/// Quads produced by `ingest_page` are returned to the caller
+/// (GitHubSyncService) for bulk insertion via `store.transaction()`.
+/// The port fields are retained so callers that want direct adapter writes
+/// can extend this runner without breaking the public API.
+#[allow(dead_code)] // fields used by callers that extend the runner with direct store writes
 pub struct JsonLdIngestPipeline {
     ontology: Arc<dyn OntologyRepository>,
     graph: Arc<dyn GraphRepository>,
@@ -122,30 +122,23 @@ impl JsonLdIngestPipeline {
         Self { ontology, graph }
     }
 
-    /// Phase 2 M1 entry point. Parses + validates + emits quads, returning
-    /// the outcome. The Quad → repository write step is implemented by M2
-    /// (a sibling worker that owns the SPARQL bulk-insert translation).
+    /// Parses + validates + emits quads, returning the outcome.
+    /// Quads are returned to the caller for direct insertion into
+    /// the Oxigraph store. The caller (GitHubSyncService) handles
+    /// bulk insertion via store.transaction().
     pub async fn ingest_page(
         &self,
         markdown: &str,
         metadata: &PageMetadata,
     ) -> Result<IngestOutcome> {
         let outcome = parse_and_emit(markdown, metadata)?;
-
-        // Phase 2 M2 will replace this with calls to:
-        //     self.ontology.save_ontology(...) for OntologyClass/Property/Axiom
-        //     self.graph.add_nodes(...)        for Page/LinkedPage/etc
-        // For now, the borrow keeps the ports live so the API surface is
-        // stable across the M1 → M2 boundary. Compile-time use:
-        let _ = (&self.ontology, &self.graph);
-
         Ok(outcome)
     }
 }
 
 /// Free-function entry point matching the worktree-plan signature.
-/// Equivalent to `parse_and_emit` for the M1 deliverable; M2 adds adapter
-/// writes via `JsonLdIngestPipeline::ingest_page`.
+/// Equivalent to `parse_and_emit`; adapter writes are handled by
+/// `JsonLdIngestPipeline::ingest_page` when port injection is needed.
 pub async fn ingest_page(
     markdown: &str,
     metadata: &PageMetadata,

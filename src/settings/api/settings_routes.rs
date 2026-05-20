@@ -13,7 +13,20 @@ use crate::actors::messages::{BroadcastMessage, ForceResumePhysics, GetSettings,
 use crate::utils::unified_gpu_compute::ComputeMode;
 use crate::settings::models::{ConstraintSettings, NodeFilterSettings, QualityGateSettings, AllSettings};
 use crate::settings::auth_extractor::{AuthenticatedUser, OptionalAuth};
-use crate::adapters::neo4j_settings_repository::{Neo4jSettingsRepository, UserFilter};
+use crate::adapters::SqliteSettingsRepository;
+/// Placeholder for the per-user filter record. Full SQLite migration in Phase 2.
+// todo!("Phase 2: migrate UserFilter to SqliteSettingsRepository / SQLite schema")
+#[derive(Debug, Default, serde::Serialize, serde::Deserialize, Clone)]
+pub struct UserFilter {
+    pub pubkey: String,
+    pub enabled: bool,
+    pub quality_threshold: f64,
+    pub authority_threshold: f64,
+    pub filter_by_quality: bool,
+    pub filter_by_authority: bool,
+    pub filter_mode: String,
+    pub max_nodes: Option<i64>,
+}
 use crate::ports::settings_repository::{SettingValue, SettingsRepository};
 use crate::AppState;
 
@@ -60,12 +73,10 @@ fn normalize_physics_keys(patch: serde_json::Map<String, serde_json::Value>) -> 
             "center_gravity_k"  => "centerGravityK",
             "max_velocity"      => "maxVelocity",
             "max_force"         => "maxForce",
-            "mass_scale"        => "massScale",
             "enable_bounds"     => "enableBounds",
             "bounds_size"       => "boundsSize",
             "separation_radius" => "separationRadius",
             "boundary_damping"  => "boundaryDamping",
-            "update_threshold"  => "updateThreshold",
             "rest_length"       => "restLength",
             "repulsion_cutoff"  => "repulsionCutoff",
             "grid_cell_size"    => "gridCellSize",
@@ -118,24 +129,19 @@ pub fn validate_physics_settings(settings: &PhysicsSettings) -> Result<(), Strin
     };
 
     // Range-checked fields per QE audit spec
-    check_range(settings.gravity, "gravity", -10.0, 10.0, &mut errors);
+    check_range(settings.gravity, "gravity", -5.0, 5.0, &mut errors);
     check_range(settings.damping, "damping", 0.0, 1.0, &mut errors);
-    check_range(settings.spring_k, "spring_k", 0.0, 1000.0, &mut errors);
-    check_range(settings.max_velocity, "max_velocity", 0.0, 10000.0, &mut errors);
-    check_range(settings.max_force, "max_force", 0.0, 10000.0, &mut errors);
+    check_range(settings.spring_k, "spring_k", 0.0, 500.0, &mut errors);
+    check_range(settings.max_velocity, "max_velocity", 0.1, 1000.0, &mut errors);
+    check_range(settings.max_force, "max_force", 0.1, 5000.0, &mut errors);
     check_range(settings.dt, "timestep (dt)", 0.001, 1.0, &mut errors);
 
     // All other f32 fields: reject NaN/Infinity
     check_finite(settings.bounds_size, "bounds_size", &mut errors);
     check_finite(settings.separation_radius, "separation_radius", &mut errors);
     check_finite(settings.repel_k, "repel_k", &mut errors);
-    check_finite(settings.mass_scale, "mass_scale", &mut errors);
     check_finite(settings.boundary_damping, "boundary_damping", &mut errors);
-    check_finite(settings.update_threshold, "update_threshold", &mut errors);
     check_finite(settings.temperature, "temperature", &mut errors);
-    check_finite(settings.stress_weight, "stress_weight", &mut errors);
-    check_finite(settings.stress_alpha, "stress_alpha", &mut errors);
-    check_finite(settings.boundary_limit, "boundary_limit", &mut errors);
     check_finite(settings.alignment_strength, "alignment_strength", &mut errors);
     check_finite(settings.cluster_strength, "cluster_strength", &mut errors);
     check_finite(settings.rest_length, "rest_length", &mut errors);
@@ -149,8 +155,6 @@ pub fn validate_physics_settings(settings: &PhysicsSettings) -> Result<(), Strin
     check_finite(settings.boundary_velocity_damping, "boundary_velocity_damping", &mut errors);
     check_finite(settings.min_distance, "min_distance", &mut errors);
     check_finite(settings.max_repulsion_dist, "max_repulsion_dist", &mut errors);
-    check_finite(settings.boundary_margin, "boundary_margin", &mut errors);
-    check_finite(settings.boundary_force_strength, "boundary_force_strength", &mut errors);
     check_finite(settings.constraint_max_force_per_node, "constraint_max_force_per_node", &mut errors);
     check_finite(settings.clustering_resolution, "clustering_resolution", &mut errors);
 
@@ -220,6 +224,44 @@ pub fn validate_node_filter_settings(settings: &NodeFilterSettings) -> Result<()
 }
 
 // ============================================================================
+// Quality Gate Settings Validation
+// ============================================================================
+
+/// Validates quality gate settings are within safe operational ranges.
+pub fn validate_quality_gate_settings(settings: &QualityGateSettings) -> Result<(), String> {
+    let mut errors = Vec::new();
+
+    if !settings.ontology_strength.is_finite() || settings.ontology_strength < 0.0 || settings.ontology_strength > 1.0 {
+        errors.push(format!("ontology_strength must be between 0.0 and 1.0 (got {})", settings.ontology_strength));
+    }
+    if !settings.dag_level_attraction.is_finite() || settings.dag_level_attraction < 0.0 || settings.dag_level_attraction > 2.0 {
+        errors.push(format!("dag_level_attraction must be between 0.0 and 2.0 (got {})", settings.dag_level_attraction));
+    }
+    if !settings.dag_sibling_repulsion.is_finite() || settings.dag_sibling_repulsion < 0.0 || settings.dag_sibling_repulsion > 2.0 {
+        errors.push(format!("dag_sibling_repulsion must be between 0.0 and 2.0 (got {})", settings.dag_sibling_repulsion));
+    }
+    if !settings.type_cluster_attraction.is_finite() || settings.type_cluster_attraction < 0.0 || settings.type_cluster_attraction > 2.0 {
+        errors.push(format!("type_cluster_attraction must be between 0.0 and 2.0 (got {})", settings.type_cluster_attraction));
+    }
+    if !settings.type_cluster_radius.is_finite() || settings.type_cluster_radius < 10.0 || settings.type_cluster_radius > 500.0 {
+        errors.push(format!("type_cluster_radius must be between 10.0 and 500.0 (got {})", settings.type_cluster_radius));
+    }
+    let valid_modes = ["force-directed", "dag-topdown", "dag-radial", "dag-leftright", "type-clustering"];
+    if !valid_modes.contains(&settings.layout_mode.as_str()) {
+        errors.push(format!("layout_mode must be one of {:?} (got '{}')", valid_modes, settings.layout_mode));
+    }
+    if settings.min_fps_threshold < 10 || settings.min_fps_threshold > 120 {
+        errors.push(format!("min_fps_threshold must be between 10 and 120 (got {})", settings.min_fps_threshold));
+    }
+
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(errors.join("; "))
+    }
+}
+
+// ============================================================================
 // Physics Settings Routes
 // ============================================================================
 
@@ -227,10 +269,10 @@ pub fn validate_node_filter_settings(settings: &NodeFilterSettings) -> Result<()
 pub async fn get_physics_settings(
     state: web::Data<AppState>,
     _auth: OptionalAuth,
-    neo4j_repo: web::Data<Arc<Neo4jSettingsRepository>>,
+    settings_repo: web::Data<Arc<SqliteSettingsRepository>>,
 ) -> impl Responder {
-    // Try Neo4j persisted settings first, fall back to in-memory actor
-    if let Ok(Some(SettingValue::Json(json))) = neo4j_repo.get_setting("physics").await {
+    // Try SQLite persisted settings first, fall back to in-memory actor
+    if let Ok(Some(SettingValue::Json(json))) = settings_repo.get_setting("physics").await {
         if let Ok(physics) = serde_json::from_value::<PhysicsSettings>(json) {
             return HttpResponse::Ok().json(physics);
         }
@@ -261,7 +303,7 @@ pub async fn update_physics_settings(
     state: web::Data<AppState>,
     body: web::Json<serde_json::Value>,
     auth: AuthenticatedUser,
-    neo4j_repo: web::Data<Arc<Neo4jSettingsRepository>>,
+    settings_repo: web::Data<Arc<SqliteSettingsRepository>>,
 ) -> impl Responder {
     debug!("User {} updating physics settings — request body: {:?}", auth.pubkey, body);
 
@@ -366,15 +408,15 @@ pub async fn update_physics_settings(
                 info!("ForceResumePhysics sent to GraphServiceSupervisor successfully");
             }
 
-            // Persist physics settings to Neo4j for cross-restart survival
+            // Persist physics settings to SQLite for cross-restart survival
             match serde_json::to_value(&new_physics) {
                 Ok(physics_json) => {
-                    if let Err(e) = neo4j_repo.set_setting(
+                    if let Err(e) = settings_repo.set_setting(
                         "physics",
                         SettingValue::Json(physics_json),
                         Some("Physics simulation settings"),
                     ).await {
-                        warn!("Failed to persist physics settings to Neo4j: {}", e);
+                        warn!("Failed to persist physics settings to SQLite: {}", e);
                     }
                 }
                 Err(e) => {
@@ -404,13 +446,13 @@ pub async fn update_physics_settings(
 // ============================================================================
 
 /// GET /api/settings/constraints
-/// Loads constraint settings from Neo4j repository, falling back to defaults.
+/// Loads constraint settings from SQLite repository, falling back to defaults.
 pub async fn get_constraint_settings(
     _state: web::Data<AppState>,
-    neo4j_repo: web::Data<Arc<Neo4jSettingsRepository>>,
+    settings_repo: web::Data<Arc<SqliteSettingsRepository>>,
     _auth: OptionalAuth,
 ) -> impl Responder {
-    match neo4j_repo.get_setting("constraints").await {
+    match settings_repo.get_setting("constraints").await {
         Ok(Some(crate::ports::settings_repository::SettingValue::Json(json))) => {
             match serde_json::from_value::<ConstraintSettings>(json) {
                 Ok(settings) => HttpResponse::Ok().json(settings),
@@ -430,10 +472,10 @@ pub async fn get_constraint_settings(
 
 /// PUT /api/settings/constraints
 /// Validates input before accepting (QE Fix #1). Returns updated state (QE Fix #2).
-/// Persists to Neo4j repository via set_setting.
+/// Persists to SQLite repository via set_setting.
 pub async fn update_constraint_settings(
     state: web::Data<AppState>,
-    neo4j_repo: web::Data<Arc<Neo4jSettingsRepository>>,
+    settings_repo: web::Data<Arc<SqliteSettingsRepository>>,
     body: web::Json<ConstraintSettings>,
     auth: AuthenticatedUser,
 ) -> impl Responder {
@@ -449,7 +491,7 @@ pub async fn update_constraint_settings(
         });
     }
 
-    // Persist to Neo4j
+    // Persist to SQLite
     let settings_json = match serde_json::to_value(&settings) {
         Ok(json) => json,
         Err(e) => {
@@ -460,7 +502,7 @@ pub async fn update_constraint_settings(
         }
     };
 
-    if let Err(e) = neo4j_repo.set_setting(
+    if let Err(e) = settings_repo.set_setting(
         "constraints",
         crate::ports::settings_repository::SettingValue::Json(settings_json),
         Some("Constraint settings for physics simulation"),
@@ -600,13 +642,13 @@ pub async fn update_rendering_settings(
 // ============================================================================
 
 /// GET /api/settings/node-filter
-/// Loads node filter settings from Neo4j repository, falling back to defaults.
+/// Loads node filter settings from SQLite repository, falling back to defaults.
 pub async fn get_node_filter_settings(
     _state: web::Data<AppState>,
-    neo4j_repo: web::Data<Arc<Neo4jSettingsRepository>>,
+    settings_repo: web::Data<Arc<SqliteSettingsRepository>>,
     _auth: OptionalAuth,
 ) -> impl Responder {
-    match neo4j_repo.get_setting("node_filter").await {
+    match settings_repo.get_setting("node_filter").await {
         Ok(Some(crate::ports::settings_repository::SettingValue::Json(json))) => {
             match serde_json::from_value::<NodeFilterSettings>(json) {
                 Ok(settings) => HttpResponse::Ok().json(settings),
@@ -626,10 +668,10 @@ pub async fn get_node_filter_settings(
 
 /// PUT /api/settings/node-filter
 /// Validates input before accepting (QE Fix #1). Returns updated state (QE Fix #2).
-/// Persists to Neo4j repository via set_setting.
+/// Persists to SQLite repository via set_setting.
 pub async fn update_node_filter_settings(
     state: web::Data<AppState>,
-    neo4j_repo: web::Data<Arc<Neo4jSettingsRepository>>,
+    settings_repo: web::Data<Arc<SqliteSettingsRepository>>,
     body: web::Json<NodeFilterSettings>,
     auth: AuthenticatedUser,
 ) -> impl Responder {
@@ -646,7 +688,7 @@ pub async fn update_node_filter_settings(
         });
     }
 
-    // Persist to Neo4j
+    // Persist to SQLite
     let settings_json = match serde_json::to_value(&settings) {
         Ok(json) => json,
         Err(e) => {
@@ -657,7 +699,7 @@ pub async fn update_node_filter_settings(
         }
     };
 
-    if let Err(e) = neo4j_repo.set_setting(
+    if let Err(e) = settings_repo.set_setting(
         "node_filter",
         crate::ports::settings_repository::SettingValue::Json(settings_json),
         Some("Node confidence filter settings"),
@@ -681,6 +723,7 @@ pub async fn update_node_filter_settings(
             "filterByQuality": settings.filter_by_quality,
             "filterByAuthority": settings.filter_by_authority,
             "filterMode": settings.filter_mode,
+            "includeLinkedPages": settings.include_linked_pages,
         },
         "updatedBy": auth.pubkey,
         "timestamp": chrono::Utc::now().timestamp_millis()
@@ -700,13 +743,13 @@ pub async fn update_node_filter_settings(
 // ============================================================================
 
 /// GET /api/settings/quality-gates
-/// Loads quality gate settings from Neo4j repository, falling back to defaults.
+/// Loads quality gate settings from SQLite repository, falling back to defaults.
 pub async fn get_quality_gate_settings(
     _state: web::Data<AppState>,
-    neo4j_repo: web::Data<Arc<Neo4jSettingsRepository>>,
+    settings_repo: web::Data<Arc<SqliteSettingsRepository>>,
     _auth: OptionalAuth,
 ) -> impl Responder {
-    match neo4j_repo.get_setting("quality_gates").await {
+    match settings_repo.get_setting("quality_gates").await {
         Ok(Some(crate::ports::settings_repository::SettingValue::Json(json))) => {
             match serde_json::from_value::<QualityGateSettings>(json) {
                 Ok(settings) => HttpResponse::Ok().json(settings),
@@ -726,15 +769,15 @@ pub async fn get_quality_gate_settings(
 
 /// PUT /api/settings/quality-gates
 /// Accepts partial JSON updates -- missing fields retain their persisted or default values.
-/// Returns updated state (QE Fix #2). Persists to Neo4j repository.
+/// Returns updated state (QE Fix #2). Persists to SQLite repository.
 pub async fn update_quality_gate_settings(
     state: web::Data<AppState>,
-    neo4j_repo: web::Data<Arc<Neo4jSettingsRepository>>,
+    settings_repo: web::Data<Arc<SqliteSettingsRepository>>,
     body: web::Json<serde_json::Value>,
     auth: AuthenticatedUser,
 ) -> impl Responder {
     // Load current persisted settings as the merge base (instead of hardcoded defaults)
-    let current_settings = match neo4j_repo.get_setting("quality_gates").await {
+    let current_settings = match settings_repo.get_setting("quality_gates").await {
         Ok(Some(crate::ports::settings_repository::SettingValue::Json(json))) => {
             serde_json::from_value::<QualityGateSettings>(json).unwrap_or_default()
         }
@@ -761,7 +804,15 @@ pub async fn update_quality_gate_settings(
         }
     }
 
-    // Persist to Neo4j
+    // Validate before persisting
+    if let Err(validation_err) = validate_quality_gate_settings(&settings) {
+        warn!("Quality gate settings validation failed: {}", validation_err);
+        return HttpResponse::BadRequest().json(ErrorResponse {
+            error: format!("Validation failed: {}", validation_err),
+        });
+    }
+
+    // Persist to SQLite
     let settings_json = match serde_json::to_value(&settings) {
         Ok(json) => json,
         Err(e) => {
@@ -772,7 +823,7 @@ pub async fn update_quality_gate_settings(
         }
     };
 
-    if let Err(e) = neo4j_repo.set_setting(
+    if let Err(e) = settings_repo.set_setting(
         "quality_gates",
         crate::ports::settings_repository::SettingValue::Json(settings_json),
         Some("Quality gate settings for feature toggles and performance thresholds"),
@@ -931,10 +982,10 @@ fn deep_merge_json(base: &mut serde_json::Value, patch: serde_json::Value) {
 /// Falls back to empty object if nothing stored yet.
 pub async fn get_visual_settings(
     _state: web::Data<AppState>,
-    neo4j_repo: web::Data<Arc<Neo4jSettingsRepository>>,
+    settings_repo: web::Data<Arc<SqliteSettingsRepository>>,
     _auth: OptionalAuth,
 ) -> impl Responder {
-    match neo4j_repo.get_setting("visual").await {
+    match settings_repo.get_setting("visual").await {
         Ok(Some(SettingValue::Json(json))) => HttpResponse::Ok().json(json),
         Ok(_) => HttpResponse::Ok().json(serde_json::json!({})),
         Err(e) => {
@@ -949,7 +1000,7 @@ pub async fn get_visual_settings(
 /// This is the persistence endpoint for all client-only visual settings.
 pub async fn update_visual_settings(
     _state: web::Data<AppState>,
-    neo4j_repo: web::Data<Arc<Neo4jSettingsRepository>>,
+    settings_repo: web::Data<Arc<SqliteSettingsRepository>>,
     body: web::Json<serde_json::Value>,
     auth: AuthenticatedUser,
 ) -> impl Responder {
@@ -963,7 +1014,7 @@ pub async fn update_visual_settings(
     }
 
     // Load current stored settings as merge base
-    let mut current = match neo4j_repo.get_setting("visual").await {
+    let mut current = match settings_repo.get_setting("visual").await {
         Ok(Some(SettingValue::Json(json))) if json.is_object() => json,
         _ => serde_json::json!({}),
     };
@@ -971,8 +1022,8 @@ pub async fn update_visual_settings(
     // Deep merge patch into current
     deep_merge_json(&mut current, patch);
 
-    // Persist merged result to Neo4j
-    if let Err(e) = neo4j_repo.set_setting(
+    // Persist merged result to SQLite
+    if let Err(e) = settings_repo.set_setting(
         "visual",
         SettingValue::Json(current.clone()),
         Some("Client visual settings (glow, hologram, graphTypeVisuals, nodes, edges, labels, etc.)"),
@@ -995,41 +1046,24 @@ pub async fn update_visual_settings(
 /// Returns global settings for anonymous users, or user-specific settings for authenticated users
 pub async fn get_all_settings(
     state: web::Data<AppState>,
-    neo4j_repo: web::Data<Arc<Neo4jSettingsRepository>>,
+    settings_repo: web::Data<Arc<SqliteSettingsRepository>>,
     auth: OptionalAuth,
 ) -> impl Responder {
-    match auth.0 {
-        Some(user) => {
-            info!("GET /api/settings/all for authenticated user: {}", user.pubkey);
-            match neo4j_repo.get_user_settings(&user.pubkey).await {
-                Ok(Some(user_settings)) => {
-                    info!("Returning user-specific settings for: {}", user.pubkey);
-                    return HttpResponse::Ok().json(user_settings);
-                }
-                Ok(None) => {
-                    info!("No user-specific settings found, returning global for: {}", user.pubkey);
-                }
-                Err(e) => {
-                    error!("Failed to query user settings: {}, falling back to global", e);
-                }
-            }
-            get_all_from_actor(&state, &neo4j_repo).await
-        }
-        None => {
-            info!("GET /api/settings/all for anonymous user (read-only)");
-            get_all_from_actor(&state, &neo4j_repo).await
-        }
-    }
+    // Per-user settings persistence deferred to Phase 2 (ADR-11 §D5).
+    // todo!("Phase 2: implement get_user_settings on SqliteSettingsRepository")
+    let _ = auth; // suppress unused warning while Phase 2 is pending
+    info!("GET /api/settings/all (user-specific settings pending Phase 2 SQLite migration)");
+    get_all_from_actor(&state, &settings_repo).await
 }
 
 async fn get_all_from_actor(
     state: &web::Data<AppState>,
-    neo4j_repo: &web::Data<Arc<Neo4jSettingsRepository>>,
+    settings_repo: &web::Data<Arc<SqliteSettingsRepository>>,
 ) -> HttpResponse {
     match state.settings_addr.send(GetSettings).await {
         Ok(Ok(full_settings)) => {
-            // Load persisted settings from Neo4j repository, falling back to actor/defaults
-            let physics = match neo4j_repo.get_setting("physics").await {
+            // Load persisted settings from SQLite repository (ADR-11), falling back to actor/defaults
+            let physics = match settings_repo.get_setting("physics").await {
                 Ok(Some(SettingValue::Json(json))) => {
                     serde_json::from_value::<PhysicsSettings>(json)
                         .unwrap_or(full_settings.visualisation.graphs.logseq.physics)
@@ -1037,28 +1071,28 @@ async fn get_all_from_actor(
                 _ => full_settings.visualisation.graphs.logseq.physics,
             };
 
-            let constraints = match neo4j_repo.get_setting("constraints").await {
+            let constraints = match settings_repo.get_setting("constraints").await {
                 Ok(Some(SettingValue::Json(json))) => {
                     serde_json::from_value::<ConstraintSettings>(json).unwrap_or_default()
                 }
                 _ => ConstraintSettings::default(),
             };
 
-            let node_filter = match neo4j_repo.get_setting("node_filter").await {
+            let node_filter = match settings_repo.get_setting("node_filter").await {
                 Ok(Some(SettingValue::Json(json))) => {
                     serde_json::from_value::<NodeFilterSettings>(json).unwrap_or_default()
                 }
                 _ => NodeFilterSettings::default(),
             };
 
-            let quality_gates = match neo4j_repo.get_setting("quality_gates").await {
+            let quality_gates = match settings_repo.get_setting("quality_gates").await {
                 Ok(Some(SettingValue::Json(json))) => {
                     serde_json::from_value::<QualityGateSettings>(json).unwrap_or_default()
                 }
                 _ => QualityGateSettings::default(),
             };
 
-            let visual = match neo4j_repo.get_setting("visual").await {
+            let visual = match settings_repo.get_setting("visual").await {
                 Ok(Some(SettingValue::Json(json))) => json,
                 _ => serde_json::json!({}),
             };
@@ -1093,53 +1127,28 @@ async fn get_all_from_actor(
 // ============================================================================
 
 /// GET /api/user/filter
+/// Phase 2 pending: per-user filter persistence via SQLite (ADR-11 §D5).
+/// todo!("Phase 2: implement get_user_filter on SqliteSettingsRepository")
 pub async fn get_user_filter(
-    neo4j_repo: web::Data<Arc<Neo4jSettingsRepository>>,
+    _settings_repo: web::Data<Arc<SqliteSettingsRepository>>,
     auth: AuthenticatedUser,
 ) -> impl Responder {
-    info!("GET /api/user/filter for user: {}", auth.pubkey);
-
-    match neo4j_repo.get_user_filter(&auth.pubkey).await {
-        Ok(Some(filter)) => {
-            info!("Returning user filter for: {}", auth.pubkey);
-            HttpResponse::Ok().json(filter)
-        }
-        Ok(None) => {
-            info!("No user filter found, returning defaults for: {}", auth.pubkey);
-            HttpResponse::Ok().json(UserFilter::default())
-        }
-        Err(e) => {
-            error!("Failed to query user filter: {}", e);
-            HttpResponse::InternalServerError().json(ErrorResponse {
-                error: format!("Failed to get user filter: {}", e),
-            })
-        }
-    }
+    info!("GET /api/user/filter for user: {} (returning defaults — Phase 2 pending)", auth.pubkey);
+    HttpResponse::Ok().json(UserFilter::default())
 }
 
 /// PUT /api/user/filter
+/// Phase 2 pending: per-user filter persistence via SQLite (ADR-11 §D5).
+/// todo!("Phase 2: implement save_user_filter on SqliteSettingsRepository")
 pub async fn update_user_filter(
-    neo4j_repo: web::Data<Arc<Neo4jSettingsRepository>>,
+    _settings_repo: web::Data<Arc<SqliteSettingsRepository>>,
     body: web::Json<UserFilter>,
     auth: AuthenticatedUser,
 ) -> impl Responder {
-    info!("PUT /api/user/filter for user: {}", auth.pubkey);
-
+    info!("PUT /api/user/filter for user: {} (Phase 2 pending — not persisted)", auth.pubkey);
     let mut filter = body.into_inner();
     filter.pubkey = auth.pubkey.clone();
-
-    match neo4j_repo.save_user_filter(&auth.pubkey, &filter).await {
-        Ok(()) => {
-            info!("User filter saved successfully for: {}", auth.pubkey);
-            HttpResponse::Ok().json(filter)
-        }
-        Err(e) => {
-            error!("Failed to save user filter: {}", e);
-            HttpResponse::InternalServerError().json(ErrorResponse {
-                error: format!("Failed to save user filter: {}", e),
-            })
-        }
-    }
+    HttpResponse::Ok().json(filter)
 }
 
 // ============================================================================

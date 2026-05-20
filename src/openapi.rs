@@ -14,7 +14,7 @@ use utoipa::ToSchema;
 /// GPU-accelerated knowledge graph visualization with:
 /// - Real-time physics simulation
 /// - QUIC/WebTransport for ultra-low latency
-/// - Neo4j graph database backend
+/// - Oxigraph RDF/SPARQL quad-store backend (ADR-11)
 /// - Ontology reasoning and semantic analysis
 #[derive(OpenApi)]
 #[openapi(

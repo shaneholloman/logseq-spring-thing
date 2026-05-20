@@ -19,13 +19,17 @@ pub fn recompute_filtered_nodes(filter: &mut ClientFilter, graph_data: &GraphDat
     filter.filtered_node_ids.clear();
 
     if !filter.enabled {
-        // Filter disabled = all nodes visible
+        // Filter disabled = all nodes visible (still respect include_linked_pages)
         for node in &graph_data.nodes {
+            if !filter.include_linked_pages && node.node_type.as_deref() == Some("linked_page") {
+                continue;
+            }
             filter.filtered_node_ids.insert(node.id);
         }
         debug!(
-            "Filter disabled, all {} nodes visible",
-            filter.filtered_node_ids.len()
+            "Filter disabled, {} nodes visible (include_linked_pages={})",
+            filter.filtered_node_ids.len(),
+            filter.include_linked_pages
         );
         return;
     }
@@ -34,7 +38,15 @@ pub fn recompute_filtered_nodes(filter: &mut ClientFilter, graph_data: &GraphDat
     let mut candidates = Vec::new();
 
     for node in &graph_data.nodes {
-        // Extract quality and authority scores from node.metadata HashMap (where Neo4j stores them)
+        // Gate linked_page stub nodes (wikilink targets with no authored content)
+        if !filter.include_linked_pages {
+            let node_type = node.node_type.as_deref().unwrap_or("");
+            if node_type == "linked_page" {
+                continue;
+            }
+        }
+
+        // Extract quality and authority scores from node.metadata HashMap (loaded from Oxigraph store)
         // Falls back to graph_data.metadata if not found in node
         let quality = node.metadata.get("quality_score")
             .and_then(|s| s.parse::<f64>().ok())
@@ -296,5 +308,41 @@ mod tests {
 
         // Node 4 has no metadata, should get defaults (0.5) and fail threshold (0.6)
         assert!(!filter.filtered_node_ids.contains(&4));
+    }
+
+    fn create_test_graph_with_linked_pages() -> GraphData {
+        let mut graph = create_test_graph();
+        // Add a linked_page stub node
+        let mut stub = Node::new_with_id("stub.md".to_string(), Some(10));
+        stub.node_type = Some("linked_page".to_string());
+        graph.nodes.push(stub);
+        graph
+    }
+
+    #[test]
+    fn test_include_linked_pages_true_passes_stubs() {
+        let graph = create_test_graph_with_linked_pages();
+        let mut filter = ClientFilter::default();
+        filter.enabled = false; // disabled = all pass
+        filter.include_linked_pages = true;
+
+        recompute_filtered_nodes(&mut filter, &graph);
+
+        assert!(filter.filtered_node_ids.contains(&10), "stub should be included when include_linked_pages=true");
+    }
+
+    #[test]
+    fn test_include_linked_pages_false_excludes_stubs() {
+        let graph = create_test_graph_with_linked_pages();
+        let mut filter = ClientFilter::default();
+        filter.enabled = false; // disabled = all pass (except linked_page gate)
+        filter.include_linked_pages = false;
+
+        recompute_filtered_nodes(&mut filter, &graph);
+
+        assert!(!filter.filtered_node_ids.contains(&10), "stub should be excluded when include_linked_pages=false");
+        // Regular page nodes still pass
+        assert!(filter.filtered_node_ids.contains(&1));
+        assert!(filter.filtered_node_ids.contains(&2));
     }
 }

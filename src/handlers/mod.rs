@@ -64,9 +64,11 @@ pub use layout_handler::configure_layout_routes;
 pub mod quic_transport_handler;
 pub mod fastwebsockets_handler;
 
-// Solid Server (JSS) integration
+// Solid Pod (embedded solid-pod-rs)
 pub mod solid_proxy_handler;
 pub use solid_proxy_handler::configure_routes as configure_solid_routes;
+#[cfg(feature = "solid-pod-embed")]
+pub use solid_proxy_handler::init_solid_state;
 
 // Image generation (ComfyUI Flux2)
 pub mod image_gen_handler;

@@ -2,7 +2,7 @@
 //!
 //! Provides a thread-safe, async-compatible cache with automatic expiration
 //! and bounded capacity. Designed for caching expensive query results such as
-//! Neo4j graph data responses.
+//! Oxigraph/SPARQL graph data responses.
 //!
 //! # Example
 //! ```ignore

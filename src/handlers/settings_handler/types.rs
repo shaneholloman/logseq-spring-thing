@@ -137,10 +137,22 @@ impl SettingsUpdateDTO {
 
             // Validate opacity values
             validate_range(vis.glow.opacity, "visualisation.glow.opacity")?;
-            validate_range(vis.hologram.ring_opacity, "visualisation.hologram.ring_opacity")?;
-            validate_range(vis.hologram.buckminster_opacity, "visualisation.hologram.buckminster_opacity")?;
-            validate_range(vis.hologram.geodesic_opacity, "visualisation.hologram.geodesic_opacity")?;
-            validate_range(vis.hologram.triangle_sphere_opacity, "visualisation.hologram.triangle_sphere_opacity")?;
+            validate_range(
+                vis.hologram.ring_opacity,
+                "visualisation.hologram.ring_opacity",
+            )?;
+            validate_range(
+                vis.hologram.buckminster_opacity,
+                "visualisation.hologram.buckminster_opacity",
+            )?;
+            validate_range(
+                vis.hologram.geodesic_opacity,
+                "visualisation.hologram.geodesic_opacity",
+            )?;
+            validate_range(
+                vis.hologram.triangle_sphere_opacity,
+                "visualisation.hologram.triangle_sphere_opacity",
+            )?;
         }
 
         // Validate XR settings if present
@@ -343,15 +355,10 @@ pub struct PhysicsSettingsDTO {
     pub max_velocity: f32,
     pub max_force: f32,
     pub repel_k: f32,
-    pub mass_scale: f32,
     pub boundary_damping: f32,
-    pub update_threshold: f32,
     pub dt: f32,
     pub temperature: f32,
     pub gravity: f32,
-    pub stress_weight: f32,
-    pub stress_alpha: f32,
-    pub boundary_limit: f32,
     pub alignment_strength: f32,
     pub cluster_strength: f32,
     pub compute_mode: i32,
@@ -367,10 +374,6 @@ pub struct PhysicsSettingsDTO {
     pub boundary_velocity_damping: f32,
     pub min_distance: f32,
     pub max_repulsion_dist: f32,
-    pub boundary_margin: f32,
-    pub boundary_force_strength: f32,
-    pub warmup_curve: String,
-    pub zero_velocity_iterations: u32,
     pub clustering_algorithm: String,
     pub cluster_count: u32,
     pub clustering_resolution: f32,

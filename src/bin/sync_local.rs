@@ -1,10 +1,11 @@
 // src/bin/sync_local.rs
 //! Local file sync binary - syncs local baseline with GitHub delta updates
+//!
+//! Uses Oxigraph + SQLite persistence (ADR-11).
 
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use webxr::adapters::neo4j_adapter::{Neo4jAdapter, Neo4jConfig};
-use webxr::adapters::neo4j_ontology_repository::{Neo4jOntologyRepository, Neo4jOntologyConfig};
+use webxr::adapters::{OxigraphGraphRepository, OxigraphOntologyRepository};
 use webxr::config::AppFullSettings;
 use webxr::services::github::api::GitHubClient;
 use webxr::services::github::config::GitHubConfig;
@@ -17,46 +18,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize logging
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
-    log::info!("🚀 Starting local file sync with GitHub delta updates");
+    log::info!("Starting local file sync with GitHub delta updates (Oxigraph backend, ADR-11)");
 
     // Load environment variables
     dotenvy::dotenv().ok();
 
-    // Establish Neo4j connection using configuration
-    let uri = std::env::var("NEO4J_URI").unwrap_or_else(|_| "bolt://localhost:7687".to_string());
-    let user = std::env::var("NEO4J_USER").unwrap_or_else(|_| "neo4j".to_string());
-    let password = std::env::var("NEO4J_PASSWORD").unwrap_or_else(|_| {
-        if std::env::var("ALLOW_INSECURE_DEFAULTS").is_ok() {
-            eprintln!("WARNING: Using insecure default password. Set NEO4J_PASSWORD in production.");
-            "password".to_string()
-        } else {
-            panic!("NEO4J_PASSWORD environment variable must be set. Use ALLOW_INSECURE_DEFAULTS=1 for development only.");
-        }
-    });
-    let database = std::env::var("NEO4J_DATABASE").unwrap_or_else(|_| "neo4j".to_string());
+    // Open Oxigraph store
+    let data_dir = std::env::var("DATA_DIR").unwrap_or_else(|_| "./data".to_string());
+    let oxigraph_path = std::path::Path::new(&data_dir).join("oxigraph");
+    log::info!("Opening Oxigraph store at: {}", oxigraph_path.display());
 
-    let neo4j_config = Neo4jConfig {
-        uri: uri.clone(),
-        user: user.clone(),
-        password: password.clone(),
-        database: Some(database.clone()),
-        max_connections: 100,
-        query_timeout_secs: 30,
-        connection_timeout_secs: 30,
-    };
+    let onto_repo = Arc::new(
+        OxigraphOntologyRepository::open(&oxigraph_path).await?,
+    );
+    let oxigraph_store = onto_repo.store().clone();
+    let kg_repo = Arc::new(OxigraphGraphRepository::from_store(oxigraph_store));
 
-    let ontology_config = Neo4jOntologyConfig {
-        uri,
-        user,
-        password,
-        database: Some(database),
-    };
-
-    log::info!("✅ Configured Neo4j connections");
-
-    // Initialize repositories
-    let kg_repo = Arc::new(Neo4jAdapter::new(neo4j_config).await?);
-    let onto_repo = Arc::new(Neo4jOntologyRepository::new(ontology_config).await?);
+    log::info!("Oxigraph store opened successfully");
 
     // Initialize GitHub client
     let github_config = GitHubConfig::from_env()?;
@@ -83,43 +61,43 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create sync service
     let sync_service = LocalFileSyncService::new(
         content_api,
-        kg_repo,
+        kg_repo as Arc<dyn webxr::ports::knowledge_graph_repository::KnowledgeGraphRepository>,
         onto_repo,
         enrichment_service,
     );
 
-    log::info!("🔄 Starting sync operation...");
+    log::info!("Starting sync operation...");
 
     // Run sync
     let stats = sync_service.sync_with_github_delta().await?;
 
     // Display results
-    println!("\n✅ Sync complete!");
-    println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-    println!("📊 Statistics:");
-    println!("  • Total files scanned:      {}", stats.total_files);
+    println!("\nSync complete!");
+    println!("{}", "=".repeat(43));
+    println!("Statistics:");
+    println!("  Total files scanned:      {}", stats.total_files);
     println!(
-        "  • Files synced from local:  {}",
+        "  Files synced from local:  {}",
         stats.files_synced_from_local
     );
     println!(
-        "  • Files updated from GitHub: {}",
+        "  Files updated from GitHub: {}",
         stats.files_updated_from_github
     );
     println!(
-        "  • Knowledge graph files:    {}",
+        "  Knowledge graph files:    {}",
         stats.kg_files_processed
     );
     println!(
-        "  • Ontology files processed: {}",
+        "  Ontology files processed: {}",
         stats.ontology_files_processed
     );
-    println!("  • Skipped files:            {}", stats.skipped_files);
-    println!("  • Duration:                 {:?}", stats.duration);
-    println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+    println!("  Skipped files:            {}", stats.skipped_files);
+    println!("  Duration:                 {:?}", stats.duration);
+    println!("{}", "=".repeat(43));
 
     if !stats.errors.is_empty() {
-        println!("\n⚠️  Errors encountered ({}):", stats.errors.len());
+        println!("\nErrors encountered ({}):", stats.errors.len());
         for (i, error) in stats.errors.iter().enumerate().take(10) {
             println!("  {}. {}", i + 1, error);
         }
@@ -128,7 +106,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    log::info!("✅ Sync binary completed successfully");
+    log::info!("Sync binary completed successfully");
 
     Ok(())
 }

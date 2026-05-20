@@ -174,20 +174,28 @@ pub struct NodeFilterSettings {
 
     /// How to combine filters: "and" requires both, "or" requires either
     pub filter_mode: String,
+
+    /// Whether to include linked_page stub nodes (wikilink targets without public:: true).
+    /// Set to false for highest-quality view showing only fully-authored page nodes.
+    #[serde(default = "default_true")]
+    pub include_linked_pages: bool,
 }
 
 impl Default for NodeFilterSettings {
     fn default() -> Self {
         Self {
-            enabled: true,  // Enabled by default to reduce node count
-            quality_threshold: 0.7,  // Default 0.7 as requested
+            enabled: true,
+            quality_threshold: 0.7,
             authority_threshold: 0.5,
             filter_by_quality: true,
-            filter_by_authority: false,  // Only quality by default
+            filter_by_authority: false,
             filter_mode: "or".to_string(),
+            include_linked_pages: true,
         }
     }
 }
+
+fn default_true() -> bool { true }
 
 fn default_visual_json() -> serde_json::Value {
     serde_json::json!({})

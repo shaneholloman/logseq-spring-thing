@@ -3,27 +3,25 @@
 //!
 //! Implements [`OntologyRepository`] over an embedded Oxigraph quad-store
 //! per ADR-11 §D1 + §D2. Asserted ontology triples live in the named graph
-//! `<urn:visionflow:graph:ontology:assert>`; whelk-derived inferred axioms
-//! in `<urn:visionflow:graph:ontology:inferred>` (ADR-11 §D9).
+//! `<urn:ngm:graph:ontology:assert>`; whelk-derived inferred axioms
+//! in `<urn:ngm:graph:ontology:inferred>` (ADR-11 §D9).
 //!
 //! ## Named graph layout (ADR-11 §D2)
 //!
 //! | Named graph IRI                                 | Contents                              |
 //! |-------------------------------------------------|---------------------------------------|
-//! | `urn:visionflow:graph:ontology:assert`          | asserted OntologyClass/Property/Axiom |
-//! | `urn:visionflow:graph:ontology:inferred`        | whelk-derived inferred axioms          |
-//! | `urn:visionflow:graph:knowledge`                | KGNode + KGEdge triples               |
+//! | `urn:ngm:graph:ontology:assert`          | asserted OntologyClass/Property/Axiom |
+//! | `urn:ngm:graph:ontology:inferred`        | whelk-derived inferred axioms          |
+//! | `urn:ngm:graph:knowledge`                | KGNode + KGEdge triples               |
 //! | (default graph)                                 | cross-graph bridges + schema          |
 //!
 //! ## IRI minting (ADR-11 §D3)
 //!
 //! All IRIs use the `vc:` prefix expanding to
-//! `https://visionflow.dreamlab/ns/`. OntologyClass IRIs follow the
-//! pattern `urn:visionflow:owl:class:<slug>`; Properties
-//! `urn:visionflow:owl:property:<slug>`; Axioms
-//! `urn:visionflow:owl:axiom:<sha256-12>` content-addressed.
-
-#![cfg(feature = "persistence-oxigraph")]
+//! `https://narrativegoldmine.com/ns/v1#`. OntologyClass IRIs follow the
+//! pattern `urn:ngm:class:<slug>`; Properties
+//! `urn:ngm:property:<slug>`; Axioms
+//! `urn:ngm:axiom:<sha256-12>` content-addressed.
 
 use async_trait::async_trait;
 use sha2::{Digest, Sha256};
@@ -38,29 +36,28 @@ use crate::models::edge::Edge;
 use crate::models::graph::GraphData;
 use crate::models::node::Node;
 use crate::ports::ontology_repository::{
-    AxiomType, InferenceResults, OntologyMetrics, OntologyRepository,
-    OntologyRepositoryError, OwlAxiom, OwlClass, OwlProperty,
-    PathfindingCacheEntry, PropertyType, Result as RepoResult,
+    AxiomType, InferenceResults, OntologyMetrics, OntologyRepository, OntologyRepositoryError,
+    OwlAxiom, OwlClass, OwlProperty, PathfindingCacheEntry, PropertyType, Result as RepoResult,
     ValidationReport,
 };
 
 /// Canonical IRIs for the four named graphs ADR-11 §D2 enumerates.
 /// Held as `&'static str` so SPARQL string construction is allocation-free.
-pub const GRAPH_ONTOLOGY: &str          = "urn:visionflow:graph:ontology:assert";
-pub const GRAPH_ONTOLOGY_INFERRED: &str = "urn:visionflow:graph:ontology:inferred";
-pub const GRAPH_KNOWLEDGE: &str         = "urn:visionflow:graph:knowledge";
-pub const GRAPH_AGENT: &str             = "urn:visionflow:graph:agent";
+pub const GRAPH_ONTOLOGY: &str = "urn:ngm:graph:ontology:assert";
+pub const GRAPH_ONTOLOGY_INFERRED: &str = "urn:ngm:graph:ontology:inferred";
+pub const GRAPH_KNOWLEDGE: &str = "urn:ngm:graph:knowledge";
+pub const GRAPH_AGENT: &str = "urn:ngm:graph:agent";
 
 /// Cache named graphs (own sub-domain so `CLEAR GRAPH` invalidates atomically).
-pub const GRAPH_CACHE_SSSP: &str = "urn:visionflow:graph:cache:sssp";
-pub const GRAPH_CACHE_APSP: &str = "urn:visionflow:graph:cache:apsp";
+pub const GRAPH_CACHE_SSSP: &str = "urn:ngm:graph:cache:sssp";
+pub const GRAPH_CACHE_APSP: &str = "urn:ngm:graph:cache:apsp";
 
 /// `vc:` prefix expansion per ADR-11 §D3.
-pub const VC_NS: &str = "https://visionflow.dreamlab/ns/";
+pub const VC_NS: &str = "https://narrativegoldmine.com/ns/v1#";
 
 /// SPARQL prologue applied to every UPDATE/QUERY string this adapter emits.
 const PROLOGUE: &str = concat!(
-    "PREFIX vc: <https://visionflow.dreamlab/ns/>\n",
+    "PREFIX vc: <https://narrativegoldmine.com/ns/v1#>\n",
     "PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>\n",
     "PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>\n",
     "PREFIX owl: <http://www.w3.org/2002/07/owl#>\n",
@@ -106,7 +103,7 @@ fn class_iri(c: &OwlClass) -> String {
             .or(c.preferred_term.as_deref())
             .or(c.term_id.as_deref())
             .unwrap_or("unnamed");
-        format!("urn:visionflow:owl:class:{}", slug(basis))
+        format!("urn:ngm:class:{}", slug(basis))
     }
 }
 
@@ -116,7 +113,7 @@ fn property_iri(p: &OwlProperty) -> String {
         p.iri.clone()
     } else {
         let basis = p.label.as_deref().unwrap_or("unnamed");
-        format!("urn:visionflow:owl:property:{}", slug(basis))
+        format!("urn:ngm:property:{}", slug(basis))
     }
 }
 
@@ -127,8 +124,12 @@ fn axiom_iri(a: &OwlAxiom) -> String {
     hasher.update(format!("{:?}", a.axiom_type).as_bytes());
     hasher.update(a.object.as_bytes());
     let digest = hasher.finalize();
-    let hex: String = digest.iter().take(6).map(|b| format!("{:02x}", b)).collect();
-    format!("urn:visionflow:owl:axiom:{}", hex)
+    let hex: String = digest
+        .iter()
+        .take(6)
+        .map(|b| format!("{:02x}", b))
+        .collect();
+    format!("urn:ngm:axiom:{}", hex)
 }
 
 /// Derive a stable `u64` id for an axiom from its content hash. Used as
@@ -152,6 +153,11 @@ fn axiom_type_str(t: &AxiomType) -> &'static str {
         AxiomType::DisjointWith => "DisjointWith",
         AxiomType::ObjectPropertyAssertion => "ObjectPropertyAssertion",
         AxiomType::DataPropertyAssertion => "DataPropertyAssertion",
+        AxiomType::SubPropertyOf => "SubPropertyOf",
+        AxiomType::TransitiveProperty => "TransitiveProperty",
+        AxiomType::SymmetricProperty => "SymmetricProperty",
+        AxiomType::InverseProperties => "InverseProperties",
+        AxiomType::SomeValuesFrom => "SomeValuesFrom",
     }
 }
 
@@ -162,6 +168,11 @@ fn parse_axiom_type(s: &str) -> AxiomType {
         "DisjointWith" | "DisjointClasses" => AxiomType::DisjointWith,
         "ObjectPropertyAssertion" | "SubObjectProperty" => AxiomType::ObjectPropertyAssertion,
         "DataPropertyAssertion" | "Domain" | "Range" => AxiomType::DataPropertyAssertion,
+        "SubPropertyOf" | "SubObjectPropertyOf" => AxiomType::SubPropertyOf,
+        "TransitiveProperty" | "TransitiveObjectProperty" => AxiomType::TransitiveProperty,
+        "SymmetricProperty" | "SymmetricObjectProperty" => AxiomType::SymmetricProperty,
+        "InverseProperties" | "InverseObjectProperties" => AxiomType::InverseProperties,
+        "SomeValuesFrom" | "ObjectSomeValuesFrom" => AxiomType::SomeValuesFrom,
         _ => AxiomType::SubClassOf,
     }
 }
@@ -220,72 +231,72 @@ fn db_err<E: std::fmt::Display>(e: E) -> OntologyRepositoryError {
 // Kept here so the property-bag fold has one source of truth.
 // ----------------------------------------------------------------------
 
-const P_LABEL: &str            = "http://www.w3.org/2000/01/rdf-schema#label";
-const P_COMMENT: &str          = "http://www.w3.org/2000/01/rdf-schema#comment";
-const P_SUBCLASS_OF: &str      = "http://www.w3.org/2000/01/rdf-schema#subClassOf";
-const P_DOMAIN: &str           = "http://www.w3.org/2000/01/rdf-schema#domain";
-const P_RANGE: &str            = "http://www.w3.org/2000/01/rdf-schema#range";
-const P_TYPE: &str             = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
+const P_LABEL: &str = "http://www.w3.org/2000/01/rdf-schema#label";
+const P_COMMENT: &str = "http://www.w3.org/2000/01/rdf-schema#comment";
+const P_SUBCLASS_OF: &str = "http://www.w3.org/2000/01/rdf-schema#subClassOf";
+const P_DOMAIN: &str = "http://www.w3.org/2000/01/rdf-schema#domain";
+const P_RANGE: &str = "http://www.w3.org/2000/01/rdf-schema#range";
+const P_TYPE: &str = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
 
-const T_OWL_CLASS: &str        = "http://www.w3.org/2002/07/owl#Class";
-const T_OWL_OBJECT_PROP: &str  = "http://www.w3.org/2002/07/owl#ObjectProperty";
-const T_OWL_DATA_PROP: &str    = "http://www.w3.org/2002/07/owl#DatatypeProperty";
-const T_OWL_ANNOT_PROP: &str   = "http://www.w3.org/2002/07/owl#AnnotationProperty";
-const T_VC_ONTOLOGY_CLASS: &str = "https://visionflow.dreamlab/ns/OntologyClass";
-const T_VC_AXIOM: &str         = "https://visionflow.dreamlab/ns/Axiom";
+const T_OWL_CLASS: &str = "http://www.w3.org/2002/07/owl#Class";
+const T_OWL_OBJECT_PROP: &str = "http://www.w3.org/2002/07/owl#ObjectProperty";
+const T_OWL_DATA_PROP: &str = "http://www.w3.org/2002/07/owl#DatatypeProperty";
+const T_OWL_ANNOT_PROP: &str = "http://www.w3.org/2002/07/owl#AnnotationProperty";
+const T_VC_ONTOLOGY_CLASS: &str = "https://narrativegoldmine.com/ns/v1#OntologyClass";
+const T_VC_AXIOM: &str = "https://narrativegoldmine.com/ns/v1#Axiom";
 
 // VisionFlow-specific predicates.
-const P_TERM_ID: &str           = "https://visionflow.dreamlab/ns/termId";
-const P_PREFERRED_TERM: &str    = "https://visionflow.dreamlab/ns/preferredTerm";
-const P_DESCRIPTION: &str       = "https://visionflow.dreamlab/ns/description";
-const P_SOURCE_DOMAIN: &str     = "https://visionflow.dreamlab/ns/sourceDomain";
-const P_VERSION: &str           = "https://visionflow.dreamlab/ns/version";
-const P_CLASS_TYPE: &str        = "https://visionflow.dreamlab/ns/classType";
-const P_STATUS: &str            = "https://visionflow.dreamlab/ns/status";
-const P_MATURITY: &str          = "https://visionflow.dreamlab/ns/maturity";
-const P_QUALITY_SCORE: &str     = "https://visionflow.dreamlab/ns/qualityScore";
-const P_AUTHORITY_SCORE: &str   = "https://visionflow.dreamlab/ns/authorityScore";
-const P_PUBLIC_ACCESS: &str     = "https://visionflow.dreamlab/ns/publicAccess";
-const P_CONTENT_STATUS: &str    = "https://visionflow.dreamlab/ns/contentStatus";
-const P_OWL_PHYSICALITY: &str   = "https://visionflow.dreamlab/ns/owlPhysicality";
-const P_OWL_ROLE: &str          = "https://visionflow.dreamlab/ns/owlRole";
-const P_BELONGS_TO_DOMAIN: &str = "https://visionflow.dreamlab/ns/belongsToDomain";
-const P_BRIDGES_TO_DOMAIN: &str = "https://visionflow.dreamlab/ns/bridgesToDomain";
-const P_SOURCE_FILE: &str       = "https://visionflow.dreamlab/ns/sourceFile";
-const P_FILE_SHA1: &str         = "https://visionflow.dreamlab/ns/fileSha1";
-const P_MARKDOWN_CONTENT: &str  = "https://visionflow.dreamlab/ns/markdownContent";
-const P_LAST_SYNCED: &str       = "https://visionflow.dreamlab/ns/lastSynced";
-const P_ADDITIONAL_META: &str   = "https://visionflow.dreamlab/ns/additionalMetadata";
+const P_TERM_ID: &str = "https://narrativegoldmine.com/ns/v1#termId";
+const P_PREFERRED_TERM: &str = "https://narrativegoldmine.com/ns/v1#preferredTerm";
+const P_DESCRIPTION: &str = "https://narrativegoldmine.com/ns/v1#description";
+const P_SOURCE_DOMAIN: &str = "https://narrativegoldmine.com/ns/v1#sourceDomain";
+const P_VERSION: &str = "https://narrativegoldmine.com/ns/v1#version";
+const P_CLASS_TYPE: &str = "https://narrativegoldmine.com/ns/v1#classType";
+const P_STATUS: &str = "https://narrativegoldmine.com/ns/v1#status";
+const P_MATURITY: &str = "https://narrativegoldmine.com/ns/v1#maturity";
+const P_QUALITY_SCORE: &str = "https://narrativegoldmine.com/ns/v1#qualityScore";
+const P_AUTHORITY_SCORE: &str = "https://narrativegoldmine.com/ns/v1#authorityScore";
+const P_PUBLIC_ACCESS: &str = "https://narrativegoldmine.com/ns/v1#publicAccess";
+const P_CONTENT_STATUS: &str = "https://narrativegoldmine.com/ns/v1#contentStatus";
+const P_OWL_PHYSICALITY: &str = "https://narrativegoldmine.com/ns/v1#owlPhysicality";
+const P_OWL_ROLE: &str = "https://narrativegoldmine.com/ns/v1#owlRole";
+const P_BELONGS_TO_DOMAIN: &str = "https://narrativegoldmine.com/ns/v1#belongsToDomain";
+const P_BRIDGES_TO_DOMAIN: &str = "https://narrativegoldmine.com/ns/v1#bridgesToDomain";
+const P_SOURCE_FILE: &str = "https://narrativegoldmine.com/ns/v1#sourceFile";
+const P_FILE_SHA1: &str = "https://narrativegoldmine.com/ns/v1#fileSha1";
+const P_MARKDOWN_CONTENT: &str = "https://narrativegoldmine.com/ns/v1#markdownContent";
+const P_LAST_SYNCED: &str = "https://narrativegoldmine.com/ns/v1#lastSynced";
+const P_ADDITIONAL_META: &str = "https://narrativegoldmine.com/ns/v1#additionalMetadata";
 
-const P_HAS_PART: &str          = "https://visionflow.dreamlab/ns/hasPart";
-const P_IS_PART_OF: &str        = "https://visionflow.dreamlab/ns/isPartOf";
-const P_REQUIRES: &str          = "https://visionflow.dreamlab/ns/requires";
-const P_DEPENDS_ON: &str        = "https://visionflow.dreamlab/ns/dependsOn";
-const P_ENABLES: &str           = "https://visionflow.dreamlab/ns/enables";
-const P_RELATES_TO: &str        = "https://visionflow.dreamlab/ns/relatesTo";
-const P_BRIDGES_TO: &str        = "https://visionflow.dreamlab/ns/bridgesTo";
-const P_BRIDGES_FROM: &str      = "https://visionflow.dreamlab/ns/bridgesFrom";
-const P_OTHER_REL_PREFIX: &str  = "https://visionflow.dreamlab/ns/otherRel/";
-const P_PROPERTY_PREFIX: &str   = "https://visionflow.dreamlab/ns/property/";
+const P_HAS_PART: &str = "https://narrativegoldmine.com/ns/v1#hasPart";
+const P_IS_PART_OF: &str = "https://narrativegoldmine.com/ns/v1#isPartOf";
+const P_REQUIRES: &str = "https://narrativegoldmine.com/ns/v1#requires";
+const P_DEPENDS_ON: &str = "https://narrativegoldmine.com/ns/v1#dependsOn";
+const P_ENABLES: &str = "https://narrativegoldmine.com/ns/v1#enables";
+const P_RELATES_TO: &str = "https://narrativegoldmine.com/ns/v1#relatesTo";
+const P_BRIDGES_TO: &str = "https://narrativegoldmine.com/ns/v1#bridgesTo";
+const P_BRIDGES_FROM: &str = "https://narrativegoldmine.com/ns/v1#bridgesFrom";
+const P_OTHER_REL_PREFIX: &str = "https://narrativegoldmine.com/ns/v1#otherRel/";
+const P_PROPERTY_PREFIX: &str = "https://narrativegoldmine.com/ns/v1#property/";
 
-const P_AXIOM_TYPE: &str        = "https://visionflow.dreamlab/ns/axiomType";
-const P_AXIOM_SUBJECT: &str     = "https://visionflow.dreamlab/ns/subject";
-const P_AXIOM_OBJECT: &str      = "https://visionflow.dreamlab/ns/object";
-const P_AXIOM_ANNOTATION: &str  = "https://visionflow.dreamlab/ns/annotation";
-const P_AXIOM_ID: &str          = "https://visionflow.dreamlab/ns/axiomId";
+const P_AXIOM_TYPE: &str = "https://narrativegoldmine.com/ns/v1#axiomType";
+const P_AXIOM_SUBJECT: &str = "https://narrativegoldmine.com/ns/v1#subject";
+const P_AXIOM_OBJECT: &str = "https://narrativegoldmine.com/ns/v1#object";
+const P_AXIOM_ANNOTATION: &str = "https://narrativegoldmine.com/ns/v1#annotation";
+const P_AXIOM_ID: &str = "https://narrativegoldmine.com/ns/v1#axiomId";
 
-const P_INFERRED_AT: &str       = "https://visionflow.dreamlab/ns/inferredAt";
-const P_INFERRED_TIME_MS: &str  = "https://visionflow.dreamlab/ns/inferenceTimeMs";
-const P_INFERRED_VERSION: &str  = "https://visionflow.dreamlab/ns/reasonerVersion";
-const INFER_META_IRI: &str      = "urn:visionflow:owl:inference:meta";
+const P_INFERRED_AT: &str = "https://narrativegoldmine.com/ns/v1#inferredAt";
+const P_INFERRED_TIME_MS: &str = "https://narrativegoldmine.com/ns/v1#inferenceTimeMs";
+const P_INFERRED_VERSION: &str = "https://narrativegoldmine.com/ns/v1#reasonerVersion";
+const INFER_META_IRI: &str = "urn:ngm:inference:meta";
 
-const P_CACHE_COMPUTED_AT: &str = "https://visionflow.dreamlab/ns/computedAt";
-const P_CACHE_DISTANCES: &str   = "https://visionflow.dreamlab/ns/distances";
-const P_CACHE_PATHS: &str       = "https://visionflow.dreamlab/ns/paths";
-const P_CACHE_MATRIX: &str      = "https://visionflow.dreamlab/ns/matrix";
-const P_CACHE_TARGET: &str      = "https://visionflow.dreamlab/ns/targetNode";
-const P_CACHE_COMP_TIME: &str   = "https://visionflow.dreamlab/ns/computationTimeMs";
-const APSP_IRI: &str            = "urn:visionflow:pathcache:apsp";
+const P_CACHE_COMPUTED_AT: &str = "https://narrativegoldmine.com/ns/v1#computedAt";
+const P_CACHE_DISTANCES: &str = "https://narrativegoldmine.com/ns/v1#distances";
+const P_CACHE_PATHS: &str = "https://narrativegoldmine.com/ns/v1#paths";
+const P_CACHE_MATRIX: &str = "https://narrativegoldmine.com/ns/v1#matrix";
+const P_CACHE_TARGET: &str = "https://narrativegoldmine.com/ns/v1#targetNode";
+const P_CACHE_COMP_TIME: &str = "https://narrativegoldmine.com/ns/v1#computationTimeMs";
+const APSP_IRI: &str = "urn:ngm:pathcache:apsp";
 
 /// Oxigraph-backed `OntologyRepository` implementation.
 ///
@@ -307,7 +318,9 @@ impl OxigraphOntologyRepository {
             .await
             .map_err(|e| db_err(format!("join error: {e}")))?
             .map_err(db_err)?;
-        Ok(Self { store: Arc::new(store) })
+        Ok(Self {
+            store: Arc::new(store),
+        })
     }
 
     /// Construct over an already-opened store (used by tests + the migration
@@ -340,29 +353,29 @@ impl OxigraphOntologyRepository {
         sparql: String,
     ) -> RepoResult<(Vec<String>, Vec<Vec<Option<Term>>>)> {
         let store = Arc::clone(&self.store);
-        tokio::task::spawn_blocking(move || -> RepoResult<(Vec<String>, Vec<Vec<Option<Term>>>)> {
-            let results = store.query(&sparql).map_err(db_err)?;
-            match results {
-                QueryResults::Solutions(solutions) => {
-                    let vars: Vec<String> = solutions
-                        .variables()
-                        .iter()
-                        .map(|v| v.as_str().to_string())
-                        .collect();
-                    let mut rows: Vec<Vec<Option<Term>>> = Vec::new();
-                    for sol in solutions {
-                        let sol = sol.map_err(db_err)?;
-                        let row: Vec<Option<Term>> = vars
+        tokio::task::spawn_blocking(
+            move || -> RepoResult<(Vec<String>, Vec<Vec<Option<Term>>>)> {
+                let results = store.query(&sparql).map_err(db_err)?;
+                match results {
+                    QueryResults::Solutions(solutions) => {
+                        let vars: Vec<String> = solutions
+                            .variables()
                             .iter()
-                            .map(|v| sol.get(v.as_str()).cloned())
+                            .map(|v| v.as_str().to_string())
                             .collect();
-                        rows.push(row);
+                        let mut rows: Vec<Vec<Option<Term>>> = Vec::new();
+                        for sol in solutions {
+                            let sol = sol.map_err(db_err)?;
+                            let row: Vec<Option<Term>> =
+                                vars.iter().map(|v| sol.get(v.as_str()).cloned()).collect();
+                            rows.push(row);
+                        }
+                        Ok((vars, rows))
                     }
-                    Ok((vars, rows))
+                    _ => Err(db_err("SELECT did not return Solutions")),
                 }
-                _ => Err(db_err("SELECT did not return Solutions")),
-            }
-        })
+            },
+        )
         .await
         .map_err(|e| db_err(format!("join error: {e}")))?
     }
@@ -385,67 +398,126 @@ impl OxigraphOntologyRepository {
         let iri = class_iri(c);
         let mut buf = String::with_capacity(1024);
 
-        buf.push_str(&format!("<{iri}> a <{T_VC_ONTOLOGY_CLASS}> , <{T_OWL_CLASS}> .\n"));
+        buf.push_str(&format!(
+            "<{iri}> a <{T_VC_ONTOLOGY_CLASS}> , <{T_OWL_CLASS}> .\n"
+        ));
 
         if let Some(v) = &c.label {
-            buf.push_str(&format!("<{iri}> <{P_LABEL}> \"{}\" .\n", escape_literal(v)));
+            buf.push_str(&format!(
+                "<{iri}> <{P_LABEL}> \"{}\" .\n",
+                escape_literal(v)
+            ));
         }
         if let Some(v) = &c.term_id {
-            buf.push_str(&format!("<{iri}> <{P_TERM_ID}> \"{}\" .\n", escape_literal(v)));
+            buf.push_str(&format!(
+                "<{iri}> <{P_TERM_ID}> \"{}\" .\n",
+                escape_literal(v)
+            ));
         }
         if let Some(v) = &c.preferred_term {
-            buf.push_str(&format!("<{iri}> <{P_PREFERRED_TERM}> \"{}\" .\n", escape_literal(v)));
+            buf.push_str(&format!(
+                "<{iri}> <{P_PREFERRED_TERM}> \"{}\" .\n",
+                escape_literal(v)
+            ));
         }
         if let Some(v) = &c.description {
-            buf.push_str(&format!("<{iri}> <{P_DESCRIPTION}> \"{}\" .\n", escape_literal(v)));
+            buf.push_str(&format!(
+                "<{iri}> <{P_DESCRIPTION}> \"{}\" .\n",
+                escape_literal(v)
+            ));
         }
         if let Some(v) = &c.source_domain {
-            buf.push_str(&format!("<{iri}> <{P_SOURCE_DOMAIN}> \"{}\" .\n", escape_literal(v)));
+            buf.push_str(&format!(
+                "<{iri}> <{P_SOURCE_DOMAIN}> \"{}\" .\n",
+                escape_literal(v)
+            ));
         }
         if let Some(v) = &c.version {
-            buf.push_str(&format!("<{iri}> <{P_VERSION}> \"{}\" .\n", escape_literal(v)));
+            buf.push_str(&format!(
+                "<{iri}> <{P_VERSION}> \"{}\" .\n",
+                escape_literal(v)
+            ));
         }
         if let Some(v) = &c.class_type {
-            buf.push_str(&format!("<{iri}> <{P_CLASS_TYPE}> \"{}\" .\n", escape_literal(v)));
+            buf.push_str(&format!(
+                "<{iri}> <{P_CLASS_TYPE}> \"{}\" .\n",
+                escape_literal(v)
+            ));
         }
         if let Some(v) = &c.status {
-            buf.push_str(&format!("<{iri}> <{P_STATUS}> \"{}\" .\n", escape_literal(v)));
+            buf.push_str(&format!(
+                "<{iri}> <{P_STATUS}> \"{}\" .\n",
+                escape_literal(v)
+            ));
         }
         if let Some(v) = &c.maturity {
-            buf.push_str(&format!("<{iri}> <{P_MATURITY}> \"{}\" .\n", escape_literal(v)));
+            buf.push_str(&format!(
+                "<{iri}> <{P_MATURITY}> \"{}\" .\n",
+                escape_literal(v)
+            ));
         }
         if let Some(v) = c.quality_score {
-            buf.push_str(&format!("<{iri}> <{P_QUALITY_SCORE}> \"{v}\"^^xsd:float .\n"));
+            buf.push_str(&format!(
+                "<{iri}> <{P_QUALITY_SCORE}> \"{v}\"^^xsd:float .\n"
+            ));
         }
         if let Some(v) = c.authority_score {
-            buf.push_str(&format!("<{iri}> <{P_AUTHORITY_SCORE}> \"{v}\"^^xsd:float .\n"));
+            buf.push_str(&format!(
+                "<{iri}> <{P_AUTHORITY_SCORE}> \"{v}\"^^xsd:float .\n"
+            ));
         }
         if let Some(v) = c.public_access {
-            buf.push_str(&format!("<{iri}> <{P_PUBLIC_ACCESS}> \"{v}\"^^xsd:boolean .\n"));
+            buf.push_str(&format!(
+                "<{iri}> <{P_PUBLIC_ACCESS}> \"{v}\"^^xsd:boolean .\n"
+            ));
         }
         if let Some(v) = &c.content_status {
-            buf.push_str(&format!("<{iri}> <{P_CONTENT_STATUS}> \"{}\" .\n", escape_literal(v)));
+            buf.push_str(&format!(
+                "<{iri}> <{P_CONTENT_STATUS}> \"{}\" .\n",
+                escape_literal(v)
+            ));
         }
         if let Some(v) = &c.owl_physicality {
-            buf.push_str(&format!("<{iri}> <{P_OWL_PHYSICALITY}> \"{}\" .\n", escape_literal(v)));
+            buf.push_str(&format!(
+                "<{iri}> <{P_OWL_PHYSICALITY}> \"{}\" .\n",
+                escape_literal(v)
+            ));
         }
         if let Some(v) = &c.owl_role {
-            buf.push_str(&format!("<{iri}> <{P_OWL_ROLE}> \"{}\" .\n", escape_literal(v)));
+            buf.push_str(&format!(
+                "<{iri}> <{P_OWL_ROLE}> \"{}\" .\n",
+                escape_literal(v)
+            ));
         }
         if let Some(v) = &c.belongs_to_domain {
-            buf.push_str(&format!("<{iri}> <{P_BELONGS_TO_DOMAIN}> \"{}\" .\n", escape_literal(v)));
+            buf.push_str(&format!(
+                "<{iri}> <{P_BELONGS_TO_DOMAIN}> \"{}\" .\n",
+                escape_literal(v)
+            ));
         }
         if let Some(v) = &c.bridges_to_domain {
-            buf.push_str(&format!("<{iri}> <{P_BRIDGES_TO_DOMAIN}> \"{}\" .\n", escape_literal(v)));
+            buf.push_str(&format!(
+                "<{iri}> <{P_BRIDGES_TO_DOMAIN}> \"{}\" .\n",
+                escape_literal(v)
+            ));
         }
         if let Some(v) = &c.source_file {
-            buf.push_str(&format!("<{iri}> <{P_SOURCE_FILE}> \"{}\" .\n", escape_literal(v)));
+            buf.push_str(&format!(
+                "<{iri}> <{P_SOURCE_FILE}> \"{}\" .\n",
+                escape_literal(v)
+            ));
         }
         if let Some(v) = &c.file_sha1 {
-            buf.push_str(&format!("<{iri}> <{P_FILE_SHA1}> \"{}\" .\n", escape_literal(v)));
+            buf.push_str(&format!(
+                "<{iri}> <{P_FILE_SHA1}> \"{}\" .\n",
+                escape_literal(v)
+            ));
         }
         if let Some(v) = &c.markdown_content {
-            buf.push_str(&format!("<{iri}> <{P_MARKDOWN_CONTENT}> \"{}\" .\n", escape_literal(v)));
+            buf.push_str(&format!(
+                "<{iri}> <{P_MARKDOWN_CONTENT}> \"{}\" .\n",
+                escape_literal(v)
+            ));
         }
         if let Some(v) = c.last_synced {
             buf.push_str(&format!(
@@ -454,7 +526,10 @@ impl OxigraphOntologyRepository {
             ));
         }
         if let Some(v) = &c.additional_metadata {
-            buf.push_str(&format!("<{iri}> <{P_ADDITIONAL_META}> \"{}\" .\n", escape_literal(v)));
+            buf.push_str(&format!(
+                "<{iri}> <{P_ADDITIONAL_META}> \"{}\" .\n",
+                escape_literal(v)
+            ));
         }
 
         // Parent classes (rdfs:subClassOf) — one triple per parent.
@@ -515,10 +590,7 @@ impl OxigraphOntologyRepository {
         // properties: per-key namespace under vc:property/<key>.
         for (k, v) in &c.properties {
             let pred = format!("{P_PROPERTY_PREFIX}{}", slug(k));
-            buf.push_str(&format!(
-                "<{iri}> <{pred}> \"{}\" .\n",
-                escape_literal(v)
-            ));
+            buf.push_str(&format!("<{iri}> <{pred}> \"{}\" .\n", escape_literal(v)));
         }
 
         buf
@@ -530,7 +602,10 @@ impl OxigraphOntologyRepository {
         let mut buf = String::with_capacity(512);
         buf.push_str(&format!("<{iri}> a {type_iri} .\n"));
         if let Some(v) = &p.label {
-            buf.push_str(&format!("<{iri}> <{P_LABEL}> \"{}\" .\n", escape_literal(v)));
+            buf.push_str(&format!(
+                "<{iri}> <{P_LABEL}> \"{}\" .\n",
+                escape_literal(v)
+            ));
         }
         for d in &p.domain {
             if d.starts_with("urn:") || d.starts_with("http") {
@@ -553,13 +628,20 @@ impl OxigraphOntologyRepository {
             }
         }
         if let Some(v) = p.quality_score {
-            buf.push_str(&format!("<{iri}> <{P_QUALITY_SCORE}> \"{v}\"^^xsd:float .\n"));
+            buf.push_str(&format!(
+                "<{iri}> <{P_QUALITY_SCORE}> \"{v}\"^^xsd:float .\n"
+            ));
         }
         if let Some(v) = p.authority_score {
-            buf.push_str(&format!("<{iri}> <{P_AUTHORITY_SCORE}> \"{v}\"^^xsd:float .\n"));
+            buf.push_str(&format!(
+                "<{iri}> <{P_AUTHORITY_SCORE}> \"{v}\"^^xsd:float .\n"
+            ));
         }
         if let Some(v) = &p.source_file {
-            buf.push_str(&format!("<{iri}> <{P_SOURCE_FILE}> \"{}\" .\n", escape_literal(v)));
+            buf.push_str(&format!(
+                "<{iri}> <{P_SOURCE_FILE}> \"{}\" .\n",
+                escape_literal(v)
+            ));
         }
         buf
     }
@@ -671,19 +753,29 @@ impl OntologyRepository for OxigraphOntologyRepository {
                     }
                 }
                 P_SOURCE_DOMAIN => {
-                    if let Some(t) = o { entry.source_domain = Some(term_lexical(&t)); }
+                    if let Some(t) = o {
+                        entry.source_domain = Some(term_lexical(&t));
+                    }
                 }
                 P_VERSION => {
-                    if let Some(t) = o { entry.version = Some(term_lexical(&t)); }
+                    if let Some(t) = o {
+                        entry.version = Some(term_lexical(&t));
+                    }
                 }
                 P_CLASS_TYPE => {
-                    if let Some(t) = o { entry.class_type = Some(term_lexical(&t)); }
+                    if let Some(t) = o {
+                        entry.class_type = Some(term_lexical(&t));
+                    }
                 }
                 P_STATUS => {
-                    if let Some(t) = o { entry.status = Some(term_lexical(&t)); }
+                    if let Some(t) = o {
+                        entry.status = Some(term_lexical(&t));
+                    }
                 }
                 P_MATURITY => {
-                    if let Some(t) = o { entry.maturity = Some(term_lexical(&t)); }
+                    if let Some(t) = o {
+                        entry.maturity = Some(term_lexical(&t));
+                    }
                 }
                 P_QUALITY_SCORE => {
                     if let Some(Term::Literal(l)) = o {
@@ -701,16 +793,24 @@ impl OntologyRepository for OxigraphOntologyRepository {
                     }
                 }
                 P_OWL_PHYSICALITY => {
-                    if let Some(t) = o { entry.owl_physicality = Some(term_lexical(&t)); }
+                    if let Some(t) = o {
+                        entry.owl_physicality = Some(term_lexical(&t));
+                    }
                 }
                 P_OWL_ROLE => {
-                    if let Some(t) = o { entry.owl_role = Some(term_lexical(&t)); }
+                    if let Some(t) = o {
+                        entry.owl_role = Some(term_lexical(&t));
+                    }
                 }
                 P_BELONGS_TO_DOMAIN => {
-                    if let Some(t) = o { entry.belongs_to_domain = Some(term_lexical(&t)); }
+                    if let Some(t) = o {
+                        entry.belongs_to_domain = Some(term_lexical(&t));
+                    }
                 }
                 P_BRIDGES_TO_DOMAIN => {
-                    if let Some(t) = o { entry.bridges_to_domain = Some(term_lexical(&t)); }
+                    if let Some(t) = o {
+                        entry.bridges_to_domain = Some(term_lexical(&t));
+                    }
                 }
                 P_SUBCLASS_OF => {
                     if let Some(t) = o {
@@ -845,7 +945,7 @@ impl OntologyRepository for OxigraphOntologyRepository {
             let iri = node
                 .owl_class_iri
                 .clone()
-                .unwrap_or_else(|| format!("urn:visionflow:owl:class:{}", slug(&node.metadata_id)));
+                .unwrap_or_else(|| format!("urn:ngm:class:{}", slug(&node.metadata_id)));
             update.push_str(&format!(
                 "    <{iri}> a <{T_VC_ONTOLOGY_CLASS}> , <{T_OWL_CLASS}> .\n"
             ));
@@ -866,7 +966,7 @@ impl OntologyRepository for OxigraphOntologyRepository {
             let iri = node
                 .owl_class_iri
                 .clone()
-                .unwrap_or_else(|| format!("urn:visionflow:owl:class:{}", slug(&node.metadata_id)));
+                .unwrap_or_else(|| format!("urn:ngm:class:{}", slug(&node.metadata_id)));
             id_to_iri.insert(node.id, iri);
         }
         for edge in &graph.edges {
@@ -984,30 +1084,96 @@ impl OntologyRepository for OxigraphOntologyRepository {
                         c.description = Some(l.value().to_string());
                     }
                 }
-                P_TERM_ID => { if let Some(t) = o_opt { c.term_id = Some(term_lexical(&t)); } }
-                P_PREFERRED_TERM => { if let Some(t) = o_opt { c.preferred_term = Some(term_lexical(&t)); } }
-                P_SOURCE_DOMAIN => { if let Some(t) = o_opt { c.source_domain = Some(term_lexical(&t)); } }
-                P_VERSION => { if let Some(t) = o_opt { c.version = Some(term_lexical(&t)); } }
-                P_CLASS_TYPE => { if let Some(t) = o_opt { c.class_type = Some(term_lexical(&t)); } }
-                P_STATUS => { if let Some(t) = o_opt { c.status = Some(term_lexical(&t)); } }
-                P_MATURITY => { if let Some(t) = o_opt { c.maturity = Some(term_lexical(&t)); } }
+                P_TERM_ID => {
+                    if let Some(t) = o_opt {
+                        c.term_id = Some(term_lexical(&t));
+                    }
+                }
+                P_PREFERRED_TERM => {
+                    if let Some(t) = o_opt {
+                        c.preferred_term = Some(term_lexical(&t));
+                    }
+                }
+                P_SOURCE_DOMAIN => {
+                    if let Some(t) = o_opt {
+                        c.source_domain = Some(term_lexical(&t));
+                    }
+                }
+                P_VERSION => {
+                    if let Some(t) = o_opt {
+                        c.version = Some(term_lexical(&t));
+                    }
+                }
+                P_CLASS_TYPE => {
+                    if let Some(t) = o_opt {
+                        c.class_type = Some(term_lexical(&t));
+                    }
+                }
+                P_STATUS => {
+                    if let Some(t) = o_opt {
+                        c.status = Some(term_lexical(&t));
+                    }
+                }
+                P_MATURITY => {
+                    if let Some(t) = o_opt {
+                        c.maturity = Some(term_lexical(&t));
+                    }
+                }
                 P_QUALITY_SCORE => {
-                    if let Some(Term::Literal(l)) = o_opt { c.quality_score = l.value().parse().ok(); }
+                    if let Some(Term::Literal(l)) = o_opt {
+                        c.quality_score = l.value().parse().ok();
+                    }
                 }
                 P_AUTHORITY_SCORE => {
-                    if let Some(Term::Literal(l)) = o_opt { c.authority_score = l.value().parse().ok(); }
+                    if let Some(Term::Literal(l)) = o_opt {
+                        c.authority_score = l.value().parse().ok();
+                    }
                 }
                 P_PUBLIC_ACCESS => {
-                    if let Some(Term::Literal(l)) = o_opt { c.public_access = l.value().parse().ok(); }
+                    if let Some(Term::Literal(l)) = o_opt {
+                        c.public_access = l.value().parse().ok();
+                    }
                 }
-                P_CONTENT_STATUS => { if let Some(t) = o_opt { c.content_status = Some(term_lexical(&t)); } }
-                P_OWL_PHYSICALITY => { if let Some(t) = o_opt { c.owl_physicality = Some(term_lexical(&t)); } }
-                P_OWL_ROLE => { if let Some(t) = o_opt { c.owl_role = Some(term_lexical(&t)); } }
-                P_BELONGS_TO_DOMAIN => { if let Some(t) = o_opt { c.belongs_to_domain = Some(term_lexical(&t)); } }
-                P_BRIDGES_TO_DOMAIN => { if let Some(t) = o_opt { c.bridges_to_domain = Some(term_lexical(&t)); } }
-                P_SOURCE_FILE => { if let Some(t) = o_opt { c.source_file = Some(term_lexical(&t)); } }
-                P_FILE_SHA1 => { if let Some(t) = o_opt { c.file_sha1 = Some(term_lexical(&t)); } }
-                P_MARKDOWN_CONTENT => { if let Some(t) = o_opt { c.markdown_content = Some(term_lexical(&t)); } }
+                P_CONTENT_STATUS => {
+                    if let Some(t) = o_opt {
+                        c.content_status = Some(term_lexical(&t));
+                    }
+                }
+                P_OWL_PHYSICALITY => {
+                    if let Some(t) = o_opt {
+                        c.owl_physicality = Some(term_lexical(&t));
+                    }
+                }
+                P_OWL_ROLE => {
+                    if let Some(t) = o_opt {
+                        c.owl_role = Some(term_lexical(&t));
+                    }
+                }
+                P_BELONGS_TO_DOMAIN => {
+                    if let Some(t) = o_opt {
+                        c.belongs_to_domain = Some(term_lexical(&t));
+                    }
+                }
+                P_BRIDGES_TO_DOMAIN => {
+                    if let Some(t) = o_opt {
+                        c.bridges_to_domain = Some(term_lexical(&t));
+                    }
+                }
+                P_SOURCE_FILE => {
+                    if let Some(t) = o_opt {
+                        c.source_file = Some(term_lexical(&t));
+                    }
+                }
+                P_FILE_SHA1 => {
+                    if let Some(t) = o_opt {
+                        c.file_sha1 = Some(term_lexical(&t));
+                    }
+                }
+                P_MARKDOWN_CONTENT => {
+                    if let Some(t) = o_opt {
+                        c.markdown_content = Some(term_lexical(&t));
+                    }
+                }
                 P_LAST_SYNCED => {
                     if let Some(Term::Literal(l)) = o_opt {
                         if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(l.value()) {
@@ -1016,17 +1182,55 @@ impl OntologyRepository for OxigraphOntologyRepository {
                     }
                 }
                 P_ADDITIONAL_META => {
-                    if let Some(t) = o_opt { c.additional_metadata = Some(term_lexical(&t)); }
+                    if let Some(t) = o_opt {
+                        c.additional_metadata = Some(term_lexical(&t));
+                    }
                 }
-                P_SUBCLASS_OF => { if let Some(t) = o_opt { c.parent_classes.push(term_lexical(&t)); } }
-                P_HAS_PART => { if let Some(t) = o_opt { c.has_part.push(term_lexical(&t)); } }
-                P_IS_PART_OF => { if let Some(t) = o_opt { c.is_part_of.push(term_lexical(&t)); } }
-                P_REQUIRES => { if let Some(t) = o_opt { c.requires.push(term_lexical(&t)); } }
-                P_DEPENDS_ON => { if let Some(t) = o_opt { c.depends_on.push(term_lexical(&t)); } }
-                P_ENABLES => { if let Some(t) = o_opt { c.enables.push(term_lexical(&t)); } }
-                P_RELATES_TO => { if let Some(t) = o_opt { c.relates_to.push(term_lexical(&t)); } }
-                P_BRIDGES_TO => { if let Some(t) = o_opt { c.bridges_to.push(term_lexical(&t)); } }
-                P_BRIDGES_FROM => { if let Some(t) = o_opt { c.bridges_from.push(term_lexical(&t)); } }
+                P_SUBCLASS_OF => {
+                    if let Some(t) = o_opt {
+                        c.parent_classes.push(term_lexical(&t));
+                    }
+                }
+                P_HAS_PART => {
+                    if let Some(t) = o_opt {
+                        c.has_part.push(term_lexical(&t));
+                    }
+                }
+                P_IS_PART_OF => {
+                    if let Some(t) = o_opt {
+                        c.is_part_of.push(term_lexical(&t));
+                    }
+                }
+                P_REQUIRES => {
+                    if let Some(t) = o_opt {
+                        c.requires.push(term_lexical(&t));
+                    }
+                }
+                P_DEPENDS_ON => {
+                    if let Some(t) = o_opt {
+                        c.depends_on.push(term_lexical(&t));
+                    }
+                }
+                P_ENABLES => {
+                    if let Some(t) = o_opt {
+                        c.enables.push(term_lexical(&t));
+                    }
+                }
+                P_RELATES_TO => {
+                    if let Some(t) = o_opt {
+                        c.relates_to.push(term_lexical(&t));
+                    }
+                }
+                P_BRIDGES_TO => {
+                    if let Some(t) = o_opt {
+                        c.bridges_to.push(term_lexical(&t));
+                    }
+                }
+                P_BRIDGES_FROM => {
+                    if let Some(t) = o_opt {
+                        c.bridges_from.push(term_lexical(&t));
+                    }
+                }
                 _ if p.starts_with(P_OTHER_REL_PREFIX) => {
                     if let Some(t) = o_opt {
                         let key = p.trim_start_matches(P_OTHER_REL_PREFIX).to_string();
@@ -1095,32 +1299,106 @@ impl OntologyRepository for OxigraphOntologyRepository {
 
             match p.as_str() {
                 P_TYPE => { /* class type already filtered by the WHERE */ }
-                P_LABEL => { if let Some(Term::Literal(l)) = o { current.label = Some(l.value().to_string()); } }
-                P_DESCRIPTION => { if let Some(Term::Literal(l)) = o { current.description = Some(l.value().to_string()); } }
-                P_TERM_ID => { if let Some(t) = o { current.term_id = Some(term_lexical(&t)); } }
-                P_PREFERRED_TERM => { if let Some(t) = o { current.preferred_term = Some(term_lexical(&t)); } }
-                P_SOURCE_DOMAIN => { if let Some(t) = o { current.source_domain = Some(term_lexical(&t)); } }
-                P_VERSION => { if let Some(t) = o { current.version = Some(term_lexical(&t)); } }
-                P_CLASS_TYPE => { if let Some(t) = o { current.class_type = Some(term_lexical(&t)); } }
-                P_STATUS => { if let Some(t) = o { current.status = Some(term_lexical(&t)); } }
-                P_MATURITY => { if let Some(t) = o { current.maturity = Some(term_lexical(&t)); } }
+                P_LABEL => {
+                    if let Some(Term::Literal(l)) = o {
+                        current.label = Some(l.value().to_string());
+                    }
+                }
+                P_DESCRIPTION => {
+                    if let Some(Term::Literal(l)) = o {
+                        current.description = Some(l.value().to_string());
+                    }
+                }
+                P_TERM_ID => {
+                    if let Some(t) = o {
+                        current.term_id = Some(term_lexical(&t));
+                    }
+                }
+                P_PREFERRED_TERM => {
+                    if let Some(t) = o {
+                        current.preferred_term = Some(term_lexical(&t));
+                    }
+                }
+                P_SOURCE_DOMAIN => {
+                    if let Some(t) = o {
+                        current.source_domain = Some(term_lexical(&t));
+                    }
+                }
+                P_VERSION => {
+                    if let Some(t) = o {
+                        current.version = Some(term_lexical(&t));
+                    }
+                }
+                P_CLASS_TYPE => {
+                    if let Some(t) = o {
+                        current.class_type = Some(term_lexical(&t));
+                    }
+                }
+                P_STATUS => {
+                    if let Some(t) = o {
+                        current.status = Some(term_lexical(&t));
+                    }
+                }
+                P_MATURITY => {
+                    if let Some(t) = o {
+                        current.maturity = Some(term_lexical(&t));
+                    }
+                }
                 P_QUALITY_SCORE => {
-                    if let Some(Term::Literal(l)) = o { current.quality_score = l.value().parse().ok(); }
+                    if let Some(Term::Literal(l)) = o {
+                        current.quality_score = l.value().parse().ok();
+                    }
                 }
                 P_AUTHORITY_SCORE => {
-                    if let Some(Term::Literal(l)) = o { current.authority_score = l.value().parse().ok(); }
+                    if let Some(Term::Literal(l)) = o {
+                        current.authority_score = l.value().parse().ok();
+                    }
                 }
                 P_PUBLIC_ACCESS => {
-                    if let Some(Term::Literal(l)) = o { current.public_access = l.value().parse().ok(); }
+                    if let Some(Term::Literal(l)) = o {
+                        current.public_access = l.value().parse().ok();
+                    }
                 }
-                P_CONTENT_STATUS => { if let Some(t) = o { current.content_status = Some(term_lexical(&t)); } }
-                P_OWL_PHYSICALITY => { if let Some(t) = o { current.owl_physicality = Some(term_lexical(&t)); } }
-                P_OWL_ROLE => { if let Some(t) = o { current.owl_role = Some(term_lexical(&t)); } }
-                P_BELONGS_TO_DOMAIN => { if let Some(t) = o { current.belongs_to_domain = Some(term_lexical(&t)); } }
-                P_BRIDGES_TO_DOMAIN => { if let Some(t) = o { current.bridges_to_domain = Some(term_lexical(&t)); } }
-                P_SOURCE_FILE => { if let Some(t) = o { current.source_file = Some(term_lexical(&t)); } }
-                P_FILE_SHA1 => { if let Some(t) = o { current.file_sha1 = Some(term_lexical(&t)); } }
-                P_MARKDOWN_CONTENT => { if let Some(t) = o { current.markdown_content = Some(term_lexical(&t)); } }
+                P_CONTENT_STATUS => {
+                    if let Some(t) = o {
+                        current.content_status = Some(term_lexical(&t));
+                    }
+                }
+                P_OWL_PHYSICALITY => {
+                    if let Some(t) = o {
+                        current.owl_physicality = Some(term_lexical(&t));
+                    }
+                }
+                P_OWL_ROLE => {
+                    if let Some(t) = o {
+                        current.owl_role = Some(term_lexical(&t));
+                    }
+                }
+                P_BELONGS_TO_DOMAIN => {
+                    if let Some(t) = o {
+                        current.belongs_to_domain = Some(term_lexical(&t));
+                    }
+                }
+                P_BRIDGES_TO_DOMAIN => {
+                    if let Some(t) = o {
+                        current.bridges_to_domain = Some(term_lexical(&t));
+                    }
+                }
+                P_SOURCE_FILE => {
+                    if let Some(t) = o {
+                        current.source_file = Some(term_lexical(&t));
+                    }
+                }
+                P_FILE_SHA1 => {
+                    if let Some(t) = o {
+                        current.file_sha1 = Some(term_lexical(&t));
+                    }
+                }
+                P_MARKDOWN_CONTENT => {
+                    if let Some(t) = o {
+                        current.markdown_content = Some(term_lexical(&t));
+                    }
+                }
                 P_LAST_SYNCED => {
                     if let Some(Term::Literal(l)) = o {
                         if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(l.value()) {
@@ -1128,16 +1406,56 @@ impl OntologyRepository for OxigraphOntologyRepository {
                         }
                     }
                 }
-                P_ADDITIONAL_META => { if let Some(t) = o { current.additional_metadata = Some(term_lexical(&t)); } }
-                P_SUBCLASS_OF => { if let Some(t) = o { current.parent_classes.push(term_lexical(&t)); } }
-                P_HAS_PART => { if let Some(t) = o { current.has_part.push(term_lexical(&t)); } }
-                P_IS_PART_OF => { if let Some(t) = o { current.is_part_of.push(term_lexical(&t)); } }
-                P_REQUIRES => { if let Some(t) = o { current.requires.push(term_lexical(&t)); } }
-                P_DEPENDS_ON => { if let Some(t) = o { current.depends_on.push(term_lexical(&t)); } }
-                P_ENABLES => { if let Some(t) = o { current.enables.push(term_lexical(&t)); } }
-                P_RELATES_TO => { if let Some(t) = o { current.relates_to.push(term_lexical(&t)); } }
-                P_BRIDGES_TO => { if let Some(t) = o { current.bridges_to.push(term_lexical(&t)); } }
-                P_BRIDGES_FROM => { if let Some(t) = o { current.bridges_from.push(term_lexical(&t)); } }
+                P_ADDITIONAL_META => {
+                    if let Some(t) = o {
+                        current.additional_metadata = Some(term_lexical(&t));
+                    }
+                }
+                P_SUBCLASS_OF => {
+                    if let Some(t) = o {
+                        current.parent_classes.push(term_lexical(&t));
+                    }
+                }
+                P_HAS_PART => {
+                    if let Some(t) = o {
+                        current.has_part.push(term_lexical(&t));
+                    }
+                }
+                P_IS_PART_OF => {
+                    if let Some(t) = o {
+                        current.is_part_of.push(term_lexical(&t));
+                    }
+                }
+                P_REQUIRES => {
+                    if let Some(t) = o {
+                        current.requires.push(term_lexical(&t));
+                    }
+                }
+                P_DEPENDS_ON => {
+                    if let Some(t) = o {
+                        current.depends_on.push(term_lexical(&t));
+                    }
+                }
+                P_ENABLES => {
+                    if let Some(t) = o {
+                        current.enables.push(term_lexical(&t));
+                    }
+                }
+                P_RELATES_TO => {
+                    if let Some(t) = o {
+                        current.relates_to.push(term_lexical(&t));
+                    }
+                }
+                P_BRIDGES_TO => {
+                    if let Some(t) = o {
+                        current.bridges_to.push(term_lexical(&t));
+                    }
+                }
+                P_BRIDGES_FROM => {
+                    if let Some(t) = o {
+                        current.bridges_from.push(term_lexical(&t));
+                    }
+                }
                 _ if p.starts_with(P_OTHER_REL_PREFIX) => {
                     if let Some(t) = o {
                         let key = p.trim_start_matches(P_OTHER_REL_PREFIX).to_string();
@@ -1225,17 +1543,35 @@ impl OntologyRepository for OxigraphOntologyRepository {
                     }
                 }
                 P_LABEL => {
-                    if let Some(Term::Literal(l)) = o { prop.label = Some(l.value().to_string()); }
+                    if let Some(Term::Literal(l)) = o {
+                        prop.label = Some(l.value().to_string());
+                    }
                 }
-                P_DOMAIN => { if let Some(t) = o { prop.domain.push(term_lexical(&t)); } }
-                P_RANGE => { if let Some(t) = o { prop.range.push(term_lexical(&t)); } }
+                P_DOMAIN => {
+                    if let Some(t) = o {
+                        prop.domain.push(term_lexical(&t));
+                    }
+                }
+                P_RANGE => {
+                    if let Some(t) = o {
+                        prop.range.push(term_lexical(&t));
+                    }
+                }
                 P_QUALITY_SCORE => {
-                    if let Some(Term::Literal(l)) = o { prop.quality_score = l.value().parse().ok(); }
+                    if let Some(Term::Literal(l)) = o {
+                        prop.quality_score = l.value().parse().ok();
+                    }
                 }
                 P_AUTHORITY_SCORE => {
-                    if let Some(Term::Literal(l)) = o { prop.authority_score = l.value().parse().ok(); }
+                    if let Some(Term::Literal(l)) = o {
+                        prop.authority_score = l.value().parse().ok();
+                    }
                 }
-                P_SOURCE_FILE => { if let Some(t) = o { prop.source_file = Some(term_lexical(&t)); } }
+                P_SOURCE_FILE => {
+                    if let Some(t) = o {
+                        prop.source_file = Some(term_lexical(&t));
+                    }
+                }
                 _ => {}
             }
         }
@@ -1294,17 +1630,35 @@ impl OntologyRepository for OxigraphOntologyRepository {
                     }
                 }
                 P_LABEL => {
-                    if let Some(Term::Literal(l)) = o { current.label = Some(l.value().to_string()); }
+                    if let Some(Term::Literal(l)) = o {
+                        current.label = Some(l.value().to_string());
+                    }
                 }
-                P_DOMAIN => { if let Some(t) = o { current.domain.push(term_lexical(&t)); } }
-                P_RANGE => { if let Some(t) = o { current.range.push(term_lexical(&t)); } }
+                P_DOMAIN => {
+                    if let Some(t) = o {
+                        current.domain.push(term_lexical(&t));
+                    }
+                }
+                P_RANGE => {
+                    if let Some(t) = o {
+                        current.range.push(term_lexical(&t));
+                    }
+                }
                 P_QUALITY_SCORE => {
-                    if let Some(Term::Literal(l)) = o { current.quality_score = l.value().parse().ok(); }
+                    if let Some(Term::Literal(l)) = o {
+                        current.quality_score = l.value().parse().ok();
+                    }
                 }
                 P_AUTHORITY_SCORE => {
-                    if let Some(Term::Literal(l)) = o { current.authority_score = l.value().parse().ok(); }
+                    if let Some(Term::Literal(l)) = o {
+                        current.authority_score = l.value().parse().ok();
+                    }
                 }
-                P_SOURCE_FILE => { if let Some(t) = o { current.source_file = Some(term_lexical(&t)); } }
+                P_SOURCE_FILE => {
+                    if let Some(t) = o {
+                        current.source_file = Some(term_lexical(&t));
+                    }
+                }
                 _ => {}
             }
         }
@@ -1569,7 +1923,7 @@ impl OntologyRepository for OxigraphOntologyRepository {
             "{PROLOGUE}\
              ASK FROM <{GRAPH_ONTOLOGY}> {{\n\
                ?a a <{T_VC_AXIOM}> ; <{P_AXIOM_TYPE}> ?t .\n\
-               FILTER(?t NOT IN (\"SubClassOf\", \"EquivalentClass\", \"DisjointWith\", \"ObjectPropertyAssertion\", \"DataPropertyAssertion\"))\n\
+               FILTER(?t NOT IN (\"SubClassOf\", \"EquivalentClass\", \"DisjointWith\", \"ObjectPropertyAssertion\", \"DataPropertyAssertion\", \"SubPropertyOf\", \"TransitiveProperty\", \"SymmetricProperty\", \"InverseProperties\", \"SomeValuesFrom\"))\n\
              }}\n"
         );
         if self.run_ask(bad_type_q).await? {
@@ -1713,10 +2067,7 @@ impl OntologyRepository for OxigraphOntologyRepository {
         for depth in 1..=MAX_DEPTH_CAP {
             let mut chained = String::new();
             for k in 0..depth {
-                chained.push_str(&format!(
-                    "?n{k} <{P_SUBCLASS_OF}> ?n{} .\n",
-                    k + 1
-                ));
+                chained.push_str(&format!("?n{k} <{P_SUBCLASS_OF}> ?n{} .\n", k + 1));
             }
             let ask = format!(
                 "{PROLOGUE}\
@@ -1745,7 +2096,7 @@ impl OntologyRepository for OxigraphOntologyRepository {
     // ------------------------------------------------------------------
 
     async fn cache_sssp_result(&self, entry: &PathfindingCacheEntry) -> RepoResult<()> {
-        let iri = format!("urn:visionflow:pathcache:sssp:{}", entry.source_node_id);
+        let iri = format!("urn:ngm:pathcache:sssp:{}", entry.source_node_id);
         let distances = serde_json::to_string(&entry.distances)
             .map_err(|e| OntologyRepositoryError::SerializationError(e.to_string()))?;
         let paths = serde_json::to_string(&entry.paths)
@@ -1783,8 +2134,11 @@ impl OntologyRepository for OxigraphOntologyRepository {
         self.run_update(update).await
     }
 
-    async fn get_cached_sssp(&self, source_node_id: u32) -> RepoResult<Option<PathfindingCacheEntry>> {
-        let iri = format!("urn:visionflow:pathcache:sssp:{}", source_node_id);
+    async fn get_cached_sssp(
+        &self,
+        source_node_id: u32,
+    ) -> RepoResult<Option<PathfindingCacheEntry>> {
+        let iri = format!("urn:ngm:pathcache:sssp:{}", source_node_id);
         let q = format!(
             "{PROLOGUE}\
              SELECT ?p ?o\n\
@@ -1828,7 +2182,9 @@ impl OntologyRepository for OxigraphOntologyRepository {
                 }
                 P_CACHE_PATHS => {
                     if let Some(Term::Literal(l)) = o {
-                        if let Ok(parsed) = serde_json::from_str::<HashMap<u32, Vec<u32>>>(l.value()) {
+                        if let Ok(parsed) =
+                            serde_json::from_str::<HashMap<u32, Vec<u32>>>(l.value())
+                        {
                             paths = parsed;
                         }
                     }

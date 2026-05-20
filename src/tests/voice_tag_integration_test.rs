@@ -86,7 +86,7 @@ async fn test_voice_tag_pipeline() {
     assert!(tts_response.response.use_voice);
     assert!(tts_response.is_final);
 
-    println!("✅ Voice-to-hive-mind tag pipeline test completed successfully!");
+    println!("Voice-to-hive-mind tag pipeline test completed successfully!");
     println!("   Tag: {}", tag.short_id());
     println!("   Response: {}", tts_response.response.text);
 
@@ -134,7 +134,7 @@ async fn test_tag_timeout_cleanup() {
     
     assert!(!tag_manager.is_tag_active(&tag.tag_id).await);
 
-    println!("✅ Tag timeout cleanup test completed successfully!");
+    println!("Tag timeout cleanup test completed successfully!");
 }
 
 #[tokio::test]
@@ -214,5 +214,5 @@ async fn test_concurrent_voice_commands() {
         assert!(!tag_manager.is_tag_active(&tag.tag_id).await);
     }
 
-    println!("✅ Concurrent voice commands test completed successfully!");
+    println!("Concurrent voice commands test completed successfully!");
 }

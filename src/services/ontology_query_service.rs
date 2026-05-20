@@ -188,7 +188,7 @@ impl OntologyQueryService {
     pub async fn read_note(&self, iri: &str) -> Result<EnrichedNote, String> {
         info!("Ontology read_note: iri='{}'", iri);
 
-        // Fetch OwlClass from Neo4j
+        // Fetch OwlClass from Oxigraph
         let class = self
             .ontology_repo
             .get_owl_class(iri)
