@@ -50,15 +50,10 @@ serde_json = "1.0"
 serde_yaml = "0.9"
 validator = { version = "0.18", features = ["derive"] }
 
-# Database - Neo4j (sole database)
-neo4rs = { version = "0.9.0-rc.8", features = ["unstable-serde-packstream-format"] }
-
-# Database - Oxigraph + SQLite (Phase 11 persistence migration, ADR-11)
-# Gated by `persistence-oxigraph` feature so the radical-rollback baseline
-# still compiles without these deps. Cutover lands in a later phase.
-oxigraph = { version = "0.4", optional = true }
-rusqlite = { version = "0.31", features = ["bundled"], optional = true }
-tokio-rusqlite = { version = "0.5", optional = true }
+# Database - Oxigraph + SQLite (ADR-11 canonical persistence)
+oxigraph = { version = "0.4" }
+rusqlite = { version = "0.31", features = ["bundled"] }
+tokio-rusqlite = { version = "0.5" }
 
 # Redis (optional distributed caching)
 redis = { version = "0.27", features = ["aio", "tokio-comp", "connection-manager"], optional = true }
@@ -166,36 +161,30 @@ horned-functional = { version = "0.4.0" }
 # walkdir = { version = "2.4" }  # Unused - removed during cleanup
 clap = { version = "4.5", features = ["derive"] }
 
-# --- Solid Pod (ADR-032 M1+M2) — embed solid-pod-rs as in-process library ---
-# Pinned to the crates.io release `0.4.0-alpha.11` (audit 2026-05-16).
-# Previously tracked `branch = "main"` of the DreamLab-AI fork as an M1
-# placeholder; alpha.11 is now published on crates.io (see commits
-# f8a696e — `[patch.crates-io]` removal — and 874524f — phase1 feature).
+# --- Solid Pod (ADR-032 M3) — embed solid-pod-rs as in-process library ---
+# Path dep against local workspace `../solid-pod-rs` at 0.4.0-alpha.15,
+# replacing the former crates.io pin at alpha.11. M3 (JSS sidecar removal)
+# — in progress.
 # AGPL-3.0-only — see ADR-032 §"Licence implications".
 #
 # Crates pulled in (per ADR-032 §"Dependency surface"):
 #   - solid-pod-rs        (core LDP/WAC/NIP-98/fs-backend/Notifications)
 #   - solid-pod-rs-nostr  (did:nostr resolver, NIP-05 endpoint, Schnorr verify)
 #   - solid-pod-rs-idp    (pod + key provisioning — JSS Phase 1)
+#   - solid-pod-rs-server (AppState + handler patterns for embedded HTTP surface)
 #
 # Deferred (NOT added; tracked separately):
-#   - solid-pod-rs-server      — reference only (HTTP route templates), never depended on directly
 #   - solid-pod-rs-activitypub — follow-up ADR (only if VisionClaw federates via AP)
 #   - solid-pod-rs-git         — graph-as-git workstream (see ADR-033 proposal — git bead provenance)
 #   - solid-pod-rs-didkey      — not in scope for VisionClaw (Nostr-first)
 #
-# All three deps are `optional = true` and only pulled in when the
-# `solid-pod-embed` feature is enabled. M1 (dep-graph) ✅. M2 (registry
-# pin) ✅ as of 2026-05-16. M3 (consumer wiring + JSS sidecar removal)
-# remains — that's the next ADR-032 milestone, not this audit pass.
-#
-# `default-features = false` is retained: alpha.11 still does not expose all
-# of the intended feature surface (fs-backend, nip98-schnorr, did-nostr,
-# nip05-endpoint, schnorr-verifier, pod-provisioning, key-provisioning). M3
-# will re-enable features per consumer as they get wired.
-solid-pod-rs = { version = "0.4.0-alpha.11", default-features = false, optional = true }
-solid-pod-rs-nostr = { version = "0.4.0-alpha.11", default-features = false, optional = true }
-solid-pod-rs-idp = { version = "0.4.0-alpha.11", default-features = false, optional = true }
+# All four deps are `optional = true` and only pulled in when the
+# solid-pod-rs 0.4.0-alpha.15 — embedded Solid Pod (LDP, WAC, NIP-98, fs-backend).
+# JSS sidecar fully removed; all storage is in-process via FsBackend.
+solid-pod-rs = { version = "0.4.0-alpha.15", default-features = false, optional = true, features = ["fs-backend", "memory-backend", "nip98-schnorr", "notifications", "legacy-notifications", "config-loader", "did-nostr", "did-nostr-types", "quota", "security-primitives", "rate-limit"] }
+solid-pod-rs-nostr = { version = "0.4.0-alpha.15", default-features = false, optional = true }
+solid-pod-rs-idp = { version = "0.4.0-alpha.15", default-features = false, optional = true }
+solid-pod-rs-server = { version = "0.4.0-alpha.15", default-features = false, optional = true }
 
 
 [dev-dependencies]
@@ -204,6 +193,11 @@ mockall = "0.13"
 pretty_assertions = "1.4"
 tempfile = "3.14"
 actix-rt = "2.11.0"
+
+[[test]]
+name = "solid_pod_handler_test"
+path = "tests/solid/solid_pod_handler_test.rs"
+required-features = ["solid-pod-embed"]
 
 # WASM Support for hybrid CPU-WASM/GPU SSSP
 [target.'cfg(target_arch = "wasm32")'.dependencies]
@@ -218,7 +212,7 @@ tempfile = "3.14"
 [features]
 # GPU and ontology features for conditional compilation
 # Enable by default for full system capabilities
-default = ["gpu", "ontology"]
+default = ["gpu", "ontology", "persistence-oxigraph", "solid-pod-embed"]
 gpu = []  # GPU acceleration with CUDA kernels
 ontology = []  # Ontology validation and reasoning
 redis = ["dep:redis"]  # Enable Redis distributed caching
@@ -231,21 +225,10 @@ redis = ["dep:redis"]  # Enable Redis distributed caching
 # `docs/migration-sprint/01-gpu-physics/WORKTREE-PLAN.md §2` is migrated.
 physics-v2 = []
 
-# --- Adapter-parity test harness (tests/adapter_parity/) ---
-# Enable to run the Neo4j-backed parity runner. Requires a reachable Neo4j
-# instance and the NEO4J_PASSWORD env var (or ALLOW_INSECURE_DEFAULTS=true).
-test-neo4j = []
-
-# Phase 11 persistence migration (ADR-11): pulls in Oxigraph (SPARQL 1.1
-# triple/quad store) and SQLite via tokio-rusqlite for settings. Enabling
-# this feature compiles the new `oxigraph_*` and `sqlite_settings_repository`
-# adapters under `src/adapters/`. The legacy `neo4j_*` adapters remain
-# present and continue to compile; cutover is a separate phase.
-persistence-oxigraph = [
-    "dep:oxigraph",
-    "dep:rusqlite",
-    "dep:tokio-rusqlite",
-]
+# Phase 11 persistence migration (ADR-11): Oxigraph (SPARQL 1.1 triple/quad
+# store) and SQLite via tokio-rusqlite are now always-on deps (ADR-11 canonical
+# persistence). Feature flag retained for conditional compilation guards only.
+persistence-oxigraph = []
 
 # `dev-auth` — Compile-time gate for development auth bypass surface.
 # Per ADR-06 §D1+D2 and resolution T2 (docs/migration-sprint/_resolutions/T2-auth-gating.md),
@@ -258,14 +241,13 @@ persistence-oxigraph = [
 # feature; `up prod` and `cargo build --release` do not.
 dev-auth = []
 
-# `solid-pod-embed` — ADR-032 M1+ — pull in solid-pod-rs as a Rust library
-# (replaces JSS sidecar). Gated so the M1 PR can land without breaking the
-# default build until M2 wires consumers. Default-off through M4; flipped
-# default-on at M5 when the JSS sidecar is removed.
+# `solid-pod-embed` — ADR-032 M3 — pull in solid-pod-rs as a Rust library
+# (replaces JSS sidecar). Default-on as of M3.
 solid-pod-embed = [
     "dep:solid-pod-rs",
     "dep:solid-pod-rs-nostr",
     "dep:solid-pod-rs-idp",
+    "dep:solid-pod-rs-server",
 ]
 
 [profile.release]
@@ -301,8 +283,4 @@ path = "src/bin/sync_github.rs"
 name = "validate-md"
 path = "src/bin/validate_md.rs"
 
-# REMOVED: migrate_settings_to_neo4j binary - migration complete
-# [[bin]]
-# name = "migrate_settings_to_neo4j"
-# path = "src/bin/migrate_settings_to_neo4j.rs"
 
