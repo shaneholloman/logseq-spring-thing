@@ -262,6 +262,19 @@ The Judgment Broker isn't a bottleneck — it's a filter that lets everything el
 | [nostr-rust-forum](https://github.com/DreamLab-AI/nostr-rust-forum) | Forum kit | 11 crates, passkey auth, governance event routing |
 | [dreamlab-ai-website](https://github.com/DreamLab-AI/dreamlab-ai-website) | Branded deployment | React SPA, WASM forum, operator overlay |
 
+## Wardley Map
+
+The following Wardley map positions VisionFlow's components along the value chain (visibility to the user) and evolution axis (genesis → custom → product → commodity). It illustrates why certain layers are custom-built (semantic physics, ontology reasoning, governance protocol) while others leverage commodity infrastructure (Cloudflare, CUDA, WebSocket).
+
+![VisionFlow Wardley Map](visionflow-wardley-map.png)
+
+Key observations:
+
+- **Identity and provenance** sit in the custom-built zone — `did:nostr` and content-addressed beads are novel protocol primitives, not yet commoditised.
+- **Agent runtime** (Agentbox) occupies the product space — reproducible containers and tool orchestration are maturing but not yet commodity.
+- **GPU compute and relay infrastructure** are approaching commodity — CUDA kernels and WebSocket relays are well-understood engineering, differentiated only by domain-specific application.
+- **The coordination layer** (VisionFlow itself) is genesis — no existing platform combines formal reasoning, sovereign identity, and agent governance at this architectural level.
+
 ## Upstream
 
 VisionFlow's protocol layer is built on [Melvin Carvalho](https://github.com/melvincarvalho)'s [JavaScriptSolidServer (JSS)](https://github.com/JavaScriptSolidServer/JavaScriptSolidServer) and [DID:Nostr](https://github.com/nicholasgasior/did-nostr). JSS is the AGPL-3.0 reference implementation of the Solid Protocol and the canonical source for the feature set, protocol extensions, and Web Ledger micropayment system. solid-pod-rs is a Rust port; protocol-level decisions defer to the upstream JSS repository. See [MAINTAINERS.md](../../MAINTAINERS.md).
