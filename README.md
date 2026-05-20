@@ -25,55 +25,30 @@ https://github.com/user-attachments/assets/f45c92dc-4800-4b57-a6e2-178da6bb0a38
 
 ---
 
-## VisionFlow — Coordination Engineering
+**92 CUDA kernels · GPU clustering, anomaly detection and PageRank · Multi-user immersive XR · 88 agent skills · OWL 2 ontology governance · Nostr DID identity · Solid Pod sovereignty**
 
-Hard problems require diverse intelligence — human intuition, domain expertise, machine pattern recognition, formal reasoning — collaborating across trust boundaries at scales that defeat centralised coordination. VisionFlow is a distributed platform where autonomous AI agents, human judgment, and institutional knowledge work together through shared protocols and self-sovereign data.
+---
 
-No single repository is VisionFlow. It is the coordination layer that emerges when five independent systems mesh together:
+## What Is VisionClaw?
 
-```mermaid
-flowchart TB
-    subgraph VF["VisionFlow Coordination Layer"]
-        direction LR
-        RELAY["Nostr Relay Mesh"]
-        DID["DID:Nostr Identity"]
-        WAC["Solid WAC Access Control"]
-        PROV["Immutable Provenance"]
-    end
+VisionClaw is an open-source knowledge engineering platform that transforms organisations into governed agentic meshes. It ingests knowledge from Logseq notebooks via GitHub, reasons over it with an OWL 2 EL inference engine (Whelk-rs), renders the result as an interactive 3D graph where nodes attract or repel based on semantic relationships, and exposes everything to AI agents through 7 Model Context Protocol tools. Users collaborate in the same space through multi-user XR presence, spatial voice, and immersive graph exploration.
 
-    subgraph VC["VisionClaw\nKnowledge Engineering"]
-        OWL["OWL 2 EL Reasoning"]
-        GPU["92 CUDA Kernels"]
-        XR["Multi-User XR"]
-    end
+Every agent decision is semantically grounded, every mutation passes consistency checking, and every reasoning chain is auditable from edge case back to first principles. **Governance isn't an inhibitor, it's an accelerant.**
 
-    subgraph AB["Agentbox\nHarness Engineering"]
-        AGENTS["88 Agent Skills"]
-        NIX["Reproducible Runtime"]
-        TOOLS["180+ MCP Tools"]
-    end
+![DreamLab AI Ecosystem](docs/diagrams/linkedInEcosystem.png)
 
-    subgraph PROTO["Protocol Infrastructure"]
-        SPR["solid-pod-rs"]
-        NRF["nostr-rust-forum"]
-    end
+### Why VisionClaw?
 
-    subgraph EDGE["DreamLab Deployment"]
-        CF["CF Workers"]
-        FORUM["Leptos Forum"]
-    end
+73% of frontline AI adoption happens without management sign-off. Your workforce is already building shadow workflows, stitching together AI agents, automating procurement shortcuts, inventing cross-functional pipelines that don't appear on any org chart. The question isn't whether your organisation is becoming an agentic mesh. It's whether you'll shape how it forms.
 
-    VC <--> VF
-    AB <--> VF
-    PROTO <--> VF
-    EDGE <--> VF
+**The personal agent revolution has a governance problem.** Autonomous AI agents are powerful, popular, and ready to act. They've also shown what happens without shared semantics, formal reasoning, or organisational guardrails: unauthorised actions, prompt injection attacks, and enterprises deploying security scanners just to detect rogue agent instances on their own networks.
 
-    style VF fill:#1a1a2e,stroke:#e94560,color:#fff
-    style VC fill:#0a1a2a,stroke:#00d4ff,color:#fff
-    style AB fill:#1a0a2a,stroke:#8b5cf6,color:#fff
-    style PROTO fill:#0a2a1a,stroke:#10b981,color:#fff
-    style EDGE fill:#2a1a0a,stroke:#f59e0b,color:#fff
-```
+When agents know their authority boundary and surface exceptions cleanly, the 90% of decisions that don't need human judgment flow without friction. The 10% that do get clean, contextualised escalation with full provenance.
+
+<details>
+<summary><strong>VisionFlow — the wider coordination platform</strong></summary>
+
+VisionClaw is the knowledge engineering substrate of **VisionFlow**, a distributed coordination platform where autonomous AI agents, human judgment, and institutional knowledge work together through shared protocols and self-sovereign data. No single repository is VisionFlow — it emerges when five independent systems mesh together:
 
 | Substrate | Repository | Role |
 |---|---|---|
@@ -83,56 +58,11 @@ flowchart TB
 | **nostr-rust-forum** | [DreamLab-AI/nostr-rust-forum](https://github.com/DreamLab-AI/nostr-rust-forum) | Forum kit — passkey-first auth, Agent Control Surface protocol (kinds 31400-31405) |
 | **dreamlab-ai-website** | [DreamLab-AI/dreamlab-ai-website](https://github.com/DreamLab-AI/dreamlab-ai-website) | Branded deployment — React SPA, WASM forum, operator overlay, Cloudflare Workers |
 
-Every actor — human, agent, server — is identified by a single `did:nostr:<secp256k1-pubkey>`. The same keypair authenticates at every layer: Nostr relay (NIP-42), HTTP requests (NIP-98 Schnorr), Solid pod access (WAC ACL), and DID resolution. No shared session store. No token exchange between tiers. The cryptographic primitive is the coordination primitive.
-
-<details>
-<summary><strong>Scaling model — from single operator to federated enterprise</strong></summary>
-
-```mermaid
-flowchart TB
-    subgraph SINGLE["Single Operator"]
-        AB1["Agentbox\n(standalone mode)"]
-    end
-
-    subgraph TEAM["Team (validated at 50 people)"]
-        VC1["VisionClaw\n(shared ontology)"]
-        AB2["Agentbox\n(agent pool)"]
-        FORUM1["Forum\n(governance UI)"]
-        VC1 <--> AB2
-        VC1 <--> FORUM1
-    end
-
-    subgraph ENTERPRISE["Federated Enterprise"]
-        subgraph ORG_A["Organisation A"]
-            VC_A["VisionClaw"]
-            AB_A["Agentbox ×N"]
-        end
-        subgraph ORG_B["Organisation B"]
-            VC_B["VisionClaw"]
-            AB_B["Agentbox ×N"]
-        end
-        ORG_A <-->|"relay mesh\ndid:nostr trust"| ORG_B
-    end
-
-    SINGLE -.->|"add VisionClaw + forum"| TEAM
-    TEAM -.->|"federate via relay mesh"| ENTERPRISE
-
-    style SINGLE fill:#0a2a1a15,stroke:#10b981
-    style TEAM fill:#0a1a2a15,stroke:#00d4ff
-    style ENTERPRISE fill:#1a0a2a15,stroke:#8b5cf6
-```
-
-| Scale | Configuration | Cost Profile |
-|---|---|---|
-| **Single operator** | One agentbox, standalone mode, local storage | One API key, one container, minutes to deploy |
-| **Team** | VisionClaw + agentbox + forum on shared relay mesh | One GPU host, one agent container, CF Workers |
-| **Enterprise** | Multiple federated nodes, relay mesh, per-org trust | Horizontal — add sovereign nodes, each owns its data |
-
-Token-efficient for small tasks (one agentbox, local context). Extreme machine intelligence through productive spending of vast token budgets across distributed, hardened, federated nodes — each independently reproducible, each sovereign over its own data.
-
-</details>
+Every actor — human, agent, server — is identified by a single `did:nostr:<secp256k1-pubkey>`. The same keypair authenticates at every layer: Nostr relay (NIP-42), HTTP requests (NIP-98 Schnorr), Solid pod access (WAC ACL), and DID resolution. No shared session store. No token exchange between tiers.
 
 See [VisionFlow Coordination Platform](docs/explanation/visionflow-coordination-platform.md) for the full architectural narrative.
+
+</details>
 
 <details>
 <summary><strong>Strategic Wardley Map — ecosystem positioning along the evolution axis</strong></summary>
@@ -141,21 +71,9 @@ See [VisionFlow Coordination Platform](docs/explanation/visionflow-coordination-
 
 ![VisionFlow Strategic Wardley Map](docs/explanation/visionflow-wardley-map.png)
 
-Components are colour-coded by layer: user-visible capabilities (red), core differentiators (cyan), platform components (purple), protocol infrastructure (green), open standards (amber), and commodity infrastructure (grey). Red arrows show active evolution direction — where the ecosystem is investing to move components from genesis/custom toward product/commodity. See [Wardley Map Analysis](docs/explanation/visionflow-wardley-map.md) for the full strategic reading.
+Components are colour-coded by layer: user-visible capabilities (red), core differentiators (cyan), platform components (purple), protocol infrastructure (green), open standards (amber), and commodity infrastructure (grey). Red arrows show active evolution direction. See [Wardley Map Analysis](docs/explanation/visionflow-wardley-map.md) for the full strategic reading.
 
 </details>
-
----
-
-## Hard Problems Need Shared Reasoning
-
-73% of frontline AI adoption happens without management sign-off. Your workforce is already building shadow workflows, stitching together AI agents, automating procurement shortcuts, inventing cross-functional pipelines that don't appear on any org chart. The question isn't whether your organisation is becoming an agentic mesh. It's whether you'll shape how it forms.
-
-**The personal agent revolution has a governance problem.** Autonomous AI agents are powerful, popular, and ready to act. They've also shown what happens without shared semantics, formal reasoning, or organisational guardrails: unauthorised actions, prompt injection attacks, and enterprises deploying security scanners just to detect rogue agent instances on their own networks.
-
-VisionClaw is the knowledge engineering substrate that gives the mesh a shared brain. It ingests knowledge, applies OWL 2 EL formal reasoning, renders it as a navigable 3D space, and exposes it to agents through Model Context Protocol tools. Every agent decision is semantically grounded, every mutation passes consistency checking, and every reasoning chain is auditable from edge case back to first principles.
-
-**Governance isn't an inhibitor, it's an accelerant.** When agents know their authority boundary and surface exceptions cleanly, the 90% of decisions that don't need human judgment flow without friction. The 10% that do get clean, contextualised escalation with full provenance.
 
 ![VisionClaw GPU-accelerated force-directed graph with Control Center](./graph-physics-live.png)
 
@@ -225,6 +143,8 @@ Requires CUDA 13.1 toolkit. See [Deployment Guide](docs/how-to/deployment-guide.
 ## Capabilities
 
 ### Three Layers of the Dynamic Mesh
+
+![Three-Layer Mesh — Governance, Orchestration, Discovery](docs/diagrams/01-three-layer-mesh.png)
 
 ```mermaid
 flowchart TB
@@ -364,6 +284,8 @@ Agents publish structured Nostr events; the relay routes them; the forum renders
 <details>
 <summary><strong>7 MCP Ontology Tools</strong></summary>
 
+![MCP Tools — 7 ontology tools connecting agents to the Whelk-RS reasoner](docs/diagrams/04-mcp-tools-radial.png)
+
 | Tool | Purpose |
 |:-----|:--------|
 | `ontology_discover` | Semantic keyword search with Whelk inference expansion |
@@ -479,6 +401,8 @@ Opus 48kHz mono end-to-end. HRTF spatial panning from Vircadia entity positions.
 ---
 
 ## Architecture
+
+![System Architecture — hexagonal backend, GPU compute, VisionFlow mesh](docs/diagrams/05-architecture-hexagonal.png)
 
 ```mermaid
 flowchart TB
