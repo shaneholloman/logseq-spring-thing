@@ -1,1 +1,0 @@
-Run `lazy snapshot $ARGUMENTS` to save the current project state (plan + memory) as a named snapshot.

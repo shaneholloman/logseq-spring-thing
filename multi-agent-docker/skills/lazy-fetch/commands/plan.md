@@ -1,1 +1,0 @@
-Run `lazy plan $ARGUMENTS` to create a phased plan for this goal. If no goal is provided, run `lazy status` to show the current plan instead.

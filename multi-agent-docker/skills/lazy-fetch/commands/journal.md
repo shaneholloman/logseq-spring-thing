@@ -1,1 +1,0 @@
-Run `lazy journal $ARGUMENTS`. If arguments are provided, this appends a journal entry. If no arguments, it reads the journal.

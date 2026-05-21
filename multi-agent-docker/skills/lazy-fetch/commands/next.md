@@ -1,1 +1,0 @@
-Run `lazy next` to see the next task and gather context for it. Then start working on that task.

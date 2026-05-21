@@ -1,1 +1,0 @@
-Run `lazy remember $ARGUMENTS`. The first word is the key, the rest is the value. This persists knowledge across sessions.

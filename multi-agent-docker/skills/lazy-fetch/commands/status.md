@@ -1,1 +1,0 @@
-Run `lazy status` to show the current plan progress grouped by phase.
