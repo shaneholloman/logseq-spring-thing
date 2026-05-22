@@ -234,10 +234,10 @@ async fn test_propose_create_generates_valid_result() {
     assert!(result.quality_score > 0.5, "Fully-specified proposal should score well");
     assert!(!result.proposal_id.is_empty());
     assert!(!result.markdown_preview.is_empty());
-    assert!(result.pr_url.is_none(), "PR should not be created without GITHUB_TOKEN");
+    assert!(result.pr_url.is_none(), "PR should not be created without LOGSEQ_PRIVATE_REPO_GITHUB");
     match result.status {
         ProposalStatus::Staged => {}
-        _ => panic!("Expected Staged status without GITHUB_TOKEN, got: {:?}", result.status),
+        _ => panic!("Expected Staged status without LOGSEQ_PRIVATE_REPO_GITHUB, got: {:?}", result.status),
     }
 }
 

@@ -47,8 +47,8 @@ impl GitHubConfig {
     }
 
     pub fn from_env() -> Result<Self, GitHubConfigError> {
-        let token = env::var("GITHUB_TOKEN")
-            .map_err(|_| GitHubConfigError::MissingEnvVar("GITHUB_TOKEN".to_string()))?;
+        let token = env::var("LOGSEQ_PRIVATE_REPO_GITHUB")
+            .map_err(|_| GitHubConfigError::MissingEnvVar("LOGSEQ_PRIVATE_REPO_GITHUB".to_string()))?;
 
         let owner = env::var("GITHUB_OWNER")
             .map_err(|_| GitHubConfigError::MissingEnvVar("GITHUB_OWNER".to_string()))?;
@@ -125,14 +125,14 @@ mod tests {
     #[test]
     fn test_missing_required_vars() {
         let _guard = ENV_LOCK.lock().unwrap();
-        env::remove_var("GITHUB_TOKEN");
+        env::remove_var("LOGSEQ_PRIVATE_REPO_GITHUB");
         env::remove_var("GITHUB_OWNER");
         env::remove_var("GITHUB_REPO");
         env::remove_var("GITHUB_BASE_PATH");
 
         match GitHubConfig::from_env() {
             Err(GitHubConfigError::MissingEnvVar(var)) => {
-                assert_eq!(var, "GITHUB_TOKEN");
+                assert_eq!(var, "LOGSEQ_PRIVATE_REPO_GITHUB");
             }
             other => {
                 panic!("Expected MissingEnvVar error, got: {:?}", other);
@@ -143,7 +143,7 @@ mod tests {
     #[test]
     fn test_empty_values() {
         let _guard = ENV_LOCK.lock().unwrap();
-        env::set_var("GITHUB_TOKEN", "");
+        env::set_var("LOGSEQ_PRIVATE_REPO_GITHUB", "");
         env::set_var("GITHUB_OWNER", "owner");
         env::set_var("GITHUB_REPO", "repo");
         env::set_var("GITHUB_BASE_PATH", "path");
@@ -161,7 +161,7 @@ mod tests {
     #[test]
     fn test_valid_config() {
         let _guard = ENV_LOCK.lock().unwrap();
-        env::set_var("GITHUB_TOKEN", "token");
+        env::set_var("LOGSEQ_PRIVATE_REPO_GITHUB", "token");
         env::set_var("GITHUB_OWNER", "owner");
         env::set_var("GITHUB_REPO", "repo");
         env::set_var("GITHUB_BASE_PATH", "path");
@@ -183,7 +183,7 @@ mod tests {
     #[test]
     fn test_optional_settings() {
         let _guard = ENV_LOCK.lock().unwrap();
-        env::set_var("GITHUB_TOKEN", "token");
+        env::set_var("LOGSEQ_PRIVATE_REPO_GITHUB", "token");
         env::set_var("GITHUB_OWNER", "owner");
         env::set_var("GITHUB_REPO", "repo");
         env::set_var("GITHUB_BASE_PATH", "path");

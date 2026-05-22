@@ -104,7 +104,7 @@ struct RefObject {
 
 impl GitHubPRService {
     pub fn new() -> Self {
-        let token = env::var("GITHUB_TOKEN").unwrap_or_default();
+        let token = env::var("LOGSEQ_PRIVATE_REPO_GITHUB").unwrap_or_default();
         let owner = env::var("GITHUB_OWNER")
             .or_else(|_| env::var("GITHUB_REPO_OWNER"))
             .unwrap_or_else(|_| {
@@ -171,7 +171,7 @@ impl GitHubPRService {
         agent_ctx: &AgentContext,
     ) -> Result<String, String> {
         if self.token.is_empty() {
-            return Err("GITHUB_TOKEN not configured — cannot create PR".to_string());
+            return Err("LOGSEQ_PRIVATE_REPO_GITHUB not configured — cannot create PR".to_string());
         }
 
         info!(

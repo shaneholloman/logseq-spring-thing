@@ -155,9 +155,9 @@ if [ -n "$GOOGLE_GEMINI_API_KEY" ]; then
     update_env "GOOGLE_GEMINI_API_KEY" "$GOOGLE_GEMINI_API_KEY"
 fi
 
-# GitHub
-if [ -n "$GITHUB_TOKEN" ]; then
-    update_env "GITHUB_TOKEN" "$GITHUB_TOKEN"
+# GitHub — Logseq private repo access (scoped PAT)
+if [ -n "${LOGSEQ_PRIVATE_REPO_GITHUB:-}" ]; then
+    update_env "LOGSEQ_PRIVATE_REPO_GITHUB" "$LOGSEQ_PRIVATE_REPO_GITHUB"
 fi
 
 # Perplexity
