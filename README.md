@@ -127,9 +127,9 @@ flowchart TB
     end
 
     subgraph Layer2["LAYER 2 — ORCHESTRATION"]
-        Skills["83 Agent Skills\nClaude-Flow DAG Pipelines"]
+        Skills["88 Agent Skills\nClaude-Flow DAG Pipelines"]
         Ontology["OWL 2 EL Reasoning\nWhelk-rs Inference Engine"]
-        MCP["7 MCP Tools\nKnowledge Graph Read/Write"]
+        MCP["17 MCP Tools\nKnowledge Graph Read/Write"]
         GPU["GPU Compute\n92 CUDA Kernels"]
     end
 
@@ -254,7 +254,7 @@ Agents publish structured Nostr events; the relay routes them; the forum renders
 | 31405 | PanelRetired | Agent → retires a control panel |
 
 <details>
-<summary><strong>7 MCP Ontology Tools</strong></summary>
+<summary><strong>7 MCP Ontology Tools (native)</strong></summary>
 
 ![MCP Tools — 7 ontology tools connecting agents to the Whelk-RS reasoner](docs/diagrams/04-mcp-tools-radial.png)
 
@@ -267,6 +267,26 @@ Agents publish structured Nostr events; the relay routes them; the forum renders
 | `ontology_propose` | Create/amend notes → consistency check → GitHub PR |
 | `ontology_validate` | Axiom consistency check against Whelk reasoner |
 | `ontology_status` | Service health and statistics |
+
+</details>
+
+<details>
+<summary><strong>10 MCP Ontology Bridge Tools (agentbox → VisionClaw)</strong></summary>
+
+The agentbox ontology bridge (`mcp/servers/ontology-bridge.js`) proxies agents running inside agentbox to VisionClaw's Oxigraph SPARQL store and REST API over the shared `visionclaw_network`. Gated by `[skills.ontology]` in `agentbox.toml`. Fail-open when VisionClaw is unreachable.
+
+| Tool | Purpose |
+|:-----|:--------|
+| `ontology_health` | Bridge and backend health check |
+| `ontology_search` | Full-text search across ontology concepts |
+| `ontology_class_get` | Retrieve a single class with axioms and relationships |
+| `ontology_class_list` | List classes with optional prefix filter |
+| `ontology_axiom_add` | Add axioms (SPARQL UPDATE, gated) |
+| `ontology_validate` | Consistency check via Whelk reasoner |
+| `ontology_graph_query` | Raw SPARQL SELECT with `vc:` prefix auto-injection |
+| `kg_node_search` | Search knowledge graph nodes by label or property |
+| `kg_neighbors` | Get immediate neighbors of a node (1-hop) |
+| `kg_pathfind` | Shortest path between two nodes |
 
 </details>
 
@@ -640,7 +660,7 @@ VisionClaw/
 │   ├── src/features/             #   13 feature modules (graph, settings, etc.)
 │   ├── src/services/             #   Voice, WebSocket, Nostr auth, Solid
 │   └── crates/scene-effects/     #   Rust WASM crate — zero-copy scene FX
-├── agentbox/                     # Submodule: agent runtime container
+├── agentbox/                     # Submodule: agent runtime (ontology bridge, 88 skills, browser setup wizard)
 ├── docs/                         # Diataxis documentation (106 files, 46 with Mermaid)
 │   ├── explanation/              #   Architecture (incl. VisionFlow platform doc)
 │   ├── adr/                      #   91 Architecture Decision Records

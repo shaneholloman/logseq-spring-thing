@@ -205,7 +205,7 @@ The five repositories in the DreamLab ecosystem are not a monolith. Each is an i
 |------------|------|---------------------------|
 | **[VisionClaw](https://github.com/DreamLab-AI/VisionClaw)** | Integration substrate | This repo. Knowledge graph, GPU physics, broker workbench, discovery engine, write-back saga. |
 | **[solid-pod-rs](https://github.com/DreamLab-AI/solid-pod-rs)** | Foundation library | Consumed as a Cargo dependency. Provides LDP, WAC, NIP-98 auth, git-http-backend, mashlib, and `did:nostr` resolution. |
-| **[agentbox](https://github.com/DreamLab-AI/agentbox)** | Agent container | Git submodule. Provides sovereign agent execution, nostr-rs-relay, linked objects viewer, adapter-based integration. |
+| **[agentbox](https://github.com/DreamLab-AI/agentbox)** | Agent container | Git submodule. Provides sovereign agent execution, nostr-rs-relay, linked objects viewer, adapter-based integration. Ontology bridge (10 MCP tools) proxies agents to VisionClaw's Oxigraph SPARQL store. Browser-based setup wizard (PRD-012). |
 | **[nostr-rust-forum](https://github.com/DreamLab-AI/nostr-rust-forum)** | Forum kit | 11 `nostr-bbs-*` Rust crates. Provides human-to-human and human-to-agent text coordination, Nostr relay, community moderation. |
 | **[dreamlab-ai-website](https://github.com/DreamLab-AI/dreamlab-ai-website)** | Branded deployment | Downstream consumer of the forum kit. React SPA + WASM forum + `forum-config/` package. |
 
