@@ -381,6 +381,9 @@ pub struct PhysicsSettingsDTO {
     /// X-axis separation between knowledge and ontology graph populations (default 0 = merged)
     #[serde(default)]
     pub graph_separation_x: f32,
+    /// Single-axis Z compression toward zero (0=none, 1=full flatten to z=0)
+    #[serde(default)]
+    pub axis_compression_z: f32,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

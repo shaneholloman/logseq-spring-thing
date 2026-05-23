@@ -518,12 +518,25 @@ pub fn compile_ptx_fallback_sync_module(module: PTXModule) -> Result<String, Str
     let nvcc = "nvcc";
     let arch_flag = format!("-arch=sm_{}", arch);
 
-    let output = Command::new(nvcc)
-        .args(["-ptx", "-std=c++17"])
-        .arg(arch_flag)
-        .arg(&cu_path)
-        .arg("-o")
-        .arg(&out_path)
+    let mut cmd = Command::new(nvcc);
+    cmd.args([
+        "-ptx",
+        "-std=c++17",
+        "--allow-unsupported-compiler",
+        "--expt-relaxed-constexpr",
+        "--use_fast_math",
+        "-O3",
+    ]);
+    cmd.arg(&arch_flag);
+    for candidate in ["/usr/bin/g++-13", "/usr/bin/g++-14", "/opt/cuda/bin/gcc"] {
+        if Path::new(candidate).exists() {
+            cmd.args(["--compiler-bindir", candidate]);
+            break;
+        }
+    }
+    cmd.arg(&cu_path).arg("-o").arg(&out_path);
+
+    let output = cmd
         .output()
         .map_err(|e| format!("Failed to spawn nvcc: {}", e))?;
 

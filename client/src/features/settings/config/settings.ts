@@ -106,6 +106,18 @@ export interface PhysicsSettings {
   // SSSP (Single Source Shortest Path) integration
   useSsspDistances?: boolean;
   ssspAlpha?: number;
+
+  // ForceAtlas2 integration parameters (transparent, no hidden multipliers)
+  globalSpeed?: number;
+  scalingRatio?: number;
+  linLogMode?: boolean;
+  adaptiveSpeed?: boolean;
+
+  // Dual-graph X-axis separation (knowledge ←→ ontology populations)
+  graphSeparationX?: number;
+
+  // Single-axis Z compression for disk-style layouts (0=full 3D, 1=flat to z=0)
+  axisCompressionZ?: number;
 }
 
 // Client-side interpolation/tweening settings.

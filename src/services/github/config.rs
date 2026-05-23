@@ -48,7 +48,9 @@ impl GitHubConfig {
 
     pub fn from_env() -> Result<Self, GitHubConfigError> {
         let token = env::var("LOGSEQ_PRIVATE_REPO_GITHUB")
-            .map_err(|_| GitHubConfigError::MissingEnvVar("LOGSEQ_PRIVATE_REPO_GITHUB".to_string()))?;
+            .map_err(|_| GitHubConfigError::MissingEnvVar("LOGSEQ_PRIVATE_REPO_GITHUB".to_string()))?
+            .trim_start_matches('=')
+            .to_string();
 
         let owner = env::var("GITHUB_OWNER")
             .map_err(|_| GitHubConfigError::MissingEnvVar("GITHUB_OWNER".to_string()))?;

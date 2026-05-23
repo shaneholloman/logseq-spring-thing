@@ -14,6 +14,9 @@ fn default_scaling_ratio() -> f32 {
 fn default_adaptive_speed() -> bool {
     true
 }
+fn default_global_speed() -> f32 {
+    0.16
+}
 
 /// Controls how the physics simulation converges.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -38,8 +41,8 @@ impl Default for SettleMode {
     fn default() -> Self {
         SettleMode::FastSettle {
             damping_override: 0.85,
-            max_settle_iterations: 5000,
-            energy_threshold: 0.001,
+            max_settle_iterations: 10000,
+            energy_threshold: 1.0,
         }
     }
 }
@@ -225,6 +228,11 @@ pub struct SimulationParams {
     #[serde(default)]
     pub graph_separation_x: f32,
 
+    /// Single-axis Z compression (0.0 = no flatten, 1.0 = full flatten to z=0).
+    /// Combined with graph_separation_x, produces two parallel disks in the XY plane.
+    #[serde(default)]
+    pub axis_compression_z: f32,
+
     /// Active layout algorithm (ADR-031). Defaults to ForceDirected.
     #[serde(default)]
     pub layout_mode: LayoutMode,
@@ -244,6 +252,12 @@ pub struct SimulationParams {
     /// Defaults to true.
     #[serde(default = "default_adaptive_speed")]
     pub adaptive_speed: bool,
+
+    /// FA2 base integration speed (`global_speed` in CUDA kernel).
+    /// `speed = global_speed / (1 + sqrt(swing))` for per-node adaptive integration.
+    /// Defaults to 0.16 (matches the legacy implicit dt=0.016 × 10.0 calculation).
+    #[serde(default = "default_global_speed")]
+    pub global_speed: f32,
 }
 
 impl Default for SimulationParams {
@@ -464,7 +478,7 @@ impl SimulationParams {
             lin_log_mode: if self.lin_log_mode { 1 } else { 0 },
             scaling_ratio: self.scaling_ratio,
             adaptive_speed: if self.adaptive_speed { 1 } else { 0 },
-            global_speed: self.dt * 10.0, // sensible default: dt-relative base speed
+            global_speed: self.global_speed,
         }
     }
 }
@@ -527,10 +541,12 @@ impl SimParams {
             mode: SimulationMode::Remote,
             settle_mode: SettleMode::default(),
             graph_separation_x: 0.0,
+            axis_compression_z: 0.0,
             layout_mode: LayoutMode::default(),
             lin_log_mode: self.lin_log_mode != 0,
             scaling_ratio: self.scaling_ratio,
             adaptive_speed: self.adaptive_speed != 0,
+            global_speed: self.global_speed,
         }
     }
 }
@@ -620,7 +636,7 @@ impl From<&PhysicsSettings> for SimParams {
             lin_log_mode: if physics.lin_log_mode { 1 } else { 0 },
             scaling_ratio: physics.scaling_ratio,
             adaptive_speed: if physics.adaptive_speed { 1 } else { 0 },
-            global_speed: physics.dt * 10.0,
+            global_speed: physics.global_speed,
         }
     }
 }
@@ -668,10 +684,12 @@ impl From<&PhysicsSettings> for SimulationParams {
             mode: SimulationMode::Remote,
             settle_mode: SettleMode::default(),
             graph_separation_x: physics.graph_separation_x,
+            axis_compression_z: physics.axis_compression_z,
             layout_mode: LayoutMode::default(),
             lin_log_mode: physics.lin_log_mode,
             scaling_ratio: physics.scaling_ratio,
             adaptive_speed: physics.adaptive_speed,
+            global_speed: physics.global_speed,
         }
     }
 }

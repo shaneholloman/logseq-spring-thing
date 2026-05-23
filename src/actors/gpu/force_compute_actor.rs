@@ -155,9 +155,9 @@ impl ForceComputeActor {
     pub fn new() -> Self {
         // Initialize broadcast optimizer with default config
         let broadcast_config = BroadcastConfig {
-            target_fps: 25, // 25fps broadcast, 60fps physics
-            delta_threshold: 0.01, // 1cm movement threshold
-            enable_spatial_culling: false, // Disabled by default, can be enabled via API
+            target_fps: 10, // 10fps full snapshots — client tweens at 60fps
+            delta_threshold: 0.01,
+            enable_spatial_culling: false,
             camera_bounds: None,
         };
 
@@ -1371,19 +1371,34 @@ impl Handler<ComputeForces> for ForceComputeActor {
                                         let node_id = actor.gpu_index_to_node_id.get(i).copied().unwrap_or(i as u32);
                                         actor.node_id_buffer.push(node_id);
                                     }
-                                }
 
                                 // Apply dual-graph X-axis separation offset.
                                 // Knowledge nodes shift to -X, ontology nodes shift to +X,
                                 // agent nodes stay at origin (bridging both populations).
                                 let sep_x = actor.simulation_params.graph_separation_x;
-                                if sep_x > 0.0 && !actor.node_population.is_empty() {
+                                let z_compress = actor.simulation_params.axis_compression_z.clamp(0.0, 1.0);
+                                let z_scale = 1.0 - z_compress;
+                                let needs_sep = sep_x > 0.0;
+                                let needs_compress = z_compress > 0.0;
+                                if (needs_sep || needs_compress) && !actor.node_population.is_empty() {
                                     for (i, (pos, _vel)) in actor.position_velocity_buffer.iter_mut().enumerate() {
                                         if let Some(&pop) = actor.node_population.get(i) {
-                                            match pop {
-                                                GraphPopulation::Knowledge => pos.x -= sep_x,
-                                                GraphPopulation::Ontology => pos.x += sep_x,
-                                                GraphPopulation::Agent => {} // bridge at origin
+                                            if needs_sep {
+                                                match pop {
+                                                    GraphPopulation::Knowledge => pos.x -= sep_x,
+                                                    GraphPopulation::Ontology => pos.x += sep_x,
+                                                    GraphPopulation::Agent => {} // bridge at origin
+                                                }
+                                            }
+                                            if needs_compress {
+                                                // Flatten knowledge + ontology toward z=0 to form disks.
+                                                // Agents stay full-3D so they can visibly bridge the disks.
+                                                match pop {
+                                                    GraphPopulation::Knowledge | GraphPopulation::Ontology => {
+                                                        pos.z *= z_scale;
+                                                    }
+                                                    GraphPopulation::Agent => {}
+                                                }
                                             }
                                         }
                                     }
@@ -1453,99 +1468,46 @@ impl Handler<ComputeForces> for ForceComputeActor {
                                     // Still call process_frame to keep delta state tracking.
                                     let _ = actor.broadcast_optimizer.process_frame(&actor.position_velocity_buffer, &actor.node_id_buffer);
                                 } else {
-                                    // Normal broadcast path (Continuous mode or post-settle)
-                                    let (should_broadcast, filtered_indices) =
+                                    // Continuous mode: always send full position snapshots.
+                                    // Clients tween at 60fps — they need complete target state,
+                                    // not incremental deltas. Rate-limited by broadcast_optimizer.
+                                    let (should_broadcast, _) =
                                         actor.broadcast_optimizer.process_frame(&actor.position_velocity_buffer, &actor.node_id_buffer);
 
-                                    if should_broadcast && !filtered_indices.is_empty() {
-                                        // Check if periodic full broadcast is due EVEN when some
-                                        // nodes are still moving. Without this, converged nodes
-                                        // never get their final positions sent to clients while
-                                        // other nodes (e.g. agents) keep moving.
-                                        let iters_since_full = actor.gpu_state.iteration_count
-                                            .saturating_sub(actor.last_full_broadcast_iteration);
-                                        let needs_full = iters_since_full >= 300;
-
-                                        if needs_full {
-                                            // Full broadcast: send ALL nodes, bypassing delta filter
-                                            if let Some(_sequence_id) = actor.backpressure.try_acquire() {
-                                                let mut node_updates = Vec::with_capacity(actor.node_id_buffer.len());
-                                                for idx in 0..actor.node_id_buffer.len() {
-                                                    let node_id = actor.node_id_buffer[idx];
-                                                    let (position, velocity) = actor.position_velocity_buffer[idx];
-                                                    if !position.x.is_finite() || !position.y.is_finite() || !position.z.is_finite() {
-                                                        continue;
-                                                    }
-                                                    node_updates.push((node_id, BinaryNodeDataClient::new(
-                                                        node_id,
-                                                        glam_to_vec3data(position),
-                                                        glam_to_vec3data(velocity),
-                                                    )));
+                                    if should_broadcast {
+                                        if let Some(_sequence_id) = actor.backpressure.try_acquire() {
+                                            let mut node_updates = Vec::with_capacity(actor.node_id_buffer.len());
+                                            for idx in 0..actor.node_id_buffer.len() {
+                                                let node_id = actor.node_id_buffer[idx];
+                                                let (position, velocity) = actor.position_velocity_buffer[idx];
+                                                if !position.x.is_finite() || !position.y.is_finite() || !position.z.is_finite() {
+                                                    continue;
                                                 }
-                                                if let Some(ref graph_addr) = actor.graph_service_addr {
+                                                node_updates.push((node_id, BinaryNodeDataClient::new(
+                                                    node_id,
+                                                    glam_to_vec3data(position),
+                                                    glam_to_vec3data(velocity),
+                                                )));
+                                            }
+                                            if let Some(ref graph_addr) = actor.graph_service_addr {
+                                                if actor.gpu_state.iteration_count % 300 == 0 {
                                                     info!(
-                                                        "ForceComputeActor: Periodic full broadcast — ALL {} positions (iter {}, delta had {})",
-                                                        node_updates.len(), actor.gpu_state.iteration_count,
-                                                        filtered_indices.len()
+                                                        "ForceComputeActor: Full snapshot — {} nodes (iter {})",
+                                                        node_updates.len(), actor.gpu_state.iteration_count
                                                     );
-                                                    graph_addr.do_send(crate::actors::messages::UpdateNodePositions {
-                                                        positions: node_updates,
-                                                        correlation_id: Some(crate::actors::messaging::MessageId::new()),
-                                                    });
                                                 }
-                                                actor.last_full_broadcast_iteration = actor.gpu_state.iteration_count;
-                                                actor.broadcast_optimizer.reset_delta_state();
-                                            } else {
-                                                actor.backpressure.record_skip();
+                                                graph_addr.do_send(crate::actors::messages::UpdateNodePositions {
+                                                    positions: node_updates,
+                                                    correlation_id: Some(crate::actors::messaging::MessageId::new()),
+                                                });
                                             }
+                                            actor.last_full_broadcast_iteration = actor.gpu_state.iteration_count;
+                                            actor.broadcast_optimizer.reset_delta_state();
                                         } else {
-                                            // Delta broadcast: send only moved nodes
-                                            if let Some(_sequence_id) = actor.backpressure.try_acquire() {
-                                                let mut node_updates = Vec::with_capacity(filtered_indices.len());
-                                                for &idx in &filtered_indices {
-                                                    let node_id = actor.node_id_buffer[idx];
-                                                    let (position, velocity) = actor.position_velocity_buffer[idx];
-
-                                                    node_updates.push((node_id, BinaryNodeDataClient::new(
-                                                        node_id,
-                                                        glam_to_vec3data(position),
-                                                        glam_to_vec3data(velocity),
-                                                    )));
-                                                }
-
-                                                if let Some(ref graph_addr) = actor.graph_service_addr {
-                                                    if actor.stability_warmup_remaining > 295
-                                                        || actor.gpu_state.iteration_count % 300 == 0
-                                                    {
-                                                        info!(
-                                                            "ForceComputeActor: Sending {} position updates (iter {}, warmup_remaining={})",
-                                                            node_updates.len(), actor.gpu_state.iteration_count,
-                                                            actor.stability_warmup_remaining
-                                                        );
-                                                    }
-                                                    graph_addr.do_send(crate::actors::messages::UpdateNodePositions {
-                                                        positions: node_updates,
-                                                        correlation_id: Some(crate::actors::messaging::MessageId::new()),
-                                                    });
-                                                } else {
-                                                    if actor.gpu_state.iteration_count % 60 == 0 {
-                                                        warn!(
-                                                            "ForceComputeActor: graph_service_addr is None — {} position updates DROPPED (iter {})",
-                                                            node_updates.len(), actor.gpu_state.iteration_count
-                                                        );
-                                                    }
-                                                }
-                                            } else {
-                                                actor.backpressure.record_skip();
-                                            }
+                                            actor.backpressure.record_skip();
                                         }
-                                    } else if should_broadcast && filtered_indices.is_empty() {
-                                    // Delta filter found zero movement — periodic full broadcast
-                                    // for late-connecting clients.
-                                    let iters_since_full = actor.gpu_state.iteration_count
-                                        .saturating_sub(actor.last_full_broadcast_iteration);
-                                    if iters_since_full >= 300 {
-                                        // Build updates from ALL nodes, bypassing delta filter
+                                    } else if actor.gpu_state.iteration_count.saturating_sub(actor.last_full_broadcast_iteration) >= 300 {
+                                        // Periodic full broadcast for late-connecting clients
                                         if let Some(_sequence_id) = actor.backpressure.try_acquire() {
                                             let mut node_updates = Vec::with_capacity(actor.node_id_buffer.len());
                                             for idx in 0..actor.node_id_buffer.len() {
@@ -1578,13 +1540,6 @@ impl Handler<ComputeForces> for ForceComputeActor {
                                             // Reset delta state so next comparison starts fresh
                                             actor.broadcast_optimizer.reset_delta_state();
                                         }
-                                    } else if actor.stability_warmup_remaining > 295
-                                        || actor.gpu_state.iteration_count % 300 == 0
-                                    {
-                                        info!(
-                                            "ForceComputeActor: broadcast_optimizer filtered out all updates (should_broadcast={}, filtered={}, warmup_remaining={})",
-                                            should_broadcast, filtered_indices.len(), actor.stability_warmup_remaining
-                                        );
                                     }
                                 } // end normal broadcast else branch
                                 } // end NaN guard else (clean positions)

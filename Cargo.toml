@@ -2,6 +2,7 @@
 members = [
     ".",
     "crates/visionclaw-contracts",
+    "crates/visionflow-domain",
 ]
 # Note: visionclaw-contracts is independently buildable. To work around the
 # pre-existing `solid-pod-rs { rev = "main" }` resolution error in the root

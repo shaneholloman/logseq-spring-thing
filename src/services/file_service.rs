@@ -737,6 +737,23 @@ impl FileService {
         re.find_iter(content).count()
     }
 
+    /// Extract `owl:class:: prefix:LocalName` from a logseq markdown OntologyBlock.
+    /// Returns the full IRI value (e.g. "mv:ArbitrationDecisionEngine") if present.
+    /// Used to surface ontology-tagged pages as ontology_node nodes so the
+    /// dual-graph X-axis separation control has two populations to separate.
+    fn extract_owl_class_iri(content: &str) -> Option<String> {
+        for line in content.lines() {
+            let trimmed = line.trim_start_matches(|c: char| c.is_whitespace() || c == '-');
+            if let Some(rest) = trimmed.strip_prefix("owl:class::") {
+                let value = rest.trim();
+                if !value.is_empty() {
+                    return Some(value.to_string());
+                }
+            }
+        }
+        None
+    }
+
     /// Check if file has public-access:: true (new format)
     /// or public:: true anywhere in the content (legacy format)
     fn is_public_file(content: &str) -> bool {
@@ -1134,7 +1151,21 @@ impl FileService {
             let mut node = AppNode::new_with_id(filename.clone(), Some(meta_node_id));
             node.label = meta.file_name.trim_end_matches(".md").to_string();
             node.size = Some(meta.node_size as f32);
-            node.color = Some("#888888".to_string());
+
+            // Detect ontology classification from file content.
+            // Files declaring `owl:class:: <iri>` in their OntologyBlock are surfaced
+            // as ontology nodes so the dual-graph (knowledge ↔ ontology) X-axis
+            // separation control has something to separate.
+            let owl_class_iri = Self::extract_owl_class_iri(&content);
+            if owl_class_iri.is_some() {
+                node.node_type = Some("ontology_node".to_string());
+                node.owl_class_iri = owl_class_iri;
+                node.color = Some("#B91C7B".to_string());  // magenta for ontology
+            } else {
+                node.node_type = Some("page".to_string());
+                node.color = Some("#4A90E2".to_string());  // blue for knowledge
+            }
+
             let mut rng = rand::thread_rng();
             node.data.x = rng.gen_range(-100.0..100.0);
             node.data.y = rng.gen_range(-100.0..100.0);

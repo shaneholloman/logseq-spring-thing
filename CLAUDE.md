@@ -64,7 +64,8 @@ Need current library docs while coding? --> context7
 Swarm (3+ agents)? --> /swarm-advanced or hive-mind
 GitHub ops (PR/release/CI)? --> github-* skills
 Docs/reports? --> /report-builder, /docs-alignment
-Media (image/video/3D)? --> /imagemagick, /ffmpeg, /blender, /comfyui
+Image generation (infographics, headers, art)? --> /art (Nano Banana 2, 4K, text rendering, 16 workflows)
+Media editing (resize/convert/composite)? --> /imagemagick, /ffmpeg, /blender, /comfyui
 Browser automation? --> /playwright, /browser-automation, /qe-browser (QE-grade: typed assertions, visual-diff, injection scan)
 AI/ML (PyTorch, CUDA, notebooks)? --> /pytorch-ml, /cuda, /jupyter-notebooks
 Memory/AgentDB? --> /agentdb-*, /lazy-fetch

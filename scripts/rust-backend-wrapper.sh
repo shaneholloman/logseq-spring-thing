@@ -60,12 +60,12 @@ if [ "${SKIP_RUST_REBUILD:-false}" != "true" ]; then
     if [ "$NEEDS_BUILD" = "true" ]; then
         log "Source changes detected — building with cargo..."
 
-        if cargo build --release --features gpu,dev-auth 2>&1; then
+        if cargo build --release --features gpu,ontology,dev-auth 2>&1; then
             log "✓ Build succeeded"
         else
             log "ERROR: Build failed. Attempting clean rebuild..."
             cargo clean 2>/dev/null || true
-            if cargo build --release --features gpu,dev-auth 2>&1; then
+            if cargo build --release --features gpu,ontology,dev-auth 2>&1; then
                 log "✓ Clean rebuild succeeded"
             else
                 log "FATAL: Clean rebuild also failed"

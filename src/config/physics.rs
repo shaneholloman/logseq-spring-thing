@@ -17,6 +17,9 @@ fn default_scaling_ratio() -> f32 {
 fn default_adaptive_speed() -> bool {
     true
 }
+fn default_global_speed() -> f32 {
+    0.16
+}
 
 fn default_constraint_ramp_frames() -> u32 {
     60
@@ -280,6 +283,12 @@ pub struct PhysicsSettings {
     #[serde(default, alias = "graph_separation_x")]
     pub graph_separation_x: f32,
 
+    /// Single-axis compression toward zero (0.0 = no compression, 1.0 = full flatten).
+    /// Combined with graph_separation_x, produces two parallel disks (KG + ontology) in the XY plane.
+    /// Applied as CPU post-process: pos.z *= (1.0 - axis_compression_z) per population.
+    #[serde(default, alias = "axis_compression_z")]
+    pub axis_compression_z: f32,
+
     /// ForceAtlas2 LinLog mode: log(1+d) attraction per edge (modularity-equivalent).
     /// Defaults to true.
     #[serde(default = "default_lin_log_mode", alias = "lin_log_mode")]
@@ -292,6 +301,12 @@ pub struct PhysicsSettings {
     /// FA2 per-node adaptive speed convergence (default true).
     #[serde(default = "default_adaptive_speed", alias = "adaptive_speed")]
     pub adaptive_speed: bool,
+
+    /// FA2 base integration speed (`global_speed` in CUDA kernel).
+    /// Used as `speed = global_speed / (1 + sqrt(swing))` for per-node adaptive integration.
+    /// Default 0.16 matches the historical implicit value (dt=0.016 × 10.0).
+    #[serde(default = "default_global_speed", alias = "global_speed")]
+    pub global_speed: f32,
 }
 
 impl Default for PhysicsSettings {
@@ -342,9 +357,11 @@ impl Default for PhysicsSettings {
             clustering_iterations: 30,
 
             graph_separation_x: 0.0,
+            axis_compression_z: 0.0,
             lin_log_mode: true,
             scaling_ratio: 10.0,
             adaptive_speed: true,
+            global_speed: 0.16,
         }
     }
 }

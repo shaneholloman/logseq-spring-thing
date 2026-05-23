@@ -150,6 +150,9 @@ visualisation:
         maxForce: 1000.0
         repelK: 80.0
         springK: 2.0
+        globalSpeed: 0.16
+        graphSeparationX: 0.0
+        axisCompressionZ: 0.0
         massScale: 1.0
         boundaryDamping: 0.95
         updateThreshold: 0.01
@@ -186,7 +189,7 @@ visualisation:
         clusteringIterations: 50
       tweening:
         enabled: true
-        lerpBase: 0.0001
+        lerpBase: 0.003
         snapThreshold: 0.05
         maxDivergence: 50.0
     visionflow:
@@ -275,6 +278,9 @@ visualisation:
         maxForce: 500.0
         repelK: 100.0
         springK: 10.0
+        globalSpeed: 0.16
+        graphSeparationX: 0.0
+        axisCompressionZ: 0.0
         massScale: 1.0
         boundaryDamping: 0.95
         updateThreshold: 0.01
@@ -311,7 +317,7 @@ visualisation:
         clusteringIterations: 50
       tweening:
         enabled: true
-        lerpBase: 0.0001
+        lerpBase: 0.003
         snapThreshold: 0.05
         maxDivergence: 50.0
   camera:
@@ -328,7 +334,7 @@ visualisation:
       z: 0.0
 clientTweening:
   enabled: true
-  lerpBase: 0.0001
+  lerpBase: 0.003
   snapThreshold: 0.05
   maxDivergence: 50.0
 system:

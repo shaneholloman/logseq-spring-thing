@@ -192,6 +192,7 @@ export const UNIFIED_SETTINGS_CONFIG: Record<string, SectionConfig> = {
       { key: 'typeClusterRadius', label: 'Type Cluster Radius', type: 'slider', min: 10, max: 500, step: 10, path: 'qualityGates.typeClusterRadius', description: 'Target radius for type-based cluster zones', isAdvanced: true },
 
       // Dynamics - Basic
+      { key: 'globalSpeed', label: 'Global Speed', type: 'slider', min: 0.01, max: 5.0, step: 0.01, path: 'visualisation.graphs.logseq.physics.globalSpeed', description: 'FA2 base integration speed (kernel param, was implicitly dt × 10)' },
       { key: 'maxVelocity', label: 'Max Velocity', type: 'slider', min: 0.1, max: 200, step: 1, path: 'visualisation.graphs.logseq.physics.maxVelocity', description: 'Maximum node speed — higher allows faster layout changes' },
       { key: 'enableBounds', label: 'Enable Bounds', type: 'toggle', path: 'visualisation.graphs.logseq.physics.enableBounds', description: 'Constrain to bounds' },
       { key: 'boundsSize', label: 'Bounds Size', type: 'slider', min: 100, max: 20000, step: 500, path: 'visualisation.graphs.logseq.physics.boundsSize', description: 'Size of bounding box — larger allows more spread' },
@@ -218,6 +219,7 @@ export const UNIFIED_SETTINGS_CONFIG: Record<string, SectionConfig> = {
       { key: 'scalingRatio', label: 'FA2 Scaling Ratio', type: 'slider', min: 0.1, max: 100, step: 0.5, path: 'visualisation.graphs.logseq.physics.scalingRatio', description: 'ForceAtlas2 repulsion scaling — higher spreads degree-heavy nodes further', isAdvanced: true },
       { key: 'adaptiveSpeed', label: 'Adaptive Speed', type: 'toggle', path: 'visualisation.graphs.logseq.physics.adaptiveSpeed', description: 'Per-node adaptive convergence speed (reduces oscillation)', isAdvanced: true },
       { key: 'graphSeparationX', label: 'Graph Separation', type: 'slider', min: 0, max: 2000, step: 50, path: 'visualisation.graphs.logseq.physics.graphSeparationX', description: 'X-axis separation between knowledge and ontology populations (0 = merged)', isAdvanced: true },
+      { key: 'axisCompressionZ', label: 'Z-Axis Compression', type: 'slider', min: 0, max: 1, step: 0.05, path: 'visualisation.graphs.logseq.physics.axisCompressionZ', description: 'Flatten KG + ontology toward XY plane (0 = full 3D, 1 = flat disks). Agents stay 3D as bridges.', isAdvanced: true },
       { key: 'gridCellSize', label: 'Grid Cell Size', type: 'slider', min: 10, max: 500, step: 10, path: 'visualisation.graphs.logseq.physics.gridCellSize', description: 'Spatial grid cell size — larger for spread-out graphs', isAdvanced: true },
       { key: 'repulsionSofteningEpsilon', label: 'Repulsion Epsilon', type: 'slider', min: 0.00001, max: 0.01, step: 0.0001, path: 'visualisation.graphs.logseq.physics.repulsionSofteningEpsilon', description: 'Softening for close nodes', isAdvanced: true },
       { key: 'boundaryDamping', label: 'Boundary Damping', type: 'slider', min: 0, max: 1, step: 0.01, path: 'visualisation.graphs.logseq.physics.boundaryDamping', description: 'Velocity damping when nodes approach boundary', isAdvanced: true },

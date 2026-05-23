@@ -43,6 +43,23 @@ None currently active.
 
 ---
 
+## Design Constraints (DO NOT CHANGE)
+
+### BROADCAST-001: Full Position Snapshots Only — No Delta Encoding
+
+**Status**: Permanent design constraint (PRD-007 §3, ADR-037, ADR-061)
+**Rule**: The GPU→client broadcast pipeline MUST always send full absolute position+velocity snapshots for every node. Delta/diff encoding, delta-filtered partial updates, and incremental position messages are permanently prohibited.
+
+**Reasoning**:
+1. **Client tweening**: Clients interpolate `currentPositions` toward `targetPositions` at 60fps using `lerpBase` exponential decay. They need complete target state for all nodes, not just the ones that moved. A delta-filtered broadcast that omits stationary nodes means the client never receives their final resting positions after physics convergence.
+2. **Late-connecting clients**: New WebSocket connections miss all positions accumulated before they joined. Only full snapshots guarantee correct initial state.
+3. **Convergence deadlock**: The `BroadcastOptimizer.DeltaCompressor` (delta_threshold filtering) was the root cause of the "incremental updates" bug (May 2026): after physics converges and all velocities reach zero, the delta filter excludes everything, so the client never receives final settled positions. The energy_threshold (0.001) was unreachable for 840-node graphs, causing mandatory fallback to Continuous mode with broken delta-filtered broadcasts.
+4. **PRD-007 §3 Non-Goals**: "No introduction of delta/diff encoding. The original 'literal-only, full snapshot' property is preserved for the per-frame stream."
+
+**Implementation**: `force_compute_actor.rs` Continuous mode sends full snapshots of ALL nodes at 10fps (rate-limited by `BroadcastOptimizer` timing, NOT delta filtering). FastSettle mode sends one full broadcast on convergence. Periodic full broadcast every 300 iterations as safety net.
+
+---
+
 ## Resolved Issues
 
 Previously known issues that are now fixed. Listed here so that old bug reports, forum threads, or git blame comments referencing these symptoms can be traced to their resolution.
@@ -66,4 +83,5 @@ Previously known issues that are now fixed. Listed here so that old bug reports,
 | **Dual ClientCoordinatorActor instances** — `SocketFlowServer` registered clients in one actor while `PhysicsOrchestratorActor` broadcast to a second internally-created instance; result: "2241 positions, 0 clients in manager", zero binary frames delivered to any client | Fixed Apr 2026 (commit fcfc1a166) | `graph_service_supervisor.rs` — new `with_client()` constructor accepts externally-injected `ClientCoordinatorActor`; `app_state.rs` passes shared address; internal creation skipped when external instance provided | `src/actors/graph_service_supervisor.rs` |
 | **ClientFilter default filtering to zero** — `ClientFilter::default()` had `enabled: true` with empty `filtered_node_ids`, causing every new client to receive zero nodes from `broadcast_with_filter` | Fixed Apr 2026 (commit fcfc1a166) | `client_filter.rs` — default changed to `enabled: false`; opt-in filtering semantics | `src/actors/client_filter.rs` |
 | **FastSettle permanent physics halt** — `FastSettle` mode latched `fast_settle_complete = true` and `is_physics_paused = true` on reaching the iteration cap even without energy convergence; subsequent settings changes could not resume simulation | Fixed Apr 2026 (commit fcfc1a166) | `physics_orchestrator_actor.rs` — non-convergent exhaustion falls back to `Continuous` mode rather than halting | `src/actors/physics_orchestrator_actor.rs` |
+| **Delta-filtered broadcasts caused missing positions** — Continuous mode used `BroadcastOptimizer.DeltaCompressor` to filter nodes that hadn't moved >0.01 units; after convergence ALL nodes filtered → client never received final positions; `energy_threshold` 0.001 unreachable for 840-node graphs → FastSettle always fell back to broken Continuous mode | Fixed May 2026 | `force_compute_actor.rs` — Continuous mode now always sends full snapshots at 10fps; energy_threshold raised to 1.0; max_settle_iterations raised to 10000; client lerpBase set to 0.003 for ~200ms smooth tween | See BROADCAST-001 design constraint above |
 | **Boundary-pinned nodes** — 468 nodes oscillating at ±2000 (viewport bounds) on Y/Z axes; runaway rescue threshold of 10× bounds did not catch nodes already at the wall | Fixed Apr 2026 (commit fcfc1a166) | `force_compute_actor.rs` — added `boundary_stuck_frames` counter (per node); nodes at boundary for ≥60 frames are teleported to randomised interior position with zeroed velocity | `src/actors/gpu/force_compute_actor.rs` |

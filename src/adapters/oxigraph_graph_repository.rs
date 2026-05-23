@@ -239,6 +239,16 @@ impl OxigraphGraphRepository {
             ));
         }
 
+        // node_type (optional)
+        if let Some(nt) = &node.node_type {
+            let nt_esc = escape_literal(nt);
+            buf.push_str(&format!(
+                "    <{iri}> vc:nodeType \"{nt}\" .\n",
+                iri = iri,
+                nt = nt_esc
+            ));
+        }
+
         // Free-form metadata key/values
         for (k, v) in &node.metadata {
             let k_esc = escape_literal(k);
@@ -1145,6 +1155,7 @@ fn load_nodes_in_graph(store: &Store, graph_iri: &str) -> RepoResult<Vec<Node>> 
         let mut vz = 0.0f32;
         let mut mass: Option<f32> = None;
         let mut owl_class_iri: Option<String> = None;
+        let mut node_type: Option<String> = None;
         let mut metadata: HashMap<String, String> = HashMap::new();
 
         for (p, v) in props {
@@ -1175,6 +1186,11 @@ fn load_nodes_in_graph(store: &Store, graph_iri: &str) -> RepoResult<Vec<Node>> 
                 (_, Some("owlClass")) => {
                     if let oxigraph::model::Term::NamedNode(n) = &v {
                         owl_class_iri = Some(n.as_str().to_string());
+                    }
+                }
+                (_, Some("nodeType")) => {
+                    if let Some(t) = term_to_string(&v) {
+                        node_type = Some(t);
                     }
                 }
                 (_, Some("meta")) => {
@@ -1216,7 +1232,7 @@ fn load_nodes_in_graph(store: &Store, graph_iri: &str) -> RepoResult<Vec<Node>> 
             owl_class_iri,
             metadata,
             file_size: 0,
-            node_type: None,
+            node_type,
             size: None,
             color: None,
             weight: None,

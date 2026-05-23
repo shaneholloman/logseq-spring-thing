@@ -108,6 +108,15 @@ impl KnowledgeGraphParser {
             metadata.insert("tags".to_string(), tags.join(", "));
         }
 
+        // Extract owl:class IRI from logseq-style "owl:class:: prefix:Local" lines.
+        // Pages carrying this metadata are reclassified as ontology nodes downstream
+        // (graph_state_actor.classify_node treats owl_class_iri.is_some() as ontology).
+        let owl_class_iri = Self::extract_owl_class(content);
+        let source_domain = Self::extract_source_domain(content);
+        if let Some(ref dom) = source_domain {
+            metadata.insert("source_domain".to_string(), dom.clone());
+        }
+
         let id = self.page_name_to_id(page_name);
 
         // Use existing position or generate random (position preservation)
@@ -122,6 +131,15 @@ impl KnowledgeGraphParser {
             vz: 0.0,
         };
 
+        // Pages with owl:class metadata are surfaced as ontology nodes so the
+        // dual-graph (knowledge ↔ ontology) X-axis separation control has something
+        // to separate. Pages without it remain "page" (knowledge population).
+        let (node_type, color) = if owl_class_iri.is_some() {
+            (Some("ontology_node".to_string()), Some("#B91C7B".to_string()))
+        } else {
+            (Some("page".to_string()), Some("#4A90E2".to_string()))
+        };
+
         Node {
             id,
             metadata_id: page_name.to_string(),
@@ -129,8 +147,8 @@ impl KnowledgeGraphParser {
             data,
             metadata,
             file_size: 0,
-            node_type: Some("page".to_string()),
-            color: Some("#4A90E2".to_string()),
+            node_type,
+            color,
             size: Some(1.0),
             weight: Some(1.0),
             group: None,
@@ -142,8 +160,37 @@ impl KnowledgeGraphParser {
             vx: Some(0.0),
             vy: Some(0.0),
             vz: Some(0.0),
-            owl_class_iri: None,
+            owl_class_iri,
         }
+    }
+
+    /// Extract `owl:class:: prefix:LocalName` from a logseq markdown ontology block.
+    /// Returns the full IRI value (e.g. "mv:ArbitrationDecisionEngine").
+    fn extract_owl_class(content: &str) -> Option<String> {
+        for line in content.lines() {
+            let trimmed = line.trim_start_matches(|c: char| c.is_whitespace() || c == '-');
+            if let Some(rest) = trimmed.strip_prefix("owl:class::") {
+                let value = rest.trim();
+                if !value.is_empty() {
+                    return Some(value.to_string());
+                }
+            }
+        }
+        None
+    }
+
+    /// Extract `source-domain:: <value>` from logseq markdown front-matter style metadata.
+    fn extract_source_domain(content: &str) -> Option<String> {
+        for line in content.lines() {
+            let trimmed = line.trim_start_matches(|c: char| c.is_whitespace() || c == '-');
+            if let Some(rest) = trimmed.strip_prefix("source-domain::") {
+                let value = rest.trim();
+                if !value.is_empty() {
+                    return Some(value.to_string());
+                }
+            }
+        }
+        None
     }
 
     /// Extract wikilink edges only — no new nodes created.

@@ -6,7 +6,7 @@
 | Repo | github.com/DreamLab-AI/dreamlab-ai-website |
 | Runtime | GitHub Pages (React SPA + Trunk WASM) + Cloudflare Workers (APIs) |
 | Domain | dreamlab-ai.com (CNAME → GitHub Pages) |
-| Status | Pre-cutover (PRD-012, ADR-083) |
+| Status | Kit-consumer deployment active; `forum-config/` pins nostr-rust-forum rc11 |
 | Verified (2026-05-09) | Main site 200 (9.4KB), /community/ 200 (5.1KB), WASM binary 3.4MB loads OK |
 
 ### Live URL Map
@@ -41,12 +41,9 @@ DreamLab's branded deployment of the nostr-bbs-rs forum kit:
 ## Deployment
 
 ```bash
-# Current (pre-kit-adoption)
-cd community-forum-rs && npx wrangler deploy --env production
-
-# Future (post-kit-adoption per ADR-083)
-# forum-config/ provides branded config; kit crates provide runtime
-npx wrangler deploy --config forum-config/wrangler.toml --env production
+# forum-config/ provides branded config; nostr-rust-forum kit crates provide runtime.
+cargo check --manifest-path forum-config/Cargo.toml
+npx wrangler deploy --config forum-config/deploy/<worker>.wrangler.toml --env production
 ```
 
 ## Health Checks
@@ -92,17 +89,13 @@ Additional:
 | D1 databases | < 15 min | < 24h | CF automatic backup |
 | Custom config | N/A | N/A | Git-tracked |
 
-## Cutover Plan (ADR-083)
+## Kit Consumer State
 
-The website is transitioning from `community-forum-rs/` monolith to kit consumer model:
+The website has transitioned from the historical `community-forum-rs/` monolith to the kit consumer model:
 
-1. **Current**: `community-forum-rs/` contains forked forum code
-2. **Phase 1**: `forum-config/` package created with branded config (PRD-012)
-3. **Phase 2**: Dual-deploy with traffic split (14-day window)
-4. **Phase 3**: Cutover to kit + `forum-config/` as sole deployment
-5. **Phase 4**: Delete `community-forum-rs/` (T₇+7 days after cutover)
-
-During cutover, both old and new deployments run simultaneously. Parity monitoring compares response bodies.
+1. `forum-config/` pins `nostr-rust-forum` kit crates and carries DreamLab branding/config.
+2. `forum-config/deploy/` carries the per-worker Wrangler manifests and Cloudflare resource IDs.
+3. Historical `community-forum-rs` references in older migration docs are retained for audit context, not as the current source layout.
 
 ## CI Pipeline
 
