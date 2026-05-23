@@ -10,6 +10,34 @@ use cust::memory::{CopyDestination, DeviceBuffer, DevicePointer};
 use log::{debug, info, warn};
 use std::ffi::CStr;
 
+fn safe_copy_to_device<T: cust::memory::DeviceCopy>(
+    dest: &mut DeviceBuffer<T>,
+    src: &[T],
+    label: &str,
+) -> Result<()> {
+    if dest.len() != src.len() {
+        return Err(anyhow!(
+            "copy_from size mismatch in {}: device buffer has {} elements, host slice has {} elements",
+            label, dest.len(), src.len()
+        ));
+    }
+    dest.copy_from(src).map_err(|e| anyhow!("copy_from failed in {}: {}", label, e))
+}
+
+fn safe_copy_from_device<T: cust::memory::DeviceCopy>(
+    src: &DeviceBuffer<T>,
+    dest: &mut [T],
+    label: &str,
+) -> Result<()> {
+    if src.len() != dest.len() {
+        return Err(anyhow!(
+            "copy_to size mismatch in {}: device buffer has {} elements, host slice has {} elements",
+            label, src.len(), dest.len()
+        ));
+    }
+    src.copy_to(dest).map_err(|e| anyhow!("copy_to failed in {}: {}", label, e))
+}
+
 impl UnifiedGPUCompute {
     /// Default block size for kernel launches.  Ideally this would be queried
     /// from `dynamic_grid.cu::calculate_optimal_block_size()` at init time, but
@@ -47,6 +75,24 @@ impl UnifiedGPUCompute {
             return Err(anyhow!("CRITICAL: num_nodes ({}) exceeds allocated_nodes ({}). This would cause buffer overflow!", self.num_nodes, self.allocated_nodes));
         }
 
+        if self.iteration == 0 {
+            info!(
+                "GPU execute() iter=0 buffer audit: num_nodes={}, allocated_nodes={}, num_edges={}, allocated_edges={}, \
+                 max_grid_cells={}, zero_buffer={}, cell_start={}, cell_end={}, \
+                 pos_in_x={}, vel_in_x={}, force_x={}, mass={}, \
+                 active_node_count={}, should_skip_physics={}, \
+                 aabb_num_blocks={}, aabb_block_results={}, partial_ke={}, \
+                 node_degrees={}, degree_weight={}, edge_row_offsets={}, edge_col_indices={}",
+                self.num_nodes, self.allocated_nodes, self.num_edges, self.allocated_edges,
+                self.max_grid_cells, self.zero_buffer.len(), self.cell_start.len(), self.cell_end.len(),
+                self.pos_in_x.len(), self.vel_in_x.len(), self.force_x.len(), self.mass.len(),
+                self.active_node_count.len(), self.should_skip_physics.len(),
+                self.aabb_num_blocks, self.aabb_block_results.len(), self.partial_kinetic_energy.len(),
+                self.node_degrees.len(), self.degree_weight.len(),
+                self.edge_row_offsets.len(), self.edge_col_indices.len(),
+            );
+        }
+
 
         self.params = params;
 
@@ -64,8 +110,8 @@ impl UnifiedGPUCompute {
                 block_size * (std::mem::size_of::<f32>() + std::mem::size_of::<i32>()) as u32;
 
 
-            self.active_node_count.copy_from(&[0i32])?;
-            self.should_skip_physics.copy_from(&[0i32])?;
+            safe_copy_to_device(&mut self.active_node_count, &[0i32], "active_node_count reset")?;
+            safe_copy_to_device(&mut self.should_skip_physics, &[0i32], "should_skip_physics reset")?;
 
 
             let ke_kernel = self
@@ -120,7 +166,7 @@ impl UnifiedGPUCompute {
 
 
             let mut skip_physics = vec![0i32; 1];
-            self.should_skip_physics.copy_to(&mut skip_physics)?;
+            safe_copy_from_device(&self.should_skip_physics, &mut skip_physics, "should_skip_physics read")?;
 
             if skip_physics[0] != 0 {
 
@@ -164,7 +210,7 @@ impl UnifiedGPUCompute {
 
 
         let mut block_results = vec![AABB::default(); self.aabb_num_blocks];
-        self.aabb_block_results.copy_to(&mut block_results)?;
+        safe_copy_from_device(&self.aabb_block_results, &mut block_results, "aabb_block_results read")?;
 
         let mut aabb = AABB {
             min: [f32::MAX; 3],
@@ -309,8 +355,14 @@ impl UnifiedGPUCompute {
 
 
 
-        self.cell_start.copy_from(&self.zero_buffer)?;
-        self.cell_end.copy_from(&self.zero_buffer)?;
+        if self.cell_start.len() != self.zero_buffer.len() {
+            return Err(anyhow!(
+                "cell_start/zero_buffer size mismatch: cell_start={} elements, zero_buffer={} elements, max_grid_cells={}, num_grid_cells={}",
+                self.cell_start.len(), self.zero_buffer.len(), self.max_grid_cells, num_grid_cells
+            ));
+        }
+        safe_copy_to_device(&mut self.cell_start, &self.zero_buffer, "cell_start")?;
+        safe_copy_to_device(&mut self.cell_end, &self.zero_buffer, "cell_end")?;
 
         let cell_block_size = block_size;
         let grid_cells_blocks = (num_grid_cells as u32 + cell_block_size - 1) / cell_block_size;
@@ -647,9 +699,9 @@ impl UnifiedGPUCompute {
         let mut pos_z = vec![0.0f32; self.allocated_nodes];
 
 
-        self.pos_in_x.copy_to(&mut pos_x)?;
-        self.pos_in_y.copy_to(&mut pos_y)?;
-        self.pos_in_z.copy_to(&mut pos_z)?;
+        safe_copy_from_device(&self.pos_in_x, &mut pos_x, "pos_in_x")?;
+        safe_copy_from_device(&self.pos_in_y, &mut pos_y, "pos_in_y")?;
+        safe_copy_from_device(&self.pos_in_z, &mut pos_z, "pos_in_z")?;
 
 
         pos_x.truncate(self.num_nodes);
@@ -667,9 +719,9 @@ impl UnifiedGPUCompute {
         let mut vel_z = vec![0.0f32; self.allocated_nodes];
 
 
-        self.vel_in_x.copy_to(&mut vel_x)?;
-        self.vel_in_y.copy_to(&mut vel_y)?;
-        self.vel_in_z.copy_to(&mut vel_z)?;
+        safe_copy_from_device(&self.vel_in_x, &mut vel_x, "vel_in_x")?;
+        safe_copy_from_device(&self.vel_in_y, &mut vel_y, "vel_in_y")?;
+        safe_copy_from_device(&self.vel_in_z, &mut vel_z, "vel_in_z")?;
 
 
         vel_x.truncate(self.num_nodes);
@@ -688,18 +740,18 @@ impl UnifiedGPUCompute {
         let mut vx = vec![0.0f32; self.allocated_nodes];
         let mut vy = vec![0.0f32; self.allocated_nodes];
         let mut vz = vec![0.0f32; self.allocated_nodes];
-        self.vel_in_x.copy_to(&mut vx)?;
-        self.vel_in_y.copy_to(&mut vy)?;
-        self.vel_in_z.copy_to(&mut vz)?;
+        safe_copy_from_device(&self.vel_in_x, &mut vx, "vel_in_x")?;
+        safe_copy_from_device(&self.vel_in_y, &mut vy, "vel_in_y")?;
+        safe_copy_from_device(&self.vel_in_z, &mut vz, "vel_in_z")?;
         let magnitude = factor * 2.0;
         for i in 0..n {
             vx[i] += rng.gen_range(-magnitude..magnitude);
             vy[i] += rng.gen_range(-magnitude..magnitude);
             vz[i] += rng.gen_range(-magnitude..magnitude);
         }
-        self.vel_in_x.copy_from(&vx)?;
-        self.vel_in_y.copy_from(&vy)?;
-        self.vel_in_z.copy_from(&vz)?;
+        safe_copy_to_device(&mut self.vel_in_x, &vx, "vel_in_x")?;
+        safe_copy_to_device(&mut self.vel_in_y, &vy, "vel_in_y")?;
+        safe_copy_to_device(&mut self.vel_in_z, &vz, "vel_in_z")?;
         Ok(())
     }
 }

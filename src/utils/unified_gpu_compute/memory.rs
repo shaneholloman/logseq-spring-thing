@@ -6,7 +6,46 @@ use crate::models::constraints::ConstraintData;
 use crate::models::simulation_params::SimParams;
 use anyhow::{anyhow, Result};
 use cust::memory::{CopyDestination, DeviceBuffer};
-use log::{debug, info, warn};
+use log::{debug, error, info, warn};
+
+/// Safe wrapper for DeviceBuffer::copy_from that returns Err instead of
+/// panicking on size mismatch (the underlying cust assert! poisons the mutex
+/// and kills the actor).
+#[inline]
+fn checked_copy_from<T: cust::memory::DeviceCopy>(
+    dest: &mut DeviceBuffer<T>,
+    src: &[T],
+    label: &str,
+) -> Result<()> {
+    if dest.len() != src.len() {
+        let msg = format!(
+            "copy_from size mismatch in {}: device buffer has {} elements, host slice has {} elements",
+            label, dest.len(), src.len()
+        );
+        error!("[GPU SAFE_COPY] {}", msg);
+        eprintln!("[GPU SAFE_COPY MISMATCH] {}", msg);
+        return Err(anyhow!(msg));
+    }
+    dest.copy_from(src).map_err(|e| anyhow!("copy_from CUDA error in {}: {}", label, e))
+}
+
+#[inline]
+fn checked_copy_to<T: cust::memory::DeviceCopy>(
+    src: &DeviceBuffer<T>,
+    dest: &mut [T],
+    label: &str,
+) -> Result<()> {
+    if src.len() != dest.len() {
+        let msg = format!(
+            "copy_to size mismatch in {}: device buffer has {} elements, host slice has {} elements",
+            label, src.len(), dest.len()
+        );
+        error!("[GPU SAFE_COPY] {}", msg);
+        eprintln!("[GPU SAFE_COPY MISMATCH] {}", msg);
+        return Err(anyhow!(msg));
+    }
+    src.copy_to(dest).map_err(|e| anyhow!("copy_to CUDA error in {}: {}", label, e))
+}
 
 impl UnifiedGPUCompute {
     pub fn upload_positions(&mut self, x: &[f32], y: &[f32], z: &[f32]) -> Result<()> {
@@ -29,13 +68,13 @@ impl UnifiedGPUCompute {
             padded_x.resize(self.allocated_nodes, 0.0);
             padded_y.resize(self.allocated_nodes, 0.0);
             padded_z.resize(self.allocated_nodes, 0.0);
-            self.pos_in_x.copy_from(&padded_x)?;
-            self.pos_in_y.copy_from(&padded_y)?;
-            self.pos_in_z.copy_from(&padded_z)?;
+            checked_copy_from(&mut self.pos_in_x, &padded_x, "pos_in_x")?;
+            checked_copy_from(&mut self.pos_in_y, &padded_y, "pos_in_y")?;
+            checked_copy_from(&mut self.pos_in_z, &padded_z, "pos_in_z")?;
         } else {
-            self.pos_in_x.copy_from(x)?;
-            self.pos_in_y.copy_from(y)?;
-            self.pos_in_z.copy_from(z)?;
+            checked_copy_from(&mut self.pos_in_x, x, "pos_in_x")?;
+            checked_copy_from(&mut self.pos_in_y, y, "pos_in_y")?;
+            checked_copy_from(&mut self.pos_in_z, z, "pos_in_z")?;
         }
         Ok(())
     }
@@ -79,9 +118,9 @@ impl UnifiedGPUCompute {
         padded_charges.resize(alloc, 1.0);
         padded_masses.resize(alloc, 1.0);
 
-        self.class_id.copy_from(&padded_ids)?;
-        self.class_charge.copy_from(&padded_charges)?;
-        self.class_mass.copy_from(&padded_masses)?;
+        checked_copy_from(&mut self.class_id, &padded_ids, "class_id")?;
+        checked_copy_from(&mut self.class_charge, &padded_charges, "class_charge")?;
+        checked_copy_from(&mut self.class_mass, &padded_masses, "class_mass")?;
 
         Ok(())
     }
@@ -126,9 +165,9 @@ impl UnifiedGPUCompute {
             let mut padded_row_offsets = row_offsets.to_vec();
             let last_val = *padded_row_offsets.last().unwrap_or(&0);
             padded_row_offsets.resize(self.allocated_nodes + 1, last_val);
-            self.edge_row_offsets.copy_from(&padded_row_offsets)?;
+            checked_copy_from(&mut self.edge_row_offsets, &padded_row_offsets, "edge_row_offsets")?;
         } else {
-            self.edge_row_offsets.copy_from(row_offsets)?;
+            checked_copy_from(&mut self.edge_row_offsets, row_offsets, "edge_row_offsets")?;
         }
 
 
@@ -137,11 +176,11 @@ impl UnifiedGPUCompute {
             let mut padded_weights = weights.to_vec();
             padded_col_indices.resize(self.allocated_edges, 0);
             padded_weights.resize(self.allocated_edges, 0.0);
-            self.edge_col_indices.copy_from(&padded_col_indices)?;
-            self.edge_weights.copy_from(&padded_weights)?;
+            checked_copy_from(&mut self.edge_col_indices, &padded_col_indices, "edge_col_indices")?;
+            checked_copy_from(&mut self.edge_weights, &padded_weights, "edge_weights")?;
         } else {
-            self.edge_col_indices.copy_from(col_indices)?;
-            self.edge_weights.copy_from(weights)?;
+            checked_copy_from(&mut self.edge_col_indices, col_indices, "edge_col_indices")?;
+            checked_copy_from(&mut self.edge_weights, weights, "edge_weights")?;
         }
 
         self.num_edges = col_indices.len();
@@ -154,9 +193,9 @@ impl UnifiedGPUCompute {
     pub fn download_csr(&self) -> Result<(Vec<i32>, Vec<i32>)> {
         let mut row_offsets = vec![0i32; self.num_nodes + 1];
         let mut col_indices = vec![0i32; self.num_edges];
-        self.edge_row_offsets.copy_to(&mut row_offsets)?;
+        checked_copy_to(&self.edge_row_offsets, &mut row_offsets, "edge_row_offsets")?;
         if self.num_edges > 0 {
-            self.edge_col_indices.copy_to(&mut col_indices)?;
+            checked_copy_to(&self.edge_col_indices, &mut col_indices, "edge_col_indices")?;
         }
         Ok((row_offsets, col_indices))
     }
@@ -165,17 +204,17 @@ impl UnifiedGPUCompute {
         // Device buffers may be overallocated (allocated_nodes > num_nodes).
         // Download the full buffer then truncate, or download exactly num_nodes.
         if x.len() == self.pos_in_x.len() {
-            self.pos_in_x.copy_to(x)?;
-            self.pos_in_y.copy_to(y)?;
-            self.pos_in_z.copy_to(z)?;
+            checked_copy_to(&self.pos_in_x, x, "pos_in_x")?;
+            checked_copy_to(&self.pos_in_y, y, "pos_in_y")?;
+            checked_copy_to(&self.pos_in_z, z, "pos_in_z")?;
         } else {
             // Download full allocated buffer then copy only num_nodes elements
             let mut full_x = vec![0.0f32; self.pos_in_x.len()];
             let mut full_y = vec![0.0f32; self.pos_in_y.len()];
             let mut full_z = vec![0.0f32; self.pos_in_z.len()];
-            self.pos_in_x.copy_to(&mut full_x)?;
-            self.pos_in_y.copy_to(&mut full_y)?;
-            self.pos_in_z.copy_to(&mut full_z)?;
+            checked_copy_to(&self.pos_in_x, &mut full_x, "pos_in_x")?;
+            checked_copy_to(&self.pos_in_y, &mut full_y, "pos_in_y")?;
+            checked_copy_to(&self.pos_in_z, &mut full_z, "pos_in_z")?;
             let n = x.len().min(full_x.len());
             x[..n].copy_from_slice(&full_x[..n]);
             y[..n].copy_from_slice(&full_y[..n]);
@@ -186,16 +225,16 @@ impl UnifiedGPUCompute {
 
     pub fn download_velocities(&self, x: &mut [f32], y: &mut [f32], z: &mut [f32]) -> Result<()> {
         if x.len() == self.vel_in_x.len() {
-            self.vel_in_x.copy_to(x)?;
-            self.vel_in_y.copy_to(y)?;
-            self.vel_in_z.copy_to(z)?;
+            checked_copy_to(&self.vel_in_x, x, "vel_in_x")?;
+            checked_copy_to(&self.vel_in_y, y, "vel_in_y")?;
+            checked_copy_to(&self.vel_in_z, z, "vel_in_z")?;
         } else {
             let mut full_x = vec![0.0f32; self.vel_in_x.len()];
             let mut full_y = vec![0.0f32; self.vel_in_y.len()];
             let mut full_z = vec![0.0f32; self.vel_in_z.len()];
-            self.vel_in_x.copy_to(&mut full_x)?;
-            self.vel_in_y.copy_to(&mut full_y)?;
-            self.vel_in_z.copy_to(&mut full_z)?;
+            checked_copy_to(&self.vel_in_x, &mut full_x, "vel_in_x")?;
+            checked_copy_to(&self.vel_in_y, &mut full_y, "vel_in_y")?;
+            checked_copy_to(&self.vel_in_z, &mut full_z, "vel_in_z")?;
             let n = x.len().min(full_x.len());
             x[..n].copy_from_slice(&full_x[..n]);
             y[..n].copy_from_slice(&full_y[..n]);
@@ -270,20 +309,20 @@ impl UnifiedGPUCompute {
         let preserve_data = self.max_grid_cells > 0 && self.iteration > 0;
 
         let old_cell_start_data = if preserve_data {
-            let mut data = vec![0i32; self.max_grid_cells];
-            self.cell_start.copy_to(&mut data).unwrap_or_else(|e| {
+            let mut data = vec![0i32; self.cell_start.len()];
+            if let Err(e) = checked_copy_to(&self.cell_start, &mut data, "cell_start preserve") {
                 warn!("Failed to preserve cell_start data: {}", e);
-            });
+            }
             Some(data)
         } else {
             None
         };
 
         let old_cell_end_data = if preserve_data {
-            let mut data = vec![0i32; self.max_grid_cells];
-            self.cell_end.copy_to(&mut data).unwrap_or_else(|e| {
+            let mut data = vec![0i32; self.cell_end.len()];
+            if let Err(e) = checked_copy_to(&self.cell_end, &mut data, "cell_end preserve") {
                 warn!("Failed to preserve cell_end data: {}", e);
-            });
+            }
             Some(data)
         } else {
             None
@@ -309,8 +348,8 @@ impl UnifiedGPUCompute {
         if let (Some(start_data), Some(end_data)) = (old_cell_start_data, old_cell_end_data) {
             let copy_size = start_data.len().min(new_size);
             if copy_size > 0 {
-                self.cell_start.copy_from(&start_data[..copy_size])?;
-                self.cell_end.copy_from(&end_data[..copy_size])?;
+                checked_copy_from(&mut self.cell_start, &start_data[..copy_size], "cell_start")?;
+                checked_copy_from(&mut self.cell_end, &end_data[..copy_size], "cell_end")?;
                 debug!("Preserved {} cells of data during resize", copy_size);
             }
         }
@@ -372,12 +411,12 @@ impl UnifiedGPUCompute {
         let mut vel_z_data = vec![0.0f32; copy_size];
 
 
-        self.pos_in_x.copy_to(&mut pos_x_data)?;
-        self.pos_in_y.copy_to(&mut pos_y_data)?;
-        self.pos_in_z.copy_to(&mut pos_z_data)?;
-        self.vel_in_x.copy_to(&mut vel_x_data)?;
-        self.vel_in_y.copy_to(&mut vel_y_data)?;
-        self.vel_in_z.copy_to(&mut vel_z_data)?;
+        checked_copy_to(&self.pos_in_x, &mut pos_x_data, "pos_in_x")?;
+        checked_copy_to(&self.pos_in_y, &mut pos_y_data, "pos_in_y")?;
+        checked_copy_to(&self.pos_in_z, &mut pos_z_data, "pos_in_z")?;
+        checked_copy_to(&self.vel_in_x, &mut vel_x_data, "vel_in_x")?;
+        checked_copy_to(&self.vel_in_y, &mut vel_y_data, "vel_in_y")?;
+        checked_copy_to(&self.vel_in_z, &mut vel_z_data, "vel_in_z")?;
 
 
         pos_x_data.resize(actual_new_nodes, 0.0);
@@ -454,6 +493,10 @@ impl UnifiedGPUCompute {
         self.partial_sums = DeviceBuffer::zeroed(new_num_blocks)?;
         self.partial_sq_sums = DeviceBuffer::zeroed(new_num_blocks)?;
 
+        self.aabb_num_blocks = new_num_blocks;
+        self.aabb_block_results = DeviceBuffer::zeroed(new_num_blocks)?;
+        self.partial_kinetic_energy = DeviceBuffer::zeroed(new_num_blocks)?;
+        self.node_degrees = DeviceBuffer::zeroed(actual_new_nodes)?;
 
         self.num_nodes = new_num_nodes;
         self.num_edges = new_num_edges;
@@ -511,7 +554,7 @@ impl UnifiedGPUCompute {
 
             let constraint_len = self.constraint_data.len();
             let copy_len = constraints.len().min(constraint_len);
-            self.constraint_data.copy_from(&constraints[..copy_len])?;
+            checked_copy_from(&mut self.constraint_data, &constraints[..copy_len], "constraint_data")?;
         }
 
         self.num_constraints = constraints.len();
@@ -527,7 +570,7 @@ impl UnifiedGPUCompute {
 
 
         let empty_constraints = vec![ConstraintData::default(); self.constraint_data.len()];
-        self.constraint_data.copy_from(&empty_constraints)?;
+        checked_copy_from(&mut self.constraint_data, &empty_constraints, "constraint_data")?;
 
         Ok(())
     }
@@ -581,7 +624,7 @@ impl UnifiedGPUCompute {
                 self.constraint_data = DeviceBuffer::from_slice(&gpu_constraints)?;
             } else {
 
-                self.constraint_data.copy_from(&gpu_constraints)?;
+                checked_copy_from(&mut self.constraint_data, &gpu_constraints, "constraint_data")?;
             }
         }
 
@@ -610,9 +653,9 @@ impl UnifiedGPUCompute {
         if weights.len() < alloc {
             let mut padded = weights.to_vec();
             padded.resize(alloc, 0.0);
-            self.degree_weight.copy_from(&padded)?;
+            checked_copy_from(&mut self.degree_weight, &padded, "degree_weight")?;
         } else {
-            self.degree_weight.copy_from(weights)?;
+            checked_copy_from(&mut self.degree_weight, weights, "degree_weight")?;
         }
         self.degree_weights_available = true;
 
