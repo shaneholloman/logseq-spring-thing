@@ -410,34 +410,52 @@ clean_cargo_volumes() {
 
 # Check if Docker IMAGE rebuild is needed (Dockerfile/dependency changes)
 # Source-only changes DON'T need image rebuild — source is volume-mounted in dev
+#
+# Two tiers of image-level files:
+#   CRITICAL: Dockerfile, package.json/lock — these change the image layers.
+#             A rebuild is mandatory (though Docker layer cache makes it fast).
+#   CONFIG:   supervisord, nginx, entrypoint, wrapper scripts — these ARE baked
+#             into the image but are cheap to hot-patch via docker cp + restart.
+#             In dev mode we skip the full image rebuild for config-only changes.
 needs_image_rebuild() {
     local image_name
     image_name="$(get_image_name)"
 
     # No image at all — must build
     if ! docker images --format "{{.Repository}}" | grep -q "^${image_name}$"; then
-        echo "true"
+        echo "critical"
         return 0
     fi
 
     # Get image creation time
     local image_created=$(docker images --format "{{.CreatedAt}}" "$image_name" 2>/dev/null | head -1)
     if [[ -z "$image_created" ]]; then
-        echo "true"
+        echo "critical"
         return 0
     fi
 
     local image_epoch=$(date -d "$image_created" +%s 2>/dev/null || echo 0)
 
-    # Only check files/dirs that affect the IMAGE layer.
-    # Cargo.toml, Cargo.lock, src/ and client/src/ are bind-mounted in dev —
-    # they never need an image rebuild; cargo picks them up at container start.
-    local image_files=(
+    # CRITICAL files — changing these means layers must be rebuilt
+    local critical_files=(
         "$PROJECT_ROOT/Dockerfile.unified"
         "$PROJECT_ROOT/Dockerfile.production"
-        "$PROJECT_ROOT/Dockerfile.dev"
         "$PROJECT_ROOT/client/package.json"
         "$PROJECT_ROOT/client/package-lock.json"
+    )
+
+    for file in "${critical_files[@]}"; do
+        if [[ -f "$file" ]]; then
+            local file_epoch=$(stat -c %Y "$file" 2>/dev/null || echo 0)
+            if [[ $file_epoch -gt $image_epoch ]]; then
+                echo "critical"
+                return 0
+            fi
+        fi
+    done
+
+    # CONFIG files — baked in but can be hot-patched in dev mode
+    local config_files=(
         "$PROJECT_ROOT/supervisord.dev.conf"
         "$PROJECT_ROOT/nginx.dev.conf"
         "$PROJECT_ROOT/nginx.production.conf"
@@ -446,11 +464,11 @@ needs_image_rebuild() {
         "$PROJECT_ROOT/scripts/production-startup.sh"
     )
 
-    for file in "${image_files[@]}"; do
+    for file in "${config_files[@]}"; do
         if [[ -f "$file" ]]; then
             local file_epoch=$(stat -c %Y "$file" 2>/dev/null || echo 0)
             if [[ $file_epoch -gt $image_epoch ]]; then
-                echo "true"
+                echo "config"
                 return 0
             fi
         fi
@@ -458,6 +476,33 @@ needs_image_rebuild() {
 
     echo "false"
     return 1
+}
+
+# Hot-patch config files into a running container without full image rebuild
+hotpatch_config() {
+    local container_name="$1"
+    info "Hot-patching config files into $container_name (skipping full image rebuild)..."
+
+    local patches=0
+    local config_map=(
+        "supervisord.dev.conf:/app/supervisord.conf"
+        "nginx.dev.conf:/etc/nginx/nginx.conf"
+        "scripts/dev-entrypoint.sh:/app/dev-entrypoint.sh"
+        "scripts/rust-backend-wrapper.sh:/app/rust-backend-wrapper.sh"
+    )
+
+    for mapping in "${config_map[@]}"; do
+        local src="${PROJECT_ROOT}/${mapping%%:*}"
+        local dst="${mapping##*:}"
+        if [[ -f "$src" ]]; then
+            docker cp "$src" "${container_name}:${dst}" 2>/dev/null && ((patches++)) || true
+        fi
+    done
+
+    if [[ $patches -gt 0 ]]; then
+        success "Patched $patches config files — restarting container..."
+        docker restart "$container_name"
+    fi
 }
 
 # Check if source code changed (needs container restart to trigger recompile)
@@ -553,8 +598,13 @@ start_environment() {
     # Check if IMAGE rebuild is needed (Dockerfile/deps changed)
     local image_rebuild=$(needs_image_rebuild)
 
-    if [[ "$image_rebuild" == "true" ]]; then
+    if [[ "$image_rebuild" == "critical" ]]; then
         warning "Image-level changes detected (Dockerfile/deps) — rebuilding image..."
+        build_containers
+    elif [[ "$image_rebuild" == "config" ]] && [[ "$ENVIRONMENT" == "dev" ]]; then
+        success "Config-only changes detected — will hot-patch after start (no image rebuild)"
+    elif [[ "$image_rebuild" == "config" ]]; then
+        warning "Config changes detected (prod) — rebuilding image..."
         build_containers
     elif ! docker images | grep -q "visionflow"; then
         info "Container images not found. Building first..."
@@ -570,6 +620,11 @@ start_environment() {
 
         # Wait for containers to be ready
         sleep 3
+
+        # Hot-patch config files if they changed (avoids full image rebuild)
+        if [[ "$image_rebuild" == "config" ]]; then
+            hotpatch_config "$CONTAINER_NAME"
+        fi
 
         success "Environment started in background"
         echo ""
