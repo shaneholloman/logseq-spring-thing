@@ -310,16 +310,18 @@ const GraphManager: React.FC<GraphManagerProps> = ({ onDragStateChange }) => {
   // Node-type visibility filtering: hide knowledge/ontology/agent nodes based on toggles
   const typeFilteredNodes = useMemo(() => {
     const vis = nodeTypeVisibility;
-    if (!vis || (vis.knowledge && vis.ontology && vis.agent)) {
-      return visibleNodes; // all visible, no filtering needed
+    if (!vis || (vis.knowledge !== false && vis.ontology !== false && vis.agent !== false)) {
+      return visibleNodes;
     }
-    return visibleNodes.filter(node => {
+    const filtered = visibleNodes.filter(node => {
       const mode = perNodeVisualModeMap.get(String(node.id)) || graphMode;
       if (mode === 'knowledge_graph') return vis.knowledge !== false;
       if (mode === 'ontology') return vis.ontology !== false;
       if (mode === 'agent') return vis.agent !== false;
       return true;
     });
+    console.debug(`[TypeFilter] vis=${JSON.stringify(vis)} mapSize=${perNodeVisualModeMap.size} graphMode=${graphMode} ${visibleNodes.length}→${filtered.length}`);
+    return filtered;
   }, [visibleNodes, perNodeVisualModeMap, graphMode, nodeTypeVisibility]);
 
   // Agent nodes overlay: polls /api/bots/agents for live agent telemetry
@@ -1340,7 +1342,7 @@ const GraphManager: React.FC<GraphManagerProps> = ({ onDragStateChange }) => {
 
       {/* Knowledge graph rotating rings */}
       <KnowledgeRings
-        nodes={graphData.nodes}
+        nodes={typeFilteredNodes}
         perNodeVisualModeMap={perNodeVisualModeMap}
         nodePositionsRef={nodePositionsRef}
         nodeIdToIndexMap={nodeIdToIndexMap}

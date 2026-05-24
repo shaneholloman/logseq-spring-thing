@@ -112,6 +112,12 @@ const GemNodesInner: React.ForwardRefRenderFunction<GemNodesHandle, GemNodesProp
   const prevMetaHashRef = useRef('');
   const dominant = getDominantMode(nodes, graphMode, perNodeVisualModeMap);
 
+  // Keep a synchronously-updated ref to nodes so useFrame always reads
+  // the latest filtered array, even if R3F's callback-ref update lags
+  // behind a React re-render by one frame.
+  const nodesRef = useRef(nodes);
+  nodesRef.current = nodes;
+
   // Read gem material settings from the settings store for live tuning
   const gemSettings = useSettingsStore(s => s.get<GemMaterialSettings>('visualisation.gemMaterial'));
   const lastGemSettingsRef = useRef<string>('');
@@ -284,7 +290,14 @@ const GemNodesInner: React.ForwardRefRenderFunction<GemNodesHandle, GemNodesProp
   // but before InstancedLabels (0) reads positions for label placement.
   useFrame(({ clock, camera, scene }) => {
     const inst = meshRef.current;
-    if (!inst || nodes.length === 0) return;
+    // Read from ref to guarantee we have the latest filtered array,
+    // bypassing any stale-closure risk in R3F's callback-ref pipeline.
+    const currentNodes = nodesRef.current;
+    if (!inst || currentNodes.length === 0) {
+      // Ensure mesh is invisible when all nodes are filtered out
+      if (inst) inst.count = 0;
+      return;
+    }
 
     // Workaround: R3F <primitive> sometimes fails to attach InstancedMesh to scene.
     // If the mesh has no parent after mount, attach it directly.
@@ -298,13 +311,13 @@ const GemNodesInner: React.ForwardRefRenderFunction<GemNodesHandle, GemNodesProp
     // Track node count changes. Only reset reveal to 0 on fresh data load
     // (transitioning from 0 nodes). For incremental changes (filter toggles,
     // websocket updates), just clamp to avoid all-nodes-vanish flicker.
-    if (nodes.length !== prevNodeCountRef.current) {
+    if (currentNodes.length !== prevNodeCountRef.current) {
       if (prevNodeCountRef.current === 0) {
         revealedRef.current = 0; // Fresh load: wave-in from zero
       } else {
-        revealedRef.current = Math.min(revealedRef.current, nodes.length);
+        revealedRef.current = Math.min(revealedRef.current, currentNodes.length);
       }
-      prevNodeCountRef.current = nodes.length;
+      prevNodeCountRef.current = currentNodes.length;
     }
 
     const positions = nodePositionsRef.current;
@@ -356,7 +369,7 @@ const GemNodesInner: React.ForwardRefRenderFunction<GemNodesHandle, GemNodesProp
         const bboxSize = new THREE.Vector3();
         bbox.getSize(bboxSize);
         logger.debug('[GemNodes] DIAG frame60:', {
-          nodeCount: nodes.length,
+          nodeCount: currentNodes.length,
           instCount: inst.count,
           hasPositions: !!positions,
           posLen: positions?.length ?? 0,
@@ -452,16 +465,16 @@ const GemNodesInner: React.ForwardRefRenderFunction<GemNodesHandle, GemNodesProp
     }
 
     // Progressive reveal: ramp up visible count each frame; clamp when nodes shrink
-    if (revealedRef.current > nodes.length) {
-      revealedRef.current = nodes.length;
-    } else if (revealedRef.current < nodes.length) {
-      revealedRef.current = Math.min(revealedRef.current + REVEAL_BATCH, nodes.length);
+    if (revealedRef.current > currentNodes.length) {
+      revealedRef.current = currentNodes.length;
+    } else if (revealedRef.current < currentNodes.length) {
+      revealedRef.current = Math.min(revealedRef.current + REVEAL_BATCH, currentNodes.length);
     }
     const visCount = revealedRef.current;
 
     let colorsDirty = false;
     for (let i = 0; i < visCount; i++) {
-      const node = nodes[i];
+      const node = currentNodes[i];
       const mode = perNodeVisualModeMap.get(String(node.id)) || graphMode;
       const propsVis = props.settings?.visualisation as Record<string, unknown> | undefined;
       let s = computeNodeScale(node, connectionCountMap, mode, hierarchyMap, propsVis?.graphTypeVisuals as GraphTypeVisualsSettings | undefined) * baseScale;
@@ -508,13 +521,13 @@ const GemNodesInner: React.ForwardRefRenderFunction<GemNodesHandle, GemNodesProp
 
     // Dirty-flag metadata texture: only upload when inputs structurally change
     if (texBuf) {
-      const sampleHash = nodes.length > 0
-        ? `${nodes[0]?.metadata?.authorityScore ?? 0}-${nodes[Math.floor(nodes.length / 2)]?.metadata?.quality ?? 0}-${nodes[nodes.length - 1]?.metadata?.authorityScore ?? 0}`
+      const sampleHash = currentNodes.length > 0
+        ? `${currentNodes[0]?.metadata?.authorityScore ?? 0}-${currentNodes[Math.floor(currentNodes.length / 2)]?.metadata?.quality ?? 0}-${currentNodes[currentNodes.length - 1]?.metadata?.authorityScore ?? 0}`
         : '';
-      const metaHash = `${nodes.length}-${connectionCountMap.size}-${selectedNodeId}-${sampleHash}`;
+      const metaHash = `${currentNodes.length}-${connectionCountMap.size}-${selectedNodeId}-${sampleHash}`;
       if (metaHash !== prevMetaHashRef.current) {
-        for (let i = 0; i < nodes.length; i++) {
-          const node = nodes[i];
+        for (let i = 0; i < currentNodes.length; i++) {
+          const node = currentNodes[i];
           const i4 = i * 4;
           const nid = String(node.id);
           texBuf[i4]     = node.metadata?.quality ?? node.metadata?.authorityScore ?? 0.5;
