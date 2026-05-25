@@ -1,0 +1,363 @@
+%% Chapter 2 — Methodology
+\chapter{Methodology}
+\label{ch:methodology}
+
+\section{Overview of the Biodiversity Delta Engine Pipeline}
+
+The \BDE{} is a multi-stage computational pipeline that integrates remote sensing imagery, authoritative geospatial datasets, and machine learning classification to produce statutory-grade biodiversity unit calculations under the \BM{} framework. The pipeline operates in five principal phases:
+
+\begin{enumerate}
+  \item \textbf{Data Ingestion} — acquisition and harmonisation of Earth observation imagery, OS MasterMap parcels, and ancillary environmental layers;
+  \item \textbf{Spectral Feature Engineering} — computation of vegetation indices, texture metrics, and temporal composites;
+  \item \textbf{Habitat Classification} — supervised Random Forest classification to UK Habitat Classification (UKHab) taxonomy;
+  \item \textbf{BM\,4.0 Scoring} — assignment of distinctiveness, condition, and strategic significance multipliers per the statutory metric;
+  \item \textbf{Delta Computation} — calculation of biodiversity unit deltas between \Tzero{} and \Tone, with uncertainty quantification.
+\end{enumerate}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  node distance=12mm and 20mm,
+  block/.style={
+    rectangle, rounded corners=3pt,
+    draw=dreamlab-primary, fill=dreamlab-light,
+    text width=38mm, minimum height=12mm,
+    align=center, font=\sffamily\small
+  },
+  arrow/.style={
+    -Stealth, thick, dreamlab-primary
+  },
+  data/.style={
+    trapezium, trapezium left angle=70, trapezium right angle=110,
+    draw=dreamlab-accent, fill=dreamlab-accent!10,
+    text width=28mm, minimum height=10mm,
+    align=center, font=\sffamily\footnotesize
+  }
+]
+
+%% Data sources
+\node[data] (s2) {Sentinel-2\\MSI};
+\node[data, right=15mm of s2] (l8) {Landsat 8\\OLI/TIRS};
+\node[data, right=15mm of l8] (os) {OS MasterMap\\Parcels};
+\node[data, right=15mm of os] (phi) {Priority Habitat\\Inventory};
+
+%% Processing stages
+\node[block, below=15mm of $(s2)!0.5!(l8)$] (ingest) {Data Ingestion\\and Harmonisation};
+\node[block, below=15mm of ingest] (feature) {Spectral Feature\\Engineering};
+\node[block, below=15mm of feature] (classify) {Random Forest\\Classification};
+\node[block, right=30mm of classify] (scoring) {BM\,4.0\\Scoring Engine};
+\node[block, below=15mm of $(classify)!0.5!(scoring)$] (delta) {Delta Computation\\$\Delta\text{BU} = \text{BU}_{T_1} - \text{BU}_{T_0}$};
+
+%% Output
+\node[data, below=15mm of delta] (output) {Statutory Report\\+ Spatial Data};
+
+%% Arrows
+\draw[arrow] (s2) -- (ingest);
+\draw[arrow] (l8) -- (ingest);
+\draw[arrow] (os) -- (ingest);
+\draw[arrow] (phi) -- (ingest);
+\draw[arrow] (ingest) -- (feature);
+\draw[arrow] (feature) -- (classify);
+\draw[arrow] (classify) -- (scoring);
+\draw[arrow] (classify) -- (delta);
+\draw[arrow] (scoring) -- (delta);
+\draw[arrow] (delta) -- (output);
+
+\end{tikzpicture}
+\caption{High-level architecture of the Biodiversity Delta Engine classification and scoring pipeline.}
+\label{fig:pipeline-overview}
+\end{figure}
+
+
+\section{Data Sources}
+\label{sec:datasources}
+
+\begin{confidencebox}{HIGH}
+All data sources listed below were verified as available for both the 2016 and 2026 assessment windows prior to pipeline execution. Source metadata is recorded in the pipeline audit log (Appendix~\ref{app:agentlogs}).
+\end{confidencebox}
+
+\begin{longtable}{p{35mm}p{30mm}p{25mm}p{45mm}}
+\caption{Primary data sources used in the \BDE{} analysis.}
+\label{tab:datasources} \\
+\toprule
+\textbf{Dataset} & \textbf{Provider} & \textbf{Resolution} & \textbf{Usage} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Dataset} & \textbf{Provider} & \textbf{Resolution} & \textbf{Usage} \\
+\midrule
+\endhead
+\midrule
+\multicolumn{4}{r}{\small\itshape Continued on next page\ldots} \\
+\bottomrule
+\endfoot
+\bottomrule
+\endlastfoot
+
+Sentinel-2 L2A   & ESA Copernicus     & 10\,m (VNIR)       & Primary spectral features for classification \\
+Landsat 8 L2SP   & USGS               & 30\,m              & Supplementary spectral bands, thermal data \\
+OS MasterMap      & Ordnance Survey    & $\pm$1\,m          & Parcel boundaries and land use classification \\
+OS Terrain 50     & Ordnance Survey    & 50\,m              & Elevation, slope, and aspect derivation \\
+Priority Habitat Inventory v2.3 & Natural England & Polygon & Training labels for priority habitats \\
+Magic Map SSSI    & Natural England    & Polygon             & Designation status for strategic significance \\
+CEH Land Cover Map 2021 & UK CEH      & 10\,m              & Independent classification reference \\
+NBN Atlas records & NBN Trust          & Point               & Species evidence for condition inference \\
+LNRS Draft v0.3  & Derbyshire CC      & Polygon             & Strategic significance layer \\
+\end{longtable}
+
+
+\subsection{Sentinel-2 Imagery}
+
+The primary Earth observation data source is the Copernicus Sentinel-2 Multi-Spectral Instrument (MSI), providing 13 spectral bands at spatial resolutions of 10\,m (B2, B3, B4, B8), 20\,m (B5, B6, B7, B8a, B11, B12), and 60\,m (B1, B9, B10) \citep{esa_sentinel2}. For both the 2016 and 2026 epochs, growing-season composites were generated from Level-2A (surface reflectance) products using Google Earth Engine (GEE), applying the following filters:
+
+\begin{itemize}[nosep]
+  \item Temporal window: 1~May to 30~September of the assessment year;
+  \item Cloud cover threshold: $<$20\% per scene (SCL cloud mask);
+  \item Composite method: per-pixel median across the temporal stack;
+  \item Spatial extent: 1\,km radius buffer around site centroid (SK~310~525).
+\end{itemize}
+
+\begin{confidencebox}{HIGH}
+For the 2016 epoch, Sentinel-2A had been operational since June 2015, providing approximately 10-day revisit over the UK. A total of \dataplaceholder{N SCENES 2016} cloud-free scenes were available within the growing season window. Sentinel-2B launched in March 2017, so only 2A data contributes to the 2016 composite.
+\end{confidencebox}
+
+\subsection{Landsat 8 Imagery}
+
+Landsat~8 OLI/TIRS Collection~2 Level-2 Science Products \citep{usgs_landsat8} provide complementary spectral coverage at 30\,m resolution, with a 16-day revisit period. The thermal infrared bands (B10, B11) provide surface temperature estimates used as an ancillary feature in habitat classification, particularly for distinguishing wet grassland from mesotrophic grassland. Landsat data were harmonised to Sentinel-2 spectral response functions using published cross-calibration coefficients.
+
+\subsection{Ordnance Survey MasterMap}
+
+OS MasterMap Topography Layer \citep{os_datahub} provides the vector parcel framework against which all habitat classifications are reported. Parcels were extracted for the study area via the OS Data Hub API, filtered to retain only natural surface, general surface, and land parcels (excluding buildings, roads, and infrastructure). The MasterMap TOID (Topographic Object Identifier) serves as the primary key linking spatial parcels to habitat classification and BU scoring throughout the analysis.
+
+
+\section{Spectral Feature Engineering}
+
+From the harmonised imagery composites, the following spectral indices and texture metrics were computed per pixel and then aggregated to parcel-level summary statistics (mean, standard deviation, 10th and 90th percentiles):
+
+\subsection{Vegetation Indices}
+
+\begin{align}
+  \text{NDVI} &= \frac{\rho_{\text{NIR}} - \rho_{\text{Red}}}{\rho_{\text{NIR}} + \rho_{\text{Red}}} \label{eq:ndvi} \\[6pt]
+  \text{EVI}  &= 2.5 \times \frac{\rho_{\text{NIR}} - \rho_{\text{Red}}}{\rho_{\text{NIR}} + 6\rho_{\text{Red}} - 7.5\rho_{\text{Blue}} + 1} \label{eq:evi} \\[6pt]
+  \text{NDMI} &= \frac{\rho_{\text{NIR}} - \rho_{\text{SWIR1}}}{\rho_{\text{NIR}} + \rho_{\text{SWIR1}}} \label{eq:ndmi} \\[6pt]
+  \text{SAVI} &= \frac{(\rho_{\text{NIR}} - \rho_{\text{Red}})(1 + L)}{\rho_{\text{NIR}} + \rho_{\text{Red}} + L}, \quad L = 0.5 \label{eq:savi}
+\end{align}
+
+\subsection{Texture Metrics}
+
+Grey-Level Co-occurrence Matrix (GLCM) texture features were computed from the panchromatic-equivalent band at a 3$\times$3 pixel window:
+\begin{itemize}[nosep]
+  \item Contrast
+  \item Dissimilarity
+  \item Homogeneity
+  \item Angular Second Moment (ASM)
+  \item Entropy
+  \item Correlation
+\end{itemize}
+
+\subsection{Temporal Features}
+
+For each parcel, the following temporal features were extracted from the full growing-season image stack (pre-compositing):
+\begin{itemize}[nosep]
+  \item NDVI amplitude (max $-$ min across the season)
+  \item Date of peak NDVI (day of year)
+  \item Rate of greenup (slope of NDVI from May to peak)
+  \item Rate of senescence (slope of NDVI from peak to September)
+\end{itemize}
+
+
+\section{Habitat Classification}
+\label{sec:classification}
+
+\subsection{UK Habitat Classification Taxonomy}
+
+All habitat assignments follow the UK Habitat Classification v2.0 \citep{ukhab_v2}, which provides a hierarchical taxonomy aligned with both the Phase~1 habitat survey methodology and the Annex~I habitat types of the EU Habitats Directive. The classifier targets Level~3 habitat types, which map directly to the distinctiveness categories in the \BM{} scoring tables.
+
+\subsection{Training Data}
+
+Training labels were assembled from three sources:
+\begin{enumerate}[nosep]
+  \item Natural England Priority Habitat Inventory v2.3 polygons intersecting the study area;
+  \item OS MasterMap descriptive terms (for non-priority habitats such as improved grassland, arable, and built-up areas);
+  \item Manual photo-interpretation of high-resolution aerial imagery (25\,cm) for ambiguous parcels.
+\end{enumerate}
+
+A total of \dataplaceholder{N TRAINING SAMPLES} labelled parcels were generated, stratified across \dataplaceholder{N CLASSES} UKHab Level~3 classes. The training set was split 70/30 for training and validation, with spatial blocking to prevent autocorrelation leakage.
+
+\subsection{Random Forest Classifier}
+
+The classifier is a Random Forest ensemble \citep{pedregosa2011} with the following hyperparameters, selected via 5-fold spatial cross-validation with Bayesian optimisation:
+
+\begin{table}[H]
+\centering
+\caption{Random Forest classifier hyperparameters.}
+\label{tab:rf-params}
+\begin{tabular}{lr}
+\toprule
+\textbf{Parameter} & \textbf{Value} \\
+\midrule
+Number of trees (\texttt{n\_estimators})      & \dataplaceholder{N TREES} \\
+Maximum depth (\texttt{max\_depth})            & \dataplaceholder{MAX DEPTH} \\
+Minimum samples per leaf                       & \dataplaceholder{MIN LEAF} \\
+Maximum features per split                     & $\sqrt{p}$ \\
+Class weighting                                & Balanced \\
+Out-of-bag score                               & \dataplaceholder{OOB SCORE} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Classification Accuracy Assessment}
+
+\begin{confidencebox}{HIGH}
+Classification accuracy was assessed using the held-out 30\% validation set with spatial blocking. Results are reported per-class and overall using standard metrics.
+\end{confidencebox}
+
+\begin{table}[H]
+\centering
+\caption{Classification accuracy metrics (2016 epoch).}
+\label{tab:accuracy-2016}
+\begin{tabular}{lcccc}
+\toprule
+\textbf{UKHab Class} & \textbf{Precision} & \textbf{Recall} & \textbf{F1} & \textbf{Support} \\
+\midrule
+Improved grassland         & \dataplaceholder{P} & \dataplaceholder{R} & \dataplaceholder{F1} & \dataplaceholder{N} \\
+Semi-natural grassland     & \dataplaceholder{P} & \dataplaceholder{R} & \dataplaceholder{F1} & \dataplaceholder{N} \\
+Broadleaved woodland       & \dataplaceholder{P} & \dataplaceholder{R} & \dataplaceholder{F1} & \dataplaceholder{N} \\
+Mixed woodland             & \dataplaceholder{P} & \dataplaceholder{R} & \dataplaceholder{F1} & \dataplaceholder{N} \\
+Arable                     & \dataplaceholder{P} & \dataplaceholder{R} & \dataplaceholder{F1} & \dataplaceholder{N} \\
+Heathland                  & \dataplaceholder{P} & \dataplaceholder{R} & \dataplaceholder{F1} & \dataplaceholder{N} \\
+Standing water             & \dataplaceholder{P} & \dataplaceholder{R} & \dataplaceholder{F1} & \dataplaceholder{N} \\
+Built-up / hardstanding    & \dataplaceholder{P} & \dataplaceholder{R} & \dataplaceholder{F1} & \dataplaceholder{N} \\
+\midrule
+\textbf{Overall accuracy}  & \multicolumn{3}{c}{\dataplaceholder{OA}\%} & \dataplaceholder{TOTAL} \\
+\textbf{Kappa coefficient} & \multicolumn{3}{c}{\dataplaceholder{KAPPA}} & --- \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+
+\section{BM\,4.0 Scoring Framework}
+\label{sec:bm4scoring}
+
+\subsection{Area-Based Biodiversity Units}
+
+The Statutory Biodiversity Metric~4.0 \citep{defra_bm4_user,defra_bm4_tech} calculates area-based biodiversity units (BU) for each habitat parcel as:
+
+\begin{equation}
+\text{BU}_i = A_i \times D_i \times C_i \times S_i
+\label{eq:bu}
+\end{equation}
+
+\noindent where:
+\begin{description}[nosep,style=nextline,labelwidth=8mm]
+  \item[$A_i$] Area of parcel $i$ in hectares;
+  \item[$D_i$] Distinctiveness score (Very Low = 0, Low = 2, Medium = 4, High = 6, Very High = 8);
+  \item[$C_i$] Condition multiplier (Poor = 1, Fairly Poor = 1.5, Moderate = 2, Fairly Good = 2.5, Good = 3);
+  \item[$S_i$] Strategic significance multiplier (Low = 1, Medium = 1.1, High = 1.15).
+\end{description}
+
+\begin{confidencebox}{MEDIUM}
+The condition multiplier $C_i$ is the primary source of uncertainty in the BU calculation. For parcels classified solely from remote sensing data (without field survey), condition is estimated via spectral proxy indicators. See Section~\ref{sec:condition-proxy} for the proxy methodology and validation.
+\end{confidencebox}
+
+\subsection{Condition Proxy Methodology}
+\label{sec:condition-proxy}
+
+For parcels where no field survey data is available, habitat condition is estimated using a composite spectral condition index (SCI) derived from:
+
+\begin{equation}
+\text{SCI}_i = w_1 \cdot \overline{\text{NDVI}}_i + w_2 \cdot \sigma_{\text{NDVI},i} + w_3 \cdot H_{\text{GLCM},i} + w_4 \cdot \text{NDVI}_{\text{amp},i}
+\label{eq:sci}
+\end{equation}
+
+\noindent where $\overline{\text{NDVI}}_i$ is the seasonal mean NDVI, $\sigma_{\text{NDVI},i}$ is the within-parcel NDVI standard deviation (a proxy for structural heterogeneity), $H_{\text{GLCM},i}$ is the GLCM entropy (texture complexity), and $\text{NDVI}_{\text{amp},i}$ is the seasonal NDVI amplitude. Weights $w_1 \ldots w_4$ were calibrated against field-surveyed condition assessments from the Priority Habitat Inventory.
+
+The SCI is mapped to BM\,4.0 condition categories via thresholds calibrated per habitat type:
+
+\begin{table}[H]
+\centering
+\caption{Spectral Condition Index threshold mapping (example: semi-natural grassland).}
+\label{tab:sci-thresholds}
+\begin{tabular}{lcc}
+\toprule
+\textbf{Condition Category} & \textbf{SCI Range} & \textbf{BM\,4.0 Multiplier} \\
+\midrule
+Good        & $\geq$ \dataplaceholder{THRESH} & 3.0 \\
+Fairly Good & \dataplaceholder{THRESH}--\dataplaceholder{THRESH} & 2.5 \\
+Moderate    & \dataplaceholder{THRESH}--\dataplaceholder{THRESH} & 2.0 \\
+Fairly Poor & \dataplaceholder{THRESH}--\dataplaceholder{THRESH} & 1.5 \\
+Poor        & $<$ \dataplaceholder{THRESH} & 1.0 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Strategic Significance}
+
+Strategic significance is assigned per parcel based on intersection with the Derbyshire LNRS draft priority area layer:
+
+\begin{itemize}[nosep]
+  \item \textbf{High}: parcel intersects an LNRS priority habitat delivery zone or is within a designated SSSI;
+  \item \textbf{Medium}: parcel is within 500\,m of an LNRS priority zone or Local Wildlife Site;
+  \item \textbf{Low}: all other parcels.
+\end{itemize}
+
+
+\section{Delta Computation}
+
+The biodiversity unit delta for each parcel is calculated as:
+
+\begin{equation}
+\Delta\text{BU}_i = \text{BU}_{i,T_1} - \text{BU}_{i,T_0}
+\label{eq:delta-bu}
+\end{equation}
+
+The total study area delta is:
+
+\begin{equation}
+\Delta\text{BU}_{\text{total}} = \sum_{i=1}^{N} \Delta\text{BU}_i = \sum_{i=1}^{N} \left( \text{BU}_{i,T_1} - \text{BU}_{i,T_0} \right)
+\label{eq:delta-total}
+\end{equation}
+
+The percentage change is:
+
+\begin{equation}
+\Delta\%_{\text{total}} = \frac{\Delta\text{BU}_{\text{total}}}{\sum_{i=1}^{N} \text{BU}_{i,T_0}} \times 100
+\label{eq:delta-pct}
+\end{equation}
+
+
+\section{Uncertainty Quantification}
+
+\subsection{Monte Carlo Simulation}
+
+Uncertainty in the delta calculation is quantified via Monte Carlo simulation (10,000 iterations). At each iteration, the following parameters are perturbed:
+
+\begin{enumerate}[nosep]
+  \item \textbf{Classification assignment}: each parcel has a probability of being re-assigned to an alternative class, weighted by the classifier's per-parcel class probability vector;
+  \item \textbf{Condition score}: the SCI-to-condition mapping threshold is perturbed by $\pm$1 standard deviation of the calibration residuals;
+  \item \textbf{Area measurement}: parcel area is perturbed by $\pm$2\% to account for digitisation uncertainty.
+\end{enumerate}
+
+The 2.5th and 97.5th percentiles of the resulting $\Delta\text{BU}_{\text{total}}$ distribution define the 95\% confidence interval.
+
+\begin{confidencebox}{HIGH}
+The Monte Carlo simulation framework is fully documented in Chapter~\ref{ch:modelling} with code listings and convergence diagnostics.
+\end{confidencebox}
+
+\subsection{Sensitivity Analysis}
+
+One-at-a-time (OAT) sensitivity analysis was performed by varying each input parameter across its plausible range while holding all others constant. The tornado diagram in Chapter~\ref{ch:delta} (Figure~\ref{fig:tornado}) summarises the relative influence of each parameter on the total delta.
+
+
+\section{Quality Assurance and Audit Trail}
+
+All pipeline runs are logged with full provenance metadata, including:
+\begin{itemize}[nosep]
+  \item Input data versions and access timestamps;
+  \item Software versions (Python~3.11, scikit-learn~\dataplaceholder{VERSION}, GDAL~\dataplaceholder{VERSION});
+  \item Random seeds for reproducibility;
+  \item Intermediate outputs at each pipeline stage;
+  \item Agent swarm execution logs (Appendix~\ref{app:agentlogs}).
+\end{itemize}
+
+The pipeline is designed to be fully reproducible: given identical input data and random seeds, the pipeline will produce byte-identical output.

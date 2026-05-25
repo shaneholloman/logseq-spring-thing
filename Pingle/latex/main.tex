@@ -1,0 +1,250 @@
+%% Biodiversity Delta Engine — Master Document
+%% DreamLab AI | Dr John O'Hare | May 2026
+%% Compile: latexmk -pdf main.tex
+\documentclass[a4paper,11pt,twoside]{book}
+
+%% ──────────────────────────────────────────────
+%% Geometry & Layout
+%% ──────────────────────────────────────────────
+\usepackage[
+  top=25mm, bottom=25mm, inner=30mm, outer=25mm,
+  headheight=14pt
+]{geometry}
+
+%% ──────────────────────────────────────────────
+%% Core packages
+%% ──────────────────────────────────────────────
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{microtype}
+
+%% Mathematics
+\usepackage{amsmath,amssymb,amsthm}
+
+%% Graphics & Colour
+\usepackage{graphicx}
+\graphicspath{{../output/figures/}{frontmatter/}{figures/}}
+\usepackage[dvipsnames,svgnames,x11names]{xcolor}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,shapes.geometric,calc,fit,backgrounds}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
+
+%% Tables
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{multirow}
+\usepackage{tabularx}
+
+%% Floats & Captions
+\usepackage{float}
+\usepackage{caption}
+\usepackage{subcaption}
+
+%% Code listings
+\usepackage{listings}
+
+%% Landscape pages
+\usepackage{pdflscape}
+
+%% Appendices
+\usepackage[toc,page]{appendix}
+
+%% Glossary (load before hyperref)
+\usepackage[acronym,toc]{glossaries}
+\makeglossaries
+
+%% Cross-referencing & hyperlinks
+\usepackage[
+  colorlinks=true,
+  linkcolor=dreamlab-primary,
+  citecolor=dreamlab-primary,
+  urlcolor=dreamlab-accent,
+  bookmarks=true,
+  bookmarksnumbered=true,
+  pdfauthor={Dr John O'Hare},
+  pdftitle={Biodiversity Delta Engine — BM4.0 Analysis},
+  pdfsubject={Statutory Biodiversity Metric 4.0 Delta Assessment},
+  pdfkeywords={biodiversity, BNG, BM4.0, habitat, delta, Pingle, Ashleyhay}
+]{hyperref}
+\usepackage[capitalise,noabbrev]{cleveref}
+
+%% Bibliography
+\usepackage[round,authoryear]{natbib}
+\bibliographystyle{plainnat}
+
+%% Headers & Footers
+\usepackage{fancyhdr}
+
+%% Section formatting
+\usepackage{titlesec}
+\usepackage{tocloft}
+
+%% Coloured boxes for confidence annotations
+\usepackage[most]{tcolorbox}
+
+%% Enumeration
+\usepackage{enumitem}
+
+%% ──────────────────────────────────────────────
+%% DreamLab AI Colour Scheme
+%% ──────────────────────────────────────────────
+\definecolor{dreamlab-primary}{HTML}{1A237E}   % Deep indigo
+\definecolor{dreamlab-accent}{HTML}{00BCD4}    % Cyan
+\definecolor{dreamlab-text}{HTML}{212121}       % Near-black
+\definecolor{dreamlab-light}{HTML}{E8EAF6}     % Light indigo wash
+\definecolor{dreamlab-grey}{HTML}{757575}       % Secondary text
+
+%% Confidence-box colours
+\definecolor{conf-high}{HTML}{4CAF50}
+\definecolor{conf-medium}{HTML}{FF9800}
+\definecolor{conf-low}{HTML}{F44336}
+\definecolor{conf-speculative}{HTML}{9C27B0}
+
+%% ──────────────────────────────────────────────
+%% Confidence Box Environment
+%% ──────────────────────────────────────────────
+%% Usage: \begin{confidencebox}{HIGH} ... \end{confidencebox}
+%% Defines per-level styles then dispatches via IfValueTF.
+
+\tcbset{
+  confbase/.style={
+    enhanced, breakable,
+    left=4mm, right=4mm, top=2mm, bottom=2mm,
+    colback=white, colframe=white,
+    fonttitle=\bfseries\sffamily\small,
+    attach boxed title to top left={yshift=-2mm,xshift=4mm},
+    boxed title style={colback=white, colframe=white, sharp corners},
+  },
+  conflevel/HIGH/.style={confbase, borderline west={3pt}{0pt}{conf-high}, coltitle=conf-high, title={Confidence: HIGH}},
+  conflevel/MEDIUM/.style={confbase, borderline west={3pt}{0pt}{conf-medium}, coltitle=conf-medium, title={Confidence: MEDIUM}},
+  conflevel/LOW/.style={confbase, borderline west={3pt}{0pt}{conf-low}, coltitle=conf-low, title={Confidence: LOW}},
+  conflevel/SPECULATIVE/.style={confbase, borderline west={3pt}{0pt}{conf-speculative}, coltitle=conf-speculative, title={Confidence: SPECULATIVE}},
+}
+
+\newtcolorbox{confidencebox}[1]{conflevel/#1}
+
+%% ──────────────────────────────────────────────
+%% Header / Footer
+%% ──────────────────────────────────────────────
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[LE]{\small\sffamily\textcolor{dreamlab-grey}{\leftmark}}
+\fancyhead[RO]{\small\sffamily\textcolor{dreamlab-grey}{\rightmark}}
+\fancyhead[RE,LO]{\small\sffamily\textcolor{dreamlab-primary}{\textbf{DreamLab AI}}}
+\fancyfoot[C]{\small\sffamily\textcolor{dreamlab-grey}{Biodiversity Delta Engine — Confidential}}
+\fancyfoot[RO,LE]{\small\sffamily\textcolor{dreamlab-primary}{\thepage}}
+\renewcommand{\headrulewidth}{0.4pt}
+\renewcommand{\footrulewidth}{0.2pt}
+\renewcommand{\headrule}{\hbox to\headwidth{%
+  \color{dreamlab-accent}\leaders\hrule height \headrulewidth\hfill}}
+\renewcommand{\footrule}{\hbox to\headwidth{%
+  \color{dreamlab-light}\leaders\hrule height \footrulewidth\hfill}}
+
+%% Plain pages (chapter openers)
+\fancypagestyle{plain}{%
+  \fancyhf{}
+  \fancyfoot[C]{\small\sffamily\textcolor{dreamlab-grey}{Biodiversity Delta Engine — Confidential}}
+  \fancyfoot[RO,LE]{\small\sffamily\textcolor{dreamlab-primary}{\thepage}}
+  \renewcommand{\headrulewidth}{0pt}
+  \renewcommand{\footrulewidth}{0.2pt}
+}
+
+%% ──────────────────────────────────────────────
+%% Section Title Formatting
+%% ──────────────────────────────────────────────
+\titleformat{\chapter}[display]
+  {\normalfont\huge\bfseries\sffamily\color{dreamlab-primary}}
+  {\chaptertitlename\ \thechapter}{20pt}{\Huge}
+\titleformat{\section}
+  {\normalfont\Large\bfseries\sffamily\color{dreamlab-primary}}
+  {\thesection}{1em}{}
+\titleformat{\subsection}
+  {\normalfont\large\bfseries\sffamily\color{dreamlab-primary!80!black}}
+  {\thesubsection}{1em}{}
+\titleformat{\subsubsection}
+  {\normalfont\normalsize\bfseries\sffamily\color{dreamlab-primary!60!black}}
+  {\thesubsubsection}{1em}{}
+
+%% ──────────────────────────────────────────────
+%% Code Listing Style
+%% ──────────────────────────────────────────────
+\lstdefinestyle{dreamlab}{
+  backgroundcolor=\color{dreamlab-light},
+  basicstyle=\ttfamily\small,
+  breaklines=true,
+  commentstyle=\color{dreamlab-grey}\itshape,
+  keywordstyle=\color{dreamlab-primary}\bfseries,
+  stringstyle=\color{dreamlab-accent},
+  numbers=left,
+  numberstyle=\tiny\color{dreamlab-grey},
+  frame=single,
+  rulecolor=\color{dreamlab-accent},
+  captionpos=b
+}
+\lstset{style=dreamlab}
+
+%% ──────────────────────────────────────────────
+%% Custom commands
+%% ──────────────────────────────────────────────
+\newcommand{\BDE}{\textsc{Biodiversity Delta Engine}}
+\newcommand{\BM}{BM\,4.0}
+\newcommand{\BU}{\text{BU}}          % Biodiversity Units
+\newcommand{\Tzero}{T\textsubscript{0}}
+\newcommand{\Tone}{T\textsubscript{1}}
+\newcommand{\dataplaceholder}[1]{\textcolor{dreamlab-accent}{\textbf{[#1]}}}
+
+%% Suppress overfull warnings for draft
+\tolerance=1000
+\emergencystretch=1em
+
+%% ══════════════════════════════════════════════
+%% DOCUMENT
+%% ══════════════════════════════════════════════
+\begin{document}
+
+%% --- Title page ---
+\input{frontmatter/titlepage}
+
+%% --- Front matter ---
+\frontmatter
+\input{frontmatter/abstract}
+\input{frontmatter/acknowledgements}
+
+\tableofcontents
+\listoffigures
+\listoftables
+
+%% --- Main matter ---
+\mainmatter
+
+\input{chapters/ch01_executive_summary}
+\input{chapters/ch02_methodology}
+\input{chapters/ch03_site_context}
+\input{chapters/ch04_baseline_2016}
+\input{chapters/ch05_current_2026}
+\input{chapters/ch06_delta_analysis}
+\input{chapters/ch07_hedgerow_watercourse}
+\input{chapters/ch08_spot_check}
+\input{chapters/ch09_mathematical_modelling}
+\input{chapters/ch10_charts_figures}
+\input{chapters/ch11_citations}
+
+%% --- Back matter ---
+\backmatter
+
+%% Appendices
+\begin{appendices}
+\input{chapters/appendix_a_data}
+\input{chapters/appendix_b_agent_logs}
+\end{appendices}
+
+%% Bibliography
+\bibliography{bib/references}
+
+%% Glossary
+\printglossaries
+
+\end{document}

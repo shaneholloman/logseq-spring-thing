@@ -1,0 +1,50 @@
+# Claude Flow session data
+.claude-flow/
+
+# Credentials - NEVER commit
+config/*.json
+config/*.key
+*.pem
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+*.egg-info/
+
+# LaTeX build artifacts
+latex/*.aux
+latex/*.log
+latex/*.out
+latex/*.toc
+latex/*.lof
+latex/*.lot
+latex/*.bbl
+latex/*.blg
+latex/*.fls
+latex/*.fdb_latexmk
+latex/*.synctex.gz
+latex/*.idx
+latex/*.ilg
+latex/*.ind
+latex/*.acn
+latex/*.glo
+latex/*.ist
+
+# Output data (large files)
+output/*.tif
+output/*.geotiff
+output/*.shp
+output/*.dbf
+output/*.shx
+output/*.prj
+output/*.png
+output/*.jpg
+
+# Logs
+logs/
+
+# OS
+.DS_Store
+Thumbs.db

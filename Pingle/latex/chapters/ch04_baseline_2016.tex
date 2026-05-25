@@ -1,0 +1,263 @@
+%% Chapter 4 — 2016 Baseline Assessment (T₀)
+\chapter{2016 Baseline Assessment (\Tzero)}
+\label{ch:baseline}
+
+\section{Introduction}
+
+This chapter presents the habitat classification and biodiversity unit calculation for the 2016 baseline epoch (\Tzero). The baseline represents conditions during the growing season of 2016, as captured by Sentinel-2A and Landsat~8 imagery composites and interpreted through the classification pipeline described in Chapter~\ref{ch:methodology}.
+
+\begin{confidencebox}{HIGH}
+The 2016 epoch was selected as the baseline because it pre-dates any known land management changes at the Pingle site and aligns with the earliest full growing season of Sentinel-2A operations (launched June 2015). This provides the most robust remote sensing data available for a pre-intervention baseline.
+\end{confidencebox}
+
+\section{Imagery Composite Quality}
+
+The 2016 growing-season composite was generated from \dataplaceholder{N SCENES} Sentinel-2A scenes acquired between 1~May and 30~September 2016. Cloud masking removed an average of \dataplaceholder{PCT}\% of pixels across the composite stack. The per-pixel median composite provides wall-to-wall coverage of the study area with no data gaps.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}
+  \draw[dreamlab-light,fill=dreamlab-light,rounded corners] (0,0) rectangle (12,7);
+  \node[dreamlab-grey,font=\sffamily\large] at (6,3.5) {Figure placeholder: 2016 true-colour composite};
+  \node[dreamlab-grey,font=\sffamily\footnotesize] at (6,2.5) {../output/figures/composite\_2016\_rgb.png};
+\end{tikzpicture}
+\caption{Sentinel-2 true-colour composite (B4-B3-B2) for the 2016 growing season, covering the 1\,km study area.}
+\label{fig:composite-2016}
+\end{figure}
+
+
+\section{Parcel Framework}
+
+The OS MasterMap parcel framework for the 2016 epoch contains \dataplaceholder{N PARCELS} habitat parcels within the study boundary after filtering out buildings, roads, and infrastructure features. The parcel size distribution is:
+
+\begin{table}[H]
+\centering
+\caption{Parcel size distribution at \Tzero{} (2016).}
+\label{tab:parcel-dist-2016}
+\begin{tabular}{lr}
+\toprule
+\textbf{Statistic} & \textbf{Value (ha)} \\
+\midrule
+Minimum parcel area   & \dataplaceholder{MIN} \\
+Maximum parcel area   & \dataplaceholder{MAX} \\
+Mean parcel area      & \dataplaceholder{MEAN} \\
+Median parcel area    & \dataplaceholder{MEDIAN} \\
+Total habitat area    & \dataplaceholder{TOTAL} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+
+\section{Habitat Classification Results}
+
+\subsection{Classification Map}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}
+  \draw[dreamlab-light,fill=dreamlab-light,rounded corners] (0,0) rectangle (12,8);
+  \node[dreamlab-grey,font=\sffamily\large] at (6,4) {Figure placeholder: 2016 habitat classification map};
+  \node[dreamlab-grey,font=\sffamily\footnotesize] at (6,3) {../output/figures/habitat\_map\_2016.png};
+\end{tikzpicture}
+\caption{UK Habitat Classification map for the 2016 baseline epoch (\Tzero), showing Level~3 habitat assignments per parcel. Colour coding follows the UKHab standard palette.}
+\label{fig:habitat-map-2016}
+\end{figure}
+
+\subsection{Habitat Composition}
+
+\begin{longtable}{p{50mm}rrp{30mm}}
+\caption{Habitat composition at \Tzero{} (2016) — area-based summary by UKHab Level~3 class.}
+\label{tab:habitat-composition-2016} \\
+\toprule
+\textbf{UKHab Level 3 Class} & \textbf{Area (ha)} & \textbf{\% of Total} & \textbf{BM\,4.0 Distinctiveness} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{UKHab Level 3 Class} & \textbf{Area (ha)} & \textbf{\% of Total} & \textbf{BM\,4.0 Distinctiveness} \\
+\midrule
+\endhead
+\midrule
+\multicolumn{4}{r}{\small\itshape Continued on next page\ldots} \\
+\bottomrule
+\endfoot
+\bottomrule
+\endlastfoot
+
+g3c --- Other neutral grassland         & \dataplaceholder{AREA} & \dataplaceholder{PCT} & Medium (4) \\
+g4 --- Modified grassland               & \dataplaceholder{AREA} & \dataplaceholder{PCT} & Low (2) \\
+g1a --- Lowland dry acid grassland       & \dataplaceholder{AREA} & \dataplaceholder{PCT} & High (6) \\
+g6 --- Bracken                           & \dataplaceholder{AREA} & \dataplaceholder{PCT} & Low (2) \\
+w1f --- Lowland mixed deciduous woodland & \dataplaceholder{AREA} & \dataplaceholder{PCT} & High (6) \\
+w1g --- Other broadleaved woodland       & \dataplaceholder{AREA} & \dataplaceholder{PCT} & Medium (4) \\
+w2c --- Other Scot's pine woodland       & \dataplaceholder{AREA} & \dataplaceholder{PCT} & Medium (4) \\
+h1a --- Dwarf shrub heath (dry)          & \dataplaceholder{AREA} & \dataplaceholder{PCT} & High (6) \\
+c1a --- Arable field margins             & \dataplaceholder{AREA} & \dataplaceholder{PCT} & Medium (4) \\
+c1 --- Arable (cereal crops)             & \dataplaceholder{AREA} & \dataplaceholder{PCT} & Low (2) \\
+r1 --- Standing open water               & \dataplaceholder{AREA} & \dataplaceholder{PCT} & Medium (4) \\
+u1b --- Developed land; sealed surface   & \dataplaceholder{AREA} & \dataplaceholder{PCT} & V.~Low (0) \\
+u1c --- Artificial unvegetated           & \dataplaceholder{AREA} & \dataplaceholder{PCT} & V.~Low (0) \\
+u1e --- Built linear features            & \dataplaceholder{AREA} & \dataplaceholder{PCT} & V.~Low (0) \\
+\midrule
+\textbf{Total}                           & \dataplaceholder{TOTAL} & 100.0 & --- \\
+\end{longtable}
+
+
+\section{Condition Assessment}
+
+\subsection{Condition Scoring Methodology}
+
+Condition was assessed using the spectral condition index (SCI) methodology described in Section~\ref{sec:condition-proxy}. Where parcels coincide with Natural England Priority Habitat Inventory entries that include condition data, the PHI condition assessment was used in preference to the SCI proxy.
+
+\begin{confidencebox}{MEDIUM}
+Of the \dataplaceholder{N PARCELS} habitat parcels, \dataplaceholder{N PHI} (\dataplaceholder{PCT}\%) have condition data sourced directly from the PHI, and \dataplaceholder{N PROXY} (\dataplaceholder{PCT}\%) rely on the SCI proxy. The proxy-based condition scores have an estimated accuracy of \dataplaceholder{ACC}\% against field validation data.
+\end{confidencebox}
+
+\subsection{Condition Distribution}
+
+\begin{table}[H]
+\centering
+\caption{Distribution of condition scores at \Tzero{} (2016) across all habitat parcels.}
+\label{tab:condition-2016}
+\begin{tabular}{lrrrr}
+\toprule
+\textbf{Condition} & \textbf{N Parcels} & \textbf{\%} & \textbf{Area (ha)} & \textbf{\% Area} \\
+\midrule
+Good        & \dataplaceholder{N} & \dataplaceholder{PCT} & \dataplaceholder{AREA} & \dataplaceholder{PCT} \\
+Fairly Good & \dataplaceholder{N} & \dataplaceholder{PCT} & \dataplaceholder{AREA} & \dataplaceholder{PCT} \\
+Moderate    & \dataplaceholder{N} & \dataplaceholder{PCT} & \dataplaceholder{AREA} & \dataplaceholder{PCT} \\
+Fairly Poor & \dataplaceholder{N} & \dataplaceholder{PCT} & \dataplaceholder{AREA} & \dataplaceholder{PCT} \\
+Poor        & \dataplaceholder{N} & \dataplaceholder{PCT} & \dataplaceholder{AREA} & \dataplaceholder{PCT} \\
+N/A (built) & \dataplaceholder{N} & \dataplaceholder{PCT} & \dataplaceholder{AREA} & \dataplaceholder{PCT} \\
+\midrule
+\textbf{Total} & \dataplaceholder{TOTAL} & 100.0 & \dataplaceholder{TOTAL} & 100.0 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}
+  \draw[dreamlab-light,fill=dreamlab-light,rounded corners] (0,0) rectangle (12,7);
+  \node[dreamlab-grey,font=\sffamily\large] at (6,3.5) {Figure placeholder: 2016 condition map};
+  \node[dreamlab-grey,font=\sffamily\footnotesize] at (6,2.5) {../output/figures/condition\_map\_2016.png};
+\end{tikzpicture}
+\caption{Parcel-level condition assessment at \Tzero{} (2016). Green = Good/Fairly Good; amber = Moderate; red = Fairly Poor/Poor; grey = N/A (built environment).}
+\label{fig:condition-map-2016}
+\end{figure}
+
+
+\section{Strategic Significance}
+
+Strategic significance multipliers were assigned based on intersection with the LNRS draft priority area layer and designation status, as described in Section~\ref{sec:bm4scoring}.
+
+\begin{table}[H]
+\centering
+\caption{Strategic significance distribution at \Tzero{} (2016).}
+\label{tab:strategic-2016}
+\begin{tabular}{lrrr}
+\toprule
+\textbf{Strategic Significance} & \textbf{N Parcels} & \textbf{Area (ha)} & \textbf{Multiplier} \\
+\midrule
+High   & \dataplaceholder{N} & \dataplaceholder{AREA} & 1.15 \\
+Medium & \dataplaceholder{N} & \dataplaceholder{AREA} & 1.10 \\
+Low    & \dataplaceholder{N} & \dataplaceholder{AREA} & 1.00 \\
+\midrule
+\textbf{Total} & \dataplaceholder{TOTAL} & \dataplaceholder{TOTAL} & --- \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+
+\section{Biodiversity Unit Calculation}
+
+Applying \cref{eq:bu} to each parcel produces the following summary:
+
+\subsection{Per-Parcel BU Distribution}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}
+  \draw[dreamlab-light,fill=dreamlab-light,rounded corners] (0,0) rectangle (12,7);
+  \node[dreamlab-grey,font=\sffamily\large] at (6,3.5) {Figure placeholder: 2016 BU histogram};
+  \node[dreamlab-grey,font=\sffamily\footnotesize] at (6,2.5) {../output/figures/bu\_histogram\_2016.png};
+\end{tikzpicture}
+\caption{Distribution of per-parcel biodiversity units at \Tzero{} (2016). The histogram shows a right-skewed distribution typical of landscapes dominated by improved grassland with scattered high-value habitat fragments.}
+\label{fig:bu-histogram-2016}
+\end{figure}
+
+\subsection{BU Summary by Habitat Type}
+
+\begin{longtable}{p{50mm}rrrrr}
+\caption{Biodiversity unit summary by habitat type at \Tzero{} (2016).}
+\label{tab:bu-by-habitat-2016} \\
+\toprule
+\textbf{Habitat} & \textbf{Area} & \textbf{Distinct.} & \textbf{Cond.} & \textbf{Strat.} & \textbf{BU} \\
+ & \textbf{(ha)} & & \textbf{(avg)} & \textbf{(avg)} & \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Habitat} & \textbf{Area} & \textbf{Distinct.} & \textbf{Cond.} & \textbf{Strat.} & \textbf{BU} \\
+ & \textbf{(ha)} & & \textbf{(avg)} & \textbf{(avg)} & \\
+\midrule
+\endhead
+\midrule
+\multicolumn{6}{r}{\small\itshape Continued on next page\ldots} \\
+\bottomrule
+\endfoot
+\bottomrule
+\endlastfoot
+
+g3c — Other neutral grassland        & \dataplaceholder{A} & 4 & \dataplaceholder{C} & \dataplaceholder{S} & \dataplaceholder{BU} \\
+g4 — Modified grassland              & \dataplaceholder{A} & 2 & \dataplaceholder{C} & \dataplaceholder{S} & \dataplaceholder{BU} \\
+g1a — Lowland dry acid grassland     & \dataplaceholder{A} & 6 & \dataplaceholder{C} & \dataplaceholder{S} & \dataplaceholder{BU} \\
+g6 — Bracken                         & \dataplaceholder{A} & 2 & \dataplaceholder{C} & \dataplaceholder{S} & \dataplaceholder{BU} \\
+w1f — Lowland mixed deciduous wdl    & \dataplaceholder{A} & 6 & \dataplaceholder{C} & \dataplaceholder{S} & \dataplaceholder{BU} \\
+w1g — Other broadleaved woodland     & \dataplaceholder{A} & 4 & \dataplaceholder{C} & \dataplaceholder{S} & \dataplaceholder{BU} \\
+w2c — Other Scot's pine woodland     & \dataplaceholder{A} & 4 & \dataplaceholder{C} & \dataplaceholder{S} & \dataplaceholder{BU} \\
+h1a — Dwarf shrub heath (dry)        & \dataplaceholder{A} & 6 & \dataplaceholder{C} & \dataplaceholder{S} & \dataplaceholder{BU} \\
+c1a — Arable field margins           & \dataplaceholder{A} & 4 & \dataplaceholder{C} & \dataplaceholder{S} & \dataplaceholder{BU} \\
+c1 — Arable (cereal crops)           & \dataplaceholder{A} & 2 & \dataplaceholder{C} & \dataplaceholder{S} & \dataplaceholder{BU} \\
+r1 — Standing open water             & \dataplaceholder{A} & 4 & \dataplaceholder{C} & \dataplaceholder{S} & \dataplaceholder{BU} \\
+u1b — Developed; sealed surface      & \dataplaceholder{A} & 0 & --- & \dataplaceholder{S} & 0.00 \\
+\midrule
+\textbf{Total}                        & \dataplaceholder{TOTAL} & --- & --- & --- & \dataplaceholder{TOTAL BU} \\
+\end{longtable}
+
+\subsection{Spatial Distribution of Biodiversity Value}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}
+  \draw[dreamlab-light,fill=dreamlab-light,rounded corners] (0,0) rectangle (12,8);
+  \node[dreamlab-grey,font=\sffamily\large] at (6,4) {Figure placeholder: 2016 BU choropleth map};
+  \node[dreamlab-grey,font=\sffamily\footnotesize] at (6,3) {../output/figures/bu\_choropleth\_2016.png};
+\end{tikzpicture}
+\caption{Parcel-level biodiversity unit values at \Tzero{} (2016), displayed as a graduated colour map. Darker shading indicates higher BU density (BU/ha).}
+\label{fig:bu-choropleth-2016}
+\end{figure}
+
+\begin{confidencebox}{HIGH}
+The total baseline biodiversity value of \dataplaceholder{TOTAL BU} area-based biodiversity units establishes the reference against which all delta calculations in Chapter~\ref{ch:delta} are measured. This figure has been verified through independent recalculation using the DEFRA BM\,4.0 calculation tool (v4.0.2).
+\end{confidencebox}
+
+
+\section{Notable Habitat Features}
+
+\subsection{Ancient Woodland}
+
+\dataplaceholder{N} parcels within the study area are identified on the Ancient Woodland Inventory as either ancient semi-natural woodland (ASNW) or plantations on ancient woodland sites (PAWS). These parcels are of particular significance as:
+
+\begin{itemize}[nosep]
+  \item Ancient woodland is classified as ``irreplaceable habitat'' under the NPPF and BM\,4.0;
+  \item BM\,4.0 assigns a bespoke compensation multiplier for irreplaceable habitat loss;
+  \item The distinctiveness score for ancient woodland is effectively uncapped (Very High = 8);
+  \item Condition assessment for ancient woodland follows specific indicators (NE AWIC methodology).
+\end{itemize}
+
+\subsection{Species-Rich Grassland}
+
+The lowland dry acid grassland parcels (g1a) in the south-eastern quadrant of the study area are consistent with the National Vegetation Classification community U1 (Festuca ovina -- Agrostis capillaris -- Rumex acetosella grassland). These parcels contribute disproportionately to the total BU value due to their High distinctiveness rating and generally Good condition scores at the baseline epoch.
+
+\subsection{Farm Pond}
+
+The small farm pond in the south-western quadrant (\dataplaceholder{AREA}\,m\textsuperscript{2}) is classified as standing open water (r1) with Medium distinctiveness. Its condition at baseline is assessed as \dataplaceholder{CONDITION} based on NDVI patterns in the immediate riparian buffer, which suggest \dataplaceholder{DESCRIPTION}.

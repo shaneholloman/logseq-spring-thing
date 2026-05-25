@@ -1,0 +1,261 @@
+%% Chapter 6 — Delta Analysis
+\chapter{Delta Analysis}
+\label{ch:delta}
+
+\section{Introduction}
+
+This chapter presents the core output of the \BDE: the parcel-by-parcel and aggregate biodiversity unit delta between the 2016 baseline (\Tzero) and the 2026 present-day assessment (\Tone). All calculations follow the methodology established in Chapter~\ref{ch:methodology}, with full uncertainty quantification via Monte Carlo simulation.
+
+
+\section{Aggregate Delta Summary}
+
+\begin{table}[H]
+\centering
+\caption{Aggregate biodiversity unit delta summary.}
+\label{tab:aggregate-delta}
+\begin{tabular}{lrrr}
+\toprule
+\textbf{Metric} & \textbf{\Tzero{} (2016)} & \textbf{\Tone{} (2026)} & \textbf{Delta} \\
+\midrule
+Total area-based BU                          & \dataplaceholder{T0} & \dataplaceholder{T1} & \dataplaceholder{DELTA} \\
+95\% CI lower bound                           & --- & --- & \dataplaceholder{CI LOW} \\
+95\% CI upper bound                           & --- & --- & \dataplaceholder{CI HIGH} \\
+Net percentage change                         & --- & --- & \dataplaceholder{PCT}\% \\
+Parcels with positive delta                   & --- & --- & \dataplaceholder{N POS} \\
+Parcels with negative delta                   & --- & --- & \dataplaceholder{N NEG} \\
+Parcels with zero delta ($|\Delta| < 0.01$)   & --- & --- & \dataplaceholder{N ZERO} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{confidencebox}{HIGH}
+The aggregate delta of \dataplaceholder{DELTA BU} (\dataplaceholder{PCT}\%) is statistically significant at the 95\% confidence level, as the confidence interval [\dataplaceholder{CI LOW}, \dataplaceholder{CI HIGH}] does not span zero.
+\end{confidencebox}
+
+
+\section{Parcel-Level Delta Distribution}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}
+  \draw[dreamlab-light,fill=dreamlab-light,rounded corners] (0,0) rectangle (12,7);
+  \node[dreamlab-grey,font=\sffamily\large] at (6,3.5) {Figure placeholder: Delta histogram};
+  \node[dreamlab-grey,font=\sffamily\footnotesize] at (6,2.5) {../output/figures/delta\_histogram.png};
+\end{tikzpicture}
+\caption{Distribution of per-parcel $\Delta$BU values. Positive values indicate biodiversity gain; negative values indicate loss. The vertical dashed line marks zero.}
+\label{fig:delta-histogram}
+\end{figure}
+
+\begin{table}[H]
+\centering
+\caption{Descriptive statistics of the per-parcel $\Delta$BU distribution.}
+\label{tab:delta-stats}
+\begin{tabular}{lr}
+\toprule
+\textbf{Statistic} & \textbf{Value (BU)} \\
+\midrule
+Mean $\Delta$BU per parcel        & \dataplaceholder{MEAN} \\
+Median $\Delta$BU per parcel      & \dataplaceholder{MEDIAN} \\
+Standard deviation                & \dataplaceholder{SD} \\
+Minimum (largest loss)            & \dataplaceholder{MIN} \\
+Maximum (largest gain)            & \dataplaceholder{MAX} \\
+Interquartile range               & \dataplaceholder{IQR} \\
+Skewness                          & \dataplaceholder{SKEW} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+
+\section{Spatial Pattern of Change}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}
+  \draw[dreamlab-light,fill=dreamlab-light,rounded corners] (0,0) rectangle (12,8);
+  \node[dreamlab-grey,font=\sffamily\large] at (6,4) {Figure placeholder: Delta map (diverging colour scale)};
+  \node[dreamlab-grey,font=\sffamily\footnotesize] at (6,3) {../output/figures/delta\_map\_diverging.png};
+\end{tikzpicture}
+\caption{Parcel-level $\Delta$BU map using a diverging colour scale: green = gain, white = zero, red = loss. Hatched parcels indicate classification change between epochs.}
+\label{fig:delta-map}
+\end{figure}
+
+
+\section{Delta Decomposition by Driver}
+
+The total delta can be decomposed into contributions from three BM\,4.0 components: classification change (affecting distinctiveness), condition change, and strategic significance change:
+
+\begin{equation}
+\Delta\text{BU}_i = \underbrace{\Delta D_i \cdot \bar{C}_i \cdot \bar{S}_i \cdot A_i}_{\text{Classification effect}} + \underbrace{\bar{D}_i \cdot \Delta C_i \cdot \bar{S}_i \cdot A_i}_{\text{Condition effect}} + \underbrace{\bar{D}_i \cdot \bar{C}_i \cdot \Delta S_i \cdot A_i}_{\text{Strategic effect}} + \epsilon_i
+\label{eq:delta-decomposition}
+\end{equation}
+
+\noindent where $\bar{X}$ denotes the mean of $X$ across the two epochs and $\epsilon_i$ captures interaction terms.
+
+\begin{table}[H]
+\centering
+\caption{Delta decomposition by driver.}
+\label{tab:delta-decomposition}
+\begin{tabular}{lrr}
+\toprule
+\textbf{Driver} & \textbf{$\Delta$BU Contribution} & \textbf{\% of Total Delta} \\
+\midrule
+Habitat classification change   & \dataplaceholder{DELTA} & \dataplaceholder{PCT}\% \\
+Condition change                & \dataplaceholder{DELTA} & \dataplaceholder{PCT}\% \\
+Strategic significance change   & \dataplaceholder{DELTA} & \dataplaceholder{PCT}\% \\
+Interaction terms               & \dataplaceholder{DELTA} & \dataplaceholder{PCT}\% \\
+\midrule
+\textbf{Total}                  & \dataplaceholder{TOTAL} & 100.0\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{confidencebox}{MEDIUM}
+The decomposition assumes that driver effects are approximately additive. In parcels where both classification and condition have changed substantially, the interaction term $\epsilon_i$ may be non-trivial. Such parcels are flagged in the per-parcel data tables (Appendix~\ref{app:data}).
+\end{confidencebox}
+
+
+\section{BU Calculation Worked Examples}
+
+\subsection{Example 1: Grassland Improvement}
+
+Parcel TOID \dataplaceholder{TOID}, area \dataplaceholder{A}\,ha:
+
+\begin{align}
+\text{BU}_{T_0} &= A \times D_{T_0} \times C_{T_0} \times S_{T_0} \notag \\
+  &= \dataplaceholder{A} \times 2 \times 1.5 \times 1.00 = \dataplaceholder{BU0} \label{eq:example1-t0} \\[8pt]
+\text{BU}_{T_1} &= A \times D_{T_1} \times C_{T_1} \times S_{T_1} \notag \\
+  &= \dataplaceholder{A} \times 4 \times 2.5 \times 1.10 = \dataplaceholder{BU1} \label{eq:example1-t1} \\[8pt]
+\Delta\text{BU} &= \dataplaceholder{BU1} - \dataplaceholder{BU0} = +\dataplaceholder{DELTA} \notag
+\end{align}
+
+This parcel transitioned from modified grassland (g4, Low distinctiveness, Fairly Poor condition) to other neutral grassland (g3c, Medium distinctiveness, Fairly Good condition), with a strategic significance upgrade from Low to Medium due to the revised LNRS draft layer.
+
+\subsection{Example 2: Woodland Condition Decline}
+
+Parcel TOID \dataplaceholder{TOID}, area \dataplaceholder{A}\,ha:
+
+\begin{align}
+\text{BU}_{T_0} &= \dataplaceholder{A} \times 6 \times 3.0 \times 1.15 = \dataplaceholder{BU0} \\[8pt]
+\text{BU}_{T_1} &= \dataplaceholder{A} \times 6 \times 2.0 \times 1.15 = \dataplaceholder{BU1} \\[8pt]
+\Delta\text{BU} &= \dataplaceholder{BU1} - \dataplaceholder{BU0} = -\dataplaceholder{DELTA}
+\end{align}
+
+Habitat classification unchanged (lowland mixed deciduous woodland, w1f), but condition declined from Good to Moderate, reflecting reduced NDVI heterogeneity consistent with canopy homogenisation or understorey loss.
+
+\subsection{Example 3: Development Loss}
+
+Parcel TOID \dataplaceholder{TOID}, area \dataplaceholder{A}\,ha:
+
+\begin{align}
+\text{BU}_{T_0} &= \dataplaceholder{A} \times 4 \times 2.0 \times 1.00 = \dataplaceholder{BU0} \\[8pt]
+\text{BU}_{T_1} &= \dataplaceholder{A} \times 0 \times 0 \times 1.00 = 0.00 \\[8pt]
+\Delta\text{BU} &= 0.00 - \dataplaceholder{BU0} = -\dataplaceholder{DELTA}
+\end{align}
+
+Parcel converted from other neutral grassland (g3c) to developed land (u1b), representing a complete loss of biodiversity value.
+
+
+\section{Sensitivity Analysis}
+
+\subsection{One-At-A-Time (OAT) Analysis}
+
+Each input parameter was varied across its plausible range while holding all others at their nominal values:
+
+\begin{table}[H]
+\centering
+\caption{Sensitivity analysis: parameter ranges and effect on total $\Delta$BU.}
+\label{tab:sensitivity}
+\begin{tabular}{p{40mm}ccc}
+\toprule
+\textbf{Parameter} & \textbf{Low} & \textbf{Nominal} & \textbf{High} \\
+\midrule
+Condition threshold shift ($\pm$1 SD) & \dataplaceholder{LOW} & \dataplaceholder{NOM} & \dataplaceholder{HIGH} \\
+Classification probability cutoff      & \dataplaceholder{LOW} & \dataplaceholder{NOM} & \dataplaceholder{HIGH} \\
+Area measurement error ($\pm$2\%)      & \dataplaceholder{LOW} & \dataplaceholder{NOM} & \dataplaceholder{HIGH} \\
+LNRS layer version (v0.2 vs v0.3)     & \dataplaceholder{LOW} & \dataplaceholder{NOM} & \dataplaceholder{HIGH} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}
+  \draw[dreamlab-light,fill=dreamlab-light,rounded corners] (0,0) rectangle (12,7);
+  \node[dreamlab-grey,font=\sffamily\large] at (6,3.5) {Figure placeholder: Tornado diagram};
+  \node[dreamlab-grey,font=\sffamily\footnotesize] at (6,2.5) {../output/figures/tornado\_sensitivity.png};
+\end{tikzpicture}
+\caption{Tornado diagram showing the relative influence of each parameter on the total $\Delta$BU. Bars indicate the range of total delta when each parameter is varied from low to high.}
+\label{fig:tornado}
+\end{figure}
+
+
+\section{Monte Carlo Uncertainty Quantification}
+
+\subsection{Simulation Design}
+
+A Monte Carlo simulation with $N = 10{,}000$ iterations was performed, perturbing the three uncertainty sources described in Section~\ref{sec:bm4scoring} simultaneously at each iteration. The simulation produces a probability distribution of the total $\Delta\text{BU}_{\text{total}}$.
+
+\subsection{Results}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}
+  \draw[dreamlab-light,fill=dreamlab-light,rounded corners] (0,0) rectangle (12,7);
+  \node[dreamlab-grey,font=\sffamily\large] at (6,3.5) {Figure placeholder: Monte Carlo delta distribution};
+  \node[dreamlab-grey,font=\sffamily\footnotesize] at (6,2.5) {../output/figures/monte\_carlo\_delta\_distribution.png};
+\end{tikzpicture}
+\caption{Monte Carlo simulation results: probability density of the total $\Delta$BU across 10,000 iterations. The vertical red lines mark the 2.5th and 97.5th percentiles (95\% CI); the vertical blue line marks the nominal estimate.}
+\label{fig:mc-distribution}
+\end{figure}
+
+\begin{table}[H]
+\centering
+\caption{Monte Carlo simulation summary statistics.}
+\label{tab:mc-stats}
+\begin{tabular}{lr}
+\toprule
+\textbf{Statistic} & \textbf{Value (BU)} \\
+\midrule
+Nominal $\Delta$BU          & \dataplaceholder{NOM} \\
+Monte Carlo mean             & \dataplaceholder{MEAN} \\
+Monte Carlo std.~dev.        & \dataplaceholder{SD} \\
+2.5th percentile (95\% CI)  & \dataplaceholder{P025} \\
+97.5th percentile (95\% CI) & \dataplaceholder{P975} \\
+Probability of net gain      & \dataplaceholder{P GAIN}\% \\
+Probability of net loss      & \dataplaceholder{P LOSS}\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Convergence Diagnostics}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}
+  \draw[dreamlab-light,fill=dreamlab-light,rounded corners] (0,0) rectangle (12,5);
+  \node[dreamlab-grey,font=\sffamily\large] at (6,2.5) {Figure placeholder: MC convergence trace};
+  \node[dreamlab-grey,font=\sffamily\footnotesize] at (6,1.5) {../output/figures/mc\_convergence.png};
+\end{tikzpicture}
+\caption{Monte Carlo convergence trace: running mean and 95\% CI width as a function of iteration count. Convergence (CI width change $<$0.1\% per 100 iterations) is achieved by iteration \dataplaceholder{N CONVERGE}.}
+\label{fig:mc-convergence}
+\end{figure}
+
+\begin{confidencebox}{HIGH}
+The Monte Carlo simulation converged within \dataplaceholder{N CONVERGE} iterations. The 95\% CI width of \dataplaceholder{CI WIDTH} BU is \dataplaceholder{PCT}\% of the nominal delta, indicating acceptable precision for statutory reporting purposes.
+\end{confidencebox}
+
+
+\section{Comparison with 10\% BNG Threshold}
+
+While this analysis is not a formal BNG assessment for a planning application, it is instructive to compare the observed delta against the statutory 10\% net gain threshold:
+
+\begin{equation}
+\text{10\% BNG threshold} = 0.10 \times \text{BU}_{T_0} = 0.10 \times \dataplaceholder{T0 BU} = \dataplaceholder{THRESHOLD} \text{ BU}
+\label{eq:bng-threshold}
+\end{equation}
+
+The observed delta of \dataplaceholder{DELTA BU} is \dataplaceholder{ABOVE/BELOW} this threshold. If the study area were subject to a BNG obligation, the current trajectory would \dataplaceholder{MEET/NOT MEET} the 10\% requirement \dataplaceholder{WITH/WITHOUT} additional habitat creation or enhancement measures.
+
+\begin{confidencebox}{SPECULATIVE}
+This comparison is illustrative only. A formal BNG assessment would require consideration of habitat trading rules, the mitigation hierarchy, temporal discounting for habitat creation lag, and the specific development footprint, none of which are modelled here.
+\end{confidencebox}

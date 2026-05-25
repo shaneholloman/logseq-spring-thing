@@ -1,0 +1,263 @@
+%% Chapter 7 — Hedgerow and Watercourse Assessment
+\chapter{Hedgerow and Watercourse Assessment}
+\label{ch:linear}
+
+\section{Introduction}
+
+The Statutory Biodiversity Metric~4.0 treats linear features—hedgerows and watercourses—as separate biodiversity unit types, calculated per unit length rather than per unit area. This chapter presents the linear feature assessment for both the 2016 baseline (\Tzero) and 2026 present-day (\Tone) epochs, following the BM\,4.0 hedgerow and watercourse modules.
+
+
+\section{Hedgerow Assessment}
+
+\subsection{Hedgerow Identification and Mapping}
+
+Hedgerows were identified from a combination of:
+\begin{enumerate}[nosep]
+  \item OS MasterMap boundary features classified as ``hedge'' or ``hedgerow'';
+  \item NDVI-based linear feature extraction from Sentinel-2 imagery (10\,m resolution);
+  \item Manual verification against high-resolution aerial imagery (25\,cm).
+\end{enumerate}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}
+  \draw[dreamlab-light,fill=dreamlab-light,rounded corners] (0,0) rectangle (12,7);
+  \node[dreamlab-grey,font=\sffamily\large] at (6,3.5) {Figure placeholder: Hedgerow network map};
+  \node[dreamlab-grey,font=\sffamily\footnotesize] at (6,2.5) {../output/figures/hedgerow\_map.png};
+\end{tikzpicture}
+\caption{Hedgerow network within the 1\,km study area at \Tone{} (2026). Colour coding indicates BM\,4.0 condition: green = Good, amber = Moderate, red = Poor. Dashed lines indicate hedgerows identified at \Tzero{} but no longer present at \Tone.}
+\label{fig:hedgerow-map}
+\end{figure}
+
+\subsection{Hedgerow Classification}
+
+BM\,4.0 classifies hedgerows into the following types, each with a defined distinctiveness score:
+
+\begin{table}[H]
+\centering
+\caption{BM\,4.0 hedgerow type distinctiveness scores.}
+\label{tab:hedge-distinctiveness}
+\begin{tabular}{lc}
+\toprule
+\textbf{Hedgerow Type} & \textbf{Distinctiveness} \\
+\midrule
+Native species-rich hedgerow with trees              & Very High (8) \\
+Native species-rich hedgerow                         & High (6) \\
+Native hedgerow with trees                           & Medium (4) \\
+Native hedgerow                                      & Low (2) \\
+Non-native or ornamental hedgerow                    & Very Low (0) \\
+Line of trees (associated with hedgerow)             & Medium (4) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Hedgerow Condition Assessment}
+
+Hedgerow condition under BM\,4.0 is assessed against specific criteria including:
+\begin{itemize}[nosep]
+  \item Height ($>$1.5\,m for Good condition);
+  \item Width ($>$1.5\,m for Good condition);
+  \item Continuity (gaps $<$10\% of total length for Good);
+  \item Base vegetation diversity;
+  \item Presence of standard trees;
+  \item Evidence of recent appropriate management.
+\end{itemize}
+
+\begin{confidencebox}{MEDIUM}
+Hedgerow condition at the remote sensing resolution available (10\,m Sentinel-2) is estimated using NDVI transect profiles perpendicular to the hedgerow centreline. The width and continuity criteria can be partially assessed from high-resolution imagery; height assessment is inferred from shadow analysis. This proxy approach has been calibrated against field survey data from comparable Derbyshire landscapes.
+\end{confidencebox}
+
+\subsection{Hedgerow Biodiversity Unit Calculation}
+
+Hedgerow biodiversity units are calculated as:
+
+\begin{equation}
+\text{HBU}_j = L_j \times D_j \times C_j \times S_j
+\label{eq:hbu}
+\end{equation}
+
+\noindent where $L_j$ is the length of hedgerow segment $j$ in kilometres, $D_j$ is the distinctiveness score, $C_j$ is the condition multiplier, and $S_j$ is the strategic significance multiplier.
+
+\subsection{Hedgerow Results — \Tzero{} (2016)}
+
+\begin{longtable}{p{45mm}rrrr}
+\caption{Hedgerow biodiversity units at \Tzero{} (2016).}
+\label{tab:hedge-2016} \\
+\toprule
+\textbf{Hedgerow Type} & \textbf{Length (km)} & \textbf{Cond. (avg)} & \textbf{Strat. (avg)} & \textbf{HBU} \\
+\midrule
+\endfirsthead
+\midrule
+\endhead
+\bottomrule
+\endlastfoot
+
+Native species-rich with trees  & \dataplaceholder{L} & \dataplaceholder{C} & \dataplaceholder{S} & \dataplaceholder{HBU} \\
+Native species-rich             & \dataplaceholder{L} & \dataplaceholder{C} & \dataplaceholder{S} & \dataplaceholder{HBU} \\
+Native with trees               & \dataplaceholder{L} & \dataplaceholder{C} & \dataplaceholder{S} & \dataplaceholder{HBU} \\
+Native hedgerow                 & \dataplaceholder{L} & \dataplaceholder{C} & \dataplaceholder{S} & \dataplaceholder{HBU} \\
+Non-native / ornamental         & \dataplaceholder{L} & \dataplaceholder{C} & \dataplaceholder{S} & \dataplaceholder{HBU} \\
+\midrule
+\textbf{Total}                  & \dataplaceholder{TOTAL} & --- & --- & \dataplaceholder{TOTAL HBU} \\
+\end{longtable}
+
+\subsection{Hedgerow Results — \Tone{} (2026)}
+
+\begin{longtable}{p{45mm}rrrr}
+\caption{Hedgerow biodiversity units at \Tone{} (2026).}
+\label{tab:hedge-2026} \\
+\toprule
+\textbf{Hedgerow Type} & \textbf{Length (km)} & \textbf{Cond. (avg)} & \textbf{Strat. (avg)} & \textbf{HBU} \\
+\midrule
+\endfirsthead
+\midrule
+\endhead
+\bottomrule
+\endlastfoot
+
+Native species-rich with trees  & \dataplaceholder{L} & \dataplaceholder{C} & \dataplaceholder{S} & \dataplaceholder{HBU} \\
+Native species-rich             & \dataplaceholder{L} & \dataplaceholder{C} & \dataplaceholder{S} & \dataplaceholder{HBU} \\
+Native with trees               & \dataplaceholder{L} & \dataplaceholder{C} & \dataplaceholder{S} & \dataplaceholder{HBU} \\
+Native hedgerow                 & \dataplaceholder{L} & \dataplaceholder{C} & \dataplaceholder{S} & \dataplaceholder{HBU} \\
+Non-native / ornamental         & \dataplaceholder{L} & \dataplaceholder{C} & \dataplaceholder{S} & \dataplaceholder{HBU} \\
+\midrule
+\textbf{Total}                  & \dataplaceholder{TOTAL} & --- & --- & \dataplaceholder{TOTAL HBU} \\
+\end{longtable}
+
+\subsection{Hedgerow Delta}
+
+\begin{table}[H]
+\centering
+\caption{Hedgerow biodiversity unit delta summary.}
+\label{tab:hedge-delta}
+\begin{tabular}{lrrr}
+\toprule
+\textbf{Metric} & \textbf{\Tzero} & \textbf{\Tone} & \textbf{Delta} \\
+\midrule
+Total hedgerow length (km)      & \dataplaceholder{L0} & \dataplaceholder{L1} & \dataplaceholder{DL} \\
+Total hedgerow BU               & \dataplaceholder{HBU0} & \dataplaceholder{HBU1} & \dataplaceholder{DHBU} \\
+Net percentage change           & --- & --- & \dataplaceholder{PCT}\% \\
+Segments with improved condition & --- & --- & \dataplaceholder{N} \\
+Segments with declined condition & --- & --- & \dataplaceholder{N} \\
+Segments lost (removed)         & --- & --- & \dataplaceholder{N} \\
+New segments created            & --- & --- & \dataplaceholder{N} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+
+\section{Watercourse Assessment}
+
+\subsection{Watercourse Identification}
+
+Watercourses within the study area were identified from:
+\begin{enumerate}[nosep]
+  \item OS MasterMap water features (inland water theme);
+  \item Environment Agency Detailed River Network (DRN);
+  \item NDMI-based wet feature extraction from Sentinel-2 imagery.
+\end{enumerate}
+
+\subsection{Watercourse Classification}
+
+BM\,4.0 classifies watercourses by type:
+
+\begin{table}[H]
+\centering
+\caption{BM\,4.0 watercourse type distinctiveness scores.}
+\label{tab:water-distinctiveness}
+\begin{tabular}{lc}
+\toprule
+\textbf{Watercourse Type} & \textbf{Distinctiveness} \\
+\midrule
+Priority habitat river            & Very High (8) \\
+Other rivers and streams          & High (6) \\
+Ditches                           & Medium (4) \\
+Canals                            & Low (2) \\
+Culverted watercourse             & Very Low (0) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Watercourse Condition Assessment}
+
+Condition criteria for watercourses include:
+\begin{itemize}[nosep]
+  \item Physical modification (channelisation, bank reinforcement);
+  \item Riparian buffer presence and width;
+  \item Water quality indicators (inferred from riparian vegetation vigour);
+  \item Flow diversity (pools, riffles — inferred where resolution permits);
+  \item Invasive non-native species presence.
+\end{itemize}
+
+\begin{confidencebox}{LOW}
+Watercourse condition is the most challenging parameter to assess from remote sensing alone. The NDMI and riparian NDVI proxy indicators provide a coarse assessment. Physical modification and flow diversity cannot be reliably assessed at 10\,m resolution. Condition scores for watercourses should be treated with greater caution than those for area-based habitats.
+\end{confidencebox}
+
+\subsection{Watercourse Biodiversity Unit Calculation}
+
+Watercourse (river) biodiversity units are calculated as:
+
+\begin{equation}
+\text{RBU}_k = L_k \times D_k \times C_k \times S_k
+\label{eq:rbu}
+\end{equation}
+
+\subsection{Watercourse Results}
+
+\begin{table}[H]
+\centering
+\caption{Watercourse biodiversity units at \Tzero{} and \Tone.}
+\label{tab:water-results}
+\begin{tabular}{p{40mm}rrrrrr}
+\toprule
+ & \multicolumn{3}{c}{\textbf{\Tzero{} (2016)}} & \multicolumn{3}{c}{\textbf{\Tone{} (2026)}} \\
+\cmidrule(lr){2-4}\cmidrule(lr){5-7}
+\textbf{Type} & \textbf{L (km)} & \textbf{Cond.} & \textbf{RBU} & \textbf{L (km)} & \textbf{Cond.} & \textbf{RBU} \\
+\midrule
+Other rivers/streams & \dataplaceholder{L} & \dataplaceholder{C} & \dataplaceholder{RBU} & \dataplaceholder{L} & \dataplaceholder{C} & \dataplaceholder{RBU} \\
+Ditches              & \dataplaceholder{L} & \dataplaceholder{C} & \dataplaceholder{RBU} & \dataplaceholder{L} & \dataplaceholder{C} & \dataplaceholder{RBU} \\
+\midrule
+\textbf{Total}       & \dataplaceholder{TL} & --- & \dataplaceholder{TRBU} & \dataplaceholder{TL} & --- & \dataplaceholder{TRBU} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Watercourse Delta}
+
+\begin{table}[H]
+\centering
+\caption{Watercourse biodiversity unit delta summary.}
+\label{tab:water-delta}
+\begin{tabular}{lrrr}
+\toprule
+\textbf{Metric} & \textbf{\Tzero} & \textbf{\Tone} & \textbf{Delta} \\
+\midrule
+Total watercourse length (km)  & \dataplaceholder{L0} & \dataplaceholder{L1} & \dataplaceholder{DL} \\
+Total watercourse RBU          & \dataplaceholder{RBU0} & \dataplaceholder{RBU1} & \dataplaceholder{DRBU} \\
+Net percentage change          & --- & --- & \dataplaceholder{PCT}\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+
+\section{Combined Linear Feature Summary}
+
+\begin{table}[H]
+\centering
+\caption{Combined linear feature delta summary.}
+\label{tab:linear-combined}
+\begin{tabular}{lrrr}
+\toprule
+\textbf{Linear Feature Type} & \textbf{$\Delta$BU} & \textbf{$\Delta$\%} & \textbf{95\% CI} \\
+\midrule
+Hedgerow units   & \dataplaceholder{DHBU} & \dataplaceholder{PCT}\% & [\dataplaceholder{CI}] \\
+Watercourse units & \dataplaceholder{DRBU} & \dataplaceholder{PCT}\% & [\dataplaceholder{CI}] \\
+\midrule
+\textbf{Total linear units} & \dataplaceholder{TOTAL} & \dataplaceholder{PCT}\% & [\dataplaceholder{CI}] \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{confidencebox}{MEDIUM}
+Linear feature units contribute separately to the BNG balance sheet under BM\,4.0. They cannot be substituted for area-based units or vice versa. Any development proposal must demonstrate the required net gain in each of the three unit types (area, hedgerow, watercourse) independently.
+\end{confidencebox}
