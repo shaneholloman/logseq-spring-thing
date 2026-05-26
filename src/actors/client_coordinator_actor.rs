@@ -1263,6 +1263,26 @@ impl Handler<RegisterClient> for ClientCoordinatorActor {
             }
         }
 
+        // Recompute filter immediately so binary broadcasts respect include_linked_pages
+        if let Some(graph_addr) = self.graph_service_addr.clone() {
+            let manager_arc = self.client_manager.clone();
+            actix::spawn(async move {
+                use crate::actors::messages::GetGraphData;
+                if let Ok(Ok(graph_data)) = graph_addr.send(GetGraphData).await {
+                    if let Ok(mut manager) = manager_arc.write() {
+                        if let Some(client) = manager.get_client_mut(client_id) {
+                            crate::actors::client_filter::recompute_filtered_nodes(
+                                &mut client.filter,
+                                &graph_data
+                            );
+                            info!("Initial filter for client {}: {} nodes visible (include_linked_pages={})",
+                                  client_id, client.filter.filtered_node_ids.len(), client.filter.include_linked_pages);
+                        }
+                    }
+                }
+            });
+        }
+
         info!(
             "Client {} registered successfully. Total clients: {}",
             client_id, self.connection_stats.current_clients
