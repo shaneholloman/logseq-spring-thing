@@ -223,6 +223,7 @@ export const useWebSocketStore = create<WebSocketState>()(
                 filter_by_quality: currentFilter.filterByQuality,
                 filter_by_authority: currentFilter.filterByAuthority,
                 filter_mode: currentFilter.filterMode,
+                include_linked_pages: currentFilter.includeLinkedPages ?? false,
               });
             }
 
@@ -478,6 +479,7 @@ export const useWebSocketStore = create<WebSocketState>()(
           filter_by_quality: filter.filterByQuality,
           filter_by_authority: filter.filterByAuthority,
           filter_mode: filter.filterMode,
+          include_linked_pages: filter.includeLinkedPages ?? false,
         });
 
         logger.info('Filter update sent to server', filter);

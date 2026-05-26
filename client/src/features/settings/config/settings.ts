@@ -715,6 +715,7 @@ export interface NodeFilterSettings {
   filterByQuality?: boolean;
   filterByAuthority?: boolean;
   filterMode?: 'and' | 'or';
+  includeLinkedPages?: boolean;
 }
 
 // Main settings interface - Single source of truth matching server AppFullSettings

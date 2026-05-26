@@ -501,7 +501,7 @@ function transformApiToClientSettings(apiResponse: AllSettings): Record<string, 
         filterByQuality: true,
         filterByAuthority: false,
         filterMode: 'or' as const,
-        includeLinkedPages: true,
+        includeLinkedPages: false,
       },
       ...(apiResponse.nodeFilter || {}),
     }

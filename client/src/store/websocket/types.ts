@@ -54,6 +54,7 @@ export interface FilterUpdateParams {
   filterByQuality?: boolean;
   filterByAuthority?: boolean;
   filterMode?: string;
+  includeLinkedPages?: boolean;
 }
 
 export interface NodePositionUpdate {
@@ -82,6 +83,7 @@ export interface FilterSnapshot {
   filterByQuality?: boolean;
   filterByAuthority?: boolean;
   filterMode?: string;
+  includeLinkedPages?: boolean;
 }
 
 // Store state interface

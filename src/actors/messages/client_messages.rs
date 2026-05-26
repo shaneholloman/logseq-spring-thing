@@ -151,4 +151,4 @@ pub struct ClientBroadcastAck {
     pub client_id: Option<usize>,
 }
 
-fn default_include_linked_pages() -> bool { true }
+fn default_include_linked_pages() -> bool { false }

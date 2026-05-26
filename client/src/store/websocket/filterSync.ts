@@ -51,6 +51,7 @@ export function setupFilterSubscription(
     'nodeFilter.filterByQuality',
     'nodeFilter.filterByAuthority',
     'nodeFilter.filterMode',
+    'nodeFilter.includeLinkedPages',
   ] as const;
 
   filterPaths.forEach(path => {
@@ -75,7 +76,8 @@ export function setupFilterSubscription(
         prev.authorityThreshold !== nodeFilter.authorityThreshold ||
         prev.filterByQuality !== nodeFilter.filterByQuality ||
         prev.filterByAuthority !== nodeFilter.filterByAuthority ||
-        prev.filterMode !== nodeFilter.filterMode
+        prev.filterMode !== nodeFilter.filterMode ||
+        prev.includeLinkedPages !== nodeFilter.includeLinkedPages
       ) {
         lastFilterSnapshot = {
           enabled: nodeFilter.enabled,
@@ -84,6 +86,7 @@ export function setupFilterSubscription(
           filterByQuality: nodeFilter.filterByQuality,
           filterByAuthority: nodeFilter.filterByAuthority,
           filterMode: nodeFilter.filterMode,
+          includeLinkedPages: nodeFilter.includeLinkedPages,
         };
         wsState.sendFilterUpdate(lastFilterSnapshot);
       }
@@ -109,6 +112,7 @@ function handleFilterChange(
       filterByQuality: nodeFilter.filterByQuality,
       filterByAuthority: nodeFilter.filterByAuthority,
       filterMode: nodeFilter.filterMode,
+      includeLinkedPages: nodeFilter.includeLinkedPages,
     });
   }
 }
@@ -140,6 +144,7 @@ export async function forceRefreshFilter(
       filterByQuality: nodeFilter.filterByQuality,
       filterByAuthority: nodeFilter.filterByAuthority,
       filterMode: nodeFilter.filterMode,
+      includeLinkedPages: nodeFilter.includeLinkedPages,
     });
   } else {
     logger.warn('No nodeFilter settings found in store');

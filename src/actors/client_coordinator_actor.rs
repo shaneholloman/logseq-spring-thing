@@ -86,7 +86,7 @@ impl Default for ClientFilter {
             filter_mode: FilterMode::Or,
             max_nodes: Some(10000),
             filtered_node_ids: std::collections::HashSet::new(),
-            include_linked_pages: true,
+            include_linked_pages: false,
         }
     }
 }
