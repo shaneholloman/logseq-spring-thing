@@ -755,74 +755,16 @@ impl GraphStateActor {
 impl Actor for GraphStateActor {
     type Context = Context<Self>;
 
-    fn started(&mut self, ctx: &mut Self::Context) {
-        info!("GraphStateActor started - loading graph from Oxigraph");
-
-        let repository = Arc::clone(&self.repository);
-
-        // Spawn async task to load graph from Oxigraph
-        ctx.spawn(
-            async move {
-                match repository.load_graph().await {
-                    Ok(arc_graph_data) => {
-                        info!("Successfully loaded graph from Oxigraph: {} nodes, {} edges",
-                              arc_graph_data.nodes.len(), arc_graph_data.edges.len());
-                        Some(arc_graph_data)
-                    }
-                    Err(e) => {
-                        error!("Failed to load graph from Oxigraph: {}", e);
-                        None
-                    }
-                }
-            }
-            .into_actor(self)
-            .map(|graph_opt, act, _ctx| {
-                if let Some(arc_graph_data) = graph_opt {
-                    // Update actor state with loaded graph (already Arc'd)
-                    act.graph_data = arc_graph_data.clone();
-
-                    // ADR-014: No fallback edge generation. Edges come from Oxigraph.
-
-                    // Remap all node IDs to compact 0..N-1 and translate edge src/tgt.
-                    // This MUST happen before node_map rebuild and classification.
-                    act.remap_to_compact_ids();
-
-                    // Update next_node_id to continue from compact range
-                    act.next_node_id.store(act.graph_data.nodes.len() as u32, std::sync::atomic::Ordering::SeqCst);
-
-                    // Classify all loaded nodes into type sets (using compact IDs)
-                    act.reclassify_all_nodes();
-
-                    // Persist translated edges to Oxigraph using ORIGINAL persistent IDs (fire-and-forget)
-                    if !act.graph_data.edges.is_empty() {
-                        let repo = Arc::clone(&act.repository);
-                        // Translate compact edge IDs back to persistent IDs for storage
-                        let c2n = act.compact_to_persistent.clone();
-                        let edges_to_save: Vec<Edge> = act.graph_data.edges.iter().map(|e| {
-                            let mut persistent_edge = e.clone();
-                            persistent_edge.source = c2n.get(e.source as usize).copied().unwrap_or(e.source);
-                            persistent_edge.target = c2n.get(e.target as usize).copied().unwrap_or(e.target);
-                            persistent_edge
-                        }).collect();
-                        let node_count = act.graph_data.nodes.len();
-                        actix::spawn(async move {
-                            for edge in &edges_to_save {
-                                if let Err(e) = repo.add_edge(edge).await {
-                                    error!("Failed to persist edge {}->{}: {}", edge.source, edge.target, e);
-                                }
-                            }
-                            debug!("Persisted {} edges to Oxigraph for {} nodes", edges_to_save.len(), node_count);
-                        });
-                    }
-
-                    info!("GraphStateActor initialized with {} nodes, {} edges from Oxigraph (compact IDs 0..{})",
-                          act.graph_data.nodes.len(), act.graph_data.edges.len(),
-                          act.graph_data.nodes.len().saturating_sub(1));
-                } else {
-                    warn!("GraphStateActor starting with empty graph due to load failure");
-                }
-            }),
-        );
+    fn started(&mut self, _ctx: &mut Self::Context) {
+        // Start with empty state. main.rs runs the Data Orchestration Sequence
+        // (Step 2: load_graph_from_files → save_graph into Oxigraph, then
+        // Step 3: send ReloadGraphFromDatabase to this actor). The eager
+        // load that previously lived here raced with Step 3 — `started()`
+        // would async-read Oxigraph BEFORE Step 2 had populated it, then
+        // its completion callback could fire AFTER ReloadGraphFromDatabase
+        // had loaded fresh state, overwriting it with stale/empty data.
+        // Letting Step 3 do the single canonical load eliminates the race.
+        info!("GraphStateActor started with empty state - waiting for ReloadGraphFromDatabase");
     }
 
     fn stopped(&mut self, _ctx: &mut Self::Context) {
