@@ -1,0 +1,41 @@
+[package]
+name = "visionflow-actors"
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0-only"
+description = "VisionFlow actor subsystem: supervision framework, pure-domain actors, GPU stream utilities"
+authors = ["jjohare <github@thedreamlab.uk>"]
+repository = "https://github.com/jjohare/AR-AI-Knowledge-Graph"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+# Domain types and error hierarchy
+visionflow-domain = { path = "../visionflow-domain" }
+
+# Actix actor runtime
+actix = "0.13"
+
+# Async / concurrency
+tokio = { version = "1", default-features = false, features = ["sync", "rt"] }
+
+# Serialisation
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Error handling
+anyhow = "1.0"
+thiserror = "2.0"
+
+# Logging
+log = "0.4"
+
+# Utilities
+chrono = { version = "0.4", features = ["serde"] }
+validator = { version = "0.18", features = ["derive"] }
+
+[lints]
+
+[features]
+default = []
