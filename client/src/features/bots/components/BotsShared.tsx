@@ -1,0 +1,196 @@
+/**
+ * BotsShared.tsx
+ * Shared primitives for the Bots visualization:
+ *   - CSS keyframe injection (runs once at module load)
+ *   - SimpleLine – a standard BufferGeometry line (avoids Line2/InstancedBufferGeometry
+ *     which crashes WebGPU's drawIndexed via drei's <Line>)
+ *   - Pure helpers: lerpVector3, generateAgentTypeColor, getVisionFlowColors
+ *   - Pre-allocated module-scope Three.js objects (zero-alloc pattern)
+ */
+import React, { useRef, useEffect, useMemo } from 'react';
+import * as THREE from 'three';
+
+// ---------------------------------------------------------------------------
+// Pre-allocated Three.js objects — never re-create in render/frame loops
+// ---------------------------------------------------------------------------
+export const _tempVec3A = new THREE.Vector3();
+export const _tempVec3B = new THREE.Vector3();
+export const _tempVec3Mid = new THREE.Vector3();
+export const _tempVec3Perp = new THREE.Vector3();
+export const QUEEN_GOLD = new THREE.Color('#FFD700');
+export const ADDITIVE_BLENDING = THREE.AdditiveBlending;
+export const BACK_SIDE = THREE.BackSide;
+
+/** Pre-allocated particle base-T values (module scope — avoids per-render allocation). */
+export const PARTICLE_BASE_T = [0.15, 0.4, 0.65, 0.9] as const;
+
+// ---------------------------------------------------------------------------
+// CSS injection (runs once at module import time)
+// ---------------------------------------------------------------------------
+const pulseKeyframes = `
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.7; transform: scale(0.95); }
+  }
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-2px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes sparkle {
+    0%, 100% { opacity: 1; text-shadow: 0 0 4px rgba(243, 156, 18, 0.8); }
+    50% { opacity: 0.8; text-shadow: 0 0 8px rgba(243, 156, 18, 1); }
+  }
+`;
+
+if (typeof document !== 'undefined' && !document.querySelector('#bots-visualization-styles')) {
+  const style = document.createElement('style');
+  style.id = 'bots-visualization-styles';
+  style.textContent = pulseKeyframes;
+  document.head.appendChild(style);
+}
+
+// ---------------------------------------------------------------------------
+// SimpleLine — WebGPU-safe line primitive
+// ---------------------------------------------------------------------------
+interface SimpleLineProps {
+  points: THREE.Vector3[];
+  color: string;
+  opacity?: number;
+  transparent?: boolean;
+}
+
+export const SimpleLine: React.FC<SimpleLineProps> = ({
+  points,
+  color,
+  opacity = 1,
+  transparent = false,
+}) => {
+  const geomRef = useRef<THREE.BufferGeometry>(null);
+  const positions = useMemo(() => {
+    const arr = new Float32Array(points.length * 3);
+    for (let i = 0; i < points.length; i++) {
+      arr[i * 3]     = points[i].x;
+      arr[i * 3 + 1] = points[i].y;
+      arr[i * 3 + 2] = points[i].z;
+    }
+    return arr;
+  }, [points]);
+
+  useEffect(() => {
+    if (geomRef.current) {
+      geomRef.current.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    }
+  }, [positions]);
+
+  return (
+    <line>
+      <bufferGeometry ref={geomRef}>
+        <bufferAttribute attach="attributes-position" args={[positions, 3]} />
+      </bufferGeometry>
+      <lineBasicMaterial color={color} opacity={opacity} transparent={transparent} />
+    </line>
+  );
+};
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/** Smooth in-place position interpolation — writes directly into `current`, no alloc. */
+export function lerpVector3(
+  current: THREE.Vector3,
+  target: THREE.Vector3,
+  alpha: number,
+): void {
+  current.x += (target.x - current.x) * alpha;
+  current.y += (target.y - current.y) * alpha;
+  current.z += (target.z - current.z) * alpha;
+}
+
+/** Hash-based colour from agent type string. */
+export const generateAgentTypeColor = (agentType: string): string => {
+  let hash = 0;
+  for (let i = 0; i < agentType.length; i++) {
+    const char = agentType.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash;
+  }
+
+  const coordColors  = ['#F1C40F', '#F39C12', '#E67E22', '#D68910', '#B7950B'];
+  const devColors    = ['#2ECC71', '#27AE60', '#1ABC9C', '#16A085', '#229954'];
+  const specialColors = ['#9B59B6', '#8E44AD', '#E74C3C', '#C0392B', '#3498DB'];
+
+  const coordTypes = ['queen', 'coordinator', 'architect', 'monitor', 'manager'];
+  const devTypes   = ['coder', 'tester', 'reviewer', 'documenter', 'developer'];
+
+  let colorPalette = specialColors;
+  if (coordTypes.some(type => agentType.toLowerCase().includes(type))) {
+    colorPalette = coordColors;
+  } else if (devTypes.some(type => agentType.toLowerCase().includes(type))) {
+    colorPalette = devColors;
+  }
+
+  const colorIndex = Math.abs(hash) % colorPalette.length;
+  return colorPalette[colorIndex];
+};
+
+/** Resolve per-agent colour configuration from settings. */
+export const getVisionFlowColors = (settings: Record<string, unknown> | undefined) => {
+  const vis              = settings?.visualisation as Record<string, unknown> | undefined;
+  const graphs           = vis?.graphs as Record<string, unknown> | undefined;
+  const visionflowSettings = graphs?.visionflow as Record<string, unknown> | undefined;
+  const vfNodes          = visionflowSettings?.nodes as Record<string, unknown> | undefined;
+  const baseColor        = (vfNodes?.baseColor as string | undefined) || '#F1C40F';
+
+  const rendering   = vis?.rendering as Record<string, unknown> | undefined;
+  const agentColors = rendering?.agentColors as Record<string, string> | undefined;
+
+  const fallback = {
+    getAgentColor: (agentType: string) => generateAgentTypeColor(agentType),
+    coder: generateAgentTypeColor('coder'),
+    tester: generateAgentTypeColor('tester'),
+    researcher: generateAgentTypeColor('researcher'),
+    reviewer: generateAgentTypeColor('reviewer'),
+    documenter: generateAgentTypeColor('documenter'),
+    specialist: generateAgentTypeColor('specialist'),
+    queen: generateAgentTypeColor('queen'),
+    coordinator: baseColor,
+    architect: generateAgentTypeColor('architect'),
+    monitor: generateAgentTypeColor('monitor'),
+    analyst: generateAgentTypeColor('analyst'),
+    optimizer: generateAgentTypeColor('optimizer'),
+    edge: '#3498DB',
+    activeEdge: '#2980B9',
+    active: '#2ECC71',
+    busy: '#F39C12',
+    idle: '#95A5A6',
+    error: '#E74C3C',
+  };
+
+  if (!agentColors || Object.keys(agentColors).length === 0) return fallback;
+
+  return {
+    getAgentColor: (agentType: string) => agentColors[agentType] || generateAgentTypeColor(agentType),
+    coder: agentColors.coder || generateAgentTypeColor('coder'),
+    tester: agentColors.tester || generateAgentTypeColor('tester'),
+    researcher: agentColors.researcher || generateAgentTypeColor('researcher'),
+    reviewer: agentColors.reviewer || generateAgentTypeColor('reviewer'),
+    documenter: agentColors.documenter || generateAgentTypeColor('documenter'),
+    specialist: agentColors.default || generateAgentTypeColor('specialist'),
+    queen: agentColors.queen || generateAgentTypeColor('queen'),
+    coordinator: agentColors.coordinator || baseColor,
+    architect: agentColors.architect || generateAgentTypeColor('architect'),
+    monitor: agentColors.default || generateAgentTypeColor('monitor'),
+    analyst: agentColors.analyst || generateAgentTypeColor('analyst'),
+    optimizer: agentColors.optimizer || generateAgentTypeColor('optimizer'),
+    edge: '#3498DB',
+    activeEdge: '#2980B9',
+    active: '#2ECC71',
+    busy: '#F39C12',
+    idle: '#95A5A6',
+    error: '#E74C3C',
+  };
+};
+
+/** Format processing logs for display (passthrough, no mock generation). */
+export const formatProcessingLogs = (logs: string[] | undefined): string[] => logs || [];
