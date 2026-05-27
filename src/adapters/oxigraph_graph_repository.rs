@@ -273,6 +273,104 @@ impl OxigraphGraphRepository {
         "PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>\n",
         "PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>\n",
     );
+
+    // ------------------------------------------------------------------
+    // Bridge-edge garbage collection (T1 fix)
+    // ------------------------------------------------------------------
+
+    /// Delete all bridge edges in the default graph whose source or target
+    /// node is no longer present in either the knowledge or agent named
+    /// graph. Returns the number of triples removed.
+    ///
+    /// This is a best-effort cleanup: callers such as `clear_graph` and a
+    /// future startup hook invoke this to prevent the default graph from
+    /// accumulating stale cross-graph edges over time.
+    pub async fn bridge_edge_gc(&self) -> RepoResult<usize> {
+        let store = self.store.clone();
+        tokio::task::spawn_blocking(move || -> RepoResult<usize> {
+            // Count triples in the default graph before the DELETE so we
+            // can return a meaningful delta without a separate SELECT.
+            let count_before_q = format!(
+                "{p}SELECT (COUNT(*) AS ?n) WHERE {{\n  \
+                 ?s ?p ?o .\n  \
+                 FILTER (STRSTARTS(STR(?s), \"urn:ngm:edge:\"))\n}}",
+                p = Self::PROLOGUE,
+            );
+            let before: usize = match store.query(count_before_q.as_str()).map_err(access)? {
+                QueryResults::Solutions(mut sols) => {
+                    if let Some(Ok(row)) = sols.next() {
+                        row.get("n")
+                            .and_then(|t| {
+                                if let oxigraph::model::Term::Literal(lit) = t {
+                                    lit.value().parse::<usize>().ok()
+                                } else {
+                                    None
+                                }
+                            })
+                            .unwrap_or(0)
+                    } else {
+                        0
+                    }
+                }
+                _ => 0,
+            };
+
+            // DELETE triples for bridge edges whose source or target has
+            // no vc:nodeId in either named graph. We use NOT EXISTS across
+            // both named graphs to handle partial deletions gracefully.
+            let delete_q = format!(
+                concat!(
+                    "{p}",
+                    "DELETE {{ ?edge_s ?edge_p ?edge_o }}\n",
+                    "WHERE {{\n",
+                    "  ?edge_s ?edge_p ?edge_o .\n",
+                    "  FILTER (STRSTARTS(STR(?edge_s), \"urn:ngm:edge:\"))\n",
+                    "  {{ ?edge_s vc:source ?src }} UNION {{ ?edge_s vc:target ?src }}\n",
+                    "  FILTER NOT EXISTS {{\n",
+                    "    {{ GRAPH <{kg}> {{ ?src vc:nodeId ?_a }} }}\n",
+                    "    UNION\n",
+                    "    {{ GRAPH <{ag}> {{ ?src vc:nodeId ?_a }} }}\n",
+                    "  }}\n",
+                    "}}\n",
+                ),
+                p = Self::PROLOGUE,
+                kg = GRAPH_KNOWLEDGE,
+                ag = GRAPH_AGENT,
+            );
+
+            store.update(delete_q.as_str()).map_err(access)?;
+
+            // Count remaining to compute delta.
+            let count_after_q = format!(
+                "{p}SELECT (COUNT(*) AS ?n) WHERE {{\n  \
+                 ?s ?p ?o .\n  \
+                 FILTER (STRSTARTS(STR(?s), \"urn:ngm:edge:\"))\n}}",
+                p = Self::PROLOGUE,
+            );
+            let after: usize = match store.query(count_after_q.as_str()).map_err(access)? {
+                QueryResults::Solutions(mut sols) => {
+                    if let Some(Ok(row)) = sols.next() {
+                        row.get("n")
+                            .and_then(|t| {
+                                if let oxigraph::model::Term::Literal(lit) = t {
+                                    lit.value().parse::<usize>().ok()
+                                } else {
+                                    None
+                                }
+                            })
+                            .unwrap_or(0)
+                    } else {
+                        0
+                    }
+                }
+                _ => 0,
+            };
+
+            Ok(before.saturating_sub(after))
+        })
+        .await
+        .map_err(|e| GraphRepositoryError::AccessError(format!("join error: {e}")))?
+    }
 }
 
 #[async_trait]
@@ -323,7 +421,7 @@ impl GraphRepository for OxigraphGraphRepository {
         // cross-graph (bridge) edges land in the default graph, after
         // verifying both endpoints exist via an ASK guard.
         let mut same_graph_edges: Vec<(Edge, &'static str)> = Vec::with_capacity(edges.len());
-        let mut bridge_edges: Vec<Edge> = Vec::new();
+        let mut bridge_edges: Vec<Edge> = Vec::new(); // may be filtered in-place by ASK guard below
 
         for edge in &edges {
             let src_graph = graph_for_node_id(edge.source);
@@ -339,11 +437,17 @@ impl GraphRepository for OxigraphGraphRepository {
         // checks both endpoints are present somewhere in the dataset; we
         // do not constrain which graph, since vc:nodeId is asserted in
         // whichever graph the node was inserted into.
+        //
+        // T1 fix: a missing endpoint now logs a warning and skips the
+        // bridge rather than aborting the entire batch. Valid bridges are
+        // still written. Skipped count is logged as a summary at the end.
         if !bridge_edges.is_empty() {
             let prologue = Self::PROLOGUE.to_string();
             let bridges = bridge_edges.clone();
-            let ask_result: RepoResult<()> =
-                tokio::task::spawn_blocking(move || -> RepoResult<()> {
+            let valid_bridges: RepoResult<Vec<Edge>> =
+                tokio::task::spawn_blocking(move || -> RepoResult<Vec<Edge>> {
+                    let mut kept: Vec<Edge> = Vec::with_capacity(bridges.len());
+                    let mut skipped: usize = 0;
                     for edge in &bridges {
                         let q = format!(
                             "{p}ASK {{\n  {{ <{src_iri}> vc:nodeId ?_a }} UNION \
@@ -355,12 +459,13 @@ impl GraphRepository for OxigraphGraphRepository {
                             tgt_iri = node_iri(edge.target),
                         );
                         match store_for_ask.query(q.as_str()).map_err(access)? {
-                            QueryResults::Boolean(true) => continue,
+                            QueryResults::Boolean(true) => kept.push(edge.clone()),
                             QueryResults::Boolean(false) => {
-                                return Err(GraphRepositoryError::InvalidData(format!(
-                                    "bridge edge {}->{}: endpoint not present in store",
+                                log::warn!(
+                                    "bridge edge {}->{}: endpoint(s) not present in store — skipping",
                                     edge.source, edge.target
-                                )));
+                                );
+                                skipped += 1;
                             }
                             _ => {
                                 return Err(GraphRepositoryError::AccessError(
@@ -369,11 +474,19 @@ impl GraphRepository for OxigraphGraphRepository {
                             }
                         }
                     }
-                    Ok(())
+                    if skipped > 0 {
+                        log::warn!(
+                            "add_edges: skipped {} of {} bridge edge(s) due to missing endpoints; {} will be written",
+                            skipped,
+                            bridges.len(),
+                            kept.len()
+                        );
+                    }
+                    Ok(kept)
                 })
                 .await
                 .map_err(|e| GraphRepositoryError::AccessError(format!("join error: {e}")))?;
-            ask_result?;
+            bridge_edges = valid_bridges?;
         }
 
         // Build a single INSERT DATA that places same-graph edges in
@@ -1023,7 +1136,7 @@ impl KnowledgeGraphRepository for OxigraphGraphRepository {
 
     async fn clear_graph(&self) -> KgResult<()> {
         let store = self.store.clone();
-        tokio::task::spawn_blocking(move || -> KgResult<()> {
+        let drop_result = tokio::task::spawn_blocking(move || -> KgResult<()> {
             for graph_iri in [GRAPH_KNOWLEDGE, GRAPH_AGENT] {
                 let drop = format!("DROP SILENT GRAPH <{}>", graph_iri);
                 store
@@ -1033,7 +1146,18 @@ impl KnowledgeGraphRepository for OxigraphGraphRepository {
             Ok(())
         })
         .await
-        .map_err(|e| KnowledgeGraphRepositoryError::DatabaseError(format!("join: {e}")))?
+        .map_err(|e| KnowledgeGraphRepositoryError::DatabaseError(format!("join: {e}")))?;
+        drop_result?;
+
+        // T1 fix: after named graphs are gone, purge any bridge edges in the
+        // default graph whose endpoints are now orphaned. Failure is logged
+        // but does not propagate — clear_graph's primary contract is fulfilled.
+        match self.bridge_edge_gc().await {
+            Ok(n) if n > 0 => log::info!("clear_graph: removed {} stale bridge triple(s)", n),
+            Ok(_) => {}
+            Err(e) => log::warn!("clear_graph: bridge_edge_gc failed (non-fatal): {}", e),
+        }
+        Ok(())
     }
 
     async fn health_check(&self) -> KgResult<bool> {
