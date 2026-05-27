@@ -425,7 +425,7 @@ impl GraphStateActor {
         // Preserve existing positions by metadata_id
         let mut existing_positions: HashMap<String, (crate::types::vec3::Vec3Data, crate::types::vec3::Vec3Data)> = HashMap::new();
         for node in &self.graph_data.nodes {
-            existing_positions.insert(node.metadata_id.clone(), (node.data.position(), node.data.velocity()));
+            existing_positions.insert(node.metadata_id.clone(), (node.data.position().into(), node.data.velocity().into()));
         }
 
         // Assign compact IDs directly (0..N-1)
@@ -985,7 +985,7 @@ impl Handler<UpdateBotsGraph> for GraphStateActor {
         
         let mut existing_positions: HashMap<String, (crate::types::vec3::Vec3Data, crate::types::vec3::Vec3Data)> = HashMap::new();
         for node in &self.bots_graph_data.nodes {
-            existing_positions.insert(node.metadata_id.clone(), (node.data.position(), node.data.velocity()));
+            existing_positions.insert(node.metadata_id.clone(), (node.data.position().into(), node.data.velocity().into()));
         }
 
         

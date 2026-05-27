@@ -112,7 +112,7 @@ pub(crate) async fn fetch_nodes(
             compact_id
         };
         let node_data =
-            BinaryNodeDataClient::new(flagged_id, node.data.position(), node.data.velocity());
+            BinaryNodeDataClient::new(flagged_id, node.data.position().into(), node.data.velocity().into());
         nodes.push((flagged_id, node_data));
     }
 

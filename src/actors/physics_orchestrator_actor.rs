@@ -27,7 +27,7 @@ use crate::actors::messages::{
     SetConstraintGroupActive, SimulationStep, StartSimulation, StopSimulation,
     StoreGPUComputeAddress, UpdateNodePosition, UpdateNodePositions, UpdateSimulationParams,
 };
-use crate::models::constraints::ConstraintSet;
+use crate::models::constraints::{ConstraintGpuExt, ConstraintSet};
 use crate::models::graph::GraphData;
 use crate::models::simulation_params::{SettleMode, SimulationParams};
 use crate::utils::socket_flow_messages::BinaryNodeData;
@@ -1127,7 +1127,7 @@ impl Handler<RequestPositionSnapshot> for PhysicsOrchestratorActor {
                 .nodes
                 .iter()
                 .map(|node| {
-                    let mut data = node.data.clone();
+                    let mut data: BinaryNodeData = node.data.clone().into();
                     data.node_id = node.id;
                     (node.id, data)
                 })

@@ -112,7 +112,7 @@ impl OntologyConverter {
 
         // Create BinaryNodeData for GPU physics
         use crate::utils::socket_flow_messages::BinaryNodeData;
-        let data = BinaryNodeData {
+        let data: visionflow_domain::BinaryNodeData = BinaryNodeData {
             node_id: 0,
             x: 0.0,
             y: 0.0,
@@ -120,7 +120,7 @@ impl OntologyConverter {
             vx: 0.0,
             vy: 0.0,
             vz: 0.0,
-        };
+        }.into();
 
         Ok(Node {
             id: 0, // Auto-assigned by database

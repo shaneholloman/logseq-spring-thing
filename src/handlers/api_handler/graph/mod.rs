@@ -135,8 +135,8 @@ pub async fn get_graph_data(
                 .map(|node| {
                     // Use node's own data for position and velocity
                     // node_map contains HashMap<i32, Vec<i32>>, not physics nodes
-                    let position = node.data.position();
-                    let velocity = node.data.velocity();
+                    let position: Vec3Data = node.data.position().into();
+                    let velocity: Vec3Data = node.data.velocity().into();
 
                     NodeWithPosition {
                         id: node.id,

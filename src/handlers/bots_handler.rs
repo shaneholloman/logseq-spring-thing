@@ -148,7 +148,7 @@ fn convert_agents_to_nodes(agents: Vec<Agent>) -> Vec<Node> {
                     vx: 0.0,
                     vy: 0.0,
                     vz: 0.0,
-                },
+                }.into(),
                 metadata: {
                     let mut meta = HashMap::new();
                     meta.insert("agent_type".to_string(), agent.agent_type.clone());

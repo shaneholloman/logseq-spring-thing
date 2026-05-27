@@ -121,7 +121,7 @@ impl KnowledgeGraphParser {
 
         // Use existing position or generate random (position preservation)
         let (x, y, z) = self.get_position(id);
-        let data = BinaryNodeData {
+        let data: visionflow_domain::BinaryNodeData = BinaryNodeData {
             node_id: id,
             x,
             y,
@@ -129,7 +129,7 @@ impl KnowledgeGraphParser {
             vx: 0.0,
             vy: 0.0,
             vz: 0.0,
-        };
+        }.into();
 
         // Pages with owl:class metadata are surfaced as ontology nodes so the
         // dual-graph (knowledge ↔ ontology) X-axis separation control has something
@@ -246,7 +246,7 @@ impl KnowledgeGraphParser {
 
                 // Use existing position or generate random (position preservation)
                 let (x, y, z) = self.get_position(target_id);
-                let data = BinaryNodeData {
+                let data: visionflow_domain::BinaryNodeData = BinaryNodeData {
                     node_id: target_id,
                     x,
                     y,
@@ -254,7 +254,7 @@ impl KnowledgeGraphParser {
                     vx: 0.0,
                     vy: 0.0,
                     vz: 0.0,
-                };
+                }.into();
 
                 nodes.push(Node {
                     id: target_id,

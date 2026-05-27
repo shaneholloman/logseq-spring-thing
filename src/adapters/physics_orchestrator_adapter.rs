@@ -124,7 +124,11 @@ impl PhysicsSimulator for PhysicsOrchestratorAdapter {
         let positions: Vec<(u32, BinaryNodeData)> = graph
             .nodes
             .iter()
-            .map(|node| (node.id, Self::convert_position_to_port(&node.data)))
+            .map(|node| {
+                let client_data: crate::utils::socket_flow_messages::BinaryNodeDataClient =
+                    node.data.clone().into();
+                (node.id, Self::convert_position_to_port(&client_data))
+            })
             .collect();
 
         debug!("Retrieved {} node positions", positions.len());

@@ -134,28 +134,6 @@ impl Constraint {
     }
 
     
-    pub fn to_gpu_format(&self) -> ConstraintData {
-        let mut gpu_constraint = ConstraintData {
-            kind: self.kind as i32,
-            count: self.node_indices.len().min(4) as i32,
-            node_idx: [0, 0, 0, 0],
-            params: [0.0; 8],
-            weight: self.weight,
-            activation_frame: 0, 
-        };
-
-        
-        for (i, &node_idx) in self.node_indices.iter().take(4).enumerate() {
-            gpu_constraint.node_idx[i] = node_idx as i32;
-        }
-
-        
-        for (i, &param) in self.params.iter().take(8).enumerate() {
-            gpu_constraint.params[i] = param;
-        }
-
-        gpu_constraint
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -248,61 +226,6 @@ impl AdvancedParams {
     }
 }
 
-#[repr(C)]
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct ConstraintData {
-    
-    pub kind: i32,
-    
-    pub count: i32,
-    
-    pub node_idx: [i32; 4],
-    
-    pub params: [f32; 8],
-    
-    pub weight: f32,
-    
-    pub activation_frame: i32,
-}
-
-impl Default for ConstraintData {
-    fn default() -> Self {
-        Self {
-            kind: 0,
-            count: 0,
-            node_idx: [0; 4],
-            params: [0.0; 8],
-            weight: 0.0,
-            activation_frame: 0,
-        }
-    }
-}
-
-
-impl ConstraintData {
-    
-    pub fn from_constraint(constraint: &Constraint) -> Self {
-        let mut node_idx = [-1i32; 4];
-        for (i, &idx) in constraint.node_indices.iter().take(4).enumerate() {
-            node_idx[i] = idx as i32;
-        }
-
-        let mut params = [0.0f32; 8];
-        for (i, &param) in constraint.params.iter().take(8).enumerate() {
-            params[i] = param;
-        }
-
-        Self {
-            kind: constraint.kind as i32,
-            count: constraint.node_indices.len().min(4) as i32,
-            node_idx,
-            params,
-            weight: constraint.weight,
-            activation_frame: 0, 
-        }
-    }
-}
-
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ConstraintSet {
     
@@ -351,13 +274,6 @@ impl ConstraintSet {
         self.constraints.iter().filter(|c| c.active).collect()
     }
 
-    
-    pub fn to_gpu_data(&self) -> Vec<ConstraintData> {
-        self.active_constraints()
-            .into_iter()
-            .map(ConstraintData::from_constraint)
-            .collect()
-    }
 }
 
 #[cfg(test)]
@@ -375,20 +291,6 @@ mod tests {
         assert_eq!(sep.kind, ConstraintKind::Separation);
         assert_eq!(sep.node_indices, vec![1, 2]);
         assert_eq!(sep.params, vec![50.0]);
-    }
-
-    #[test]
-    fn test_constraint_to_gpu_data() {
-        let constraint = Constraint::cluster(vec![1, 2, 3], 1.0, 0.8);
-        let gpu_data = ConstraintData::from_constraint(&constraint);
-
-        assert_eq!(gpu_data.kind, ConstraintKind::Clustering as i32);
-        assert_eq!(gpu_data.count, 3);
-        assert_eq!(gpu_data.node_idx[0], 1);
-        assert_eq!(gpu_data.node_idx[1], 2);
-        assert_eq!(gpu_data.node_idx[2], 3);
-        assert_eq!(gpu_data.params[0], 1.0);
-        assert_eq!(gpu_data.params[1], 0.8);
     }
 
     #[test]

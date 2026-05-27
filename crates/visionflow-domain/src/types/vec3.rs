@@ -151,6 +151,36 @@ pub struct BinaryNodeData {
     pub vz: f32,
 }
 
+impl BinaryNodeData {
+    /// Construct from explicit position and velocity Vec3Data.
+    pub fn new(node_id: u32, position: Vec3Data, velocity: Vec3Data) -> Self {
+        Self {
+            node_id,
+            x: position.x,
+            y: position.y,
+            z: position.z,
+            vx: velocity.x,
+            vy: velocity.y,
+            vz: velocity.z,
+        }
+    }
+
+    /// Returns the position as a Vec3Data.
+    pub fn position(&self) -> Vec3Data {
+        Vec3Data::new(self.x, self.y, self.z)
+    }
+
+    /// Returns the velocity as a Vec3Data.
+    pub fn velocity(&self) -> Vec3Data {
+        Vec3Data::new(self.vx, self.vy, self.vz)
+    }
+
+    /// Default mass for client nodes.
+    pub fn mass(&self) -> f32 {
+        1.0
+    }
+}
+
 impl Default for BinaryNodeData {
     fn default() -> Self {
         Self {

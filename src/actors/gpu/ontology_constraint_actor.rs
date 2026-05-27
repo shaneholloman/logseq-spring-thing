@@ -19,7 +19,9 @@ use std::time::Instant;
 
 use super::shared::{GPUState, SharedGPUContext};
 use crate::actors::messages::*;
-use crate::models::constraints::{Constraint, ConstraintData, ConstraintSet};
+use crate::models::constraints::{
+    Constraint, ConstraintData, ConstraintSet, ConstraintSetGpuExt,
+};
 use crate::physics::ontology_constraints::{
     OWLAxiom, OntologyConstraintTranslator, OntologyReasoningReport,
 };

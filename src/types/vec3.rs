@@ -10,6 +10,20 @@ pub struct Vec3Data {
     pub z: f32,
 }
 
+// ADR-090 Phase 1b: bridging conversions between domain Vec3Data and webxr Vec3Data.
+// Both are plain (x, y, z) f32 triples — the only difference is bytemuck derives.
+impl From<visionflow_domain::Vec3Data> for Vec3Data {
+    fn from(v: visionflow_domain::Vec3Data) -> Self {
+        Self { x: v.x, y: v.y, z: v.z }
+    }
+}
+
+impl From<Vec3Data> for visionflow_domain::Vec3Data {
+    fn from(v: Vec3Data) -> Self {
+        visionflow_domain::Vec3Data::new(v.x, v.y, v.z)
+    }
+}
+
 impl From<Vec3> for Vec3Data {
     fn from(v: Vec3) -> Self {
         Self {

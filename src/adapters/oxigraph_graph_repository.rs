@@ -1345,7 +1345,7 @@ fn load_nodes_in_graph(store: &Store, graph_iri: &str) -> RepoResult<Vec<Node>> 
                 vx,
                 vy,
                 vz,
-            },
+            }.into(),
             x: Some(x),
             y: Some(y),
             z: Some(z),
