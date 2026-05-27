@@ -8,7 +8,7 @@ use std::time::Instant;
 
 use super::shared::{GPUOperation, GPUState, SharedGPUContext};
 use crate::actors::messages::*;
-use crate::models::simulation_params::SimulationParams;
+use crate::models::simulation_params::{SimulationParams, ToSimParams};
 use crate::telemetry::agent_telemetry::{
     get_telemetry_logger, CorrelationId, LogLevel, TelemetryEvent,
 };

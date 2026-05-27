@@ -1,0 +1,379 @@
+//! Simulation parameters — domain representation.
+//!
+//! This file contains the framework-agnostic parts of the physics simulation
+//! parameter model: high-level `SimulationParams`, the convergence `SettleMode`,
+//! and the auxiliary enums. The GPU-aligned `SimParams` struct (and any
+//! conversion that depends on `crate::config::dev_config`) lives in the
+//! monolith's `src/models/simulation_params.rs` since it requires CUDA/PTX
+//! types and runtime config that have no place in pure domain logic.
+
+use serde::{Deserialize, Serialize};
+
+use crate::types::layout::LayoutMode;
+use crate::types::physics_config::{AutoBalanceConfig, AutoPauseConfig, PhysicsSettings};
+
+fn default_lin_log_mode() -> bool { true }
+fn default_scaling_ratio() -> f32 { 10.0 }
+fn default_adaptive_speed() -> bool { true }
+fn default_global_speed() -> f32 { 0.16 }
+
+/// Controls how the physics simulation converges.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", tag = "type")]
+pub enum SettleMode {
+    /// Standard continuous simulation driven by a fixed-rate timer tick.
+    Continuous,
+    /// Aggressive convergence: override damping, iterate as fast as the GPU can
+    /// compute until the system reaches the energy threshold (or hits the iteration
+    /// cap), then broadcast final positions and pause.
+    FastSettle {
+        /// Override damping to this value during the settle phase (e.g. 0.95).
+        damping_override: f32,
+        /// Maximum iterations before giving up on convergence.
+        max_settle_iterations: u32,
+        /// Total kinetic energy below which the system is considered settled.
+        energy_threshold: f64,
+    },
+}
+
+impl Default for SettleMode {
+    fn default() -> Self {
+        SettleMode::FastSettle {
+            damping_override: 0.85,
+            max_settle_iterations: 10000,
+            energy_threshold: 1.0,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub enum SimulationMode {
+    Remote,
+    Local,
+}
+
+impl Default for SimulationMode {
+    fn default() -> Self {
+        SimulationMode::Remote
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub enum SimulationPhase {
+    Initial,
+    Dynamic,
+    Finalize,
+}
+
+impl Default for SimulationPhase {
+    fn default() -> Self {
+        SimulationPhase::Initial
+    }
+}
+
+/// Feature-flag bit constants for `SimParams.feature_flags`. The monolith's
+/// GPU adapter uses these when building the GPU-ready `SimParams` struct.
+pub struct FeatureFlags;
+impl FeatureFlags {
+    pub const ENABLE_REPULSION: u32 = 1 << 0;
+    pub const ENABLE_SPRINGS: u32 = 1 << 1;
+    pub const ENABLE_CENTERING: u32 = 1 << 2;
+    pub const ENABLE_TEMPORAL_COHERENCE: u32 = 1 << 3;
+    pub const ENABLE_CONSTRAINTS: u32 = 1 << 4;
+    pub const ENABLE_STRESS_MAJORIZATION: u32 = 1 << 5;
+    pub const ENABLE_SSSP_SPRING_ADJUST: u32 = 1 << 6;
+}
+
+/// High-level physics simulation parameters. The actor system and HTTP API
+/// work with this representation; the GPU adapter converts it to the
+/// CUDA-aligned `SimParams` struct (defined in the monolith).
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct SimulationParams {
+    pub enabled: bool,
+
+    pub auto_balance: bool,
+    pub auto_balance_interval_ms: u32,
+    pub auto_balance_config: AutoBalanceConfig,
+
+    pub auto_pause_config: AutoPauseConfig,
+    pub is_physics_paused: bool,
+    pub equilibrium_stability_counter: u32,
+
+    pub iterations: u32,
+    pub dt: f32,
+
+    pub spring_k: f32,
+    pub repel_k: f32,
+
+    pub damping: f32,
+    pub boundary_damping: f32,
+
+    pub viewport_bounds: f32,
+    pub enable_bounds: bool,
+
+    pub max_velocity: f32,
+    pub max_force: f32,
+    pub separation_radius: f32,
+    pub temperature: f32,
+    pub center_gravity_k: f32,
+
+    pub alignment_strength: f32,
+    pub cluster_strength: f32,
+    pub compute_mode: i32,
+    pub min_distance: f32,
+    pub max_repulsion_dist: f32,
+    pub warmup_iterations: u32,
+    pub cooling_rate: f32,
+
+    /// Softening epsilon for repulsion to avoid singularities at zero distance.
+    pub repulsion_softening_epsilon: f32,
+    /// Grid cell size for spatial hashing (defaults to 40.0).
+    pub grid_cell_size: f32,
+    /// Gravity pull toward center (defaults to 0.0001).
+    pub gravity: f32,
+
+    pub rest_length: f32,
+    pub use_sssp_distances: bool,
+    pub sssp_alpha: Option<f32>,
+
+    pub constraint_ramp_frames: u32,
+    pub constraint_max_force_per_node: f32,
+
+    pub phase: SimulationPhase,
+    pub mode: SimulationMode,
+
+    /// Controls simulation convergence behavior.
+    #[serde(default)]
+    pub settle_mode: SettleMode,
+
+    /// X-axis separation between knowledge and ontology graph populations.
+    #[serde(default)]
+    pub graph_separation_x: f32,
+
+    /// Single-axis Z compression (0.0 = no flatten, 1.0 = full flatten to z=0).
+    #[serde(default)]
+    pub axis_compression_z: f32,
+
+    /// Active layout algorithm (ADR-031). Defaults to ForceDirected.
+    #[serde(default)]
+    pub layout_mode: LayoutMode,
+
+    /// ForceAtlas2 LinLog mode: attraction uses log(1+d) instead of Hooke's law.
+    #[serde(default = "default_lin_log_mode")]
+    pub lin_log_mode: bool,
+
+    /// FA2 repulsion scaling ratio.
+    #[serde(default = "default_scaling_ratio")]
+    pub scaling_ratio: f32,
+
+    /// FA2 per-node adaptive speed for convergence.
+    #[serde(default = "default_adaptive_speed")]
+    pub adaptive_speed: bool,
+
+    /// FA2 base integration speed.
+    #[serde(default = "default_global_speed")]
+    pub global_speed: f32,
+}
+
+impl Default for SimulationParams {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl SimulationParams {
+    /// Validate all physics parameters are within safe ranges for GPU simulation.
+    /// Returns Ok(()) if valid, or Err with a semicolon-separated list of violations.
+    pub fn validate(&self) -> Result<(), String> {
+        let mut errors = Vec::new();
+
+        if self.dt <= 0.0 || self.dt > 0.1 {
+            errors.push(format!("dt must be in (0, 0.1], got {}", self.dt));
+        }
+        if self.damping <= 0.0 || self.damping > 1.0 {
+            errors.push(format!("damping must be in (0, 1], got {}", self.damping));
+        }
+        if self.repel_k < 0.0 {
+            errors.push(format!("repel_k must be >= 0, got {}", self.repel_k));
+        }
+        if self.spring_k < 0.0 {
+            errors.push(format!("spring_k must be >= 0, got {}", self.spring_k));
+        }
+        if self.max_velocity <= 0.0 {
+            errors.push(format!("max_velocity must be > 0, got {}", self.max_velocity));
+        }
+        if self.max_force <= 0.0 {
+            errors.push(format!("max_force must be > 0, got {}", self.max_force));
+        }
+        if self.cooling_rate < 0.0 || self.cooling_rate > 1.0 {
+            errors.push(format!("cooling_rate must be in [0, 1], got {}", self.cooling_rate));
+        }
+        if self.boundary_damping < 0.0 || self.boundary_damping > 1.0 {
+            errors.push(format!("boundary_damping must be in [0, 1], got {}", self.boundary_damping));
+        }
+        if self.temperature < 0.0 {
+            errors.push(format!("temperature must be >= 0, got {}", self.temperature));
+        }
+        if self.center_gravity_k < 0.0 {
+            errors.push(format!("center_gravity_k must be >= 0, got {}", self.center_gravity_k));
+        }
+        if self.rest_length <= 0.0 {
+            errors.push(format!("rest_length must be > 0, got {}", self.rest_length));
+        }
+        if self.separation_radius < 0.0 {
+            errors.push(format!("separation_radius must be >= 0, got {}", self.separation_radius));
+        }
+        if self.gravity < 0.0 {
+            errors.push(format!("gravity must be >= 0, got {}", self.gravity));
+        }
+
+        let float_fields: &[(&str, f32)] = &[
+            ("dt", self.dt),
+            ("damping", self.damping),
+            ("spring_k", self.spring_k),
+            ("repel_k", self.repel_k),
+            ("max_velocity", self.max_velocity),
+            ("max_force", self.max_force),
+            ("temperature", self.temperature),
+            ("center_gravity_k", self.center_gravity_k),
+            ("cooling_rate", self.cooling_rate),
+            ("boundary_damping", self.boundary_damping),
+            ("viewport_bounds", self.viewport_bounds),
+            ("separation_radius", self.separation_radius),
+            ("cluster_strength", self.cluster_strength),
+            ("alignment_strength", self.alignment_strength),
+            ("rest_length", self.rest_length),
+            ("gravity", self.gravity),
+            ("repulsion_softening_epsilon", self.repulsion_softening_epsilon),
+            ("grid_cell_size", self.grid_cell_size),
+            ("min_distance", self.min_distance),
+            ("max_repulsion_dist", self.max_repulsion_dist),
+            ("constraint_max_force_per_node", self.constraint_max_force_per_node),
+        ];
+        for &(name, value) in float_fields {
+            if !value.is_finite() {
+                errors.push(format!("{} must be finite, got {}", name, value));
+            }
+        }
+
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(errors.join("; "))
+        }
+    }
+
+    pub fn new() -> Self {
+        let default_physics = PhysicsSettings::default();
+        Self::from(&default_physics)
+    }
+
+    pub fn with_phase(phase: SimulationPhase) -> Self {
+        let mut params = Self::new();
+        params.phase = phase;
+
+        match phase {
+            SimulationPhase::Initial => {
+                params.iterations = params.iterations.max(500);
+                params.warmup_iterations = params.warmup_iterations.max(300);
+            }
+            SimulationPhase::Dynamic => {}
+            SimulationPhase::Finalize => {
+                params.iterations = params.iterations.max(300);
+            }
+        }
+
+        params
+    }
+}
+
+// Conversion from PhysicsSettings to SimulationParams — no dev_config refs,
+// safe to live in the domain crate.
+impl From<&PhysicsSettings> for SimulationParams {
+    fn from(physics: &PhysicsSettings) -> Self {
+        Self {
+            enabled: physics.enabled,
+            auto_balance: physics.auto_balance,
+            auto_balance_interval_ms: physics.auto_balance_interval_ms,
+            auto_balance_config: physics.auto_balance_config.clone(),
+            auto_pause_config: physics.auto_pause.clone(),
+            is_physics_paused: false,
+            equilibrium_stability_counter: 0,
+            iterations: physics.iterations,
+            dt: physics.dt,
+            spring_k: physics.spring_k,
+            repel_k: physics.repel_k,
+            damping: physics.damping,
+            boundary_damping: physics.boundary_damping,
+            viewport_bounds: physics.bounds_size,
+            enable_bounds: physics.enable_bounds,
+            max_velocity: physics.max_velocity,
+            max_force: physics.max_force,
+            separation_radius: physics.separation_radius,
+            temperature: physics.temperature,
+            center_gravity_k: physics.center_gravity_k,
+            alignment_strength: physics.alignment_strength,
+            cluster_strength: physics.cluster_strength,
+            compute_mode: physics.compute_mode,
+            min_distance: physics.min_distance,
+            max_repulsion_dist: physics.max_repulsion_dist,
+            warmup_iterations: physics.warmup_iterations,
+            cooling_rate: physics.cooling_rate,
+            rest_length: physics.rest_length,
+            use_sssp_distances: true,
+            sssp_alpha: Some(1.5),
+            constraint_ramp_frames: physics.constraint_ramp_frames,
+            constraint_max_force_per_node: physics.constraint_max_force_per_node,
+            repulsion_softening_epsilon: physics.repulsion_softening_epsilon,
+            grid_cell_size: physics.grid_cell_size,
+            gravity: physics.gravity,
+            phase: SimulationPhase::Dynamic,
+            mode: SimulationMode::Remote,
+            settle_mode: SettleMode::default(),
+            graph_separation_x: physics.graph_separation_x,
+            axis_compression_z: physics.axis_compression_z,
+            layout_mode: LayoutMode::default(),
+            lin_log_mode: physics.lin_log_mode,
+            scaling_ratio: physics.scaling_ratio,
+            adaptive_speed: physics.adaptive_speed,
+            global_speed: physics.global_speed,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_default() {
+        let p = SimulationParams::default();
+        assert!(p.enabled);
+        assert_eq!(p.phase, SimulationPhase::Dynamic);
+    }
+
+    #[test]
+    fn test_validate_ok() {
+        assert!(SimulationParams::default().validate().is_ok());
+    }
+
+    #[test]
+    fn test_validate_bad_dt() {
+        let mut p = SimulationParams::default();
+        p.dt = -1.0;
+        assert!(p.validate().is_err());
+    }
+
+    #[test]
+    fn test_settle_mode_default() {
+        match SettleMode::default() {
+            SettleMode::FastSettle { max_settle_iterations, .. } => {
+                assert_eq!(max_settle_iterations, 10000);
+            }
+            _ => panic!("expected FastSettle"),
+        }
+    }
+}

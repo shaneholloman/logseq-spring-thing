@@ -2,7 +2,7 @@
 
 use super::construction::UnifiedGPUCompute;
 use super::types::{int3, thrust_sort_key_value, AABB};
-use crate::models::simulation_params::SimParams;
+use crate::models::simulation_params::{SimParams, ToSimParams};
 use anyhow::{anyhow, Result};
 use cust::context::Context;
 use cust::launch;

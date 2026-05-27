@@ -1,80 +1,26 @@
-use crate::config::{AutoBalanceConfig, AutoPauseConfig, PhysicsSettings};
-use crate::layout::types::LayoutMode;
+//! Simulation parameters — re-exported from `visionflow-domain` per ADR-090.
+//!
+//! The framework-agnostic data shapes (SimulationParams, SettleMode,
+//! SimulationMode, SimulationPhase, FeatureFlags) live in the domain crate.
+//! This module retains the GPU-aligned `SimParams` struct and the conversion
+//! impls that depend on `crate::config::dev_config` — those cannot live in
+//! the domain crate because they pull in CUDA/runtime config.
+
 use bytemuck::{Pod, Zeroable};
 use cudarc::driver::DeviceRepr;
 use cust_core::DeviceCopy;
-use serde::{Deserialize, Serialize};
 
-fn default_lin_log_mode() -> bool {
-    true
-}
-fn default_scaling_ratio() -> f32 {
-    10.0
-}
-fn default_adaptive_speed() -> bool {
-    true
-}
-fn default_global_speed() -> f32 {
-    0.16
-}
+// Re-export the domain-owned shapes so existing
+// `use crate::models::simulation_params::SimulationParams` imports keep working.
+pub use visionflow_domain::models::simulation_params::{
+    FeatureFlags, SettleMode, SimulationMode, SimulationParams, SimulationPhase,
+};
 
-/// Controls how the physics simulation converges.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase", tag = "type")]
-pub enum SettleMode {
-    /// Standard continuous simulation driven by a fixed-rate timer tick.
-    Continuous,
-    /// Aggressive convergence: override damping, iterate as fast as the GPU can
-    /// compute until the system reaches the energy threshold (or hits the iteration
-    /// cap), then broadcast final positions and pause.
-    FastSettle {
-        /// Override damping to this value during the settle phase (e.g. 0.95).
-        damping_override: f32,
-        /// Maximum iterations before giving up on convergence.
-        max_settle_iterations: u32,
-        /// Total kinetic energy below which the system is considered settled.
-        energy_threshold: f64,
-    },
-}
+use visionflow_domain::types::layout::LayoutMode;
+use visionflow_domain::types::physics_config::{AutoBalanceConfig, AutoPauseConfig, PhysicsSettings};
 
-impl Default for SettleMode {
-    fn default() -> Self {
-        SettleMode::FastSettle {
-            damping_override: 0.85,
-            max_settle_iterations: 10000,
-            energy_threshold: 1.0,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
-pub enum SimulationMode {
-    Remote,
-    Local,
-}
-
-impl Default for SimulationMode {
-    fn default() -> Self {
-        SimulationMode::Remote
-    }
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
-pub enum SimulationPhase {
-    Initial,
-    Dynamic,
-    Finalize,
-}
-
-impl Default for SimulationPhase {
-    fn default() -> Self {
-        SimulationPhase::Initial
-    }
-}
-
-// GPU-compatible simulation parameters, matching the new CUDA kernel design.
+// GPU-aligned simulation parameters. Mirrors the CUDA `SimParams` struct;
+// must match its size and layout exactly (see `const _:()` assertion below).
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Pod, Zeroable)]
 pub struct SimParams {
@@ -126,364 +72,21 @@ pub struct SimParams {
     pub lof_score_min: f32,
     pub lof_score_max: f32,
     pub weight_precision_multiplier: f32,
-    // NOTE: Stress majorization params removed from GPU SimParams (not used by GPU kernels).
-    // Stress optimization is handled by SemanticProcessorActor on CPU.
-    /// Gravity pull toward origin (center-pull force). Added at end to preserve repr(C) layout.
+    // Stress majorization params live on CPU (SemanticProcessorActor); not in GPU SimParams.
+    /// Gravity pull toward origin. Added at end to preserve repr(C) layout.
     pub gravity: f32,
 
     // ForceAtlas2 / LinLog parameters
-    /// 1 = LinLog attraction (log(1+d) per edge, modularity-equivalent), 0 = linear Hooke springs
     pub lin_log_mode: u32,
-    /// FA2 repulsion scaling factor: repulsion ∝ scaling_ratio * (deg_i+1) * (deg_j+1) / d
     pub scaling_ratio: f32,
-    /// 1 = per-node adaptive speed (FA2 convergence), 0 = global dt
     pub adaptive_speed: u32,
-    /// Base speed for adaptive integration (scales per-node swing/traction)
     pub global_speed: f32,
 }
 
-// SAFETY: SimParams is repr(C) with only POD types, safe for GPU transfer
-// All fields are primitives (f32, u32, i32) with well-defined memory layout
+// SAFETY: SimParams is repr(C) with only POD types; safe for GPU transfer.
 unsafe impl DeviceRepr for SimParams {}
-
-// SAFETY: SimParams is repr(C) with only POD types, safe for GPU transfer
-// All fields are primitives (f32, u32, i32) with well-defined memory layout
 unsafe impl DeviceCopy for SimParams {}
 
-pub struct FeatureFlags;
-impl FeatureFlags {
-    pub const ENABLE_REPULSION: u32 = 1 << 0;
-    pub const ENABLE_SPRINGS: u32 = 1 << 1;
-    pub const ENABLE_CENTERING: u32 = 1 << 2;
-    pub const ENABLE_TEMPORAL_COHERENCE: u32 = 1 << 3;
-    pub const ENABLE_CONSTRAINTS: u32 = 1 << 4;
-    pub const ENABLE_STRESS_MAJORIZATION: u32 = 1 << 5;
-    pub const ENABLE_SSSP_SPRING_ADJUST: u32 = 1 << 6;
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug)]
-#[serde(rename_all = "camelCase")]
-pub struct SimulationParams {
-    pub enabled: bool,
-
-    pub auto_balance: bool,
-    pub auto_balance_interval_ms: u32,
-    pub auto_balance_config: AutoBalanceConfig,
-
-    pub auto_pause_config: AutoPauseConfig,
-    pub is_physics_paused: bool,
-    pub equilibrium_stability_counter: u32,
-
-    pub iterations: u32,
-    pub dt: f32,
-
-    pub spring_k: f32,
-    pub repel_k: f32,
-
-    pub damping: f32,
-    pub boundary_damping: f32,
-
-    pub viewport_bounds: f32,
-    pub enable_bounds: bool,
-
-    pub max_velocity: f32,
-    pub max_force: f32,
-    pub separation_radius: f32,
-    pub temperature: f32,
-    pub center_gravity_k: f32,
-
-    pub alignment_strength: f32,
-    pub cluster_strength: f32,
-    pub compute_mode: i32,
-    pub min_distance: f32,
-    pub max_repulsion_dist: f32,
-    pub warmup_iterations: u32,
-    pub cooling_rate: f32,
-
-    /// Softening epsilon for repulsion to avoid singularities at zero distance
-    pub repulsion_softening_epsilon: f32,
-    /// Grid cell size for spatial hashing (defaults to 40.0)
-    pub grid_cell_size: f32,
-    /// Gravity pull toward center (defaults to 0.0001)
-    pub gravity: f32,
-
-    pub rest_length: f32,
-    pub use_sssp_distances: bool,
-    pub sssp_alpha: Option<f32>,
-
-    pub constraint_ramp_frames: u32,
-    pub constraint_max_force_per_node: f32,
-
-    pub phase: SimulationPhase,
-    pub mode: SimulationMode,
-
-    /// Controls simulation convergence behavior.
-    /// `FastSettle` (default) runs tight iterations until energy drops below
-    /// threshold, then pauses. `Continuous` keeps the old timer-driven tick.
-    #[serde(default)]
-    pub settle_mode: SettleMode,
-
-    /// X-axis separation between knowledge and ontology graph populations.
-    /// 0 = merged (default), positive = knowledge at -X, ontology at +X, agents at origin.
-    #[serde(default)]
-    pub graph_separation_x: f32,
-
-    /// Single-axis Z compression (0.0 = no flatten, 1.0 = full flatten to z=0).
-    /// Combined with graph_separation_x, produces two parallel disks in the XY plane.
-    #[serde(default)]
-    pub axis_compression_z: f32,
-
-    /// Active layout algorithm (ADR-031). Defaults to ForceDirected.
-    #[serde(default)]
-    pub layout_mode: LayoutMode,
-
-    /// ForceAtlas2 LinLog mode: attraction uses log(1+d) instead of Hooke's law.
-    /// Makes energy minimization equivalent to modularity maximization.
-    /// Defaults to true.
-    #[serde(default = "default_lin_log_mode")]
-    pub lin_log_mode: bool,
-
-    /// FA2 repulsion scaling ratio. Repulsion ∝ scaling_ratio × (deg_i+1) × (deg_j+1) / d.
-    /// Defaults to 10.0.
-    #[serde(default = "default_scaling_ratio")]
-    pub scaling_ratio: f32,
-
-    /// FA2 per-node adaptive speed for convergence. Slows oscillating nodes.
-    /// Defaults to true.
-    #[serde(default = "default_adaptive_speed")]
-    pub adaptive_speed: bool,
-
-    /// FA2 base integration speed (`global_speed` in CUDA kernel).
-    /// `speed = global_speed / (1 + sqrt(swing))` for per-node adaptive integration.
-    /// Defaults to 0.16 (matches the legacy implicit dt=0.016 × 10.0 calculation).
-    #[serde(default = "default_global_speed")]
-    pub global_speed: f32,
-}
-
-impl Default for SimulationParams {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl SimulationParams {
-    /// Validate all physics parameters are within safe ranges for GPU simulation.
-    /// Returns Ok(()) if valid, or Err with a semicolon-separated list of violations.
-    pub fn validate(&self) -> Result<(), String> {
-        let mut errors = Vec::new();
-
-        // Time step: must be positive and small enough to avoid numerical explosion
-        if self.dt <= 0.0 || self.dt > 0.1 {
-            errors.push(format!("dt must be in (0, 0.1], got {}", self.dt));
-        }
-        // Damping: must be positive (energy drain) and at most 1.0 (full drain per step)
-        if self.damping <= 0.0 || self.damping > 1.0 {
-            errors.push(format!("damping must be in (0, 1], got {}", self.damping));
-        }
-        // Repulsion strength: negative would cause attraction collapse
-        if self.repel_k < 0.0 {
-            errors.push(format!("repel_k must be >= 0, got {}", self.repel_k));
-        }
-        // Spring strength: negative would invert spring forces
-        if self.spring_k < 0.0 {
-            errors.push(format!("spring_k must be >= 0, got {}", self.spring_k));
-        }
-        // Max velocity: must be positive to clamp motion
-        if self.max_velocity <= 0.0 {
-            errors.push(format!(
-                "max_velocity must be > 0, got {}",
-                self.max_velocity
-            ));
-        }
-        // Max force: must be positive to clamp forces
-        if self.max_force <= 0.0 {
-            errors.push(format!("max_force must be > 0, got {}", self.max_force));
-        }
-        // Cooling rate: must be in [0, 1] (fraction of temperature retained per step)
-        if self.cooling_rate < 0.0 || self.cooling_rate > 1.0 {
-            errors.push(format!(
-                "cooling_rate must be in [0, 1], got {}",
-                self.cooling_rate
-            ));
-        }
-        // Boundary damping: must be in [0, 1]
-        if self.boundary_damping < 0.0 || self.boundary_damping > 1.0 {
-            errors.push(format!(
-                "boundary_damping must be in [0, 1], got {}",
-                self.boundary_damping
-            ));
-        }
-        // Temperature: must be non-negative
-        if self.temperature < 0.0 {
-            errors.push(format!(
-                "temperature must be >= 0, got {}",
-                self.temperature
-            ));
-        }
-        // Center gravity: must be non-negative
-        if self.center_gravity_k < 0.0 {
-            errors.push(format!(
-                "center_gravity_k must be >= 0, got {}",
-                self.center_gravity_k
-            ));
-        }
-        // Rest length: must be positive for spring equilibrium
-        if self.rest_length <= 0.0 {
-            errors.push(format!("rest_length must be > 0, got {}", self.rest_length));
-        }
-        // Separation radius: must be non-negative
-        if self.separation_radius < 0.0 {
-            errors.push(format!(
-                "separation_radius must be >= 0, got {}",
-                self.separation_radius
-            ));
-        }
-        // Gravity: must be non-negative
-        if self.gravity < 0.0 {
-            errors.push(format!("gravity must be >= 0, got {}", self.gravity));
-        }
-
-        // Check all f32 fields are finite (not NaN or Inf)
-        let float_fields: &[(&str, f32)] = &[
-            ("dt", self.dt),
-            ("damping", self.damping),
-            ("spring_k", self.spring_k),
-            ("repel_k", self.repel_k),
-            ("max_velocity", self.max_velocity),
-            ("max_force", self.max_force),
-            ("temperature", self.temperature),
-            ("center_gravity_k", self.center_gravity_k),
-            ("cooling_rate", self.cooling_rate),
-            ("boundary_damping", self.boundary_damping),
-            ("viewport_bounds", self.viewport_bounds),
-            ("separation_radius", self.separation_radius),
-            ("cluster_strength", self.cluster_strength),
-            ("alignment_strength", self.alignment_strength),
-            ("rest_length", self.rest_length),
-            ("gravity", self.gravity),
-            (
-                "repulsion_softening_epsilon",
-                self.repulsion_softening_epsilon,
-            ),
-            ("grid_cell_size", self.grid_cell_size),
-            ("min_distance", self.min_distance),
-            ("max_repulsion_dist", self.max_repulsion_dist),
-            (
-                "constraint_max_force_per_node",
-                self.constraint_max_force_per_node,
-            ),
-        ];
-        for &(name, value) in float_fields {
-            if !value.is_finite() {
-                errors.push(format!("{} must be finite, got {}", name, value));
-            }
-        }
-
-        if errors.is_empty() {
-            Ok(())
-        } else {
-            Err(errors.join("; "))
-        }
-    }
-
-    pub fn new() -> Self {
-        let default_physics = PhysicsSettings::default();
-        Self::from(&default_physics)
-    }
-
-    pub fn with_phase(phase: SimulationPhase) -> Self {
-        let mut params = Self::new();
-        params.phase = phase;
-
-        match phase {
-            SimulationPhase::Initial => {
-                params.iterations = params.iterations.max(500);
-                params.warmup_iterations = params.warmup_iterations.max(300);
-            }
-            SimulationPhase::Dynamic => {}
-            SimulationPhase::Finalize => {
-                params.iterations = params.iterations.max(300);
-            }
-        }
-
-        params
-    }
-
-    pub fn to_sim_params(&self) -> SimParams {
-        let mut feature_flags = 0;
-        if self.repel_k > 0.0 {
-            feature_flags |= FeatureFlags::ENABLE_REPULSION;
-        }
-        if self.spring_k > 0.0 {
-            feature_flags |= FeatureFlags::ENABLE_SPRINGS;
-        }
-
-        if self.center_gravity_k > 0.0 {
-            feature_flags |= FeatureFlags::ENABLE_CENTERING;
-        }
-
-        if self.use_sssp_distances {
-            feature_flags |= FeatureFlags::ENABLE_SSSP_SPRING_ADJUST;
-        }
-
-        SimParams {
-            dt: self.dt,
-            damping: self.damping,
-            warmup_iterations: self.warmup_iterations,
-            cooling_rate: self.cooling_rate,
-            spring_k: self.spring_k,
-            rest_length: self.rest_length,
-            repel_k: self.repel_k,
-            repulsion_cutoff: self.max_repulsion_dist,
-            repulsion_softening_epsilon: self.repulsion_softening_epsilon,
-            center_gravity_k: self.center_gravity_k,
-            max_force: self.max_force,
-            max_velocity: self.max_velocity,
-            grid_cell_size: self.grid_cell_size,
-            feature_flags,
-            seed: 1337,
-            iteration: 0,
-            separation_radius: self.separation_radius,
-            cluster_strength: self.cluster_strength,
-            alignment_strength: self.alignment_strength,
-            temperature: self.temperature,
-            viewport_bounds: if self.enable_bounds {
-                self.viewport_bounds
-            } else {
-                0.0
-            },
-            sssp_alpha: self.sssp_alpha.unwrap_or(0.0),
-            boundary_damping: self.boundary_damping,
-            constraint_ramp_frames: self.constraint_ramp_frames,
-            constraint_max_force_per_node: self.constraint_max_force_per_node,
-
-            stability_threshold: crate::config::dev_config::physics().stability_threshold,
-            min_velocity_threshold: crate::config::dev_config::physics().min_velocity_threshold,
-
-            world_bounds_min: crate::config::dev_config::physics().world_bounds_min,
-            world_bounds_max: crate::config::dev_config::physics().world_bounds_max,
-            cell_size_lod: crate::config::dev_config::physics().cell_size_lod,
-            k_neighbors_max: crate::config::dev_config::physics().k_neighbors_max,
-            anomaly_detection_radius: crate::config::dev_config::physics().anomaly_detection_radius,
-            learning_rate_default: crate::config::dev_config::physics().learning_rate_default,
-
-            norm_delta_cap: crate::config::dev_config::physics().norm_delta_cap,
-            position_constraint_attraction: crate::config::dev_config::physics()
-                .position_constraint_attraction,
-            lof_score_min: crate::config::dev_config::physics().lof_score_min,
-            lof_score_max: crate::config::dev_config::physics().lof_score_max,
-            weight_precision_multiplier: crate::config::dev_config::physics()
-                .weight_precision_multiplier,
-            gravity: self.gravity,
-            lin_log_mode: if self.lin_log_mode { 1 } else { 0 },
-            scaling_ratio: self.scaling_ratio,
-            adaptive_speed: if self.adaptive_speed { 1 } else { 0 },
-            global_speed: self.global_speed,
-        }
-    }
-}
-
-// Implementation for SimParams (GPU-aligned struct)
 impl Default for SimParams {
     fn default() -> Self {
         Self::new()
@@ -493,7 +96,7 @@ impl Default for SimParams {
 impl SimParams {
     pub fn new() -> Self {
         let params = SimulationParams::new();
-        params.to_sim_params()
+        SimParams::from(&params)
     }
 
     pub fn set_iteration(&mut self, iteration: i32) {
@@ -536,7 +139,7 @@ impl SimParams {
             constraint_max_force_per_node: self.constraint_max_force_per_node,
             repulsion_softening_epsilon: self.repulsion_softening_epsilon,
             grid_cell_size: self.grid_cell_size,
-            gravity: 0.0001, // SimParams doesn't carry gravity; use default
+            gravity: 0.0001,
             phase: SimulationPhase::Dynamic,
             mode: SimulationMode::Remote,
             settle_mode: SettleMode::default(),
@@ -551,24 +154,95 @@ impl SimParams {
     }
 }
 
-// Conversion from SimulationParams to SimParams
-impl From<&SimulationParams> for SimParams {
-    fn from(params: &SimulationParams) -> Self {
-        params.to_sim_params()
+/// Local extension trait so existing call sites can keep using
+/// `params.to_sim_params()` even though `SimulationParams` itself lives in
+/// the domain crate (which knows nothing about CUDA-aligned `SimParams`).
+pub trait ToSimParams {
+    fn to_sim_params(&self) -> SimParams;
+}
+
+impl ToSimParams for SimulationParams {
+    fn to_sim_params(&self) -> SimParams {
+        SimParams::from(self)
     }
 }
 
 // Compile-time size assertion: SimParams must match the CUDA struct exactly.
 const _: () = assert!(std::mem::size_of::<SimParams>() == 172);
 
-// Conversion from SimParams to SimulationParams
 impl From<&SimParams> for SimulationParams {
     fn from(params: &SimParams) -> Self {
         params.to_simulation_params()
     }
 }
 
-// Direct conversion from PhysicsSettings to SimParams for the new CUDA kernel
+impl From<&SimulationParams> for SimParams {
+    fn from(params: &SimulationParams) -> Self {
+        let mut feature_flags = 0;
+        if params.repel_k > 0.0 {
+            feature_flags |= FeatureFlags::ENABLE_REPULSION;
+        }
+        if params.spring_k > 0.0 {
+            feature_flags |= FeatureFlags::ENABLE_SPRINGS;
+        }
+        if params.center_gravity_k > 0.0 {
+            feature_flags |= FeatureFlags::ENABLE_CENTERING;
+        }
+        if params.use_sssp_distances {
+            feature_flags |= FeatureFlags::ENABLE_SSSP_SPRING_ADJUST;
+        }
+
+        SimParams {
+            dt: params.dt,
+            damping: params.damping,
+            warmup_iterations: params.warmup_iterations,
+            cooling_rate: params.cooling_rate,
+            spring_k: params.spring_k,
+            rest_length: params.rest_length,
+            repel_k: params.repel_k,
+            repulsion_cutoff: params.max_repulsion_dist,
+            repulsion_softening_epsilon: params.repulsion_softening_epsilon,
+            center_gravity_k: params.center_gravity_k,
+            max_force: params.max_force,
+            max_velocity: params.max_velocity,
+            grid_cell_size: params.grid_cell_size,
+            feature_flags,
+            seed: 1337,
+            iteration: 0,
+            separation_radius: params.separation_radius,
+            cluster_strength: params.cluster_strength,
+            alignment_strength: params.alignment_strength,
+            temperature: params.temperature,
+            viewport_bounds: if params.enable_bounds { params.viewport_bounds } else { 0.0 },
+            sssp_alpha: params.sssp_alpha.unwrap_or(0.0),
+            boundary_damping: params.boundary_damping,
+            constraint_ramp_frames: params.constraint_ramp_frames,
+            constraint_max_force_per_node: params.constraint_max_force_per_node,
+
+            stability_threshold: crate::config::dev_config::physics().stability_threshold,
+            min_velocity_threshold: crate::config::dev_config::physics().min_velocity_threshold,
+
+            world_bounds_min: crate::config::dev_config::physics().world_bounds_min,
+            world_bounds_max: crate::config::dev_config::physics().world_bounds_max,
+            cell_size_lod: crate::config::dev_config::physics().cell_size_lod,
+            k_neighbors_max: crate::config::dev_config::physics().k_neighbors_max,
+            anomaly_detection_radius: crate::config::dev_config::physics().anomaly_detection_radius,
+            learning_rate_default: crate::config::dev_config::physics().learning_rate_default,
+
+            norm_delta_cap: crate::config::dev_config::physics().norm_delta_cap,
+            position_constraint_attraction: crate::config::dev_config::physics().position_constraint_attraction,
+            lof_score_min: crate::config::dev_config::physics().lof_score_min,
+            lof_score_max: crate::config::dev_config::physics().lof_score_max,
+            weight_precision_multiplier: crate::config::dev_config::physics().weight_precision_multiplier,
+            gravity: params.gravity,
+            lin_log_mode: if params.lin_log_mode { 1 } else { 0 },
+            scaling_ratio: params.scaling_ratio,
+            adaptive_speed: if params.adaptive_speed { 1 } else { 0 },
+            global_speed: params.global_speed,
+        }
+    }
+}
+
 impl From<&PhysicsSettings> for SimParams {
     fn from(physics: &PhysicsSettings) -> Self {
         let mut feature_flags = 0;
@@ -581,7 +255,7 @@ impl From<&PhysicsSettings> for SimParams {
         if physics.center_gravity_k > 0.0 {
             feature_flags |= FeatureFlags::ENABLE_CENTERING;
         }
-        // Enable SSSP spring adjustment for ontology-aware edge rest lengths
+        // Enable SSSP spring adjustment for ontology-aware edge rest lengths.
         feature_flags |= FeatureFlags::ENABLE_SSSP_SPRING_ADJUST;
 
         SimParams {
@@ -605,11 +279,7 @@ impl From<&PhysicsSettings> for SimParams {
             cluster_strength: physics.cluster_strength,
             alignment_strength: physics.alignment_strength,
             temperature: physics.temperature,
-            viewport_bounds: if physics.enable_bounds {
-                physics.bounds_size
-            } else {
-                0.0
-            },
+            viewport_bounds: if physics.enable_bounds { physics.bounds_size } else { 0.0 },
             sssp_alpha: 1.5,
             boundary_damping: physics.boundary_damping,
             constraint_ramp_frames: physics.constraint_ramp_frames,
@@ -626,69 +296,14 @@ impl From<&PhysicsSettings> for SimParams {
             learning_rate_default: crate::config::dev_config::physics().learning_rate_default,
 
             norm_delta_cap: crate::config::dev_config::physics().norm_delta_cap,
-            position_constraint_attraction: crate::config::dev_config::physics()
-                .position_constraint_attraction,
+            position_constraint_attraction: crate::config::dev_config::physics().position_constraint_attraction,
             lof_score_min: crate::config::dev_config::physics().lof_score_min,
             lof_score_max: crate::config::dev_config::physics().lof_score_max,
-            weight_precision_multiplier: crate::config::dev_config::physics()
-                .weight_precision_multiplier,
+            weight_precision_multiplier: crate::config::dev_config::physics().weight_precision_multiplier,
             gravity: physics.gravity,
             lin_log_mode: if physics.lin_log_mode { 1 } else { 0 },
             scaling_ratio: physics.scaling_ratio,
             adaptive_speed: if physics.adaptive_speed { 1 } else { 0 },
-            global_speed: physics.global_speed,
-        }
-    }
-}
-
-// Conversion from PhysicsSettings to SimulationParams
-impl From<&PhysicsSettings> for SimulationParams {
-    fn from(physics: &PhysicsSettings) -> Self {
-        Self {
-            enabled: physics.enabled,
-            auto_balance: physics.auto_balance,
-            auto_balance_interval_ms: physics.auto_balance_interval_ms,
-            auto_balance_config: physics.auto_balance_config.clone(),
-            auto_pause_config: physics.auto_pause.clone(),
-            is_physics_paused: false,
-            equilibrium_stability_counter: 0,
-            iterations: physics.iterations,
-            dt: physics.dt,
-            spring_k: physics.spring_k,
-            repel_k: physics.repel_k,
-            damping: physics.damping,
-            boundary_damping: physics.boundary_damping,
-            viewport_bounds: physics.bounds_size,
-            enable_bounds: physics.enable_bounds,
-            max_velocity: physics.max_velocity,
-            max_force: physics.max_force,
-            separation_radius: physics.separation_radius,
-            temperature: physics.temperature,
-            center_gravity_k: physics.center_gravity_k,
-            alignment_strength: physics.alignment_strength,
-            cluster_strength: physics.cluster_strength,
-            compute_mode: physics.compute_mode,
-            min_distance: physics.min_distance,
-            max_repulsion_dist: physics.max_repulsion_dist,
-            warmup_iterations: physics.warmup_iterations,
-            cooling_rate: physics.cooling_rate,
-            rest_length: physics.rest_length,
-            use_sssp_distances: true,
-            sssp_alpha: Some(1.5), // SSSP-adaptive rest lengths
-            constraint_ramp_frames: physics.constraint_ramp_frames,
-            constraint_max_force_per_node: physics.constraint_max_force_per_node,
-            repulsion_softening_epsilon: physics.repulsion_softening_epsilon,
-            grid_cell_size: physics.grid_cell_size,
-            gravity: physics.gravity,
-            phase: SimulationPhase::Dynamic,
-            mode: SimulationMode::Remote,
-            settle_mode: SettleMode::default(),
-            graph_separation_x: physics.graph_separation_x,
-            axis_compression_z: physics.axis_compression_z,
-            layout_mode: LayoutMode::default(),
-            lin_log_mode: physics.lin_log_mode,
-            scaling_ratio: physics.scaling_ratio,
-            adaptive_speed: physics.adaptive_speed,
             global_speed: physics.global_speed,
         }
     }

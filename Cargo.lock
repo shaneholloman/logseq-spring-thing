@@ -6545,11 +6545,19 @@ name = "visionflow-domain"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "base64 0.21.7",
+ "bcrypt",
  "chrono",
  "log",
  "rand 0.8.5",
  "serde",
  "serde_json",
+ "specta",
+ "thiserror 2.0.16",
+ "tokio",
+ "tungstenite 0.21.0",
+ "uuid",
+ "validator",
 ]
 
 [[package]]
@@ -6814,6 +6822,7 @@ dependencies = [
  "utoipa-swagger-ui",
  "uuid",
  "validator",
+ "visionflow-domain",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",

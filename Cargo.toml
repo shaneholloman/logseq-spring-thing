@@ -23,6 +23,12 @@ license = "AGPL-3.0-only"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
+# Workspace crates — ADR-090 hexagonal modularisation. Each `pub use`
+# re-export shim in src/{models,types,config,layout} reaches into these
+# crates so a one-line change in a domain type no longer triggers a full
+# 12-minute rebuild of webxr; only the touched crate + linker run.
+visionflow-domain = { path = "crates/visionflow-domain" }
+
 # Web framework and WebSocket
 actix-web = { version = "4.11.0", features = ["compress-zstd", "macros"] }
 actix-cors = "0.7.1"

@@ -1,7 +1,19 @@
 //! Domain types module
 
+pub mod actor_types;
+pub mod layout;
+pub mod mcp_responses;
+pub mod ontology_tools;
+pub mod physics_config;
+pub mod speech;
+pub mod user_context;
 pub mod vec3;
-mod layout;
 
+pub use actor_types::{AutoBalanceNotification, PhysicsState};
+pub use layout::{ConstraintZone, LayoutMode, LayoutModeConfig, LayoutStatus};
+pub use physics_config::{
+    AutoBalanceConfig, AutoPauseConfig, ClusteringConfiguration, ConstraintSystem,
+    LegacyConstraintData, PhysicsSettings, PhysicsUpdate, CANONICAL_MAX_FORCE,
+    CANONICAL_MAX_VELOCITY,
+};
 pub use vec3::{BinaryNodeData, Vec3Data};
-pub use layout::LayoutMode;
