@@ -6541,6 +6541,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "visionflow-adapters"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "horned-owl 1.2.0",
+ "tokio",
+ "tracing",
+ "visionflow-domain",
+ "whelk",
+]
+
+[[package]]
 name = "visionflow-domain"
 version = "0.1.0"
 dependencies = [
@@ -6558,6 +6570,19 @@ dependencies = [
  "tungstenite 0.21.0",
  "uuid",
  "validator",
+]
+
+[[package]]
+name = "visionflow-gpu"
+version = "0.1.0"
+dependencies = [
+ "cudarc",
+ "cust",
+ "cust_core",
+ "log",
+ "once_cell",
+ "tokio",
+ "visionflow-domain",
 ]
 
 [[package]]
@@ -6822,7 +6847,9 @@ dependencies = [
  "utoipa-swagger-ui",
  "uuid",
  "validator",
+ "visionflow-adapters",
  "visionflow-domain",
+ "visionflow-gpu",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",

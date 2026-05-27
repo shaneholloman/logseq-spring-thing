@@ -12,7 +12,10 @@ pub mod edge_data;
 #[cfg(test)]
 mod gpu_compute_tests;
 pub mod gpu_diagnostics;
-pub mod gpu_memory;
+/// ADR-090 Phase 3 shim — GPU memory utilities now live in crates/visionflow-gpu/.
+pub mod gpu_memory {
+    pub use visionflow_gpu::memory::*;
+}
 pub mod gpu_safety;
 pub mod cuda_error_handling;
 pub mod handler_commons;
@@ -30,7 +33,10 @@ pub mod mcp_connection; // Legacy wrapper - to be migrated to mcp_client_utils
 pub mod mcp_tcp_client; // Legacy wrapper - to be migrated to mcp_client_utils
 pub mod memory_bounds;
 pub mod network;
-pub mod ptx;
+/// ADR-090 Phase 3 shim — PTX loader now lives in crates/visionflow-gpu/.
+pub mod ptx {
+    pub use visionflow_gpu::ptx_loader::*;
+}
 #[cfg(test)]
 mod ptx_tests;
 pub mod socket_flow_constants;

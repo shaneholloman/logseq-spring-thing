@@ -3,6 +3,8 @@ members = [
     ".",
     "crates/visionclaw-contracts",
     "crates/visionflow-domain",
+    "crates/visionflow-adapters",
+    "crates/visionflow-gpu",
 ]
 # Note: visionclaw-contracts is independently buildable. To work around the
 # pre-existing `solid-pod-rs { rev = "main" }` resolution error in the root
@@ -28,6 +30,8 @@ crate-type = ["cdylib", "rlib"]
 # crates so a one-line change in a domain type no longer triggers a full
 # 12-minute rebuild of webxr; only the touched crate + linker run.
 visionflow-domain = { path = "crates/visionflow-domain" }
+visionflow-adapters = { path = "crates/visionflow-adapters" }
+visionflow-gpu = { path = "crates/visionflow-gpu" }
 
 # Web framework and WebSocket
 actix-web = { version = "4.11.0", features = ["compress-zstd", "macros"] }
