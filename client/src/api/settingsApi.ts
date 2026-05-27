@@ -719,10 +719,14 @@ export const settingsApi = {
         // Non-visual, non-server paths (system, auth ephemeral state, etc.)
         logger.debug(`[settingsApi] Path "${path}" persisted to localStorage only (no server endpoint)`);
       }
-    } catch (error) {
-      // Log but don't throw -- the value is already saved in settingsStore/localStorage.
-      // Server-side persistence failure should not block the UI.
-      logger.warn(`Server update failed for "${path}", value persisted locally`, error);
+    } catch (error: unknown) {
+      const status = (error as { response?: { status?: number } } | undefined)?.response?.status;
+      if (status === 401) {
+        window.dispatchEvent(new CustomEvent('settings-auth-failed', { detail: { path } }));
+        logger.error(`Auth required for "${path}" — settings PUT returned 401`, error);
+      } else {
+        logger.warn(`Server update failed for "${path}", value persisted locally`, error);
+      }
     }
   },
 

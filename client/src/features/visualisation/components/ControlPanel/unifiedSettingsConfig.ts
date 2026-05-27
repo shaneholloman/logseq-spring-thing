@@ -171,6 +171,7 @@ export const UNIFIED_SETTINGS_CONFIG: Record<string, SectionConfig> = {
     fields: [
       // Core - Basic
       { key: 'enabled', label: 'Physics Enabled', type: 'toggle', path: 'visualisation.graphs.logseq.physics.enabled', description: 'Enable physics simulation' },
+      { key: 'resetLayout', label: 'Reset Layout', type: 'action-button', action: 'reset_layout', description: 'Re-randomize all positions and reset physics to safe defaults — use when the graph has exploded or become unresponsive' },
       { key: 'autoBalance', label: 'Auto Balance', type: 'toggle', path: 'visualisation.graphs.logseq.physics.autoBalance', description: 'Adaptive force balancing' },
       { key: 'damping', label: 'Damping', type: 'slider', min: 0, max: 1, step: 0.01, path: 'visualisation.graphs.logseq.physics.damping', description: 'Velocity damping — lower = more energy, higher = faster settle' },
       { key: 'springK', label: 'Spring Strength', type: 'slider', min: 0.01, max: 100, step: 0.5, path: 'visualisation.graphs.logseq.physics.springK', description: 'Edge spring constant (recommended: 8-20 for 2K+ node graphs)' },

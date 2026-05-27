@@ -1301,7 +1301,10 @@ impl Handler<ComputeForces> for ForceComputeActor {
                     // (Previously 0.7x which decayed in ~10 steps — too fast for
                     // 2000+ node graphs to find community structure.)
                     if actor.reheat_factor > 0.0 {
-                        actor.reheat_factor *= 0.95;
+                        // Slower decay (0.985) gives ~46-step half-life vs 14-step at 0.95.
+                        // Dense knowledge graphs need sustained energy injection to escape
+                        // tight spring-equilibrium pockets (Slice A audit, 2026-05-26).
+                        actor.reheat_factor *= 0.985;
                         if actor.reheat_factor < 0.02 {
                             actor.reheat_factor = 0.0;
                         }
@@ -1684,6 +1687,11 @@ impl Handler<UpdateSimulationParams> for ForceComputeActor {
             msg.params.center_gravity_k, msg.params.cluster_strength, msg.params.alignment_strength
         );
 
+        // Capture prior repel_k BEFORE update_simulation_parameters overwrites self.simulation_params.
+        // Used below to scale reheat energy proportional to the magnitude of the user's change.
+        let prior_repel_k = self.simulation_params.repel_k.max(1.0);
+        let new_repel_k = msg.params.repel_k.max(1.0);
+
         self.update_simulation_parameters(msg.params);
 
         // Reset broadcast optimizer delta state so the next frame re-broadcasts ALL
@@ -1691,19 +1699,19 @@ impl Handler<UpdateSimulationParams> for ForceComputeActor {
         // never see the effect of parameter changes.
         self.broadcast_optimizer.reset_delta_state();
 
-        // Bypass GPU stability-skip for 600 frames (~10 seconds at 60fps).
-        // The GPU kernel's check_system_stability_kernel measures kinetic energy from the
-        // OLD state (before new forces). If the system was at equilibrium, KE ≈ 0 and the
-        // kernel sets should_skip_physics=1, preventing new forces from ever being applied.
-        self.stability_warmup_remaining = 600;
+        // Bypass GPU stability-skip for 1800 frames (~30 seconds at 60fps).
+        // Previously 600 (~10s) — too short for dense graphs to fully re-layout under
+        // new force parameters before check_system_stability_kernel re-suppressed physics.
+        // 30s gives the system enough time to find the new equilibrium under large
+        // repulsion/spring changes (Slice A audit, 2026-05-26).
+        self.stability_warmup_remaining = 1800;
 
-        // Inject a strong reheat to break equilibrium. Without this, a fully converged
-        // system (KE≈0, temperature≈0.01) has no kinetic energy to redistribute nodes
-        // under the changed force parameters. Dense knowledge/ontology subgraphs need
-        // stronger reheat (1.0) because spring forces quickly damp mild perturbations.
-        // The value 1.0 provides enough energy for densely-connected nodes to visibly
-        // re-layout, while still being bounded by max_velocity.
-        self.reheat_factor = 1.0;
+        // Scale reheat by the log-ratio of repel_k change. A 10x repel_k bump produces
+        // reheat ≈ 1 + ln(10)*2 = 5.6 → clamped to 5.0; a 1.5x bump produces ≈ 1.8.
+        // Capped at 5.0 to stay bounded by max_velocity.
+        let ratio = new_repel_k / prior_repel_k;
+        let reheat = if ratio > 1.0 { (1.0 + ratio.ln() * 2.0).clamp(1.0, 5.0) } else { 1.0 };
+        self.reheat_factor = reheat;
 
         // DO NOT suppress intermediate broadcasts on param change.
         // Users need to SEE the layout morphing in real-time, not wait for convergence
@@ -1712,8 +1720,9 @@ impl Handler<UpdateSimulationParams> for ForceComputeActor {
         self.suppress_intermediate_broadcasts = false;
         self.force_full_broadcast = true;
 
-        debug!(
-            "ForceComputeActor: Stability warmup=600, reheat=1.0, force_full_broadcast=true (visible re-layout)"
+        info!(
+            "ForceComputeActor: Stability warmup=1800 (30s), reheat={:.2} (scaled by repel_k change), force_full_broadcast=true",
+            reheat
         );
 
         debug!(

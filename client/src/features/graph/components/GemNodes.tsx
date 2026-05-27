@@ -110,6 +110,8 @@ const GemNodesInner: React.ForwardRefRenderFunction<GemNodesHandle, GemNodesProp
   const meshRef = useRef<THREE.InstancedMesh | null>(null);
   const metaTexRef = useRef<THREE.DataTexture | null>(null);
   const prevMetaHashRef = useRef('');
+  // Track meshes manually added to the scene so we can remove them synchronously
+  const sceneMeshesRef = useRef<Set<THREE.InstancedMesh>>(new Set());
   const dominant = getDominantMode(nodes, graphMode, perNodeVisualModeMap);
 
   // Keep a synchronously-updated ref to nodes so useFrame always reads
@@ -167,23 +169,20 @@ const GemNodesInner: React.ForwardRefRenderFunction<GemNodesHandle, GemNodesProp
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dominant, capacityKey]);
 
-  // Dispose previous GPU resources when dominant mode changes or on unmount.
-  // R3F <primitive> never auto-disposes, so manual cleanup is required.
+  // Dispose previous GPU resources on unmount only.
+  // Stale mesh cleanup on mode change is handled synchronously in useFrame
+  // (via sceneMeshesRef) to avoid async useEffect timing gaps during rapid toggles.
   useEffect(() => {
-    const currentMetaTex = metaTexRef.current;
     return () => {
-      if (mesh) {
-        mesh.geometry?.dispose();
-        if (mesh.material) {
-          (mesh.material as THREE.Material).dispose();
-        }
-        mesh.dispose();
+      for (const old of sceneMeshesRef.current) {
+        if (old.parent) old.parent.remove(old);
+        old.geometry?.dispose();
+        (old.material as THREE.Material)?.dispose();
+        old.dispose();
       }
-      if (currentMetaTex) {
-        currentMetaTex.dispose();
-      }
+      sceneMeshesRef.current.clear();
     };
-  }, [mesh]);
+  }, []);
 
   useImperativeHandle(ref, () => ({
     getMesh: () => meshRef.current,
@@ -299,11 +298,24 @@ const GemNodesInner: React.ForwardRefRenderFunction<GemNodesHandle, GemNodesProp
       return;
     }
 
-    // Workaround: R3F <primitive> sometimes fails to attach InstancedMesh to scene.
-    // If the mesh has no parent after mount, attach it directly.
+    // Clean up stale meshes from previous dominant-mode changes.
+    // Must run every frame (not just when !inst.parent) because R3F's primitive
+    // may attach the new mesh before useFrame runs, skipping the old cleanup path.
+    for (const old of sceneMeshesRef.current) {
+      if (old !== inst && old.parent) {
+        old.parent.remove(old);
+        old.geometry?.dispose();
+        (old.material as THREE.Material)?.dispose();
+        old.dispose();
+        sceneMeshesRef.current.delete(old);
+      }
+    }
+
+    // R3F <primitive> sometimes fails to attach InstancedMesh to scene.
+    // Manually add it if needed.
     if (!inst.parent && scene) {
       scene.add(inst);
-      logger.debug('[GemNodes] manually attached mesh to scene (R3F primitive workaround)');
+      sceneMeshesRef.current.add(inst);
     }
 
     if (uniforms.time) uniforms.time.value = clock.elapsedTime;

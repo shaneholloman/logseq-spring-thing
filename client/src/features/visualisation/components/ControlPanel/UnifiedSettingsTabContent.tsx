@@ -447,20 +447,39 @@ export const UnifiedSettingsTabContent: React.FC<UnifiedSettingsTabContentProps>
         );
 
       case 'action-button':
-        const handleAction = () => {
+        const handleAction = async () => {
           if (field.action === 'refresh_graph') {
-            // Force refresh graph with current filter settings
             webSocketService.forceRefreshFilter();
             onSuccess?.('Graph refresh triggered - applying current filter settings');
+          } else if (field.action === 'reset_layout') {
+            try {
+              const { default: axios } = await import('axios');
+              await axios.post('/api/settings/physics/reset-layout');
+              onSuccess?.('Layout reset — positions re-randomized with safe physics defaults');
+            } catch (err: any) {
+              onError?.(err?.response?.data?.error || 'Failed to reset layout');
+            }
           } else if (field.action === 'toggle-webgpu') {
             const currentlyWebGPU = isWebGPURenderer;
-            setForceWebGLOverride(currentlyWebGPU); // if WebGPU, force WebGL; if WebGL, remove force
+            setForceWebGLOverride(currentlyWebGPU);
             window.location.reload();
           }
         };
 
         const isWebGPUToggle = field.action === 'toggle-webgpu';
+        const isResetLayout = field.action === 'reset_layout';
         const webgpuActive = isWebGPUToggle ? isWebGPURenderer : false;
+
+        const buttonGradient = isWebGPUToggle
+          ? (webgpuActive ? 'linear-gradient(to right, #10b981, #059669)' : 'linear-gradient(to right, #6b7280, #4b5563)')
+          : isResetLayout
+            ? 'linear-gradient(to right, #f59e0b, #d97706)'
+            : 'linear-gradient(to right, #3b82f6, #2563eb)';
+        const buttonShadow = isWebGPUToggle
+          ? (webgpuActive ? '0 2px 4px rgba(16, 185, 129, 0.3)' : '0 2px 4px rgba(107, 114, 128, 0.3)')
+          : isResetLayout
+            ? '0 2px 4px rgba(245, 158, 11, 0.3)'
+            : '0 2px 4px rgba(59, 130, 246, 0.3)';
 
         return (
           <div key={field.key} style={{ padding: '8px 0' }}>
@@ -472,9 +491,7 @@ export const UnifiedSettingsTabContent: React.FC<UnifiedSettingsTabContentProps>
                 alignItems: 'center',
                 justifyContent: 'center',
                 gap: '8px',
-                background: isWebGPUToggle
-                  ? (webgpuActive ? 'linear-gradient(to right, #10b981, #059669)' : 'linear-gradient(to right, #6b7280, #4b5563)')
-                  : 'linear-gradient(to right, #3b82f6, #2563eb)',
+                background: buttonGradient,
                 color: 'white',
                 padding: '8px 16px',
                 borderRadius: '4px',
@@ -483,9 +500,7 @@ export const UnifiedSettingsTabContent: React.FC<UnifiedSettingsTabContentProps>
                 border: 'none',
                 cursor: 'pointer',
                 transition: 'all 0.2s',
-                boxShadow: isWebGPUToggle
-                  ? (webgpuActive ? '0 2px 4px rgba(16, 185, 129, 0.3)' : '0 2px 4px rgba(107, 114, 128, 0.3)')
-                  : '0 2px 4px rgba(59, 130, 246, 0.3)'
+                boxShadow: buttonShadow,
               }}
               onMouseEnter={(e) => {
                 e.currentTarget.style.transform = 'translateY(-1px)';

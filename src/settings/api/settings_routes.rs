@@ -9,7 +9,7 @@ use log::{debug, error, info, warn};
 use std::sync::Arc;
 
 use crate::config::{PhysicsSettings, RenderingSettings};
-use crate::actors::messages::{BroadcastMessage, ForceResumePhysics, GetSettings, SetComputeMode, UpdateConstraints, UpdateSettings, UpdateSimulationParams};
+use crate::actors::messages::{BroadcastMessage, ForceResumePhysics, GetSettings, ResetPositions, SetComputeMode, UpdateConstraints, UpdateSettings, UpdateSimulationParams};
 use crate::utils::unified_gpu_compute::ComputeMode;
 use crate::settings::models::{ConstraintSettings, NodeFilterSettings, QualityGateSettings, AllSettings};
 use crate::settings::auth_extractor::{AuthenticatedUser, OptionalAuth};
@@ -1198,6 +1198,69 @@ pub async fn delete_profile(
 }
 
 // ============================================================================
+// Physics Reset Layout
+// ============================================================================
+
+/// POST /api/settings/physics/reset-layout
+/// Re-randomizes all node positions to a uniform sphere, resets physics to safe
+/// defaults, and triggers full reheat. Use when the graph has exploded or converged
+/// to an unusable state.
+pub async fn reset_layout(
+    state: web::Data<AppState>,
+    _auth: AuthenticatedUser,
+) -> impl Responder {
+    info!("Reset layout requested — sending ResetPositions + safe physics defaults");
+
+    // 1. Reset physics parameters to safe defaults before re-randomizing positions
+    let safe_physics = PhysicsSettings {
+        global_speed: 0.1,
+        center_gravity_k: 3.0,
+        repel_k: 500.0,
+        damping: 0.15,
+        ..Default::default()
+    };
+    let sim_params: crate::models::simulation_params::SimulationParams = (&safe_physics).into();
+    let update_msg = UpdateSimulationParams { params: sim_params };
+
+    if let Some(gpu_addr) = state.get_gpu_compute_addr().await {
+        if let Err(e) = gpu_addr.send(update_msg.clone()).await {
+            warn!("Failed to send safe physics defaults to ForceComputeActor: {}", e);
+        }
+    }
+    if let Err(e) = state.graph_service_addr.send(update_msg).await {
+        warn!("Failed to propagate safe physics to GraphServiceSupervisor: {}", e);
+    }
+
+    // 2. Re-randomize positions on GPU
+    if let Some(gpu_addr) = state.get_gpu_compute_addr().await {
+        if let Err(e) = gpu_addr.send(ResetPositions).await {
+            error!("Failed to send ResetPositions to ForceComputeActor: {}", e);
+            return HttpResponse::InternalServerError().json(ErrorResponse {
+                error: format!("Failed to reset layout: {}", e),
+            });
+        }
+        info!("ResetPositions sent successfully");
+    } else {
+        error!("ForceComputeActor not available to handle ResetPositions");
+        return HttpResponse::ServiceUnavailable().json(ErrorResponse {
+            error: "GPU physics not available — ForceComputeActor not initialized".to_string(),
+        });
+    }
+
+    // 3. Force-resume physics so the new layout starts settling
+    if let Err(e) = state.graph_service_addr.send(
+        ForceResumePhysics { reason: "Layout reset via API".to_string() }
+    ).await {
+        warn!("Failed to send ForceResumePhysics after reset: {}", e);
+    }
+
+    HttpResponse::Ok().json(serde_json::json!({
+        "status": "ok",
+        "message": "Layout reset — positions re-randomized, physics reset to safe defaults, full reheat triggered"
+    }))
+}
+
+// ============================================================================
 // Route Configuration
 // ============================================================================
 
@@ -1206,6 +1269,7 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
 
     cfg.route("physics", web::get().to(get_physics_settings))
         .route("physics", web::put().to(update_physics_settings))
+        .route("physics/reset-layout", web::post().to(reset_layout))
         .route("constraints", web::get().to(get_constraint_settings))
         .route("constraints", web::put().to(update_constraint_settings))
         .route("rendering", web::get().to(get_rendering_settings))
