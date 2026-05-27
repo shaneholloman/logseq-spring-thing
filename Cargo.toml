@@ -33,6 +33,7 @@ crate-type = ["cdylib", "rlib"]
 # crates so a one-line change in a domain type no longer triggers a full
 # 12-minute rebuild of webxr; only the touched crate + linker run.
 visionflow-domain = { path = "crates/visionflow-domain" }
+visionflow-actors = { path = "crates/visionflow-actors" }
 visionflow-protocol = { path = "crates/visionflow-protocol" }
 visionflow-adapters = { path = "crates/visionflow-adapters" }
 visionflow-gpu = { path = "crates/visionflow-gpu" }

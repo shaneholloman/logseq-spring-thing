@@ -6552,6 +6552,7 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.16",
  "tokio",
+ "uuid",
  "validator",
  "visionflow-domain",
 ]
@@ -6913,6 +6914,7 @@ dependencies = [
  "utoipa-swagger-ui",
  "uuid",
  "validator",
+ "visionflow-actors",
  "visionflow-adapters",
  "visionflow-domain",
  "visionflow-gpu",

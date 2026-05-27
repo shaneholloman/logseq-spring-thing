@@ -15,6 +15,7 @@
 //!   `crate::telemetry`, `crate::utils::socket_flow_messages`, `crate::application`
 //! - GPU actors using `shared::SharedGPUContext` (depends on webxr `gpu::memory_manager`)
 
+pub mod messages;
 pub mod supervisor;
 pub mod voice_commands;
 pub mod protected_settings_actor;
