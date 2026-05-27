@@ -1,0 +1,22 @@
+[package]
+name = "visionflow-domain"
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0-only"
+description = "VisionFlow domain model: types, errors, events, port traits"
+authors = ["jjohare <github@thedreamlab.uk>"]
+repository = "https://github.com/jjohare/AR-AI-Knowledge-Graph"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+chrono = { version = "0.4", default-features = false, features = ["serde", "clock"] }
+log = "0.4"
+async-trait = "0.1"
+rand = "0.8"
+
+[dev-dependencies]
+serde_json = "1.0"
