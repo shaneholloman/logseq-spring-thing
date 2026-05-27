@@ -1,0 +1,176 @@
+import { createLogger, createErrorMetadata } from '../../../../utils/loggerConfig';
+import { debugState } from '../../../../utils/clientDebugState';
+import { unifiedApiClient } from '../../../../services/api/UnifiedApiClient';
+import { ensureNodeHasValidPosition } from './nodeUtils';
+import type { GraphData, Node, Edge } from '../graphWorkerProxy';
+
+const logger = createLogger('GraphDataManager.restClient');
+
+/** Shape returned by the REST `/graph/data` endpoint. */
+interface RawGraphResponse {
+  nodes?: unknown[];
+  edges?: unknown[];
+  metadata?: Record<string, unknown>;
+  settlementState?: { isSettled: boolean; stableFrameCount: number; kineticEnergy: number };
+}
+
+/**
+ * Fetch raw graph data from the backend REST API with up to `maxRetries`
+ * attempts and exponential back-off.  Returns a validated `GraphData` object
+ * with string-coerced node/edge IDs and enriched positions.
+ */
+export async function fetchGraphData(graphType: string): Promise<GraphData> {
+  const maxRetries   = 3;
+  const initialDelay = 500;
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      if (debugState.isEnabled()) {
+        logger.info(`Fetching initial ${graphType} graph data (attempt ${attempt}/${maxRetries})`);
+      }
+
+      const response = await unifiedApiClient.get('/graph/data', { timeout: 10000 });
+
+      const responseData: RawGraphResponse = response.data.data || response.data;
+
+      if (!responseData || typeof responseData !== 'object') {
+        throw new Error('Invalid graph data format: data is not an object');
+      }
+
+      const rawNodes = Array.isArray(responseData.nodes) ? responseData.nodes : [];
+
+      // One-time diagnostic for edge shape
+      if (Array.isArray(responseData.edges) && responseData.edges.length > 0) {
+        const rawEdge = responseData.edges[0] as Record<string, unknown>;
+        logger.debug('[restClient] RAW API edge[0]:',
+          'keys=', Object.keys(rawEdge),
+          'source=', rawEdge.source, '(type:', typeof rawEdge.source + ')',
+          'target=', rawEdge.target, '(type:', typeof rawEdge.target + ')',
+          'id=', rawEdge.id,
+          'full=', JSON.stringify(rawEdge).slice(0, 300));
+      }
+
+      // Normalise edge source/target to strings.
+      // Rust API returns u32 numeric IDs; Edge interface expects string.
+      const edges: Edge[] = Array.isArray(responseData.edges)
+        ? (responseData.edges as Array<Edge & Record<string, unknown>>)
+            .map(edge => {
+              let source = (edge.source ?? edge.from ?? (edge as Record<string,unknown>).from_node ?? (edge as Record<string,unknown>).sourceId ?? (edge as Record<string,unknown>).source_id) as string | undefined;
+              let target = (edge.target ?? edge.to ?? (edge as Record<string,unknown>).to_node   ?? (edge as Record<string,unknown>).targetId ?? (edge as Record<string,unknown>).target_id) as string | undefined;
+
+              if (source === 'undefined' || source === 'null') source = undefined;
+              if (target === 'undefined' || target === 'null') target = undefined;
+
+              // Recover from id field ("798-861") when source/target are still missing
+              if ((source == null || target == null) && edge.id && typeof edge.id === 'string') {
+                const parts = edge.id.split('-');
+                if (parts.length >= 2) {
+                  if (source == null) source = parts[0];
+                  if (target == null) target = parts.slice(1).join('-');
+                }
+              }
+
+              return { ...edge, source: String(source), target: String(target) };
+            })
+            .filter(edge => edge.source !== 'undefined' && edge.target !== 'undefined')
+        : [];
+
+      const metadata       = responseData.metadata || {};
+      const settlementState = responseData.settlementState || { isSettled: false, stableFrameCount: 0, kineticEnergy: 0 };
+
+      if (debugState.isEnabled()) {
+        logger.debug(`Settlement: settled=${settlementState.isSettled}, frames=${settlementState.stableFrameCount}, KE=${settlementState.kineticEnergy}`);
+      }
+
+      const nodes: Node[] = (rawNodes as Node[]).map(node => {
+        // Normalise node id to string — API returns u32
+        const normalizedNode = { ...node, id: String(node.id) };
+
+        // Recover flat x/y/z fields into a position object when the server sends them flat
+        if (!normalizedNode.position) {
+          const raw = node as unknown as Record<string, unknown> & { position?: { x?: number; y?: number; z?: number } };
+          normalizedNode.position = {
+            x: Number(raw.x) || Number(raw.position?.x) || 0,
+            y: Number(raw.y) || Number(raw.position?.y) || 0,
+            z: Number(raw.z) || Number(raw.position?.z) || 0,
+          };
+        }
+
+        // Attach metadata from the separate metadata map if present
+        const withMeta = normalizedNode as unknown as { metadata_id?: string; metadataId?: string };
+        const nodeMetadata = metadata[withMeta.metadata_id || withMeta.metadataId || ''];
+        const enriched = nodeMetadata
+          ? { ...normalizedNode, metadata: { ...normalizedNode.metadata, ...(nodeMetadata as object) } }
+          : normalizedNode;
+
+        return ensureNodeHasValidPosition(enriched);
+      });
+
+      if (debugState.isEnabled()) {
+        logger.info(`Received ${nodes.length} nodes, ${edges.length} edges (physics settled: ${settlementState.isSettled})`);
+      }
+
+      return { nodes, edges };
+
+    } catch (error) {
+      logger.error(`Attempt ${attempt} failed:`, createErrorMetadata(error));
+      if (attempt === maxRetries) {
+        logger.error('All attempts to fetch initial graph data failed.');
+        throw error;
+      }
+      const delay = initialDelay * Math.pow(2, attempt - 1);
+      if (debugState.isEnabled()) logger.debug(`Retrying in ${delay}ms...`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+
+  return { nodes: [], edges: [] };
+}
+
+/**
+ * T6 auto-retry: when the initial REST fetch returns 0 nodes (empty Oxigraph
+ * on first-boot / clean restart) schedule periodic re-checks every 15 s for
+ * up to 20 attempts (5 minutes total) so the UI recovers without user action.
+ *
+ * @param attempt   Current retry number (1-based).
+ * @param onSuccess Called when >0 nodes are received; caller re-runs full load.
+ * @returns The timer handle so the orchestrator can cancel it via clearTimeout.
+ */
+export function scheduleEmptyDataRetry(
+  attempt: number,
+  existingTimerRef: number | null,
+  onSuccess: () => Promise<unknown>,
+  onReschedule: (handle: number) => void,
+): void {
+  const MAX_ATTEMPTS = 20;
+  const INTERVAL_MS  = 15_000;
+
+  if (attempt > MAX_ATTEMPTS) {
+    logger.warn(`T6 empty-data retry: reached ${MAX_ATTEMPTS} attempts (${MAX_ATTEMPTS * INTERVAL_MS / 1000}s). Giving up.`);
+    return;
+  }
+
+  if (existingTimerRef !== null) {
+    clearTimeout(existingTimerRef);
+  }
+
+  const handle = window.setTimeout(async () => {
+    console.info(`[GraphDataManager] T6 empty-data retry attempt ${attempt}/${MAX_ATTEMPTS}`);
+    try {
+      const response = await unifiedApiClient.get('/graph/data', { timeout: 10000 });
+      const responseData = response.data.data || response.data;
+      const nodes = Array.isArray(responseData?.nodes) ? responseData.nodes : [];
+      if (nodes.length > 0) {
+        console.info(`[GraphDataManager] T6 empty-data retry: received ${nodes.length} nodes on attempt ${attempt}. Triggering full load.`);
+        await onSuccess();
+      } else {
+        scheduleEmptyDataRetry(attempt + 1, null, onSuccess, onReschedule);
+      }
+    } catch (err) {
+      logger.warn(`T6 empty-data retry attempt ${attempt} failed:`, createErrorMetadata(err));
+      scheduleEmptyDataRetry(attempt + 1, null, onSuccess, onReschedule);
+    }
+  }, INTERVAL_MS) as unknown as number;
+
+  onReschedule(handle);
+}
