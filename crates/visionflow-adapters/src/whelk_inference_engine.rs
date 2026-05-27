@@ -7,10 +7,10 @@
 use async_trait::async_trait;
 use tracing::{debug, info, instrument, warn};
 
-use crate::ports::inference_engine::{
+use visionflow_domain::ports::inference_engine::{
     InferenceEngine, InferenceEngineError, InferenceStatistics, Result as EngineResult,
 };
-use crate::ports::ontology_repository::{AxiomType, InferenceResults, OwlAxiom, OwlClass};
+use visionflow_domain::ports::owl_types::{AxiomType, InferenceResults, OwlAxiom, OwlClass};
 
 use horned_owl::model::{
     AnnotatedComponent, ArcStr, Build, Class, ClassExpression, Component, DeclareClass,
@@ -37,7 +37,7 @@ pub struct WhelkInferenceEngine {
     total_inferences: usize,
 }
 
-use crate::utils::time;
+use visionflow_domain::utils::time;
 use whelk;
 
 impl WhelkInferenceEngine {

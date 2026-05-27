@@ -1,8 +1,12 @@
 // src/ports/ontology_repository.rs
 //! Ontology Repository Port
 //!
-//! Manages the ontology graph structure parsed from GitHub markdown files,
-//! including OWL classes, properties, axioms, and inference results.
+//! ADR-090 Phase 2: Pure OWL data types (`OwlClass`, `OwlAxiom`, `InferenceResults`, etc.)
+//! are now the canonical in `visionflow_domain::ports::owl_types`. They are re-exported
+//! here so existing `use crate::ports::ontology_repository::*` callers need no changes.
+//!
+//! `OntologyRepository` trait stays here because it references `GraphData`,
+//! which is still a webxr-local type pending Phase 1b model unification.
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -10,6 +14,12 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::models::graph::GraphData;
+
+// ── OWL types now live in domain — re-export for unchanged caller paths ───────
+pub use visionflow_domain::ports::owl_types::{
+    AxiomType, InferenceResults, OwlAxiom, OwlClass, OwlCrossReference, OwlProperty,
+    OwlRelationship, PropertyType,
+};
 
 pub type Result<T> = std::result::Result<T, OntologyRepositoryError>;
 
@@ -38,199 +48,6 @@ pub enum OntologyRepositoryError {
 
     #[error("Deserialization error: {0}")]
     DeserializationError(String),
-}
-
-/// OWL Class with rich metadata support (Schema V2)
-/// Supports comprehensive ontology metadata including:
-/// - Core identification (term_id, preferred_term)
-/// - Classification (source_domain, version, type)
-/// - Quality metrics (quality_score, authority_score, status, maturity)
-/// - OWL2 properties (owl_physicality, owl_role)
-/// - Domain relationships (belongs_to_domain, bridges_to_domain)
-/// - Source tracking (file_sha1, markdown_content, last_synced)
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct OwlClass {
-    // Core identification
-    pub iri: String,
-    pub term_id: Option<String>,
-    pub preferred_term: Option<String>,
-
-    // Basic metadata
-    pub label: Option<String>,
-    pub description: Option<String>,
-    pub parent_classes: Vec<String>,
-
-    // Classification metadata
-    pub source_domain: Option<String>,
-    pub version: Option<String>,
-    pub class_type: Option<String>,
-
-    // Quality metrics
-    pub status: Option<String>,
-    pub maturity: Option<String>,
-    pub quality_score: Option<f32>,
-    pub authority_score: Option<f32>,
-    pub public_access: Option<bool>,
-    pub content_status: Option<String>,
-
-    // OWL2 properties
-    pub owl_physicality: Option<String>,
-    pub owl_role: Option<String>,
-
-    // Domain relationships
-    pub belongs_to_domain: Option<String>,
-    pub bridges_to_domain: Option<String>,
-
-    // Source tracking
-    pub source_file: Option<String>,
-    pub file_sha1: Option<String>,
-    pub markdown_content: Option<String>,
-    pub last_synced: Option<chrono::DateTime<chrono::Utc>>,
-
-    // Semantic relationships (ADR-014: carry all relationship types to storage)
-    pub has_part: Vec<String>,
-    pub is_part_of: Vec<String>,
-    pub requires: Vec<String>,
-    pub depends_on: Vec<String>,
-    pub enables: Vec<String>,
-    pub relates_to: Vec<String>,
-    pub bridges_to: Vec<String>,
-    pub bridges_from: Vec<String>,
-    pub other_relationships: HashMap<String, Vec<String>>,
-
-    // Additional metadata (JSON for extensibility)
-    pub properties: HashMap<String, String>,
-    pub additional_metadata: Option<String>,
-}
-
-impl Default for OwlClass {
-    fn default() -> Self {
-        Self {
-            iri: String::new(),
-            term_id: None,
-            preferred_term: None,
-            label: None,
-            description: None,
-            parent_classes: Vec::new(),
-            source_domain: None,
-            version: None,
-            class_type: None,
-            status: None,
-            maturity: None,
-            quality_score: None,
-            authority_score: None,
-            public_access: None,
-            content_status: None,
-            owl_physicality: None,
-            owl_role: None,
-            belongs_to_domain: None,
-            bridges_to_domain: None,
-            source_file: None,
-            file_sha1: None,
-            markdown_content: None,
-            last_synced: None,
-            has_part: Vec::new(),
-            is_part_of: Vec::new(),
-            requires: Vec::new(),
-            depends_on: Vec::new(),
-            enables: Vec::new(),
-            relates_to: Vec::new(),
-            bridges_to: Vec::new(),
-            bridges_from: Vec::new(),
-            other_relationships: HashMap::new(),
-            properties: HashMap::new(),
-            additional_metadata: None,
-        }
-    }
-}
-
-/// Semantic relationship between OWL classes
-/// Supports relationship types: has-part, uses, enables, requires, subclass-of, etc.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct OwlRelationship {
-    pub source_class_iri: String,
-    pub relationship_type: String,
-    pub target_class_iri: String,
-    pub confidence: f32,
-    pub is_inferred: bool,
-}
-
-/// Cross-reference (e.g., WikiLink) from an OWL class to external resources
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct OwlCrossReference {
-    pub source_class_iri: String,
-    pub target_reference: String,
-    pub reference_type: String, // wiki, external, doi, etc.
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub enum PropertyType {
-    ObjectProperty,
-    DataProperty,
-    AnnotationProperty,
-}
-
-/// OWL Property with quality metrics (Schema V2)
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct OwlProperty {
-    pub iri: String,
-    pub label: Option<String>,
-    pub property_type: PropertyType,
-    pub domain: Vec<String>,
-    pub range: Vec<String>,
-
-    // Quality metrics (Schema V2)
-    pub quality_score: Option<f32>,
-    pub authority_score: Option<f32>,
-
-    // Source tracking
-    pub source_file: Option<String>,
-}
-
-impl Default for OwlProperty {
-    fn default() -> Self {
-        Self {
-            iri: String::new(),
-            label: None,
-            property_type: PropertyType::ObjectProperty,
-            domain: Vec::new(),
-            range: Vec::new(),
-            quality_score: None,
-            authority_score: None,
-            source_file: None,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub enum AxiomType {
-    SubClassOf,
-    EquivalentClass,
-    DisjointWith,
-    ObjectPropertyAssertion,
-    DataPropertyAssertion,
-    SubPropertyOf,
-    TransitiveProperty,
-    SymmetricProperty,
-    InverseProperties,
-    SomeValuesFrom,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct OwlAxiom {
-    pub id: Option<u64>,
-    pub axiom_type: AxiomType,
-    pub subject: String,
-    pub object: String,
-    pub annotations: HashMap<String, String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct InferenceResults {
-    pub timestamp: chrono::DateTime<chrono::Utc>,
-    pub inferred_axioms: Vec<OwlAxiom>,
-    pub inference_time_ms: u64,
-    pub reasoner_version: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -293,17 +110,14 @@ pub trait OntologyRepository: Send + Sync {
 
     async fn get_class_axioms(&self, class_iri: &str) -> Result<Vec<OwlAxiom>>;
 
-    /// Default: No-op (not all implementations support inference)
     async fn store_inference_results(&self, _results: &InferenceResults) -> Result<()> {
         Ok(())
     }
 
-    /// Default: None (not all implementations support inference)
     async fn get_inference_results(&self) -> Result<Option<InferenceResults>> {
         Ok(None)
     }
 
-    /// Default: Valid report (override for actual validation)
     async fn validate_ontology(&self) -> Result<ValidationReport> {
         Ok(ValidationReport {
             is_valid: true,
@@ -313,40 +127,32 @@ pub trait OntologyRepository: Send + Sync {
         })
     }
 
-    /// Default: Empty results (override when query support added)
     async fn query_ontology(&self, _query: &str) -> Result<Vec<HashMap<String, String>>> {
         Ok(Vec::new())
     }
 
-    /// Remove an OWL class by IRI
     async fn remove_owl_class(&self, iri: &str) -> Result<()>;
 
-    /// Remove an axiom by ID
     async fn remove_axiom(&self, axiom_id: u64) -> Result<()>;
 
     async fn get_metrics(&self) -> Result<OntologyMetrics>;
 
-    /// Default: No-op (not all implementations support caching)
     async fn cache_sssp_result(&self, _entry: &PathfindingCacheEntry) -> Result<()> {
         Ok(())
     }
 
-    /// Default: None (not all implementations support caching)
     async fn get_cached_sssp(&self, _source_node_id: u32) -> Result<Option<PathfindingCacheEntry>> {
         Ok(None)
     }
 
-    /// Default: No-op (not all implementations support caching)
     async fn cache_apsp_result(&self, _distance_matrix: &Vec<Vec<f32>>) -> Result<()> {
         Ok(())
     }
 
-    /// Default: None (not all implementations support caching)
     async fn get_cached_apsp(&self) -> Result<Option<Vec<Vec<f32>>>> {
         Ok(None)
     }
 
-    /// Default: No-op (not all implementations support caching)
     async fn invalidate_pathfinding_caches(&self) -> Result<()> {
         Ok(())
     }

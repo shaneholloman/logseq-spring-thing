@@ -412,9 +412,14 @@ fn load_precompiled_ptx(module: PTXModule) -> Result<String, String> {
         }
     }
 
-    // 3. Pre-compiled source tree copies (may be stale in Docker overlay)
+    // 3. Pre-compiled source tree copies (may be stale in Docker overlay).
+    // ADR-090 Phase 3: PTX files now live in crates/visionflow-gpu/src/ptx/.
+    // Legacy paths kept as fallback for Docker images that haven't rebuilt yet.
     ptx_paths.extend([
-        PathBuf::from(manifest_dir).join("src/utils/ptx").join(&ptx_file),
+        PathBuf::from(manifest_dir).join("src/ptx").join(&ptx_file),
+        PathBuf::from(manifest_dir).join("../visionflow-gpu/src/ptx").join(&ptx_file),
+        PathBuf::from("/app/crates/visionflow-gpu/src/ptx").join(&ptx_file),
+        // Legacy paths — keep until Docker images are fully rebuilt
         PathBuf::from("/app/src/utils/ptx").join(&ptx_file),
         PathBuf::from("./src/utils/ptx").join(&ptx_file),
     ]);
