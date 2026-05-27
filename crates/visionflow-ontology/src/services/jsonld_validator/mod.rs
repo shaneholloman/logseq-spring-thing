@@ -39,7 +39,7 @@ pub use errors::{ErrorCategory, Severity};
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 
-#[cfg(feature = "persistence-oxigraph")]
+
 use oxigraph::model::Quad;
 
 /// Source-location reference attached to every [`ValidationIssue`]. The
@@ -206,7 +206,7 @@ impl CanonicalContext {
     pub fn v1() -> Result<Self, ValidatorInitError> {
         // Bake the canonical context file in at build time so the
         // validator does not require runtime file IO.
-        const V1_BYTES: &str = include_str!("../../../docs/data-sprint/context-v1.jsonld");
+        const V1_BYTES: &str = include_str!("../../../../../docs/data-sprint/context-v1.jsonld");
         let document = serde_json::from_str(V1_BYTES)
             .map_err(|e| ValidatorInitError::ContextParse(e.to_string()))?;
         Ok(Self {
@@ -341,7 +341,7 @@ impl Validator {
     ///
     /// Gated behind `persistence-oxigraph` since `Quad` is an Oxigraph
     /// type and the pre-commit binary does not need it.
-    #[cfg(feature = "persistence-oxigraph")]
+    
     pub fn validate_quads(&self, quads: &[Quad]) -> Vec<ValidationIssue> {
         let mut issues = Vec::new();
         for q in quads {

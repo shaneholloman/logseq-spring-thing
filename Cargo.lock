@@ -6544,8 +6544,14 @@ dependencies = [
 name = "visionflow-adapters"
 version = "0.1.0"
 dependencies = [
+ "actix",
  "async-trait",
+ "chrono",
  "horned-owl 1.2.0",
+ "oxigraph",
+ "serde",
+ "serde_json",
+ "sha2",
  "tokio",
  "tracing",
  "visionflow-domain",
@@ -6583,6 +6589,35 @@ dependencies = [
  "once_cell",
  "tokio",
  "visionflow-domain",
+]
+
+[[package]]
+name = "visionflow-ontology"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "blake3",
+ "chrono",
+ "dashmap",
+ "futures",
+ "horned-functional",
+ "horned-owl 1.2.0",
+ "log",
+ "lru 0.12.5",
+ "once_cell",
+ "oxigraph",
+ "regex",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror 2.0.16",
+ "tokio",
+ "toml 0.9.5",
+ "uuid",
+ "visionflow-domain",
+ "whelk",
 ]
 
 [[package]]
@@ -6850,6 +6885,7 @@ dependencies = [
  "visionflow-adapters",
  "visionflow-domain",
  "visionflow-gpu",
+ "visionflow-ontology",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",

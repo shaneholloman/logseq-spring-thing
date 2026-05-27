@@ -10,8 +10,8 @@ use futures::future::join_all;
 use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 
-use crate::ports::inference_engine::{InferenceEngine, Result as EngineResult};
-use crate::ports::ontology_repository::{OwlClass, OwlAxiom, InferenceResults};
+use visionflow_domain::ports::inference_engine::{InferenceEngine, Result as EngineResult};
+use visionflow_domain::ports::ontology_repository::{OwlClass, OwlAxiom, InferenceResults};
 
 #[derive(Debug, Clone)]
 pub struct BatchInferenceRequest {

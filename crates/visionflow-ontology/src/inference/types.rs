@@ -6,7 +6,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use chrono::{DateTime, Utc};
-use crate::ports::ontology_repository::OwlAxiom;
+use visionflow_domain::ports::ontology_repository::OwlAxiom;
 use crate::utils::time;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]

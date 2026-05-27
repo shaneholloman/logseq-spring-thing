@@ -5,6 +5,7 @@ members = [
     "crates/visionflow-domain",
     "crates/visionflow-adapters",
     "crates/visionflow-gpu",
+    "crates/visionflow-ontology",
 ]
 # Note: visionclaw-contracts is independently buildable. To work around the
 # pre-existing `solid-pod-rs { rev = "main" }` resolution error in the root
@@ -32,6 +33,7 @@ crate-type = ["cdylib", "rlib"]
 visionflow-domain = { path = "crates/visionflow-domain" }
 visionflow-adapters = { path = "crates/visionflow-adapters" }
 visionflow-gpu = { path = "crates/visionflow-gpu" }
+visionflow-ontology = { path = "crates/visionflow-ontology" }
 
 # Web framework and WebSocket
 actix-web = { version = "4.11.0", features = ["compress-zstd", "macros"] }

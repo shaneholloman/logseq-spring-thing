@@ -12,7 +12,7 @@ use horned_owl::io::owx::reader::read as read_owx;
 use horned_owl::model::ArcStr;
 use horned_owl::ontology::set::SetOntology;
 
-use crate::ports::ontology_repository::{OwlClass, OwlAxiom, AxiomType};
+use visionflow_domain::ports::ontology_repository::{OwlClass, OwlAxiom, AxiomType};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]

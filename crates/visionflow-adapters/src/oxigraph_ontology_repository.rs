@@ -32,10 +32,10 @@ use oxigraph::model::Term;
 use oxigraph::sparql::QueryResults;
 use oxigraph::store::Store;
 
-use crate::models::edge::Edge;
-use crate::models::graph::GraphData;
-use crate::models::node::Node;
-use crate::ports::ontology_repository::{
+use visionflow_domain::models::edge::Edge;
+use visionflow_domain::models::graph::GraphData;
+use visionflow_domain::models::node::Node;
+use visionflow_domain::ports::ontology_repository::{
     AxiomType, InferenceResults, OntologyMetrics, OntologyRepository, OntologyRepositoryError,
     OwlAxiom, OwlClass, OwlProperty, PathfindingCacheEntry, PropertyType, Result as RepoResult,
     ValidationReport,

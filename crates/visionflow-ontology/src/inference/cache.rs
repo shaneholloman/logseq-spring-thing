@@ -11,7 +11,7 @@ use std::num::NonZeroUsize;
 use chrono::{DateTime, Utc, Duration};
 use serde::{Deserialize, Serialize};
 
-use crate::ports::ontology_repository::InferenceResults;
+use visionflow_domain::ports::ontology_repository::InferenceResults;
 use crate::utils::time;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -241,7 +241,7 @@ impl Default for InferenceCache {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ports::ontology_repository::InferenceResults;
+    use visionflow_domain::ports::ontology_repository::InferenceResults;
 
     fn create_test_results() -> InferenceResults {
         InferenceResults {

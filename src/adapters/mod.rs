@@ -1,27 +1,42 @@
 // src/adapters/mod.rs
 //! Hexagonal Architecture Adapters
 //!
-//! Per ADR-090 Phase 2: `whelk_inference_engine` has been extracted to
-//! `crates/visionflow-adapters/`. All other adapters remain here pending
-//! Phase 1b (model unification) and Phase 3 (actors extraction).
+//! Per ADR-090 Phase A1+: `messages` and `oxigraph_ontology_repository` have
+//! been extracted to `crates/visionflow-adapters/`. Shims below preserve all
+//! existing `use crate::adapters::X` call sites.
 //!
-//! Existing `use crate::adapters::X` callers need no changes — shims below
-//! keep the public surface identical.
+//! Still in webxr (actor / utils deps — resolved in Phase A3):
+//! - `actor_graph_repository` (actors::graph_state_actor)
+//! - `actix_physics_adapter` (actors::physics_orchestrator_actor)
+//! - `actix_semantic_adapter` (actors::semantic_processor_actor)
+//! - `gpu_semantic_analyzer` (utils::unified_gpu_compute)
+//! - `oxigraph_graph_repository` (actors::graph_actor + utils::socket_flow_messages)
+//! - `physics_orchestrator_adapter` (actors::*)
+//! - `sqlite_settings_repository` (config::AppFullSettings)
 
 pub mod actor_graph_repository;
 
 #[cfg(feature = "gpu")]
 pub mod gpu_semantic_analyzer;
 
-/// ADR-090 Phase 2 shim — canonical source is visionflow-adapters.
+/// ADR-090 shim — canonical source is visionflow-adapters.
 pub mod whelk_inference_engine {
     pub use visionflow_adapters::whelk_inference_engine::*;
+}
+
+/// ADR-090 Phase A1+ shim — canonical source is visionflow-adapters.
+pub mod messages {
+    pub use visionflow_adapters::messages::*;
+}
+
+/// ADR-090 Phase A1+ shim — canonical source is visionflow-adapters.
+pub mod oxigraph_ontology_repository {
+    pub use visionflow_adapters::oxigraph_ontology_repository::*;
 }
 
 #[cfg(feature = "gpu")]
 pub mod actix_physics_adapter;
 pub mod actix_semantic_adapter;
-pub mod messages;
 
 pub mod physics_orchestrator_adapter;
 
@@ -31,7 +46,6 @@ pub use actor_graph_repository::ActorGraphRepository;
 pub use gpu_semantic_analyzer::GpuSemanticAnalyzerAdapter;
 
 // Canonical persistence adapters (ADR-11)
-pub mod oxigraph_ontology_repository;
 pub mod oxigraph_graph_repository;
 pub mod sqlite_settings_repository;
 

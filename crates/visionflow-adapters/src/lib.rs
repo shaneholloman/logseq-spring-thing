@@ -25,3 +25,9 @@
 // or crate::utils::socket_flow_messages — see "what stayed in webxr" above).
 pub mod whelk_inference_engine;
 pub use whelk_inference_engine::WhelkInferenceEngine;
+
+// ADR-090 Phase A1+ — adapters unblocked by Phase 1b (domain now owns
+// GraphData/Node/Edge, GpuPhysicsAdapter, GpuSemanticAnalyzer, OntologyRepository).
+pub mod messages;
+pub mod oxigraph_ontology_repository;
+pub use oxigraph_ontology_repository::OxigraphOntologyRepository;

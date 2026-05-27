@@ -44,9 +44,11 @@
 pub mod errors;
 pub mod expander;
 pub mod extractor;
+pub(crate) mod graph_port_shim;
 pub mod pipeline;
 pub mod triple_emitter;
 pub mod validator;
 
 pub use errors::{JsonLdIngestError, Result};
+pub use graph_port_shim::GraphRepository;
 pub use pipeline::{ingest_page, IngestOutcome, JsonLdIngestPipeline, PageMetadata};

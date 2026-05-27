@@ -32,8 +32,8 @@ use super::expander::expand_block;
 use super::extractor::extract_jsonld_blocks;
 use super::triple_emitter::emit_quads;
 use super::validator::validate;
-use crate::ports::graph_repository::GraphRepository;
-use crate::ports::ontology_repository::OntologyRepository;
+use crate::services::jsonld_ingest::graph_port_shim::GraphRepository;
+use visionflow_domain::ports::ontology_repository::OntologyRepository;
 
 /// Metadata about the host markdown file: where it came from, when it was
 /// pulled, optional pre-computed content hash. The pipeline DOES NOT need

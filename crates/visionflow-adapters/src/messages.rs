@@ -9,12 +9,12 @@ use actix::prelude::*;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::models::constraints::ConstraintSet;
-use crate::models::graph::GraphData;
-use crate::ports::gpu_physics_adapter::{
+use visionflow_domain::models::constraints::ConstraintSet;
+use visionflow_domain::models::graph::GraphData;
+use visionflow_domain::ports::gpu_physics_adapter::{
     GpuDeviceInfo, NodeForce, PhysicsParameters, PhysicsStatistics, PhysicsStepResult,
 };
-use crate::ports::gpu_semantic_analyzer::{
+use visionflow_domain::ports::gpu_semantic_analyzer::{
     ClusteringAlgorithm, CommunityDetectionResult, ImportanceAlgorithm, OptimizationResult,
     PathfindingResult, SemanticConstraintConfig, SemanticStatistics,
 };

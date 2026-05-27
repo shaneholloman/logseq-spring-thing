@@ -1098,72 +1098,10 @@ impl Default for OwlValidatorService {
     }
 }
 
-pub fn validation_report_to_reasoning_report(
-    report: &ValidationReport,
-    _ontology: &SetOntology<Arc<str>>,
-) -> crate::physics::ontology_constraints::OntologyReasoningReport {
-    use crate::physics::ontology_constraints::{
-        ConsistencyCheck, OWLAxiom, OWLAxiomType, OntologyInference, OntologyReasoningReport,
-    };
-
-    let axioms = Vec::new(); 
-    let mut inferences = Vec::new();
-    let mut consistency_checks = Vec::new();
-
-    
-    for triple in &report.inferred_triples {
-        
-        let axiom_type = if triple.predicate.contains("inverseOf") {
-            OWLAxiomType::InverseOf
-        } else if triple.predicate.contains("type") {
-            OWLAxiomType::SubClassOf
-        } else {
-            OWLAxiomType::SameAs 
-        };
-
-        inferences.push(OntologyInference {
-            inferred_axiom: OWLAxiom {
-                axiom_type,
-                subject: triple.subject.clone(),
-                object: Some(triple.object.clone()),
-                property: Some(triple.predicate.clone()),
-                confidence: 0.8, 
-            },
-            premise_axioms: vec![], 
-            reasoning_confidence: 0.8,
-            is_derived: true,
-        });
-    }
-
-    
-    let is_consistent = report
-        .violations
-        .iter()
-        .all(|v| v.severity != Severity::Error);
-    let conflicting_axioms: Vec<String> = report
-        .violations
-        .iter()
-        .filter(|v| v.severity == Severity::Error)
-        .map(|v| v.rule.clone())
-        .collect();
-
-    consistency_checks.push(ConsistencyCheck {
-        is_consistent,
-        conflicting_axioms,
-        suggested_resolution: if !is_consistent {
-            Some("Review and resolve constraint violations".to_string())
-        } else {
-            None
-        },
-    });
-
-    OntologyReasoningReport {
-        axioms,
-        inferences,
-        consistency_checks,
-        reasoning_time_ms: report.duration_ms,
-    }
-}
+// NOTE: `validation_report_to_reasoning_report` was removed in ADR-090 Phase A4.
+// It depended on `physics::ontology_constraints::{OntologyReasoningReport, …}`
+// which are webxr-internal types that cannot move to this crate yet.
+// The function had zero callers outside owl_validator itself.
 
 #[cfg(test)]
 mod tests {
