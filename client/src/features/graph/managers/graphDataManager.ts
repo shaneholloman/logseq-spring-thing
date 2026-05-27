@@ -304,6 +304,14 @@ class GraphDataManager {
         if (debugState.isEnabled()) {
           logger.info(`Graph data loaded: ${currentData.nodes.length} nodes`);
         }
+
+        // T6 fix: backend is up but Oxigraph is empty (first-boot / clean restart).
+        // Schedule periodic re-fetches so the UI recovers automatically once data
+        // is available, without any user action required.
+        if (currentData.nodes.length === 0) {
+          this.scheduleEmptyDataRetry(1);
+        }
+
         return currentData;
 
       } catch (error) {
@@ -325,7 +333,42 @@ class GraphDataManager {
     return { nodes: [], edges: [] };
   }
 
-  
+  /** T6: retry fetching graph data when backend returns 0 nodes (empty Oxigraph). */
+  private scheduleEmptyDataRetry(attempt: number): void {
+    const MAX_ATTEMPTS = 20;
+    const INTERVAL_MS = 15_000;
+
+    if (attempt > MAX_ATTEMPTS) {
+      logger.warn(`T6 empty-data retry: reached ${MAX_ATTEMPTS} attempts (${MAX_ATTEMPTS * INTERVAL_MS / 1000}s). Giving up.`);
+      return;
+    }
+
+    if (this.retryTimeout !== null) {
+      clearTimeout(this.retryTimeout);
+    }
+
+    this.retryTimeout = window.setTimeout(async () => {
+      this.retryTimeout = null;
+      console.info(`[GraphDataManager] T6 empty-data retry attempt ${attempt}/${MAX_ATTEMPTS}`);
+      try {
+        const response = await unifiedApiClient.get('/graph/data', { timeout: 10000 });
+        const responseData = response.data.data || response.data;
+        const nodes = Array.isArray(responseData?.nodes) ? responseData.nodes : [];
+        if (nodes.length > 0) {
+          console.info(`[GraphDataManager] T6 empty-data retry: received ${nodes.length} nodes on attempt ${attempt}. Triggering full load.`);
+          // Delegate to the full fetchInitialData path so all enrichment/listener logic fires
+          await this.fetchInitialData();
+        } else {
+          this.scheduleEmptyDataRetry(attempt + 1);
+        }
+      } catch (err) {
+        logger.warn(`T6 empty-data retry attempt ${attempt} failed:`, createErrorMetadata(err));
+        this.scheduleEmptyDataRetry(attempt + 1);
+      }
+    }, INTERVAL_MS);
+  }
+
+
   public async setGraphData(data: GraphData): Promise<void> {
     if (debugState.isEnabled()) {
       logger.info(`Setting ${this.graphType} graph data: ${data.nodes.length} nodes, ${data.edges.length} edges`);
