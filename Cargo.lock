@@ -6541,6 +6541,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "visionflow-actors"
+version = "0.1.0"
+dependencies = [
+ "actix",
+ "anyhow",
+ "chrono",
+ "log",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.16",
+ "tokio",
+ "validator",
+ "visionflow-domain",
+]
+
+[[package]]
 name = "visionflow-adapters"
 version = "0.1.0"
 dependencies = [
@@ -6618,6 +6634,21 @@ dependencies = [
  "uuid",
  "visionflow-domain",
  "whelk",
+]
+
+[[package]]
+name = "visionflow-protocol"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "bytemuck",
+ "byteorder",
+ "flate2",
+ "log",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.16",
+ "visionflow-domain",
 ]
 
 [[package]]
@@ -6886,6 +6917,7 @@ dependencies = [
  "visionflow-domain",
  "visionflow-gpu",
  "visionflow-ontology",
+ "visionflow-protocol",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
