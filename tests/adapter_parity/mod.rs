@@ -15,8 +15,8 @@
 //! pub async fn parity_xxx<R: SomeRepository>(repo: R) { ... }
 //! ```
 //!
-//! Concrete runners (one per backend) live in `runner_neo4j.rs`,
-//! `runner_oxigraph.rs` (etc.) and call every parity function in turn,
+//! Concrete runners (one per backend) live in `runner_oxigraph.rs` (etc.)
+//! and call every parity function in turn,
 //! feeding it a freshly-constructed adapter. The parity functions are
 //! self-contained: they set up their own data, assert, and (where the
 //! adapter supports it) tear it down again.
@@ -30,12 +30,7 @@
 //!                             and `schema_version` round-trip.
 //! 4. `named_graph_invariants.rs` — 5 cross-graph isolation invariants
 //!                             (knowledge vs ontology vs agent vs inferred).
-//! 5. `runner_neo4j.rs`      — exercises every parity function against
-//!                             `Neo4jOntologyRepository / Neo4jGraphRepository /
-//!                             Neo4jSettingsRepository`. Gated behind
-//!                             `feature = "test-neo4j"` so it can be skipped
-//!                             where Neo4j is not provisioned.
-//! 6. `runner_oxigraph.rs`   — exercises every parity function against
+//! 5. `runner_oxigraph.rs`   — exercises every parity function against
 //!                             `Oxigraph*Repository / Sqlite*Repository`.
 //!                             Gated behind `feature = "persistence-oxigraph"`.
 //!                             Stubbed out today; flips on as soon as the
@@ -50,8 +45,8 @@
 //!   parity functions; no ordering dependency between them.
 
 // All harness helpers are #[allow(dead_code)] because runners are
-// feature-gated. Without `--features test-neo4j` or
-// `--features persistence-oxigraph`, no `#[tokio::test]` entry points
+// feature-gated. Without `--features persistence-oxigraph`,
+// no `#[tokio::test]` entry points
 // reference them — but the modules MUST still compile so a future
 // adapter can be wired up by adding a runner alone.
 #![allow(dead_code)]
@@ -63,8 +58,6 @@ pub mod named_graph_invariants;
 
 // Concrete runners. Gated so the test crate compiles even when the
 // requested backend is not provisioned.
-#[cfg(feature = "test-neo4j")]
-pub mod runner_neo4j;
 #[cfg(feature = "persistence-oxigraph")]
 pub mod runner_oxigraph;
 

@@ -1,14 +1,14 @@
 // tests/benchmarks/repository_benchmarks.rs
-//! Performance benchmarks for Neo4j repository adapters
+//! Performance benchmarks for repository adapters
 //!
 //! Target: <10ms p99 latency per operation
 //! Test scale: 10,000+ nodes/edges
 //!
 //! Run with: cargo test --release --test repository_benchmarks -- --nocapture
 //!
-//! NOTE: These benchmarks are DISABLED as of Neo4j migration (Nov 2025)
+//! NOTE: These benchmarks are DISABLED (Nov 2025)
 //! SQLite benchmarks archived in /archive/neo4j_migration_2025_11_06/
-//! Neo4j-specific benchmarks need to be implemented
+//! Oxigraph-specific benchmarks need to be implemented (ADR-11)
 
 #![cfg(disabled_sql_benchmarks)]  // Disable entire file
 

@@ -4,20 +4,16 @@
 //! NOTE: This test file is DISABLED - it was written for the old SQLite-based
 //! settings architecture (turbo_flow_control crate). The project has since:
 //! 1. Been renamed from turbo_flow_control to webxr
-//! 2. Migrated from SQLite to Neo4j for persistence
-//! 3. Changed the SettingsRepository to use the port-based Neo4j adapter
+//! 2. Migrated to Oxigraph for persistence (ADR-11)
+//! 3. Changed the SettingsRepository to use the port-based Oxigraph adapter
 //!
 //! These tests would need to be rewritten to:
 //! - Use the webxr crate
-//! - Use Neo4j test containers or mocked repositories
+//! - Use the Oxigraph in-memory store for test isolation
 //! - Match the new SettingsRepository port interface
-//!
-//! The settings actor and messages (UpdatePhysicsSettings, GetPhysicsSettings, etc.)
-//! still exist and work, but they now use Neo4j-backed persistence via
-//! src/adapters/neo4j_settings_repository.rs
 
-// DISABLED: Old SQLite-based tests incompatible with Neo4j architecture
-// TODO: Rewrite using Neo4j test containers if integration tests are needed
+// DISABLED: Old SQLite-based tests incompatible with Oxigraph architecture
+// TODO: Rewrite using Oxigraph in-memory store if integration tests are needed
 /*
 use actix::Actor;
 use sqlx::SqlitePool;

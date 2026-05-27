@@ -306,7 +306,6 @@ cleanup_conflicts() {
 
     # Stop and remove any containers with conflicting names
     local conflicting_containers=(
-        "visionflow-neo4j"
         "visionflow_container"
         "visionflow-backend"
         "visionflow-frontend"

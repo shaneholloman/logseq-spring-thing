@@ -1,5 +1,5 @@
 // Minimal test to verify settings save functionality
-// Note: YAML file persistence was removed — settings are now in Neo4j.
+// Note: YAML file persistence was removed — settings are now in Oxigraph (ADR-11).
 // save() is a no-op that returns Ok(()) for backwards compatibility.
 
 use webxr::config::AppFullSettings;

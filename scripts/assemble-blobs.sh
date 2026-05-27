@@ -85,7 +85,7 @@ cat > "$SERVER_BLOB" << 'HEADER'
 VISIONFLOW SERVER CODEBASE (Rust/Actix-web)
 ================================================================================
 Architecture: Actix-web + Actor system + CQRS + Hexagonal + GPU (CUDA)
-Database: Neo4j graph database
+Database: Oxigraph SPARQL triple-store (ADR-11)
 Auth: Nostr NIP-98 + session tokens
 Physics: GPU-accelerated force-directed layout with CUDA kernels
 Features: OWL ontology reasoning, semantic analysis, graph algorithms,

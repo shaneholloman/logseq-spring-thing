@@ -22,7 +22,7 @@ echo -e "${BLUE}======================================${NC}\n"
 cat >> "$OUTPUT_FILE" << 'EOF'
 ================================================================================
 VISIONFLOW COMPLETE PIPELINE CONTEXT
-GitHub → Markdown Parse → Neo4j → Metadata/Edges → GPU → Graph → Client
+GitHub → Markdown Parse → Oxigraph → Metadata/Edges → GPU → Graph → Client
 ================================================================================
 
 Generated: $(date)
@@ -31,7 +31,7 @@ Purpose: Complete source code context for LLM analysis of the VisionFlow pipelin
 TABLE OF CONTENTS:
 1. GitHub Interaction (Download & Fetch)
 2. Markdown Parsing & Analysis
-3. Neo4j Database Interaction
+3. Oxigraph Persistence Interaction (ADR-11)
 4. Metadata & Edge Building
 5. GPU Computation (CUDA)
 6. Graph Structure Building
@@ -119,29 +119,26 @@ add_file "$PROJECT_ROOT/src/services/ontology_converter.rs" "Parsing" "Convert b
 add_file "$PROJECT_ROOT/src/reasoning/horned_integration.rs" "Parsing" "Horned-OWL reasoner integration"
 add_file "$PROJECT_ROOT/src/reasoning/custom_reasoner.rs" "Parsing" "Custom reasoning logic"
 
-# 3. NEO4J DATABASE
-echo -e "\n${BLUE}[3/7] Neo4j Database Interaction Files${NC}"
+# 3. OXIGRAPH PERSISTENCE (ADR-11)
+echo -e "\n${BLUE}[3/7] Oxigraph Persistence Files${NC}"
 cat >> "$OUTPUT_FILE" << 'EOF'
 ================================================================================
-SECTION 3: NEO4J DATABASE INTERACTION
+SECTION 3: OXIGRAPH PERSISTENCE INTERACTION (ADR-11)
 ================================================================================
 
 EOF
 
-add_file "$PROJECT_ROOT/src/adapters/neo4j_adapter.rs" "Neo4j" "Main Neo4j connection adapter"
-add_file "$PROJECT_ROOT/src/adapters/neo4j_ontology_repository.rs" "Neo4j" "Ontology CRUD operations"
-add_file "$PROJECT_ROOT/src/adapters/neo4j_settings_repository.rs" "Neo4j" "Settings persistence"
-add_file "$PROJECT_ROOT/src/utils/neo4j_helpers.rs" "Neo4j" "Neo4j query utilities"
-add_file "$PROJECT_ROOT/src/ports/ontology_repository.rs" "Neo4j" "Ontology repository trait"
-add_file "$PROJECT_ROOT/src/ports/knowledge_graph_repository.rs" "Neo4j" "Graph repository trait"
-add_file "$PROJECT_ROOT/src/ports/graph_repository.rs" "Neo4j" "Generic graph port"
-add_file "$PROJECT_ROOT/src/handlers/cypher_query_handler.rs" "Neo4j" "Execute Cypher queries"
-add_file "$PROJECT_ROOT/src/services/natural_language_query_service.rs" "Neo4j" "NL to Cypher translation"
-add_file "$PROJECT_ROOT/src/repositories/query_builder.rs" "Neo4j" "Dynamic query construction"
-add_file "$PROJECT_ROOT/src/cqrs/handlers/ontology_handlers.rs" "Neo4j" "Ontology command handlers"
-add_file "$PROJECT_ROOT/src/cqrs/queries/ontology_queries.rs" "Neo4j" "Ontology query handlers"
-add_file "$PROJECT_ROOT/src/cqrs/handlers/graph_handlers.rs" "Neo4j" "Graph command handlers"
-add_file "$PROJECT_ROOT/src/cqrs/queries/graph_queries.rs" "Neo4j" "Graph query handlers"
+add_file "$PROJECT_ROOT/src/adapters/oxigraph_graph_repository.rs" "Oxigraph" "Graph persistence adapter"
+add_file "$PROJECT_ROOT/src/adapters/oxigraph_ontology_repository.rs" "Oxigraph" "Ontology CRUD operations"
+add_file "$PROJECT_ROOT/src/adapters/oxigraph_settings_repository.rs" "Oxigraph" "Settings persistence"
+add_file "$PROJECT_ROOT/src/ports/ontology_repository.rs" "Ports" "Ontology repository trait"
+add_file "$PROJECT_ROOT/src/ports/knowledge_graph_repository.rs" "Ports" "Graph repository trait"
+add_file "$PROJECT_ROOT/src/ports/graph_repository.rs" "Ports" "Generic graph port"
+add_file "$PROJECT_ROOT/src/repositories/query_builder.rs" "Oxigraph" "Dynamic query construction"
+add_file "$PROJECT_ROOT/src/cqrs/handlers/ontology_handlers.rs" "Oxigraph" "Ontology command handlers"
+add_file "$PROJECT_ROOT/src/cqrs/queries/ontology_queries.rs" "Oxigraph" "Ontology query handlers"
+add_file "$PROJECT_ROOT/src/cqrs/handlers/graph_handlers.rs" "Oxigraph" "Graph command handlers"
+add_file "$PROJECT_ROOT/src/cqrs/queries/graph_queries.rs" "Oxigraph" "Graph query handlers"
 
 # 4. METADATA & EDGES
 echo -e "\n${BLUE}[4/7] Metadata & Edge Building Files${NC}"
@@ -287,7 +284,7 @@ END OF VISIONFLOW PIPELINE CONTEXT
 PIPELINE FLOW SUMMARY:
 1. GitHub API fetches markdown → src/services/github_sync_service.rs
 2. Markdown parsed for OWL + semantics → src/services/ontology_parser.rs
-3. Data stored in Neo4j → src/adapters/neo4j_ontology_repository.rs
+3. Data stored in Oxigraph → src/adapters/oxigraph_ontology_repository.rs
 4. Edges + metadata generated → src/services/edge_generation.rs
 5. OWL axioms → GPU forces → src/constraints/semantic_axiom_translator.rs
 6. CUDA kernels compute physics → src/utils/unified_gpu_compute.rs
