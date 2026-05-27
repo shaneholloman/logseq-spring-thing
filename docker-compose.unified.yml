@@ -83,7 +83,7 @@ services:
       # HOST_PROJECT_ROOT resolves DinD path translation (defaults to "." for native Docker)
       - ${HOST_PROJECT_ROOT:-.}/src:/app/src:ro
       - ${HOST_PROJECT_ROOT:-.}/Cargo.toml:/app/Cargo.toml:ro
-      - ${HOST_PROJECT_ROOT:-.}/Cargo.lock:/app/Cargo.lock:ro
+      - ${HOST_PROJECT_ROOT:-.}/Cargo.lock:/app/Cargo.lock:rw
       - ${HOST_PROJECT_ROOT:-.}/build.rs:/app/build.rs:ro
       - ${HOST_PROJECT_ROOT:-.}/crates:/app/crates:ro
       - ${HOST_PROJECT_ROOT:-.}/docs:/app/docs:ro

@@ -2,7 +2,7 @@
 //! Settings Actor - Actix runtime settings management
 
 use actix::prelude::*;
-use actix::dev::{MessageResponse, OneshotSender};
+use actix::dev::{MessageResponse, MessageResult, OneshotSender};
 use std::sync::Arc;
 use anyhow::Result;
 use log::{info, error};
@@ -159,17 +159,8 @@ pub struct GetQualityGateSettings;
 // MessageResponse Implementations
 // ============================================================================
 
-impl<A, M> MessageResponse<A, M> for PhysicsSettings
-where
-    A: Actor,
-    M: Message<Result = PhysicsSettings>,
-{
-    fn handle(self, _ctx: &mut A::Context, tx: Option<OneshotSender<M::Result>>) {
-        if let Some(tx) = tx {
-            let _ = tx.send(self);
-        }
-    }
-}
+// PhysicsSettings is now a foreign type (visionflow-domain), so we can't impl
+// MessageResponse for it directly (orphan rule). Handlers return MessageResult instead.
 
 impl<A, M> MessageResponse<A, M> for ConstraintSettings
 where
@@ -253,10 +244,10 @@ impl Handler<UpdatePhysicsSettings> for SettingsActor {
 }
 
 impl Handler<GetPhysicsSettings> for SettingsActor {
-    type Result = PhysicsSettings;
+    type Result = MessageResult<GetPhysicsSettings>;
 
     fn handle(&mut self, _msg: GetPhysicsSettings, _ctx: &mut Self::Context) -> Self::Result {
-        self.current_physics.clone()
+        MessageResult(self.current_physics.clone())
     }
 }
 
