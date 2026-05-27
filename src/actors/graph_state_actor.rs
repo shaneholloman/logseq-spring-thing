@@ -1115,25 +1115,13 @@ impl Handler<ReloadGraphFromDatabase> for GraphStateActor {
                         // Reclassify all nodes after reload (using compact IDs)
                         act.reclassify_all_nodes();
 
-                        // Persist edges to Oxigraph with original persistent IDs (fire-and-forget)
-                        if !act.graph_data.edges.is_empty() {
-                            let repo = Arc::clone(&act.repository);
-                            let c2n = act.compact_to_persistent.clone();
-                            let edges_to_save: Vec<Edge> = act.graph_data.edges.iter().map(|e| {
-                                let mut persistent_edge = e.clone();
-                                persistent_edge.source = c2n.get(e.source as usize).copied().unwrap_or(e.source);
-                                persistent_edge.target = c2n.get(e.target as usize).copied().unwrap_or(e.target);
-                                persistent_edge
-                            }).collect();
-                            actix::spawn(async move {
-                                for edge in &edges_to_save {
-                                    if let Err(e) = repo.add_edge(edge).await {
-                                        error!("Failed to persist edge: {}", e);
-                                    }
-                                }
-                                info!("Persisted {} edges to Oxigraph", edges_to_save.len());
-                            });
-                        }
+                        // No edge re-persistence here. Edges arrived FROM Oxigraph;
+                        // writing them back triggers the per-edge bridge-integrity
+                        // ASK loop in add_edge, which on a 196K-edge corpus with
+                        // stale bridges becomes a self-DoS (169K cascading ASK
+                        // failures observed in production). The compact-ID remap
+                        // is purely in-memory; Oxigraph keeps the persistent IDs
+                        // that load_graph_from_files originally wrote in Step 2.
 
                         info!(
                             "GraphStateActor: State updated after reload - {} nodes, {} edges (compact IDs 0..{})",
