@@ -698,7 +698,17 @@ impl ForceComputeActor {
                     let mass_weights: Vec<f32> = normalized_weights.iter()
                         .map(|w| (0.5 + w * 2.0).min(5.0))
                         .collect();
-                    match cust::memory::DeviceBuffer::from_slice(&mass_weights) {
+                    // Pad to allocated_nodes (= compute.class_id.len()) so the
+                    // replacement DeviceBuffer stays the same size as class_id and
+                    // class_charge. Without padding, from_slice creates a buffer of
+                    // exactly num_nodes elements; the next upload_class_metadata call
+                    // then tries to copy a padded (allocated_nodes) slice into this
+                    // smaller buffer and panics with checked_copy_from size mismatch.
+                    let allocated = compute.class_id.len();
+                    let mut padded_mass = vec![1.0f32; allocated];
+                    let copy_len = mass_weights.len().min(allocated);
+                    padded_mass[..copy_len].copy_from_slice(&mass_weights[..copy_len]);
+                    match cust::memory::DeviceBuffer::from_slice(&padded_mass) {
                         Ok(new_mass) => { compute.class_mass = new_mass; }
                         Err(e) => { warn!("ForceComputeActor: Failed to upload mass weights: {}", e); }
                     }
