@@ -237,13 +237,158 @@ impl Default for ShareRequest {
         Self {
             title: "Shared Graph".to_string(),
             description: None,
-            expires_in_hours: Some(24 * 7), 
+            expires_in_hours: Some(24 * 7),
             max_access_count: None,
             is_public: true,
             password: None,
             graph_id: None,
             export_format: ExportFormat::Json,
             include_metadata: true,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_shared_graph() -> SharedGraph {
+        SharedGraph::new(
+            "Test Graph".to_string(),
+            Some("Desc".to_string()),
+            Some("creator-1".to_string()),
+            "/tmp/graph.json".to_string(),
+            1024,
+            false,
+            ExportFormat::Json,
+            10,
+            5,
+        )
+    }
+
+    // --- ExportFormat ---
+
+    #[test]
+    fn export_format_display_all_variants() {
+        assert_eq!(ExportFormat::Json.to_string(), "json");
+        assert_eq!(ExportFormat::Gexf.to_string(), "gexf");
+        assert_eq!(ExportFormat::Graphml.to_string(), "graphml");
+        assert_eq!(ExportFormat::Csv.to_string(), "csv");
+        assert_eq!(ExportFormat::Dot.to_string(), "dot");
+    }
+
+    #[test]
+    fn export_format_serde_roundtrip() {
+        for fmt in [ExportFormat::Json, ExportFormat::Gexf, ExportFormat::Graphml, ExportFormat::Csv, ExportFormat::Dot] {
+            let json = serde_json::to_string(&fmt).unwrap();
+            let back: ExportFormat = serde_json::from_str(&json).unwrap();
+            assert_eq!(back, fmt);
+        }
+    }
+
+    // --- ExportRequest ---
+
+    #[test]
+    fn export_request_default_values() {
+        let req = ExportRequest::default();
+        assert_eq!(req.format, ExportFormat::Json);
+        assert!(req.include_metadata);
+        assert!(!req.compress);
+        assert!(req.graph_id.is_none());
+        assert!(req.custom_attributes.is_none());
+    }
+
+    // --- ShareRequest ---
+
+    #[test]
+    fn share_request_default_values() {
+        let req = ShareRequest::default();
+        assert_eq!(req.title, "Shared Graph");
+        assert_eq!(req.expires_in_hours, Some(168)); // 7 days
+        assert!(req.is_public);
+        assert!(req.password.is_none());
+    }
+
+    // --- SharedGraph ---
+
+    #[test]
+    fn shared_graph_new_initialises_correctly() {
+        let sg = make_shared_graph();
+        assert_eq!(sg.title, "Test Graph");
+        assert_eq!(sg.node_count, 10);
+        assert_eq!(sg.edge_count, 5);
+        assert_eq!(sg.file_size, 1024);
+        assert_eq!(sg.access_count, 0);
+        assert!(sg.is_public);
+        assert!(sg.password_hash.is_none());
+        assert!(sg.expires_at.is_none());
+        assert!(sg.max_access_count.is_none());
+    }
+
+    #[test]
+    fn shared_graph_is_expired_false_when_no_expiry() {
+        let sg = make_shared_graph();
+        assert!(!sg.is_expired());
+    }
+
+    #[test]
+    fn shared_graph_is_expired_true_when_past_expiry() {
+        let mut sg = make_shared_graph();
+        // Set expiry in the past
+        sg.expires_at = Some(chrono::DateTime::<chrono::Utc>::from_timestamp(1, 0).unwrap());
+        assert!(sg.is_expired());
+    }
+
+    #[test]
+    fn shared_graph_access_limit_not_reached_when_no_max() {
+        let sg = make_shared_graph();
+        assert!(!sg.access_limit_reached());
+    }
+
+    #[test]
+    fn shared_graph_access_limit_reached_when_at_max() {
+        let mut sg = make_shared_graph();
+        sg.max_access_count = Some(3);
+        sg.access_count = 3;
+        assert!(sg.access_limit_reached());
+        sg.access_count = 2;
+        assert!(!sg.access_limit_reached());
+    }
+
+    #[test]
+    fn shared_graph_increment_access_increases_count() {
+        let mut sg = make_shared_graph();
+        sg.increment_access();
+        sg.increment_access();
+        assert_eq!(sg.access_count, 2);
+    }
+
+    #[test]
+    fn shared_graph_set_expiration_sets_future_expiry() {
+        let mut sg = make_shared_graph();
+        sg.set_expiration(1);
+        assert!(sg.expires_at.is_some());
+        assert!(!sg.is_expired()); // just set 1 hour in the future
+    }
+
+    #[test]
+    fn shared_graph_validate_password_no_hash_returns_true() {
+        let sg = make_shared_graph();
+        assert!(sg.validate_password("anything"));
+        assert!(sg.validate_password(""));
+    }
+
+    #[test]
+    fn publication_status_serde_roundtrip() {
+        for status in [
+            PublicationStatus::Pending,
+            PublicationStatus::Approved,
+            PublicationStatus::Rejected,
+            PublicationStatus::Published,
+        ] {
+            let json = serde_json::to_string(&status).unwrap();
+            let back: PublicationStatus = serde_json::from_str(&json).unwrap();
+            assert_eq!(back, status);
         }
     }
 }

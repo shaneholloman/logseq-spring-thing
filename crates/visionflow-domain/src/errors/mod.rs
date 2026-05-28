@@ -977,4 +977,153 @@ mod tests {
             panic!("Expected Generic error with context");
         }
     }
+
+    #[test]
+    fn test_from_conversions_wrap_correctly() {
+        let actor_err = ActorError::ActorNotAvailable("TestActor".to_string());
+        let vf: VisionFlowError = actor_err.into();
+        assert!(matches!(vf, VisionFlowError::Actor(_)));
+
+        let gpu_err = GPUError::DriverError("oops".to_string());
+        let vf: VisionFlowError = gpu_err.into();
+        assert!(matches!(vf, VisionFlowError::GPU(_)));
+
+        let net_err = NetworkError::WebSocketError("closed".to_string());
+        let vf: VisionFlowError = net_err.into();
+        assert!(matches!(vf, VisionFlowError::Network(_)));
+
+        let val_err = ValidationError::Custom("bad input".to_string());
+        let vf: VisionFlowError = val_err.into();
+        assert!(matches!(vf, VisionFlowError::Validation(_)));
+
+        let parse_err = ParseError::Boolean { input: "maybe".to_string() };
+        let vf: VisionFlowError = parse_err.into();
+        assert!(matches!(vf, VisionFlowError::Parse(_)));
+
+        let db_err = DatabaseError::NotFound { entity: "Node".to_string(), id: "42".to_string() };
+        let vf: VisionFlowError = db_err.into();
+        assert!(matches!(vf, VisionFlowError::Database(_)));
+    }
+
+    #[test]
+    fn test_from_string_and_str() {
+        let vf: VisionFlowError = "simple message".into();
+        assert!(matches!(vf, VisionFlowError::Generic { .. }));
+        assert!(vf.to_string().contains("simple message"));
+
+        let vf2: VisionFlowError = String::from("owned message").into();
+        assert!(matches!(vf2, VisionFlowError::Generic { .. }));
+    }
+
+    #[test]
+    fn test_from_serde_json_error() {
+        let bad: Result<serde_json::Value, _> = serde_json::from_str("{bad json}");
+        let serde_err = bad.unwrap_err();
+        let vf: VisionFlowError = serde_err.into();
+        assert!(matches!(vf, VisionFlowError::Parse(ParseError::JSON { .. })));
+    }
+
+    #[test]
+    fn test_option_ext_ok_or_error() {
+        let some: Option<u32> = Some(42);
+        assert_eq!(some.ok_or_error("missing").unwrap(), 42);
+
+        let none: Option<u32> = None;
+        let err = none.ok_or_error("value missing").unwrap_err();
+        assert!(err.to_string().contains("value missing"));
+    }
+
+    #[test]
+    fn test_option_ext_ok_or_validation() {
+        let none: Option<String> = None;
+        let err = none.ok_or_validation("username").unwrap_err();
+        assert!(matches!(err, VisionFlowError::Validation(ValidationError::RequiredField { .. })));
+        assert!(err.to_string().contains("username"));
+    }
+
+    #[test]
+    fn test_option_ext_ok_or_not_found() {
+        let none: Option<String> = None;
+        let err = none.ok_or_not_found("Node", "99").unwrap_err();
+        assert!(matches!(err, VisionFlowError::Database(DatabaseError::NotFound { .. })));
+        assert!(err.to_string().contains("99"));
+    }
+
+    #[test]
+    fn test_error_context_actor_and_gpu() {
+        let io_result: Result<(), std::io::Error> = Err(std::io::Error::new(
+            std::io::ErrorKind::Other, "gpu fail",
+        ));
+        let vf = io_result.with_gpu_context("test_kernel").unwrap_err();
+        assert!(matches!(vf, VisionFlowError::GPU(GPUError::KernelExecutionFailed { .. })));
+
+        let io_result2: Result<(), std::io::Error> = Err(std::io::Error::new(
+            std::io::ErrorKind::Other, "actor fail",
+        ));
+        let vf2 = io_result2.with_actor_context("MyActor").unwrap_err();
+        assert!(matches!(vf2, VisionFlowError::Actor(ActorError::RuntimeFailure { .. })));
+    }
+
+    #[test]
+    fn test_validation_error_display_variants() {
+        let v = ValidationError::InvalidFormat {
+            field: "email".to_string(),
+            expected: "email@example.com".to_string(),
+            actual: "not-an-email".to_string(),
+        };
+        assert!(v.to_string().contains("email"));
+
+        let v2 = ValidationError::OutOfRange {
+            field: "age".to_string(),
+            min: "0".to_string(),
+            max: "150".to_string(),
+            actual: "200".to_string(),
+        };
+        assert!(v2.to_string().contains("150"));
+
+        let v3 = ValidationError::InvalidLength {
+            field: "name".to_string(),
+            min: Some(1),
+            max: Some(50),
+            actual: 0,
+        };
+        assert!(v3.to_string().contains("name"));
+    }
+
+    #[test]
+    fn test_parse_error_display_variants() {
+        let p = ParseError::URL { input: "bad-url".to_string(), reason: "no scheme".to_string() };
+        assert!(p.to_string().contains("bad-url"));
+
+        let p2 = ParseError::Custom { format: "CSV".to_string(), input: "a,b".to_string(), reason: "wrong cols".to_string() };
+        assert!(p2.to_string().contains("CSV"));
+    }
+
+    #[test]
+    fn test_database_error_display_variants() {
+        let d = DatabaseError::ConstraintViolation {
+            constraint: "UNIQUE".to_string(),
+            reason: "duplicate key".to_string(),
+        };
+        assert!(d.to_string().contains("UNIQUE"));
+
+        let d2 = DatabaseError::MigrationFailed {
+            version: "v2".to_string(),
+            reason: "schema mismatch".to_string(),
+        };
+        assert!(d2.to_string().contains("v2"));
+    }
+
+    #[test]
+    fn test_network_error_display_variants() {
+        let n = NetworkError::ConnectionFailed {
+            host: "db.example.com".to_string(),
+            port: 5432,
+            reason: "refused".to_string(),
+        };
+        assert!(n.to_string().contains("5432"));
+
+        let n2 = NetworkError::Timeout { operation: "sync".to_string(), timeout_ms: 5000 };
+        assert!(n2.to_string().contains("5000"));
+    }
 }

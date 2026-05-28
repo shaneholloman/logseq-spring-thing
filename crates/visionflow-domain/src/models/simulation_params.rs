@@ -376,4 +376,91 @@ mod tests {
             _ => panic!("expected FastSettle"),
         }
     }
+
+    #[test]
+    fn test_settle_mode_continuous_serde() {
+        let m = SettleMode::Continuous;
+        let json = serde_json::to_string(&m).unwrap();
+        let back: SettleMode = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, SettleMode::Continuous);
+    }
+
+    #[test]
+    fn test_simulation_mode_and_phase_defaults() {
+        assert_eq!(SimulationMode::default(), SimulationMode::Remote);
+        assert_eq!(SimulationPhase::default(), SimulationPhase::Initial);
+    }
+
+    #[test]
+    fn test_validate_multiple_errors_collected() {
+        let mut p = SimulationParams::default();
+        p.dt = -1.0;         // invalid
+        p.damping = 2.0;     // invalid (> 1)
+        p.repel_k = -1.0;    // invalid
+        let err = p.validate().unwrap_err();
+        // All three errors should be in the semicolon-separated message
+        let count = err.split(';').count();
+        assert!(count >= 3, "expected >= 3 errors, got: {}", err);
+    }
+
+    #[test]
+    fn test_validate_nan_field_caught() {
+        let mut p = SimulationParams::default();
+        p.dt = f32::NAN;
+        let err = p.validate().unwrap_err();
+        assert!(err.contains("dt"), "should mention dt: {}", err);
+    }
+
+    #[test]
+    fn test_validate_infinite_field_caught() {
+        let mut p = SimulationParams::default();
+        p.max_velocity = f32::INFINITY;
+        let err = p.validate().unwrap_err();
+        assert!(err.contains("max_velocity"), "should mention max_velocity: {}", err);
+    }
+
+    #[test]
+    fn test_with_phase_initial_sets_min_iterations() {
+        let p = SimulationParams::with_phase(SimulationPhase::Initial);
+        assert_eq!(p.phase, SimulationPhase::Initial);
+        assert!(p.iterations >= 500);
+        assert!(p.warmup_iterations >= 300);
+    }
+
+    #[test]
+    fn test_with_phase_finalize_sets_min_iterations() {
+        let p = SimulationParams::with_phase(SimulationPhase::Finalize);
+        assert_eq!(p.phase, SimulationPhase::Finalize);
+        assert!(p.iterations >= 300);
+    }
+
+    #[test]
+    fn test_feature_flags_are_distinct_powers_of_two() {
+        let flags = [
+            FeatureFlags::ENABLE_REPULSION,
+            FeatureFlags::ENABLE_SPRINGS,
+            FeatureFlags::ENABLE_CENTERING,
+            FeatureFlags::ENABLE_TEMPORAL_COHERENCE,
+            FeatureFlags::ENABLE_CONSTRAINTS,
+            FeatureFlags::ENABLE_STRESS_MAJORIZATION,
+            FeatureFlags::ENABLE_SSSP_SPRING_ADJUST,
+        ];
+        // All flags are distinct
+        for (i, &a) in flags.iter().enumerate() {
+            for (j, &b) in flags.iter().enumerate() {
+                if i != j {
+                    assert_eq!(a & b, 0, "flags {} and {} overlap", i, j);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_simulation_params_serde_roundtrip() {
+        let p = SimulationParams::default();
+        let json = serde_json::to_string(&p).unwrap();
+        let back: SimulationParams = serde_json::from_str(&json).unwrap();
+        assert!((back.dt - p.dt).abs() < f32::EPSILON);
+        assert_eq!(back.enabled, p.enabled);
+    }
 }

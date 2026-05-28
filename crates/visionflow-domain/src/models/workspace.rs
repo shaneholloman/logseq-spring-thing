@@ -362,3 +362,151 @@ impl Default for WorkspaceQuery {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn workspace_new_sets_expected_fields() {
+        let ws = Workspace::new(
+            "My Workspace".to_string(),
+            Some("A description".to_string()),
+            WorkspaceType::Team,
+        );
+        assert_eq!(ws.name, "My Workspace");
+        assert_eq!(ws.description.as_deref(), Some("A description"));
+        assert_eq!(ws.workspace_type, WorkspaceType::Team);
+        assert_eq!(ws.status, WorkspaceStatus::Active);
+        assert_eq!(ws.member_count, 1);
+        assert!(!ws.is_favorite);
+        assert!(ws.owner_id.is_none());
+        assert!(ws.metadata.is_empty());
+        // UUID format: 32 hex + 4 hyphens = 36 chars
+        assert_eq!(ws.id.len(), 36);
+    }
+
+    #[test]
+    fn workspace_default_is_personal() {
+        let ws = Workspace::default();
+        assert_eq!(ws.name, "New Workspace");
+        assert_eq!(ws.workspace_type, WorkspaceType::Personal);
+        assert_eq!(ws.status, WorkspaceStatus::Active);
+    }
+
+    #[test]
+    fn workspace_toggle_favorite_flips_state() {
+        let mut ws = Workspace::default();
+        assert!(!ws.is_favorite);
+        assert!(ws.toggle_favorite());
+        assert!(ws.is_favorite);
+        assert!(!ws.toggle_favorite());
+        assert!(!ws.is_favorite);
+    }
+
+    #[test]
+    fn workspace_archive_and_unarchive() {
+        let mut ws = Workspace::default();
+        assert!(!ws.is_archived());
+        ws.archive();
+        assert!(ws.is_archived());
+        assert_eq!(ws.status, WorkspaceStatus::Archived);
+        ws.unarchive();
+        assert!(!ws.is_archived());
+        assert_eq!(ws.status, WorkspaceStatus::Active);
+    }
+
+    #[test]
+    fn workspace_update_partial_only_changes_provided_fields() {
+        let mut ws = Workspace::new("Old".to_string(), None, WorkspaceType::Personal);
+        let original_type = ws.workspace_type.clone();
+        ws.update(Some("New".to_string()), None, None);
+        assert_eq!(ws.name, "New");
+        assert_eq!(ws.workspace_type, original_type);
+    }
+
+    #[test]
+    fn workspace_set_and_remove_metadata() {
+        let mut ws = Workspace::default();
+        ws.set_metadata("color".to_string(), serde_json::json!("blue"));
+        assert!(ws.metadata.contains_key("color"));
+        let removed = ws.remove_metadata("color");
+        assert!(removed.is_some());
+        assert!(!ws.metadata.contains_key("color"));
+        // Removing non-existent key returns None
+        assert!(ws.remove_metadata("nonexistent").is_none());
+    }
+
+    #[test]
+    fn workspace_set_member_count_and_owner() {
+        let mut ws = Workspace::default();
+        ws.set_member_count(5);
+        assert_eq!(ws.member_count, 5);
+        ws.set_owner("owner-123".to_string());
+        assert_eq!(ws.owner_id.as_deref(), Some("owner-123"));
+    }
+
+    #[test]
+    fn workspace_serde_roundtrip() {
+        let mut ws = Workspace::new("Test".to_string(), None, WorkspaceType::Public);
+        // Insert a metadata entry so the field is serialized (skip_serializing_if = is_empty)
+        ws.set_metadata("key".to_string(), serde_json::json!("value"));
+        let json = serde_json::to_string(&ws).unwrap();
+        let back: Workspace = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.name, ws.name);
+        assert_eq!(back.id, ws.id);
+        assert_eq!(back.workspace_type, ws.workspace_type);
+    }
+
+    #[test]
+    fn workspace_response_constructors() {
+        let ws = Workspace::default();
+        let ok = WorkspaceResponse::success(ws, "created");
+        assert!(ok.success);
+        assert_eq!(ok.message, "created");
+        assert!(ok.workspace.is_some());
+
+        let ok_no_data = WorkspaceResponse::success_no_data("done");
+        assert!(ok_no_data.success);
+        assert!(ok_no_data.workspace.is_none());
+
+        let err = WorkspaceResponse::error("something broke");
+        assert!(!err.success);
+        assert!(err.workspace.is_none());
+    }
+
+    #[test]
+    fn workspace_list_response_constructors() {
+        let list = WorkspaceListResponse::success(vec![], 0, 0, 20);
+        assert!(list.success);
+        assert_eq!(list.page_size, 20);
+
+        let err = WorkspaceListResponse::error("failed");
+        assert!(!err.success);
+        assert!(err.workspaces.is_empty());
+        assert_eq!(err.total_count, 0);
+    }
+
+    #[test]
+    fn workspace_sort_by_default_is_updated_at() {
+        assert!(matches!(WorkspaceSortBy::default(), WorkspaceSortBy::UpdatedAt));
+    }
+
+    #[test]
+    fn sort_direction_default_is_descending() {
+        assert!(matches!(SortDirection::default(), SortDirection::Descending));
+    }
+
+    #[test]
+    fn workspace_query_default_has_page_size_20() {
+        let q = WorkspaceQuery::default();
+        assert_eq!(q.page_size, Some(20));
+        assert_eq!(q.page, Some(0));
+    }
+
+    #[test]
+    fn workspace_type_and_status_defaults() {
+        assert_eq!(WorkspaceType::default(), WorkspaceType::Personal);
+        assert_eq!(WorkspaceStatus::default(), WorkspaceStatus::Active);
+    }
+}

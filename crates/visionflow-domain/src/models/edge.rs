@@ -218,3 +218,169 @@ impl Edge {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // --- SemanticEdgeType ---
+
+    #[test]
+    fn semantic_edge_type_default_is_explicit_link() {
+        assert_eq!(SemanticEdgeType::default(), SemanticEdgeType::ExplicitLink);
+    }
+
+    #[test]
+    fn semantic_edge_type_from_relation_type_known_variants() {
+        assert_eq!(SemanticEdgeType::from_relation_type("is_subclass_of"), SemanticEdgeType::Hierarchical);
+        assert_eq!(SemanticEdgeType::from_relation_type("SUBCLASS_OF"), SemanticEdgeType::Hierarchical);
+        assert_eq!(SemanticEdgeType::from_relation_type("has_part"), SemanticEdgeType::Structural);
+        assert_eq!(SemanticEdgeType::from_relation_type("requires"), SemanticEdgeType::Dependency);
+        assert_eq!(SemanticEdgeType::from_relation_type("relates_to"), SemanticEdgeType::Associative);
+        assert_eq!(SemanticEdgeType::from_relation_type("bridges_to"), SemanticEdgeType::Bridge);
+        assert_eq!(SemanticEdgeType::from_relation_type("namespace"), SemanticEdgeType::Namespace);
+        assert_eq!(SemanticEdgeType::from_relation_type("inferred"), SemanticEdgeType::Inferred);
+        assert_eq!(SemanticEdgeType::from_relation_type("implements"), SemanticEdgeType::Implements);
+        assert_eq!(SemanticEdgeType::from_relation_type("enhances"), SemanticEdgeType::Enhancement);
+        assert_eq!(SemanticEdgeType::from_relation_type("secures"), SemanticEdgeType::Security);
+        assert_eq!(SemanticEdgeType::from_relation_type("goal"), SemanticEdgeType::Goal);
+        assert_eq!(SemanticEdgeType::from_relation_type("tracks"), SemanticEdgeType::Tracking);
+        assert_eq!(SemanticEdgeType::from_relation_type("similar_to"), SemanticEdgeType::Similarity);
+        assert_eq!(SemanticEdgeType::from_relation_type("provenance"), SemanticEdgeType::Provenance);
+        assert_eq!(SemanticEdgeType::from_relation_type("uses"), SemanticEdgeType::Utilisation);
+        assert_eq!(SemanticEdgeType::from_relation_type("standardized_by"), SemanticEdgeType::Standardisation);
+    }
+
+    #[test]
+    fn semantic_edge_type_from_relation_type_unknown_falls_back_to_explicit_link() {
+        assert_eq!(SemanticEdgeType::from_relation_type(""), SemanticEdgeType::ExplicitLink);
+        assert_eq!(SemanticEdgeType::from_relation_type("unknown_type"), SemanticEdgeType::ExplicitLink);
+    }
+
+    #[test]
+    fn semantic_edge_type_from_u8_roundtrip_all_variants() {
+        let variants = [
+            (0u8, SemanticEdgeType::ExplicitLink),
+            (1, SemanticEdgeType::Hierarchical),
+            (2, SemanticEdgeType::Structural),
+            (3, SemanticEdgeType::Dependency),
+            (4, SemanticEdgeType::Associative),
+            (5, SemanticEdgeType::Bridge),
+            (6, SemanticEdgeType::Namespace),
+            (7, SemanticEdgeType::Inferred),
+            (8, SemanticEdgeType::Implements),
+            (9, SemanticEdgeType::Enhancement),
+            (10, SemanticEdgeType::Security),
+            (11, SemanticEdgeType::Goal),
+            (12, SemanticEdgeType::Tracking),
+            (13, SemanticEdgeType::Similarity),
+            (14, SemanticEdgeType::Provenance),
+            (15, SemanticEdgeType::Utilisation),
+            (16, SemanticEdgeType::Standardisation),
+        ];
+        for (byte, expected) in variants {
+            assert_eq!(SemanticEdgeType::from_u8(byte), expected, "byte {}", byte);
+        }
+        // out-of-range falls back
+        assert_eq!(SemanticEdgeType::from_u8(255), SemanticEdgeType::ExplicitLink);
+    }
+
+    #[test]
+    fn semantic_edge_type_spring_multiplier_hierarchical_is_highest() {
+        assert!(SemanticEdgeType::Hierarchical.spring_multiplier() > SemanticEdgeType::ExplicitLink.spring_multiplier());
+        assert!(SemanticEdgeType::Hierarchical.spring_multiplier() > SemanticEdgeType::Bridge.spring_multiplier());
+        assert!(SemanticEdgeType::Provenance.spring_multiplier() < 1.0);
+    }
+
+    #[test]
+    fn semantic_edge_type_display() {
+        assert_eq!(SemanticEdgeType::ExplicitLink.to_string(), "explicit_link");
+        assert_eq!(SemanticEdgeType::Hierarchical.to_string(), "hierarchical");
+        assert_eq!(SemanticEdgeType::Standardisation.to_string(), "standardisation");
+    }
+
+    #[test]
+    fn semantic_edge_type_serde_roundtrip() {
+        let t = SemanticEdgeType::Implements;
+        let json = serde_json::to_string(&t).unwrap();
+        let back: SemanticEdgeType = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, t);
+    }
+
+    // --- Edge ---
+
+    #[test]
+    fn edge_new_sets_expected_id_format() {
+        let e = Edge::new(1, 2, 0.5);
+        assert_eq!(e.id, "1-2");
+        assert_eq!(e.source, 1);
+        assert_eq!(e.target, 2);
+        assert!((e.weight - 0.5).abs() < f32::EPSILON);
+        assert!(e.edge_type.is_none());
+        assert!(e.owl_property_iri.is_none());
+        assert!(e.metadata.is_none());
+    }
+
+    #[test]
+    fn edge_builder_methods_work() {
+        let mut meta = HashMap::new();
+        meta.insert("k".to_string(), "v".to_string());
+
+        let e = Edge::new(10, 20, 1.0)
+            .with_edge_type("hierarchical".to_string())
+            .with_owl_property_iri("http://example.org/prop".to_string())
+            .with_metadata(meta);
+
+        assert_eq!(e.edge_type.as_deref(), Some("hierarchical"));
+        assert_eq!(e.owl_property_iri.as_deref(), Some("http://example.org/prop"));
+        assert!(e.metadata.as_ref().unwrap().contains_key("k"));
+    }
+
+    #[test]
+    fn edge_add_metadata_creates_map_when_none() {
+        let e = Edge::new(1, 2, 1.0).add_metadata("foo".to_string(), "bar".to_string());
+        let m = e.metadata.unwrap();
+        assert_eq!(m["foo"], "bar");
+    }
+
+    #[test]
+    fn edge_add_metadata_extends_existing_map() {
+        let e = Edge::new(1, 2, 1.0)
+            .add_metadata("a".to_string(), "1".to_string())
+            .add_metadata("b".to_string(), "2".to_string());
+        let m = e.metadata.unwrap();
+        assert_eq!(m.len(), 2);
+    }
+
+    #[test]
+    fn edge_semantic_edge_type_no_edge_type_is_explicit_link() {
+        let e = Edge::new(1, 2, 1.0);
+        assert_eq!(e.semantic_edge_type(), SemanticEdgeType::ExplicitLink);
+    }
+
+    #[test]
+    fn edge_semantic_edge_type_derives_from_string() {
+        let e = Edge::new(1, 2, 1.0).with_edge_type("is_subclass_of".to_string());
+        assert_eq!(e.semantic_edge_type(), SemanticEdgeType::Hierarchical);
+    }
+
+    #[test]
+    fn edge_serde_roundtrip() {
+        let e = Edge::new(5, 10, 2.5).with_edge_type("dependency".to_string());
+        let json = serde_json::to_string(&e).unwrap();
+        let back: Edge = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.source, 5);
+        assert_eq!(back.target, 10);
+        assert!((back.weight - 2.5).abs() < f32::EPSILON);
+        assert_eq!(back.edge_type.as_deref(), Some("dependency"));
+    }
+
+    #[test]
+    fn edge_serde_omits_none_fields() {
+        let e = Edge::new(1, 2, 1.0);
+        let json = serde_json::to_string(&e).unwrap();
+        assert!(!json.contains("edgeType"));
+        assert!(!json.contains("owlPropertyIri"));
+        assert!(!json.contains("metadata"));
+    }
+}

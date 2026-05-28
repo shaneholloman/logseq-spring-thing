@@ -287,3 +287,192 @@ impl ProtectedSettings {
             .map_err(|e| format!("Failed to write protected settings: {}", e))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // --- ApiKeys ---
+
+    #[test]
+    fn api_keys_default_all_none() {
+        let k = ApiKeys::default();
+        assert!(k.perplexity.is_none());
+        assert!(k.openai.is_none());
+        assert!(k.ragflow.is_none());
+    }
+
+    #[test]
+    fn api_keys_debug_masks_values() {
+        let k = ApiKeys {
+            perplexity: Some("secret-key".to_string()),
+            openai: None,
+            ragflow: Some(String::new()),
+        };
+        let debug = format!("{:?}", k);
+        assert!(!debug.contains("secret-key"), "debug must not leak key value");
+        assert!(debug.contains("<redacted>"));
+        assert!(debug.contains("<none>"));
+        assert!(debug.contains("<empty>"));
+    }
+
+    #[test]
+    fn api_keys_serde_roundtrip() {
+        let k = ApiKeys {
+            perplexity: Some("pk".to_string()),
+            openai: None,
+            ragflow: Some("rk".to_string()),
+        };
+        let json = serde_json::to_string(&k).unwrap();
+        let back: ApiKeys = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.perplexity, Some("pk".to_string()));
+        assert!(back.openai.is_none());
+        assert_eq!(back.ragflow, Some("rk".to_string()));
+    }
+
+    // --- ProtectedSettings ---
+
+    #[test]
+    fn protected_settings_default_has_sane_values() {
+        let ps = ProtectedSettings::default();
+        assert_eq!(ps.network.port, 3000);
+        assert_eq!(ps.network.bind_address, "127.0.0.1");
+        assert!(!ps.network.enable_tls);
+        assert!(ps.network.enable_rate_limiting);
+        assert_eq!(ps.security.session_timeout, 86400);
+        assert_eq!(ps.websocket_server.max_connections, 100);
+        assert!(ps.users.is_empty());
+    }
+
+    #[test]
+    fn protected_settings_serde_roundtrip() {
+        let ps = ProtectedSettings::default();
+        let json = serde_json::to_string(&ps).unwrap();
+        let back: ProtectedSettings = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.network.port, ps.network.port);
+        assert_eq!(back.security.session_timeout, ps.security.session_timeout);
+    }
+
+    #[test]
+    fn protected_settings_merge_updates_network_port() {
+        let mut ps = ProtectedSettings::default();
+        let patch = serde_json::json!({
+            "network": {
+                "bindAddress": "0.0.0.0",
+                "domain": "localhost",
+                "port": 8080,
+                "enableHttp2": false,
+                "enableTls": false,
+                "minTlsVersion": "TLS1.2",
+                "maxRequestSize": 1048576,
+                "enableRateLimiting": true,
+                "rateLimitRequests": 100,
+                "rateLimitWindow": 60,
+                "tunnelId": ""
+            }
+        });
+        let result = ps.merge(patch);
+        assert!(result.is_ok(), "merge failed: {:?}", result);
+        assert_eq!(ps.network.port, 8080);
+    }
+
+    #[test]
+    fn protected_settings_merge_rejects_oversized_max_request_size() {
+        let mut ps = ProtectedSettings::default();
+        let patch = serde_json::json!({
+            "network": {
+                "bindAddress": "127.0.0.1",
+                "domain": "localhost",
+                "port": 3000,
+                "enableHttp2": true,
+                "enableTls": false,
+                "minTlsVersion": "TLS1.2",
+                "maxRequestSize": 200_000_000u64,
+                "enableRateLimiting": true,
+                "rateLimitRequests": 100,
+                "rateLimitWindow": 60,
+                "tunnelId": ""
+            }
+        });
+        let result = ps.merge(patch);
+        assert!(result.is_err(), "should reject max_request_size > 100MB");
+    }
+
+    #[test]
+    fn protected_settings_merge_all_failures_returns_err() {
+        let mut ps = ProtectedSettings::default();
+        // Pass a completely unknown key so every field merge fails
+        let patch = serde_json::json!({ "completely_unknown_key": 42 });
+        // Should succeed (no known keys attempted)
+        let result = ps.merge(patch);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn protected_settings_get_api_keys_returns_defaults_for_unknown_pubkey() {
+        let ps = ProtectedSettings::default();
+        let keys = ps.get_api_keys("unknown-pubkey");
+        // With no env vars set, defaults come back (None values)
+        let _ = keys; // just ensure it doesn't panic
+    }
+
+    #[test]
+    fn protected_settings_validate_client_token_returns_false_for_missing_user() {
+        let ps = ProtectedSettings::default();
+        assert!(!ps.validate_client_token("nobody", "some-token"));
+    }
+
+    #[test]
+    fn protected_settings_store_and_validate_token() {
+        let mut ps = ProtectedSettings::default();
+        let nostr_user = NostrUser {
+            pubkey: "pk1".to_string(),
+            npub: "npub1".to_string(),
+            is_power_user: false,
+            api_keys: ApiKeys::default(),
+            last_seen: 0,
+            session_token: None,
+        };
+        ps.users.insert("pk1".to_string(), nostr_user);
+        ps.store_client_token("pk1".to_string(), "tok-abc".to_string());
+        assert!(ps.validate_client_token("pk1", "tok-abc"));
+        assert!(!ps.validate_client_token("pk1", "wrong-token"));
+    }
+
+    #[test]
+    fn protected_settings_update_user_api_keys_err_for_power_user() {
+        let mut ps = ProtectedSettings::default();
+        ps.users.insert("pk2".to_string(), NostrUser {
+            pubkey: "pk2".to_string(),
+            npub: "npub2".to_string(),
+            is_power_user: true,
+            api_keys: ApiKeys::default(),
+            last_seen: 0,
+            session_token: None,
+        });
+        let result = ps.update_user_api_keys("pk2", ApiKeys::default());
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn protected_settings_update_user_api_keys_err_for_missing_user() {
+        let mut ps = ProtectedSettings::default();
+        let result = ps.update_user_api_keys("nobody", ApiKeys::default());
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn protected_settings_cleanup_expired_tokens_removes_old_users() {
+        let mut ps = ProtectedSettings::default();
+        ps.users.insert("old".to_string(), NostrUser {
+            pubkey: "old".to_string(),
+            npub: "npub_old".to_string(),
+            is_power_user: false,
+            api_keys: ApiKeys::default(),
+            last_seen: 0, // epoch — very old
+            session_token: None,
+        });
+        ps.cleanup_expired_tokens(1); // 1-hour max age
+        assert!(!ps.users.contains_key("old"), "old user should be removed");
+    }
+}

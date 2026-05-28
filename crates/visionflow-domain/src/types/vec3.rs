@@ -272,4 +272,81 @@ mod tests {
         let neg = -a;
         assert_eq!(neg, Vec3Data::new(-1.0, -2.0, -3.0));
     }
+
+    #[test]
+    fn test_vec3_as_array() {
+        let v = Vec3Data::new(1.0, 2.0, 3.0);
+        assert_eq!(v.as_array(), [1.0, 2.0, 3.0]);
+    }
+
+    #[test]
+    fn test_vec3_length_and_length_squared() {
+        let v = Vec3Data::new(0.0, 3.0, 4.0);
+        assert!((v.length() - 5.0).abs() < f32::EPSILON);
+        assert!((v.length_squared() - 25.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn test_vec3_distance_squared() {
+        let a = Vec3Data::new(0.0, 0.0, 0.0);
+        let b = Vec3Data::new(1.0, 0.0, 0.0);
+        assert!((a.distance_squared_to(&b) - 1.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn test_vec3_default_is_zero() {
+        assert_eq!(Vec3Data::default(), Vec3Data::zero());
+    }
+
+    #[test]
+    fn test_vec3_serde_roundtrip() {
+        let v = Vec3Data::new(1.5, -2.5, 3.5);
+        let json = serde_json::to_string(&v).unwrap();
+        let back: Vec3Data = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, v);
+    }
+
+    // --- BinaryNodeData ---
+
+    #[test]
+    fn test_binary_node_data_default() {
+        let b = BinaryNodeData::default();
+        assert_eq!(b.node_id, 0);
+        assert_eq!(b.x, 0.0);
+        assert_eq!(b.vz, 0.0);
+    }
+
+    #[test]
+    fn test_binary_node_data_new_from_vec3() {
+        let pos = Vec3Data::new(1.0, 2.0, 3.0);
+        let vel = Vec3Data::new(0.1, 0.2, 0.3);
+        let b = BinaryNodeData::new(42, pos, vel);
+        assert_eq!(b.node_id, 42);
+        assert!((b.x - 1.0).abs() < f32::EPSILON);
+        assert!((b.vy - 0.2).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn test_binary_node_data_position_and_velocity_round_trip() {
+        let pos = Vec3Data::new(10.0, 20.0, 30.0);
+        let vel = Vec3Data::new(-1.0, -2.0, -3.0);
+        let b = BinaryNodeData::new(1, pos, vel);
+        assert_eq!(b.position(), pos);
+        assert_eq!(b.velocity(), vel);
+    }
+
+    #[test]
+    fn test_binary_node_data_mass_always_one() {
+        let b = BinaryNodeData::default();
+        assert!((b.mass() - 1.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn test_binary_node_data_serde_roundtrip() {
+        let b = BinaryNodeData::new(7, Vec3Data::new(5.0, 6.0, 7.0), Vec3Data::zero());
+        let json = serde_json::to_string(&b).unwrap();
+        let back: BinaryNodeData = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.node_id, 7);
+        assert!((back.x - 5.0).abs() < f32::EPSILON);
+    }
 }

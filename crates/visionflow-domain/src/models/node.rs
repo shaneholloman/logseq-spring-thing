@@ -383,4 +383,119 @@ mod tests {
         assert_eq!(node.vy(), 0.2);
         assert_eq!(node.vz(), 0.3);
     }
+
+    #[test]
+    fn test_calculate_mass_boundary_cases() {
+        // Zero bytes: (0+1) as f32 = 1.0, log10(1.0)/4 = 0; clamps to 0.1
+        let mass_zero = Node::calculate_mass(0);
+        assert!(mass_zero < 50, "zero-byte mass should be small: {}", mass_zero);
+
+        // Large but safe: u64::MAX would overflow (file_size + 1), use a large safe value
+        let mass_large = Node::calculate_mass(1_000_000_000_000u64); // 1 TB
+        assert!(mass_large > 0);
+        assert!(mass_large <= 255);
+
+        // 1 MiB → log10(1048577)/4 ≈ 1.5 → mass ≈ 0.375 → clamps min 0.1 → * 25.5 ≈ 9
+        let mass_1mib = Node::calculate_mass(1024 * 1024);
+        assert!(mass_1mib > 0 && mass_1mib < 255);
+
+        // 1 byte: log10(2)/4 ≈ 0.075 → clamped to 0.1 → same small result
+        let mass_1byte = Node::calculate_mass(1);
+        assert!(mass_1byte < 50);
+    }
+
+    #[test]
+    fn test_set_file_size_inserts_metadata_for_nonzero() {
+        let mut node = Node::new("test".to_string());
+        node.set_file_size(2048);
+        assert_eq!(node.file_size, 2048);
+        assert_eq!(node.metadata.get("fileSize").map(String::as_str), Some("2048"));
+    }
+
+    #[test]
+    fn test_set_file_size_zero_does_not_insert_metadata() {
+        let mut node = Node::new("test".to_string());
+        node.set_file_size(0);
+        assert_eq!(node.file_size, 0);
+        assert!(!node.metadata.contains_key("fileSize"));
+    }
+
+    #[test]
+    fn test_get_mass_default_is_one() {
+        let mut node = Node::new("test".to_string());
+        assert!((node.get_mass() - 1.0).abs() < f32::EPSILON);
+        node.set_mass(2.5);
+        assert!((node.get_mass() - 2.5).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn test_new_with_stored_id_uses_provided_id() {
+        let node = Node::new_with_stored_id("doc.md".to_string(), Some(99));
+        assert_eq!(node.id, 99);
+        assert_eq!(node.label, "doc.md"); // label mirrors metadata_id in new_with_stored_id
+    }
+
+    #[test]
+    fn test_new_with_stored_id_position_in_valid_range() {
+        let node = Node::new_with_stored_id("doc.md".to_string(), Some(50));
+        // position is deterministic from golden-ratio spiral — just confirm finite values
+        assert!(node.x().is_finite());
+        assert!(node.y().is_finite());
+        assert!(node.z().is_finite());
+    }
+
+    #[test]
+    fn test_id_as_string() {
+        let node = Node::new_with_id("m".to_string(), Some(42));
+        assert_eq!(node.id_as_string(), "42");
+    }
+
+    #[test]
+    fn test_from_string_id_valid() {
+        let node = Node::from_string_id("7", "meta.md".to_string()).unwrap();
+        assert_eq!(node.id, 7);
+    }
+
+    #[test]
+    fn test_from_string_id_invalid_returns_err() {
+        assert!(Node::from_string_id("not_a_number", "meta.md".to_string()).is_err());
+    }
+
+    #[test]
+    fn test_new_with_id_zero_gets_counter_id() {
+        let node = Node::new_with_id("meta".to_string(), Some(0));
+        assert!(node.id > 0, "id 0 should be replaced by counter");
+    }
+
+    #[test]
+    fn test_with_owl_class_iri() {
+        let node = Node::new("meta".to_string())
+            .with_owl_class_iri("http://example.org/Class".to_string());
+        assert_eq!(node.owl_class_iri.as_deref(), Some("http://example.org/Class"));
+    }
+
+    #[test]
+    fn test_with_metadata_inserts_key_value() {
+        let node = Node::new("meta".to_string())
+            .with_metadata("foo".to_string(), "bar".to_string());
+        assert_eq!(node.metadata.get("foo").map(String::as_str), Some("bar"));
+    }
+
+    #[test]
+    fn test_node_serde_omits_none_optional_fields() {
+        let node = Node::new_with_stored_id("meta".to_string(), Some(1));
+        let json = serde_json::to_string(&node).unwrap();
+        // owl_class_iri is None — must not appear
+        assert!(!json.contains("owlClassIri"), "none fields should be omitted: {}", json);
+    }
+
+    #[test]
+    fn test_node_serde_roundtrip_preserves_position() {
+        let node = Node::new("meta".to_string()).with_position(10.0, 20.0, 30.0);
+        let json = serde_json::to_string(&node).unwrap();
+        let back: Node = serde_json::from_str(&json).unwrap();
+        assert!((back.x() - 10.0).abs() < 0.001);
+        assert!((back.y() - 20.0).abs() < 0.001);
+        assert!((back.z() - 30.0).abs() < 0.001);
+    }
 }

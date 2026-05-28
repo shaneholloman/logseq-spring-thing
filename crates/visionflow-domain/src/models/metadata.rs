@@ -100,3 +100,88 @@ impl MetadataOps for MetadataStore {
         true
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_metadata(node_id: &str, file_name: &str) -> Metadata {
+        Metadata {
+            node_id: node_id.to_string(),
+            file_name: file_name.to_string(),
+            ..Metadata::default()
+        }
+    }
+
+    #[test]
+    fn metadata_default_has_sensible_values() {
+        let m = Metadata::default();
+        // Default::default() on a #[derive(Default)] String produces "".
+        // The serde default ("0") only applies during JSON deserialization.
+        assert_eq!(m.file_name, "");
+        assert_eq!(m.file_size, 0);
+        assert!(m.sha1.is_empty());
+        // node_id default via derive is ""; only becomes "0" on deserialization
+        assert_eq!(m.node_id, "");
+    }
+
+    #[test]
+    fn metadata_serde_roundtrip() {
+        let m = Metadata {
+            file_name: "test.md".to_string(),
+            file_size: 1024,
+            node_id: "42".to_string(),
+            sha1: "abc123".to_string(),
+            ..Metadata::default()
+        };
+        let json = serde_json::to_string(&m).unwrap();
+        let back: Metadata = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.file_name, "test.md");
+        assert_eq!(back.file_size, 1024);
+        assert_eq!(back.node_id, "42");
+        assert_eq!(back.sha1, "abc123");
+    }
+
+    #[test]
+    fn metadata_serde_uses_camel_case() {
+        let m = Metadata { hyperlink_count: 5, ..Metadata::default() };
+        let json = serde_json::to_string(&m).unwrap();
+        assert!(json.contains("hyperlinkCount"), "expected camelCase key, got: {}", json);
+    }
+
+    #[test]
+    fn metadata_store_get_max_node_id_empty_returns_zero() {
+        let store: MetadataStore = MetadataStore::new();
+        assert_eq!(store.get_max_node_id(), 0);
+    }
+
+    #[test]
+    fn metadata_store_get_max_node_id_finds_maximum() {
+        let mut store = MetadataStore::new();
+        store.insert("a.md".to_string(), make_metadata("10", "a.md"));
+        store.insert("b.md".to_string(), make_metadata("3", "b.md"));
+        store.insert("c.md".to_string(), make_metadata("100", "c.md"));
+        assert_eq!(store.get_max_node_id(), 100);
+    }
+
+    #[test]
+    fn metadata_store_get_max_node_id_ignores_non_numeric() {
+        let mut store = MetadataStore::new();
+        store.insert("a.md".to_string(), make_metadata("not_a_number", "a.md"));
+        store.insert("b.md".to_string(), make_metadata("7", "b.md"));
+        assert_eq!(store.get_max_node_id(), 7);
+    }
+
+    #[test]
+    fn metadata_store_validate_files_empty_returns_false() {
+        let store = MetadataStore::new();
+        assert!(!store.validate_files("/any/path"));
+    }
+
+    #[test]
+    fn metadata_store_validate_files_missing_file_returns_false() {
+        let mut store = MetadataStore::new();
+        store.insert("nonexistent.md".to_string(), make_metadata("1", "nonexistent.md"));
+        assert!(!store.validate_files("/definitely/not/a/real/dir"));
+    }
+}
