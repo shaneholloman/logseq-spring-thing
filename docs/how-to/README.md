@@ -72,8 +72,8 @@ Practical instructions for specific tasks. Each guide assumes you already have V
 | [Telemetry & Logging](operations/telemetry-logging.md) | Structured logging, metrics, and observability setup |
 | [Pipeline Admin API](operations/pipeline-admin-api.md) | Admin REST endpoints for pipeline lifecycle management |
 | [Operator Runbook](operations/pipeline-operator-runbook.md) | Production operations playbook for on-call engineers |
-| [Maintenance](operations/maintenance.md) | Routine maintenance tasks, backups, and Neo4j housekeeping |
-| [Neo4j Integration](integration/neo4j-integration.md) | Neo4j connection, Cypher conventions, and migration |
+| [Maintenance](operations/maintenance.md) | Routine maintenance tasks, backups, and graph-store (Oxigraph) housekeeping |
+| [Neo4j Integration](integration/neo4j-integration.md) | OBSOLETE (ADR-11) — Neo4j removed; retained as historical reference, candidate for deletion |
 | [Solid Integration](integration/solid-integration.md) | Solid Pod integration overview and LDP operations |
 | [Solid Pod Creation](integration/solid-pod-creation.md) | Creating and managing per-user Solid Pods |
 | [ComfyUI Service](integration/comfyui-service-integration.md) | ComfyUI Docker service integration and API bridge |

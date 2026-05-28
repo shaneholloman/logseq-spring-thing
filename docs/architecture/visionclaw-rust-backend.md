@@ -82,11 +82,10 @@ graph TD
         S_PATHFINDING[Pathfinding<br/>896 lines]
     end
 
-    subgraph Adapters["Adapter Layer (Ports/Adapters)"]
-        AD_NEO4J[Neo4jAdapter<br/>2164 lines]
-        AD_NEO4J_GRAPH[Neo4jGraphRepository<br/>895 lines]
-        AD_NEO4J_ONT[Neo4jOntologyRepository<br/>1827 lines]
-        AD_NEO4J_SET[Neo4jSettingsRepository<br/>1137 lines]
+    subgraph Adapters["Adapter Layer (Ports/Adapters) — Oxigraph + SQLite, ADR-11"]
+        AD_OXI_GRAPH[OxigraphGraphRepository<br/>embedded RDF store]
+        AD_OXI_ONT[OxigraphOntologyRepository<br/>same store, ontology named graph]
+        AD_SQLITE_SET[SqliteSettingsRepository<br/>embedded SQLite]
         AD_GPU_SEM[GpuSemanticAnalyzer<br/>531 lines]
         AD_PHYSICS[ActixPhysicsAdapter<br/>639 lines]
     end
@@ -120,13 +119,13 @@ graph TD
 
     S_GITHUB_SYNC --> P_KG
     S_GITHUB_SYNC --> P_ONT
-    S_GITHUB_SYNC --> AD_NEO4J
-    P_KG --> AD_NEO4J_GRAPH
-    P_ONT --> AD_NEO4J_ONT
+    S_GITHUB_SYNC --> AD_OXI_GRAPH
+    P_KG --> AD_OXI_GRAPH
+    P_ONT --> AD_OXI_ONT
 
-    A_ONTOLOGY --> AD_NEO4J_ONT
-    A_SETTINGS --> AD_NEO4J_SET
-    A_GRAPH_STATE --> AD_NEO4J_GRAPH
+    A_ONTOLOGY --> AD_OXI_ONT
+    A_SETTINGS --> AD_SQLITE_SET
+    A_GRAPH_STATE --> AD_OXI_GRAPH
 ```
 
 ## 2. Handler-to-Service-to-Actor Call Chains
@@ -158,12 +157,12 @@ sequenceDiagram
     participant UI as Client
     participant API as settings_handler
     participant OSA as OptimizedSettingsActor
-    participant Neo4j as Neo4jSettingsRepository
+    participant Settings as SqliteSettingsRepository
     participant PO as PhysicsOrchestratorActor
 
     UI->>API: PUT /api/settings
     API->>OSA: UpdateSetting(path, value)
-    OSA->>Neo4j: persist_setting()
+    OSA->>Settings: persist_setting()
     OSA->>PO: ApplySettingsChange
     PO->>PO: reheat_simulation()
     OSA-->>API: Ok(updated_value)
@@ -183,8 +182,8 @@ flowchart LR
     end
 
     subgraph Store
-        KGP -->|nodes/edges| NEO[Neo4j]
-        OP -->|classes/props| NEO
+        KGP -->|nodes/edges| OXI[Oxigraph embedded RDF store]
+        OP -->|classes/props| OXI
     end
 
     subgraph Compute
@@ -405,5 +404,5 @@ flowchart LR
 | `actors/automation_orchestrator_actor.rs:574` | Placeholder | `async move { /* placeholder */ }` |
 | `domain/contributor/context_assembly.rs` | Stub | 4 in-memory stub adapters: `PodContributorPort`, `GraphSelectionPort`, `OntologyNeighbourPort`, `EpisodicMemoryPort` |
 | `handlers/mcp_relay_handler.rs:37` | Stub | "All stubs return ToolOutcome::NotImplemented until C1-C5 wire" |
-| `adapters/tests/neo4j_tests.rs:2000-2034` | Placeholder | 4 integration test placeholders |
+| `adapters/tests/` | Removed | The former `neo4j_tests.rs` integration placeholders were deleted with the Neo4j adapters (ADR-11); Oxigraph adapter tests live alongside `oxigraph_graph_repository.rs` |
 | `main.rs:275` | Fallback | "using disabled placeholder -- content API routes will return errors" |

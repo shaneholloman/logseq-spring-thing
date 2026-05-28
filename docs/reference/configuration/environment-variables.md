@@ -85,11 +85,16 @@ SESSION_TIMEOUT=86400
 | `POSTGRES_MAX_CONNECTIONS` | integer | `100` | Maximum connection pool size |
 | `POSTGRES_SSL_MODE` | string | `prefer` | SSL mode: `disable`, `prefer`, `require` |
 
-### Neo4j
+### Graph Store (Oxigraph — embedded)
+
+The graph store is an embedded Oxigraph RDF triple store (ADR-11). It runs in-process
+with no separate container, no network endpoint, and no password — the former `NEO4J_*`
+variables (`NEO4J_URI`, `NEO4J_USER`, `NEO4J_PASSWORD`, `NEO4J_ENABLED`) are removed and
+no longer read by any code. The dataset is persisted under the data directory.
 
 | Variable | Type | Default | Description |
 |----------|------|---------|-------------|
-| `NEO4J_PASSWORD` | string | *required* | Neo4j database password. **No default** — server fails fast if unset. Must be explicitly configured in all environments |
+| `DATA_DIR` | string | `./data` | Root data directory (Docker images set this to `/app/data`). The Oxigraph RocksDB dataset is stored at `${DATA_DIR}/oxigraph/`. Reset the graph store by stopping the server and `rm -rf ${DATA_DIR}/oxigraph` |
 
 ### Redis Cache
 

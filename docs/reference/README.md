@@ -24,7 +24,7 @@ Complete technical reference documentation for VisionClaw APIs, protocols, confi
 |---------|-------------|
 | **[REST API](./rest-api.md)** | All REST endpoints with request/response schemas |
 | **[WebSocket Binary Protocol](./websocket-binary.md)** | V2/V3/V4 binary protocol specification |
-| **[Neo4j Schema](./neo4j-schema-unified.md)** | Unified graph database schema across all bounded contexts |
+| **[Graph Schema](./neo4j-schema-unified.md)** | Unified graph store schema (embedded Oxigraph/RDF, ADR-11) across all bounded contexts |
 | **[Agents Catalog](./agents-catalog.md)** | All 54 agent skills with invocation patterns |
 | **[Configuration](./configuration/README.md)** | Environment variables, Docker Compose options |
 | **[Protocol Reference](./protocols/README.md)** | MCP protocol, skill classification |
@@ -61,7 +61,7 @@ Complete technical reference documentation for VisionClaw APIs, protocols, confi
 
 | Document | Description |
 |----------|-------------|
-| [Neo4j Schema (Unified)](./neo4j-schema-unified.md) | Graph database schema including ontology storage |
+| [Graph Schema (Unified)](./neo4j-schema-unified.md) | Graph store schema including ontology storage (embedded Oxigraph/RDF, ADR-11) |
 
 ### CLI
 

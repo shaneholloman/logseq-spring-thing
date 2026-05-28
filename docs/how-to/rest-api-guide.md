@@ -52,7 +52,7 @@ sequenceDiagram
     participant App as Client App
     participant Nostr as nostr-tools
     participant API as VisionClaw API :8080
-    participant Neo4j as Neo4j
+    participant Store as Oxigraph (embedded)
 
     App->>Nostr: signEvent(kind:27235, url, method, payload_hash)
     Nostr-->>App: signed event (Schnorr sig)
@@ -61,8 +61,8 @@ sequenceDiagram
     API->>API: Decode + verify Schnorr sig
     API->>API: Check timestamp ≤60s
     API->>API: Check payload SHA-256 tag
-    API->>Neo4j: Execute query
-    Neo4j-->>API: Graph data
+    API->>Store: Execute graph query (SPARQL)
+    Store-->>API: Graph data
     API-->>App: 200 JSON response
 ```
 

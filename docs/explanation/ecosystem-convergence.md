@@ -88,7 +88,7 @@ Signed-off-by: did:nostr:1a2b3c...
 ```
 
 4. Push to the source pod via git-over-HTTP, with a NIP-98 signature (derived from `did:nostr` credentials) binding the transport to the pushing identity
-5. Record the push result in Neo4j by creating a `WriteBackAudit` node linked via `WROTE_BACK_TO` relationship to the corresponding `GitRemote` node, capturing commit hash, saga status, and timestamp
+5. Record the push result in the graph store (embedded Oxigraph) by creating a `WriteBackAudit` node linked via `WROTE_BACK_TO` relationship to the corresponding `GitRemote` node, capturing commit hash, saga status, and timestamp
 
 The provenance trailers are parseable by `git log --format='%(trailers)'`. The commit history of the knowledge base becomes a complete audit trail of every machine-generated enrichment, traceable to specific agents, brokers, and DIDs.
 
@@ -100,7 +100,7 @@ The broker's decision is emitted as three parallel representations:
 |----------------|------------|----------|
 | Git commit trailer | Permanent (repo history) | Anyone with repo access |
 | Nostr bead (kind 30300) | Relay-durable | Relay subscribers across trust boundaries |
-| Neo4j `DecisionHistoryEntry` | Application-durable | VisionClaw queries and KPI dashboards |
+| Graph-store `DecisionHistoryEntry` (Oxigraph) | Application-durable | VisionClaw queries and KPI dashboards |
 
 The Nostr event flows through the relay mesh ([ADR-073](../adr/ADR-073-private-nostr-relay-mesh-topology.md)): agentbox's embedded nostr-rs-relay, VisionClaw's ServerNostrActor, and optionally the nostr-rust-forum relay. Agents subscribed to approval events filtered by their `did:nostr` pubkey receive the notification. Human subscribers using any Nostr client can follow enrichment activity.
 
@@ -131,7 +131,7 @@ Each subsystem in the ecosystem has a defined role in the lifecycle above.
 | **Agentbox** | Sovereign agent container. Nix-based, `did:nostr`-keyed agents with Solid pods, private relay, and MCP orchestrator. Federation client to VisionClaw via typed adapters. | [PRD-004](../PRD-004-agentbox-visionclaw-integration.md), [agentbox ADR-005](../../agentbox/docs/reference/adr/ADR-005-pluggable-adapter-architecture.md) |
 | **Judgment Broker** (distributed) | Human governance gate distributed across three repos: forum (governance.rs policy engine), agentbox (relay-consumer + broker-bridge), VisionClaw (enrichment gating + BrokerActor). ~65% implemented. Six decision outcomes. Append-only audit trail. Self-review prevention. Visual diff review surface. | [ADR-041](../adr/ADR-041-judgment-broker-workbench.md), [ADR-049](../adr/ADR-049-insight-migration-broker-workflow.md) |
 | **Provenance commit encoder** (PRD-013 G3) | Stamps every machine-generated commit with URN, DID, broker-case, reasoning-hash, and NIP-98 transport signature. Fully implemented. | [PRD-013](../PRD-013-solid-git-ingest-surface.md) |
-| **Write-back saga** (PRD-013 G4) | Reverse flow of the ingest pipeline. Broker-gated push of enrichments back to source pods. Extends the IngestSaga ([ADR-051](../adr/ADR-051-visibility-transitions.md)). Fully implemented: creates `WriteBackAudit` nodes in Neo4j linked to `GitRemote` nodes for the audit trail. | [PRD-013](../PRD-013-solid-git-ingest-surface.md) |
+| **Write-back saga** (PRD-013 G4) | Reverse flow of the ingest pipeline. Broker-gated push of enrichments back to source pods. Extends the IngestSaga ([ADR-051](../adr/ADR-051-visibility-transitions.md)). Fully implemented: creates `WriteBackAudit` nodes in the graph store (embedded Oxigraph) linked to `GitRemote` nodes for the audit trail. | [PRD-013](../PRD-013-solid-git-ingest-surface.md) |
 | **Insight Migration Loop** | Promotes KGNodes to OntologyClasses through 8-signal scoring, broker review, and physics-visible state transitions. The knowledge-unit analogue of workflow governance. | [insight-migration-loop.md](./insight-migration-loop.md), [ADR-048](../adr/ADR-048-dual-tier-identity-model.md) |
 | **Nostr relay mesh** | Coordination plane across trust boundaries. NIP-42 AUTH gate. IS-Envelope message contract. Gift-wrap encryption. Agent status, broker decisions, and human feedback all flow as Nostr events. | [ADR-073](../adr/ADR-073-private-nostr-relay-mesh-topology.md), [ADR-075](../adr/ADR-075-is-envelope-message-contract.md) |
 | **GPU physics** | 92 CUDA kernels rendering ontology metadata as spatial forces. Migration state is visible: promoted nodes settle toward the core, orphans drift to the periphery, bridge edges pull candidates toward their target classes. | [physics-gpu-engine.md](./physics-gpu-engine.md) |
@@ -272,9 +272,9 @@ The BC20 anti-corruption layer ([DDD context map](../ddd-mesh-federation-context
          |                     |
          v                     v
   +-------------+    +------------------+
-  | Neo4j       |    | Subscribers      |
+  | Oxigraph    |    | Subscribers      |
   | re-index    |    | (agents, humans, |
-  |             |    |  external relays) |
+  | (embedded)  |    |  external relays) |
   +-------------+    +------------------+
          |
          v

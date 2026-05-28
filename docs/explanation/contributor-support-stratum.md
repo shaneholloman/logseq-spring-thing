@@ -288,7 +288,7 @@ consensus before it becomes canonical.
 share it to Team. They click the share control. The policy engine
 evaluates; an overlay shows the evaluation result and the
 anti-corruption translation ("this will be written to
-`/shared/product-team/kg/`, indexed by Neo4j, visible to product-team
+`/shared/product-team/kg/`, indexed by the graph store, visible to product-team
 WAC group, tagged with lineage id L-7a3f"). The contributor confirms.
 The pod MOVE completes. Two colleagues see a notification.
 

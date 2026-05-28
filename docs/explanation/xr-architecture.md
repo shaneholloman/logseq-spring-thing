@@ -47,8 +47,8 @@ the headline device, for five structural reasons documented in PRD-008 §1:
    identity, scene graph, and input pipelines duplicated.
 3. **JS/PostgreSQL multi-user against a Rust substrate** — the prior world
    server owned its own entity store in its own Postgres; VisionClaw's
-   authoritative graph state lives in Neo4j + RuVector + `GraphStateActor`.
-   Two sources of truth.
+   authoritative graph state lives in the embedded Oxigraph store + RuVector +
+   `GraphStateActor` (ADR-11). Two sources of truth.
 4. **WebXR feature ceiling on Quest 3** — no scene mesh, no spatial anchors,
    no FB passthrough composition layer, no foveated-rendering hints; JS GC in
    the render loop competing with the WebXR compositor for an 11.1 ms budget.
@@ -82,7 +82,7 @@ graph TB
         R3F["React + R3F client<br/>client/src/"]
     end
 
-    subgraph WebxrContainer ["webxr container (Rust / Actix)"]
+    subgraph VisionclawContainer ["visionclaw container (Rust / Actix)"]
         WSGraph["/wss<br/>graph stream<br/>(unchanged)"]
         WSPresence["/ws/presence<br/><b>NEW</b>"]
         PresHandler["presence_handler.rs<br/><b>NEW</b>"]
@@ -120,8 +120,9 @@ graph TB
 ```
 
 The five highlighted components are the entire server-side surface area of
-this work. Neo4j, the GPU physics pipeline, the broadcast optimiser, the
-desktop client, and the LiveKit voice overlay are consumed as-is.
+this work. The embedded Oxigraph graph store, the GPU physics pipeline, the
+broadcast optimiser, the desktop client, and the LiveKit voice overlay are
+consumed as-is.
 
 ---
 
@@ -189,7 +190,7 @@ sequenceDiagram
     participant APK as Godot APK
     participant GDExt as gdext crate
     participant XR as OpenXR (Meta)
-    participant Server as Rust webxr container
+    participant Server as Rust visionclaw container
 
     APK->>GDExt: boot::initialize()
     GDExt->>XR: xrCreateInstance(required extensions)

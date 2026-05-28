@@ -53,7 +53,7 @@ Components reported in the `components` map:
 
 | Key | What it monitors |
 |-----|-----------------|
-| `database` | Neo4j connectivity |
+| `database` | Graph-store readiness (embedded Oxigraph) |
 | `graph` | Graph data manager state |
 | `physics` | Physics actor liveness |
 | `websocket` | Active WebSocket service |

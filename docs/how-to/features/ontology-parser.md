@@ -107,8 +107,8 @@ The parser supports multiple IRI formats for flexibility:
 The following Rust code demonstrates how to use the `OntologyParser`.
 
 ```rust
-use webxr::services::parsers::OntologyParser;
-use webxr::ports::ontology-repository::OntologyRepository;
+use visionclaw_server::services::parsers::OntologyParser;
+use visionclaw_server::ports::ontology_repository::OntologyRepository;
 
 async fn parse-and-store-ontology(
     repo: &impl OntologyRepository,

@@ -721,7 +721,7 @@ docker-compose exec postgres pg-isready
 
 # Reset database connection
 docker-compose restart postgres
-docker-compose restart webxr
+docker-compose restart visionclaw
 
 # Verify connection settings
 POSTGRES-HOST=postgres

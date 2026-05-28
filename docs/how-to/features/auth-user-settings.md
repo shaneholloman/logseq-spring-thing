@@ -13,6 +13,12 @@ difficulty-level: advanced
 
 # Per-User Settings Implementation
 
+> **ADR-11 update**: Settings persistence no longer uses Neo4j. The backing adapter is
+> now `SqliteSettingsRepository` (`src/adapters/sqlite_settings_repository.rs`), backed by
+> a SQLite file under `${DATA_DIR}` (no Bolt URI, no DB password). The user/settings/filter
+> entities below describe the **logical** model; the Cypher snippet is retained only as a
+> conceptual schema illustration. Knowledge-graph data lives in the embedded Oxigraph store.
+
 ## Overview
 Implemented server-side authentication middleware and per-user settings lookup for VisionClaw.
 
@@ -31,10 +37,10 @@ Implemented server-side authentication middleware and per-user settings lookup f
 - Validates sessions using NostrService
 - Extracts pubkey and power_user status
 
-#### Neo4j Repository (`src/adapters/neo4j_settings_repository.rs`)
-- `User` node - Nostr pubkey-based user identity
-- `UserSettings` node - Full AppFullSettings per user
-- `UserFilter` node - Graph filter preferences per user
+#### Settings Repository (`src/adapters/sqlite_settings_repository.rs`)
+- `User` row - Nostr pubkey-based user identity
+- `UserSettings` row - Full AppFullSettings per user
+- `UserFilter` row - Graph filter preferences per user
 - Methods:
   - `get_user_settings(&pubkey)` - Retrieve user's personal settings
   - `save_user_settings(&pubkey, settings)` - Save user's settings
@@ -83,7 +89,7 @@ Sessions are validated through NostrService:
 3. Call `nostr_service.validate_session(&pubkey, &token)`
 4. Check expiry against `AUTH_TOKEN_EXPIRY` env var (default 3600s)
 
-### Neo4j Schema
+### Logical Schema (conceptual — actual storage is SQLite, ADR-11)
 ```cypher
 // User node
 CREATE (u:User {
@@ -162,24 +168,22 @@ const response = await fetch('/api/settings/user/filter', {
 # Compile check
 cargo check
 
-# Run tests (requires Neo4j instance)
-cargo test neo4j_settings_repository -- --ignored
+# Run tests (no external DB — SQLite is embedded)
+cargo test settings_repository -- --ignored
 
 # Test filter endpoints
 cargo test user_filter -- --ignored
 ```
 
 ## Environment Variables
-- `NEO4J_URI` - Neo4j connection URI (default: bolt://localhost:7687)
-- `NEO4J_USER` - Neo4j username (default: neo4j)
-- `NEO4J_PASSWORD` - Neo4j password (default: password)
+- `DATA_DIR` - Base data directory holding the SQLite settings DB and Oxigraph dataset (default: `./data`; Docker images set `/app/data`). The former `NEO4J_*` variables are obsolete (ADR-11).
 - `AUTH_TOKEN_EXPIRY` - Token expiry in seconds (default: 3600)
 - `POWER_USER_PUBKEYS` - Comma-separated list of power user pubkeys
 
 ## Files Modified
 - `/src/settings/api/settings_routes.rs` - Added filter endpoints, per-user settings lookup
-- `/src/main.rs` - Added Neo4jSettingsRepository to app data
-- `/src/adapters/neo4j_settings_repository.rs` - Already had user support (no changes needed)
+- `/src/main.rs` - Registers `SqliteSettingsRepository` in app data
+- `/src/adapters/sqlite_settings_repository.rs` - SQLite-backed settings persistence (ADR-11)
 - `/src/settings/auth_extractor.rs` - Already existed (no changes needed)
 
 ---
@@ -188,7 +192,7 @@ cargo test user_filter -- --ignored
 
 - [Client-Side Filtering Implementation](filtering-nodes.md)
 
-- [Ontology Storage Guide](../../reference/neo4j-schema-unified.md)
+- [Graph Schema Guide](../../reference/neo4j-schema-unified.md) (Oxigraph/RDF, ADR-11)
 - [Docker Compose Unified Configuration - Usage Guide](../deployment-guide.md)
 - [Developer Guides](../../CONTRIBUTING.md)
 

@@ -2,7 +2,7 @@
 title: Build Your First VisionClaw Graph
 description: Step-by-step tutorial to create, populate, and explore your first 3D knowledge graph in VisionClaw — from Docker startup to navigating nodes in the browser
 category: tutorial
-tags: [tutorial, getting-started, knowledge-graph, neo4j, visualization]
+tags: [tutorial, getting-started, knowledge-graph, oxigraph, visualization]
 updated-date: 2026-04-09
 difficulty-level: beginner
 ---
@@ -36,8 +36,10 @@ Ports that must be free:
 |------|---------|
 | 3001 | Nginx proxy (main entry point) |
 | 3030 | Rust backend API |
-| 7474 | Neo4j Browser |
-| 7687 | Neo4j Bolt |
+
+> The graph store is an **embedded Oxigraph** triple store running in-process inside
+> the Rust backend (ADR-11). There is no separate database container, browser UI, or
+> network port to expose — its RocksDB dataset lives at `${DATA_DIR}/oxigraph/`.
 
 Complete the [Installation Guide](installation.md) before continuing. Confirm readiness:
 
@@ -55,7 +57,7 @@ cd VisionClaw
 docker compose --profile dev up -d
 ```
 
-Wait ~30 seconds for Neo4j and the Rust backend to initialise, then verify:
+Wait ~30 seconds for the Rust backend (which opens the embedded Oxigraph store) to initialise, then verify:
 
 ```bash
 curl http://localhost:3030/api/health
@@ -77,12 +79,12 @@ sequenceDiagram
     participant U as You
     participant N as Nginx :3001
     participant R as Rust Backend :3030
-    participant G as Neo4j :7687
+    participant G as Oxigraph (embedded, in-process)
     participant V as Vite Frontend :5173
 
     U->>N: docker compose --profile dev up -d
     N-->>U: proxy ready
-    R->>G: Bolt handshake + schema init
+    R->>G: open RocksDB dataset + load graph
     G-->>R: ready
     R-->>N: /api/health → {"status":"ok"}
     V-->>N: Vite asset bundle ready
@@ -92,7 +94,7 @@ sequenceDiagram
     V-->>U: 3D viewport loads
 ```
 
-> **Deep path** — The Nginx proxy at port 3001 routes `/api/*` to the Rust Actix-Web backend and all other paths to the Vite dev server on port 5173. The Rust backend uses a hexagonal architecture: HTTP handlers call domain services, which speak to Neo4j over the Bolt driver. GPU physics runs as a CUDA actor that streams position updates back to all WebSocket clients at up to 60 FPS.
+> **Deep path** — The Nginx proxy at port 3001 routes `/api/*` to the Rust Actix-Web backend and all other paths to the Vite dev server on port 5173. The Rust backend uses a hexagonal architecture: HTTP handlers call domain services, which speak to the embedded Oxigraph store through the `GraphRepository` port (W3C SPARQL 1.1, no network hop). GPU physics runs as a CUDA actor that streams position updates back to all WebSocket clients at up to 60 FPS.
 
 ---
 
@@ -129,7 +131,7 @@ VisionClaw can parse a Logseq or plain-markdown repository and build a graph fro
 3. Select the repository and the folder containing your markdown files.
 4. VisionClaw parses links, creates nodes for each page tagged `public:: true`, and builds edges from wikilinks.
 
-> **Deep path** — Only files with the `public:: true` property become graph nodes. Files without that tag are still scanned for ontology blocks (`### OntologyBlock` sections), which become `owl_*` nodes. Wikilink targets that do not have a corresponding file become `linked_page` nodes. The sync flow is: `GitHubSyncService::sync_graphs()` → `KnowledgeGraphParser::parse()` → Neo4j. Set `FORCE_FULL_SYNC=1` in `.env` to reprocess all files, bypassing SHA1 incremental filtering.
+> **Deep path** — Only files with the `public:: true` property become graph nodes. Files without that tag are still scanned for ontology blocks (`### OntologyBlock` sections), which become `owl_*` nodes. Wikilink targets that do not have a corresponding file become `linked_page` nodes. The sync flow is: `GitHubSyncService::sync_graphs()` → `KnowledgeGraphParser::parse()` → embedded Oxigraph store. Set `FORCE_FULL_SYNC=1` in `.env` to reprocess all files, bypassing SHA1 incremental filtering.
 
 ### Option B: Import a JSON graph
 
@@ -167,10 +169,11 @@ Example relationships to add:
 | Backpropagation | MINIMISES | Loss Function |
 | Machine Learning | EVALUATES | Loss Function |
 
-Verify the data reached Neo4j at **http://localhost:7474**:
+Verify the data reached the graph store via the REST API:
 
-```cypher
-MATCH (n) RETURN n LIMIT 25
+```bash
+curl http://localhost:3030/api/graph/data | jq '.nodes | length'
+# Expected: a non-zero node count once the sync completes
 ```
 
 ---
@@ -281,7 +284,7 @@ When agents finish:
 - Click any agent node to view its execution log and message history.
 - Press `Ctrl+K` and type `agent status` for a global overview.
 
-> **Deep path** — Agent nodes are written to Neo4j alongside knowledge nodes. The binary WebSocket protocol uses 34-byte frames: 4-byte node ID (with flag bits), 3 × 4-byte float position, 4-byte velocity magnitude, 4-byte metadata. Agent status colours map to flag bits in the upper nibble of the node ID. The MCP bridge at port 3002 translates between the Claude agent protocol and VisionClaw's internal message bus.
+> **Deep path** — Agent nodes are written to the embedded Oxigraph store alongside knowledge nodes. The binary WebSocket protocol uses 34-byte frames: 4-byte node ID (with flag bits), 3 × 4-byte float position, 4-byte velocity magnitude, 4-byte metadata. Agent status colours map to flag bits in the upper nibble of the node ID. The MCP bridge at port 3002 translates between the Claude agent protocol and VisionClaw's internal message bus.
 
 ---
 
@@ -292,7 +295,7 @@ When agents finish:
 | [Deployment Guide](../how-to/deployment-guide.md) | Run VisionClaw in production with TLS and persistent volumes |
 | [Development Guide](../how-to/development-guide.md) | Contribute to the codebase; frontend, Rust backend, CUDA kernel |
 | [Agent Orchestration](../how-to/agent-orchestration.md) | Advanced agent topologies, Byzantine fault tolerance, hive-mind consensus |
-| [Neo4j Schema](../reference/neo4j-schema-unified.md) | Full node and relationship schema, Cypher query patterns |
+| [Graph Schema](../reference/neo4j-schema-unified.md) | Full node and relationship schema (Oxigraph/RDF logical model, ADR-11) |
 
 ---
 

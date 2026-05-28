@@ -29,7 +29,7 @@ Operating VisionClaw in production environments.
 Monitor these key metrics:
 - API response latency (p50, p95, p99)
 - WebSocket connection count
-- Neo4j query performance
+- Graph-store query performance (embedded Oxigraph SPARQL)
 - Memory and CPU utilization
 - GitHub sync success rate
 

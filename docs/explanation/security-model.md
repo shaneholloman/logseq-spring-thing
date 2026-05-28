@@ -16,7 +16,7 @@ VisionClaw's security model is built on three principles:
 
 **Decentralised Identity** — Identity is rooted in a Nostr keypair (secp256k1). There is no central authentication server that can be compromised or that holds user credentials. A user's identity is their private key; the corresponding public key (`npub`) is their stable identifier across the entire system.
 
-**Data Sovereignty** — User-generated overlays, agent memories, and personal preferences are stored in the user's own Solid Pod, not in the shared Neo4j graph. The server cannot access Pod data without an active, user-granted delegation. Revoking Pod access removes the server's ability to read or write user data immediately.
+**Data Sovereignty** — User-generated overlays, agent memories, and personal preferences are stored in the user's own Solid Pod, not in the shared graph store. The server cannot access Pod data without an active, user-granted delegation. Revoking Pod access removes the server's ability to read or write user data immediately.
 
 **Semantic Governance** — The OWL ontology layer enforces coarse-grained access patterns at query time. Node types (knowledge, ontology, agent) carry class flags in their IDs; CQRS handlers inspect these flags before executing mutations. Access patterns are expressed as ontology constraints, not as ad-hoc permission checks scattered through the codebase.
 
@@ -31,11 +31,11 @@ graph TB
     subgraph "VisionClaw Server"
         Auth[Auth Middleware]
         CQRS[CQRS Handlers]
-        Neo4j[(Neo4j)]
+        Oxigraph[(Oxigraph\nembedded graph store)]
     end
     Key -->|NIP-98 signed request| Auth
     Auth -->|validated DID| CQRS
-    CQRS --> Neo4j
+    CQRS --> Oxigraph
     Pod -.->|user overlay / NIP-26 delegation| CQRS
 ```
 
@@ -215,8 +215,8 @@ Settings are stored keyed by `pubkey`. A request for `GET /api/settings/physics`
 
 | Data | Location | Rationale |
 |------|----------|-----------|
-| Knowledge graph nodes / edges | Shared Neo4j | Content is public or organisation-wide |
-| Ontology classes and relations | Shared Neo4j | Immutable reference data |
+| Knowledge graph nodes / edges | Shared embedded Oxigraph store | Content is public or organisation-wide |
+| Ontology classes and relations | Shared embedded Oxigraph store | Immutable reference data |
 | Physics simulation parameters | Settings table (keyed by pubkey) | Per-user preference |
 | Agent episodic / semantic memories | User's Solid Pod | User owns their agent's memory |
 | Agent session summaries | User's Solid Pod | Personal data |
@@ -248,13 +248,13 @@ Access Control Policies follow WAC (Web Access Control) semantics. The server pr
 When the user revokes delegation (or the delegation expires):
 - JSS rejects all subsequent NIP-98 requests signed by the delegated key
 - VisionClaw agents lose Pod access immediately (next Pod request returns 403)
-- No cached copy of Pod data is retained on the server; the agent gracefully degrades to shared Neo4j data only
+- No cached copy of Pod data is retained on the server; the agent gracefully degrades to the shared embedded Oxigraph graph data only
 
 ### GDPR Implications
 
 Because personal data lives in the user's Pod:
 - VisionClaw does not need to respond to data deletion requests for Pod content — the user deletes it themselves
-- The server's Neo4j graph contains only knowledge graph nodes (public content); no personal data is stored there
+- The server's embedded Oxigraph graph contains only knowledge graph nodes (public content); no personal data is stored there
 - Settings stored server-side are keyed by pubkey (a pseudonymous identifier); users can request deletion via the `DELETE /api/settings/user` endpoint
 - The server MUST NOT log Pod payload contents (see Section 7)
 
@@ -316,8 +316,8 @@ All secrets are injected via environment variables. The following variables MUST
 | `SESSION_SECRET` | Session token signing key | none — required |
 | `WS_AUTH_TOKEN` | WebSocket pre-auth token | none — required |
 | ~~`VIRCADIA_JWT_SECRET`~~ | ~~Legacy Vircadia JWT~~ (dead — Vircadia removed) | Remove from env |
-| `POSTGRES_PASSWORD` | Neo4j / RuVector DB password | `visionclaw_secure` |
-| `NEO4J_PASSWORD` | Neo4j database password | none — **required** (no default; server fails fast if unset) |
+| `POSTGRES_PASSWORD` | PostgreSQL / RuVector DB password | `visionclaw_secure` |
+| ~~`NEO4J_PASSWORD`~~ | ~~Neo4j database password~~ (removed — graph store is now embedded Oxigraph, ADR-11; no DB password) | Remove from env |
 | `POWER_USER_PUBKEYS` | Comma-separated power user pubkeys | none (no power users) |
 | `AUTH_TOKEN_EXPIRY` | Session token TTL in seconds | `3600` |
 | `RUVECTOR_PG_CONNINFO` | RuVector connection string | — |
@@ -326,6 +326,7 @@ All secrets are injected via environment variables. The following variables MUST
 
 When `APP_ENV` is set to `production`, several additional security constraints are enforced:
 
+- **Release env hygiene (ADR-06 §D11)**: A `release`-profile build runs `enforce_release_env_hygiene()` at startup and **hard-exits with code 2** if any development-only escape hatch is present in the environment — `SETTINGS_AUTH_BYPASS`, `VISIONCLAW_DEV_MODE`, or `ALLOW_INSECURE_DEFAULTS`. The `--allow-skip-auth` CLI flag is likewise rejected in release builds. These variables are only honoured in debug builds / non-production environments.
 - **`ALLOW_INSECURE_DEFAULTS` is blocked**: The server refuses to start if any secret retains its insecure default value. In non-production environments, insecure defaults are permitted with a warning.
 - **`SETTINGS_AUTH_BYPASS` is blocked**: This variable has been removed from `docker-compose.yml` and is rejected at startup in production mode. It previously allowed unauthenticated access to settings endpoints during development.
 - **API keys masked in `Debug` output**: All API key and secret types implement custom `Debug` formatting that masks the value, preventing accidental credential leakage in log output or error messages.
@@ -350,7 +351,7 @@ secrets:
     external: true
 
 services:
-  webxr:
+  visionclaw:
     secrets:
       - session_secret
       - postgres_password
@@ -427,7 +428,7 @@ This section documents what is deliberately not covered in the current architect
 
 ### No mTLS Between Internal Services
 
-Communication between the Rust backend, Neo4j, JSS, and RuVector uses plain TCP within the Docker network. mTLS between internal services would require a certificate authority, certificate rotation, and per-service identity — engineering overhead not yet justified for single-host deployments. The Docker network boundary is the current internal isolation mechanism. For multi-host deployments, use a service mesh (Istio, Linkerd) or overlay network with encryption.
+Communication between the Rust backend and the remaining networked services (JSS, RuVector, PostgreSQL) uses plain TCP within the Docker network. (The graph store is now embedded Oxigraph running in-process, so there is no network hop for graph traffic.) mTLS between internal services would require a certificate authority, certificate rotation, and per-service identity — engineering overhead not yet justified for single-host deployments. The Docker network boundary is the current internal isolation mechanism. For multi-host deployments, use a service mesh (Istio, Linkerd) or overlay network with encryption.
 
 ### No Automated Secret Rotation
 
@@ -460,8 +461,9 @@ Use this table to verify a deployment before exposing it to production traffic.
 | `.env` file absent from version control (check `.gitignore`) | [ ] |
 | `POWER_USER_PUBKEYS` contains only intended pubkeys | [ ] |
 | `SETTINGS_AUTH_BYPASS` is `false` or unset (blocked in production mode) | [ ] |
-| `ALLOW_INSECURE_DEFAULTS` is `false` or unset (blocked when `APP_ENV=production`) | [ ] |
-| `NEO4J_PASSWORD` set (no default — server fails fast if unset) | [ ] |
+| `ALLOW_INSECURE_DEFAULTS` is `false` or unset (release build hard-exits if set, code 2) | [ ] |
+| `VISIONCLAW_DEV_MODE` unset (release build hard-exits if set, ADR-06 §D11) | [ ] |
+| `NEO4J_PASSWORD` removed from env (graph store is embedded Oxigraph — no DB password) | [ ] |
 | `APP_ENV` set to `production` for production deployments | [ ] |
 | Rate limiting parameters reviewed for expected traffic | [ ] |
 | CORS origins restricted to known domains (`CORS_ALLOWED_ORIGINS`) | [ ] |
@@ -484,7 +486,7 @@ Use this table to verify a deployment before exposing it to production traffic.
 | Docker socket (`/var/run/docker.sock`) not mounted into containers | [ ] |
 | `no-new-privileges` security option set | [ ] |
 | Only required ports exposed on host | [ ] |
-| Internal services (Neo4j, RuVector, JSS) not exposed on host | [ ] |
+| Internal services (RuVector, PostgreSQL, JSS) not exposed on host | [ ] |
 | Docker image built from pinned base image (no `latest`) | [ ] |
 
 ### Operational

@@ -1,28 +1,44 @@
 ---
-title: VisionClaw Database Schema Reference
-description: Unified schema reference for VisionClaw's data layer — Neo4j graph database, Solid Pod storage, and ontology triple store with bounded context organisation, including sovereign-mesh KGNode schema
+title: VisionClaw Graph Schema Reference
+description: Unified schema reference for VisionClaw's data layer — embedded Oxigraph graph store, Solid Pod storage, and ontology triple store with bounded context organisation, including sovereign-mesh KGNode schema
 category: reference
-tags: [database, neo4j, solid, schema, ontology, graph, sovereign-mesh]
-updated-date: 2026-04-19
+tags: [database, oxigraph, rdf, solid, schema, ontology, graph, sovereign-mesh]
+updated-date: 2026-05-28
 ---
 
-# VisionClaw Database Schema Reference
+# VisionClaw Graph Schema Reference
 
-Neo4j is the **sole primary database** for VisionClaw. The migration from SQLite was completed in November 2025. Any legacy references to SQLite are historical artefacts and are **not** part of the current schema. RuVector PostgreSQL (`ruvector-postgres:5432`) is infrastructure memory for AI agents — it is not a VisionClaw application database.
+> **Graph store changed (ADR-11)**: VisionClaw's graph store is now an **embedded Oxigraph**
+> RDF triple store (in-process, RocksDB-backed, W3C SPARQL 1.1 Query + Update; dataset at
+> `${DATA_DIR}/oxigraph/`). Neo4j has been **removed** — there is no Neo4j container, Bolt
+> port (7474/7687), Cypher engine, GDS library, or `NEO4J_*` configuration. Settings persist
+> in SQLite (`SqliteSettingsRepository`).
+>
+> The `KGNode`/`EDGE` schema, Cypher snippets, and `CREATE INDEX`/`CREATE CONSTRAINT`
+> statements in this document describe the **logical model** that Oxigraph now serialises as
+> RDF triples in named graphs (SPO/POS/OSP indexes are maintained automatically). Treat the
+> Cypher as illustrative of query shape only — the live store is queried with SPARQL. The
+> historical Neo4j migration tool is `tools/migrate-neo4j-to-oxigraph`.
+
+Oxigraph is the **sole primary graph store** for VisionClaw. The migration from Neo4j was completed per ADR-11 (it had previously migrated from SQLite in November 2025). Any legacy references to SQLite or Neo4j as the live store are historical artefacts and are **not** part of the current architecture. RuVector PostgreSQL (`ruvector-postgres:5432`) is infrastructure memory for AI agents — it is not a VisionClaw application database.
 
 ---
 
 ## 1. Architecture Overview
 
-VisionClaw's data layer is organised into three tiers: a Neo4j primary store, a Solid Pod personal overlay, and a Whelk-rs reasoning layer that runs on top of Neo4j's ontology data.
+VisionClaw's data layer is organised into three tiers: an embedded Oxigraph primary store, a Solid Pod personal overlay, and a Whelk-rs reasoning layer that runs on top of the graph store's ontology data.
 
 ```mermaid
 graph TB
     subgraph "Primary Store"
-        Neo4j[(Neo4j Graph DB)]
-        Neo4j --> KG[Knowledge Graph]
-        Neo4j --> Onto[Ontology Store]
-        Neo4j --> Settings[User Settings]
+        Oxigraph[(Oxigraph\nembedded RDF triple store)]
+        Oxigraph --> KG[Knowledge Graph]
+        Oxigraph --> Onto[Ontology Store]
+    end
+
+    subgraph "Settings"
+        SQLite[(SQLite\nSqliteSettingsRepository)]
+        SQLite --> Settings[User Settings]
     end
 
     subgraph "Personal Overlay"
@@ -38,8 +54,8 @@ graph TB
         Whelk --> Classes[Class Hierarchy]
     end
 
-    Neo4j --> Whelk
-    Solid -.->|sync| Neo4j
+    Oxigraph --> Whelk
+    Solid -.->|sync| Oxigraph
 ```
 
 **Key boundaries:**
@@ -1059,7 +1075,12 @@ This re-parses all Logseq markdown, extracts ontology and knowledge graph data, 
 
 ## 11. Connection and Configuration
 
-### Environment Variables
+> **OBSOLETE (ADR-11)**: The `NEO4J_*` variables below are **no longer read** by the
+> backend. The graph store is the embedded Oxigraph dataset at `${DATA_DIR}/oxigraph/`
+> (`DATA_DIR` defaults to `./data`; Docker images set `/app/data`) — there is no Bolt URI,
+> user, password, or connection pool. This section is retained as historical reference.
+
+### Environment Variables (historical — Neo4j era)
 
 ```bash
 NEO4J_URI=bolt://neo4j:7687    # Use service name in Docker networks

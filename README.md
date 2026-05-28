@@ -262,7 +262,7 @@ Agents publish structured Nostr events; the relay routes them; the forum renders
 |:-----|:--------|
 | `ontology_discover` | Semantic keyword search with Whelk inference expansion |
 | `ontology_read` | Enriched note with axioms, relationships, schema context |
-| `ontology_query` | Validated Cypher execution with schema-aware label checking |
+| `ontology_query` | Validated graph query against the embedded Oxigraph store with schema-aware label checking (accepts a Cypher-style `cypher` field for backwards compatibility, ADR-11) |
 | `ontology_traverse` | BFS graph traversal from starting IRI |
 | `ontology_propose` | Create/amend notes → consistency check → GitHub PR |
 | `ontology_validate` | Axiom consistency check against Whelk reasoner |

@@ -8,6 +8,13 @@ updated-date: 2026-04-14
 
 # DDD Enterprise Bounded Contexts - VisionClaw
 
+> **ADR-11 update**: Throughout this document, "Neo4j" denotes the project's graph
+> persistence layer, which is now the **embedded Oxigraph** RDF triple store (in-process,
+> RocksDB-backed; no Bolt URI, container, or DB password). The `:Label` and relationship
+> notations describe the **RDF logical model**, not Neo4j labels. Repository ports are
+> unchanged; only adapter implementations differ (`OxigraphGraphRepository`). The
+> "Application DB" persistence target denotes SQLite (`SqliteSettingsRepository`).
+
 This document extends the core bounded contexts (BC1--BC10) defined in
 [`ddd-bounded-contexts.md`](ddd-bounded-contexts.md) with seven enterprise
 contexts (BC11--BC17) required to operationalise the Dynamic Agentic Mesh
@@ -525,8 +532,8 @@ properties while maintaining BC2's invariant of string node IDs.
 | `MetricLineage` | (not present in BC6) | Lineage is a BC15-only concept; BC6 sees only aggregated values |
 
 **Implementation**: BC15 subscribes to domain events from BC11, BC12, BC13,
-and BC16. It computes metrics independently and writes snapshots to Neo4j
-through a `MetricGraphAdapter`. BC6 can read these snapshots for display but
+and BC16. It computes metrics independently and writes snapshots to the graph
+store (embedded Oxigraph) through a `MetricGraphAdapter`. BC6 can read these snapshots for display but
 does not compute them.
 
 ### ACL 6: Connector Ingestion --> External Systems (BC16 --> external)
@@ -802,8 +809,8 @@ Broker investigates drift in Decision Canvas
 | PolicyOverride | BC17 | Application DB | Audit log + Nostr event | Overrides are signed provenance events |
 
 **Storage Legend**:
-- **Neo4j**: Graph entities that participate in the knowledge graph, visible in the coordination digital twin
-- **Application DB**: Operational data (PostgreSQL) that does not need graph traversal
+- **Neo4j** (now embedded Oxigraph, ADR-11): Graph entities that participate in the knowledge graph, visible in the coordination digital twin
+- **Application DB**: Operational data (SQLite via `SqliteSettingsRepository`) that does not need graph traversal
 - **Solid Pod**: User-owned data under the user's sovereignty
 - **Nostr**: Signed, append-only provenance events
 - **Secret Manager**: Connector credentials and sensitive configuration
@@ -824,7 +831,7 @@ These rules extend the aggregate design rules from the core DDD document:
 
 ---
 
-## Neo4j Node Type Extensions
+## Graph-Store Node Type Extensions (RDF logical model — embedded Oxigraph, ADR-11)
 
 The enterprise contexts add the following node types to the existing type system
 (see ADR-036 for the consolidated node type enum):
@@ -840,7 +847,7 @@ The enterprise contexts add the following node types to the existing type system
 | DiscoverySignal | `:DiscoverySignal` | BC13 | source, pattern_type, strength, connector_id |
 | MetricSnapshot | `:MetricSnapshot` | BC15 | metric_type, value, time_window, confidence_band |
 
-### Neo4j Relationship Type Extensions
+### Graph-Store Relationship Type Extensions (RDF logical model)
 
 | Relationship | From | To | Enterprise Context |
 |-------------|------|----|--------------------|

@@ -53,7 +53,8 @@ The ontology processing pipeline transforms OWL data from GitHub into physics fo
 # Liveness probe (lightweight — confirms process is running)
 curl http://localhost:8080/api/healthz
 
-# Readiness probe (confirms all dependencies are connected: Neo4j, GPU, etc.)
+# Readiness probe (confirms dependencies are ready — graph store, GPU, etc.;
+# returns 503 with {"status":"not_ready","reason":...} while DEGRADED)
 curl http://localhost:8080/api/readyz
 
 # Full system diagnostics (detailed component-level health)
@@ -432,11 +433,12 @@ curl -X POST http://localhost:8080/api/admin/pipeline/pause \
   -H "Content-Type: application/json" \
   -d '{"reason": "Weekly maintenance"}'
 
-# 2. Backup database (Neo4j)
-neo4j-admin database dump neo4j --to-path=/backups/neo4j-$(date +%Y%m%d)/
+# 2. Backup the graph store (embedded Oxigraph — archive its RocksDB dataset; ADR-11)
+#    DATA_DIR defaults to ./data (Docker images set it to /app/data)
+tar czf /backups/oxigraph-$(date +%Y%m%d).tgz -C "${DATA_DIR:-/app/data}" oxigraph
 
-# 3. Run Neo4j maintenance
-cypher-shell -d neo4j "CALL db.clearQueryCaches();"
+# 3. (No external DB cache to flush — Oxigraph is in-process. Optionally back up settings.)
+sqlite3 "${DATA_DIR:-/app/data}/settings.db" ".backup /backups/settings-$(date +%Y%m%d).db"
 
 # 4. Clear old cache entries (>30 days)
 sqlite3 /var/lib/visionclaw/reasoning-cache.db \
@@ -459,20 +461,21 @@ curl http://localhost:8080/api/admin/pipeline/status
 
 **Check Database Size**
 ```bash
-# Neo4j data directory
-du -sh /var/lib/neo4j/data/
+# Embedded Oxigraph RocksDB dataset (ADR-11)
+du -sh "${DATA_DIR:-/app/data}/oxigraph/"
 ```
 
 **Optimize Database**
 ```bash
-# Check Neo4j store info
-cypher-shell -d neo4j "CALL db.stats.retrieve('GRAPH COUNTS');"
-
-# Rebuild indices
-cypher-shell -d neo4j "CALL db.indexes();"
-
-# Check consistency
-neo4j-admin database check neo4j
+# Oxigraph maintains SPO/POS/OSP indexes automatically — no manual index rebuild.
+# To compact and reclaim space, stop the server and re-open the store (RocksDB
+# compacts on open), or rebuild cleanly by deleting the dataset and re-running the sync:
+#   1. docker stop visionclaw_container
+#   2. rm -rf "${DATA_DIR:-/app/data}/oxigraph/"   # full reset (re-sync from GitHub on next boot)
+#   3. docker start visionclaw_container
+#
+# Consistency: verify node/edge counts via the REST API after any reset.
+curl http://localhost:8080/api/graph/data | jq '{nodes: (.nodes|length), edges: (.edges|length)}'
 ```
 
 ### Cache Maintenance

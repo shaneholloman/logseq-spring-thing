@@ -25,7 +25,7 @@ graph TB
     subgraph "VisionClaw Core"
         API[VisionClaw API :9090]
         WS[WebSocket Server :3001]
-        Neo4j[(Neo4j Graph)]
+        Oxigraph[(Oxigraph embedded RDF store)]
         Whelk[Whelk EL++ Reasoner]
     end
 
@@ -65,8 +65,8 @@ graph TB
     Pipeline --> MCP5
     Pipeline --> MCP6
     Pipeline --> MCP7
-    MCP5 --> Neo4j
-    MCP3 --> Neo4j
+    MCP5 --> Oxigraph
+    MCP3 --> Oxigraph
     MCP6 --> Whelk
     ClaudeFlow --> Skills
     ClaudeFlow --> API
@@ -113,14 +113,14 @@ graph LR
     AW --> GUI
 ```
 
-### VisionClaw Container (`webxr` service)
+### VisionClaw Container (`visionclaw` service)
 
 The core graph and physics engine:
 
-- Rust backend (Actix-web)
-- Neo4j graph database
+- Rust backend (`visionclaw-server`, Actix-web)
+- Embedded Oxigraph RDF triple store (in-process graph store — ADR-11)
 - CUDA physics engine (NVIDIA 12.0)
-- React + Babylon.js WebXR client
+- React + Three.js desktop client (the Quest 3 XR client is now a native Godot APK — ADR-071)
 - Whelk EL++ ontology reasoner
 - All 7 ontology MCP tool handlers
 
@@ -155,7 +155,7 @@ Resource-intensive GUI applications:
 
 ```bash
 # Rebuild only the VisionClaw service
-docker compose --profile dev up -d --build webxr
+docker compose --profile dev up -d --build visionclaw
 
 # View VisionClaw logs
 docker logs visionclaw_container -f
@@ -192,7 +192,7 @@ flowchart TB
 
     subgraph Data["Data Stores"]
         Repo[OntologyRepository]
-        Neo4j[(Neo4j)]
+        Oxigraph[(Oxigraph embedded RDF store)]
         Whelk[Whelk EL++ Engine]
     end
 
@@ -202,7 +202,7 @@ flowchart TB
     Handler --> QS
     Handler --> MS
     QS --> Repo
-    QS --> Neo4j
+    QS --> Oxigraph
     QS --> Whelk
     MS --> Repo
     MS --> Whelk
@@ -263,7 +263,10 @@ Fetch a full ontology note with axioms, relationships, and schema context.
 
 ### 3. `ontology_query` — Validated Cypher Execution
 
-Execute Cypher queries against Neo4j with schema-aware validation.
+Submit a Cypher-style query that `OntologyQueryService::validate_and_execute_cypher`
+validates against the OWL schema and resolves against the embedded Oxigraph store
+(ADR-11). The request field is still named `cypher` for backwards compatibility; the
+backing engine is no longer Neo4j.
 
 **REST**: `POST /api/ontology-agent/query`
 
@@ -465,7 +468,7 @@ perplexity_generate_prompt({
 ### Query Routing
 
 Perplexity is best used for:
-- Current events and live web data not in Neo4j
+- Current events and live web data not in the local graph store
 - Market research and competitive analysis
 - Technical documentation lookups with cited sources
 - UK/European-centric research queries

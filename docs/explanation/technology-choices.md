@@ -23,12 +23,17 @@ dependencies:
   - **Decision:** Planned as fallback for non-CUDA systems (v2.1 roadmap)
   - Docker installation
   - Node.js runtime
-  - Neo4j database
 ---
 
 # VisionClaw Technology Choices: Design Rationale
 
-**Why VisionClaw uses Rust, React, Neo4j, and CUDA—and the trade-offs we accepted.**
+**Why VisionClaw uses Rust, React, an embedded Oxigraph RDF triple store, and CUDA—and the trade-offs we accepted.**
+
+> **Persistence update (ADR-11)**: the original graph store was Neo4j. It has since been
+> replaced by an **embedded Oxigraph** RDF triple store (W3C SPARQL 1.1, RocksDB-backed,
+> opened in-process by the `visionclaw-server` binary — no separate database container).
+> The "Database: Why Neo4j?" section below is retained for historical rationale but is
+> **superseded**; see [ADR-11 — Persistence Strategy Migration](../migration-sprint/11-persistence-migration/ADR-11.md).
 
 ## Overview
 
@@ -39,7 +44,7 @@ VisionClaw combines technologies from different ecosystems to achieve a unique b
 | Layer | Technology | Primary Reason |
 |-------|------------|----------------|
 | **Backend** | Rust + Actix Web | Memory safety + native performance |
-| **Database** | Neo4j 5.13 | Native graph storage + Cypher queries |
+| **Graph store** | Embedded Oxigraph (SPARQL 1.1, RocksDB) | In-process RDF triple store; named graphs; no separate DB container (ADR-11) |
 | **Frontend (desktop)** | React + Three.js | Component model + WebGL ecosystem |
 | **XR client (Quest 3)** | Godot 4.3 + godot-rust + OpenXR | Native APK; lifts WebXR ceiling; aligns with Rust substrate ([ADR-071](../adr/ADR-071-godot-rust-xr-replacement.md)) |
 | **GPU Compute** | CUDA 12.4 | 100x speedup + mature ecosystem |
@@ -77,7 +82,7 @@ graph TB
     end
 
     subgraph "Data Layer"
-        Neo4j[("Neo4j 5.13\nGraph DB\nCypher queries")]
+        Oxigraph[("Oxigraph (embedded)\nRDF triple store\nSPARQL 1.1 · RocksDB")]
         Solid[("Solid Pods\nUser-owned data")]
         RuVector[("RuVector\nPostgreSQL + pgvector\nHNSW agent memory")]
     end
@@ -88,7 +93,7 @@ graph TB
     WASM --> R3F
     WS --> Actix
     REST --> Actix
-    Actix --> Neo4j
+    Actix --> Oxigraph
     Actix --> Solid
     Actix --> CUDA
     Actix --> Whelk
@@ -207,7 +212,14 @@ Rust's FFI (Foreign Function Interface) provides safe bindings to CUDA:
 
 ---
 
-## Database: Why Neo4j?
+## Database: Why Neo4j? (SUPERSEDED — see ADR-11)
+
+> **SUPERSEDED**: The graph store is now an **embedded Oxigraph** RDF triple store
+> (SPARQL 1.1, RocksDB-backed, in-process) — there is no Neo4j container in the current
+> stack. The graph-shaped data model and index-free-adjacency reasoning below still hold,
+> but the engine and query language changed (Cypher → SPARQL). See
+> [ADR-11](../migration-sprint/11-persistence-migration/ADR-11.md). The rest of this
+> section documents the original Neo4j decision for historical context.
 
 ### The Decision
 
@@ -961,7 +973,7 @@ quadrantChart
     quadrant-3 Evaluate Carefully
     quadrant-4 Cutting Edge
     Rust: [0.92, 0.68]
-    Neo4j: [0.72, 0.78]
+    Oxigraph (embedded): [0.74, 0.55]
     CUDA: [0.96, 0.62]
     React: [0.62, 0.96]
     Three.js: [0.70, 0.86]
@@ -982,12 +994,12 @@ VisionClaw's technology choices reflect three core principles:
 - **Rust backend** - Native performance without GC pauses
 - **CUDA GPU compute** - 100x speedup for physics
 - **Binary protocol** - 80% bandwidth reduction
-- **Neo4j native storage** - 26x faster graph queries
+- **Embedded Oxigraph store** - in-process RDF triples, zero network hop (ADR-11)
 
 ### 2. Standards Over Lock-In
 - **OWL/RDF ontologies** - W3C standards, interoperable
 - **OpenXR** - Khronos standard for XR runtime (Quest, Pico, Index, Vision Pro, ALVR all conform)
-- **Neo4j Cypher** - Industry-standard graph query language
+- **W3C SPARQL 1.1** - standard graph query language (served by embedded Oxigraph)
 - **MCP protocol** - Emerging standard for AI agent coordination
 
 ### 3. Developer Experience

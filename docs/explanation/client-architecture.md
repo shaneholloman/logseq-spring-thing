@@ -30,7 +30,7 @@ C4Container
     }
 
     System_Ext(api, "VisionClaw API", "Actix-Web backend — REST and WebSocket endpoints")
-    System_Ext(neo4j, "Neo4j", "Graph database — source of truth for nodes and edges")
+    System_Ext(graphstore, "Oxigraph (embedded)", "In-process RDF triple store — source of truth for nodes and edges (ADR-11)")
 
     Rel(user, browser, "Uses")
     Rel(browser, graph, "Renders")

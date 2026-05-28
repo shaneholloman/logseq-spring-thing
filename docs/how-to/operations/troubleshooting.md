@@ -312,7 +312,7 @@ docker inspect --format='{{.RestartCount}}' visionclaw-container
 docker-compose build --no-cache
 
 # Build specific service
-docker-compose build webxr
+docker-compose build visionclaw
 docker-compose build multi-agent
 
 # Build with verbose output
@@ -374,7 +374,7 @@ docker stats --no-stream
 
 # Increase memory limits in docker-compose.yml
 services:
-  webxr:
+  visionclaw:
     deploy:
       resources:
         limits:
@@ -418,7 +418,7 @@ docker stats --format "table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}"
 
 # Limit CPU usage in docker-compose.yml
 services:
-  webxr:
+  visionclaw:
     cpus: "4.0"
     cpu-shares: 1024
 
@@ -621,7 +621,7 @@ docker exec multi-agent-container node --inspect=0.0.0.0:9229 /app/index.js
 RUSTFLAGS='-C instrument-memory=yes' cargo build
 
 # Restart affected service
-docker-compose restart webxr
+docker-compose restart visionclaw
 ```
 
 **Diagnostic Tools**:
@@ -771,7 +771,7 @@ docker exec gui-tools-container tcpdump -i any port 9876
 flowchart TD
     A[Connection refused\nor WebSocket error] --> B{Which endpoint\nfails?}
     B --> C[Main API :4000\nor :3030] --> D{Container running?\ndocker ps}
-    D --> N1[No] --> E[docker-compose up -d webxr]
+    D --> N1[No] --> E[docker-compose up -d visionclaw]
     D --> Y1[Yes] --> F{Port mapped?\ndocker port}
     F --> N2[No] --> G[Fix ports in\ndocker-compose.yml]
     F --> Y2[Yes] --> H{Firewall blocking?\nufw status}
@@ -872,7 +872,7 @@ sudo nvidia-ctk --version
 
 # Update docker-compose.yml
 services:
-  webxr:
+  visionclaw:
     deploy:
       resources:
         reservations:
@@ -967,7 +967,7 @@ export CUDA-ARCH=89
 export CUDA-ARCH=86
 
 # Rebuild with correct architecture
-CUDA-ARCH=86 docker-compose build --no-cache webxr
+CUDA-ARCH=86 docker-compose build --no-cache visionclaw
 
 # Test compilation
 ./scripts/test-compile.sh
@@ -982,7 +982,7 @@ find . -name "*.ptx" -exec ls -lh {} \;
 nvidia-smi --query-gpu=compute-cap --format=csv,noheader
 
 # Check build logs
-docker-compose build webxr 2>&1 | grep -i "ptx\|cuda\|nvcc"
+docker-compose build visionclaw 2>&1 | grep -i "ptx\|cuda\|nvcc"
 ```
 
 **Prevention**:
@@ -1012,7 +1012,7 @@ echo "VITE-SSL-KEY=./key.pem" >> .env
 echo "VITE-SSL-CERT=./cert.pem" >> .env
 
 # Restart services
-docker-compose restart webxr
+docker-compose restart visionclaw
 
 # Test WebXR API availability in browser console
 navigator.xr.isSessionSupported('immersive-vr').then(supported => {
@@ -1135,7 +1135,7 @@ grep RAGFLOW .env
 
 # Update RAGFlow URL if needed
 echo "RAGFLOW-URL=http://ragflow:9380" >> .env
-docker-compose restart webxr
+docker-compose restart visionclaw
 ```
 
 **Diagnostic**:
@@ -1358,7 +1358,7 @@ graph LR
 
     subgraph Network["docker-ragflow network"]
         subgraph Core["Core Services"]
-            WX[webxr container\nRust backend :4000\nVite dev :3030]
+            WX[visionclaw container\nRust backend :4000\nVite dev :3030]
             PG[postgres\n:5432]
             RD[redis\ntask queue]
             RF[ragflow-server\n:9380]
@@ -1502,7 +1502,7 @@ mcp-helper.sh test-connection
 docker-compose logs
 
 # Follow specific service
-docker-compose logs -f webxr
+docker-compose logs -f visionclaw
 docker-compose logs -f multi-agent
 
 # Filter by time
@@ -1584,7 +1584,7 @@ wireshark capture.pcap
 docker-compose restart
 
 # Restart specific service
-docker-compose restart webxr
+docker-compose restart visionclaw
 
 # Full restart (preserves data)
 docker-compose down
@@ -1812,7 +1812,7 @@ global:
 scrape-configs:
   - job-name: 'visionclaw'
     static-configs:
-      - targets: ['webxr:9090']
+      - targets: ['visionclaw:9090']
 
   - job-name: 'node-exporter'
     static-configs:

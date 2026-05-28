@@ -1,6 +1,6 @@
 # Bridge Audit Drift Runbook (R1)
 
-**Risk**: `BridgeEdgeService::promote` commits Neo4j BEFORE signing kind-30100 audit event. Signing failures leave `:BRIDGE_TO` edges without corresponding relay events.
+**Risk**: `BridgeEdgeService::promote` commits to the graph store (embedded Oxigraph) BEFORE signing kind-30100 audit event. Signing failures leave `:BRIDGE_TO` edges without corresponding relay events.
 
 **Ref**: [ADR-055 / R1](../audits/2026-04-20-sovereign-mesh-qe-sprint2/06-new-risks.md#r1--best-effort-kind-30100-audit-drift)
 
@@ -73,7 +73,7 @@ Fires when sustained at >1 error per 100 seconds.
 
 **New Dashboard Panel**: error counter + relay reachability synthetic monitor (HTTP GET test)
 
-**Weekly Audit** (manual or scripted): cross-reference `:BRIDGE_TO` edges (Neo4j) against broadcast kind-30100 events on canonical relay. Log discrepancies in ops runbook appendix.
+**Weekly Audit** (manual or scripted): cross-reference `:BRIDGE_TO` edges (embedded Oxigraph store) against broadcast kind-30100 events on canonical relay. Log discrepancies in ops runbook appendix.
 
 ---
 

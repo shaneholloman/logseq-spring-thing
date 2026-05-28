@@ -60,7 +60,7 @@ difficulty-level: intermediate
 #### **Understand the Architecture**
 1.
 2.
-3. [Database Schema](../reference/neo4j-schema-unified.md)
+3. [Graph Schema](../reference/neo4j-schema-unified.md) (Oxigraph/RDF, ADR-11)
 
 #### **Use the API**
 1. 
@@ -85,7 +85,7 @@ difficulty-level: intermediate
 | **AI Agents** |  |
 | **Multi-Agent System** | [Architecture](../explanation/concepts/multi-agent-system.md) |
 | **XR/VR** | [XR Architecture](../explanation/xr-architecture.md) • [VR Development](explanation/xr-architecture.md) |
-| **Database** | [Schema](../reference/neo4j-schema-unified.md) •  |
+| **Graph Store** | [Schema](../reference/neo4j-schema-unified.md) (Oxigraph/RDF, ADR-11) |
 | **Binary Protocol** | [WebSocket](../reference/websocket-binary.md) • [Specification](../reference/websocket-binary.md) |
 
 ### Key Features

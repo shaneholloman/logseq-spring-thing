@@ -8,6 +8,11 @@ updated-date: 2026-04-09
 
 # DDD Bounded Contexts - VisionClaw
 
+> **ADR-11 update**: Wherever this map names "Neo4j" as a persistence target, the live
+> backing store is the **embedded Oxigraph** RDF triple store (in-process, RocksDB-backed;
+> settings in SQLite). The repository **ports** are unchanged — only the adapter
+> implementations differ (`OxigraphGraphRepository`, `SqliteSettingsRepository`).
+
 ## Context Map
 
 ```mermaid
@@ -80,8 +85,8 @@ graph LR
 **Aggregate Root**: `GraphData`
 **Entities**: `Node`, `Edge`, `GraphMetadata`
 **Services**: `GraphStateActor`, `GraphDataManager`, `FileService`
-**Ports**: `GraphRepository` (Neo4j), `GraphPersistence`
-**Key Files**: `graph_state_actor.rs`, `neo4j_adapter.rs`, `graphDataManager.ts`,
+**Ports**: `GraphRepository` (embedded Oxigraph), `GraphPersistence`
+**Key Files**: `graph_state_actor.rs`, `adapters/graph_repository.rs` (OxigraphGraphRepository), `graphDataManager.ts`,
 `graph.worker.ts`
 **Invariants**:
 - Single position source of truth (no data.x vs x duplication)

@@ -9,10 +9,17 @@ updated-date: 2026-04-09
 # Solid Sidecar Architecture
 ## Technical Architecture for Decentralized Data Storage
 
+> **ADR-11 update**: The "Neo4j (Graph DB)" component shown throughout this design is now
+> the **embedded Oxigraph** RDF triple store running in-process inside the Rust backend —
+> there is no separate graph-database container, Bolt URI, or DB password. The sync tool
+> names below (`neo4j-to-solid` / `solid-to-neo4j`) are historical; the live equivalents
+> export from / import to the embedded Oxigraph store. RDF export to Solid is now a
+> direct serialization (Oxigraph is already RDF-native).
+
 **Version:** 1.0
 **Date:** 2025-12-29
 **Target:** VisionClaw with Solid/LDP Integration
-**Status:** Architecture Design
+**Status:** Architecture Design (graph store updated per ADR-11)
 
 ---
 
@@ -37,8 +44,8 @@ This document defines the technical architecture for VisionClaw's Solid integrat
     |                                                                        |
     |  +------------------+     +------------------+     +------------------+ |
     |  |                  |     |                  |     |                  | |
-    |  |   React Client   |<--->|  Rust Backend    |<--->|     Neo4j        | |
-    |  |   (Three.js)     |     |  (Axum/Actix)    |     |   (Graph DB)     | |
+    |  |   React Client   |<--->|  Rust Backend    |<--->| Oxigraph (embed) | |
+    |  |   (Three.js)     |     |  (Actix-web)     |     | RDF triple store | |
     |  |                  |     |                  |     |                  | |
     |  +--------+---------+     +--------+---------+     +------------------+ |
     |           |                        |                                   |
@@ -122,14 +129,14 @@ networks:
 
 ## 2. Data Flow Architecture
 
-### 2.1 Neo4j to Solid Synchronization
+### 2.1 Graph Store to Solid Synchronization
 
 ```mermaid
 flowchart TB
-    subgraph Neo4j["Neo4j Graph Database"]
-        N1[Nodes Table]
-        N2[Edges Table]
-        N3[Metadata Table]
+    subgraph GraphStore["Oxigraph (embedded RDF store)"]
+        N1[Node triples]
+        N2[Edge triples]
+        N3[Metadata triples]
     end
 
     subgraph Backend["Rust Backend"]
@@ -171,7 +178,7 @@ sequenceDiagram
     participant C as Client
     participant B as Backend
     participant J as JSS
-    participant N as Neo4j
+    participant N as Oxigraph (embedded)
 
     Note over C,N: Read Operation (Solid-first)
     C->>J: GET /pods/user/graph/node-1.ttl
@@ -354,8 +361,8 @@ sequenceDiagram
 
 | Mode | Direction | Use Case |
 |------|-----------|----------|
-| `neo4j-to-solid` | Neo4j -> Solid | Export graph for sharing |
-| `solid-to-neo4j` | Solid -> Neo4j | Import external data |
+| `graph-to-solid` | Oxigraph -> Solid | Export graph for sharing |
+| `solid-to-graph` | Solid -> Oxigraph | Import external data |
 | `bidirectional` | Both | Collaborative editing |
 
 ### 5.2 Conflict Resolution
@@ -363,14 +370,14 @@ sequenceDiagram
 ```mermaid
 flowchart TD
     A[Detect Conflict] --> B{Compare Timestamps}
-    B -->|Neo4j newer| C[Neo4j wins]
+    B -->|Graph store newer| C[Graph store wins]
     B -->|Solid newer| D[Solid wins]
     B -->|Same time| E{Compare checksums}
     E -->|Different| F[Create merge node]
     E -->|Same| G[No conflict]
 
     C --> H[Update Solid]
-    D --> I[Update Neo4j]
+    D --> I[Update graph store]
     F --> J[Manual resolution required]
 ```
 
@@ -473,9 +480,8 @@ services:
   backend:
     networks:
       - visionclaw-internal
-  neo4j:
-    networks:
-      - visionclaw-internal  # No direct external access
+    # The graph store is embedded in the backend process (Oxigraph) — no separate
+    # graph-database service or network entry is required (ADR-11).
 ```
 
 ---

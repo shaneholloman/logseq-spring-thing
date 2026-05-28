@@ -1,14 +1,16 @@
 ---
 title: Performance Profiling Guide
-description: Identifying and diagnosing performance bottlenecks in VisionClaw — GPU physics, WebSocket throughput, render pipeline, and Neo4j queries
+description: Identifying and diagnosing performance bottlenecks in VisionClaw — GPU physics, WebSocket throughput, render pipeline, and graph-store (Oxigraph) queries
 category: how-to
 difficulty-level: advanced
-updated-date: 2026-04-09
+updated-date: 2026-05-28
 ---
 
 # Performance Profiling Guide
 
-This guide walks through locating and diagnosing performance bottlenecks in VisionClaw across four domains: GPU physics, WebSocket/broadcast throughput, client rendering, and Neo4j queries. Each section gives concrete commands, observable symptoms, and the expected baseline numbers derived from the benchmark suite.
+This guide walks through locating and diagnosing performance bottlenecks in VisionClaw across four domains: GPU physics, WebSocket/broadcast throughput, client rendering, and graph-store queries. Each section gives concrete commands, observable symptoms, and the expected baseline numbers derived from the benchmark suite.
+
+> **Graph store changed (ADR-11)**: the graph store is now an **embedded Oxigraph** RDF triple store (W3C SPARQL 1.1, RocksDB-backed, in-process). There is no separate Neo4j container, Bolt port, `cypher-shell`, or Neo4j Browser. Cypher/`EXPLAIN`/`PROFILE` examples below are retained for historical context only and **no longer apply** — profile graph queries against the in-process Oxigraph store and SPARQL.
 
 ---
 
@@ -23,7 +25,7 @@ The four bottleneck domains are:
 | **GPU physics** | `ForceComputeActor` | Frame computation time, convergence rate, energy propagation |
 | **WebSocket/broadcast** | `BroadcastOptimizer` → `ClientCoordinatorActor` | Position update latency, delta filter hit rate, stale-position window |
 | **Client render** | `GraphManager`, `InstancedLabels`, WASM FX | FPS, draw calls, SAB data races, label layout time |
-| **Neo4j queries** | Cypher query executor | Graph load time, ontology traversal, SUBCLASS_OF chain performance |
+| **Graph-store queries** | Oxigraph (embedded) SPARQL executor | Graph load time, ontology traversal, SUBCLASS_OF chain performance |
 
 ---
 
@@ -44,13 +46,13 @@ flowchart TD
     Q3 -->|Yes| BroadcastPath[Check broadcast pipeline\n→ BroadcastOptimizer delta filter,\nperiodic full broadcast counter]
     Q3 -->|No| Q4{Is initial graph\nload or query slow?}
 
-    Q4 -->|Yes| Neo4jPath[Check Neo4j queries\n→ EXPLAIN/PROFILE Cypher,\nindex coverage]
+    Q4 -->|Yes| GraphPath[Check graph-store queries\n→ Oxigraph SPARQL,\nnamed-graph / index coverage]
     Q4 -->|No| Resolved([No bottleneck detected.\nReview Grafana dashboard\nfor baseline drift.])
 
     RenderPath --> RenderSection[See: Client Render Profiling]
     GPUPath --> GPUSection[See: GPU Physics Profiling]
     BroadcastPath --> BroadcastSection[See: WebSocket Throughput Profiling]
-    Neo4jPath --> Neo4jSection[See: Neo4j Query Profiling]
+    GraphPath --> GraphSection[See: Graph-Store Query Profiling]
 ```
 
 ---
@@ -267,9 +269,22 @@ Root cause: `InstancedLabels` Phase 2 reads `nodePositionsRef.current` after the
 
 ---
 
-## Neo4j Query Profiling
+## Graph-Store Query Profiling
 
-### Using EXPLAIN and PROFILE
+> **ADR-11**: the graph store is now an **embedded Oxigraph** triple store (in-process,
+> RocksDB-backed, W3C SPARQL 1.1). There is no Neo4j Browser, Bolt port, or `cypher-shell`.
+> Profile graph queries by timing the SPARQL calls inside the Rust adapter
+> (`OxigraphGraphRepository` / `OxigraphOntologyRepository`) — instrument the repository
+> methods with `tracing::instrument` spans and read the latency from Jaeger or DEBUG logs.
+> Oxigraph auto-maintains SPO/POS/OSP indexes over the quad store, so there are no manual
+> index DDL steps; the equivalent tuning levers are query shape (bind the most selective
+> triple pattern first) and named-graph scoping.
+>
+> The Cypher `EXPLAIN`/`PROFILE` examples and `CREATE INDEX` DDL below are **historical
+> (Neo4j-era)** and no longer executable. They are retained only to document the shape of
+> the queries the system runs; translate them to SPARQL when profiling Oxigraph.
+
+### (Historical) Neo4j EXPLAIN and PROFILE
 
 Connect to the Neo4j Browser at `http://localhost:7474` (or via `cypher-shell`) and prefix any slow query with `EXPLAIN` (dry run) or `PROFILE` (execute and measure):
 
@@ -327,7 +342,11 @@ ORDER BY score DESC LIMIT 100;
 
 ### Index Recommendations
 
-Apply these indexes after any fresh Neo4j install or graph schema migration:
+> Oxigraph maintains SPO/POS/OSP triple indexes automatically — there is no index DDL to
+> apply. The Cypher index statements below are historical (Neo4j-era) and are kept only as a
+> record of which access paths mattered (node-by-ID, node-type filter, OWL class label,
+> SUBCLASS_OF traversal). In Oxigraph these correspond to selective SPARQL triple patterns,
+> not explicit indexes.
 
 ```cypher
 -- Node lookups by ID (used by every graph fetch)
@@ -435,9 +454,9 @@ Use these numbers to determine whether observed performance is within production
 | Draw calls (instanced) | 1 per node type | 10 | > 50 |
 | Client RAM (100K nodes) | 2.8 GB | 5 GB | > 8 GB |
 | Client VRAM (100K nodes) | 4.5 GB | 7 GB | > 12 GB |
-| Neo4j node fetch (100K) | < 3.2 s | 5 s | > 10 s |
-| Neo4j get-by-ID | < 1 ms | 2 ms | 5 ms |
-| Neo4j PageRank (100K) | < 95 ms | 140 ms | 500 ms |
+| Oxigraph node fetch (100K) | < 3.2 s | 5 s | > 10 s |
+| Oxigraph get-by-ID | < 1 ms | 2 ms | 5 ms |
+| Oxigraph PageRank (100K) | < 95 ms | 140 ms | 500 ms |
 | Server CPU | < 30% | 60% | 85% |
 | GPU VRAM utilisation | < 60% | 80% | 95% |
 | `iters_since_full` reset interval | ~300 iters (~5 s) | 600 iters | Never resets |
@@ -464,8 +483,7 @@ Use these numbers to determine whether observed performance is within production
 | React Profiler | React render duration per component | Wrap with `<Profiler>` in development builds |
 | Three.js Stats overlay | FPS, frame ms, draw calls, geometry count | `debugShowStats: true` in VisionClaw settings |
 | `window.__LABEL_TIMING = true` | InstancedLabels Phase 1 and Phase 2 timing per frame | Browser console, development build only |
-| Neo4j Browser `PROFILE` | Cypher query db hits, operator plan, index usage | Prefix any Cypher query with `PROFILE` |
-| `cypher-shell` | Scripted query benchmarking, batch index creation | `cypher-shell -u neo4j -p <pass>` |
+| Oxigraph SPARQL spans (`tracing::instrument` on repository methods) | Per-query latency for the embedded graph store | Instrument `OxigraphGraphRepository` / `OxigraphOntologyRepository`; read via Jaeger or DEBUG logs |
 | `cuobjdump -ptx` | Verify compiled PTX target architecture | `cuobjdump -ptx ./libphysics.so \| grep ".target"` |
 
 ---

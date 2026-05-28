@@ -20,7 +20,7 @@ cd VisionClaw && cp .env.example .env
 docker-compose --profile dev up -d
 ```
 
-Open [http://localhost:3001](http://localhost:3001) for the 3D graph interface, [http://localhost:4000/api](http://localhost:4000/api) for the REST API, and [http://localhost:7474](http://localhost:7474) for the Neo4j browser.
+Open [http://localhost:3001](http://localhost:3001) for the 3D graph interface and [http://localhost:4000/api](http://localhost:4000/api) for the REST API. The graph store is the embedded Oxigraph triple store (ADR-11) — there is no separate database browser UI.
 
 Full setup details: [Deployment Guide](how-to/deployment-guide.md)
 
@@ -59,7 +59,7 @@ graph LR
     subgraph "Tutorials"
         T1[Installation]
         T2[First Graph]
-        T3[Neo4j Basics]
+        T3[Graph Store - Oxigraph]
     end
     subgraph "How-To"
         H1[Deployment Guide]
@@ -81,7 +81,7 @@ graph LR
     subgraph "Reference"
         R1[REST API]
         R2[WebSocket Binary Protocol]
-        R3[Neo4j Schema]
+        R3[Graph Schema - RDF/Oxigraph]
         R4[Agents Catalog]
         R5[Config & Env]
     end
@@ -104,7 +104,7 @@ Step-by-step lessons that teach VisionClaw by doing.
 | [What is VisionClaw?](tutorials/overview.md) | Platform overview and key concepts |
 | [Installation](tutorials/installation.md) | Docker and native setup from zero |
 | [Creating Your First Graph](tutorials/first-graph.md) | Build and explore your first knowledge graph |
-| [Neo4j Basics](tutorials/neo4j-basics.md) | Query and navigate the graph database |
+| [Neo4j Basics (obsolete — ADR-11)](tutorials/neo4j-basics.md) | Historical only; Neo4j removed, graph store is now embedded Oxigraph |
 
 ---
 
@@ -117,7 +117,7 @@ Practical task-oriented instructions. See [how-to/README.md](how-to/README.md) f
 | Guide | Description |
 |-------|-------------|
 | [Deployment Guide](how-to/deployment-guide.md) | Docker Compose production deployment with NVIDIA GPU |
-| [Performance Profiling](how-to/performance-profiling.md) | GPU physics, WebSocket, render, and Neo4j bottleneck detection |
+| [Performance Profiling](how-to/performance-profiling.md) | GPU physics, WebSocket, render, and graph-store (Oxigraph) bottleneck detection |
 | [Quest 3 VR Setup](how-to/xr-setup-quest3.md) | Connect a Meta Quest 3 to VisionClaw's immersive XR mode |
 | [Infrastructure Overview](how-to/infrastructure/goalie-integration.md) | Goalie integration and infra architecture |
 | [Port Configuration](how-to/infrastructure/port-configuration.md) | Service port mapping and networking |
@@ -173,10 +173,10 @@ Practical task-oriented instructions. See [how-to/README.md](how-to/README.md) f
 | [Maintenance](how-to/operations/maintenance.md) | Routine maintenance and upkeep tasks |
 | [Power-User Bootstrap CLI](ops/power-user-bootstrap.md) | CLI tool to bootstrap power-user accounts with GitHub credentials |
 | [Nostr Server Identity](ops/server-nostr-identity.md) | Per-server Nostr identity + WebID discovery via NIP-39 |
-| [Neo4j Integration](how-to/integration/neo4j-integration.md) | Neo4j database connection and migration |
+| [Neo4j Integration (obsolete — ADR-11)](how-to/integration/neo4j-integration.md) | Historical only; Neo4j replaced by embedded Oxigraph, see migration tool `tools/migrate-neo4j-to-oxigraph` |
 | [Solid Integration](how-to/integration/solid-integration.md) | Solid Pod integration overview |
 | [Solid Pod Creation](how-to/integration/solid-pod-creation.md) | Creating and managing user Solid Pods |
-| Sovereign Ingest (pending) | Pod-first ingest saga with Neo4j fallback and crash-safe markers |
+| Sovereign Ingest (pending) | Pod-first ingest saga with embedded Oxigraph store and crash-safe markers |
 | [ComfyUI Service](how-to/integration/comfyui-service-integration.md) | ComfyUI Docker service integration |
 
 ---
@@ -194,13 +194,13 @@ Conceptual deep-dives that build understanding of how and why VisionClaw works.
 | [DDD Bounded Contexts](explanation/ddd-bounded-contexts.md) | Domain-Driven Design context map and aggregate boundaries |
 | [DDD Identity Contexts](explanation/ddd-identity-contexts.md) | DID/Nostr + PodKey + Passkey identity bounded contexts |
 | [DDD Semantic Pipeline](explanation/ddd-semantic-pipeline.md) | Semantic pipeline domain model and context boundaries |
-| [Ontology Pipeline](explanation/ontology-pipeline.md) | GitHub Markdown → OWL 2 → Whelk reasoning → Neo4j → GPU constraints |
+| [Ontology Pipeline](explanation/ontology-pipeline.md) | GitHub Markdown → OWL 2 → Whelk reasoning → Oxigraph → GPU constraints |
 | [Physics & GPU Engine](explanation/physics-gpu-engine.md) | CUDA force-directed physics, semantic forces, 55× GPU speedup |
 | [XR Architecture](explanation/xr-architecture.md) | Godot 4.3 + godot-rust + OpenXR native Quest 3 APK, spatial collaboration |
 | [Security Model](explanation/security-model.md) | Nostr DID auth, Solid Pod sovereignty, CQRS authorization, audit trail |
 | [Solid Sidecar Architecture](explanation/solid-sidecar-architecture.md) | JSON Solid Server sidecar for user Pod storage |
 | [User-Agent Pod Design](explanation/user-agent-pod-design.md) | Per-user Solid Pod isolation for agent memory |
-| [Technology Choices](explanation/technology-choices.md) | Rationale for Rust, CUDA, Neo4j, OWL 2, and Three.js selections |
+| [Technology Choices](explanation/technology-choices.md) | Rationale for Rust, CUDA, Oxigraph, OWL 2, and Three.js selections |
 | [RuVector Integration](explanation/ruvector-integration.md) | RuVector PostgreSQL as AI agent memory substrate |
 | [Feature Engineering Pipeline](explanation/feature-engineering-pipeline.md) | Content + topology embeddings, TransE training, N-hop materialisation, per-edge physics |
 | [Blender MCP Architecture](explanation/blender-mcp-unified-architecture.md) | Blender remote-control via WebSocket RPC + MCP tools |
@@ -221,7 +221,7 @@ Full reference index: [reference/INDEX.md](reference/INDEX.md)
 |-----------|----------|
 | [REST API](reference/rest-api.md) | All HTTP endpoints — graph, settings, ontology, auth, pathfinding, Solid |
 | [WebSocket Binary Protocol](reference/websocket-binary.md) | Unified binary protocol (24B/node), connection lifecycle, client implementation |
-| [Neo4j Schema](reference/neo4j-schema-unified.md) | Graph node/edge types, ontology nodes, Solid Pod records, indexes |
+| [Graph Schema](reference/neo4j-schema-unified.md) | Graph node/edge types, ontology nodes, Solid Pod records, indexes (Oxigraph/RDF, ADR-11) |
 | [Agents Catalog](reference/agents-catalog.md) | Complete catalog of specialist agent skills by domain |
 | [Error Codes](reference/error-codes.md) | AP-E, DB-E, GR-E, GP-E, WS-E error code hierarchy with solutions |
 | [Glossary](reference/glossary.md) | Definitions for domain terms used throughout the documentation |

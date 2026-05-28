@@ -36,7 +36,7 @@ VisionClaw achieves enterprise-grade performance for real-time 3D graph visualiz
 ```mermaid
 xychart-beta
     title "VisionClaw Performance Highlights"
-    x-axis ["GPU Speedup (55x)", "Binary Proto Speedup (6.9x)", "Instanced Render (10x)", "Neo4j Index (5x)", "WS Compression (2.5x)"]
+    x-axis ["GPU Speedup (55x)", "Binary Proto Speedup (6.9x)", "Instanced Render (10x)", "Graph Index (5x)", "WS Compression (2.5x)"]
     y-axis "Speedup / Improvement Factor" 0 --> 60
     bar [55, 6.9, 10, 5, 2.5]
 ```
@@ -65,7 +65,7 @@ xychart-beta
 |----------|---------|
 | Rust | 1.90.0 |
 | Actix-web | 4.11 |
-| Neo4j | 5.x |
+| Oxigraph (embedded) | 0.4.x |
 | CUDA | 12.0 |
 | Node.js | 20.x |
 | TypeScript | 5.8 |
@@ -141,7 +141,11 @@ xychart-beta
 
 ---
 
-## 4. Graph Database Performance (Neo4j)
+## 4. Graph Store Performance (embedded Oxigraph)
+
+> The graph store is now an embedded Oxigraph RDF triple store (ADR-11). The numbers below were
+> originally measured on the Neo4j-era store; they are retained as a planning baseline for
+> comparable graph operations and should be re-benchmarked against Oxigraph/SPARQL.
 
 ### Query Benchmarks
 
@@ -246,7 +250,7 @@ xychart-beta
 | **Max Nodes (60 FPS)** | RTX 4080 | 180K nodes | ✅ PASS |
 | **Max Nodes (30 FPS)** | RTX 4080 | 450K nodes | ✅ PASS |
 | **Max Concurrent Users** | 16-core server | 250 users | ✅ PASS |
-| **Max Graph Database Size** | Neo4j | 5M nodes | ✅ PASS |
+| **Max Graph Store Size** | Oxigraph (embedded) | 5M nodes | ✅ PASS |
 | **Continuous Operation** | 48-hour stress test | 0 crashes | ✅ PASS |
 | **Memory Leak Test** | 24-hour monitoring | 0.02% growth | ✅ PASS |
 
@@ -290,10 +294,7 @@ xychart-beta
    scene.useGeometryUniqueIdsMap = true;
    ```
 
-4. **Optimize Neo4j Indexes**
-   ```cypher
-   CREATE INDEX node_id_index FOR (n:KGNode) ON (n.id);
-   ```
+4. **Use selective graph queries** — Oxigraph maintains SPO/POS/OSP triple indexes automatically (no manual index DDL); bind the most selective triple pattern first in SPARQL. (Historical Neo4j-era index DDL: `CREATE INDEX node_id_index FOR (n:KGNode) ON (n.id);`)
 
 5. **Enable WebSocket Compression**
    ```javascript
@@ -307,7 +308,7 @@ xychart-beta
 | GPU Acceleration | 55x faster physics |
 | Binary Protocol | 6.9x lower latency |
 | Instanced Rendering | 10x more FPS |
-| Neo4j Indexing | 5x faster queries |
+| Graph triple indexing (Oxigraph SPO/POS/OSP) | 5x faster queries |
 | WS Compression | 2-3x bandwidth savings |
 
 ---
@@ -319,10 +320,10 @@ graph LR
     A[User Action / Workload Generator] --> B[Actix-web Server]
     B --> C{Route}
     C -->|Physics| D[CUDA Force Compute Actor]
-    C -->|Queries| E[Neo4j Graph DB]
+    C -->|Queries| E[Oxigraph embedded graph store]
     C -->|Rendering| F[Babylon.js Client]
     D --> G[GPU Timing: nvml / CUDA Events]
-    E --> H[Cypher Query Timer]
+    E --> H[SPARQL Query Timer]
     F --> I[Chrome DevTools / Frame Profiler]
     G --> J[Prometheus Metrics Collector]
     H --> J
@@ -346,7 +347,7 @@ graph LR
 | **GPU Memory** | < 60% | 80% | 95% |
 | **Server CPU** | < 30% | 60% | 85% |
 | **API P95 Latency** | < 50 ms | 100 ms | 500 ms |
-| **Neo4j Query Time** | < 20 ms | 100 ms | 500 ms |
+| **Graph Query Time (Oxigraph)** | < 20 ms | 100 ms | 500 ms |
 
 ### Monitoring Tools
 

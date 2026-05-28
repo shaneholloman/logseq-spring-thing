@@ -1,5 +1,16 @@
 # Neo4j Backup & Restore Runbook
 
+> **OBSOLETE / REMOVED (ADR-11)**: Neo4j has been **removed** from VisionClaw — there is no
+> `visionclaw-neo4j` container, `neo4j-data` volume, or `neo4j-backup.sh`/`neo4j-restore.sh`
+> scripts. The graph store is now an **embedded Oxigraph** RDF triple store whose RocksDB
+> dataset lives at `${DATA_DIR}/oxigraph/` (`DATA_DIR` defaults to `./data`; Docker images set
+> it to `/app/data`). **Back it up** by stopping the server and archiving that directory
+> (`tar czf oxigraph-backup.tgz -C "$DATA_DIR" oxigraph`); **restore** by extracting the archive
+> back over a stopped server's `${DATA_DIR}/oxigraph/`. **Reset** by deleting the directory and
+> re-running the sync. See [ADR-11](../migration-sprint/11-persistence-migration/ADR-11.md) and
+> the [Deployment Guide § Graph Store (Oxigraph)](../how-to/deployment-guide.md). **This runbook
+> is retained only as historical reference and is a candidate for deletion.**
+
 ## Quick Reference
 
 | Item | Value |

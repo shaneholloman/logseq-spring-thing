@@ -25,7 +25,7 @@ The client-side filtering feature allows authenticated clients to filter which g
 1. **ClientFilter** (`src/actors/client_coordinator_actor.rs`)
    - Per-client filter configuration
    - Stores threshold settings and filtered node IDs
-   - Persisted to Neo4j for authenticated users
+   - Persisted to the SQLite settings store for authenticated users (ADR-11)
 
 2. **Filter Logic** (`src/actors/client_filter.rs`)
    - `recompute_filtered_nodes()` - Main filtering function
@@ -40,7 +40,7 @@ The client-side filtering feature allows authenticated clients to filter which g
 
 ```mermaid
 flowchart TD
-    A["Client Auth"] -->|Load filter from Neo4j| B["Recompute Filtered Nodes"]
+    A["Client Auth"] -->|Load filter from settings store| B["Recompute Filtered Nodes"]
     B -->|Fetch GraphData with metadata| C["ClientFilter.filtered_node_ids\n(HashSet&lt;u32&gt;)"]
     C --> D["Position Broadcast"]
     D -->|Only send nodes in filtered_node_ids| E["Client"]
@@ -203,7 +203,7 @@ impl Handler<AuthenticateClient> for ClientCoordinatorActor {
     fn handle(&mut self, msg: AuthenticateClient, ctx: &mut Self::Context) {
         // ... set client.pubkey, client.is_power_user
 
-        // TODO: Load saved filter from Neo4j
+        // Load saved filter from the settings store (SqliteSettingsRepository)
 
         // Recompute if filter enabled
         if client.filter.enabled {
@@ -227,7 +227,7 @@ impl Handler<UpdateClientFilter> for ClientCoordinatorActor {
         // Recompute filtered nodes with new settings
         recompute_filtered_nodes(&mut client.filter, &graph_data);
 
-        // TODO: Save to Neo4j
+        // Save to the settings store (SqliteSettingsRepository)
     }
 }
 ```

@@ -98,7 +98,7 @@ corpus_compaction_duration_ms: histogram // compaction job timing
 
 **Action**: Move corpus regen out of saga hot path entirely.
 
-- Publish saga: sets dirty flag in Neo4j (`corpus_dirty = true` on user node)
+- Publish saga: sets dirty flag in the graph store (`corpus_dirty = true` on user node, embedded Oxigraph)
 - Dedicated worker: polls every 60s, rebuilds for flagged users, clears flag
 - Trade-off: corpus.jsonl staleness window = 60s (configurable)
 

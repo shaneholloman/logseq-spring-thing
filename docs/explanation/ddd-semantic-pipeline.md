@@ -27,7 +27,7 @@ Markdown Source (Aggregate Root)
   ├── Wikilinks (Value Object)              → "explicit_link" edge, weight 1.0
   └── Namespace Prefix (derived)            → "namespace" edge, weight 0.3
 
-Neo4j (Repository)
+Graph Store — embedded Oxigraph (Repository; ADR-11)
   ├── :KGNode — display nodes
   ├── :OwlClass — ontology concepts
   ├── :EDGE — wikilink + relationship edges (with relation_type, owl_property_iri)
@@ -55,7 +55,7 @@ Client Rendering (Presentation)
   └── ClusterHulls: convex hull per domain/cluster with domain colour
 ```
 
-*Flowchart of the semantic pipeline domain model — from Markdown source through Neo4j, GPU physics, analytics, and into client rendering.*
+*Flowchart of the semantic pipeline domain model — from Markdown source through the embedded Oxigraph store, GPU physics, analytics, and into client rendering. The `:KGNode`/`:EDGE`/`:SUBCLASS_OF` labels denote the RDF logical model, not Neo4j labels (ADR-11).*
 
 %%{init: {'theme': 'base', 'themeVariables': {'primaryColor': '#4A90D9', 'primaryTextColor': '#fff', 'lineColor': '#2C3E50'}}}%%
 ```mermaid
@@ -71,7 +71,7 @@ flowchart TD
         MD --> NS
     end
 
-    subgraph Neo4j["Neo4j Repository"]
+    subgraph GraphStore["Graph Store — embedded Oxigraph (RDF logical model)"]
         GN[":KGNode\ndisplay node"]
         OC[":OwlClass\nontology concept"]
         EDGE[":EDGE\nwikilink + relation\ntype · weight"]
@@ -118,12 +118,12 @@ flowchart TD
 ## Bounded Contexts
 
 ### 1. Ingestion Context
-**Responsibility**: Markdown → Neo4j
-**Files**: github_sync_service.rs, ontology_parser.rs, knowledge_graph_parser.rs, neo4j_ontology_repository.rs, neo4j_adapter.rs
-**Invariant**: Every relationship in an OntologyBlock becomes a Neo4j edge with type and weight
+**Responsibility**: Markdown → embedded Oxigraph store
+**Files**: github_sync_service.rs, ontology_parser.rs, knowledge_graph_parser.rs, adapters/mod.rs (OxigraphOntologyRepository), adapters/graph_repository.rs (OxigraphGraphRepository)
+**Invariant**: Every relationship in an OntologyBlock becomes a graph-store edge (RDF triple) with type and weight
 
 ### 2. Physics Context
-**Responsibility**: Neo4j → GPU forces → settled positions
+**Responsibility**: graph store → GPU forces → settled positions
 **Files**: graph_state_actor.rs, force_compute_actor.rs, semantic_forces_actor.rs, ontology_constraint_actor.rs
 **Invariant**: Edge type influences spring strength. Domain membership influences clustering force.
 

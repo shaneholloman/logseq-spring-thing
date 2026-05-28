@@ -1,14 +1,21 @@
 ---
 title: VisionClaw Ontology Pipeline
-description: End-to-end guide to VisionClaw's OWL 2 ontology processing pipeline — from GitHub Markdown ingestion through Neo4j storage to Whelk-rs EL++ reasoning and GPU constraint application
+description: End-to-end guide to VisionClaw's OWL 2 ontology processing pipeline — from GitHub Markdown ingestion through embedded Oxigraph storage to Whelk-rs EL++ reasoning and GPU constraint application
 category: explanation
-tags: [ontology, owl, whelk, reasoning, pipeline, neo4j, knowledge-graph]
-updated-date: 2026-04-09
+tags: [ontology, owl, whelk, reasoning, pipeline, oxigraph, knowledge-graph]
+updated-date: 2026-05-28
 ---
 
 # VisionClaw Ontology Pipeline
 
-End-to-end guide to VisionClaw's OWL 2 ontology processing pipeline — from GitHub Markdown ingestion through Neo4j storage to Whelk-rs EL++ reasoning and GPU constraint application.
+End-to-end guide to VisionClaw's OWL 2 ontology processing pipeline — from GitHub Markdown ingestion through embedded Oxigraph storage to Whelk-rs EL++ reasoning and GPU constraint application.
+
+> **Graph store changed (ADR-11)**: storage is now an **embedded Oxigraph** RDF triple store
+> (in-process, RocksDB-backed, W3C SPARQL 1.1) — there is no Neo4j container, Bolt URI, or
+> `NEO4J_*` configuration. Where this document says "Neo4j", read "the embedded Oxigraph
+> graph store". The Cypher snippets are historical (Neo4j-era) and are retained only to show
+> the shape of each query; the live system resolves the equivalent patterns via SPARQL
+> (endpoints that still accept a `cypher` field do so for backwards compatibility only).
 
 ---
 
@@ -19,7 +26,7 @@ The ontology pipeline is a 5-stage process that converts Logseq-formatted Markdo
 ```mermaid
 flowchart LR
     A[GitHub Repo\nMarkdown Files] --> B[OntologyParser\nRust]
-    B --> C[Neo4j\nGraph Store]
+    B --> C[Oxigraph\nEmbedded Graph Store]
     C --> D[Whelk-rs\nEL++ Reasoner]
     D --> E[GPU\nConstraints]
     E --> F[Client\n3D Graph]
@@ -33,7 +40,7 @@ flowchart LR
 ```
 
 **End-to-end timing** (production, warm cache):
-- GitHub sync → Neo4j save: ~10 ms per file
+- GitHub sync → Oxigraph save: ~10 ms per file
 - Reasoning (cache hit): < 1 ms
 - Reasoning (cache miss, 50 classes): ~50 ms
 - Constraint generation: ~1 ms per 100 axioms
@@ -126,13 +133,22 @@ The parser recognises the OWL 2 EL subset: SubClassOf, EquivalentClasses, Disjoi
 
 ---
 
-## 4. Stage 3: Neo4j Storage
+## 4. Stage 3: Graph-Store Persistence (embedded Oxigraph)
 
-### Neo4j as primary graph store
+### Embedded Oxigraph as the sole graph store
 
-Neo4j (v5.15 community) is the **primary and sole graph store** (migration from SQLite completed November 2025). All nodes and relationships are stored as Neo4j `KGNode` nodes with `EDGE` relationships.
+The graph store is an **embedded Oxigraph** RDF triple store (in-process, RocksDB-backed,
+W3C SPARQL 1.1), the **primary and sole** store as of ADR-11 (Neo4j removed). Nodes and
+relationships are persisted as RDF triples in named graphs; the `OxigraphGraphRepository` and
+`OxigraphOntologyRepository` adapters serialise the logical `KGNode`/`EDGE` model below into
+subject–predicate–object triples.
 
-### Node schema
+> The Cypher node/edge/index snippets in this section are **historical (Neo4j-era)**. They
+> describe the same logical schema that Oxigraph now stores as RDF — Oxigraph maintains
+> SPO/POS/OSP indexes automatically, so the `CREATE CONSTRAINT`/`CREATE INDEX` statements no
+> longer apply.
+
+### Node schema (logical model)
 
 ```cypher
 (:KGNode {
@@ -176,7 +192,7 @@ CREATE INDEX kg_node_owl_class IF NOT EXISTS FOR (n:KGNode) ON (n.owl_class_iri)
 
 ### The 623 SUBCLASS_OF relationships
 
-There are 623 `SUBCLASS_OF` relationships originating from `OwlClass` nodes in Neo4j. These require **label matching** to link `OwlClass` nodes to the corresponding `KGNode` entries. Without this mapping, the client graph receives isolated OwlClass nodes — see the **Ontology Edge Gap** section below.
+There are 623 `SUBCLASS_OF` relationships originating from `OwlClass` nodes in the graph store. These require **label matching** to link `OwlClass` nodes to the corresponding `KGNode` entries. Without this mapping, the client graph receives isolated OwlClass nodes — see the **Ontology Edge Gap** section below.
 
 ### Namespace edge generation
 
@@ -235,21 +251,21 @@ Cache invalidation triggers when the ontology content hash changes or on explici
 sequenceDiagram
     participant Sync as GitHubSyncActor
     participant Parser as OntologyParser
-    participant Neo4j as Neo4j
+    participant Oxigraph as Oxigraph (embedded)
     participant Whelk as Whelk-rs / CustomReasoner
     participant GPU as SemanticForcesActor
 
     Sync->>Parser: parse_files(markdown_batch)
     Parser->>Parser: Extract OntologyBlocks
-    Parser->>Neo4j: Create/update OWL nodes
-    Neo4j-->>Parser: Node IDs
+    Parser->>Oxigraph: Create/update OWL nodes
+    Oxigraph-->>Parser: Node IDs
 
     Parser->>Whelk: TriggerReasoning(ontology_id)
     Whelk->>Whelk: Check Blake3 cache
     alt Cache miss
-        Whelk->>Neo4j: get_classes() + get_axioms()
+        Whelk->>Oxigraph: get_classes() + get_axioms()
         Whelk->>Whelk: EL++ completion (~50ms for 50 classes)
-        Whelk->>Neo4j: Store inferred_edges (is_inferred=true)
+        Whelk->>Oxigraph: Store inferred_edges (is_inferred=true)
         Whelk->>Whelk: Store in-memory cache
     else Cache hit
         Whelk->>Whelk: Return cached axioms (<1ms)
@@ -363,7 +379,11 @@ Memory footprint: 10K nodes = 640 KB, 1K constraints = 64 KB.
 
 ## 7. Ontology Query Interface
 
-### Cypher traversal patterns (Neo4j)
+### Graph traversal patterns (historical Cypher → Oxigraph SPARQL)
+
+> The Cypher patterns below are **historical (Neo4j-era)**. They show the shape of the
+> traversals the system performs; the live store is embedded Oxigraph and resolves the
+> equivalent property paths via SPARQL.
 
 ```cypher
 -- Find all subclasses of a given class (including inferred)
@@ -379,9 +399,14 @@ MATCH (n:KGNode {id: $start})-[:SUBCLASS_OF|:LINKS_TO*1..5]-(m:KGNode)
 RETURN DISTINCT m.id, m.label
 ```
 
-### REST API (via CypherQueryHandler)
+### REST API (ontology query service)
 
-**POST** `/api/query/cypher` — Execute Cypher with safety limits (max 300s timeout, max 10,000 results, read-only enforcement).
+> **Removed (ADR-11)**: the dedicated `POST /api/query/cypher` endpoint and its `CypherQueryHandler`
+> were **deleted** in the Oxigraph migration (see `src/main.rs`: "Cypher query endpoint removed").
+> Graph queries now go through the ontology / natural-language query services
+> (e.g. `/api/nl-query/*`), which accept a `cypher` field for backwards compatibility but resolve
+> it against the embedded Oxigraph store via SPARQL, with safety limits (timeout, result cap,
+> read-only enforcement).
 
 **POST** `/api/ontology-physics/enable` — Enable ontology force constraints:
 ```json
@@ -404,7 +429,7 @@ The system exposes 7 MCP tools for ontology operations:
 3. `get_disjoint_classes` — list disjoint class pairs
 4. `invalidate_cache` — force cache invalidation
 5. `get_cache_stats` — reasoning cache statistics
-6. `query_cypher` — execute Cypher on Neo4j
+6. `query_cypher` — execute a Cypher-style query (resolved against the embedded Oxigraph store; `cypher` field kept for backwards compatibility)
 7. `get_constraints` — list active GPU constraints
 
 ### OntologyReasoningService API
@@ -448,11 +473,11 @@ This is a known architectural debt item affecting the current production system.
 
 ### Symptom
 
-62% of `OwlClass` nodes in the client graph are isolated — they have no edges connecting them to other nodes, even though 623 `SUBCLASS_OF` relationships exist in Neo4j.
+62% of `OwlClass` nodes in the client graph are isolated — they have no edges connecting them to other nodes, even though 623 `SUBCLASS_OF` relationships exist in the graph store.
 
 ### Root cause
 
-`OwlClass` nodes in Neo4j have a different label format than `KGNode` entries. The 623 `SUBCLASS_OF` relationships originate from `OwlClass` source nodes, but the client-side `KGNode` entries use a different ID scheme. The mapping between `OwlClass` nodes and `KGNode` entries requires label-based matching that is not currently implemented.
+`OwlClass` nodes in the graph store have a different label format than `KGNode` entries. The 623 `SUBCLASS_OF` relationships originate from `OwlClass` source nodes, but the client-side `KGNode` entries use a different ID scheme. The mapping between `OwlClass` nodes and `KGNode` entries requires label-based matching that is not currently implemented.
 
 ### Impact
 
@@ -487,11 +512,12 @@ REASONING_MAX_AXIOMS=100000       # Axiom limit
 FORCE_FULL_SYNC=0                 # Set to 1 to bypass SHA1 filtering
 GITHUB_BASE_PATH=mainKnowledgeGraph/pages/
 
-# Neo4j connection
-NEO4J_URI=bolt://localhost:7687
-NEO4J_USER=neo4j
-NEO4J_PASSWORD=<secret>
-NEO4J_ENABLED=true
+# Graph store (embedded Oxigraph — ADR-11)
+# No connection URI / user / password: Oxigraph runs in-process.
+# The RocksDB dataset lives under ${DATA_DIR}/oxigraph/ (DATA_DIR defaults to ./data;
+# Docker images set it to /app/data). The former NEO4J_URI / NEO4J_USER /
+# NEO4J_PASSWORD / NEO4J_ENABLED variables are removed and no longer read.
+DATA_DIR=/app/data
 ```
 
 ```toml
@@ -530,6 +556,5 @@ ontology = ["horned-owl", "whelk", "walkdir", "clap"]
 
 - [Physics & GPU Engine](physics-gpu-engine.md) — how constraints affect node positioning
 - `docs/explanation/ontology-pipeline.md` — actor wire-up analysis
-- `docs/reference/neo4j-schema-unified.md` — full storage schema
+- `docs/reference/neo4j-schema-unified.md` — full graph storage schema (Oxigraph/RDF, ADR-11)
 - `docs/explanation/ontology-pipeline.md` — detailed sequence diagrams including error and backpressure paths
-- `docs/reference/neo4j-schema-unified.md` — Neo4j configuration and Cypher reference

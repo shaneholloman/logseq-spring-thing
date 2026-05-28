@@ -16,7 +16,7 @@ updated-date: 2026-04-09
 4. [Environment Variables](#environment-variables)
 5. [NVIDIA GPU Setup](#nvidia-gpu-setup)
 6. [Service Profiles](#service-profiles)
-7. [Neo4j Configuration](#neo4j-configuration)
+7. [Graph Store (Oxigraph)](#graph-store-oxigraph)
 8. [Network Configuration](#network-configuration)
 9. [Production Hardening](#production-hardening)
 10. [Health Checks and Monitoring](#health-checks-and-monitoring)
@@ -69,8 +69,6 @@ sudo systemctl restart docker
 | 3001 | Nginx (dev) | HTTP | Frontend + API reverse proxy |
 | 4000 | Actix-web API | HTTP | Rust backend direct access |
 | 5173 | Vite dev server | HTTP | Hot Module Replacement (internal) |
-| 7474 | Neo4j Browser | HTTP | Graph database web UI |
-| 7687 | Neo4j Bolt | TCP | Application database connections |
 | 7880 | LiveKit | HTTP/WS | WebRTC signaling (voice overlay) |
 | 7881 | LiveKit RTC | TCP | WebRTC TCP fallback |
 | 7882 | LiveKit RTC | UDP | WebRTC media transport |
@@ -94,7 +92,7 @@ docker network create visionclaw_network
 
 # Copy and configure environment
 cp .env.example .env
-# Edit .env -- at minimum set NEO4J_PASSWORD
+# Edit .env -- review secrets / API keys (the graph store is embedded; no DB password needed)
 nano .env
 
 # Start the development stack
@@ -103,11 +101,13 @@ docker compose -f docker-compose.unified.yml --profile dev up -d
 # Verify all services are healthy (allow ~40 seconds)
 docker compose -f docker-compose.unified.yml --profile dev ps
 
-# Confirm backend health
-curl http://localhost:3001/api/health
+# Confirm backend liveness / readiness / diagnostics
+curl http://localhost:3001/healthz   # liveness  (process is up)
+curl http://localhost:3001/readyz    # readiness (Oxigraph populated, not DEGRADED)
+curl http://localhost:3001/api/health  # full diagnostics
 ```
 
-The application is available at `http://localhost:3001` once the Neo4j health check passes.
+The application is available at `http://localhost:3001` once `/readyz` returns ready (the embedded Oxigraph store has finished populating from local files).
 
 To add voice services (LiveKit, Whisper, Kokoro TTS):
 
@@ -128,9 +128,9 @@ VisionClaw uses several compose files for different deployment scenarios.
 
 | File | Purpose | Profile |
 |------|---------|---------|
-| `docker-compose.unified.yml` | Unified stack with Neo4j, JSS, and profile-based config | `dev`, `prod` |
+| `docker-compose.unified.yml` | Unified stack (`visionclaw` backend with embedded Oxigraph store, JSS, profile-based config) | `dev`, `prod` |
 | `docker-compose.voice.yml` | Voice pipeline overlay (LiveKit, Whisper, Kokoro TTS) | `dev`, `prod` |
-| `docker-compose.yml` | Base development services (webxr + Cloudflare tunnel) | `dev` |
+| `docker-compose.yml` | Base development services (`visionclaw` + Cloudflare tunnel) | `dev` |
 | `docker-compose.production.yml` | Legacy production-only compose | default |
 | `docker-compose.vircadia.yml` | ~~Vircadia XR~~ (deprecated — replaced by Godot native APK) | — |
 
@@ -146,8 +146,7 @@ graph TB
     end
 
     subgraph "Core Services"
-        webxr["visionclaw\nActix-web :4000"]
-        neo4j["neo4j\n:7474 / :7687"]
+        visionclaw["visionclaw\nActix-web :4000\n(embeds Oxigraph store)"]
     end
 
     subgraph "Voice Pipeline (overlay)"
@@ -162,35 +161,32 @@ graph TB
     end
 
     CF --> Nginx
-    Nginx --> webxr
-    webxr --> neo4j
-    webxr --> livekit
-    webxr --> whisper
-    webxr --> kokoro
-    webxr --> jss
+    Nginx --> visionclaw
+    visionclaw --> livekit
+    visionclaw --> whisper
+    visionclaw --> kokoro
+    visionclaw --> jss
     cloudflared --> Nginx
 
     classDef core fill:#81c784,stroke:#2e7d32
     classDef voice fill:#64b5f6,stroke:#1565c0
     classDef optional fill:#ffcc80,stroke:#e65100
-    class webxr,neo4j core
+    class visionclaw core
     class livekit,whisper,kokoro voice
     class jss,cloudflared optional
 ```
+
+> The knowledge/ontology graph store is **embedded in-process** inside the `visionclaw` backend (Oxigraph RDF triple store, RocksDB-backed — ADR-11). There is no separate Neo4j (or other graph-database) container in the current stack.
 
 ### Volume Summary
 
 | Volume | Purpose |
 |--------|---------|
-| `visionclaw-data` | Application data (databases, markdown, metadata) |
+| `visionclaw-data` | Application data — markdown, metadata, **and the embedded Oxigraph dataset** (`/app/data/oxigraph/`, RocksDB column families — ADR-11) |
 | `visionclaw-logs` | Application and Nginx logs |
 | `npm-cache` | npm package cache |
 | `cargo-cache` | Cargo registry cache |
 | `cargo-target-cache` | Rust build artifact cache |
-| `neo4j-data` | Neo4j graph store |
-| `neo4j-logs` | Neo4j log files |
-| `neo4j-conf` | Neo4j custom configuration |
-| `neo4j-plugins` | Neo4j APOC and other plugins |
 | `jss-data` | JavaScript Solid Server pod storage |
 
 ---
@@ -210,14 +206,21 @@ Create a `.env` file in the project root. All variables are read at container st
 | `NODE_ENV` | no | `development` | Node environment |
 | `SYSTEM_NETWORK_PORT` | no | `4000` | Internal Actix-web API port |
 
-### Neo4j Database
+### Graph Store (Oxigraph — embedded)
+
+The knowledge/ontology graph store is the **embedded Oxigraph** RDF triple store
+(ADR-11). It runs in-process inside the `visionclaw-server` binary against a RocksDB
+dataset on disk — there is **no graph-database container, no Bolt URI, and no graph
+DB password**. The `NEO4J_*` variables are obsolete and should be removed from `.env`.
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `NEO4J_URI` | yes | `bolt://neo4j:7687` | Neo4j Bolt connection URI |
-| `NEO4J_USER` | no | `neo4j` | Neo4j username |
-| `NEO4J_PASSWORD` | **yes** | — | Neo4j password (no default) |
-| `NEO4J_DATABASE` | no | `neo4j` | Database name |
+| `DATA_DIR` | no | `/app/data` | Application data root; the Oxigraph dataset lives at `${DATA_DIR}/oxigraph/` |
+
+> Migration note: legacy `NEO4J_URI` / `NEO4J_USER` / `NEO4J_PASSWORD` / `NEO4J_DATABASE`
+> are no longer read by the backend. A one-shot importer (`tools/migrate-neo4j-to-oxigraph`)
+> exists for converting an old Neo4j export into the Oxigraph dataset; it is not part of
+> the running stack.
 
 ### Security and Authentication
 
@@ -228,6 +231,16 @@ Create a `.env` file in the project root. All variables are read at container st
 | `AUTH_REQUIRED` | no | `true` | Require authentication for API |
 | `SESSION_TIMEOUT` | no | `86400` | Session timeout in seconds |
 | `WS_AUTH_ENABLED` | no | `false` | Require auth on WebSocket connections |
+
+> **Release env hygiene (ADR-06 §D11)**: a **release** build of `visionclaw-server`
+> refuses to boot (hard exit) if any dev-mode escape hatch is present in the
+> environment — `SETTINGS_AUTH_BYPASS`, `VISIONCLAW_DEV_MODE`, or
+> `ALLOW_INSECURE_DEFAULTS` (also `NODE_ENV=development` together with `DOCKER_ENV`).
+> These vars cannot actually enable a bypass in release (the codepaths are
+> `#[cfg]`-stripped), but their presence signals that a dev configuration was promoted
+> to production, so the binary fails fast (exit code 2) rather than starting in a
+> deceptive state. The `--allow-skip-auth` argv flag is likewise rejected in release
+> builds. Keep these unset in any production `.env`.
 
 ### GPU Configuration
 
@@ -291,7 +304,6 @@ Create a `.env` file in the project root. All variables are read at container st
 
 ```bash
 # Required
-NEO4J_PASSWORD=your-strong-password
 JWT_SECRET=$(openssl rand -hex 32)
 
 # GPU (adjust for your hardware)
@@ -472,63 +484,45 @@ LiveKit configuration lives in `config/livekit.yaml` (mounted read-only at `/etc
 
 ---
 
-## 7. Neo4j Configuration
+## 7. Graph Store (Oxigraph)
 
-Neo4j 5.13.0 is the sole graph database, defined in `docker-compose.unified.yml`. It must be healthy before VisionClaw starts (`depends_on: condition: service_healthy`).
+The knowledge/ontology graph is held in an **embedded Oxigraph** RDF triple store
+(W3C SPARQL 1.1 Query + Update, RocksDB-backed), opened in-process by the
+`visionclaw-server` binary at startup (ADR-11). There is **no separate graph-database
+container** — Neo4j was removed entirely. The dataset lives on disk inside the
+application data volume at `/app/data/oxigraph/`.
 
-### Memory Tuning
+### Startup behaviour
 
-Set via environment variables in the Neo4j service definition:
+At boot the backend opens the Oxigraph dataset and populates it from local files. If
+population fails, the backend enters a **DEGRADED** state rather than serving empty
+graph data; `/readyz` reports not-ready until the store is populated. No memory-tuning
+env vars are required — Oxigraph manages its own RocksDB column families.
 
-```bash
-NEO4J_server_memory_pagecache_size=512M
-NEO4J_server_memory_heap_max__size=1G
-```
-
-For large graphs (100K+ nodes), increase to:
-
-```bash
-NEO4J_server_memory_pagecache_size=4G
-NEO4J_server_memory_heap_max__size=8G
-```
-
-### Health Check
-
-Neo4j exposes a health endpoint that the compose file polls:
-
-```bash
-wget --spider --quiet http://localhost:7474
-```
-
-Interval: 10 s, retries: 5, start period: 30 s.
-
-### Accessing Neo4j Browser
-
-Navigate to `http://localhost:7474` and connect with `NEO4J_USER` / `NEO4J_PASSWORD`.
-
-### Resetting Neo4j Data
+### Resetting the graph data
 
 ```bash
 docker compose -f docker-compose.unified.yml --profile dev down
-docker volume rm visionclaw-neo4j-data
+# The Oxigraph dataset lives inside the visionclaw-data volume.
+# Remove just the dataset directory rather than nuking all app data:
+docker run --rm -v visionclaw-data:/data alpine rm -rf /data/oxigraph
 docker compose -f docker-compose.unified.yml --profile dev up -d
+# On next boot the store is re-populated from local files.
 ```
 
 ### Backup
 
 ```bash
-# Backup Neo4j volume
-docker run --rm \
-  -v visionclaw-neo4j-data:/data \
-  -v $(pwd):/backup alpine \
-  tar czf /backup/neo4j-backup-$(date +%Y%m%d).tar.gz /data
-
-# Backup application data
+# Backup application data (includes the Oxigraph dataset under /data/oxigraph)
 docker run --rm \
   -v visionclaw-data:/data \
   -v $(pwd):/backup alpine \
   tar czf /backup/visionclaw-data-$(date +%Y%m%d).tar.gz /data
 ```
+
+> Migration from Neo4j: a one-shot importer at `tools/migrate-neo4j-to-oxigraph`
+> converts a legacy Neo4j Bolt export into the Oxigraph dataset. It is a standalone
+> workspace tool, not part of the running stack.
 
 Schedule daily backups:
 
@@ -547,7 +541,7 @@ All services join the external `visionclaw_network` network. Create it once:
 docker network create visionclaw_network
 ```
 
-Service hostnames on this network: `webxr`, `neo4j`, `livekit`, `turbo-whisper`, `kokoro-tts`, `jss`, `cloudflared-tunnel`.
+Service hostnames on this network: `visionclaw` (alias `visionclaw-server`), `livekit`, `turbo-whisper`, `kokoro-tts`, `jss`, `cloudflared-tunnel`. (There is no `neo4j` host — the graph store is embedded in the `visionclaw` backend.)
 
 ### Network Topology
 
@@ -563,8 +557,7 @@ graph LR
 
     subgraph "visionclaw_network network"
         Nginx_int["Internal Nginx\n:3001 (dev) / :4000 (prod)"]
-        VF["VisionClaw\nActix-web :4000"]
-        Neo4j["Neo4j\n:7687"]
+        VF["visionclaw\nActix-web :4000\n(embeds Oxigraph store)"]
         LK["LiveKit\n:7880"]
         WH["Whisper\n:8100"]
         KO["Kokoro TTS\n:8880"]
@@ -577,7 +570,6 @@ graph LR
     Nginx_ext --> Nginx_int
     Caddy --> Nginx_int
     Nginx_int --> VF
-    VF --> Neo4j
     VF --> LK
     VF --> WH
     VF --> KO
@@ -667,7 +659,6 @@ Internal ports (3001, 4000, 7474, 7687, 9500) should not be exposed to the publi
 
 ```bash
 JWT_SECRET=$(openssl rand -hex 32)
-NEO4J_PASSWORD=$(openssl rand -hex 24)
 LIVEKIT_API_SECRET=$(openssl rand -hex 32)
 CLOUDFLARE_TUNNEL_TOKEN="your-cloudflare-token"
 
@@ -678,9 +669,11 @@ RUST_LOG=warn
 NODE_ENV=production
 
 JWT_SECRET=$JWT_SECRET
-NEO4J_PASSWORD=$NEO4J_PASSWORD
 LIVEKIT_API_SECRET=$LIVEKIT_API_SECRET
 CLOUDFLARE_TUNNEL_TOKEN=$CLOUDFLARE_TUNNEL_TOKEN
+
+# Do NOT set SETTINGS_AUTH_BYPASS / VISIONCLAW_DEV_MODE / ALLOW_INSECURE_DEFAULTS
+# in production — a release build refuses to boot if any are present (ADR-06 §D11).
 
 WS_AUTH_ENABLED=true
 CORS_ALLOWED_ORIGINS=https://yourdomain.com
@@ -781,14 +774,24 @@ location /wss {
 
 ### Service Health Check Endpoints
 
+The backend exposes three distinct health endpoints:
+
+| Endpoint | Purpose | Use for |
+|----------|---------|---------|
+| `GET /healthz` | **Liveness** — process is up and serving | Kubernetes/Docker liveness probes, load-balancer up checks |
+| `GET /readyz` | **Readiness** — Oxigraph store populated and backend not in DEGRADED state | Kubernetes/Docker readiness probes, "is it safe to route traffic?" |
+| `GET /api/health` | **Diagnostics** — full JSON health/status report (subsystems, physics, MCP relay) | Operators, dashboards, debugging |
+
 | Service | Endpoint | Interval | Retries | Start Period |
 |---------|----------|----------|---------|--------------|
-| VisionClaw | `GET http://localhost:3001/health` | 30s | 3 | 60s |
-| Neo4j | `wget http://localhost:7474` | 10s | 5 | 30s |
+| VisionClaw | `GET http://localhost:3001/readyz` | 30s | 3 | 60s |
 | LiveKit | `wget http://localhost:7880` | 10s | 3 | 5s |
 | Turbo Whisper | `GET http://localhost:8000/health` | 15s | 3 | 30s |
 | Kokoro TTS | `GET http://localhost:8880/health` | 15s | 3 | 20s |
 | RAGFlow | `GET http://ragflow-server:9380/api/health` | 30s | 3 | 30s |
+
+> The graph store has no independent health endpoint because it is embedded in the
+> backend; its readiness is folded into `/readyz`.
 
 ### Checking Status
 
@@ -799,11 +802,10 @@ docker compose -f docker-compose.unified.yml --profile prod ps
 # Individual container health
 docker inspect --format='{{.State.Health.Status}}' visionclaw_container
 
-# VisionClaw health JSON
+# VisionClaw liveness / readiness / full diagnostics
+curl http://localhost:3001/healthz
+curl http://localhost:3001/readyz
 curl http://localhost:3001/api/health
-
-# Neo4j health
-curl http://localhost:7474
 
 # GPU utilisation
 nvidia-smi dmon -s pucvmet -c 10
@@ -859,8 +861,10 @@ docker system prune -a --volumes
 docker logs visionclaw_container
 
 # Most common causes:
-# 1. Missing or invalid NEO4J_PASSWORD in .env
-# 2. Neo4j not healthy yet (wait for 40s start period)
+# 1. Embedded Oxigraph store failed to populate (backend logs "DEGRADED") — check
+#    /app/data permissions and local source files; /readyz stays not-ready
+# 2. A dev env var is set in a release build (SETTINGS_AUTH_BYPASS / VISIONCLAW_DEV_MODE /
+#    ALLOW_INSECURE_DEFAULTS) — release binary hard-exits with code 2 (ADR-06 §D11)
 # 3. visionclaw_network network does not exist
 
 # Fix network
@@ -872,7 +876,7 @@ docker compose -f docker-compose.unified.yml --profile dev up -d --force-recreat
 
 ```bash
 # Find the conflicting process
-sudo netstat -tulpn | grep -E '3001|4000|7474|7687|9500'
+sudo netstat -tulpn | grep -E '3001|4000|9090|9500'
 
 # Change ports in .env
 HOST_PORT=3003
@@ -900,20 +904,21 @@ sudo systemctl restart docker
 docker compose -f docker-compose.unified.yml --profile dev up -d --force-recreate
 ```
 
-### Neo4j Connection Refused
+### Graph Store DEGRADED / Empty Graph
 
-Neo4j has a 30-second start period. VisionClaw waits via `depends_on: condition: service_healthy`. If the error persists:
+The graph store is the embedded Oxigraph dataset (ADR-11) — there is no Neo4j
+container to connect to. If the graph is empty or the backend reports DEGRADED:
 
 ```bash
-# Check Neo4j logs
-docker logs visionclaw-neo4j
+# Check the backend logs for Oxigraph population errors
+docker logs visionclaw_container 2>&1 | grep -iE 'oxigraph|degraded|populat'
 
-# Verify credentials
-docker compose -f docker-compose.unified.yml exec visionclaw env | grep NEO4J
+# Confirm readiness
+curl http://localhost:3001/readyz
 
-# Reset Neo4j volume if data is corrupted
+# Reset the Oxigraph dataset (it re-populates from local files on next boot)
 docker compose -f docker-compose.unified.yml --profile dev down
-docker volume rm visionclaw-neo4j-data
+docker run --rm -v visionclaw-data:/data alpine rm -rf /data/oxigraph
 docker compose -f docker-compose.unified.yml --profile dev up -d
 ```
 
@@ -966,9 +971,8 @@ docker stats --no-stream
 # Increase limits in .env
 MEMORY_LIMIT=32g
 
-# Tune Neo4j separately
-NEO4J_server_memory_pagecache_size=1G
-NEO4J_server_memory_heap_max__size=2G
+# The embedded Oxigraph store needs no separate JVM tuning (RocksDB manages its own
+# page cache); large graphs are bounded mainly by the visionclaw container memory limit.
 
 # Apply changes
 docker compose -f docker-compose.unified.yml --profile prod up -d --force-recreate

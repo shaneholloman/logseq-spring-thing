@@ -27,7 +27,7 @@ Quick-lookup index for all reference documentation. For prose explanations see [
 
 | Reference | Description |
 |-----------|-------------|
-| [Neo4j Schema](neo4j-schema-unified.md) | Unified schema for all Neo4j node and relationship types — graph nodes/edges, OWL classes/axioms, Solid Pod records, user settings, and Cypher indexes |
+| [Graph Schema](neo4j-schema-unified.md) | Unified schema for all graph node and relationship types — graph nodes/edges, OWL classes/axioms, Solid Pod records, user settings (now embedded Oxigraph/RDF + SQLite settings, ADR-11) |
 
 ---
 
@@ -54,7 +54,7 @@ Quick-lookup index for all reference documentation. For prose explanations see [
 
 | Reference | Description |
 |-----------|-------------|
-| [Environment Variables](configuration/environment-variables.md) | All `.env` variables — Neo4j, GPU, auth, network, feature flags — with types, defaults, and descriptions |
+| [Environment Variables](configuration/environment-variables.md) | All `.env` variables — graph store (`DATA_DIR`), GPU, auth, network, feature flags — with types, defaults, and descriptions |
 | [Docker Compose Options](configuration/docker-compose-options.md) | Service profiles, named volumes, compose file structure, and multi-profile deployment |
 
 ---

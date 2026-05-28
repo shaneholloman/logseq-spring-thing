@@ -8,6 +8,13 @@ updated-date: 2026-04-20
 
 # DDD Contributor Enablement Contexts — VisionClaw
 
+> **ADR-11 update**: "Neo4j" throughout this document denotes the project's graph
+> persistence layer / read-model projection, now the **embedded Oxigraph** RDF triple
+> store (in-process, RocksDB-backed; no Bolt URI, container, or password). The `:Label`
+> notations describe the **RDF logical model**, not Neo4j labels. Solid Pods remain the
+> write-master for pod-resident data; the graph store is the derived read model
+> (`OxigraphGraphRepository`). "Application DB" denotes SQLite.
+
 This document extends the enterprise context map defined in
 [`ddd-enterprise-contexts.md`](ddd-enterprise-contexts.md) (BC1–BC17) with two
 further contexts required to deliver the **Contributor AI Support Stratum**: the
@@ -551,16 +558,16 @@ Adapter: `ArtifactMigrationAdapter` in BC18.
 
 Adapter: `SubstrateContextAdapter` in BC18.
 
-### ACL 11: Skill publish → Pod + Neo4j index (BC19 ↔ BC2/Pods)
+### ACL 11: Skill publish → Pod + graph-store index (BC19 ↔ BC2/Pods)
 
 | Stratum concept | Substrate representation |
 |-----------------|--------------------------|
 | `SkillVersion` | Markdown + YAML under `/public/skills/{slug}/v{semver}/SKILL.md` (pod) |
-| `SkillIndex` read model | `:Skill` and `:SkillVersion` nodes in Neo4j with WAC-derived visibility flags |
-| `SkillPublished` event | Pod write under WAC + Neo4j upsert via `SkillIndexAdapter` |
+| `SkillIndex` read model | `:Skill` and `:SkillVersion` nodes in the graph store (embedded Oxigraph) with WAC-derived visibility flags |
+| `SkillPublished` event | Pod write under WAC + graph-store upsert via `SkillIndexAdapter` |
 
 Adapter: `SkillIndexAdapter` in BC19. Pod is write-master per ADR-052;
-Neo4j index reconstructs from pod on cold start.
+the graph-store index reconstructs from the pod on cold start.
 
 ### ACL 12: Contributor events → KPI lineage (BC18/BC19 → BC15)
 
@@ -726,7 +733,7 @@ These extend the enterprise aggregate design rules:
 
 ---
 
-## Neo4j Node Type Extensions
+## Graph-Store Node Type Extensions (RDF logical model — embedded Oxigraph, ADR-11)
 
 | Node Type | Label | Stratum Context | Properties |
 |-----------|-------|-----------------|------------|
@@ -738,7 +745,7 @@ These extend the enterprise aggregate design rules:
 | SkillVersion | `:SkillVersion` | BC19 | version, pod_uri, signature, fingerprint, benchmark_id |
 | SkillBenchmark | `:SkillBenchmark` | BC19 | suite_id, verdict, pass_rate, baseline_delta, run_at |
 
-### Neo4j Relationship Type Extensions
+### Graph-Store Relationship Type Extensions (RDF logical model)
 
 | Relationship | From | To | Stratum Context |
 |--------------|------|----|-----------------|

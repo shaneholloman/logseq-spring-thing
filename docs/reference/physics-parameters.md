@@ -4,7 +4,7 @@ description: UI slider names, settings keys, ranges, and backend parameter mappi
 category: reference
 difficulty-level: intermediate
 tags: [physics, simulation, settings, GPU, CUDA]
-updated-date: 2026-04-18
+updated-date: 2026-05-28
 ---
 
 # Physics Parameters Reference
@@ -25,7 +25,8 @@ debounced and sent via `PUT /api/settings/physics` to the backend.
 | Damping | `damping` | 0 | 1 | 0.01 | `physics.damping` | Velocity damping — lower = more energy, higher = faster settle |
 | Node Spacing | `restLength` | 1 | 200 | 1 | `physics.restLength` | Spring rest length — small = dense, large = spread |
 | Max Velocity | `maxVelocity` | 0.1 | 500 | 5 | `physics.maxVelocity` | Maximum node speed per step |
-| Dual Graph Separation | `graphSeparationX` | 0 | 500 | 5 | `physics.graphSeparationX` | X-axis distance between knowledge and ontology graph planes — 0 = merged |
+| Dual Graph Separation | `graphSeparationX` | 0 | 500 | 5 | `physics.graphSeparationX` | Half-distance the two graph populations are pushed apart on X: Knowledge nodes shift `-graphSeparationX`, Ontology nodes shift `+graphSeparationX`, Agent nodes stay at origin to bridge both. 0 = merged |
+| Axis Compression (Z) | `axisCompressionZ` | 0 | 1 | 0.05 | `physics.axisCompressionZ` | Flattens Knowledge + Ontology populations toward z=0 to form disks (`pos.z *= 1 - axisCompressionZ`); Agent nodes keep full-3D depth so they visibly bridge the disks. 0 = no compression, 1 = fully flat at z=0 |
 | Flatten to Planes | `zDamping` | 0 | 0.1 | 0.002 | `physics.zDamping` | Squash Z-axis — 0 = full 3D, 0.1 = fully flat YZ planes |
 
 ## Advanced Dynamics (visible in Advanced mode)
@@ -33,6 +34,7 @@ debounced and sent via `PUT /api/settings/physics` to the backend.
 | UI Label | Settings Key | Min | Max | Step | Backend Field | Effect |
 |---|---|---|---|---|---|---|
 | Time Step | `dt` | 0.001 | 0.1 | 0.001 | `physics.dt` | Simulation time step per iteration |
+| Adaptive Speed | `adaptiveSpeed` | off | on | toggle | `physics.adaptiveSpeed` | ForceAtlas2/LinLog adaptive speed — when enabled, the integrator scales the global step from per-node swing/traction so high-energy regions slow down and converged regions speed up. Forwarded to the CUDA kernel as `SimParams.adaptive_speed`; a change re-uploads params and triggers a reheat |
 | Iterations | `iterations` | 1 | 5000 | 50 | `physics.iterations` | Solver iterations per frame |
 | Warmup Iterations | `warmupIterations` | 0 | 500 | 10 | `physics.warmupIterations` | Initial stabilisation iterations before convergence is checked |
 | Cooling Rate | `coolingRate` | 0.00001 | 0.01 | 0.0001 | `physics.coolingRate` | Simulated annealing decay rate |
@@ -50,13 +52,25 @@ debounced and sent via `PUT /api/settings/physics` to the backend.
 ```
 User drags slider
   → React settings store (Zustand)
-    → debounced PUT /api/settings/physics (Axum handler)
+    → debounced PUT /api/settings/physics (Actix-web handler)
       → PhysicsOrchestratorActor (receives UpdateSimulationParams message)
         → resets fast-settle counters, triggers reheat
           → ForceComputeActor (dispatches ComputeForces to GPU)
             → visionclaw_unified.cu CUDA kernel
-              → updated node positions broadcast via WebSocket V4 binary
+              → GPU readback into host position/velocity buffer
+                → host-buffer projection (every broadcast frame):
+                    graphSeparationX shifts Knowledge -x / Ontology +x;
+                    axisCompressionZ scales Knowledge+Ontology z toward 0
+                → updated node positions broadcast via WebSocket V4 binary
 ```
+
+> **Note on `graphSeparationX` / `axisCompressionZ`**: these two controls are *not*
+> applied inside the CUDA kernel. They are a deterministic post-readback projection
+> on the host position buffer in `ForceComputeActor`, re-applied every broadcast frame
+> (Knowledge → `-x`, Ontology → `+x`, Agents untouched; Z scaled by `1 - axisCompressionZ`
+> for the two graph populations only). This keeps the GPU integrator free of layout
+> bias while still letting the sliders move the live graph in real time. `adaptiveSpeed`,
+> by contrast, *is* a GPU kernel input forwarded via `SimParams`.
 
 ---
 
@@ -65,7 +79,8 @@ User drags slider
 The slider maxima are conservative limits chosen to prevent degenerate layouts:
 
 - **`attractionK` > 10**: Edges pull so strongly that nodes collapse into a hairball; at 10 the force is saturated for typical graph densities.
-- **`graphSeparationX` > 500**: Creates visually unusable gaps between the knowledge and ontology planes; the planes become unnavigable in 3D space.
+- **`graphSeparationX` > 500**: Knowledge and Ontology populations are pushed more than 1000 units apart (the slider is a half-distance), creating visually unusable gaps; the planes become unnavigable in 3D space.
+- **`axisCompressionZ` = 1**: Fully flattens the Knowledge and Ontology populations onto the z=0 plane (disks); combine with `graphSeparationX` to get two parallel disks bridged by full-3D Agent nodes.
 - **`zDamping` > 0.1**: Fully eliminates Z variation, collapsing the graph into a flat 2D plane; values above 0.1 provide no additional flattening.
 - **`repelK` > 3000**: Nodes explode beyond the bounding box before the physics loop can compensate.
 - **`springK` > 100**: Springs become rigid rods; the layout oscillates rather than settling.

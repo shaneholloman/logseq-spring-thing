@@ -84,7 +84,7 @@ function GraphCanvas() {
 ```mermaid
 graph TD
     OWL[OWL Ontology\nSubClassOf axioms] --> Whelk[Whelk Reasoner\nInference engine]
-    Whelk --> SC[SUBCLASS_OF edges\nNeo4j :OwlClass nodes]
+    Whelk --> SC[SUBCLASS_OF edges\nOxigraph :OwlClass nodes]
     SC --> GSA[GraphStateActor\nLoads hierarchy on startup]
     GSA --> SemanticForces[GPU Semantic Forces\nHierarchy-aware spring constants]
     SemanticForces --> Cluster[Visual Clustering\n3D node positions]
@@ -423,7 +423,7 @@ label.scale.set(4 * scale, 1 * scale, 1);
 ```mermaid
 flowchart LR
     OWL[OWL Ontology\nTurtle / RDF] --> Whelk[Whelk Reasoner\nSub-class closure]
-    Whelk --> SC[Neo4j\nSUBCLASS_OF rels\n:OwlClass nodes]
+    Whelk --> SC[Oxigraph (embedded)\nSUBCLASS_OF rels\n:OwlClass nodes]
     SC --> GSA[GraphStateActor\nClassifies nodes\nby type sets]
     GSA --> GPU[GPU Physics\nSemantic force kernel\nhierarchy spring weights]
     GPU --> Pos[Node Positions\nSAB broadcast]
@@ -436,7 +436,7 @@ flowchart LR
     Zoom --> Client
 ```
 
-*Integration path: OWL axioms travel through Whelk inference, are stored as SUBCLASS_OF edges in Neo4j, drive GPU semantic forces that cluster nodes spatially, and are rendered with depth-coded colours and semantic zoom levels on the client.*
+*Integration path: OWL axioms travel through Whelk inference, are stored as SUBCLASS_OF edges in the embedded Oxigraph store, drive GPU semantic forces that cluster nodes spatially, and are rendered with depth-coded colours and semantic zoom levels on the client.*
 
 ## Additional Resources
 

@@ -13,6 +13,14 @@ difficulty-level: advanced
 
 # Neo4j Integration - Quick Start Guide
 
+> **OBSOLETE (ADR-11)**: Neo4j has been **removed** from VisionClaw. The graph store is
+> now an **embedded Oxigraph** RDF triple store (W3C SPARQL 1.1, RocksDB-backed,
+> in-process — no Bolt, no Cypher, no separate container). Everything below — the
+> `Neo4jAdapter`, Cypher examples, `NEO4J_*` env vars, Bolt ports — no longer applies.
+> See [ADR-11 — Persistence Strategy Migration](../migration-sprint/11-persistence-migration/ADR-11.md)
+> and the [Deployment Guide § Graph Store (Oxigraph)](../how-to/deployment-guide.md).
+> This tutorial is kept only as historical reference and is a candidate for deletion.
+
 ## What's New
 
 Neo4j as the sole graph database for advanced graph analytics:
@@ -155,7 +163,7 @@ cargo run --bin sync-neo4j -- --dry-run
 Add Cypher query endpoints to your Actix server:
 
 ```rust
-use webxr::handlers::cypher-query-handler;
+use visionclaw_server::handlers::cypher-query-handler; // NOTE: removed in ADR-11
 
 // In main.rs or server setup
 .configure(cypher-query-handler::configure-routes)
@@ -164,7 +172,7 @@ use webxr::handlers::cypher-query-handler;
 ### 2. Repository
 
 ```rust
-use webxr::adapters::{UnifiedGraphRepository, Neo4jAdapter, Neo4jConfig};
+use visionclaw_server::adapters::{UnifiedGraphRepository, Neo4jAdapter, Neo4jConfig}; // NOTE: Neo4j* removed in ADR-11
 
 // Initialize
 let neo4j = Arc::new(Neo4jAdapter::new(Neo4jConfig::default()).await?);

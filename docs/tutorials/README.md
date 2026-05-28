@@ -53,16 +53,14 @@ Create your first 3D knowledge graph and deploy multi-agent workflows — with a
 - Enable GPU physics and watch the layout evolve
 - Launch AI agents and monitor execution in real-time
 
-### 4. Neo4j Integration
+### 4. Graph Store
 
-**[Neo4j Basics](neo4j-basics.md)**
+**[Neo4j Basics](neo4j-basics.md)** — OBSOLETE (ADR-11)
 
-Add advanced graph analytics with Neo4j dual persistence.
-
-- Quick setup (3 steps)
-- Example Cypher queries
-- Performance comparison
-- Integration points
+> Neo4j has been removed. The graph store is now an embedded Oxigraph RDF triple
+> store running in-process inside the Rust backend (W3C SPARQL 1.1, RocksDB-backed).
+> There is no separate database to set up. This tutorial is retained only as a
+> historical reference and is a candidate for deletion.
 
 ## Quick Links
 

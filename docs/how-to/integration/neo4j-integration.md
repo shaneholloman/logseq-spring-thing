@@ -15,7 +15,17 @@ difficulty-level: advanced
 
 # Neo4j Integration Guide
 
-**Status**: ✅ Production (Primary Database)
+> **OBSOLETE / REMOVED (ADR-11)**: Neo4j has been **removed** from VisionClaw. The graph store is
+> now an **embedded Oxigraph** RDF triple store (W3C SPARQL 1.1, RocksDB-backed, in-process — no
+> Bolt, no Cypher engine, no separate container) and settings persist in SQLite
+> (`SqliteSettingsRepository`). Everything below — running a Neo4j container, `NEO4J_*` env vars,
+> Bolt ports (7474/7687), the `Neo4jAdapter`, Cypher examples — **no longer applies**. To migrate an
+> existing Neo4j dataset, use the standalone tool `tools/migrate-neo4j-to-oxigraph`. See
+> [ADR-11 — Persistence Strategy Migration](../../migration-sprint/11-persistence-migration/ADR-11.md)
+> and the [Deployment Guide § Graph Store (Oxigraph)](../deployment-guide.md). **This document is
+> retained only as historical reference and is a candidate for deletion.**
+
+**Status**: ⛔ OBSOLETE — superseded by embedded Oxigraph (ADR-11). Historical only.
 **Last Updated**: November 6, 2025
 
 ---

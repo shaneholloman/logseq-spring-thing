@@ -18,7 +18,6 @@ updated-date: 2025-12-18
 difficulty-level: intermediate
 dependencies:
   - Docker installation
-  - Neo4j database
 ---
 
 # What is VisionClaw?
@@ -170,7 +169,7 @@ Transform chaos into structure:
 VisionClaw combines cutting-edge technologies:
 
 - **Backend:** Rust + Actix Web (hexagonal architecture, CQRS pattern)
-- **Database:** Neo4j 5.13 graph database (primary persistence layer)
+- **Graph store:** embedded Oxigraph RDF triple store — in-process, RocksDB-backed, W3C SPARQL 1.1 (primary persistence layer; settings in SQLite) — ADR-11
 - **Frontend:** React + Three.js/React Three Fiber (WebGL 3D rendering)
 - **GPU Compute:** CUDA 12.4 (39 custom kernels for physics, clustering, pathfinding)
 - **AI Orchestration:** MCP Protocol + Claude (50+ concurrent specialist agents)
@@ -184,7 +183,7 @@ VisionClaw combines cutting-edge technologies:
 git clone https://github.com/DreamLab-AI/VisionClaw.git
 cd VisionClaw
 cp .env.example .env
-# Edit .env with your NEO4J_PASSWORD
+# Edit .env (set JWT_SECRET; the graph store is embedded — no DB password needed, ADR-11)
 docker-compose --profile dev up -d
 ```
 
@@ -225,7 +224,7 @@ For custom deployments or development, VisionClaw supports:
 VisionClaw represents the future of collaborative knowledge work—where AI agents continuously discover insights, teams collaborate in immersive 3D spaces, and your data remains completely under your control.
 
 **Current Status (v2.0.0 - November 2025):**
-- ✅ Complete Neo4j migration
+- ✅ Embedded Oxigraph graph store (Neo4j removed — ADR-11)
 - ✅ 50+ concurrent AI agents
 - ✅ GPU acceleration (39 CUDA kernels)
 - ✅ Meta Quest 3 support (Beta)

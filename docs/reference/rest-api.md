@@ -212,13 +212,13 @@ VisionClaw supports three authentication modes via `AccessLevel` enum:
 sequenceDiagram
     participant Client
     participant API as VisionClaw API
-    participant Neo4j
+    participant Oxigraph as Oxigraph (embedded)
     participant Solid as Solid Pod
 
     Client->>API: GET /api/graph/data (optional auth)
     API->>API: Check auth level + caller pubkey
-    API->>Neo4j: Query graph data (filtered by visibility)
-    Neo4j-->>API: Public nodes (all) + private nodes (if caller owns)
+    API->>Oxigraph: Query graph data (filtered by visibility)
+    Oxigraph-->>API: Public nodes (all) + private nodes (if caller owns)
     API->>Solid: Fetch user overlay (if authenticated)
     Solid-->>API: Pod data
     API-->>Client: Filtered graph response
@@ -957,10 +957,10 @@ Connected components computation statistics.
 
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/api/nl-query/translate` | Translate natural language to Cypher |
+| POST | `/api/nl-query/translate` | Translate natural language to a Cypher-style query (resolved against the embedded Oxigraph store; `cypher` field kept for backwards compatibility, ADR-11) |
 | GET | `/api/nl-query/examples` | Get example queries |
-| POST | `/api/nl-query/explain` | Explain Cypher query |
-| POST | `/api/nl-query/validate` | Validate Cypher syntax |
+| POST | `/api/nl-query/explain` | Explain a query |
+| POST | `/api/nl-query/validate` | Validate query syntax |
 
 ### Semantic Pathfinding
 
@@ -976,7 +976,7 @@ Connected components computation statistics.
 
 ### Admin Sync — `/api/admin/sync/*`
 
-Trigger GitHub → Neo4j synchronization.
+Trigger GitHub → graph-store (embedded Oxigraph) synchronization.
 
 | Method | Path | Description |
 |--------|------|-------------|
@@ -986,7 +986,7 @@ Trigger GitHub → Neo4j synchronization.
 
 Set `FORCE_FULL_SYNC=1` environment variable to bypass SHA1 incremental filtering for a single run, then reset to 0.
 
-**Sync flow**: `GitHubSyncService::sync_graphs()` → `EnhancedContentAPI::list_markdown_files("")` → `KnowledgeGraphParser::parse()` → Neo4j.
+**Sync flow**: `GitHubSyncService::sync_graphs()` → `EnhancedContentAPI::list_markdown_files("")` → `KnowledgeGraphParser::parse()` → embedded Oxigraph store.
 
 Only files tagged `public:: true` become knowledge graph page nodes. Ontology data is extracted from all files with `### OntologyBlock`, regardless of `public:: true` status.
 
@@ -1208,9 +1208,9 @@ Content-Type: application/json
 Request a consolidated debrief. On success, the `BeadLifecycleOrchestrator` (ADR-034)
 creates a bead in `Created` state, publishes a Nostr kind 30001 provenance event with
 retry (configurable via `BEAD_RETRY_*` env vars), persists the `(:NostrEvent)-[:PROVENANCE_OF]->(:Bead)`
-record to Neo4j, and tracks the full lifecycle. Every publish attempt produces a typed
-`BeadOutcome` (Success, RelayTimeout, RelayRejected, RelayUnreachable, SigningFailed,
-Neo4jWriteFailed, BridgeFailed) — no silent failures. Requires `VISIONCLAW_NOSTR_PRIVKEY`.
+provenance record to the embedded Oxigraph store, and tracks the full lifecycle. Every publish
+attempt produces a typed `BeadOutcome` (Success, RelayTimeout, RelayRejected, RelayUnreachable,
+SigningFailed, GraphStoreWriteFailed, BridgeFailed) — no silent failures. Requires `VISIONCLAW_NOSTR_PRIVKEY`.
 
 ```http
 POST /api/briefs/brief-abc123/debrief
@@ -1517,20 +1517,26 @@ WHERE { <#me> foaf:name ?old }
 
 ### Health and Monitoring
 
-Configured in `consolidated_health_handler.rs`.
+Configured in `consolidated_health_handler.rs` (mounted under the `/api` scope).
 
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/health` | Basic health check |
-| GET | `/api/health/detailed` | Detailed health (DB, GPU, actors) |
-| GET | `/api/health/metrics` | Prometheus-compatible metrics |
+| Method | Path | Kind | Description |
+|--------|------|------|-------------|
+| GET | `/api/healthz` | Liveness | Returns `200 {"status":"alive"}` immediately with no subsystem checks. Use for the container/orchestrator liveness probe |
+| GET | `/api/readyz` | Readiness | Returns `200 {"status":"ready"}` when the app can serve traffic; returns `503 {"status":"not_ready","reason":...}` while the app is in a DEGRADED state (e.g. the embedded Oxigraph store failed to populate). Use for the readiness/healthcheck probe |
+| GET | `/api/health` | Diagnostics | Consolidated diagnostic health (graph store, GPU, actors) |
+| GET | `/api/health/physics` | Diagnostics | Physics-simulation health and parameter sanity |
+| GET | `/api/health/metrics` | Diagnostics | Prometheus-compatible metrics |
 
-**Response** (200 OK):
+> **Probe vs diagnostic**: `/api/healthz` and `/api/readyz` are the cheap probes for orchestration —
+> `healthz` never fails while the process is up; `readyz` reflects DEGRADED startup state. `/api/health`
+> is the richer diagnostic endpoint and may do work, so it is not suitable as a high-frequency probe.
+
+**`/api/health` response** (200 OK):
 
 ```json
 {
   "status": "healthy",
-  "neo4j": "connected",
+  "graph_store": "connected",
   "gpu": "available",
   "actors": {
     "physics_orchestrator": "running",

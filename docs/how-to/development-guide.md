@@ -78,7 +78,7 @@ docker network create visionclaw_network
 
 # Configure environment
 cp .env.example .env
-# Edit .env -- minimum: set NEO4J_PASSWORD and JWT_SECRET
+# Edit .env -- minimum: set JWT_SECRET (graph store is embedded Oxigraph; no DB password — ADR-11)
 nano .env
 
 # Install frontend dependencies
@@ -103,8 +103,9 @@ curl http://localhost:3001/api/health
 | URL | Purpose |
 |-----|---------|
 | `http://localhost:3001` | VisionClaw UI (via Nginx) |
-| `http://localhost:3001/api/health` | Backend health check |
-| `http://localhost:7474` | Neo4j Browser |
+| `http://localhost:3001/api/health` | Backend health check (diagnostics) |
+| `http://localhost:3001/api/healthz` | Liveness probe |
+| `http://localhost:3001/api/readyz` | Readiness probe (503 while DEGRADED) |
 | `ws://localhost:3001/wss` | Graph data WebSocket |
 | `ws://localhost:3001/ws/speech` | Voice WebSocket |
 
@@ -145,7 +146,7 @@ curl http://localhost:3001/api/health
 
 ## 2. Project Structure
 
-VisionClaw is a Rust/Actix-web backend with a React 19 + Three.js frontend, Neo4j graph database, and CUDA GPU physics kernels. The backend follows hexagonal (ports and adapters) architecture.
+VisionClaw is a Rust/Actix-web backend with a React 19 + Three.js frontend, an embedded Oxigraph RDF triple store (in-process, RocksDB-backed; ADR-11), and CUDA GPU physics kernels. The backend follows hexagonal (ports and adapters) architecture.
 
 ### Repository Root
 
@@ -190,9 +191,10 @@ src/
 │   └── inference_engine.rs      # OWL inference engine trait
 │
 ├── adapters/                    # Concrete port implementations
-│   ├── neo4j_adapter.rs         # Neo4j database driver
+│   ├── graph_repository.rs      # OxigraphGraphRepository (embedded RDF store)
+│   ├── sqlite_settings_repository.rs # SQLite-backed settings persistence
 │   ├── actix_physics_adapter.rs # Actix actor-based physics
-│   ├── whelk_inference_engine.rs # Whelk OWL reasoner
+│   ├── mod.rs                   # OxigraphOntologyRepository + whelk_inference_engine (inline modules)
 │   └── gpu_semantic_analyzer.rs # GPU-accelerated semantic adapter
 │
 ├── handlers/                    # HTTP and WebSocket request handlers
@@ -357,7 +359,7 @@ graph LR
     end
 
     subgraph "Outbound Adapters"
-        Neo4j["Neo4j Adapter"]
+        Store["Oxigraph + SQLite\nAdapters"]
         GPU["GPU Adapter\n(CUDA kernels)"]
         Whelk["Whelk Reasoner\nAdapter"]
         GitHub["GitHub Adapter"]
@@ -368,7 +370,7 @@ graph LR
     MCP --> Services
     Services --> Ports
     Actors --> Ports
-    Ports --> Neo4j
+    Ports --> Store
     Ports --> GPU
     Ports --> Whelk
     Ports --> GitHub
@@ -502,8 +504,8 @@ use thiserror::Error;
 pub enum GraphError {
     #[error("node not found: {0}")]
     NodeNotFound(String),
-    #[error("Neo4j error: {0}")]
-    DatabaseError(#[from] neo4rs::Error),
+    #[error("graph store error: {0}")]
+    DatabaseError(#[from] oxigraph::store::StorageError),
 }
 ```
 
@@ -709,7 +711,7 @@ cargo test -- --nocapture
 | `tests/ontology_smoke_test.rs` | Ontology loading and OWL parsing |
 | `tests/ontology_agent_integration_test.rs` | Ontology actor lifecycle |
 | `tests/ontology_reasoning_integration_test.rs` | Whelk reasoning engine |
-| `tests/neo4j_settings_integration_tests.rs` | Settings persistence to Neo4j |
+| `tests/settings_repository_integration_tests.rs` | Settings persistence to SQLite (ADR-11) |
 | `tests/settings_validation_tests.rs` | Settings schema validation |
 | `tests/voice_agent_integration_test.rs` | Voice pipeline integration |
 | `tests/gpu_safety_tests.rs` | GPU memory management and fallback |
@@ -862,14 +864,14 @@ pub trait ClusteringPort: Send + Sync {
 }
 ```
 
-**Step 3 — Implement the adapter** (uses Neo4j or in-memory):
+**Step 3 — Implement the adapter** (queries the embedded Oxigraph store or computes in-memory):
 
 ```rust
 // src/adapters/clustering_adapter.rs
 #[async_trait]
-impl ClusteringPort for Neo4jClusteringAdapter {
+impl ClusteringPort for OxigraphClusteringAdapter {
     async fn compute_clusters(&self, min_cluster_size: usize) -> anyhow::Result<Vec<ClusterResult>> {
-        // query Neo4j or compute in-memory
+        // SPARQL query against the embedded Oxigraph store, or compute in-memory
     }
 }
 ```
@@ -952,13 +954,13 @@ state.sim_params.lock().unwrap().damping = 0.9; // avoid
 
 ### Repository Pattern
 
-All Neo4j queries go through the `GraphRepository` adapter, not raw Cypher in handlers:
+All graph-store access goes through the `GraphRepository` port (backed by `OxigraphGraphRepository`), not raw SPARQL in handlers:
 
 ```rust
 // Via port trait
 let nodes = state.graph_repo.get_all_nodes().await?;
 
-// Never call Neo4j directly from a handler
+// Never touch the Oxigraph store directly from a handler
 ```
 
 ### Builder Pattern for Complex Types

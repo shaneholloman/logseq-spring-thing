@@ -24,9 +24,9 @@ VisionClaw maintains two distinct populations of nodes, and understanding the di
 
 A **KGNode** is a narrative node — a Logseq page authored with `public:: true`. It is part of your personal or team knowledge graph: exploratory, fast-changing, opinionated. It can be edited every hour without ceremony. An **OntologyClass** is a vocabulary node — a named class in the shared OWL 2 T-Box (the "terminology box", the schema). It changes slowly, only through a broker-reviewed pull request. It is what Whelk reasons over, what agents cite when they make structural claims, and what auditors trace when they need provenance.
 
-The two tiers share one identity scheme (`vc:{domain}/{slug}`), so any external consumer sees a single namespace. But they live separately in Neo4j: `KGNode` and `OntologyClass` are distinct labels, and a `BRIDGE_TO` edge carries the relationship between a note and its potential or confirmed class. Promotion is never a rewrite — the note keeps existing, the class keeps existing, and the bridge edge between them advances from `candidate` through `promoted`. This means rollback is cheap: change the edge label, not the nodes.
+The two tiers share one identity scheme (`vc:{domain}/{slug}`), so any external consumer sees a single namespace. But they live separately in the graph store (embedded Oxigraph, ADR-11): `KGNode` and `OntologyClass` are distinct logical types, and a `BRIDGE_TO` edge carries the relationship between a note and its potential or confirmed class. Promotion is never a rewrite — the note keeps existing, the class keeps existing, and the bridge edge between them advances from `candidate` through `promoted`. This means rollback is cheap: change the edge label, not the nodes.
 
-[ADR-048](../adr/ADR-048-dual-tier-identity-model.md) documents the full identity model, the IRI scheme, and the Neo4j schema additions.
+[ADR-048](../adr/ADR-048-dual-tier-identity-model.md) documents the full identity model, the IRI scheme, and the graph schema additions (now realised as RDF in the embedded Oxigraph store, ADR-11).
 
 ---
 

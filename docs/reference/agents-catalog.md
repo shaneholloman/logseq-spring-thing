@@ -227,7 +227,7 @@ claude "Create a Grafana dashboard for agent telemetry metrics"
 # Chrome DevTools
 "Use Chrome DevTools to debug http://localhost:3001"
 "Capture a performance trace of the graph rendering"
-"Inspect network requests to the Neo4j API"
+"Inspect network requests to the graph API"
 ```
 
 ---
@@ -342,7 +342,7 @@ flowchart LR
     B --> C{Tool Router}
     C -->|read-only| D[OntologyQueryService]
     C -->|mutating| E[OntologyMutationService]
-    D --> F[(Neo4j)]
+    D --> F[(Oxigraph\nembedded)]
     D --> G[Whelk EL++]
     E --> F
     E --> G
@@ -353,7 +353,7 @@ flowchart LR
 |---|------|--------------|:-------:|---------|
 | 1 | `ontology_discover` | `POST /api/ontology-agent/discover` | No | Keyword search with Whelk inference expansion |
 | 2 | `ontology_read` | `POST /api/ontology-agent/read` | No | Fetch enriched note by IRI |
-| 3 | `ontology_query` | `POST /api/ontology-agent/query` | No | Execute validated Cypher against Neo4j |
+| 3 | `ontology_query` | `POST /api/ontology-agent/query` | No | Execute a validated graph query against the embedded Oxigraph store (accepts a Cypher-style `cypher` field for backwards compatibility, ADR-11) |
 | 4 | `ontology_traverse` | `POST /api/ontology-agent/traverse` | No | BFS walk from a starting class |
 | 5 | `ontology_propose` | `POST /api/ontology-agent/propose` | Yes | Create or amend an ontology note |
 | 6 | `ontology_validate` | `POST /api/ontology-agent/validate` | No | Check axiom consistency via Whelk |

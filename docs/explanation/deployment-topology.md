@@ -3,7 +3,7 @@ title: Deployment Topology
 description: Multi-container orchestration architecture — services, ports, networks, dependencies
 category: explanation
 difficulty-level: intermediate
-updated-date: 2026-04-09
+updated-date: 2026-05-28
 ---
 
 # Deployment Topology
@@ -20,10 +20,9 @@ The table below lists every service defined across the compose files. The `profi
 
 | Service | Port(s) | Role | Profile | depends_on |
 |---------|---------|------|---------|------------|
-| `nginx` | 3001 (HTTP) | Reverse proxy — routes `/api/*` to Actix-web, `/` to Vite; terminates TLS in prod | dev | visionclaw, webxr |
-| `visionclaw` / `webxr` | 4000 (HTTP), 9090 (WS), 9500 (MCP TCP) | Rust Actix-web backend — graph API, physics orchestration, WebSocket binary stream, MCP server | dev, prod | neo4j (healthy), postgres (healthy) |
+| `nginx` | 3001 (HTTP) | Reverse proxy — routes `/api/*` to Actix-web, `/` to Vite; terminates TLS in prod | dev | visionclaw |
+| `visionclaw` | 4000 (HTTP), 9090 (WS), 9500 (MCP TCP) | Rust Actix-web backend (`visionclaw-server` binary, `visionclaw_container`) — graph API, physics orchestration, WebSocket binary stream, MCP server. Embeds the Oxigraph RDF triple store in-process (ADR-11), so there is no separate graph-database container | dev, prod | postgres (healthy) |
 | `vite` | 5173 (HTTP), 24678 (WS HMR) | Vite dev server — Three.js/React frontend with Hot Module Replacement | dev | visionclaw |
-| `neo4j` | 7474 (HTTP browser UI), 7687 (Bolt) | Graph database — stores knowledge graph nodes, edges, ontology, agent nodes | all | — |
 | `jss` | 3030 (HTTP), 9090 (Solid WS) | JavaScript Solid Server — Linked Data Platform for per-user RDF pods | all | visionclaw |
 | `solid-pod` | 9090 (HTTP) | Solid pod storage endpoint (separate from JSS in some deployments) | prod | jss |
 | `postgres` | 5432 (TCP) | PostgreSQL 16 — relational store for application state, session data, RBAC | all | — |
@@ -54,12 +53,11 @@ graph TB
     end
 
     subgraph Compute ["Compute Tier"]
-        VC["visionclaw / webxr\nHTTP :4000\nWS :9090\nMCP :9500"]
+        VC["visionclaw\nHTTP :4000\nWS :9090\nMCP :9500\n(embeds Oxigraph store)"]
         Vite["vite dev server\n:5173 / HMR :24678"]
     end
 
     subgraph DataStores ["Data Stores"]
-        Neo4j["neo4j\nBolt :7687\nBrowser :7474"]
         PG["postgres\n:5432"]
         Redis["redis\n:6379"]
         QD["qdrant\n:6333 REST\n:6334 gRPC"]
@@ -87,7 +85,6 @@ graph TB
     Nginx -->|":4000"| VC
     Nginx -->|":5173"| Vite
 
-    VC -->|"Bolt :7687"| Neo4j
     VC -->|":5432"| PG
     VC -->|":6379"| Redis
     VC -->|":6333"| QD
@@ -109,7 +106,7 @@ graph TB
 
     class Nginx perimeter
     class VC,Vite compute
-    class Neo4j,PG,Redis,QD,OS store
+    class PG,Redis,QD,OS store
     class JSS solid
     class LK,Whisper,Kokoro voice
     class RUV external
@@ -121,17 +118,16 @@ In development, Nginx proxies both the Vite dev server (for the frontend) and th
 
 ## Service Dependency Chain
 
-Container startup order matters because the Rust backend performs database schema migrations and Neo4j constraint creation at startup. Starting the backend before its dependencies results in crash-restart loops. The diagram below shows which services block which.
+Container startup order matters because the Rust backend opens its embedded Oxigraph dataset and populates it from local files at startup, then applies its PostgreSQL schema migrations. Starting the backend before its relational dependency results in crash-restart loops. The diagram below shows which services block which.
 
 ```mermaid
 graph LR
     PG["postgres\n(healthcheck: pg_isready)"]
     Redis["redis\n(healthcheck: redis-cli ping)"]
-    Neo4j["neo4j\n(healthcheck: HTTP :7474)"]
     QD["qdrant"]
     OS["opensearch"]
 
-    VC["visionclaw / webxr\n(depends_on: postgres healthy,\nneo4j healthy)"]
+    VC["visionclaw\n(depends_on: postgres healthy;\nembeds Oxigraph store)"]
     JSS["jss\n(depends_on: visionclaw)"]
     Vite["vite\n(depends_on: visionclaw)"]
     Nginx["nginx\n(depends_on: visionclaw)"]
@@ -141,7 +137,6 @@ graph LR
 
     PG -->|"must be healthy"| VC
     Redis -->|"must be healthy"| VC
-    Neo4j -->|"must be healthy"| VC
     QD --> VC
     OS --> VC
 
@@ -153,18 +148,18 @@ graph LR
 
     classDef blocker fill:#ffccbc,stroke:#bf360c
     classDef blocked fill:#dcedc8,stroke:#33691e
-    class PG,Redis,Neo4j,QD,OS blocker
+    class PG,Redis,QD,OS blocker
     class VC,JSS,Vite,Nginx,Whisper,Kokoro blocked
 ```
 
 The critical path at startup is:
 
-1. `postgres`, `redis`, `neo4j`, `qdrant`, `opensearch` — all start in parallel, no inter-dependencies.
-2. `visionclaw` starts only after `postgres` and `neo4j` pass their health checks (condition: `service_healthy`). On a cold machine this typically takes 30–45 seconds for Neo4j to complete JVM initialisation.
+1. `postgres`, `redis`, `qdrant`, `opensearch` — all start in parallel, no inter-dependencies. (There is no graph-database container; the graph store is embedded in the backend — ADR-11.)
+2. `visionclaw` starts only after `postgres` passes its health check (condition: `service_healthy`). At boot it opens its embedded Oxigraph dataset and populates it from local files before serving graph data.
 3. `nginx`, `vite`, and `jss` start once `visionclaw` is running.
 4. `livekit` starts independently; `turbo-whisper` waits for it.
 
-If Neo4j fails its health check after the configured `retries` (default: 10, with 10-second intervals), the `visionclaw` container will exit and Docker will not restart it until Neo4j recovers. This is intentional — a backend running without a graph database would serve corrupt or empty graph data.
+If the embedded Oxigraph store fails to populate at startup, the backend enters a **DEGRADED** state (it does not silently serve empty graph data) — see `app_state.set_degraded(...)` in `src/main.rs` and the `/readyz` readiness probe.
 
 ---
 
@@ -177,7 +172,7 @@ sequenceDiagram
     actor Browser
     participant Nginx as nginx :3001
     participant VC as visionclaw :4000
-    participant Neo4j as neo4j :7687
+    participant OXI as Oxigraph (embedded, in-process)
     participant PG as postgres :5432
     participant RUV as ruvector-postgres
     participant Redis as redis :6379
@@ -188,8 +183,8 @@ sequenceDiagram
     VC->>Redis: GET session:{token} (auth check)
     Redis-->>VC: session payload (JWT claims)
 
-    VC->>Neo4j: Bolt MATCH (n) RETURN n LIMIT 5000
-    Neo4j-->>VC: node + edge records (streaming Bolt)
+    VC->>OXI: SPARQL SELECT over named graphs (in-process call)
+    OXI-->>VC: node + edge solutions
 
     VC->>PG: SELECT * FROM graph_metadata WHERE graph_id=$1
     PG-->>VC: graph metadata row
@@ -214,7 +209,7 @@ sequenceDiagram
 Key observations from this flow:
 
 - **Auth is checked against Redis**, not the database, on every request. This keeps the hot path sub-millisecond even under high request volume.
-- **Graph data comes from Neo4j via Bolt**, not REST. The Bolt protocol is binary and supports streaming, so large graphs (50k+ nodes) do not require the backend to buffer the full result set before responding.
+- **Graph data comes from the embedded Oxigraph triple store** (ADR-11), queried in-process via SPARQL over named graphs — there is no network round-trip to a separate graph-database container. Live node positions are held in RAM by the physics actors and only snapshotted back to Oxigraph periodically; the hot loop never reads positions back from Oxigraph (cold start does, so layout resumes rather than restarting).
 - **Physics position data flows over a dedicated WebSocket connection**, not HTTP polling. The binary frame format encodes each node as a `u32` ID followed by three `f32` values (x, y, z), keeping frames small even for graphs with thousands of nodes.
 - **Agent memory writes go to RuVector**, the external PostgreSQL instance. These writes run through the MiniLM-L6-v2 embedding pipeline so the stored entries are visible to HNSW semantic search. Plain SQL inserts that bypass this pipeline produce entries invisible to vector search.
 
@@ -229,9 +224,8 @@ Docker Compose profiles allow a single compose file to describe multiple deploym
 Activated with `--profile dev`. Starts:
 
 - `nginx` (reverse proxy on :3001)
-- `visionclaw` / `webxr` (Rust backend compiled on startup from source — allow ~5 minutes on first run)
+- `visionclaw` (`visionclaw-server` Rust backend, compiled on startup from source — allow ~5 minutes on first run; embeds the Oxigraph store in-process)
 - `vite` (dev server with HMR on :5173 and :24678)
-- `neo4j`
 - `postgres`
 - `redis`
 - `qdrant`
@@ -250,8 +244,8 @@ docker compose -f docker-compose.unified.yml --profile dev up -d
 Activated with `--profile prod`. Starts:
 
 - `nginx` (serving pre-built static assets + proxying API)
-- `visionclaw` (pre-compiled binary baked into the image — starts in seconds)
-- `neo4j`, `postgres`, `redis`, `qdrant`, `opensearch`
+- `visionclaw` (pre-compiled `visionclaw-server` binary baked into the image — starts in seconds; embeds the Oxigraph store in-process)
+- `postgres`, `redis`, `qdrant`, `opensearch`
 - `jss`
 
 No Vite container runs in production. Static assets are built during the image build step (`npm run build`) and copied into the Nginx image layer. The Rust binary is also compiled at image build time, not at container startup.
@@ -294,13 +288,9 @@ Persistent data is managed through named Docker volumes. Bind mounts (host path 
 
 | Volume | Container path | Purpose | Profile |
 |--------|---------------|---------|---------|
-| `neo4j-data` | `/data` in `neo4j` | Graph database store — nodes, relationships, properties | all |
-| `neo4j-logs` | `/logs` in `neo4j` | Neo4j query and server logs | all |
-| `neo4j-conf` | `/conf` in `neo4j` | Custom Neo4j configuration overrides (`neo4j.conf`) | all |
-| `neo4j-plugins` | `/plugins` in `neo4j` | APOC plugin JAR and other Neo4j extensions | all |
 | `postgres_data` | `/var/lib/postgresql/data` in `postgres` | PostgreSQL data directory — all relational tables | all |
 | `redis_data` | `/data` in `redis` | Redis persistence (AOF or RDB snapshots) | all |
-| `visionclaw_data` | `/app/data` in `visionclaw` | Application data — downloaded markdown, metadata, processed knowledge files | all |
+| `visionclaw_data` | `/app/data` in `visionclaw` | Application data — downloaded markdown, metadata, processed knowledge files, **and the embedded Oxigraph dataset** (`/app/data/oxigraph/`, RocksDB column families — ADR-11) | all |
 | `visionclaw_logs` | `/app/logs` in `visionclaw` | Rust tracing output, Nginx access logs | all |
 | `npm-cache` | `/root/.npm` in `visionclaw` | npm package cache (speeds up reinstalls) | dev |
 | `cargo-cache` | `/usr/local/cargo/registry` in `visionclaw` | Cargo registry cache (avoids re-downloading crates) | dev |
@@ -343,7 +333,7 @@ When running multiple `visionclaw` replicas, the WebSocket physics broadcast pat
 
 | Service | Constraint | Path to scale |
 |---------|------------|--------------|
-| `neo4j` | Single-writer graph database; read replicas available in Neo4j Enterprise | Neo4j Causal Cluster (Enterprise licence required) for multi-writer HA |
+| Oxigraph store (embedded in `visionclaw`) | Single-writer RocksDB-backed triple store opened in-process; it is not a separate, independently scalable service (ADR-11) | Scaling the graph store means scaling the backend it lives inside — i.e. a single graph-authoritative `visionclaw` instance. A separately replicated SPARQL endpoint would be a future architecture change, not a config toggle |
 | `postgres` | Single primary; read replicas possible with streaming replication | Patroni or Citus for HA; PgBouncer for connection pooling at scale |
 | `redis` | Single instance in default config | Redis Cluster or Redis Sentinel for HA; Valkey is a drop-in alternative |
 | `qdrant` | Single node in default config | QDrant distributed mode with a collection replication factor ≥ 2 |
@@ -360,7 +350,7 @@ The GPU physics engine (`visionclaw` with CUDA) is a special case. The `ForceCom
 
 For step-by-step deployment instructions, environment variable values, and troubleshooting commands, see:
 
-- [Deployment Guide](../how-to/deployment-guide.md) — prerequisites, quick start, profile activation commands, Neo4j configuration, production hardening checklist
+- [Deployment Guide](../how-to/deployment-guide.md) — prerequisites, quick start, profile activation commands, production hardening checklist
 - [Docker Compose Options Reference](../reference/configuration/docker-compose-options.md) — full YAML snippets for every service configuration option, GPU setup, resource limits, logging drivers
 - [Environment Variables Reference](../reference/configuration/environment-variables.md) — complete variable table with types, defaults, and examples for all services
 - [System Overview](./system-overview.md) — higher-level architectural context, technology choices, and bounded context diagram

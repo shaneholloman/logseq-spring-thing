@@ -8,13 +8,21 @@ updated-date: 2026-04-10
 
 # VisionClaw Backend Architecture — Hexagonal CQRS
 
-VisionClaw's backend is built on hexagonal (ports-and-adapters) architecture combined with Command Query Responsibility Segregation (CQRS). The domain core is insulated from infrastructure by 9 port traits and 12 adapter implementations. All state mutations and reads pass through 114 typed CQRS handlers, routed via a type-safe bus.
+> **Adapter layer updated (ADR-11)**: the persistence adapters described below changed. The graph
+> store is now an **embedded Oxigraph** RDF triple store (`OxigraphGraphRepository`,
+> `OxigraphOntologyRepository`) and settings persist in SQLite (`SqliteSettingsRepository`). The
+> former `Neo4jAdapter` / `Neo4jGraphRepository` / `Neo4jSettingsRepository` /
+> `Neo4jOntologyRepository` are **deleted**, and Bolt/Cypher no longer apply. The hexagonal
+> *structure* is unchanged — only the infrastructure-side adapters were swapped — so wherever this
+> document says "Neo4j adapter", read "Oxigraph/SQLite adapter".
+
+VisionClaw's backend is built on hexagonal (ports-and-adapters) architecture combined with Command Query Responsibility Segregation (CQRS). The domain core is insulated from infrastructure by 9 port traits and their adapter implementations. All state mutations and reads pass through 114 typed CQRS handlers, routed via a type-safe bus.
 
 ---
 
 ## 1. Architecture Overview
 
-The system is divided into four concentric layers. The Presentation layer (Actix actors, REST handlers, WebSocket handlers) receives external inputs and dispatches them as commands or queries. The Application layer hosts the CQRS bus and 114 handlers. The Domain layer defines 9 port traits — technology-agnostic capability boundaries. The Infrastructure layer provides adapter implementations against Neo4j, CUDA, Actix, GitHub, and Whelk.
+The system is divided into four concentric layers. The Presentation layer (Actix actors, REST handlers, WebSocket handlers) receives external inputs and dispatches them as commands or queries. The Application layer hosts the CQRS bus and 114 handlers. The Domain layer defines 9 port traits — technology-agnostic capability boundaries. The Infrastructure layer provides adapter implementations against the embedded Oxigraph store, SQLite, CUDA, Actix, GitHub, and Whelk.
 
 ```mermaid
 graph TB
@@ -41,8 +49,8 @@ graph TB
         GSA["GpuSemanticAnalyzer"]
     end
 
-    subgraph "Infrastructure Layer (12 Adapters)"
-        Neo4j["Neo4j Adapters (5)<br/>Bolt + Cypher"]
+    subgraph "Infrastructure Layer (Adapters)"
+        Store["Oxigraph + SQLite Adapters<br/>OxigraphGraphRepository, OxigraphOntologyRepository, SqliteSettingsRepository"]
         GPU["GPU/CUDA Adapters (2)<br/>CUDA kernels"]
         Actix["Actix Bridge Adapters (5)<br/>Actor message translation"]
     end
@@ -63,10 +71,10 @@ graph TB
     QB --> GPA
     QB --> GSA
 
-    Neo4j -.->|implements| OR
-    Neo4j -.->|implements| KGR
-    Neo4j -.->|implements| SR
-    Neo4j -.->|implements| GR
+    Store -.->|implements| OR
+    Store -.->|implements| KGR
+    Store -.->|implements| SR
+    Store -.->|implements| GR
     GPU -.->|implements| GPA
     GPU -.->|implements| GSA
     Actix -.->|implements| PS
@@ -80,9 +88,9 @@ The architecture was completed in December 2025 after migrating from a monolithi
 | Before (Oct 2025) | After (Dec 2025) |
 |---|---|
 | Monolithic GraphServiceActor | 21 modular actors |
-| Stale in-memory cache | Neo4j as source of truth |
+| Stale in-memory cache | Embedded Oxigraph store as source of truth |
 | No CQRS separation | 54 directives + 60 queries |
-| SQLite fragmentation | Unified Neo4j database |
+| Fragmented persistence | Unified embedded Oxigraph store (+ SQLite settings) |
 | Tight coupling | 9 ports, 12 adapters |
 
 ---
@@ -95,7 +103,7 @@ All ports live in `src/ports/`. Every trait uses `#[async_trait]` and requires `
 
 **File**: `src/ports/ontology_repository.rs`
 **Purpose**: OWL class, property, and axiom storage; validation; inference result persistence.
-**Implemented by**: `Neo4jOntologyRepository`
+**Implemented by**: `OxigraphOntologyRepository`
 
 Key methods: `save_class`, `get_classes`, `save_axioms`, `get_axioms`, `save_inferred_axioms`, `validate_ontology`, `health_check`.
 
@@ -103,7 +111,7 @@ Key methods: `save_class`, `get_classes`, `save_axioms`, `get_axioms`, `save_inf
 
 **File**: `src/ports/knowledge_graph_repository.rs`
 **Purpose**: Main knowledge graph CRUD, batch operations, position persistence, node search.
-**Implemented by**: `Neo4jGraphRepository`, `ActorGraphRepository`
+**Implemented by**: `OxigraphGraphRepository`, `ActorGraphRepository`
 
 ```rust
 #[async_trait]
@@ -135,7 +143,7 @@ Key methods: `load_ontology`, `infer_axioms`, `check_consistency`, `classify_hie
 
 **File**: `src/ports/settings_repository.rs`
 **Purpose**: User and system configuration persistence with batch operations and physics profiles.
-**Implemented by**: `Neo4jSettingsRepository` (active), `SqliteSettingsRepository` (deprecated)
+**Implemented by**: `SqliteSettingsRepository` (active — ADR-11; the former `Neo4jSettingsRepository` was deleted)
 
 ```rust
 #[async_trait]
@@ -176,7 +184,7 @@ Key methods: `compute_pagerank`, `detect_communities`, `find_shortest_path`, `co
 
 **File**: `src/ports/graph_repository.rs`
 **Purpose**: Core graph node and edge access, used by actors and CQRS handlers for in-memory graph state.
-**Implemented by**: `Neo4jGraphRepository`, `ActorGraphRepository`
+**Implemented by**: `OxigraphGraphRepository`, `ActorGraphRepository`
 
 ```rust
 #[async_trait]
@@ -207,19 +215,21 @@ Key methods: `analyze_communities`, `detect_patterns`, `compute_similarity`, `sc
 
 ---
 
-## 3. The 12 Adapters
+## 3. The Adapters
 
-Adapters live in `src/adapters/` and are injected via `Arc<dyn PortTrait>` at startup. Swapping a Neo4j adapter for an in-memory test double requires no changes to the domain or application layers.
+Adapters live in `src/adapters/` and are injected via `Arc<dyn PortTrait>` at startup. Swapping a persistence adapter for an in-memory test double requires no changes to the domain or application layers.
 
-### Neo4j Adapters (5)
+### Persistence Adapters (Oxigraph + SQLite, ADR-11)
 
 | Adapter | Implements | Technology | Typical Latency |
 |---|---|---|---|
-| `Neo4jAdapter` | `KnowledgeGraphRepository` | Bolt protocol, Cypher | ~2ms simple query |
-| `Neo4jGraphRepository` | `GraphRepository` | Cypher queries | ~12ms full graph |
-| `Neo4jSettingsRepository` | `SettingsRepository` | Cypher + LRU cache | ~3ms (cached <0.1ms) |
-| `Neo4jOntologyRepository` | `OntologyRepository` | Graph storage, traversal | ~25ms traversal |
+| `OxigraphGraphRepository` | `GraphRepository`, `KnowledgeGraphRepository` | Embedded Oxigraph, SPARQL 1.1 (RocksDB-backed) | ~2ms simple, ~12ms full graph |
+| `OxigraphOntologyRepository` | `OntologyRepository` | Embedded Oxigraph, SPARQL traversal | ~25ms traversal |
+| `SqliteSettingsRepository` | `SettingsRepository` | SQLite + LRU cache | ~3ms (cached <0.1ms) |
 | `ActorGraphRepository` | `GraphRepository` | Actor message bridge | ~15ms (actor overhead) |
+
+> The former `Neo4jAdapter` / `Neo4jGraphRepository` / `Neo4jSettingsRepository` /
+> `Neo4jOntologyRepository` (Bolt + Cypher) were **deleted** in ADR-11.
 
 The `ActorGraphRepository` is notable: it implements the `GraphRepository` port by sending Actix messages to `GraphStateActor`. This allows non-actor code (CQRS handlers) to access actor-managed state through the standard port interface.
 
@@ -333,7 +343,7 @@ sequenceDiagram
     participant Bus as CommandBus
     participant Handler as Directive Handler
     participant Domain as Domain Validation
-    participant Repo as Neo4j Adapter
+    participant Repo as Oxigraph Adapter
     participant Events as Event Bus
 
     Client->>HTTP: POST /api/graph/nodes
@@ -367,7 +377,7 @@ sequenceDiagram
     participant HTTP as HTTP Adapter
     participant Bus as QueryBus
     participant Handler as Query Handler
-    participant Repo as Neo4j Adapter / Cache
+    participant Repo as Oxigraph Adapter / Cache
 
     Client->>HTTP: GET /api/graph/data
     HTTP->>Bus: dispatch(GetGraphDataQuery)
@@ -464,7 +474,7 @@ Errors are domain-typed at each layer. Port traits define their own error enums 
 
 | Layer | Error Type | Strategy |
 |---|---|---|
-| Adapter (Neo4j) | `RepositoryError::DatabaseError` | Retry 3× with backoff |
+| Adapter (Oxigraph) | `RepositoryError::DatabaseError` | Retry 3× with backoff |
 | Adapter (CUDA) | `GpuError::OutOfMemory` | Escalate to supervisor, CPU fallback |
 | Handler | `DomainError` | Return to bus, propagate to HTTP layer |
 | Bus | `BusError::NoHandler` | 500 Internal Server Error |
@@ -508,18 +518,16 @@ src/
 │   ├── physics_simulator.rs
 │   └── semantic_analyzer.rs
 │
-├── adapters/                 # Adapter implementations (12)
-│   ├── neo4j_graph_repository.rs
-│   ├── neo4j_settings_repository.rs
-│   ├── neo4j_ontology_repository.rs
+├── adapters/                 # Adapter implementations (ADR-11)
+│   ├── oxigraph_graph_repository.rs     # GraphRepository / KnowledgeGraphRepository (embedded Oxigraph)
+│   ├── oxigraph_ontology_repository      # OntologyRepository (module in mod.rs)
+│   ├── sqlite_settings_repository.rs    # SettingsRepository (SQLite)
 │   ├── actor_graph_repository.rs
-│   ├── gpu_semantic_analyzer_adapter.rs
+│   ├── gpu_semantic_analyzer.rs
 │   ├── actix_physics_adapter.rs
 │   ├── actix_semantic_adapter.rs
 │   ├── physics_orchestrator_adapter.rs
-│   ├── whelk_inference_engine.rs
-│   ├── actix_websocket_adapter.rs
-│   └── actix_http_adapter.rs
+│   └── whelk_inference_engine            # WhelkInferenceEngine (module in mod.rs)
 │
 └── infrastructure/           # Cross-cutting concerns
     ├── event_bus.rs
@@ -533,8 +541,8 @@ src/
 | Operation | Typical Latency |
 |---|---|
 | CQRS handler dispatch | <1 ms |
-| Neo4j simple query | 2–3 ms |
-| Neo4j full graph load | ~12 ms |
+| Oxigraph simple query | 2–3 ms |
+| Oxigraph full graph load | ~12 ms |
 | Settings read (cached) | <0.1 ms |
 | Settings read (uncached) | ~3 ms |
 | GPU physics step | ~4 ms |
@@ -628,7 +636,7 @@ impl DirectiveHandler<CreateNode> for CreateNodeHandler {
 
 ```rust
 // src/app_state.rs
-let unified_graph_repo = Arc::new(Neo4jGraphRepository::new(&neo4j_config).await?);
+let unified_graph_repo = Arc::new(OxigraphGraphRepository::open(&data_dir)?); // embedded RDF store (ADR-11)
 let event_publisher = Arc::new(InMemoryEventBus::new());
 
 command_bus.register::<CreateNode, _>(CreateNodeHandler::new(
@@ -655,4 +663,4 @@ command_bus.register::<CreateNode, _>(CreateNodeHandler::new(
 
 - [Actor System Hierarchy](actor-hierarchy.md) — the 21-actor Actix supervision tree
 - [System Overview](system-overview.md) — complete hexagonal architecture overview including port definitions
-- [Technology Choices](technology-choices.md) — Rust, Actix-Web, Neo4j technology rationale
+- [Technology Choices](technology-choices.md) — Rust, Actix-Web, and graph-store (embedded Oxigraph) technology rationale

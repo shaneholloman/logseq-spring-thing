@@ -24,8 +24,8 @@ This document provides a complete architectural blueprint for migrating the Visi
    - InferenceEngine
 
 2. **** - Adapter implementations
-   - Neo4jKnowledgeGraphRepository ✅ **ACTIVE** (Neo4j for graph data)
-   - InMemoryOntologyRepository ✅ **ACTIVE** (Arc<RwLock<HashMap>> for OWL classes)
+   - OxigraphGraphRepository ✅ **ACTIVE** (embedded Oxigraph RDF triple store for graph data — ADR-11; replaces the former Neo4jKnowledgeGraphRepository)
+   - OxigraphOntologyRepository ✅ **ACTIVE** (ontology persisted in the same embedded store — ADR-11)
    - PhysicsOrchestratorAdapter
    - SemanticProcessorAdapter
    - WhelkInferenceEngine
@@ -39,7 +39,7 @@ This document provides a complete architectural blueprint for migrating the Visi
    - Handlers for all domains
 
 4. **Database Schemas** - Complete database designs
-   - Neo4j schema (graph nodes, edges, ontology, user settings)
+   - Oxigraph RDF/named-graph schema (graph nodes, edges, ontology) — ADR-11; user settings persist in an embedded SQLite store
 
 ## Ontology Reasoning Pipeline
 
@@ -50,7 +50,7 @@ VisionClaw integrates a complete ontology reasoning pipeline that transforms sta
 ```mermaid
 graph LR
     A[GitHub OWL Files<br/>900+ Classes] --> B[Horned-OWL Parser]
-    B --> C[(Neo4j + In-Memory<br/>OntologyRepository)]
+    B --> C[(Oxigraph embedded<br/>RDF triple store)]
     C --> D[Whelk-rs Reasoner<br/>OWL 2 EL]
     D --> E[Inferred Axioms<br/>is-inferred=1]
     E --> C
@@ -82,7 +82,7 @@ The system translates ontological relationships into physical forces for intelli
 sequenceDiagram
     participant GH as GitHub
     participant Parser as OWL Parser
-    participant DB as Neo4j + OntologyRepo
+    participant DB as Oxigraph (embedded RDF store)
     participant Whelk as Whelk Reasoner
     participant GPU as CUDA Physics
     participant Client as 3D Client
@@ -110,26 +110,28 @@ sequenceDiagram
 
 ## Key Architectural Decisions
 
-### 1. Database Architecture (Migrated to Neo4j: November 2025)
+### 1. Database Architecture (Migrated to embedded Oxigraph: ADR-11)
 
-**Decision**: ✅ Use **Neo4j** as the primary graph database with **in-memory OntologyRepository** for OWL reasoning.
+**Decision**: ✅ Use an **embedded Oxigraph** RDF triple store (W3C SPARQL 1.1 Query +
+Update, RocksDB-backed, opened in-process by `visionclaw-server`) as the primary graph
+store for both knowledge-graph and ontology data ([ADR-11](../migration-sprint/11-persistence-migration/ADR-11.md)).
 
 **Rationale**:
-- **Graph-native storage**: Natural fit for node/edge data structures
-- **Cypher queries**: Expressive query language for complex graph patterns
-- **ACID transactions**: Full consistency guarantees
-- **In-memory OWL**: Fast reasoning with `Arc<RwLock<HashMap>>` for ontology classes
-- **Scalability**: Neo4j clustering support for future horizontal scaling
+- **Graph-native storage**: RDF quad-store with native named graphs — one for the knowledge graph, one for ontology, etc.
+- **SPARQL 1.1 queries**: Standard query/update language for complex graph patterns
+- **No separate container**: Embedded in the backend process; no Bolt URI, no DB password, simpler ops
+- **Built-in indexing**: Oxigraph maintains SPO/POS/OSP indexes automatically (no manual index DDL)
 
 **Migration History**:
 - ❌ Previous SQLite unified.db architecture deprecated (November 2025)
-- ❌ Previous three-database design fully deprecated
-- ✅ All graph data migrated to Neo4j
-- ✅ Ontology data served from in-memory OntologyRepository
+- ❌ Neo4j graph database deprecated and removed (ADR-11) — superseded by Oxigraph
+- ✅ All graph and ontology data now persisted in the embedded Oxigraph store
+- ⚙️ One-shot importer `tools/migrate-neo4j-to-oxigraph` converts legacy Neo4j exports
 
 **Current Architecture**:
-- ✅ Neo4j for graph nodes, edges, user settings, and visualization data
-- ✅ In-memory OntologyRepository for OWL classes, axioms, and Whelk reasoning
+- ✅ Embedded Oxigraph for knowledge-graph nodes/edges and ontology (named graphs)
+- ✅ Embedded SQLite for user settings (`SqliteSettingsRepository`)
+- ✅ In-memory ontology cache for fast Whelk reasoning, snapshotted to Oxigraph
 - ✅ OntologyQueryService and OntologyMutationService for agent read/write paths
 - ✅ GitHubPRService for automated ontology change PRs
 
@@ -329,7 +331,7 @@ gantt
 
 **Tasks**:
 1. Create `src/adapters/` directory structure ✅ **COMPLETE**
-2. Implement Neo4jSettingsRepository (from 02-adapters-design.md) ✅ **COMPLETE** (November 2025)
+2. Implement settings repository (from 02-adapters-design.md) ✅ **COMPLETE** (November 2025; now `SqliteSettingsRepository` — ADR-11)
 3. Implement UnifiedGraphRepository ✅ **COMPLETE** (replaced SQLite)
 4. Implement OntologyRepository ✅ **COMPLETE** (replaced SQLite)
 5. Implement PhysicsOrchestratorAdapter (wraps existing actor) ✅ **COMPLETE**
@@ -483,12 +485,11 @@ mod tests {
 **Coverage**: All adapter implementations
 
 ```rust
-// Example integration test (Neo4j adapter)
+// Example integration test (settings adapter — embedded SQLite, ADR-11)
 #[tokio::test]
-#[ignore] // Requires Neo4j instance
-async fn test-neo4j-settings-repository-integration() {
-    let config = Neo4jSettingsConfig::default();
-    let repo = Neo4jSettingsRepository::new(config).await.unwrap();
+async fn test-sqlite-settings-repository-integration() {
+    let config = SqliteSettingsConfig::default();
+    let repo = SqliteSettingsRepository::new(config).await.unwrap();
 
     // Schema initialized automatically
 
@@ -554,8 +555,8 @@ async fn test-settings-update-e2e() {
 fn bench-settings-repository-get(b: &mut Bencher) {
     let runtime = tokio::runtime::Runtime::new().unwrap();
     let repo = runtime.block-on(async {
-        let config = Neo4jSettingsConfig::default();
-        Neo4jSettingsRepository::new(config).await.unwrap()
+        let config = SqliteSettingsConfig::default();
+        SqliteSettingsRepository::new(config).await.unwrap()
     });
 
     b.iter(|| {
@@ -641,16 +642,17 @@ cargo build --release --features gpu,ontology
 ./target/release/init-databases --env production
 
 # Run with production config
-./target/release/webxr --config production.toml
+./target/release/visionclaw-server --config production.toml
 ```
 
 ### Database Backup Strategy
 
 ```bash
-# Automated backup script
+# Automated backup script — the embedded Oxigraph dataset lives under the data dir
+# (no neo4j-admin / Bolt export needed; ADR-11)
 #!/bin/bash
 DATE=$(date +%Y%m%d-%H%M%S)
-neo4j-admin database dump neo4j --to-path=data/backups/neo4j-$DATE
+tar czf data/backups/oxigraph-$DATE.tar.gz data/oxigraph
 ```
 
 ## Success Criteria

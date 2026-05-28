@@ -1,6 +1,6 @@
 ---
 title: Local File Sync Strategy with Two-Pass Parser + Pod-First Saga
-description: Two-pass knowledge graph parser + visibility classification + Pod-first-Neo4j-second saga. Pass 1 extracts wikilinks and visibility. Pass 2 emits nodes + stubs. Pod write precedes graph commit with 60s pending retry.
+description: Two-pass knowledge graph parser + visibility classification + Pod-first graph-commit saga. Pass 1 extracts wikilinks and visibility. Pass 2 emits nodes + stubs. Pod write precedes graph commit with 60s pending retry.
 category: how-to
 tags:
   - tutorial
@@ -15,10 +15,14 @@ difficulty-level: advanced
 
 # Local File Sync Strategy with Two-Pass Parser + Pod-First Saga
 
+> **ADR-11 update**: The graph-commit phase writes to the embedded Oxigraph store, not
+> Neo4j. "Pod-first / graph-second" naming below refers to the Oxigraph commit. There is
+> no Neo4j container, Bolt URI, or `cypher-shell`; verification is via the REST API.
+
 ## Problem Solved
 
 **Visibility Model**: Public vs private pages; private wikilink targets → stubs in graph  
-**Crash Safety**: Pod succeeds but Neo4j fails → pending marker for 60s retry  
+**Crash Safety**: Pod succeeds but the graph commit fails → pending marker for 60s retry  
 **Data Integrity**: Never emit graph node before Pod has content  
 **New Approach**: Two-pass parser (commit 227f5b57a) + Pod-first saga (commit c939242f4)
 
@@ -60,7 +64,7 @@ Background orphan retraction job:
 
 **Private Stubs**: No label, no content, canonical IRI + HMAC opaque_id generated at query-time (never at write-time).
 
-### Pod-First-Neo4j-Second Saga (ADR-051)
+### Pod-First / Graph-Second Saga (ADR-051; graph store = embedded Oxigraph, ADR-11)
 
 **Phase ordering ensures crash safety:**
 
@@ -70,7 +74,7 @@ Background orphan retraction job:
      PUT {pod_base}/{owner}/[public|private]/kg/{slug} ← content
      if error: skip this node, no marker
    
-2. Neo4j commit phase
+2. Graph commit phase (embedded Oxigraph store)
    save_graph() with Pod-successful nodes only
    if error: write saga_pending=true marker on those nodes
    
@@ -78,9 +82,9 @@ Background orphan retraction job:
    for each committed node: clear saga_pending flag
 ```
 
-**Recovery**: Background task `IngestSaga::resume_pending` wakes every 60s, finds nodes with `saga_pending=true`, retries their Neo4j commit (idempotent via `MERGE`).
+**Recovery**: Background task `IngestSaga::resume_pending` wakes every 60s, finds nodes with `saga_pending=true`, retries their graph commit (idempotent — upsert by canonical IRI).
 
-**Feature flag**: `POD_SAGA_ENABLED=true|false` — when false, legacy Neo4j-only path used.
+**Feature flag**: `POD_SAGA_ENABLED=true|false` — when false, legacy direct graph-write path used.
 
 ### Container Routing (ADR-052)
 
@@ -112,13 +116,13 @@ This ensures stale references are pruned without manual intervention.
 
 ### GitHubSyncService Integration
 
-`GitHubSyncService` now invokes the saga instead of direct Neo4j writes:
+`GitHubSyncService` now invokes the saga instead of direct graph writes:
 
 ```rust
 let parser = KnowledgeGraphParser::new_with_owner(owner_pubkey);
 let parse_output = parser.parse_bundle(files)?;
 
-let saga = IngestSaga::new(pod_client, neo4j);
+let saga = IngestSaga::new(pod_client, graph_repo); // graph_repo = OxigraphGraphRepository
 let outcome = saga.execute_batch(parse_output)?;
 // outcome: Complete | PendingRetry | Failed
 ```
@@ -127,7 +131,7 @@ let outcome = saga.execute_batch(parse_output)?;
 
 | Flag | Default | Behavior |
 |------|---------|----------|
-| `POD_SAGA_ENABLED` | `false` | When true, Pod-first saga. When false, legacy Neo4j-only writes. |
+| `POD_SAGA_ENABLED` | `false` | When true, Pod-first saga. When false, legacy direct graph writes. |
 | `VISIBILITY_CLASSIFICATION` | `true` | When true, two-pass parser with visibility gating. When false, all pages treated as public. |
 | `POD_DEFAULT_PRIVATE` | `false` | When true, pages without `public:: true` skip Pod write (content stays local). |
 | `POD_BASE_URL` | `http://jss:3030` | Pod API base URL for ingest writes. |
@@ -160,7 +164,7 @@ Scans page-properties block (before first `- ` or `#`), returns `Visibility::Pub
 
 **Types**:
 - `SagaStep::PodWrite` — upload to Pod
-- `SagaStep::Neo4jCommit` — graph commit
+- `SagaStep::GraphCommit` — commit to the embedded Oxigraph store
 - `SagaOutcome` — Complete | PendingRetry | Failed
 
 **Background task**: `spawn_resumption_task()` wakes every 60s, retries pending nodes.
@@ -186,9 +190,9 @@ cargo run --bin parse_files -- \
 ### Check Saga Execution
 
 ```bash
-# View pending markers in Neo4j
-docker exec visionclaw-neo4j cypher-shell -u neo4j -p visionclaw-dev-password \
-  "MATCH (n:KGNode {saga_pending: true}) RETURN n.canonical_iri, n.visibility"
+# View pending markers via the admin/diagnostics API (graph store is embedded — no cypher-shell)
+curl -s http://localhost:4000/api/graph/data | \
+  jq '[.nodes[] | select(.metadata.saga_pending == true) | {iri: .canonical_iri, visibility: .visibility}]'
 
 # Check Pod writes succeeded
 curl -s http://jss:3030/{owner}/public/kg/Foo.md | head -20
@@ -197,12 +201,10 @@ curl -s http://jss:3030/{owner}/public/kg/Foo.md | head -20
 ### Monitor Orphan Retraction
 
 ```bash
-# Check stale WikilinkRef edges
-docker exec visionclaw-neo4j cypher-shell -u neo4j -p visionclaw-dev-password \
-  "MATCH (n:KGNode)-[r:WIKILINK_REF]->(m:KGNode) \
-   WHERE r.metadata.last_seen_run_id IS NOT NULL \
-   RETURN r.metadata.last_seen_run_id, count(*) AS edge_count \
-   ORDER BY edge_count DESC"
+# Count WikilinkRef edges by ingest run (embedded Oxigraph — query via REST, not cypher-shell)
+curl -s http://localhost:4000/api/graph/data | \
+  jq '[.edges[] | select(.edge_type == "WIKILINK_REF") | .metadata.last_seen_run_id]
+      | group_by(.) | map({run_id: .[0], edge_count: length}) | sort_by(-.edge_count)'
 ```
 
 ## Configuration
@@ -246,13 +248,13 @@ GITHUB_TOKEN=github_pat_...
 
 1. Check visibility classification: does page have `public:: true` as line-anchored property?
 2. Check parse output: `cargo run --bin parse_files -- --input /app/data/pages`
-3. Check Pod write status: look for `saga_pending=true` in Neo4j
+3. Check Pod write status: look for `saga_pending=true` in the graph store (via `/api/graph/data`)
 4. Check pending retry: background task runs every 60s; wait or trigger manually
 
 ### Orphaned stubs not cleaned up
 
 1. Verify orphan retraction job is running (background task spawned on startup)
-2. Check stale `last_seen_run_id` values via Neo4j
+2. Check stale `last_seen_run_id` values via the graph-store query above
 3. Manually trigger cleanup: `curl -X POST http://localhost:4000/api/admin/orphan-retraction`
 
 ### Pod base URL not reachable

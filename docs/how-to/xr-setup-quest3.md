@@ -175,12 +175,12 @@ curl -i https://your-host:7880/
 ```
 
 If `/ws/presence` returns 404, the server is missing
-`src/handlers/presence_handler.rs` from PRD-008 — rebuild the `webxr`
+`src/handlers/presence_handler.rs` from PRD-008 — rebuild the `visionclaw`
 container:
 
 ```bash
-docker compose --profile dev up -d --build webxr
-docker compose logs --tail=200 webxr | grep -i presence
+docker compose --profile dev up -d --build visionclaw
+docker compose logs --tail=200 visionclaw | grep -i presence
 ```
 
 ---

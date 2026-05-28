@@ -37,7 +37,7 @@ Text construction: `"{preferred_term}: {definition}. {scope_note}"`
 
 Nodes with similar definitions cluster together even if they live in completely different parts of the ontology hierarchy. For example, "Machine Learning" and "Statistical Learning" would be near-neighbours in content space despite potentially being in different sub-trees.
 
-The embedding service calls an external MiniLM endpoint in batches of 64, storing results as a `content_embedding_384` property on each Neo4j node.
+The embedding service calls an external MiniLM endpoint in batches of 64, storing results as a `content_embedding_384` property on each graph node (embedded Oxigraph store — ADR-11).
 
 ### Topology Embeddings (128-dim)
 
@@ -51,7 +51,7 @@ Training parameters:
 - 5 negative samples per positive triple (corrupted head or tail)
 - Learning rate 0.01 with L2 normalisation
 
-Results are stored as `kge_embedding_128` on Neo4j nodes.
+Results are stored as `kge_embedding_128` on graph nodes (embedded Oxigraph store).
 
 ## Combined Scoring
 
@@ -72,7 +72,7 @@ Direct edges only capture 1-hop relationships. Concepts connected via 2–3 inte
 
 The materialiser precomputes transitive connections:
 
-| Hop Distance | Neo4j Relationship | Default Weight | Physics Effect |
+| Hop Distance | Graph Relationship | Default Weight | Physics Effect |
 |---|---|---|---|
 | 2-hop | `MATERIALIZED_2HOP` | 0.05 | Very weak attraction — loose grouping |
 | 3-hop | `MATERIALIZED_3HOP` | 0.02 | Barely perceptible — prevents scattering |

@@ -142,7 +142,7 @@ flowchart TD
     C --> E[Clone Repository]
     D --> E
     E --> F[Copy .env.example\n→ .env]
-    F --> G[Configure environment\nNeo4j · GitHub token]
+    F --> G[Configure environment\nGitHub token · secrets]
     G --> H[docker compose up -d]
     H --> I[Verify services healthy]
     I --> J{All healthy?}
@@ -250,7 +250,7 @@ docker-compose ps
 
 # Expected output:
 # NAME                    COMMAND                  SERVICE             STATUS
-# visionclaw-container    "/app/scripts/start.sh"  webxr              Up
+# visionclaw_container    "/app/scripts/start.sh"  visionclaw         Up
 # multi-agent-container   "python3 -m claude..."   claude-flow        Up
 # postgres-container      "docker-entrypoint.s..."  postgres           Up
 # redis-container         "redis-server --appen..."  redis              Up
@@ -270,14 +270,14 @@ graph TB
     Browser[Browser\n:3001] --> Nginx[Nginx\nReverse Proxy]
     Nginx --> Vite[Vite Dev Server\n:5173]
     Nginx --> Rust[VisionClaw API\n:8080]
-    Rust --> Neo4j[(Neo4j\n:7687)]
+    Rust --> Oxigraph[(Oxigraph\nembedded, in-process)]
     Rust --> JSS[Solid JSS\n:3030]
     Rust --> GPU[CUDA GPU\nPhysics Engine]
     Rust --> RuVector[(RuVector\n:5432)]
 
     style Browser fill:#4A90D9,color:#fff
     style Rust fill:#E67E22,color:#fff
-    style Neo4j fill:#27AE60,color:#fff
+    style Oxigraph fill:#27AE60,color:#fff
     style GPU fill:#8E44AD,color:#fff
 ```
 

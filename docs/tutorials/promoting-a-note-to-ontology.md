@@ -95,7 +95,7 @@ Within a few minutes of ingestion, the scoring engine (BC13 — the Insight Disc
 
 When this happens, two things occur simultaneously:
 
-- A `BRIDGE_TO` edge with `kind: "candidate"` appears in Neo4j connecting the `KGNode` to the target `OntologyClass`.
+- A `BRIDGE_TO` edge with `kind: "candidate"` appears in the graph store (embedded Oxigraph) connecting the `KGNode` to the target `OntologyClass`.
 - A pulsing aura appears around the node in the 3D graph at approximately 1.2 Hz.
 
 The pulsing aura means: this node is a migration candidate and is waiting for broker review.
@@ -207,7 +207,7 @@ Press `Ctrl+K` and type `Digital Signature` again to fly to the node and confirm
 3. Edit the proposed parent class or the axioms in the right pane of the Decision Canvas to resolve the conflict.
 4. Approve again. A new PR is opened.
 
-If you are unsure how to resolve the conflict, read the [Ontology Pipeline explanation](../explanation/ontology-pipeline.md) for background on how Whelk checks consistency, and consult the class hierarchy in the Neo4j Browser (`http://localhost:7474`) to understand the existing disjointness structure.
+If you are unsure how to resolve the conflict, read the [Ontology Pipeline explanation](../explanation/ontology-pipeline.md) for background on how Whelk checks consistency, and inspect the class hierarchy via the REST API (`GET /api/graph/data?graph_type=ontology`) to understand the existing disjointness structure. (The graph store is the embedded Oxigraph triple store — there is no separate database browser, ADR-11.)
 
 ### Broker rejects with reason
 

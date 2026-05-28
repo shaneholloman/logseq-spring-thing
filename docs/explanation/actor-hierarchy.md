@@ -10,7 +10,7 @@ updated-date: 2026-04-10
 
 VisionClaw's Rust backend coordinates 23 specialised Actix actors under a hierarchical supervision tree. Actors handle all concurrent concerns — WebSocket client management, GPU physics coordination, graph state, semantic processing, GitHub ingestion, agent monitoring, and task orchestration — without shared mutable state. Communication is exclusively via typed asynchronous messages.
 
-> **Note**: `GraphServiceActor` no longer exists as an active component. It was decomposed into the current 21-actor hierarchy and replaced by CQRS handlers backed by Neo4j. Any reference to `GraphServiceActor` in older documentation is historical.
+> **Note**: `GraphServiceActor` no longer exists as an active component. It was decomposed into the current 21-actor hierarchy and replaced by CQRS handlers backed by the embedded Oxigraph store (ADR-11). Any reference to `GraphServiceActor` in older documentation is historical.
 
 ---
 
@@ -18,7 +18,7 @@ VisionClaw's Rust backend coordinates 23 specialised Actix actors under a hierar
 
 The actor system is built on Actix-Web's arbiter model. Each actor owns private state and processes one message at a time from its mailbox. Concurrency arises from many actors running in parallel across the Tokio thread pool. The supervision tree ensures failures are isolated: a CUDA OOM in `ForceComputeActor` restarts only the physics sub-actors, not the graph state or WebSocket connections.
 
-Actors serve as the **Presentation Layer** of the hexagonal architecture. They receive external inputs (HTTP requests, WebSocket messages, timer ticks, GPU callbacks) and translate them into domain operations by dispatching commands and queries through the CQRS bus. Actors never access Neo4j or the GPU directly — they go through port trait adapters.
+Actors serve as the **Presentation Layer** of the hexagonal architecture. They receive external inputs (HTTP requests, WebSocket messages, timer ticks, GPU callbacks) and translate them into domain operations by dispatching commands and queries through the CQRS bus. Actors never access the graph store or the GPU directly — they go through port trait adapters.
 
 ---
 
@@ -348,7 +348,7 @@ Subscribed to `GraphUpdateEvent` from `GraphStateActor`; invalidates embedding c
 | Supervisor | `AppSupervisor` |
 | Mailbox | Unbounded |
 
-Thin actor wrapper over the `SettingsRepository` port. Provides actor-addressable settings access for components that cannot use `async_trait` directly. Uses `Neo4jSettingsRepository` as the backing adapter with LRU TTL caching (default 300s, ~90× speedup for cache hits).
+Thin actor wrapper over the `SettingsRepository` port. Provides actor-addressable settings access for components that cannot use `async_trait` directly. Uses `SqliteSettingsRepository` as the backing adapter with LRU TTL caching (default 300s, ~90× speedup for cache hits).
 
 ---
 
@@ -381,12 +381,12 @@ Orchestrates the OWL reasoning pipeline: triggers `WhelkInferenceEngine`, caches
 | Supervisor | `AppSupervisor` |
 | Mailbox | Bounded (capacity 8) |
 
-Wraps the `GitHubSyncService` domain service. Invoked at startup (after Neo4j connects, before HTTP server starts) and on-demand via the admin API. Emits `OntologyModifiedEvent` on successful file ingestion to trigger the downstream reasoning pipeline.
+Wraps the `GitHubSyncService` domain service. Invoked at startup (after the embedded Oxigraph store opens, before the HTTP server starts) and on-demand via the admin API. Emits `OntologyModifiedEvent` on successful file ingestion to trigger the downstream reasoning pipeline.
 
 Startup sequence:
 1. `GitHubSyncService::sync_graphs()` — fetch changed `.md` files (SHA1 dedup)
 2. Route each file to `KnowledgeGraphParser` (trigger: `public:: true`) or `OntologyParser` (trigger: `### OntologyBlock`)
-3. Persist parsed data to Neo4j via port adapters
+3. Persist parsed data to the embedded Oxigraph store via port adapters
 4. Emit `OntologyModifiedEvent` → `OntologyActor`
 
 ---
@@ -462,7 +462,7 @@ sequenceDiagram
     participant HTTP as HTTP Handler
     participant CB as CommandBus
     participant SH as UpdateSettingsHandler
-    participant SR as Neo4jSettingsRepository
+    participant SR as SqliteSettingsRepository
     participant SA as OptimizedSettingsActor
     participant FC as ForceComputeActor
 
