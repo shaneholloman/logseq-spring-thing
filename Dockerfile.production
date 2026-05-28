@@ -8,6 +8,7 @@
 # Stage 1: Toolchain — cached until base image or tool versions change
 # ---------------------------------------------------------------------------
 # SECURITY: Pin to digest for production builds (e.g., cachyos/cachyos-v3@sha256:abc123...)
+# TODO(prod-hardening): pin to @sha256:<digest> (no local digest resolvable offline)
 FROM cachyos/cachyos-v3:latest AS toolchain
 
 ARG CUDA_ARCH=86
@@ -143,12 +144,15 @@ RUN rm -rf /app/target/release/build/visionclaw-server-* /app/target/release/dep
 
 # Runtime stage - same CachyOS base, only runtime packages
 # SECURITY: Pin to digest for production builds (e.g., cachyos/cachyos-v3@sha256:abc123...)
+# TODO(prod-hardening): pin to @sha256:<digest> (no local digest resolvable offline)
 FROM cachyos/cachyos-v3:latest
 
+# NVIDIA_VISIBLE_DEVICES left overridable by compose (defaults to 0 there); do not
+# hardcode "all". NVIDIA_DRIVER_CAPABILITIES scoped to the minimum the app needs.
 ENV RUST_LOG=${RUST_LOG:-info} \
     PATH="/opt/cuda/bin:${PATH}" \
-    NVIDIA_VISIBLE_DEVICES=all \
-    NVIDIA_DRIVER_CAPABILITIES=all \
+    NVIDIA_VISIBLE_DEVICES=${NVIDIA_VISIBLE_DEVICES:-0} \
+    NVIDIA_DRIVER_CAPABILITIES=compute,utility \
     CUDA_HOME=/opt/cuda \
     NODE_ENV=production
 
@@ -167,7 +171,13 @@ RUN for attempt in 1 2 3; do \
         && break || { echo "Attempt $attempt failed, retrying in 10s..."; sleep 10; pacman -Syy --noconfirm; }; \
     done && rm -rf /var/cache/pacman/pkg/*
 
-# Create necessary directories
+# Create non-root runtime user (mirrors Dockerfile.unified's appuser, uid 1000).
+RUN useradd -m -u 1000 -s /bin/bash appuser
+
+# Create necessary directories, then hand all writable runtime paths to appuser.
+# nginx (started by the entrypoint) writes its pid to /var/run/nginx.pid, logs to
+# /var/log/nginx, and body/proxy temp files under /var/lib/nginx — all must be
+# writable by the non-root user. The backend writes under /app/{data,logs,user_settings}.
 WORKDIR /app
 RUN mkdir -p /app/data/markdown \
     /app/data/metadata \
@@ -175,24 +185,35 @@ RUN mkdir -p /app/data/markdown \
     /app/user_settings \
     /app/logs \
     /var/log/nginx \
-    /var/run/nginx
+    /var/run/nginx \
+    /var/lib/nginx/tmp && \
+    touch /var/run/nginx.pid && \
+    chown -R appuser:appuser \
+        /app \
+        /var/log/nginx \
+        /var/run/nginx \
+        /var/run/nginx.pid \
+        /var/lib/nginx
 
 # Cache-buster AFTER heavy installs: pass --build-arg CACHE_BUST=$(date +%s) to
 # force re-copy of artifacts from builder. Placed here so it only invalidates the
 # COPY layers below, NOT the pacman/CUDA install layers above (~2.2 GB).
 ARG CACHE_BUST=0
 
-# Copy built artifacts from parallel build stages
-COPY --from=builder /app/visionclaw-server /app/visionclaw-server
-COPY --from=frontend /app/client/dist /app/client/dist
-COPY --from=cuda-ptx /app/ptx /app/src/utils/ptx
+# Copy built artifacts from parallel build stages (owned by the non-root user)
+COPY --from=builder --chown=appuser:appuser /app/visionclaw-server /app/visionclaw-server
+COPY --from=frontend --chown=appuser:appuser /app/client/dist /app/client/dist
+COPY --from=cuda-ptx --chown=appuser:appuser /app/ptx /app/src/utils/ptx
 
 # Copy configuration files
-COPY data/settings.yaml /app/settings.yaml
+COPY --chown=appuser:appuser data/settings.yaml /app/settings.yaml
 COPY nginx.production.conf /etc/nginx/nginx.conf
-COPY scripts/production-startup.sh /app/start.sh
+COPY --chown=appuser:appuser scripts/production-startup.sh /app/start.sh
 RUN chmod +x /app/start.sh
 
 EXPOSE 3001
+
+# Drop privileges: run the entrypoint (and all child processes) as non-root.
+USER appuser
 
 ENTRYPOINT ["/app/start.sh"]
