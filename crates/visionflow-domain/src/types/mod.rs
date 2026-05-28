@@ -1,6 +1,7 @@
 //! Domain types module
 
 pub mod actor_types;
+pub mod claude_flow;
 pub mod layout;
 pub mod mcp_responses;
 pub mod ontology_tools;

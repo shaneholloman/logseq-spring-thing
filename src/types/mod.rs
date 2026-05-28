@@ -1,4 +1,7 @@
-pub mod claude_flow;
+// ADR-090: claude_flow types moved to visionflow-domain.
+pub mod claude_flow {
+    pub use visionflow_domain::types::claude_flow::*;
+}
 pub mod mcp_responses;
 pub mod ontology_tools;
 pub mod speech;

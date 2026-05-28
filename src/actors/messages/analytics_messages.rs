@@ -1,12 +1,31 @@
 //! Analytics-domain messages: clustering, anomaly detection, community detection,
 //! SSSP, PageRank, and related parameter/result types.
+//!
+//! Domain-safe parameter structs/enums and pure messages have been moved to
+//! `visionflow_actors::messages::analytics_messages`.
+//! This file re-exports them and defines the webxr-internal types that cannot move.
+
+// ---------------------------------------------------------------------------
+// Re-export domain-safe types from the domain crate
+// ---------------------------------------------------------------------------
+
+pub use visionflow_actors::messages::analytics_messages::{
+    AnomalyDetectionMethod, AnomalyDetectionParams, AnomalyDetectionStats, AnomalyMethod,
+    AnomalyParams, ClearPageRankCache, CommunityDetectionAlgorithm, CommunityDetectionParams,
+    ComputeAllPairsShortestPaths, ComputeSSSP, DBSCANParams, DBSCANStats,
+    ExportClusterAssignments, GetClusteringResults, GetClusteringStatus, KMeansParams,
+    SetNodeAnalytics, StartGPUClustering, UpdateComponentEdges,
+};
+
+// ---------------------------------------------------------------------------
+// Webxr-internal types (cannot move to domain crate)
+// ---------------------------------------------------------------------------
 
 use actix::prelude::*;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
 // ---------------------------------------------------------------------------
-// K-means clustering
+// K-means clustering (result type refs webxr-internal gpu crate)
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -21,14 +40,6 @@ pub struct KMeansResult {
     pub final_iteration: u32,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct KMeansParams {
-    pub num_clusters: usize,
-    pub max_iterations: Option<u32>,
-    pub tolerance: Option<f32>,
-    pub seed: Option<u32>,
-}
-
 #[derive(Message)]
 #[rtype(result = "Result<KMeansResult, String>")]
 pub struct RunKMeans {
@@ -36,7 +47,7 @@ pub struct RunKMeans {
 }
 
 // ---------------------------------------------------------------------------
-// Anomaly detection
+// Anomaly detection (result type refs webxr-internal gpu crate)
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -52,50 +63,6 @@ pub struct AnomalyResult {
     pub threshold: f32,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AnomalyDetectionStats {
-    pub total_nodes_analyzed: u32,
-    pub anomalies_found: usize,
-    pub detection_threshold: f32,
-    pub computation_time_ms: u64,
-    pub method: AnomalyDetectionMethod,
-    pub average_anomaly_score: f32,
-    pub max_anomaly_score: f32,
-    pub min_anomaly_score: f32,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum AnomalyMethod {
-    LocalOutlierFactor,
-    ZScore,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum AnomalyDetectionMethod {
-    LOF,
-    ZScore,
-    IsolationForest,
-    DBSCAN,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AnomalyParams {
-    pub method: AnomalyMethod,
-    pub k_neighbors: i32,
-    pub radius: f32,
-    pub feature_data: Option<Vec<f32>>,
-    pub threshold: f32,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AnomalyDetectionParams {
-    pub method: AnomalyDetectionMethod,
-    pub threshold: Option<f32>,
-    pub k_neighbors: Option<i32>,
-    pub window_size: Option<usize>,
-    pub feature_data: Option<Vec<f32>>,
-}
-
 #[derive(Message)]
 #[rtype(result = "Result<AnomalyResult, String>")]
 pub struct RunAnomalyDetection {
@@ -103,7 +70,7 @@ pub struct RunAnomalyDetection {
 }
 
 // ---------------------------------------------------------------------------
-// Community detection
+// Community detection (result type refs webxr-internal gpu crate)
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -119,21 +86,6 @@ pub struct CommunityDetectionResult {
     pub algorithm: CommunityDetectionAlgorithm,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum CommunityDetectionAlgorithm {
-    LabelPropagation,
-    Louvain,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CommunityDetectionParams {
-    pub algorithm: CommunityDetectionAlgorithm,
-    pub max_iterations: Option<u32>,
-    pub convergence_tolerance: Option<f32>,
-    pub synchronous: Option<bool>,
-    pub seed: Option<u32>,
-}
-
 #[derive(Message)]
 #[rtype(result = "Result<CommunityDetectionResult, String>")]
 pub struct RunCommunityDetection {
@@ -141,37 +93,16 @@ pub struct RunCommunityDetection {
 }
 
 // ---------------------------------------------------------------------------
-// DBSCAN clustering (standalone)
+// DBSCAN clustering (result type refs webxr-internal handler crate)
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DBSCANResult {
-    /// Cluster label per node (-1 = noise)
     pub labels: Vec<i32>,
-    /// Number of clusters found (excluding noise)
     pub num_clusters: usize,
-    /// Number of noise points (label == -1)
     pub num_noise_points: usize,
-    /// Per-cluster node lists (keyed by cluster label)
     pub clusters: Vec<crate::handlers::api_handler::analytics::Cluster>,
     pub stats: DBSCANStats,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DBSCANStats {
-    pub total_nodes: usize,
-    pub num_clusters: usize,
-    pub num_noise_points: usize,
-    pub largest_cluster_size: usize,
-    pub smallest_cluster_size: usize,
-    pub average_cluster_size: f32,
-    pub computation_time_ms: u64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DBSCANParams {
-    pub epsilon: f32,
-    pub min_points: u32,
 }
 
 #[derive(Message)]
@@ -181,7 +112,7 @@ pub struct RunDBSCAN {
 }
 
 // ---------------------------------------------------------------------------
-// GPU Clustering (higher-level orchestration messages)
+// GPU Clustering (refs webxr-internal handler analytics types)
 // ---------------------------------------------------------------------------
 
 #[derive(Message, Clone)]
@@ -192,37 +123,9 @@ pub struct PerformGPUClustering {
     pub task_id: String,
 }
 
-#[derive(Message)]
-#[rtype(result = "Result<String, String>")]
-pub struct StartGPUClustering {
-    pub algorithm: String,
-    pub cluster_count: u32,
-    pub task_id: String,
-}
-
-#[derive(Message)]
-#[rtype(result = "Result<serde_json::Value, String>")]
-pub struct GetClusteringStatus;
-
-#[derive(Message)]
-#[rtype(result = "Result<serde_json::Value, String>")]
-pub struct GetClusteringResults;
-
-#[derive(Message)]
-#[rtype(result = "Result<String, String>")]
-pub struct ExportClusterAssignments {
-    pub format: String,
-}
-
 // ---------------------------------------------------------------------------
-// SSSP (Single-Source Shortest Path)
+// SSSP (ComputeShortestPaths refs ports::gpu_semantic_analyzer::PathfindingResult)
 // ---------------------------------------------------------------------------
-
-#[derive(Message)]
-#[rtype(result = "Result<(), String>")]
-pub struct ComputeSSSP {
-    pub source_node: u32,
-}
 
 #[derive(Message)]
 #[rtype(result = "Result<super::PathfindingResult, String>")]
@@ -230,14 +133,8 @@ pub struct ComputeShortestPaths {
     pub source_node_id: u32,
 }
 
-#[derive(Message)]
-#[rtype(result = "Result<HashMap<(u32, u32), Vec<u32>>, String>")]
-pub struct ComputeAllPairsShortestPaths {
-    pub num_landmarks: Option<usize>,
-}
-
 // ---------------------------------------------------------------------------
-// PageRank Centrality (P1-2)
+// PageRank Centrality (refs webxr-internal gpu actor types)
 // ---------------------------------------------------------------------------
 
 #[derive(Message)]
@@ -249,33 +146,3 @@ pub struct ComputePageRank {
 #[derive(Message)]
 #[rtype(result = "Option<crate::actors::gpu::pagerank_actor::PageRankResult>")]
 pub struct GetPageRankResult;
-
-#[derive(Message)]
-#[rtype(result = "()")]
-pub struct ClearPageRankCache;
-
-// ---------------------------------------------------------------------------
-// Connected Components
-// ---------------------------------------------------------------------------
-
-/// Update the cached edge list used by ConnectedComponentsActor for label propagation.
-/// Send this whenever graph edges change so connected-component queries use real data.
-#[derive(Message, Debug, Clone)]
-#[rtype(result = "()")]
-pub struct UpdateComponentEdges {
-    /// Edge list as (source_node_id, target_node_id) pairs
-    pub edges: Vec<(u32, u32)>,
-}
-
-// ---------------------------------------------------------------------------
-// Node Analytics (ADR-014 Phase 2 — DL4 fix)
-// ---------------------------------------------------------------------------
-
-/// Inject the shared node_analytics map into an analytics actor so it can
-/// populate cluster_id / anomaly_score / community_id after computation.
-/// The map is `Arc<RwLock<HashMap<u32, (cluster_id, anomaly_score, community_id)>>>`.
-#[derive(Message, Clone)]
-#[rtype(result = "()")]
-pub struct SetNodeAnalytics {
-    pub node_analytics: std::sync::Arc<std::sync::RwLock<std::collections::HashMap<u32, (u32, f32, u32)>>>,
-}
