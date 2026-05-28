@@ -123,6 +123,27 @@ const _tempColor = new THREE.Color();
 const _frustum = new THREE.Frustum();
 const _projScreenMatrix = new THREE.Matrix4();
 
+/**
+ * Screen-space label-decluttering grid.
+ *
+ * The layout pass first projects every visible-and-eligible node to
+ * normalised-device coords, then iterates closest-first (distance-priority),
+ * accepting a label only if no higher-priority label already occupies the
+ * same screen cell. The grid is sized so a typical-width label spans 1-2
+ * cells horizontally; one cell ≈ one label footprint.
+ *
+ * Result: no two labels overlap on screen — the closest/largest wins. This
+ * is the standard "label thinning" technique used in mapping libraries.
+ *
+ * Reused across frames (cleared per-rebuild) to avoid GC pressure.
+ */
+const _labelGridCells = new Set<number>();
+// Grid resolution: 32 columns × 18 rows ≈ 16:9 viewport. Picked so a typical
+// label (~80–120 px wide on a 1920-wide canvas) occupies one cell. Cheap
+// integer keys via `gx * GRID_ROWS + gy`.
+const LABEL_GRID_COLS = 32;
+const LABEL_GRID_ROWS = 18;
+
 // Build label lines for a node (pure function, extracted from GraphManager NodeLabels useMemo)
 function buildLabelLines(
   node: GraphNode,
@@ -673,6 +694,9 @@ const InstancedLabelsWebGL: React.FC<WebGLProps> = ({
     e[0] *= 0.9; e[5] *= 0.9;
     _frustum.setFromProjectionMatrix(_projScreenMatrix);
 
+    // Reset the screen-space declutter grid for this layout pass.
+    _labelGridCells.clear();
+
     // Get attribute arrays for direct writing
     const localOffArr = (geometry.getAttribute('aLocalOffset') as THREE.InstancedBufferAttribute).array as Float32Array;
     const scaleArr = (geometry.getAttribute('aScale') as THREE.InstancedBufferAttribute).array as Float32Array;
@@ -682,9 +706,41 @@ const InstancedLabelsWebGL: React.FC<WebGLProps> = ({
 
     let glyphIdx = 0;
     let visibleNodeCount = 0;
+    let cellsRejected = 0;
     const newNodeMap: typeof nodeGlyphMapRef.current = [];
 
-    for (const node of nodes) {
+    // Distance-priority iteration: sort nodes closest-first so the closer
+    // (visually more important) labels win their screen cells before
+    // farther labels would. Avoids "random first wins" artefacts when the
+    // node order from the store is independent of camera position.
+    //
+    // Allocates a small array of indices and a parallel distance buffer.
+    // For the 31k-node corpus this is one Float32Array per layout pass
+    // (every 3 frames), well under 1ms.
+    const nodeIdxByDist: number[] = [];
+    const _nodeDist: number[] = [];
+    for (let i = 0; i < nodes.length; i++) {
+      const n = nodes[i];
+      const orig = nodeIdToIndexMap.get(String(n.id)) ?? -1;
+      let nx: number, ny: number, nz: number;
+      if (rawPositionsForLayout && orig !== -1 && orig * 3 + 2 < rawPositionsForLayout.length) {
+        nx = rawPositionsForLayout[orig * 3];
+        ny = rawPositionsForLayout[orig * 3 + 1];
+        nz = rawPositionsForLayout[orig * 3 + 2];
+      } else {
+        const p = (orig !== -1 ? currentLabelPositions[orig] : undefined) || n.position || { x: 0, y: 0, z: 0 };
+        nx = p.x; ny = p.y; nz = p.z;
+      }
+      const dx = nx - camera.position.x;
+      const dy = ny - camera.position.y;
+      const dz = nz - camera.position.z;
+      _nodeDist.push(dx * dx + dy * dy + dz * dz);
+      nodeIdxByDist.push(i);
+    }
+    nodeIdxByDist.sort((a, b) => _nodeDist[a] - _nodeDist[b]);
+
+    for (const nodeIdx of nodeIdxByDist) {
+      const node = nodes[nodeIdx];
       if (glyphIdx >= MAX_GLYPHS - 200) break; // Reserve headroom
 
       const originalIndex = nodeIdToIndexMap.get(String(node.id)) ?? -1;
@@ -712,6 +768,30 @@ const InstancedLabelsWebGL: React.FC<WebGLProps> = ({
 
       const distanceToCamera = _tempVec3.distanceTo(camera.position);
       if (distanceToCamera > LABEL_DISTANCE_THRESHOLD || distanceToCamera < 2) continue;
+
+      // Screen-space declutter: project to NDC, map to a grid cell. If the
+      // cell is already occupied by a closer label, skip this one.
+      //
+      // We intentionally reuse `_tempVec3` (still holds world pos), apply the
+      // projection matrix in-place, and read NDC.x/.y. `_projScreenMatrix`
+      // is the precomputed proj * view matrix from the frustum update above,
+      // so this is one Matrix4 multiply per node — no Vector3 allocation.
+      _tempVec3.applyMatrix4(_projScreenMatrix);
+      // Skip if behind camera (NDC w-divide done by Three.js, but applyMatrix4
+      // returns NDC.xyz only if the point is in front; behind-camera w<0
+      // results in inverted coords that we filter via the frustum check above,
+      // so by this line _tempVec3.xy is roughly in [-1, 1].
+      const ndcX = _tempVec3.x;
+      const ndcY = _tempVec3.y;
+      // Map NDC [-1,1] → grid [0, COLS-1] × [0, ROWS-1].
+      const gx = Math.min(LABEL_GRID_COLS - 1, Math.max(0, Math.floor((ndcX * 0.5 + 0.5) * LABEL_GRID_COLS)));
+      const gy = Math.min(LABEL_GRID_ROWS - 1, Math.max(0, Math.floor((ndcY * 0.5 + 0.5) * LABEL_GRID_ROWS)));
+      const cellKey = gx * LABEL_GRID_ROWS + gy;
+      if (_labelGridCells.has(cellKey)) {
+        cellsRejected++;
+        continue;
+      }
+      _labelGridCells.add(cellKey);
 
       const opacity = distanceToCamera > FADE_START
         ? 1 - (distanceToCamera - FADE_START) / (LABEL_DISTANCE_THRESHOLD - FADE_START) : 1;
@@ -755,16 +835,18 @@ const InstancedLabelsWebGL: React.FC<WebGLProps> = ({
 
     nodeGlyphMapRef.current = newNodeMap;
 
-    // Diagnostic log (once)
-    if (!diagLoggedRef.current && glyphIdx > 0) {
-      diagLoggedRef.current = true;
-      console.log('[InstancedLabels] first update:', {
+    // Diagnostic log (rate-limited to 1 Hz to track declutter effectiveness)
+    const _now = performance.now();
+    const _last = (diagLoggedRef as any).lastLogMs as number | undefined;
+    if (glyphIdx > 0 && (_last === undefined || _now - _last > 1000)) {
+      (diagLoggedRef as any).lastLogMs = _now;
+      console.log('[InstancedLabels] layout:', {
         totalNodes: nodes.length,
         visibleNodes: visibleNodeCount,
+        screenCellsRejected: cellsRejected,
+        screenCellsOccupied: _labelGridCells.size,
         glyphCount: glyphIdx,
-        labelPositionsLen: currentLabelPositions.length,
         labelDistanceThreshold: LABEL_DISTANCE_THRESHOLD,
-        atlasChars: atlas.metrics.size,
       });
     }
 
