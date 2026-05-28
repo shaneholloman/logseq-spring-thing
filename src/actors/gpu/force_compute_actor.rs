@@ -1661,6 +1661,11 @@ impl Handler<UpdateSimulationParams> for ForceComputeActor {
         // Idempotency: skip reset if ALL GPU-relevant params haven't changed.
         // The client autoSaveManager may fire redundant updates (GET-merge-PUT with same values).
         // Compare the full set of GPU-relevant fields, not just the original 6.
+        //
+        // CRITICAL: fields used by post-GPU Rust position-modification code (eg.
+        // graph_separation_x, axis_compression_z) and feature-flag-derived fields
+        // (eg. adaptive_speed) MUST appear here — otherwise their value gets
+        // silently dropped when no other field changed simultaneously.
         let cur = &self.simulation_params;
         let eps = 1e-5_f32; // Slightly larger than EPSILON to catch floating-point round-trips
         let physics_unchanged =
@@ -1678,6 +1683,11 @@ impl Handler<UpdateSimulationParams> for ForceComputeActor {
             && (cur.cooling_rate - msg.params.cooling_rate).abs() < eps
             && (cur.viewport_bounds - msg.params.viewport_bounds).abs() < eps
             && (cur.boundary_damping - msg.params.boundary_damping).abs() < eps
+            && (cur.gravity - msg.params.gravity).abs() < eps
+            && (cur.graph_separation_x - msg.params.graph_separation_x).abs() < eps
+            && (cur.axis_compression_z - msg.params.axis_compression_z).abs() < eps
+            && cur.adaptive_speed == msg.params.adaptive_speed
+            && cur.iterations == msg.params.iterations
             && cur.use_sssp_distances == msg.params.use_sssp_distances
             && cur.warmup_iterations == msg.params.warmup_iterations
             && cur.constraint_ramp_frames == msg.params.constraint_ramp_frames
