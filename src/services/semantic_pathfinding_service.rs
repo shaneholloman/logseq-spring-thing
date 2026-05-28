@@ -2,7 +2,7 @@
 //!
 //! Intelligent graph traversal with query-aware and type-aware pathfinding
 
-use visionflow_domain::models::graph::GraphData;
+use visionclaw_domain::models::graph::GraphData;
 use log::info;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet, BinaryHeap, VecDeque};
@@ -430,7 +430,7 @@ impl SemanticPathfindingService {
         }
     }
 
-    fn calculate_node_query_relevance(&self, node: &visionflow_domain::models::node::Node, query: &str) -> f32 {
+    fn calculate_node_query_relevance(&self, node: &visionclaw_domain::models::node::Node, query: &str) -> f32 {
         let query_lower = query.to_lowercase();
         let label_lower = node.label.to_lowercase();
 
@@ -504,8 +504,8 @@ impl Default for SemanticPathfindingService {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use visionflow_domain::models::node::Node;
-    use visionflow_domain::models::edge::Edge;
+    use visionclaw_domain::models::node::Node;
+    use visionclaw_domain::models::edge::Edge;
 
     #[test]
     fn test_semantic_pathfinding_creation() {

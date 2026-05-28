@@ -84,11 +84,11 @@ residual tensions cluster around four themes:
 - **Severity**: important
 - **Affected sections**: 08 (ADR-08 D9 line 198, D2 line 88), 11 (PRD-11 A6 line 121, ADR-11 D2 line 78)
 - **Finding**: ADR-08 D9 declares the inference named graph as
-  `<urn:visionflow:inference>`. ADR-11 D2 and PRD-11 A6 declare it as
-  `<urn:visionflow:graph:ontology:inferred>`. Different IRIs. SPARQL queries
+  `<urn:visionclaw:inference>`. ADR-11 D2 and PRD-11 A6 declare it as
+  `<urn:visionclaw:graph:ontology:inferred>`. Different IRIs. SPARQL queries
   written against ADR-08's name find an empty graph.
 - **Recommended resolution**: Section 11 owns the dataset layout. Section 8
-  must use `<urn:visionflow:graph:ontology:inferred>` verbatim. Also update
+  must use `<urn:visionclaw:graph:ontology:inferred>` verbatim. Also update
   ADR-08 D2 line 88 to spell out the two named graphs explicitly.
 
 ## Tension CC-5: SQLite schema collision — three sections declare tables, no single owner
@@ -232,11 +232,11 @@ residual tensions cluster around four themes:
 
 - **Severity**: nit
 - **Affected sections**: 10 (ADR-10 D3 line 147, D4 line 175)
-- **Finding**: ADR-10 uses `BroadcastChannel('visionflow:agent-actions')` (D3)
-  and `BroadcastChannel('visionflow:auth')` (D4). The naming convention is
+- **Finding**: ADR-10 uses `BroadcastChannel('visionclaw:agent-actions')` (D3)
+  and `BroadcastChannel('visionclaw:auth')` (D4). The naming convention is
   not declared; future channels need a registry.
 - **Recommended resolution**: ADR-10 add a §"BroadcastChannel naming
-  convention": prefix `visionflow:`, kebab-case after the prefix. Future
+  convention": prefix `visionclaw:`, kebab-case after the prefix. Future
   channels register here.
 
 ## Tension CC-14: Worker proxy surface forbids the telemetry path PRD-07 claims to use
@@ -291,12 +291,12 @@ residual tensions cluster around four themes:
 - **Affected sections**: 09 (ADR-09 D5), 06 (ADR-06 D4 mentions `speech_socket_handler`), 10
 - **Finding**: ADR-09 D5 declares three ecosystem services: Kokoro TTS
   (8880), Whisper (8000), Xinference (9997) (`09-ecosystem-services/ADR-09.md`
-  lines 125–162). No section documents what VisionFlow code consumes any of
+  lines 125–162). No section documents what VisionClaw code consumes any of
   them. ADR-06 D4 lists `speech_socket_handler` and `inference_handler` and
   `ragflow_handler` but does not say which ecosystem service each connects
   to. Section 10 covers agentbox/forum/whelk, not TTS/STT/embeddings.
 - **Recommended resolution**: ADR-09 add §"Consumers" listing which
-  VisionFlow handler integrates with each service (Kokoro ↔
+  VisionClaw handler integrates with each service (Kokoro ↔
   speech_socket_handler? Whisper ↔ ?, Xinference ↔ inference_handler?). If
   consumers are out of scope for this sprint, say so explicitly.
 

@@ -11,10 +11,10 @@
 use crate::adapters::oxigraph_ontology_repository::{OxigraphOntologyRepository, GRAPH_ONTOLOGY};
 use crate::adapters::whelk_inference_engine::WhelkInferenceEngine;
 use crate::adapters::SqliteSettingsRepository;
-use visionflow_domain::models::edge::Edge;
-use visionflow_domain::ports::inference_engine::InferenceEngine;
+use visionclaw_domain::models::edge::Edge;
+use visionclaw_domain::ports::inference_engine::InferenceEngine;
 use crate::ports::knowledge_graph_repository::KnowledgeGraphRepository;
-use visionflow_domain::ports::ontology_repository::{AxiomType, OntologyRepository, OwlAxiom};
+use visionclaw_domain::ports::ontology_repository::{AxiomType, OntologyRepository, OwlAxiom};
 use crate::services::edge_classifier::EdgeClassifier;
 use crate::services::github::content_enhanced::EnhancedContentAPI;
 use crate::services::github::types::GitHubFileBasicMetadata;
@@ -339,7 +339,7 @@ impl GitHubSyncService {
                 _ => continue,
             };
 
-            let mut root = visionflow_domain::models::node::Node::default();
+            let mut root = visionclaw_domain::models::node::Node::default();
             root.label = label.to_string();
             root.metadata_id = format!("domain-root-{}", slug);
             root.node_type = Some("domain_root".to_string());
@@ -741,7 +741,7 @@ impl GitHubSyncService {
         &self,
         file: &GitHubFileBasicMetadata,
         content: &str,
-        nodes: &mut std::collections::HashMap<u32, visionflow_domain::models::node::Node>,
+        nodes: &mut std::collections::HashMap<u32, visionclaw_domain::models::node::Node>,
         edges: &mut std::collections::HashMap<String, Edge>,
         public_pages: &mut std::collections::HashSet<String>,
     ) -> Result<(), String> {
@@ -985,12 +985,12 @@ impl GitHubSyncService {
     fn ensure_linked_page_node(
         &self,
         id: u32,
-        nodes: &mut std::collections::HashMap<u32, visionflow_domain::models::node::Node>,
+        nodes: &mut std::collections::HashMap<u32, visionclaw_domain::models::node::Node>,
     ) {
         if nodes.contains_key(&id) {
             return;
         }
-        let mut node = visionflow_domain::models::node::Node::default();
+        let mut node = visionclaw_domain::models::node::Node::default();
         node.id = id;
         node.label = format!("node_{}", id);
         node.metadata_id = format!("node_{}", id);
@@ -1006,7 +1006,7 @@ impl GitHubSyncService {
         &self,
         id: u32,
         iri: &str,
-        nodes: &mut std::collections::HashMap<u32, visionflow_domain::models::node::Node>,
+        nodes: &mut std::collections::HashMap<u32, visionclaw_domain::models::node::Node>,
     ) {
         if let Some(existing) = nodes.get_mut(&id) {
             // Upgrade linked_page stubs to ontology type if IRI indicates it
@@ -1024,7 +1024,7 @@ impl GitHubSyncService {
             }
             return;
         }
-        let mut node = visionflow_domain::models::node::Node::default();
+        let mut node = visionclaw_domain::models::node::Node::default();
         node.id = id;
         let local_name = iri.rsplit_once(':').map(|(_, r)| r).unwrap_or(iri);
         node.label = local_name.replace('-', " ");
@@ -1045,7 +1045,7 @@ impl GitHubSyncService {
     /// Reads rdf:type, domain, maturity, qualityScore, label, and definition
     /// from literal-valued quads whose subject matches the entity IRI.
     fn enrich_node_from_quads(
-        node: &mut visionflow_domain::models::node::Node,
+        node: &mut visionclaw_domain::models::node::Node,
         quads: &[Quad],
         page_name: &str,
     ) {
@@ -1324,7 +1324,7 @@ impl GitHubSyncService {
     #[allow(dead_code)]
     fn filter_linked_pages(
         &self,
-        nodes: &mut std::collections::HashMap<u32, visionflow_domain::models::node::Node>,
+        nodes: &mut std::collections::HashMap<u32, visionclaw_domain::models::node::Node>,
         public_pages: &std::collections::HashSet<String>,
     ) {
         let before = nodes.len();
@@ -1345,7 +1345,7 @@ impl GitHubSyncService {
     fn filter_orphan_edges(
         &self,
         edges: &mut std::collections::HashMap<String, Edge>,
-        nodes: &std::collections::HashMap<u32, visionflow_domain::models::node::Node>,
+        nodes: &std::collections::HashMap<u32, visionclaw_domain::models::node::Node>,
     ) {
         let before = edges.len();
         edges

@@ -1,7 +1,7 @@
 // Test module disabled - references deprecated/removed modules (helpers, integration, test_utils)
 // The helpers module does not exist; integration and performance modules may have moved per ADR-001
 /*
-//! Comprehensive test modules for VisionFlow migration
+//! Comprehensive test modules for VisionClaw migration
 //!
 //! This module organizes all test files for the migration project:
 //! - Integration tests for end-to-end migration pipeline

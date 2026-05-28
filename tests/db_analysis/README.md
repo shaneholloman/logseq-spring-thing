@@ -1,15 +1,15 @@
-# VisionFlow Database Analysis
+# VisionClaw Database Analysis
 
 > **⚠️ DEPRECATED - HISTORICAL REFERENCE ONLY**
 >
 > This directory contains analysis tools for the OLD three-database architecture
 > (knowledge_graph.db, ontology.db, settings.db).
 >
-> **Current System**: VisionFlow now uses ONLY unified.db for all data.
+> **Current System**: VisionClaw now uses ONLY unified.db for all data.
 >
 > These scripts are kept for historical reference and migration context. Tools
 
-This directory contains tools and scripts for analyzing and managing VisionFlow databases.
+This directory contains tools and scripts for analyzing and managing VisionClaw databases.
 
 ## Files
 
@@ -34,10 +34,10 @@ python3 analyze_databases.py
 ### 2. Add Mock Credentials (Development Only)
 ```bash
 # Method 1: Via SQL file
-docker exec -i visionflow_container sqlite3 /app/data/settings.db < add_mock_credentials.sql
+docker exec -i visionclaw_container sqlite3 /app/data/settings.db < add_mock_credentials.sql
 
 # Method 2: Direct SQL
-docker exec -i visionflow_container sqlite3 /app/data/settings.db << 'SQL'
+docker exec -i visionclaw_container sqlite3 /app/data/settings.db << 'SQL'
 INSERT INTO api_keys (service_name, api_key_encrypted, key_name, is_active)
 VALUES ('nostr', 'wss://relay.damus.io', 'Mock Nostr', 1);
 SQL
@@ -46,21 +46,21 @@ SQL
 ### 3. Verify Knowledge Graph
 ```bash
 # After building graph from markdown files
-docker exec visionflow_container sqlite3 /app/data/knowledge_graph.db < verify_graph.sql
+docker exec visionclaw_container sqlite3 /app/data/knowledge_graph.db < verify_graph.sql
 ```
 
 ### 4. Quick Checks
 ```bash
 # Node count
-docker exec visionflow_container sqlite3 /app/data/knowledge_graph.db \
+docker exec visionclaw_container sqlite3 /app/data/knowledge_graph.db \
   "SELECT COUNT(*) FROM nodes"
 
 # Edge count
-docker exec visionflow_container sqlite3 /app/data/knowledge_graph.db \
+docker exec visionclaw_container sqlite3 /app/data/knowledge_graph.db \
   "SELECT COUNT(*) FROM edges"
 
 # API keys configured
-docker exec visionflow_container sqlite3 /app/data/settings.db \
+docker exec visionclaw_container sqlite3 /app/data/settings.db \
   "SELECT service_name, key_name, is_active FROM api_keys"
 ```
 
@@ -121,7 +121,7 @@ Use `add_mock_credentials.sql` for testing.
 
 ### Production Credentials
 1. Generate real API keys from respective services
-2. Use VisionFlow admin UI to add encrypted credentials
+2. Use VisionClaw admin UI to add encrypted credentials
 3. Never store production keys in plain text
 
 ## Graph Building
@@ -129,7 +129,7 @@ Use `add_mock_credentials.sql` for testing.
 The knowledge graph needs to be built from the 185 markdown files:
 
 ```bash
-# Option 1: Via VisionFlow UI
+# Option 1: Via VisionClaw UI
 # Navigate to http://localhost:8080 -> Graph Management -> Rebuild
 
 # Option 2: Via API
@@ -138,7 +138,7 @@ curl -X POST http://localhost:8080/api/graph/rebuild \
   -d '{"source": "markdown"}'
 
 # Option 3: Via container (if available)
-docker exec visionflow_container python -m visionflow.graph.builder \
+docker exec visionclaw_container python -m visionclaw.graph.builder \
   --source /app/data/markdown --rebuild
 ```
 
@@ -159,4 +159,4 @@ WHERE id NOT IN (SELECT source FROM edges)
 
 ## Reference
 
-See `/home/devuser/workspace/project/docs/VisionFlow_Database_Integrity_Report.md` for the complete analysis report.
+See `/home/devuser/workspace/project/docs/VisionClaw_Database_Integrity_Report.md` for the complete analysis report.

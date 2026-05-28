@@ -146,14 +146,14 @@ async fn update_setting_by_path(
 
                     if path.contains(".physics.")
                         || path.contains(".graphs.logseq.")
-                        || path.contains(".graphs.visionflow.")
+                        || path.contains(".graphs.visionclaw.")
                     {
                         info!("Physics setting changed, propagating to GPU actors");
 
                         let graph_name = if path.contains(".graphs.logseq.") {
                             "logseq"
-                        } else if path.contains(".graphs.visionflow.") {
-                            "visionflow"
+                        } else if path.contains(".graphs.visionclaw.") {
+                            "visionclaw"
                         } else {
                             "logseq"
                         };

@@ -14,7 +14,7 @@ VisionClaw is being refactored. The current Solid integration uses
 JavaScriptSolidServer (JSS, Node.js) as a sidecar container
 ([`solid-sidecar-architecture.md`](../explanation/solid-sidecar-architecture.md))
 reached over HTTP via `src/handlers/solid_proxy_handler.rs` against
-`JSS_URL=http://visionflow-jss:3030`. Every pod read/write crosses a
+`JSS_URL=http://visionclaw-jss:3030`. Every pod read/write crosses a
 process boundary, a TCP socket, and a JSON-LD parse round-trip per call.
 
 Three forces converge on this refactor:

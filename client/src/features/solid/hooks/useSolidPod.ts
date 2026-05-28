@@ -13,7 +13,7 @@ import { nostrAuth } from '../../../services/nostrAuthService';
 import { useNostrAuth } from '../../../hooks/useNostrAuth';
 
 /** Rewrite internal JSS Docker URLs to public-facing proxy paths. */
-const jssPattern = /^https?:\/\/[^/]*(?:visionflow-jss|jss|localhost)[^/]*(?::\d+)?\/(.*)$/;
+const jssPattern = /^https?:\/\/[^/]*(?:visionclaw-jss|jss|localhost)[^/]*(?::\d+)?\/(.*)$/;
 function publicUrl(url: string | undefined): string | undefined {
   if (!url) return url;
   const m = url.match(jssPattern);

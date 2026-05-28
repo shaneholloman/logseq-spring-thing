@@ -398,8 +398,8 @@ Each document contains: file checklist with line counts, Mermaid dependency/call
 
 ### Additional completions (beyond original criteria)
 - [x] Dead error code removed: 550 lines (6 macros, 4 traits, 1 enum) — BC-H03 Phase A, `3be80ab`
-- [x] `VisionFlowError` implements `ResponseError` (15-variant HTTP status mapping) — BC-H03 Phase B, `3be80ab`
-- [x] `RAGFlowError` absorbed into `VisionFlowError` — BC-H03 Phase C, `172fac3`
+- [x] `VisionClawError` implements `ResponseError` (15-variant HTTP status mapping) — BC-H03 Phase B, `3be80ab`
+- [x] `RAGFlowError` absorbed into `VisionClawError` — BC-H03 Phase C, `172fac3`
 - [x] Dead ontology wrappers removed: 1,220 lines — PAR-04, `2b0a3e9`
 - [x] Dead `fastwebsockets_handler.rs` removed: 606 lines — PAR-06, `a8d4272`
 - [x] Dead tests removed: 7 empty/placeholder tests — `dfffae2`

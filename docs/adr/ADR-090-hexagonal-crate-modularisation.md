@@ -26,13 +26,13 @@ The 30 top-level modules in `src/` map to 7 crates based on the hexagonal patter
 
 | Crate | Modules | Responsibility |
 |-------|---------|---------------|
-| `visionflow-domain` | `models/`, `types/`, `errors/`, `events/`, `ports/` | Domain model, port traits, no framework deps |
-| `visionflow-gpu` | `gpu/`, `physics/`, `layout/`, `constraints/` | GPU compute, CUDA kernels, force layout |
-| `visionflow-ontology` | `ontology/`, `inference/`, `reasoning/`, `validation/` | OWL reasoning, Whelk integration |
-| `visionflow-adapters` | `adapters/`, `repositories/`, `services/parsers/` | Oxigraph, SQLite, GitHub, Nostr |
-| `visionflow-protocol` | `protocol/`, `protocols/`, `utils/binary_*` | Wire protocol encode/decode |
-| `visionflow-actors` | `actors/`, `cqrs/`, `application/` | Actix actor hierarchy, CQRS bus |
-| `visionflow-server` | `handlers/`, `middleware/`, `config/`, `settings/`, `telemetry/`, `services/` | HTTP routes, WebSocket handlers |
+| `visionclaw-domain` | `models/`, `types/`, `errors/`, `events/`, `ports/` | Domain model, port traits, no framework deps |
+| `visionclaw-gpu` | `gpu/`, `physics/`, `layout/`, `constraints/` | GPU compute, CUDA kernels, force layout |
+| `visionclaw-ontology` | `ontology/`, `inference/`, `reasoning/`, `validation/` | OWL reasoning, Whelk integration |
+| `visionclaw-adapters` | `adapters/`, `repositories/`, `services/parsers/` | Oxigraph, SQLite, GitHub, Nostr |
+| `visionclaw-protocol` | `protocol/`, `protocols/`, `utils/binary_*` | Wire protocol encode/decode |
+| `visionclaw-actors` | `actors/`, `cqrs/`, `application/` | Actix actor hierarchy, CQRS bus |
+| `visionclaw-server` | `handlers/`, `middleware/`, `config/`, `settings/`, `telemetry/`, `services/` | HTTP routes, WebSocket handlers |
 
 The root `webxr` crate becomes a thin binary: `main.rs` + startup wiring.
 
@@ -51,8 +51,8 @@ The `gpu` and `ontology` Cargo features propagate from the root `webxr` crate to
 ```toml
 [features]
 default = ["gpu", "ontology"]
-gpu = ["visionflow-gpu/gpu", "visionflow-actors/gpu"]
-ontology = ["visionflow-ontology/ontology", "visionflow-actors/ontology"]
+gpu = ["visionclaw-gpu/gpu", "visionclaw-actors/gpu"]
+ontology = ["visionclaw-ontology/ontology", "visionclaw-actors/ontology"]
 ```
 
 ### D4. Migration is incremental, phase-per-PR
@@ -69,7 +69,7 @@ Individual crates use `codegen-units = 16` (default) for fast compilation. Only 
 - Incremental release builds drop from ~12 min to ~2 min for single-crate changes
 - Each crate is independently testable without GPU or network
 - Domain types stabilise as a published API surface
-- New adapters (e.g., new persistence backend) only touch `visionflow-adapters`
+- New adapters (e.g., new persistence backend) only touch `visionclaw-adapters`
 - CI can parallelise crate compilation
 
 ### Negative
@@ -81,7 +81,7 @@ Individual crates use `codegen-units = 16` (default) for fast compilation. Only 
 ### Neutral
 - No change to binary protocol, REST API, or WebSocket behaviour
 - No change to Docker image structure (still one `webxr` binary)
-- No change to CUDA kernel compilation (stays in `build.rs` of `visionflow-gpu`)
+- No change to CUDA kernel compilation (stays in `build.rs` of `visionclaw-gpu`)
 
 ---
 
@@ -93,18 +93,18 @@ Individual crates use `codegen-units = 16` (default) for fast compilation. Only 
 
 | Crate | Status | Notes |
 |-------|--------|-------|
-| `visionflow-domain` | Shipped | Phase 1 + 1b — owns all domain types, port traits, GPU adapter ports |
-| `visionflow-adapters` | Shipped | Phase 2 / A1+ — Oxigraph ontology store, Whelk inference engine |
-| `visionflow-gpu` | Shipped | CUDA kernels, force-layout, build.rs PTX compilation |
-| `visionflow-ontology` | Shipped | OWL types, horned-owl pipeline, OntologyPipelineService |
-| `visionflow-actors` | Shipped | Actor message types; actor implementations remain in webxr (see below) |
-| `visionflow-protocol` | Shipped | Binary V2/V3 encode/decode, BinaryMessage wire types |
+| `visionclaw-domain` | Shipped | Phase 1 + 1b — owns all domain types, port traits, GPU adapter ports |
+| `visionclaw-adapters` | Shipped | Phase 2 / A1+ — Oxigraph ontology store, Whelk inference engine |
+| `visionclaw-gpu` | Shipped | CUDA kernels, force-layout, build.rs PTX compilation |
+| `visionclaw-ontology` | Shipped | OWL types, horned-owl pipeline, OntologyPipelineService |
+| `visionclaw-actors` | Shipped | Actor message types; actor implementations remain in webxr (see below) |
+| `visionclaw-protocol` | Shipped | Binary V2/V3 encode/decode, BinaryMessage wire types |
 
-`visionflow-server` is the intended name for the final extracted binary wrapper; in practice the root `webxr` crate serves that role and remains the Cargo binary target.
+`visionclaw-server` is the intended name for the final extracted binary wrapper; in practice the root `webxr` crate serves that role and remains the Cargo binary target.
 
 ### Phase 1b — keystone unblock
 
-Phase 1b (model unification) was the critical path item. Once `GraphData`, `Node`, and `Edge` became canonical domain types inside `visionflow-domain`, the downstream chain (`GpuPhysicsAdapter`, `GpuSemanticAnalyzer`, `OntologyRepository`) could all move in a single coordinated pass. Without Phase 1b the later phases would have required circular workarounds.
+Phase 1b (model unification) was the critical path item. Once `GraphData`, `Node`, and `Edge` became canonical domain types inside `visionclaw-domain`, the downstream chain (`GpuPhysicsAdapter`, `GpuSemanticAnalyzer`, `OntologyRepository`) could all move in a single coordinated pass. Without Phase 1b the later phases would have required circular workarounds.
 
 ### Production bugs uncovered during extraction
 

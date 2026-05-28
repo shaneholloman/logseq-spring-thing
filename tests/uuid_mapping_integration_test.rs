@@ -10,13 +10,13 @@
 //! NOTE: These tests are disabled because the mcp_session_bridge module
 //! has been removed or relocated. Re-enable when the module is available.
 
-// Module webxr::services::mcp_session_bridge does not exist
+// Module visionclaw_server::services::mcp_session_bridge does not exist
 // Commenting out all tests until the module is restored or relocated
 
 /*
 use std::sync::Arc;
 use tokio::time::Duration;
-use webxr::services::mcp_session_bridge::{McpSessionBridge, MonitoredSessionMetadata};
+use visionclaw_server::services::mcp_session_bridge::{McpSessionBridge, MonitoredSessionMetadata};
 
 /// Test basic UUID to Swarm ID mapping
 #[tokio::test]

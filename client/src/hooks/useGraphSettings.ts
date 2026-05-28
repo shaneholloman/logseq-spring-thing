@@ -2,7 +2,7 @@ import { useSelectiveSetting, useSettingSetter } from './useSelectiveSettingsSto
 import { GraphSettings } from '../features/settings/config/settings';
 
 
-export function useGraphSettings(graphName: 'logseq' | 'visionflow'): GraphSettings | undefined {
+export function useGraphSettings(graphName: 'logseq' | 'visionclaw'): GraphSettings | undefined {
   
   const graphSettings = useSelectiveSetting<GraphSettings | undefined>(
     `visualisation.graphs.${graphName}`,
@@ -17,7 +17,7 @@ export function useGraphSettings(graphName: 'logseq' | 'visionflow'): GraphSetti
 }
 
 
-export function useUpdateGraphSettings(graphName: 'logseq' | 'visionflow') {
+export function useUpdateGraphSettings(graphName: 'logseq' | 'visionclaw') {
   const { immediateSet } = useSettingSetter();
   
   return (updater: (draft: GraphSettings) => void) => {
@@ -26,7 +26,7 @@ export function useUpdateGraphSettings(graphName: 'logseq' | 'visionflow') {
       if (!draft.visualisation.graphs) {
         draft.visualisation.graphs = {
           logseq: {} as GraphSettings,
-          visionflow: {} as GraphSettings,
+          visionclaw: {} as GraphSettings,
         };
       }
       
@@ -38,7 +38,7 @@ export function useUpdateGraphSettings(graphName: 'logseq' | 'visionflow') {
 
 
 export function useGraphSetting<T>(
-  graphName: 'logseq' | 'visionflow',
+  graphName: 'logseq' | 'visionclaw',
   path: string
 ): T {
   

@@ -14,14 +14,14 @@ all `[[Renaissance Architecture]]` wikilinks resolve to it.
 {
   "@context": "https://narrativegoldmine.com/context/v1.jsonld",
   "@version": 1.1,
-  "@id": "urn:visionflow:owl:class:renaissance-architecture",
+  "@id": "urn:visionclaw:owl:class:renaissance-architecture",
   "@type": ["OntologyClass", "owl:Class"],
   "ontology": true,
   "rdfs:label": "Renaissance Architecture",
   "vc:termId": "REN-ARCH",
   "vc:preferredTerm": "Renaissance Architecture",
   "vc:definition": "The architecture of the period in European history known as the Renaissance, conventionally dated from the early 15th to the early 17th century. Characterised by the conscious revival of certain elements of Ancient Greek and Roman thought, in particular the orders of columns, the symmetry of plan, and the proportional relationship of parts to whole, derived from a renewed reading of Vitruvius's De architectura.",
-  "rdfs:subClassOf": { "@id": "urn:visionflow:owl:class:architectural-period" },
+  "rdfs:subClassOf": { "@id": "urn:visionclaw:owl:class:architectural-period" },
   "vc:sourceDomain": ["architecture", "art-history"],
   "vc:version": "1.0.0",
   "vc:classType": "ArchitecturalPeriod",
@@ -34,11 +34,11 @@ all `[[Renaissance Architecture]]` wikilinks resolve to it.
   "vc:owlRole": "category",
   "vc:belongsToDomain": "architecture",
   "vc:hasPart": [
-    { "@id": "urn:visionflow:owl:class:italian-renaissance" }
+    { "@id": "urn:visionclaw:owl:class:italian-renaissance" }
   ],
   "vc:relatesTo": [
-    { "@id": "urn:visionflow:owl:class:vitruvian-tradition" },
-    { "@id": "urn:visionflow:owl:class:classical-orders" }
+    { "@id": "urn:visionclaw:owl:class:vitruvian-tradition" },
+    { "@id": "urn:visionclaw:owl:class:classical-orders" }
   ],
   "prov:wasAttributedTo": { "@id": "did:nostr:npub1bob00000000000000000000000000000000000000000000000000000000" },
   "prov:generatedAtTime": { "@value": "2026-05-16T10:00:00Z", "@type": "xsd:dateTime" }
@@ -50,16 +50,16 @@ all `[[Renaissance Architecture]]` wikilinks resolve to it.
 Prior to the corpus assembling this class, three pages referenced
 `[[Renaissance Architecture]]` as a placeholder. On ingest of this
 declaration, the `LinkedPage` placeholder at
-`urn:visionflow:linked:renaissance-architecture` upgrades to this
+`urn:visionclaw:linked:renaissance-architecture` upgrades to this
 `OntologyClass`:
 
 ```json-ld
 {
   "@context": "https://narrativegoldmine.com/context/v1.jsonld",
-  "@id": "urn:visionflow:event:link-resolved:renaissance-architecture",
+  "@id": "urn:visionclaw:event:link-resolved:renaissance-architecture",
   "@type": "LinkResolved",
-  "vc:placeholderIri": "urn:visionflow:linked:renaissance-architecture",
-  "vc:upgradedTo": { "@id": "urn:visionflow:owl:class:renaissance-architecture" },
+  "vc:placeholderIri": "urn:visionclaw:linked:renaissance-architecture",
+  "vc:upgradedTo": { "@id": "urn:visionclaw:owl:class:renaissance-architecture" },
   "vc:upgradeKind": "ToOntologyClass",
   "prov:wasAttributedTo": { "@id": "did:nostr:npub1sync000000000000000000000000000000000000000000000000000000" },
   "prov:generatedAtTime": { "@value": "2026-05-16T10:00:01Z", "@type": "xsd:dateTime" }

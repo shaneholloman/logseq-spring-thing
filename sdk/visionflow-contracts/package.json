@@ -1,13 +1,13 @@
 {
-  "name": "@visionflow/contracts",
+  "name": "@visionclaw/contracts",
   "version": "0.1.0-v1",
-  "description": "Cross-boundary typed contracts for VisionFlow <-> agentbox <-> forum <-> XR client. Generated from crates/visionclaw-contracts.",
+  "description": "Cross-boundary typed contracts for VisionClaw <-> agentbox <-> forum <-> XR client. Generated from crates/visionclaw-contracts.",
   "license": "AGPL-3.0-only",
   "author": "jjohare <github@thedreamlab.uk>",
   "repository": {
     "type": "git",
     "url": "https://github.com/jjohare/AR-AI-Knowledge-Graph.git",
-    "directory": "sdk/visionflow-contracts"
+    "directory": "sdk/visionclaw-contracts"
   },
   "types": "./index.d.ts",
   "main": "./index.js",

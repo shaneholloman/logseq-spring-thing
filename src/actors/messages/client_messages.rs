@@ -1,14 +1,14 @@
 //! Client-domain messages: WebSocket client registration, broadcast,
 //! authentication, filtering, initial graph load, and position streaming.
 //!
-//! Domain-safe types have been moved to `visionflow_actors::messages::client_messages`.
+//! Domain-safe types have been moved to `visionclaw_actors::messages::client_messages`.
 //! This file re-exports them and defines the webxr-internal types that cannot move.
 
 // ---------------------------------------------------------------------------
 // Re-export domain-safe types from the domain crate
 // ---------------------------------------------------------------------------
 
-pub use visionflow_actors::messages::client_messages::{
+pub use visionclaw_actors::messages::client_messages::{
     AuthenticateClient, BroadcastMessage, BroadcastNodePositions,
     ClientBroadcastAck, ForcePositionBroadcast, GetClientCount, InitialClientSync,
     SendToClientBinary, SendToClientText, UnregisterClient, UpdateClientFilter,

@@ -156,7 +156,7 @@ pub struct LiveKitSettings {
     /// API secret for token signing
     #[serde(skip_serializing_if = "Option::is_none", alias = "api_secret")]
     pub api_secret: Option<String>,
-    /// Room name template (default: "visionflow-{world_id}")
+    /// Room name template (default: "visionclaw-{world_id}")
     #[serde(skip_serializing_if = "Option::is_none", alias = "room_prefix")]
     pub room_prefix: Option<String>,
     /// Enable spatial audio based on Vircadia entity positions

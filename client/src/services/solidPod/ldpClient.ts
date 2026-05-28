@@ -53,7 +53,7 @@ export function sanitizePreferenceKey(key: string): string {
 export function resolvePath(path: string): string {
   if (path.startsWith('http://') || path.startsWith('https://')) {
     const jssPattern =
-      /^https?:\/\/[^/]*(?:visionflow-jss|jss|localhost)[^/]*(?::\d+)?\/(.*)$/;
+      /^https?:\/\/[^/]*(?:visionclaw-jss|jss|localhost)[^/]*(?::\d+)?\/(.*)$/;
     const match = path.match(jssPattern);
     if (match) {
       return `${JSS_BASE_URL}/${match[1]}`;

@@ -37,7 +37,7 @@ impl PersistentMCPConnection {
             "params": {
                 "protocolVersion": "2024-11-05",
                 "clientInfo": {
-                    "name": "VisionFlow-BotsClient",
+                    "name": "VisionClaw-BotsClient",
                     "version": "1.0.0"
                 },
                 "capabilities": {

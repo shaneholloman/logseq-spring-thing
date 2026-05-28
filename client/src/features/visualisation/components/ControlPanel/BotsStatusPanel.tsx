@@ -56,7 +56,7 @@ export const BotsStatusPanel: React.FC<BotsStatusPanelProps> = ({ botsData }) =>
           fontSize: '10px'
         }}>
           <Zap size={12} />
-          VisionFlow ({botsData.dataSource.toUpperCase()})
+          VisionClaw ({botsData.dataSource.toUpperCase()})
         </div>
 
         {botsData.nodeCount === 0 ? (

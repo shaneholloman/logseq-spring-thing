@@ -8,16 +8,16 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
 
-use webxr::actors::gpu::ontology_constraint_actor::OntologyConstraintActor;
-use webxr::actors::messages::*;
-use webxr::reasoning::custom_reasoner::{CustomReasoner, OWLClass, Ontology};
-use webxr::reasoning::reasoning_actor::ReasoningActor;
-use webxr::repositories::unified_ontology_repository::UnifiedOntologyRepository;
-use webxr::services::github_sync_service::GitHubSyncService;
-use webxr::services::ontology_pipeline_service::{
+use visionclaw_server::actors::gpu::ontology_constraint_actor::OntologyConstraintActor;
+use visionclaw_server::actors::messages::*;
+use visionclaw_server::reasoning::custom_reasoner::{CustomReasoner, OWLClass, Ontology};
+use visionclaw_server::reasoning::reasoning_actor::ReasoningActor;
+use visionclaw_server::repositories::unified_ontology_repository::UnifiedOntologyRepository;
+use visionclaw_server::services::github_sync_service::GitHubSyncService;
+use visionclaw_server::services::ontology_pipeline_service::{
     OntologyPipelineService, SemanticPhysicsConfig,
 };
-use webxr::services::pipeline_events::{
+use visionclaw_server::services::pipeline_events::{
     OntologyModifiedEvent, PipelineEventBus, PipelineEvent,
 };
 

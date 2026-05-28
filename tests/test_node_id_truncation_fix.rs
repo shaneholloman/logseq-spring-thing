@@ -16,13 +16,13 @@
 // 3. Uncomment the code below
 
 /*
-use webxr::types::vec3::Vec3Data;
-use webxr::utils::binary_protocol::{
+use visionclaw_server::types::vec3::Vec3Data;
+use visionclaw_server::utils::binary_protocol::{
     decode_node_data, encode_node_data, encode_node_data_with_types, from_wire_id_v2,
     get_actual_node_id, is_agent_node, is_knowledge_node, needs_v2_protocol, set_agent_flag,
     set_knowledge_flag, to_wire_id_v2,
 };
-use webxr::utils::socket_flow_messages::BinaryNodeData;
+use visionclaw_server::utils::socket_flow_messages::BinaryNodeData;
 
 #[test]
 fn test_v1_truncation_bug_demonstration() {

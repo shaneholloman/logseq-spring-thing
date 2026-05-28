@@ -5,7 +5,7 @@
 set -e
 
 echo "============================================="
-echo "VisionFlow PTX Compilation Verification"
+echo "VisionClaw PTX Compilation Verification"
 echo "============================================="
 
 # Colors for output
@@ -47,7 +47,7 @@ log_success "NVCC found - version $NVCC_VERSION"
 
 # 2. Verify CUDA source file exists
 echo "2. Checking CUDA source files..."
-CUDA_SOURCE="src/utils/visionflow_unified.cu"
+CUDA_SOURCE="src/utils/visionclaw_unified.cu"
 if [ ! -f "$CUDA_SOURCE" ]; then
     log_error "CUDA source file not found: $CUDA_SOURCE"
     exit 1
@@ -59,7 +59,7 @@ log_info "Source file size: $FILE_SIZE bytes"
 
 # 3. Test direct PTX compilation
 echo "3. Testing direct PTX compilation..."
-TEST_PTX="/tmp/visionflow_test.ptx"
+TEST_PTX="/tmp/visionclaw_test.ptx"
 CUDA_ARCH="${CUDA_ARCH:-75}"
 
 if nvcc -ptx -arch "sm_$CUDA_ARCH" -o "$TEST_PTX" "$CUDA_SOURCE" --use_fast_math -O3 2>/tmp/nvcc_error.log; then
@@ -113,7 +113,7 @@ if command -v cargo &> /dev/null; then
     
     # Check for existing PTX files in target directory
     echo "6. Checking build artifacts..."
-    PTX_FILES=$(find target -name "visionflow_unified.ptx" 2>/dev/null || true)
+    PTX_FILES=$(find target -name "visionclaw_unified.ptx" 2>/dev/null || true)
     if [ -n "$PTX_FILES" ]; then
         log_success "Found build artifacts:"
         echo "$PTX_FILES" | while read ptx_file; do
@@ -131,15 +131,15 @@ fi
 
 # 7. Check environment variable export
 echo "7. Checking PTX path environment export..."
-if [ -n "$VISIONFLOW_PTX_PATH" ]; then
-    log_success "VISIONFLOW_PTX_PATH is set: $VISIONFLOW_PTX_PATH"
-    if [ -f "$VISIONFLOW_PTX_PATH" ]; then
+if [ -n "$VISIONCLAW_PTX_PATH" ]; then
+    log_success "VISIONCLAW_PTX_PATH is set: $VISIONCLAW_PTX_PATH"
+    if [ -f "$VISIONCLAW_PTX_PATH" ]; then
         log_success "PTX file exists at exported path"
     else
         log_error "PTX file does not exist at exported path"
     fi
 else
-    log_warning "VISIONFLOW_PTX_PATH environment variable not set"
+    log_warning "VISIONCLAW_PTX_PATH environment variable not set"
 fi
 
 # 8. Runtime loading simulation test
@@ -190,7 +190,7 @@ BUILD_LOG="/tmp/build_diagnostics.log"
     echo ""
     
     echo "=== Environment Variables ==="
-    env | grep -E "(CUDA|VISIONFLOW)" | sort || echo "No relevant environment variables"
+    env | grep -E "(CUDA|VISIONCLAW)" | sort || echo "No relevant environment variables"
     
 } > "$BUILD_LOG"
 
@@ -215,7 +215,7 @@ fi
 
 echo ""
 echo "Recommendations:"
-echo "1. Ensure VISIONFLOW_PTX_PATH is properly exported by build.rs"
+echo "1. Ensure VISIONCLAW_PTX_PATH is properly exported by build.rs"
 echo "2. Verify PTX files are accessible at runtime"
 echo "3. Test GPU kernel launching with actual CUDA runtime"
 echo "4. Add diagnostic logging for PTX loading failures"

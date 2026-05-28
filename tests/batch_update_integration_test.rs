@@ -14,8 +14,8 @@
 mod batch_update_integration_tests {
     use actix_web::{test, web, App};
     use serde_json::json;
-    use webxr::app_state::AppState;
-    use webxr::handlers::settings_handler;
+    use visionclaw_server::app_state::AppState;
+    use visionclaw_server::handlers::settings_handler;
 
     #[actix_rt::test]
     async fn test_batch_update_endpoint_with_camel_case() {

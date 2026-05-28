@@ -5,9 +5,9 @@ Related     : PRD-016, ADR-090
 
 ## 1. Bounded Contexts
 
-The VisionFlow backend has six bounded contexts, each mapping to a workspace crate:
+The VisionClaw backend has six bounded contexts, each mapping to a workspace crate:
 
-### 1.1 Graph Domain (`visionflow-domain`)
+### 1.1 Graph Domain (`visionclaw-domain`)
 
 **Ubiquitous Language**: Node, Edge, GraphData, MetadataStore, BinaryNodeData, SimParams, SettleMode
 
@@ -27,7 +27,7 @@ The VisionFlow backend has six bounded contexts, each mapping to a workspace cra
 - `SettingsChanged`, `PhysicsParametersUpdated`
 - `OntologyValidated`, `OntologyConstraintViolation`
 
-### 1.2 GPU Physics (`visionflow-gpu`)
+### 1.2 GPU Physics (`visionclaw-gpu`)
 
 **Ubiquitous Language**: ForceCompute, BroadcastOptimizer, FastSettle, Continuous, CUDA kernel, PTX module, spatial hash, Barnes-Hut
 
@@ -41,7 +41,7 @@ The VisionFlow backend has six bounded contexts, each mapping to a workspace cra
 
 **Anti-Corruption Layer**: `GpuBuffers` translates between domain `SimParams` and GPU-native `CudaSimParams`
 
-### 1.3 Ontology Reasoning (`visionflow-ontology`)
+### 1.3 Ontology Reasoning (`visionclaw-ontology`)
 
 **Ubiquitous Language**: OwlClass, OwlProperty, OwlAxiom, Whelk, SubClassOf, DisjointWith, FunctionalProperty
 
@@ -52,7 +52,7 @@ The VisionFlow backend has six bounded contexts, each mapping to a workspace cra
 - Ontology mass is 10× knowledge mass for visual stability
 - Whelk inference results are cached with TTL
 
-### 1.4 Infrastructure Adapters (`visionflow-adapters`)
+### 1.4 Infrastructure Adapters (`visionclaw-adapters`)
 
 **Ubiquitous Language**: Oxigraph, SQLite, SPARQL, GitHub sync, Nostr bridge
 
@@ -63,7 +63,7 @@ The VisionFlow backend has six bounded contexts, each mapping to a workspace cra
 
 **Anti-Corruption Layer**: SPARQL query builders translate domain queries to Oxigraph-specific SPARQL
 
-### 1.5 Actor Orchestration (`visionflow-actors`)
+### 1.5 Actor Orchestration (`visionclaw-actors`)
 
 **Ubiquitous Language**: Supervisor, ForceComputeActor, PhysicsOrchestratorActor, GraphStateActor, ClientCoordinatorActor
 
@@ -74,39 +74,39 @@ The VisionFlow backend has six bounded contexts, each mapping to a workspace cra
 - FastSettle → Continuous fallback on energy threshold exhaustion
 - Settings changes trigger reheat with gradual decay
 
-### 1.6 HTTP Surface (`visionflow-server`)
+### 1.6 HTTP Surface (`visionclaw-server`)
 
 **Ubiquitous Language**: Route, Handler, Middleware, SocketFlowServer, Settings endpoint
 
 **Context Map**:
-- **Conformist** to `visionflow-domain` (uses domain types directly in JSON responses)
-- **Customer-Supplier** with `visionflow-actors` (sends messages, receives results)
+- **Conformist** to `visionclaw-domain` (uses domain types directly in JSON responses)
+- **Customer-Supplier** with `visionclaw-actors` (sends messages, receives results)
 - **Published Language** for REST API (camelCase JSON via serde aliases)
 
 ## 2. Context Map
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│                  visionflow-server                   │
+│                  visionclaw-server                   │
 │  (HTTP handlers, WebSocket, middleware)              │
 │  Conformist to domain types                         │
 └──────────┬──────────────────────────┬───────────────┘
            │ messages                 │ port calls
            ▼                         ▼
 ┌──────────────────┐    ┌─────────────────────────┐
-│ visionflow-actors│    │ visionflow-adapters      │
+│ visionclaw-actors│    │ visionclaw-adapters      │
 │ (orchestration)  │    │ (Oxigraph, SQLite, etc.) │
 └──────┬───────────┘    └──────────┬──────────────┘
        │                           │
        ▼                           │
 ┌──────────────┐ ┌──────────────┐  │
-│visionflow-gpu│ │visionflow-   │  │
+│visionclaw-gpu│ │visionclaw-   │  │
 │(CUDA physics)│ │ontology      │  │
 └──────┬───────┘ └──────┬───────┘  │
        │                │          │
        ▼                ▼          ▼
 ┌──────────────────────────────────────┐
-│         visionflow-domain            │
+│         visionclaw-domain            │
 │  (models, ports, events, types)      │
 └──────────────────┬───────────────────┘
                    │
@@ -119,7 +119,7 @@ The VisionFlow backend has six bounded contexts, each mapping to a workspace cra
 
 ## 3. Shared Kernel
 
-The following types are shared across ALL bounded contexts via `visionflow-domain`:
+The following types are shared across ALL bounded contexts via `visionclaw-domain`:
 
 - `NodeId` (u32), `EdgeId` (String)
 - `Vec3Data` { x, y, z }
@@ -133,31 +133,31 @@ The following types are shared across ALL bounded contexts via `visionflow-domai
 
 | Source Module | Target Crate | Lines | Phase |
 |--------------|-------------|-------|-------|
-| `src/models/` | `visionflow-domain` | 3,256 | 1 |
-| `src/types/` | `visionflow-domain` | 1,407 | 1 |
-| `src/errors/` | `visionflow-domain` | 989 | 1 |
-| `src/events/` | `visionflow-domain` | 3,150 | 1 |
-| `src/ports/` | `visionflow-domain` | 1,323 | 1 |
-| `src/protocol/` | `visionflow-protocol` | 303 | 2 |
-| `src/protocols/` | `visionflow-protocol` | 590 | 2 |
-| `src/gpu/` | `visionflow-gpu` | 9,036 | 3 |
-| `src/physics/` | `visionflow-gpu` | 5,678 | 3 |
-| `src/layout/` | `visionflow-gpu` | 605 | 3 |
-| `src/constraints/` | `visionflow-gpu` | 4,804 | 3 |
-| `src/ontology/` | `visionflow-ontology` | 1,371 | 4 |
-| `src/inference/` | `visionflow-ontology` | 1,394 | 4 |
-| `src/reasoning/` | `visionflow-ontology` | 480 | 4 |
-| `src/validation/` | `visionflow-ontology` | 205 | 4 |
-| `src/adapters/` | `visionflow-adapters` | 7,636 | 5 |
-| `src/repositories/` | `visionflow-adapters` | 10 | 5 |
-| `src/actors/` | `visionflow-actors` | 34,515 | 6 |
-| `src/cqrs/` | `visionflow-actors` | 3,959 | 6 |
-| `src/application/` | `visionflow-actors` | 4,912 | 6 |
-| `src/handlers/` | `visionflow-server` | 35,145 | 7 |
-| `src/middleware/` | `visionflow-server` | 1,149 | 7 |
-| `src/config/` | `visionflow-server` | 4,001 | 7 |
-| `src/settings/` | `visionflow-server` | 2,195 | 7 |
-| `src/telemetry/` | `visionflow-server` | 735 | 7 |
-| `src/services/` | `visionflow-server` | 29,217 | 7 |
+| `src/models/` | `visionclaw-domain` | 3,256 | 1 |
+| `src/types/` | `visionclaw-domain` | 1,407 | 1 |
+| `src/errors/` | `visionclaw-domain` | 989 | 1 |
+| `src/events/` | `visionclaw-domain` | 3,150 | 1 |
+| `src/ports/` | `visionclaw-domain` | 1,323 | 1 |
+| `src/protocol/` | `visionclaw-protocol` | 303 | 2 |
+| `src/protocols/` | `visionclaw-protocol` | 590 | 2 |
+| `src/gpu/` | `visionclaw-gpu` | 9,036 | 3 |
+| `src/physics/` | `visionclaw-gpu` | 5,678 | 3 |
+| `src/layout/` | `visionclaw-gpu` | 605 | 3 |
+| `src/constraints/` | `visionclaw-gpu` | 4,804 | 3 |
+| `src/ontology/` | `visionclaw-ontology` | 1,371 | 4 |
+| `src/inference/` | `visionclaw-ontology` | 1,394 | 4 |
+| `src/reasoning/` | `visionclaw-ontology` | 480 | 4 |
+| `src/validation/` | `visionclaw-ontology` | 205 | 4 |
+| `src/adapters/` | `visionclaw-adapters` | 7,636 | 5 |
+| `src/repositories/` | `visionclaw-adapters` | 10 | 5 |
+| `src/actors/` | `visionclaw-actors` | 34,515 | 6 |
+| `src/cqrs/` | `visionclaw-actors` | 3,959 | 6 |
+| `src/application/` | `visionclaw-actors` | 4,912 | 6 |
+| `src/handlers/` | `visionclaw-server` | 35,145 | 7 |
+| `src/middleware/` | `visionclaw-server` | 1,149 | 7 |
+| `src/config/` | `visionclaw-server` | 4,001 | 7 |
+| `src/settings/` | `visionclaw-server` | 2,195 | 7 |
+| `src/telemetry/` | `visionclaw-server` | 735 | 7 |
+| `src/services/` | `visionclaw-server` | 29,217 | 7 |
 | `src/utils/` | Split across crates | 25,264 | 1-7 |
-| `src/client/` | `visionflow-server` | 373 | 7 |
+| `src/client/` | `visionclaw-server` | 373 | 7 |

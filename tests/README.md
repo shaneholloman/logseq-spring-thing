@@ -1,6 +1,6 @@
-# VisionFlow Production Validation Test Suite
+# VisionClaw Production Validation Test Suite
 
-This directory contains a comprehensive test suite for validating the production readiness of the VisionFlow system. The tests cover all critical aspects including error handling, GPU safety, network resilience, and API security.
+This directory contains a comprehensive test suite for validating the production readiness of the VisionClaw system. The tests cover all critical aspects including error handling, GPU safety, network resilience, and API security.
 
 ## Test Files Overview
 

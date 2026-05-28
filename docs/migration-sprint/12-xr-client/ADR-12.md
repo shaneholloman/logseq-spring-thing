@@ -19,7 +19,7 @@ duplicate the data path (settings, auth, position state) or fork the
 rendering layer (R3F is web-only).
 
 Instead, the XR client is treated as a *second consumer* of the same
-VisionFlow server, written natively in Godot 4.x with a Rust gdext bridge.
+VisionClaw server, written natively in Godot 4.x with a Rust gdext bridge.
 The data path (V3 protocol, Nostr auth, agent telemetry endpoints) is
 unchanged. The XR client implements its own rendering, interaction, and
 comfort layers but matches the visual primitives exactly (Icosahedron

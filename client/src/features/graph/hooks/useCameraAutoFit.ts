@@ -10,7 +10,7 @@ const logger = createLogger('CameraAutoFit');
  * UI components outside the R3F Canvas (e.g. "Reset View" button) dispatch
  * this event; the hook inside the Canvas listens and performs the fit.
  */
-export const CAMERA_FIT_EVENT = 'visionflow:camera-fit';
+export const CAMERA_FIT_EVENT = 'visionclaw:camera-fit';
 
 /**
  * Computes the bounding box of a flat Float32Array of [x,y,z,...] positions

@@ -42,7 +42,7 @@ impl UnifiedGPUCompute {
     /// Default block size for kernel launches.  Ideally this would be queried
     /// from `dynamic_grid.cu::calculate_optimal_block_size()` at init time, but
     /// there is no Rust FFI wrapper for that function yet.  This constant can be
-    /// overridden via the `VISIONFLOW_BLOCK_SIZE` environment variable for
+    /// overridden via the `VISIONCLAW_BLOCK_SIZE` environment variable for
     /// tuning without recompilation.
     // TODO: Wire to dynamic_grid.cu::calculate_optimal_block_size() via FFI
     //       and cache the result in UnifiedGPUCompute at construction time.
@@ -52,7 +52,7 @@ impl UnifiedGPUCompute {
         // Allow runtime override via environment variable for tuning
         static BLOCK_SIZE: std::sync::OnceLock<u32> = std::sync::OnceLock::new();
         *BLOCK_SIZE.get_or_init(|| {
-            std::env::var("VISIONFLOW_BLOCK_SIZE")
+            std::env::var("VISIONCLAW_BLOCK_SIZE")
                 .ok()
                 .and_then(|v| v.parse::<u32>().ok())
                 .filter(|&bs| bs >= 32 && bs <= 1024 && bs % 32 == 0)

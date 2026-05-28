@@ -101,7 +101,7 @@ const detectTestMode = (): boolean => {
     
     if (typeof process !== 'undefined' && process.env) {
         if (process.env.NODE_ENV === 'test' ||
-            process.env.VISIONFLOW_TEST_MODE === 'true' ||
+            process.env.VISIONCLAW_TEST_MODE === 'true' ||
             process.env.BYPASS_WEBGL === 'true') {
             logger.info('Test mode enabled via environment variable');
             return true;

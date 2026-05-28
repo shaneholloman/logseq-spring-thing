@@ -34,7 +34,7 @@ config.yml
 # Runtime data directories
 data/*.db
 data/*.db.*
-data/visionflow.db*
+data/visionclaw.db*
 logs/
 qdrant_data/
 

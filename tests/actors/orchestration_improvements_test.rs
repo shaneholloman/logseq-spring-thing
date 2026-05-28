@@ -18,7 +18,7 @@ use std::time::Duration;
 
 #[cfg(test)]
 mod heartbeat_directive_tests {
-    use webxr::utils::websocket_heartbeat::HeartbeatDirective;
+    use visionclaw_server::utils::websocket_heartbeat::HeartbeatDirective;
 
     #[test]
     fn reload_config_serialises_correctly() {
@@ -66,7 +66,7 @@ mod heartbeat_directive_tests {
 
 #[cfg(test)]
 mod broadcast_result_tests {
-    use webxr::actors::client_coordinator_actor::BroadcastResult;
+    use visionclaw_server::actors::client_coordinator_actor::BroadcastResult;
 
     #[test]
     fn default_broadcast_result_is_empty() {
@@ -91,10 +91,10 @@ mod broadcast_result_tests {
 #[cfg(test)]
 mod task_orchestrator_tests {
     use actix::prelude::*;
-    use webxr::actors::task_orchestrator_actor::{
+    use visionclaw_server::actors::task_orchestrator_actor::{
         CreateTask, DrainTasksBeforeShutdown, TaskOrchestratorActor,
     };
-    use webxr::services::management_api_client::ManagementApiClient;
+    use visionclaw_server::services::management_api_client::ManagementApiClient;
 
     fn make_client() -> ManagementApiClient {
         ManagementApiClient::new(
@@ -150,10 +150,10 @@ mod event_bus_panic_isolation_tests {
     use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use async_trait::async_trait;
-    use webxr::events::bus::EventBus;
-    use webxr::events::types::{EventError, EventHandler, StoredEvent};
-    use webxr::events::domain_events::NodeAddedEvent;
-    use webxr::utils::time;
+    use visionclaw_server::events::bus::EventBus;
+    use visionclaw_server::events::types::{EventError, EventHandler, StoredEvent};
+    use visionclaw_server::events::domain_events::NodeAddedEvent;
+    use visionclaw_server::utils::time;
 
     struct PanicHandler;
 
@@ -235,7 +235,7 @@ mod event_bus_panic_isolation_tests {
 mod supervisor_drain_tests {
     use std::time::Duration;
     use actix::prelude::*;
-    use webxr::actors::supervisor::{
+    use visionclaw_server::actors::supervisor::{
         InitiateGracefulShutdown, RegisterActor, SupervisorActor, SupervisionStrategy,
     };
 
@@ -321,7 +321,7 @@ mod poll_offset_tests {
 
 #[cfg(test)]
 mod task_status_changed_tests {
-    use webxr::actors::messages::{SetAgentMonitorAddr, TaskStatusChanged};
+    use visionclaw_server::actors::messages::{SetAgentMonitorAddr, TaskStatusChanged};
 
     /// Compile-time check that the message types are constructible and their
     /// fields are accessible — sufficient to verify the message was added.

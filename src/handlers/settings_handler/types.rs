@@ -116,10 +116,10 @@ impl SettingsUpdateDTO {
                     message: "iterations must be between 1 and 1000".to_string(),
                 });
             }
-            let visionflow_iterations = vis.graphs.visionflow.physics.iterations;
-            if visionflow_iterations == 0 || visionflow_iterations > 1000 {
+            let visionclaw_iterations = vis.graphs.visionclaw.physics.iterations;
+            if visionclaw_iterations == 0 || visionclaw_iterations > 1000 {
                 return Err(SettingsValidationError {
-                    field: "visualisation.graphs.visionflow.physics.iterations".to_string(),
+                    field: "visualisation.graphs.visionclaw.physics.iterations".to_string(),
                     message: "iterations must be between 1 and 1000".to_string(),
                 });
             }
@@ -283,7 +283,7 @@ pub struct HologramSettingsDTO {
 #[serde(rename_all = "camelCase")]
 pub struct GraphsSettingsDTO {
     pub logseq: GraphSettingsDTO,
-    pub visionflow: GraphSettingsDTO,
+    pub visionclaw: GraphSettingsDTO,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

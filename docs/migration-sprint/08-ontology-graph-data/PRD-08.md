@@ -2,7 +2,7 @@
 
 ## 1. Capability statement
 
-VisionFlow ingests a Logseq knowledge graph from GitHub, parses both its
+VisionClaw ingests a Logseq knowledge graph from GitHub, parses both its
 prose markdown and its embedded OWL2-style ontology blocks, and materialises
 a single coherent semantic graph that both the physics layer (Section 1) and
 the rendering layer (Section 4) consume. The same graph is the substrate the

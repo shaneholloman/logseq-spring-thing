@@ -1,4 +1,4 @@
-// Test disabled - references deprecated/removed modules (webxr::app_state::AppState)
+// Test disabled - references deprecated/removed modules (visionclaw_server::app_state::AppState)
 // AppState module has been restructured per ADR-001
 /*
 //! Integration tests for CQRS Phase 1D - API Route Migration
@@ -8,7 +8,7 @@
 use actix_web::{test, web, App};
 use serde_json::json;
 use std::sync::Arc;
-use webxr::app_state::AppState;
+use visionclaw_server::app_state::AppState;
 
 // Note: These tests require a running actor system which is complex to set up
 // They are marked as #[ignore] and serve as documentation for manual testing

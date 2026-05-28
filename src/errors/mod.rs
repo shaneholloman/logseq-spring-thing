@@ -1,4 +1,4 @@
-//! Comprehensive error handling for the VisionFlow system
+//! Comprehensive error handling for the VisionClaw system
 //!
 //! This module provides a unified error handling approach to replace
 //! all panic! and unwrap() calls with proper error propagation.
@@ -17,7 +17,7 @@ where
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
-pub enum VisionFlowError {
+pub enum VisionClawError {
     
     Actor(ActorError),
     
@@ -292,25 +292,25 @@ pub enum ParseError {
     Custom { format: String, input: String, reason: String },
 }
 
-impl fmt::Display for VisionFlowError {
+impl fmt::Display for VisionClawError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            VisionFlowError::Actor(e) => write!(f, "Actor Error: {}", e),
-            VisionFlowError::GPU(e) => write!(f, "GPU Error: {}", e),
-            VisionFlowError::Settings(e) => write!(f, "Settings Error: {}", e),
-            VisionFlowError::Network(e) => write!(f, "Network Error: {}", e),
-            VisionFlowError::IO(e) => write!(f, "IO Error: {}", e),
-            VisionFlowError::Serialization(e) => write!(f, "Serialization Error: {}", e),
-            VisionFlowError::Speech(e) => write!(f, "Speech Error: {}", e),
-            VisionFlowError::GitHub(e) => write!(f, "GitHub Error: {}", e),
-            VisionFlowError::Audio(e) => write!(f, "Audio Error: {}", e),
-            VisionFlowError::Resource(e) => write!(f, "Resource Error: {}", e),
-            VisionFlowError::Performance(e) => write!(f, "Performance Error: {}", e),
-            VisionFlowError::Protocol(e) => write!(f, "Protocol Error: {}", e),
-            VisionFlowError::Database(e) => write!(f, "Database Error: {}", e),
-            VisionFlowError::Validation(e) => write!(f, "Validation Error: {}", e),
-            VisionFlowError::Parse(e) => write!(f, "Parse Error: {}", e),
-            VisionFlowError::Generic { message, .. } => write!(f, "Error: {}", message),
+            VisionClawError::Actor(e) => write!(f, "Actor Error: {}", e),
+            VisionClawError::GPU(e) => write!(f, "GPU Error: {}", e),
+            VisionClawError::Settings(e) => write!(f, "Settings Error: {}", e),
+            VisionClawError::Network(e) => write!(f, "Network Error: {}", e),
+            VisionClawError::IO(e) => write!(f, "IO Error: {}", e),
+            VisionClawError::Serialization(e) => write!(f, "Serialization Error: {}", e),
+            VisionClawError::Speech(e) => write!(f, "Speech Error: {}", e),
+            VisionClawError::GitHub(e) => write!(f, "GitHub Error: {}", e),
+            VisionClawError::Audio(e) => write!(f, "Audio Error: {}", e),
+            VisionClawError::Resource(e) => write!(f, "Resource Error: {}", e),
+            VisionClawError::Performance(e) => write!(f, "Performance Error: {}", e),
+            VisionClawError::Protocol(e) => write!(f, "Protocol Error: {}", e),
+            VisionClawError::Database(e) => write!(f, "Database Error: {}", e),
+            VisionClawError::Validation(e) => write!(f, "Validation Error: {}", e),
+            VisionClawError::Parse(e) => write!(f, "Parse Error: {}", e),
+            VisionClawError::Generic { message, .. } => write!(f, "Error: {}", message),
         }
     }
 }
@@ -677,11 +677,11 @@ impl fmt::Display for ParseError {
     }
 }
 
-impl std::error::Error for VisionFlowError {
+impl std::error::Error for VisionClawError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            VisionFlowError::IO(e) => Some(e),
-            VisionFlowError::Generic {
+            VisionClawError::IO(e) => Some(e),
+            VisionClawError::Generic {
                 source: Some(source),
                 ..
             } => Some(&**source),
@@ -704,120 +704,120 @@ impl std::error::Error for DatabaseError {}
 impl std::error::Error for ValidationError {}
 impl std::error::Error for ParseError {}
 
-impl From<std::io::Error> for VisionFlowError {
+impl From<std::io::Error> for VisionClawError {
     fn from(e: std::io::Error) -> Self {
-        VisionFlowError::IO(std::sync::Arc::new(e))
+        VisionClawError::IO(std::sync::Arc::new(e))
     }
 }
 
-impl From<ActorError> for VisionFlowError {
+impl From<ActorError> for VisionClawError {
     fn from(e: ActorError) -> Self {
-        VisionFlowError::Actor(e)
+        VisionClawError::Actor(e)
     }
 }
 
-impl From<GPUError> for VisionFlowError {
+impl From<GPUError> for VisionClawError {
     fn from(e: GPUError) -> Self {
-        VisionFlowError::GPU(e)
+        VisionClawError::GPU(e)
     }
 }
 
-impl From<SettingsError> for VisionFlowError {
+impl From<SettingsError> for VisionClawError {
     fn from(e: SettingsError) -> Self {
-        VisionFlowError::Settings(e)
+        VisionClawError::Settings(e)
     }
 }
 
-impl From<NetworkError> for VisionFlowError {
+impl From<NetworkError> for VisionClawError {
     fn from(e: NetworkError) -> Self {
-        VisionFlowError::Network(e)
+        VisionClawError::Network(e)
     }
 }
 
-impl From<SpeechError> for VisionFlowError {
+impl From<SpeechError> for VisionClawError {
     fn from(e: SpeechError) -> Self {
-        VisionFlowError::Speech(e)
+        VisionClawError::Speech(e)
     }
 }
 
-impl From<GitHubError> for VisionFlowError {
+impl From<GitHubError> for VisionClawError {
     fn from(e: GitHubError) -> Self {
-        VisionFlowError::GitHub(e)
+        VisionClawError::GitHub(e)
     }
 }
 
-impl From<AudioError> for VisionFlowError {
+impl From<AudioError> for VisionClawError {
     fn from(e: AudioError) -> Self {
-        VisionFlowError::Audio(e)
+        VisionClawError::Audio(e)
     }
 }
 
-impl From<ResourceError> for VisionFlowError {
+impl From<ResourceError> for VisionClawError {
     fn from(e: ResourceError) -> Self {
-        VisionFlowError::Resource(e)
+        VisionClawError::Resource(e)
     }
 }
 
-impl From<PerformanceError> for VisionFlowError {
+impl From<PerformanceError> for VisionClawError {
     fn from(e: PerformanceError) -> Self {
-        VisionFlowError::Performance(e)
+        VisionClawError::Performance(e)
     }
 }
 
-impl From<ProtocolError> for VisionFlowError {
+impl From<ProtocolError> for VisionClawError {
     fn from(e: ProtocolError) -> Self {
-        VisionFlowError::Protocol(e)
+        VisionClawError::Protocol(e)
     }
 }
 
-impl From<DatabaseError> for VisionFlowError {
+impl From<DatabaseError> for VisionClawError {
     fn from(e: DatabaseError) -> Self {
-        VisionFlowError::Database(e)
+        VisionClawError::Database(e)
     }
 }
 
-impl From<ValidationError> for VisionFlowError {
+impl From<ValidationError> for VisionClawError {
     fn from(e: ValidationError) -> Self {
-        VisionFlowError::Validation(e)
+        VisionClawError::Validation(e)
     }
 }
 
-impl From<ParseError> for VisionFlowError {
+impl From<ParseError> for VisionClawError {
     fn from(e: ParseError) -> Self {
-        VisionFlowError::Parse(e)
+        VisionClawError::Parse(e)
     }
 }
 
-impl From<serde_json::Error> for VisionFlowError {
+impl From<serde_json::Error> for VisionClawError {
     fn from(e: serde_json::Error) -> Self {
-        VisionFlowError::Parse(ParseError::JSON {
+        VisionClawError::Parse(ParseError::JSON {
             input: "".to_string(),
             reason: e.to_string(),
         })
     }
 }
 
-impl From<reqwest::Error> for VisionFlowError {
+impl From<reqwest::Error> for VisionClawError {
     fn from(e: reqwest::Error) -> Self {
-        VisionFlowError::Network(NetworkError::RequestFailed {
+        VisionClawError::Network(NetworkError::RequestFailed {
             url: e.url().map(|u| u.to_string()).unwrap_or_default(),
             reason: e.to_string(),
         })
     }
 }
 
-impl From<String> for VisionFlowError {
+impl From<String> for VisionClawError {
     fn from(s: String) -> Self {
-        VisionFlowError::Generic {
+        VisionClawError::Generic {
             message: s,
             source: None,
         }
     }
 }
 
-impl From<&str> for VisionFlowError {
+impl From<&str> for VisionClawError {
     fn from(s: &str) -> Self {
-        VisionFlowError::Generic {
+        VisionClawError::Generic {
             message: s.to_string(),
             source: None,
         }
@@ -825,44 +825,44 @@ impl From<&str> for VisionFlowError {
 }
 
 // Convenience type alias for Results
-pub type VisionFlowResult<T> = Result<T, VisionFlowError>;
+pub type VisionClawResult<T> = Result<T, VisionClawError>;
 
 pub trait ErrorContext<T> {
-    fn with_context<F>(self, f: F) -> VisionFlowResult<T>
+    fn with_context<F>(self, f: F) -> VisionClawResult<T>
     where
         F: FnOnce() -> String;
 
-    fn with_actor_context(self, actor_name: &str) -> VisionFlowResult<T>;
+    fn with_actor_context(self, actor_name: &str) -> VisionClawResult<T>;
 
-    fn with_gpu_context(self, operation: &str) -> VisionFlowResult<T>;
+    fn with_gpu_context(self, operation: &str) -> VisionClawResult<T>;
 }
 
 impl<T, E> ErrorContext<T> for Result<T, E>
 where
     E: std::error::Error + Send + Sync + 'static,
 {
-    fn with_context<F>(self, f: F) -> VisionFlowResult<T>
+    fn with_context<F>(self, f: F) -> VisionClawResult<T>
     where
         F: FnOnce() -> String,
     {
-        self.map_err(|e| VisionFlowError::Generic {
+        self.map_err(|e| VisionClawError::Generic {
             message: f(),
             source: Some(std::sync::Arc::new(e)),
         })
     }
 
-    fn with_actor_context(self, actor_name: &str) -> VisionFlowResult<T> {
+    fn with_actor_context(self, actor_name: &str) -> VisionClawResult<T> {
         self.map_err(|e| {
-            VisionFlowError::Actor(ActorError::RuntimeFailure {
+            VisionClawError::Actor(ActorError::RuntimeFailure {
                 actor_name: actor_name.to_string(),
                 reason: e.to_string(),
             })
         })
     }
 
-    fn with_gpu_context(self, operation: &str) -> VisionFlowResult<T> {
+    fn with_gpu_context(self, operation: &str) -> VisionClawResult<T> {
         self.map_err(|e| {
-            VisionFlowError::GPU(GPUError::KernelExecutionFailed {
+            VisionClawError::GPU(GPUError::KernelExecutionFailed {
                 kernel_name: operation.to_string(),
                 reason: e.to_string(),
             })
@@ -876,7 +876,7 @@ where
 #[macro_export]
 macro_rules! validation_error {
     ($field:expr, $reason:expr) => {
-        $crate::errors::VisionFlowError::Validation($crate::errors::ValidationError::FieldValidation {
+        $crate::errors::VisionClawError::Validation($crate::errors::ValidationError::FieldValidation {
             field: $field.to_string(),
             reason: $reason.to_string(),
         })
@@ -887,13 +887,13 @@ macro_rules! validation_error {
 #[macro_export]
 macro_rules! parse_error {
     (json, $input:expr, $reason:expr) => {
-        $crate::errors::VisionFlowError::Parse($crate::errors::ParseError::JSON {
+        $crate::errors::VisionClawError::Parse($crate::errors::ParseError::JSON {
             input: $input.to_string(),
             reason: $reason.to_string(),
         })
     };
     (integer, $input:expr) => {
-        $crate::errors::VisionFlowError::Parse($crate::errors::ParseError::Integer {
+        $crate::errors::VisionClawError::Parse($crate::errors::ParseError::Integer {
             input: $input.to_string(),
             reason: "invalid integer format".to_string(),
         })
@@ -904,13 +904,13 @@ macro_rules! parse_error {
 #[macro_export]
 macro_rules! db_error {
     (not_found, $entity:expr, $id:expr) => {
-        $crate::errors::VisionFlowError::Database($crate::errors::DatabaseError::NotFound {
+        $crate::errors::VisionClawError::Database($crate::errors::DatabaseError::NotFound {
             entity: $entity.to_string(),
             id: $id.to_string(),
         })
     };
     (query_failed, $query:expr, $reason:expr) => {
-        $crate::errors::VisionFlowError::Database($crate::errors::DatabaseError::QueryFailed {
+        $crate::errors::VisionClawError::Database($crate::errors::DatabaseError::QueryFailed {
             query: $query.to_string(),
             reason: $reason.to_string(),
         })
@@ -920,34 +920,34 @@ macro_rules! db_error {
 /// Helper function to convert Option to Result with better error messages
 pub trait OptionExt<T> {
     /// Convert Option to Result with a custom error message
-    fn ok_or_error(self, message: impl Into<String>) -> VisionFlowResult<T>;
+    fn ok_or_error(self, message: impl Into<String>) -> VisionClawResult<T>;
 
     /// Convert Option to Result with a validation error
-    fn ok_or_validation(self, field: impl Into<String>) -> VisionFlowResult<T>;
+    fn ok_or_validation(self, field: impl Into<String>) -> VisionClawResult<T>;
 
     /// Convert Option to Result with a not found error
-    fn ok_or_not_found(self, entity: impl Into<String>, id: impl Into<String>) -> VisionFlowResult<T>;
+    fn ok_or_not_found(self, entity: impl Into<String>, id: impl Into<String>) -> VisionClawResult<T>;
 }
 
 impl<T> OptionExt<T> for Option<T> {
-    fn ok_or_error(self, message: impl Into<String>) -> VisionFlowResult<T> {
-        self.ok_or_else(|| VisionFlowError::Generic {
+    fn ok_or_error(self, message: impl Into<String>) -> VisionClawResult<T> {
+        self.ok_or_else(|| VisionClawError::Generic {
             message: message.into(),
             source: None,
         })
     }
 
-    fn ok_or_validation(self, field: impl Into<String>) -> VisionFlowResult<T> {
+    fn ok_or_validation(self, field: impl Into<String>) -> VisionClawResult<T> {
         self.ok_or_else(|| {
-            VisionFlowError::Validation(ValidationError::RequiredField {
+            VisionClawError::Validation(ValidationError::RequiredField {
                 field: field.into(),
             })
         })
     }
 
-    fn ok_or_not_found(self, entity: impl Into<String>, id: impl Into<String>) -> VisionFlowResult<T> {
+    fn ok_or_not_found(self, entity: impl Into<String>, id: impl Into<String>) -> VisionClawResult<T> {
         self.ok_or_else(|| {
-            VisionFlowError::Database(DatabaseError::NotFound {
+            VisionClawError::Database(DatabaseError::NotFound {
                 entity: entity.into(),
                 id: id.into(),
             })
@@ -961,7 +961,7 @@ mod tests {
 
     #[test]
     fn test_error_display() {
-        let actor_error = VisionFlowError::Actor(ActorError::StartupFailed {
+        let actor_error = VisionClawError::Actor(ActorError::StartupFailed {
             actor_name: "TestActor".to_string(),
             reason: "Init failed".to_string(),
         });
@@ -980,7 +980,7 @@ mod tests {
         let with_context = result.with_context(|| "Failed to read configuration".to_string());
         assert!(with_context.is_err());
 
-        if let Err(VisionFlowError::Generic { message, .. }) = with_context {
+        if let Err(VisionClawError::Generic { message, .. }) = with_context {
             assert_eq!(message, "Failed to read configuration");
         } else {
             panic!("Expected Generic error with context");

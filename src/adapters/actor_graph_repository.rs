@@ -11,10 +11,10 @@ use std::sync::Arc;
 use crate::actors::graph_actor::{AutoBalanceNotification, PhysicsState};
 use crate::actors::graph_state_actor::GraphStateActor;
 use crate::actors::messages as actor_msgs;
-use visionflow_domain::models::constraints::ConstraintSet;
-use visionflow_domain::models::edge::Edge;
-use visionflow_domain::models::graph::GraphData;
-use visionflow_domain::models::node::Node;
+use visionclaw_domain::models::constraints::ConstraintSet;
+use visionclaw_domain::models::edge::Edge;
+use visionclaw_domain::models::graph::GraphData;
+use visionclaw_domain::models::node::Node;
 use crate::ports::graph_repository::{
     GraphRepository, GraphRepositoryError, PathfindingParams, PathfindingResult, Result,
 };
@@ -197,7 +197,7 @@ impl GraphRepository for ActorGraphRepository {
     
     
     async fn compute_shortest_paths(&self, params: PathfindingParams) -> Result<PathfindingResult> {
-        use visionflow_domain::ports::gpu_semantic_analyzer::PathfindingResult as GpuPathfindingResult;
+        use visionclaw_domain::ports::gpu_semantic_analyzer::PathfindingResult as GpuPathfindingResult;
 
         
         let gpu_result: GpuPathfindingResult = self

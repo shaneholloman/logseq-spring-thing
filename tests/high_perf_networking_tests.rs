@@ -24,7 +24,7 @@ mod postcard_serialization {
     /// Test basic postcard serialization roundtrip
     #[test]
     fn test_postcard_node_serialization() {
-        use webxr::handlers::quic_transport_handler::{
+        use visionclaw_server::handlers::quic_transport_handler::{
             PostcardNodeUpdate, PostcardBatchUpdate,
         };
 
@@ -55,7 +55,7 @@ mod postcard_serialization {
     /// Test batch serialization with multiple nodes
     #[test]
     fn test_postcard_batch_serialization() {
-        use webxr::handlers::quic_transport_handler::{
+        use visionclaw_server::handlers::quic_transport_handler::{
             PostcardNodeUpdate, PostcardBatchUpdate,
         };
 
@@ -100,12 +100,12 @@ mod postcard_serialization {
     /// Benchmark: Compare postcard vs legacy binary protocol
     #[test]
     fn test_serialization_performance_comparison() {
-        use webxr::handlers::quic_transport_handler::{
+        use visionclaw_server::handlers::quic_transport_handler::{
             PostcardNodeUpdate, PostcardBatchUpdate,
             encode_postcard_batch, decode_postcard_batch,
         };
-        use webxr::utils::binary_protocol;
-        use webxr::utils::socket_flow_messages::BinaryNodeData;
+        use visionclaw_server::utils::binary_protocol;
+        use visionclaw_server::utils::socket_flow_messages::BinaryNodeData;
 
         const NODE_COUNT: usize = 10000;
         const ITERATIONS: usize = 100;
@@ -177,10 +177,10 @@ mod postcard_serialization {
 // Test module for delta encoding
 mod delta_encoding {
     use super::*;
-    use webxr::handlers::quic_transport_handler::{
+    use visionclaw_server::handlers::quic_transport_handler::{
         PostcardNodeUpdate, PostcardDeltaUpdate, calculate_deltas,
     };
-    use webxr::utils::socket_flow_messages::BinaryNodeData;
+    use visionclaw_server::utils::socket_flow_messages::BinaryNodeData;
 
     #[test]
     fn test_delta_calculation() {
@@ -241,7 +241,7 @@ mod delta_encoding {
 
     #[test]
     fn test_delta_encoding_bandwidth_savings() {
-        use webxr::handlers::quic_transport_handler::PostcardBatchUpdate;
+        use visionclaw_server::handlers::quic_transport_handler::PostcardBatchUpdate;
 
         const NODE_COUNT: usize = 1000;
 
@@ -317,7 +317,7 @@ mod delta_encoding {
 
 // Test module for protocol negotiation
 mod protocol_negotiation {
-    use webxr::handlers::fastwebsockets_handler::{
+    use visionclaw_server::handlers::fastwebsockets_handler::{
         negotiate_protocol, TransportProtocol, SerializationFormat,
     };
 
@@ -366,7 +366,7 @@ mod protocol_negotiation {
 
 // Test module for control messages
 mod control_messages {
-    use webxr::handlers::quic_transport_handler::{
+    use visionclaw_server::handlers::quic_transport_handler::{
         ControlMessage, TopologyNode, TopologyEdge,
     };
 
@@ -481,7 +481,7 @@ mod control_messages {
 // Benchmark module
 mod benchmarks {
     use super::*;
-    use webxr::handlers::quic_transport_handler::{
+    use visionclaw_server::handlers::quic_transport_handler::{
         PostcardNodeUpdate, PostcardBatchUpdate,
     };
 

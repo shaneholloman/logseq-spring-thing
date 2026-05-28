@@ -1,12 +1,12 @@
-// Test disabled - references deprecated/removed modules (webxr::config::path_access::JsonPathAccessible)
+// Test disabled - references deprecated/removed modules (visionclaw_server::config::path_access::JsonPathAccessible)
 // JsonPathAccessible trait may have been restructured or moved per ADR-001
 /*
 // Settings Sync Integration Test
 // Tests that settings synchronization works properly between client and server
 
 use serde_json::{json, Value};
-use webxr::config::path_access::JsonPathAccessible;
-use webxr::config::AppFullSettings;
+use visionclaw_server::config::path_access::JsonPathAccessible;
+use visionclaw_server::config::AppFullSettings;
 
 #[tokio::test]
 async fn test_settings_json_serialization() {

@@ -4,8 +4,8 @@
 //! Write operations for ontology repository.
 
 use crate::cqrs::types::{Command, Result};
-use visionflow_domain::models::graph::GraphData;
-use visionflow_domain::ports::ontology_repository::{
+use visionclaw_domain::models::graph::GraphData;
+use visionclaw_domain::ports::ontology_repository::{
     InferenceResults, OwlAxiom, OwlClass, OwlProperty, PathfindingCacheEntry,
 };
 
@@ -273,7 +273,7 @@ impl Command for InvalidatePathfindingCachesCommand {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use visionflow_domain::ports::ontology_repository::PropertyType;
+    use visionclaw_domain::ports::ontology_repository::PropertyType;
 
     #[test]
     fn test_add_class_validation() {
@@ -307,7 +307,7 @@ mod tests {
 
     #[test]
     fn test_add_axiom_validation() {
-        use visionflow_domain::ports::ontology_repository::AxiomType;
+        use visionclaw_domain::ports::ontology_repository::AxiomType;
 
         let axiom = OwlAxiom {
             id: None,

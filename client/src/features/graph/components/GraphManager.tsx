@@ -185,8 +185,8 @@ const GraphManager: React.FC<GraphManagerProps> = ({ onDragStateChange }) => {
 
   // Physics fingerprint (ADR-03 D7: no-op worker forward; kept as dependency marker)
   const logseqPhysics   = logseqSettings?.physics
-  const visionflowPhysics = useSettingsStore(s => s.settings?.visualisation?.graphs?.visionflow?.physics)
-  const physicsFingerprint = useMemo(() => JSON.stringify({ vf: visionflowPhysics, lq: logseqPhysics }), [visionflowPhysics, logseqPhysics])
+  const visionclawPhysics = useSettingsStore(s => s.settings?.visualisation?.graphs?.visionclaw?.physics)
+  const physicsFingerprint = useMemo(() => JSON.stringify({ vf: visionclawPhysics, lq: logseqPhysics }), [visionclawPhysics, logseqPhysics])
   useEffect(() => { void physicsFingerprint }, [physicsFingerprint])
 
   // layoutMode → layoutApi.setMode

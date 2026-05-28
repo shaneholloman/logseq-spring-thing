@@ -3,7 +3,7 @@
 //! GPU-accelerated semantic physics forces for knowledge graph layout.
 //! Implements DAG layout, type clustering, collision detection, and attribute-weighted springs.
 
-use visionflow_domain::models::graph::GraphData;
+use visionclaw_domain::models::graph::GraphData;
 use crate::services::semantic_type_registry::{SemanticTypeRegistry, RelationshipForceConfig};
 use log::{debug, info};
 use serde::{Deserialize, Serialize};
@@ -475,7 +475,7 @@ impl SemanticForcesEngine {
     }
 
     /// Extract physicality classification from node metadata
-    fn extract_physicality(&self, node: &visionflow_domain::models::node::Node) -> i32 {
+    fn extract_physicality(&self, node: &visionclaw_domain::models::node::Node) -> i32 {
         // Check owl:physicality metadata
         if let Some(physicality) = node.metadata.get("owl:physicality")
             .or_else(|| node.metadata.get("physicality"))
@@ -491,7 +491,7 @@ impl SemanticForcesEngine {
     }
 
     /// Extract role classification from node metadata
-    fn extract_role(&self, node: &visionflow_domain::models::node::Node) -> i32 {
+    fn extract_role(&self, node: &visionclaw_domain::models::node::Node) -> i32 {
         // Check owl:role metadata
         if let Some(role) = node.metadata.get("owl:role")
             .or_else(|| node.metadata.get("role"))
@@ -508,7 +508,7 @@ impl SemanticForcesEngine {
     }
 
     /// Extract maturity stage from node metadata
-    fn extract_maturity(&self, node: &visionflow_domain::models::node::Node) -> i32 {
+    fn extract_maturity(&self, node: &visionclaw_domain::models::node::Node) -> i32 {
         // Check maturity metadata
         if let Some(maturity) = node.metadata.get("maturity") {
             return match maturity.as_str() {
@@ -1462,8 +1462,8 @@ impl Default for DynamicRelationshipBufferManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use visionflow_domain::models::node::Node;
-    use visionflow_domain::models::edge::Edge;
+    use visionclaw_domain::models::node::Node;
+    use visionclaw_domain::models::edge::Edge;
 
     #[test]
     fn test_semantic_config_defaults() {

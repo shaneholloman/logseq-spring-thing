@@ -8,7 +8,7 @@ VisionClaw includes comprehensive testing and benchmarking suites to ensure perf
 
 ### Gap Remediation Tests (ADR-031 Sprint)
 
-The following test suites were added during the VisionFlow gap remediation waves 1-4:
+The following test suites were added during the VisionClaw gap remediation waves 1-4:
 
 **Backend Integration Tests**
 

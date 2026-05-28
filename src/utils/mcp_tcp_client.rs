@@ -775,7 +775,7 @@ impl McpTcpClient {
                 "sampling": {}
             },
             "clientInfo": {
-                "name": "visionflow-mcp-client",
+                "name": "visionclaw-mcp-client",
                 "version": "1.0.0"
             }
         });

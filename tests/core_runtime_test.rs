@@ -1,8 +1,8 @@
-// Test disabled - references deprecated/removed modules (webxr::actors::client_manager_actor, tcp_connection_actor, graph_actor::GraphServiceActor)
+// Test disabled - references deprecated/removed modules (visionclaw_server::actors::client_manager_actor, tcp_connection_actor, graph_actor::GraphServiceActor)
 // Actor module structure has changed per ADR-001
 /*
 // Core Runtime Stability Test
-// Tests the VisionFlow WebXR backend core components for runtime stability
+// Tests the VisionClaw WebXR backend core components for runtime stability
 
 #[cfg(test)]
 mod tests {
@@ -32,7 +32,7 @@ mod tests {
     // Test settings loading without panics
     #[tokio::test]
     async fn test_settings_loading_stability() {
-        use webxr::config::AppFullSettings;
+        use visionclaw_server::config::AppFullSettings;
 
         let result = timeout(Duration::from_secs(5), async {
             // Test settings loading in different conditions
@@ -60,7 +60,7 @@ mod tests {
     #[tokio::test]
     async fn test_gpu_manager_initialization() {
         use actix::Actor;
-        use webxr::actors::gpu::gpu_manager_actor::GPUManagerActor;
+        use visionclaw_server::actors::gpu::gpu_manager_actor::GPUManagerActor;
 
         let result = timeout(Duration::from_secs(5), async {
             // Try to start GPU manager actor
@@ -83,8 +83,8 @@ mod tests {
     #[tokio::test]
     async fn test_graph_service_initialization() {
         use actix::Actor;
-        use webxr::actors::graph_actor::GraphServiceActor;
-        use webxr::config::AppFullSettings;
+        use visionclaw_server::actors::graph_actor::GraphServiceActor;
+        use visionclaw_server::config::AppFullSettings;
 
         let result = timeout(Duration::from_secs(5), async {
             // Create minimal settings for graph service
@@ -112,7 +112,7 @@ mod tests {
     #[tokio::test]
     async fn test_metadata_actor_stability() {
         use actix::Actor;
-        use webxr::actors::metadata_actor::MetadataActor;
+        use visionclaw_server::actors::metadata_actor::MetadataActor;
 
         let result = timeout(Duration::from_secs(5), async {
             let metadata_actor = MetadataActor::new();
@@ -133,7 +133,7 @@ mod tests {
     #[tokio::test]
     async fn test_client_manager_stability() {
         use actix::Actor;
-        use webxr::actors::client_manager_actor::ClientManagerActor;
+        use visionclaw_server::actors::client_manager_actor::ClientManagerActor;
 
         let result = timeout(Duration::from_secs(5), async {
             let client_manager = ClientManagerActor::new();
@@ -154,7 +154,7 @@ mod tests {
     #[tokio::test]
     async fn test_tcp_connection_actor_stability() {
         use actix::Actor;
-        use webxr::actors::tcp_connection_actor::TcpConnectionActor;
+        use visionclaw_server::actors::tcp_connection_actor::TcpConnectionActor;
 
         let result = timeout(Duration::from_secs(5), async {
             let tcp_actor = TcpConnectionActor::new("127.0.0.1".to_string(), 9500);
@@ -174,7 +174,7 @@ mod tests {
     // Test voice context manager
     #[tokio::test]
     async fn test_voice_context_manager_stability() {
-        use webxr::services::voice_context_manager::VoiceContextManager;
+        use visionclaw_server::services::voice_context_manager::VoiceContextManager;
 
         let result = timeout(Duration::from_secs(5), async {
             let context_manager = VoiceContextManager::new();
@@ -198,7 +198,7 @@ mod tests {
     // Test GPU compute initialization without CUDA
     #[tokio::test]
     async fn test_gpu_compute_fallback() {
-        use webxr::utils::unified_gpu_compute::UnifiedGPUCompute;
+        use visionclaw_server::utils::unified_gpu_compute::UnifiedGPUCompute;
 
         let result = timeout(Duration::from_secs(5), async {
             // Test that GPU compute handles missing CUDA gracefully
@@ -261,8 +261,8 @@ mod tests {
     async fn test_concurrent_actor_messaging() {
         use actix::Actor;
         use std::collections::HashMap;
-        use webxr::actors::messages::UpdateMetadata;
-        use webxr::actors::metadata_actor::MetadataActor;
+        use visionclaw_server::actors::messages::UpdateMetadata;
+        use visionclaw_server::actors::metadata_actor::MetadataActor;
 
         let result = timeout(Duration::from_secs(10), async {
             let metadata_actor = MetadataActor::new();

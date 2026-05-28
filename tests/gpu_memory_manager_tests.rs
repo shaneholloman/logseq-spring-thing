@@ -11,11 +11,11 @@
 //!
 //! NOTE: These tests are disabled because:
 //! 1. Tests use `crate::gpu::memory_manager` which doesn't work from external test crate
-//! 2. Should use `webxr::gpu::memory_manager` instead
+//! 2. Should use `visionclaw_server::gpu::memory_manager` instead
 //! 3. The GPU memory manager module may also be private or feature-gated
 //!
 //! To re-enable:
-//! 1. Replace `use crate::gpu::memory_manager` with `use webxr::gpu::memory_manager`
+//! 1. Replace `use crate::gpu::memory_manager` with `use visionclaw_server::gpu::memory_manager`
 //! 2. Ensure the gpu::memory_manager module is publicly exported
 //! 3. Uncomment the code below
 

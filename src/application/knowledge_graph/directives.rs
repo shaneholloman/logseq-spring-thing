@@ -6,9 +6,9 @@
 use hexser::{Directive, DirectiveHandler, HexResult, Hexserror};
 use std::sync::Arc;
 
-use visionflow_domain::models::edge::Edge;
-use visionflow_domain::models::graph::GraphData;
-use visionflow_domain::models::node::Node;
+use visionclaw_domain::models::edge::Edge;
+use visionclaw_domain::models::graph::GraphData;
+use visionclaw_domain::models::node::Node;
 use crate::ports::knowledge_graph_repository::KnowledgeGraphRepository;
 
 // ============================================================================

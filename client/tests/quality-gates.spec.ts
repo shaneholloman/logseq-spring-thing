@@ -82,7 +82,7 @@ test.describe('Quality Gates Feature', () => {
     });
   });
 
-  test('VisionFlow Control Center renders correctly', async ({ page }) => {
+  test('VisionClaw Control Center renders correctly', async ({ page }) => {
     await page.goto('http://localhost:3002');
     await page.waitForTimeout(5000);
 
@@ -92,7 +92,7 @@ test.describe('Quality Gates Feature', () => {
     // Check page title
     const title = await page.title();
     console.log('Page title:', title);
-    expect(title).toContain('VisionFlow');
+    expect(title).toContain('VisionClaw');
 
     // Verify Control Center exists
     const pageContent = await page.content();

@@ -6,7 +6,7 @@
 //!
 //! ## Architecture
 //!
-//! VisionFlow Container → ManagementApiClient (HTTP) → agentic-workstation:9090 → Management API
+//! VisionClaw Container → ManagementApiClient (HTTP) → agentic-workstation:9090 → Management API
 //!
 //! ## Features
 //!
@@ -211,7 +211,7 @@ impl ManagementApiClient {
     ///
     /// When `user_context` is provided, the Management API will:
     /// - Create a user-scoped workspace directory
-    /// - Inject VISIONFLOW_USER_* env vars into the agent process
+    /// - Inject VISIONCLAW_USER_* env vars into the agent process
     /// - Optionally create a Beads epic for task tracking (if `with_beads` is true)
     pub async fn create_task_with_context(
         &self,

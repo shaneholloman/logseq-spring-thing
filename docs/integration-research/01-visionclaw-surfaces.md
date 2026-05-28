@@ -494,7 +494,7 @@ What exists today:
 
 - `src/services/management_api_client.rs` — a plain `reqwest`-based HTTP
   client targeting `agentbox:9190`. Comment at `:1-9` documents the
-  one-way wire: "VisionFlow Container → ManagementApiClient (HTTP) →
+  one-way wire: "VisionClaw Container → ManagementApiClient (HTTP) →
   agentbox:9190 → Management API". It is *not* an ACL — it sends commands
   shaped exactly the way agentbox expects them. There is no domain
   translation layer.

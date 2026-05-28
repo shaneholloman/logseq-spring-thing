@@ -8,11 +8,11 @@
 // Commenting out the entire test module
 /*
 use std::time::Instant;
-use webxr::reasoning::{
+use visionclaw_server::reasoning::{
     custom_reasoner::{CustomReasoner, OntologyReasoner},
     inference_cache::InferenceCache,
 };
-use webxr::constraints::axiom_mapper::{AxiomMapper, OWLAxiom, AxiomType as MapperAxiomType};
+use visionclaw_server::constraints::axiom_mapper::{AxiomMapper, OWLAxiom, AxiomType as MapperAxiomType};
 use tempfile::TempDir;
 
 mod fixtures;

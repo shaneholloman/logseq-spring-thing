@@ -12,7 +12,7 @@
 
 #[cfg(all(test, feature = "gpu"))]
 mod gpu_memory_manager_tests {
-    use webxr::gpu::memory_manager::{BufferConfig, GpuMemoryManager};
+    use visionclaw_server::gpu::memory_manager::{BufferConfig, GpuMemoryManager};
 
     // ============================================================
     // SECTION 1: Buffer Allocation and Deallocation Tests
@@ -788,7 +788,7 @@ mod gpu_memory_manager_tests {
 // ============================================================
 #[cfg(test)]
 mod config_tests {
-    use webxr::gpu::memory_manager::BufferConfig;
+    use visionclaw_server::gpu::memory_manager::BufferConfig;
 
     #[test]
     fn test_default_config_values() {

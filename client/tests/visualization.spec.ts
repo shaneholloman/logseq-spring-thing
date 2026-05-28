@@ -1,9 +1,9 @@
 import { test, expect } from '@playwright/test';
 
-test.describe('VisionFlow Visualization', () => {
+test.describe('VisionClaw Visualization', () => {
   test('loads the main page', async ({ page }) => {
     await page.goto('/');
-    await expect(page).toHaveTitle(/VisionFlow/i);
+    await expect(page).toHaveTitle(/VisionClaw/i);
   });
 
   test('API returns graph data', async ({ request }) => {

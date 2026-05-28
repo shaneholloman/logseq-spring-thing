@@ -1,6 +1,6 @@
 # API Integration Tests
 
-This directory contains integration tests for VisionFlow REST API endpoints.
+This directory contains integration tests for VisionClaw REST API endpoints.
 
 ## Test Files
 

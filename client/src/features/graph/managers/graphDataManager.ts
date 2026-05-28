@@ -41,7 +41,7 @@ class GraphDataManager {
 
   // ── Worker / graph type ─────────────────────────────────────────────────
   private workerInitialized: boolean = false;
-  private graphType: 'logseq' | 'visionflow' = 'logseq';
+  private graphType: 'logseq' | 'visionclaw' = 'logseq';
   private workerUnsubscribers: Array<() => void> = [];
 
   // ── User interaction state ──────────────────────────────────────────────
@@ -157,12 +157,12 @@ class GraphDataManager {
     if (debugState.isDataDebugEnabled()) logger.debug('WebSocket service set');
   }
 
-  public setGraphType(type: 'logseq' | 'visionflow'): void {
+  public setGraphType(type: 'logseq' | 'visionclaw'): void {
     this.graphType = type;
     if (debugState.isEnabled()) logger.info(`Graph type set to: ${type}`);
   }
 
-  public getGraphType(): 'logseq' | 'visionflow' {
+  public getGraphType(): 'logseq' | 'visionclaw' {
     return this.graphType;
   }
 

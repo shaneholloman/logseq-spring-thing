@@ -20,7 +20,7 @@ use crate::actors::messages::{
     AdjustConstraintWeights, ApplyOntologyConstraints, ConstraintMergeMode,
     GetOntologyConstraintStats,
 };
-use visionflow_domain::models::constraints::ConstraintSet;
+use visionclaw_domain::models::constraints::ConstraintSet;
 use crate::AppState;
 
 // ============================================================================
@@ -162,8 +162,8 @@ pub async fn enable_ontology_physics(
             let mut constraint_set = ConstraintSet::new();
             for violation in &report.violations {
                 // Each violation maps to a semantic constraint that enforces the ontology rule
-                let constraint = visionflow_domain::models::constraints::Constraint {
-                    kind: visionflow_domain::models::constraints::ConstraintKind::Semantic,
+                let constraint = visionclaw_domain::models::constraints::Constraint {
+                    kind: visionclaw_domain::models::constraints::ConstraintKind::Semantic,
                     node_indices: vec![], // GPU will resolve from ontology IDs
                     params: vec![1.0],    // Default force strength
                     weight: match violation.severity {
@@ -180,8 +180,8 @@ pub async fn enable_ontology_physics(
                 info!("No violations but {} constraints in summary, creating semantic constraints",
                       report.constraint_summary.total_constraints);
                 for _ in 0..report.constraint_summary.semantic_constraints {
-                    constraint_set.add(visionflow_domain::models::constraints::Constraint {
-                        kind: visionflow_domain::models::constraints::ConstraintKind::Semantic,
+                    constraint_set.add(visionclaw_domain::models::constraints::Constraint {
+                        kind: visionclaw_domain::models::constraints::ConstraintKind::Semantic,
                         node_indices: vec![],
                         params: vec![0.8],
                         weight: 0.5,

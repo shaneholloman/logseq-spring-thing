@@ -136,7 +136,7 @@ Each subsystem in the ecosystem has a defined role in the lifecycle above.
 | **Nostr relay mesh** | Coordination plane across trust boundaries. NIP-42 AUTH gate. IS-Envelope message contract. Gift-wrap encryption. Agent status, broker decisions, and human feedback all flow as Nostr events. | [ADR-073](../adr/ADR-073-private-nostr-relay-mesh-topology.md), [ADR-075](../adr/ADR-075-is-envelope-message-contract.md) |
 | **GPU physics** | 92 CUDA kernels rendering ontology metadata as spatial forces. Migration state is visible: promoted nodes settle toward the core, orphans drift to the periphery, bridge edges pull candidates toward their target classes. | [physics-gpu-engine.md](./physics-gpu-engine.md) |
 | **XR client** | Native Quest 3 APK (Godot 4 + godot-rust + OpenXR) consuming the same binary position stream. Spatial exploration of knowledge graph health, migration state, and enrichment impact. | [xr-architecture.md](./xr-architecture.md), [PRD-008](../PRD-008-xr-godot-replacement.md) |
-| **nostr-rust-forum** | Forum kit providing human-to-human and human-to-agent text coordination over Nostr. Optional messaging surface for enrichment feedback. | [PRD-010](../PRD-010-did-nostr-mesh-federation.md), [PRD-011](../PRD-011-visionflow-forum-kit-extraction.md) |
+| **nostr-rust-forum** | Forum kit providing human-to-human and human-to-agent text coordination over Nostr. Optional messaging surface for enrichment feedback. | [PRD-010](../PRD-010-did-nostr-mesh-federation.md), [PRD-011](../PRD-011-visionclaw-forum-kit-extraction.md) |
 
 ---
 

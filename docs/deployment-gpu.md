@@ -41,7 +41,7 @@ x-gpu-resources: &gpu-resources
           capabilities: [gpu, compute, utility]
 ```
 
-Both the `visionflow` (dev) and `visionflow-production` services include:
+Both the `visionclaw` (dev) and `visionclaw-production` services include:
 
 ```yaml
 deploy:
@@ -163,7 +163,7 @@ nvidia-smi
 Stop GPU containers first, then upgrade:
 
 ```bash
-docker stop visionflow_container agentic-workstation
+docker stop visionclaw_container agentic-workstation
 sudo pacman -Syu nvidia-open-dkms nvidia-utils
 sudo reboot
 ```
@@ -184,7 +184,7 @@ docker compose --profile dev up -d
 ### Upgrading on Ubuntu / Debian
 
 ```bash
-docker stop visionflow_container agentic-workstation
+docker stop visionclaw_container agentic-workstation
 sudo apt update && sudo apt install --only-upgrade nvidia-driver-595 nvidia-utils-595
 sudo reboot
 ```

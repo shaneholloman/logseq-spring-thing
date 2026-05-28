@@ -1,10 +1,10 @@
-# VisionFlow Wardley Map
+# VisionClaw Wardley Map
 
-This Wardley map positions VisionFlow's components along the evolution axis (Genesis → Custom-Built → Product → Commodity) and the value chain (Visible to user → Invisible infrastructure). It shows where the ecosystem creates unique value versus where it consumes commodity infrastructure.
+This Wardley map positions VisionClaw's components along the evolution axis (Genesis → Custom-Built → Product → Commodity) and the value chain (Visible to user → Invisible infrastructure). It shows where the ecosystem creates unique value versus where it consumes commodity infrastructure.
 
 ## Strategic Map
 
-![VisionFlow Strategic Wardley Map](visionflow-wardley-map.png)
+![VisionClaw Strategic Wardley Map](visionclaw-wardley-map.png)
 
 <details>
 <summary>Mermaid source (wardleyMap syntax, requires Mermaid 12+)</summary>
@@ -15,7 +15,7 @@ config:
   theme: base
 ---
 wardleyMap
-  title VisionFlow Coordination Platform
+  title VisionClaw Coordination Platform
   anchor User Need [0.97, 0.59]
   anchor Hard Problems [0.92, 0.20]
 
@@ -94,18 +94,18 @@ wardleyMap
 
 ## Reading the Map
 
-### Where VisionFlow Creates Unique Value (Genesis–Custom)
+### Where VisionClaw Creates Unique Value (Genesis–Custom)
 
-The top-left quadrant — visible to users, not yet commoditised — is where VisionFlow's strategic advantage lives:
+The top-left quadrant — visible to users, not yet commoditised — is where VisionClaw's strategic advantage lives:
 
 - **Judgment Broker** — the human-in-the-loop governance layer that makes agent meshes trustworthy. No equivalent exists in any competing platform.
-- **OWL 2 EL Reasoning** (evolving →) — formal semantic reasoning as the shared vocabulary for human-agent collaboration. Most agent systems use keyword matching; VisionFlow uses ontological subsumption.
+- **OWL 2 EL Reasoning** (evolving →) — formal semantic reasoning as the shared vocabulary for human-agent collaboration. Most agent systems use keyword matching; VisionClaw uses ontological subsumption.
 - **GPU Semantic Physics** (evolving →) — ontology-driven force simulation where `subClassOf` creates attraction and `disjointWith` creates repulsion. Makes semantic relationships physically visible.
 - **Agent Control Surface Protocol** (evolving →) — kinds 31400-31405 for structured agent-human governance decisions over Nostr. Being standardised through use; could become a NIP.
 
 ### The Protocol Layer (Custom-Built, evolving toward Product)
 
-The middle band is where VisionFlow's protocol infrastructure sits — custom-built Rust implementations of open standards:
+The middle band is where VisionClaw's protocol infrastructure sits — custom-built Rust implementations of open standards:
 
 - **solid-pod-rs** — Rust port of JSS at ~98% parity. Compiles to both native and WASM. The foundation for self-sovereign data.
 - **DID:Nostr** (evolving →) — bridges Nostr identity (secp256k1) to W3C DID and Solid WebID. Unique in combining these three identity systems.
@@ -116,8 +116,8 @@ The middle band is where VisionFlow's protocol infrastructure sits — custom-bu
 
 The bottom-right is consumed, not built:
 
-- **CUDA, Docker, PostgreSQL, Cloudflare Workers, secp256k1** — commodity infrastructure. VisionFlow builds on top of these; it doesn't reinvent them.
-- **Nostr Protocol, Solid Protocol, MCP Protocol** — open standards consumed as dependencies. VisionFlow implements them; it doesn't own them.
+- **CUDA, Docker, PostgreSQL, Cloudflare Workers, secp256k1** — commodity infrastructure. VisionClaw builds on top of these; it doesn't reinvent them.
+- **Nostr Protocol, Solid Protocol, MCP Protocol** — open standards consumed as dependencies. VisionClaw implements them; it doesn't own them.
 - **Nix Flakes** — product-stage build system consumed by agentbox for reproducibility.
 
 ### Strategic Movements
@@ -145,4 +145,4 @@ Arrows on `evolve` components show where the ecosystem is actively investing:
 | Collaboration platforms (Slack, Teams) | Communication | Coordination, semantic grounding, trust hierarchies |
 | AI platforms (OpenAI, Anthropic) | Model access | Decentralised identity, data sovereignty, governance |
 
-VisionFlow occupies the intersection: governed coordination of distributed human and AI intelligence at scale, with self-sovereign data and platform-agnostic deployment.
+VisionClaw occupies the intersection: governed coordination of distributed human and AI intelligence at scale, with self-sovereign data and platform-agnostic deployment.

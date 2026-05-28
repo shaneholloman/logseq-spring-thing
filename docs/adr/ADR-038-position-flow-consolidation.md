@@ -17,7 +17,7 @@ Wire-format clauses superseded by ADR-061 (2026-04-30); push-path consolidation 
 
 ## Context (historical, pre-ADR-061)
 
-VisionFlow had 7 server-side position delivery paths. The overlap caused duplicate
+VisionClaw had 7 server-side position delivery paths. The overlap caused duplicate
 frames on the same WebSocket connection with conflicting wire-format encodings:
 
 1. **Push path**: `ForceComputeActor` -> `GraphServiceSupervisor` ->

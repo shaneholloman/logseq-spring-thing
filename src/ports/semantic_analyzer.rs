@@ -7,7 +7,7 @@
 use async_trait::async_trait;
 use std::collections::HashMap;
 
-use visionflow_domain::models::graph::GraphData;
+use visionclaw_domain::models::graph::GraphData;
 
 pub type Result<T> = std::result::Result<T, SemanticAnalyzerError>;
 

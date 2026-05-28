@@ -511,11 +511,11 @@ mod tests {
     fn test_urls_match_rejects_different_host() {
         // CRITICAL: token signed for evil.com must NOT match our server
         assert!(!urls_match(
-            "https://visionflow.info/api/solid/pods/init",
+            "https://visionclaw.info/api/solid/pods/init",
             "https://evil.com/api/solid/pods/init"
         ));
         assert!(!urls_match(
-            "https://visionflow.info/solid/pods/init",
+            "https://visionclaw.info/solid/pods/init",
             "https://evil.com/solid/pods/init"
         ));
     }
@@ -523,8 +523,8 @@ mod tests {
     #[test]
     fn test_urls_match_case_insensitive_host() {
         assert!(urls_match(
-            "https://VisionFlow.INFO/solid/pods",
-            "https://visionflow.info/solid/pods"
+            "https://VisionClaw.INFO/solid/pods",
+            "https://visionclaw.info/solid/pods"
         ));
     }
 
@@ -532,13 +532,13 @@ mod tests {
     fn test_urls_match_relative_vs_absolute_allowed() {
         // Relative path has no host — should still match via path comparison
         assert!(urls_match(
-            "https://visionflow.info/api/solid/pods/init",
+            "https://visionclaw.info/api/solid/pods/init",
             "/solid/pods/init"
         ));
         // But the reverse should also work
         assert!(urls_match(
             "/solid/pods/init",
-            "https://visionflow.info/api/solid/pods/init"
+            "https://visionclaw.info/api/solid/pods/init"
         ));
     }
 

@@ -16,7 +16,7 @@ generates an `AgentControls` edge in the topology projection.
   "@context": "https://narrativegoldmine.com/context/v1.jsonld",
   "@graph": [
     {
-      "@id": "urn:visionflow:agent:run-2026-05-16-002:step-0",
+      "@id": "urn:visionclaw:agent:run-2026-05-16-002:step-0",
       "@type": "AgentTelemetry",
       "vc:agentDid": { "@id": "did:nostr:npub1alice000000000000000000000000000000000000000000000000000" },
       "vc:runId": "run-2026-05-16-002",
@@ -28,7 +28,7 @@ generates an `AgentControls` edge in the topology projection.
       "prov:generatedAtTime": { "@value": "2026-05-16T11:00:00Z", "@type": "xsd:dateTime" }
     },
     {
-      "@id": "urn:visionflow:agent:run-2026-05-16-002:step-1",
+      "@id": "urn:visionclaw:agent:run-2026-05-16-002:step-1",
       "@type": "AgentTelemetry",
       "vc:agentDid": { "@id": "did:nostr:npub1sync000000000000000000000000000000000000000000000000000000" },
       "vc:runId": "run-2026-05-16-002",
@@ -41,7 +41,7 @@ generates an `AgentControls` edge in the topology projection.
       "prov:generatedAtTime": { "@value": "2026-05-16T11:00:01Z", "@type": "xsd:dateTime" }
     },
     {
-      "@id": "urn:visionflow:agent:run-2026-05-16-002:step-2",
+      "@id": "urn:visionclaw:agent:run-2026-05-16-002:step-2",
       "@type": "AgentTelemetry",
       "vc:agentDid": { "@id": "did:nostr:npub1whelk00000000000000000000000000000000000000000000000000000" },
       "vc:runId": "run-2026-05-16-002",

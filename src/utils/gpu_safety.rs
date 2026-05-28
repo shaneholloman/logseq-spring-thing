@@ -1,7 +1,7 @@
 //! GPU Safety Validation Module
 //!
 //! Provides comprehensive bounds checking, memory validation, and safety measures
-//! for all GPU operations in the VisionFlow system.
+//! for all GPU operations in the VisionClaw system.
 
 use log::{debug, error, info, warn};
 use std::collections::HashMap;

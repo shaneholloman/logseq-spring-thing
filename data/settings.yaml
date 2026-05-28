@@ -192,7 +192,7 @@ visualisation:
         lerpBase: 0.003
         snapThreshold: 0.05
         maxDivergence: 50.0
-    visionflow:
+    visionclaw:
       nodes:
         baseColor: '#40ff00'
         metalness: 0.85
@@ -340,7 +340,7 @@ clientTweening:
 system:
   network:
     bindAddress: 0.0.0.0
-    domain: visionflow.info
+    domain: visionclaw.info
     enableHttp2: false
     enableRateLimiting: false
     enableTls: false
@@ -375,8 +375,8 @@ system:
     updateRate: 60
   security:
     allowedOrigins:
-    - https://www.visionflow.info
-    - https://visionflow.info
+    - https://www.visionclaw.info
+    - https://visionclaw.info
     auditLogPath: /app/logs/audit.log
     cookieHttponly: true
     cookieSamesite: Strict

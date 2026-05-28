@@ -312,7 +312,7 @@ Feature: Forum kit extraction creates clean canonical home at nostr-rust-forum
     When the import commit is applied
     Then `git grep -i dreamlab` MUST return zero hits across `crates/`, `docs/`, `examples/`
     And README.md MUST contain "nostr-bbs-rs" (the public product name)
-    And README.md MUST NOT contain "VisionFlow" (DreamLab internal brand) anywhere public
+    And README.md MUST NOT contain "VisionClaw" (DreamLab internal brand) anywhere public
 
   Scenario: PR merged + v3.0-rc1 tag
     Given the import commit is reviewed and merged
@@ -602,7 +602,7 @@ After these actions, the requirement set reaches GO. Implementation can begin on
 ## References
 
 - PRD-010 — `/home/devuser/workspace/project/docs/PRD-010-did-nostr-mesh-federation.md`
-- PRD-011 — `/home/devuser/workspace/project/docs/PRD-011-visionflow-forum-kit-extraction.md`
+- PRD-011 — `/home/devuser/workspace/project/docs/PRD-011-visionclaw-forum-kit-extraction.md`
 - ADR-073 — `/home/devuser/workspace/project/docs/adr/ADR-073-private-nostr-relay-mesh-topology.md`
 - ADR-074 — `/home/devuser/workspace/project/docs/adr/ADR-074-cross-system-did-nostr-canonicalisation.md`
 - ADR-075 — `/home/devuser/workspace/project/docs/adr/ADR-075-is-envelope-message-contract.md`

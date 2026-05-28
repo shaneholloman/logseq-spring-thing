@@ -21,7 +21,7 @@ document tracks the existing broad selectors that the next pass must split.
 | `GraphManager.tsx` | 273 | `s.settings?.system?.debug` | BROAD — composite | Split into `enablePhysicsDebug`, `enableNodeDebug`, `enablePerformanceDebug`, `enabled`. |
 | `GraphManager.tsx` | 274 | `s.settings?.nodeFilter` | BROAD — composite | Split into `enabled`, `qualityThreshold`, `authorityThreshold`, `filterByQuality`, `filterByAuthority`, `filterMode`. |
 | `GraphManager.tsx` | 275 | `s.settings?.visualisation?.graphs?.logseq?.nodes?.nodeTypeVisibility` | BROAD — composite | Split per-type boolean. |
-| `GraphManager.tsx` | 487 | `s.settings?.visualisation?.graphs?.visionflow?.physics` | BROAD — composite | Split into scalars (springStrength, damping, repulsion, etc.). |
+| `GraphManager.tsx` | 487 | `s.settings?.visualisation?.graphs?.visionclaw?.physics` | BROAD — composite | Split into scalars (springStrength, damping, repulsion, etc.). |
 | `GraphCanvas.tsx` | 109 | `s.settings?.visualisation?.sceneEffects` | BROAD — composite | Split per-effect boolean. |
 | `GlassEdges.tsx` | 143 | `s.get<GlowSettings>('visualisation.glow')` | BROAD — typed object | Split into `glowEnabled`, `glowIntensity`, `glowColor`. |
 | `GlassEdges.tsx` | 148 | `s.get<GemMaterialSettings>('visualisation.gemMaterial')` | BROAD — typed object | Split into individual material scalars. |

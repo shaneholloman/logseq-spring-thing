@@ -13,11 +13,11 @@ schema drift.
 ```json-ld
 {
   "@context": "https://narrativegoldmine.com/context/v99.jsonld",
-  "@id": "urn:visionflow:owl:class:future-shock",
+  "@id": "urn:visionclaw:owl:class:future-shock",
   "@type": "OntologyClass",
   "rdfs:label": "Future Shock",
   "vc:definition": "A class that uses an unreleased context version.",
-  "rdfs:subClassOf": { "@id": "urn:visionflow:owl:class:architectural-period" },
+  "rdfs:subClassOf": { "@id": "urn:visionclaw:owl:class:architectural-period" },
   "prov:wasAttributedTo": { "@id": "did:nostr:npub1bob00000000000000000000000000000000000000000000000000000000" },
   "prov:generatedAtTime": { "@value": "2026-05-16T12:10:00Z", "@type": "xsd:dateTime" }
 }

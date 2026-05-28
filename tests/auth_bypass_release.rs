@@ -152,8 +152,8 @@ fn v3_d11_boot_refusal_enumerates_suspect_envs() {
         "SUSPECT_ENVS must include ALLOW_INSECURE_DEFAULTS"
     );
     assert!(
-        source.contains("\"VISIONFLOW_DEV_MODE\""),
-        "SUSPECT_ENVS must include VISIONFLOW_DEV_MODE"
+        source.contains("\"VISIONCLAW_DEV_MODE\""),
+        "SUSPECT_ENVS must include VISIONCLAW_DEV_MODE"
     );
     // And the boot hook must exit(2) on offence.
     assert!(
@@ -246,7 +246,7 @@ fn v4_no_runtime_env_reads_of_bypass_vars() {
                         if line.contains("std::env::var(")
                             && (line.contains("SETTINGS_AUTH_BYPASS")
                                 || line.contains("ALLOW_INSECURE_DEFAULTS")
-                                || line.contains("VISIONFLOW_DEV_MODE"))
+                                || line.contains("VISIONCLAW_DEV_MODE"))
                             && !in_dev_cfg_block
                         {
                             // Permitted: inside the D11 enforce_release_env_hygiene

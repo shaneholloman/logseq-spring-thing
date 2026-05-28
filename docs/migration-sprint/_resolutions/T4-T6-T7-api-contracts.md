@@ -209,14 +209,14 @@ import. Both sides will guess.
 ### Recommended resolution
 
 Add a full envelope specification to ADR-10 D3:
-1. `type` discriminator at envelope level (matches the `visionflow:`
+1. `type` discriminator at envelope level (matches the `visionclaw:`
    prefix already used in D4).
 2. Versioned payload mirroring D1's `schema_version` discipline.
 3. Origin-verification rules per transport.
 4. Single source-of-truth at
    `crates/visionclaw-contracts/src/agent_action.rs` emitting the
    TypeScript `.d.ts` via `ts-rs`. Forum + agentbox consume the type
-   from the `@visionflow/contracts` npm package; VisionFlow consumes the
+   from the `@visionclaw/contracts` npm package; VisionClaw consumes the
    Rust definition directly.
 
 ### Full envelope schema
@@ -224,10 +224,10 @@ Add a full envelope specification to ADR-10 D3:
 ```typescript
 // Source of truth: crates/visionclaw-contracts/src/agent_action.rs
 // Generated:       client/src/types/contracts/agent-action.d.ts
-//                  also published as @visionflow/contracts for agentbox/forum
+//                  also published as @visionclaw/contracts for agentbox/forum
 
 /**
- * AgentActionEnvelope — outbound message from VisionFlow to agentbox/forum
+ * AgentActionEnvelope — outbound message from VisionClaw to agentbox/forum
  * dispatched when the user interacts with an agent node in the 3D scene.
  *
  * Transport selection happens once per session at handshake time:
@@ -236,7 +236,7 @@ Add a full envelope specification to ADR-10 D3:
  *   - embedded (window.parent !== window): window.parent.postMessage
  *
  * Receivers MUST:
- *   1. Verify `type === "visionflow:agent-action"`
+ *   1. Verify `type === "visionclaw:agent-action"`
  *   2. Verify `schema_version === 1` (refuse with structured log otherwise)
  *   3. For postMessage delivery: verify event.origin against allowlist
  *   4. Treat any unknown `kind` as no-op (forward-compatible)
@@ -248,7 +248,7 @@ Add a full envelope specification to ADR-10 D3:
  */
 export interface AgentActionEnvelope {
   /** Discriminator. Always exactly this literal. */
-  readonly type: "visionflow:agent-action";
+  readonly type: "visionclaw:agent-action";
 
   /** Schema version. Bumped per ADR-10 D8 when payload semantics change. */
   readonly schema_version: 1;
@@ -300,12 +300,12 @@ export interface AgentActionEnvelope {
 
   /** Bridge session id from the ADR-10 D4 auth flow. Receivers MAY use
    *  this to correlate the click with the bridge session that issued
-   *  the Authorization for the originating VisionFlow tab. */
+   *  the Authorization for the originating VisionClaw tab. */
   readonly bridge_id?: string;
 }
 
 /** BroadcastChannel constant. Both sides import this literal. */
-export const AGENT_ACTION_CHANNEL = "visionflow:agent-actions" as const;
+export const AGENT_ACTION_CHANNEL = "visionclaw:agent-actions" as const;
 
 /** Deep-link template. Receivers parse incoming requests at this path.
  *  Deep-link is structurally untrusted (URL bar); receivers validate
@@ -313,7 +313,7 @@ export const AGENT_ACTION_CHANNEL = "visionflow:agent-actions" as const;
  *  is the only field linking the click to an authenticated session;
  *  if absent or invalid, the receiver SHOULD challenge for re-auth. */
 export const AGENT_ACTION_DEEP_LINK_TEMPLATE =
-  "/agents/{agent_id}?source=visionflow&kind={kind}" +
+  "/agents/{agent_id}?source=visionclaw&kind={kind}" +
   "&issued_at={issued_at_ms}&issued_by={issued_by_pubkey}" +
   "&message_id={message_id}&node_class={node_class}" +
   "&bridge_id={bridge_id?}&swarm_id={swarm_id?}";
@@ -330,7 +330,7 @@ export type AgentActionTargetOrigin =
 
 | Transport | Required verification |
 |-----------|----------------------|
-| `BroadcastChannel` | `data.type === "visionflow:agent-action"` AND `data.schema_version === 1`. Browser guarantees same-origin. |
+| `BroadcastChannel` | `data.type === "visionclaw:agent-action"` AND `data.schema_version === 1`. Browser guarantees same-origin. |
 | `window.postMessage` | All of the above PLUS `event.origin` matches `AgentActionTargetOrigin`. Allowlist established at bridge handshake. |
 | Deep-link (URL) | All envelope checks PLUS treat every field as untrusted user input. `bridge_id` is the only authenticated link; if absent/invalid, challenge for re-auth before honouring `kind`. |
 
@@ -341,7 +341,7 @@ BroadcastChannel constant, deep-link template, and `AgentActionTargetOrigin`
 allowlist type are defined in `crates/visionclaw-contracts/src/agent_action.rs`
 and generated as `client/src/types/contracts/agent-action.d.ts`. The full
 schema is reproduced in `_resolutions/T4-T6-T7-api-contracts.md` §T7.
-Receivers MUST verify `type === "visionflow:agent-action"` and
+Receivers MUST verify `type === "visionclaw:agent-action"` and
 `schema_version === 1`; postMessage receivers additionally enforce
 `event.origin` against the allowlist. Unknown `kind` values are no-ops
 (forward-compatible). This envelope supersedes ADR-07 D8's
@@ -352,7 +352,7 @@ Receivers MUST verify `type === "visionflow:agent-action"` and
 Replace D8 body with: "Clicking an agent capsule constructs an
 `AgentActionEnvelope` (ADR-10 D3 + `crates/visionclaw-contracts/src/
 agent_action.rs`) and dispatches it via the session's chosen transport.
-VisionFlow does not render a control panel in-process and does not embed
+VisionClaw does not render a control panel in-process and does not embed
 an iframe of one; the renderer's responsibility ends at envelope
 dispatch."
 

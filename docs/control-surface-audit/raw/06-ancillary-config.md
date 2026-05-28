@@ -96,7 +96,7 @@
 | Name | Default | Source |
 |---|---|---|
 | SOLID_PROXY_SECRET_KEY | dev-solid-secret | compose:231 |
-| VISIONFLOW_AGENT_KEY | changeme-agent-key | compose:232 |
+| VISIONCLAW_AGENT_KEY | changeme-agent-key | compose:232 |
 | POD_NAME | $HOSTNAME | computed |
 
 ## 2. Agentbox integration knobs
@@ -156,10 +156,10 @@
 |---|---|---|
 | Service profiles | dev + development | --profile selector |
 | NEO4J_PASSWORD | required | compose validation fails if missing |
-| Container Names | visionflow_container / _prod_container | DNS |
+| Container Names | visionclaw_container / _prod_container | DNS |
 | Healthcheck path | /api/health | startup wait |
 | Healthcheck retries | 5 | failure threshold |
-| Volume mounts | visionflow-data / -logs / npm-cache / cargo-cache | persistence |
+| Volume mounts | visionclaw-data / -logs / npm-cache / cargo-cache | persistence |
 | HOST_PROJECT_ROOT | "." | DinD path translation |
 | GPU Resource | nvidia count:1 | NVIDIA_VISIBLE_DEVICES |
 | Network | visionclaw_network (external) | service discovery |

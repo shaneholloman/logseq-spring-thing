@@ -2,8 +2,8 @@
 //! Contract tests for SettingsRepository port
 
 use super::mocks::MockSettingsRepository;
-use webxr::config::PhysicsSettings;
-use webxr::ports::{SettingsRepository, SettingValue};
+use visionclaw_server::config::PhysicsSettings;
+use visionclaw_server::ports::{SettingsRepository, SettingValue};
 use std::collections::HashMap;
 
 #[tokio::test]

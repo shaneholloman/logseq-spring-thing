@@ -183,8 +183,8 @@ Rules that must never be violated:
 | `GraphManager.tsx:273` | `s => s.settings?.system?.debug` | Broad — returns `DebugSettings` object. Decompose into `enablePhysicsDebug`, `enableNodeDebug`, etc. |
 | `GraphManager.tsx:274` | `s => s.settings?.nodeFilter` | Broad — composite. Split into `nodeFilter.enabled`, `nodeFilter.qualityThreshold`, etc. |
 | `GraphManager.tsx:275` | `s => s.settings?.visualisation?.nodeTypeVisibility` | Broad — composite. Split per type flag. |
-| `GraphManager.tsx:469` | `s => s.settings?.visualisation?.graphs?.visionflow?.physics` | Broad — composite. Split individual physics scalars. |
-| `GraphManager.tsx:481` | `s => s.settings?.visualisation?.graphs?.visionflow?.layoutMode` | Acceptable if `layoutMode` is a string/enum primitive. Verify. |
+| `GraphManager.tsx:469` | `s => s.settings?.visualisation?.graphs?.visionclaw?.physics` | Broad — composite. Split individual physics scalars. |
+| `GraphManager.tsx:481` | `s => s.settings?.visualisation?.graphs?.visionclaw?.layoutMode` | Acceptable if `layoutMode` is a string/enum primitive. Verify. |
 | `GraphCanvas.tsx:109` | `s => s.settings?.visualisation?.sceneEffects` | Broad — composite. Split into individual effect booleans. |
 | `GlassEdges.tsx:143` | `s => s.get<GlowSettings>('visualisation.glow')` | Broad — returns object. Split into `glowEnabled`, `glowIntensity`, etc. |
 | `GlassEdges.tsx:148` | `s => s.get<GemMaterialSettings>('visualisation.gemMaterial')` | Broad — returns object. Split into individual material scalars. |
@@ -201,7 +201,7 @@ Rules that must never be violated:
 2. `GraphManager.tsx:271` — `graphTypeVisuals` — split per primitive.
 3. `GraphManager.tsx:273` — `debugSettings` — three separate selectors: `enablePhysicsDebug`, `enableNodeDebug`, `enablePerformanceDebug`.
 4. `GraphManager.tsx:274` — `nodeFilterSettings` — split into primitives consumed by the filter predicate.
-5. `GraphManager.tsx:469` — `visionflowPhysics` — split into scalar physics params.
+5. `GraphManager.tsx:469` — `visionclawPhysics` — split into scalar physics params.
 6. `GraphCanvas.tsx:109` — `sceneEffects` — one selector per effect toggle.
 7. `GlassEdges.tsx:143,148` — two `s.get<>()` calls returning objects — split each.
 8. `GemNodes.tsx:115,119` — same pattern — split.

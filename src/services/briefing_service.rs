@@ -1,5 +1,5 @@
 //! Briefing Service — orchestrates the brief → execute → debrief workflow
-//! from the VisionFlow Rust backend through the Management API.
+//! from the VisionClaw Rust backend through the Management API.
 //!
 //! This service translates BriefingRequest structs into Management API calls,
 //! creating briefs, spawning role-specific agents, and consolidating debriefs.

@@ -2,7 +2,7 @@
 // Provides sample ontologies with known hierarchies for testing
 
 use std::collections::{HashMap, HashSet};
-use webxr::reasoning::custom_reasoner::{Ontology, OWLClass};
+use visionclaw_server::reasoning::custom_reasoner::{Ontology, OWLClass};
 
 /// Create a simple ontology with basic hierarchy
 /// Entity -> MaterialEntity -> Cell -> {Neuron, Astrocyte}

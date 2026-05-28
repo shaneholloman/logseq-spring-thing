@@ -45,7 +45,7 @@ Every agent decision is semantically grounded, every mutation passes consistency
 
 When agents know their authority boundary and surface exceptions cleanly, the 90% of decisions that don't need human judgment flow without friction. The 10% that do get clean, contextualised escalation with full provenance.
 
-VisionClaw is the knowledge engineering substrate of the **[VisionFlow](https://github.com/DreamLab-AI/VisionFlow)** coordination platform — the federated mesh where autonomous agents, human judgment, and institutional knowledge collaborate through shared protocols and self-sovereign data.
+VisionClaw is the knowledge engineering substrate of the **[VisionClaw](https://github.com/DreamLab-AI/VisionClaw)** coordination platform — the federated mesh where autonomous agents, human judgment, and institutional knowledge collaborate through shared protocols and self-sovereign data.
 
 ![VisionClaw GPU-accelerated force-directed graph with Control Center](./graph-physics-live.png)
 
@@ -394,7 +394,7 @@ Opus 48kHz mono end-to-end. HRTF spatial panning from Vircadia entity positions.
 
 ## Architecture
 
-![System Architecture — hexagonal backend, GPU compute, VisionFlow mesh](docs/diagrams/05-architecture-hexagonal.png)
+![System Architecture — hexagonal backend, GPU compute, VisionClaw mesh](docs/diagrams/05-architecture-hexagonal.png)
 
 ### Workspace crates (ADR-090)
 
@@ -402,12 +402,12 @@ The Rust backend is a Cargo workspace. The `webxr` binary depends on six extract
 
 | Crate | Responsibility |
 |:------|:---------------|
-| `visionflow-domain` | Domain model, port traits, no framework dependencies |
-| `visionflow-protocol` | Binary V2/V3 wire protocol encode/decode |
-| `visionflow-gpu` | CUDA kernels, force-directed physics, build.rs PTX compilation |
-| `visionflow-ontology` | OWL 2 types, horned-owl pipeline, ontology services |
-| `visionflow-adapters` | Oxigraph ontology store, Whelk inference engine |
-| `visionflow-actors` | Actor message types; actor implementations remain in `webxr` |
+| `visionclaw-domain` | Domain model, port traits, no framework dependencies |
+| `visionclaw-protocol` | Binary V2/V3 wire protocol encode/decode |
+| `visionclaw-gpu` | CUDA kernels, force-directed physics, build.rs PTX compilation |
+| `visionclaw-ontology` | OWL 2 types, horned-owl pipeline, ontology services |
+| `visionclaw-adapters` | Oxigraph ontology store, Whelk inference engine |
+| `visionclaw-actors` | Actor message types; actor implementations remain in `webxr` |
 
 Dependency order (inner → outer): `contracts → domain → {gpu, ontology, protocol} → adapters → actors → webxr`
 
@@ -438,7 +438,7 @@ flowchart TB
         Analytics["K-Means · Louvain\nPageRank · LOF Anomaly"]
     end
 
-    subgraph Mesh["VisionFlow Mesh"]
+    subgraph Mesh["VisionClaw Mesh"]
         Relay["Nostr Relay\n(NIP-42 AUTH)"]
         AB["Agentbox\n(agent runtime)"]
         Forum["Forum\n(governance UI)"]
@@ -618,10 +618,10 @@ VisionClaw uses the [Diataxis](https://diataxis.fr/) framework — 106 markdown 
 |:---------|:-----|:--------|
 | **Tutorials** | [`docs/tutorials/`](docs/tutorials/) | First graph, platform overview |
 | **How-To Guides** | [`docs/how-to/`](docs/how-to/) | Deployment, agents, XR setup, performance profiling, operations |
-| **Explanation** | [`docs/explanation/`](docs/explanation/) | Architecture, DDD, ontology, GPU physics, VisionFlow platform, security |
+| **Explanation** | [`docs/explanation/`](docs/explanation/) | Architecture, DDD, ontology, GPU physics, VisionClaw platform, security |
 | **Reference** | [`docs/reference/`](docs/reference/) | REST API, WebSocket protocol, agents catalog, error codes |
 
-Key entry points: [Documentation Hub](docs/README.md) · [VisionFlow Platform](docs/explanation/visionflow-coordination-platform.md) · [Wardley Map](docs/explanation/visionflow-wardley-map.md) · [Architecture Overview](docs/explanation/system-overview.md) · [Deployment Topology](docs/explanation/deployment-topology.md) · [Known Issues](docs/KNOWN_ISSUES.md)
+Key entry points: [Documentation Hub](docs/README.md) · [VisionClaw Platform](docs/explanation/visionclaw-coordination-platform.md) · [Wardley Map](docs/explanation/visionclaw-wardley-map.md) · [Architecture Overview](docs/explanation/system-overview.md) · [Deployment Topology](docs/explanation/deployment-topology.md) · [Known Issues](docs/KNOWN_ISSUES.md)
 
 ---
 
@@ -677,7 +677,7 @@ VisionClaw/
 │   └── crates/scene-effects/     #   Rust WASM crate — zero-copy scene FX
 ├── agentbox/                     # Submodule: agent runtime (ontology bridge, 88 skills, browser setup wizard)
 ├── docs/                         # Diataxis documentation (106 files, 46 with Mermaid)
-│   ├── explanation/              #   Architecture (incl. VisionFlow platform doc)
+│   ├── explanation/              #   Architecture (incl. VisionClaw platform doc)
 │   ├── adr/                      #   91 Architecture Decision Records
 │   └── KNOWN_ISSUES.md           #   Active P1/P2 bugs
 ├── tests/                        # Integration tests
@@ -702,8 +702,8 @@ See the [Contributing Guide](docs/CONTRIBUTING.md). Check [Known Issues](docs/KN
 
 <div align="center">
 
-**VisionClaw is the knowledge engineering substrate of [VisionFlow](https://github.com/DreamLab-AI/VisionFlow), built by [DreamLab AI](https://www.dreamlab-ai.com).**
+**VisionClaw is the knowledge engineering substrate of [VisionClaw](https://github.com/DreamLab-AI/VisionClaw), built by [DreamLab AI](https://www.dreamlab-ai.com).**
 
-[VisionFlow Platform](https://github.com/DreamLab-AI/VisionFlow) · [Documentation](docs/README.md) · [Known Issues](docs/KNOWN_ISSUES.md) · [Discussions](https://github.com/DreamLab-AI/VisionClaw/discussions)
+[VisionClaw Platform](https://github.com/DreamLab-AI/VisionClaw) · [Documentation](docs/README.md) · [Known Issues](docs/KNOWN_ISSUES.md) · [Discussions](https://github.com/DreamLab-AI/VisionClaw/discussions)
 
 </div>

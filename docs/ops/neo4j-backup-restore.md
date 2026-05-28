@@ -4,7 +4,7 @@
 
 | Item | Value |
 |------|-------|
-| Container | `visionflow-neo4j` |
+| Container | `visionclaw-neo4j` |
 | Image | `neo4j:5.13.0` (Community Edition) |
 | Data volume | `neo4j-data` |
 | Backup dir (default) | `/app/data/backups/neo4j` |
@@ -84,15 +84,15 @@ After any restore, verify the database is healthy:
 
 ```bash
 # Check node count
-docker exec visionflow-neo4j cypher-shell -u neo4j -p "${NEO4J_PASSWORD:-changeme-dev}" \
+docker exec visionclaw-neo4j cypher-shell -u neo4j -p "${NEO4J_PASSWORD:-changeme-dev}" \
     "MATCH (n) RETURN count(n) AS nodes"
 
 # Check relationship count
-docker exec visionflow-neo4j cypher-shell -u neo4j -p "${NEO4J_PASSWORD:-changeme-dev}" \
+docker exec visionclaw-neo4j cypher-shell -u neo4j -p "${NEO4J_PASSWORD:-changeme-dev}" \
     "MATCH ()-[r]->() RETURN count(r) AS rels"
 
 # Check label distribution
-docker exec visionflow-neo4j cypher-shell -u neo4j -p "${NEO4J_PASSWORD:-changeme-dev}" \
+docker exec visionclaw-neo4j cypher-shell -u neo4j -p "${NEO4J_PASSWORD:-changeme-dev}" \
     "CALL db.labels() YIELD label RETURN label, count{(n) WHERE label IN labels(n)} AS count ORDER BY count DESC"
 
 # VisionClaw health endpoint (checks Neo4j connectivity)
@@ -139,7 +139,7 @@ BACKUP_RETENTION_DAYS=30 ./scripts/neo4j-backup.sh
 
 | Location | Purpose |
 |----------|---------|
-| `/app/data/backups/neo4j` | Default, inside the visionflow data volume |
+| `/app/data/backups/neo4j` | Default, inside the visionclaw data volume |
 | `/mnt/backups/neo4j` | Recommended for production (separate disk/mount) |
 
 For off-site backup, sync the backup directory to remote storage after the cron job:
@@ -156,7 +156,7 @@ For off-site backup, sync the backup directory to remote storage after the cron 
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `NEO4J_CONTAINER` | `visionflow-neo4j` | Docker container name |
+| `NEO4J_CONTAINER` | `visionclaw-neo4j` | Docker container name |
 | `NEO4J_USER` | `neo4j` | Database username |
 | `NEO4J_PASSWORD` | `changeme-dev` | Database password |
 | `BACKUP_RETENTION_DAYS` | `7` | Days to keep old backups |
@@ -167,7 +167,7 @@ For off-site backup, sync the backup directory to remote storage after the cron 
 
 **"Container not found"** — Check `docker ps` and ensure the container name matches. Override with `NEO4J_CONTAINER=name`.
 
-**"Cypher replay failed"** — The backup may contain syntax incompatible with the current Neo4j version. Check `docker logs visionflow-neo4j` for details.
+**"Cypher replay failed"** — The backup may contain syntax incompatible with the current Neo4j version. Check `docker logs visionclaw-neo4j` for details.
 
 **Empty restore (0 nodes)** — The backup file may be corrupt or from an empty database. Check the backup file size and inspect its contents (`zcat backup.cypher.gz | head -50`).
 

@@ -9,9 +9,9 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use log::{info, warn};
 
-use visionflow_domain::models::node::Node;
-use visionflow_domain::models::graph::GraphData;
-use visionflow_domain::ports::ontology_repository::{OntologyRepository, OwlClass};
+use visionclaw_domain::models::node::Node;
+use visionclaw_domain::models::graph::GraphData;
+use visionclaw_domain::ports::ontology_repository::{OntologyRepository, OwlClass};
 use crate::ports::knowledge_graph_repository::KnowledgeGraphRepository;
 
 /// Statistics from ontology conversion
@@ -112,7 +112,7 @@ impl OntologyConverter {
 
         // Create BinaryNodeData for GPU physics
         use crate::utils::socket_flow_messages::BinaryNodeData;
-        let data: visionflow_domain::BinaryNodeData = BinaryNodeData {
+        let data: visionclaw_domain::BinaryNodeData = BinaryNodeData {
             node_id: 0,
             x: 0.0,
             y: 0.0,

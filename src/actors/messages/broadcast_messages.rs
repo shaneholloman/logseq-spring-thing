@@ -1,13 +1,13 @@
 //! Messages for the Phase 3 `BroadcastActor`.
 //!
-//! Domain-safe types have been moved to `visionflow_actors::messages::broadcast_messages`.
+//! Domain-safe types have been moved to `visionclaw_actors::messages::broadcast_messages`.
 //! This file re-exports them and defines the webxr-internal types that cannot move.
 
 // ---------------------------------------------------------------------------
 // Re-export domain-safe types from the domain crate
 // ---------------------------------------------------------------------------
 
-pub use visionflow_actors::messages::broadcast_messages::{
+pub use visionclaw_actors::messages::broadcast_messages::{
     BroadcastActorStatus, BroadcastState, BroadcastTick, ClientId,
     GetBroadcastActorStatus, OnLayoutDestabilised, OnLayoutSettled, OnLayoutStarted,
     OnPhysicsClamped, ShutdownBroadcastActor, TriggerHeartbeat, UnregisterBroadcastClient,

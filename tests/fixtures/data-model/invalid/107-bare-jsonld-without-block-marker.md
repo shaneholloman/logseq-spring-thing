@@ -15,7 +15,7 @@ no events tripwires the validator).
 ```
 {
   "@context": "https://narrativegoldmine.com/context/v1.jsonld",
-  "@id": "urn:visionflow:page:invisiblepage000000000000000000000000000000000000000000000000",
+  "@id": "urn:visionclaw:page:invisiblepage000000000000000000000000000000000000000000000000",
   "@type": "Page",
   "vc:slug": "invisible-page",
   "vc:title": "Invisible Page",
@@ -29,6 +29,6 @@ Indented JSON is similarly invisible:
 
     {
       "@context": "https://narrativegoldmine.com/context/v1.jsonld",
-      "@id": "urn:visionflow:page:also-invisible00000000000000000000000000000000000000000000000",
+      "@id": "urn:visionclaw:page:also-invisible00000000000000000000000000000000000000000000000",
       "@type": "Page"
     }

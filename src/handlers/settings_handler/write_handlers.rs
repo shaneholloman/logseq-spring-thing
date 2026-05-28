@@ -78,8 +78,8 @@ pub async fn update_settings(
                 }
             }
 
-            if let Some(visionflow) = g.get("visionflow") {
-                if let Some(physics) = visionflow.get("physics") {
+            if let Some(visionclaw) = g.get("visionclaw") {
+                if let Some(physics) = visionclaw.get("physics") {
                     if let Some(auto_balance) = physics.get("autoBalance") {
                         return Some(auto_balance.clone());
                     }
@@ -125,8 +125,8 @@ pub async fn update_settings(
             }
 
 
-            let visionflow_physics = graphs
-                .entry("visionflow")
+            let visionclaw_physics = graphs
+                .entry("visionclaw")
                 .or_insert_with(|| json!({}))
                 .as_object_mut()
                 .and_then(|v| {
@@ -134,7 +134,7 @@ pub async fn update_settings(
                         .or_insert_with(|| json!({}))
                         .as_object_mut()
                 });
-            if let Some(physics) = visionflow_physics {
+            if let Some(physics) = visionclaw_physics {
                 physics.insert("autoBalance".to_string(), auto_balance_value.clone());
             }
         }
@@ -158,7 +158,7 @@ pub async fn update_settings(
     let _updated_graphs = if auto_balance_update.is_some() {
 
         let _physics_updates = extract_physics_updates(&update);
-        vec!["logseq", "visionflow"]
+        vec!["logseq", "visionclaw"]
     } else {
         modified_update
             .get("visualisation")
@@ -169,8 +169,8 @@ pub async fn update_settings(
                 if graphs.contains_key("logseq") {
                     updated.push("logseq");
                 }
-                if graphs.contains_key("visionflow") {
-                    updated.push("visionflow");
+                if graphs.contains_key("visionclaw") {
+                    updated.push("visionclaw");
                 }
                 updated
             })
@@ -188,7 +188,7 @@ pub async fn update_settings(
         || app_settings
             .visualisation
             .graphs
-            .visionflow
+            .visionclaw
             .physics
             .auto_balance;
 
@@ -528,7 +528,7 @@ pub async fn batch_update_settings(
                     let path = update.get("path").and_then(|p| p.as_str()).unwrap_or("");
                     if path.contains(".physics.")
                         || path.contains(".graphs.logseq.")
-                        || path.contains(".graphs.visionflow.")
+                        || path.contains(".graphs.visionclaw.")
                     {
                         physics_updated = true;
                         break;

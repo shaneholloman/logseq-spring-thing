@@ -30,7 +30,7 @@
       "email_fake": "whelk@example.invalid"
     },
     {
-      "name": "VisionFlow Sync Service",
+      "name": "VisionClaw Sync Service",
       "role": "GitHub → Oxigraph synchroniser",
       "did": "did:nostr:npub1sync000000000000000000000000000000000000000000000000000000",
       "pubkey_hex": "sync0000000000000000000000000000000000000000000000000000000000000",

@@ -2,27 +2,27 @@
 
 ## 1. Capability statement
 
-VisionFlow integrates with four external systems through narrowly-scoped,
+VisionClaw integrates with four external systems through narrowly-scoped,
 versioned contracts:
 
 - **agentbox** — the agent runtime. Hosts the broker, agent control panel,
-  agent spawn forms, swarm topology UI. VisionFlow *consumes* agent
+  agent spawn forms, swarm topology UI. VisionClaw *consumes* agent
   telemetry from agentbox and *forwards* user click-actions on agent nodes
   back to agentbox.
 - **forum** (nostr-rust-forum) — the identity, membership, governance, and
   enterprise platform plane. Hosts the dashboard, KPIs, RBAC, decision
-  canvas, workflows, connectors. VisionFlow consumes (and never authors)
-  enterprise events. Forum's Nostr identity bridges to VisionFlow's session.
+  canvas, workflows, connectors. VisionClaw consumes (and never authors)
+  enterprise events. Forum's Nostr identity bridges to VisionClaw's session.
 - **whelk-rs** — the OWL EL reasoner, vendored in-tree but used through a
   pure-data contract: TBox in, inferred ABox triples out. Whelk does not
-  reach into VisionFlow state and VisionFlow does not patch whelk.
+  reach into VisionClaw state and VisionClaw does not patch whelk.
 - **GitHub (Logseq corpus)** — `jjohare/logseq` markdown source-of-truth
   for the knowledge graph. Read-only HTTPS via `octocrab`. Section 8 owns
   the parse; this section owns the transport. See ADR-10 §D11.
 
 This PRD defines the contracts. It does not specify the producer
 implementations (those live in agentbox / forum / whelk repositories). It
-specifies precisely what VisionFlow promises to accept, what it promises to
+specifies precisely what VisionClaw promises to accept, what it promises to
 emit, and the failure modes on both sides.
 
 ## 2. Why this exists
@@ -48,15 +48,15 @@ coupling becomes; this section is the prophylactic.
 
 ## 3. Users and use cases
 
-- **Knowledge worker** opens VisionFlow. The forum has issued them a Nostr
-  identity. Their session bridges to VisionFlow without a second login.
+- **Knowledge worker** opens VisionClaw. The forum has issued them a Nostr
+  identity. Their session bridges to VisionClaw without a second login.
   Their authorisation level (read-only vs operator vs admin) flows from the
-  forum, not from a VisionFlow setting.
+  forum, not from a VisionClaw setting.
 - **Operator** sees agent nodes in the graph view. Clicks on an agent node.
-  VisionFlow does *not* render the agent's control panel — instead it
+  VisionClaw does *not* render the agent's control panel — instead it
   surfaces the click to agentbox/forum so the operator lands on the
   agentbox-hosted panel for that agent.
-- **Telemetry consumer** (VisionFlow's bots subsystem) receives a stream of
+- **Telemetry consumer** (VisionClaw's bots subsystem) receives a stream of
   agent state updates from agentbox. The transport guarantees, the message
   shape, and the reconnection behaviour are documented here so the
   consumer implementation is not guessing.
@@ -74,7 +74,7 @@ A1. **Inbound telemetry contract is versioned**. Every envelope carries a
     silently. ADR-10 D1 defines `schema_version = 1`.
 
 A2. **Inbound telemetry is back-pressured by drop, not queue**. If
-    VisionFlow's telemetry consumer falls behind, it drops oldest frames
+    VisionClaw's telemetry consumer falls behind, it drops oldest frames
     and increments a counter metric. It does not grow an unbounded queue.
     The contract is explicit about this so agentbox does not implement
     reliable retry.
@@ -82,32 +82,32 @@ A2. **Inbound telemetry is back-pressured by drop, not queue**. If
 A3. **Outbound action contract has exactly one transport**. User click on
     an agent node produces a single deterministic action via the chosen
     transport (BroadcastChannel API for same-origin tabs, deep-link
-    fallback otherwise). VisionFlow does not attempt multiple delivery
+    fallback otherwise). VisionClaw does not attempt multiple delivery
     methods or fall back silently between them within a session.
 
 A4. **Auth bridge is signature-verified, not cookie-shared**. The forum's
-    Nostr pubkey is bridged to VisionFlow through a signed challenge
+    Nostr pubkey is bridged to VisionClaw through a signed challenge
     flow (ADR-06 owns the cryptography; this PRD asserts the contract).
-    Cookie sharing is rejected: the forum and VisionFlow may live on
+    Cookie sharing is rejected: the forum and VisionClaw may live on
     different origins.
 
-A5. **Enterprise events are inbound-only**. VisionFlow consumes enterprise
+A5. **Enterprise events are inbound-only**. VisionClaw consumes enterprise
     events (org membership change, RBAC role change, KPI threshold
     crossed) if and only if they affect graph rendering or auth posture.
-    VisionFlow never *emits* enterprise events. The contract is one-way.
+    VisionClaw never *emits* enterprise events. The contract is one-way.
 
 A6. **Whelk runs as a pure function**. The inference contract takes
     `(TBox, ABox)` and returns inferred `ABox`. Whelk does not query
-    Oxigraph, does not read settings, does not log to VisionFlow's log
+    Oxigraph, does not read settings, does not log to VisionClaw's log
     sinks. It runs in-process but with no side effects.
 
 A7. **Disconnection has bounded recovery**. If the telemetry stream drops,
-    VisionFlow's UI shows agent nodes as "stale" within 5 seconds and
+    VisionClaw's UI shows agent nodes as "stale" within 5 seconds and
     reconnects with exponential backoff (1s, 2s, 4s, 8s, 16s, cap 30s).
     On reconnect, agentbox sends a full snapshot before the delta stream
     resumes.
 
-A8. **No enterprise control logic in VisionFlow**. The codebase must not
+A8. **No enterprise control logic in VisionClaw**. The codebase must not
     contain broker, workflow, KPI, RBAC, policy-engine, connector, or
     decision-canvas modules. Any reintroduction is rejected at PR review
     against this acceptance criterion.
@@ -116,19 +116,19 @@ A8. **No enterprise control logic in VisionFlow**. The codebase must not
 
 - **Hosting any agentbox/forum capability**. Broker, workflows, RBAC,
   policy engine, KPI dashboards, agent spawn forms, swarm topology UI —
-  all live in agentbox or the forum. VisionFlow is a visualisation client.
+  all live in agentbox or the forum. VisionClaw is a visualisation client.
 - **Authenticating forum users**. The forum owns user identity, registration,
-  password / passkey / PRF-derived Nostr keys, OIDC. VisionFlow accepts
+  password / passkey / PRF-derived Nostr keys, OIDC. VisionClaw accepts
   the bridge artefact (signed challenge response) and nothing more.
 - **Reliable delivery of agent telemetry**. The contract is best-effort
   with bounded staleness. Agents whose state matters atomically are
-  agentbox's problem; VisionFlow shows the latest received state.
+  agentbox's problem; VisionClaw shows the latest received state.
 - **Compiling whelk-rs into our build by hand**. Whelk is vendored as a
   workspace dependency but is logically external. PRs to whelk go
   upstream, not into our tree.
-- **Bidirectional state sync**. There is no scenario where VisionFlow is
+- **Bidirectional state sync**. There is no scenario where VisionClaw is
   the authoritative source for agent state, enterprise state, or forum
-  state. All flow is from agentbox/forum → VisionFlow, plus the narrow
+  state. All flow is from agentbox/forum → VisionClaw, plus the narrow
   outbound action surface in §3.
 - **Hosting the agent control panel UI**. The previously-removed `enterprise`
   feature directory and its 22 component files are not reintroduced.
@@ -151,7 +151,7 @@ INTERNAL       Function call         WhelkInferenceRequest / Response
 ## 7. Acceptance evidence to gather during implementation
 
 - Contract-test harness for inbound telemetry: agentbox-emulator sends
-  every variant of every envelope; VisionFlow's consumer either accepts
+  every variant of every envelope; VisionClaw's consumer either accepts
   or rejects with the contract's structured error. Pact-style is preferred
   (consumer-driven). See `/contract-testing` skill.
 - Replay log of one connection lifecycle (connect → snapshot → 1000 deltas
@@ -170,9 +170,9 @@ INTERNAL       Function call         WhelkInferenceRequest / Response
 ## 8. Historical reference (informational only)
 
 The following commits represent the *prior* state of the enterprise
-platform inside VisionFlow. They are reference for what the contracts on
+platform inside VisionClaw. They are reference for what the contracts on
 the agentbox/forum side will need to support, not for what to bring
-forward into VisionFlow:
+forward into VisionClaw:
 
 | Commit       | Era      | Description                                    |
 |--------------|----------|------------------------------------------------|
@@ -189,7 +189,7 @@ forward into VisionFlow:
 | `c64661e97`  | 2026-05  | **Remove** enterprise dashboard (ADR-090)      |
 
 ADR-090 (referenced by `c64661e97`) records the migration decision on the
-VisionFlow side. ADR-10 in this sprint records the *contract* with the
+VisionClaw side. ADR-10 in this sprint records the *contract* with the
 new home of the platform.
 
 ## 9. Out-of-scope smells flagged for ADR review
@@ -200,22 +200,22 @@ new home of the platform.
   transport and reject the fallback.
 - **Cookie-shared session across origins**. Subdomain cookie sharing was
   tempting during the OIDC era. It is rejected here because forum and
-  VisionFlow may legitimately live on disjoint origins. ADR-10 specifies
+  VisionClaw may legitimately live on disjoint origins. ADR-10 specifies
   the signed-challenge alternative.
 - **Whelk as a long-running service**. Treating whelk as an actor with
-  state would couple it to VisionFlow's lifecycle. ADR-10 specifies
+  state would couple it to VisionClaw's lifecycle. ADR-10 specifies
   whelk as one-shot function invocations only.
-- **Embedding the agent panel in VisionFlow via iframe**. Iframes leak
+- **Embedding the agent panel in VisionClaw via iframe**. Iframes leak
   click handling, CSP boundaries, and storage isolation. ADR-10 prefers
   out-of-band delivery (BroadcastChannel / deep-link) over iframe
-  embedding of agentbox UI inside VisionFlow.
-- **Allowing VisionFlow to publish to the forum's Nostr relays**. Once
-  VisionFlow can publish, it becomes an authoritative source. ADR-10
+  embedding of agentbox UI inside VisionClaw.
+- **Allowing VisionClaw to publish to the forum's Nostr relays**. Once
+  VisionClaw can publish, it becomes an authoritative source. ADR-10
   forbids this.
 
 ## 10. Bugs and smells at the reset point (41979d33e)
 
-At baseline, VisionFlow had embryonic Nostr authentication
+At baseline, VisionClaw had embryonic Nostr authentication
 (`686ab7579 added nostr primitives`, `b8f28117b nostr api REST`,
 `647e54f51 tighter nostr and edges are cylinders`) but no formalised
 external contracts. The enterprise platform did not yet exist; the
@@ -238,7 +238,7 @@ removal commit `c64661e97` is future. Migration awareness:
   specifies the envelope shape and back-pressure policy; the URL is
   agentbox's choice.
 - The forum's relay set for Nostr publishing is forum's choice.
-  VisionFlow only needs to verify a signature; it does not need to
+  VisionClaw only needs to verify a signature; it does not need to
   know which relays the signature was distributed through.
 - Whelk version pinning is an Oxigraph/ontology concern (Section 8 /
   Section 11). Section 10 ratifies the contract, not the version.

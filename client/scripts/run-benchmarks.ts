@@ -94,7 +94,7 @@ class BenchmarkRunner {
    */
   async runAll(): Promise<BenchmarkReport> {
     console.log('═══════════════════════════════════════════════');
-    console.log('          VisionFlow Benchmark Suite          ');
+    console.log('          VisionClaw Benchmark Suite          ');
     console.log('═══════════════════════════════════════════════\n');
 
     const startTime = Date.now();
@@ -288,7 +288,7 @@ class BenchmarkRunner {
 // CLI Interface
 program
   .name('run-benchmarks')
-  .description('Run VisionFlow benchmark and test suite')
+  .description('Run VisionClaw benchmark and test suite')
   .version('1.0.0');
 
 program

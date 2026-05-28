@@ -129,7 +129,7 @@ The mesh's architectural challenge is not the wire protocol (ADR-073) nor the me
 
 **Public surface**:
 
-- HTTPS: `/api/v1/*` (substrate API), `/api/solid/*` (solid-pod-rs), `/wss/agent-events` (agentbox WS), `/wss/visionflow_*` (XR + visualisation).
+- HTTPS: `/api/v1/*` (substrate API), `/api/solid/*` (solid-pod-rs), `/wss/agent-events` (agentbox WS), `/wss/visionclaw_*` (XR + visualisation).
 - HTTPS: `/api/ingest/remotes` (NEW, PRD-013 G2 — git remote registry CRUD), `/api/ingest/remotes/:id/sync` (trigger manual sync), `/api/ingest/remotes/:id/status` (sync status + last commit).
 - WSS: optional substrate-side relay on `:7777` when `[mesh].mode == "federated"`.
 - DID Documents: `/api/v1/identity/{hex}/did.json` (NEW, PRD-010 F2/F15).
@@ -472,14 +472,14 @@ Today `AGENTBOX_AGENT_ID = "agentbox-core"` (one per container). Can a container
 
 ### Rationale for the extension
 
-PRD-011 extracts the community forum from `dreamlab-ai-website` into a reusable kit hosted at `DreamLab-AI/nostr-rust-forum` (canonical kit; public product `nostr-bbs-rs`; internal brand "VisionFlow forum"). The 4-substrate model in this document treated forum + agentbox + VisionClaw + solid-pod-rs as the mesh substrates. Post-PRD-011 there are **five** substrates because the **kit** and the **DreamLab-specific consumer** are now distinct contexts with different responsibilities:
+PRD-011 extracts the community forum from `dreamlab-ai-website` into a reusable kit hosted at `DreamLab-AI/nostr-rust-forum` (canonical kit; public product `nostr-bbs-rs`; internal brand "VisionClaw forum"). The 4-substrate model in this document treated forum + agentbox + VisionClaw + solid-pod-rs as the mesh substrates. Post-PRD-011 there are **five** substrates because the **kit** and the **DreamLab-specific consumer** are now distinct contexts with different responsibilities:
 
 - **Kit**: generic, branding-free, configurable via TOML, federation-native, consumed by N operators
 - **DreamLab consumer**: kit + branding/config, deployed at dreamlab-ai.com, one of N consumers
 
 This extension adds the kit as **BC-MESH-FORUM-KIT** and demotes the existing BC-MESH-FORUM to **BC-MESH-DREAMLAB-CONSUMER** (the deployed instance using the kit). The original BC-MESH-FORUM section above remains as the authoritative reference for the *deployed instance* — this extension layers the *kit-as-substrate* concept on top.
 
-### V5 — BC-MESH-FORUM-KIT — VisionFlow Forum Kit Context
+### V5 — BC-MESH-FORUM-KIT — VisionClaw Forum Kit Context
 
 **Owner**: nostr-rust-forum maintainers (DreamLab-AI org).
 
@@ -521,7 +521,7 @@ This extension adds the kit as **BC-MESH-FORUM-KIT** and demotes the existing BC
 
 **Owner**: dreamlab-ai-website maintainers (the website team).
 
-**Mission**: deploy DreamLab's flagship public forum at `dreamlab-ai.com/community/` by consuming the VisionFlow forum kit + supplying DreamLab-specific configuration and branding.
+**Mission**: deploy DreamLab's flagship public forum at `dreamlab-ai.com/community/` by consuming the VisionClaw forum kit + supplying DreamLab-specific configuration and branding.
 
 This bounded context **supersedes** the BC-MESH-FORUM context defined in the V1 4-substrate section above. The aggregates (`Member`, `AuthSession`, `ModerationAction`, `ProfilesRow`, `Pod`) MOVE FROM BC-MESH-FORUM into BC-MESH-DREAMLAB-CONSUMER (they are deployment-instance state, not kit-internal state). The invariants F-Inv-01..07 remain valid in this consumer's bounded context.
 
@@ -603,7 +603,7 @@ Each step is an invariant gate; failure is fail-closed with operator-facing reme
 
 | Term | Definition |
 |------|------------|
-| Kit | The reusable forum substrate at `nostr-rust-forum`; product name `nostr-bbs-rs`; internal brand "VisionFlow forum" |
+| Kit | The reusable forum substrate at `nostr-rust-forum`; product name `nostr-bbs-rs`; internal brand "VisionClaw forum" |
 | Consumer | A package that depends on the kit + supplies a TOML config (e.g. `dreamlab-ai-website/forum-config`) |
 | Branding package | Operator-supplied overrides of the kit's defaults |
 | Cutover | The migration from `dreamlab-ai-website/community-forum-rs/` (legacy fork) to the kit + `forum-config/` consumer pattern, per ADR-083 |
@@ -889,7 +889,7 @@ The `DecisionOutcome::Precedent` path (ADR-041) could enable auto-approval for e
 
 ## References (extension)
 
-- PRD-011 — VisionFlow Forum Kit Extraction (drives BC-MESH-FORUM-KIT context)
+- PRD-011 — VisionClaw Forum Kit Extraction (drives BC-MESH-FORUM-KIT context)
 - PRD-012 — DreamLab Website Kit Adoption (drives BC-MESH-DREAMLAB-CONSUMER V13 extension)
 - ADR-073 — Mesh topology
 - ADR-074 — DID:Nostr canonicalisation
@@ -909,7 +909,7 @@ The `DecisionOutcome::Precedent` path (ADR-041) could enable auto-approval for e
 
 GitHub repos in the 5-substrate ecosystem:
 - https://github.com/DreamLab-AI/VisionClaw (this monorepo, mesh integration substrate, master fixture host)
-- https://github.com/DreamLab-AI/nostr-rust-forum (canonical kit; product `nostr-bbs-rs`; internal brand "VisionFlow forum")
+- https://github.com/DreamLab-AI/nostr-rust-forum (canonical kit; product `nostr-bbs-rs`; internal brand "VisionClaw forum")
 - https://github.com/DreamLab-AI/dreamlab-ai-website (downstream consumer of kit; cutover target per ADR-083)
 - https://github.com/DreamLab-AI/agentbox (mesh peer + skill provider for forum-setup)
 - https://github.com/DreamLab-AI/solid-pod-rs (foundation library, post 0.5 absorption)

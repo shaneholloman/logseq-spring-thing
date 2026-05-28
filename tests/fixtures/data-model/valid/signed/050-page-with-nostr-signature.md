@@ -19,7 +19,7 @@ Nostr signature.
 ```json-ld
 {
   "@context": "https://narrativegoldmine.com/context/v1.jsonld",
-  "@id": "urn:visionflow:nostr:event:50a1b2c3d4e5f60718293a4b5c6d7e8f9012a3b4c5d6e7f8091a2b3c4d5e6f70",
+  "@id": "urn:visionclaw:nostr:event:50a1b2c3d4e5f60718293a4b5c6d7e8f9012a3b4c5d6e7f8091a2b3c4d5e6f70",
   "@type": "NostrSignedPage",
   "vc:nostrEventKind": 30023,
   "vc:nostrPubkey": { "@id": "did:nostr:npub1bob00000000000000000000000000000000000000000000000000000000" },
@@ -27,7 +27,7 @@ Nostr signature.
   "vc:nostrCreatedAt": { "@value": "1747389600", "@type": "xsd:long" },
   "vc:nip23Content": {
     "@context": "https://narrativegoldmine.com/context/v1.jsonld",
-    "@id": "urn:visionflow:page:d04e1bf3c7a2589607f12b3c4d5e6f7081a2b3c4d5e6f7081a2b3c4d5e6f7081",
+    "@id": "urn:visionclaw:page:d04e1bf3c7a2589607f12b3c4d5e6f7081a2b3c4d5e6f7081a2b3c4d5e6f7081",
     "@type": "Page",
     "vc:slug": "tempio-malatestiano",
     "vc:title": "Tempio Malatestiano",
@@ -35,8 +35,8 @@ Nostr signature.
     "vc:contentSha1": "cafebabecafebabecafebabecafebabecafebabe",
     "vc:bodyExcerpt": "The Tempio Malatestiano (Rimini, begun 1450, never finished) is Alberti's adaptation of a medieval Franciscan church into a personal mausoleum for Sigismondo Malatesta.",
     "vc:outboundWikilinks": [
-      { "@id": "urn:visionflow:linked:leon-battista-alberti", "vc:label": "Leon Battista Alberti" },
-      { "@id": "urn:visionflow:linked:sigismondo-malatesta", "vc:label": "Sigismondo Malatesta" }
+      { "@id": "urn:visionclaw:linked:leon-battista-alberti", "vc:label": "Leon Battista Alberti" },
+      { "@id": "urn:visionclaw:linked:sigismondo-malatesta", "vc:label": "Sigismondo Malatesta" }
     ]
   },
   "prov:wasAttributedTo": { "@id": "did:nostr:npub1bob00000000000000000000000000000000000000000000000000000000" },

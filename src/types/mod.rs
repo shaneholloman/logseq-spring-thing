@@ -4,7 +4,7 @@ pub mod speech;
 pub mod user_context;
 pub mod vec3;
 
-pub use visionflow_domain::types::claude_flow::{AgentStatus, AgentType, ClaudeFlowClient, ConnectorError};
+pub use visionclaw_domain::types::claude_flow::{AgentStatus, AgentType, ClaudeFlowClient, ConnectorError};
 pub use mcp_responses::{
     AgentListResponse, McpContent, McpContentResult, McpParseError, McpResponse,
 };

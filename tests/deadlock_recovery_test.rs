@@ -1,5 +1,5 @@
 // Test disabled - references deprecated/removed modules (crate::actors::graph_actor, crate::models::node)
-// Module paths have changed; use webxr::actors instead
+// Module paths have changed; use visionclaw_server::actors instead
 /*
 //! Deadlock Recovery Test Suite
 //!

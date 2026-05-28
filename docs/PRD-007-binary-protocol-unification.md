@@ -172,7 +172,7 @@ Client behaviour: maintain a side-table `analyticsByNodeId: Map<u32, AnalyticsRo
 | `docs/adr/ADR-050-sovereign-ownership.md` | Section H2: replace "bit-29 opacification on the wire" with "filtered out of the per-frame stream by `ClientCoordinator::broadcast_with_filter`." Same outcome, simpler implementation. |
 | `CLAUDE.md`, `multi-agent-docker/CLAUDE.md`, `client/.../README.md` | Replace any `V3`/`V4`/`V5` references with **the binary protocol**. Single name throughout. |
 | `client/src/store/websocket/binaryProtocol.ts` JSDoc | Update the doc-comment that currently lists three protocol versions. |
-| `agentbox/docs/...` references | Audit; any cross-link that says "VisionFlow V5 wire" gets the same treatment. |
+| `agentbox/docs/...` references | Audit; any cross-link that says "VisionClaw V5 wire" gets the same treatment. |
 
 ---
 

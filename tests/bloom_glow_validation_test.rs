@@ -1,5 +1,5 @@
 // Test disabled - references deprecated/removed modules (crate::config, crate::handlers::settings_handler, crate::handlers::validation_handler)
-// Handler and config module paths have changed; use webxr::config instead
+// Handler and config module paths have changed; use visionclaw_server::config instead
 /*
 /// Tests for REST API validation logic for bloom/glow field handling
 ///

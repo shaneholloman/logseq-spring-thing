@@ -696,10 +696,10 @@ pub struct OntologyConstraintCacheStats {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use visionflow_domain::models::node::Node;
+    use visionclaw_domain::models::node::Node;
     use crate::types::vec3::Vec3Data;
     // ADR-090: Node.data is domain's BinaryNodeData, not webxr's BinaryNodeDataClient.
-    use visionflow_domain::types::vec3::BinaryNodeData;
+    use visionclaw_domain::types::vec3::BinaryNodeData;
 
     fn create_test_node(id: u32, metadata_id: String, node_type: Option<String>) -> Node {
         Node {

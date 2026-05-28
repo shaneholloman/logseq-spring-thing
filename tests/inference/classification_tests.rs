@@ -4,9 +4,9 @@
 #[cfg(test)]
 #[cfg(feature = "ontology")]
 mod tests {
-    use webxr::adapters::whelk_inference_engine::WhelkInferenceEngine;
-    use webxr::ports::inference_engine::InferenceEngine;
-    use webxr::ports::ontology_repository::{OwlClass, OwlAxiom, AxiomType};
+    use visionclaw_server::adapters::whelk_inference_engine::WhelkInferenceEngine;
+    use visionclaw_server::ports::inference_engine::InferenceEngine;
+    use visionclaw_server::ports::ontology_repository::{OwlClass, OwlAxiom, AxiomType};
     use std::collections::HashMap;
 
     async fn create_test_ontology() -> (Vec<OwlClass>, Vec<OwlAxiom>) {

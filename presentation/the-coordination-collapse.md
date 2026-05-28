@@ -4,12 +4,12 @@
 
 **Dr. John O'Hare | DreamLab AI Consulting | April 2026**
 
-**Working document — meta-annotated for NotebookLM ingestion alongside VisionFlow/VisionClaw materials**
+**Working document — meta-annotated for NotebookLM ingestion alongside VisionClaw/VisionClaw materials**
 
 ---
 
 > **[META — DOCUMENT PURPOSE]**
-> This is not a final pitch deck. It is a comprehensive, annotated exploration of the ideas around AI and organisational transformation — the through line connecting the jagged frontier, the secret cyborg problem, agentic meshes, compound organisations, and the future of middle management. It is designed to be fed into NotebookLM alongside VisionFlow technical documentation to produce a rich, queryable knowledge base for presentation development, consulting conversations, and further research.
+> This is not a final pitch deck. It is a comprehensive, annotated exploration of the ideas around AI and organisational transformation — the through line connecting the jagged frontier, the secret cyborg problem, agentic meshes, compound organisations, and the future of middle management. It is designed to be fed into NotebookLM alongside VisionClaw technical documentation to produce a rich, queryable knowledge base for presentation development, consulting conversations, and further research.
 
 > **[META — THE THROUGH LINE]**
 > For 2,000 years, organisations have paid a "coordination tax" — layers of humans whose primary function is routing information. AI collapses the cost of that coordination function to near-zero. The question is not whether hierarchy changes, but what replaces the coordination function it performed. The answer this document develops: a compounding learning system where human judgment operates at the jagged frontier — the unpredictable boundary between what AI can and cannot do — while agentic orchestration handles the information routing that hierarchy was built for.
@@ -313,7 +313,7 @@ Three distinct models are emerging. They are not competitors — they describe d
 | **Coordination** | AI world model | Cultural norms | Declarative governance + DAG orchestration |
 | **Management** | Eliminate | Everyone manages their agent | Judgment brokers at intersections |
 | **Scale** | 10,000+ (intended) | ~20 (proven) | 15 (proven), designed for 50-500 |
-| **Evidence** | 95% code needs humans; Klarna reversed | Works at small scale; ant death spiral | VisionFlow running; OWL 2 provenance |
+| **Evidence** | 95% code needs humans; Klarna reversed | Works at small scale; ant death spiral | VisionClaw running; OWL 2 provenance |
 | **Collaboration mode** | Self-Automator org | Cyborg org | Centaur org |
 | **Risk** | Falling asleep at the wheel | 17x error multiplication at scale | Unproven beyond 15-person team |
 
@@ -465,7 +465,7 @@ The standard framing: governance slows you down but keeps you safe. The agentic 
 
 **Cascading Trust Hierarchies**: Agent identities with compliant key rotation. When an agent is revoked, the revocation cascades through dependent agents automatically.
 
-> **[META — VISIONFLOW AS EVIDENCE]**
+> **[META — VISIONCLAW AS EVIDENCE]**
 > This is where VisionClaw becomes concrete evidence, not theoretical architecture:
 > - OWL 2 ontology provides shared semantics across 101 agent skills — the same concept of "deliverable" means the same thing to a Creative Production agent and a Governance agent
 > - Stratified unidirectional links prevent circular dependencies — a clean epistemic architecture
@@ -585,15 +585,15 @@ Investing in the 9% yields the highest ROI. These are the people who become judg
 > 2. Crowd — employees given permission discover use cases AI firms never anticipated
 > 3. Lab — a dedicated cross-functional team pushes boundaries
 >
-> This maps onto the mesh: Leadership sets the value vectors. The crowd operates the Discovery Engine. The judgment broker operates between them. The lab is VisionFlow.
+> This maps onto the mesh: Leadership sets the value vectors. The crowd operates the Discovery Engine. The judgment broker operates between them. The lab is VisionClaw.
 
 ---
 
-## Part 12: What VisionFlow Proves
+## Part 12: What VisionClaw Proves
 
 ### A Working Agentic Mesh at 15-Person Scale
 
-VisionFlow is not a prototype or a whitepaper. It is an operational Agentic Mesh serving a 15-person creative technology team at DreamLab, Fairfield, Eskdale.
+VisionClaw is not a prototype or a whitepaper. It is an operational Agentic Mesh serving a 15-person creative technology team at DreamLab, Fairfield, Eskdale.
 
 | Metric | Value |
 |--------|-------|
@@ -645,7 +645,7 @@ VisionFlow is not a prototype or a whitepaper. It is an operational Agentic Mesh
 > - The KPIs (mesh velocity, augmentation ratio, trust variance) at scale
 > - Multi-provider orchestration (only Claude-Flow is currently implemented)
 >
-> **Positioning guidance:** In any external presentation, use "VisionClaw" (the actual system name) not "VisionFlow" (used inconsistently). Lead with what's verified. Frame the 100K-node target and multi-provider orchestration as roadmap, not reality. The audience for this document includes people who will check.
+> **Positioning guidance:** In any external presentation, use "VisionClaw" (the actual system name) not "VisionClaw" (used inconsistently). Lead with what's verified. Frame the 100K-node target and multi-provider orchestration as roadmap, not reality. The audience for this document includes people who will check.
 
 ---
 

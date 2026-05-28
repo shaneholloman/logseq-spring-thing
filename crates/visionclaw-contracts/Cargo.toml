@@ -1,4 +1,4 @@
-# Workspace member of the root webxr workspace at /Cargo.toml.
+# Workspace member of the root visionclaw-server workspace at /Cargo.toml.
 # The pre-existing solid-pod-rs `rev = "main"` resolution failure was
 # fixed in ed940f9ea (changed to `branch = "main"`), so the root workspace
 # now resolves cleanly and this crate participates as a normal member.
@@ -11,14 +11,14 @@ name = "visionclaw-contracts"
 version = "0.1.0"
 edition = "2021"
 license = "AGPL-3.0-only"
-description = "Cross-boundary typed contracts for VisionFlow <-> agentbox <-> forum <-> XR client"
+description = "Cross-boundary typed contracts for VisionClaw <-> agentbox <-> forum <-> XR client"
 authors = ["jjohare <github@thedreamlab.uk>"]
 repository = "https://github.com/jjohare/AR-AI-Knowledge-Graph"
 readme = "README.md"
 
 # This crate is a leaf node in the workspace: it pulls no actix, no neo4rs,
 # no GPU deps. It must remain trivially buildable from a clean checkout so
-# every consumer (visionflow server, agentbox, forum, XR client) can depend
+# every consumer (visionclaw server, agentbox, forum, XR client) can depend
 # on it without dragging the host's dependency graph in.
 
 [lib]

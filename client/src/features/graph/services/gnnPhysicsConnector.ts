@@ -1,7 +1,7 @@
 /**
  * GNN Physics Connector
  *
- * Connects the GNN physics module to VisionFlow's settings system.
+ * Connects the GNN physics module to VisionClaw's settings system.
  * Listens for gnnPhysics/ruvectorEnabled quality gate changes and
  * triggers GNN computation when appropriate.
  */

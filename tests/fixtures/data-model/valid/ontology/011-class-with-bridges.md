@@ -13,28 +13,28 @@ related concepts and its part-of relationships.
 ```json-ld
 {
   "@context": "https://narrativegoldmine.com/context/v1.jsonld",
-  "@id": "urn:visionflow:owl:class:florentine-quattrocento",
+  "@id": "urn:visionclaw:owl:class:florentine-quattrocento",
   "@type": ["OntologyClass", "owl:Class"],
   "ontology": true,
   "rdfs:label": "Florentine Quattrocento",
   "vc:termId": "FLOR-QUAT",
   "vc:definition": "Renaissance architecture as practised in Florence during the 15th century (the Quattrocento). The defining works are the Florence Cathedral Dome (Brunelleschi, 1436), the Palazzo Medici-Riccardi (Michelozzo, 1444), and the Palazzo Rucellai (Alberti, 1455).",
-  "rdfs:subClassOf": { "@id": "urn:visionflow:owl:class:italian-renaissance" },
+  "rdfs:subClassOf": { "@id": "urn:visionclaw:owl:class:italian-renaissance" },
   "vc:bridgeTo": [
-    { "@id": "urn:visionflow:page:b1a2c3d4e5f60718293a4b5c6d7e8f9012a3b4c5d6e7f8091a2b3c4d5e6f7081" }
+    { "@id": "urn:visionclaw:page:b1a2c3d4e5f60718293a4b5c6d7e8f9012a3b4c5d6e7f8091a2b3c4d5e6f7081" }
   ],
   "vc:hasPart": [
-    { "@id": "urn:visionflow:owl:class:medici-patronage" },
-    { "@id": "urn:visionflow:owl:class:florentine-guild-system" }
+    { "@id": "urn:visionclaw:owl:class:medici-patronage" },
+    { "@id": "urn:visionclaw:owl:class:florentine-guild-system" }
   ],
   "vc:requires": [
-    { "@id": "urn:visionflow:owl:class:vitruvian-tradition" }
+    { "@id": "urn:visionclaw:owl:class:vitruvian-tradition" }
   ],
   "vc:enables": [
-    { "@id": "urn:visionflow:owl:class:high-renaissance" }
+    { "@id": "urn:visionclaw:owl:class:high-renaissance" }
   ],
   "vc:relatesTo": [
-    { "@id": "urn:visionflow:owl:class:roman-architecture" }
+    { "@id": "urn:visionclaw:owl:class:roman-architecture" }
   ],
   "vc:status": "active",
   "vc:maturity": "stable",

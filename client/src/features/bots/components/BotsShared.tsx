@@ -4,7 +4,7 @@
  *   - CSS keyframe injection (runs once at module load)
  *   - SimpleLine – a standard BufferGeometry line (avoids Line2/InstancedBufferGeometry
  *     which crashes WebGPU's drawIndexed via drei's <Line>)
- *   - Pure helpers: lerpVector3, generateAgentTypeColor, getVisionFlowColors
+ *   - Pure helpers: lerpVector3, generateAgentTypeColor, getVisionClawColors
  *   - Pre-allocated module-scope Three.js objects (zero-alloc pattern)
  */
 import React, { useRef, useEffect, useMemo } from 'react';
@@ -135,11 +135,11 @@ export const generateAgentTypeColor = (agentType: string): string => {
 };
 
 /** Resolve per-agent colour configuration from settings. */
-export const getVisionFlowColors = (settings: Record<string, unknown> | undefined) => {
+export const getVisionClawColors = (settings: Record<string, unknown> | undefined) => {
   const vis              = settings?.visualisation as Record<string, unknown> | undefined;
   const graphs           = vis?.graphs as Record<string, unknown> | undefined;
-  const visionflowSettings = graphs?.visionflow as Record<string, unknown> | undefined;
-  const vfNodes          = visionflowSettings?.nodes as Record<string, unknown> | undefined;
+  const visionclawSettings = graphs?.visionclaw as Record<string, unknown> | undefined;
+  const vfNodes          = visionclawSettings?.nodes as Record<string, unknown> | undefined;
   const baseColor        = (vfNodes?.baseColor as string | undefined) || '#F1C40F';
 
   const rendering   = vis?.rendering as Record<string, unknown> | undefined;

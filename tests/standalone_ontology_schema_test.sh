@@ -52,7 +52,7 @@ VALUES (
     'embedded',
     'default-ontology',
     'Default Ontology',
-    'Default ontology for VisionFlow incremental saves'
+    'Default ontology for VisionClaw incremental saves'
 );
 
 -- Create owl_classes table with composite primary key

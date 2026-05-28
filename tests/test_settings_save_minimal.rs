@@ -2,7 +2,7 @@
 // Note: YAML file persistence was removed — settings are now in Oxigraph (ADR-11).
 // save() is a no-op that returns Ok(()) for backwards compatibility.
 
-use webxr::config::AppFullSettings;
+use visionclaw_server::config::AppFullSettings;
 
 #[test]
 fn test_settings_save_returns_ok() {

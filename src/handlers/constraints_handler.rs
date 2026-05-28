@@ -44,7 +44,7 @@ async fn define_constraints(
                         "computeMode": 2  
                     }
                 },
-                "visionflow": {
+                "visionclaw": {
                     "physics": {
                         "computeMode": 2
                     }
@@ -277,24 +277,24 @@ use crate::ok_json;
 
             
             let logseq_mode = settings.visualisation.graphs.logseq.physics.compute_mode;
-            let visionflow_mode = settings
+            let visionclaw_mode = settings
                 .visualisation
                 .graphs
-                .visionflow
+                .visionclaw
                 .physics
                 .compute_mode;
 
-            if logseq_mode == 2 || visionflow_mode == 2 {
+            if logseq_mode == 2 || visionclaw_mode == 2 {
                 constraints_list.push(json!({
                     "type": "physics_constraints",
                     "enabled": true,
                     "mode": "compute_mode_2",
-                    "target_graphs": if logseq_mode == 2 && visionflow_mode == 2 {
-                        vec!["logseq", "visionflow"]
+                    "target_graphs": if logseq_mode == 2 && visionclaw_mode == 2 {
+                        vec!["logseq", "visionclaw"]
                     } else if logseq_mode == 2 {
                         vec!["logseq"]
                     } else {
-                        vec!["visionflow"]
+                        vec!["visionclaw"]
                     }
                 }));
             }
@@ -308,7 +308,7 @@ use crate::ok_json;
                 "gpu_available": gpu_available,
                 "modes": {
                     "logseq_compute_mode": logseq_mode,
-                    "visionflow_compute_mode": visionflow_mode
+                    "visionclaw_compute_mode": visionclaw_mode
                 }
             }))
         }

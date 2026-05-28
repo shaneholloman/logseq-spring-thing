@@ -9,7 +9,7 @@ Related  : ADR-06 (this section), ADR-02 D8 (WebSocket auth), ADR-05 (Settings),
 
 ## Capability
 
-VisionFlow is a single-deployment knowledge-graph visualiser that ships into
+VisionClaw is a single-deployment knowledge-graph visualiser that ships into
 two operating modes:
 
 - **Production** — facing real users on a domain, TLS-terminated, exposed to
@@ -198,7 +198,7 @@ fallback (`Bearer dev-session-token` — also gated by A1's compile flag).
 
 ### Flow 1: First-time user, production
 
-1. User opens `https://visionflow.example.com/`.
+1. User opens `https://visionclaw.example.com/`.
 2. React app loads. `nostrAuth.isAuthenticated()` returns `false`.
 3. User clicks "Sign in with Nostr" → NIP-07 extension prompt
    (Alby, nos2x, Podkey).

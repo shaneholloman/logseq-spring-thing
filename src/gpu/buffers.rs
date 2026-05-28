@@ -39,7 +39,7 @@ pub const INITIAL_CAPACITY_CEILING: usize = 16_384;
 
 /// Axis-aligned bounding box mirrored locally so that this module does not
 /// depend on the `pub(crate)` AABB type inside `unified_gpu_compute`. The
-/// layout matches the CUDA `AABB` struct in `visionflow_unified.cu`.
+/// layout matches the CUDA `AABB` struct in `visionclaw_unified.cu`.
 #[repr(C)]
 #[derive(Debug, Default, Clone, Copy)]
 pub struct AabbBlock {

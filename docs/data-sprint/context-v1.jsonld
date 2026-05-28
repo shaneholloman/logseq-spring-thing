@@ -1,5 +1,5 @@
 {
-  "_comment_file": "VisionFlow canonical JSON-LD 1.1 context, version 1.",
+  "_comment_file": "VisionClaw canonical JSON-LD 1.1 context, version 1.",
   "_comment_owner": "docs/data-sprint/ADR-D01-canonical-source-schema.md is authoritative.",
   "_comment_url_reserved": "https://narrativegoldmine.com/context/v1.jsonld",
   "_comment_in_repo_path": "docs/data-sprint/context-v1.jsonld",
@@ -11,20 +11,20 @@
   "@context": {
     "@version": 1.1,
 
-    "_comment_default_vocab": "Unprefixed terms expand to the vc: (VisionFlow) namespace. Anything not in the table below is treated as a VisionFlow extension predicate.",
-    "@vocab": "urn:visionflow:owl:property:",
+    "_comment_default_vocab": "Unprefixed terms expand to the vc: (VisionClaw) namespace. Anything not in the table below is treated as a VisionClaw extension predicate.",
+    "@vocab": "urn:visionclaw:owl:property:",
 
-    "_comment_prefixes": "VisionFlow prefixes — content addressing and DID identity.",
-    "vf":       "urn:visionflow:",
-    "vc":       "urn:visionflow:owl:property:",
-    "vcclass":  "urn:visionflow:owl:class:",
-    "vcaxiom":  "urn:visionflow:axiom:",
-    "vcpage":   "urn:visionflow:page:",
-    "vcagent":  "urn:visionflow:agent:",
-    "vcgraph":  "urn:visionflow:graph:",
+    "_comment_prefixes": "VisionClaw prefixes — content addressing and DID identity.",
+    "vf":       "urn:visionclaw:",
+    "vc":       "urn:visionclaw:owl:property:",
+    "vcclass":  "urn:visionclaw:owl:class:",
+    "vcaxiom":  "urn:visionclaw:axiom:",
+    "vcpage":   "urn:visionclaw:page:",
+    "vcagent":  "urn:visionclaw:agent:",
+    "vcgraph":  "urn:visionclaw:graph:",
     "did":      "did:",
 
-    "_comment_w3c_vocabs": "W3C standard vocabularies re-exported by VisionFlow. The canonical schema asserts that any predicate from this set IS that predicate — no aliasing into a private namespace.",
+    "_comment_w3c_vocabs": "W3C standard vocabularies re-exported by VisionClaw. The canonical schema asserts that any predicate from this set IS that predicate — no aliasing into a private namespace.",
     "rdf":      "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
     "rdfs":     "http://www.w3.org/2000/01/rdf-schema#",
     "owl":      "http://www.w3.org/2002/07/owl#",
@@ -56,7 +56,7 @@
     "comment":     {"@id": "rdfs:comment",      "@language": "en"},
     "summary":     {"@id": "schema:abstract",   "@language": "en"},
 
-    "_comment_domain_types": "VisionFlow domain types map to W3C class IRIs where one exists. Authors write 'type: OntologyClass' and the canonical RDF emits 'a owl:Class'.",
+    "_comment_domain_types": "VisionClaw domain types map to W3C class IRIs where one exists. Authors write 'type: OntologyClass' and the canonical RDF emits 'a owl:Class'.",
     "OntologyClass":    {"@id": "owl:Class"},
     "OntologyProperty": {"@id": "owl:ObjectProperty"},
     "DataProperty":     {"@id": "owl:DatatypeProperty"},
@@ -85,7 +85,7 @@
     "functionalProperty":   {"@id": "owl:FunctionalProperty"},
     "reflexiveProperty":    {"@id": "owl:ReflexiveProperty"},
 
-    "_comment_visionflow_relations": "VisionFlow-specific object relations. These are predicates on the wire; they live under vc: because they have no perfect W3C analogue. bridgeTo connects the knowledge graph to the ontology graph (per ADR-08 §D2). hasPart / requires / enables / relatesTo are the relationship types catalogued in OwlClass V2's vec fields, now first-class predicates.",
+    "_comment_visionclaw_relations": "VisionClaw-specific object relations. These are predicates on the wire; they live under vc: because they have no perfect W3C analogue. bridgeTo connects the knowledge graph to the ontology graph (per ADR-08 §D2). hasPart / requires / enables / relatesTo are the relationship types catalogued in OwlClass V2's vec fields, now first-class predicates.",
     "bridgeTo":      {"@id": "vc:bridgeTo",      "@type": "@id"},
     "bridgeFrom":    {"@id": "vc:bridgeFrom",    "@type": "@id"},
     "hasPart":       {"@id": "vc:hasPart",      "@type": "@id"},
@@ -138,7 +138,7 @@
     "signatureNotBefore": {"@id": "vc:signatureNotBefore",  "@type": "xsd:dateTime"},
     "signatureNotAfter":  {"@id": "vc:signatureNotAfter",   "@type": "xsd:dateTime"},
 
-    "_comment_agent_telemetry": "Agent telemetry under vcagent: IRIs. Each step carries a run_id and a step number. agent telemetry events land in the <urn:visionflow:graph:agent> named graph.",
+    "_comment_agent_telemetry": "Agent telemetry under vcagent: IRIs. Each step carries a run_id and a step number. agent telemetry events land in the <urn:visionclaw:graph:agent> named graph.",
     "runId":          {"@id": "vc:runId"},
     "step":           {"@id": "vc:step",           "@type": "xsd:integer"},
     "agentKind":      {"@id": "vc:agentKind"},

@@ -11,7 +11,7 @@
 
 ## Context
 
-PRD-011 extracts the VisionFlow forum kit (`nostr-bbs-rs`, hosted at `DreamLab-AI/nostr-rust-forum`) from the `dreamlab-ai-website` monorepo into a standalone Rust workspace of crates and Cloudflare Workers. Once extracted, the kit is consumed by N operators in M operating environments — DreamLab is one consumer (G3), but the kit must serve coalition deployments, single-team forums, managed-hosting providers, regulated air-gapped operators, and CI evaluators.
+PRD-011 extracts the VisionClaw forum kit (`nostr-bbs-rs`, hosted at `DreamLab-AI/nostr-rust-forum`) from the `dreamlab-ai-website` monorepo into a standalone Rust workspace of crates and Cloudflare Workers. Once extracted, the kit is consumed by N operators in M operating environments — DreamLab is one consumer (G3), but the kit must serve coalition deployments, single-team forums, managed-hosting providers, regulated air-gapped operators, and CI evaluators.
 
 ADR-073 specified **mesh topology** at the wire-protocol level: standalone vs federated vs client mode, fan-out semantics, NIP-42 AUTH, federation key custody. That ADR answered "how do relays talk to each other when they decide to talk." It did **not** answer "in what configurations should an operator deploy the kit, and which configuration fits which operator."
 
@@ -238,7 +238,7 @@ Keys never leave the HSM; signing happens inside the device via PKCS#11. The rel
 
 ### D7 — Downstream-consumer pattern (`dreamlab-ai-website` as exemplar)
 
-Per PRD-011 §5.4 (`docs/PRD-011-visionflow-forum-kit-extraction.md`:273), the kit publishes `nostr-bbs-*` crates to crates.io; downstream packages depend on them via `Cargo.toml` and supply a `<deployment>.toml`.
+Per PRD-011 §5.4 (`docs/PRD-011-visionclaw-forum-kit-extraction.md`:273), the kit publishes `nostr-bbs-*` crates to crates.io; downstream packages depend on them via `Cargo.toml` and supply a `<deployment>.toml`.
 
 ```toml
 # dreamlab-ai-website/forum-config/Cargo.toml
@@ -308,7 +308,7 @@ Zero external network egress. All Nostr traffic is loopback-only. Used in regula
 
 ### D9 — Migration topology
 
-The existing `dreamlab-ai-website/community-forum-rs/` deployment migrates to a kit-based deployment without downtime per PRD-011 R5 (`docs/PRD-011-visionflow-forum-kit-extraction.md`:493) + Phase X5 (`docs/PRD-011-visionflow-forum-kit-extraction.md`:460).
+The existing `dreamlab-ai-website/community-forum-rs/` deployment migrates to a kit-based deployment without downtime per PRD-011 R5 (`docs/PRD-011-visionclaw-forum-kit-extraction.md`:493) + Phase X5 (`docs/PRD-011-visionclaw-forum-kit-extraction.md`:460).
 
 #### Migration topology (transient)
 
@@ -452,7 +452,7 @@ Each topology becomes a compile-time feature in the kit (`--features federated,m
 
 ### Alt-D — One mega-topology with optional sub-features
 
-Define a single topology "VisionFlow Forum Kit" with all features available; operators flip TOML flags to enable/disable. No named patterns.
+Define a single topology "VisionClaw Forum Kit" with all features available; operators flip TOML flags to enable/disable. No named patterns.
 
 *Rejected*: same problem as Alt-A (no shared vocabulary). Also encourages operators to enable features they don't need (every flag is "available"); patterns codify "the right set of flags for this use case", which is the whole point.
 
@@ -574,7 +574,7 @@ Per ADR-077 P1-P5, the kit's topology test surface includes:
 ## References
 
 - PRD-010 — DID:Nostr Mesh Federation (G3, G7)
-- PRD-011 — VisionFlow Forum Kit Extraction (G1, G3, G4, G8; §5.2 TOML schema; §5.4 downstream-consumer pattern; R5 + Phase X5 migration)
+- PRD-011 — VisionClaw Forum Kit Extraction (G1, G3, G4, G8; §5.2 TOML schema; §5.4 downstream-consumer pattern; R5 + Phase X5 migration)
 - ADR-073 — Private Nostr Relay Mesh Topology & NIP-42 AUTH (D2 fan-out, D4 federation key, D6 mode selection, D9 loop avoidance, D11 health probes)
 - ADR-074 — Cross-System DID:Nostr Canonicalisation (D9 key rotation, kind-30033 mesh service-list, D10 delegation patterns)
 - ADR-075 — IS-Envelope v1 contract (used in agentbox-nostr skill provider via `tool_invoke` / `tool_result`)

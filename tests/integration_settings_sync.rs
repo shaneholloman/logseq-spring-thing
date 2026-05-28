@@ -1,4 +1,4 @@
-// Test disabled - references deprecated/removed modules (webxr::actors::settings_actor, webxr::utils::validation::rate_limit)
+// Test disabled - references deprecated/removed modules (visionclaw_server::actors::settings_actor, visionclaw_server::utils::validation::rate_limit)
 // Actor module structure has changed per ADR-001; settings_actor has moved
 /*
 //! Integration tests for settings sync functionality
@@ -17,11 +17,11 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 
 // Import project modules
-use webxr::actors::settings_actor::SettingsActor;
-use webxr::config::AppFullSettings;
-use webxr::handlers::nostr_handler;
-use webxr::utils::validation::rate_limit::RateLimiter;
-use webxr::{app_state::AppState, handlers::settings_handler::config};
+use visionclaw_server::actors::settings_actor::SettingsActor;
+use visionclaw_server::config::AppFullSettings;
+use visionclaw_server::handlers::nostr_handler;
+use visionclaw_server::utils::validation::rate_limit::RateLimiter;
+use visionclaw_server::{app_state::AppState, handlers::settings_handler::config};
 
 /// Test data for bloom/glow settings with comprehensive validation
 mod test_data {

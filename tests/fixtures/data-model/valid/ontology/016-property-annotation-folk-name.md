@@ -15,13 +15,13 @@ search and UI labelling.
 ```json-ld
 {
   "@context": "https://narrativegoldmine.com/context/v1.jsonld",
-  "@id": "urn:visionflow:owl:property:folk-name",
+  "@id": "urn:visionclaw:owl:property:folk-name",
   "@type": ["OntologyProperty", "owl:AnnotationProperty"],
   "ontology": true,
   "rdfs:label": "folkName",
   "vc:definition": "A vernacular or affectionate name for an architectural work as used by inhabitants of its host city. Examples: 'il Cupolone' for Santa Maria del Fiore's dome; 'il Bernino' for Bernini's colonnade. Distinct from rdfs:label, which carries the formal name.",
   "vc:propertyKind": "AnnotationProperty",
-  "rdfs:domain": { "@id": "urn:visionflow:owl:class:architectural-work" },
+  "rdfs:domain": { "@id": "urn:visionclaw:owl:class:architectural-work" },
   "rdfs:range": { "@id": "http://www.w3.org/2000/01/rdf-schema#Literal" },
   "vc:status": "active",
   "prov:wasAttributedTo": { "@id": "did:nostr:npub1carlo00000000000000000000000000000000000000000000000000000" },

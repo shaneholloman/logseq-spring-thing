@@ -9,10 +9,10 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use crate::actors::graph_actor::{AutoBalanceNotification, PhysicsState};
-use visionflow_domain::models::constraints::ConstraintSet;
-use visionflow_domain::models::edge::Edge;
-use visionflow_domain::models::graph::GraphData;
-use visionflow_domain::models::node::Node;
+use visionclaw_domain::models::constraints::ConstraintSet;
+use visionclaw_domain::models::edge::Edge;
+use visionclaw_domain::models::graph::GraphData;
+use visionclaw_domain::models::node::Node;
 use glam::Vec3;
 
 /// Binary node data with position and velocity (6-DOF)

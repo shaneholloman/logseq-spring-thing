@@ -2,7 +2,7 @@
 
 ## Overview
 
-VisionFlow now supports ontology-based semantic visualization using OWL class IRIs. Nodes can be rendered with class-specific visual properties (colors, shapes, sizes) based on their ontology classification.
+VisionClaw now supports ontology-based semantic visualization using OWL class IRIs. Nodes can be rendered with class-specific visual properties (colors, shapes, sizes) based on their ontology classification.
 
 ## Backend Support (✅ COMPLETE)
 

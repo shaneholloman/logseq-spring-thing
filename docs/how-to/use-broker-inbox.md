@@ -66,7 +66,7 @@ bottom-right corner:
 
 - Title: `from_kg -> to_owl` (or a server-supplied summary).
 - Metadata: timestamp, confidence percentage.
-- Click: dispatches a `visionflow:migration-focus` window event that the
+- Click: dispatches a `visionclaw:migration-focus` window event that the
   graph overlay uses to pan the camera.
 
 Toasts are buffered in a 50-entry ring; old events beyond the 3-item visible
@@ -96,7 +96,7 @@ feature flag must be on.
 | "Failed to load bridge candidates"                   | Verify NIP-98 auth; re-authenticate if needed. |
 | Toasts never fire                                    | Open devtools, watch `ws://.../bridge/events/ws`.|
 | Filament pulse does not pan the camera               | Check the browser console for the dispatched  |
-|                                                      | `visionflow:migration-focus` event.            |
+|                                                      | `visionclaw:migration-focus` event.            |
 | Publish toggle missing for my own node               | Check `VISIBILITY_TRANSITIONS` is on and your  |
 |                                                      | pubkey matches the node owner.                 |
 

@@ -54,7 +54,7 @@ User drags slider
       → PhysicsOrchestratorActor (receives UpdateSimulationParams message)
         → resets fast-settle counters, triggers reheat
           → ForceComputeActor (dispatches ComputeForces to GPU)
-            → visionflow_unified.cu CUDA kernel
+            → visionclaw_unified.cu CUDA kernel
               → updated node positions broadcast via WebSocket V4 binary
 ```
 

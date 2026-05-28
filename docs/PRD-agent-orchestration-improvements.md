@@ -11,7 +11,7 @@
 ## 1. Problem Statement
 
 A review of the Multica open-source multi-agent daemon surfaced seven coordination
-patterns that address known weaknesses in VisionFlow's agent orchestration layer:
+patterns that address known weaknesses in VisionClaw's agent orchestration layer:
 
 | # | Gap | Symptom |
 |---|-----|---------|

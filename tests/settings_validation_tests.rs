@@ -1,7 +1,7 @@
 // Test disabled - references deprecated/removed module (crate::tests::test_utils)
 // The test_utils module has been removed or relocated
 /*
-//! Comprehensive validation tests for VisionFlow settings refactor
+//! Comprehensive validation tests for VisionClaw settings refactor
 //!
 //! Tests input validation, constraint checking, type safety, and error handling
 //! for the new settings system with granular updates and camelCase serialization

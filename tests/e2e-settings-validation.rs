@@ -1,4 +1,4 @@
-// Test disabled - references deprecated/removed modules (webxr::actors::settings_actor, webxr::utils::validation::ValidationService)
+// Test disabled - references deprecated/removed modules (visionclaw_server::actors::settings_actor, visionclaw_server::utils::validation::ValidationService)
 // Actor module structure has changed per ADR-001; settings_actor has moved
 /*
 //! End-to-End Settings Validation Tests
@@ -13,11 +13,11 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 
 // Import project modules
-use webxr::actors::settings_actor::SettingsActor;
-use webxr::app_state::AppState;
-use webxr::config::AppFullSettings;
-use webxr::handlers::settings_handler::{config, EnhancedSettingsHandler};
-use webxr::utils::validation::ValidationService;
+use visionclaw_server::actors::settings_actor::SettingsActor;
+use visionclaw_server::app_state::AppState;
+use visionclaw_server::config::AppFullSettings;
+use visionclaw_server::handlers::settings_handler::{config, EnhancedSettingsHandler};
+use visionclaw_server::utils::validation::ValidationService;
 
 /// Test fixture for creating a fully configured test server
 struct TestServer {

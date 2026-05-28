@@ -1,6 +1,6 @@
 //! Physics Orchestrator Actor - Dedicated physics simulation management
 //!
-//! This actor coordinates all physics simulation activities in the VisionFlow system,
+//! This actor coordinates all physics simulation activities in the VisionClaw system,
 //! providing focused management of force calculations, position updates, and GPU acceleration.
 
 use actix::prelude::*;
@@ -15,7 +15,7 @@ use std::time::{Duration, Instant};
 
 use crate::actors::messages::PositionSnapshot;
 use crate::actors::messaging::{MessageAck, MessageId, MessageKind, MessageTracker};
-use crate::errors::VisionFlowError;
+use crate::errors::VisionClawError;
 
 use crate::actors::gpu::force_compute_actor::ForceComputeActor;
 use crate::actors::gpu::force_compute_actor::PhysicsStats;
@@ -27,9 +27,9 @@ use crate::actors::messages::{
     SetConstraintGroupActive, SimulationStep, StartSimulation, StopSimulation,
     StoreGPUComputeAddress, UpdateNodePosition, UpdateNodePositions, UpdateSimulationParams,
 };
-use visionflow_domain::models::constraints::ConstraintSet;
+use visionclaw_domain::models::constraints::ConstraintSet;
 use crate::models::constraints::ConstraintGpuExt;
-use visionflow_domain::models::graph::GraphData;
+use visionclaw_domain::models::graph::GraphData;
 use crate::models::simulation_params::{SettleMode, SimulationParams};
 use crate::utils::socket_flow_messages::BinaryNodeData;
 use crate::utils::socket_flow_messages::BinaryNodeDataClient;
@@ -1148,7 +1148,7 @@ impl Handler<RequestPositionSnapshot> for PhysicsOrchestratorActor {
 }
 
 impl Handler<PhysicsPauseMessage> for PhysicsOrchestratorActor {
-    type Result = Result<(), VisionFlowError>;
+    type Result = Result<(), VisionClawError>;
 
     fn handle(&mut self, msg: PhysicsPauseMessage, ctx: &mut Self::Context) -> Self::Result {
         info!("Physics pause requested: pause={}", msg.pause);
@@ -1164,7 +1164,7 @@ impl Handler<PhysicsPauseMessage> for PhysicsOrchestratorActor {
 }
 
 impl Handler<NodeInteractionMessage> for PhysicsOrchestratorActor {
-    type Result = Result<(), VisionFlowError>;
+    type Result = Result<(), VisionClawError>;
 
     fn handle(&mut self, msg: NodeInteractionMessage, ctx: &mut Self::Context) -> Self::Result {
         info!("Node interaction detected: {:?}", msg.interaction_type);
@@ -1186,7 +1186,7 @@ impl Handler<NodeInteractionMessage> for PhysicsOrchestratorActor {
 }
 
 impl Handler<ForceResumePhysics> for PhysicsOrchestratorActor {
-    type Result = Result<(), VisionFlowError>;
+    type Result = Result<(), VisionClawError>;
 
     fn handle(&mut self, _msg: ForceResumePhysics, ctx: &mut Self::Context) -> Self::Result {
         info!("Force resume physics requested");

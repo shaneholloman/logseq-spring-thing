@@ -163,7 +163,7 @@ A06-D7. Docker socket: scope or remove
 
 A06-D8. Trusted proxy boundary
   - Configure Actix to trust `X-Forwarded-Proto` / `X-Forwarded-Host` only
-    from the CIDR in `VISIONFLOW_TRUSTED_PROXIES` (default `127.0.0.1/32`).
+    from the CIDR in `VISIONCLAW_TRUSTED_PROXIES` (default `127.0.0.1/32`).
   - Strip forwarded headers from any other source.
   - Deliverable: NIP-98 URL reconstruction uses validated forwarded headers only.
 
@@ -384,7 +384,7 @@ X10-1. Create crates/visionclaw-contracts (T7 resolution, ADR-10 D3)
   - Run `ts-rs` test to generate `client/src/types/contracts/agent-action.d.ts`.
   - Also add envelope types for `AgentTelemetryEnvelope` and
     `EnterpriseEventEnvelope` (referenced from ADR-10 D1 and D5).
-  - Publish as `@visionflow/contracts` npm package skeleton (package.json,
+  - Publish as `@visionclaw/contracts` npm package skeleton (package.json,
     index.d.ts re-export of generated `.d.ts` files).
   - Deliverable: `cargo build -p visionclaw-contracts` passes; generated `.d.ts`
     committed and CI-checked for byte-identical regeneration.
@@ -411,7 +411,7 @@ X10-4. Enterprise events WebSocket endpoint (ADR-10 D5)
   - Wire effects: role_change updates JWT claim; session_revoked drops JWT + prompts re-auth.
 
 X10-5. Auth bridge (ADR-10 D4)
-  - Implement the 7-step challenge-response flow for forum → VisionFlow identity bridging.
+  - Implement the 7-step challenge-response flow for forum → VisionClaw identity bridging.
   - Session JWT stored in sessionStorage (not localStorage, not cookie).
   - Challenge replay-resistance: single-use, 60s server-side window.
   - Deliverable: auth bridge test (connect → challenge → sign → verify → JWT issued).
@@ -434,9 +434,9 @@ X10-7. Enterprise guard CI check (ADR-10 D7)
   - Deliverable: CI step blocks any re-introduction.
 
 X10-8. BroadcastChannel naming convention (CC-13 resolution)
-  - Document `visionflow:` prefix convention in ADR-10.
+  - Document `visionclaw:` prefix convention in ADR-10.
   - Add grep CI: every `BroadcastChannel(` literal in `client/src/` matches
-    `visionflow:[a-z-]+`.
+    `visionclaw:[a-z-]+`.
 
 X10-9. GitHub adapter documentation (CC-15 resolution)
   - ADR-10 D11 already written in sprint docs. Implementation task:
@@ -824,7 +824,7 @@ Mitigation:
 ### R5. visionclaw-contracts versioning discipline erodes (MEDIUM)
 
 Likelihood: Low initially but grows over time. The contract crate is the
-integration surface between VisionFlow and external systems (agentbox, forum).
+integration surface between VisionClaw and external systems (agentbox, forum).
 If schema_version bumping discipline is not enforced, version skew goes
 undetected until a cross-system regression.
 
@@ -838,7 +838,7 @@ Mitigation:
   type forces a regeneration, which makes the diff visible in the PR.
 - The contract test harness (X10-10) explicitly tests that receivers reject
   `schema_version !== 1`; new versions require test additions.
-- `@visionflow/contracts` npm package version is gated by the same semver
+- `@visionclaw/contracts` npm package version is gated by the same semver
   rules as `schema_version`; a CI check fails if the npm version and the
   `schema_version` constant diverge.
 

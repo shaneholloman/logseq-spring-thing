@@ -1,4 +1,4 @@
-// Test disabled - references deprecated/removed modules (webxr::models, webxr::physics::ontology_constraints, webxr::services::owl_validator)
+// Test disabled - references deprecated/removed modules (visionclaw_server::models, visionclaw_server::physics::ontology_constraints, visionclaw_server::services::owl_validator)
 // OntologyConstraintTranslator, OwlValidatorService, and related types may have been restructured per ADR-001
 /*
 //! Comprehensive Ontology System Smoke Tests
@@ -20,21 +20,21 @@ use mockall::{mock, predicate::*};
 // use pretty_assertions::assert_eq;
 use tokio_test;
 
-use webxr::models::{
+use visionclaw_server::models::{
     constraints::{Constraint, ConstraintKind, ConstraintSet},
     graph::GraphData,
     node::Node,
 };
-use webxr::physics::ontology_constraints::{
+use visionclaw_server::physics::ontology_constraints::{
     ConsistencyCheck, OWLAxiom, OWLAxiomType, OntologyConstraintConfig,
     OntologyConstraintTranslator, OntologyInference, OntologyReasoningReport,
 };
-use webxr::services::owl_validator::{
+use visionclaw_server::services::owl_validator::{
     GraphEdge, GraphNode, OwlValidatorService, PropertyGraph, RdfTriple, Severity,
     ValidationConfig, ValidationError, ValidationReport, Violation,
 };
-use webxr::utils::socket_flow_messages::BinaryNodeData;
-use webxr::models::metadata::MetadataStore;
+use visionclaw_server::utils::socket_flow_messages::BinaryNodeData;
+use visionclaw_server::models::metadata::MetadataStore;
 
 // ... remaining test code omitted for brevity ...
 */

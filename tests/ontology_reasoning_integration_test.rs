@@ -1,5 +1,5 @@
-// Test disabled - references deprecated/removed modules (webxr::repositories::unified_ontology_repository)
-// The UnifiedOntologyRepository is deprecated per ADR-001; use webxr::ports::ontology_repository instead
+// Test disabled - references deprecated/removed modules (visionclaw_server::repositories::unified_ontology_repository)
+// The UnifiedOntologyRepository is deprecated per ADR-001; use visionclaw_server::ports::ontology_repository instead
 /*
 // tests/ontology_reasoning_integration_test.rs
 //! Integration tests for OntologyReasoningService
@@ -11,10 +11,10 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use webxr::adapters::whelk_inference_engine::WhelkInferenceEngine;
-use webxr::ports::ontology_repository::{AxiomType, OntologyRepository, OwlAxiom, OwlClass};
-use webxr::repositories::unified_ontology_repository::UnifiedOntologyRepository;
-use webxr::services::ontology_reasoning_service::OntologyReasoningService;
+use visionclaw_server::adapters::whelk_inference_engine::WhelkInferenceEngine;
+use visionclaw_server::ports::ontology_repository::{AxiomType, OntologyRepository, OwlAxiom, OwlClass};
+use visionclaw_server::repositories::unified_ontology_repository::UnifiedOntologyRepository;
+use visionclaw_server::services::ontology_reasoning_service::OntologyReasoningService;
 
 #[tokio::test]
 async fn test_reasoning_service_initialization() {

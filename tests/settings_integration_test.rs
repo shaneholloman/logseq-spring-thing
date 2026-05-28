@@ -20,7 +20,7 @@ use sqlx::SqlitePool;
 use std::sync::Arc;
 
 // Import from the main crate
-use webxr::{
+use visionclaw_server::{
     config::{PhysicsSettings, RenderingSettings},
     settings::{
         SettingsActor,
@@ -264,7 +264,7 @@ async fn test_all_settings_save_and_load() {
     let mut rendering = RenderingSettings::default();
     rendering.ambient_light_intensity = 0.7;
 
-    let all_settings = webxr::settings::AllSettings {
+    let all_settings = visionclaw_server::settings::AllSettings {
         physics,
         constraints,
         rendering,

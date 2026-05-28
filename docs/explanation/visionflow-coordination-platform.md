@@ -1,6 +1,6 @@
-# VisionFlow — Coordination Engineering at Scale
+# VisionClaw — Coordination Engineering at Scale
 
-VisionFlow is the distributed coordination platform that emerges when VisionClaw, Agentbox, the Nostr+Solid protocol layer, and the DreamLab forum mesh together. No single repository *is* VisionFlow — it is the coordination layer binding five independent systems into a platform for solving hard problems with distributed human and AI intelligence.
+VisionClaw is the distributed coordination platform that emerges when VisionClaw, Agentbox, the Nostr+Solid protocol layer, and the DreamLab forum mesh together. No single repository *is* VisionClaw — it is the coordination layer binding five independent systems into a platform for solving hard problems with distributed human and AI intelligence.
 
 ## The Problem
 
@@ -13,13 +13,13 @@ Existing approaches fail in predictable ways:
 - **Knowledge management tools** scale information but not reasoning. More data doesn't mean better decisions.
 - **Collaboration platforms** scale communication but not coordination. More Slack channels don't solve alignment.
 
-VisionFlow solves all four simultaneously because the substrate handles identity, provenance, access control, and semantic reasoning as first-class architectural primitives — not bolted-on features.
+VisionClaw solves all four simultaneously because the substrate handles identity, provenance, access control, and semantic reasoning as first-class architectural primitives — not bolted-on features.
 
 ## Five Substrates, One Identity
 
 ```mermaid
 flowchart TB
-    subgraph VF["VisionFlow Coordination Layer"]
+    subgraph VF["VisionClaw Coordination Layer"]
         direction LR
         MESH["Nostr Relay Mesh\n(NIP-42 AUTH, bidirectional)"]
         DID["DID:Nostr Identity Spine\n(secp256k1 everywhere)"]
@@ -112,7 +112,7 @@ The Nostr+Solid layer provides the binding protocols that make coordination poss
 
 ### DreamLab Edge — Branded Deployment
 
-The user-facing surface: React marketing site, Leptos WASM forum, and five Cloudflare Workers. Consumes the protocol infrastructure as library crates. Demonstrates the VisionFlow architecture at production scale on dreamlab-ai.com.
+The user-facing surface: React marketing site, Leptos WASM forum, and five Cloudflare Workers. Consumes the protocol infrastructure as library crates. Demonstrates the VisionClaw architecture at production scale on dreamlab-ai.com.
 
 ## Coordination Topology
 
@@ -175,7 +175,7 @@ Both tiers verify NIP-98 independently. Same passkey-derived keypair authenticat
 
 ## Scaling Model
 
-VisionFlow scales along three axes simultaneously:
+VisionClaw scales along three axes simultaneously:
 
 ### Token Efficiency (Single Operator)
 
@@ -264,17 +264,17 @@ The Judgment Broker isn't a bottleneck — it's a filter that lets everything el
 
 ## Wardley Map
 
-The following Wardley map positions VisionFlow's components along the value chain (visibility to the user) and evolution axis (genesis → custom → product → commodity). It illustrates why certain layers are custom-built (semantic physics, ontology reasoning, governance protocol) while others leverage commodity infrastructure (Cloudflare, CUDA, WebSocket).
+The following Wardley map positions VisionClaw's components along the value chain (visibility to the user) and evolution axis (genesis → custom → product → commodity). It illustrates why certain layers are custom-built (semantic physics, ontology reasoning, governance protocol) while others leverage commodity infrastructure (Cloudflare, CUDA, WebSocket).
 
-![VisionFlow Wardley Map](visionflow-wardley-map.png)
+![VisionClaw Wardley Map](visionclaw-wardley-map.png)
 
 Key observations:
 
 - **Identity and provenance** sit in the custom-built zone — `did:nostr` and content-addressed beads are novel protocol primitives, not yet commoditised.
 - **Agent runtime** (Agentbox) occupies the product space — reproducible containers and tool orchestration are maturing but not yet commodity.
 - **GPU compute and relay infrastructure** are approaching commodity — CUDA kernels and WebSocket relays are well-understood engineering, differentiated only by domain-specific application.
-- **The coordination layer** (VisionFlow itself) is genesis — no existing platform combines formal reasoning, sovereign identity, and agent governance at this architectural level.
+- **The coordination layer** (VisionClaw itself) is genesis — no existing platform combines formal reasoning, sovereign identity, and agent governance at this architectural level.
 
 ## Upstream
 
-VisionFlow's protocol layer is built on [Melvin Carvalho](https://github.com/melvincarvalho)'s [JavaScriptSolidServer (JSS)](https://github.com/JavaScriptSolidServer/JavaScriptSolidServer) and [DID:Nostr](https://github.com/nicholasgasior/did-nostr). JSS is the AGPL-3.0 reference implementation of the Solid Protocol and the canonical source for the feature set, protocol extensions, and Web Ledger micropayment system. solid-pod-rs is a Rust port; protocol-level decisions defer to the upstream JSS repository. See [MAINTAINERS.md](../../MAINTAINERS.md).
+VisionClaw's protocol layer is built on [Melvin Carvalho](https://github.com/melvincarvalho)'s [JavaScriptSolidServer (JSS)](https://github.com/JavaScriptSolidServer/JavaScriptSolidServer) and [DID:Nostr](https://github.com/nicholasgasior/did-nostr). JSS is the AGPL-3.0 reference implementation of the Solid Protocol and the canonical source for the feature set, protocol extensions, and Web Ledger micropayment system. solid-pod-rs is a Rust port; protocol-level decisions defer to the upstream JSS repository. See [MAINTAINERS.md](../../MAINTAINERS.md).

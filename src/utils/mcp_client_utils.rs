@@ -90,7 +90,7 @@ impl Default for McpConnectionConfig {
             max_retries: 3,
             retry_delay: Duration::from_millis(500),
             protocol_version: "2024-11-05".to_string(),
-            client_name: "visionflow-mcp-client".to_string(),
+            client_name: "visionclaw-mcp-client".to_string(),
             client_version: "1.0.0".to_string(),
         }
     }

@@ -4,8 +4,8 @@
 //! queries on the graph. These complement the existing GPU-based SSSP which
 //! visits all reachable nodes.
 
-use visionflow_domain::models::graph::GraphData;
-use visionflow_domain::models::node::Node;
+use visionclaw_domain::models::graph::GraphData;
+use visionclaw_domain::models::node::Node;
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::collections::{BinaryHeap, HashMap, HashSet};
@@ -749,9 +749,9 @@ impl<E: EmbeddingProvider> SemanticPathfinder<E> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use visionflow_domain::models::edge::Edge;
-    use visionflow_domain::models::graph::GraphData;
-    use visionflow_domain::models::node::Node;
+    use visionclaw_domain::models::edge::Edge;
+    use visionclaw_domain::models::graph::GraphData;
+    use visionclaw_domain::models::node::Node;
 
     /// Helper: build a small test graph.
     ///

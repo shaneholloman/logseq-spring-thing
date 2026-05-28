@@ -691,7 +691,7 @@ Internal ADRs:
 - ADR-057: Contributor Enablement Platform (companion, authored in parallel to this PRD)
 
 Internal PRDs:
-- PRD-001: VisionFlow Data Pipeline Alignment
+- PRD-001: VisionClaw Data Pipeline Alignment
 - PRD-002: Enterprise Control Plane UI
 - PRD: Insight Migration Loop (MVP)
 

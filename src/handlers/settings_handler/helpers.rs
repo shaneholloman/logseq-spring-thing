@@ -36,13 +36,13 @@ pub fn extract_physics_updates(update: &Value) -> Vec<&str> {
             {
                 updated.push("logseq");
             }
-            if graphs.contains_key("visionflow")
+            if graphs.contains_key("visionclaw")
                 && graphs
-                    .get("visionflow")
+                    .get("visionclaw")
                     .and_then(|g| g.get("physics"))
                     .is_some()
             {
-                updated.push("visionflow");
+                updated.push("visionclaw");
             }
             updated
         })
@@ -98,7 +98,7 @@ pub fn create_physics_settings_update(physics_update: Value) -> Value {
                 "logseq": {
                     "physics": normalized_physics
                 },
-                "visionflow": {
+                "visionclaw": {
                     "physics": normalized_physics.clone()
                 }
             }

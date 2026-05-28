@@ -1,7 +1,7 @@
-# VisionFlow Data Sprint — Model Test Fixtures
+# VisionClaw Data Sprint — Model Test Fixtures
 
 Synthetic Logseq markdown files with embedded JSON-LD blocks that conform
-to the canonical VisionFlow source-data schema (ADR-08, ADR-11). These
+to the canonical VisionClaw source-data schema (ADR-08, ADR-11). These
 fixtures are the model corpus consumed by the parser, the ontology
 adapter, the graph adapter, and the parity test harness.
 
@@ -26,34 +26,34 @@ Identity forms used:
 | Form                                           | Used for                          |
 |------------------------------------------------|-----------------------------------|
 | `did:nostr:npub1<pubkey-bech32>`               | People, agents, signing identities|
-| `urn:visionflow:page:<sha256>`                 | Page entities                     |
-| `urn:visionflow:owl:class:<slug>`              | OntologyClass entities            |
-| `urn:visionflow:owl:property:<slug>`           | OntologyProperty entities         |
-| `urn:visionflow:owl:axiom:<sha256-12>`         | Axiom entities (content-addressed)|
-| `urn:visionflow:linked:<slug>`                 | LinkedPage placeholders           |
-| `urn:visionflow:agent:<run-id>:<step>`         | AgentTelemetry events             |
-| `urn:visionflow:bridge:<source>:<target>`      | BridgeRecord entries              |
+| `urn:visionclaw:page:<sha256>`                 | Page entities                     |
+| `urn:visionclaw:owl:class:<slug>`              | OntologyClass entities            |
+| `urn:visionclaw:owl:property:<slug>`           | OntologyProperty entities         |
+| `urn:visionclaw:owl:axiom:<sha256-12>`         | Axiom entities (content-addressed)|
+| `urn:visionclaw:linked:<slug>`                 | LinkedPage placeholders           |
+| `urn:visionclaw:agent:<run-id>:<step>`         | AgentTelemetry events             |
+| `urn:visionclaw:bridge:<source>:<target>`      | BridgeRecord entries              |
 
 Named graphs:
 
 | IRI                                            | Contents                          |
 |------------------------------------------------|-----------------------------------|
-| `urn:visionflow:graph:knowledge`               | Pages, wikilinks, bridges (KG)    |
-| `urn:visionflow:graph:ontology:assert`         | OntologyClass/Property/Axiom      |
-| `urn:visionflow:graph:ontology:inferred`       | Whelk-derived inferred axioms     |
-| `urn:visionflow:graph:agent`                   | Agent telemetry                   |
+| `urn:visionclaw:graph:knowledge`               | Pages, wikilinks, bridges (KG)    |
+| `urn:visionclaw:graph:ontology:assert`         | OntologyClass/Property/Axiom      |
+| `urn:visionclaw:graph:ontology:inferred`       | Whelk-derived inferred axioms     |
+| `urn:visionclaw:graph:agent`                   | Agent telemetry                   |
 | `(default)`                                    | Cross-graph bridge records        |
 
 Class-bit mapping (per TC-1 resolution in T1-class-bits.md):
 
 | `@type`           | Class flag bit | Routed to graph                          |
 |-------------------|----------------|------------------------------------------|
-| `Page`            | `0x40000000`   | `urn:visionflow:graph:knowledge`         |
-| `OntologyClass`   | `0x04000000`   | `urn:visionflow:graph:ontology:assert`   |
-| `LinkedPage`      | `0x08000000`   | `urn:visionflow:graph:knowledge`         |
-| `Axiom`           | `0x0C000000`   | `urn:visionflow:graph:ontology:assert`   |
-| `OntologyProperty`| `0x10000000`   | `urn:visionflow:graph:ontology:assert`   |
-| `AgentTelemetry`  | `0x80000000`   | `urn:visionflow:graph:agent`             |
+| `Page`            | `0x40000000`   | `urn:visionclaw:graph:knowledge`         |
+| `OntologyClass`   | `0x04000000`   | `urn:visionclaw:graph:ontology:assert`   |
+| `LinkedPage`      | `0x08000000`   | `urn:visionclaw:graph:knowledge`         |
+| `Axiom`           | `0x0C000000`   | `urn:visionclaw:graph:ontology:assert`   |
+| `OntologyProperty`| `0x10000000`   | `urn:visionclaw:graph:ontology:assert`   |
+| `AgentTelemetry`  | `0x80000000`   | `urn:visionclaw:graph:agent`             |
 | `BridgeRecord`    | `0x40000000`   | default graph (cross-graph)              |
 
 ## OWL 2 EL profile

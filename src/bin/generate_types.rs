@@ -276,7 +276,7 @@ export interface GraphSettings {
 // Multi-graph settings
 export interface GraphsSettings {
   logseq: GraphSettings;
-  visionflow: GraphSettings;
+  visionclaw: GraphSettings;
 }
 
 // Visualization settings

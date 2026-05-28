@@ -5,7 +5,7 @@ Accepted
 
 ## Context
 
-VisionFlow renders knowledge graphs in 3D using GPU-accelerated force-directed
+VisionClaw renders knowledge graphs in 3D using GPU-accelerated force-directed
 layout. The current implementation uses a single Fruchterman-Reingold force model
 that produces a featureless ball — communities don't separate because linear springs
 don't penalize long edges. Expert analysis (NPI=0.003, stress RMSE=15.05) confirms

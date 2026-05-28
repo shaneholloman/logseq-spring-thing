@@ -1,3 +1,3 @@
-//! Protected-settings DTOs — re-exported from `visionflow-domain` per ADR-090.
+//! Protected-settings DTOs — re-exported from `visionclaw-domain` per ADR-090.
 
-pub use visionflow_domain::models::protected_settings::*;
+pub use visionclaw_domain::models::protected_settings::*;

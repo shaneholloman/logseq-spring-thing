@@ -159,7 +159,7 @@ pub struct GetQualityGateSettings;
 // MessageResponse Implementations
 // ============================================================================
 
-// PhysicsSettings is now a foreign type (visionflow-domain), so we can't impl
+// PhysicsSettings is now a foreign type (visionclaw-domain), so we can't impl
 // MessageResponse for it directly (orphan rule). Handlers return MessageResult instead.
 
 impl<A, M> MessageResponse<A, M> for ConstraintSettings

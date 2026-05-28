@@ -1,4 +1,4 @@
-//! Network resilience utilities for VisionFlow
+//! Network resilience utilities for VisionClaw
 //!
 //! This module provides comprehensive network resilience patterns including:
 //! - Exponential backoff retry logic

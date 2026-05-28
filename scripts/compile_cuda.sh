@@ -6,8 +6,8 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-CUDA_SRC="$PROJECT_ROOT/src/utils/visionflow_unified.cu"
-PTX_OUTPUT="$PROJECT_ROOT/target/visionflow_unified.ptx"
+CUDA_SRC="$PROJECT_ROOT/src/utils/visionclaw_unified.cu"
+PTX_OUTPUT="$PROJECT_ROOT/target/visionclaw_unified.ptx"
 
 echo "🔧 Compiling CUDA kernels to PTX..."
 echo "   Source: $CUDA_SRC"

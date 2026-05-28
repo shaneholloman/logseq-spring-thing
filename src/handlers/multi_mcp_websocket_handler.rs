@@ -1,7 +1,7 @@
 //! Multi-MCP WebSocket Handler
 //!
 //! Provides real-time WebSocket streaming of agent visualization data
-//! from multiple MCP servers to the VisionFlow graph renderer.
+//! from multiple MCP servers to the VisionClaw graph renderer.
 
 use actix::{Actor, AsyncContext, Handler, Message, StreamHandler};
 use actix_web::{web, HttpRequest, HttpResponse, Result as ActixResult};

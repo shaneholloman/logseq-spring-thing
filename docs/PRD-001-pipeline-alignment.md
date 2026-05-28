@@ -1,4 +1,4 @@
-# PRD-001: VisionFlow Data Pipeline Alignment
+# PRD-001: VisionClaw Data Pipeline Alignment
 
 > **Wire-format clauses superseded by [ADR-061](adr/ADR-061-binary-protocol-unification.md) /
 > [PRD-007](PRD-007-binary-protocol-unification.md) (2026-04-30)** — references to V3/V5
@@ -18,7 +18,7 @@
 
 ## Problem Statement
 
-VisionFlow's data pipeline from Neo4j through Rust server to TypeScript client has accumulated 49 parallel implementations across 5 subsystems. These redundancies cause:
+VisionClaw's data pipeline from Neo4j through Rust server to TypeScript client has accumulated 49 parallel implementations across 5 subsystems. These redundancies cause:
 
 1. **Silent data loss**: Ontology nodes classified as knowledge nodes due to case mismatch (`"OwlClass"` vs `"owl_class"`)
 2. **Phantom protocols**: Client `BinaryWebSocketProtocol.ts` describes V4 as current; server always sends V3/V5

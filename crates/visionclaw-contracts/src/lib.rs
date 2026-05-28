@@ -1,20 +1,20 @@
 //! # visionclaw-contracts
 //!
-//! Cross-boundary typed contracts for VisionFlow ⇄ agentbox ⇄ forum ⇄ XR client.
+//! Cross-boundary typed contracts for VisionClaw ⇄ agentbox ⇄ forum ⇄ XR client.
 //!
 //! This crate is the **single source of truth** for every envelope that
-//! crosses a process boundary in the VisionFlow ecosystem. Rust consumers
+//! crosses a process boundary in the VisionClaw ecosystem. Rust consumers
 //! depend on it directly. TypeScript consumers depend on the generated
-//! `@visionflow/contracts` npm package, whose `.d.ts` files are emitted from
+//! `@visionclaw/contracts` npm package, whose `.d.ts` files are emitted from
 //! the types here via the `typescript-export` feature.
 //!
 //! ## Modules
 //!
 //! - [`agent_action`] — outbound `AgentActionEnvelope` (click → agentbox).
 //!   Canonical: ADR-10 §D3.
-//! - [`telemetry`] — inbound `AgentTelemetryEnvelope` (agentbox → VisionFlow).
+//! - [`telemetry`] — inbound `AgentTelemetryEnvelope` (agentbox → VisionClaw).
 //!   Canonical: ADR-10 §D1.
-//! - [`enterprise`] — inbound `EnterpriseEventEnvelope` (forum → VisionFlow).
+//! - [`enterprise`] — inbound `EnterpriseEventEnvelope` (forum → VisionClaw).
 //!   Canonical: ADR-10 §D5.
 //! - [`github_adapter`] — `ParsedMarkdown` boundary value-object between the
 //!   GitHub transport (Section 10) and the ontology domain (Section 8).

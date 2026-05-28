@@ -6,18 +6,18 @@ use serde_json::Value;
 use std::collections::HashMap;
 
 use crate::config::AppFullSettings;
-use crate::errors::VisionFlowError;
+use crate::errors::VisionClawError;
 
 // ---------------------------------------------------------------------------
 // Settings Actor Messages
 // ---------------------------------------------------------------------------
 
 #[derive(Message)]
-#[rtype(result = "Result<AppFullSettings, VisionFlowError>")]
+#[rtype(result = "Result<AppFullSettings, VisionClawError>")]
 pub struct GetSettings;
 
 #[derive(Message)]
-#[rtype(result = "Result<(), VisionFlowError>")]
+#[rtype(result = "Result<(), VisionClawError>")]
 pub struct UpdateSettings {
     pub settings: AppFullSettings,
 }
@@ -27,13 +27,13 @@ pub struct UpdateSettings {
 pub struct ReloadSettings;
 
 #[derive(Message)]
-#[rtype(result = "Result<(), VisionFlowError>")]
+#[rtype(result = "Result<(), VisionClawError>")]
 pub struct MergeSettingsUpdate {
     pub update: serde_json::Value,
 }
 
 #[derive(Message)]
-#[rtype(result = "Result<(), VisionFlowError>")]
+#[rtype(result = "Result<(), VisionClawError>")]
 pub struct PartialSettingsUpdate {
     pub partial_settings: serde_json::Value,
 }
@@ -45,13 +45,13 @@ pub struct UpdatePhysicsFromAutoBalance {
 }
 
 #[derive(Message)]
-#[rtype(result = "Result<Value, VisionFlowError>")]
+#[rtype(result = "Result<Value, VisionClawError>")]
 pub struct GetSettingByPath {
     pub path: String,
 }
 
 #[derive(Message)]
-#[rtype(result = "Result<(), VisionFlowError>")]
+#[rtype(result = "Result<(), VisionClawError>")]
 pub struct SetSettingByPath {
     pub path: String,
     pub value: Value,
@@ -59,13 +59,13 @@ pub struct SetSettingByPath {
 
 // Batch path-based settings messages for performance
 #[derive(Message)]
-#[rtype(result = "Result<HashMap<String, Value>, VisionFlowError>")]
+#[rtype(result = "Result<HashMap<String, Value>, VisionClawError>")]
 pub struct GetSettingsByPaths {
     pub paths: Vec<String>,
 }
 
 #[derive(Message)]
-#[rtype(result = "Result<(), VisionFlowError>")]
+#[rtype(result = "Result<(), VisionClawError>")]
 pub struct SetSettingsByPaths {
     pub updates: HashMap<String, Value>,
 }

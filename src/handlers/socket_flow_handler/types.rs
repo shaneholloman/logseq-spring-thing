@@ -316,7 +316,7 @@ impl SocketFlowServer {
                         use crate::utils::socket_flow_messages::{InitialNodeData, InitialEdgeData};
                         use std::collections::HashSet;
 
-                        let mut sorted_nodes: Vec<&visionflow_domain::models::node::Node> = graph_data
+                        let mut sorted_nodes: Vec<&visionclaw_domain::models::node::Node> = graph_data
                             .nodes
                             .iter()
                             .collect();
@@ -332,7 +332,7 @@ impl SocketFlowServer {
                             quality_b.partial_cmp(&quality_a).unwrap_or(std::cmp::Ordering::Equal)
                         });
 
-                        let filtered_nodes: Vec<&visionflow_domain::models::node::Node> = sorted_nodes
+                        let filtered_nodes: Vec<&visionclaw_domain::models::node::Node> = sorted_nodes
                             .into_iter()
                             .take(DEFAULT_INITIAL_NODE_LIMIT)
                             .collect();

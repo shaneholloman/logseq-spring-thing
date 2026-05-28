@@ -11,7 +11,7 @@
 
 ## 1. Problem Statement
 
-The VisionFlow Rust backend parses Logseq markdown from `jjohare/logseq` and imports it into Neo4j. The parser (`ontology_parser.rs`) expects **v4 format** pages wrapped in a `- ### OntologyBlock` section with short-code domain prefixes (`AI-`, `BC-`, `mv:`, etc.) and `term-id` as the primary identifier.
+The VisionClaw Rust backend parses Logseq markdown from `jjohare/logseq` and imports it into Neo4j. The parser (`ontology_parser.rs`) expects **v4 format** pages wrapped in a `- ### OntologyBlock` section with short-code domain prefixes (`AI-`, `BC-`, `mv:`, etc.) and `term-id` as the primary identifier.
 
 The ontology has been migrated to **VisionClaw v2 IRI-first format** (`PAGE-FORMAT.md`). v2 pages:
 

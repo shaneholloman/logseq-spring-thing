@@ -416,7 +416,7 @@
 | # | Element | Type | Source-of-truth | Surface | Tier | Status | Notes |
 |---|---|---|---|---|---|---|---|
 | 11.1 | active panel selector | enum | local React state | ENT | B | LIVE | broker/workflows/kpi/connectors/policy |
-| 11.2 | drawer open/closed | bool | localStorage `visionflow.enterprise.drawer` | ENT | B | LIVE | |
+| 11.2 | drawer open/closed | bool | localStorage `visionclaw.enterprise.drawer` | ENT | B | LIVE | |
 | 11.3 | drawer activeSection | string | same | ENT | B | LIVE | |
 | 11.4 | broker case submit (title, description, priority) | form | BrokerActor -> `PublishActionRequest` (kind 31402) -> Nostr relay | ENT.Broker | B | WIRED (backend) | Server signs and broadcasts to relay; UI subscription pending |
 | 11.5 | broker inbox load | Nostr subscription (kind 31402) + REST fallback | Relay + BrokerActor | ENT.Broker | B | WIRED (backend) | Relay stores NIP-33 events; REST polling fallback |
@@ -545,7 +545,7 @@
 | 17.13 | SESSION_SECRET | string | env | ENV | LIVE; required to rotate in prod |
 | 17.14 | SESSION_TIMEOUT | seconds | env | ENV | LIVE |
 | 17.15 | SOLID_PROXY_SECRET_KEY | string | env | ENV | LIVE |
-| 17.16 | VISIONFLOW_AGENT_KEY | string | env | ENV | DEPRECATED (use Nostr per ADR-040) |
+| 17.16 | VISIONCLAW_AGENT_KEY | string | env | ENV | DEPRECATED (use Nostr per ADR-040) |
 | 17.17 | POD_NAME | string | computed | – | LIVE |
 | 17.18 | CORS_ALLOWED_ORIGINS/_METHODS/_HEADERS | csv | env | ENV | LIVE |
 | 17.19 | CLOUDFLARE_TUNNEL_TOKEN | string | env | ENV | LIVE; not in .env templates |

@@ -30,7 +30,7 @@ Legend: ✅ fully propagated | ⚠️ partial (persist XOR notify, or notifies s
 | 6 | `PUT /settings/path` — `src/handlers/settings_handler/routes.rs:99` | `AppFullSettings` via path merge + `UpdateSettings` + conditional `propagate_physics_to_gpu` | Same cluster | ✅ yes (only when path contains `.physics.` or `.graphs.*.`) | OK — but paths like `rendering.*` are silently non-propagated |
 | 7 | `POST /settings/reset` — `src/handlers/settings_handler/write_handlers.rs:240` | Replaces `AppFullSettings` with defaults | Same cluster (esp. physics) | ❌ **no `propagate_physics_to_gpu` call** — reset wipes in-memory settings and actors keep previous params | HIGH |
 | 8 | `POST /settings/save` — `src/handlers/settings_handler/write_handlers.rs:281` | Merges optional payload, saves file, updates actor | Same cluster | ❌ no `propagate_physics_to_gpu` (even when payload contains physics fields) | HIGH |
-| 9 | `POST /settings/batch` — `src/handlers/settings_handler/write_handlers.rs:417` | Batch path writes | Same cluster | ✅ propagates to `"logseq"` only when any path contains `.physics.` — **missing `"visionflow"` graph propagation** | ⚠️ MEDIUM |
+| 9 | `POST /settings/batch` — `src/handlers/settings_handler/write_handlers.rs:417` | Batch path writes | Same cluster | ✅ propagates to `"logseq"` only when any path contains `.physics.` — **missing `"visionclaw"` graph propagation** | ⚠️ MEDIUM |
 | 10 | `POST /api/physics/compute-mode` — `src/handlers/settings_handler/physics.rs:159` | `AppFullSettings.visualisation.graphs.*.physics.computeMode` | GPU + graph actors | ✅ calls `propagate_physics_to_gpu` for both graphs | OK |
 | 11 | `POST /api/clustering/algorithm` — `src/handlers/settings_handler/physics.rs:240` | Clustering physics fields | GPU + graph actors | ✅ propagates both graphs | OK |
 | 12 | `POST /api/constraints/update` — `src/handlers/settings_handler/physics.rs:342` | Sets `computeMode=2`, merges constraints | GPU + graph actors | ⚠️ calls `propagate_physics_to_gpu` but **does not dispatch `UpdateConstraints` to `ConstraintActor` / `SemanticProcessorActor` / `OntologyConstraintActor`** — the five `Handler<UpdateConstraints>` impls exist but are unreachable from this route | HIGH |
@@ -95,7 +95,7 @@ Legend: ✅ fully propagated | ⚠️ partial (persist XOR notify, or notifies s
 Source: `src/actors/optimized_settings_actor.rs:589-610`.
 
 ```rust
-pub async fn update_settings(&self, new_settings: AppFullSettings) -> VisionFlowResult<()> {
+pub async fn update_settings(&self, new_settings: AppFullSettings) -> VisionClawResult<()> {
     let mut settings = self.settings.write().await;
     *settings = new_settings;
     { let mut cache = self.path_cache.write().await; cache.clear(); }

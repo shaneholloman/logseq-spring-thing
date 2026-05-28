@@ -20,7 +20,7 @@ import { useTelemetry } from '../../../telemetry/useTelemetry';
 import { agentTelemetry } from '../../../telemetry/AgentTelemetry';
 import { useSettingsStore } from '../../../store/settingsStore';
 import { useBotsData } from '../contexts/BotsDataContext';
-import { getVisionFlowColors } from './BotsShared';
+import { getVisionClawColors } from './BotsShared';
 import { BotsNode } from './BotsNode';
 import { BotsEdgeComponent } from './BotsEdgeComponent';
 
@@ -51,18 +51,18 @@ export const BotsVisualization: React.FC = () => {
   const positionsRef = useRef<Map<string, THREE.Vector3>>(new Map());
 
   const colors = useMemo(
-    () => getVisionFlowColors(settings as unknown as Record<string, unknown> | undefined),
+    () => getVisionClawColors(settings as unknown as Record<string, unknown> | undefined),
     [settings],
   );
 
   // Sync context data → local BotsState + positionsRef
   useEffect(() => {
     if (!contextBotsData) {
-      logger.debug('[VISIONFLOW] No context data available yet');
+      logger.debug('[VISIONCLAW] No context data available yet');
       return;
     }
 
-    logger.debug('[VISIONFLOW] Processing bots data from context', contextBotsData);
+    logger.debug('[VISIONCLAW] Processing bots data from context', contextBotsData);
     setIsLoading(false);
 
     const agents = contextBotsData.agents || [];
@@ -141,7 +141,7 @@ export const BotsVisualization: React.FC = () => {
     return (
       <Html center>
         <div style={{ color: '#E74C3C', padding: '20px', textAlign: 'center' }}>
-          <h3>VisionFlow Error</h3>
+          <h3>VisionClaw Error</h3>
           <p>{error}</p>
         </div>
       </Html>
@@ -152,7 +152,7 @@ export const BotsVisualization: React.FC = () => {
     return (
       <Html center>
         <div style={{ color: '#F1C40F', padding: '20px', textAlign: 'center' }}>
-          <h3>Loading VisionFlow...</h3>
+          <h3>Loading VisionClaw...</h3>
           <p>Initializing hive mind visualization</p>
         </div>
       </Html>

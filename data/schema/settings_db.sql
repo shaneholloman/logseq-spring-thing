@@ -1,5 +1,5 @@
 -- =================================================================
--- VisionFlow Settings Database (settings.db)
+-- VisionClaw Settings Database (settings.db)
 -- =================================================================
 -- Purpose: Application configuration, user management, API keys, and audit logs
 -- Version: 2.0.0
@@ -273,7 +273,7 @@ BEGIN TRANSACTION;
 -- Insert default application settings
 INSERT OR IGNORE INTO settings (key, value_type, value_text, description)
 VALUES
-    ('app_name', 'string', 'VisionFlow', 'Application name'),
+    ('app_name', 'string', 'VisionClaw', 'Application name'),
     ('app_version', 'string', '2.0.0', 'Current application version');
 
 INSERT OR IGNORE INTO settings (key, value_type, value_integer, description)

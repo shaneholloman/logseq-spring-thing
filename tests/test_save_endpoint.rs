@@ -1,4 +1,4 @@
-// Test disabled - references deprecated/removed modules (webxr::actors::SettingsActor, webxr::actors::AppState, messages::GetSettings)
+// Test disabled - references deprecated/removed modules (visionclaw_server::actors::SettingsActor, visionclaw_server::actors::AppState, messages::GetSettings)
 // Actor module structure has changed per ADR-001; SettingsActor and AppState have moved
 /*
 use actix_web::{http::StatusCode, test, web, App};
@@ -8,7 +8,7 @@ use tempfile::NamedTempFile;
 
 // Import necessary types from the main crate
 use actix::Actor;
-use webxr::{
+use visionclaw_server::{
     actors::{messages::GetSettings, SettingsActor},
     config::AppFullSettings,
     handlers::settings_handler,
@@ -21,7 +21,7 @@ async fn create_test_app_with_settings(
     let settings_addr =
         SettingsActor::new(Arc::new(tokio::sync::RwLock::new(settings)), None, None).start();
 
-    let app_state = web::Data::new(webxr::actors::AppState {
+    let app_state = web::Data::new(visionclaw_server::actors::AppState {
         settings_addr: settings_addr.clone(),
         graph_service: None,
         gpu_manager: None,

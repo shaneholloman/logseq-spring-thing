@@ -15,8 +15,8 @@
 
 #![cfg(feature = "physics-v2")]
 
-use webxr::actors::messages::{ClampKind, PhysicsEvent};
-use webxr::gpu::buffers::{derive_log_mass, PhysicsGpuBuffers, MAX_VELOCITY};
+use visionclaw_server::actors::messages::{ClampKind, PhysicsEvent};
+use visionclaw_server::gpu::buffers::{derive_log_mass, PhysicsGpuBuffers, MAX_VELOCITY};
 
 // ---------------------------------------------------------------------------
 // Pure-Rust unit tests (no CUDA required)

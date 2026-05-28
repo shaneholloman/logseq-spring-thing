@@ -1012,7 +1012,7 @@ async fn create_pod_with_structure(
 
 <#me>
     a foaf:Person ;
-    solid:oidcIssuer <https://visionflow.info> ;
+    solid:oidcIssuer <https://visionclaw.info> ;
     nostr:pubkey "{pubkey}" ;
     nostr:npub "{npub}" ;
     vcard:hasUID <did:nostr:{pubkey}> .

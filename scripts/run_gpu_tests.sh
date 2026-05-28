@@ -62,13 +62,13 @@ echo ""
 echo -e "${YELLOW}🔧 Step 1/4: Compiling CUDA kernels...${NC}"
 cd "$PROJECT_ROOT"
 
-if [ -f "$PROJECT_ROOT/target/visionflow_unified.ptx" ]; then
+if [ -f "$PROJECT_ROOT/target/visionclaw_unified.ptx" ]; then
     echo -e "   ${YELLOW}⚠${NC}  PTX already exists, recompiling..."
 fi
 
 ./scripts/compile_cuda.sh
 
-if [ ! -f "$PROJECT_ROOT/target/visionflow_unified.ptx" ]; then
+if [ ! -f "$PROJECT_ROOT/target/visionclaw_unified.ptx" ]; then
     echo -e "${RED}❌ PTX compilation failed${NC}"
     exit 1
 fi
@@ -79,7 +79,7 @@ echo ""
 # Step 2: Run integration tests
 echo -e "${YELLOW}🧪 Step 2/4: Running integration tests...${NC}"
 
-export VISIONFLOW_PTX_PATH="$PROJECT_ROOT/target/visionflow_unified.ptx"
+export VISIONCLAW_PTX_PATH="$PROJECT_ROOT/target/visionclaw_unified.ptx"
 export RUST_BACKTRACE=1
 
 echo ""
@@ -170,7 +170,7 @@ System Information
 CUDA Version: $CUDA_VERSION
 GPU: $GPU_NAME
 Rust Version: $RUST_VERSION
-PTX Location: $PROJECT_ROOT/target/visionflow_unified.ptx
+PTX Location: $PROJECT_ROOT/target/visionclaw_unified.ptx
 
 Test Results
 ------------

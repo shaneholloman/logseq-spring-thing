@@ -346,8 +346,8 @@ impl LocalFileSyncService {
         file_name: &str,
         content: &str,
         content_sha: &str,
-        nodes: &mut HashMap<u32, visionflow_domain::models::node::Node>,
-        edges: &mut HashMap<String, visionflow_domain::models::edge::Edge>,
+        nodes: &mut HashMap<u32, visionclaw_domain::models::node::Node>,
+        edges: &mut HashMap<String, visionclaw_domain::models::edge::Edge>,
         public_pages: &mut std::collections::HashSet<String>,
         stats: &mut SyncStatistics,
     ) -> Result<(), String> {
@@ -565,17 +565,17 @@ impl LocalFileSyncService {
     /// Save batch to Oxigraph store (ADR-11)
     async fn save_batch(
         &self,
-        nodes: &HashMap<u32, visionflow_domain::models::node::Node>,
-        edges: &HashMap<String, visionflow_domain::models::edge::Edge>,
+        nodes: &HashMap<u32, visionclaw_domain::models::node::Node>,
+        edges: &HashMap<String, visionclaw_domain::models::edge::Edge>,
     ) -> Result<(), String> {
         if nodes.is_empty() && edges.is_empty() {
             return Ok(());
         }
 
-        let graph = visionflow_domain::models::graph::GraphData {
+        let graph = visionclaw_domain::models::graph::GraphData {
             nodes: nodes.values().cloned().collect(),
             edges: edges.values().cloned().collect(),
-            metadata: visionflow_domain::models::metadata::MetadataStore::new(),
+            metadata: visionclaw_domain::models::metadata::MetadataStore::new(),
             id_to_metadata: std::collections::HashMap::new(),
         };
 

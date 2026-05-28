@@ -165,7 +165,7 @@ export class AIInsights {
 
   public async recognizePatterns(
     logseqGraph: GraphData,
-    visionflowGraph: GraphData,
+    visionclawGraph: GraphData,
     options: {
       detectAnomalies?: boolean;
       crossGraphAnalysis?: boolean;
@@ -174,25 +174,25 @@ export class AIInsights {
   ): Promise<PatternRecognition> {
     logger.info('Recognizing patterns using AI algorithms');
 
-    const cacheKey = generateCacheKey({ logseqGraph, visionflowGraph }, options);
+    const cacheKey = generateCacheKey({ logseqGraph, visionclawGraph }, options);
     if (this.patternCache.has(cacheKey)) {
       return this.patternCache.get(cacheKey)!;
     }
 
     const logseqPatterns = await detectGraphPatterns(logseqGraph, options.patternTypes);
-    const visionflowPatterns = await detectGraphPatterns(visionflowGraph, options.patternTypes);
+    const visionclawPatterns = await detectGraphPatterns(visionclawGraph, options.patternTypes);
     const crossGraphPatterns = options.crossGraphAnalysis
-      ? await analyzeCrossGraphPatterns(logseqPatterns, visionflowPatterns)
+      ? await analyzeCrossGraphPatterns(logseqPatterns, visionclawPatterns)
       : [];
     const anomalies = options.detectAnomalies
-      ? await detectGraphAnomalies(logseqGraph, visionflowGraph)
+      ? await detectGraphAnomalies(logseqGraph, visionclawGraph)
       : [];
     const insights = generatePatternInsights(
-      [...logseqPatterns, ...visionflowPatterns], crossGraphPatterns, anomalies
+      [...logseqPatterns, ...visionclawPatterns], crossGraphPatterns, anomalies
     );
 
     const recognition: PatternRecognition = {
-      patterns: [...logseqPatterns, ...visionflowPatterns],
+      patterns: [...logseqPatterns, ...visionclawPatterns],
       crossGraphPatterns,
       anomalies,
       insights,

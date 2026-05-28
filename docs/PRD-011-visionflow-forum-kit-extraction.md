@@ -1,4 +1,4 @@
-# PRD-011 — VisionFlow Forum Kit Extraction
+# PRD-011 — VisionClaw Forum Kit Extraction
 
 | Field | Value |
 |-------|-------|
@@ -16,13 +16,13 @@
 Extract the community forum currently embedded in `DreamLab-AI/dreamlab-ai-website` (subdirectory `community-forum-rs/`) into a generic, reusable Rust-crate kit hosted at `DreamLab-AI/nostr-rust-forum`. The kit becomes a federated mesh substrate (per ADR-073/074/075) that any operator can deploy with their own configuration and branding. DreamLab's website re-imports the kit as Cargo dependencies plus a `dreamlab.toml` configuration package — closing the fork-and-modify pattern and turning the forum into a first-party generic substrate alongside `solid-pod-rs` and `agentbox`.
 
 ### Branding & naming strategy
-- **Internal ecosystem brand** (DreamLab PRDs/ADRs/DDD): "VisionFlow forum" / "VisionFlow"
-- **GitHub repo** (canonical home): `DreamLab-AI/nostr-rust-forum` (preserves existing 3 stars, 2 forks, redirect-chain integrity; avoids the `visionflow` GitHub collision with the renamed `VisionClaw` repo)
+- **Internal ecosystem brand** (DreamLab PRDs/ADRs/DDD): "VisionClaw forum" / "VisionClaw"
+- **GitHub repo** (canonical home): `DreamLab-AI/nostr-rust-forum` (preserves existing 3 stars, 2 forks, redirect-chain integrity; avoids the `visionclaw` GitHub collision with the renamed `VisionClaw` repo)
 - **Public product name** (README, crates.io, public docs): `nostr-bbs-rs`
 - **Crate prefix**: `nostr-bbs-*` (e.g. `nostr-bbs-core`, `nostr-bbs-relay-worker`, `nostr-bbs-pod-worker`)
 - **Local workspace path**: `/home/devuser/workspace/nostr-rust-forum/`
 
-The dual-brand approach lets DreamLab refer to "VisionFlow" internally while public-facing documentation, crate names, and the GitHub repo stay unbranded — operators of the kit are not pulled into DreamLab's name space.
+The dual-brand approach lets DreamLab refer to "VisionClaw" internally while public-facing documentation, crate names, and the GitHub repo stay unbranded — operators of the kit are not pulled into DreamLab's name space.
 
 ---
 
@@ -373,7 +373,7 @@ Skill validates each answer; on completion writes a working TOML and recommends 
 - F1.2: New branch `import/v3-from-dreamlab-ai-website`.
 - F1.3: Single import commit replaces `crates/` content with de-branded extraction.
 - F1.4: PR + merge + v3.0 tag.
-- F1.5: README rewritten for kit positioning (no DreamLab references; "VisionFlow" appears nowhere public).
+- F1.5: README rewritten for kit positioning (no DreamLab references; "VisionClaw" appears nowhere public).
 
 ### F2 — De-branding pass
 - F2.1: All hardcoded URLs (`dreamlab-ai.com`, `dreamlab-nostr-relay.solitary-paper-764d.workers.dev`, etc.) move to `[deployment]` / `[relay]` / `[pod]` config.

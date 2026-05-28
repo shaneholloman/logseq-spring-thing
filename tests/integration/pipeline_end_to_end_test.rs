@@ -10,8 +10,8 @@
 mod pipeline_e2e {
     use actix_web::{test, web, App};
     // NOTE: reasoning_actor module does not exist - commenting out all tests
-    // use webxr::reasoning::reasoning_actor::ReasoningActor;
-    use webxr::gpu::semantic_forces::SemanticForceGenerator;
+    // use visionclaw_server::reasoning::reasoning_actor::ReasoningActor;
+    use visionclaw_server::gpu::semantic_forces::SemanticForceGenerator;
     use std::sync::Arc;
     use tokio::sync::RwLock;
     use std::time::Instant;
@@ -115,7 +115,7 @@ mod pipeline_e2e {
 
     #[actix_web::test]
     async fn test_gpu_receives_constraints() {
-        use webxr::gpu::types::SemanticConstraint;
+        use visionclaw_server::gpu::types::SemanticConstraint;
 
         let owl_content = get_test_ontology();
 

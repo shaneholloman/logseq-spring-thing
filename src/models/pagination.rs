@@ -1,5 +1,5 @@
-use visionflow_domain::models::edge::Edge;
-use visionflow_domain::models::node::Node;
+use visionclaw_domain::models::edge::Edge;
+use visionclaw_domain::models::node::Node;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize)]

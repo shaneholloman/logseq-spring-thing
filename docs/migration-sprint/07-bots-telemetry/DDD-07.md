@@ -41,7 +41,7 @@ and Section 4 react to.
 | **Agent**              | A running unit reported by agentbox. Has a stable id within a session, a type token, a status, and a position. |
 | **Telemetry**          | A stream of events describing live agent state. Push-only, ordered per agent, transport-owned by Section 10. |
 | **Telemetry event**    | One of `AgentJoined`, `AgentPositionUpdated`, `AgentStatusChanged`, `AgentCommunicated`, `AgentDeparted`, `SwarmSnapshot`, `Heartbeat`. |
-| **Swarm**              | A logical grouping of agents under a parent/queen; identified by `swarm_id`. VisionFlow does not enumerate swarms; it observes the membership reported in telemetry. |
+| **Swarm**              | A logical grouping of agents under a parent/queen; identified by `swarm_id`. VisionClaw does not enumerate swarms; it observes the membership reported in telemetry. |
 | **Membership edge**    | A persistent edge from a queen agent to a child agent expressing parent/queen relationship.       |
 | **Communication edge** | A transient edge between two agents created by an `AgentCommunicated` event; decays linearly over `bots.communication_edge_decay`. |
 | **Hop-relation**       | The general term for "A talks to B" used in product / UX copy. Internally, every hop-relation is a communication edge. |
@@ -50,14 +50,14 @@ and Section 4 react to.
 | **Coalescer**          | The client-side batch buffer that flushes telemetry events on `requestAnimationFrame` boundaries. |
 | **TTL sweeper**        | The server-side process that emits `AgentDeparted` for agents whose last telemetry is older than `bots.agent_ttl_seconds`. |
 | **Identity record**    | A durable Oxigraph triple about a long-lived agent (display name, owner Nostr key, persistent capabilities). Read-only from this context. |
-| **Control surface**    | The agentbox/forum UI for actually doing something to an agent. Lives outside VisionFlow. |
+| **Control surface**    | The agentbox/forum UI for actually doing something to an agent. Lives outside VisionClaw. |
 | **Click-through intent**| The `AgentActionEnvelope` (ADR-10 D3) constructed on user click and dispatched via the session's chosen transport; receiver and schema owned by Section 10. |
 
 ## Aggregates
 
 ### Aggregate 1: `TelemetryStream`
 
-The single point of entry for agent state into VisionFlow. Holds the
+The single point of entry for agent state into VisionClaw. Holds the
 WebSocket adapter, the per-agent ordering invariant, and the coalescer
 flush schedule.
 
@@ -221,7 +221,7 @@ it does not): `AgentSpawnRequested`, `AgentKilled`, `SwarmInitialised`,
 ## Commands accepted
 
 This context's command surface is intentionally tiny. The only commands
-are user-driven UI intents that originate inside VisionFlow:
+are user-driven UI intents that originate inside VisionClaw:
 
 - `ResolveClickThrough { node_id, cursor_world_position }` — constructs
   an `AgentActionEnvelope` (ADR-10 D3) and dispatches it on the
@@ -232,7 +232,7 @@ are user-driven UI intents that originate inside VisionFlow:
 
 All other state changes arrive as *events* from the transport, not as
 *commands* from the user. This is the read-mostly discipline that
-keeps VisionFlow out of the control plane.
+keeps VisionClaw out of the control plane.
 
 ## Anti-corruption layer to Section 10 (External Integrations)
 

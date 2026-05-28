@@ -36,10 +36,10 @@ mask); `0x04|0x08|0x10000000 == 0x1C000000` (three subtypes fully cover);
 
 CUDA consumes class metadata via three buffers, not via flag bits on the id:
 
-- `src/utils/visionflow_unified.cu:276-278` — kernel signature takes
+- `src/utils/visionclaw_unified.cu:276-278` — kernel signature takes
   `class_id: const int*`, `class_charge: const float*`, `class_mass:
   const float*`. The id the kernel reads is a separately uploaded buffer.
-- `src/utils/visionflow_unified.cu:337-344` — branches on
+- `src/utils/visionclaw_unified.cu:337-344` — branches on
   `class_id[idx] == class_id[neighbor_idx]` for same-domain repulsion.
 - `src/actors/gpu/gpu_resource_actor.rs:241-249` — `class_id` is derived
   from `node.metadata["source_domain"]` and mapped to small ints
@@ -186,7 +186,7 @@ forward reference to ADR-08 D6 once the latter is rewritten.
   upstream `node.node_type` string → flag setter classifier needs the
   same two-name change.
 - **GPU code: NO CHANGE.** `class_id` in CUDA
-  (`visionflow_unified.cu:276`) is the domain-cluster int from
+  (`visionclaw_unified.cu:276`) is the domain-cluster int from
   `gpu_resource_actor.rs:241-249`. The CUDA kernel never reads any flag
   constant. Collision is exclusively in the wire/domain metadata layer.
 - **DB schema: NO CHANGE.** Persistence stores either full `u32` (Neo4j)

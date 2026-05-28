@@ -32,7 +32,7 @@ Authors  : QE fleet synthesis (6 specialists)
 | T6 | IMPORTANT | Bots deletion-candidate routes | 07, 10 | api-contract-validator | Two-phase: 410 Gone (Phase 7a) → delete (Phase 7b) |
 | CC-1 | IMPORTANT | Telemetry wire ↔ internal event divergence | 07, 10 | code-reviewer | Add `communication` wire envelope; ACL table required; folds CC-18 |
 | CC-3 | IMPORTANT | `LayoutStarted` not consumed by broadcast | 01, 02 | code-reviewer | ADR-02 D2 adds explicit reset+snapshot behaviour |
-| CC-4 | IMPORTANT | Inference named-graph IRI disagreement | 08, 11 | code-reviewer | Section 11 wins: `<urn:visionflow:graph:ontology:inferred>` |
+| CC-4 | IMPORTANT | Inference named-graph IRI disagreement | 08, 11 | code-reviewer | Section 11 wins: `<urn:visionclaw:graph:ontology:inferred>` |
 | CC-6 | IMPORTANT | `/ws/xr-presence` missing from ADR-06 D4 | 06, 12 | code-reviewer | Add row to ADR-06 D4 (subsumed by T4's §D11) |
 | CC-7 | IMPORTANT | README phasing contradicts ADR-06 ordering | README, 06 | code-reviewer | Split Section 6: D1+D2 in new Phase 2.5 |
 | CC-8 | IMPORTANT | WASM build path missing from Dockerfile | 04, 09 | code-reviewer | ADR-09 D3 adds `wasm-builder` stage |
@@ -65,7 +65,7 @@ Authors  : QE fleet synthesis (6 specialists)
 **Human-confirmation flag**: The project lead should explicitly accept that ADR-08 §D6 was the inaccurate document. Once accepted, TC-1 unblocks Sections 7 and 8 implementation simultaneously.
 
 #### Current state
-`src/utils/binary_protocol.rs:16-27` defines six constants (`AGENT 0x80000000`, `KNOWLEDGE 0x40000000`, `ONTOLOGY_TYPE_MASK 0x1C000000`, `ONTOLOGY_CLASS 0x04000000`, `ONTOLOGY_INDIVIDUAL 0x08000000`, `ONTOLOGY_PROPERTY 0x10000000`, `NODE_ID_MASK 0x03FFFFFF`). CUDA `class_id` (`src/utils/visionflow_unified.cu:276-278`, `src/actors/gpu/gpu_resource_actor.rs:241-249`) is a separately uploaded domain-cluster int, unrelated to flag bits. `NEXT_NODE_ID` (`src/models/node.rs:8`) is plain sequential `u32`.
+`src/utils/binary_protocol.rs:16-27` defines six constants (`AGENT 0x80000000`, `KNOWLEDGE 0x40000000`, `ONTOLOGY_TYPE_MASK 0x1C000000`, `ONTOLOGY_CLASS 0x04000000`, `ONTOLOGY_INDIVIDUAL 0x08000000`, `ONTOLOGY_PROPERTY 0x10000000`, `NODE_ID_MASK 0x03FFFFFF`). CUDA `class_id` (`src/utils/visionclaw_unified.cu:276-278`, `src/actors/gpu/gpu_resource_actor.rs:241-249`) is a separately uploaded domain-cluster int, unrelated to flag bits. `NEXT_NODE_ID` (`src/models/node.rs:8`) is plain sequential `u32`.
 
 #### Recommended resolution
 Adopt T1 Option A allocation: `Agent 0x80000000` (bit 31), `Page 0x40000000` (bit 30), region mask `ONTOLOGY_TYPE_MASK 0x1C000000` (bits 26-28) carrying `OntologyClass 0x04000000`, `LinkedPage 0x08000000` (repurposed from `ONTOLOGY_INDIVIDUAL`), `Axiom 0x0C000000` (new), `OntologyProperty 0x10000000`. Sequence `0x03FFFFFF` (26 bits). Drop `OntologyIndividual` from the domain model (DDD-08 lists no such aggregate).
@@ -127,14 +127,14 @@ Option A (compile-time gating only) + Option D (release-build boot-refusal of su
   the flag-handling code is absent from the binary. There is no runtime
   env-var path. Section 6 owns this surface; this section defers.
   ```
-- `docs/migration-sprint/06-auth-security/PRD-06.md` A4: replace `cfg(debug_assertions) || env(VISIONFLOW_DEV_MODE)` with `cfg(any(debug_assertions, feature = "dev-auth"))`. Delete the `VISIONFLOW_DEV_MODE` reference entirely.
+- `docs/migration-sprint/06-auth-security/PRD-06.md` A4: replace `cfg(debug_assertions) || env(VISIONCLAW_DEV_MODE)` with `cfg(any(debug_assertions, feature = "dev-auth"))`. Delete the `VISIONCLAW_DEV_MODE` reference entirely.
 - `docs/migration-sprint/06-auth-security/ADR-06.md` add new decision D11 after D10:
   ```markdown
   ### D11. Startup refusal of dev-mode env vars in release
 
   The release binary, in `main.rs` after `dotenv().ok()` and before binding
   any socket, refuses to start if any of `SETTINGS_AUTH_BYPASS`,
-  `VISIONFLOW_DEV_MODE`, `ALLOW_INSECURE_DEFAULTS`, or `NODE_ENV=development`
+  `VISIONCLAW_DEV_MODE`, `ALLOW_INSECURE_DEFAULTS`, or `NODE_ENV=development`
   with `DOCKER_ENV` set are present. Logs each offending var to stderr,
   exits with status 2. Wrapped in
   `#[cfg(not(any(debug_assertions, feature = "dev-auth")))]` so dev builds
@@ -144,9 +144,9 @@ Option A (compile-time gating only) + Option D (release-build boot-refusal of su
   ```
 
 #### Verification
-- **V1 symbol absence**: `strings target/release/webxr | grep -E 'SETTINGS_AUTH_BYPASS|VISIONFLOW_DEV_MODE|dev-session-token|dev-user'` → zero hits after `cargo build --release`.
+- **V1 symbol absence**: `strings target/release/webxr | grep -E 'SETTINGS_AUTH_BYPASS|VISIONCLAW_DEV_MODE|dev-session-token|dev-user'` → zero hits after `cargo build --release`.
 - **V2 argv refusal**: `./target/release/webxr --allow-skip-auth` → exit 1, stderr names the flag.
-- **V3 D11 boot refusal**: start release binary with `SETTINGS_AUTH_BYPASS=true VISIONFLOW_DEV_MODE=true NODE_ENV=development DOCKER_ENV=1` → exit 2, each offender named.
+- **V3 D11 boot refusal**: start release binary with `SETTINGS_AUTH_BYPASS=true VISIONCLAW_DEV_MODE=true NODE_ENV=development DOCKER_ENV=1` → exit 2, each offender named.
 - **V4 source-lint cargo test**: greps `src/` for `std::env::var\(.*BYPASS|DEV_MODE|INSECURE` outside `#[cfg(...)]` blocks; fails on match.
 - **V5 disassembly sanity**: `objdump -d target/release/webxr | grep -c try_dev_bypass` → 0.
 
@@ -292,7 +292,7 @@ Add the full `AgentActionEnvelope` schema to `crates/visionclaw-contracts/src/ag
   `crates/visionclaw-contracts/src/agent_action.rs` and generated as
   `client/src/types/contracts/agent-action.d.ts`. The full schema is
   reproduced in `_resolutions/T4-T6-T7-api-contracts.md` §T7. Receivers
-  MUST verify `type === "visionflow:agent-action"` and
+  MUST verify `type === "visionclaw:agent-action"` and
   `schema_version === 1`; postMessage receivers additionally enforce
   `event.origin` against the allowlist. Unknown `kind` values are no-ops
   (forward-compatible). This envelope supersedes ADR-07 D8's
@@ -302,7 +302,7 @@ Add the full `AgentActionEnvelope` schema to `crates/visionclaw-contracts/src/ag
   ```markdown
   Clicking an agent capsule constructs an `AgentActionEnvelope` (ADR-10 D3
   plus `crates/visionclaw-contracts/src/agent_action.rs`) and dispatches it
-  via the session's chosen transport. VisionFlow does not render a control
+  via the session's chosen transport. VisionClaw does not render a control
   panel in-process and does not embed an iframe of one; the renderer's
   responsibility ends at envelope dispatch.
   ```
@@ -311,7 +311,7 @@ The envelope schema (full TypeScript declaration including `AgentActionEnvelope`
 
 #### Verification
 - `crates/visionclaw-contracts` compiles; `ts-rs` test generates `agent-action.d.ts` byte-identical to the committed file.
-- Contract test at `tests/contracts/external-integrations/agent_action.rs`: builds every envelope variant, asserts receiver rejects `type !== "visionflow:agent-action"` and `schema_version !== 1` with structured error; round-trips via BroadcastChannel and postMessage; postMessage path fails closed on unlisted origin.
+- Contract test at `tests/contracts/external-integrations/agent_action.rs`: builds every envelope variant, asserts receiver rejects `type !== "visionclaw:agent-action"` and `schema_version !== 1` with structured error; round-trips via BroadcastChannel and postMessage; postMessage path fails closed on unlisted origin.
 - Grep: `rg 'RequestAgentControlSurface' src/` returns zero hits after the rewrite.
 
 #### Implementation impact
@@ -497,23 +497,23 @@ ADR-02 D2 explicitly handles `LayoutStarted` by resetting `frame_id` and emittin
 **Source specialist(s)**: CC-4 (code-reviewer)
 
 #### Current state
-ADR-08 D9 uses `<urn:visionflow:inference>`. ADR-11 D2 and PRD-11 A6 use `<urn:visionflow:graph:ontology:inferred>`. SPARQL queries against the wrong IRI return empty.
+ADR-08 D9 uses `<urn:visionclaw:inference>`. ADR-11 D2 and PRD-11 A6 use `<urn:visionclaw:graph:ontology:inferred>`. SPARQL queries against the wrong IRI return empty.
 
 #### Recommended resolution
-Section 11 owns the persistence layout. Section 8 adopts `<urn:visionflow:graph:ontology:inferred>` verbatim.
+Section 11 owns the persistence layout. Section 8 adopts `<urn:visionclaw:graph:ontology:inferred>` verbatim.
 
 #### Proposed edits
-- `docs/migration-sprint/08-ontology-graph-data/ADR-08.md` — replace every occurrence of `<urn:visionflow:inference>` with `<urn:visionflow:graph:ontology:inferred>`. Spell out the two named graphs explicitly at D2 line 88:
+- `docs/migration-sprint/08-ontology-graph-data/ADR-08.md` — replace every occurrence of `<urn:visionclaw:inference>` with `<urn:visionclaw:graph:ontology:inferred>`. Spell out the two named graphs explicitly at D2 line 88:
   ```markdown
   The Oxigraph dataset uses two named graphs:
-  `<urn:visionflow:graph:ontology:assert>` for asserted triples and
-  `<urn:visionflow:graph:ontology:inferred>` for whelk-rs-derived
+  `<urn:visionclaw:graph:ontology:assert>` for asserted triples and
+  `<urn:visionclaw:graph:ontology:inferred>` for whelk-rs-derived
   inferences (see ADR-11 §D2).
   ```
 
 #### Verification
-- Grep CI: `rg 'urn:visionflow:inference\b' docs/ src/` returns zero matches after edit.
-- SPARQL smoke test: `SELECT * WHERE { GRAPH <urn:visionflow:graph:ontology:inferred> { ?s ?p ?o } } LIMIT 1` returns a result after first inference run.
+- Grep CI: `rg 'urn:visionclaw:inference\b' docs/ src/` returns zero matches after edit.
+- SPARQL smoke test: `SELECT * WHERE { GRAPH <urn:visionclaw:graph:ontology:inferred> { ?s ?p ?o } } LIMIT 1` returns a result after first inference run.
 
 #### Implementation impact
 - Files to modify: documentation only; implementation uses Section 11's IRI from inception.
@@ -750,17 +750,17 @@ PRD-10 §1 add a fourth external system (GitHub / Logseq corpus). ADR-10 add a n
 **Source specialist(s)**: CC-17 (code-reviewer)
 
 #### Current state
-ADR-09 D5 declares Kokoro TTS (8880), Whisper (8000), Xinference (9997). No section documents which VisionFlow code consumes them. ADR-06 D4 lists `speech_socket_handler`, `inference_handler`, `ragflow_handler` without service mapping.
+ADR-09 D5 declares Kokoro TTS (8880), Whisper (8000), Xinference (9997). No section documents which VisionClaw code consumes them. ADR-06 D4 lists `speech_socket_handler`, `inference_handler`, `ragflow_handler` without service mapping.
 
 #### Recommended resolution
-ADR-09 add §"Consumers" listing each ecosystem service ↔ VisionFlow handler.
+ADR-09 add §"Consumers" listing each ecosystem service ↔ VisionClaw handler.
 
 #### Proposed edits
 - `docs/migration-sprint/09-ecosystem-services/ADR-09.md` — append new section after D5:
   ```markdown
   ### D5a. Consumers
 
-  | Ecosystem service | VisionFlow consumer | WS endpoint | ADR-06 D4 handler |
+  | Ecosystem service | VisionClaw consumer | WS endpoint | ADR-06 D4 handler |
   |-------------------|---------------------|-------------|-------------------|
   | Kokoro TTS (8880) | TTS dispatch in speech actor | `/ws/speech` (egress) | `speech_socket_handler` |
   | Whisper STT (8000) | STT dispatch in speech actor | `/ws/speech` (ingress) | `speech_socket_handler` |
@@ -813,14 +813,14 @@ ADR-09 add §"Consumers" listing each ecosystem service ↔ VisionFlow handler.
   ```markdown
   ### BroadcastChannel naming convention
 
-  Prefix: `visionflow:`. Suffix: kebab-case noun describing the channel's
-  payload. Current channels: `visionflow:agent-actions` (D3),
-  `visionflow:auth` (D4). New channels register here in the same PR that
+  Prefix: `visionclaw:`. Suffix: kebab-case noun describing the channel's
+  payload. Current channels: `visionclaw:agent-actions` (D3),
+  `visionclaw:auth` (D4). New channels register here in the same PR that
   introduces them.
   ```
 
 #### Verification
-- Grep CI: `rg "BroadcastChannel\(['\"]" client/src/` — every literal matches `visionflow:[a-z-]+`.
+- Grep CI: `rg "BroadcastChannel\(['\"]" client/src/` — every literal matches `visionclaw:[a-z-]+`.
 
 #### Implementation impact
 - Files to modify: ADR-10 (subsection); future channels add a row.

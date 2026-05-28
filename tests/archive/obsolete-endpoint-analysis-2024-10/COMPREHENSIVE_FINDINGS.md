@@ -1,8 +1,8 @@
-# VisionFlow Backend - Comprehensive Endpoint Testing Report
+# VisionClaw Backend - Comprehensive Endpoint Testing Report
 
 **Test Execution Date**: 2025-10-24
 **Tester**: Hive Mind Tester Agent
-**Environment**: Docker container `visionflow_container` on localhost:4000
+**Environment**: Docker container `visionclaw_container` on localhost:4000
 
 ---
 
@@ -169,19 +169,19 @@ We cannot confirm:
 ### Diagnostic Commands
 ```bash
 # Check if supervisor is trying to restart backend
-docker exec visionflow_container supervisorctl status
+docker exec visionclaw_container supervisorctl status
 
 # Test SQLite file directly
-docker exec visionflow_container sqlite3 /app/backend/data/settings.db "SELECT * FROM sqlite_master;"
+docker exec visionclaw_container sqlite3 /app/backend/data/settings.db "SELECT * FROM sqlite_master;"
 
 # Check file permissions
-docker exec visionflow_container ls -la /app/backend/data/
+docker exec visionclaw_container ls -la /app/backend/data/
 
 # Review package.json
-docker exec visionflow_container cat /app/backend/package.json | grep sqlite
+docker exec visionclaw_container cat /app/backend/package.json | grep sqlite
 
 # Check for error logs
-docker exec visionflow_container cat /var/log/supervisor/backend-*.log
+docker exec visionclaw_container cat /var/log/supervisor/backend-*.log
 ```
 
 ---
@@ -232,7 +232,7 @@ docker exec visionflow_container cat /var/log/supervisor/backend-*.log
 
 ## Conclusion
 
-The VisionFlow backend has a **critical database access bug** causing immediate process crashes on all database-querying endpoints. The crash pattern is:
+The VisionClaw backend has a **critical database access bug** causing immediate process crashes on all database-querying endpoints. The crash pattern is:
 
 1. ✅ Request arrives at backend
 2. ✅ Routing works correctly

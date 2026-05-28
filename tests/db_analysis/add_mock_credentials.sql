@@ -1,7 +1,7 @@
--- VisionFlow Mock Credentials Setup Script
+-- VisionClaw Mock Credentials Setup Script
 -- ==========================================
 -- USE FOR DEVELOPMENT/TESTING ONLY
--- Run inside container: docker exec -it visionflow_container sqlite3 /app/data/settings.db < add_mock_credentials.sql
+-- Run inside container: docker exec -it visionclaw_container sqlite3 /app/data/settings.db < add_mock_credentials.sql
 
 -- Insert mock API credentials
 INSERT INTO api_keys (

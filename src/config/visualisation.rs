@@ -511,7 +511,7 @@ pub struct GraphsSettings {
     #[validate(nested)]
     pub logseq: GraphSettings,
     #[validate(nested)]
-    pub visionflow: GraphSettings,
+    pub visionclaw: GraphSettings,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default, Type, Validate)]

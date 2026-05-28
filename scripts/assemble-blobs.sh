@@ -1,9 +1,9 @@
 #!/bin/bash
-# VisionFlow Codebase Blob Assembler
+# VisionClaw Codebase Blob Assembler
 # Assembles client and server code into concatenated text files
 # for 1M token context window audit
 #
-# Output: /tmp/visionflow-blobs/
+# Output: /tmp/visionclaw-blobs/
 #   - server-blob.txt    (~560K tokens)
 #   - client-blob.txt    (~306K tokens)
 #   - spec-blob.txt      (~83K tokens)
@@ -12,7 +12,7 @@
 set -uo pipefail
 
 PROJECT="/home/devuser/workspace/project"
-OUTPUT="/tmp/visionflow-blobs"
+OUTPUT="/tmp/visionclaw-blobs"
 mkdir -p "$OUTPUT"
 
 # ============================================================
@@ -82,7 +82,7 @@ echo "=== Assembling Server Blob ==="
 SERVER_BLOB="$OUTPUT/server-blob.txt"
 cat > "$SERVER_BLOB" << 'HEADER'
 ================================================================================
-VISIONFLOW SERVER CODEBASE (Rust/Actix-web)
+VISIONCLAW SERVER CODEBASE (Rust/Actix-web)
 ================================================================================
 Architecture: Actix-web + Actor system + CQRS + Hexagonal + GPU (CUDA)
 Database: Oxigraph SPARQL triple-store (ADR-11)
@@ -192,7 +192,7 @@ echo "=== Assembling Client Blob ==="
 CLIENT_BLOB="$OUTPUT/client-blob.txt"
 cat > "$CLIENT_BLOB" << 'HEADER'
 ================================================================================
-VISIONFLOW CLIENT CODEBASE (TypeScript/React/Three.js)
+VISIONCLAW CLIENT CODEBASE (TypeScript/React/Three.js)
 ================================================================================
 Framework: React 19 + Three.js/R3F + Zustand + TailwindCSS 4
 3D: @react-three/fiber + @react-three/drei + @react-three/xr
@@ -274,7 +274,7 @@ echo "=== Assembling Spec Blob ==="
 SPEC_BLOB="$OUTPUT/spec-blob.txt"
 cat > "$SPEC_BLOB" << 'HEADER'
 ================================================================================
-VISIONFLOW FUNCTIONAL SPECIFICATION & ARCHITECTURE DIAGRAMS
+VISIONCLAW FUNCTIONAL SPECIFICATION & ARCHITECTURE DIAGRAMS
 ================================================================================
 Contains: Dense system overview, Mermaid architecture diagrams,
           data flow diagrams, component diagrams, API reference
@@ -333,7 +333,7 @@ echo ""
 echo "=== Generating Manifest ==="
 cat > "$OUTPUT/manifest.json" << EOF
 {
-  "project": "VisionFlow AI Multi-Agent Knowledge Graph Visualisation",
+  "project": "VisionClaw AI Multi-Agent Knowledge Graph Visualisation",
   "generated": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
   "blobs": {
     "server-blob.txt": {

@@ -18,7 +18,7 @@ class GraphWorker {
   private graphData: GraphData = { nodes: [], edges: [] };
   private nodeIdMap: Map<string, number> = new Map();
   private reverseNodeIdMap: Map<number, string> = new Map();
-  private graphType: 'logseq' | 'visionflow' = 'logseq';
+  private graphType: 'logseq' | 'visionclaw' = 'logseq';
 
   private nodeIndexMap: Map<string, number> = new Map();
   // Pre-cached parallel array of node IDs — kept in sync with nodeIndexMap to
@@ -96,7 +96,7 @@ class GraphWorker {
     return Promise.resolve();
   }
 
-  async setGraphType(type: 'logseq' | 'visionflow'): Promise<void> {
+  async setGraphType(type: 'logseq' | 'visionclaw'): Promise<void> {
     this.graphType = type;
     this.useServerPhysics = true;
     workerLogger.info(`Graph type set to ${type} - using SERVER-AUTHORITATIVE physics (single source of truth)`);
@@ -216,8 +216,8 @@ class GraphWorker {
     const graphs = vis?.graphs as Record<string, Record<string, unknown>> | undefined;
     const graphSettings = graphs?.[this.graphType]?.physics as Record<string, unknown> | undefined ??
                          vis?.physics as Record<string, unknown> | undefined;
-    const vfPhysics = (this.graphType === 'visionflow')
-      ? (graphs?.visionflow?.physics as Record<string, unknown> | undefined ?? {})
+    const vfPhysics = (this.graphType === 'visionclaw')
+      ? (graphs?.visionclaw?.physics as Record<string, unknown> | undefined ?? {})
       : null;
 
     // Idempotency: bail if physics values haven't changed

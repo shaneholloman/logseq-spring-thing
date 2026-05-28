@@ -3,7 +3,7 @@
 
 #[cfg(test)]
 mod tests {
-    use webxr::inference::owl_parser::{OWLParser, OWLFormat};
+    use visionclaw_server::inference::owl_parser::{OWLParser, OWLFormat};
 
     const SAMPLE_OWL_XML: &str = r#"<?xml version="1.0"?>
 <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"

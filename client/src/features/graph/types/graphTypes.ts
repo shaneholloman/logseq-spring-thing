@@ -1,6 +1,6 @@
 
 
-export type GraphType = 'logseq' | 'visionflow';
+export type GraphType = 'logseq' | 'visionclaw';
 
 export interface GraphNode {
   id: string;
@@ -84,7 +84,7 @@ export interface GraphTypeConfig {
       labelSize: number;
     };
   };
-  visionflow: {
+  visionclaw: {
     physics: GraphPhysicsConfig;
     rendering: {
       agentSize: number;
@@ -134,7 +134,7 @@ export const DEFAULT_GRAPH_CONFIG: GraphTypeConfig = {
       labelSize: 1.2
     }
   },
-  visionflow: {
+  visionclaw: {
     physics: {
       
       spring_k: 0.3,

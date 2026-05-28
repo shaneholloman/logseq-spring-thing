@@ -19,14 +19,14 @@ the join points across the knowledge / ontology divide.
 ```json-ld
 {
   "@context": "https://narrativegoldmine.com/context/v1.jsonld",
-  "@id": "urn:visionflow:bridge:filippo-brunelleschi-page-to-class",
+  "@id": "urn:visionclaw:bridge:filippo-brunelleschi-page-to-class",
   "@type": "BridgeRecord",
-  "vc:bridgeFrom": { "@id": "urn:visionflow:page:b1a2c3d4e5f60718293a4b5c6d7e8f9012a3b4c5d6e7f8091a2b3c4d5e6f7081" },
-  "vc:bridgeTo": { "@id": "urn:visionflow:owl:class:filippo-brunelleschi-architect" },
+  "vc:bridgeFrom": { "@id": "urn:visionclaw:page:b1a2c3d4e5f60718293a4b5c6d7e8f9012a3b4c5d6e7f8091a2b3c4d5e6f7081" },
+  "vc:bridgeTo": { "@id": "urn:visionclaw:owl:class:filippo-brunelleschi-architect" },
   "vc:bridgeKind": "PageToOntologyClass",
   "vc:matchedBy": "normalised-label",
   "vc:namedGraph": null,
-  "vc:rationale": "The Page entitled 'Filippo Brunelleschi' shares its normalised label with the OntologyClass urn:visionflow:owl:class:filippo-brunelleschi-architect. ADR-08 D11 requires a bridge in this case.",
+  "vc:rationale": "The Page entitled 'Filippo Brunelleschi' shares its normalised label with the OntologyClass urn:visionclaw:owl:class:filippo-brunelleschi-architect. ADR-08 D11 requires a bridge in this case.",
   "prov:wasAttributedTo": { "@id": "did:nostr:npub1sync000000000000000000000000000000000000000000000000000000" },
   "prov:generatedAtTime": { "@value": "2026-05-16T10:40:00Z", "@type": "xsd:dateTime" }
 }

@@ -711,15 +711,15 @@ async fn apply_quest3_settings_to_system(
     settings.visualisation.graphs.logseq.physics.enabled =
         quest3_settings.visualisation.physics_enabled;
 
-    settings.visualisation.graphs.visionflow.physics.bounds_size =
+    settings.visualisation.graphs.visionclaw.physics.bounds_size =
         quest3_settings.visualisation.bounds_size;
     settings
         .visualisation
         .graphs
-        .visionflow
+        .visionclaw
         .physics
         .max_velocity = quest3_settings.visualisation.max_velocity;
-    settings.visualisation.graphs.visionflow.physics.enabled =
+    settings.visualisation.graphs.visionclaw.physics.enabled =
         quest3_settings.visualisation.physics_enabled;
 
     

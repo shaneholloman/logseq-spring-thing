@@ -29,7 +29,7 @@ else
 fi
 
 # Verify PTX files are in place (copied during Docker build)
-if [ -f /app/src/utils/ptx/visionflow_unified.ptx ]; then
+if [ -f /app/src/utils/ptx/visionclaw_unified.ptx ]; then
     log "PTX file present"
 else
     log "WARNING: PTX file not found - GPU features may not work"

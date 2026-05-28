@@ -14,15 +14,15 @@ works.
 ```json-ld
 {
   "@context": "https://narrativegoldmine.com/context/v1.jsonld",
-  "@id": "urn:visionflow:owl:property:designed-by",
+  "@id": "urn:visionclaw:owl:property:designed-by",
   "@type": ["OntologyProperty", "owl:ObjectProperty", "owl:FunctionalProperty"],
   "ontology": true,
   "rdfs:label": "designedBy",
   "vc:definition": "Relates a building, structure, or architectural plan to the architect who provided its principal design. Inverse of vc:designed.",
   "vc:propertyKind": "ObjectProperty",
-  "rdfs:domain": { "@id": "urn:visionflow:owl:class:architectural-work" },
-  "rdfs:range": { "@id": "urn:visionflow:owl:class:architect" },
-  "owl:inverseOf": { "@id": "urn:visionflow:owl:property:designed" },
+  "rdfs:domain": { "@id": "urn:visionclaw:owl:class:architectural-work" },
+  "rdfs:range": { "@id": "urn:visionclaw:owl:class:architect" },
+  "owl:inverseOf": { "@id": "urn:visionclaw:owl:property:designed" },
   "vc:characteristics": {
     "vc:functional": true,
     "vc:inverseFunctional": false,

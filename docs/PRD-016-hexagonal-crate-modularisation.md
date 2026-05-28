@@ -10,7 +10,7 @@ priority: P1
 
 ## 1. Problem
 
-The VisionFlow Rust backend is a 123k-line monolith compiled as a single `webxr` crate. With `codegen-units=1` and `opt-level=3`, a single-line change triggers ~12 minutes of LLVM optimisation. This is incompatible with the current bug-squashing phase where rapid iteration is critical.
+The VisionClaw Rust backend is a 123k-line monolith compiled as a single `webxr` crate. With `codegen-units=1` and `opt-level=3`, a single-line change triggers ~12 minutes of LLVM optimisation. This is incompatible with the current bug-squashing phase where rapid iteration is critical.
 
 The codebase already follows hexagonal architecture conventions (`ports/`, `adapters/`, `application/`, `models/`), but these are directories inside one crate — cargo cannot skip unchanged modules.
 
@@ -36,19 +36,19 @@ The codebase already follows hexagonal architecture conventions (`ports/`, `adap
 ```
 crates/
 ├── visionclaw-contracts/     # [EXISTING] Cross-boundary typed contracts
-├── visionflow-domain/        # Models, types, errors, events, ports (trait definitions)
+├── visionclaw-domain/        # Models, types, errors, events, ports (trait definitions)
 │                              # ~15k lines: models/ types/ errors/ events/ ports/
-├── visionflow-gpu/           # GPU compute, CUDA kernels, force compute, broadcast
+├── visionclaw-gpu/           # GPU compute, CUDA kernels, force compute, broadcast
 │                              # ~15k lines: gpu/ physics/ layout/ constraints/
-├── visionflow-ontology/      # Ontology reasoning, inference, validation, OWL
+├── visionclaw-ontology/      # Ontology reasoning, inference, validation, OWL
 │                              # ~7k lines: ontology/ inference/ reasoning/ validation/
-├── visionflow-adapters/      # Oxigraph, SQLite, GitHub, Nostr adapters
+├── visionclaw-adapters/      # Oxigraph, SQLite, GitHub, Nostr adapters
 │                              # ~8k lines: adapters/ repositories/ services/parsers/
-├── visionflow-protocol/      # Binary protocol, WebSocket encoding/decoding
+├── visionclaw-protocol/      # Binary protocol, WebSocket encoding/decoding
 │                              # ~4k lines: protocol/ protocols/ utils/binary_*
-├── visionflow-actors/        # Actix actors, supervisor hierarchy, CQRS
+├── visionclaw-actors/        # Actix actors, supervisor hierarchy, CQRS
 │                              # ~38k lines: actors/ cqrs/ application/
-├── visionflow-server/        # HTTP routes, middleware, config, settings, telemetry
+├── visionclaw-server/        # HTTP routes, middleware, config, settings, telemetry
 │                              # ~40k lines: handlers/ middleware/ config/ settings/ services/
 └── webxr (root)              # Thin binary: main.rs + lib.rs wiring only
                                # ~1.5k lines: bin/ + startup glue
@@ -59,44 +59,44 @@ crates/
 ```
 visionclaw-contracts  (leaf — no workspace deps)
         ↑
-visionflow-domain     (depends on: contracts)
+visionclaw-domain     (depends on: contracts)
         ↑
    ┌────┼────────────────┐
    │    │                │
-visionflow-gpu    visionflow-ontology   visionflow-protocol
+visionclaw-gpu    visionclaw-ontology   visionclaw-protocol
    │    │                │                    │
    └────┼────────────────┘                    │
         ↑                                     │
-visionflow-adapters  (depends on: domain, protocol)
+visionclaw-adapters  (depends on: domain, protocol)
         ↑
-visionflow-actors    (depends on: domain, gpu, ontology, adapters, protocol)
+visionclaw-actors    (depends on: domain, gpu, ontology, adapters, protocol)
         ↑
-visionflow-server    (depends on: domain, actors, adapters, protocol)
+visionclaw-server    (depends on: domain, actors, adapters, protocol)
         ↑
 webxr (root binary)  (depends on: server)
 ```
 
 ## 5. Migration Strategy
 
-### Phase 1: Extract `visionflow-domain` (leaf crate)
+### Phase 1: Extract `visionclaw-domain` (leaf crate)
 Move models, types, errors, events, and port trait definitions. This has zero external deps and breaks the most dependency chains.
 
-### Phase 2: Extract `visionflow-protocol`
+### Phase 2: Extract `visionclaw-protocol`
 Binary protocol encoding/decoding is self-contained with domain type deps only.
 
-### Phase 3: Extract `visionflow-gpu`
+### Phase 3: Extract `visionclaw-gpu`
 GPU compute, physics, layout, constraints. Depends on domain types.
 
-### Phase 4: Extract `visionflow-ontology`
+### Phase 4: Extract `visionclaw-ontology`
 OWL reasoning, inference, validation. Depends on domain types.
 
-### Phase 5: Extract `visionflow-adapters`
+### Phase 5: Extract `visionclaw-adapters`
 Oxigraph, SQLite, GitHub sync. Depends on domain ports.
 
-### Phase 6: Extract `visionflow-actors`
+### Phase 6: Extract `visionclaw-actors`
 Actix actor hierarchy. Depends on domain, gpu, ontology, adapters.
 
-### Phase 7: Extract `visionflow-server`
+### Phase 7: Extract `visionclaw-server`
 HTTP handlers, middleware. The root `webxr` becomes a thin binary.
 
 ## 6. Risk Assessment
@@ -104,7 +104,7 @@ HTTP handlers, middleware. The root `webxr` becomes a thin binary.
 | Risk | Mitigation |
 |------|-----------|
 | Circular dependencies discovered during extraction | Use `cargo tree --invert` to map actual dep graph before each phase |
-| Actor message types create coupling between crates | Move message types to `visionflow-domain` as part of Phase 1 |
+| Actor message types create coupling between crates | Move message types to `visionclaw-domain` as part of Phase 1 |
 | GPU feature flag spans multiple crates | Each GPU-dependent crate re-exports its own feature; root `webxr` propagates |
 | Build breaks during migration | Each phase is a separate PR; CI validates `cargo build --release` per phase |
 | Test isolation broken | Phase 1 establishes test fixtures in domain crate; adapters get integration test profiles |

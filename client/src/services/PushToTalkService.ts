@@ -2,7 +2,7 @@
  * PushToTalkService — Controls audio routing between agent commands and voice chat.
  *
  * Two modes driven by a single PTT key (default: Space):
- *   PTT held:    Mic audio → VisionFlow /ws/speech → Turbo Whisper STT → agent commands
+ *   PTT held:    Mic audio → VisionClaw /ws/speech → Turbo Whisper STT → agent commands
  *   PTT released: Mic audio → LiveKit SFU → spatial voice chat with other users
  *
  * The service doesn't capture audio itself — it coordinates AudioInputService,

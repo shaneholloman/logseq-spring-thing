@@ -11,7 +11,7 @@ must conform to RFC 3987; any whitespace is rejected.
 ```json-ld
 {
   "@context": "https://narrativegoldmine.com/context/v1.jsonld",
-  "@id": "urn visionflow page malformed id with spaces",
+  "@id": "urn visionclaw page malformed id with spaces",
   "@type": "Page",
   "vc:slug": "malformed-iri",
   "vc:title": "Malformed IRI",

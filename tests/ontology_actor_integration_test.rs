@@ -27,16 +27,16 @@ mod tests {
     use actix::prelude::*;
 
     #[cfg(feature = "ontology")]
-    use webxr::actors::ontology_actor::{OntologyActor, OntologyActorConfig};
+    use visionclaw_server::actors::ontology_actor::{OntologyActor, OntologyActorConfig};
 
     #[cfg(feature = "ontology")]
-    use webxr::actors::messages::{
+    use visionclaw_server::actors::messages::{
         ApplyInferences, ClearOntologyCaches, GetOntologyHealth, GetOntologyReport,
         LoadOntologyAxioms, UpdateOntologyMapping, ValidateOntology, ValidationMode,
     };
 
     #[cfg(feature = "ontology")]
-    use webxr::services::owl_validator::{
+    use visionclaw_server::services::owl_validator::{
         GraphEdge, GraphNode, PropertyGraph, RdfTriple, ValidationConfig,
     };
 

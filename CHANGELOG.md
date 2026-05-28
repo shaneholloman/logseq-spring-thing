@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to VisionFlow will be documented in this file.
+All notable changes to VisionClaw will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
@@ -156,7 +156,7 @@ The Heroic Refactor Sprint deployed 17 specialized QE agents across 3 waves usin
 
 ### 🎉 Major Release - Hexagonal Architecture
 
-VisionFlow v1.0.0 represents a complete architectural transformation from monolithic design to clean hexagonal architecture with CQRS pattern, delivering enterprise-grade reliability, maintainability, and scalability.
+VisionClaw v1.0.0 represents a complete architectural transformation from monolithic design to clean hexagonal architecture with CQRS pattern, delivering enterprise-grade reliability, maintainability, and scalability.
 
 ---
 
@@ -469,7 +469,7 @@ cargo test --test migration_tests
 #### 2. Environment Variables
 ```bash
 # v0.x (deprecated)
-DATABASE_URL=data/visionflow.db
+DATABASE_URL=data/visionclaw.db
 CONFIG_FILE=config.yml
 
 # v1.0.0 (new)
@@ -605,13 +605,13 @@ cp data/backup/*.db data/
 - **** - Optimization techniques
 
 ### Community
-- **GitHub Issues**: https://github.com/DreamLab-AI/VisionFlow/issues
-- **Discussions**: https://github.com/DreamLab-AI/VisionFlow/discussions
-- **Discord**: https://discord.gg/visionflow
+- **GitHub Issues**: https://github.com/DreamLab-AI/VisionClaw/issues
+- **Discussions**: https://github.com/DreamLab-AI/VisionClaw/discussions
+- **Discord**: https://discord.gg/visionclaw
 
 ### Support
-- **Enterprise Support**: support@visionflow.io
-- **Documentation**: https://docs.visionflow.io
+- **Enterprise Support**: support@visionclaw.io
+- **Documentation**: https://docs.visionclaw.io
 - **Roadmap**: 
 
 ---
@@ -623,5 +623,5 @@ See [LICENSE](LICENSE) for full details.
 
 ---
 
-**VisionFlow v1.0.0** - Enterprise-Grade Knowledge Graph Visualization
-Built with ❤️ by the VisionFlow Team
+**VisionClaw v1.0.0** - Enterprise-Grade Knowledge Graph Visualization
+Built with ❤️ by the VisionClaw Team

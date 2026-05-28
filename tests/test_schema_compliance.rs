@@ -4,7 +4,7 @@
 /// - Node: id, metadata_id, label, x, y, z, vx, vy, vz, mass, owl_class_iri
 /// - Edge: id, source, target, weight, edge_type, owl_property_iri, metadata
 
-use webxr::models::{edge::Edge, node::Node};
+use visionclaw_server::models::{edge::Edge, node::Node};
 
 #[test]
 fn test_node_has_all_schema_fields() {

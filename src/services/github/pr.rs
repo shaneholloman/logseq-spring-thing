@@ -2,7 +2,7 @@ use super::api::GitHubClient;
 use super::types::{
     CreateBranchRequest, CreatePullRequest, PullRequestResponse, UpdateFileRequest,
 };
-use crate::errors::VisionFlowResult;
+use crate::errors::VisionClawResult;
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use log::{error, info};
 
@@ -25,7 +25,7 @@ impl PullRequestAPI {
         file_name: &str,
         content: &str,
         original_sha: &str,
-    ) -> VisionFlowResult<String> {
+    ) -> VisionClawResult<String> {
         let timestamp = time::timestamp_seconds();
         let branch_name = format!("update-{}-{}", file_name.replace(".md", ""), timestamp);
 
@@ -75,7 +75,7 @@ impl PullRequestAPI {
     }
 
     
-    async fn get_main_branch_sha(&self) -> VisionFlowResult<String> {
+    async fn get_main_branch_sha(&self) -> VisionClawResult<String> {
         let url = format!(
             "https://api.github.com/repos/{}/{}/git/ref/heads/main",
             self.client.owner(),
@@ -105,7 +105,7 @@ impl PullRequestAPI {
     }
 
     
-    async fn create_branch(&self, branch_name: &str, sha: &str) -> VisionFlowResult<()> {
+    async fn create_branch(&self, branch_name: &str, sha: &str) -> VisionClawResult<()> {
         let url = format!(
             "https://api.github.com/repos/{}/{}/git/refs",
             self.client.owner(),
@@ -143,7 +143,7 @@ impl PullRequestAPI {
         content: &str,
         branch_name: &str,
         original_sha: &str,
-    ) -> VisionFlowResult<String> {
+    ) -> VisionClawResult<String> {
         let url = format!(
             "https://api.github.com/repos/{}/{}/contents/{}",
             self.client.owner(),

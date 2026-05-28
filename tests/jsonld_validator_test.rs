@@ -15,7 +15,7 @@
 use std::path::{Path, PathBuf};
 
 use serde_json::json;
-use webxr::services::jsonld_validator::{
+use visionclaw_server::services::jsonld_validator::{
     errors::ErrorCategory, ValidationIssue, Validator,
 };
 
@@ -51,7 +51,7 @@ fn collect_markdown_recursive(dir: &Path) -> Vec<PathBuf> {
 fn errors_only(issues: &[ValidationIssue]) -> Vec<&ValidationIssue> {
     issues
         .iter()
-        .filter(|i| matches!(i.severity, webxr::services::jsonld_validator::Severity::Error))
+        .filter(|i| matches!(i.severity, visionclaw_server::services::jsonld_validator::Severity::Error))
         .collect()
 }
 
@@ -200,15 +200,15 @@ fn owl_el_profile_rejects_unionof() {
     let v = validator();
     let block = json!({
         "@context": "https://narrativegoldmine.com/context/v1.jsonld",
-        "@id": "urn:visionflow:owl:axiom:synthetic-001",
+        "@id": "urn:visionclaw:owl:axiom:synthetic-001",
         "@type": ["Axiom", "owl:Axiom"],
         "vc:axiomType": "SubClassOf",
-        "vc:subject": { "@id": "urn:visionflow:owl:class:a" },
+        "vc:subject": { "@id": "urn:visionclaw:owl:class:a" },
         "vc:object": {
             "@type": "owl:Class",
             "owl:unionOf": { "@list": [
-                { "@id": "urn:visionflow:owl:class:b" },
-                { "@id": "urn:visionflow:owl:class:c" }
+                { "@id": "urn:visionclaw:owl:class:b" },
+                { "@id": "urn:visionclaw:owl:class:c" }
             ]}
         },
         "prov:wasAttributedTo": { "@id": "did:nostr:npub1bob" },
@@ -216,7 +216,7 @@ fn owl_el_profile_rejects_unionof() {
     });
     let issues = v.validate_jsonld_block(
         &block,
-        webxr::services::jsonld_validator::SourceRef::default(),
+        visionclaw_server::services::jsonld_validator::SourceRef::default(),
     );
     let hit = issues.iter().any(|i| {
         matches!(
@@ -239,16 +239,16 @@ fn class_bit_mismatch_detection() {
     let v = validator();
     let block = json!({
         "@context": "https://narrativegoldmine.com/context/v1.jsonld",
-        "@id": "urn:visionflow:agent:run-impostor:step-0",
+        "@id": "urn:visionclaw:agent:run-impostor:step-0",
         "@type": ["OntologyClass", "owl:Class"],
         "rdfs:label": "Impostor",
-        "rdfs:subClassOf": { "@id": "urn:visionflow:owl:class:architectural-period" },
+        "rdfs:subClassOf": { "@id": "urn:visionclaw:owl:class:architectural-period" },
         "prov:wasAttributedTo": { "@id": "did:nostr:npub1bob" },
         "prov:generatedAtTime": { "@value": "2026-05-16T00:00:00Z", "@type": "xsd:dateTime" }
     });
     let issues = v.validate_jsonld_block(
         &block,
-        webxr::services::jsonld_validator::SourceRef::default(),
+        visionclaw_server::services::jsonld_validator::SourceRef::default(),
     );
     let hit = issues.iter().any(|i| {
         matches!(&i.category, ErrorCategory::ClassBitMismatch { .. })

@@ -4,7 +4,7 @@ import { createLogger } from '../../utils/loggerConfig';
 
 const logger = createLogger('GraphEntityMapper');
 
-// VisionFlow graph types
+// VisionClaw graph types
 export interface GraphNode {
     id: string;
     label: string;
@@ -66,7 +66,7 @@ export class GraphEntityMapper {
     private defaultOptions: EntitySyncOptions = {
         syncGroup: 'public.NORMAL',
         loadPriority: 0,
-        createdBy: 'visionflow'
+        createdBy: 'visionclaw'
     };
 
     constructor(private options: Partial<EntitySyncOptions> = {}) {

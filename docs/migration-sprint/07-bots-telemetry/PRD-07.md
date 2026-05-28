@@ -2,10 +2,10 @@
 
 ## 1. Capability statement
 
-VisionFlow ingests an **agent telemetry stream** produced by the external
+VisionClaw ingests an **agent telemetry stream** produced by the external
 agentbox runtime and renders the live state of a swarm — agent positions,
 status, communication edges, parent/child swarm membership — as a second
-graph drawn alongside the knowledge graph in the same 3D scene. VisionFlow
+graph drawn alongside the knowledge graph in the same 3D scene. VisionClaw
 neither hosts the broker nor controls the agents; it is a read-mostly
 visualisation surface for telemetry that originates elsewhere.
 
@@ -24,13 +24,13 @@ folder (`client/src/features/bots`) and a server-side bots handler
    topology changes, prompt injection, task creation.
 
 The control plane has now been re-homed in **agentbox + external forum**
-(see Section 10). Continuing to host control endpoints inside VisionFlow
+(see Section 10). Continuing to host control endpoints inside VisionClaw
 creates a duplicated, drift-prone surface and confuses the security model
-(VisionFlow is a Nostr-authenticated visualisation, agentbox is a separate
+(VisionClaw is a Nostr-authenticated visualisation, agentbox is a separate
 trust domain).
 
 This section migrates only the visualisation concern forward. The control
-endpoints are removed from VisionFlow's surface and replaced by a single
+endpoints are removed from VisionClaw's surface and replaced by a single
 "forward to agentbox" gesture on click-through.
 
 Secondary motivation: `AgentPollingService` polls `/graph/data` every
@@ -43,7 +43,7 @@ delta-filter bug fixed in Section 1. The polling path is removed.
 
 ## 3. Users and use cases
 
-- **Operator** running a swarm from agentbox. Opens VisionFlow alongside
+- **Operator** running a swarm from agentbox. Opens VisionClaw alongside
   the agentbox control panel. Expects to see new agents appear in the
   scene within ~1s of spawning in agentbox, with correct type marker and
   initial position.
@@ -101,7 +101,7 @@ A7. **Click forwards to external control surface**. Clicking an agent
     `crates/visionclaw-contracts/src/agent_action.rs`) on the session's
     chosen transport (BroadcastChannel, deep-link, or postMessage).
     Section 10 owns the envelope schema and the transport selection.
-    VisionFlow does not render the control UI in-process.
+    VisionClaw does not render the control UI in-process.
 
 A8. **Empty-swarm bandwidth floor**. With no agents reported, the
     telemetry WebSocket sends at most one heartbeat per 30s. No idle
@@ -142,7 +142,7 @@ A9. **Backpressure tolerance**. A burst of 500 telemetry events in <1s
   `pollingConfig.ts`, `pollingPerformance.ts`, and the `polling-system.md`
   doc, with no remaining import references.
 - Click-through trace showing a well-formed `AgentActionEnvelope`
-  (`type === "visionflow:agent-action"`, `schema_version === 1`,
+  (`type === "visionclaw:agent-action"`, `schema_version === 1`,
   required `agent_id`, `kind`, `node_class`) dispatched on the session's
   chosen transport per ADR-10 D3.
 
@@ -154,14 +154,14 @@ suggests the wrong architecture; the ADR resolves each:
 - **`BotsDataContext` holds `pollNow` and `configurePolling`**. A pure
   visualisation surface should not expose polling control. Address by
   narrowing the context to consume-only of the telemetry stream.
-- **`BotsControlPanel.tsx` exists inside VisionFlow**. A control panel
+- **`BotsControlPanel.tsx` exists inside VisionClaw**. A control panel
   is by definition control-plane. Address by deleting the file as part
   of this section and forwarding any retained read-only UI (system
   health summary) to a non-control component.
 - **`InitializeSwarmRequest`, `SpawnAgentHybridRequest` types live in
   `bots_handler.rs`**. These are control-plane request shapes. Address
   by deleting these handler routes; only the telemetry sink endpoint
-  (push from agentbox into VisionFlow) and the click-through forwarder
+  (push from agentbox into VisionClaw) and the click-through forwarder
   remain.
 - **`AgentTelemetryStream.tsx` mixes telemetry display with control
   affordances**. Split into pure-display vs. an "open in agentbox"

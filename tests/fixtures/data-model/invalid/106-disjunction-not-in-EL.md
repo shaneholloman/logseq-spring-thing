@@ -17,20 +17,20 @@ Roman Villa)` — incoherent in EL.
 ```json-ld
 {
   "@context": "https://narrativegoldmine.com/context/v1.jsonld",
-  "@id": "urn:visionflow:owl:axiom:el-violator-001",
+  "@id": "urn:visionclaw:owl:axiom:el-violator-001",
   "@type": ["Axiom", "owl:Axiom"],
   "vc:axiomType": "SubClassOf",
-  "vc:subject": { "@id": "urn:visionflow:owl:class:villa-rotonda" },
+  "vc:subject": { "@id": "urn:visionclaw:owl:class:villa-rotonda" },
   "vc:object": {
     "@type": "owl:Class",
     "owl:unionOf": {
       "@list": [
-        { "@id": "urn:visionflow:owl:class:palladian-villa" },
-        { "@id": "urn:visionflow:owl:class:roman-villa" }
+        { "@id": "urn:visionclaw:owl:class:palladian-villa" },
+        { "@id": "urn:visionclaw:owl:class:roman-villa" }
       ]
     }
   },
-  "vc:namedGraph": { "@id": "urn:visionflow:graph:ontology:assert" },
+  "vc:namedGraph": { "@id": "urn:visionclaw:graph:ontology:assert" },
   "vc:owlProfile": "EL",
   "prov:wasAttributedTo": { "@id": "did:nostr:npub1bob00000000000000000000000000000000000000000000000000000000" },
   "prov:generatedAtTime": { "@value": "2026-05-16T12:30:00Z", "@type": "xsd:dateTime" }

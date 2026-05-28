@@ -1,4 +1,4 @@
-# REVISED COMPREHENSIVE FINDINGS - VisionFlow Backend Testing
+# REVISED COMPREHENSIVE FINDINGS - VisionClaw Backend Testing
 
 **Test Date**: 2025-10-24
 **Critical Discovery**: `/api/config` endpoint WORKS! This changes everything.
@@ -141,21 +141,21 @@ Not Implemented (404): 12 routes (67%)
 ### Diagnostic Commands
 ```bash
 # Check what tables exist in each database
-docker exec visionflow_container sqlite3 /app/backend/data/settings.db ".tables"
-docker exec visionflow_container sqlite3 /app/backend/data/ontology.db ".tables"
-docker exec visionflow_container sqlite3 /app/backend/data/knowledge_graph.db ".tables"
+docker exec visionclaw_container sqlite3 /app/backend/data/settings.db ".tables"
+docker exec visionclaw_container sqlite3 /app/backend/data/ontology.db ".tables"
+docker exec visionclaw_container sqlite3 /app/backend/data/knowledge_graph.db ".tables"
 
 # Check schema of problematic tables
-docker exec visionflow_container sqlite3 /app/backend/data/settings.db ".schema settings"
-docker exec visionflow_container sqlite3 /app/backend/data/ontology.db ".schema classes"
-docker exec visionflow_container sqlite3 /app/backend/data/ontology.db ".schema properties"
+docker exec visionclaw_container sqlite3 /app/backend/data/settings.db ".schema settings"
+docker exec visionclaw_container sqlite3 /app/backend/data/ontology.db ".schema classes"
+docker exec visionclaw_container sqlite3 /app/backend/data/ontology.db ".schema properties"
 
 # Check if tables have data
-docker exec visionflow_container sqlite3 /app/backend/data/settings.db "SELECT COUNT(*) FROM settings;"
-docker exec visionflow_container sqlite3 /app/backend/data/ontology.db "SELECT COUNT(*) FROM classes;"
+docker exec visionclaw_container sqlite3 /app/backend/data/settings.db "SELECT COUNT(*) FROM settings;"
+docker exec visionclaw_container sqlite3 /app/backend/data/ontology.db "SELECT COUNT(*) FROM classes;"
 
 # Find backend source code
-docker exec visionflow_container find /app/backend -name "*.js" -type f | grep -E "(routes|server|api)"
+docker exec visionclaw_container find /app/backend -name "*.js" -type f | grep -E "(routes|server|api)"
 ```
 
 ---
@@ -182,13 +182,13 @@ docker exec visionflow_container find /app/backend -name "*.js" -type f | grep -
 ### For Debugging Agent
 1. **Examine Backend Logs**:
    ```bash
-   docker exec visionflow_container cat /var/log/supervisor/backend-*.log
+   docker exec visionclaw_container cat /var/log/supervisor/backend-*.log
    ```
 
 2. **Find Source Code**:
    ```bash
-   docker exec visionflow_container ls -la /app/backend/
-   docker exec visionflow_container cat /app/backend/server.js | head -50
+   docker exec visionclaw_container ls -la /app/backend/
+   docker exec visionclaw_container cat /app/backend/server.js | head -50
    ```
 
 3. **Check Route Handlers**:
@@ -203,12 +203,12 @@ docker exec visionflow_container find /app/backend -name "*.js" -type f | grep -
 
 2. **Test Direct Queries**:
    ```bash
-   docker exec visionflow_container sqlite3 /app/backend/data/settings.db "SELECT * FROM settings LIMIT 1;"
+   docker exec visionclaw_container sqlite3 /app/backend/data/settings.db "SELECT * FROM settings LIMIT 1;"
    ```
 
 3. **Check for Corruption**:
    ```bash
-   docker exec visionflow_container sqlite3 /app/backend/data/settings.db "PRAGMA integrity_check;"
+   docker exec visionclaw_container sqlite3 /app/backend/data/settings.db "PRAGMA integrity_check;"
    ```
 
 ### For Architecture Agent

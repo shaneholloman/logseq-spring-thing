@@ -1,7 +1,7 @@
 /**
  * Solid/JSS Integration E2E Tests
  *
- * Comprehensive test suite for Solid Pod integration with VisionFlow:
+ * Comprehensive test suite for Solid Pod integration with VisionClaw:
  * - Solid proxy handler authentication flow
  * - NIP-98 token generation and validation
  * - Pod CRUD operations

@@ -15,14 +15,14 @@ mod gpu_stability_tests {
     #[allow(unused_imports)]
     use std::fs;
     #[allow(unused_imports)]
-    use webxr::models::simulation_params::SimParams;
-    use webxr::utils::unified_gpu_compute::UnifiedGPUCompute;
+    use visionclaw_server::models::simulation_params::SimParams;
+    use visionclaw_server::utils::unified_gpu_compute::UnifiedGPUCompute;
 
     #[test]
     #[ignore] // Requires CUDA GPU and updated UnifiedGPUCompute API
     fn test_stability_gate_activation() {
         // Load PTX content
-        let ptx_path = concat!(env!("OUT_DIR"), "/visionflow_unified.ptx");
+        let ptx_path = concat!(env!("OUT_DIR"), "/visionclaw_unified.ptx");
         let ptx_content = fs::read_to_string(ptx_path).expect("Failed to read PTX file");
 
         // Create GPU compute with simple graph
@@ -51,7 +51,7 @@ mod gpu_stability_tests {
     #[ignore] // Requires CUDA GPU and updated UnifiedGPUCompute API
     fn test_per_node_stability_optimization() {
         // Load PTX content
-        let ptx_path = concat!(env!("OUT_DIR"), "/visionflow_unified.ptx");
+        let ptx_path = concat!(env!("OUT_DIR"), "/visionclaw_unified.ptx");
         let ptx_content = fs::read_to_string(ptx_path).expect("Failed to read PTX file");
 
         let num_nodes = 1000;

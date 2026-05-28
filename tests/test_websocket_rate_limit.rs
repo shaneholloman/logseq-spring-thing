@@ -1,7 +1,7 @@
-// Test disabled - references deprecated/removed modules (webxr::utils::validation::rate_limit)
+// Test disabled - references deprecated/removed modules (visionclaw_server::utils::validation::rate_limit)
 // Rate limiting module structure has changed; EndpointRateLimits may have moved
 /*
-use webxr::utils::validation::rate_limit::{EndpointRateLimits, RateLimitConfig};
+use visionclaw_server::utils::validation::rate_limit::{EndpointRateLimits, RateLimitConfig};
 
 #[test]
 fn test_socket_flow_updates_rate_limit() {

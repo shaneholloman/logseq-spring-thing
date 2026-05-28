@@ -7,10 +7,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::actors::gpu::force_compute_actor::PhysicsStats;
 use crate::actors::messaging::MessageId;
-use crate::errors::VisionFlowError;
+use crate::errors::VisionClawError;
 use crate::gpu::visual_analytics::{IsolationLayer, VisualAnalyticsParams};
-use visionflow_domain::models::constraints::{AdvancedParams, ConstraintSet};
-use visionflow_domain::models::graph::GraphData as ModelsGraphData;
+use visionclaw_domain::models::constraints::{AdvancedParams, ConstraintSet};
+use visionclaw_domain::models::graph::GraphData as ModelsGraphData;
 use crate::models::simulation_params::SimulationParams;
 use crate::utils::socket_flow_messages::BinaryNodeData;
 use crate::utils::unified_gpu_compute::ComputeMode;
@@ -450,14 +450,14 @@ pub struct ReloadRelationshipBuffer {
 // ---------------------------------------------------------------------------
 
 #[derive(Message, Debug, Clone, Serialize, Deserialize)]
-#[rtype(result = "Result<(), VisionFlowError>")]
+#[rtype(result = "Result<(), VisionClawError>")]
 pub struct PhysicsPauseMessage {
     pub pause: bool,
     pub reason: String,
 }
 
 #[derive(Message, Debug, Clone, Serialize, Deserialize)]
-#[rtype(result = "Result<(), VisionFlowError>")]
+#[rtype(result = "Result<(), VisionClawError>")]
 pub struct NodeInteractionMessage {
     pub node_id: u32,
     pub interaction_type: NodeInteractionType,
@@ -472,13 +472,13 @@ pub enum NodeInteractionType {
 }
 
 #[derive(Message, Debug, Clone, Serialize, Deserialize)]
-#[rtype(result = "Result<(), VisionFlowError>")]
+#[rtype(result = "Result<(), VisionClawError>")]
 pub struct ForceResumePhysics {
     pub reason: String,
 }
 
 #[derive(Message, Debug, Clone, Serialize, Deserialize)]
-#[rtype(result = "Result<bool, VisionFlowError>")]
+#[rtype(result = "Result<bool, VisionClawError>")]
 pub struct GetEquilibriumStatus;
 
 // ---------------------------------------------------------------------------

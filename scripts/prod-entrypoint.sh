@@ -11,7 +11,7 @@ cargo build --release --features gpu
 # Copy PTX files to expected location
 echo "[PROD-ENTRYPOINT] Copying PTX files..."
 mkdir -p /app/src/utils/ptx
-find /app/target/release/build -name 'visionflow_unified.ptx' -exec cp {} /app/src/utils/ptx/ \; 2>/dev/null || true
+find /app/target/release/build -name 'visionclaw_unified.ptx' -exec cp {} /app/src/utils/ptx/ \; 2>/dev/null || true
 
 # Build client for production
 echo "[PROD-ENTRYPOINT] Building client for production..."

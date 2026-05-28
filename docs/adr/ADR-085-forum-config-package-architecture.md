@@ -11,7 +11,7 @@
 
 ## Context
 
-PRD-012 §5.1 specifies that DreamLab's website becomes a thin downstream consumer of the VisionFlow forum kit (`nostr-bbs-rs`). The mechanism is a new `forum-config/` Cargo package inside `dreamlab-ai-website` that:
+PRD-012 §5.1 specifies that DreamLab's website becomes a thin downstream consumer of the VisionClaw forum kit (`nostr-bbs-rs`). The mechanism is a new `forum-config/` Cargo package inside `dreamlab-ai-website` that:
 - Depends on kit crates as Cargo deps
 - Supplies `dreamlab.toml` instance configuration
 - Wires DreamLab branding into the kit's extension hooks
@@ -628,7 +628,7 @@ All 12 tests live in `nostr-rust-forum/tests/cutover/sprint-carry-over.rs` (per 
 ## References
 
 - PRD-012 — DreamLab Website Kit Adoption (G3, G4, G5, F1, F5)
-- PRD-011 — VisionFlow Forum Kit Extraction (G3 downstream-consumer pattern, §5.2 TOML schema)
+- PRD-011 — VisionClaw Forum Kit Extraction (G3 downstream-consumer pattern, §5.2 TOML schema)
 - ADR-073 — Mesh topology (relay-worker DO continuity)
 - ADR-080 D7 — Forum Kit Deployment Topology (downstream-consumer pattern exemplar)
 - ADR-082 — Cross-substrate test fixture sharing (consumer's CI)

@@ -2,7 +2,7 @@
 
 Source-of-truth alignment between `src/ports/*.rs`, `src/adapters/neo4j_*.rs`,
 `DDD-11.md`, and `ADR-11.md`. Authored from worktree
-`visionflow-worktrees/phase-1-persistence` on top of
+`visionclaw-worktrees/phase-1-persistence` on top of
 `impl/phase-1-persistence` (off `radical-rollback @ d260a6158`).
 
 Header counts as verified from source on 2026-05-16:
@@ -32,7 +32,7 @@ proceeds against the verified counts above. DDD-11 must be corrected to
 
 | # | Method | Cypher today (`neo4j_ontology_repository.rs`) | SPARQL / SQLite target (ADR-11) |
 |---|--------|-----------------------------------------------|---------------------------------|
-| 1 | `load_ontology_graph()` | `MATCH (c:OwlClass)…` + edge sweep, lines 1107–1153 | `CONSTRUCT { ?s ?p ?o } WHERE { GRAPH <urn:visionflow:graph:ontology:assert> { ?s ?p ?o } UNION GRAPH <…:inferred> { ?s ?p ?o } }` |
+| 1 | `load_ontology_graph()` | `MATCH (c:OwlClass)…` + edge sweep, lines 1107–1153 | `CONSTRUCT { ?s ?p ?o } WHERE { GRAPH <urn:visionclaw:graph:ontology:assert> { ?s ?p ?o } UNION GRAPH <…:inferred> { ?s ?p ?o } }` |
 | 2 | `save_ontology_graph(graph)` | Bulk MERGE over OwlClass + relationships, 1154–1189 | Batched `INSERT DATA { GRAPH <…:assert> { … } }` per type, idempotent via FNE |
 | 3 | `save_ontology(classes, properties, axioms)` | Multi-pass MERGE, 1190–1217 | One transaction: 3 batched `INSERT DATA` blocks in `<…:assert>` |
 | 4 | `add_owl_class(class)` | `MERGE (c:OwlClass {iri:$iri}) ON CREATE/ON MATCH SET …`, 288–488 | ADR-11 D6: `ASK { GRAPH <…:assert> { <iri> a vc:OntologyClass } }` then `INSERT DATA { GRAPH <…:assert> { <iri> a vc:OntologyClass ; vc:label …; … } }` |
@@ -46,7 +46,7 @@ proceeds against the verified counts above. DDD-11 must be corrected to
 | 12 | `add_axiom(axiom)` | `MERGE (a:OwlAxiom {id:$id}) …`, 813–858 | `INSERT DATA { GRAPH <…:assert> { <vc:axiom/<id>> a vc:OwlAxiom ; vc:axiomType …; vc:subject <s> ; vc:object <o> ; vc:annotations "{json}" } }` |
 | 13 | `get_class_axioms(class_iri)` | `MATCH (a:OwlAxiom) WHERE a.subject=$iri OR a.object=$iri`, 1223–1276 | `SELECT … WHERE { GRAPH <…:assert> { ?ax a vc:OwlAxiom ; (vc:subject\|vc:object) <iri> ; ?p ?o } }` |
 | 14 | `store_inference_results(results)` | Loops `add_axiom` per inferred, 929–937 (no atomicity) | **D9 atomic:** `DELETE WHERE { GRAPH <…:inferred> { ?s ?p ?o } } ; INSERT DATA { GRAPH <…:inferred> { … } }` in one `Store::update` call |
-| 15 | `get_inference_results()` | Default `Ok(None)` (trait default; Neo4j adapter does not override) | `SELECT … WHERE { GRAPH <…:inferred> { ?s ?p ?o } }` plus a metadata triple `<urn:visionflow:meta:lastInference> vc:timestamp ?t` in default graph |
+| 15 | `get_inference_results()` | Default `Ok(None)` (trait default; Neo4j adapter does not override) | `SELECT … WHERE { GRAPH <…:inferred> { ?s ?p ?o } }` plus a metadata triple `<urn:visionclaw:meta:lastInference> vc:timestamp ?t` in default graph |
 | 16 | `validate_ontology()` | `MATCH (c:OwlClass) WHERE c.iri IS NULL …` plus duplicate-IRI ASK, 1028–1062 | SPARQL `ASK` guards + adapter-side `ValidationReport`; mirrors D6 pre-write checks |
 | 17 | `query_ontology(query)` | Default `Ok(vec![])`; Neo4j adapter does not override | `Store::query(SparqlQuery::parse(query))` — pass-through SELECT with row→HashMap pivot |
 | 18 | `remove_owl_class(iri)` | `MATCH (c:OwlClass {iri:$iri}) DETACH DELETE c`, 572–594 | `DELETE WHERE { GRAPH <…:assert> { <iri> ?p ?o . ?s ?p2 <iri> } }` (drops incoming refs too — matches DETACH DELETE) |
@@ -71,7 +71,7 @@ Neo4j adapter — the trait defaults run.
 
 | # | Method | Cypher today (`neo4j_graph_repository.rs`) | SPARQL / SQLite target (ADR-11) |
 |---|--------|--------------------------------------------|---------------------------------|
-| 1 | `add_nodes(nodes)` | `UNWIND range… MERGE (n:GraphNode {id:$ids[i]}) ON CREATE/ON MATCH SET …`, 426–563 | `INSERT DATA { GRAPH <urn:visionflow:graph:knowledge> { <vc:kg/{slug}> a vc:KGNode ; vc:id "…"; vc:label "…"; vc:metadataId "…" ; vc:mass "…"^^xsd:decimal ; … } }` (one large batch per call) |
+| 1 | `add_nodes(nodes)` | `UNWIND range… MERGE (n:GraphNode {id:$ids[i]}) ON CREATE/ON MATCH SET …`, 426–563 | `INSERT DATA { GRAPH <urn:visionclaw:graph:knowledge> { <vc:kg/{slug}> a vc:KGNode ; vc:id "…"; vc:label "…"; vc:metadataId "…" ; vc:mass "…"^^xsd:decimal ; … } }` (one large batch per call) |
 | 2 | `add_edges(edges)` | `UNWIND … MATCH … MERGE (s)-[r:EDGE]->(t) SET r.weight=…`, 565–625 | Reified edges: `INSERT DATA { GRAPH <…:knowledge> { <vc:edge/{sha256-12}> a vc:Edge ; vc:from <s> ; vc:to <t> ; vc:weight "…"^^xsd:decimal ; vc:edgeType "default" } . <s> vc:linksTo <t> }` |
 | 3 | `update_positions(updates)` | `UNWIND … MATCH (n) SET n.sim_x=…`, 651–708 | **D4 atomic:** one Update: `DELETE WHERE { GRAPH <…:knowledge> { ?n vc:hasX ?_ ; vc:hasY ?_ ; vc:hasZ ?_ ; vc:hasVx ?_ ; vc:hasVy ?_ ; vc:hasVz ?_ . FILTER(?n IN (…)) } } ; INSERT DATA { GRAPH <…:knowledge> { <n1> vc:hasX "x"^^xsd:float ; vc:hasY … . … } }` |
 | 4 | `clear_dirty_nodes()` | `MATCH (n:GraphNode {dirty:true}) SET n.dirty=false`, 709–714 | **Not modelled in RDF.** Dirty tracking is a RAM concern (GraphStateActor). Oxigraph adapter forwards to RAM only; trait-default no-op acceptable. **Trait gap candidate** (§3). |
@@ -79,7 +79,7 @@ Neo4j adapter — the trait defaults run.
 | 6 | `get_node_map()` | Projection of #5, 638–645 | Same SPARQL CONSTRUCT, pivot into `HashMap<u32, Node>` |
 | 7 | `get_physics_state()` | Returns `PhysicsState::default()` — Neo4j has no live physics, 646–650 | RAM-only (D4). Adapter returns `PhysicsState::default()`; signature kept for trait stability |
 | 8 | `get_node_positions()` | `MATCH (n:GraphNode) RETURN n.sim_x, n.sim_y, n.sim_z`, 731–744 | **D4 cold-start path:** `SELECT ?n ?x ?y ?z WHERE { GRAPH <…:knowledge> { ?n vc:hasX ?x ; vc:hasY ?y ; vc:hasZ ?z } }` |
-| 9 | `get_bots_graph()` | `MATCH (a:Agent) RETURN a` + edge sweep, 745–750 | `CONSTRUCT { ?s ?p ?o } WHERE { GRAPH <urn:visionflow:graph:agent> { ?s ?p ?o } }` |
+| 9 | `get_bots_graph()` | `MATCH (a:Agent) RETURN a` + edge sweep, 745–750 | `CONSTRUCT { ?s ?p ?o } WHERE { GRAPH <urn:visionclaw:graph:agent> { ?s ?p ?o } }` |
 | 10 | `get_constraints()` | Returns `ConstraintSet::default()` (not stored in Neo4j), 719–722 | Same; stored in SQLite as a single setting `physics.constraints`. Adapter delegates to `SettingsRepository::get_setting`. **Cross-port read**. |
 | 11 | `get_auto_balance_notifications()` | Returns `Vec::new()` (not stored), 715–718 | Same; RAM-only |
 | 12 | `get_equilibrium_status()` | Returns `false` (not stored), 751–755 | Same; RAM-only |
@@ -202,14 +202,14 @@ Confirmed canonical IRIs (and **discrepancy with ADR-11 §D2**):
 
 | Canonical IRI (this audit, per Queen brief) | ADR-11 §D2 spelling | Used by port methods |
 |------|-----|-----|
-| `<urn:visionflow:graph:knowledge>` | identical | **W**: `add_nodes`, `add_edges`, `update_positions`. **R**: `get_graph`, `get_node_map`, `get_node_positions`. |
-| `<urn:visionflow:graph:ontology:assert>` | **ADR-11 has `<urn:visionflow:graph:ontology>` (no `:assert` suffix).** DDD-11 inherits the bare form. | **W**: `add_owl_class`, `add_owl_property`, `add_axiom`, `save_ontology`, `save_ontology_graph`. **R**: `get_owl_class`, `get_owl_property`, `list_owl_classes`, `list_owl_properties`, `get_classes`, `get_axioms`, `get_class_axioms`, `load_ontology_graph`, `validate_ontology`, `get_metrics`. |
-| `<urn:visionflow:graph:ontology:inferred>` | identical | **W**: `store_inference_results` (DELETE + INSERT in one Update). **R**: `get_inference_results`, also union-readable from `load_ontology_graph`. |
-| `<urn:visionflow:graph:agent>` | identical | **R**: `get_bots_graph`. **W**: not in Phase 1; ADR-11 reserves the IRI for Section 7 agent telemetry. |
+| `<urn:visionclaw:graph:knowledge>` | identical | **W**: `add_nodes`, `add_edges`, `update_positions`. **R**: `get_graph`, `get_node_map`, `get_node_positions`. |
+| `<urn:visionclaw:graph:ontology:assert>` | **ADR-11 has `<urn:visionclaw:graph:ontology>` (no `:assert` suffix).** DDD-11 inherits the bare form. | **W**: `add_owl_class`, `add_owl_property`, `add_axiom`, `save_ontology`, `save_ontology_graph`. **R**: `get_owl_class`, `get_owl_property`, `list_owl_classes`, `list_owl_properties`, `get_classes`, `get_axioms`, `get_class_axioms`, `load_ontology_graph`, `validate_ontology`, `get_metrics`. |
+| `<urn:visionclaw:graph:ontology:inferred>` | identical | **W**: `store_inference_results` (DELETE + INSERT in one Update). **R**: `get_inference_results`, also union-readable from `load_ontology_graph`. |
+| `<urn:visionclaw:graph:agent>` | identical | **R**: `get_bots_graph`. **W**: not in Phase 1; ADR-11 reserves the IRI for Section 7 agent telemetry. |
 | Default graph (unnamed) | identical | **W**: BRIDGE_TO quads from `add_edges` (when the edge spans knowledge↔ontology). **R**: union queries see it implicitly. |
 
-**Action required:** Either ADR-11 §D2 must rename `<urn:visionflow:graph:ontology>`
-to `<urn:visionflow:graph:ontology:assert>` for parallel structure with
+**Action required:** Either ADR-11 §D2 must rename `<urn:visionclaw:graph:ontology>`
+to `<urn:visionclaw:graph:ontology:assert>` for parallel structure with
 `:inferred`, **or** the Queen brief is amended to drop `:assert`. Recommendation:
 **rename to `:assert`** — it makes the asserted/inferred dichotomy symmetric in
 the IRI namespace and matches how operators discuss the data ("the assert graph
@@ -270,8 +270,8 @@ Reads never reject — they fall through to global.
 - **DDD-11 documentation drift:** §"Commands accepted" claims 40+/24+/44+
   methods. Actual surfaces are 27/15/17. Fix DDD-11 to match verified counts.
 - **Named-graph IRI drift:** the Queen brief specifies
-  `<urn:visionflow:graph:ontology:assert>` but ADR-11 §D2 writes
-  `<urn:visionflow:graph:ontology>`. Recommend renaming ADR-11 to use the
+  `<urn:visionclaw:graph:ontology:assert>` but ADR-11 §D2 writes
+  `<urn:visionclaw:graph:ontology>`. Recommend renaming ADR-11 to use the
   `:assert` suffix for symmetry with `:inferred`. Scope: 18 doc occurrences,
   0 source occurrences.
 - **Top-3 highest-risk methods (most complex SPARQL translation):**

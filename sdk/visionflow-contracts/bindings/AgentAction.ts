@@ -63,6 +63,6 @@ cursor_world_position: WorldPosition | null,
 /**
  * Bridge session id from the ADR-10 §D4 auth flow. Receivers MAY use
  * this to correlate the click with the bridge session that issued the
- * `Authorization` for the originating VisionFlow tab.
+ * `Authorization` for the originating VisionClaw tab.
  */
 bridge_id: string | null, };

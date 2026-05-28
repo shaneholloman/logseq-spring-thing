@@ -29,10 +29,10 @@ export function useGraphSelection(opts: GraphSelectionOptions): GraphSelectionRe
   const flyToTargetRef  = useRef<THREE.Vector3 | null>(null)
   const flyToProgressRef = useRef(0)
 
-  // Dispatch visionflow:node-selected when selection changes
+  // Dispatch visionclaw:node-selected when selection changes
   useEffect(() => {
     if (!selectedNodeId) {
-      window.dispatchEvent(new CustomEvent('visionflow:node-selected', { detail: null }))
+      window.dispatchEvent(new CustomEvent('visionclaw:node-selected', { detail: null }))
       return
     }
     const node = graphData.nodes.find(n => String(n.id) === selectedNodeId)
@@ -50,7 +50,7 @@ export function useGraphSelection(opts: GraphSelectionOptions): GraphSelectionRe
       return { id: nid, label: n?.label || nid }
     })
 
-    window.dispatchEvent(new CustomEvent('visionflow:node-selected', {
+    window.dispatchEvent(new CustomEvent('visionclaw:node-selected', {
       detail: {
         nodeId: selectedNodeId,
         label: node.label,
@@ -105,11 +105,11 @@ export function useGraphSelection(opts: GraphSelectionOptions): GraphSelectionRe
 
     const handleDeselect = () => setSelectedNodeId(null)
 
-    window.addEventListener('visionflow:search', handleSearch)
-    window.addEventListener('visionflow:node-deselect', handleDeselect)
+    window.addEventListener('visionclaw:search', handleSearch)
+    window.addEventListener('visionclaw:node-deselect', handleDeselect)
     return () => {
-      window.removeEventListener('visionflow:search', handleSearch)
-      window.removeEventListener('visionflow:node-deselect', handleDeselect)
+      window.removeEventListener('visionclaw:search', handleSearch)
+      window.removeEventListener('visionclaw:node-deselect', handleDeselect)
     }
   }, [graphData.nodes, nodeIdToIndexMap, camera, nodePositionsRef])
 

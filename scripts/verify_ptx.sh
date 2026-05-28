@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# PTX Verification Script for VisionFlow System Architecture
+# PTX Verification Script for VisionClaw System Architecture
 # Validates compiled PTX kernels for runtime deployment
 #
 
@@ -9,7 +9,7 @@ set -euo pipefail
 # Configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
-PTX_FILE="target/release/visionflow_unified.ptx"
+PTX_FILE="target/release/visionclaw_unified.ptx"
 
 # Colors
 GREEN='\033[0;32m'
@@ -102,11 +102,11 @@ verify_ptx() {
     fi
     
     # Environment variable validation
-    if [[ -n "${VISIONFLOW_PTX_PATH:-}" ]] && [[ -f "$VISIONFLOW_PTX_PATH" ]]; then
-        log_success "VISIONFLOW_PTX_PATH is set and points to valid file"
+    if [[ -n "${VISIONCLAW_PTX_PATH:-}" ]] && [[ -f "$VISIONCLAW_PTX_PATH" ]]; then
+        log_success "VISIONCLAW_PTX_PATH is set and points to valid file"
     else
-        log_warning "VISIONFLOW_PTX_PATH not set or invalid"
-        log_info "Set with: export VISIONFLOW_PTX_PATH=\"$(realpath "$ptx_path")\""
+        log_warning "VISIONCLAW_PTX_PATH not set or invalid"
+        log_info "Set with: export VISIONCLAW_PTX_PATH=\"$(realpath "$ptx_path")\""
     fi
     
     log_success "PTX verification completed successfully"
@@ -145,7 +145,7 @@ check_runtime_readiness() {
     
     # Build system integration check
     if [[ -f "$PROJECT_ROOT/build.rs" ]]; then
-        if grep -q "VISIONFLOW_PTX_PATH" "$PROJECT_ROOT/build.rs"; then
+        if grep -q "VISIONCLAW_PTX_PATH" "$PROJECT_ROOT/build.rs"; then
             log_success "build.rs configured for PTX path"
         else
             log_warning "build.rs may need PTX path configuration"
@@ -163,7 +163,7 @@ main() {
         log_success "All PTX verification checks passed!"
         echo
         echo "Next steps:"
-        echo "1. Ensure VISIONFLOW_PTX_PATH is set in your environment"
+        echo "1. Ensure VISIONCLAW_PTX_PATH is set in your environment"
         echo "2. Test GPU kernel loading in your Rust application"
         echo "3. Run smoke tests to validate kernel execution"
         return 0

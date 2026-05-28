@@ -15,15 +15,15 @@ use std::time::Duration;
 use tokio::time::sleep;
 
 // Import our visualization system components
-use visionflow_ext::services::{
+use visionclaw_ext::services::{
     multi_mcp_agent_discovery::{MultiMcpAgentDiscovery, McpServerConfig},
     agent_visualization_protocol::{McpServerType, AgentVisualizationProtocol},
     topology_visualization_engine::{TopologyVisualizationEngine, TopologyConfig, TopologyType},
 };
-use visionflow_ext::actors::{
+use visionclaw_ext::actors::{
     MultiMcpVisualizationActor, GraphServiceActor
 };
-use visionflow_ext::handlers::multi_mcp_websocket_handler;
+use visionclaw_ext::handlers::multi_mcp_websocket_handler;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -162,7 +162,7 @@ async fn demo_realtime_monitoring() {
     let mut protocol = AgentVisualizationProtocol::new();
 
     // Register mock MCP servers
-    let claude_flow_server = visionflow_ext::services::agent_visualization_protocol::McpServerInfo {
+    let claude_flow_server = visionclaw_ext::services::agent_visualization_protocol::McpServerInfo {
         server_id: "claude-flow".to_string(),
         server_type: McpServerType::ClaudeFlow,
         host: "localhost".to_string(),
@@ -193,8 +193,8 @@ async fn demo_realtime_monitoring() {
 }
 
 /// Create mock agents for demonstration
-fn create_mock_agents() -> Vec<visionflow_ext::services::agent_visualization_protocol::MultiMcpAgentStatus> {
-    use visionflow_ext::services::agent_visualization_protocol::*;
+fn create_mock_agents() -> Vec<visionclaw_ext::services::agent_visualization_protocol::MultiMcpAgentStatus> {
+    use visionclaw_ext::services::agent_visualization_protocol::*;
 
     vec![
         MultiMcpAgentStatus {

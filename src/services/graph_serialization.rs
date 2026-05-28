@@ -1,4 +1,4 @@
-use visionflow_domain::models::graph::GraphData;
+use visionclaw_domain::models::graph::GraphData;
 use crate::models::graph_export::*;
 use crate::time;
 use anyhow::{anyhow, Result};
@@ -407,7 +407,7 @@ use crate::utils::json::{from_json, to_json};
         let service = GraphSerializationService::new(temp_dir.path().to_path_buf());
 
         let mut graph = GraphData::new();
-        let mut node = visionflow_domain::models::node::Node::new("node_1".to_string())
+        let mut node = visionclaw_domain::models::node::Node::new("node_1".to_string())
             .with_label("Node 1".to_string())
             .with_position(0.0, 0.0, 0.0);
         node.id = 1;

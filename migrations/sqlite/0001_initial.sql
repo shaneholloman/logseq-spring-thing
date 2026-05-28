@@ -1,7 +1,7 @@
 -- ----------------------------------------------------------------------------
 -- migrations/sqlite/0001_initial.sql
 --
--- Initial SQLite schema for VisionFlow `settings.sqlite3`.
+-- Initial SQLite schema for VisionClaw `settings.sqlite3`.
 --
 -- This schema is the **sole authoritative copy** of every table that lives
 -- in the settings database. It mirrors ADR-11 §D5 verbatim and is the

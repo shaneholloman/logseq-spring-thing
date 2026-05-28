@@ -1,7 +1,7 @@
--- VisionFlow Knowledge Graph Verification Script
+-- VisionClaw Knowledge Graph Verification Script
 -- ================================================
 -- Run after graph build to verify data integrity
--- Usage: docker exec visionflow_container sqlite3 /app/data/knowledge_graph.db < verify_graph.sql
+-- Usage: docker exec visionclaw_container sqlite3 /app/data/knowledge_graph.db < verify_graph.sql
 
 .mode column
 .headers on

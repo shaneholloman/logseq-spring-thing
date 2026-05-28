@@ -1,5 +1,5 @@
 // use crate::utils::unified_gpu_compute::UnifiedGPUCompute;
-use visionflow_gpu::ptx_loader as ptx;
+use visionclaw_gpu::ptx_loader as ptx;
 use cust::context::Context;
 use cust::device::Device;
 use cust::module::Module;
@@ -84,9 +84,9 @@ pub fn run_gpu_diagnostics() -> String {
 
     
     report.push_str("PTX Build Environment:\n");
-    match std::env::var("VISIONFLOW_PTX_PATH") {
+    match std::env::var("VISIONCLAW_PTX_PATH") {
         Ok(path) => {
-            report.push_str(&format!("  VISIONFLOW_PTX_PATH = {}\n", path));
+            report.push_str(&format!("  VISIONCLAW_PTX_PATH = {}\n", path));
             if std::path::Path::new(&path).exists() {
                 match std::fs::metadata(&path) {
                     Ok(metadata) => {
@@ -112,8 +112,8 @@ pub fn run_gpu_diagnostics() -> String {
             }
         }
         Err(_) => {
-            report.push_str("  ❌ VISIONFLOW_PTX_PATH not set - build.rs may have failed\n");
-            error!("GPU Diagnostic: VISIONFLOW_PTX_PATH environment variable not set");
+            report.push_str("  ❌ VISIONCLAW_PTX_PATH not set - build.rs may have failed\n");
+            error!("GPU Diagnostic: VISIONCLAW_PTX_PATH environment variable not set");
         }
     }
 
@@ -142,8 +142,8 @@ pub fn run_gpu_diagnostics() -> String {
 
     
     let ptx_paths = [
-        "/app/src/utils/ptx/visionflow_unified.ptx",
-        "./src/utils/ptx/visionflow_unified.ptx",
+        "/app/src/utils/ptx/visionclaw_unified.ptx",
+        "./src/utils/ptx/visionclaw_unified.ptx",
     ];
     report.push_str("\nPTX File Status:\n");
     let mut ptx_found = false;
@@ -342,8 +342,8 @@ pub fn fix_cuda_environment() -> Result<(), Error> {
     }
 
     
-    let primary_path = "/app/src/utils/ptx/visionflow_unified.ptx";
-    let alternative_path = "./src/utils/ptx/visionflow_unified.ptx";
+    let primary_path = "/app/src/utils/ptx/visionclaw_unified.ptx";
+    let alternative_path = "./src/utils/ptx/visionclaw_unified.ptx";
 
     if !Path::new(primary_path).exists() {
         info!("Primary PTX file not found at {}", primary_path);

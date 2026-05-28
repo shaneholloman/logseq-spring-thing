@@ -1,5 +1,5 @@
 // Test disabled - references deprecated/removed modules (crate::utils::ptx, crate::utils::gpu_diagnostics, crate::utils::unified_gpu_compute)
-// The utils module paths have changed; use webxr::utils instead
+// The utils module paths have changed; use visionclaw_server::utils instead
 /*
 //! Comprehensive PTX Pipeline Validation Tests
 //!

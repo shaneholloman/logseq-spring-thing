@@ -10,7 +10,7 @@ predicate and rejects the block outright.
 
 ```json-ld
 {
-  "@id": "urn:visionflow:page:00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff",
+  "@id": "urn:visionclaw:page:00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff",
   "@type": "Page",
   "vc:slug": "ghost-page",
   "vc:title": "Ghost Page",

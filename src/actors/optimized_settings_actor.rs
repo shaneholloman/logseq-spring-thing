@@ -9,7 +9,7 @@ use crate::actors::messages::{
     UpdatePhysicsFromAutoBalance, UpdateSettings,
 };
 use crate::config::AppFullSettings;
-use crate::errors::{SettingsError, VisionFlowError, VisionFlowResult};
+use crate::errors::{SettingsError, VisionClawError, VisionClawResult};
 use actix::prelude::*;
 use blake3::Hasher;
 use flate2::Status;
@@ -136,11 +136,11 @@ const EXPECTED_PATH_SIZE: u64 = 500;
 
 impl OptimizedSettingsActor {
     
-    pub fn new(repository: Arc<dyn SettingsRepository>) -> VisionFlowResult<Self> {
+    pub fn new(repository: Arc<dyn SettingsRepository>) -> VisionClawResult<Self> {
         
         let settings = AppFullSettings::new().map_err(|e| {
             error!("Failed to load settings from file: {}", e);
-            VisionFlowError::Settings(SettingsError::ParseError {
+            VisionClawError::Settings(SettingsError::ParseError {
                 file_path: "settings".to_string(),
                 reason: e.to_string(),
             })
@@ -201,7 +201,7 @@ impl OptimizedSettingsActor {
         repository: Arc<dyn SettingsRepository>,
         graph_service_addr: Option<Addr<crate::actors::GraphServiceSupervisor>>,
         gpu_compute_addr: Option<Addr<ForceComputeActor>>,
-    ) -> VisionFlowResult<Self> {
+    ) -> VisionClawResult<Self> {
         let mut actor = Self::new(repository)?;
         actor.graph_service_addr = graph_service_addr;
         actor.gpu_compute_addr = gpu_compute_addr;
@@ -447,7 +447,7 @@ impl OptimizedSettingsActor {
         hasher.finalize().to_hex().to_string()
     }
 
-    async fn decompress_data(&self, compressed: &[u8]) -> VisionFlowResult<String> {
+    async fn decompress_data(&self, compressed: &[u8]) -> VisionClawResult<String> {
         let mut decompressor = self.decompressor.write().await;
         let mut output = Vec::new();
 
@@ -463,10 +463,10 @@ impl OptimizedSettingsActor {
         }
 
         String::from_utf8(output)
-            .map_err(|e| VisionFlowError::Serialization(format!("UTF-8 conversion error: {}", e)))
+            .map_err(|e| VisionClawError::Serialization(format!("UTF-8 conversion error: {}", e)))
     }
 
-    async fn get_optimized_path_value(&self, path: &str) -> VisionFlowResult<Value> {
+    async fn get_optimized_path_value(&self, path: &str) -> VisionClawResult<Value> {
         let start_time = Instant::now();
 
         
@@ -497,7 +497,7 @@ impl OptimizedSettingsActor {
                 match value.get(part) {
                     Some(v) => value = v,
                     None => {
-                        return Err(VisionFlowError::Settings(SettingsError::ValidationFailed {
+                        return Err(VisionClawError::Settings(SettingsError::ValidationFailed {
                             setting_path: path.to_string(),
                             reason: "Path not found".to_string(),
                         }))
@@ -520,7 +520,7 @@ impl OptimizedSettingsActor {
         &self,
         settings: &AppFullSettings,
         compiled_path: &[String],
-    ) -> VisionFlowResult<Value> {
+    ) -> VisionClawResult<Value> {
         
         if compiled_path.len() == 4
             && compiled_path[0] == "visualisation"
@@ -570,7 +570,7 @@ impl OptimizedSettingsActor {
                 }
                 "enabled" => serde_json::Value::Bool(physics.enabled),
                 _ => {
-                    return Err(VisionFlowError::Settings(SettingsError::ValidationFailed {
+                    return Err(VisionClawError::Settings(SettingsError::ValidationFailed {
                         setting_path: format!("physics.{}", field),
                         reason: "Unknown physics field".to_string(),
                     }))
@@ -580,13 +580,13 @@ impl OptimizedSettingsActor {
             return Ok(value);
         }
 
-        Err(VisionFlowError::Settings(SettingsError::ValidationFailed {
+        Err(VisionClawError::Settings(SettingsError::ValidationFailed {
             setting_path: "compiled_path".to_string(),
             reason: "Path pattern not optimized".to_string(),
         }))
     }
 
-    pub async fn update_settings(&self, new_settings: AppFullSettings) -> VisionFlowResult<()> {
+    pub async fn update_settings(&self, new_settings: AppFullSettings) -> VisionClawResult<()> {
         let mut settings = self.settings.write().await;
         *settings = new_settings;
 
@@ -599,7 +599,7 @@ impl OptimizedSettingsActor {
         
         settings.save().map_err(|e| {
             error!("Failed to save settings to file: {}", e);
-            VisionFlowError::Settings(SettingsError::SaveFailed {
+            VisionClawError::Settings(SettingsError::SaveFailed {
                 file_path: "settings".to_string(),
                 reason: e,
             })
@@ -683,13 +683,13 @@ impl OptimizedSettingsActor {
         );
     }
 
-    fn validate_value_with_pattern(value: &Value, pattern: &PathPattern) -> VisionFlowResult<()> {
+    fn validate_value_with_pattern(value: &Value, pattern: &PathPattern) -> VisionClawResult<()> {
         match (&pattern.field_type, value) {
             (FieldType::Float32 | FieldType::Float64, Value::Number(n)) => {
                 if let Some(f) = n.as_f64() {
                     if let Some(min) = pattern.validation_rules.min {
                         if f < min {
-                            return Err(VisionFlowError::Settings(
+                            return Err(VisionClawError::Settings(
                                 SettingsError::ValidationFailed {
                                     setting_path: "value".to_string(),
                                     reason: format!("Value {} below minimum {}", f, min),
@@ -699,7 +699,7 @@ impl OptimizedSettingsActor {
                     }
                     if let Some(max) = pattern.validation_rules.max {
                         if f > max {
-                            return Err(VisionFlowError::Settings(
+                            return Err(VisionClawError::Settings(
                                 SettingsError::ValidationFailed {
                                     setting_path: "value".to_string(),
                                     reason: format!("Value {} above maximum {}", f, max),
@@ -714,7 +714,7 @@ impl OptimizedSettingsActor {
                 if n.is_i64() {
                     Ok(())
                 } else {
-                    Err(VisionFlowError::Settings(SettingsError::ValidationFailed {
+                    Err(VisionClawError::Settings(SettingsError::ValidationFailed {
                         setting_path: "value".to_string(),
                         reason: "Expected integer value".to_string(),
                     }))
@@ -722,7 +722,7 @@ impl OptimizedSettingsActor {
             }
             (FieldType::Bool, Value::Bool(_)) => Ok(()),
             (FieldType::String, Value::String(_)) => Ok(()),
-            _ => Err(VisionFlowError::Settings(SettingsError::ValidationFailed {
+            _ => Err(VisionClawError::Settings(SettingsError::ValidationFailed {
                 setting_path: "value".to_string(),
                 reason: "Type mismatch".to_string(),
             })),
@@ -808,7 +808,7 @@ impl Handler<WarmCacheMessage> for OptimizedSettingsActor {
 
 // Handle GetSettings message
 impl Handler<GetSettings> for OptimizedSettingsActor {
-    type Result = ResponseFuture<VisionFlowResult<AppFullSettings>>;
+    type Result = ResponseFuture<VisionClawResult<AppFullSettings>>;
 
     fn handle(&mut self, _msg: GetSettings, _ctx: &mut Self::Context) -> Self::Result {
         let settings = self.settings.clone();
@@ -836,7 +836,7 @@ impl Handler<GetSettings> for OptimizedSettingsActor {
 
 // Handle UpdateSettings message
 impl Handler<UpdateSettings> for OptimizedSettingsActor {
-    type Result = ResponseFuture<VisionFlowResult<()>>;
+    type Result = ResponseFuture<VisionClawResult<()>>;
 
     fn handle(&mut self, msg: UpdateSettings, _ctx: &mut Self::Context) -> Self::Result {
         let actor = self.clone();
@@ -847,7 +847,7 @@ impl Handler<UpdateSettings> for OptimizedSettingsActor {
 
 // Optimized handler for getting settings by path
 impl Handler<GetSettingByPath> for OptimizedSettingsActor {
-    type Result = ResponseFuture<VisionFlowResult<serde_json::Value>>;
+    type Result = ResponseFuture<VisionClawResult<serde_json::Value>>;
 
     fn handle(&mut self, msg: GetSettingByPath, _ctx: &mut Self::Context) -> Self::Result {
         let actor = self.clone();
@@ -878,7 +878,7 @@ impl Clone for OptimizedSettingsActor {
 
 // Optimized batch handler for getting multiple settings by path
 impl Handler<GetSettingsByPaths> for OptimizedSettingsActor {
-    type Result = ResponseFuture<VisionFlowResult<HashMap<String, Value>>>;
+    type Result = ResponseFuture<VisionClawResult<HashMap<String, Value>>>;
 
     fn handle(&mut self, msg: GetSettingsByPaths, _ctx: &mut Self::Context) -> Self::Result {
         let actor = self.clone();
@@ -939,7 +939,7 @@ impl Handler<GetSettingsByPaths> for OptimizedSettingsActor {
 
 // Ultra-optimized batch handler for setting multiple values
 impl Handler<SetSettingsByPaths> for OptimizedSettingsActor {
-    type Result = ResponseFuture<VisionFlowResult<()>>;
+    type Result = ResponseFuture<VisionClawResult<()>>;
 
     fn handle(&mut self, msg: SetSettingsByPaths, _ctx: &mut Self::Context) -> Self::Result {
         let settings = self.settings.clone();
@@ -962,7 +962,7 @@ impl Handler<SetSettingsByPaths> for OptimizedSettingsActor {
                 for (path, value) in &updates {
                     if let Some(pattern) = lookup.get(path) {
                         Self::validate_value_with_pattern(value, pattern).map_err(|e| {
-                            VisionFlowError::Settings(SettingsError::ValidationFailed {
+                            VisionClawError::Settings(SettingsError::ValidationFailed {
                                 setting_path: path.clone(),
                                 reason: format!("Validation failed: {}", e),
                             })
@@ -1086,7 +1086,7 @@ impl Handler<SetSettingsByPaths> for OptimizedSettingsActor {
             if validation_needed {
                 current.validate_config_camel_case().map_err(|e| {
                     error!("Validation failed after batch update: {:?}", e);
-                    VisionFlowError::Settings(SettingsError::ValidationFailed {
+                    VisionClawError::Settings(SettingsError::ValidationFailed {
                         setting_path: "batch_update".to_string(),
                         reason: format!("Batch validation failed: {:?}", e),
                     })
@@ -1096,7 +1096,7 @@ impl Handler<SetSettingsByPaths> for OptimizedSettingsActor {
                 if current.system.persist_settings {
                     current.save().map_err(|e| {
                         error!("Failed to save settings after batch update: {}", e);
-                        VisionFlowError::Settings(SettingsError::SaveFailed {
+                        VisionClawError::Settings(SettingsError::SaveFailed {
                             file_path: "batch_settings".to_string(),
                             reason: e,
                         })

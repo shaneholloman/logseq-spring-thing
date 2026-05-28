@@ -15,11 +15,11 @@
 /*
 #[cfg(test)]
 mod tests {
-    use webxr::models::{
+    use visionclaw_server::models::{
         constraints::{Constraint, ConstraintData, ConstraintKind},
         simulation_params::SimulationParams,
     };
-    use webxr::utils::unified_gpu_compute::UnifiedGPUCompute;
+    use visionclaw_server::utils::unified_gpu_compute::UnifiedGPUCompute;
 
     /// Test separation forces push disjoint classes apart
     #[test]

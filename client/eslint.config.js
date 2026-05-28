@@ -1,4 +1,4 @@
-// ESLint 9.0.0+ Flat Config for VisionFlow Client
+// ESLint 9.0.0+ Flat Config for VisionClaw Client
 // Handles TypeScript and React with built-in ESLint capabilities
 import tseslint from '@typescript-eslint/eslint-plugin';
 import tsParser from '@typescript-eslint/parser';

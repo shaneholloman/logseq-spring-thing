@@ -51,8 +51,8 @@ use crate::application::ontology::{
     ValidateOntology,
     ValidateOntologyHandler,
 };
-use visionflow_domain::models::graph::GraphData;
-use visionflow_domain::ports::ontology_repository::{InferenceResults, OwlAxiom, OwlClass, OwlProperty};
+use visionclaw_domain::models::graph::GraphData;
+use visionclaw_domain::ports::ontology_repository::{InferenceResults, OwlAxiom, OwlClass, OwlProperty};
 use hexser::{DirectiveHandler, QueryHandler};
 
 #[derive(Debug, Deserialize)]

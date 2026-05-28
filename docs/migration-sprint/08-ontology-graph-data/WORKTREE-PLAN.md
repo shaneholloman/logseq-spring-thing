@@ -1,6 +1,6 @@
 # WORKTREE-PLAN — Phase 2: Ontology & KG Data Model
 
-Worktree  : `visionflow-worktrees/phase-2-ontology`
+Worktree  : `visionclaw-worktrees/phase-2-ontology`
 Branch    : `impl/phase-2-ontology` (off `radical-rollback @ d260a6158`)
 Author    : worktree-planner
 Date      : 2026-05-16
@@ -288,16 +288,16 @@ The Cypher migration 0042 adds `bridge_to` relations between knowledge pages and
 their ontology class counterparts. The SPARQL Update equivalent:
 
 ```sparql
-PREFIX vf: <urn:visionflow:>
+PREFIX vf: <urn:visionclaw:>
 PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
 
 INSERT {
-  GRAPH <urn:visionflow:graph:ontology:assert> {
+  GRAPH <urn:visionclaw:graph:ontology:assert> {
     ?pageIri vf:bridgeTo ?classIri .
   }
 }
 WHERE {
-  GRAPH <urn:visionflow:graph:ontology:assert> {
+  GRAPH <urn:visionclaw:graph:ontology:assert> {
     ?pageIri rdf:type vf:Page ;
              vf:label ?pageLabel .
     ?classIri rdf:type vf:OntologyClass ;
@@ -335,23 +335,23 @@ Migration 0043 adds a `renderTier` integer property to nodes reflecting their
 visual layering. The SPARQL Update:
 
 ```sparql
-PREFIX vf: <urn:visionflow:>
+PREFIX vf: <urn:visionclaw:>
 PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
 
 INSERT {
-  GRAPH <urn:visionflow:graph:ontology:assert> {
+  GRAPH <urn:visionclaw:graph:ontology:assert> {
     ?node vf:renderTier ?tier .
   }
 }
 WHERE {
-  GRAPH <urn:visionflow:graph:ontology:assert> {
+  GRAPH <urn:visionclaw:graph:ontology:assert> {
     ?node a ?type .
     FILTER NOT EXISTS { ?node vf:renderTier ?existing }
     BIND(
-      IF(?type = <urn:visionflow:Page>,            "0"^^xsd:integer,
-      IF(?type = <urn:visionflow:OntologyClass>,   "1"^^xsd:integer,
-      IF(?type = <urn:visionflow:OntologyProperty>,"2"^^xsd:integer,
-      IF(?type = <urn:visionflow:LinkedPage>,      "3"^^xsd:integer,
+      IF(?type = <urn:visionclaw:Page>,            "0"^^xsd:integer,
+      IF(?type = <urn:visionclaw:OntologyClass>,   "1"^^xsd:integer,
+      IF(?type = <urn:visionclaw:OntologyProperty>,"2"^^xsd:integer,
+      IF(?type = <urn:visionclaw:LinkedPage>,      "3"^^xsd:integer,
                                                    "4"^^xsd:integer))))
       AS ?tier
     )
@@ -385,24 +385,24 @@ Migration 0044 seeds `ontologyTier` layout assignment — a second tier property
 used by the ontology-specific layout engine (depth from owl:Thing root).
 
 ```sparql
-PREFIX vf: <urn:visionflow:>
+PREFIX vf: <urn:visionclaw:>
 PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
 PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
 
 INSERT {
-  GRAPH <urn:visionflow:graph:ontology:assert> {
+  GRAPH <urn:visionclaw:graph:ontology:assert> {
     ?cls vf:ontologyTier ?depth .
   }
 }
 WHERE {
-  GRAPH <urn:visionflow:graph:ontology:assert> {
-    ?cls a <urn:visionflow:OntologyClass> .
+  GRAPH <urn:visionclaw:graph:ontology:assert> {
+    ?cls a <urn:visionclaw:OntologyClass> .
     FILTER NOT EXISTS { ?cls vf:ontologyTier ?existing }
     {
       SELECT ?cls (COUNT(?mid) AS ?depth)
       WHERE {
         ?cls rdfs:subClassOf* ?mid .
-        ?mid a <urn:visionflow:OntologyClass> .
+        ?mid a <urn:visionclaw:OntologyClass> .
       }
       GROUP BY ?cls
     }
@@ -451,9 +451,9 @@ Write a SPARQL file that documents this:
 # For deployments that retained the old vocabulary (e.g. a Neo4j export
 # imported into Oxigraph without the D1 unification), apply:
 #
-DELETE { GRAPH ?g { ?n a <urn:visionflow:OwlClass> } }
-INSERT { GRAPH ?g { ?n a <urn:visionflow:OntologyClass> } }
-WHERE  { GRAPH ?g { ?n a <urn:visionflow:OwlClass> } }
+DELETE { GRAPH ?g { ?n a <urn:visionclaw:OwlClass> } }
+INSERT { GRAPH ?g { ?n a <urn:visionclaw:OntologyClass> } }
+WHERE  { GRAPH ?g { ?n a <urn:visionclaw:OwlClass> } }
 #
 # On a clean forward-path deployment, the WHERE clause matches zero rows.
 ```
@@ -590,9 +590,9 @@ pub enum EdgeKind {
 ```
 
 The SPARQL SELECT that materialises `GraphTopology` queries the union of
-`<urn:visionflow:graph:ontology:assert>` and
-`<urn:visionflow:graph:ontology:inferred>` (CC-4 resolution — canonical IRI
-from ADR-11, not the shorter `<urn:visionflow:inference>` which ADR-08 D9
+`<urn:visionclaw:graph:ontology:assert>` and
+`<urn:visionclaw:graph:ontology:inferred>` (CC-4 resolution — canonical IRI
+from ADR-11, not the shorter `<urn:visionclaw:inference>` which ADR-08 D9
 originally used). The query is stored at
 `queries/topology/project_topology.rq` and loaded by the Oxigraph adapter
 at repository construction time.
@@ -600,14 +600,14 @@ at repository construction time.
 The query skeleton (to be completed by the backend-dev specialist):
 
 ```sparql
-PREFIX vf:   <urn:visionflow:>
+PREFIX vf:   <urn:visionclaw:>
 PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
 PREFIX rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
 
 SELECT ?nodeId ?type ?label ?definition ?renderTier ?ontologyTier
        ?srcId ?tgtId ?edgeKind ?weight
-FROM <urn:visionflow:graph:ontology:assert>
-FROM <urn:visionflow:graph:ontology:inferred>
+FROM <urn:visionclaw:graph:ontology:assert>
+FROM <urn:visionclaw:graph:ontology:inferred>
 WHERE {
   { ?nodeId rdf:type ?type ; vf:label ?label .
     OPTIONAL { ?nodeId vf:definition ?definition }
@@ -673,7 +673,7 @@ to appear in the processed list regardless of SHA1 match.
 
 Complexity: M (3 pt)
 Dependencies: T-13, T-14, and Phase 1: `assert_inferred_triples` method
-implemented in Oxigraph adapter writing to `<urn:visionflow:graph:ontology:inferred>`.
+implemented in Oxigraph adapter writing to `<urn:visionclaw:graph:ontology:inferred>`.
 Phase 1 output needed: named-graph write confirmed by a Phase 1 test.
 
 PRD acceptance: A10
@@ -687,9 +687,9 @@ Work:
    the `inference_service` subscribes to this event and triggers
    `RunInference { profile: ReasoningProfile::EL }`.
 2. `WhelkInferenceEngine` runs over the triples in
-   `<urn:visionflow:graph:ontology:assert>`, producing a `Vec<RdfTriple>`.
+   `<urn:visionclaw:graph:ontology:assert>`, producing a `Vec<RdfTriple>`.
 3. `assert_inferred_triples` writes them to
-   `<urn:visionflow:graph:ontology:inferred>` (CC-4: canonical IRI).
+   `<urn:visionclaw:graph:ontology:inferred>` (CC-4: canonical IRI).
 4. Emit `InferenceMaterialised { triple_count, profile, elapsed_ms }`.
 5. Trigger `RebuildTopology` — now the topology query unions both named graphs
    and subclass edges from inference are present.
@@ -743,7 +743,7 @@ SPARQL Update bodies are embedded in tasks T-07 through T-10 above. Summary:
 | 0045 | `0045_rename_noop.rq` | No-op (documented for legacy deployments) | No-op |
 
 All four are idempotent (FILTER NOT EXISTS guards or replace-then-insert).
-All four target `<urn:visionflow:graph:ontology:assert>` as per CC-4.
+All four target `<urn:visionclaw:graph:ontology:assert>` as per CC-4.
 
 ---
 
@@ -881,8 +881,8 @@ pub enum EdgeKind {
 
 The Oxigraph adapter implements `project_topology()` by executing
 `queries/topology/project_topology.rq` against the union of
-`<urn:visionflow:graph:ontology:assert>` and
-`<urn:visionflow:graph:ontology:inferred>`.
+`<urn:visionclaw:graph:ontology:assert>` and
+`<urn:visionclaw:graph:ontology:inferred>`.
 
 The adapter is responsible for:
 - Mapping SPARQL result rows to `TopologyNode` / `TopologyEdge`.
@@ -1080,5 +1080,5 @@ without requiring the full 998-file GitHub corpus.
 
 3. **T-15** — Wire whelk-rs inference into named graph.
    Requires Phase 1's `assert_inferred_triples` to write to
-   `<urn:visionflow:graph:ontology:inferred>` — verified by a Phase 1 test —
+   `<urn:visionclaw:graph:ontology:inferred>` — verified by a Phase 1 test —
    before the topology union query returns inferred edges.

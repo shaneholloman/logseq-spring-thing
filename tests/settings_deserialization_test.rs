@@ -1,5 +1,5 @@
 // Test disabled - references deprecated/removed module (ext::config::AppFullSettings)
-// The ext module no longer exists; settings are now at webxr::config::AppFullSettings
+// The ext module no longer exists; settings are now at visionclaw_server::config::AppFullSettings
 /*
 use serde_json::json;
 use serde_yaml;
@@ -161,7 +161,7 @@ visualisation:
         cluster_count: 5
         clustering_resolution: 1.0
         clustering_iterations: 30
-    visionflow:
+    visionclaw:
       nodes:
         base_color: '#ffffff'
         metalness: 0.0

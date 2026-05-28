@@ -2,22 +2,22 @@
 members = [
     ".",
     "crates/visionclaw-contracts",
-    "crates/visionflow-domain",
-    "crates/visionflow-protocol",
-    "crates/visionflow-adapters",
-    "crates/visionflow-gpu",
-    "crates/visionflow-ontology",
-    "crates/visionflow-actors",
+    "crates/visionclaw-domain",
+    "crates/visionclaw-protocol",
+    "crates/visionclaw-adapters",
+    "crates/visionclaw-gpu",
+    "crates/visionclaw-ontology",
+    "crates/visionclaw-actors",
 ]
 # Note: visionclaw-contracts is independently buildable. To work around the
 # pre-existing `solid-pod-rs { rev = "main" }` resolution error in the root
-# webxr package (which Cargo treats as a commit SHA, not a branch), run:
+# visionclaw-server package (which Cargo treats as a commit SHA, not a branch), run:
 #   cargo build --manifest-path crates/visionclaw-contracts/Cargo.toml
 # from a fresh checkout. The baseline fix for solid-pod-rs is tracked separately
 # (ADR-032 M1 follow-up).
 
 [package]
-name = "webxr"
+name = "visionclaw-server"
 version = "0.1.0"
 edition = "2021"
 description = "A WebXR graph visualisation server with GPU-accelerated physics"
@@ -31,13 +31,13 @@ crate-type = ["cdylib", "rlib"]
 # Workspace crates — ADR-090 hexagonal modularisation. Each `pub use`
 # re-export shim in src/{models,types,config,layout} reaches into these
 # crates so a one-line change in a domain type no longer triggers a full
-# 12-minute rebuild of webxr; only the touched crate + linker run.
-visionflow-domain = { path = "crates/visionflow-domain" }
-visionflow-actors = { path = "crates/visionflow-actors" }
-visionflow-protocol = { path = "crates/visionflow-protocol" }
-visionflow-adapters = { path = "crates/visionflow-adapters" }
-visionflow-gpu = { path = "crates/visionflow-gpu" }
-visionflow-ontology = { path = "crates/visionflow-ontology" }
+# 12-minute rebuild of visionclaw-server; only the touched crate + linker run.
+visionclaw-domain = { path = "crates/visionclaw-domain" }
+visionclaw-actors = { path = "crates/visionclaw-actors" }
+visionclaw-protocol = { path = "crates/visionclaw-protocol" }
+visionclaw-adapters = { path = "crates/visionclaw-adapters" }
+visionclaw-gpu = { path = "crates/visionclaw-gpu" }
+visionclaw-ontology = { path = "crates/visionclaw-ontology" }
 
 # Web framework and WebSocket
 actix-web = { version = "4.11.0", features = ["compress-zstd", "macros"] }

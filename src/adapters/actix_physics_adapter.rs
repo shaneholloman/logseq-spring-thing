@@ -12,8 +12,8 @@ use std::time::Duration;
 
 use crate::actors::physics_orchestrator_actor::PhysicsOrchestratorActor;
 use crate::adapters::messages::*;
-use visionflow_domain::models::graph::GraphData;
-use visionflow_domain::ports::gpu_physics_adapter::{
+use visionclaw_domain::models::graph::GraphData;
+use visionclaw_domain::ports::gpu_physics_adapter::{
     GpuDeviceInfo, GpuPhysicsAdapter, NodeForce, PhysicsParameters, PhysicsStatistics,
     PhysicsStepResult, Result as PortResult,
 };
@@ -599,7 +599,7 @@ impl Handler<CleanupPhysicsMessage> for PhysicsOrchestratorActor {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use visionflow_domain::models::node::Node;
+    use visionclaw_domain::models::node::Node;
     use crate::utils::socket_flow_messages::BinaryNodeData;
 
     #[actix_rt::test]

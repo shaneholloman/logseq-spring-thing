@@ -546,7 +546,7 @@ jobs:
 - ADR-080 — Forum kit deployment topology
 - ADR-081 — Federation key custody & rotation (provides keys for L3 federation tests)
 - PRD-010 — DID:Nostr Mesh Federation, G8
-- PRD-011 — VisionFlow Forum Kit Extraction, F6
+- PRD-011 — VisionClaw Forum Kit Extraction, F6
 - `docs/integration-research/qe-fleet/Q4-coverage-gap-audit.md` G2 (reference vectors), G3 (cross-substrate contracts), G4 (cross-system smoke)
 - `docs/integration-research/qe-fleet/Q5-test-fixture-design.md` T1-T15 (fixture design)
 - paulmillr/nip44: https://github.com/paulmillr/nip44

@@ -1,5 +1,5 @@
 #!/bin/bash
-# VisionFlow Unified Launch Script - Simple, unified launcher for all environments
+# VisionClaw Unified Launch Script - Simple, unified launcher for all environments
 set -euo pipefail
 
 # Colors for output
@@ -14,7 +14,7 @@ NC='\033[0m' # No Color
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 COMPOSE_FILE="$PROJECT_ROOT/docker-compose.unified.yml"
-CONTAINER_NAME="visionflow_container"
+CONTAINER_NAME="visionclaw_container"
 AGENT_CONTAINER="agentic-workstation"
 AGENT_COMPOSE_FILE="$PROJECT_ROOT/multi-agent-docker/docker-compose.unified.yml"
 
@@ -60,7 +60,7 @@ info() {
 show_help() {
     cat << EOF
 ${GREEN}╔════════════════════════════════════════════════════════════╗
-║         VisionFlow Unified Launch Script                   ║
+║         VisionClaw Unified Launch Script                   ║
 ╚════════════════════════════════════════════════════════════╝${NC}
 
 ${YELLOW}Usage:${NC}
@@ -306,10 +306,10 @@ cleanup_conflicts() {
 
     # Stop and remove any containers with conflicting names
     local conflicting_containers=(
-        "visionflow_container"
-        "visionflow-backend"
-        "visionflow-frontend"
-        "visionflow-cloudflared"
+        "visionclaw_container"
+        "visionclaw-backend"
+        "visionclaw-frontend"
+        "visionclaw-cloudflared"
     )
 
     for container in "${conflicting_containers[@]}"; do
@@ -345,7 +345,7 @@ build_containers() {
     fi
 
     # Enable GPU and ontology features by default for both dev and prod
-    # These are the core VisionFlow features required for full functionality.
+    # These are the core VisionClaw features required for full functionality.
     #
     # ADR-06 §D1 + resolution T2: `dev-auth` Cargo feature is added ONLY for
     # dev environment. Release/production builds MUST NOT include it — the
@@ -380,7 +380,7 @@ cleanup_dev() {
     exit 0
 }
 
-# Derive the Docker Compose image name for the visionflow service
+# Derive the Docker Compose image name for the visionclaw service
 get_image_name() {
     # Docker Compose names images as <project>-<service>
     # Project name defaults to the directory name of the compose file
@@ -388,22 +388,22 @@ get_image_name() {
     project_dir="$(basename "$PROJECT_ROOT")"
     # Also check COMPOSE_PROJECT_NAME override
     local project_name="${COMPOSE_PROJECT_NAME:-$project_dir}"
-    echo "${project_name}-visionflow"
+    echo "${project_name}-visionclaw"
 }
 
 # Remove stale cargo TARGET cache only — preserves registry/git downloads
 clean_cargo_target() {
     log "Removing stale cargo target cache volume..."
-    docker volume rm "${CARGO_TARGET_CACHE_VOLUME:-visionflow-cargo-target-cache}" 2>/dev/null || true
+    docker volume rm "${CARGO_TARGET_CACHE_VOLUME:-visionclaw-cargo-target-cache}" 2>/dev/null || true
     success "Cargo target cache cleaned (registry/git downloads preserved)"
 }
 
 # Remove ALL cargo cache volumes (for full rebuild only)
 clean_cargo_volumes() {
     log "Removing all cargo cache volumes..."
-    docker volume rm "${CARGO_TARGET_CACHE_VOLUME:-visionflow-cargo-target-cache}" 2>/dev/null || true
-    docker volume rm "${CARGO_CACHE_VOLUME:-visionflow-cargo-cache}" 2>/dev/null || true
-    docker volume rm "${CARGO_GIT_CACHE_VOLUME:-visionflow-cargo-git-cache}" 2>/dev/null || true
+    docker volume rm "${CARGO_TARGET_CACHE_VOLUME:-visionclaw-cargo-target-cache}" 2>/dev/null || true
+    docker volume rm "${CARGO_CACHE_VOLUME:-visionclaw-cargo-cache}" 2>/dev/null || true
+    docker volume rm "${CARGO_GIT_CACHE_VOLUME:-visionclaw-cargo-git-cache}" 2>/dev/null || true
     success "All cargo cache volumes cleaned"
 }
 
@@ -569,8 +569,8 @@ start_environment() {
         if [[ "$source_changed" == "true" ]]; then
             warning "Source code changes detected — restarting container to recompile..."
             # Source is volume-mounted, so just restart. The wrapper rebuilds on startup.
-            docker_compose stop visionflow
-            docker_compose start visionflow
+            docker_compose stop visionclaw
+            docker_compose start visionclaw
             sleep 3
         else
             success "Container $CONTAINER_NAME is already running and healthy (no source changes)"
@@ -605,7 +605,7 @@ start_environment() {
     elif [[ "$image_rebuild" == "config" ]]; then
         warning "Config changes detected (prod) — rebuilding image..."
         build_containers
-    elif ! docker images | grep -q "visionflow"; then
+    elif ! docker images | grep -q "visionclaw"; then
         info "Container images not found. Building first..."
         build_containers
     else
@@ -912,14 +912,14 @@ else:
         fi
     fi
 
-    # Build VisionFlow CachyOS containers
+    # Build VisionClaw CachyOS containers
     if [[ "$SKIP_CACHYOS" != "true" ]]; then
         echo ""
         echo "========================================"
-        echo "  VISIONFLOW CACHYOS BUILD"
+        echo "  VISIONCLAW CACHYOS BUILD"
         echo "========================================"
         echo ""
-        log "Building CachyOS-aligned VisionFlow containers..."
+        log "Building CachyOS-aligned VisionClaw containers..."
 
         if [[ -f "comfyui/Dockerfile.cachyos" ]]; then
             log "[VF-1/2] Building ComfyUI (CachyOS aligned)..."
@@ -935,7 +935,7 @@ else:
             warning "claude-zai/Dockerfile.cachyos not found, skipping"
         fi
 
-        success "VisionFlow CachyOS builds complete"
+        success "VisionClaw CachyOS builds complete"
         echo ""
         info "CUDA Compatibility (all containers):"
         echo "  - CUDA Path: /opt/cuda"
@@ -1068,19 +1068,19 @@ show_service_urls() {
     if docker ps 2>/dev/null | grep -q cloudflared-tunnel; then
         echo ""
         success "Cloudflared tunnel: Active"
-        echo "  ${GREEN}Public URL:${NC}    https://www.visionflow.info"
+        echo "  ${GREEN}Public URL:${NC}    https://www.visionclaw.info"
     fi
 }
 
 # Clean everything
 clean_all() {
-    warning "This will remove ALL VisionFlow containers, volumes, and images"
+    warning "This will remove ALL VisionClaw containers, volumes, and images"
     echo ""
     read -p "Are you sure you want to continue? (yes/no): " -r
     echo
 
     if [[ "$REPLY" == "yes" ]]; then
-        log "Cleaning all VisionFlow resources..."
+        log "Cleaning all VisionClaw resources..."
 
         # Stop and remove conflicting containers
         cleanup_conflicts
@@ -1092,19 +1092,19 @@ clean_all() {
             docker_compose down -v --remove-orphans 2>/dev/null || true
         done
 
-        # Remove VisionFlow volumes (including those from different project names)
-        log "Removing VisionFlow volumes..."
-        docker volume ls --format '{{.Name}}' | grep -E '(visionflow|ar-ai-knowledge-graph)' | xargs -r docker volume rm -f 2>/dev/null || true
+        # Remove VisionClaw volumes (including those from different project names)
+        log "Removing VisionClaw volumes..."
+        docker volume ls --format '{{.Name}}' | grep -E '(visionclaw|ar-ai-knowledge-graph)' | xargs -r docker volume rm -f 2>/dev/null || true
 
         # Remove images
-        log "Removing VisionFlow images..."
-        docker images | grep -E '(visionflow|ar-ai-knowledge-graph)' | awk '{print $3}' | xargs -r docker rmi -f || true
+        log "Removing VisionClaw images..."
+        docker images | grep -E '(visionclaw|ar-ai-knowledge-graph)' | awk '{print $3}' | xargs -r docker rmi -f || true
 
         # Clean build cache
         log "Cleaning build cache..."
         docker builder prune -f
 
-        success "Cleanup complete - all VisionFlow resources removed"
+        success "Cleanup complete - all VisionClaw resources removed"
     else
         info "Cleanup cancelled"
     fi
@@ -1113,7 +1113,7 @@ clean_all() {
 # Show banner
 show_banner() {
     echo -e "${GREEN}╔════════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${GREEN}║         VisionFlow Unified Launcher                        ║${NC}"
+    echo -e "${GREEN}║         VisionClaw Unified Launcher                        ║${NC}"
     echo -e "${GREEN}║  Command:     ${CYAN}$(printf '%-42s' "$COMMAND")${GREEN}║${NC}"
     echo -e "${GREEN}║  Environment: ${YELLOW}$(printf '%-42s' "$ENVIRONMENT")${GREEN}║${NC}"
     echo -e "${GREEN}╚════════════════════════════════════════════════════════════╝${NC}"

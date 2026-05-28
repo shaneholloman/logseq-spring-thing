@@ -1,6 +1,6 @@
 //! build.rs for the webxr binary — ADR-090 Phase 3
 //!
-//! CUDA source files have moved to `crates/visionflow-gpu/src/cuda_sources/`.
+//! CUDA source files have moved to `crates/visionclaw-gpu/src/cuda_sources/`.
 //! Compilation and linking are now handled entirely by that crate's build.rs.
 //!
 //! This file is kept so Cargo does not complain about a missing build script;
@@ -15,7 +15,7 @@ fn main() {
     if !gpu_enabled {
         println!("cargo:warning=webxr build.rs: GPU feature not enabled");
     } else {
-        println!("cargo:warning=webxr build.rs: GPU feature enabled — CUDA compilation delegated to visionflow-gpu crate");
+        println!("cargo:warning=webxr build.rs: GPU feature enabled — CUDA compilation delegated to visionclaw-gpu crate");
     }
 
     // Notify Cargo to re-run if the GPU feature flag or CUDA env vars change.

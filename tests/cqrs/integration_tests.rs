@@ -5,12 +5,12 @@
 
 use anyhow::Result;
 use std::sync::Arc;
-use webxr::cqrs::bus::{CommandBus, QueryBus};
-use webxr::cqrs::commands::*;
-use webxr::cqrs::handlers::*;
-use webxr::cqrs::queries::*;
-use webxr::models::node::Node;
-use webxr::repositories::UnifiedGraphRepository;
+use visionclaw_server::cqrs::bus::{CommandBus, QueryBus};
+use visionclaw_server::cqrs::commands::*;
+use visionclaw_server::cqrs::handlers::*;
+use visionclaw_server::cqrs::queries::*;
+use visionclaw_server::models::node::Node;
+use visionclaw_server::repositories::UnifiedGraphRepository;
 
 #[tokio::test]
 async fn test_add_and_get_node() -> Result<()> {

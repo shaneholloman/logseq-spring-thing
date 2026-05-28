@@ -194,4 +194,4 @@ The following are **not in PRD-005 scope** but recorded here for visibility and 
 
 - PRD-005 §13 (GPU Implementation Notes), §19 (R-19, R-23, F-09, F-29, F-30)
 - ADR-061 (Binary Protocol — preserved invariants), ADR-031 (Network Backpressure), ADR-069 (Force Preset System)
-- Source files cited: `src/utils/visionflow_unified.cu`, `src/utils/visionflow_unified_stability.cu`, `src/utils/semantic_forces.cu`, `src/utils/ontology_constraints.cu`, `src/actors/gpu/force_compute_actor.rs`, `src/actors/gpu/semantic_forces_actor.rs`, `src/actors/gpu/ontology_constraint_actor.rs`, `src/services/semantic_type_registry.rs`, `src/models/simulation_params.rs`, `build.rs`
+- Source files cited: `src/utils/visionclaw_unified.cu`, `src/utils/visionclaw_unified_stability.cu`, `src/utils/semantic_forces.cu`, `src/utils/ontology_constraints.cu`, `src/actors/gpu/force_compute_actor.rs`, `src/actors/gpu/semantic_forces_actor.rs`, `src/actors/gpu/ontology_constraint_actor.rs`, `src/services/semantic_type_registry.rs`, `src/models/simulation_params.rs`, `build.rs`

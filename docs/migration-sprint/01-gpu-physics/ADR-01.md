@@ -177,7 +177,7 @@ To flag for migration awareness, not for rollback baseline:
 - `src/actors/force_compute_actor.rs` at baseline initialises buffers
   inside the `Started` handler. This is the source of the cross-thread
   context bug; address as part of D2's actor-owned-context discipline.
-- `src/utils/visionflow_unified_stability.cu` at baseline (50 new lines on
+- `src/utils/visionclaw_unified_stability.cu` at baseline (50 new lines on
   main) does not yet exist. The stability checks are needed and should be
   brought forward as part of D8.
 - The baseline has 5 layout engines (per the commit message) but the

@@ -14,19 +14,19 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 
 use async_trait::async_trait;
-use webxr::adapters::whelk_inference_engine::WhelkInferenceEngine;
-use webxr::models::edge::Edge;
-use webxr::models::graph::GraphData;
-use webxr::models::node::Node;
-use webxr::ports::knowledge_graph_repository::{
+use visionclaw_server::adapters::whelk_inference_engine::WhelkInferenceEngine;
+use visionclaw_server::models::edge::Edge;
+use visionclaw_server::models::graph::GraphData;
+use visionclaw_server::models::node::Node;
+use visionclaw_server::ports::knowledge_graph_repository::{
     GraphStatistics, KnowledgeGraphRepository, Result as KGResult,
 };
-use webxr::services::github_pr_service::GitHubPRService;
-use webxr::services::ontology_mutation_service::OntologyMutationService;
-use webxr::services::ontology_query_service::OntologyQueryService;
-use webxr::services::schema_service::SchemaService;
-use webxr::test_helpers::create_test_ontology_repo;
-use webxr::types::ontology_tools::*;
+use visionclaw_server::services::github_pr_service::GitHubPRService;
+use visionclaw_server::services::ontology_mutation_service::OntologyMutationService;
+use visionclaw_server::services::ontology_query_service::OntologyQueryService;
+use visionclaw_server::services::schema_service::SchemaService;
+use visionclaw_server::test_helpers::create_test_ontology_repo;
+use visionclaw_server::types::ontology_tools::*;
 
 // ---------- Minimal KG repo mock ----------
 

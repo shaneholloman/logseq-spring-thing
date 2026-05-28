@@ -10,8 +10,8 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use tokio::sync::RwLock;
 
-use visionflow_domain::models::graph::GraphData;
-use visionflow_domain::ports::ontology_repository::{
+use visionclaw_domain::models::graph::GraphData;
+use visionclaw_domain::ports::ontology_repository::{
     AxiomType, InferenceResults, OntologyMetrics, OntologyRepository, OntologyRepositoryError,
     OwlAxiom, OwlClass, OwlProperty, PathfindingCacheEntry, PropertyType, ValidationReport,
     Result as OntResult,

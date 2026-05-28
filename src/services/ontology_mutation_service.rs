@@ -10,8 +10,8 @@
 //! Notes are per-user — each user's agents write to their own namespace.
 
 use crate::adapters::whelk_inference_engine::WhelkInferenceEngine;
-use visionflow_domain::ports::inference_engine::InferenceEngine;
-use visionflow_domain::ports::ontology_repository::{OwlAxiom, AxiomType, OntologyRepository};
+use visionclaw_domain::ports::inference_engine::InferenceEngine;
+use visionclaw_domain::ports::ontology_repository::{OwlAxiom, AxiomType, OntologyRepository};
 use crate::services::file_service::MARKDOWN_DIR;
 use crate::services::github_pr_service::GitHubPRService;
 use crate::types::ontology_tools::*;

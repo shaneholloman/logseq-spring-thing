@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-VisionFlow WebXR Backend Runtime Stability Test
+VisionClaw WebXR Backend Runtime Stability Test
 
 This script tests the backend runtime stability by:
 1. Starting the backend service
@@ -31,8 +31,8 @@ class RuntimeStabilityTester:
         self.backend_started = False
 
     async def start_backend(self, timeout: int = 30) -> bool:
-        """Start the VisionFlow backend service"""
-        print("🚀 Starting VisionFlow WebXR backend...")
+        """Start the VisionClaw backend service"""
+        print("🚀 Starting VisionClaw WebXR backend...")
 
         env = os.environ.copy()
         env['RUST_LOG'] = 'info'
@@ -281,7 +281,7 @@ class RuntimeStabilityTester:
 
     async def run_all_tests(self) -> List[Dict[str, Any]]:
         """Run all stability tests"""
-        print("🧪 Starting VisionFlow WebXR Runtime Stability Tests")
+        print("🧪 Starting VisionClaw WebXR Runtime Stability Tests")
         print("=" * 60)
 
         results = []

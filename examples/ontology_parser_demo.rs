@@ -3,7 +3,7 @@
 //!
 //! Run with: cargo run --example ontology_parser_demo
 
-use webxr::services::parsers::ontology_parser::{OntologyParser, OntologyBlock};
+use visionclaw_server::services::parsers::ontology_parser::{OntologyParser, OntologyBlock};
 
 fn main() {
     env_logger::init();

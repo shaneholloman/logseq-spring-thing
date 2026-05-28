@@ -6,15 +6,15 @@
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-use webxr::actors::lifecycle::{ActorLifecycleManager, SupervisionStrategy, SupervisionDecision};
-use webxr::application::physics_service::{PhysicsService, SimulationParams};
-use webxr::application::semantic_service::{SemanticService, CommunityDetectionRequest};
-use webxr::events::event_bus::EventBus;
-use webxr::models::graph::GraphData;
-use webxr::models::node::Node;
-use webxr::models::edge::Edge;
-use webxr::ports::gpu_physics_adapter::{GpuPhysicsAdapter, PhysicsParameters};
-use webxr::ports::gpu_semantic_analyzer::{GpuSemanticAnalyzer, ClusteringAlgorithm};
+use visionclaw_server::actors::lifecycle::{ActorLifecycleManager, SupervisionStrategy, SupervisionDecision};
+use visionclaw_server::application::physics_service::{PhysicsService, SimulationParams};
+use visionclaw_server::application::semantic_service::{SemanticService, CommunityDetectionRequest};
+use visionclaw_server::events::event_bus::EventBus;
+use visionclaw_server::models::graph::GraphData;
+use visionclaw_server::models::node::Node;
+use visionclaw_server::models::edge::Edge;
+use visionclaw_server::ports::gpu_physics_adapter::{GpuPhysicsAdapter, PhysicsParameters};
+use visionclaw_server::ports::gpu_semantic_analyzer::{GpuSemanticAnalyzer, ClusteringAlgorithm};
 
 // Mock implementations for testing
 mod mocks {
@@ -22,9 +22,9 @@ mod mocks {
     use async_trait::async_trait;
     use std::collections::HashMap;
 
-    use webxr::models::constraints::ConstraintSet;
-    use webxr::ports::gpu_physics_adapter::*;
-    use webxr::ports::gpu_semantic_analyzer::*;
+    use visionclaw_server::models::constraints::ConstraintSet;
+    use visionclaw_server::ports::gpu_physics_adapter::*;
+    use visionclaw_server::ports::gpu_semantic_analyzer::*;
 
     pub struct MockPhysicsAdapter {
         pub initialized: Arc<RwLock<bool>>,
@@ -369,9 +369,9 @@ async fn test_event_driven_coordination() {
 
 #[tokio::test]
 async fn test_backward_compatibility() {
-    use webxr::actors::backward_compat::LegacyActorCompat;
+    use visionclaw_server::actors::backward_compat::LegacyActorCompat;
 
-    std::env::set_var("VISIONFLOW_LEGACY_ACTORS", "true");
+    std::env::set_var("VISIONCLAW_LEGACY_ACTORS", "true");
     assert!(LegacyActorCompat::legacy_mode_enabled());
 }
 

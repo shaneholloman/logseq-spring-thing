@@ -169,11 +169,11 @@ or the path is missing, it falls back to `docker run`. This is the
 current behaviour in commits `73e2d8209` / `28c3521bb`; codify it.
 
 **D5d — Consumers**: each ecosystem service maps to exactly one
-VisionFlow consumer surface. The table below is exhaustive for the
+VisionClaw consumer surface. The table below is exhaustive for the
 sprint; adding a new ecosystem service requires adding a row here in
 the same PR.
 
-| Ecosystem service | VisionFlow consumer | WS endpoint | ADR-06 D4 handler |
+| Ecosystem service | VisionClaw consumer | WS endpoint | ADR-06 D4 handler |
 |-------------------|---------------------|-------------|-------------------|
 | Kokoro TTS (8880) | TTS dispatch in speech actor | `/ws/speech` (egress) | `speech_socket_handler` |
 | Whisper STT (8000) | STT dispatch in speech actor | `/ws/speech` (ingress) | `speech_socket_handler` |
@@ -261,9 +261,9 @@ the binary is baked into the image.
 
 | Tier | Volume                              | Wiped by             | Contains |
 |------|-------------------------------------|----------------------|----------|
-| 1    | `visionflow-cargo-cache`            | `rebuild` only       | `~/.cargo/registry` (dep source) |
-| 2    | `visionflow-cargo-git-cache`        | `rebuild` only       | `~/.cargo/git` (git deps) |
-| 3    | `visionflow-cargo-target-cache`     | `up` if source changed; `rebuild` always | `/app/target` (build artefacts) |
+| 1    | `visionclaw-cargo-cache`            | `rebuild` only       | `~/.cargo/registry` (dep source) |
+| 2    | `visionclaw-cargo-git-cache`        | `rebuild` only       | `~/.cargo/git` (git deps) |
+| 3    | `visionclaw-cargo-target-cache`     | `up` if source changed; `rebuild` always | `/app/target` (build artefacts) |
 
 `clean_cargo_target()` removes only tier 3. `clean_cargo_volumes()`
 removes all three. The distinction is critical: tier 1 represents a
@@ -277,7 +277,7 @@ Docker socket bind-mounted. It can call `docker` but a bind mount
 `${HOST_PROJECT_ROOT:-.}/src:/app/src:ro` declared in
 `docker-compose.unified.yml` resolves against the **host** filesystem,
 not the agent container. Running `launch.sh` from inside the agent
-container produces a VisionFlow image with **baked-in source**
+container produces a VisionClaw image with **baked-in source**
 (silent bind-mount failure), not live source — edits appear to have
 no effect.
 

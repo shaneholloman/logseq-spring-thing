@@ -11,7 +11,7 @@ test_crash_timing() {
     echo "Starting at: $(date +%H:%M:%S.%N)"
     
     # Use timeout to track exact timing
-    timeout --preserve-status 15s time -p docker exec visionflow_container curl -v --max-time 10 "$endpoint" 2>&1 | {
+    timeout --preserve-status 15s time -p docker exec visionclaw_container curl -v --max-time 10 "$endpoint" 2>&1 | {
         while IFS= read -r line; do
             echo "$(date +%H:%M:%S.%N) | $line"
         done
@@ -35,5 +35,5 @@ test_crash_timing "http://localhost:4000/api/graph/data" "Graph Data"
 sleep 3
 
 echo "===== TCP CONNECTION DETAILS ====="
-docker exec visionflow_container curl -v --trace-time --max-time 5 http://localhost:4000/api/config 2>&1 | grep -E "(Connected|Closing|timeout|Expire)"
+docker exec visionclaw_container curl -v --trace-time --max-time 5 http://localhost:4000/api/config 2>&1 | grep -E "(Connected|Closing|timeout|Expire)"
 

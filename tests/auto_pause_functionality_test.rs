@@ -1,5 +1,5 @@
 // Test disabled - references deprecated/removed modules (crate::actors::graph_actor, crate::config)
-// Module paths have changed; graph_actor may have moved to webxr::actors
+// Module paths have changed; graph_actor may have moved to visionclaw_server::actors
 /*
 //! Test cases for the auto-pause functionality
 //!

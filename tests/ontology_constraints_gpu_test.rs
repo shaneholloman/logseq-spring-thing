@@ -22,22 +22,22 @@ mod tests {
     use std::collections::HashMap;
 
     #[cfg(all(feature = "ontology", feature = "gpu"))]
-    use webxr::physics::ontology_constraints::{
+    use visionclaw_server::physics::ontology_constraints::{
         ConsistencyCheck, OWLAxiom, OWLAxiomType, OntologyConstraintConfig,
         OntologyConstraintTranslator, OntologyInference, OntologyReasoningReport,
     };
 
     #[cfg(all(feature = "ontology", feature = "gpu"))]
-    use webxr::models::{
+    use visionclaw_server::models::{
         constraints::{Constraint, ConstraintKind, ConstraintSet},
         graph::GraphData,
         node::Node,
     };
 
     #[cfg(all(feature = "ontology", feature = "gpu"))]
-    use webxr::utils::socket_flow_messages::BinaryNodeData;
+    use visionclaw_server::utils::socket_flow_messages::BinaryNodeData;
     #[cfg(all(feature = "ontology", feature = "gpu"))]
-    use webxr::models::metadata::MetadataStore;
+    use visionclaw_server::models::metadata::MetadataStore;
 
     #[cfg(all(feature = "ontology", feature = "gpu"))]
     fn create_test_node(id: u32, metadata_id: String, node_type: Option<String>) -> Node {

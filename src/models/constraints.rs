@@ -1,16 +1,16 @@
 // ADR-090 Phase 1b: Domain constraint types (ConstraintKind, Constraint,
-// AdvancedParams, ConstraintSet) are re-exported from visionflow-domain.
+// AdvancedParams, ConstraintSet) are re-exported from visionclaw-domain.
 // ConstraintData stays here because it requires GPU-specific derives
 // (bytemuck::Pod/Zeroable, cust::memory::DeviceCopy) that cannot live
 // in the pure-domain crate.
-pub use visionflow_domain::models::constraints::{
+pub use visionclaw_domain::models::constraints::{
     AdvancedParams, Constraint, ConstraintKind, ConstraintSet,
 };
 
 /// GPU-buffer representation of a single constraint.
 /// Kept in webxr (not domain) because it requires bytemuck + cust GPU traits.
 /// Matches the `#[repr(C)]` layout expected by CUDA kernels in
-/// visionflow_unified.cu / ontology_constraints.cu.
+/// visionclaw_unified.cu / ontology_constraints.cu.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct ConstraintData {

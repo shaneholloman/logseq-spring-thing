@@ -8,9 +8,9 @@
 
 #[cfg(feature = "ontology")]
 mod reasoning_benchmarks {
-    use webxr::reasoning::custom_reasoner::CustomReasoner;
+    use visionclaw_server::reasoning::custom_reasoner::CustomReasoner;
     // NOTE: inference_cache module does not exist - commenting out related tests
-    // use webxr::reasoning::inference_cache::InferenceCache;
+    // use visionclaw_server::reasoning::inference_cache::InferenceCache;
     use std::time::Instant;
     use tempfile::TempDir;
 
@@ -251,7 +251,7 @@ mod reasoning_benchmarks {
             node_id_to_index.insert(format!("Class{}", i), i);
         }
 
-        use webxr::gpu::semantic_forces::SemanticForceGenerator;
+        use visionclaw_server::gpu::semantic_forces::SemanticForceGenerator;
         let force_gen = SemanticForceGenerator::new();
 
         let start = Instant::now();
@@ -348,7 +348,7 @@ mod reasoning_benchmarks {
             node_id_to_index.insert(format!("Class{}", i), i);
         }
 
-        use webxr::gpu::semantic_forces::SemanticForceGenerator;
+        use visionclaw_server::gpu::semantic_forces::SemanticForceGenerator;
         let force_gen = SemanticForceGenerator::new();
         let constraints = force_gen.generate_constraints(&inferred, &node_id_to_index);
 

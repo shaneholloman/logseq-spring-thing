@@ -89,15 +89,15 @@ function getMaxPixelRatio(): number {
  * Requires page reload to take effect (R3F Canvas can't swap renderers live).
  */
 export let forceWebGLOverride = typeof localStorage !== 'undefined'
-  && localStorage.getItem('visionflow-force-webgl') === 'true';
+  && localStorage.getItem('visionclaw-force-webgl') === 'true';
 
 export function setForceWebGLOverride(force: boolean) {
   forceWebGLOverride = force;
   if (typeof localStorage !== 'undefined') {
     if (force) {
-      localStorage.setItem('visionflow-force-webgl', 'true');
+      localStorage.setItem('visionclaw-force-webgl', 'true');
     } else {
-      localStorage.removeItem('visionflow-force-webgl');
+      localStorage.removeItem('visionclaw-force-webgl');
     }
   }
 }

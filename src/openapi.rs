@@ -10,7 +10,7 @@ use utoipa::OpenApi;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
-/// VisionFlow API - WebXR Graph Visualization Server
+/// VisionClaw API - WebXR Graph Visualization Server
 /// GPU-accelerated knowledge graph visualization with:
 /// - Real-time physics simulation
 /// - QUIC/WebTransport for ultra-low latency
@@ -19,10 +19,10 @@ use utoipa::ToSchema;
 #[derive(OpenApi)]
 #[openapi(
     info(
-        title = "VisionFlow API",
+        title = "VisionClaw API",
         version = "1.0.0",
         description = r#"
-# VisionFlow API
+# VisionClaw API
 
 WebXR Graph Visualization Server with GPU-accelerated physics, QUIC transport, and semantic reasoning.
 
@@ -59,8 +59,8 @@ All JSON responses use the `StandardResponse<T>` envelope:
 - Query endpoints: 100 requests per minute per IP
 "#,
         contact(
-            name = "VisionFlow Team",
-            url = "https://github.com/visionflow"
+            name = "VisionClaw Team",
+            url = "https://github.com/visionclaw"
         ),
         license(
             name = "AGPL-3.0-only",

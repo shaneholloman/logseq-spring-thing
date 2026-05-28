@@ -1,6 +1,6 @@
 use crate::config::dev_config;
 use crate::time;
-use visionflow_domain::types::claude_flow::{AgentStatus, Vec3};
+use visionclaw_domain::types::claude_flow::{AgentStatus, Vec3};
 use chrono::{DateTime, Utc};
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};

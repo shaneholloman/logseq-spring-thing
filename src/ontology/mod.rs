@@ -1,6 +1,6 @@
-//! Shim: ontology module moved to `visionflow-ontology` crate (ADR-090 Phase A4).
+//! Shim: ontology module moved to `visionclaw-ontology` crate (ADR-090 Phase A4).
 //! Sub-modules with webxr-internal deps (actors, physics) remain empty stubs.
-pub use visionflow_ontology::ontology::*;
+pub use visionclaw_ontology::ontology::*;
 
 /// These sub-modules originally lived here but only had empty stubs.
 /// Re-exported for any existing `crate::ontology::actors::` paths.

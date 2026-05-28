@@ -10,7 +10,7 @@ Related     : ADR-01 (GPU Physics), ADR-02 (Binary Protocol), ADR-03 (Client
 ## Context
 
 The bots feature on `main@HEAD` accumulated three overlapping mechanisms
-for getting agent data into the VisionFlow client:
+for getting agent data into the VisionClaw client:
 
 1. **REST polling** of `/graph/data` every 3–15s via
    `AgentPollingService.ts` → returns the full 4519-node knowledge graph
@@ -32,7 +32,7 @@ agentbox + the external forum (see ADR-10) which removes the duplication
 and consolidates the trust domain.
 
 This ADR records the decisions that retain only the *visualisation*
-concern in VisionFlow and remove or relocate everything else.
+concern in VisionClaw and remove or relocate everything else.
 
 ## Decision
 
@@ -126,7 +126,7 @@ client-side timeout).
 
 Clicking an agent capsule constructs an `AgentActionEnvelope` (ADR-10
 D3 plus `crates/visionclaw-contracts/src/agent_action.rs`) and
-dispatches it via the session's chosen transport. VisionFlow does not
+dispatches it via the session's chosen transport. VisionClaw does not
 render a control panel in-process and does not embed an iframe of one;
 the renderer's responsibility ends at envelope dispatch.
 
@@ -143,7 +143,7 @@ Agent type is communicated as:
 
 The rendering layer reads these two fields. It never inspects an
 `agent_type` string. Adding a new agent type in agentbox does not require
-a VisionFlow change.
+a VisionClaw change.
 
 ### D10. Empty-swarm cost is zero
 
@@ -249,7 +249,7 @@ parallel branching mechanism in the rendering or telemetry layers.
 (this ADR)
 
 Adopted. Single ingress path, no client-to-server writes for live state,
-no duplicated graph store, no control-plane in VisionFlow.
+no duplicated graph store, no control-plane in VisionClaw.
 
 ## Risks
 
@@ -271,7 +271,7 @@ no duplicated graph store, no control-plane in VisionFlow.
 - **R4**: Click-through forwarder must work for non-running agents
   (e.g., the click happens just after `AgentDeparted` fires). Mitigation:
   Section 10's resolver accepts a possibly-stale `agent_id` and renders
-  an agentbox "agent not found" page; VisionFlow does not pre-validate.
+  an agentbox "agent not found" page; VisionClaw does not pre-validate.
 
 ## Rejected from main as buggy / unjustified
 
@@ -295,7 +295,7 @@ To flag for migration awareness:
   in test fixtures was smaller. The polling design is wrong at the
   baseline; the freeze just made it visible later.
 - `bots_handler.rs` at baseline already exposes the swarm-initialise
-  and spawn-agent routes. These are out of scope for VisionFlow from
+  and spawn-agent routes. These are out of scope for VisionClaw from
   day one; the baseline contains them but agentbox was not yet ready.
   Migration removes them now that agentbox is.
 - The class-flag bit layout is already in place at baseline and

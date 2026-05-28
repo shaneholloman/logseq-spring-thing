@@ -1,7 +1,7 @@
 /**
  * Solid Pod Service
  *
- * Orchestration entry-point for VisionFlow's Solid Pod integration.
+ * Orchestration entry-point for VisionClaw's Solid Pod integration.
  * Delegates all protocol-level work to focused sub-modules:
  *
  *   solidPod/ldpClient.ts        — LDP CRUD, auth headers, path helpers

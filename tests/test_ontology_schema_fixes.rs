@@ -10,8 +10,8 @@
 // Commenting out all tests until Neo4j repository tests are created
 
 /*
-use webxr::repositories::UnifiedOntologyRepository;
-use webxr::ports::ontology_repository::{OntologyRepository, OwlClass, OwlProperty, PropertyType};
+use visionclaw_server::repositories::UnifiedOntologyRepository;
+use visionclaw_server::ports::ontology_repository::{OntologyRepository, OwlClass, OwlProperty, PropertyType};
 
 #[tokio::test]
 async fn test_schema_creates_correctly() {

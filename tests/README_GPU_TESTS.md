@@ -63,7 +63,7 @@ This directory contains comprehensive integration tests for all 7 Tier 1 CUDA ke
    ./scripts/compile_cuda.sh
    ```
 
-   This creates `target/visionflow_unified.ptx` from `src/utils/visionflow_unified.cu`.
+   This creates `target/visionclaw_unified.ptx` from `src/utils/visionclaw_unified.cu`.
 
 3. **GPU Available**:
    ```bash

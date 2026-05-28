@@ -1,7 +1,7 @@
 // src/application/events.rs
 //! Domain Events
 //!
-//! All events that can occur in the VisionFlow system.
+//! All events that can occur in the VisionClaw system.
 //! Events are published asynchronously and handled by subscribers.
 
 use serde::{Deserialize, Serialize};

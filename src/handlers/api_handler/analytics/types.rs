@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::gpu::visual_analytics::{PerformanceMetrics, VisualAnalyticsParams};
-use visionflow_domain::models::constraints::ConstraintSet;
+use visionclaw_domain::models::constraints::ConstraintSet;
 
 // GPUPhysicsStats - connecting to real GPU compute actors for live performance data
 

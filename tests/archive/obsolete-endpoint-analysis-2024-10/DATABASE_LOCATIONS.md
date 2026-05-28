@@ -1,4 +1,4 @@
-# VisionFlow Database Locations - FOUND!
+# VisionClaw Database Locations - FOUND!
 
 ## ✅ Database Files Located
 
@@ -83,14 +83,14 @@ This means:
 
 4. **Install SQLite Tools** (optional):
    ```bash
-   docker exec visionflow_container apk add sqlite
+   docker exec visionclaw_container apk add sqlite
    # or
-   docker exec visionflow_container apt-get install -y sqlite3
+   docker exec visionclaw_container apt-get install -y sqlite3
    ```
 
 5. **Test Direct Database Access**:
    ```bash
-   docker exec visionflow_container sqlite3 /app/data/settings.db "SELECT * FROM sqlite_master WHERE type='table';"
+   docker exec visionclaw_container sqlite3 /app/data/settings.db "SELECT * FROM sqlite_master WHERE type='table';"
    ```
 
 ## Database Schema Validation Needed
@@ -104,14 +104,14 @@ For each crashing endpoint, verify:
 ### Example Checks
 ```bash
 # Settings table
-docker exec visionflow_container sqlite3 /app/data/settings.db ".schema"
+docker exec visionclaw_container sqlite3 /app/data/settings.db ".schema"
 
 # Ontology classes
-docker exec visionflow_container sqlite3 /app/data/ontology.db ".tables"
-docker exec visionflow_container sqlite3 /app/data/ontology.db "SELECT COUNT(*) FROM classes;"
+docker exec visionclaw_container sqlite3 /app/data/ontology.db ".tables"
+docker exec visionclaw_container sqlite3 /app/data/ontology.db "SELECT COUNT(*) FROM classes;"
 
 # Check for errors
-docker exec visionflow_container sqlite3 /app/data/ontology.db "PRAGMA integrity_check;"
+docker exec visionclaw_container sqlite3 /app/data/ontology.db "PRAGMA integrity_check;"
 ```
 
 ## Hypothesis: Unhandled Promise Rejection

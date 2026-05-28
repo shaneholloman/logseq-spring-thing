@@ -4,12 +4,12 @@
 //! - Async task creation with retry logic
 //! - Task state caching and tracking
 //! - Background polling for task completion
-//! - Actor message-based API for integration with VisionFlow actor system
+//! - Actor message-based API for integration with VisionClaw actor system
 //!
 //! ## Architecture
 //!
 //! ```text
-//! VisionFlow API Handler
+//! VisionClaw API Handler
 //!     ↓ (send CreateTask message)
 //! TaskOrchestratorActor
 //!     ↓ (HTTP POST)

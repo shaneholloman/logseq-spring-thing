@@ -20,7 +20,7 @@ These documents were created during October 2024 endpoint testing and reference 
 
 ## Current Architecture
 
-VisionFlow now uses:
+VisionClaw now uses:
 - **Database**: Neo4j 5.13 (replaced SQLite)
 - **Persistence**: Server-authoritative with Neo4j as single source of truth
 - **Handler locations**: Same as documented, but database operations differ

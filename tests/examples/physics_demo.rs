@@ -3,15 +3,15 @@
 //! This example shows how to use the stress majorization solver and semantic
 //! constraint generator together to optimize a knowledge graph layout.
 
-use webxr::physics::{StressMajorizationSolver, SemanticConstraintGenerator};
-use webxr::models::{
+use visionclaw_server::physics::{StressMajorizationSolver, SemanticConstraintGenerator};
+use visionclaw_server::models::{
     constraints::{ConstraintSet, AdvancedParams},
     graph::GraphData,
     node::Node,
     edge::Edge,
     metadata::{Metadata, MetadataStore},
 };
-use webxr::utils::socket_flow_messages::BinaryNodeData;
+use visionclaw_server::utils::socket_flow_messages::BinaryNodeData;
 use std::collections::HashMap;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {

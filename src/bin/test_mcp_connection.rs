@@ -5,8 +5,8 @@
 
 use log::{error, info};
 use std::collections::HashMap;
-use webxr::services::agent_visualization_protocol::McpServerType;
-use webxr::utils::mcp_tcp_client::{create_mcp_client, test_mcp_connectivity};
+use visionclaw_server::services::agent_visualization_protocol::McpServerType;
+use visionclaw_server::utils::mcp_tcp_client::{create_mcp_client, test_mcp_connectivity};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

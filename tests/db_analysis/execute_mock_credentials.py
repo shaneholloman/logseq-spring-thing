@@ -112,7 +112,7 @@ def main():
         cursor = conn.cursor()
 
         print("=" * 60)
-        print("VisionFlow Mock Credentials Setup")
+        print("VisionClaw Mock Credentials Setup")
         print("=" * 60)
         print()
 

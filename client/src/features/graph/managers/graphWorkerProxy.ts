@@ -345,7 +345,7 @@ class GraphWorkerProxy {
     );
   }
 
-  public setGraphType(_type: 'logseq' | 'visionflow'): Promise<void> {
+  public setGraphType(_type: 'logseq' | 'visionclaw'): Promise<void> {
     return GraphWorkerProxy._deprecated(
       'setGraphType',
       'topology fields on setGraphTopology(...)',

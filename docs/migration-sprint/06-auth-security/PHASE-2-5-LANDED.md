@@ -68,7 +68,7 @@ after `dotenv().ok()`):
 
 - **Argv check** — refuses `--allow-skip-auth` with `exit(1)`.
 - **Env-var check** — exits with `exit(2)` if any of `SETTINGS_AUTH_BYPASS`,
-  `ALLOW_INSECURE_DEFAULTS`, `VISIONFLOW_DEV_MODE` are present, OR if
+  `ALLOW_INSECURE_DEFAULTS`, `VISIONCLAW_DEV_MODE` are present, OR if
   `NODE_ENV=development` AND `DOCKER_ENV` are both set.
 
 Each offending var is logged to stderr by name.
@@ -88,14 +88,14 @@ with NO security semantics.
 ### V1 — Symbol absence
 
 ```bash
-cd /home/devuser/workspace/visionflow-worktrees/phase-2-5-auth-gates
+cd /home/devuser/workspace/visionclaw-worktrees/phase-2-5-auth-gates
 cargo build --release  # builds without dev-auth feature
 strings target/release/webxr | grep -E \
-  'SETTINGS_AUTH_BYPASS|VISIONFLOW_DEV_MODE|dev-session-token|dev-user|--allow-skip-auth'
+  'SETTINGS_AUTH_BYPASS|VISIONCLAW_DEV_MODE|dev-session-token|dev-user|--allow-skip-auth'
 ```
 
 Expected matches in release: ONLY the D11 SUSPECT_ENVS const array literals
-(`"SETTINGS_AUTH_BYPASS"`, `"ALLOW_INSECURE_DEFAULTS"`, `"VISIONFLOW_DEV_MODE"`)
+(`"SETTINGS_AUTH_BYPASS"`, `"ALLOW_INSECURE_DEFAULTS"`, `"VISIONCLAW_DEV_MODE"`)
 inside `enforce_release_env_hygiene()`, and the FATAL error messages naming
 the same vars. NO matches for `dev-session-token`, `dev-user`, or any of those
 strings inside auth-acceptance code paths.
@@ -105,7 +105,7 @@ this agent's environment due to two pre-existing infrastructure constraints:**
 
 1. **Empty `whelk-rs` path dependency** in the worktree. The `Cargo.toml`
    declares `whelk = { path = "./whelk-rs" }` but the directory is empty.
-   Sibling worktree `visionflow-worktrees/phase-1-persistence/whelk-rs` has
+   Sibling worktree `visionclaw-worktrees/phase-1-persistence/whelk-rs` has
    the content; a permanent fix would be a git submodule or `whelk-rs` checked
    into all worktrees.
 2. **CUDA toolchain not at the path `cust_raw` build-script expects**
@@ -142,7 +142,7 @@ cargo test --release --test auth_bypass_release
 
 Or, manual grep:
 ```bash
-grep -rn "std::env::var.*\(SETTINGS_AUTH_BYPASS\|ALLOW_INSECURE_DEFAULTS\|VISIONFLOW_DEV_MODE\)" \
+grep -rn "std::env::var.*\(SETTINGS_AUTH_BYPASS\|ALLOW_INSECURE_DEFAULTS\|VISIONCLAW_DEV_MODE\)" \
   src/main.rs src/middleware/ src/settings/ src/handlers/socket_flow_handler/
 ```
 

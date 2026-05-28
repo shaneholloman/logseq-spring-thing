@@ -84,7 +84,7 @@ export interface GraphPattern {
 export interface CrossGraphPattern {
   id: string;
   logseqPattern: GraphPattern;
-  visionflowPattern: GraphPattern;
+  visionclawPattern: GraphPattern;
   similarity: number;
   relationship: 'identical' | 'similar' | 'complementary' | 'contradictory';
   insights: string[];

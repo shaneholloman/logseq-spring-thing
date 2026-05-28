@@ -7,18 +7,18 @@
 
 use std::sync::Arc;
 
-use webxr::gpu::streaming_pipeline::{
+use visionclaw_server::gpu::streaming_pipeline::{
     ClientLOD, CompressedEdge, FrameBuffer, SimplifiedNode, StreamingPipeline,
 };
-use webxr::gpu::visual_analytics::{
+use visionclaw_server::gpu::visual_analytics::{
     IsolationLayer, TSEdge, TSNode, Vec4, VisualAnalyticsGPU,
     VisualAnalyticsParams,
 };
-use webxr::gpu::RenderData;
-use webxr::utils::gpu_safety::{
+use visionclaw_server::gpu::RenderData;
+use visionclaw_server::utils::gpu_safety::{
     GPUSafetyConfig, GPUSafetyError, GPUSafetyValidator, SafeKernelExecutor,
 };
-use webxr::utils::memory_bounds::{
+use visionclaw_server::utils::memory_bounds::{
     MemoryBounds, MemoryBoundsError, SafeArrayAccess, ThreadSafeMemoryBoundsChecker,
 };
 
@@ -262,7 +262,7 @@ mod memory_bounds_tests {
 
     #[test]
     fn test_memory_bounds_registry() {
-        let mut registry = webxr::utils::memory_bounds::MemoryBoundsRegistry::new(10000);
+        let mut registry = visionclaw_server::utils::memory_bounds::MemoryBoundsRegistry::new(10000);
 
         // Register allocation
         let bounds = MemoryBounds::new("test".to_string(), 1000, 4, 4);
@@ -330,7 +330,7 @@ mod memory_bounds_tests {
 
     #[test]
     fn test_memory_bounds_overflow_protection() {
-        let mut registry = webxr::utils::memory_bounds::MemoryBoundsRegistry::new(1000);
+        let mut registry = visionclaw_server::utils::memory_bounds::MemoryBoundsRegistry::new(1000);
 
         // This should fail due to size overflow
         let large_bounds = MemoryBounds::new("huge".to_string(), 2000, 1, 1);
@@ -412,7 +412,7 @@ mod safe_streaming_pipeline_tests {
     async fn test_safe_frame_buffer() {
         let bounds_checker = Arc::new(ThreadSafeMemoryBoundsChecker::new(1024 * 1024 * 1024));
         let mut buffer =
-            webxr::gpu::streaming_pipeline::FrameBuffer::new(100, bounds_checker).unwrap();
+            visionclaw_server::gpu::streaming_pipeline::FrameBuffer::new(100, bounds_checker).unwrap();
 
         let positions = vec![1.0f32; 400]; // 100 nodes * 4 components
         let colors = vec![0.5f32; 400];
@@ -972,16 +972,16 @@ mod ptx_pipeline_tests {
 
         // Test 1: Environment variable discovery
         std::env::set_var(
-            "VISIONFLOW_PTX_PATH",
-            "//target/debug/build/webxr-STAR/out/visionflow_unified.ptx", // Note: STAR replaced * to avoid block comment termination
+            "VISIONCLAW_PTX_PATH",
+            "//target/debug/build/webxr-STAR/out/visionclaw_unified.ptx", // Note: STAR replaced * to avoid block comment termination
         );
 
-        let ptx_path = std::env::var("VISIONFLOW_PTX_PATH");
-        assert!(ptx_path.is_ok(), "VISIONFLOW_PTX_PATH should be readable");
+        let ptx_path = std::env::var("VISIONCLAW_PTX_PATH");
+        assert!(ptx_path.is_ok(), "VISIONCLAW_PTX_PATH should be readable");
 
         // Test 2: Fallback when env var is missing
-        std::env::remove_var("VISIONFLOW_PTX_PATH");
-        let fallback_triggered = std::env::var("VISIONFLOW_PTX_PATH").is_err();
+        std::env::remove_var("VISIONCLAW_PTX_PATH");
+        let fallback_triggered = std::env::var("VISIONCLAW_PTX_PATH").is_err();
         assert!(
             fallback_triggered,
             "Should trigger fallback when env var missing"

@@ -9,7 +9,7 @@ Related     : ADR-05 (this section), ADR-04 (Rendering), ADR-06 (Auth & Security
 
 The Settings & Control Panel subsystem owns the typed schema, server- and
 client-side defaults, declarative UI definition, validation, and per-user
-persistence of every user-controllable knob in VisionFlow. The capability
+persistence of every user-controllable knob in VisionClaw. The capability
 must survive the persistence migration (Neo4j → Oxigraph + SQLite),
 absorb the Nostr-only auth posture, and drop accreted UI complexity that
 no longer earns its cost.

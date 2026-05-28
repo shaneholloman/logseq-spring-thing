@@ -329,7 +329,7 @@ export class ThreeJSAvatarRenderer {
         parameters: [
           `avatar_${avatar.agentId}`,
           '1.0.0',
-          'visionflow-xr',
+          'visionclaw-xr',
           'public.NORMAL',
           100,
           JSON.stringify({

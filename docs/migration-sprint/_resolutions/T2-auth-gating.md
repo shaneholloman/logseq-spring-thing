@@ -8,7 +8,7 @@ Baseline : radical-rollback @ 41979d33e
 
 ## The tension
 
-ADR-02 D8 gates `--allow-skip-auth` on `build = debug || env(VISIONFLOW_DEV_MODE)`
+ADR-02 D8 gates `--allow-skip-auth` on `build = debug || env(VISIONCLAW_DEV_MODE)`
 — a runtime env-var check OR'd with `debug_assertions`.
 
 ADR-06 D1+D2 gates the same surface on
@@ -116,7 +116,7 @@ Cautionary cases at the service level:
   ergonomics: identical to ADR-06's scheme. Zero new env vars. Verifiable
   via V1.
 - **B. ADR-06 relaxes to allow runtime gating in dev builds.** Reintroduces
-  `VISIONFLOW_DEV_MODE`. T-A,B,C *reintroduced* wherever the dev binary
+  `VISIONCLAW_DEV_MODE`. T-A,B,C *reintroduced* wherever the dev binary
   runs. Saves one CLI flag at real cost. Rejected.
 - **C. Hybrid: compile floor + env opt-in in dev builds.** Release =
   identical to A; dev requires *both* feature and env. Defensible but adds
@@ -125,7 +125,7 @@ Cautionary cases at the service level:
   Marginally worse than A.
 - **D. Compile gate + boot-time hard-fail on suspect env vars in release.**
   Strict superset of A. Release binary, on startup, refuses to run if
-  `SETTINGS_AUTH_BYPASS`, `VISIONFLOW_DEV_MODE`, `ALLOW_INSECURE_DEFAULTS`,
+  `SETTINGS_AUTH_BYPASS`, `VISIONCLAW_DEV_MODE`, `ALLOW_INSECURE_DEFAULTS`,
   or `NODE_ENV=development`+`DOCKER_ENV` are present. Catches "ops promoted
   dev compose to prod" at deploy time, not at first attack. ~30 lines in
   `main.rs`.
@@ -152,9 +152,9 @@ defence-in-depth above it. ADR-02 defers to ADR-06. PRD-06 A4 corrected.
 
 ### PRD-06 A4 correction
 
-Replace `cfg(debug_assertions) || env(VISIONFLOW_DEV_MODE)` with
+Replace `cfg(debug_assertions) || env(VISIONCLAW_DEV_MODE)` with
 `cfg(any(debug_assertions, feature = "dev-auth"))`. Delete the
-`VISIONFLOW_DEV_MODE` reference entirely (don't introduce a name that
+`VISIONCLAW_DEV_MODE` reference entirely (don't introduce a name that
 implies a runtime path that doesn't exist).
 
 ### New ADR-06 D11 (Option D)
@@ -163,7 +163,7 @@ implies a runtime path that doesn't exist).
 >
 > The release binary, in `main.rs` after `dotenv().ok()` and before binding
 > any socket, refuses to start if any of the following are present:
-> `SETTINGS_AUTH_BYPASS`, `VISIONFLOW_DEV_MODE`, `ALLOW_INSECURE_DEFAULTS`,
+> `SETTINGS_AUTH_BYPASS`, `VISIONCLAW_DEV_MODE`, `ALLOW_INSECURE_DEFAULTS`,
 > or `NODE_ENV=development` with `DOCKER_ENV` set. Logs each offending var
 > to stderr, exits with status 2.
 >
@@ -180,7 +180,7 @@ A reviewer proves a release binary cannot enable bypass via:
   dev-auth`):
   ```bash
   strings target/release/webxr | grep -E \
-    'SETTINGS_AUTH_BYPASS|VISIONFLOW_DEV_MODE|dev-session-token|dev-user'
+    'SETTINGS_AUTH_BYPASS|VISIONCLAW_DEV_MODE|dev-session-token|dev-user'
   ```
   Expected: no matches. Strings only appear inside `#[cfg(...)]` blocks
   that compile to nothing; `strip=true` removes residuals. Any hit is a
@@ -189,7 +189,7 @@ A reviewer proves a release binary cannot enable bypass via:
   exit code 1, stderr `--allow-skip-auth is not available in release
   builds`. Argv parsing is allowed; honouring is not.
 - **V3. Env-var no-op + D11 boot refusal.** Start release binary with
-  `SETTINGS_AUTH_BYPASS=true VISIONFLOW_DEV_MODE=true
+  `SETTINGS_AUTH_BYPASS=true VISIONCLAW_DEV_MODE=true
   NODE_ENV=development DOCKER_ENV=1`. With D11: exit code 2, each
   offending var named. Without D11: binary runs but `POST /api/settings`
   with no auth → 401. PRD-06's success-metric CI matrix is exactly V3.

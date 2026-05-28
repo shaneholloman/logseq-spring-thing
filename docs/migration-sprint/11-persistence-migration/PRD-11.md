@@ -2,7 +2,7 @@
 
 ## 1. Capability statement
 
-VisionFlow's durable state — ontology, knowledge-graph topology, inferred
+VisionClaw's durable state — ontology, knowledge-graph topology, inferred
 axioms, per-user settings, and physics profiles — is held in **two
 embedded stores**: an Oxigraph RDF dataset (SPARQL 1.1 + Update) for
 graph and ontology data, and a SQLite database for settings. Both run
@@ -60,7 +60,7 @@ delta this dependency has accumulated nine kinds of cost:
 
 ## 3. Users and use cases
 
-- **Operator deploying VisionFlow** wants a single Rust binary plus
+- **Operator deploying VisionClaw** wants a single Rust binary plus
   a data directory. No companion services. No external ports.
 - **Developer running the test suite** wants persistence tests to
   start in <100 ms with no Docker.
@@ -91,10 +91,10 @@ A2. **Port parity.** The current `OntologyRepository`,
 
 A3. **Named-graph segregation.** The Oxigraph dataset uses three
     named graphs distinguished by IRI:
-    - `<urn:visionflow:graph:knowledge>` — KGNode and KGEdge triples
-    - `<urn:visionflow:graph:ontology>` — OntologyClass, OwlProperty,
+    - `<urn:visionclaw:graph:knowledge>` — KGNode and KGEdge triples
+    - `<urn:visionclaw:graph:ontology>` — OntologyClass, OwlProperty,
        OwlAxiom triples
-    - `<urn:visionflow:graph:agent>` — agent telemetry triples
+    - `<urn:visionclaw:graph:agent>` — agent telemetry triples
     Cross-graph BRIDGE_TO edges live in the default graph and are
     written as quads referencing the three named graphs explicitly.
 
@@ -118,7 +118,7 @@ A5. **Per-user settings.** A setting written by user
 A6. **Whelk inference materialisation.** After `WhelkInferenceEngine`
     completes a closure pass, the inferred `SubClassOf` axioms are
     materialised as triples in a sub-graph
-    `<urn:visionflow:graph:ontology:inferred>` so that:
+    `<urn:visionclaw:graph:ontology:inferred>` so that:
     - asserted vs inferred can be distinguished by named graph
     - inference can be invalidated by `CLEAR GRAPH <...:inferred>`
       without touching authored data

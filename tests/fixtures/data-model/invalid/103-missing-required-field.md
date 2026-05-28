@@ -12,7 +12,7 @@ and has no parent — invariant C3 from DDD-08 is violated.
 ```json-ld
 {
   "@context": "https://narrativegoldmine.com/context/v1.jsonld",
-  "@id": "urn:visionflow:owl:class:orphan-class",
+  "@id": "urn:visionclaw:owl:class:orphan-class",
   "@type": ["OntologyClass", "owl:Class"],
   "rdfs:label": "Orphan Class",
   "vc:definition": "A class with no declared superclass. Will dangle in the topology projection unless rejected at validation.",

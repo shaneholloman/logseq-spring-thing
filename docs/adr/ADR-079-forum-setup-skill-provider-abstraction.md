@@ -10,7 +10,7 @@
 
 ## Context
 
-PRD-011 G5 mandates an AI-assisted configurator that helps operators author per-deployment TOML configurations for the VisionFlow forum kit (`nostr-bbs-rs`). The kit's TOML schema (PRD-011 §5.2) has ~25 customisable surfaces — branding, zones, trust progression, moderation kinds, federation peers, rate limits, feature flags, etc. — too many for a "fill in the blanks" template approach but small enough that a guided conversation can produce a valid configuration in under 15 minutes.
+PRD-011 G5 mandates an AI-assisted configurator that helps operators author per-deployment TOML configurations for the VisionClaw forum kit (`nostr-bbs-rs`). The kit's TOML schema (PRD-011 §5.2) has ~25 customisable surfaces — branding, zones, trust progression, moderation kinds, federation peers, rate limits, feature flags, etc. — too many for a "fill in the blanks" template approach but small enough that a guided conversation can produce a valid configuration in under 15 minutes.
 
 The user instruction (Q8: b): "One skill with provider abstraction (Codex / Claude Code / agentbox-nostr / API-key swappable)". The provider question is operationally substantial — different operators have different LLM access patterns:
 
@@ -312,7 +312,7 @@ Per ADR-077 P1-P5:
 
 ## References
 
-- PRD-011 — VisionFlow Forum Kit Extraction, G5, F7
+- PRD-011 — VisionClaw Forum Kit Extraction, G5, F7
 - ADR-073 — Mesh topology
 - ADR-074 — DID:Nostr canonicalisation
 - ADR-075 — IS-Envelope (tool_invoke + tool_result kinds used by agentbox-nostr provider)

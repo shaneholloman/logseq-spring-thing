@@ -1,4 +1,4 @@
-//! Comprehensive tests for granular API endpoints in VisionFlow settings refactor
+//! Comprehensive tests for granular API endpoints in VisionClaw settings refactor
 //!
 //! Tests the new path-based GET and SET endpoints that replace monolithic settings transfer
 //! Validates dot-notation path parsing, partial updates, and performance improvements
@@ -9,7 +9,7 @@
 //!
 //! To re-enable:
 //! 1. Create a test_utils.rs module in tests/ directory with the required utilities
-//! 2. Or import the utilities from webxr::tests::test_utils if they exist
+//! 2. Or import the utilities from visionclaw_server::tests::test_utils if they exist
 //! 3. Uncomment the code below
 
 /*

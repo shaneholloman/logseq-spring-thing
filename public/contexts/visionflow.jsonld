@@ -1,7 +1,7 @@
 {
   "@context": {
     "@version": 1.1,
-    "@base": "https://visionflow.io/",
+    "@base": "https://visionclaw.io/",
 
     "owl": "http://www.w3.org/2002/07/owl#",
     "rdfs": "http://www.w3.org/2000/01/rdf-schema#",
@@ -15,7 +15,7 @@
     "bc": "http://narrativegoldmine.com/ontology/blockchain#",
     "rb": "http://narrativegoldmine.com/ontology/robotics#",
     "mv": "http://narrativegoldmine.com/ontology/metaverse#",
-    "vf": "http://visionflow.io/ontology#",
+    "vf": "http://visionclaw.io/ontology#",
 
     "id": "@id",
     "type": "@type",

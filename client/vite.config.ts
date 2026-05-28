@@ -12,7 +12,7 @@ export default defineConfig(({ mode }) => {
   define: {
     'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV || 'development'),
     'process.env.REACT_APP_API_URL': JSON.stringify(process.env.REACT_APP_API_URL || '/api'),
-    'process.env.VISIONFLOW_TEST_MODE': JSON.stringify(process.env.VISIONFLOW_TEST_MODE || 'false'),
+    'process.env.VISIONCLAW_TEST_MODE': JSON.stringify(process.env.VISIONCLAW_TEST_MODE || 'false'),
     'process.env.BYPASS_WEBGL': JSON.stringify(process.env.BYPASS_WEBGL || 'false'),
     'process.env': JSON.stringify({}), // Fallback for any other process.env access
   },
@@ -72,7 +72,7 @@ export default defineConfig(({ mode }) => {
       ...(process.env.VITE_ALLOWED_HOSTS?.split(',') || ['localhost']),
       process.env.VITE_LOCAL_DEV_IP,
       'host.docker.internal',  // For HTTPS bridge proxy
-      'visionflow_container',  // Docker network hostname
+      'visionclaw_container',  // Docker network hostname
       '127.0.0.1',
     ].filter(Boolean) as string[],
 

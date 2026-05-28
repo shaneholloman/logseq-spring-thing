@@ -3,7 +3,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use chrono::Utc;
 use std::collections::HashMap;
 
-use webxr::events::*;
+use visionclaw_server::events::*;
 
 #[tokio::test]
 async fn test_event_bus_basic_publish_subscribe() {

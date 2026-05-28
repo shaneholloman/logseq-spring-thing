@@ -11,7 +11,7 @@ export interface NodeSelectionDetail {
 
 /**
  * Slide-in panel that displays details for the currently selected graph node.
- * Listens for 'visionflow:node-selected' custom events dispatched by GraphManager.
+ * Listens for 'visionclaw:node-selected' custom events dispatched by GraphManager.
  */
 export const NodeDetailPanel: React.FC = () => {
   const [detail, setDetail] = useState<NodeSelectionDetail | null>(null);
@@ -29,21 +29,21 @@ export const NodeDetailPanel: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    window.addEventListener('visionflow:node-selected', handleNodeSelected);
+    window.addEventListener('visionclaw:node-selected', handleNodeSelected);
     return () => {
-      window.removeEventListener('visionflow:node-selected', handleNodeSelected);
+      window.removeEventListener('visionclaw:node-selected', handleNodeSelected);
     };
   }, [handleNodeSelected]);
 
   const handleClose = useCallback(() => {
     setVisible(false);
     // Dispatch deselection so GraphManager clears highlight edges
-    window.dispatchEvent(new CustomEvent('visionflow:node-deselect'));
+    window.dispatchEvent(new CustomEvent('visionclaw:node-deselect'));
   }, []);
 
   const handleNeighborClick = useCallback((neighborId: string) => {
     // Dispatch a search event to fly to the neighbor and select it
-    window.dispatchEvent(new CustomEvent('visionflow:search', {
+    window.dispatchEvent(new CustomEvent('visionclaw:search', {
       detail: { query: '', nodeId: neighborId },
     }));
   }, []);

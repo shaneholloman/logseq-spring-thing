@@ -15,12 +15,12 @@ status: findings
 
 | File | Kernels | Wired | Unused |
 |---|---:|---:|---:|
-| `visionflow_unified.cu` | 30 | ~28 | 2 (stability variants) |
+| `visionclaw_unified.cu` | 30 | ~28 | 2 (stability variants) |
 | `gpu_clustering_kernels.cu` | 22 | 18 | 4 (DBSCAN variants, Louvain init) |
 | `semantic_forces.cu` | 15 | **8** | **7** (physicality, role, maturity + centroids) |
 | `pagerank.cu` | 8 | **0** | **8** (entire pipeline orphaned) |
 | `ontology_constraints.cu` | 5 | 5 | 0 |
-| `visionflow_unified_stability.cu` | 4 | 3 | 1 (`check_stability_kernel`) |
+| `visionclaw_unified_stability.cu` | 4 | 3 | 1 (`check_stability_kernel`) |
 | `gpu_landmark_apsp.cu` | 3 | 1 | 2 (landmark selection, compact frontier) |
 | `gpu_connected_components.cu` | 3 | 2 | 1 (`count_components_kernel`) |
 | `sssp_compact.cu` | 2 | **0** | **2** (plus 3 more via supplementary files) |

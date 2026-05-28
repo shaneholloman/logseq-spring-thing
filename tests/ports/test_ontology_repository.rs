@@ -3,8 +3,8 @@
 
 use super::mocks::MockOntologyRepository;
 use std::collections::HashMap;
-use webxr::ports::ontology_repository::*;
-use webxr::ports::OntologyRepository;
+use visionclaw_server::ports::ontology_repository::*;
+use visionclaw_server::ports::OntologyRepository;
 
 fn create_test_class(iri: &str, label: &str) -> OwlClass {
     OwlClass {

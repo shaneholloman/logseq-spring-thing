@@ -1,14 +1,14 @@
 //! Agent/bot/swarm-domain messages: Claude Flow agent lifecycle, swarm orchestration,
 //! neural network, memory persistence, performance monitoring, and MCP tool responses.
 //!
-//! Domain-safe types have been moved to `visionflow_actors::messages::agent_messages`.
+//! Domain-safe types have been moved to `visionclaw_actors::messages::agent_messages`.
 //! This file re-exports them and defines the webxr-internal types that cannot move.
 
 // ---------------------------------------------------------------------------
 // Re-export everything from the domain crate
 // ---------------------------------------------------------------------------
 
-pub use visionflow_actors::messages::agent_messages::{
+pub use visionclaw_actors::messages::agent_messages::{
     AgentMetrics, AgentUpdate, Bottleneck, BottleneckAnalyze, CloseTcpConnection,
     ConnectionFailed, CoordinationPattern, CoordinationSync, EstablishTcpConnection,
     GetAgentMetrics, GetBotsGraphData, GetCachedAgentStatuses, GetNeuralStatus,

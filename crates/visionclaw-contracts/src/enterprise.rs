@@ -1,10 +1,10 @@
 //! Enterprise event envelopes — narrow inbound projection.
 //!
-//! Canonical specification: ADR-10 §D5. VisionFlow does **not** consume the
+//! Canonical specification: ADR-10 §D5. VisionClaw does **not** consume the
 //! forum's full enterprise event stream (workflow state, KPI updates,
 //! decision canvas activity); it consumes only the three event types that
 //! affect rendering or auth posture. The forum is responsible for emitting
-//! this narrow projection; VisionFlow is responsible for refusing the
+//! this narrow projection; VisionClaw is responsible for refusing the
 //! broader stream (ADR-10 §D7 CI guard).
 //!
 //! Transport: `/ws/enterprise-events` (ADR-06 §D11 row).
@@ -86,7 +86,7 @@ pub struct RoleChangePayload {
 }
 
 /// Coarse-grained RBAC label. Maps to UI affordances; finer-grained
-/// permission checks happen in the forum, not VisionFlow.
+/// permission checks happen in the forum, not VisionClaw.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "typescript-export", derive(TS), ts(export))]
 #[serde(rename_all = "snake_case")]

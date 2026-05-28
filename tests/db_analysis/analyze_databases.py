@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-VisionFlow Database Analysis Script
+VisionClaw Database Analysis Script
 Analyzes settings.db, knowledge_graph.db, and ontology.db for integrity and completeness
 """
 
@@ -190,7 +190,7 @@ def generate_report(analyses: Dict[str, Dict[str, Any]]) -> str:
     """Generate comprehensive report"""
     report = []
     report.append("=" * 80)
-    report.append("VISIONFLOW DATABASE INTEGRITY REPORT")
+    report.append("VISIONCLAW DATABASE INTEGRITY REPORT")
     report.append("=" * 80)
     report.append("")
 

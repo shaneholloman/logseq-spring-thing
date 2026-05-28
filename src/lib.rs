@@ -40,12 +40,12 @@ pub use actors::{
     ClientCoordinatorActor, MetadataActor, OptimizedSettingsActor,
 };
 pub use app_state::AppState;
-// ADR-090: model types now canonical in visionflow-domain. Re-exports here
-// preserve the old `webxr::MetadataStore` etc. API for external callers
+// ADR-090: model types now canonical in visionclaw-domain. Re-exports here
+// preserve the old `visionclaw_server::MetadataStore` etc. API for external callers
 // (tests, downstream binaries) without forcing them through a long import.
-pub use visionflow_domain::models::metadata::MetadataStore;
-pub use visionflow_domain::models::protected_settings::ProtectedSettings;
-pub use visionflow_domain::models::simulation_params::SimulationParams;
+pub use visionclaw_domain::models::metadata::MetadataStore;
+pub use visionclaw_domain::models::protected_settings::ProtectedSettings;
+pub use visionclaw_domain::models::simulation_params::SimulationParams;
 pub use models::user_settings::UserSettings;
 
 // Re-export commonly used utilities for easier access

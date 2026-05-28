@@ -392,7 +392,7 @@ Kit must NOT rename the class to `BbsRelayDO` or similar; existing DO IDs are bo
 ## References
 
 - PRD-012 — DreamLab Website Kit Adoption (G2, F4, F18, F19, F20, F27)
-- PRD-011 — VisionFlow Forum Kit Extraction
+- PRD-011 — VisionClaw Forum Kit Extraction
 - PRD-010 — DID:Nostr Mesh Federation (F20 shared NIP98_REPLAY)
 - ADR-073 — Mesh topology
 - ADR-080 — Forum kit deployment topology (D7 downstream-consumer pattern)

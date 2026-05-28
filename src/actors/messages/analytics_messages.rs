@@ -2,14 +2,14 @@
 //! SSSP, PageRank, and related parameter/result types.
 //!
 //! Domain-safe parameter structs/enums and pure messages have been moved to
-//! `visionflow_actors::messages::analytics_messages`.
+//! `visionclaw_actors::messages::analytics_messages`.
 //! This file re-exports them and defines the webxr-internal types that cannot move.
 
 // ---------------------------------------------------------------------------
 // Re-export domain-safe types from the domain crate
 // ---------------------------------------------------------------------------
 
-pub use visionflow_actors::messages::analytics_messages::{
+pub use visionclaw_actors::messages::analytics_messages::{
     AnomalyDetectionMethod, AnomalyDetectionParams, AnomalyDetectionStats, AnomalyMethod,
     AnomalyParams, ClearPageRankCache, CommunityDetectionAlgorithm, CommunityDetectionParams,
     ComputeAllPairsShortestPaths, ComputeSSSP, DBSCANParams, DBSCANStats,

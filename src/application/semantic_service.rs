@@ -10,9 +10,9 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 
 use crate::events::event_bus::EventBus;
-use visionflow_domain::models::constraints::ConstraintSet;
-use visionflow_domain::models::graph::GraphData;
-use visionflow_domain::ports::gpu_semantic_analyzer::{
+use visionclaw_domain::models::constraints::ConstraintSet;
+use visionclaw_domain::models::graph::GraphData;
+use visionclaw_domain::ports::gpu_semantic_analyzer::{
     ClusteringAlgorithm, CommunityDetectionResult, GpuSemanticAnalyzer, ImportanceAlgorithm,
     OptimizationResult, PathfindingResult, Result as SemanticResult, SemanticConstraintConfig,
     SemanticStatistics,

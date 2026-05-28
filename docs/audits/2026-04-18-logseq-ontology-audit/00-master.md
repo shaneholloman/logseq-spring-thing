@@ -20,7 +20,7 @@ Sources audited:
 | workingGraph | `/home/devuser/workspace/logseq/workingGraph/pages` | 465 .md files, 6.2 MB |
 | journals | `/home/devuser/workspace/logseq/*/journals` | 1,028 entries |
 | VisionClaw parser | `/home/devuser/workspace/project/src/services/{parsers,ontology_*,github_sync_service}.rs` | — |
-| Live Neo4j graph | `visionflow-neo4j` | 2,242 GraphNodes, 3,812 edges |
+| Live Neo4j graph | `visionclaw-neo4j` | 2,242 GraphNodes, 3,812 edges |
 
 ---
 

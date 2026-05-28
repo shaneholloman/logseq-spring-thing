@@ -9,8 +9,8 @@
 //! 3. The `use tokio::test;` import shadows the `#[test]` attribute
 //!
 //! To re-enable:
-//! 1. Replace `crate::utils::ptx` with `webxr::utils::ptx`
-//! 2. Replace `crate::utils::unified_gpu_compute` with `webxr::utils::unified_gpu_compute`
+//! 1. Replace `crate::utils::ptx` with `visionclaw_server::utils::ptx`
+//! 2. Replace `crate::utils::unified_gpu_compute` with `visionclaw_server::utils::unified_gpu_compute`
 //! 3. Use `#[tokio::test]` attribute instead of `use tokio::test;`
 //! 4. Uncomment the code below
 

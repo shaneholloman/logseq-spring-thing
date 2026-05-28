@@ -50,7 +50,7 @@ export class EntitySyncManager {
         this.mapper = new GraphEntityMapper({
             syncGroup: this.config.syncGroup,
             loadPriority: 0,
-            createdBy: 'visionflow-xr'
+            createdBy: 'visionclaw-xr'
         });
 
         

@@ -11,7 +11,7 @@
 
 ## Context
 
-PRD-011 specifies the extraction of the VisionFlow forum kit (`nostr-bbs-rs`, hosted at `DreamLab-AI/nostr-rust-forum`) from the `dreamlab-ai-website` monorepo. The clean-architecture endpoint (PRD-011 §5.4 + Q3:a) is:
+PRD-011 specifies the extraction of the VisionClaw forum kit (`nostr-bbs-rs`, hosted at `DreamLab-AI/nostr-rust-forum`) from the `dreamlab-ai-website` monorepo. The clean-architecture endpoint (PRD-011 §5.4 + Q3:a) is:
 - Forum kit at `DreamLab-AI/nostr-rust-forum` is the canonical upstream.
 - DreamLab's website at `DreamLab-AI/dreamlab-ai-website` becomes a downstream consumer with a new `forum-config/` package.
 - `dreamlab-ai-website/community-forum-rs/` is **deleted** at cutover.
@@ -423,7 +423,7 @@ Questions? ops@dreamlab-ai.com or #ops-tactical Slack.
 ## References
 
 - PRD-010 — DID:Nostr Mesh Federation (cutover gated on Phase 0)
-- PRD-011 — VisionFlow Forum Kit Extraction (G3, G8, R5, M5, Phase X5)
+- PRD-011 — VisionClaw Forum Kit Extraction (G3, G8, R5, M5, Phase X5)
 - ADR-076 — Forum `nostr-core` absorption (gating dependency)
 - ADR-077 — Ecosystem QE Policy (P2 L3 federation smoke required pre-cutover)
 - ADR-078 — Cross-substrate library convergence (kit dep alignment)

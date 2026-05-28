@@ -6,7 +6,7 @@ Accepted
 
 ## Context
 
-VisionFlow classifies nodes into three graph populations (Knowledge, Ontology, Agent) to drive dual-graph X-axis separation on the GPU, per-client type filtering over WebSocket, colour assignment, and visual mode detection. This classification is implemented independently in 11 locations across the Rust server and TypeScript client, each with its own string-matching logic and its own subset of recognised type literals.
+VisionClaw classifies nodes into three graph populations (Knowledge, Ontology, Agent) to drive dual-graph X-axis separation on the GPU, per-client type filtering over WebSocket, colour assignment, and visual mode detection. This classification is implemented independently in 11 locations across the Rust server and TypeScript client, each with its own string-matching logic and its own subset of recognised type literals.
 
 The root defect is a casing mismatch: `neo4j_adapter.rs` writes `node_type = Some("OwlClass")` (PascalCase, line 573) while every downstream consumer matches `"owl_class"` (snake_case). Ontology nodes ingested from Neo4j are silently misclassified as Knowledge, breaking population counts, X-axis separation, and client-side visual mode.
 

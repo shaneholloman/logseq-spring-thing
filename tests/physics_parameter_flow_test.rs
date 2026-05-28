@@ -47,8 +47,8 @@ async fn test_complete_physics_parameter_flow() {
 
     // Step 2: Verify PTX file exists
     let ptx_paths = [
-        "/src/utils/ptx/visionflow_unified.ptx",
-        "/app/src/utils/ptx/visionflow_unified.ptx",
+        "/src/utils/ptx/visionclaw_unified.ptx",
+        "/app/src/utils/ptx/visionclaw_unified.ptx",
     ];
 
     let mut ptx_found = false;

@@ -107,7 +107,7 @@ pub struct RetryRequest {
 /// Tracks outstanding messages with timeouts and retry logic
 /// # Example
 /// ```rust,ignore
-/// use webxr::actors::messaging::{MessageId, MessageKind, MessageTracker};
+/// use visionclaw_server::actors::messaging::{MessageId, MessageKind, MessageTracker};
 /// use std::time::Duration;
 /// let tracker = MessageTracker::new();
 /// let msg_id = MessageId::new();

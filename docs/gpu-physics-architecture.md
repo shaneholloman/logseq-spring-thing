@@ -2,7 +2,7 @@
 
 ## Overview
 
-VisionFlow uses a CUDA-accelerated physics simulation pipeline built on the Actix
+VisionClaw uses a CUDA-accelerated physics simulation pipeline built on the Actix
 actor framework. GPU kernels compute force-directed graph layout, and results stream
 to WebSocket clients in real time.
 
@@ -109,13 +109,13 @@ Each compiled PTX file path is exported as a Cargo environment variable:
 
 | Module | Env Var |
 |--------|---------|
-| visionflow_unified.cu | `VISIONFLOW_UNIFIED_PTX_PATH` |
+| visionclaw_unified.cu | `VISIONCLAW_UNIFIED_PTX_PATH` |
 | gpu_clustering_kernels.cu | `GPU_CLUSTERING_KERNELS_PTX_PATH` |
 | dynamic_grid.cu | `DYNAMIC_GRID_PTX_PATH` |
 | gpu_aabb_reduction.cu | `GPU_AABB_REDUCTION_PTX_PATH` |
 | gpu_landmark_apsp.cu | `GPU_LANDMARK_APSP_PTX_PATH` |
 | sssp_compact.cu | `SSSP_COMPACT_PTX_PATH` |
-| visionflow_unified_stability.cu | `VISIONFLOW_UNIFIED_STABILITY_PTX_PATH` |
+| visionclaw_unified_stability.cu | `VISIONCLAW_UNIFIED_STABILITY_PTX_PATH` |
 | ontology_constraints.cu | `ONTOLOGY_CONSTRAINTS_PTX_PATH` |
 | pagerank.cu | `PAGERANK_PTX_PATH` |
 | gpu_connected_components.cu | `GPU_CONNECTED_COMPONENTS_PTX_PATH` |
@@ -384,7 +384,7 @@ Zones partition 3D space into regions; nodes within a zone are clamped to that r
 |------|---------|
 | `build.rs` | CUDA compilation, PTX generation, static library linking |
 | `src/utils/ptx.rs` | PTX loading, ISA detection, runtime compilation fallback |
-| `src/utils/visionflow_unified.cu` | 28 core physics kernels + degree-weighted gravity |
+| `src/utils/visionclaw_unified.cu` | 28 core physics kernels + degree-weighted gravity |
 | `src/utils/semantic_forces.cu` | 15 semantic force kernels (DAG, type, physicality, role, maturity) |
 | `src/utils/gpu_clustering_kernels.cu` | 22 clustering/community/anomaly kernels |
 | `src/utils/ontology_constraints.cu` | 5 OWL constraint enforcement kernels |

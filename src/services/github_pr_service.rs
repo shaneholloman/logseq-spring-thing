@@ -154,7 +154,7 @@ impl GitHubPRService {
         }
         headers.insert(ACCEPT, "application/vnd.github+json".parse()
             .expect("static header value is always valid"));
-        headers.insert(USER_AGENT, "VisionFlow-OntologyAgent/1.0".parse()
+        headers.insert(USER_AGENT, "VisionClaw-OntologyAgent/1.0".parse()
             .expect("static header value is always valid"));
         headers
     }

@@ -1,10 +1,10 @@
 //! Production Validation Test Suite
 //!
-//! Comprehensive testing of production-ready changes in VisionFlow system
+//! Comprehensive testing of production-ready changes in VisionClaw system
 //! Covers all critical P0 issues, error handling, GPU safety, and performance
 //!
 //! NOTE: These tests are disabled because:
-//! 1. References non-existent modules (webxr::errors::*, webxr::utils::gpu_safety::*)
+//! 1. References non-existent modules (visionclaw_server::errors::*, visionclaw_server::utils::gpu_safety::*)
 //! 2. GPUSafetyConfig, GPUSafetyValidator, GPUMemoryTracker types don't exist
 //! 3. ActorError, NetworkError, SettingsError types have different structure
 //! 4. ErrorContext trait doesn't exist
@@ -20,11 +20,11 @@ use pretty_assertions::assert_eq;
 use std::time::{Duration, Instant};
 use tokio::test;
 
-use webxr::actors::messages::*;
-use webxr::errors::*;
-use webxr::services::*;
-use webxr::utils::gpu_diagnostics::*;
-use webxr::utils::gpu_safety::*;
+use visionclaw_server::actors::messages::*;
+use visionclaw_server::errors::*;
+use visionclaw_server::services::*;
+use visionclaw_server::utils::gpu_diagnostics::*;
+use visionclaw_server::utils::gpu_safety::*;
 
 /// Production validation configuration
 #[derive(Debug, Clone)]
@@ -191,8 +191,8 @@ impl ProductionValidationSuite {
             reason: "Configuration invalid".to_string(),
         };
 
-        let vision_error = VisionFlowError::Actor(startup_error);
-        assert!(matches!(vision_error, VisionFlowError::Actor(_)));
+        let vision_error = VisionClawError::Actor(startup_error);
+        assert!(matches!(vision_error, VisionClawError::Actor(_)));
 
         // Test 2: Message handling failure recovery
         let msg_error = ActorError::MessageHandlingFailed {
@@ -333,10 +333,10 @@ impl ProductionValidationSuite {
 
         // Test error propagation through the system
         let io_error = std::io::Error::new(std::io::ErrorKind::NotFound, "File not found");
-        let vision_error = VisionFlowError::from(io_error);
+        let vision_error = VisionClawError::from(io_error);
 
         match vision_error {
-            VisionFlowError::IO(ref e) => {
+            VisionClawError::IO(ref e) => {
                 assert_eq!(e.kind(), std::io::ErrorKind::NotFound);
             }
             _ => panic!("Error should be converted to IO error"),
@@ -344,7 +344,7 @@ impl ProductionValidationSuite {
 
         // Test error chaining
         let gpu_error = GPUError::DeviceInitializationFailed("CUDA not available".to_string());
-        let chained_error = VisionFlowError::GPU(gpu_error);
+        let chained_error = VisionClawError::GPU(gpu_error);
 
         let error_string = format!("{}", chained_error);
         assert!(error_string.contains("CUDA not available"));
@@ -356,7 +356,7 @@ impl ProductionValidationSuite {
         let start = Instant::now();
 
         // Test error context functionality
-        use webxr::errors::ErrorContext;
+        use visionclaw_server::errors::ErrorContext;
 
         let result: Result<(), std::io::Error> = Err(std::io::Error::new(
             std::io::ErrorKind::PermissionDenied,
@@ -366,7 +366,7 @@ impl ProductionValidationSuite {
         let with_context = result.with_context(|| "Failed to read settings file".to_string());
 
         assert!(with_context.is_err());
-        if let Err(VisionFlowError::Generic { message, .. }) = with_context {
+        if let Err(VisionClawError::Generic { message, .. }) = with_context {
             assert_eq!(message, "Failed to read settings file");
         }
 
@@ -410,7 +410,7 @@ impl ProductionValidationSuite {
             reason: "Connection refused".to_string(),
         };
 
-        let vision_error = VisionFlowError::Network(network_error);
+        let vision_error = VisionClawError::Network(network_error);
         let error_msg = format!("{}", vision_error);
 
         assert!(error_msg.contains("localhost:8080"));
@@ -582,7 +582,7 @@ impl ProductionValidationSuite {
             reason: "Host not found".to_string(),
         };
 
-        let vision_error = VisionFlowError::Network(network_error);
+        let vision_error = VisionClawError::Network(network_error);
 
         // Verify error contains connection details
         let error_msg = format!("{}", vision_error);
@@ -601,7 +601,7 @@ impl ProductionValidationSuite {
             timeout_ms: 5000,
         };
 
-        let vision_error = VisionFlowError::Network(timeout_error);
+        let vision_error = VisionClawError::Network(timeout_error);
         let error_msg = format!("{}", vision_error);
 
         assert!(error_msg.contains("5000ms"));
@@ -648,7 +648,7 @@ impl ProductionValidationSuite {
             reason: "Service Unavailable".to_string(),
         };
 
-        let vision_error = VisionFlowError::Network(http_error);
+        let vision_error = VisionClawError::Network(http_error);
 
         // Verify error provides actionable information
         let error_msg = format!("{}", vision_error);
@@ -677,7 +677,7 @@ impl ProductionValidationSuite {
             reason: "Value must be positive".to_string(),
         };
 
-        let vision_error = VisionFlowError::Settings(settings_error);
+        let vision_error = VisionClawError::Settings(settings_error);
         let error_msg = format!("{}", vision_error);
 
         assert!(error_msg.contains("physics.spring_constant"));
@@ -724,7 +724,7 @@ impl ProductionValidationSuite {
             reason: "Method not allowed".to_string(),
         };
 
-        let vision_error = VisionFlowError::Network(mcp_error);
+        let vision_error = VisionClawError::Network(mcp_error);
         let error_msg = format!("{}", vision_error);
 
         assert!(error_msg.contains("dangerous_method"));
@@ -738,7 +738,7 @@ impl ProductionValidationSuite {
 
         // Test authentication error scenarios
         let settings_error = SettingsError::FileNotFound("/unauthorized/path".to_string());
-        let vision_error = VisionFlowError::Settings(settings_error);
+        let vision_error = VisionClawError::Settings(settings_error);
 
         let error_msg = format!("{}", vision_error);
         assert!(error_msg.contains("unauthorized/path"));
@@ -1157,7 +1157,7 @@ impl ProductionValidationSuite {
             reason: "Out of memory".to_string(),
         };
 
-        let vision_error = VisionFlowError::GPU(gpu_error);
+        let vision_error = VisionClawError::GPU(gpu_error);
 
         // Test error can be converted to string safely
         let error_string = format!("{}", vision_error);

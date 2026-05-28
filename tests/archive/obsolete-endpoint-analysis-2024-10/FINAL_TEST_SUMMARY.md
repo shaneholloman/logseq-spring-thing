@@ -1,4 +1,4 @@
-# VisionFlow Backend Testing - Final Summary Report
+# VisionClaw Backend Testing - Final Summary Report
 
 **Hive Mind Tester Agent**
 **Date**: 2025-10-24
@@ -221,7 +221,7 @@ All test results show `backend_running_after: 0`, but endpoints work.
 
 **Verification Needed**:
 ```bash
-docker exec visionflow_container ps aux
+docker exec visionclaw_container ps aux
 ```
 
 ---
@@ -287,19 +287,19 @@ Based on criticality:
 ### Immediate Actions (Priority 1)
 1. **Find Backend Source Code**:
    ```bash
-   docker exec visionflow_container find /app -name "*.js" -name "*server*"
-   docker exec visionflow_container find /app -name "*.go" -name "*main*"
+   docker exec visionclaw_container find /app -name "*.js" -name "*server*"
+   docker exec visionclaw_container find /app -name "*.go" -name "*main*"
    ```
 
 2. **Identify Backend Process**:
    ```bash
-   docker exec visionflow_container ps aux
-   docker exec visionflow_container netstat -tlnp | grep 4000
+   docker exec visionclaw_container ps aux
+   docker exec visionclaw_container netstat -tlnp | grep 4000
    ```
 
 3. **Locate Database Files**:
    ```bash
-   docker exec visionflow_container find /app -name "*.db" -type f
+   docker exec visionclaw_container find /app -name "*.db" -type f
    ```
 
 4. **Review Route Handlers**:

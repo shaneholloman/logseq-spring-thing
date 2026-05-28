@@ -1,3 +1,3 @@
-//! Graph-export DTOs — re-exported from `visionflow-domain` per ADR-090.
+//! Graph-export DTOs — re-exported from `visionclaw-domain` per ADR-090.
 
-pub use visionflow_domain::models::graph_export::*;
+pub use visionclaw_domain::models::graph_export::*;

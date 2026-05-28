@@ -11,9 +11,9 @@ Related  : ADR-12 (this section), ADR-02 (Binary Protocol — XR consumes the
 ## Capability statement
 
 The XR client is a standalone Godot 4.x application that renders the same
-VisionFlow knowledge graph as the web client, in room-scale stereoscopic 3D
+VisionClaw knowledge graph as the web client, in room-scale stereoscopic 3D
 on standalone HMDs (primary target: Meta Quest 3) and tethered OpenXR
-devices. It connects to the existing VisionFlow server over WebSocket using
+devices. It connects to the existing VisionClaw server over WebSocket using
 the V3 full-sync binary protocol (ADR-02) — *the same wire format the web
 client uses, byte-for-byte* — authenticates via Nostr challenge-response
 on connect (ADR-06), and renders nodes / edges / labels with visual
@@ -271,7 +271,7 @@ mocked under headless.
 
 ## Acceptance criteria
 
-- **A1**: The XR client connects to the existing VisionFlow server with
+- **A1**: The XR client connects to the existing VisionClaw server with
   no server-side code changes. The same `wss://<host>/ws` URL serves
   both web and XR clients.
 - **A2**: A 5,000-node / 20,000-edge graph renders at 90Hz on Quest 3

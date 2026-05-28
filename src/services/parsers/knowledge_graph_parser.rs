@@ -6,10 +6,10 @@
 //! - Edges (links, relationships)
 //! - Metadata (properties, tags)
 
-use visionflow_domain::models::edge::Edge;
-use visionflow_domain::models::graph::GraphData;
-use visionflow_domain::models::metadata::MetadataStore;
-use visionflow_domain::models::node::Node;
+use visionclaw_domain::models::edge::Edge;
+use visionclaw_domain::models::graph::GraphData;
+use visionclaw_domain::models::metadata::MetadataStore;
+use visionclaw_domain::models::node::Node;
 use crate::utils::socket_flow_messages::BinaryNodeData;
 use log::{debug, info};
 use std::collections::HashMap;
@@ -121,7 +121,7 @@ impl KnowledgeGraphParser {
 
         // Use existing position or generate random (position preservation)
         let (x, y, z) = self.get_position(id);
-        let data: visionflow_domain::BinaryNodeData = BinaryNodeData {
+        let data: visionclaw_domain::BinaryNodeData = BinaryNodeData {
             node_id: id,
             x,
             y,
@@ -246,7 +246,7 @@ impl KnowledgeGraphParser {
 
                 // Use existing position or generate random (position preservation)
                 let (x, y, z) = self.get_position(target_id);
-                let data: visionflow_domain::BinaryNodeData = BinaryNodeData {
+                let data: visionclaw_domain::BinaryNodeData = BinaryNodeData {
                     node_id: target_id,
                     x,
                     y,

@@ -1,9 +1,9 @@
 use crate::actors::messages::GetBotsGraphData;
 use crate::actors::{CreateTask, StopTask};
-use visionflow_domain::models::edge::Edge;
-use visionflow_domain::models::graph::GraphData;
-use visionflow_domain::models::metadata::MetadataStore;
-use visionflow_domain::models::node::Node;
+use visionclaw_domain::models::edge::Edge;
+use visionclaw_domain::models::graph::GraphData;
+use visionclaw_domain::models::metadata::MetadataStore;
+use visionclaw_domain::models::node::Node;
 use crate::services::bots_client::{Agent, BotsClient};
 use crate::utils::socket_flow_messages::BinaryNodeData;
 use crate::AppState;

@@ -21,7 +21,7 @@ use std::sync::{
 use std::time::{Duration, Instant};
 use tokio::test;
 
-use webxr::errors::*;
+use visionclaw_server::errors::*;
 
 #[derive(Debug, Clone)]
 pub struct NetworkResilienceConfig {

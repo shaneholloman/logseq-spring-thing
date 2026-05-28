@@ -18,8 +18,8 @@ ADR-01 decisions D1..D9.
 | Actor-owned GPU context + D2 discipline | T2 | A4 | D2 | `src/actors/gpu/force_compute_actor.rs`, `src/actors/gpu/physics_supervisor.rs`, `src/actors/gpu/shared.rs` | 6 |
 | Supervisor restart pattern, remove `catch_unwind` | T3 | A4 | D4 | `src/actors/supervisor.rs`, `src/actors/gpu/physics_supervisor.rs` | 4 |
 | `LayoutEngine` trait + 5 engine impls | T4 | A2, A6 | D5 | `src/physics/engines/mod.rs` (new), `src/physics/engines/{force_directed,stress_majorization,hierarchical,circular,geographic}.rs` (new), `src/actors/gpu/force_compute_actor.rs`, `src/layout/types.rs` | 14 |
-| Log-mass derivation + gravity policy | T5 | A1 | D6, D7 | `src/actors/gpu/force_compute_actor.rs` (upload path), `src/utils/unified_gpu_compute/memory.rs`, `src/utils/visionflow_unified.cu` | 5 |
-| `numerical_safety` kernel (NaN/Inf sentinel) | T6 | A3 | D8 | `src/utils/visionflow_unified.cu`, `src/utils/unified_gpu_compute/execution.rs`, `src/gpu/buffers.rs` | 6 |
+| Log-mass derivation + gravity policy | T5 | A1 | D6, D7 | `src/actors/gpu/force_compute_actor.rs` (upload path), `src/utils/unified_gpu_compute/memory.rs`, `src/utils/visionclaw_unified.cu` | 5 |
+| `numerical_safety` kernel (NaN/Inf sentinel) | T6 | A3 | D8 | `src/utils/visionclaw_unified.cu`, `src/utils/unified_gpu_compute/execution.rs`, `src/gpu/buffers.rs` | 6 |
 | Event emission only — remove physics heartbeat | T7 | A5 | D9 | `src/actors/gpu/force_compute_actor.rs`, `src/actors/physics_orchestrator_actor.rs`, `src/actors/messages/physics_messages.rs` | 4 |
 | Tests: NaN injection, panic recovery, engine switch | T8 | A2, A3, A4, A6 | D4, D5, D8 | `tests/physics_gpu_integration.rs` (new), `tests/engine_switch.rs` (new) | 12 |
 
@@ -276,7 +276,7 @@ through inertia; additional gravity weighting is the source of the
 unit-cancellation bug documented in ADR-01's context section.
 
 Files to edit:
-- `src/utils/visionflow_unified.cu` — remove `degree_weight` buffer parameter
+- `src/utils/visionclaw_unified.cu` — remove `degree_weight` buffer parameter
   from the integration kernel signature; replace with `mass * center_gravity_k`.
 - `src/utils/unified_gpu_compute/construction.rs` — remove `degree_weight`
   `DeviceBuffer<f32>` field.
@@ -291,7 +291,7 @@ Files to edit:
 
 ### Kernel specification
 
-A new `numerical_safety` kernel is appended to `src/utils/visionflow_unified.cu`
+A new `numerical_safety` kernel is appended to `src/utils/visionclaw_unified.cu`
 and dispatched as the **last** step of every physics tick, after force
 integration and before `copy_to` download.
 
@@ -351,7 +351,7 @@ kind per tick.
 
 `/metrics/physics_clamp_count` (Prometheus counter) is incremented by the
 `PhysicsClamped` event handler in `PhysicsOrchestratorActor`. This replaces the
-ad-hoc per-kernel safety scattered across `visionflow_unified.cu` (line 356 and
+ad-hoc per-kernel safety scattered across `visionclaw_unified.cu` (line 356 and
 similar).
 
 ---
@@ -450,7 +450,7 @@ Agent B opens a draft PR against the branch; Agent A reviews before merge.
 
 ## 9. Output Summary
 
-**Plan file**: `/home/devuser/workspace/visionflow-worktrees/phase-5-gpu-physics/docs/migration-sprint/01-gpu-physics/WORKTREE-PLAN.md`
+**Plan file**: `/home/devuser/workspace/visionclaw-worktrees/phase-5-gpu-physics/docs/migration-sprint/01-gpu-physics/WORKTREE-PLAN.md`
 
 **Tasks**: 8 (T1–T8), spanning ~61 estimated hours. T1 is gating; T4–T7 are
 parallel after T1; T8 runs in parallel with T4–T7.

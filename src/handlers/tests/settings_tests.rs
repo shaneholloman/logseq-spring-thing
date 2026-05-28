@@ -534,7 +534,7 @@ mod settings_api_tests {
         
         let problematic_fields = vec![
             ("visualisation.graphs.logseq.nodes.baseColor", "#FF5733"),
-            ("visualisation.graphs.visionflow.nodes.baseColor", "#33FF57"),
+            ("visualisation.graphs.visionclaw.nodes.baseColor", "#33FF57"),
             ("visualisation.rendering.ambientLightIntensity", 0.8),
             ("visualisation.rendering.backgroundColor", "#000000"),
             ("visualisation.rendering.directionalLightIntensity", 1.0),

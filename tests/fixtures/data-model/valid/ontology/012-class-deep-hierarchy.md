@@ -14,7 +14,7 @@ subclass query path).
 ```json-ld
 {
   "@context": "https://narrativegoldmine.com/context/v1.jsonld",
-  "@id": "urn:visionflow:owl:class:built-environment",
+  "@id": "urn:visionclaw:owl:class:built-environment",
   "@type": ["OntologyClass", "owl:Class"],
   "ontology": true,
   "rdfs:label": "Built Environment",
@@ -31,12 +31,12 @@ subclass query path).
 ```json-ld
 {
   "@context": "https://narrativegoldmine.com/context/v1.jsonld",
-  "@id": "urn:visionflow:owl:class:architecture",
+  "@id": "urn:visionclaw:owl:class:architecture",
   "@type": ["OntologyClass", "owl:Class"],
   "ontology": true,
   "rdfs:label": "Architecture",
   "vc:definition": "The art and discipline of designing and constructing buildings and other physical structures. A subclass of Built Environment that emphasises intentional design rather than mere occupancy of space.",
-  "rdfs:subClassOf": { "@id": "urn:visionflow:owl:class:built-environment" },
+  "rdfs:subClassOf": { "@id": "urn:visionclaw:owl:class:built-environment" },
   "vc:status": "active",
   "vc:maturity": "stable",
   "prov:wasAttributedTo": { "@id": "did:nostr:npub1bob00000000000000000000000000000000000000000000000000000000" },
@@ -49,12 +49,12 @@ subclass query path).
 ```json-ld
 {
   "@context": "https://narrativegoldmine.com/context/v1.jsonld",
-  "@id": "urn:visionflow:owl:class:architectural-period",
+  "@id": "urn:visionclaw:owl:class:architectural-period",
   "@type": ["OntologyClass", "owl:Class"],
   "ontology": true,
   "rdfs:label": "Architectural Period",
   "vc:definition": "A historically-bounded set of architectural conventions, materials, and goals. Categorises individual buildings by their participation in a recognisable style and time. Examples include Romanesque, Gothic, Renaissance, Baroque.",
-  "rdfs:subClassOf": { "@id": "urn:visionflow:owl:class:architecture" },
+  "rdfs:subClassOf": { "@id": "urn:visionclaw:owl:class:architecture" },
   "vc:status": "active",
   "vc:maturity": "stable",
   "prov:wasAttributedTo": { "@id": "did:nostr:npub1bob00000000000000000000000000000000000000000000000000000000" },
@@ -67,12 +67,12 @@ subclass query path).
 ```json-ld
 {
   "@context": "https://narrativegoldmine.com/context/v1.jsonld",
-  "@id": "urn:visionflow:owl:class:italian-renaissance",
+  "@id": "urn:visionclaw:owl:class:italian-renaissance",
   "@type": ["OntologyClass", "owl:Class"],
   "ontology": true,
   "rdfs:label": "Italian Renaissance",
   "vc:definition": "Renaissance architecture as practised in Italy from the early Quattrocento (Brunelleschi) through the Cinquecento (Bramante, Palladio). Distinct in its access to surviving Roman built precedent and to a continuous classical-Latin literary tradition.",
-  "rdfs:subClassOf": { "@id": "urn:visionflow:owl:class:renaissance-architecture" },
+  "rdfs:subClassOf": { "@id": "urn:visionclaw:owl:class:renaissance-architecture" },
   "vc:status": "active",
   "vc:maturity": "stable",
   "prov:wasAttributedTo": { "@id": "did:nostr:npub1bob00000000000000000000000000000000000000000000000000000000" },

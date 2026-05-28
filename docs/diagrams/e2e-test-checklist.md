@@ -5,18 +5,18 @@
 ## Pre-conditions
 
 - [x] Containers stopped via `./scripts/launch.sh down dev` or `compose down`
-- [x] Volumes wiped: `visionflow-neo4j-data`, `visionflow-neo4j-logs`, `visionflow-data`, `visionflow-logs`
-- [x] Build caches preserved: `visionflow-cargo-*`, `visionflow-npm-cache`
+- [x] Volumes wiped: `visionclaw-neo4j-data`, `visionclaw-neo4j-logs`, `visionclaw-data`, `visionclaw-logs`
+- [x] Build caches preserved: `visionclaw-cargo-*`, `visionclaw-npm-cache`
 - [x] Diagnostic log gates removed (commit `1862c2d2f`)
 - [x] RUST_LOG default demoted to `warn,webxr=info,...`
 - [x] Rebuild triggered: `./scripts/launch.sh up dev`
 
 ## Layer 1 — Infrastructure
 
-- [ ] `docker ps` shows `visionflow_container` (healthy), `visionflow-neo4j` (healthy), `visionflow-jss` (healthy or at least running)
-- [ ] `visionflow-neo4j` reachable at port 7474 (HTTP) and 7687 (Bolt)
-- [ ] `visionflow_container` serving on port 3001 (nginx) and 4000 (direct backend)
-- [ ] No unexpected `warn!`/`error!` entries in first 60s of `docker logs visionflow_container`
+- [ ] `docker ps` shows `visionclaw_container` (healthy), `visionclaw-neo4j` (healthy), `visionclaw-jss` (healthy or at least running)
+- [ ] `visionclaw-neo4j` reachable at port 7474 (HTTP) and 7687 (Bolt)
+- [ ] `visionclaw_container` serving on port 3001 (nginx) and 4000 (direct backend)
+- [ ] No unexpected `warn!`/`error!` entries in first 60s of `docker logs visionclaw_container`
 
 ## Layer 2 — Data Ingestion
 
@@ -57,8 +57,8 @@
 ## Known-out-of-scope
 
 - RuVector PostgreSQL NOT wiped (shared with other workspace projects — separate concern)
-- Solid Pod data NOT wiped (`visionflow-jss-data` volume preserved)
-- Build caches preserved (`visionflow-cargo-*`, `visionflow-npm-cache`)
+- Solid Pod data NOT wiped (`visionclaw-jss-data` volume preserved)
+- Build caches preserved (`visionclaw-cargo-*`, `visionclaw-npm-cache`)
 
 ## Rollback
 

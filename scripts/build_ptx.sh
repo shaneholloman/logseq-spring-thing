@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# PTX Compilation Script for VisionFlow Unified GPU Kernels
+# PTX Compilation Script for VisionClaw Unified GPU Kernels
 # System Architecture: Automated PTX build pipeline with diagnostics
 #
 
@@ -9,8 +9,8 @@ set -euo pipefail
 # Configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
-SOURCE_FILE="src/utils/visionflow_unified.cu"
-OUTPUT_FILE="target/release/visionflow_unified.ptx"
+SOURCE_FILE="src/utils/visionclaw_unified.cu"
+OUTPUT_FILE="target/release/visionclaw_unified.ptx"
 CUDA_ARCH="sm_70"
 
 # Colors for output
@@ -155,8 +155,8 @@ set_environment() {
     local ptx_path
     ptx_path=$(realpath "$PROJECT_ROOT/$OUTPUT_FILE")
     
-    export VISIONFLOW_PTX_PATH="$ptx_path"
-    log_success "Set VISIONFLOW_PTX_PATH=$VISIONFLOW_PTX_PATH"
+    export VISIONCLAW_PTX_PATH="$ptx_path"
+    log_success "Set VISIONCLAW_PTX_PATH=$VISIONCLAW_PTX_PATH"
     
     # Add to shell profile for persistence
     local shell_profile=""
@@ -167,11 +167,11 @@ set_environment() {
     fi
     
     if [[ -n "$shell_profile" ]]; then
-        if ! grep -q "VISIONFLOW_PTX_PATH" "$shell_profile"; then
-            echo "export VISIONFLOW_PTX_PATH=\"$ptx_path\"" >> "$shell_profile"
-            log_success "Added VISIONFLOW_PTX_PATH to $shell_profile"
+        if ! grep -q "VISIONCLAW_PTX_PATH" "$shell_profile"; then
+            echo "export VISIONCLAW_PTX_PATH=\"$ptx_path\"" >> "$shell_profile"
+            log_success "Added VISIONCLAW_PTX_PATH to $shell_profile"
         else
-            log "VISIONFLOW_PTX_PATH already exists in $shell_profile"
+            log "VISIONCLAW_PTX_PATH already exists in $shell_profile"
         fi
     fi
 }
@@ -210,7 +210,7 @@ main() {
     
     log_success "PTX compilation pipeline completed successfully!"
     log "PTX file location: $PROJECT_ROOT/$OUTPUT_FILE"
-    log "Environment variable: VISIONFLOW_PTX_PATH=$VISIONFLOW_PTX_PATH"
+    log "Environment variable: VISIONCLAW_PTX_PATH=$VISIONCLAW_PTX_PATH"
 }
 
 # Error handling

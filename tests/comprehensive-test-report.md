@@ -1,4 +1,4 @@
-# VisionFlow Backend Comprehensive Test Report
+# VisionClaw Backend Comprehensive Test Report
 **Date**: 2025-10-23
 **Testing Phase**: Post-Coder-Fix Build & Testing (UPDATED)
 **Status**: ⚠️ **BUILD SUCCEEDED WITH WARNINGS - RUNTIME ISSUES DETECTED**
@@ -7,7 +7,7 @@
 
 ## Executive Summary
 
-The VisionFlow backend initially **FAILED TO COMPILE** due to 4 critical compilation errors. After applying fixes to `/app/src/handlers/api_handler/mod.rs`, the build **SUCCEEDED** but the backend exhibits **RUNTIME STABILITY ISSUES** including Tokio reactor panics and unresponsive endpoints.
+The VisionClaw backend initially **FAILED TO COMPILE** due to 4 critical compilation errors. After applying fixes to `/app/src/handlers/api_handler/mod.rs`, the build **SUCCEEDED** but the backend exhibits **RUNTIME STABILITY ISSUES** including Tokio reactor panics and unresponsive endpoints.
 
 ### Critical Issues Summary
 - **Initial Build Status**: ❌ FAILED (4 compilation errors)
@@ -24,7 +24,7 @@ The VisionFlow backend initially **FAILED TO COMPILE** due to 4 critical compila
 
 **Build Command**:
 ```bash
-docker exec visionflow_container bash -c "cd /app && cargo build 2>&1 | tee /tmp/build.log"
+docker exec visionclaw_container bash -c "cd /app && cargo build 2>&1 | tee /tmp/build.log"
 ```
 
 **Build Output Summary**:
@@ -108,7 +108,7 @@ error[E0609]: no field `speech` on type `AppFullSettings`
 
 ### Build Command
 ```bash
-docker exec visionflow_container bash -c "cd /app && cargo build 2>&1 | tee /tmp/build-fixed.log"
+docker exec visionclaw_container bash -c "cd /app && cargo build 2>&1 | tee /tmp/build-fixed.log"
 ```
 
 ### Build Output Summary
@@ -158,7 +158,7 @@ docker exec visionflow_container bash -c "cd /app && cargo build 2>&1 | tee /tmp
 
 **Command**:
 ```bash
-docker exec visionflow_container bash -c 'cd /app && nohup /app/target/debug/webxr > /tmp/webxr-fresh.log 2>&1 &'
+docker exec visionclaw_container bash -c 'cd /app && nohup /app/target/debug/webxr > /tmp/webxr-fresh.log 2>&1 &'
 ```
 
 **Process Status**:
@@ -447,16 +447,16 @@ async fn test_api_config_endpoint() {
 ### Access Commands
 ```bash
 # View initial failed build
-docker exec visionflow_container cat /tmp/build.log
+docker exec visionclaw_container cat /tmp/build.log
 
 # View successful build
-docker exec visionflow_container cat /tmp/build-fixed.log
+docker exec visionclaw_container cat /tmp/build-fixed.log
 
 # View runtime logs
-docker exec visionflow_container tail -f /tmp/webxr-fresh.log
+docker exec visionclaw_container tail -f /tmp/webxr-fresh.log
 
 # Check for panics
-docker exec visionflow_container grep -i panic /tmp/webxr-fresh.log
+docker exec visionclaw_container grep -i panic /tmp/webxr-fresh.log
 ```
 
 ---
@@ -523,7 +523,7 @@ The current state represents a regression from the original backend:
 
 **Report Generated**: 2025-10-23 19:20 UTC
 **Test Engineer**: QA Specialist (Testing & Quality Assurance Agent)
-**Build Environment**: Docker container `visionflow_container`
+**Build Environment**: Docker container `visionclaw_container`
 **Rust Version**: Stable (check with `rustc --version`)
 **Testing Framework**: Manual endpoint testing with `curl`
 **Total Test Duration**: ~45 minutes

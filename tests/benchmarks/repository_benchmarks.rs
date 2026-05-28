@@ -18,16 +18,16 @@ use std::sync::Arc;
 use std::time::Instant;
 use tempfile::TempDir;
 
-use webxr::repositories::{UnifiedGraphRepository, UnifiedOntologyRepository};
-// use webxr::adapters::sqlite_settings_repository::SqliteSettingsRepository;  // REMOVED: SQL deprecated
-use webxr::config::PhysicsSettings;
-use webxr::models::edge::Edge;
-use webxr::models::graph::GraphData;
-use webxr::models::node::Node;
-use webxr::ports::knowledge_graph_repository::KnowledgeGraphRepository;
-use webxr::ports::ontology_repository::{AxiomType, OntologyRepository, OwlAxiom, OwlClass, OwlProperty, PropertyType};
-use webxr::ports::settings_repository::{SettingValue, SettingsRepository};
-use webxr::services::database_service::DatabaseService;
+use visionclaw_server::repositories::{UnifiedGraphRepository, UnifiedOntologyRepository};
+// use visionclaw_server::adapters::sqlite_settings_repository::SqliteSettingsRepository;  // REMOVED: SQL deprecated
+use visionclaw_server::config::PhysicsSettings;
+use visionclaw_server::models::edge::Edge;
+use visionclaw_server::models::graph::GraphData;
+use visionclaw_server::models::node::Node;
+use visionclaw_server::ports::knowledge_graph_repository::KnowledgeGraphRepository;
+use visionclaw_server::ports::ontology_repository::{AxiomType, OntologyRepository, OwlAxiom, OwlClass, OwlProperty, PropertyType};
+use visionclaw_server::ports::settings_repository::{SettingValue, SettingsRepository};
+use visionclaw_server::services::database_service::DatabaseService;
 
 /// Performance statistics
 #[derive(Debug)]

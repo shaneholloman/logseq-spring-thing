@@ -1,7 +1,7 @@
-# VisionFlow Database Analysis - Complete Report Index
+# VisionClaw Database Analysis - Complete Report Index
 
 **Analysis Date**: 2025-10-23  
-**Container**: visionflow_container (Running)  
+**Container**: visionclaw_container (Running)  
 **Analyst**: Research & Database Integrity Agent
 
 ---
@@ -58,7 +58,7 @@ cd /home/devuser/workspace/project/db_analysis
 
 #### Step 1: Add Mock Credentials
 ```bash
-docker exec -i visionflow_container sqlite3 /app/data/settings.db < add_mock_credentials.sql
+docker exec -i visionclaw_container sqlite3 /app/data/settings.db < add_mock_credentials.sql
 ```
 
 #### Step 2: Build Knowledge Graph
@@ -68,13 +68,13 @@ curl -X POST http://localhost:8080/api/graph/rebuild \
   -H "Content-Type: application/json" \
   -d '{"source": "markdown"}'
 
-# Or via VisionFlow UI
+# Or via VisionClaw UI
 # Navigate to http://localhost:8080 -> Graph Management -> Rebuild
 ```
 
 #### Step 3: Verify
 ```bash
-docker exec visionflow_container sqlite3 /app/data/knowledge_graph.db < verify_graph.sql
+docker exec visionclaw_container sqlite3 /app/data/knowledge_graph.db < verify_graph.sql
 ```
 
 ---
@@ -141,7 +141,7 @@ The following API credentials need to be configured:
 | **Anthropic** | Claude API | ✅ Yes | Optional |
 
 **For Development**: Use `add_mock_credentials.sql`  
-**For Production**: Configure real keys via VisionFlow admin UI
+**For Production**: Configure real keys via VisionClaw admin UI
 
 ---
 
@@ -149,7 +149,7 @@ The following API credentials need to be configured:
 
 ### Check Node Count
 ```bash
-docker exec visionflow_container sqlite3 /app/data/knowledge_graph.db \
+docker exec visionclaw_container sqlite3 /app/data/knowledge_graph.db \
   "SELECT COUNT(*) FROM nodes"
 # Expected after build: 185
 # Current: 0
@@ -157,7 +157,7 @@ docker exec visionflow_container sqlite3 /app/data/knowledge_graph.db \
 
 ### Check Edge Count
 ```bash
-docker exec visionflow_container sqlite3 /app/data/knowledge_graph.db \
+docker exec visionclaw_container sqlite3 /app/data/knowledge_graph.db \
   "SELECT COUNT(*) FROM edges"
 # Expected after build: 4014
 # Current: 0
@@ -165,7 +165,7 @@ docker exec visionflow_container sqlite3 /app/data/knowledge_graph.db \
 
 ### Check Credentials
 ```bash
-docker exec visionflow_container sqlite3 /app/data/settings.db \
+docker exec visionclaw_container sqlite3 /app/data/settings.db \
   "SELECT service_name, key_name FROM api_keys"
 # Expected after setup: 4 rows
 # Current: 0 rows
@@ -248,7 +248,7 @@ schema_version (1)         - Version control ✅
 4. ⏳ Verify graph data (2 min)
 
 ### Short-term (Recommended)
-5. ⏳ Test VisionFlow UI functionality
+5. ⏳ Test VisionClaw UI functionality
 6. ⏳ Review visualization settings
 7. ⏳ Configure real API credentials
 
@@ -261,7 +261,7 @@ schema_version (1)         - Version control ✅
 
 ## 🔗 Quick Links
 
-- **VisionFlow UI**: http://localhost:8080
+- **VisionClaw UI**: http://localhost:8080
 - **Full Report**: 
 - **Quick Start**: [quickstart.sh](quickstart.sh)
 - **Verification**: [verify_graph.sql](verify_graph.sql)
@@ -273,8 +273,8 @@ schema_version (1)         - Version control ✅
 For issues or questions:
 1. Check the full report for detailed information
 2. Run `analyze_databases.py` for current state
-3. Review container logs: `docker logs visionflow_container`
-4. Check VisionFlow documentation
+3. Review container logs: `docker logs visionclaw_container`
+4. Check VisionClaw documentation
 
 ---
 

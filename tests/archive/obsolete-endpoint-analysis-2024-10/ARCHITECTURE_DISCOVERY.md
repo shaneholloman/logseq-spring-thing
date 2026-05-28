@@ -175,7 +175,7 @@ async fn get_settings() -> Result<HttpResponse, Error> {
 
 ### 1. Check Handler Files
 ```bash
-docker exec visionflow_container ls /app/src/handlers/
+docker exec visionclaw_container ls /app/src/handlers/
 ```
 
 Expected files:
@@ -186,20 +186,20 @@ Expected files:
 
 ### 2. Search for Panic Sources
 ```bash
-docker exec visionflow_container grep -r "unwrap()" /app/src/handlers/
-docker exec visionflow_container grep -r "expect(" /app/src/handlers/
-docker exec visionflow_container grep -r "\[0\]" /app/src/handlers/
+docker exec visionclaw_container grep -r "unwrap()" /app/src/handlers/
+docker exec visionclaw_container grep -r "expect(" /app/src/handlers/
+docker exec visionclaw_container grep -r "\[0\]" /app/src/handlers/
 ```
 
 ### 3. Check Logs
 ```bash
-docker exec visionflow_container cat /app/logs/*.log | grep -i panic
-docker exec visionflow_container cat /app/logs/*.log | grep -i error
+docker exec visionclaw_container cat /app/logs/*.log | grep -i panic
+docker exec visionclaw_container cat /app/logs/*.log | grep -i error
 ```
 
 ### 4. Enable Rust Backtrace
 ```bash
-docker exec visionflow_container env RUST_BACKTRACE=1 /app/target/debug/webxr
+docker exec visionclaw_container env RUST_BACKTRACE=1 /app/target/debug/webxr
 ```
 
 ---
@@ -235,36 +235,36 @@ async fn get_graph_data() -> Result<HttpResponse, Error> {
 ### Priority 1: Find Crash Sources
 ```bash
 # List handler files
-docker exec visionflow_container ls -la /app/src/handlers/
+docker exec visionclaw_container ls -la /app/src/handlers/
 
 # Read settings handler
-docker exec visionflow_container cat /app/src/handlers/settings.rs
+docker exec visionclaw_container cat /app/src/handlers/settings.rs
 
 # Read ontology handler
-docker exec visionflow_container cat /app/src/handlers/ontology.rs
+docker exec visionclaw_container cat /app/src/handlers/ontology.rs
 
 # Compare with working config handler
-docker exec visionflow_container cat /app/src/handlers/config.rs
+docker exec visionclaw_container cat /app/src/handlers/config.rs
 ```
 
 ### Priority 2: Check Database Schema
 ```bash
 # Install sqlite3 if needed
-docker exec visionflow_container apk add sqlite || \
-docker exec visionflow_container apt-get install -y sqlite3
+docker exec visionclaw_container apk add sqlite || \
+docker exec visionclaw_container apt-get install -y sqlite3
 
 # Check tables
-docker exec visionflow_container sqlite3 /app/data/settings.db ".tables"
-docker exec visionflow_container sqlite3 /app/data/ontology.db ".schema classes"
+docker exec visionclaw_container sqlite3 /app/data/settings.db ".tables"
+docker exec visionclaw_container sqlite3 /app/data/ontology.db ".schema classes"
 ```
 
 ### Priority 3: Enable Debug Logging
 ```bash
 # Set Rust log level
-docker exec visionflow_container env RUST_LOG=debug /app/target/debug/webxr
+docker exec visionclaw_container env RUST_LOG=debug /app/target/debug/webxr
 
 # Or check existing logs
-docker exec visionflow_container tail -f /app/logs/*.log
+docker exec visionclaw_container tail -f /app/logs/*.log
 ```
 
 ---

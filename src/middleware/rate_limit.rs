@@ -13,7 +13,7 @@
 //! ## Example
 //! ```rust,ignore
 //! use actix_web::{web, App};
-//! use visionflow::middleware::RateLimit;
+//! use visionclaw::middleware::RateLimit;
 //!
 //! App::new()
 //!     .service(

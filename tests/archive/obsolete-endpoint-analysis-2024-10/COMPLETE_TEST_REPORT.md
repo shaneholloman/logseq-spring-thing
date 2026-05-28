@@ -1,4 +1,4 @@
-# VisionFlow Backend Testing - Complete Hive Mind Tester Agent Report
+# VisionClaw Backend Testing - Complete Hive Mind Tester Agent Report
 
 **Agent**: Tester (Hive Mind Swarm)
 **Date**: 2025-10-24
@@ -282,8 +282,8 @@ Backend is functional. Handoff to debugging agent for source code analysis.
 
 4. Check table existence:
    ```bash
-   docker exec visionflow_container sqlite3 /app/data/settings.db ".tables"
-   docker exec visionflow_container sqlite3 /app/data/ontology.db ".schema classes"
+   docker exec visionclaw_container sqlite3 /app/data/settings.db ".tables"
+   docker exec visionclaw_container sqlite3 /app/data/ontology.db ".schema classes"
    ```
 
 ### For Performance Agent (PRIORITY 2)
@@ -313,7 +313,7 @@ Backend is functional. Handoff to debugging agent for source code analysis.
 
 ### System Information
 ```
-Container: visionflow_container
+Container: visionclaw_container
 Backend: Vite dev server (Node.js)
 Database: SQLite3
 Port: 4000 (internal), 3001 (nginx proxy)

@@ -2,7 +2,7 @@
 
 ## 1. Capability statement
 
-VisionFlow transmits node positions from server to client over a WebSocket
+VisionClaw transmits node positions from server to client over a WebSocket
 binary channel at a cadence governed by GPU layout settlement, with
 guaranteed eventual full-state delivery so that a client connecting at any
 time sees the current positions within a known maximum latency.

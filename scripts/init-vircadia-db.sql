@@ -82,8 +82,8 @@ CREATE TABLE IF NOT EXISTS annotations (
 INSERT INTO worlds (id, name, description, owner_id)
 VALUES (
     '00000000-0000-0000-0000-000000000001',
-    'VisionFlow World',
-    'Default multi-user world for VisionFlow agent swarm visualization',
+    'VisionClaw World',
+    'Default multi-user world for VisionClaw agent swarm visualization',
     'system'
 ) ON CONFLICT DO NOTHING;
 
@@ -96,6 +96,6 @@ CREATE INDEX IF NOT EXISTS idx_annotations_world_id ON annotations(world_id);
 CREATE INDEX IF NOT EXISTS idx_annotations_entity_id ON annotations(entity_id);
 
 -- Grant permissions
-GRANT ALL PRIVILEGES ON DATABASE vircadia_world TO visionflow;
-GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO visionflow;
-GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO visionflow;
+GRANT ALL PRIVILEGES ON DATABASE vircadia_world TO visionclaw;
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO visionclaw;
+GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO visionclaw;

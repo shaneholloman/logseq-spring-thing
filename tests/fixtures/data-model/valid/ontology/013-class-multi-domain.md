@@ -14,26 +14,26 @@ work that cannot be understood from either perspective alone.
 ```json-ld
 {
   "@context": "https://narrativegoldmine.com/context/v1.jsonld",
-  "@id": "urn:visionflow:owl:class:dome-construction",
+  "@id": "urn:visionclaw:owl:class:dome-construction",
   "@type": ["OntologyClass", "owl:Class"],
   "ontology": true,
   "rdfs:label": "Dome Construction",
   "vc:definition": "The set of techniques and design decisions involved in building a dome — a hemispherical or near-hemispherical structural element capping a circular or polygonal space. Includes the structural analysis of compressive thrust, the geometric setting-out of the form, and the architectural decisions about openings, lantern, and exterior shell.",
-  "rdfs:subClassOf": { "@id": "urn:visionflow:owl:class:structural-typology" },
+  "rdfs:subClassOf": { "@id": "urn:visionclaw:owl:class:structural-typology" },
   "vc:sourceDomain": ["architecture", "engineering"],
   "vc:belongsToDomain": "architecture",
   "vc:bridgesToDomain": "engineering",
   "vc:hasPart": [
-    { "@id": "urn:visionflow:owl:class:pendentive" },
-    { "@id": "urn:visionflow:owl:class:squinch" },
-    { "@id": "urn:visionflow:owl:class:oculus" },
-    { "@id": "urn:visionflow:owl:class:double-shell-construction" }
+    { "@id": "urn:visionclaw:owl:class:pendentive" },
+    { "@id": "urn:visionclaw:owl:class:squinch" },
+    { "@id": "urn:visionclaw:owl:class:oculus" },
+    { "@id": "urn:visionclaw:owl:class:double-shell-construction" }
   ],
   "vc:requires": [
-    { "@id": "urn:visionflow:owl:class:compressive-thrust-resolution" }
+    { "@id": "urn:visionclaw:owl:class:compressive-thrust-resolution" }
   ],
   "vc:enables": [
-    { "@id": "urn:visionflow:owl:class:basilical-vaulting" }
+    { "@id": "urn:visionclaw:owl:class:basilical-vaulting" }
   ],
   "vc:status": "active",
   "vc:maturity": "stable",

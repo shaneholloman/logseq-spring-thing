@@ -1,4 +1,4 @@
-//! Simulation parameters — re-exported from `visionflow-domain` per ADR-090.
+//! Simulation parameters — re-exported from `visionclaw-domain` per ADR-090.
 //!
 //! The framework-agnostic data shapes (SimulationParams, SettleMode,
 //! SimulationMode, SimulationPhase, FeatureFlags) live in the domain crate.
@@ -12,12 +12,12 @@ use cust_core::DeviceCopy;
 
 // Re-export the domain-owned shapes so existing
 // `use crate::models::simulation_params::SimulationParams` imports keep working.
-pub use visionflow_domain::models::simulation_params::{
+pub use visionclaw_domain::models::simulation_params::{
     FeatureFlags, SettleMode, SimulationMode, SimulationParams, SimulationPhase,
 };
 
-use visionflow_domain::types::layout::LayoutMode;
-use visionflow_domain::types::physics_config::{AutoBalanceConfig, AutoPauseConfig, PhysicsSettings};
+use visionclaw_domain::types::layout::LayoutMode;
+use visionclaw_domain::types::physics_config::{AutoBalanceConfig, AutoPauseConfig, PhysicsSettings};
 
 // GPU-aligned simulation parameters. Mirrors the CUDA `SimParams` struct;
 // must match its size and layout exactly (see `const _:()` assertion below).

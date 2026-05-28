@@ -7,9 +7,9 @@
 
 #[cfg(feature = "ontology")]
 mod ontology_reasoning_tests {
-    use webxr::reasoning::custom_reasoner::CustomReasoner;
+    use visionclaw_server::reasoning::custom_reasoner::CustomReasoner;
     // NOTE: inference_cache module does not exist - commenting out related code
-    // use webxr::reasoning::inference_cache::InferenceCache;
+    // use visionclaw_server::reasoning::inference_cache::InferenceCache;
     use std::path::PathBuf;
     use std::fs;
     use tempfile::TempDir;
@@ -179,7 +179,7 @@ mod ontology_reasoning_tests {
         assert!(cached.is_none(), "First access should be cache miss");
 
         // Store inference result
-        use webxr::reasoning::custom_reasoner::InferredAxioms;
+        use visionclaw_server::reasoning::custom_reasoner::InferredAxioms;
         let test_axioms = InferredAxioms {
             subclass_of: vec![("A".to_string(), "B".to_string())],
             disjoint_with: vec![],
@@ -207,7 +207,7 @@ mod ontology_reasoning_tests {
         let owl_content_v1 = "version 1 content";
         let owl_content_v2 = "version 2 content";
 
-        use webxr::reasoning::custom_reasoner::InferredAxioms;
+        use visionclaw_server::reasoning::custom_reasoner::InferredAxioms;
         let axioms_v1 = InferredAxioms {
             subclass_of: vec![("A".to_string(), "B".to_string())],
             disjoint_with: vec![],
@@ -283,7 +283,7 @@ mod ontology_reasoning_tests {
 
         let owl_content = "persistent test content";
 
-        use webxr::reasoning::custom_reasoner::InferredAxioms;
+        use visionclaw_server::reasoning::custom_reasoner::InferredAxioms;
         let test_axioms = InferredAxioms {
             subclass_of: vec![("X".to_string(), "Y".to_string())],
             disjoint_with: vec![],

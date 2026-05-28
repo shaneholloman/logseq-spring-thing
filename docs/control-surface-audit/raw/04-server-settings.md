@@ -39,9 +39,9 @@
 
 | Rust Path | Type | Default | Validation | Notes |
 |-----------|------|---------|-----------|-------|
-| `visualisation.graphs` | `GraphsSettings` | ... | nested | logseq + visionflow (agent) graphs |
+| `visualisation.graphs` | `GraphsSettings` | ... | nested | logseq + visionclaw (agent) graphs |
 | `visualisation.graphs.logseq.physics` | `PhysicsSettings` | ... | nested | Knowledge graph physics (canonical) |
-| `visualisation.graphs.visionflow.physics` | `PhysicsSettings` | ... | nested | Agent/bot graph physics |
+| `visualisation.graphs.visionclaw.physics` | `PhysicsSettings` | ... | nested | Agent/bot graph physics |
 | `visualisation.rendering` | `RenderingSettings` | ... | nested | Ambient/directional light, shadows, AO |
 | `visualisation.animation` | `AnimationSettings` | ... | nested | Motion blur, pulse, wave, selection animations |
 | `visualisation.glow` | `GlowSettings` | ... | nested + cross-field validation | Color (#00ffff), opacity (0.8), intensity (0-10), radius, threshold |
@@ -294,7 +294,7 @@ Routes registered at `/api/settings` scope (in addition to/overlapping with abov
 **Route registration:** `src/handlers/settings_handler/routes.rs:16-56` configures above via `web::ServiceConfig`
 
 **Physics propagation on PUT /path:**
-- If path contains `.physics.`, `.graphs.logseq.`, or `.graphs.visionflow.`:
+- If path contains `.physics.`, `.graphs.logseq.`, or `.graphs.visionclaw.`:
   - Extract physics update, call `propagate_physics_to_gpu()`
   - Send `UpdateSimulationParams` to GPUComputeActor
   - Send `ForceResumePhysics` to GraphServiceSupervisor

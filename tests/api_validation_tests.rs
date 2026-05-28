@@ -1,4 +1,4 @@
-// Test disabled - references deprecated/removed modules (webxr::errors, webxr::utils::gpu_safety)
+// Test disabled - references deprecated/removed modules (visionclaw_server::errors, visionclaw_server::utils::gpu_safety)
 // Error types and GPU safety modules may have been restructured per ADR-001
 /*
 //! API Validation and Security Tests
@@ -11,7 +11,7 @@ use std::collections::HashMap;
 use std::time::{Duration, Instant};
 use tokio::test;
 
-use webxr::errors::*;
+use visionclaw_server::errors::*;
 
 // ... remaining tests omitted for brevity ...
 */

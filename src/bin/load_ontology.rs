@@ -8,9 +8,9 @@ use std::sync::Arc;
 use std::collections::HashMap;
 use log::info;
 
-use webxr::adapters::OxigraphOntologyRepository;
-use webxr::services::parsers::ontology_parser::OntologyParser;
-use webxr::ports::ontology_repository::{OntologyRepository, OwlClass, OwlProperty, PropertyType, OwlAxiom, AxiomType};
+use visionclaw_server::adapters::OxigraphOntologyRepository;
+use visionclaw_server::services::parsers::ontology_parser::OntologyParser;
+use visionclaw_server::ports::ontology_repository::{OntologyRepository, OwlClass, OwlProperty, PropertyType, OwlAxiom, AxiomType};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

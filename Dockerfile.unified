@@ -1,5 +1,5 @@
 # =============================================================================
-# VisionFlow Unified Dockerfile - Multi-Stage Build (CachyOS)
+# VisionClaw Unified Dockerfile - Multi-Stage Build (CachyOS)
 # =============================================================================
 # This Dockerfile provides a unified build process for both development and
 # production environments using multi-stage builds and build arguments.
@@ -13,8 +13,8 @@
 #   CUDA_ARCH:     CUDA compute capability (default: 75 for portable PTX)
 #
 # Usage Examples:
-#   Development:  docker build --target development -t visionflow:dev .
-#   Production:   docker build --target production -t visionflow:prod .
+#   Development:  docker build --target development -t visionclaw:dev .
+#   Production:   docker build --target production -t visionclaw:prod .
 #   Custom CUDA:  docker build --build-arg CUDA_ARCH=75 --target production .
 # =============================================================================
 

@@ -42,7 +42,7 @@ fn solid_base() -> String {
 }
 
 fn agent_key() -> String {
-    std::env::var("VISIONFLOW_AGENT_KEY").unwrap_or_else(|_| "changeme-agent-key".to_string())
+    std::env::var("VISIONCLAW_AGENT_KEY").unwrap_or_else(|_| "changeme-agent-key".to_string())
 }
 
 // ─── Request / Response types ────────────────────────────────────────────────
@@ -276,7 +276,7 @@ pub async fn submit_image_job(
     };
 
     let job_id = Uuid::new_v4().to_string();
-    let filename_prefix = format!("visionflow/{}/{}", user_npub, job_id);
+    let filename_prefix = format!("visionclaw/{}/{}", user_npub, job_id);
     let workflow = build_flux2_workflow(&body, seed, &filename_prefix);
 
     let client = Client::builder()
@@ -473,7 +473,7 @@ pub async fn agent_submit_image_job(
     let user_npub = body.user_npub.clone().unwrap_or_else(|| "agent".to_string());
     let seed: u64 = if body.seed < 0 { rand::random() } else { body.seed as u64 };
     let job_id = Uuid::new_v4().to_string();
-    let filename_prefix = format!("visionflow/{}/{}", user_npub, job_id);
+    let filename_prefix = format!("visionclaw/{}/{}", user_npub, job_id);
 
     let params = ImageGenRequest {
         prompt: body.prompt.clone(),

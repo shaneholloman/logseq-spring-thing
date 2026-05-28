@@ -15,13 +15,13 @@ emitted at the adapter layer).
 ```json-ld
 {
   "@context": "https://narrativegoldmine.com/context/v1.jsonld",
-  "@id": "urn:visionflow:owl:property:completion-date",
+  "@id": "urn:visionclaw:owl:property:completion-date",
   "@type": ["OntologyProperty", "owl:DatatypeProperty"],
   "ontology": true,
   "rdfs:label": "completionDate",
   "vc:definition": "The year in which an architectural work was completed and brought into use. For works completed in stages, the canonical completion year is the year the principal structure was first usable for its intended purpose (e.g. consecration date for a church).",
   "vc:propertyKind": "DataProperty",
-  "rdfs:domain": { "@id": "urn:visionflow:owl:class:architectural-work" },
+  "rdfs:domain": { "@id": "urn:visionclaw:owl:class:architectural-work" },
   "rdfs:range": { "@id": "http://www.w3.org/2001/XMLSchema#gYear" },
   "vc:characteristics": {
     "vc:functional": true

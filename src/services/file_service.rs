@@ -1,9 +1,9 @@
 use super::github::{ContentAPI, GitHubClient, GitHubConfig};
 use crate::config::AppFullSettings;
-use visionflow_domain::models::graph::GraphData;
-use visionflow_domain::models::node::Node as AppNode; // Use an alias to avoid confusion
-use visionflow_domain::models::edge::Edge as AppEdge;
-use visionflow_domain::models::metadata::{Metadata, MetadataOps, MetadataStore};
+use visionclaw_domain::models::graph::GraphData;
+use visionclaw_domain::models::node::Node as AppNode; // Use an alias to avoid confusion
+use visionclaw_domain::models::edge::Edge as AppEdge;
+use visionclaw_domain::models::metadata::{Metadata, MetadataOps, MetadataStore};
 use crate::ports::knowledge_graph_repository::KnowledgeGraphRepository;
 use crate::time;
 use actix_web::web;

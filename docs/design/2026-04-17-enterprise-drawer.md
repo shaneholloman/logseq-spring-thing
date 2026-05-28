@@ -1,7 +1,7 @@
 # Enterprise Drawer — Design Document
 
 - **Date**: 2026-04-17
-- **Author**: System Architecture (VisionFlow)
+- **Author**: System Architecture (VisionClaw)
 - **Status**: Proposed
 - **Supersedes**: full-viewport `/enterprise` route (`App.tsx:182`, `EnterpriseFullPage.tsx`)
 - **ADR reference**: see `§8 Decision Record` below

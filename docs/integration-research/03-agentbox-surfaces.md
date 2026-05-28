@@ -659,7 +659,7 @@ So beads is currently `off`; everything else has a real backing. RuVector Postgr
 
 ### Who is "the federation host"?
 
-This is left **abstract** in agentbox docs deliberately. `agentbox/CLAUDE.md` rule "No host-project specifics in this repo" plus `ADR-005` framing. From the integrating side (this VisionFlow repo), the planned BC20 anti-corruption layer in `src/actors/` is the host orchestrator. The connection contract is in `docs/PRD-004-agentbox-visionclaw-integration.md` (referenced from project `CLAUDE.md`) and `docs/ddd-agentbox-integration-context.md`.
+This is left **abstract** in agentbox docs deliberately. `agentbox/CLAUDE.md` rule "No host-project specifics in this repo" plus `ADR-005` framing. From the integrating side (this VisionClaw repo), the planned BC20 anti-corruption layer in `src/actors/` is the host orchestrator. The connection contract is in `docs/PRD-004-agentbox-visionclaw-integration.md` (referenced from project `CLAUDE.md`) and `docs/ddd-agentbox-integration-context.md`.
 
 In agentbox's external-adapter shape the connection is generic HTTP / stdio / MCP per slot:
 - beads → HTTP REST or MCP at `external_url`.

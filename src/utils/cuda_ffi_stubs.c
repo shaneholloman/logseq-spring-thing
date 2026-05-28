@@ -9,7 +9,7 @@ typedef struct { float x, y, z; } Float3;
 typedef struct { /* opaque */ char _pad[256]; } DynamicForceConfigGPU;
 typedef struct { /* opaque */ char _pad[512]; } SemanticConfigGPU;
 
-// --- visionflow_unified.cu (thrust_wrapper) ---
+// --- visionclaw_unified.cu (thrust_wrapper) ---
 void thrust_sort_key_value(const void *k_in, void *k_out, const void *v_in, void *v_out,
                            int n, int key_size, int val_size, void *stream) {}
 void thrust_exclusive_scan(const void *in, void *out, int n, void *stream) {}

@@ -221,7 +221,7 @@ function WelcomeStep({
   return (
     <div className="wizard-step">
       <div className="wizard-header">
-        <h1>VisionFlow</h1>
+        <h1>VisionClaw</h1>
         <p className="wizard-subtitle">See your knowledge in three dimensions.<br />Own it with decentralized identity.</p>
       </div>
       <div className="wizard-actions">
@@ -478,7 +478,7 @@ function IdentityReadyStep({
         </div>
       </div>
       <button className="wizard-btn wizard-btn-primary" onClick={onEnter}>
-        Enter VisionFlow
+        Enter VisionClaw
       </button>
     </div>
   );

@@ -3,8 +3,8 @@
 
 use super::mocks::MockKnowledgeGraphRepository;
 use glam::Vec3;
-use webxr::models::{Edge, Node};
-use webxr::ports::KnowledgeGraphRepository;
+use visionclaw_server::models::{Edge, Node};
+use visionclaw_server::ports::KnowledgeGraphRepository;
 
 fn create_test_node(id: u32, label: &str) -> Node {
     Node {

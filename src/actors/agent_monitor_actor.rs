@@ -16,7 +16,7 @@ use std::time::Duration;
 
 use crate::actors::messages::*;
 use crate::services::management_api_client::{ManagementApiClient, TaskInfo};
-use visionflow_domain::types::claude_flow::{
+use visionclaw_domain::types::claude_flow::{
     AgentProfile, AgentStatus, AgentType, ClaudeFlowClient, PerformanceMetrics, TokenUsage,
 };
 use crate::utils::time;

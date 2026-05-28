@@ -1,5 +1,5 @@
 -- =================================================================
--- VisionFlow Knowledge Graph Database (knowledge_graph.db)
+-- VisionClaw Knowledge Graph Database (knowledge_graph.db)
 -- =================================================================
 -- Purpose: Main graph structure from local markdown files with physics simulation
 -- Version: 2.0.0

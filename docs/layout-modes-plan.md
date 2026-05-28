@@ -2,7 +2,7 @@
 
 ## Context
 
-VisionFlow is a collaborative AR application for humans and AI agents to explore
+VisionClaw is a collaborative AR application for humans and AI agents to explore
 knowledge graphs in 3D. The physics engine runs on GPU (CUDA, RTX A6000) with
 real-time WebSocket position streaming. This plan defines the layout mode system
 based on research into graph visualization for knowledge discovery.
@@ -29,7 +29,7 @@ directly maximizes community separation. No separate clustering step needed.
 | Convergence | Global temperature | Per-node adaptive speed |
 | Complexity | O(n^2) or grid | O(n log n) Barnes-Hut octree |
 
-**Implementation**: Modify `visionflow_unified.cu` repulsion and spring kernels.
+**Implementation**: Modify `visionclaw_unified.cu` repulsion and spring kernels.
 The octree (Barnes-Hut) is the main new code. Reference: govertb/GPUGraphLayout.
 
 **Parameters**:

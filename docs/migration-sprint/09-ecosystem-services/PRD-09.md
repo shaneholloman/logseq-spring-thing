@@ -9,13 +9,13 @@ Related     : ADR-09 (this section), ADR-10 (External Integrations),
 
 ## Capability
 
-Provide a single, environment-aware launch surface for VisionFlow that can:
+Provide a single, environment-aware launch surface for VisionClaw that can:
 
-1. Bring the VisionFlow container up in `dev` or `prod` mode with the right
+1. Bring the VisionClaw container up in `dev` or `prod` mode with the right
    build flavour, network attachment, and source-mount semantics.
 2. Bring **ecosystem services** (Kokoro TTS, Whisper WebUI, Xinference) up
-   alongside VisionFlow, on a shared Docker network, as **independent
-   containers** managed by reference — not vendored into the VisionFlow
+   alongside VisionClaw, on a shared Docker network, as **independent
+   containers** managed by reference — not vendored into the VisionClaw
    image.
 3. Detect and adapt to the host environment: GPU presence, CUDA compute
    capability, Docker-in-Docker (DinD) bind-mount paths, and CachyOS-style
@@ -49,9 +49,9 @@ in this sprint.
 - `docker-compose.unified.yml` — the canonical compose file referenced by
   `launch.sh`. All other compose files are deprecated for new work.
 - Docker network: a single, configurable external network shared between
-  VisionFlow, agentbox (Section 10), and ecosystem services.
+  VisionClaw, agentbox (Section 10), and ecosystem services.
 - `supervisord.dev.conf` and `supervisord.production.conf` — process
-  supervision inside the VisionFlow container.
+  supervision inside the VisionClaw container.
 - Tmux tab assignments documenting where commands are *issued from*
   (host build shell vs. agent container) — load-bearing for the DinD
   bind-mount constraint.
@@ -101,13 +101,13 @@ Acceptance:
 
 Acceptance:
 - `./scripts/launch.sh rebuild dev` runs with `--no-cache`, busts
-  `CACHE_BUST`, and removes `visionflow-cargo-target-cache`,
-  `visionflow-cargo-cache`, and `visionflow-cargo-git-cache`.
+  `CACHE_BUST`, and removes `visionclaw-cargo-target-cache`,
+  `visionclaw-cargo-cache`, and `visionclaw-cargo-git-cache`.
 - Takes ~15 minutes worst case; this is the documented upper bound.
 
 ### US-09-04 — Ecosystem services as one command
 
-> When I want TTS + STT + Xinference embeddings alongside VisionFlow, one
+> When I want TTS + STT + Xinference embeddings alongside VisionClaw, one
 > command brings them all up on the same network with predictable
 > hostnames.
 
@@ -128,12 +128,12 @@ Acceptance:
 Acceptance:
 - `./scripts/launch.sh ecosystem-status` prints a three-column table
   (service, status, endpoint) plus the network's container members.
-- `./scripts/launch.sh status` does the same for VisionFlow.
+- `./scripts/launch.sh status` does the same for VisionClaw.
 
 ### US-09-06 — DinD build safety
 
 > When I'm SSH'd into the agent container, I cannot accidentally bake the
-> wrong source into the VisionFlow image.
+> wrong source into the VisionClaw image.
 
 Acceptance:
 - Documented constraint that builds must be sent to the **host tmux tab 6**
@@ -159,7 +159,7 @@ Acceptance:
 ## Non-goals
 
 - Replacing Docker Compose with a different orchestrator (k8s, Nomad).
-- Building VisionFlow into a single binary that runs the ecosystem
+- Building VisionClaw into a single binary that runs the ecosystem
   services in-process. The whole point of "ecosystem" is independent
   lifecycle.
 - Hot-swapping the ecosystem network on an already-running stack.
@@ -174,7 +174,7 @@ Acceptance:
    `BUILD_TARGET` and different compose profiles.
 4. The ecosystem network is named via `${EXTERNAL_NETWORK}` (default
    documented in ADR-09 D2) and is the single network for all ecosystem
-   services and VisionFlow.
+   services and VisionClaw.
 5. After this sprint, no compose file, script, or .env contains the
    string `visionclaw_network`. The migration commit `d2f77703c` is
    considered the start of this work; this PRD/ADR are the finish.
@@ -204,13 +204,13 @@ Acceptance:
   process presence. Deferred to Section 09 phase 2.
 - **Auto-restart on host reboot**: ecosystem containers use
   `--restart unless-stopped` so the Docker daemon handles this. No
-  systemd unit needed for VisionFlow.
+  systemd unit needed for VisionClaw.
 - **Kokoro voice presets**: a property of the integration contract
   (Section 10), not infra.
 
 ## Glossary
 
-- **Ecosystem service**: a containerised AI service that VisionFlow
+- **Ecosystem service**: a containerised AI service that VisionClaw
   consumes over the network and that has its own upstream repo
   (Kokoro, Whisper, Xinference). Not vendored.
 - **DinD**: Docker-in-Docker. A container with `/var/run/docker.sock`

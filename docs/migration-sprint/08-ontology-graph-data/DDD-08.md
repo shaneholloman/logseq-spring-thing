@@ -95,7 +95,7 @@ Operations:
 ```
 Page {
     id: NodeId,                  // class bits = Page
-    iri: Iri,                    // urn:visionflow:page:<slug>
+    iri: Iri,                    // urn:visionclaw:page:<slug>
     slug: String,                // canonical from filename
     title: String,               // from frontmatter or first heading
     public: bool,                // always true for a Page; gates creation
@@ -197,7 +197,7 @@ Invariants:
 ```
 LinkedPage {
     id: NodeId,                   // class bits = LinkedPage
-    iri: Iri,                     // urn:visionflow:linked:<normalized-label>
+    iri: Iri,                     // urn:visionclaw:linked:<normalized-label>
     label: String,                // the wikilink target text, normalised
     first_seen_in: PageRef,       // page that first referenced it
     upgraded_to: Option<UpgradeTarget>,  // None | Page(id) | OntologyClass(id)

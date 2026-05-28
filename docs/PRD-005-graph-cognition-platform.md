@@ -944,7 +944,7 @@ This section captures the CUDA-skill expert review of GPU implications of the PR
 
 | File | Purpose | Reuse opportunity |
 |------|---------|-------------------|
-| `src/utils/visionflow_unified.cu` | Main force compute: spatial grid, force pass, integration, frontier compaction | Per-edge-category spring-constants slot directly into the existing `force_pass_kernel`; no new kernel needed |
+| `src/utils/visionclaw_unified.cu` | Main force compute: spatial grid, force pass, integration, frontier compaction | Per-edge-category spring-constants slot directly into the existing `force_pass_kernel`; no new kernel needed |
 | `src/utils/semantic_forces.cu` | Typed force application: DAG layout, type clustering, requires/enables/has_part/bridges_to | **Already implements per-relationship-type forces** with strength + rest_length parameters. UA's 35 edge kinds in 8 categories map onto existing parameter shape; we add new fields, no new kernel |
 | `src/utils/ontology_constraints.cu` | OWL axiom forces: `apply_disjoint_classes_kernel`, `apply_subclass_hierarchy_kernel`, `apply_sameas_colocate_kernel` | **Already implements OWL→force mapping.** Ontobricks SHACL violations and SWRL inference can ride this same kernel pattern with new constraint types |
 | `src/utils/gpu_clustering_kernels.cu` | Community detection on GPU | Powers Epic E's "show communities" affordance directly; no port needed |

@@ -34,7 +34,7 @@ Replace `multi-agent-docker/` with `agentbox/` as VisionClaw's agent-container s
 1. Not porting MAD's DinD host-bridge workflow. Agentbox builds via Nix, not via a Docker daemon inside a container — the bind-mount minefield that motivated `tmux send-keys -t 6` simply does not exist. Removing a workaround for a problem that no longer exists is a **win**, not a regression.
 2. Not reintroducing Linux pseudo-user isolation. Profile isolation is the ratified model (CLAUDE.md §"Important Rules For Changes").
 3. Not shipping a 2,379-line bash entrypoint. Supervisor blocks are generated from `agentbox.toml` by `flake.nix`.
-4. Not coupling comfyui to VisionFlow unless explicitly gated on.
+4. Not coupling comfyui to VisionClaw unless explicitly gated on.
 5. Not replacing Zellij with tmux.
 6. **Not hosting Beads state or Solid pod storage inside agentbox (v3).** Those are VisionClaw Rust's responsibility in the federated deployment. Agentbox ships client adapters only. Local standalone fallback is a convenience, not the default — see §3a.
 7. Not owning durable agent memory as a service. Durable memory belongs to external RuVector PG (P2.6 when enabled) or VisionClaw's Rust memory layer. Agentbox's embedded RuVector is a local-session cache, not a source of truth.
@@ -108,7 +108,7 @@ This preserves ADR-001 (Nix declarative), ADR-002 (embedded RuVector as local re
 | P3.2 | LichtFeld Studio + COLMAP + METIS (3DGS pipeline) | MAD built from source L234-302 | New `[skills.spatial_and_3d] gaussian_splatting = false`; pulls Nix derivations for COLMAP, METIS, LichtFeld. Requires `[toolchains.cuda] = true` (validator D.4 enforces) |
 | P3.3 | Blender 5.0.1 | Already in `agentbox.toml [skills.spatial_and_3d] blender` (default false) | Verify Nix package resolves to 5.0.1; if not, add overlay |
 | P3.4 | TeX Live full | Already in `[skills.docs] latex = true` | Verify Nix `texliveFull` attr is referenced, not a minimal subset |
-| P3.5 | ComfyUI — built-in + external switches (Q7 resolved) | MAD v1.1.0 delegates to VisionFlow; agentbox has standalone v1.0.0 | Two independent manifest keys: **(a) `[skills.media.comfyui_builtin] enabled = false, version = "latest"`** — Nix packages the current online ComfyUI release inside agentbox; supervisor block on port 8188. **(b) `[integrations.comfyui_external] enabled = false, url = "http://comfyui.external:8188"`** — points skills at an external ComfyUI instance. Mutually exclusive: validator (D.4) rejects both enabled. The "upgrade standalone v1.0.0" question is resolved by always tracking current online ComfyUI release through nixpkgs |
+| P3.5 | ComfyUI — built-in + external switches (Q7 resolved) | MAD v1.1.0 delegates to VisionClaw; agentbox has standalone v1.0.0 | Two independent manifest keys: **(a) `[skills.media.comfyui_builtin] enabled = false, version = "latest"`** — Nix packages the current online ComfyUI release inside agentbox; supervisor block on port 8188. **(b) `[integrations.comfyui_external] enabled = false, url = "http://comfyui.external:8188"`** — points skills at an external ComfyUI instance. Mutually exclusive: validator (D.4) rejects both enabled. The "upgrade standalone v1.0.0" question is resolved by always tracking current online ComfyUI release through nixpkgs |
 
 ## 4b. Scope — Agentbox design changes (not parity, improvements)
 
@@ -166,7 +166,7 @@ Nine of ten resolved. Resolutions captured in §4/§4b rows. Summary:
 **Q5 — RESOLVED 2026-04-23 (port both, promoted to P1)**
 Direct reading of MAD source (`services/beads-service.js` 228 lines, `services/briefing-service.js` 246 lines, `routes/briefs.js` 392 lines) confirmed the contract:
 
-- **BeadsService** wraps an external `bd` CLI for agent-work receipts: epic/child hierarchy, atomic claim (compare-and-swap), blocks/blocked-by dependencies, JSONL-to-git sync, user attribution via Nostr pubkey tags (already sovereign-mesh-native — `BEADS_ACTOR: visionflow/{display_name}`, `pubkey:{hex[:8]}`).
+- **BeadsService** wraps an external `bd` CLI for agent-work receipts: epic/child hierarchy, atomic claim (compare-and-swap), blocks/blocked-by dependencies, JSONL-to-git sync, user attribution via Nostr pubkey tags (already sovereign-mesh-native — `BEADS_ACTOR: visionclaw/{display_name}`, `pubkey:{hex[:8]}`).
 - **BriefingService** orchestrates brief → execute-per-role → debrief in a `team/humans/` and `team/roles/` tree; spawns role-specific agents (architect, dev, ciso, designer, dpo, devops, appsec, advocate) via `processManager.spawnTask`; creates one epic bead per brief, one child bead per role.
 - **Why port**: user confirms VisionClaw depends on beads for long-running multi-input agent actions. BriefingService requires BeadsService (constructor dependency). Both promoted to P1.6/P1.7. Stdio channel in P1.8 is how VisionClaw orchestrates the work.
 - **Open sub-question (Q5a, not blocking)**: `bd` CLI lives in VisionClaw Rust (not in agentbox). Agentbox writes a thin client adapter. Still useful: confirm the VisionClaw-side bead API shape — HTTP REST? stdio JSON-RPC? MCP? — so the adapter targets the right transport.

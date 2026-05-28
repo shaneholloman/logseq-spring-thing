@@ -964,7 +964,7 @@ Enterprise feature modules are code-split via `React.lazy()` at the route level.
 - ADR-045: Policy Engine Approach
 - ADR-046: Enterprise UI Architecture (companion ADR)
 - ADR-047: WASM Visualization Components (companion ADR)
-- PRD-001: VisionFlow Data Pipeline Alignment
+- PRD-001: VisionClaw Data Pipeline Alignment
 - `client/src/features/design-system/` (existing component library)
 - `client/src/features/design-system/animations.ts` (Framer Motion presets)
 - `client/src/wasm/scene-effects-bridge.ts` (existing WASM bridge pattern)

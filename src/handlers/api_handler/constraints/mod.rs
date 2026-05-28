@@ -1,7 +1,7 @@
 //! Constraint Management API Handlers
 //!
 //! Provides REST API endpoints for managing ontology-derived and user-defined
-//! physics constraints in the VisionFlow system.
+//! physics constraints in the VisionClaw system.
 
 use actix_web::{web, HttpResponse, Responder};
 use log::{error, info};
@@ -12,7 +12,7 @@ use crate::{ok_json, error_json, bad_request, not_found, created_json, service_u
 
 use crate::actors::gpu::ontology_constraint_actor::OntologyConstraintStats;
 use crate::actors::messages::{GetConstraints, UpdateConstraintData};
-use visionflow_domain::models::constraints::Constraint;
+use visionclaw_domain::models::constraints::Constraint;
 use crate::models::constraints::ConstraintType;
 use crate::AppState;
 

@@ -18,18 +18,18 @@ His built work includes the [[Tempio Malatestiano]] (Rimini, 1450),
 ```json-ld
 {
   "@context": "https://narrativegoldmine.com/context/v1.jsonld",
-  "@id": "urn:visionflow:owl:class:humanist-architect",
+  "@id": "urn:visionclaw:owl:class:humanist-architect",
   "@type": "OntologyClass",
   "ontology": true,
   "rdfs:label": "Humanist Architect",
   "vc:definition": "An architect whose practice is grounded in humanist scholarship — typically literate in Latin, conversant with the surviving texts of Vitruvius, and active across multiple liberal arts. Distinguished from craft-trained architects of the Gothic guilds by theoretical rather than purely empirical formation.",
-  "rdfs:subClassOf": { "@id": "urn:visionflow:owl:class:renaissance-architect" },
+  "rdfs:subClassOf": { "@id": "urn:visionclaw:owl:class:renaissance-architect" },
   "vc:sourceDomain": ["architecture", "intellectual-history"],
   "vc:status": "active",
   "vc:maturity": "stable",
   "vc:qualityScore": { "@value": "0.92", "@type": "xsd:float" },
   "vc:authorityScore": { "@value": "0.88", "@type": "xsd:float" },
-  "vc:definedIn": { "@id": "urn:visionflow:page:5566778899aabbccddeeff00112233445566778899aabbccddeeff0011223344" },
+  "vc:definedIn": { "@id": "urn:visionclaw:page:5566778899aabbccddeeff00112233445566778899aabbccddeeff0011223344" },
   "prov:wasAttributedTo": { "@id": "did:nostr:npub1bob00000000000000000000000000000000000000000000000000000000" },
   "prov:generatedAtTime": { "@value": "2026-05-16T09:22:00Z", "@type": "xsd:dateTime" }
 }

@@ -23,7 +23,7 @@
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
-use webxr::services::jsonld_ingest::{
+use visionclaw_server::services::jsonld_ingest::{
     errors::JsonLdIngestError, ingest_page, PageMetadata,
 };
 
@@ -82,7 +82,7 @@ fn invalid_fixture_expectation(filename: &str) -> Option<&'static str> {
     }
 }
 
-async fn run_ingest(path: &Path) -> Result<webxr::services::jsonld_ingest::IngestOutcome, JsonLdIngestError> {
+async fn run_ingest(path: &Path) -> Result<visionclaw_server::services::jsonld_ingest::IngestOutcome, JsonLdIngestError> {
     let markdown = std::fs::read_to_string(path)
         .unwrap_or_else(|e| panic!("read fixture {}: {}", path.display(), e));
     let meta = PageMetadata::new(path.display().to_string());
@@ -240,10 +240,10 @@ const REPRESENTATIVE: &[RepresentativeFixture] = &[
     RepresentativeFixture {
         relative_path: "valid/pages/001-minimal-page.md",
         must_contain: &[
-            "<https://visionflow.dreamlab/ns/slug>",
+            "<https://visionclaw.dreamlab/ns/slug>",
             "\"filippo-brunelleschi\"",
-            "<urn:visionflow:graph:knowledge>",
-            "<https://visionflow.dreamlab/ns/Page>",
+            "<urn:visionclaw:graph:knowledge>",
+            "<https://visionclaw.dreamlab/ns/Page>",
         ],
         expected_prov_did: "did:nostr:npub1alice",
         min_quads: 6,
@@ -253,8 +253,8 @@ const REPRESENTATIVE: &[RepresentativeFixture] = &[
         relative_path: "valid/ontology/010-class-renaissance-architecture.md",
         must_contain: &[
             "<http://www.w3.org/2002/07/owl#Class>",
-            "<https://visionflow.dreamlab/ns/OntologyClass>",
-            "<urn:visionflow:graph:ontology:assert>",
+            "<https://visionclaw.dreamlab/ns/OntologyClass>",
+            "<urn:visionclaw:graph:ontology:assert>",
         ],
         expected_prov_did: "did:nostr:npub1bob",
         min_quads: 4,
@@ -264,8 +264,8 @@ const REPRESENTATIVE: &[RepresentativeFixture] = &[
         relative_path: "valid/ontology/014-property-object-designed-by.md",
         must_contain: &[
             "<http://www.w3.org/2002/07/owl#ObjectProperty>",
-            "<urn:visionflow:owl:property:designed-by>",
-            "<urn:visionflow:graph:ontology:assert>",
+            "<urn:visionclaw:owl:property:designed-by>",
+            "<urn:visionclaw:graph:ontology:assert>",
         ],
         expected_prov_did: "did:nostr:npub1bob",
         min_quads: 4,
@@ -275,8 +275,8 @@ const REPRESENTATIVE: &[RepresentativeFixture] = &[
         relative_path: "valid/ontology/017-axiom-subclass.md",
         must_contain: &[
             "<http://www.w3.org/2002/07/owl#Axiom>",
-            "<urn:visionflow:owl:axiom:f2c4a91b6e80>",
-            "<urn:visionflow:graph:ontology:assert>",
+            "<urn:visionclaw:owl:axiom:f2c4a91b6e80>",
+            "<urn:visionclaw:graph:ontology:assert>",
         ],
         expected_prov_did: "did:nostr:npub1bob",
         min_quads: 4,
@@ -285,9 +285,9 @@ const REPRESENTATIVE: &[RepresentativeFixture] = &[
     RepresentativeFixture {
         relative_path: "valid/agents/030-agent-telemetry-snapshot.md",
         must_contain: &[
-            "<https://visionflow.dreamlab/ns/AgentTelemetry>",
-            "<urn:visionflow:graph:agent>",
-            "<https://visionflow.dreamlab/ns/runId>",
+            "<https://visionclaw.dreamlab/ns/AgentTelemetry>",
+            "<urn:visionclaw:graph:agent>",
+            "<https://visionclaw.dreamlab/ns/runId>",
         ],
         expected_prov_did: "did:nostr:npub1whelk",
         min_quads: 6,
@@ -295,9 +295,9 @@ const REPRESENTATIVE: &[RepresentativeFixture] = &[
 ];
 
 // DEPRECATED (ADR-090 Phase A4): expected-triple substrings drifted from the
-// IRI namespace conventions actually produced by visionflow-ontology after
+// IRI namespace conventions actually produced by visionclaw-ontology after
 // the ontology pipeline moved out of webxr. The test asserts substrings like
-// "<https://visionflow.dreamlab/ns/slug>" and "<urn:visionflow:graph:knowledge>"
+// "<https://visionclaw.dreamlab/ns/slug>" and "<urn:visionclaw:graph:knowledge>"
 // but the moved pipeline emits a different namespace. Fixing requires
 // reauthoring all 8 fixture expectations — defer until the IRI convention
 // stabilises post-modularisation. Re-enable by removing this #[ignore].
@@ -389,16 +389,16 @@ title:: synthetic union test
 ```json-ld
 {
   "@context": "https://narrativegoldmine.com/context/v1.jsonld",
-  "@id": "urn:visionflow:owl:axiom:synth-union-001",
+  "@id": "urn:visionclaw:owl:axiom:synth-union-001",
   "@type": ["Axiom", "owl:Axiom"],
   "vc:axiomType": "SubClassOf",
-  "vc:subject": { "@id": "urn:visionflow:owl:class:a" },
+  "vc:subject": { "@id": "urn:visionclaw:owl:class:a" },
   "vc:object": {
     "@type": "owl:Class",
     "owl:unionOf": {
       "@list": [
-        { "@id": "urn:visionflow:owl:class:b" },
-        { "@id": "urn:visionflow:owl:class:c" }
+        { "@id": "urn:visionclaw:owl:class:b" },
+        { "@id": "urn:visionclaw:owl:class:c" }
       ]
     }
   },

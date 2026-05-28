@@ -58,7 +58,7 @@ export interface ConstraintListResponse {
   gpuAvailable: boolean;
   modes?: {
     logseqComputeMode: number;
-    visionflowComputeMode: number;
+    visionclawComputeMode: number;
   };
 }
 

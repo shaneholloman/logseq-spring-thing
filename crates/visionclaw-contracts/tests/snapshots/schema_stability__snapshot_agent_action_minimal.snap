@@ -3,7 +3,7 @@ source: tests/schema_stability.rs
 expression: env
 ---
 {
-  "type": "visionflow:agent-action",
+  "type": "visionclaw:agent-action",
   "schema_version": 1,
   "message_id": "00000000-0000-4000-8000-000000000000",
   "issued_at_ms": 1715856000000,

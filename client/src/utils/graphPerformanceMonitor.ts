@@ -37,7 +37,7 @@ export interface PerformanceMetrics {
   };
   graphMetrics: {
     logseq: GraphPerformanceMetrics;
-    visionflow: GraphPerformanceMetrics;
+    visionclaw: GraphPerformanceMetrics;
   };
   workerMetrics: {
     physicsWorker: {
@@ -102,7 +102,7 @@ class GraphPerformanceMonitor {
           visibleNodes: 0,
           culledNodes: 0
         },
-        visionflow: {
+        visionclaw: {
           nodeCount: 0,
           edgeCount: 0,
           updateTime: 0,
@@ -232,7 +232,7 @@ class GraphPerformanceMonitor {
   }
 
   
-  public updateGraphMetrics(graphType: 'logseq' | 'visionflow', metrics: Partial<GraphPerformanceMetrics>) {
+  public updateGraphMetrics(graphType: 'logseq' | 'visionclaw', metrics: Partial<GraphPerformanceMetrics>) {
     Object.assign(this.metrics.graphMetrics[graphType], metrics);
   }
 
@@ -283,11 +283,11 @@ class GraphPerformanceMonitor {
       `Instanced: ${m.graphMetrics.logseq.instancedRendering ? '✅' : '❌'}`,
       `Update: ${m.graphMetrics.logseq.updateTime.toFixed(1)}ms | Render: ${m.graphMetrics.logseq.renderTime.toFixed(1)}ms | Physics: ${m.graphMetrics.logseq.physicsTime.toFixed(1)}ms`,
       '',
-      '--- VisionFlow Graph ---',
-      `Nodes: ${m.graphMetrics.visionflow.nodeCount} (${m.graphMetrics.visionflow.visibleNodes} visible, ${m.graphMetrics.visionflow.culledNodes} culled)`,
-      `Edges: ${m.graphMetrics.visionflow.edgeCount}`,
-      `Instanced: ${m.graphMetrics.visionflow.instancedRendering ? '✅' : '❌'}`,
-      `Update: ${m.graphMetrics.visionflow.updateTime.toFixed(1)}ms | Render: ${m.graphMetrics.visionflow.renderTime.toFixed(1)}ms | Physics: ${m.graphMetrics.visionflow.physicsTime.toFixed(1)}ms`,
+      '--- VisionClaw Graph ---',
+      `Nodes: ${m.graphMetrics.visionclaw.nodeCount} (${m.graphMetrics.visionclaw.visibleNodes} visible, ${m.graphMetrics.visionclaw.culledNodes} culled)`,
+      `Edges: ${m.graphMetrics.visionclaw.edgeCount}`,
+      `Instanced: ${m.graphMetrics.visionclaw.instancedRendering ? '✅' : '❌'}`,
+      `Update: ${m.graphMetrics.visionclaw.updateTime.toFixed(1)}ms | Render: ${m.graphMetrics.visionclaw.renderTime.toFixed(1)}ms | Physics: ${m.graphMetrics.visionclaw.physicsTime.toFixed(1)}ms`,
       '',
       '--- Worker Performance ---',
       `Physics Worker: ${m.workerMetrics.physicsWorker.messagesReceived} messages, ${m.workerMetrics.physicsWorker.avgResponseTime.toFixed(1)}ms avg response`,
@@ -311,8 +311,8 @@ class GraphPerformanceMonitor {
     if (m.fps < 30) {
       recommendations.push('⚠️ Low FPS detected:');
       
-      if (!m.graphMetrics.visionflow.instancedRendering && m.graphMetrics.visionflow.nodeCount > 20) {
-        recommendations.push('  - Enable instanced rendering for VisionFlow (currently using individual meshes)');
+      if (!m.graphMetrics.visionclaw.instancedRendering && m.graphMetrics.visionclaw.nodeCount > 20) {
+        recommendations.push('  - Enable instanced rendering for VisionClaw (currently using individual meshes)');
       }
       
       if (m.frameTimeMax > 33) {
@@ -335,10 +335,10 @@ class GraphPerformanceMonitor {
     if (m.webgl.drawCalls > 300) {
       recommendations.push('⚠️ High draw call count:');
       
-      const totalNodes = m.graphMetrics.logseq.nodeCount + m.graphMetrics.visionflow.nodeCount;
+      const totalNodes = m.graphMetrics.logseq.nodeCount + m.graphMetrics.visionclaw.nodeCount;
       const instancedNodes = 
         (m.graphMetrics.logseq.instancedRendering ? m.graphMetrics.logseq.nodeCount : 0) +
-        (m.graphMetrics.visionflow.instancedRendering ? m.graphMetrics.visionflow.nodeCount : 0);
+        (m.graphMetrics.visionclaw.instancedRendering ? m.graphMetrics.visionclaw.nodeCount : 0);
       
       if (instancedNodes < totalNodes) {
         recommendations.push(`  - Only ${instancedNodes}/${totalNodes} nodes use instanced rendering`);
@@ -349,21 +349,21 @@ class GraphPerformanceMonitor {
     }
 
     
-    const totalNodes = m.graphMetrics.logseq.nodeCount + m.graphMetrics.visionflow.nodeCount;
+    const totalNodes = m.graphMetrics.logseq.nodeCount + m.graphMetrics.visionclaw.nodeCount;
     if (totalNodes > 1000) {
       recommendations.push('⚠️ Large node count optimization needed:');
       recommendations.push('  - Implement spatial partitioning (octree/BVH)');
       recommendations.push('  - Add frustum culling with THREE.Frustum');
       recommendations.push('  - Consider SharedArrayBuffer for worker communication');
       
-      const culledRatio = (m.graphMetrics.logseq.culledNodes + m.graphMetrics.visionflow.culledNodes) / totalNodes;
+      const culledRatio = (m.graphMetrics.logseq.culledNodes + m.graphMetrics.visionclaw.culledNodes) / totalNodes;
       if (culledRatio < 0.2) {
         recommendations.push('  - Low culling ratio, improve visibility testing');
       }
     }
 
     
-    if (m.graphMetrics.logseq.physicsTime + m.graphMetrics.visionflow.physicsTime > 10) {
+    if (m.graphMetrics.logseq.physicsTime + m.graphMetrics.visionclaw.physicsTime > 10) {
       recommendations.push('⚠️ Physics performance issues:');
       recommendations.push('  - Consider spatial hashing for collision detection');
       recommendations.push('  - Reduce physics update frequency for distant nodes');

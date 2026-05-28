@@ -213,7 +213,7 @@ owns them:
 - **XR client state bridge.** Owned by ADR-12. The Godot client has its
   own state model; this PRD covers the React/Three.js client only.
 - **`AgentControlSurface` panel.** Lives in agentbox + external forum
-  (per README ground rule 6). Not a VisionFlow client concern.
+  (per README ground rule 6). Not a VisionClaw client concern.
 - **`drainLoopCoalescer.tick()`** invoked from `useFrame`. Symptom of
   the `BinaryFrameCoalescer` that A9 rejects. Removed entirely.
 

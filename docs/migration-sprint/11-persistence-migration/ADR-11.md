@@ -10,7 +10,7 @@ Related     : ADR-08 (Ontology & Graph Data — depends on this ADR's
 
 ## Context
 
-VisionFlow durable state is currently held in a Neo4j 5.x Community
+VisionClaw durable state is currently held in a Neo4j 5.x Community
 container reached over Bolt from three adapters totalling **4,977
 lines** of Rust:
 
@@ -45,11 +45,11 @@ That is precisely what Oxigraph provides.
 
 ### D1. Two stores, one binary
 
-VisionFlow embeds **Oxigraph** (W3C SPARQL 1.1 + Update, RocksDB
+VisionClaw embeds **Oxigraph** (W3C SPARQL 1.1 + Update, RocksDB
 backend, Rust-native, MIT licensed) for ontology and graph data, and
 **SQLite** (via `rusqlite` with the `bundled` feature) for settings.
 Both stores are opened in-process by `webxr` at startup, against a
-data directory passed by `--data-dir` or the `VISIONFLOW_DATA_DIR`
+data directory passed by `--data-dir` or the `VISIONCLAW_DATA_DIR`
 environment variable.
 
 ```
@@ -64,19 +64,19 @@ environment variable.
 
 There is **no separate Neo4j container** in the destination
 architecture, no Bolt port exposed by the deployment, and no JVM
-in any image VisionFlow produces.
+in any image VisionClaw produces.
 
 ### D2. Named-graph segregation for the triple store
 
 Oxigraph supports **named graphs** natively (it is a quad-store). We
-segregate VisionFlow's three logical graphs by IRI:
+segregate VisionClaw's three logical graphs by IRI:
 
 | Named graph                                       | Contents                                |
 |---------------------------------------------------|-----------------------------------------|
-| `<urn:visionflow:graph:knowledge>`                | KGNode entities + KG edges              |
-| `<urn:visionflow:graph:ontology:assert>`           | Asserted OntologyClass / OwlProperty / OwlAxiom |
-| `<urn:visionflow:graph:ontology:inferred>`        | Whelk-derived inferred axioms           |
-| `<urn:visionflow:graph:agent>`                    | Agent telemetry (Section 7)             |
+| `<urn:visionclaw:graph:knowledge>`                | KGNode entities + KG edges              |
+| `<urn:visionclaw:graph:ontology:assert>`           | Asserted OntologyClass / OwlProperty / OwlAxiom |
+| `<urn:visionclaw:graph:ontology:inferred>`        | Whelk-derived inferred axioms           |
+| `<urn:visionclaw:graph:agent>`                    | Agent telemetry (Section 7)             |
 | default graph                                     | Cross-graph `BRIDGE_TO` quads + schema  |
 
 This replaces the current Neo4j approach of node-label-as-type
@@ -87,7 +87,7 @@ This replaces the current Neo4j approach of node-label-as-type
   0045) cannot recur because there is no `class label` concept to
   forget to write.
 - **Per-graph invalidation.** `CLEAR GRAPH
-  <urn:visionflow:graph:ontology:inferred>` is one statement.
+  <urn:visionclaw:graph:ontology:inferred>` is one statement.
   Asserted ontology and inferred ontology are physically separated.
 - **Default-graph queries see the union.** A SPARQL query with no
   `FROM`/`FROM NAMED` clause queries the union — i.e. inferred and
@@ -107,7 +107,7 @@ vc:edge/<sha256-12>            # Edge (sha256 of source||predicate||target)
 vc:bridge/<sha256-12>          # BRIDGE_TO edge
 ```
 
-The `vc:` prefix expands to `https://visionflow.dreamlab/ns/` in
+The `vc:` prefix expands to `https://visionclaw.dreamlab/ns/` in
 emitted RDF. Slug derivation is the same algorithm as today (NFKC
 normalisation, lowercase, non-alnum to dash, collapse, trim). For
 content addressing of edges, sha256 of the canonical
@@ -309,13 +309,13 @@ consistency problems we are not willing to fund.
 `WhelkInferenceEngine` (already a trait, already a port at
 `src/ports/inference_engine.rs`) emits inferred axioms as
 `OwlAxiom` values. The new Oxigraph adapter writes them as triples
-into `<urn:visionflow:graph:ontology:inferred>` in one batch:
+into `<urn:visionclaw:graph:ontology:inferred>` in one batch:
 
 ```
-DELETE { GRAPH <urn:visionflow:graph:ontology:inferred> { ?s ?p ?o } }
-WHERE  { GRAPH <urn:visionflow:graph:ontology:inferred> { ?s ?p ?o } } ;
+DELETE { GRAPH <urn:visionclaw:graph:ontology:inferred> { ?s ?p ?o } }
+WHERE  { GRAPH <urn:visionclaw:graph:ontology:inferred> { ?s ?p ?o } } ;
 INSERT DATA {
-    GRAPH <urn:visionflow:graph:ontology:inferred> {
+    GRAPH <urn:visionclaw:graph:ontology:inferred> {
         <vc:onto/foo> rdfs:subClassOf <vc:onto/bar> .
         <vc:onto/foo> rdfs:subClassOf <vc:onto/baz> .
         …
@@ -326,7 +326,7 @@ INSERT DATA {
 The two statements run as a single SPARQL Update request which
 Oxigraph treats atomically. Clients querying without a `FROM` clause
 see the union of asserted and inferred (D2). Clients wanting only
-authored data add `FROM <urn:visionflow:graph:ontology:assert>`.
+authored data add `FROM <urn:visionclaw:graph:ontology:assert>`.
 
 Inference is **not triggered on the write path**. The
 `WhelkInferenceEngine` runs on demand from the
@@ -389,7 +389,7 @@ ontology in the same database is appealing on operator count
 grounds. But:
 
 - `rdf2`-style extensions are unmaintained or alpha-quality.
-- We do not want to couple VisionFlow's graph store to the RuVector
+- We do not want to couple VisionClaw's graph store to the RuVector
   cluster (different operational tiers; different backup cadences;
   RuVector is "if it's gone we re-embed" while the ontology is
   authored data).

@@ -408,7 +408,7 @@ All rotation events emit structured logs to standard observability stack (Loki, 
 ## References
 
 - PRD-010 — DID:Nostr Mesh Federation, R7
-- PRD-011 — VisionFlow Forum Kit Extraction, G7
+- PRD-011 — VisionClaw Forum Kit Extraction, G7
 - ADR-073 — Mesh topology (D4 federation key per relay; D11 health probes)
 - ADR-074 — DID:Nostr canonicalisation (D12 key rotation announcement; D9 kind-30033 mesh service-list)
 - ADR-076 — `nostr-core` absorption

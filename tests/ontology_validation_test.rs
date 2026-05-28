@@ -25,7 +25,7 @@ mod tests {
 
     // Import the validator service
     #[cfg(feature = "ontology")]
-    use webxr::services::owl_validator::{
+    use visionclaw_server::services::owl_validator::{
         GraphEdge, GraphNode, OwlValidatorService, PropertyGraph, RdfTriple, Severity,
         ValidationConfig, ValidationReport,
     };

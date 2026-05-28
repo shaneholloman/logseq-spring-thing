@@ -5,7 +5,7 @@
 
 #[cfg(test)]
 use crate::errors::ActorError;
-use crate::errors::VisionFlowError;
+use crate::errors::VisionClawError;
 use actix::prelude::*;
 use chrono::{DateTime, Utc};
 use log::{debug, error, info, warn};
@@ -63,7 +63,7 @@ struct ActorState {
 }
 
 #[derive(Message)]
-#[rtype(result = "Result<(), VisionFlowError>")]
+#[rtype(result = "Result<(), VisionClawError>")]
 pub struct RegisterActor {
     pub actor_name: String,
     pub strategy: SupervisionStrategy,
@@ -79,7 +79,7 @@ pub struct RegisterActor {
 #[rtype(result = "()")]
 pub struct ActorFailed {
     pub actor_name: String,
-    pub error: VisionFlowError,
+    pub error: VisionClawError,
 }
 
 #[derive(Message)]
@@ -89,7 +89,7 @@ pub struct ActorStarted {
 }
 
 #[derive(Message)]
-#[rtype(result = "Result<SupervisionStatus, VisionFlowError>")]
+#[rtype(result = "Result<SupervisionStatus, VisionClawError>")]
 pub struct GetSupervisionStatus;
 
 #[derive(Debug, Clone)]
@@ -246,7 +246,7 @@ impl Handler<InitiateGracefulShutdown> for SupervisorActor {
 }
 
 impl Handler<RegisterActor> for SupervisorActor {
-    type Result = Result<(), VisionFlowError>;
+    type Result = Result<(), VisionClawError>;
 
     fn handle(&mut self, msg: RegisterActor, _ctx: &mut Self::Context) -> Self::Result {
         // ADR-031 item 7: Reject new registrations during drain.
@@ -255,7 +255,7 @@ impl Handler<RegisterActor> for SupervisorActor {
                 "[SupervisorActor '{}'] Rejecting registration of '{}' — supervisor is draining",
                 self.supervisor_name, msg.actor_name
             );
-            return Err(VisionFlowError::Generic {
+            return Err(VisionClawError::Generic {
                 message: "Supervisor is draining, cannot register new actors".to_string(),
                 source: None,
             });
@@ -389,7 +389,7 @@ impl Handler<ActorStarted> for SupervisorActor {
 }
 
 impl Handler<GetSupervisionStatus> for SupervisorActor {
-    type Result = Result<SupervisionStatus, VisionFlowError>;
+    type Result = Result<SupervisionStatus, VisionClawError>;
 
     fn handle(&mut self, _msg: GetSupervisionStatus, _ctx: &mut Self::Context) -> Self::Result {
         let total_actors = self.supervised_actors.len();
@@ -495,7 +495,7 @@ pub trait SupervisedActorTrait: Actor {
     }
 
     
-    fn report_error(&self, supervisor: &Addr<SupervisorActor>, error: VisionFlowError) {
+    fn report_error(&self, supervisor: &Addr<SupervisorActor>, error: VisionClawError) {
         supervisor.do_send(ActorFailed {
             actor_name: Self::actor_name().to_string(),
             error,
@@ -551,7 +551,7 @@ use crate::utils::time;
 
         let failure_msg = ActorFailed {
             actor_name: "TestActor".to_string(),
-            error: VisionFlowError::Actor(ActorError::RuntimeFailure {
+            error: VisionClawError::Actor(ActorError::RuntimeFailure {
                 actor_name: "TestActor".to_string(),
                 reason: "Test failure".to_string(),
             }),

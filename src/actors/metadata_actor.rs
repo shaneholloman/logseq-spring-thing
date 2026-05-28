@@ -4,7 +4,7 @@ use actix::prelude::*;
 use log::{debug, info};
 
 use crate::actors::messages::*;
-use visionflow_domain::models::metadata::MetadataStore;
+use visionclaw_domain::models::metadata::MetadataStore;
 
 pub struct MetadataActor {
     metadata: MetadataStore,

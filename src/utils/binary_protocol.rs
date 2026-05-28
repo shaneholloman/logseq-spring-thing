@@ -1,5 +1,5 @@
 #![allow(dead_code)]
-use visionflow_domain::models::constraints::{AdvancedParams, Constraint};
+use visionclaw_domain::models::constraints::{AdvancedParams, Constraint};
 use crate::types::vec3::Vec3Data;
 use crate::utils::socket_flow_messages::BinaryNodeData;
 use log::{debug, trace};
@@ -1615,7 +1615,7 @@ impl MultiplexedMessage {
 #[cfg(test)]
 mod control_frame_tests {
     use super::*;
-    use visionflow_domain::models::constraints::ConstraintKind;
+    use visionclaw_domain::models::constraints::ConstraintKind;
 
     #[test]
     fn test_control_frame_serialization() {

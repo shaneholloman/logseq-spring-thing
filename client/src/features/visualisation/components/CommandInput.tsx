@@ -337,7 +337,7 @@ function parseCommandToActions(cmd: string): SettingsAction[] {
         description: `Searching for "${searchTerm}" — use the graph to navigate`,
         localAction: () => {
           // Dispatch a custom event that the graph can listen for
-          window.dispatchEvent(new CustomEvent('visionflow:search', { detail: { query: searchTerm } }));
+          window.dispatchEvent(new CustomEvent('visionclaw:search', { detail: { query: searchTerm } }));
         },
       });
     }
@@ -413,7 +413,7 @@ function parseCommandToActions(cmd: string): SettingsAction[] {
           const solidPod = (await import('../../../services/SolidPodService')).default;
           const views = await solidPod.listGraphViews();
           if (views.length > 0) {
-            window.dispatchEvent(new CustomEvent('visionflow:status', {
+            window.dispatchEvent(new CustomEvent('visionclaw:status', {
               detail: { message: `Saved views: ${views.join(', ')}` }
             }));
           }
@@ -447,7 +447,7 @@ function parseCommandToActions(cmd: string): SettingsAction[] {
             });
             if (!res.ok) throw new Error(`API error: ${res.status}`);
             const data = await res.json();
-            window.dispatchEvent(new CustomEvent('visionflow:status', {
+            window.dispatchEvent(new CustomEvent('visionclaw:status', {
               detail: { message: `Injected ${data.injected} agents into graph` },
             }));
           } catch (e) {

@@ -2,7 +2,7 @@
 //! workspace management, and graph supervision.
 //!
 //! ## Split (ADR-090 Phase A3+)
-//! Domain-safe types live in `visionflow_actors::messages::graph_messages` and
+//! Domain-safe types live in `visionclaw_actors::messages::graph_messages` and
 //! are re-exported here so that `use crate::actors::messages::*` continues to
 //! compile unchanged across all webxr actor files.
 //!
@@ -21,11 +21,11 @@ use crate::actors::messaging::MessageId;
 use crate::utils::socket_flow_messages::BinaryNodeData;
 
 // ---------------------------------------------------------------------------
-// Re-export domain-safe graph messages from visionflow-actors
+// Re-export domain-safe graph messages from visionclaw-actors
 // (excludes UpdateNodePositions and UpdateNodePosition — defined locally below)
 // ---------------------------------------------------------------------------
 
-pub use visionflow_actors::messages::graph_messages::{
+pub use visionclaw_actors::messages::graph_messages::{
     AddEdge, AddNode, AddNodesFromMetadata, ArchiveWorkspace, AutoBalanceNotification,
     BuildGraphFromMetadata, CreateWorkspace, DeleteWorkspace, GetAutoBalanceNotifications,
     GetGraphData, GetMetadata, GetNodeIdMapping, GetNodeMap, GetNodePositions,
@@ -43,7 +43,7 @@ pub use visionflow_actors::messages::graph_messages::{
 // ---------------------------------------------------------------------------
 
 /// Update a single node's position and velocity.
-/// Uses `glam::Vec3` which is not in visionflow-domain — stays in webxr.
+/// Uses `glam::Vec3` which is not in visionclaw-domain — stays in webxr.
 #[derive(Message)]
 #[rtype(result = "Result<(), String>")]
 pub struct UpdateNodePosition {

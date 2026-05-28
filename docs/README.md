@@ -361,7 +361,7 @@ VisionClaw is the integration substrate of a 5-project DreamLab ecosystem federa
 | PRD | Title | Status |
 |-----|-------|--------|
 | [PRD-010](PRD-010-did-nostr-mesh-federation.md) | DID:Nostr Mesh Federation | Phase 0-1 complete; Phase 2 kit extraction done; federation implementation in progress |
-| [PRD-011](PRD-011-visionflow-forum-kit-extraction.md) | VisionFlow Forum Kit Extraction | Phase 2 complete; kit at nostr-rust-forum v3.0.0-rc4 on crates.io |
+| [PRD-011](PRD-011-visionclaw-forum-kit-extraction.md) | VisionClaw Forum Kit Extraction | Phase 2 complete; kit at nostr-rust-forum v3.0.0-rc4 on crates.io |
 | [PRD-012](PRD-012-dreamlab-ai-website-kit-adoption.md) | DreamLab Website Kit Adoption | Phase 3 forum-config/ created; cutover pending (ADR-083) |
 
 **Architecture Decision Records:**
@@ -438,7 +438,7 @@ This section indexes the three lifecycle document types that govern VisionClaw's
 | 008 | [PRD-008: XR Godot Replacement](PRD-008-xr-godot-replacement.md) | In Progress | ADR-071 | [XR Godot (BC22)](ddd-xr-godot-context.md) |
 | 009 | [PRD-009: Feature Engineering & Discovery](PRD-009-feature-engineering-discovery.md) | In Progress | ADR-072 | [Feature Engineering](ddd-feature-engineering-context.md) |
 | 010 | [PRD-010: DID:Nostr Mesh Federation](PRD-010-did-nostr-mesh-federation.md) | Phase 0-1 complete; federation in progress | ADR-073–076 | [Mesh Federation](ddd-mesh-federation-context.md) |
-| 011 | [PRD-011: Forum Kit Extraction](PRD-011-visionflow-forum-kit-extraction.md) | Phase 2 complete; kit on crates.io | ADR-079, ADR-080 | [Mesh Federation](ddd-mesh-federation-context.md) |
+| 011 | [PRD-011: Forum Kit Extraction](PRD-011-visionclaw-forum-kit-extraction.md) | Phase 2 complete; kit on crates.io | ADR-079, ADR-080 | [Mesh Federation](ddd-mesh-federation-context.md) |
 | 012 | [PRD-012: Website Kit Adoption](PRD-012-dreamlab-ai-website-kit-adoption.md) | Phase 3 forum-config/ created; cutover pending | ADR-083–085 | [Mesh Federation](ddd-mesh-federation-context.md) |
 | QE-001 | [PRD-QE-001: Integration Quality Engineering](PRD-QE-001-integration-quality-engineering.md) | Draft | ADR-062 | [QE Traceability (BC21)](ddd-qe-traceability-graph-context.md) |
 | QE-002 | [PRD-QE-002: XR Godot Quality Engineering](PRD-QE-002-xr-godot-quality-engineering.md) | In Progress | ADR-071 | [XR Godot (BC22)](ddd-xr-godot-context.md) |

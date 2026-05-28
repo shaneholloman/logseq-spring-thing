@@ -16,11 +16,11 @@ in-place and a `LinkResolved` event is emitted.
 ```json-ld
 {
   "@context": "https://narrativegoldmine.com/context/v1.jsonld",
-  "@id": "urn:visionflow:linked:vitruvian-tradition",
+  "@id": "urn:visionclaw:linked:vitruvian-tradition",
   "@type": "LinkedPage",
   "rdfs:label": "Vitruvian Tradition",
   "vc:slug": "vitruvian-tradition",
-  "vc:firstSeenIn": { "@id": "urn:visionflow:page:b1a2c3d4e5f60718293a4b5c6d7e8f9012a3b4c5d6e7f8091a2b3c4d5e6f7081" },
+  "vc:firstSeenIn": { "@id": "urn:visionclaw:page:b1a2c3d4e5f60718293a4b5c6d7e8f9012a3b4c5d6e7f8091a2b3c4d5e6f7081" },
   "vc:upgradedTo": null,
   "vc:status": "dangling",
   "prov:wasAttributedTo": { "@id": "did:nostr:npub1sync000000000000000000000000000000000000000000000000000000" },

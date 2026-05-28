@@ -13,10 +13,10 @@ mod integration_tests {
     use std::collections::HashMap;
 
     #[cfg(feature = "ontology")]
-    use webxr::handlers::ontology_handler::config as ontology_config;
+    use visionclaw_server::handlers::ontology_handler::config as ontology_config;
 
     #[cfg(feature = "ontology")]
-    use webxr::services::owl_validator::{GraphEdge, GraphNode, PropertyGraph};
+    use visionclaw_server::services::owl_validator::{GraphEdge, GraphNode, PropertyGraph};
 
     #[cfg(feature = "ontology")]
     fn create_test_graph() -> PropertyGraph {

@@ -10,14 +10,14 @@ export async function detectGraphPatterns(
 
 export async function analyzeCrossGraphPatterns(
   _logseqPatterns: GraphPattern[],
-  _visionflowPatterns: GraphPattern[]
+  _visionclawPatterns: GraphPattern[]
 ): Promise<CrossGraphPattern[]> {
   return [];
 }
 
 export async function detectGraphAnomalies(
   _logseqGraph: GraphData,
-  _visionflowGraph: GraphData
+  _visionclawGraph: GraphData
 ): Promise<GraphAnomaly[]> {
   return [];
 }

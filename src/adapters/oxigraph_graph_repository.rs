@@ -42,10 +42,10 @@ use oxigraph::sparql::QueryResults;
 use oxigraph::store::{StorageError, Store};
 
 use crate::actors::graph_actor::{AutoBalanceNotification, PhysicsState};
-use visionflow_domain::models::constraints::ConstraintSet;
-use visionflow_domain::models::edge::Edge;
-use visionflow_domain::models::graph::GraphData;
-use visionflow_domain::models::node::Node;
+use visionclaw_domain::models::constraints::ConstraintSet;
+use visionclaw_domain::models::edge::Edge;
+use visionclaw_domain::models::graph::GraphData;
+use visionclaw_domain::models::node::Node;
 use crate::ports::graph_repository::{
     BinaryNodeData, GraphRepository, GraphRepositoryError, PathfindingParams,
     PathfindingResult, Result as RepoResult,

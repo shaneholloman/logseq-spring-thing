@@ -4,7 +4,7 @@
 //! Read operations for GPU physics adapter status and metrics.
 
 use crate::cqrs::types::Query;
-use visionflow_domain::ports::gpu_physics_adapter::{GpuDeviceInfo, PhysicsStatistics};
+use visionclaw_domain::ports::gpu_physics_adapter::{GpuDeviceInfo, PhysicsStatistics};
 
 #[derive(Debug, Clone)]
 pub struct GetGpuStatusQuery;

@@ -68,7 +68,7 @@ async fn configure_clustering(
                         "clusteringIterations": config.iterations
                     }
                 },
-                "visionflow": {
+                "visionclaw": {
                     "physics": {
                         "clusteringAlgorithm": config.algorithm,
                         "clusterCount": config.num_clusters,

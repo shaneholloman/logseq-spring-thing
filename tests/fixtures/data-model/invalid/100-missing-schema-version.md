@@ -12,13 +12,13 @@ The block below uses JSON-LD 1.1 `@included` but does not declare
 ```json-ld
 {
   "@context": "https://narrativegoldmine.com/context/v1.jsonld",
-  "@id": "urn:visionflow:owl:axiom:0000000000ff",
+  "@id": "urn:visionclaw:owl:axiom:0000000000ff",
   "@type": "Axiom",
   "vc:axiomType": "SubClassOf",
-  "vc:subject": { "@id": "urn:visionflow:owl:class:foo" },
-  "vc:object": { "@id": "urn:visionflow:owl:class:bar" },
+  "vc:subject": { "@id": "urn:visionclaw:owl:class:foo" },
+  "vc:object": { "@id": "urn:visionclaw:owl:class:bar" },
   "@included": [
-    { "@id": "urn:visionflow:activity:x", "@type": "prov:Activity" }
+    { "@id": "urn:visionclaw:activity:x", "@type": "prov:Activity" }
   ],
   "prov:wasAttributedTo": { "@id": "did:nostr:npub1bob00000000000000000000000000000000000000000000000000000000" },
   "prov:generatedAtTime": { "@value": "2026-05-16T12:00:00Z", "@type": "xsd:dateTime" }

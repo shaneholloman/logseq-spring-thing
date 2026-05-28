@@ -162,7 +162,7 @@ Single CSP, delivered three ways for defence in depth:
    ```
    default-src 'self';
    script-src  'self' 'wasm-unsafe-eval';
-   connect-src 'self' wss://visionflow.example.com https://dl.polyhaven.org https://*.polyhaven.org;
+   connect-src 'self' wss://visionclaw.example.com https://dl.polyhaven.org https://*.polyhaven.org;
    style-src   'self' 'nonce-{{NONCE}}';
    img-src     'self' data: blob: https://dl.polyhaven.org;
    worker-src  'self' blob:;
@@ -190,7 +190,7 @@ Notes:
 - `'unsafe-eval'` is *not* added. `'wasm-unsafe-eval'` is sufficient
   for the Rust→WASM modules (scene-effects, ontology).
 - `frame-ancestors 'none'` blocks clickjacking. There is no legitimate
-  iframe embedding use case for VisionFlow.
+  iframe embedding use case for VisionClaw.
 - The commit `7c5a4abd4` (referenced in the task) adding `blob:` to
   `connect-src` for Comlink/WASM is *rejected*. Comlink uses
   `worker-src`, not `connect-src`. WASM modules use `script-src
@@ -252,7 +252,7 @@ release image.
 The auth extractor reads `X-Forwarded-Proto` / `X-Forwarded-Host` for
 NIP-98 URL reconstruction (auth_extractor.rs:94–103). Actix is
 configured to trust forwarded headers *only* from the configured CIDR
-list (env `VISIONFLOW_TRUSTED_PROXIES`, default `127.0.0.1/32`).
+list (env `VISIONCLAW_TRUSTED_PROXIES`, default `127.0.0.1/32`).
 Requests from any other source have forwarded headers stripped.
 Without this, an attacker can spoof `X-Forwarded-Proto: https` to
 manipulate the signed URL. The env var is configuration, not a
@@ -297,7 +297,7 @@ on a fixed corpus.
 
 The release binary, in `main.rs` after `dotenv().ok()` and before binding
 any socket, refuses to start if any of `SETTINGS_AUTH_BYPASS`,
-`VISIONFLOW_DEV_MODE`, `ALLOW_INSECURE_DEFAULTS`, or `NODE_ENV=development`
+`VISIONCLAW_DEV_MODE`, `ALLOW_INSECURE_DEFAULTS`, or `NODE_ENV=development`
 with `DOCKER_ENV` set are present. Logs each offending var to stderr,
 exits with status 2. Wrapped in
 `#[cfg(not(any(debug_assertions, feature = "dev-auth")))]` so dev builds

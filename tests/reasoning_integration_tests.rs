@@ -7,11 +7,11 @@
 // NOTE: inference_cache module and related types do not exist
 // Commenting out the entire test module
 /*
-use webxr::reasoning::{
+use visionclaw_server::reasoning::{
     custom_reasoner::{CustomReasoner, OntologyReasoner, AxiomType},
     inference_cache::InferenceCache,
 };
-use webxr::constraints::{
+use visionclaw_server::constraints::{
     axiom_mapper::{AxiomMapper, OWLAxiom, AxiomType as MapperAxiomType},
     physics_constraint::PhysicsConstraintType,
 };
@@ -88,7 +88,7 @@ mod integration_tests {
 
         // Simulate GitHub sync update
         ontology.classes.insert("UpdatedClass".to_string(),
-            webxr::reasoning::custom_reasoner::OWLClass {
+            visionclaw_server::reasoning::custom_reasoner::OWLClass {
                 iri: "http://example.org/UpdatedClass".to_string(),
                 label: Some("Updated Class".to_string()),
                 parent_class_iri: Some("Cell".to_string()),
@@ -314,17 +314,17 @@ mod edge_case_tests {
         let mut ontology = create_empty_ontology();
 
         // Create circular reference: A → B → C → A
-        ontology.classes.insert("A".to_string(), webxr::reasoning::custom_reasoner::OWLClass {
+        ontology.classes.insert("A".to_string(), visionclaw_server::reasoning::custom_reasoner::OWLClass {
             iri: "A".to_string(),
             label: Some("A".to_string()),
             parent_class_iri: Some("C".to_string()),
         });
-        ontology.classes.insert("B".to_string(), webxr::reasoning::custom_reasoner::OWLClass {
+        ontology.classes.insert("B".to_string(), visionclaw_server::reasoning::custom_reasoner::OWLClass {
             iri: "B".to_string(),
             label: Some("B".to_string()),
             parent_class_iri: Some("A".to_string()),
         });
-        ontology.classes.insert("C".to_string(), webxr::reasoning::custom_reasoner::OWLClass {
+        ontology.classes.insert("C".to_string(), visionclaw_server::reasoning::custom_reasoner::OWLClass {
             iri: "C".to_string(),
             label: Some("C".to_string()),
             parent_class_iri: Some("B".to_string()),
@@ -345,7 +345,7 @@ mod edge_case_tests {
     async fn test_single_class_ontology() {
         let mut ontology = create_empty_ontology();
 
-        ontology.classes.insert("Singleton".to_string(), webxr::reasoning::custom_reasoner::OWLClass {
+        ontology.classes.insert("Singleton".to_string(), visionclaw_server::reasoning::custom_reasoner::OWLClass {
             iri: "Singleton".to_string(),
             label: Some("Singleton".to_string()),
             parent_class_iri: None,
@@ -361,7 +361,7 @@ mod edge_case_tests {
     async fn test_self_referential_class() {
         let mut ontology = create_empty_ontology();
 
-        ontology.classes.insert("SelfRef".to_string(), webxr::reasoning::custom_reasoner::OWLClass {
+        ontology.classes.insert("SelfRef".to_string(), visionclaw_server::reasoning::custom_reasoner::OWLClass {
             iri: "SelfRef".to_string(),
             label: Some("Self Referential".to_string()),
             parent_class_iri: Some("SelfRef".to_string()),

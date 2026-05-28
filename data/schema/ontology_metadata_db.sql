@@ -1,4 +1,4 @@
--- VisionFlow Database Schema
+-- VisionClaw Database Schema
 -- SQLite schema for settings, ontology metadata, and physics configuration
 
 -- Schema version tracking

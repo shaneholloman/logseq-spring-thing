@@ -39,8 +39,8 @@ fi
 echo -e "\n${BLUE}Step 2: Verifying GPU kernel (PTX file)...${NC}"
 
 PTX_PATHS=(
-    "/src/utils/ptx/visionflow_unified.ptx"
-    "/app/src/utils/ptx/visionflow_unified.ptx"
+    "/src/utils/ptx/visionclaw_unified.ptx"
+    "/app/src/utils/ptx/visionclaw_unified.ptx"
 )
 
 PTX_FOUND=false
@@ -79,7 +79,7 @@ FILES=(
     "/src/models/simulation_params.rs:Parameter Conversion"
     "/src/actors/gpu_compute_actor.rs:GPU Actor"
     "/src/utils/unified_gpu_compute.rs:GPU Compute Engine"
-    "/src/utils/visionflow_unified.cu:CUDA Kernel"
+    "/src/utils/visionclaw_unified.cu:CUDA Kernel"
 )
 
 for file_info in "${FILES[@]}"; do
@@ -153,8 +153,8 @@ fi
 # Step 7: Verify CUDA kernel parameter usage
 echo -e "\n${BLUE}Step 7: Verifying CUDA kernel parameter usage...${NC}"
 
-if [ -f "/src/utils/visionflow_unified.cu" ]; then
-    CUDA_FILE="/src/utils/visionflow_unified.cu"
+if [ -f "/src/utils/visionclaw_unified.cu" ]; then
+    CUDA_FILE="/src/utils/visionclaw_unified.cu"
 
     # Check for SimParams structure
     if grep -q "struct SimParams" "$CUDA_FILE"; then
@@ -204,7 +204,7 @@ echo "  • REST Handler (settings_handler.rs)"
 echo "  • Parameter Conversion (simulation_params.rs)"
 echo "  • GPU Actor (gpu_compute_actor.rs)"
 echo "  • GPU Compute Engine (unified_gpu_compute.rs)"
-echo "  • CUDA Kernel (visionflow_unified.cu)"
+echo "  • CUDA Kernel (visionclaw_unified.cu)"
 
 echo -e "\n${BLUE}PARAMETER FLOW PATH:${NC}"
 echo "  1. UI Slider Change → updatePhysics()"

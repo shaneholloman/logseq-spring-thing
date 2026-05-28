@@ -15,9 +15,9 @@ use crate::settings::auth_extractor::AuthenticatedUser;
 use crate::application::physics_service::{
     LayoutOptimizationRequest, PhysicsService, SimulationParams,
 };
-use visionflow_domain::models::graph::GraphData;
+use visionclaw_domain::models::graph::GraphData;
 use crate::models::simulation_params::SettleMode;
-use visionflow_domain::ports::gpu_physics_adapter::PhysicsParameters;
+use visionclaw_domain::ports::gpu_physics_adapter::PhysicsParameters;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]

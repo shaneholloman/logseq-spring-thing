@@ -14,12 +14,12 @@
 
 ## 1. Executive Summary
 
-Specify the engineering work that transforms `dreamlab-ai-website` from a **monorepo containing the forum** (the current shape — `community-forum-rs/` subtree with 8 crates + 5 CF Workers + branding mixed with protocol code) into a **thin downstream consumer of the VisionFlow forum kit** (`nostr-bbs-rs` published from `DreamLab-AI/nostr-rust-forum`). Post-transition the website's `forum-config/` Cargo package depends on `nostr-bbs-*` crates, supplies a `dreamlab.toml` instance configuration, retains existing Cloudflare Workers infrastructure (D1 / KV / R2 / DO bindings preserved unchanged), and the `community-forum-rs/` subtree is deleted.
+Specify the engineering work that transforms `dreamlab-ai-website` from a **monorepo containing the forum** (the current shape — `community-forum-rs/` subtree with 8 crates + 5 CF Workers + branding mixed with protocol code) into a **thin downstream consumer of the VisionClaw forum kit** (`nostr-bbs-rs` published from `DreamLab-AI/nostr-rust-forum`). Post-transition the website's `forum-config/` Cargo package depends on `nostr-bbs-*` crates, supplies a `dreamlab.toml` instance configuration, retains existing Cloudflare Workers infrastructure (D1 / KV / R2 / DO bindings preserved unchanged), and the `community-forum-rs/` subtree is deleted.
 
 This PRD differs from PRD-011 (which extracts the kit upstream) by focusing on **the consumer side** — the infrastructure migration, the branding preservation, the operator journey, and the engineering deliverables the website team owns. ADR-083 supplies the tactical cutover mechanics (feature flag, dual-deploy, rollback). PRD-012 fills the gap between "the kit exists" and "the website successfully consumes it."
 
 **Branding & naming clarity**:
-- The kit (upstream): public name `nostr-bbs-rs`, GitHub `DreamLab-AI/nostr-rust-forum`, internal brand "VisionFlow forum"
+- The kit (upstream): public name `nostr-bbs-rs`, GitHub `DreamLab-AI/nostr-rust-forum`, internal brand "VisionClaw forum"
 - The consumer (this PRD's subject): GitHub `DreamLab-AI/dreamlab-ai-website`, internal product name "DreamLab Community Forum"
 - `dreamlab.toml`: the operator-side TOML configuration that recreates DreamLab's current forum behaviour atop the kit
 
@@ -719,7 +719,7 @@ DELETED at T₇+7:
 ## 12. References
 
 - PRD-010 — DID:Nostr Mesh Federation (mesh participation)
-- PRD-011 — VisionFlow Forum Kit Extraction (kit upstream)
+- PRD-011 — VisionClaw Forum Kit Extraction (kit upstream)
 - ADR-073 — Mesh topology (DreamLab participates as a federation peer)
 - ADR-074 — DID:Nostr canonicalisation (DreamLab DID Document conformance)
 - ADR-075 — IS-Envelope (DreamLab consumes kit's envelope)

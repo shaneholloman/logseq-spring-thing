@@ -1,9 +1,9 @@
-# VisionFlow Mock Credentials Setup - Summary
+# VisionClaw Mock Credentials Setup - Summary
 
 ## ✅ Task Completed Successfully
 
 **Date**: 2025-10-23
-**Database**: `/app/data/settings.db` (inside visionflow_container)
+**Database**: `/app/data/settings.db` (inside visionclaw_container)
 
 ---
 
@@ -92,7 +92,7 @@ All 4 mock credentials are active and ready for development testing.
 
 ### Quick Check
 ```bash
-docker exec visionflow_container python3 -c "
+docker exec visionclaw_container python3 -c "
 import sqlite3
 conn = sqlite3.connect('/app/data/settings.db')
 cursor = conn.cursor()
@@ -104,7 +104,7 @@ for row in cursor.fetchall():
 
 ### Detailed Check
 ```bash
-docker exec visionflow_container python3 /tmp/execute_mock_credentials.py
+docker exec visionclaw_container python3 /tmp/execute_mock_credentials.py
 ```
 
 ---
@@ -130,7 +130,7 @@ For production, you should:
 
 ## Next Steps
 
-The VisionFlow application can now:
+The VisionClaw application can now:
 1. ✓ Access mock Anthropic Claude API for AI features
 2. ✓ Connect to GitHub for repository integration
 3. ✓ Use Nostr relay for decentralized messaging
@@ -151,7 +151,7 @@ If you need to re-initialize the mock credentials:
 
 ```bash
 # Remove existing credentials
-docker exec visionflow_container python3 -c "
+docker exec visionclaw_container python3 -c "
 import sqlite3
 conn = sqlite3.connect('/app/data/settings.db')
 cursor = conn.cursor()
@@ -161,24 +161,24 @@ conn.commit()
 "
 
 # Re-run setup
-docker exec visionflow_container python3 /tmp/execute_mock_credentials.py
+docker exec visionclaw_container python3 /tmp/execute_mock_credentials.py
 ```
 
 ### Check Container Status
 ```bash
-docker ps | grep visionflow
-docker logs visionflow_container --tail 50
+docker ps | grep visionclaw
+docker logs visionclaw_container --tail 50
 ```
 
 ---
 
 ## Credits
 
-**Task**: Add mock credentials to VisionFlow settings database
+**Task**: Add mock credentials to VisionClaw settings database
 **Executed By**: Claude Code (Coder Agent)
 **Researcher**: Provided SQL script and analysis
 **Database**: SQLite (`/app/data/settings.db`)
-**Container**: `visionflow_container`
+**Container**: `visionclaw_container`
 
 ---
 

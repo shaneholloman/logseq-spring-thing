@@ -8,7 +8,7 @@ const logger = createLogger('GraphComparison');
 
 export interface NodeMatch {
   logseqNodeId: string;
-  visionflowNodeId: string;
+  visionclawNodeId: string;
   confidence: number;
   matchType: 'exact' | 'semantic' | 'structural' | 'fuzzy';
   similarity: {
@@ -41,7 +41,7 @@ export interface GraphDifference {
   commonNodes: NodeMatch[];
   structuralDifferences: {
     logseqClusters: NodeCluster[];
-    visionflowClusters: NodeCluster[];
+    visionclawClusters: NodeCluster[];
     uniquePatterns: Pattern[];
   };
 }
@@ -90,7 +90,7 @@ export class GraphComparison {
   
   public async findNodeMatches(
     logseqGraph: GraphData,
-    visionflowGraph: GraphData,
+    visionclawGraph: GraphData,
     options: {
       exactMatchWeight: number;
       semanticMatchWeight: number;
@@ -109,18 +109,18 @@ export class GraphComparison {
     this.nodeMatches.clear();
 
     for (const logseqNode of logseqGraph.nodes) {
-      for (const visionflowNode of visionflowGraph.nodes) {
+      for (const visionclawNode of visionclawGraph.nodes) {
         const match = this.calculateNodeMatch(
           logseqNode,
-          visionflowNode,
+          visionclawNode,
           logseqGraph,
-          visionflowGraph,
+          visionclawGraph,
           options
         );
 
         if (match.confidence >= options.minimumConfidence) {
           matches.push(match);
-          this.nodeMatches.set(`${match.logseqNodeId}-${match.visionflowNodeId}`, match);
+          this.nodeMatches.set(`${match.logseqNodeId}-${match.visionclawNodeId}`, match);
         }
       }
     }
@@ -133,37 +133,37 @@ export class GraphComparison {
   
   private calculateNodeMatch(
     logseqNode: GraphNode,
-    visionflowNode: GraphNode,
+    visionclawNode: GraphNode,
     logseqGraph: GraphData,
-    visionflowGraph: GraphData,
+    visionclawGraph: GraphData,
     options: any
   ): NodeMatch {
     
     const nameSimilarity = this.calculateStringSimilarity(
       logseqNode.label || logseqNode.id,
-      visionflowNode.label || visionflowNode.id
+      visionclawNode.label || visionclawNode.id
     );
 
     
     const typeSimilarity = this.calculateTypeSimilarity(
       logseqNode.metadata?.type,
-      visionflowNode.metadata?.type
+      visionclawNode.metadata?.type
     );
 
     
     const logseqConnections = logseqGraph.edges.filter(
       e => e.source === logseqNode.id || e.target === logseqNode.id
     ).length;
-    const visionflowConnections = visionflowGraph.edges.filter(
-      e => e.source === visionflowNode.id || e.target === visionflowNode.id
+    const visionclawConnections = visionclawGraph.edges.filter(
+      e => e.source === visionclawNode.id || e.target === visionclawNode.id
     ).length;
-    const connectionSimilarity = 1 - Math.abs(logseqConnections - visionflowConnections) / 
-      Math.max(logseqConnections, visionflowConnections, 1);
+    const connectionSimilarity = 1 - Math.abs(logseqConnections - visionclawConnections) / 
+      Math.max(logseqConnections, visionclawConnections, 1);
 
     
     const metadataSimilarity = this.calculateMetadataSimilarity(
       logseqNode.metadata,
-      visionflowNode.metadata
+      visionclawNode.metadata
     );
 
     
@@ -180,7 +180,7 @@ export class GraphComparison {
 
     return {
       logseqNodeId: logseqNode.id,
-      visionflowNodeId: visionflowNode.id,
+      visionclawNodeId: visionclawNode.id,
       confidence,
       matchType,
       similarity: {
@@ -196,7 +196,7 @@ export class GraphComparison {
   public createRelationshipBridges(
     matches: NodeMatch[],
     logseqGraph: GraphData,
-    visionflowGraph: GraphData
+    visionclawGraph: GraphData
   ): RelationshipBridge[] {
     logger.info('Creating relationship bridges');
 
@@ -213,9 +213,9 @@ export class GraphComparison {
       const bridge: RelationshipBridge = {
         id: bridgeId,
         sourceGraphId: 'logseq',
-        targetGraphId: 'visionflow',
+        targetGraphId: 'visionclaw',
         sourceNodeId: match.logseqNodeId,
-        targetNodeId: match.visionflowNodeId,
+        targetNodeId: match.visionclawNodeId,
         bridgeType: this.getBridgeType(match),
         strength,
         visualStyle
@@ -231,23 +231,23 @@ export class GraphComparison {
   
   public analyzeDifferences(
     logseqGraph: GraphData,
-    visionflowGraph: GraphData,
+    visionclawGraph: GraphData,
     matches: NodeMatch[]
   ): GraphDifference {
     logger.info('Analyzing graph differences');
 
     const matchedLogseqIds = new Set(matches.map(m => m.logseqNodeId));
-    const matchedVisionflowIds = new Set(matches.map(m => m.visionflowNodeId));
+    const matchedVisionflowIds = new Set(matches.map(m => m.visionclawNodeId));
 
     const onlyInLogseq = logseqGraph.nodes.filter(node => !matchedLogseqIds.has(node.id));
-    const onlyInVisionflow = visionflowGraph.nodes.filter(node => !matchedVisionflowIds.has(node.id));
+    const onlyInVisionflow = visionclawGraph.nodes.filter(node => !matchedVisionflowIds.has(node.id));
 
     
     const logseqClusters = this.detectClusters(logseqGraph);
-    const visionflowClusters = this.detectClusters(visionflowGraph);
+    const visionclawClusters = this.detectClusters(visionclawGraph);
 
     
-    const uniquePatterns = this.detectUniquePatterns(logseqGraph, visionflowGraph, matches);
+    const uniquePatterns = this.detectUniquePatterns(logseqGraph, visionclawGraph, matches);
 
     return {
       onlyInLogseq,
@@ -255,7 +255,7 @@ export class GraphComparison {
       commonNodes: matches,
       structuralDifferences: {
         logseqClusters,
-        visionflowClusters,
+        visionclawClusters,
         uniquePatterns
       }
     };
@@ -264,15 +264,15 @@ export class GraphComparison {
   
   public performSimilarityAnalysis(
     logseqGraph: GraphData,
-    visionflowGraph: GraphData,
+    visionclawGraph: GraphData,
     matches: NodeMatch[]
   ): SimilarityAnalysis {
     logger.info('Performing similarity analysis');
 
     
-    const structuralSimilarity = this.calculateStructuralSimilarity(logseqGraph, visionflowGraph);
+    const structuralSimilarity = this.calculateStructuralSimilarity(logseqGraph, visionclawGraph);
     const semanticSimilarity = this.calculateSemanticSimilarity(matches);
-    const topologicalSimilarity = this.calculateTopologicalSimilarity(logseqGraph, visionflowGraph);
+    const topologicalSimilarity = this.calculateTopologicalSimilarity(logseqGraph, visionclawGraph);
 
     
     const overallSimilarity = (
@@ -284,7 +284,7 @@ export class GraphComparison {
     
     const recommendations = this.generateRecommendations(
       logseqGraph,
-      visionflowGraph,
+      visionclawGraph,
       matches,
       { structuralSimilarity, semanticSimilarity, topologicalSimilarity }
     );
@@ -301,10 +301,10 @@ export class GraphComparison {
   
   public getDifferenceHighlighting(differences: GraphDifference): {
     logseqHighlights: Map<string, { color: Color; intensity: number }>;
-    visionflowHighlights: Map<string, { color: Color; intensity: number }>;
+    visionclawHighlights: Map<string, { color: Color; intensity: number }>;
   } {
     const logseqHighlights = new Map();
-    const visionflowHighlights = new Map();
+    const visionclawHighlights = new Map();
 
     
     differences.onlyInLogseq.forEach(node => {
@@ -315,7 +315,7 @@ export class GraphComparison {
     });
 
     differences.onlyInVisionflow.forEach(node => {
-      visionflowHighlights.set(node.id, {
+      visionclawHighlights.set(node.id, {
         color: new Color('#ff4444'), 
         intensity: 0.8
       });
@@ -335,13 +335,13 @@ export class GraphComparison {
         intensity: confidence
       });
 
-      visionflowHighlights.set(match.visionflowNodeId, {
+      visionclawHighlights.set(match.visionclawNodeId, {
         color,
         intensity: confidence
       });
     });
 
-    return { logseqHighlights, visionflowHighlights };
+    return { logseqHighlights, visionclawHighlights };
   }
 
   
@@ -433,10 +433,10 @@ export class GraphComparison {
     const resolvedMatches: NodeMatch[] = [];
 
     for (const match of matches) {
-      if (!usedLogseqNodes.has(match.logseqNodeId) && !usedVisionflowNodes.has(match.visionflowNodeId)) {
+      if (!usedLogseqNodes.has(match.logseqNodeId) && !usedVisionflowNodes.has(match.visionclawNodeId)) {
         resolvedMatches.push(match);
         usedLogseqNodes.add(match.logseqNodeId);
-        usedVisionflowNodes.add(match.visionflowNodeId);
+        usedVisionflowNodes.add(match.visionclawNodeId);
       }
     }
 
@@ -539,16 +539,16 @@ export class GraphComparison {
 
   private detectUniquePatterns(
     logseqGraph: GraphData,
-    visionflowGraph: GraphData,
+    visionclawGraph: GraphData,
     matches: NodeMatch[]
   ): Pattern[] {
     const patterns: Pattern[] = [];
     
     
     const logseqHubs = this.detectHubs(logseqGraph);
-    const visionflowHubs = this.detectHubs(visionflowGraph);
+    const visionclawHubs = this.detectHubs(visionclawGraph);
     
-    patterns.push(...logseqHubs, ...visionflowHubs);
+    patterns.push(...logseqHubs, ...visionclawHubs);
     
     return patterns;
   }
@@ -624,7 +624,7 @@ export class GraphComparison {
 
   private generateRecommendations(
     logseqGraph: GraphData,
-    visionflowGraph: GraphData,
+    visionclawGraph: GraphData,
     matches: NodeMatch[],
     similarities: { structuralSimilarity: number; semanticSimilarity: number; topologicalSimilarity: number }
   ): string[] {
@@ -638,7 +638,7 @@ export class GraphComparison {
       recommendations.push('Review node naming and typing conventions for consistency');
     }
 
-    if (matches.length < Math.min(logseqGraph.nodes.length, visionflowGraph.nodes.length) * 0.3) {
+    if (matches.length < Math.min(logseqGraph.nodes.length, visionclawGraph.nodes.length) * 0.3) {
       recommendations.push('Low node matching detected - consider adding more metadata or improving labeling');
     }
 

@@ -39,10 +39,10 @@
 | features/enterprise/components/EnterpriseNav.tsx:27-39 | Panel toggle buttons (Broker, Workflows, KPIs, Connectors, Policy) | `activePanel` (broker \| workflows \| kpi \| connectors \| policy) | Controlled select | React state | N/A (local UI state) |
 | features/enterprise/components/EnterpriseDrawer.tsx:181-188 | Close button (X icon) | `onClose` callback | Button | N/A | N/A |
 | features/enterprise/components/EnterpriseDrawer.tsx:64-74 | Escape key listener | `onClose` callback | Keyboard event | N/A | N/A |
-| features/enterprise/store/drawerStore.ts:28-32 | `openDrawer()` | `open` (boolean) | State action | localStorage: `visionflow.enterprise.drawer` | N/A |
-| features/enterprise/store/drawerStore.ts:33 | `closeDrawer()` | `open` (boolean) | State action | localStorage: `visionflow.enterprise.drawer` | N/A |
-| features/enterprise/store/drawerStore.ts:34 | `toggleDrawer()` | `open` (boolean) | State action | localStorage: `visionflow.enterprise.drawer` | N/A |
-| features/enterprise/store/drawerStore.ts:35 | `setActiveSection()` | `activeSection` (string \| null) | State action | localStorage: `visionflow.enterprise.drawer` | N/A |
+| features/enterprise/store/drawerStore.ts:28-32 | `openDrawer()` | `open` (boolean) | State action | localStorage: `visionclaw.enterprise.drawer` | N/A |
+| features/enterprise/store/drawerStore.ts:33 | `closeDrawer()` | `open` (boolean) | State action | localStorage: `visionclaw.enterprise.drawer` | N/A |
+| features/enterprise/store/drawerStore.ts:34 | `toggleDrawer()` | `open` (boolean) | State action | localStorage: `visionclaw.enterprise.drawer` | N/A |
+| features/enterprise/store/drawerStore.ts:35 | `setActiveSection()` | `activeSection` (string \| null) | State action | localStorage: `visionclaw.enterprise.drawer` | N/A |
 | features/broker/components/CaseSubmitForm.tsx:55-91 | Case submission form | `title`, `description`, `priority` (critical/high/medium/low) | Form inputs | N/A | POST `/api/broker/cases` |
 | features/broker/components/CaseSubmitForm.tsx:14-20 | Form state: title, description, priority | Controlled inputs | Text/Select | N/A | N/A |
 | features/workflows/components/WorkflowStudio.tsx:44-48 | New proposal form | `newTitle`, `newDescription` | Text inputs | N/A | POST `/api/workflows/proposals` |

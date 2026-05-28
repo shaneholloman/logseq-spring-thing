@@ -4,12 +4,12 @@
 
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use webxr::adapters::{OxigraphGraphRepository, OxigraphOntologyRepository, SqliteSettingsRepository};
-use webxr::config::AppFullSettings;
-use webxr::services::github::api::GitHubClient;
-use webxr::services::github::config::GitHubConfig;
-use webxr::services::github::content_enhanced::EnhancedContentAPI;
-use webxr::services::github_sync_service::GitHubSyncService;
+use visionclaw_server::adapters::{OxigraphGraphRepository, OxigraphOntologyRepository, SqliteSettingsRepository};
+use visionclaw_server::config::AppFullSettings;
+use visionclaw_server::services::github::api::GitHubClient;
+use visionclaw_server::services::github::config::GitHubConfig;
+use visionclaw_server::services::github::content_enhanced::EnhancedContentAPI;
+use visionclaw_server::services::github_sync_service::GitHubSyncService;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -48,7 +48,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create sync service
     let sync_service = GitHubSyncService::new(
         content_api,
-        kg_repo as Arc<dyn webxr::ports::knowledge_graph_repository::KnowledgeGraphRepository>,
+        kg_repo as Arc<dyn visionclaw_server::ports::knowledge_graph_repository::KnowledgeGraphRepository>,
         onto_repo,
         sqlite_settings_repo,
     );

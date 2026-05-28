@@ -1,11 +1,11 @@
-// Test disabled - references deprecated/removed modules (webxr::ports::ontology_repository, webxr::services::parsers::ontology_parser)
+// Test disabled - references deprecated/removed modules (visionclaw_server::ports::ontology_repository, visionclaw_server::services::parsers::ontology_parser)
 // OntologyParser and related types may have been restructured per ADR-001
 /*
 // tests/ontology_parser_test.rs
 //! Tests for OntologyParser module
 
-use webxr::ports::ontology_repository::{AxiomType, OwlAxiom, OwlClass, OwlProperty, PropertyType};
-use webxr::services::parsers::ontology_parser::{OntologyData, OntologyParser};
+use visionclaw_server::ports::ontology_repository::{AxiomType, OwlAxiom, OwlClass, OwlProperty, PropertyType};
+use visionclaw_server::services::parsers::ontology_parser::{OntologyData, OntologyParser};
 
 #[test]
 fn test_parse_basic_owl_class() {

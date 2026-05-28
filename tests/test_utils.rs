@@ -1,7 +1,7 @@
 // Test disabled - references deprecated/removed modules (crate::utils, futures dependency)
 // The imports and utility patterns reference internal crate modules that are not accessible from integration tests
 /*
-//! Test utilities and helper functions for VisionFlow settings tests
+//! Test utilities and helper functions for VisionClaw settings tests
 //!
 //! Provides common mocks, factories, and testing utilities used across
 //! all test modules in the settings system.

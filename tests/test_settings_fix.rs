@@ -1,5 +1,5 @@
 // Test disabled - references deprecated/removed modules (crate::config, crate::handlers)
-// Module paths have changed; use webxr::config instead
+// Module paths have changed; use visionclaw_server::config instead
 /*
 use crate::config::AppFullSettings;
 use crate::handlers::settings_handler::SettingsResponseDTO;

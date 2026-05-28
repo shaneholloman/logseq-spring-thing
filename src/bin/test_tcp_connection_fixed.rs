@@ -4,7 +4,7 @@ use std::time::Instant;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, BufWriter};
 use tokio::net::TcpStream;
 use uuid::Uuid;
-use webxr::utils::json::to_json;
+use visionclaw_server::utils::json::to_json;
 
 
 #[tokio::main]
@@ -68,7 +68,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "sampling": true
             },
             "clientInfo": {
-                "name": "visionflow-test-fixed",
+                "name": "visionclaw-test-fixed",
                 "version": "1.0.0"
             }
         }

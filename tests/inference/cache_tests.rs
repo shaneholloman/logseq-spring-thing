@@ -3,8 +3,8 @@
 
 #[cfg(test)]
 mod tests {
-    use webxr::inference::cache::{InferenceCache, CacheConfig};
-    use webxr::ports::ontology_repository::InferenceResults;
+    use visionclaw_server::inference::cache::{InferenceCache, CacheConfig};
+    use visionclaw_server::ports::ontology_repository::InferenceResults;
     use chrono::Utc;
 
     fn create_test_results() -> InferenceResults {

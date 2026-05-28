@@ -2,7 +2,7 @@
  * Ontology Sync Round-Trip E2E Tests
  *
  * Tests the complete ontology synchronization flow between
- * VisionFlow client and Solid Pod storage:
+ * VisionClaw client and Solid Pod storage:
  * - Ontology data serialization to JSON-LD
  * - Storage in Solid Pod
  * - Retrieval and deserialization
@@ -26,7 +26,7 @@ const TEST_ONTOLOGY = {
     'xsd': 'http://www.w3.org/2001/XMLSchema#'
   },
   '@type': 'owl:Ontology',
-  '@id': 'https://narrativegoldmine.com/ontology/visionflow',
+  '@id': 'https://narrativegoldmine.com/ontology/visionclaw',
   'metrics': {
     '@type': 'OntologyMetrics',
     'axiomCount': 150,

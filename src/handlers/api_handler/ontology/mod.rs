@@ -18,7 +18,7 @@ use std::collections::HashMap;
 use std::time::Duration as StdDuration;
 use uuid::Uuid;
 use crate::{ok_json, accepted};
-use visionflow_domain::ports::ontology_repository::OntologyRepository;
+use visionclaw_domain::ports::ontology_repository::OntologyRepository;
 
 use crate::actors::messages::{
     ApplyInferences, ClearOntologyCaches, GetOntologyHealth, GetOntologyReport, LoadOntologyAxioms,

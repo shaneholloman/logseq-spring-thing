@@ -1,4 +1,4 @@
-// Test disabled - references deprecated/removed modules (webxr::adapters::sqlite_ontology_repository)
+// Test disabled - references deprecated/removed modules (visionclaw_server::adapters::sqlite_ontology_repository)
 // SQLite ontology repository deprecated per ADR-001; use Neo4j repository instead
 /*
 /// Comprehensive End-to-End Ontology Pipeline Integration Test
@@ -30,10 +30,10 @@ mod ontology_pipeline_e2e_tests {
     use std::path::PathBuf;
     use std::time::Instant;
 
-    use webxr::services::parsers::ontology_parser::OntologyParser;
-    use webxr::services::ontology_content_analyzer::OntologyContentAnalyzer;
-    use webxr::adapters::sqlite_ontology_repository::SqliteOntologyRepository;
-    use webxr::ports::ontology_repository::{OwlClass, OntologyRepository};
+    use visionclaw_server::services::parsers::ontology_parser::OntologyParser;
+    use visionclaw_server::services::ontology_content_analyzer::OntologyContentAnalyzer;
+    use visionclaw_server::adapters::sqlite_ontology_repository::SqliteOntologyRepository;
+    use visionclaw_server::ports::ontology_repository::{OwlClass, OntologyRepository};
 
     /// Test ontology sample from different domains
     #[derive(Debug, Clone)]

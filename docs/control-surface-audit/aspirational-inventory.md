@@ -314,7 +314,7 @@
 | 17.13 | SESSION_SECRET | **KEEP** | 4 | Add rotation policy doc. |
 | 17.14 | SESSION_TIMEOUT | **EXPOSE** | 3 | User-relevant. |
 | 17.15 | SOLID_PROXY_SECRET_KEY | **KEEP** | 4 | Same. Add rotation policy. |
-| 17.16 | VISIONFLOW_AGENT_KEY | **CUT** | – | Deprecated by ADR-040 Nostr identity. |
+| 17.16 | VISIONCLAW_AGENT_KEY | **CUT** | – | Deprecated by ADR-040 Nostr identity. |
 | 17.17 | POD_NAME | **KEEP** | 4 | Computed. |
 | 17.18 | CORS_ALLOWED_* | **KEEP** | 4 | Operator. |
 | 17.19 | CLOUDFLARE_TUNNEL_TOKEN | **DOCUMENT** | 4 | Add to .env templates. |
@@ -336,7 +336,7 @@
 
 ## 19 Counts after rationalisation
 
-- **CUT outright:** 12 entities (auth.enabled, auth.required, gravity, deprecated physics root, OIDC, Vircadia auth, legacy nostr_privkey, settings yaml, hologram pulse/scan/dataStream, deprecated session token, WS_AUTH_TOKEN, VISIONFLOW_AGENT_KEY).
+- **CUT outright:** 12 entities (auth.enabled, auth.required, gravity, deprecated physics root, OIDC, Vircadia auth, legacy nostr_privkey, settings yaml, hologram pulse/scan/dataStream, deprecated session token, WS_AUTH_TOKEN, VISIONCLAW_AGENT_KEY).
 - **MERGE / consolidate:** 11 mergers (3 metadata flags → 1 tri-state; 3 render-quality toggles → 1 preset; 6 LOD constraints → 1 detail policy; 4 boundary knobs → 1 preset; 10 debug toggles + 2 server dups → 1 diagnostics tri-state; layoutMode/layoutAlgorithm; clusteringAlgorithm/Resolution dup; lod_distance_high → farThreshold; perf-tuning canonical struct; SETTINGS_SYNC_ENABLED_PUBKEYS → POWER_USER_PUBKEYS; deepseek key → apiKeys table).
 - **EXPOSE (server-only → user UI):** ~35 entities (feature_flags*, developer_config diagnostic toggles, glow.color/opacity, bloom.*, autoPause toggle, env vars for LLM/voice routing/ontology agent, agent_colors, agent_base_size, ws_ping, GitHub envs, camera, spacepilot, user_preferences, XR fields).
 - **WIRE (UI exists, transport broken/stub):** ~25 entities (XR set 7.1-7.8, broker, workflows, studio, policy console, settings profiles, NL query, tweening).

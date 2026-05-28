@@ -737,7 +737,7 @@ Estimated complexity: low.
 
 ## 9. Plan Summary
 
-**Plan file**: `/home/devuser/workspace/visionflow-worktrees/phase-6-rendering/docs/migration-sprint/04-rendering/WORKTREE-PLAN.md`
+**Plan file**: `/home/devuser/workspace/visionclaw-worktrees/phase-6-rendering/docs/migration-sprint/04-rendering/WORKTREE-PLAN.md`
 
 **Tasks**:
 

@@ -19,28 +19,28 @@ pub use graph_repository::GraphRepository;
 pub use physics_simulator::PhysicsSimulator;
 pub use semantic_analyzer::SemanticAnalyzer;
 
-// New hexser-based exports (canonical paths in visionflow-domain)
-pub use visionflow_domain::ports::inference_engine::InferenceEngine;
+// New hexser-based exports (canonical paths in visionclaw-domain)
+pub use visionclaw_domain::ports::inference_engine::InferenceEngine;
 pub use knowledge_graph_repository::KnowledgeGraphRepository;
-pub use visionflow_domain::ports::ontology_repository::OntologyRepository;
+pub use visionclaw_domain::ports::ontology_repository::OntologyRepository;
 pub use settings_repository::SettingsRepository;
 
 // Module-path re-exports so existing callers writing
 // `use crate::ports::gpu_physics_adapter::Foo` keep resolving without
-// rewriting to the visionflow_domain path. The TYPES themselves are
-// canonical in visionflow-domain; this just preserves the legacy module
+// rewriting to the visionclaw_domain path. The TYPES themselves are
+// canonical in visionclaw-domain; this just preserves the legacy module
 // alias as a compatibility surface inside webxr.
-pub use visionflow_domain::ports::gpu_physics_adapter;
-pub use visionflow_domain::ports::gpu_semantic_analyzer;
-pub use visionflow_domain::ports::inference_engine;
-pub use visionflow_domain::ports::ontology_repository;
+pub use visionclaw_domain::ports::gpu_physics_adapter;
+pub use visionclaw_domain::ports::gpu_semantic_analyzer;
+pub use visionclaw_domain::ports::inference_engine;
+pub use visionclaw_domain::ports::ontology_repository;
 
-// GPU port trait exports (canonical paths in visionflow-domain)
-pub use visionflow_domain::ports::gpu_physics_adapter::{
+// GPU port trait exports (canonical paths in visionclaw-domain)
+pub use visionclaw_domain::ports::gpu_physics_adapter::{
     GpuDeviceInfo, GpuPhysicsAdapter, GpuPhysicsAdapterError, NodeForce, PhysicsParameters,
     PhysicsStatistics, PhysicsStepResult,
 };
-pub use visionflow_domain::ports::gpu_semantic_analyzer::{
+pub use visionclaw_domain::ports::gpu_semantic_analyzer::{
     ClusteringAlgorithm, CommunityDetectionResult, GpuSemanticAnalyzer, GpuSemanticAnalyzerError,
     ImportanceAlgorithm, OptimizationResult, PathfindingResult, SemanticConstraintConfig,
     SemanticStatistics,

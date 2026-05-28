@@ -949,7 +949,7 @@ mod tests {
                 Node::new_with_id("test3".to_string(), Some(3)),
             ],
             edges: vec![Edge::new(1, 2, 1.0), Edge::new(2, 3, 1.0)],
-            metadata: visionflow_domain::models::metadata::MetadataStore::new(),
+            metadata: visionclaw_domain::models::metadata::MetadataStore::new(),
             id_to_metadata: std::collections::HashMap::new(),
         };
 

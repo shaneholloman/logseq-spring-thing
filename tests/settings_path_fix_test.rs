@@ -1,4 +1,4 @@
-// Test disabled - references deprecated/removed modules (webxr::config::path_access::JsonPathAccessible)
+// Test disabled - references deprecated/removed modules (visionclaw_server::config::path_access::JsonPathAccessible)
 // JsonPathAccessible trait may have been restructured or moved per ADR-001
 /*
 #[cfg(test)]
@@ -7,7 +7,7 @@ mod settings_path_fix_tests {
     use serde_json::{json, Value};
 
     // Import the path access trait (assuming it's in the webxr crate)
-    use webxr::config::path_access::JsonPathAccessible;
+    use visionclaw_server::config::path_access::JsonPathAccessible;
 
     #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
     #[serde(rename_all = "camelCase")]

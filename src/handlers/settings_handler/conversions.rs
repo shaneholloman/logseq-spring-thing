@@ -131,7 +131,7 @@ impl From<&crate::config::GraphsSettings> for GraphsSettingsDTO {
     fn from(settings: &crate::config::GraphsSettings) -> Self {
         Self {
             logseq: (&settings.logseq).into(),
-            visionflow: (&settings.visionflow).into(),
+            visionclaw: (&settings.visionclaw).into(),
         }
     }
 }

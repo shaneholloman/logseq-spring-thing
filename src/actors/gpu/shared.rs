@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
 
 use crate::gpu::memory_manager::GpuMemoryManager;
-use visionflow_domain::models::constraints::Constraint;
+use visionclaw_domain::models::constraints::Constraint;
 use crate::models::simulation_params::SimulationParams;
 
 // Public re-exports for GPU compute types

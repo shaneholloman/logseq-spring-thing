@@ -213,7 +213,7 @@ pub async fn update_compute_mode(
             info!("Compute mode updated successfully to: {}", compute_mode);
 
             propagate_physics_to_gpu(&state, &app_settings, "logseq").await;
-            propagate_physics_to_gpu(&state, &app_settings, "visionflow").await;
+            propagate_physics_to_gpu(&state, &app_settings, "visionclaw").await;
 
             ok_json!(json!({
                 "status": "Compute mode updated successfully",
@@ -306,7 +306,7 @@ pub async fn update_clustering_algorithm(
             );
 
             propagate_physics_to_gpu(&state, &app_settings, "logseq").await;
-            propagate_physics_to_gpu(&state, &app_settings, "visionflow").await;
+            propagate_physics_to_gpu(&state, &app_settings, "visionclaw").await;
 
             ok_json!(json!({
                 "status": "Clustering algorithm updated successfully",
@@ -352,7 +352,7 @@ pub async fn update_constraints(
                         "computeMode": 2
                     }
                 },
-                "visionflow": {
+                "visionclaw": {
                     "physics": {
                         "computeMode": 2
                     }
@@ -389,7 +389,7 @@ pub async fn update_constraints(
             info!("Constraints updated successfully");
 
             propagate_physics_to_gpu(&state, &app_settings, "logseq").await;
-            propagate_physics_to_gpu(&state, &app_settings, "visionflow").await;
+            propagate_physics_to_gpu(&state, &app_settings, "visionclaw").await;
 
             ok_json!(json!({
                 "status": "Constraints updated successfully"
@@ -446,14 +446,14 @@ pub async fn get_cluster_analytics(
 }
 
 async fn get_cpu_fallback_analytics(
-    graph_data: &visionflow_domain::models::graph::GraphData,
+    graph_data: &visionclaw_domain::models::graph::GraphData,
 ) -> Result<HttpResponse, Error> {
     use std::collections::HashMap;
 
     let node_count = graph_data.nodes.len();
     let _edge_count = graph_data.edges.len();
 
-    let mut type_clusters: HashMap<String, Vec<&visionflow_domain::models::node::Node>> = HashMap::new();
+    let mut type_clusters: HashMap<String, Vec<&visionclaw_domain::models::node::Node>> = HashMap::new();
 
     for node in &graph_data.nodes {
         let node_type = node
@@ -568,7 +568,7 @@ pub async fn update_stress_optimization(
             info!("Stress optimization updated successfully");
 
             propagate_physics_to_gpu(&state, &app_settings, "logseq").await;
-            propagate_physics_to_gpu(&state, &app_settings, "visionflow").await;
+            propagate_physics_to_gpu(&state, &app_settings, "visionclaw").await;
 
             ok_json!(json!({
                 "status": "Stress optimization updated successfully",

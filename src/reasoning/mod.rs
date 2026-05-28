@@ -1,2 +1,2 @@
-//! Shim: reasoning module moved to `visionflow-ontology` crate (ADR-090 Phase A4).
-pub use visionflow_ontology::reasoning::*;
+//! Shim: reasoning module moved to `visionclaw-ontology` crate (ADR-090 Phase A4).
+pub use visionclaw_ontology::reasoning::*;

@@ -8,7 +8,7 @@ Status          : Sprint kickoff. Founding ADR (D01) authored; consumes from
 
 ## Why this sprint exists
 
-The migration sprint (`docs/migration-sprint/`) resolved *where* VisionFlow's
+The migration sprint (`docs/migration-sprint/`) resolved *where* VisionClaw's
 data lives: Oxigraph for quads, SQLite for settings, hexagonal ports between
 domain and store. It did not resolve *what shape the source data has on disk*
 before it reaches those stores.
@@ -94,7 +94,7 @@ type + round-trip tests against the Oxigraph adapter) lands those at
    schema weight after this sprint.
 
 3. **W3C vocabularies are the canonical vocabulary.** `rdfs:`, `owl:`,
-   `skos:`, `schema:`, `prov:`, `foaf:`, `dcterms:`, `xsd:`. VisionFlow-specific
+   `skos:`, `schema:`, `prov:`, `foaf:`, `dcterms:`, `xsd:`. VisionClaw-specific
    terms live under the `vc:` prefix and are documented in the ADR's
    exhaustive table (D-D01 §"The vc: vocabulary"). New terms get added to
    `context-v1.jsonld` and the table; they do not appear in the wild without
@@ -106,8 +106,8 @@ type + round-trip tests against the Oxigraph adapter) lands those at
    Authors who need OWL 2 DL expressivity get a clear error pointing at the
    spec section that explains why.
 
-5. **Identity is content-addressed where possible.** `urn:visionflow:page:<sha256(canonical-path)>`,
-   `urn:visionflow:axiom:<sha256(canonical-form)>`. Identifiers that name
+5. **Identity is content-addressed where possible.** `urn:visionclaw:page:<sha256(canonical-path)>`,
+   `urn:visionclaw:axiom:<sha256(canonical-form)>`. Identifiers that name
    *authors* use `did:nostr:<pubkey>`. Composition rule: an authored thing
    carries both — the `urn:` identifies the subject, the `did:` identifies
    the asserter via PROV-O `wasAttributedTo`.
@@ -172,7 +172,7 @@ ADR lands. Edits are scoped and listed in ADR-D01 §"Cross-references":
   OntologyClass, OntologyProperty, Axiom aggregates' field surfaces aligned
   to canonical terms; OwlClass V2's 40+ fields mapped explicitly.
 - `docs/migration-sprint/11-persistence-migration/ADR-11.md` — §D3 IRI
-  minting harmonised with the `urn:visionflow:*` scheme; §D5 audit_log
+  minting harmonised with the `urn:visionclaw:*` scheme; §D5 audit_log
   column names cross-checked for `prov:` compatibility.
 
 ## Out of scope
@@ -196,5 +196,5 @@ ADR lands. Edits are scoped and listed in ADR-D01 §"Cross-references":
 | **Wire format**       | JSON-LD blocks embedded in markdown; what the parser reads                      |
 | **Canonical RDF**     | The N-Quads emission produced by JSON-LD expansion; what Oxigraph stores        |
 | **Provenance**        | `prov:wasAttributedTo` + `prov:generatedAtTime` on every assertion              |
-| **vc: vocabulary**    | VisionFlow-specific predicates under `urn:visionflow:owl:property:`             |
+| **vc: vocabulary**    | VisionClaw-specific predicates under `urn:visionclaw:owl:property:`             |
 | **Page signature**    | NIP-23 Nostr event over the page's content hash, sibling to the file           |

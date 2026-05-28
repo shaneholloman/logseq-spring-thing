@@ -1,5 +1,5 @@
 #!/bin/bash
-# VisionFlow Pipeline Context Generator
+# VisionClaw Pipeline Context Generator
 # Extracts all files involved in GitHub → Neo4j → GPU → Client pipeline
 # Output: context.txt with location metadata
 
@@ -12,7 +12,7 @@ BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
-echo -e "${BLUE}VisionFlow Pipeline Context Generator${NC}"
+echo -e "${BLUE}VisionClaw Pipeline Context Generator${NC}"
 echo -e "${BLUE}======================================${NC}\n"
 
 # Clear output file
@@ -21,12 +21,12 @@ echo -e "${BLUE}======================================${NC}\n"
 # Header
 cat >> "$OUTPUT_FILE" << 'EOF'
 ================================================================================
-VISIONFLOW COMPLETE PIPELINE CONTEXT
+VISIONCLAW COMPLETE PIPELINE CONTEXT
 GitHub → Markdown Parse → Oxigraph → Metadata/Edges → GPU → Graph → Client
 ================================================================================
 
 Generated: $(date)
-Purpose: Complete source code context for LLM analysis of the VisionFlow pipeline
+Purpose: Complete source code context for LLM analysis of the VisionClaw pipeline
 
 TABLE OF CONTENTS:
 1. GitHub Interaction (Download & Fetch)
@@ -187,8 +187,8 @@ add_file "$PROJECT_ROOT/src/gpu/streaming_pipeline.rs" "GPU" "Streaming GPU pipe
 add_file "$PROJECT_ROOT/src/gpu/semantic_forces.rs" "GPU" "Semantic force computation"
 
 # CUDA Kernels
-add_file "$PROJECT_ROOT/src/utils/visionflow_unified.cu" "CUDA" "Main unified kernel"
-add_file "$PROJECT_ROOT/src/utils/visionflow_unified_stability.cu" "CUDA" "Stability-enhanced kernel"
+add_file "$PROJECT_ROOT/src/utils/visionclaw_unified.cu" "CUDA" "Main unified kernel"
+add_file "$PROJECT_ROOT/src/utils/visionclaw_unified_stability.cu" "CUDA" "Stability-enhanced kernel"
 add_file "$PROJECT_ROOT/src/utils/dynamic_grid.cu" "CUDA" "Dynamic spatial grid"
 add_file "$PROJECT_ROOT/src/utils/gpu_clustering_kernels.cu" "CUDA" "K-means, DBSCAN clustering"
 add_file "$PROJECT_ROOT/src/utils/sssp_compact.cu" "CUDA" "Shortest path SSSP"
@@ -278,7 +278,7 @@ add_file "$PROJECT_ROOT/src/handlers/api_handler/analytics/community.rs" "Analyt
 cat >> "$OUTPUT_FILE" << 'EOF'
 
 ================================================================================
-END OF VISIONFLOW PIPELINE CONTEXT
+END OF VISIONCLAW PIPELINE CONTEXT
 ================================================================================
 
 PIPELINE FLOW SUMMARY:

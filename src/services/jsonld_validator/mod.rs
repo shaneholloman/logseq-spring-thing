@@ -1,2 +1,2 @@
-//! Shim: jsonld_validator moved to `visionflow-ontology` crate (ADR-090 Phase A4).
-pub use visionflow_ontology::services::jsonld_validator::*;
+//! Shim: jsonld_validator moved to `visionclaw-ontology` crate (ADR-090 Phase A4).
+pub use visionclaw_ontology::services::jsonld_validator::*;

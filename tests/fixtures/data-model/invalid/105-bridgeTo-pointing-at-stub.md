@@ -9,16 +9,16 @@ A BridgeRecord whose `vc:bridgeTo` targets a `LinkedPage` placeholder
 is incoherent. Bridges connect concrete entities; a placeholder is by
 definition unresolved. This is the most common author mistake — they
 asserted the bridge in advance of the target's declaration. The
-validator catches it because the target IRI has the `urn:visionflow:linked:`
+validator catches it because the target IRI has the `urn:visionclaw:linked:`
 scheme which is reserved for placeholders.
 
 ```json-ld
 {
   "@context": "https://narrativegoldmine.com/context/v1.jsonld",
-  "@id": "urn:visionflow:bridge:bad-bridge-001",
+  "@id": "urn:visionclaw:bridge:bad-bridge-001",
   "@type": "BridgeRecord",
-  "vc:bridgeFrom": { "@id": "urn:visionflow:page:7e6f5d4c3b2a1908172635445362718e9f0a1b2c3d4e5f6071829a3b4c5d6e02" },
-  "vc:bridgeTo": { "@id": "urn:visionflow:linked:tempietto" },
+  "vc:bridgeFrom": { "@id": "urn:visionclaw:page:7e6f5d4c3b2a1908172635445362718e9f0a1b2c3d4e5f6071829a3b4c5d6e02" },
+  "vc:bridgeTo": { "@id": "urn:visionclaw:linked:tempietto" },
   "vc:bridgeKind": "PageToOntologyClass",
   "vc:matchedBy": "normalised-label",
   "prov:wasAttributedTo": { "@id": "did:nostr:npub1sync000000000000000000000000000000000000000000000000000000" },

@@ -48,8 +48,8 @@ use crate::actors::supervisor::{ActorFailed, SupervisorActor};
 // Removed unused import - we don't use graph_messages types for handlers
 use crate::actors::messages as msgs;
 // Removed graph_messages::GetGraphData import - not used
-use crate::errors::{ActorError, VisionFlowError};
-use visionflow_domain::models::graph::GraphData;
+use crate::errors::{ActorError, VisionClawError};
+use visionclaw_domain::models::graph::GraphData;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum GraphSupervisionStrategy {
@@ -124,8 +124,8 @@ pub struct OperationResult {
     pub error: Option<String>,
 }
 
-impl From<Result<(), VisionFlowError>> for OperationResult {
-    fn from(result: Result<(), VisionFlowError>) -> Self {
+impl From<Result<(), VisionClawError>> for OperationResult {
+    fn from(result: Result<(), VisionClawError>) -> Self {
         match result {
             Ok(()) => OperationResult {
                 success: true,
@@ -537,7 +537,7 @@ impl GraphServiceSupervisor {
                     );
                     parent.do_send(ActorFailed {
                         actor_name: format!("GraphServiceSupervisor/{:?}", actor_type),
-                        error: VisionFlowError::Actor(ActorError::ActorNotAvailable(
+                        error: VisionClawError::Actor(ActorError::ActorNotAvailable(
                             format!("{:?} exceeded restart limits", actor_type),
                         )),
                     });
@@ -696,7 +696,7 @@ impl GraphServiceSupervisor {
         &mut self,
         message: SupervisorMessage,
         _ctx: &mut Context<Self>,
-    ) -> Result<(), VisionFlowError> {
+    ) -> Result<(), VisionClawError> {
         let start_time = Instant::now();
 
         let result = match message {
@@ -707,7 +707,7 @@ impl GraphServiceSupervisor {
                     addr.do_send(msg);
                     Ok(())
                 } else {
-                    Err(VisionFlowError::Actor(ActorError::ActorNotAvailable(
+                    Err(VisionClawError::Actor(ActorError::ActorNotAvailable(
                         "GraphState".to_string(),
                     )))
                 }
@@ -718,7 +718,7 @@ impl GraphServiceSupervisor {
                     addr.do_send(msgs::ReloadGraphFromDatabase);
                     Ok(())
                 } else {
-                    Err(VisionFlowError::Actor(ActorError::ActorNotAvailable(
+                    Err(VisionClawError::Actor(ActorError::ActorNotAvailable(
                         "GraphState".to_string(),
                     )))
                 }
@@ -730,7 +730,7 @@ impl GraphServiceSupervisor {
                     addr.do_send(msgs::StartSimulation);
                     Ok(())
                 } else {
-                    Err(VisionFlowError::Actor(ActorError::ActorNotAvailable(
+                    Err(VisionClawError::Actor(ActorError::ActorNotAvailable(
                         "Physics".to_string(),
                     )))
                 }
@@ -741,7 +741,7 @@ impl GraphServiceSupervisor {
                     addr.do_send(msgs::StopSimulation);
                     Ok(())
                 } else {
-                    Err(VisionFlowError::Actor(ActorError::ActorNotAvailable(
+                    Err(VisionClawError::Actor(ActorError::ActorNotAvailable(
                         "Physics".to_string(),
                     )))
                 }
@@ -752,7 +752,7 @@ impl GraphServiceSupervisor {
                     addr.do_send(msgs::SimulationStep);
                     Ok(())
                 } else {
-                    Err(VisionFlowError::Actor(ActorError::ActorNotAvailable(
+                    Err(VisionClawError::Actor(ActorError::ActorNotAvailable(
                         "Physics".to_string(),
                     )))
                 }
@@ -763,7 +763,7 @@ impl GraphServiceSupervisor {
                     addr.do_send(msg);
                     Ok(())
                 } else {
-                    Err(VisionFlowError::Actor(ActorError::ActorNotAvailable(
+                    Err(VisionClawError::Actor(ActorError::ActorNotAvailable(
                         "Physics".to_string(),
                     )))
                 }
@@ -774,7 +774,7 @@ impl GraphServiceSupervisor {
                     addr.do_send(msg);
                     Ok(())
                 } else {
-                    Err(VisionFlowError::Actor(ActorError::ActorNotAvailable(
+                    Err(VisionClawError::Actor(ActorError::ActorNotAvailable(
                         "Physics".to_string(),
                     )))
                 }
@@ -786,7 +786,7 @@ impl GraphServiceSupervisor {
                     addr.do_send(msg);
                     Ok(())
                 } else {
-                    Err(VisionFlowError::Actor(ActorError::ActorNotAvailable(
+                    Err(VisionClawError::Actor(ActorError::ActorNotAvailable(
                         "Client".to_string(),
                     )))
                 }
@@ -888,7 +888,7 @@ impl Actor for GraphServiceSupervisor {
 // can pattern-match and forward via `do_send()`.
 
 #[derive(Message)]
-#[rtype(result = "Result<(), VisionFlowError>")]
+#[rtype(result = "Result<(), VisionClawError>")]
 pub enum SupervisorMessage {
     // --- Graph operations (→ GraphStateActor) ---
     UpdateGraphData(msgs::UpdateGraphData),
@@ -938,13 +938,13 @@ where
 }
 
 #[derive(Message)]
-#[rtype(result = "Result<(), VisionFlowError>")]
+#[rtype(result = "Result<(), VisionClawError>")]
 pub struct RestartActor {
     pub actor_type: ActorType,
 }
 
 #[derive(Message)]
-#[rtype(result = "Result<(), VisionFlowError>")]
+#[rtype(result = "Result<(), VisionClawError>")]
 pub struct RestartAllActors;
 
 /// Message to wire a parent `SupervisorActor` after construction.
@@ -959,7 +959,7 @@ pub struct SetParentSupervisor {
 // Message handlers
 
 impl Handler<SupervisorMessage> for GraphServiceSupervisor {
-    type Result = Result<(), VisionFlowError>;
+    type Result = Result<(), VisionClawError>;
 
     fn handle(&mut self, msg: SupervisorMessage, ctx: &mut Self::Context) -> Self::Result {
         self.route_message(msg, ctx)
@@ -990,7 +990,7 @@ impl Handler<GetSupervisorStatus> for GraphServiceSupervisor {
 }
 
 impl Handler<RestartActor> for GraphServiceSupervisor {
-    type Result = Result<(), VisionFlowError>;
+    type Result = Result<(), VisionClawError>;
 
     fn handle(&mut self, msg: RestartActor, ctx: &mut Self::Context) -> Self::Result {
         self.restart_actor(msg.actor_type, ctx);
@@ -999,7 +999,7 @@ impl Handler<RestartActor> for GraphServiceSupervisor {
 }
 
 impl Handler<RestartAllActors> for GraphServiceSupervisor {
-    type Result = Result<(), VisionFlowError>;
+    type Result = Result<(), VisionClawError>;
 
     fn handle(&mut self, _msg: RestartAllActors, ctx: &mut Self::Context) -> Self::Result {
         self.restart_all_actors(ctx);
@@ -1228,7 +1228,7 @@ impl Handler<msgs::SimulationStep> for GraphServiceSupervisor {
 
 impl Handler<msgs::GetBotsGraphData> for GraphServiceSupervisor {
     type Result =
-        ResponseActFuture<Self, Result<std::sync::Arc<visionflow_domain::models::graph::GraphData>, String>>;
+        ResponseActFuture<Self, Result<std::sync::Arc<visionclaw_domain::models::graph::GraphData>, String>>;
 
     fn handle(&mut self, msg: msgs::GetBotsGraphData, _ctx: &mut Self::Context) -> Self::Result {
         if let Some(ref graph_state_addr) = self.graph_state {
@@ -1279,7 +1279,7 @@ impl Handler<msgs::UpdateSimulationParams> for GraphServiceSupervisor {
 }
 
 impl Handler<msgs::ForceResumePhysics> for GraphServiceSupervisor {
-    type Result = ResponseActFuture<Self, Result<(), VisionFlowError>>;
+    type Result = ResponseActFuture<Self, Result<(), VisionClawError>>;
 
     fn handle(
         &mut self,
@@ -1292,7 +1292,7 @@ impl Handler<msgs::ForceResumePhysics> for GraphServiceSupervisor {
                 async move {
                     addr.send(msg).await.unwrap_or_else(|e| {
                         error!("Failed to forward ForceResumePhysics to PhysicsOrchestratorActor: {}", e);
-                        Err(VisionFlowError::Actor(ActorError::ActorNotAvailable(
+                        Err(VisionClawError::Actor(ActorError::ActorNotAvailable(
                             format!("ForceResumePhysics forwarding failed: {}", e),
                         )))
                     })
@@ -1301,7 +1301,7 @@ impl Handler<msgs::ForceResumePhysics> for GraphServiceSupervisor {
             )
         } else {
             warn!("ForceResumePhysics: PhysicsOrchestratorActor not initialized");
-            Box::pin(actix::fut::ready(Err(VisionFlowError::Actor(ActorError::ActorNotAvailable(
+            Box::pin(actix::fut::ready(Err(VisionClawError::Actor(ActorError::ActorNotAvailable(
                 "Physics".to_string(),
             )))))
         }
@@ -1463,7 +1463,7 @@ impl Handler<msgs::UpdateNodePositions> for GraphServiceSupervisor {
 
 /// Forward NodeInteractionMessage to PhysicsOrchestratorActor for drag resume/pause handling.
 impl Handler<msgs::NodeInteractionMessage> for GraphServiceSupervisor {
-    type Result = Result<(), crate::errors::VisionFlowError>;
+    type Result = Result<(), crate::errors::VisionClawError>;
 
     fn handle(&mut self, msg: msgs::NodeInteractionMessage, _ctx: &mut Self::Context) -> Self::Result {
         if let Some(ref physics_addr) = self.physics {
@@ -1472,7 +1472,7 @@ impl Handler<msgs::NodeInteractionMessage> for GraphServiceSupervisor {
             Ok(())
         } else {
             debug!("Cannot forward NodeInteractionMessage: PhysicsOrchestratorActor not initialized");
-            Err(crate::errors::VisionFlowError::Generic {
+            Err(crate::errors::VisionClawError::Generic {
                 message: "PhysicsOrchestratorActor not initialized".to_string(),
                 source: None,
             })

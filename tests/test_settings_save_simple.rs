@@ -1,4 +1,4 @@
-// Test disabled - references deprecated/removed function (webxr::initialize_app_state)
+// Test disabled - references deprecated/removed function (visionclaw_server::initialize_app_state)
 // The initialize_app_state function has been removed; use App::new() with proper configuration
 /*
 use actix_web::{http::StatusCode, test, web, App};
@@ -10,7 +10,7 @@ use std::path::Path;
 #[actix_web::test]
 async fn test_save_endpoint_basic() {
     // Set up a temporary directory for the test
-    let test_dir = format!("/tmp/visionflow_test_{}", std::process::id());
+    let test_dir = format!("/tmp/visionclaw_test_{}", std::process::id());
     fs::create_dir_all(&test_dir).unwrap();
     let settings_path = format!("{}/settings.yaml", test_dir);
 
@@ -37,7 +37,7 @@ system:
     // Start the server (this will use the test settings)
     let app = test::init_service(App::new().configure(|cfg| {
         // Initialize app state and configure routes
-        webxr::initialize_app_state(cfg);
+        visionclaw_server::initialize_app_state(cfg);
     }))
     .await;
 
@@ -61,7 +61,7 @@ system:
 #[actix_web::test]
 async fn test_save_with_updates() {
     // Set up a temporary directory for the test
-    let test_dir = format!("/tmp/visionflow_test_{}", std::process::id());
+    let test_dir = format!("/tmp/visionclaw_test_{}", std::process::id());
     fs::create_dir_all(&test_dir).unwrap();
     let settings_path = format!("{}/settings.yaml", test_dir);
 
@@ -82,7 +82,7 @@ system:
 
     // Start the server
     let app = test::init_service(App::new().configure(|cfg| {
-        webxr::initialize_app_state(cfg);
+        visionclaw_server::initialize_app_state(cfg);
     }))
     .await;
 
@@ -115,7 +115,7 @@ system:
 #[actix_web::test]
 async fn test_save_validation_error() {
     // Set up a temporary directory for the test
-    let test_dir = format!("/tmp/visionflow_test_{}", std::process::id());
+    let test_dir = format!("/tmp/visionclaw_test_{}", std::process::id());
     fs::create_dir_all(&test_dir).unwrap();
     let settings_path = format!("{}/settings.yaml", test_dir);
 
@@ -130,7 +130,7 @@ system:
 
     // Start the server
     let app = test::init_service(App::new().configure(|cfg| {
-        webxr::initialize_app_state(cfg);
+        visionclaw_server::initialize_app_state(cfg);
     }))
     .await;
 

@@ -42,10 +42,10 @@ x-gpu-resources: &gpu-resources
           capabilities: [gpu, compute, utility]
 
 services:
-  # Unified VisionFlow service with profile-based configuration
-  visionflow:
-    container_name: ${CONTAINER_NAME:-visionflow_container}
-    hostname: ${HOSTNAME:-webxr}
+  # Unified VisionClaw service with profile-based configuration
+  visionclaw:
+    container_name: ${CONTAINER_NAME:-visionclaw_container}
+    hostname: ${HOSTNAME:-visionclaw-server}
     build:
       context: .
       dockerfile: ${DOCKERFILE:-Dockerfile.unified}
@@ -63,21 +63,21 @@ services:
       VITE_DEV_SERVER_PORT: ${VITE_DEV_SERVER_PORT:-5173}
       VITE_API_PORT: ${VITE_API_PORT:-4000}
       VITE_HMR_PORT: ${VITE_HMR_PORT:-24678}
-      RUST_LOG: ${RUST_LOG:-info,actix_web=warn,actix_server=warn,actix_http=warn,h2=warn,hyper=warn,rustls=warn,reqwest=warn,oxigraph=warn,horned_owl=warn,whelk=warn,solid_pod_rs=warn,webxr::actors::gpu::force_compute_actor=warn,webxr::handlers::socket_flow_handler=warn}
+      RUST_LOG: ${RUST_LOG:-info,actix_web=warn,actix_server=warn,actix_http=warn,h2=warn,hyper=warn,rustls=warn,reqwest=warn,oxigraph=warn,horned_owl=warn,whelk=warn,solid_pod_rs=warn,visionclaw-server::actors::gpu::force_compute_actor=warn,visionclaw-server::handlers::socket_flow_handler=warn}
       RUST_LOG_REDIRECT: ${RUST_LOG_REDIRECT:-true}
       DOCKER_ENV: ${DOCKER_ENV:-true}
       # Dev-only: bypass Nostr auth for settings writes (never set in production)
       SETTINGS_AUTH_BYPASS: "${SETTINGS_AUTH_BYPASS:-false}"
       # Solid pod storage (embedded solid-pod-rs)
       SOLID_DATA_ROOT: ${SOLID_DATA_ROOT:-/data/solid}
-      # Nostr bead provenance bridge — scoped to visionflow only (privkey must not leak to other containers)
+      # Nostr bead provenance bridge — scoped to visionclaw only (privkey must not leak to other containers)
       # Bridge pubkey: eb47d8a792a4709329270a9f85f012326c61867a913791dc5f89dc7a0a760754
       VISIONCLAW_NOSTR_PRIVKEY: ${VISIONCLAW_NOSTR_PRIVKEY:-}
       FORUM_RELAY_URL: ${FORUM_RELAY_URL:-}
     volumes:
       # Data volumes - ALWAYS mounted (both dev and prod)
-      - visionflow-data:/app/data
-      - visionflow-logs:/app/logs
+      - visionclaw-data:/app/data
+      - visionclaw-logs:/app/logs
       # SOURCE CODE MOUNTS - Live sync from host for development hot-reload
       # These override the COPY'd source in the image with current host files
       # HOST_PROJECT_ROOT resolves DinD path translation (defaults to "." for native Docker)
@@ -110,7 +110,7 @@ services:
     networks:
       visionclaw_network:
         aliases:
-          - ${NETWORK_ALIAS:-webxr}
+          - ${NETWORK_ALIAS:-visionclaw-server}
     deploy:
       <<: *gpu-resources
     runtime: nvidia
@@ -128,9 +128,9 @@ services:
       - dev
 
   # Production profile configuration
-  visionflow-production:
-    container_name: ${CONTAINER_NAME:-visionflow_prod_container}
-    hostname: ${HOSTNAME:-webxr-prod}
+  visionclaw-production:
+    container_name: ${CONTAINER_NAME:-visionclaw_prod_container}
+    hostname: ${HOSTNAME:-visionclaw-server-prod}
     build:
       context: .
       dockerfile: Dockerfile.production
@@ -148,27 +148,27 @@ services:
       GIT_HASH: ${GIT_HASH:-production}
       VITE_DEBUG: "false"
       # CORS — must include production domain so nginx can pass real Origin
-      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-https://www.visionflow.info,https://visionflow.info,http://localhost:3000,http://localhost:3001}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-https://www.visionclaw.info,https://visionclaw.info,http://localhost:3000,http://localhost:3001}
       # ComfyUI image generation
       COMFYUI_URL: ${COMFYUI_URL:-http://comfyui:8188}
       COMFYUI_SALAD_URL: ${COMFYUI_SALAD_URL:-http://comfyui:3000}
       # Solid pod storage for agent pipeline
       SOLID_PROXY_SECRET_KEY: ${SOLID_PROXY_SECRET_KEY}
-      VISIONFLOW_AGENT_KEY: ${VISIONFLOW_AGENT_KEY:-changeme-agent-key}
+      VISIONCLAW_AGENT_KEY: ${VISIONCLAW_AGENT_KEY:-changeme-agent-key}
       # Nostr bead provenance bridge — scoped here only, never in common-environment
       VISIONCLAW_NOSTR_PRIVKEY: ${VISIONCLAW_NOSTR_PRIVKEY:-}
       FORUM_RELAY_URL: ${FORUM_RELAY_URL:-}
     volumes:
       # Production: ONLY data volumes (no source mounts, no Docker socket)
-      - visionflow-data:/app/data
-      - visionflow-logs:/app/logs
+      - visionclaw-data:/app/data
+      - visionclaw-logs:/app/logs
     ports:
       # Production: Only API port
       - "${PROD_API_PORT:-3001}:3001"
     networks:
       visionclaw_network:
         aliases:
-          - ${NETWORK_ALIAS:-webxr}
+          - ${NETWORK_ALIAS:-visionclaw-server}
     deploy:
       <<: *gpu-resources
       resources:
@@ -202,10 +202,10 @@ services:
     volumes:
       - ./config.yml:/etc/cloudflared/config.yml:ro
     depends_on:
-      visionflow:
+      visionclaw:
         condition: service_started
         required: false
-      visionflow-production:
+      visionclaw-production:
         condition: service_started
         required: false
     networks:
@@ -224,22 +224,22 @@ networks:
 
 volumes:
   # Persistent data volumes
-  visionflow-data:
-    name: ${DATA_VOLUME_NAME:-visionflow-data}
+  visionclaw-data:
+    name: ${DATA_VOLUME_NAME:-visionclaw-data}
     driver: local
-  visionflow-logs:
-    name: ${LOGS_VOLUME_NAME:-visionflow-logs}
+  visionclaw-logs:
+    name: ${LOGS_VOLUME_NAME:-visionclaw-logs}
     driver: local
   # Build cache volumes
   npm-cache:
-    name: ${NPM_CACHE_VOLUME:-visionflow-npm-cache}
+    name: ${NPM_CACHE_VOLUME:-visionclaw-npm-cache}
     driver: local
   cargo-cache:
-    name: ${CARGO_CACHE_VOLUME:-visionflow-cargo-cache}
+    name: ${CARGO_CACHE_VOLUME:-visionclaw-cargo-cache}
     driver: local
   cargo-git-cache:
-    name: ${CARGO_GIT_CACHE_VOLUME:-visionflow-cargo-git-cache}
+    name: ${CARGO_GIT_CACHE_VOLUME:-visionclaw-cargo-git-cache}
     driver: local
   cargo-target-cache:
-    name: ${CARGO_TARGET_CACHE_VOLUME:-visionflow-cargo-target-cache}
+    name: ${CARGO_TARGET_CACHE_VOLUME:-visionclaw-cargo-target-cache}
     driver: local

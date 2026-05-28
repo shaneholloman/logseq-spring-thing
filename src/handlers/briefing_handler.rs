@@ -4,7 +4,7 @@
 //! - POST /api/briefs — Submit a new brief (triggers role agent execution)
 //! - POST /api/briefs/{brief_id}/debrief — Request consolidated debrief
 //!
-//! These endpoints bridge the VisionFlow frontend (voice/UI) to the
+//! These endpoints bridge the VisionClaw frontend (voice/UI) to the
 //! Management API briefing service running in the agent container.
 
 use actix_web::{web, HttpResponse};

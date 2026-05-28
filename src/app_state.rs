@@ -30,7 +30,7 @@ use crate::actors::{
 };
 use crate::config::feature_access::FeatureAccess;
 use crate::config::AppFullSettings; 
-use visionflow_domain::models::metadata::MetadataStore;
+use visionclaw_domain::models::metadata::MetadataStore;
 use crate::models::protected_settings::{ApiKeys, NostrUser, ProtectedSettings};
 use crate::services::bots_client::BotsClient;
 use crate::services::github::content_enhanced::EnhancedContentAPI;
@@ -608,7 +608,7 @@ impl AppState {
         // Initialize EventStore with file-backed repository (configurable via env)
         let event_store_path = std::env::var("EVENT_STORE_PATH")
             .map(PathBuf::from)
-            .unwrap_or_else(|_| PathBuf::from("/tmp/visionflow-events"));
+            .unwrap_or_else(|_| PathBuf::from("/tmp/visionclaw-events"));
         let event_store = Arc::new(EventStore::with_file_backend(event_store_path.clone()));
         info!("[AppState::new] EventStore initialized with file backend at {:?}", event_store_path);
 
@@ -867,7 +867,7 @@ impl AppState {
             mcp_host, mcp_port
         );
         let claude_flow_client =
-            visionflow_domain::types::claude_flow::ClaudeFlowClient::new(mcp_host, mcp_port);
+            visionclaw_domain::types::claude_flow::ClaudeFlowClient::new(mcp_host, mcp_port);
         let agent_monitor_addr =
             AgentMonitorActor::new(claude_flow_client, graph_service_addr.clone()).start();
 

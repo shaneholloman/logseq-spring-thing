@@ -2,6 +2,6 @@
 
 /**
  * Coarse-grained RBAC label. Maps to UI affordances; finer-grained
- * permission checks happen in the forum, not VisionFlow.
+ * permission checks happen in the forum, not VisionClaw.
  */
 export type EnterpriseRole = "reader" | "operator" | "admin";

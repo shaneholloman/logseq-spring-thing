@@ -66,10 +66,10 @@ use oxigraph::sparql::QueryResults;
 use oxigraph::store::Store;
 use serde_json::Value;
 
-const GRAPH_KNOWLEDGE: &str = "urn:visionflow:graph:knowledge";
-const GRAPH_ONTO_ASSERT: &str = "urn:visionflow:graph:ontology:assert";
-const GRAPH_ONTO_INFERRED: &str = "urn:visionflow:graph:ontology:inferred";
-const GRAPH_AGENT: &str = "urn:visionflow:graph:agent";
+const GRAPH_KNOWLEDGE: &str = "urn:visionclaw:graph:knowledge";
+const GRAPH_ONTO_ASSERT: &str = "urn:visionclaw:graph:ontology:assert";
+const GRAPH_ONTO_INFERRED: &str = "urn:visionclaw:graph:ontology:inferred";
+const GRAPH_AGENT: &str = "urn:visionclaw:graph:agent";
 
 #[derive(Parser, Debug)]
 #[command(
@@ -197,7 +197,7 @@ fn print_report(s: &Store) -> Result<(), Box<dyn std::error::Error>> {
     println!("=== Bridge count (default graph) ===");
     let n_bridge = ask_count(
         s,
-        "SELECT (COUNT(*) AS ?n) WHERE { ?s a <https://visionflow.dreamlab/ns/BridgeRecord> . }",
+        "SELECT (COUNT(*) AS ?n) WHERE { ?s a <https://visionclaw.dreamlab/ns/BridgeRecord> . }",
     )?;
     println!("  vc:BridgeRecord instances: {}", n_bridge);
     Ok(())
@@ -215,7 +215,7 @@ fn count_in_default(s: &Store) -> Result<u64, Box<dyn std::error::Error>> {
     // Oxigraph 0.4: default graph is reached via the SPARQL keyword DEFAULT
     // or by querying without GRAPH wrapping; the implementation distinguishes
     // by absence of a graph term.
-    let q = "SELECT (COUNT(*) AS ?n) WHERE { GRAPH <urn:visionflow:fake-not-a-graph> { ?s ?p ?o } UNION { ?s ?p ?o . FILTER NOT EXISTS { GRAPH ?g { ?s ?p ?o } } } }";
+    let q = "SELECT (COUNT(*) AS ?n) WHERE { GRAPH <urn:visionclaw:fake-not-a-graph> { ?s ?p ?o } UNION { ?s ?p ?o . FILTER NOT EXISTS { GRAPH ?g { ?s ?p ?o } } } }";
     ask_count(s, q)
 }
 
@@ -265,7 +265,7 @@ fn term_label(t: &Term) -> String {
         Term::NamedNode(n) => {
             let s = n.as_str();
             // Compress the long vc: namespace for readability.
-            if let Some(local) = s.strip_prefix("https://visionflow.dreamlab/ns/") {
+            if let Some(local) = s.strip_prefix("https://visionclaw.dreamlab/ns/") {
                 format!("vc:{}", local)
             } else if let Some(local) = s.strip_prefix("http://www.w3.org/2002/07/owl#") {
                 format!("owl:{}", local)

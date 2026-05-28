@@ -1,2 +1,2 @@
-//! Shim: inference module moved to `visionflow-ontology` crate (ADR-090 Phase A4).
-pub use visionflow_ontology::inference::*;
+//! Shim: inference module moved to `visionclaw-ontology` crate (ADR-090 Phase A4).
+pub use visionclaw_ontology::inference::*;

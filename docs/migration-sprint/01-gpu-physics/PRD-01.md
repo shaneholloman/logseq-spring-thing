@@ -2,7 +2,7 @@
 
 ## 1. Capability statement
 
-VisionFlow performs force-directed layout of a knowledge graph (~5k nodes,
+VisionClaw performs force-directed layout of a knowledge graph (~5k nodes,
 ~12k edges) and a parallel agent graph (~50–500 nodes) on the GPU at
 interactive rates, with multiple selectable force models, settlement-aware
 broadcast cadence, and physics parameters that scale to the node-degree

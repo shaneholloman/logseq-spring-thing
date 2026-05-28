@@ -5,8 +5,8 @@ import type { AgentAction } from "./AgentAction";
  * Top-level envelope dispatched on every agent-node interaction.
  *
  * Serde serialises this as a discriminated union with `"type":
- * "visionflow:agent-action"` at the top level. The enum has a single variant
+ * "visionclaw:agent-action"` at the top level. The enum has a single variant
  * today; future incompatible shapes would be introduced by bumping
  * `schema_version` rather than by adding a sibling variant.
  */
-export type AgentActionEnvelope = { "type": "visionflow:agent-action" } & AgentAction;
+export type AgentActionEnvelope = { "type": "visionclaw:agent-action" } & AgentAction;

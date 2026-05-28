@@ -5,13 +5,13 @@
 
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use webxr::adapters::{OxigraphGraphRepository, OxigraphOntologyRepository};
-use webxr::config::AppFullSettings;
-use webxr::services::github::api::GitHubClient;
-use webxr::services::github::config::GitHubConfig;
-use webxr::services::github::content_enhanced::EnhancedContentAPI;
-use webxr::services::local_file_sync_service::LocalFileSyncService;
-use webxr::services::ontology_enrichment_service::OntologyEnrichmentService;
+use visionclaw_server::adapters::{OxigraphGraphRepository, OxigraphOntologyRepository};
+use visionclaw_server::config::AppFullSettings;
+use visionclaw_server::services::github::api::GitHubClient;
+use visionclaw_server::services::github::config::GitHubConfig;
+use visionclaw_server::services::github::content_enhanced::EnhancedContentAPI;
+use visionclaw_server::services::local_file_sync_service::LocalFileSyncService;
+use visionclaw_server::services::ontology_enrichment_service::OntologyEnrichmentService;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -44,14 +44,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let content_api = Arc::new(EnhancedContentAPI::new(github_client));
 
     // Initialize whelk inference engine for ontology reasoning
-    let whelk_engine = Arc::new(webxr::adapters::whelk_inference_engine::WhelkInferenceEngine::new());
-    let reasoner = Arc::new(webxr::services::ontology_reasoner::OntologyReasoner::new(
+    let whelk_engine = Arc::new(visionclaw_server::adapters::whelk_inference_engine::WhelkInferenceEngine::new());
+    let reasoner = Arc::new(visionclaw_server::services::ontology_reasoner::OntologyReasoner::new(
         whelk_engine,
-        onto_repo.clone() as Arc<dyn webxr::ports::ontology_repository::OntologyRepository>,
+        onto_repo.clone() as Arc<dyn visionclaw_server::ports::ontology_repository::OntologyRepository>,
     ));
 
     // Initialize edge classifier (no arguments needed)
-    let edge_classifier = Arc::new(webxr::services::edge_classifier::EdgeClassifier::new());
+    let edge_classifier = Arc::new(visionclaw_server::services::edge_classifier::EdgeClassifier::new());
 
     let enrichment_service = Arc::new(OntologyEnrichmentService::new(
         reasoner,
@@ -61,7 +61,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create sync service
     let sync_service = LocalFileSyncService::new(
         content_api,
-        kg_repo as Arc<dyn webxr::ports::knowledge_graph_repository::KnowledgeGraphRepository>,
+        kg_repo as Arc<dyn visionclaw_server::ports::knowledge_graph_repository::KnowledgeGraphRepository>,
         onto_repo,
         enrichment_service,
     );

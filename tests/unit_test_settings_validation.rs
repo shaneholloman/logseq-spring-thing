@@ -8,7 +8,7 @@
 
 use serde_json::json;
 // Private functions - cannot be accessed from external test crate
-// use webxr::handlers::settings_handler::{
+// use visionclaw_server::handlers::settings_handler::{
 //     extract_physics_updates, validate_glow_settings, validate_node_settings,
 //     validate_physics_settings, validate_rendering_settings, validate_settings_update,
 // };
@@ -201,7 +201,7 @@ fn test_merge_auto_balance_physics() {
 //                         "iterations": 100
 //                     }
 //                 },
-//                 "visionflow": {
+//                 "visionclaw": {
 //                     "physics": {
 //                         "temperature": 0.02
 //                     }
@@ -214,16 +214,16 @@ fn test_merge_auto_balance_physics() {
 //
 //     assert_eq!(physics_updates.len(), 2);
 //     assert!(physics_updates.contains_key("logseq"));
-//     assert!(physics_updates.contains_key("visionflow"));
+//     assert!(physics_updates.contains_key("visionclaw"));
 //     assert_eq!(physics_updates["logseq"]["damping"], 0.9);
-//     assert_eq!(physics_updates["visionflow"]["temperature"], 0.02);
+//     assert_eq!(physics_updates["visionclaw"]["temperature"], 0.02);
 // }
 
 #[test]
 fn test_file_io_error_scenarios() {
     // Legacy YAML file persistence was removed — save() is now a no-op
     // that returns Ok(()) for backwards compatibility (settings live in Neo4j).
-    let settings = webxr::config::AppFullSettings::default();
+    let settings = visionclaw_server::config::AppFullSettings::default();
     let result = settings.save();
     assert!(result.is_ok(), "save() should be a no-op returning Ok");
 }

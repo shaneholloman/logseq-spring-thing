@@ -24,13 +24,13 @@ import { createLogger } from '../utils/loggerConfig';
 const logger = createLogger('VoiceOrchestrator');
 
 export interface VoiceOrchestratorConfig {
-  /** VisionFlow API base URL (e.g., http://localhost:4000) */
+  /** VisionClaw API base URL (e.g., http://localhost:4000) */
   serverUrl: string;
   /** LiveKit server URL (e.g., ws://localhost:7880) */
   livekitUrl: string;
   /** LiveKit access token (generated server-side) */
   livekitToken: string;
-  /** LiveKit room name (typically "visionflow-{world_id}") */
+  /** LiveKit room name (typically "visionclaw-{world_id}") */
   livekitRoom: string;
   /** User identifier */
   userId: string;
@@ -70,10 +70,10 @@ export class VoiceOrchestrator {
     this.config = config;
     logger.info(`Initializing voice orchestrator for user ${config.userId}`);
 
-    // 1. Connect to VisionFlow speech WebSocket (agent commands + TTS response)
+    // 1. Connect to VisionClaw speech WebSocket (agent commands + TTS response)
     try {
       await this.voiceWs.connectToSpeech(config.serverUrl);
-      logger.info('Connected to VisionFlow speech WebSocket');
+      logger.info('Connected to VisionClaw speech WebSocket');
     } catch (error) {
       logger.error('Failed to connect to speech WebSocket:', error);
       throw error;

@@ -1,8 +1,8 @@
 tunnel: logseqXR
 
 ingress:
-  - hostname: www.visionflow.info
-    service: http://webxr:3001
+  - hostname: www.visionclaw.info
+    service: http://visionclaw-server:3001
     originRequest:
       noTLSVerify: true
       connectTimeout: 30s
@@ -11,7 +11,7 @@ ingress:
       idleTimeout: 10m
       websocketIdleTimeout: 10m
       keepAliveConnections: 100
-      httpHostHeader: www.visionflow.info
+      httpHostHeader: www.visionclaw.info
       proxyProtocol: false
     config:
       webSockets: true

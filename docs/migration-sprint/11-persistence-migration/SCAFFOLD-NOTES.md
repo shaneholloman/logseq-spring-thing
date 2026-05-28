@@ -164,7 +164,7 @@ do in bulk; these five require explicit design.
 **SPARQL**:
 ```sparql
 SELECT ?s ?p ?o
-FROM <urn:visionflow:graph:ontology>
+FROM <urn:visionclaw:graph:ontology>
 WHERE { ?s ?p ?o }
 ```
 
@@ -189,7 +189,7 @@ helper module (called out in PRD-11 §8 bullet 1).
 
 ### 2. `OntologyRepository::add_owl_class` (oxigraph_ontology_repository.rs:195)
 
-**SPARQL**: `ASK` + `INSERT DATA` against `<urn:visionflow:graph:ontology>`.
+**SPARQL**: `ASK` + `INSERT DATA` against `<urn:visionclaw:graph:ontology>`.
 
 **Why complex**: `OwlClass` has 40+ optional fields (term_id,
 preferred_term, label, description, parent_classes, source_domain,
@@ -217,7 +217,7 @@ in Phase 3).
 **SPARQL**:
 ```sparql
 SELECT ?s ?p ?o
-FROM <urn:visionflow:graph:ontology>
+FROM <urn:visionclaw:graph:ontology>
 WHERE { ?s a vc:OntologyClass ; ?p ?o }
 ORDER BY ?s
 ```
@@ -242,7 +242,7 @@ of the 32 hot Cypher queries translated and run").
 traversal for `max_depth`. The depth pattern:
 ```sparql
 SELECT (MAX(?depth) AS ?d)
-FROM <urn:visionflow:graph:ontology>
+FROM <urn:visionclaw:graph:ontology>
 WHERE {
   ?leaf rdfs:subClassOf+ ?root .
   # ?depth computation requires explicit per-subject path enumeration
@@ -269,14 +269,14 @@ day to implement + 0.5 day to benchmark against PRD-11 §7 budget.
 **SPARQL** (per ADR-11 §D4 position-triple snapshot):
 
 ```sparql
-DELETE { GRAPH <urn:visionflow:graph:knowledge> {
+DELETE { GRAPH <urn:visionclaw:graph:knowledge> {
            ?n vc:hasX ?x ; vc:hasY ?y ; vc:hasZ ?z ;
               vc:hasVX ?vx ; vc:hasVY ?vy ; vc:hasVZ ?vz . } }
-WHERE  { GRAPH <urn:visionflow:graph:knowledge> {
+WHERE  { GRAPH <urn:visionclaw:graph:knowledge> {
            ?n a vc:KGNode ; vc:nodeId ?id .
            FILTER(?id IN (<u32-list>))
            ?n vc:hasX ?x ; ... } } ;
-INSERT DATA { GRAPH <urn:visionflow:graph:knowledge> {
+INSERT DATA { GRAPH <urn:visionclaw:graph:knowledge> {
            <vc:kg/<slug-of-id>>
                vc:hasX "<x>"^^xsd:float ;
                vc:hasY "<y>"^^xsd:float ;

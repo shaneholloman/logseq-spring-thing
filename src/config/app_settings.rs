@@ -172,7 +172,7 @@ impl AppFullSettings {
     pub fn get_physics(&self, graph: &str) -> &PhysicsSettings {
         match graph {
             "logseq" | "knowledge" => &self.visualisation.graphs.logseq.physics,
-            "visionflow" | "agent" | "bots" => &self.visualisation.graphs.visionflow.physics,
+            "visionclaw" | "agent" | "bots" => &self.visualisation.graphs.visionclaw.physics,
             _ => {
                 log::debug!(
                     "Unknown graph type '{}', defaulting to logseq (knowledge graph)",

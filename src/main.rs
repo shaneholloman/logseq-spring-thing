@@ -1,9 +1,9 @@
 // Rebuild: KE velocity fix applied
-use webxr::ports::ontology_repository::OntologyRepository;
-use webxr::services::nostr_service::NostrService;
+use visionclaw_server::ports::ontology_repository::OntologyRepository;
+use visionclaw_server::services::nostr_service::NostrService;
 // SettingsActor removed - OptimizedSettingsActor in AppState is the single source of truth
-use webxr::actors::messages::ReloadGraphFromDatabase;
-use webxr::{
+use visionclaw_server::actors::messages::ReloadGraphFromDatabase;
+use visionclaw_server::{
     config::AppFullSettings,
     handlers::{
         admin_sync_handler,
@@ -54,11 +54,11 @@ use tokio::signal::unix::{signal, SignalKind};
 use tokio::sync::RwLock;
 use tokio::time::Duration;
 use tracing_subscriber::{fmt, EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
-use webxr::middleware::{RateLimit, TimeoutMiddleware};
-use webxr::telemetry::agent_telemetry::init_telemetry_logger;
-use webxr::utils::advanced_logging::init_advanced_logging;
-use webxr::utils::json::to_json;
-// REMOVED: use webxr::utils::logging::init_logging; - legacy logging superseded by advanced_logging
+use visionclaw_server::middleware::{RateLimit, TimeoutMiddleware};
+use visionclaw_server::telemetry::agent_telemetry::init_telemetry_logger;
+use visionclaw_server::utils::advanced_logging::init_advanced_logging;
+use visionclaw_server::utils::json::to_json;
+// REMOVED: use visionclaw_server::utils::logging::init_logging; - legacy logging superseded by advanced_logging
 
 // DEPRECATED: ErrorRecoveryMiddleware removed - NetworkRecoveryManager deleted
 
@@ -114,7 +114,7 @@ fn validate_required_env_vars() -> Result<(), String> {
 /// ADR-06 §D11 — Startup refusal of dev-mode env vars and argv flags in release.
 ///
 /// In release builds (no `debug_assertions`, no `--features dev-auth`) the binary
-/// physically cannot honour `SETTINGS_AUTH_BYPASS`, `VISIONFLOW_DEV_MODE`,
+/// physically cannot honour `SETTINGS_AUTH_BYPASS`, `VISIONCLAW_DEV_MODE`,
 /// `ALLOW_INSECURE_DEFAULTS`, or `--allow-skip-auth` — the codepaths are
 /// `#[cfg]`-stripped. But the presence of those vars/flags at deploy time is a
 /// strong signal that someone promoted a dev configuration to production. This
@@ -137,7 +137,7 @@ fn enforce_release_env_hygiene() {
     const SUSPECT_ENVS: &[&str] = &[
         "SETTINGS_AUTH_BYPASS",
         "ALLOW_INSECURE_DEFAULTS",
-        "VISIONFLOW_DEV_MODE",
+        "VISIONCLAW_DEV_MODE",
     ];
     let mut offending: Vec<&str> = Vec::new();
     for var in SUSPECT_ENVS {
@@ -219,10 +219,10 @@ async fn main() -> std::io::Result<()> {
              horned_owl=warn,\
              whelk=warn,\
              solid_pod_rs=warn,\
-             webxr::actors::gpu::force_compute_actor=warn,\
-             webxr::actors::physics_orchestrator_actor=info,\
-             webxr::actors::client_coordinator_actor=info,\
-             webxr::handlers::socket_flow_handler=warn"
+             visionclaw_server::actors::gpu::force_compute_actor=warn,\
+             visionclaw_server::actors::physics_orchestrator_actor=info,\
+             visionclaw_server::actors::client_coordinator_actor=info,\
+             visionclaw_server::handlers::socket_flow_handler=warn"
         )))
         .with(
             fmt::layer()
@@ -244,7 +244,7 @@ async fn main() -> std::io::Result<()> {
     let process_start_time = Instant::now();
 
     info!("--- Configuration Verification ---");
-    info!("MARKDOWN_DIR: {}", webxr::services::file_service::MARKDOWN_DIR);
+    info!("MARKDOWN_DIR: {}", visionclaw_server::services::file_service::MARKDOWN_DIR);
     info!("METADATA_PATH: {}", "/workspace/ext/data/metadata/metadata.json");
     info!("---------------------------------");
 
@@ -350,7 +350,7 @@ async fn main() -> std::io::Result<()> {
     info!("Initializing SQLite settings repository for routes");
     let data_dir = std::env::var("DATA_DIR").unwrap_or_else(|_| "./data".to_string());
     let settings_db_path = std::path::Path::new(&data_dir).join("settings.sqlite3");
-    let settings_repository = match webxr::adapters::SqliteSettingsRepository::open(&settings_db_path).await {
+    let settings_repository = match visionclaw_server::adapters::SqliteSettingsRepository::open(&settings_db_path).await {
         Ok(repo) => Arc::new(repo),
         Err(e) => {
             error!("Failed to open SQLite settings repository: {}", e);
@@ -458,7 +458,7 @@ async fn main() -> std::io::Result<()> {
     let enhanced_content_api = Arc::new(EnhancedContentAPI::new(github_client.clone()));
     let github_sync_service = Arc::new(GitHubSyncService::new(
         enhanced_content_api,
-        app_state.graph_adapter.clone() as Arc<dyn webxr::ports::knowledge_graph_repository::KnowledgeGraphRepository>,
+        app_state.graph_adapter.clone() as Arc<dyn visionclaw_server::ports::knowledge_graph_repository::KnowledgeGraphRepository>,
         app_state.ontology_repository.clone(),
         app_state.sqlite_settings_repository.clone(),
     ));
@@ -466,12 +466,12 @@ async fn main() -> std::io::Result<()> {
 
     // Initialize SchemaService for natural language query support
     info!("[main] Initializing Schema Service...");
-    let schema_service = Arc::new(webxr::services::schema_service::SchemaService::new());
+    let schema_service = Arc::new(visionclaw_server::services::schema_service::SchemaService::new());
     debug!("[main] Schema Service initialized");
     // Initialize Natural Language Query Service
     info!("[main] Initializing Natural Language Query Service...");
-    let perplexity_service = Arc::new(webxr::services::perplexity_service::PerplexityService::new());
-    let nl_query_service = Arc::new(webxr::services::natural_language_query_service::NaturalLanguageQueryService::new(
+    let perplexity_service = Arc::new(visionclaw_server::services::perplexity_service::PerplexityService::new());
+    let nl_query_service = Arc::new(visionclaw_server::services::natural_language_query_service::NaturalLanguageQueryService::new(
         schema_service.clone(),
         perplexity_service.clone(),
     ));
@@ -479,22 +479,22 @@ async fn main() -> std::io::Result<()> {
 
     // Initialize Semantic Pathfinding Service
     info!("[main] Initializing Semantic Pathfinding Service...");
-    let pathfinding_service = Arc::new(webxr::services::semantic_pathfinding_service::SemanticPathfindingService::default());
+    let pathfinding_service = Arc::new(visionclaw_server::services::semantic_pathfinding_service::SemanticPathfindingService::default());
     info!("[main] Semantic Pathfinding Service initialized");
 
     // Initialize Ontology Agent Services (query + mutation + GitHub PR)
     info!("[main] Initializing Ontology Agent Services...");
     let whelk_engine = Arc::new(tokio::sync::RwLock::new(
-        webxr::adapters::whelk_inference_engine::WhelkInferenceEngine::new(),
+        visionclaw_server::adapters::whelk_inference_engine::WhelkInferenceEngine::new(),
     ));
-    let github_pr_service = Arc::new(webxr::services::github_pr_service::GitHubPRService::new());
-    let ontology_query_service = Arc::new(webxr::services::ontology_query_service::OntologyQueryService::new(
+    let github_pr_service = Arc::new(visionclaw_server::services::github_pr_service::GitHubPRService::new());
+    let ontology_query_service = Arc::new(visionclaw_server::services::ontology_query_service::OntologyQueryService::new(
         app_state.ontology_repository.clone(),
-        app_state.graph_adapter.clone() as Arc<dyn webxr::ports::knowledge_graph_repository::KnowledgeGraphRepository>,
+        app_state.graph_adapter.clone() as Arc<dyn visionclaw_server::ports::knowledge_graph_repository::KnowledgeGraphRepository>,
         whelk_engine.clone(),
         schema_service.clone(),
     ));
-    let ontology_mutation_service = Arc::new(webxr::services::ontology_mutation_service::OntologyMutationService::new(
+    let ontology_mutation_service = Arc::new(visionclaw_server::services::ontology_mutation_service::OntologyMutationService::new(
         app_state.ontology_repository.clone(),
         whelk_engine.clone(),
         github_pr_service.clone(),
@@ -505,7 +505,7 @@ async fn main() -> std::io::Result<()> {
 
     // Step 1: Sync Files from GitHub.
     info!("[Startup] Step 1: Syncing files from GitHub to local storage...");
-    let github_sync_failed = if let Err(e) = webxr::services::file_service::FileService::initialize_local_storage(settings.clone()).await {
+    let github_sync_failed = if let Err(e) = visionclaw_server::services::file_service::FileService::initialize_local_storage(settings.clone()).await {
         error!("[Startup] FAILED to sync from GitHub: {}. Will try local files.", e);
         true
     } else {
@@ -514,10 +514,10 @@ async fn main() -> std::io::Result<()> {
     };
 
     // Step 1b: If GitHub sync failed or metadata is empty, scan local files
-    let metadata = webxr::services::file_service::FileService::load_or_create_metadata().unwrap_or_default();
+    let metadata = visionclaw_server::services::file_service::FileService::load_or_create_metadata().unwrap_or_default();
     if github_sync_failed || metadata.is_empty() {
         info!("[Startup] Step 1b: Scanning local markdown files as fallback...");
-        match webxr::services::file_service::FileService::scan_local_files_to_metadata() {
+        match visionclaw_server::services::file_service::FileService::scan_local_files_to_metadata() {
             Ok(local_metadata) => {
                 info!("[Startup] SUCCESS: Scanned {} public files from local storage.", local_metadata.len());
             }
@@ -530,9 +530,9 @@ async fn main() -> std::io::Result<()> {
     // Step 2: Load Files into Oxigraph store (ADR-11).
     info!("[Startup] Step 2: Populating Oxigraph store from local files...");
     {
-        use webxr::ports::knowledge_graph_repository::KnowledgeGraphRepository;
+        use visionclaw_server::ports::knowledge_graph_repository::KnowledgeGraphRepository;
         let kg_repo: Arc<dyn KnowledgeGraphRepository> = app_state.graph_adapter.clone() as Arc<dyn KnowledgeGraphRepository>;
-        if let Err(e) = webxr::services::file_service::FileService::load_graph_from_files(&kg_repo).await {
+        if let Err(e) = visionclaw_server::services::file_service::FileService::load_graph_from_files(&kg_repo).await {
             error!("[Startup] FATAL: Failed to populate Oxigraph store: {}. Application is in DEGRADED state.", e);
             app_state.set_degraded(format!("Oxigraph init failed: {}", e));
         } else {
@@ -645,9 +645,9 @@ async fn main() -> std::io::Result<()> {
     // ActixPhysicsAdapter wraps PhysicsOrchestratorActor; the actor addr is populated
     // lazily by the adapter's own initialization path.
     let physics_service = {
-        use webxr::adapters::actix_physics_adapter::ActixPhysicsAdapter;
-        use webxr::application::PhysicsService;
-        use webxr::events::EventBus;
+        use visionclaw_server::adapters::actix_physics_adapter::ActixPhysicsAdapter;
+        use visionclaw_server::application::PhysicsService;
+        use visionclaw_server::events::EventBus;
         let adapter = Arc::new(tokio::sync::RwLock::new(ActixPhysicsAdapter::new()));
         let event_bus = Arc::new(tokio::sync::RwLock::new(EventBus::new()));
         web::Data::new(Arc::new(PhysicsService::new(adapter, event_bus)))
@@ -682,7 +682,7 @@ async fn main() -> std::io::Result<()> {
     // is async). The state is injected via app_data so Actix workers don't need
     // to run async init inside their sync configure closure.
     #[cfg(feature = "solid-pod-embed")]
-    let solid_state = webxr::handlers::init_solid_state().await;
+    let solid_state = visionclaw_server::handlers::init_solid_state().await;
 
     info!("main: All services and actors initialized. Configuring HTTP server.");
     let server =
@@ -766,7 +766,7 @@ async fn main() -> std::io::Result<()> {
             .wrap(cors)
             .wrap(middleware::Compress::default())
             .wrap(TimeoutMiddleware::with_config(
-                webxr::middleware::TimeoutConfig::new(Duration::from_secs(30))
+                visionclaw_server::middleware::TimeoutConfig::new(Duration::from_secs(30))
                     .with_override("/api/admin/sync", Duration::from_secs(600))
             ))
 
@@ -810,7 +810,7 @@ async fn main() -> std::io::Result<()> {
             // OpenAPI/Swagger documentation
             .service(
                 SwaggerUi::new("/swagger-ui/{_:.*}")
-                    .url("/api-docs/openapi.json", webxr::openapi::ApiDoc::openapi())
+                    .url("/api-docs/openapi.json", visionclaw_server::openapi::ApiDoc::openapi())
             )
             .service(
                 web::scope("/api")
@@ -819,7 +819,7 @@ async fn main() -> std::io::Result<()> {
                     .service(
                         web::scope("/settings")
                             .wrap(RateLimit::per_minute(60))
-                            .configure(webxr::settings::api::configure_routes)
+                            .configure(visionclaw_server::settings::api::configure_routes)
                     )
                     .configure(api_handler::config)
                     .configure(workspace_handler::config)
@@ -830,12 +830,12 @@ async fn main() -> std::io::Result<()> {
                     // Cypher query endpoint removed (handler deleted in Oxigraph migration, ADR-11)
 
                     // Phase 5: Hexagonal architecture handlers
-                    .configure(webxr::handlers::configure_physics_routes)
-                    .configure(webxr::handlers::configure_schema_routes)
-                    .configure(webxr::handlers::configure_nl_query_routes)
-                    .configure(webxr::handlers::configure_pathfinding_routes)
-                    .configure(webxr::handlers::configure_semantic_routes)
-                    .configure(webxr::handlers::configure_inference_routes)
+                    .configure(visionclaw_server::handlers::configure_physics_routes)
+                    .configure(visionclaw_server::handlers::configure_schema_routes)
+                    .configure(visionclaw_server::handlers::configure_nl_query_routes)
+                    .configure(visionclaw_server::handlers::configure_pathfinding_routes)
+                    .configure(visionclaw_server::handlers::configure_semantic_routes)
+                    .configure(visionclaw_server::handlers::configure_inference_routes)
 
                     // Health and monitoring
                     .configure(consolidated_health_handler::configure_routes)
@@ -852,22 +852,22 @@ async fn main() -> std::io::Result<()> {
                     .configure(graph_export_handler::configure_routes)
 
                     // Ontology agent tools (MCP surface)
-                    .configure(webxr::handlers::configure_ontology_agent_routes)
+                    .configure(visionclaw_server::handlers::configure_ontology_agent_routes)
 
                     // Solid Pod (embedded solid-pod-rs)
-                    .configure(webxr::handlers::configure_solid_routes)
+                    .configure(visionclaw_server::handlers::configure_solid_routes)
 
                     // Image generation via ComfyUI (Flux2)
-                    .configure(webxr::handlers::configure_image_gen_routes)
+                    .configure(visionclaw_server::handlers::configure_image_gen_routes)
 
                     // Briefing workflow (voice → brief → role agents → debrief)
-                    .configure(webxr::handlers::configure_briefing_routes)
+                    .configure(visionclaw_server::handlers::configure_briefing_routes)
 
                     // Memory flash events (RuVector access → WS broadcast to all clients)
-                    .configure(webxr::handlers::configure_memory_flash_routes)
+                    .configure(visionclaw_server::handlers::configure_memory_flash_routes)
 
                     // Layout mode system (ADR-031)
-                    .configure(webxr::handlers::configure_layout_routes)
+                    .configure(visionclaw_server::handlers::configure_layout_routes)
 
             );
 

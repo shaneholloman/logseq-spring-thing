@@ -56,7 +56,7 @@ export class GraphVircadiaBridge {
     this.mapper = new GraphEntityMapper({
       syncGroup: 'public.NORMAL',
       loadPriority: 0,
-      createdBy: 'visionflow-bridge'
+      createdBy: 'visionclaw-bridge'
     });
   }
 

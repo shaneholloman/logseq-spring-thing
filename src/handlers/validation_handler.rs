@@ -170,22 +170,22 @@ impl ValidationService {
         })?;
 
         
-        if !graphs_obj.contains_key("logseq") && !graphs_obj.contains_key("visionflow") {
+        if !graphs_obj.contains_key("logseq") && !graphs_obj.contains_key("visionclaw") {
             return Err(DetailedValidationError::new(
                 "visualisation.graphs",
-                "At least one graph (logseq or visionflow) must be specified",
+                "At least one graph (logseq or visionclaw) must be specified",
                 "MISSING_GRAPHS",
             ));
         }
 
         
-        if let (Some(logseq), Some(visionflow)) =
-            (graphs_obj.get("logseq"), graphs_obj.get("visionflow"))
+        if let (Some(logseq), Some(visionclaw)) =
+            (graphs_obj.get("logseq"), graphs_obj.get("visionclaw"))
         {
-            if let (Some(logseq_physics), Some(visionflow_physics)) =
-                (logseq.get("physics"), visionflow.get("physics"))
+            if let (Some(logseq_physics), Some(visionclaw_physics)) =
+                (logseq.get("physics"), visionclaw.get("physics"))
             {
-                self.validate_physics_consistency(logseq_physics, visionflow_physics)?;
+                self.validate_physics_consistency(logseq_physics, visionclaw_physics)?;
             }
         }
 

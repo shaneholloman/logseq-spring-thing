@@ -2,7 +2,7 @@
 
 **Version**: 1.0
 **Date**: 2026-05-27
-**Scope**: VisionFlow 3D Knowledge Graph -- all graph features, interactions, and data pipeline verification
+**Scope**: VisionClaw 3D Knowledge Graph -- all graph features, interactions, and data pipeline verification
 **Trigger**: R3F/Zustand reconciler bug where node type visibility toggles update the store but the Canvas scene does not re-render
 
 ---
@@ -24,7 +24,7 @@
 | DP-009 | `/api/physics/parameters` | PUT | Write `springK: 25.0`, read back, confirm GPU picks up new value. |
 | DP-010 | `/api/layout/positions` | GET | Returns position array. Each entry has numeric `id`, `x`, `y`, `z`. |
 
-**Execution**: `sudo docker exec visionflow_container curl -s localhost:4000/api/graph/data | jq '.nodes | length'`
+**Execution**: `sudo docker exec visionclaw_container curl -s localhost:4000/api/graph/data | jq '.nodes | length'`
 
 ### 1.2 WebSocket Binary Position Protocol
 
@@ -84,7 +84,7 @@ Every `useSettingsStore()` call inside the Canvas tree is a potential reconciler
 | `debugSettings` | `s.settings?.system?.debug` | object | MEDIUM -- object ref risk, but rarely toggled. |
 | `nodeFilterSettings` | `s.settings?.nodeFilter` | object | MEDIUM -- object ref risk. |
 | `nodeTypeVisibility` | `s.settings?.visualisation?.graphs?.logseq?.nodes?.nodeTypeVisibility` | object | **CRITICAL** -- this is the exact selector involved in the reported bug. Returns `{ knowledge: bool, ontology: bool, agent: bool }`. If Immer produces a structurally-identical-but-referentially-new object, it works. If it reuses the draft, it fails silently. |
-| `visionflowPhysics` | `s.settings?.visualisation?.graphs?.visionflow?.physics` | object | MEDIUM |
+| `visionclawPhysics` | `s.settings?.visualisation?.graphs?.visionclaw?.physics` | object | MEDIUM |
 | `layoutMode` | `s.settings?.qualityGates?.layoutMode` | string | LOW -- primitive. |
 | `settingsRef` (via `.subscribe()`) | full settings | ref (manual) | **LOW** -- uses manual subscription, bypasses reconciler. Always current. |
 
@@ -370,7 +370,7 @@ The SAB (`nodePositionsRef`) is read by multiple R3F components. All must read c
 #### Data Layer Agents
 
 **REST Probe Agent**
-- **Tool**: `sudo docker exec visionflow_container curl ...` (Bash)
+- **Tool**: `sudo docker exec visionclaw_container curl ...` (Bash)
 - **Scope**: Tests DP-001 through DP-010
 - **Cadence**: Run once at session start, then after each settings mutation
 - **Output**: JSON validation results stored to memory key `aqe/fleet/data/rest-results`

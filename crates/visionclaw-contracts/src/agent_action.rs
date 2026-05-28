@@ -1,4 +1,4 @@
-//! `AgentActionEnvelope` — outbound message from VisionFlow to agentbox/forum
+//! `AgentActionEnvelope` — outbound message from VisionClaw to agentbox/forum
 //! dispatched when the user interacts with an agent node in the 3D scene.
 //!
 //! Canonical specification: ADR-10 §D3 and `_resolutions/T4-T6-T7-api-contracts.md`
@@ -16,7 +16,7 @@
 //!
 //! Receivers **MUST**:
 //!
-//! 1. Verify `type === "visionflow:agent-action"`
+//! 1. Verify `type === "visionclaw:agent-action"`
 //! 2. Verify `schema_version === 1` (refuse with a structured log otherwise)
 //! 3. For postMessage delivery: verify `event.origin` against the
 //!    [`AgentActionTargetOrigin`] allowlist
@@ -37,11 +37,11 @@ pub use crate::version::SCHEMA_VERSION;
 
 /// BroadcastChannel name for same-origin agent-action dispatch.
 ///
-/// Both VisionFlow and the receiver (agentbox / forum) import this literal so
+/// Both VisionClaw and the receiver (agentbox / forum) import this literal so
 /// the channel name is never spelled out twice. Convention is enforced by
 /// CI: every `BroadcastChannel(` literal in `client/src/` matches
-/// `visionflow:[a-z-]+` (ADR-10 §"BroadcastChannel naming convention").
-pub const AGENT_ACTION_CHANNEL: &str = "visionflow:agent-actions";
+/// `visionclaw:[a-z-]+` (ADR-10 §"BroadcastChannel naming convention").
+pub const AGENT_ACTION_CHANNEL: &str = "visionclaw:agent-actions";
 
 /// Deep-link template used when the receiver is cross-origin and
 /// BroadcastChannel is unavailable.
@@ -51,7 +51,7 @@ pub const AGENT_ACTION_CHANNEL: &str = "visionflow:agent-actions";
 /// session; if absent or invalid, the receiver SHOULD challenge for re-auth
 /// before honouring `kind`.
 pub const AGENT_ACTION_DEEP_LINK_TEMPLATE: &str =
-    "/agents/{agent_id}?source=visionflow&kind={kind}\
+    "/agents/{agent_id}?source=visionclaw&kind={kind}\
      &issued_at={issued_at_ms}&issued_by={issued_by_pubkey}\
      &message_id={message_id}&node_class={node_class}\
      &bridge_id={bridge_id?}&swarm_id={swarm_id?}";
@@ -60,7 +60,7 @@ pub const AGENT_ACTION_DEEP_LINK_TEMPLATE: &str =
 ///
 /// Always emitted exactly as this string. Receivers compare against this
 /// constant rather than free-form string literals.
-pub const AGENT_ACTION_TYPE: &str = "visionflow:agent-action";
+pub const AGENT_ACTION_TYPE: &str = "visionclaw:agent-action";
 
 // ---------------------------------------------------------------------------
 // Envelope
@@ -69,7 +69,7 @@ pub const AGENT_ACTION_TYPE: &str = "visionflow:agent-action";
 /// Top-level envelope dispatched on every agent-node interaction.
 ///
 /// Serde serialises this as a discriminated union with `"type":
-/// "visionflow:agent-action"` at the top level. The enum has a single variant
+/// "visionclaw:agent-action"` at the top level. The enum has a single variant
 /// today; future incompatible shapes would be introduced by bumping
 /// `schema_version` rather than by adding a sibling variant.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -81,7 +81,7 @@ pub const AGENT_ACTION_TYPE: &str = "visionflow:agent-action";
 #[serde(tag = "type")]
 pub enum AgentActionEnvelope {
     /// The one and only envelope variant at `schema_version = 1`.
-    #[serde(rename = "visionflow:agent-action")]
+    #[serde(rename = "visionclaw:agent-action")]
     V1(AgentAction),
 }
 
@@ -140,7 +140,7 @@ pub struct AgentAction {
 
     /// Bridge session id from the ADR-10 §D4 auth flow. Receivers MAY use
     /// this to correlate the click with the bridge session that issued the
-    /// `Authorization` for the originating VisionFlow tab.
+    /// `Authorization` for the originating VisionClaw tab.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bridge_id: Option<String>,
 }
@@ -292,7 +292,7 @@ mod tests {
         );
         let envelope = action.into_envelope();
         let json = serde_json::to_value(&envelope).unwrap();
-        assert_eq!(json["type"], "visionflow:agent-action");
+        assert_eq!(json["type"], "visionclaw:agent-action");
         assert_eq!(json["schema_version"], 1);
         assert_eq!(json["kind"], "open_panel");
         assert_eq!(json["node_class"], "agent");

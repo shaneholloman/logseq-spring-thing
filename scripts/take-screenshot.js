@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Playwright Screenshot Script
- * Takes screenshots of the VisionFlow website via HTTPS bridge
+ * Takes screenshots of the VisionClaw website via HTTPS bridge
  * Uses system Chromium instead of Playwright's bundled browser
  */
 
@@ -46,7 +46,7 @@ async function takeScreenshots() {
 
     // Take full page screenshot
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const fullPagePath = path.join(SCREENSHOT_DIR, `visionflow-fullpage-${timestamp}.png`);
+    const fullPagePath = path.join(SCREENSHOT_DIR, `visionclaw-fullpage-${timestamp}.png`);
     await page.screenshot({
       path: fullPagePath,
       fullPage: true
@@ -54,7 +54,7 @@ async function takeScreenshots() {
     console.log(`Full page screenshot saved: ${fullPagePath}`);
 
     // Take viewport screenshot
-    const viewportPath = path.join(SCREENSHOT_DIR, `visionflow-viewport-${timestamp}.png`);
+    const viewportPath = path.join(SCREENSHOT_DIR, `visionclaw-viewport-${timestamp}.png`);
     await page.screenshot({
       path: viewportPath,
       fullPage: false

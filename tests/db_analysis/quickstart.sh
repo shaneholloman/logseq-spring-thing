@@ -1,5 +1,5 @@
 #!/bin/bash
-# VisionFlow Database Quick Start Script
+# VisionClaw Database Quick Start Script
 # ⚠️  DEPRECATED: This script references the old three-database architecture
 # Current system uses unified.db ONLY
 # This script is kept for historical reference
@@ -7,11 +7,11 @@
 set -e  # Exit on error
 
 echo "======================================================================"
-echo "VisionFlow Database Quick Start"
+echo "VisionClaw Database Quick Start"
 echo "======================================================================"
 echo ""
 
-CONTAINER="visionflow_container"
+CONTAINER="visionclaw_container"
 
 # Check if container is running
 if ! docker ps | grep -q "$CONTAINER"; then
@@ -49,9 +49,9 @@ echo "  ✓ Added $CRED_COUNT mock credentials"
 echo ""
 
 # Step 2: Check if graph build endpoint exists
-echo "Step 2/3: Checking VisionFlow API..."
+echo "Step 2/3: Checking VisionClaw API..."
 if docker exec "$CONTAINER" curl -f -s http://localhost:8080/health > /dev/null 2>&1; then
-    echo "  ✓ VisionFlow API is responding"
+    echo "  ✓ VisionClaw API is responding"
 
     # Try to trigger graph build via API
     echo ""
@@ -68,10 +68,10 @@ if docker exec "$CONTAINER" curl -f -s http://localhost:8080/health > /dev/null 
         echo "    Response: $REBUILD_RESPONSE"
     else
         echo "  ⚠️  Graph rebuild endpoint not available"
-        echo "    Please rebuild manually via VisionFlow UI"
+        echo "    Please rebuild manually via VisionClaw UI"
     fi
 else
-    echo "  ⚠️  VisionFlow API not responding on port 8080"
+    echo "  ⚠️  VisionClaw API not responding on port 8080"
     echo "    Graph build must be triggered manually"
 fi
 echo ""
@@ -117,11 +117,11 @@ else
 fi
 echo "  - Ontology:   ⚠️  Empty (optional)"
 echo ""
-echo "🌐 Access VisionFlow:"
+echo "🌐 Access VisionClaw:"
 echo "  http://localhost:8080"
 echo ""
 echo "📚 Documentation:"
-echo "  - Full Report:  /home/devuser/workspace/project/docs/VisionFlow_Database_Integrity_Report.md"
+echo "  - Full Report:  /home/devuser/workspace/project/docs/VisionClaw_Database_Integrity_Report.md"
 echo "  - Quick Guide:  /home/devuser/workspace/project/db_analysis/README.md"
 echo "  - Summary:      /home/devuser/workspace/project/db_analysis/SUMMARY.txt"
 echo ""

@@ -32,7 +32,7 @@ mod reasoning_api_integration {
         // - CQRS handlers
         // - Actor system runtime
         App::new()
-            .configure(webxr::handlers::ontology_handler::config)
+            .configure(visionclaw_server::handlers::ontology_handler::config)
     }
 
     // ========================================================================

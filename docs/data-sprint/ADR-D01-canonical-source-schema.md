@@ -16,7 +16,7 @@ Related     : ADR-08 (Ontology & Graph Data — consumes this schema),
 
 ## Context
 
-The migration sprint resolved that VisionFlow stores its semantic data in
+The migration sprint resolved that VisionClaw stores its semantic data in
 Oxigraph (named-graph segregated, SPARQL 1.1) and its settings in SQLite.
 What it did not resolve — by design, deferred to this sprint — is what
 the source data on disk *looks like* before it reaches those stores.
@@ -51,7 +51,7 @@ What is being merged:
 - 40+ ad-hoc Rust fields collapse onto a small set of W3C-vocabulary
   predicates plus a documented `vc:` extension vocabulary.
 - Five identity schemes (file path, slug, OwlClass IRI, Logseq UUID, raw
-  u32) collapse to a content-addressed `urn:visionflow:*` scheme for
+  u32) collapse to a content-addressed `urn:visionclaw:*` scheme for
   subjects and `did:nostr:*` for asserters.
 
 The upstream-fix principle (khive memory `cd142fc6`) is binding: where the
@@ -97,7 +97,7 @@ equivalent in YAML 1.2; would require custom expansion logic), Turtle
 (non-JSON; needs a separate parser; harder to author by hand), N-Quads
 directly (illegible for authors).
 
-### D2. Identity scheme — `did:nostr:` + `urn:visionflow:*`
+### D2. Identity scheme — `did:nostr:` + `urn:visionclaw:*`
 
 The identity scheme is two-layered:
 
@@ -107,18 +107,18 @@ The identity scheme is two-layered:
   (no separate DID document required for resolution). The pubkey is the
   hex-encoded 32-byte Nostr public key.
 
-- **`urn:visionflow:<resource-type>:<identifier>`** for *subjects* —
+- **`urn:visionclaw:<resource-type>:<identifier>`** for *subjects* —
   pages, ontology classes, properties, axioms, agent telemetry events.
   Content-addressed where possible. Specific schemes:
 
   | Resource type        | URN scheme                                                | Identifier         |
   |----------------------|-----------------------------------------------------------|--------------------|
-  | Page                 | `urn:visionflow:page:<sha256(canonical-path)>`           | sha256 of path     |
-  | Ontology class       | `urn:visionflow:owl:class:<slug>`                         | lowercase-hyphenated label |
-  | Ontology property    | `urn:visionflow:owl:property:<slug>`                      | same                |
-  | Axiom                | `urn:visionflow:axiom:<sha256(canonical-N-Quad-form)>`    | sha256 of N-Quad   |
-  | Agent telemetry      | `urn:visionflow:agent:<run-id>:<step>`                    | run + step         |
-  | Named graph          | `urn:visionflow:graph:<name>`                             | per ADR-11 §D2     |
+  | Page                 | `urn:visionclaw:page:<sha256(canonical-path)>`           | sha256 of path     |
+  | Ontology class       | `urn:visionclaw:owl:class:<slug>`                         | lowercase-hyphenated label |
+  | Ontology property    | `urn:visionclaw:owl:property:<slug>`                      | same                |
+  | Axiom                | `urn:visionclaw:axiom:<sha256(canonical-N-Quad-form)>`    | sha256 of N-Quad   |
+  | Agent telemetry      | `urn:visionclaw:agent:<run-id>:<step>`                    | run + step         |
+  | Named graph          | `urn:visionclaw:graph:<name>`                             | per ADR-11 §D2     |
 
 The page IRI is rename-stable via redirect records: a separate
 `vc:redirectsFrom` triple is added when a page is renamed, preserving
@@ -131,13 +131,13 @@ labels produce identical slugs; the validator rejects duplicate
 declarations at pre-ingest.
 
 The composition rule for authored content: an authored thing carries
-*both* identifiers. The `urn:visionflow:*` is the subject IRI (`@id`),
+*both* identifiers. The `urn:visionclaw:*` is the subject IRI (`@id`),
 the `did:nostr:*` is the asserter via PROV-O `wasAttributedTo`.
 
 ```json-ld
 {
   "@context": "https://narrativegoldmine.com/context/v1.jsonld",
-  "@id": "urn:visionflow:owl:class:cybernetics",
+  "@id": "urn:visionclaw:owl:class:cybernetics",
   "@type": "OntologyClass",
   "label": "Cybernetics",
   "wasAttributedTo": "did:nostr:abc123…",
@@ -162,8 +162,8 @@ the URL matches. There is no network fetch on the hot path.
 
 The context re-exports W3C vocabularies via standard prefixes (`rdf:`,
 `rdfs:`, `owl:`, `skos:`, `schema:`, `prov:`, `foaf:`, `dcterms:`,
-`xsd:`, `sh:`) and defines the `vc:` prefix for VisionFlow-specific
-predicates at `urn:visionflow:owl:property:<name>`.
+`xsd:`, `sh:`) and defines the `vc:` prefix for VisionClaw-specific
+predicates at `urn:visionclaw:owl:property:<name>`.
 
 The single most important normalisation in the schema: `label`,
 `prefLabel`, `title`, and `name` collapse to one wire term that — at
@@ -183,7 +183,7 @@ inline via `_comment_*` fields.
 
 ### D4. OWL 2 EL profile boundary
 
-VisionFlow asserts and reasons over OWL 2 EL only. EL is what whelk-rs
+VisionClaw asserts and reasons over OWL 2 EL only. EL is what whelk-rs
 (already vendored at `src/inference/`) reasons; it is also the profile
 designed for "applications employing large ontologies" (W3C OWL 2 EL
 spec §1, "EL is particularly useful in applications employing
@@ -229,7 +229,7 @@ ValidationError {
     code: "OWL2EL_OUT_OF_PROFILE",
     construct: "owl:disjointWith",
     spec_reference: "OWL 2 EL §3, Table 1",
-    suggestion: "Model as a separate axiom in <urn:visionflow:graph:annotation>
+    suggestion: "Model as a separate axiom in <urn:visionclaw:graph:annotation>
                  if disjointness is intent rather than reasoned-over fact."
 }
 ```
@@ -251,11 +251,11 @@ A wikilink `[[Term]]` in markdown desugars at parse time to a JSON-LD
 4. Replace non-alphanumeric with `-`.
 5. Collapse consecutive `-`.
 6. Trim.
-7. Prepend `urn:visionflow:owl:class:` if the label resolves (case-fold)
+7. Prepend `urn:visionclaw:owl:class:` if the label resolves (case-fold)
    to a declared OntologyClass label; otherwise prepend
-   `urn:visionflow:page:<sha256(canonical-path-of-target-if-known)>`;
+   `urn:visionclaw:page:<sha256(canonical-path-of-target-if-known)>`;
    otherwise mint a `LinkedPage` placeholder IRI under
-   `urn:visionflow:linkedpage:<slug>`.
+   `urn:visionclaw:linkedpage:<slug>`.
 
 The resolution check happens during the post-parse aggregate-population
 pass (DDD-08 §G2), not during JSON-LD expansion. Expansion produces a
@@ -268,7 +268,7 @@ strings, which the parser desugars before expansion:
 
 ```json-ld
 {
-  "@id": "urn:visionflow:owl:class:cybernetics",
+  "@id": "urn:visionclaw:owl:class:cybernetics",
   "subClassOf": "[[Systems Theory]]"
 }
 ```
@@ -277,8 +277,8 @@ Becomes:
 
 ```json-ld
 {
-  "@id": "urn:visionflow:owl:class:cybernetics",
-  "subClassOf": {"@id": "urn:visionflow:owl:class:systems-theory"}
+  "@id": "urn:visionclaw:owl:class:cybernetics",
+  "subClassOf": {"@id": "urn:visionclaw:owl:class:systems-theory"}
 }
 ```
 
@@ -287,7 +287,7 @@ URN only.
 
 ### D6. Page-level structure
 
-A canonical VisionFlow markdown page has this shape:
+A canonical VisionClaw markdown page has this shape:
 
 ```markdown
 ---
@@ -299,7 +299,7 @@ public:: true
 ```json-ld
 {
   "@context": "https://narrativegoldmine.com/context/v1.jsonld",
-  "@id": "urn:visionflow:page:abc123…",
+  "@id": "urn:visionclaw:page:abc123…",
   "@type": "Page",
   "title": "Cybernetics",
   "wasAttributedTo": "did:nostr:def456…",
@@ -314,12 +314,12 @@ The science of [[Communication and control]] in animals and machines.
 ```json-ld
 {
   "@context": "https://narrativegoldmine.com/context/v1.jsonld",
-  "@id": "urn:visionflow:owl:class:cybernetics",
+  "@id": "urn:visionclaw:owl:class:cybernetics",
   "@type": "OntologyClass",
   "label": "Cybernetics",
   "definition": "The science of communication and control in animals and machines.",
   "subClassOf": "[[Systems Theory]]",
-  "definedIn": {"@id": "urn:visionflow:page:abc123…"},
+  "definedIn": {"@id": "urn:visionclaw:page:abc123…"},
   "wasAttributedTo": "did:nostr:def456…",
   "generatedAtTime": "2026-05-16T10:00:00Z",
   "qualityScore": 0.92,
@@ -348,10 +348,10 @@ The four named graphs (per ADR-11 §D2):
 
 | Named graph IRI                                  | Default for                              |
 |--------------------------------------------------|------------------------------------------|
-| `urn:visionflow:graph:knowledge`                 | `Page`, `LinkedPage`, wikilinks          |
-| `urn:visionflow:graph:ontology:assert`           | `OntologyClass`, `OntologyProperty`, `Axiom` |
-| `urn:visionflow:graph:ontology:inferred`         | Whelk-rs output (never authored)         |
-| `urn:visionflow:graph:agent`                     | Agent telemetry (`AgentTelemetry`)       |
+| `urn:visionclaw:graph:knowledge`                 | `Page`, `LinkedPage`, wikilinks          |
+| `urn:visionclaw:graph:ontology:assert`           | `OntologyClass`, `OntologyProperty`, `Axiom` |
+| `urn:visionclaw:graph:ontology:inferred`         | Whelk-rs output (never authored)         |
+| `urn:visionclaw:graph:agent`                     | Agent telemetry (`AgentTelemetry`)       |
 
 The parser assigns named graphs based on `@type` per the table above.
 Authors who need to override (rare; e.g. a Page that *contains* an
@@ -363,7 +363,7 @@ agent telemetry block describing a tool call) wrap the assertions in
   "@context": "https://narrativegoldmine.com/context/v1.jsonld",
   "@graph": [
     {
-      "@id": "urn:visionflow:agent:run-42:step-7",
+      "@id": "urn:visionclaw:agent:run-42:step-7",
       "@type": "AgentTelemetry",
       "runId": "run-42",
       "step": 7,
@@ -380,11 +380,11 @@ agent telemetry block describing a tool call) wrap the assertions in
 
 The pre-ingest validator verifies that every emitted quad lands in the
 correct named graph per the assertion's `@type`. Mismatches (e.g. an
-`OntologyClass` in `urn:visionflow:graph:agent`) are rejected.
+`OntologyClass` in `urn:visionclaw:graph:agent`) are rejected.
 
-ADR-11 §D2 lists this graph as `urn:visionflow:graph:ontology`. Per
+ADR-11 §D2 lists this graph as `urn:visionclaw:graph:ontology`. Per
 TENSIONS-RESOLVED §CC-4, Section 11 wins on naming: the asserted
-ontology graph is `urn:visionflow:graph:ontology:assert` going forward,
+ontology graph is `urn:visionclaw:graph:ontology:assert` going forward,
 and ADR-11 receives a corresponding edit (see §"Cross-references"
 below). This sprint's documents use the `:assert` suffix from D7
 onward.
@@ -425,7 +425,7 @@ NIP-23 event shape (relevant fields):
   "pubkey": "<author-pubkey-hex>",
   "created_at": <unix-ts>,
   "tags": [
-    ["d", "urn:visionflow:page:<sha256(canonical-path)>"],
+    ["d", "urn:visionclaw:page:<sha256(canonical-path)>"],
     ["title", "Cybernetics"],
     ["vc-content-hash", "<sha256(markdown-bytes)>"],
     ["vc-schema-version", "1"]
@@ -466,7 +466,7 @@ Axioms carry an IRI minted from the sha256 of their canonical N-Quad
 form:
 
 ```
-urn:visionflow:axiom:<sha256(N-Quad-form-of-subject-predicate-object-graph)>
+urn:visionclaw:axiom:<sha256(N-Quad-form-of-subject-predicate-object-graph)>
 ```
 
 The canonical N-Quad form is produced by:
@@ -482,10 +482,10 @@ Example: the axiom "Cybernetics ⊑ Systems Theory" in the asserted
 ontology graph:
 
 ```
-<urn:visionflow:owl:class:cybernetics> <http://www.w3.org/2000/01/rdf-schema#subClassOf> <urn:visionflow:owl:class:systems-theory> <urn:visionflow:graph:ontology:assert> .
+<urn:visionclaw:owl:class:cybernetics> <http://www.w3.org/2000/01/rdf-schema#subClassOf> <urn:visionclaw:owl:class:systems-theory> <urn:visionclaw:graph:ontology:assert> .
 ```
 
-→ sha256 → axiom IRI `urn:visionflow:axiom:7f3a2b…`.
+→ sha256 → axiom IRI `urn:visionclaw:axiom:7f3a2b…`.
 
 Benefits:
 
@@ -640,11 +640,11 @@ SPARQL queries against the store use the W3C vocabulary directly:
 
 ```sparql
 PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-PREFIX vc:   <urn:visionflow:owl:property:>
-PREFIX vcclass: <urn:visionflow:owl:class:>
+PREFIX vc:   <urn:visionclaw:owl:property:>
+PREFIX vcclass: <urn:visionclaw:owl:class:>
 
 SELECT ?class ?label
-FROM <urn:visionflow:graph:ontology:assert>
+FROM <urn:visionclaw:graph:ontology:assert>
 WHERE {
   ?class a owl:Class ;
          rdfs:label ?label ;
@@ -670,7 +670,7 @@ public:: true
 ```json-ld
 {
   "@context": "https://narrativegoldmine.com/context/v1.jsonld",
-  "@id": "urn:visionflow:page:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "@id": "urn:visionclaw:page:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
   "@type": "Page",
   "title": "Communication and Control",
   "subject": ["[[Cybernetics]]", "[[Information Theory]]"],
@@ -689,12 +689,12 @@ through feedback. See also [[Negative Feedback]].
 Canonical RDF emission (N-Quads):
 
 ```
-<urn:visionflow:page:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://schema.org/WebPage> <urn:visionflow:graph:knowledge> .
-<urn:visionflow:page:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855> <https://schema.org/name> "Communication and Control"@en <urn:visionflow:graph:knowledge> .
-<urn:visionflow:page:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855> <http://purl.org/dc/terms/subject> <urn:visionflow:owl:class:cybernetics> <urn:visionflow:graph:knowledge> .
-<urn:visionflow:page:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855> <http://purl.org/dc/terms/subject> <urn:visionflow:owl:class:information-theory> <urn:visionflow:graph:knowledge> .
-<urn:visionflow:page:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855> <http://www.w3.org/ns/prov#wasAttributedTo> <did:nostr:abc123def456…> <urn:visionflow:graph:knowledge> .
-<urn:visionflow:page:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855> <http://www.w3.org/ns/prov#generatedAtTime> "2026-05-16T10:00:00Z"^^<http://www.w3.org/2001/XMLSchema#dateTime> <urn:visionflow:graph:knowledge> .
+<urn:visionclaw:page:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://schema.org/WebPage> <urn:visionclaw:graph:knowledge> .
+<urn:visionclaw:page:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855> <https://schema.org/name> "Communication and Control"@en <urn:visionclaw:graph:knowledge> .
+<urn:visionclaw:page:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855> <http://purl.org/dc/terms/subject> <urn:visionclaw:owl:class:cybernetics> <urn:visionclaw:graph:knowledge> .
+<urn:visionclaw:page:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855> <http://purl.org/dc/terms/subject> <urn:visionclaw:owl:class:information-theory> <urn:visionclaw:graph:knowledge> .
+<urn:visionclaw:page:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855> <http://www.w3.org/ns/prov#wasAttributedTo> <did:nostr:abc123def456…> <urn:visionclaw:graph:knowledge> .
+<urn:visionclaw:page:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855> <http://www.w3.org/ns/prov#generatedAtTime> "2026-05-16T10:00:00Z"^^<http://www.w3.org/2001/XMLSchema#dateTime> <urn:visionclaw:graph:knowledge> .
 ```
 
 ### Example 2 — An OntologyClass
@@ -702,13 +702,13 @@ Canonical RDF emission (N-Quads):
 ```json-ld
 {
   "@context": "https://narrativegoldmine.com/context/v1.jsonld",
-  "@id": "urn:visionflow:owl:class:cybernetics",
+  "@id": "urn:visionclaw:owl:class:cybernetics",
   "@type": "OntologyClass",
   "label": "Cybernetics",
   "altLabel": ["Cybernetic Theory"],
   "definition": "The science of communication and control in animals and machines.",
   "subClassOf": "[[Systems Theory]]",
-  "definedIn": {"@id": "urn:visionflow:page:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"},
+  "definedIn": {"@id": "urn:visionclaw:page:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"},
   "sourceDomain": "systems-science",
   "qualityScore": 0.92,
   "authorityScore": 0.85,
@@ -724,7 +724,7 @@ Canonical RDF emission (N-Quads):
 ```json-ld
 {
   "@context": "https://narrativegoldmine.com/context/v1.jsonld",
-  "@id": "urn:visionflow:owl:property:regulates",
+  "@id": "urn:visionclaw:owl:property:regulates",
   "@type": "OntologyProperty",
   "label": "regulates",
   "definition": "Indicates that the subject controls or modulates the object via feedback.",
@@ -745,12 +745,12 @@ axioms produced by reasoning), authors emit `Axiom` blocks directly:
 ```json-ld
 {
   "@context": "https://narrativegoldmine.com/context/v1.jsonld",
-  "@id": "urn:visionflow:axiom:7f3a2b1c…",
+  "@id": "urn:visionclaw:axiom:7f3a2b1c…",
   "@type": "Axiom",
-  "subject": {"@id": "urn:visionflow:owl:class:cybernetics"},
+  "subject": {"@id": "urn:visionclaw:owl:class:cybernetics"},
   "type": "owl:Restriction",
-  "onProperty": {"@id": "urn:visionflow:owl:property:regulates"},
-  "someValuesFrom": {"@id": "urn:visionflow:owl:class:system"},
+  "onProperty": {"@id": "urn:visionclaw:owl:property:regulates"},
+  "someValuesFrom": {"@id": "urn:visionclaw:owl:class:system"},
   "wasAttributedTo": "did:nostr:abc123def456…",
   "generatedAtTime": "2026-05-16T10:00:00Z"
 }
@@ -767,8 +767,8 @@ ontology-class counterpart, per ADR-08 §D2:
 ```json-ld
 {
   "@context": "https://narrativegoldmine.com/context/v1.jsonld",
-  "@id": "urn:visionflow:page:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-  "bridgeTo": {"@id": "urn:visionflow:owl:class:cybernetics"},
+  "@id": "urn:visionclaw:page:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "bridgeTo": {"@id": "urn:visionclaw:owl:class:cybernetics"},
   "wasAttributedTo": "did:nostr:abc123def456…",
   "generatedAtTime": "2026-05-16T10:00:00Z"
 }
@@ -785,7 +785,7 @@ validator confirms this on write.
   "@context": "https://narrativegoldmine.com/context/v1.jsonld",
   "@graph": [
     {
-      "@id": "urn:visionflow:agent:run-2026-05-16-001:step-7",
+      "@id": "urn:visionclaw:agent:run-2026-05-16-001:step-7",
       "@type": "AgentTelemetry",
       "runId": "run-2026-05-16-001",
       "step": 7,
@@ -795,13 +795,13 @@ validator confirms this on write.
       "latencyMs": 230,
       "wasAttributedTo": "did:nostr:agent-key-hex…",
       "generatedAtTime": "2026-05-16T10:01:00Z",
-      "wasGeneratedBy": {"@id": "urn:visionflow:agent:run-2026-05-16-001"}
+      "wasGeneratedBy": {"@id": "urn:visionclaw:agent:run-2026-05-16-001"}
     }
   ]
 }
 ```
 
-The `@graph` wrapper forces this block into `urn:visionflow:graph:agent`
+The `@graph` wrapper forces this block into `urn:visionclaw:graph:agent`
 regardless of the host page's default graph.
 
 ### Example 7 — Multi-graph page
@@ -814,14 +814,14 @@ via explicit `@graph` keys:
   "@context": "https://narrativegoldmine.com/context/v1.jsonld",
   "@graph": [
     {
-      "@id": "urn:visionflow:page:abc…",
+      "@id": "urn:visionclaw:page:abc…",
       "@type": "Page",
       "title": "Cybernetics — Concept Page",
       "wasAttributedTo": "did:nostr:abc…",
       "generatedAtTime": "2026-05-16T10:00:00Z"
     },
     {
-      "@id": "urn:visionflow:owl:class:cybernetics",
+      "@id": "urn:visionclaw:owl:class:cybernetics",
       "@type": "OntologyClass",
       "label": "Cybernetics",
       "definition": "…",
@@ -834,14 +834,14 @@ via explicit `@graph` keys:
 ```
 
 The parser routes each entry by `@type`: the Page goes to
-`urn:visionflow:graph:knowledge`, the OntologyClass to
-`urn:visionflow:graph:ontology:assert`. Authors no longer need
+`urn:visionclaw:graph:knowledge`, the OntologyClass to
+`urn:visionclaw:graph:ontology:assert`. Authors no longer need
 to write two separate fenced blocks for the common Page-plus-Class
 pattern (though they may).
 
 ## The `vc:` vocabulary
 
-This table is exhaustive for VisionFlow-specific predicates as of v1.
+This table is exhaustive for VisionClaw-specific predicates as of v1.
 Every term is documented with its W3C-vocabulary mapping (if any) and
 its Logseq-property-name mapping (the syntax authors used pre-sprint).
 Adding a term post-v1 requires a Pull Request that updates both this
@@ -982,7 +982,7 @@ canonical schema is non-trivial. The codemod (D13) must handle:
 - Inconsistent `property:: value` shapes (some `subClassOf:: [[X]]`,
   others `subClassOf:: X`, others `parent:: X`).
 - Free-form text in fields that should be IRIs (`domain:: systems
-  science` — must canonicalise to `urn:visionflow:owl:class:systems-science`).
+  science` — must canonicalise to `urn:visionclaw:owl:class:systems-science`).
 - Missing required fields (no author key in many existing pages).
 
 **Mitigation**: the codemod runs in three passes: (1) extract; (2)
@@ -1025,7 +1025,7 @@ defers that to a separate sprint.
 
 **Mitigation**: the schema is forward-compatible. When DID resolution
 lands, the resolver looks up additional facts about the pubkey and
-emits them as triples in a new `urn:visionflow:graph:identity` named
+emits them as triples in a new `urn:visionclaw:graph:identity` named
 graph, without changing the canonical assertions in the asserted
 ontology graph. No schema migration is required.
 
@@ -1088,7 +1088,7 @@ shared awareness):
   Signed pages flow through the pod-storage layer.
 - **§D6 page storage** — when a markdown file is ingested, it lands
   in a Solid pod resource per LDP semantics (per ADR-032). The
-  canonical IRI minting rule (`urn:visionflow:page:<sha256(canonical-path)>`)
+  canonical IRI minting rule (`urn:visionclaw:page:<sha256(canonical-path)>`)
   is independent of pod URLs — pods address by container path; the
   IRI is the stable cross-system identifier.
 - **No conflict with agentbox ADR-010** — ADR-032 explicitly contrasts
@@ -1123,14 +1123,14 @@ The migration-sprint documents below receive scoped amendments.
 
 - §D3 "IRI minting" harmonises with this ADR's §D2 URN schemes. The
   existing `vc:kg/<slug>`, `vc:onto/<slug>` patterns become
-  `urn:visionflow:page:<sha256(path)>`,
-  `urn:visionflow:owl:class:<slug>` per this ADR. The `vc:` prefix in
-  ADR-11 expands to `https://visionflow.dreamlab/ns/`; in this ADR
-  `vc:` expands to `urn:visionflow:owl:property:`. **The migration
+  `urn:visionclaw:page:<sha256(path)>`,
+  `urn:visionclaw:owl:class:<slug>` per this ADR. The `vc:` prefix in
+  ADR-11 expands to `https://visionclaw.dreamlab/ns/`; in this ADR
+  `vc:` expands to `urn:visionclaw:owl:property:`. **The migration
   sprint adopts this ADR's expansion.** The reserved public hostname
-  `visionflow.dreamlab` becomes `narrativegoldmine.com`.
+  `visionclaw.dreamlab` becomes `narrativegoldmine.com`.
 - §D2 named-graph naming: the asserted ontology graph rename from
-  `urn:visionflow:graph:ontology` to `urn:visionflow:graph:ontology:assert`
+  `urn:visionclaw:graph:ontology` to `urn:visionclaw:graph:ontology:assert`
   (per TENSIONS-RESOLVED §CC-4 and this ADR §D7) is finalised. ADR-11
   receives the rename.
 - §D5 audit_log column names: `actor_pubkey` aligns with this ADR's

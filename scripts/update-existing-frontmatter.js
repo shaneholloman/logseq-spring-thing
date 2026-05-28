@@ -209,7 +209,7 @@ class FrontMatterUpdater {
     if (tags.size < 3) {
       tags.add('documentation');
       tags.add('reference');
-      tags.add('visionflow');
+      tags.add('visionclaw');
     }
 
     return Array.from(tags).slice(0, 5);

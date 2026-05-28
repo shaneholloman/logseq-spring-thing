@@ -2,7 +2,7 @@
 //! Hexagonal Architecture Adapters
 //!
 //! Per ADR-090 Phase A1+: `messages` and `oxigraph_ontology_repository` have
-//! been extracted to `crates/visionflow-adapters/`. Shims below preserve all
+//! been extracted to `crates/visionclaw-adapters/`. Shims below preserve all
 //! existing `use crate::adapters::X` call sites.
 //!
 //! Still in webxr (actor / utils deps — resolved in Phase A3):
@@ -19,19 +19,19 @@ pub mod actor_graph_repository;
 #[cfg(feature = "gpu")]
 pub mod gpu_semantic_analyzer;
 
-/// ADR-090 shim — canonical source is visionflow-adapters.
+/// ADR-090 shim — canonical source is visionclaw-adapters.
 pub mod whelk_inference_engine {
-    pub use visionflow_adapters::whelk_inference_engine::*;
+    pub use visionclaw_adapters::whelk_inference_engine::*;
 }
 
-/// ADR-090 Phase A1+ shim — canonical source is visionflow-adapters.
+/// ADR-090 Phase A1+ shim — canonical source is visionclaw-adapters.
 pub mod messages {
-    pub use visionflow_adapters::messages::*;
+    pub use visionclaw_adapters::messages::*;
 }
 
-/// ADR-090 Phase A1+ shim — canonical source is visionflow-adapters.
+/// ADR-090 Phase A1+ shim — canonical source is visionclaw-adapters.
 pub mod oxigraph_ontology_repository {
-    pub use visionflow_adapters::oxigraph_ontology_repository::*;
+    pub use visionclaw_adapters::oxigraph_ontology_repository::*;
 }
 
 #[cfg(feature = "gpu")]

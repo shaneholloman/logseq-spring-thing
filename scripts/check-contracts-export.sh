@@ -8,7 +8,7 @@
 #      also derives `TS` (gated by `feature = "typescript-export"`).
 #   2. The generated `.d.ts` files under `crates/visionclaw-contracts/bindings/`
 #      regenerate byte-identically — i.e. nobody has edited them by hand.
-#   3. `sdk/visionflow-contracts/bindings/` matches the freshly-generated
+#   3. `sdk/visionclaw-contracts/bindings/` matches the freshly-generated
 #      bindings byte-for-byte (the npm package mirror is in sync).
 #
 # This script is the contracts-crate complement to
@@ -19,7 +19,7 @@
 #   0  — all checks pass
 #   1  — a public type is missing `derive(TS)`
 #   2  — bindings drift detected (re-run with --features typescript-export)
-#   3  — npm-package mirror drift detected (run `cd sdk/visionflow-contracts && npm run sync`)
+#   3  — npm-package mirror drift detected (run `cd sdk/visionclaw-contracts && npm run sync`)
 
 set -euo pipefail
 
@@ -27,7 +27,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CRATE="$ROOT/crates/visionclaw-contracts"
 SRC="$CRATE/src"
 BINDINGS="$CRATE/bindings"
-NPM_BINDINGS="$ROOT/sdk/visionflow-contracts/bindings"
+NPM_BINDINGS="$ROOT/sdk/visionclaw-contracts/bindings"
 
 red()    { printf '\033[31m%s\033[0m\n' "$*" >&2; }
 green()  { printf '\033[32m%s\033[0m\n' "$*"; }
@@ -104,13 +104,13 @@ if [[ -d "$NPM_BINDINGS" ]]; then
         red "  npm:    $NPM_BINDINGS"
         red ""
         red "Run:"
-        red "    cd sdk/visionflow-contracts && npm run sync"
+        red "    cd sdk/visionclaw-contracts && npm run sync"
         red "to re-sync, then commit."
         exit 3
     fi
     green "[contracts] npm-package mirror in sync."
 else
-    red "[contracts] WARNING: sdk/visionflow-contracts/bindings/ missing — skipping mirror check."
+    red "[contracts] WARNING: sdk/visionclaw-contracts/bindings/ missing — skipping mirror check."
 fi
 
 green "[contracts] All checks passed."

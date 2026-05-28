@@ -36,7 +36,7 @@ coverage.
 
 ## Context
 
-VisionFlow has 7 physics settings representations with inconsistent field names,
+VisionClaw has 7 physics settings representations with inconsistent field names,
 types, and value ranges. Two competing HTTP handlers silently shadow each other:
 
 | # | Type | Location | Issue |

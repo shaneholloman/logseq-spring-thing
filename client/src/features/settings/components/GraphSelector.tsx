@@ -3,8 +3,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Label } from '../../design-system/components/Label';
 
 interface GraphSelectorProps {
-  currentGraph: 'logseq' | 'visionflow';
-  onGraphChange: (graph: 'logseq' | 'visionflow') => void;
+  currentGraph: 'logseq' | 'visionclaw';
+  onGraphChange: (graph: 'logseq' | 'visionclaw') => void;
 }
 
 export const GraphSelector: React.FC<GraphSelectorProps> = ({ 
@@ -25,10 +25,10 @@ export const GraphSelector: React.FC<GraphSelectorProps> = ({
               <span>Logseq</span>
             </div>
           </SelectItem>
-          <SelectItem value="visionflow">
+          <SelectItem value="visionclaw">
             <div className="flex items-center gap-2">
               <div className="w-3 h-3 rounded-full bg-green-500" />
-              <span>VisionFlow</span>
+              <span>VisionClaw</span>
             </div>
           </SelectItem>
         </SelectContent>

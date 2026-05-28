@@ -1,7 +1,7 @@
 # Agent Telemetry Stream Integration
 
 ## Overview
-Removed the redundant "Agent Network Status" panel from the top-right corner and integrated a streaming telemetry display into the expanded VisionFlow control panel using DSEG 7-segment display font for a retro-futuristic aesthetic.
+Removed the redundant "Agent Network Status" panel from the top-right corner and integrated a streaming telemetry display into the expanded VisionClaw control panel using DSEG 7-segment display font for a retro-futuristic aesthetic.
 
 ## Changes Made
 
@@ -63,7 +63,7 @@ Font is loaded via `@font-face` declarations in the component CSS.
 ### Control Panel Layout (Expanded)
 ```mermaid
 flowchart TB
-    subgraph ControlPanel["⚡ VisionFlow (LIVE)"]
+    subgraph ControlPanel["⚡ VisionClaw (LIVE)"]
         direction TB
         subgraph StatsGrid["Agent Statistics"]
             direction LR
@@ -146,7 +146,7 @@ flowchart TB
 
 To test the integration:
 
-1. **Start VisionFlow** with active agents
+1. **Start VisionClaw** with active agents
 2. **Open Control Panel** (should be visible by default)
 3. **Initialize Multi-Agent** if no agents are active
 4. **Observe Telemetry Stream** populating with agent data
@@ -182,4 +182,4 @@ To test the integration:
 
 ## Success! 🎉
 
-The Agent Network Status panel has been successfully removed and replaced with an integrated, streaming telemetry display in the VisionFlow control panel, featuring a distinctive DSEG 7-segment font on an orange LCD-style background for maximum visibility and retro-futuristic aesthetics.
+The Agent Network Status panel has been successfully removed and replaced with an integrated, streaming telemetry display in the VisionClaw control panel, featuring a distinctive DSEG 7-segment font on an orange LCD-style background for maximum visibility and retro-futuristic aesthetics.

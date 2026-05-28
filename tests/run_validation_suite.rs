@@ -92,7 +92,7 @@ impl ValidationSummary {
 
     pub fn print_summary(&self) {
         println!("\n" + "=".repeat(80).as_str());
-        println!("🚀 VISIONFLOW PRODUCTION VALIDATION SUMMARY");
+        println!("🚀 VISIONCLAW PRODUCTION VALIDATION SUMMARY");
         println!("=".repeat(80));
 
         println!("\n📊 TEST EXECUTION RESULTS");
@@ -200,7 +200,7 @@ impl ValidationOrchestrator {
     }
 
     pub async fn run_complete_validation(&mut self) -> ValidationSummary {
-        println!("🚀 Starting VisionFlow Production Validation Suite");
+        println!("🚀 Starting VisionClaw Production Validation Suite");
         println!("This comprehensive validation covers:");
         println!("  • Critical P0 issue resolution");
         println!("  • Error handling systems");
@@ -349,7 +349,7 @@ async fn run_complete_production_validation() {
         "Security testing must be comprehensive"
     );
 
-    println!("\n🎉 VisionFlow system is PRODUCTION READY! 🚀");
+    println!("\n🎉 VisionClaw system is PRODUCTION READY! 🚀");
 }
 
 // Helper function for quick validation check
@@ -388,14 +388,14 @@ async fn quick_validation_check() {
 // Integration test for specific components
 #[tokio::test]
 async fn test_critical_path_integration() {
-    use webxr::errors::*;
-    use webxr::utils::gpu_safety::*;
+    use visionclaw_server::errors::*;
+    use visionclaw_server::utils::gpu_safety::*;
 
     println!("🧪 Testing Critical Path Integration...");
 
     // Test error handling integration
     let gpu_error = GPUError::DeviceInitializationFailed("Test error".to_string());
-    let vision_error = VisionFlowError::GPU(gpu_error);
+    let vision_error = VisionClawError::GPU(gpu_error);
 
     assert!(format!("{}", vision_error).contains("GPU Error"));
     println!("   ✅ Error handling integration working");

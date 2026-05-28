@@ -409,8 +409,8 @@ describe('GraphDataManager', () => {
     });
 
     it('should allow setting graph type', () => {
-      graphDataManager.setGraphType('visionflow');
-      expect(graphDataManager.getGraphType()).toBe('visionflow');
+      graphDataManager.setGraphType('visionclaw');
+      expect(graphDataManager.getGraphType()).toBe('visionclaw');
       // Reset
       graphDataManager.setGraphType('logseq');
     });

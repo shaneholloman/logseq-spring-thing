@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Comprehensive Endpoint Testing Script
-# Testing all VisionFlow backend endpoints systematically
+# Testing all VisionClaw backend endpoints systematically
 
 OUTPUT_DIR="/home/devuser/workspace/project/tests/endpoint-analysis"
 RESULTS_FILE="$OUTPUT_DIR/endpoint-test-results.json"
@@ -27,7 +27,7 @@ test_endpoint() {
     start_time=$(date +%s.%N)
     
     # Execute curl with comprehensive metrics
-    response=$(docker exec visionflow_container curl -s -w "\n__METRICS__\nhttp_code:%{http_code}\ntime_total:%{time_total}\ntime_connect:%{time_connect}\ntime_starttransfer:%{time_starttransfer}\nsize_download:%{size_download}\n" \
+    response=$(docker exec visionclaw_container curl -s -w "\n__METRICS__\nhttp_code:%{http_code}\ntime_total:%{time_total}\ntime_connect:%{time_connect}\ntime_starttransfer:%{time_starttransfer}\nsize_download:%{size_download}\n" \
         --max-time 10 \
         -X $method \
         "$url" 2>&1)
@@ -46,7 +46,7 @@ test_endpoint() {
     body=$(echo "$response" | sed '/__METRICS__/,$d')
     
     # Check if backend is still running
-    backend_running=$(docker exec visionflow_container pgrep -f "node.*server.js" | wc -l)
+    backend_running=$(docker exec visionclaw_container pgrep -f "node.*server.js" | wc -l)
     
     # Store results
     echo "    \"$name\": {" >> $RESULTS_FILE

@@ -15,23 +15,23 @@ turn was acting on behalf of the project itself. PROV-O `Activity` and
 ```json-ld
 {
   "@context": "https://narrativegoldmine.com/context/v1.jsonld",
-  "@id": "urn:visionflow:owl:axiom:4c8e2a1f9b73",
+  "@id": "urn:visionclaw:owl:axiom:4c8e2a1f9b73",
   "@type": ["Axiom", "owl:Axiom"],
   "ontology": true,
   "vc:axiomType": "SubClassOf",
-  "vc:subject": { "@id": "urn:visionflow:owl:class:villa-rotonda" },
-  "vc:object": { "@id": "urn:visionflow:owl:class:palladian-villa" },
+  "vc:subject": { "@id": "urn:visionclaw:owl:class:villa-rotonda" },
+  "vc:object": { "@id": "urn:visionclaw:owl:class:palladian-villa" },
   "vc:source": {
     "@type": "Asserted",
-    "vc:definingPage": { "@id": "urn:visionflow:page:7e6f5d4c3b2a1908172635445362718e9f0a1b2c3d4e5f6071829a3b4c5d6e02" }
+    "vc:definingPage": { "@id": "urn:visionclaw:page:7e6f5d4c3b2a1908172635445362718e9f0a1b2c3d4e5f6071829a3b4c5d6e02" }
   },
-  "vc:namedGraph": { "@id": "urn:visionflow:graph:ontology:assert" },
+  "vc:namedGraph": { "@id": "urn:visionclaw:graph:ontology:assert" },
   "prov:wasAttributedTo": { "@id": "did:nostr:npub1sync000000000000000000000000000000000000000000000000000000" },
-  "prov:wasGeneratedBy": { "@id": "urn:visionflow:activity:axiom-ingest:2026-05-16T10:30:00Z" },
+  "prov:wasGeneratedBy": { "@id": "urn:visionclaw:activity:axiom-ingest:2026-05-16T10:30:00Z" },
   "prov:generatedAtTime": { "@value": "2026-05-16T10:30:00Z", "@type": "xsd:dateTime" },
   "@included": [
     {
-      "@id": "urn:visionflow:activity:axiom-ingest:2026-05-16T10:30:00Z",
+      "@id": "urn:visionclaw:activity:axiom-ingest:2026-05-16T10:30:00Z",
       "@type": "prov:Activity",
       "prov:wasAssociatedWith": [
         { "@id": "did:nostr:npub1sync000000000000000000000000000000000000000000000000000000" },
@@ -44,7 +44,7 @@ turn was acting on behalf of the project itself. PROV-O `Activity` and
     {
       "@id": "did:nostr:npub1carlo00000000000000000000000000000000000000000000000000000",
       "@type": "prov:Agent",
-      "prov:actedOnBehalfOf": { "@id": "urn:visionflow:org:dreamlab-ai" }
+      "prov:actedOnBehalfOf": { "@id": "urn:visionclaw:org:dreamlab-ai" }
     }
   ]
 }

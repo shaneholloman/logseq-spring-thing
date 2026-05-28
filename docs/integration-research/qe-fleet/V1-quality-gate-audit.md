@@ -107,7 +107,7 @@ No node depends on a descendant. Phase 0 is correctly the universal prerequisite
 ### Cohesion-5 — Phase-mapping coherence between PRD-010, PRD-011, ADR-077
 
 **PRD-010** uses Phase 0..5 (`docs/PRD-010-did-nostr-mesh-federation.md:766-829`).
-**PRD-011** uses Phase X0..X6 (`docs/PRD-011-visionflow-forum-kit-extraction.md:430-471`).
+**PRD-011** uses Phase X0..X6 (`docs/PRD-011-visionclaw-forum-kit-extraction.md:430-471`).
 **ADR-077** uses P0..P5 mapping (`docs/adr/ADR-077-ecosystem-qe-policy.md:218-224`).
 
 The two phase-numbering systems are deliberately distinct (Px = PRD-010 mesh phase; Xx = PRD-011 kit phase) and there is no ambiguity in any single document. ADR-077 explicitly maps to PRD-010 phase numbers. **PASS.**
@@ -130,7 +130,7 @@ No semantic drift detected on the load-bearing claims.
 
 ### Cohesion-7 — PRD-011 references PRD-010 / ADR-076 / ADR-077 / ADR-078 / ADR-079 / ADR-080
 
-`docs/PRD-011-visionflow-forum-kit-extraction.md:7-8`:
+`docs/PRD-011-visionclaw-forum-kit-extraction.md:7-8`:
 
 > | Predecessors | PRD-010, ADR-073, ADR-074, ADR-075, ADR-076, ADR-077, ADR-078 |
 > | Companion ADRs | ADR-079 (forum-setup skill), ADR-080 (kit deployment topology) |
@@ -268,7 +268,7 @@ All cross-cutting concerns explicitly addressed.
 
 ### Coverage-3 — Companion-PRD list completeness
 
-`docs/PRD-011-visionflow-forum-kit-extraction.md:7-8` excludes ADR-081/082/083 — see Cohesion-7. Severity LOW; remediation **0.1 hours**.
+`docs/PRD-011-visionclaw-forum-kit-extraction.md:7-8` excludes ADR-081/082/083 — see Cohesion-7. Severity LOW; remediation **0.1 hours**.
 
 ### Coverage-4 — DDD coverage of mesh-federation
 
@@ -479,7 +479,7 @@ The document set is mature enough to drive a 5-7 sprint implementation with a 2-
 | ID | Defect | Location | Effort |
 |----|--------|----------|--------|
 | Cohesion-3 | Asymmetric Companion ADR sets — ADR-073/074/075/076 don't list ADR-077, ADR-078, ADR-079 | 4 ADR frontmatter tables | 0.5 h |
-| Cohesion-7 | PRD-011 doesn't list ADR-081/082/083 in companions | docs/PRD-011-visionflow-forum-kit-extraction.md:7-8 | 0.1 h |
+| Cohesion-7 | PRD-011 doesn't list ADR-081/082/083 in companions | docs/PRD-011-visionclaw-forum-kit-extraction.md:7-8 | 0.1 h |
 | Conformance-1 | ADR-073 frontmatter table missing "Drives" + "Affected repos" | docs/adr/ADR-073-private-nostr-relay-mesh-topology.md:5-10 | 0.1 h |
 | Implementability-1 | Effort estimates scattered; needs consolidation table | append to PRD-010 or PRD-011 | 1.0 h |
 | Implementability-5 | sync-fixtures.sh --verify branch missing from ADR-082 example | docs/adr/ADR-082-cross-substrate-test-fixture-sharing.md:149-172 | 0.25 h |
@@ -533,7 +533,7 @@ The document set is mature enough to drive a 5-7 sprint implementation with a 2-
 | File | Lines | Status field |
 |------|-------|--------------|
 | `docs/PRD-010-did-nostr-mesh-federation.md` | 1227 | Draft (2026-05-07) |
-| `docs/PRD-011-visionflow-forum-kit-extraction.md` | 578 | Draft (2026-05-07) |
+| `docs/PRD-011-visionclaw-forum-kit-extraction.md` | 578 | Draft (2026-05-07) |
 | `docs/ddd-mesh-federation-context.md` | 463 | Draft (2026-05-07) |
 | `docs/adr/ADR-073-private-nostr-relay-mesh-topology.md` | 341 | Proposed (2026-05-07) |
 | `docs/adr/ADR-074-cross-system-did-nostr-canonicalisation.md` | 404 | Proposed (2026-05-07) |

@@ -276,7 +276,7 @@ impl QueryHandler<LoadOntologyGraphQuery> for OntologyQueryHandler {
     async fn handle(
         &self,
         _query: LoadOntologyGraphQuery,
-    ) -> Result<Arc<visionflow_domain::models::graph::GraphData>> {
+    ) -> Result<Arc<visionclaw_domain::models::graph::GraphData>> {
         Ok(self.repository.load_ontology_graph().await?)
     }
 }

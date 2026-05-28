@@ -7,10 +7,10 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::{Arc, atomic::{AtomicU32, Ordering}};
 use tokio::sync::RwLock;
 
-use webxr::config::{AppFullSettings, PhysicsSettings};
-use webxr::models::{Edge, GraphData, Node};
-use webxr::models::constraints::ConstraintSet;
-use webxr::ports::*;
+use visionclaw_server::config::{AppFullSettings, PhysicsSettings};
+use visionclaw_server::models::{Edge, GraphData, Node};
+use visionclaw_server::models::constraints::ConstraintSet;
+use visionclaw_server::ports::*;
 
 // ============================================================================
 // MockSettingsRepository

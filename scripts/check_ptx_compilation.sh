@@ -13,7 +13,7 @@ TOTAL=8
 echo "Checking: $PTX_DIR"
 echo ""
 
-for ptx in dynamic_grid gpu_aabb_reduction gpu_clustering_kernels gpu_landmark_apsp ontology_constraints sssp_compact visionflow_unified visionflow_unified_stability; do
+for ptx in dynamic_grid gpu_aabb_reduction gpu_clustering_kernels gpu_landmark_apsp ontology_constraints sssp_compact visionclaw_unified visionclaw_unified_stability; do
     if [ -f "$PTX_DIR/${ptx}.ptx" ]; then
         SIZE=$(ls -lh "$PTX_DIR/${ptx}.ptx" | awk '{print $5}')
         echo "✅ ${ptx}.ptx ($SIZE)"

@@ -1,6 +1,6 @@
 use super::config::GitHubConfig;
 use crate::config::AppFullSettings; 
-use crate::errors::VisionFlowResult;
+use crate::errors::VisionClawResult;
 use log::{debug, info};
 use reqwest::Client;
 use std::sync::Arc;
@@ -26,7 +26,7 @@ impl GitHubClient {
     pub async fn new(
         config: GitHubConfig,
         settings: Arc<RwLock<AppFullSettings>>, 
-    ) -> VisionFlowResult<Self> {
+    ) -> VisionClawResult<Self> {
         let debug_enabled = crate::utils::logging::is_debug_enabled();
 
         if debug_enabled {

@@ -55,7 +55,7 @@ export function PhysicsEngineControls() {
   const { toast } = useToast();
   
   const { settings, initialized, updateSettings, loadSection, ensureLoaded } = useSettingsStore();
-  const [currentGraph] = useState<'logseq' | 'visionflow'>('logseq');
+  const [currentGraph] = useState<'logseq' | 'visionclaw'>('logseq');
   
   
   const updatePhysics = async (physicsUpdate: Partial<PhysicsSettings>) => {
@@ -119,7 +119,7 @@ export function PhysicsEngineControls() {
         await ensureLoaded([
           `visualisation.graphs.${currentGraph}.physics`,
           'visualisation.graphs.logseq.physics',
-          'visualisation.graphs.visionflow.physics'
+          'visualisation.graphs.visionclaw.physics'
         ]);
       }
     };

@@ -1,14 +1,14 @@
-// Test disabled - references deprecated/removed modules (webxr::actors::AppState, SettingsActor)
-// Actor module structure has changed; AppState is now in webxr::state
+// Test disabled - references deprecated/removed modules (visionclaw_server::actors::AppState, SettingsActor)
+// Actor module structure has changed; AppState is now in visionclaw_server::state
 /*
 use actix::Actor;
 use actix_web::{http::StatusCode, test, web, App};
 use serde_json::json;
 use std::sync::Arc;
 use tempfile::NamedTempFile;
-use webxr::actors::{AppState, SettingsActor};
-use webxr::config::AppFullSettings;
-use webxr::handlers::settings_handler;
+use visionclaw_server::actors::{AppState, SettingsActor};
+use visionclaw_server::config::AppFullSettings;
+use visionclaw_server::handlers::settings_handler;
 
 #[actix_web::test]
 async fn test_save_settings_endpoint() {

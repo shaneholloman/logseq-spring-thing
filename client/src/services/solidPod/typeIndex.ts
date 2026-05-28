@@ -27,7 +27,7 @@ const logger = createLogger('SolidPodService:typeIndex');
 
 const SOLID_NS = 'http://www.w3.org/ns/solid/terms#';
 const SCHEMA_NS = 'https://schema.org/';
-const VISIONFLOW_NS = 'https://narrativegoldmine.com/ontology#';
+const VISIONCLAW_NS = 'https://narrativegoldmine.com/ontology#';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -82,7 +82,7 @@ export async function ensurePublicTypeIndex(preferencesPath: string): Promise<st
     '@context': {
       solid: SOLID_NS,
       schema: SCHEMA_NS,
-      vf: VISIONFLOW_NS,
+      vf: VISIONCLAW_NS,
     },
     '@type': 'solid:TypeIndex',
     'solid:typeRegistration': [],

@@ -15,13 +15,13 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use actix::prelude::*;
-use webxr::actors::messages::{
+use visionclaw_server::actors::messages::{
     BroadcastState, GetBroadcastActorStatus, GetPositionFrameSnapshot, OnLayoutDestabilised,
     OnLayoutSettled, OnLayoutStarted, PositionFrameSnapshot, PositionRow,
     RegisterBroadcastClient, SendToClientBinary,
 };
-use webxr::actors::{BroadcastActor, BroadcastConfig};
-use webxr::protocol::v3_frame::{BinaryV3Frame, NodeRow, V3DecodeError, V3_MAGIC};
+use visionclaw_server::actors::{BroadcastActor, BroadcastConfig};
+use visionclaw_server::protocol::v3_frame::{BinaryV3Frame, NodeRow, V3DecodeError, V3_MAGIC};
 
 // ----------------------------------------------------------------------------
 // Test doubles

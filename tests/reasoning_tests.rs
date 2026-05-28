@@ -1,4 +1,4 @@
-// Test disabled - references deprecated/removed modules (webxr::reasoning::inference_cache, reasoning_actor)
+// Test disabled - references deprecated/removed modules (visionclaw_server::reasoning::inference_cache, reasoning_actor)
 // The reasoning module structure has changed per ADR-001 architecture changes
 /*
 /// Integration tests for reasoning module
@@ -8,7 +8,7 @@
 /// - Inference caching performance
 /// - Reasoning actor integration
 
-use webxr::reasoning::{
+use visionclaw_server::reasoning::{
     custom_reasoner::{CustomReasoner, Ontology, OWLClass, OntologyReasoner, AxiomType},
     inference_cache::InferenceCache,
     reasoning_actor::{ReasoningActor, TriggerReasoning},

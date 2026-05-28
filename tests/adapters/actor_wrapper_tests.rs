@@ -7,12 +7,12 @@ use actix::prelude::*;
 use std::sync::Arc;
 use std::time::Duration;
 
-use webxr::adapters::{ActixPhysicsAdapter, ActixSemanticAdapter};
-use webxr::models::graph::GraphData;
-use webxr::models::node::Node;
-use webxr::ports::gpu_physics_adapter::{GpuPhysicsAdapter, PhysicsParameters};
-use webxr::ports::gpu_semantic_analyzer::{ClusteringAlgorithm, GpuSemanticAnalyzer};
-use webxr::utils::socket_flow_messages::BinaryNodeData;
+use visionclaw_server::adapters::{ActixPhysicsAdapter, ActixSemanticAdapter};
+use visionclaw_server::models::graph::GraphData;
+use visionclaw_server::models::node::Node;
+use visionclaw_server::ports::gpu_physics_adapter::{GpuPhysicsAdapter, PhysicsParameters};
+use visionclaw_server::ports::gpu_semantic_analyzer::{ClusteringAlgorithm, GpuSemanticAnalyzer};
+use visionclaw_server::utils::socket_flow_messages::BinaryNodeData;
 
 fn create_test_graph() -> Arc<GraphData> {
     Arc::new(GraphData {

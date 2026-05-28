@@ -1,4 +1,4 @@
-// Test disabled - references deprecated/removed modules (webxr::actors::messaging)
+// Test disabled - references deprecated/removed modules (visionclaw_server::actors::messaging)
 // MessageTracker and related types may have been restructured or moved
 /*
 //! Integration tests for H4 Message Acknowledgment Protocol
@@ -7,7 +7,7 @@ use actix::prelude::*;
 use std::time::Duration;
 
 // Import the types we need
-use webxr::actors::messaging::{MessageId, MessageTracker, MessageKind, MessageAck, AckStatus};
+use visionclaw_server::actors::messaging::{MessageId, MessageTracker, MessageKind, MessageAck, AckStatus};
 
 #[actix_rt::test]
 async fn test_message_tracker_with_acknowledgment() {

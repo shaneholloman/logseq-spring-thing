@@ -19,7 +19,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::test;
 
-use webxr::utils::gpu_safety::*;
+use visionclaw_server::utils::gpu_safety::*;
 
 #[derive(Debug)]
 pub struct GPUSafetyTestSuite {

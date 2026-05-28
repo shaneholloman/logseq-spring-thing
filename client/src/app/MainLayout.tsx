@@ -50,7 +50,7 @@ const MainLayoutContent: React.FC = () => {
   return (
     <main
       role="main"
-      aria-label="VisionFlow Graph Visualization"
+      aria-label="VisionClaw Graph Visualization"
       style={{
         position: 'fixed',
         top: 0,
@@ -83,7 +83,7 @@ const MainLayoutContent: React.FC = () => {
         />
       </nav>
 
-      {/* Node detail slide-in panel — driven by visionflow:node-selected events */}
+      {/* Node detail slide-in panel — driven by visionclaw:node-selected events */}
       <NodeDetailPanel />
 
       {/* OntologyPanel is accessed via the control panel's ontology tab, not rendered as overlay */}

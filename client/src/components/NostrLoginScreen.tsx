@@ -45,7 +45,7 @@ export const NostrLoginScreen: React.FC = () => {
     <div className="nostr-login-screen">
       <div className="nostr-login-container">
         <div className="nostr-login-header">
-          <h1>VisionFlow</h1>
+          <h1>VisionClaw</h1>
           <p className="nostr-login-subtitle">Sign in to continue</p>
         </div>
 
@@ -135,7 +135,7 @@ export const NostrLoginScreen: React.FC = () => {
                 <strong>How it works</strong>
               </p>
               <p>
-                VisionFlow uses passkeys and Nostr for decentralized identity.
+                VisionClaw uses passkeys and Nostr for decentralized identity.
                 Your cryptographic keys are stored on your device — no passwords needed.
               </p>
             </div>

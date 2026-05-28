@@ -57,7 +57,7 @@ impl AckStatus {
 /// Generic acknowledgment message sent by actors after processing
 /// # Example
 /// ```
-/// use webxr::actors::messaging::{MessageId, MessageAck, AckStatus};
+/// use visionclaw_server::actors::messaging::{MessageId, MessageAck, AckStatus};
 /// use std::time::Instant;
 /// use std::collections::HashMap;
 /// let ack = MessageAck {

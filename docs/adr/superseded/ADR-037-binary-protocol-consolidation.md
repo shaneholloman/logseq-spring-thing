@@ -53,7 +53,7 @@ per-node movement threshold is **rejected on sight**.
 
 ## Context
 
-VisionFlow's binary WebSocket protocol has accumulated 14 encoding paths across
+VisionClaw's binary WebSocket protocol has accumulated 14 encoding paths across
 4 protocol versions (V2-V5) through incremental feature additions. The current
 state creates maintenance burden, type-classification bugs, and dead code that
 confuses contributors.

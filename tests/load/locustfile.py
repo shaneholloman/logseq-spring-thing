@@ -1,5 +1,5 @@
 """
-Load testing script for VisionFlow API using Locust
+Load testing script for VisionClaw API using Locust
 Tests system performance under concurrent load
 
 Usage:
@@ -23,16 +23,16 @@ TEST_EDGES = [
     for i in range(100)
 ]
 
-class VisionFlowUser(FastHttpUser):
+class VisionClawUser(FastHttpUser):
     """
-    Simulates a VisionFlow application user
+    Simulates a VisionClaw application user
     Uses FastHttpUser for better performance
     """
     wait_time = between(1, 3)  # Wait 1-3 seconds between tasks
 
     def on_start(self):
         """Called when a simulated user starts"""
-        print("VisionFlow user started")
+        print("VisionClaw user started")
 
     @task(10)  # Weight: 10 (most common operation)
     def load_graph(self):

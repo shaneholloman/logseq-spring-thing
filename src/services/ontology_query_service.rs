@@ -9,9 +9,9 @@
 //! subsumption reasoning, and relationship fan-out (has-part, requires, enables, bridges-to).
 
 use crate::adapters::whelk_inference_engine::WhelkInferenceEngine;
-use visionflow_domain::ports::inference_engine::InferenceEngine;
+use visionclaw_domain::ports::inference_engine::InferenceEngine;
 use crate::ports::knowledge_graph_repository::KnowledgeGraphRepository;
-use visionflow_domain::ports::ontology_repository::OntologyRepository;
+use visionclaw_domain::ports::ontology_repository::OntologyRepository;
 use crate::services::schema_service::SchemaService;
 use crate::types::ontology_tools::*;
 use log::info;

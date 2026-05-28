@@ -5,8 +5,8 @@
 
 #[cfg(all(feature = "ontology", feature = "gpu"))]
 mod semantic_physics_integration {
-    use webxr::reasoning::custom_reasoner::CustomReasoner;
-    use webxr::gpu::semantic_forces::SemanticForceGenerator;
+    use visionclaw_server::reasoning::custom_reasoner::CustomReasoner;
+    use visionclaw_server::gpu::semantic_forces::SemanticForceGenerator;
     use std::path::PathBuf;
     use std::fs;
 

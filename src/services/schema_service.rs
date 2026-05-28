@@ -6,7 +6,7 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use serde::{Deserialize, Serialize};
-use visionflow_domain::models::graph::GraphData;
+use visionclaw_domain::models::graph::GraphData;
 
 /// Graph schema metadata for LLM context
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -254,8 +254,8 @@ impl Default for SchemaService {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use visionflow_domain::models::node::Node;
-    use visionflow_domain::models::edge::Edge;
+    use visionclaw_domain::models::node::Node;
+    use visionclaw_domain::models::edge::Edge;
 
     #[tokio::test]
     async fn test_schema_extraction() {

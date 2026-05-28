@@ -110,7 +110,7 @@ For a 500-unit display cube: restLength ≈ (500^3 / 2242)^(1/3) ≈ 37
 - Exclude them from physics simulation (pin in place)
 
 ### Phase 3: Degree-weighted forces (GPU kernel change)
-- In `visionflow_unified.cu`, scale gravity by `log(1 + degree[node_idx])`
+- In `visionclaw_unified.cu`, scale gravity by `log(1 + degree[node_idx])`
 - Upload degree array to GPU alongside positions
 - This pulls hubs to center naturally
 

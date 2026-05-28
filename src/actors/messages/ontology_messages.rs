@@ -1,14 +1,14 @@
 //! Ontology-domain messages: OWL validation, axiom loading, inference,
 //! ontology-physics constraint integration, and legacy ontology actor messages.
 //!
-//! Domain-safe types have been moved to `visionflow_actors::messages::ontology_messages`.
+//! Domain-safe types have been moved to `visionclaw_actors::messages::ontology_messages`.
 //! This file re-exports them and defines the webxr-internal types that cannot move.
 
 // ---------------------------------------------------------------------------
 // Re-export domain-safe types from the domain crate
 // ---------------------------------------------------------------------------
 
-pub use visionflow_actors::messages::ontology_messages::{
+pub use visionclaw_actors::messages::ontology_messages::{
     ApplyOntologyConstraints, CachedOntologyInfo, ClearOntologyCaches,
     ConstraintMergeMode, ConstraintStats, GetCachedOntologies, GetConstraintStats,
     GetOntologyConstraintStats, GetOntologyHealth, GetOntologyHealthLegacy, GetValidationReport,

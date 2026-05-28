@@ -469,7 +469,7 @@ Three agents work in sequence then overlap. Phase 3 begins after Phase 2.5 merge
 
 ## Summary
 
-**Plan file**: `/home/devuser/workspace/visionflow-worktrees/phase-3-binary-protocol/docs/migration-sprint/02-binary-protocol/WORKTREE-PLAN.md`
+**Plan file**: `/home/devuser/workspace/visionclaw-worktrees/phase-3-binary-protocol/docs/migration-sprint/02-binary-protocol/WORKTREE-PLAN.md`
 
 **Total tasks**: 15 (T-01 through T-15)
 

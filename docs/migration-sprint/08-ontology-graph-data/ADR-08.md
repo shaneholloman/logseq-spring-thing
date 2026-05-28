@@ -84,8 +84,8 @@ PropertyAssertion, DefinedIn, BridgeTo, AgentControls }`.
 The 623 `SUBCLASS_OF` edges are present in the projection by
 construction: the SPARQL query that builds the topology selects
 `?s rdfs:subClassOf ?o` over both
-`<urn:visionflow:graph:ontology:assert>` and
-`<urn:visionflow:graph:ontology:inferred>` named graphs (per ADR-11 §D2)
+`<urn:visionclaw:graph:ontology:assert>` and
+`<urn:visionclaw:graph:ontology:inferred>` named graphs (per ADR-11 §D2)
 and emits a `SubClassOf` edge for each binding. The filtering
 that produced the gap on `main` is rejected outright; there is no
 filter step between repository and topology.
@@ -206,8 +206,8 @@ flush the topology projection downstream.
 ### D9. Whelk-rs inference materialised into the inferred named graph
 
 The Oxigraph dataset uses two named graphs:
-`<urn:visionflow:graph:ontology:assert>` for asserted triples and
-`<urn:visionflow:graph:ontology:inferred>` for whelk-rs-derived
+`<urn:visionclaw:graph:ontology:assert>` for asserted triples and
+`<urn:visionclaw:graph:ontology:inferred>` for whelk-rs-derived
 inferences (see ADR-11 §D2). Whelk-rs runs over the asserted axioms
 (OWL EL profile) and writes its output into the inferred named graph.
 The default `GraphTopology` query unions the two graphs. When

@@ -270,7 +270,7 @@ PRD-014 is complete when:
 | **Documentation** | 2 PRDs, 60 ADRs | 3 PRDs, 68 ADRs, 1 DDD context, 5 architecture maps, 5 runbooks | +5% | PRD-014/015, ADR-086-091, DDD code-hygiene, substrate maps, 4 new ops runbooks |
 | **Cross-substrate** | 0/3 fixtures synced, 0 shared crates | 3/3 synced, 2 shared crates (rate-limit, d1-helpers) | +5% | Fixture sync enforced, nostr-bbs-rate-limit + d1_helpers extracted |
 | **Observability** | No ecosystem health | GET /api/ecosystem/health aggregator live, routed | +4% | Polls 4 substrates concurrently; defaults corrected for Docker networking (`2e0e234`); all 5 CF Workers verified healthy |
-| **Error handling** | 3 error types, no unified ResponseError | 1 unified type with HTTP status mapping | +2% | VisionFlowError implements ResponseError (15 variants) |
+| **Error handling** | 3 error types, no unified ResponseError | 1 unified type with HTTP status mapping | +2% | VisionClawError implements ResponseError (15 variants) |
 
 **Estimated current readiness: ~89%.** The remaining 11% is:
 - ADR-088 deeper auth refactor (CompositeAuthService trait): ~3%

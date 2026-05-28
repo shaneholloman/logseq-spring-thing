@@ -4,7 +4,7 @@
 //! are visible to each client based on their filter criteria.
 
 use crate::actors::client_coordinator_actor::{ClientFilter, FilterMode};
-use visionflow_domain::models::graph::GraphData;
+use visionclaw_domain::models::graph::GraphData;
 use log::{debug, trace};
 
 /// Recomputes which node IDs pass the client's filter criteria
@@ -150,8 +150,8 @@ pub fn node_passes_filter(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use visionflow_domain::models::metadata::{Metadata, MetadataStore};
-    use visionflow_domain::models::node::Node;
+    use visionclaw_domain::models::metadata::{Metadata, MetadataStore};
+    use visionclaw_domain::models::node::Node;
     use std::collections::HashMap;
 
     fn create_test_graph() -> GraphData {

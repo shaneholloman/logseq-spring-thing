@@ -25,7 +25,7 @@ The current agent → graph path is **REST polling**: `agent_monitor_actor.rs:16
 1. **Pubkey is dropped.** Inbound events carry `source_agent_id` as a 32-bit hash (`management-api/utils/agent-event-publisher.js:165-189`); the user/operator/agent identity disclosed in agentbox via `did:nostr:<pubkey>` (ADR-013) never reaches VisionClaw.
 2. **No URN.** Both `source_agent_id` and `target_node_id` are ints. The viewer (S12) cannot follow links to external surfaces (skills registry, pod credentials, ADRs) because the canonical name is missing.
 3. **No reaction path.** Agents in agentbox cannot observe user activity (which node is focused, which is selected). Agent positions are server-driven and ignore user attention.
-4. **Bridge mismatch.** Agentbox's `management-api/utils/agent-event-bridge.js` tries to connect TCP `127.0.0.1:9500`, expecting a VisionClaw MCP listener that does not exist; VisionClaw's MCP server actually listens on `:3001` inside `visionflow_container`. The reconnect storm in `tab 4 pane 0` is the visible artefact.
+4. **Bridge mismatch.** Agentbox's `management-api/utils/agent-event-bridge.js` tries to connect TCP `127.0.0.1:9500`, expecting a VisionClaw MCP listener that does not exist; VisionClaw's MCP server actually listens on `:3001` inside `visionclaw_container`. The reconnect storm in `tab 4 pane 0` is the visible artefact.
 
 ADR-050 already provides the identity primitives on the storage side (`KGNode.owner_pubkey`, `KGNode.visibility`, `KGNode.opaque_id`, bit-29 opacification). Agentbox ADR-013 provides the URN grammar on the producer side. The wire format is the missing piece.
 
@@ -39,7 +39,7 @@ A new WebSocket endpoint `/wss/agent-events` mounts in `src/main.rs` next to `/w
 
 - Frames are JSON text by default. A `binary=true` query param negotiates the existing 0x23 binary frame (agent_event_publisher.js:165-189) for parity with agentbox.
 - One socket per session. Authentication uses the same `RequireAuth` extractors as `/api/...` (NIP-98 if `NIP98_OPTIONAL_AUTH=true`, else session cookie + CSRF). The authenticated `pubkey` (if any) becomes the **session pubkey**, surfaced through Phase 5 visibility filtering.
-- Real MCP TCP on port 9500 is **not** added; the `agent-event-bridge.js` connect target is changed to `ws://visionflow_container/wss/agent-events` instead.
+- Real MCP TCP on port 9500 is **not** added; the `agent-event-bridge.js` connect target is changed to `ws://visionclaw_container/wss/agent-events` instead.
 
 The Nostr-relay durable channel (agentbox `[sovereign_mesh].relay`, ADR-009) is reserved for cross-session state and signed authority grants in Phase 5; the hot path is WebSocket-only.
 

@@ -19,7 +19,7 @@ use std::time::Instant;
 
 use super::shared::{GPUState, SharedGPUContext};
 use crate::actors::messages::*;
-use visionflow_domain::models::constraints::{Constraint, ConstraintSet};
+use visionclaw_domain::models::constraints::{Constraint, ConstraintSet};
 use crate::models::constraints::{ConstraintData, ConstraintSetGpuExt};
 use crate::physics::ontology_constraints::{
     OWLAxiom, OntologyConstraintTranslator, OntologyReasoningReport,
@@ -116,7 +116,7 @@ impl OntologyConstraintActor {
     fn apply_ontology_constraints(
         &mut self,
         reasoning_report: &OntologyReasoningReport,
-        graph_data: &visionflow_domain::models::graph::GraphData,
+        graph_data: &visionclaw_domain::models::graph::GraphData,
     ) -> Result<(), String> {
         let start_time = Instant::now();
 
@@ -258,7 +258,7 @@ impl OntologyConstraintActor {
     /// or `Err` on GPU failure.
     fn apply_specialized_constraints(
         &self,
-        graph_data: &visionflow_domain::models::graph::GraphData,
+        graph_data: &visionclaw_domain::models::graph::GraphData,
     ) -> Result<bool, String> {
         let shared_context = self
             .shared_context
@@ -363,8 +363,8 @@ impl OntologyConstraintActor {
             }
 
             let cuda_type = match constraint.kind {
-                visionflow_domain::models::constraints::ConstraintKind::Separation => CONSTRAINT_DISJOINT_CLASSES,
-                visionflow_domain::models::constraints::ConstraintKind::Clustering => {
+                visionclaw_domain::models::constraints::ConstraintKind::Separation => CONSTRAINT_DISJOINT_CLASSES,
+                visionclaw_domain::models::constraints::ConstraintKind::Clustering => {
                     // Clustering is used for both SubClassOf and SameAs.
                     // Distinguish by number of node_indices: SameAs has exactly 2 nodes
                     // with a very high weight (colocation), SubClassOf has 1 node + centroid params.
@@ -374,8 +374,8 @@ impl OntologyConstraintActor {
                         CONSTRAINT_SUBCLASS_OF
                     }
                 }
-                visionflow_domain::models::constraints::ConstraintKind::Boundary => CONSTRAINT_FUNCTIONAL,
-                visionflow_domain::models::constraints::ConstraintKind::Semantic => {
+                visionclaw_domain::models::constraints::ConstraintKind::Boundary => CONSTRAINT_FUNCTIONAL,
+                visionclaw_domain::models::constraints::ConstraintKind::Semantic => {
                     // Semantic constraints encode sub-type in params[0]:
                     // 1.0=disjoint, 2.0=subclass, 3.0=sameas, 4.0=inverse, 5.0=functional
                     let sub_type = constraint.params.first().copied().unwrap_or(0.0) as u32;

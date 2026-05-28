@@ -4,7 +4,7 @@
 # default `bindings/` directory. Per-type overrides are encoded in the Rust
 # derive attribute (`#[ts(export_to = "...")]`) so the source of truth stays
 # in one place; this file records the workspace-level conventions for the
-# CI step that publishes `@visionflow/contracts`.
+# CI step that publishes `@visionclaw/contracts`.
 
 # Where ts-rs writes .d.ts files relative to this crate root.
 export_dir = "bindings"
@@ -13,6 +13,6 @@ export_dir = "bindings"
 # byte-identical output between `export_dir` and `npm_package_dir`.
 npm_package_dir = "../../client/src/types/contracts"
 
-# Schema version exposed to npm consumers as `@visionflow/contracts@<version>`.
+# Schema version exposed to npm consumers as `@visionclaw/contracts@<version>`.
 # Bumped per ADR-10 §D8.
 schema_version = "v1"

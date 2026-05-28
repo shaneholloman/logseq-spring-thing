@@ -1,6 +1,6 @@
 use super::api::GitHubClient;
 use super::types::GitHubFileBasicMetadata;
-use crate::errors::VisionFlowResult;
+use crate::errors::VisionClawResult;
 use chrono::{DateTime, Utc};
 use log::{debug, error, info, warn};
 use serde_json::Value;
@@ -22,7 +22,7 @@ impl EnhancedContentAPI {
     /// This replaces the recursive Contents API approach that required one call per directory.
     pub async fn list_markdown_files_via_tree(
         &self,
-    ) -> VisionFlowResult<Vec<GitHubFileBasicMetadata>> {
+    ) -> VisionClawResult<Vec<GitHubFileBasicMetadata>> {
         let base_path = self.client.base_path().trim_matches('/').to_string();
         let branch = self.client.branch();
 
@@ -143,7 +143,7 @@ impl EnhancedContentAPI {
     pub fn list_markdown_files<'a>(
         &'a self,
         path: &'a str,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = VisionFlowResult<Vec<GitHubFileBasicMetadata>>> + Send + 'a>> {
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = VisionClawResult<Vec<GitHubFileBasicMetadata>>> + Send + 'a>> {
         Box::pin(async move {
             self.list_markdown_files_impl(path).await
         })
@@ -152,7 +152,7 @@ impl EnhancedContentAPI {
     async fn list_markdown_files_impl(
         &self,
         path: &str,
-    ) -> VisionFlowResult<Vec<GitHubFileBasicMetadata>> {
+    ) -> VisionClawResult<Vec<GitHubFileBasicMetadata>> {
         let mut all_markdown_files = Vec::new();
 
         // GitHub Contents API returns all items in a single response (no pagination).
@@ -238,7 +238,7 @@ impl EnhancedContentAPI {
     }
 
     
-    pub async fn fetch_file_content(&self, download_url: &str) -> VisionFlowResult<String> {
+    pub async fn fetch_file_content(&self, download_url: &str) -> VisionClawResult<String> {
         debug!("Fetching file content from: {}", download_url);
         let response = self
             .client
@@ -261,7 +261,7 @@ impl EnhancedContentAPI {
         &self,
         file_path: &str,
         check_actual_changes: bool,
-    ) -> VisionFlowResult<DateTime<Utc>> {
+    ) -> VisionClawResult<DateTime<Utc>> {
         let encoded_path = GitHubClient::get_full_path(&self.client, file_path).await;
 
         
@@ -328,7 +328,7 @@ impl EnhancedContentAPI {
         &self,
         commit_sha: &str,
         file_path: &str,
-    ) -> VisionFlowResult<bool> {
+    ) -> VisionClawResult<bool> {
         let commit_url = format!(
             "https://api.github.com/repos/{}/{}/commits/{}",
             self.client.owner(),
@@ -388,7 +388,7 @@ impl EnhancedContentAPI {
     }
 
     
-    fn extract_commit_date(&self, commit: &Value) -> VisionFlowResult<DateTime<Utc>> {
+    fn extract_commit_date(&self, commit: &Value) -> VisionClawResult<DateTime<Utc>> {
         
         let date_str = commit["commit"]["committer"]["date"]
             .as_str()
@@ -404,7 +404,7 @@ impl EnhancedContentAPI {
     pub async fn get_file_metadata_extended(
         &self,
         file_path: &str,
-    ) -> VisionFlowResult<ExtendedFileMetadata> {
+    ) -> VisionClawResult<ExtendedFileMetadata> {
         let encoded_path = GitHubClient::get_full_path(&self.client, file_path).await;
 
         

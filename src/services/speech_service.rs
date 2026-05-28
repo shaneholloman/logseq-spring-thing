@@ -9,7 +9,7 @@ use tokio_tungstenite::{connect_async, tungstenite, MaybeTlsStream, WebSocketStr
 use tungstenite::http::Request;
 // use crate::config::Settings;
 use crate::actors::voice_commands::VoiceCommand;
-use crate::errors::{SpeechError as VisionSpeechError, VisionFlowError, VisionFlowResult};
+use crate::errors::{SpeechError as VisionSpeechError, VisionClawError, VisionClawResult};
 use crate::types::speech::{
     STTProvider, SpeechCommand, SpeechOptions, TTSProvider, TranscriptionOptions,
 };
@@ -966,18 +966,18 @@ impl SpeechService {
         }
     }
 
-    pub async fn initialize(&self) -> VisionFlowResult<()> {
+    pub async fn initialize(&self) -> VisionClawResult<()> {
         let command = SpeechCommand::Initialize;
         self.sender.lock().await.send(command).await.map_err(|e| {
-            VisionFlowError::Speech(VisionSpeechError::InitializationFailed(e.to_string()))
+            VisionClawError::Speech(VisionSpeechError::InitializationFailed(e.to_string()))
         })?;
         Ok(())
     }
 
-    pub async fn send_message(&self, message: String) -> VisionFlowResult<()> {
+    pub async fn send_message(&self, message: String) -> VisionClawResult<()> {
         let command = SpeechCommand::SendMessage(message);
         self.sender.lock().await.send(command).await.map_err(|e| {
-            VisionFlowError::Speech(VisionSpeechError::TTSFailed {
+            VisionClawError::Speech(VisionSpeechError::TTSFailed {
                 text: "message".to_string(),
                 reason: e.to_string(),
             })
@@ -1004,10 +1004,10 @@ impl SpeechService {
         &self,
         text: String,
         options: SpeechOptions,
-    ) -> VisionFlowResult<()> {
+    ) -> VisionClawResult<()> {
         let command = SpeechCommand::TextToSpeech(text.clone(), options);
         self.sender.lock().await.send(command).await.map_err(|e| {
-            VisionFlowError::Speech(VisionSpeechError::TTSFailed {
+            VisionClawError::Speech(VisionSpeechError::TTSFailed {
                 text,
                 reason: e.to_string(),
             })
@@ -1015,10 +1015,10 @@ impl SpeechService {
         Ok(())
     }
 
-    pub async fn close(&self) -> VisionFlowResult<()> {
+    pub async fn close(&self) -> VisionClawResult<()> {
         let command = SpeechCommand::Close;
         self.sender.lock().await.send(command).await.map_err(|e| {
-            VisionFlowError::Speech(VisionSpeechError::InitializationFailed(format!(
+            VisionClawError::Speech(VisionSpeechError::InitializationFailed(format!(
                 "Failed to close speech service: {}",
                 e
             )))
@@ -1026,10 +1026,10 @@ impl SpeechService {
         Ok(())
     }
 
-    pub async fn set_tts_provider(&self, provider: TTSProvider) -> VisionFlowResult<()> {
+    pub async fn set_tts_provider(&self, provider: TTSProvider) -> VisionClawResult<()> {
         let command = SpeechCommand::SetTTSProvider(provider.clone());
         self.sender.lock().await.send(command).await.map_err(|e| {
-            VisionFlowError::Speech(VisionSpeechError::ProviderConfigError {
+            VisionClawError::Speech(VisionSpeechError::ProviderConfigError {
                 provider: format!("{:?}", provider),
                 reason: e.to_string(),
             })
@@ -1055,10 +1055,10 @@ impl SpeechService {
         self.tts_provider.read().await.clone()
     }
 
-    pub async fn set_stt_provider(&self, provider: STTProvider) -> VisionFlowResult<()> {
+    pub async fn set_stt_provider(&self, provider: STTProvider) -> VisionClawResult<()> {
         let command = SpeechCommand::SetSTTProvider(provider.clone());
         self.sender.lock().await.send(command).await.map_err(|e| {
-            VisionFlowError::Speech(VisionSpeechError::ProviderConfigError {
+            VisionClawError::Speech(VisionSpeechError::ProviderConfigError {
                 provider: format!("{:?}", provider),
                 reason: e.to_string(),
             })
@@ -1066,20 +1066,20 @@ impl SpeechService {
         Ok(())
     }
 
-    pub async fn start_transcription(&self, options: TranscriptionOptions) -> VisionFlowResult<()> {
+    pub async fn start_transcription(&self, options: TranscriptionOptions) -> VisionClawResult<()> {
         let command = SpeechCommand::StartTranscription(options);
         self.sender.lock().await.send(command).await.map_err(|e| {
-            VisionFlowError::Speech(VisionSpeechError::STTFailed {
+            VisionClawError::Speech(VisionSpeechError::STTFailed {
                 reason: format!("Failed to start transcription: {}", e),
             })
         })?;
         Ok(())
     }
 
-    pub async fn stop_transcription(&self) -> VisionFlowResult<()> {
+    pub async fn stop_transcription(&self) -> VisionClawResult<()> {
         let command = SpeechCommand::StopTranscription;
         self.sender.lock().await.send(command).await.map_err(|e| {
-            VisionFlowError::Speech(VisionSpeechError::STTFailed {
+            VisionClawError::Speech(VisionSpeechError::STTFailed {
                 reason: format!("Failed to stop transcription: {}", e),
             })
         })?;
@@ -1101,10 +1101,10 @@ impl SpeechService {
     
     
     
-    pub async fn process_audio_chunk(&self, audio_data: Vec<u8>) -> VisionFlowResult<()> {
+    pub async fn process_audio_chunk(&self, audio_data: Vec<u8>) -> VisionClawResult<()> {
         let command = SpeechCommand::ProcessAudioChunk(audio_data);
         self.sender.lock().await.send(command).await.map_err(|e| {
-            VisionFlowError::Speech(VisionSpeechError::AudioProcessingFailed {
+            VisionClawError::Speech(VisionSpeechError::AudioProcessingFailed {
                 reason: format!("Failed to process audio chunk: {}", e),
             })
         })?;
@@ -1125,7 +1125,7 @@ impl SpeechService {
     }
 
     
-    pub async fn process_voice_command(&self, text: String) -> VisionFlowResult<String> {
+    pub async fn process_voice_command(&self, text: String) -> VisionClawResult<String> {
         let session_id = Uuid::new_v4().to_string();
 
         if Self::is_voice_command(&text) {
@@ -1190,7 +1190,7 @@ impl SpeechService {
         &self,
         text: String,
         session_id: String,
-    ) -> VisionFlowResult<String> {
+    ) -> VisionClawResult<String> {
         use crate::services::speech_voice_integration::VoiceSwarmIntegration;
 
         match VoiceSwarmIntegration::process_voice_command_with_tags(
@@ -1207,7 +1207,7 @@ impl SpeechService {
             )),
             Err(e) => {
                 error!("Failed to process tagged voice command: {}", e);
-                Err(VisionFlowError::Speech(
+                Err(VisionClawError::Speech(
                     VisionSpeechError::AudioProcessingFailed {
                         reason: format!("Tagged voice command failed: {}", e),
                     },

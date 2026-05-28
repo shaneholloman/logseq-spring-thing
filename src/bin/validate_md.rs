@@ -15,7 +15,7 @@
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use webxr::services::jsonld_validator::{Severity, Validator};
+use visionclaw_server::services::jsonld_validator::{Severity, Validator};
 
 const RESET: &str = "\x1b[0m";
 const RED: &str = "\x1b[31m";
@@ -108,7 +108,7 @@ fn should_use_colour() -> bool {
 
 fn print_issue(
     path: &std::path::Path,
-    issue: &webxr::services::jsonld_validator::ValidationIssue,
+    issue: &visionclaw_server::services::jsonld_validator::ValidationIssue,
     use_colour: bool,
 ) {
     let (sev_colour, sev_label) = match issue.severity {
@@ -145,7 +145,7 @@ fn print_issue(
     }
 }
 
-fn loc(source: &webxr::services::jsonld_validator::SourceRef) -> String {
+fn loc(source: &visionclaw_server::services::jsonld_validator::SourceRef) -> String {
     match (source.line, source.column, &source.block_label) {
         (Some(l), Some(c), Some(b)) => format!("{}:{} ({})", l, c, b),
         (Some(l), Some(c), None) => format!("{}:{}", l, c),

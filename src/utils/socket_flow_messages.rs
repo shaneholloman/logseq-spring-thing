@@ -84,7 +84,7 @@ impl BinaryNodeDataClient {
 }
 
 // ADR-090 Phase 1b: bidirectional bridges between webxr and domain BinaryNodeData.
-impl From<BinaryNodeDataClient> for visionflow_domain::BinaryNodeData {
+impl From<BinaryNodeDataClient> for visionclaw_domain::BinaryNodeData {
     fn from(d: BinaryNodeDataClient) -> Self {
         Self {
             node_id: d.node_id,
@@ -98,8 +98,8 @@ impl From<BinaryNodeDataClient> for visionflow_domain::BinaryNodeData {
     }
 }
 
-impl From<visionflow_domain::BinaryNodeData> for BinaryNodeDataClient {
-    fn from(d: visionflow_domain::BinaryNodeData) -> Self {
+impl From<visionclaw_domain::BinaryNodeData> for BinaryNodeDataClient {
+    fn from(d: visionclaw_domain::BinaryNodeData) -> Self {
         Self {
             node_id: d.node_id,
             x: d.x,
@@ -112,8 +112,8 @@ impl From<visionflow_domain::BinaryNodeData> for BinaryNodeDataClient {
     }
 }
 
-impl From<&visionflow_domain::BinaryNodeData> for BinaryNodeDataClient {
-    fn from(d: &visionflow_domain::BinaryNodeData) -> Self {
+impl From<&visionclaw_domain::BinaryNodeData> for BinaryNodeDataClient {
+    fn from(d: &visionclaw_domain::BinaryNodeData) -> Self {
         Self {
             node_id: d.node_id,
             x: d.x,

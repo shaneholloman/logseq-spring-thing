@@ -9,14 +9,14 @@
 //! - Logging is better than crashing
 //! - Defaults are better than panics
 
-use crate::errors::{VisionFlowError, VisionFlowResult};
+use crate::errors::{VisionClawError, VisionClawResult};
 use tracing::{warn, error};
 
 /// Safely converts f64 to serde_json::Number, replacing NaN/Infinity with 0.0
 /// This is a common pattern when building JSON responses with numeric data.
 /// # Examples
 /// ```rust,ignore
-/// use visionflow::utils::result_helpers::safe_json_number;
+/// use visionclaw::utils::result_helpers::safe_json_number;
 /// let num = safe_json_number(42.5);
 /// assert!(num.is_some());
 /// let nan_num = safe_json_number(f64::NAN);
@@ -46,7 +46,7 @@ pub fn safe_json_number(value: f64) -> serde_json::Number {
 /// * `context` - Context message for logging
 /// # Examples
 /// ```rust,ignore
-/// use visionflow::utils::result_helpers::safe_unwrap;
+/// use visionclaw::utils::result_helpers::safe_unwrap;
 /// let value = Some(42);
 /// let result = safe_unwrap(value, 0, "getting user count");
 /// assert_eq!(result, 42);
@@ -65,13 +65,13 @@ pub fn safe_unwrap<T>(option: Option<T>, default: T, context: &str) -> T {
 }
 
 /// Safely unwraps an Option or returns an error with context.
-/// Converts Option<T> to Result<T, VisionFlowError> with meaningful error message.
+/// Converts Option<T> to Result<T, VisionClawError> with meaningful error message.
 /// # Arguments
 /// * `option` - The Option to unwrap
 /// * `context` - Error message if None
 /// # Examples
 /// ```rust,ignore
-/// use visionflow::utils::result_helpers::ok_or_error;
+/// use visionclaw::utils::result_helpers::ok_or_error;
 /// let value = Some(42);
 /// let result = ok_or_error(value, "Failed to get user ID");
 /// assert!(result.is_ok());
@@ -79,52 +79,52 @@ pub fn safe_unwrap<T>(option: Option<T>, default: T, context: &str) -> T {
 /// let result = ok_or_error(empty, "Failed to get user ID");
 /// assert!(result.is_err());
 /// ```
-pub fn ok_or_error<T>(option: Option<T>, context: &str) -> VisionFlowResult<T> {
-    option.ok_or_else(|| VisionFlowError::Generic {
+pub fn ok_or_error<T>(option: Option<T>, context: &str) -> VisionClawResult<T> {
+    option.ok_or_else(|| VisionClawError::Generic {
         message: context.to_string(),
         source: None,
     })
 }
 
-/// Adds context to any error type and converts to VisionFlowError.
+/// Adds context to any error type and converts to VisionClawError.
 /// Replaces manual `.map_err(|e| format!("context: {}", e))` patterns.
 /// # Arguments
 /// * `result` - The Result to add context to
 /// * `context` - Context message to prepend
 /// # Examples
 /// ```rust,ignore
-/// use visionflow::utils::result_helpers::map_err_context;
+/// use visionclaw::utils::result_helpers::map_err_context;
 /// use std::fs::File;
 /// let result = File::open("nonexistent.txt");
 /// let with_context = map_err_context(result, "Failed to open config file");
 /// // Error now includes: "Failed to open config file: No such file or directory"
 /// ```
-pub fn map_err_context<T, E>(result: Result<T, E>, context: &str) -> VisionFlowResult<T>
+pub fn map_err_context<T, E>(result: Result<T, E>, context: &str) -> VisionClawResult<T>
 where
     E: std::error::Error + Send + Sync + 'static,
 {
-    result.map_err(|e| VisionFlowError::Generic {
+    result.map_err(|e| VisionClawError::Generic {
         message: format!("{}: {}", context, e),
         source: Some(std::sync::Arc::new(e)),
     })
 }
 
-/// Converts any Result to VisionFlowResult with context.
+/// Converts any Result to VisionClawResult with context.
 /// More flexible than map_err_context, works with any error type.
 /// # Examples
 /// ```rust,ignore
-/// use visionflow::utils::result_helpers::to_vf_error;
+/// use visionclaw::utils::result_helpers::to_vf_error;
 /// fn parse_config() -> Result<i32, String> {
 ///     Err("Invalid format".to_string())
 /// }
 /// let result = to_vf_error(parse_config(), "Failed to parse config");
 /// assert!(result.is_err());
 /// ```
-pub fn to_vf_error<T, E>(result: Result<T, E>, context: &str) -> VisionFlowResult<T>
+pub fn to_vf_error<T, E>(result: Result<T, E>, context: &str) -> VisionClawResult<T>
 where
     E: std::fmt::Display,
 {
-    result.map_err(|e| VisionFlowError::Generic {
+    result.map_err(|e| VisionClawError::Generic {
         message: format!("{}: {}", context, e),
         source: None,
     })
@@ -134,7 +134,7 @@ where
 /// Logs a warning but doesn't panic, allows graceful degradation.
 /// # Examples
 /// ```rust,ignore
-/// use visionflow::utils::result_helpers::ok_or_log;
+/// use visionclaw::utils::result_helpers::ok_or_log;
 /// let value = Some(42);
 /// assert_eq!(ok_or_log(value, "test value"), Some(42));
 /// let empty: Option<i32> = None;
@@ -151,7 +151,7 @@ pub fn ok_or_log<T>(option: Option<T>, message: &str) -> Option<T> {
 /// Safer alternative to `.unwrap_or_default()` with visibility into when defaults are used.
 /// # Examples
 /// ```rust,ignore
-/// use visionflow::utils::result_helpers::unwrap_or_default_log;
+/// use visionclaw::utils::result_helpers::unwrap_or_default_log;
 /// let value = Some(42);
 /// assert_eq!(unwrap_or_default_log(value, "test"), 42);
 /// let empty: Option<i32> = None;
@@ -171,7 +171,7 @@ pub fn unwrap_or_default_log<T: Default>(option: Option<T>, message: &str) -> T 
 /// For cases where we want to continue with a default instead of propagating errors.
 /// # Examples
 /// ```rust,ignore
-/// use visionflow::utils::result_helpers::result_or_default_log;
+/// use visionclaw::utils::result_helpers::result_or_default_log;
 /// fn may_fail() -> Result<i32, String> {
 ///     Err("oops".to_string())
 /// }
@@ -196,10 +196,10 @@ pub fn result_or_default_log<T: Default, E: std::fmt::Display>(
 /// Replaces manual error handling with clean, context-rich errors.
 /// # Examples
 /// ```rust,ignore
-/// use visionflow::try_with_context;
-/// use visionflow::errors::VisionFlowResult;
+/// use visionclaw::try_with_context;
+/// use visionclaw::errors::VisionClawResult;
 /// use std::fs::File;
-/// fn load_config() -> VisionFlowResult<String> {
+/// fn load_config() -> VisionClawResult<String> {
 ///     let file = try_with_context!(
 ///         File::open("config.json"),
 ///         "Failed to open config file"
@@ -214,7 +214,7 @@ macro_rules! try_with_context {
         match $expr {
             Ok(val) => val,
             Err(e) => {
-                return Err($crate::errors::VisionFlowError::Generic {
+                return Err($crate::errors::VisionClawError::Generic {
                     message: format!("{}: {}", $context, e),
                     source: Some(std::sync::Arc::new(e)),
                 });
@@ -227,7 +227,7 @@ macro_rules! try_with_context {
 /// Cleaner syntax for unwrap_or_default_log.
 /// # Examples
 /// ```rust,ignore
-/// use visionflow::unwrap_or_default;
+/// use visionclaw::unwrap_or_default;
 /// let value: Option<i32> = None;
 /// let result = unwrap_or_default!(value, "user count");
 /// assert_eq!(result, 0);
@@ -242,7 +242,7 @@ macro_rules! unwrap_or_default {
 /// Macro for safe unwrap with custom default.
 /// # Examples
 /// ```rust,ignore
-/// use visionflow::safe_unwrap;
+/// use visionclaw::safe_unwrap;
 /// let value: Option<i32> = None;
 /// let result = safe_unwrap!(value, 42, "default value");
 /// assert_eq!(result, 42);
@@ -254,13 +254,13 @@ macro_rules! safe_unwrap {
     };
 }
 
-/// Extension trait for Results to add VisionFlow-specific error handling.
+/// Extension trait for Results to add VisionClaw-specific error handling.
 pub trait ResultExt<T, E> {
     /// Add context to error with format string support.
-    fn context(self, context: &str) -> VisionFlowResult<T>;
+    fn context(self, context: &str) -> VisionClawResult<T>;
 
     /// Add context with lazy evaluation (for expensive string construction).
-    fn with_context<F>(self, f: F) -> VisionFlowResult<T>
+    fn with_context<F>(self, f: F) -> VisionClawResult<T>
     where
         F: FnOnce() -> String;
 }
@@ -269,48 +269,48 @@ impl<T, E> ResultExt<T, E> for Result<T, E>
 where
     E: std::error::Error + Send + Sync + 'static,
 {
-    fn context(self, context: &str) -> VisionFlowResult<T> {
-        self.map_err(|e| VisionFlowError::Generic {
+    fn context(self, context: &str) -> VisionClawResult<T> {
+        self.map_err(|e| VisionClawError::Generic {
             message: format!("{}: {}", context, e),
             source: Some(std::sync::Arc::new(e)),
         })
     }
 
-    fn with_context<F>(self, f: F) -> VisionFlowResult<T>
+    fn with_context<F>(self, f: F) -> VisionClawResult<T>
     where
         F: FnOnce() -> String,
     {
-        self.map_err(|e| VisionFlowError::Generic {
+        self.map_err(|e| VisionClawError::Generic {
             message: format!("{}: {}", f(), e),
             source: Some(std::sync::Arc::new(e)),
         })
     }
 }
 
-/// Extension trait for Options to add VisionFlow-specific handling.
+/// Extension trait for Options to add VisionClaw-specific handling.
 pub trait OptionExt<T> {
     /// Convert Option to Result with context.
-    fn context(self, context: &str) -> VisionFlowResult<T>;
+    fn context(self, context: &str) -> VisionClawResult<T>;
 
     /// Convert with lazy context evaluation.
-    fn with_context<F>(self, f: F) -> VisionFlowResult<T>
+    fn with_context<F>(self, f: F) -> VisionClawResult<T>
     where
         F: FnOnce() -> String;
 }
 
 impl<T> OptionExt<T> for Option<T> {
-    fn context(self, context: &str) -> VisionFlowResult<T> {
-        self.ok_or_else(|| VisionFlowError::Generic {
+    fn context(self, context: &str) -> VisionClawResult<T> {
+        self.ok_or_else(|| VisionClawError::Generic {
             message: context.to_string(),
             source: None,
         })
     }
 
-    fn with_context<F>(self, f: F) -> VisionFlowResult<T>
+    fn with_context<F>(self, f: F) -> VisionClawResult<T>
     where
         F: FnOnce() -> String,
     {
-        self.ok_or_else(|| VisionFlowError::Generic {
+        self.ok_or_else(|| VisionClawError::Generic {
             message: f(),
             source: None,
         })
@@ -348,7 +348,7 @@ mod tests {
         let value: Option<&str> = None;
         let result = ok_or_error(value, "error context");
         assert!(result.is_err());
-        if let Err(VisionFlowError::Generic { message, .. }) = result {
+        if let Err(VisionClawError::Generic { message, .. }) = result {
             assert_eq!(message, "error context");
         } else {
             panic!("Expected Generic error");
@@ -363,7 +363,7 @@ mod tests {
         let with_context = map_err_context(result, "Failed to read config");
 
         assert!(with_context.is_err());
-        if let Err(VisionFlowError::Generic { message, .. }) = with_context {
+        if let Err(VisionClawError::Generic { message, .. }) = with_context {
             assert!(message.contains("Failed to read config"));
             assert!(message.contains("file missing"));
         } else {
@@ -377,7 +377,7 @@ mod tests {
         let vf_result = to_vf_error(result, "Failed to parse");
 
         assert!(vf_result.is_err());
-        if let Err(VisionFlowError::Generic { message, .. }) = vf_result {
+        if let Err(VisionClawError::Generic { message, .. }) = vf_result {
             assert!(message.contains("Failed to parse"));
             assert!(message.contains("parse error"));
         } else {
@@ -408,7 +408,7 @@ mod tests {
         let result = value.context("Value not found");
 
         assert!(result.is_err());
-        if let Err(VisionFlowError::Generic { message, .. }) = result {
+        if let Err(VisionClawError::Generic { message, .. }) = result {
             assert_eq!(message, "Value not found");
         }
     }

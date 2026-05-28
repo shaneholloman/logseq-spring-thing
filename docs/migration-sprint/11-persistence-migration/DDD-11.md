@@ -42,7 +42,7 @@ It does **not** own:
 | **IRI**                    | Internationalised Resource Identifier — the canonical name of every entity. Replaces Neo4j's per-label `id` integer plus property `iri`. |
 | **Literal**                | A typed string value (xsd:string, xsd:dateTime, xsd:decimal, …) appearing as the object of a triple. |
 | **Blank node**             | An anonymous subject local to a single graph. We avoid them: every persisted entity has a minted IRI. |
-| **Dataset**                | The full quad-store on disk. One per VisionFlow instance.                 |
+| **Dataset**                | The full quad-store on disk. One per VisionClaw instance.                 |
 | **Repository trait**       | A Rust trait under `src/ports/*.rs` defining the persistence contract.    |
 | **Adapter**                | A concrete `impl Trait for OxigraphFoo` (or `SqliteFoo`) in `src/adapters/`. |
 | **Named-graph segregation**| The discipline that knowledge / ontology / agent / inferred axioms live in distinct named graphs and never mix subject-predicate-wise without the named-graph qualifier. |
@@ -78,7 +78,7 @@ Invariants:
   concurrent writes serialise on RocksDB's column-family lock.
 - **IRI uniqueness inside a typed graph.** No two triples
   `(?s, rdf:type, vc:OntologyClass)` exist in
-  `<urn:visionflow:graph:ontology>` with the same `?s`. Enforced by
+  `<urn:visionclaw:graph:ontology>` with the same `?s`. Enforced by
   pre-write `ASK`.
 - **Foreign-IRI integrity for BRIDGE_TO.** Every BRIDGE_TO quad
   `(?k, vc:bridgeTo, ?o, <default>)` must have `?k` typed as
@@ -283,7 +283,7 @@ the parameterised shape.
 
 **SPARQL Update equivalent (sketch):**
 ```sparql
-PREFIX vc:   <https://visionflow.dreamlab/ns/>
+PREFIX vc:   <https://visionclaw.dreamlab/ns/>
 PREFIX xsd:  <http://www.w3.org/2001/XMLSchema#>
 
 # Constraints: enforced in-adapter, not as DDL. The migration
@@ -291,7 +291,7 @@ PREFIX xsd:  <http://www.w3.org/2001/XMLSchema#>
 
 # Colocation backfill
 INSERT {
-    GRAPH <urn:visionflow:graph:default> {
+    GRAPH <urn:visionclaw:graph:default> {
         ?bridgeIri  a                vc:BridgeEdge ;
                     vc:from           ?k ;
                     vc:to             ?o ;
@@ -304,12 +304,12 @@ INSERT {
     }
 }
 WHERE {
-    GRAPH <urn:visionflow:graph:knowledge> { ?k a vc:KGNode . ?k vc:iri ?iri . }
-    GRAPH <urn:visionflow:graph:ontology>  { ?o a vc:OntologyClass . ?o vc:iri ?iri . }
+    GRAPH <urn:visionclaw:graph:knowledge> { ?k a vc:KGNode . ?k vc:iri ?iri . }
+    GRAPH <urn:visionclaw:graph:ontology>  { ?o a vc:OntologyClass . ?o vc:iri ?iri . }
     FILTER NOT EXISTS {
-        GRAPH <urn:visionflow:graph:default> { ?k vc:bridgeTo ?o }
+        GRAPH <urn:visionclaw:graph:default> { ?k vc:bridgeTo ?o }
     }
-    BIND(IRI(CONCAT("https://visionflow.dreamlab/ns/edge/",
+    BIND(IRI(CONCAT("https://visionclaw.dreamlab/ns/edge/",
             SHA256(CONCAT(STR(?k), "|bridgeTo|", STR(?o))))) AS ?bridgeIri)
 };
 
@@ -330,14 +330,14 @@ INSERT DATA { } ;  # marker rows live in SQLite schema_migrations, not in RDF
 ```sparql
 # Position seed (one INSERT per axis; idempotent via FNE)
 INSERT {
-    GRAPH <urn:visionflow:graph:ontology> {
+    GRAPH <urn:visionclaw:graph:ontology> {
         ?o vc:hasX ?px ; vc:hasY ?py ; vc:hasZ ?pz .
     }
 }
 WHERE {
-    GRAPH <urn:visionflow:graph:ontology> { ?o a vc:OntologyClass . }
+    GRAPH <urn:visionclaw:graph:ontology> { ?o a vc:OntologyClass . }
     FILTER NOT EXISTS {
-        GRAPH <urn:visionflow:graph:ontology> { ?o vc:hasX ?anyX }
+        GRAPH <urn:visionclaw:graph:ontology> { ?o vc:hasX ?anyX }
     }
     # Deterministic placement: hash-derived. SPARQL has no general hash on
     # IRIs, so the migration tool pre-computes positions during apply.
@@ -348,7 +348,7 @@ WHERE {
 
 # Render props seed
 INSERT {
-    GRAPH <urn:visionflow:graph:ontology> {
+    GRAPH <urn:visionclaw:graph:ontology> {
         ?o vc:mass   "1.0"^^xsd:decimal ;
            vc:size   "1.2"^^xsd:decimal ;
            vc:color  "#9B59B6" ;
@@ -356,8 +356,8 @@ INSERT {
     }
 }
 WHERE {
-    GRAPH <urn:visionflow:graph:ontology> { ?o a vc:OntologyClass . }
-    FILTER NOT EXISTS { GRAPH <urn:visionflow:graph:ontology> { ?o vc:mass ?_ } }
+    GRAPH <urn:visionclaw:graph:ontology> { ?o a vc:OntologyClass . }
+    FILTER NOT EXISTS { GRAPH <urn:visionclaw:graph:ontology> { ?o vc:mass ?_ } }
 };
 
 # Label / node_type seed
@@ -378,11 +378,11 @@ IRI lexicographic order (deterministic), computes the Fibonacci-
 sphere position for each, and emits:
 
 ```sparql
-DELETE { GRAPH <urn:visionflow:graph:ontology> {
+DELETE { GRAPH <urn:visionclaw:graph:ontology> {
     ?o vc:hasX ?_ . ?o vc:hasY ?_ . ?o vc:hasZ ?_ .
 }}
 INSERT {
-    GRAPH <urn:visionflow:graph:ontology> {
+    GRAPH <urn:visionclaw:graph:ontology> {
         <vc:onto/foo>  vc:hasX "12.34"^^xsd:float ; vc:hasY "…"^^xsd:float ; … .
         <vc:onto/bar>  vc:hasX "…"^^xsd:float ; … .
         …
@@ -407,23 +407,23 @@ label addition, deferred label removal. In RDF/Oxigraph:
 # vc:OwlClass-typed entities to vc:OntologyClass type.
 
 INSERT {
-    GRAPH <urn:visionflow:graph:ontology> { ?s a vc:OntologyClass . }
+    GRAPH <urn:visionclaw:graph:ontology> { ?s a vc:OntologyClass . }
 }
 WHERE {
-    GRAPH <urn:visionflow:graph:ontology> { ?s a vc:OwlClass . }
+    GRAPH <urn:visionclaw:graph:ontology> { ?s a vc:OwlClass . }
     FILTER NOT EXISTS {
-        GRAPH <urn:visionflow:graph:ontology> { ?s a vc:OntologyClass }
+        GRAPH <urn:visionclaw:graph:ontology> { ?s a vc:OntologyClass }
     }
 };
 
 # Deferred: strip vc:OwlClass type after soak (manual step)
-# DELETE { GRAPH <urn:visionflow:graph:ontology> { ?s a vc:OwlClass } }
-# WHERE  { GRAPH <urn:visionflow:graph:ontology> { ?s a vc:OntologyClass } } ;
+# DELETE { GRAPH <urn:visionclaw:graph:ontology> { ?s a vc:OwlClass } }
+# WHERE  { GRAPH <urn:visionclaw:graph:ontology> { ?s a vc:OntologyClass } } ;
 ```
 
 The orphan-stub redirect step from the Cypher version is **absent**.
 The bug class doesn't exist: an entity in
-`<urn:visionflow:graph:ontology>` typed `vc:OwlClass` is the same
+`<urn:visionclaw:graph:ontology>` typed `vc:OwlClass` is the same
 RDF subject IRI as the same entity typed `vc:OntologyClass`. There
 is no "stub" to redirect to.
 

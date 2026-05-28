@@ -1,4 +1,4 @@
-# 🎯 Handoff to Debugging Agent - VisionFlow Backend Crashes
+# 🎯 Handoff to Debugging Agent - VisionClaw Backend Crashes
 
 **From**: Tester Agent (Hive Mind)
 **To**: Debugging Agent
@@ -77,20 +77,20 @@
 
 ```bash
 # Read the crashing handlers
-docker exec visionflow_container cat /app/src/handlers/settings_handler.rs
-docker exec visionflow_container cat /app/src/handlers/ontology_handler.rs
+docker exec visionclaw_container cat /app/src/handlers/settings_handler.rs
+docker exec visionclaw_container cat /app/src/handlers/ontology_handler.rs
 
 # Search for panic sources
-docker exec visionflow_container grep -n "unwrap()" /app/src/handlers/settings_handler.rs
-docker exec visionflow_container grep -n "expect(" /app/src/handlers/settings_handler.rs
-docker exec visionflow_container grep -n "\[0\]" /app/src/handlers/settings_handler.rs
+docker exec visionclaw_container grep -n "unwrap()" /app/src/handlers/settings_handler.rs
+docker exec visionclaw_container grep -n "expect(" /app/src/handlers/settings_handler.rs
+docker exec visionclaw_container grep -n "\[0\]" /app/src/handlers/settings_handler.rs
 ```
 
 ### Priority 2: Compare with Working Handler
 
 ```bash
 # Find config handler (working reference)
-docker exec visionflow_container find /app/src/handlers -name "*.rs" | xargs grep -l "api/config"
+docker exec visionclaw_container find /app/src/handlers -name "*.rs" | xargs grep -l "api/config"
 
 # Compare error handling patterns
 # Look for: .map_err(), ?, Result<>, proper error types
@@ -100,16 +100,16 @@ docker exec visionflow_container find /app/src/handlers -name "*.rs" | xargs gre
 
 ```bash
 # Install sqlite3
-docker exec visionflow_container apk add sqlite || \
-docker exec visionflow_container apt-get install -y sqlite3
+docker exec visionclaw_container apk add sqlite || \
+docker exec visionclaw_container apt-get install -y sqlite3
 
 # Check if tables exist
-docker exec visionflow_container sqlite3 /app/data/settings.db ".tables"
-docker exec visionflow_container sqlite3 /app/data/ontology.db ".tables"
+docker exec visionclaw_container sqlite3 /app/data/settings.db ".tables"
+docker exec visionclaw_container sqlite3 /app/data/ontology.db ".tables"
 
 # Check table schemas
-docker exec visionflow_container sqlite3 /app/data/ontology.db ".schema classes"
-docker exec visionflow_container sqlite3 /app/data/ontology.db ".schema properties"
+docker exec visionclaw_container sqlite3 /app/data/ontology.db ".schema classes"
+docker exec visionclaw_container sqlite3 /app/data/ontology.db ".schema properties"
 ```
 
 ---
@@ -224,7 +224,7 @@ Same pattern - find `.unwrap()`, `.expect()`, or `[index]` and replace with prop
 
 **Investigation**:
 ```bash
-docker exec visionflow_container cat /app/src/handlers/graph_state_handler.rs | grep -A 20 "api/graph/data"
+docker exec visionclaw_container cat /app/src/handlers/graph_state_handler.rs | grep -A 20 "api/graph/data"
 ```
 
 ---
@@ -246,8 +246,8 @@ docker exec visionflow_container cat /app/src/handlers/graph_state_handler.rs | 
 
 ### Logs to Check
 ```bash
-docker exec visionflow_container ls -la /app/logs/
-docker exec visionflow_container tail -100 /app/logs/*.log | grep -i "panic\|error"
+docker exec visionclaw_container ls -la /app/logs/
+docker exec visionclaw_container tail -100 /app/logs/*.log | grep -i "panic\|error"
 ```
 
 ---
@@ -256,18 +256,18 @@ docker exec visionflow_container tail -100 /app/logs/*.log | grep -i "panic\|err
 
 ### Enable Rust Backtrace
 ```bash
-docker exec visionflow_container env RUST_BACKTRACE=full /app/target/debug/webxr
+docker exec visionclaw_container env RUST_BACKTRACE=full /app/target/debug/webxr
 ```
 
 ### Check Dependencies
 ```bash
-docker exec visionflow_container cat /app/Cargo.toml | grep -A 20 dependencies
+docker exec visionclaw_container cat /app/Cargo.toml | grep -A 20 dependencies
 ```
 
 ### Test Endpoint Manually
 ```bash
 # Inside container
-docker exec -it visionflow_container sh
+docker exec -it visionclaw_container sh
 
 # Test database access
 sqlite3 /app/data/settings.db "SELECT * FROM sqlite_master;"

@@ -170,12 +170,12 @@ impl PathAccessible for GraphsSettings {
                     self.logseq.get_by_path(&remaining)
                 }
             }
-            "visionflow" => {
+            "visionclaw" => {
                 if segments.len() == 1 {
-                    Ok(Box::new(self.visionflow.clone()))
+                    Ok(Box::new(self.visionclaw.clone()))
                 } else {
                     let remaining = segments[1..].join(".");
-                    self.visionflow.get_by_path(&remaining)
+                    self.visionclaw.get_by_path(&remaining)
                 }
             }
             _ => Err(format!("Unknown graph type: {}", segments[0])),
@@ -200,18 +200,18 @@ impl PathAccessible for GraphsSettings {
                     self.logseq.set_by_path(&remaining, value)
                 }
             }
-            "visionflow" => {
+            "visionclaw" => {
                 if segments.len() == 1 {
                     match value.downcast::<GraphSettings>() {
                         Ok(v) => {
-                            self.visionflow = *v;
+                            self.visionclaw = *v;
                             Ok(())
                         }
-                        Err(_) => Err("Type mismatch for visionflow field".to_string()),
+                        Err(_) => Err("Type mismatch for visionclaw field".to_string()),
                     }
                 } else {
                     let remaining = segments[1..].join(".");
-                    self.visionflow.set_by_path(&remaining, value)
+                    self.visionclaw.set_by_path(&remaining, value)
                 }
             }
             _ => Err(format!("Unknown graph type: {}", segments[0])),

@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use super::shared::{GPUState, SharedGPUContext};
 use crate::actors::messages::*;
-use visionflow_domain::models::constraints::{Constraint, ConstraintKind, ConstraintSet};
+use visionclaw_domain::models::constraints::{Constraint, ConstraintKind, ConstraintSet};
 use crate::models::constraints::ConstraintData;
 
 pub struct ConstraintActor {

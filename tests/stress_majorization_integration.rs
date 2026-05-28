@@ -6,7 +6,7 @@
 //! NOTE: These tests are disabled because the gpu_compute_actor module
 //! has been removed or relocated. Re-enable when the module is available.
 
-// Module webxr::actors::gpu_compute_actor does not exist
+// Module visionclaw_server::actors::gpu_compute_actor does not exist
 // Commenting out all tests until the module is restored or relocated
 
 /*
@@ -18,15 +18,15 @@ use actix::prelude::*;
 use cudarc::driver::CudaDevice;
 use tokio::time::sleep;
 
-use webxr::actors::gpu_compute_actor::*;
-use webxr::actors::messages::*;
-use webxr::models::constraints::*;
-use webxr::models::graph::*;
-use webxr::models::node::Node;
-use webxr::models::edge::Edge;
-use webxr::models::metadata::MetadataStore;
-use webxr::types::vec3::Vec3Data;
-use webxr::utils::socket_flow_messages::BinaryNodeDataClient;
+use visionclaw_server::actors::gpu_compute_actor::*;
+use visionclaw_server::actors::messages::*;
+use visionclaw_server::models::constraints::*;
+use visionclaw_server::models::graph::*;
+use visionclaw_server::models::node::Node;
+use visionclaw_server::models::edge::Edge;
+use visionclaw_server::models::metadata::MetadataStore;
+use visionclaw_server::types::vec3::Vec3Data;
+use visionclaw_server::utils::socket_flow_messages::BinaryNodeDataClient;
 
 /// Test configuration for stress majorization stability testing
 #[derive(Debug, Clone)]

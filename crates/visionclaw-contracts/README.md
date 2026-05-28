@@ -1,11 +1,11 @@
 # visionclaw-contracts
 
-Cross-boundary typed contracts for VisionFlow ⇄ agentbox ⇄ forum ⇄ XR client.
+Cross-boundary typed contracts for VisionClaw ⇄ agentbox ⇄ forum ⇄ XR client.
 
 Single source of truth for every envelope that crosses a process boundary in
-the VisionFlow ecosystem. Rust consumers depend on this crate directly;
-JavaScript / TypeScript consumers depend on `@visionflow/contracts` (in
-`sdk/visionflow-contracts/`), whose `.d.ts` files are generated from the
+the VisionClaw ecosystem. Rust consumers depend on this crate directly;
+JavaScript / TypeScript consumers depend on `@visionclaw/contracts` (in
+`sdk/visionclaw-contracts/`), whose `.d.ts` files are generated from the
 types here via the `typescript-export` feature.
 
 ## Contracts
@@ -35,7 +35,7 @@ cargo test --manifest-path crates/visionclaw-contracts/Cargo.toml \
 ```
 
 Generated bindings land in `crates/visionclaw-contracts/bindings/` and are
-mirrored into `sdk/visionflow-contracts/bindings/` for the npm publish.
+mirrored into `sdk/visionclaw-contracts/bindings/` for the npm publish.
 
 ## Versioning
 
@@ -84,7 +84,7 @@ import {
   AGENT_ACTION_CHANNEL,
   AGENT_ACTION_TYPE,
   SCHEMA_VERSION,
-} from "@visionflow/contracts";
+} from "@visionclaw/contracts";
 
 const channel = new BroadcastChannel(AGENT_ACTION_CHANNEL);
 channel.onmessage = (e: MessageEvent<AgentActionEnvelope>) => {

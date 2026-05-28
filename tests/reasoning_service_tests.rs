@@ -3,7 +3,7 @@
 //
 // NOTE: These tests are disabled because:
 // 1. inference_cache module does not exist in the reasoning module
-// 2. webxr::constraints module doesn't export expected types
+// 2. visionclaw_server::constraints module doesn't export expected types
 // 3. fixtures::ontology::test_ontologies module doesn't exist
 //
 // To re-enable:
@@ -13,11 +13,11 @@
 // 4. Uncomment the code below
 
 /*
-use webxr::reasoning::{
+use visionclaw_server::reasoning::{
     custom_reasoner::{CustomReasoner, OntologyReasoner, AxiomType, InferredAxiom},
     inference_cache::InferenceCache,
 };
-use webxr::constraints::{
+use visionclaw_server::constraints::{
     axiom_mapper::{AxiomMapper, OWLAxiom, AxiomType as MapperAxiomType, TranslationConfig},
     physics_constraint::{PhysicsConstraintType, PRIORITY_ASSERTED, PRIORITY_INFERRED, PRIORITY_USER_DEFINED},
 };
@@ -278,7 +278,7 @@ mod inference_cache_tests {
         let result1 = cache.get_or_compute(1, &reasoner, &ontology).unwrap();
 
         // Modify ontology
-        ontology.classes.insert("NewClass".to_string(), webxr::reasoning::custom_reasoner::OWLClass {
+        ontology.classes.insert("NewClass".to_string(), visionclaw_server::reasoning::custom_reasoner::OWLClass {
             iri: "http://example.org/NewClass".to_string(),
             label: Some("New Class".to_string()),
             parent_class_iri: Some("Cell".to_string()),

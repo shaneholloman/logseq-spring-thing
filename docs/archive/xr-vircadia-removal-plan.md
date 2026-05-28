@@ -246,7 +246,7 @@ git rm scripts/init-vircadia-db.sql
 
 # 3.2 — Stop and remove the runtime container/volumes
 docker compose -f docker-compose.yml -f docker-compose.vircadia.yml --profile vircadia down -v 2>/dev/null || true
-docker volume rm visionflow_vircadia-data visionflow_vircadia-logs 2>/dev/null || true
+docker volume rm visionclaw_vircadia-data visionclaw_vircadia-logs 2>/dev/null || true
 
 # 3.3 — Vendored dirs (untracked, plain rm)
 rm -rf vircadia-world/ sdk/vircadia-world-sdk-ts/

@@ -127,8 +127,8 @@ impl EnhancedSettingsHandler {
                         }
                     }
                 }
-                if let Some(visionflow) = g.get("visionflow") {
-                    if let Some(physics) = visionflow.get("physics") {
+                if let Some(visionclaw) = g.get("visionclaw") {
+                    if let Some(physics) = visionclaw.get("physics") {
                         if let Some(auto_balance) = physics.get("autoBalance") {
                             return Some(auto_balance.clone());
                         }
@@ -167,8 +167,8 @@ impl EnhancedSettingsHandler {
                     physics.insert("autoBalance".to_string(), auto_balance_value.clone());
                 }
 
-                let visionflow_physics = graphs
-                    .entry("visionflow")
+                let visionclaw_physics = graphs
+                    .entry("visionclaw")
                     .or_insert_with(|| json!({}))
                     .as_object_mut()
                     .and_then(|v| {
@@ -176,7 +176,7 @@ impl EnhancedSettingsHandler {
                             .or_insert_with(|| json!({}))
                             .as_object_mut()
                     });
-                if let Some(physics) = visionflow_physics {
+                if let Some(physics) = visionclaw_physics {
                     physics.insert("autoBalance".to_string(), auto_balance_value.clone());
                 }
             }
@@ -197,7 +197,7 @@ impl EnhancedSettingsHandler {
 
 
         let _updated_graphs = if auto_balance_update.is_some() {
-            vec!["logseq", "visionflow"]
+            vec!["logseq", "visionclaw"]
         } else {
 
             let _physics_updates = extract_physics_updates(&modified_update);
@@ -210,8 +210,8 @@ impl EnhancedSettingsHandler {
                     if graphs.contains_key("logseq") {
                         updated.push("logseq");
                     }
-                    if graphs.contains_key("visionflow") {
-                        updated.push("visionflow");
+                    if graphs.contains_key("visionclaw") {
+                        updated.push("visionclaw");
                     }
                     updated
                 })
@@ -227,7 +227,7 @@ impl EnhancedSettingsHandler {
             || app_settings
                 .visualisation
                 .graphs
-                .visionflow
+                .visionclaw
                 .physics
                 .auto_balance;
 
