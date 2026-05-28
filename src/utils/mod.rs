@@ -9,8 +9,11 @@ pub mod audio_processor;
 pub mod binary_protocol;
 pub mod client_message_extractor;
 pub mod edge_data;
-#[cfg(test)]
-mod gpu_compute_tests;
+// DEPRECATED (ADR-090 Phase A2): gpu_compute_tests tested the old in-tree
+// GPU compute interface. PTX loading and GPU memory now live in
+// visionflow-gpu crate with their own test suite (40 passing tests).
+// #[cfg(test)]
+// mod gpu_compute_tests;
 pub mod gpu_diagnostics;
 /// ADR-090 Phase 3 shim — GPU memory utilities now live in crates/visionflow-gpu/.
 pub mod gpu_memory {
@@ -37,8 +40,11 @@ pub mod network;
 pub mod ptx {
     pub use visionflow_gpu::ptx_loader::*;
 }
-#[cfg(test)]
-mod ptx_tests;
+// DEPRECATED (ADR-090 Phase A2): ptx_tests tested PTX loader internals
+// which moved to visionflow-gpu crate. Replaced by 30 tests in
+// crates/visionflow-gpu/src/ptx_loader.rs.
+// #[cfg(test)]
+// mod ptx_tests;
 pub mod socket_flow_constants;
 pub mod socket_flow_messages;
 pub mod standard_websocket_messages;

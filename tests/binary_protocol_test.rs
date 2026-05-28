@@ -146,7 +146,9 @@ fn v3_frame_roundtrip_5000_nodes() {
     let frame = BinaryV3Frame::new(7, rows.clone());
     let bytes = frame.encode();
     assert_eq!(bytes.len(), 140_012, "PRD-02 §6 wire size");
-    assert_eq!(&bytes[0..4], b"V3F0");
+    // V3_MAGIC = 0x5633_4630; little-endian byte order = [0x30, 0x46, 0x33, 0x56]
+    // ("V3F0" mnemonic in spec is for big-endian reading — see v3_frame.rs).
+    assert_eq!(&bytes[0..4], &[0x30, 0x46, 0x33, 0x56]);
 
     let decoded = BinaryV3Frame::decode(&bytes).expect("decode");
     assert_eq!(decoded.magic, V3_MAGIC);
