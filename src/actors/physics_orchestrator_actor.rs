@@ -1704,7 +1704,20 @@ impl Handler<crate::actors::messages::PhysicsStepCompleted> for PhysicsOrchestra
             // GPU hasn't actually computed anything yet.
             let energy_valid = energy.is_finite();
             let past_warmup = self.fast_settle_iteration_count >= MIN_SETTLE_WARMUP;
-            let converged = past_warmup && energy_valid && energy < energy_threshold;
+            // Scale the convergence energy threshold by graph size. Kinetic
+            // energy is summed over all nodes, so a 30k-node graph trivially
+            // exceeds the same absolute threshold as an 800-node graph even
+            // when motion per node is identical. Without this scaling, large
+            // graphs stop settling after the warmup window because per-node
+            // KE×N >> threshold for any node count above a few thousand —
+            // even when nodes haven't meaningfully separated yet.
+            //
+            // sqrt(N) gives a sensible middle ground: a 30k-node graph runs
+            // ~6× longer than an 840-node graph before declaring converged,
+            // matching the larger structure's actual settle time.
+            let scale = (self.last_node_count.max(1) as f64).sqrt().max(1.0);
+            let scaled_threshold = energy_threshold * scale;
+            let converged = past_warmup && energy_valid && energy < scaled_threshold;
             let exhausted = self.fast_settle_iteration_count >= max_settle_iterations;
 
             if converged {
@@ -1717,8 +1730,8 @@ impl Handler<crate::actors::messages::PhysicsStepCompleted> for PhysicsOrchestra
                 }
 
                 info!(
-                    "PhysicsOrchestratorActor: FastSettle converged after {} iterations (energy={:.6} < threshold={:.6})",
-                    self.fast_settle_iteration_count, energy, energy_threshold
+                    "PhysicsOrchestratorActor: FastSettle converged after {} iterations (energy={:.6} < scaled_threshold={:.6}, n={})",
+                    self.fast_settle_iteration_count, energy, scaled_threshold, self.last_node_count
                 );
 
                 // Pure snapshot broadcast: clients get final converged positions
