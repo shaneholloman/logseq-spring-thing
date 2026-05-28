@@ -443,8 +443,40 @@ impl PhysicsOrchestratorActor {
     }
 
     fn update_graph_data(&mut self, graph_data: Arc<GraphData>) {
+        let prev_count = self.last_node_count;
+        let new_count = graph_data.nodes.len();
         self.graph_data_ref = Some(graph_data.clone());
-        self.last_node_count = graph_data.nodes.len();
+        self.last_node_count = new_count;
+
+        // If GPU is already initialised and the graph just grew/changed, forward
+        // the new graph to ForceComputeActor — otherwise the GPU keeps computing
+        // on the previous (stale) graph forever. This is the documented
+        // "UpdateGPUGraphData propagation gap" from the ADR-090 sprint.
+        if self.gpu_initialized
+            && self.gpu_compute_addr.is_some()
+            && new_count != prev_count
+        {
+            if let Some(ref gpu_addr) = self.gpu_compute_addr {
+                let msg_id = crate::actors::messaging::MessageId::new();
+                let tracker = self.message_tracker.clone();
+                actix::spawn(async move {
+                    tracker
+                        .track_default(
+                            msg_id,
+                            crate::actors::messaging::MessageKind::UpdateGPUGraphData,
+                        )
+                        .await;
+                });
+                info!(
+                    "PhysicsOrchestratorActor: graph grew {} → {} nodes — forwarding UpdateGPUGraphData to GPU",
+                    prev_count, new_count
+                );
+                gpu_addr.do_send(UpdateGPUGraphData {
+                    graph: Arc::clone(&graph_data),
+                    correlation_id: Some(msg_id),
+                });
+            }
+        }
     }
 
     fn execute_gpu_physics_step(
