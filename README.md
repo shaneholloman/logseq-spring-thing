@@ -103,7 +103,7 @@ git clone https://github.com/DreamLab-AI/VisionClaw.git
 cd VisionClaw && cp .env.example .env
 cargo build --release --features gpu
 cd client && npm install && npm run build && cd ..
-./target/release/webxr
+./target/release/visionclaw-server
 ```
 
 Requires CUDA 13.1 toolkit. See [Deployment Guide](docs/how-to/deployment-guide.md) for full GPU setup.
@@ -398,7 +398,7 @@ Opus 48kHz mono end-to-end. HRTF spatial panning from Vircadia entity positions.
 
 ### Workspace crates (ADR-090)
 
-The Rust backend is a Cargo workspace. The `webxr` binary depends on six extracted crates arranged as an acyclic DAG:
+The Rust backend is a Cargo workspace. The `visionclaw-server` binary depends on six extracted crates arranged as an acyclic DAG:
 
 | Crate | Responsibility |
 |:------|:---------------|
@@ -407,9 +407,9 @@ The Rust backend is a Cargo workspace. The `webxr` binary depends on six extract
 | `visionclaw-gpu` | CUDA kernels, force-directed physics, build.rs PTX compilation |
 | `visionclaw-ontology` | OWL 2 types, horned-owl pipeline, ontology services |
 | `visionclaw-adapters` | Oxigraph ontology store, Whelk inference engine |
-| `visionclaw-actors` | Actor message types; actor implementations remain in `webxr` |
+| `visionclaw-actors` | Actor message types; actor implementations remain in `visionclaw-server` |
 
-Dependency order (inner → outer): `contracts → domain → {gpu, ontology, protocol} → adapters → actors → webxr`
+Dependency order (inner → outer): `contracts → domain → {gpu, ontology, protocol} → adapters → actors → visionclaw-server`
 
 ```mermaid
 flowchart TB
