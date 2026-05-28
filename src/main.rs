@@ -802,9 +802,12 @@ async fn main() -> std::io::Result<()> {
             let app = app.app_data(solid_state.clone());
 
             let app = app
-            .route("/wss", web::get().to(socket_flow_handler)) 
+            // Root-level k8s/Docker probes (the /api/* variants below are kept for back-compat)
+            .route("/healthz", web::get().to(consolidated_health_handler::liveness_probe))
+            .route("/readyz", web::get().to(consolidated_health_handler::readiness_probe))
+            .route("/wss", web::get().to(socket_flow_handler))
             .route("/ws/speech", web::get().to(speech_socket_handler))
-            .route("/ws/mcp-relay", web::get().to(mcp_relay_handler)) 
+            .route("/ws/mcp-relay", web::get().to(mcp_relay_handler))
             
             .route("/ws/client-messages", web::get().to(client_messages_handler::websocket_client_messages))
             // OpenAPI/Swagger documentation

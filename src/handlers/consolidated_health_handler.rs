@@ -472,8 +472,9 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
                     .route("/logs", web::get().to(get_mcp_logs)),
             ),
     )
-    // Lightweight probe endpoints (no /api prefix needed — registered under /api here
-    // but can also be mounted at top-level in main.rs if desired)
+    // Lightweight probe endpoints under /api for back-compat. The canonical
+    // root-level /healthz and /readyz (k8s/Docker convention) are registered
+    // directly on the App in main.rs.
     .route("/healthz", web::get().to(liveness_probe))
     .route("/readyz", web::get().to(readiness_probe));
 }
