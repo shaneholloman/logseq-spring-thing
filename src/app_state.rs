@@ -3,7 +3,7 @@ use actix_web::web;
 use log::{debug, error, info, warn};
 use std::path::PathBuf;
 use std::sync::{
-    atomic::{AtomicUsize, Ordering},
+    atomic::{AtomicBool, AtomicUsize, Ordering},
     Arc,
 };
 use tokio::sync::RwLock;
@@ -428,6 +428,15 @@ impl AppState {
             std::sync::Arc::new(tokio::sync::Mutex::new(None));
         let graph_service_addr_clone_for_sync = graph_service_addr_ref.clone();
 
+        // Signals that the post-sync Oxigraph reload of GraphStateActor has been
+        // requested. The reload resets GraphStateActor positions to the stored
+        // layout, clobbering the dual-graph projection applied at boot. A
+        // dedicated task (below) waits on this flag and re-emits a projected
+        // ForceFullBroadcast so a fresh boot WITHOUT a connected client still
+        // serves separated/compressed positions on the REST polling path.
+        let sync_reloaded = Arc::new(AtomicBool::new(false));
+        let sync_reloaded_for_task = sync_reloaded.clone();
+
         let sync_handle = tokio::spawn(async move {
             info!("Background GitHub sync task spawned successfully");
             debug!("Task ID: {:?}", std::thread::current().id());
@@ -461,6 +470,7 @@ impl AppState {
                         info!("[GitHub Sync] Notifying GraphServiceActor to reload synced data...");
                         graph_addr.do_send(crate::actors::messages::ReloadGraphFromDatabase);
                         info!("[GitHub Sync] Reload notification sent to GraphServiceActor");
+                        sync_reloaded.store(true, Ordering::SeqCst);
                     } else {
                         info!("[GitHub Sync] Graph service not yet initialized - will load on startup");
                     }
@@ -522,7 +532,30 @@ impl AppState {
         let client_manager_addr = client_coordinator.start();
 
 
-        let physics_settings = settings.visualisation.graphs.logseq.physics.clone();
+        // Read persisted physics from SQLite (same source the API GET uses) so a fresh
+        // boot applies runtime-persisted controls (graph_separation_x, axis_compression_z,
+        // adaptive_speed, etc). Fall back to YAML/defaults when nothing is persisted yet.
+        let physics_settings = {
+            use crate::ports::settings_repository::SettingValue;
+            match sqlite_settings_repository.get_setting("physics").await {
+                Ok(Some(SettingValue::Json(json))) => {
+                    match serde_json::from_value::<crate::config::PhysicsSettings>(json) {
+                        Ok(persisted) => {
+                            info!("[AppState::new] Loaded persisted physics from SQLite (graph_separation_x={}, axis_compression_z={}, adaptive_speed={})", persisted.graph_separation_x, persisted.axis_compression_z, persisted.adaptive_speed);
+                            persisted
+                        }
+                        Err(e) => {
+                            warn!("[AppState::new] Persisted physics JSON failed to deserialize ({}); using YAML/defaults", e);
+                            settings.visualisation.graphs.logseq.physics.clone()
+                        }
+                    }
+                }
+                _ => {
+                    info!("[AppState::new] No persisted physics in SQLite; using YAML/defaults");
+                    settings.visualisation.graphs.logseq.physics.clone()
+                }
+            }
+        };
 
         info!("[AppState::new] Starting MetadataActor");
         let metadata_addr = MetadataActor::new(MetadataStore::new()).start();
@@ -737,9 +770,47 @@ impl AppState {
                 // then register deferred CQRS physics handlers.
                 let gpu_manager_clone = gpu_manager.clone();
                 let gpu_compute_addr_clone = gpu_compute_addr.clone();
+                let gpu_compute_addr_for_rebroadcast = gpu_compute_addr.clone();
                 let graph_service_for_physics = graph_service_addr.clone();
                 let command_bus_for_physics = command_bus.clone();
                 let query_bus_for_physics = query_bus.clone();
+                // Persisted physics params must reach ForceComputeActor on boot.
+                // The actor initialises with default SimulationParams (graph_separation_x=0,
+                // axis_compression_z=0, adaptive_speed off); without this push the persisted
+                // values only take effect after a live PUT that differs from the defaults,
+                // making the separation/compression/adaptive-speed controls appear dead.
+                let startup_sim_params =
+                    crate::models::simulation_params::SimulationParams::from(&physics_settings);
+
+                // Re-project after the post-sync Oxigraph reload. The reload resets
+                // GraphStateActor to the stored (un-separated) layout AFTER the boot
+                // projection broadcast; without this, a fresh boot with no connected
+                // client serves un-separated positions on the REST polling path until
+                // a client PUTs settings. The GPU still holds the converged+projected
+                // state, so a ForceFullBroadcast re-emits projected UpdateNodePositions
+                // and re-syncs GraphStateActor.
+                actix::spawn(async move {
+                    // Wait for the sync task to request the reload (bounded).
+                    let mut waited_ms = 0u64;
+                    while !sync_reloaded_for_task.load(Ordering::SeqCst) && waited_ms < 180_000 {
+                        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+                        waited_ms += 500;
+                    }
+                    if !sync_reloaded_for_task.load(Ordering::SeqCst) {
+                        debug!("[AppState] Post-sync re-broadcast skipped — sync reload not signalled within timeout");
+                        return;
+                    }
+                    // Settle margin: let the GraphStateActor reload + any GPU re-upload
+                    // churn finish (reload observed ~4s after the notification).
+                    tokio::time::sleep(tokio::time::Duration::from_secs(8)).await;
+                    let addr = { gpu_compute_addr_for_rebroadcast.read().await.clone() };
+                    if let Some(addr) = addr {
+                        addr.do_send(crate::actors::gpu::force_compute_actor::ForceFullBroadcast);
+                        info!("[AppState] Sent post-sync ForceFullBroadcast to re-project GraphStateActor positions");
+                    } else {
+                        warn!("[AppState] Post-sync re-broadcast skipped — ForceComputeActor address not available");
+                    }
+                });
 
                 actix::spawn(async move {
                     // Wait for GPUManagerActor and PhysicsSupervisor to fully initialize
@@ -759,6 +830,20 @@ impl AppState {
                         match gpu_manager_clone.send(GetForceComputeActor).await {
                             Ok(Ok(force_compute_actor)) => {
                                 info!("[AppState] Successfully obtained ForceComputeActor address on attempt {}", attempt);
+                                // Push persisted physics params so layout controls
+                                // (graph_separation_x, axis_compression_z, adaptive_speed)
+                                // are live from boot, not just after the first live PUT.
+                                force_compute_actor.do_send(
+                                    crate::actors::messages::UpdateSimulationParams {
+                                        params: startup_sim_params.clone(),
+                                    },
+                                );
+                                info!(
+                                    "[AppState] Pushed persisted SimulationParams to ForceComputeActor (graph_separation_x={}, axis_compression_z={}, adaptive_speed={})",
+                                    startup_sim_params.graph_separation_x,
+                                    startup_sim_params.axis_compression_z,
+                                    startup_sim_params.adaptive_speed
+                                );
                                 let mut guard = gpu_compute_addr_clone.write().await;
                                 *guard = Some(force_compute_actor);
                                 info!("[AppState] ForceComputeActor address stored - GPU physics now available via AppState");

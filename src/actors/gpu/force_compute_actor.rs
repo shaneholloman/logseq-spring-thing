@@ -1835,12 +1835,42 @@ impl Handler<ForceFullBroadcast> for ForceComputeActor {
         Box::pin(fut.into_actor(self).map(move |result, actor, _ctx| {
             match result {
                 Ok((Ok((pos_x, pos_y, pos_z)), Ok((vel_x, vel_y, vel_z)))) => {
+                    // Mirror the main-loop dual-graph projection so the immediate
+                    // snapshot is consistent with physics-stepped broadcasts. Without
+                    // this, a settings change broadcasts raw GPU positions and, if the
+                    // sim has converged, the projected positions never overwrite them.
+                    let sep_x = actor.simulation_params.graph_separation_x;
+                    let z_compress = actor.simulation_params.axis_compression_z.clamp(0.0, 1.0);
+                    let z_scale = 1.0 - z_compress;
+                    let needs_sep = sep_x > 0.0;
+                    let needs_compress = z_compress > 0.0;
+                    let project = (needs_sep || needs_compress) && !actor.node_population.is_empty();
+
                     let mut node_updates = Vec::with_capacity(pos_x.len());
                     for i in 0..pos_x.len() {
-                        let position = Vec3::new(pos_x[i], pos_y[i], pos_z[i]);
+                        let mut position = Vec3::new(pos_x[i], pos_y[i], pos_z[i]);
                         let velocity = Vec3::new(vel_x[i], vel_y[i], vel_z[i]);
                         if !position.x.is_finite() || !position.y.is_finite() || !position.z.is_finite() {
                             continue;
+                        }
+                        if project {
+                            if let Some(&pop) = actor.node_population.get(i) {
+                                if needs_sep {
+                                    match pop {
+                                        GraphPopulation::Knowledge => position.x -= sep_x,
+                                        GraphPopulation::Ontology => position.x += sep_x,
+                                        GraphPopulation::Agent => {}
+                                    }
+                                }
+                                if needs_compress {
+                                    match pop {
+                                        GraphPopulation::Knowledge | GraphPopulation::Ontology => {
+                                            position.z *= z_scale;
+                                        }
+                                        GraphPopulation::Agent => {}
+                                    }
+                                }
+                            }
                         }
                         let node_id = actor.gpu_index_to_node_id.get(i).copied().unwrap_or(i as u32);
                         node_updates.push((node_id, BinaryNodeDataClient::new(
@@ -1852,8 +1882,8 @@ impl Handler<ForceFullBroadcast> for ForceComputeActor {
 
                     if let Some(ref graph_addr) = actor.graph_service_addr {
                         info!(
-                            "ForceComputeActor: IMMEDIATE full broadcast — {} nodes (pure snapshot, no physics step)",
-                            node_updates.len()
+                            "ForceComputeActor: IMMEDIATE full broadcast — {} nodes (pure snapshot, projected={} sep_x={:.1} z_compress={:.2})",
+                            node_updates.len(), project, sep_x, z_compress
                         );
                         graph_addr.do_send(crate::actors::messages::UpdateNodePositions {
                             positions: node_updates,
