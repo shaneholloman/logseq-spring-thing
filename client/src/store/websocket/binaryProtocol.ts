@@ -34,6 +34,11 @@ const logger = createLogger('WebSocketStore');
 
 // ── Constants ──────────────────────────────────────────────────────────
 const ACK_BATCH_SIZE = 10;
+// Upper bound on the node-type cache. The graph tops out near ~30k nodes;
+// agent ids churn (spawn/despawn) so without a bound this Map grows for the
+// life of the session. Cap well above the live node count and evict oldest
+// (insertion-order) entries when exceeded.
+const MAX_NODE_TYPE_ENTRIES = 65536;
 
 // ── Encapsulated module-level state ────────────────────────────────────
 let positionBatchQueue: NodePositionBatchQueue | null = null;
@@ -153,9 +158,21 @@ function updateNodeTypeMapFromParsed(
     const nodeType = getNodeType(node.nodeId);
     if (nodeType !== NodeType.Unknown) {
       const actualId = getActualNodeId(node.nodeId);
+      // Re-insert to keep recently-seen ids at the tail (LRU-ish for eviction).
+      if (currentNodeTypeMap.has(actualId)) {
+        currentNodeTypeMap.delete(actualId);
+      }
       currentNodeTypeMap.set(actualId, nodeType);
     }
   }
+
+  // Bound the cache: evict oldest entries (Map preserves insertion order).
+  while (currentNodeTypeMap.size > MAX_NODE_TYPE_ENTRIES) {
+    const oldest = currentNodeTypeMap.keys().next().value;
+    if (oldest === undefined) break;
+    currentNodeTypeMap.delete(oldest);
+  }
+
   set({ nodeTypeMap: new Map(currentNodeTypeMap) });
 }
 

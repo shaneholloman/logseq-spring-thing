@@ -1,11 +1,14 @@
-import { useEffect, useCallback, useState } from 'react'
+import { useEffect, useCallback, useState, lazy, Suspense } from 'react'
 import AppInitializer from './AppInitializer'
 import { ApplicationModeProvider } from '../contexts/ApplicationModeContext';
 import { useSettingsStore } from '../store/settingsStore';
 import { createLogger } from '../utils/loggerConfig';
 import MainLayout from './MainLayout';
 import { useQuest3Integration } from '../hooks/useQuest3Integration';
-import { ImmersiveApp } from '../immersive/components/ImmersiveApp';
+// Lazy-load the WebXR/three.js immersive client. It is only rendered on
+// Quest 3 / forced-VR sessions, so the desktop majority never downloads the
+// heavy XR bundle. Code-split out of the initial chunk.
+const ImmersiveApp = lazy(() => import('../immersive/components/ImmersiveApp'));
 import { BotsDataProvider } from '../features/bots/contexts/BotsDataContext';
 import { CommandPalette } from '../features/command-palette/components/CommandPalette';
 import { initializeCommandPalette } from '../features/command-palette/defaultCommands';
@@ -178,7 +181,9 @@ function App() {
         return shouldUseImmersiveClient() ? (
           <BotsDataProvider>
             <VircadiaBridgesProvider enableBotsBridge={true} enableGraphBridge={true}>
-              <ImmersiveApp />
+              <Suspense fallback={<LoadingScreen message="Loading immersive client..." />}>
+                <ImmersiveApp />
+              </Suspense>
             </VircadiaBridgesProvider>
           </BotsDataProvider>
         ) : (

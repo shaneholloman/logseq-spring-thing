@@ -224,6 +224,18 @@ export function stopHeartbeat() {
   }
 }
 
+/**
+ * Cancel any pending reconnect timer. Must be called on explicit
+ * disconnect/teardown — otherwise a scheduled reconnect fires after
+ * close() and revives the socket (leak + correctness bug).
+ */
+export function clearReconnectTimeout() {
+  if (reconnectTimeout) {
+    window.clearTimeout(reconnectTimeout);
+    reconnectTimeout = null;
+  }
+}
+
 function sendHeartbeat(
   get: () => { isConnected: boolean; socket: WebSocket | null },
 ) {
@@ -409,4 +421,6 @@ export {
   connectSolidWebSocket,
   disconnectSolidWebSocket,
   resetSolidReconnect,
+  subscribeSolidResource,
+  unsubscribeSolidResource,
 } from './solidWebSocket';

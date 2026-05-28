@@ -10,10 +10,8 @@ import { subscribeWithSelector } from 'zustand/middleware';
 import { createLogger, createErrorMetadata } from '../../utils/loggerConfig';
 import { debugState } from '../../utils/clientDebugState';
 import { useSettingsStore } from '../settingsStore';
-import type { WebSocketMessage } from '../../types/websocketTypes';
 import { webSocketRegistry } from '../../services/WebSocketRegistry';
 import { webSocketEventBus } from '../../services/WebSocketEventBus';
-import type { NodeType } from '../../types/binaryProtocol';
 
 // ── Module imports ─────────────────────────────────────────────────────
 import {
@@ -26,7 +24,7 @@ import {
   processMessageQueue,
   startHeartbeat,
   stopHeartbeat,
-  handleHeartbeatResponse,
+  clearReconnectTimeout,
   attemptReconnect,
   sendAuthOnConnect,
   registerMessageHandler,
@@ -36,13 +34,13 @@ import {
   registerEventHandler,
   connectSolidWebSocket,
   disconnectSolidWebSocket,
+  subscribeSolidResource as subscribeSolidResourceFn,
+  unsubscribeSolidResource as unsubscribeSolidResourceFn,
   getHandlerState,
   resetHandlerState,
 } from './connectionManager';
 
 import {
-  validateBinaryData,
-  processBinaryData,
   initializeBatchQueue,
   destroyBatchQueue,
   sendNodePositionUpdates as sendNodePositionUpdatesFn,
@@ -60,7 +58,8 @@ import {
   resetFilterState,
 } from './filterSync';
 
-import { handleTextMessage } from './textMessageHandler';
+import { createBinaryFrameDispatcher, createMessageHandler } from './binaryFrameDispatcher';
+import { createInitialState, createResetPatch } from './storeState';
 
 import type {
   WebSocketState,
@@ -115,16 +114,6 @@ export const useWebSocketStore = create<WebSocketState>()(
       notifyConnectionStateHandlers(get().connectionState);
     };
 
-    const validateMessage = (message: unknown): message is WebSocketMessage => {
-      return (
-        message !== null &&
-        typeof message === 'object' &&
-        typeof (message as WebSocketMessage).type === 'string' &&
-        (message as WebSocketMessage).type.length > 0 &&
-        (message as WebSocketMessage).type.length <= 100
-      );
-    };
-
     // Defer settings subscription to avoid circular import initialization crash.
     queueMicrotask(() => {
       let previousCustomBackendUrl = useSettingsStore.getState().settings?.system?.customBackendUrl;
@@ -154,34 +143,7 @@ export const useWebSocketStore = create<WebSocketState>()(
 
     return {
       // ── Initial state ────────────────────────────────────────────
-      socket: null,
-      isConnected: false,
-      isServerReady: false,
-      connectionState: {
-        status: 'disconnected',
-        reconnectAttempts: 0
-      },
-      url: getUrlFromSettings(),
-      solidSocket: null,
-      isSolidConnected: false,
-      solidSubscriptions: new Map(),
-      nodeTypeMap: new Map(),
-      messageQueue: [],
-      statistics: {
-        messagesReceived: 0,
-        messagesSent: 0,
-        bytesReceived: 0,
-        bytesSent: 0,
-        connectionTime: 0,
-        reconnections: 0,
-        averageLatency: 0,
-        messagesByType: {},
-        errors: 0,
-        lastActivity: Date.now()
-      },
-      reconnectInterval: 1000,
-      maxReconnectAttempts: 10,
-      reconnectAttempts: 0,
+      ...createInitialState(),
 
       // ── Actions ──────────────────────────────────────────────────
 
@@ -234,104 +196,18 @@ export const useWebSocketStore = create<WebSocketState>()(
             processMessageQueue(get, set);
           };
 
-          // ADR-03 D2: single-flight binary-frame discipline.
-          //
-          // At most one frame is being processed across the `await` inside
-          // processBinaryData (which crosses the Comlink boundary into the
-          // worker). A second frame arriving during in-flight processing
-          // replaces _pendingLatest (newest-wins, max one pending). Drained
-          // via queueMicrotask once the in-flight promise settles.
-          //
-          // Replaces the previous _pendingBinaryFrame/_binaryFrameScheduled
-          // pair, which was synchronous-slot-only and did not guard against
-          // re-entry across the Comlink await.
-          let _binaryFrameInFlight = false;
-          let _pendingLatest: ArrayBuffer | null = null;
-          let _binaryDropCount = 0;
+          // ADR-03 D2: single-flight binary-frame discipline. The dispatcher
+          // is per-connection so in-flight/pending buffers never leak across
+          // reconnects. See binaryFrameDispatcher.ts.
+          const binaryDispatcher = createBinaryFrameDispatcher(get, set);
 
-          const handleBinaryFrame = (buffer: ArrayBuffer): void => {
-            if (_binaryFrameInFlight) {
-              if (_pendingLatest !== null) {
-                _binaryDropCount++;
-                if (_binaryDropCount % 100 === 1) {
-                  logger.debug(`[BinaryVelocity] Dropped ${_binaryDropCount} stale binary frames (newest-wins)`);
-                }
-              }
-              _pendingLatest = buffer;
-              return;
-            }
-
-            _binaryFrameInFlight = true;
-            Promise.resolve(processBinaryData(buffer, get, set))
-              .catch(err => {
-                logger.error('Error in binary frame processing:', createErrorMetadata(err));
-              })
-              .finally(() => {
-                _binaryFrameInFlight = false;
-                if (_pendingLatest !== null) {
-                  const next = _pendingLatest;
-                  _pendingLatest = null;
-                  // Microtask yield between frames so React render loop gets a chance.
-                  queueMicrotask(() => handleBinaryFrame(next));
-                }
-              });
-          };
-
-          socket.onmessage = (event: MessageEvent) => {
-            if (get().socket !== socket) return;
-
-            if (event.data === 'pong') {
-              handleHeartbeatResponse();
-              return;
-            }
-
-            if (event.data instanceof Blob) {
-              if (debugState.isDataDebugEnabled()) {
-                logger.debug('Received binary blob data');
-              }
-
-              event.data.arrayBuffer().then(buffer => {
-                if (validateBinaryData(buffer)) {
-                  handleBinaryFrame(buffer);
-                } else {
-                  logger.warn('Invalid binary data received, skipping processing');
-                }
-              }).catch(error => {
-                logger.error('Error converting Blob to ArrayBuffer:', createErrorMetadata(error));
-              });
-              return;
-            }
-
-            if (event.data instanceof ArrayBuffer) {
-              if (debugState.isDataDebugEnabled()) {
-                logger.debug(`Received binary ArrayBuffer data: ${event.data.byteLength} bytes`);
-              }
-              if (validateBinaryData(event.data)) {
-                handleBinaryFrame(event.data);
-              } else {
-                logger.warn('Invalid binary data received, skipping processing');
-              }
-              return;
-            }
-
-            try {
-              if (typeof event.data !== 'string' || event.data.trim() === '') {
-                logger.warn('Received empty or invalid message data');
-                return;
-              }
-
-              const message = JSON.parse(event.data) as WebSocketMessage;
-
-              if (!validateMessage(message)) {
-                logger.warn('Received malformed message, skipping processing');
-                return;
-              }
-
-              handleTextMessage(message, get, set, () => processMessageQueue(get, set));
-            } catch (error) {
-              logger.error('Error parsing WebSocket message:', createErrorMetadata(error));
-            }
-          };
+          socket.onmessage = createMessageHandler(
+            socket,
+            get,
+            set,
+            binaryDispatcher,
+            () => processMessageQueue(get, set),
+          );
 
           socket.onclose = (event: CloseEvent) => {
             if (get().socket !== null && get().socket !== socket) return;
@@ -397,6 +273,7 @@ export const useWebSocketStore = create<WebSocketState>()(
         const state = get();
         if (state.socket) {
           stopHeartbeat();
+          clearReconnectTimeout();
           webSocketRegistry.unregister('graph');
           destroyBatchQueue();
           cleanupFilterSubscriptions();
@@ -553,55 +430,11 @@ export const useWebSocketStore = create<WebSocketState>()(
         disconnectSolidWebSocket(get, set);
       },
 
-      subscribeSolidResource: (resourceUrl: string, callback: SolidNotificationCallback) => {
-        set(state => {
-          const newSubscriptions = new Map(state.solidSubscriptions);
-          if (!newSubscriptions.has(resourceUrl)) {
-            newSubscriptions.set(resourceUrl, new Set());
+      subscribeSolidResource: (resourceUrl: string, callback: SolidNotificationCallback) =>
+        subscribeSolidResourceFn(set, resourceUrl, callback),
 
-            if (state.solidSocket?.readyState === WebSocket.OPEN) {
-              state.solidSocket.send(`sub ${resourceUrl}`);
-              logger.debug('Subscribed to Solid resource', { url: resourceUrl });
-            }
-          }
-
-          newSubscriptions.get(resourceUrl)!.add(callback);
-          return { solidSubscriptions: newSubscriptions };
-        });
-
-        return () => {
-          set(state => {
-            const newSubscriptions = new Map(state.solidSubscriptions);
-            const callbacks = newSubscriptions.get(resourceUrl);
-            if (callbacks) {
-              callbacks.delete(callback);
-
-              if (callbacks.size === 0) {
-                if (state.solidSocket?.readyState === WebSocket.OPEN) {
-                  state.solidSocket.send(`unsub ${resourceUrl}`);
-                  logger.debug('Unsubscribed from Solid resource', { url: resourceUrl });
-                }
-                newSubscriptions.delete(resourceUrl);
-              }
-            }
-            return { solidSubscriptions: newSubscriptions };
-          });
-        };
-      },
-
-      unsubscribeSolidResource: (resourceUrl: string) => {
-        set(state => {
-          const newSubscriptions = new Map(state.solidSubscriptions);
-          if (newSubscriptions.has(resourceUrl)) {
-            if (state.solidSocket?.readyState === WebSocket.OPEN) {
-              state.solidSocket.send(`unsub ${resourceUrl}`);
-              logger.debug('Unsubscribed from Solid resource (all callbacks)', { url: resourceUrl });
-            }
-            newSubscriptions.delete(resourceUrl);
-          }
-          return { solidSubscriptions: newSubscriptions };
-        });
-      },
+      unsubscribeSolidResource: (resourceUrl: string) =>
+        unsubscribeSolidResourceFn(set, resourceUrl),
 
       isSolidWebSocketConnected: () => {
         const state = get();
@@ -636,34 +469,7 @@ export const useWebSocketStore = create<WebSocketState>()(
         resetBinaryState();
         resetFilterState();
 
-        set({
-          socket: null,
-          isConnected: false,
-          isServerReady: false,
-          connectionState: {
-            status: 'disconnected',
-            reconnectAttempts: 0
-          },
-          url: getUrlFromSettings(),
-          solidSocket: null,
-          isSolidConnected: false,
-          solidSubscriptions: new Map(),
-          nodeTypeMap: new Map(),
-          messageQueue: [],
-          statistics: {
-            messagesReceived: 0,
-            messagesSent: 0,
-            bytesReceived: 0,
-            bytesSent: 0,
-            connectionTime: 0,
-            reconnections: 0,
-            averageLatency: 0,
-            messagesByType: {},
-            errors: 0,
-            lastActivity: Date.now()
-          },
-          reconnectAttempts: 0
-        });
+        set(createResetPatch());
       },
 
       _getInternals: () => {
@@ -680,17 +486,7 @@ export const useWebSocketStore = create<WebSocketState>()(
 // ── Backward-compatible service wrapper (from serviceCompat.ts) ────────
 export { webSocketService, WebSocketServiceCompat } from './serviceCompat';
 
-// Utility hooks for common selections
-export const useWebSocketConnection = () => useWebSocketStore(state => ({
-  isConnected: state.isConnected,
-  isServerReady: state.isServerReady,
-  connectionState: state.connectionState
-}));
-
-export const useWebSocketActions = () => useWebSocketStore(state => ({
-  connect: state.connect,
-  disconnect: state.disconnect,
-  sendMessage: state.sendMessage
-}));
+// Utility hooks for common selections (from hooks.ts)
+export { useWebSocketConnection, useWebSocketActions } from './hooks';
 
 export default useWebSocketStore;

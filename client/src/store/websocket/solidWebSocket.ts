@@ -209,3 +209,68 @@ export function disconnectSolidWebSocket(
     solidSubscriptions: new Map()
   });
 }
+
+// ── Resource subscription management ───────────────────────────────────
+
+type SolidSubState = { solidSubscriptions: Map<string, Set<SolidNotificationCallback>>; solidSocket: WebSocket | null };
+type SolidSubSet = (updater: (s: SolidSubState) => { solidSubscriptions: Map<string, Set<SolidNotificationCallback>> }) => void;
+
+/**
+ * Subscribe a callback to a Solid resource URL. Sends `sub` on the wire the
+ * first time a URL is seen. Returns an unsubscribe fn that removes the
+ * callback and sends `unsub` when the last callback for that URL is gone.
+ */
+export function subscribeSolidResource(
+  set: SolidSubSet,
+  resourceUrl: string,
+  callback: SolidNotificationCallback,
+): () => void {
+  set(state => {
+    const newSubscriptions = new Map(state.solidSubscriptions);
+    if (!newSubscriptions.has(resourceUrl)) {
+      newSubscriptions.set(resourceUrl, new Set());
+
+      if (state.solidSocket?.readyState === WebSocket.OPEN) {
+        state.solidSocket.send(`sub ${resourceUrl}`);
+        logger.debug('Subscribed to Solid resource', { url: resourceUrl });
+      }
+    }
+
+    newSubscriptions.get(resourceUrl)!.add(callback);
+    return { solidSubscriptions: newSubscriptions };
+  });
+
+  return () => {
+    set(state => {
+      const newSubscriptions = new Map(state.solidSubscriptions);
+      const callbacks = newSubscriptions.get(resourceUrl);
+      if (callbacks) {
+        callbacks.delete(callback);
+
+        if (callbacks.size === 0) {
+          if (state.solidSocket?.readyState === WebSocket.OPEN) {
+            state.solidSocket.send(`unsub ${resourceUrl}`);
+            logger.debug('Unsubscribed from Solid resource', { url: resourceUrl });
+          }
+          newSubscriptions.delete(resourceUrl);
+        }
+      }
+      return { solidSubscriptions: newSubscriptions };
+    });
+  };
+}
+
+/** Unsubscribe ALL callbacks for a resource URL and send `unsub` on the wire. */
+export function unsubscribeSolidResource(set: SolidSubSet, resourceUrl: string): void {
+  set(state => {
+    const newSubscriptions = new Map(state.solidSubscriptions);
+    if (newSubscriptions.has(resourceUrl)) {
+      if (state.solidSocket?.readyState === WebSocket.OPEN) {
+        state.solidSocket.send(`unsub ${resourceUrl}`);
+        logger.debug('Unsubscribed from Solid resource (all callbacks)', { url: resourceUrl });
+      }
+      newSubscriptions.delete(resourceUrl);
+    }
+    return { solidSubscriptions: newSubscriptions };
+  });
+}
