@@ -463,4 +463,64 @@ mod tests {
         assert!((back.dt - p.dt).abs() < f32::EPSILON);
         assert_eq!(back.enabled, p.enabled);
     }
+
+    // Regression: the three graph-layout controls (graph separation, Z-axis
+    // compression, adaptive speed) must propagate verbatim from persisted
+    // PhysicsSettings into the GPU SimulationParams. A previous bug hardcoded
+    // these on the GPU path, so non-default user values had no visible effect.
+    #[test]
+    fn test_layout_controls_propagate_from_physics_settings() {
+        let mut physics = PhysicsSettings::default();
+        physics.graph_separation_x = 700.0;
+        physics.axis_compression_z = 0.5;
+        physics.adaptive_speed = false;
+
+        let params = SimulationParams::from(&physics);
+
+        assert!((params.graph_separation_x - 700.0).abs() < f32::EPSILON);
+        assert!((params.axis_compression_z - 0.5).abs() < f32::EPSILON);
+        assert!(!params.adaptive_speed);
+    }
+
+    // Regression: persisted physics arrives from SQLite as a complete camelCase
+    // JSON object. The boot read path (app_state.rs) and the GET handler both
+    // deserialize that stored value, so a full round-trip must preserve the
+    // three layout controls rather than silently falling back to 0.0 / true.
+    #[test]
+    fn test_physics_settings_camelcase_roundtrip_preserves_layout_controls() {
+        let mut physics = PhysicsSettings::default();
+        physics.graph_separation_x = 700.0;
+        physics.axis_compression_z = 0.5;
+        physics.adaptive_speed = false;
+
+        let stored = serde_json::to_value(&physics).unwrap();
+        // The stored object uses camelCase keys (serde rename_all).
+        assert!(stored.get("graphSeparationX").is_some());
+
+        let loaded: PhysicsSettings = serde_json::from_value(stored).unwrap();
+        assert!((loaded.graph_separation_x - 700.0).abs() < f32::EPSILON);
+        assert!((loaded.axis_compression_z - 0.5).abs() < f32::EPSILON);
+        assert!(!loaded.adaptive_speed);
+    }
+
+    // Regression: the three layout-control fields carry snake_case serde aliases
+    // so a legacy/persisted object that used snake_case keys for them still
+    // deserializes (the rest of the object stays camelCase).
+    #[test]
+    fn test_physics_settings_snake_case_aliases_for_layout_controls() {
+        let physics = PhysicsSettings::default();
+        let mut stored = serde_json::to_value(&physics).unwrap();
+        let obj = stored.as_object_mut().unwrap();
+        obj.remove("graphSeparationX");
+        obj.remove("axisCompressionZ");
+        obj.remove("adaptiveSpeed");
+        obj.insert("graph_separation_x".into(), serde_json::json!(700.0));
+        obj.insert("axis_compression_z".into(), serde_json::json!(0.5));
+        obj.insert("adaptive_speed".into(), serde_json::json!(false));
+
+        let loaded: PhysicsSettings = serde_json::from_value(stored).unwrap();
+        assert!((loaded.graph_separation_x - 700.0).abs() < f32::EPSILON);
+        assert!((loaded.axis_compression_z - 0.5).abs() < f32::EPSILON);
+        assert!(!loaded.adaptive_speed);
+    }
 }
