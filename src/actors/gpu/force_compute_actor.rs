@@ -1393,6 +1393,13 @@ impl Handler<ComputeForces> for ForceComputeActor {
                                 let z_scale = 1.0 - z_compress;
                                 let needs_sep = sep_x > 0.0;
                                 let needs_compress = z_compress > 0.0;
+                                // Once-per-300-iter diagnostic to verify the params reach this site.
+                                if actor.gpu_state.iteration_count % 300 == 0 && (needs_sep || needs_compress) {
+                                    info!(
+                                        "ForceComputeActor: applying dual-graph projection iter={} sep_x={:.1} z_compress={:.2} populations={} (k+o+a)",
+                                        actor.gpu_state.iteration_count, sep_x, z_compress, actor.node_population.len()
+                                    );
+                                }
                                 if (needs_sep || needs_compress) && !actor.node_population.is_empty() {
                                     for (i, (pos, _vel)) in actor.position_velocity_buffer.iter_mut().enumerate() {
                                         if let Some(&pop) = actor.node_population.get(i) {
