@@ -327,3 +327,145 @@ impl LabelMappingCache {
         (hits, misses, hit_rate)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── GPUMemoryTracker (pure-Rust, no device allocation) ────────────────
+
+    #[test]
+    fn tracker_starts_empty() {
+        let tracker = GPUMemoryTracker::new();
+        let (total, map) = tracker.get_memory_usage();
+        assert_eq!(total, 0);
+        assert!(map.is_empty());
+    }
+
+    #[test]
+    fn tracker_records_allocation_and_total() {
+        let tracker = GPUMemoryTracker::new();
+        tracker.track_allocation("buf_a".to_string(), 1024);
+        let (total, map) = tracker.get_memory_usage();
+        assert_eq!(total, 1024);
+        assert_eq!(map.get("buf_a").copied(), Some(1024));
+    }
+
+    #[test]
+    fn tracker_deallocation_reduces_total() {
+        let tracker = GPUMemoryTracker::new();
+        tracker.track_allocation("buf_b".to_string(), 512);
+        tracker.track_deallocation("buf_b".to_string(), 512);
+        let (total, map) = tracker.get_memory_usage();
+        assert_eq!(total, 0);
+        assert!(!map.contains_key("buf_b"));
+    }
+
+    #[test]
+    fn tracker_multiple_buffers_sum_correctly() {
+        let tracker = GPUMemoryTracker::new();
+        tracker.track_allocation("x".to_string(), 100);
+        tracker.track_allocation("y".to_string(), 200);
+        tracker.track_allocation("z".to_string(), 300);
+        let (total, _) = tracker.get_memory_usage();
+        assert_eq!(total, 600);
+    }
+
+    #[test]
+    fn tracker_check_leaks_returns_names_when_allocations_remain() {
+        let tracker = GPUMemoryTracker::new();
+        tracker.track_allocation("leaked_buf".to_string(), 128);
+        let leaks = tracker.check_leaks();
+        assert!(leaks.contains(&"leaked_buf".to_string()));
+    }
+
+    #[test]
+    fn tracker_check_leaks_empty_when_all_freed() {
+        let tracker = GPUMemoryTracker::new();
+        tracker.track_allocation("tmp".to_string(), 64);
+        tracker.track_deallocation("tmp".to_string(), 64);
+        let leaks = tracker.check_leaks();
+        assert!(leaks.is_empty());
+    }
+
+    #[test]
+    fn tracker_deallocation_of_unknown_key_is_idempotent() {
+        let tracker = GPUMemoryTracker::new();
+        // Should not panic; warns but doesn't alter total.
+        tracker.track_deallocation("nonexistent".to_string(), 100);
+        let (total, _) = tracker.get_memory_usage();
+        assert_eq!(total, 0);
+    }
+
+    // ── LabelMappingCache ─────────────────────────────────────────────────
+
+    #[test]
+    fn cache_miss_calls_compute_fn() {
+        let cache = LabelMappingCache::new();
+        let mut computed = false;
+        let result = cache.get_or_compute_mapping(&[1, 2, 3], |_labels| {
+            computed = true;
+            vec![10, 20, 30]
+        });
+        assert!(computed);
+        assert_eq!(result, vec![10, 20, 30]);
+    }
+
+    #[test]
+    fn cache_hit_skips_compute_fn() {
+        let cache = LabelMappingCache::new();
+        // Prime the cache.
+        cache.get_or_compute_mapping(&[5, 6], |_| vec![50, 60]);
+        let mut compute_called = false;
+        let result = cache.get_or_compute_mapping(&[5, 6], |_| {
+            compute_called = true;
+            vec![99]
+        });
+        assert!(!compute_called, "compute should not be called on hit");
+        assert_eq!(result, vec![50, 60]);
+    }
+
+    #[test]
+    fn cache_stats_reflect_hits_and_misses() {
+        let cache = LabelMappingCache::new();
+        // Two misses.
+        cache.get_or_compute_mapping(&[1], |_| vec![1]);
+        cache.get_or_compute_mapping(&[2], |_| vec![2]);
+        // One hit.
+        cache.get_or_compute_mapping(&[1], |_| vec![99]);
+
+        let (hits, misses, rate) = cache.get_cache_stats();
+        assert_eq!(hits, 1);
+        assert_eq!(misses, 2);
+        assert!((rate - 1.0 / 3.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn cache_stats_zero_hit_rate_when_no_operations() {
+        let cache = LabelMappingCache::new();
+        let (hits, misses, rate) = cache.get_cache_stats();
+        assert_eq!(hits, 0);
+        assert_eq!(misses, 0);
+        assert_eq!(rate, 0.0);
+    }
+
+    #[test]
+    fn cache_different_keys_are_stored_independently() {
+        let cache = LabelMappingCache::new();
+        let r1 = cache.get_or_compute_mapping(&[1, 2], |_| vec![10]);
+        let r2 = cache.get_or_compute_mapping(&[3, 4], |_| vec![20]);
+        assert_eq!(r1, vec![10]);
+        assert_eq!(r2, vec![20]);
+    }
+
+    #[test]
+    fn cache_empty_label_slice_is_valid_key() {
+        let cache = LabelMappingCache::new();
+        let result = cache.get_or_compute_mapping(&[], |_| vec![]);
+        assert!(result.is_empty());
+        // Second call should hit.
+        let mut called = false;
+        cache.get_or_compute_mapping(&[], |_| { called = true; vec![] });
+        assert!(!called);
+    }
+}

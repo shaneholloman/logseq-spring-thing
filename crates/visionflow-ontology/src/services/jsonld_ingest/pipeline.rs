@@ -145,3 +145,89 @@ pub async fn ingest_page(
 ) -> Result<IngestOutcome> {
     parse_and_emit(markdown, metadata)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn minimal_valid_block() -> &'static str {
+        r#"```json-ld
+{
+  "@context": "https://narrativegoldmine.com/context/v1.jsonld",
+  "@id": "urn:visionflow:page:test-abc",
+  "@type": "Page",
+  "vc:slug": "test-abc",
+  "prov:wasAttributedTo": { "@id": "did:nostr:npub1test" },
+  "prov:generatedAtTime": { "@value": "2026-01-01T00:00:00Z", "@type": "xsd:dateTime" }
+}
+```"#
+    }
+
+    #[test]
+    fn parse_and_emit_produces_quads_from_valid_page_block() {
+        let meta = PageMetadata::new("test.md");
+        let outcome = parse_and_emit(minimal_valid_block(), &meta).unwrap();
+        assert_eq!(outcome.block_count, 1);
+        assert!(outcome.quad_count > 0);
+        assert_eq!(outcome.source_path, "test.md");
+    }
+
+    #[test]
+    fn parse_and_emit_fails_with_no_fenced_blocks() {
+        let meta = PageMetadata::new("empty.md");
+        let err = parse_and_emit("# Just a heading\n\nNo JSON-LD here.", &meta).unwrap_err();
+        assert!(
+            matches!(err, JsonLdIngestError::MissingCodeFenceMarker { .. }),
+            "expected MissingCodeFenceMarker, got {:?}",
+            err
+        );
+    }
+
+    #[test]
+    fn parse_and_emit_propagates_json_parse_error() {
+        let markdown = "```json-ld\nnot valid json{{{\n```\n";
+        let meta = PageMetadata::new("broken.md");
+        let err = parse_and_emit(markdown, &meta).unwrap_err();
+        assert!(
+            matches!(err, JsonLdIngestError::JsonParseError { .. }),
+            "expected JsonParseError, got {:?}",
+            err
+        );
+    }
+
+    #[test]
+    fn parse_and_emit_returns_context_missing_error_for_block_without_context() {
+        let markdown = r#"```json-ld
+{
+  "@id": "urn:visionflow:page:no-ctx",
+  "@type": "Page"
+}
+```"#;
+        let meta = PageMetadata::new("no_ctx.md");
+        let err = parse_and_emit(markdown, &meta).unwrap_err();
+        assert!(
+            matches!(err, JsonLdIngestError::ContextMissing { .. }),
+            "expected ContextMissing, got {:?}",
+            err
+        );
+    }
+
+    #[test]
+    fn page_metadata_source_path_roundtrips() {
+        let meta = PageMetadata::new("pages/cybernetics.md");
+        assert_eq!(meta.source_path, "pages/cybernetics.md");
+        assert!(meta.content_sha1.is_none());
+    }
+
+    #[test]
+    fn multiple_blocks_produce_cumulative_quads() {
+        let block = minimal_valid_block();
+        // Two identical blocks (same @id) in one file.
+        let markdown = format!("{}\n\n{}", block, block);
+        let meta = PageMetadata::new("multi.md");
+        let outcome = parse_and_emit(&markdown, &meta).unwrap();
+        assert_eq!(outcome.block_count, 2);
+        // Quads for two blocks ≥ quads for one block.
+        assert!(outcome.quad_count >= 2);
+    }
+}

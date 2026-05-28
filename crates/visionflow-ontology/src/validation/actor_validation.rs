@@ -200,4 +200,123 @@ mod tests {
         assert!(report.is_valid()); // Warnings don't fail validation
         assert_eq!(report.warnings.len(), 1);
     }
+
+    #[test]
+    fn test_validation_report_info_severity_does_not_fail() {
+        let mut report = ValidationReport::new();
+        report.add(ValidationItem {
+            name: "info_actor".to_string(),
+            expected: true,
+            present: false,
+            severity: Severity::Info,
+            reason: "Informational".to_string(),
+        });
+        assert!(report.is_valid());
+        assert_eq!(report.infos.len(), 1);
+    }
+
+    #[test]
+    fn test_unexpected_present_item_goes_to_infos() {
+        let mut report = ValidationReport::new();
+        report.add(ValidationItem {
+            name: "surprise_actor".to_string(),
+            expected: false,
+            present: true,
+            severity: Severity::Info,
+            reason: "".to_string(),
+        });
+        assert!(report.is_valid());
+        assert_eq!(report.infos.len(), 1);
+        assert!(report.infos[0].contains("surprise_actor"));
+    }
+
+    #[test]
+    fn test_into_result_ok_when_valid() {
+        let report = ValidationReport::new();
+        assert!(report.into_result().is_ok());
+    }
+
+    #[test]
+    fn test_into_result_err_when_critical_error() {
+        let mut report = ValidationReport::new();
+        report.add(ValidationItem {
+            name: "bad_actor".to_string(),
+            expected: true,
+            present: false,
+            severity: Severity::Critical,
+            reason: "required".to_string(),
+        });
+        let result = report.into_result();
+        assert!(result.is_err());
+        let msg = result.unwrap_err();
+        assert!(msg.contains("bad_actor") || msg.contains("1 error"));
+    }
+
+    #[test]
+    fn test_env_bool_returns_default_when_unset() {
+        let unique_key = "VISIONFLOW_TEST_BOOL_UNSET_12345";
+        std::env::remove_var(unique_key);
+        assert!(!env_bool(unique_key, false));
+        assert!(env_bool(unique_key, true));
+    }
+
+    #[test]
+    fn test_env_bool_parses_true_string() {
+        let key = "VISIONFLOW_TEST_BOOL_TRUE_12345";
+        std::env::set_var(key, "true");
+        assert!(env_bool(key, false));
+        std::env::remove_var(key);
+    }
+
+    #[test]
+    fn test_env_bool_parses_false_string() {
+        let key = "VISIONFLOW_TEST_BOOL_FALSE_12345";
+        std::env::set_var(key, "false");
+        assert!(!env_bool(key, true));
+        std::env::remove_var(key);
+    }
+
+    #[test]
+    fn test_env_is_set_returns_false_when_unset() {
+        let key = "VISIONFLOW_TEST_IS_SET_UNSET_12345";
+        std::env::remove_var(key);
+        assert!(!env_is_set(key));
+    }
+
+    #[test]
+    fn test_env_is_set_returns_true_when_non_empty() {
+        let key = "VISIONFLOW_TEST_IS_SET_NONEMPTY_12345";
+        std::env::set_var(key, "anything");
+        assert!(env_is_set(key));
+        std::env::remove_var(key);
+    }
+
+    #[test]
+    fn test_env_is_set_returns_false_for_empty_value() {
+        let key = "VISIONFLOW_TEST_IS_SET_EMPTY_12345";
+        std::env::set_var(key, "");
+        assert!(!env_is_set(key));
+        std::env::remove_var(key);
+    }
+
+    #[test]
+    fn test_is_feature_enabled_unknown_returns_false() {
+        assert!(!is_feature_enabled("nonexistent_feature_xyz"));
+    }
+
+    #[test]
+    fn test_multiple_critical_errors_all_captured() {
+        let mut report = ValidationReport::new();
+        for i in 0..3 {
+            report.add(ValidationItem {
+                name: format!("actor_{}", i),
+                expected: true,
+                present: false,
+                severity: Severity::Critical,
+                reason: "required".to_string(),
+            });
+        }
+        assert!(!report.is_valid());
+        assert_eq!(report.errors.len(), 3);
+    }
 }
