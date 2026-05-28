@@ -593,4 +593,205 @@ mod tests {
 
         assert_eq!(batch_msg, deserialized);
     }
+
+    // -----------------------------------------------------------------------
+    // Round-trip tests for every BinaryMessage variant
+    // -----------------------------------------------------------------------
+
+    fn roundtrip(msg: BinaryMessage) -> BinaryMessage {
+        let mut p = BinarySettingsProtocol::new();
+        let bytes = p.serialize_message(&msg).unwrap();
+        p.deserialize_message(&bytes).unwrap()
+    }
+
+    #[test]
+    fn get_setting_roundtrip() {
+        let msg = BinaryMessage::GetSetting { path_id: 42 };
+        assert_eq!(roundtrip(msg.clone()), msg);
+    }
+
+    #[test]
+    fn set_setting_all_value_types() {
+        let cases: Vec<BinaryValue> = vec![
+            BinaryValue::Null,
+            BinaryValue::Bool(true),
+            BinaryValue::Bool(false),
+            BinaryValue::I32(i32::MIN),
+            BinaryValue::I32(i32::MAX),
+            BinaryValue::I64(i64::MIN),
+            BinaryValue::I64(i64::MAX),
+            BinaryValue::F32(f32::MAX),
+            BinaryValue::F32(-0.0),
+            BinaryValue::F64(f64::MIN_POSITIVE),
+            BinaryValue::String(String::new()),
+            BinaryValue::String("hello world".to_string()),
+            BinaryValue::Bytes(vec![]),
+            BinaryValue::Bytes(vec![0xFF, 0x00, 0xAB]),
+        ];
+        for value in cases {
+            let msg = BinaryMessage::SetSetting { path_id: 1, value: value.clone() };
+            assert_eq!(roundtrip(msg), BinaryMessage::SetSetting { path_id: 1, value });
+        }
+    }
+
+    #[test]
+    fn set_setting_nested_array_roundtrip() {
+        let inner = BinaryValue::Array(vec![BinaryValue::I32(1), BinaryValue::Bool(false)]);
+        let msg = BinaryMessage::SetSetting {
+            path_id: 5,
+            value: BinaryValue::Array(vec![inner, BinaryValue::Null]),
+        };
+        assert_eq!(roundtrip(msg.clone()), msg);
+    }
+
+    #[test]
+    fn batch_get_roundtrip() {
+        let msg = BinaryMessage::BatchGet { path_ids: vec![1, 2, 3, 100, u32::MAX] };
+        assert_eq!(roundtrip(msg.clone()), msg);
+    }
+
+    #[test]
+    fn batch_get_empty_roundtrip() {
+        let msg = BinaryMessage::BatchGet { path_ids: vec![] };
+        assert_eq!(roundtrip(msg.clone()), msg);
+    }
+
+    #[test]
+    fn response_roundtrip() {
+        let msg = BinaryMessage::Response { success: true, data: vec![1, 2, 3, 4] };
+        assert_eq!(roundtrip(msg.clone()), msg);
+
+        let msg_fail = BinaryMessage::Response { success: false, data: vec![] };
+        assert_eq!(roundtrip(msg_fail.clone()), msg_fail);
+    }
+
+    #[test]
+    fn error_roundtrip() {
+        let msg = BinaryMessage::Error { code: 404, message: "not found".to_string() };
+        assert_eq!(roundtrip(msg.clone()), msg);
+    }
+
+    #[test]
+    fn ping_pong_roundtrip() {
+        assert_eq!(roundtrip(BinaryMessage::Ping), BinaryMessage::Ping);
+        assert_eq!(roundtrip(BinaryMessage::Pong), BinaryMessage::Pong);
+    }
+
+    #[test]
+    fn delta_message_serialize_does_not_panic() {
+        // NOTE: BinaryMessage::Delta has an asymmetry between serialize (writes one computed
+        // delta value) and deserialize (reads two values: old + new). A full round-trip is
+        // therefore not possible with the current implementation. This test verifies that
+        // serialize at least produces bytes without panicking and that the path_id byte
+        // is present in the output.
+        let mut p = BinarySettingsProtocol::new();
+        let msg = BinaryMessage::Delta {
+            path_id: 7,
+            old_value: BinaryValue::F32(1.0),
+            new_value: BinaryValue::F32(2.5),
+        };
+        let bytes = p.serialize_message(&msg).unwrap();
+        // Uncompressed path: bytes[0] == 0x00 (no-compression flag)
+        assert!(!bytes.is_empty());
+        // The type byte 0x05 is at offset 1 (after the compression flag byte).
+        assert_eq!(bytes[1], 0x05, "expected Delta type byte");
+    }
+
+    // -----------------------------------------------------------------------
+    // PathRegistry idempotency
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn path_registry_idempotent_register() {
+        let mut registry = PathRegistry::new();
+        let id1 = registry.register_path("a.b.c".to_string());
+        let id2 = registry.register_path("a.b.c".to_string());
+        assert_eq!(id1, id2);
+    }
+
+    #[test]
+    fn path_registry_different_paths_different_ids() {
+        let mut registry = PathRegistry::new();
+        let ids: Vec<u32> = (0..10).map(|i| registry.register_path(format!("path.{i}"))).collect();
+        // All IDs are unique.
+        let mut sorted = ids.clone();
+        sorted.sort_unstable();
+        sorted.dedup();
+        assert_eq!(sorted.len(), ids.len());
+    }
+
+    #[test]
+    fn path_registry_lookup_by_id_round_trip() {
+        let mut registry = PathRegistry::new();
+        let path = "visualisation.graphs.logseq.physics.damping";
+        let id = registry.register_path(path.to_string());
+        assert_eq!(registry.get_path_by_id(id).unwrap().as_str(), path);
+        assert_eq!(registry.get_path_id(path), Some(id));
+    }
+
+    #[test]
+    fn path_registry_missing_id_returns_none() {
+        let registry = PathRegistry::new();
+        assert!(registry.get_path_by_id(999_999).is_none());
+        assert!(registry.get_path_id("no.such.path").is_none());
+    }
+
+    // -----------------------------------------------------------------------
+    // Compression threshold: large payload should use compressed path
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn batch_set_below_compression_threshold_roundtrip() {
+        // NOTE: BinarySettingsProtocol wraps a stateful flate2::Compress that can only
+        // complete one stream (returns StreamEnd once). Any payload that crosses the
+        // 256-byte threshold will trigger compression; subsequent serialize calls on the
+        // same instance then fail. This test intentionally stays under the threshold so
+        // the uncompressed path is exercised and a full round-trip is possible.
+        let updates: Vec<(u32, BinaryValue)> = (1u32..=3)
+            .map(|i| (i, BinaryValue::I32(i as i32)))
+            .collect();
+        let msg = BinaryMessage::BatchSet { updates };
+        // roundtrip() creates a fresh protocol instance each call, avoiding state exhaustion.
+        assert_eq!(roundtrip(msg.clone()), msg);
+    }
+
+    // -----------------------------------------------------------------------
+    // JSON ↔ BinaryValue conversions
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn json_to_binary_null_roundtrip() {
+        let p = BinarySettingsProtocol::new();
+        let v = p.json_to_binary_value(&serde_json::Value::Null);
+        assert_eq!(v, BinaryValue::Null);
+        assert_eq!(p.binary_value_to_json(&v), serde_json::Value::Null);
+    }
+
+    #[test]
+    fn json_to_binary_nan_f64_returns_null() {
+        let p = BinarySettingsProtocol::new();
+        // serde_json cannot represent NaN; from_f64 returns None -> Null
+        let v = BinaryValue::F64(f64::NAN);
+        let json = p.binary_value_to_json(&v);
+        assert_eq!(json, serde_json::Value::Null);
+    }
+
+    #[test]
+    fn json_bytes_encoded_as_base64_string() {
+        let p = BinarySettingsProtocol::new();
+        let bytes_val = BinaryValue::Bytes(vec![0xDE, 0xAD, 0xBE, 0xEF]);
+        let json = p.binary_value_to_json(&bytes_val);
+        // Should be a base64-encoded string, not raw bytes.
+        assert!(json.is_string());
+        let s = json.as_str().unwrap();
+        assert!(!s.is_empty());
+    }
+
+    #[test]
+    fn compression_ratio_calculation() {
+        let p = BinarySettingsProtocol::new();
+        assert_eq!(p.calculate_compression_ratio(0, 0), 0.0);
+        assert!((p.calculate_compression_ratio(100, 50) - 0.5).abs() < 1e-9);
+        assert!((p.calculate_compression_ratio(100, 100) - 0.0).abs() < 1e-9);
+    }
 }

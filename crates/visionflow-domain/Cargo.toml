@@ -34,8 +34,8 @@ specta = { version = "2.0.0-rc.22", features = ["derive", "export"] }
 validator = { version = "0.18", features = ["derive"] }
 thiserror = "2.0"
 
-# Async primitives (speech.rs uses tokio::sync::mpsc only — no runtime needed)
-tokio = { version = "1", default-features = false, features = ["sync"] }
+# Async primitives (speech.rs uses tokio::sync::mpsc; claude_flow uses time/net/io)
+tokio = { version = "1", default-features = false, features = ["sync", "time", "net", "io-util", "rt"] }
 
 # WebSocket / base64 error types referenced by SpeechError. We only import the
 # error types — neither crate's runtime is needed in domain.

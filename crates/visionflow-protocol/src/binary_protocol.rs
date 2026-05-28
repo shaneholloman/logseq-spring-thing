@@ -1179,6 +1179,288 @@ mod tests {
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("no longer supported"));
     }
+
+    // -----------------------------------------------------------------------
+    // Node-flag bit round-trip tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn flag_roundtrip_agent_all_ids() {
+        for id in [0u32, 1, 42, 0x3FFE, NODE_ID_MASK] {
+            let flagged = set_agent_flag(id);
+            assert!(is_agent_node(flagged), "id={id}");
+            assert!(!is_knowledge_node(flagged), "id={id}");
+            assert_eq!(get_actual_node_id(flagged), id, "id={id}");
+            assert_eq!(clear_all_flags(flagged), id, "id={id}");
+            assert_eq!(get_node_type(flagged), NodeType::Agent, "id={id}");
+        }
+    }
+
+    #[test]
+    fn flag_roundtrip_knowledge_all_ids() {
+        for id in [0u32, 1, 100, 0x3FFF, NODE_ID_MASK] {
+            let flagged = set_knowledge_flag(id);
+            assert!(is_knowledge_node(flagged), "id={id}");
+            assert!(!is_agent_node(flagged), "id={id}");
+            assert_eq!(get_actual_node_id(flagged), id, "id={id}");
+            assert_eq!(get_node_type(flagged), NodeType::Knowledge, "id={id}");
+        }
+    }
+
+    #[test]
+    fn flag_roundtrip_ontology_subtypes() {
+        let id = 999u32;
+        // Class
+        let c = set_ontology_class_flag(id);
+        assert_eq!(get_node_type(c), NodeType::OntologyClass);
+        assert_eq!(get_actual_node_id(c), id);
+        // Individual
+        let i = set_ontology_individual_flag(id);
+        assert_eq!(get_node_type(i), NodeType::OntologyIndividual);
+        assert_eq!(get_actual_node_id(i), id);
+        // Property
+        let p = set_ontology_property_flag(id);
+        assert_eq!(get_node_type(p), NodeType::OntologyProperty);
+        assert_eq!(get_actual_node_id(p), id);
+    }
+
+    #[test]
+    fn flag_roundtrip_unknown_plain_id() {
+        let id = 7u32;
+        assert_eq!(get_node_type(id), NodeType::Unknown);
+        assert_eq!(get_actual_node_id(id), id);
+    }
+
+    #[test]
+    fn flag_masks_do_not_overlap() {
+        // The three major flag groups must be mutually exclusive at the bit level.
+        assert_eq!(AGENT_NODE_FLAG & KNOWLEDGE_NODE_FLAG, 0);
+        assert_eq!(AGENT_NODE_FLAG & ONTOLOGY_TYPE_MASK, 0);
+        assert_eq!(KNOWLEDGE_NODE_FLAG & ONTOLOGY_TYPE_MASK, 0);
+        // NODE_ID_MASK must not touch any flag bits.
+        assert_eq!(NODE_ID_MASK & AGENT_NODE_FLAG, 0);
+        assert_eq!(NODE_ID_MASK & KNOWLEDGE_NODE_FLAG, 0);
+        assert_eq!(NODE_ID_MASK & ONTOLOGY_TYPE_MASK, 0);
+    }
+
+    // -----------------------------------------------------------------------
+    // V3 encode/decode round-trip — empty, single, 10K
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn encode_decode_empty_node_list() {
+        let nodes: Vec<(u32, BinaryNodeData)> = vec![];
+        let encoded = encode_node_data(&nodes);
+        // 1 version byte only
+        assert_eq!(encoded.len(), 1);
+        assert_eq!(encoded[0], PROTOCOL_V3);
+        let decoded = decode_node_data(&encoded).unwrap();
+        assert!(decoded.is_empty());
+    }
+
+    #[test]
+    fn encode_decode_single_node() {
+        let nodes = vec![(
+            55u32,
+            BinaryNodeData { node_id: 55, x: -1.5, y: 0.0, z: 99.9, vx: 0.5, vy: -0.5, vz: 0.0 },
+        )];
+        let encoded = encode_node_data(&nodes);
+        assert_eq!(encoded.len(), 1 + WIRE_V3_ITEM_SIZE);
+        let decoded = decode_node_data(&encoded).unwrap();
+        assert_eq!(decoded.len(), 1);
+        assert_eq!(decoded[0].0, 55);
+        assert_eq!(decoded[0].1.x, -1.5);
+        assert_eq!(decoded[0].1.z, 99.9);
+        assert_eq!(decoded[0].1.vx, 0.5);
+    }
+
+    #[test]
+    fn encode_decode_10k_nodes_stress() {
+        let nodes: Vec<(u32, BinaryNodeData)> = (1u32..=10_000)
+            .map(|i| {
+                let f = i as f32;
+                (i, BinaryNodeData { node_id: i, x: f, y: f * 2.0, z: f * 3.0, vx: 0.1, vy: 0.2, vz: 0.3 })
+            })
+            .collect();
+        let encoded = encode_node_data(&nodes);
+        assert_eq!(encoded.len(), 1 + 10_000 * WIRE_V3_ITEM_SIZE);
+        let decoded = decode_node_data(&encoded).unwrap();
+        assert_eq!(decoded.len(), 10_000);
+        // Spot-check first, middle, last
+        assert_eq!(decoded[0].0, 1);
+        assert_eq!(decoded[4999].0, 5000);
+        assert_eq!(decoded[9999].0, 10_000);
+        assert!((decoded[9999].1.x - 10_000.0_f32).abs() < 1.0);
+    }
+
+    // -----------------------------------------------------------------------
+    // NaN / Inf positions must not panic and must survive a round-trip
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn nan_inf_positions_do_not_panic() {
+        let nodes = vec![
+            (1u32, BinaryNodeData { node_id: 1, x: f32::NAN, y: f32::INFINITY, z: f32::NEG_INFINITY, vx: f32::NAN, vy: 0.0, vz: 0.0 }),
+        ];
+        // Must not panic during encode or decode.
+        let encoded = encode_node_data(&nodes);
+        let decoded = decode_node_data(&encoded).unwrap();
+        assert_eq!(decoded.len(), 1);
+        // NaN != NaN by IEEE 754 — just verify the bit pattern survived (is_nan)
+        assert!(decoded[0].1.x.is_nan());
+        assert!(decoded[0].1.y.is_infinite() && decoded[0].1.y > 0.0);
+        assert!(decoded[0].1.z.is_infinite() && decoded[0].1.z < 0.0);
+    }
+
+    // -----------------------------------------------------------------------
+    // V5 broadcast sequence path
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn v5_frame_decode_strips_sequence_header() {
+        // Build a V5 payload: [5][8-byte seq][V3 body for 2 nodes]
+        let inner_nodes = vec![
+            (10u32, BinaryNodeData { node_id: 10, x: 1.0, y: 2.0, z: 3.0, vx: 0.0, vy: 0.0, vz: 0.0 }),
+            (20u32, BinaryNodeData { node_id: 20, x: 4.0, y: 5.0, z: 6.0, vx: 0.0, vy: 0.0, vz: 0.0 }),
+        ];
+        let v3_body = encode_node_data(&inner_nodes);
+        // v3_body[0] == PROTOCOL_V3 (version byte) followed by node payloads.
+        // For V5 we embed the raw node bytes (stripping the V3 version prefix).
+        let v3_payload = &v3_body[1..]; // strip version byte; decoder re-uses decode_node_data_v3
+        let seq_number: u64 = 0xDEAD_BEEF_1234_5678;
+        let mut v5: Vec<u8> = vec![5u8]; // version 5
+        v5.extend_from_slice(&seq_number.to_le_bytes());
+        v5.extend_from_slice(v3_payload);
+        let decoded = decode_node_data(&v5).unwrap();
+        assert_eq!(decoded.len(), 2);
+        assert_eq!(decoded[0].0, 10);
+        assert_eq!(decoded[1].0, 20);
+    }
+
+    // -----------------------------------------------------------------------
+    // BroadcastAck encode/decode round-trip
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn broadcast_ack_roundtrip() {
+        // Manually encode a BroadcastAck: [0x34][seq_id 8][nodes_recv 4][ts 8]
+        let seq: u64 = 0xCAFE_BABE_0000_0001;
+        let nodes_recv: u32 = 500;
+        let ts: u64 = 1_700_000_000_000;
+        let mut raw = vec![0x34u8];
+        raw.extend_from_slice(&seq.to_le_bytes());
+        raw.extend_from_slice(&nodes_recv.to_le_bytes());
+        raw.extend_from_slice(&ts.to_le_bytes());
+        let msg = BinaryProtocol::decode_message(&raw).unwrap();
+        match msg {
+            Message::BroadcastAck { sequence_id, nodes_received, timestamp } => {
+                assert_eq!(sequence_id, seq);
+                assert_eq!(nodes_received, nodes_recv);
+                assert_eq!(timestamp, ts);
+            }
+            _ => panic!("expected BroadcastAck"),
+        }
+    }
+
+    #[test]
+    fn broadcast_ack_truncated_payload_errors() {
+        let mut raw = vec![0x34u8];
+        raw.extend_from_slice(&[0u8; 19]); // 1 less than required 20
+        let result = BinaryProtocol::decode_message(&raw);
+        assert!(matches!(result, Err(ProtocolError::InvalidPayloadSize(_))));
+    }
+
+    // -----------------------------------------------------------------------
+    // BinaryNodeDataWireExt trait
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn wire_ext_to_wire_format_default_fields() {
+        let nd = BinaryNodeData { node_id: 7, x: 1.0, y: 2.0, z: 3.0, vx: 0.5, vy: 0.6, vz: 0.7 };
+        let wire = nd.to_wire_format(7);
+        assert_eq!(wire.id, to_wire_id(7));
+        assert_eq!(wire.position.x, 1.0);
+        assert_eq!(wire.velocity.x, 0.5);
+        // Default SSSP
+        assert!(wire.sssp_distance.is_infinite());
+        assert_eq!(wire.sssp_parent, -1);
+        // Default analytics
+        assert_eq!(wire.cluster_id, 0);
+        assert_eq!(wire.anomaly_score, 0.0);
+        assert_eq!(wire.community_id, 0);
+    }
+
+    #[test]
+    fn wire_ext_to_wire_format_with_data_roundtrip() {
+        let nd = BinaryNodeData { node_id: 99, x: -5.0, y: 0.0, z: 5.0, vx: 1.0, vy: -1.0, vz: 0.0 };
+        let wire = nd.to_wire_format_with_data(99, Some((42.5, 3)), Some((7, 0.25, 12)));
+        assert_eq!(wire.sssp_distance, 42.5);
+        assert_eq!(wire.sssp_parent, 3);
+        assert_eq!(wire.cluster_id, 7);
+        assert_eq!(wire.anomaly_score, 0.25);
+        assert_eq!(wire.community_id, 12);
+    }
+
+    // -----------------------------------------------------------------------
+    // encode_node_data_with_types — flag encoding preserved in raw bytes
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn encode_with_types_flags_in_raw_bytes() {
+        let nodes = vec![
+            (1u32, BinaryNodeData { node_id: 1, x: 0.0, y: 0.0, z: 0.0, vx: 0.0, vy: 0.0, vz: 0.0 }),
+            (2u32, BinaryNodeData { node_id: 2, x: 0.0, y: 0.0, z: 0.0, vx: 0.0, vy: 0.0, vz: 0.0 }),
+            (3u32, BinaryNodeData { node_id: 3, x: 0.0, y: 0.0, z: 0.0, vx: 0.0, vy: 0.0, vz: 0.0 }),
+        ];
+        let encoded = encode_node_data_with_types(&nodes, &[1], &[2]);
+        assert_eq!(encoded[0], PROTOCOL_V3);
+        // Node 1 wire id at offset 1
+        let id1 = u32::from_le_bytes([encoded[1], encoded[2], encoded[3], encoded[4]]);
+        assert!(is_agent_node(id1));
+        assert_eq!(get_actual_node_id(id1), 1);
+        // Node 2 wire id at offset 1 + WIRE_V3_ITEM_SIZE
+        let off2 = 1 + WIRE_V3_ITEM_SIZE;
+        let id2 = u32::from_le_bytes([encoded[off2], encoded[off2+1], encoded[off2+2], encoded[off2+3]]);
+        assert!(is_knowledge_node(id2));
+        assert_eq!(get_actual_node_id(id2), 2);
+        // Node 3 has no flags
+        let off3 = 1 + 2 * WIRE_V3_ITEM_SIZE;
+        let id3 = u32::from_le_bytes([encoded[off3], encoded[off3+1], encoded[off3+2], encoded[off3+3]]);
+        assert!(!is_agent_node(id3));
+        assert!(!is_knowledge_node(id3));
+        assert_eq!(id3, 3);
+    }
+
+    // -----------------------------------------------------------------------
+    // calculate_message_size is consistent with encode output
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn message_size_consistent_with_encode_for_zero_nodes() {
+        let nodes: Vec<(u32, BinaryNodeData)> = vec![];
+        assert_eq!(calculate_message_size(&nodes), encode_node_data(&nodes).len());
+    }
+
+    #[test]
+    fn message_size_consistent_with_encode_for_n_nodes() {
+        let nodes: Vec<(u32, BinaryNodeData)> = (1u32..=50)
+            .map(|i| (i, BinaryNodeData { node_id: i, x: 0.0, y: 0.0, z: 0.0, vx: 0.0, vy: 0.0, vz: 0.0 }))
+            .collect();
+        assert_eq!(calculate_message_size(&nodes), encode_node_data(&nodes).len());
+    }
+
+    // -----------------------------------------------------------------------
+    // Unknown protocol version rejected
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn unknown_protocol_version_rejected() {
+        let data = vec![99u8, 0, 0, 0, 0];
+        let result = decode_node_data(&data);
+        assert!(result.is_err());
+        let msg = result.unwrap_err();
+        assert!(msg.contains("Unknown protocol version") || msg.contains("99"), "msg={msg}");
+    }
 }
 
 // ============================================================================
