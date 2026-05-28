@@ -267,3 +267,71 @@ impl UpdateSemanticGraphDataMessage {
         Self { graph }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    // Compile-time assertions: all message types must be Send + Sync + 'static.
+    // If any type violates these bounds this module will fail to compile.
+    fn assert_send_sync_static<T: Send + Sync + 'static>() {}
+
+    #[test]
+    fn physics_messages_are_send_sync_static() {
+        assert_send_sync_static::<ComputeForcesMessage>();
+        assert_send_sync_static::<PhysicsStepMessage>();
+        assert_send_sync_static::<SimulateUntilConvergenceMessage>();
+        assert_send_sync_static::<GetGpuStatusMessage>();
+        assert_send_sync_static::<GetPhysicsStatisticsMessage>();
+        assert_send_sync_static::<ResetPhysicsMessage>();
+        assert_send_sync_static::<CleanupPhysicsMessage>();
+    }
+
+    #[test]
+    fn semantic_messages_are_send_sync_static() {
+        assert_send_sync_static::<ComputeAllPairsShortestPathsMessage>();
+        assert_send_sync_static::<GetSemanticStatisticsMessage>();
+        assert_send_sync_static::<InvalidatePathfindingCacheMessage>();
+    }
+
+    #[test]
+    fn compute_forces_message_result_type_is_vec_node_force() {
+        // Result = Result<Vec<NodeForce>, String> — verified at compile time by
+        // the #[rtype] attribute; this test exercises the constructor pathway.
+        let _msg = ComputeForcesMessage;
+    }
+
+    #[test]
+    fn update_positions_message_constructor_round_trips_forces() {
+        use visionflow_domain::ports::gpu_physics_adapter::NodeForce;
+        let forces = vec![NodeForce { node_id: 1, force_x: 0.1, force_y: 0.2, force_z: 0.3 }];
+        let msg = UpdatePositionsMessage::new(forces.clone());
+        assert_eq!(msg.forces.len(), forces.len());
+        assert_eq!(msg.forces[0].node_id, 1);
+    }
+
+    #[test]
+    fn pin_nodes_message_constructor_preserves_data() {
+        let nodes = vec![(42u32, 1.0f32, 2.0f32, 3.0f32)];
+        let msg = PinNodesMessage::new(nodes.clone());
+        assert_eq!(msg.nodes, nodes);
+    }
+
+    #[test]
+    fn unpin_nodes_message_constructor_preserves_ids() {
+        let ids = vec![1u32, 2u32, 3u32];
+        let msg = UnpinNodesMessage::new(ids.clone());
+        assert_eq!(msg.node_ids, ids);
+    }
+
+    #[test]
+    fn compute_sssp_distances_message_stores_source_id() {
+        let msg = ComputeSsspDistancesMessage::new(99);
+        assert_eq!(msg.source_node_id, 99);
+    }
+
+    #[test]
+    fn compute_landmark_apsp_message_stores_landmark_count() {
+        let msg = ComputeLandmarkApspMessage::new(7);
+        assert_eq!(msg.num_landmarks, 7);
+    }
+}

@@ -300,4 +300,126 @@ mod tests {
         assert!(wrapped.starts_with("[VOICE_MODE"));
         assert!(wrapped.contains("Get system status"));
     }
+
+    // ---------- serialisation round-trip tests ----------
+
+    #[test]
+    fn swarm_intent_spawn_agent_round_trips() {
+        let intent = SwarmIntent::SpawnAgent {
+            agent_type: "coder".to_string(),
+            capabilities: vec!["rust".to_string()],
+        };
+        let json = serde_json::to_string(&intent).unwrap();
+        let decoded: SwarmIntent = serde_json::from_str(&json).unwrap();
+        match decoded {
+            SwarmIntent::SpawnAgent { agent_type, capabilities } => {
+                assert_eq!(agent_type, "coder");
+                assert_eq!(capabilities, vec!["rust"]);
+            }
+            _ => panic!("wrong variant after round-trip"),
+        }
+    }
+
+    #[test]
+    fn swarm_intent_query_status_round_trips() {
+        let intent = SwarmIntent::QueryStatus { target: Some("analyst".to_string()) };
+        let json = serde_json::to_string(&intent).unwrap();
+        let decoded: SwarmIntent = serde_json::from_str(&json).unwrap();
+        match decoded {
+            SwarmIntent::QueryStatus { target } => assert_eq!(target.as_deref(), Some("analyst")),
+            _ => panic!("wrong variant"),
+        }
+    }
+
+    #[test]
+    fn swarm_intent_list_agents_round_trips() {
+        let intent = SwarmIntent::ListAgents;
+        let json = serde_json::to_string(&intent).unwrap();
+        let decoded: SwarmIntent = serde_json::from_str(&json).unwrap();
+        assert!(matches!(decoded, SwarmIntent::ListAgents));
+    }
+
+    #[test]
+    fn swarm_intent_stop_agent_round_trips() {
+        let intent = SwarmIntent::StopAgent { agent_id: "agent-7".to_string() };
+        let json = serde_json::to_string(&intent).unwrap();
+        let decoded: SwarmIntent = serde_json::from_str(&json).unwrap();
+        match decoded {
+            SwarmIntent::StopAgent { agent_id } => assert_eq!(agent_id, "agent-7"),
+            _ => panic!("wrong variant"),
+        }
+    }
+
+    #[test]
+    fn swarm_intent_execute_task_round_trips() {
+        let intent = SwarmIntent::ExecuteTask {
+            description: "do the thing".to_string(),
+            priority: TaskPriority::High,
+        };
+        let json = serde_json::to_string(&intent).unwrap();
+        let decoded: SwarmIntent = serde_json::from_str(&json).unwrap();
+        match decoded {
+            SwarmIntent::ExecuteTask { description, priority } => {
+                assert_eq!(description, "do the thing");
+                assert!(matches!(priority, TaskPriority::High));
+            }
+            _ => panic!("wrong variant"),
+        }
+    }
+
+    #[test]
+    fn graph_action_add_node_round_trips() {
+        let action = GraphAction::AddNode { label: "KnowledgeHub".to_string() };
+        let json = serde_json::to_string(&action).unwrap();
+        let decoded: GraphAction = serde_json::from_str(&json).unwrap();
+        match decoded {
+            GraphAction::AddNode { label } => assert_eq!(label, "KnowledgeHub"),
+            _ => panic!("wrong variant"),
+        }
+    }
+
+    #[test]
+    fn graph_action_add_edge_round_trips() {
+        let action = GraphAction::AddEdge { from: "A".to_string(), to: "B".to_string() };
+        let json = serde_json::to_string(&action).unwrap();
+        let decoded: GraphAction = serde_json::from_str(&json).unwrap();
+        match decoded {
+            GraphAction::AddEdge { from, to } => {
+                assert_eq!(from, "A");
+                assert_eq!(to, "B");
+            }
+            _ => panic!("wrong variant"),
+        }
+    }
+
+    #[test]
+    fn task_priority_all_variants_round_trip() {
+        for p in [TaskPriority::Low, TaskPriority::Medium, TaskPriority::High, TaskPriority::Critical] {
+            let json = serde_json::to_string(&p).unwrap();
+            let decoded: TaskPriority = serde_json::from_str(&json).unwrap();
+            // Re-serialise and compare — we can't derive PartialEq cheaply so
+            // compare the string representations.
+            assert_eq!(json, serde_json::to_string(&decoded).unwrap());
+        }
+    }
+
+    #[test]
+    fn voice_command_parse_fallback_to_execute_task() {
+        let cmd = VoiceCommand::parse("do something unusual", "s1".to_string()).unwrap();
+        assert!(matches!(cmd.parsed_intent, SwarmIntent::ExecuteTask { .. }));
+    }
+
+    #[test]
+    fn voice_command_format_response_truncates_long_text() {
+        let long = "x".repeat(300);
+        let resp = VoiceCommand::format_response(&long);
+        assert!(resp.text.len() <= 200, "Expected truncation; len={}", resp.text.len());
+        assert!(resp.is_final == Some(true));
+    }
+
+    #[test]
+    fn voice_command_parse_list_agents() {
+        let cmd = VoiceCommand::parse("list agents please", "s2".to_string()).unwrap();
+        assert!(matches!(cmd.parsed_intent, SwarmIntent::ListAgents));
+    }
 }

@@ -537,7 +537,7 @@ use visionflow_domain::utils::time;
     async fn test_actor_failure_handling() {
         let supervisor = SupervisorActor::new("TestSupervisor".to_string()).start();
 
-        
+
         let register_msg = RegisterActor {
             actor_name: "TestActor".to_string(),
             strategy: SupervisionStrategy::Restart,
@@ -559,7 +559,7 @@ use visionflow_domain::utils::time;
 
         supervisor.send(failure_msg).await.unwrap();
 
-        
+
         sleep(Duration::from_millis(100)).await;
 
         let status = supervisor
@@ -568,5 +568,106 @@ use visionflow_domain::utils::time;
             .unwrap()
             .unwrap();
         assert_eq!(status.total_actors, 1);
+    }
+
+    #[actix::test]
+    async fn actor_started_sets_running_true() {
+        let supervisor = SupervisorActor::new("TestSupervisor".to_string()).start();
+
+        supervisor.send(RegisterActor {
+            actor_name: "alpha".to_string(),
+            strategy: SupervisionStrategy::Stop,
+            max_restart_count: 1,
+            restart_window: Duration::from_secs(10),
+            actor_factory: None,
+        }).await.unwrap().unwrap();
+
+        // Simulate a failure then a start notification.
+        supervisor.send(ActorFailed {
+            actor_name: "alpha".to_string(),
+            error: VisionFlowError::Generic { message: "boom".to_string(), source: None },
+        }).await.unwrap();
+
+        supervisor.send(ActorStarted { actor_name: "alpha".to_string() }).await.unwrap();
+
+        let status = supervisor.send(GetSupervisionStatus).await.unwrap().unwrap();
+        let info = status.actors.iter().find(|a| a.name == "alpha").unwrap();
+        assert!(info.is_running, "Actor should be running after ActorStarted");
+    }
+
+    #[actix::test]
+    async fn stop_strategy_does_not_restart_actor() {
+        let supervisor = SupervisorActor::new("TestSupervisor".to_string()).start();
+
+        supervisor.send(RegisterActor {
+            actor_name: "beta".to_string(),
+            strategy: SupervisionStrategy::Stop,
+            max_restart_count: 5,
+            restart_window: Duration::from_secs(60),
+            actor_factory: None,
+        }).await.unwrap().unwrap();
+
+        supervisor.send(ActorFailed {
+            actor_name: "beta".to_string(),
+            error: VisionFlowError::Generic { message: "done".to_string(), source: None },
+        }).await.unwrap();
+
+        sleep(Duration::from_millis(50)).await;
+
+        let status = supervisor.send(GetSupervisionStatus).await.unwrap().unwrap();
+        let info = status.actors.iter().find(|a| a.name == "beta").unwrap();
+        assert!(!info.is_running, "Stop strategy must leave actor not running");
+        assert_eq!(info.restart_count, 0, "Stop strategy must not increment restart_count");
+    }
+
+    #[actix::test]
+    async fn drain_rejects_new_registrations() {
+        let supervisor = SupervisorActor::new("DrainTest".to_string()).start();
+
+        supervisor.send(InitiateGracefulShutdown { timeout_secs: 60 }).await.unwrap();
+
+        let result = supervisor.send(RegisterActor {
+            actor_name: "late-comer".to_string(),
+            strategy: SupervisionStrategy::Restart,
+            max_restart_count: 3,
+            restart_window: Duration::from_secs(30),
+            actor_factory: None,
+        }).await.unwrap();
+
+        assert!(result.is_err(), "Registration must be rejected while draining");
+    }
+
+    #[actix::test]
+    async fn factory_is_called_on_restart() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc as StdArc;
+
+        let call_count = StdArc::new(AtomicUsize::new(0));
+        let counter = StdArc::clone(&call_count);
+
+        let factory: ActorFactory = StdArc::new(move || {
+            counter.fetch_add(1, Ordering::SeqCst);
+            Box::new(()) as Box<dyn std::any::Any + Send>
+        });
+
+        let supervisor = SupervisorActor::new("FactoryTest".to_string()).start();
+
+        supervisor.send(RegisterActor {
+            actor_name: "factory-actor".to_string(),
+            strategy: SupervisionStrategy::Restart,
+            max_restart_count: 3,
+            restart_window: Duration::from_secs(60),
+            actor_factory: Some(factory),
+        }).await.unwrap().unwrap();
+
+        supervisor.send(ActorFailed {
+            actor_name: "factory-actor".to_string(),
+            error: VisionFlowError::Generic { message: "oops".to_string(), source: None },
+        }).await.unwrap();
+
+        // Allow the run_later(0ms) restart to fire.
+        sleep(Duration::from_millis(50)).await;
+
+        assert!(call_count.load(Ordering::SeqCst) >= 1, "Factory should have been called");
     }
 }

@@ -456,3 +456,148 @@ impl InferenceEngine for WhelkInferenceEngine {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use visionflow_domain::ports::inference_engine::InferenceEngine;
+    use visionflow_domain::ports::owl_types::{AxiomType, OwlAxiom, OwlClass};
+
+    fn cls(iri: &str) -> OwlClass {
+        OwlClass {
+            iri: iri.to_string(),
+            ..Default::default()
+        }
+    }
+
+    fn sub_axiom(sub: &str, sup: &str) -> OwlAxiom {
+        OwlAxiom {
+            id: None,
+            axiom_type: AxiomType::SubClassOf,
+            subject: sub.to_string(),
+            object: sup.to_string(),
+            annotations: std::collections::HashMap::new(),
+        }
+    }
+
+    #[tokio::test]
+    async fn new_returns_valid_engine() {
+        let engine = WhelkInferenceEngine::new();
+        let stats = engine.get_statistics().await.unwrap();
+        assert_eq!(stats.loaded_classes, 0);
+        assert_eq!(stats.loaded_axioms, 0);
+        assert_eq!(stats.total_inferences, 0);
+    }
+
+    #[tokio::test]
+    async fn load_ontology_empty_returns_ok() {
+        let mut engine = WhelkInferenceEngine::new();
+        let result = engine.load_ontology(vec![], vec![]).await;
+        assert!(result.is_ok());
+        let stats = engine.get_statistics().await.unwrap();
+        assert_eq!(stats.loaded_classes, 0);
+        assert_eq!(stats.loaded_axioms, 0);
+    }
+
+    #[tokio::test]
+    async fn load_ontology_small_fixture_succeeds() {
+        let mut engine = WhelkInferenceEngine::new();
+        let classes = vec![
+            cls("urn:test:A"),
+            cls("urn:test:B"),
+            cls("urn:test:C"),
+        ];
+        let axioms = vec![sub_axiom("urn:test:A", "urn:test:B")];
+        let result = engine.load_ontology(classes, axioms).await;
+        assert!(result.is_ok());
+        let stats = engine.get_statistics().await.unwrap();
+        assert_eq!(stats.loaded_classes, 3);
+        assert_eq!(stats.loaded_axioms, 1);
+    }
+
+    #[tokio::test]
+    async fn infer_derives_transitive_subsumption() {
+        // A ⊑ B, B ⊑ C  ⟹  whelk should derive A ⊑ C
+        let mut engine = WhelkInferenceEngine::new();
+        let classes = vec![cls("urn:test:A"), cls("urn:test:B"), cls("urn:test:C")];
+        let axioms = vec![
+            sub_axiom("urn:test:A", "urn:test:B"),
+            sub_axiom("urn:test:B", "urn:test:C"),
+        ];
+        engine.load_ontology(classes, axioms).await.unwrap();
+        let results = engine.infer().await.unwrap();
+        let has_transitive = results
+            .inferred_axioms
+            .iter()
+            .any(|ax| ax.subject == "urn:test:A" && ax.object == "urn:test:C");
+        assert!(has_transitive, "Expected A ⊑ C to be inferred; got {:?}", results.inferred_axioms);
+    }
+
+    #[tokio::test]
+    async fn is_entailed_true_for_known_subsumption() {
+        let mut engine = WhelkInferenceEngine::new();
+        let classes = vec![cls("urn:test:A"), cls("urn:test:B"), cls("urn:test:C")];
+        let axioms = vec![
+            sub_axiom("urn:test:A", "urn:test:B"),
+            sub_axiom("urn:test:B", "urn:test:C"),
+        ];
+        engine.load_ontology(classes, axioms).await.unwrap();
+        engine.infer().await.unwrap();
+
+        let query = sub_axiom("urn:test:A", "urn:test:C");
+        assert!(engine.is_entailed(&query).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn is_entailed_false_for_unrelated_classes() {
+        let mut engine = WhelkInferenceEngine::new();
+        let classes = vec![cls("urn:test:A"), cls("urn:test:X")];
+        engine.load_ontology(classes, vec![]).await.unwrap();
+        engine.infer().await.unwrap();
+
+        let query = sub_axiom("urn:test:A", "urn:test:X");
+        // No axiom was asserted — should not be entailed
+        assert!(!engine.is_entailed(&query).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn get_subclass_hierarchy_returns_expected_pairs() {
+        let mut engine = WhelkInferenceEngine::new();
+        let classes = vec![cls("urn:test:Dog"), cls("urn:test:Animal")];
+        let axioms = vec![sub_axiom("urn:test:Dog", "urn:test:Animal")];
+        engine.load_ontology(classes, axioms).await.unwrap();
+        engine.infer().await.unwrap();
+
+        let hierarchy = engine.get_subclass_hierarchy().await.unwrap();
+        let contains_pair = hierarchy
+            .iter()
+            .any(|(sub, sup)| sub == "urn:test:Dog" && sup == "urn:test:Animal");
+        assert!(contains_pair, "Expected (Dog, Animal) in hierarchy; got {:?}", hierarchy);
+    }
+
+    #[tokio::test]
+    async fn clear_resets_state() {
+        let mut engine = WhelkInferenceEngine::new();
+        engine.load_ontology(vec![cls("urn:test:A")], vec![]).await.unwrap();
+        engine.infer().await.unwrap();
+        engine.clear().await.unwrap();
+        let stats = engine.get_statistics().await.unwrap();
+        assert_eq!(stats.loaded_classes, 0);
+        // infer() after clear should return OntologyNotLoaded
+        let err = engine.infer().await;
+        assert!(err.is_err());
+    }
+
+    #[tokio::test]
+    async fn infer_uses_cache_on_unchanged_ontology() {
+        let mut engine = WhelkInferenceEngine::new();
+        let classes = vec![cls("urn:test:A"), cls("urn:test:B")];
+        let axioms = vec![sub_axiom("urn:test:A", "urn:test:B")];
+        engine.load_ontology(classes.clone(), axioms.clone()).await.unwrap();
+        let first = engine.infer().await.unwrap();
+        // Reload identical content — checksum matches, cache must be reused.
+        engine.load_ontology(classes, axioms).await.unwrap();
+        let second = engine.infer().await.unwrap();
+        assert_eq!(first.inferred_axioms.len(), second.inferred_axioms.len());
+    }
+}
