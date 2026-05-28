@@ -1,3 +1,4 @@
+pub mod canonical_entity;
 pub mod constraints;
 pub mod edge;
 pub mod graph;
@@ -11,6 +12,7 @@ pub mod ragflow_chat;
 pub mod simulation_params;
 pub mod workspace;
 
+pub use canonical_entity::{CanonicalEntity, EntityKind, OutboundLink};
 pub use edge::{Edge, SemanticEdgeType};
 pub use graph::GraphData;
 pub use metadata::MetadataStore;

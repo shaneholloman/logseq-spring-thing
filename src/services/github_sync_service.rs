@@ -11,6 +11,7 @@
 use crate::adapters::oxigraph_ontology_repository::{OxigraphOntologyRepository, GRAPH_ONTOLOGY};
 use crate::adapters::whelk_inference_engine::WhelkInferenceEngine;
 use crate::adapters::SqliteSettingsRepository;
+use visionclaw_domain::models::canonical_entity::{CanonicalEntity, EntityKind, OutboundLink};
 use visionclaw_domain::models::edge::Edge;
 use visionclaw_domain::ports::inference_engine::InferenceEngine;
 use crate::ports::knowledge_graph_repository::KnowledgeGraphRepository;
@@ -109,6 +110,132 @@ pub struct SyncStatistics {
     pub duration: Duration,
     pub total_nodes: usize,
     pub total_edges: usize,
+}
+
+/// Build a graph node directly from a canonical entity.
+///
+/// All identity (id, label, metadata_id, owl_class_iri, node_type) comes from
+/// the entity rather than the filename — the entity itself is sourced from
+/// `vc:slug` and the JSON-LD `@type` keys, which are the authoritative
+/// upstream conventions.
+fn build_node_from_entity(
+    entity: &CanonicalEntity,
+    id: u32,
+    parser: &KnowledgeGraphParser,
+) -> visionclaw_domain::models::node::Node {
+    use visionclaw_domain::types::BinaryNodeData;
+
+    let mut node = visionclaw_domain::models::node::Node::default();
+    node.id = id;
+    node.metadata_id = entity.slug.clone();
+    node.label = entity.display_label().to_string();
+    node.node_type = Some(entity.kind.as_node_type().to_string());
+    if matches!(
+        entity.kind,
+        EntityKind::OntologyClass | EntityKind::OntologyIndividual
+    ) {
+        node.owl_class_iri = entity.class_iri.clone();
+    }
+    node.metadata
+        .insert("type".to_string(), entity.kind.as_node_type().to_string());
+    if entity.public {
+        node.metadata.insert("public".to_string(), "true".to_string());
+    }
+    if !entity.page_iri.is_empty() {
+        node.metadata
+            .insert("page_iri".to_string(), entity.page_iri.clone());
+    }
+    if let Some(ref iri) = entity.class_iri {
+        node.metadata
+            .insert("class_iri".to_string(), iri.clone());
+    }
+
+    // Position: reuse existing if present, else random. Going through the
+    // parser keeps the existing-positions cache as the single source of truth.
+    let (x, y, z) = parser.get_position_public(id);
+    node.data = BinaryNodeData {
+        node_id: id,
+        x,
+        y,
+        z,
+        vx: 0.0,
+        vy: 0.0,
+        vz: 0.0,
+    }
+    .into();
+    node
+}
+
+/// Materialise a stub node for an outbound wikilink target if one does not
+/// already exist. The stub's type is inferred from the link's IRI shape:
+/// `urn:visionflow:owl:class:*` → `owl_class`, anything else → `linked_page`.
+fn ensure_stub_from_link(
+    id: u32,
+    link: &OutboundLink,
+    nodes: &mut std::collections::HashMap<u32, visionclaw_domain::models::node::Node>,
+) {
+    if nodes.contains_key(&id) {
+        return;
+    }
+    let is_class = link.target_iri.contains(":class:")
+        || link.target_iri.contains("/class/");
+    let is_individual = link.target_iri.contains(":individual:")
+        || link.target_iri.contains("/individual/");
+    let node_type = if is_individual {
+        "owl_individual"
+    } else if is_class {
+        "owl_class"
+    } else {
+        "linked_page"
+    };
+
+    let mut node = visionclaw_domain::models::node::Node::default();
+    node.id = id;
+    node.metadata_id = link.target_slug.clone();
+    node.label = if link.target_label.is_empty() {
+        link.target_slug.replace('-', " ")
+    } else {
+        link.target_label.clone()
+    };
+    node.node_type = Some(node_type.to_string());
+    node.metadata.insert("type".to_string(), node_type.to_string());
+    if is_class || is_individual {
+        node.owl_class_iri = Some(link.target_iri.clone());
+    }
+    nodes.insert(id, node);
+}
+
+/// Materialise a stub node for the target of a typed semantic edge derived
+/// from JSON-LD axioms (`subClassOf`, `hasPart`, `enables`, …).
+fn ensure_stub_from_iri(
+    id: u32,
+    iri: &str,
+    nodes: &mut std::collections::HashMap<u32, visionclaw_domain::models::node::Node>,
+) {
+    if nodes.contains_key(&id) {
+        return;
+    }
+    let is_class = iri.contains(":class:") || iri.contains("/class/");
+    let is_individual = iri.contains(":individual:") || iri.contains("/individual/");
+    let node_type = if is_individual {
+        "owl_individual"
+    } else if is_class {
+        "owl_class"
+    } else {
+        "linked_page"
+    };
+    let local_name = iri.rsplit_once(':').map(|(_, r)| r).unwrap_or(iri);
+    let local_name = local_name.rsplit_once('/').map(|(_, r)| r).unwrap_or(local_name);
+    let mut node = visionclaw_domain::models::node::Node::default();
+    node.id = id;
+    node.metadata_id = local_name.to_string();
+    node.label = local_name.replace('-', " ");
+    node.node_type = Some(node_type.to_string());
+    node.metadata.insert("type".to_string(), node_type.to_string());
+    if is_class || is_individual {
+        node.owl_class_iri = Some(iri.to_string());
+    }
+    nodes.insert(id, node);
 }
 
 pub struct GitHubSyncService {
@@ -741,6 +868,20 @@ impl GitHubSyncService {
     }
 
     /// Process one pre-fetched file, populating nodes/edges in-place.
+    /// JSON-LD-first per-file ingest (ADR-090 Phase B).
+    ///
+    /// One file → one `CanonicalEntity` keyed by `vc:slug`. The entity supplies
+    /// the canonical node (id derived from `hash(slug)`) and the outbound
+    /// wikilinks. The same `ingest_page` call also produces RDF quads — these
+    /// give us (a) the typed semantic edges (`subClassOf`, `hasPart`, etc.)
+    /// from the `@type: Class` block and (b) the quads we persist to Oxigraph
+    /// for SPARQL queries.
+    ///
+    /// Slug canonicalisation (`KnowledgeGraphParser::slugify` ≡
+    /// `visionclaw_ontology::jsonld_ingest::expander::slugify`) ensures that
+    /// every edge target — whether it's a sibling canonical entity, a wikilink
+    /// stub, or an upper-ontology class reference — resolves to the same node
+    /// id as the entity itself when ingested.
     async fn process_fetched_file(
         &self,
         file: &GitHubFileBasicMetadata,
@@ -751,139 +892,91 @@ impl GitHubSyncService {
     ) -> Result<(), String> {
         debug!("Processing file: {} ({} bytes)", file.name, content.len());
 
-        let file_type = self.detect_file_type(content);
-        debug!("Detected {:?} for {}", file_type, file.name);
+        // 1. Distill the file's JSON-LD blocks into a single canonical entity.
+        let entity = match jsonld_ingest::parse_canonical_entity(content, &file.path) {
+            Ok(Some(e)) => e,
+            Ok(None) => {
+                debug!("Skipped: {} (no JSON-LD blocks)", file.name);
+                return Ok(());
+            }
+            Err(e) => {
+                debug!("Canonical parse failed for {}: {} — skipping", file.name, e);
+                return Ok(());
+            }
+        };
 
-        let page_name = file.name.trim_end_matches(".md");
+        // 2. Emit the page node from the entity. Identity = hash(slug).
+        let source_id = self.kg_parser.page_name_to_id(&entity.slug);
+        let page_node = build_node_from_entity(&entity, source_id, self.kg_parser.as_ref());
+        nodes.insert(source_id, page_node);
+        if entity.public {
+            public_pages.insert(entity.slug.clone());
+        }
 
-        match file_type {
-            FileType::KnowledgeGraph => {
-                // Parse wikilinks and KG node structure.
-                let mut parsed = self
-                    .kg_parser
-                    .parse(content, &file.name)
-                    .map_err(|e| format!("Parse error: {}", e))?;
+        // 3. Emit edges from the page's outbound wikilinks. Each link's target
+        //    slug hashes to the canonical id of that entity if it exists in the
+        //    corpus; if not, a stub is materialised (linked_page or owl_class
+        //    depending on the IRI shape).
+        for link in &entity.outbound_links {
+            let target_id = self.kg_parser.page_name_to_id(&link.target_slug);
+            if target_id == source_id {
+                continue;
+            }
+            ensure_stub_from_link(target_id, link, nodes);
+            let edge_id = format!("{}_{}_wikilink", source_id, target_id);
+            edges.entry(edge_id.clone()).or_insert_with(|| Edge {
+                id: edge_id,
+                source: source_id,
+                target: target_id,
+                weight: 1.0,
+                edge_type: Some("explicit_link".to_string()),
+                metadata: None,
+                owl_property_iri: None,
+            });
+        }
 
-                info!(
-                    "Parsed {}: {} nodes, {} edges",
-                    file.name,
-                    parsed.nodes.len(),
-                    parsed.edges.len()
-                );
-
-                // Enrich with ontology IRI metadata.
-                match self
-                    .enrichment_service
-                    .enrich_graph(&mut parsed, &file.path, content)
-                    .await
-                {
-                    Ok((n, e)) => {
-                        debug!(
-                            "Enriched {}: {} nodes, {} edges with OWL IRIs",
-                            file.name, n, e
-                        );
+        // 4. Run the full JSON-LD ingest to (a) emit typed semantic edges from
+        //    Class-block axioms and (b) persist quads to Oxigraph. Failures
+        //    are non-fatal — the canonical entity is already in `nodes`.
+        let metadata = PageMetadata::new(&file.path);
+        match jsonld_ingest::ingest_page(content, &metadata).await {
+            Ok(outcome) => {
+                // Typed edges from `subClassOf`, `hasPart`, `enables`, …
+                let typed_edges = self.process_jsonld_outcome(&outcome, source_id);
+                for edge in typed_edges {
+                    let target_iri = edge
+                        .metadata
+                        .as_ref()
+                        .and_then(|m| m.get("target_iri"))
+                        .cloned();
+                    // Ensure a stub exists for the target if it wasn't already
+                    // emitted by a sibling file's canonical entity ingest.
+                    if let Some(ref iri) = target_iri {
+                        ensure_stub_from_iri(edge.target, iri, nodes);
                     }
-                    Err(e) => {
-                        warn!("Enrichment failed for {}: {} (continuing)", file.name, e);
-                    }
-                }
-
-                public_pages.insert(page_name.to_string());
-
-                for node in parsed.nodes {
-                    nodes.insert(node.id, node);
-                }
-                for edge in parsed.edges {
+                    // Typed edges overwrite the generic wikilink edge for the
+                    // same (source, target) pair so the semantic type wins.
                     edges.insert(edge.id.clone(), edge);
                 }
 
-                // Extract JSON-LD blocks and ingest quads into Oxigraph.
-                let source_id = self.kg_parser.page_name_to_id(page_name);
-                let metadata = PageMetadata::new(&file.path);
-                match jsonld_ingest::ingest_page(content, &metadata).await {
-                    Ok(outcome) => {
-                        let onto_edges = self.process_jsonld_outcome(&outcome, source_id);
-                        let edges_added = onto_edges.len();
-                        for edge in onto_edges {
-                            // Create ontology node for targets with class/individual IRIs,
-                            // otherwise fall back to linked_page stub.
-                            let target_iri = edge
-                                .metadata
-                                .as_ref()
-                                .and_then(|m| m.get("target_iri"))
-                                .map(|s| s.as_str());
-                            if let Some(iri) = target_iri {
-                                if iri.contains(":class:")
-                                    || iri.contains("/class/")
-                                    || iri.contains(":individual:")
-                                    || iri.contains("/individual/")
-                                {
-                                    self.ensure_ontology_node(edge.target, iri, nodes);
-                                } else {
-                                    self.ensure_linked_page_node(edge.target, target_iri, nodes);
-                                }
-                            } else {
-                                self.ensure_linked_page_node(edge.target, target_iri, nodes);
-                            }
-                            edges.insert(edge.id.clone(), edge);
-                        }
-                        if edges_added > 0 {
-                            debug!(
-                                "Created {} semantic edges from JSON-LD in {}",
-                                edges_added, file.name
-                            );
-                        }
-                        // Persist quads to the Oxigraph store.
-                        if !outcome.quads.is_empty() {
-                            if let Err(e) = self.insert_quads_to_store(&outcome.quads).await {
-                                warn!("Failed to insert quads from {}: {}", file.name, e);
-                            }
-                        }
-
-                        // Enrich source node with entity metadata from JSON-LD quads.
-                        if let Some(node) = nodes.get_mut(&source_id) {
-                            Self::enrich_node_from_quads(node, &outcome.quads, page_name);
-                        }
+                if !outcome.quads.is_empty() {
+                    if let Err(e) = self.insert_quads_to_store(&outcome.quads).await {
+                        warn!("Failed to insert quads from {}: {}", file.name, e);
                     }
-                    Err(e) => {
-                        debug!("No JSON-LD blocks in {}: {}", file.name, e);
+                    // Enrich the canonical node with rdf:type, domain, etc.
+                    if let Some(node) = nodes.get_mut(&source_id) {
+                        Self::enrich_node_from_quads(node, &outcome.quads, &entity.slug);
                     }
                 }
-
-                Ok(())
             }
-
-            FileType::Ontology => {
-                // Files with JSON-LD but no public:: true — ontology-only ingest.
-                debug!("Ontology-only ingest for {}", file.name);
-                let metadata = PageMetadata::new(&file.path);
-                match jsonld_ingest::ingest_page(content, &metadata).await {
-                    Ok(outcome) => {
-                        debug!(
-                            "Ingested {} quads from {} JSON-LD block(s) in {}",
-                            outcome.quad_count, outcome.block_count, file.name
-                        );
-                        if !outcome.quads.is_empty() {
-                            if let Err(e) = self.insert_quads_to_store(&outcome.quads).await {
-                                error!("Failed to insert quads from {}: {}", file.name, e);
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        debug!("JSON-LD ingest failed for {}: {}", file.name, e);
-                    }
-                }
-                Ok(())
-            }
-
-            FileType::Skip => {
-                debug!(
-                    "Skipped: {} (no public:: true or json-ld blocks)",
-                    file.name
-                );
-                Ok(())
+            Err(e) => {
+                // Block-level validation failure — corpus integrity issue we
+                // log but tolerate, since the canonical entity is still useful.
+                debug!("ingest_page warning for {}: {}", file.name, e);
             }
         }
+
+        Ok(())
     }
 
     /// Map an IngestOutcome's quads to Edge structs for the force-directed graph.
@@ -993,85 +1086,13 @@ impl GitHubSyncService {
     /// node shows up in the UI as "Backdoor Attack" instead of
     /// "node_672356712531". Falls back to "node_<id>" only when the caller
     /// has nothing better.
-    fn ensure_linked_page_node(
-        &self,
-        id: u32,
-        target_iri: Option<&str>,
-        nodes: &mut std::collections::HashMap<u32, visionclaw_domain::models::node::Node>,
-    ) {
-        if nodes.contains_key(&id) {
-            return;
-        }
-        let mut node = visionclaw_domain::models::node::Node::default();
-        node.id = id;
-        let (label, metadata_id) = match target_iri {
-            Some(iri) => {
-                let local_name = iri.rsplit_once(':').map(|(_, r)| r).unwrap_or(iri);
-                let local_name = local_name.rsplit_once('/').map(|(_, r)| r).unwrap_or(local_name);
-                (local_name.replace('-', " "), local_name.to_string())
-            }
-            None => (format!("node_{}", id), format!("node_{}", id)),
-        };
-        node.label = label;
-        node.metadata_id = metadata_id;
-        node.node_type = Some("linked_page".to_string());
-        node.metadata
-            .insert("type".to_string(), "linked_page".to_string());
-        nodes.insert(id, node);
-    }
-
-    /// Ensure an ontology node exists in the batch map for a Class/Individual IRI.
-    /// Separate from KG page nodes — these form the ontology graph layer.
-    fn ensure_ontology_node(
-        &self,
-        id: u32,
-        iri: &str,
-        nodes: &mut std::collections::HashMap<u32, visionclaw_domain::models::node::Node>,
-    ) {
-        if let Some(existing) = nodes.get_mut(&id) {
-            // Upgrade linked_page stubs to ontology type if IRI indicates it.
-            // Also refresh the human-readable label from the IRI's local-name
-            // segment — without this, stubs originally created without a
-            // target_iri (so labelled "node_<id>") keep that label even after
-            // we know the canonical class IRI here.
-            if existing.node_type.as_deref() == Some("linked_page") {
-                let onto_type = if iri.contains(":individual:") || iri.contains("/individual/") {
-                    "owl_individual"
-                } else {
-                    "owl_class"
-                };
-                existing.node_type = Some(onto_type.to_string());
-                existing
-                    .metadata
-                    .insert("type".to_string(), onto_type.to_string());
-                existing.owl_class_iri = Some(iri.to_string());
-                let local_name = iri.rsplit_once(':').map(|(_, r)| r).unwrap_or(iri);
-                let local_name = local_name.rsplit_once('/').map(|(_, r)| r).unwrap_or(local_name);
-                if existing.label.starts_with("node_") {
-                    existing.label = local_name.replace('-', " ");
-                }
-                if existing.metadata_id.starts_with("node_") {
-                    existing.metadata_id = local_name.to_string();
-                }
-            }
-            return;
-        }
-        let mut node = visionclaw_domain::models::node::Node::default();
-        node.id = id;
-        let local_name = iri.rsplit_once(':').map(|(_, r)| r).unwrap_or(iri);
-        node.label = local_name.replace('-', " ");
-        node.metadata_id = local_name.to_string();
-        node.owl_class_iri = Some(iri.to_string());
-        let onto_type = if iri.contains(":individual:") || iri.contains("/individual/") {
-            "owl_individual"
-        } else {
-            "owl_class"
-        };
-        node.node_type = Some(onto_type.to_string());
-        node.metadata
-            .insert("type".to_string(), onto_type.to_string());
-        nodes.insert(id, node);
-    }
+    // `ensure_linked_page_node` and `ensure_ontology_node` were removed in
+    // ADR-090 Phase B. Stub creation is now handled by the free functions
+    // `ensure_stub_from_link` (called from the outbound-wikilink loop in
+    // `process_fetched_file`) and `ensure_stub_from_iri` (called from the
+    // typed-edge loop). They produce identical node shapes but key off the
+    // canonical slug derived in either pass — so slug-canonicalisation
+    // guarantees a single node id per logical entity.
 
     /// Enrich a graph node with metadata extracted from JSON-LD quads.
     /// Reads rdf:type, domain, maturity, qualityScore, label, and definition
@@ -1187,8 +1208,18 @@ impl GitHubSyncService {
             || (has_jsonld
                 && (content.contains("\"vc:public\": true")
                     || content.contains("\"vc:public\":true")));
+        // Per ADR-090: ontology pages are canonically identified by an
+        // `@type: "Class"` (or "NamedIndividual") JSON-LD block, regardless of
+        // whether the legacy `public:: true` logseq marker has been added.
+        // The user's design splits these cleanly: ontology = always ingested,
+        // KG = public-gated and ultimately private-per-user.
+        let has_ontology_class = has_jsonld
+            && (content.contains("\"@type\": \"Class\"")
+                || content.contains("\"@type\":\"Class\"")
+                || content.contains("\"@type\": \"NamedIndividual\"")
+                || content.contains("\"@type\":\"NamedIndividual\""));
 
-        if has_public {
+        if has_public || has_ontology_class {
             // KG branch — JSON-LD extraction also runs here if blocks are present.
             return FileType::KnowledgeGraph;
         }

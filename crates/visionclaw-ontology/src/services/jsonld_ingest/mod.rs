@@ -41,6 +41,7 @@
 //!
 //! Part of the canonical persistence pipeline (ADR-11).
 
+pub mod canonical;
 pub mod errors;
 pub mod expander;
 pub mod extractor;
@@ -49,6 +50,7 @@ pub mod pipeline;
 pub mod triple_emitter;
 pub mod validator;
 
+pub use canonical::parse_canonical_entity;
 pub use errors::{JsonLdIngestError, Result};
 pub use graph_port_shim::GraphRepository;
 pub use pipeline::{ingest_page, IngestOutcome, JsonLdIngestPipeline, PageMetadata};

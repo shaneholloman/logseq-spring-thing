@@ -40,6 +40,13 @@ impl KnowledgeGraphParser {
         self.existing_positions = Some(positions);
     }
 
+    /// Get position for a node ID, using existing position or generating random.
+    /// Public alias `get_position_public` provided for cross-module callers
+    /// that build nodes directly from canonical entities (see ADR-090 Phase B).
+    pub fn get_position_public(&self, node_id: u32) -> (f32, f32, f32) {
+        self.get_position(node_id)
+    }
+
     /// Get position for a node ID, using existing position or generating random
     fn get_position(&self, node_id: u32) -> (f32, f32, f32) {
         if let Some(ref positions) = self.existing_positions {
@@ -341,14 +348,43 @@ impl KnowledgeGraphParser {
         use std::collections::hash_map::DefaultHasher;
         use std::hash::{Hash, Hasher};
 
+        // Canonicalise to the upstream pipeline's slug rule:
+        //   re.sub(r'[^a-z0-9]+', '-', s.lower()).strip('-')
+        // so that "Camera", "camera", and the IRI local-name "camera"
+        // (from urn:ngm:class:camera) all hash to the same id. Without this
+        // step, the `@type: Page` block and the `@type: Class` block of the
+        // same canonical entity end up on different nodes.
+        let slug = Self::slugify(page_name);
+
         let mut hasher = DefaultHasher::new();
-        page_name.hash(&mut hasher);
+        slug.hash(&mut hasher);
         let hash_val = hasher.finish();
-        
+
         // Use full u32 range to minimize collision probability (birthday paradox)
         // Reserve 0 as sentinel; map to [1, u32::MAX]
         let id = (hash_val & 0xFFFF_FFFE) as u32 + 1;
         id
+    }
+
+    /// Canonical slug: lowercase, collapse non-alphanumeric runs to `-`,
+    /// strip leading/trailing dashes. Matches `logseq/pipeline/validate.py`.
+    pub fn slugify(s: &str) -> String {
+        let mut out = String::with_capacity(s.len());
+        let mut prev_dash = true; // suppresses leading dash
+        for c in s.chars() {
+            if c.is_ascii_alphanumeric() {
+                out.extend(c.to_lowercase());
+                prev_dash = false;
+            } else if !prev_dash {
+                out.push('-');
+                prev_dash = true;
+            }
+        }
+        // Strip trailing dash
+        if out.ends_with('-') {
+            out.pop();
+        }
+        out
     }
 }
 
