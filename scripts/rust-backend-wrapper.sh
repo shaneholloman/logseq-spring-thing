@@ -27,7 +27,7 @@ fi
 
 > /app/logs/rust-error.log
 
-RUST_BINARY="/app/target/release/webxr"
+RUST_BINARY="/app/target/release/visionclaw-server"
 
 if [ "${SKIP_RUST_REBUILD:-false}" != "true" ]; then
     cd /app
@@ -75,7 +75,7 @@ if [ "${SKIP_RUST_REBUILD:-false}" != "true" ]; then
     fi
 else
     log "Skipping Rust rebuild (SKIP_RUST_REBUILD=true)"
-    RUST_BINARY="/app/webxr"
+    RUST_BINARY="/app/visionclaw-server"
 fi
 
 if [ ! -f "${RUST_BINARY}" ]; then

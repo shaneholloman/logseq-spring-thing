@@ -186,9 +186,9 @@ RUN export CUDA_PATH=/opt/cuda && \
     export CUDA_LIB_PATH=/opt/cuda/lib64 && \
     export LD_LIBRARY_PATH=/opt/cuda/lib64:${LD_LIBRARY_PATH} && \
     cargo build --release --features gpu && \
-    strip target/release/webxr && \
+    strip target/release/visionclaw-server && \
     # Verify binary was created
-    ls -lh target/release/webxr
+    ls -lh target/release/visionclaw-server
 
 # =============================================================================
 # STAGE 4: Node Dependencies - Install and cache Node.js dependencies
@@ -362,7 +362,7 @@ RUN mkdir -p \
     && chown -R appuser:appuser /app
 
 # Copy compiled Rust binary from builder
-COPY --from=rust-builder --chown=appuser:appuser /app/target/release/webxr ./webxr
+COPY --from=rust-builder --chown=appuser:appuser /app/target/release/visionclaw-server ./visionclaw-server
 
 # Copy built frontend assets from node-builder
 COPY --from=node-builder --chown=appuser:appuser /app/client/dist ./client/dist

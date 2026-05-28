@@ -137,9 +137,9 @@ COPY schema ./schema
 
 # Force rebuild of webxr crate to run real build.rs (not cached stub)
 # Clean only the webxr build artifacts, keeping deps cached
-RUN rm -rf /app/target/release/build/webxr-* /app/target/release/deps/webxr* /app/target/release/deps/libwebxr* && \
+RUN rm -rf /app/target/release/build/visionclaw-server-* /app/target/release/deps/visionclaw_server* /app/target/release/deps/libvisionclaw_server* && \
     cargo build --release && \
-    cp target/release/webxr /app/webxr
+    cp target/release/visionclaw-server /app/visionclaw-server
 
 # Runtime stage - same CachyOS base, only runtime packages
 # SECURITY: Pin to digest for production builds (e.g., cachyos/cachyos-v3@sha256:abc123...)
@@ -183,7 +183,7 @@ RUN mkdir -p /app/data/markdown \
 ARG CACHE_BUST=0
 
 # Copy built artifacts from parallel build stages
-COPY --from=builder /app/webxr /app/webxr
+COPY --from=builder /app/visionclaw-server /app/visionclaw-server
 COPY --from=frontend /app/client/dist /app/client/dist
 COPY --from=cuda-ptx /app/ptx /app/src/utils/ptx
 
