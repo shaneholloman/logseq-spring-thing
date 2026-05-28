@@ -24,6 +24,7 @@ interface WebGPURendererInstance extends THREE.WebGLRenderer {
   init: () => Promise<void>;
   renderObject: (object: THREE.Object3D, ...rest: unknown[]) => void;
   __isWebGPURenderer?: boolean;
+  __resizeObserver?: ResizeObserver;
 }
 
 /**
@@ -154,10 +155,31 @@ export async function createGemRenderer(defaultProps: Record<string, unknown>) {
       // Force the WebGPU surface to match the canvas dimensions.
       // R3F measures the container before the async init() resolves, so the
       // WebGPU backend's internal surface may be 0×0 until a resize event.
-      // Explicit setSize() here eliminates the "black until resize" bug.
+      // Explicit setSize() here eliminates the "black until resize" bug —
+      // but only when the canvas already has layout. If the canvas measures
+      // 0×0 at init time, a ResizeObserver below re-applies setSize the
+      // moment layout completes, otherwise the surface stays 0×0 forever.
       const rect = canvas.getBoundingClientRect();
       if (rect.width > 0 && rect.height > 0) {
         renderer.setSize(rect.width, rect.height, false);
+      }
+
+      // Robust fallback: re-apply setSize whenever the canvas dimensions
+      // change. Catches the "rect was 0×0 at init" case and any subsequent
+      // container resize that R3F's own resize logic may miss for WebGPU.
+      if (typeof ResizeObserver !== 'undefined') {
+        const ro = new ResizeObserver((entries) => {
+          const entry = entries[0];
+          if (!entry) return;
+          const w = entry.contentRect.width;
+          const h = entry.contentRect.height;
+          if (w > 0 && h > 0) {
+            renderer.setSize(w, h, false);
+          }
+        });
+        ro.observe(canvas);
+        // Stash on the renderer so dispose() can disconnect it.
+        (renderer as WebGPURendererInstance).__resizeObserver = ro;
       }
 
       // Expose renderer type for components to check

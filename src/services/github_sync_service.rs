@@ -210,11 +210,15 @@ impl GitHubSyncService {
 
         let all_files_to_process = files_to_process.clone();
 
-        // Clear the graph once before processing any batches so incremental
-        // batch_add_nodes/edges accumulate rather than each batch wiping the last.
-        if let Err(e) = self.kg_repo.clear_graph().await {
-            error!("Failed to clear graph before sync: {}", e);
-            stats.errors.push(format!("clear_graph: {}", e));
+        // Clear the graph only on a full sync. On an incremental sync (SHA1
+        // filter narrowed the file list), existing data must remain — otherwise
+        // an unchanged corpus leaves the store empty after the clear + no-op
+        // batch loop, wiping out the previous good state.
+        if force_full_sync {
+            if let Err(e) = self.kg_repo.clear_graph().await {
+                error!("Failed to clear graph before sync: {}", e);
+                stats.errors.push(format!("clear_graph: {}", e));
+            }
         }
 
         // Collect all deferred (cross-graph bridge) edges across every batch.
