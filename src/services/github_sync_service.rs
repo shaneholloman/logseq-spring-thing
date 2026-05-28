@@ -16,12 +16,9 @@ use visionclaw_domain::models::edge::Edge;
 use visionclaw_domain::ports::inference_engine::InferenceEngine;
 use crate::ports::knowledge_graph_repository::KnowledgeGraphRepository;
 use visionclaw_domain::ports::ontology_repository::{AxiomType, OntologyRepository, OwlAxiom};
-use crate::services::edge_classifier::EdgeClassifier;
 use crate::services::github::content_enhanced::EnhancedContentAPI;
 use crate::services::github::types::GitHubFileBasicMetadata;
 use crate::services::jsonld_ingest::{self, IngestOutcome, PageMetadata};
-use crate::services::ontology_enrichment_service::OntologyEnrichmentService;
-use crate::services::ontology_reasoner::OntologyReasoner;
 use crate::services::parsers::KnowledgeGraphParser;
 use crate::services::semantic_type_registry::SEMANTIC_TYPE_REGISTRY;
 use futures::stream::{FuturesUnordered, StreamExt};
@@ -92,13 +89,6 @@ const RDFS_LABEL: &str = "http://www.w3.org/2000/01/rdf-schema#label";
 const RDFS_COMMENT: &str = "http://www.w3.org/2000/01/rdf-schema#comment";
 const OWL_CLASS_IRI: &str = "http://www.w3.org/2002/07/owl#Class";
 const OWL_NAMED_INDIVIDUAL: &str = "http://www.w3.org/2002/07/owl#NamedIndividual";
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum FileType {
-    KnowledgeGraph,
-    Ontology,
-    Skip,
-}
 
 #[derive(Debug, Clone)]
 pub struct SyncStatistics {
@@ -243,7 +233,6 @@ pub struct GitHubSyncService {
     kg_parser: Arc<KnowledgeGraphParser>,
     kg_repo: Arc<dyn KnowledgeGraphRepository>,
     onto_repo: Arc<OxigraphOntologyRepository>,
-    enrichment_service: Arc<OntologyEnrichmentService>,
     inference_engine: Arc<RwLock<WhelkInferenceEngine>>,
     sync_db: Arc<SqliteSettingsRepository>,
 }
@@ -255,19 +244,16 @@ impl GitHubSyncService {
         onto_repo: Arc<OxigraphOntologyRepository>,
         sync_db: Arc<SqliteSettingsRepository>,
     ) -> Self {
-        let reasoner = Arc::new(OntologyReasoner::new(
-            Arc::new(WhelkInferenceEngine::new()),
-            onto_repo.clone() as Arc<dyn OntologyRepository>,
-        ));
-        let classifier = Arc::new(EdgeClassifier::new());
-        let enrichment_service = Arc::new(OntologyEnrichmentService::new(reasoner, classifier));
-
+        // The ontology enrichment service is no longer wired into the
+        // per-file ingest pass (ADR-090 Phase B replaced its filename-hash
+        // node mutations with canonical-entity construction). The reasoner
+        // is still used by `run_post_sync_reasoning`, hence the
+        // `inference_engine` retention here.
         Self {
             content_api,
             kg_parser: Arc::new(KnowledgeGraphParser::new()),
             kg_repo,
             onto_repo,
-            enrichment_service,
             inference_engine: Arc::new(RwLock::new(WhelkInferenceEngine::new())),
             sync_db,
         }
@@ -1198,38 +1184,6 @@ impl GitHubSyncService {
     // ------------------------------------------------------------------
     // File type detection
     // ------------------------------------------------------------------
-
-    fn detect_file_type(&self, content: &str) -> FileType {
-        let content = content.trim_start_matches('\u{feff}');
-
-        let has_jsonld = content.contains("```json-ld");
-        let has_public = content.contains("public:: true")
-            || content.contains("public-access:: true")
-            || (has_jsonld
-                && (content.contains("\"vc:public\": true")
-                    || content.contains("\"vc:public\":true")));
-        // Per ADR-090: ontology pages are canonically identified by an
-        // `@type: "Class"` (or "NamedIndividual") JSON-LD block, regardless of
-        // whether the legacy `public:: true` logseq marker has been added.
-        // The user's design splits these cleanly: ontology = always ingested,
-        // KG = public-gated and ultimately private-per-user.
-        let has_ontology_class = has_jsonld
-            && (content.contains("\"@type\": \"Class\"")
-                || content.contains("\"@type\":\"Class\"")
-                || content.contains("\"@type\": \"NamedIndividual\"")
-                || content.contains("\"@type\":\"NamedIndividual\""));
-
-        if has_public || has_ontology_class {
-            // KG branch — JSON-LD extraction also runs here if blocks are present.
-            return FileType::KnowledgeGraph;
-        }
-
-        if has_jsonld {
-            return FileType::Ontology;
-        }
-
-        FileType::Skip
-    }
 
     // ------------------------------------------------------------------
     // File listing + SHA1 change detection

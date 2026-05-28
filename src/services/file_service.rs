@@ -1118,12 +1118,44 @@ impl FileService {
     ///
     /// Routes through the `KnowledgeGraphRepository` port (`OxigraphGraphRepository`).
     ///
+    /// **Idempotency (ADR-090 Phase B follow-up):** if the Oxigraph store
+    /// already contains nodes (e.g. carried over from a previous session via
+    /// the on-disk Oxigraph data directory), this method is a no-op. The
+    /// background GitHub sync is the authoritative ingest path; the local
+    /// `/workspace/ext/data/markdown/` cache should only seed an empty store
+    /// for cold-start scenarios.
+    ///
+    /// Without this guard, every restart would clear the post-sync graph
+    /// (~31k canonical entities) and replace it with the local cache (840
+    /// legacy-format nodes) — silently regressing the corpus on every boot.
+    ///
     /// Phase 2 note: stale-node pruning via SPARQL DELETE is not yet implemented.
     /// todo!("Phase 2: stale node pruning via OxigraphGraphRepository")
     pub async fn load_graph_from_files(
         graph_repo: &Arc<dyn crate::ports::knowledge_graph_repository::KnowledgeGraphRepository>,
     ) -> Result<(), String> {
         info!("Starting to load graph from local files into Oxigraph store (ADR-11)...");
+
+        // Idempotency guard: skip if the store is already populated.
+        match graph_repo.load_graph().await {
+            Ok(existing) if !existing.nodes.is_empty() => {
+                info!(
+                    "Oxigraph already populated with {} node(s), {} edge(s) — skipping local-file seed (GitHub sync is authoritative).",
+                    existing.nodes.len(),
+                    existing.edges.len()
+                );
+                return Ok(());
+            }
+            Ok(_) => {
+                info!("Oxigraph store is empty — proceeding with local-file seed.");
+            }
+            Err(e) => {
+                warn!(
+                    "Failed to query existing Oxigraph node count ({}); proceeding with seed anyway.",
+                    e
+                );
+            }
+        }
 
         let metadata = Self::load_or_create_metadata()?;
         if metadata.is_empty() {
