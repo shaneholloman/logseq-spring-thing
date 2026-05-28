@@ -242,12 +242,15 @@ mod tests {
 
     #[test]
     fn v3_frame_magic_value() {
-        // Spec literal in the docs is "0xV3F0" — the ASCII bytes V3F0 in LE order.
-        // V=0x56, 3=0x33, F=0x46, 0=0x30 → little-endian u32 = 0x56334630
+        // V3_MAGIC = 0x5633_4630. Serialised little-endian, the on-wire byte
+        // order is [0x30, 0x46, 0x33, 0x56] which reads "0F3V" — not "V3F0".
+        // The "V3F0" mnemonic in the spec docs is the big-endian human-
+        // readable form; the decoder always compares the magic numerically,
+        // so the on-wire byte layout below is what matters.
         assert_eq!(V3_MAGIC, 0x5633_4630);
         let frame = BinaryV3Frame::new(0, vec![]);
         let bytes = frame.encode();
-        assert_eq!(&bytes[0..4], b"V3F0");
+        assert_eq!(&bytes[0..4], &[0x30, 0x46, 0x33, 0x56]);
     }
 
     #[test]

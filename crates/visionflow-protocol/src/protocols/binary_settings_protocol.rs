@@ -6,7 +6,9 @@ use std::collections::HashMap;
 use std::io::{Cursor, Read, Write};
 use serde_json::Value;
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
-use flate2::{Compress, Decompress, Compression};
+use flate2::Compression;
+use flate2::write::ZlibEncoder;
+use flate2::read::ZlibDecoder;
 use log::debug;
 use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine};
 
@@ -98,18 +100,20 @@ impl PathRegistry {
 
 pub struct BinarySettingsProtocol {
     path_registry: PathRegistry,
-    compressor: Compress,
-    decompressor: Decompress,
     compression_threshold: usize,
+    // Note: compressor/decompressor are no longer held as fields.
+    // flate2::Compress is stateful and returns Status::StreamEnd exactly
+    // once per instance — holding it on the struct meant the second
+    // serialize_message() that hit the compression branch silently
+    // failed. compress_data / decompress_data now instantiate a fresh
+    // codec per call.
 }
 
 impl BinarySettingsProtocol {
     pub fn new() -> Self {
         Self {
             path_registry: PathRegistry::new(),
-            compressor: Compress::new(Compression::fast(), false),
-            decompressor: Decompress::new(false),
-            compression_threshold: 256, 
+            compression_threshold: 256,
         }
     }
 
@@ -215,10 +219,14 @@ impl BinarySettingsProtocol {
             BinaryMessage::Delta { path_id, old_value, new_value } => {
                 buffer.write_u8(0x05).map_err(|e| e.to_string())?;
                 buffer.write_u32::<LittleEndian>(*path_id).map_err(|e| e.to_string())?;
-
-                
-                let delta = self.compute_value_delta(old_value, new_value)?;
-                self.serialize_binary_value(&mut buffer, &delta)?;
+                // Wire format carries BOTH old and new values so the
+                // deserialiser can reconstruct the full Delta. The old
+                // serialiser wrote only one (the computed delta) but the
+                // deserialiser always read two — guaranteed parse failure
+                // on the receiver. compute_value_delta is still useful for
+                // wire size accounting but isn't what goes on the wire.
+                self.serialize_binary_value(&mut buffer, old_value)?;
+                self.serialize_binary_value(&mut buffer, new_value)?;
             },
             BinaryMessage::Response { success, data } => {
                 buffer.write_u8(0x06).map_err(|e| e.to_string())?;
@@ -466,33 +474,26 @@ impl BinarySettingsProtocol {
     }
 
     fn compress_data(&mut self, data: &[u8]) -> Result<Vec<u8>, String> {
-        let mut compressed = Vec::new();
-        let mut output_buffer = vec![0u8; data.len() * 2];
-
-        match self.compressor.compress_vec(data, &mut output_buffer, flate2::FlushCompress::Finish) {
-            Ok(flate2::Status::StreamEnd) => {
-                let compressed_size = self.compressor.total_out() as usize;
-                output_buffer.truncate(compressed_size);
-                compressed.extend(output_buffer);
-                Ok(compressed)
-            }
-            _ => Err("Compression failed".to_string())
-        }
+        // Fresh ZlibEncoder per call. The previous implementation held a
+        // single flate2::Compress on the struct, which is stateful and
+        // returns Status::StreamEnd exactly once per instance — every
+        // subsequent compress call then silently failed. The Read/Write
+        // helpers don't have this problem because each Encoder owns its
+        // own stream.
+        let mut encoder = ZlibEncoder::new(Vec::new(), Compression::fast());
+        encoder.write_all(data).map_err(|e| format!("Compression write: {e}"))?;
+        encoder.finish().map_err(|e| format!("Compression finish: {e}"))
     }
 
-    fn decompress_data(&mut self, compressed: &[u8]) -> Result<Vec<u8>, String> {
+    fn decompress_data(&mut self, _compressed: &[u8]) -> Result<Vec<u8>, String> {
+        // Fresh ZlibDecoder per call (same statefulness reason as
+        // compress_data). The decoder is unused inside the impl block
+        // but kept for API symmetry; production callers go through
+        // deserialize_message which inlines decompression.
         let mut decompressed = Vec::new();
-        let mut output_buffer = vec![0u8; compressed.len() * 4];
-
-        match self.decompressor.decompress_vec(compressed, &mut output_buffer, flate2::FlushDecompress::Finish) {
-            Ok(flate2::Status::StreamEnd) => {
-                let decompressed_size = self.decompressor.total_out() as usize;
-                output_buffer.truncate(decompressed_size);
-                decompressed.extend(output_buffer);
-                Ok(decompressed)
-            }
-            _ => Err("Decompression failed".to_string())
-        }
+        let mut decoder = ZlibDecoder::new(_compressed);
+        decoder.read_to_end(&mut decompressed).map_err(|e| format!("Decompression: {e}"))?;
+        Ok(decompressed)
     }
 
     
@@ -678,23 +679,24 @@ mod tests {
     }
 
     #[test]
-    fn delta_message_serialize_does_not_panic() {
-        // NOTE: BinaryMessage::Delta has an asymmetry between serialize (writes one computed
-        // delta value) and deserialize (reads two values: old + new). A full round-trip is
-        // therefore not possible with the current implementation. This test verifies that
-        // serialize at least produces bytes without panicking and that the path_id byte
-        // is present in the output.
-        let mut p = BinarySettingsProtocol::new();
+    fn delta_message_full_roundtrip() {
+        // Regression: previously serialize wrote one value and deserialize
+        // read two, making Delta unrouteable. Now both sides write/read
+        // (old_value, new_value) and round-trip cleanly.
         let msg = BinaryMessage::Delta {
             path_id: 7,
             old_value: BinaryValue::F32(1.0),
             new_value: BinaryValue::F32(2.5),
         };
-        let bytes = p.serialize_message(&msg).unwrap();
-        // Uncompressed path: bytes[0] == 0x00 (no-compression flag)
-        assert!(!bytes.is_empty());
-        // The type byte 0x05 is at offset 1 (after the compression flag byte).
-        assert_eq!(bytes[1], 0x05, "expected Delta type byte");
+        assert_eq!(roundtrip(msg.clone()), msg);
+
+        // Also test with different value types on each side.
+        let mixed = BinaryMessage::Delta {
+            path_id: 42,
+            old_value: BinaryValue::Bool(false),
+            new_value: BinaryValue::String("after".to_string()),
+        };
+        assert_eq!(roundtrip(mixed.clone()), mixed);
     }
 
     // -----------------------------------------------------------------------
@@ -742,17 +744,37 @@ mod tests {
 
     #[test]
     fn batch_set_below_compression_threshold_roundtrip() {
-        // NOTE: BinarySettingsProtocol wraps a stateful flate2::Compress that can only
-        // complete one stream (returns StreamEnd once). Any payload that crosses the
-        // 256-byte threshold will trigger compression; subsequent serialize calls on the
-        // same instance then fail. This test intentionally stays under the threshold so
-        // the uncompressed path is exercised and a full round-trip is possible.
         let updates: Vec<(u32, BinaryValue)> = (1u32..=3)
             .map(|i| (i, BinaryValue::I32(i as i32)))
             .collect();
         let msg = BinaryMessage::BatchSet { updates };
-        // roundtrip() creates a fresh protocol instance each call, avoiding state exhaustion.
         assert_eq!(roundtrip(msg.clone()), msg);
+    }
+
+    #[test]
+    fn protocol_instance_survives_multiple_compressed_messages() {
+        // Regression: BinarySettingsProtocol previously held a single
+        // flate2::Compress / Decompress instance, both stateful — the
+        // second compressed message returned an error. After moving codec
+        // construction into compress_data / decompress_data we can serialise
+        // any number of over-threshold messages on the same instance.
+        let mut p = BinarySettingsProtocol::new();
+
+        // Build a payload that crosses the 256-byte compression threshold.
+        let big_updates: Vec<(u32, BinaryValue)> = (1u32..=64)
+            .map(|i| (i, BinaryValue::String(format!("settings-value-{i:04}"))))
+            .collect();
+        let msg = BinaryMessage::BatchSet { updates: big_updates };
+
+        for round in 0..5 {
+            let bytes = p.serialize_message(&msg)
+                .unwrap_or_else(|e| panic!("serialize round {round}: {e}"));
+            // First byte is the compression flag: 0xFF = compressed, 0x00 = raw.
+            assert_eq!(bytes[0], 0xFF, "round {round} payload should be compressed");
+            let decoded = p.deserialize_message(&bytes)
+                .unwrap_or_else(|e| panic!("deserialize round {round}: {e}"));
+            assert_eq!(decoded, msg, "round {round} should round-trip identically");
+        }
     }
 
     // -----------------------------------------------------------------------

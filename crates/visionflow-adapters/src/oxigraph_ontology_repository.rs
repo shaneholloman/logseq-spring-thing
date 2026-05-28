@@ -1889,8 +1889,8 @@ impl OntologyRepository for OxigraphOntologyRepository {
         //    types is a smell — flag as warning).
         let dup_class_q = format!(
             "{PROLOGUE}\
-             SELECT (COUNT(?s) AS ?n) FROM <{GRAPH_ONTOLOGY}>\n\
-             WHERE {{ ?s a <{T_VC_ONTOLOGY_CLASS}> . ?s a <{T_OWL_CLASS}> }}\n"
+             SELECT (COUNT(?s) AS ?n)\n\
+             WHERE {{ GRAPH <{GRAPH_ONTOLOGY}> {{ ?s a <{T_VC_ONTOLOGY_CLASS}> . ?s a <{T_OWL_CLASS}> }} }}\n"
         );
         let (_v, rows) = self.run_select(dup_class_q).await?;
         // (info — not an error)
@@ -2021,28 +2021,33 @@ impl OntologyRepository for OxigraphOntologyRepository {
     // ------------------------------------------------------------------
 
     async fn get_metrics(&self) -> RepoResult<OntologyMetrics> {
+        // SPARQL 1.1 with aggregates cannot mix `FROM <iri>` (dataset clause)
+        // with `SELECT (COUNT…)`. Oxigraph's strict parser rejects it. The
+        // canonical form scopes the pattern via `GRAPH <iri> { … }` inside
+        // WHERE instead.
+        //
         // 1. Class count.
         let class_q = format!(
             "{PROLOGUE}\
-             SELECT (COUNT(?s) AS ?n) FROM <{GRAPH_ONTOLOGY}>\n\
-             WHERE {{ ?s a <{T_VC_ONTOLOGY_CLASS}> }}\n"
+             SELECT (COUNT(?s) AS ?n)\n\
+             WHERE {{ GRAPH <{GRAPH_ONTOLOGY}> {{ ?s a <{T_VC_ONTOLOGY_CLASS}> }} }}\n"
         );
         let class_count = scalar_count(&self.run_select(class_q).await?).unwrap_or(0);
 
         // 2. Property count.
         let prop_q = format!(
             "{PROLOGUE}\
-             SELECT (COUNT(?s) AS ?n) FROM <{GRAPH_ONTOLOGY}>\n\
-             WHERE {{ ?s a ?t .\n\
-                      FILTER(?t IN (<{T_OWL_OBJECT_PROP}>, <{T_OWL_DATA_PROP}>, <{T_OWL_ANNOT_PROP}>)) }}\n"
+             SELECT (COUNT(?s) AS ?n)\n\
+             WHERE {{ GRAPH <{GRAPH_ONTOLOGY}> {{ ?s a ?t .\n\
+                      FILTER(?t IN (<{T_OWL_OBJECT_PROP}>, <{T_OWL_DATA_PROP}>, <{T_OWL_ANNOT_PROP}>)) }} }}\n"
         );
         let property_count = scalar_count(&self.run_select(prop_q).await?).unwrap_or(0);
 
         // 3. Axiom count.
         let ax_q = format!(
             "{PROLOGUE}\
-             SELECT (COUNT(?s) AS ?n) FROM <{GRAPH_ONTOLOGY}>\n\
-             WHERE {{ ?s a <{T_VC_AXIOM}> }}\n"
+             SELECT (COUNT(?s) AS ?n)\n\
+             WHERE {{ GRAPH <{GRAPH_ONTOLOGY}> {{ ?s a <{T_VC_AXIOM}> }} }}\n"
         );
         let axiom_count = scalar_count(&self.run_select(ax_q).await?).unwrap_or(0);
 
@@ -2051,8 +2056,9 @@ impl OntologyRepository for OxigraphOntologyRepository {
         let branch_q = format!(
             "{PROLOGUE}\
              SELECT (AVG(?children) AS ?avg) WHERE {{\n\
-               {{ SELECT ?parent (COUNT(?child) AS ?children) FROM <{GRAPH_ONTOLOGY}>\n\
-                 WHERE {{ ?child <{P_SUBCLASS_OF}> ?parent }} GROUP BY ?parent }}\n\
+               {{ SELECT ?parent (COUNT(?child) AS ?children)\n\
+                 WHERE {{ GRAPH <{GRAPH_ONTOLOGY}> {{ ?child <{P_SUBCLASS_OF}> ?parent }} }}\n\
+                 GROUP BY ?parent }}\n\
              }}\n"
         );
         let avg_branching = scalar_f32(&self.run_select(branch_q).await?).unwrap_or(0.0);
@@ -2382,10 +2388,10 @@ mod tests {
         assert!(fetched.is_none(), "Class should have been removed");
     }
 
-    // get_metrics() generates `SELECT ... FROM <graph> WHERE` which Oxigraph's
-    // strict SPARQL 1.1 parser rejects for aggregate queries. Pre-existing
-    // implementation bug — ignored until the SPARQL template is fixed.
-    #[ignore = "pre-existing SPARQL aggregate+FROM clause ordering bug in get_metrics()"]
+    // Fixed: SPARQL aggregate+FROM clause bug in get_metrics(). Now uses
+    // `WHERE { GRAPH <iri> { … } }` inside the WHERE block instead of the
+    // `FROM <iri>` dataset clause, which Oxigraph's strict 1.1 parser
+    // accepts with aggregates.
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn get_metrics_returns_non_negative_counts() {
         let repo = in_memory_repo();
