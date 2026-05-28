@@ -31,6 +31,12 @@ thiserror = "2.0"
 # Logging
 log = "0.4"
 
+# Timestamp (used by socket_flow_messages::default_timestamp)
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+
+# Compile-time size assertions
+static_assertions = "1.1"
+
 # Base64 (binary_settings_protocol: Bytes -> JSON string)
 base64 = { version = "0.22", default-features = false, features = ["alloc"] }
 

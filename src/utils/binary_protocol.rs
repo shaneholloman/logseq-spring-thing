@@ -256,16 +256,31 @@ pub fn from_wire_id(wire_id: u32) -> u32 {
     from_wire_id_v2(wire_id)
 }
 
-/// Convert BinaryNodeData to wire format V3
-impl BinaryNodeData {
-    pub fn to_wire_format(&self, node_id: u32) -> WireNodeDataItem {
+/// Extension trait for converting [`BinaryNodeData`] (now a foreign type from
+/// `visionclaw_protocol`) to webxr-local wire-format structs.
+///
+/// ADR-090 Phase A6: the inherent `impl BinaryNodeData` block was replaced with
+/// this trait to satisfy the orphan rule after `BinaryNodeData`/`BinaryNodeDataClient`
+/// moved to `visionclaw_protocol::socket_flow_messages`.
+pub trait BinaryNodeDataWireExt {
+    fn to_wire_format(&self, node_id: u32) -> WireNodeDataItem;
+    fn to_wire_format_with_data(
+        &self,
+        node_id: u32,
+        sssp: Option<(f32, i32)>,
+        analytics: Option<(u32, f32, u32)>,
+    ) -> WireNodeDataItem;
+}
+
+impl BinaryNodeDataWireExt for BinaryNodeData {
+    fn to_wire_format(&self, node_id: u32) -> WireNodeDataItem {
         self.to_wire_format_with_data(node_id, None, None)
     }
 
     /// Convert to wire format V3 with optional SSSP and analytics data.
     /// `sssp`: (distance, parent_id). Defaults to (INFINITY, -1).
     /// `analytics`: (cluster_id, anomaly_score, community_id). Defaults to (0, 0.0, 0).
-    pub fn to_wire_format_with_data(
+    fn to_wire_format_with_data(
         &self,
         node_id: u32,
         sssp: Option<(f32, i32)>,
@@ -275,8 +290,8 @@ impl BinaryNodeData {
         let (cluster_id, anomaly_score, community_id) = analytics.unwrap_or((0, 0.0, 0));
         WireNodeDataItem {
             id: to_wire_id(node_id),
-            position: self.position(),
-            velocity: self.velocity(),
+            position: self.position().into(),
+            velocity: self.velocity().into(),
             sssp_distance,
             sssp_parent,
             cluster_id,

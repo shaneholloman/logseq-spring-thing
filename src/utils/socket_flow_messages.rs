@@ -1,130 +1,72 @@
-use crate::types::vec3::Vec3Data;
+//! ADR-090 Phase A6 — webxr shim for `socket_flow_messages`.
+//!
+//! All pure-data wire-format types have been promoted to
+//! `visionclaw_protocol::socket_flow_messages`.  This file re-exports them so
+//! that the 13 existing adapter/actor callers continue to compile unchanged.
+//!
+//! # Items that REMAIN here (not promoteable)
+//!
+//! * `BinaryNodeDataGPU` — carries `#[cfg(feature = "gpu")]` cudarc impls
+//!   (`DeviceRepr`, `ValidAsZeroBits`).  These are GPU-server concerns; cudarc
+//!   is not a protocol-layer dep.
+//!
+//! * `vec3data_to_glam` / `glam_to_vec3data` — require `glam::Vec3`.  Adding
+//!   glam to visionclaw-protocol's dep graph is unwarranted for two small
+//!   helpers.
+//!
+//! # TODO (Phase A6 follow-up)
+//!
+//! Once all 13 adapter/actor callers have been migrated to import directly from
+//! `visionclaw_protocol::socket_flow_messages`, delete this file and remove the
+//! `pub use` lines.  The glam helpers can be moved to a `visionclaw-server-utils`
+//! helper module at that point.
+
+// ── Re-exports from visionclaw-protocol ──────────────────────────────────────
+pub use visionclaw_protocol::socket_flow_messages::{
+    array_to_vec3data,
+    BinaryNodeData,
+    BinaryNodeDataClient,
+    InitialEdgeData,
+    InitialNodeData,
+    Message,
+    PingMessage,
+    PongMessage,
+    vec3data_to_array,
+};
+
+// ── GPU-only types (stay in webxr) ───────────────────────────────────────────
 use bytemuck::{Pod, Zeroable};
 #[cfg(feature = "gpu")]
 use cudarc::driver::{DeviceRepr, ValidAsZeroBits};
 use glam::Vec3;
-use serde::{Deserialize, Serialize};
-use crate::utils::time;
+use crate::types::vec3::Vec3Data;
 
-// ===== CLIENT-SIDE BINARY DATA (28 bytes) =====
-// Optimized for network transmission - contains only what clients need
-
+/// Extended node record for server-side GPU computations (48 bytes).
+///
+/// Use [`BinaryNodeDataClient`] (28 bytes) for the network wire format.
 #[repr(C)]
-#[derive(Debug, Clone, Copy, Pod, Zeroable, Serialize, Deserialize)]
-pub struct BinaryNodeDataClient {
-    pub node_id: u32, 
-    pub x: f32,       
-    pub y: f32,       
-    pub z: f32,       
-    pub vx: f32,      
-    pub vy: f32,      
-    pub vz: f32,      
-}
-
-// Compile-time assertion to ensure client format is exactly 28 bytes
-static_assertions::const_assert_eq!(std::mem::size_of::<BinaryNodeDataClient>(), 28);
-
-// Backwards compatibility alias - will be deprecated
-pub type BinaryNodeData = BinaryNodeDataClient;
-
-// ===== GPU COMPUTE BINARY DATA (48 bytes) =====
-// Extended format for server-side GPU computations
-
-#[repr(C)]
-#[derive(Debug, Clone, Copy, Pod, Zeroable, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Pod, Zeroable, serde::Serialize, serde::Deserialize)]
 pub struct BinaryNodeDataGPU {
-    pub node_id: u32,       
-    pub x: f32,             
-    pub y: f32,             
-    pub z: f32,             
-    pub vx: f32,            
-    pub vy: f32,            
-    pub vz: f32,            
-    pub sssp_distance: f32, 
-    pub sssp_parent: i32,   
-    pub cluster_id: i32,    
-    pub centrality: f32,    
-    pub mass: f32,          
+    pub node_id: u32,
+    pub x: f32,
+    pub y: f32,
+    pub z: f32,
+    pub vx: f32,
+    pub vy: f32,
+    pub vz: f32,
+    pub sssp_distance: f32,
+    pub sssp_parent: i32,
+    pub cluster_id: i32,
+    pub centrality: f32,
+    pub mass: f32,
 }
 
-// Compile-time assertion to ensure GPU format is exactly 48 bytes
 static_assertions::const_assert_eq!(std::mem::size_of::<BinaryNodeDataGPU>(), 48);
 
-// Implement DeviceRepr for GPU data
 #[cfg(feature = "gpu")]
 unsafe impl DeviceRepr for BinaryNodeDataGPU {}
 #[cfg(feature = "gpu")]
 unsafe impl ValidAsZeroBits for BinaryNodeDataGPU {}
-
-// Helper conversion functions
-impl BinaryNodeDataClient {
-    pub fn new(node_id: u32, position: Vec3Data, velocity: Vec3Data) -> Self {
-        Self {
-            node_id,
-            x: position.x,
-            y: position.y,
-            z: position.z,
-            vx: velocity.x,
-            vy: velocity.y,
-            vz: velocity.z,
-        }
-    }
-
-    pub fn position(&self) -> Vec3Data {
-        Vec3Data::new(self.x, self.y, self.z)
-    }
-
-    pub fn velocity(&self) -> Vec3Data {
-        Vec3Data::new(self.vx, self.vy, self.vz)
-    }
-
-    pub fn mass(&self) -> f32 {
-        1.0 // Default mass for client nodes
-    }
-}
-
-// ADR-090 Phase 1b: bidirectional bridges between webxr and domain BinaryNodeData.
-impl From<BinaryNodeDataClient> for visionclaw_domain::BinaryNodeData {
-    fn from(d: BinaryNodeDataClient) -> Self {
-        Self {
-            node_id: d.node_id,
-            x: d.x,
-            y: d.y,
-            z: d.z,
-            vx: d.vx,
-            vy: d.vy,
-            vz: d.vz,
-        }
-    }
-}
-
-impl From<visionclaw_domain::BinaryNodeData> for BinaryNodeDataClient {
-    fn from(d: visionclaw_domain::BinaryNodeData) -> Self {
-        Self {
-            node_id: d.node_id,
-            x: d.x,
-            y: d.y,
-            z: d.z,
-            vx: d.vx,
-            vy: d.vy,
-            vz: d.vz,
-        }
-    }
-}
-
-impl From<&visionclaw_domain::BinaryNodeData> for BinaryNodeDataClient {
-    fn from(d: &visionclaw_domain::BinaryNodeData) -> Self {
-        Self {
-            node_id: d.node_id,
-            x: d.x,
-            y: d.y,
-            z: d.z,
-            vx: d.vx,
-            vy: d.vy,
-            vz: d.vz,
-        }
-    }
-}
 
 impl BinaryNodeDataGPU {
     pub fn to_client(&self) -> BinaryNodeDataClient {
@@ -157,103 +99,13 @@ impl BinaryNodeDataGPU {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct PingMessage {
-    #[serde(rename = "type")]
-    pub type_: String,
-    #[serde(default = "default_timestamp")]
-    pub timestamp: u64,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct PongMessage {
-    #[serde(rename = "type")]
-    pub type_: String,
-    pub timestamp: u64,
-}
-
-fn default_timestamp() -> u64 {
-    time::timestamp_millis() as u64
-}
-
-// SocketNode has been consolidated into models::node::Node
-// All socket communication now uses the canonical Node type with conversion helpers
-
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(tag = "type")]
-pub enum Message {
-    #[serde(rename = "ping")]
-    Ping { timestamp: u64 },
-
-    #[serde(rename = "pong")]
-    Pong { timestamp: u64 },
-
-    #[serde(rename = "enableRandomization")]
-    EnableRandomization { enabled: bool },
-
-    #[serde(rename = "initialGraphLoad")]
-    InitialGraphLoad {
-        nodes: Vec<InitialNodeData>,
-        edges: Vec<InitialEdgeData>,
-        timestamp: u64,
-    },
-
-    #[serde(rename = "positionUpdate")]
-    PositionUpdate {
-        node_id: u32,
-        x: f32,
-        y: f32,
-        z: f32,
-        vx: f32,
-        vy: f32,
-        vz: f32,
-        timestamp: u64,
-    },
-}
-
-/// Node data sent during initial graph load with full metadata
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct InitialNodeData {
-    pub id: u32,
-    pub metadata_id: String,
-    pub label: String,
-    pub x: f32,
-    pub y: f32,
-    pub z: f32,
-    pub vx: f32,
-    pub vy: f32,
-    pub vz: f32,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub owl_class_iri: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub node_type: Option<String>,
-    /// Node metadata (source_domain, type, source_file, etc.)
-    #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
-    pub metadata: std::collections::HashMap<String, String>,
-}
-
-/// Edge data sent during initial graph load
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct InitialEdgeData {
-    pub id: String,
-    pub source_id: u32,
-    pub target_id: u32,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub weight: Option<f32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub edge_type: Option<String>,
-}
-
-// Helper functions to convert between Vec3Data and [f32; 3] for GPU computations
-#[inline]
-pub fn vec3data_to_array(vec: &Vec3Data) -> [f32; 3] {
-    [vec.x, vec.y, vec.z]
-}
-
-#[inline]
-pub fn array_to_vec3data(arr: [f32; 3]) -> Vec3Data {
-    Vec3Data::new(arr[0], arr[1], arr[2])
-}
+// ── glam helpers (stay in webxr — glam not a protocol dep) ───────────────────
+//
+// Note: `glam_to_vec3data` returns `visionclaw_domain::Vec3Data` so that
+// callers passing the result directly to `BinaryNodeDataClient::new` continue
+// to compile unchanged (that method now takes the domain type after the
+// ADR-090 Phase A6 promotion).  The webxr-local `Vec3Data` is kept for
+// `vec3data_to_glam` which only reads x/y/z fields.
 
 #[inline]
 pub fn vec3data_to_glam(vec: &Vec3Data) -> Vec3 {
@@ -261,6 +113,6 @@ pub fn vec3data_to_glam(vec: &Vec3Data) -> Vec3 {
 }
 
 #[inline]
-pub fn glam_to_vec3data(vec: glam::Vec3) -> Vec3Data {
-    Vec3Data::new(vec.x, vec.y, vec.z)
+pub fn glam_to_vec3data(vec: Vec3) -> visionclaw_domain::Vec3Data {
+    visionclaw_domain::Vec3Data::new(vec.x, vec.y, vec.z)
 }

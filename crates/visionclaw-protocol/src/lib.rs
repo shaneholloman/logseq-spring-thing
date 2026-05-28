@@ -20,6 +20,7 @@
 pub mod protocol;
 pub mod protocols;
 pub mod binary_protocol;
+pub mod socket_flow_messages;
 
 // Convenience re-exports.
 pub use protocol::v3_frame::{BinaryV3Frame, NodeRow, V3DecodeError, V3_MAGIC, V3_NODE_BYTES};

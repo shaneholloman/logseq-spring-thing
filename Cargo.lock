@@ -6647,10 +6647,12 @@ dependencies = [
  "base64 0.22.1",
  "bytemuck",
  "byteorder",
+ "chrono",
  "flate2",
  "log",
  "serde",
  "serde_json",
+ "static_assertions",
  "thiserror 2.0.16",
  "visionclaw-domain",
 ]
