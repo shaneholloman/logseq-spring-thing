@@ -30,14 +30,15 @@ use std::time::{Duration, Instant};
 
 // Import required types and messages
 use crate::actors::messages::*;
-use crate::handlers::socket_flow_handler::SocketFlowServer;
 use crate::telemetry::agent_telemetry::{get_telemetry_logger, CorrelationId, Position3D};
 use crate::utils::socket_flow_messages::BinaryNodeDataClient;
 
 #[derive(Debug, Clone)]
 pub struct ClientState {
     pub client_id: usize,
-    pub addr: Addr<SocketFlowServer>,
+    /// ADR-090 A6-S4: erased recipients replace `Addr<SocketFlowServer>` so
+    /// this actor (inner ring) no longer depends on the handler (outer ring).
+    pub addr: ClientRecipients,
     pub connected_at: Instant,
     pub last_update: Instant,
     pub position_sent: bool,
@@ -49,7 +50,7 @@ pub struct ClientState {
     /// settings that differ from the global defaults. For the MVP this is
     /// stored and returned to the client on reconnect; actual per-user
     /// GPU computation is a follow-up.
-    pub settings_override: Option<crate::config::app_settings::AppFullSettings>,
+    pub settings_override: Option<crate::config::AppFullSettings>,
     /// Whether this client authenticated with an ephemeral (dev-mode) identity
     pub ephemeral_session: bool,
 }
@@ -234,7 +235,7 @@ impl ClientManager {
         }
     }
 
-    pub fn register_client(&mut self, addr: Addr<SocketFlowServer>) -> usize {
+    pub fn register_client(&mut self, addr: ClientRecipients) -> usize {
         let client_id = self.next_id;
         self.next_id += 1;
 
@@ -308,7 +309,7 @@ impl ClientManager {
         let mut sent = 0;
         let mut slow_clients = Vec::new();
         for (&client_id, client_state) in &self.clients {
-            match client_state.addr.try_send(SendToClientBinary(data.clone())) {
+            match client_state.addr.binary.try_send(SendToClientBinary(data.clone())) {
                 Ok(()) => sent += 1,
                 Err(actix::prelude::SendError::Full(_)) => {
                     warn!(
@@ -376,7 +377,7 @@ impl ClientManager {
             };
 
             if let Some(data) = payload {
-                match client_state.addr.try_send(SendToClientBinary(data)) {
+                match client_state.addr.binary.try_send(SendToClientBinary(data)) {
                     Ok(()) => sent += 1,
                     Err(actix::prelude::SendError::Full(_)) => {
                         warn!(
@@ -427,7 +428,7 @@ impl ClientManager {
     pub fn broadcast_message(&self, message: String) -> usize {
         let mut broadcast_count = 0;
         for (_, client_state) in &self.clients {
-            client_state.addr.do_send(SendToClientText(message.clone()));
+            let _ = client_state.addr.text.do_send(SendToClientText(message.clone()));
             broadcast_count += 1;
         }
         broadcast_count
@@ -560,7 +561,7 @@ impl ClientCoordinatorActor {
     /// ADR-031 gap 3b: Replay buffered messages to a specific client address.
     /// Called during RegisterClient when the new client_id matches a tracked
     /// disconnected client, draining any buffered binary messages.
-    fn replay_buffered_messages(&mut self, old_client_id: usize, addr: &Addr<SocketFlowServer>) {
+    fn replay_buffered_messages(&mut self, old_client_id: usize, addr: &ClientRecipients) {
         let messages = self.disconnected_queue.drain_for_reconnect(old_client_id);
         if !messages.is_empty() {
             info!(
@@ -568,7 +569,7 @@ impl ClientCoordinatorActor {
                 messages.len(), old_client_id
             );
             for msg in messages {
-                addr.do_send(SendToClientBinary(msg));
+                let _ = addr.binary.do_send(SendToClientBinary(msg));
             }
         }
     }
@@ -1207,7 +1208,7 @@ impl Handler<RegisterClient> for ClientCoordinatorActor {
                     return Err(format!("Failed to acquire client manager lock: {}", e).into());
                 }
             };
-            manager.register_client(msg.addr)
+            manager.register_client(msg.recipients)
         };
 
         
@@ -1941,7 +1942,7 @@ impl Handler<UpdateClientFilter> for ClientCoordinatorActor {
                                           client_id, filtered_nodes.len(), filtered_edges.len());
 
                                     // Send filtered graph data to this specific client
-                                    client.addr.do_send(SendInitialGraphLoad {
+                                    let _ = client.addr.initial_load.do_send(SendInitialGraphLoad {
                                         nodes: filtered_nodes,
                                         edges: filtered_edges,
                                     });

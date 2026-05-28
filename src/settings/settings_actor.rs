@@ -174,17 +174,9 @@ where
     }
 }
 
-impl<A, M> MessageResponse<A, M> for RenderingSettings
-where
-    A: Actor,
-    M: Message<Result = RenderingSettings>,
-{
-    fn handle(self, _ctx: &mut A::Context, tx: Option<OneshotSender<M::Result>>) {
-        if let Some(tx) = tx {
-            let _ = tx.send(self);
-        }
-    }
-}
+// RenderingSettings is now a foreign type (visionclaw-domain) post Phase A6.3,
+// so we can't impl MessageResponse for it directly (orphan rule). Handler
+// uses MessageResult instead.
 
 impl<A, M> MessageResponse<A, M> for AllSettings
 where
@@ -308,10 +300,10 @@ impl Handler<UpdateRenderingSettings> for SettingsActor {
 }
 
 impl Handler<GetRenderingSettings> for SettingsActor {
-    type Result = RenderingSettings;
+    type Result = MessageResult<GetRenderingSettings>;
 
     fn handle(&mut self, _msg: GetRenderingSettings, _ctx: &mut Self::Context) -> Self::Result {
-        self.current_rendering.clone()
+        MessageResult(self.current_rendering.clone())
     }
 }
 

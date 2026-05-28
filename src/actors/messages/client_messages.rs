@@ -22,12 +22,39 @@ use actix::prelude::*;
 
 use crate::utils::socket_flow_messages::{InitialEdgeData, InitialNodeData};
 
+/// Erased recipient bundle for a single WebSocket client session.
+///
+/// Using `Recipient<M>` (actix's type-erased mailbox pointer) instead of
+/// `Addr<SocketFlowServer>` breaks the backwards dependency:
+///   ClientCoordinatorActor (domain) → SocketFlowServer (delivery layer)
+///
+/// The coordinator only needs to send three message types to each client.
+/// Storing typed `Recipient`s instead of a concrete `Addr` means the actor
+/// crate has no `use crate::handlers::*` import.
+#[derive(Clone)]
+pub struct ClientRecipients {
+    pub binary: actix::Recipient<SendToClientBinary>,
+    pub text: actix::Recipient<SendToClientText>,
+    pub initial_load: actix::Recipient<SendInitialGraphLoad>,
+}
+
+impl std::fmt::Debug for ClientRecipients {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ClientRecipients")
+            .field("binary", &"Recipient<SendToClientBinary>")
+            .field("text", &"Recipient<SendToClientText>")
+            .field("initial_load", &"Recipient<SendInitialGraphLoad>")
+            .finish()
+    }
+}
+
 /// Register a new WebSocket client with the client manager.
-/// Blocked: references `Addr<handlers::socket_flow_handler::SocketFlowServer>`.
+/// ADR-090 A6-S4: uses `ClientRecipients` (type-erased) instead of
+/// `Addr<SocketFlowServer>` so the actor crate has no handler dependency.
 #[derive(Message)]
 #[rtype(result = "Result<usize, String>")]
 pub struct RegisterClient {
-    pub addr: actix::Addr<crate::handlers::socket_flow_handler::SocketFlowServer>,
+    pub recipients: ClientRecipients,
 }
 
 /// Broadcast positions to all connected clients.

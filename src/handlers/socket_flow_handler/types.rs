@@ -471,8 +471,15 @@ impl Actor for SocketFlowServer {
         let addr_clone = addr.clone();
 
         actix::spawn(async move {
-            use crate::actors::messages::RegisterClient;
-            match cm_addr.send(RegisterClient { addr: addr_clone }).await {
+            use crate::actors::messages::{ClientRecipients, RegisterClient};
+            // ADR-090 A6-S4: build type-erased recipients from the concrete Addr
+            // so the coordinator actor (inner ring) never sees SocketFlowServer.
+            let recipients = ClientRecipients {
+                binary: addr_clone.clone().recipient(),
+                text: addr_clone.clone().recipient(),
+                initial_load: addr_clone.clone().recipient(),
+            };
+            match cm_addr.send(RegisterClient { recipients }).await {
                 Ok(Ok(id)) => {
                     addr.do_send(super::actor_messages::SetClientId(id));
                 }

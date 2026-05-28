@@ -816,10 +816,10 @@ impl GitHubSyncService {
                                 {
                                     self.ensure_ontology_node(edge.target, iri, nodes);
                                 } else {
-                                    self.ensure_linked_page_node(edge.target, nodes);
+                                    self.ensure_linked_page_node(edge.target, target_iri, nodes);
                                 }
                             } else {
-                                self.ensure_linked_page_node(edge.target, nodes);
+                                self.ensure_linked_page_node(edge.target, target_iri, nodes);
                             }
                             edges.insert(edge.id.clone(), edge);
                         }
@@ -982,9 +982,17 @@ impl GitHubSyncService {
     }
 
     /// Ensure a node exists in the batch map as a linked_page (stub).
+    ///
+    /// `target_iri` is the IRI the link points at (when available — e.g.
+    /// from a JSON-LD vc:wikilink edge). When provided we derive a
+    /// human-readable label from its local-name segment, so the resulting
+    /// node shows up in the UI as "Backdoor Attack" instead of
+    /// "node_672356712531". Falls back to "node_<id>" only when the caller
+    /// has nothing better.
     fn ensure_linked_page_node(
         &self,
         id: u32,
+        target_iri: Option<&str>,
         nodes: &mut std::collections::HashMap<u32, visionclaw_domain::models::node::Node>,
     ) {
         if nodes.contains_key(&id) {
@@ -992,8 +1000,16 @@ impl GitHubSyncService {
         }
         let mut node = visionclaw_domain::models::node::Node::default();
         node.id = id;
-        node.label = format!("node_{}", id);
-        node.metadata_id = format!("node_{}", id);
+        let (label, metadata_id) = match target_iri {
+            Some(iri) => {
+                let local_name = iri.rsplit_once(':').map(|(_, r)| r).unwrap_or(iri);
+                let local_name = local_name.rsplit_once('/').map(|(_, r)| r).unwrap_or(local_name);
+                (local_name.replace('-', " "), local_name.to_string())
+            }
+            None => (format!("node_{}", id), format!("node_{}", id)),
+        };
+        node.label = label;
+        node.metadata_id = metadata_id;
         node.node_type = Some("linked_page".to_string());
         node.metadata
             .insert("type".to_string(), "linked_page".to_string());
@@ -1009,7 +1025,11 @@ impl GitHubSyncService {
         nodes: &mut std::collections::HashMap<u32, visionclaw_domain::models::node::Node>,
     ) {
         if let Some(existing) = nodes.get_mut(&id) {
-            // Upgrade linked_page stubs to ontology type if IRI indicates it
+            // Upgrade linked_page stubs to ontology type if IRI indicates it.
+            // Also refresh the human-readable label from the IRI's local-name
+            // segment — without this, stubs originally created without a
+            // target_iri (so labelled "node_<id>") keep that label even after
+            // we know the canonical class IRI here.
             if existing.node_type.as_deref() == Some("linked_page") {
                 let onto_type = if iri.contains(":individual:") || iri.contains("/individual/") {
                     "owl_individual"
@@ -1021,6 +1041,14 @@ impl GitHubSyncService {
                     .metadata
                     .insert("type".to_string(), onto_type.to_string());
                 existing.owl_class_iri = Some(iri.to_string());
+                let local_name = iri.rsplit_once(':').map(|(_, r)| r).unwrap_or(iri);
+                let local_name = local_name.rsplit_once('/').map(|(_, r)| r).unwrap_or(local_name);
+                if existing.label.starts_with("node_") {
+                    existing.label = local_name.replace('-', " ");
+                }
+                if existing.metadata_id.starts_with("node_") {
+                    existing.metadata_id = local_name.to_string();
+                }
             }
             return;
         }
