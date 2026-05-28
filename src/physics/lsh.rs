@@ -14,8 +14,8 @@
 
 use std::collections::{HashMap, HashSet};
 
-use crate::models::metadata::MetadataStore;
-use crate::models::node::Node;
+use visionflow_domain::models::metadata::MetadataStore;
+use visionflow_domain::models::node::Node;
 
 /// Configuration for the LSH index.
 #[derive(Debug, Clone)]
@@ -370,8 +370,8 @@ impl LshIndex {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::metadata::Metadata;
-    use crate::models::node::Node;
+    use visionflow_domain::models::metadata::Metadata;
+    use visionflow_domain::models::node::Node;
     use std::collections::HashMap;
 
     fn make_node(id: u32, label: &str, node_type: Option<&str>) -> Node {

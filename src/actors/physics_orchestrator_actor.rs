@@ -27,8 +27,9 @@ use crate::actors::messages::{
     SetConstraintGroupActive, SimulationStep, StartSimulation, StopSimulation,
     StoreGPUComputeAddress, UpdateNodePosition, UpdateNodePositions, UpdateSimulationParams,
 };
-use crate::models::constraints::{ConstraintGpuExt, ConstraintSet};
-use crate::models::graph::GraphData;
+use visionflow_domain::models::constraints::ConstraintSet;
+use crate::models::constraints::ConstraintGpuExt;
+use visionflow_domain::models::graph::GraphData;
 use crate::models::simulation_params::{SettleMode, SimulationParams};
 use crate::utils::socket_flow_messages::BinaryNodeData;
 use crate::utils::socket_flow_messages::BinaryNodeDataClient;

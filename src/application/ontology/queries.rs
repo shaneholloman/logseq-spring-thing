@@ -7,8 +7,8 @@ use hexser::{HexResult, Hexserror, QueryHandler};
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::models::graph::GraphData;
-use crate::ports::ontology_repository::{
+use visionflow_domain::models::graph::GraphData;
+use visionflow_domain::ports::ontology_repository::{
     InferenceResults, OntologyMetrics, OntologyRepository, OwlAxiom, OwlClass, OwlProperty,
     ValidationReport,
 };

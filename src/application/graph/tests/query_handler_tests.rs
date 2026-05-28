@@ -22,11 +22,11 @@ use std::sync::Arc;
 
 use crate::actors::graph_actor::{AutoBalanceNotification, PhysicsState};
 use crate::application::graph::queries::*;
-use crate::models::constraints::ConstraintSet;
-use crate::models::edge::Edge;
-use crate::models::graph::GraphData;
-use crate::models::metadata::Metadata;
-use crate::models::node::Node;
+use visionflow_domain::models::constraints::ConstraintSet;
+use visionflow_domain::models::edge::Edge;
+use visionflow_domain::models::graph::GraphData;
+use visionflow_domain::models::metadata::Metadata;
+use visionflow_domain::models::node::Node;
 use crate::ports::graph_repository::{
     GraphRepository, GraphRepositoryError, PathfindingParams, PathfindingResult, Result,
 };

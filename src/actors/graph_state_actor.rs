@@ -55,10 +55,10 @@ use std::sync::Arc;
 use log::{debug, info, warn, error};
 
 use crate::actors::messages::*;
-use crate::models::node::Node;
-use crate::models::edge::Edge;
-use crate::models::metadata::{MetadataStore, FileMetadata};
-use crate::models::graph::GraphData;
+use visionflow_domain::models::node::Node;
+use visionflow_domain::models::edge::Edge;
+use visionflow_domain::models::metadata::{MetadataStore, FileMetadata};
+use visionflow_domain::models::graph::GraphData;
 
 // Ports (hexagonal architecture)
 use crate::ports::knowledge_graph_repository::KnowledgeGraphRepository;

@@ -15,8 +15,8 @@ use crate::actors::messages::{
 use crate::actors::physics_orchestrator_actor::{
     GetPhysicsStatus, PhysicsOrchestratorActor, UpdateGraphData,
 };
-use crate::models::constraints::ConstraintSet;
-use crate::models::graph::GraphData;
+use visionflow_domain::models::constraints::ConstraintSet;
+use visionflow_domain::models::graph::GraphData;
 use crate::models::simulation_params::SimulationParams as ActorSimulationParams;
 use crate::ports::physics_simulator::{
     BinaryNodeData, Constraint as PortConstraint, ConstraintType, PhysicsSimulator,
@@ -49,8 +49,8 @@ impl PhysicsOrchestratorAdapter {
     
     fn convert_constraint_to_actor(
         constraint: &PortConstraint,
-    ) -> crate::models::constraints::Constraint {
-        use crate::models::constraints::Constraint as ActorConstraint;
+    ) -> visionflow_domain::models::constraints::Constraint {
+        use visionflow_domain::models::constraints::Constraint as ActorConstraint;
 
         match constraint.constraint_type {
             ConstraintType::Fixed => {
@@ -174,7 +174,7 @@ impl PhysicsSimulator for PhysicsOrchestratorAdapter {
         debug!("Applying {} constraints via adapter", constraints.len());
 
         
-        let actor_constraints: Vec<crate::models::constraints::Constraint> = constraints
+        let actor_constraints: Vec<visionflow_domain::models::constraints::Constraint> = constraints
             .iter()
             .map(|c| Self::convert_constraint_to_actor(c))
             .collect();

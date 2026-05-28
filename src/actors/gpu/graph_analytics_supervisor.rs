@@ -17,7 +17,7 @@ use super::shared::SharedGPUContext;
 use super::shortest_path_actor::ComputeSSP;
 use super::{ConnectedComponentsActor, ShortestPathActor};
 use crate::actors::messages::*;
-use crate::ports::gpu_semantic_analyzer::PathfindingResult;
+use visionflow_domain::ports::gpu_semantic_analyzer::PathfindingResult;
 
 /// Tracks state of a supervised actor
 #[derive(Debug)]

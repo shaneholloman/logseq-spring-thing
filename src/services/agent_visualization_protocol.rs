@@ -988,7 +988,7 @@ impl AgentVisualizationProtocol {
     pub fn create_init_message(
         swarm_id: &str,
         topology: &str,
-        agents: Vec<crate::types::claude_flow::AgentStatus>,
+        agents: Vec<visionflow_domain::types::claude_flow::AgentStatus>,
     ) -> String {
         use crate::services::agent_visualization_processor::AgentVisualizationProcessor;
 use crate::utils::json::to_json;

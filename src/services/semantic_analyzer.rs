@@ -1,6 +1,6 @@
 //! Advanced semantic analysis service for knowledge graph enhancement
 
-use crate::models::metadata::Metadata;
+use visionflow_domain::models::metadata::Metadata;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};

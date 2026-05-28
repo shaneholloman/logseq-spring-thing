@@ -9,14 +9,16 @@
 //! - `whelk_inference_engine` — EL reasoning via horned-owl + whelk-rs
 //! - `messages` — Actix actor message types for GPU adapter bridging
 //!
-//! ## What stayed in webxr (Phase 2 — TODO in later phases)
+//! ## What stayed in webxr (blocked on actor extraction — ADR-090 Realisation)
 //! - `actor_graph_repository` — depends on `crate::actors::graph_state_actor`
 //! - `actix_physics_adapter` — depends on `crate::actors::physics_orchestrator_actor`
 //! - `actix_semantic_adapter` — depends on `crate::actors::semantic_processor_actor`
-//! - `gpu_semantic_analyzer` — depends on `crate::utils::unified_gpu_compute`
 //! - `oxigraph_graph_repository` — depends on `crate::actors::graph_actor` + socket_flow_messages
 //! - `physics_orchestrator_adapter` — depends on `crate::actors::*` + `crate::utils::socket_flow_messages`
-//! - `sqlite_settings_repository` — depends on `crate::config::AppFullSettings` (not in domain yet)
+//!
+//! `gpu_semantic_analyzer` and `sqlite_settings_repository` were unblocked by Phase 1b
+//! and moved to `visionflow-domain` (port trait) and `visionflow-gpu` / `visionflow-adapters`
+//! respectively. They no longer live in webxr.
 //!
 //! DAG position: `contracts → domain → adapters`
 

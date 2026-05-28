@@ -1,5 +1,5 @@
 // use crate::utils::unified_gpu_compute::UnifiedGPUCompute;
-use crate::utils::ptx;
+use visionflow_gpu::ptx_loader as ptx;
 use cust::context::Context;
 use cust::device::Device;
 use cust::module::Module;

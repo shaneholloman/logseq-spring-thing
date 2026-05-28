@@ -10,33 +10,37 @@ pub mod graph_repository;
 pub mod physics_simulator;
 pub mod semantic_analyzer;
 
-// New hexser-based ports
-pub mod inference_engine;
+// Webxr-local ports
 pub mod knowledge_graph_repository;
-pub mod ontology_repository;
 pub mod settings_repository;
-
-// GPU port trait definitions
-pub mod gpu_physics_adapter;
-pub mod gpu_semantic_analyzer;
 
 // Legacy exports
 pub use graph_repository::GraphRepository;
 pub use physics_simulator::PhysicsSimulator;
 pub use semantic_analyzer::SemanticAnalyzer;
 
-// New hexser-based exports
-pub use inference_engine::InferenceEngine;
+// New hexser-based exports (canonical paths in visionflow-domain)
+pub use visionflow_domain::ports::inference_engine::InferenceEngine;
 pub use knowledge_graph_repository::KnowledgeGraphRepository;
-pub use ontology_repository::OntologyRepository;
+pub use visionflow_domain::ports::ontology_repository::OntologyRepository;
 pub use settings_repository::SettingsRepository;
 
-// GPU port trait exports (these are the TRAITS, not the implementations)
-pub use gpu_physics_adapter::{
+// Module-path re-exports so existing callers writing
+// `use crate::ports::gpu_physics_adapter::Foo` keep resolving without
+// rewriting to the visionflow_domain path. The TYPES themselves are
+// canonical in visionflow-domain; this just preserves the legacy module
+// alias as a compatibility surface inside webxr.
+pub use visionflow_domain::ports::gpu_physics_adapter;
+pub use visionflow_domain::ports::gpu_semantic_analyzer;
+pub use visionflow_domain::ports::inference_engine;
+pub use visionflow_domain::ports::ontology_repository;
+
+// GPU port trait exports (canonical paths in visionflow-domain)
+pub use visionflow_domain::ports::gpu_physics_adapter::{
     GpuDeviceInfo, GpuPhysicsAdapter, GpuPhysicsAdapterError, NodeForce, PhysicsParameters,
     PhysicsStatistics, PhysicsStepResult,
 };
-pub use gpu_semantic_analyzer::{
+pub use visionflow_domain::ports::gpu_semantic_analyzer::{
     ClusteringAlgorithm, CommunityDetectionResult, GpuSemanticAnalyzer, GpuSemanticAnalyzerError,
     ImportanceAlgorithm, OptimizationResult, PathfindingResult, SemanticConstraintConfig,
     SemanticStatistics,

@@ -135,7 +135,7 @@ pub struct ForceComputeActor {
 
     /// Graph data waiting to be uploaded to GPU (set by InitializeGPU/UpdateGPUGraphData,
     /// consumed when shared_context becomes available)
-    pending_graph_data: Option<Arc<crate::models::graph::GraphData>>,
+    pending_graph_data: Option<Arc<visionflow_domain::models::graph::GraphData>>,
 
     /// Back-channel to PhysicsOrchestratorActor for the sequential pipeline.
     /// When set, a PhysicsStepCompleted message is sent after each ComputeForces
@@ -273,8 +273,8 @@ impl ForceComputeActor {
         // 1. Create UnifiedGPUCompute engine FIRST — it initializes the cust CUDA context
         //    internally. Creating CudaDevice before this causes a dual-context conflict
         //    where Module::from_ptx() fails with "unknown error".
-        let ptx_content = match crate::utils::ptx::load_ptx_module_sync(
-            crate::utils::ptx::PTXModule::VisionflowUnified,
+        let ptx_content = match visionflow_gpu::ptx_loader::load_ptx_module_sync(
+            visionflow_gpu::ptx_loader::PTXModule::VisionflowUnified,
         ) {
             Ok(c) => c,
             Err(e) => {
@@ -285,8 +285,8 @@ impl ForceComputeActor {
             }
         };
 
-        let clustering_ptx = match crate::utils::ptx::load_ptx_module_sync(
-            crate::utils::ptx::PTXModule::GpuClusteringKernels,
+        let clustering_ptx = match visionflow_gpu::ptx_loader::load_ptx_module_sync(
+            visionflow_gpu::ptx_loader::PTXModule::GpuClusteringKernels,
         ) {
             Ok(c) => Some(c),
             Err(e) => {
@@ -295,8 +295,8 @@ impl ForceComputeActor {
             }
         };
 
-        let apsp_ptx = match crate::utils::ptx::load_ptx_module_sync(
-            crate::utils::ptx::PTXModule::GpuLandmarkApsp,
+        let apsp_ptx = match visionflow_gpu::ptx_loader::load_ptx_module_sync(
+            visionflow_gpu::ptx_loader::PTXModule::GpuLandmarkApsp,
         ) {
             Ok(c) => Some(c),
             Err(e) => {
@@ -305,8 +305,8 @@ impl ForceComputeActor {
             }
         };
 
-        let ontology_ptx = match crate::utils::ptx::load_ptx_module_sync(
-            crate::utils::ptx::PTXModule::OntologyConstraints,
+        let ontology_ptx = match visionflow_gpu::ptx_loader::load_ptx_module_sync(
+            visionflow_gpu::ptx_loader::PTXModule::OntologyConstraints,
         ) {
             Ok(c) => {
                 info!("ForceComputeActor: Ontology constraints PTX loaded ({} bytes)", c.len());
@@ -2195,7 +2195,7 @@ impl Handler<UpdateVisualAnalyticsParams> for ForceComputeActor {
 }
 
 impl Handler<GetConstraints> for ForceComputeActor {
-    type Result = Result<crate::models::constraints::ConstraintSet, String>;
+    type Result = Result<visionflow_domain::models::constraints::ConstraintSet, String>;
 
     fn handle(&mut self, _msg: GetConstraints, _ctx: &mut Self::Context) -> Self::Result {
         

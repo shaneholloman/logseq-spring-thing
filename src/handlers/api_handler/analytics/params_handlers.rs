@@ -5,7 +5,7 @@ use crate::actors::messages::{
     GetConstraints, GetSettings, UpdateConstraints, UpdateVisualAnalyticsParams,
 };
 use crate::gpu::visual_analytics::VisualAnalyticsParams;
-use crate::models::constraints::ConstraintSet;
+use visionflow_domain::models::constraints::ConstraintSet;
 use crate::{ok_json, error_json, service_unavailable, bad_request};
 use crate::AppState;
 

@@ -9,16 +9,11 @@ pub mod audio_processor;
 pub mod binary_protocol;
 pub mod client_message_extractor;
 pub mod edge_data;
-// DEPRECATED (ADR-090 Phase A2): gpu_compute_tests tested the old in-tree
-// GPU compute interface. PTX loading and GPU memory now live in
-// visionflow-gpu crate with their own test suite (40 passing tests).
-// #[cfg(test)]
-// mod gpu_compute_tests;
 pub mod gpu_diagnostics;
-/// ADR-090 Phase 3 shim — GPU memory utilities now live in crates/visionflow-gpu/.
-pub mod gpu_memory {
-    pub use visionflow_gpu::memory::*;
-}
+// ADR-090: GPU memory canonical at visionflow_gpu::memory. The `gpu_memory`
+// alias is preserved so existing `crate::utils::gpu_memory::*` paths in tests
+// and downstream crates continue to resolve.
+pub use visionflow_gpu::memory as gpu_memory;
 pub mod gpu_safety;
 pub mod cuda_error_handling;
 pub mod handler_commons;
@@ -36,15 +31,10 @@ pub mod mcp_connection; // Legacy wrapper - to be migrated to mcp_client_utils
 pub mod mcp_tcp_client; // Legacy wrapper - to be migrated to mcp_client_utils
 pub mod memory_bounds;
 pub mod network;
-/// ADR-090 Phase 3 shim — PTX loader now lives in crates/visionflow-gpu/.
-pub mod ptx {
-    pub use visionflow_gpu::ptx_loader::*;
-}
-// DEPRECATED (ADR-090 Phase A2): ptx_tests tested PTX loader internals
-// which moved to visionflow-gpu crate. Replaced by 30 tests in
-// crates/visionflow-gpu/src/ptx_loader.rs.
-// #[cfg(test)]
-// mod ptx_tests;
+// ADR-090: PTX loader canonical at visionflow_gpu::ptx_loader. The `ptx`
+// alias is preserved so existing `crate::utils::ptx::*` paths in tests
+// and downstream crates continue to resolve.
+pub use visionflow_gpu::ptx_loader as ptx;
 pub mod socket_flow_constants;
 pub mod socket_flow_messages;
 pub mod standard_websocket_messages;

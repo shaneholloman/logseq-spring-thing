@@ -260,7 +260,7 @@ mod tests {
     impl PhysicsSimulator for MockPhysicsSimulator {
         async fn run_simulation_step(
             &self,
-            _graph: &crate::models::graph::GraphData,
+            _graph: &visionflow_domain::models::graph::GraphData,
         ) -> crate::ports::physics_simulator::Result<
             Vec<(u32, crate::ports::physics_simulator::BinaryNodeData)>,
         > {

@@ -13,8 +13,8 @@ use crate::{ok_json, error_json};
 use crate::application::semantic_service::{
     CentralityRequest, CommunityDetectionRequest, SemanticService, ShortestPathRequest,
 };
-use crate::models::graph::GraphData;
-use crate::ports::gpu_semantic_analyzer::{
+use visionflow_domain::models::graph::GraphData;
+use visionflow_domain::ports::gpu_semantic_analyzer::{
     ClusteringAlgorithm, ImportanceAlgorithm, SemanticConstraintConfig,
 };
 

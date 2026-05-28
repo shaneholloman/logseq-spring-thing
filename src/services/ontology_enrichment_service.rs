@@ -7,7 +7,7 @@
 use std::sync::Arc;
 use log::{info, debug};
 
-use crate::models::graph::GraphData;
+use visionflow_domain::models::graph::GraphData;
 use crate::services::ontology_reasoner::OntologyReasoner;
 use crate::services::edge_classifier::EdgeClassifier;
 
@@ -116,7 +116,7 @@ impl OntologyEnrichmentService {
         let mut enriched_count = 0;
 
         // Build node ID to node map for lookups
-        let node_map: std::collections::HashMap<u32, &crate::models::node::Node> =
+        let node_map: std::collections::HashMap<u32, &visionflow_domain::models::node::Node> =
             graph.nodes.iter().map(|n| (n.id, n)).collect();
 
         for edge in &mut graph.edges {
@@ -217,7 +217,7 @@ impl OntologyEnrichmentService {
     }
 
     /// Update node visual properties based on its OWL class
-    fn update_node_visuals_by_class(&self, node: &mut crate::models::node::Node, class_iri: &str) {
+    fn update_node_visuals_by_class(&self, node: &mut visionflow_domain::models::node::Node, class_iri: &str) {
         // Match the visual properties from OntologyConverter
         let (color, size) = if class_iri.contains("Person") || class_iri.contains("Individual") {
             ("#90EE90", 8.0) // Light green, small

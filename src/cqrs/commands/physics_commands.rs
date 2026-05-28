@@ -4,8 +4,8 @@
 //! Write operations for GPU physics adapter.
 
 use crate::cqrs::types::{Command, Result};
-use crate::models::graph::GraphData;
-use crate::ports::gpu_physics_adapter::PhysicsParameters;
+use visionflow_domain::models::graph::GraphData;
+use visionflow_domain::ports::gpu_physics_adapter::PhysicsParameters;
 use std::sync::Arc;
 
 #[derive(Debug, Clone)]

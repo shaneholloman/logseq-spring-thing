@@ -531,7 +531,7 @@ impl OntologyActor {
     fn send_constraints_to_physics(&self, report: &ValidationReport) {
         // Route through GPUManagerActor which delegates to OntologyConstraintActor
         if let Some(gpu_addr) = &self.gpu_manager_addr {
-            use crate::models::constraints::{Constraint, ConstraintKind, ConstraintSet};
+            use visionflow_domain::models::constraints::{Constraint, ConstraintKind, ConstraintSet};
             use crate::actors::messages::{ApplyOntologyConstraints, ConstraintMergeMode};
 
             let mut constraint_set = ConstraintSet::new();

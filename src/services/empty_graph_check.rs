@@ -1,4 +1,4 @@
-use crate::models::graph::GraphData;
+use visionflow_domain::models::graph::GraphData;
 use std::io::{Error, ErrorKind};
 use log::warn;
 

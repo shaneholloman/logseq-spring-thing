@@ -1,12 +1,18 @@
-//! Domain port traits — ADR-090 Phase 1b.
+//! Domain port traits — ADR-090 Phase 1b (shipped 2026-05-28).
 //!
-//! Phase 2 promoted OWL types and InferenceEngine.
-//! Phase 1b promotes GpuPhysicsAdapter, GpuSemanticAnalyzer, and
-//! OntologyRepository now that GraphData is a canonical domain type.
+//! Ports extracted here (all shipped):
+//! - `InferenceEngine` — Phase 2
+//! - `OntologyRepository`, `owl_types` — Phase 2
+//! - `GpuPhysicsAdapter`, `GpuSemanticAnalyzer` — Phase 1b (unblocked once
+//!   GraphData became a canonical domain type)
 //!
-//! Remaining ports (`GraphRepository`, `SettingsRepository`) stay in
-//! `src/ports/` of the webxr crate because they depend on webxr-only types
-//! (`PhysicsState`, `AutoBalanceNotification`, `AppFullSettings`).
+//! Ports that remain in `src/ports/` of the webxr crate:
+//! - `GraphRepository` — signature depends on `PhysicsState` and
+//!   `AutoBalanceNotification`, which are webxr-internal types not yet promoted.
+//! - `SettingsRepository` — signature depends on `AppFullSettings`, which
+//!   lives in `webxr/src/config/` and has not yet been promoted to domain.
+//!
+//! These will move when their dependencies are extracted in a future phase.
 
 pub mod gpu_physics_adapter;
 pub mod gpu_semantic_analyzer;

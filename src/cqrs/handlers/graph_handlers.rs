@@ -143,14 +143,14 @@ impl GraphQueryHandler {
 
 #[async_trait]
 impl QueryHandler<GetNodeQuery> for GraphQueryHandler {
-    async fn handle(&self, query: GetNodeQuery) -> Result<Option<crate::models::node::Node>> {
+    async fn handle(&self, query: GetNodeQuery) -> Result<Option<visionflow_domain::models::node::Node>> {
         Ok(self.repository.get_node(query.node_id).await?)
     }
 }
 
 #[async_trait]
 impl QueryHandler<GetNodesQuery> for GraphQueryHandler {
-    async fn handle(&self, query: GetNodesQuery) -> Result<Vec<crate::models::node::Node>> {
+    async fn handle(&self, query: GetNodesQuery) -> Result<Vec<visionflow_domain::models::node::Node>> {
         query.validate()?;
         Ok(self.repository.get_nodes(query.node_ids).await?)
     }
@@ -158,7 +158,7 @@ impl QueryHandler<GetNodesQuery> for GraphQueryHandler {
 
 #[async_trait]
 impl QueryHandler<GetAllNodesQuery> for GraphQueryHandler {
-    async fn handle(&self, _query: GetAllNodesQuery) -> Result<Vec<crate::models::node::Node>> {
+    async fn handle(&self, _query: GetAllNodesQuery) -> Result<Vec<visionflow_domain::models::node::Node>> {
         let graph = self.repository.load_graph().await?;
         Ok(graph.nodes.clone())
     }
@@ -166,7 +166,7 @@ impl QueryHandler<GetAllNodesQuery> for GraphQueryHandler {
 
 #[async_trait]
 impl QueryHandler<SearchNodesQuery> for GraphQueryHandler {
-    async fn handle(&self, query: SearchNodesQuery) -> Result<Vec<crate::models::node::Node>> {
+    async fn handle(&self, query: SearchNodesQuery) -> Result<Vec<visionflow_domain::models::node::Node>> {
         query.validate()?;
         Ok(self
             .repository
@@ -180,7 +180,7 @@ impl QueryHandler<GetNodesByMetadataQuery> for GraphQueryHandler {
     async fn handle(
         &self,
         query: GetNodesByMetadataQuery,
-    ) -> Result<Vec<crate::models::node::Node>> {
+    ) -> Result<Vec<visionflow_domain::models::node::Node>> {
         query.validate()?;
         Ok(self
             .repository
@@ -191,14 +191,14 @@ impl QueryHandler<GetNodesByMetadataQuery> for GraphQueryHandler {
 
 #[async_trait]
 impl QueryHandler<GetNodeEdgesQuery> for GraphQueryHandler {
-    async fn handle(&self, query: GetNodeEdgesQuery) -> Result<Vec<crate::models::edge::Edge>> {
+    async fn handle(&self, query: GetNodeEdgesQuery) -> Result<Vec<visionflow_domain::models::edge::Edge>> {
         Ok(self.repository.get_node_edges(query.node_id).await?)
     }
 }
 
 #[async_trait]
 impl QueryHandler<GetEdgesBetweenQuery> for GraphQueryHandler {
-    async fn handle(&self, query: GetEdgesBetweenQuery) -> Result<Vec<crate::models::edge::Edge>> {
+    async fn handle(&self, query: GetEdgesBetweenQuery) -> Result<Vec<visionflow_domain::models::edge::Edge>> {
         Ok(self
             .repository
             .get_edges_between(query.source_id, query.target_id)
@@ -208,7 +208,7 @@ impl QueryHandler<GetEdgesBetweenQuery> for GraphQueryHandler {
 
 #[async_trait]
 impl QueryHandler<GetNeighborsQuery> for GraphQueryHandler {
-    async fn handle(&self, query: GetNeighborsQuery) -> Result<Vec<crate::models::node::Node>> {
+    async fn handle(&self, query: GetNeighborsQuery) -> Result<Vec<visionflow_domain::models::node::Node>> {
         Ok(self.repository.get_neighbors(query.node_id).await?)
     }
 }
@@ -241,14 +241,14 @@ impl QueryHandler<GetGraphStatsQuery> for GraphQueryHandler {
 
 #[async_trait]
 impl QueryHandler<LoadGraphQuery> for GraphQueryHandler {
-    async fn handle(&self, _query: LoadGraphQuery) -> Result<Arc<crate::models::graph::GraphData>> {
+    async fn handle(&self, _query: LoadGraphQuery) -> Result<Arc<visionflow_domain::models::graph::GraphData>> {
         Ok(self.repository.load_graph().await?)
     }
 }
 
 #[async_trait]
 impl QueryHandler<QueryNodesQuery> for GraphQueryHandler {
-    async fn handle(&self, query: QueryNodesQuery) -> Result<Vec<crate::models::node::Node>> {
+    async fn handle(&self, query: QueryNodesQuery) -> Result<Vec<visionflow_domain::models::node::Node>> {
         query.validate()?;
         Ok(self.repository.query_nodes(&query.query).await?)
     }

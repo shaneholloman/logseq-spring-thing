@@ -9,9 +9,9 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::models::edge::Edge;
-use crate::models::graph::GraphData;
-use crate::models::node::Node;
+use visionflow_domain::models::edge::Edge;
+use visionflow_domain::models::graph::GraphData;
+use visionflow_domain::models::node::Node;
 
 pub type Result<T> = std::result::Result<T, KnowledgeGraphRepositoryError>;
 

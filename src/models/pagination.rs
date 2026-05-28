@@ -1,5 +1,5 @@
-use crate::models::edge::Edge;
-use crate::models::node::Node;
+use visionflow_domain::models::edge::Edge;
+use visionflow_domain::models::node::Node;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize)]

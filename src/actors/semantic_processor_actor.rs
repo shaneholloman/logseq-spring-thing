@@ -18,10 +18,10 @@ use std::sync::Arc;
 use std::time::Instant;
 
 // Core models and services
-use crate::models::constraints::{AdvancedParams, Constraint, ConstraintSet};
-use crate::models::graph::GraphData;
-use crate::models::metadata::FileMetadata;
-use crate::models::node::Node;
+use visionflow_domain::models::constraints::{AdvancedParams, Constraint, ConstraintSet};
+use visionflow_domain::models::graph::GraphData;
+use visionflow_domain::models::metadata::FileMetadata;
+use visionflow_domain::models::node::Node;
 use crate::physics::stress_majorization::{OptimizationResult, StressMajorizationSolver};
 use crate::services::semantic_analyzer::{
     SemanticAnalyzer, SemanticAnalyzerConfig, SemanticFeatures,
@@ -38,13 +38,13 @@ use crate::actors::messages::{
 #[cfg(feature = "gpu")]
 use crate::adapters::gpu_semantic_analyzer::GpuSemanticAnalyzerAdapter;
 #[cfg(feature = "gpu")]
-use crate::ports::gpu_semantic_analyzer::{
+use visionflow_domain::ports::gpu_semantic_analyzer::{
     GpuSemanticAnalyzer as GpuSemanticAnalyzerPort, PathfindingResult,
 };
 
 // CPU-only stubs when GPU feature is disabled
 #[cfg(not(feature = "gpu"))]
-pub use crate::ports::gpu_semantic_analyzer::PathfindingResult;
+pub use visionflow_domain::ports::gpu_semantic_analyzer::PathfindingResult;
 
 #[cfg(not(feature = "gpu"))]
 pub struct GpuSemanticAnalyzerAdapter;
@@ -55,7 +55,7 @@ impl GpuSemanticAnalyzerAdapter {
         Self
     }
 
-    pub async fn initialize(&self, _graph: std::sync::Arc<crate::models::graph::GraphData>) -> Result<(), String> {
+    pub async fn initialize(&self, _graph: std::sync::Arc<visionflow_domain::models::graph::GraphData>) -> Result<(), String> {
         // CPU fallback: no-op initialization
         Ok(())
     }

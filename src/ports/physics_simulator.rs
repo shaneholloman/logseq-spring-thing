@@ -6,7 +6,7 @@
 
 use async_trait::async_trait;
 
-use crate::models::graph::GraphData;
+use visionflow_domain::models::graph::GraphData;
 
 // Placeholder for BinaryNodeData - will use actual type from GPU module
 pub type BinaryNodeData = (f32, f32, f32);

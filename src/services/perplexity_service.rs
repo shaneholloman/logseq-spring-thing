@@ -1,5 +1,5 @@
 use crate::config::AppFullSettings; 
-use crate::models::metadata::Metadata;
+use visionflow_domain::models::metadata::Metadata;
 use crate::services::file_service::ProcessedFile;
 use log::{error, info};
 use reqwest::Client;

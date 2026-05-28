@@ -396,6 +396,21 @@ Opus 48kHz mono end-to-end. HRTF spatial panning from Vircadia entity positions.
 
 ![System Architecture — hexagonal backend, GPU compute, VisionFlow mesh](docs/diagrams/05-architecture-hexagonal.png)
 
+### Workspace crates (ADR-090)
+
+The Rust backend is a Cargo workspace. The `webxr` binary depends on six extracted crates arranged as an acyclic DAG:
+
+| Crate | Responsibility |
+|:------|:---------------|
+| `visionflow-domain` | Domain model, port traits, no framework dependencies |
+| `visionflow-protocol` | Binary V2/V3 wire protocol encode/decode |
+| `visionflow-gpu` | CUDA kernels, force-directed physics, build.rs PTX compilation |
+| `visionflow-ontology` | OWL 2 types, horned-owl pipeline, ontology services |
+| `visionflow-adapters` | Oxigraph ontology store, Whelk inference engine |
+| `visionflow-actors` | Actor message types; actor implementations remain in `webxr` |
+
+Dependency order (inner → outer): `contracts → domain → {gpu, ontology, protocol} → adapters → actors → webxr`
+
 ```mermaid
 flowchart TB
     subgraph Client["Browser Client (React 19 + Three.js / Babylon.js)"]

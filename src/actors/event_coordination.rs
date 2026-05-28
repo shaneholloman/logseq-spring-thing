@@ -14,7 +14,7 @@ use crate::events::domain_events::{
     EdgeAddedEvent, GraphSavedEvent, NodeAddedEvent, OntologyImportedEvent, PositionsUpdatedEvent,
 };
 use crate::events::event_bus::EventBus;
-use crate::models::graph::GraphData;
+use visionflow_domain::models::graph::GraphData;
 
 pub struct EventCoordinator {
     physics_service: Arc<PhysicsService>,

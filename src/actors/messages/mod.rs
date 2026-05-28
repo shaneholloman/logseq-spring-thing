@@ -14,7 +14,7 @@ pub mod physics_messages;
 pub mod settings_messages;
 
 // Re-export PathfindingResult from the port for convenience
-pub use crate::ports::gpu_semantic_analyzer::PathfindingResult;
+pub use visionflow_domain::ports::gpu_semantic_analyzer::PathfindingResult;
 
 // =============================================================================
 // Re-export everything from each submodule

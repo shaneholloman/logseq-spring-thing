@@ -12,10 +12,10 @@ use crate::events::domain_events::{
     LayoutOptimizedEvent, PositionsUpdatedEvent, SimulationStartedEvent, SimulationStoppedEvent,
 };
 use crate::events::event_bus::EventBus;
-use crate::models::graph::GraphData;
-use crate::models::node::Node;
+use visionflow_domain::models::graph::GraphData;
+use visionflow_domain::models::node::Node;
 use crate::models::simulation_params::SettleMode;
-use crate::ports::gpu_physics_adapter::{
+use visionflow_domain::ports::gpu_physics_adapter::{
     GpuDeviceInfo, GpuPhysicsAdapter, PhysicsParameters, PhysicsStatistics,
     PhysicsStepResult, Result as PhysicsResult,
 };
@@ -274,7 +274,7 @@ mod tests {
     use super::*;
     use async_trait::async_trait;
     use crate::events::event_bus::EventBus;
-    use crate::ports::gpu_physics_adapter::NodeForce;
+    use visionflow_domain::ports::gpu_physics_adapter::NodeForce;
     use std::sync::Arc;
     use tokio::sync::RwLock;
 

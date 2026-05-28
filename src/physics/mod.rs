@@ -34,7 +34,7 @@
 //! ```rust,ignore
 //! use crate::physics::{StressMajorizationSolver, SemanticConstraintGenerator, OntologyConstraintTranslator};
 //! use crate::models::constraints::ConstraintSet;
-//! use crate::models::graph::GraphData;
+//! use visionflow_domain::models::graph::GraphData;
 //!
 //! 
 //! let mut solver = StressMajorizationSolver::new(params);
@@ -81,7 +81,7 @@ pub use ontology_constraints::{
 pub use semantic_constraints::SemanticConstraintGenerator;
 pub use stress_majorization::StressMajorizationSolver;
 
-pub use crate::models::constraints::{AdvancedParams, Constraint, ConstraintKind, ConstraintSet};
-pub use crate::models::graph::GraphData;
-pub use crate::models::metadata::Metadata;
-pub use crate::models::node::Node;
+pub use visionflow_domain::models::constraints::{AdvancedParams, Constraint, ConstraintKind, ConstraintSet};
+pub use visionflow_domain::models::graph::GraphData;
+pub use visionflow_domain::models::metadata::Metadata;
+pub use visionflow_domain::models::node::Node;

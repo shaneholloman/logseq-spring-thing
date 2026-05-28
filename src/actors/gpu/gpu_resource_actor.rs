@@ -14,7 +14,7 @@ use cudarc::driver::{CudaDevice, CudaStream};
 
 use super::shared::GPUState;
 use crate::actors::messages::*;
-use crate::models::graph::GraphData;
+use visionflow_domain::models::graph::GraphData;
 use crate::utils::socket_flow_messages::BinaryNodeData;
 use crate::utils::unified_gpu_compute::UnifiedGPUCompute;
 
@@ -108,8 +108,8 @@ impl GPUResourceActor {
         
         
         debug!("Loading PTX content using ptx utility module");
-        let ptx_content = crate::utils::ptx::load_ptx_module_sync(
-            crate::utils::ptx::PTXModule::VisionflowUnified,
+        let ptx_content = visionflow_gpu::ptx_loader::load_ptx_module_sync(
+            visionflow_gpu::ptx_loader::PTXModule::VisionflowUnified,
         )
         .map_err(|e| {
             error!("Failed to load PTX content: {}", e);
@@ -121,8 +121,8 @@ impl GPUResourceActor {
         );
 
         
-        let clustering_ptx = match crate::utils::ptx::load_ptx_module_sync(
-            crate::utils::ptx::PTXModule::GpuClusteringKernels,
+        let clustering_ptx = match visionflow_gpu::ptx_loader::load_ptx_module_sync(
+            visionflow_gpu::ptx_loader::PTXModule::GpuClusteringKernels,
         ) {
             Ok(content) => {
                 debug!(
@@ -138,8 +138,8 @@ impl GPUResourceActor {
         };
 
         // Load ontology constraints PTX for OWL axiom -> physics force pipeline
-        let _ontology_ptx = match crate::utils::ptx::load_ptx_module_sync(
-            crate::utils::ptx::PTXModule::OntologyConstraints,
+        let _ontology_ptx = match visionflow_gpu::ptx_loader::load_ptx_module_sync(
+            visionflow_gpu::ptx_loader::PTXModule::OntologyConstraints,
         ) {
             Ok(content) => {
                 info!(
@@ -155,8 +155,8 @@ impl GPUResourceActor {
         };
 
         // Load APSP PTX for GPU-accelerated landmark distance assembly
-        let apsp_ptx = match crate::utils::ptx::load_ptx_module_sync(
-            crate::utils::ptx::PTXModule::GpuLandmarkApsp,
+        let apsp_ptx = match visionflow_gpu::ptx_loader::load_ptx_module_sync(
+            visionflow_gpu::ptx_loader::PTXModule::GpuLandmarkApsp,
         ) {
             Ok(content) => {
                 info!(

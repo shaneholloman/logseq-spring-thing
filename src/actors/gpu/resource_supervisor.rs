@@ -73,7 +73,7 @@ pub struct ResourceSupervisor {
     last_error: Option<String>,
 
     /// Pending graph data to send after context distribution
-    pending_graph_data: Option<Arc<crate::models::graph::GraphData>>,
+    pending_graph_data: Option<Arc<visionflow_domain::models::graph::GraphData>>,
 }
 
 impl ResourceSupervisor {

@@ -31,8 +31,8 @@ use crate::application::knowledge_graph::{
     UpdateNode,
     UpdateNodeHandler,
 };
-use crate::models::edge::Edge;
-use crate::models::node::Node;
+use visionflow_domain::models::edge::Edge;
+use visionflow_domain::models::node::Node;
 use hexser::{DirectiveHandler, QueryHandler};
 
 #[derive(Debug, Serialize)]

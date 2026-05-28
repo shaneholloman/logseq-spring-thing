@@ -161,7 +161,7 @@ mod tests {
         GraphData {
             nodes,
             edges,
-            metadata: crate::models::metadata::MetadataStore::new(),
+            metadata: visionflow_domain::models::metadata::MetadataStore::new(),
             id_to_metadata: std::collections::HashMap::new(),
         }
     }
@@ -198,7 +198,7 @@ mod tests {
         GraphData {
             nodes,
             edges,
-            metadata: crate::models::metadata::MetadataStore::new(),
+            metadata: visionflow_domain::models::metadata::MetadataStore::new(),
             id_to_metadata: std::collections::HashMap::new(),
         }
     }
@@ -220,7 +220,7 @@ mod tests {
         GraphData {
             nodes,
             edges,
-            metadata: crate::models::metadata::MetadataStore::new(),
+            metadata: visionflow_domain::models::metadata::MetadataStore::new(),
             id_to_metadata: std::collections::HashMap::new(),
         }
     }
@@ -237,7 +237,7 @@ mod tests {
         GraphData {
             nodes,
             edges,
-            metadata: crate::models::metadata::MetadataStore::new(),
+            metadata: visionflow_domain::models::metadata::MetadataStore::new(),
             id_to_metadata: std::collections::HashMap::new(),
         }
     }
@@ -268,7 +268,7 @@ mod tests {
         GraphData {
             nodes,
             edges,
-            metadata: crate::models::metadata::MetadataStore::new(),
+            metadata: visionflow_domain::models::metadata::MetadataStore::new(),
             id_to_metadata: std::collections::HashMap::new(),
         }
     }
@@ -508,10 +508,10 @@ mod tests {
         let mut constraint_set = ConstraintSet::default();
 
         
-        constraint_set.add(crate::models::constraints::Constraint::fixed_position(
+        constraint_set.add(visionflow_domain::models::constraints::Constraint::fixed_position(
             1, 0.0, 0.0, 0.0,
         ));
-        constraint_set.add(crate::models::constraints::Constraint::separation(
+        constraint_set.add(visionflow_domain::models::constraints::Constraint::separation(
             2, 3, 100.0,
         ));
 

@@ -30,7 +30,7 @@ use crate::actors::{
 };
 use crate::config::feature_access::FeatureAccess;
 use crate::config::AppFullSettings; 
-use crate::models::metadata::MetadataStore;
+use visionflow_domain::models::metadata::MetadataStore;
 use crate::models::protected_settings::{ApiKeys, NostrUser, ProtectedSettings};
 use crate::services::bots_client::BotsClient;
 use crate::services::github::content_enhanced::EnhancedContentAPI;
@@ -867,7 +867,7 @@ impl AppState {
             mcp_host, mcp_port
         );
         let claude_flow_client =
-            crate::types::claude_flow::ClaudeFlowClient::new(mcp_host, mcp_port);
+            visionflow_domain::types::claude_flow::ClaudeFlowClient::new(mcp_host, mcp_port);
         let agent_monitor_addr =
             AgentMonitorActor::new(claude_flow_client, graph_service_addr.clone()).start();
 

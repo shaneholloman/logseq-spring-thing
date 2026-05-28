@@ -49,7 +49,7 @@ use crate::actors::supervisor::{ActorFailed, SupervisorActor};
 use crate::actors::messages as msgs;
 // Removed graph_messages::GetGraphData import - not used
 use crate::errors::{ActorError, VisionFlowError};
-use crate::models::graph::GraphData;
+use visionflow_domain::models::graph::GraphData;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum GraphSupervisionStrategy {
@@ -1228,7 +1228,7 @@ impl Handler<msgs::SimulationStep> for GraphServiceSupervisor {
 
 impl Handler<msgs::GetBotsGraphData> for GraphServiceSupervisor {
     type Result =
-        ResponseActFuture<Self, Result<std::sync::Arc<crate::models::graph::GraphData>, String>>;
+        ResponseActFuture<Self, Result<std::sync::Arc<visionflow_domain::models::graph::GraphData>, String>>;
 
     fn handle(&mut self, msg: msgs::GetBotsGraphData, _ctx: &mut Self::Context) -> Self::Result {
         if let Some(ref graph_state_addr) = self.graph_state {

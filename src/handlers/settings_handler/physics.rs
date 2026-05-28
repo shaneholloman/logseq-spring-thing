@@ -446,14 +446,14 @@ pub async fn get_cluster_analytics(
 }
 
 async fn get_cpu_fallback_analytics(
-    graph_data: &crate::models::graph::GraphData,
+    graph_data: &visionflow_domain::models::graph::GraphData,
 ) -> Result<HttpResponse, Error> {
     use std::collections::HashMap;
 
     let node_count = graph_data.nodes.len();
     let _edge_count = graph_data.edges.len();
 
-    let mut type_clusters: HashMap<String, Vec<&crate::models::node::Node>> = HashMap::new();
+    let mut type_clusters: HashMap<String, Vec<&visionflow_domain::models::node::Node>> = HashMap::new();
 
     for node in &graph_data.nodes {
         let node_type = node

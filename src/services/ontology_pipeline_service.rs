@@ -18,7 +18,7 @@ use crate::actors::ontology_actor::OntologyActor;
 use crate::actors::gpu::ontology_constraint_actor::OntologyConstraintActor;
 // REMOVED: reasoning_actor no longer exists - reasoning functionality moved to custom_reasoner
 use crate::reasoning::custom_reasoner::Ontology;
-use crate::models::constraints::ConstraintSet;
+use visionflow_domain::models::constraints::ConstraintSet;
 use crate::services::github_sync_service::SyncStatistics;
 use crate::ports::knowledge_graph_repository::KnowledgeGraphRepository;
 
@@ -243,7 +243,7 @@ impl OntologyPipelineService {
     ) -> Result<ConstraintSet, String> {
         info!("Generating constraints from {} axioms", axioms.len());
 
-        use crate::models::constraints::{Constraint, ConstraintKind};
+        use visionflow_domain::models::constraints::{Constraint, ConstraintKind};
         use crate::reasoning::custom_reasoner::AxiomType;
 
         // Get graph repository for IRI → node ID resolution

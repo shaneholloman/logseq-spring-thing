@@ -1,5 +1,5 @@
-use crate::models::metadata::Metadata;
-use crate::models::node::Node;
+use visionflow_domain::models::metadata::Metadata;
+use visionflow_domain::models::node::Node;
 use crate::services::file_service::FileService;
 use crate::types::vec3::Vec3Data;
 use crate::{ok_json, error_json, bad_request};
@@ -16,7 +16,7 @@ use crate::application::graph::queries::{
     GetAutoBalanceNotifications, GetGraphData, GetNodeMap, GetPhysicsState,
 };
 use crate::actors::graph_actor::PhysicsState;
-use crate::models::graph::GraphData;
+use visionflow_domain::models::graph::GraphData;
 use crate::handlers::utils::execute_in_thread;
 use hexser::{Hexserror, QueryHandler};
 
@@ -61,7 +61,7 @@ pub struct NodeWithPosition {
 #[serde(rename_all = "camelCase")]
 pub struct GraphResponse {
     pub nodes: Vec<Node>,
-    pub edges: Vec<crate::models::edge::Edge>,
+    pub edges: Vec<visionflow_domain::models::edge::Edge>,
     pub metadata: HashMap<String, Metadata>,
 }
 
@@ -69,7 +69,7 @@ pub struct GraphResponse {
 #[serde(rename_all = "camelCase")]
 pub struct GraphResponseWithPositions {
     pub nodes: Vec<NodeWithPosition>,
-    pub edges: Vec<crate::models::edge::Edge>,
+    pub edges: Vec<visionflow_domain::models::edge::Edge>,
     pub metadata: HashMap<String, Metadata>,
     pub settlement_state: SettlementState,
 }
@@ -78,7 +78,7 @@ pub struct GraphResponseWithPositions {
 #[serde(rename_all = "camelCase")]
 pub struct PaginatedGraphResponse {
     pub nodes: Vec<Node>,
-    pub edges: Vec<crate::models::edge::Edge>,
+    pub edges: Vec<visionflow_domain::models::edge::Edge>,
     pub metadata: HashMap<String, Metadata>,
     pub total_pages: usize,
     pub current_page: usize,

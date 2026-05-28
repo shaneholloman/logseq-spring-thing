@@ -696,7 +696,7 @@ pub struct OntologyConstraintCacheStats {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::node::Node;
+    use visionflow_domain::models::node::Node;
     use crate::types::vec3::Vec3Data;
     // ADR-090: Node.data is domain's BinaryNodeData, not webxr's BinaryNodeDataClient.
     use visionflow_domain::types::vec3::BinaryNodeData;

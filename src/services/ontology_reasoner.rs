@@ -17,7 +17,7 @@ use dashmap::DashMap;
 use log::{info, warn, debug};
 use tokio::sync::RwLock;
 use crate::adapters::whelk_inference_engine::WhelkInferenceEngine;
-use crate::ports::ontology_repository::{OntologyRepository, OwlClass, Result as OntResult};
+use visionflow_domain::ports::ontology_repository::{OntologyRepository, OwlClass, Result as OntResult};
 
 /// Ontology reasoner for inferring missing class assignments
 /// Thread-safe implementation using DashMap for lock-free concurrent access

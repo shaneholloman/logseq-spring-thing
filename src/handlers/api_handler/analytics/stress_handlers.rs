@@ -6,7 +6,7 @@ use crate::actors::messages::{
     GetStressMajorizationStats, ResetStressMajorizationSafety,
     TriggerStressMajorization, UpdateStressMajorizationParams,
 };
-use crate::models::constraints::AdvancedParams;
+use visionflow_domain::models::constraints::AdvancedParams;
 use crate::{ok_json, error_json, service_unavailable};
 use crate::AppState;
 

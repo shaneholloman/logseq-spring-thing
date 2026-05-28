@@ -1,7 +1,8 @@
 # ADR-090 — Hexagonal Crate Modularisation
 
-Status      : Proposed
+Status      : Accepted (2026-05-28)
 Date        : 2026-05-23
+Implemented : 2026-05-28 (commits a61a15f..70d979b)
 Supersedes  : Implicit single-crate monolith decision
 Related     : PRD-016, ADR-11 (Persistence Migration), ADR-061 (Binary Protocol)
 
@@ -81,3 +82,58 @@ Individual crates use `codegen-units = 16` (default) for fast compilation. Only 
 - No change to binary protocol, REST API, or WebSocket behaviour
 - No change to Docker image structure (still one `webxr` binary)
 - No change to CUDA kernel compilation (stays in `build.rs` of `visionflow-gpu`)
+
+---
+
+## Realisation
+
+*Added 2026-05-28 — reflects the shipped state as of commits a61a15f..70d979b.*
+
+### Crates extracted (6 of 7)
+
+| Crate | Status | Notes |
+|-------|--------|-------|
+| `visionflow-domain` | Shipped | Phase 1 + 1b — owns all domain types, port traits, GPU adapter ports |
+| `visionflow-adapters` | Shipped | Phase 2 / A1+ — Oxigraph ontology store, Whelk inference engine |
+| `visionflow-gpu` | Shipped | CUDA kernels, force-layout, build.rs PTX compilation |
+| `visionflow-ontology` | Shipped | OWL types, horned-owl pipeline, OntologyPipelineService |
+| `visionflow-actors` | Shipped | Actor message types; actor implementations remain in webxr (see below) |
+| `visionflow-protocol` | Shipped | Binary V2/V3 encode/decode, BinaryMessage wire types |
+
+`visionflow-server` is the intended name for the final extracted binary wrapper; in practice the root `webxr` crate serves that role and remains the Cargo binary target.
+
+### Phase 1b — keystone unblock
+
+Phase 1b (model unification) was the critical path item. Once `GraphData`, `Node`, and `Edge` became canonical domain types inside `visionflow-domain`, the downstream chain (`GpuPhysicsAdapter`, `GpuSemanticAnalyzer`, `OntologyRepository`) could all move in a single coordinated pass. Without Phase 1b the later phases would have required circular workarounds.
+
+### Production bugs uncovered during extraction
+
+The test-coverage pass that accompanied the crate extraction surfaced three real production defects, fixed in commit 70d979b:
+
+1. **SPARQL aggregate + FROM clause** — `COUNT(*)` queries silently returned zero when combined with a named graph `FROM` clause on Oxigraph; the OntologyRepository now strips the `FROM` on aggregate paths.
+2. **`BinaryMessage::Delta` wire asymmetry** — the encoder wrote a 2-byte flags field that the decoder skipped, causing silent payload misalignment on delta frames.
+3. **Stateful `flate2::Compress` exhaustion** — the compression context was reused across frames without reset, causing deflate stream corruption after ~300 frames.
+
+### Test suite
+
+2,200+ tests pass across the workspace (`cargo test --workspace`).
+
+## What did NOT move
+
+### Adapters still in webxr (blocked on actor extraction)
+
+Five adapter implementations remain in `src/adapters/` of the `webxr` crate because they depend on actor types and message files that have not yet been moved:
+
+- `actor_graph_repository` — depends on `crate::actors::graph_state_actor`
+- `actix_physics_adapter` — depends on `crate::actors::physics_orchestrator_actor`
+- `actix_semantic_adapter` — depends on `crate::actors::semantic_processor_actor`
+- `oxigraph_graph_repository` — depends on `crate::actors::graph_actor` + `socket_flow_messages`
+- `physics_orchestrator_adapter` — depends on `crate::actors::*` + `crate::utils::socket_flow_messages`
+
+### Port traits still in webxr
+
+`GraphRepository` and `SettingsRepository` remain in `src/ports/` of the `webxr` crate because their signatures depend on `PhysicsState`, `AutoBalanceNotification`, and `AppFullSettings` — types that are webxr-internal and not yet promoted to the domain crate.
+
+### Actor implementations still in webxr
+
+14+ actor implementations (`GraphStateActor`, `PhysicsOrchestratorActor`, `ClientCoordinatorActor`, and others) remain in `webxr/src/actors/` because they depend on `crate::config::AppFullSettings`, `crate::utils::socket_flow_messages`, and `crate::handlers::*` — all of which are webxr-local. Extracting these is the next major phase.

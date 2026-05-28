@@ -4,8 +4,8 @@
 //! Read operations for ontology repository.
 
 use crate::cqrs::types::{Query, Result};
-use crate::models::graph::GraphData;
-use crate::ports::ontology_repository::{
+use visionflow_domain::models::graph::GraphData;
+use visionflow_domain::ports::ontology_repository::{
     InferenceResults, OntologyMetrics, OwlAxiom, OwlClass, OwlProperty, PathfindingCacheEntry,
     ValidationReport,
 };

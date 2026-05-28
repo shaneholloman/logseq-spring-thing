@@ -9,9 +9,9 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use log::{info, warn};
 
-use crate::models::node::Node;
-use crate::models::graph::GraphData;
-use crate::ports::ontology_repository::{OntologyRepository, OwlClass};
+use visionflow_domain::models::node::Node;
+use visionflow_domain::models::graph::GraphData;
+use visionflow_domain::ports::ontology_repository::{OntologyRepository, OwlClass};
 use crate::ports::knowledge_graph_repository::KnowledgeGraphRepository;
 
 /// Statistics from ontology conversion

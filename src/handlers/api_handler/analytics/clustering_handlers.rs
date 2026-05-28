@@ -406,7 +406,7 @@ pub(crate) async fn perform_clustering(
 
 #[allow(dead_code)]
 pub(crate) fn generate_spectral_clusters_from_agents(
-    graph_data: &crate::models::graph::GraphData,
+    graph_data: &visionflow_domain::models::graph::GraphData,
     agents: &[crate::services::agent_visualization_protocol::MultiMcpAgentStatus],
     params: &ClusteringParams,
 ) -> Vec<Cluster> {
@@ -416,7 +416,7 @@ pub(crate) fn generate_spectral_clusters_from_agents(
 
 #[allow(dead_code)]
 pub(crate) fn generate_kmeans_clusters_from_agents(
-    graph_data: &crate::models::graph::GraphData,
+    graph_data: &visionflow_domain::models::graph::GraphData,
     agents: &[crate::services::agent_visualization_protocol::MultiMcpAgentStatus],
     params: &ClusteringParams,
 ) -> Vec<Cluster> {
@@ -426,7 +426,7 @@ pub(crate) fn generate_kmeans_clusters_from_agents(
 
 #[allow(dead_code)]
 pub(crate) fn generate_louvain_clusters_from_agents(
-    graph_data: &crate::models::graph::GraphData,
+    graph_data: &visionflow_domain::models::graph::GraphData,
     agents: &[crate::services::agent_visualization_protocol::MultiMcpAgentStatus],
     params: &ClusteringParams,
 ) -> Vec<Cluster> {
@@ -437,7 +437,7 @@ pub(crate) fn generate_louvain_clusters_from_agents(
 
 #[allow(dead_code)]
 pub(crate) fn generate_default_clusters_from_agents(
-    graph_data: &crate::models::graph::GraphData,
+    graph_data: &visionflow_domain::models::graph::GraphData,
     agents: &[crate::services::agent_visualization_protocol::MultiMcpAgentStatus],
     params: &ClusteringParams,
 ) -> Vec<Cluster> {
@@ -446,7 +446,7 @@ pub(crate) fn generate_default_clusters_from_agents(
 }
 
 pub(crate) fn generate_agent_based_clusters(
-    graph_data: &crate::models::graph::GraphData,
+    graph_data: &visionflow_domain::models::graph::GraphData,
     agents: &[crate::services::agent_visualization_protocol::MultiMcpAgentStatus],
     num_clusters: u32,
     method: &str,
@@ -588,7 +588,7 @@ pub(crate) fn generate_agent_based_clusters(
 }
 
 pub(crate) fn generate_graph_based_clusters(
-    graph_data: &crate::models::graph::GraphData,
+    graph_data: &visionflow_domain::models::graph::GraphData,
     num_clusters: u32,
     method: &str,
 ) -> Vec<Cluster> {

@@ -8,8 +8,8 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::{debug, info, instrument, warn};
 
-use crate::ports::inference_engine::{InferenceEngine, Result as EngineResult};
-use crate::ports::ontology_repository::{OntologyRepository, InferenceResults};
+use visionflow_domain::ports::inference_engine::{InferenceEngine, Result as EngineResult};
+use visionflow_domain::ports::ontology_repository::{OntologyRepository, InferenceResults};
 use crate::inference::{InferenceCache, InferenceOptimizer, ValidationResult};
 use crate::inference::types::{ConsistencyReport, ClassificationResult, UnsatisfiableClass};
 use crate::inference::optimization::BatchInferenceRequest;
@@ -458,7 +458,7 @@ impl InferenceService {
 mod tests {
     use super::*;
     use mockall::mock;
-    use crate::ports::ontology_repository::OwlClass;
+    use visionflow_domain::ports::ontology_repository::OwlClass;
 
     
 }

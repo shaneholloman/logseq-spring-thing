@@ -13,7 +13,7 @@ use std::time::Instant;
 use tracing::instrument;
 
 use crate::adapters::whelk_inference_engine::WhelkInferenceEngine; // Currently used for initialization only
-use crate::ports::ontology_repository::{
+use visionflow_domain::ports::ontology_repository::{
     AxiomType, OntologyRepository, OntologyRepositoryError, OwlAxiom,
 };
 use crate::utils::time;

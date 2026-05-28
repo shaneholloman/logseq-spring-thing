@@ -11,7 +11,7 @@ use horned_owl::io::owx::reader::read as read_owx;
 use horned_owl::model::*;
 use horned_functional::io::reader::read as read_functional;
 
-use crate::ports::ontology_repository::{OntologyRepository, OwlClass};
+use visionflow_domain::ports::ontology_repository::{OntologyRepository, OwlClass};
 use log::{debug, info, warn};
 use regex::Regex;
 use std::sync::Arc;

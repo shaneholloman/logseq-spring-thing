@@ -5,9 +5,9 @@
 //! All commands are immutable and validated before execution.
 
 use crate::cqrs::types::{Command, Result};
-use crate::models::edge::Edge;
-use crate::models::graph::GraphData;
-use crate::models::node::Node;
+use visionflow_domain::models::edge::Edge;
+use visionflow_domain::models::graph::GraphData;
+use visionflow_domain::models::node::Node;
 
 #[derive(Debug, Clone)]
 pub struct AddNodeCommand {

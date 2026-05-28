@@ -104,7 +104,7 @@ pub async fn get_real_gpu_physics_stats(app_state: &AppState) -> Option<GPUPhysi
 
 pub async fn perform_gpu_spectral_clustering(
     app_state: &AppState,
-    graph_data: &crate::models::graph::GraphData,
+    graph_data: &visionflow_domain::models::graph::GraphData,
     agents: &[crate::services::agent_visualization_protocol::MultiMcpAgentStatus],
     params: &ClusteringParams,
 ) -> Vec<Cluster> {
@@ -167,7 +167,7 @@ pub async fn perform_gpu_spectral_clustering(
 
 pub async fn perform_gpu_kmeans_clustering(
     app_state: &AppState,
-    graph_data: &crate::models::graph::GraphData,
+    graph_data: &visionflow_domain::models::graph::GraphData,
     agents: &[crate::services::agent_visualization_protocol::MultiMcpAgentStatus],
     params: &ClusteringParams,
 ) -> Vec<Cluster> {
@@ -229,7 +229,7 @@ pub async fn perform_gpu_kmeans_clustering(
 
 pub async fn perform_gpu_louvain_clustering(
     app_state: &AppState,
-    graph_data: &crate::models::graph::GraphData,
+    graph_data: &visionflow_domain::models::graph::GraphData,
     agents: &[crate::services::agent_visualization_protocol::MultiMcpAgentStatus],
     params: &ClusteringParams,
 ) -> Vec<Cluster> {
@@ -291,7 +291,7 @@ pub async fn perform_gpu_louvain_clustering(
 
 pub async fn perform_gpu_default_clustering(
     app_state: &AppState,
-    graph_data: &crate::models::graph::GraphData,
+    graph_data: &visionflow_domain::models::graph::GraphData,
     agents: &[crate::services::agent_visualization_protocol::MultiMcpAgentStatus],
     params: &ClusteringParams,
 ) -> Vec<Cluster> {
@@ -313,7 +313,7 @@ pub async fn perform_gpu_default_clustering(
 #[allow(dead_code)]
 fn convert_gpu_clusters_to_response(
     gpu_results: Vec<Cluster>,
-    graph_data: &crate::models::graph::GraphData,
+    graph_data: &visionflow_domain::models::graph::GraphData,
     method: &str,
 ) -> Vec<Cluster> {
     let colors = vec![
@@ -375,7 +375,7 @@ fn convert_gpu_clusters_to_response(
 }
 
 fn generate_cpu_fallback_clustering(
-    graph_data: &crate::models::graph::GraphData,
+    graph_data: &visionflow_domain::models::graph::GraphData,
     agents: &[crate::services::agent_visualization_protocol::MultiMcpAgentStatus],
     num_clusters: u32,
     method: &str,

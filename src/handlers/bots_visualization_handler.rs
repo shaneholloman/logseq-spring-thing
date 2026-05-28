@@ -43,7 +43,7 @@ impl AgentVisualizationWs {
     
     fn send_init_state(&self, ctx: &mut ws::WebsocketContext<Self>) {
         
-        let agents: Vec<crate::types::claude_flow::AgentStatus> = Vec::new();
+        let agents: Vec<visionflow_domain::types::claude_flow::AgentStatus> = Vec::new();
 
         let init_json =
             AgentVisualizationProtocol::create_init_message("swarm-001", "hierarchical", agents);
@@ -221,14 +221,14 @@ pub async fn get_agent_visualization_snapshot(app_state: web::Data<AppState>) ->
     let agents = get_real_agents_from_app_state(&app_state).await;
 
     
-    let agent_statuses: Vec<crate::types::claude_flow::AgentStatus> = agents
+    let agent_statuses: Vec<visionflow_domain::types::claude_flow::AgentStatus> = agents
         .into_iter()
         .map(|update| {
-            crate::types::claude_flow::AgentStatus {
+            visionflow_domain::types::claude_flow::AgentStatus {
                 agent_id: update.id.clone(),
-                profile: crate::types::claude_flow::AgentProfile {
+                profile: visionflow_domain::types::claude_flow::AgentProfile {
                     name: update.id.clone(),
-                    agent_type: crate::types::claude_flow::AgentType::Generic,
+                    agent_type: visionflow_domain::types::claude_flow::AgentType::Generic,
                     capabilities: vec!["general".to_string()],
                     description: Some("Agent".to_string()),
                     version: "1.0".to_string(),
@@ -241,10 +241,10 @@ pub async fn get_agent_visualization_snapshot(app_state: web::Data<AppState>) ->
                 success_rate: 1.0,
                 timestamp: chrono::Utc::now(),
                 current_task: update.current_task.as_ref().map(|task| {
-                    crate::types::claude_flow::TaskReference {
+                    visionflow_domain::types::claude_flow::TaskReference {
                         task_id: "current".to_string(),
                         description: task.clone(),
-                        priority: crate::types::claude_flow::TaskPriority::Medium,
+                        priority: visionflow_domain::types::claude_flow::TaskPriority::Medium,
                     }
                 }),
 
@@ -267,11 +267,11 @@ pub async fn get_agent_visualization_snapshot(app_state: web::Data<AppState>) ->
                 workload: Some(0.5),
 
                 
-                performance_metrics: crate::types::claude_flow::PerformanceMetrics {
+                performance_metrics: visionflow_domain::types::claude_flow::PerformanceMetrics {
                     tasks_completed: 0,
                     success_rate: 1.0,
                 },
-                token_usage: crate::types::claude_flow::TokenUsage {
+                token_usage: visionflow_domain::types::claude_flow::TokenUsage {
                     total: 0,
                     token_rate: 0.0,
                 },
@@ -475,7 +475,7 @@ pub async fn inject_mock_agents(
         for result in &results {
             for (j, &target_id) in result.edges_to.iter().enumerate() {
                 let label_idx = j % edge_labels.len();
-                let mut edge = crate::models::edge::Edge::new(result.node_id, target_id, 0.3);
+                let mut edge = visionflow_domain::models::edge::Edge::new(result.node_id, target_id, 0.3);
                 edge.edge_type = Some(edge_labels[label_idx].to_string());
                 let metadata = edge.metadata.get_or_insert_with(std::collections::HashMap::new);
                 metadata.insert("mock_agent_edge".to_string(), "true".to_string());

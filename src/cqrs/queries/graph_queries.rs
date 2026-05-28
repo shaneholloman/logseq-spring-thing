@@ -5,9 +5,9 @@
 //! All queries are immutable and do not modify state.
 
 use crate::cqrs::types::{Query, Result};
-use crate::models::edge::Edge;
-use crate::models::graph::GraphData;
-use crate::models::node::Node;
+use visionflow_domain::models::edge::Edge;
+use visionflow_domain::models::graph::GraphData;
+use visionflow_domain::models::node::Node;
 use crate::ports::knowledge_graph_repository::GraphStatistics;
 use std::sync::Arc;
 

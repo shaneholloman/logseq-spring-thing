@@ -1,5 +1,5 @@
 use crate::actors::messages::{GetMetadata, GetSettings};
-use crate::models::metadata::Metadata;
+use visionflow_domain::models::metadata::Metadata;
 use crate::services::github::content_enhanced::ExtendedFileMetadata;
 use crate::ok_json;
 use crate::AppState;

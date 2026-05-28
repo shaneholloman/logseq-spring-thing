@@ -12,7 +12,8 @@ use crate::{ok_json, error_json, bad_request, not_found, created_json, service_u
 
 use crate::actors::gpu::ontology_constraint_actor::OntologyConstraintStats;
 use crate::actors::messages::{GetConstraints, UpdateConstraintData};
-use crate::models::constraints::{Constraint, ConstraintType};
+use visionflow_domain::models::constraints::Constraint;
+use crate::models::constraints::ConstraintType;
 use crate::AppState;
 
 #[derive(Debug, Deserialize)]

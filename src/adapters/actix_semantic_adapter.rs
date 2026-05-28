@@ -13,9 +13,9 @@ use std::time::Duration;
 
 use crate::actors::semantic_processor_actor::SemanticProcessorActor;
 use crate::adapters::messages::*;
-use crate::models::constraints::ConstraintSet;
-use crate::models::graph::GraphData;
-use crate::ports::gpu_semantic_analyzer::{
+use visionflow_domain::models::constraints::ConstraintSet;
+use visionflow_domain::models::graph::GraphData;
+use visionflow_domain::ports::gpu_semantic_analyzer::{
     ClusteringAlgorithm, CommunityDetectionResult, GpuSemanticAnalyzer, ImportanceAlgorithm,
     OptimizationResult, PathfindingResult, Result as PortResult, SemanticConstraintConfig,
     SemanticStatistics,
