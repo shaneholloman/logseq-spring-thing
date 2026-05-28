@@ -76,16 +76,16 @@ fn default_version() -> String {
 #[serde(rename_all = "camelCase")]
 pub struct AppFullSettings {
     #[validate(nested)]
-    #[serde(alias = "visualisation")]
+    #[serde(default, alias = "visualisation")]
     pub visualisation: VisualisationSettings,
     #[validate(nested)]
-    #[serde(alias = "system")]
+    #[serde(default, alias = "system")]
     pub system: SystemSettings,
     #[validate(nested)]
-    #[serde(alias = "xr")]
+    #[serde(default, alias = "xr")]
     pub xr: XRSettings,
     #[validate(nested)]
-    #[serde(alias = "auth")]
+    #[serde(default, alias = "auth")]
     pub auth: AuthSettings,
     #[serde(skip_serializing_if = "Option::is_none", alias = "ragflow")]
     pub ragflow: Option<RagFlowSettings>,
@@ -277,5 +277,37 @@ impl AppFullSettings {
         }
 
         result
+    }
+}
+
+#[cfg(test)]
+mod partial_persistence_tests {
+    use super::*;
+
+    // The SQLite repository unflattens persisted rows into a JSON document and
+    // deserialises AppFullSettings from it. When only a subset of categories
+    // were ever persisted (e.g. physics only), the document lacks the other
+    // top-level keys. Without serde defaults the whole load failed and every
+    // persisted setting was silently discarded on boot. These fields must
+    // default so partial persistence degrades gracefully.
+    #[test]
+    fn deserialises_document_missing_visualisation_category() {
+        // Reproduce a DB that persisted physics but never wrote visualisation
+        // rows: serialise a full default, drop the visualisation key, reload.
+        let mut doc = serde_json::to_value(AppFullSettings::default()).unwrap();
+        doc.as_object_mut().unwrap().remove("visualisation");
+        let settings: AppFullSettings = serde_json::from_value(doc)
+            .expect("settings doc missing the visualisation category must load with defaults");
+        assert_eq!(
+            settings.visualisation.rendering.ambient_light_intensity,
+            VisualisationSettings::default().rendering.ambient_light_intensity
+        );
+    }
+
+    #[test]
+    fn deserialises_empty_document_to_defaults() {
+        let settings: AppFullSettings = serde_json::from_value(serde_json::json!({}))
+            .expect("empty settings doc must load entirely from defaults");
+        assert_eq!(settings.version, default_version());
     }
 }
