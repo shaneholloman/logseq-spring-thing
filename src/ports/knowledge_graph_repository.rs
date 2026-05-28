@@ -132,23 +132,5 @@ pub trait KnowledgeGraphRepository: Send + Sync {
     async fn clear_graph(&self) -> Result<()>;
 
 
-    /// Default: No-op (transactions managed by execute_transaction)
-    async fn begin_transaction(&self) -> Result<()> {
-        Ok(())
-    }
-
-
-    /// Default: No-op (transactions managed by execute_transaction)
-    async fn commit_transaction(&self) -> Result<()> {
-        Ok(())
-    }
-
-
-    /// Default: No-op (transactions managed by execute_transaction)
-    async fn rollback_transaction(&self) -> Result<()> {
-        Ok(())
-    }
-
-
     async fn health_check(&self) -> Result<bool>;
 }

@@ -456,6 +456,10 @@ impl UnifiedGPUCompute {
         let sorted_indices: Vec<i32> = (0..actual_new_nodes as i32).collect();
         self.sorted_node_indices = DeviceBuffer::from_slice(&sorted_indices)?;
 
+        // Persistent Thrust grid-sort output buffers must track allocated_nodes.
+        self.sort_keys_out = DeviceBuffer::zeroed(actual_new_nodes)?;
+        self.sort_values_out = DeviceBuffer::zeroed(actual_new_nodes)?;
+
 
         self.total_memory_allocated = Self::calculate_memory_usage(
             self.allocated_nodes,

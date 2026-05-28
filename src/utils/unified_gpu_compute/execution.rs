@@ -322,35 +322,41 @@ impl UnifiedGPUCompute {
         }
 
 
-        let d_keys_in = self.cell_keys.as_slice();
-        let d_values_in = self.sorted_node_indices.as_slice();
-
-        let d_keys_out = DeviceBuffer::<i32>::zeroed(self.allocated_nodes)?;
-        let mut d_values_out = DeviceBuffer::<i32>::zeroed(self.allocated_nodes)?;
+        // Persistent grid-sort output buffers (allocated once in new()/resize_buffers,
+        // reused every frame). `sort_keys_out` receives the sorted cell keys;
+        // `sort_values_out` receives the sorted node indices and is ping-ponged with
+        // `sorted_node_indices` via the swap below.
+        let keys_in_ptr = self.cell_keys.as_device_ptr().as_raw() as *const ::std::os::raw::c_void;
+        let values_in_ptr =
+            self.sorted_node_indices.as_device_ptr().as_raw() as *const ::std::os::raw::c_void;
+        let keys_out_ptr =
+            self.sort_keys_out.as_device_ptr().as_raw() as *mut ::std::os::raw::c_void;
+        let values_out_ptr =
+            self.sort_values_out.as_device_ptr().as_raw() as *mut ::std::os::raw::c_void;
 
         // SAFETY: Thrust sort FFI call is safe because:
-        // 1. d_keys_in (cell_keys) is a valid DeviceBuffer allocated for allocated_nodes elements
-        // 2. d_keys_out is a freshly allocated DeviceBuffer::zeroed(allocated_nodes)
-        // 3. d_values_in (sorted_node_indices) is a valid DeviceBuffer for allocated_nodes elements
-        // 4. d_values_out is a freshly allocated DeviceBuffer::zeroed(allocated_nodes)
+        // 1. cell_keys is a valid DeviceBuffer allocated for allocated_nodes elements
+        // 2. sort_keys_out is a persistent DeviceBuffer sized allocated_nodes (zeroed at alloc)
+        // 3. sorted_node_indices is a valid DeviceBuffer for allocated_nodes elements
+        // 4. sort_values_out is a persistent DeviceBuffer sized allocated_nodes (zeroed at alloc)
         // 5. num_items is bounded by min(num_nodes, allocated_nodes) preventing out-of-bounds
         // 6. stream_ptr is obtained from a valid cust::Stream via as_inner()
         // 7. Thrust internally synchronizes on the provided stream before returning
         unsafe {
             let stream_ptr = self.stream.as_inner() as *mut ::std::os::raw::c_void;
             thrust_sort_key_value(
-                d_keys_in.as_device_ptr().as_raw() as *const ::std::os::raw::c_void,
-                d_keys_out.as_device_ptr().as_raw() as *mut ::std::os::raw::c_void,
-                d_values_in.as_device_ptr().as_raw() as *const ::std::os::raw::c_void,
-                d_values_out.as_device_ptr().as_raw() as *mut ::std::os::raw::c_void,
+                keys_in_ptr,
+                keys_out_ptr,
+                values_in_ptr,
+                values_out_ptr,
                 self.num_nodes.min(self.allocated_nodes) as ::std::os::raw::c_int,
                 stream_ptr,
             );
         }
 
-        let sorted_keys = d_keys_out;
-
-        std::mem::swap(&mut self.sorted_node_indices, &mut d_values_out);
+        // Sorted node indices now live in sort_values_out; swap them into
+        // sorted_node_indices for downstream kernels (ping-pong, no allocation).
+        std::mem::swap(&mut self.sorted_node_indices, &mut self.sort_values_out);
 
 
 
@@ -370,15 +376,15 @@ impl UnifiedGPUCompute {
             ._module
             .get_function(self.compute_cell_bounds_kernel_name)?;
         // SAFETY: Cell bounds kernel launch is safe because:
-        // 1. sorted_keys is the output from thrust_sort_key_value (valid device memory)
+        // 1. sort_keys_out is the output from thrust_sort_key_value (valid device memory)
         // 2. cell_start and cell_end were zeroed and have capacity >= num_grid_cells
         // 3. num_grid_cells was computed from validated grid dimensions
-        // 4. The kernel reads sorted_keys and writes cell boundaries atomically
+        // 4. The kernel reads sort_keys_out and writes cell boundaries atomically
         unsafe {
             let stream = &self.stream;
             launch!(
                 compute_cell_bounds_kernel<<<grid_cells_blocks, cell_block_size, 0, stream>>>(
-                sorted_keys.as_device_ptr(),
+                self.sort_keys_out.as_device_ptr(),
                 self.cell_start.as_device_ptr(),
                 self.cell_end.as_device_ptr(),
                 self.num_nodes as i32,

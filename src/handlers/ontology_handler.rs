@@ -130,6 +130,7 @@ pub async fn get_ontology_graph(state: web::Data<AppState>) -> Result<HttpRespon
 }
 
 pub async fn save_ontology_graph(
+    _auth: crate::settings::auth_extractor::AuthenticatedUser,
     state: web::Data<AppState>,
     request: web::Json<SaveGraphRequest>,
 ) -> Result<HttpResponse, actix_web::Error> {
@@ -704,6 +705,7 @@ pub async fn validate_ontology(state: web::Data<AppState>) -> Result<HttpRespons
 }
 
 pub async fn query_ontology(
+    _auth: crate::settings::auth_extractor::AuthenticatedUser,
     state: web::Data<AppState>,
     request: web::Json<QueryRequest>,
 ) -> Result<HttpResponse, actix_web::Error> {

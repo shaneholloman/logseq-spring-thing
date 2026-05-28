@@ -109,7 +109,7 @@ impl StressMajorizationActor {
             let mut unified_compute = self
                 .shared_context
                 .as_ref()
-                .unwrap()
+                .ok_or_else(|| "GPU context not initialized for stress majorization".to_string())?
                 .unified_compute
                 .lock()
                 .map_err(|e| format!("Failed to acquire GPU compute lock: {}", e))?;
@@ -132,7 +132,7 @@ impl StressMajorizationActor {
             let mut unified_compute = self
                 .shared_context
                 .as_ref()
-                .unwrap()
+                .ok_or_else(|| "GPU context not initialized for stress calculation".to_string())?
                 .unified_compute
                 .lock()
                 .map_err(|e| format!("Failed to acquire GPU lock for stress calc: {}", e))?;

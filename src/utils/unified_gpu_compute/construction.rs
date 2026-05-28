@@ -68,6 +68,11 @@ pub struct UnifiedGPUCompute {
 
     pub(crate) cell_keys: DeviceBuffer<i32>,
     pub(crate) sorted_node_indices: DeviceBuffer<i32>,
+    // Persistent Thrust grid-sort output buffers (sized `allocated_nodes`).
+    // Hoisted out of the per-frame hot path so they are allocated once and
+    // reused every frame instead of `DeviceBuffer::zeroed(allocated_nodes)` per sort.
+    pub(crate) sort_keys_out: DeviceBuffer<i32>,
+    pub(crate) sort_values_out: DeviceBuffer<i32>,
     pub(crate) cell_start: DeviceBuffer<i32>,
     pub(crate) cell_end: DeviceBuffer<i32>,
 
@@ -344,6 +349,10 @@ impl UnifiedGPUCompute {
         let initial_indices: Vec<i32> = (0..num_nodes as i32).collect();
         sorted_node_indices.copy_from(&initial_indices)?;
 
+        // Persistent Thrust grid-sort output buffers (reused every frame).
+        let sort_keys_out = DeviceBuffer::zeroed(num_nodes)?;
+        let sort_values_out = DeviceBuffer::zeroed(num_nodes)?;
+
 
 
         let max_grid_cells = 32 * 32 * 32;
@@ -443,6 +452,8 @@ impl UnifiedGPUCompute {
             force_z,
             cell_keys,
             sorted_node_indices,
+            sort_keys_out,
+            sort_values_out,
             cell_start,
             cell_end,
             cub_temp_storage,

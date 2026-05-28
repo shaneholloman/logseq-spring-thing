@@ -5,7 +5,7 @@
 
 use actix::prelude::*;
 use actix::MessageResult;
-use log::{debug, info, warn};
+use log::{debug, error, info, warn};
 use std::collections::HashMap;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
@@ -110,7 +110,23 @@ pub struct PhysicsOrchestratorActor {
     /// Timestamp when gpu_init_in_progress was set to true.
     /// Used to detect stuck GPU init (no GPUInitialized reply within timeout).
     gpu_init_started_at: Option<Instant>,
+
+    /// Number of consecutive GPU physics steps that reported failure
+    /// (signalled via `PhysicsStepCompleted { kinetic_energy: f64::MAX }`).
+    /// Reset to 0 on the first successful (finite-energy) step.
+    consecutive_gpu_failures: u32,
+
+    /// Set to true once `consecutive_gpu_failures` crosses the threshold.
+    /// In this state the orchestrator stops rescheduling pipeline steps so it
+    /// no longer loops forever broadcasting `f64::MAX`.  Cleared when physics
+    /// is resumed/re-triggered.
+    gpu_degraded: bool,
 }
+
+/// Consecutive GPU-failure threshold after which the physics pipeline stops
+/// rescheduling and enters an explicit degraded/paused state instead of looping
+/// forever broadcasting `f64::MAX`.  Mirrors `CudaErrorHandler::fallback_threshold`.
+const MAX_CONSECUTIVE_GPU_FAILURES: u32 = 5;
 
 #[derive(Debug, Default, Clone)]
 pub struct PhysicsPerformanceMetrics {
@@ -165,6 +181,8 @@ impl PhysicsOrchestratorActor {
             pipeline_target_interval: Duration::from_millis(16),
             cpu_fallback_warned: false,
             gpu_init_started_at: None,
+            consecutive_gpu_failures: 0,
+            gpu_degraded: false,
         }
     }
 
@@ -184,6 +202,10 @@ impl PhysicsOrchestratorActor {
         // Reset pipeline state to avoid stale pending flag from previous run.
         self.pipeline_step_pending = false;
         self.pipeline_step_pending_since = None;
+
+        // Fresh run: clear any prior GPU degraded/failure state.
+        self.gpu_degraded = false;
+        self.consecutive_gpu_failures = 0;
 
         // Choose target interval based on settle mode.
         // FastSettle: 0ms — fire as fast as the GPU can compute, each step
@@ -653,6 +675,13 @@ impl PhysicsOrchestratorActor {
             return;
         }
 
+        // Never interpret a GPU-failure state as equilibrium. While GPU steps are
+        // failing, the stored kinetic energy is stale (or the initial 0.0) and must
+        // not be mistaken for a converged/stable system.
+        if self.gpu_degraded || self.consecutive_gpu_failures > 0 {
+            return;
+        }
+
         let config = &self.simulation_params.auto_pause_config;
 
         // Edge-sparse graphs have only repulsion + center-gravity, so kinetic
@@ -700,6 +729,11 @@ impl PhysicsOrchestratorActor {
             self.simulation_params.is_physics_paused = false;
             self.simulation_params.equilibrium_stability_counter = 0;
             info!("Physics simulation resumed");
+
+            // Clear any degraded/failure state so the GPU pipeline gets a fresh
+            // chance once physics is re-triggered.
+            self.gpu_degraded = false;
+            self.consecutive_gpu_failures = 0;
 
             // Reset fast-settle state so a new settle cycle begins if in FastSettle mode.
             self.fast_settle_iteration_count = 0;
@@ -1628,6 +1662,49 @@ impl Handler<crate::actors::messages::PhysicsStepCompleted> for PhysicsOrchestra
         let step_duration = Duration::from_secs_f32(msg.step_duration_ms / 1000.0);
         self.update_performance_metrics(step_duration);
 
+        // --- GPU failure tracking (ADR robustness) ---------------------------
+        // ForceComputeActor signals a failed GPU step by reporting
+        // `kinetic_energy: f64::MAX`.  `f64::MAX` is technically finite, so it
+        // is NOT a converged/stable equilibrium — treat it strictly as an error
+        // marker.  Count consecutive failures; after the threshold, stop
+        // rescheduling the pipeline instead of looping forever broadcasting MAX.
+        let gpu_step_failed = !msg.kinetic_energy.is_finite() || msg.kinetic_energy >= f64::MAX;
+        if gpu_step_failed {
+            self.consecutive_gpu_failures = self.consecutive_gpu_failures.saturating_add(1);
+
+            if self.consecutive_gpu_failures >= MAX_CONSECUTIVE_GPU_FAILURES && !self.gpu_degraded {
+                self.gpu_degraded = true;
+                // Pause physics and stop the broadcast loop. The system stays in
+                // this explicit degraded state until physics is resumed/re-triggered.
+                self.simulation_params.is_physics_paused = true;
+                self.pipeline_step_pending = false;
+                self.pipeline_step_pending_since = None;
+                error!(
+                    "PhysicsOrchestratorActor: GPU physics failed {} consecutive steps; \
+                     entering DEGRADED state. Halting the physics pipeline (no further \
+                     steps scheduled, no more f64::MAX broadcasts). Physics will not \
+                     resume until the GPU recovers and physics is re-triggered.",
+                    self.consecutive_gpu_failures
+                );
+                self.broadcast_physics_paused();
+                return;
+            }
+        } else {
+            // First successful (finite, non-sentinel) step clears the failure run.
+            if self.consecutive_gpu_failures > 0 {
+                debug!(
+                    "PhysicsOrchestratorActor: GPU recovered after {} consecutive failures",
+                    self.consecutive_gpu_failures
+                );
+            }
+            self.consecutive_gpu_failures = 0;
+        }
+
+        // If already degraded, do not reschedule — stay halted until resume.
+        if self.gpu_degraded {
+            return;
+        }
+
         // Wire live GPU kinetic energy into physics_stats so the convergence
         // controller in physics_step() sees real values instead of stale/empty data.
         {
@@ -1646,10 +1723,12 @@ impl Handler<crate::actors::messages::PhysicsStepCompleted> for PhysicsOrchestra
                 num_edges: 0,
                 total_force_calculations: 0,
             });
-            // Guard against f64::MAX (from ForceComputeActor error paths before GPU
-            // is initialized).  Casting f64::MAX to f32 produces INFINITY which poisons
-            // convergence checks and logs as NaN.  Keep the previous value if invalid.
-            if msg.kinetic_energy.is_finite() {
+            // Guard against the f64::MAX failure sentinel (from ForceComputeActor
+            // error paths) and non-finite values.  f64::MAX is technically finite
+            // but casting it to f32 produces INFINITY, which would poison
+            // convergence/equilibrium checks and mask a GPU error as a stable
+            // state.  Treat it as "not a valid energy" and keep the previous value.
+            if !gpu_step_failed {
                 stats.kinetic_energy = msg.kinetic_energy as f32;
             }
             stats.iteration_count = msg.iteration;
