@@ -145,6 +145,12 @@ export const GlassEdges = forwardRef<GlassEdgesHandle, GlassEdgesProps>(
     const nodeRevealBatch = (settings?.revealBatch as number | undefined) ?? 120;
     const EDGE_REVEAL_BATCH = Math.max(1, Math.round(nodeRevealBatch * 0.67));
 
+    // The backend's canonical edge-thickness setting is `baseWidth` (a full
+    // width, default 0.61); the glass-tube geometry takes a cylinder radius,
+    // so halve it. The legacy `edgeRadius` field never existed in the schema,
+    // so reading it fell through to a sub-pixel 0.03 and edges were invisible.
+    const edgeRadius = (settings?.baseWidth ?? 0.61) / 2;
+
     // --- Phase 6 (ADR-04 D1): dynamic capacity ---
     const renderingCeiling = useSettingsStore(s => s.settings?.visualisation?.rendering?.maxEdgesCeiling);
     const ceilingRef = useRef<number>(renderingCeiling ?? DEFAULT_EDGE_CEILING);
@@ -166,7 +172,6 @@ export const GlassEdges = forwardRef<GlassEdgesHandle, GlassEdgesProps>(
     const reallocate = useCallback((targetCapacity: number): THREE.InstancedMesh => {
       const initialColor = colorOverride || settings?.color || undefined;
       const initialOpacity = settings?.opacity;
-      const edgeRadius = settings?.edgeRadius ?? 0.03;
       const { mesh: nextMesh, uniforms: nextUniforms } = allocateMesh(
         targetCapacity,
         edgeRadius,
@@ -205,13 +210,13 @@ export const GlassEdges = forwardRef<GlassEdgesHandle, GlassEdgesProps>(
         );
       }
       return nextMesh;
-    }, [colorOverride, settings?.color, settings?.opacity, settings?.edgeRadius]);
+    }, [colorOverride, settings?.color, settings?.opacity, edgeRadius]);
 
     // Initial mesh allocation: small placeholder until first non-empty points.
     const { mesh, uniforms } = useMemo(() => {
       const { mesh: m, uniforms: u } = allocateMesh(
         EDGE_INITIAL,
-        settings?.edgeRadius ?? 0.03,
+        edgeRadius,
         colorOverride || settings?.color || undefined,
         settings?.opacity,
       );
@@ -230,7 +235,7 @@ export const GlassEdges = forwardRef<GlassEdgesHandle, GlassEdgesProps>(
           const targetCapacity = Math.max(sized, EDGE_INITIAL);
           const { mesh: bigger, uniforms: biggerUniforms } = allocateMesh(
             targetCapacity,
-            settings?.edgeRadius ?? 0.03,
+            edgeRadius,
             colorOverride || settings?.color || undefined,
             settings?.opacity,
           );

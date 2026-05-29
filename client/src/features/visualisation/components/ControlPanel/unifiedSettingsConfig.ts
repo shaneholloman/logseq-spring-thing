@@ -131,7 +131,7 @@ export const UNIFIED_SETTINGS_CONFIG: Record<string, SectionConfig> = {
 
       // Edges - Basic
       { key: 'edgeColor', label: 'Edge Color', type: 'color', path: 'visualisation.graphs.logseq.edges.color', description: 'Base color for edges' },
-      { key: 'edgeWidth', label: 'Edge Thickness', type: 'slider', min: 0.005, max: 0.1, step: 0.005, path: 'visualisation.graphs.logseq.edges.edgeRadius', description: 'Thickness of edges' },
+      { key: 'edgeWidth', label: 'Edge Thickness', type: 'slider', min: 0.1, max: 2.0, step: 0.05, path: 'visualisation.graphs.logseq.edges.baseWidth', description: 'Thickness of edges (full width; renderer halves to a cylinder radius)' },
       { key: 'edgeOpacity', label: 'Edge Opacity', type: 'slider', min: 0, max: 1, step: 0.01, path: 'visualisation.graphs.logseq.edges.opacity', description: 'Transparency of edges' },
 
       // Knowledge Graph Mode - Basic
