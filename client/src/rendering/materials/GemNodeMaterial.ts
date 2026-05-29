@@ -81,7 +81,7 @@ export function createGemNodeMaterial(): GemMaterialResult {
 // ---------------------------------------------------------------------------
 // TSL metadata-driven material (WebGPU only)
 //
-// Reads per-instance metadata from a DataTexture (Nx1, RGBA, Float):
+// Reads per-instance metadata from a 2D DataTexture (WxH grid, RGBA, Float):
 //   .r = quality   (0-1)  → emissive glow brightness
 //   .g = authority  (0-1)  → pulse speed + base opacity
 //   .b = connections (0-1) → emissive warmth (blue → orange)
@@ -106,7 +106,8 @@ export function createGemNodeMaterial(): GemMaterialResult {
 export async function createTslGemMaterial(
   material: THREE.MeshPhysicalMaterial,
   metadataTexture: THREE.DataTexture,
-  instanceCount: number,
+  texWidth: number,
+  texHeight: number,
 ): Promise<boolean> {
   if (!isWebGPURenderer) return false;
 
@@ -118,15 +119,24 @@ export async function createTslGemMaterial(
       float, vec2, vec3,
       mix, pow, sin, add, sub,
       dot, normalize, oneMinus, saturate, fract,
+      mod, floor,
       time, instanceIndex,
       normalView, positionView,
       texture: tslTexture,
     } = tslMod;
 
-    // --- Per-instance metadata via DataTexture ---
-    const texW = float(instanceCount);
-    const texU = float(instanceIndex).add(0.5).div(texW);
-    const meta = tslTexture(metadataTexture, vec2(texU, float(0.5)));
+    // --- Per-instance metadata via 2D DataTexture (row-major grid) ---
+    // The metadata is packed into a texWidth×texHeight grid (width capped well
+    // under the WebGPU 8192 limit). Instance i lives at texel (i % W, i / W);
+    // sample at the texel centre with NearestFilter.
+    const texW = float(texWidth);
+    const texH = float(texHeight);
+    const idx = float(instanceIndex);
+    const col = mod(idx, texW);
+    const row = floor(idx.div(texW));
+    const texU = col.add(0.5).div(texW);
+    const texV = row.add(0.5).div(texH);
+    const meta = tslTexture(metadataTexture, vec2(texU, texV));
     const quality = meta.x;
     const authority = meta.y;
     const connections = meta.z;

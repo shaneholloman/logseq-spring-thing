@@ -63,6 +63,14 @@ export interface GemNodesHandle {
 /** Round up to next power of 2 (minimum 1). */
 const nextPowerOf2 = (n: number): number => Math.pow(2, Math.ceil(Math.log2(Math.max(n, 1))));
 
+// Width of the per-instance metadata DataTexture. WebGPU caps texture
+// dimensions at 8192; a 1D (count×1) layout overflows that once the instance
+// capacity exceeds 8192 (a 31k-node graph rounds up to 32768), which makes the
+// texture — and the node bind group that samples it — invalid, so the gems
+// silently fail to render on the WebGPU backend (WebGL's higher cap masked it).
+// Keep the width a power of 2 well under the cap and grow in the height axis.
+const METADATA_TEX_WIDTH = 2048;
+
 // Node scaling delegated to shared computeNodeScale (../utils/nodeScaling.ts)
 
 const getDominantMode = (
@@ -156,9 +164,15 @@ const GemNodesInner: React.ForwardRefRenderFunction<GemNodesHandle, GemNodesProp
     inst.instanceMatrix.needsUpdate = true;
     if (inst.instanceColor) inst.instanceColor.needsUpdate = true;
 
-    // Per-instance metadata texture for TSL (RGBA float: quality, authority, connections, recency)
-    const texData = new Float32Array(count * 4);
-    const metaTex = new THREE.DataTexture(texData, count, 1, THREE.RGBAFormat, THREE.FloatType);
+    // Per-instance metadata texture for TSL (RGBA float: quality, authority,
+    // connections, recency). Laid out row-major across a 2D grid so the width
+    // stays within the WebGPU max texture dimension (8192). Instance i maps to
+    // texel (i % W, i / W); the linear buffer offset is still i*4, so the
+    // per-instance write path in useFrame is unchanged.
+    const metaTexW = Math.min(count, METADATA_TEX_WIDTH);
+    const metaTexH = Math.ceil(count / metaTexW);
+    const texData = new Float32Array(metaTexW * metaTexH * 4);
+    const metaTex = new THREE.DataTexture(texData, metaTexW, metaTexH, THREE.RGBAFormat, THREE.FloatType);
     metaTex.minFilter = THREE.NearestFilter;
     metaTex.magFilter = THREE.NearestFilter;
     metaTex.needsUpdate = true;
@@ -206,7 +220,8 @@ const GemNodesInner: React.ForwardRefRenderFunction<GemNodesHandle, GemNodesProp
       createTslGemMaterial(
         mesh.material as THREE.MeshPhysicalMaterial,
         metaTexRef.current,
-        nodes.length,
+        metaTexRef.current.image.width,
+        metaTexRef.current.image.height,
       ).then(success => {
         if (success) {
           logger.debug('[GemNodes] TSL metadata material active');
