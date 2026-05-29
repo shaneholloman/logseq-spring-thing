@@ -1427,6 +1427,57 @@ impl Handler<BroadcastNodePositions> for ClientCoordinatorActor {
     }
 }
 
+/// Handler for `BroadcastAgentActionFrame` (ADR-059 §4, Phase 2b).
+///
+/// Fans out a pre-encoded `0x23 AGENT_ACTION` wire frame to every connected
+/// client, reusing the exact same per-client `send_binary` dispatch loop as
+/// `BroadcastNodePositions` (`ClientManager::broadcast_to_all` → each client's
+/// `addr.binary.try_send(SendToClientBinary(..))`). No new client registry, no
+/// duplicated dispatch: the agent-beam frame rides the established binary path.
+impl Handler<BroadcastAgentActionFrame> for ClientCoordinatorActor {
+    type Result = ();
+
+    fn handle(&mut self, msg: BroadcastAgentActionFrame, _ctx: &mut Self::Context) -> Self::Result {
+        let frame = msg.0;
+        let frame_len = frame.len();
+
+        let broadcast_result = {
+            let manager = match handle_rwlock_error(self.client_manager.read()) {
+                Ok(manager) => manager,
+                Err(e) => {
+                    error!("RwLock error in BroadcastAgentActionFrame: {}", e);
+                    return;
+                }
+            };
+            manager.broadcast_to_all(frame)
+        };
+
+        // ADR-031 item 5: evict slow clients (mirrors BroadcastNodePositions).
+        if !broadcast_result.slow_clients.is_empty() {
+            if let Ok(mut manager) = self.client_manager.write() {
+                for id in &broadcast_result.slow_clients {
+                    warn!(
+                        "[ClientCoordinator] Evicting slow client {} (agent-action frame)",
+                        id
+                    );
+                    manager.unregister_client(*id);
+                }
+            }
+        }
+
+        let client_count = broadcast_result.sent;
+        if client_count > 0 {
+            self.broadcast_count += 1;
+            self.bytes_sent += frame_len as u64;
+            self.last_broadcast = Instant::now();
+            debug!(
+                "Broadcasted agent-action frame ({} bytes) to {} clients",
+                frame_len, client_count
+            );
+        }
+    }
+}
+
 /// Handler for BroadcastPositions - modern position broadcasting with backpressure ack
 impl Handler<BroadcastPositions> for ClientCoordinatorActor {
     type Result = ();

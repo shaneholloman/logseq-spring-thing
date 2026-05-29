@@ -29,6 +29,7 @@ import {
   emit,
   notifyBinaryMessageHandlers,
 } from './connectionManager';
+import { pushTransientBeams } from '../transientBeamStore';
 
 const logger = createLogger('WebSocketStore');
 
@@ -415,7 +416,11 @@ async function handleAgentAction(data: ArrayBuffer, header: ReturnType<typeof bi
     : [];
 
   if (actions.length > 0) {
+    // Legacy ActionConnections renderer (bezier-particle) consumes this event.
     emit('agent-action', actions);
+    // Embodied transient beams (0x23 → TransientBeamsLayer). Distinct sink,
+    // pushed in parallel so neither path can starve the other.
+    pushTransientBeams(actions);
 
     if (debugState.isDataDebugEnabled()) {
       logger.debug(`Processed ${actions.length} agent action(s)`);

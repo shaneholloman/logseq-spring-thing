@@ -84,10 +84,11 @@ pub use ontology_messages::{
 
 // --- client_messages ---
 pub use client_messages::{
-    AuthenticateClient, BroadcastMessage, BroadcastNodePositions, BroadcastPositions,
-    ClientBroadcastAck, ClientRecipients, ForcePositionBroadcast, GetClientCount, InitialClientSync,
-    RegisterClient, SendInitialGraphLoad, SendPositionUpdate, SendToClientBinary,
-    SendToClientText, SetGraphServiceAddress, UnregisterClient, UpdateClientFilter,
+    AuthenticateClient, BroadcastAgentActionFrame, BroadcastMessage, BroadcastNodePositions,
+    BroadcastPositions, ClientBroadcastAck, ClientRecipients, ForcePositionBroadcast,
+    GetClientCount, InitialClientSync, RegisterClient, SendInitialGraphLoad, SendPositionUpdate,
+    SendToClientBinary, SendToClientText, SetGraphServiceAddress, UnregisterClient,
+    UpdateClientFilter,
 };
 
 // --- analytics_messages ---

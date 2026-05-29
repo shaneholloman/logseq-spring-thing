@@ -16,7 +16,7 @@
 
 ## TL;DR
 
-VisionClaw exposes one new WebSocket endpoint, `/wss/agent-events`, and accepts an additive event envelope that carries the existing numeric IDs **plus** optional `source_urn`, `target_urn`, and `pubkey` fields (per agentbox ADR-013 grammar). Inbound `agent_action` events drive a hybrid **beam + gluon** spring effect for `duration_ms` against the existing GPU semantic-forces kernels — no new CUDA. Outbound user-interaction events (`focus`, `select`, `hover`, `drag`) push back to agentbox so agents can react to user attention. Identity is phased: optional pubkey from Phase 1; fail-closed NIP-26 delegation enforcement deferred to a successor ADR. Server-side visibility filtering at the binary encoder is staged separately.
+VisionClaw exposes one new WebSocket endpoint, `/wss/agent-events`, and accepts an additive event envelope that carries the existing numeric IDs **plus** optional `source_urn`, `target_urn`, and `pubkey` fields (per agentbox ADR-013 grammar). Inbound `agent_action` events drive a hybrid **beam + gluon** spring effect for `duration_ms` against the existing GPU semantic-forces kernels — no new CUDA, no new buffers: the beam is a transient coloured edge and the gluon is the attractive spring force that same transient edge already exerts (the `class_charge`-modulation gluon of the original draft is retracted — see §4 and Design log Finding 5). Outbound user-interaction events (`focus`, `select`, `hover`, `drag`) push back to agentbox so agents can react to user attention. Identity is phased: optional pubkey from Phase 1; fail-closed NIP-26 delegation enforcement deferred to a successor ADR. Server-side visibility filtering at the binary encoder is staged separately.
 
 ## Context
 
@@ -103,9 +103,11 @@ When an `agent_action(action_type, target_node_id, duration_ms)` arrives:
 
    These match the colour conventions in `agent-event-publisher.js:11-18` so agentbox's `/v1/agent-events/types` endpoint stays the source of truth.
 
-2. **Gluon (transient force)**: the agent's existing capsule node has its `class_charge` modulated for `duration_ms` so the GPU semantic-forces kernel (`semantic_forces_actor.rs:30-175`) pulls the agent toward `target_node_id`. The kernel and 176-byte struct layout are unchanged; only the per-node `class_charge` buffer is updated for the affected agent.
+2. **Gluon (transient attractive force)**: the **transient beam edge itself** carries the attractive pull. Because the spring/semantic-forces kernel (`semantic_forces_actor.rs:30-175`) already resolves an attractive force along every edge, appending the transient `(agent)-[:ACTION]->(target)` edge for `duration_ms` *is* the gluon — the agent is drawn toward `target_node_id` for the edge's lifetime with **no per-node buffer write**. The kernel, the 176-byte `SemanticConfigGPU` struct, and all `unified_gpu_compute` buffers are unchanged.
 
-3. **Despawn**: a single `agent_action_despawn_actor` reaps expired transient edges and zeroes the modulated charge after `duration_ms`. The reap pass is bounded (≤ 1 ms / tick) and runs on the existing actor scheduler.
+   *Design correction (2026-05-29):* an earlier draft modulated the per-node `class_charge` buffer for the gluon. That is **not implementable as written** and is retracted — see Design log "Finding 5". `class_charge` exists (`construction.rs:55`, default `1.0`) but it is **bulk ontology-clustering metadata loaded at construction** (`execution.rs:573`), uploaded only via `upload_class_metadata(class_ids, class_charges, class_masses)` over the *full* `num_nodes` array (`memory.rs:84-126`). There is no per-node update path; modulating one agent's charge would require a whole-array re-upload per beam and would corrupt domain clustering for `duration_ms`. The transient edge is the kernel-native mechanism and needs no new buffer.
+
+3. **Despawn**: a single `agent_action_despawn_actor` reaps expired transient edges after `duration_ms`. The reap pass is bounded (≤ 1 ms / tick) and runs on the existing actor scheduler. (No charge buffer to zero — the gluon lives and dies with the edge.)
 
 This deliberately reuses the existing GPU pipeline. No CUDA changes. No new buffers in `unified_gpu_compute`.
 
@@ -143,7 +145,7 @@ This is documented for completeness; the change ships as a separate small ADR (*
 |---|---|---|---|
 | 1 | Canonical ingest schema mirror in new `src/agent_events/schema.rs` (the inbound `notifications/agent_action` envelope with `source_urn`/`target_urn`/`pubkey`); agentbox `agent-event-publisher.js` populates new fields through one builder. **Done 2026-05-29** — see Design log. | ~30 lines each side. | Low. Backward-compatible. |
 | 2a | **Done 2026-05-29.** Authenticated `/wss/agent-events` ingest handler in VisionClaw (`src/agent_events/ingest.rs`): token-validated upgrade (`NostrService::get_session`), subprotocol `vc-agent-events.v1`, parse → `is_canonical()` validate → publish to a process-global broadcast hub (`src/agent_events/hub.rs`). agentbox still switches `agent-event-bridge.js` connect target from `tcp://127.0.0.1:9500` to `ws://…/wss/agent-events`. **No GPU/render code** — see Design log Phase 2a. | ~250 lines server (handler + hub + tests). | Low. Additive endpoint; render-decoupled; cargo-verified, 7/7 tests. |
-| 2b | Beam + gluon render actor subscribing to `hub::subscribe()` (§4: transient `Edge { transient: bool }` + `class_charge` modulation + despawn reaper). **Blocked-finding:** the live agent-action render substrate is latent (see Design log), so this is its own increment, not a bolt-on. Separately: the `:9500` MCP-TCP poll carries agent *state snapshots*, not `agent_action` — retiring it requires the WS to also carry state, a contract expansion tracked here. | ~200 lines server GPU/actor + state-channel design. | Medium–High. Touches spring system + `Edge` struct. |
+| 2b | Beam + gluon render actor subscribing to `hub::subscribe()` (§4: transient `Edge { transient: bool }` carries both the beam *and* the gluon attractive force + despawn reaper — **no `class_charge` write**, see §4 correction). **Blocked-finding:** the live agent-action render substrate is latent (see Design log), so this is its own increment, not a bolt-on. Separately: the `:9500` MCP-TCP poll carries agent *state snapshots*, not `agent_action` — retiring it requires the WS to also carry state, a contract expansion tracked here. | ~200 lines server GPU/actor + state-channel design. | Medium. Touches spring system + `Edge` struct only; no GPU buffer changes. |
 | 3 | Outbound `user_interaction` events from client → server → WS broadcast → agentbox subscriber (Agentbox ADR-014). | ~150 lines client + 80 server. | Low–medium. |
 | 4 | Server-side visibility filter at binary encoder (**ADR-060**). | ~80 lines, single handler. | Medium. Test matrix grows. |
 | 5 | Mandatory + signed identity + NIP-26 delegation (**ADR-061**). | TBD. | High. New crypto path. |
@@ -175,6 +177,38 @@ Phase 1 + Phase 2 land within one sprint. Later phases are independently schedul
 3. Phase-2 backpressure: if the WS client falls behind and the server queue exceeds N frames, drop oldest or coalesce by `target_node_id`? (Recommend coalesce-by-target — the visual is duration-based, last-write-wins is correct.)
 
 ## Design log (real-time)
+
+### 2026-05-29 — Finding 5: gluon is a transient edge, not a `class_charge` modulation (keystone)
+
+The §4 gluon was originally specified as "modulate the agent capsule's `class_charge`
+for `duration_ms`". Verifying the GPU substrate before scheduling Phase 2b proved this
+**unimplementable as written**:
+
+- `class_charge` is a real `DeviceBuffer<f32>` (`construction.rs:55`, default `1.0`), **but**
+  it is uploaded only through `upload_class_metadata(class_ids, class_charges, class_masses)`
+  (`memory.rs:84-126`), which requires the **full `num_nodes` array** and is the
+  **ontology-clustering** metadata loaded **at construction** (`execution.rs:573` comment is
+  explicit: "ontology metadata buffers loaded at construction"). There is no per-node mutation
+  API.
+- Modulating one agent's charge per beam would therefore mean re-uploading the entire class
+  array on every `agent_action`, and — worse — it would **corrupt domain clustering** for
+  `duration_ms`, because the kernel reads `class_charge` as a clustering input, not a transient
+  per-agent force handle.
+
+**Decision (keystone):** the **transient beam edge is the gluon**. The spring kernel already
+resolves an attractive force along every edge, so appending the transient
+`(agent)-[:ACTION]->(target)` edge for `duration_ms` delivers the agent→target pull for free,
+with **zero GPU-buffer changes** — fully consistent with §4's "no new CUDA, no new buffers"
+promise (which the `class_charge` plan actually violated). §4, §4.3 (despawn), and Phasing row
+2b are corrected accordingly; PRD-014 §8 and the `src/agent_events/ingest.rs:16` module comment
+carry the same stale claim and are flagged for the code lane (the comment is a one-line
+correction owned by the Phase-2b implementer, not this docs pass). This reviving of the existing
+`0x23 AGENT_ACTION` frame end-to-end — rather than inventing a new frame — plus the
+edge-as-gluon model, is the keystone of the embodied-loop wiring.
+
+*(Aside: the `physics-v2` Cargo feature gates the separate engine modules `src/physics/*` and
+`src/gpu/buffers.rs` — a parallel layout-engine refactor lane, unrelated to the gluon. The
+gluon ships on the live kernel, not behind `physics-v2`.)*
 
 ### 2026-05-29 — Phase 2a landed (ingest seam); render substrate found latent; Phase 2 split
 

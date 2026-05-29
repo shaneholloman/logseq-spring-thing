@@ -95,3 +95,20 @@ pub struct SendPositionUpdate {
     pub vy: f32,
     pub vz: f32,
 }
+
+/// Broadcast a fully-encoded `0x23 AGENT_ACTION` binary frame to every connected
+/// WebSocket client (ADR-059 §4, Phase 2b — the agent-embodiment beam render).
+///
+/// The payload is the complete wire frame as produced by
+/// [`crate::utils::binary_protocol::AgentActionEvent::encode`] (a 1-byte
+/// `MessageType::AgentAction` tag + 15-byte LE header + variable metadata
+/// payload). Pre-encoding upstream keeps `ClientCoordinatorActor` purely a fan-out
+/// stage: its handler reuses the exact same per-client `send_binary` dispatch loop
+/// as `BroadcastNodePositions` (`ClientManager::broadcast_to_all`) without knowing
+/// anything about the agent-event schema.
+///
+/// Webxr-internal (carries `Vec<u8>` and is dispatched only inside the webxr
+/// `ClientCoordinatorActor`), so it lives here rather than in the domain crate.
+#[derive(Message)]
+#[rtype(result = "()")]
+pub struct BroadcastAgentActionFrame(pub Vec<u8>);

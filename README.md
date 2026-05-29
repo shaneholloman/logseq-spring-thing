@@ -45,7 +45,7 @@ Every agent decision is semantically grounded, every mutation passes consistency
 
 When agents know their authority boundary and surface exceptions cleanly, the 90% of decisions that don't need human judgment flow without friction. The 10% that do get clean, contextualised escalation with full provenance.
 
-VisionClaw is the knowledge engineering substrate of the **[VisionClaw](https://github.com/DreamLab-AI/VisionClaw)** coordination platform — the federated mesh where autonomous agents, human judgment, and institutional knowledge collaborate through shared protocols and self-sovereign data.
+VisionClaw is the knowledge engineering substrate of the **[VisionFlow](https://github.com/DreamLab-AI/VisionFlow)** coordination platform — the federated mesh where autonomous agents, human judgment, and institutional knowledge collaborate through shared protocols and self-sovereign data.
 
 ![VisionClaw GPU-accelerated force-directed graph with Control Center](./graph-physics-live.png)
 
@@ -252,6 +252,17 @@ Agents publish structured Nostr events; the relay routes them; the forum renders
 | 31403 | ActionResponse | Human → approve/reject (NIP-98 signed) |
 | 31404 | PanelUpdate | Agent → incremental state diff |
 | 31405 | PanelRetired | Agent → retires a control panel |
+
+### Embodied Agent Loop
+
+Agent actions are not just audited — they are **visibly embodied** in the GPU/XR graph. When an agent acts (on a Solid pod, the knowledge graph, or the ontology), the action crosses the federation boundary and renders as a living event on the agent's actor node:
+
+- **Beam** — a transient coloured edge `agent → target` whose colour encodes the action type (query/update/create/delete/link/transform). The colour palette is the source of truth on the agentbox side (`agent-event-publisher.js`), so VisionClaw never invents its own.
+- **Gluon** — the same transient edge exerts the spring kernel's attractive force, so the agent capsule is drawn toward its target for the action's lifetime, then released when the edge despawns. The gluon needs **no new CUDA and no new GPU buffer** — it is the force the transient edge already produces. (An earlier design modulated a per-node `class_charge`; that is retracted — `class_charge` is bulk ontology-clustering metadata loaded at construction, not a transient per-agent handle. See ADR-059 §4.)
+
+The transport is one authenticated WebSocket, `/wss/agent-events` (subprotocol `vc-agent-events.v1`), carrying the canonical `notifications/agent_action` envelope with `source_urn`/`target_urn`/`pubkey` identity intact (agentbox ADR-013). As of 2026-05-29 the ingest seam is wired and verified (Phase 2a): VisionClaw authenticates the upgrade, validates the envelope, and publishes it to a process-global broadcast hub; the beam + gluon render actor subscribes to that hub (Phase 2b). The identity-blind `0x23 AGENT_ACTION` binary frame remains a downstream server→browser projection — identity rides the JSON ingest envelope and is resolved to numeric IDs before the GPU frame. The legacy MCP-TCP `:9500` path carries agent **state** snapshots (a different payload) and is retired in favour of this one socket.
+
+Contract: **VisionClaw [ADR-059](docs/adr/ADR-059-bidirectional-agent-channel-server.md)** (server) paired with **agentbox ADR-014** (ingress), with cross-substrate seams in **agentbox ADR-026** and the driving spec **agentbox PRD-014**.
 
 <details>
 <summary><strong>7 MCP Ontology Tools (native)</strong></summary>

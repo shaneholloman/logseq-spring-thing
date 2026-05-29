@@ -5,7 +5,7 @@ import { graphWorkerProxy } from '../managers/graphWorkerProxy'
 import { usePlatformStore } from '../../../services/platformManager'
 import { createLogger } from '../../../utils/loggerConfig'
 import { useSettingsStore } from '../../../store/settingsStore'
-import { BinaryNodeData } from '../../../types/binaryProtocol'
+import { BinaryNodeData, getActualNodeId } from '../../../types/binaryProtocol'
 import { GemNodes, GemNodesHandle } from './GemNodes'
 import { MetadataShapes } from './MetadataShapes'
 import { GlassEdges, GlassEdgesHandle } from './GlassEdges'
@@ -15,6 +15,7 @@ import { useGraphEventHandlers } from '../hooks/useGraphEventHandlers'
 import { EdgeSettings } from '../../settings/config/settings'
 import { useAnalyticsStore, useCurrentSSSPResult } from '../../analytics/store/analyticsStore'
 import { AgentNodesLayer, useAgentNodes } from '../../visualisation/components/AgentNodesLayer'
+import { TransientBeamsLayer, type BeamPositionResolver } from '../../visualisation/components/TransientBeamsLayer'
 import { useGraphVisualState, type GraphVisualMode } from '../hooks/useGraphVisualState'
 import { useGraphFiltering } from '../hooks/useGraphFiltering'
 import { useFpsMonitor } from '../hooks/useFpsMonitor'
@@ -86,6 +87,52 @@ const GraphManager: React.FC<GraphManagerProps> = ({ onDragStateChange }) => {
   useFpsMonitor()
 
   const nodePositionsRef = useRef<Float32Array | null>(null)
+
+  // === Transient agent-action beams (0x23) — id-space resolution ===
+  //
+  // Agent registry (/api/bots/agents) keys agents by the MASKED numeric node
+  // id as a string (`String(getActualNodeId(nodeId))`), matching the
+  // reconciliation in BotsDataContext. We build a lookup from that key to the
+  // agent's world position so source_agent_id (which may arrive with the high
+  // AGENT_NODE_FLAG bit set) resolves consistently.
+  const agentPositionByMaskedId = useMemo(() => {
+    const map = new Map<string, { x: number; y: number; z: number }>()
+    for (const agent of agentLayerNodes) {
+      if (agent.position) map.set(String(agent.id), agent.position)
+    }
+    return map
+  }, [agentLayerNodes])
+  const agentPositionMapRef = useRef(agentPositionByMaskedId)
+  agentPositionMapRef.current = agentPositionByMaskedId
+
+  // Resolve source_agent_id → agent world position. Mask the AGENT_NODE_FLAG
+  // (and any other high flag bits) via getActualNodeId, then look up by the
+  // masked string key; fall back to the raw id for safety. Returns false when
+  // unresolvable so the beam is skipped silently.
+  const resolveAgentPosition = useCallback<BeamPositionResolver>((id, out) => {
+    const map = agentPositionMapRef.current
+    const masked = getActualNodeId(id)
+    const pos = map.get(String(masked)) ?? map.get(String(id))
+    if (!pos) return false
+    out.set(pos.x, pos.y, pos.z)
+    return true
+  }, [])
+
+  // Resolve target_node_id → KG node world position from the LIVE position
+  // buffer (SAB), via the same nodeIdToIndexMap the edge renderer uses. Try the
+  // raw id first, then the masked id (KG nodes may carry KNOWLEDGE/ontology
+  // flag bits). Returns false when unresolvable so the beam is skipped.
+  const resolveNodePosition = useCallback<BeamPositionResolver>((id, out) => {
+    const positions = nodePositionsRef.current
+    if (!positions) return false
+    let index = nodeIdToIndexMap.get(String(id))
+    if (index === undefined) index = nodeIdToIndexMap.get(String(getActualNodeId(id)))
+    if (index === undefined) return false
+    const i3 = index * 3
+    if (i3 + 2 >= positions.length) return false
+    out.set(positions[i3], positions[i3 + 1], positions[i3 + 2])
+    return true
+  }, [nodeIdToIndexMap])
 
   // Layout mode transition state
   const transitionRef = useRef<{
@@ -474,6 +521,13 @@ const GraphManager: React.FC<GraphManagerProps> = ({ onDragStateChange }) => {
       {agentLayerNodes.length > 0 && (
         <AgentNodesLayer agents={agentLayerNodes} connections={agentLayerConnections} />
       )}
+
+      {/* Embodied agent-action beams (0x23): agent node → KG node, coloured
+          by action type, opacity fades in → holds → out over duration_ms. */}
+      <TransientBeamsLayer
+        resolveAgentPosition={resolveAgentPosition}
+        resolveNodePosition={resolveNodePosition}
+      />
 
       <InstancedLabels
         nodes={typeFilteredNodes}

@@ -24,8 +24,8 @@ use crate::actors::graph_service_supervisor::GraphServiceSupervisor;
 use crate::actors::ontology_actor::OntologyActor;
 use crate::actors::GPUManagerActor;
 use crate::actors::{
-    AgentMonitorActor, ClientCoordinatorActor, MetadataActor, OptimizedSettingsActor,
-    ProtectedSettingsActor, TaskOrchestratorActor, WorkspaceActor,
+    AgentBeamActor, AgentMonitorActor, ClientCoordinatorActor, MetadataActor,
+    OptimizedSettingsActor, ProtectedSettingsActor, TaskOrchestratorActor, WorkspaceActor,
 };
 use crate::config::feature_access::FeatureAccess;
 use crate::config::AppFullSettings; 
@@ -528,6 +528,15 @@ impl AppState {
         client_coordinator.set_node_analytics(node_analytics.clone());
         let client_manager_addr = client_coordinator.start();
 
+        // ADR-059 Phase 2b: spawn the agent-embodiment beam actor once at startup.
+        // It subscribes to the process-global agent-events hub and fans encoded
+        // 0x23 frames out through the ClientCoordinatorActor's existing binary
+        // dispatch. Mirrors the fire-once child-actor spawn pattern used by the
+        // physics supervisor (physics_supervisor.rs spawn_child_actors). The
+        // returned Addr is intentionally dropped: the actor is kept alive by its
+        // hub stream subscription, not by an external handle.
+        info!("[AppState::new] Starting AgentBeamActor (ADR-059 Phase 2b)");
+        AgentBeamActor::new(client_manager_addr.clone()).start();
 
         // Read persisted physics from SQLite (same source the API GET uses) so a fresh
         // boot applies runtime-persisted controls (graph_separation_x, axis_compression_z,
