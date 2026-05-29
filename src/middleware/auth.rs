@@ -26,6 +26,12 @@ use crate::utils::auth::{verify_access, AccessLevel};
 /// ```
 pub struct RequireAuth {
     level: AccessLevel,
+    /// When true, only mutating methods (POST/PUT/PATCH/DELETE) are gated; safe
+    /// reads (GET/HEAD/OPTIONS) pass through unauthenticated. This lets a single
+    /// scope mix public reads with privileged writes on the same path prefix —
+    /// actix-web does NOT fall through duplicate-prefix scopes, so per-method
+    /// auth on a shared prefix has to be expressed inside one middleware.
+    mutations_only: bool,
 }
 
 impl RequireAuth {
@@ -33,6 +39,7 @@ impl RequireAuth {
     pub fn authenticated() -> Self {
         Self {
             level: AccessLevel::Authenticated,
+            mutations_only: false,
         }
     }
 
@@ -40,6 +47,7 @@ impl RequireAuth {
     pub fn power_user() -> Self {
         Self {
             level: AccessLevel::PowerUser,
+            mutations_only: false,
         }
     }
 
@@ -47,6 +55,7 @@ impl RequireAuth {
     pub fn read_only() -> Self {
         Self {
             level: AccessLevel::ReadOnly,
+            mutations_only: false,
         }
     }
 
@@ -54,6 +63,7 @@ impl RequireAuth {
     pub fn write_graph() -> Self {
         Self {
             level: AccessLevel::WriteGraph,
+            mutations_only: false,
         }
     }
 
@@ -61,6 +71,7 @@ impl RequireAuth {
     pub fn write_settings() -> Self {
         Self {
             level: AccessLevel::WriteSettings,
+            mutations_only: false,
         }
     }
 
@@ -68,7 +79,16 @@ impl RequireAuth {
     pub fn admin() -> Self {
         Self {
             level: AccessLevel::Admin,
+            mutations_only: false,
         }
+    }
+
+    /// Gate only mutating methods (POST/PUT/PATCH/DELETE) at the configured
+    /// level; safe methods (GET/HEAD/OPTIONS) are left public. Wrap a whole
+    /// mixed-method scope with this to protect writes while keeping reads open.
+    pub fn mutations_only(mut self) -> Self {
+        self.mutations_only = true;
+        self
     }
 }
 
@@ -88,6 +108,7 @@ where
         ready(Ok(AuthMiddleware {
             service: Rc::new(service),
             level: self.level.clone(),
+            mutations_only: self.mutations_only,
         }))
     }
 }
@@ -95,6 +116,7 @@ where
 pub struct AuthMiddleware<S> {
     service: Rc<S>,
     level: AccessLevel,
+    mutations_only: bool,
 }
 
 impl<S, B> Service<ServiceRequest> for AuthMiddleware<S>
@@ -112,6 +134,15 @@ where
     fn call(&self, req: ServiceRequest) -> Self::Future {
         let svc = self.service.clone();
         let level = self.level.clone();
+
+        // In mutations_only mode, safe methods bypass auth entirely so public
+        // reads keep working on a mixed-method scope.
+        if self.mutations_only && req.method().is_safe() {
+            return Box::pin(async move {
+                let resp = svc.call(req).await?;
+                Ok(resp.map_into_boxed_body())
+            });
+        }
 
         Box::pin(async move {
             // Extract NostrService from app data

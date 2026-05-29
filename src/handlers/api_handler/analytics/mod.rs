@@ -108,53 +108,51 @@ pub async fn get_community_statistics(
 }
 
 pub fn config(cfg: &mut web::ServiceConfig) {
+    // S2 (re-enabling disabled auth): the previously fully-public `/analytics`
+    // scope mixes harmless read-only metrics (GET) with sensitive control/mutation
+    // operations (POST) that reconfigure GPU/physics state and trigger expensive
+    // compute jobs. A blanket `authenticated()` wrap would lock out the public read
+    // metrics — the client interceptor only attaches a token once the user is
+    // logged in, so an anonymous browser sends no Authorization header at all and
+    // those GETs would start 401-ing. We therefore split the scope:
+    //   * Public, rate-limited GET metrics (status/stats/config readbacks) stay
+    //     open: they expose no secrets, only operational telemetry the read-only
+    //     dashboard already consumes anonymously.
+    //   * Every state-mutating / compute-triggering POST now requires
+    //     authentication. Routine analytics tuning is left at `authenticated()`
+    //     (not power_user) so legitimate logged-in operator flows keep working.
+    // Single `/analytics` scope: actix-web does NOT fall through duplicate-prefix
+    // scopes. `mutations_only()` gates every state-mutating / compute-triggering
+    // POST at `authenticated()` while leaving the public read-only metric GETs
+    // open (the anonymous read-only dashboard consumes them with no token). The
+    // /ws upgrade is a GET, so it carries its own full `authenticated()` wrap to
+    // stay gated despite the scope's mutations_only mode.
     cfg.service(
         web::scope("/analytics")
-            // .wrap(RequireAuth::authenticated()) // auth temporarily disabled for testing
-            .route("/params", web::get().to(get_analytics_params))
+            .wrap(RequireAuth::authenticated().mutations_only())
+
+            // --- Authenticated write / control / compute operations (POST) ---
             .route("/params", web::post().to(update_analytics_params))
-            .route("/constraints", web::get().to(get_constraints))
             .route("/constraints", web::post().to(update_constraints))
             .route("/focus", web::post().to(set_focus))
-            .route("/stats", web::get().to(get_performance_stats))
-
             .route("/kernel-mode", web::post().to(set_kernel_mode))
-            .route("/gpu-metrics", web::get().to(get_gpu_metrics))
-            .route("/gpu-status", web::get().to(get_gpu_status))
-            .route("/gpu-features", web::get().to(get_gpu_features))
 
             .route("/clustering/run", web::post().to(run_clustering))
-            .route("/clustering/status", web::get().to(get_clustering_status))
             .route("/clustering/focus", web::post().to(focus_cluster))
             .route("/clustering/cancel", web::post().to(cancel_clustering))
             .route("/clustering/dbscan", web::post().to(run_dbscan_clustering))
 
             .route("/community/detect", web::post().to(run_community_detection))
-            .route(
-                "/community/statistics",
-                web::get().to(get_community_statistics),
-            )
 
             .route("/anomaly/toggle", web::post().to(toggle_anomaly_detection))
-            .route("/anomaly/current", web::get().to(get_current_anomalies))
-            .route("/anomaly/config", web::get().to(get_anomaly_config))
 
-            .route("/insights", web::get().to(get_ai_insights))
-            .route("/insights/realtime", web::get().to(get_realtime_insights))
-
-            .route("/sssp/params", web::get().to(get_sssp_params))
             .route("/sssp/params", web::post().to(update_sssp_params))
             .route("/sssp/compute", web::post().to(compute_sssp))
             .route("/sssp/toggle", web::post().to(toggle_sssp))
-            .route("/sssp/status", web::get().to(get_sssp_status))
 
             .route(
                 "/stress-majorization/trigger",
                 web::post().to(trigger_stress_majorization),
-            )
-            .route(
-                "/stress-majorization/stats",
-                web::get().to(get_stress_majorization_stats),
             )
             .route(
                 "/stress-majorization/reset-safety",
@@ -164,10 +162,47 @@ pub fn config(cfg: &mut web::ServiceConfig) {
                 "/stress-majorization/params",
                 web::post().to(update_stress_majorization_params),
             )
-            // P1-1: Stress Majorization Configuration Endpoints
             .route(
                 "/stress-majorization/configure",
                 web::post().to(configure_stress_majorization),
+            )
+
+            .route("/feature-flags", web::post().to(update_feature_flags))
+
+            .route("/pagerank/compute", web::post().to(pagerank_handlers::compute_pagerank))
+            .route("/pagerank/clear", web::post().to(pagerank_handlers::clear_pagerank_cache))
+
+            .route("/pathfinding/sssp", web::post().to(pathfinding::compute_sssp))
+            .route("/pathfinding/apsp", web::post().to(pathfinding::compute_apsp))
+            .route("/pathfinding/connected-components", web::post().to(pathfinding::compute_connected_components))
+
+            // --- Public read-only metrics (GET, harmless operational telemetry) ---
+            .route("/params", web::get().to(get_analytics_params))
+            .route("/constraints", web::get().to(get_constraints))
+            .route("/stats", web::get().to(get_performance_stats))
+
+            .route("/gpu-metrics", web::get().to(get_gpu_metrics))
+            .route("/gpu-status", web::get().to(get_gpu_status))
+            .route("/gpu-features", web::get().to(get_gpu_features))
+
+            .route("/clustering/status", web::get().to(get_clustering_status))
+
+            .route(
+                "/community/statistics",
+                web::get().to(get_community_statistics),
+            )
+
+            .route("/anomaly/current", web::get().to(get_current_anomalies))
+            .route("/anomaly/config", web::get().to(get_anomaly_config))
+
+            .route("/insights", web::get().to(get_ai_insights))
+            .route("/insights/realtime", web::get().to(get_realtime_insights))
+
+            .route("/sssp/status", web::get().to(get_sssp_status))
+
+            .route(
+                "/stress-majorization/stats",
+                web::get().to(get_stress_majorization_stats),
             )
             .route(
                 "/stress-majorization/config",
@@ -177,17 +212,8 @@ pub fn config(cfg: &mut web::ServiceConfig) {
             .route("/dashboard-status", web::get().to(get_dashboard_status))
             .route("/health-check", web::get().to(get_health_check))
             .route("/feature-flags", web::get().to(get_feature_flags))
-            .route("/feature-flags", web::post().to(update_feature_flags))
 
-            // PageRank centrality routes (inside /analytics scope)
-            .route("/pagerank/compute", web::post().to(pagerank_handlers::compute_pagerank))
             .route("/pagerank/result", web::get().to(pagerank_handlers::get_pagerank_result))
-            .route("/pagerank/clear", web::post().to(pagerank_handlers::clear_pagerank_cache))
-
-            // Pathfinding routes (inside /analytics scope)
-            .route("/pathfinding/sssp", web::post().to(pathfinding::compute_sssp))
-            .route("/pathfinding/apsp", web::post().to(pathfinding::compute_apsp))
-            .route("/pathfinding/connected-components", web::post().to(pathfinding::compute_connected_components))
 
             .service(
                 web::resource("/ws")

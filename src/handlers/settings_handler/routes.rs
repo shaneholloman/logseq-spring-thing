@@ -220,6 +220,34 @@ async fn get_settings_schema(
     }))
 }
 
+/// S3 (secret-leak hardening): the `SettingsResponseDTO` From-conversion copies
+/// the real provider API keys (`openai.api_key`, `ragflow.api_key`,
+/// `perplexity.api_key`) verbatim from `AppFullSettings`. These full-settings GET
+/// routes serve config to unauthenticated callers, so any secret-bearing field
+/// MUST be stripped before the body leaves the process. We serialize the DTO to a
+/// JSON value and null out the secret fields. Non-secret config (URLs, models,
+/// timeouts, physics params) is preserved so unauthenticated clients are not
+/// broken — they simply never see a key. Redaction is preferred over an auth gate
+/// here because the client interceptor only attaches a token when the user is
+/// logged in (a logged-out browser sends no `Authorization` header at all).
+fn redact_settings_secrets(mut value: Value) -> Value {
+    // The secret fields live under these provider sub-objects (camelCase keys
+    // because SettingsResponseDTO uses `#[serde(rename_all = "camelCase")]`).
+    const SECRET_BEARING_SECTIONS: [&str; 3] = ["openai", "ragflow", "perplexity"];
+    if let Some(obj) = value.as_object_mut() {
+        for section in SECRET_BEARING_SECTIONS {
+            if let Some(Value::Object(section_obj)) = obj.get_mut(section) {
+                // Only redact when a key is actually present; leave the field
+                // absent (skip_serializing_if = Option::is_none) otherwise.
+                if section_obj.contains_key("apiKey") {
+                    section_obj.insert("apiKey".to_string(), Value::Null);
+                }
+            }
+        }
+    }
+    value
+}
+
 async fn get_settings(
     _req: HttpRequest,
     state: web::Data<AppState>,
@@ -237,8 +265,12 @@ async fn get_settings(
     };
 
     let response_dto: SettingsResponseDTO = (&app_settings).into();
+    let redacted = redact_settings_secrets(
+        serde_json::to_value(&response_dto)
+            .unwrap_or_else(|_| json!({})),
+    );
 
-    ok_json!(response_dto)
+    ok_json!(redacted)
 }
 
 async fn get_current_settings(
@@ -258,13 +290,59 @@ async fn get_current_settings(
     };
 
     let response_dto: SettingsResponseDTO = (&app_settings).into();
+    let redacted = redact_settings_secrets(
+        serde_json::to_value(&response_dto)
+            .unwrap_or_else(|_| json!({})),
+    );
 
     ok_json!(json!({
-        "settings": response_dto,
+        "settings": redacted,
         "version": app_settings.version,
         "timestamp": std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs()
     }))
+}
+
+#[cfg(test)]
+mod redaction_tests {
+    use super::redact_settings_secrets;
+    use serde_json::json;
+
+    #[test]
+    fn redacts_provider_api_keys_but_keeps_non_secret_config() {
+        let input = json!({
+            "openai": { "apiKey": "sk-live-SECRET", "baseUrl": "https://api.openai.com", "timeout": 30 },
+            "ragflow": { "apiKey": "rag-SECRET", "apiBaseUrl": "https://rag.example", "agentId": "a1" },
+            "perplexity": { "apiKey": "pplx-SECRET", "model": "sonar" },
+            "visualisation": { "rendering": { "enableShadows": true } }
+        });
+
+        let out = redact_settings_secrets(input);
+
+        // Secrets nulled out.
+        assert!(out["openai"]["apiKey"].is_null());
+        assert!(out["ragflow"]["apiKey"].is_null());
+        assert!(out["perplexity"]["apiKey"].is_null());
+
+        // Non-secret config preserved.
+        assert_eq!(out["openai"]["baseUrl"], "https://api.openai.com");
+        assert_eq!(out["openai"]["timeout"], 30);
+        assert_eq!(out["ragflow"]["agentId"], "a1");
+        assert_eq!(out["perplexity"]["model"], "sonar");
+        assert_eq!(out["visualisation"]["rendering"]["enableShadows"], true);
+    }
+
+    #[test]
+    fn no_panic_when_provider_section_absent_or_keyless() {
+        // Section missing entirely.
+        let out = redact_settings_secrets(json!({ "visualisation": {} }));
+        assert!(out.get("openai").is_none());
+
+        // Section present without apiKey (skip_serializing_if dropped it).
+        let out = redact_settings_secrets(json!({ "openai": { "baseUrl": "x" } }));
+        assert!(out["openai"].get("apiKey").is_none());
+        assert_eq!(out["openai"]["baseUrl"], "x");
+    }
 }

@@ -21,9 +21,10 @@
 # =============================================================================
 # STAGE 1: Base - Common foundation for all targets
 # =============================================================================
-# SECURITY: Pin to digest for production builds (e.g., cachyos/cachyos-v3@sha256:abc123...)
-# TODO(prod-hardening): pin to @sha256:<digest> (no local digest resolvable offline)
-FROM cachyos/cachyos-v3:latest AS base
+# SECURITY (D2): base image pinned to immutable multi-arch index digest.
+# Resolved 2026-05-29 from docker.io/cachyos/cachyos-v3:latest (OCI image index).
+# To update: docker manifest inspect cachyos/cachyos-v3:<tag> and repin the index digest.
+FROM cachyos/cachyos-v3@sha256:cacb78623e2b3fc41df6cdeafca92bc92a1a963bd545ce3c01dacfbd73d5c73c AS base
 
 # Build arguments
 ARG CUDA_ARCH=75
@@ -31,9 +32,13 @@ ARG BUILD_TARGET=development
 
 # Environment variables common to all stages
 # CUDA_ARCH is promoted from ARG to ENV so child stages inherit it for nvcc
+# SECURITY (D5): default GPU exposure to a single device and the minimum driver
+# capabilities the app needs (compute,utility). compose overrides these via
+# NVIDIA_VISIBLE_DEVICES / NVIDIA_DRIVER_CAPABILITIES, but baking safe defaults
+# prevents accidental "all GPUs / all caps" exposure if the image is run directly.
 ENV RUST_LOG=${RUST_LOG:-warn} \
-    NVIDIA_VISIBLE_DEVICES=all \
-    NVIDIA_DRIVER_CAPABILITIES=all \
+    NVIDIA_VISIBLE_DEVICES=${NVIDIA_VISIBLE_DEVICES:-0} \
+    NVIDIA_DRIVER_CAPABILITIES=compute,utility \
     CUDA_HOME=/opt/cuda \
     CUDA_PATH=/opt/cuda \
     CUDA_ARCH=${CUDA_ARCH} \
@@ -311,9 +316,10 @@ ENTRYPOINT ["./dev-entrypoint.sh"]
 # =============================================================================
 # STAGE 7: Production Target - Optimized runtime environment
 # =============================================================================
-# SECURITY: Pin to digest for production builds (e.g., cachyos/cachyos-v3@sha256:abc123...)
-# TODO(prod-hardening): pin to @sha256:<digest> (no local digest resolvable offline)
-FROM cachyos/cachyos-v3:latest AS production
+# SECURITY (D2): base image pinned to immutable multi-arch index digest.
+# Resolved 2026-05-29 from docker.io/cachyos/cachyos-v3:latest (OCI image index).
+# To update: docker manifest inspect cachyos/cachyos-v3:<tag> and repin the index digest.
+FROM cachyos/cachyos-v3@sha256:cacb78623e2b3fc41df6cdeafca92bc92a1a963bd545ce3c01dacfbd73d5c73c AS production
 
 # Initialize pacman keyring for production stage
 RUN pacman-key --init && \
@@ -346,9 +352,11 @@ RUN useradd -m -u 1000 -s /bin/bash appuser && \
 COPY --from=base /opt/cuda/lib64/libcudart.so* /opt/cuda/lib64/
 COPY --from=base /opt/cuda/lib64/libnvrtc.so* /opt/cuda/lib64/
 
+# SECURITY (D5): scope GPU exposure to a single device by default; compose
+# overrides NVIDIA_VISIBLE_DEVICES at runtime. Avoids "all GPUs" if run directly.
 ENV CUDA_HOME=/opt/cuda \
     LD_LIBRARY_PATH="/opt/cuda/lib64:${LD_LIBRARY_PATH}" \
-    NVIDIA_VISIBLE_DEVICES=all \
+    NVIDIA_VISIBLE_DEVICES=${NVIDIA_VISIBLE_DEVICES:-0} \
     NVIDIA_DRIVER_CAPABILITIES=compute,utility
 
 WORKDIR /app

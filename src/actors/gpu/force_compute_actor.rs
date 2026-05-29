@@ -30,6 +30,36 @@ enum GraphPopulation {
     Agent,
 }
 
+// ---------------------------------------------------------------------------
+// Divergence hardening constants
+//
+// The CUDA force-directed layout can, under data-load churn, blow positions
+// toward infinity ("nodes at infinity / two planes of edges"). These bounds
+// are DEFENSIVE: they only clamp *true* divergence, never healthy spread.
+// Healthy steady-state radius is ~±2400, so the bounds below are ~40x larger.
+// ---------------------------------------------------------------------------
+
+/// Absolute world-coordinate bound (per axis). Any healthy layout sits well
+/// inside this (~±2400 observed); we clamp only runaway divergence. Generous
+/// so legitimate large graphs are never distorted.
+const MAX_COORD: f32 = 100_000.0;
+
+/// Maximum per-node velocity magnitude. A node moving faster than this is
+/// diverging, not settling. SimulationParams::max_velocity governs the healthy
+/// path on the GPU; this is a hard backstop after readback in case the kernel
+/// clamp was bypassed or the value itself was corrupted to NaN/Inf.
+const MAX_VELOCITY_MAGNITUDE: f32 = 1_000.0;
+
+/// Average kinetic energy above which the simulation is considered divergent.
+/// Healthy KE is small (sub-unity at convergence, single/double digits while
+/// reheating). 1e9 is far above any sane transient and only trips on explosion.
+const MAX_KINETIC_ENERGY: f64 = 1.0e9;
+
+/// Consecutive divergent/bad frames tolerated before the circuit breaker halts
+/// stepping. A handful of bad frames can be transient GPU glitches; sustained
+/// divergence means the layout has exploded and must be frozen.
+const MAX_CONSECUTIVE_BAD_FRAMES: u32 = 5;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PhysicsStats {
     pub iteration_count: u32,
@@ -149,6 +179,21 @@ pub struct ForceComputeActor {
     gpu_self_init_max_retries: u32,
     /// Timestamp of the last failed GPU self-init attempt (for exponential backoff).
     gpu_self_init_last_attempt: Option<Instant>,
+
+    /// Consecutive divergent/bad frames seen (NaN/Inf, KE explosion). Reset to 0
+    /// on any clean frame. When it reaches `MAX_CONSECUTIVE_BAD_FRAMES` the
+    /// circuit breaker trips and stepping halts.
+    consecutive_bad_frames: u32,
+
+    /// Set once the circuit breaker has tripped. While true the actor stops
+    /// running physics steps and never broadcasts; it must be re-armed
+    /// (recovery) before stepping resumes.
+    simulation_halted: bool,
+
+    /// Last frame whose positions were finite and bounded. Reused as the
+    /// broadcast payload when the current frame is bad, so clients never see
+    /// infinity. Stored as (node_id, position, velocity-zeroed-on-recovery).
+    last_good_positions: Vec<(u32, Vec3, Vec3)>,
 }
 
 impl ForceComputeActor {
@@ -218,6 +263,9 @@ impl ForceComputeActor {
             gpu_self_init_attempts: 0,
             gpu_self_init_max_retries: 3,
             gpu_self_init_last_attempt: None,
+            consecutive_bad_frames: 0,
+            simulation_halted: false,
+            last_good_positions: Vec::new(),
         }
     }
 
@@ -1007,6 +1055,81 @@ impl ForceComputeActor {
         utilization_percent.min(100.0).max(0.0)
     }
 
+    /// Recover from a tripped divergence circuit breaker.
+    ///
+    /// Drains the runaway kinetic energy (zero all GPU velocities) and restores
+    /// the last-known-good positions to the GPU so the simulation can re-settle
+    /// from a sane layout instead of re-exploding. Uses `try_lock` to avoid
+    /// blocking the Tokio worker; if the GPU mutex is held this frame, recovery
+    /// is a no-op and will be retried (the breaker stays tripped until then).
+    ///
+    /// This does NOT clear `simulation_halted` — re-arming the simulation is an
+    /// explicit operator/recovery action (a parameter change resets the breaker
+    /// via `clear_divergence_state`), so a freshly-recovered-but-not-re-armed
+    /// graph stays frozen at its good positions and never re-broadcasts garbage.
+    fn recover_from_divergence(&mut self) {
+        let shared_context = match &self.shared_context {
+            Some(ctx) => ctx.clone(),
+            None => {
+                warn!("ForceComputeActor: recover_from_divergence called with no GPU context");
+                return;
+            }
+        };
+
+        let mut unified_compute = match shared_context.unified_compute.try_lock() {
+            Ok(guard) => guard,
+            Err(_) => {
+                warn!("ForceComputeActor: GPU mutex busy during divergence recovery — will retry");
+                return;
+            }
+        };
+
+        // 1. Drain kinetic energy: zero all velocities.
+        if let Err(e) = unified_compute.reset_velocities() {
+            error!("ForceComputeActor: failed to zero velocities during recovery: {}", e);
+        } else {
+            info!("ForceComputeActor: divergence recovery — velocities zeroed");
+        }
+
+        // 2. Restore last-known-good positions if the GPU buffer size matches.
+        if !self.last_good_positions.is_empty() {
+            let n = self.last_good_positions.len();
+            let mut px = Vec::with_capacity(n);
+            let mut py = Vec::with_capacity(n);
+            let mut pz = Vec::with_capacity(n);
+            for (_id, pos, _vel) in self.last_good_positions.iter() {
+                px.push(pos.x);
+                py.push(pos.y);
+                pz.push(pos.z);
+            }
+            match unified_compute.upload_positions(&px, &py, &pz) {
+                Ok(()) => info!(
+                    "ForceComputeActor: divergence recovery — restored {} last-known-good positions",
+                    n
+                ),
+                Err(e) => warn!(
+                    "ForceComputeActor: could not restore last-good positions during recovery \
+                     (likely a node-count change since last good frame): {}",
+                    e
+                ),
+            }
+        }
+    }
+
+    /// Clear divergence/circuit-breaker state and re-arm the simulation.
+    /// Called on recovery triggers (e.g. a parameter change) so a previously
+    /// halted layout resumes stepping from its restored good positions.
+    fn clear_divergence_state(&mut self) {
+        if self.simulation_halted || self.consecutive_bad_frames > 0 {
+            info!(
+                "ForceComputeActor: re-arming simulation (was halted={}, bad_frames={})",
+                self.simulation_halted, self.consecutive_bad_frames
+            );
+        }
+        self.simulation_halted = false;
+        self.consecutive_bad_frames = 0;
+    }
+
     /// Apply ontology-derived constraint forces to the physics simulation
     /// This method integrates ontology constraints from the OntologyConstraintActor
     /// into the physics pipeline, enabling semantic relationships to influence node positions.
@@ -1128,6 +1251,23 @@ impl Handler<ComputeForces> for ForceComputeActor {
                     });
                 }
             };
+        }
+
+        // Circuit breaker: if the simulation has been halted due to sustained
+        // divergence, do not step the GPU or broadcast. The layout is frozen at
+        // the last-known-good positions until a recovery (UpdateSimulationParams
+        // or an explicit reset) re-arms it.
+        if self.simulation_halted {
+            self.skipped_frames += 1;
+            if self.skipped_frames % 300 == 0 {
+                error!(
+                    "ForceComputeActor: simulation HALTED (divergence circuit breaker tripped) — \
+                     stepping suspended, last-known-good positions retained. \
+                     Apply a parameter change to recover."
+                );
+            }
+            notify_skip!(self);
+            return Box::pin(futures::future::ready(Ok(())).into_actor(self));
         }
 
         // Early checks that don't need async
@@ -1424,19 +1564,127 @@ impl Handler<ComputeForces> for ForceComputeActor {
                                     }
                                 }
 
-                                // NaN/Inf guard: detect corrupted GPU output before broadcasting.
-                                // If any position contains NaN or Inf, the GPU state is corrupt —
-                                // skip this broadcast entirely to prevent poisoning clients.
-                                let nan_count = actor.position_velocity_buffer.iter()
-                                    .filter(|(p, _)| !p.x.is_finite() || !p.y.is_finite() || !p.z.is_finite())
-                                    .count();
-                                if nan_count > 0 {
-                                    error!(
-                                        "[ForceComputeActor] NaN/Inf detected in {} of {} GPU positions at iter {} — skipping broadcast",
-                                        nan_count, actor.position_velocity_buffer.len(), actor.gpu_state.iteration_count
-                                    );
-                                    // Skip all broadcast logic for this frame
+                                // ---------------------------------------------------------
+                                // Divergence guard: detect corrupted/exploding GPU output
+                                // BEFORE broadcasting. Three failure modes are caught:
+                                //   1. NaN/Inf in positions OR velocities (corrupt state).
+                                //   2. Position beyond MAX_COORD on any axis (runaway).
+                                //   3. Velocity magnitude beyond MAX_VELOCITY_MAGNITUDE.
+                                // A frame failing any of these is "bad": its positions are
+                                // never broadcast (clients would see infinity), the last
+                                // known-good frame is re-broadcast instead, and the circuit
+                                // breaker counter advances. After MAX_CONSECUTIVE_BAD_FRAMES
+                                // the simulation halts and recovery resets velocities.
+                                // ---------------------------------------------------------
+                                let mut nan_count = 0usize;
+                                let mut oob_count = 0usize;
+                                for (p, v) in actor.position_velocity_buffer.iter() {
+                                    if !p.x.is_finite() || !p.y.is_finite() || !p.z.is_finite()
+                                        || !v.x.is_finite() || !v.y.is_finite() || !v.z.is_finite()
+                                    {
+                                        nan_count += 1;
+                                    } else if p.x.abs() > MAX_COORD || p.y.abs() > MAX_COORD || p.z.abs() > MAX_COORD
+                                        || v.length() > MAX_VELOCITY_MAGNITUDE
+                                    {
+                                        oob_count += 1;
+                                    }
+                                }
+
+                                // Average kinetic energy of this frame (used both as a
+                                // divergence signal and reported to the orchestrator).
+                                let frame_ke: f64 = if actor.position_velocity_buffer.is_empty() {
+                                    0.0
                                 } else {
+                                    let total: f64 = actor.position_velocity_buffer.iter()
+                                        .map(|(_p, v)| 0.5 * (v.x as f64 * v.x as f64
+                                            + v.y as f64 * v.y as f64
+                                            + v.z as f64 * v.z as f64))
+                                        .sum();
+                                    total / actor.position_velocity_buffer.len() as f64
+                                };
+                                let ke_diverged = !frame_ke.is_finite() || frame_ke > MAX_KINETIC_ENERGY;
+
+                                let frame_is_bad = nan_count > 0 || oob_count > 0 || ke_diverged;
+
+                                if frame_is_bad {
+                                    actor.consecutive_bad_frames += 1;
+                                    error!(
+                                        "[ForceComputeActor] Divergent frame at iter {} \
+                                         (nan/inf={}, out-of-bounds={}, ke={:.3e}, ke_diverged={}) \
+                                         — skipping broadcast, re-using last-known-good. \
+                                         Consecutive bad frames: {}/{}",
+                                        actor.gpu_state.iteration_count,
+                                        nan_count, oob_count, frame_ke, ke_diverged,
+                                        actor.consecutive_bad_frames, MAX_CONSECUTIVE_BAD_FRAMES
+                                    );
+
+                                    // Re-broadcast the last known-good positions so clients
+                                    // hold a sane layout instead of receiving garbage. Only
+                                    // possible once we have captured at least one good frame.
+                                    if !actor.last_good_positions.is_empty() {
+                                        if let Some(_seq) = actor.backpressure.try_acquire() {
+                                            let mut node_updates =
+                                                Vec::with_capacity(actor.last_good_positions.len());
+                                            for (node_id, pos, vel) in actor.last_good_positions.iter() {
+                                                node_updates.push((*node_id, BinaryNodeDataClient::new(
+                                                    *node_id,
+                                                    glam_to_vec3data(*pos),
+                                                    glam_to_vec3data(*vel),
+                                                )));
+                                            }
+                                            if let Some(ref graph_addr) = actor.graph_service_addr {
+                                                graph_addr.do_send(crate::actors::messages::UpdateNodePositions {
+                                                    positions: node_updates,
+                                                    correlation_id: Some(crate::actors::messaging::MessageId::new()),
+                                                });
+                                            }
+                                        }
+                                    }
+
+                                    // Trip the circuit breaker on sustained divergence.
+                                    if actor.consecutive_bad_frames >= MAX_CONSECUTIVE_BAD_FRAMES {
+                                        actor.simulation_halted = true;
+                                        error!(
+                                            "[ForceComputeActor] CIRCUIT BREAKER TRIPPED at iter {} — \
+                                             {} consecutive divergent frames. HALTING simulation. \
+                                             Velocities will be zeroed and last-known-good positions \
+                                             restored to the GPU on next recovery.",
+                                            actor.gpu_state.iteration_count, actor.consecutive_bad_frames
+                                        );
+                                        actor.recover_from_divergence();
+                                    }
+                                    // Skip all normal broadcast logic for this frame.
+                                } else {
+
+                                // Frame is good. Defensive clamp as a backstop (no-op for the
+                                // healthy ~±2400 range) so any value that slipped just past a
+                                // GPU-side clamp is corrected before it is stored/broadcast.
+                                for (pos, vel) in actor.position_velocity_buffer.iter_mut() {
+                                    pos.x = pos.x.clamp(-MAX_COORD, MAX_COORD);
+                                    pos.y = pos.y.clamp(-MAX_COORD, MAX_COORD);
+                                    pos.z = pos.z.clamp(-MAX_COORD, MAX_COORD);
+                                    let speed = vel.length();
+                                    if speed > MAX_VELOCITY_MAGNITUDE {
+                                        *vel *= MAX_VELOCITY_MAGNITUDE / speed;
+                                    }
+                                }
+
+                                // Reset the divergence counter — we have a healthy frame.
+                                actor.consecutive_bad_frames = 0;
+
+                                // Snapshot this frame as the last-known-good layout for
+                                // recovery / bad-frame fallback. Reuse the buffer capacity.
+                                actor.last_good_positions.clear();
+                                if actor.last_good_positions.capacity() < actor.position_velocity_buffer.len() {
+                                    actor.last_good_positions.reserve(
+                                        actor.position_velocity_buffer.len() - actor.last_good_positions.capacity()
+                                    );
+                                }
+                                for idx in 0..actor.position_velocity_buffer.len() {
+                                    let node_id = actor.node_id_buffer[idx];
+                                    let (pos, vel) = actor.position_velocity_buffer[idx];
+                                    actor.last_good_positions.push((node_id, pos, vel));
+                                }
 
                                 // Diagnostic: log first few positions on early frames (6 decimal places for velocity)
                                 if actor.gpu_state.iteration_count < 5 || actor.gpu_state.iteration_count % 300 == 0 {
@@ -1720,6 +1968,14 @@ impl Handler<UpdateSimulationParams> for ForceComputeActor {
         let new_repel_k = msg.params.repel_k.max(1.0);
 
         self.update_simulation_parameters(msg.params);
+
+        // Recovery: a deliberate parameter change re-arms a divergence-halted
+        // simulation. If the breaker was tripped, restore last-good positions and
+        // zero velocities before resuming so the layout re-settles cleanly.
+        if self.simulation_halted {
+            self.recover_from_divergence();
+        }
+        self.clear_divergence_state();
 
         // Reset broadcast optimizer delta state so the next frame re-broadcasts ALL
         // positions. Without this, converged positions are delta-suppressed and clients

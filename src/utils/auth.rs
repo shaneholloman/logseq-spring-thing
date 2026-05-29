@@ -273,3 +273,42 @@ pub async fn verify_admin(
 ) -> Result<String, HttpResponse> {
     verify_access(req, nostr_service, AccessLevel::Admin).await
 }
+
+#[cfg(test)]
+mod access_level_tests {
+    use super::AccessLevel::*;
+
+    /// S2 core invariant: a regular NIP-98 user resolves to `Authenticated`,
+    /// which must satisfy WriteGraph but MUST NOT satisfy PowerUser/Admin. This
+    /// is what makes the power_user escalations on destructive graph/ontology
+    /// routes actually deny ordinary authenticated callers.
+    #[test]
+    fn authenticated_user_cannot_reach_power_user_or_admin() {
+        assert!(Authenticated.has_permission(&ReadOnly));
+        assert!(Authenticated.has_permission(&WriteGraph));
+        assert!(Authenticated.has_permission(&Authenticated));
+        // The escalation boundary:
+        assert!(!Authenticated.has_permission(&PowerUser));
+        assert!(!Authenticated.has_permission(&Admin));
+        assert!(!Authenticated.has_permission(&WriteSettings));
+    }
+
+    /// A power user (mapped to Admin) satisfies every level, including the
+    /// power_user-gated destructive routes.
+    #[test]
+    fn admin_power_user_satisfies_everything() {
+        for required in [ReadOnly, WriteGraph, WriteSettings, Admin, PowerUser, Authenticated] {
+            assert!(Admin.has_permission(&required), "Admin must satisfy {:?}", required);
+            assert!(PowerUser.has_permission(&required), "PowerUser must satisfy {:?}", required);
+        }
+    }
+
+    #[test]
+    fn read_only_cannot_write() {
+        assert!(ReadOnly.has_permission(&ReadOnly));
+        assert!(!ReadOnly.has_permission(&WriteGraph));
+        assert!(!ReadOnly.has_permission(&WriteSettings));
+        assert!(!ReadOnly.has_permission(&Admin));
+        assert!(!ReadOnly.has_permission(&PowerUser));
+    }
+}

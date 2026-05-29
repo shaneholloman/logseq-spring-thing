@@ -15,8 +15,7 @@ use crate::adapters::{OxigraphGraphRepository, OxigraphOntologyRepository, Sqlit
 use crate::adapters::actor_graph_repository::ActorGraphRepository;
 use crate::application::graph::*;
 
-// CQRS Phase 4: Command/Query/Event buses and Application Services
-use crate::cqrs::{CommandBus, QueryBus};
+// Event bus and store (events module — unrelated to the removed CQRS bus)
 use crate::events::{EventBus, EventStore};
 
 use crate::actors::gpu;
@@ -314,8 +313,6 @@ pub struct AppState {
     pub graph_repository: Arc<ActorGraphRepository>,
     pub graph_query_handlers: GraphQueryHandlers,
     
-    pub command_bus: Arc<RwLock<CommandBus>>,
-    pub query_bus: Arc<RwLock<QueryBus>>,
     pub event_bus: Arc<RwLock<EventBus>>,
     pub event_store: Arc<EventStore>,
     
@@ -632,10 +629,7 @@ impl AppState {
             )),
         };
 
-        
-        info!("[AppState::new] Initializing CQRS buses (Phase 4)");
-        let command_bus = Arc::new(RwLock::new(CommandBus::new()));
-        let query_bus = Arc::new(RwLock::new(QueryBus::new()));
+
         let event_bus = Arc::new(RwLock::new(EventBus::new()));
 
         // Initialize EventStore with file-backed repository (configurable via env)
@@ -659,22 +653,6 @@ impl AppState {
             bus.subscribe(graph_handler).await;
             bus.subscribe(ontology_handler).await;
             info!("[AppState::new] EventBus handlers registered: AuditEventHandler, NotificationEventHandler, GraphEventHandler, OntologyEventHandler");
-        }
-
-        // Register CQRS command and query handlers
-        {
-            info!("[AppState::new] Registering CQRS command and query handlers");
-            let cmd_bus = command_bus.write().await;
-            let qry_bus = query_bus.write().await;
-            // Migrated to Oxigraph (ADR-11) — OxigraphGraphRepository implements KnowledgeGraphRepository
-            crate::cqrs::register_all_handlers(
-                &cmd_bus,
-                &qry_bus,
-                graph_adapter.clone() as Arc<dyn crate::ports::KnowledgeGraphRepository>,
-                ontology_repository.clone() as Arc<dyn crate::ports::OntologyRepository>,
-                settings_repository.clone(),
-            )
-            .await;
         }
 
         // Log warnings for settings that are present in config but not yet wired
@@ -771,9 +749,6 @@ impl AppState {
                 let gpu_manager_clone = gpu_manager.clone();
                 let gpu_compute_addr_clone = gpu_compute_addr.clone();
                 let gpu_compute_addr_for_rebroadcast = gpu_compute_addr.clone();
-                let graph_service_for_physics = graph_service_addr.clone();
-                let command_bus_for_physics = command_bus.clone();
-                let query_bus_for_physics = query_bus.clone();
                 // Persisted physics params must reach ForceComputeActor on boot.
                 // The actor initialises with default SimulationParams (graph_separation_x=0,
                 // axis_compression_z=0, adaptive_speed off); without this push the persisted
@@ -868,29 +843,6 @@ impl AppState {
                     if !gpu_ready {
                         warn!("[AppState] Failed to obtain ForceComputeActor after {} attempts - HTTP handlers will use fallback paths",
                               max_retries);
-                        return;
-                    }
-
-                    // GPU is ready — retrieve PhysicsOrchestratorActor and register CQRS physics handlers
-                    use crate::actors::messages::GetPhysicsOrchestratorActor;
-                    use crate::adapters::actix_physics_adapter::ActixPhysicsAdapter;
-
-                    match graph_service_for_physics.send(GetPhysicsOrchestratorActor).await {
-                        Ok(Ok(physics_orch_addr)) => {
-                            let adapter: Arc<tokio::sync::Mutex<dyn crate::ports::GpuPhysicsAdapter>> =
-                                Arc::new(tokio::sync::Mutex::new(
-                                    ActixPhysicsAdapter::from_actor(physics_orch_addr),
-                                ));
-                            let cmd_bus = command_bus_for_physics.write().await;
-                            let qry_bus = query_bus_for_physics.write().await;
-                            crate::cqrs::register_physics_handlers(&cmd_bus, &qry_bus, adapter).await;
-                        }
-                        Ok(Err(e)) => {
-                            warn!("[AppState] PhysicsOrchestratorActor not available: {} — physics CQRS handlers not registered", e);
-                        }
-                        Err(e) => {
-                            error!("[AppState] Failed to query GraphServiceSupervisor for PhysicsOrchestratorActor: {}", e);
-                        }
                     }
                 });
             } else {
@@ -1077,8 +1029,6 @@ impl AppState {
             graph_repository,
             graph_query_handlers,
 
-            command_bus,
-            query_bus,
             event_bus,
             event_store,
 

@@ -571,6 +571,9 @@ pub async fn get_graph_positions(
 pub fn config(cfg: &mut web::ServiceConfig) {
     use crate::middleware::{RateLimit, RequireAuth};
 
+    // actix-web claims a route prefix for the FIRST registered `web::scope("/graph")`
+    // and routes defined in later same-prefix scopes return 404. Mixed-auth on one
+    // prefix must therefore live in a SINGLE scope with per-resource `.wrap()`.
     cfg.service(
         web::scope("/graph")
             .wrap(RateLimit::per_minute(600))  // Rate limit: 600 requests/min (10/sec) for public reads
@@ -582,12 +585,23 @@ pub fn config(cfg: &mut web::ServiceConfig) {
                 "/auto-balance-notifications",
                 web::get().to(get_auto_balance_notifications),
             )
-    )
-    .service(
-        web::scope("/graph")
-            .wrap(RequireAuth::authenticated())  // Write operations require auth
-            .wrap(RateLimit::per_minute(60))     // Rate limit: 60 requests/min for writes
-            .route("/update", web::post().to(update_graph))
-            .route("/refresh", web::post().to(refresh_graph))
+            // S2: `/update` triggers a full bulk reload — it re-fetches and
+            // re-processes the entire upstream content source and rebuilds the graph
+            // from metadata (AddNodesFromMetadata). That is a destructive/expensive
+            // privileged operation, not a routine per-node edit, so it is escalated
+            // to power_user (Admin). A regular NIP-98 user (Authenticated) can no
+            // longer trigger a global rebuild.
+            .service(
+                web::resource("/update")
+                    .wrap(RequireAuth::power_user())  // Bulk reload requires power-user
+                    .route(web::post().to(update_graph)),
+            )
+            // `/refresh` only reads the current graph state (GetGraphData) and returns
+            // it; it mutates nothing, so any authenticated user may call it.
+            .service(
+                web::resource("/refresh")
+                    .wrap(RequireAuth::authenticated())  // Read-back, any authed user
+                    .route(web::post().to(refresh_graph)),
+            ),
     );
 }

@@ -7,9 +7,10 @@
 # ---------------------------------------------------------------------------
 # Stage 1: Toolchain — cached until base image or tool versions change
 # ---------------------------------------------------------------------------
-# SECURITY: Pin to digest for production builds (e.g., cachyos/cachyos-v3@sha256:abc123...)
-# TODO(prod-hardening): pin to @sha256:<digest> (no local digest resolvable offline)
-FROM cachyos/cachyos-v3:latest AS toolchain
+# SECURITY (D2): base image pinned to immutable multi-arch index digest.
+# Resolved 2026-05-29 from docker.io/cachyos/cachyos-v3:latest (OCI image index).
+# To update: docker manifest inspect cachyos/cachyos-v3:<tag> and repin the index digest.
+FROM cachyos/cachyos-v3@sha256:cacb78623e2b3fc41df6cdeafca92bc92a1a963bd545ce3c01dacfbd73d5c73c AS toolchain
 
 ARG CUDA_ARCH=86
 
@@ -143,9 +144,10 @@ RUN rm -rf /app/target/release/build/visionclaw-server-* /app/target/release/dep
     cp target/release/visionclaw-server /app/visionclaw-server
 
 # Runtime stage - same CachyOS base, only runtime packages
-# SECURITY: Pin to digest for production builds (e.g., cachyos/cachyos-v3@sha256:abc123...)
-# TODO(prod-hardening): pin to @sha256:<digest> (no local digest resolvable offline)
-FROM cachyos/cachyos-v3:latest
+# SECURITY (D2): base image pinned to immutable multi-arch index digest.
+# Resolved 2026-05-29 from docker.io/cachyos/cachyos-v3:latest (OCI image index).
+# To update: docker manifest inspect cachyos/cachyos-v3:<tag> and repin the index digest.
+FROM cachyos/cachyos-v3@sha256:cacb78623e2b3fc41df6cdeafca92bc92a1a963bd545ce3c01dacfbd73d5c73c
 
 # NVIDIA_VISIBLE_DEVICES left overridable by compose (defaults to 0 there); do not
 # hardcode "all". NVIDIA_DRIVER_CAPABILITIES scoped to the minimum the app needs.

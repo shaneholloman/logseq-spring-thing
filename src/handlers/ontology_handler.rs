@@ -704,15 +704,87 @@ pub async fn validate_ontology(state: web::Data<AppState>) -> Result<HttpRespons
     }
 }
 
+/// S1 (SPARQL-injection / privilege surface): the `/ontology/query` endpoint
+/// accepts a free-form SPARQL string and returns SELECT-style rows
+/// (`Vec<HashMap<String,String>>`). Nothing downstream restricts the operation
+/// type, so a caller could submit a SPARQL UPDATE/INSERT/DELETE/DROP/CLEAR/LOAD
+/// and mutate the triple store through what is meant to be a read query path.
+///
+/// This validator enforces read-only SPARQL at the handler boundary: it rejects
+/// any query whose first significant keyword (after stripping PREFIX/BASE
+/// declarations and comments) is a mutating operation, and rejects update-only
+/// keywords appearing anywhere as a standalone token. Legitimate read forms
+/// (SELECT / ASK / CONSTRUCT / DESCRIBE) pass through. Mutations must go through
+/// the dedicated, power-user-gated write endpoints (e.g. `/ontology/graph` POST,
+/// axiom/class mutators) rather than raw SPARQL passthrough.
+fn validate_read_only_sparql(query: &str) -> Result<(), String> {
+    // Strip line comments (`# ...`) and normalise to uppercase tokens.
+    let mut cleaned = String::with_capacity(query.len());
+    for line in query.lines() {
+        let line = match line.find('#') {
+            Some(idx) => &line[..idx],
+            None => line,
+        };
+        cleaned.push_str(line);
+        cleaned.push(' ');
+    }
+    let upper = cleaned.to_uppercase();
+
+    // Tokenise on non-word boundaries so `INSERT{` and `DELETE WHERE` are caught.
+    let tokens: Vec<&str> = upper
+        .split(|c: char| !c.is_ascii_alphanumeric() && c != '_')
+        .filter(|t| !t.is_empty())
+        .collect();
+
+    // SPARQL Update / management keywords that must never reach the read path.
+    // This is the primary guard: a mutation keyword appearing as a standalone
+    // token anywhere in the (comment-stripped) query is rejected, which also
+    // catches multi-statement smuggling like `SELECT ...; DELETE ...`.
+    const FORBIDDEN: [&str; 9] = [
+        "INSERT", "DELETE", "DROP", "CLEAR", "LOAD", "CREATE", "ADD", "MOVE", "COPY",
+    ];
+    for tok in &tokens {
+        if FORBIDDEN.contains(tok) {
+            return Err(format!(
+                "SPARQL operation '{}' is not permitted on the read-only query endpoint",
+                tok
+            ));
+        }
+    }
+
+    // Positive check: the query must actually contain a recognised read form.
+    // We scan for the keyword as a token rather than requiring strict adjacency
+    // after the prologue, because PREFIX/BASE declarations embed IRIs
+    // (e.g. `PREFIX ex: <http://e/>`) whose tokens would otherwise be mistaken
+    // for the query body. The FORBIDDEN scan above already guarantees there is no
+    // mutation, so a present read form is sufficient to classify this as a read.
+    const READ_FORMS: [&str; 4] = ["SELECT", "ASK", "CONSTRUCT", "DESCRIBE"];
+    if !tokens.iter().any(|t| READ_FORMS.contains(t)) {
+        return Err(format!(
+            "Only read-only SPARQL (SELECT/ASK/CONSTRUCT/DESCRIBE) is permitted; got '{}'",
+            tokens.first().copied().unwrap_or("<empty>")
+        ));
+    }
+
+    Ok(())
+}
+
 pub async fn query_ontology(
     _auth: crate::settings::auth_extractor::AuthenticatedUser,
     state: web::Data<AppState>,
     request: web::Json<QueryRequest>,
 ) -> Result<HttpResponse, actix_web::Error> {
     let query = request.into_inner().query;
+
+    // S1: reject mutating SPARQL on the read endpoint before it reaches the store.
+    if let Err(reason) = validate_read_only_sparql(&query) {
+        info!("Rejected non-read-only SPARQL on /ontology/query: {}", reason);
+        return crate::bad_request!(&reason);
+    }
+
     info!("Querying ontology via CQRS query");
 
-    
+
     let handler = QueryOntologyHandler::new(state.ontology_repository.clone());
 
     
@@ -762,35 +834,102 @@ pub async fn get_ontology_metrics(state: web::Data<AppState>) -> Result<HttpResp
     }
 }
 
+/// S1 + S2: previously this `/ontology` scope was mounted with NO auth wrapper,
+/// exposing schema-rewrite mutators (class/property/axiom POST/PUT/DELETE,
+/// full-graph save) and the raw SPARQL `/query` endpoint to anonymous callers.
+///
+/// We split it:
+///   * power_user (Admin) — every operation that rewrites the ontology
+///     (save graph, create/update/delete classes & properties, add/remove
+///     axioms, store inference results) plus the SPARQL `/query` endpoint
+///     (defence in depth: it is additionally validated to read-only SPARQL by
+///     `validate_read_only_sparql`, but it can still touch the store, so it is
+///     not anonymous).
+///   * authenticated — read-only inspection (GET listings, single-entity reads,
+///     validation report, metrics, hierarchy).
+///
+/// The power_user scope is registered first so its specific mutating routes win;
+/// the authenticated scope picks up the remaining read routes under the same
+/// `/ontology` prefix.
 pub fn config(cfg: &mut web::ServiceConfig) {
+    use crate::middleware::RequireAuth;
+
+    // Single `/ontology` scope: actix-web does NOT fall through duplicate-prefix
+    // scopes, so reads and mutators must share one scope. `mutations_only()` gates
+    // POST/PUT/DELETE (state-changing ops + the SPARQL /query endpoint) at
+    // power_user while leaving GET reads public — preserving the original
+    // anonymous read behaviour the client's ontology views depend on.
     cfg.service(
         web::scope("/ontology")
-            
-            .route("/graph", web::get().to(get_ontology_graph))
+            .wrap(RequireAuth::power_user().mutations_only())
+
+            // Mutating / SPARQL ops — power_user (enforced by mutations_only)
             .route("/graph", web::post().to(save_ontology_graph))
-            
-            .route("/classes", web::get().to(list_owl_classes))
             .route("/classes", web::post().to(add_owl_class))
-            .route("/classes/{iri}", web::get().to(get_owl_class))
             .route("/classes/{iri}", web::put().to(update_owl_class))
             .route("/classes/{iri}", web::delete().to(remove_owl_class))
-            .route("/classes/{iri}/axioms", web::get().to(get_class_axioms))
-            
-            .route("/properties", web::get().to(list_owl_properties))
             .route("/properties", web::post().to(add_owl_property))
-            .route("/properties/{iri}", web::get().to(get_owl_property))
             .route("/properties/{iri}", web::put().to(update_owl_property))
-            
             .route("/axioms", web::post().to(add_axiom))
             .route("/axioms/{id}", web::delete().to(remove_axiom))
-            
-            .route("/inference", web::get().to(get_inference_results))
             .route("/inference", web::post().to(store_inference_results))
-            
-            .route("/validate", web::get().to(validate_ontology))
             .route("/query", web::post().to(query_ontology))
-            .route("/metrics", web::get().to(get_ontology_metrics))
 
+            // Read-only inspection — public (safe methods bypass auth)
+            .route("/graph", web::get().to(get_ontology_graph))
+            .route("/classes", web::get().to(list_owl_classes))
+            .route("/classes/{iri}", web::get().to(get_owl_class))
+            .route("/classes/{iri}/axioms", web::get().to(get_class_axioms))
+            .route("/properties", web::get().to(list_owl_properties))
+            .route("/properties/{iri}", web::get().to(get_owl_property))
+            .route("/inference", web::get().to(get_inference_results))
+            .route("/validate", web::get().to(validate_ontology))
+            .route("/metrics", web::get().to(get_ontology_metrics))
             .route("/hierarchy", web::get().to(get_class_hierarchy)),
     );
+}
+
+#[cfg(test)]
+mod sparql_validation_tests {
+    use super::validate_read_only_sparql;
+
+    #[test]
+    fn allows_read_only_forms() {
+        assert!(validate_read_only_sparql("SELECT ?s WHERE { ?s ?p ?o }").is_ok());
+        assert!(validate_read_only_sparql("ASK { ?s ?p ?o }").is_ok());
+        assert!(validate_read_only_sparql("CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }").is_ok());
+        assert!(validate_read_only_sparql("DESCRIBE <urn:x>").is_ok());
+        // Prologue (PREFIX/BASE) before SELECT is fine.
+        assert!(validate_read_only_sparql(
+            "PREFIX ex: <http://e/> SELECT ?s WHERE { ?s ex:p ?o }"
+        )
+        .is_ok());
+        // Lowercase + comments tolerated.
+        assert!(validate_read_only_sparql("# comment\nselect ?s where { ?s ?p ?o }").is_ok());
+    }
+
+    #[test]
+    fn rejects_mutating_sparql() {
+        assert!(validate_read_only_sparql("INSERT DATA { <a> <b> <c> }").is_err());
+        assert!(validate_read_only_sparql("DELETE WHERE { ?s ?p ?o }").is_err());
+        assert!(validate_read_only_sparql("DROP GRAPH <urn:g>").is_err());
+        assert!(validate_read_only_sparql("CLEAR ALL").is_err());
+        assert!(validate_read_only_sparql("LOAD <http://evil/data>").is_err());
+        // Mutation smuggled after a comment-stripped prologue.
+        assert!(validate_read_only_sparql(
+            "PREFIX ex: <http://e/>\nINSERT { ex:a ex:b ex:c } WHERE {}"
+        )
+        .is_err());
+        // Mutation hidden behind a SELECT prefix as a later operation.
+        assert!(validate_read_only_sparql(
+            "SELECT ?s WHERE { ?s ?p ?o }; DELETE WHERE { ?s ?p ?o }"
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn rejects_unknown_first_token() {
+        assert!(validate_read_only_sparql("WITH <urn:g> WHERE {}").is_err());
+        assert!(validate_read_only_sparql("   ").is_err());
+    }
 }

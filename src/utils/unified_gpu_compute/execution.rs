@@ -760,4 +760,15 @@ impl UnifiedGPUCompute {
         safe_copy_to_device(&mut self.vel_in_z, &vz, "vel_in_z")?;
         Ok(())
     }
+
+    /// Zero all node velocities on the GPU. Used by the divergence circuit
+    /// breaker to drain runaway kinetic energy so the layout can re-settle from
+    /// its restored (last-known-good) positions instead of re-exploding.
+    pub fn reset_velocities(&mut self) -> Result<()> {
+        let zeros = vec![0.0f32; self.allocated_nodes];
+        safe_copy_to_device(&mut self.vel_in_x, &zeros, "vel_in_x")?;
+        safe_copy_to_device(&mut self.vel_in_y, &zeros, "vel_in_y")?;
+        safe_copy_to_device(&mut self.vel_in_z, &zeros, "vel_in_z")?;
+        Ok(())
+    }
 }
