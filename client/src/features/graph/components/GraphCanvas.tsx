@@ -96,6 +96,41 @@ const LayoutModeIndicator: React.FC = () => {
 };
 
 // ============================================================================
+// Camera aspect sync — keeps the perspective projection square to the canvas
+// ============================================================================
+//
+// On the WebGPU renderer path R3F does not propagate the canvas aspect to the
+// camera: its `setSize` leaves `camera.aspect` untouched, and the initial
+// measure can be 0×0 because the async `createGemRenderer` init resolves after
+// R3F's first layout pass. A stale `aspect` of 0 makes `updateProjectionMatrix`
+// set the X scale (`projectionMatrix.elements[0]`) to Infinity, so every
+// screen-space X projection becomes NaN — HTML-overlay labels collapse to the
+// left edge and the view frustum degenerates (frustum culling lets thousands of
+// off-screen labels through). This effect re-derives the aspect whenever the
+// measured size changes, which is the WebGL path's behaviour too — harmless
+// there since R3F already keeps it in sync.
+const CameraAspectSync: React.FC = () => {
+  const camera = useThree(s => s.camera);
+  const width = useThree(s => s.size.width);
+  const height = useThree(s => s.size.height);
+  const invalidate = useThree(s => s.invalidate);
+
+  useEffect(() => {
+    // R3F tags cameras it manages with a `manual` flag that THREE's type omits.
+    const cam = camera as THREE.PerspectiveCamera & { manual?: boolean };
+    if (!cam.isPerspectiveCamera || cam.manual || width <= 0 || height <= 0) return;
+    const aspect = width / height;
+    if (Math.abs(cam.aspect - aspect) > 1e-6) {
+      cam.aspect = aspect;
+      cam.updateProjectionMatrix();
+      invalidate();
+    }
+  }, [camera, width, height, invalidate]);
+
+  return null;
+};
+
+// ============================================================================
 // Phase 6 (ADR-04 D5 / T3) — Software-WebGL detection + Environment fallback
 // ============================================================================
 //
@@ -261,6 +296,10 @@ const GraphCanvas: React.FC = () => {
                     invalidate();
                 }}
             >
+                {/* Keep the camera projection square to the canvas — critical on
+                    the WebGPU path where R3F leaves camera.aspect at 0. */}
+                <CameraAspectSync />
+
                 {/* Lighting tuned for gem refraction -- driven by settings */}
                 <ambientLight intensity={ambientLightIntensity} />
                 <directionalLight position={[10, 10, 10]} intensity={directionalLightIntensity} />
