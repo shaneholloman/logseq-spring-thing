@@ -1,0 +1,319 @@
+//! `/wss/agent-events` — authenticated inbound `agent_action` ingest (ADR-059 §1, Phase 2).
+//!
+//! Closes the X2 consume-side gap. agentbox PUSHES `notifications/agent_action`
+//! over this socket (`management-api/utils/agent-event-publisher.js`); before
+//! this handler VisionClaw had **no JSON consumer** for those pushes at all (see
+//! ADR-059 Design log, Finding 1 — the path was absent, not lossy). Every frame
+//! is parsed against the canonical [`AgentActionNotification`] mirror, validated,
+//! and published to the process-global [`hub`]. The beam + gluon render actor
+//! (ADR-059 §4, Phase 2b) subscribes to the hub.
+//!
+//! Out of scope here, by design:
+//!   * The deprecated `:9500` MCP-TCP path (`services/bots_client.rs`) is
+//!     untouched — it carries agent *state snapshots* (`query_agent_list`), a
+//!     different payload from `agent_action`. Cutting state over to WS expands
+//!     the wire contract and is scoped as a follow-on (see ADR-059 Design log).
+//!   * The GPU beam + gluon render (transient edge + `class_charge` modulation)
+//!     is Phase 2b — it touches the spring system and the `Edge` struct and must
+//!     not be bolted onto the latent render substrate in the same increment.
+//!
+//! Auth model: this is a **server-to-server** ingest socket (agentbox →
+//! VisionClaw), not a browser socket. A valid session token is the gate
+//! (Bearer header or `?token=`, validated via `NostrService::get_session`, the
+//! same primitive the binary `/wss` socket uses). Origin is not enforced —
+//! non-browser clients do not send it, and a cross-site browser script cannot
+//! forge the bearer token cross-origin, so CSWSH is already mitigated.
+
+use actix::{Actor, ActorContext, StreamHandler};
+use actix_web::{web, HttpRequest, HttpResponse};
+use actix_web_actors::ws;
+use log::{debug, info, warn};
+
+use crate::app_state::AppState;
+
+use super::hub;
+use super::schema::AgentActionNotification;
+
+/// Negotiated WebSocket subprotocol (ADR-059 §1).
+const SUBPROTOCOL: &str = "vc-agent-events.v1";
+
+/// Check whether insecure defaults are allowed (ADR-06 §D1). Compile-gated:
+/// honoured only in `debug_assertions` / `--features dev-auth` builds with
+/// `ALLOW_INSECURE_DEFAULTS` set; a const-`false` stub in release builds.
+#[cfg(any(debug_assertions, feature = "dev-auth"))]
+fn is_insecure_defaults_allowed() -> bool {
+    std::env::var("ALLOW_INSECURE_DEFAULTS").is_ok()
+}
+
+#[cfg(not(any(debug_assertions, feature = "dev-auth")))]
+#[inline(always)]
+fn is_insecure_defaults_allowed() -> bool {
+    false
+}
+
+/// Outcome of processing one inbound text frame. Pure and deterministic so the
+/// ingest contract is unit-testable without spinning the actix actor.
+#[derive(Debug, PartialEq)]
+pub(crate) enum IngestOutcome {
+    /// Canonical envelope parsed, validated, and published to the hub.
+    Published {
+        action: String,
+        attributed: bool,
+        receivers: usize,
+    },
+    /// Parsed as JSON-RPC but failed [`AgentActionNotification::is_canonical`].
+    NonCanonical,
+    /// Not parseable as an `AgentActionNotification`.
+    Malformed,
+}
+
+/// Parse → validate → publish one inbound frame. The single source of truth for
+/// the ingest contract; the actor's `StreamHandler` is a thin adapter over it.
+pub(crate) fn process_frame(text: &str) -> IngestOutcome {
+    match serde_json::from_str::<AgentActionNotification>(text) {
+        Ok(notif) if notif.is_canonical() => {
+            let event = notif.params.event;
+            let action = event.action_type_name.clone();
+            // Phase 1 identity is optional (ADR-059 §5): record attribution
+            // presence for the Phase 3 audit trail, never reject on its absence.
+            let attributed = event.pubkey.is_some();
+            let receivers = hub::publish(event);
+            IngestOutcome::Published {
+                action,
+                attributed,
+                receivers,
+            }
+        }
+        Ok(_) => IngestOutcome::NonCanonical,
+        Err(_) => IngestOutcome::Malformed,
+    }
+}
+
+/// Per-connection ingest actor. Holds the authenticated session pubkey
+/// (ADR-059 §1: "the authenticated pubkey becomes the session pubkey").
+pub struct AgentEventsIngestWs {
+    /// did:nostr hex of the authenticated session, if any (Phase 1: optional).
+    session_pubkey: Option<String>,
+}
+
+impl AgentEventsIngestWs {
+    fn new(session_pubkey: Option<String>) -> Self {
+        Self { session_pubkey }
+    }
+}
+
+impl Actor for AgentEventsIngestWs {
+    type Context = ws::WebsocketContext<Self>;
+
+    fn started(&mut self, _ctx: &mut Self::Context) {
+        info!(
+            "agent-events: ingest socket open (session_pubkey={})",
+            self.session_pubkey.as_deref().unwrap_or("<anon>")
+        );
+    }
+}
+
+impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for AgentEventsIngestWs {
+    fn handle(&mut self, msg: Result<ws::Message, ws::ProtocolError>, ctx: &mut Self::Context) {
+        match msg {
+            Ok(ws::Message::Text(text)) => match process_frame(&text) {
+                IngestOutcome::Published {
+                    action,
+                    attributed,
+                    receivers,
+                } => {
+                    debug!(
+                        "agent-events: published action={action} attributed={attributed} \
+                         → {receivers} subscriber(s)"
+                    );
+                }
+                IngestOutcome::NonCanonical => {
+                    warn!("agent-events: non-canonical envelope rejected");
+                    ctx.text(r#"{"error":"non_canonical_envelope"}"#);
+                }
+                IngestOutcome::Malformed => {
+                    warn!("agent-events: malformed frame rejected");
+                    ctx.text(r#"{"error":"malformed_json"}"#);
+                }
+            },
+            Ok(ws::Message::Binary(_)) => {
+                // Phase 1 ingest is JSON-only. The 0x23 binary frame is the
+                // server→browser hot path (ADR-059 §4 / Finding 2), not inbound.
+                warn!("agent-events: binary frames not accepted on ingest socket");
+            }
+            Ok(ws::Message::Ping(payload)) => ctx.pong(&payload),
+            Ok(ws::Message::Pong(_)) => {}
+            Ok(ws::Message::Close(reason)) => {
+                ctx.close(reason);
+                ctx.stop();
+            }
+            Ok(ws::Message::Continuation(_)) => ctx.stop(),
+            Ok(ws::Message::Nop) => {}
+            Err(e) => {
+                warn!("agent-events: ws protocol error: {e}");
+                ctx.stop();
+            }
+        }
+    }
+}
+
+/// Validate the session token and return the authenticated pubkey (if any).
+/// `Err(HttpResponse)` short-circuits the upgrade with the failure response.
+async fn authenticate(
+    req: &HttpRequest,
+    app_state: &AppState,
+) -> Result<Option<String>, HttpResponse> {
+    let token = req
+        .headers()
+        .get("Authorization")
+        .and_then(|h| h.to_str().ok())
+        .and_then(|s| s.strip_prefix("Bearer "))
+        .map(str::to_string)
+        .or_else(|| {
+            url::form_urlencoded::parse(req.query_string().as_bytes())
+                .find(|(k, _)| k == "token")
+                .map(|(_, v)| v.to_string())
+        });
+
+    match (token.as_deref(), app_state.nostr_service.as_ref()) {
+        (Some(t), Some(ns)) if !t.is_empty() => match ns.get_session(t).await {
+            Some(user) => Ok(Some(user.pubkey)),
+            None if is_insecure_defaults_allowed() => {
+                warn!(
+                    "agent-events: token failed validation but ALLOW_INSECURE_DEFAULTS \
+                     set — accepting unauthenticated (dev build)"
+                );
+                Ok(None)
+            }
+            None => Err(HttpResponse::Unauthorized()
+                .body("Invalid or expired authentication token")),
+        },
+        _ if is_insecure_defaults_allowed() => {
+            warn!("agent-events: unauthenticated ingest accepted (dev / insecure defaults)");
+            Ok(None)
+        }
+        _ => Err(HttpResponse::Unauthorized()
+            .body("Authentication required for the agent-events socket")),
+    }
+}
+
+/// HTTP upgrade handler for `/wss/agent-events`.
+pub async fn agent_events_ws(
+    req: HttpRequest,
+    stream: web::Payload,
+    app_state: web::Data<AppState>,
+) -> Result<HttpResponse, actix_web::Error> {
+    let session_pubkey = match authenticate(&req, &app_state).await {
+        Ok(pk) => pk,
+        Err(resp) => return Ok(resp),
+    };
+
+    ws::WsResponseBuilder::new(AgentEventsIngestWs::new(session_pubkey), &req, stream)
+        .protocols(&[SUBPROTOCOL])
+        .start()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Minimal canonical envelope (the exact shape is exhaustively guarded by the
+    // cross-repo fixture in `schema.rs`; here we only need a canonical frame to
+    // drive the ingest contract).
+    fn canonical_frame(id: u64) -> String {
+        format!(
+            r#"{{
+              "jsonrpc": "2.0",
+              "method": "notifications/agent_action",
+              "params": {{
+                "type": "agent_action",
+                "event": {{
+                  "version": 3, "id": {id}, "source_agent_id": 7, "target_node_id": 4242,
+                  "action_type": 1, "action_type_name": "update",
+                  "timestamp": 1748500000000, "duration_ms": 250,
+                  "pubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "metadata": {{ "note": "x" }}
+                }},
+                "message_type": 35, "protocol_version": 2,
+                "timestamp": "2026-05-29T00:00:00.000Z"
+              }}
+            }}"#
+        )
+    }
+
+    #[test]
+    fn canonical_frame_publishes_to_hub_and_round_trips() {
+        // Subscribe before publishing so this receiver observes our own frame.
+        let mut rx = hub::subscribe();
+        let unique_id = 918_273_645;
+
+        let outcome = process_frame(&canonical_frame(unique_id));
+        match outcome {
+            IngestOutcome::Published {
+                action,
+                attributed,
+                receivers,
+            } => {
+                assert_eq!(action, "update");
+                assert!(attributed, "pubkey present ⇒ attributed");
+                assert!(receivers >= 1, "our own subscriber must be counted");
+            }
+            other => panic!("expected Published, got {other:?}"),
+        }
+
+        // Drain until we see our id (other parallel tests may publish too).
+        let mut seen = false;
+        while let Ok(env) = rx.try_recv() {
+            if env.id == unique_id {
+                assert_eq!(env.action_type, 1);
+                assert_eq!(env.pubkey.as_deref().unwrap().len(), 64);
+                seen = true;
+                break;
+            }
+        }
+        assert!(seen, "published envelope must reach the subscriber");
+    }
+
+    #[test]
+    fn malformed_frame_is_rejected() {
+        assert_eq!(process_frame("{ not json"), IngestOutcome::Malformed);
+        assert_eq!(process_frame(""), IngestOutcome::Malformed);
+    }
+
+    #[test]
+    fn non_canonical_frame_is_rejected() {
+        // Valid JSON-RPC but wrong method ⇒ not canonical, not published.
+        let wrong_method = r#"{
+          "jsonrpc": "2.0",
+          "method": "notifications/something_else",
+          "params": {
+            "type": "agent_action",
+            "event": {
+              "version": 3, "id": 1, "source_agent_id": 1, "target_node_id": 2,
+              "action_type": 0, "action_type_name": "query",
+              "timestamp": 1748500000000, "duration_ms": 100
+            },
+            "message_type": 35, "protocol_version": 2,
+            "timestamp": "2026-05-29T00:00:00.000Z"
+          }
+        }"#;
+        assert_eq!(process_frame(wrong_method), IngestOutcome::NonCanonical);
+
+        // version < 3 ⇒ pre-ADR-059 envelope, also non-canonical.
+        let old_version = r#"{
+          "jsonrpc": "2.0",
+          "method": "notifications/agent_action",
+          "params": {
+            "type": "agent_action",
+            "event": {
+              "version": 2, "id": 1, "source_agent_id": 1, "target_node_id": 2,
+              "action_type": 0, "action_type_name": "query",
+              "timestamp": 1748500000000, "duration_ms": 100
+            },
+            "message_type": 35, "protocol_version": 2,
+            "timestamp": "2026-05-29T00:00:00.000Z"
+          }
+        }"#;
+        assert_eq!(process_frame(old_version), IngestOutcome::NonCanonical);
+    }
+}

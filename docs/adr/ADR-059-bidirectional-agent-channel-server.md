@@ -1,6 +1,6 @@
 # ADR-059: Bi-directional URI-keyed agent activity channel (VisionClaw side)
 
-**Status:** Accepted — Phase 1 implemented (2026-05-29); Phase 2 pending host build
+**Status:** Accepted — Phase 1 + Phase 2a (authenticated ingest) implemented & verified (2026-05-29); Phase 2b (beam+gluon render) and the `:9500` state-poll cutover scoped as follow-ons
 **Date:** 2026-04-28 (Phase 1 design log appended 2026-05-29)
 **Author:** VisionClaw platform team
 **Supersedes:** — (initial bi-directional design; agent_monitor_actor REST polling remains until Phase 2)
@@ -142,7 +142,8 @@ This is documented for completeness; the change ships as a separate small ADR (*
 | Phase | Deliverable | Scope of code change | Risk |
 |---|---|---|---|
 | 1 | Canonical ingest schema mirror in new `src/agent_events/schema.rs` (the inbound `notifications/agent_action` envelope with `source_urn`/`target_urn`/`pubkey`); agentbox `agent-event-publisher.js` populates new fields through one builder. **Done 2026-05-29** — see Design log. | ~30 lines each side. | Low. Backward-compatible. |
-| 2 | New `/wss/agent-events` handler in VisionClaw; agentbox switches `agent-event-bridge.js` connect target from `tcp://127.0.0.1:9500` to `ws://...`/wss/agent-events`. Beam + gluon reaper actor. | ~200 lines server, ~100 lines agentbox. | Medium. New socket type. |
+| 2a | **Done 2026-05-29.** Authenticated `/wss/agent-events` ingest handler in VisionClaw (`src/agent_events/ingest.rs`): token-validated upgrade (`NostrService::get_session`), subprotocol `vc-agent-events.v1`, parse → `is_canonical()` validate → publish to a process-global broadcast hub (`src/agent_events/hub.rs`). agentbox still switches `agent-event-bridge.js` connect target from `tcp://127.0.0.1:9500` to `ws://…/wss/agent-events`. **No GPU/render code** — see Design log Phase 2a. | ~250 lines server (handler + hub + tests). | Low. Additive endpoint; render-decoupled; cargo-verified, 7/7 tests. |
+| 2b | Beam + gluon render actor subscribing to `hub::subscribe()` (§4: transient `Edge { transient: bool }` + `class_charge` modulation + despawn reaper). **Blocked-finding:** the live agent-action render substrate is latent (see Design log), so this is its own increment, not a bolt-on. Separately: the `:9500` MCP-TCP poll carries agent *state snapshots*, not `agent_action` — retiring it requires the WS to also carry state, a contract expansion tracked here. | ~200 lines server GPU/actor + state-channel design. | Medium–High. Touches spring system + `Edge` struct. |
 | 3 | Outbound `user_interaction` events from client → server → WS broadcast → agentbox subscriber (Agentbox ADR-014). | ~150 lines client + 80 server. | Low–medium. |
 | 4 | Server-side visibility filter at binary encoder (**ADR-060**). | ~80 lines, single handler. | Medium. Test matrix grows. |
 | 5 | Mandatory + signed identity + NIP-26 delegation (**ADR-061**). | TBD. | High. New crypto path. |
@@ -174,6 +175,46 @@ Phase 1 + Phase 2 land within one sprint. Later phases are independently schedul
 3. Phase-2 backpressure: if the WS client falls behind and the server queue exceeds N frames, drop oldest or coalesce by `target_node_id`? (Recommend coalesce-by-target — the visual is duration-based, last-write-wins is correct.)
 
 ## Design log (real-time)
+
+### 2026-05-29 — Phase 2a landed (ingest seam); render substrate found latent; Phase 2 split
+
+**Phase 2a (authenticated ingest) landed and cargo-verified.** Three new pieces in
+`src/agent_events/`: `ingest.rs` (the `/wss/agent-events` actix WS actor + token-validated
+upgrade handler, registered in `main.rs` next to `/wss`), `hub.rs` (a process-global
+`tokio::sync::broadcast` seam), and ingest unit tests. The handler parses each text frame
+against the Phase-1 `AgentActionNotification` mirror, validates `is_canonical()`, and
+publishes the envelope to the hub. `cargo check --lib`/`--bins` clean (zero new warnings);
+`cargo test --lib agent_events` → 7/7 pass (4 schema + 3 ingest) via
+`docker exec visionclaw_container`. **This closes the X2 consume-side debt**: VisionClaw now
+*consumes* the pushed `notifications/agent_action` it previously dropped (Finding 1).
+
+**Finding 4 — the agent-action RENDER substrate is latent, the agent-STATE path is the
+`:9500` poll.** Phase 2 was scoped in the original table as "new handler + beam+gluon reaper,
+~200 lines". On inspection that conflates two unrelated substrates:
+- *Agent state* (which agents exist, cpu/health/status) IS live — but via the **deprecated
+  `:9500` MCP-TCP poll**: `services/bots_client.rs` spawns a 2 s `query_agent_list()` interval
+  and caches it; `get_agent_visualization_snapshot` (`/visualization/agents/snapshot`) reads
+  that cache. So `:9500` is load-bearing for *state*.
+- *Agent actions* (the transient beams §4 renders) have **no live consumer or renderer**.
+  `MultiMcpVisualizationActor` is never `.start()`ed and is absent from `AppState`; the
+  outbound `0x23` binary broadcast (`binary_protocol::AgentActionEvent::encode`) is dead code
+  never called to broadcast; the only live agent-viz WS (`agent_visualization_ws` at
+  `/visualization/agents/ws`) emits an **empty** `Vec<AgentStatus>` placeholder.
+
+**Decision — split Phase 2 into 2a / 2b (escape-hatch respected).** Bolting the beam+gluon
+GPU wiring onto a dead render path in the same change would be speculative debt against
+unverified substrate. So Phase 2a lands only the *verifiable* seam — receive, authenticate,
+validate, buffer (broadcast) — which is the actual federation-boundary debt. Phase 2b owns
+the render decision (wire a hub-subscribing actor into the spring system + the transient
+`Edge` flag + despawn reaper) and is independently schedulable. The `hub` is the explicit
+seam between them: ingest publishes today, render subscribes later, neither imports the other.
+
+**Consequent correction — `:9500` retirement is bigger than "switch the bridge target".**
+agentbox's `agent-event-bridge.js` retargeting (Phase 2a) stops the *action* push hitting a
+non-existent TCP listener, but the `bots_client` *state* poll still dials `:9500`. Fully
+retiring `:9500` requires the WS contract to also carry agent **state snapshots** (a payload
+distinct from the §2 `agent_action` envelope) — a contract expansion now tracked in Phasing
+row 2b, not silently assumed done.
 
 ### 2026-05-29 — Phase 1 landed; producer convergence; two clarifying findings
 

@@ -806,6 +806,8 @@ async fn main() -> std::io::Result<()> {
             .route("/healthz", web::get().to(consolidated_health_handler::liveness_probe))
             .route("/readyz", web::get().to(consolidated_health_handler::readiness_probe))
             .route("/wss", web::get().to(socket_flow_handler))
+            // ADR-059 §1: authenticated inbound agent_action ingest (agentbox → VisionClaw)
+            .route("/wss/agent-events", web::get().to(visionclaw_server::agent_events::agent_events_ws))
             .route("/ws/speech", web::get().to(speech_socket_handler))
             .route("/ws/mcp-relay", web::get().to(mcp_relay_handler))
             
