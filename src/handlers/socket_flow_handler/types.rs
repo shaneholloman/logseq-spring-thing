@@ -99,6 +99,15 @@ pub struct SocketFlowServer {
     // Set via subscribe_position_updates { data: { nodeTypes: ["knowledge", "agent"] } }.
     pub(crate) subscribed_node_types: HashSet<String>,
 
+    /// Generation counter for the position-update re-subscription loop.
+    /// A client that subscribes more than once (e.g. AppInitializer fires both
+    /// on connection-status-change and on connection_established) would otherwise
+    /// spawn one independent `run_later` self-loop per subscribe, doubling the
+    /// binary broadcast rate. Each subscribe bumps this counter; every loop tick
+    /// captures the generation it was started under and stops re-injecting once a
+    /// newer subscribe supersedes it, leaving exactly one active loop.
+    pub(crate) position_sub_generation: u64,
+
     /// ADR-031 item 4: Pending server-to-client directives embedded in pong frames.
     /// Drained on each `send_pong` call via the `WebSocketHeartbeat` trait override.
     pub(crate) pending_directives: Vec<HeartbeatDirective>,
@@ -160,6 +169,7 @@ impl SocketFlowServer {
             drag_last_update: HashMap::new(),
             drag_timeout_ms: 500,
             subscribed_node_types: HashSet::new(),
+            position_sub_generation: 0,
             pending_directives: Vec::new(),
         }
     }

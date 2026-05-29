@@ -430,6 +430,15 @@ pub(crate) fn handle_subscribe_position_updates(
     // hot-path: trace only (re-fires every interval via run_later re-subscription loop)
     trace!("Client requested position update subscription");
 
+    // Collapse duplicate subscriptions to a single broadcast loop. A client that
+    // subscribes more than once (AppInitializer fires on both connection-status-change
+    // and connection_established) would otherwise spawn one independent run_later
+    // self-loop per subscribe, doubling the binary broadcast rate. Bumping the
+    // generation orphans every older loop: each tick below stops once it sees a newer
+    // generation, so exactly one loop survives regardless of subscribe count.
+    act.position_sub_generation = act.position_sub_generation.wrapping_add(1);
+    let my_generation = act.position_sub_generation;
+
     let interval = msg
         .get("data")
         .and_then(|data| data.get("interval"))
@@ -503,6 +512,11 @@ pub(crate) fn handle_subscribe_position_updates(
         let fut = actix::fut::wrap_future::<_, SocketFlowServer>(fut);
 
         ctx.spawn(fut.map(move |result, act, ctx| {
+            // A newer subscribe superseded this loop while the fetch was in flight;
+            // drop the result so only the latest loop broadcasts (no duplicate frames).
+            if act.position_sub_generation != my_generation {
+                return;
+            }
             if let Some((mut nodes, detailed_debug)) = result {
                 // FIX 6: Apply per-client node type filter to reduce bandwidth.
                 // When the client subscribes with nodeTypes, skip nodes that
@@ -569,6 +583,11 @@ pub(crate) fn handle_subscribe_position_updates(
 
                 let next_interval = std::time::Duration::from_millis(actual_interval);
                 ctx.run_later(next_interval, move |act, ctx| {
+                    // Stop re-injecting once a newer subscribe takes over this client,
+                    // otherwise duplicate loops would persist indefinitely.
+                    if act.position_sub_generation != my_generation {
+                        return;
+                    }
                     let subscription_msg = format!(
                         "{{\"type\":\"subscribe_position_updates\",\"data\":{{\"interval\":{},\"binary\":{}}}}}",
                         actual_interval, binary
