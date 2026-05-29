@@ -5,6 +5,11 @@ import { Html } from '@react-three/drei';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useWebSocketStore } from '@/store/websocketStore';
 import type { EmbeddingCloudSettings } from '../../settings/config/settings';
+import {
+  memoryActionProfile,
+  semanticBurstColor,
+  type BurstProfile,
+} from '../semanticEncoding';
 
 interface EmbeddingMeta {
   key: string;
@@ -32,15 +37,10 @@ interface MemoryFlashEvent {
 }
 
 // ── Flash burst config ──
-const BURST_DURATION = 1.8;       // seconds
-const BURST_MAX_SCALE = 4.0;      // world-units radius at peak
+// Per-burst scale/duration/motion now come from the memory-action profile in
+// semanticEncoding; only the pool size and neutral init colour live here.
 const BURST_POOL_SIZE = 64;       // max concurrent bursts
-const BURST_COLORS: number[] = [
-  0x00ffff, 0x40e0d0, 0x7df9ff, 0x00fff7, // cyan family
-  0xff6ec7, 0xff44cc, 0xda70d6,            // magenta/pink
-  0x7fff00, 0x39ff14,                       // electric green
-  0xffaa00, 0xff6600,                       // amber/orange
-];
+const BURST_INIT_COLOR = 0x9ad6ff; // neutral colour for idle pool meshes
 
 // Distinct palette for categorical coloring (up to 16 categories, then cycles)
 const PALETTE = [
@@ -82,7 +82,12 @@ interface BurstSlot {
   mesh: THREE.Mesh;
   startTime: number;
   active: boolean;
+  delay: number;         // seconds before this (concentric) ring begins animating
+  profile: BurstProfile; // semantic motion/scale/duration for this burst
 }
+
+// Seconds between concentric rings of a multi-ring burst (search/store ripple).
+const RING_STAGGER = 0.14;
 
 const EmbeddingCloudLayer: React.FC<EmbeddingCloudProps> = ({ enabled }) => {
   const groupRef = useRef<THREE.Group>(null);
@@ -181,7 +186,7 @@ const EmbeddingCloudLayer: React.FC<EmbeddingCloudProps> = ({ enabled }) => {
     const pool: BurstSlot[] = [];
     for (let i = 0; i < BURST_POOL_SIZE; i++) {
       const mat = new THREE.MeshBasicMaterial({
-        color: BURST_COLORS[i % BURST_COLORS.length],
+        color: BURST_INIT_COLOR,
         transparent: true,
         opacity: 0,
         side: THREE.DoubleSide,
@@ -192,7 +197,7 @@ const EmbeddingCloudLayer: React.FC<EmbeddingCloudProps> = ({ enabled }) => {
       mesh.visible = false;
       mesh.renderOrder = 999;
       // Face camera by default (billboard in useFrame)
-      pool.push({ mesh, startTime: 0, active: false });
+      pool.push({ mesh, startTime: 0, active: false, delay: 0, profile: memoryActionProfile('access') });
     }
     burstPool.current = pool;
 
@@ -214,21 +219,30 @@ const EmbeddingCloudLayer: React.FC<EmbeddingCloudProps> = ({ enabled }) => {
     };
   }, [enabled, data]);
 
-  // Spawn a burst at a world position
-  const spawnBurst = useCallback((worldPos: THREE.Vector3) => {
+  // Spawn a burst at a world position, coloured + animated by the memory action
+  // verb (store/retrieve/search/list/delete) and tinted by namespace identity.
+  // High-weight verbs ripple as `profile.rings` staggered concentric rings.
+  const spawnBurst = useCallback((worldPos: THREE.Vector3, action?: string, namespace?: string) => {
     const pool = burstPool.current;
     if (pool.length === 0) return;
-    const slot = pool[burstNextSlot.current % pool.length];
-    burstNextSlot.current++;
+    const profile = memoryActionProfile(action);
+    const now = performance.now();
+    for (let r = 0; r < profile.rings; r++) {
+      const slot = pool[burstNextSlot.current % pool.length];
+      burstNextSlot.current++;
 
-    slot.mesh.position.copy(worldPos);
-    slot.mesh.scale.setScalar(0.01);
-    slot.mesh.visible = true;
-    const mat = slot.mesh.material as THREE.MeshBasicMaterial;
-    mat.opacity = 1.0;
-    mat.color.set(BURST_COLORS[Math.floor(Math.random() * BURST_COLORS.length)]);
-    slot.startTime = performance.now();
-    slot.active = true;
+      slot.profile = profile;
+      slot.delay = r * RING_STAGGER;
+      slot.mesh.position.copy(worldPos);
+      // implode bursts start at full radius and contract; expand bursts start tiny
+      slot.mesh.scale.setScalar(profile.motion === 'implode' ? profile.maxScale : 0.01);
+      slot.mesh.visible = false; // shown once its stagger delay elapses
+      const mat = slot.mesh.material as THREE.MeshBasicMaterial;
+      mat.opacity = 1.0;
+      semanticBurstColor(mat.color, action, namespace);
+      slot.startTime = now;
+      slot.active = true;
+    }
   }, []);
 
   // Subscribe to memory_flash WebSocket events
@@ -269,12 +283,12 @@ const EmbeddingCloudLayer: React.FC<EmbeddingCloudProps> = ({ enabled }) => {
         }
       }
 
-      // Spawn burst rings at each matched position
+      // Spawn burst rings at each matched position, encoded by action + namespace
       for (const idx of indices) {
         const px = positions[idx * 3];
         const py = positions[idx * 3 + 1];
         const pz = positions[idx * 3 + 2];
-        spawnBurst(new THREE.Vector3(px, py, pz));
+        spawnBurst(new THREE.Vector3(px, py, pz), event.action, event.namespace);
       }
     });
 
@@ -287,21 +301,30 @@ const EmbeddingCloudLayer: React.FC<EmbeddingCloudProps> = ({ enabled }) => {
       groupRef.current.rotation.y += rotationSpeed;
     }
 
-    // Animate burst rings: expand + fade + billboard
+    // Animate burst rings: expand/implode + fade + billboard, per-slot semantic
     const now = performance.now();
     for (const slot of burstPool.current) {
       if (!slot.active) continue;
-      const elapsed = (now - slot.startTime) / 1000;
-      if (elapsed >= BURST_DURATION) {
+      const { duration, maxScale, motion } = slot.profile;
+      const elapsed = (now - slot.startTime) / 1000 - slot.delay;
+      if (elapsed < 0) {
+        // staggered concentric ring not started yet
+        slot.mesh.visible = false;
+        continue;
+      }
+      if (elapsed >= duration) {
         slot.active = false;
         slot.mesh.visible = false;
         continue;
       }
-      const t = elapsed / BURST_DURATION;
-      // Fast expand, slow fade
-      const scale = BURST_MAX_SCALE * (1 - Math.pow(1 - t, 3)); // ease-out cubic
+      slot.mesh.visible = true;
+      const t = elapsed / duration;
+      // expand: tiny → max (ease-out cubic). implode: max → tiny (ease-in cubic).
+      const scale = motion === 'implode'
+        ? maxScale * Math.pow(1 - t, 3)
+        : maxScale * (1 - Math.pow(1 - t, 3));
       const alpha = 1.0 - t * t; // quadratic fade
-      slot.mesh.scale.setScalar(scale);
+      slot.mesh.scale.setScalar(Math.max(scale, 0.01));
       (slot.mesh.material as THREE.MeshBasicMaterial).opacity = alpha * 0.85;
       // Billboard: face camera
       slot.mesh.quaternion.copy(camera.quaternion);

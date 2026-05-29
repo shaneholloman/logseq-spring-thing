@@ -7,8 +7,11 @@
  * removed once its TTL elapses (the store prunes; this layer triggers the prune
  * every frame).
  *
- * Colour by action_type (reused from the existing decoder's AGENT_ACTION_COLORS):
+ * Colour AND shape by action_type, both sourced from semanticEncoding (which
+ * re-exports the decoder's AGENT_ACTION_COLORS):
  *   QUERY=blue UPDATE=yellow CREATE=green DELETE=red LINK=purple TRANSFORM=cyan
+ * Shape embodies the verb: Create widens into the node, Delete narrows into it,
+ * Query is a thin probe, Link a thick tie, Transform a rounder beam.
  *
  * Position resolution is injected via props so the layer stays decoupled from
  * graph internals. The caller (GraphManager) owns the agent registry and the
@@ -25,7 +28,7 @@
 import React, { useMemo, useRef, useEffect, useCallback } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
-import { AGENT_ACTION_COLORS, AgentActionType } from '@/services/BinaryWebSocketProtocol';
+import { agentActionColorHex, agentActionShape } from '../semanticEncoding';
 import { useTransientBeams } from '../hooks/useTransientBeams';
 import type { TransientBeam } from '@/store/transientBeamStore';
 
@@ -122,16 +125,24 @@ const TransientBeamMesh: React.FC<{
   const meshRef = useRef<THREE.Mesh>(null);
 
   const colorHex = useMemo(() => {
-    const hex = AGENT_ACTION_COLORS[beam.actionType as AgentActionType] ?? '#ffffff';
-    _color.set(hex);
+    _color.set(agentActionColorHex(beam.actionType));
     return _color.getHex();
   }, [beam.actionType]);
 
-  // Unit-Y cylinder built once; instance is stretched/positioned per frame.
-  const geometry = useMemo(
-    () => new THREE.CylinderGeometry(beamRadius, beamRadius, 1, 10, 1, true),
-    [beamRadius],
-  );
+  // Unit-Y cylinder built once; instance is stretched/positioned per frame. The
+  // per-action shape embodies the verb — Create widens into the node (+Y/top),
+  // Delete narrows into it, Query is a thin probe, Link a thick tie, etc.
+  const geometry = useMemo(() => {
+    const shape = agentActionShape(beam.actionType);
+    return new THREE.CylinderGeometry(
+      beamRadius * shape.radiusTop,
+      beamRadius * shape.radiusBottom,
+      1,
+      shape.radialSegments,
+      1,
+      true,
+    );
+  }, [beamRadius, beam.actionType]);
 
   const material = useMemo(() => {
     const mat = new THREE.MeshBasicMaterial({
