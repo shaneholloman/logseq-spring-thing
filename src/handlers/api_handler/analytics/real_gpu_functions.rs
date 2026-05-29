@@ -133,15 +133,9 @@ pub async fn perform_gpu_spectral_clustering(
                     "GPU spectral clustering succeeded with {} clusters",
                     gpu_result.len()
                 );
-                // Populate shared node_analytics with cluster assignments
-                if let Ok(mut analytics) = app_state.node_analytics.write() {
-                    for (idx, cluster) in gpu_result.iter().enumerate() {
-                        for &node_id in &cluster.nodes {
-                            let entry = analytics.entry(node_id).or_insert((0, 0.0, 0));
-                            entry.0 = idx as u32;
-                        }
-                    }
-                }
+                // node_analytics is populated by the central writer in
+                // clustering_handlers::run_clustering (1-based ids, masked keys,
+                // stale-id reset) — the single source of truth for the wire.
                 return gpu_result;
             }
             Ok(Err(e)) => {
@@ -196,14 +190,8 @@ pub async fn perform_gpu_kmeans_clustering(
                     "GPU K-means clustering succeeded with {} clusters",
                     gpu_result.len()
                 );
-                if let Ok(mut analytics) = app_state.node_analytics.write() {
-                    for (idx, cluster) in gpu_result.iter().enumerate() {
-                        for &node_id in &cluster.nodes {
-                            let entry = analytics.entry(node_id).or_insert((0, 0.0, 0));
-                            entry.0 = idx as u32;
-                        }
-                    }
-                }
+                // node_analytics is populated by the central writer in
+                // clustering_handlers::run_clustering (single source of truth).
                 return gpu_result;
             }
             Ok(Err(e)) => {
@@ -258,14 +246,8 @@ pub async fn perform_gpu_louvain_clustering(
                     "GPU Louvain clustering succeeded with {} clusters",
                     gpu_result.len()
                 );
-                if let Ok(mut analytics) = app_state.node_analytics.write() {
-                    for (idx, cluster) in gpu_result.iter().enumerate() {
-                        for &node_id in &cluster.nodes {
-                            let entry = analytics.entry(node_id).or_insert((0, 0.0, 0));
-                            entry.0 = idx as u32;
-                        }
-                    }
-                }
+                // node_analytics is populated by the central writer in
+                // clustering_handlers::run_clustering (single source of truth).
                 return gpu_result;
             }
             Ok(Err(e)) => {
@@ -380,9 +362,26 @@ fn generate_cpu_fallback_clustering(
     num_clusters: u32,
     method: &str,
 ) -> Vec<Cluster> {
+    let _ = num_clusters; // retained for signature compatibility with agent-based path
     if !agents.is_empty() {
         super::clustering_handlers::generate_agent_based_clusters(graph_data, agents, num_clusters, method)
     } else {
-        super::clustering_handlers::generate_graph_based_clusters(graph_data, num_clusters, method)
+        // Real topology-based community detection over the graph edges. The
+        // previous positional index-bin fallback produced meaningless clusters
+        // that, once surfaced on the wire, would override the client's domain
+        // heuristics with garbage. Label propagation yields genuine communities.
+        super::clustering_handlers::generate_label_propagation_clusters(
+            graph_data,
+            CPU_FALLBACK_MIN_CLUSTER_SIZE,
+            CPU_FALLBACK_MAX_ITERATIONS,
+            method,
+        )
     }
 }
+
+/// Minimum community size for the CPU label-propagation fallback. Matches the
+/// client hull floor (MIN_CLUSTER_SIZE = 4 in ClusterHulls.tsx) so we never emit
+/// communities too small to form a hull.
+const CPU_FALLBACK_MIN_CLUSTER_SIZE: u32 = 4;
+/// Label-propagation sweep cap; convergence almost always halts earlier.
+const CPU_FALLBACK_MAX_ITERATIONS: u32 = 50;

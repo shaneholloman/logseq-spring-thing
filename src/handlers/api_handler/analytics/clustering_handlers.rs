@@ -6,6 +6,7 @@ use uuid::Uuid;
 use crate::actors::messages::GetGraphData;
 use crate::services::agent_visualization_protocol::McpServerType;
 use crate::utils::mcp_tcp_client::create_mcp_client;
+use crate::utils::binary_protocol::NODE_ID_MASK;
 use crate::{ok_json, not_found};
 use crate::AppState;
 
@@ -62,14 +63,25 @@ pub async fn run_clustering(
                 Ok(clusters) => {
                     // Populate shared node_analytics so V3 binary broadcast carries cluster_id values
                     if let Ok(mut analytics) = app_state_clone.node_analytics.write() {
+                        // Reset stale cluster_ids from any prior run so nodes that are
+                        // no longer in a cluster revert to 0 (preserve anomaly/community).
+                        for entry in analytics.values_mut() {
+                            entry.0 = 0;
+                        }
+                        // 1-based cluster ids: the client treats cluster_id == 0 as
+                        // "unclustered" (ClusterHulls.tsx falls back to domain heuristics),
+                        // so community 0 must serialise as 1. Mask to the compact id space
+                        // to match the encoder's masked lookup (binary_protocol Fix A).
                         for (idx, cluster) in clusters.iter().enumerate() {
+                            let cluster_id = (idx + 1) as u32;
                             for &node_id in &cluster.nodes {
-                                let entry = analytics.entry(node_id).or_insert((0, 0.0, 0));
-                                entry.0 = idx as u32;
+                                let base_id = node_id & NODE_ID_MASK;
+                                let entry = analytics.entry(base_id).or_insert((0, 0.0, 0));
+                                entry.0 = cluster_id;
                             }
                         }
                         info!(
-                            "run_clustering: Populated node_analytics with {} clusters",
+                            "run_clustering: Populated node_analytics with {} clusters (1-based ids)",
                             clusters.len()
                         );
                     }
@@ -587,6 +599,173 @@ pub(crate) fn generate_agent_based_clusters(
     clusters
 }
 
+/// Real community detection over the graph topology via asynchronous label
+/// propagation. This replaces the previous positional index-bin fallback, which
+/// produced meaningless contiguous-range "clusters". Label propagation groups
+/// nodes by their actual edge connectivity, so the resulting `cluster.nodes`
+/// reflect genuine communities that are worth inspecting in 3D.
+///
+/// Returned `Cluster.nodes` contain COMPACT node ids (matching `Node.id`), which
+/// is what the node_analytics store and the V3 binary broadcast are keyed by.
+/// Deterministic: fixed-order sweeps with (max weight, then smallest label)
+/// tie-breaking, so repeated runs on the same graph yield identical clusters.
+pub(crate) fn generate_label_propagation_clusters(
+    graph_data: &visionclaw_domain::models::graph::GraphData,
+    min_cluster_size: u32,
+    max_iterations: u32,
+    method: &str,
+) -> Vec<Cluster> {
+    let n = graph_data.nodes.len();
+    if n == 0 {
+        return Vec::new();
+    }
+
+    // Dense index <-> compact node id mapping (node ids are compact but not
+    // guaranteed contiguous in nodes-vec order).
+    let mut id_to_idx: HashMap<u32, usize> = HashMap::with_capacity(n);
+    let mut idx_to_id: Vec<u32> = Vec::with_capacity(n);
+    for node in &graph_data.nodes {
+        id_to_idx.insert(node.id, idx_to_id.len());
+        idx_to_id.push(node.id);
+    }
+
+    // Weighted undirected adjacency.
+    let mut adjacency: Vec<Vec<(usize, f32)>> = vec![Vec::new(); n];
+    for edge in &graph_data.edges {
+        let (Some(&s), Some(&t)) = (id_to_idx.get(&edge.source), id_to_idx.get(&edge.target))
+        else {
+            continue;
+        };
+        if s == t {
+            continue;
+        }
+        let w = if edge.weight > 0.0 { edge.weight } else { 1.0 };
+        adjacency[s].push((t, w));
+        adjacency[t].push((s, w));
+    }
+
+    // Asynchronous label propagation. Async (in-place) updates avoid the
+    // bipartite oscillation that synchronous LPA suffers from, and converge
+    // quickly. Deterministic tie-break keeps results reproducible.
+    let mut labels: Vec<usize> = (0..n).collect();
+    let iters = max_iterations.clamp(5, 1000) as usize;
+    let mut votes: HashMap<usize, f32> = HashMap::new();
+    for _ in 0..iters {
+        let mut changed = false;
+        for i in 0..n {
+            if adjacency[i].is_empty() {
+                continue;
+            }
+            votes.clear();
+            for &(nbr, w) in &adjacency[i] {
+                *votes.entry(labels[nbr]).or_insert(0.0) += w;
+            }
+            let mut best_label = labels[i];
+            let mut best_w = f32::NEG_INFINITY;
+            for (&lbl, &w) in &votes {
+                if w > best_w || (w == best_w && lbl < best_label) {
+                    best_w = w;
+                    best_label = lbl;
+                }
+            }
+            if best_label != labels[i] {
+                labels[i] = best_label;
+                changed = true;
+            }
+        }
+        if !changed {
+            break;
+        }
+    }
+
+    // Per-community internal/total incident edge weight, for a real coherence score.
+    let mut internal_w: HashMap<usize, f32> = HashMap::new();
+    let mut total_w: HashMap<usize, f32> = HashMap::new();
+    for edge in &graph_data.edges {
+        let (Some(&s), Some(&t)) = (id_to_idx.get(&edge.source), id_to_idx.get(&edge.target))
+        else {
+            continue;
+        };
+        let w = if edge.weight > 0.0 { edge.weight } else { 1.0 };
+        *total_w.entry(labels[s]).or_insert(0.0) += w;
+        *total_w.entry(labels[t]).or_insert(0.0) += w;
+        if labels[s] == labels[t] {
+            *internal_w.entry(labels[s]).or_insert(0.0) += 2.0 * w;
+        }
+    }
+
+    // Group nodes by final community label.
+    let mut groups: HashMap<usize, Vec<u32>> = HashMap::new();
+    for (idx, &lbl) in labels.iter().enumerate() {
+        groups.entry(lbl).or_default().push(idx_to_id[idx]);
+    }
+
+    // Drop communities smaller than the requested floor; order remaining ones
+    // largest-first (then by first node id) so colouring is stable across runs.
+    let min_size = min_cluster_size.max(1) as usize;
+    let mut groups_vec: Vec<(usize, Vec<u32>)> = groups
+        .into_iter()
+        .filter(|(_, nodes)| nodes.len() >= min_size)
+        .collect();
+    groups_vec.sort_by(|a, b| b.1.len().cmp(&a.1.len()).then(a.1[0].cmp(&b.1[0])));
+
+    let colors = [
+        "#FF6B6B", "#4ECDC4", "#45B7D1", "#96CEB4", "#FFEAA7", "#DDA0DD", "#98D8C8", "#F7DC6F",
+    ];
+
+    info!(
+        "generate_label_propagation_clusters: {} communities (>= {} nodes) from {} nodes / {} edges via {}",
+        groups_vec.len(),
+        min_size,
+        n,
+        graph_data.edges.len(),
+        method
+    );
+
+    groups_vec
+        .into_iter()
+        .enumerate()
+        .map(|(i, (lbl, nodes))| {
+            let centroid = {
+                let mut sum = [0.0f32; 3];
+                let mut count = 0.0f32;
+                for &id in &nodes {
+                    if let Some(&idx) = id_to_idx.get(&id) {
+                        if let Some(node) = graph_data.nodes.get(idx) {
+                            sum[0] += node.data.x;
+                            sum[1] += node.data.y;
+                            sum[2] += node.data.z;
+                            count += 1.0;
+                        }
+                    }
+                }
+                if count > 0.0 {
+                    Some([sum[0] / count, sum[1] / count, sum[2] / count])
+                } else {
+                    None
+                }
+            };
+
+            let coherence = match (internal_w.get(&lbl), total_w.get(&lbl)) {
+                (Some(&i_w), Some(&t_w)) if t_w > 0.0 => (i_w / t_w).clamp(0.0, 1.0),
+                _ => 0.0,
+            };
+
+            Cluster {
+                id: format!("{}_community_{}", method, i),
+                label: format!("Community {} ({} nodes)", i + 1, nodes.len()),
+                node_count: nodes.len() as u32,
+                coherence,
+                color: colors[i % colors.len()].to_string(),
+                keywords: vec![format!("{}-community", method)],
+                nodes,
+                centroid,
+            }
+        })
+        .collect()
+}
+
+#[allow(dead_code)]
 pub(crate) fn generate_graph_based_clusters(
     graph_data: &visionclaw_domain::models::graph::GraphData,
     num_clusters: u32,

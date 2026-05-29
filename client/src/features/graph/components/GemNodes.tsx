@@ -11,8 +11,9 @@ import type { GemMaterialSettings, GraphTypeVisualsSettings, QualityGatesSetting
 import type { Edge } from '../managers/graphDataManager';
 import type { ThreeEvent } from '@react-three/fiber';
 import { createLogger } from '../../../utils/loggerConfig';
-// ADR-03 D7: analytics buffer no longer lives in the worker.
-// import { graphWorkerProxy } from '../managers/graphWorkerProxy';
+// ADR-03 D7: analytics buffer no longer lives in the worker — it is rebuilt on
+// the main thread from V3 binary frames.
+import { nodeAnalyticsStore } from '../../analytics/store/nodeAnalyticsStore';
 
 const logger = createLogger('GemNodes');
 import { computeNodeScale } from '../utils/nodeScaling';
@@ -350,14 +351,14 @@ const GemNodesInner: React.ForwardRefRenderFunction<GemNodesHandle, GemNodesProp
     const positions = nodePositionsRef.current;
     frameCountRef.current++;
 
-    // Refresh per-node analytics from worker every ~30 frames (~0.5s at 60fps)
-    // to avoid Comlink overhead on every frame.
+    // Refresh per-node analytics from the main-thread store every ~30 frames
+    // (~0.5s at 60fps). The store is fed by V3 binary frames (cluster_id at
+    // wire offset 36) and returns a render-index-aligned buffer (stride 3).
     analyticsFrameRef.current++;
     if (analyticsFrameRef.current % 30 === 1 &&
         (qualityGates?.showClusters || qualityGates?.showAnomalies || qualityGates?.showCommunities)) {
-      // ADR-03 D7: analytics no longer live in the worker. Wire to the
-      // main-thread analytics store in Phase 5; buffer remains stale until then.
-      void analyticsFrameRef;
+      const buf = nodeAnalyticsStore.getIndexedBuffer(props.nodeIdToIndexMap);
+      if (buf) analyticsRef.current = buf;
     }
 
     // Delayed diagnostic — fires at frame 60 when positions are loaded (dev only).

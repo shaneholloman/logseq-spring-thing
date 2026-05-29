@@ -502,9 +502,10 @@ __device__ float compute_modularity_gain_device(
     float sigma_current = community_weights[current_community] - ki;
     float sigma_target = community_weights[target_community];
 
-    // Modularity gain formula
+    // Modularity gain formula (Blondel et al.). total_weight == m, so the
+    // expected-weight penalty uses 2m^2 in the denominator.
     float delta_q = (ki_in_target - ki_in_current) / total_weight;
-    delta_q -= resolution * ki * (sigma_target - sigma_current) / (total_weight * total_weight);
+    delta_q -= resolution * ki * (sigma_target - sigma_current) / (2.0f * total_weight * total_weight);
 
     return delta_q;
 }
@@ -520,7 +521,8 @@ __global__ void louvain_local_pass_kernel(
     bool* __restrict__ improvement_flag,
     const int num_nodes,
     const float total_weight,
-    const float resolution)
+    const float resolution,
+    const int iteration)
 {
     const int node = blockIdx.x * blockDim.x + threadIdx.x;
     if (node >= num_nodes) return;
@@ -528,6 +530,15 @@ __global__ void louvain_local_pass_kernel(
     int current_community = node_communities[node];
     int best_community = current_community;
     float best_gain = 0.0f;
+
+    // Parallel-Louvain symmetry break: in a single synchronous pass two adjacent
+    // nodes can each compute a positive gain for moving into the other's
+    // community and swap, oscillating forever (improvement never clears). Restrict
+    // every node in a given pass to move in ONE direction of community id, and
+    // alternate the direction by iteration parity. Within a pass all accepted
+    // moves are monotone, so reciprocal swaps cannot occur; alternating parity
+    // still lets communities merge in both directions across passes.
+    const bool prefer_lower = (iteration & 1) == 0;
 
     // Check all neighboring communities
     int start = edge_offsets[node];
@@ -537,18 +548,21 @@ __global__ void louvain_local_pass_kernel(
         int neighbor = edge_indices[e];
         int neighbor_community = node_communities[neighbor];
 
-        if (neighbor_community != current_community) {
-            float gain = compute_modularity_gain_device(
-                node, current_community, neighbor_community,
-                edge_weights, edge_indices, edge_offsets,
-                node_communities, node_weights, community_weights,
-                total_weight, resolution
-            );
+        if (neighbor_community == current_community) continue;
+        // Directional filter prevents same-pass 2-node swaps.
+        if (prefer_lower && neighbor_community >= current_community) continue;
+        if (!prefer_lower && neighbor_community <= current_community) continue;
 
-            if (gain > best_gain) {
-                best_gain = gain;
-                best_community = neighbor_community;
-            }
+        float gain = compute_modularity_gain_device(
+            node, current_community, neighbor_community,
+            edge_weights, edge_indices, edge_offsets,
+            node_communities, node_weights, community_weights,
+            total_weight, resolution
+        );
+
+        if (gain > best_gain) {
+            best_gain = gain;
+            best_community = neighbor_community;
         }
     }
 

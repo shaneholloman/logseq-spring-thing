@@ -24,7 +24,7 @@ const ONTOLOGY_PROPERTY_FLAG: u32 = 0x10000000;
 
 // Node ID mask: bits 0-25 only (excludes bits 26-31 for all flags)
 // Supports node IDs: 0 to 67,108,863 (2^26 - 1)
-const NODE_ID_MASK: u32 = 0x03FFFFFF; 
+pub const NODE_ID_MASK: u32 = 0x03FFFFFF;
 
 // V1 wire format constants REMOVED - caused node ID truncation bugs
 // V2+ uses full u32 IDs with no truncation
@@ -424,9 +424,14 @@ pub fn encode_node_data_extended_with_sssp(
         buffer.extend_from_slice(&node.vy.to_le_bytes());
         buffer.extend_from_slice(&node.vz.to_le_bytes());
 
+        // SSSP / analytics maps are keyed by COMPACT node id, but `node_id` here
+        // carries the type flag bits in its high bits. Strip them before lookup,
+        // otherwise every lookup misses and cluster_id/sssp default to 0/INFINITY.
+        let base_id = *node_id & NODE_ID_MASK;
+
         // SSSP data (8 bytes) - read from sssp_data if available
         let (sssp_distance, sssp_parent) = sssp_data
-            .and_then(|m| m.get(node_id))
+            .and_then(|m| m.get(&base_id))
             .copied()
             .unwrap_or((f32::INFINITY, -1));
         buffer.extend_from_slice(&sssp_distance.to_le_bytes());
@@ -434,7 +439,7 @@ pub fn encode_node_data_extended_with_sssp(
 
         // Analytics data (12 bytes) - V3 extension populated from shared analytics store
         let (cluster_id, anomaly_score, community_id) = analytics_data
-            .and_then(|m| m.get(node_id))
+            .and_then(|m| m.get(&base_id))
             .copied()
             .unwrap_or((0, 0.0, 0));
         buffer.extend_from_slice(&cluster_id.to_le_bytes());
@@ -541,9 +546,13 @@ pub fn encode_node_data_with_all(
         buffer.extend_from_slice(&node.vy.to_le_bytes());
         buffer.extend_from_slice(&node.vz.to_le_bytes());
 
+        // Maps are keyed by COMPACT node id; strip any flag bits before lookup
+        // (idempotent for compact ids, corrective if a flagged id is passed in).
+        let base_id = *node_id & NODE_ID_MASK;
+
         // SSSP data (8 bytes) - read from sssp_data if available
         let (sssp_distance, sssp_parent) = sssp_data
-            .and_then(|m| m.get(node_id))
+            .and_then(|m| m.get(&base_id))
             .copied()
             .unwrap_or((f32::INFINITY, -1));
         buffer.extend_from_slice(&sssp_distance.to_le_bytes());
@@ -551,7 +560,7 @@ pub fn encode_node_data_with_all(
 
         // Analytics data (12 bytes) - V3 extension
         let (cluster_id, anomaly_score, community_id) = analytics
-            .get(node_id)
+            .get(&base_id)
             .copied()
             .unwrap_or((0, 0.0, 0)); // Default values if no analytics
 

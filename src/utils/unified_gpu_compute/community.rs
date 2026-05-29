@@ -23,10 +23,13 @@ impl UnifiedGPUCompute {
         let grid_size = (self.num_nodes + block_size - 1) / block_size;
         let stream = &self.stream;
 
-        // All community/clustering kernels are in the clustering PTX module
-        let clust_mod = self.clustering_module.as_ref().ok_or(anyhow!("Clustering PTX module not loaded"))?;
+        // Label-propagation kernels (init_random_states, init_labels,
+        // compute_node_degrees, propagate_labels_*, check_convergence,
+        // compute_modularity, count_community_sizes, relabel_communities) are
+        // compiled into the main unified PTX module, not the clustering module.
+        let unified_mod = &self._module;
 
-        let init_random_kernel = clust_mod.get_function("init_random_states_kernel")?;
+        let init_random_kernel = unified_mod.get_function("init_random_states_kernel")?;
         // SAFETY: Random state initialization kernel is safe because:
         // 1. rand_states buffer is allocated for num_nodes curandState elements
         // 2. Each thread initializes its own random state using seed + thread_id
@@ -44,7 +47,7 @@ impl UnifiedGPUCompute {
         // SAFETY: Label initialization kernel is safe because:
         // 1. labels_current is a valid DeviceBuffer with capacity >= num_nodes
         // 2. Each thread writes its own index as the initial community label
-        let init_labels_kernel = clust_mod.get_function("init_labels_kernel")?;
+        let init_labels_kernel = unified_mod.get_function("init_labels_kernel")?;
         unsafe {
             launch!(
                 init_labels_kernel<<<grid_size as u32, block_size as u32, 0, stream>>>(
@@ -58,7 +61,7 @@ impl UnifiedGPUCompute {
         // 1. edge_row_offsets and edge_weights are valid CSR graph data
         // 2. node_degrees is an output buffer with capacity >= num_nodes
         // 3. The kernel reads CSR offsets to compute weighted degree per node
-        let compute_degrees_kernel = clust_mod.get_function("compute_node_degrees_kernel")?;
+        let compute_degrees_kernel = unified_mod.get_function("compute_node_degrees_kernel")?;
         unsafe {
             launch!(
                 compute_degrees_kernel<<<grid_size as u32, block_size as u32, 0, stream>>>(
@@ -81,12 +84,12 @@ impl UnifiedGPUCompute {
 
 
         let propagate_kernel = if synchronous {
-            clust_mod.get_function("propagate_labels_sync_kernel")?
+            unified_mod.get_function("propagate_labels_sync_kernel")?
         } else {
-            clust_mod.get_function("propagate_labels_async_kernel")?
+            unified_mod.get_function("propagate_labels_async_kernel")?
         };
 
-        let check_convergence_kernel = clust_mod.get_function("check_convergence_kernel")?;
+        let check_convergence_kernel = unified_mod.get_function("check_convergence_kernel")?;
 
 
         let mut shared_mem_size = block_size * (self.max_labels + 1) * 4;
@@ -193,7 +196,7 @@ impl UnifiedGPUCompute {
         }
 
 
-        let modularity_kernel = clust_mod.get_function("compute_modularity_kernel")?;
+        let modularity_kernel = unified_mod.get_function("compute_modularity_kernel")?;
         // SAFETY: Modularity computation kernel is safe because:
         // 1. labels_current contains final community assignments from label propagation
         // 2. edge_* buffers are valid CSR graph data
@@ -227,7 +230,7 @@ impl UnifiedGPUCompute {
         let zero_communities = vec![0i32; self.max_labels];
         safe_upload(&mut self.community_sizes, &zero_communities)?;
 
-        let count_communities_kernel = clust_mod.get_function("count_community_sizes_kernel")?;
+        let count_communities_kernel = unified_mod.get_function("count_community_sizes_kernel")?;
         // SAFETY: Community size counting kernel is safe because:
         // 1. labels_current contains valid community labels (0 to max_labels-1)
         // 2. community_sizes was zeroed before this kernel and has capacity >= max_labels
@@ -266,7 +269,7 @@ impl UnifiedGPUCompute {
         if num_communities < self.max_labels {
             safe_upload(&mut self.label_mapping, &label_map)?;
 
-            let relabel_kernel = clust_mod.get_function("relabel_communities_kernel")?;
+            let relabel_kernel = unified_mod.get_function("relabel_communities_kernel")?;
             // SAFETY: Relabeling kernel is safe because:
             // 1. labels_current contains valid labels that index into label_mapping
             // 2. label_mapping was just populated with compact indices (0 to num_communities-1)
@@ -307,6 +310,13 @@ impl UnifiedGPUCompute {
     }
 
 
+    /// REAL GPU Louvain community detection.
+    ///
+    /// Parallel local-move modularity optimisation over the CSR graph. Uses the
+    /// same proven CSR buffers and GPU modularity kernel as the label-propagation
+    /// path. node_weights are weighted degrees (k_i); community_weights track the
+    /// total degree of each community (sigma_tot) and are kept consistent via
+    /// atomic updates inside `louvain_local_pass_kernel`.
     pub fn run_louvain_community_detection(
         &mut self,
         max_iterations: u32,
@@ -316,99 +326,170 @@ impl UnifiedGPUCompute {
         let _ctx = Context::new(self.device.clone())
             .map_err(|e| anyhow!("Failed to set CUDA context for Louvain: {}", e))?;
 
-        info!("Running REAL Louvain community detection on GPU");
+        info!("Running REAL Louvain community detection on GPU ({} nodes)", self.num_nodes);
 
-        let block_size = 256;
+        if self.num_nodes == 0 {
+            return Ok((Vec::new(), 0, 0.0, 0, Vec::new(), true));
+        }
+
+        let block_size: u32 = 256;
         let grid_size = (self.num_nodes as u32 + block_size - 1) / block_size;
+        let stream = &self.stream;
 
+        // init_communities_kernel and louvain_local_pass_kernel live in the
+        // clustering PTX module; compute_node_degrees_kernel and
+        // compute_modularity_kernel live in the main unified PTX module.
+        let clust_mod = self
+            .clustering_module
+            .as_ref()
+            .ok_or(anyhow!("Clustering PTX module not loaded"))?;
+        let unified_mod = &self._module;
 
-        let mut node_communities = (0..self.num_nodes as i32).collect::<Vec<i32>>();
-        let community_weights = vec![1.0f32; self.num_nodes];
-        let node_weights = vec![1.0f32; self.num_nodes];
+        // 1. Weighted node degrees (k_i) from CSR -> self.node_degrees
+        // SAFETY: edge_row_offsets/edge_weights are valid CSR buffers; node_degrees
+        // is an output buffer with capacity >= num_nodes.
+        let compute_degrees_kernel = unified_mod.get_function("compute_node_degrees_kernel")?;
+        unsafe {
+            launch!(
+                compute_degrees_kernel<<<grid_size, block_size, 0, stream>>>(
+                    self.edge_row_offsets.as_device_ptr(),
+                    self.edge_weights.as_device_ptr(),
+                    self.node_degrees.as_device_ptr(),
+                    self.num_nodes as i32
+                )
+            )?;
+        }
+        self.stream.synchronize()?;
 
+        let node_degrees_host = safe_download(&self.node_degrees, self.num_nodes)?;
+        let total_weight: f32 = node_degrees_host.iter().sum::<f32>() / 2.0;
 
-        let d_node_communities = DeviceBuffer::from_slice(&node_communities)?;
-        let d_community_weights = DeviceBuffer::from_slice(&community_weights)?;
-        let d_node_weights = DeviceBuffer::from_slice(&node_weights)?;
+        // No edges: every node is its own singleton community.
+        if total_weight <= 0.0 {
+            let labels: Vec<i32> = (0..self.num_nodes as i32).collect();
+            let sizes = vec![1i32; self.num_nodes];
+            return Ok((labels, self.num_nodes, 0.0, 0, sizes, true));
+        }
+
+        // 2. Community assignment (init: each node its own community) and
+        //    community weights (sigma_tot, init: node degree).
+        let d_node_communities = DeviceBuffer::from_slice(&vec![0i32; self.num_nodes])?;
+        let d_community_weights = DeviceBuffer::from_slice(&vec![0.0f32; self.num_nodes])?;
         let mut d_improvement_flag = DeviceBuffer::from_slice(&[false])?;
 
-        let total_weight = self.num_nodes as f32;
-        let mut converged = false;
-        let mut actual_iterations = 0;
+        // SAFETY: init_communities_kernel writes node_communities[i]=i and
+        // community_weights[i]=node_weights[i]; all buffers sized >= num_nodes.
+        let init_communities_kernel = clust_mod.get_function("init_communities_kernel")?;
+        unsafe {
+            launch!(
+                init_communities_kernel<<<grid_size, block_size, 0, stream>>>(
+                    d_node_communities.as_device_ptr(),
+                    d_community_weights.as_device_ptr(),
+                    self.node_degrees.as_device_ptr(),
+                    self.num_nodes as i32
+                )
+            )?;
+        }
+        self.stream.synchronize()?;
 
+        // 3. Iterative parallel local-move passes.
+        let louvain_kernel = clust_mod.get_function("louvain_local_pass_kernel")?;
+        let mut converged = false;
+        let mut actual_iterations = 0u32;
+        // The kernel alternates move direction by iteration parity, so a single
+        // no-improvement pass may just mean "no moves available in this
+        // direction". Only declare convergence after two consecutive
+        // no-improvement passes (one of each parity).
+        let mut quiet_passes = 0u32;
         for iteration in 0..max_iterations {
             actual_iterations = iteration + 1;
-
-
             d_improvement_flag.copy_from(&[false])?;
 
-
-            let clust_mod = self.clustering_module.as_ref().ok_or(anyhow!("Clustering PTX module not loaded"))?;
-            let louvain_kernel = clust_mod.get_function("louvain_local_pass_kernel")?;
-
-            // SAFETY: Louvain community detection kernel launch is safe because:
-            // 1. d_node_weights contains per-node weights (initialized to 1.0)
-            // 2. d_node_communities contains community assignments (initially node indices)
-            // 3. d_community_weights is the sum of weights in each community
-            // 4. d_improvement_flag is a single bool to track if any improvement occurred
-            // 5. The kernel evaluates modularity gain for moving each node to neighbor communities
+            // SAFETY: argument order matches louvain_local_pass_kernel signature:
+            // (edge_weights, edge_indices, edge_offsets, node_communities,
+            //  node_weights, community_weights, improvement_flag, num_nodes,
+            //  total_weight, resolution, iteration). All CSR/degree buffers are
+            // valid and sized for the graph; the kernel keeps community_weights
+            // consistent via atomicAdd as nodes move.
             unsafe {
-                let stream = &self.stream;
                 launch!(
-                louvain_kernel<<<grid_size, block_size, 0, stream>>>(
-                    d_node_weights.as_device_ptr(),
-                    d_node_communities.as_device_ptr(),
-                    d_node_communities.as_device_ptr(),
-                    d_node_communities.as_device_ptr(),
-                    d_node_weights.as_device_ptr(),
-                    d_community_weights.as_device_ptr(),
-                    d_improvement_flag.as_device_ptr(),
-                    self.num_nodes as i32,
-                    total_weight,
-                    resolution
-                ))?;
+                    louvain_kernel<<<grid_size, block_size, 0, stream>>>(
+                        self.edge_weights.as_device_ptr(),
+                        self.edge_col_indices.as_device_ptr(),
+                        self.edge_row_offsets.as_device_ptr(),
+                        d_node_communities.as_device_ptr(),
+                        self.node_degrees.as_device_ptr(),
+                        d_community_weights.as_device_ptr(),
+                        d_improvement_flag.as_device_ptr(),
+                        self.num_nodes as i32,
+                        total_weight,
+                        resolution,
+                        iteration as i32
+                    )
+                )?;
             }
-
             self.stream.synchronize()?;
-
 
             let mut improvement = vec![false];
             d_improvement_flag.copy_to(&mut improvement)?;
-
-            if !improvement[0] {
-                converged = true;
-                break;
+            if improvement[0] {
+                quiet_passes = 0;
+            } else {
+                quiet_passes += 1;
+                if quiet_passes >= 2 {
+                    converged = true;
+                    break;
+                }
             }
         }
 
-
-        d_node_communities.copy_to(&mut node_communities)?;
-
-
-        let mut unique_communities = node_communities.clone();
-        unique_communities.sort_unstable();
-        unique_communities.dedup();
-        let num_communities = unique_communities.len();
-
-
-        let mut community_sizes = vec![0usize; num_communities];
-        for &community in &node_communities {
-            if let Ok(idx) = unique_communities.binary_search(&community) {
-                community_sizes[idx] += 1;
-            }
+        // 4. REAL modularity of the final assignment via the GPU kernel
+        //    (relabeling-invariant, so computed on raw community ids).
+        // SAFETY: same CSR + node_degrees buffers; modularity_contributions is an
+        // output buffer with capacity >= num_nodes.
+        let modularity_kernel = unified_mod.get_function("compute_modularity_kernel")?;
+        unsafe {
+            launch!(
+                modularity_kernel<<<grid_size, block_size, 0, stream>>>(
+                    d_node_communities.as_device_ptr(),
+                    self.edge_row_offsets.as_device_ptr(),
+                    self.edge_col_indices.as_device_ptr(),
+                    self.edge_weights.as_device_ptr(),
+                    self.node_degrees.as_device_ptr(),
+                    self.modularity_contributions.as_device_ptr(),
+                    self.num_nodes as i32,
+                    total_weight
+                )
+            )?;
         }
+        self.stream.synchronize()?;
+        let modularity_contributions = safe_download(&self.modularity_contributions, self.num_nodes)?;
+        let modularity: f32 = modularity_contributions.iter().sum::<f32>() / (2.0 * total_weight);
 
+        // 5. Download raw community ids and compact to a contiguous 0..k-1 range.
+        let mut raw = vec![0i32; self.num_nodes];
+        d_node_communities.copy_to(&mut raw)?;
 
-        let modularity = self.calculate_modularity(&node_communities, total_weight);
+        let mut remap: std::collections::HashMap<i32, i32> = std::collections::HashMap::new();
+        let mut sizes: Vec<i32> = Vec::new();
+        let mut labels = vec![0i32; self.num_nodes];
+        for (i, &c) in raw.iter().enumerate() {
+            let next = remap.len() as i32;
+            let id = *remap.entry(c).or_insert(next);
+            if (id as usize) >= sizes.len() {
+                sizes.push(0);
+            }
+            sizes[id as usize] += 1;
+            labels[i] = id;
+        }
+        let num_communities = sizes.len();
 
-        Ok((
-            node_communities,
-            num_communities,
-            modularity,
-            actual_iterations,
-            community_sizes.into_iter().map(|x| x as i32).collect(),
-            converged,
-        ))
+        info!(
+            "GPU Louvain: {} communities, modularity={:.4}, iterations={}, converged={}",
+            num_communities, modularity, actual_iterations, converged
+        );
+
+        Ok((labels, num_communities, modularity, actual_iterations, sizes, converged))
     }
 
 
@@ -552,44 +633,4 @@ impl UnifiedGPUCompute {
     }
 
 
-    pub(crate) fn calculate_modularity(&self, communities: &[i32], total_weight: f32) -> f32 {
-        if communities.is_empty() || total_weight <= 0.0 {
-            return 0.0;
-        }
-
-        let _num_nodes = communities.len();
-        let mut modularity = 0.0;
-
-
-        let mut community_map: std::collections::HashMap<i32, Vec<usize>> =
-            std::collections::HashMap::new();
-        for (node_idx, &community) in communities.iter().enumerate() {
-            community_map
-                .entry(community)
-                .or_insert_with(Vec::new)
-                .push(node_idx);
-        }
-
-
-        for (_community_id, nodes) in community_map.iter() {
-            if nodes.len() < 2 {
-                continue;
-            }
-
-
-            let internal_edges = (nodes.len() * (nodes.len() - 1)) as f32 * 0.1;
-
-
-            let degree_sum = nodes.len() as f32 * 2.0;
-
-
-            let e_ii = internal_edges / (2.0 * total_weight);
-            let a_i = degree_sum / (2.0 * total_weight);
-
-            modularity += e_ii - (a_i * a_i);
-        }
-
-
-        modularity.max(-1.0).min(1.0)
-    }
 }
