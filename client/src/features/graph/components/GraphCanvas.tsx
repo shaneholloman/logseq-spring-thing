@@ -1,6 +1,6 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { Canvas, useThree } from '@react-three/fiber';
-import { OrbitControls, Stats, Environment } from '@react-three/drei';
+import { OrbitControls, Stats, Environment, Lightformer } from '@react-three/drei';
 import * as THREE from 'three';
 import { createGemRenderer } from '../../../rendering/rendererFactory';
 import { createLogger } from '../../../utils/loggerConfig';
@@ -279,7 +279,17 @@ const GraphCanvas: React.FC = () => {
                 {(softwareFallbackPolicy === 'force-off' ||
                   (softwareFallbackPolicy === 'auto' && isSoftwareRenderer !== true)) && (
                   <Environment background={false} resolution={256}>
-                    <color attach="background" args={['#111']} />
+                    {/* A flat near-black env (#111) gave the near-mirror glass
+                        gems (roughness 0.08) nothing to reflect, so nodes read
+                        as black. A brighter base plus a few Lightformer panels
+                        supply reflected light and specular highlights so the
+                        glass is visibly lit — the scene background stays dark
+                        because background={false}. */}
+                    <color attach="background" args={['#20242e']} />
+                    <Lightformer intensity={2.4} position={[0, 6, -9]} scale={[12, 12, 1]} color="#cfe0ff" />
+                    <Lightformer intensity={1.6} position={[-7, 1, -2]} scale={[12, 3, 1]} color="#a8c4ff" />
+                    <Lightformer intensity={1.6} position={[7, -1, -2]} scale={[12, 3, 1]} color="#ffd9b0" />
+                    <Lightformer intensity={1.2} position={[0, -6, 4]} scale={[12, 12, 1]} color="#6b7a9c" />
                   </Environment>
                 )}
 
