@@ -126,28 +126,64 @@ export function SemanticClusteringControls() {
   
   const handleRunClustering = useCallback(async () => {
     setIsProcessing(true);
+    setClusters([]);
 
     try {
+      // /clustering/run is async: it returns a task_id immediately and computes
+      // in the background, populating server node_analytics. cluster_id then
+      // rides the V3 binary position broadcast and ClusterHulls renders the
+      // translucent hulls — no client-side cluster payload is needed for the 3D
+      // view. Poll the task status so the spinner reflects real completion.
       const response = await unifiedApiClient.post('/api/analytics/clustering/run', {
-        algorithm: clusteringMethod,
-        clusterCount: clusteringParams.numClusters,
-        resolution: 1.0,
-        iterations: clusteringParams.maxIterations,
-        min_cluster_size: clusteringParams.minClusterSize,
-        convergence_threshold: clusteringParams.convergenceThreshold,
-        similarity: clusteringParams.similarity,
+        method: clusteringMethod,
+        params: {
+          numClusters: clusteringParams.numClusters,
+          minClusterSize: clusteringParams.minClusterSize,
+          similarity: clusteringParams.similarity,
+          convergenceThreshold: clusteringParams.convergenceThreshold,
+          maxIterations: clusteringParams.maxIterations,
+          resolution: 1.0,
+        },
       });
 
-      setClusters(response.data.clusters);
+      const taskId: string | undefined = response.data?.task_id;
+      if (!taskId) {
+        throw new Error(response.data?.error || 'No clustering task id returned');
+      }
 
-      toast({
-        title: 'Clustering Complete',
-        description: `Found ${response.data.clusters.length} clusters`,
-      });
+      // Poll until the background task completes (or fails / times out).
+      const deadline = Date.now() + 60_000;
+      let status = 'running';
+      while (status === 'running' && Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 1500));
+        try {
+          const s = await unifiedApiClient.get(
+            `/api/analytics/clustering/status?task_id=${encodeURIComponent(taskId)}`,
+          );
+          status = s.data?.status ?? 'running';
+          if (s.data?.error) throw new Error(s.data.error);
+        } catch {
+          // transient status read failure — keep polling until the deadline
+        }
+      }
+
+      if (status === 'completed') {
+        toast({
+          title: 'Clustering Complete',
+          description: 'Cluster hulls updated in the 3D view. Enable "Cluster Hulls" in Visualisation settings if hidden.',
+        });
+      } else if (status === 'failed') {
+        throw new Error('Clustering task failed on the server');
+      } else {
+        toast({
+          title: 'Clustering Running',
+          description: 'Taking longer than expected — hulls will update when it finishes.',
+        });
+      }
     } catch (error) {
       toast({
         title: 'Clustering Failed',
-        description: 'Unable to perform clustering analysis',
+        description: error instanceof Error ? error.message : 'Unable to perform clustering analysis',
         variant: 'destructive',
       });
     } finally {

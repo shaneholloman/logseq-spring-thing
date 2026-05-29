@@ -2,8 +2,7 @@ import React, { useRef, useMemo, useEffect, useState } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { ConvexGeometry } from 'three/examples/jsm/geometries/ConvexGeometry.js';
-// ADR-03 D7: analytics buffer no longer lives in the worker.
-// import { graphWorkerProxy } from '../managers/graphWorkerProxy';
+import { graphWorkerProxy } from '../managers/graphWorkerProxy';
 
 // ============================================================================
 // Types
@@ -155,6 +154,7 @@ export const ClusterHulls: React.FC<ClusterHullsProps> = ({
   const frameCounter = useRef(0);
   const [tick, setTick] = useState(0);
   const analyticsRef = useRef<Float32Array | null>(null);
+  const fetchingAnalytics = useRef(false);
 
   // ---- Early exit if feature is disabled ----
   // Respect both the visual clusterHulls.enabled toggle AND qualityGates.showClusters
@@ -166,13 +166,25 @@ export const ClusterHulls: React.FC<ClusterHullsProps> = ({
   const padding = settings?.visualisation?.clusterHulls?.padding ?? 0.15;
 
   // ---- Increment tick every TICK_INTERVAL frames and refresh analytics ----
+  // Pull the per-node analytics buffer (cluster_id at stride 0) from the graph
+  // worker. The worker fills it from the V3 binary protocol: POST
+  // /api/analytics/clustering/run populates server-side node_analytics, whose
+  // cluster_id rides every position frame at wire offset 36. With no clustering
+  // run, cluster_id stays 0 and getClusterKey falls back to domain heuristics.
   useFrame(() => {
     frameCounter.current += 1;
     if (frameCounter.current >= TICK_INTERVAL) {
       frameCounter.current = 0;
-      // ADR-03 D7: analytics no longer live in the worker. Analytics now come
-      // from the main-thread analytics store (Phase 5 wires this); leave the
-      // buffer at its last value until that pipeline is connected.
+      if (!fetchingAnalytics.current) {
+        fetchingAnalytics.current = true;
+        graphWorkerProxy
+          .getAnalyticsBuffer()
+          .then((buf) => {
+            if (buf && buf.length > 0) analyticsRef.current = buf;
+          })
+          .catch(() => { /* worker not ready — keep last buffer */ })
+          .finally(() => { fetchingAnalytics.current = false; });
+      }
       setTick((t) => t + 1);
     }
   });
