@@ -6,6 +6,7 @@ import { isWebGPURenderer } from '../../../rendering/rendererFactory';
 import { createGlyphAtlas, type GlyphAtlasResult } from '../../../rendering/text/GlyphAtlas';
 import { layoutText, layoutTextInline, type GlyphInstance } from '../../../rendering/text/textLayout';
 import { createTextMaterial, type TextMaterialResult } from '../../../rendering/text/createTextMaterial';
+import { computeOcclusionMask, type OcclusionCandidate } from '../../../rendering/text/labelOcclusion';
 import type { Node as GraphNode } from '../managers/graphDataManager';
 import type { GraphVisualMode } from '../hooks/useGraphVisualState';
 import { computeNodeScale } from '../utils/nodeScaling';
@@ -119,6 +120,7 @@ export interface InstancedLabelsProps {
 
 const MAX_GLYPHS = 32768;
 const _tempVec3 = new THREE.Vector3();
+const _tempVec3b = new THREE.Vector3();
 const _tempColor = new THREE.Color();
 const _frustum = new THREE.Frustum();
 const _projScreenMatrix = new THREE.Matrix4();
@@ -397,9 +399,16 @@ const InstancedLabelsWebGPU: React.FC<WebGPUProps> = ({
     // Read directly from SharedArrayBuffer (same source as GemNodes) for zero-lag positions.
     // Falls back to labelPositionsRef if SAB not available.
     const rawPositions = nodePositionsRef?.current;
-    const labels: WebGPULabel[] = [];
     const halfW = size.width * 0.5;
     const halfH = size.height * 0.5;
+    // PerspectiveCamera projection [1][1] = 1/tan(fovY/2); projects a world
+    // radius to NDC at unit distance. Used to size each node's screen disc for
+    // the screen-space occlusion test below.
+    const projF = camera.projectionMatrix.elements[5];
+
+    // Pass 1: build candidate labels plus their node-centre occlusion discs.
+    const candidates: WebGPULabel[] = [];
+    const occluders: OcclusionCandidate[] = [];
 
     for (const node of nodes) {
       const originalIndex = nodeIdToIndexMap.get(String(node.id)) ?? -1;
@@ -426,6 +435,15 @@ const InstancedLabelsWebGPU: React.FC<WebGPUProps> = ({
       const scale = computeNodeScale(node, connectionCountMap, nodeLabelVisualMode, hierarchyMap, graphTypeVisuals);
       const labelOffsetY = scale * nodeSize + textPadding;
 
+      // Node centre projected to screen — the point that gets occluded, and the
+      // centre of this node's own occlusion disc.
+      _tempVec3b.set(position.x, position.y, position.z).project(camera);
+      if (_tempVec3b.z > 1) continue; // behind camera
+      const centerScreenX = (_tempVec3b.x * halfW) + halfW;
+      const centerScreenY = (-_tempVec3b.y * halfH) + halfH;
+      const worldRadius = Math.max(1e-4, scale * nodeSize);
+      const screenRadius = Math.abs((worldRadius * projF * halfH) / distanceToCamera);
+
       const labelText = node.label && node.label.length > 40
         ? node.label.substring(0, 37) + '...' : (node.label || node.id);
 
@@ -434,16 +452,21 @@ const InstancedLabelsWebGPU: React.FC<WebGPUProps> = ({
         showMetadata, isXRMode, connectionCountMap, hierarchyMap, ssspResult,
       );
 
-      // Project to screen
-      _tempVec3.set(position.x, position.y + labelOffsetY, position.z);
-      _tempVec3.project(camera);
+      // Label anchor (floats above the node) projected to screen for placement.
+      _tempVec3.set(position.x, position.y + labelOffsetY, position.z).project(camera);
       const screenX = (_tempVec3.x * halfW) + halfW;
       const screenY = (-_tempVec3.y * halfH) + halfH;
 
-      // Skip if behind camera
-      if (_tempVec3.z > 1) continue;
+      candidates.push({ screenX, screenY, lines, opacity });
+      occluders.push({ screenX: centerScreenX, screenY: centerScreenY, screenRadius, distance: distanceToCamera });
+    }
 
-      labels.push({ screenX, screenY, lines, opacity });
+    // Pass 2: drop labels whose node is hidden behind a nearer node. Restores
+    // depth occlusion that DOM overlays cannot get from the GPU depth buffer.
+    const occMask = computeOcclusionMask(occluders);
+    const labels: WebGPULabel[] = [];
+    for (let i = 0; i < candidates.length; i++) {
+      if (!occMask[i]) labels.push(candidates[i]);
     }
 
     setWebGPULabels(labels);
