@@ -322,7 +322,7 @@ Design decisions recorded as ADRs in [docs/adr/](adr/).
 
 | ADR | Status | Title | Related PRD |
 |-----|--------|-------|-------------|
-| [ADR-059](adr/ADR-059-bidirectional-agent-channel-server.md) | Proposed | Bi-directional Agent Activity Channel | PRD-006 |
+| [ADR-059](adr/ADR-059-bidirectional-agent-channel-server.md) | Accepted (Phase 1 + 2a verified; 2b render scoped) | Bi-directional Agent Activity Channel | PRD-006 |
 | [ADR-060](adr/ADR-060-pubkey-filtered-binary-encoder.md) | Proposed | Owner-Pubkey-Filtered Binary Encoder | PRD-006 |
 | [ADR-061](adr/ADR-061-binary-protocol-unification.md) | Accepted | Binary Protocol Unification (single wire, no versioning) | PRD-007 |
 | [ADR-062](adr/ADR-062-qe-prd-adr-ddd-graph-scaffolding.md) | Accepted | QE Graph Scaffolding (PRD/ADR/DDD Traceability) | PRD-QE-001 |

@@ -257,8 +257,11 @@ Agents publish structured Nostr events; the relay routes them; the forum renders
 
 Agent actions are not just audited — they are **visibly embodied** in the GPU/XR graph. When an agent acts (on a Solid pod, the knowledge graph, or the ontology), the action crosses the federation boundary and renders as a living event on the agent's actor node:
 
-- **Beam** — a transient coloured edge `agent → target` whose colour encodes the action type (query/update/create/delete/link/transform). The colour palette is the source of truth on the agentbox side (`agent-event-publisher.js`), so VisionClaw never invents its own.
+- **Beam** — a transient coloured cylinder `agent → target` (`TransientBeamsLayer`). Both its colour **and** its shape encode the action type: query=blue probe, update=yellow, create=green widening into the node, delete=red narrowing into it, link=purple tie, transform=cyan rounder beam. Opacity animates fade-in → hold → fade-out over the action's `durationMs`. The colour palette is the source of truth on the agentbox side (`agent-event-publisher.js`); VisionClaw re-uses it and never invents its own.
 - **Gluon** — the same transient edge exerts the spring kernel's attractive force, so the agent capsule is drawn toward its target for the action's lifetime, then released when the edge despawns. The gluon needs **no new CUDA and no new GPU buffer** — it is the force the transient edge already produces. (An earlier design modulated a per-node `class_charge`; that is retracted — `class_charge` is bulk ontology-clustering metadata loaded at construction, not a transient per-agent handle. See ADR-059 §4.)
+- **Memory-flash bursts** — RuVector access events render as concentric burst rings on the embedding cloud (`EmbeddingCloudLayer`). The memory action verb maps to burst colour, motion, scale, and ring count: store=electric-green expand, retrieve=blue, search=wide cyan with 3 rings, list=amber, delete=red implode, access=neutral default. The namespace applies a deterministic hue jitter so each namespace carries a stable sub-identity tint.
+
+Both render layers draw their colour, shape, motion, and scale from a single module, `client/src/features/visualisation/semanticEncoding.ts` — the source of truth that keeps the beam and burst encodings from drifting apart (covered by `__tests__/semanticEncoding.test.ts`).
 
 The transport is one authenticated WebSocket, `/wss/agent-events` (subprotocol `vc-agent-events.v1`), carrying the canonical `notifications/agent_action` envelope with `source_urn`/`target_urn`/`pubkey` identity intact (agentbox ADR-013). As of 2026-05-29 the ingest seam is wired and verified (Phase 2a): VisionClaw authenticates the upgrade, validates the envelope, and publishes it to a process-global broadcast hub; the beam + gluon render actor subscribes to that hub (Phase 2b). The identity-blind `0x23 AGENT_ACTION` binary frame remains a downstream server→browser projection — identity rides the JSON ingest envelope and is resolved to numeric IDs before the GPU frame. The legacy MCP-TCP `:9500` path carries agent **state** snapshots (a different payload) and is retired in favour of this one socket.
 
@@ -304,7 +307,21 @@ The agentbox ontology bridge (`mcp/servers/ontology-bridge.js`) proxies agents r
 <details>
 <summary><strong>Binary WebSocket Protocol (V2/V3)</strong></summary>
 
-High-frequency position updates use a compact binary protocol instead of JSON, achieving 80% bandwidth reduction.
+High-frequency position updates use a compact binary protocol instead of JSON, achieving 80% bandwidth reduction. The single per-tick position frame is specified in [docs/binary-protocol.md](docs/binary-protocol.md) (ADR-061).
+
+Each binary frame carries a one-byte `MessageType` header (`client/src/services/binaryProtocol/frameTypes.ts`). Position streaming is the hot path; the other frame types carry agent state, control, voice, and multi-user sync:
+
+| Code | Frame | Direction |
+|:-----|:------|:----------|
+| 0x01 | GRAPH_UPDATE | server → client |
+| 0x10–0x12 | POSITION / AGENT_POSITIONS / VELOCITY | server → client |
+| 0x20–0x22 | AGENT_STATE_FULL / DELTA / HEALTH | server → client |
+| **0x23** | **AGENT_ACTION** — transient agent→data action beam (see Embodied Agent Loop) | server → client |
+| 0x30–0x34 | CONTROL_BITS / SSSP_DATA / HANDSHAKE / HEARTBEAT / BROADCAST_ACK | both |
+| 0x40–0x42 | VOICE_CHUNK / VOICE_START / VOICE_END | both |
+| 0x50–0x54 | multi-user SYNC / ANNOTATION / SELECTION / USER_POSITION / VR_PRESENCE | both |
+
+The `0x23 AGENT_ACTION` frame is a 15-byte identity-blind header (`sourceAgentId`, `targetNodeId`, `actionType` 0–5, `timestamp`, `durationMs`) plus optional payload. The six `AgentActionType` values (Query/Update/Create/Delete/Link/Transform) carry the `AGENT_ACTION_COLORS` palette consumed by the beam render layer. Identity (`source_urn`/`target_urn`/`pubkey`) rides the JSON `/wss/agent-events` ingest envelope and is resolved to numeric IDs server-side before the binary frame is emitted (ADR-059 Finding 2).
 
 **V2 Standard (36 bytes/node)** — production default:
 
