@@ -1,7 +1,7 @@
 # ADR-059: Bi-directional URI-keyed agent activity channel (VisionClaw side)
 
-**Status:** Proposed
-**Date:** 2026-04-28
+**Status:** Accepted — Phase 1 implemented (2026-05-29); Phase 2 pending host build
+**Date:** 2026-04-28 (Phase 1 design log appended 2026-05-29)
 **Author:** VisionClaw platform team
 **Supersedes:** — (initial bi-directional design; agent_monitor_actor REST polling remains until Phase 2)
 **Related:**
@@ -141,7 +141,7 @@ This is documented for completeness; the change ships as a separate small ADR (*
 
 | Phase | Deliverable | Scope of code change | Risk |
 |---|---|---|---|
-| 1 | Additive payload fields (`source_urn`, `target_urn`, `pubkey`) on existing inbound REST poll path; `agent_visualization_protocol.rs` envelope extension; agentbox `agent-event-publisher.js` populates new fields. | ~30 lines each side. | Low. Backward-compatible. |
+| 1 | Canonical ingest schema mirror in new `src/agent_events/schema.rs` (the inbound `notifications/agent_action` envelope with `source_urn`/`target_urn`/`pubkey`); agentbox `agent-event-publisher.js` populates new fields through one builder. **Done 2026-05-29** — see Design log. | ~30 lines each side. | Low. Backward-compatible. |
 | 2 | New `/wss/agent-events` handler in VisionClaw; agentbox switches `agent-event-bridge.js` connect target from `tcp://127.0.0.1:9500` to `ws://...`/wss/agent-events`. Beam + gluon reaper actor. | ~200 lines server, ~100 lines agentbox. | Medium. New socket type. |
 | 3 | Outbound `user_interaction` events from client → server → WS broadcast → agentbox subscriber (Agentbox ADR-014). | ~150 lines client + 80 server. | Low–medium. |
 | 4 | Server-side visibility filter at binary encoder (**ADR-060**). | ~80 lines, single handler. | Medium. Test matrix grows. |
@@ -161,7 +161,7 @@ Phase 1 + Phase 2 land within one sprint. Later phases are independently schedul
 
 **Negative.**
 
-- Two new structures to keep in sync: `AgentActionEvent` (VisionClaw side) and the JSON-RPC notification (agentbox side). Mitigation: agentbox `agent-event-publisher.js` remains the canonical schema source; VisionClaw mirrors it in `src/agent_events/schema.rs` (new module).
+- Two new structures to keep in sync: `AgentActionEvent` (VisionClaw side) and the JSON-RPC notification (agentbox side). Mitigation: agentbox `agent-event-publisher.js` remains the canonical schema source; VisionClaw mirrors it in `src/agent_events/schema.rs` (landed 2026-05-29). Drift is fenced by a shared cross-repo fixture: the exact `createMcpNotification` output is asserted in `tests/sovereign/agent-event-notification.test.js` (agentbox) **and** parsed by the `#[cfg(test)]` fixture in `schema.rs` (VisionClaw). The mirror also carries `to_binary_event()`, the Phase-2 projection onto the identity-blind `0x23` frame.
 - Phased identity means Phase-1 events with no pubkey are indistinguishable from spoofed ones for ~3 phases. Mitigation: visibility filter (Phase 4) is server-side, so unauth'd writes can't clobber ADR-050 owner-private nodes regardless of payload contents.
 - Beam edges live alongside ADR-048 `EDGE`/`BRIDGE_TO`/`SUBCLASS_OF`/`RELATES` types but are **transient** and **not persisted to Neo4j**. The renderer must distinguish persistent vs transient edges — handled by a new `transient: bool` flag on the `Edge` struct and skipped by the `load_all_edges` query in `neo4j_graph_repository.rs:431-440`.
 
@@ -172,6 +172,52 @@ Phase 1 + Phase 2 land within one sprint. Later phases are independently schedul
 1. Should `user_interaction` events also accept an inbound mirror form, so agentbox can echo synthetic interactions for testing? (Recommend yes, behind dev-only header.)
 2. Beam colour for `action_type` outside 0–5: should the renderer reject the frame or default to grey? (Recommend default-grey + warn-log.)
 3. Phase-2 backpressure: if the WS client falls behind and the server queue exceeds N frames, drop oldest or coalesce by `target_node_id`? (Recommend coalesce-by-target — the visual is duration-based, last-write-wins is correct.)
+
+## Design log (real-time)
+
+### 2026-05-29 — Phase 1 landed; producer convergence; two clarifying findings
+
+**Producer half (agentbox) converged and verified.** `agent-event-publisher.js`
+now has a *single* canonical wire-envelope builder (`createMcpNotification`);
+the deprecated `agent-event-bridge.js` was hand-rolling its own
+`notifications/agent_action` literal that silently dropped the ADR-013 identity
+(`source_urn`/`target_urn`/`pubkey`) it had just computed. The bridge now routes
+through the one builder, so identity reaches the wire on every transport.
+Guarded by `tests/sovereign/agent-event-notification.test.js` (agentbox commit
+`8005fc3f`).
+
+**Consumer half (VisionClaw) Phase 1 landed.** New `src/agent_events/schema.rs`
+mirrors the canonical envelope with `#[cfg(test)]` round-trip + cross-repo
+fixture tests. No transport yet (Phase 2). Pending a host build via the tmux-tab-6
+loop before marking compile-verified.
+
+**Finding 1 — the inbound path did not exist, not "was lossy."** §Context framed
+the REST poll as one-way and lossy. On inspection VisionClaw had **no JSON
+consumer of `notifications/agent_action` at all** — `agent_monitor_actor.rs`
+polls a *list*, and `bots_client.rs` polls `:9500` for agent state; the pushed
+`agent_action` notifications were never read by anything. So Phase 1's attach
+point is a *new* ingest module (`src/agent_events/schema.rs`), **not** an
+extension of the outbound `agent_visualization_protocol.rs` (which is the
+server→browser viz init/update protocol, a different envelope). The Phasing
+table row 1 is corrected accordingly.
+
+**Finding 2 — the binary `0x23` frame is identity-blind by design, and should
+stay so.** `utils/binary_protocol.rs::AgentActionEvent` is a 15-byte header of
+numeric ids only (`source_agent_id`/`target_node_id`/`action_type`/`timestamp`/
+`duration_ms`) with no URN/pubkey. Identity belongs in the JSON *ingest*
+envelope and is resolved server-side (URN → numeric id, owner persisted per
+ADR-050) **before** the GPU binary frame is emitted to the browser. The mirror's
+`to_binary_event()` makes this projection explicit: identity in, numeric out.
+This keeps the hot GPU wire unchanged (no new buffers, consistent with §4) while
+still closing the federation-boundary identity gap on the ingest side.
+
+**Finding 3 — the `:9500` bridge mismatch is now a deprecation, not a bug.**
+§Context point 4 noted agentbox's bridge dialled a non-existent `:9500` MCP
+listener. agentbox ADR-014 deprecates that bridge; it is now gated behind
+`ENABLE_MCP_BRIDGE` (default off) and, when on, emits through the canonical
+builder. Phase 2 retires it entirely in favour of the WS subscriber. No VisionClaw
+`:9500` listener will ever be built — confirming the original decision to reject
+Alternative C (MCP-TCP listener).
 
 ## References
 
