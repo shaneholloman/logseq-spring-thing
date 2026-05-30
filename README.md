@@ -47,9 +47,13 @@ When agents know their authority boundary and surface exceptions cleanly, the 90
 
 VisionClaw is the knowledge engineering substrate of the **[VisionFlow](https://github.com/DreamLab-AI/VisionFlow)** coordination platform — the federated mesh where autonomous agents, human judgment, and institutional knowledge collaborate through shared protocols and self-sovereign data.
 
-![VisionClaw GPU-accelerated force-directed graph with Control Center](./graph-physics-live.png)
+![VisionClaw GPU-accelerated dual-graph — knowledge-graph nucleus inside an ontology shell](./graph-knowledge-nucleus.png)
 
-*GPU-accelerated force-directed graph — 934 nodes responding to spring, repulsion, and ontology-driven semantic forces in real time*
+*Live dual-graph: a dense knowledge-graph nucleus (red) wrapped in an ontology shell (blue), 21,038 nodes and 94,702 edges settling under GPU spring, repulsion, and ontology-driven semantic forces in real time. Degree-1 dangling wikilink stubs are pruned at ingest, so the surfaced graph is navigable structure rather than citation noise.*
+
+![VisionClaw Control Center over the live graph](./graph-dual-control-center.png)
+
+*The Control Center: live WS / MCP / sync status, per-type node toggles (knowledge, ontology, agent), and force parameters — driving the same scene the backend streams over the binary WebSocket protocol.*
 
 ![Immersive interaction with a 3D knowledge graph](./ChloeOctave.jpg)
 
