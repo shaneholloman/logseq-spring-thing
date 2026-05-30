@@ -95,7 +95,7 @@ When an `agent_action(action_type, target_node_id, duration_ms)` arrives:
    | action_type | name | colour |
    |---|---|---|
    | 0 | QUERY | blue (#3b82f6) |
-   | 1 | UPDATE | yellow (#facc15) |
+   | 1 | UPDATE | yellow (#eab308) |
    | 2 | CREATE | green (#22c55e) |
    | 3 | DELETE | red (#ef4444) |
    | 4 | LINK | purple (#a855f7) |
