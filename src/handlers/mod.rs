@@ -56,6 +56,10 @@ pub use briefing_handler::configure_routes as configure_briefing_routes;
 pub mod memory_flash_handler;
 pub use memory_flash_handler::configure_routes as configure_memory_flash_routes;
 
+// Enrichment-proposals governance decide endpoint (broker write-back loop)
+pub mod enrichment_proposals_handler;
+pub use enrichment_proposals_handler::configure_routes as configure_enrichment_proposals_routes;
+
 // Layout mode system (ADR-031)
 pub mod layout_handler;
 pub use layout_handler::configure_layout_routes;

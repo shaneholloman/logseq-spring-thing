@@ -871,6 +871,9 @@ async fn main() -> std::io::Result<()> {
                     // Memory flash events (RuVector access → WS broadcast to all clients)
                     .configure(visionclaw_server::handlers::configure_memory_flash_routes)
 
+                    // Enrichment-proposals broker write-back (governance decisions)
+                    .configure(visionclaw_server::handlers::configure_enrichment_proposals_routes)
+
                     // Layout mode system (ADR-031)
                     .configure(visionclaw_server::handlers::configure_layout_routes)
 
