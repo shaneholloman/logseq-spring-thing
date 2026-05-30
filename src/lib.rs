@@ -25,6 +25,9 @@ pub mod services;
 pub mod settings;
 pub mod telemetry;
 pub mod types;
+// Converged urn:visionclaw minter (BC20 counterpart). Coexists with the legacy
+// urn:ngm scheme until that is retired.
+pub mod uri;
 
 // Import utils with macro_use to make response macros available everywhere
 #[macro_use]
