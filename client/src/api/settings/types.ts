@@ -34,6 +34,7 @@ export interface PhysicsSettings {
   scalingRatio: number;
   adaptiveSpeed: boolean;
   graphSeparationX: number;
+  axisCompressionZ: number;
   enableBounds: boolean;
   enabled: boolean;
 }

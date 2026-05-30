@@ -1525,40 +1525,32 @@ impl Handler<ComputeForces> for ForceComputeActor {
                                         actor.node_id_buffer.push(node_id);
                                     }
 
-                                // Apply dual-graph X-axis separation offset.
-                                // Knowledge nodes shift to -X, ontology nodes shift to +X,
-                                // agent nodes stay at origin (bridging both populations).
+                                // Dual-graph facing-disc projection. Separate the
+                                // knowledge and ontology populations along X and collapse
+                                // each one along that SAME separation axis, so they flatten
+                                // into two parallel discs (spanning Y and Z) whose faces
+                                // point at one another across the gap. Agents stay full-3D
+                                // to visibly bridge the two discs.
+                                //   face_scale = 1.0 -> full-3D blob (no flatten)
+                                //   face_scale = 0.0 -> infinitely thin disc at x = ±sep_x
                                 let sep_x = actor.simulation_params.graph_separation_x;
-                                let z_compress = actor.simulation_params.axis_compression_z.clamp(0.0, 1.0);
-                                let z_scale = 1.0 - z_compress;
-                                let needs_sep = sep_x > 0.0;
-                                let needs_compress = z_compress > 0.0;
+                                let flatten = actor.simulation_params.axis_compression_z.clamp(0.0, 1.0);
+                                let face_scale = 1.0 - flatten;
+                                let project = (sep_x > 0.0 || flatten > 0.0) && !actor.node_population.is_empty();
                                 // Once-per-300-iter diagnostic to verify the params reach this site.
-                                if actor.gpu_state.iteration_count % 300 == 0 && (needs_sep || needs_compress) {
+                                if actor.gpu_state.iteration_count % 300 == 0 && project {
                                     info!(
-                                        "ForceComputeActor: applying dual-graph projection iter={} sep_x={:.1} z_compress={:.2} populations={} (k+o+a)",
-                                        actor.gpu_state.iteration_count, sep_x, z_compress, actor.node_population.len()
+                                        "ForceComputeActor: facing-disc projection iter={} sep_x={:.1} flatten={:.2} populations={} (k+o+a)",
+                                        actor.gpu_state.iteration_count, sep_x, flatten, actor.node_population.len()
                                     );
                                 }
-                                if (needs_sep || needs_compress) && !actor.node_population.is_empty() {
+                                if project {
                                     for (i, (pos, _vel)) in actor.position_velocity_buffer.iter_mut().enumerate() {
                                         if let Some(&pop) = actor.node_population.get(i) {
-                                            if needs_sep {
-                                                match pop {
-                                                    GraphPopulation::Knowledge => pos.x -= sep_x,
-                                                    GraphPopulation::Ontology => pos.x += sep_x,
-                                                    GraphPopulation::Agent => {} // bridge at origin
-                                                }
-                                            }
-                                            if needs_compress {
-                                                // Flatten knowledge + ontology toward z=0 to form disks.
-                                                // Agents stay full-3D so they can visibly bridge the disks.
-                                                match pop {
-                                                    GraphPopulation::Knowledge | GraphPopulation::Ontology => {
-                                                        pos.z *= z_scale;
-                                                    }
-                                                    GraphPopulation::Agent => {}
-                                                }
+                                            match pop {
+                                                GraphPopulation::Knowledge => pos.x = -sep_x + pos.x * face_scale,
+                                                GraphPopulation::Ontology => pos.x = sep_x + pos.x * face_scale,
+                                                GraphPopulation::Agent => {} // full-3D bridge between the discs
                                             }
                                         }
                                     }
@@ -2096,11 +2088,9 @@ impl Handler<ForceFullBroadcast> for ForceComputeActor {
                     // this, a settings change broadcasts raw GPU positions and, if the
                     // sim has converged, the projected positions never overwrite them.
                     let sep_x = actor.simulation_params.graph_separation_x;
-                    let z_compress = actor.simulation_params.axis_compression_z.clamp(0.0, 1.0);
-                    let z_scale = 1.0 - z_compress;
-                    let needs_sep = sep_x > 0.0;
-                    let needs_compress = z_compress > 0.0;
-                    let project = (needs_sep || needs_compress) && !actor.node_population.is_empty();
+                    let flatten = actor.simulation_params.axis_compression_z.clamp(0.0, 1.0);
+                    let face_scale = 1.0 - flatten;
+                    let project = (sep_x > 0.0 || flatten > 0.0) && !actor.node_population.is_empty();
 
                     let mut node_updates = Vec::with_capacity(pos_x.len());
                     for i in 0..pos_x.len() {
@@ -2111,20 +2101,12 @@ impl Handler<ForceFullBroadcast> for ForceComputeActor {
                         }
                         if project {
                             if let Some(&pop) = actor.node_population.get(i) {
-                                if needs_sep {
-                                    match pop {
-                                        GraphPopulation::Knowledge => position.x -= sep_x,
-                                        GraphPopulation::Ontology => position.x += sep_x,
-                                        GraphPopulation::Agent => {}
-                                    }
-                                }
-                                if needs_compress {
-                                    match pop {
-                                        GraphPopulation::Knowledge | GraphPopulation::Ontology => {
-                                            position.z *= z_scale;
-                                        }
-                                        GraphPopulation::Agent => {}
-                                    }
+                                // Facing-disc projection (mirror of main loop): collapse
+                                // each population along the X separation axis into a disc.
+                                match pop {
+                                    GraphPopulation::Knowledge => position.x = -sep_x + position.x * face_scale,
+                                    GraphPopulation::Ontology => position.x = sep_x + position.x * face_scale,
+                                    GraphPopulation::Agent => {}
                                 }
                             }
                         }
@@ -2138,8 +2120,8 @@ impl Handler<ForceFullBroadcast> for ForceComputeActor {
 
                     if let Some(ref graph_addr) = actor.graph_service_addr {
                         info!(
-                            "ForceComputeActor: IMMEDIATE full broadcast — {} nodes (pure snapshot, projected={} sep_x={:.1} z_compress={:.2})",
-                            node_updates.len(), project, sep_x, z_compress
+                            "ForceComputeActor: IMMEDIATE full broadcast — {} nodes (pure snapshot, projected={} sep_x={:.1} flatten={:.2})",
+                            node_updates.len(), project, sep_x, flatten
                         );
                         graph_addr.do_send(crate::actors::messages::UpdateNodePositions {
                             positions: node_updates,

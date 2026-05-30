@@ -29,7 +29,8 @@ export const DEFAULT_PHYSICS_SETTINGS: Partial<PhysicsSettings> = {
   linLogMode: true,
   scalingRatio: 10.0,
   adaptiveSpeed: true,
-  graphSeparationX: 0.0,
+  graphSeparationX: 1000.0,
+  axisCompressionZ: 0.9,
   enabled: true,
   enableBounds: true,
 };
