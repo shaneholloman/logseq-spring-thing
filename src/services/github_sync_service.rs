@@ -393,6 +393,15 @@ impl GitHubSyncService {
             }
         }
 
+        // Post-sync: stop surfacing degree-1 dangling `linked_page` stubs.
+        match self.prune_dangling_link_stubs(&mut stats).await {
+            Ok(n) => info!("Pruned {} dangling linked_page stub nodes", n),
+            Err(e) => {
+                warn!("Dangling-stub prune failed (non-fatal): {}", e);
+                stats.errors.push(format!("prune_stubs: {}", e));
+            }
+        }
+
         // Post-sync: run Whelk EL++ reasoning over the full ontology graph.
         match self.run_post_sync_reasoning(&mut stats).await {
             Ok(inferred) => info!("Post-sync reasoning produced {} inferred edges", inferred),
@@ -413,6 +422,67 @@ impl GitHubSyncService {
         );
 
         Ok(stats)
+    }
+
+    /// Post-sync prune: stop surfacing degree-1 dangling `linked_page` stubs.
+    ///
+    /// `ensure_stub_from_link` materialises a `linked_page` node for every
+    /// outbound wikilink/IRI target that lacks an authored JSON-LD page. Most
+    /// are dangling references cited exactly once — they inflate the render and
+    /// force graph without adding navigable structure. This pass loads the full
+    /// graph, computes global degree, and removes every `linked_page` whose
+    /// degree <= 1 along with its incident edges. Authored pages, ontology
+    /// nodes, and well-connected stubs (degree >= 2) are untouched.
+    async fn prune_dangling_link_stubs(&self, stats: &mut SyncStatistics) -> Result<usize, String> {
+        let graph = self
+            .kg_repo
+            .load_graph()
+            .await
+            .map_err(|e| format!("load_graph: {}", e))?;
+
+        let mut degree: std::collections::HashMap<u32, usize> = std::collections::HashMap::new();
+        for edge in &graph.edges {
+            *degree.entry(edge.source).or_insert(0) += 1;
+            *degree.entry(edge.target).or_insert(0) += 1;
+        }
+
+        let prune_ids: std::collections::HashSet<u32> = graph
+            .nodes
+            .iter()
+            .filter(|n| n.node_type.as_deref() == Some("linked_page"))
+            .filter(|n| degree.get(&n.id).copied().unwrap_or(0) <= 1)
+            .map(|n| n.id)
+            .collect();
+
+        if prune_ids.is_empty() {
+            return Ok(0);
+        }
+
+        let prune_edge_ids: Vec<String> = graph
+            .edges
+            .iter()
+            .filter(|e| prune_ids.contains(&e.source) || prune_ids.contains(&e.target))
+            .map(|e| e.id.clone())
+            .collect();
+
+        if !prune_edge_ids.is_empty() {
+            let n_edges = prune_edge_ids.len();
+            self.kg_repo
+                .batch_remove_edges(prune_edge_ids)
+                .await
+                .map_err(|e| format!("batch_remove_edges: {}", e))?;
+            stats.total_edges = stats.total_edges.saturating_sub(n_edges);
+        }
+
+        let prune_node_ids: Vec<u32> = prune_ids.into_iter().collect();
+        let n_nodes = prune_node_ids.len();
+        self.kg_repo
+            .batch_remove_nodes(prune_node_ids)
+            .await
+            .map_err(|e| format!("batch_remove_nodes: {}", e))?;
+        stats.total_nodes = stats.total_nodes.saturating_sub(n_nodes);
+
+        Ok(n_nodes)
     }
 
     /// Create domain root nodes for the 6 NarrativeGoldmine domains and
