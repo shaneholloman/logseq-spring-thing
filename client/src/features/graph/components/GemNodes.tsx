@@ -87,6 +87,7 @@ const getDominantMode = (
 
 const _mat = new THREE.Matrix4();
 const _col = new THREE.Color();
+const _baseHSL = { h: 0, s: 0, l: 0 };
 const ONTOLOGY_SPECTRUM = ['#FF6B6B', '#FFD93D', '#4ECDC4', '#AA96DA', '#95E1D3'];
 const AGENT_STATUS_MAP: Record<string, string> = {
   active: '#2ECC71', busy: '#F39C12', idle: '#95A5A6', error: '#E74C3C',
@@ -135,6 +136,9 @@ const GemNodesInner: React.ForwardRefRenderFunction<GemNodesHandle, GemNodesProp
 
   // Quality gate toggles for cluster/anomaly/community coloring
   const qualityGates = useSettingsStore(s => s.get<QualityGatesSettings>('qualityGates'));
+  // Base node color from the control panel ("Node Color" swatch) — anchors the
+  // knowledge-graph palette when no semantic (cluster/community/anomaly/SSSP) mode is active.
+  const baseNodeColor = useSettingsStore(s => s.get<string>('visualisation.graphs.logseq.nodes.baseColor'));
   // Per-node analytics data from binary protocol V3 (refreshed periodically)
   const analyticsRef = useRef<Float32Array | null>(null);
   const analyticsFrameRef = useRef(0);
@@ -282,16 +286,26 @@ const GemNodesInner: React.ForwardRefRenderFunction<GemNodesHandle, GemNodesProp
       const depth = hierarchyMap?.get(node.id)?.depth ?? (node.metadata?.depth ?? 0);
       return _col.set(ONTOLOGY_SPECTRUM[Math.min(depth, ONTOLOGY_SPECTRUM.length - 1)]);
     }
-    // Knowledge graph: derive hue from node label for visual differentiation,
-    // with authority driving saturation + lightness. Connection count adds warmth.
+    // Knowledge graph: anchor on the user's "Node Color" swatch, then add per-node
+    // variation (hue jitter from label hash) so nodes stay distinguishable. Authority
+    // drives saturation + lightness; connection count adds warmth.
     const auth = node.metadata?.authority ?? node.metadata?.authorityScore ?? 0;
     const cc = connectionCountMap.get(String(node.id)) || 0;
+    if (baseNodeColor) {
+      _col.set(baseNodeColor).getHSL(_baseHSL);
+      const jitter = (hashHue(node.label || String(node.id)) - 0.5) * 0.12; // ±0.06 hue spread
+      const hue = (_baseHSL.h + jitter + 1) % 1;
+      const sat = _baseHSL.s + auth * 0.25 + Math.min(cc / 25, 0.15);
+      const lit = _baseHSL.l + auth * 0.15;
+      _col.setHSL(hue, Math.min(sat, 0.95), Math.min(lit, 0.8));
+      return _col;
+    }
     const hue = hashHue(node.label || String(node.id));
     const sat = 0.35 + auth * 0.35 + Math.min(cc / 20, 0.2);
     const lit = 0.45 + auth * 0.2;
     _col.setHSL(hue, Math.min(sat, 0.9), Math.min(lit, 0.75));
     return _col;
-  }, [ssspResult, hierarchyMap, connectionCountMap, qualityGates]);
+  }, [ssspResult, hierarchyMap, connectionCountMap, qualityGates, baseNodeColor]);
 
   // Progressive reveal: ramp up visible instance count over frames so nodes
   // appear in waves (~120 nodes/frame at 60fps → full 1090 in ~0.15s).
