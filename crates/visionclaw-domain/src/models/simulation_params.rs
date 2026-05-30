@@ -229,6 +229,22 @@ impl SimulationParams {
         if self.gravity < 0.0 {
             errors.push(format!("gravity must be >= 0, got {}", self.gravity));
         }
+        if self.max_repulsion_dist < 10.0 || self.max_repulsion_dist > 5000.0 {
+            errors.push(format!("max_repulsion_dist must be in [10, 5000], got {}", self.max_repulsion_dist));
+        }
+        // cluster_strength is the raw kernel coefficient (no scale factor).
+        if self.cluster_strength < 0.0 || self.cluster_strength > 0.02 {
+            errors.push(format!("cluster_strength must be in [0, 0.02], got {}", self.cluster_strength));
+        }
+        match self.sssp_alpha {
+            Some(a) if !a.is_finite() => {
+                errors.push(format!("sssp_alpha must be finite, got {}", a));
+            }
+            Some(a) if a < 0.0 || a > 5.0 => {
+                errors.push(format!("sssp_alpha must be in [0, 5], got {}", a));
+            }
+            _ => {}
+        }
 
         let float_fields: &[(&str, f32)] = &[
             ("dt", self.dt),
@@ -315,16 +331,24 @@ impl From<&PhysicsSettings> for SimulationParams {
             separation_radius: physics.separation_radius,
             temperature: physics.temperature,
             center_gravity_k: physics.center_gravity_k,
-            alignment_strength: physics.alignment_strength,
+            // alignment_strength is no longer a user-facing setting (the kernel
+            // never read it). Kept as an internal field defaulted to 0.0 so the
+            // GPU SimParams layout is preserved and the unread field is inert.
+            alignment_strength: 0.0,
             cluster_strength: physics.cluster_strength,
-            compute_mode: physics.compute_mode,
-            min_distance: physics.min_distance,
+            // compute_mode is no longer a user-facing setting; the live physics
+            // step always runs the unified kernel (ComputeMode::Basic). Kept as
+            // an internal field for the actor layout-override paths.
+            compute_mode: 0,
+            // min_distance never reached the GPU; retained internally as the
+            // collision floor used by CPU-side helpers, defaulted to 1.0.
+            min_distance: 1.0,
             max_repulsion_dist: physics.max_repulsion_dist,
             warmup_iterations: physics.warmup_iterations,
             cooling_rate: physics.cooling_rate,
             rest_length: physics.rest_length,
             use_sssp_distances: true,
-            sssp_alpha: Some(1.5),
+            sssp_alpha: Some(physics.sssp_alpha),
             constraint_ramp_frames: physics.constraint_ramp_frames,
             constraint_max_force_per_node: physics.constraint_max_force_per_node,
             repulsion_softening_epsilon: physics.repulsion_softening_epsilon,
@@ -501,6 +525,46 @@ mod tests {
         assert!((loaded.graph_separation_x - 700.0).abs() < f32::EPSILON);
         assert!((loaded.axis_compression_z - 0.5).abs() < f32::EPSILON);
         assert!(!loaded.adaptive_speed);
+    }
+
+    // Regression: sssp_alpha is now a real user-settable field, not a hardcoded
+    // 1.5. It must survive PhysicsSettings -> SimulationParams conversion verbatim.
+    #[test]
+    fn test_sssp_alpha_propagates_and_is_not_hardcoded() {
+        let mut physics = PhysicsSettings::default();
+        physics.sssp_alpha = 3.25;
+        let params = SimulationParams::from(&physics);
+        assert_eq!(params.sssp_alpha, Some(3.25));
+        // A hardcoded 1.5 would have ignored the 3.25 source value.
+        assert_ne!(params.sssp_alpha, Some(1.5));
+    }
+
+    // Regression: gravity must survive PhysicsSettings -> SimulationParams; a
+    // prior hardcoded 0.0001 override in the reverse path clobbered user values.
+    #[test]
+    fn test_gravity_propagates_from_physics_settings() {
+        let mut physics = PhysicsSettings::default();
+        physics.gravity = 0.5;
+        let params = SimulationParams::from(&physics);
+        assert!((params.gravity - 0.5).abs() < f32::EPSILON);
+    }
+
+    // cluster_strength is the raw kernel coefficient now; the contract default
+    // is 0.002 (== the old 0.1 * 0.02 magic-scale behaviour).
+    #[test]
+    fn test_cluster_strength_default_is_raw_coefficient() {
+        let physics = PhysicsSettings::default();
+        assert!((physics.cluster_strength - 0.002).abs() < 1e-9);
+        let params = SimulationParams::from(&physics);
+        assert!((params.cluster_strength - 0.002).abs() < 1e-9);
+    }
+
+    // alignment_strength is no longer a user-facing setting; the conversion must
+    // produce an inert 0.0 (the GPU kernel never reads the field).
+    #[test]
+    fn test_alignment_strength_is_inert_zero() {
+        let params = SimulationParams::from(&PhysicsSettings::default());
+        assert_eq!(params.alignment_strength, 0.0);
     }
 
     // Regression: the three layout-control fields carry snake_case serde aliases

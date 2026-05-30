@@ -64,7 +64,7 @@ pub async fn propagate_physics_to_gpu_with_layout(
         debug!("  - iterations: {}", physics.iterations);
         debug!("  - enabled: {}", physics.enabled);
 
-        debug!("  - min_distance: {:.3}", physics.min_distance);
+        debug!("  - sssp_alpha: {:.3}", physics.sssp_alpha);
         debug!("  - max_repulsion_dist: {:.1}", physics.max_repulsion_dist);
         debug!("  - warmup_iterations: {}", physics.warmup_iterations);
         debug!("  - cooling_rate: {:.6}", physics.cooling_rate);
@@ -104,8 +104,8 @@ pub async fn propagate_physics_to_gpu_with_layout(
         }
         "type-clustering" => {
             info!("[PHYSICS UPDATE] Applying type-clustering layout overrides");
-            sim_params.cluster_strength = sim_params.cluster_strength.max(0.5);
-            sim_params.alignment_strength = sim_params.alignment_strength.max(0.3);
+            // cluster_strength is the raw kernel coefficient (range [0, 0.02]).
+            sim_params.cluster_strength = sim_params.cluster_strength.max(0.01);
         }
         _ => {
             // force-directed: use physics settings as-is

@@ -636,7 +636,30 @@ export const UnifiedSettingsTabContent: React.FC<UnifiedSettingsTabContentProps>
         )}
       </h3>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
-        {visibleFields.map(renderField)}
+        {visibleFields.map((field, idx) => {
+          const prevGroup = idx > 0 ? visibleFields[idx - 1].group : undefined;
+          const showGroupHeader = field.group && field.group !== prevGroup;
+          return (
+            <React.Fragment key={field.key}>
+              {showGroupHeader && (
+                <div style={{
+                  fontSize: '9px',
+                  fontWeight: 600,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.05em',
+                  color: 'rgba(96,165,250,0.9)',
+                  marginTop: idx === 0 ? '2px' : '10px',
+                  marginBottom: '2px',
+                  paddingBottom: '2px',
+                  borderBottom: '1px solid rgba(96,165,250,0.25)',
+                }}>
+                  {field.group}
+                </div>
+              )}
+              {renderField(field)}
+            </React.Fragment>
+          );
+        })}
       </div>
     </div>
   );

@@ -273,43 +273,19 @@ use crate::ok_json;
     match state.settings_addr.send(GetSettings).await {
         Ok(Ok(settings)) => {
             
-            let mut constraints_list = Vec::new();
+            let constraints_list: Vec<serde_json::Value> = Vec::new();
 
-            
-            let logseq_mode = settings.visualisation.graphs.logseq.physics.compute_mode;
-            let visionclaw_mode = settings
-                .visualisation
-                .graphs
-                .visionclaw
-                .physics
-                .compute_mode;
-
-            if logseq_mode == 2 || visionclaw_mode == 2 {
-                constraints_list.push(json!({
-                    "type": "physics_constraints",
-                    "enabled": true,
-                    "mode": "compute_mode_2",
-                    "target_graphs": if logseq_mode == 2 && visionclaw_mode == 2 {
-                        vec!["logseq", "visionclaw"]
-                    } else if logseq_mode == 2 {
-                        vec!["logseq"]
-                    } else {
-                        vec!["visionclaw"]
-                    }
-                }));
-            }
-
+            // Constraint activation is governed by the ENABLE_CONSTRAINTS GPU
+            // feature flag, not by a per-graph compute_mode (which was inert and
+            // has been removed from the physics contract).
+            let _ = &settings;
             let gpu_available = state.try_get_gpu_compute_addr().is_some();
 
             ok_json!(json!({
                 "constraints": constraints_list,
                 "count": constraints_list.len(),
                 "data_source": "settings",
-                "gpu_available": gpu_available,
-                "modes": {
-                    "logseq_compute_mode": logseq_mode,
-                    "visionclaw_compute_mode": visionclaw_mode
-                }
+                "gpu_available": gpu_available
             }))
         }
         _ => {

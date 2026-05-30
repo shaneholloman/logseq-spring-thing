@@ -502,7 +502,9 @@ impl UnifiedGPUCompute {
         // Centroids come from the last k-means/Louvain run stored in centroids_x/y/z.
         if self.max_clusters > 0 {
             if let Ok(cohesion_kernel) = self._module.get_function("cluster_cohesion_kernel") {
-                let cohesion_strength = params.cluster_strength.max(0.0).min(1.0) * 0.02;
+                // cluster_strength IS the raw kernel coefficient — no magic scale.
+                // Defensive clamp to the valid contract range [0, 0.02].
+                let cohesion_strength = params.cluster_strength.clamp(0.0, 0.02);
                 if cohesion_strength > 0.0001 {
                     let stream = &self.stream;
                     unsafe {

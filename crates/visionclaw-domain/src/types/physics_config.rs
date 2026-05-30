@@ -30,7 +30,11 @@ fn default_adaptive_speed() -> bool {
 }
 
 fn default_global_speed() -> f32 {
-    0.16
+    0.5
+}
+
+fn default_sssp_alpha() -> f32 {
+    1.5
 }
 
 fn default_constraint_ramp_frames() -> u32 {
@@ -237,17 +241,11 @@ pub struct PhysicsSettings {
     #[serde(alias = "gravity")]
     pub gravity: f32,
 
-    #[serde(alias = "alignment_strength")]
-    pub alignment_strength: f32,
     #[serde(alias = "cluster_strength")]
     pub cluster_strength: f32,
-    #[serde(alias = "compute_mode")]
-    pub compute_mode: i32,
 
     #[serde(alias = "rest_length")]
     pub rest_length: f32,
-    #[serde(alias = "repulsion_cutoff")]
-    pub repulsion_cutoff: f32,
     #[serde(alias = "repulsion_softening_epsilon")]
     pub repulsion_softening_epsilon: f32,
     #[serde(alias = "center_gravity_k")]
@@ -258,17 +256,14 @@ pub struct PhysicsSettings {
     pub warmup_iterations: u32,
     #[serde(alias = "cooling_rate")]
     pub cooling_rate: f32,
-    #[serde(alias = "boundary_extreme_multiplier")]
-    pub boundary_extreme_multiplier: f32,
-    #[serde(alias = "boundary_extreme_force_multiplier")]
-    pub boundary_extreme_force_multiplier: f32,
-    #[serde(alias = "boundary_velocity_damping")]
-    pub boundary_velocity_damping: f32,
 
-    #[serde(alias = "min_distance")]
-    pub min_distance: f32,
+    /// GPU repulsion distance cutoff (also the spatial-hash neighbour radius).
     #[serde(alias = "max_repulsion_dist")]
     pub max_repulsion_dist: f32,
+
+    /// Strength of SSSP-derived rest-length adjustment on spring forces.
+    #[serde(default = "default_sssp_alpha", alias = "sssp_alpha")]
+    pub sssp_alpha: f32,
 
     #[serde(
         alias = "constraint_ramp_frames",
@@ -322,37 +317,31 @@ impl Default for PhysicsSettings {
             auto_balance_interval_ms: 500,
             auto_balance_config: AutoBalanceConfig::default(),
             auto_pause: AutoPauseConfig::default(),
-            bounds_size: 1200.0,
-            separation_radius: 3.0,
+            bounds_size: 2000.0,
+            separation_radius: 2.1155233,
             damping: 0.85,
-            enable_bounds: true,
+            enable_bounds: false,
             enabled: true,
-            iterations: 200,
-            max_velocity: CANONICAL_MAX_VELOCITY,
-            max_force: CANONICAL_MAX_FORCE,
-            repel_k: 800.0,
-            spring_k: 12.0,
-            boundary_damping: 0.8,
+            iterations: 50,
+            max_velocity: 100.0,
+            max_force: 1000.0,
+            repel_k: 1200.0,
+            spring_k: 15.0,
+            boundary_damping: 0.95,
             dt: 0.016,
-            temperature: 0.01,
+            temperature: 1.0,
             gravity: 0.0001,
-            alignment_strength: 0.5,
-            cluster_strength: 1.0,
-            compute_mode: 0,
+            cluster_strength: 0.002,
 
             rest_length: 80.0,
-            repulsion_cutoff: 200.0,
-            repulsion_softening_epsilon: 0.001,
+            repulsion_softening_epsilon: 0.0001,
             center_gravity_k: 0.05,
-            grid_cell_size: 40.0,
-            warmup_iterations: 200,
-            cooling_rate: 0.002,
-            boundary_extreme_multiplier: 2.0,
-            boundary_extreme_force_multiplier: 10.0,
-            boundary_velocity_damping: 0.5,
+            grid_cell_size: 50.0,
+            warmup_iterations: 100,
+            cooling_rate: 0.001,
 
-            min_distance: 0.15,
-            max_repulsion_dist: 2000.0,
+            max_repulsion_dist: 1000.0,
+            sssp_alpha: default_sssp_alpha(),
 
             constraint_ramp_frames: default_constraint_ramp_frames(),
             constraint_max_force_per_node: default_constraint_max_force_per_node(),
@@ -367,7 +356,7 @@ impl Default for PhysicsSettings {
             lin_log_mode: true,
             scaling_ratio: 10.0,
             adaptive_speed: true,
-            global_speed: 0.16,
+            global_speed: 0.5,
         }
     }
 }
@@ -454,14 +443,10 @@ pub struct PhysicsUpdate {
     pub temperature: Option<f32>,
     #[serde(alias = "gravity")]
     pub gravity: Option<f32>,
-    #[serde(alias = "alignment_strength")]
-    pub alignment_strength: Option<f32>,
     #[serde(alias = "cluster_strength")]
     pub cluster_strength: Option<f32>,
-    #[serde(alias = "compute_mode")]
-    pub compute_mode: Option<i32>,
-    #[serde(alias = "min_distance")]
-    pub min_distance: Option<f32>,
+    #[serde(alias = "sssp_alpha")]
+    pub sssp_alpha: Option<f32>,
     #[serde(alias = "max_repulsion_dist")]
     pub max_repulsion_dist: Option<f32>,
     #[serde(alias = "warmup_iterations")]
@@ -493,10 +478,25 @@ mod tests {
     #[test]
     fn test_physics_settings_default() {
         let ps = PhysicsSettings::default();
-        assert_eq!(ps.max_velocity, 200.0);
-        assert_eq!(ps.max_force, 50.0);
+        assert_eq!(ps.max_velocity, 100.0);
+        assert_eq!(ps.max_force, 1000.0);
+        assert_eq!(ps.repel_k, 1200.0);
+        assert_eq!(ps.spring_k, 15.0);
+        assert_eq!(ps.sssp_alpha, 1.5);
+        assert!((ps.cluster_strength - 0.002).abs() < 1e-9);
         assert!(ps.enabled);
         assert!(!ps.auto_balance);
+    }
+
+    #[test]
+    fn test_physics_settings_camelcase_sssp_alpha() {
+        let mut ps = PhysicsSettings::default();
+        ps.sssp_alpha = 3.0;
+        let stored = serde_json::to_value(&ps).unwrap();
+        // serde rename_all = camelCase emits ssspAlpha.
+        assert!(stored.get("ssspAlpha").is_some());
+        let loaded: PhysicsSettings = serde_json::from_value(stored).unwrap();
+        assert!((loaded.sssp_alpha - 3.0).abs() < f32::EPSILON);
     }
 
     #[test]

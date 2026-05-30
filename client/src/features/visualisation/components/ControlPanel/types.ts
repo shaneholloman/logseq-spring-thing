@@ -45,6 +45,8 @@ export interface SettingField {
   options?: string[];
   /** Action to trigger for action-button type */
   action?: string;
+  /** Optional sub-section grouping label rendered as a divider above the field */
+  group?: string;
   /** Setting only visible in advanced mode */
   isAdvanced?: boolean;
   /** Setting only visible to power users */

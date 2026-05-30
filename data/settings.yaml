@@ -160,34 +160,19 @@ visualisation:
         globalSpeed: 0.5
         graphSeparationX: 1000.0
         axisCompressionZ: 0.9
-        massScale: 1.0
         boundaryDamping: 0.95
-        updateThreshold: 0.01
         dt: 0.016
         temperature: 1.0
         gravity: 0.0001
-        stressWeight: 0.0001
-        stressAlpha: 0.0001
-        boundaryLimit: 4000.0
-        alignmentStrength: 0.1
-        clusterStrength: 0.1
-        computeMode: 1
+        clusterStrength: 0.002
         restLength: 80.0
-        repulsionCutoff: 300.0
         repulsionSofteningEpsilon: 0.0001
         centerGravityK: 0.05
         gridCellSize: 50.0
         warmupIterations: 100
         coolingRate: 0.001
-        boundaryExtremeMultiplier: 2.0
-        boundaryExtremeForceMultiplier: 5.0
-        boundaryVelocityDamping: 0.5
-        minDistance: 1.0
         maxRepulsionDist: 1000.0
-        boundaryMargin: 10.0
-        boundaryForceStrength: 1.0
-        warmupCurve: exponential
-        zeroVelocityIterations: 10
+        ssspAlpha: 1.5
         constraintRampFrames: 60
         constraintMaxForcePerNode: 50.0
         clusteringAlgorithm: louvain
@@ -275,47 +260,32 @@ visualisation:
           equilibriumEnergyThreshold: 0.005
           pauseOnEquilibrium: false
           resumeOnInteraction: true
-        boundsSize: 1000.0
-        separationRadius: 2.0
-        damping: 0.1
+        boundsSize: 2000.0
+        separationRadius: 2.1155233
+        damping: 0.85
         enableBounds: false
         enabled: true
         iterations: 50
-        maxVelocity: 50.0
-        maxForce: 500.0
-        repelK: 100.0
-        springK: 10.0
-        globalSpeed: 0.16
+        maxVelocity: 100.0
+        maxForce: 1000.0
+        repelK: 1200.0
+        springK: 15.0
+        globalSpeed: 0.5
         graphSeparationX: 0.0
         axisCompressionZ: 0.0
-        massScale: 1.0
         boundaryDamping: 0.95
-        updateThreshold: 0.01
         dt: 0.016
         temperature: 1.0
         gravity: 0.0001
-        stressWeight: 0.0001
-        stressAlpha: 0.0001
-        boundaryLimit: 1000.0
-        alignmentStrength: 0.1
-        clusterStrength: 0.1
-        computeMode: 1
-        restLength: 50.0
-        repulsionCutoff: 50.0
+        clusterStrength: 0.002
+        restLength: 80.0
         repulsionSofteningEpsilon: 0.0001
-        centerGravityK: 0.0
+        centerGravityK: 0.05
         gridCellSize: 50.0
         warmupIterations: 100
         coolingRate: 0.001
-        boundaryExtremeMultiplier: 2.0
-        boundaryExtremeForceMultiplier: 5.0
-        boundaryVelocityDamping: 0.5
-        minDistance: 1.0
         maxRepulsionDist: 1000.0
-        boundaryMargin: 10.0
-        boundaryForceStrength: 1.0
-        warmupCurve: exponential
-        zeroVelocityIterations: 10
+        ssspAlpha: 1.5
         constraintRampFrames: 60
         constraintMaxForcePerNode: 50.0
         clusteringAlgorithm: louvain

@@ -320,6 +320,23 @@ __global__ void force_pass_kernel(
 
                             if (dist_sq < c_params.repulsion_cutoff * c_params.repulsion_cutoff && dist_sq > 1e-6f) {
                                 const float dist = sqrtf(dist_sq);
+
+                                // Short-range hard separation: when two nodes are
+                                // closer than separation_radius, apply a strong
+                                // linear push so they cannot overlap. The force
+                                // scales with the penetration depth and is capped
+                                // by max_force. This consumes c_params.separation_radius
+                                // (previously uploaded but never read).
+                                if (c_params.separation_radius > 0.0f && dist < c_params.separation_radius) {
+                                    const float penetration = (c_params.separation_radius - dist) / c_params.separation_radius;
+                                    float sep_force = c_params.max_force * penetration;
+                                    sep_force = fminf(sep_force, c_params.max_force);
+                                    const float sep_scale = sep_force / dist;
+                                    total_force.x = fmaf(diff.x, sep_scale, total_force.x);
+                                    total_force.y = fmaf(diff.y, sep_scale, total_force.y);
+                                    total_force.z = fmaf(diff.z, sep_scale, total_force.z);
+                                }
+
                                 float repulsion;
 
                                 if (c_params.lin_log_mode && node_degrees != nullptr) {
@@ -730,6 +747,29 @@ __global__ void integrate_pass_kernel(
         vel.y = fmaf(force.y, dt_over_mass, vel.y) * effective_damping;
         vel.z = fmaf(force.z, dt_over_mass, vel.z) * effective_damping;
         vel = vec3_clamp(vel, c_params.max_velocity);
+    }
+
+    // Simulated-annealing jitter: per-node random velocity perturbation whose
+    // magnitude is proportional to temperature and decays with iteration via
+    // cooling_rate. Consumes c_params.temperature (previously uploaded but never
+    // read by the kernel). Uses the shared c_params.seed so runs are reproducible.
+    if (c_params.temperature > 0.0f) {
+        // Exponential anneal: effective_temp = temperature * (1 - cooling_rate)^iteration.
+        float decay = 1.0f - c_params.cooling_rate;
+        decay = fmaxf(decay, 0.0f);
+        float effective_temp = c_params.temperature * powf(decay, (float)c_params.iteration);
+        if (effective_temp > 1e-6f) {
+            curandState rng;
+            // Unique, reproducible per-node/per-iteration sequence.
+            unsigned long long seq = (unsigned long long)idx
+                + (unsigned long long)c_params.iteration * 2654435761ULL;
+            curand_init((unsigned long long)c_params.seed, seq, 0ULL, &rng);
+            // Zero-mean jitter in [-effective_temp, +effective_temp] per axis.
+            vel.x += (2.0f * curand_uniform(&rng) - 1.0f) * effective_temp;
+            vel.y += (2.0f * curand_uniform(&rng) - 1.0f) * effective_temp;
+            vel.z += (2.0f * curand_uniform(&rng) - 1.0f) * effective_temp;
+            vel = vec3_clamp(vel, c_params.max_velocity);
+        }
     }
 
     // Position update using FMA
@@ -2174,6 +2214,16 @@ __global__ void force_pass_with_stability_kernel(
                             if (dist_sq < c_params.repulsion_cutoff * c_params.repulsion_cutoff &&
                                 dist_sq > 1e-6f) {
                                 float dist = sqrtf(dist_sq);
+
+                                // Short-range hard separation (mirrors force_pass_kernel):
+                                // strong linear push when nodes are closer than
+                                // separation_radius. Consumes c_params.separation_radius.
+                                if (c_params.separation_radius > 0.0f && dist < c_params.separation_radius) {
+                                    const float penetration = (c_params.separation_radius - dist) / c_params.separation_radius;
+                                    float sep_force = fminf(c_params.max_force * penetration, c_params.max_force);
+                                    total_force = vec3_add(total_force, vec3_scale(diff, sep_force / dist));
+                                }
+
                                 float repulsion;
 
                                 if (c_params.lin_log_mode && node_degrees != nullptr) {

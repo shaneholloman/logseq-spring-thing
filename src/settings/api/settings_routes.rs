@@ -78,16 +78,13 @@ fn normalize_physics_keys(patch: serde_json::Map<String, serde_json::Value>) -> 
             "separation_radius" => "separationRadius",
             "boundary_damping"  => "boundaryDamping",
             "rest_length"       => "restLength",
-            "repulsion_cutoff"  => "repulsionCutoff",
             "grid_cell_size"    => "gridCellSize",
             "warmup_iterations" => "warmupIterations",
             "cooling_rate"      => "coolingRate",
             "max_repulsion_dist"=> "maxRepulsionDist",
-            "min_distance"      => "minDistance",
             "auto_balance"      => "autoBalance",
-            "compute_mode"      => "computeMode",
             "cluster_strength"  => "clusterStrength",
-            "alignment_strength"=> "alignmentStrength",
+            "sssp_alpha"        => "ssspAlpha",
             // Legacy/client aliases
             "springStrength"    => "springK",
             "repulsionStrength" => "repelK",
@@ -128,33 +125,29 @@ pub fn validate_physics_settings(settings: &PhysicsSettings) -> Result<(), Strin
         }
     };
 
-    // Range-checked fields per QE audit spec
-    check_range(settings.gravity, "gravity", -5.0, 5.0, &mut errors);
-    check_range(settings.damping, "damping", 0.0, 1.0, &mut errors);
+    // Range-checked fields per the canonical physics contract.
+    check_range(settings.gravity, "gravity", 0.0, 5.0, &mut errors);
+    check_range(settings.damping, "damping", 0.000001, 1.0, &mut errors);
     check_range(settings.spring_k, "spring_k", 0.0, 500.0, &mut errors);
     check_range(settings.max_velocity, "max_velocity", 0.1, 1000.0, &mut errors);
     check_range(settings.max_force, "max_force", 0.1, 5000.0, &mut errors);
-    check_range(settings.dt, "timestep (dt)", 0.001, 1.0, &mut errors);
+    check_range(settings.dt, "timestep (dt)", 0.001, 0.1, &mut errors);
+    check_range(settings.max_repulsion_dist, "max_repulsion_dist", 10.0, 5000.0, &mut errors);
+    check_range(settings.cooling_rate, "cooling_rate", 0.0, 1.0, &mut errors);
+    check_range(settings.boundary_damping, "boundary_damping", 0.0, 1.0, &mut errors);
+    // cluster_strength is the raw kernel coefficient (no scale factor applied).
+    check_range(settings.cluster_strength, "cluster_strength", 0.0, 0.02, &mut errors);
+    check_range(settings.sssp_alpha, "sssp_alpha", 0.0, 5.0, &mut errors);
 
     // All other f32 fields: reject NaN/Infinity
     check_finite(settings.bounds_size, "bounds_size", &mut errors);
     check_finite(settings.separation_radius, "separation_radius", &mut errors);
     check_finite(settings.repel_k, "repel_k", &mut errors);
-    check_finite(settings.boundary_damping, "boundary_damping", &mut errors);
     check_finite(settings.temperature, "temperature", &mut errors);
-    check_finite(settings.alignment_strength, "alignment_strength", &mut errors);
-    check_finite(settings.cluster_strength, "cluster_strength", &mut errors);
     check_finite(settings.rest_length, "rest_length", &mut errors);
-    check_finite(settings.repulsion_cutoff, "repulsion_cutoff", &mut errors);
     check_finite(settings.repulsion_softening_epsilon, "repulsion_softening_epsilon", &mut errors);
     check_finite(settings.center_gravity_k, "center_gravity_k", &mut errors);
     check_finite(settings.grid_cell_size, "grid_cell_size", &mut errors);
-    check_finite(settings.cooling_rate, "cooling_rate", &mut errors);
-    check_finite(settings.boundary_extreme_multiplier, "boundary_extreme_multiplier", &mut errors);
-    check_finite(settings.boundary_extreme_force_multiplier, "boundary_extreme_force_multiplier", &mut errors);
-    check_finite(settings.boundary_velocity_damping, "boundary_velocity_damping", &mut errors);
-    check_finite(settings.min_distance, "min_distance", &mut errors);
-    check_finite(settings.max_repulsion_dist, "max_repulsion_dist", &mut errors);
     check_finite(settings.constraint_max_force_per_node, "constraint_max_force_per_node", &mut errors);
     check_finite(settings.clustering_resolution, "clustering_resolution", &mut errors);
 
@@ -866,8 +859,9 @@ pub async fn update_quality_gate_settings(
                 }
                 "type-clustering" => {
                     info!("Quality gates: applying type-clustering layout overrides");
-                    sim_params.cluster_strength = sim_params.cluster_strength.max(0.5);
-                    sim_params.alignment_strength = sim_params.alignment_strength.max(0.3);
+                    // cluster_strength is now the raw kernel coefficient (range
+                    // [0, 0.02]); floor at the upper end to strengthen grouping.
+                    sim_params.cluster_strength = sim_params.cluster_strength.max(0.01);
                 }
                 _ => {
                     // force-directed: use physics settings as-is

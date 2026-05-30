@@ -116,15 +116,19 @@ impl SimParams {
             dt: self.dt,
             repel_k: self.repel_k,
             damping: self.damping,
-            boundary_damping: 0.9,
+            // Carry the authoritative GPU value rather than a hardcoded override.
+            boundary_damping: self.boundary_damping,
             viewport_bounds: self.viewport_bounds,
             enable_bounds: true,
             max_velocity: self.max_velocity,
             max_force: self.max_force,
-            spring_k: 0.0,
+            // Carry the authoritative GPU value rather than a hardcoded 0.0.
+            spring_k: self.spring_k,
             separation_radius: self.separation_radius,
             center_gravity_k: self.center_gravity_k,
             temperature: self.temperature,
+            // alignment_strength / compute_mode / min_distance are internal-only
+            // fields with no GPU source; default them deterministically.
             alignment_strength: self.alignment_strength,
             cluster_strength: self.cluster_strength,
             compute_mode: 0,
@@ -139,7 +143,8 @@ impl SimParams {
             constraint_max_force_per_node: self.constraint_max_force_per_node,
             repulsion_softening_epsilon: self.repulsion_softening_epsilon,
             grid_cell_size: self.grid_cell_size,
-            gravity: 0.0001,
+            // Carry the authoritative GPU value rather than a hardcoded 0.0001.
+            gravity: self.gravity,
             phase: SimulationPhase::Dynamic,
             mode: SimulationMode::Remote,
             settle_mode: SettleMode::default(),
@@ -277,10 +282,13 @@ impl From<&PhysicsSettings> for SimParams {
             iteration: 0,
             separation_radius: physics.separation_radius,
             cluster_strength: physics.cluster_strength,
-            alignment_strength: physics.alignment_strength,
+            // alignment_strength is no longer a user-facing setting and the
+            // kernel never reads this field; feed 0.0 to keep it inert while
+            // preserving the 172-byte repr(C) layout.
+            alignment_strength: 0.0,
             temperature: physics.temperature,
             viewport_bounds: if physics.enable_bounds { physics.bounds_size } else { 0.0 },
-            sssp_alpha: 1.5,
+            sssp_alpha: physics.sssp_alpha,
             boundary_damping: physics.boundary_damping,
             constraint_ramp_frames: physics.constraint_ramp_frames,
             constraint_max_force_per_node: physics.constraint_max_force_per_node,

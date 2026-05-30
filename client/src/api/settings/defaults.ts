@@ -8,31 +8,51 @@ import type { PhysicsSettings } from './types';
 // ============================================================================
 
 export const DEFAULT_PHYSICS_SETTINGS: Partial<PhysicsSettings> = {
-  springK: 12.0,
-  repelK: 800.0,
-  damping: 0.85,
+  // --- Simulation control ---
+  enabled: true,
+  autoBalance: false,
   dt: 0.016,
-  gravity: 0.0001,
-  centerGravityK: 0.05,
-  temperature: 0.01,
+  iterations: 50,
+  warmupIterations: 100,
+  coolingRate: 0.001,
+  globalSpeed: 0.5,
+  damping: 0.85,
+
+  // --- Core forces ---
+  springK: 15.0,
+  repelK: 1200.0,
   restLength: 80.0,
-  maxVelocity: 200.0,
-  maxForce: 50.0,
-  boundsSize: 1200.0,
-  boundaryDamping: 0.8,
-  separationRadius: 3.0,
-  gridCellSize: 40.0,
-  maxRepulsionDist: 2000.0,
-  warmupIterations: 200,
-  iterations: 200,
-  coolingRate: 0.002,
+  centerGravityK: 0.05,
+  gravity: 0.0001,
+  maxForce: 1000.0,
+  maxVelocity: 100.0,
+
+  // --- Repulsion & spacing ---
+  maxRepulsionDist: 1000.0,
+  separationRadius: 2.1155233,
+  gridCellSize: 50.0,
+  repulsionSofteningEpsilon: 0.0001,
+
+  // --- Bounds ---
+  enableBounds: false,
+  boundsSize: 2000.0,
+  boundaryDamping: 0.95,
+
+  // --- Layout forces (FA2 / dual-graph) ---
   linLogMode: true,
   scalingRatio: 10.0,
   adaptiveSpeed: true,
+  ssspAlpha: 1.5,
   graphSeparationX: 1000.0,
   axisCompressionZ: 0.9,
-  enabled: true,
-  enableBounds: true,
+
+  // --- Constraints ---
+  constraintRampFrames: 60,
+  constraintMaxForcePerNode: 50.0,
+  clusterStrength: 0.002,
+
+  // --- Misc ---
+  temperature: 1.0,
 };
 
 // ============================================================================

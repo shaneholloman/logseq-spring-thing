@@ -74,7 +74,6 @@ export interface PhysicsSettings {
   stressWeight: number;
   stressAlpha: number;
   boundaryLimit: number;
-  alignmentStrength: number;
   clusterStrength: number;
   computeMode: number;
   minDistance: number;

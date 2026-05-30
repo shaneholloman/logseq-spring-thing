@@ -2,6 +2,8 @@
 // Type definitions matching Rust backend exactly
 
 export interface PhysicsSettings {
+  // --- Simulation control ---
+  enabled: boolean;
   autoBalance: boolean;
   autoBalanceIntervalMs: number;
   autoBalanceConfig: {
@@ -12,31 +14,48 @@ export interface PhysicsSettings {
     enabled: boolean;
     inactivityThresholdMs: number;
   };
+  dt: number;
+  iterations: number;
+  warmupIterations: number;
+  coolingRate: number;
+  globalSpeed: number;
+  damping: number;
+
+  // --- Core forces ---
   springK: number;
   repelK: number;
-  damping: number;
-  dt: number;
-  gravity: number;
-  centerGravityK: number;
-  temperature: number;
   restLength: number;
-  maxVelocity: number;
+  centerGravityK: number;
+  gravity: number;
   maxForce: number;
-  boundsSize: number;
-  boundaryDamping: number;
+  maxVelocity: number;
+
+  // --- Repulsion & spacing ---
+  maxRepulsionDist: number;
   separationRadius: number;
   gridCellSize: number;
-  maxRepulsionDist: number;
-  warmupIterations: number;
-  iterations: number;
-  coolingRate: number;
+  repulsionSofteningEpsilon: number;
+
+  // --- Bounds ---
+  enableBounds: boolean;
+  boundsSize: number;
+  boundaryDamping: number;
+
+  // --- Layout forces (FA2 / dual-graph) ---
   linLogMode: boolean;
   scalingRatio: number;
   adaptiveSpeed: boolean;
+  ssspAlpha: number;
   graphSeparationX: number;
   axisCompressionZ: number;
-  enableBounds: boolean;
-  enabled: boolean;
+
+  // --- Constraints ---
+  constraintRampFrames: number;
+  constraintMaxForcePerNode: number;
+  clusterStrength: number;
+
+  // --- Misc ---
+  temperature: number;
 }
 
 export type PriorityWeighting = 'linear' | 'exponential' | 'quadratic';
