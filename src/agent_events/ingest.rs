@@ -32,6 +32,7 @@ use log::{debug, info, warn};
 use crate::app_state::AppState;
 
 use super::hub;
+use super::provenance::{self, ProvenanceStatus};
 use super::schema::AgentActionNotification;
 
 /// Negotiated WebSocket subprotocol (ADR-059 §1).
@@ -59,6 +60,13 @@ pub(crate) enum IngestOutcome {
     Published {
         action: String,
         attributed: bool,
+        /// Recorded provenance status (signed / malformed / anonymous). The
+        /// frame is published regardless of status (render compatibility); this
+        /// is the audit dimension the Phase 3 trail distinguishes on.
+        provenance_status: ProvenanceStatus,
+        /// Number of foreign `urn:agentbox:*` source/target URNs translated
+        /// through the BC20 bridge on this frame (0, 1, or 2).
+        crossings_recorded: usize,
         receivers: usize,
     },
     /// Parsed as JSON-RPC but failed [`AgentActionNotification::is_canonical`].
@@ -74,13 +82,41 @@ pub(crate) fn process_frame(text: &str) -> IngestOutcome {
         Ok(notif) if notif.is_canonical() => {
             let event = notif.params.event;
             let action = event.action_type_name.clone();
-            // Phase 1 identity is optional (ADR-059 §5): record attribution
-            // presence for the Phase 3 audit trail, never reject on its absence.
-            let attributed = event.pubkey.is_some();
+
+            // Identity stays optional for render compatibility (ADR-059 §5: never
+            // reject on absence), but is now RECORDED rather than discarded:
+            //  (a) any foreign urn:agentbox:* source/target URN is translated
+            //      through the BC20 bridge (crate::uri) so the namespace crossing
+            //      is stored, not treated as an opaque blob; and
+            //  (b) a provenance status is stamped so the audit surface can
+            //      distinguish signed from unsigned actions.
+            let prov = provenance::record(&event);
+            let provenance_status = prov.status;
+            let attributed = provenance_status.is_attributed();
+            let crossings_recorded =
+                prov.source_crossing.is_some() as usize + prov.target_crossing.is_some() as usize;
+
+            if let Some(c) = prov.source_crossing.as_ref() {
+                debug!(
+                    "agent-events: BC20 source crossing {} → {}",
+                    c.agentbox_urn, c.visionclaw_id
+                );
+            }
+            if let Some(c) = prov.target_crossing.as_ref() {
+                debug!(
+                    "agent-events: BC20 target crossing {} → {}",
+                    c.agentbox_urn, c.visionclaw_id
+                );
+            }
+
+            // Render path is unchanged: the identity-bearing envelope is still
+            // published verbatim to the hub for the beam/gluon GPU render.
             let receivers = hub::publish(event);
             IngestOutcome::Published {
                 action,
                 attributed,
+                provenance_status,
+                crossings_recorded,
                 receivers,
             }
         }
@@ -120,10 +156,13 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for AgentEventsIngest
                 IngestOutcome::Published {
                     action,
                     attributed,
+                    provenance_status,
+                    crossings_recorded,
                     receivers,
                 } => {
                     debug!(
                         "agent-events: published action={action} attributed={attributed} \
+                         provenance={provenance_status:?} crossings={crossings_recorded} \
                          → {receivers} subscriber(s)"
                     );
                 }
@@ -252,10 +291,15 @@ mod tests {
             IngestOutcome::Published {
                 action,
                 attributed,
+                provenance_status,
+                crossings_recorded,
                 receivers,
             } => {
                 assert_eq!(action, "update");
-                assert!(attributed, "pubkey present ⇒ attributed");
+                assert!(attributed, "valid pubkey present ⇒ attributed");
+                assert_eq!(provenance_status, ProvenanceStatus::Signed);
+                // canonical_frame carries no source/target URN ⇒ no crossing.
+                assert_eq!(crossings_recorded, 0);
                 assert!(receivers >= 1, "our own subscriber must be counted");
             }
             other => panic!("expected Published, got {other:?}"),
@@ -272,6 +316,52 @@ mod tests {
             }
         }
         assert!(seen, "published envelope must reach the subscriber");
+    }
+
+    // A canonical frame carrying foreign urn:agentbox:* source/target URNs and
+    // no pubkey — exercises BC20 crossing recording + anonymous provenance while
+    // still publishing (render compatibility must not break).
+    fn frame_with_foreign_urns_unauthenticated(id: u64) -> String {
+        let pk = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
+        format!(
+            r#"{{
+              "jsonrpc": "2.0",
+              "method": "notifications/agent_action",
+              "params": {{
+                "type": "agent_action",
+                "event": {{
+                  "version": 3, "id": {id}, "source_agent_id": 7, "target_node_id": 4242,
+                  "action_type": 1, "action_type_name": "update",
+                  "timestamp": 1748500000000, "duration_ms": 250,
+                  "source_urn": "urn:agentbox:thing:{pk}:proposal-9",
+                  "target_urn": "urn:agentbox:activity:{pk}:run-9",
+                  "metadata": {{ "note": "x" }}
+                }},
+                "message_type": 35, "protocol_version": 2,
+                "timestamp": "2026-05-29T00:00:00.000Z"
+              }}
+            }}"#
+        )
+    }
+
+    #[test]
+    fn foreign_urns_recorded_and_unauthenticated_frame_still_published() {
+        let outcome = process_frame(&frame_with_foreign_urns_unauthenticated(123_456_789));
+        match outcome {
+            IngestOutcome::Published {
+                attributed,
+                provenance_status,
+                crossings_recorded,
+                ..
+            } => {
+                // No pubkey ⇒ anonymous, but still published (not rejected).
+                assert!(!attributed);
+                assert_eq!(provenance_status, ProvenanceStatus::Anonymous);
+                // both source + target were foreign agentbox URNs ⇒ 2 crossings.
+                assert_eq!(crossings_recorded, 2);
+            }
+            other => panic!("expected Published, got {other:?}"),
+        }
     }
 
     #[test]

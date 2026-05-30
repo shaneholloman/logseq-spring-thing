@@ -378,6 +378,76 @@ pub fn parse(input: &str) -> Result<ParsedUri, UriError> {
     }
 }
 
+// ── BC20 cross-namespace ingest (urn:agentbox:* → urn:visionclaw:*) ──────────
+
+/// A namespace crossing recorded at the federation boundary. Carries both ends
+/// so the ingest path stores the translation rather than an opaque foreign blob,
+/// and the audit surface can recover the agentbox source.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UrnCrossing {
+    /// The original `urn:agentbox:*` (or `did:nostr:*`) identifier as received.
+    pub agentbox_urn: String,
+    /// The translated converged VisionClaw identifier.
+    pub visionclaw_id: String,
+    /// `did:nostr:<pubkey>` owner when the source carried a pubkey scope.
+    pub owner_did: Option<String>,
+}
+
+/// Translate an inbound `urn:agentbox:<kind>:<scope>:<local>` (or `did:nostr:*`)
+/// into its converged VisionClaw identifier — the VisionClaw-side counterpart of
+/// agentbox `bc20-provenance-bridge.js::toVisionclaw`. The closed kind map:
+///
+///   * `agent`    → `did:nostr:<pubkey>` (identity, structural round-trip)
+///   * `activity` → `urn:visionclaw:execution:<sha256-12>` (unscoped)
+///   * `thing`    → `urn:visionclaw:kg:<pubkey>:<sha256-12>`
+///   * `memory`   → `urn:visionclaw:concept:...` requires elevation {domain,slug},
+///                  which the ingest hot path does not have, so it is recorded as
+///                  a crossing-without-translation (returns `None`).
+///
+/// A `did:nostr:*` input is already converged and round-trips structurally.
+/// Returns `None` (the caller records the raw string + an unmapped marker) for
+/// any unmapped kind, mirroring the agentbox B04 closed-map discipline.
+pub fn cross_from_agentbox(agentbox_urn: &str) -> Option<UrnCrossing> {
+    // Already-converged identity passes through unchanged.
+    if let Some(pk) = agentbox_urn.strip_prefix(DID_NOSTR_PREFIX) {
+        if is_pubkey_hex(pk) {
+            return Some(UrnCrossing {
+                agentbox_urn: agentbox_urn.to_string(),
+                visionclaw_id: agentbox_urn.to_string(),
+                owner_did: Some(agentbox_urn.to_string()),
+            });
+        }
+        return None;
+    }
+
+    let rest = agentbox_urn.strip_prefix("urn:agentbox:")?;
+    let (kind, tail) = rest.split_once(':')?;
+    // scope is the next token when it is a 64-hex pubkey; otherwise unscoped.
+    let scope = tail.split(':').next().filter(|s| is_pubkey_hex(s));
+    let owner_did = scope.and_then(|pk| did_nostr(pk).ok());
+
+    let visionclaw_id = match kind {
+        "agent" => {
+            let pk = scope?;
+            did_nostr(pk).ok()?
+        }
+        "activity" => execution(agentbox_urn),
+        "thing" => {
+            let pk = scope?;
+            kg(pk, agentbox_urn).ok()?
+        }
+        // memory→concept needs the elevation {domain,slug} target, absent on the
+        // hot path; the crossing is recorded raw rather than mis-mapped.
+        _ => return None,
+    };
+
+    Some(UrnCrossing {
+        agentbox_urn: agentbox_urn.to_string(),
+        visionclaw_id,
+        owner_did,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -502,6 +572,36 @@ mod tests {
             parse("urn:visionclaw:bogus:whatever"),
             Err(UriError::UnknownKind(_))
         ));
+    }
+
+    #[test]
+    fn bc20_crosses_agentbox_kinds_per_closed_map() {
+        // agent → did:nostr (identity, structural round-trip)
+        let c = cross_from_agentbox(&format!("urn:agentbox:agent:{PK_A}:planner")).unwrap();
+        assert_eq!(c.visionclaw_id, format!("did:nostr:{PK_A}"));
+        assert_eq!(c.owner_did.as_deref(), Some(&*format!("did:nostr:{PK_A}")));
+
+        // thing → kg (owner-scoped, content-addressed)
+        let c = cross_from_agentbox(&format!("urn:agentbox:thing:{PK_A}:proposal-7")).unwrap();
+        assert!(c.visionclaw_id.starts_with(&format!("urn:visionclaw:kg:{PK_A}:sha256-12-")));
+        assert!(parse(&c.visionclaw_id).is_ok());
+
+        // activity → execution (unscoped)
+        let c = cross_from_agentbox(&format!("urn:agentbox:activity:{PK_A}:run-3")).unwrap();
+        assert!(c.visionclaw_id.starts_with("urn:visionclaw:execution:sha256-12-"));
+        assert_eq!(c.owner_did.as_deref(), Some(&*format!("did:nostr:{PK_A}")));
+
+        // already-converged did:nostr passes through unchanged
+        let did = format!("did:nostr:{PK_A}");
+        let c = cross_from_agentbox(&did).unwrap();
+        assert_eq!(c.visionclaw_id, did);
+
+        // memory→concept (no elevation target on the hot path) is unmapped → None
+        assert!(cross_from_agentbox(&format!("urn:agentbox:memory:{PK_A}:lesson-x")).is_none());
+        // unknown kind → None (closed map)
+        assert!(cross_from_agentbox(&format!("urn:agentbox:credential:{PK_A}:vc-1")).is_none());
+        // not a foreign agentbox urn → None
+        assert!(cross_from_agentbox("urn:ngm:node:1").is_none());
     }
 
     #[test]

@@ -13,7 +13,9 @@
 
 pub mod hub;
 pub mod ingest;
+pub mod provenance;
 pub mod schema;
 
 pub use ingest::agent_events_ws;
+pub use provenance::{IngestProvenance, ProvenanceStatus};
 pub use schema::{AgentActionEnvelope, AgentActionNotification, AgentActionParams};
