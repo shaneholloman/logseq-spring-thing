@@ -40,6 +40,11 @@ const DEFAULT_COLOR = '#90A4AE';
 
 const MIN_CLUSTER_SIZE = 4;
 const TICK_INTERVAL = 30;
+// GPU Louvain on this graph yields ~2000 communities (mostly singletons/tiny);
+// drawing every cluster >= MIN_CLUSTER_SIZE renders 800+ overlapping translucent
+// hulls — opaque mush, not inspectable. Cap to the N largest communities so
+// distinct regions stay legible in 3D. Overridable via clusterHulls.maxHulls.
+const DEFAULT_MAX_HULLS = 32;
 
 // ============================================================================
 // Helpers
@@ -163,6 +168,7 @@ export const ClusterHulls: React.FC<ClusterHullsProps> = ({
   const enabled = showClusters === false ? false : clusterHullsEnabled;
   const opacity = settings?.visualisation?.clusterHulls?.opacity ?? 0.08;
   const padding = settings?.visualisation?.clusterHulls?.padding ?? 0.15;
+  const maxHulls = settings?.visualisation?.clusterHulls?.maxHulls ?? DEFAULT_MAX_HULLS;
 
   // ---- Increment tick every TICK_INTERVAL frames and refresh analytics ----
   // Pull the per-node analytics buffer (cluster_id at stride 0) from the
@@ -213,9 +219,14 @@ export const ClusterHulls: React.FC<ClusterHullsProps> = ({
       geometry: ConvexGeometry;
     }> = [];
 
-    clusterMap.forEach((nodeIds, domain) => {
-      if (nodeIds.length < MIN_CLUSTER_SIZE) return;
+    // Rank clusters by node count and keep only the N largest, so the dense
+    // tail of tiny communities doesn't bury the graph in overlapping hulls.
+    const ranked = Array.from(clusterMap.entries())
+      .filter(([, nodeIds]) => nodeIds.length >= MIN_CLUSTER_SIZE)
+      .sort((a, b) => b[1].length - a[1].length)
+      .slice(0, maxHulls);
 
+    for (const [domain, nodeIds] of ranked) {
       const points: THREE.Vector3[] = [];
 
       for (const id of nodeIds) {
@@ -239,12 +250,12 @@ export const ClusterHulls: React.FC<ClusterHullsProps> = ({
       if (geometry) {
         entries.push({ domain, geometry });
       }
-    });
+    }
 
     return entries;
     // tick drives periodic recomputation
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled, clusterMap, nodeIdToIndexMap, nodePositionsRef, padding, tick]);
+  }, [enabled, clusterMap, nodeIdToIndexMap, nodePositionsRef, padding, maxHulls, tick]);
 
   // ---- Cleanup previous geometries when entries change ----
   const prevGeometries = useRef<THREE.BufferGeometry[]>([]);
