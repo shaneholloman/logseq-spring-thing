@@ -17,6 +17,7 @@ pub struct GitHubClient {
     owner: String,
     repo: String,
     base_path: String,
+    base_paths: Vec<String>,
     branch: String,
     settings: Arc<RwLock<AppFullSettings>>,
 }
@@ -65,10 +66,33 @@ impl GitHubClient {
             .replace("//", "/")
             .replace('\\', "/");
 
+        // Normalise every configured ingest path the same way as base_path so
+        // the Trees API prefix filter can match each source dir.
+        let base_paths: Vec<String> = config
+            .base_paths
+            .iter()
+            .map(|p| {
+                let decoded = urlencoding::decode(p)
+                    .unwrap_or(std::borrow::Cow::Owned(p.clone()))
+                    .into_owned();
+                decoded
+                    .trim_matches('/')
+                    .replace("//", "/")
+                    .replace('\\', "/")
+            })
+            .filter(|p| !p.is_empty())
+            .collect();
+
+        let base_paths = if base_paths.is_empty() {
+            vec![base_path.clone()]
+        } else {
+            base_paths
+        };
+
         if debug_enabled {
             debug!(
-                "Cleaned base path: '{}' (original: '{}')",
-                base_path, base_path
+                "Cleaned base path: '{}', all ingest paths: {:?}",
+                base_path, base_paths
             );
             debug!("GitHub client initialization complete");
         }
@@ -79,6 +103,7 @@ impl GitHubClient {
             owner: config.owner,
             repo: config.repo,
             base_path,
+            base_paths,
             branch: config.branch,
             settings: Arc::clone(&settings),
         })
@@ -213,6 +238,11 @@ impl GitHubClient {
 
     pub(crate) fn base_path(&self) -> &str {
         &self.base_path
+    }
+
+    /// All configured ingest source paths (dual-graph: ontology + working KG).
+    pub(crate) fn base_paths(&self) -> &[String] {
+        &self.base_paths
     }
 
     pub(crate) fn branch(&self) -> &str {

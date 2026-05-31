@@ -23,7 +23,17 @@ impl EnhancedContentAPI {
     pub async fn list_markdown_files_via_tree(
         &self,
     ) -> VisionClawResult<Vec<GitHubFileBasicMetadata>> {
-        let base_path = self.client.base_path().trim_matches('/').to_string();
+        // Dual-source ingest: a single recursive tree call returns the whole
+        // repo; keep every .md file under ANY configured source path. An empty
+        // / "/" prefix means no filtering (whole repo).
+        let base_prefixes: Vec<String> = self
+            .client
+            .base_paths()
+            .iter()
+            .map(|p| p.trim_matches('/').to_string())
+            .filter(|p| !p.is_empty() && p != "/")
+            .map(|p| format!("{}/", p))
+            .collect();
         let branch = self.client.branch();
 
         // Git Trees API with recursive=1 returns the entire tree in one call
@@ -75,23 +85,23 @@ impl EnhancedContentAPI {
         );
 
         let mut markdown_files = Vec::new();
-        let base_prefix = if base_path.is_empty() {
-            String::new()
-        } else {
-            format!("{}/", base_path)
-        };
 
         for entry in tree {
             let entry_type = entry["type"].as_str().unwrap_or("");
             let entry_path = entry["path"].as_str().unwrap_or("");
 
-            // Only process blob (file) entries that are .md files under base_path
+            // Only process blob (file) entries that are .md files under a source path
             if entry_type != "blob" || !entry_path.ends_with(".md") {
                 continue;
             }
 
-            // Filter by base_path prefix
-            if !base_path.is_empty() && !entry_path.starts_with(&base_prefix) {
+            // Keep the file if it sits under ANY configured source path. An
+            // empty prefix list means no filtering (ingest the whole repo).
+            if !base_prefixes.is_empty()
+                && !base_prefixes
+                    .iter()
+                    .any(|prefix| entry_path.starts_with(prefix.as_str()))
+            {
                 continue;
             }
 
@@ -133,9 +143,9 @@ impl EnhancedContentAPI {
         }
 
         info!(
-            "list_markdown_files_via_tree: Found {} markdown files under '{}'",
+            "list_markdown_files_via_tree: Found {} markdown files under sources {:?}",
             markdown_files.len(),
-            base_path
+            base_prefixes
         );
         Ok(markdown_files)
     }

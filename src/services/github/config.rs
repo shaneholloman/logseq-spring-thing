@@ -24,7 +24,14 @@ pub struct GitHubConfig {
     pub token: String,
     pub owner: String,
     pub repo: String,
+    /// First configured ingest path (kept for single-path Contents API calls).
     pub base_path: String,
+    /// All configured ingest source paths. The dual-graph design ingests two
+    /// sources from one repo: `mainKnowledgeGraph/pages` (formal ontology,
+    /// pages carry `owl:class::`) and `workingGraph/pages` (working knowledge,
+    /// no owl:class → force-directed `page` nodes). Set via comma-separated
+    /// `GITHUB_BASE_PATHS` (preferred) or `GITHUB_BASE_PATH`.
+    pub base_paths: Vec<String>,
     pub branch: String,
     pub rate_limit: bool,
     pub version: String,
@@ -40,6 +47,7 @@ impl GitHubConfig {
             owner: "none".to_string(),
             repo: "none".to_string(),
             base_path: "/".to_string(),
+            base_paths: vec!["/".to_string()],
             branch: "main".to_string(),
             rate_limit: false,
             version: "v3".to_string(),
@@ -58,8 +66,24 @@ impl GitHubConfig {
         let repo = env::var("GITHUB_REPO")
             .map_err(|_| GitHubConfigError::MissingEnvVar("GITHUB_REPO".to_string()))?;
 
-        let base_path = env::var("GITHUB_BASE_PATH")
+        // Dual-source ingest: prefer the plural GITHUB_BASE_PATHS, fall back to
+        // the legacy singular GITHUB_BASE_PATH. Both accept a comma-separated
+        // list so a single env var can name both `mainKnowledgeGraph/pages` and
+        // `workingGraph/pages`.
+        let base_paths_raw = env::var("GITHUB_BASE_PATHS")
+            .or_else(|_| env::var("GITHUB_BASE_PATH"))
             .map_err(|_| GitHubConfigError::MissingEnvVar("GITHUB_BASE_PATH".to_string()))?;
+
+        let base_paths: Vec<String> = base_paths_raw
+            .split(',')
+            .map(|p| p.trim().to_string())
+            .filter(|p| !p.is_empty())
+            .collect();
+
+        let base_path = base_paths
+            .first()
+            .cloned()
+            .unwrap_or_else(|| base_paths_raw.trim().to_string());
 
         let branch = env::var("GITHUB_BRANCH").unwrap_or_else(|_| "main".to_string());
 
@@ -74,6 +98,7 @@ impl GitHubConfig {
             owner,
             repo,
             base_path,
+            base_paths,
             branch,
             rate_limit,
             version,
@@ -103,7 +128,7 @@ impl GitHubConfig {
             ));
         }
 
-        if self.base_path.is_empty() {
+        if self.base_path.is_empty() || self.base_paths.is_empty() {
             return Err(GitHubConfigError::ValidationError(
                 "GitHub base path cannot be empty".to_string(),
             ));
