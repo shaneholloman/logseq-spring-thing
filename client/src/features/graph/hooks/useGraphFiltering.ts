@@ -62,6 +62,9 @@ export function useGraphFiltering(
   const filterByQuality = storeNodeFilter?.filterByQuality ?? true;
   const filterByAuthority = storeNodeFilter?.filterByAuthority ?? false;
   const filterMode = storeNodeFilter?.filterMode ?? 'or';
+  // Owns linked_page visibility: when false, wikilink-stub nodes (linked_page)
+  // are excluded from the render set entirely (default false, matches server flag).
+  const includeLinkedPages = storeNodeFilter?.includeLinkedPages ?? false;
 
   // Log filter settings changes for debugging
   useEffect(() => {
@@ -83,6 +86,19 @@ export function useGraphFiltering(
     logger.debug(`[NodeFilter] Computing visible nodes: filterEnabled=${filterEnabled}, qualityThreshold=${qualityThreshold}, authorityThreshold=${authorityThreshold}`);
 
     const visible = graphData.nodes.filter(node => {
+      // linked_page gate: wikilink-stub nodes are hidden unless includeLinkedPages
+      // is on. Read the API node-type field the same way useGraphVisualState does
+      // (the `type` field set by GraphStateActor classify_node, metadata fallback).
+      if (!includeLinkedPages) {
+        const nodeType = (node as unknown as { type?: string }).type
+          || node.metadata?.nodeType
+          || (node as unknown as { nodeType?: string }).nodeType
+          || '';
+        if (nodeType === 'linked_page') {
+          return false;
+        }
+      }
+
       // First apply hierarchy/expansion filtering
       const hierarchyNode = hierarchyMap.get(node.id);
       if (hierarchyNode) {
@@ -143,7 +159,7 @@ export function useGraphFiltering(
     }
 
     return visible;
-  }, [graphData.nodes, connectionCountMap, hierarchyMap, expansionState, filterEnabled, qualityThreshold, authorityThreshold, filterByQuality, filterByAuthority, filterMode]);
+  }, [graphData.nodes, connectionCountMap, hierarchyMap, expansionState, filterEnabled, qualityThreshold, authorityThreshold, filterByQuality, filterByAuthority, filterMode, includeLinkedPages]);
 
   // --- filteredEdges (pass-through today) ---
   const filteredEdges = graphData.edges;

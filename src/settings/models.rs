@@ -176,8 +176,9 @@ pub struct NodeFilterSettings {
     pub filter_mode: String,
 
     /// Whether to include linked_page stub nodes (wikilink targets without public:: true).
-    /// Set to false for highest-quality view showing only fully-authored page nodes.
-    #[serde(default = "default_true")]
+    /// Defaults to false so the initial view shows only fully-authored page nodes,
+    /// matching the client (schemaMappings) and the runtime client filter default.
+    #[serde(default)]
     pub include_linked_pages: bool,
 }
 
@@ -190,12 +191,10 @@ impl Default for NodeFilterSettings {
             filter_by_quality: true,
             filter_by_authority: false,
             filter_mode: "or".to_string(),
-            include_linked_pages: true,
+            include_linked_pages: false,
         }
     }
 }
-
-fn default_true() -> bool { true }
 
 fn default_visual_json() -> serde_json::Value {
     serde_json::json!({})

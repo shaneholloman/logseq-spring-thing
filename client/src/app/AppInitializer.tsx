@@ -63,6 +63,15 @@ const loadServices = async (): Promise<void> => {
 
 const logger = createLogger('AppInitializer');
 
+// Idempotency guard: `subscribe_position_updates` must be sent exactly ONCE per
+// established WebSocket connection. The connection-status handler can fire more
+// than once for a single socket (immediate-invoke on registration, the onopen
+// notification, StrictMode double-mount, and backend-driven `connection_established`
+// re-emits), and each subscribe restarts the backend GPU warmup/reheat window —
+// producing the observed resubscribe storm. This flag is set when the subscribe is
+// sent and reset on disconnect so a genuine reconnect resubscribes.
+let hasSubscribedToPositions = false;
+
 interface AppInitializerProps {
   onInitialized: () => void;
   onError: (error: Error) => void;
@@ -263,26 +272,36 @@ const AppInitializer: React.FC<AppInitializerProps> = ({ onInitialized, onError 
           logger.info(`WebSocket connection status changed: ${connected}`);
         }
 
-        
+
+        // A genuine disconnect must clear the guard so the next established
+        // connection resubscribes exactly once.
+        if (!connected) {
+          hasSubscribedToPositions = false;
+          return;
+        }
+
         if (connected) {
           try {
             if (websocketService.isReady()) {
-              
+
               logger.info('WebSocket is connected and fully established - enabling binary updates');
               graphDataManager.setBinaryUpdatesEnabled(true);
 
-              
-              logger.info('Sending subscribe_position_updates message to server');
-              const sys = settings?.system as Record<string, unknown> | undefined;
-              const ws = sys?.websocket as Record<string, unknown> | undefined;
-              const updateRate = (ws?.updateRate as number | undefined) || 60;
-              websocketService.sendMessage('subscribe_position_updates', {
-                binary: true,
-                interval: updateRate
-              });
+              // Idempotent: skip if already subscribed on this connection.
+              if (!hasSubscribedToPositions) {
+                hasSubscribedToPositions = true;
+                logger.info('Sending subscribe_position_updates message to server');
+                const sys = settings?.system as Record<string, unknown> | undefined;
+                const ws = sys?.websocket as Record<string, unknown> | undefined;
+                const updateRate = (ws?.updateRate as number | undefined) || 60;
+                websocketService.sendMessage('subscribe_position_updates', {
+                  binary: true,
+                  interval: updateRate
+                });
 
-              if (debugState.isDataDebugEnabled()) {
-                logger.debug('Binary updates enabled and subscribed to position updates');
+                if (debugState.isDataDebugEnabled()) {
+                  logger.debug('Binary updates enabled and subscribed to position updates');
+                }
               }
             } else {
               logger.info('WebSocket connected but not fully established yet - waiting for readiness');
@@ -294,6 +313,12 @@ const AppInitializer: React.FC<AppInitializerProps> = ({ onInitialized, onError 
 
               const unsubscribe = websocketService.onMessage((message) => {
                 if (message.type === 'connection_established') {
+                  unsubscribe();
+
+                  // Idempotent: the backend re-emits `connection_established` when it
+                  // restarts the warmup/reheat window, so guard against resubscribing.
+                  if (hasSubscribedToPositions) return;
+                  hasSubscribedToPositions = true;
 
                   logger.info('Connection established message received, sending subscribe_position_updates');
                   const sys2 = settings?.system as Record<string, unknown> | undefined;
@@ -303,7 +328,6 @@ const AppInitializer: React.FC<AppInitializerProps> = ({ onInitialized, onError 
                     binary: true,
                     interval: updateRate2
                   });
-                  unsubscribe(); 
 
                   if (debugState.isDataDebugEnabled()) {
                     logger.debug('Connection established, subscribed to position updates');

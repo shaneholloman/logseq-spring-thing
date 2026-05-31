@@ -1072,6 +1072,28 @@ impl GitHubSyncService {
             }
         };
 
+        // Design gate: the working knowledge graph only surfaces *published*
+        // pages. A plain page (no `owl:class::`) becomes a graph node ONLY when
+        // it carries `public:: true`. Ontology pages — those with `owl:class::`,
+        // which the parser already typed as `ontology_node` — ingest
+        // unconditionally: they are authoritative formal data regardless of
+        // publish tagging, wherever they live in the repo. Anchoring the gate on
+        // owl:class (not on the source directory) keeps it correct for an
+        // ontology page that happens to sit in the working graph, and for a
+        // plain page that happens to sit in the ontology dir.
+        let is_ontology = parsed
+            .nodes
+            .first()
+            .map(|n| n.owl_class_iri.is_some())
+            .unwrap_or(false);
+        if !is_ontology && !logseq_page_is_public(content) {
+            debug!(
+                "Skipped non-public working-graph page: {} (no `public:: true`)",
+                file.name
+            );
+            return;
+        }
+
         for node in parsed.nodes {
             nodes.entry(node.id).or_insert(node);
         }
@@ -1497,6 +1519,18 @@ impl GitHubSyncService {
 // ------------------------------------------------------------------
 // Free functions
 // ------------------------------------------------------------------
+
+/// True when a plain logseq page declares `public:: true` (case-insensitive).
+/// Absence of the property means private — the working-graph gate excludes it.
+fn logseq_page_is_public(content: &str) -> bool {
+    for line in content.lines() {
+        let trimmed = line.trim_start_matches(|c: char| c.is_whitespace() || c == '-');
+        if let Some(rest) = trimmed.strip_prefix("public::") {
+            return rest.trim().eq_ignore_ascii_case("true");
+        }
+    }
+    false
+}
 
 /// Map a fully-expanded predicate IRI to a canonical edge-type label.
 /// Returns `""` for predicates that should not create graph edges.

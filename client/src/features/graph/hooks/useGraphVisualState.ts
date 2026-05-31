@@ -151,6 +151,11 @@ export function useGraphVisualState(graphData: GraphData): GraphVisualStateResul
         map.set(String(node.id), 'ontology');
         continue;
       }
+      // linked_page renders with the same colour/geometry as authored `page`
+      // (knowledge_graph bucket), but its *visibility* is NOT owned here: the
+      // includeLinkedPages gate in useGraphFiltering.visibleNodes removes
+      // linked_page nodes from the render set, so the Knowledge toggle only
+      // ever controls authored `page` nodes when linked-pages are off.
       if (nodeType === 'page' || nodeType === 'linked_page') {
         map.set(String(node.id), 'knowledge_graph');
         continue;
