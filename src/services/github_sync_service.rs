@@ -952,7 +952,15 @@ impl GitHubSyncService {
         let entity = match jsonld_ingest::parse_canonical_entity(content, &file.path) {
             Ok(Some(e)) => e,
             Ok(None) => {
-                debug!("Skipped: {} (no JSON-LD blocks)", file.name);
+                // No JSON-LD blocks — this is an unstructured logseq page from
+                // the working knowledge graph (personal/working KG: prose,
+                // `public:: true`, `[[wikilinks]]`, no owl:class). The canonical
+                // entity parser only handles the formal ontology source. Fall
+                // back to the plain-markdown KG parser so these pages still
+                // populate the force-directed graph as `page` nodes joined by
+                // their wikilinks — the dual-source ingest the system was
+                // designed for.
+                self.process_plain_logseq_file(file, content, nodes, edges);
                 return Ok(());
             }
             Err(e) => {
@@ -1033,6 +1041,44 @@ impl GitHubSyncService {
         }
 
         Ok(())
+    }
+
+    /// Fallback ingest for unstructured logseq pages — the working knowledge
+    /// graph. These files carry no JSON-LD blocks, so `parse_canonical_entity`
+    /// skips them. The plain-markdown KG parser emits a `page` node (or an
+    /// `ontology_node` if the page carries a logseq `owl:class::` line) plus an
+    /// edge for every `[[wikilink]]`. Targets that another file materialises as
+    /// a real node connect; the rest dangle harmlessly until their page syncs.
+    ///
+    /// Identity uses the same `page_name_to_id(slug)` hash as the canonical
+    /// path, so a working-graph page and an ontology page sharing a basename
+    /// resolve to the same node — the intended cross-graph join. To keep
+    /// "owl:class wins" deterministic regardless of processing order, the page
+    /// node is inserted with `or_insert`: it never clobbers an ontology node a
+    /// JSON-LD sibling already emitted, while the canonical path's unconditional
+    /// `insert` still upgrades a plain page to its ontology form.
+    fn process_plain_logseq_file(
+        &self,
+        file: &GitHubFileBasicMetadata,
+        content: &str,
+        nodes: &mut std::collections::HashMap<u32, visionclaw_domain::models::node::Node>,
+        edges: &mut std::collections::HashMap<String, Edge>,
+    ) {
+        let parsed = match self.kg_parser.parse(content, &file.name) {
+            Ok(p) => p,
+            Err(e) => {
+                debug!("Plain logseq parse failed for {}: {} — skipping", file.name, e);
+                return;
+            }
+        };
+
+        for node in parsed.nodes {
+            nodes.entry(node.id).or_insert(node);
+        }
+
+        for edge in parsed.edges {
+            edges.entry(edge.id.clone()).or_insert(edge);
+        }
     }
 
     /// Map an IngestOutcome's quads to Edge structs for the force-directed graph.
@@ -1331,7 +1377,11 @@ impl GitHubSyncService {
     /// Detect GITHUB_BASE_PATH change; clear stale data if it changed.
     /// Returns true when a change was detected (triggers forced full sync).
     async fn detect_and_handle_base_path_change(&self) -> bool {
-        let current_base_path = std::env::var("GITHUB_BASE_PATH").unwrap_or_default();
+        // Track the full source-path set (plural preferred, singular fallback) so
+        // adding/removing a source dir triggers a clean full re-sync.
+        let current_base_path = std::env::var("GITHUB_BASE_PATHS")
+            .or_else(|_| std::env::var("GITHUB_BASE_PATH"))
+            .unwrap_or_default();
         if current_base_path.is_empty() {
             return false;
         }

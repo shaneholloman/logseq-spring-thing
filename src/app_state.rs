@@ -487,7 +487,12 @@ impl AppState {
             debug!("GitHub sync monitor: Checking task status...");
 
             
-            let timeout_duration = Duration::from_secs(300); 
+            // A full re-sync fetches content for every file (no SHA1 skip):
+            // ~5.5 min for the ~5.5k dual-source corpus, and longer when the
+            // working graph grows. 300s tripped a false "deadlock" on every
+            // full sync. The task is detached, so this monitor only logs — it
+            // never aborts the sync — but the alarm was misleading.
+            let timeout_duration = Duration::from_secs(1200);
             match tokio::time::timeout(timeout_duration, sync_handle).await {
                 Ok(join_result) => {
                     match join_result {
