@@ -590,6 +590,14 @@ pub struct PhysicsStepCompleted {
     /// `KE = 0.5 * sum(vx^2 + vy^2 + vz^2)` averaged over node count.
     /// Used by the convergence controller to detect equilibrium.
     pub kinetic_energy: f64,
+    /// True when the step was a benign skip (no graph uploaded yet, a step
+    /// already in flight, or GPU context still initialising) rather than an
+    /// actual GPU compute failure. Skips report `kinetic_energy: f64::MAX`
+    /// to avoid a false convergence reading, so the orchestrator MUST consult
+    /// this flag instead of inferring failure from the sentinel — otherwise
+    /// startup skips trip the consecutive-failure circuit breaker and latch a
+    /// permanent DEGRADED halt before the first real step ever completes.
+    pub skipped: bool,
 }
 
 /// Sent by PhysicsOrchestratorActor to ForceComputeActor to wire up the

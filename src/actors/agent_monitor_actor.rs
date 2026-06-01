@@ -231,6 +231,35 @@ impl AgentMonitorActor {
             .into_actor(self),
         );
     }
+
+    /// Delay before the next poll, with exponential backoff on consecutive
+    /// failures. The Management API shares a per-key rate-limit bucket with
+    /// task creation (settings commands, swarm init); polling at a fixed 3s
+    /// through a 429 storm both floods the log and starves that bucket so
+    /// legitimate task creation is rejected. Backing off lets the bucket
+    /// refill. base→2x per failure, capped at 90s; resets to base on success.
+    /// Cap is deliberately above agentbox's 60s rate-limit window: that limiter
+    /// uses `continueExceeding`, which re-arms the full window on every
+    /// over-limit hit. A retry landing at the 60s boundary would re-lock the
+    /// bucket forever, so we wait past the window to let it fully refill.
+    fn next_poll_delay(&self) -> Duration {
+        if self.consecutive_poll_failures == 0 {
+            return self.polling_interval;
+        }
+        let shift = self.consecutive_poll_failures.min(5);
+        let scaled = self.polling_interval.saturating_mul(1u32 << shift);
+        scaled.min(Duration::from_secs(90))
+    }
+
+    /// Self-rescheduling poll loop. Each tick polls once, then schedules the
+    /// next tick using `next_poll_delay()` so the cadence adapts to failures.
+    fn schedule_next_poll(&self, ctx: &mut Context<Self>) {
+        let delay = self.next_poll_delay();
+        ctx.run_later(delay, |act, ctx| {
+            act.poll_agent_statuses(ctx);
+            act.schedule_next_poll(ctx);
+        });
+    }
 }
 
 #[derive(Message)]
@@ -268,9 +297,8 @@ impl Handler<crate::actors::messages::InitializeActor> for AgentMonitorActor {
         info!("[AgentMonitorActor] Initializing periodic polling (deferred from started)");
 
         ctx.run_later(Duration::from_millis(100), |act, ctx| {
-            ctx.run_interval(act.polling_interval, |act, ctx| {
-                act.poll_agent_statuses(ctx);
-            });
+            act.poll_agent_statuses(ctx);
+            act.schedule_next_poll(ctx);
         });
     }
 }
@@ -439,8 +467,9 @@ impl Handler<RecordPollFailure> for AgentMonitorActor {
     fn handle(&mut self, _: RecordPollFailure, _ctx: &mut Self::Context) {
         self.consecutive_poll_failures += 1;
         warn!(
-            "[AgentMonitorActor] Poll failure recorded - {} consecutive failures",
-            self.consecutive_poll_failures
+            "[AgentMonitorActor] Poll failure recorded - {} consecutive failures, backing off to {:?} before next poll",
+            self.consecutive_poll_failures,
+            self.next_poll_delay()
         );
     }
 }

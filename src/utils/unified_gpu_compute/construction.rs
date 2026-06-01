@@ -54,6 +54,9 @@ pub struct UnifiedGPUCompute {
     pub class_id: DeviceBuffer<i32>,        // Maps owl_class_iri to integer class ID
     pub class_charge: DeviceBuffer<f32>,    // Class-specific charge modifiers
     pub class_mass: DeviceBuffer<f32>,      // Class-specific mass modifiers
+    // Per-population spring strength multiplier (Knowledge/Ontology/Agent).
+    // Default 1.0 == identity (current LinLog coefficient). Read in both spring paths.
+    pub spring_scale: DeviceBuffer<f32>,
 
 
     pub edge_row_offsets: DeviceBuffer<i32>,
@@ -334,6 +337,7 @@ impl UnifiedGPUCompute {
         let class_id = DeviceBuffer::zeroed(num_nodes)?;           // Default class ID = 0 (unknown)
         let class_charge = DeviceBuffer::from_slice(&vec![1.0f32; num_nodes])?;  // Default charge = 1.0
         let class_mass = DeviceBuffer::from_slice(&vec![1.0f32; num_nodes])?;    // Default mass = 1.0
+        let spring_scale = DeviceBuffer::from_slice(&vec![1.0f32; num_nodes])?;  // Default spring multiplier = 1.0
 
         let edge_row_offsets = DeviceBuffer::zeroed(num_nodes + 1)?;
         let edge_col_indices = DeviceBuffer::zeroed(num_edges)?;
@@ -444,6 +448,7 @@ impl UnifiedGPUCompute {
             class_id,
             class_charge,
             class_mass,
+            spring_scale,
             edge_row_offsets,
             edge_col_indices,
             edge_weights,

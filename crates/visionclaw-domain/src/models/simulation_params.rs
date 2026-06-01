@@ -16,6 +16,7 @@ fn default_lin_log_mode() -> bool { true }
 fn default_scaling_ratio() -> f32 { 10.0 }
 fn default_adaptive_speed() -> bool { true }
 fn default_global_speed() -> f32 { 0.16 }
+fn default_spring_pop_scale() -> f32 { 1.0 }
 
 /// Controls how the physics simulation converges.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -176,6 +177,18 @@ pub struct SimulationParams {
     /// FA2 base integration speed.
     #[serde(default = "default_global_speed")]
     pub global_speed: f32,
+
+    /// Per-population spring strength multipliers. Each is the literal coefficient
+    /// applied to that population's attraction force in BOTH the LinLog and Hooke
+    /// kernel paths (1.0 == current LinLog identity). This is what makes the spring
+    /// sliders independently steer Knowledge / Ontology / Agent layouts; the global
+    /// `spring_k` remains the Hooke-mode stiffness.
+    #[serde(default = "default_spring_pop_scale")]
+    pub spring_k_knowledge: f32,
+    #[serde(default = "default_spring_pop_scale")]
+    pub spring_k_ontology: f32,
+    #[serde(default = "default_spring_pop_scale")]
+    pub spring_k_agent: f32,
 }
 
 impl Default for SimulationParams {
@@ -268,6 +281,9 @@ impl SimulationParams {
             ("min_distance", self.min_distance),
             ("max_repulsion_dist", self.max_repulsion_dist),
             ("constraint_max_force_per_node", self.constraint_max_force_per_node),
+            ("spring_k_knowledge", self.spring_k_knowledge),
+            ("spring_k_ontology", self.spring_k_ontology),
+            ("spring_k_agent", self.spring_k_agent),
         ];
         for &(name, value) in float_fields {
             if !value.is_finite() {
@@ -364,6 +380,9 @@ impl From<&PhysicsSettings> for SimulationParams {
             scaling_ratio: physics.scaling_ratio,
             adaptive_speed: physics.adaptive_speed,
             global_speed: physics.global_speed,
+            spring_k_knowledge: physics.spring_k_knowledge,
+            spring_k_ontology: physics.spring_k_ontology,
+            spring_k_agent: physics.spring_k_agent,
         }
     }
 }

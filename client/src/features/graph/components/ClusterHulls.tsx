@@ -121,6 +121,7 @@ function getDomainHullColor(domain: string): string {
 function buildHullGeometry(
   points: THREE.Vector3[],
   padding: number,
+  slabThickness: number,
 ): ConvexGeometry | null {
   if (points.length < MIN_CLUSTER_SIZE) return null;
 
@@ -131,14 +132,22 @@ function buildHullGeometry(
   }
   centroid.divideScalar(points.length);
 
-  // Offset each point away from centroid by (1 + padding)
-  const paddedPoints = points.map((p) => {
+  // Offset each point away from centroid by (1 + padding), then split into a
+  // thin Z slab. The co-planar disc projection flattens Z to ~3%, leaving
+  // each cluster's points near-coplanar — a 3D ConvexGeometry of a coplanar
+  // set is degenerate (throws, or yields a zero-volume sliver invisible from
+  // top-down). Duplicating each point at z ± slabThickness gives the hull
+  // real volume so it renders as a filled region when viewed onto the disc.
+  const slab: THREE.Vector3[] = [];
+  for (const p of points) {
     const dir = new THREE.Vector3().subVectors(p, centroid);
-    return centroid.clone().add(dir.multiplyScalar(1 + padding));
-  });
+    const padded = centroid.clone().add(dir.multiplyScalar(1 + padding));
+    slab.push(new THREE.Vector3(padded.x, padded.y, padded.z + slabThickness));
+    slab.push(new THREE.Vector3(padded.x, padded.y, padded.z - slabThickness));
+  }
 
   try {
-    return new ConvexGeometry(paddedPoints);
+    return new ConvexGeometry(slab);
   } catch {
     // ConvexGeometry can throw on degenerate point sets
     return null;
@@ -169,6 +178,10 @@ export const ClusterHulls: React.FC<ClusterHullsProps> = ({
   const opacity = settings?.visualisation?.clusterHulls?.opacity ?? 0.08;
   const padding = settings?.visualisation?.clusterHulls?.padding ?? 0.15;
   const maxHulls = settings?.visualisation?.clusterHulls?.maxHulls ?? DEFAULT_MAX_HULLS;
+  // Z half-thickness of each hull slab. After the disc projection flattens z to
+  // ~3%, a cluster's points are near-coplanar; a 3D ConvexGeometry of coplanar
+  // points is degenerate. Extruding ±slabThickness gives the hull real volume.
+  const slabThickness = settings?.visualisation?.clusterHulls?.slabThickness ?? 35;
 
   // ---- Increment tick every TICK_INTERVAL frames and refresh analytics ----
   // Pull the per-node analytics buffer (cluster_id at stride 0) from the
@@ -246,7 +259,7 @@ export const ClusterHulls: React.FC<ClusterHullsProps> = ({
         points.push(new THREE.Vector3(x, y, z));
       }
 
-      const geometry = buildHullGeometry(points, padding);
+      const geometry = buildHullGeometry(points, padding, slabThickness);
       if (geometry) {
         entries.push({ domain, geometry });
       }
@@ -255,7 +268,7 @@ export const ClusterHulls: React.FC<ClusterHullsProps> = ({
     return entries;
     // tick drives periodic recomputation
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled, clusterMap, nodeIdToIndexMap, nodePositionsRef, padding, maxHulls, tick]);
+  }, [enabled, clusterMap, nodeIdToIndexMap, nodePositionsRef, padding, maxHulls, slabThickness, tick]);
 
   // ---- Cleanup previous geometries when entries change ----
   const prevGeometries = useRef<THREE.BufferGeometry[]>([]);

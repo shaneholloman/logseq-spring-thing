@@ -83,6 +83,18 @@ const GraphManager: React.FC<GraphManagerProps> = ({ onDragStateChange }) => {
     return filtered
   }, [visibleNodes, perNodeVisualModeMap, graphMode, nodeTypeVisibility])
 
+  // Cluster hulls are scoped to the ONTOLOGY population. Louvain clusters mix
+  // populations through the dominant KG<->ontology cross-links, so unscoped
+  // hulls would span the separation gap and join the two discs visually.
+  // Restricting to ontology nodes gives one cleanly delineated hull per
+  // ontology cluster on its own disc.
+  const ontologyHullNodes = useMemo(
+    () => graphData.nodes.filter(
+      node => (perNodeVisualModeMap.get(String(node.id)) || graphMode) === 'ontology'
+    ),
+    [graphData.nodes, perNodeVisualModeMap, graphMode]
+  )
+
   const { agents: agentLayerNodes, connections: agentLayerConnections } = useAgentNodes()
   useFpsMonitor()
 
@@ -512,13 +524,13 @@ const GraphManager: React.FC<GraphManagerProps> = ({ onDragStateChange }) => {
       />
 
       <ClusterHulls
-        nodes={graphData.nodes}
+        nodes={ontologyHullNodes}
         nodePositionsRef={nodePositionsRef}
         nodeIdToIndexMap={nodeIdToIndexMap}
         settings={settings}
       />
 
-      {agentLayerNodes.length > 0 && (
+      {agentLayerNodes.length > 0 && nodeTypeVisibility?.agent !== false && (
         <AgentNodesLayer agents={agentLayerNodes} connections={agentLayerConnections} />
       )}
 

@@ -94,7 +94,12 @@ if (!WORKER_USES_SAB) {
 
 // ── Internal state ───────────────────────────────────────────────────────
 
-const MAX_NODES = 10_000;
+// SAB capacity. The worker writes currentPositions at stride 3 (x,y,z) and the
+// renderer reads at stride 3, so usable node slots = (MAX_NODES * POSITION_FLOATS_PER_NODE) / 3.
+// The full KG∪Agent graph after a GitHub sync exceeds 14.5k nodes; at 10k the tail
+// overflowed the SAB and rendered as NaN/garbage (the 3D "blob"). Sized to cover
+// large graphs with generous headroom (~66k node slots, 800KB SAB).
+const MAX_NODES = 50_000;
 const POSITION_FLOATS_PER_NODE = 4; // x,y,z + padding (matches worker layout)
 const POSITION_BUFFER_FLOATS = MAX_NODES * POSITION_FLOATS_PER_NODE;
 const POSITION_BUFFER_BYTES = POSITION_BUFFER_FLOATS * 4;

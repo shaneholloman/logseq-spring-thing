@@ -87,6 +87,16 @@ export default defineConfig(({ mode }) => {
     watch: {
       usePolling: true,
       interval: 1000,
+      // The claude-flow daemon rewrites state/session/metric JSON inside
+      // src/.claude-flow every few seconds; watching them forces a full page
+      // reload that wipes the live WS-projected graph back to the raw REST
+      // snapshot. Exclude that tree (and other non-source state dirs).
+      ignored: [
+        /(^|[\/\\])\.claude-flow([\/\\]|$)/,
+        /(^|[\/\\])\.ruflo([\/\\]|$)/,
+        /[\/\\]node_modules[\/\\]/,
+        /[\/\\]\.git[\/\\]/,
+      ],
     },
 
     // CORS headers for development

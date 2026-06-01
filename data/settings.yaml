@@ -140,34 +140,36 @@ visualisation:
           equilibriumEnergyThreshold: 0.01
           pauseOnEquilibrium: false
           resumeOnInteraction: true
-        # Physics defaults calibrated for the ~30k-node canonical ontology
-        # corpus (ADR-090 Phase B). Prior values (repelK=80, springK=2,
-        # globalSpeed=0.16) were sized for a sub-1k-node graph and produced
-        # near-zero kinetic energy on the full corpus — physics declared
-        # convergence within 100 iterations before the layout had separated.
-        # Slider tooltip recommendations:
-        #   repelK 800-1500, springK 8-20 for 2k+ node graphs.
+        # Physics defaults recalibrated for the ~10.7k-node post-fold graph
+        # (low-fan-out wikilink stubs are folded into weights+springs, not nodes).
+        # LinLog mode gives good cluster separation; centerGravityK is the
+        # dominant scale control (it sets the equilibrium radius against repelK,
+        # and reins in disconnected nodes that springs can't reach). The prior
+        # repelK=1200 + graphSeparationX=1000 profile pushed the two graphs
+        # 2000u apart and inflated the layout to the soft boundary wall, which
+        # read as an "exploded" hollow shell when the camera framed the origin.
+        # Measured result: 90% of nodes within ~45u of their cluster centroid.
         boundsSize: 2000.0
         separationRadius: 2.1155233
-        damping: 0.85
+        damping: 0.9
         enableBounds: false
         enabled: true
         iterations: 50
         maxVelocity: 100.0
-        maxForce: 1000.0
-        repelK: 1200.0
-        springK: 15.0
-        globalSpeed: 0.5
-        graphSeparationX: 1000.0
-        axisCompressionZ: 0.9
+        maxForce: 150.0
+        repelK: 120.0
+        springK: 12.0
+        globalSpeed: 0.4
+        graphSeparationX: 1800.0
+        axisCompressionZ: 0.97
         boundaryDamping: 0.95
         dt: 0.016
-        temperature: 1.0
-        gravity: 0.0001
+        temperature: 0.0
+        gravity: 0.002
         clusterStrength: 0.002
-        restLength: 80.0
+        restLength: 50.0
         repulsionSofteningEpsilon: 0.0001
-        centerGravityK: 0.05
+        centerGravityK: 0.2
         gridCellSize: 50.0
         warmupIterations: 100
         coolingRate: 0.001
@@ -262,25 +264,25 @@ visualisation:
           resumeOnInteraction: true
         boundsSize: 2000.0
         separationRadius: 2.1155233
-        damping: 0.85
+        damping: 0.9
         enableBounds: false
         enabled: true
         iterations: 50
         maxVelocity: 100.0
-        maxForce: 1000.0
-        repelK: 1200.0
-        springK: 15.0
-        globalSpeed: 0.5
+        maxForce: 150.0
+        repelK: 120.0
+        springK: 12.0
+        globalSpeed: 0.4
         graphSeparationX: 0.0
         axisCompressionZ: 0.0
         boundaryDamping: 0.95
         dt: 0.016
-        temperature: 1.0
-        gravity: 0.0001
+        temperature: 0.0
+        gravity: 0.002
         clusterStrength: 0.002
-        restLength: 80.0
+        restLength: 50.0
         repulsionSofteningEpsilon: 0.0001
-        centerGravityK: 0.05
+        centerGravityK: 0.2
         gridCellSize: 50.0
         warmupIterations: 100
         coolingRate: 0.001

@@ -46,13 +46,18 @@ export const DEFAULT_PHYSICS_SETTINGS: Partial<PhysicsSettings> = {
   graphSeparationX: 1000.0,
   axisCompressionZ: 0.9,
 
+  // --- Per-population spring strength (independent KG/ontology/agent layout control) ---
+  springKKnowledge: 1.0,
+  springKOntology: 1.0,
+  springKAgent: 1.0,
+
   // --- Constraints ---
   constraintRampFrames: 60,
   constraintMaxForcePerNode: 50.0,
   clusterStrength: 0.002,
 
   // --- Misc ---
-  temperature: 1.0,
+  temperature: 0.0,
 };
 
 // ============================================================================
@@ -120,7 +125,7 @@ export const DEFAULT_SCENE_EFFECTS = {
 };
 
 export const DEFAULT_CLUSTER_HULLS = {
-  enabled: false,
+  enabled: true,
   opacity: 0.08,
   padding: 0.15,
 };

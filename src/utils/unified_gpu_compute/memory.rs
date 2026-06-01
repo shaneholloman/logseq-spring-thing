@@ -125,6 +125,24 @@ impl UnifiedGPUCompute {
         Ok(())
     }
 
+    /// Upload per-population spring strength multipliers (Knowledge/Ontology/Agent).
+    /// Value 1.0 == identity (current LinLog coefficient); higher == stronger springs
+    /// for that node. Read in both spring paths of the force kernels.
+    pub fn upload_spring_scale(&mut self, spring_scales: &[f32]) -> Result<()> {
+        if spring_scales.len() != self.num_nodes {
+            return Err(anyhow!(
+                "Spring scale array size mismatch: expected {} nodes, got {}",
+                self.num_nodes,
+                spring_scales.len()
+            ));
+        }
+        let alloc = self.spring_scale.len();
+        let mut padded = spring_scales.to_vec();
+        padded.resize(alloc, 1.0);
+        checked_copy_from(&mut self.spring_scale, &padded, "spring_scale")?;
+        Ok(())
+    }
+
     pub fn upload_edges_csr(
         &mut self,
         row_offsets: &[i32],
@@ -473,6 +491,7 @@ impl UnifiedGPUCompute {
         self.class_id = DeviceBuffer::zeroed(actual_new_nodes)?;
         self.class_charge = DeviceBuffer::from_slice(&vec![1.0f32; actual_new_nodes])?;
         self.class_mass = DeviceBuffer::from_slice(&vec![1.0f32; actual_new_nodes])?;
+        self.spring_scale = DeviceBuffer::from_slice(&vec![1.0f32; actual_new_nodes])?;
 
         // Degree weight buffer must be resized with positions
         self.degree_weight = DeviceBuffer::from_slice(&vec![1.0f32; actual_new_nodes])?;

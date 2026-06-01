@@ -30,6 +30,88 @@ enum GraphPopulation {
     Agent,
 }
 
+/// Median (x, y) in-plane centroid per population, indexed
+/// [Knowledge, Ontology, Agent]. Index `i` aligns with the i-th (x, y)
+/// returned by `xy`. Median (not mean) so a handful of physics outliers
+/// flung to the simulation boundary can't drag a disc's centre.
+fn population_centroids_xy(
+    populations: &[GraphPopulation],
+    xy: impl Fn(usize) -> (f32, f32),
+    n: usize,
+) -> [(f32, f32); 3] {
+    let mut bx: [Vec<f32>; 3] = [Vec::new(), Vec::new(), Vec::new()];
+    let mut by: [Vec<f32>; 3] = [Vec::new(), Vec::new(), Vec::new()];
+    for i in 0..n {
+        let b = match populations.get(i) {
+            Some(GraphPopulation::Knowledge) => 0,
+            Some(GraphPopulation::Ontology) => 1,
+            Some(GraphPopulation::Agent) => 2,
+            None => continue,
+        };
+        let (x, y) = xy(i);
+        if x.is_finite() && y.is_finite() {
+            bx[b].push(x);
+            by[b].push(y);
+        }
+    }
+    let median = |v: &mut Vec<f32>| -> f32 {
+        if v.is_empty() {
+            return 0.0;
+        }
+        v.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        v[v.len() / 2]
+    };
+    let mut out = [(0.0f32, 0.0f32); 3];
+    for b in 0..3 {
+        out[b] = (median(&mut bx[b]), median(&mut by[b]));
+    }
+    out
+}
+
+/// Re-centre a node onto its population's disc, flatten Z, and offset along Z.
+/// Each disc is centred at its population's median in the X-Y plane, flattened
+/// thin on Z, then translated to its target Z (∓sep for Knowledge/Ontology,
+/// 0 for Agent), so the two discs become parallel X-Y planes facing one another
+/// across a depth gap regardless of where the raw physics layout drifts.
+/// Flatten and separation share the Z axis (the disc normal), which is what
+/// makes the faces point at each other. Nodes beyond `r_max` from the disc
+/// centre are pulled to the rim so each disc stays compact and outliers can't
+/// spray across the gap and merge the two populations.
+#[inline]
+fn project_node_xy(
+    pos: &mut Vec3,
+    pop: GraphPopulation,
+    centroids: &[(f32, f32); 3],
+    sep: f32,
+    face_scale: f32,
+    r_max: f32,
+) {
+    // Discs FACE one another: flatten and separate on the SAME axis (Z).
+    // Each disc is centred + rim-clamped in its X-Y plane, flattened thin along
+    // Z, then offset along Z by ±sep. The result is two parallel X-Y discs whose
+    // faces point at each other across a depth gap, with agents on the mid plane
+    // (z=0) and the KG<->ontology cross-links spanning the gap between the faces.
+    let (idx, target_z) = match pop {
+        GraphPopulation::Knowledge => (0usize, -sep),
+        GraphPopulation::Ontology => (1usize, sep),
+        GraphPopulation::Agent => (2usize, 0.0),
+    };
+    let (cx, cy) = centroids[idx];
+    let mut dx = pos.x - cx;
+    let mut dy = pos.y - cy;
+    if r_max > 0.0 {
+        let d2 = dx * dx + dy * dy;
+        if d2 > r_max * r_max {
+            let s = r_max / d2.sqrt();
+            dx *= s;
+            dy *= s;
+        }
+    }
+    pos.x = dx;
+    pos.y = dy;
+    pos.z = pos.z * face_scale + target_z;
+}
+
 // ---------------------------------------------------------------------------
 // Divergence hardening constants
 //
@@ -517,8 +599,14 @@ impl ForceComputeActor {
             // in bits 26-31 don't collide with real node IDs.
             self.gpu_index_to_node_id.push(i as u32);
 
-            // Classify node into graph population for dual-graph X-axis separation
-            let pop = match node.node_type.as_deref() {
+            // Classify node into graph population for dual-graph X-axis separation.
+            // metadata["type"] is the origin (ABox/TBox) truth and is authoritative:
+            // node_type carries the *elevated* class for promoted pages (e.g. a
+            // linked_page elevated to ontology_node), which would wrongly pull wiki
+            // instances onto the ontology disc. Prefer metadata, fall back to node_type.
+            let effective_type = node.metadata.get("type").map(|s| s.as_str())
+                .or_else(|| node.node_type.as_deref());
+            let pop = match effective_type {
                 Some("agent") | Some("bot") => {
                     pop_counts[2] += 1;
                     GraphPopulation::Agent
@@ -527,8 +615,12 @@ impl ForceComputeActor {
                     pop_counts[1] += 1;
                     GraphPopulation::Ontology
                 }
+                Some("page") | Some("linked_page") => {
+                    pop_counts[0] += 1;
+                    GraphPopulation::Knowledge
+                }
                 _ => {
-                    // Check owl_class_iri as secondary signal for ontology
+                    // Unknown type: owl_class_iri is the only remaining ontology signal.
                     if node.owl_class_iri.is_some() {
                         pop_counts[1] += 1;
                         GraphPopulation::Ontology
@@ -695,6 +787,30 @@ impl ForceComputeActor {
                         warn!("ForceComputeActor: Failed to upload class metadata: {}", e);
                     } else {
                         debug!("ForceComputeActor: Uploaded class metadata ({} entries)", class_ids.len());
+                    }
+                }
+
+                // Per-population spring multipliers → spring_scale buffer. Maps each
+                // node's classified population to its independent spring strength so
+                // the Knowledge/Ontology/Agent sliders steer layout directly (live in
+                // both LinLog and Hooke kernel paths). node_population is populated
+                // earlier in this same upload pass.
+                if self.node_population.len() == num_nodes {
+                    let k = self.simulation_params.spring_k_knowledge;
+                    let o = self.simulation_params.spring_k_ontology;
+                    let a = self.simulation_params.spring_k_agent;
+                    let spring_scales: Vec<f32> = self.node_population.iter().map(|pop| match pop {
+                        GraphPopulation::Knowledge => k,
+                        GraphPopulation::Ontology => o,
+                        GraphPopulation::Agent => a,
+                    }).collect();
+                    if let Err(e) = compute.upload_spring_scale(&spring_scales) {
+                        warn!("ForceComputeActor: Failed to upload spring_scale: {}", e);
+                    } else {
+                        debug!(
+                            "ForceComputeActor: Uploaded spring_scale (k={:.2} o={:.2} a={:.2}, {} nodes)",
+                            k, o, a, spring_scales.len()
+                        );
                     }
                 }
 
@@ -1248,6 +1364,7 @@ impl Handler<ComputeForces> for ForceComputeActor {
                         nodes_broadcast: 0,
                         iteration: $self.gpu_state.iteration_count,
                         kinetic_energy: f64::MAX, // Unknown — don't trigger false convergence
+                        skipped: true, // benign skip, NOT a GPU failure — must not trip the breaker
                     });
                 }
             };
@@ -1525,36 +1642,34 @@ impl Handler<ComputeForces> for ForceComputeActor {
                                         actor.node_id_buffer.push(node_id);
                                     }
 
-                                // Dual-graph facing-disc projection. Separate the
-                                // knowledge and ontology populations along X and collapse
-                                // each one along that SAME separation axis, so they flatten
-                                // into two parallel discs (spanning Y and Z) whose faces
-                                // point at one another across the gap. Agents stay full-3D
-                                // to visibly bridge the two discs.
+                                // Dual-graph facing-discs projection. Flatten BOTH
+                                // populations along Z into thin X-Y discs, then separate
+                                // them along the SAME Z axis (Knowledge at -sep, Ontology
+                                // at +sep). The two discs end up as parallel X-Y planes
+                                // whose faces point at each other across a depth gap, with
+                                // agents on the mid plane (z=0) and cross-links spanning
+                                // the gap. Viewed from a 3/4 angle the discs face one
+                                // another with connections bridging between them.
                                 //   face_scale = 1.0 -> full-3D blob (no flatten)
-                                //   face_scale = 0.0 -> infinitely thin disc at x = ±sep_x
-                                let sep_x = actor.simulation_params.graph_separation_x;
+                                //   face_scale = 0.0 -> infinitely thin disc in the X-Y plane
+                                let sep = actor.simulation_params.graph_separation_x;
                                 let flatten = actor.simulation_params.axis_compression_z.clamp(0.0, 1.0);
                                 let face_scale = 1.0 - flatten;
-                                let project = (sep_x > 0.0 || flatten > 0.0) && !actor.node_population.is_empty();
+                                let project = (sep > 0.0 || flatten > 0.0) && !actor.node_population.is_empty();
                                 // Once-per-300-iter diagnostic to verify the params reach this site.
                                 if actor.gpu_state.iteration_count % 300 == 0 && project {
                                     info!(
-                                        "ForceComputeActor: facing-disc projection iter={} sep_x={:.1} flatten={:.2} populations={} (k+o+a)",
-                                        actor.gpu_state.iteration_count, sep_x, flatten, actor.node_population.len()
+                                        "ForceComputeActor: facing-disc projection iter={} sep_z={:.1} flatten={:.2} populations={} (k+o+a)",
+                                        actor.gpu_state.iteration_count, sep, flatten, actor.node_population.len()
                                     );
                                 }
-                                if project {
-                                    for (i, (pos, _vel)) in actor.position_velocity_buffer.iter_mut().enumerate() {
-                                        if let Some(&pop) = actor.node_population.get(i) {
-                                            match pop {
-                                                GraphPopulation::Knowledge => pos.x = -sep_x + pos.x * face_scale,
-                                                GraphPopulation::Ontology => pos.x = sep_x + pos.x * face_scale,
-                                                GraphPopulation::Agent => {} // full-3D bridge between the discs
-                                            }
-                                        }
-                                    }
-                                }
+                                // NOTE: projection is applied DISPLAY-ONLY, after the
+                                // divergence guard and last-known-good capture, then undone
+                                // before the next physics step (see below). It must NOT feed
+                                // back into the simulation buffer: doing so makes the 56k
+                                // KG<->ontology cross-links (restLength ~30) span the full
+                                // separation gap every frame and yank both populations back
+                                // together, so the discs never actually separate.
 
                                 // ---------------------------------------------------------
                                 // Divergence guard: detect corrupted/exploding GPU output
@@ -1617,10 +1732,24 @@ impl Handler<ComputeForces> for ForceComputeActor {
                                         if let Some(_seq) = actor.backpressure.try_acquire() {
                                             let mut node_updates =
                                                 Vec::with_capacity(actor.last_good_positions.len());
-                                            for (node_id, pos, vel) in actor.last_good_positions.iter() {
+                                            for (idx, (node_id, pos, vel)) in actor.last_good_positions.iter().enumerate() {
+                                                // Apply the same display-only projection to the
+                                                // fallback so a divergent frame doesn't briefly
+                                                // collapse the two discs back together.
+                                                let mut p = *pos;
+                                                if project {
+                                                    if let Some(&pop) = actor.node_population.get(idx) {
+                                                        p.z *= face_scale;
+                                                        match pop {
+                                                            GraphPopulation::Knowledge => p.y -= sep,
+                                                            GraphPopulation::Ontology => p.y += sep,
+                                                            GraphPopulation::Agent => {}
+                                                        }
+                                                    }
+                                                }
                                                 node_updates.push((*node_id, BinaryNodeDataClient::new(
                                                     *node_id,
-                                                    glam_to_vec3data(*pos),
+                                                    glam_to_vec3data(p),
                                                     glam_to_vec3data(*vel),
                                                 )));
                                             }
@@ -1676,6 +1805,29 @@ impl Handler<ComputeForces> for ForceComputeActor {
                                     let node_id = actor.node_id_buffer[idx];
                                     let (pos, vel) = actor.position_velocity_buffer[idx];
                                     actor.last_good_positions.push((node_id, pos, vel));
+                                }
+
+                                // Display-only dual-graph co-planar projection. The pristine
+                                // physics state is now safely captured in last_good_positions;
+                                // mutate the broadcast buffer in place (separate populations
+                                // along Y, flatten Z into the shared X-Y plane), broadcast,
+                                // then restore the buffer from last_good_positions before the
+                                // next physics step so the integrator never sees the offsets.
+                                if project {
+                                    let centroids = population_centroids_xy(
+                                        &actor.node_population,
+                                        |i| {
+                                            let (p, _) = actor.position_velocity_buffer[i];
+                                            (p.x, p.y)
+                                        },
+                                        actor.position_velocity_buffer.len(),
+                                    );
+                                    let r_max = if sep > 0.0 { sep * 0.85 } else { 0.0 };
+                                    for (i, (pos, _vel)) in actor.position_velocity_buffer.iter_mut().enumerate() {
+                                        if let Some(&pop) = actor.node_population.get(i) {
+                                            project_node_xy(pos, pop, &centroids, sep, face_scale, r_max);
+                                        }
+                                    }
                                 }
 
                                 // Diagnostic: log first few positions on early frames (6 decimal places for velocity)
@@ -1802,6 +1954,19 @@ impl Handler<ComputeForces> for ForceComputeActor {
                                         }
                                     }
                                 } // end normal broadcast else branch
+
+                                // Undo the display-only projection: restore the pristine
+                                // physics positions captured in last_good_positions so the
+                                // next integration step computes forces on the true,
+                                // un-separated, un-flattened layout. Velocities are unchanged
+                                // by projection, but restoring them too keeps the buffer a
+                                // faithful copy of last_good_positions.
+                                if project {
+                                    for idx in 0..actor.position_velocity_buffer.len() {
+                                        let (_node_id, pos, vel) = actor.last_good_positions[idx];
+                                        actor.position_velocity_buffer[idx] = (pos, vel);
+                                    }
+                                }
                                 } // end NaN guard else (clean positions)
                                 }
                             }
@@ -1837,6 +2002,7 @@ impl Handler<ComputeForces> for ForceComputeActor {
                                     nodes_broadcast: actor.position_velocity_buffer.len() as u32,
                                     iteration: actor.gpu_state.iteration_count,
                                     kinetic_energy: step_kinetic_energy,
+                                    skipped: false,
                                 });
                             }
 
@@ -1857,6 +2023,7 @@ impl Handler<ComputeForces> for ForceComputeActor {
                                     nodes_broadcast: 0,
                                     iteration: actor.gpu_state.iteration_count,
                                     kinetic_energy: f64::MAX,
+                                    skipped: false, // real GPU compute failure
                                 });
                             }
 
@@ -1878,6 +2045,7 @@ impl Handler<ComputeForces> for ForceComputeActor {
                             nodes_broadcast: 0,
                             iteration: actor.gpu_state.iteration_count,
                             kinetic_energy: f64::MAX,
+                            skipped: false, // real GPU access failure
                         });
                     }
 
@@ -1938,7 +2106,10 @@ impl Handler<UpdateSimulationParams> for ForceComputeActor {
             && cur.use_sssp_distances == msg.params.use_sssp_distances
             && cur.warmup_iterations == msg.params.warmup_iterations
             && cur.constraint_ramp_frames == msg.params.constraint_ramp_frames
-            && (cur.constraint_max_force_per_node - msg.params.constraint_max_force_per_node).abs() < eps;
+            && (cur.constraint_max_force_per_node - msg.params.constraint_max_force_per_node).abs() < eps
+            && (cur.spring_k_knowledge - msg.params.spring_k_knowledge).abs() < eps
+            && (cur.spring_k_ontology - msg.params.spring_k_ontology).abs() < eps
+            && (cur.spring_k_agent - msg.params.spring_k_agent).abs() < eps;
 
         if physics_unchanged {
             debug!(
@@ -1959,7 +2130,42 @@ impl Handler<UpdateSimulationParams> for ForceComputeActor {
         let prior_repel_k = self.simulation_params.repel_k.max(1.0);
         let new_repel_k = msg.params.repel_k.max(1.0);
 
+        // Detect per-population spring changes so we re-upload the spring_scale buffer
+        // (it is otherwise only set on graph load). These drive the independent
+        // Knowledge/Ontology/Agent spring sliders.
+        let spring_pop_changed =
+            (self.simulation_params.spring_k_knowledge - msg.params.spring_k_knowledge).abs() >= eps
+            || (self.simulation_params.spring_k_ontology - msg.params.spring_k_ontology).abs() >= eps
+            || (self.simulation_params.spring_k_agent - msg.params.spring_k_agent).abs() >= eps;
+
         self.update_simulation_parameters(msg.params);
+
+        // Re-upload spring_scale on any per-population spring change so the new
+        // coefficients reach the GPU without requiring a full graph re-upload.
+        if spring_pop_changed && !self.node_population.is_empty() {
+            if let Some(ref ctx) = self.shared_context {
+                if let Ok(mut compute) = ctx.unified_compute.lock() {
+                    if self.node_population.len() == compute.num_nodes {
+                        let k = self.simulation_params.spring_k_knowledge;
+                        let o = self.simulation_params.spring_k_ontology;
+                        let a = self.simulation_params.spring_k_agent;
+                        let spring_scales: Vec<f32> = self.node_population.iter().map(|pop| match pop {
+                            GraphPopulation::Knowledge => k,
+                            GraphPopulation::Ontology => o,
+                            GraphPopulation::Agent => a,
+                        }).collect();
+                        if let Err(e) = compute.upload_spring_scale(&spring_scales) {
+                            warn!("ForceComputeActor: spring_scale re-upload failed: {}", e);
+                        } else {
+                            info!(
+                                "ForceComputeActor: spring_scale re-uploaded (k={:.2} o={:.2} a={:.2})",
+                                k, o, a
+                            );
+                        }
+                    }
+                }
+            }
+        }
 
         // Recovery: a deliberate parameter change re-arms a divergence-halted
         // simulation. If the breaker was tripped, restore last-good positions and
@@ -2087,10 +2293,18 @@ impl Handler<ForceFullBroadcast> for ForceComputeActor {
                     // snapshot is consistent with physics-stepped broadcasts. Without
                     // this, a settings change broadcasts raw GPU positions and, if the
                     // sim has converged, the projected positions never overwrite them.
-                    let sep_x = actor.simulation_params.graph_separation_x;
+                    let sep = actor.simulation_params.graph_separation_x;
                     let flatten = actor.simulation_params.axis_compression_z.clamp(0.0, 1.0);
                     let face_scale = 1.0 - flatten;
-                    let project = (sep_x > 0.0 || flatten > 0.0) && !actor.node_population.is_empty();
+                    let project = (sep > 0.0 || flatten > 0.0) && !actor.node_population.is_empty();
+
+                    // Mirror the main loop: per-population median centring + rim clamp.
+                    let centroids = if project {
+                        population_centroids_xy(&actor.node_population, |i| (pos_x[i], pos_y[i]), pos_x.len())
+                    } else {
+                        [(0.0f32, 0.0f32); 3]
+                    };
+                    let r_max = if sep > 0.0 { sep * 0.85 } else { 0.0 };
 
                     let mut node_updates = Vec::with_capacity(pos_x.len());
                     for i in 0..pos_x.len() {
@@ -2101,13 +2315,7 @@ impl Handler<ForceFullBroadcast> for ForceComputeActor {
                         }
                         if project {
                             if let Some(&pop) = actor.node_population.get(i) {
-                                // Facing-disc projection (mirror of main loop): collapse
-                                // each population along the X separation axis into a disc.
-                                match pop {
-                                    GraphPopulation::Knowledge => position.x = -sep_x + position.x * face_scale,
-                                    GraphPopulation::Ontology => position.x = sep_x + position.x * face_scale,
-                                    GraphPopulation::Agent => {}
-                                }
+                                project_node_xy(&mut position, pop, &centroids, sep, face_scale, r_max);
                             }
                         }
                         let node_id = actor.gpu_index_to_node_id.get(i).copied().unwrap_or(i as u32);
@@ -2120,8 +2328,8 @@ impl Handler<ForceFullBroadcast> for ForceComputeActor {
 
                     if let Some(ref graph_addr) = actor.graph_service_addr {
                         info!(
-                            "ForceComputeActor: IMMEDIATE full broadcast — {} nodes (pure snapshot, projected={} sep_x={:.1} flatten={:.2})",
-                            node_updates.len(), project, sep_x, flatten
+                            "ForceComputeActor: IMMEDIATE full broadcast — {} nodes (pure snapshot, projected={} sep_y={:.1} flatten={:.2})",
+                            node_updates.len(), project, sep, flatten
                         );
                         graph_addr.do_send(crate::actors::messages::UpdateNodePositions {
                             positions: node_updates,

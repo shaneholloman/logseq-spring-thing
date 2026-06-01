@@ -65,6 +65,10 @@ export function useGraphFiltering(
   // Owns linked_page visibility: when false, wikilink-stub nodes (linked_page)
   // are excluded from the render set entirely (default false, matches server flag).
   const includeLinkedPages = storeNodeFilter?.includeLinkedPages ?? false;
+  // Degree cutoff: hide nodes whose graph degree is below this (default 0 = off).
+  // Set to 1 to suppress the degree-0 orphan spray. Keys directly on the edge-
+  // derived connectionCountMap, independent of the quality/authority filter.
+  const minConnections = storeNodeFilter?.minConnections ?? 0;
 
   // Log filter settings changes for debugging
   useEffect(() => {
@@ -95,6 +99,14 @@ export function useGraphFiltering(
           || (node as unknown as { nodeType?: string }).nodeType
           || '';
         if (nodeType === 'linked_page') {
+          return false;
+        }
+      }
+
+      // Degree cutoff: drop orphans / low-degree nodes when minConnections > 0.
+      if (minConnections > 0) {
+        const degree = connectionCountMap.get(node.id) || 0;
+        if (degree < minConnections) {
           return false;
         }
       }

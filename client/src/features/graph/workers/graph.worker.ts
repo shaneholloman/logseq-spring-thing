@@ -195,15 +195,20 @@ class GraphWorker {
    * D7 binary entry point — ADR-03 Phase 4.
    *
    * SAB mode (positionView set): returns `undefined`; the renderer reads the SAB view directly.
-   * Comlink mode: returns a fresh transferred ArrayBuffer containing the position data.
+   * Comlink mode: returns a fresh transferred ArrayBuffer with the FULL stride-3,
+   *   node-index-ordered currentPositions — the same layout the renderer reads from the
+   *   SAB (positions[nodeIndex*3 + {0,1,2}]). Returning the stride-4 [nodeId,x,y,z] update
+   *   array here would make the renderer read node-ID fields as coordinates.
    */
   async processBinaryFrame(data: ArrayBuffer): Promise<ArrayBuffer | void> {
-    const positions = await this.processBinaryData(data);
+    await this.processBinaryData(data);
     if (this.positionView) {
       return;
     }
-    const out = new ArrayBuffer(positions.byteLength);
-    new Float32Array(out).set(positions);
+    const src = this.currentPositions;
+    if (!src) return;
+    const out = new ArrayBuffer(src.byteLength);
+    new Float32Array(out).set(src);
     return transfer(out, [out]) as unknown as ArrayBuffer;
   }
 
@@ -289,6 +294,17 @@ class GraphWorker {
     this.lastUnknownNodeAlert = warnUnknownNodes(
       unknownCount, this.unknownNodeIds.size, this.lastUnknownNodeAlert,
     );
+
+    // Server is authoritative: reflect target positions into currentPositions and
+    // publish to the SAB the renderer reads (getPositionsSync). The D7 refactor
+    // (c99a18bc2) wired the renderer to read the SAB directly but left the tween
+    // loop (tick → syncToSharedBuffer) with no callers, so without this the SAB
+    // stays frozen at the initial layout and every server frame dies in
+    // targetPositions — the graph never reflects server physics.
+    if (this.currentPositions && this.currentPositions.length === this.targetPositions!.length) {
+      this.currentPositions.set(this.targetPositions!);
+    }
+    this.syncToSharedBuffer();
 
     return positionArray;
   }

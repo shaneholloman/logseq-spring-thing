@@ -44,6 +44,16 @@ pub struct InitializeSwarmRequest {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct SettingsCommandRequest {
+    /// Natural-language view/graph configuration request from the command box.
+    pub command: String,
+    /// Flattened settings catalogue (path | label | range | current | description)
+    /// assembled client-side from UNIFIED_SETTINGS_CONFIG + live store values.
+    pub settings_context: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SpawnAgentHybridRequest {
     pub agent_type: String,
     pub swarm_id: String,
@@ -459,6 +469,107 @@ pub async fn spawn_agent_hybrid(
                     message: None,
                 })
             )
+        }
+    }
+}
+
+/// Settings-aware LLM command handler. Reuses the existing CreateTask transport
+/// (TaskOrchestratorActor → ManagementApiClient → agentbox /v1/tasks) rather than
+/// introducing a new path to the agents. The agent receives the live settings +
+/// descriptions context and applies changes back through the existing
+/// /api/settings/* REST API.
+pub async fn process_settings_command(
+    _auth: crate::settings::auth_extractor::AuthenticatedUser,
+    state: web::Data<AppState>,
+    req: web::Json<SettingsCommandRequest>,
+) -> Result<impl Responder> {
+    let command = req.command.trim().to_string();
+    if command.is_empty() {
+        return Ok(HttpResponse::BadRequest().json(json!({
+            "success": false,
+            "error": "command is empty",
+        })));
+    }
+
+    // Base URL the agentbox agent should hit to apply settings. Defaults to the
+    // visionclaw container's backend on the shared docker network.
+    let settings_base = std::env::var("VISIONCLAW_INTERNAL_URL")
+        .unwrap_or_else(|_| "http://visionclaw_container:4000".to_string());
+
+    // agentbox /v1/tasks rejects task strings over 10000 chars. The static
+    // template below is ~1KB, so cap the catalogue at 8500 chars (char-boundary
+    // safe) as a defensive net in case the client sends an oversized context.
+    let mut context = req.settings_context.clone().unwrap_or_default();
+    const MAX_CONTEXT: usize = 8500;
+    if context.len() > MAX_CONTEXT {
+        let mut end = MAX_CONTEXT;
+        while end > 0 && !context.is_char_boundary(end) {
+            end -= 1;
+        }
+        context.truncate(end);
+        context.push_str("\n…(catalogue truncated to fit task limit)");
+    }
+
+    let task = format!(
+        "You are the VisionClaw graph settings assistant. The user issued this \
+view/graph configuration request via the in-app command box:\n\n\
+\"{command}\"\n\n\
+Below is the live settings catalogue. Each line is:\n  \
+<path> :: <label> (<type>) range=[min..max step S] :: current=<value> :: <description>\n\n\
+{context}\n\n\
+TASK: Decide which setting path(s) best satisfy the request and compute new values \
+within the stated ranges. Apply EACH change with an HTTP PUT to \
+{settings_base}/api/settings/<path> with JSON body {{\"value\": <new_value>}} \
+(use the dotted path verbatim, e.g. \
+visualisation.graphs.logseq.physics.springKKnowledge). \
+Only change settings clearly implied by the request; do not touch unrelated paths. \
+If the request is not a view/graph configuration change, make no changes. \
+After applying, report a one-line summary of each path you changed and its new value.\n\n\
+**COMMUNICATION PROTOCOL:** Messages are shown in the user's telemetry panel in \
+real-time. Use it for progress, decisions, and results.",
+        command = command,
+        context = context,
+        settings_base = settings_base,
+    );
+
+    let provider = std::env::var("PRIMARY_PROVIDER").unwrap_or_else(|_| "gemini".to_string());
+
+    let create_task_msg = CreateTask {
+        agent: "researcher".to_string(),
+        task,
+        provider: provider.clone(),
+    };
+
+    match state
+        .get_task_orchestrator_addr()
+        .send(create_task_msg)
+        .await
+    {
+        Ok(Ok(task_response)) => {
+            info!(
+                "Settings command dispatched via Management API - Task ID: {}",
+                task_response.task_id
+            );
+            accepted!(json!({
+                "success": true,
+                "taskId": task_response.task_id,
+                "message": "Settings assistant dispatched",
+                "provider": provider,
+            }))
+        }
+        Ok(Err(e)) => {
+            error!("Failed to dispatch settings command: {}", e);
+            Ok(HttpResponse::InternalServerError().json(json!({
+                "success": false,
+                "error": format!("Failed to create task: {}", e),
+            })))
+        }
+        Err(e) => {
+            error!("Settings command actor communication error: {}", e);
+            Ok(HttpResponse::InternalServerError().json(json!({
+                "success": false,
+                "error": format!("Actor communication error: {}", e),
+            })))
         }
     }
 }

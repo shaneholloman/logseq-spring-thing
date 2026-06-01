@@ -155,6 +155,11 @@ impl SimParams {
             scaling_ratio: self.scaling_ratio,
             adaptive_speed: self.adaptive_speed != 0,
             global_speed: self.global_speed,
+            // Per-population spring multipliers (LinLog identity). This GPU-side
+            // struct has no per-population source, so default to 1.0.
+            spring_k_knowledge: 1.0,
+            spring_k_ontology: 1.0,
+            spring_k_agent: 1.0,
         }
     }
 }

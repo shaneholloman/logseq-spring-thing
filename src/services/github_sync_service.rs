@@ -393,12 +393,12 @@ impl GitHubSyncService {
             }
         }
 
-        // Post-sync: stop surfacing degree-1 dangling `linked_page` stubs.
-        match self.prune_dangling_link_stubs(&mut stats).await {
-            Ok(n) => info!("Pruned {} dangling linked_page stub nodes", n),
+        // Post-sync: fold low-fan-out wikilink stubs into weights + springs.
+        match self.fold_low_fanout_stubs(&mut stats).await {
+            Ok(n) => info!("Folded {} low-fan-out linked_page stub nodes", n),
             Err(e) => {
-                warn!("Dangling-stub prune failed (non-fatal): {}", e);
-                stats.errors.push(format!("prune_stubs: {}", e));
+                warn!("Low-fan-out stub fold failed (non-fatal): {}", e);
+                stats.errors.push(format!("fold_stubs: {}", e));
             }
         }
 
@@ -424,63 +424,182 @@ impl GitHubSyncService {
         Ok(stats)
     }
 
-    /// Post-sync prune: stop surfacing degree-1 dangling `linked_page` stubs.
+    /// Post-sync: fold low-fan-out wikilink stubs out of the rendered graph.
     ///
     /// `ensure_stub_from_link` materialises a `linked_page` node for every
-    /// outbound wikilink/IRI target that lacks an authored JSON-LD page. Most
-    /// are dangling references cited exactly once — they inflate the render and
-    /// force graph without adding navigable structure. This pass loads the full
-    /// graph, computes global degree, and removes every `linked_page` whose
-    /// degree <= 1 along with its incident edges. Authored pages, ontology
-    /// nodes, and well-connected stubs (degree >= 2) are untouched.
-    async fn prune_dangling_link_stubs(&self, stats: &mut SyncStatistics) -> Result<usize, String> {
+    /// outbound wikilink target lacking an authored page. Targets cited by only
+    /// a handful of pages add no navigable structure — a degree-1 stub cannot
+    /// cluster anything (it touches one page), and a low-degree stub is cheaper
+    /// expressed as coupling between its referrers than as a body in the graph.
+    /// Rather than render these as nodes, this pass folds their signal back into
+    /// the real graph:
+    ///
+    ///   * every page that referenced a folded target gains weight (mass
+    ///     nuance), so heavily-cross-referencing pages stay denser in layout;
+    ///   * a target cited by ≥2 pages contributes a co-citation spring between
+    ///     those pages (bibliographic coupling), so a shared rare concept still
+    ///     pulls related pages together — without occupying a node.
+    ///
+    /// Authored pages, ontology stubs (`owl_class`/`owl_individual`), and
+    /// `linked_page` hubs whose fan-out reaches `FANOUT_NODE_THRESHOLD` are left
+    /// intact: for a high-degree hub the star (1 node, d edges) is far cheaper
+    /// than the co-citation clique (d·(d-1)/2 edges) it would expand into, so
+    /// the node *is* the efficient encoding above the threshold.
+    ///
+    /// `FANOUT_NODE_THRESHOLD` (env, default 3): stubs with global fan-out
+    /// strictly below this are folded; ≥ this are kept as hubs. Returns the
+    /// number of stub nodes folded out.
+    async fn fold_low_fanout_stubs(&self, stats: &mut SyncStatistics) -> Result<usize, String> {
+        const WEIGHT_PER_FOLDED_LINK: f32 = 0.1;
+        const COCITE_WEIGHT: f32 = 0.5;
+
+        let threshold: usize = std::env::var("FANOUT_NODE_THRESHOLD")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .filter(|&n| n >= 1)
+            .unwrap_or(3);
+
         let graph = self
             .kg_repo
             .load_graph()
             .await
             .map_err(|e| format!("load_graph: {}", e))?;
 
+        // A stub's degree == its global fan-out (all its edges are inbound
+        // source→stub references aggregated across every batch).
         let mut degree: std::collections::HashMap<u32, usize> = std::collections::HashMap::new();
         for edge in &graph.edges {
             *degree.entry(edge.source).or_insert(0) += 1;
             *degree.entry(edge.target).or_insert(0) += 1;
         }
 
-        let prune_ids: std::collections::HashSet<u32> = graph
+        let fold_ids: std::collections::HashSet<u32> = graph
             .nodes
             .iter()
             .filter(|n| n.node_type.as_deref() == Some("linked_page"))
-            .filter(|n| degree.get(&n.id).copied().unwrap_or(0) <= 1)
+            .filter(|n| degree.get(&n.id).copied().unwrap_or(0) < threshold)
             .map(|n| n.id)
             .collect();
 
-        if prune_ids.is_empty() {
+        if fold_ids.is_empty() {
             return Ok(0);
         }
 
-        let prune_edge_ids: Vec<String> = graph
-            .edges
-            .iter()
-            .filter(|e| prune_ids.contains(&e.source) || prune_ids.contains(&e.target))
-            .map(|e| e.id.clone())
-            .collect();
+        // Map each folded stub to the real nodes that referenced it, and gather
+        // every star edge incident to a folded stub for removal.
+        let mut referrers: std::collections::HashMap<u32, Vec<u32>> = std::collections::HashMap::new();
+        let mut remove_edge_ids: Vec<String> = Vec::new();
+        for edge in &graph.edges {
+            let (stub, other) = if fold_ids.contains(&edge.target) {
+                (edge.target, edge.source)
+            } else if fold_ids.contains(&edge.source) {
+                (edge.source, edge.target)
+            } else {
+                continue;
+            };
+            remove_edge_ids.push(edge.id.clone());
+            // A non-folded referrer is a real page/ontology node; only those
+            // carry the folded signal (skip stub↔stub edges).
+            if !fold_ids.contains(&other) {
+                referrers.entry(stub).or_default().push(other);
+            }
+        }
 
-        if !prune_edge_ids.is_empty() {
-            let n_edges = prune_edge_ids.len();
+        // (a) Mass nuance per referring page; (b) co-citation springs between
+        // pages that shared a folded target. `refs` is tiny (< threshold), so
+        // the pairwise expansion is bounded.
+        let mut weight_bonus: std::collections::HashMap<u32, f32> = std::collections::HashMap::new();
+        let mut cocite: std::collections::HashMap<(u32, u32), f32> = std::collections::HashMap::new();
+        for refs in referrers.values() {
+            for &n in refs {
+                *weight_bonus.entry(n).or_insert(0.0) += WEIGHT_PER_FOLDED_LINK;
+            }
+            for i in 0..refs.len() {
+                for j in (i + 1)..refs.len() {
+                    if refs[i] == refs[j] {
+                        continue;
+                    }
+                    let key = if refs[i] < refs[j] {
+                        (refs[i], refs[j])
+                    } else {
+                        (refs[j], refs[i])
+                    };
+                    *cocite.entry(key).or_insert(0.0) += COCITE_WEIGHT;
+                }
+            }
+        }
+
+        // Remove the star edges into folded stubs.
+        if !remove_edge_ids.is_empty() {
+            let n_edges = remove_edge_ids.len();
             self.kg_repo
-                .batch_remove_edges(prune_edge_ids)
+                .batch_remove_edges(remove_edge_ids)
                 .await
                 .map_err(|e| format!("batch_remove_edges: {}", e))?;
             stats.total_edges = stats.total_edges.saturating_sub(n_edges);
         }
 
-        let prune_node_ids: Vec<u32> = prune_ids.into_iter().collect();
-        let n_nodes = prune_node_ids.len();
+        // Remove the folded stub nodes.
+        let fold_node_ids: Vec<u32> = fold_ids.iter().copied().collect();
+        let n_nodes = fold_node_ids.len();
         self.kg_repo
-            .batch_remove_nodes(prune_node_ids)
+            .batch_remove_nodes(fold_node_ids)
             .await
             .map_err(|e| format!("batch_remove_nodes: {}", e))?;
         stats.total_nodes = stats.total_nodes.saturating_sub(n_nodes);
+
+        // Add co-citation springs (deduped; weight accumulated across every
+        // folded target two pages shared).
+        let n_cocite = cocite.len();
+        if !cocite.is_empty() {
+            let cocite_edges: Vec<Edge> = cocite
+                .into_iter()
+                .map(|((a, b), w)| Edge {
+                    id: format!("{}_{}_cocite", a, b),
+                    source: a,
+                    target: b,
+                    weight: w,
+                    edge_type: Some("co_citation".to_string()),
+                    owl_property_iri: None,
+                    metadata: None,
+                })
+                .collect();
+            match self.kg_repo.batch_add_edges(cocite_edges).await {
+                Ok(ids) => stats.total_edges += ids.len(),
+                Err(e) => {
+                    warn!("Co-citation spring write failed (non-fatal): {}", e);
+                    stats.errors.push(format!("cocite_edges: {}", e));
+                }
+            }
+        }
+
+        // Apply mass nuance to the referring pages that survived the fold.
+        let n_reweighted = weight_bonus.len();
+        if !weight_bonus.is_empty() {
+            let updated: Vec<visionclaw_domain::models::node::Node> = graph
+                .nodes
+                .iter()
+                .filter(|n| !fold_ids.contains(&n.id))
+                .filter_map(|n| {
+                    weight_bonus.get(&n.id).map(|bonus| {
+                        let mut node = n.clone();
+                        node.weight = Some(node.weight.unwrap_or(1.0) + bonus);
+                        node
+                    })
+                })
+                .collect();
+            if !updated.is_empty() {
+                if let Err(e) = self.kg_repo.batch_update_nodes(updated).await {
+                    warn!("Mass-nuance node update failed (non-fatal): {}", e);
+                    stats.errors.push(format!("weight_nuance: {}", e));
+                }
+            }
+        }
+
+        info!(
+            "Folded {} low-fan-out linked_page stubs (threshold {}): +{} co-citation springs, {} pages re-weighted",
+            n_nodes, threshold, n_cocite, n_reweighted
+        );
 
         Ok(n_nodes)
     }

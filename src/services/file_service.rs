@@ -320,10 +320,11 @@ impl FileService {
         let github_config =
             GitHubConfig::from_env().map_err(|e| Box::new(e) as Box<dyn StdError + Send + Sync>)?;
 
-        // Detect base path change — wipe local cache if target directory changed
-        let current_base_path = github_config.base_path.clone();
+        // Detect base path change — wipe local cache if the source set changed.
+        // Key on the full path set so adding/removing a source dir is detected.
+        let current_base_path = github_config.base_paths.join(",");
         if Self::base_path_changed(&current_base_path) {
-            info!("GITHUB_BASE_PATH changed to '{}' — clearing local file cache for fresh ingest", current_base_path);
+            info!("GITHUB ingest paths changed to '{}' — clearing local file cache for fresh ingest", current_base_path);
             Self::clear_local_cache();
             Self::save_base_path_marker(&current_base_path);
         }

@@ -210,12 +210,16 @@ pub(crate) fn handle_request_full_snapshot(
     ctx.spawn(fut.map(move |snapshot, _act, ctx| {
         let mut all_nodes = Vec::new();
 
+        // IDs were already stamped with the correct type flag when the snapshot
+        // was built (knowledge bucket also carries ontology-class/individual/
+        // property flags). Re-applying set_knowledge_flag here would mask off
+        // those ontology bits and mis-classify every ontology node as knowledge.
         for (id, data) in snapshot.knowledge_nodes {
-            all_nodes.push((binary_protocol::set_knowledge_flag(id), data));
+            all_nodes.push((id, data));
         }
 
         for (id, data) in snapshot.agent_nodes {
-            all_nodes.push((binary_protocol::set_agent_flag(id), data));
+            all_nodes.push((id, data));
         }
 
         if !all_nodes.is_empty() {
@@ -585,6 +589,30 @@ pub(crate) fn handle_subscribe_position_updates(
                 ctx.run_later(next_interval, move |act, ctx| {
                     // Stop re-injecting once a newer subscribe takes over this client,
                     // otherwise duplicate loops would persist indefinitely.
+                    if act.position_sub_generation != my_generation {
+                        return;
+                    }
+                    let subscription_msg = format!(
+                        "{{\"type\":\"subscribe_position_updates\",\"data\":{{\"interval\":{},\"binary\":{}}}}}",
+                        actual_interval, binary
+                    );
+                    <SocketFlowServer as StreamHandler<
+                        Result<ws::Message, ws::ProtocolError>,
+                    >>::handle(
+                        act,
+                        Ok(ws::Message::Text(subscription_msg.into())),
+                        ctx,
+                    );
+                });
+            } else {
+                // fetch_nodes returned None (transient: graph empty mid-rebuild,
+                // or GraphServiceActor momentarily unavailable). DO NOT let the
+                // self-perpetuating loop die — a single dropped tick would
+                // silently stop position streaming for the rest of the client's
+                // session. Reschedule the re-subscribe so the loop self-heals
+                // once the graph repopulates.
+                let retry_interval = std::time::Duration::from_millis(actual_interval);
+                ctx.run_later(retry_interval, move |act, ctx| {
                     if act.position_sub_generation != my_generation {
                         return;
                     }

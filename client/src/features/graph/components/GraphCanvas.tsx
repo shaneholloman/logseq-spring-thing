@@ -114,6 +114,18 @@ const CameraAspectSync: React.FC = () => {
   const width = useThree(s => s.size.width);
   const height = useThree(s => s.size.height);
   const invalidate = useThree(s => s.invalidate);
+  const scene = useThree(s => s.scene);
+  const gl = useThree(s => s.gl);
+  const controls = useThree(s => s.controls);
+
+  useEffect(() => {
+    const w = window as any;
+    w.__camera = camera;
+    w.__scene = scene;
+    w.__gl = gl;
+    w.__controls = controls;
+    w.__invalidate = invalidate;
+  }, [camera, scene, gl, controls, invalidate]);
 
   useEffect(() => {
     // R3F tags cameras it manages with a `manual` flag that THREE's type omits.
@@ -365,7 +377,8 @@ const GraphCanvas: React.FC = () => {
 
                 {}
                 <OrbitControls
-                    ref={orbitControlsRef}
+                    ref={(c: any) => { orbitControlsRef.current = c; (window as any).__orbit = c; }}
+                    makeDefault
                     enablePan={true}
                     enableZoom={true}
                     enableRotate={true}

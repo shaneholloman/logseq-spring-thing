@@ -460,7 +460,8 @@ impl UnifiedGPUCompute {
                     self.constraint_data.as_device_ptr(),
                     self.num_constraints as i32,
                     self.should_skip_physics.as_device_ptr(),
-                    d_node_degrees
+                    d_node_degrees,
+                    self.spring_scale.as_device_ptr()
                 ))?;
             } else {
 
@@ -492,7 +493,9 @@ impl UnifiedGPUCompute {
                     self.class_charge.as_device_ptr(),
                     self.class_mass.as_device_ptr(),
                     // FA2 degree-scaled repulsion
-                    d_node_degrees
+                    d_node_degrees,
+                    // Per-population spring strength multiplier
+                    self.spring_scale.as_device_ptr()
                 ))?;
             }
         }
@@ -700,7 +703,8 @@ impl UnifiedGPUCompute {
     }
 
     pub fn get_node_positions(&mut self) -> Result<(Vec<f32>, Vec<f32>, Vec<f32>)> {
-
+        let _thread_context = Context::new(self.device.clone())
+            .map_err(|e| anyhow!("Failed to set CUDA context: {}", e))?;
 
         let mut pos_x = vec![0.0f32; self.allocated_nodes];
         let mut pos_y = vec![0.0f32; self.allocated_nodes];
@@ -720,7 +724,8 @@ impl UnifiedGPUCompute {
     }
 
     pub fn get_node_velocities(&mut self) -> Result<(Vec<f32>, Vec<f32>, Vec<f32>)> {
-
+        let _thread_context = Context::new(self.device.clone())
+            .map_err(|e| anyhow!("Failed to set CUDA context: {}", e))?;
 
         let mut vel_x = vec![0.0f32; self.allocated_nodes];
         let mut vel_y = vec![0.0f32; self.allocated_nodes];
@@ -742,6 +747,11 @@ impl UnifiedGPUCompute {
     /// Inject random velocity perturbation to break equilibrium after param changes.
     /// `factor` scales magnitude (0.3 = mild re-layout, 1.0 = strong shake).
     pub fn inject_velocity_perturbation(&mut self, factor: f32) -> Result<()> {
+        // Bind the primary CUDA context to this thread. Called from spawn_blocking
+        // worker threads which do not inherit the context, so the device copies below
+        // would otherwise fail with CUDA_ERROR_INVALID_CONTEXT and poison the step.
+        let _thread_context = Context::new(self.device.clone())
+            .map_err(|e| anyhow!("Failed to set CUDA context: {}", e))?;
         use rand::Rng;
         let mut rng = rand::thread_rng();
         let n = self.num_nodes.min(self.allocated_nodes);
@@ -767,6 +777,8 @@ impl UnifiedGPUCompute {
     /// breaker to drain runaway kinetic energy so the layout can re-settle from
     /// its restored (last-known-good) positions instead of re-exploding.
     pub fn reset_velocities(&mut self) -> Result<()> {
+        let _thread_context = Context::new(self.device.clone())
+            .map_err(|e| anyhow!("Failed to set CUDA context: {}", e))?;
         let zeros = vec![0.0f32; self.allocated_nodes];
         safe_copy_to_device(&mut self.vel_in_x, &zeros, "vel_in_x")?;
         safe_copy_to_device(&mut self.vel_in_y, &zeros, "vel_in_y")?;

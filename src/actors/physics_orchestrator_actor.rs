@@ -1668,7 +1668,17 @@ impl Handler<crate::actors::messages::PhysicsStepCompleted> for PhysicsOrchestra
         // is NOT a converged/stable equilibrium — treat it strictly as an error
         // marker.  Count consecutive failures; after the threshold, stop
         // rescheduling the pipeline instead of looping forever broadcasting MAX.
-        let gpu_step_failed = !msg.kinetic_energy.is_finite() || msg.kinetic_energy >= f64::MAX;
+        // A benign skip (no graph uploaded yet, a step already in flight, or GPU
+        // context still initialising) reports `kinetic_energy: f64::MAX` purely to
+        // avoid a false convergence reading — it is NOT a compute failure. Counting
+        // skips here latched a permanent DEGRADED halt during startup before the
+        // first real step ever completed, freezing the layout. A skip therefore
+        // neither advances the circuit breaker nor clears it; it falls through to
+        // the normal reschedule so the pipeline keeps retrying until the GPU is
+        // ready. Only a real step (skipped == false) with invalid energy is a
+        // genuine GPU failure.
+        let energy_invalid = !msg.kinetic_energy.is_finite() || msg.kinetic_energy >= f64::MAX;
+        let gpu_step_failed = energy_invalid && !msg.skipped;
         if gpu_step_failed {
             self.consecutive_gpu_failures = self.consecutive_gpu_failures.saturating_add(1);
 
@@ -1689,8 +1699,9 @@ impl Handler<crate::actors::messages::PhysicsStepCompleted> for PhysicsOrchestra
                 self.broadcast_physics_paused();
                 return;
             }
-        } else {
-            // First successful (finite, non-sentinel) step clears the failure run.
+        } else if !msg.skipped {
+            // First genuine (finite, non-sentinel) step clears the failure run.
+            // A skip is neither a failure nor a success, so it leaves the run intact.
             if self.consecutive_gpu_failures > 0 {
                 debug!(
                     "PhysicsOrchestratorActor: GPU recovered after {} consecutive failures",
@@ -1728,7 +1739,7 @@ impl Handler<crate::actors::messages::PhysicsStepCompleted> for PhysicsOrchestra
             // but casting it to f32 produces INFINITY, which would poison
             // convergence/equilibrium checks and mask a GPU error as a stable
             // state.  Treat it as "not a valid energy" and keep the previous value.
-            if !gpu_step_failed {
+            if !energy_invalid {
                 stats.kinetic_energy = msg.kinetic_energy as f32;
             }
             stats.iteration_count = msg.iteration;

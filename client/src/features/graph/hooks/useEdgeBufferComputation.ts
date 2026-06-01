@@ -69,8 +69,12 @@ export function useEdgeBufferComputation(opts: EdgeBufferComputationOptions) {
     const positions = nodePositionsRef.current
     if (!positions) return
 
-    const positionsValid = positions.length >= graphData.edges.length && graphData.nodes.length > 0
-    if (!positionsValid || positions.length < graphData.nodes.length * 3) return
+    // Position-buffer sufficiency is a function of NODE count (3 floats/node),
+    // never edge count. The prior `positions.length >= graphData.edges.length`
+    // guard froze the whole edge pipeline whenever a graph had more edges than
+    // position-buffer floats (e.g. 94k edges vs 84k floats) — edges then never
+    // refiltered/cleared, so node-type visibility toggles had no effect on them.
+    if (graphData.nodes.length === 0 || positions.length < graphData.nodes.length * 3) return
 
     const edgeCount       = graphData.edges.length
     const edgeBufferNeeded = edgeCount * 6

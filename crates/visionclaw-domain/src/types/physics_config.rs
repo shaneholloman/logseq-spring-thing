@@ -33,6 +33,10 @@ fn default_global_speed() -> f32 {
     0.5
 }
 
+fn default_spring_pop_scale() -> f32 {
+    1.0
+}
+
 fn default_sssp_alpha() -> f32 {
     1.5
 }
@@ -308,6 +312,17 @@ pub struct PhysicsSettings {
     /// FA2 base integration speed.
     #[serde(default = "default_global_speed", alias = "global_speed")]
     pub global_speed: f32,
+
+    /// Per-population spring strength multipliers (literal kernel coefficient,
+    /// 1.0 == current LinLog identity). These drive the independent
+    /// Knowledge/Ontology/Agent spring sliders end-to-end into the GPU spring_scale
+    /// buffer; the global `spring_k` stays the Hooke-mode stiffness.
+    #[serde(default = "default_spring_pop_scale", alias = "spring_k_knowledge")]
+    pub spring_k_knowledge: f32,
+    #[serde(default = "default_spring_pop_scale", alias = "spring_k_ontology")]
+    pub spring_k_ontology: f32,
+    #[serde(default = "default_spring_pop_scale", alias = "spring_k_agent")]
+    pub spring_k_agent: f32,
 }
 
 impl Default for PhysicsSettings {
@@ -329,7 +344,7 @@ impl Default for PhysicsSettings {
             spring_k: 15.0,
             boundary_damping: 0.95,
             dt: 0.016,
-            temperature: 1.0,
+            temperature: 0.0,
             gravity: 0.0001,
             cluster_strength: 0.002,
 
@@ -357,6 +372,9 @@ impl Default for PhysicsSettings {
             scaling_ratio: 10.0,
             adaptive_speed: true,
             global_speed: 0.5,
+            spring_k_knowledge: 1.0,
+            spring_k_ontology: 1.0,
+            spring_k_agent: 1.0,
         }
     }
 }

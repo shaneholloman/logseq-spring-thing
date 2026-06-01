@@ -1,4 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { useSettingsStore } from '../../../store/settingsStore';
+import { UNIFIED_SETTINGS_CONFIG } from './ControlPanel/unifiedSettingsConfig';
+import { unifiedApiClient } from '../../../services/api/UnifiedApiClient';
 
 interface CommandInputProps {
   isCollapsed: boolean;
@@ -17,34 +20,19 @@ interface StatusLine {
 function validateCommand(cmd: string): { valid: boolean; message: string } {
   const lower = cmd.toLowerCase();
 
-  const blocked = ['exec', 'eval', 'require', 'import', 'fetch(', 'drop', 'truncate', 'rm ', 'sudo'];
-  for (const b of blocked) {
-    if (lower.includes(b)) {
-      return { valid: false, message: 'This interface only accepts view and graph configuration commands.' };
-    }
+  // Security guard against code/SQL injection. Use word boundaries so natural
+  // language ("executive", "important", "required", "drop down") is not wrongly
+  // rejected — those must reach the settings-aware LLM intact.
+  const blockedWords = ['exec', 'eval', 'require', 'import', 'drop', 'truncate', 'sudo', 'rm'];
+  const wordRe = new RegExp(`\\b(${blockedWords.join('|')})\\b`, 'i');
+  if (wordRe.test(lower) || lower.includes('fetch(')) {
+    return { valid: false, message: 'This interface only accepts view and graph configuration commands.' };
   }
 
-  const accepted = [
-    'cluster', 'hull', 'show', 'hide', 'zoom', 'repel', 'spring', 'force',
-    'damping', 'physics', 'layout', 'edge', 'node', 'label', 'glow', 'bloom',
-    'opacity', 'size', 'color', 'colour', 'domain', 'type', 'quality', 'filter',
-    'reset', 'default', 'increase', 'decrease', 'more', 'less', 'enable', 'disable',
-    'ontology', 'knowledge', 'agent', 'strength', 'spread', 'tight', 'compact',
-    'separate', 'group', 'visibility', 'sync', 'local', 'analytics', 'metric',
-    'semantic', 'overwhelm', 'clutter', 'fewer', 'bigger', 'read', 'only',
-    'focus', 'find', 'search', 'dag', 'radial', 'hierarchy', 'tree',
-    'save', 'load', 'view', 'views', 'list', 'delete', 'pod',
-    'inject', 'agents', 'swarm',
-  ];
-
-  const hasRelevantKeyword = accepted.some(kw => lower.includes(kw));
-  if (!hasRelevantKeyword) {
-    return {
-      valid: false,
-      message: 'Please describe a view or graph configuration change. Try: "show clusters with hulls" or "increase repulsion"',
-    };
-  }
-
+  // Beyond the security blocklist we accept freeform language: deterministic
+  // keyword matches are handled locally, everything else is interpreted by the
+  // settings-aware LLM, so a rigid keyword whitelist would only reject valid
+  // natural-language requests.
   return { valid: true, message: '' };
 }
 
@@ -54,6 +42,92 @@ interface SettingsAction {
   method?: string;
   body?: Record<string, unknown>;
   localAction?: () => void;
+  /** When set, processCommand routes the raw command to the settings-aware LLM
+   *  in agentbox instead of running a deterministic local action. */
+  isLlmFallback?: boolean;
+}
+
+// Flatten UNIFIED_SETTINGS_CONFIG into a compact metadata block the agentbox LLM
+// can reason over: path :: label (type) range :: current value :: description.
+// This is the single source of truth for settings descriptions, sent verbatim
+// so the agent can map natural language onto concrete settings paths + ranges.
+//
+// Fields are joined with " :: ", NOT " | ". agentbox's task sanitiser rejects
+// shell-pipe patterns: a "|" followed by a command-like word (e.g. "| Node",
+// which it reads as a pipe into the `node` interpreter) trips its injection
+// guard. Labels such as "Node Size"/"Node Color" sit right after a separator,
+// so a pipe delimiter would be rejected with HTTP 500 "suspicious shell
+// patterns". "::" has no shell meaning and clears the guard cleanly.
+//
+// agentbox /v1/tasks rejects task strings over 10000 chars. The server prompt
+// wraps this context in ~1KB of instructions, so we keep the context under a
+// budget: every path/label/range/current (the essential mapping data) is always
+// included; descriptions are appended only while the budget allows.
+const SETTINGS_CONTEXT_BUDGET = 8000;
+
+function buildSettingsContext(): string {
+  const ss = useSettingsStore.getState();
+  const lines: string[] = [];
+  let used = 0;
+  for (const section of Object.values(UNIFIED_SETTINGS_CONFIG)) {
+    const fields = (section as unknown as { fields?: Array<Record<string, unknown>> }).fields ?? [];
+    for (const f of fields) {
+      const path = f.path as string | undefined;
+      if (!path) continue;
+      let current: unknown;
+      try { current = ss.get(path as never); } catch { current = undefined; }
+      const min = f.min as number | undefined;
+      const max = f.max as number | undefined;
+      const step = f.step as number | undefined;
+      const range = (min !== undefined || max !== undefined)
+        ? ` range=[${min ?? '-inf'}..${max ?? 'inf'}${step !== undefined ? ` step ${step}` : ''}]`
+        : '';
+      const base = `${path} :: ${f.label} (${f.type})${range} :: current=${JSON.stringify(current)}`;
+      const withDesc = f.description ? `${base} :: ${f.description}` : base;
+      // Prefer the line with its description; if it would blow the budget, fall
+      // back to the description-less line so the path is still addressable.
+      let line = withDesc;
+      if (used + line.length + 1 > SETTINGS_CONTEXT_BUDGET) {
+        line = base;
+        if (used + line.length + 1 > SETTINGS_CONTEXT_BUDGET) continue;
+      }
+      lines.push(line);
+      used += line.length + 1;
+    }
+  }
+  return lines.join('\n');
+}
+
+// Dispatch a natural-language settings command to the agentbox LLM via the
+// existing CreateTask transport (POST /api/bots/settings-command). The agent
+// receives the live settings + descriptions context and applies changes back
+// through the existing /api/settings/* REST API.
+async function dispatchToSettingsLLM(
+  command: string,
+  addStatus: (text: string) => void,
+): Promise<void> {
+  addStatus('Asking the settings assistant to interpret your request...');
+  try {
+    const res = await unifiedApiClient.post<{
+      data?: { taskId?: string; message?: string };
+      taskId?: string;
+      message?: string;
+    }>('/bots/settings-command', { command, settingsContext: buildSettingsContext() });
+    const envelope = res.data ?? {};
+    const payload = envelope.data ?? envelope;
+    if (payload.taskId) {
+      addStatus(`Settings assistant working (task ${String(payload.taskId).slice(0, 8)})...`);
+    } else if (payload.message) {
+      addStatus(payload.message);
+    }
+  } catch (e) {
+    const status = (e as { status?: number } | null)?.status;
+    addStatus(
+      status
+        ? `Settings assistant unavailable (HTTP ${status})`
+        : `Settings assistant error: ${e instanceof Error ? e.message : 'unknown'}`,
+    );
+  }
 }
 
 function parseCommandToActions(cmd: string): SettingsAction[] {
@@ -66,7 +140,7 @@ function parseCommandToActions(cmd: string): SettingsAction[] {
       actions.push({
         description: 'Disabling cluster hulls',
         localAction: () => {
-          const ss = (window as any).useSettingsStore?.getState();
+          const ss = useSettingsStore.getState();
           ss?.updateSettings?.((draft: any) => {
             if (draft.visualisation?.clusterHulls) draft.visualisation.clusterHulls.enabled = false;
           });
@@ -76,7 +150,7 @@ function parseCommandToActions(cmd: string): SettingsAction[] {
       actions.push({
         description: 'Enabling cluster hulls',
         localAction: () => {
-          const ss = (window as any).useSettingsStore?.getState();
+          const ss = useSettingsStore.getState();
           ss?.updateSettings?.((draft: any) => {
             if (!draft.visualisation) draft.visualisation = {};
             if (!draft.visualisation.clusterHulls) draft.visualisation.clusterHulls = {};
@@ -129,7 +203,7 @@ function parseCommandToActions(cmd: string): SettingsAction[] {
     actions.push({
       description: `${show ? 'Showing' : 'Hiding'} knowledge nodes`,
       localAction: () => {
-        const ss = (window as any).useSettingsStore?.getState();
+        const ss = useSettingsStore.getState();
         ss?.set?.('visualisation.graphs.logseq.nodes.nodeTypeVisibility.knowledge', show);
       },
     });
@@ -141,7 +215,7 @@ function parseCommandToActions(cmd: string): SettingsAction[] {
     actions.push({
       description: `${show ? 'Showing' : 'Hiding'} ontology nodes`,
       localAction: () => {
-        const ss = (window as any).useSettingsStore?.getState();
+        const ss = useSettingsStore.getState();
         ss?.set?.('visualisation.graphs.logseq.nodes.nodeTypeVisibility.ontology', show);
       },
     });
@@ -155,10 +229,22 @@ function parseCommandToActions(cmd: string): SettingsAction[] {
     actions.push({
       description: `Filtering to quality >= ${normalized}`,
       localAction: () => {
-        const ss = (window as any).useSettingsStore?.getState();
+        const ss = useSettingsStore.getState();
         ss?.set?.('nodeFilter.enabled', true);
         ss?.set?.('nodeFilter.filterByQuality', true);
         ss?.set?.('nodeFilter.qualityThreshold', normalized);
+      },
+    });
+  }
+
+  // Orphan / isolated node visibility (degree-0 spray)
+  if (lower.includes('orphan') || lower.includes('isolated') || lower.includes('unconnected') || lower.includes('disconnected')) {
+    const hide = !lower.includes('show');
+    actions.push({
+      description: `${hide ? 'Hiding' : 'Showing'} orphan (degree-0) nodes`,
+      localAction: () => {
+        const ss = useSettingsStore.getState();
+        ss?.set?.('nodeFilter.minConnections', hide ? 1 : 0);
       },
     });
   }
@@ -171,7 +257,7 @@ function parseCommandToActions(cmd: string): SettingsAction[] {
     actions.push({
       description: `Setting node opacity to ${value}`,
       localAction: () => {
-        const ss = (window as any).useSettingsStore?.getState();
+        const ss = useSettingsStore.getState();
         ss?.set?.('visualisation.graphs.logseq.nodes.opacity', value);
       },
     });
@@ -183,7 +269,7 @@ function parseCommandToActions(cmd: string): SettingsAction[] {
     actions.push({
       description: `${show ? 'Showing' : 'Hiding'} labels`,
       localAction: () => {
-        const ss = (window as any).useSettingsStore?.getState();
+        const ss = useSettingsStore.getState();
         ss?.set?.('visualisation.graphs.logseq.labels.enableLabels', show);
       },
     });
@@ -205,7 +291,7 @@ function parseCommandToActions(cmd: string): SettingsAction[] {
     actions.push({
       description: `${enable ? 'Enabling' : 'Disabling'} bloom`,
       localAction: () => {
-        const ss = (window as any).useSettingsStore?.getState();
+        const ss = useSettingsStore.getState();
         ss?.updateSettings?.((draft: any) => {
           if (draft.visualisation?.bloom) draft.visualisation.bloom.enabled = enable;
           if (draft.visualisation?.glow) draft.visualisation.glow.enabled = enable;
@@ -242,7 +328,7 @@ function parseCommandToActions(cmd: string): SettingsAction[] {
     actions.push({
       description: 'Enabling cluster visualization',
       localAction: () => {
-        const ss = (window as any).useSettingsStore?.getState();
+        const ss = useSettingsStore.getState();
         ss?.updateSettings?.((draft: any) => {
           if (!draft.qualityGates) draft.qualityGates = {};
           draft.qualityGates.showClusters = true;
@@ -261,7 +347,7 @@ function parseCommandToActions(cmd: string): SettingsAction[] {
     actions.push({
       description: 'Reducing label visibility for clarity',
       localAction: () => {
-        const ss = (window as any).useSettingsStore?.getState();
+        const ss = useSettingsStore.getState();
         ss?.updateSettings?.((draft: any) => {
           const labels = draft.visualisation?.graphs?.logseq?.labels;
           if (labels) {
@@ -279,7 +365,7 @@ function parseCommandToActions(cmd: string): SettingsAction[] {
     actions.push({
       description: 'Increasing label visibility',
       localAction: () => {
-        const ss = (window as any).useSettingsStore?.getState();
+        const ss = useSettingsStore.getState();
         ss?.updateSettings?.((draft: any) => {
           const labels = draft.visualisation?.graphs?.logseq?.labels;
           if (labels) {
@@ -300,7 +386,7 @@ function parseCommandToActions(cmd: string): SettingsAction[] {
     actions.push({
       description: `Showing: ${[showKnowledge && 'knowledge', showOntology && 'ontology', showAgent && 'agents'].filter(Boolean).join(', ')}`,
       localAction: () => {
-        const ss = (window as any).useSettingsStore?.getState();
+        const ss = useSettingsStore.getState();
         ss?.updateSettings?.((draft: any) => {
           const vis = draft.visualisation?.graphs?.logseq?.nodes?.nodeTypeVisibility;
           if (vis) {
@@ -319,7 +405,7 @@ function parseCommandToActions(cmd: string): SettingsAction[] {
     actions.push({
       description: `Switching to ${mode} layout`,
       localAction: () => {
-        const ss = (window as any).useSettingsStore?.getState();
+        const ss = useSettingsStore.getState();
         ss?.updateSettings?.((draft: any) => {
           if (!draft.qualityGates) draft.qualityGates = {};
           draft.qualityGates.layoutMode = mode;
@@ -351,7 +437,7 @@ function parseCommandToActions(cmd: string): SettingsAction[] {
       localAction: async () => {
         try {
           const solidPod = (await import('../../../services/SolidPodService')).default;
-          const ss = (window as any).useSettingsStore?.getState();
+          const ss = useSettingsStore.getState();
           const settings = ss?.settings;
           const viewData = {
             filters: settings?.nodeFilter,
@@ -382,13 +468,9 @@ function parseCommandToActions(cmd: string): SettingsAction[] {
           const solidPod = (await import('../../../services/SolidPodService')).default;
           const view = await solidPod.loadGraphView(viewName);
           if (view) {
-            const ss = (window as any).useSettingsStore?.getState();
+            const ss = useSettingsStore.getState();
             if (view.physics) {
-              await fetch('/api/settings/physics', {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(view.physics),
-              });
+              await unifiedApiClient.put('/settings/physics', view.physics);
             }
             if (view.nodeTypeVisibility && ss?.updateSettings) {
               ss.updateSettings((draft: any) => {
@@ -432,23 +514,17 @@ function parseCommandToActions(cmd: string): SettingsAction[] {
         description: 'Injecting mock claude-flow swarm agents into graph',
         localAction: async () => {
           try {
-            const res = await fetch('/api/bots/mock-agents', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                agents: [
-                  { id: 'claude-opus', label: 'Claude Opus 4.6', type: 'coordinator', status: 'active' },
-                  { id: 'coder-1', label: 'Coder Agent', type: 'coder', status: 'active' },
-                  { id: 'reviewer-1', label: 'QE Reviewer', type: 'reviewer', status: 'thinking' },
-                  { id: 'researcher-1', label: 'Research Agent', type: 'researcher', status: 'active' },
-                  { id: 'memory-1', label: 'RuVector Memory', type: 'memory', status: 'idle' },
-                ],
-              }),
+            const res = await unifiedApiClient.post<{ injected?: number }>('/bots/mock-agents', {
+              agents: [
+                { id: 'claude-opus', label: 'Claude Opus 4.6', type: 'coordinator', status: 'active' },
+                { id: 'coder-1', label: 'Coder Agent', type: 'coder', status: 'active' },
+                { id: 'reviewer-1', label: 'QE Reviewer', type: 'reviewer', status: 'thinking' },
+                { id: 'researcher-1', label: 'Research Agent', type: 'researcher', status: 'active' },
+                { id: 'memory-1', label: 'RuVector Memory', type: 'memory', status: 'idle' },
+              ],
             });
-            if (!res.ok) throw new Error(`API error: ${res.status}`);
-            const data = await res.json();
             window.dispatchEvent(new CustomEvent('visionclaw:status', {
-              detail: { message: `Injected ${data.injected} agents into graph` },
+              detail: { message: `Injected ${res.data?.injected ?? 0} agents into graph` },
             }));
           } catch (e) {
             console.error('Failed to inject mock agents:', e);
@@ -458,11 +534,11 @@ function parseCommandToActions(cmd: string): SettingsAction[] {
     }
   }
 
-  // Fallback
+  // No deterministic match — hand the raw command to the settings-aware LLM.
   if (actions.length === 0) {
     actions.push({
-      description: 'Try: "save view AI Research", "load view default", "list views", "create semantic clusters", "inject agents"',
-      localAction: () => {},
+      description: 'Interpreting with the settings assistant',
+      isLlmFallback: true,
     });
   }
 
@@ -474,14 +550,11 @@ async function executeAction(action: SettingsAction): Promise<void> {
     action.localAction();
   }
   if (action.endpoint) {
-    const response = await fetch(action.endpoint, {
-      method: action.method || 'GET',
-      headers: { 'Content-Type': 'application/json' },
-      body: action.body ? JSON.stringify(action.body) : undefined,
-    });
-    if (!response.ok) {
-      throw new Error(`API error: ${response.status}`);
-    }
+    // Route through unifiedApiClient so the auth interceptor injects credentials
+    // (dev token / NIP-98). A raw fetch sends no auth and gets 401.
+    // unifiedApiClient's baseURL is already '/api', so strip the leading '/api'.
+    const path = action.endpoint.replace(/^\/api(?=\/)/, '');
+    await unifiedApiClient.request(action.method || 'GET', path, action.body);
   }
 }
 
@@ -561,7 +634,11 @@ export const CommandInput: React.FC<CommandInputProps> = ({ isCollapsed }) => {
 
       for (const action of actions) {
         addStatus(action.description);
-        await executeAction(action);
+        if (action.isLlmFallback) {
+          await dispatchToSettingsLLM(cmd, addStatus);
+        } else {
+          await executeAction(action);
+        }
         await new Promise(r => setTimeout(r, 300));
       }
 

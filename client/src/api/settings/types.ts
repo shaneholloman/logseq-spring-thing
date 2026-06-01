@@ -49,6 +49,12 @@ export interface PhysicsSettings {
   graphSeparationX: number;
   axisCompressionZ: number;
 
+  // --- Per-population spring strength (independent KG/ontology/agent layout control) ---
+  // Literal kernel coefficient (1.0 == LinLog identity). Drives the GPU spring_scale buffer.
+  springKKnowledge: number;
+  springKOntology: number;
+  springKAgent: number;
+
   // --- Constraints ---
   constraintRampFrames: number;
   constraintMaxForcePerNode: number;

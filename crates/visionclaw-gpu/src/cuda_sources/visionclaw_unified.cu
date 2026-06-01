@@ -277,7 +277,11 @@ __global__ void force_pass_kernel(
     const float* __restrict__ class_charge,      // [num_nodes] class-specific charge modifiers
     const float* __restrict__ class_mass,        // [num_nodes] class-specific mass modifiers
     // FA2: node degree buffer for degree-scaled repulsion (nullptr = use classic repulsion)
-    const float* __restrict__ node_degrees)      // [num_nodes] sum of incident edge weights
+    const float* __restrict__ node_degrees,      // [num_nodes] sum of incident edge weights
+    // Per-population spring strength multiplier (nullptr = uniform 1.0). Lets the
+    // Knowledge/Ontology/Agent spring sliders act independently — applied to BOTH
+    // the LinLog and Hooke attraction paths so the slider is never inert.
+    const float* __restrict__ spring_scale)      // [num_nodes] per-node spring multiplier
 {
     const int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx >= num_nodes) return;
@@ -407,12 +411,16 @@ __global__ void force_pass_kernel(
 
             if (dist > 1e-6f) {
                 float spring_force_mag;
+                // Per-population spring multiplier (1.0 when buffer absent). Applied to
+                // both paths so the Knowledge/Ontology/Agent spring sliders are live
+                // even in the default LinLog mode (which otherwise ignores spring_k).
+                const float s = (spring_scale != nullptr) ? spring_scale[idx] : 1.0f;
 
                 if (c_params.lin_log_mode) {
                     // LinLog attraction: force = log(1 + dist) * edge_weight
                     // No rest length — pure logarithmic attraction.
                     // This makes energy minimization equivalent to modularity maximization.
-                    spring_force_mag = log1pf(dist) * edge_weights[i];
+                    spring_force_mag = log1pf(dist) * edge_weights[i] * s;
                 } else {
                     // Classic Hooke's law spring with optional SSSP-adjusted rest length
                     float ideal = c_params.rest_length;
@@ -428,7 +436,7 @@ __global__ void force_pass_kernel(
                     }
                     const float displacement = dist - ideal;
                     // Use FMA for spring force calculation
-                    spring_force_mag = c_params.spring_k * displacement * edge_weights[i];
+                    spring_force_mag = c_params.spring_k * displacement * edge_weights[i] * s;
                 }
 
                 const float force_scale = spring_force_mag / dist;
@@ -2146,7 +2154,10 @@ __global__ void force_pass_with_stability_kernel(
     const int num_constraints,
     const int* __restrict__ should_skip_all_physics,
     // FA2: node degree buffer for degree-scaled repulsion (nullptr = use classic repulsion)
-    const float* __restrict__ node_degrees)      // [num_nodes] sum of incident edge weights
+    const float* __restrict__ node_degrees,      // [num_nodes] sum of incident edge weights
+    // Per-population spring strength multiplier (nullptr = uniform 1.0); mirrors
+    // force_pass_kernel so the spring sliders behave identically on both paths.
+    const float* __restrict__ spring_scale)      // [num_nodes] per-node spring multiplier
 {
     const int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx >= num_nodes) return;
@@ -2271,10 +2282,11 @@ __global__ void force_pass_with_stability_kernel(
 
             if (dist > 1e-6f) {
                 float spring_force_mag;
+                const float s = (spring_scale != nullptr) ? spring_scale[idx] : 1.0f;
 
                 if (c_params.lin_log_mode) {
                     // LinLog: log(1+d) attraction — modularity-equivalent energy minimization
-                    spring_force_mag = log1pf(dist) * edge_weights[i];
+                    spring_force_mag = log1pf(dist) * edge_weights[i] * s;
                 } else {
                     float ideal = c_params.rest_length;
                     if (use_sssp) {
@@ -2286,7 +2298,7 @@ __global__ void force_pass_with_stability_kernel(
                         }
                     }
                     float displacement = dist - ideal;
-                    spring_force_mag = c_params.spring_k * displacement * edge_weights[i];
+                    spring_force_mag = c_params.spring_k * displacement * edge_weights[i] * s;
                 }
                 total_force = vec3_add(total_force, vec3_scale(diff, spring_force_mag / dist));
             }

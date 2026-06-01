@@ -49,6 +49,9 @@ export interface PhysicsSettings {
 
   // --- Server-routed force parameters (PUT /api/physics/parameters) ---
   springK: number;
+  springKKnowledge: number;
+  springKOntology: number;
+  springKAgent: number;
   repelK: number;
   attractionK: number;
   gravity: number;

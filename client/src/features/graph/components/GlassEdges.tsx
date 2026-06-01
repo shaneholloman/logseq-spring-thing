@@ -141,6 +141,12 @@ export const GlassEdges = forwardRef<GlassEdgesHandle, GlassEdgesProps>(
     const edgeRevealRef = useRef(0);
     const totalEdgesRef = useRef(0);
     const instanceColorsActiveRef = useRef(false);
+    // Once a caller drives this mesh imperatively (GraphManager's per-frame edge
+    // hot loop, which applies node-type-visibility filtering), the `points` prop
+    // becomes a stale, UNFILTERED snapshot. The prop-driven progressive reveal
+    // must then yield to the imperative source — otherwise it re-populates the
+    // mesh with filtered-out edges every frame, defeating visibility toggles.
+    const imperativeActiveRef = useRef(false);
     // Read node reveal batch from settings to keep edge reveal in sync
     const nodeRevealBatch = (settings?.revealBatch as number | undefined) ?? 120;
     const EDGE_REVEAL_BATCH = Math.max(1, Math.round(nodeRevealBatch * 0.67));
@@ -318,8 +324,11 @@ export const GlassEdges = forwardRef<GlassEdgesHandle, GlassEdgesProps>(
       return reallocate(newCap);
     }, [reallocate]);
 
-    // Recompute when points prop changes -- reset progressive reveal
+    // Recompute when points prop changes -- reset progressive reveal.
+    // Skip entirely once an imperative caller owns the mesh: the prop is then a
+    // stale unfiltered snapshot and must not clobber the imperative state.
     useEffect(() => {
+      if (imperativeActiveRef.current) return;
       if (points.length >= 6) {
         const edgeCount = Math.floor(points.length / 6);
         ensureCapacity(edgeCount);
@@ -361,6 +370,8 @@ export const GlassEdges = forwardRef<GlassEdgesHandle, GlassEdgesProps>(
         const len = count ?? newPts.length;
         const m = meshRef.current;
         if (!m) return;
+        // Imperative source is now authoritative — disable prop-driven reveal.
+        imperativeActiveRef.current = true;
         if (len < 6) {
           if (m.count !== 0) {
             m.count = 0;
@@ -417,8 +428,9 @@ export const GlassEdges = forwardRef<GlassEdgesHandle, GlassEdgesProps>(
         mat.emissiveIntensity = emissiveBase + Math.sin(clock.elapsedTime * pulseSpeed) * emissiveAmplitude;
       }
 
-      // Progressive edge reveal: ramp up each frame (initial prop-based load only)
-      if (m && edgeRevealRef.current < totalEdgesRef.current && points.length >= 6) {
+      // Progressive edge reveal: ramp up each frame (initial prop-based load only).
+      // Yields permanently once the imperative hot loop takes over.
+      if (!imperativeActiveRef.current && m && edgeRevealRef.current < totalEdgesRef.current && points.length >= 6) {
         edgeRevealRef.current = Math.min(
           edgeRevealRef.current + EDGE_REVEAL_BATCH,
           totalEdgesRef.current,

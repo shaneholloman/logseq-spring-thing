@@ -63,6 +63,15 @@ export const createPhysicsSlice: StateCreator<SettingsState, [], [], PhysicsSlic
     if (validatedParams.springK !== undefined) {
       validatedParams.springK = Math.max(0.001, Math.min(1000.0, validatedParams.springK));
     }
+    if (validatedParams.springKKnowledge !== undefined) {
+      validatedParams.springKKnowledge = Math.max(0.0, Math.min(10.0, validatedParams.springKKnowledge));
+    }
+    if (validatedParams.springKOntology !== undefined) {
+      validatedParams.springKOntology = Math.max(0.0, Math.min(10.0, validatedParams.springKOntology));
+    }
+    if (validatedParams.springKAgent !== undefined) {
+      validatedParams.springKAgent = Math.max(0.0, Math.min(10.0, validatedParams.springKAgent));
+    }
     if (validatedParams.repelK !== undefined) {
       validatedParams.repelK = Math.max(0.001, Math.min(2000.0, validatedParams.repelK));
     }

@@ -5,6 +5,9 @@ export type { Settings, SettingsPath, DeepPartial }
 // GPU-specific interfaces for type safety
 export interface GPUPhysicsParams {
   springK: number;
+  springKKnowledge: number;
+  springKOntology: number;
+  springKAgent: number;
   repelK: number;
   attractionK: number;
   gravity: number;
