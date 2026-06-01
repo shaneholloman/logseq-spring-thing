@@ -274,7 +274,7 @@ const ActionConnectionLine: React.FC<{
 
       {/* Traveling particle */}
       <mesh ref={particleRef}>
-        <sphereGeometry args={[vrMode ? 0.2 : 0.4, vrMode ? 8 : 16, vrMode ? 8 : 16]} />
+        <sphereGeometry args={[vrMode ? 0.2 : 0.4, 8, 6]} />
         <meshBasicMaterial
           color={initialColorHex}
           transparent

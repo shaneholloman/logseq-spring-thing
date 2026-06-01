@@ -62,6 +62,7 @@ export function useEdgeBufferComputation(opts: EdgeBufferComputationOptions) {
   const edgeBufferRef         = useRef<number[]>([])
   const highlightBufferRef    = useRef<number[]>([])
   const edgeColorBufferRef    = useRef<Float32Array>(new Float32Array(0))
+  const edgeWeightBufferRef   = useRef<Float32Array>(new Float32Array(0))
   const edgeUpdatePendingRef  = useRef<number[] | null>(null)
   const hlUpdatePendingRef    = useRef<number[] | null>(null)
 
@@ -90,6 +91,14 @@ export function useEdgeBufferComputation(opts: EdgeBufferComputationOptions) {
     }
     const edgeColors = edgeColorBufferRef.current
     let edgeColorIdx = 0
+
+    // Per-edge weights, written in lockstep with colours so index i in the
+    // weight buffer matches instance i in GlassEdges (same emit/filter order).
+    if (edgeWeightBufferRef.current.length < edgeCount) {
+      edgeWeightBufferRef.current = new Float32Array(edgeCount)
+    }
+    const edgeWeights = edgeWeightBufferRef.current
+    let edgeWeightIdx = 0
 
     const isDragging  = dragDataRef.current.isDragging
     const dragNodeId  = isDragging ? dragDataRef.current.nodeId : null
@@ -149,6 +158,10 @@ export function useEdgeBufferComputation(opts: EdgeBufferComputationOptions) {
         edgeColors[edgeColorIdx++] = eColor.r
         edgeColors[edgeColorIdx++] = eColor.g
         edgeColors[edgeColorIdx++] = eColor.b
+        // Weight in lockstep with colour/points so the index aligns with the
+        // GlassEdges instance index (drives per-edge tube radius). Default 1.0
+        // (the geometry's design radius) when an edge has no weight.
+        edgeWeights[edgeWeightIdx++] = edge.weight ?? 1.0
       }
     })
 
@@ -223,6 +236,9 @@ export function useEdgeBufferComputation(opts: EdgeBufferComputationOptions) {
 
     // Push edge buffers
     if (edgeFlowRef.current) {
+      // Widths BEFORE points: updatePoints composes matrices reading the stored
+      // weights, so the radius factor must be current when matrices rebuild.
+      edgeFlowRef.current.updateWidths(edgeWeights, edgeWeightIdx)
       edgeFlowRef.current.updatePoints(newEdgePoints, edgePointIdx)
       const edgeCountWithColor = edgeColorIdx / 3
       if (edgeCountWithColor > 0) {

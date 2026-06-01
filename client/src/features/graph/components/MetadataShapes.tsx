@@ -282,7 +282,7 @@ const getVisualsForNode = (
 // Shape differences are visual distinction only; size is controlled by nodeSize setting.
 const BASE_SPHERE_RADIUS = 0.5;
 const useGeometries = () => useMemo(() => ({
-  sphere: new THREE.SphereGeometry(0.5, 32, 16),
+  sphere: new THREE.SphereGeometry(0.5, 10, 8),
   box: new THREE.BoxGeometry(0.58, 0.58, 0.58),         // bounding radius ≈ 0.5
   octahedron: new THREE.OctahedronGeometry(0.5, 0),
   icosahedron: new THREE.IcosahedronGeometry(0.5, 1),
@@ -312,12 +312,15 @@ const useMetadataShapeMaterial = (settings: Record<string, unknown> | undefined)
       metalness: 0.0,
       clearcoat: 0.8,
       clearcoatRoughness: 0.05,
-      transparent: true,
-      opacity: isWebGPURenderer ? 0.7 : ((nodeSettings?.opacity as number | undefined) ?? 0.8),
-      side: THREE.DoubleSide,
+      // Opaque + single-sided: this is a per-node shape layered over the gem
+      // nodes; as 8.6k overlapping transparent double-sided shapes it was the
+      // dominant overdraw cost (the index-7 ab() mesh, hide → 19.7 fps).
+      transparent: false,
+      opacity: 1.0,
+      side: THREE.FrontSide,
       depthWrite: true,
-      transmission: isWebGPURenderer ? 0 : 0.5,
-      thickness: isWebGPURenderer ? 0 : 0.3,
+      transmission: 0,
+      thickness: 0,
       ...(isWebGPURenderer ? {
         sheen: 0.4,
         sheenRoughness: 0.15,
@@ -384,73 +387,77 @@ export const MetadataShapes: React.FC<MetadataShapesProps> = ({
   hierarchyMap
 }) => {
   const geometries = useGeometries();
-  const { material, uniforms: matUniforms, updateTime } = useMetadataShapeMaterial(settings);
+  const { material, updateTime } = useMetadataShapeMaterial(settings);
   const meshRefs = useRef<Map<string, THREE.InstancedMesh>>(new Map());
 
-  // Pre-allocated objects to avoid GC pressure in useFrame
+  // Pre-allocated matrix to avoid GC pressure in useFrame
   const tempMatrixRef = useRef(new THREE.Matrix4());
-  const tempColorRef = useRef(new THREE.Color());
 
-  // Group nodes by geometry type (mode-aware)
+  // Group nodes by geometry type (mode-aware). Per-node scale and colour are
+  // SEMANTIC (type/quality/sssp/depth) — they only change when this memo's deps
+  // change, never frame-to-frame. Precompute them here so the per-frame loop
+  // touches positions only (the one streamed input) and never recomputes
+  // visuals, never rewrites instanceColor.
   const nodeGroups = useMemo(() => {
-    const groups = new Map<string, { nodes: GraphNode[], originalIndices: number[] }>();
+    const groups = new Map<string, { nodes: GraphNode[], originalIndices: number[], scales: number[], colors: THREE.Color[] }>();
     const vis3 = settings?.visualisation as Record<string, unknown> | undefined;
     const graphs3 = vis3?.graphs as Record<string, Record<string, unknown>> | undefined;
     const ns = graphs3?.logseq?.nodes as Record<string, unknown> | undefined ?? vis3?.nodes as Record<string, unknown> | undefined;
     const baseColor = (ns?.baseColor as string) || '#00ffff';
+    const nodeSize = (ns?.nodeSize as number) || 0.5;
+    const sizeMultiplier = nodeSize / BASE_SPHERE_RADIUS;
 
     nodes.forEach((node, index) => {
-      const { geometryType } = getVisualsForNode(node, baseColor, ssspResult, graphMode, hierarchyMap);
+      const visuals = getVisualsForNode(node, baseColor, ssspResult, graphMode, hierarchyMap);
+      const { geometryType } = visuals;
       if (!groups.has(geometryType)) {
-        groups.set(geometryType, { nodes: [], originalIndices: [] });
+        groups.set(geometryType, { nodes: [], originalIndices: [], scales: [], colors: [] });
       }
-      groups.get(geometryType)!.nodes.push(node);
-      groups.get(geometryType)!.originalIndices.push(index);
+      const g = groups.get(geometryType)!;
+      g.nodes.push(node);
+      g.originalIndices.push(index);
+      g.scales.push(visuals.scale * sizeMultiplier);
+      g.colors.push(visuals.color.clone());
     });
     return groups;
   }, [nodes, settings, ssspResult, graphMode, hierarchyMap]);
 
-  // Per-frame updates
+  // Write per-instance colours ONCE per data/settings change (not per frame).
+  // instanceColor is a static semantic attribute here; rewriting it every frame
+  // was ~8.6k setColorAt calls + a full buffer re-upload for zero visual change.
+  useEffect(() => {
+    nodeGroups.forEach((group, geometryType) => {
+      const mesh = meshRefs.current.get(geometryType);
+      if (!mesh) return;
+      group.colors.forEach((color, localIndex) => mesh.setColorAt(localIndex, color));
+      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+    });
+  }, [nodeGroups]);
+
+  // Per-frame updates — POSITION ONLY. Scale is baked into the precomputed
+  // value; colour is written by the effect above.
   useFrame((state) => {
     if (!nodePositions) return;
 
     updateTime(state.clock.elapsedTime);
     const tempMatrix = tempMatrixRef.current;
-    const tempColor = tempColorRef.current;
-
-    // Hoist settings lookups out of per-node loop
-    const vis2 = settings?.visualisation as Record<string, unknown> | undefined;
-    const graphs2 = vis2?.graphs as Record<string, Record<string, unknown>> | undefined;
-    const nodeSettings2 = graphs2?.logseq?.nodes as Record<string, unknown> | undefined ?? vis2?.nodes as Record<string, unknown> | undefined;
-    const baseColorForNode = (nodeSettings2?.baseColor as string) || '#00ffff';
-    const nodeSize = (nodeSettings2?.nodeSize as number) || 0.5;
-    const sizeMultiplier = nodeSize / BASE_SPHERE_RADIUS;
 
     nodeGroups.forEach((group, geometryType) => {
       const mesh = meshRefs.current.get(geometryType);
       if (!mesh) return;
 
-      group.nodes.forEach((node, localIndex) => {
-        const originalIndex = group.originalIndices[localIndex];
-        const i3 = originalIndex * 3;
-        if (!nodePositions || i3 + 2 >= nodePositions.length) return;
+      const { originalIndices, scales } = group;
+      for (let localIndex = 0; localIndex < originalIndices.length; localIndex++) {
+        const i3 = originalIndices[localIndex] * 3;
+        if (i3 + 2 >= nodePositions.length) continue;
 
-        const visuals = getVisualsForNode(node, baseColorForNode, ssspResult, graphMode, hierarchyMap);
-        matUniforms.pulseSpeed.value = visuals.pulseSpeed;
-
-        const finalScale = visuals.scale * sizeMultiplier;
-        tempMatrix.makeScale(finalScale, finalScale, finalScale);
+        const s = scales[localIndex];
+        tempMatrix.makeScale(s, s, s);
         tempMatrix.setPosition(nodePositions[i3], nodePositions[i3 + 1], nodePositions[i3 + 2]);
         mesh.setMatrixAt(localIndex, tempMatrix);
-
-        tempColor.copy(visuals.color);
-        mesh.setColorAt(localIndex, tempColor);
-      });
+      }
 
       mesh.instanceMatrix.needsUpdate = true;
-      if (mesh.instanceColor) {
-        mesh.instanceColor.needsUpdate = true;
-      }
     });
   });
 

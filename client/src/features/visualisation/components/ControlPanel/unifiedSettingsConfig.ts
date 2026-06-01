@@ -119,8 +119,11 @@ export const UNIFIED_SETTINGS_CONFIG: Record<string, SectionConfig> = {
     title: 'Graph Visualization',
     fields: [
       // Nodes - Basic
-      { key: 'nodeColor', label: 'Node Color', type: 'color', path: 'visualisation.graphs.logseq.nodes.baseColor', description: 'Base color for nodes' },
-      { key: 'nodeSize', label: 'Node Size', type: 'slider', min: 0.2, max: 2, step: 0.1, path: 'visualisation.graphs.logseq.nodes.nodeSize', description: 'Size multiplier for nodes' },
+      { key: 'nodeColor', label: 'Node Color', type: 'color', path: 'visualisation.graphs.logseq.nodes.baseColor', description: 'Base color for nodes (used when colour scheme is "base")' },
+      { key: 'colorScheme', label: 'Node colour by', type: 'select', options: ['type', 'domain', 'base'], path: 'visualisation.graphs.logseq.nodes.colorScheme', description: 'How nodes are coloured: "type" by node metadata type, "domain" by domain, "base" uses the single base colour above' },
+      { key: 'sizeScheme', label: 'Node size by', type: 'select', options: ['degree', 'fileSize', 'hybrid'], path: 'visualisation.graphs.logseq.nodes.sizeScheme', description: 'How nodes are sized: "degree" by connection count, "fileSize" by content byte-size, "hybrid" combines both' },
+      { key: 'nodeSize', label: 'Node Size', type: 'slider', min: 0.1, max: 1, step: 0.05, path: 'visualisation.graphs.logseq.nodes.nodeSize', description: 'Global size gain (per-node magnitude comes from degree + content size)' },
+      { key: 'perNodeGlow', label: 'Per-node glow (authority/degree)', type: 'toggle', path: 'visualisation.graphs.logseq.nodes.perNodeGlow', description: 'When on, per-node emissive (from the metadata texture) drives glow; when off, nodes use a uniform glow' },
       // Nodes - Advanced
       { key: 'enableMetadataShape', label: 'Metadata Shape', type: 'toggle', path: 'visualisation.graphs.logseq.nodes.enableMetadataShape', description: 'Shape based on metadata', isAdvanced: true },
 
@@ -131,12 +134,15 @@ export const UNIFIED_SETTINGS_CONFIG: Record<string, SectionConfig> = {
 
       // Edges - Basic
       { key: 'edgeColor', label: 'Edge Color', type: 'color', path: 'visualisation.graphs.logseq.edges.color', description: 'Base color for edges' },
-      { key: 'edgeWidth', label: 'Edge Thickness', type: 'slider', min: 0.1, max: 2.0, step: 0.05, path: 'visualisation.graphs.logseq.edges.baseWidth', description: 'Thickness of edges (full width; renderer halves to a cylinder radius)' },
-      { key: 'edgeOpacity', label: 'Edge Opacity', type: 'slider', min: 0, max: 1, step: 0.01, path: 'visualisation.graphs.logseq.edges.opacity', description: 'Transparency of edges' },
+      { key: 'edgeWidth', label: 'Edge Thickness', type: 'slider', min: 0.02, max: 0.5, step: 0.01, path: 'visualisation.graphs.logseq.edges.baseWidth', description: 'Cylinder radius of edges (1:1 — the slider value is the tube radius)' },
+      { key: 'edgeOpacity', label: 'Edge Opacity', type: 'slider', min: 0, max: 0.3, step: 0.005, path: 'visualisation.graphs.logseq.edges.opacity', description: 'Per-edge alpha. Dense graphs overlap many edges, so values above ~0.2 read as solid — the useful range lives at the bottom.' },
+      { key: 'colorByType', label: 'Colour edges by relationship type', type: 'toggle', path: 'visualisation.graphs.logseq.edges.colorByType', description: 'Colour each edge by its relationship type (11 edge types) instead of the single base colour above' },
+      { key: 'widthByWeight', label: 'Edge width by weight', type: 'toggle', path: 'visualisation.graphs.logseq.edges.widthByWeight', description: 'Scale edge width by edge weight instead of using a uniform base width' },
 
       // Knowledge Graph Mode - Basic
       { key: 'kgEdgeColor', label: 'KG Edge Color', type: 'color', path: 'visualisation.graphTypeVisuals.knowledgeGraph.edgeColor', description: 'Edge color for knowledge graph mode' },
       { key: 'ontologyEdgeColor', label: 'Ontology Edge Color', type: 'color', path: 'visualisation.graphTypeVisuals.ontology.edgeColor', description: 'Edge color for ontology mode', isAdvanced: true },
+      { key: 'ringTintByClass', label: 'Tint ontology rings by class', type: 'toggle', path: 'visualisation.graphTypeVisuals.ontology.ringTintByClass', description: 'Tint each ontology node\'s orbital rings by its class instead of a uniform ring colour' },
 
       // Labels - Basic
       { key: 'enableLabels', label: 'Show Labels', type: 'toggle', path: 'visualisation.graphs.logseq.labels.enableLabels', description: 'Display node labels' },
@@ -147,7 +153,7 @@ export const UNIFIED_SETTINGS_CONFIG: Record<string, SectionConfig> = {
       // Labels - Advanced
       { key: 'labelOutlineColor', label: 'Outline Color', type: 'color', path: 'visualisation.graphs.logseq.labels.textOutlineColor', description: 'Label outline color', isAdvanced: true },
       { key: 'labelOutlineWidth', label: 'Outline Width', type: 'slider', min: 0, max: 0.01, step: 0.001, path: 'visualisation.graphs.logseq.labels.textOutlineWidth', description: 'Label outline width', isAdvanced: true },
-      { key: 'labelDistanceThreshold', label: 'Label Draw Distance', type: 'slider', min: 50, max: 2000, step: 50, path: 'visualisation.graphs.logseq.labels.labelDistanceThreshold', description: 'Max camera distance for label visibility' },
+      { key: 'labelDistanceThreshold', label: 'Label Draw Distance', type: 'slider', min: 0, max: 2000, step: 25, path: 'visualisation.graphs.logseq.labels.labelDistanceThreshold', description: 'Max camera distance for label visibility' },
       { key: 'maxLabelWidth', label: 'Max Label Width', type: 'slider', min: 2, max: 20, step: 0.5, path: 'visualisation.graphs.logseq.labels.maxLabelWidth', description: 'Maximum text wrapping width', isAdvanced: true },
 
       // Rendering - Basic

@@ -93,18 +93,18 @@ export const BotsNode: React.FC<BotsNodeProps> = ({ agent, position, index, colo
       case 'error':        return new THREE.TetrahedronGeometry(r * 1.2);
       case 'terminating':  return new THREE.OctahedronGeometry(r);
       case 'initializing': return new THREE.BoxGeometry(r, r, r);
-      case 'idle':         return new THREE.SphereGeometry(r * 0.8, 12, 12);
+      case 'idle':         return new THREE.SphereGeometry(r * 0.8, 8, 6);
       case 'offline':      return new THREE.CylinderGeometry(r * 0.5, r * 0.5, r);
       case 'busy':
         switch (agent.type) {
           case 'queen':       return new THREE.IcosahedronGeometry(r * 1.3, 1);
           case 'coordinator': return new THREE.DodecahedronGeometry(r * 1.1);
           case 'architect':   return new THREE.ConeGeometry(r, r * 1.5, 8);
-          default:            return new THREE.SphereGeometry(r, 32, 32);
+          default:            return new THREE.SphereGeometry(r, 10, 8);
         }
       case 'active':
       default:
-        return new THREE.SphereGeometry(r, 24, 24);
+        return new THREE.SphereGeometry(r, 10, 8);
     }
   }, [agent.status, agent.type, clampedSize]);
 
@@ -241,7 +241,7 @@ export const BotsNode: React.FC<BotsNodeProps> = ({ agent, position, index, colo
     <group ref={groupRef}>
       {/* Outer membrane */}
       <mesh ref={glowRef} scale={[isQueen ? 1.5 : 1.3, isQueen ? 1.5 : 1.3, isQueen ? 1.5 : 1.3]}>
-        <sphereGeometry args={[clampedSize * 0.75, 24, 24]} />
+        <sphereGeometry args={[clampedSize * 0.75, 10, 8]} />
         <meshStandardMaterial
           color={isQueen ? '#FFD700' : glowColor}
           transparent

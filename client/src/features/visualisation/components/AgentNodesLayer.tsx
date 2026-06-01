@@ -199,7 +199,7 @@ const AgentNode: React.FC<{
       case 'coordinator':
         return new THREE.IcosahedronGeometry(1.0, 0);
       default:
-        return new THREE.SphereGeometry(1.0, 16, 16);
+        return new THREE.SphereGeometry(1.0, 10, 8);
     }
   }, [agent.type]);
 
@@ -211,7 +211,7 @@ const AgentNode: React.FC<{
     <group position={position}>
       {/* Outer membrane (bioluminescent) */}
       <mesh ref={glowRef} scale={[1.3, 1.3, 1.3]}>
-        <sphereGeometry args={[scaledSize * 0.75, 24, 24]} />
+        <sphereGeometry args={[scaledSize * 0.75, 10, 8]} />
         <meshStandardMaterial
           color={glowColor}
           transparent

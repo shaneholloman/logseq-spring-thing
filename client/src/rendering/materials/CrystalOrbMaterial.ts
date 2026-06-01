@@ -36,63 +36,135 @@ export interface CrystalOrbMaterialResult {
 export function createCrystalOrbMaterial(): CrystalOrbMaterialResult {
   const uniforms = { time: { value: 0 }, glowStrength: { value: 1.2 }, pulseSpeed: { value: 0.8 } };
 
-  const material = new THREE.MeshPhysicalMaterial({
+  const material = new THREE.MeshStandardMaterial({
     color: new THREE.Color(0.78, 0.78, 1.0),
-    ior: 1.77,
-    transmission: isWebGPURenderer ? 0 : 0.35,  // Ontology nodes: semi-translucent
-    thickness: isWebGPURenderer ? 0 : 0.6,
+    // Translucent but cheap: FrontSide + depthWrite:true bounds the overdraw that
+    // 52k double-sided orbs caused, while transparent:true reactivates the Fresnel
+    // opacityNode (createTslCrystalOrbMaterial) for the glassy violet orb look.
     roughness: 0.12,
     metalness: 0.0,
-    clearcoat: 0.8,
-    clearcoatRoughness: 0.05,
     transparent: true,
-    opacity: isWebGPURenderer ? 0.7 : 0.9,
-    side: THREE.DoubleSide,
+    opacity: isWebGPURenderer ? 0.85 : 0.7,
+    side: THREE.FrontSide,
     depthWrite: true,
     emissive: new THREE.Color(0.12, 0.12, 0.25),
     emissiveIntensity: 0.3,
-    iridescence: isWebGPURenderer ? 0.35 : 0.25,
-    iridescenceIOR: 1.4,
-    iridescenceThicknessRange: [120, 350] as [number, number],
     ...(isWebGPURenderer ? {
-      sheen: 0.4,
-      sheenRoughness: 0.2,
-      sheenColor: new THREE.Color(0.5, 0.5, 1.0),
       envMapIntensity: 2.0,
-      specularIntensity: 1.0,
-      specularColor: new THREE.Color(0.85, 0.85, 1.0),
-    } : {
-      sheen: 0.3,
-      sheenRoughness: 0.2,
-    }),
+    } : {}),
   });
 
-  // TSL ENABLED (r183+) with PBR fallback — Fresnel emissive and opacity nodes
-  // are applied asynchronously on WebGPU; standard PBR + per-frame emissive
-  // modulation in GemNodes useFrame remains the active fallback path.
-  const ready = (async () => {
-    if (!isWebGPURenderer) return;
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Three.js TSL module exports are complex node builder types with no stable public API
-      const { float, vec3, normalize, positionView, normalView, dot, saturate, pow, oneMinus, sin, time } = await import('three/tsl') as any;
-      const viewDir = normalize(positionView.negate());
-      const fresnel = pow(oneMinus(saturate(dot(normalView, viewDir))), float(3.0));
-      const pulse = sin(time.mul(float(0.8))).mul(0.5).add(0.5);
-      const emissiveNode = vec3(float(0.12), float(0.12), float(0.25)).mul(fresnel).mul(pulse.mul(0.4).add(0.6));
-      const opacityNode = float(0.55).add(fresnel.mul(0.4));
-      const augmented = material as unknown as TSLNodeProperties;
-      augmented.emissiveNode = emissiveNode;
-      augmented.opacityNode = opacityNode;
-      augmented.needsUpdate = true;
-      logger.info('TSL nodes enabled (r183+)');
-    } catch (err) {
-      logger.warn('TSL upgrade failed, using PBR fallback:', err);
-    }
-  })();
+  // TSL ENABLED (r183+) with PBR fallback — the full metadata-driven TSL upgrade
+  // (Fresnel base + per-node metadata emissive) is wired from GemNodes.tsx via
+  // createTslCrystalOrbMaterial() once metadataTexture and instanceCount are
+  // available. The basic Fresnel-only upgrade is skipped here to avoid a
+  // double-needsUpdate recompile conflict with the metadata pass (mirrors the
+  // GemNodeMaterial factory). PBR + per-frame emissive modulation in GemNodes
+  // useFrame remains the active fallback path.
+  const ready = Promise.resolve();
 
   return { material, uniforms, ready };
 }
 
-export function createCrystalOrbGeometry(): THREE.SphereGeometry {
-  return new THREE.SphereGeometry(0.5, 32, 32);
+// ---------------------------------------------------------------------------
+// TSL metadata-driven material (WebGPU only)
+//
+// Mirrors createTslGemMaterial in GemNodeMaterial.ts exactly: reads per-instance
+// metadata from the same 2D DataTexture (RGBA float = quality, authority,
+// connectionCount, recency), sampled via instanceIndex (NOT an
+// InstancedBufferAttribute — that crashes the WebGPU backend with
+// drawIndexed(Infinity)). The existing Fresnel look is kept as the base and the
+// metadata-driven emissive is ADDED on top so high-authority / high-degree
+// ontology orbs glow brighter per-node rather than sharing one breathing value.
+// ---------------------------------------------------------------------------
+export async function createTslCrystalOrbMaterial(
+  material: THREE.MeshStandardMaterial,
+  metadataTexture: THREE.DataTexture,
+  texWidth: number,
+  texHeight: number,
+): Promise<boolean> {
+  if (!isWebGPURenderer) return false;
+
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Three.js TSL module exports are complex node builder types with no stable public API
+    const tslMod = await import('three/tsl') as any;
+    const {
+      float, vec2, vec3,
+      mix, pow, sin, add, sub,
+      dot, normalize, oneMinus, saturate, fract,
+      mod, floor,
+      time, instanceIndex,
+      normalView, positionView,
+      texture: tslTexture,
+    } = tslMod;
+
+    // --- Per-instance metadata via 2D DataTexture (row-major grid) ---
+    const texW = float(texWidth);
+    const texH = float(texHeight);
+    const idx = float(instanceIndex);
+    const col = mod(idx, texW);
+    const row = floor(idx.div(texW));
+    const texU = col.add(0.5).div(texW);
+    const texV = row.add(0.5).div(texH);
+    const meta = tslTexture(metadataTexture, vec2(texU, texV));
+    const quality = meta.x;
+    const authority = meta.y;
+    const connections = meta.z;
+    const recency = meta.w;
+
+    // --- Per-instance unique phase ---
+    const phase = fract(sin(idx.mul(43758.5453))).mul(6.2831);
+
+    // --- Fresnel rim lighting (the existing crystal-orb look) ---
+    const viewDir = normalize(positionView.negate());
+    const nDotV = saturate(dot(normalView, viewDir));
+    const fresnel = pow(oneMinus(nDotV), float(3.0));
+
+    // --- Authority-driven pulse ---
+    const pulseSpeed = mix(float(0.8), float(3.0), authority);
+    const pulse = sin(time.mul(pulseSpeed).add(phase)).mul(0.5).add(0.5);
+
+    // --- Quality drives emissive brightness; connections warm the violet base ---
+    const qualityBrightness = mix(float(0.3), float(0.8), quality);
+    const recencyBoost = mix(float(0.5), float(1.0), recency);
+    const warmShift = connections.mul(0.25);
+
+    // Crystal-orb base hue (violet/blue) — matches the static emissive above.
+    const baseEmissive = vec3(
+      add(float(0.18), warmShift),
+      float(0.18),
+      sub(float(0.40), warmShift.mul(0.5)),
+    );
+
+    // Fresnel base + per-node metadata emissive ADDED on top.
+    const fresnelEmissive = vec3(float(0.12), float(0.12), float(0.25)).mul(fresnel);
+    const metaEmissive = baseEmissive
+      .mul(qualityBrightness)
+      .mul(mix(float(0.4), float(1.0), pulse))
+      .mul(recencyBoost);
+    const emissiveNode = fresnelEmissive.add(metaEmissive);
+
+    // --- Opacity: Fresnel rim + authority-based solidity ---
+    const baseAlpha = mix(float(0.55), float(0.85), authority);
+    const opacityNode = mix(baseAlpha, float(0.95), fresnel);
+
+    const augmented = material as unknown as TSLNodeProperties;
+    augmented.emissiveNode = emissiveNode;
+    augmented.opacityNode = opacityNode;
+    augmented.needsUpdate = true;
+
+    logger.info('[CrystalOrbMaterial] TSL metadata nodes applied to existing material');
+    return true;
+  } catch (err) {
+    logger.warn('[CrystalOrbMaterial] TSL metadata upgrade failed:', err);
+    return false;
+  }
+}
+
+export function createCrystalOrbGeometry(): THREE.IcosahedronGeometry {
+  // Faceted icosahedron (detail=1, 80 tris) instead of a smooth 16×16 sphere
+  // (~480 tris). Nodes render a few px wide in dense graphs, so smoothness was
+  // invisible cost; at 50k+ instances this is the dominant triangle budget
+  // (~27M → ~4M). The flat facets read as crystalline, not lo-fi, at node scale.
+  return new THREE.IcosahedronGeometry(0.5, 1);
 }

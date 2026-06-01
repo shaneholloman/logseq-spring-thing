@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect, useCallback } from 'react';
+import React, { useRef, useState, useEffect, useCallback, lazy, Suspense } from 'react';
 import { Canvas, useThree } from '@react-three/fiber';
 import { OrbitControls, Stats, Environment, Lightformer } from '@react-three/drei';
 import * as THREE from 'three';
@@ -9,6 +9,10 @@ const logger = createLogger('GraphCanvas');
 
 // GraphManager for rendering the actual graph
 import GraphManager from './GraphManager';
+// Render-loop diagnostics — DEV-only, lazily loaded so the module (and its
+// __perf window side effects) is tree-shaken out of production builds.
+// Arm via __perf.on() / ?perf=1 on the Vite dev server.
+const PerfProbe = import.meta.env.DEV ? lazy(() => import('./PerfProbe')) : null;
 // Post-processing effects - unified gem post-processing (WebGPU + WebGL bloom)
 import { GemPostProcessing } from '../../../rendering/GemPostProcessing';
 // Bots visualization for agent graph
@@ -204,8 +208,8 @@ const GraphCanvas: React.FC = () => {
     // only triggers re-renders when that specific value actually changes.
     const showStats = useSettingsStore(s => s.settings?.system?.debug?.enablePerformanceDebug ?? false);
     const enableGlow = useSettingsStore(s => s.settings?.visualisation?.glow?.enabled !== false);
-    const ambientLightIntensity = useSettingsStore(s => s.settings?.visualisation?.rendering?.ambientLightIntensity ?? 0.5);
-    const directionalLightIntensity = useSettingsStore(s => s.settings?.visualisation?.rendering?.directionalLightIntensity ?? 0.4);
+    const ambientLightIntensity = useSettingsStore(s => s.settings?.visualisation?.rendering?.ambientLightIntensity ?? 0.25);
+    const directionalLightIntensity = useSettingsStore(s => s.settings?.visualisation?.rendering?.directionalLightIntensity ?? 0.3);
     const sceneEffects = useSettingsStore(s => s.settings?.visualisation?.sceneEffects);
     const embeddingCloudEnabled = useSettingsStore(s => s.settings?.visualisation?.embeddingCloud?.enabled ?? false);
     
@@ -312,10 +316,18 @@ const GraphCanvas: React.FC = () => {
                     the WebGPU path where R3F leaves camera.aspect at 0. */}
                 <CameraAspectSync />
 
+                {/* DEV-only render-loop diagnostics (no-op until __perf.on()).
+                    Tree-shaken to zero in production builds. */}
+                {import.meta.env.DEV && PerfProbe && (
+                    <Suspense fallback={null}>
+                        <PerfProbe />
+                    </Suspense>
+                )}
+
                 {/* Lighting tuned for gem refraction -- driven by settings */}
                 <ambientLight intensity={ambientLightIntensity} />
                 <directionalLight position={[10, 10, 10]} intensity={directionalLightIntensity} />
-                <directionalLight position={[-5, -5, -10]} intensity={0.3} />
+                <directionalLight position={[-5, -5, -10]} intensity={0.2} />
 
                 {/* Environment map for PBR glass material reflections.
                     Uses a generated environment instead of CDN-hosted HDR to avoid
@@ -336,11 +348,11 @@ const GraphCanvas: React.FC = () => {
                         supply reflected light and specular highlights so the
                         glass is visibly lit — the scene background stays dark
                         because background={false}. */}
-                    <color attach="background" args={['#20242e']} />
-                    <Lightformer intensity={2.4} position={[0, 6, -9]} scale={[12, 12, 1]} color="#cfe0ff" />
-                    <Lightformer intensity={1.6} position={[-7, 1, -2]} scale={[12, 3, 1]} color="#a8c4ff" />
-                    <Lightformer intensity={1.6} position={[7, -1, -2]} scale={[12, 3, 1]} color="#ffd9b0" />
-                    <Lightformer intensity={1.2} position={[0, -6, 4]} scale={[12, 12, 1]} color="#6b7a9c" />
+                    <color attach="background" args={['#181b22']} />
+                    <Lightformer intensity={1.4} position={[0, 6, -9]} scale={[12, 12, 1]} color="#cfe0ff" />
+                    <Lightformer intensity={1.0} position={[-7, 1, -2]} scale={[12, 3, 1]} color="#a8c4ff" />
+                    <Lightformer intensity={1.0} position={[7, -1, -2]} scale={[12, 3, 1]} color="#ffd9b0" />
+                    <Lightformer intensity={0.8} position={[0, -6, 4]} scale={[12, 12, 1]} color="#6b7a9c" />
                   </Environment>
                 )}
 

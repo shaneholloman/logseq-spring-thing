@@ -48,13 +48,13 @@ export const WireframeCloudMesh: React.FC<WireframeCloudMeshProps> = ({
         geo = new THREE.TorusGeometry(...(geometryArgs.length ? geometryArgs : [1, 0.4, 8, 16]));
         break;
       case 'sphere':
-        geo = new THREE.SphereGeometry(...(geometryArgs.length ? geometryArgs : [1, 16, 16]));
+        geo = new THREE.SphereGeometry(...(geometryArgs.length ? geometryArgs : [1, 10, 8]));
         break;
       case 'icosahedron':
-        geo = new THREE.IcosahedronGeometry(...(geometryArgs.length ? geometryArgs : [1, 2]));
+        geo = new THREE.IcosahedronGeometry(...(geometryArgs.length ? geometryArgs : [1, 1]));
         break;
       default:
-        geo = new THREE.SphereGeometry(1, 16, 16);
+        geo = new THREE.SphereGeometry(1, 10, 8);
     }
 
     return geo;

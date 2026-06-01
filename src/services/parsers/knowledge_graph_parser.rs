@@ -110,6 +110,10 @@ impl KnowledgeGraphParser {
         metadata.insert("source_file".to_string(), format!("{}.md", page_name));
         metadata.insert("public".to_string(), "true".to_string());
 
+        // Real markdown byte-size, surfaced so the client can size nodes by content volume.
+        let content_size = content.len();
+        metadata.insert("file_size".to_string(), content_size.to_string());
+
         let tags = self.extract_tags(content);
         if !tags.is_empty() {
             metadata.insert("tags".to_string(), tags.join(", "));
@@ -153,10 +157,12 @@ impl KnowledgeGraphParser {
             label: page_name.to_string(),
             data,
             metadata,
-            file_size: 0,
+            file_size: content_size as u64,
             node_type,
             color,
-            size: Some(1.0),
+            // Monotonic ln(bytes) mapping: long-tailed file sizes -> small visual range
+            // (~0 for tiny, ~9 for 8KB, ~11 for 64KB). No magic multipliers.
+            size: Some((content_size as f32).max(1.0).ln()),
             weight: Some(1.0),
             group: None,
             user_data: None,

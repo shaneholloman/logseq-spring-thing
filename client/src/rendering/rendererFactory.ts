@@ -148,7 +148,7 @@ export async function createGemRenderer(defaultProps: Record<string, unknown>) {
       }
 
       renderer.toneMapping = THREE.ACESFilmicToneMapping;
-      renderer.toneMappingExposure = 1.2;
+      renderer.toneMappingExposure = 1.0;
       renderer.outputColorSpace = THREE.SRGBColorSpace;
       renderer.setPixelRatio(Math.min(window.devicePixelRatio, maxDPR));
 
@@ -241,7 +241,7 @@ export async function createGemRenderer(defaultProps: Record<string, unknown>) {
   });
 
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.2;
+  renderer.toneMappingExposure = 1.0;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, maxDPR));
 

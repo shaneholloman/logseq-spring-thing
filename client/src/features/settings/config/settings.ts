@@ -5,6 +5,9 @@ export type SettingsPath = string | '';
 // Node settings
 export interface NodeSettings {
   baseColor: string;
+  colorScheme?: 'type' | 'domain' | 'base';
+  sizeScheme?: 'degree' | 'fileSize' | 'hybrid';
+  perNodeGlow?: boolean;
   metalness: number;
   opacity: number;
   roughness: number;
@@ -28,6 +31,8 @@ export interface EdgeSettings {
   color: string;
   enableArrows: boolean;
   opacity: number;
+  colorByType?: boolean;
+  widthByWeight?: boolean;
   widthRange: [number, number];
   quality: 'low' | 'medium' | 'high';
   enableFlowEffect: boolean;
@@ -417,6 +422,7 @@ export interface KnowledgeGraphVisualSettings {
 
 export interface OntologyVisualSettings {
   edgeColor?: string;  // default '#AA96DA'
+  ringTintByClass?: boolean;
   glowStrength?: number;
   orbitalRingCount?: number;
   orbitalRingSpeed?: number;

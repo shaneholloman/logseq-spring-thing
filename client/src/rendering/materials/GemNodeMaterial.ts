@@ -29,8 +29,9 @@ export interface GemMaterialResult {
 }
 
 // ---------------------------------------------------------------------------
-// Base gem material — MeshPhysicalMaterial that works on both renderers.
-// WebGL gets transmission; WebGPU uses sheen + Fresnel + emissive instead.
+// Base gem material — MeshStandardMaterial that works on both renderers.
+// Cheaper fragment shader than MeshPhysical (no clearcoat/sheen/iridescence);
+// per-node glow comes from emissive + the TSL emissiveNode below.
 // This is always available as the synchronous fallback.
 // ---------------------------------------------------------------------------
 
@@ -41,31 +42,24 @@ export function createGemNodeMaterial(): GemMaterialResult {
   // WebGPU: mid-tone crystalline base so iridescence has reflected light to modulate.
   // Emissive kept subtle — the per-instance TSL emissiveNode provides the glow.
   // WebGL: classic glass gem with transmission.
-  const material = new THREE.MeshPhysicalMaterial({
+  const material = new THREE.MeshStandardMaterial({
     color: new THREE.Color(isWebGPURenderer ? 0.35 : 0.88, isWebGPURenderer ? 0.38 : 0.92, isWebGPURenderer ? 0.5 : 1.0),
-    ior: 2.42,
-    transmission: isWebGPURenderer ? 0 : 0.6,  // Knowledge nodes: glass-like transparency
-    thickness: isWebGPURenderer ? 0 : 0.5,
+    // Translucent but cheap: FrontSide (no backface fragment doubling) +
+    // depthWrite:true (depth-test rejects occluded fragments, bounding overdraw).
+    // transparent:true reactivates the Fresnel opacityNode (createTslGemMaterial)
+    // for the glassy crystalline rim. This is the middle ground between the
+    // original DoubleSide+depthWrite:false glass (correct blend, full overdraw)
+    // and fully opaque — restores the look without the overdraw that tanked fps.
     roughness: isWebGPURenderer ? 0.08 : 0.08,
     metalness: isWebGPURenderer ? 0.15 : 0.0,
-    clearcoat: 1.0,
-    clearcoatRoughness: 0.02,
     transparent: true,
-    opacity: isWebGPURenderer ? 0.7 : 0.85,
-    side: THREE.DoubleSide,
+    opacity: isWebGPURenderer ? 0.85 : 0.7,
+    side: THREE.FrontSide,
     depthWrite: true,
     emissive: new THREE.Color(isWebGPURenderer ? 0.03 : 0.15, isWebGPURenderer ? 0.04 : 0.18, isWebGPURenderer ? 0.1 : 0.3),
     emissiveIntensity: isWebGPURenderer ? 0.4 : 0.3,
-    iridescence: isWebGPURenderer ? 1.0 : 0.3,
-    iridescenceIOR: isWebGPURenderer ? 1.8 : 1.3,
-    iridescenceThicknessRange: [100, 600] as [number, number],
     ...(isWebGPURenderer ? {
-      sheen: 0.2,
-      sheenRoughness: 0.15,
-      sheenColor: new THREE.Color(0.4, 0.5, 0.8),
       envMapIntensity: 1.8,
-      specularIntensity: 1.0,
-      specularColor: new THREE.Color(0.85, 0.9, 1.0),
     } : {}),
   });
 
@@ -94,7 +88,7 @@ export function createGemNodeMaterial(): GemMaterialResult {
 // ---------------------------------------------------------------------------
 
 /**
- * Augment an existing MeshPhysicalMaterial with TSL metadata-driven emissive
+ * Augment an existing MeshStandardMaterial with TSL metadata-driven emissive
  * and opacity nodes.  This follows the same pattern as GlassEdgeMaterial:
  * add TSL nodes to the EXISTING material rather than creating a new
  * MeshPhysicalNodeMaterial — the latter silently fails with InstancedMesh
@@ -104,7 +98,7 @@ export function createGemNodeMaterial(): GemMaterialResult {
  * instanceColor support (setColorAt) — no colorNode override needed.
  */
 export async function createTslGemMaterial(
-  material: THREE.MeshPhysicalMaterial,
+  material: THREE.MeshStandardMaterial,
   metadataTexture: THREE.DataTexture,
   texWidth: number,
   texHeight: number,
@@ -201,9 +195,10 @@ export function disposeGemMaterial(result: GemMaterialResult): void {
 }
 
 // ---------------------------------------------------------------------------
-// Geometry helper — faceted gem (detail=2 for finer facets)
+// Geometry helper — faceted gem (detail=1, 80 tris; detail=2 was 320 and
+// invisible at node pixel scale)
 // ---------------------------------------------------------------------------
 
 export function createGemGeometry(): THREE.IcosahedronGeometry {
-  return new THREE.IcosahedronGeometry(0.5, 2);
+  return new THREE.IcosahedronGeometry(0.5, 1);
 }

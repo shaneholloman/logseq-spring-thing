@@ -237,7 +237,7 @@ export const HierarchyRenderer: React.FC<HierarchyRendererProps> = ({
       if (!shouldRender) return;
 
       // Create sphere for node
-      const geometry = new THREE.SphereGeometry(NODE_SIZE, 16, 16);
+      const geometry = new THREE.SphereGeometry(NODE_SIZE, 10, 8);
       const material = new THREE.MeshPhongMaterial({
         color: getDepthColor(node.depth),
         emissive: getDepthColor(node.depth),

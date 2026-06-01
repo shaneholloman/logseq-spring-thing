@@ -85,7 +85,10 @@ export const DEFAULT_GLOW_SETTINGS = {
 export const DEFAULT_BLOOM_SETTINGS = {
   enabled: true,
   intensity: 0.4,
-  threshold: 0.3,
+  // Threshold sits above the (now neutral-exposure) base lighting so only true
+  // emissive highlights bloom. At 0.3 the whole lit scene cleared the threshold
+  // and bloomed uniformly, swamping per-node emissive hue toward white.
+  threshold: 0.6,
   radius: 0.3,
   strength: 0.4
 };
@@ -161,10 +164,13 @@ export const DEFAULT_INTERACTION_SETTINGS = {
 
 export const DEFAULT_NODES_SETTINGS = {
   baseColor: '#4a6fa5',
+  colorScheme: 'type' as 'type' | 'domain' | 'base',
+  sizeScheme: 'hybrid' as 'degree' | 'fileSize' | 'hybrid',
+  perNodeGlow: true,
   metalness: 0.1,
   opacity: 1.0,
   roughness: 0.6,
-  nodeSize: 1.7,
+  nodeSize: 0.4,
   quality: 'high' as const,
   enableInstancing: true,
   enableMetadataShape: false,
@@ -178,10 +184,12 @@ export const DEFAULT_NODES_SETTINGS = {
 
 export const DEFAULT_EDGES_SETTINGS = {
   arrowSize: 0.02,
-  baseWidth: 0.61,
+  baseWidth: 0.1,
   color: '#ff0000',
   enableArrows: false,
-  opacity: 0.5,
+  opacity: 0.15,
+  colorByType: true,
+  widthByWeight: true,
   widthRange: [0.3, 1.5] as [number, number],
   quality: 'high' as const,
   enableFlowEffect: false,
@@ -223,6 +231,7 @@ export const DEFAULT_GRAPH_TYPE_VISUALS = {
     showConnectionDensity: false,
   },
   ontology: {
+    ringTintByClass: true,
     glowStrength: 1.8,
     orbitalRingCount: 8,
     orbitalRingSpeed: 0.5,

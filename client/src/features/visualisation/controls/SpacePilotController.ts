@@ -193,9 +193,8 @@ export class SpacePilotController {
 
   
   /**
-   * Stops the controller and initiates smooth horizon leveling transition.
-   * The camera maintains its position and look direction, only the roll is corrected
-   * to make labels upright (level the horizon).
+   * Stops the controller. The camera is left exactly where the user released it —
+   * orientation (including roll) is preserved, no auto-leveling snap-back.
    */
   stop(): void {
     this.isActive = false;
@@ -203,11 +202,6 @@ export class SpacePilotController {
       cancelAnimationFrame(this.animationFrameId);
     }
     this.smoothedValues.reset();
-
-    // Initiate horizon leveling when stopping from navigation mode
-    if (this.config.mode === 'navigation' && this.camera) {
-      this.startHorizonLeveling();
-    }
   }
 
   /**

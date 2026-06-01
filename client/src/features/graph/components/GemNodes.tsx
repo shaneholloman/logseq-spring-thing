@@ -4,8 +4,8 @@ import * as THREE from 'three';
 import type { GraphVisualMode } from './GraphManager';
 import type { Node as GraphNode } from '../managers/graphDataManager';
 import { createGemNodeMaterial, createTslGemMaterial, createGemGeometry } from '../../../rendering/materials/GemNodeMaterial';
-import { createCrystalOrbMaterial, createCrystalOrbGeometry } from '../../../rendering/materials/CrystalOrbMaterial';
-import { createAgentCapsuleMaterial, createAgentCapsuleGeometry } from '../../../rendering/materials/AgentCapsuleMaterial';
+import { createCrystalOrbMaterial, createTslCrystalOrbMaterial, createCrystalOrbGeometry } from '../../../rendering/materials/CrystalOrbMaterial';
+import { createAgentCapsuleMaterial, createTslAgentCapsuleMaterial, createAgentCapsuleGeometry } from '../../../rendering/materials/AgentCapsuleMaterial';
 import { useSettingsStore } from '../../../store/settingsStore';
 import type { GemMaterialSettings, GraphTypeVisualsSettings, QualityGatesSettings } from '../../settings/config/settings';
 import type { Edge } from '../managers/graphDataManager';
@@ -18,6 +18,7 @@ import { nodeAnalyticsStore } from '../../analytics/store/nodeAnalyticsStore';
 const logger = createLogger('GemNodes');
 import { computeNodeScale } from '../utils/nodeScaling';
 import { isWebGPURenderer } from '../../../rendering/rendererFactory';
+import { getTypeColor, getDomainColor } from '../hooks/useGraphNodeColors';
 
 /** Minimal hierarchy node shape compatible with HierarchyNode from hierarchyDetector */
 interface HierarchyNodeLike {
@@ -139,9 +140,32 @@ const GemNodesInner: React.ForwardRefRenderFunction<GemNodesHandle, GemNodesProp
   // Base node color from the control panel ("Node Color" swatch) — anchors the
   // knowledge-graph palette when no semantic (cluster/community/anomaly/SSSP) mode is active.
   const baseNodeColor = useSettingsStore(s => s.get<string>('visualisation.graphs.logseq.nodes.baseColor'));
+  // KG colour scheme: 'type' (per node-type palette), 'domain' (per domain palette),
+  // or 'base' (legacy baseColor + label-hash hue jitter). Default 'type'.
+  const colorScheme = useSettingsStore(s => s.get<string>('visualisation.graphs.logseq.nodes.colorScheme')) ?? 'type';
   // Per-node analytics data from binary protocol V3 (refreshed periodically)
   const analyticsRef = useRef<Float32Array | null>(null);
   const analyticsFrameRef = useRef(0);
+
+  // Dirty-gated scale + colour caches. computeNodeScale (sqrt/log/parseInt) and
+  // computeColor (HSL/hashing) are expensive and their inputs (degree, hierarchy,
+  // scheme, selection, analytics) do NOT change frame-to-frame — only node
+  // POSITIONS do (physics). We recompute scale/colour only when their inputs
+  // change so the per-frame loop just writes matrices instead of re-running both
+  // functions and re-uploading the full colour buffer for every node every frame.
+  const scaleCacheRef = useRef<Float32Array | null>(null);
+  // posIdx (node.id -> position-buffer index) is invariant between data changes:
+  // it only depends on currentNodes order + nodeIdToIndexMap, the SAME inputs that
+  // gate the scale cache. Precompute it once so the per-frame loop skips ~5651
+  // String(node.id) allocations + ~5651 Map.get() calls per frame (zero-alloc).
+  const posIdxCacheRef = useRef<Int32Array | null>(null);
+  const prevScaleHashRef = useRef('');
+  const prevColorHashRef = useRef('');
+  const analyticsVersionRef = useRef(0);
+  // Tracks the mesh the caches were last written against. A recreated mesh
+  // (dominant-mode change / capacity growth) starts with grey init colours, so
+  // we must repaint regardless of whether the input hashes changed.
+  const cachedMeshRef = useRef<THREE.InstancedMesh | null>(null);
 
   // Allocate instance buffer at next-power-of-2 of node count (minimum 4096).
   // Recreate when visual mode changes OR nodes exceed current capacity.
@@ -211,10 +235,17 @@ const GemNodesInner: React.ForwardRefRenderFunction<GemNodesHandle, GemNodesProp
   // TSL ENABLED (r183+) with PBR fallback — wire createTslGemMaterial once
   // the metadata texture and mesh are ready. Per-frame emissive modulation in
   // useFrame remains the active fallback path if TSL fails.
+  // Per-node metadata-driven emissive is wired for ALL three dominant modes:
+  // knowledge_graph (gem), ontology (crystal orb) and agent (capsule). Each
+  // material exposes an async TSL augment that samples the same metadata
+  // DataTexture via instanceIndex; the augment is a no-op off WebGPU.
   const tslAppliedRef = useRef(false);
   useEffect(() => {
+    const augment =
+      dominant === 'ontology' ? createTslCrystalOrbMaterial :
+      dominant === 'agent' ? createTslAgentCapsuleMaterial :
+      createTslGemMaterial;
     if (
-      dominant === 'knowledge_graph' &&
       isWebGPURenderer &&
       mesh &&
       metaTexRef.current &&
@@ -222,24 +253,20 @@ const GemNodesInner: React.ForwardRefRenderFunction<GemNodesHandle, GemNodesProp
       !tslAppliedRef.current
     ) {
       tslAppliedRef.current = true;
-      createTslGemMaterial(
+      augment(
         mesh.material as THREE.MeshPhysicalMaterial,
         metaTexRef.current,
         metaTexRef.current.image.width,
         metaTexRef.current.image.height,
       ).then(success => {
         if (success) {
-          logger.debug('[GemNodes] TSL metadata material active');
+          logger.debug('[GemNodes] TSL metadata material active', { dominant });
         } else {
           tslAppliedRef.current = false; // allow retry on next render cycle
         }
       }).catch(() => {
         tslAppliedRef.current = false;
       });
-    }
-    // Reset flag when dominant mode changes away from knowledge_graph
-    if (dominant !== 'knowledge_graph') {
-      tslAppliedRef.current = false;
     }
   }, [dominant, mesh, nodes.length]);
 
@@ -283,14 +310,48 @@ const GemNodesInner: React.ForwardRefRenderFunction<GemNodesHandle, GemNodesProp
       return _col.set(AGENT_STATUS_MAP[node.metadata?.status?.toLowerCase() || 'active'] || '#2ECC71');
     }
     if (mode === 'ontology') {
+      // Prefer real hierarchy depth when present (additive/safe legacy path).
       const depth = hierarchyMap?.get(node.id)?.depth ?? (node.metadata?.depth ?? 0);
-      return _col.set(ONTOLOGY_SPECTRUM[Math.min(depth, ONTOLOGY_SPECTRUM.length - 1)]);
+      if (depth > 0) {
+        return _col.set(ONTOLOGY_SPECTRUM[Math.min(depth, ONTOLOGY_SPECTRUM.length - 1)]);
+      }
+      // No depth in this dataset: differentiate by ontology CLASS. Stable hue
+      // from class_iri (→ page_iri → id) so each of the ~4262 classes is
+      // distinct and consistent across frames. owl_class (schema) reads
+      // slightly lighter/more saturated than ontology_node (instances).
+      const key = node.metadata?.class_iri ?? node.metadata?.page_iri ?? String(node.id);
+      const hue = hashHue(key);
+      const isClass = node.metadata?.type === 'owl_class';
+      _col.setHSL(hue, isClass ? 0.72 : 0.62, isClass ? 0.58 : 0.5);
+      return _col;
     }
-    // Knowledge graph: anchor on the user's "Node Color" swatch, then add per-node
-    // variation (hue jitter from label hash) so nodes stay distinguishable. Authority
-    // drives saturation + lightness; connection count adds warmth.
+    // Knowledge graph: hue is driven by the active colour scheme (type/domain),
+    // then modulated by authority + connection count so high-degree nodes pop.
     const auth = node.metadata?.authority ?? node.metadata?.authorityScore ?? 0;
     const cc = connectionCountMap.get(String(node.id)) || 0;
+
+    if (colorScheme === 'type') {
+      // Hue from per-type palette; small authority/connection lightness+saturation lift.
+      const nodeType = node.metadata?.type ?? node.metadata?.nodeType;
+      _col.copy(getTypeColor(nodeType)).getHSL(_baseHSL);
+      const sat = _baseHSL.s + auth * 0.15 + Math.min(cc / 30, 0.1);
+      const lit = _baseHSL.l + auth * 0.12 + Math.min(cc / 40, 0.06);
+      _col.setHSL(_baseHSL.h, Math.min(sat, 0.95), Math.min(lit, 0.8));
+      return _col;
+    }
+
+    if (colorScheme === 'domain') {
+      // Hue from per-domain palette; same gentle authority/connection modulation.
+      const domain = node.metadata?.domain ?? node.metadata?.source_domain;
+      _col.set(getDomainColor(domain)).getHSL(_baseHSL);
+      const sat = _baseHSL.s + auth * 0.15 + Math.min(cc / 30, 0.1);
+      const lit = _baseHSL.l + auth * 0.12 + Math.min(cc / 40, 0.06);
+      _col.setHSL(_baseHSL.h, Math.min(sat, 0.95), Math.min(lit, 0.8));
+      return _col;
+    }
+
+    // 'base': anchor on the user's "Node Color" swatch, then add per-node
+    // variation (hue jitter from label hash) so nodes stay distinguishable.
     if (baseNodeColor) {
       _col.set(baseNodeColor).getHSL(_baseHSL);
       const jitter = (hashHue(node.label || String(node.id)) - 0.5) * 0.12; // ±0.06 hue spread
@@ -305,7 +366,7 @@ const GemNodesInner: React.ForwardRefRenderFunction<GemNodesHandle, GemNodesProp
     const lit = 0.45 + auth * 0.2;
     _col.setHSL(hue, Math.min(sat, 0.9), Math.min(lit, 0.75));
     return _col;
-  }, [ssspResult, hierarchyMap, connectionCountMap, qualityGates, baseNodeColor]);
+  }, [ssspResult, hierarchyMap, connectionCountMap, qualityGates, baseNodeColor, colorScheme]);
 
   // Progressive reveal: ramp up visible instance count over frames so nodes
   // appear in waves (~120 nodes/frame at 60fps → full 1090 in ~0.15s).
@@ -372,7 +433,10 @@ const GemNodesInner: React.ForwardRefRenderFunction<GemNodesHandle, GemNodesProp
     if (analyticsFrameRef.current % 30 === 1 &&
         (qualityGates?.showClusters || qualityGates?.showAnomalies || qualityGates?.showCommunities)) {
       const buf = nodeAnalyticsStore.getIndexedBuffer(props.nodeIdToIndexMap);
-      if (buf) analyticsRef.current = buf;
+      if (buf) {
+        analyticsRef.current = buf;
+        analyticsVersionRef.current++; // invalidate colour cache on fresh analytics
+      }
     }
 
     // Delayed diagnostic — fires at frame 60 when positions are loaded (dev only).
@@ -438,7 +502,9 @@ const GemNodesInner: React.ForwardRefRenderFunction<GemNodesHandle, GemNodesProp
     const visSettings = settings?.visualisation as Record<string, unknown> | undefined;
     const graphsLogseq = (visSettings?.graphs as Record<string, unknown> | undefined)?.logseq as Record<string, unknown> | undefined;
     const nodeSettings = graphsLogseq?.nodes as Record<string, unknown> | undefined;
-    const baseScale = ((nodeSettings?.nodeSize as number | undefined) ?? 0.5) / 0.5;
+    // 1:1 — the slider value IS the global size gain; no hidden multiplier.
+    // Per-node magnitude comes from computeNodeScale (degree + content size).
+    const baseScale = (nodeSettings?.nodeSize as number | undefined) ?? 1.0;
     const texBuf = metaTexRef.current?.image?.data as Float32Array | undefined;
 
     // Read animation settings for pulse/wave control
@@ -513,53 +579,100 @@ const GemNodesInner: React.ForwardRefRenderFunction<GemNodesHandle, GemNodesProp
       revealedRef.current = Math.min(revealedRef.current + REVEAL_BATCH, currentNodes.length);
     }
     const visCount = revealedRef.current;
+    const nodeCount = currentNodes.length;
 
-    let colorsDirty = false;
+    // A recreated mesh has grey init colours — force a repaint of both caches.
+    if (cachedMeshRef.current !== inst) {
+      cachedMeshRef.current = inst;
+      prevScaleHashRef.current = '';
+      prevColorHashRef.current = '';
+    }
+
+    // --- Scale + posIdx caches: recompute only when affecting inputs change --
+    const cacheLen = capacityRef.current || nextPowerOf2(Math.max(nodeCount, 4096));
+    if (!scaleCacheRef.current || scaleCacheRef.current.length < nodeCount) {
+      scaleCacheRef.current = new Float32Array(cacheLen);
+    }
+    if (!posIdxCacheRef.current || posIdxCacheRef.current.length < nodeCount) {
+      posIdxCacheRef.current = new Int32Array(cacheLen);
+    }
+    const scaleCache = scaleCacheRef.current;
+    const posIdxCache = posIdxCacheRef.current;
+    const propsVis = props.settings?.visualisation as Record<string, unknown> | undefined;
+    const graphTypeVisuals = propsVis?.graphTypeVisuals as GraphTypeVisualsSettings | undefined;
+    const scaleHash = `${nodeCount}-${connectionCountMap.size}-${baseScale}-${hierarchyMap?.size ?? 0}`;
+    if (scaleHash !== prevScaleHashRef.current) {
+      prevScaleHashRef.current = scaleHash;
+      for (let i = 0; i < nodeCount; i++) {
+        const node = currentNodes[i];
+        const nodeIdStr = String(node.id);
+        const mode = perNodeVisualModeMap.get(nodeIdStr) || graphMode;
+        scaleCache[i] = computeNodeScale(node, connectionCountMap, mode, hierarchyMap, graphTypeVisuals) * baseScale;
+        const srcIdx = props.nodeIdToIndexMap.get(nodeIdStr);
+        posIdxCache[i] = srcIdx !== undefined ? srcIdx : i;
+      }
+    }
+
+    // --- Colour cache: recompute + upload only when colour inputs change -----
+    const colorHash = `${nodeCount}-${connectionCountMap.size}-${colorScheme}-${baseNodeColor ?? ''}-${selectedNodeId ?? ''}-${ssspResult ? 's' : ''}-${qualityGates?.showClusters ? 1 : 0}${qualityGates?.showAnomalies ? 1 : 0}${qualityGates?.showCommunities ? 1 : 0}-${analyticsVersionRef.current}`;
+    if (colorHash !== prevColorHashRef.current) {
+      prevColorHashRef.current = colorHash;
+      for (let i = 0; i < nodeCount; i++) {
+        const node = currentNodes[i];
+        const mode = perNodeVisualModeMap.get(String(node.id)) || graphMode;
+        const srcIdx = props.nodeIdToIndexMap.get(String(node.id));
+        inst.setColorAt(i, computeColor(node, mode, srcIdx !== undefined ? srcIdx : i));
+      }
+      if (inst.instanceColor) inst.instanceColor.needsUpdate = true;
+    }
+
+    // --- Per-frame matrix write: positions change every frame (physics). -----
+    // Scale + posIdx come from the gated caches; the per-node loop touches
+    // positions only. Selected-node wave and live-drag are single-node concerns,
+    // resolved to local indices ONCE here (one Map lookup each) so the loop does
+    // integer comparisons instead of ~5651 String(node.id) allocations per frame.
+    const waveEnabled = animEnabled && ((anims?.selectionWaveEnabled as boolean | undefined) ?? true);
+    const wSpeed = (anims?.waveSpeed as number | undefined) ?? 1.0;
+    const drag = props.dragDataRef?.current;
+    // Local (visibleNodes) index of the selected node, for the wave modulation.
+    const selectedLocalIdx = (selectedNodeId && waveEnabled)
+      ? currentNodes.findIndex(n => String(n.id) === selectedNodeId)
+      : -1;
+    const waveScale = selectedLocalIdx >= 0
+      ? 1 + Math.sin(clock.elapsedTime * 3 * wSpeed) * 0.15
+      : 1;
+    // Local index of the dragged node (live position overrides the SAB read).
+    const dragLocalIdx = (drag && drag.isDragging && drag.nodeId)
+      ? currentNodes.findIndex(n => String(n.id) === drag.nodeId)
+      : -1;
     for (let i = 0; i < visCount; i++) {
-      const node = currentNodes[i];
-      const mode = perNodeVisualModeMap.get(String(node.id)) || graphMode;
-      const propsVis = props.settings?.visualisation as Record<string, unknown> | undefined;
-      let s = computeNodeScale(node, connectionCountMap, mode, hierarchyMap, propsVis?.graphTypeVisuals as GraphTypeVisualsSettings | undefined) * baseScale;
-      const waveEnabled = animEnabled && ((anims?.selectionWaveEnabled as boolean | undefined) ?? true);
-      const wSpeed = (anims?.waveSpeed as number | undefined) ?? 1.0;
-      if (selectedNodeId && String(node.id) === selectedNodeId && waveEnabled) {
-        s *= 1 + Math.sin(clock.elapsedTime * 3 * wSpeed) * 0.15;
+      let s = scaleCache[i];
+      if (i === selectedLocalIdx) {
+        s *= waveScale;
       }
 
-      // Map from visibleNodes index to graphData.nodes index for correct position lookup
-      const nodeIdStr = String(node.id);
-      const srcIdx = props.nodeIdToIndexMap.get(nodeIdStr);
-      const posIdx = srcIdx !== undefined ? srcIdx : i;
-      const i3 = posIdx * 3;
+      const i3 = posIdxCache[i] * 3;
       let x: number, y: number, z: number;
 
       // Use live drag position for the dragged node (avoids 1-frame SAB lag)
-      const drag = props.dragDataRef?.current;
-      if (drag && drag.isDragging && drag.nodeId === nodeIdStr) {
+      if (i === dragLocalIdx && drag) {
         x = drag.currentNodePos3D.x;
         y = drag.currentNodePos3D.y;
         z = drag.currentNodePos3D.z;
       } else if (positions && i3 + 2 < positions.length) {
         x = positions[i3]; y = positions[i3 + 1]; z = positions[i3 + 2];
       } else {
-        const p = node.position || { x: 0, y: 0, z: 0 };
-        x = p.x; y = p.y; z = p.z;
+        // Cold fallback: SAB not yet populated for this index. Read the node's
+        // own position; default to origin component-wise (no object literal).
+        const p = currentNodes[i].position;
+        x = p?.x ?? 0; y = p?.y ?? 0; z = p?.z ?? 0;
       }
       _mat.makeScale(s, s, s);
       _mat.setPosition(x, y, z);
       inst.setMatrixAt(i, _mat);
-
-      // Per-instance color via Three.js managed instanceColor.
-      // Pass posIdx so computeColor can look up analytics data for this node.
-      const c = computeColor(node, mode, posIdx);
-      inst.setColorAt(i, c);
-      colorsDirty = true;
     }
     inst.count = visCount;
     inst.instanceMatrix.needsUpdate = true;
-
-    // Only upload instanceColor buffer when colors were actually written this frame
-    if (inst.instanceColor && colorsDirty) inst.instanceColor.needsUpdate = true;
 
     // Dirty-flag metadata texture: only upload when inputs structurally change
     if (texBuf) {

@@ -33,37 +33,53 @@ export interface GlassEdgeMaterialResult {
 export function createGlassEdgeMaterial(baseColor?: string | THREE.Color): GlassEdgeMaterialResult {
   const uniforms = { time: { value: 0 }, flowSpeed: { value: 0.5 } };
 
+  // Base material.color MULTIPLIES the per-edge instanceColor on the GPU. Any
+  // non-neutral tint here muddies the semantic edge-type palette (the old
+  // #46534f greenish base washed everything toward grey). The base is forced
+  // neutral white (1,1,1) so per-edge type colours render TRUE; the opacity
+  // slider still has full authority via the materialOpacity TSL node below.
+  // `baseColor` is retained only as the emissive/sheen/specular hue accent.
   const resolvedColor = baseColor
     ? (baseColor instanceof THREE.Color ? baseColor : new THREE.Color(baseColor))
     : new THREE.Color(0.35, 0.55, 0.85);
+  const neutralBase = new THREE.Color(1, 1, 1);
 
   const material = new THREE.MeshPhysicalMaterial({
-    color: resolvedColor,
+    color: neutralBase,
     ior: 1.5,
-    transmission: isWebGPURenderer ? 0 : 0.7,
-    thickness: isWebGPURenderer ? 0 : 0.15,
+    // Transmission masks alpha — keep it ~0 on edges (both renderers) so the
+    // opacity/alpha channel has full authority over edge visibility.
+    transmission: 0,
+    thickness: 0,
     roughness: 0.05,
     metalness: 0.0,
     transparent: true,
     opacity: isWebGPURenderer ? 0.6 : 0.4,
     side: THREE.DoubleSide,
-    depthWrite: true,
+    // 32k transparent tubes overdraw heavily. depthWrite=true causes stacked
+    // edges to z-reject and saturate to white; with depthWrite off they blend.
+    depthWrite: false,
+    // Normal alpha blend — NOT additive (additive blows transparent stacks to white).
+    blending: THREE.NormalBlending,
     polygonOffset: true,
     polygonOffsetFactor: 1, // Push edges slightly behind nodes at connection points
     polygonOffsetUnits: 1,
-    // Derive emissive from the resolved base color (30% intensity) so edges
-    // glow in their own hue rather than a fixed blue.
-    emissive: resolvedColor.clone().multiplyScalar(isWebGPURenderer ? 0.5 : 0.3),
-    emissiveIntensity: isWebGPURenderer ? 0.6 : 0.3,
+    // Neutral grey emissive (NOT the resolvedColor hue) so the glow follows
+    // each tube's per-edge instanceColor intensity rather than re-tinting all
+    // edges toward one fixed accent. Toned down so tubes don't self-illuminate
+    // to white; the dominant readable signal is the coloured tube.
+    emissive: neutralBase.clone().multiplyScalar(isWebGPURenderer ? 0.15 : 0.1),
+    emissiveIntensity: isWebGPURenderer ? 0.2 : 0.15,
     iridescence: isWebGPURenderer ? 0.2 : 0.1,
     iridescenceIOR: 1.3,
     iridescenceThicknessRange: [100, 250] as [number, number],
     ...(isWebGPURenderer ? {
       sheen: 0.3,
       sheenRoughness: 0.1,
-      sheenColor: resolvedColor.clone().multiplyScalar(0.7),
+      // Neutral sheen/specular — let the instanceColor define edge hue.
+      sheenColor: neutralBase.clone().multiplyScalar(0.7),
       specularIntensity: 0.8,
-      specularColor: resolvedColor.clone().lerp(new THREE.Color(1, 1, 1), 0.3),
+      specularColor: neutralBase.clone(),
     } : {}),
   });
 
@@ -74,16 +90,31 @@ export function createGlassEdgeMaterial(baseColor?: string | THREE.Color): Glass
     if (!isWebGPURenderer) return;
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Three.js TSL module exports are complex node builder types with no stable public API
-      const { float, vec3, normalize, positionView, normalView, dot, saturate, pow, oneMinus } = await import('three/tsl') as any;
+      const { float, normalize, positionView, normalView, dot, saturate, pow, oneMinus, materialOpacity, materialColor } = await import('three/tsl') as any;
       const viewDir = normalize(positionView.negate());
       const fresnel = pow(oneMinus(saturate(dot(normalView, viewDir))), float(3.0));
-      const emissiveNode = vec3(float(0.1), float(0.15), float(0.3)).mul(fresnel);
-      const opacityNode = float(0.3).add(fresnel.mul(0.5));
+
+      // `materialOpacity` is a LIVE reference node to material.opacity — when
+      // GlassEdges sets `mat.opacity = settings.opacity` per update, this node
+      // re-reads it every frame (no rebuild, no needsUpdate needed for the value).
+      // The slider therefore has full authority: at opacity 0 the product is 0
+      // (edges fully invisible); the fresnel rim is a MODULATION scaled by the
+      // slider (0.55 base + up to 0.45 fresnel boost), never an additive floor.
+      const sliderOpacity = materialOpacity;
+      const fresnelGain = float(0.55).add(fresnel.mul(0.45));
+      const opacityNode = sliderOpacity.mul(fresnelGain);
+
+      // Emissive in the edge's own hue (live materialColor reference) at a low
+      // fresnel-driven intensity — a subtle glass rim, not a white-out.
+      const emissiveNode = materialColor.mul(fresnel).mul(float(0.25));
+
       const augmented = material as unknown as TSLNodeProperties;
       augmented.emissiveNode = emissiveNode;
       augmented.opacityNode = opacityNode;
+      // No colorNode: let material.color (driven by edges.color via GlassEdges)
+      // flow through the standard PBR colour path instead of forcing white.
       augmented.needsUpdate = true;
-      logger.info('TSL nodes enabled (r183+)');
+      logger.info('TSL nodes enabled (r183+) — opacityNode bound to live materialOpacity');
     } catch (err) {
       logger.warn('TSL upgrade failed, using PBR fallback:', err);
     }
@@ -97,5 +128,8 @@ export function createGlassEdgeMaterial(baseColor?: string | THREE.Color): Glass
  * Stretch to actual edge length via instance/object matrix.
  */
 export function createGlassEdgeGeometry(radius: number = 0.03): THREE.CylinderGeometry {
-  return new THREE.CylinderGeometry(radius, radius, 1, 8);
+  // 4 radial segments (square prism) instead of 8: edges are hairline-thin at
+  // node scale, so the rounder tube was invisible cost across ~26k instances.
+  // Open-ended (no caps) — endpoints sit inside the node gems, never seen.
+  return new THREE.CylinderGeometry(radius, radius, 1, 4, 1, true);
 }

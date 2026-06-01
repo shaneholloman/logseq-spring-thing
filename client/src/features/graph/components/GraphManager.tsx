@@ -7,7 +7,6 @@ import { createLogger } from '../../../utils/loggerConfig'
 import { useSettingsStore } from '../../../store/settingsStore'
 import { BinaryNodeData, getActualNodeId } from '../../../types/binaryProtocol'
 import { GemNodes, GemNodesHandle } from './GemNodes'
-import { MetadataShapes } from './MetadataShapes'
 import { GlassEdges, GlassEdgesHandle } from './GlassEdges'
 import { KnowledgeRings } from './KnowledgeRings'
 import { ClusterHulls } from './ClusterHulls'
@@ -413,10 +412,10 @@ const GraphManager: React.FC<GraphManagerProps> = ({ onDragStateChange }) => {
 
   const defaultEdgeSettings: EdgeSettings = {
     arrowSize: 0.5,
-    baseWidth: 0.2,
+    baseWidth: 0.1,
     color: '#FF5722',
     enableArrows: true,
-    opacity: 0.6,
+    opacity: 0.15,
     widthRange: [0.1, 0.3],
     quality: 'medium',
     enableFlowEffect: false,
@@ -444,17 +443,6 @@ const GraphManager: React.FC<GraphManagerProps> = ({ onDragStateChange }) => {
 
   return (
     <>
-      {(logseqSettings?.nodes?.enableMetadataShape || settings?.visualisation?.nodes?.enableMetadataShape) && (
-        <MetadataShapes
-          nodes={typeFilteredNodes}
-          nodePositions={nodePositionsRef.current}
-          settings={settings}
-          ssspResult={normalizedSSSPResult}
-          graphMode={graphMode}
-          hierarchyMap={hierarchyMap}
-        />
-      )}
-
       <GemNodes
         ref={gemNodesRef}
         nodes={typeFilteredNodes}
@@ -521,6 +509,7 @@ const GraphManager: React.FC<GraphManagerProps> = ({ onDragStateChange }) => {
         edges={graphData.edges}
         hierarchyMap={hierarchyMap}
         settings={settings}
+        nodeColorSourceRef={gemNodesRef}
       />
 
       <ClusterHulls

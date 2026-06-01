@@ -24,24 +24,42 @@ export const getDomainColor = (domain?: string): string =>
   domain && DOMAIN_COLORS[domain] ? DOMAIN_COLORS[domain] : DEFAULT_DOMAIN_COLOR
 
 // === Edge-type colours ===
+// Palette is a hue wheel chosen so the 11 emitted edge types occupy distinct,
+// well-separated hues at high saturation, while the dominant `explicit_link`
+// wikilinks (45% of edges) are deliberately desaturated to a dim blue-grey so
+// they recede and let the semantic edge types read clearly.
+//
+//   hierarchical   gold     #FFD700   structural   cyan      #4FC3F7
+//   dependency     green    #81C784   associative  magenta   #CE93D8
+//   bridge         orange   #FF7043   provenance   amber     #FFB300
+//   utilisation    teal     #26C6DA   co_citation  indigo    #5C6BC0
+//   standardisation slate-blue #7E8CE0 implements   rose      #EC407A
+//   explicit_link  blue-grey #5A6470 (dim — dominant wikilinks recede)
 export const EDGE_TYPE_COLORS: Record<string, THREE.Color> = {
-  'hierarchical':  new THREE.Color('#FFD700'),
-  'subclass':      new THREE.Color('#FFD700'),
-  'structural':    new THREE.Color('#4FC3F7'),
-  'has_part':      new THREE.Color('#4FC3F7'),
-  'is_part_of':    new THREE.Color('#4FC3F7'),
-  'dependency':    new THREE.Color('#81C784'),
-  'requires':      new THREE.Color('#81C784'),
-  'depends_on':    new THREE.Color('#81C784'),
-  'enables':       new THREE.Color('#81C784'),
-  'associative':   new THREE.Color('#CE93D8'),
-  'relates_to':    new THREE.Color('#CE93D8'),
-  'bridge':        new THREE.Color('#FF7043'),
-  'bridges_to':    new THREE.Color('#FF7043'),
-  'bridges_from':  new THREE.Color('#FF7043'),
-  'explicit_link': new THREE.Color('#FFFFFF'),
-  'namespace':     new THREE.Color('#78909C'),
-  'inferred':      new THREE.Color('#B0BEC5'),
+  'hierarchical':   new THREE.Color('#FFD700'),
+  'subclass':       new THREE.Color('#FFD700'),
+  'structural':     new THREE.Color('#4FC3F7'),
+  'has_part':       new THREE.Color('#4FC3F7'),
+  'is_part_of':     new THREE.Color('#4FC3F7'),
+  'dependency':     new THREE.Color('#81C784'),
+  'requires':       new THREE.Color('#81C784'),
+  'depends_on':     new THREE.Color('#81C784'),
+  'enables':        new THREE.Color('#81C784'),
+  'associative':    new THREE.Color('#CE93D8'),
+  'relates_to':     new THREE.Color('#CE93D8'),
+  'bridge':         new THREE.Color('#FF7043'),
+  'bridges_to':     new THREE.Color('#FF7043'),
+  'bridges_from':   new THREE.Color('#FF7043'),
+  // --- 5 previously-missing types (fell to grey DEFAULT_EDGE_COLOR) ---
+  'provenance':     new THREE.Color('#FFB300'), // amber — derivation/lineage
+  'utilisation':    new THREE.Color('#26C6DA'), // teal — usage/consumption
+  'co_citation':    new THREE.Color('#5C6BC0'), // indigo — co-reference
+  'standardisation':new THREE.Color('#7E8CE0'), // slate-blue — conformance
+  'implements':     new THREE.Color('#EC407A'), // rose — realisation
+  // --- recoloured: dominant wikilinks recede to a dim neutral blue-grey ---
+  'explicit_link':  new THREE.Color('#5A6470'),
+  'namespace':      new THREE.Color('#78909C'),
+  'inferred':       new THREE.Color('#B0BEC5'),
 }
 export const DEFAULT_EDGE_COLOR = new THREE.Color('#AAAAAA')
 
@@ -75,8 +93,16 @@ export const AGENT_TYPE_COLORS: Record<string, THREE.Color> = {
   'coordinator': new THREE.Color('#E67E22'),
 }
 
-// === Knowledge-graph node type colours ===
-const TYPE_THREE_COLORS: Record<string, THREE.Color> = {
+// === Node type colours ===
+// Knowledge-graph / ontology dataset types (the values actually present in
+// metadata.type for this corpus). These four categories split the dual graph
+// into ontology schema vs ontology instances vs linked pages vs plain pages.
+export const TYPE_THREE_COLORS: Record<string, THREE.Color> = {
+  'owl_class':     new THREE.Color('#F2C14E'),  // ontology class/schema — amber
+  'ontology_node': new THREE.Color('#B084F5'),  // ontology individual — violet
+  'linked_page':   new THREE.Color('#4FC3F7'),  // KG page bridged to ontology — blue
+  'page':          new THREE.Color('#66BB6A'),  // plain KG page — green
+  // Source-code graph types (other datasets)
   'folder':   new THREE.Color('#FFD700'),
   'file':     new THREE.Color('#00CED1'),
   'function': new THREE.Color('#FF6B6B'),
@@ -84,7 +110,14 @@ const TYPE_THREE_COLORS: Record<string, THREE.Color> = {
   'variable': new THREE.Color('#95E1D3'),
   'import':   new THREE.Color('#F38181'),
   'export':   new THREE.Color('#AA96DA'),
-  'default':  new THREE.Color('#00ffff'),
+  // Unmatched type → neutral grey (signals "no recognised type", not a category)
+  'default':  new THREE.Color('#9E9E9E'),
+}
+
+/** O(1) node-type → pre-allocated THREE.Color (read-only; copy before mutating). */
+export function getTypeColor(nodeType?: string): THREE.Color {
+  if (!nodeType) return TYPE_THREE_COLORS['default']
+  return TYPE_THREE_COLORS[nodeType.toLowerCase()] ?? TYPE_THREE_COLORS['default']
 }
 
 // Reusable singleton — callers must not hold a reference across calls.

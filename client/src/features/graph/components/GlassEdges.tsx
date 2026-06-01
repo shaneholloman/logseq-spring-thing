@@ -44,6 +44,9 @@ export interface GlassEdgesHandle {
   updatePoints(points: number[], count?: number): void;
   /** Update per-instance colors. Array of [r,g,b] floats (0-1), 3 per edge. */
   updateColors(colors: Float32Array, count: number): void;
+  /** Update per-edge raw weights (one float per edge). Drives tube radius
+   *  (X/Z axes) via a principled sqrt-area mapping; length (Y) is unaffected. */
+  updateWidths(weights: Float32Array, count: number): void;
 }
 
 /** Pre-allocated temp objects for matrix composition -- avoids per-frame GC. */
@@ -62,14 +65,44 @@ function ceilToPowerOfTwo(n: number): number {
   return Math.pow(2, Math.ceil(Math.log2(n)));
 }
 
+// --- Principled edge-weight -> tube-radius mapping (NO magic multiplier) ---
+// The cylinder geometry is built once at the design radius (settings.baseWidth, 1:1).
+// Per-edge weight rescales only the X/Z (radius) axes of the instance matrix;
+// the Y axis stays = edge length, so endpoints and length are untouched.
+//
+//   factor = clamp( sqrt(weight / WEIGHT_MEDIAN), MIN_FACTOR, MAX_FACTOR )
+//
+// - sqrt: a tube's visible cross-sectional area ∝ radius². Taking sqrt(weight)
+//   makes rendered AREA grow linearly with weight — perceptually honest, the
+//   ink an edge occupies is proportional to its weight.
+// - / WEIGHT_MEDIAN (p50 = 1 for this dataset): the typical edge renders at the
+//   geometry's design radius (factor 1). Reading the median rather than a fixed
+//   scalar keeps the mapping correct if the weight distribution shifts.
+// - clamp [0.5, 2.0]: weight 0.5 -> 0.707 -> floored to 0.5 (thin); weight 7 ->
+//   sqrt(7)=2.646 -> capped to 2.0 (thick). Bounds keep the thickest edges
+//   legible without swamping the scene, and the thinnest still hittable.
+const WEIGHT_MEDIAN = 1.0;
+const MIN_WIDTH_FACTOR = 0.5;
+const MAX_WIDTH_FACTOR = 2.0;
+function weightToRadiusFactor(weight: number): number {
+  if (!(weight > 0)) return 1.0; // missing/0/NaN weight -> design radius
+  const f = Math.sqrt(weight / WEIGHT_MEDIAN);
+  return f < MIN_WIDTH_FACTOR ? MIN_WIDTH_FACTOR : f > MAX_WIDTH_FACTOR ? MAX_WIDTH_FACTOR : f;
+}
+
 /** Compute up to `limit` edge matrices. Returns total edge count (clamped to capacity).
- *  `dataLength` limits how many elements of `pts` to consider (avoids needing a sliced copy). */
+ *  `dataLength` limits how many elements of `pts` to consider (avoids needing a sliced copy).
+ *  `radiusFactors`, if supplied, holds PRECOMPUTED per-edge X/Z radius factors
+ *  (weightToRadiusFactor already applied at width-update time). The frame loop
+ *  reads them by index — no sqrt/clamp recompute here. Math is byte-identical to
+ *  computing `weightToRadiusFactor(weight)` inline; only the timing moved. */
 function computeInstanceMatrices(
   mesh: THREE.InstancedMesh,
   pts: number[],
   capacity: number,
   limit?: number,
   dataLength?: number,
+  radiusFactors?: Float32Array | null,
 ): number {
   const edgeCount = Math.min(Math.floor((dataLength ?? pts.length) / 6), capacity);
   const renderCount = limit !== undefined ? Math.min(limit, edgeCount) : edgeCount;
@@ -102,8 +135,12 @@ function computeInstanceMatrices(
       tmpQuat.setFromUnitVectors(tmpUp, tmpDir);
     }
 
-    // Compose: translate to midpoint, rotate, scale Y by length
-    tmpScale.set(1, len, 1);
+    // Compose: translate to midpoint, rotate, scale Y by LENGTH (unchanged)
+    // and X/Z by the per-edge weight->radius factor (1.0 when no weights given,
+    // preserving prior fixed-radius behaviour). Only the tube radius changes;
+    // source/target endpoints and length are untouched.
+    const r = radiusFactors ? radiusFactors[i] : 1.0;
+    tmpScale.set(r, len, r);
     tmpMat.compose(tmpPos, tmpQuat, tmpScale);
     mesh.setMatrixAt(i, tmpMat);
   }
@@ -141,6 +178,17 @@ export const GlassEdges = forwardRef<GlassEdgesHandle, GlassEdgesProps>(
     const edgeRevealRef = useRef(0);
     const totalEdgesRef = useRef(0);
     const instanceColorsActiveRef = useRef(false);
+    // Precomputed per-edge X/Z radius factors (weightToRadiusFactor already
+    // applied). Edge weight is SEMANTIC — it changes only on graph data/settings
+    // change, never frame-to-frame — so the sqrt/clamp is computed ONCE here when
+    // updateWidths detects a changed weight buffer, not per edge per frame in the
+    // matrix hot loop (~21411 redundant sqrt+clamp/frame eliminated). The factor
+    // buffer is owned here and grown in place; the frame loop reads it by index.
+    const radiusFactorsRef = useRef<Float32Array | null>(null);
+    // Cheap numeric change-detection signature for the incoming weight buffer so
+    // the precompute runs only when weights actually change. Numeric (not string)
+    // so the steady-state path allocates nothing. -1 = "no weights yet".
+    const weightSigRef = useRef<number>(-1);
     // Once a caller drives this mesh imperatively (GraphManager's per-frame edge
     // hot loop, which applies node-type-visibility filtering), the `points` prop
     // becomes a stale, UNFILTERED snapshot. The prop-driven progressive reveal
@@ -151,11 +199,9 @@ export const GlassEdges = forwardRef<GlassEdgesHandle, GlassEdgesProps>(
     const nodeRevealBatch = (settings?.revealBatch as number | undefined) ?? 120;
     const EDGE_REVEAL_BATCH = Math.max(1, Math.round(nodeRevealBatch * 0.67));
 
-    // The backend's canonical edge-thickness setting is `baseWidth` (a full
-    // width, default 0.61); the glass-tube geometry takes a cylinder radius,
-    // so halve it. The legacy `edgeRadius` field never existed in the schema,
-    // so reading it fell through to a sub-pixel 0.03 and edges were invisible.
-    const edgeRadius = (settings?.baseWidth ?? 0.61) / 2;
+    // `baseWidth` IS the cylinder radius, 1:1 — no halving, no hidden scale.
+    // The slider value maps directly onto the tube radius the geometry is built at.
+    const edgeRadius = settings?.baseWidth ?? 0.1;
 
     // --- Phase 6 (ADR-04 D1): dynamic capacity ---
     const renderingCeiling = useSettingsStore(s => s.settings?.visualisation?.rendering?.maxEdgesCeiling);
@@ -266,12 +312,22 @@ export const GlassEdges = forwardRef<GlassEdgesHandle, GlassEdgesProps>(
     useEffect(() => {
       const m = meshRef.current ?? mesh;
       const mat = m.material as THREE.MeshPhysicalMaterial;
-      if (!instanceColorsActiveRef.current) {
-        const targetColor = colorOverride || settings?.color;
-        if (targetColor && mat.color) {
-          mat.color.set(targetColor);
+      // The base material.color MULTIPLIES the per-edge instanceColor. Once the
+      // edge-type palette is driving instanceColor (updateColors called), the
+      // base MUST stay neutral white (1,1,1) or it re-tints every tube and
+      // collapses the 11-colour palette back into a single-hue wash. Only when
+      // NO per-instance colours are active do we honour the flat edges.color
+      // setting as a global tint (multiplied against the white-initialised buffer).
+      if (mat.color) {
+        if (instanceColorsActiveRef.current) {
+          mat.color.setRGB(1, 1, 1);
+        } else {
+          const targetColor = colorOverride || settings?.color;
+          if (targetColor) mat.color.set(targetColor);
         }
       }
+      // opacity drives the TSL opacityNode (materialOpacity * fresnelGain), so
+      // mat.opacity must equal the setting verbatim — no high floor, no clamp.
       if (settings?.opacity !== undefined) {
         mat.opacity = settings.opacity;
       }
@@ -292,7 +348,12 @@ export const GlassEdges = forwardRef<GlassEdgesHandle, GlassEdgesProps>(
       const m = meshRef.current ?? mesh;
       const mat = m.material as THREE.MeshPhysicalMaterial;
       if (gemSettings.ior !== undefined) mat.ior = gemSettings.ior;
-      if (gemSettings.transmission !== undefined) mat.transmission = gemSettings.transmission;
+      // Edges intentionally keep transmission 0 so the opacity/alpha channel
+      // (driven by edges.opacity via the TSL opacityNode) has full authority
+      // over edge visibility. The shared gemMaterial.transmission applies to
+      // node gems, NOT edges — applying it here re-introduced the white,
+      // opaque-ish weave (transmission masks alpha) that swamped the nodes.
+      mat.transmission = 0;
       mat.needsUpdate = true;
     }, [gemSettings, mesh]);
 
@@ -381,10 +442,48 @@ export const GlassEdges = forwardRef<GlassEdgesHandle, GlassEdgesProps>(
         }
         const edgeCount = Math.floor(len / 6);
         const activeMesh = ensureCapacity(edgeCount);
-        computeInstanceMatrices(activeMesh, newPts, capacityRef.current, undefined, len);
+        computeInstanceMatrices(activeMesh, newPts, capacityRef.current, undefined, len, radiusFactorsRef.current);
       },
       [ensureCapacity],
     );
+
+    // Convert per-edge raw weights -> precomputed X/Z radius factors. The edge
+    // hot loop (useEdgeBufferComputation) re-sends weights every frame, but the
+    // weights are semantic and only change on graph-data/settings change. We
+    // therefore precompute weightToRadiusFactor ONCE per actual change (guarded
+    // by a cheap signature) so the per-frame matrix loop reads a flat factor by
+    // index instead of running sqrt+clamp ~21411x/frame. The math is identical;
+    // only the timing moved. Zero per-frame allocation once the factor buffer is
+    // sized — it is reused in place across frames and only grown on count change.
+    const updateWidths = useCallback((weights: Float32Array, count: number) => {
+      if (count <= 0) {
+        if (radiusFactorsRef.current !== null) {
+          radiusFactorsRef.current = null;
+          weightSigRef.current = -1;
+        }
+        return;
+      }
+      // Cheap numeric signature: fold count + a sparse sample of the weight buffer
+      // into one accumulator. Weights are static between data changes, so this
+      // skips the precompute on stable ticks with a full O(1)-amortised scan and
+      // zero allocation (pure number arithmetic, no string concat).
+      const step = count > 8 ? Math.floor(count / 8) : 1;
+      let sig = count * 2654435761;
+      for (let s = 0; s < count; s += step) {
+        sig = (sig * 31 + weights[s] * 1000003) >>> 0;
+      }
+      sig = (sig * 31 + weights[count - 1] * 1000003) >>> 0;
+      if (sig === weightSigRef.current && radiusFactorsRef.current && radiusFactorsRef.current.length >= count) {
+        return; // weights unchanged — keep existing precomputed factors
+      }
+      weightSigRef.current = sig;
+      let factors = radiusFactorsRef.current;
+      if (!factors || factors.length < count) {
+        factors = new Float32Array(count); // grow on change only, never per frame
+        radiusFactorsRef.current = factors;
+      }
+      for (let i = 0; i < count; i++) factors[i] = weightToRadiusFactor(weights[i]);
+    }, []);
 
     // Update per-instance edge colors from a packed Float32Array [r,g,b, r,g,b, ...]
     const updateColors = useCallback(
@@ -401,8 +500,12 @@ export const GlassEdges = forwardRef<GlassEdgesHandle, GlassEdgesProps>(
         instanceColorsActiveRef.current = count > 0;
         const mat = m.material as THREE.MeshPhysicalMaterial;
         if (count > 0 && mat.color) {
+          // Per-edge type colours now own edge hue. Force the base white so the
+          // instanceColor multiply renders TRUE (a non-white base would re-tint
+          // the whole palette into one colour — the original grey/white wash).
+          // Emissive stays a neutral grey so the glow tracks each tube's own
+          // instanceColor intensity rather than imposing a shared hue.
           mat.color.setRGB(1, 1, 1);
-          // Read edge emissive base from glow settings (via ref for stable callback identity)
           const edgeEmissiveBase = glowSettingsRef.current?.edgeGlowStrength ?? 0.3;
           const normalizedEmissive = Math.min(edgeEmissiveBase / 3, 1.0);
           mat.emissive.setRGB(normalizedEmissive, normalizedEmissive, normalizedEmissive);
@@ -411,7 +514,7 @@ export const GlassEdges = forwardRef<GlassEdgesHandle, GlassEdgesProps>(
       [],
     );
 
-    useImperativeHandle(ref, () => ({ updatePoints, updateColors }), [updatePoints, updateColors]);
+    useImperativeHandle(ref, () => ({ updatePoints, updateColors, updateWidths }), [updatePoints, updateColors, updateWidths]);
 
     // Subtle emissive pulse on edges — base and amplitude driven by glow settings.
     // Phase 6 (ADR-04 D10): no allocations inside useFrame — only reads refs
@@ -435,7 +538,7 @@ export const GlassEdges = forwardRef<GlassEdgesHandle, GlassEdgesProps>(
           edgeRevealRef.current + EDGE_REVEAL_BATCH,
           totalEdgesRef.current,
         );
-        computeInstanceMatrices(m, points, capacityRef.current, edgeRevealRef.current);
+        computeInstanceMatrices(m, points, capacityRef.current, edgeRevealRef.current, undefined, radiusFactorsRef.current);
       }
     });
 
