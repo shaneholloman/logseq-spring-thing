@@ -14,14 +14,19 @@ export interface BinaryFrameUpdate {
   clusterId?: number;
   anomalyScore?: number;
   communityId?: number;
+  centrality?: number;
+  ssspDistance?: number;
 }
+
+/** Per-node analytics stride for the worker analytics buffer (ADR-031 D2). */
+export const WORKER_ANALYTICS_STRIDE = 5;
 
 export interface ProcessFrameInput {
   nodeUpdates: BinaryFrameUpdate[];
   isDelta: boolean;
   /** Target positions array (mutated in place). */
   targetPositions: Float32Array;
-  /** Analytics buffer — 3 floats per node (clusterId, anomalyScore, communityId). */
+  /** Analytics buffer — 5 floats per node: [clusterId, anomalyScore, communityId, centrality, ssspDistance] (ADR-031 D2). */
   analyticsBuffer: Float32Array | null;
   /** Output buffer — 4 floats per update: [nodeId, x, y, z]. Must be pre-allocated. */
   positionArray: Float32Array;
@@ -78,11 +83,14 @@ export function processFrameUpdates(
           targetPositions[i3 + 1] = update.position.y;
           targetPositions[i3 + 2] = update.position.z;
         }
-        // Store V3 analytics fields per node
+        // Store V3 analytics fields per node (stride 5; ADR-031 D2).
         if (analyticsBuffer && update.clusterId !== undefined) {
-          analyticsBuffer[i3]     = update.clusterId;
-          analyticsBuffer[i3 + 1] = update.anomalyScore ?? 0;
-          analyticsBuffer[i3 + 2] = update.communityId ?? 0;
+          const a = nodeIndex * WORKER_ANALYTICS_STRIDE;
+          analyticsBuffer[a]     = update.clusterId;
+          analyticsBuffer[a + 1] = update.anomalyScore ?? 0;
+          analyticsBuffer[a + 2] = update.communityId ?? 0;
+          analyticsBuffer[a + 3] = update.centrality ?? 0;
+          analyticsBuffer[a + 4] = Number.isFinite(update.ssspDistance) ? (update.ssspDistance as number) : Infinity;
         }
       }
     }

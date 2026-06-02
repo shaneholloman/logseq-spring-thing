@@ -332,79 +332,9 @@ impl UnifiedGPUCompute {
         Ok(all_distances)
     }
 
-    /// Launch the GPU approximate_apsp_kernel from gpu_landmark_apsp.cu.
-    /// Takes flattened landmark distances [num_landmarks][num_nodes] and produces
-    /// the full [num_nodes][num_nodes] approximate distance matrix on GPU.
-    pub fn run_apsp_gpu(
-        &self,
-        landmark_distances: &[f32],
-        num_landmarks: usize,
-    ) -> Result<Vec<f32>> {
-        let apsp_mod = self
-            .apsp_module
-            .as_ref()
-            .ok_or_else(|| anyhow!("APSP module not loaded - GPU APSP unavailable"))?;
-
-        let n = self.num_nodes;
-        if landmark_distances.len() != num_landmarks * n {
-            return Err(anyhow!(
-                "landmark_distances length ({}) != num_landmarks ({}) * num_nodes ({})",
-                landmark_distances.len(),
-                num_landmarks,
-                n
-            ));
-        }
-
-        // Pre-check: ensure APSP matrix won't exceed GPU memory limits.
-        // An n*n f32 matrix can grow quadratically; cap at 4 GB to prevent OOM.
-        let required_bytes = (n as u64) * (n as u64) * (std::mem::size_of::<f32>() as u64);
-        const MAX_APSP_BYTES: u64 = 4 * 1024 * 1024 * 1024; // 4 GB limit
-        if required_bytes > MAX_APSP_BYTES {
-            return Err(anyhow!(
-                "APSP matrix too large: {} nodes requires {} GB, max is {} GB",
-                n,
-                required_bytes / (1024 * 1024 * 1024),
-                MAX_APSP_BYTES / (1024 * 1024 * 1024)
-            ));
-        }
-
-        // Upload landmark distances to device
-        let d_landmark = DeviceBuffer::from_slice(landmark_distances)?;
-
-        // Allocate output distance matrix on device
-        let d_output: DeviceBuffer<f32> = DeviceBuffer::zeroed(n * n)?;
-
-        // Launch 2D grid: each thread computes one (i,j) pair
-        let block_dim = 16u32;
-        let grid_x = ((n as u32) + block_dim - 1) / block_dim;
-        let grid_y = ((n as u32) + block_dim - 1) / block_dim;
-
-        let func = apsp_mod.get_function("approximate_apsp_kernel")?;
-        let s = self.sssp_stream.as_ref().unwrap_or(&self.stream);
-
-        // SAFETY: approximate_apsp_kernel launch is safe because:
-        // 1. d_landmark is a valid device buffer of size [num_landmarks * num_nodes]
-        // 2. d_output is a valid zeroed device buffer of size [num_nodes * num_nodes]
-        // 3. Grid/block dimensions produce threads covering all (i,j) pairs
-        // 4. The kernel reads landmark_distances and writes distance_matrix with bounds checks
-        unsafe {
-            launch!(func<<<(grid_x, grid_y, 1), (block_dim, block_dim, 1), 0, s>>>(
-                d_landmark.as_device_ptr(),
-                d_output.as_device_ptr(),
-                n as i32,
-                num_landmarks as i32
-            ))?;
-        }
-
-        // Copy result back to host
-        let mut host_output = vec![0.0f32; n * n];
-        d_output.copy_to(&mut host_output)?;
-
-        log::info!(
-            "GPU APSP kernel completed: {} nodes, {} landmarks",
-            n,
-            num_landmarks
-        );
-        Ok(host_output)
-    }
+    // `run_apsp_gpu` removed (ADR-031 D8 / NFR-7): the dense [n][n] approximate
+    // APSP matrix is O(n^2) memory and is forbidden on the analytics path. The
+    // backing `approximate_apsp_kernel` is compiled out (gpu_landmark_apsp.cu
+    // `#if 0`); the caller (ShortestPathActor::handle<ComputeAPSP>) now fails
+    // closed rather than materialising the matrix on CPU.
 }

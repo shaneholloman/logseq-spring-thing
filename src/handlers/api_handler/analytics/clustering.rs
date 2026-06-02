@@ -34,15 +34,10 @@ pub async fn perform_clustering(
         match gpu_manager.send(msg).await {
             Ok(Ok(clusters)) => {
                 info!("GPU clustering completed successfully: {} clusters found", clusters.len());
-                // Populate shared node_analytics store with cluster assignments
-                if let Ok(mut analytics) = app_state.node_analytics.write() {
-                    for (cluster_idx, cluster) in clusters.iter().enumerate() {
-                        for &node_id in &cluster.nodes {
-                            let entry = analytics.entry(node_id).or_insert((0, 0.0, 0));
-                            entry.0 = cluster_idx as u32; // cluster_id
-                        }
-                    }
-                }
+                // ADR-031 D3 single-writer: ClusteringActor populates node_analytics
+                // (masked key, 1-based id, stale reset) while running the kernels. This
+                // path no longer writes node_analytics — the previous 0-based unmasked
+                // write here both violated I-6 and missed the encoder's masked lookup.
                 return Ok(clusters);
             }
             Ok(Err(e)) => {

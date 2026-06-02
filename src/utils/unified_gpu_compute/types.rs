@@ -196,7 +196,7 @@ unsafe extern "C" {
         stream: *mut ::std::os::raw::c_void,
     ) -> f32;
 
-    pub(crate) fn pagerank_handle_dangling(
+    pub(crate) fn pagerank_handle_dangling_global(
         pagerank_new: *mut f32,
         pagerank_old: *const f32,
         out_degree: *const ::std::os::raw::c_int,

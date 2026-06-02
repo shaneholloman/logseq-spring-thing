@@ -642,7 +642,7 @@ impl UnifiedGPUCompute {
                 }
 
                 // Handle dangling nodes
-                super::types::pagerank_handle_dangling(
+                super::types::pagerank_handle_dangling_global(
                     d_pagerank_new.as_device_ptr().as_raw() as *mut f32,
                     d_pagerank_old.as_device_ptr().as_raw() as *const f32,
                     d_out_degree.as_device_ptr().as_raw() as *const _,

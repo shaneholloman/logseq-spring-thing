@@ -2,7 +2,11 @@ import React, { useRef, useMemo, useEffect, useState } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { ConvexGeometry } from 'three/examples/jsm/geometries/ConvexGeometry.js';
-import { nodeAnalyticsStore } from '../../analytics/store/nodeAnalyticsStore';
+import {
+  nodeAnalyticsStore,
+  ANALYTICS_STRIDE,
+  ANALYTICS_CLUSTER_OFFSET,
+} from '../../analytics/store/nodeAnalyticsStore';
 
 // ============================================================================
 // Types
@@ -55,51 +59,9 @@ const SPATIAL_TARGET_CELLS = 96;
 // Helpers
 // ============================================================================
 
-/**
- * Get cluster key from analytics buffer (cluster_id) when available,
- * falling back to domain-based grouping from node label/metadata.
- */
-function getClusterKey(
-  node: { id: string; metadata?: any; label?: string },
-  nodeIndex?: number,
-  analyticsBuffer?: Float32Array | null,
-): string {
-  // 1. Prefer server-provided cluster_id from binary protocol V3 analytics
-  if (analyticsBuffer && nodeIndex !== undefined) {
-    const clusterId = analyticsBuffer[nodeIndex * 3]; // index 0 = cluster_id
-    if (clusterId > 0) {
-      return `cluster-${clusterId}`;
-    }
-  }
-
-  // 2. Check metadata for explicit domain
-  const domain =
-    node.metadata?.source_domain ??
-    node.metadata?.domain ??
-    node.metadata?.cluster;
-  if (domain && domain !== 'unknown') return domain;
-
-  // 3. Extract domain from source_file prefix (most reliable — ontology IRI encoding)
-  const sourceFile = node.metadata?.source_file ?? '';
-  const sfMatch = sourceFile.match(/^(BC|AI|MV|RB|TC|DT|NGM)[-_]/i);
-  if (sfMatch) return sfMatch[1].toUpperCase();
-
-  // 4. Extract domain from label prefix (e.g., "BC-0034-nonce" → "BC")
-  const label = node.label ?? node.metadata?.label ?? '';
-  const prefixMatch = label.match(/^(BC|AI|MV|RB|TC|DT|NGM|bc|ai|mv|rb|tc|dt|ngm)[-:_]/i);
-  if (prefixMatch) return prefixMatch[1].toUpperCase();
-
-  // 5. Detect domain from keywords in label (expanded for better coverage)
-  if (label.match(/Blockchain|Crypto|Token|DeFi|Smart Contract|Bitcoin|Ethereum|Consensus|ERC\d|Staking|Wallet|Ledger|Mining|DAO|DApp|Solidity|Proof.of/i)) return 'BC';
-  if (label.match(/Artificial Intelligence|Machine Learning|Neural|NLP|Deep Learning|Chatbot|GPT|LLM|Transformer|Embedding|Inference|Generative|Anthropic|Claude|Reinforcement|Classification|Prompt/i)) return 'AI';
-  if (label.match(/Metaverse|VR|AR|XR|Avatar|Render|Digital Twin|Hologram|Augmented|Virtual Reality|Mixed Reality|Spatial|Haptic|Immersive|Gaming|3D|Scene/i)) return 'MV';
-  if (label.match(/Robot|Drone|Sensor|IoT|Actuator|Autonomous/i)) return 'RB';
-  if (label.match(/Security|Privacy|Auth|Encrypt|Access Control|Firewall|Vulnerability|Threat|Compliance|GDPR/i)) return 'SEC';
-  if (label.match(/Network|Protocol|API|Infrastructure|Server|Cloud|Database|Storage|Computing|Compute|Docker|Kubernetes/i)) return 'INFRA';
-
-  // Skip 'unknown' group entirely — don't create a hull for unclassified nodes
-  return '';
-}
+// ADR-031 D6: the label/domain cluster-key fabrication heuristic was removed.
+// Hulls now group strictly by server-provided cluster_id; unclustered nodes
+// get no hull. The numeric cluster palette below colours the server clusters.
 
 // GPU cluster palette for numeric cluster IDs
 const GPU_CLUSTER_COLORS = [
@@ -291,23 +253,22 @@ export const ClusterHulls: React.FC<ClusterHullsProps> = ({
   });
 
   // ---- Group nodes into clusters ----
-  // Two grouping sources, in priority order:
-  //   1. Server cluster_id (Louvain) — communities that are spatially coherent
-  //      under the force layout, so their hulls are tight. Used when present.
-  //   2. Spatial grid over live positions — the fallback when no clustering run
-  //      exists. Semantic-domain tags are spatially scattered (their hulls
-  //      blanket the whole disc = mush), so we cluster by the proximity the
-  //      layout already produced. These carry no semantic key, so hullEntries
-  //      colours them by rank for visual separation.
+  // ADR-031 D6: the hull layer renders ONLY server-provided clusters by default.
+  //   1. Server cluster_id (Louvain) — drawn for nodes with a real (>0) cluster_id.
+  //      Nodes the server left unclustered are NOT fabricated into label/spatial
+  //      hulls — that masking is exactly what D6 removes.
+  //   2. Spatial-grid fallback — opt-in only (clusterHulls.spatialFallback,
+  //      default off). When the server sends no clusters and the fallback is off,
+  //      the layer renders nothing (explicit empty state), never fabricated hulls.
   const clusterMap = useMemo(() => {
     const analytics = analyticsRef.current;
     const positions = nodePositionsRef.current;
 
-    // Detect whether any real cluster_id is present (stride 3, index 0 > 0).
+    // Detect whether any real cluster_id is present (stride ANALYTICS_STRIDE).
     let hasClusterId = false;
     if (analytics) {
       for (const idx of nodeIdToIndexMap.values()) {
-        if (analytics[idx * 3] > 0) { hasClusterId = true; break; }
+        if (analytics[idx * ANALYTICS_STRIDE + ANALYTICS_CLUSTER_OFFSET] > 0) { hasClusterId = true; break; }
       }
     }
 
@@ -315,11 +276,16 @@ export const ClusterHulls: React.FC<ClusterHullsProps> = ({
     const colorByKey = new Map<string, string>();
 
     if (hasClusterId) {
+      // Group ONLY nodes the server actually clustered (cluster_id > 0). The
+      // domain/label heuristics in getClusterKey are not used to fabricate hulls
+      // for the unclustered remainder.
       for (let ni = 0; ni < nodes.length; ni++) {
         const node = nodes[ni];
         const nodeIndex = nodeIdToIndexMap.get(node.id);
-        const key = getClusterKey(node, nodeIndex, analytics);
-        if (!key) continue;
+        if (nodeIndex === undefined) continue;
+        const clusterId = analytics![nodeIndex * ANALYTICS_STRIDE + ANALYTICS_CLUSTER_OFFSET];
+        if (!(clusterId > 0)) continue;
+        const key = `cluster-${clusterId}`;
         let arr = map.get(key);
         if (!arr) { arr = []; map.set(key, arr); colorByKey.set(key, getDomainHullColor(key)); }
         arr.push(node.id);
@@ -327,8 +293,12 @@ export const ClusterHulls: React.FC<ClusterHullsProps> = ({
       return { map, colorByKey };
     }
 
-    // Spatial fallback: bucket live positions into a proximity grid.
-    if (!positions) return { map, colorByKey };
+    // No server clusters. The JS spatial-grid heuristic fabricates clusters and
+    // masks missing server data, so it is opt-in (default off). When off, return
+    // an empty map → the layer shows nothing.
+    const spatialFallback = settings?.visualisation?.clusterHulls?.spatialFallback === true;
+    if (!spatialFallback || !positions) return { map, colorByKey };
+
     const pts: ClusterPoint[] = [];
     for (let ni = 0; ni < nodes.length; ni++) {
       const node = nodes[ni];
@@ -343,7 +313,7 @@ export const ClusterHulls: React.FC<ClusterHullsProps> = ({
     // Spatial clusters carry no semantic key; hullEntries colours them by rank.
     return { map: buildSpatialClusters(pts, SPATIAL_TARGET_CELLS), colorByKey };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nodes, nodeIdToIndexMap, nodePositionsRef, tick]);
+  }, [nodes, nodeIdToIndexMap, nodePositionsRef, tick, settings?.visualisation?.clusterHulls?.spatialFallback]);
 
   // ---- Build hull geometries from current positions ----
   const hullEntries = useMemo(() => {

@@ -342,7 +342,7 @@ impl ClientManager {
         positions: &[BinaryNodeDataClient],
         node_type_arrays: &crate::actors::messages::NodeTypeArrays,
         broadcast_sequence: u64,
-        analytics_data: Option<&std::collections::HashMap<u32, (u32, f32, u32)>>,
+        analytics_data: Option<&std::collections::HashMap<u32, crate::utils::binary_protocol::NodeAnalytics>>,
     ) -> BroadcastResult {
         if positions.is_empty() || self.clients.is_empty() {
             return BroadcastResult::default();
@@ -405,7 +405,7 @@ impl ClientManager {
         positions: &[BinaryNodeDataClient],
         nta: &crate::actors::messages::NodeTypeArrays,
         broadcast_sequence: u64,
-        analytics_data: Option<&std::collections::HashMap<u32, (u32, f32, u32)>>,
+        analytics_data: Option<&std::collections::HashMap<u32, crate::utils::binary_protocol::NodeAnalytics>>,
     ) -> Vec<u8> {
         use crate::utils::binary_protocol::encode_node_data_extended_with_sssp;
         use crate::utils::socket_flow_messages::BinaryNodeData;
@@ -502,8 +502,8 @@ pub struct ClientCoordinatorActor {
     /// Cached node type arrays from GraphStateActor for binary protocol flags
     node_type_arrays: crate::actors::messages::NodeTypeArrays,
 
-    /// Shared node analytics data (cluster_id, anomaly_score, community_id) per node
-    node_analytics: Arc<std::sync::RwLock<std::collections::HashMap<u32, (u32, f32, u32)>>>,
+    /// Shared node analytics data (NodeAnalytics) per node
+    node_analytics: Arc<std::sync::RwLock<std::collections::HashMap<u32, crate::utils::binary_protocol::NodeAnalytics>>>,
 
     /// ADR-031 gap 3b: Per-client reconnect message queue.
     disconnected_queue: DisconnectedClientQueue,
@@ -574,8 +574,8 @@ impl ClientCoordinatorActor {
         }
     }
 
-    /// Set the shared node analytics map (cluster_id, anomaly_score, community_id)
-    pub fn set_node_analytics(&mut self, analytics: Arc<std::sync::RwLock<std::collections::HashMap<u32, (u32, f32, u32)>>>) {
+    /// Set the shared node analytics map (NodeAnalytics)
+    pub fn set_node_analytics(&mut self, analytics: Arc<std::sync::RwLock<std::collections::HashMap<u32, crate::utils::binary_protocol::NodeAnalytics>>>) {
         self.node_analytics = analytics;
         info!("Node analytics configured for ClientCoordinatorActor");
     }

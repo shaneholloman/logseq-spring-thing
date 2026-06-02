@@ -151,7 +151,6 @@ pub struct UnifiedGPUCompute {
     pub label_counts: DeviceBuffer<i32>,
     pub convergence_flag: DeviceBuffer<i32>,
     pub node_degrees: DeviceBuffer<f32>,
-    pub modularity_contributions: DeviceBuffer<f32>,
     pub community_sizes: DeviceBuffer<i32>,
     pub label_mapping: DeviceBuffer<i32>,
     pub rand_states: DeviceBuffer<curandState>,
@@ -400,7 +399,6 @@ impl UnifiedGPUCompute {
         let label_counts = DeviceBuffer::zeroed(num_nodes)?;
         let convergence_flag = DeviceBuffer::from_slice(&[1i32])?;
         let node_degrees = DeviceBuffer::zeroed(num_nodes)?;
-        let modularity_contributions = DeviceBuffer::zeroed(num_nodes)?;
         let community_sizes = DeviceBuffer::zeroed(num_nodes)?;
         let label_mapping = DeviceBuffer::zeroed(num_nodes)?;
 
@@ -506,7 +504,6 @@ impl UnifiedGPUCompute {
             label_counts,
             convergence_flag,
             node_degrees,
-            modularity_contributions,
             community_sizes,
             label_mapping,
             rand_states,

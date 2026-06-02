@@ -2,7 +2,7 @@
 // Path mapping: client dot-notation paths → API endpoints and visual blob keys
 // Also houses the transform from flat API response to nested client structure
 
-import type { AllSettings, PhysicsSettings, ConstraintSettings, RenderingSettings, NodeFilterSettings, QualityGateSettings } from './types';
+import type { AllSettings, PhysicsSettings, ConstraintSettings, RenderingSettings, NodeFilterSettings } from './types';
 import {
   DEFAULT_GLOW_SETTINGS,
   DEFAULT_BLOOM_SETTINGS,
@@ -17,6 +17,7 @@ import {
   DEFAULT_NODES_SETTINGS,
   DEFAULT_EDGES_SETTINGS,
   DEFAULT_LABELS_SETTINGS,
+  DEFAULT_QUALITY_GATES,
 } from './defaults';
 
 // ============================================================================
@@ -104,25 +105,10 @@ export function transformApiToClientSettings(
       provider: 'nostr' as const,
       required: false
     },
-    qualityGates: apiResponse.qualityGates || {
-      gpuAcceleration: true,
-      ontologyPhysics: false,
-      semanticForces: false,
-      layoutMode: 'force-directed' as const,
-      showClusters: true,
-      showAnomalies: true,
-      showCommunities: false,
-      ruvectorEnabled: false,
-      gnnPhysics: false,
-      minFpsThreshold: 30,
-      maxNodeCount: 100000,
-      autoAdjust: true,
-      ontologyStrength: 0.5,
-      dagLevelAttraction: 0.5,
-      dagSiblingRepulsion: 0.3,
-      typeClusterAttraction: 0.3,
-      typeClusterRadius: 100,
-    },
+    // ADR-031 D6: merge defaults UNDER the server response so a partial
+    // qualityGates payload still ships render-by-default values (and the new
+    // showCentrality / showSSSP gates) rather than dropping every default.
+    qualityGates: { ...DEFAULT_QUALITY_GATES, ...(apiResponse.qualityGates || {}) },
     nodeFilter: {
       ...{
         enabled: true,
@@ -203,13 +189,15 @@ export function getNestedValue(obj: Record<string, unknown>, path: string): unkn
   return current;
 }
 
-// Re-export empty skeleton used in error fallback
+// Re-export empty skeleton used in error fallback. ADR-031 D6: qualityGates
+// ships full defaults even on the error path so analytics never silently
+// disappear when a settings fetch fails.
 export function emptyAllSettings(): AllSettings {
   return {
     physics: {} as PhysicsSettings,
     constraints: {} as ConstraintSettings,
     rendering: {} as RenderingSettings,
     nodeFilter: {} as NodeFilterSettings,
-    qualityGates: {} as QualityGateSettings,
+    qualityGates: { ...DEFAULT_QUALITY_GATES },
   };
 }

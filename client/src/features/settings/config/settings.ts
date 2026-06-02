@@ -495,6 +495,10 @@ export interface ClusterHullSettings {
   updateInterval: number; // frames between hull recalculation, default 30
   maxHulls: number;     // largest N clusters to draw, default 32
   slabThickness: number; // Z half-extrusion for near-coplanar hulls, default 35
+  // ADR-031 D6: opt-in JS spatial-grid fallback when the server sends no
+  // clusters. Default off — absent server clusters show an empty state, never
+  // fabricated hulls.
+  spatialFallback?: boolean;
 }
 
 // Embedding cloud layer settings (PCA-projected RuVector embeddings)
@@ -664,6 +668,10 @@ export interface QualityGatesSettings {
   showClusters: boolean;
   showAnomalies: boolean;
   showCommunities: boolean;
+  /** Colour nodes by PageRank centrality (ADR-031 D2/D6, wire offset 48). */
+  showCentrality: boolean;
+  /** Colour nodes by SSSP distance from the active source (ADR-031 D6, wire offset 28). */
+  showSSSP: boolean;
   ruvectorEnabled: boolean;
   gnnPhysics: boolean;
   minFpsThreshold: number;

@@ -40,8 +40,8 @@ pub struct Community {
     pub density: f32,
 }
 
-/// Type alias for the shared node analytics map: node_id -> (cluster_id, anomaly_score, community_id)
-type NodeAnalyticsMap = Arc<std::sync::RwLock<std::collections::HashMap<u32, (u32, f32, u32)>>>;
+/// Type alias for the shared node analytics map: node_id -> NodeAnalytics
+type NodeAnalyticsMap = Arc<std::sync::RwLock<std::collections::HashMap<u32, crate::utils::binary_protocol::NodeAnalytics>>>;
 
 pub struct ClusteringActor {
 
@@ -235,10 +235,22 @@ impl ClusteringActor {
         // so the V3 binary broadcast path carries real cluster_id values.
         if let Some(ref analytics_map) = self.node_analytics {
             if let Ok(mut map) = analytics_map.write() {
+                // Single-writer reset (ADR-031 D3): clear stale cluster_id from any
+                // prior run so nodes dropped from this run revert to 0. community_id
+                // is a distinct field (invariant I-6) and is left untouched.
+                for entry in map.values_mut() {
+                    entry.cluster_id = 0;
+                }
                 for (gpu_idx, &cluster_id) in assignments.iter().enumerate() {
-                    let node_id = self.translate_gpu_index(gpu_idx);
-                    let entry = map.entry(node_id).or_insert((0, 0.0, 0));
-                    entry.0 = cluster_id as u32; // cluster_id
+                    // Key by the masked graph node id: the V3 encoder masks the wire
+                    // id (binary_protocol NODE_ID_MASK) before lookup, so the writer
+                    // must match or every lookup misses (cluster_id silently 0).
+                    let node_id = self.translate_gpu_index(gpu_idx)
+                        & crate::utils::binary_protocol::NODE_ID_MASK;
+                    let entry = map.entry(node_id).or_default();
+                    // ADR-031 I-6: cluster_id is 1-based with 0 == unclustered.
+                    // K-means assigns dense 0-based ids to every node, so +1.
+                    entry.cluster_id = if cluster_id < 0 { 0 } else { (cluster_id + 1) as u32 };
                 }
                 info!(
                     "ClusteringActor: Populated node_analytics with cluster assignments for {} nodes",
@@ -345,21 +357,38 @@ impl ClusteringActor {
             communities.iter().map(|c| c.nodes.len()).collect();
         let actual_modularity = self.calculate_modularity(&communities);
 
-        // ADR-014 DL4 fix: Populate shared node_analytics with community assignments
-        // Write community_id to BOTH slot 0 (cluster_id) and slot 2 (community_id)
-        // so that GemNodes.tsx can read slot 0 for node coloring.
+        // ADR-031 D1 modularity gate: a partition below Q=0.3 has no meaningful
+        // community structure (it is statistical noise). Fail closed — leave every
+        // node at community_id=0 rather than publishing a spurious partition. The
+        // GPU-returned `modularity` is computed on the ORIGINAL graph with the final
+        // labels and is authoritative.
+        //
+        // ADR-031 D3: community detection is the single writer of community_id only.
+        // cluster_id is a distinct field (invariant I-6) owned by K-means/DBSCAN and
+        // is left untouched here — the legacy dup-write into cluster_id is removed.
         if let Some(ref analytics_map) = self.node_analytics {
+            // translate_gpu_index needs &self, so resolve the masked graph node ids
+            // here; the gate itself (apply_modularity_gate) is a pure, unit-tested
+            // function over the resulting (node_id, label) pairs.
+            let node_ids: Vec<u32> = (0..node_labels.len())
+                .map(|gpu_idx| {
+                    self.translate_gpu_index(gpu_idx)
+                        & crate::utils::binary_protocol::NODE_ID_MASK
+                })
+                .collect();
             if let Ok(mut map) = analytics_map.write() {
-                for (gpu_idx, &community_label) in node_labels.iter().enumerate() {
-                    let node_id = self.translate_gpu_index(gpu_idx);
-                    let entry = map.entry(node_id).or_insert((0, 0.0, 0));
-                    entry.0 = community_label as u32; // cluster_id (for GemNodes.tsx coloring)
-                    entry.2 = community_label as u32; // community_id
+                if apply_modularity_gate(&mut map, &node_ids, &node_labels, modularity) {
+                    info!(
+                        "ClusteringActor: Populated node_analytics with community assignments for {} nodes (modularity {:.4})",
+                        node_labels.len(), modularity
+                    );
+                } else {
+                    info!(
+                        "ClusteringActor: community partition rejected (modularity {:.4} < {:.2}); \
+                         node_analytics.community_id reset to 0",
+                        modularity, MODULARITY_GATE
+                    );
                 }
-                info!(
-                    "ClusteringActor: Populated node_analytics with community assignments for {} nodes",
-                    node_labels.len()
-                );
             }
         }
 
@@ -447,13 +476,14 @@ impl ClusteringActor {
         // Ensure we have the GPU buffer index -> graph node ID mapping
         self.ensure_node_id_map();
 
-        // Build cluster groups from labels (ignoring noise = -1)
+        // Build cluster groups from labels. run_dbscan_clustering returns
+        // 1-based contiguous ids with 0 == noise/unclustered (ADR-031 I-6).
         let mut cluster_nodes: std::collections::HashMap<i32, Vec<u32>> =
             std::collections::HashMap::new();
         let mut num_noise = 0usize;
 
         for (gpu_idx, &label) in labels.iter().enumerate() {
-            if label < 0 {
+            if label == 0 {
                 num_noise += 1;
                 continue;
             }
@@ -491,11 +521,20 @@ impl ClusteringActor {
         // Populate shared node_analytics with DBSCAN cluster assignments
         if let Some(ref analytics_map) = self.node_analytics {
             if let Ok(mut map) = analytics_map.write() {
+                // Single-writer reset (ADR-031 D3): clear stale cluster_id so nodes
+                // that became noise on this run revert to 0. community_id untouched.
+                for entry in map.values_mut() {
+                    entry.cluster_id = 0;
+                }
                 for (gpu_idx, &label) in labels.iter().enumerate() {
-                    if label >= 0 {
-                        let node_id = self.translate_gpu_index(gpu_idx);
-                        let entry = map.entry(node_id).or_insert((0, 0.0, 0));
-                        entry.0 = label as u32; // cluster_id
+                    // 1-based ids; 0 == noise/unclustered. Only real clusters
+                    // write a cluster_id; noise keeps the default 0 (ADR-031 I-6).
+                    if label > 0 {
+                        // Masked key to match the V3 encoder lookup (NODE_ID_MASK).
+                        let node_id = self.translate_gpu_index(gpu_idx)
+                            & crate::utils::binary_protocol::NODE_ID_MASK;
+                        let entry = map.entry(node_id).or_default();
+                        entry.cluster_id = label as u32;
                     }
                 }
                 info!(
@@ -1206,5 +1245,101 @@ impl Handler<PerformGPUClustering> for ClusteringActor {
                 }
             }
         })
+    }
+}
+
+/// ADR-031 D1: a partition whose Newman modularity is below this threshold has no
+/// meaningful community structure (it is statistical noise), so it is rejected and
+/// every node is left at `community_id = 0`. Strict `<`, so exactly 0.30 accepts.
+pub(crate) const MODULARITY_GATE: f32 = 0.3;
+
+/// Pure, behaviour-preserving extraction of the modularity gate's effect on the
+/// analytics map (ADR-031 D1 + D3 single-writer reset). Always clears every
+/// entry's `community_id` first; then, only if `modularity >= MODULARITY_GATE`,
+/// writes `labels[i]` into the entry keyed by the pre-translated, masked
+/// `node_ids[i]`. Returns `true` when the partition was accepted and populated,
+/// `false` when it was rejected (all `community_id` left at 0).
+///
+/// Callers pass `node_ids[i]` already resolved via `translate_gpu_index` and
+/// masked with `NODE_ID_MASK`; `node_ids` and `labels` align by index.
+pub(crate) fn apply_modularity_gate(
+    map: &mut std::collections::HashMap<u32, crate::utils::binary_protocol::NodeAnalytics>,
+    node_ids: &[u32],
+    labels: &[i32],
+    modularity: f32,
+) -> bool {
+    // Single-writer reset: clear stale community_id from any prior run (and on
+    // gate-reject) so the field reflects only the current pass.
+    for entry in map.values_mut() {
+        entry.community_id = 0;
+    }
+    if modularity < MODULARITY_GATE {
+        return false;
+    }
+    for (&node_id, &label) in node_ids.iter().zip(labels.iter()) {
+        let entry = map.entry(node_id).or_default();
+        entry.community_id = if label < 0 { 0 } else { label as u32 };
+    }
+    true
+}
+
+#[cfg(test)]
+mod gate_tests {
+    use super::{apply_modularity_gate, MODULARITY_GATE};
+    use crate::utils::binary_protocol::NodeAnalytics;
+    use std::collections::HashMap;
+
+    fn map_with(ids: &[u32]) -> HashMap<u32, NodeAnalytics> {
+        let mut m = HashMap::new();
+        for &id in ids {
+            // Seed a stale non-zero community_id to prove the reset path runs.
+            let mut e = NodeAnalytics::default();
+            e.community_id = 999;
+            m.insert(id, e);
+        }
+        m
+    }
+
+    #[test]
+    fn accepts_at_or_above_gate_and_populates() {
+        let mut m = map_with(&[10, 20, 30]);
+        let accepted = apply_modularity_gate(&mut m, &[10, 20, 30], &[1, 1, 2], MODULARITY_GATE);
+        assert!(accepted);
+        assert_eq!(m[&10].community_id, 1);
+        assert_eq!(m[&20].community_id, 1);
+        assert_eq!(m[&30].community_id, 2);
+    }
+
+    #[test]
+    fn rejects_below_gate_and_resets_all_to_zero() {
+        let mut m = map_with(&[10, 20, 30]);
+        let accepted = apply_modularity_gate(&mut m, &[10, 20, 30], &[1, 1, 2], 0.2999);
+        assert!(!accepted);
+        assert!(m.values().all(|e| e.community_id == 0));
+    }
+
+    #[test]
+    fn boundary_exactly_at_gate_accepts() {
+        // Strict `<` means Q == 0.30 is accepted, not rejected.
+        let mut m = map_with(&[7]);
+        assert!(apply_modularity_gate(&mut m, &[7], &[3], 0.30));
+        assert_eq!(m[&7].community_id, 3);
+    }
+
+    #[test]
+    fn negative_label_maps_to_zero() {
+        let mut m = map_with(&[1, 2]);
+        assert!(apply_modularity_gate(&mut m, &[1, 2], &[-1, 4], 0.5));
+        assert_eq!(m[&1].community_id, 0);
+        assert_eq!(m[&2].community_id, 4);
+    }
+
+    #[test]
+    fn populates_entries_absent_from_prior_map() {
+        // node_ids not previously present must be inserted (or_default).
+        let mut m: HashMap<u32, NodeAnalytics> = HashMap::new();
+        assert!(apply_modularity_gate(&mut m, &[100, 200], &[5, 6], 0.4));
+        assert_eq!(m[&100].community_id, 5);
+        assert_eq!(m[&200].community_id, 6);
     }
 }

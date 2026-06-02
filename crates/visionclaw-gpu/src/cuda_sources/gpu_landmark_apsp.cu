@@ -10,6 +10,19 @@ extern "C" {
 // This kernel approximates distances using triangle inequality:
 // dist(i,j) ≈ min_k(dist(i,k) + dist(k,j)) over landmark nodes k
 
+// ============================================================================
+// QUARANTINED (ADR-031 D8 / NFR-7).
+//
+// `approximate_apsp_kernel` materialises a dense [num_nodes x num_nodes]
+// distance matrix — O(n^2) memory (110 MB+ on the live 10,676-node graph,
+// quadratic beyond). NFR-7 forbids O(n^2) analytics memory, so this kernel
+// must NEVER be reachable on the analytics path. It is compiled out entirely;
+// removing the symbol forces any caller to fail to bind rather than silently
+// blow up GPU memory. The Rust helper `run_apsp_gpu`
+// (src/utils/unified_gpu_compute/sssp.rs:338) is now dead and must be removed
+// or guarded by the lead (see report).
+// ============================================================================
+#if 0
 __global__ void approximate_apsp_kernel(
     const float* __restrict__ landmark_distances,  // [num_landmarks][num_nodes] distances from landmarks
     float* __restrict__ distance_matrix,           // [num_nodes][num_nodes] output approximate distances
@@ -49,6 +62,7 @@ __global__ void approximate_apsp_kernel(
 
     distance_matrix[i * num_nodes + j] = min_dist;
 }
+#endif // approximate_apsp_kernel quarantined (NFR-7)
 
 // Kernel to sample k landmark nodes (simple stratified sampling)
 __global__ void select_landmarks_kernel(

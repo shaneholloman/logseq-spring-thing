@@ -250,20 +250,11 @@ async fn start_clustering(
                     0.0
                 };
 
-                // Populate shared node_analytics with cluster assignments for V3 wire format
-                if let Ok(mut analytics) = state.node_analytics.write() {
-                    for (idx, cluster) in cluster_results.iter().enumerate() {
-                        for &node_id in &cluster.nodes {
-                            let entry = analytics.entry(node_id).or_insert((0, 0.0, 0));
-                            entry.0 = idx as u32;
-                        }
-                    }
-                    info!(
-                        "Populated node_analytics with {} entries across {} clusters",
-                        total_nodes,
-                        cluster_results.len()
-                    );
-                }
+                // ADR-031 D3 single-writer: ClusteringActor already populated
+                // node_analytics (masked key, 1-based id, stale reset) while running
+                // the kernels for this PerformGPUClustering request. This legacy handler
+                // does not write node_analytics — the previous 0-based unmasked write
+                // here violated I-6 and missed the V3 encoder's masked lookup.
 
                 ok_json!(json!({
                     "status": "completed",
@@ -793,19 +784,11 @@ async fn run_dbscan(
             Ok(Ok(result)) => {
                 let computation_time_ms = start.elapsed().as_millis() as u64;
 
-                // Populate shared node_analytics for V3 wire format
-                if let Ok(mut analytics) = state.node_analytics.write() {
-                    for cluster in &result.clusters {
-                        for &node_id in &cluster.nodes {
-                            let entry = analytics.entry(node_id).or_insert((0, 0.0, 0));
-                            // Use the cluster label from the DBSCAN result
-                            entry.0 = cluster.label.split_whitespace()
-                                .last()
-                                .and_then(|s| s.parse::<u32>().ok())
-                                .unwrap_or(0);
-                        }
-                    }
-                }
+                // ADR-031 D3 single-writer: ClusteringActor already populated
+                // node_analytics (masked key, 1-based id, stale reset) while running
+                // DBSCAN for this RunDBSCAN request. This legacy handler does not write
+                // node_analytics — the previous label-parsed write here duplicated the
+                // actor and risked drift.
 
                 ok_json!(json!({
                     "status": "completed",

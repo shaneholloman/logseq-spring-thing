@@ -3,7 +3,7 @@ import type { Vec3 } from '../../types/binaryProtocol';
 
 // Protocol versions
 export const PROTOCOL_V2 = 2;  // Legacy: uint16 payload length, uint16 SSSP IDs
-export const PROTOCOL_V3 = 3;  // Analytics extension (48 bytes/node)
+export const PROTOCOL_V3 = 3;  // Analytics extension (52 bytes/node; ADR-031 D2 added centrality@48)
 export const PROTOCOL_V4 = 4;  // CURRENT: uint32 payload length header (6 bytes), uint32 SSSP IDs (14 bytes/node)
 export const PROTOCOL_VERSION = PROTOCOL_V4;  // Default to V4
 export const SUPPORTED_PROTOCOLS = [PROTOCOL_V2, PROTOCOL_V3, PROTOCOL_V4];

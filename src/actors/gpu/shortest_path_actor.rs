@@ -268,115 +268,19 @@ impl Handler<ComputeSSP> for ShortestPathActor {
 impl Handler<ComputeAPSP> for ShortestPathActor {
     type Result = Result<APSPResult, String>;
 
-    fn handle(&mut self, msg: ComputeAPSP, _ctx: &mut Self::Context) -> Self::Result {
-        info!("ShortestPathActor: Computing APSP with {} landmarks", msg.num_landmarks);
-
-        // Acquire lock, compute, then drop lock before calling update_stats
-        let (apsp_distances, num_nodes, landmarks, computation_time) = {
-            let mut unified_compute = match &self.shared_context {
-                Some(ctx) => ctx
-                    .unified_compute
-                    .lock()
-                    .map_err(|e| format!("Failed to acquire GPU compute lock: {}", e))?,
-                None => {
-                    return Err("GPU context not initialized".to_string());
-                }
-            };
-
-            let start_time = Instant::now();
-
-            // Get graph size
-            let num_nodes = unified_compute.get_num_nodes();
-
-            if msg.num_landmarks >= num_nodes {
-                return Err(format!(
-                    "Number of landmarks ({}) must be less than number of nodes ({})",
-                    msg.num_landmarks, num_nodes
-                ));
-            }
-
-            // Select landmark nodes (stratified sampling)
-            let mut landmarks = Vec::with_capacity(msg.num_landmarks);
-            let stride = num_nodes / msg.num_landmarks;
-            let seed = msg.seed.unwrap_or(42);
-
-            for i in 0..msg.num_landmarks {
-                let landmark = (i * stride + ((seed + i as u64) % stride as u64) as usize) % num_nodes;
-                landmarks.push(landmark);
-            }
-
-            // Run batched SSSP from all landmarks at once (keeps CSR on device)
-            let landmark_vecs = unified_compute
-                .run_sssp_batch(&landmarks)
-                .map_err(|e| {
-                    error!("GPU batched SSSP computation failed: {}", e);
-                    format!("Batched SSSP computation failed: {}", e)
-                })?;
-
-            // Flatten landmark distances into [num_landmarks][num_nodes] layout
-            let mut landmark_distances = Vec::with_capacity(msg.num_landmarks * num_nodes);
-            for dists in &landmark_vecs {
-                landmark_distances.extend_from_slice(dists);
-            }
-
-            // Try GPU kernel for APSP assembly; fall back to CPU if module unavailable
-            let apsp_distances = match unified_compute
-                .run_apsp_gpu(&landmark_distances, msg.num_landmarks)
-            {
-                Ok(gpu_result) => {
-                    info!("APSP assembly completed on GPU");
-                    gpu_result
-                }
-                Err(e) => {
-                    info!(
-                        "GPU APSP kernel unavailable ({}), using CPU fallback",
-                        e
-                    );
-                    // CPU fallback: triangle inequality approximation
-                    let mut dists = vec![f32::MAX; num_nodes * num_nodes];
-                    for i in 0..num_nodes {
-                        dists[i * num_nodes + i] = 0.0;
-                        for j in (i + 1)..num_nodes {
-                            let mut min_dist = f32::MAX;
-                            for k_idx in 0..msg.num_landmarks {
-                                let dist_ki = landmark_distances[k_idx * num_nodes + i];
-                                let dist_kj = landmark_distances[k_idx * num_nodes + j];
-                                if dist_ki < f32::MAX && dist_kj < f32::MAX {
-                                    min_dist = min_dist.min(dist_ki + dist_kj);
-                                }
-                            }
-                            dists[i * num_nodes + j] = min_dist;
-                            dists[j * num_nodes + i] = min_dist;
-                        }
-                    }
-                    dists
-                }
-            };
-
-            let computation_time = start_time.elapsed().as_millis() as u64;
-
-            (apsp_distances, num_nodes, landmarks, computation_time)
-        }; // unified_compute lock dropped here
-
-        // Now we can safely call update_stats with mutable borrow
-        self.update_stats(false, computation_time);
-
-        // Estimate approximation error (simplified)
-        let avg_error_estimate = 0.15; // Typical 15% error for landmark-based APSP
-
-        info!(
-            "ShortestPathActor: APSP completed in {}ms with {} landmarks",
-            computation_time, msg.num_landmarks
-        );
-
-        Ok(APSPResult {
-            distances: apsp_distances,
-            num_nodes,
-            num_landmarks: msg.num_landmarks,
-            landmarks,
-            avg_error_estimate,
-            computation_time_ms: computation_time,
-        })
+    fn handle(&mut self, _msg: ComputeAPSP, _ctx: &mut Self::Context) -> Self::Result {
+        // Dense all-pairs shortest paths is permanently disabled (ADR-031 D8 /
+        // NFR-7). The result is an [n][n] distance matrix — O(n^2) memory
+        // (110 MB+ on the live 10,676-node graph, quadratic beyond). Both the
+        // GPU kernel (`approximate_apsp_kernel`) and the former CPU fallback
+        // were O(n^2) and are removed. Fail closed: callers that need
+        // pairwise distance should query single-source SSSP per node instead.
+        Err(
+            "APSP (dense all-pairs distance matrix) is disabled by NFR-7: O(n^2) \
+             memory is forbidden on the analytics path. Use single-source SSSP \
+             (POST /api/analytics/pathfinding/sssp) per source instead."
+                .to_string(),
+        )
     }
 }
 

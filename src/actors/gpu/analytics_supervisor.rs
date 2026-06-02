@@ -55,8 +55,8 @@ impl SupervisedActorState {
 /// Analytics Supervisor Actor
 /// Manages the lifecycle of analytics-related GPU actors with proper error isolation.
 /// Analytics actors are considered non-critical - failures don't block physics.
-/// Type alias for the shared node analytics map: node_id -> (cluster_id, anomaly_score, community_id)
-type NodeAnalyticsMap = Arc<std::sync::RwLock<std::collections::HashMap<u32, (u32, f32, u32)>>>;
+/// Type alias for the shared node analytics map: node_id -> NodeAnalytics
+type NodeAnalyticsMap = Arc<std::sync::RwLock<std::collections::HashMap<u32, crate::utils::binary_protocol::NodeAnalytics>>>;
 
 pub struct AnalyticsSupervisor {
     /// Shared GPU context for analytics actors

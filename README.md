@@ -327,7 +327,7 @@ Each binary frame carries a one-byte `MessageType` header (`client/src/services/
 
 The `0x23 AGENT_ACTION` frame is a 15-byte identity-blind header (`sourceAgentId`, `targetNodeId`, `actionType` 0–5, `timestamp`, `durationMs`) plus optional payload. The six `AgentActionType` values (Query/Update/Create/Delete/Link/Transform) carry the `AGENT_ACTION_COLORS` palette consumed by the beam render layer. Identity (`source_urn`/`target_urn`/`pubkey`) rides the JSON `/wss/agent-events` ingest envelope and is resolved to numeric IDs server-side before the binary frame is emitted (ADR-059 Finding 2).
 
-**V2 Standard (36 bytes/node)** — production default:
+**V3 (52 bytes/node)** — production default, includes GPU analytics (ADR-031):
 
 | Bytes | Field | Type | Description |
 |:------|:------|:-----|:------------|
@@ -335,11 +335,13 @@ The `0x23 AGENT_ACTION` frame is a 15-byte identity-blind header (`sourceAgentId
 | 4–15 | Position (X/Y/Z) | f32×3 | World-space position |
 | 16–27 | Velocity (X/Y/Z) | f32×3 | Physics velocity |
 | 28–31 | SSSP distance | f32 | Shortest-path from source |
-| 32–35 | Timestamp | u32 | ms since session start |
+| 32–35 | SSSP parent | i32 | Predecessor node ID (−1 = none) |
+| 36–39 | Cluster ID | u32 | K-means/DBSCAN cluster (1-based, 0 = unclustered) |
+| 40–43 | Anomaly score | f32 | LOF local-outlier ratio |
+| 44–47 | Community ID | u32 | Louvain community assignment |
+| 48–51 | Centrality | f32 | PageRank centrality score |
 
-**V3 Analytics (48 bytes/node)** — includes GPU analytics:
-
-Adds `cluster_id` (u16), `anomaly_score` (f32), `community_id` (u16), `page_rank` (f32) at bytes 36–47.
+Each analytics field has a single writer (ADR-031 D3): ClusteringActor owns `cluster_id`/`community_id`, AnomalyDetectionActor owns `anomaly_score`. The 36-byte V2 record (no analytics tail) is retired — the server emits and decodes V3 only.
 
 </details>
 

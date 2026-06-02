@@ -6,6 +6,23 @@
 
 use serde::{Deserialize, Serialize};
 
+/// Typed per-node analytics value object (ADR-031 D2), replacing the legacy
+/// `(cluster_id, anomaly, community)` 3-tuple. Single source of truth for the
+/// analytics fields carried by the V3 wire record (cluster_id@36, anomaly@40,
+/// community_id@44, centrality@48).
+///
+/// `cluster_id` is 1-based with `0 == unclustered`; `community_id` is the
+/// Louvain community label; the two are distinct fields (invariant I-6).
+/// `sssp_distance` is intentionally NOT a member — it is sourced from graph-node
+/// SSSP results into the existing `sssp_distance@28` wire slot, not from here.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
+pub struct NodeAnalytics {
+    pub cluster_id: u32,
+    pub community_id: u32,
+    pub anomaly: f32,
+    pub centrality: f32,
+}
+
 /// Parameters accepted by a clustering request — covers k-means, DBSCAN,
 /// hierarchical, Louvain, affinity-prop, and graph-spectral variants. Every
 /// field is `Option<T>` so the same struct can carry whichever algorithm's

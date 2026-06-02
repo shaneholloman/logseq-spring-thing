@@ -6,7 +6,6 @@ use uuid::Uuid;
 use crate::actors::messages::GetGraphData;
 use crate::services::agent_visualization_protocol::McpServerType;
 use crate::utils::mcp_tcp_client::create_mcp_client;
-use crate::utils::binary_protocol::NODE_ID_MASK;
 use crate::{ok_json, not_found};
 use crate::AppState;
 
@@ -61,30 +60,10 @@ pub async fn run_clustering(
         if let Some(task) = tasks.get_mut(&task_id_clone) {
             match clusters {
                 Ok(clusters) => {
-                    // Populate shared node_analytics so V3 binary broadcast carries cluster_id values
-                    if let Ok(mut analytics) = app_state_clone.node_analytics.write() {
-                        // Reset stale cluster_ids from any prior run so nodes that are
-                        // no longer in a cluster revert to 0 (preserve anomaly/community).
-                        for entry in analytics.values_mut() {
-                            entry.0 = 0;
-                        }
-                        // 1-based cluster ids: the client treats cluster_id == 0 as
-                        // "unclustered" (ClusterHulls.tsx falls back to domain heuristics),
-                        // so community 0 must serialise as 1. Mask to the compact id space
-                        // to match the encoder's masked lookup (binary_protocol Fix A).
-                        for (idx, cluster) in clusters.iter().enumerate() {
-                            let cluster_id = (idx + 1) as u32;
-                            for &node_id in &cluster.nodes {
-                                let base_id = node_id & NODE_ID_MASK;
-                                let entry = analytics.entry(base_id).or_insert((0, 0.0, 0));
-                                entry.0 = cluster_id;
-                            }
-                        }
-                        info!(
-                            "run_clustering: Populated node_analytics with {} clusters (1-based ids)",
-                            clusters.len()
-                        );
-                    }
+                    // ADR-031 D3 single-writer: node_analytics.cluster_id is populated
+                    // exclusively by ClusteringActor (masked key + 1-based id + stale
+                    // reset) as it runs the GPU kernels. This handler only reports the
+                    // task result; it does NOT write node_analytics.
                     task.status = "completed".to_string();
                     task.progress = 1.0;
                     task.clusters = Some(clusters);
@@ -408,10 +387,6 @@ pub(crate) async fn perform_clustering(
         task.progress = 0.5;
     }
     drop(tasks);
-
-
-    let processing_time = std::cmp::min(agents.len() / 10, 5) as u64;
-    tokio::time::sleep(tokio::time::Duration::from_secs(processing_time)).await;
 
     Ok(clusters)
 }

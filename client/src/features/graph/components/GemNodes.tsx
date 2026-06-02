@@ -12,8 +12,17 @@ import type { Edge } from '../managers/graphDataManager';
 import type { ThreeEvent } from '@react-three/fiber';
 import { createLogger } from '../../../utils/loggerConfig';
 // ADR-03 D7: analytics buffer no longer lives in the worker — it is rebuilt on
-// the main thread from V3 binary frames.
-import { nodeAnalyticsStore } from '../../analytics/store/nodeAnalyticsStore';
+// the main thread from V3 binary frames. Stride 5 (ADR-031 D2):
+// [clusterId, anomalyScore, communityId, centrality, ssspDistance].
+import {
+  nodeAnalyticsStore,
+  ANALYTICS_STRIDE,
+  ANALYTICS_CLUSTER_OFFSET,
+  ANALYTICS_ANOMALY_OFFSET,
+  ANALYTICS_COMMUNITY_OFFSET,
+  ANALYTICS_CENTRALITY_OFFSET,
+  ANALYTICS_SSSP_OFFSET,
+} from '../../analytics/store/nodeAnalyticsStore';
 
 const logger = createLogger('GemNodes');
 import { computeNodeScale } from '../utils/nodeScaling';
@@ -143,9 +152,13 @@ const GemNodesInner: React.ForwardRefRenderFunction<GemNodesHandle, GemNodesProp
   // KG colour scheme: 'type' (per node-type palette), 'domain' (per domain palette),
   // or 'base' (legacy baseColor + label-hash hue jitter). Default 'type'.
   const colorScheme = useSettingsStore(s => s.get<string>('visualisation.graphs.logseq.nodes.colorScheme')) ?? 'type';
-  // Per-node analytics data from binary protocol V3 (refreshed periodically)
+  // Per-node analytics data from binary protocol V3 (refreshed periodically).
+  // Stride 5 (ADR-031 D2): [clusterId, anomalyScore, communityId, centrality, ssspDistance].
   const analyticsRef = useRef<Float32Array | null>(null);
   const analyticsFrameRef = useRef(0);
+  // Per-refresh maxima for normalising the centrality / SSSP colour ramps.
+  const maxCentralityRef = useRef(0);
+  const maxSsspRef = useRef(0);
 
   // Dirty-gated scale + colour caches. computeNodeScale (sqrt/log/parseInt) and
   // computeColor (HSL/hashing) are expensive and their inputs (degree, hierarchy,
@@ -274,16 +287,36 @@ const GemNodesInner: React.ForwardRefRenderFunction<GemNodesHandle, GemNodesProp
     // Quality gate overrides: color-code by cluster/anomaly/community when enabled.
     // These take precedence over standard mode coloring (but not SSSP highlight).
     const analytics = analyticsRef.current;
-    if (analytics && nodeIndex !== undefined && nodeIndex * 3 + 2 < analytics.length) {
-      const a3 = nodeIndex * 3;
-      const clusterId = analytics[a3];
-      const anomalyScore = analytics[a3 + 1];
-      const communityId = analytics[a3 + 2];
+    if (analytics && nodeIndex !== undefined && nodeIndex * ANALYTICS_STRIDE + ANALYTICS_SSSP_OFFSET < analytics.length) {
+      const a = nodeIndex * ANALYTICS_STRIDE;
+      const clusterId = analytics[a + ANALYTICS_CLUSTER_OFFSET];
+      const anomalyScore = analytics[a + ANALYTICS_ANOMALY_OFFSET];
+      const communityId = analytics[a + ANALYTICS_COMMUNITY_OFFSET];
+      const centrality = analytics[a + ANALYTICS_CENTRALITY_OFFSET];
+      const ssspDistance = analytics[a + ANALYTICS_SSSP_OFFSET];
 
       // Anomaly highlighting: red intensity proportional to anomalyScore (0-1)
       if (qualityGates?.showAnomalies && anomalyScore > 0.01) {
         const intensity = Math.min(anomalyScore, 1.0);
         return _col.setRGB(0.9 * intensity + 0.1, 0.15 * (1 - intensity), 0.1);
+      }
+
+      // Centrality (PageRank, normalised): bright = high centrality. ADR-031 D2.
+      // Scaled by maxCentrality so the (typically tiny, sum-to-1) PageRank values
+      // span the full ramp instead of collapsing to near-black.
+      if (qualityGates?.showCentrality && centrality > 0) {
+        const max = maxCentralityRef.current || 1;
+        const t = Math.min(centrality / max, 1.0);
+        return _col.setHSL(0.62 - 0.62 * t, 0.85, 0.25 + 0.4 * t); // blue→cyan→yellow ramp
+      }
+
+      // SSSP distance from the active source (wire offset 28, ADR-031 D6).
+      // Only when no explicit on-demand ssspResult is overriding below.
+      if (qualityGates?.showSSSP && !ssspResult) {
+        if (!Number.isFinite(ssspDistance)) return _col.set('#444444'); // unreachable
+        const max = maxSsspRef.current || 1;
+        const t = Math.min(ssspDistance / max, 1.0);
+        return _col.setRGB(Math.min(1, t * 1.2), Math.min(1, (1 - t) * 1.2), 0.1);
       }
 
       // Cluster coloring: deterministic hue from clusterId (non-zero means assigned)
@@ -431,10 +464,21 @@ const GemNodesInner: React.ForwardRefRenderFunction<GemNodesHandle, GemNodesProp
     // wire offset 36) and returns a render-index-aligned buffer (stride 3).
     analyticsFrameRef.current++;
     if (analyticsFrameRef.current % 30 === 1 &&
-        (qualityGates?.showClusters || qualityGates?.showAnomalies || qualityGates?.showCommunities)) {
+        (qualityGates?.showClusters || qualityGates?.showAnomalies ||
+         qualityGates?.showCommunities || qualityGates?.showCentrality || qualityGates?.showSSSP)) {
       const buf = nodeAnalyticsStore.getIndexedBuffer(props.nodeIdToIndexMap);
       if (buf) {
         analyticsRef.current = buf;
+        // Compute maxima for the centrality / SSSP colour ramps (cheap stride scan).
+        let maxC = 0, maxS = 0;
+        for (let b = 0; b < buf.length; b += ANALYTICS_STRIDE) {
+          const c = buf[b + ANALYTICS_CENTRALITY_OFFSET];
+          if (c > maxC) maxC = c;
+          const s = buf[b + ANALYTICS_SSSP_OFFSET];
+          if (Number.isFinite(s) && s > maxS) maxS = s;
+        }
+        maxCentralityRef.current = maxC;
+        maxSsspRef.current = maxS;
         analyticsVersionRef.current++; // invalidate colour cache on fresh analytics
       }
     }
@@ -614,7 +658,7 @@ const GemNodesInner: React.ForwardRefRenderFunction<GemNodesHandle, GemNodesProp
     }
 
     // --- Colour cache: recompute + upload only when colour inputs change -----
-    const colorHash = `${nodeCount}-${connectionCountMap.size}-${colorScheme}-${baseNodeColor ?? ''}-${selectedNodeId ?? ''}-${ssspResult ? 's' : ''}-${qualityGates?.showClusters ? 1 : 0}${qualityGates?.showAnomalies ? 1 : 0}${qualityGates?.showCommunities ? 1 : 0}-${analyticsVersionRef.current}`;
+    const colorHash = `${nodeCount}-${connectionCountMap.size}-${colorScheme}-${baseNodeColor ?? ''}-${selectedNodeId ?? ''}-${ssspResult ? 's' : ''}-${qualityGates?.showClusters ? 1 : 0}${qualityGates?.showAnomalies ? 1 : 0}${qualityGates?.showCommunities ? 1 : 0}${qualityGates?.showCentrality ? 1 : 0}${qualityGates?.showSSSP ? 1 : 0}-${analyticsVersionRef.current}`;
     if (colorHash !== prevColorHashRef.current) {
       prevColorHashRef.current = colorHash;
       for (let i = 0; i < nodeCount; i++) {

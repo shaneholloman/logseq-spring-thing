@@ -35,8 +35,10 @@ pub const NODE_ID_MASK: u32 = 0x03FFFFFF;
 // WireNodeDataItemV1 REMOVED - V1 protocol no longer supported
 // WireNodeDataItemV2 REMOVED - V2 protocol no longer supported (was 36 bytes per node)
 
-/// Wire format V3 - 48 bytes per node (P0-4 Analytics Extension)
-/// Adds clustering, anomaly detection, and community detection
+/// Wire format V3 - 52 bytes per node (ADR-031 Analytics Extension)
+/// Adds clustering, anomaly detection, community detection, and PageRank centrality.
+/// Layout: id@0, position@4, velocity@16, sssp_distance@28, sssp_parent@32,
+/// cluster_id@36, anomaly_score@40, community_id@44, centrality@48.
 pub struct WireNodeDataItemV3 {
     pub id: u32,
     pub position: Vec3Data,
@@ -46,10 +48,15 @@ pub struct WireNodeDataItemV3 {
     pub cluster_id: u32,
     pub anomaly_score: f32,
     pub community_id: u32,
+    pub centrality: f32,
 }
 
 // Backwards compatibility alias - now defaults to V3
 pub type WireNodeDataItem = WireNodeDataItemV3;
+
+// Typed per-node analytics value object (ADR-031 D2). Defined in
+// `visionclaw-domain` so both `visionclaw-actors` and this crate share one type.
+pub use visionclaw_domain::analytics::NodeAnalytics;
 
 // ============================================================================
 // DELTA ENCODING (Protocol V4) - P1-3 Feature
@@ -90,7 +97,7 @@ const WIRE_U32_SIZE: usize = 4;
 const WIRE_V2_ITEM_SIZE: usize = WIRE_V2_ID_SIZE + WIRE_VEC3_SIZE + WIRE_VEC3_SIZE + WIRE_F32_SIZE + WIRE_I32_SIZE; // 4+12+12+4+4 = 36
 const WIRE_V3_ITEM_SIZE: usize =
     WIRE_V2_ID_SIZE + WIRE_VEC3_SIZE + WIRE_VEC3_SIZE + WIRE_F32_SIZE + WIRE_I32_SIZE +
-    WIRE_U32_SIZE + WIRE_F32_SIZE + WIRE_U32_SIZE; // id + pos + vel + sssp_dist + sssp_parent + cluster_id + anomaly_score + community_id
+    WIRE_U32_SIZE + WIRE_F32_SIZE + WIRE_U32_SIZE + WIRE_F32_SIZE; // id + pos + vel + sssp_dist + sssp_parent + cluster_id + anomaly_score + community_id + centrality = 52
 
 // Backwards compatibility alias - now defaults to V3
 const WIRE_ID_SIZE: usize = WIRE_V2_ID_SIZE;
@@ -98,17 +105,18 @@ const WIRE_ITEM_SIZE: usize = WIRE_V3_ITEM_SIZE;
 
 // Binary format (explicit):
 //
-// PROTOCOL V3 (CURRENT - P0-4 Analytics Extension):
-// - Wire format sent to client (48 bytes total):
-//   - Node Index: 4 bytes (u32) - Bits 30-31 for agent/knowledge, bits 26-28 for ontology, bits 0-25 for ID
-//   - Position: 3 × 4 bytes = 12 bytes
-//   - Velocity: 3 × 4 bytes = 12 bytes
-//   - SSSP Distance: 4 bytes (f32)
-//   - SSSP Parent: 4 bytes (i32)
-//   - Cluster ID: 4 bytes (u32) - K-means cluster assignment
-//   - Anomaly Score: 4 bytes (f32) - LOF anomaly score (0.0-1.0)
-//   - Community ID: 4 bytes (u32) - Louvain community assignment
-// Total: 48 bytes per node
+// PROTOCOL V3 (CURRENT - ADR-031 Analytics Extension):
+// - Wire format sent to client (52 bytes total):
+//   - Node Index: 4 bytes (u32) @0 - Bits 30-31 for agent/knowledge, bits 26-28 for ontology, bits 0-25 for ID
+//   - Position: 3 × 4 bytes = 12 bytes @4
+//   - Velocity: 3 × 4 bytes = 12 bytes @16
+//   - SSSP Distance: 4 bytes (f32) @28
+//   - SSSP Parent: 4 bytes (i32) @32
+//   - Cluster ID: 4 bytes (u32) @36 - K-means/DBSCAN cluster assignment (1-based, 0=unclustered)
+//   - Anomaly Score: 4 bytes (f32) @40 - LOF anomaly score (0.0-1.0)
+//   - Community ID: 4 bytes (u32) @44 - Louvain community assignment
+//   - Centrality: 4 bytes (f32) @48 - PageRank centrality score
+// Total: 52 bytes per node
 // Supports node IDs: 0 to 67,108,863 (2^26 - 1)
 //
 // PROTOCOL V2 REMOVED — was 36 bytes/node (no analytics), server no longer sends or decodes V2
@@ -268,7 +276,7 @@ pub trait BinaryNodeDataWireExt {
         &self,
         node_id: u32,
         sssp: Option<(f32, i32)>,
-        analytics: Option<(u32, f32, u32)>,
+        analytics: Option<NodeAnalytics>,
     ) -> WireNodeDataItem;
 }
 
@@ -279,24 +287,25 @@ impl BinaryNodeDataWireExt for BinaryNodeData {
 
     /// Convert to wire format V3 with optional SSSP and analytics data.
     /// `sssp`: (distance, parent_id). Defaults to (INFINITY, -1).
-    /// `analytics`: (cluster_id, anomaly_score, community_id). Defaults to (0, 0.0, 0).
+    /// `analytics`: NodeAnalytics. Defaults to NodeAnalytics::default().
     fn to_wire_format_with_data(
         &self,
         node_id: u32,
         sssp: Option<(f32, i32)>,
-        analytics: Option<(u32, f32, u32)>,
+        analytics: Option<NodeAnalytics>,
     ) -> WireNodeDataItem {
         let (sssp_distance, sssp_parent) = sssp.unwrap_or((f32::INFINITY, -1));
-        let (cluster_id, anomaly_score, community_id) = analytics.unwrap_or((0, 0.0, 0));
+        let a = analytics.unwrap_or_default();
         WireNodeDataItem {
             id: to_wire_id(node_id),
             position: self.position().into(),
             velocity: self.velocity().into(),
             sssp_distance,
             sssp_parent,
-            cluster_id,
-            anomaly_score,
-            community_id,
+            cluster_id: a.cluster_id,
+            anomaly_score: a.anomaly,
+            community_id: a.community_id,
+            centrality: a.centrality,
         }
     }
 }
@@ -338,8 +347,8 @@ pub fn encode_node_data_extended(
 
 /// Encode node data with optional per-node SSSP distances and analytics.
 /// `sssp_data` maps node_id -> (distance, parent_id).
-/// `analytics_data` maps node_id -> (cluster_id, anomaly_score, community_id).
-/// When absent for a node, defaults to (INFINITY, -1) / (0, 0.0, 0).
+/// `analytics_data` maps node_id -> NodeAnalytics{cluster_id, community_id, anomaly, centrality}.
+/// When absent for a node, defaults to (INFINITY, -1) / NodeAnalytics::default().
 pub fn encode_node_data_extended_with_sssp(
     nodes: &[(u32, BinaryNodeData)],
     agent_node_ids: &[u32],
@@ -348,7 +357,7 @@ pub fn encode_node_data_extended_with_sssp(
     ontology_individual_ids: &[u32],
     ontology_property_ids: &[u32],
     sssp_data: Option<&HashMap<u32, (f32, i32)>>,
-    analytics_data: Option<&HashMap<u32, (u32, f32, u32)>>,
+    analytics_data: Option<&HashMap<u32, NodeAnalytics>>,
 ) -> Vec<u8> {
     // Always use V3 as the default protocol (P0-4 Analytics Extension)
     let protocol_version = PROTOCOL_V3;
@@ -437,17 +446,18 @@ pub fn encode_node_data_extended_with_sssp(
         buffer.extend_from_slice(&sssp_distance.to_le_bytes());
         buffer.extend_from_slice(&sssp_parent.to_le_bytes());
 
-        // Analytics data (12 bytes) - V3 extension populated from shared analytics store
-        let (cluster_id, anomaly_score, community_id) = analytics_data
+        // Analytics data (16 bytes) - V3 extension populated from shared analytics store
+        let a = analytics_data
             .and_then(|m| m.get(&base_id))
             .copied()
-            .unwrap_or((0, 0.0, 0));
-        buffer.extend_from_slice(&cluster_id.to_le_bytes());
-        buffer.extend_from_slice(&anomaly_score.to_le_bytes());
-        buffer.extend_from_slice(&community_id.to_le_bytes());
+            .unwrap_or_default();
+        buffer.extend_from_slice(&a.cluster_id.to_le_bytes());
+        buffer.extend_from_slice(&a.anomaly.to_le_bytes());
+        buffer.extend_from_slice(&a.community_id.to_le_bytes());
+        buffer.extend_from_slice(&a.centrality.to_le_bytes());
     }
 
-    
+
     if nodes.len() > 0 {
         trace!(
             "Encoded binary data with agent flags (v{}): {} bytes for {} nodes",
@@ -466,8 +476,8 @@ pub fn encode_node_data_with_flags(
     encode_node_data_with_types(nodes, agent_node_ids, &[])
 }
 
-/// Encode node data with analytics (Protocol V3 - P0-4)
-/// Extends V2 with cluster_id, anomaly_score, and community_id
+/// Encode node data with analytics (Protocol V3 - ADR-031)
+/// Extends with cluster_id, anomaly_score, community_id, and centrality
 pub fn encode_node_data_with_analytics(
     nodes: &[(u32, BinaryNodeData)],
     agent_node_ids: &[u32],
@@ -475,7 +485,7 @@ pub fn encode_node_data_with_analytics(
     ontology_class_ids: &[u32],
     ontology_individual_ids: &[u32],
     ontology_property_ids: &[u32],
-    analytics: &HashMap<u32, (u32, f32, u32)>, // (cluster_id, anomaly_score, community_id)
+    analytics: &HashMap<u32, NodeAnalytics>,
 ) -> Vec<u8> {
     encode_node_data_with_all(
         nodes,
@@ -491,7 +501,7 @@ pub fn encode_node_data_with_analytics(
 
 /// Encode node data with both SSSP and analytics data (Protocol V3).
 /// `sssp_data` maps node_id -> (distance, parent_id).
-/// `analytics` maps node_id -> (cluster_id, anomaly_score, community_id).
+/// `analytics` maps node_id -> NodeAnalytics{cluster_id, community_id, anomaly, centrality}.
 pub fn encode_node_data_with_all(
     nodes: &[(u32, BinaryNodeData)],
     agent_node_ids: &[u32],
@@ -500,7 +510,7 @@ pub fn encode_node_data_with_all(
     ontology_individual_ids: &[u32],
     ontology_property_ids: &[u32],
     sssp_data: Option<&HashMap<u32, (f32, i32)>>,
-    analytics: &HashMap<u32, (u32, f32, u32)>,
+    analytics: &HashMap<u32, NodeAnalytics>,
 ) -> Vec<u8> {
     let protocol_version = PROTOCOL_V3;
     let item_size = WIRE_V3_ITEM_SIZE;
@@ -558,15 +568,16 @@ pub fn encode_node_data_with_all(
         buffer.extend_from_slice(&sssp_distance.to_le_bytes());
         buffer.extend_from_slice(&sssp_parent.to_le_bytes());
 
-        // Analytics data (12 bytes) - V3 extension
-        let (cluster_id, anomaly_score, community_id) = analytics
+        // Analytics data (16 bytes) - V3 extension
+        let a = analytics
             .get(&base_id)
             .copied()
-            .unwrap_or((0, 0.0, 0)); // Default values if no analytics
+            .unwrap_or_default(); // Default values if no analytics
 
-        buffer.extend_from_slice(&cluster_id.to_le_bytes());
-        buffer.extend_from_slice(&anomaly_score.to_le_bytes());
-        buffer.extend_from_slice(&community_id.to_le_bytes());
+        buffer.extend_from_slice(&a.cluster_id.to_le_bytes());
+        buffer.extend_from_slice(&a.anomaly.to_le_bytes());
+        buffer.extend_from_slice(&a.community_id.to_le_bytes());
+        buffer.extend_from_slice(&a.centrality.to_le_bytes());
     }
 
     if !nodes.is_empty() {
@@ -590,7 +601,7 @@ pub fn encode_node_data(nodes: &[(u32, BinaryNodeData)]) -> Vec<u8> {
 /// and a reference to the shared analytics map.
 pub fn encode_node_data_with_live_analytics(
     nodes: &[(u32, BinaryNodeData)],
-    analytics_data: Option<&HashMap<u32, (u32, f32, u32)>>,
+    analytics_data: Option<&HashMap<u32, NodeAnalytics>>,
 ) -> Vec<u8> {
     encode_node_data_extended_with_sssp(nodes, &[], &[], &[], &[], &[], None, analytics_data)
 }
@@ -739,7 +750,7 @@ fn decode_node_data_v3(data: &[u8]) -> Result<Vec<(u32, BinaryNodeData)>, String
         ]);
         cursor += 4;
 
-        // Analytics data (12 bytes) - NEW in V3
+        // Analytics data (16 bytes) - V3 (ADR-031: cluster, anomaly, community, centrality)
         let _cluster_id = u32::from_le_bytes([
             chunk[cursor],
             chunk[cursor + 1],
@@ -755,6 +766,13 @@ fn decode_node_data_v3(data: &[u8]) -> Result<Vec<(u32, BinaryNodeData)>, String
         ]);
         cursor += 4;
         let _community_id = u32::from_le_bytes([
+            chunk[cursor],
+            chunk[cursor + 1],
+            chunk[cursor + 2],
+            chunk[cursor + 3],
+        ]);
+        cursor += 4;
+        let _centrality = f32::from_le_bytes([
             chunk[cursor],
             chunk[cursor + 1],
             chunk[cursor + 2],

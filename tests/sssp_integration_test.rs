@@ -1,288 +1,140 @@
-//! Integration tests for Single-Source Shortest Path (SSSP) functionality
+//! ADR-031 D7 — SSSP integration tests, extended with VALUE assertions.
 //!
-//! NOTE: These tests are disabled because:
-//! 1. GraphData type is missing required fields
-//! 2. Node type constructor doesn't exist
+//! Previously CPU-only and entirely commented out. Rewritten to:
+//!   - Keep the CPU-reference known-answer assertions (Dijkstra oracle).
+//!   - Add GPU value assertions that bind to the intended SSSP GPU path and
+//!     assert the returned distances equal the CPU oracle (D7 obligation:
+//!     "tests/sssp_integration_test.rs (CPU-only) -> add GPU value assertions").
 //!
-//! To re-enable:
-//! 1. Update GraphData initialization to include all required fields
-//! 2. Use proper Node construction
-//! 3. Uncomment the code below
+//! Per ADR-031 D2/D-SSSP: SSSP needs NO wire-layout change — the slots
+//! sssp_distance@28 / sssp_parent@32 already exist; the fix is wiring the
+//! encoder feed (currently hardcoded None at three broadcast sites). These
+//! tests assert the VALUES that must reach those existing slots.
 
-/*
-#[cfg(test)]
-mod sssp_tests {
-    use std::collections::HashMap;
+#[path = "analytics_fixtures.rs"]
+mod fx;
 
-    /// Test data structure for a simple graph
-    struct TestGraph {
-        nodes: Vec<u32>,
-        edges: Vec<(u32, u32, f32)>, // (source, target, weight)
-    }
+use std::collections::HashMap;
 
-    impl TestGraph {
-        /// Create a simple test graph
-        ///
-        /// Graph structure:
-        /// ```
-        ///     1.0     2.0
-        /// 0 -----> 1 -----> 2
-        /// |                 ^
-        /// |      3.0        | 1.0
-        /// +---------> 3 ----+
-        ///
-        /// 4 (disconnected)
-        /// ```
-        fn simple() -> Self {
-            TestGraph {
-                nodes: vec![0, 1, 2, 3, 4],
-                edges: vec![
-                    (0, 1, 1.0),
-                    (1, 2, 2.0),
-                    (0, 3, 3.0),
-                    (3, 2, 1.0),
-                    // Node 4 is disconnected
-                ],
-            }
-        }
+// ---------------------------------------------------------------------------
+// CPU Dijkstra oracle on the canonical simple SSSP graph.
+// ---------------------------------------------------------------------------
 
-        /// Create a larger test graph for performance testing
-        fn large(num_nodes: usize) -> Self {
-            let mut nodes = Vec::new();
-            let mut edges = Vec::new();
-
-            for i in 0..num_nodes {
-                nodes.push(i as u32);
-
-                // Create a sparse graph with ~10 edges per node
-                if i > 0 {
-                    // Connect to previous node
-                    edges.push((i as u32 - 1, i as u32, 1.0));
-                }
-
-                // Add some random connections
-                for j in 0..3 {
-                    let target = ((i * 7 + j * 13) % num_nodes) as u32;
-                    if target != i as u32 {
-                        edges.push((i as u32, target, (j + 1) as f32));
-                    }
-                }
-            }
-
-            TestGraph { nodes, edges }
-        }
-    }
-
-    /// Expected shortest paths for the simple test graph
-    fn expected_distances_from_0() -> HashMap<u32, Option<f32>> {
-        let mut distances = HashMap::new();
-        distances.insert(0, Some(0.0)); // Source
-        distances.insert(1, Some(1.0)); // Direct edge: 0->1 (weight 1.0)
-        distances.insert(2, Some(3.0)); // Path: 0->1->2 (1.0 + 2.0)
-        distances.insert(3, Some(3.0)); // Direct edge: 0->3 (weight 3.0)
-        distances.insert(4, None); // Disconnected
-        distances
-    }
-
-    #[test]
-    fn test_sssp_simple_graph() {
-        let graph = TestGraph::simple();
-        let expected = expected_distances_from_0();
-
-        // This test would integrate with the actual GPU implementation
-        // For now, we're testing the expected structure
-
-        assert_eq!(expected.get(&0), Some(&Some(0.0)));
-        assert_eq!(expected.get(&1), Some(&Some(1.0)));
-        assert_eq!(expected.get(&2), Some(&Some(3.0)));
-        assert_eq!(expected.get(&3), Some(&Some(3.0)));
-        assert_eq!(expected.get(&4), Some(&None));
-    }
-
-    #[test]
-    fn test_sssp_disconnected_nodes() {
-        let expected = expected_distances_from_0();
-
-        // Verify that disconnected nodes return None
-        assert!(expected.get(&4).unwrap().is_none());
-
-        // Count unreachable nodes
-        let unreachable_count = expected.values().filter(|d| d.is_none()).count();
-        assert_eq!(unreachable_count, 1);
-    }
-
-    #[test]
-    fn test_sssp_source_is_zero_distance() {
-        let expected = expected_distances_from_0();
-
-        // Source node should always have distance 0
-        assert_eq!(expected.get(&0), Some(&Some(0.0)));
-    }
-
-    #[test]
-    fn test_sssp_path_optimality() {
-        let expected = expected_distances_from_0();
-
-        // Verify that the algorithm finds the optimal path
-        // Node 2 can be reached via:
-        // - 0->1->2 (cost: 1.0 + 2.0 = 3.0) ✓ optimal
-        // - 0->3->2 (cost: 3.0 + 1.0 = 4.0)
-        assert_eq!(expected.get(&2), Some(&Some(3.0)));
-    }
-
-    #[test]
-    fn test_sssp_large_graph_structure() {
-        let graph = TestGraph::large(1000);
-
-        // Basic structural tests
-        assert_eq!(graph.nodes.len(), 1000);
-        assert!(graph.edges.len() > 0);
-
-        // Verify edge weights are positive
-        for (_, _, weight) in &graph.edges {
-            assert!(*weight > 0.0);
-        }
-    }
-
-    #[test]
-    fn test_sssp_algorithm_parameters() {
-        // Test k parameter calculation
-        let test_cases = vec![
-            (10, 2),      // k = ceil(cbrt(log2(10))) = ceil(cbrt(3.32)) = 2
-            (100, 2),     // k = ceil(cbrt(log2(100))) = ceil(cbrt(6.64)) = 2
-            (1000, 3),    // k = ceil(cbrt(log2(1000))) = ceil(cbrt(9.97)) = 3
-            (10000, 3),   // k = ceil(cbrt(log2(10000))) = ceil(cbrt(13.29)) = 3
-            (100000, 3),  // k = ceil(cbrt(log2(100000))) = ceil(cbrt(16.61)) = 3
-            (1000000, 3), // k = ceil(cbrt(log2(1000000))) = ceil(cbrt(19.93)) = 3
-        ];
-
-        for (n, expected_k) in test_cases {
-            let k = ((n as f32).log2().cbrt().ceil() as u32).max(3);
-            assert_eq!(k, expected_k, "Failed for n={}", n);
-        }
-    }
-
-    #[test]
-    fn test_sssp_memory_requirements() {
-        // Verify memory calculations
-        let num_nodes = 1_000_000;
-
-        // Each node needs:
-        // - distance: 4 bytes (f32)
-        // - frontier flag: 4 bytes (i32)
-        // - optional parent: 4 bytes (i32)
-        let memory_per_node = 12; // bytes (without parent tracking)
-        let total_memory = num_nodes * memory_per_node;
-
-        // Should be under 12MB for 1M nodes
-        assert!(total_memory <= 12_000_000);
-    }
-
-    /// Mock function to simulate SSSP computation
-    /// In production, this would call the actual GPU implementation
-    fn compute_sssp_mock(graph: &TestGraph, source: u32) -> HashMap<u32, Option<f32>> {
-        // This is a mock - actual implementation would use GPU
-        if source == 0 {
-            expected_distances_from_0()
-        } else {
-            // Return empty for other sources in mock
-            HashMap::new()
-        }
-    }
-
-    #[test]
-    fn test_sssp_api_response_format() {
-        let graph = TestGraph::simple();
-        let distances = compute_sssp_mock(&graph, 0);
-
-        // Simulate API response structure
-        let unreachable_count = distances.values().filter(|d| d.is_none()).count() as u32;
-
-        // Verify response has expected structure
-        assert_eq!(distances.len(), 5);
-        assert_eq!(unreachable_count, 1);
-
-        // Check that all nodes are accounted for
-        for node in &graph.nodes {
-            assert!(distances.contains_key(node));
-        }
-    }
-
-    #[test]
-    fn test_sssp_feature_flags() {
-        // Test feature flag values
-        const ENABLE_REPULSION: u32 = 1 << 0;
-        const ENABLE_SPRINGS: u32 = 1 << 1;
-        const ENABLE_CENTERING: u32 = 1 << 2;
-        const ENABLE_SSSP_SPRING_ADJUST: u32 = 1 << 6;
-
-        // Verify flags don't overlap
-        assert_ne!(ENABLE_SSSP_SPRING_ADJUST, ENABLE_REPULSION);
-        assert_ne!(ENABLE_SSSP_SPRING_ADJUST, ENABLE_SPRINGS);
-        assert_ne!(ENABLE_SSSP_SPRING_ADJUST, ENABLE_CENTERING);
-
-        // Verify flag can be combined with others
-        let combined = ENABLE_SPRINGS | ENABLE_SSSP_SPRING_ADJUST;
-        assert!(combined & ENABLE_SPRINGS != 0);
-        assert!(combined & ENABLE_SSSP_SPRING_ADJUST != 0);
-    }
-
-    #[test]
-    fn test_sssp_infinity_handling() {
-        // Test that infinity is handled correctly for unreachable nodes
-        let inf = f32::INFINITY;
-        assert!(!inf.is_finite());
-        assert!(inf > 1000000.0);
-
-        // Test conversion to Option
-        let dist = if inf.is_finite() { Some(inf) } else { None };
-        assert_eq!(dist, None);
-    }
-
-    #[test]
-    fn test_sssp_numerical_stability() {
-        // Test for potential numerical issues
-        let small_weight = 1e-6_f32;
-        let large_weight = 1e6_f32;
-
-        assert!(small_weight > 0.0);
-        assert!(large_weight.is_finite());
-
-        // Test addition doesn't overflow
-        let sum = large_weight + large_weight;
-        assert!(sum.is_finite());
-    }
+/// Directed weighted graph for SSSP. (source, target, weight).
+struct SsspGraph {
+    n: usize,
+    edges: Vec<(u32, u32, f32)>,
 }
 
-#[cfg(test)]
-mod performance_tests {
-    use std::time::Instant;
-
-    #[test]
-    #[ignore] // Run with: cargo test --ignored
-    fn bench_sssp_scaling() {
-        let sizes = vec![100, 1000, 10000];
-
-        for size in sizes {
-            let start = Instant::now();
-
-            // Simulate graph creation
-            let _nodes: Vec<u32> = (0..size).map(|i| i as u32).collect();
-            let _edges: Vec<(u32, u32, f32)> = (0..size * 10)
-                .map(|i| {
-                    let src = (i % size) as u32;
-                    let dst = ((i * 7) % size) as u32;
-                    (src, dst, 1.0)
-                })
-                .collect();
-
-            let elapsed = start.elapsed();
-            println!("Graph size {}: {:?}", size, elapsed);
-
-            // Basic performance assertion
-            assert!(elapsed.as_secs() < 5, "Graph creation took too long");
+impl SsspGraph {
+    /// 0 -> 1 (1.0) -> 2 (2.0); 0 -> 3 (3.0) -> 2 (1.0); node 4 disconnected.
+    fn simple() -> Self {
+        SsspGraph {
+            n: 5,
+            edges: vec![(0, 1, 1.0), (1, 2, 2.0), (0, 3, 3.0), (3, 2, 1.0)],
         }
     }
 }
 
-*/
+/// CPU Dijkstra reference: distance and parent from `source`.
+fn dijkstra(g: &SsspGraph, source: u32) -> (Vec<Option<f32>>, Vec<i32>) {
+    let mut adj: HashMap<u32, Vec<(u32, f32)>> = HashMap::new();
+    for &(u, v, w) in &g.edges {
+        adj.entry(u).or_default().push((v, w));
+    }
+    let mut dist: Vec<Option<f32>> = vec![None; g.n];
+    let mut parent: Vec<i32> = vec![-1; g.n];
+    dist[source as usize] = Some(0.0);
+    // simple O(n^2) Dijkstra — n is tiny
+    let mut settled = vec![false; g.n];
+    for _ in 0..g.n {
+        let mut best: Option<(u32, f32)> = None;
+        for i in 0..g.n {
+            if settled[i] {
+                continue;
+            }
+            if let Some(d) = dist[i] {
+                if best.map(|(_, bd)| d < bd).unwrap_or(true) {
+                    best = Some((i as u32, d));
+                }
+            }
+        }
+        let (u, du) = match best {
+            Some(x) => x,
+            None => break,
+        };
+        settled[u as usize] = true;
+        if let Some(neigh) = adj.get(&u) {
+            for &(v, w) in neigh {
+                let nd = du + w;
+                if dist[v as usize].map(|d| nd < d).unwrap_or(true) {
+                    dist[v as usize] = Some(nd);
+                    parent[v as usize] = u as i32;
+                }
+            }
+        }
+    }
+    (dist, parent)
+}
+
+#[test]
+fn sssp_cpu_reference_known_answer() {
+    let g = SsspGraph::simple();
+    let (dist, parent) = dijkstra(&g, 0);
+    assert_eq!(dist[0], Some(0.0), "source distance is 0");
+    assert_eq!(dist[1], Some(1.0), "0->1 = 1.0");
+    assert_eq!(dist[2], Some(3.0), "0->1->2 = 3.0 (optimal over 0->3->2 = 4.0)");
+    assert_eq!(dist[3], Some(3.0), "0->3 = 3.0");
+    assert_eq!(dist[4], None, "node 4 is unreachable");
+    // parent pointers reach the wire's sssp_parent@32 slot.
+    assert_eq!(parent[1], 0);
+    assert_eq!(parent[2], 1, "optimal predecessor of 2 is 1, not 3");
+    assert_eq!(parent[3], 0);
+    assert_eq!(parent[4], -1, "unreachable node has parent -1");
+}
+
+#[test]
+fn sssp_unreachable_encodes_as_infinity_minus_one() {
+    // The wire contract for unreachable: sssp_distance = +inf, sssp_parent = -1.
+    let g = SsspGraph::simple();
+    let (dist, parent) = dijkstra(&g, 0);
+    let wire_dist = dist[4].unwrap_or(f32::INFINITY);
+    assert!(wire_dist.is_infinite(), "unreachable distance -> +inf on wire");
+    assert_eq!(parent[4], -1, "unreachable parent -> -1 on wire");
+}
+
+// ---------------------------------------------------------------------------
+// GPU value assertions — bind to the intended GPU SSSP path; the returned
+// distances/parents must equal the CPU oracle. GATED on a CUDA device.
+// ---------------------------------------------------------------------------
+
+#[test]
+#[ignore = "needs GPU: unified_gpu_compute SSSP kernel value round-trip"]
+fn gpu_sssp_matches_cpu_oracle() {
+    let g = SsspGraph::simple();
+    let (cpu_dist, cpu_parent) = dijkstra(&g, 0);
+    // Intended binding once a synchronous GPU SSSP entry point exists:
+    //   let (gpu_dist, gpu_parent) = run_sssp_blocking(&graph, source=0);
+    //   for i in 0..g.n {
+    //       match cpu_dist[i] {
+    //           Some(d) => assert!((gpu_dist[i] - d).abs() < 1e-4),
+    //           None    => assert!(gpu_dist[i].is_infinite()),
+    //       }
+    //       assert_eq!(gpu_parent[i], cpu_parent[i]);
+    //   }
+    let _ = (cpu_dist, cpu_parent);
+    // GAP (see report): no host-callable synchronous SSSP entry point that
+    // returns (distances, parents) for a given source is exposed for tests.
+    panic!("bind to GPU SSSP test hook once exposed");
+}
+
+/// The encoder must feed sssp_data to all three broadcast sites (currently
+/// hardcoded None). This GPU-gated test asserts the encoded wire record carries
+/// the real distance at offset 28, not +inf.
+#[test]
+#[ignore = "needs GPU + encoder feed wired (D-SSSP): assert sssp_distance@28 != +inf after a pass"]
+fn gpu_sssp_reaches_wire_slot_28() {
+    // Intended: run SSSP, encode a frame, decode offset 28 for a reachable
+    // node, assert it equals the CPU distance (not the +inf default).
+    panic!("bind once encoder sssp_data feed is wired at the three broadcast sites");
+}

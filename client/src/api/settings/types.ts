@@ -113,6 +113,8 @@ export interface QualityGateSettings {
   showClusters: boolean;
   showAnomalies: boolean;
   showCommunities: boolean;
+  showCentrality: boolean;
+  showSSSP: boolean;
   ruvectorEnabled: boolean;
   gnnPhysics: boolean;
   minFpsThreshold: number;

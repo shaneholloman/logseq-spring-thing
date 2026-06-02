@@ -9,8 +9,12 @@ const logger = createLogger('binaryProtocol');
  *
  * Protocol Versions:
  * - V2: 36 bytes per node (basic pathfinding)
- * - V3: 48 bytes per node (adds cluster_id, anomaly_score, community_id)
+ * - V3: 52 bytes per node (adds cluster_id, anomaly_score, community_id, centrality)
  * - V4: Delta encoding (20 bytes per changed node, only changed nodes sent)
+ *
+ * V3 wire layout (ADR-031 D2): id@0, position@4 (12B), velocity@16 (12B),
+ * sssp_distance@28 (f32), sssp_parent@32 (i32), cluster_id@36 (u32),
+ * anomaly@40 (f32), community@44 (u32), centrality@48 (f32). Stride 52 B.
  */
 
 export interface Vec3 {
@@ -29,6 +33,8 @@ export interface BinaryNodeData {
   clusterId?: number;
   anomalyScore?: number;
   communityId?: number;
+  /** PageRank centrality, normalised (ADR-031 D2, wire offset 48). */
+  centrality?: number;
 }
 
 /**
@@ -64,8 +70,10 @@ export let lastBroadcastSequence: number | undefined;
 
 // V2 wire format: 36 bytes per node
 export const BINARY_NODE_SIZE_V2 = 36;
-// V3 wire format: 48 bytes per node (V2 + 12 bytes analytics)
-export const BINARY_NODE_SIZE_V3 = 48;
+// V3 wire format: 52 bytes per node (V2 + 16 bytes analytics; ADR-031 D2 added centrality@48).
+// Stride autodetect note: 52 % 36 (V2) = 16 ≠ 0 and 36 % 52 ≠ 0, so V2 and V3
+// strides remain mutually unambiguous under the `length % nodeSize` heuristic.
+export const BINARY_NODE_SIZE_V3 = 52;
 // Default to V3 (current server default)
 export const BINARY_NODE_SIZE = BINARY_NODE_SIZE_V3;
 
@@ -79,6 +87,8 @@ export const BINARY_SSSP_PARENT_OFFSET = 32;
 export const BINARY_CLUSTER_ID_OFFSET = 36;
 export const BINARY_ANOMALY_SCORE_OFFSET = 40;
 export const BINARY_COMMUNITY_ID_OFFSET = 44;
+// ADR-031 D2: PageRank centrality (f32) appended at the V3 tail.
+export const BINARY_CENTRALITY_OFFSET = 48;
 
 // Node type flag constants (Protocol V2/V3 - must match server)
 export const AGENT_NODE_FLAG = 0x80000000;
@@ -135,7 +145,7 @@ export function isOntologyNode(nodeId: number): boolean {
 
 /**
  * Parse binary node data from server
- * Supports Protocol V2 (36 bytes) and V3 (48 bytes)
+ * Supports Protocol V2 (36 bytes) and V3 (52 bytes)
  */
 export function parseBinaryNodeData(buffer: ArrayBuffer): BinaryNodeData[] {
   if (!buffer || buffer.byteLength === 0) {
@@ -259,6 +269,7 @@ export function parseBinaryNodeData(buffer: ArrayBuffer): BinaryNodeData[] {
           node.clusterId = view.getUint32(nodeOffset + BINARY_CLUSTER_ID_OFFSET, true);
           node.anomalyScore = view.getFloat32(nodeOffset + BINARY_ANOMALY_SCORE_OFFSET, true);
           node.communityId = view.getUint32(nodeOffset + BINARY_COMMUNITY_ID_OFFSET, true);
+          node.centrality = view.getFloat32(nodeOffset + BINARY_CENTRALITY_OFFSET, true);
         }
 
         nodes.push(node);
@@ -427,10 +438,10 @@ export function parseBinaryFrameData(buffer: ArrayBuffer): ParsedBinaryFrame {
 
 /**
  * Create binary node data for sending to server
- * Uses Protocol V3 format (48 bytes per node)
+ * Uses Protocol V3 format (52 bytes per node)
  */
 export function createBinaryNodeData(nodes: BinaryNodeData[]): ArrayBuffer {
-  // 1 byte version header + nodes * 48 bytes
+  // 1 byte version header + nodes * 52 bytes
   const buffer = new ArrayBuffer(1 + nodes.length * BINARY_NODE_SIZE_V3);
   const view = new DataView(buffer);
 
@@ -461,6 +472,7 @@ export function createBinaryNodeData(nodes: BinaryNodeData[]): ArrayBuffer {
     view.setUint32(offset + BINARY_CLUSTER_ID_OFFSET, node.clusterId ?? 0, true);
     view.setFloat32(offset + BINARY_ANOMALY_SCORE_OFFSET, node.anomalyScore ?? 0, true);
     view.setUint32(offset + BINARY_COMMUNITY_ID_OFFSET, node.communityId ?? 0, true);
+    view.setFloat32(offset + BINARY_CENTRALITY_OFFSET, node.centrality ?? 0, true);
   });
 
   return buffer;

@@ -11,6 +11,12 @@ use super::types::{
     Anomaly, AnomalyDetectionConfig, AnomalyResponse, AnomalyStats,
 };
 
+/// Agent-health anomaly heuristic. Scores live agent telemetry (CPU/memory/health/
+/// success-rate) from the MCP server into `ANOMALY_STATE`. This is DISTINCT from
+/// graph-structural anomaly detection (`POST /analytics/anomaly/detect`), which runs
+/// GPU LOF / Z-score over graph topology and writes `node_analytics.anomaly`. The two
+/// never share a store: agent-health lives in `ANOMALY_STATE`, structural in
+/// `node_analytics`. Keep them namespaced so neither overwrites the other.
 pub async fn toggle_anomaly_detection(
     _auth: crate::settings::auth_extractor::AuthenticatedUser,
     request: web::Json<AnomalyDetectionConfig>,
@@ -80,12 +86,14 @@ pub async fn get_anomaly_config() -> Result<HttpResponse> {
             "update_interval": state.update_interval
         },
         "stats": state.stats,
+        // Agent-health heuristic dimensions actually evaluated by
+        // start_anomaly_detection (CPU/memory/health/success-rate thresholds).
+        // For graph-structural detection (LOF / Z-score) use /analytics/anomaly/detect.
         "supported_methods": [
-            "isolation_forest",
-            "lof",
-            "autoencoder",
-            "statistical",
-            "temporal"
+            "high_cpu",
+            "high_memory",
+            "low_health",
+            "low_success_rate"
         ]
     }))
 }

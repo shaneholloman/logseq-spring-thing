@@ -195,6 +195,6 @@ pub struct UpdateComponentEdges {
 #[rtype(result = "()")]
 pub struct SetNodeAnalytics {
     pub node_analytics: std::sync::Arc<
-        std::sync::RwLock<std::collections::HashMap<u32, (u32, f32, u32)>>,
+        std::sync::RwLock<std::collections::HashMap<u32, visionclaw_domain::analytics::NodeAnalytics>>,
     >,
 }

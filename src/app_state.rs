@@ -344,9 +344,9 @@ pub struct AppState {
     pub degraded_reason: Arc<std::sync::RwLock<Option<String>>>,
 
     /// Shared per-node analytics data populated by GPU analytics actors.
-    /// Maps node_id -> (cluster_id, anomaly_score, community_id).
+    /// Maps node_id -> NodeAnalytics{cluster_id, community_id, anomaly, centrality}.
     /// Read by the binary broadcast path to fill V3 analytics fields.
-    pub node_analytics: Arc<std::sync::RwLock<std::collections::HashMap<u32, (u32, f32, u32)>>>,
+    pub node_analytics: Arc<std::sync::RwLock<std::collections::HashMap<u32, crate::utils::binary_protocol::NodeAnalytics>>>,
 }
 
 impl AppState {
@@ -524,7 +524,7 @@ impl AppState {
         info!("[AppState::new] GitHub sync running in background with enhanced monitoring, proceeding with actor initialization");
 
         // Create shared node analytics map early so it can be shared with ClientCoordinatorActor
-        let node_analytics: Arc<std::sync::RwLock<std::collections::HashMap<u32, (u32, f32, u32)>>> =
+        let node_analytics: Arc<std::sync::RwLock<std::collections::HashMap<u32, crate::utils::binary_protocol::NodeAnalytics>>> =
             Arc::new(std::sync::RwLock::new(std::collections::HashMap::new()));
 
         info!("[AppState::new] Starting ClientCoordinatorActor");

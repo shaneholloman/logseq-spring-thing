@@ -8,12 +8,70 @@ use cust::launch;
 use cust::memory::{CopyDestination, DeviceBuffer};
 use log::info;
 
+/// Newman modularity Q of a partition over a weighted CSR graph, computed on the
+/// host. This is the single correct modularity measure for both the
+/// label-propagation and Louvain paths — it uses the GLOBAL null model
+/// (Σ_c (Σtot_c / 2m)²), not the broken per-edge expected-weight subtraction the
+/// old `compute_modularity_kernel` used (that kernel reached only ~0.07 on a
+/// graph whose true modularity is ~0.48).
+///
+///   Q = Σ_c [ intra_c / 2m − (Σtot_c / 2m)² ]
+///
+/// `labels` are dense community ids in [0, num_comm); `degrees[i]` is the
+/// weighted degree k_i; `total_weight` is m = Σ k_i / 2. CSR entries store both
+/// directions of every undirected edge, so `intra_c` (the directed intra sum)
+/// already counts each internal edge twice — matching the 2m denominator.
+fn modularity_csr(
+    labels: &[i32],
+    offsets: &[i32],
+    indices: &[i32],
+    weights: &[f32],
+    degrees: &[f32],
+    total_weight: f32,
+) -> f32 {
+    let m = total_weight as f64;
+    if m <= 0.0 {
+        return 0.0;
+    }
+    let n = labels.len();
+    let num_comm = labels.iter().copied().max().unwrap_or(-1) + 1;
+    if num_comm <= 0 {
+        return 0.0;
+    }
+    let mut intra = vec![0.0f64; num_comm as usize];
+    let mut sigtot = vec![0.0f64; num_comm as usize];
+
+    for i in 0..n {
+        let ci = labels[i];
+        if ci < 0 {
+            continue;
+        }
+        let ci = ci as usize;
+        sigtot[ci] += degrees[i] as f64;
+        let start = offsets[i] as usize;
+        let end = offsets[i + 1] as usize;
+        for e in start..end {
+            let j = indices[e] as usize;
+            if labels[j] == labels[i] {
+                intra[ci] += weights[e] as f64;
+            }
+        }
+    }
+
+    let two_m = 2.0 * m;
+    let mut q = 0.0f64;
+    for c in 0..num_comm as usize {
+        let frac = sigtot[c] / two_m;
+        q += intra[c] / two_m - frac * frac;
+    }
+    q as f32
+}
+
 impl UnifiedGPUCompute {
 
     pub fn run_community_detection(
         &mut self,
         max_iterations: u32,
-        synchronous: bool,
         seed: u32,
     ) -> Result<(Vec<i32>, usize, f32, u32, Vec<i32>, bool)> {
         let _ctx = Context::new(self.device.clone())
@@ -83,147 +141,85 @@ impl UnifiedGPUCompute {
         let mut converged = false;
 
 
-        let propagate_kernel = if synchronous {
-            unified_mod.get_function("propagate_labels_sync_kernel")?
-        } else {
-            unified_mod.get_function("propagate_labels_async_kernel")?
-        };
-
+        // Single canonical community LPA kernel. It uses ZERO shared memory
+        // (votes are tallied over each node's own neighbour list), so the launch
+        // is shmem=0 regardless of max_labels — the old shared-histogram defect
+        // (clamped size silently dropping high labels) is gone. The redundant
+        // in-place async kernel was deleted, so this path is sync-only.
+        let propagate_kernel = unified_mod.get_function("propagate_labels_sync_kernel")?;
         let check_convergence_kernel = unified_mod.get_function("check_convergence_kernel")?;
-
-
-        let mut shared_mem_size = block_size * (self.max_labels + 1) * 4;
-        // Cap shared memory to 48KB (safe default for all CUDA architectures).
-        // Exceeding the per-block shared memory limit causes a launch failure.
-        const MAX_SHARED_MEM: usize = 48 * 1024; // 48KB
-        if shared_mem_size > MAX_SHARED_MEM {
-            log::warn!(
-                "Reducing shared memory from {} to {} bytes (max_labels may be too high)",
-                shared_mem_size,
-                MAX_SHARED_MEM
-            );
-            shared_mem_size = MAX_SHARED_MEM;
-        }
 
         for iter in 0..max_iterations {
             iterations = iter + 1;
 
-
             let convergence_flag_host = vec![1i32];
             self.convergence_flag.copy_from(&convergence_flag_host)?;
 
-            if synchronous {
-                // SAFETY: Synchronous label propagation kernel is safe because:
-                // 1. labels_current contains current community labels (read-only)
-                // 2. labels_next is the output buffer for new labels
-                // 3. edge_* buffers are valid CSR graph representation
-                // 4. label_counts is scratch space for counting neighbor labels
-                // 5. shared_mem_size is bounded by max_labels (validated in constructor)
-                // 6. rand_states provides tie-breaking randomness
-                unsafe {
-                    launch!(
-                        propagate_kernel<<<grid_size as u32, block_size as u32, shared_mem_size as u32, stream>>>(
-                            self.labels_current.as_device_ptr(),
-                            self.labels_next.as_device_ptr(),
-                            self.edge_row_offsets.as_device_ptr(),
-                            self.edge_col_indices.as_device_ptr(),
-                            self.edge_weights.as_device_ptr(),
-                            self.label_counts.as_device_ptr(),
-                            self.num_nodes as i32,
-                            self.max_labels as i32,
-                            self.rand_states.as_device_ptr().as_raw()
-                        )
-                    )?;
-                }
-
-                // SAFETY: Convergence check kernel is safe because:
-                // 1. Compares labels_current and labels_next element-wise
-                // 2. convergence_flag is a single-element buffer with atomic write
-                // 3. Sets flag to 0 if any label differs between iterations
-                unsafe {
-                    launch!(
-                        check_convergence_kernel<<<grid_size as u32, block_size as u32, 0, stream>>>(
-                            self.labels_current.as_device_ptr(),
-                            self.labels_next.as_device_ptr(),
-                            self.convergence_flag.as_device_ptr(),
-                            self.num_nodes as i32
-                        )
-                    )?;
-                }
-
-                // Swap buffers for next iteration
-                std::mem::swap(&mut self.labels_current, &mut self.labels_next);
-            } else {
-                // SAFETY: Asynchronous label propagation kernel is safe because:
-                // 1. Updates labels_current in-place (each node reads neighbors, writes self)
-                // 2. In async mode, race conditions are acceptable (probabilistic convergence)
-                // 3. All other buffers have same safety guarantees as synchronous mode
-                unsafe {
-                    launch!(
-                        propagate_kernel<<<grid_size as u32, block_size as u32, shared_mem_size as u32, stream>>>(
-                            self.labels_current.as_device_ptr(),
-                            self.edge_row_offsets.as_device_ptr(),
-                            self.edge_col_indices.as_device_ptr(),
-                            self.edge_weights.as_device_ptr(),
-                            self.num_nodes as i32,
-                            self.max_labels as i32,
-                            self.rand_states.as_device_ptr().as_raw()
-                        )
-                    )?;
-                }
+            // SAFETY: synchronous label propagation:
+            // 1. labels_current = current labels (read-only), labels_next = output
+            // 2. edge_* are valid CSR; label_counts is an ignored legacy arg
+            // 3. shmem=0 (kernel tallies over the node's own neighbour list)
+            // 4. rand_states provides deterministic per-node tie-breaking
+            unsafe {
+                launch!(
+                    propagate_kernel<<<grid_size as u32, block_size as u32, 0, stream>>>(
+                        self.labels_current.as_device_ptr(),
+                        self.labels_next.as_device_ptr(),
+                        self.edge_row_offsets.as_device_ptr(),
+                        self.edge_col_indices.as_device_ptr(),
+                        self.edge_weights.as_device_ptr(),
+                        self.label_counts.as_device_ptr(),
+                        self.num_nodes as i32,
+                        self.max_labels as i32,
+                        self.rand_states.as_device_ptr().as_raw()
+                    )
+                )?;
             }
 
+            // SAFETY: convergence check compares labels_current vs labels_next
+            // element-wise and clears the flag if any label differs.
+            unsafe {
+                launch!(
+                    check_convergence_kernel<<<grid_size as u32, block_size as u32, 0, stream>>>(
+                        self.labels_current.as_device_ptr(),
+                        self.labels_next.as_device_ptr(),
+                        self.convergence_flag.as_device_ptr(),
+                        self.num_nodes as i32
+                    )
+                )?;
+            }
 
-            if synchronous {
-                self.stream.synchronize()?;
-                let mut convergence_flag_host = vec![0i32];
-                self.convergence_flag.copy_to(&mut convergence_flag_host)?;
+            // Swap buffers for next iteration (host-side handle swap; already-
+            // launched kernels captured their device pointers at launch time).
+            std::mem::swap(&mut self.labels_current, &mut self.labels_next);
 
-                if convergence_flag_host[0] == 1 {
-                    converged = true;
-                    break;
-                }
+            self.stream.synchronize()?;
+            let mut convergence_flag_host = vec![0i32];
+            self.convergence_flag.copy_to(&mut convergence_flag_host)?;
+            if convergence_flag_host[0] == 1 {
+                converged = true;
+                break;
             }
         }
 
 
-        if !synchronous {
-            // In async mode, we don't check convergence per iteration,
-            // so the algorithm runs for max_iterations
-            // TODO: Implement proper async convergence checking
-            log::warn!("Async community detection runs max_iterations without convergence check");
-            converged = false;
-        }
-
-
-        let modularity_kernel = unified_mod.get_function("compute_modularity_kernel")?;
-        // SAFETY: Modularity computation kernel is safe because:
-        // 1. labels_current contains final community assignments from label propagation
-        // 2. edge_* buffers are valid CSR graph data
-        // 3. node_degrees was computed by compute_node_degrees_kernel
-        // 4. modularity_contributions is output buffer with capacity >= num_nodes
-        // 5. total_weight is the sum of all edge weights (computed from node_degrees)
-        // 6. The kernel computes Q = sum((A_ij - k_i*k_j/2m) * delta(c_i, c_j)) / 2m
-        unsafe {
-            launch!(
-                modularity_kernel<<<grid_size as u32, block_size as u32, 0, stream>>>(
-                    self.labels_current.as_device_ptr(),
-                    self.edge_row_offsets.as_device_ptr(),
-                    self.edge_col_indices.as_device_ptr(),
-                    self.edge_weights.as_device_ptr(),
-                    self.node_degrees.as_device_ptr(),
-                    self.modularity_contributions.as_device_ptr(),
-                    self.num_nodes as i32,
-                    total_weight
-                )
-            )?;
-        }
-
+        // Modularity (host CSR computation — correct Newman Q with the global
+        // sigma_tot^2 null model). Computed on the final partition before
+        // relabeling; relabeling only compacts ids so Q is invariant under it.
         self.stream.synchronize()?;
-
-
-        let modularity_contributions = safe_download(&self.modularity_contributions, self.num_nodes)?;
-        let modularity: f32 = modularity_contributions.iter().sum::<f32>() / (2.0 * total_weight);
+        let labels_for_q = safe_download(&self.labels_current, self.num_nodes)?;
+        let off_h = safe_download(&self.edge_row_offsets, self.num_nodes + 1)?;
+        let nnz = off_h[self.num_nodes] as usize;
+        let idx_h = safe_download(&self.edge_col_indices, nnz)?;
+        let w_h = safe_download(&self.edge_weights, nnz)?;
+        let modularity = modularity_csr(
+            &labels_for_q,
+            &off_h,
+            &idx_h,
+            &w_h,
+            &node_degrees_host,
+            total_weight,
+        );
 
 
 
@@ -306,7 +302,7 @@ impl UnifiedGPUCompute {
         seed: u32,
     ) -> Result<(Vec<i32>, usize, f32, u32, Vec<i32>, bool)> {
 
-        self.run_community_detection(max_iterations, true, seed)
+        self.run_community_detection(max_iterations, seed)
     }
 
 
@@ -336,19 +332,24 @@ impl UnifiedGPUCompute {
         let grid_size = (self.num_nodes as u32 + block_size - 1) / block_size;
         let stream = &self.stream;
 
-        // init_communities_kernel and louvain_local_pass_kernel live in the
-        // clustering PTX module; compute_node_degrees_kernel and
-        // compute_modularity_kernel live in the main unified PTX module.
+        // louvain_local_pass_kernel, louvain_aggregate_edges_kernel live in the
+        // clustering PTX module; compute_node_degrees_kernel lives in the main
+        // unified PTX module. Modularity is computed on the host (modularity_csr).
         let clust_mod = self
             .clustering_module
             .as_ref()
             .ok_or(anyhow!("Clustering PTX module not loaded"))?;
         let unified_mod = &self._module;
 
-        // 1. Weighted node degrees (k_i) from CSR -> self.node_degrees
+        let louvain_kernel = clust_mod.get_function("louvain_local_pass_kernel")?;
+        let aggregate_kernel = clust_mod.get_function("louvain_aggregate_edges_kernel")?;
+        let compute_degrees_kernel = unified_mod.get_function("compute_node_degrees_kernel")?;
+
+        // 1. Weighted node degrees (k_i) of the ORIGINAL graph -> self.node_degrees.
+        //    total_weight (m) is invariant across contraction levels, so it is
+        //    computed once and reused for every level's gain + modularity.
         // SAFETY: edge_row_offsets/edge_weights are valid CSR buffers; node_degrees
         // is an output buffer with capacity >= num_nodes.
-        let compute_degrees_kernel = unified_mod.get_function("compute_node_degrees_kernel")?;
         unsafe {
             launch!(
                 compute_degrees_kernel<<<grid_size, block_size, 0, stream>>>(
@@ -361,8 +362,8 @@ impl UnifiedGPUCompute {
         }
         self.stream.synchronize()?;
 
-        let node_degrees_host = safe_download(&self.node_degrees, self.num_nodes)?;
-        let total_weight: f32 = node_degrees_host.iter().sum::<f32>() / 2.0;
+        let degrees_host0 = safe_download(&self.node_degrees, self.num_nodes)?;
+        let total_weight: f32 = degrees_host0.iter().sum::<f32>() / 2.0;
 
         // No edges: every node is its own singleton community.
         if total_weight <= 0.0 {
@@ -371,109 +372,224 @@ impl UnifiedGPUCompute {
             return Ok((labels, self.num_nodes, 0.0, 0, sizes, true));
         }
 
-        // 2. Community assignment (init: each node its own community) and
-        //    community weights (sigma_tot, init: node degree).
-        let d_node_communities = DeviceBuffer::from_slice(&vec![0i32; self.num_nodes])?;
-        let d_community_weights = DeviceBuffer::from_slice(&vec![0.0f32; self.num_nodes])?;
-        let mut d_improvement_flag = DeviceBuffer::from_slice(&[false])?;
+        // Build owned level-0 CSR device buffers (copied from self) so every
+        // contraction level is handled uniformly. nnz = offsets[n].
+        let n0 = self.num_nodes;
+        let offsets_host0 = safe_download(&self.edge_row_offsets, n0 + 1)?;
+        let nnz0 = offsets_host0[n0] as usize;
+        let indices_host0 = safe_download(&self.edge_col_indices, nnz0)?;
+        let weights_host0 = safe_download(&self.edge_weights, nnz0)?;
 
-        // SAFETY: init_communities_kernel writes node_communities[i]=i and
-        // community_weights[i]=node_weights[i]; all buffers sized >= num_nodes.
-        let init_communities_kernel = clust_mod.get_function("init_communities_kernel")?;
-        unsafe {
-            launch!(
-                init_communities_kernel<<<grid_size, block_size, 0, stream>>>(
-                    d_node_communities.as_device_ptr(),
-                    d_community_weights.as_device_ptr(),
-                    self.node_degrees.as_device_ptr(),
-                    self.num_nodes as i32
-                )
-            )?;
-        }
-        self.stream.synchronize()?;
+        let mut cur_offsets = DeviceBuffer::from_slice(&offsets_host0)?;
+        let mut cur_indices = DeviceBuffer::from_slice(&indices_host0)?;
+        let mut cur_weights = DeviceBuffer::from_slice(&weights_host0)?;
+        let mut cur_node_weights = DeviceBuffer::from_slice(&degrees_host0)?;
+        let mut cur_n = n0;
 
-        // 3. Iterative parallel local-move passes.
-        let louvain_kernel = clust_mod.get_function("louvain_local_pass_kernel")?;
-        let mut converged = false;
-        let mut actual_iterations = 0u32;
-        // The kernel alternates move direction by iteration parity, so a single
-        // no-improvement pass may just mean "no moves available in this
-        // direction". Only declare convergence after two consecutive
-        // no-improvement passes (one of each parity).
-        let mut quiet_passes = 0u32;
-        for iteration in 0..max_iterations {
-            actual_iterations = iteration + 1;
-            d_improvement_flag.copy_from(&[false])?;
+        // orig_to_super[orig_node] = super-node id at the current level (the
+        // composition of every level's relabeling).
+        let mut orig_to_super: Vec<i32> = (0..n0 as i32).collect();
 
-            // SAFETY: argument order matches louvain_local_pass_kernel signature:
-            // (edge_weights, edge_indices, edge_offsets, node_communities,
-            //  node_weights, community_weights, improvement_flag, num_nodes,
-            //  total_weight, resolution, iteration). All CSR/degree buffers are
-            // valid and sized for the graph; the kernel keeps community_weights
-            // consistent via atomicAdd as nodes move.
+        let mut best_labels = orig_to_super.clone();
+        let mut best_modularity = f32::NEG_INFINITY;
+        let mut total_iterations = 0u32;
+        let mut any_converged = false;
+
+        // Bound the transient dense (num_comm x num_comm) aggregation buffer
+        // (NFR-7): if a level fails to coarsen enough, stop rather than allocate
+        // an O(n^2) matrix.
+        const MAX_LEVELS: usize = 20;
+        const MAX_AGG_BYTES: u64 = 512 * 1024 * 1024;
+
+        for level in 0..MAX_LEVELS {
+            let grid = (cur_n as u32 + block_size - 1) / block_size;
+
+            // Level init: each node its own community; community weight = degree.
+            let mut comm_host: Vec<i32> = (0..cur_n as i32).collect();
+            let d_comm = DeviceBuffer::from_slice(&comm_host)?;
+            // Frozen start-of-pass community snapshot (read-only kernel input). The
+            // kernel reads `d_comm_in` and writes `d_comm`; the host copies
+            // d_comm -> d_comm_in before each pass so every thread's gain sees the
+            // same consistent partition (the D1 race fix).
+            let mut d_comm_in = DeviceBuffer::from_slice(&comm_host)?;
+            let mut cw_host = safe_download(&cur_node_weights, cur_n)?;
+            let mut d_cw_snapshot = DeviceBuffer::from_slice(&cw_host)?;
+            let mut d_cw_next = DeviceBuffer::from_slice(&cw_host)?;
+            let mut d_improve = DeviceBuffer::from_slice(&[false])?;
+
+            // The kernel alternates move direction by iteration parity, so a
+            // single no-improvement pass may just mean "no moves in this
+            // direction". Declare convergence after two consecutive quiet passes.
+            let mut level_converged = false;
+            let mut quiet = 0u32;
+            for iteration in 0..max_iterations {
+                total_iterations += 1;
+                // Freeze the start-of-pass partition: snapshot d_comm -> d_comm_in
+                // so the kernel's gain reads a consistent partition even as other
+                // threads write their moves into d_comm during this pass.
+                comm_host = safe_download(&d_comm, cur_n)?;
+                d_comm_in.copy_from(&comm_host)?;
+                // Double-buffer sigma_tot: snapshot is read-only this pass, next
+                // accumulates deltas. Both seed = current aggregate (cw_host).
+                d_cw_snapshot.copy_from(&cw_host)?;
+                d_cw_next.copy_from(&cw_host)?;
+                d_improve.copy_from(&[false])?;
+
+                // SAFETY: arg order matches louvain_local_pass_kernel:
+                // (edge_weights, edge_indices, edge_offsets, node_communities_in,
+                //  node_communities_out, node_weights, community_weights_snapshot,
+                //  community_weights_next, improvement_flag, num_nodes,
+                //  total_weight, resolution, iteration).
+                unsafe {
+                    launch!(
+                        louvain_kernel<<<grid, block_size, 0, stream>>>(
+                            cur_weights.as_device_ptr(),
+                            cur_indices.as_device_ptr(),
+                            cur_offsets.as_device_ptr(),
+                            d_comm_in.as_device_ptr(),
+                            d_comm.as_device_ptr(),
+                            cur_node_weights.as_device_ptr(),
+                            d_cw_snapshot.as_device_ptr(),
+                            d_cw_next.as_device_ptr(),
+                            d_improve.as_device_ptr(),
+                            cur_n as i32,
+                            total_weight,
+                            resolution,
+                            iteration as i32
+                        )
+                    )?;
+                }
+                self.stream.synchronize()?;
+
+                // d_cw_next now holds the updated aggregate for the next pass.
+                cw_host = safe_download(&d_cw_next, cur_n)?;
+
+                let mut improved = vec![false];
+                d_improve.copy_to(&mut improved)?;
+                if improved[0] {
+                    quiet = 0;
+                } else {
+                    quiet += 1;
+                    if quiet >= 2 {
+                        level_converged = true;
+                        break;
+                    }
+                }
+            }
+
+            // Compact this level's raw community ids -> dense [0, num_comm).
+            let raw = safe_download(&d_comm, cur_n)?;
+            let mut remap: std::collections::HashMap<i32, i32> = std::collections::HashMap::new();
+            let mut dense_of_level_node = vec![0i32; cur_n];
+            for (i, &c) in raw.iter().enumerate() {
+                let next = remap.len() as i32;
+                dense_of_level_node[i] = *remap.entry(c).or_insert(next);
+            }
+            let num_comm = remap.len();
+
+            // Compose: original node -> dense super id at this level.
+            for s in orig_to_super.iter_mut() {
+                *s = dense_of_level_node[*s as usize];
+            }
+
+            // Modularity of the composed labels on the ORIGINAL graph (the only
+            // meaningful quality measure across levels). Computed on the host from
+            // the already-resident level-0 CSR — correct Newman Q with the global
+            // sigma_tot^2 null model, zero extra GPU work.
+            let modularity = modularity_csr(
+                &orig_to_super,
+                &offsets_host0,
+                &indices_host0,
+                &weights_host0,
+                &degrees_host0,
+                total_weight,
+            );
+
+            if level_converged {
+                any_converged = true;
+            }
+
+            let improved_level = modularity > best_modularity + 1e-6;
+            if modularity > best_modularity {
+                best_modularity = modularity;
+                best_labels = orig_to_super.clone();
+            }
+
+            // No merges this level: contraction would be a no-op. Done.
+            if num_comm == cur_n {
+                break;
+            }
+            // Past level 0, stop once modularity stops improving (local optimum).
+            if level > 0 && !improved_level {
+                break;
+            }
+
+            // NFR-7 guard on the transient dense aggregation buffer.
+            let agg_bytes = (num_comm as u64) * (num_comm as u64) * 4;
+            if agg_bytes > MAX_AGG_BYTES {
+                log::warn!(
+                    "Louvain: level {} has {} communities ({} MB dense agg) — stopping coarsening (NFR-7 cap)",
+                    level, num_comm, agg_bytes / (1024 * 1024)
+                );
+                break;
+            }
+
+            // Contract: scatter every original-edge weight into the dense
+            // (community x community) adjacency, then compact to CSR for the
+            // next level. The dense buffer is transient (freed at end of scope).
+            let d_node_dense = DeviceBuffer::from_slice(&dense_of_level_node)?;
+            let agg_len = num_comm * num_comm;
+            let d_agg: DeviceBuffer<f32> = DeviceBuffer::zeroed(agg_len)?;
+            // SAFETY: arg order matches louvain_aggregate_edges_kernel:
+            // (edge_weights, edge_indices, edge_offsets, node_dense_community,
+            //  agg, num_nodes, num_comm). agg is zeroed and sized num_comm^2.
             unsafe {
                 launch!(
-                    louvain_kernel<<<grid_size, block_size, 0, stream>>>(
-                        self.edge_weights.as_device_ptr(),
-                        self.edge_col_indices.as_device_ptr(),
-                        self.edge_row_offsets.as_device_ptr(),
-                        d_node_communities.as_device_ptr(),
-                        self.node_degrees.as_device_ptr(),
-                        d_community_weights.as_device_ptr(),
-                        d_improvement_flag.as_device_ptr(),
-                        self.num_nodes as i32,
-                        total_weight,
-                        resolution,
-                        iteration as i32
+                    aggregate_kernel<<<grid, block_size, 0, stream>>>(
+                        cur_weights.as_device_ptr(),
+                        cur_indices.as_device_ptr(),
+                        cur_offsets.as_device_ptr(),
+                        d_node_dense.as_device_ptr(),
+                        d_agg.as_device_ptr(),
+                        cur_n as i32,
+                        num_comm as i32
                     )
                 )?;
             }
             self.stream.synchronize()?;
+            let agg_host = safe_download(&d_agg, agg_len)?;
 
-            let mut improvement = vec![false];
-            d_improvement_flag.copy_to(&mut improvement)?;
-            if improvement[0] {
-                quiet_passes = 0;
-            } else {
-                quiet_passes += 1;
-                if quiet_passes >= 2 {
-                    converged = true;
-                    break;
+            // Dense -> CSR (drop zero entries); new node weights = row sums.
+            let mut new_offsets = vec![0i32; num_comm + 1];
+            let mut new_indices: Vec<i32> = Vec::new();
+            let mut new_weights: Vec<f32> = Vec::new();
+            let mut new_node_weights = vec![0f32; num_comm];
+            for r in 0..num_comm {
+                let mut row_sum = 0.0f32;
+                for c in 0..num_comm {
+                    let w = agg_host[r * num_comm + c];
+                    if w != 0.0 {
+                        new_indices.push(c as i32);
+                        new_weights.push(w);
+                        row_sum += w;
+                    }
                 }
+                new_node_weights[r] = row_sum;
+                new_offsets[r + 1] = new_indices.len() as i32;
             }
+
+            cur_offsets = DeviceBuffer::from_slice(&new_offsets)?;
+            cur_indices = DeviceBuffer::from_slice(&new_indices)?;
+            cur_weights = DeviceBuffer::from_slice(&new_weights)?;
+            cur_node_weights = DeviceBuffer::from_slice(&new_node_weights)?;
+            cur_n = num_comm;
         }
 
-        // 4. REAL modularity of the final assignment via the GPU kernel
-        //    (relabeling-invariant, so computed on raw community ids).
-        // SAFETY: same CSR + node_degrees buffers; modularity_contributions is an
-        // output buffer with capacity >= num_nodes.
-        let modularity_kernel = unified_mod.get_function("compute_modularity_kernel")?;
-        unsafe {
-            launch!(
-                modularity_kernel<<<grid_size, block_size, 0, stream>>>(
-                    d_node_communities.as_device_ptr(),
-                    self.edge_row_offsets.as_device_ptr(),
-                    self.edge_col_indices.as_device_ptr(),
-                    self.edge_weights.as_device_ptr(),
-                    self.node_degrees.as_device_ptr(),
-                    self.modularity_contributions.as_device_ptr(),
-                    self.num_nodes as i32,
-                    total_weight
-                )
-            )?;
-        }
-        self.stream.synchronize()?;
-        let modularity_contributions = safe_download(&self.modularity_contributions, self.num_nodes)?;
-        let modularity: f32 = modularity_contributions.iter().sum::<f32>() / (2.0 * total_weight);
-
-        // 5. Download raw community ids and compact to a contiguous 0..k-1 range.
-        let mut raw = vec![0i32; self.num_nodes];
-        d_node_communities.copy_to(&mut raw)?;
-
+        // Finalise from the best-modularity labeling: recompact to contiguous ids.
         let mut remap: std::collections::HashMap<i32, i32> = std::collections::HashMap::new();
         let mut sizes: Vec<i32> = Vec::new();
-        let mut labels = vec![0i32; self.num_nodes];
-        for (i, &c) in raw.iter().enumerate() {
+        let mut labels = vec![0i32; n0];
+        for (i, &c) in best_labels.iter().enumerate() {
             let next = remap.len() as i32;
             let id = *remap.entry(c).or_insert(next);
             if (id as usize) >= sizes.len() {
@@ -485,11 +601,11 @@ impl UnifiedGPUCompute {
         let num_communities = sizes.len();
 
         info!(
-            "GPU Louvain: {} communities, modularity={:.4}, iterations={}, converged={}",
-            num_communities, modularity, actual_iterations, converged
+            "GPU Louvain (multi-level): {} communities, modularity={:.4}, iterations={}, converged={}",
+            num_communities, best_modularity, total_iterations, any_converged
         );
 
-        Ok((labels, num_communities, modularity, actual_iterations, sizes, converged))
+        Ok((labels, num_communities, best_modularity, total_iterations, sizes, any_converged))
     }
 
 
@@ -629,8 +745,187 @@ impl UnifiedGPUCompute {
         // Copy final labels back to host
         d_labels.copy_to(&mut labels)?;
 
+        // Compact to 1-based contiguous cluster ids with 0 = noise/unclustered
+        // (ADR-031 invariant I-6: cluster_id is 1-based, 0 == unclustered). The
+        // GPU labels are sparse core-point indices (>=0), with -1 for noise and
+        // -2 for any still-unvisited point — both map to 0.
+        let mut remap: std::collections::HashMap<i32, i32> = std::collections::HashMap::new();
+        for l in labels.iter_mut() {
+            if *l < 0 {
+                *l = 0;
+            } else {
+                let next = remap.len() as i32 + 1;
+                *l = *remap.entry(*l).or_insert(next);
+            }
+        }
+
         Ok(labels)
     }
 
 
+}
+
+#[cfg(test)]
+mod tests {
+    //! Known-answer + oracle cross-check tests for `modularity_csr` (ADR-031 D1).
+    //!
+    //! `modularity_csr` is module-private and `mod community` is private, so the
+    //! correctness suite for the Newman-Q measure that backs the modularity gate
+    //! lives here rather than in `tests/`. The seven golden values below are
+    //! hand-derived (see the per-test comments); the final test cross-checks the
+    //! CSR implementation against an independent host oracle on every fixture and
+    //! partition so the two cannot drift.
+    use super::modularity_csr;
+
+    /// Build a symmetric (both-direction) unit-weight CSR from undirected edges,
+    /// matching the layout `modularity_csr` consumes from the live graph.
+    /// Returns `(offsets, indices, weights, degrees, total_weight)`.
+    fn build_csr(
+        n: usize,
+        edges: &[(usize, usize)],
+    ) -> (Vec<i32>, Vec<i32>, Vec<f32>, Vec<f32>, f32) {
+        let mut adj: Vec<Vec<i32>> = vec![Vec::new(); n];
+        for &(u, v) in edges {
+            adj[u].push(v as i32);
+            adj[v].push(u as i32);
+        }
+        let mut offsets = Vec::with_capacity(n + 1);
+        let mut indices = Vec::new();
+        offsets.push(0i32);
+        for a in &adj {
+            indices.extend_from_slice(a);
+            offsets.push(indices.len() as i32);
+        }
+        let weights = vec![1.0f32; indices.len()];
+        let degrees: Vec<f32> = adj.iter().map(|a| a.len() as f32).collect();
+        let total_weight = edges.len() as f32; // m = Σk_i / 2
+        (offsets, indices, weights, degrees, total_weight)
+    }
+
+    /// Independent host oracle: Q = (internal_edges / m) − Σ_c (Σtot_c / 2m)².
+    /// Counts each undirected internal edge ONCE (vs the CSR directed double
+    /// count) — a genuinely different code path, so agreement is meaningful.
+    fn oracle_q(n: usize, edges: &[(usize, usize)], labels: &[i32]) -> f64 {
+        let m = edges.len() as f64;
+        if m <= 0.0 {
+            return 0.0;
+        }
+        let internal = edges
+            .iter()
+            .filter(|&&(u, v)| labels[u] == labels[v])
+            .count() as f64;
+        let num_comm = (labels.iter().copied().max().unwrap_or(-1) + 1).max(0) as usize;
+        let mut deg = vec![0.0f64; n];
+        for &(u, v) in edges {
+            deg[u] += 1.0;
+            deg[v] += 1.0;
+        }
+        let mut sigtot = vec![0.0f64; num_comm];
+        for i in 0..n {
+            if labels[i] >= 0 {
+                sigtot[labels[i] as usize] += deg[i];
+            }
+        }
+        let two_m = 2.0 * m;
+        let null: f64 = sigtot.iter().map(|&s| (s / two_m) * (s / two_m)).sum();
+        internal / m - null
+    }
+
+    fn q_of(n: usize, edges: &[(usize, usize)], labels: &[i32]) -> f32 {
+        let (off, idx, w, deg, m) = build_csr(n, edges);
+        modularity_csr(labels, &off, &idx, &w, &deg, m)
+    }
+
+    const EPS: f32 = 1e-5;
+
+    const TRIANGLE: &[(usize, usize)] = &[(0, 1), (1, 2), (0, 2)];
+    const K4: &[(usize, usize)] = &[(0, 1), (0, 2), (0, 3), (1, 2), (1, 3), (2, 3)];
+    // Two K3s joined by a single bridge (node 2 — node 3).
+    const BARBELL_K3: &[(usize, usize)] =
+        &[(0, 1), (1, 2), (0, 2), (3, 4), (4, 5), (3, 5), (2, 3)];
+    // Two disjoint K3s, no bridge.
+    const TWO_K3: &[(usize, usize)] = &[(0, 1), (1, 2), (0, 2), (3, 4), (4, 5), (3, 5)];
+    // Two K4s joined by a single bridge (node 3 — node 4).
+    const TWO_K4_BRIDGE: &[(usize, usize)] = &[
+        (0, 1), (0, 2), (0, 3), (1, 2), (1, 3), (2, 3),
+        (4, 5), (4, 6), (4, 7), (5, 6), (5, 7), (6, 7),
+        (3, 4),
+    ];
+
+    #[test]
+    fn triangle_single_community_is_zero() {
+        // All mass internal, no null-model residual: Q = 1 − 1 = 0.
+        assert!((q_of(3, TRIANGLE, &[0, 0, 0]) - 0.0).abs() < EPS);
+    }
+
+    #[test]
+    fn triangle_all_singletons_is_minus_one_third() {
+        // No internal edges; Q = 3·(−(2/6)²) = −1/3.
+        assert!((q_of(3, TRIANGLE, &[0, 1, 2]) - (-1.0 / 3.0)).abs() < EPS);
+    }
+
+    #[test]
+    fn two_disjoint_k3_is_half() {
+        // Each clique a community: 2·(6/12 − (6/12)²) = 0.5.
+        assert!((q_of(6, TWO_K3, &[0, 0, 0, 1, 1, 1]) - 0.5).abs() < EPS);
+    }
+
+    #[test]
+    fn barbell_k3_two_communities_is_five_fourteenths() {
+        // m=7; 2·(6/14 − (7/14)²) = 5/14 ≈ 0.357143.
+        let q = q_of(6, BARBELL_K3, &[0, 0, 0, 1, 1, 1]);
+        assert!((q - 5.0 / 14.0).abs() < EPS, "got {q}");
+    }
+
+    #[test]
+    fn k4_single_community_is_zero() {
+        assert!((q_of(4, K4, &[0, 0, 0, 0]) - 0.0).abs() < EPS);
+    }
+
+    #[test]
+    fn k4_all_singletons_is_minus_quarter() {
+        // 4·(−(3/12)²) = −0.25.
+        assert!((q_of(4, K4, &[0, 1, 2, 3]) - (-0.25)).abs() < EPS);
+    }
+
+    #[test]
+    fn two_k4_bridge_two_communities_is_eleven_twentysixths() {
+        // m=13; 2·(12/26 − (13/26)²) = 11/26 ≈ 0.423077.
+        let q = q_of(8, TWO_K4_BRIDGE, &[0, 0, 0, 0, 1, 1, 1, 1]);
+        assert!((q - 11.0 / 26.0).abs() < EPS, "got {q}");
+    }
+
+    #[test]
+    fn empty_or_degenerate_is_zero() {
+        // m == 0 and the all-negative-label case both short-circuit to 0.
+        assert_eq!(q_of(0, &[], &[]), 0.0);
+        assert_eq!(q_of(3, TRIANGLE, &[-1, -1, -1]), 0.0);
+    }
+
+    #[test]
+    fn matches_independent_oracle_on_all_fixtures_and_partitions() {
+        let cases: &[(usize, &[(usize, usize)], Vec<i32>)] = &[
+            (3, TRIANGLE, vec![0, 0, 0]),
+            (3, TRIANGLE, vec![0, 1, 2]),
+            (3, TRIANGLE, vec![0, 0, 1]),
+            (6, TWO_K3, vec![0, 0, 0, 1, 1, 1]),
+            (6, TWO_K3, vec![0, 0, 0, 0, 0, 0]),
+            (6, BARBELL_K3, vec![0, 0, 0, 1, 1, 1]),
+            (6, BARBELL_K3, vec![0, 0, 0, 0, 0, 0]),
+            (6, BARBELL_K3, vec![0, 1, 2, 3, 4, 5]),
+            (4, K4, vec![0, 0, 0, 0]),
+            (4, K4, vec![0, 1, 2, 3]),
+            (4, K4, vec![0, 0, 1, 1]),
+            (8, TWO_K4_BRIDGE, vec![0, 0, 0, 0, 1, 1, 1, 1]),
+            (8, TWO_K4_BRIDGE, vec![0, 0, 0, 0, 0, 0, 0, 0]),
+        ];
+        for (n, edges, labels) in cases {
+            let csr = q_of(*n, edges, labels) as f64;
+            let oracle = oracle_q(*n, edges, labels);
+            assert!(
+                (csr - oracle).abs() < 1e-9,
+                "CSR {csr} vs oracle {oracle} for labels {labels:?}"
+            );
+        }
+    }
 }

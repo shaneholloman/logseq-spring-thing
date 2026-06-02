@@ -27,7 +27,6 @@ const loadServices = async (): Promise<void> => {
           enableSync: true,
           enableComparison: true,
           enableAnimations: true,
-          enableAI: true,
           enableAdvancedInteractions: true,
           performanceMode: 'balanced',
         });

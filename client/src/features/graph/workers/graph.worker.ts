@@ -3,9 +3,8 @@ import { BinaryNodeData, parseBinaryFrameData, createBinaryNodeData, Vec3 } from
 import { workerLogger } from './lib/logger';
 import { findFreeMappedId } from './lib/id-mapping';
 import { isZlibCompressed, decompressZlib } from './lib/compression';
-import { recomputeAnalytics } from './lib/analytics';
 import { tickTween } from './lib/tween';
-import { processFrameUpdates, warnUnknownNodes } from './lib/binary-processor';
+import { processFrameUpdates, warnUnknownNodes, WORKER_ANALYTICS_STRIDE } from './lib/binary-processor';
 import { reallocateAfterRemoval, syncToSharedBuffer, initPositionBuffers } from './lib/buffer-manager';
 import {
   Node, Edge, GraphData, ForcePhysicsSettings, TweenSettings, PhysicsSettings,
@@ -74,9 +73,11 @@ class GraphWorker {
   private binaryOutputBuffer: Float32Array | null = null;
   private binaryOutputBufferSize: number = 0;
 
-  // Per-node analytics data from binary protocol V3 (clusterId, anomalyScore, communityId).
-  // Indexed by nodeIndex (same order as graphData.nodes). Updated every processBinaryData call.
-  // Layout: [clusterId_0, anomalyScore_0, communityId_0, clusterId_1, anomalyScore_1, ...]
+  // Per-node analytics from binary protocol V3 (ADR-031 D2): server is the sole
+  // source of truth — no client-side recompute. Indexed by nodeIndex (same order
+  // as graphData.nodes), stride WORKER_ANALYTICS_STRIDE (5):
+  // [clusterId, anomalyScore, communityId, centrality, ssspDistance].
+  // Updated every processBinaryData call from decoded server frames only.
   private analyticsBuffer: Float32Array | null = null;
 
   // FIX 4: JSON/binary race guard — binary frames arriving before setGraphData()
@@ -155,9 +156,10 @@ class GraphWorker {
     this.targetPositions  = newTargetPositions;
     this.velocities       = newVelocities;
 
-    // Allocate per-node analytics buffer (3 floats per node)
-    this.analyticsBuffer = new Float32Array(nodeCount * 3);
-    recomputeAnalytics(this.analyticsBuffer, this.graphData);
+    // Allocate per-node analytics buffer (stride 5; ADR-031 D2). Server frames
+    // are the sole writer — no client-side recompute (ADR-031 D6/D8). Values
+    // stay zeroed until the first V3/V5 analytics frame arrives.
+    this.analyticsBuffer = new Float32Array(nodeCount * WORKER_ANALYTICS_STRIDE);
 
     // Write preserved positions back into graphData
     for (let i = 0; i < nodeCount; i++) {
@@ -427,8 +429,10 @@ class GraphWorker {
   }
 
   recomputeAnalytics(): void {
-    if (!this.analyticsBuffer) return;
-    recomputeAnalytics(this.analyticsBuffer, this.graphData);
+    // ADR-031 D6/D8: the client-side Louvain/analytics shadow is removed. The
+    // server is the sole source of truth; analytics arrive on V3/V5 frames and
+    // are written by processFrameUpdates. This RPC is retained as a no-op so the
+    // worker proxy contract is unchanged, but it never fabricates client data.
   }
 
   async getAnalyticsBuffer(): Promise<Float32Array> {

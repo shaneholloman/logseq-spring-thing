@@ -260,67 +260,14 @@ __global__ void pagerank_dangling_distribute_kernel(
     }
 }
 
-/**
- * Legacy wrapper kernel for backward compatibility with existing FFI.
- * Uses parallel reduction internally instead of serial loop.
- */
-__global__ void pagerank_dangling_kernel(
-    float* __restrict__ pagerank_new,
-    const float* __restrict__ pagerank_old,
-    const int* __restrict__ out_degree,
-    const int num_nodes,
-    const float damping)
-{
-    extern __shared__ float sdata[];
-
-    int tid = blockIdx.x * blockDim.x + threadIdx.x;
-    int local_tid = threadIdx.x;
-
-    // Phase 1: Each thread contributes its dangling mass
-    float val = 0.0f;
-    if (tid < num_nodes && out_degree[tid] == 0) {
-        val = pagerank_old[tid];
-    }
-    sdata[local_tid] = val;
-    __syncthreads();
-
-    // Parallel reduction within this block
-    #pragma unroll
-    for (int stride = blockDim.x / 2; stride > 32; stride >>= 1) {
-        if (local_tid < stride) {
-            sdata[local_tid] += sdata[local_tid + stride];
-        }
-        __syncthreads();
-    }
-    if (local_tid < 32) {
-        volatile float* smem = sdata;
-        if (blockDim.x >= 64) smem[local_tid] += smem[local_tid + 32];
-        if (blockDim.x >= 32) smem[local_tid] += smem[local_tid + 16];
-        if (blockDim.x >= 16) smem[local_tid] += smem[local_tid + 8];
-        if (blockDim.x >= 8)  smem[local_tid] += smem[local_tid + 4];
-        if (blockDim.x >= 4)  smem[local_tid] += smem[local_tid + 2];
-        if (blockDim.x >= 2)  smem[local_tid] += smem[local_tid + 1];
-    }
-
-    // Use atomicAdd to accumulate across blocks into a global sum.
-    // We repurpose pagerank_new[0] temporarily — the final distribution
-    // step below will overwrite it. For correctness with multi-block launches
-    // we use the first element of sdata as block contribution.
-    // NOTE: This approach uses atomicAdd for cross-block aggregation which
-    // is correct but has some contention. For large graphs, prefer the
-    // two-kernel approach (5a + 5b) via updated FFI.
-    __shared__ float block_dangling;
-    if (local_tid == 0) {
-        block_dangling = sdata[0];
-    }
-    __syncthreads();
-
-    // Phase 2: Distribute dangling mass (each block adds its portion)
-    if (tid < num_nodes) {
-        float contribution = damping * block_dangling / (float)num_nodes;
-        atomicAdd(&pagerank_new[tid], contribution);
-    }
-}
+// D8 fix — the legacy per-block `pagerank_dangling_kernel` (and its
+// `pagerank_handle_dangling` FFI wrapper) distributed each BLOCK's local
+// dangling mass independently. With more than one block the global dangling
+// mass was never assembled before redistribution, so the result was
+// unnormalised (it did not sum to 1) and depended on block count. It is
+// deleted; the correct global path is the two-kernel reduction
+// (`pagerank_dangling_sum_kernel` 5a -> `pagerank_dangling_distribute_kernel`
+// 5b) driven by the `pagerank_handle_dangling_global` wrapper below.
 
 /**
  * Kernel 6: Normalize PageRank values to sum to 1.0
@@ -507,11 +454,22 @@ extern "C" {
     }
 
     /**
-     * Handle dangling nodes using parallel reduction.
-     * The dangling_kernel now uses shared memory for block-level reduction
-     * and atomicAdd for cross-block aggregation.
+     * Handle dangling nodes with GLOBALLY-aggregated mass (correct path).
+     *
+     * Drop-in replacement for the deleted `pagerank_handle_dangling`: identical
+     * signature, so the Rust FFI binding is a one-line symbol rename
+     * (`pagerank_handle_dangling` -> `pagerank_handle_dangling_global`).
+     *
+     * Two-kernel reduction:
+     *   5a `pagerank_dangling_sum_kernel`  — per-block partial sums of the
+     *      dangling mass (Σ pagerank_old[v] over out_degree[v]==0).
+     *   5b `pagerank_dangling_distribute_kernel` — launched as a SINGLE block,
+     *      sums every partial into the one global total and distributes
+     *      damping * total / N uniformly across ALL nodes.
+     * The global total is therefore assembled before redistribution, so the
+     * post-iteration vector is mass-conserving and normalises to sum 1.
      */
-    void pagerank_handle_dangling(
+    void pagerank_handle_dangling_global(
         float* pagerank_new,
         const float* pagerank_old,
         const int* out_degree,
@@ -522,13 +480,36 @@ extern "C" {
         int block_size = 256;
         int grid_size = (num_nodes + block_size - 1) / block_size;
         size_t shared_mem_size = block_size * sizeof(float);
+        cudaStream_t s = (cudaStream_t)stream;
 
-        pagerank_dangling_kernel<<<grid_size, block_size, shared_mem_size, (cudaStream_t)stream>>>(
-            pagerank_new,
+        // Transient per-block partial-sum buffer.
+        float* dangling_partial = nullptr;
+        if (cudaMalloc(&dangling_partial, grid_size * sizeof(float)) != cudaSuccess) {
+            // Allocation failure: leave pagerank_new untouched (no dangling
+            // contribution) rather than corrupt it. Caller's convergence check
+            // still terminates; the result degrades gracefully on OOM.
+            return;
+        }
+
+        // 5a: per-block partial dangling sums.
+        pagerank_dangling_sum_kernel<<<grid_size, block_size, shared_mem_size, s>>>(
             pagerank_old,
             out_degree,
+            dangling_partial,
+            num_nodes
+        );
+
+        // 5b: single block sums all partials -> global total, then distributes.
+        pagerank_dangling_distribute_kernel<<<1, block_size, 0, s>>>(
+            pagerank_new,
+            dangling_partial,
+            grid_size,        // num_partial_blocks
             num_nodes,
             damping
         );
+
+        // Free after the stream work completes.
+        cudaStreamSynchronize(s);
+        cudaFree(dangling_partial);
     }
 }

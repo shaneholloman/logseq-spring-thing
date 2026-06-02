@@ -91,6 +91,44 @@ pub async fn run_community_detection(
     }
 }
 
+pub async fn run_anomaly_detection(
+    _auth: crate::settings::auth_extractor::AuthenticatedUser,
+    app_state: web::Data<crate::AppState>,
+    request: web::Json<anomaly::AnomalyDetectRequest>,
+) -> Result<actix_web::HttpResponse, actix_web::Error> {
+    debug!("Structural anomaly detection request: {:?}", request);
+
+    match anomaly::run_gpu_anomaly_detection(
+        &app_state,
+        &request.method,
+        request.k_neighbors,
+        request.radius,
+        request.feature_data.clone(),
+        request.threshold,
+    )
+    .await
+    {
+        Ok(anomalies) => {
+            let total = anomalies.len();
+            ok_json!(serde_json::json!({
+                "success": true,
+                "anomalies": anomalies,
+                "total": total,
+                "method": request.method,
+            }))
+        }
+        Err(e) => {
+            log::error!("Structural anomaly detection failed: {}", e);
+            Ok(actix_web::HttpResponse::InternalServerError().json(serde_json::json!({
+                "success": false,
+                "error": e,
+                "anomalies": [],
+                "total": 0
+            })))
+        }
+    }
+}
+
 pub async fn get_community_statistics(
     _app_state: web::Data<crate::AppState>,
 ) -> Result<actix_web::HttpResponse, actix_web::Error> {
@@ -144,6 +182,9 @@ pub fn config(cfg: &mut web::ServiceConfig) {
 
             .route("/community/detect", web::post().to(run_community_detection))
 
+            // Graph-structural anomaly (GPU LOF / Z-score) -> node_analytics.anomaly
+            .route("/anomaly/detect", web::post().to(run_anomaly_detection))
+            // Agent-health heuristic (MCP telemetry) -> ANOMALY_STATE, NOT node_analytics
             .route("/anomaly/toggle", web::post().to(toggle_anomaly_detection))
 
             .route("/sssp/params", web::post().to(update_sssp_params))

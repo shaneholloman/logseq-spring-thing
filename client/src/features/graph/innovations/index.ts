@@ -8,18 +8,15 @@ const logger = createLogger('InnovationManager');
 import { graphSynchronization, GraphSynchronization } from '../services/graphSynchronization';
 import { graphComparison, GraphComparison } from '../services/graphComparison';
 import { graphAnimations, GraphAnimations } from '../services/graphAnimations';
-import { aiInsights, AIInsights } from '../services/aiInsights';
 import { advancedInteractionModes, AdvancedInteractionModes } from '../services/advancedInteractionModes';
 
-export { 
-  graphSynchronization, 
+export {
+  graphSynchronization,
   GraphSynchronization,
   graphComparison,
   GraphComparison,
   graphAnimations,
   GraphAnimations,
-  aiInsights,
-  AIInsights,
   advancedInteractionModes,
   AdvancedInteractionModes
 };
@@ -48,20 +45,6 @@ export type {
   NodeAnimationState,
   MorphingTransition
 } from '../services/graphAnimations';
-
-// Type Exports for AI Insights
-export type {
-  LayoutOptimization,
-  ClusterDetection,
-  GraphCluster,
-  NodeRecommendation,
-  RecommendedAction,
-  PatternRecognition,
-  GraphPattern,
-  CrossGraphPattern,
-  GraphAnomaly,
-  GraphMetrics
-} from '../services/aiInsights';
 
 // Type Exports for Advanced Interactions
 export type {
@@ -106,7 +89,6 @@ export class InnovationManager {
     enableSync?: boolean;
     enableComparison?: boolean;
     enableAnimations?: boolean;
-    enableAI?: boolean;
     enableAdvancedInteractions?: boolean;
     performanceMode?: 'high' | 'balanced' | 'low';
   } = {}): Promise<void> {
@@ -139,12 +121,6 @@ export class InnovationManager {
       logger.info('Comparison System: READY');
     }
     
-    if (options.enableAI !== false) {
-      
-      this.activeFeatures.add('ai-insights');
-      logger.info('AI Insights System: READY');
-    }
-    
     if (options.enableAdvancedInteractions !== false) {
       
       this.activeFeatures.add('advanced-interactions');
@@ -166,7 +142,6 @@ export class InnovationManager {
       synchronization: boolean;
       comparison: boolean;
       animations: boolean;
-      aiInsights: boolean;
       advancedInteractions: boolean;
     };
   } {
@@ -177,7 +152,6 @@ export class InnovationManager {
         synchronization: this.activeFeatures.has('synchronization'),
         comparison: this.activeFeatures.has('comparison'),
         animations: this.activeFeatures.has('animations'),
-        aiInsights: this.activeFeatures.has('ai-insights'),
         advancedInteractions: this.activeFeatures.has('advanced-interactions')
       }
     };
@@ -193,13 +167,10 @@ export class InnovationManager {
         
         break;
       case 'comparison':
-        
-        break;
-      case 'ai-insights':
-        
+
         break;
       case 'advanced-interactions':
-        
+
         break;
       default:
         logger.warn(`Unknown feature: ${feature}`);
@@ -220,16 +191,13 @@ export class InnovationManager {
         
         break;
       case 'comparison':
-        
-        break;
-      case 'ai-insights':
-        
+
         break;
       case 'advanced-interactions':
-        
+
         break;
     }
-    
+
     this.activeFeatures.delete(feature);
     logger.info(`Feature disabled: ${feature}`);
   }
@@ -277,7 +245,7 @@ export class InnovationManager {
   
   private printFeatureSummary(): void {
     logger.info('=== GRAPH INNOVATION FEATURES ===');
-    logger.info('Features Available: Synchronization, Comparison, Animations, AI Insights, Advanced Interactions');
+    logger.info('Features Available: Synchronization, Comparison, Animations, Advanced Interactions');
     logger.info('System Status: FULLY OPERATIONAL');
   }
   
@@ -288,7 +256,6 @@ export class InnovationManager {
     graphAnimations.dispose();
     graphSynchronization.dispose();
     graphComparison.dispose();
-    aiInsights.dispose();
     advancedInteractionModes.dispose();
     
     this.activeFeatures.clear();
@@ -309,7 +276,6 @@ export const setupInnovativeFeatures = {
       enableSync: true,
       enableComparison: true,
       enableAnimations: true,
-      enableAI: true,
       enableAdvancedInteractions: true,
       performanceMode: 'high'
     });
@@ -321,7 +287,6 @@ export const setupInnovativeFeatures = {
       enableSync: true,
       enableComparison: true,
       enableAnimations: true,
-      enableAI: false,
       enableAdvancedInteractions: false,
       performanceMode: 'balanced'
     });
@@ -333,7 +298,6 @@ export const setupInnovativeFeatures = {
       enableSync: true,
       enableComparison: false,
       enableAnimations: true,
-      enableAI: false,
       enableAdvancedInteractions: false,
       performanceMode: 'low'
     });
@@ -345,7 +309,6 @@ export const setupInnovativeFeatures = {
       enableSync: true,
       enableComparison: true,
       enableAnimations: true,
-      enableAI: true,
       enableAdvancedInteractions: true,
       performanceMode: 'high'
     });
@@ -401,10 +364,9 @@ export default {
   graphSynchronization,
   graphComparison,
   graphAnimations,
-  aiInsights,
   advancedInteractionModes,
 
-  
+
   innovationManager,
   setupInnovativeFeatures,
   featureDetection

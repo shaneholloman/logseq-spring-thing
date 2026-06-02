@@ -248,6 +248,30 @@ impl PTXModule {
         }
     }
 
+    /// Build-time PTX path baked in by `build.rs` via `cargo:rustc-env`. Unlike
+    /// `env_var()` (a *runtime* `std::env::var` lookup that is unset in the
+    /// deployed binary), this resolves at *compile time* with `option_env!`, so
+    /// it points at the exact `OUT_DIR` PTX compiled alongside this binary — the
+    /// freshest, build-hash-correct copy. Using the runtime lookup instead was
+    /// what let a stale source-tree PTX (missing a newly added kernel) shadow the
+    /// fresh compile and surface as "named symbol not found" at launch.
+    pub fn compiled_ptx_path(&self) -> Option<&'static str> {
+        match self {
+            PTXModule::VisionflowUnified => option_env!("VISIONCLAW_UNIFIED_PTX_PATH"),
+            PTXModule::GpuClusteringKernels => option_env!("GPU_CLUSTERING_KERNELS_PTX_PATH"),
+            PTXModule::DynamicGrid => option_env!("DYNAMIC_GRID_PTX_PATH"),
+            PTXModule::GpuAabbReduction => option_env!("GPU_AABB_REDUCTION_PTX_PATH"),
+            PTXModule::GpuLandmarkApsp => option_env!("GPU_LANDMARK_APSP_PTX_PATH"),
+            PTXModule::SsspCompact => option_env!("SSSP_COMPACT_PTX_PATH"),
+            PTXModule::VisionflowUnifiedStability => {
+                option_env!("VISIONCLAW_UNIFIED_STABILITY_PTX_PATH")
+            }
+            PTXModule::OntologyConstraints => option_env!("ONTOLOGY_CONSTRAINTS_PTX_PATH"),
+            PTXModule::Pagerank => option_env!("PAGERANK_PTX_PATH"),
+            PTXModule::GpuConnectedComponents => option_env!("GPU_CONNECTED_COMPONENTS_PTX_PATH"),
+        }
+    }
+
     pub fn all_modules() -> Vec<PTXModule> {
         vec![
             PTXModule::VisionflowUnified,
@@ -268,7 +292,12 @@ impl PTXModule {
 pub static COMPILED_PTX_PATH: Option<&'static str> = option_env!("VISIONCLAW_UNIFIED_PTX_PATH");
 
 pub fn get_compiled_ptx_path(module: PTXModule) -> Option<PathBuf> {
-    std::env::var(module.env_var()).ok().map(PathBuf::from)
+    // Prefer the compile-time baked path (always points at this binary's OUT_DIR
+    // PTX); fall back to a runtime override env var if an operator set one.
+    module
+        .compiled_ptx_path()
+        .map(PathBuf::from)
+        .or_else(|| std::env::var(module.env_var()).ok().map(PathBuf::from))
 }
 
 pub fn get_compiled_ptx_path_legacy() -> Option<PathBuf> {
@@ -389,28 +418,50 @@ fn load_precompiled_ptx(module: PTXModule) -> Result<String, String> {
     let manifest_dir = env!("CARGO_MANIFEST_DIR");
     let ptx_file = module.source_file().replace(".cu", ".ptx");
 
-    // Check env var override first, then build output (always fresh), then
-    // pre-compiled source tree copies (may be stale in Docker image layers).
+    // Check the build-time baked path first (always fresh), then a runtime env
+    // override, then a build-output scan, then pre-compiled source tree copies
+    // (which may be stale in Docker image layers).
     let mut ptx_paths = Vec::new();
 
-    // 1. Environment variable override (highest priority)
+    // 1. Build-time baked path from build.rs (`option_env!`, resolved at COMPILE
+    //    time). This is the exact OUT_DIR PTX compiled with THIS binary — always
+    //    fresh and build-hash-correct, so it cannot be shadowed by a stale
+    //    source-tree copy. Reading the runtime `std::env::var(module.env_var())`
+    //    instead (it is unset in the deployed binary) was the original defect.
+    if let Some(baked) = module.compiled_ptx_path() {
+        ptx_paths.push(PathBuf::from(baked));
+    }
+
+    // 1b. Runtime environment variable override (operator escape hatch).
     if let Ok(env_path) = std::env::var(module.env_var()) {
         ptx_paths.push(PathBuf::from(env_path));
     }
 
     // 2. Build output directory (recompiled by build.rs from current .cu source)
-    //    OUT_DIR is only available at build time, so scan target/*/build/*/out/
+    //    OUT_DIR is only available at build time, so scan target/*/build/*/out/.
+    //    Incremental builds leave stale build-hash dirs alongside the current one
+    //    (e.g. a pre-kernel-addition PTX next to today's). read_dir order is
+    //    arbitrary and validate_ptx only checks well-formedness, not symbol
+    //    presence — so an unsorted scan can return a stale PTX missing a newly
+    //    added kernel, surfacing at launch as "named symbol not found". Sort the
+    //    build outputs newest-first so the freshest compile always wins.
+    let mut build_outputs: Vec<(std::time::SystemTime, PathBuf)> = Vec::new();
     for profile in &["release", "debug"] {
         let build_dir = PathBuf::from(manifest_dir).join("target").join(profile).join("build");
         if let Ok(entries) = std::fs::read_dir(&build_dir) {
             for entry in entries.flatten() {
                 let candidate = entry.path().join("out").join(&ptx_file);
                 if candidate.exists() {
-                    ptx_paths.push(candidate);
+                    let mtime = std::fs::metadata(&candidate)
+                        .and_then(|m| m.modified())
+                        .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
+                    build_outputs.push((mtime, candidate));
                 }
             }
         }
     }
+    build_outputs.sort_by(|a, b| b.0.cmp(&a.0));
+    ptx_paths.extend(build_outputs.into_iter().map(|(_, p)| p));
 
     // 3. Pre-compiled source tree copies (may be stale in Docker overlay).
     // ADR-090 Phase 3: PTX files now live in crates/visionclaw-gpu/src/ptx/.

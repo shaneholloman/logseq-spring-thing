@@ -1,8 +1,7 @@
 
 
 use std::collections::HashMap;
-use log::{debug, error, info, warn};
-use rand::Rng;
+use log::{debug, error, info};
 use uuid::Uuid;
 use chrono::Utc;
 
@@ -10,6 +9,20 @@ use super::{Anomaly, AnomalyStats, ANOMALY_STATE};
 use crate::AppState;
 use crate::actors::messages::{RunAnomalyDetection, AnomalyParams, AnomalyMethod};
 use crate::utils::result_helpers::safe_json_number;
+
+/// Request body for `POST /analytics/anomaly/detect` — runs GPU graph-structural
+/// anomaly detection (LOF / Z-score) and writes node_analytics.anomaly via the
+/// single-writer AnomalyDetectionActor. Distinct from the agent-health heuristic
+/// at `/anomaly/toggle`, which scores agent telemetry, not graph topology.
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AnomalyDetectRequest {
+    pub method: String,
+    pub k_neighbors: Option<i32>,
+    pub radius: Option<f32>,
+    pub feature_data: Option<Vec<f32>>,
+    pub threshold: Option<f32>,
+}
 
 pub async fn run_gpu_anomaly_detection(
     app_state: &actix_web::web::Data<AppState>,
@@ -53,23 +66,11 @@ pub async fn run_gpu_anomaly_detection(
     match gpu_addr.send(msg).await {
         Ok(Ok(result)) => {
             info!("GPU anomaly detection completed: {} anomalies found", result.num_anomalies);
-            // Populate shared node_analytics with anomaly scores
-            if let Some(ref lof_scores) = result.lof_scores {
-                if let Ok(mut analytics) = app_state.node_analytics.write() {
-                    for (i, &score) in lof_scores.iter().enumerate() {
-                        let entry = analytics.entry(i as u32).or_insert((0, 0.0, 0));
-                        entry.1 = score; // anomaly_score
-                    }
-                }
-            }
-            if let Some(ref zscore_values) = result.zscore_values {
-                if let Ok(mut analytics) = app_state.node_analytics.write() {
-                    for (i, &score) in zscore_values.iter().enumerate() {
-                        let entry = analytics.entry(i as u32).or_insert((0, 0.0, 0));
-                        entry.1 = score.abs(); // anomaly_score (absolute z-score)
-                    }
-                }
-            }
+            // ADR-031 D3/D4 single-writer: node_analytics.anomaly is populated
+            // exclusively by AnomalyDetectionActor (masked graph-node-id key, stale
+            // reset) while it runs the GPU kernels. The previous write here keyed by
+            // the raw enumerate index (unmasked GPU buffer position) and so never
+            // matched the V3 encoder's masked lookup — a silent no-op, now removed.
             Ok(convert_gpu_anomaly_result_to_anomalies(result, &anomaly_method))
         }
         Ok(Err(e)) => {
@@ -79,178 +80,6 @@ pub async fn run_gpu_anomaly_detection(
         Err(e) => {
             error!("GPU actor mailbox error: {}", e);
             Err(format!("Failed to communicate with GPU actor: {}", e))
-        }
-    }
-}
-
-pub async fn start_anomaly_detection() {
-    warn!("start_anomaly_detection is deprecated - use run_gpu_anomaly_detection for real GPU processing");
-}
-
-#[allow(dead_code)]
-async fn generate_anomaly(method: &str) -> Anomaly {
-    let mut rng = rand::thread_rng();
-
-    
-    let node_id = format!("node_{}", rng.gen_range(1..=1000));
-
-    
-    let severity_weights = match method {
-        "isolation_forest" => [0.1, 0.3, 0.4, 0.2], 
-        "lof" => [0.05, 0.25, 0.5, 0.2],
-        "autoencoder" => [0.15, 0.35, 0.35, 0.15],
-        "statistical" => [0.2, 0.3, 0.3, 0.2],
-        "temporal" => [0.25, 0.25, 0.3, 0.2],
-        _ => [0.1, 0.3, 0.4, 0.2],
-    };
-
-    let random_val = rng.gen::<f32>();
-    let severity = if random_val < severity_weights[0] {
-        "critical"
-    } else if random_val < severity_weights[0] + severity_weights[1] {
-        "high"
-    } else if random_val < severity_weights[0] + severity_weights[1] + severity_weights[2] {
-        "medium"
-    } else {
-        "low"
-    };
-
-    
-    let score = match severity {
-        "critical" => 0.9 + rng.gen::<f32>() * 0.1,
-        "high" => 0.7 + rng.gen::<f32>() * 0.2,
-        "medium" => 0.4 + rng.gen::<f32>() * 0.3,
-        "low" => rng.gen::<f32>() * 0.4,
-        _ => 0.5,
-    };
-
-    
-    let (anomaly_type, description) = generate_anomaly_details(method, severity);
-
-    let mut metadata = HashMap::new();
-    metadata.insert("detection_method".to_string(), serde_json::Value::String(method.to_string()));
-    metadata.insert("confidence".to_string(), serde_json::Value::Number(safe_json_number(score as f64)));
-
-    match method {
-        "isolation_forest" => {
-            metadata.insert("isolation_depth".to_string(),
-                serde_json::Value::Number(serde_json::Number::from(rng.gen_range(2..=10))));
-            metadata.insert("tree_count".to_string(),
-                serde_json::Value::Number(serde_json::Number::from(rng.gen_range(50..=200))));
-        },
-        "lof" => {
-            metadata.insert("local_density".to_string(),
-                serde_json::Value::Number(safe_json_number(rng.gen::<f64>())));
-            metadata.insert("neighbors_count".to_string(),
-                serde_json::Value::Number(serde_json::Number::from(rng.gen_range(5..=30))));
-        },
-        "autoencoder" => {
-            metadata.insert("reconstruction_error".to_string(),
-                serde_json::Value::Number(safe_json_number(score as f64)));
-            metadata.insert("latent_dimension".to_string(),
-                serde_json::Value::Number(serde_json::Number::from(rng.gen_range(8..=128))));
-        },
-        "statistical" => {
-            metadata.insert("z_score".to_string(),
-                serde_json::Value::Number(safe_json_number((score * 6.0 - 3.0) as f64)));
-            metadata.insert("iqr_position".to_string(),
-                serde_json::Value::Number(safe_json_number(score as f64)));
-        },
-        "temporal" => {
-            metadata.insert("time_window".to_string(),
-                serde_json::Value::String(format!("{}s", rng.gen_range(30..=300))));
-            metadata.insert("trend_deviation".to_string(),
-                serde_json::Value::Number(safe_json_number(score as f64)));
-        },
-        _ => {}
-    }
-
-    Anomaly {
-        id: Uuid::new_v4().to_string(),
-        node_id,
-        r#type: anomaly_type,
-        severity: severity.to_string(),
-        score,
-        description,
-        timestamp: Utc::now().timestamp() as u64,
-        metadata: Some(serde_json::Value::Object(metadata.into_iter().collect())),
-    }
-}
-
-#[allow(dead_code)]
-fn generate_anomaly_details(method: &str, severity: &str) -> (String, String) {
-    let mut rng = rand::thread_rng();
-
-    match method {
-        "isolation_forest" => {
-            let types = ["structural_outlier", "connectivity_anomaly", "isolation_pattern"];
-            let anomaly_type = types[rng.gen_range(0..types.len())].to_string();
-
-            let description = match anomaly_type.as_str() {
-                "structural_outlier" => format!("Node exhibits unusual structural properties with {} isolation depth", severity),
-                "connectivity_anomaly" => format!("Abnormal connectivity pattern detected with {} confidence", severity),
-                "isolation_pattern" => format!("Node isolated in feature space with {} significance", severity),
-                _ => format!("Isolation forest detected {} anomaly", severity),
-            };
-
-            (anomaly_type, description)
-        },
-        "lof" => {
-            let types = ["density_outlier", "local_anomaly", "neighborhood_deviation"];
-            let anomaly_type = types[rng.gen_range(0..types.len())].to_string();
-
-            let description = match anomaly_type.as_str() {
-                "density_outlier" => format!("Node has {} local density compared to neighbors", severity),
-                "local_anomaly" => format!("Local outlier factor indicates {} anomaly", severity),
-                "neighborhood_deviation" => format!("Significant deviation from local neighborhood with {} severity", severity),
-                _ => format!("Local outlier factor detected {} anomaly", severity),
-            };
-
-            (anomaly_type, description)
-        },
-        "autoencoder" => {
-            let types = ["reconstruction_error", "latent_anomaly", "encoding_deviation"];
-            let anomaly_type = types[rng.gen_range(0..types.len())].to_string();
-
-            let description = match anomaly_type.as_str() {
-                "reconstruction_error" => format!("High reconstruction error indicates {} anomaly", severity),
-                "latent_anomaly" => format!("Anomalous pattern in latent space with {} confidence", severity),
-                "encoding_deviation" => format!("Neural encoding shows {} deviation from normal patterns", severity),
-                _ => format!("Autoencoder detected {} anomaly", severity),
-            };
-
-            (anomaly_type, description)
-        },
-        "statistical" => {
-            let types = ["z_score_outlier", "iqr_outlier", "distribution_anomaly"];
-            let anomaly_type = types[rng.gen_range(0..types.len())].to_string();
-
-            let description = match anomaly_type.as_str() {
-                "z_score_outlier" => format!("Z-score indicates {} statistical outlier", severity),
-                "iqr_outlier" => format!("Value outside interquartile range with {} significance", severity),
-                "distribution_anomaly" => format!("Statistical distribution shows {} anomaly", severity),
-                _ => format!("Statistical analysis detected {} anomaly", severity),
-            };
-
-            (anomaly_type, description)
-        },
-        "temporal" => {
-            let types = ["trend_anomaly", "seasonal_deviation", "temporal_outlier"];
-            let anomaly_type = types[rng.gen_range(0..types.len())].to_string();
-
-            let description = match anomaly_type.as_str() {
-                "trend_anomaly" => format!("Temporal trend shows {} anomalous behavior", severity),
-                "seasonal_deviation" => format!("Deviation from expected seasonal pattern with {} severity", severity),
-                "temporal_outlier" => format!("Time-series analysis detected {} temporal outlier", severity),
-                _ => format!("Temporal analysis detected {} anomaly", severity),
-            };
-
-            (anomaly_type, description)
-        },
-        _ => {
-            let anomaly_type = "unknown_anomaly".to_string();
-            let description = format!("Unknown detection method found {} anomaly", severity);
-            (anomaly_type, description)
         }
     }
 }

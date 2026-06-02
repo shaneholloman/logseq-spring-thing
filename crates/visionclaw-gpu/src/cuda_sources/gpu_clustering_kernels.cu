@@ -315,6 +315,109 @@ __global__ void compute_inertia_kernel(
 // REAL LOF (Local Outlier Factor) Anomaly Detection
 // =============================================================================
 
+// Maximum k supported by the on-register neighbour buffers below.
+#define LOF_MAX_K 32
+
+// Gather the (up to k) nearest neighbours of a query point within `radius`
+// using the spatial grid. Writes neighbour indices into nbr_idx[], sorted
+// distances into nbr_dist[], and returns the neighbour count. Shared by both
+// the self pass and the per-neighbour lrd recomputation so the LOF ratio is
+// computed from a consistent neighbourhood definition.
+__device__ int lof_gather_neighbors(
+    const int query_idx,
+    const float3 query_pos,
+    const float* __restrict__ pos_x,
+    const float* __restrict__ pos_y,
+    const float* __restrict__ pos_z,
+    const int* __restrict__ sorted_indices,
+    const int* __restrict__ cell_start,
+    const int* __restrict__ cell_end,
+    const int3 grid_dims,
+    const int k_neighbors,
+    const float radius,
+    const float world_bounds_min,
+    const float cell_size_lod,
+    const int max_k,
+    int* __restrict__ nbr_idx,       // [cap] out neighbour indices
+    float* __restrict__ nbr_dist)    // [cap] out neighbour distances (sorted asc)
+{
+    const int cap = min(k_neighbors, min(max_k, LOF_MAX_K));
+    int count = 0;
+
+    int3 cell = make_int3(
+        (int)((query_pos.x - world_bounds_min) / cell_size_lod),
+        (int)((query_pos.y - world_bounds_min) / cell_size_lod),
+        (int)((query_pos.z - world_bounds_min) / cell_size_lod)
+    );
+
+    for (int dz = -1; dz <= 1; dz++) {
+        for (int dy = -1; dy <= 1; dy++) {
+            for (int dx = -1; dx <= 1; dx++) {
+                int3 nc = make_int3(cell.x + dx, cell.y + dy, cell.z + dz);
+
+                if (nc.x >= 0 && nc.x < grid_dims.x &&
+                    nc.y >= 0 && nc.y < grid_dims.y &&
+                    nc.z >= 0 && nc.z < grid_dims.z) {
+
+                    int cell_idx = nc.z * grid_dims.x * grid_dims.y +
+                                   nc.y * grid_dims.x + nc.x;
+                    int start = cell_start[cell_idx];
+                    int end = cell_end[cell_idx];
+
+                    for (int s = start; s < end; s++) {
+                        int n_idx = sorted_indices[s];
+                        if (n_idx == query_idx) continue;
+
+                        float3 npos = make_float3(pos_x[n_idx], pos_y[n_idx], pos_z[n_idx]);
+                        float3 d = make_float3(
+                            query_pos.x - npos.x,
+                            query_pos.y - npos.y,
+                            query_pos.z - npos.z
+                        );
+                        float dist = sqrtf(d.x * d.x + d.y * d.y + d.z * d.z);
+
+                        if (dist <= radius && dist > 0.0f) {
+                            // Insertion sort into the bounded k-nearest buffer.
+                            int insert_pos = count;
+                            for (int j = 0; j < count; j++) {
+                                if (dist < nbr_dist[j]) { insert_pos = j; break; }
+                            }
+                            if (insert_pos >= cap) continue; // farther than current k-th
+                            int last = min(count, cap - 1);
+                            for (int j = last; j > insert_pos; j--) {
+                                nbr_dist[j] = nbr_dist[j - 1];
+                                nbr_idx[j]  = nbr_idx[j - 1];
+                            }
+                            nbr_dist[insert_pos] = dist;
+                            nbr_idx[insert_pos]  = n_idx;
+                            if (count < cap) count++;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return count;
+}
+
+// Local reachability density of a point given its sorted neighbour distances:
+//   lrd(p) = count / Σ_o reach-dist_k(p,o),  reach-dist_k(p,o)=max(k_dist(o)? ...)
+// We approximate reach-dist with max(dist(p,o), k_distance(p)) — the standard
+// symmetric simplification used for grid LOF — so lrd is finite and > 0 for any
+// point with neighbours.
+__device__ float lof_lrd_from_neighbors(
+    const int count,
+    const float* __restrict__ nbr_dist)
+{
+    if (count <= 0) return 0.0f;
+    float k_distance = nbr_dist[count - 1];
+    float reach_sum = 0.0f;
+    for (int i = 0; i < count; i++) {
+        reach_sum += fmaxf(nbr_dist[i], k_distance);
+    }
+    return (reach_sum > 0.0f) ? (float)count / reach_sum : 0.0f;
+}
+
 __global__ void compute_lof_kernel(
     const float* __restrict__ pos_x,
     const float* __restrict__ pos_y,
@@ -336,95 +439,58 @@ __global__ void compute_lof_kernel(
 {
     const int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx >= num_nodes) return;
+    (void)cell_keys;        // retained in FFI signature; grid lookup uses cell_start/end
+    (void)world_bounds_max; // retained in FFI signature
 
     float3 pos = make_float3(pos_x[idx], pos_y[idx], pos_z[idx]);
 
-    // Find k-nearest neighbors within radius
-    float neighbor_distances[32]; // Max k=32 for efficiency
-    int neighbor_count = 0;
+    // --- Pass 1: this point's k-neighbourhood and local reachability density. ---
+    int   self_nbr_idx[LOF_MAX_K];
+    float self_nbr_dist[LOF_MAX_K];
+    int self_count = lof_gather_neighbors(
+        idx, pos, pos_x, pos_y, pos_z, sorted_indices, cell_start, cell_end,
+        grid_dims, k_neighbors, radius, world_bounds_min, cell_size_lod, max_k,
+        self_nbr_idx, self_nbr_dist);
 
-    // Search in neighboring cells
-    int3 cell = make_int3(
-        (int)((pos.x - world_bounds_min) / cell_size_lod),
-        (int)((pos.y - world_bounds_min) / cell_size_lod),
-        (int)((pos.z - world_bounds_min) / cell_size_lod)
-    );
+    float lrd_self = lof_lrd_from_neighbors(self_count, self_nbr_dist);
+    local_densities[idx] = lrd_self;
 
-    for (int dz = -1; dz <= 1; dz++) {
-        for (int dy = -1; dy <= 1; dy++) {
-            for (int dx = -1; dx <= 1; dx++) {
-                int3 neighbor_cell = make_int3(
-                    cell.x + dx, cell.y + dy, cell.z + dz
-                );
+    // Isolated points have no meaningful outlier factor; emit LOF == 1 (inlier).
+    if (self_count == 0 || lrd_self <= 0.0f) {
+        lof_scores[idx] = 1.0f;
+        return;
+    }
 
-                if (neighbor_cell.x >= 0 && neighbor_cell.x < grid_dims.x &&
-                    neighbor_cell.y >= 0 && neighbor_cell.y < grid_dims.y &&
-                    neighbor_cell.z >= 0 && neighbor_cell.z < grid_dims.z) {
+    // --- Pass 2: REAL LOF ratio. For each neighbour o, recompute lrd(o) from o's
+    // own k-neighbourhood, then
+    //     LOF(p) = ( (1/|N|) Σ_o lrd(o) ) / lrd(p).
+    // LOF ≈ 1 for inliers, > 1 for outliers (sparser than their neighbours). ---
+    float lrd_neighbor_sum = 0.0f;
+    int   lrd_neighbor_n = 0;
 
-                    int cell_idx = neighbor_cell.z * grid_dims.x * grid_dims.y +
-                                   neighbor_cell.y * grid_dims.x + neighbor_cell.x;
+    for (int n = 0; n < self_count; n++) {
+        int o = self_nbr_idx[n];
+        float3 opos = make_float3(pos_x[o], pos_y[o], pos_z[o]);
 
-                    int start = cell_start[cell_idx];
-                    int end = cell_end[cell_idx];
+        int   o_nbr_idx[LOF_MAX_K];
+        float o_nbr_dist[LOF_MAX_K];
+        int o_count = lof_gather_neighbors(
+            o, opos, pos_x, pos_y, pos_z, sorted_indices, cell_start, cell_end,
+            grid_dims, k_neighbors, radius, world_bounds_min, cell_size_lod, max_k,
+            o_nbr_idx, o_nbr_dist);
 
-                    for (int i = start; i < end && neighbor_count < min(k_neighbors, max_k); i++) {
-                        int neighbor_idx = sorted_indices[i];
-                        if (neighbor_idx == idx) continue;
-
-                        float3 neighbor_pos = make_float3(
-                            pos_x[neighbor_idx], pos_y[neighbor_idx], pos_z[neighbor_idx]
-                        );
-
-                        float3 diff = make_float3(
-                            pos.x - neighbor_pos.x,
-                            pos.y - neighbor_pos.y,
-                            pos.z - neighbor_pos.z
-                        );
-
-                        float dist = sqrtf(diff.x * diff.x + diff.y * diff.y + diff.z * diff.z);
-
-                        if (dist <= radius && dist > 0.0f) {
-                            // Insert in sorted order (simple insertion sort for small k)
-                            int insert_pos = neighbor_count;
-                            for (int j = 0; j < neighbor_count; j++) {
-                                if (dist < neighbor_distances[j]) {
-                                    insert_pos = j;
-                                    break;
-                                }
-                            }
-
-                            // Shift elements
-                            for (int j = neighbor_count; j > insert_pos; j--) {
-                                if (j < k_neighbors) {
-                                    neighbor_distances[j] = neighbor_distances[j-1];
-                                }
-                            }
-
-                            if (insert_pos < min(k_neighbors, max_k)) {
-                                neighbor_distances[insert_pos] = dist;
-                                if (neighbor_count < min(k_neighbors, max_k)) neighbor_count++;
-                            }
-                        }
-                    }
-                }
-            }
+        float lrd_o = lof_lrd_from_neighbors(o_count, o_nbr_dist);
+        if (lrd_o > 0.0f) {
+            lrd_neighbor_sum += lrd_o;
+            lrd_neighbor_n++;
         }
     }
 
-    // Compute local reachability density
-    float k_distance = (neighbor_count > 0) ? neighbor_distances[min(neighbor_count-1, min(k_neighbors, max_k)-1)] : radius;
-    float reach_dist_sum = 0.0f;
+    float lof = (lrd_neighbor_n > 0)
+        ? (lrd_neighbor_sum / (float)lrd_neighbor_n) / lrd_self
+        : 1.0f;
 
-    for (int i = 0; i < neighbor_count; i++) {
-        reach_dist_sum += fmaxf(neighbor_distances[i], k_distance);
-    }
-
-    float local_density = (reach_dist_sum > 0.0f) ? neighbor_count / reach_dist_sum : 0.0f;
-    local_densities[idx] = local_density;
-
-    // Compute LOF score (simplified - needs neighbor densities)
-    // For now, use inverse of local density as anomaly score
-    lof_scores[idx] = (local_density > 0.0f) ? 1.0f / local_density : 10.0f;
+    lof_scores[idx] = lof;
 }
 
 // Z-score anomaly detection kernel
@@ -510,14 +576,31 @@ __device__ float compute_modularity_gain_device(
     return delta_q;
 }
 
-// Louvain local optimization pass
+// Louvain local optimization pass.
+//
+// D1 fix — fully consistent synchronous pass. BOTH the community assignment
+// and the community-weight aggregate are read from frozen snapshots so every
+// thread's modularity-gain computation sees the SAME start-of-pass state:
+//   * `node_communities_in` is READ-ONLY for the whole pass. Reading neighbour
+//     communities from a frozen snapshot (instead of the live buffer mutated by
+//     other threads mid-pass) is what makes the gain consistent — the prior
+//     code read live `node_communities` for k_{i,in} while reading a frozen
+//     snapshot for sigma_tot, a state mismatch that drove the partition to
+//     modularity ~0.07 (a correct Louvain reaches ~0.48 on the same graph).
+//   * `community_weights_snapshot` is the matching frozen sigma_tot aggregate.
+//   * accepted moves are written to a SEPARATE `node_communities_out` buffer
+//     and their weight deltas accumulate into `community_weights_next` via
+//     atomicAdd. The host seeds out==in and next==snapshot before launch and
+//     copies out->in / next->snapshot between passes.
 __global__ void louvain_local_pass_kernel(
     const float* __restrict__ edge_weights,
     const int* __restrict__ edge_indices,
     const int* __restrict__ edge_offsets,
-    int* __restrict__ node_communities,
+    const int* __restrict__ node_communities_in,           // READ-ONLY snapshot
+    int* __restrict__ node_communities_out,                // WRITE target
     const float* __restrict__ node_weights,
-    float* __restrict__ community_weights,
+    const float* __restrict__ community_weights_snapshot,  // READ-ONLY this pass
+    float* __restrict__ community_weights_next,            // delta accumulator
     bool* __restrict__ improvement_flag,
     const int num_nodes,
     const float total_weight,
@@ -527,7 +610,7 @@ __global__ void louvain_local_pass_kernel(
     const int node = blockIdx.x * blockDim.x + threadIdx.x;
     if (node >= num_nodes) return;
 
-    int current_community = node_communities[node];
+    int current_community = node_communities_in[node];
     int best_community = current_community;
     float best_gain = 0.0f;
 
@@ -546,17 +629,18 @@ __global__ void louvain_local_pass_kernel(
 
     for (int e = start; e < end; e++) {
         int neighbor = edge_indices[e];
-        int neighbor_community = node_communities[neighbor];
+        int neighbor_community = node_communities_in[neighbor];
 
         if (neighbor_community == current_community) continue;
         // Directional filter prevents same-pass 2-node swaps.
         if (prefer_lower && neighbor_community >= current_community) continue;
         if (!prefer_lower && neighbor_community <= current_community) continue;
 
+        // Gain is computed entirely against the frozen snapshot — no race.
         float gain = compute_modularity_gain_device(
             node, current_community, neighbor_community,
             edge_weights, edge_indices, edge_offsets,
-            node_communities, node_weights, community_weights,
+            node_communities_in, node_weights, community_weights_snapshot,
             total_weight, resolution
         );
 
@@ -566,16 +650,75 @@ __global__ void louvain_local_pass_kernel(
         }
     }
 
-    // Move node if beneficial
+    // Write the (possibly unchanged) assignment to the OUT buffer. Movers also
+    // accumulate their weight delta into the NEXT-pass aggregate, never the
+    // snapshot, and raise the improvement flag.
     if (best_community != current_community && best_gain > 1e-6f) {
-        node_communities[node] = best_community;
+        node_communities_out[node] = best_community;
 
-        // Update community weights atomically
         float node_weight = node_weights[node];
-        atomicAdd(&community_weights[best_community], node_weight);
-        atomicAdd(&community_weights[current_community], -node_weight);
+        atomicAdd(&community_weights_next[best_community], node_weight);
+        atomicAdd(&community_weights_next[current_community], -node_weight);
 
         *improvement_flag = true;
+    } else {
+        node_communities_out[node] = current_community;
+    }
+}
+
+// =============================================================================
+// Louvain graph aggregation / contraction (D1 part b)
+//
+// After a level's local-move passes converge, contract every community into a
+// single super-node. The contracted graph's edge between super-communities C
+// and D carries the summed weight of all original edges between members of C
+// and D (self-loops carry intra-community weight). Running local-move again on
+// the contracted graph lets Louvain escape the first local optimum — the step
+// the single-pass kernel was missing, which is why modularity sat near zero.
+//
+// These kernels build the contracted adjacency as a dense num_comm x num_comm
+// accumulator the host then compacts to CSR for the next level. num_communities
+// at a level is <= num_nodes and shrinks every level, so the dense buffer is
+// bounded and transient (host frees it between levels).
+// =============================================================================
+
+// Relabel raw community ids to a contiguous [0, num_communities) range.
+// `remap` maps old community id -> dense id (host-built); writes the dense id.
+__global__ void louvain_relabel_nodes_kernel(
+    const int* __restrict__ node_communities,   // raw community id per node
+    const int* __restrict__ remap,               // [num_nodes] old id -> dense id
+    int* __restrict__ node_dense_community,      // out: dense id per node
+    const int num_nodes)
+{
+    const int node = blockIdx.x * blockDim.x + threadIdx.x;
+    if (node >= num_nodes) return;
+    node_dense_community[node] = remap[node_communities[node]];
+}
+
+// Accumulate the contracted (community x community) weighted adjacency.
+// One thread per ORIGINAL node scatters that node's incident edge weights into
+// agg[c_src * num_comm + c_dst]. Edges internal to a community land on the
+// diagonal (self-loop weight). The host reads `agg` and compacts to CSR.
+__global__ void louvain_aggregate_edges_kernel(
+    const float* __restrict__ edge_weights,
+    const int* __restrict__ edge_indices,
+    const int* __restrict__ edge_offsets,
+    const int* __restrict__ node_dense_community,
+    float* __restrict__ agg,            // [num_comm * num_comm] zeroed by host
+    const int num_nodes,
+    const int num_comm)
+{
+    const int node = blockIdx.x * blockDim.x + threadIdx.x;
+    if (node >= num_nodes) return;
+
+    const int c_src = node_dense_community[node];
+    const int start = edge_offsets[node];
+    const int end = edge_offsets[node + 1];
+
+    for (int e = start; e < end; e++) {
+        const int nbr = edge_indices[e];
+        const int c_dst = node_dense_community[nbr];
+        atomicAdd(&agg[(long)c_src * num_comm + c_dst], edge_weights[e]);
     }
 }
 
@@ -909,10 +1052,22 @@ __global__ void dbscan_propagate_labels_kernel(
         const int j = neighbors[offset + k];
         const int neighbor_label = labels[j];
 
-        // Propagate to unvisited or noise points, or lower cluster IDs
-        if (neighbor_label == -2 || neighbor_label == -1 ||
-            (neighbor_label >= 0 && my_label < neighbor_label)) {
-            // Atomic min for convergence to lowest cluster ID
+        if (neighbor_label == -2 || neighbor_label == -1) {
+            // Border/noise/unvisited point adjacent to this core point. It MUST
+            // join a cluster, never stay noise. atomicMin would keep -2/-1
+            // (since -2 < any cluster id >= 0), demoting border points to noise
+            // — the bug this fix removes. atomicMax lets the positive cluster id
+            // win over the -2/-1 sentinel. A border adjacent to several cores
+            // converges to the largest core id; cross-core agreement below then
+            // collapses those to a single id, so the choice of max here only
+            // affects which equivalent representative the border first adopts.
+            int old = atomicMax(&labels[j], my_label);
+            if (old < my_label) {
+                atomicAdd(changed, 1);
+            }
+        } else if (neighbor_label >= 0 && my_label < neighbor_label) {
+            // Core-vs-core (or already-assigned border): converge the whole
+            // connected core structure to the lowest cluster id via atomicMin.
             int old = atomicMin(&labels[j], my_label);
             if (old != my_label && old > my_label) {
                 atomicAdd(changed, 1);

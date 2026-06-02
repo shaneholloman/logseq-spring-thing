@@ -114,11 +114,15 @@ export const GraphAnalysisTab: React.FC<GraphAnalysisTabProps> = ({
         description: "Analysing graph topology with GPU acceleration..."
       });
 
+      // ADR-031 D8: centrality is NOT requested here. The two parallel client
+      // analytics request paths are collapsed to one canonical centrality fetch
+      // (useSemanticService.computeCentrality → /api/semantic/centrality).
+      // Per-node centrality also rides every V3 frame at wire offset 48. This
+      // structural run covers clustering + connectivity only.
       const taskId = await runAnalysis({
         type: 'structural',
         graphData,
         options: {
-          include_centrality: true,
           include_clustering: true,
           include_connectivity: true,
           cluster_resolution: 1.0

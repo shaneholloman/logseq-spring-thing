@@ -1472,155 +1472,96 @@ __global__ void propagate_labels_sync_kernel(
 {
     const int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx >= num_nodes) return;
-    
+    (void)label_counts; // no global scratch needed; tally is over the local list
+
     int start_edge = edge_row_offsets[idx];
     int end_edge = edge_row_offsets[idx + 1];
-    
+
     if (start_edge == end_edge) {
         // Isolated node keeps its current label
         labels_out[idx] = labels_in[idx];
         return;
     }
-    
-    // Use shared memory for label frequency counting
-    extern __shared__ int shared_memory[];
-    int* local_label_counts = shared_memory + threadIdx.x * (max_label + 1);
-    
-    // Initialize local label counts
-    for (int i = 0; i <= max_label; i++) {
-        local_label_counts[i] = 0;
-    }
-    
-    // Count weighted neighbor labels
-    float total_weight = 0.0f;
-    for (int i = start_edge; i < end_edge; ++i) {
-        int neighbor_idx = edge_col_indices[i];
-        int neighbor_label = labels_in[neighbor_idx];
-        float weight = edge_weights[i];
-        
-        if (neighbor_label >= 0 && neighbor_label <= max_label) {
-            // Use weighted voting (multiply by 1000 for integer precision)
-            local_label_counts[neighbor_label] += (int)(weight * c_params.weight_precision_multiplier);
-            total_weight += weight;
-        }
-    }
-    
-    // Find label with maximum weighted count
+
+    // D8/D7 fix — the old kernel histogrammed votes into a per-thread shared
+    // array of size (max_label+1). With max_label == num_nodes the launch could
+    // not allocate it, so the host silently clamped the shared size and the
+    // `<= max_label` guard dropped every label above the clamp. We instead tally
+    // the weighted vote for each DISTINCT neighbour label by scanning the node's
+    // own (typically small) neighbour list — O(deg^2), ZERO shared memory, and
+    // no label is ever out of range or dropped regardless of max_label.
     int best_label = labels_in[idx];
-    int max_count = 0;
-    int ties = 0;
-    
-    for (int label = 0; label <= max_label; label++) {
-        if (local_label_counts[label] > max_count) {
-            max_count = local_label_counts[label];
-            best_label = label;
-            ties = 1;
-        } else if (local_label_counts[label] == max_count && max_count > 0) {
-            ties++;
+    int best_count = 0;     // weighted vote, fixed-point
+    int best_ties = 0;
+
+    for (int a = start_edge; a < end_edge; ++a) {
+        const int cand = labels_in[edge_col_indices[a]];
+        if (cand < 0 || cand > max_label) continue;
+
+        // First-occurrence dedup: only tally a candidate at its earliest slot so
+        // each distinct label is scored once.
+        bool seen_earlier = false;
+        for (int b = start_edge; b < a; ++b) {
+            if (labels_in[edge_col_indices[b]] == cand) { seen_earlier = true; break; }
+        }
+        if (seen_earlier) continue;
+
+        // Sum the weighted vote for this candidate label across all neighbours.
+        int count = 0;
+        for (int b = start_edge; b < end_edge; ++b) {
+            if (labels_in[edge_col_indices[b]] == cand) {
+                count += (int)(edge_weights[b] * c_params.weight_precision_multiplier);
+            }
+        }
+
+        if (count > best_count) {
+            best_count = count;
+            best_label = cand;
+            best_ties = 1;
+        } else if (count == best_count && best_count > 0) {
+            best_ties++;
         }
     }
-    
-    // Break ties randomly if multiple labels have same count
-    if (ties > 1 && max_count > 0) {
+
+    // Break ties uniformly among the tied labels (deterministic per-node RNG).
+    if (best_ties > 1 && best_count > 0) {
         curandState local_state = rand_states[idx];
-        int tie_breaker = curand(&local_state) % ties;
+        int tie_breaker = curand(&local_state) % best_ties;
         rand_states[idx] = local_state;
-        
+
         int current_tie = 0;
-        for (int label = 0; label <= max_label; label++) {
-            if (local_label_counts[label] == max_count) {
-                if (current_tie == tie_breaker) {
-                    best_label = label;
-                    break;
+        for (int a = start_edge; a < end_edge; ++a) {
+            const int cand = labels_in[edge_col_indices[a]];
+            if (cand < 0 || cand > max_label) continue;
+            bool seen_earlier = false;
+            for (int b = start_edge; b < a; ++b) {
+                if (labels_in[edge_col_indices[b]] == cand) { seen_earlier = true; break; }
+            }
+            if (seen_earlier) continue;
+            int count = 0;
+            for (int b = start_edge; b < end_edge; ++b) {
+                if (labels_in[edge_col_indices[b]] == cand) {
+                    count += (int)(edge_weights[b] * c_params.weight_precision_multiplier);
                 }
+            }
+            if (count == best_count) {
+                if (current_tie == tie_breaker) { best_label = cand; break; }
                 current_tie++;
             }
         }
     }
-    
+
     labels_out[idx] = best_label;
 }
 
-/**
- * Asynchronous label propagation kernel - updates happen in-place
- * Grid: (ceil(num_nodes/256), 1, 1), Block: (256, 1, 1)
- * Each thread processes one node with immediate updates
- */
-__global__ void propagate_labels_async_kernel(
-    int* __restrict__ labels,
-    const int* __restrict__ edge_row_offsets,
-    const int* __restrict__ edge_col_indices,
-    const float* __restrict__ edge_weights,
-    const int num_nodes,
-    const int max_label,
-    curandState* __restrict__ rand_states)
-{
-    const int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx >= num_nodes) return;
-    
-    int start_edge = edge_row_offsets[idx];
-    int end_edge = edge_row_offsets[idx + 1];
-    
-    if (start_edge == end_edge) {
-        return; // Isolated node keeps current label
-    }
-    
-    // Use shared memory for label frequency counting
-    extern __shared__ int shared_memory[];
-    int* local_label_counts = shared_memory + threadIdx.x * (max_label + 1);
-    
-    // Initialize local label counts
-    for (int i = 0; i <= max_label; i++) {
-        local_label_counts[i] = 0;
-    }
-    
-    // Count weighted neighbor labels (reading potentially updated values)
-    for (int i = start_edge; i < end_edge; ++i) {
-        int neighbor_idx = edge_col_indices[i];
-        int neighbor_label = labels[neighbor_idx];  // May be updated by other threads
-        float weight = edge_weights[i];
-        
-        if (neighbor_label >= 0 && neighbor_label <= max_label) {
-            local_label_counts[neighbor_label] += (int)(weight * c_params.weight_precision_multiplier);
-        }
-    }
-    
-    // Find label with maximum weighted count
-    int best_label = labels[idx];
-    int max_count = 0;
-    int ties = 0;
-    
-    for (int label = 0; label <= max_label; label++) {
-        if (local_label_counts[label] > max_count) {
-            max_count = local_label_counts[label];
-            best_label = label;
-            ties = 1;
-        } else if (local_label_counts[label] == max_count && max_count > 0) {
-            ties++;
-        }
-    }
-    
-    // Break ties randomly
-    if (ties > 1 && max_count > 0) {
-        curandState local_state = rand_states[idx];
-        int tie_breaker = curand(&local_state) % ties;
-        rand_states[idx] = local_state;
-        
-        int current_tie = 0;
-        for (int label = 0; label <= max_label; label++) {
-            if (local_label_counts[label] == max_count) {
-                if (current_tie == tie_breaker) {
-                    best_label = label;
-                    break;
-                }
-                current_tie++;
-            }
-        }
-    }
-    
-    // Update label in-place (asynchronous)
-    labels[idx] = best_label;
-}
+// D8 consolidation — the asynchronous in-place label-propagation kernel
+// (`propagate_labels_async_kernel`) was the redundant second community-LPA
+// implementation. It carried the same shared-memory histogram defect, produced
+// nondeterministic results from its in-place reads, and was never the default
+// path (the driver defaults synchronous=true). It is removed so
+// `propagate_labels_sync_kernel` above is the single canonical community
+// label-propagation kernel. The driver must drop its `synchronous=false`
+// branch (see report).
 
 /**
  * Check convergence by comparing old and new labels
@@ -1640,51 +1581,6 @@ __global__ void check_convergence_kernel(
     if (labels_old[idx] != labels_new[idx]) {
         atomicExch(convergence_flag, 0);
     }
-}
-
-/**
- * Compute modularity score for community quality assessment
- * Grid: (ceil(num_edges/256), 1, 1), Block: (256, 1, 1)
- * Each thread processes one edge contribution to modularity
- */
-__global__ void compute_modularity_kernel(
-    const int* __restrict__ labels,
-    const int* __restrict__ edge_row_offsets,
-    const int* __restrict__ edge_col_indices,
-    const float* __restrict__ edge_weights,
-    const float* __restrict__ node_degrees,
-    float* __restrict__ modularity_contributions,
-    const int num_nodes,
-    const float total_weight)
-{
-    const int node_idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (node_idx >= num_nodes) return;
-    
-    float contribution = 0.0f;
-    int start_edge = edge_row_offsets[node_idx];
-    int end_edge = edge_row_offsets[node_idx + 1];
-    
-    int node_label = labels[node_idx];
-    float node_degree = node_degrees[node_idx];
-    
-    // Process all edges from this node
-    for (int i = start_edge; i < end_edge; ++i) {
-        int neighbor_idx = edge_col_indices[i];
-        int neighbor_label = labels[neighbor_idx];
-        float edge_weight = edge_weights[i];
-        float neighbor_degree = node_degrees[neighbor_idx];
-        
-        // Modularity contribution: A_ij - (k_i * k_j)/(2m)
-        float expected_weight = (node_degree * neighbor_degree) / (2.0f * total_weight);
-        
-        if (node_label == neighbor_label) {
-            contribution += edge_weight - expected_weight;
-        } else {
-            contribution -= expected_weight;
-        }
-    }
-    
-    modularity_contributions[node_idx] = contribution;
 }
 
 /**

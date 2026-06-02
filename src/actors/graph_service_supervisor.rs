@@ -51,6 +51,26 @@ use crate::actors::messages as msgs;
 use crate::errors::{ActorError, VisionClawError};
 use visionclaw_domain::models::graph::GraphData;
 
+// ---------------------------------------------------------------------------
+// Auto-clustering cadence + Louvain params
+//
+// The graph layout is force-directed, so the manual "run clustering" button was
+// the only thing populating node_analytics (cluster_id / community_id). Without
+// it the V3 wire ships cluster_id == 0 for every node and the client falls back
+// to spatial-grid hulls. These constants drive a self-firing Louvain pass so
+// real community structure flows automatically. Louvain runs on graph topology
+// (edges), not positions, so it only needs the graph uploaded to the GPU — the
+// initial delay just covers GPU init, not layout convergence. Param values
+// mirror the manual handler's hardcoded fallbacks (clustering_handler.rs).
+// ---------------------------------------------------------------------------
+const AUTO_CLUSTER_INITIAL_DELAY: Duration = Duration::from_secs(8);
+const AUTO_CLUSTER_REFRESH_INTERVAL: Duration = Duration::from_secs(60);
+const AUTO_CLUSTER_COUNT: u32 = 8;
+const AUTO_CLUSTER_MAX_ITERATIONS: u32 = 100;
+const AUTO_CLUSTER_CONVERGENCE: f32 = 0.001;
+const AUTO_CLUSTER_RESOLUTION: f32 = 1.0;
+const AUTO_CLUSTER_MIN_SIZE: u32 = 3;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum GraphSupervisionStrategy {
     
@@ -835,6 +855,47 @@ impl Default for SupervisionStats {
     }
 }
 
+impl GraphServiceSupervisor {
+    /// Fire a Louvain community-detection pass on the GPU-resident graph.
+    ///
+    /// Fire-and-forget: the `Vec<Cluster>` return value is unused because the
+    /// side effect we want is the ClusteringActor writing community labels into
+    /// the shared node_analytics map (cluster_id slot 0 + community_id slot 2),
+    /// which the V3 binary protocol then streams to clients. Routed through the
+    /// GPU manager exactly like the manual /api/analytics/clustering/run path.
+    /// No-op (debug log) until the GPU manager address is available.
+    fn trigger_louvain_clustering(&self) {
+        let Some(ref gpu_manager) = self.gpu_manager else {
+            debug!("Auto-clustering: GPU manager not ready, skipping this pass");
+            return;
+        };
+        gpu_manager.do_send(msgs::PerformGPUClustering {
+            method: "louvain".to_string(),
+            params: crate::handlers::api_handler::analytics::ClusteringParams {
+                num_clusters: Some(AUTO_CLUSTER_COUNT),
+                max_iterations: Some(AUTO_CLUSTER_MAX_ITERATIONS),
+                convergence_threshold: Some(AUTO_CLUSTER_CONVERGENCE),
+                resolution: Some(AUTO_CLUSTER_RESOLUTION),
+                min_cluster_size: Some(AUTO_CLUSTER_MIN_SIZE),
+                similarity: Some("cosine".to_string()),
+                tolerance: Some(0.001),
+                sigma: Some(1.0),
+                min_modularity_gain: Some(0.01),
+                eps: None,
+                min_samples: None,
+                distance_threshold: None,
+                linkage: None,
+                random_state: None,
+                damping: None,
+                preference: None,
+                seed: None,
+            },
+            task_id: format!("auto-louvain_{}", chrono::Utc::now().timestamp_millis()),
+        });
+        debug!("Auto-clustering: dispatched Louvain pass to GPU manager");
+    }
+}
+
 impl Actor for GraphServiceSupervisor {
     type Context = Context<Self>;
 
@@ -842,6 +903,16 @@ impl Actor for GraphServiceSupervisor {
         info!("GraphServiceSupervisor started");
         self.initialize_actors(ctx);
         self.supervision_stats.uptime = Duration::from_secs(0);
+
+        // Auto-trigger GPU Louvain so cluster_id / community_id populate without a
+        // manual button press. One pass shortly after startup (GPU upload settled),
+        // then periodic refresh so communities track nodes added/removed at runtime.
+        ctx.run_later(AUTO_CLUSTER_INITIAL_DELAY, |act, _ctx| {
+            act.trigger_louvain_clustering();
+        });
+        ctx.run_interval(AUTO_CLUSTER_REFRESH_INTERVAL, |act, _ctx| {
+            act.trigger_louvain_clustering();
+        });
 
         // Periodic GPU address refresh: if ForceComputeActor was respawned by
         // PhysicsSupervisor, re-query the address and forward to PhysicsOrchestratorActor

@@ -1,7 +1,7 @@
 // api/settings/defaults.ts
 // Default settings objects — must mirror Rust backend defaults exactly
 
-import type { PhysicsSettings } from './types';
+import type { PhysicsSettings, QualityGateSettings } from './types';
 
 // ============================================================================
 // Physics defaults — must mirror Rust SimParams defaults exactly
@@ -128,12 +128,42 @@ export const DEFAULT_SCENE_EFFECTS = {
 };
 
 export const DEFAULT_CLUSTER_HULLS = {
+  // ADR-031 D6: the hull layer renders ONLY server-provided clusters. Enabled by
+  // default so correct server clusters draw hulls; the JS spatial-grid fallback
+  // is a separate opt-in (spatialFallback, default off) and never fabricates hulls.
   enabled: true,
   opacity: 0.12,
   padding: 0.15,
   updateInterval: 30,
   maxHulls: 32,
   slabThickness: 35,
+  // ADR-031 D6: opt-in fabricated spatial-grid hulls. Default OFF — when server
+  // clusters are absent, show an empty state, never a fabricated grid.
+  spatialFallback: false,
+};
+
+// ADR-031 D6: ship qualityGates defaults so correct server analytics render by
+// default. Absent defaults made the whole analytics subsystem invisible.
+export const DEFAULT_QUALITY_GATES: QualityGateSettings = {
+  gpuAcceleration: true,
+  ontologyPhysics: false,
+  semanticForces: false,
+  layoutMode: 'force-directed',
+  showClusters: true,
+  showAnomalies: true,
+  showCommunities: true,
+  showCentrality: true,
+  showSSSP: false,
+  ruvectorEnabled: false,
+  gnnPhysics: false,
+  minFpsThreshold: 30,
+  maxNodeCount: 100000,
+  autoAdjust: true,
+  ontologyStrength: 0.5,
+  dagLevelAttraction: 0.5,
+  dagSiblingRepulsion: 0.3,
+  typeClusterAttraction: 0.3,
+  typeClusterRadius: 100,
 };
 
 export const DEFAULT_EMBEDDING_CLOUD = {
