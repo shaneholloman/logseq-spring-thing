@@ -1,9 +1,7 @@
-import { Vector3 } from 'three';
 import { createLogger } from '../../../../utils/loggerConfig';
 import type { GraphData } from '../../managers/graphDataManager';
 
 import type {
-  LayoutOptimization,
   ClusterDetection,
   NodeRecommendation,
   PatternRecognition,
@@ -13,13 +11,6 @@ import type {
 
 import { generateCacheKey } from './utils';
 import { computeGraphMetrics } from './graphMetrics';
-import {
-  selectOptimalAlgorithm,
-  applyOptimizationAlgorithm,
-  calculateLayoutMetrics,
-  calculateOptimizationConfidence,
-  generateOptimizationReasoning,
-} from './layoutOptimizer';
 import {
   selectOptimalClusteringAlgorithm,
   applyClustering,
@@ -45,7 +36,6 @@ const logger = createLogger('AIInsights');
 
 export class AIInsights {
   private static instance: AIInsights;
-  private optimizationCache: Map<string, LayoutOptimization> = new Map();
   private clusterCache: Map<string, ClusterDetection> = new Map();
   private patternCache: Map<string, PatternRecognition> = new Map();
   private metricsCache: Map<string, GraphMetrics> = new Map();
@@ -57,53 +47,6 @@ export class AIInsights {
       AIInsights.instance = new AIInsights();
     }
     return AIInsights.instance;
-  }
-
-  public async optimizeLayout(
-    graphData: GraphData,
-    currentPositions: Map<string, Vector3>,
-    constraints: {
-      preserveRelativePositions?: boolean;
-      minimizeEdgeCrossings?: boolean;
-      maximizeReadability?: boolean;
-      respectClusters?: boolean;
-    } = {}
-  ): Promise<LayoutOptimization> {
-    logger.info('Starting AI-powered layout optimization');
-
-    const cacheKey = generateCacheKey(graphData, constraints);
-    if (this.optimizationCache.has(cacheKey)) {
-      return this.optimizationCache.get(cacheKey)!;
-    }
-
-    const currentMetrics = calculateLayoutMetrics(graphData, currentPositions);
-    const algorithm = selectOptimalAlgorithm(graphData, constraints);
-    const optimizedPositions = await applyOptimizationAlgorithm(
-      graphData, currentPositions, algorithm, constraints
-    );
-    const improvedMetrics = calculateLayoutMetrics(graphData, optimizedPositions);
-
-    const improvements = {
-      edgeCrossings: { before: currentMetrics.edgeCrossings, after: improvedMetrics.edgeCrossings },
-      nodeOverlaps: { before: currentMetrics.nodeOverlaps, after: improvedMetrics.nodeOverlaps },
-      readability: { before: currentMetrics.readability, after: improvedMetrics.readability },
-    };
-
-    const toGraphMetrics = (m: typeof currentMetrics): GraphMetrics => ({
-      density: 0, averagePathLength: 0, clusteringCoefficient: 0,
-      centralization: 0, modularity: 0, efficiency: m.readability, smallWorldness: 0,
-    });
-
-    const optimization: LayoutOptimization = {
-      algorithmUsed: algorithm,
-      improvements,
-      optimizedPositions,
-      confidence: calculateOptimizationConfidence(toGraphMetrics(currentMetrics), toGraphMetrics(improvedMetrics)),
-      reasoning: generateOptimizationReasoning(algorithm, improvements),
-    };
-
-    this.optimizationCache.set(cacheKey, optimization);
-    return optimization;
   }
 
   public async detectClusters(
@@ -213,7 +156,6 @@ export class AIInsights {
   }
 
   public dispose(): void {
-    this.optimizationCache.clear();
     this.clusterCache.clear();
     this.patternCache.clear();
     this.metricsCache.clear();
