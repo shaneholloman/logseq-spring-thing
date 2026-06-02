@@ -331,7 +331,8 @@ export const UNIFIED_SETTINGS_CONFIG: Record<string, SectionConfig> = {
 
       // Cluster Hulls - Visual hull rendering around detected clusters
       { key: 'clusterHullsEnabled', label: 'Cluster Hulls', type: 'toggle', path: 'visualisation.clusterHulls.enabled', description: 'Show translucent hull around clusters' },
-      { key: 'clusterHullsOpacity', label: 'Hull Opacity', type: 'slider', min: 0.01, max: 0.3, step: 0.01, path: 'visualisation.clusterHulls.opacity', description: 'Transparency of cluster hulls' }
+      { key: 'clusterHullsOpacity', label: 'Hull Opacity', type: 'slider', min: 0.01, max: 0.5, step: 0.01, path: 'visualisation.clusterHulls.opacity', description: 'Transparency of cluster hulls' },
+      { key: 'clusterHullsMaxHulls', label: 'Max Hulls', type: 'slider', min: 4, max: 64, step: 1, path: 'visualisation.clusterHulls.maxHulls', description: 'Largest N spatial clusters to outline' }
     ]
   },
 

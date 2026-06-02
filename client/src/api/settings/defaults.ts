@@ -129,8 +129,11 @@ export const DEFAULT_SCENE_EFFECTS = {
 
 export const DEFAULT_CLUSTER_HULLS = {
   enabled: true,
-  opacity: 0.08,
+  opacity: 0.12,
   padding: 0.15,
+  updateInterval: 30,
+  maxHulls: 32,
+  slabThickness: 35,
 };
 
 export const DEFAULT_EMBEDDING_CLOUD = {

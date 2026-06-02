@@ -490,9 +490,11 @@ export interface GemMaterialSettings {
 
 export interface ClusterHullSettings {
   enabled: boolean;
-  opacity: number;      // 0-0.3, default 0.08
+  opacity: number;      // 0-0.5, default 0.12
   padding: number;      // 0-0.5, default 0.15
   updateInterval: number; // frames between hull recalculation, default 30
+  maxHulls: number;     // largest N clusters to draw, default 32
+  slabThickness: number; // Z half-extrusion for near-coplanar hulls, default 35
 }
 
 // Embedding cloud layer settings (PCA-projected RuVector embeddings)

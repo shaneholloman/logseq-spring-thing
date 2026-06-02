@@ -46,6 +46,11 @@ const TICK_INTERVAL = 30;
 // distinct regions stay legible in 3D. Overridable via clusterHulls.maxHulls.
 const DEFAULT_MAX_HULLS = 32;
 
+// Spatial-clustering target bucket count when no server cluster_id exists.
+// Over-provisioned vs maxHulls so the N largest occupied cells are dense and
+// well-separated; the long tail of sparse cells is dropped by MIN_CLUSTER_SIZE.
+const SPATIAL_TARGET_CELLS = 96;
+
 // ============================================================================
 // Helpers
 // ============================================================================
@@ -114,9 +119,71 @@ function getDomainHullColor(domain: string): string {
   return DOMAIN_COLORS[domain] ?? DEFAULT_COLOR;
 }
 
+interface ClusterPoint {
+  id: string;
+  x: number;
+  y: number;
+  z: number;
+}
+
+/**
+ * Spatial grid clustering over the live node positions.
+ *
+ * When no server-side cluster_id is available, semantic-domain grouping is
+ * useless for hulls: a domain (e.g. "AI") is a global tag whose members are
+ * scattered across the entire disc, so its convex hull blankets the whole
+ * population. The force-directed layout, however, already places densely
+ * connected nodes near each other — spatial proximity IS the community
+ * structure the user sees. Bucketing positions into a grid yields disjoint,
+ * tight, non-overlapping clusters by construction.
+ *
+ * Grid resolution per axis is proportional to that axis's extent so an
+ * anisotropic population (the disc spans z far wider than x/y) is subdivided
+ * evenly in world space rather than by index, targeting ~targetCells buckets.
+ */
+function buildSpatialClusters(
+  pts: ClusterPoint[],
+  targetCells: number,
+): Map<string, string[]> {
+  const map = new Map<string, string[]>();
+  if (pts.length === 0) return map;
+
+  let minX = Infinity, minY = Infinity, minZ = Infinity;
+  let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+  for (const p of pts) {
+    if (p.x < minX) minX = p.x; if (p.x > maxX) maxX = p.x;
+    if (p.y < minY) minY = p.y; if (p.y > maxY) maxY = p.y;
+    if (p.z < minZ) minZ = p.z; if (p.z > maxZ) maxZ = p.z;
+  }
+  const ex = Math.max(maxX - minX, 1e-3);
+  const ey = Math.max(maxY - minY, 1e-3);
+  const ez = Math.max(maxZ - minZ, 1e-3);
+
+  // Choose k so nx*ny*nz ≈ targetCells, with each nAxis ∝ axis extent.
+  const k = Math.cbrt(targetCells / (ex * ey * ez));
+  const nx = Math.max(1, Math.round(k * ex));
+  const ny = Math.max(1, Math.round(k * ey));
+  const nz = Math.max(1, Math.round(k * ez));
+  const cellX = ex / nx;
+  const cellY = ey / ny;
+  const cellZ = ez / nz;
+
+  for (const p of pts) {
+    const ix = Math.min(nx - 1, Math.floor((p.x - minX) / cellX));
+    const iy = Math.min(ny - 1, Math.floor((p.y - minY) / cellY));
+    const iz = Math.min(nz - 1, Math.floor((p.z - minZ) / cellZ));
+    const key = `sp-${ix}-${iy}-${iz}`;
+    let arr = map.get(key);
+    if (!arr) { arr = []; map.set(key, arr); }
+    arr.push(p.id);
+  }
+  return map;
+}
+
 /**
  * Given a set of 3D points, compute padded points offset from centroid,
- * then return a ConvexGeometry. Returns null if fewer than 4 valid points.
+ * then return a ConvexGeometry. Returns null if fewer than MIN_CLUSTER_SIZE
+ * valid points or the set stays degenerate.
  */
 function buildHullGeometry(
   points: THREE.Vector3[],
@@ -125,31 +192,54 @@ function buildHullGeometry(
 ): ConvexGeometry | null {
   if (points.length < MIN_CLUSTER_SIZE) return null;
 
-  // Compute centroid
+  // Centroid + radial padding (push points out so the hull breathes past nodes).
   const centroid = new THREE.Vector3();
-  for (const p of points) {
-    centroid.add(p);
-  }
+  for (const p of points) centroid.add(p);
   centroid.divideScalar(points.length);
 
-  // Offset each point away from centroid by (1 + padding), then split into a
-  // thin Z slab. The co-planar disc projection flattens Z to ~3%, leaving
-  // each cluster's points near-coplanar — a 3D ConvexGeometry of a coplanar
-  // set is degenerate (throws, or yields a zero-volume sliver invisible from
-  // top-down). Duplicating each point at z ± slabThickness gives the hull
-  // real volume so it renders as a filled region when viewed onto the disc.
-  const slab: THREE.Vector3[] = [];
+  const padded: THREE.Vector3[] = [];
+  let minX = Infinity, minY = Infinity, minZ = Infinity;
+  let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
   for (const p of points) {
-    const dir = new THREE.Vector3().subVectors(p, centroid);
-    const padded = centroid.clone().add(dir.multiplyScalar(1 + padding));
-    slab.push(new THREE.Vector3(padded.x, padded.y, padded.z + slabThickness));
-    slab.push(new THREE.Vector3(padded.x, padded.y, padded.z - slabThickness));
+    const q = new THREE.Vector3()
+      .subVectors(p, centroid)
+      .multiplyScalar(1 + padding)
+      .add(centroid);
+    padded.push(q);
+    if (q.x < minX) minX = q.x; if (q.x > maxX) maxX = q.x;
+    if (q.y < minY) minY = q.y; if (q.y > maxY) maxY = q.y;
+    if (q.z < minZ) minZ = q.z; if (q.z > maxZ) maxZ = q.z;
+  }
+
+  // ConvexHull of a near-coplanar / near-collinear set is degenerate (throws or
+  // yields a zero-volume sliver). Detect the THINNEST axis and, only if it's
+  // flat relative to the other two, extrude along it by slabThickness. This
+  // generalises the old z-only slab — the co-planar disc projection can leave
+  // any axis as the degenerate one depending on view, not just z.
+  const exts: Array<['x' | 'y' | 'z', number]> = [
+    ['x', maxX - minX],
+    ['y', maxY - minY],
+    ['z', maxZ - minZ],
+  ];
+  exts.sort((a, b) => a[1] - b[1]);
+  const [thinAxis, thinExt] = exts[0];
+  const fatExt = exts[2][1];
+
+  let hullPts = padded;
+  if (thinExt < 0.05 * fatExt) {
+    hullPts = [];
+    for (const q of padded) {
+      const a = q.clone();
+      const b = q.clone();
+      a[thinAxis] += slabThickness;
+      b[thinAxis] -= slabThickness;
+      hullPts.push(a, b);
+    }
   }
 
   try {
-    return new ConvexGeometry(slab);
+    return new ConvexGeometry(hullPts);
   } catch {
-    // ConvexGeometry can throw on degenerate point sets
     return null;
   }
 }
@@ -201,24 +291,59 @@ export const ClusterHulls: React.FC<ClusterHullsProps> = ({
   });
 
   // ---- Group nodes into clusters ----
+  // Two grouping sources, in priority order:
+  //   1. Server cluster_id (Louvain) — communities that are spatially coherent
+  //      under the force layout, so their hulls are tight. Used when present.
+  //   2. Spatial grid over live positions — the fallback when no clustering run
+  //      exists. Semantic-domain tags are spatially scattered (their hulls
+  //      blanket the whole disc = mush), so we cluster by the proximity the
+  //      layout already produced. These carry no semantic key, so hullEntries
+  //      colours them by rank for visual separation.
   const clusterMap = useMemo(() => {
     const analytics = analyticsRef.current;
+    const positions = nodePositionsRef.current;
+
+    // Detect whether any real cluster_id is present (stride 3, index 0 > 0).
+    let hasClusterId = false;
+    if (analytics) {
+      for (const idx of nodeIdToIndexMap.values()) {
+        if (analytics[idx * 3] > 0) { hasClusterId = true; break; }
+      }
+    }
+
     const map = new Map<string, string[]>();
+    const colorByKey = new Map<string, string>();
+
+    if (hasClusterId) {
+      for (let ni = 0; ni < nodes.length; ni++) {
+        const node = nodes[ni];
+        const nodeIndex = nodeIdToIndexMap.get(node.id);
+        const key = getClusterKey(node, nodeIndex, analytics);
+        if (!key) continue;
+        let arr = map.get(key);
+        if (!arr) { arr = []; map.set(key, arr); colorByKey.set(key, getDomainHullColor(key)); }
+        arr.push(node.id);
+      }
+      return { map, colorByKey };
+    }
+
+    // Spatial fallback: bucket live positions into a proximity grid.
+    if (!positions) return { map, colorByKey };
+    const pts: ClusterPoint[] = [];
     for (let ni = 0; ni < nodes.length; ni++) {
       const node = nodes[ni];
-      const nodeIndex = nodeIdToIndexMap.get(node.id);
-      const key = getClusterKey(node, nodeIndex, analytics);
-      if (!key) continue; // Skip unclassified nodes — no hull for them
-      let arr = map.get(key);
-      if (!arr) {
-        arr = [];
-        map.set(key, arr);
-      }
-      arr.push(node.id);
+      const idx = nodeIdToIndexMap.get(node.id);
+      if (idx === undefined) continue;
+      const base = idx * 3;
+      if (base + 2 >= positions.length) continue;
+      const x = positions[base], y = positions[base + 1], z = positions[base + 2];
+      if (Number.isNaN(x) || Number.isNaN(y) || Number.isNaN(z)) continue;
+      pts.push({ id: node.id, x, y, z });
     }
-    return map;
+    // Spatial clusters carry no semantic key; hullEntries colours them by rank.
+    return { map: buildSpatialClusters(pts, SPATIAL_TARGET_CELLS), colorByKey };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nodes, nodeIdToIndexMap, tick]);
+  }, [nodes, nodeIdToIndexMap, nodePositionsRef, tick]);
 
   // ---- Build hull geometries from current positions ----
   const hullEntries = useMemo(() => {
@@ -227,19 +352,22 @@ export const ClusterHulls: React.FC<ClusterHullsProps> = ({
     const positions = nodePositionsRef.current;
     if (!positions) return [];
 
+    const { map, colorByKey } = clusterMap;
     const entries: Array<{
-      domain: string;
+      key: string;
+      color: string;
       geometry: ConvexGeometry;
     }> = [];
 
     // Rank clusters by node count and keep only the N largest, so the dense
     // tail of tiny communities doesn't bury the graph in overlapping hulls.
-    const ranked = Array.from(clusterMap.entries())
+    const ranked = Array.from(map.entries())
       .filter(([, nodeIds]) => nodeIds.length >= MIN_CLUSTER_SIZE)
       .sort((a, b) => b[1].length - a[1].length)
       .slice(0, maxHulls);
 
-    for (const [domain, nodeIds] of ranked) {
+    let rank = 0;
+    for (const [key, nodeIds] of ranked) {
       const points: THREE.Vector3[] = [];
 
       for (const id of nodeIds) {
@@ -261,8 +389,17 @@ export const ClusterHulls: React.FC<ClusterHullsProps> = ({
 
       const geometry = buildHullGeometry(points, padding, slabThickness);
       if (geometry) {
-        entries.push({ domain, geometry });
+        // Spatial clusters carry no semantic identity, so the dominant-domain
+        // colour collapses to one hue when the population is single-domain —
+        // 32 distinct regions then read as one mass. Colour spatial hulls by
+        // rank from the palette so neighbouring regions stay visually separable.
+        // Real cluster_id / domain hulls keep their semantic colour.
+        const color = key.startsWith('sp-')
+          ? GPU_CLUSTER_COLORS[rank % GPU_CLUSTER_COLORS.length]
+          : (colorByKey.get(key) ?? DEFAULT_COLOR);
+        entries.push({ key, color, geometry });
       }
+      rank++;
     }
 
     return entries;
@@ -285,14 +422,14 @@ export const ClusterHulls: React.FC<ClusterHullsProps> = ({
 
   return (
     <group ref={groupRef} renderOrder={1}>
-      {hullEntries.map(({ domain, geometry }) => (
+      {hullEntries.map(({ key, color, geometry }) => (
         <mesh
-          key={`hull-${domain}`}
+          key={`hull-${key}`}
           geometry={geometry}
           renderOrder={1}
         >
           <meshBasicMaterial
-            color={getDomainHullColor(domain)}
+            color={color}
             transparent={true}
             opacity={opacity}
             side={THREE.DoubleSide}
