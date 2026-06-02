@@ -105,15 +105,42 @@ export class PushToTalkService {
     logger.info('PTT config updated', this.config);
   }
 
+  /**
+   * Returns true if the keyboard event originated from a text/selection control
+   * the user is actively interacting with — so PTT must NOT hijack the key.
+   *
+   * Defensive against shadow DOM (composedPath retargeting), ARIA widgets
+   * (combobox/textbox/searchbox), native <select>, and Radix/headless triggers.
+   */
+  private isEditableTarget(e: KeyboardEvent): boolean {
+    const EDITABLE_SELECTOR =
+      'input, textarea, select, [contenteditable=""], [contenteditable="true"], ' +
+      '[role="textbox"], [role="searchbox"], [role="combobox"]';
+
+    // e.target is retargeted across shadow boundaries; check both the focused
+    // element and the true composed-path origin to pierce shadow DOM.
+    const composedOrigin = e.composedPath?.()[0] as EventTarget | undefined;
+    const candidates: Array<EventTarget | null | undefined> = [
+      document.activeElement,
+      composedOrigin,
+      e.target,
+    ];
+
+    for (const node of candidates) {
+      if (!(node instanceof HTMLElement)) continue;
+      if (node.isContentEditable) return true;
+      if (node.closest(EDITABLE_SELECTOR)) return true;
+    }
+
+    return false;
+  }
+
   private handleKeyDown(e: KeyboardEvent): void {
     if (e.key !== this.config.key) return;
     if (e.repeat) return; // Ignore key repeat
 
-    // Don't capture PTT when typing in input fields
-    const target = e.target as HTMLElement;
-    if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
-      return;
-    }
+    // Don't capture PTT when typing in input fields / selection controls
+    if (this.isEditableTarget(e)) return;
 
     e.preventDefault();
 
