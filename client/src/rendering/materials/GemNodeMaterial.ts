@@ -12,6 +12,7 @@ const logger = createLogger('GemNodeMaterial');
 interface TSLNodeProperties {
   emissiveNode: unknown;
   opacityNode: unknown;
+  positionNode: unknown;
   needsUpdate: boolean;
 }
 
@@ -180,6 +181,79 @@ export async function createTslGemMaterial(
     return true;
   } catch (err) {
     logger.warn('[GemNodeMaterial] TSL metadata upgrade failed:', err);
+    return false;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// TSL GPU instance transform (WebGPU only)
+//
+// Task #54: move the per-instance position + uniform scale off the CPU. Instead
+// of composing a mat4 on the CPU every frame (makeScale + setPosition +
+// setMatrixAt), the transform is sampled on the GPU from a per-instance
+// DataTexture (RGBA float = x, y, z, scale) via instanceIndex — the SAME
+// safe sampling path used for the metadata texture. An InstancedBufferAttribute
+// is deliberately NOT used here: it crashes the WebGPU backend with
+// drawIndexed(Infinity) on this InstancedMesh path (see the metadata note above).
+//
+// positionNode overrides the local vertex position: positionLocal * scale + pos.
+// The mesh's instanceMatrix is left identity and its modelMatrix is identity
+// (scene-added, untransformed), so object space == world space and the result
+// matches the old CPU matrix exactly. The CPU per-frame cost collapses to a
+// single contiguous typed-array write + needsUpdate, with no mat4 math.
+// ---------------------------------------------------------------------------
+
+/**
+ * Augment a MeshStandardMaterial so the GPU derives each instance's transform
+ * (position + uniform scale) from a transform DataTexture sampled by
+ * instanceIndex. No-op off WebGPU (the WebGL path keeps the instanceMatrix).
+ *
+ * @param transformTexture RGBA float texture, texel i = (x, y, z, scale).
+ * @param texWidth  texture width (texels)
+ * @param texHeight texture height (texels)
+ * @returns true if the positionNode was applied.
+ */
+export async function applyTslInstanceTransform(
+  material: THREE.MeshStandardMaterial,
+  transformTexture: THREE.DataTexture,
+  texWidth: number,
+  texHeight: number,
+): Promise<boolean> {
+  if (!isWebGPURenderer) return false;
+
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Three.js TSL module exports are complex node builder types with no stable public API
+    const tslMod = await import('three/tsl') as any;
+    const {
+      float, vec2,
+      mod, floor,
+      instanceIndex, positionLocal,
+      texture: tslTexture,
+    } = tslMod;
+
+    // Sample the transform texel for this instance (same row-major grid layout
+    // as the metadata texture: texel (i % W, i / W), centre-sampled, Nearest).
+    const texW = float(texWidth);
+    const texH = float(texHeight);
+    const idx = float(instanceIndex);
+    const col = mod(idx, texW);
+    const row = floor(idx.div(texW));
+    const texU = col.add(0.5).div(texW);
+    const texV = row.add(0.5).div(texH);
+    const xform = tslTexture(transformTexture, vec2(texU, texV));
+    const instPos = xform.xyz;       // world position
+    const instScale = xform.w;       // uniform scale
+
+    // Local vertex scaled then translated into world space. Mirrors the old
+    // CPU mat4 (makeScale(s,s,s); setPosition(x,y,z)) with identity model+inst.
+    const augmented = material as unknown as TSLNodeProperties;
+    augmented.positionNode = positionLocal.mul(instScale).add(instPos);
+    augmented.needsUpdate = true;
+
+    logger.info('[GemNodeMaterial] TSL GPU instance transform applied');
+    return true;
+  } catch (err) {
+    logger.warn('[GemNodeMaterial] TSL instance-transform upgrade failed:', err);
     return false;
   }
 }

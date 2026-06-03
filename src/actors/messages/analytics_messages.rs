@@ -14,7 +14,7 @@ pub use visionclaw_actors::messages::analytics_messages::{
     AnomalyParams, ClearPageRankCache, CommunityDetectionAlgorithm, CommunityDetectionParams,
     ComputeAllPairsShortestPaths, ComputeSSSP, DBSCANParams, DBSCANStats,
     ExportClusterAssignments, GetClusteringResults, GetClusteringStatus, KMeansParams,
-    SetNodeAnalytics, StartGPUClustering, UpdateComponentEdges,
+    SetNodeAnalytics, SetNodeSSSP, StartGPUClustering, UpdateComponentEdges,
 };
 
 // ---------------------------------------------------------------------------
@@ -121,6 +121,22 @@ pub struct PerformGPUClustering {
     pub method: String,
     pub params: crate::handlers::api_handler::analytics::ClusteringParams,
     pub task_id: String,
+}
+
+/// Persist a finished clustering run's per-node assignments into the shared
+/// `node_analytics` store through the single writer (ADR-031 D3): ClusteringActor.
+///
+/// The spawn task in `clustering_handlers::run_clustering` obtains a final
+/// `Vec<Cluster>` (whose `nodes` carry graph node ids) regardless of whether the
+/// GPU kernels or the CPU label-propagation fallback produced it, then routes the
+/// assignment back through this message so `node_analytics.cluster_id` is written
+/// by the same masked-key / 1-based / stale-reset writer the GPU path uses. No
+/// second writer is introduced — ClusteringActor delegates to the shared
+/// `write_cluster_id_from_assignments` method.
+#[derive(Message, Clone)]
+#[rtype(result = "()")]
+pub struct WriteClusterAnalytics {
+    pub clusters: Vec<crate::handlers::api_handler::analytics::Cluster>,
 }
 
 // ---------------------------------------------------------------------------

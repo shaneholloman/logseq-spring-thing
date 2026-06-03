@@ -2,6 +2,12 @@
 
 > Generated: 2026-05-09 | Substrate: `/home/devuser/workspace/project/client/src/`
 > Files: 468 | Lines: 106,778
+> Last verified: 2026-06-03
+
+**Verification note (2026-06-03):** Sections 8–11 below supersede the stale
+descriptions in §§ 2–5 wherever they conflict. The diagrams in
+`docs/architecture/diagrams/` are the authoritative verified source; this
+document references them by relative path.
 
 ---
 
@@ -336,3 +342,122 @@ Root hooks are thin re-exports of feature hooks.
 | `telemetry/index.ts:39` | Stub | "provides a stub interface for non-React usage" |
 | `hooks/useSolidPod.ts` (2 lines) | Re-export | Nearly empty |
 | `hooks/useSolidResource.ts` (2 lines) | Re-export | Nearly empty |
+
+---
+
+## 8. Node Population: Client Classification (verified 2026-06-03)
+
+> Canonical diagram: [`diagrams/02-population-handoff.md`](diagrams/02-population-handoff.md)
+
+### `metadata.type` is the classification authority (T1 resolved)
+
+The client reads `node.metadata?.type` as the primary classification field,
+mirroring the server's `metadata["type"]` authority. This applies to all three
+classification consumers:
+
+| Consumer | File | Reads | Output |
+|----------|------|-------|--------|
+| Visual geometry tier | `useGraphVisualState.ts` | `node.metadata?.type` | `perNodeVisualModeMap` (knowledge/ontology/agent) |
+| Filter gate | `useGraphFiltering.ts` | `node.metadata?.type` | linked_page visibility |
+| Colour | `GemNodes.tsx` | `node.metadata?.type` | RGB colour; `isClass` check |
+
+Prior to T1 resolution, `useGraphVisualState.ts` read the top-level `node.type`
+field (serde-renamed from `node_type`) at priority-2. This contradicted the
+server's declared authority and caused ~2,551 nodes to receive ontology geometry
+while sitting on the knowledge disc — the visible Z-spray. That priority-2
+reader now also reads `node.metadata?.type`, matching the server's fallback
+(`node_type` is legacy-only when `metadata["type"]` is absent).
+
+The default `colorScheme` is `'community'` (Louvain community_id colouring).
+The `'type'` scheme reads `metadata.type` for colour; `isClass` is true only
+when `metadata.type === 'owl_class'`. Both use `metadata.type`, not top-level
+`type`.
+
+### Wire message carries both fields; only `metadata.type` is classifying
+
+`initialGraphLoad` JSON carries both a top-level `type` (serde of `node_type`)
+and `metadata["type"]`. After T1 the client classifies from `metadata.type`;
+the top-level `type` field is retained on the wire for legacy fallback only.
+
+---
+
+## 9. Settings Hydration: Client Receives from Server (verified 2026-06-03)
+
+> Canonical diagram: [`diagrams/01-settings-flow.md`](diagrams/01-settings-flow.md)
+
+The client **never pushes physics settings to the server on connect**. It
+hydrates from the server:
+
+1. `AppInitializer.tsx::initialize()` calls `getSettingsByPaths(ESSENTIAL_PATHS)`.
+2. `settingsApi` fetches `GET /api/settings/all` (2 s in-memory cache), which
+   returns physics from SQLite (authoritative) and rendering from the actor.
+3. `coreSlice.ts::deepMergeSettings` merges server response as BASE with
+   localStorage as OVERLAY. Physics and tweening are then re-overlaid from the
+   server on top of localStorage, making physics server-authoritative.
+4. WebSocket is initialised after settings are merged; the initial
+   `subscribe_position_updates` message is sent exactly once
+   (idempotency guard in `AppInitializer.tsx:296`).
+
+The stale description in §2 implied the client pushed settings on connect
+("`STORE → PUT → REST`"). That flow applies only to subsequent user-initiated
+changes, not to the connect handshake.
+
+### Single debounced persistence path (T2 resolved)
+
+Physics settings changes from the UI travel through one path only:
+
+```
+UI slider → physicsSlice.updatePhysics() [local store only]
+         → coreSlice.autoSaveManager.queueChange() [500 ms debounce]
+         → updateSettingsByPaths() → PUT /api/settings/physics
+```
+
+The immediate `notifyPhysicsUpdate` direct call that previously fired a second
+PUT pipeline from `physicsSlice.ts:130` has been removed. The slice now only
+mutates local store state; persistence is owned solely by `autoSaveManager`.
+
+---
+
+## 10. Binary Protocol Decode: 52-byte V3 (verified 2026-06-03)
+
+> Canonical diagram: [`diagrams/05-wire-analytics-types.md`](diagrams/05-wire-analytics-types.md)
+
+The client decoder `parseBinaryNodeData()` in `client/src/types/binaryProtocol.ts`
+reads 52-byte records (`BINARY_NODE_SIZE_V3 = 52`). V5 frames (8-byte sequence
+prefix) are detected by the version byte; the prefix is stripped before
+per-node decoding. Analytics fields:
+
+| Wire offset | Client field | Notes |
+|-------------|-------------|-------|
+| @36 | `clusterId` | 1-based; 0 = unclustered |
+| @40 | `anomalyScore` | 0.0–1.0 |
+| @44 | `communityId` | Louvain label |
+| @48 | `centrality` | PageRank, normalised |
+
+The graph worker (`graph.worker.ts`) writes decoded analytics into a
+`Float32Array` at stride 5: `[clusterId, anomalyScore, communityId, centrality,
+ssspDistance]`. `GemNodes.tsx` reads from this buffer in the per-frame render
+loop.
+
+The stale §2 description referenced `BinaryWebSocketProtocol.ts` and did not
+mention analytics fields. The live decode path is `parseBinaryNodeData()` via
+`binaryProtocol.ts` → `graph.worker.ts` → `analyticsBuffer`.
+
+The debug probe at `AppInitializer.tsx` uses a stale magic number (`nodeSize = 26`)
+for logging only; it does not affect decoding.
+
+---
+
+## 11. Cluster Hulls: Opt-in Only (verified 2026-06-03)
+
+> Canonical diagram: [`diagrams/07-analysis-clustering.md`](diagrams/07-analysis-clustering.md)
+
+`ClusterHulls.tsx` renders hull geometry when the `nodeAnalyticsStore` returns
+at least one non-zero `cluster_id` or `community_id` entry. All three fallback
+paths (`communityFallback`, `spatialFallback`) default to OFF. Hulls render
+after an explicit clustering trigger (`POST /analytics/clustering/run` or
+`POST /clustering/start`) — they do not auto-render at boot.
+
+The `InteractionManager.ts` and `useNodeInteraction.ts` files exist in the
+codebase but are dead (zero imports). The live interaction path is
+`useGraphEventHandlers.ts`. See `docs/architecture/KNOWN_ISSUES.md` (T8).

@@ -324,53 +324,35 @@ impl UnifiedGPUCompute {
         );
 
 
-        let preserve_data = self.max_grid_cells > 0 && self.iteration > 0;
-
-        let old_cell_start_data = if preserve_data {
-            let mut data = vec![0i32; self.cell_start.len()];
-            if let Err(e) = checked_copy_to(&self.cell_start, &mut data, "cell_start preserve") {
-                warn!("Failed to preserve cell_start data: {}", e);
-            }
-            Some(data)
-        } else {
-            None
-        };
-
-        let old_cell_end_data = if preserve_data {
-            let mut data = vec![0i32; self.cell_end.len()];
-            if let Err(e) = checked_copy_to(&self.cell_end, &mut data, "cell_end preserve") {
-                warn!("Failed to preserve cell_end data: {}", e);
-            }
-            Some(data)
-        } else {
-            None
-        };
-
-
-        self.cell_start = DeviceBuffer::zeroed(new_size).map_err(|e| {
+        // cell_start/cell_end are per-frame scratch: every physics step zeroes
+        // them from zero_buffer and refills them with compute_cell_bounds_kernel,
+        // so there is nothing to carry across a resize. Allocate fresh zeroed
+        // buffers into temporaries first, then commit all bookkeeping together.
+        //
+        // The previous implementation copied the old contents back with a
+        // length-checked copy that REQUIRES src.len() == dest.len(); on a real
+        // growth (e.g. 32768 → 2097152) that check failed and the `?` aborted
+        // mid-resize, leaving cell_start/cell_end grown but max_grid_cells and
+        // zero_buffer stale at the old size. The next grid kernel then indexed
+        // the grown buffer with the stale dimension → out-of-bounds write → a
+        // sticky CUDA illegal-memory-access that poisoned the context and froze
+        // the whole physics pipeline.
+        let new_cell_start = DeviceBuffer::zeroed(new_size).map_err(|e| {
             anyhow!(
                 "Failed to allocate cell_start buffer of size {}: {}",
                 new_size,
                 e
             )
         })?;
-        self.cell_end = DeviceBuffer::zeroed(new_size).map_err(|e| {
+        let new_cell_end = DeviceBuffer::zeroed(new_size).map_err(|e| {
             anyhow!(
                 "Failed to allocate cell_end buffer of size {}: {}",
                 new_size,
                 e
             )
         })?;
-
-
-        if let (Some(start_data), Some(end_data)) = (old_cell_start_data, old_cell_end_data) {
-            let copy_size = start_data.len().min(new_size);
-            if copy_size > 0 {
-                checked_copy_from(&mut self.cell_start, &start_data[..copy_size], "cell_start")?;
-                checked_copy_from(&mut self.cell_end, &end_data[..copy_size], "cell_end")?;
-                debug!("Preserved {} cells of data during resize", copy_size);
-            }
-        }
+        self.cell_start = new_cell_start;
+        self.cell_end = new_cell_end;
 
 
         let old_memory = self.total_memory_allocated;
@@ -732,10 +714,16 @@ impl UnifiedGPUCompute {
         Ok(())
     }
 
-    /// Get the number of nodes in the GPU compute context
-    /// Returns the actual node count from the position buffer size
+    /// Get the active number of nodes in the GPU compute context.
+    ///
+    /// Returns `self.num_nodes` (the live graph size), NOT the position buffer
+    /// length. Buffers are over-allocated with headroom, so `pos_in_x.len()`
+    /// reports the allocation capacity, not the active count — analytics
+    /// (PageRank, connected components) that processed `pos_in_x.len()` were
+    /// running kernels over phantom padding nodes whose CSR/edge data is
+    /// undefined, wasting work and producing garbage component counts.
     pub fn get_num_nodes(&self) -> usize {
-        self.pos_in_x.len()
+        self.num_nodes
     }
 
     /// Returns the raw device pointer to the persisted SSSP distance buffer,

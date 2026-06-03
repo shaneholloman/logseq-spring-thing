@@ -176,17 +176,29 @@ class NodeAnalyticsStore {
             showCentrality?: boolean;
             showSSSP?: boolean;
           };
-          visualisation?: { clusterHulls?: { enabled?: boolean } };
+          visualisation?: {
+            clusterHulls?: { enabled?: boolean };
+            graphs?: { logseq?: { nodes?: { colorScheme?: string } } };
+          };
         }
       | undefined;
     const qg = s?.qualityGates;
+    // ADR-031 D6: an analytic colour scheme consumes the analytics buffer even
+    // when every quality gate is off, so ingestion must stay live for it.
+    const colorScheme = s?.visualisation?.graphs?.logseq?.nodes?.colorScheme;
+    const analyticColorScheme =
+      colorScheme === 'community' ||
+      colorScheme === 'cluster' ||
+      colorScheme === 'centrality' ||
+      colorScheme === 'sssp';
     return Boolean(
       qg?.showClusters ||
         qg?.showAnomalies ||
         qg?.showCommunities ||
         qg?.showCentrality ||
         qg?.showSSSP ||
-        s?.visualisation?.clusterHulls?.enabled,
+        s?.visualisation?.clusterHulls?.enabled ||
+        analyticColorScheme,
     );
   }
 }

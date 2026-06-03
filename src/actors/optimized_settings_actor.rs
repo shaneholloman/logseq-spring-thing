@@ -210,55 +210,60 @@ impl OptimizedSettingsActor {
     }
 
     fn initialize_path_patterns(lookup: &mut HashMap<String, PathPattern>) {
-        
+        // Validation bounds are read from the single source of truth,
+        // `crate::actors::gpu::physics_bounds`, so the actor path-pattern caps
+        // can never diverge from the route validator or the canonical client
+        // defaults again (T4 ceiling-consistency fix, 2026-06-03).
+        use crate::actors::gpu::physics_bounds as bounds;
+
         let physics_patterns = vec![
             (
                 "visualisation.graphs.logseq.physics.damping",
                 FieldType::Float32,
-                0.0,
-                1.0,
+                bounds::DAMPING.0,
+                bounds::DAMPING.1,
             ),
             (
                 "visualisation.graphs.logseq.physics.spring_k",
                 FieldType::Float32,
-                0.0,
-                10.0,
+                bounds::SPRING_K.0,
+                bounds::SPRING_K.1,
             ),
             (
                 "visualisation.graphs.logseq.physics.repel_k",
                 FieldType::Float32,
-                0.0,
-                100.0,
+                bounds::REPEL_K.0,
+                bounds::REPEL_K.1,
             ),
             (
                 "visualisation.graphs.logseq.physics.max_velocity",
                 FieldType::Float32,
-                0.1,
-                50.0,
+                bounds::MAX_VELOCITY.0,
+                bounds::MAX_VELOCITY.1,
             ),
             (
                 "visualisation.graphs.logseq.physics.gravity",
                 FieldType::Float32,
-                0.0,
-                1.0,
+                bounds::GRAVITY.0,
+                bounds::GRAVITY.1,
             ),
             (
                 "visualisation.graphs.logseq.physics.temperature",
                 FieldType::Float32,
-                0.0,
-                1.0,
+                bounds::TEMPERATURE.0,
+                bounds::TEMPERATURE.1,
             ),
             (
                 "visualisation.graphs.logseq.physics.bounds_size",
                 FieldType::Float32,
-                100.0,
-                2000.0,
+                bounds::BOUNDS_SIZE.0,
+                bounds::BOUNDS_SIZE.1,
             ),
             (
                 "visualisation.graphs.logseq.physics.iterations",
                 FieldType::Int32,
-                1.0,
-                1000.0,
+                bounds::ITERATIONS.0,
+                bounds::ITERATIONS.1,
             ),
             (
                 "visualisation.graphs.logseq.physics.enabled",
@@ -271,8 +276,10 @@ impl OptimizedSettingsActor {
         for (path, field_type, min, max) in physics_patterns {
             let compiled_path: Vec<String> = path.split('.').map(|s| s.to_string()).collect();
             let validation_rules = ValidationRules {
-                min: Some(min),
-                max: Some(max),
+                // physics_bounds consts are f32 (the physics domain type);
+                // ValidationRules stores generic f64 bounds, so widen at this seam.
+                min: Some(min as f64),
+                max: Some(max as f64),
                 required: true,
                 pattern: None,
             };

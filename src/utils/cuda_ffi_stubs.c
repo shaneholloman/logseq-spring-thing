@@ -39,7 +39,7 @@ void pagerank_iterate(const int *row_off, const int *col_idx, const float *vals,
 void pagerank_iterate_optimized(const int *row_off, const int *col_idx, const float *vals,
                                 const float *pr_in, float *pr_out, int n, float damping, void *stream) {}
 void pagerank_check_convergence(const float *pr_old, const float *pr_new, float *diff, int n, void *stream) {}
-void pagerank_handle_dangling(const int *dangling, int nd, float dsum, float *pr, int n, float damping, void *stream) {}
+void pagerank_handle_dangling_global(float *pagerank_new, const float *pagerank_old, const int *out_degree, int num_nodes, float damping, void *stream) {}
 
 // --- gpu_connected_components.cu ---
 void compute_connected_components_gpu(const int *row_off, const int *col_idx, int *labels, int *num_comp, int n, void *stream) {}

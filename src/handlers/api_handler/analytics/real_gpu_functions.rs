@@ -133,9 +133,10 @@ pub async fn perform_gpu_spectral_clustering(
                     "GPU spectral clustering succeeded with {} clusters",
                     gpu_result.len()
                 );
-                // node_analytics is populated by the central writer in
-                // clustering_handlers::run_clustering (1-based ids, masked keys,
-                // stale-id reset) — the single source of truth for the wire.
+                // This function only returns the cluster shapes. node_analytics is
+                // written by the single writer (ADR-031 D3), ClusteringActor, which
+                // run_clustering's spawn task drives via WriteClusterAnalytics
+                // (1-based ids, masked keys, stale-id reset).
                 return gpu_result;
             }
             Ok(Err(e)) => {
@@ -190,8 +191,9 @@ pub async fn perform_gpu_kmeans_clustering(
                     "GPU K-means clustering succeeded with {} clusters",
                     gpu_result.len()
                 );
-                // node_analytics is populated by the central writer in
-                // clustering_handlers::run_clustering (single source of truth).
+                // node_analytics is written by the single writer (ADR-031 D3),
+                // ClusteringActor, driven by run_clustering's spawn task via
+                // WriteClusterAnalytics. This function only returns cluster shapes.
                 return gpu_result;
             }
             Ok(Err(e)) => {
@@ -246,8 +248,9 @@ pub async fn perform_gpu_louvain_clustering(
                     "GPU Louvain clustering succeeded with {} clusters",
                     gpu_result.len()
                 );
-                // node_analytics is populated by the central writer in
-                // clustering_handlers::run_clustering (single source of truth).
+                // node_analytics is written by the single writer (ADR-031 D3),
+                // ClusteringActor, driven by run_clustering's spawn task via
+                // WriteClusterAnalytics. This function only returns cluster shapes.
                 return gpu_result;
             }
             Ok(Err(e)) => {

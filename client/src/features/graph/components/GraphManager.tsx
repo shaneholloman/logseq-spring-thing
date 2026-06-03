@@ -57,7 +57,12 @@ const GraphManager: React.FC<GraphManagerProps> = ({ onDragStateChange }) => {
   const normalizeDistances = useAnalyticsStore(state => state.normalizeDistances)
   const [normalizedSSSPResult, setNormalizedSSSPResult] = useState<any>(null)
   const isXRMode = usePlatformStore(state => state.isXRMode)
-  const gemNodesRef = useRef<GemNodesHandle>(null)
+  // One InstancedMesh per population (gem / orb / capsule). Separate refs so the
+  // KnowledgeRings overlay can mirror the KNOWLEDGE mesh's colour buffer and the
+  // pointer-handler guard can find any live mesh.
+  const knowledgeGemRef = useRef<GemNodesHandle>(null)
+  const ontologyGemRef = useRef<GemNodesHandle>(null)
+  const agentGemRef = useRef<GemNodesHandle>(null)
 
   const [graphData, setGraphData] = useState<GraphData>({ nodes: [], edges: [] })
 
@@ -65,21 +70,38 @@ const GraphManager: React.FC<GraphManagerProps> = ({ onDragStateChange }) => {
   const { perNodeVisualModeMap, hierarchyMap, connectionCountMap, dominantMode: graphMode } = useGraphVisualState(graphData)
   const { visibleNodes, nodeIdToIndexMap, expansionState } = useGraphFiltering(graphData, hierarchyMap, connectionCountMap)
 
-  // Node-type visibility filtering
-  const typeFilteredNodes = useMemo(() => {
+  // Node-type visibility filtering + per-population partition.
+  //
+  // We render ONE InstancedMesh per population — gem (knowledge), crystal orb
+  // (ontology), capsule (agent) — instead of a single dominant-geometry mesh, so
+  // a mixed graph shows every population with its correct primitive. The three
+  // visible subsets are concatenated in a FIXED order [knowledge, ontology,
+  // agent]; `typeFilteredNodes` is that ordered concat. The global instance index
+  // (used by picking + double-click) stays 1:1 with it, while each sibling
+  // GemNodes renders a contiguous slice with an `instanceIdBase` offset so a
+  // mesh-local instanceId maps back to the correct global node.
+  const {
+    typeFilteredNodes, knowledgeNodes, ontologyNodes, agentNodes,
+    ontologyBase, agentBase,
+  } = useMemo(() => {
     const vis = nodeTypeVisibility
-    if (!vis || (vis.knowledge !== false && vis.ontology !== false && vis.agent !== false)) {
-      return visibleNodes
-    }
-    const filtered = visibleNodes.filter(node => {
+    const showK = !vis || vis.knowledge !== false
+    const showO = !vis || vis.ontology  !== false
+    const showA = !vis || vis.agent     !== false
+    const k: typeof visibleNodes = []
+    const o: typeof visibleNodes = []
+    const a: typeof visibleNodes = []
+    for (const node of visibleNodes) {
       const mode = perNodeVisualModeMap.get(String(node.id)) || graphMode
-      if (mode === 'knowledge_graph') return vis.knowledge !== false
-      if (mode === 'ontology')        return vis.ontology  !== false
-      if (mode === 'agent')           return vis.agent     !== false
-      return true
-    })
-    console.debug(`[TypeFilter] vis=${JSON.stringify(vis)} mapSize=${perNodeVisualModeMap.size} graphMode=${graphMode} ${visibleNodes.length}→${filtered.length}`)
-    return filtered
+      if (mode === 'ontology')   { if (showO) o.push(node) }
+      else if (mode === 'agent') { if (showA) a.push(node) }
+      else                       { if (showK) k.push(node) } // knowledge_graph (default)
+    }
+    return {
+      typeFilteredNodes: k.concat(o, a),
+      knowledgeNodes: k, ontologyNodes: o, agentNodes: a,
+      ontologyBase: k.length, agentBase: k.length + o.length,
+    }
   }, [visibleNodes, perNodeVisualModeMap, graphMode, nodeTypeVisibility])
 
   // Cluster hulls are scoped to the ONTOLOGY population. Louvain clusters mix
@@ -390,9 +412,15 @@ const GraphManager: React.FC<GraphManagerProps> = ({ onDragStateChange }) => {
     setHighlightEdgePoints,
   })
 
-  // Proxy ref: useGraphEventHandlers expects RefObject<InstancedMesh>.
+  // Proxy ref: useGraphEventHandlers expects RefObject<InstancedMesh>. The guard
+  // only needs ANY live population mesh, so return the first that exists.
   const meshProxyRef = useMemo(() => ({
-    get current() { return gemNodesRef.current?.getMesh() ?? null },
+    get current() {
+      return knowledgeGemRef.current?.getMesh()
+        ?? ontologyGemRef.current?.getMesh()
+        ?? agentGemRef.current?.getMesh()
+        ?? null
+    },
     set current(_v: any) { /* GemNodes owns the mesh */ },
   }), []) as React.RefObject<THREE.InstancedMesh>
 
@@ -433,7 +461,7 @@ const GraphManager: React.FC<GraphManagerProps> = ({ onDragStateChange }) => {
         nodeCount: graphData.nodes.length,
         edgeCount: graphData.edges.length,
         edgePointsLength: edgePoints.length,
-        gemNodesRef: !!gemNodesRef.current,
+        gemNodesRef: !!knowledgeGemRef.current,
       })
     }
     return () => {
@@ -441,44 +469,68 @@ const GraphManager: React.FC<GraphManagerProps> = ({ onDragStateChange }) => {
     }
   }, [])
 
+  // Shared pointer-miss + double-click handlers (one identity reused by all
+  // three population meshes). event.instanceId is GLOBAL — each GemNodes adds
+  // its instanceIdBase before delegating, so it indexes typeFilteredNodes here.
+  const handlePointerMissed = useCallback(() => {
+    if (dragDataRef.current.pointerDown) handlePointerUp()
+    setSelectedNodeId(null)
+  }, [handlePointerUp, setSelectedNodeId])
+
+  const handleNodeDoubleClick = useCallback((event: ThreeEvent<MouseEvent>) => {
+    if (event.instanceId !== undefined && event.instanceId < typeFilteredNodes.length) {
+      const node = typeFilteredNodes[event.instanceId]
+      if (node) {
+        const pageUrl  = node.metadata?.page_url || node.metadata?.pageUrl || node.metadata?.url
+        if (pageUrl) { window.open(pageUrl, '_blank', 'noopener,noreferrer'); return }
+        const filePath = node.metadata?.file_path || node.metadata?.filePath || node.metadata?.path
+        if (filePath) { window.open(`https://narrativegoldmine.com/#/page/${encodeURIComponent(filePath)}`, '_blank', 'noopener,noreferrer'); return }
+        if (node.label) { window.open(`https://narrativegoldmine.com/#/page/${encodeURIComponent(node.label)}`, '_blank', 'noopener,noreferrer'); return }
+        const hierarchyNode = hierarchyMap.get(node.id)
+        if (hierarchyNode && hierarchyNode.childIds.length > 0) expansionState.toggleExpansion(node.id)
+      }
+    }
+  }, [typeFilteredNodes, hierarchyMap, expansionState])
+
+  // One mesh per population. Empty populations render nothing (no wasted mesh).
+  // `base` must match the contiguous ordering of typeFilteredNodes above.
+  const populationMeshes: Array<{
+    ref: React.RefObject<GemNodesHandle | null>; nodes: typeof knowledgeNodes; mode: GraphVisualMode; base: number
+  }> = [
+    { ref: knowledgeGemRef, nodes: knowledgeNodes, mode: 'knowledge_graph', base: 0 },
+    { ref: ontologyGemRef,  nodes: ontologyNodes,  mode: 'ontology',        base: ontologyBase },
+    { ref: agentGemRef,     nodes: agentNodes,     mode: 'agent',           base: agentBase },
+  ]
+
   return (
     <>
-      <GemNodes
-        ref={gemNodesRef}
-        nodes={typeFilteredNodes}
-        edges={graphData.edges}
-        graphMode={graphMode}
-        perNodeVisualModeMap={perNodeVisualModeMap}
-        nodePositionsRef={nodePositionsRef}
-        connectionCountMap={connectionCountMap}
-        hierarchyMap={hierarchyMap}
-        nodeIdToIndexMap={nodeIdToIndexMap}
-        settings={settings}
-        ssspResult={normalizedSSSPResult}
-        dragDataRef={dragDataRef}
-        onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={(event: any) => handlePointerUp(event)}
-        onPointerMissed={() => {
-          if (dragDataRef.current.pointerDown) handlePointerUp()
-          setSelectedNodeId(null)
-        }}
-        onDoubleClick={(event: ThreeEvent<MouseEvent>) => {
-          if (event.instanceId !== undefined && event.instanceId < typeFilteredNodes.length) {
-            const node = typeFilteredNodes[event.instanceId]
-            if (node) {
-              const pageUrl  = node.metadata?.page_url || node.metadata?.pageUrl || node.metadata?.url
-              if (pageUrl) { window.open(pageUrl, '_blank', 'noopener,noreferrer'); return }
-              const filePath = node.metadata?.file_path || node.metadata?.filePath || node.metadata?.path
-              if (filePath) { window.open(`https://narrativegoldmine.com/#/page/${encodeURIComponent(filePath)}`, '_blank', 'noopener,noreferrer'); return }
-              if (node.label) { window.open(`https://narrativegoldmine.com/#/page/${encodeURIComponent(node.label)}`, '_blank', 'noopener,noreferrer'); return }
-              const hierarchyNode = hierarchyMap.get(node.id)
-              if (hierarchyNode && hierarchyNode.childIds.length > 0) expansionState.toggleExpansion(node.id)
-            }
-          }
-        }}
-        selectedNodeId={selectedNodeId}
-      />
+      {populationMeshes.map(({ ref, nodes, mode, base }) => (
+        nodes.length === 0 ? null : (
+          <GemNodes
+            key={mode}
+            ref={ref}
+            nodes={nodes}
+            forceMode={mode}
+            instanceIdBase={base}
+            edges={graphData.edges}
+            graphMode={graphMode}
+            perNodeVisualModeMap={perNodeVisualModeMap}
+            nodePositionsRef={nodePositionsRef}
+            connectionCountMap={connectionCountMap}
+            hierarchyMap={hierarchyMap}
+            nodeIdToIndexMap={nodeIdToIndexMap}
+            settings={settings}
+            ssspResult={normalizedSSSPResult}
+            dragDataRef={dragDataRef}
+            onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={(event: any) => handlePointerUp(event)}
+            onPointerMissed={handlePointerMissed}
+            onDoubleClick={handleNodeDoubleClick}
+            selectedNodeId={selectedNodeId}
+          />
+        )
+      ))}
 
       <GlassEdges
         ref={edgeFlowRef}
@@ -501,7 +553,7 @@ const GraphManager: React.FC<GraphManagerProps> = ({ onDragStateChange }) => {
       />
 
       <KnowledgeRings
-        nodes={typeFilteredNodes}
+        nodes={knowledgeNodes}
         perNodeVisualModeMap={perNodeVisualModeMap}
         nodePositionsRef={nodePositionsRef}
         nodeIdToIndexMap={nodeIdToIndexMap}
@@ -509,7 +561,7 @@ const GraphManager: React.FC<GraphManagerProps> = ({ onDragStateChange }) => {
         edges={graphData.edges}
         hierarchyMap={hierarchyMap}
         settings={settings}
-        nodeColorSourceRef={gemNodesRef}
+        nodeColorSourceRef={knowledgeGemRef}
       />
 
       <ClusterHulls

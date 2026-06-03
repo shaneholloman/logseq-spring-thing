@@ -233,11 +233,13 @@ impl GraphStateActor {
     /// Classify a single node into the appropriate type set based on its node_type and owl_class_iri fields
     fn classify_node(&mut self, node: &Node) {
         let node_id = node.id;
-        // metadata["type"] is the origin (ABox/TBox) truth and is authoritative;
-        // node_type carries the elevated class for promoted pages and must only be
-        // a fallback, else wiki instances get misfiled as ontology classes.
-        let effective_type = node.metadata.get("type").map(|s| s.as_str())
-            .or_else(|| node.node_type.as_deref());
+        // SINGLE SOURCE OF TRUTH: Node::population_type() resolves the authoritative
+        // origin from metadata["type"] (node_type is non-classifying elevation
+        // scaffold, used only as a legacy fallback). The match arms below refine the
+        // ontology population into owl_class / owl_individual / owl_property ID sets,
+        // but the field-resolution itself is centralised in visionclaw_domain so
+        // every reader classifies a node identically.
+        let effective_type = node.population_type();
         match effective_type {
             Some("page") | Some("linked_page") => {
                 self.knowledge_node_ids.insert(node_id);
@@ -274,14 +276,16 @@ impl GraphStateActor {
         self.ontology_property_ids.clear();
         self.agent_node_ids.clear();
 
-        // Collect node data first to avoid borrow conflict. metadata["type"] is the
-        // origin (ABox/TBox) truth and is authoritative; node_type carries the
-        // elevated class for promoted pages and is only a fallback (otherwise wiki
-        // instances elevated to ontology_node get misfiled onto the ontology disc).
+        // Collect node data first to avoid borrow conflict. SINGLE SOURCE OF TRUTH:
+        // Node::population_type() resolves the authoritative origin from
+        // metadata["type"] (node_type is non-classifying elevation scaffold, used
+        // only as a legacy fallback), so this reclassification agrees with every
+        // other reader. The match arms below still refine the ontology population
+        // into owl_class / owl_individual / owl_property ID sets.
         let nodes: Vec<(u32, Option<String>, Option<String>)> = self.graph_data.nodes.iter()
             .map(|n| (
                 n.id,
-                n.metadata.get("type").cloned().or_else(|| n.node_type.clone()),
+                n.population_type().map(|s| s.to_string()),
                 n.owl_class_iri.clone(),
             ))
             .collect();

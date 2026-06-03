@@ -149,8 +149,12 @@ impl AnalyticsSupervisor {
                 info!("AnalyticsSupervisor: node_analytics sent to ClusteringActor");
             }
             if let Some(ref addr) = self.anomaly_detection_actor {
-                let _ = addr.try_send(msg);
+                let _ = addr.try_send(msg.clone());
                 info!("AnalyticsSupervisor: node_analytics sent to AnomalyDetectionActor");
+            }
+            if let Some(ref addr) = self.pagerank_actor {
+                let _ = addr.try_send(msg);
+                info!("AnalyticsSupervisor: node_analytics sent to PageRankActor");
             }
         }
     }
@@ -412,6 +416,31 @@ impl Handler<SetNodeAnalytics> for AnalyticsSupervisor {
         info!("AnalyticsSupervisor: Received SetNodeAnalytics — distributing to children");
         self.node_analytics = Some(msg.node_analytics);
         self.distribute_node_analytics();
+    }
+}
+
+impl Handler<WriteClusterAnalytics> for AnalyticsSupervisor {
+    type Result = ();
+
+    fn handle(&mut self, msg: WriteClusterAnalytics, _ctx: &mut Self::Context) {
+        // Forward to the single writer (ADR-031 D3): ClusteringActor. Mirrors the
+        // SetNodeAnalytics fan-out path so the clustering spawn task's final
+        // assignment reaches node_analytics through the canonical owner.
+        // Not gated on clustering_state.is_running: this is the terminal result-write
+        // emitted *after* perform_clustering returns (when is_running has already
+        // flipped false), and msg carries the computed clusters as a self-contained
+        // payload — gating it here silently drops the write and leaves hulls empty.
+        match &self.clustering_actor {
+            Some(addr) => {
+                addr.do_send(msg);
+            }
+            None => {
+                warn!(
+                    "AnalyticsSupervisor: WriteClusterAnalytics dropped — ClusteringActor \
+                     not available; node_analytics.cluster_id not written this run"
+                );
+            }
+        }
     }
 }
 

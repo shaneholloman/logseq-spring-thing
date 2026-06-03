@@ -1,6 +1,5 @@
 import { StateCreator } from 'zustand'
 import { createLogger } from '../../utils/loggerConfig'
-import { settingsApi, PhysicsSettings } from '../../api/settingsApi'
 import { debugState } from '../../utils/clientDebugState'
 import { SettingsState, GPUPhysicsParams, WarmupSettings } from './settingsTypes'
 import { Settings } from '../../features/settings/config/settings'
@@ -127,11 +126,16 @@ export const createPhysicsSlice: StateCreator<SettingsState, [], [], PhysicsSlic
     });
   },
 
-  notifyPhysicsUpdate: (_graphName: string, params: Partial<GPUPhysicsParams>) => {
-    settingsApi.updatePhysics(params as Partial<PhysicsSettings>)
-      .catch((err: unknown) => {
-        logger.error('Failed to persist physics update to backend:', err);
-      });
+  notifyPhysicsUpdate: (_graphName: string, _params: Partial<GPUPhysicsParams>) => {
+    // Persistence is owned solely by the debounced autoSaveManager path
+    // (UnifiedSettingsTabContent → autoSaveManager.queueChange → updateSettingsByPaths
+    // → settingsApi.updatePhysics). This used to fire an IMMEDIATE
+    // settingsApi.updatePhysics() here, which produced a SECOND PUT per slider
+    // commit and a second backend UpdateSimulationParams dispatch (double warmup
+    // reset / double reheat). Resolved 2026-06-03: local store state is already
+    // updated in updatePhysics() above; this hook no longer performs a network
+    // persistence side-effect. The debounced path reads store state independently,
+    // so the change still reaches the backend exactly once.
   },
 
   updateTweening: (graphName: string, params: Partial<{ enabled: boolean; lerpBase: number; snapThreshold: number; maxDivergence: number }>) => {

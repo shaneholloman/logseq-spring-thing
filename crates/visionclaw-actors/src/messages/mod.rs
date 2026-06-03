@@ -56,7 +56,7 @@ pub use analytics_messages::{
     CommunityDetectionParams, ComputeAllPairsShortestPaths,
     ComputeSSSP, DBSCANParams,
     DBSCANStats, ExportClusterAssignments, GetClusteringResults, GetClusteringStatus,
-    KMeansParams, SetNodeAnalytics, StartGPUClustering,
+    KMeansParams, SetNodeAnalytics, SetNodeSSSP, StartGPUClustering,
     UpdateComponentEdges,
 };
 

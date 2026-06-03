@@ -57,22 +57,15 @@ export const useGraphEventHandlers = (
       if (shouldSendPositionUpdates()) {
         const numericId = graphDataManager.nodeIdMap.get(nodeId);
         if (numericId !== undefined && graphDataManager.webSocketService?.isReady()) {
-          // Send server-side drag update (JSON) for pin-at-position + fast-settle
+          // Canonical drag frame: server-side drag update (JSON) for
+          // pin-at-position + fast-settle. The legacy binary position frame
+          // (sendNodePositionUpdates) was removed 2026-06-03 — it sent a
+          // redundant SECOND frame per drag move, duplicating this update.
           (graphDataManager.webSocketService as unknown as { sendMessage: (type: string, data?: unknown) => void }).sendMessage('nodeDragUpdate', {
             nodeId: numericId,
             position,
             timestamp: Date.now()
           });
-
-          // Also send legacy binary position update for backwards compatibility
-          const update = {
-            nodeId: numericId,
-            position,
-            velocity: { x: 0, y: 0, z: 0 }
-          };
-          if ('sendNodePositionUpdates' in graphDataManager.webSocketService!) {
-            (graphDataManager.webSocketService as unknown as { sendNodePositionUpdates: (updates: unknown[]) => void }).sendNodePositionUpdates([update]);
-          }
 
           if (debugState.isEnabled()) {
             logger.debug(`Throttled WebSocket update for node ${nodeId}`, position);

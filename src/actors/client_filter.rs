@@ -21,7 +21,10 @@ pub fn recompute_filtered_nodes(filter: &mut ClientFilter, graph_data: &GraphDat
     if !filter.enabled {
         // Filter disabled = all nodes visible (still respect include_linked_pages)
         for node in &graph_data.nodes {
-            if !filter.include_linked_pages && node.node_type.as_deref() == Some("linked_page") {
+            // SINGLE SOURCE OF TRUTH: gate linked_page stubs on the authoritative
+            // origin via Node::population_type() (metadata["type"] first, node_type
+            // only as legacy fallback), matching the client filter and the GPU.
+            if !filter.include_linked_pages && node.population_type() == Some("linked_page") {
                 continue;
             }
             filter.filtered_node_ids.insert(node.id);
@@ -38,9 +41,12 @@ pub fn recompute_filtered_nodes(filter: &mut ClientFilter, graph_data: &GraphDat
     let mut candidates = Vec::new();
 
     for node in &graph_data.nodes {
-        // Gate linked_page stub nodes (wikilink targets with no authored content)
+        // Gate linked_page stub nodes (wikilink targets with no authored content).
+        // SINGLE SOURCE OF TRUTH: read the authoritative origin via
+        // Node::population_type() (metadata["type"] first, node_type only as legacy
+        // fallback) so the server filter agrees with the GPU and the client.
         if !filter.include_linked_pages {
-            let node_type = node.node_type.as_deref().unwrap_or("");
+            let node_type = node.population_type().unwrap_or("");
             if node_type == "linked_page" {
                 continue;
             }

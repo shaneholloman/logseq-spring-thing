@@ -3,7 +3,7 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import type { GraphVisualMode } from './GraphManager';
 import type { Node as GraphNode } from '../managers/graphDataManager';
-import { createGemNodeMaterial, createTslGemMaterial, createGemGeometry } from '../../../rendering/materials/GemNodeMaterial';
+import { createGemNodeMaterial, createTslGemMaterial, createGemGeometry, applyTslInstanceTransform } from '../../../rendering/materials/GemNodeMaterial';
 import { createCrystalOrbMaterial, createTslCrystalOrbMaterial, createCrystalOrbGeometry } from '../../../rendering/materials/CrystalOrbMaterial';
 import { createAgentCapsuleMaterial, createTslAgentCapsuleMaterial, createAgentCapsuleGeometry } from '../../../rendering/materials/AgentCapsuleMaterial';
 import { useSettingsStore } from '../../../store/settingsStore';
@@ -46,6 +46,19 @@ export interface GemNodesProps {
   edges: Edge[];
   graphMode: GraphVisualMode;
   perNodeVisualModeMap: Map<string, GraphVisualMode>;
+  /**
+   * Force this geometry/material regardless of node-population majority. When
+   * set, the component renders exactly ONE population's primitive (gem / orb /
+   * capsule) so a mixed graph can show all three populations simultaneously via
+   * sibling GemNodes meshes. When unset, falls back to the dominant-mode pick.
+   */
+  forceMode?: GraphVisualMode;
+  /**
+   * Added to each reported instanceId so the parent's shared pointer handler
+   * resolves the correct GLOBAL node when this mesh renders a CONTIGUOUS slice
+   * of the parent's displayNodes (per-population multi-mesh). Default 0.
+   */
+  instanceIdBase?: number;
   nodePositionsRef: React.MutableRefObject<Float32Array | null>;
   connectionCountMap: Map<string, number>;
   hierarchyMap: Map<string, HierarchyNodeLike>;
@@ -97,6 +110,10 @@ const getDominantMode = (
 
 const _mat = new THREE.Matrix4();
 const _col = new THREE.Color();
+// Task #54: reusable temps for the GPU-transform raycast (zero per-pick alloc).
+const _rayCenter = new THREE.Vector3();
+const _raySphere = new THREE.Sphere();
+const _rayHit = new THREE.Vector3();
 const _baseHSL = { h: 0, s: 0, l: 0 };
 const ONTOLOGY_SPECTRUM = ['#FF6B6B', '#FFD93D', '#4ECDC4', '#AA96DA', '#95E1D3'];
 const AGENT_STATUS_MAP: Record<string, string> = {
@@ -124,15 +141,30 @@ const GemNodesInner: React.ForwardRefRenderFunction<GemNodesHandle, GemNodesProp
     nodes, graphMode, perNodeVisualModeMap, nodePositionsRef,
     connectionCountMap, hierarchyMap, settings, ssspResult,
     onPointerDown, onPointerMove, onPointerUp, onPointerMissed, onDoubleClick,
-    selectedNodeId,
+    selectedNodeId, forceMode, instanceIdBase,
   } = props;
 
   const meshRef = useRef<THREE.InstancedMesh | null>(null);
   const metaTexRef = useRef<THREE.DataTexture | null>(null);
+  // Task #54: per-instance transform texture (RGBA float = x, y, z, scale),
+  // sampled on the GPU via instanceIndex by the material's positionNode. When
+  // active (WebGPU only), the per-frame loop writes this texture's typed array
+  // instead of composing a mat4 + setMatrixAt per instance on the CPU.
+  const xformTexRef = useRef<THREE.DataTexture | null>(null);
+  const gpuTransformRef = useRef(false);
+  // Task #54: picking source-of-truth when the transform lives in the texture
+  // (not instanceMatrix). The custom raycast (below) reads this — the SAME
+  // (x, y, z, scale) the GPU samples — so node picking matches the rendered
+  // position exactly. visibleCount mirrors inst.count.
+  const xformBufRef = useRef<Float32Array | null>(null);
+  const visibleCountRef = useRef(0);
+  const geomRadiusRef = useRef(0.5);
   const prevMetaHashRef = useRef('');
   // Track meshes manually added to the scene so we can remove them synchronously
   const sceneMeshesRef = useRef<Set<THREE.InstancedMesh>>(new Set());
-  const dominant = getDominantMode(nodes, graphMode, perNodeVisualModeMap);
+  // forceMode pins the geometry/material to one population (multi-mesh path);
+  // otherwise pick the majority population (legacy single-mesh path).
+  const dominant = forceMode ?? getDominantMode(nodes, graphMode, perNodeVisualModeMap);
 
   // Keep a synchronously-updated ref to nodes so useFrame always reads
   // the latest filtered array, even if R3F's callback-ref update lags
@@ -206,6 +238,43 @@ const GemNodesInner: React.ForwardRefRenderFunction<GemNodesHandle, GemNodesProp
     inst.instanceMatrix.needsUpdate = true;
     if (inst.instanceColor) inst.instanceColor.needsUpdate = true;
 
+    // Geometry bounding radius — picking radius is this * per-instance scale.
+    geo.computeBoundingSphere();
+    geomRadiusRef.current = geo.boundingSphere?.radius ?? 0.5;
+
+    // Task #54: custom raycast. With the GPU transform active, instanceMatrix is
+    // identity (all instances at origin), so the default InstancedMesh raycast
+    // would mis-pick. This sphere-test reads the live transform texture buffer
+    // (the same x/y/z/scale the GPU renders), preserving node picking + drag.
+    // Off WebGPU (gpuTransformRef false) it defers to Three's default raycast.
+    inst.raycast = function (raycaster: THREE.Raycaster, intersects: THREE.Intersection[]): void {
+      if (!gpuTransformRef.current) {
+        THREE.InstancedMesh.prototype.raycast.call(this, raycaster, intersects);
+        return;
+      }
+      const buf = xformBufRef.current;
+      const n = Math.min(visibleCountRef.current, this.count);
+      if (!buf || n === 0) return;
+      const baseR = geomRadiusRef.current;
+      for (let i = 0; i < n; i++) {
+        const t4 = i * 4;
+        _rayCenter.set(buf[t4], buf[t4 + 1], buf[t4 + 2]);
+        _raySphere.center.copy(_rayCenter);
+        _raySphere.radius = baseR * buf[t4 + 3];
+        if (raycaster.ray.intersectSphere(_raySphere, _rayHit)) {
+          const distance = raycaster.ray.origin.distanceTo(_rayHit);
+          if (distance < raycaster.near || distance > raycaster.far) continue;
+          intersects.push({
+            distance,
+            point: _rayHit.clone(),
+            instanceId: i,
+            object: this,
+          });
+        }
+      }
+      intersects.sort((a, b) => a.distance - b.distance);
+    };
+
     // Per-instance metadata texture for TSL (RGBA float: quality, authority,
     // connections, recency). Laid out row-major across a 2D grid so the width
     // stays within the WebGPU max texture dimension (8192). Instance i maps to
@@ -219,6 +288,21 @@ const GemNodesInner: React.ForwardRefRenderFunction<GemNodesHandle, GemNodesProp
     metaTex.magFilter = THREE.NearestFilter;
     metaTex.needsUpdate = true;
     metaTexRef.current = metaTex;
+
+    // Per-instance transform texture (same row-major grid as the metadata
+    // texture). Texel i = (x, y, z, scale). Default scale 1 so an instance is
+    // never invisible before its first physics write. Reset the active flag —
+    // the augment is (re)applied per mesh in the effect below. Dispose the
+    // texture from a prior mesh generation (mode change / capacity growth).
+    xformTexRef.current?.dispose();
+    const xformData = new Float32Array(metaTexW * metaTexH * 4);
+    for (let i = 3; i < xformData.length; i += 4) xformData[i] = 1; // scale = 1
+    const xformTex = new THREE.DataTexture(xformData, metaTexW, metaTexH, THREE.RGBAFormat, THREE.FloatType);
+    xformTex.minFilter = THREE.NearestFilter;
+    xformTex.magFilter = THREE.NearestFilter;
+    xformTex.needsUpdate = true;
+    xformTexRef.current = xformTex;
+    gpuTransformRef.current = false;
 
     meshRef.current = inst;
     return { mesh: inst, uniforms: matResult.uniforms };
@@ -237,6 +321,9 @@ const GemNodesInner: React.ForwardRefRenderFunction<GemNodesHandle, GemNodesProp
         old.dispose();
       }
       sceneMeshesRef.current.clear();
+      // Task #54: release the GPU transform texture on unmount.
+      xformTexRef.current?.dispose();
+      xformTexRef.current = null;
     };
   }, []);
 
@@ -283,9 +370,43 @@ const GemNodesInner: React.ForwardRefRenderFunction<GemNodesHandle, GemNodesProp
     }
   }, [dominant, mesh, nodes.length]);
 
+  // Task #54: move the instance transform to the GPU. Wire the positionNode
+  // augment (WebGPU only) once the mesh + transform texture exist. On success,
+  // gpuTransformRef flips on and the per-frame loop writes the transform texture
+  // instead of composing mat4s. The WebGL path leaves this off and keeps using
+  // the instanceMatrix (setMatrixAt). Per-mesh: a recreated mesh re-applies.
+  const xformAppliedMeshRef = useRef<THREE.InstancedMesh | null>(null);
+  useEffect(() => {
+    if (
+      isWebGPURenderer &&
+      mesh &&
+      xformTexRef.current &&
+      xformAppliedMeshRef.current !== mesh
+    ) {
+      xformAppliedMeshRef.current = mesh;
+      applyTslInstanceTransform(
+        mesh.material as THREE.MeshStandardMaterial,
+        xformTexRef.current,
+        xformTexRef.current.image.width,
+        xformTexRef.current.image.height,
+      ).then(success => {
+        gpuTransformRef.current = success;
+        if (success) logger.debug('[GemNodes] GPU instance transform active', { dominant });
+        else xformAppliedMeshRef.current = null; // allow retry
+      }).catch(() => {
+        xformAppliedMeshRef.current = null;
+      });
+    }
+  }, [dominant, mesh]);
+
   const computeColor = useCallback((node: GraphNode, mode: GraphVisualMode, nodeIndex?: number): THREE.Color => {
-    // Quality gate overrides: color-code by cluster/anomaly/community when enabled.
-    // These take precedence over standard mode coloring (but not SSSP highlight).
+    // ADR-031 D6: `colorScheme` is the single "node colour by" selector. The
+    // analytic modes (community/cluster/centrality/sssp) colour from the live V3
+    // analytics buffer; each FALLS THROUGH to the standard type/domain/base
+    // scheme below when the node has no value for that signal, so unclustered /
+    // no-data nodes stay visible rather than collapsing to one dark colour.
+    // Anomaly is the one exception — an always-on red overlay (gated by
+    // qualityGates.showAnomalies) that wins over whatever scheme is active.
     const analytics = analyticsRef.current;
     if (analytics && nodeIndex !== undefined && nodeIndex * ANALYTICS_STRIDE + ANALYTICS_SSSP_OFFSET < analytics.length) {
       const a = nodeIndex * ANALYTICS_STRIDE;
@@ -295,40 +416,39 @@ const GemNodesInner: React.ForwardRefRenderFunction<GemNodesHandle, GemNodesProp
       const centrality = analytics[a + ANALYTICS_CENTRALITY_OFFSET];
       const ssspDistance = analytics[a + ANALYTICS_SSSP_OFFSET];
 
-      // Anomaly highlighting: red intensity proportional to anomalyScore (0-1)
+      // Anomaly highlight overlay: red intensity proportional to anomalyScore.
       if (qualityGates?.showAnomalies && anomalyScore > 0.01) {
         const intensity = Math.min(anomalyScore, 1.0);
         return _col.setRGB(0.9 * intensity + 0.1, 0.15 * (1 - intensity), 0.1);
       }
 
-      // Centrality (PageRank, normalised): bright = high centrality. ADR-031 D2.
-      // Scaled by maxCentrality so the (typically tiny, sum-to-1) PageRank values
-      // span the full ramp instead of collapsing to near-black.
-      if (qualityGates?.showCentrality && centrality > 0) {
+      // Community (Louvain, wire offset 44): deterministic hue per community.
+      if (colorScheme === 'community' && communityId > 0) {
+        const hue = ((communityId * 83) % 360) / 360;
+        return _col.setHSL(hue, 0.65, 0.5);
+      }
+
+      // Cluster (DBSCAN/k-means, wire offset 36): golden-angle hue per cluster.
+      if (colorScheme === 'cluster' && clusterId > 0) {
+        const hue = ((clusterId * 137) % 360) / 360;
+        return _col.setHSL(hue, 0.7, 0.55);
+      }
+
+      // Centrality (PageRank, normalised, wire offset 48). Scaled by the live
+      // maximum so the (tiny, sum-to-1) PageRank values span the full ramp.
+      if (colorScheme === 'centrality' && centrality > 0) {
         const max = maxCentralityRef.current || 1;
         const t = Math.min(centrality / max, 1.0);
         return _col.setHSL(0.62 - 0.62 * t, 0.85, 0.25 + 0.4 * t); // blue→cyan→yellow ramp
       }
 
-      // SSSP distance from the active source (wire offset 28, ADR-031 D6).
-      // Only when no explicit on-demand ssspResult is overriding below.
-      if (qualityGates?.showSSSP && !ssspResult) {
+      // SSSP distance from the active source (wire offset 28). Only paints once a
+      // run exists (maxSssp > 0) and no explicit on-demand ssspResult overrides.
+      if (colorScheme === 'sssp' && !ssspResult && maxSsspRef.current > 0) {
         if (!Number.isFinite(ssspDistance)) return _col.set('#444444'); // unreachable
         const max = maxSsspRef.current || 1;
         const t = Math.min(ssspDistance / max, 1.0);
         return _col.setRGB(Math.min(1, t * 1.2), Math.min(1, (1 - t) * 1.2), 0.1);
-      }
-
-      // Cluster coloring: deterministic hue from clusterId (non-zero means assigned)
-      if (qualityGates?.showClusters && clusterId > 0) {
-        const hue = ((clusterId * 137) % 360) / 360; // golden angle spacing
-        return _col.setHSL(hue, 0.7, 0.55);
-      }
-
-      // Community coloring: deterministic hue from communityId
-      if (qualityGates?.showCommunities && communityId > 0) {
-        const hue = ((communityId * 83) % 360) / 360;
-        return _col.setHSL(hue, 0.65, 0.5);
       }
     }
 
@@ -461,10 +581,15 @@ const GemNodesInner: React.ForwardRefRenderFunction<GemNodesHandle, GemNodesProp
 
     // Refresh per-node analytics from the main-thread store every ~30 frames
     // (~0.5s at 60fps). The store is fed by V3 binary frames (cluster_id at
-    // wire offset 36) and returns a render-index-aligned buffer (stride 3).
+    // wire offset 36) and returns a render-index-aligned buffer (stride 5).
+    // ADR-031 D6: an analytic colorScheme (community/cluster/centrality/sssp)
+    // also consumes the buffer, so refresh for it even when the gates are off.
     analyticsFrameRef.current++;
+    const analyticColorScheme =
+      colorScheme === 'community' || colorScheme === 'cluster' ||
+      colorScheme === 'centrality' || colorScheme === 'sssp';
     if (analyticsFrameRef.current % 30 === 1 &&
-        (qualityGates?.showClusters || qualityGates?.showAnomalies ||
+        (analyticColorScheme || qualityGates?.showClusters || qualityGates?.showAnomalies ||
          qualityGates?.showCommunities || qualityGates?.showCentrality || qualityGates?.showSSSP)) {
       const buf = nodeAnalyticsStore.getIndexedBuffer(props.nodeIdToIndexMap);
       if (buf) {
@@ -536,6 +661,10 @@ const GemNodesInner: React.ForwardRefRenderFunction<GemNodesHandle, GemNodesProp
           hasOpacityNode: !!mat?.opacityNode,
           hasEmissiveNode: !!mat?.emissiveNode,
           hasColorNode: !!mat?.colorNode,
+          // Task #54: when true, instanceMatrix is intentionally identity and
+          // matSamples below read identity — the live transform lives in the
+          // transform texture / positionNode, not the matrix buffer.
+          gpuTransform: gpuTransformRef.current,
           matSamples,
           bboxSize: { x: +bboxSize.x.toFixed(1), y: +bboxSize.y.toFixed(1), z: +bboxSize.z.toFixed(1) },
           cameraPos: { x: +camera.position.x.toFixed(1), y: +camera.position.y.toFixed(1), z: +camera.position.z.toFixed(1) },
@@ -689,6 +818,17 @@ const GemNodesInner: React.ForwardRefRenderFunction<GemNodesHandle, GemNodesProp
     const dragLocalIdx = (drag && drag.isDragging && drag.nodeId)
       ? currentNodes.findIndex(n => String(n.id) === drag.nodeId)
       : -1;
+    // Task #54: when the GPU transform is active (WebGPU), the loop writes the
+    // transform texture's typed array (x, y, z, scale) and the positionNode
+    // composes the vertex on-GPU. instanceMatrix stays identity (set once at
+    // mesh creation). Off WebGPU we keep the CPU mat4 path (setMatrixAt). Both
+    // paths read the SAME position/scale/wave/drag inputs so the visual output
+    // (sizing scheme, selection wave, live-drag) is identical.
+    const gpuXform = gpuTransformRef.current;
+    const xformBuf = gpuXform ? (xformTexRef.current?.image?.data as Float32Array | undefined) : undefined;
+    // Keep the picking refs current (raycast reads them when GPU transform on).
+    xformBufRef.current = xformBuf ?? null;
+    visibleCountRef.current = visCount;
     for (let i = 0; i < visCount; i++) {
       let s = scaleCache[i];
       if (i === selectedLocalIdx) {
@@ -711,12 +851,21 @@ const GemNodesInner: React.ForwardRefRenderFunction<GemNodesHandle, GemNodesProp
         const p = currentNodes[i].position;
         x = p?.x ?? 0; y = p?.y ?? 0; z = p?.z ?? 0;
       }
-      _mat.makeScale(s, s, s);
-      _mat.setPosition(x, y, z);
-      inst.setMatrixAt(i, _mat);
+      if (xformBuf) {
+        const t4 = i * 4;
+        xformBuf[t4] = x; xformBuf[t4 + 1] = y; xformBuf[t4 + 2] = z; xformBuf[t4 + 3] = s;
+      } else {
+        _mat.makeScale(s, s, s);
+        _mat.setPosition(x, y, z);
+        inst.setMatrixAt(i, _mat);
+      }
     }
     inst.count = visCount;
-    inst.instanceMatrix.needsUpdate = true;
+    if (xformBuf) {
+      if (xformTexRef.current) xformTexRef.current.needsUpdate = true;
+    } else {
+      inst.instanceMatrix.needsUpdate = true;
+    }
 
     // Dirty-flag metadata texture: only upload when inputs structurally change
     if (texBuf) {
@@ -741,15 +890,25 @@ const GemNodesInner: React.ForwardRefRenderFunction<GemNodesHandle, GemNodesProp
     }
   }, -1);
 
+  // This mesh renders a contiguous slice of the parent's displayNodes, so R3F
+  // reports an instanceId LOCAL to this mesh. Shift it by instanceIdBase before
+  // delegating so the parent's shared handler indexes the correct GLOBAL node.
+  // Mutate-then-delegate preserves the synthetic event (stopPropagation et al.).
+  const base = instanceIdBase ?? 0;
+  const shiftInstanceId = <E extends { instanceId?: number }>(e: E): E => {
+    if (base !== 0 && typeof e.instanceId === 'number') e.instanceId += base;
+    return e;
+  };
+
   return (
     <primitive
       key={mesh.uuid}
       object={mesh}
-      onPointerDown={onPointerDown}
+      onPointerDown={(e: ThreeEvent<PointerEvent>) => onPointerDown(shiftInstanceId(e))}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerMissed={onPointerMissed}
-      onDoubleClick={onDoubleClick}
+      onDoubleClick={(e: ThreeEvent<MouseEvent>) => onDoubleClick(shiftInstanceId(e))}
     />
   );
 };

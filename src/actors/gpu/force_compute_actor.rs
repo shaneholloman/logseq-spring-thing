@@ -23,11 +23,28 @@ use cudarc::driver::CudaDevice;
 
 /// Per-node graph population classification for dual-graph X-axis separation.
 /// Stored per GPU index during graph upload, used during position broadcast.
+///
+/// This is the GPU-local mirror of the canonical
+/// [`visionclaw_domain::models::Population`]; the single source of truth for
+/// classifying a node is [`visionclaw_domain::models::Node::population`], which
+/// reads the authoritative `metadata["type"]` origin field. This enum exists
+/// only because the GPU buffers/centroids index by it; it is produced solely
+/// via the `From<Population>` conversion below — never re-derived from fields.
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum GraphPopulation {
     Knowledge,
     Ontology,
     Agent,
+}
+
+impl From<visionclaw_domain::models::Population> for GraphPopulation {
+    fn from(p: visionclaw_domain::models::Population) -> Self {
+        match p {
+            visionclaw_domain::models::Population::Knowledge => GraphPopulation::Knowledge,
+            visionclaw_domain::models::Population::Ontology => GraphPopulation::Ontology,
+            visionclaw_domain::models::Population::Agent => GraphPopulation::Agent,
+        }
+    }
 }
 
 /// Median (x, y) in-plane centroid per population, indexed
@@ -600,36 +617,16 @@ impl ForceComputeActor {
             self.gpu_index_to_node_id.push(i as u32);
 
             // Classify node into graph population for dual-graph X-axis separation.
-            // metadata["type"] is the origin (ABox/TBox) truth and is authoritative:
-            // node_type carries the *elevated* class for promoted pages (e.g. a
-            // linked_page elevated to ontology_node), which would wrongly pull wiki
-            // instances onto the ontology disc. Prefer metadata, fall back to node_type.
-            let effective_type = node.metadata.get("type").map(|s| s.as_str())
-                .or_else(|| node.node_type.as_deref());
-            let pop = match effective_type {
-                Some("agent") | Some("bot") => {
-                    pop_counts[2] += 1;
-                    GraphPopulation::Agent
-                }
-                Some("owl_class") | Some("ontology_node") | Some("owl_individual") | Some("owl_property") => {
-                    pop_counts[1] += 1;
-                    GraphPopulation::Ontology
-                }
-                Some("page") | Some("linked_page") => {
-                    pop_counts[0] += 1;
-                    GraphPopulation::Knowledge
-                }
-                _ => {
-                    // Unknown type: owl_class_iri is the only remaining ontology signal.
-                    if node.owl_class_iri.is_some() {
-                        pop_counts[1] += 1;
-                        GraphPopulation::Ontology
-                    } else {
-                        pop_counts[0] += 1;
-                        GraphPopulation::Knowledge
-                    }
-                }
-            };
+            // SINGLE SOURCE OF TRUTH: Node::population() reads the authoritative
+            // metadata["type"] origin field (node_type is non-classifying elevation
+            // scaffold, consulted only as a legacy fallback). Centralised in
+            // visionclaw_domain so every reader agrees on a node's population.
+            let pop = GraphPopulation::from(node.population());
+            match pop {
+                GraphPopulation::Knowledge => pop_counts[0] += 1,
+                GraphPopulation::Ontology => pop_counts[1] += 1,
+                GraphPopulation::Agent => pop_counts[2] += 1,
+            }
             self.node_population.push(pop);
         }
         debug!("ForceComputeActor: GPU index→wire_id mapping: 0..{} ({} entries, compact IDs)",
@@ -2194,15 +2191,18 @@ impl Handler<UpdateSimulationParams> for ForceComputeActor {
         let reheat = if ratio > 1.0 { (1.0 + ratio.ln() * 2.0).clamp(1.0, 5.0) } else { 1.0 };
         self.reheat_factor = reheat;
 
-        // DO NOT suppress intermediate broadcasts on param change.
-        // Users need to SEE the layout morphing in real-time, not wait for convergence
-        // then get a sudden jump. The 60fps throttle in PhysicsOrchestratorActor's
-        // UpdateNodePositions handler already rate-limits broadcasts.
+        // DO NOT suppress intermediate broadcasts on param change, and DO NOT fire a
+        // premature full snapshot here. The whole graph is atomic: it either settles
+        // or it doesn't, so the morph is shown via the continuous full-snapshot stream
+        // every tick (reheat is applied on the NEXT step — a snapshot taken now would
+        // just be the pre-reheat layout). The continuous branch streams full position
+        // snapshots while the sim runs; the orchestrator fires one final
+        // ForceFullBroadcast only when the graph reaches genuine, sustained rest.
         self.suppress_intermediate_broadcasts = false;
-        self.force_full_broadcast = true;
+        self.force_full_broadcast = false;
 
         info!(
-            "ForceComputeActor: Stability warmup=1800 (30s), reheat={:.2} (scaled by repel_k change), force_full_broadcast=true",
+            "ForceComputeActor: Stability warmup=1800 (30s), reheat={:.2} (scaled by repel_k change); streaming full snapshots during settle",
             reheat
         );
 
@@ -2894,10 +2894,18 @@ impl Handler<crate::actors::messages::ResetPositions> for ForceComputeActor {
             return Err("No nodes loaded in GPU".to_string());
         }
 
-        // Generate uniform sphere distribution for all nodes
+        // Generate uniform sphere distribution for all nodes. Seed the sphere
+        // inside the soft-cube envelope (viewport_bounds, the single source of
+        // the layout scale) so the reset re-settles compactly instead of
+        // spraying to a radius unrelated to the configured bounds. Fall back to
+        // a node-count heuristic only when bounds are disabled.
         use rand::Rng;
         let mut rng = rand::thread_rng();
-        let sphere_radius = (num_nodes as f32).cbrt() * 50.0 + 100.0;
+        let sphere_radius = if self.simulation_params.viewport_bounds > 0.0 {
+            self.simulation_params.viewport_bounds * 0.6
+        } else {
+            (num_nodes as f32).cbrt() * 50.0 + 100.0
+        };
 
         let mut positions_x = Vec::with_capacity(num_nodes);
         let mut positions_y = Vec::with_capacity(num_nodes);

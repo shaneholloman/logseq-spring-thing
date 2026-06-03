@@ -142,8 +142,15 @@ export function useGraphVisualState(graphData: GraphData): GraphVisualStateResul
         }
       }
 
-      // Priority 2: Node type field from API (set by GraphStateActor classify_node)
-      const nodeType = (node as unknown as { type?: string }).type || '';
+      // Priority 2: AUTHORITATIVE origin from metadata.type (single source of truth,
+      // matching GemNodes colour and the server's Node::population). The top-level
+      // `type` field is the serde rename of node_type — non-classifying elevation
+      // scaffold — and must NOT drive population, or enriched/elevated linked_page
+      // nodes get sprayed onto the wrong disc. Fall back to top-level type only when
+      // metadata.type is absent (mirrors the server's population_type legacy fallback).
+      const nodeType = (node.metadata?.type as string | undefined)
+        || (node as unknown as { type?: string }).type
+        || '';
       if (nodeType === 'ontology_node' || nodeType === 'owl_class' || nodeType === 'OwlClass'
           || nodeType === 'owl_individual' || nodeType === 'domain_root'
           || nodeType.includes(':') // OWL class IRI like "mv:Avatar", "ai:BdiModel"

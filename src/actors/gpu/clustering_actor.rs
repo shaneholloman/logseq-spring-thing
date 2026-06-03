@@ -118,6 +118,43 @@ impl ClusteringActor {
         }
     }
 
+    /// Canonical single writer (ADR-031 D3) for `node_analytics.cluster_id`.
+    ///
+    /// Applies the invariant write semantics used everywhere cluster ids are
+    /// published: a stale-id reset (every entry's `cluster_id` cleared so nodes
+    /// dropped from this run revert to 0), then a masked-key write of 1-based
+    /// cluster ids (`0 == unclustered`, invariant I-6). `community_id` is a
+    /// distinct field and is never touched here.
+    ///
+    /// `assignments` are `(graph_node_id, cluster_id_1based)` pairs where
+    /// `graph_node_id` has NOT yet been masked — masking with `NODE_ID_MASK`
+    /// happens here so it always matches the V3 encoder's masked lookup. A
+    /// `cluster_id_1based` of 0 contributes nothing beyond the reset (the node
+    /// stays unclustered). Returns the number of nodes assigned a non-zero id.
+    fn write_cluster_id_from_assignments(
+        &self,
+        map: &mut std::collections::HashMap<u32, crate::utils::binary_protocol::NodeAnalytics>,
+        assignments: &[(u32, u32)],
+    ) -> usize {
+        // Single-writer reset: clear stale cluster_id from any prior run.
+        for entry in map.values_mut() {
+            entry.cluster_id = 0;
+        }
+        let mut assigned = 0usize;
+        for &(graph_node_id, cluster_id_1based) in assignments {
+            if cluster_id_1based == 0 {
+                continue;
+            }
+            // Masked key to match the V3 encoder lookup (NODE_ID_MASK); without
+            // it every lookup misses and cluster_id silently stays 0.
+            let node_id = graph_node_id & crate::utils::binary_protocol::NODE_ID_MASK;
+            let entry = map.entry(node_id).or_default();
+            entry.cluster_id = cluster_id_1based;
+            assigned += 1;
+        }
+        assigned
+    }
+
     fn generate_cluster_keywords(nodes: &[u32]) -> Vec<String> {
         if nodes.is_empty() {
             return vec!["empty".to_string()];
@@ -232,26 +269,23 @@ impl ClusteringActor {
         };
 
         // ADR-014 DL4 fix: Populate shared node_analytics with cluster assignments
-        // so the V3 binary broadcast path carries real cluster_id values.
+        // so the V3 binary broadcast path carries real cluster_id values. Routes
+        // through the single writer (ADR-031 D3) below.
         if let Some(ref analytics_map) = self.node_analytics {
+            // Resolve graph node ids for each GPU buffer index. ADR-031 I-6:
+            // cluster_id is 1-based with 0 == unclustered; K-means assigns dense
+            // 0-based ids to every node, so +1 (negative ids map to 0).
+            let pairs: Vec<(u32, u32)> = assignments
+                .iter()
+                .enumerate()
+                .map(|(gpu_idx, &cluster_id)| {
+                    let node_id = self.translate_gpu_index(gpu_idx);
+                    let id_1based = if cluster_id < 0 { 0 } else { (cluster_id + 1) as u32 };
+                    (node_id, id_1based)
+                })
+                .collect();
             if let Ok(mut map) = analytics_map.write() {
-                // Single-writer reset (ADR-031 D3): clear stale cluster_id from any
-                // prior run so nodes dropped from this run revert to 0. community_id
-                // is a distinct field (invariant I-6) and is left untouched.
-                for entry in map.values_mut() {
-                    entry.cluster_id = 0;
-                }
-                for (gpu_idx, &cluster_id) in assignments.iter().enumerate() {
-                    // Key by the masked graph node id: the V3 encoder masks the wire
-                    // id (binary_protocol NODE_ID_MASK) before lookup, so the writer
-                    // must match or every lookup misses (cluster_id silently 0).
-                    let node_id = self.translate_gpu_index(gpu_idx)
-                        & crate::utils::binary_protocol::NODE_ID_MASK;
-                    let entry = map.entry(node_id).or_default();
-                    // ADR-031 I-6: cluster_id is 1-based with 0 == unclustered.
-                    // K-means assigns dense 0-based ids to every node, so +1.
-                    entry.cluster_id = if cluster_id < 0 { 0 } else { (cluster_id + 1) as u32 };
-                }
+                self.write_cluster_id_from_assignments(&mut map, &pairs);
                 info!(
                     "ClusteringActor: Populated node_analytics with cluster assignments for {} nodes",
                     assignments.len()
@@ -355,7 +389,13 @@ impl ClusteringActor {
         
         let actual_community_sizes: Vec<usize> =
             communities.iter().map(|c| c.nodes.len()).collect();
-        let actual_modularity = self.calculate_modularity(&communities);
+        // ADR-031 D1: there is ONE modularity implementation — the canonical Newman
+        // Q computed by `modularity_csr` (unified_gpu_compute/community.rs) on the
+        // final partition over the original CSR. The GPU detection path already
+        // returns exactly that value in `modularity`; the shadow
+        // `calculate_modularity` heuristic (which double-counted bridge edges and
+        // clamped to [0,1]) has been removed. The stats field and the gate now agree.
+        let actual_modularity = modularity;
 
         // ADR-031 D1 modularity gate: a partition below Q=0.3 has no meaningful
         // community structure (it is statistical noise). Fail closed — leave every
@@ -518,25 +558,21 @@ impl ClusteringActor {
 
         let cluster_sizes: Vec<usize> = clusters.iter().map(|c| c.nodes.len()).collect();
 
-        // Populate shared node_analytics with DBSCAN cluster assignments
+        // Populate shared node_analytics with DBSCAN cluster assignments through
+        // the single writer (ADR-031 D3). run_dbscan_clustering returns 1-based
+        // ids with 0 == noise/unclustered (ADR-031 I-6); noise keeps the default 0.
         if let Some(ref analytics_map) = self.node_analytics {
+            let pairs: Vec<(u32, u32)> = labels
+                .iter()
+                .enumerate()
+                .map(|(gpu_idx, &label)| {
+                    let node_id = self.translate_gpu_index(gpu_idx);
+                    let id = if label > 0 { label as u32 } else { 0 };
+                    (node_id, id)
+                })
+                .collect();
             if let Ok(mut map) = analytics_map.write() {
-                // Single-writer reset (ADR-031 D3): clear stale cluster_id so nodes
-                // that became noise on this run revert to 0. community_id untouched.
-                for entry in map.values_mut() {
-                    entry.cluster_id = 0;
-                }
-                for (gpu_idx, &label) in labels.iter().enumerate() {
-                    // 1-based ids; 0 == noise/unclustered. Only real clusters
-                    // write a cluster_id; noise keeps the default 0 (ADR-031 I-6).
-                    if label > 0 {
-                        // Masked key to match the V3 encoder lookup (NODE_ID_MASK).
-                        let node_id = self.translate_gpu_index(gpu_idx)
-                            & crate::utils::binary_protocol::NODE_ID_MASK;
-                        let entry = map.entry(node_id).or_default();
-                        entry.cluster_id = label as u32;
-                    }
-                }
+                self.write_cluster_id_from_assignments(&mut map, &pairs);
                 info!(
                     "ClusteringActor: Populated node_analytics with DBSCAN cluster assignments for {} nodes",
                     labels.len() - num_noise
@@ -831,31 +867,13 @@ impl ClusteringActor {
         }
     }
 
-    
-    fn calculate_modularity(&self, communities: &[Community]) -> f32 {
-        let _num_nodes = self.gpu_state.num_nodes as f32;
-        let total_edges = communities
-            .iter()
-            .map(|c| c.internal_edges + c.external_edges)
-            .sum::<usize>() as f32;
-
-        if total_edges == 0.0 || communities.is_empty() {
-            return 0.0;
-        }
-
-        let mut modularity = 0.0;
-
-        for community in communities {
-            let m = total_edges / 2.0; 
-            let e_in = community.internal_edges as f32 / (2.0 * m); 
-            let degree_sum = (community.internal_edges + community.external_edges) as f32;
-            let a_sq = (degree_sum / (2.0 * m)).powi(2); 
-
-            modularity += e_in - a_sq;
-        }
-
-        modularity.max(0.0).min(1.0)
-    }
+    // ADR-031 D1: the shadow `calculate_modularity` heuristic was removed. It
+    // double-counted bridge edges (each shared edge appeared in both communities'
+    // external_edges, inflating m), used a per-community internal+external sum in
+    // place of σtot, and clamped to [0,1] — diverging from the canonical Newman Q.
+    // Modularity now has a single implementation, `modularity_csr`
+    // (unified_gpu_compute/community.rs), whose value the detection path returns
+    // and which `actual_modularity` reuses for the stats field.
 
     /// Compute cluster coherence using actual Euclidean distances between
     /// node positions from the GPU layout. High coherence means nodes in
@@ -1153,6 +1171,54 @@ impl Handler<SetNodeAnalytics> for ClusteringActor {
     fn handle(&mut self, msg: SetNodeAnalytics, _ctx: &mut Self::Context) {
         info!("ClusteringActor: Received shared node_analytics map");
         self.node_analytics = Some(msg.node_analytics);
+    }
+}
+
+impl Handler<WriteClusterAnalytics> for ClusteringActor {
+    type Result = ();
+
+    /// Persist a finished clustering run's per-node `cluster_id` through the single
+    /// writer (ADR-031 D3). The spawn task in `clustering_handlers::run_clustering`
+    /// routes its final `Vec<Cluster>` here so node_analytics is populated whether
+    /// the GPU kernels or the CPU label-propagation fallback produced the result.
+    ///
+    /// `Cluster.nodes` already carry graph node ids (the kernels translate GPU
+    /// buffer indices before building clusters, and the CPU fallback emits compact
+    /// node ids), so no GPU-index translation is needed — only the shared
+    /// masked-key / 1-based / stale-reset write applied by
+    /// `write_cluster_id_from_assignments`.
+    fn handle(&mut self, msg: WriteClusterAnalytics, _ctx: &mut Self::Context) {
+        let Some(ref analytics_map) = self.node_analytics else {
+            warn!(
+                "ClusteringActor: WriteClusterAnalytics received but node_analytics \
+                 store is not wired; skipping (hulls will not render this run)"
+            );
+            return;
+        };
+
+        // Build (graph_node_id, cluster_id_1based) pairs. ADR-031 I-6: cluster_id
+        // is 1-based with 0 == unclustered. Each Cluster's positional index is its
+        // 0-based id; +1 yields the 1-based wire id. Empty clusters contribute
+        // nothing (their absence of nodes leaves those nodes at the reset 0).
+        let mut pairs: Vec<(u32, u32)> = Vec::new();
+        for (cluster_idx, cluster) in msg.clusters.iter().enumerate() {
+            let cluster_id_1based = (cluster_idx as u32) + 1;
+            for &node_id in &cluster.nodes {
+                pairs.push((node_id, cluster_id_1based));
+            }
+        }
+
+        if let Ok(mut map) = analytics_map.write() {
+            let assigned = self.write_cluster_id_from_assignments(&mut map, &pairs);
+            info!(
+                "ClusteringActor: Wrote node_analytics.cluster_id for {} nodes across {} clusters \
+                 (WriteClusterAnalytics single-writer path)",
+                assigned,
+                msg.clusters.len()
+            );
+        } else {
+            warn!("ClusteringActor: node_analytics RwLock poisoned; cluster_id write skipped");
+        }
     }
 }
 

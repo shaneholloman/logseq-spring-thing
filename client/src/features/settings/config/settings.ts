@@ -5,7 +5,10 @@ export type SettingsPath = string | '';
 // Node settings
 export interface NodeSettings {
   baseColor: string;
-  colorScheme?: 'type' | 'domain' | 'base';
+  // ADR-031 D6: analytic colour modes (community/cluster/centrality/sssp) join
+  // the semantic schemes. An analytic mode falls through to 'type' colouring for
+  // nodes the server left without that signal, so no node goes dark.
+  colorScheme?: 'type' | 'domain' | 'base' | 'community' | 'cluster' | 'centrality' | 'sssp';
   sizeScheme?: 'degree' | 'fileSize' | 'hybrid';
   perNodeGlow?: boolean;
   metalness: number;
@@ -499,6 +502,10 @@ export interface ClusterHullSettings {
   // clusters. Default off — absent server clusters show an empty state, never
   // fabricated hulls.
   spatialFallback?: boolean;
+  // ADR-031 D6: opt-in Louvain-community hulls when the server sends no DBSCAN
+  // cluster_id. Default off — community_id is real but spatially dispersed, so
+  // its hulls overlap; the clean community signal is per-node colour.
+  communityFallback?: boolean;
 }
 
 // Embedding cloud layer settings (PCA-projected RuVector embeddings)

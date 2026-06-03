@@ -91,10 +91,14 @@ export function useGraphFiltering(
 
     const visible = graphData.nodes.filter(node => {
       // linked_page gate: wikilink-stub nodes are hidden unless includeLinkedPages
-      // is on. Read the API node-type field the same way useGraphVisualState does
-      // (the `type` field set by GraphStateActor classify_node, metadata fallback).
+      // is on. Read the AUTHORITATIVE origin from metadata.type (single source of
+      // truth, matching the server's Node::population_type and useGraphVisualState).
+      // The top-level `type` field (serde rename of node_type) is non-classifying
+      // elevation scaffold and is consulted only as a legacy fallback when
+      // metadata.type is absent — mirroring the server's population_type ordering.
       if (!includeLinkedPages) {
-        const nodeType = (node as unknown as { type?: string }).type
+        const nodeType = (node.metadata?.type as string | undefined)
+          || (node as unknown as { type?: string }).type
           || node.metadata?.nodeType
           || (node as unknown as { nodeType?: string }).nodeType
           || '';

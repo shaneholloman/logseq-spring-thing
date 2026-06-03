@@ -117,22 +117,18 @@ pub async fn propagate_physics_to_gpu_with_layout(
         sim_params.repel_k, sim_params.damping, sim_params.dt, layout_mode
     );
 
-    let update_msg = UpdateSimulationParams {
-        params: sim_params.clone(),
-    };
+    let update_msg = UpdateSimulationParams { params: sim_params };
 
-    if let Some(gpu_addr) = state.get_gpu_compute_addr().await {
-        info!("[PHYSICS UPDATE] Sending to GPUComputeActor...");
-        if let Err(e) = gpu_addr.send(update_msg.clone()).await {
-            error!("[PHYSICS UPDATE] FAILED to update GPUComputeActor: {}", e);
-        } else {
-            info!("[PHYSICS UPDATE] GPUComputeActor updated successfully");
-        }
-    } else {
-        warn!("[PHYSICS UPDATE] No GPUComputeActor available");
-    }
-
-    info!("[PHYSICS UPDATE] Sending to GraphServiceActor...");
+    // Single dispatch path (resolved 2026-06-03): send UpdateSimulationParams ONLY
+    // via the GraphServiceSupervisor → PhysicsOrchestratorActor route. The orchestrator
+    // owns the warmup reset (stability_warmup_remaining = 1800) and reheat
+    // (force_compute_actor.rs ~2188/2195) and forwards the message to the
+    // ForceComputeActor itself (physics_orchestrator_actor.rs:1478-1479). The previous
+    // direct dispatch to state.get_gpu_compute_addr() reached the SAME ForceComputeActor
+    // handler, so every settings change triggered a DOUBLE warmup reset / double reheat,
+    // fighting the "settle then back off" model. The orchestrator is the reliable
+    // delivery path (it always holds the GPU address from StoreGPUComputeAddress).
+    info!("[PHYSICS UPDATE] Sending to GraphServiceActor (orchestrator dispatch)...");
     if let Err(e) = state.graph_service_addr.send(update_msg).await {
         error!("[PHYSICS UPDATE] FAILED to update GraphServiceActor: {}", e);
     } else {

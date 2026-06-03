@@ -347,6 +347,12 @@ pub struct AppState {
     /// Maps node_id -> NodeAnalytics{cluster_id, community_id, anomaly, centrality}.
     /// Read by the binary broadcast path to fill V3 analytics fields.
     pub node_analytics: Arc<std::sync::RwLock<std::collections::HashMap<u32, crate::utils::binary_protocol::NodeAnalytics>>>,
+
+    /// Shared per-node SSSP distances populated by ShortestPathActor after a
+    /// ComputeSSP run. Maps compact node_id -> (distance, parent_id). Read by the
+    /// binary broadcast path to fill V3 wire slot 28 (sssp_distance@28). Absent
+    /// nodes default to (INFINITY, -1).
+    pub node_sssp: Arc<std::sync::RwLock<std::collections::HashMap<u32, (f32, i32)>>>,
 }
 
 impl AppState {
@@ -525,6 +531,11 @@ impl AppState {
 
         // Create shared node analytics map early so it can be shared with ClientCoordinatorActor
         let node_analytics: Arc<std::sync::RwLock<std::collections::HashMap<u32, crate::utils::binary_protocol::NodeAnalytics>>> =
+            Arc::new(std::sync::RwLock::new(std::collections::HashMap::new()));
+
+        // ADR-031 D2b: shared SSSP map fed by ShortestPathActor, read by the
+        // binary broadcast path to fill wire slot 28.
+        let node_sssp: Arc<std::sync::RwLock<std::collections::HashMap<u32, (f32, i32)>>> =
             Arc::new(std::sync::RwLock::new(std::collections::HashMap::new()));
 
         info!("[AppState::new] Starting ClientCoordinatorActor");
@@ -715,6 +726,13 @@ impl AppState {
             info!("[AppState::new] Starting ShortestPathActor and ConnectedComponentsActor for P2 features");
             let shortest_path = gpu::ShortestPathActor::new().start();
             let connected_components = gpu::ConnectedComponentsActor::new().start();
+
+            // ADR-031 D2b: give ShortestPathActor the shared SSSP map so ComputeSSP
+            // runs publish per-node distances to wire slot 28.
+            shortest_path.do_send(crate::actors::messages::SetNodeSSSP {
+                node_sssp: node_sssp.clone(),
+            });
+            info!("[AppState::new] Sent SetNodeSSSP to ShortestPathActor");
 
             // Extract StressMajorizationActor from GPUManagerActor's child actors
             // Note: The actor is spawned by GPUManagerActor, so we'll retrieve it after initialization
@@ -1070,6 +1088,7 @@ impl AppState {
             ontology_pipeline_service,
             degraded_reason: Arc::new(std::sync::RwLock::new(None)),
             node_analytics,
+            node_sssp,
         };
 
         // Validate optional actor addresses

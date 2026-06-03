@@ -232,7 +232,7 @@ impl UnifiedGPUCompute {
         let optimal_cell_size = (scene_volume / optimal_cells).powf(1.0 / 3.0);
 
 
-        let auto_tuned_cell_size = if optimal_cell_size > 10.0 && optimal_cell_size < 1000.0 {
+        let mut auto_tuned_cell_size = if optimal_cell_size > 10.0 && optimal_cell_size < 1000.0 {
             optimal_cell_size
         } else {
             params.grid_cell_size
@@ -252,12 +252,48 @@ impl UnifiedGPUCompute {
         aabb.max[2] += auto_tuned_cell_size;
 
 
-        let grid_dims = int3 {
-            x: ((aabb.max[0] - aabb.min[0]) / auto_tuned_cell_size).ceil() as i32,
-            y: ((aabb.max[1] - aabb.min[1]) / auto_tuned_cell_size).ceil() as i32,
-            z: ((aabb.max[2] - aabb.min[2]) / auto_tuned_cell_size).ceil() as i32,
+        // Clamp the spatial grid to the cell-buffer capacity. When the layout
+        // spreads out (e.g. a large repel_k increase), the auto-tuned cell size
+        // can demand far more cells than cell_start/cell_end can hold (capped at
+        // max_allowed_grid_cells). The cell hash in build_grid_kernel /
+        // compute_cell_bounds_kernel is derived from grid_dims, so an
+        // over-capacity grid indexes cell_start out of bounds → a sticky CUDA
+        // illegal-memory-access that poisons the context and freezes physics.
+        // Enlarge the cell size (in i64 math to avoid i32 overflow on huge
+        // spreads) until grid_dims.x*y*z fits within the cap.
+        let ext_x = aabb.max[0] - aabb.min[0];
+        let ext_y = aabb.max[1] - aabb.min[1];
+        let ext_z = aabb.max[2] - aabb.min[2];
+        let max_cells = self.max_allowed_grid_cells.max(1);
+        let compute_dims = |cell: f32| -> (int3, usize) {
+            let dims = int3 {
+                x: (ext_x / cell).ceil().max(1.0) as i32,
+                y: (ext_y / cell).ceil().max(1.0) as i32,
+                z: (ext_z / cell).ceil().max(1.0) as i32,
+            };
+            let cells = (dims.x as i64 * dims.y as i64 * dims.z as i64).max(1) as usize;
+            (dims, cells)
         };
-        let num_grid_cells = (grid_dims.x * grid_dims.y * grid_dims.z) as usize;
+        let (mut grid_dims, mut num_grid_cells) = compute_dims(auto_tuned_cell_size);
+        if num_grid_cells > max_cells {
+            for _ in 0..8 {
+                if num_grid_cells <= max_cells {
+                    break;
+                }
+                // Scale cell size by the cube root of the overflow ratio (+1%
+                // headroom to absorb ceil() rounding). Guaranteed to converge as
+                // the cell size grows monotonically.
+                let ratio = (num_grid_cells as f64 / max_cells as f64).cbrt();
+                auto_tuned_cell_size = (auto_tuned_cell_size as f64 * ratio * 1.01) as f32;
+                let (d, c) = compute_dims(auto_tuned_cell_size);
+                grid_dims = d;
+                num_grid_cells = c;
+            }
+            warn!(
+                "Spatial grid exceeded cell-buffer cap ({} cells); enlarged cell size to {:.2} → {} cells ({}x{}x{})",
+                max_cells, auto_tuned_cell_size, num_grid_cells, grid_dims.x, grid_dims.y, grid_dims.z
+            );
+        }
 
 
         let occupancy = self.get_grid_occupancy(num_grid_cells);

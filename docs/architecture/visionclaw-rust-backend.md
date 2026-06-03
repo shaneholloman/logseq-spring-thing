@@ -2,6 +2,12 @@
 
 > Generated: 2026-05-09 | Substrate: `/home/devuser/workspace/project/src/`
 > Files: 549 | Lines: 149,142 | Public functions: 3,144
+> Last verified: 2026-06-03
+
+**Verification note (2026-06-03):** Sections 8–11 below supersede the stale
+descriptions in §§ 2–5 wherever they conflict. The diagrams in
+`docs/architecture/diagrams/` are the authoritative verified source; this
+document references them by relative path.
 
 ---
 
@@ -406,3 +412,159 @@ flowchart LR
 | `handlers/mcp_relay_handler.rs:37` | Stub | "All stubs return ToolOutcome::NotImplemented until C1-C5 wire" |
 | `adapters/tests/` | Removed | The former `neo4j_tests.rs` integration placeholders were deleted with the Neo4j adapters (ADR-11); Oxigraph adapter tests live alongside `oxigraph_graph_repository.rs` |
 | `main.rs:275` | Fallback | "using disabled placeholder -- content API routes will return errors" |
+
+---
+
+## 8. Node Population and Dual-Graph Model (verified 2026-06-03)
+
+> Canonical diagram: [`diagrams/02-population-handoff.md`](diagrams/02-population-handoff.md)
+
+The backend maintains two logically distinct graphs that share a single node
+store in `GraphStateActor`:
+
+- **Knowledge graph** — working/wiki pages, logseq markdown, linked_page stubs.
+  These are the nodes that participate in the force-directed layout on the
+  Knowledge disc (`z = −separation`).
+- **Ontology graph** — formal OWL classes and individuals derived from the
+  knowledge graph via enrichment and the canonical JSON-LD ingest path.
+  These land on the Ontology disc (`z = +separation`).
+
+The two graphs share cross-edges but are never merged into one population.
+Elevation — the process of migrating a knowledge-graph page into the ontology
+via forum → brokers → agent panels — is future scaffolding not yet built.
+
+### Single classification authority: `Node::population()` / `Node::population_type()`
+
+Resolved T1 (2026-06-03). The only authoritative field for population
+classification is `metadata["type"]`, accessed through the helper functions
+`Node::population()` and `Node::population_type()` in
+`crates/visionclaw-domain/src/models/node.rs`. Every reader routes through
+these helpers:
+
+| Reader | Location | Output |
+|--------|----------|--------|
+| GPU disc projection | `force_compute_actor.rs` — `GraphPopulation::from(node.population())` | disc Z assignment (K/O/A) |
+| Binary wire flags | `graph_state_actor.rs` — `node.population_type()` in `classify_node` / `reclassify_all_nodes` | `NodeTypeArrays` / flag bits |
+| Server filter gate | `client_filter.rs` — `node.population_type()` | linked_page visibility |
+
+`node_type` / the top-level `type` wire field is demoted to a non-classifying
+elevation scaffold. It is used as a legacy fallback only when `metadata["type"]`
+is absent. `OntologyEnrichmentService` no longer rewrites `node_type` to spoof
+ontology origin; ontology signal travels in `owl_class_iri` only.
+
+The stale description in §2 of this document showed `ForceComputeActor`
+reading node_type directly and used a 24 bytes/node wire frame — both are wrong.
+The wire frame is 52 bytes (V3 layout, see §10). Disc assignment reads
+`metadata["type"]` exclusively.
+
+---
+
+## 9. Physics Settings Flow (verified 2026-06-03)
+
+> Canonical diagram: [`diagrams/01-settings-flow.md`](diagrams/01-settings-flow.md)
+
+### Single write path (T2 resolved)
+
+A physics settings change from the client goes through exactly one persistence
+path and one GPU dispatch path:
+
+1. **Persistence** — `autoSaveManager` (500 ms debounced) → `updateSettingsByPaths`
+   → `PUT /api/settings/physics`. The immediate `notifyPhysicsUpdate` persist
+   that previously fired in parallel from `physicsSlice.ts:130` has been removed.
+2. **GPU dispatch** — `settings_routes.rs` → `GraphServiceSupervisor` →
+   `PhysicsOrchestratorActor` → `ForceComputeActor` via `UpdateSimulationParams`.
+   The direct-GPU send that previously existed in `settings_handler/enhanced.rs`
+   and `physics.rs` has been removed.
+3. **Node drag** — one canonical `nodeDragUpdate` JSON frame from
+   `useGraphEventHandlers.ts`. The legacy binary `sendNodePositionUpdates` frame
+   has been removed.
+
+### Single physics-bounds SSOT (T4 resolved)
+
+All validation ranges (`MIN`, `MAX` const pairs) for physics parameters are
+defined in `src/actors/gpu/physics_bounds.rs` and imported by both:
+
+- `OptimizedSettingsActor.initialize_path_patterns()` — the actor path-pattern
+  validator.
+- `validate_physics_settings()` in `settings_routes.rs` — the HTTP route
+  validator.
+
+Canonical defaults (`repelK 120`, `maxVelocity 100`, `springK 12`,
+`maxForce 150`) fall within the unified bounds and are accepted without clamping.
+`MAX_VELOCITY` upper bound is held equal to the `ForceComputeActor` velocity
+backstop (1000) so the backstop only fires on genuinely divergent frames.
+Regression tests: `tests/repro_t4_ceiling_consistency.rs`.
+
+The stale description in §2 of this document showed `OSA → PO → ApplySettingsChange`
+as the settings call chain. That is wrong. The verified path is
+`settings_routes.rs → OSA (UpdateSettings) → GSS (UpdateSimulationParams) → Orch →
+FCA`, with SQLite written by the route handler after the in-memory update succeeds.
+
+---
+
+## 10. Binary Wire Protocol (verified 2026-06-03)
+
+> Canonical diagram: [`diagrams/05-wire-analytics-types.md`](diagrams/05-wire-analytics-types.md)
+
+Each node in a position broadcast is encoded as a **52-byte V3 record**
+(little-endian), preceded by a 1-byte protocol-version header (value `3`).
+V5 frames add an 8-byte broadcast-sequence prefix before the V3 body.
+
+| Offset | Size | Type | Field |
+|--------|------|------|-------|
+| @0 | 4 B | u32 | node_id (bit 31=Agent, bit 30=Knowledge, bits 26-28=Ontology type, bits 0-25=compact id) |
+| @4 | 12 B | f32×3 | position [x, y, z] |
+| @16 | 12 B | f32×3 | velocity [vx, vy, vz] |
+| @28 | 4 B | f32 | sssp_distance (INFINITY if absent) |
+| @32 | 4 B | i32 | sssp_parent (-1 if absent) |
+| @36 | 4 B | u32 | cluster_id (1-based; 0=unclustered) |
+| @40 | 4 B | f32 | anomaly_score (LOF/z-score, 0.0–1.0) |
+| @44 | 4 B | u32 | community_id (Louvain label) |
+| @48 | 4 B | f32 | centrality (PageRank, normalised) |
+
+The live encoder is `src/utils/binary_protocol.rs::encode_node_data_extended_with_sssp()`.
+The shadow crate `crates/visionclaw-protocol/src/binary_protocol.rs` encodes
+only 48 B (no centrality field) and has zero external callers — it is dead but
+not yet deleted (T6, under investigation, see `docs/architecture/KNOWN_ISSUES.md`).
+
+The stale description in §2 of this document cited "24 bytes/node" — that was
+the pre-ADR-031 V1 record size. The current protocol is 52 B.
+
+---
+
+## 11. Analytics and Clustering Pipeline (verified 2026-06-03)
+
+> Canonical diagram: [`diagrams/07-analysis-clustering.md`](diagrams/07-analysis-clustering.md)
+
+### Single node_analytics writer
+
+`ClusteringActor` is the sole writer of `cluster_id` and `community_id` in the
+shared `Arc<RwLock<HashMap<u32,NodeAnalytics>>>` store. All trigger paths —
+`POST /clustering/start`, `POST /analytics/clustering/run` (both GPU and
+CPU-fallback branches), and auto-trigger (when enabled) — ultimately route
+through `WriteClusterAnalytics → GPUManagerActor → AnalyticsSupervisor →
+ClusteringActor`.
+
+Other analytics fields have their own sole writers:
+- `centrality@48` — `PageRankActor`
+- `anomaly_score@40` — `AnomalyDetectionActor`
+- `sssp_distance/parent@28-32` — `ShortestPathActor`
+
+### Single modularity implementation
+
+`modularity_csr()` in `src/utils/unified_gpu_compute/community.rs:24` is the
+sole Newman Q implementation. The shadow `ClusteringActor::calculate_modularity`
+has been deleted. The gate value (Q >= 0.30 threshold) and the value reported
+in stats/wire are identical. Regression test:
+`tests/qe_t5_shadow_modularity.rs`.
+
+### Cluster hulls render on explicit trigger only
+
+`ClusterHulls.tsx` renders only when `node_analytics` contains at least one
+`cluster_id > 0` or `community_id > 0` entry. The auto-trigger loop
+(`graph_service_supervisor.rs`) defaults to OFF for all four channels
+(`COMMUNITY`, `PAGERANK`, `ANOMALY`, `COMPONENTS`) unless
+`VISIONCLAW_AUTO_<ALGO>_ENABLED` is explicitly set. Hulls populate and render
+after an explicit `POST /analytics/clustering/run` or `POST /clustering/start`.
+They do not auto-render at boot. See `docs/architecture/KNOWN_ISSUES.md` for
+the T5 timing note.

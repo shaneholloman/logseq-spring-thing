@@ -88,6 +88,22 @@ pub struct PhysicsOrchestratorActor {
     /// iteration cap reached). Cleared when the settle is re-triggered.
     fast_settle_complete: bool,
 
+    /// Number of consecutive steps over which the whole graph has failed to reduce
+    /// its per-node kinetic energy by at least `REL_IMPROVE`. The graph is
+    /// whole-graph-atomic: it either settles or it doesn't, so we pause only once
+    /// the energy has demonstrably plateaued for `SETTLE_REST_FRAMES` steps. Reset
+    /// to 0 whenever a meaningful descent occurs and at every settle re-arm site.
+    settle_rest_run: u32,
+
+    /// Reference per-node kinetic energy for the current plateau window. A frame
+    /// counts as "still settling" only if it drops `REL_IMPROVE` below this value,
+    /// at which point the reference moves down and the plateau run resets. Held at
+    /// `f64::MAX` during warmup so the first post-warmup frame seeds it. This makes
+    /// rest detection scale-free — it keys on whether energy is *still decreasing*,
+    /// not on an absolute (or sqrt(N)-scaled) floor that a frustrated FA2 layout
+    /// never reaches.
+    settle_ref_per_node_energy: f64,
+
     /// The original damping value saved before a fast-settle override, so it can be
     /// restored after settling completes.
     pre_settle_damping: Option<f32>,
@@ -139,6 +155,47 @@ pub struct PhysicsPerformanceMetrics {
 }
 
 impl PhysicsOrchestratorActor {
+    /// Minimum FastSettle iterations before rest can be declared. The first steps
+    /// after a (re)settle carry kinetic energy from the previous parameter regime
+    /// (pipeline already in flight when params changed); without this a graph at
+    /// equilibrium under old params would falsely converge on the first step.
+    const MIN_SETTLE_WARMUP: u32 = 100;
+
+    /// Minimum relative drop in per-node kinetic energy for a frame to count as
+    /// "still settling". Dimensionless — identical for any graph size.
+    const SETTLE_REL_IMPROVE: f64 = 0.01;
+
+    /// Consecutive frames the per-node energy must fail to drop by SETTLE_REL_IMPROVE
+    /// before the graph is declared settled (energy plateau).
+    const SETTLE_REST_FRAMES: u32 = 90;
+
+    /// Feed one step's summed kinetic energy into the plateau tracker and return
+    /// whether the whole graph has settled. "Settled" means the energy has stopped
+    /// decreasing — not that it fell below an absolute floor, which a frustrated
+    /// FA2 layout (no global cooling) never reaches. Scale-free: keys on the
+    /// relative descent of per-node energy, with no node-count term. Re-arms itself
+    /// during warmup (when `past_warmup` is false) so every settle re-entry that
+    /// resets `fast_settle_iteration_count` automatically resets the tracker.
+    fn note_settle_energy(&mut self, energy: f64, node_count: usize, past_warmup: bool) -> bool {
+        let energy_valid = energy.is_finite();
+        let n = node_count.max(1) as f64;
+        let per_node_energy = energy / n;
+
+        if !past_warmup || !energy_valid {
+            self.settle_ref_per_node_energy = f64::MAX;
+            self.settle_rest_run = 0;
+        } else if self.settle_ref_per_node_energy == f64::MAX
+            || per_node_energy < self.settle_ref_per_node_energy * (1.0 - Self::SETTLE_REL_IMPROVE)
+        {
+            self.settle_ref_per_node_energy = per_node_energy;
+            self.settle_rest_run = 0;
+        } else {
+            self.settle_rest_run += 1;
+        }
+
+        self.settle_rest_run >= Self::SETTLE_REST_FRAMES
+    }
+
     pub fn new(
         simulation_params: SimulationParams,
         gpu_compute_addr: Option<Addr<ForceComputeActor>>,
@@ -175,6 +232,8 @@ impl PhysicsOrchestratorActor {
             last_broadcast_time: Instant::now(),
             fast_settle_iteration_count: 0,
             fast_settle_complete: false,
+            settle_rest_run: 0,
+            settle_ref_per_node_energy: f64::MAX,
             pre_settle_damping: None,
             pipeline_step_pending: false,
             pipeline_step_pending_since: None,
@@ -215,6 +274,7 @@ impl PhysicsOrchestratorActor {
             SettleMode::FastSettle { .. } => {
                 self.fast_settle_iteration_count = 0;
                 self.fast_settle_complete = false;
+                self.settle_rest_run = 0;
                 self.pipeline_target_interval = Duration::ZERO;
                 info!("Starting physics simulation loop (FastSettle mode, sequential pipeline, 0ms sleep)");
             }
@@ -738,6 +798,7 @@ impl PhysicsOrchestratorActor {
             // Reset fast-settle state so a new settle cycle begins if in FastSettle mode.
             self.fast_settle_iteration_count = 0;
             self.fast_settle_complete = false;
+            self.settle_rest_run = 0;
 
             self.broadcast_physics_resumed();
 
@@ -1372,6 +1433,7 @@ impl Handler<UpdateSimulationParams> for PhysicsOrchestratorActor {
         if settle_mode_changed || physics_changed {
             self.fast_settle_iteration_count = 0;
             self.fast_settle_complete = false;
+            self.settle_rest_run = 0;
             info!(
                 "PhysicsOrchestratorActor: Resetting fast-settle state (settle_mode_changed={}, physics_changed={})",
                 settle_mode_changed, physics_changed
@@ -1595,6 +1657,7 @@ impl Handler<crate::actors::messages::GPUInitialized> for PhysicsOrchestratorAct
         // Reset fast-settle state so the settle cycle starts fresh with new graph data.
         self.fast_settle_iteration_count = 0;
         self.fast_settle_complete = false;
+        self.settle_rest_run = 0;
 
         // Wire up the sequential pipeline back-channel: send our address to the
         // ForceComputeActor so it can reply with PhysicsStepCompleted messages.
@@ -1766,14 +1829,10 @@ impl Handler<crate::actors::messages::PhysicsStepCompleted> for PhysicsOrchestra
         // Checking here instead of in physics_step() eliminates the one-step overshoot
         // where a new GPU step was dispatched before convergence was detected.
         //
-        // MINIMUM WARMUP: The first ~50 iterations after a param change may carry KE
-        // from steps computed under OLD parameters (pipeline was already in flight when
-        // UpdateSimulationParams arrived). Without this guard, a system at equilibrium
-        // under old params (KE≈0) would falsely converge on the first step.
-        // With 0.95x reheat decay (~50 steps of significant energy), warmup must exceed
-        // that to prevent false convergence from residual energy.
-        const MIN_SETTLE_WARMUP: u32 = 100;
-
+        // MINIMUM WARMUP (Self::MIN_SETTLE_WARMUP): the first iterations after a param
+        // change carry KE from steps computed under OLD parameters (pipeline was in
+        // flight when UpdateSimulationParams arrived). Without this guard, a system at
+        // equilibrium under old params (KE≈0) would falsely converge on the first step.
         if let SettleMode::FastSettle {
             max_settle_iterations,
             energy_threshold,
@@ -1789,29 +1848,26 @@ impl Handler<crate::actors::messages::PhysicsStepCompleted> for PhysicsOrchestra
                 .unwrap_or(f64::MAX);
 
             // If energy is NaN or Infinity (GPU not yet initialized, or error path
-            // returned f64::MAX), treat as "not converged" and don't count toward
-            // convergence.  This prevents FastSettle from declaring settled when the
-            // GPU hasn't actually computed anything yet.
+            // returned f64::MAX), note_settle_energy() re-arms and reports not-at-rest,
+            // so we never declare settled before the GPU has actually computed.
             let energy_valid = energy.is_finite();
-            let past_warmup = self.fast_settle_iteration_count >= MIN_SETTLE_WARMUP;
-            // Scale the convergence energy threshold by graph size. Kinetic
-            // energy is summed over all nodes, so a 30k-node graph trivially
-            // exceeds the same absolute threshold as an 800-node graph even
-            // when motion per node is identical. Without this scaling, large
-            // graphs stop settling after the warmup window because per-node
-            // KE×N >> threshold for any node count above a few thousand —
-            // even when nodes haven't meaningfully separated yet.
-            //
-            // sqrt(N) gives a sensible middle ground: a 30k-node graph runs
-            // ~6× longer than an 840-node graph before declaring converged,
-            // matching the larger structure's actual settle time.
-            let scale = (self.last_node_count.max(1) as f64).sqrt().max(1.0);
-            let scaled_threshold = energy_threshold * scale;
-            let converged = past_warmup && energy_valid && energy < scaled_threshold;
+            let past_warmup = self.fast_settle_iteration_count >= Self::MIN_SETTLE_WARMUP;
+
+            // Whole-graph-atomic rest detection via energy PLATEAU, not an absolute
+            // floor. A force-directed layout under FA2 adaptive-speed has NO global
+            // cooling, so it floors at a non-zero residual per-node energy at its
+            // frustrated minimum (mean_v ~4 → per-node KE ~8). An absolute threshold —
+            // or the sqrt(N)-scaled variant that preceded it — is never reached, so the
+            // latch never fired and the system streamed at 60Hz forever instead of
+            // backing off. note_settle_energy() declares rest once per-node energy
+            // STOPS DECREASING (scale-free, no node-count term); see its docs.
+            let per_node_energy = energy / self.last_node_count.max(1) as f64;
+            let converged = self.note_settle_energy(energy, self.last_node_count, past_warmup);
             let exhausted = self.fast_settle_iteration_count >= max_settle_iterations;
 
             if converged {
                 self.fast_settle_complete = true;
+                self.settle_rest_run = 0;
                 self.simulation_params.is_physics_paused = true;
 
                 if let Some(original_damping) = self.pre_settle_damping.take() {
@@ -1820,8 +1876,11 @@ impl Handler<crate::actors::messages::PhysicsStepCompleted> for PhysicsOrchestra
                 }
 
                 info!(
-                    "PhysicsOrchestratorActor: FastSettle converged after {} iterations (energy={:.6} < scaled_threshold={:.6}, n={})",
-                    self.fast_settle_iteration_count, energy, scaled_threshold, self.last_node_count
+                    "PhysicsOrchestratorActor: FastSettle converged after {} iterations \
+                     (energy plateau: per_node_energy={:.6} held within {:.1}% for {} frames, summed_energy={:.6}, n={})",
+                    self.fast_settle_iteration_count, per_node_energy,
+                    Self::SETTLE_REL_IMPROVE * 100.0, Self::SETTLE_REST_FRAMES,
+                    energy, self.last_node_count
                 );
 
                 // Pure snapshot broadcast: clients get final converged positions
@@ -1881,6 +1940,7 @@ impl Handler<crate::actors::messages::PhysicsStepCompleted> for PhysicsOrchestra
                     max_settle_iterations, energy
                 );
                 self.fast_settle_iteration_count = 0;
+                self.settle_rest_run = 0;
             } else if self.fast_settle_iteration_count % 100 == 0 {
                 debug!(
                     "PhysicsOrchestratorActor: FastSettle progress: iter={}/{}, energy={:.6}",
@@ -2036,123 +2096,67 @@ mod tests {
     }
 
     // ------------------------------------------------------------------
-    // Test 3: Fast-settle convergence detection
+    // Test 3: Fast-settle converges on an energy PLATEAU (scale-free), not on an
+    // absolute floor. Drives the real note_settle_energy() plateau detector.
     // ------------------------------------------------------------------
     #[tokio::test]
-    async fn fast_settle_converges_when_energy_below_threshold() {
+    async fn fast_settle_converges_on_energy_plateau() {
         let params = fast_settle_params(2000, 0.005, 0.75);
         let mut actor = PhysicsOrchestratorActor::new(params, None, None);
         actor.gpu_initialized = true;
+        actor.last_node_count = 100;
 
-        // Simulate: 51 iterations have run (past MIN_SETTLE_WARMUP of 50)
-        actor.fast_settle_iteration_count = 51;
-        actor.fast_settle_complete = false;
-
-        // Inject physics_stats with energy below threshold
-        actor.physics_stats = Some(PhysicsStats {
-            iteration_count: 51,
-            gpu_failure_count: 0,
-            current_params: actor.simulation_params.clone(),
-            compute_mode: crate::utils::unified_gpu_compute::ComputeMode::Basic,
-            nodes_count: 100,
-            edges_count: 200,
-            average_velocity: 0.001,
-            kinetic_energy: 0.003, // below 0.005 threshold
-            total_forces: 0.001,
-            last_step_duration_ms: 5.0,
-            fps: 60.0,
-            num_edges: 200,
-            total_force_calculations: 10000,
-        });
-
-        // Inline the convergence check from PhysicsStepCompleted handler
-        const MIN_SETTLE_WARMUP: u32 = 50;
-        if let SettleMode::FastSettle {
-            energy_threshold,
-            max_settle_iterations,
-            ..
-        } = actor.simulation_params.settle_mode
-        {
-            let energy = actor
-                .physics_stats
-                .as_ref()
-                .map(|s| s.kinetic_energy as f64)
-                .unwrap_or(f64::MAX);
-            let energy_valid = energy.is_finite();
-            let past_warmup = actor.fast_settle_iteration_count >= MIN_SETTLE_WARMUP;
-            let converged = past_warmup && energy_valid && energy < energy_threshold;
-
+        // While energy keeps dropping ≥1%/frame, the graph is "still settling":
+        // the plateau run resets every frame and we never converge — even though
+        // the absolute energy here (hundreds) is astronomically above any old floor.
+        let mut e = 1000.0_f64;
+        for _ in 0..50 {
+            e *= 0.90; // 10% drop/frame — well past SETTLE_REL_IMPROVE
             assert!(
-                converged,
-                "Energy {:.6} should be below threshold {:.6}",
-                energy, energy_threshold
+                !actor.note_settle_energy(e, 100, true),
+                "must not converge while energy is still descending"
             );
+        }
+        assert_eq!(actor.settle_rest_run, 0, "descent resets the plateau run each frame");
 
-            if converged {
-                actor.fast_settle_complete = true;
-                actor.simulation_params.is_physics_paused = true;
+        // Energy now plateaus (flat). After SETTLE_REST_FRAMES no-improvement frames
+        // the whole graph is declared settled — regardless of its absolute value.
+        let frames = PhysicsOrchestratorActor::SETTLE_REST_FRAMES;
+        let mut converged = false;
+        for i in 0..frames {
+            converged = actor.note_settle_energy(e, 100, true);
+            if i + 1 < frames {
+                assert!(!converged, "should not converge before the plateau window fills");
             }
         }
-
-        assert!(
-            actor.fast_settle_complete,
-            "Fast-settle should be marked complete"
-        );
-        assert!(
-            actor.simulation_params.is_physics_paused,
-            "Physics should be paused after convergence"
-        );
+        assert!(converged, "a sustained energy plateau = whole graph settled");
     }
 
     // ------------------------------------------------------------------
-    // Test 4: Fast-settle does NOT converge during warmup period
+    // Test 4: Fast-settle never converges during warmup, even with flat low energy.
+    // note_settle_energy() re-arms every warmup frame, which is exactly what makes
+    // every settle re-entry (param change / resume) safe.
     // ------------------------------------------------------------------
     #[tokio::test]
     async fn fast_settle_does_not_converge_during_warmup() {
         let params = fast_settle_params(2000, 0.005, 0.75);
         let mut actor = PhysicsOrchestratorActor::new(params, None, None);
+        actor.last_node_count = 100;
 
-        // Only 10 iterations (below MIN_SETTLE_WARMUP of 50)
-        actor.fast_settle_iteration_count = 10;
-
-        actor.physics_stats = Some(PhysicsStats {
-            iteration_count: 10,
-            gpu_failure_count: 0,
-            current_params: actor.simulation_params.clone(),
-            compute_mode: crate::utils::unified_gpu_compute::ComputeMode::Basic,
-            nodes_count: 100,
-            edges_count: 200,
-            average_velocity: 0.0,
-            kinetic_energy: 0.001, // below threshold, but in warmup
-            total_forces: 0.0,
-            last_step_duration_ms: 5.0,
-            fps: 60.0,
-            num_edges: 200,
-            total_force_calculations: 10000,
-        });
-
-        const MIN_SETTLE_WARMUP: u32 = 50;
-        if let SettleMode::FastSettle {
-            energy_threshold, ..
-        } = actor.simulation_params.settle_mode
-        {
-            let energy = actor
-                .physics_stats
-                .as_ref()
-                .map(|s| s.kinetic_energy as f64)
-                .unwrap_or(f64::MAX);
-            let past_warmup = actor.fast_settle_iteration_count >= MIN_SETTLE_WARMUP;
-            let converged = past_warmup && energy.is_finite() && energy < energy_threshold;
-
+        // Flat, tiny energy for far longer than SETTLE_REST_FRAMES — but past_warmup
+        // is false, so it must never latch and must stay re-armed.
+        for _ in 0..(PhysicsOrchestratorActor::SETTLE_REST_FRAMES * 2) {
             assert!(
-                !converged,
-                "Should NOT converge during warmup even with low energy"
-            );
-            assert!(
-                !past_warmup,
-                "10 iterations is below warmup threshold of 50"
+                !actor.note_settle_energy(0.001, 100, false),
+                "must never converge during warmup"
             );
         }
+        assert_eq!(actor.settle_rest_run, 0, "warmup keeps the plateau run re-armed at 0");
+        assert_eq!(
+            actor.settle_ref_per_node_energy,
+            f64::MAX,
+            "warmup holds the plateau reference at MAX so the first post-warmup frame seeds it"
+        );
     }
 
     // ------------------------------------------------------------------

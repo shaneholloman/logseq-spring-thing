@@ -459,12 +459,16 @@ impl StandaloneFastWsHandler {
                 // Fall back to legacy if postcard fails
                 let analytics = self.app_state.node_analytics.read().ok();
                 let analytics_ref = analytics.as_deref();
-                binary_protocol::encode_node_data_with_live_analytics(nodes, analytics_ref)
+                let sssp = self.app_state.node_sssp.read().ok();
+                let sssp_ref = sssp.as_deref();
+                binary_protocol::encode_node_data_with_live_analytics(nodes, analytics_ref, sssp_ref)
             })
         } else {
             let analytics = self.app_state.node_analytics.read().ok();
             let analytics_ref = analytics.as_deref();
-            binary_protocol::encode_node_data_with_live_analytics(nodes, analytics_ref)
+            let sssp = self.app_state.node_sssp.read().ok();
+            let sssp_ref = sssp.as_deref();
+            binary_protocol::encode_node_data_with_live_analytics(nodes, analytics_ref, sssp_ref)
         };
 
         self.bytes_sent += data.len() as u64;

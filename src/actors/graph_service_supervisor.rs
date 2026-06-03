@@ -71,6 +71,195 @@ const AUTO_CLUSTER_CONVERGENCE: f32 = 0.001;
 const AUTO_CLUSTER_RESOLUTION: f32 = 1.0;
 const AUTO_CLUSTER_MIN_SIZE: u32 = 3;
 
+// ADR-031 D5 — full topology auto-trigger.
+//
+// The same gap that left cluster_id/community_id at 0 (no manual button press)
+// also leaves centrality@48 and anomaly@40 at 0: PageRank and anomaly detection
+// only ran on explicit HTTP calls. This drives a self-firing pass for every
+// per-node analytics channel that the V3 wire broadcasts, so the continuous
+// visual feed carries real values without any operator action.
+//
+// Each algorithm is independently gated and paced. Defaults match the Louvain
+// cadence (one pass ~8 s after GPU init, then a bounded refresh interval) and
+// are overridable per algorithm via env vars so an operator can retune or
+// disable any channel without a rebuild — this is the "manifest-configurable"
+// surface for the auto-trigger loop:
+//
+//   VISIONCLAW_AUTO_<ALGO>_ENABLED        = "0" | "false" to disable
+//   VISIONCLAW_AUTO_<ALGO>_INTERVAL_SECS  = u64 refresh cadence (0 disables refresh)
+//   VISIONCLAW_AUTO_<ALGO>_INITIAL_SECS   = u64 startup delay
+//
+// where <ALGO> ∈ { COMMUNITY, PAGERANK, ANOMALY, COMPONENTS }.
+//
+// All four run on graph topology (edges), not positions, so they are fully
+// decoupled from the force-directed layout — they need only the graph uploaded
+// to the GPU. Connected components has no per-node wire slot; its periodic pass
+// keeps the fragmentation-stats cache warm for the analytics API.
+const AUTO_PAGERANK_INITIAL_DELAY: Duration = Duration::from_secs(8);
+const AUTO_PAGERANK_REFRESH_INTERVAL: Duration = Duration::from_secs(60);
+const AUTO_ANOMALY_INITIAL_DELAY: Duration = Duration::from_secs(8);
+const AUTO_ANOMALY_REFRESH_INTERVAL: Duration = Duration::from_secs(60);
+const AUTO_ANOMALY_K_NEIGHBORS: i32 = 20;
+const AUTO_ANOMALY_RADIUS: f32 = 1.0;
+const AUTO_ANOMALY_LOF_THRESHOLD: f32 = 1.5;
+const AUTO_COMPONENTS_INITIAL_DELAY: Duration = Duration::from_secs(8);
+const AUTO_COMPONENTS_REFRESH_INTERVAL: Duration = Duration::from_secs(120);
+const AUTO_COMPONENTS_MAX_ITERATIONS: u32 = 100;
+
+/// One auto-trigger channel's resolved cadence (after env overrides).
+#[derive(Debug, Clone, Copy)]
+struct AutoTriggerCadence {
+    enabled: bool,
+    initial_delay: Duration,
+    refresh_interval: Option<Duration>,
+}
+
+impl AutoTriggerCadence {
+    /// Resolve from env, falling back to the compiled defaults. `algo` is the
+    /// uppercase token in `VISIONCLAW_AUTO_<algo>_*`.
+    fn from_env(algo: &str, default_initial: Duration, default_refresh: Duration) -> Self {
+        Self::resolve(
+            std::env::var(format!("VISIONCLAW_AUTO_{algo}_ENABLED")).ok().as_deref(),
+            std::env::var(format!("VISIONCLAW_AUTO_{algo}_INITIAL_SECS")).ok().as_deref(),
+            std::env::var(format!("VISIONCLAW_AUTO_{algo}_INTERVAL_SECS")).ok().as_deref(),
+            default_initial,
+            default_refresh,
+        )
+    }
+
+    /// Pure resolution of the three raw env strings against the defaults.
+    /// Split out from `from_env` so the parsing rules are unit-testable without
+    /// mutating process-global env (which races under parallel test execution).
+    fn resolve(
+        enabled_raw: Option<&str>,
+        initial_raw: Option<&str>,
+        interval_raw: Option<&str>,
+        default_initial: Duration,
+        default_refresh: Duration,
+    ) -> Self {
+        let enabled = match enabled_raw {
+            Some(v) => !matches!(v.trim().to_ascii_lowercase().as_str(), "0" | "false" | "off" | "no"),
+            None => true,
+        };
+        let initial_delay = initial_raw
+            .and_then(|v| v.trim().parse::<u64>().ok())
+            .map(Duration::from_secs)
+            .unwrap_or(default_initial);
+        let refresh_interval = match interval_raw {
+            Some(v) => match v.trim().parse::<u64>() {
+                Ok(0) => None,
+                Ok(secs) => Some(Duration::from_secs(secs)),
+                Err(_) => Some(default_refresh),
+            },
+            None => Some(default_refresh),
+        };
+        Self { enabled, initial_delay, refresh_interval }
+    }
+}
+
+/// Resolved cadence for every auto-trigger channel (computed once at startup).
+#[derive(Debug, Clone, Copy)]
+struct AutoAnalyticsConfig {
+    community: AutoTriggerCadence,
+    pagerank: AutoTriggerCadence,
+    anomaly: AutoTriggerCadence,
+    components: AutoTriggerCadence,
+}
+
+impl AutoAnalyticsConfig {
+    fn from_env() -> Self {
+        // The GPU analytics kernels (Louvain, PageRank, connected-components,
+        // anomaly) currently raise CUDA illegal-memory-access faults that poison
+        // the *shared* physics primary context. A poisoned primary context is
+        // process-global and sticky, so the first auto-pass at boot+initial_delay
+        // kills every subsequent force step and freezes node-settling. Until the
+        // kernels are corrected (the analytics UnifiedGPUCompute num_nodes/CSR
+        // mismatch — 16014 vs 10676 — and the Louvain local-pass OOB), the
+        // auto-trigger is OPT-IN: a channel runs only when its
+        // VISIONCLAW_AUTO_<ALGO>_ENABLED env var is explicitly set. Absent env
+        // means disabled so analytics can never crash physics by default.
+        fn channel(algo: &str, default_initial: Duration, default_refresh: Duration) -> AutoTriggerCadence {
+            let mut cadence = AutoTriggerCadence::from_env(algo, default_initial, default_refresh);
+            let explicitly_set =
+                std::env::var(format!("VISIONCLAW_AUTO_{algo}_ENABLED")).is_ok();
+            if !explicitly_set {
+                cadence.enabled = false;
+            }
+            cadence
+        }
+        Self {
+            community: channel(
+                "COMMUNITY",
+                AUTO_CLUSTER_INITIAL_DELAY,
+                AUTO_CLUSTER_REFRESH_INTERVAL,
+            ),
+            pagerank: channel(
+                "PAGERANK",
+                AUTO_PAGERANK_INITIAL_DELAY,
+                AUTO_PAGERANK_REFRESH_INTERVAL,
+            ),
+            anomaly: channel(
+                "ANOMALY",
+                AUTO_ANOMALY_INITIAL_DELAY,
+                AUTO_ANOMALY_REFRESH_INTERVAL,
+            ),
+            components: channel(
+                "COMPONENTS",
+                AUTO_COMPONENTS_INITIAL_DELAY,
+                AUTO_COMPONENTS_REFRESH_INTERVAL,
+            ),
+        }
+    }
+}
+
+#[cfg(test)]
+mod cadence_tests {
+    use super::{AutoTriggerCadence, Duration};
+
+    const DI: Duration = Duration::from_secs(8);
+    const DR: Duration = Duration::from_secs(60);
+
+    #[test]
+    fn defaults_when_env_absent() {
+        let c = AutoTriggerCadence::resolve(None, None, None, DI, DR);
+        assert!(c.enabled);
+        assert_eq!(c.initial_delay, DI);
+        assert_eq!(c.refresh_interval, Some(DR));
+    }
+
+    #[test]
+    fn enabled_flag_falsey_tokens_disable() {
+        for tok in ["0", "false", "off", "no", "FALSE", " Off "] {
+            let c = AutoTriggerCadence::resolve(Some(tok), None, None, DI, DR);
+            assert!(!c.enabled, "{tok:?} must disable");
+        }
+        for tok in ["1", "true", "on", "yes", "anything"] {
+            let c = AutoTriggerCadence::resolve(Some(tok), None, None, DI, DR);
+            assert!(c.enabled, "{tok:?} must enable");
+        }
+    }
+
+    #[test]
+    fn interval_zero_means_one_shot_no_refresh() {
+        let c = AutoTriggerCadence::resolve(None, None, Some("0"), DI, DR);
+        assert_eq!(c.refresh_interval, None, "interval 0 disables periodic refresh");
+    }
+
+    #[test]
+    fn initial_and_interval_override() {
+        let c = AutoTriggerCadence::resolve(None, Some("3"), Some("90"), DI, DR);
+        assert_eq!(c.initial_delay, Duration::from_secs(3));
+        assert_eq!(c.refresh_interval, Some(Duration::from_secs(90)));
+    }
+
+    #[test]
+    fn garbage_falls_back_to_defaults() {
+        let c = AutoTriggerCadence::resolve(None, Some("nope"), Some("bad"), DI, DR);
+        assert_eq!(c.initial_delay, DI, "unparsable initial -> default");
+        assert_eq!(c.refresh_interval, Some(DR), "unparsable interval -> default refresh");
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum GraphSupervisionStrategy {
     
@@ -246,6 +435,14 @@ pub struct GraphServiceSupervisor {
 
 
     supervision_stats: SupervisionStats,
+
+    // ADR-031 D5 — auto-trigger "in flight" guards. Each analytics pass is
+    // dispatched via `.send()` and the flag is cleared in the response handler,
+    // so a slow GPU pass cannot stack overlapping requests (skip-if-running).
+    auto_community_in_flight: bool,
+    auto_pagerank_in_flight: bool,
+    auto_anomaly_in_flight: bool,
+    auto_components_in_flight: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -307,6 +504,10 @@ impl GraphServiceSupervisor {
             message_buffer_size: 1000,
             total_messages_routed: 0,
             supervision_stats: SupervisionStats::default(),
+            auto_community_in_flight: false,
+            auto_pagerank_in_flight: false,
+            auto_anomaly_in_flight: false,
+            auto_components_in_flight: false,
         }
     }
 
@@ -858,18 +1059,23 @@ impl Default for SupervisionStats {
 impl GraphServiceSupervisor {
     /// Fire a Louvain community-detection pass on the GPU-resident graph.
     ///
-    /// Fire-and-forget: the `Vec<Cluster>` return value is unused because the
-    /// side effect we want is the ClusteringActor writing community labels into
-    /// the shared node_analytics map (cluster_id slot 0 + community_id slot 2),
-    /// which the V3 binary protocol then streams to clients. Routed through the
-    /// GPU manager exactly like the manual /api/analytics/clustering/run path.
-    /// No-op (debug log) until the GPU manager address is available.
-    fn trigger_louvain_clustering(&self) {
-        let Some(ref gpu_manager) = self.gpu_manager else {
-            debug!("Auto-clustering: GPU manager not ready, skipping this pass");
+    /// The side effect we want is the ClusteringActor writing community labels
+    /// into the shared node_analytics map (community_id slot @44), which the V3
+    /// binary protocol then streams to clients. Routed through the GPU manager
+    /// exactly like the manual /api/analytics/clustering/run path. Skip-if-running:
+    /// a pass already in flight is not re-dispatched, so a slow GPU does not stack
+    /// overlapping work. No-op (debug log) until the GPU manager is available.
+    fn trigger_louvain_clustering(&mut self, ctx: &mut Context<Self>) {
+        if self.auto_community_in_flight {
+            debug!("Auto-community: previous pass still running, skipping");
+            return;
+        }
+        let Some(gpu_manager) = self.gpu_manager.clone() else {
+            debug!("Auto-community: GPU manager not ready, skipping this pass");
             return;
         };
-        gpu_manager.do_send(msgs::PerformGPUClustering {
+        self.auto_community_in_flight = true;
+        let fut = gpu_manager.send(msgs::PerformGPUClustering {
             method: "louvain".to_string(),
             params: crate::handlers::api_handler::analytics::ClusteringParams {
                 num_clusters: Some(AUTO_CLUSTER_COUNT),
@@ -892,7 +1098,127 @@ impl GraphServiceSupervisor {
             },
             task_id: format!("auto-louvain_{}", chrono::Utc::now().timestamp_millis()),
         });
-        debug!("Auto-clustering: dispatched Louvain pass to GPU manager");
+        ctx.spawn(fut.into_actor(self).map(|res, act, _ctx| {
+            act.auto_community_in_flight = false;
+            match res {
+                Ok(Ok(clusters)) => {
+                    debug!("Auto-community: Louvain pass produced {} clusters", clusters.len())
+                }
+                Ok(Err(e)) => warn!("Auto-community: Louvain pass failed: {}", e),
+                Err(e) => warn!("Auto-community: GPU manager mailbox error: {}", e),
+            }
+        }));
+        debug!("Auto-community: dispatched Louvain pass to GPU manager");
+    }
+
+    /// Fire a PageRank pass; PageRankActor writes centrality@48 into the shared
+    /// node_analytics map (ADR-031 D3 single writer). Skip-if-running guarded.
+    fn trigger_pagerank(&mut self, ctx: &mut Context<Self>) {
+        if self.auto_pagerank_in_flight {
+            debug!("Auto-pagerank: previous pass still running, skipping");
+            return;
+        }
+        let Some(gpu_manager) = self.gpu_manager.clone() else {
+            debug!("Auto-pagerank: GPU manager not ready, skipping this pass");
+            return;
+        };
+        self.auto_pagerank_in_flight = true;
+        // params: None -> PageRankParams::default() (damping 0.85, 100 iters, normalize).
+        let fut = gpu_manager.send(msgs::ComputePageRank { params: None });
+        ctx.spawn(fut.into_actor(self).map(|res, act, _ctx| {
+            act.auto_pagerank_in_flight = false;
+            match res {
+                Ok(Ok(r)) => debug!(
+                    "Auto-pagerank: converged={} in {} iters",
+                    r.converged, r.iterations
+                ),
+                Ok(Err(e)) => warn!("Auto-pagerank: pass failed: {}", e),
+                Err(e) => warn!("Auto-pagerank: GPU manager mailbox error: {}", e),
+            }
+        }));
+        debug!("Auto-pagerank: dispatched PageRank pass to GPU manager");
+    }
+
+    /// Fire a LOF anomaly pass; AnomalyDetectionActor writes anomaly@40 into the
+    /// shared node_analytics map (ADR-031 single writer). Skip-if-running guarded.
+    fn trigger_anomaly_detection(&mut self, ctx: &mut Context<Self>) {
+        if self.auto_anomaly_in_flight {
+            debug!("Auto-anomaly: previous pass still running, skipping");
+            return;
+        }
+        let Some(gpu_manager) = self.gpu_manager.clone() else {
+            debug!("Auto-anomaly: GPU manager not ready, skipping this pass");
+            return;
+        };
+        self.auto_anomaly_in_flight = true;
+        let fut = gpu_manager.send(msgs::RunAnomalyDetection {
+            params: msgs::AnomalyParams {
+                method: msgs::AnomalyMethod::LocalOutlierFactor,
+                k_neighbors: AUTO_ANOMALY_K_NEIGHBORS,
+                radius: AUTO_ANOMALY_RADIUS,
+                feature_data: None,
+                threshold: AUTO_ANOMALY_LOF_THRESHOLD,
+            },
+        });
+        ctx.spawn(fut.into_actor(self).map(|res, act, _ctx| {
+            act.auto_anomaly_in_flight = false;
+            match res {
+                Ok(Ok(_)) => debug!("Auto-anomaly: LOF pass complete"),
+                Ok(Err(e)) => warn!("Auto-anomaly: pass failed: {}", e),
+                Err(e) => warn!("Auto-anomaly: GPU manager mailbox error: {}", e),
+            }
+        }));
+        debug!("Auto-anomaly: dispatched LOF pass to GPU manager");
+    }
+
+    /// Fire a connected-components pass. No per-node wire slot — this keeps the
+    /// fragmentation-stats cache warm for the analytics API. Skip-if-running guarded.
+    fn trigger_connected_components(&mut self, ctx: &mut Context<Self>) {
+        if self.auto_components_in_flight {
+            debug!("Auto-components: previous pass still running, skipping");
+            return;
+        }
+        let Some(gpu_manager) = self.gpu_manager.clone() else {
+            debug!("Auto-components: GPU manager not ready, skipping this pass");
+            return;
+        };
+        self.auto_components_in_flight = true;
+        let fut = gpu_manager.send(
+            crate::actors::gpu::connected_components_actor::ComputeConnectedComponents {
+                max_iterations: Some(AUTO_COMPONENTS_MAX_ITERATIONS),
+                convergence_threshold: None,
+            },
+        );
+        ctx.spawn(fut.into_actor(self).map(|res, act, _ctx| {
+            act.auto_components_in_flight = false;
+            match res {
+                Ok(Ok(r)) => debug!(
+                    "Auto-components: {} components (largest {})",
+                    r.num_components, r.largest_component_size
+                ),
+                Ok(Err(e)) => warn!("Auto-components: pass failed: {}", e),
+                Err(e) => warn!("Auto-components: GPU manager mailbox error: {}", e),
+            }
+        }));
+        debug!("Auto-components: dispatched connected-components pass to GPU manager");
+    }
+
+    /// Schedule one auto-trigger channel (initial pass + bounded refresh) per its
+    /// resolved cadence. A disabled channel logs and is skipped entirely.
+    fn schedule_auto_trigger(
+        ctx: &mut Context<Self>,
+        name: &'static str,
+        cadence: AutoTriggerCadence,
+        trigger: fn(&mut Self, &mut Context<Self>),
+    ) {
+        if !cadence.enabled {
+            info!("Auto-analytics: '{}' channel disabled by config", name);
+            return;
+        }
+        ctx.run_later(cadence.initial_delay, move |act, ctx| trigger(act, ctx));
+        if let Some(interval) = cadence.refresh_interval {
+            ctx.run_interval(interval, move |act, ctx| trigger(act, ctx));
+        }
     }
 }
 
@@ -904,15 +1230,33 @@ impl Actor for GraphServiceSupervisor {
         self.initialize_actors(ctx);
         self.supervision_stats.uptime = Duration::from_secs(0);
 
-        // Auto-trigger GPU Louvain so cluster_id / community_id populate without a
+        // ADR-031 D5 — auto-trigger every per-node analytics channel so the V3
+        // wire ships real community_id / centrality / anomaly values without a
         // manual button press. One pass shortly after startup (GPU upload settled),
-        // then periodic refresh so communities track nodes added/removed at runtime.
-        ctx.run_later(AUTO_CLUSTER_INITIAL_DELAY, |act, _ctx| {
-            act.trigger_louvain_clustering();
-        });
-        ctx.run_interval(AUTO_CLUSTER_REFRESH_INTERVAL, |act, _ctx| {
-            act.trigger_louvain_clustering();
-        });
+        // then a bounded refresh so values track nodes added/removed at runtime.
+        // Each channel's cadence is resolved from env (manifest-configurable) and
+        // is skip-if-running guarded. All run on topology, decoupled from physics.
+        let auto_cfg = AutoAnalyticsConfig::from_env();
+        info!("Auto-analytics: resolved cadence config {:?}", auto_cfg);
+        Self::schedule_auto_trigger(
+            ctx,
+            "community",
+            auto_cfg.community,
+            Self::trigger_louvain_clustering,
+        );
+        Self::schedule_auto_trigger(ctx, "pagerank", auto_cfg.pagerank, Self::trigger_pagerank);
+        Self::schedule_auto_trigger(
+            ctx,
+            "anomaly",
+            auto_cfg.anomaly,
+            Self::trigger_anomaly_detection,
+        );
+        Self::schedule_auto_trigger(
+            ctx,
+            "components",
+            auto_cfg.components,
+            Self::trigger_connected_components,
+        );
 
         // Periodic GPU address refresh: if ForceComputeActor was respawned by
         // PhysicsSupervisor, re-query the address and forward to PhysicsOrchestratorActor

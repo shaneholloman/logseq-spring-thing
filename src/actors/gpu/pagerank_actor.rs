@@ -116,6 +116,11 @@ pub struct PageRankStats {
     pub iterations: u32,
 }
 
+/// Type alias for the shared node analytics map: node_id -> NodeAnalytics
+type NodeAnalyticsMap = Arc<
+    std::sync::RwLock<std::collections::HashMap<u32, crate::utils::binary_protocol::NodeAnalytics>>,
+>;
+
 /// PageRank Actor for GPU-accelerated centrality computation
 pub struct PageRankActor {
     /// GPU state and resource management
@@ -126,6 +131,16 @@ pub struct PageRankActor {
 
     /// Last computed PageRank results (cached)
     last_result: Option<PageRankResult>,
+
+    /// Maps GPU buffer index -> actual graph node ID.
+    /// Populated lazily from the GPU `node_graph_id` buffer before publishing.
+    /// When empty, raw buffer indices are used as-is (backward compat).
+    node_id_map: Vec<u32>,
+
+    /// Shared analytics store — populated after PageRank so the binary broadcast
+    /// path can embed real centrality@48 values in V3 wire format (ADR-031 D3:
+    /// PageRank is the single writer of `centrality`).
+    node_analytics: Option<NodeAnalyticsMap>,
 }
 
 impl PageRankActor {
@@ -134,7 +149,98 @@ impl PageRankActor {
             gpu_state: GPUState::default(),
             shared_context: None,
             last_result: None,
+            node_id_map: Vec::new(),
+            node_analytics: None,
         }
+    }
+
+    /// Download the buffer_index -> graph_node_id mapping from the GPU
+    /// `node_graph_id` DeviceBuffer. Caches the result in `self.node_id_map`.
+    fn ensure_node_id_map(&mut self) {
+        if !self.node_id_map.is_empty() {
+            return;
+        }
+        if let Some(ref ctx) = self.shared_context {
+            if let Ok(uc) = ctx.unified_compute.lock() {
+                let n = uc.num_nodes;
+                if n > 0 {
+                    let alloc_n = uc.node_graph_id.len();
+                    let mut ids = vec![0i32; alloc_n];
+                    use cust::memory::CopyDestination;
+                    if uc.node_graph_id.copy_to(&mut ids).is_ok() {
+                        ids.truncate(n);
+                        let has_real_ids = ids.iter().any(|&id| id != 0);
+                        if has_real_ids {
+                            self.node_id_map = ids.iter().map(|&id| id as u32).collect();
+                            info!(
+                                "PageRankActor: Downloaded node_id_map ({} entries) from GPU",
+                                self.node_id_map.len()
+                            );
+                        }
+                    }
+                }
+                if self.gpu_state.num_nodes == 0 && n > 0 {
+                    self.gpu_state.num_nodes = n as u32;
+                }
+            }
+        }
+    }
+
+    /// Translate a GPU buffer index to the actual graph node ID.
+    /// Falls back to the raw index if no mapping is available.
+    #[inline]
+    fn translate_gpu_index(&self, gpu_index: usize) -> u32 {
+        if gpu_index < self.node_id_map.len() {
+            self.node_id_map[gpu_index]
+        } else {
+            gpu_index as u32
+        }
+    }
+
+    /// ADR-031 D3: write PageRank centrality into the shared node_analytics map.
+    /// PageRank is the SOLE writer of `centrality@48`. Values are normalised to
+    /// [0,1] by the per-run maximum so the wire slot is self-descriptive; the
+    /// client ramp (GemNodes) divides by its own observed max, leaving the ramp
+    /// unchanged. Entries are reset to 0 first so nodes absent from this run do
+    /// not retain a stale centrality.
+    fn publish_centrality(&mut self, pagerank_values: &[f32]) {
+        self.ensure_node_id_map();
+        let analytics_map = match &self.node_analytics {
+            Some(m) => m.clone(),
+            None => return,
+        };
+        let max_pr = pagerank_values
+            .iter()
+            .cloned()
+            .fold(0.0f32, f32::max);
+        let inv_max = if max_pr > 0.0 { 1.0 / max_pr } else { 0.0 };
+
+        // Resolve (masked node_id, normalised centrality) pairs before taking the
+        // write lock — translate_gpu_index borrows &self, kept out of the guard scope.
+        let updates: Vec<(u32, f32)> = pagerank_values
+            .iter()
+            .enumerate()
+            .map(|(gpu_idx, &pr)| {
+                let node_id =
+                    self.translate_gpu_index(gpu_idx) & crate::utils::binary_protocol::NODE_ID_MASK;
+                (node_id, (pr * inv_max).clamp(0.0, 1.0))
+            })
+            .collect();
+
+        let Ok(mut map) = analytics_map.write() else {
+            return;
+        };
+        for entry in map.values_mut() {
+            entry.centrality = 0.0;
+        }
+        for (node_id, normalized) in &updates {
+            map.entry(*node_id).or_default().centrality = *normalized;
+        }
+        info!(
+            "PageRankActor: Populated node_analytics with centrality for {} nodes (max_pr {:.6})",
+            updates.len(),
+            max_pr
+        );
     }
 
     /// Perform PageRank computation on GPU
@@ -427,6 +533,9 @@ impl Handler<ComputePageRank> for PageRankActor {
                             actor.last_result = Some(result.clone());
                             actor.gpu_state.record_utilization(0.8);
 
+                            // ADR-031 D3: PageRank is the single writer of centrality@48.
+                            actor.publish_centrality(&result.pagerank_values);
+
                             Ok(result)
                         }
                         Err(e) => Err(e),
@@ -464,6 +573,16 @@ impl Handler<SetSharedGPUContext> for PageRankActor {
         self.shared_context = Some(msg.context);
         self.gpu_state.is_initialized = true;
         Ok(())
+    }
+}
+
+// Message handler for receiving the shared node_analytics map (ADR-031 D3)
+impl Handler<SetNodeAnalytics> for PageRankActor {
+    type Result = ();
+
+    fn handle(&mut self, msg: SetNodeAnalytics, _ctx: &mut Context<Self>) {
+        info!("PageRankActor: Received shared node_analytics map");
+        self.node_analytics = Some(msg.node_analytics);
     }
 }
 
@@ -515,5 +634,52 @@ mod tests {
         assert_eq!(stats.median_pagerank, 0.3);
         assert!(stats.converged);
         assert_eq!(stats.iterations, 10);
+    }
+
+    #[test]
+    fn test_publish_centrality_normalises_and_resets_stale() {
+        use crate::utils::binary_protocol::NodeAnalytics;
+        use std::collections::HashMap;
+        use std::sync::{Arc, RwLock};
+
+        let mut actor = PageRankActor::new();
+
+        // Seed: node 99 is absent from this run (its stale centrality must reset to
+        // 0), and node 0 carries a stale value that must be overwritten.
+        let mut seed: HashMap<u32, NodeAnalytics> = HashMap::new();
+        seed.insert(0, NodeAnalytics { centrality: 0.9, ..Default::default() });
+        seed.insert(99, NodeAnalytics { centrality: 0.7, ..Default::default() });
+        let shared = Arc::new(RwLock::new(seed));
+        actor.node_analytics = Some(shared.clone());
+
+        // shared_context is None -> ensure_node_id_map no-ops -> raw indices used as
+        // node_ids. Per-run max is 0.4, so values normalise by /0.4.
+        actor.publish_centrality(&[0.1, 0.4, 0.2]);
+
+        let map = shared.read().unwrap();
+        assert!((map[&0].centrality - 0.25).abs() < 1e-6, "node 0 = 0.1/0.4");
+        assert!((map[&1].centrality - 1.0).abs() < 1e-6, "node 1 = 0.4/0.4");
+        assert!((map[&2].centrality - 0.5).abs() < 1e-6, "node 2 = 0.2/0.4");
+        assert_eq!(map[&99].centrality, 0.0, "stale node reset to 0");
+    }
+
+    #[test]
+    fn test_publish_centrality_all_zero_pagerank() {
+        use crate::utils::binary_protocol::NodeAnalytics;
+        use std::collections::HashMap;
+        use std::sync::{Arc, RwLock};
+
+        let mut actor = PageRankActor::new();
+        let mut seed: HashMap<u32, NodeAnalytics> = HashMap::new();
+        seed.insert(0, NodeAnalytics { centrality: 0.5, ..Default::default() });
+        let shared = Arc::new(RwLock::new(seed));
+        actor.node_analytics = Some(shared.clone());
+
+        // max_pr == 0 -> inv_max == 0 -> every node normalises to 0 (no div-by-zero).
+        actor.publish_centrality(&[0.0, 0.0]);
+
+        let map = shared.read().unwrap();
+        assert_eq!(map[&0].centrality, 0.0);
+        assert_eq!(map[&1].centrality, 0.0);
     }
 }

@@ -225,7 +225,9 @@ pub(crate) fn handle_request_full_snapshot(
         if !all_nodes.is_empty() {
             let analytics = _act.app_state.node_analytics.read().ok();
             let analytics_ref = analytics.as_deref();
-            let binary_data = binary_protocol::encode_node_data_with_live_analytics(&all_nodes, analytics_ref);
+            let sssp = _act.app_state.node_sssp.read().ok();
+            let sssp_ref = sssp.as_deref();
+            let binary_data = binary_protocol::encode_node_data_with_live_analytics(&all_nodes, analytics_ref, sssp_ref);
             ctx.binary(binary_data);
             debug!("Sent position snapshot with {} nodes", all_nodes.len());
         }
@@ -403,7 +405,9 @@ pub(crate) fn handle_request_bots_positions(
             if !nodes_data.is_empty() {
                 let analytics = _act.app_state.node_analytics.read().ok();
                 let analytics_ref = analytics.as_deref();
-                let binary_data = binary_protocol::encode_node_data_with_live_analytics(&nodes_data, analytics_ref);
+                let sssp = _act.app_state.node_sssp.read().ok();
+                let sssp_ref = sssp.as_deref();
+                let binary_data = binary_protocol::encode_node_data_with_live_analytics(&nodes_data, analytics_ref, sssp_ref);
 
                 // hot-path: trace only (fires per bots position update cycle)
                 trace!(
@@ -695,7 +699,9 @@ pub(crate) fn handle_request_swarm_telemetry(
             if !nodes_data.is_empty() {
                 let analytics = _act.app_state.node_analytics.read().ok();
                 let analytics_ref = analytics.as_deref();
-                let binary_data = binary_protocol::encode_node_data_with_live_analytics(&nodes_data, analytics_ref);
+                let sssp = _act.app_state.node_sssp.read().ok();
+                let sssp_ref = sssp.as_deref();
+                let binary_data = binary_protocol::encode_node_data_with_live_analytics(&nodes_data, analytics_ref, sssp_ref);
                 ctx.binary(binary_data);
             }
 
@@ -984,7 +990,9 @@ pub(crate) fn handle_node_drag_update(
                 use crate::actors::messages::BroadcastNodePositions;
                 let analytics = app_state.node_analytics.read().ok();
                 let analytics_ref = analytics.as_deref();
-                let binary_data = binary_protocol::encode_node_data_with_live_analytics(&node_data, analytics_ref);
+                let sssp = app_state.node_sssp.read().ok();
+                let sssp_ref = sssp.as_deref();
+                let binary_data = binary_protocol::encode_node_data_with_live_analytics(&node_data, analytics_ref, sssp_ref);
                 client_manager_addr.do_send(BroadcastNodePositions { positions: binary_data });
             }
         }
@@ -1104,7 +1112,9 @@ pub(crate) fn handle_node_drag_end(
                 use crate::actors::messages::BroadcastNodePositions;
                 let analytics = app_state.node_analytics.read().ok();
                 let analytics_ref = analytics.as_deref();
-                let binary_data = binary_protocol::encode_node_data_with_live_analytics(&node_data, analytics_ref);
+                let sssp = app_state.node_sssp.read().ok();
+                let sssp_ref = sssp.as_deref();
+                let binary_data = binary_protocol::encode_node_data_with_live_analytics(&node_data, analytics_ref, sssp_ref);
                 client_manager_addr.do_send(BroadcastNodePositions { positions: binary_data });
             }
         }

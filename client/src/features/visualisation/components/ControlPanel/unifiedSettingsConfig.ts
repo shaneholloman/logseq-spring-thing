@@ -120,7 +120,7 @@ export const UNIFIED_SETTINGS_CONFIG: Record<string, SectionConfig> = {
     fields: [
       // Nodes - Basic
       { key: 'nodeColor', label: 'Node Color', type: 'color', path: 'visualisation.graphs.logseq.nodes.baseColor', description: 'Base color for nodes (used when colour scheme is "base")' },
-      { key: 'colorScheme', label: 'Node colour by', type: 'select', options: ['type', 'domain', 'base'], path: 'visualisation.graphs.logseq.nodes.colorScheme', description: 'How nodes are coloured: "type" by node metadata type, "domain" by domain, "base" uses the single base colour above' },
+      { key: 'colorScheme', label: 'Node colour by', type: 'select', options: ['type', 'domain', 'base', 'community', 'cluster', 'centrality', 'sssp'], path: 'visualisation.graphs.logseq.nodes.colorScheme', description: 'How nodes are coloured: "type"/"domain"/"base" are semantic; "community" by Louvain partition, "cluster" by DBSCAN cluster, "centrality" by PageRank (blue→red ramp), "sssp" by graph distance. Analytic modes fall through to "type" for nodes the server left without that signal.' },
       { key: 'sizeScheme', label: 'Node size by', type: 'select', options: ['degree', 'fileSize', 'hybrid'], path: 'visualisation.graphs.logseq.nodes.sizeScheme', description: 'How nodes are sized: "degree" by connection count, "fileSize" by content byte-size, "hybrid" combines both' },
       { key: 'nodeSize', label: 'Node Size', type: 'slider', min: 0.1, max: 1, step: 0.05, path: 'visualisation.graphs.logseq.nodes.nodeSize', description: 'Global size gain (per-node magnitude comes from degree + content size)' },
       { key: 'perNodeGlow', label: 'Per-node glow (authority/degree)', type: 'toggle', path: 'visualisation.graphs.logseq.nodes.perNodeGlow', description: 'When on, per-node emissive (from the metadata texture) drives glow; when off, nodes use a uniform glow' },
@@ -165,7 +165,17 @@ export const UNIFIED_SETTINGS_CONFIG: Record<string, SectionConfig> = {
       { key: 'labelLayoutEvery', label: 'Label Layout Cadence (frames)', type: 'slider', min: 1, max: 10, step: 1, path: 'visualisation.rendering.labelLayoutEvery', description: 'Frames between full label re-layout passes', isAdvanced: true },
 
       // Selection Highlighting - Basic
-      { key: 'selectionHighlightColor', label: 'Selection Color', type: 'color', path: 'visualisation.interaction.selectionHighlightColor', description: 'Edge color when node is selected' }
+      { key: 'selectionHighlightColor', label: 'Selection Color', type: 'color', path: 'visualisation.interaction.selectionHighlightColor', description: 'Edge color when node is selected' },
+
+      // Analytics Overlays (ADR-031 D6) — server-computed structure on top of the
+      // base graph. Cluster hulls wrap each group's nodes in a translucent volume;
+      // anomaly highlighting recolours outlier nodes red.
+      { key: 'clusterHulls', label: 'Cluster Hulls', type: 'toggle', path: 'visualisation.clusterHulls.enabled', description: 'Draw a translucent convex hull around each server-provided cluster (DBSCAN) or community (Louvain) group' },
+      { key: 'clusterHullOpacity', label: 'Hull Opacity', type: 'slider', min: 0, max: 0.5, step: 0.01, path: 'visualisation.clusterHulls.opacity', description: 'Translucency of cluster hull volumes' },
+      { key: 'clusterHullMax', label: 'Max Hulls', type: 'slider', min: 1, max: 64, step: 1, path: 'visualisation.clusterHulls.maxHulls', description: 'Cap on the number of hulls drawn — the N largest groups are kept so dense graphs stay legible' },
+      { key: 'showAnomalies', label: 'Highlight Anomalies', type: 'toggle', path: 'qualityGates.showAnomalies', description: 'Recolour outlier nodes (LOF anomaly score) red regardless of the colour scheme' },
+      { key: 'clusterHullCommunityFallback', label: 'Community Hull Fallback', type: 'toggle', path: 'visualisation.clusterHulls.communityFallback', description: 'When the server provides no DBSCAN clusters, draw hulls around Louvain communities. Off by default — communities optimise modularity not spatial locality, so their hulls overlap; the cleaner community signal is "Node colour by → community".', isAdvanced: true },
+      { key: 'clusterHullSpatialFallback', label: 'Spatial Hull Fallback', type: 'toggle', path: 'visualisation.clusterHulls.spatialFallback', description: 'When the server provides no cluster or community structure, fabricate hulls from spatial proximity instead of showing none', isAdvanced: true }
     ]
   },
 
@@ -184,7 +194,7 @@ export const UNIFIED_SETTINGS_CONFIG: Record<string, SectionConfig> = {
       { key: 'springKOntology', group: 'Core Forces', label: 'Spring: Ontology', type: 'slider', min: 0, max: 10, step: 0.1, path: 'visualisation.graphs.logseq.physics.springKOntology', description: 'Spring strength multiplier for ontology (OWL) nodes (default 1.0 = baseline).' },
       { key: 'springKAgent', group: 'Core Forces', label: 'Spring: Agent', type: 'slider', min: 0, max: 10, step: 0.1, path: 'visualisation.graphs.logseq.physics.springKAgent', description: 'Spring strength multiplier for agent nodes (default 1.0 = baseline).' },
       { key: 'repelK', group: 'Core Forces', label: 'Repulsion', type: 'slider', min: 0, max: 3000, step: 10, path: 'visualisation.graphs.logseq.physics.repelK', description: 'Node repulsion constant (default 1200)' },
-      { key: 'restLength', group: 'Core Forces', label: 'Node Spacing', type: 'slider', min: 1, max: 500, step: 1, path: 'visualisation.graphs.logseq.physics.restLength', description: 'Spring rest length — small = dense, large = spread (default 80)' },
+      { key: 'restLength', group: 'Core Forces', label: 'Node Spacing', type: 'slider', min: 1, max: 200, step: 1, path: 'visualisation.graphs.logseq.physics.restLength', description: 'Spring rest length — small = dense, large = spread (default 80)' },
       { key: 'centerGravityK', group: 'Core Forces', label: 'Cluster Tightness', type: 'slider', min: 0, max: 1.0, step: 0.01, path: 'visualisation.graphs.logseq.physics.centerGravityK', description: 'Pull towards center — higher values tightly cluster the graph (default 0.05)' },
       { key: 'gravity', group: 'Core Forces', label: 'Gravity', type: 'slider', min: 0, max: 0.01, step: 0.0001, path: 'visualisation.graphs.logseq.physics.gravity', description: 'Center-pull force — affects how loosely-connected nodes drift (default 0.0001)' },
       { key: 'maxForce', group: 'Core Forces', label: 'Max Force', type: 'slider', min: 1, max: 2000, step: 5, path: 'visualisation.graphs.logseq.physics.maxForce', description: 'Maximum force per node (default 1000)' },
@@ -206,7 +216,7 @@ export const UNIFIED_SETTINGS_CONFIG: Record<string, SectionConfig> = {
       // ===================================================================
       // Repulsion & Spacing — short-range separation and grid resolution.
       // ===================================================================
-      { key: 'maxRepulsionDist', group: 'Repulsion & Spacing', label: 'Max Repulsion Dist', type: 'slider', min: 10, max: 5000, step: 50, path: 'visualisation.graphs.logseq.physics.maxRepulsionDist', description: 'Maximum repulsion range — larger affects more distant nodes (default 1000)' },
+      { key: 'maxRepulsionDist', group: 'Repulsion & Spacing', label: 'Max Repulsion Dist', type: 'slider', min: 10, max: 800, step: 10, path: 'visualisation.graphs.logseq.physics.maxRepulsionDist', description: 'Maximum repulsion range — larger affects more distant nodes (default 400, sized to the ~400-unit graph envelope)' },
       { key: 'separationRadius', group: 'Repulsion & Spacing', label: 'Separation Radius', type: 'slider', min: 0, max: 50, step: 0.1, path: 'visualisation.graphs.logseq.physics.separationRadius', description: 'Minimum node separation — tiny for dense, large for spacing (default ~2.12)' },
       { key: 'gridCellSize', group: 'Repulsion & Spacing', label: 'Grid Cell Size', type: 'slider', min: 1, max: 200, step: 1, path: 'visualisation.graphs.logseq.physics.gridCellSize', description: 'Spatial grid cell size — larger for spread-out graphs (default 50)' },
       { key: 'repulsionSofteningEpsilon', group: 'Repulsion & Spacing', label: 'Repulsion Epsilon', type: 'slider', min: 0, max: 0.01, step: 0.0001, path: 'visualisation.graphs.logseq.physics.repulsionSofteningEpsilon', description: 'Softening for close nodes (default 0.0001)' },
@@ -215,7 +225,7 @@ export const UNIFIED_SETTINGS_CONFIG: Record<string, SectionConfig> = {
       // Bounds — bounding box containment.
       // ===================================================================
       { key: 'enableBounds', group: 'Bounds', label: 'Enable Bounds', type: 'toggle', path: 'visualisation.graphs.logseq.physics.enableBounds', description: 'Constrain nodes to a bounding box' },
-      { key: 'boundsSize', group: 'Bounds', label: 'Bounds Size', type: 'slider', min: 100, max: 20000, step: 100, path: 'visualisation.graphs.logseq.physics.boundsSize', description: 'Size of bounding box — larger allows more spread (default 2000)' },
+      { key: 'boundsSize', group: 'Bounds', label: 'Bounds Size', type: 'slider', min: 100, max: 2000, step: 50, path: 'visualisation.graphs.logseq.physics.boundsSize', description: 'Half-extent of the soft bounding cube per axis — the graph settles within ~this radius (default 400)' },
       { key: 'boundaryDamping', group: 'Bounds', label: 'Boundary Damping', type: 'slider', min: 0, max: 1.0, step: 0.01, path: 'visualisation.graphs.logseq.physics.boundaryDamping', description: 'Velocity damping when nodes approach boundary (default 0.95)' },
 
       // ===================================================================
@@ -225,7 +235,7 @@ export const UNIFIED_SETTINGS_CONFIG: Record<string, SectionConfig> = {
       { key: 'scalingRatio', group: 'Layout Forces', label: 'FA2 Scaling Ratio', type: 'slider', min: 0.5, max: 100, step: 0.5, path: 'visualisation.graphs.logseq.physics.scalingRatio', description: 'ForceAtlas2 repulsion scaling — higher spreads degree-heavy nodes further (default 10)' },
       { key: 'adaptiveSpeed', group: 'Layout Forces', label: 'Adaptive Speed', type: 'toggle', path: 'visualisation.graphs.logseq.physics.adaptiveSpeed', description: 'Per-node adaptive convergence speed (reduces oscillation)' },
       { key: 'ssspAlpha', group: 'Layout Forces', label: 'SSSP Alpha', type: 'slider', min: 0, max: 5, step: 0.1, path: 'visualisation.graphs.logseq.physics.ssspAlpha', description: 'Single-source shortest-path force weighting (default 1.5)' },
-      { key: 'graphSeparationX', group: 'Layout Forces', label: 'Graph Separation', type: 'slider', min: 0, max: 3000, step: 50, path: 'visualisation.graphs.logseq.physics.graphSeparationX', description: 'Gap between the knowledge and ontology discs along X (0 = merged, default 1000)' },
+      { key: 'graphSeparationX', group: 'Layout Forces', label: 'Graph Separation', type: 'slider', min: 0, max: 400, step: 25, path: 'visualisation.graphs.logseq.physics.graphSeparationX', description: 'Separation between the knowledge and ontology graphs — the depth gap between the two facing discs (0 = merged/overlapping, ~250 = clearly separated, default 250). Use with Disc Flatten to make them face one another.' },
       { key: 'axisCompressionZ', group: 'Layout Forces', label: 'Disc Flatten', type: 'slider', min: 0, max: 1.0, step: 0.05, path: 'visualisation.graphs.logseq.physics.axisCompressionZ', description: 'Flatten KG + ontology into two discs that face one another across the gap (0 = full 3D blobs, 1 = flat facing discs, default 0.9). Agents stay 3D as bridges.' },
 
       // ===================================================================

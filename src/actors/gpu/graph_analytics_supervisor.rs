@@ -15,6 +15,7 @@ use std::time::{Duration, Instant};
 use super::supervisor_messages::*;
 use super::shared::SharedGPUContext;
 use super::shortest_path_actor::ComputeSSP;
+use super::connected_components_actor::{ComputeConnectedComponents, ConnectedComponentsResult};
 use super::{ConnectedComponentsActor, ShortestPathActor};
 use crate::actors::messages::*;
 use visionclaw_domain::ports::gpu_semantic_analyzer::PathfindingResult;
@@ -416,6 +417,37 @@ impl Handler<ComputeShortestPaths> for GraphAnalyticsSupervisor {
                 }
                 result
             })
+        )
+    }
+}
+
+impl Handler<ComputeConnectedComponents> for GraphAnalyticsSupervisor {
+    type Result = ResponseActFuture<Self, Result<ConnectedComponentsResult, String>>;
+
+    fn handle(&mut self, msg: ComputeConnectedComponents, _ctx: &mut Self::Context) -> Self::Result {
+        let addr = match &self.connected_components_actor {
+            Some(a) if self.connected_components_state.is_running => a.clone(),
+            _ => {
+                return Box::pin(
+                    async { Err("ConnectedComponentsActor not available".to_string()) }
+                        .into_actor(self),
+                );
+            }
+        };
+
+        Box::pin(
+            async move {
+                addr.send(msg)
+                    .await
+                    .map_err(|e| format!("Communication failed: {}", e))?
+            }
+            .into_actor(self)
+            .map(|result, actor, _ctx| {
+                if result.is_ok() {
+                    actor.last_success = Some(Instant::now());
+                }
+                result
+            }),
         )
     }
 }

@@ -13,7 +13,8 @@
 use actix::prelude::*;
 use log::{error, info};
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
+use std::collections::HashMap;
+use std::sync::{Arc, RwLock};
 use std::time::Instant;
 
 use super::shared::{GPUState, SharedGPUContext};
@@ -118,6 +119,11 @@ pub struct ShortestPathActor {
 
     /// Computation statistics
     stats: ShortestPathStats,
+
+    /// ADR-031 D2b: shared SSSP map (compact node_id -> (distance, parent_id))
+    /// published after each ComputeSSP run and read by the binary broadcast path
+    /// to fill V3 wire slot 28.
+    node_sssp: Option<Arc<RwLock<HashMap<u32, (f32, i32)>>>>,
 }
 
 impl ShortestPathActor {
@@ -132,6 +138,7 @@ impl ShortestPathActor {
                 avg_apsp_time_ms: 0.0,
                 last_computation_time_ms: 0,
             },
+            node_sssp: None,
         }
     }
 
@@ -194,6 +201,15 @@ impl Handler<SetSharedGPUContext> for ShortestPathActor {
     }
 }
 
+impl Handler<SetNodeSSSP> for ShortestPathActor {
+    type Result = ();
+
+    fn handle(&mut self, msg: SetNodeSSSP, _ctx: &mut Self::Context) -> Self::Result {
+        info!("ShortestPathActor: Received shared node_sssp map");
+        self.node_sssp = Some(msg.node_sssp);
+    }
+}
+
 impl Handler<ComputeSSP> for ShortestPathActor {
     type Result = Result<SSSPResult, String>;
 
@@ -201,7 +217,7 @@ impl Handler<ComputeSSP> for ShortestPathActor {
         info!("ShortestPathActor: Computing SSSP from node {}", msg.source_idx);
 
         // Acquire lock, compute, then drop lock before calling update_stats
-        let (filtered_distances, nodes_reached, max_distance, computation_time) = {
+        let (filtered_distances, nodes_reached, max_distance, computation_time, node_id_map) = {
             let mut unified_compute = match &self.shared_context {
                 Some(ctx) => ctx
                     .unified_compute
@@ -224,6 +240,27 @@ impl Handler<ComputeSSP> for ShortestPathActor {
 
             let computation_time = start_time.elapsed().as_millis() as u64;
 
+            // ADR-031 D2b: download the GPU buffer-index -> graph-node-id mapping
+            // so published distances key by compact node_id (mirrors
+            // ClusteringActor::ensure_node_id_map). Empty Vec => fall back to raw
+            // GPU index when keying below.
+            let node_id_map: Vec<u32> = {
+                let n = unified_compute.num_nodes;
+                let alloc_n = unified_compute.node_graph_id.len();
+                let mut ids = vec![0i32; alloc_n];
+                use cust::memory::CopyDestination;
+                if n > 0 && unified_compute.node_graph_id.copy_to(&mut ids).is_ok() {
+                    ids.truncate(n);
+                    if ids.iter().any(|&id| id != 0) {
+                        ids.iter().map(|&id| id as u32).collect()
+                    } else {
+                        Vec::new()
+                    }
+                } else {
+                    Vec::new()
+                }
+            };
+
             // Calculate statistics
             let mut nodes_reached = 0;
             let mut max_distance = 0.0f32;
@@ -244,11 +281,38 @@ impl Handler<ComputeSSP> for ShortestPathActor {
                 distances
             };
 
-            (filtered_distances, nodes_reached, max_distance, computation_time)
+            (filtered_distances, nodes_reached, max_distance, computation_time, node_id_map)
         }; // unified_compute lock dropped here
 
         // Now we can safely call update_stats with mutable borrow
         self.update_stats(true, computation_time);
+
+        // ADR-031 D2b: publish per-node distances to the shared node_sssp map so
+        // the binary broadcast path fills wire slot 28. Key by compact node_id
+        // (& NODE_ID_MASK). Unreachable nodes (>= f32::MAX) are left absent — the
+        // encoder defaults missing nodes to (INFINITY, -1). parent = -1 because
+        // run_sssp returns distances only, no predecessor array.
+        if let Some(ref node_sssp) = self.node_sssp {
+            if let Ok(mut map) = node_sssp.write() {
+                map.clear();
+                for (gpu_idx, &dist) in filtered_distances.iter().enumerate() {
+                    if dist >= f32::MAX {
+                        continue;
+                    }
+                    let raw_id = if gpu_idx < node_id_map.len() {
+                        node_id_map[gpu_idx]
+                    } else {
+                        gpu_idx as u32
+                    };
+                    let node_id = raw_id & crate::utils::binary_protocol::NODE_ID_MASK;
+                    map.insert(node_id, (dist, -1));
+                }
+                info!(
+                    "ShortestPathActor: published {} SSSP distances to node_sssp",
+                    map.len()
+                );
+            }
+        }
 
         info!(
             "ShortestPathActor: SSSP completed in {}ms, reached {}/{} nodes",

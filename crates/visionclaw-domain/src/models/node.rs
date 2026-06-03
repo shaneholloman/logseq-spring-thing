@@ -14,6 +14,21 @@ const DEFAULT_INITIAL_RADIUS_MIN: f32 = 100.0;
 /// Matches the main crate's `dev_config::physics().initial_radius_range`.
 const DEFAULT_INITIAL_RADIUS_RANGE: f32 = 300.0;
 
+/// The three graph populations along the dual-graph X-axis.
+///
+/// A node's population is its ORIGIN (which graph it belongs to), NOT its
+/// elevated/enriched class. There is exactly ONE authoritative origin field:
+/// `metadata["type"]`. See [`Node::population`] for the single source of truth.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Population {
+    /// Working/wiki graph: authored `page` and wikilink-stub `linked_page` nodes.
+    Knowledge,
+    /// Formal OWL graph: `owl_class`, `ontology_node`, `owl_individual`, `owl_property`.
+    Ontology,
+    /// Agent/bot swarm nodes.
+    Agent,
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct Node {
@@ -237,6 +252,49 @@ impl Node {
             weight: None,
             group: None,
             user_data: None,
+        }
+    }
+
+    /// Resolve the AUTHORITATIVE origin-type string for population classification.
+    ///
+    /// `metadata["type"]` is the single source of truth for a node's origin
+    /// (which graph it belongs to). `node_type` is non-classifying scaffold for
+    /// the future, not-yet-built elevation process (forum → decision brokers →
+    /// agent panels) that would migrate a page from the knowledge graph into the
+    /// ontology graph by rewriting `metadata["type"]`. Until elevation exists and
+    /// rewrites `metadata["type"]`, `node_type` MUST NOT change a node's origin.
+    ///
+    /// `node_type` is therefore consulted ONLY as a legacy fallback when
+    /// `metadata["type"]` is absent (e.g. nodes built before metadata was
+    /// populated, or test fixtures that set only `node_type`). When both are
+    /// present, `metadata["type"]` wins unconditionally.
+    pub fn population_type(&self) -> Option<&str> {
+        self.metadata
+            .get("type")
+            .map(|s| s.as_str())
+            .or_else(|| self.node_type.as_deref())
+    }
+
+    /// Classify this node into its graph [`Population`] — the SINGLE source of
+    /// truth shared by every reader (GPU disc projection, server-side filter,
+    /// client visual mode and filter, colour). Reads [`Node::population_type`]
+    /// and applies the canonical match arms, falling back to `owl_class_iri` as
+    /// the sole secondary ontology signal when the type string is unknown.
+    pub fn population(&self) -> Population {
+        match self.population_type() {
+            Some("agent") | Some("bot") => Population::Agent,
+            Some("owl_class")
+            | Some("ontology_node")
+            | Some("owl_individual")
+            | Some("owl_property") => Population::Ontology,
+            Some("page") | Some("linked_page") => Population::Knowledge,
+            _ => {
+                if self.owl_class_iri.is_some() {
+                    Population::Ontology
+                } else {
+                    Population::Knowledge
+                }
+            }
         }
     }
 

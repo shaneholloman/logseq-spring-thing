@@ -31,6 +31,7 @@ use super::resource_supervisor::{ResourceSupervisor, SetSubsystemSupervisors};
 use super::ForceComputeActor;
 use super::force_compute_actor::PhysicsStats;
 use super::pagerank_actor::PageRankResult;
+use super::connected_components_actor::{ComputeConnectedComponents, ConnectedComponentsResult};
 use crate::actors::messages::*;
 use crate::telemetry::agent_telemetry::{
     get_telemetry_logger, CorrelationId, LogLevel, TelemetryEvent,
@@ -640,6 +641,26 @@ impl Handler<ComputeShortestPaths> for GPUManagerActor {
     }
 }
 
+/// Connected components - routes to GraphAnalyticsSupervisor
+impl Handler<ComputeConnectedComponents> for GPUManagerActor {
+    type Result = ResponseActFuture<Self, Result<ConnectedComponentsResult, String>>;
+
+    fn handle(&mut self, msg: ComputeConnectedComponents, ctx: &mut Self::Context) -> Self::Result {
+        let supervisors = match self.get_supervisors(ctx) {
+            Ok(s) => s.clone(),
+            Err(e) => return Box::pin(async move { Err(e) }.into_actor(self)),
+        };
+
+        Box::pin(
+            async move {
+                supervisors.graph_analytics.send(msg).await
+                    .map_err(|e| format!("GraphAnalyticsSupervisor communication failed: {}", e))?
+            }
+            .into_actor(self)
+        )
+    }
+}
+
 /// PageRank computation - routes to AnalyticsSupervisor
 impl Handler<ComputePageRank> for GPUManagerActor {
     type Result = ResponseActFuture<Self, Result<PageRankResult, String>>;
@@ -829,6 +850,19 @@ impl Handler<SetNodeAnalytics> for GPUManagerActor {
             let _ = supervisors.analytics.try_send(msg);
         } else {
             warn!("GPUManagerActor: Supervisors not available for SetNodeAnalytics");
+        }
+    }
+}
+
+impl Handler<WriteClusterAnalytics> for GPUManagerActor {
+    type Result = ();
+
+    fn handle(&mut self, msg: WriteClusterAnalytics, ctx: &mut Self::Context) {
+        info!("GPUManagerActor: Forwarding WriteClusterAnalytics to AnalyticsSupervisor");
+        if let Ok(supervisors) = self.get_supervisors(ctx) {
+            let _ = supervisors.analytics.try_send(msg);
+        } else {
+            warn!("GPUManagerActor: Supervisors not available for WriteClusterAnalytics");
         }
     }
 }

@@ -30,7 +30,7 @@ fn default_adaptive_speed() -> bool {
 }
 
 fn default_global_speed() -> f32 {
-    0.5
+    0.4
 }
 
 fn default_spring_pop_scale() -> f32 {
@@ -50,7 +50,7 @@ fn default_constraint_max_force_per_node() -> f32 {
 }
 
 fn default_bounds_size() -> f32 {
-    1000.0
+    400.0
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default, Type, Validate)]
@@ -332,46 +332,54 @@ impl Default for PhysicsSettings {
             auto_balance_interval_ms: 500,
             auto_balance_config: AutoBalanceConfig::default(),
             auto_pause: AutoPauseConfig::default(),
-            bounds_size: 2000.0,
+            // Canonical compact profile (single source of truth). The YAML
+            // visualisation.graphs.logseq.physics block is NOT applied to the
+            // running simulation — boot uses these defaults whenever the sqlite
+            // "physics" key is absent (app_state.rs). centerGravityK is the
+            // dominant scale control: it sets the equilibrium radius against
+            // repelK and reins in disconnected nodes springs can't reach.
+            // Measured: 90% of nodes within ~45u of their cluster centroid, the
+            // whole graph sitting well inside the ~400u soft-cube bounds.
+            bounds_size: 400.0,
             separation_radius: 2.1155233,
-            damping: 0.85,
-            enable_bounds: false,
+            damping: 0.9,
+            enable_bounds: true,
             enabled: true,
             iterations: 50,
             max_velocity: 100.0,
-            max_force: 1000.0,
-            repel_k: 1200.0,
-            spring_k: 15.0,
+            max_force: 150.0,
+            repel_k: 120.0,
+            spring_k: 12.0,
             boundary_damping: 0.95,
             dt: 0.016,
             temperature: 0.0,
-            gravity: 0.0001,
+            gravity: 0.002,
             cluster_strength: 0.002,
 
-            rest_length: 80.0,
+            rest_length: 50.0,
             repulsion_softening_epsilon: 0.0001,
-            center_gravity_k: 0.05,
+            center_gravity_k: 0.2,
             grid_cell_size: 50.0,
             warmup_iterations: 100,
             cooling_rate: 0.001,
 
-            max_repulsion_dist: 1000.0,
+            max_repulsion_dist: 400.0,
             sssp_alpha: default_sssp_alpha(),
 
             constraint_ramp_frames: default_constraint_ramp_frames(),
             constraint_max_force_per_node: default_constraint_max_force_per_node(),
 
-            clustering_algorithm: "kmeans".to_string(),
-            cluster_count: 8,
+            clustering_algorithm: "louvain".to_string(),
+            cluster_count: 5,
             clustering_resolution: 1.0,
-            clustering_iterations: 30,
+            clustering_iterations: 50,
 
             graph_separation_x: 0.0,
-            axis_compression_z: 0.0,
+            axis_compression_z: 0.9,
             lin_log_mode: true,
             scaling_ratio: 10.0,
             adaptive_speed: true,
-            global_speed: 0.5,
+            global_speed: 0.4,
             spring_k_knowledge: 1.0,
             spring_k_ontology: 1.0,
             spring_k_agent: 1.0,
@@ -497,9 +505,15 @@ mod tests {
     fn test_physics_settings_default() {
         let ps = PhysicsSettings::default();
         assert_eq!(ps.max_velocity, 100.0);
-        assert_eq!(ps.max_force, 1000.0);
-        assert_eq!(ps.repel_k, 1200.0);
-        assert_eq!(ps.spring_k, 15.0);
+        // Canonical compact profile (single source of truth): forces tuned so the
+        // ~10.7k-node graph settles within the ~400u soft-cube bounds.
+        assert_eq!(ps.max_force, 150.0);
+        assert_eq!(ps.repel_k, 120.0);
+        assert_eq!(ps.spring_k, 12.0);
+        assert_eq!(ps.center_gravity_k, 0.2);
+        assert_eq!(ps.bounds_size, 400.0);
+        assert!(ps.enable_bounds);
+        assert_eq!(ps.max_repulsion_dist, 400.0);
         assert_eq!(ps.sssp_alpha, 1.5);
         assert!((ps.cluster_strength - 0.002).abs() < 1e-9);
         assert!(ps.enabled);

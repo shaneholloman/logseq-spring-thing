@@ -6,6 +6,7 @@ import {
   nodeAnalyticsStore,
   ANALYTICS_STRIDE,
   ANALYTICS_CLUSTER_OFFSET,
+  ANALYTICS_COMMUNITY_OFFSET,
 } from '../../analytics/store/nodeAnalyticsStore';
 
 // ============================================================================
@@ -79,6 +80,15 @@ function getDomainHullColor(domain: string): string {
     return GPU_CLUSTER_COLORS[idx];
   }
   return DOMAIN_COLORS[domain] ?? DEFAULT_COLOR;
+}
+
+// ADR-031 D6: Louvain community hull colour. Matches GemNodes' community node
+// hue (multiply-by-83 mod 360, HSL 0.65/0.5) so a hull and its member nodes
+// read as the same region.
+const _communityHullColor = new THREE.Color();
+function getCommunityHullColor(communityId: number): string {
+  const hue = ((communityId * 83) % 360) / 360;
+  return `#${_communityHullColor.setHSL(hue, 0.65, 0.5).getHexString()}`;
 }
 
 interface ClusterPoint {
@@ -264,11 +274,17 @@ export const ClusterHulls: React.FC<ClusterHullsProps> = ({
     const analytics = analyticsRef.current;
     const positions = nodePositionsRef.current;
 
-    // Detect whether any real cluster_id is present (stride ANALYTICS_STRIDE).
+    // Detect which server signals are present (stride ANALYTICS_STRIDE).
+    // cluster_id (DBSCAN/k-means) is the preferred grouping; community_id
+    // (Louvain) is the fallback when no DBSCAN run has populated cluster_id.
     let hasClusterId = false;
+    let hasCommunityId = false;
     if (analytics) {
       for (const idx of nodeIdToIndexMap.values()) {
-        if (analytics[idx * ANALYTICS_STRIDE + ANALYTICS_CLUSTER_OFFSET] > 0) { hasClusterId = true; break; }
+        const a = idx * ANALYTICS_STRIDE;
+        if (analytics[a + ANALYTICS_CLUSTER_OFFSET] > 0) hasClusterId = true;
+        if (analytics[a + ANALYTICS_COMMUNITY_OFFSET] > 0) hasCommunityId = true;
+        if (hasClusterId) break; // cluster_id wins outright; stop early
       }
     }
 
@@ -288,6 +304,30 @@ export const ClusterHulls: React.FC<ClusterHullsProps> = ({
         const key = `cluster-${clusterId}`;
         let arr = map.get(key);
         if (!arr) { arr = []; map.set(key, arr); colorByKey.set(key, getDomainHullColor(key)); }
+        arr.push(node.id);
+      }
+      return { map, colorByKey };
+    }
+
+    // ADR-031 D6: no DBSCAN cluster_id, but the live graph carries Louvain
+    // community_id. Community_id is real server structure, but Louvain optimises
+    // graph modularity, not spatial locality — a community's members scatter
+    // across the disc, so its convex hull blankets the whole graph and the
+    // hulls overlap into an uninspectable blob. So community hulls are an opt-in
+    // tier (default off), same as the fabricated spatial fallback; the honest
+    // default community signal is per-node colour (colorScheme: 'community').
+    // Cluster hulls (DBSCAN, spatially compact) remain default-on above.
+    const communityFallback = settings?.visualisation?.clusterHulls?.communityFallback === true;
+    if (hasCommunityId && communityFallback) {
+      for (let ni = 0; ni < nodes.length; ni++) {
+        const node = nodes[ni];
+        const nodeIndex = nodeIdToIndexMap.get(node.id);
+        if (nodeIndex === undefined) continue;
+        const communityId = analytics![nodeIndex * ANALYTICS_STRIDE + ANALYTICS_COMMUNITY_OFFSET];
+        if (!(communityId > 0)) continue;
+        const key = `community-${communityId}`;
+        let arr = map.get(key);
+        if (!arr) { arr = []; map.set(key, arr); colorByKey.set(key, getCommunityHullColor(communityId)); }
         arr.push(node.id);
       }
       return { map, colorByKey };
@@ -313,7 +353,7 @@ export const ClusterHulls: React.FC<ClusterHullsProps> = ({
     // Spatial clusters carry no semantic key; hullEntries colours them by rank.
     return { map: buildSpatialClusters(pts, SPATIAL_TARGET_CELLS), colorByKey };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nodes, nodeIdToIndexMap, nodePositionsRef, tick, settings?.visualisation?.clusterHulls?.spatialFallback]);
+  }, [nodes, nodeIdToIndexMap, nodePositionsRef, tick, settings?.visualisation?.clusterHulls?.spatialFallback, settings?.visualisation?.clusterHulls?.communityFallback]);
 
   // ---- Build hull geometries from current positions ----
   const hullEntries = useMemo(() => {

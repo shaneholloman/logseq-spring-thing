@@ -162,8 +162,10 @@ function parseCommandToActions(cmd: string): SettingsAction[] {
     }
   }
 
-  // Physics: repulsion / spread / separate
-  if (lower.includes('repul') || lower.includes('spread') || lower.includes('separate')) {
+  // Physics: repulsion. "separate"/"split" are NOT routed here — those move the
+  // two graphs apart via the dual-graph disc projection below, not the repulsion
+  // force constant.
+  if (lower.includes('repul') || lower.includes('spread')) {
     const increase = lower.includes('increase') || lower.includes('more') || lower.includes('spread');
     const value = increase ? 400 : 100;
     actions.push({
@@ -172,6 +174,45 @@ function parseCommandToActions(cmd: string): SettingsAction[] {
       method: 'PUT',
       body: { repelK: value },
     });
+  }
+
+  // Dual-graph disc projection. The knowledge + ontology graphs flatten into two
+  // facing discs (axisCompressionZ, 0=3D blobs..1=flat discs) separated across a
+  // depth gap (graphSeparationX). This acts on the display projection, NOT the
+  // force constants, so it is kept distinct from the repulsion rule above.
+  // Handles e.g. "separate and flatten the two graphs" and
+  // "reset the separation and flattening to zero" in a single PUT.
+  {
+    const toZero = lower.includes('zero') || lower.includes('reset')
+      || lower.includes('off') || lower.includes('remove') || lower.includes('un-');
+    const discBody: Record<string, number> = {};
+
+    if (lower.includes('separat') || lower.includes('split') || lower.includes('apart')) {
+      discBody.graphSeparationX = toZero ? 0 : 250;
+    } else if (lower.includes('merge') || lower.includes('combine') || lower.includes('overlap')
+      || (lower.includes('together') && lower.includes('graph'))) {
+      discBody.graphSeparationX = 0;
+    }
+
+    if (lower.includes('flatten') || /\bflat\b/.test(lower) || lower.includes('facing disc')
+      || lower.includes('co-planar') || lower.includes('coplanar')) {
+      discBody.axisCompressionZ = toZero ? 0 : 0.9;
+    } else if (lower.includes('unflatten') || lower.includes('un-flatten')
+      || lower.includes('blob') || (lower.includes('3d') && lower.includes('graph'))) {
+      discBody.axisCompressionZ = 0;
+    }
+
+    if (Object.keys(discBody).length > 0) {
+      const parts: string[] = [];
+      if ('graphSeparationX' in discBody) parts.push(`separation→${discBody.graphSeparationX}`);
+      if ('axisCompressionZ' in discBody) parts.push(`flatten→${discBody.axisCompressionZ}`);
+      actions.push({
+        description: `Dual-graph discs: ${parts.join(', ')}`,
+        endpoint: '/api/settings/physics',
+        method: 'PUT',
+        body: discBody,
+      });
+    }
   }
 
   // Physics: spring / attract / tight / compact
@@ -275,8 +316,11 @@ function parseCommandToActions(cmd: string): SettingsAction[] {
     });
   }
 
-  // Reset to defaults
-  if (lower.includes('reset') || lower.includes('default')) {
+  // Reset to defaults. Skipped when the command is specifically about disc
+  // separation/flatten ("reset the separation and flattening") — that is handled
+  // by the dual-graph disc rule above and must not also reset the force constants.
+  if ((lower.includes('reset') || lower.includes('default'))
+    && !lower.includes('separat') && !lower.includes('flatten') && !/\bflat\b/.test(lower)) {
     actions.push({
       description: 'Resetting physics to defaults',
       endpoint: '/api/settings/physics',

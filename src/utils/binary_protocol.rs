@@ -476,134 +476,29 @@ pub fn encode_node_data_with_flags(
     encode_node_data_with_types(nodes, agent_node_ids, &[])
 }
 
-/// Encode node data with analytics (Protocol V3 - ADR-031)
-/// Extends with cluster_id, anomaly_score, community_id, and centrality
-pub fn encode_node_data_with_analytics(
-    nodes: &[(u32, BinaryNodeData)],
-    agent_node_ids: &[u32],
-    knowledge_node_ids: &[u32],
-    ontology_class_ids: &[u32],
-    ontology_individual_ids: &[u32],
-    ontology_property_ids: &[u32],
-    analytics: &HashMap<u32, NodeAnalytics>,
-) -> Vec<u8> {
-    encode_node_data_with_all(
-        nodes,
-        agent_node_ids,
-        knowledge_node_ids,
-        ontology_class_ids,
-        ontology_individual_ids,
-        ontology_property_ids,
-        None,
-        analytics,
-    )
-}
-
-/// Encode node data with both SSSP and analytics data (Protocol V3).
-/// `sssp_data` maps node_id -> (distance, parent_id).
-/// `analytics` maps node_id -> NodeAnalytics{cluster_id, community_id, anomaly, centrality}.
-pub fn encode_node_data_with_all(
-    nodes: &[(u32, BinaryNodeData)],
-    agent_node_ids: &[u32],
-    knowledge_node_ids: &[u32],
-    ontology_class_ids: &[u32],
-    ontology_individual_ids: &[u32],
-    ontology_property_ids: &[u32],
-    sssp_data: Option<&HashMap<u32, (f32, i32)>>,
-    analytics: &HashMap<u32, NodeAnalytics>,
-) -> Vec<u8> {
-    let protocol_version = PROTOCOL_V3;
-    let item_size = WIRE_V3_ITEM_SIZE;
-
-    if !nodes.is_empty() {
-        trace!(
-            "Encoding {} nodes with analytics using protocol v{} (item_size={})",
-            nodes.len(),
-            protocol_version,
-            item_size
-        );
-    }
-
-    let mut buffer = Vec::with_capacity(1 + nodes.len() * item_size);
-    buffer.push(protocol_version);
-
-    for (node_id, node) in nodes {
-        // Apply node type flags
-        let flagged_id = if agent_node_ids.contains(node_id) {
-            set_agent_flag(*node_id)
-        } else if knowledge_node_ids.contains(node_id) {
-            set_knowledge_flag(*node_id)
-        } else if ontology_class_ids.contains(node_id) {
-            set_ontology_class_flag(*node_id)
-        } else if ontology_individual_ids.contains(node_id) {
-            set_ontology_individual_flag(*node_id)
-        } else if ontology_property_ids.contains(node_id) {
-            set_ontology_property_flag(*node_id)
-        } else {
-            *node_id
-        };
-
-        let wire_id = to_wire_id_v2(flagged_id);
-        buffer.extend_from_slice(&wire_id.to_le_bytes());
-
-        // Position (12 bytes)
-        buffer.extend_from_slice(&node.x.to_le_bytes());
-        buffer.extend_from_slice(&node.y.to_le_bytes());
-        buffer.extend_from_slice(&node.z.to_le_bytes());
-
-        // Velocity (12 bytes)
-        buffer.extend_from_slice(&node.vx.to_le_bytes());
-        buffer.extend_from_slice(&node.vy.to_le_bytes());
-        buffer.extend_from_slice(&node.vz.to_le_bytes());
-
-        // Maps are keyed by COMPACT node id; strip any flag bits before lookup
-        // (idempotent for compact ids, corrective if a flagged id is passed in).
-        let base_id = *node_id & NODE_ID_MASK;
-
-        // SSSP data (8 bytes) - read from sssp_data if available
-        let (sssp_distance, sssp_parent) = sssp_data
-            .and_then(|m| m.get(&base_id))
-            .copied()
-            .unwrap_or((f32::INFINITY, -1));
-        buffer.extend_from_slice(&sssp_distance.to_le_bytes());
-        buffer.extend_from_slice(&sssp_parent.to_le_bytes());
-
-        // Analytics data (16 bytes) - V3 extension
-        let a = analytics
-            .get(&base_id)
-            .copied()
-            .unwrap_or_default(); // Default values if no analytics
-
-        buffer.extend_from_slice(&a.cluster_id.to_le_bytes());
-        buffer.extend_from_slice(&a.anomaly.to_le_bytes());
-        buffer.extend_from_slice(&a.community_id.to_le_bytes());
-        buffer.extend_from_slice(&a.centrality.to_le_bytes());
-    }
-
-    if !nodes.is_empty() {
-        trace!(
-            "Encoded binary data with analytics (v{}): {} bytes for {} nodes",
-            protocol_version,
-            buffer.len(),
-            nodes.len()
-        );
-    }
-
-    buffer
-}
+// NOTE (task #70 D8b analytics consolidation): the duplicate analytics writers
+// `encode_node_data_with_analytics` and its sole delegate `encode_node_data_with_all`
+// were removed. Both had zero callers anywhere in `src/` or `crates/` and were
+// masked only by this module's `#![allow(dead_code)]`. The single live full-feature
+// writer is `encode_node_data_extended_with_sssp` (used by the client coordinator
+// and `encode_node_data_with_live_analytics`), which produces the identical V3
+// 52-byte wire frame. The independent `visionclaw-protocol` crate copy is unaffected.
 
 pub fn encode_node_data(nodes: &[(u32, BinaryNodeData)]) -> Vec<u8> {
     encode_node_data_with_types(nodes, &[], &[])
 }
 
-/// Encode node data with analytics from a shared store.
-/// Convenience wrapper for the broadcast path that only has node positions
-/// and a reference to the shared analytics map.
+/// Encode node data with live analytics and SSSP distances from shared stores.
+/// Convenience wrapper for the broadcast path that only has node positions and
+/// references to the shared analytics + SSSP maps. `sssp_data` maps compact
+/// node_id -> (distance, parent_id); when `None`, wire slot 28 defaults to
+/// (INFINITY, -1) per node.
 pub fn encode_node_data_with_live_analytics(
     nodes: &[(u32, BinaryNodeData)],
     analytics_data: Option<&HashMap<u32, NodeAnalytics>>,
+    sssp_data: Option<&HashMap<u32, (f32, i32)>>,
 ) -> Vec<u8> {
-    encode_node_data_extended_with_sssp(nodes, &[], &[], &[], &[], &[], None, analytics_data)
+    encode_node_data_extended_with_sssp(nodes, &[], &[], &[], &[], &[], sssp_data, analytics_data)
 }
 
 pub fn decode_node_data(data: &[u8]) -> Result<Vec<(u32, BinaryNodeData)>, String> {
@@ -816,7 +711,7 @@ fn decode_node_data_v3(data: &[u8]) -> Result<Vec<(u32, BinaryNodeData)>, String
 }
 
 pub fn calculate_message_size(updates: &[(u32, BinaryNodeData)]) -> usize {
-    // V3 is now the default protocol (48 bytes per node)
+    // V3 is now the default protocol (52 bytes per node, ADR-031 D2 centrality@48)
     1 + updates.len() * WIRE_V3_ITEM_SIZE
 }
 
@@ -829,13 +724,13 @@ mod tests {
         // V1 REMOVED - was 34 bytes, caused node ID truncation
         // V2: 4 + 12 + 12 + 4 + 4 = 36 bytes
         assert_eq!(WIRE_V2_ITEM_SIZE, 36);
-        // V3: 4 + 12 + 12 + 4 + 4 + 4 + 4 + 4 = 48 bytes (CURRENT)
-        assert_eq!(WIRE_V3_ITEM_SIZE, 48);
+        // V3: 4 + 12 + 12 + 4 + 4 + 4 + 4 + 4 + 4 = 52 bytes (CURRENT, ADR-031 D2 centrality@48)
+        assert_eq!(WIRE_V3_ITEM_SIZE, 52);
         assert_eq!(WIRE_ITEM_SIZE, WIRE_V3_ITEM_SIZE); // Default is now V3
         assert_eq!(
             WIRE_ID_SIZE + WIRE_VEC3_SIZE + WIRE_VEC3_SIZE + WIRE_F32_SIZE + WIRE_I32_SIZE +
-            WIRE_U32_SIZE + WIRE_F32_SIZE + WIRE_U32_SIZE,
-            48
+            WIRE_U32_SIZE + WIRE_F32_SIZE + WIRE_U32_SIZE + WIRE_F32_SIZE,
+            52
         );
     }
 

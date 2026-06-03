@@ -236,8 +236,16 @@ impl OntologyEnrichmentService {
         node.color = Some(color.to_string());
         node.size = Some(size as f32);
 
-        // Update node type to reflect ontology class
-        node.node_type = Some("ontology_node".to_string());
+        // Do NOT rewrite node_type / metadata["type"] here. Enrichment adds an
+        // ontology classification (owl_class_iri, set by the caller) to a node; it
+        // does NOT migrate the node's ORIGIN from the knowledge graph into the
+        // ontology graph. That migration is the job of the future, not-yet-built
+        // elevation process, which legitimately rewrites the authoritative
+        // metadata["type"]. Forcing node_type="ontology_node" here was premature
+        // fake elevation: it spoofed ontology origin while leaving metadata["type"]
+        // stale, pulling enriched wiki pages onto the wrong disc ("spray").
+        // The node's ontology signal travels in owl_class_iri, which
+        // Node::population() reads as the secondary signal for unknown origins.
     }
 
     /// Batch enrich multiple graphs

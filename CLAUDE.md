@@ -76,6 +76,7 @@ Research + NotebookLM? --> /notebooklm, /perplexity-research, /gemini-url-contex
 Deep cited research? --> /deep-research (parallel agents, provenance, verification)
 Optimize a metric iteratively? --> /autoresearch (experiment loop, keep/discard)
 Add source verification? --> /provenance-tracking (.provenance.md sidecar)
+Owner's personal email (invoices, threads, "did X email me", find a name)? --> /email-search (ask_email; local gateway, privacy-filtered; NOT work mail/calendar)
 Security / compliance? --> /defense-security
 AEC (building architecture)? --> /studio [task]
 SEO / content optimisation? --> /toprank

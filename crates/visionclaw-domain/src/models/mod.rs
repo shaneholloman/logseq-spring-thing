@@ -16,7 +16,7 @@ pub use canonical_entity::{CanonicalEntity, EntityKind, OutboundLink};
 pub use edge::{Edge, SemanticEdgeType};
 pub use graph::GraphData;
 pub use metadata::MetadataStore;
-pub use node::Node;
+pub use node::{Node, Population};
 pub use pagination::PaginationParams;
 pub use simulation_params::{
     FeatureFlags, SettleMode, SimulationMode, SimulationParams, SimulationPhase,

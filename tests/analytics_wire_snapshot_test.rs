@@ -186,22 +186,58 @@ fn round_trip_multi_node_stride() {
 // layout (production encoder is currently 48 B / 3-tuple analytics).
 // ---------------------------------------------------------------------------
 
+/// ADR-031 D2/D7: the production broadcast encoder must emit byte-identical
+/// output to the host fixture encoder for the golden node — proving the live
+/// path (the same fn the WebSocket broadcast uses) carries centrality@48 and
+/// the full 52 B analytics record, not just the fixture. Closes the gap left by
+/// the previously-gated placeholder now that the 52 B encoder has landed.
 #[test]
-#[ignore = "needs production 52B encoder: src/utils/binary_protocol.rs is still 48B/3-tuple"]
 fn production_encoder_matches_golden() {
-    // Intended binding once D2 lands (the encoder must accept a centrality and
-    // emit the 52 B record):
-    //
-    //   use visionclaw_server::utils::binary_protocol::encode_node_data_with_all;
-    //   let nodes = vec![(42u32, BinaryNodeData{ x:1.0,y:2.0,z:3.0, vx:0.5,vy:-0.5,vz:0.25, .. })];
-    //   let analytics: HashMap<u32, NodeAnalytics> = ...; // cluster 3, community 9, anomaly 1.75, centrality 0.125
-    //   let out = encode_node_data_with_all(&nodes, &[], &[], &[], &[], &[], Some(&sssp), &analytics);
-    //   // strip the 1-byte protocol-version header, then compare to the golden 52 bytes
-    //   assert_eq!(&out[1..], &golden bytes);
-    //
-    // GAP (see report): the current encoder signature takes a 3-tuple
-    // `(cluster_id, anomaly_score, community_id)` and has no centrality slot.
-    // The lead must (a) add the centrality argument / accept the NodeAnalytics
-    // struct and (b) grow WIRE_V3_ITEM_SIZE to 52.
-    panic!("bind to production 52B encoder once ADR-031 D2 lands");
+    use std::collections::HashMap;
+    use visionclaw_server::utils::binary_protocol::{
+        encode_node_data_with_live_analytics, NodeAnalytics,
+    };
+    use visionclaw_server::utils::socket_flow_messages::BinaryNodeData;
+
+    let (pos, an) = golden_node();
+
+    let nodes: Vec<(u32, BinaryNodeData)> = vec![(
+        pos.id,
+        BinaryNodeData {
+            node_id: pos.id,
+            x: pos.pos[0],
+            y: pos.pos[1],
+            z: pos.pos[2],
+            vx: pos.vel[0],
+            vy: pos.vel[1],
+            vz: pos.vel[2],
+        },
+    )];
+
+    let mut analytics: HashMap<u32, NodeAnalytics> = HashMap::new();
+    analytics.insert(
+        pos.id,
+        NodeAnalytics {
+            cluster_id: an.cluster_id,
+            community_id: an.community_id,
+            anomaly: an.anomaly,
+            centrality: an.centrality,
+        },
+    );
+
+    let mut sssp: HashMap<u32, (f32, i32)> = HashMap::new();
+    sssp.insert(pos.id, (pos.sssp_distance, pos.sssp_parent));
+
+    let out = encode_node_data_with_live_analytics(&nodes, Some(&analytics), Some(&sssp));
+
+    // Frame = 1-byte protocol-version header + one 52 B record.
+    assert_eq!(out.len(), 1 + 52, "header byte + single 52 B record");
+
+    // Must be byte-identical to the host fixture encoder for the same node.
+    let fixture = encode_record_52(&pos, &an);
+    assert_eq!(
+        &out[1..],
+        fixture.as_slice(),
+        "production encoder must match the golden fixture record (centrality@48 included)"
+    );
 }

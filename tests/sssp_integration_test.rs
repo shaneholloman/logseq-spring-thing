@@ -128,13 +128,78 @@ fn gpu_sssp_matches_cpu_oracle() {
     panic!("bind to GPU SSSP test hook once exposed");
 }
 
-/// The encoder must feed sssp_data to all three broadcast sites (currently
-/// hardcoded None). This GPU-gated test asserts the encoded wire record carries
-/// the real distance at offset 28, not +inf.
+/// ADR-031 D2b: the broadcast encoder must feed `sssp_data` into wire slot 28
+/// (previously hardcoded `None` -> +inf at every site). This binds the canonical
+/// production encoder (`encode_node_data_with_live_analytics`, the same fn the
+/// broadcast path and ShortestPathActor->node_sssp feed use) and asserts the
+/// decoded record carries the real distance@28 / parent@32 — not the default.
+/// The GPU value round-trip (that run_sssp produces these distances) is covered
+/// by `gpu_sssp_matches_cpu_oracle`; this CPU test covers the encoder feed.
 #[test]
-#[ignore = "needs GPU + encoder feed wired (D-SSSP): assert sssp_distance@28 != +inf after a pass"]
-fn gpu_sssp_reaches_wire_slot_28() {
-    // Intended: run SSSP, encode a frame, decode offset 28 for a reachable
-    // node, assert it equals the CPU distance (not the +inf default).
-    panic!("bind once encoder sssp_data feed is wired at the three broadcast sites");
+fn sssp_encoder_feed_reaches_wire_slot_28() {
+    use visionclaw_server::utils::binary_protocol::encode_node_data_with_live_analytics;
+    use visionclaw_server::utils::socket_flow_messages::BinaryNodeData;
+
+    let g = SsspGraph::simple();
+    let (dist, parent) = dijkstra(&g, 0);
+
+    // One wire node per graph vertex (positions arbitrary).
+    let nodes: Vec<(u32, BinaryNodeData)> = (0..g.n as u32)
+        .map(|id| {
+            (
+                id,
+                BinaryNodeData {
+                    node_id: id,
+                    x: id as f32,
+                    y: 0.0,
+                    z: 0.0,
+                    vx: 0.0,
+                    vy: 0.0,
+                    vz: 0.0,
+                },
+            )
+        })
+        .collect();
+
+    // Mirror ShortestPathActor's publish: key by compact node_id, leave
+    // unreachable nodes absent (the encoder defaults missing nodes to +inf/-1).
+    let mut sssp: HashMap<u32, (f32, i32)> = HashMap::new();
+    for i in 0..g.n {
+        if let Some(d) = dist[i] {
+            sssp.insert(i as u32, (d, parent[i]));
+        }
+    }
+
+    let frame = encode_node_data_with_live_analytics(&nodes, None, Some(&sssp));
+
+    // Frame = 1-byte protocol-version header + N * 52 B records.
+    assert_eq!(
+        (frame.len() - 1) % fx::WIRE_V3_ITEM_SIZE_52,
+        0,
+        "frame must be version byte + N*52 B records"
+    );
+    let body = &frame[1..];
+
+    for i in 0..g.n {
+        let rec = &body[i * fx::WIRE_V3_ITEM_SIZE_52..(i + 1) * fx::WIRE_V3_ITEM_SIZE_52];
+        let (pos, _an) = fx::decode_record_52(rec);
+        match dist[i] {
+            Some(d) => {
+                assert!(
+                    (pos.sssp_distance - d).abs() < 1e-4,
+                    "node {i} distance@28 must equal oracle {d}, got {}",
+                    pos.sssp_distance
+                );
+                assert_eq!(pos.sssp_parent, parent[i], "node {i} parent@32 must equal oracle");
+            }
+            None => {
+                assert!(
+                    pos.sssp_distance.is_infinite(),
+                    "unreachable node {i} distance@28 must be +inf, got {}",
+                    pos.sssp_distance
+                );
+                assert_eq!(pos.sssp_parent, -1, "unreachable node {i} parent@32 must be -1");
+            }
+        }
+    }
 }

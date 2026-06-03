@@ -15,27 +15,30 @@ export const DEFAULT_PHYSICS_SETTINGS: Partial<PhysicsSettings> = {
   iterations: 50,
   warmupIterations: 100,
   coolingRate: 0.001,
-  globalSpeed: 0.5,
-  damping: 0.85,
+  globalSpeed: 0.4,
+  damping: 0.9,
 
-  // --- Core forces ---
-  springK: 15.0,
-  repelK: 1200.0,
-  restLength: 80.0,
-  centerGravityK: 0.05,
-  gravity: 0.0001,
-  maxForce: 1000.0,
+  // --- Core forces (canonical compact profile — settles within ~400u bounds) ---
+  springK: 12.0,
+  repelK: 120.0,
+  restLength: 50.0,
+  centerGravityK: 0.2,
+  gravity: 0.002,
+  maxForce: 150.0,
   maxVelocity: 100.0,
 
   // --- Repulsion & spacing ---
-  maxRepulsionDist: 1000.0,
+  maxRepulsionDist: 400.0,
   separationRadius: 2.1155233,
   gridCellSize: 50.0,
   repulsionSofteningEpsilon: 0.0001,
 
   // --- Bounds ---
-  enableBounds: false,
-  boundsSize: 2000.0,
+  // Soft-cube containment sized to the ~400-unit graph envelope. Client fallback
+  // only — the backend PhysicsSettings::default() is the single source of truth
+  // and is hydrated over these on connect.
+  enableBounds: true,
+  boundsSize: 400.0,
   boundaryDamping: 0.95,
 
   // --- Layout forces (FA2 / dual-graph) ---
@@ -43,7 +46,7 @@ export const DEFAULT_PHYSICS_SETTINGS: Partial<PhysicsSettings> = {
   scalingRatio: 10.0,
   adaptiveSpeed: true,
   ssspAlpha: 1.5,
-  graphSeparationX: 1000.0,
+  graphSeparationX: 0.0,
   axisCompressionZ: 0.9,
 
   // --- Per-population spring strength (independent KG/ontology/agent layout control) ---
@@ -140,6 +143,11 @@ export const DEFAULT_CLUSTER_HULLS = {
   // ADR-031 D6: opt-in fabricated spatial-grid hulls. Default OFF — when server
   // clusters are absent, show an empty state, never a fabricated grid.
   spatialFallback: false,
+  // ADR-031 D6: opt-in Louvain-community hulls. Default OFF — community_id is
+  // real but optimised for modularity not spatial locality, so its hulls overlap
+  // into a blob. The honest default community signal is per-node colour
+  // (nodes.colorScheme: 'community'); enable this only when you want the volumes.
+  communityFallback: false,
 };
 
 // ADR-031 D6: ship qualityGates defaults so correct server analytics render by
@@ -197,7 +205,10 @@ export const DEFAULT_INTERACTION_SETTINGS = {
 
 export const DEFAULT_NODES_SETTINGS = {
   baseColor: '#4a6fa5',
-  colorScheme: 'type' as 'type' | 'domain' | 'base',
+  // ADR-031 D6: default to 'community' so the live Louvain partition renders out
+  // of the box. Nodes the server left unclustered (community_id 0) fall through
+  // to per-type colouring in computeColor, so the default is never all-grey.
+  colorScheme: 'community' as 'type' | 'domain' | 'base' | 'community' | 'cluster' | 'centrality' | 'sssp',
   sizeScheme: 'hybrid' as 'degree' | 'fileSize' | 'hybrid',
   perNodeGlow: true,
   metalness: 0.1,

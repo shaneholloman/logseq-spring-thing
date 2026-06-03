@@ -125,25 +125,33 @@ pub fn validate_physics_settings(settings: &PhysicsSettings) -> Result<(), Strin
         }
     };
 
-    // Range-checked fields per the canonical physics contract.
-    check_range(settings.gravity, "gravity", 0.0, 5.0, &mut errors);
-    check_range(settings.damping, "damping", 0.000001, 1.0, &mut errors);
-    check_range(settings.spring_k, "spring_k", 0.0, 500.0, &mut errors);
-    check_range(settings.max_velocity, "max_velocity", 0.1, 1000.0, &mut errors);
-    check_range(settings.max_force, "max_force", 0.1, 5000.0, &mut errors);
-    check_range(settings.dt, "timestep (dt)", 0.001, 0.1, &mut errors);
-    check_range(settings.max_repulsion_dist, "max_repulsion_dist", 10.0, 5000.0, &mut errors);
-    check_range(settings.cooling_rate, "cooling_rate", 0.0, 1.0, &mut errors);
-    check_range(settings.boundary_damping, "boundary_damping", 0.0, 1.0, &mut errors);
+    // Range-checked fields read their (MIN, MAX) from the single source of
+    // truth, `crate::actors::gpu::physics_bounds`, so this route validator can
+    // never diverge from the OptimizedSettingsActor path-pattern caps or the
+    // canonical client defaults again (T4 ceiling-consistency fix, 2026-06-03).
+    use crate::actors::gpu::physics_bounds as bounds;
+
+    check_range(settings.gravity, "gravity", bounds::GRAVITY.0, bounds::GRAVITY.1, &mut errors);
+    check_range(settings.damping, "damping", bounds::DAMPING.0, bounds::DAMPING.1, &mut errors);
+    check_range(settings.spring_k, "spring_k", bounds::SPRING_K.0, bounds::SPRING_K.1, &mut errors);
+    check_range(settings.max_velocity, "max_velocity", bounds::MAX_VELOCITY.0, bounds::MAX_VELOCITY.1, &mut errors);
+    check_range(settings.max_force, "max_force", bounds::MAX_FORCE.0, bounds::MAX_FORCE.1, &mut errors);
+    check_range(settings.dt, "timestep (dt)", bounds::DT.0, bounds::DT.1, &mut errors);
+    check_range(settings.max_repulsion_dist, "max_repulsion_dist", bounds::MAX_REPULSION_DIST.0, bounds::MAX_REPULSION_DIST.1, &mut errors);
+    check_range(settings.cooling_rate, "cooling_rate", bounds::COOLING_RATE.0, bounds::COOLING_RATE.1, &mut errors);
+    check_range(settings.boundary_damping, "boundary_damping", bounds::BOUNDARY_DAMPING.0, bounds::BOUNDARY_DAMPING.1, &mut errors);
     // cluster_strength is the raw kernel coefficient (no scale factor applied).
-    check_range(settings.cluster_strength, "cluster_strength", 0.0, 0.02, &mut errors);
-    check_range(settings.sssp_alpha, "sssp_alpha", 0.0, 5.0, &mut errors);
+    check_range(settings.cluster_strength, "cluster_strength", bounds::CLUSTER_STRENGTH.0, bounds::CLUSTER_STRENGTH.1, &mut errors);
+    check_range(settings.sssp_alpha, "sssp_alpha", bounds::SSSP_ALPHA.0, bounds::SSSP_ALPHA.1, &mut errors);
+    // repel_k now has a bounded range from the shared source of truth (was
+    // previously finite-only here, while the actor capped it at 100 — the exact
+    // divergence this fix resolves).
+    check_range(settings.repel_k, "repel_k", bounds::REPEL_K.0, bounds::REPEL_K.1, &mut errors);
+    check_range(settings.bounds_size, "bounds_size", bounds::BOUNDS_SIZE.0, bounds::BOUNDS_SIZE.1, &mut errors);
+    check_range(settings.temperature, "temperature", bounds::TEMPERATURE.0, bounds::TEMPERATURE.1, &mut errors);
 
     // All other f32 fields: reject NaN/Infinity
-    check_finite(settings.bounds_size, "bounds_size", &mut errors);
     check_finite(settings.separation_radius, "separation_radius", &mut errors);
-    check_finite(settings.repel_k, "repel_k", &mut errors);
-    check_finite(settings.temperature, "temperature", &mut errors);
     check_finite(settings.rest_length, "rest_length", &mut errors);
     check_finite(settings.repulsion_softening_epsilon, "repulsion_softening_epsilon", &mut errors);
     check_finite(settings.center_gravity_k, "center_gravity_k", &mut errors);

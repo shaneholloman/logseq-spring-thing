@@ -1,6 +1,6 @@
 // EnhancedSettingsHandler - rate-limited, validated settings handler struct
 
-use crate::actors::messages::{GetSettings, UpdateSettings, UpdateSimulationParams};
+use crate::actors::messages::{GetSettings, UpdateSettings};
 use crate::app_state::AppState;
 use crate::config::AppFullSettings;
 use crate::handlers::validation_handler::ValidationService;
@@ -537,28 +537,15 @@ impl EnhancedSettingsHandler {
         if has_physics_update {
             info!("Propagating physics updates to GPU actors");
 
-
-
+            // Single dispatch path (resolved 2026-06-03): delegate to
+            // propagate_physics_to_gpu, which sends UpdateSimulationParams ONLY via the
+            // GraphServiceSupervisor → PhysicsOrchestratorActor route. The orchestrator
+            // owns the warmup reset + reheat and forwards to the ForceComputeActor. The
+            // previous direct state.get_gpu_compute_addr() dispatch here reached the same
+            // ForceComputeActor handler as the orchestrator forward, producing a double
+            // warmup reset / double reheat per settings change.
             let graph_name = "logseq";
-            let physics = settings.get_physics(graph_name);
-            let sim_params = crate::models::simulation_params::SimulationParams::from(physics);
-
-            if let Some(gpu_addr) = state.get_gpu_compute_addr().await {
-                if let Err(e) = gpu_addr
-                    .send(UpdateSimulationParams { params: sim_params })
-                    .await
-                {
-                    error!(
-                        "Failed to update GPU simulation params for {}: {}",
-                        graph_name, e
-                    );
-                } else {
-                    info!(
-                        "GPU simulation params updated for {} (knowledge graph)",
-                        graph_name
-                    );
-                }
-            }
+            propagate_physics_to_gpu(state, settings, graph_name).await;
         }
     }
 }

@@ -43,6 +43,8 @@ pub mod gpu_manager_actor;
 pub mod gpu_resource_actor;
 pub mod ontology_constraint_actor;
 pub mod pagerank_actor;
+/// Single source of truth for physics validation bounds (T4 fix, 2026-06-03).
+pub mod physics_bounds;
 pub mod shortest_path_actor;
 pub mod connected_components_actor;
 pub mod shared;

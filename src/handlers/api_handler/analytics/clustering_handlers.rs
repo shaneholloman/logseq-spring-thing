@@ -60,10 +60,26 @@ pub async fn run_clustering(
         if let Some(task) = tasks.get_mut(&task_id_clone) {
             match clusters {
                 Ok(clusters) => {
-                    // ADR-031 D3 single-writer: node_analytics.cluster_id is populated
-                    // exclusively by ClusteringActor (masked key + 1-based id + stale
-                    // reset) as it runs the GPU kernels. This handler only reports the
-                    // task result; it does NOT write node_analytics.
+                    // ADR-031 D3 single-writer: route the finished assignment back
+                    // through ClusteringActor (the sole owner of node_analytics) so
+                    // node_analytics.cluster_id is populated with masked keys, 1-based
+                    // ids, and a stale reset. This covers BOTH outcomes of
+                    // perform_clustering — GPU kernels and the CPU label-propagation
+                    // fallback — closing the gap where the fallback left the store
+                    // null and hull rendering showed empty. The WriteClusterAnalytics
+                    // message fans out GPUManagerActor → AnalyticsSupervisor →
+                    // ClusteringActor, exactly like SetNodeAnalytics.
+                    if let Some(gpu_manager) = app_state_clone.gpu_manager_addr.as_ref() {
+                        gpu_manager.do_send(crate::actors::messages::WriteClusterAnalytics {
+                            clusters: clusters.clone(),
+                        });
+                    } else {
+                        warn!(
+                            "Clustering run {}: GPU manager unavailable; node_analytics.cluster_id \
+                             not written (hulls will not render this run)",
+                            task_id_clone
+                        );
+                    }
                     task.status = "completed".to_string();
                     task.progress = 1.0;
                     task.clusters = Some(clusters);
