@@ -215,9 +215,12 @@ pub fn config(cfg: &mut web::ServiceConfig) {
 
             .route("/pathfinding/sssp", web::post().to(pathfinding::compute_sssp))
             .route("/pathfinding/apsp", web::post().to(pathfinding::compute_apsp))
+            .route("/pathfinding/path", web::post().to(pathfinding::compute_point_to_point))
             .route("/pathfinding/connected-components", web::post().to(pathfinding::compute_connected_components))
 
             // --- Public read-only metrics (GET, harmless operational telemetry) ---
+            .route("/pathfinding/stats/sssp", web::get().to(pathfinding::get_shortest_path_stats))
+            .route("/pathfinding/stats/components", web::get().to(pathfinding::get_connected_components_stats))
             .route("/params", web::get().to(get_analytics_params))
             .route("/constraints", web::get().to(get_constraints))
             .route("/stats", web::get().to(get_performance_stats))

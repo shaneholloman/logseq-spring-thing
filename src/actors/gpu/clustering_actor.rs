@@ -8,6 +8,7 @@ use std::sync::Arc;
 use std::time::Instant;
 use uuid::Uuid;
 
+use super::analytics_telemetry::{record_execution, AnalyticsKernel, ExecutionPath};
 use super::shared::{GPUState, SharedGPUContext};
 use crate::actors::messages::*;
 
@@ -221,6 +222,10 @@ impl ClusteringActor {
                     format!("K-means clustering failed: {}", e)
                 })?;
 
+            // Task #74: K-means is GPU-only (failure above returns Err — no CPU
+            // substitute). Record the GPU path on success.
+            record_execution(AnalyticsKernel::Kmeans, ExecutionPath::Gpu);
+
             let computation_time = start_time.elapsed();
             info!(
                 "ClusteringActor: K-means clustering completed in {:?}",
@@ -340,17 +345,22 @@ impl ClusteringActor {
             let start_time = Instant::now();
 
             let gpu_result = match algorithm {
-                CommunityDetectionAlgorithm::LabelPropagation => unified_compute
-                    .run_community_detection_label_propagation(
-                        max_iterations,
-                        seed,
-                    )
-                    .map_err(|e| {
-                        error!("GPU label propagation failed: {}", e);
-                        format!("Label propagation failed: {}", e)
-                    })?,
+                CommunityDetectionAlgorithm::LabelPropagation => {
+                    let r = unified_compute
+                        .run_community_detection_label_propagation(
+                            max_iterations,
+                            seed,
+                        )
+                        .map_err(|e| {
+                            error!("GPU label propagation failed: {}", e);
+                            format!("Label propagation failed: {}", e)
+                        })?;
+                    // Task #74: GPU-only community detection. Record the path on success.
+                    record_execution(AnalyticsKernel::LabelPropagation, ExecutionPath::Gpu);
+                    r
+                }
                 CommunityDetectionAlgorithm::Louvain => {
-                    unified_compute
+                    let r = unified_compute
                         .run_louvain_community_detection(
                             max_iterations,
                             1.0,
@@ -359,7 +369,10 @@ impl ClusteringActor {
                         .map_err(|e| {
                             error!("GPU Louvain community detection failed: {}", e);
                             format!("Louvain community detection failed: {}", e)
-                        })?
+                        })?;
+                    // Task #74: GPU-only Louvain. Record the path on success.
+                    record_execution(AnalyticsKernel::Louvain, ExecutionPath::Gpu);
+                    r
                 }
             };
 
@@ -497,6 +510,9 @@ impl ClusteringActor {
                     error!("GPU DBSCAN clustering failed: {}", e);
                     format!("DBSCAN clustering failed: {}", e)
                 })?;
+
+            // Task #74: DBSCAN is GPU-only (failure above returns Err). Record the path.
+            record_execution(AnalyticsKernel::Dbscan, ExecutionPath::Gpu);
 
             let computation_time = start_time.elapsed();
             info!(

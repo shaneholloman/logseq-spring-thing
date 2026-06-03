@@ -7,48 +7,29 @@
 //! - [`protocol`]  — V3 binary frame (28-byte broadcast format, ADR-02 D1/D4).
 //!   Used by the `/wss` broadcast path and `GET /api/graph/positions`.
 //! - [`protocols`] — Binary settings protocol with delta encoding + zlib compression.
-//! - [`binary_protocol`] — Node-flag bit helpers (agent/knowledge/ontology flags),
-//!   V3/V4/V5 wire encode/decode, `BinaryProtocol` multiplexed-message decoder.
-//!   Uses [`visionclaw_domain::BinaryNodeData`] as the canonical data type.
+//! - [`socket_flow_messages`] — Wire message types (`BinaryNodeDataClient`, `Message`,
+//!   `Ping`/`Pong`, initial graph payloads) shared with the webxr crate.
 //!
-//! # Webxr shim
+//! # Single 52-byte node-data encoder (ADR-031 D2 / task #101 T6)
 //!
-//! `src/utils/binary_protocol.rs` remains in the webxr crate because it depends on
-//! `socket_flow_messages::BinaryNodeDataClient` (a webxr-local type). That file is NOT
-//! shadowed; the new crate's `binary_protocol` module is the domain-aligned version.
+//! The canonical per-node analytics wire encoder is `src/utils/binary_protocol.rs` in
+//! the webxr crate (`visionclaw-server`): one 52-byte `WireNodeDataItemV3` frame with
+//! `centrality@48`, stride 52. Every live broadcast site calls that module.
+//!
+//! This crate previously carried a parallel `binary_protocol` module — a stale 48-byte
+//! copy (no `centrality`, `WIRE_V3_ITEM_SIZE == 48`) extracted during ADR-090 Phase A5
+//! but never advanced to the 52-byte format. It had zero callers outside this crate
+//! (verified by grep across `src/` and `crates/`) and diverged from the wire contract,
+//! so it was removed to leave a single source of truth. The webxr encoder depends on
+//! `socket_flow_messages::BinaryNodeDataClient` (a webxr-local type), which is why it
+//! stays in the webxr crate rather than moving here.
 
 pub mod protocol;
 pub mod protocols;
-pub mod binary_protocol;
 pub mod socket_flow_messages;
 
 // Convenience re-exports.
 pub use protocol::v3_frame::{BinaryV3Frame, NodeRow, V3DecodeError, V3_MAGIC, V3_NODE_BYTES};
 pub use protocols::binary_settings_protocol::{
     BinaryMessage, BinarySettingsProtocol, BinaryValue, PathRegistry,
-};
-pub use binary_protocol::{
-    BinaryNodeDataWireExt,
-    BinaryProtocol, ControlFrame, DeltaNodeData, Message, MessageType, MultiplexedMessage,
-    NodeType, ProtocolError, WireNodeDataItem, WireNodeDataItemV3,
-    // Flag helpers
-    clear_agent_flag, clear_all_flags, from_wire_id, from_wire_id_v2,
-    get_actual_node_id, get_node_type,
-    is_agent_node, is_knowledge_node, is_ontology_class, is_ontology_individual,
-    is_ontology_node, is_ontology_property,
-    needs_v2_protocol,
-    set_agent_flag, set_knowledge_flag, set_ontology_class_flag,
-    set_ontology_individual_flag, set_ontology_property_flag,
-    to_wire_id, to_wire_id_v2,
-    // Encode/decode functions (operate on visionclaw_domain::BinaryNodeData)
-    calculate_message_size,
-    decode_node_data,
-    encode_node_data,
-    encode_node_data_extended,
-    encode_node_data_extended_with_sssp,
-    encode_node_data_with_all,
-    encode_node_data_with_analytics,
-    encode_node_data_with_flags,
-    encode_node_data_with_live_analytics,
-    encode_node_data_with_types,
 };

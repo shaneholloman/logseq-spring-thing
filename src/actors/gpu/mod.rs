@@ -32,6 +32,9 @@
 //! - Reports health status independently
 //! - Receives SharedGPUContext via GPUContextBus broadcast
 
+// Analytics GPU-path-execution telemetry (task #74: zero-fallback gate).
+pub mod analytics_telemetry;
+
 // Child actors
 pub mod anomaly_detection_actor;
 pub mod clustering_actor;

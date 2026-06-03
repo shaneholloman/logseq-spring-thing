@@ -5,6 +5,7 @@ use log::{error, info, warn};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
+use super::analytics_telemetry::{record_execution, AnalyticsKernel, ExecutionPath};
 use super::shared::{GPUState, SharedGPUContext};
 use crate::actors::messages::*;
 
@@ -197,6 +198,10 @@ impl Handler<RunAnomalyDetection> for AnomalyDetectionActor {
 
                         match unified_compute.run_lof_anomaly_detection(k_neighbors, threshold) {
                             Ok(lof_result) => {
+                                // Task #74: LOF is GPU-only (the Err branch below surfaces
+                                // a failure rather than substituting a CPU path). Record
+                                // the GPU path on success.
+                                record_execution(AnalyticsKernel::Lof, ExecutionPath::Gpu);
                                 let lof_scores = lof_result.0;
                                 let mut anomalies = Vec::new();
 

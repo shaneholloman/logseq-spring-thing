@@ -374,7 +374,15 @@ impl Default for PhysicsSettings {
             clustering_resolution: 1.0,
             clustering_iterations: 50,
 
-            graph_separation_x: 0.0,
+            // Close, full-size dual-disc envelope (single source of truth).
+            // The two graph populations separate along Z at ±graph_separation_x
+            // (gap = 2*sep); ~100 keeps the knowledge/ontology discs close and
+            // overlapping rather than collapsed into one plane (sep=0) or pushed
+            // far apart (sep=250). axis_compression_z=0.9 flattens each
+            // population into a thin disc. reset_layout and the boot SQLite seed
+            // both source these values from PhysicsSettings::default() so the
+            // persisted store and the live GPU actor cannot diverge.
+            graph_separation_x: 100.0,
             axis_compression_z: 0.9,
             lin_log_mode: true,
             scaling_ratio: 10.0,
@@ -518,6 +526,11 @@ mod tests {
         assert!((ps.cluster_strength - 0.002).abs() < 1e-9);
         assert!(ps.enabled);
         assert!(!ps.auto_balance);
+        // Close full-size dual-disc envelope: the canonical separation must be
+        // the close value (~100), never 0 (merged single plane) or 250 (far
+        // apart). reset_layout and the boot SQLite seed both source this.
+        assert_eq!(ps.graph_separation_x, 100.0);
+        assert!((ps.axis_compression_z - 0.9).abs() < 1e-9);
     }
 
     #[test]

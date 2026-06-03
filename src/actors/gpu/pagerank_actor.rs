@@ -37,6 +37,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
 
+use super::analytics_telemetry::{record_execution, AnalyticsKernel, ExecutionPath};
 use super::shared::{GPUState, SharedGPUContext};
 use crate::actors::messages::*;
 
@@ -278,6 +279,10 @@ impl PageRankActor {
                 format!("PageRank computation failed: {}", e)
             })?;
 
+        // Task #74: PageRank is GPU-only (a kernel failure above returns Err — there is
+        // no silent CPU substitute). Record the GPU path on the success branch.
+        record_execution(AnalyticsKernel::Pagerank, ExecutionPath::Gpu);
+
         let computation_time = start_time.elapsed();
         info!(
             "PageRankActor: PageRank computation completed in {:?}",
@@ -481,6 +486,10 @@ impl Handler<ComputePageRank> for PageRankActor {
                         error!("GPU PageRank computation failed: {}", e);
                         format!("PageRank computation failed: {}", e)
                     })?;
+
+                // Task #74: GPU-only path. record_execution uses process-global atomics
+                // so it is safe to call inside this spawn_blocking closure.
+                record_execution(AnalyticsKernel::Pagerank, ExecutionPath::Gpu);
 
                 let computation_time = start_time.elapsed();
                 info!(

@@ -27,7 +27,6 @@ fn main() {
         "src/cuda_sources/gpu_aabb_reduction.cu",
         "src/cuda_sources/gpu_landmark_apsp.cu",
         "src/cuda_sources/sssp_compact.cu",
-        "src/cuda_sources/visionclaw_unified_stability.cu",
         "src/cuda_sources/ontology_constraints.cu",
         "src/cuda_sources/semantic_forces.cu",
         "src/cuda_sources/pagerank.cu",

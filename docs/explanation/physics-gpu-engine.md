@@ -1,14 +1,22 @@
 ---
 title: VisionClaw Physics & GPU Engine
-description: Technical deep-dive into VisionClaw's CUDA-accelerated force-directed physics engine, semantic forces, and GPU supervision architecture delivering 55× speedup over CPU implementations
+description: Technical deep-dive into VisionClaw's CUDA-accelerated force-directed physics engine, dual-graph disc projection, semantic forces, and GPU supervision architecture delivering 55× speedup over CPU implementations
 category: explanation
-tags: [physics, gpu, cuda, force-directed, simulation, performance]
-updated-date: 2026-04-09
+tags: [physics, gpu, cuda, force-directed, simulation, performance, dual-graph]
+updated-date: 2026-06-03
 ---
 
 # VisionClaw Physics & GPU Engine
 
-Technical deep-dive into VisionClaw's CUDA-accelerated force-directed physics engine, semantic forces, and GPU supervision architecture.
+> **Updated 2026-06-03.** This document has been reconciled against the verified
+> system diagrams in `docs/architecture/diagrams/` produced by the 2026-06-03
+> cartography sprint. Where earlier prose conflicted with the diagrams, the
+> diagrams win; this document now agrees. Key changes: §5 binary wire format
+> corrected from 34 B to 52 B (V3); §8 settings pipeline updated to single
+> debounced path (T2 resolved); §10 dual-graph disc projection section added;
+> §11 canonical physics defaults section added.
+
+Technical deep-dive into VisionClaw's CUDA-accelerated force-directed physics engine, dual-graph disc projection, semantic forces, and GPU supervision architecture.
 
 ---
 
@@ -339,21 +347,38 @@ sequenceDiagram
 
 Without this fix, late-connecting clients see no positions. With it, the maximum stale-position window is 300 frames (~5 seconds at 60 FPS).
 
-### Binary wire format
+### Binary wire format (V3, 52 B — ADR-031)
 
-Each node update is serialised into a **34-byte wire packet**:
+> **Updated 2026-06-03.** The previous description cited a 34-byte record; that
+> was the pre-ADR-031 V1 format. The live protocol is the 52-byte V3 layout
+> described below. See `docs/architecture/diagrams/05-wire-analytics-types.md`
+> for the full encoder/decoder inventory.
 
-| Field | Type | Bytes |
-|-------|------|-------|
-| `node_id` | `u16` | 2 |
-| `position` | `[f32; 3]` | 12 |
-| `velocity` | `[f32; 3]` | 12 |
-| `sssp_distance` | `f32` | 4 |
-| `sssp_parent` | `i32` | 4 |
+Each node update is serialised into a **52-byte V3 wire record** (little-endian),
+preceded by a 1-byte protocol-version header (value `3`). V5 frames add an
+8-byte broadcast-sequence prefix before the V3 body.
 
-This achieves 95% bandwidth reduction versus JSON serialisation. The GPU internally uses a richer **48-byte `BinaryNodeDataGPU`** structure that includes cluster assignment, centrality scores, and mass — not transmitted to clients.
+| Offset | Field | Type | Bytes | Notes |
+|--------|-------|------|-------|-------|
+| @0 | `node_id` | `u32` | 4 | bit 31=Agent, 30=Knowledge, 26–28=Ontology type, 0–25=compact id |
+| @4 | `position` | `f32×3` | 12 | x, y, z — projected disc coords (display-only) |
+| @16 | `velocity` | `f32×3` | 12 | vx, vy, vz |
+| @28 | `sssp_distance` | `f32` | 4 | INFINITY when absent |
+| @32 | `sssp_parent` | `i32` | 4 | -1 when absent |
+| @36 | `cluster_id` | `u32` | 4 | 1-based; 0 = unclustered |
+| @40 | `anomaly_score` | `f32` | 4 | LOF/z-score, 0.0–1.0 |
+| @44 | `community_id` | `u32` | 4 | Louvain partition label |
+| @48 | `centrality` | `f32` | 4 | PageRank, normalised [ADR-031 D2] |
 
-`ClientCoordinatorActor` manages per-client viewport filtering and adapts broadcast frequency (60 FPS settling → 5 Hz stable).
+Total: **52 bytes per node.** The live encoder is
+`src/utils/binary_protocol.rs::encode_node_data_extended_with_sssp()`. A shadow
+48-byte copy exists in `crates/visionclaw-protocol/src/binary_protocol.rs` (no
+centrality field, zero external callers; T6 deferred cleanup).
+
+`ClientCoordinatorActor` manages per-client viewport filtering and adapts
+broadcast frequency (60 FPS settling → 5 Hz stable). The `z` coordinate in
+the position field carries the disc Z offset (Knowledge at `−sep`, Ontology at
+`+sep`, Agents at `0`) — see §10 for the projection model.
 
 ---
 
@@ -410,14 +435,28 @@ The physics simulation has a **600-frame (~10 second) warm-up period** during wh
 
 ## 8. Settings → Physics Pipeline
 
+> **Updated 2026-06-03.** The signal path below replaces the stale description.
+> T2 resolved: one debounced persistence path, one GPU dispatch path.
+> See `docs/architecture/diagrams/01-settings-flow.md` for the full sequence
+> diagram and `docs/architecture/diagrams/04-updates-backoff.md` for the
+> settle/converge lifecycle.
+
 When the user changes graph layout settings through the UI, the following sequence occurs:
 
-### Signal path
+### Signal path (single path — T2 resolved 2026-06-03)
 
-1. UI settings change → REST API → `PhysicsOrchestratorActor`
-2. New `SimParams` sent to `ForceComputeActor` via `UpdateSimParams` message
-3. `ForceComputeActor` applies new params **without resetting** `iteration_count` or convergence state
-4. Reheat factor injects energy to allow the graph to re-settle
+1. UI slider → `physicsSlice.updatePhysics()` (local Zustand store only)
+2. `coreSlice.autoSaveManager.queueChange()` (500 ms debounce)
+3. `updateSettingsByPaths()` → `PUT /api/settings/physics` (single PUT, no duplicate)
+4. `settings_routes.rs` → `OptimizedSettingsActor` (`UpdateSettings`) → `GraphServiceSupervisor` → `PhysicsOrchestratorActor` → `ForceComputeActor` via `UpdateSimulationParams`
+5. SQLite written by the route handler after in-memory update succeeds
+6. `ForceResumePhysics` sent to unpause physics and begin reheat
+
+The immediate `notifyPhysicsUpdate` direct-PUT that previously fired a second
+parallel pipeline from `physicsSlice.ts:130` has been removed. The direct-GPU
+send that previously existed in `settings_handler/enhanced.rs` has also been
+removed. There is now exactly one persistence owner and one GPU dispatch path
+per settings change.
 
 ### The "only agent nodes move" symptom
 
@@ -457,7 +496,125 @@ Stress = Σ weight_ij × (distance_ij - ideal_distance_ij)²
 
 ---
 
-## 10. CPU Fallback
+## 10. Dual-Graph Disc Projection (verified 2026-06-03)
+
+> Added 2026-06-03. See `docs/architecture/diagrams/06-gpu-physics.md` for the
+> full sequence diagram including the apply/undo per-step cycle.
+> See `docs/architecture/diagrams/02-population-handoff.md` for how nodes are
+> classified into populations.
+
+VisionClaw separates its two graph populations — **Knowledge** (logseq pages,
+linked_page stubs) and **Ontology** (OWL classes and individuals) — into two
+facing discs in the 3-D layout. A third population, **Agents**, occupies the
+mid-plane between the discs. The separation is a **display-only transformation**:
+it is applied to the broadcast buffer after each GPU readback and undone before
+the next physics step. The GPU physics state never sees the disc offsets.
+
+### Why display-only?
+
+The ~56 k KG-to-Ontology cross-links have spring rest lengths calibrated to the
+raw 3-D physics layout (~30 units). If the projected positions were fed back into
+the GPU buffer, every spring would span the full separation gap and exert a large
+restoring force that collapses both discs back toward the centre. The discs would
+never stabilise. The display-only model avoids this at the cost of three O(N)
+host passes per frame (centroid computation, project, restore).
+
+### Projection mechanics
+
+```mermaid
+flowchart LR
+    A["GPU readback\npos_x/y/z (raw physics)"] --> B{"project flag?\nsep > 0 OR flatten > 0\nAND populations populated"}
+
+    B -->|No| E["broadcast_buffer = raw physics"]
+    B -->|Yes| C["population_centroids_xy()\nmedian X,Y per population\n(Knowledge=0, Ontology=1, Agent=2)"]
+
+    C --> D["project_node_xy() per node\n  dx = pos.x - centroid_x\n  dy = pos.y - centroid_y\n  rim-clamp to DISC_RIM_RADIUS (2600)\n  pos.x = dx  (re-centred)\n  pos.y = dy  (re-centred)\n  pos.z = pos.z * face_scale + target_z\n    Knowledge: target_z = -sep\n    Ontology:  target_z = +sep\n    Agent:     target_z = 0"]
+
+    D --> E["broadcast_buffer = projected positions\n(clients see two facing discs)"]
+    E --> F["UpdateNodePositions → WebSocket clients"]
+    F --> G["RESTORE from last_good_positions\n(host-side only; GPU buffers untouched)\nNext physics step: pristine unmodified state"]
+```
+
+Key parameters (all in `SimulationParams` / `PhysicsSettings`):
+
+| Parameter | Default | Effect |
+|-----------|---------|--------|
+| `graph_separation_x` | 100.0 | Half-gap between disc centres (Knowledge at `z=−100`, Ontology at `z=+100`) |
+| `axis_compression_z` | 0.9 | Flatten factor; `face_scale = 1 − axis_compression_z`. 0.9 → disc thickness is 10% of original Z spread |
+| `DISC_RIM_RADIUS` | 2600.0 | Fixed rim clamp radius, **decoupled** from separation (was previously `sep * 0.85`; that coupling was removed so close discs stay full-size) |
+
+The rim clamp (`DISC_RIM_RADIUS = 2600.0`) is a compile-time constant in
+`force_compute_actor.rs`. It is independent of `graph_separation_x` so that
+setting a small separation (close discs) does not also shrink the disc footprint.
+
+### Classification authority
+
+Population classification (`Knowledge`, `Ontology`, `Agent`) is determined at
+graph-upload time from `metadata["type"]` via `Node::population()` in
+`crates/visionclaw-domain/src/models/node.rs`. The result is cached in
+`node_population[gpu_index]`. All readers — GPU disc projection, binary wire
+flags, server filter gate, and client visual/filter hooks — route through this
+single authority. `node_type` / the top-level `type` wire field is demoted to a
+non-classifying legacy fallback when `metadata["type"]` is absent (T1 resolved
+2026-06-03).
+
+### Two code paths must stay in sync
+
+The projection runs in two places in `force_compute_actor.rs`:
+
+1. **Main physics loop** (~line 1830): applied after each successful physics step.
+2. **`ForceFullBroadcast` handler** (~line 2314): applied on the post-convergence
+   snapshot read (no integration step). Both paths call `population_centroids_xy`
+   and `project_node_xy` with the same parameters.
+
+A future refactor (projection-as-Z-force) would eliminate the apply/undo cycle
+and merge the two code paths into the CUDA force kernel, but requires
+re-calibrating the Z-spring coefficient against the existing cross-link springs.
+This is deferred (T7.2, anomaly register).
+
+---
+
+## 11. Canonical Physics Defaults (verified 2026-06-03)
+
+> Added 2026-06-03. See `docs/architecture/diagrams/01-settings-flow.md` §3
+> (Server Boot Physics Resolution) for the boot flowchart.
+
+The **single source of truth** for all physics defaults is
+`PhysicsSettings::default()` in
+`crates/visionclaw-domain/src/types/physics_config.rs`.
+
+| Parameter | Canonical default | Source |
+|-----------|-------------------|--------|
+| `repel_k` | 120.0 | `physics_config.rs:351` |
+| `spring_k` | 12.0 | `physics_config.rs:352` |
+| `max_velocity` | 100.0 | `physics_config.rs:348` |
+| `max_force` | 150.0 | `physics_config.rs:350` |
+| `global_speed` | 0.4 | `physics_config.rs:386` |
+| `graph_separation_x` | 100.0 | `physics_config.rs:385` — close full-size dual-disc |
+| `axis_compression_z` | 0.9 | `physics_config.rs:386` — 10% residual Z spread |
+
+**Boot resolution** (verified against `app_state.rs:557-614`):
+
+1. SQLite `get_setting("physics")` → if found and deserializable, use it.
+2. If SQLite miss/error → `PhysicsSettings::default()` is used AND seeded back
+   into SQLite, so subsequent boots read a consistent persisted value.
+3. YAML (`data/settings.yaml`) is no longer the boot fallback; `AppFullSettings`
+   defaults now delegate to `PhysicsSettings::default()`.
+
+**Reset** (`POST /api/settings/physics/reset-layout`, `settings_routes.rs:1210`):
+applies `PhysicsSettings::default()` to the live GPU actor AND persists it to
+SQLite, then sends `ResetPositions` (random sphere) and `ForceResumePhysics`.
+No hand-coded literals; the reset returns to the same canonical close-disc layout
+as a fresh boot.
+
+**Validation bounds** (`src/actors/gpu/physics_bounds.rs`): all `(MIN, MAX)` const
+pairs are defined in a single module imported by both `OptimizedSettingsActor`'s
+path-pattern validator and `validate_physics_settings()` in `settings_routes.rs`.
+The canonical defaults all fall within the unified bounds (T4 resolved 2026-06-03).
+
+---
+
+## 12. CPU Fallback
 
 When CUDA hardware is unavailable, VisionClaw automatically falls back to CPU with Rayon parallelism and SIMD intrinsics:
 
@@ -489,7 +646,7 @@ OntologyConstraintActor tracks `gpu_failure_count` and `cpu_fallback_count` in i
 
 ---
 
-## 11. Performance Metrics
+## 13. Performance Metrics
 
 ### Benchmark results (NVIDIA RTX 4090)
 
@@ -546,7 +703,14 @@ Remaining headroom:     2.7 ms
 
 - [Ontology Pipeline](ontology-pipeline.md) — how OWL axioms become GPU constraints
 - `docs/explanation/concepts/constraint-system.md` — constraint type catalog with parameters
-- `docs/diagrams/infrastructure/gpu/gpu-supervisor-hierarchy.md` — full actor hierarchy diagram
-- `docs/explanation/physics-gpu-engine.md` — GPU actor message flows
-- `docs/explanation/physics-gpu-engine.md` — SemanticAxiomTranslator and GPUSemanticConstraintBuffer
+- `docs/explanation/actor-hierarchy.md` — full actor supervision tree
 - `docs/explanation/ontology-pipeline.md` — OntologyConstraintActor ↔ ForceComputeActor wire-up analysis
+
+### Verified architecture diagrams (2026-06-03)
+
+- [`docs/architecture/diagrams/06-gpu-physics.md`](../architecture/diagrams/06-gpu-physics.md) — one physics step end-to-end, disc projection apply/undo, shared-Mutex poison risk
+- [`docs/architecture/diagrams/01-settings-flow.md`](../architecture/diagrams/01-settings-flow.md) — physics settings write/hydration paths, boot resolution, validation bounds
+- [`docs/architecture/diagrams/04-updates-backoff.md`](../architecture/diagrams/04-updates-backoff.md) — param change → settle → idle lifecycle, FastSettle, convergence detectors
+- [`docs/architecture/diagrams/02-population-handoff.md`](../architecture/diagrams/02-population-handoff.md) — dual-graph population classification, Z-spray resolution
+- [`docs/architecture/diagrams/05-wire-analytics-types.md`](../architecture/diagrams/05-wire-analytics-types.md) — 52-byte V3 wire layout, GPU → render analytics channel
+- [`docs/architecture/diagrams/07-analysis-clustering.md`](../architecture/diagrams/07-analysis-clustering.md) — analytics trigger paths, single writer per field, hull render chain

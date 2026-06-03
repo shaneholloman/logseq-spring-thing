@@ -150,20 +150,34 @@ pub async fn get_gpu_metrics(app_state: web::Data<AppState>) -> Result<HttpRespo
     debug!("Retrieving GPU performance metrics");
 
 
+    // Task #74: per-kernel GPU-vs-fallback execution-path counters are process-global
+    // (the GPU analytics actors record them via analytics_telemetry::record_execution),
+    // so surface them on every response — including failure branches — without an actor
+    // round-trip. A non-zero `total_cpu_fallbacks` means the zero-fallback intent has
+    // been violated this process lifetime.
+    let analytics_execution = serde_json::json!({
+        "per_kernel": crate::actors::gpu::analytics_telemetry::snapshot(),
+        "total_cpu_fallbacks": crate::actors::gpu::analytics_telemetry::total_cpu_fallbacks(),
+    });
+
     if let Some(gpu_addr) = app_state.get_gpu_compute_addr().await {
         use crate::actors::messages::GetGPUMetrics;
 
         match gpu_addr.send(GetGPUMetrics).await {
             Ok(Ok(metrics)) => {
                 info!("GPU metrics retrieved successfully");
-                ok_json!(metrics)
+                ok_json!(serde_json::json!({
+                    "metrics": metrics,
+                    "analytics_execution": analytics_execution,
+                }))
             }
             Ok(Err(e)) => {
                 error!("Failed to get GPU metrics: {}", e);
                 Ok(HttpResponse::InternalServerError().json(serde_json::json!({
                     "success": false,
                     "error": e,
-                    "gpu_initialized": false
+                    "gpu_initialized": false,
+                    "analytics_execution": analytics_execution
                 })))
             }
             Err(e) => {

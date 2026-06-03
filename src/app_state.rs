@@ -559,24 +559,67 @@ impl AppState {
         // adaptive_speed, etc). Fall back to YAML/defaults when nothing is persisted yet.
         let physics_settings = {
             use crate::ports::settings_repository::SettingValue;
-            match sqlite_settings_repository.get_setting("physics").await {
+            // When SQLite has no usable "physics" row, seed it from the canonical
+            // PhysicsSettings::default() and write it back, so the persisted store
+            // and the live GPU actor share one source of truth (close dual-disc:
+            // graph_separation_x=100, axis_compression_z=0.9). Without this, a
+            // fresh boot served defaults to the actor but left SQLite empty/stale,
+            // so GET /api/settings/physics could report a different separation than
+            // the running simulation.
+            let seed_canonical = |reason: &str| -> crate::config::PhysicsSettings {
+                let default_physics = crate::config::PhysicsSettings::default();
+                info!(
+                    "[AppState::new] {} — seeding SQLite physics from canonical default (graph_separation_x={}, axis_compression_z={})",
+                    reason, default_physics.graph_separation_x, default_physics.axis_compression_z
+                );
+                default_physics
+            };
+
+            let resolved = match sqlite_settings_repository.get_setting("physics").await {
                 Ok(Some(SettingValue::Json(json))) => {
                     match serde_json::from_value::<crate::config::PhysicsSettings>(json) {
                         Ok(persisted) => {
                             info!("[AppState::new] Loaded persisted physics from SQLite (graph_separation_x={}, axis_compression_z={}, adaptive_speed={})", persisted.graph_separation_x, persisted.axis_compression_z, persisted.adaptive_speed);
-                            persisted
+                            (persisted, false)
                         }
-                        Err(e) => {
-                            warn!("[AppState::new] Persisted physics JSON failed to deserialize ({}); using YAML/defaults", e);
-                            settings.visualisation.graphs.logseq.physics.clone()
-                        }
+                        Err(e) => (
+                            seed_canonical(&format!("Persisted physics JSON failed to deserialize ({})", e)),
+                            true,
+                        ),
                     }
                 }
-                _ => {
-                    info!("[AppState::new] No persisted physics in SQLite; using YAML/defaults");
-                    settings.visualisation.graphs.logseq.physics.clone()
+                Ok(Some(_)) => (
+                    seed_canonical("Persisted physics row had a non-JSON value"),
+                    true,
+                ),
+                Ok(None) => (seed_canonical("No persisted physics row in SQLite"), true),
+                Err(e) => (
+                    seed_canonical(&format!("Failed to read persisted physics from SQLite ({})", e)),
+                    true,
+                ),
+            };
+
+            let (physics, needs_seed) = resolved;
+            if needs_seed {
+                match serde_json::to_value(&physics) {
+                    Ok(physics_json) => {
+                        if let Err(e) = sqlite_settings_repository
+                            .set_setting(
+                                "physics",
+                                SettingValue::Json(physics_json),
+                                Some("Physics simulation settings (canonical default, boot seed)"),
+                            )
+                            .await
+                        {
+                            warn!("[AppState::new] Failed to seed canonical physics into SQLite: {}", e);
+                        } else {
+                            info!("[AppState::new] Seeded canonical physics default into SQLite (first boot / stale row)");
+                        }
+                    }
+                    Err(e) => warn!("[AppState::new] Failed to serialize canonical physics for boot seed: {}", e),
                 }
             }
+            physics
         };
 
         info!("[AppState::new] Starting MetadataActor");

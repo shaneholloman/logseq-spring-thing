@@ -228,14 +228,35 @@ impl UnifiedGPUCompute {
         let scene_volume =
             (aabb.max[0] - aabb.min[0]) * (aabb.max[1] - aabb.min[1]) * (aabb.max[2] - aabb.min[2]);
         let target_neighbors_per_cell = 8.0;
-        let optimal_cells = self.num_nodes as f32 / target_neighbors_per_cell;
+        let optimal_cells = (self.num_nodes as f32 / target_neighbors_per_cell).max(1.0);
         let optimal_cell_size = (scene_volume / optimal_cells).powf(1.0 / 3.0);
 
 
-        let mut auto_tuned_cell_size = if optimal_cell_size > 10.0 && optimal_cell_size < 1000.0 {
+        // Choose a candidate cell size, then SANITISE it to a strictly-positive,
+        // finite value. A non-positive / NaN / Inf cell size is the #81 trigger:
+        // `ext / cell` becomes ±Inf or NaN, and `Inf as i32` saturates to
+        // i32::MAX, producing an absurd grid that overruns the cell buffers and
+        // wedges the kernel with a sticky illegal-memory-access. `grid_cell_size`
+        // is user-driven (it moves with the spread/cutoff sliders), so it must
+        // never be trusted blindly.
+        let candidate_cell_size = if optimal_cell_size > 10.0 && optimal_cell_size < 1000.0 {
             optimal_cell_size
         } else {
             params.grid_cell_size
+        };
+        // Absolute floor for the cell size. The grid only needs to be at least as
+        // coarse as the repulsion cutoff for the 3x3x3 neighbour search to be
+        // correct; anything finer just wastes cells. Use the cutoff (when valid)
+        // as a sensible lower bound and fall back to a fixed 10.0 world units.
+        let cutoff_floor = if params.repulsion_cutoff.is_finite() && params.repulsion_cutoff > 0.0 {
+            params.repulsion_cutoff
+        } else {
+            10.0
+        };
+        let mut auto_tuned_cell_size = if candidate_cell_size.is_finite() && candidate_cell_size > 0.0 {
+            candidate_cell_size.max(cutoff_floor.min(10.0))
+        } else {
+            cutoff_floor.max(10.0)
         };
 
         debug!(
@@ -259,32 +280,57 @@ impl UnifiedGPUCompute {
         // compute_cell_bounds_kernel is derived from grid_dims, so an
         // over-capacity grid indexes cell_start out of bounds → a sticky CUDA
         // illegal-memory-access that poisons the context and freezes physics.
-        // Enlarge the cell size (in i64 math to avoid i32 overflow on huge
-        // spreads) until grid_dims.x*y*z fits within the cap.
-        let ext_x = aabb.max[0] - aabb.min[0];
-        let ext_y = aabb.max[1] - aabb.min[1];
-        let ext_z = aabb.max[2] - aabb.min[2];
+        // We size the grid in CLOSED FORM against the cap (no iterative guessing
+        // that can fail to converge), in i64 math to avoid i32 overflow on huge
+        // spreads, and clamp every extent to a finite non-negative value first.
+        let ext_x = (aabb.max[0] - aabb.min[0]).max(0.0);
+        let ext_y = (aabb.max[1] - aabb.min[1]).max(0.0);
+        let ext_z = (aabb.max[2] - aabb.min[2]).max(0.0);
+        let (ext_x, ext_y, ext_z) = (
+            if ext_x.is_finite() { ext_x } else { 0.0 },
+            if ext_y.is_finite() { ext_y } else { 0.0 },
+            if ext_z.is_finite() { ext_z } else { 0.0 },
+        );
         let max_cells = self.max_allowed_grid_cells.max(1);
         let compute_dims = |cell: f32| -> (int3, usize) {
-            let dims = int3 {
-                x: (ext_x / cell).ceil().max(1.0) as i32,
-                y: (ext_y / cell).ceil().max(1.0) as i32,
-                z: (ext_z / cell).ceil().max(1.0) as i32,
+            // `cell` is guaranteed finite & > 0 by the callers below, so the
+            // divisions are finite. Clamp each axis into [1, i32::MAX] before the
+            // i32 cast so an overflow can never produce a negative dimension.
+            let dim = |ext: f32| -> i32 {
+                let d = (ext / cell).ceil();
+                if !d.is_finite() {
+                    return i32::MAX;
+                }
+                d.clamp(1.0, i32::MAX as f32) as i32
             };
+            let dims = int3 { x: dim(ext_x), y: dim(ext_y), z: dim(ext_z) };
             let cells = (dims.x as i64 * dims.y as i64 * dims.z as i64).max(1) as usize;
             (dims, cells)
         };
         let (mut grid_dims, mut num_grid_cells) = compute_dims(auto_tuned_cell_size);
         if num_grid_cells > max_cells {
+            // Closed-form minimum cell size that keeps the grid within the cap:
+            // for an isotropic cell, num_cells ≈ (ext_x*ext_y*ext_z)/cell^3, so
+            // cell_min = (volume / max_cells)^(1/3). +5% headroom absorbs the
+            // per-axis ceil() rounding. Then take one corrective pass in case
+            // rounding still pushed a single axis over.
+            let volume = (ext_x as f64) * (ext_y as f64) * (ext_z as f64);
+            let cell_min = (volume / max_cells as f64).cbrt() * 1.05;
+            if cell_min.is_finite() && cell_min > auto_tuned_cell_size as f64 {
+                auto_tuned_cell_size = cell_min as f32;
+            }
+            let (d, c) = compute_dims(auto_tuned_cell_size);
+            grid_dims = d;
+            num_grid_cells = c;
+            // Final guard: if rounding STILL leaves us over the cap, grow the
+            // cell size by the residual overflow ratio (bounded loop that is
+            // guaranteed to terminate because cell size grows monotonically).
             for _ in 0..8 {
                 if num_grid_cells <= max_cells {
                     break;
                 }
-                // Scale cell size by the cube root of the overflow ratio (+1%
-                // headroom to absorb ceil() rounding). Guaranteed to converge as
-                // the cell size grows monotonically.
-                let ratio = (num_grid_cells as f64 / max_cells as f64).cbrt();
-                auto_tuned_cell_size = (auto_tuned_cell_size as f64 * ratio * 1.01) as f32;
+                let ratio = (num_grid_cells as f64 / max_cells as f64).cbrt().max(1.0) * 1.05;
+                auto_tuned_cell_size = (auto_tuned_cell_size as f64 * ratio) as f32;
                 let (d, c) = compute_dims(auto_tuned_cell_size);
                 grid_dims = d;
                 num_grid_cells = c;
@@ -311,6 +357,46 @@ impl UnifiedGPUCompute {
             debug!(
                 "Grid buffer resize completed. Current grid: {}x{}x{} = {} cells",
                 grid_dims.x, grid_dims.y, grid_dims.z, num_grid_cells
+            );
+        }
+
+        // INVARIANT (the real #81 fix): every cell key the kernels can produce
+        // must be a valid index into cell_start/cell_end. The kernels derive the
+        // key from `grid_dims` in [0, grid_dims.x*y*z) = [0, num_grid_cells), so
+        // `num_grid_cells` MUST be <= cell_start.len(). resize_cell_buffers caps
+        // its allocation at max_allowed_grid_cells, so if the requested grid was
+        // larger than that cap, the buffers are smaller than num_grid_cells and
+        // the kernel would write out of bounds → sticky IMA + frozen physics.
+        // Reconcile by RE-SIZING the grid down to fit the buffer that actually
+        // exists, enlarging the cell size so the (now coarser) grid covers the
+        // same scene with no out-of-range keys.
+        let cell_capacity = self.cell_start.len().min(self.cell_end.len());
+        if num_grid_cells > cell_capacity {
+            // Grow the cell size until the grid fits the real buffer capacity.
+            // Bounded loop; cell size grows monotonically so it always converges.
+            let cap = cell_capacity.max(1);
+            for _ in 0..16 {
+                if num_grid_cells <= cap {
+                    break;
+                }
+                let ratio = (num_grid_cells as f64 / cap as f64).cbrt().max(1.0) * 1.05;
+                auto_tuned_cell_size = (auto_tuned_cell_size as f64 * ratio) as f32;
+                let (d, c) = compute_dims(auto_tuned_cell_size);
+                grid_dims = d;
+                num_grid_cells = c;
+            }
+            // Hard backstop: if the scene is so degenerate the loop still can't
+            // fit it (should be impossible after sanitisation), collapse to a
+            // single cell so every node hashes to key 0 — correct, if slow.
+            if num_grid_cells > cap {
+                grid_dims = int3 { x: 1, y: 1, z: 1 };
+                num_grid_cells = 1;
+            }
+            warn!(
+                "Spatial grid ({} cells) exceeded actual cell-buffer capacity ({}); \
+                 reconciled to {} cells ({}x{}x{}) at cell_size={:.2} to prevent IMA",
+                num_grid_cells, cell_capacity, num_grid_cells,
+                grid_dims.x, grid_dims.y, grid_dims.z, auto_tuned_cell_size
             );
         }
 
@@ -353,7 +439,8 @@ impl UnifiedGPUCompute {
                 aabb,
                 grid_dims,
                 auto_tuned_cell_size,
-                self.num_nodes as i32
+                self.num_nodes as i32,
+                num_grid_cells as i32
             ))?;
         }
 

@@ -1210,27 +1210,55 @@ pub async fn delete_profile(
 pub async fn reset_layout(
     state: web::Data<AppState>,
     _auth: AuthenticatedUser,
+    settings_repo: web::Data<Arc<SqliteSettingsRepository>>,
 ) -> impl Responder {
-    info!("Reset layout requested — sending ResetPositions + safe physics defaults");
+    info!("Reset layout requested — sending ResetPositions + canonical physics defaults");
 
-    // 1. Reset physics parameters to safe defaults before re-randomizing positions
-    let safe_physics = PhysicsSettings {
-        global_speed: 0.1,
-        center_gravity_k: 3.0,
-        repel_k: 500.0,
-        damping: 0.15,
-        ..Default::default()
-    };
-    let sim_params: crate::models::simulation_params::SimulationParams = (&safe_physics).into();
+    // 1. Re-apply the canonical physics defaults (the single source of truth)
+    // before re-randomizing positions. No hand-coded literals: PhysicsSettings::
+    // default() carries the close full-size dual-disc envelope
+    // (graph_separation_x=100, axis_compression_z=0.9), so a reset returns to the
+    // canonical layout instead of collapsing both discs into one plane (sep=0).
+    let reset_physics = PhysicsSettings::default();
+    let sim_params: crate::models::simulation_params::SimulationParams = (&reset_physics).into();
+    info!(
+        "Reset physics from canonical default (graph_separation_x={}, axis_compression_z={}, repel_k={}, center_gravity_k={})",
+        sim_params.graph_separation_x,
+        sim_params.axis_compression_z,
+        sim_params.repel_k,
+        sim_params.center_gravity_k
+    );
     let update_msg = UpdateSimulationParams { params: sim_params };
 
     if let Some(gpu_addr) = state.get_gpu_compute_addr().await {
         if let Err(e) = gpu_addr.send(update_msg.clone()).await {
-            warn!("Failed to send safe physics defaults to ForceComputeActor: {}", e);
+            warn!("Failed to send canonical physics defaults to ForceComputeActor: {}", e);
         }
     }
     if let Err(e) = state.graph_service_addr.send(update_msg).await {
-        warn!("Failed to propagate safe physics to GraphServiceSupervisor: {}", e);
+        warn!("Failed to propagate canonical physics to GraphServiceSupervisor: {}", e);
+    }
+
+    // Persist the canonical default to SQLite so the persisted store and the live
+    // GPU actor cannot diverge after a reset (closes the "SQLite says
+    // graphSeparationX=250 while GPU runs sep=0" gap). Same set_setting("physics")
+    // pattern as update_physics_settings.
+    match serde_json::to_value(&reset_physics) {
+        Ok(physics_json) => {
+            if let Err(e) = settings_repo
+                .set_setting(
+                    "physics",
+                    SettingValue::Json(physics_json),
+                    Some("Physics simulation settings (canonical default, layout reset)"),
+                )
+                .await
+            {
+                warn!("Failed to persist canonical physics to SQLite on reset: {}", e);
+            } else {
+                info!("Persisted canonical physics default to SQLite on reset");
+            }
+        }
+        Err(e) => warn!("Failed to serialize canonical physics for persistence on reset: {}", e),
     }
 
     // 2. Re-randomize positions on GPU
@@ -1258,7 +1286,7 @@ pub async fn reset_layout(
 
     HttpResponse::Ok().json(serde_json::json!({
         "status": "ok",
-        "message": "Layout reset — positions re-randomized, physics reset to safe defaults, full reheat triggered"
+        "message": "Layout reset — positions re-randomized, physics reset to canonical defaults (close dual-disc), persisted to SQLite, full reheat triggered"
     }))
 }
 

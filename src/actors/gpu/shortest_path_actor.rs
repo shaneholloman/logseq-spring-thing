@@ -17,6 +17,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use std::time::Instant;
 
+use super::analytics_telemetry::{record_execution, AnalyticsKernel, ExecutionPath};
 use super::shared::{GPUState, SharedGPUContext};
 use crate::actors::messages::*;
 
@@ -237,6 +238,10 @@ impl Handler<ComputeSSP> for ShortestPathActor {
                     error!("GPU SSSP computation failed: {}", e);
                     format!("SSSP computation failed: {}", e)
                 })?;
+
+            // Task #74: SSSP is GPU-only (failure above returns Err; there is no CPU
+            // fallback). Record the GPU path on success.
+            record_execution(AnalyticsKernel::Sssp, ExecutionPath::Gpu);
 
             let computation_time = start_time.elapsed().as_millis() as u64;
 

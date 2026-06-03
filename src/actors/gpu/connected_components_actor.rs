@@ -8,12 +8,13 @@
 //! - Network fragmentation detection
 
 use actix::prelude::*;
-use log::info;
+use log::{info, warn};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;
 
+use super::analytics_telemetry::{record_execution, AnalyticsKernel, ExecutionPath};
 use super::shared::{GPUState, SharedGPUContext};
 use crate::actors::messages::*;
 
@@ -48,6 +49,11 @@ pub struct ConnectedComponentsResult {
     pub iterations: u32,
     /// Computation time in milliseconds
     pub computation_time_ms: u64,
+    /// Which compute path this run actually executed on (task #74 zero-fallback
+    /// gate). `cpu_fallback` means the GPU kernel failed and a CPU implementation
+    /// ran instead — a gated regression, recorded as a `warn` and counted in the
+    /// analytics telemetry snapshot.
+    pub execution_path: ExecutionPath,
 }
 
 /// Component information
@@ -235,7 +241,7 @@ impl Handler<ComputeConnectedComponents> for ConnectedComponentsActor {
         let max_iterations = msg.max_iterations.unwrap_or(100);
 
         // Get GPU context and try GPU path first
-        let (labels, iterations) = match &self.shared_context {
+        let (labels, iterations, execution_path) = match &self.shared_context {
             Some(ctx) => {
                 let mut unified_compute = ctx
                     .unified_compute
@@ -247,21 +253,34 @@ impl Handler<ComputeConnectedComponents> for ConnectedComponentsActor {
                 // Try GPU-accelerated connected components
                 match unified_compute.run_connected_components_gpu(max_iterations as i32) {
                     Ok((gpu_labels, _num_comp)) => {
-                        info!("ConnectedComponentsActor: GPU path succeeded");
+                        // Task #74: record the GPU path (expected, non-gated).
+                        let path = record_execution(
+                            AnalyticsKernel::ConnectedComponents,
+                            ExecutionPath::Gpu,
+                        );
                         let labels: Vec<u32> = gpu_labels.iter().map(|&l| l as u32).collect();
-                        (labels, max_iterations)
+                        (labels, max_iterations, path)
                     }
                     Err(e) => {
-                        info!(
+                        // Task #74 zero-fallback gate: the GPU kernel failed and a CPU
+                        // implementation is about to run. record_execution emits the
+                        // gated `warn` and increments the fallback counter so this is
+                        // never a silent substitution.
+                        warn!(
                             "ConnectedComponentsActor: GPU path failed ({}), falling back to CPU",
                             e
                         );
+                        let path = record_execution(
+                            AnalyticsKernel::ConnectedComponents,
+                            ExecutionPath::CpuFallback,
+                        );
                         drop(unified_compute);
-                        self.compute_components_cpu(
+                        let (labels, iterations) = self.compute_components_cpu(
                             num_nodes,
                             &self.cached_edges,
                             max_iterations,
-                        )?
+                        )?;
+                        (labels, iterations, path)
                     }
                 }
             }
@@ -277,8 +296,10 @@ impl Handler<ComputeConnectedComponents> for ConnectedComponentsActor {
         self.update_stats(computation_time, num_components);
 
         info!(
-            "ConnectedComponentsActor: Found {} components in {}ms",
-            num_components, computation_time
+            "ConnectedComponentsActor: Found {} components in {}ms (path={})",
+            num_components,
+            computation_time,
+            execution_path.as_str()
         );
 
         Ok(ConnectedComponentsResult {
@@ -289,6 +310,7 @@ impl Handler<ComputeConnectedComponents> for ConnectedComponentsActor {
             is_connected,
             iterations,
             computation_time_ms: computation_time,
+            execution_path,
         })
     }
 }

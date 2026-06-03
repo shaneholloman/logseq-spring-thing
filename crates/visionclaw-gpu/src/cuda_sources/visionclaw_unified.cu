@@ -187,22 +187,34 @@ __global__ void build_grid_kernel(
     const AABB aabb,
     const int3 grid_dims,
     const float cell_size,
-    const int num_nodes)
+    const int num_nodes,
+    // Total cell count = grid_dims.x*y*z. Used as a hard upper bound on the
+    // emitted key so a stale/oversized grid dimension can never produce a key
+    // that overruns cell_start/cell_end downstream (defence-in-depth against the
+    // #81 illegal-memory-access; the host now also guarantees this invariant).
+    const int num_grid_cells)
 {
     const int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx >= num_nodes) return;
 
     float3 pos = make_vec3(pos_x[idx], pos_y[idx], pos_z[idx]);
-    
-    int grid_x = static_cast<int>((pos.x - aabb.min.x) / cell_size);
-    int grid_y = static_cast<int>((pos.y - aabb.min.y) / cell_size);
-    int grid_z = static_cast<int>((pos.z - aabb.min.z) / cell_size);
+
+    // Guard against a degenerate cell size (zero/negative/NaN). Without this a
+    // bad cell_size yields ±Inf/NaN grid coords; the clamp below would still
+    // catch it, but computing on NaN first is wasteful and fragile.
+    const float inv_cell = (cell_size > 0.0f) ? (1.0f / cell_size) : 0.0f;
+
+    int grid_x = static_cast<int>((pos.x - aabb.min.x) * inv_cell);
+    int grid_y = static_cast<int>((pos.y - aabb.min.y) * inv_cell);
+    int grid_z = static_cast<int>((pos.z - aabb.min.z) * inv_cell);
 
     grid_x = clamp_int(grid_x, 0, grid_dims.x - 1);
     grid_y = clamp_int(grid_y, 0, grid_dims.y - 1);
     grid_z = clamp_int(grid_z, 0, grid_dims.z - 1);
 
-    cell_keys[idx] = grid_z * grid_dims.y * grid_dims.x + grid_y * grid_dims.x + grid_x;
+    int key = grid_z * grid_dims.y * grid_dims.x + grid_y * grid_dims.x + grid_x;
+    // Final clamp into the valid cell-buffer range [0, num_grid_cells).
+    cell_keys[idx] = clamp_int(key, 0, num_grid_cells - 1);
 }
 
 __global__ void compute_cell_bounds_kernel(

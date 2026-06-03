@@ -595,15 +595,13 @@ pub async fn compute_point_to_point(
     }
 }
 
-/// Configure pathfinding API routes
-pub fn configure_pathfinding_routes(cfg: &mut web::ServiceConfig) {
-    cfg.service(
-        web::scope("/analytics/pathfinding")
-            .route("/sssp", web::post().to(compute_sssp))
-            .route("/apsp", web::post().to(compute_apsp))
-            .route("/path", web::post().to(compute_point_to_point))
-            .route("/connected-components", web::post().to(compute_connected_components))
-            .route("/stats/sssp", web::get().to(get_shortest_path_stats))
-            .route("/stats/components", web::get().to(get_connected_components_stats))
-    );
-}
+// NOTE (task #70 D8b HTTP-route consolidation): the duplicate
+// `configure_pathfinding_routes` scope previously registered a second
+// `/analytics/pathfinding/*` prefix. actix-web does NOT fall through
+// duplicate-prefix scopes — the FIRST registered `web::scope("/analytics")`
+// (in `analytics::config`) already claims the prefix, so every route in this
+// scope returned 404 and the scope was dead. The six pathfinding routes are now
+// registered exactly once, in `analytics::config` (this module's handlers are
+// referenced there as `pathfinding::*`). This dead `configure_pathfinding_routes`
+// has been removed; the unrouted `/path`, `/stats/sssp`, and `/stats/components`
+// handlers it formerly masked are now live under the single `/analytics` scope.

@@ -1,16 +1,23 @@
 ---
 title: VisionClaw Actor System Hierarchy
-description: Complete reference for VisionClaw's 21-actor Actix-Web supervision tree, covering actor roles, message protocols, and supervision strategies
+description: Complete reference for VisionClaw's 23-actor Actix-Web supervision tree, covering actor roles, message protocols, and supervision strategies
 category: explanation
 tags: [actors, actix, concurrency, supervision, rust]
-updated-date: 2026-04-10
+updated-date: 2026-06-03
 ---
 
 # VisionClaw Actor System Hierarchy
 
+> **Updated 2026-06-03.** Wire format corrected from 34 B (V1) to 52 B V3
+> (ADR-031). `ForceComputeActor` profile updated to describe display-only disc
+> projection. Settings change pipeline diagram updated to the verified single
+> debounced path (T2 resolved). Position broadcast pipeline diagram updated to
+> the verified FC → GSS → CCA route with disc projection. See
+> `docs/architecture/diagrams/` for the authoritative verified diagrams.
+
 VisionClaw's Rust backend coordinates 23 specialised Actix actors under a hierarchical supervision tree. Actors handle all concurrent concerns — WebSocket client management, GPU physics coordination, graph state, semantic processing, GitHub ingestion, agent monitoring, and task orchestration — without shared mutable state. Communication is exclusively via typed asynchronous messages.
 
-> **Note**: `GraphServiceActor` no longer exists as an active component. It was decomposed into the current 21-actor hierarchy and replaced by CQRS handlers backed by the embedded Oxigraph store (ADR-11). Any reference to `GraphServiceActor` in older documentation is historical.
+> **Note**: `GraphServiceActor` no longer exists as an active component. It was decomposed into the current 23-actor hierarchy and replaced by `GraphServiceSupervisor` (which supervises `GraphStateActor` and `GraphUpdateActor`) backed by the embedded Oxigraph store (ADR-11). Any reference to `GraphServiceActor` in older documentation is historical.
 
 ---
 
@@ -192,9 +199,11 @@ Key messages: `AllocateStream` → `StreamHandle`, `ReleaseStream`, `GetMemorySt
 | CUDA kernels | 37 |
 | Typical latency | 4ms/step |
 
-Barnes-Hut O(n log n) force calculation with Verlet integration. Owns the primary node position CUDA buffers. Runs 600-frame warm-up window before physics is considered converged. Emits periodic full-broadcast (every 300 iterations) to prevent client position starvation after convergence.
+Barnes-Hut O(n log n) force calculation with Verlet integration. Owns the primary node position CUDA buffers. Runs a warmup window (1800 steps stability-bypass) before the GPU stability kernel is allowed to suppress steps. Emits periodic full-broadcast (every 300 iterations) to prevent client position starvation after convergence.
 
-Key messages: `ComputeForces`, `UpdatePositions { positions: Vec<BinaryNodeData> }`, `SetSimParams { params: SimParams }`, `GetIterationCount`.
+**Dual-graph disc projection (display-only, 2026-06-03):** After each GPU readback, `ForceComputeActor` applies a display-only facing-disc transformation before broadcasting: Knowledge nodes are flattened to a disc at `z = −graph_separation_x`, Ontology nodes at `z = +graph_separation_x`, Agents remain at `z = 0`. The transformation is applied to the broadcast buffer only and undone from `last_good_positions` before the next physics step — the GPU state never sees the disc offsets. The rim clamp radius (`DISC_RIM_RADIUS = 2600.0`) is decoupled from the separation so close discs remain full-size. The same projection runs independently in the `ForceFullBroadcast` handler. See `docs/architecture/diagrams/06-gpu-physics.md`.
+
+Key messages: `ComputeForces`, `UpdateNodePositions`, `UpdateSimulationParams { params: SimulationParams }`, `ForceFullBroadcast`, `ResetPositions`.
 
 On CUDA OOM: calls `ctx.stop()` to trigger `PhysicsSupervisor` AllForOne restart.
 
@@ -316,7 +325,11 @@ Union-Find connected component labelling. Used by the client to visualise discon
 | Mailbox | Unbounded |
 | Lines of code | ~1,593 |
 
-Central WebSocket multiplexer. Manages the registry of active `WebSocketSession` instances. Serialises node positions into the 34-byte binary wire protocol and broadcasts at adaptive rates: 60 FPS when physics is active, 5 Hz when converged.
+Central WebSocket multiplexer. Manages the registry of active `WebSocketSession` instances. Serialises node positions into the **52-byte V3 binary wire protocol** (ADR-031, little-endian; analytics fields cluster_id@36, anomaly_score@40, community_id@44, centrality@48) and broadcasts at adaptive rates: 60 FPS when physics is active, 5 Hz when converged.
+
+> **Updated 2026-06-03:** The previously cited "34-byte" record was the
+> pre-ADR-031 V1 format. The live protocol is 52 B V3. See
+> `docs/architecture/diagrams/05-wire-analytics-types.md` for the full layout.
 
 Key messages handled:
 - `RegisterClient { id: ClientId, addr: Addr<WebSocketSession> }` → `()`
@@ -417,21 +430,29 @@ Manages concurrent task scheduling and execution across agents. Enforces the `MA
 
 ### Position Broadcast Pipeline
 
+> **Updated 2026-06-03.** Verified path: FC applies display-only disc projection
+> to the broadcast buffer, sends to `GraphServiceSupervisor`, which routes to
+> `ClientCoordinatorActor`. The projection is undone after broadcast.
+> See `docs/architecture/diagrams/06-gpu-physics.md` for the full sequence.
+
 ```mermaid
 sequenceDiagram
     participant FC as ForceComputeActor
-    participant PO as PhysicsOrchestratorActor
+    participant GSS as GraphServiceSupervisor
     participant CC as ClientCoordinatorActor
-    participant WS as WebSocketSession × N
+    participant WS as WebSocket clients
 
-    loop Every simulation tick (~16ms at 60 FPS)
+    loop Physics tick (≥ 2 ms interval, orchestrated by PhysicsOrchestratorActor)
         FC->>FC: CUDA kernel: compute forces + integrate positions
-        FC->>PO: UpdateNodePositions(Vec<BinaryNodeData>)
-        PO->>CC: BroadcastPositions(binary_frame)
-        CC->>WS: Send(binary_frame) [fan-out to all sessions]
+        FC->>FC: Divergence guard (NaN/Inf/OOB/KE check)
+        FC->>FC: DISC PROJECTION (display-only):<br/>population_centroids_xy() → project_node_xy() per node<br/>Knowledge z=−sep, Ontology z=+sep, Agent z=0
+        FC->>GSS: UpdateNodePositions (projected positions, 52 B V3 per node)
+        GSS->>CC: BroadcastPositions
+        CC->>WS: binary frame fan-out to all sessions
+        FC->>FC: RESTORE from last_good_positions<br/>(GPU state unchanged; next step sees pristine physics)
     end
 
-    note over FC,PO: After convergence: periodic full broadcast<br/>every 300 iterations prevents client starvation
+    note over FC,GSS: After FastSettle plateau: PhysicsOrchestratorActor<br/>sends ForceFullBroadcast → pure GPU snapshot, projected.<br/>Periodic full broadcast every 300 iters prevents starvation.
 ```
 
 ### Graph Update Pipeline (GitHub → Client)
@@ -457,22 +478,33 @@ sequenceDiagram
 
 ### Settings Change Pipeline
 
+> **Updated 2026-06-03 (T2 resolved).** The diagram below shows the verified
+> single-path flow. The previous diagram showed an incorrect CQRS/CommandBus
+> path and `SA→FC` direct send; both have been removed. See
+> `docs/architecture/diagrams/01-settings-flow.md` for the full sequence.
+
 ```mermaid
 sequenceDiagram
-    participant HTTP as HTTP Handler
-    participant CB as CommandBus
-    participant SH as UpdateSettingsHandler
-    participant SR as SqliteSettingsRepository
-    participant SA as OptimizedSettingsActor
+    participant UI as React UI
+    participant ASM as autoSaveManager<br/>(500 ms debounce)
+    participant SApi as settingsApi
+    participant HTTP as PUT /api/settings/physics<br/>settings_routes.rs
+    participant OSA as OptimizedSettingsActor
+    participant GSS as GraphServiceSupervisor
+    participant Orch as PhysicsOrchestratorActor
     participant FC as ForceComputeActor
+    participant SQLite as SQLite settings.sqlite3
 
-    HTTP->>CB: dispatch(UpdatePhysicsSettingsDirective)
-    CB->>SH: handle(directive)
-    SH->>SR: save_physics_settings(profile, settings)
-    SR-->>SH: Ok(())
-    SH->>SA: SettingsUpdated { key, value }
-    SA->>FC: SetSimParams { params: SimParams }
-    note over FC: Reheat factor 1.0 applied;<br/>gradual decay over ~10 steps
+    UI->>ASM: queueChange(path, value)
+    ASM->>SApi: updateSettingsByPaths (single PUT, no duplicate)
+    SApi->>HTTP: PUT /api/settings/physics
+    HTTP->>OSA: UpdateSettings (in-memory + YAML)
+    HTTP->>GSS: UpdateSimulationParams
+    GSS->>Orch: UpdateSimulationParams (forwarded)
+    Orch->>FC: UpdateSimulationParams (forwarded)
+    HTTP->>SQLite: set_setting("physics")
+    HTTP->>GSS: ForceResumePhysics
+    note over FC: reheat_factor set, stability_warmup_remaining=1800<br/>warmup bypasses GPU stability suppression for 30 s
 ```
 
 ---

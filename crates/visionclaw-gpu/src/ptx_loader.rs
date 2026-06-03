@@ -211,7 +211,6 @@ pub enum PTXModule {
     GpuAabbReduction,
     GpuLandmarkApsp,
     SsspCompact,
-    VisionflowUnifiedStability,
     OntologyConstraints,
     Pagerank,
     GpuConnectedComponents,
@@ -226,7 +225,6 @@ impl PTXModule {
             PTXModule::GpuAabbReduction => "gpu_aabb_reduction.cu",
             PTXModule::GpuLandmarkApsp => "gpu_landmark_apsp.cu",
             PTXModule::SsspCompact => "sssp_compact.cu",
-            PTXModule::VisionflowUnifiedStability => "visionclaw_unified_stability.cu",
             PTXModule::OntologyConstraints => "ontology_constraints.cu",
             PTXModule::Pagerank => "pagerank.cu",
             PTXModule::GpuConnectedComponents => "gpu_connected_components.cu",
@@ -241,7 +239,6 @@ impl PTXModule {
             PTXModule::GpuAabbReduction => "GPU_AABB_REDUCTION_PTX_PATH",
             PTXModule::GpuLandmarkApsp => "GPU_LANDMARK_APSP_PTX_PATH",
             PTXModule::SsspCompact => "SSSP_COMPACT_PTX_PATH",
-            PTXModule::VisionflowUnifiedStability => "VISIONCLAW_UNIFIED_STABILITY_PTX_PATH",
             PTXModule::OntologyConstraints => "ONTOLOGY_CONSTRAINTS_PTX_PATH",
             PTXModule::Pagerank => "PAGERANK_PTX_PATH",
             PTXModule::GpuConnectedComponents => "GPU_CONNECTED_COMPONENTS_PTX_PATH",
@@ -263,9 +260,6 @@ impl PTXModule {
             PTXModule::GpuAabbReduction => option_env!("GPU_AABB_REDUCTION_PTX_PATH"),
             PTXModule::GpuLandmarkApsp => option_env!("GPU_LANDMARK_APSP_PTX_PATH"),
             PTXModule::SsspCompact => option_env!("SSSP_COMPACT_PTX_PATH"),
-            PTXModule::VisionflowUnifiedStability => {
-                option_env!("VISIONCLAW_UNIFIED_STABILITY_PTX_PATH")
-            }
             PTXModule::OntologyConstraints => option_env!("ONTOLOGY_CONSTRAINTS_PTX_PATH"),
             PTXModule::Pagerank => option_env!("PAGERANK_PTX_PATH"),
             PTXModule::GpuConnectedComponents => option_env!("GPU_CONNECTED_COMPONENTS_PTX_PATH"),
@@ -280,7 +274,6 @@ impl PTXModule {
             PTXModule::GpuAabbReduction,
             PTXModule::GpuLandmarkApsp,
             PTXModule::SsspCompact,
-            PTXModule::VisionflowUnifiedStability,
             PTXModule::OntologyConstraints,
             PTXModule::Pagerank,
             PTXModule::GpuConnectedComponents,

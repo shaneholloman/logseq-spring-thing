@@ -85,6 +85,19 @@ fn population_centroids_xy(
     out
 }
 
+/// Generous, separation-INDEPENDENT rim-clamp radius for each facing disc.
+///
+/// The rim clamp pulls true outliers back onto the disc so a few stray nodes
+/// can't spray across the gap and visually merge the two populations. It must
+/// NOT be coupled to `graph_separation_x`: previously `r_max = sep * 0.85`
+/// shrank every disc as the user pulled the discs together (sep~100 collapsed
+/// each disc to radius ~85), which is the opposite of the desired "full-size
+/// discs, close together" view. Driving the radius from a fixed generous value
+/// keeps each disc its natural size regardless of how close the two discs sit.
+/// Healthy steady-state layout radius is ~±2400, so this comfortably contains a
+/// normal disc and only clamps genuine runaways.
+const DISC_RIM_RADIUS: f32 = 2600.0;
+
 /// Re-centre a node onto its population's disc, flatten Z, and offset along Z.
 /// Each disc is centred at its population's median in the X-Y plane, flattened
 /// thin on Z, then translated to its target Z (∓sep for Knowledge/Ontology,
@@ -93,7 +106,9 @@ fn population_centroids_xy(
 /// Flatten and separation share the Z axis (the disc normal), which is what
 /// makes the faces point at each other. Nodes beyond `r_max` from the disc
 /// centre are pulled to the rim so each disc stays compact and outliers can't
-/// spray across the gap and merge the two populations.
+/// spray across the gap and merge the two populations. `r_max` is the disc's
+/// own rim radius (see `DISC_RIM_RADIUS`), DECOUPLED from the separation so the
+/// discs keep their full size when pulled close (sep small).
 #[inline]
 fn project_node_xy(
     pos: &mut Vec3,
@@ -1337,9 +1352,10 @@ impl Actor for ForceComputeActor {
         }
 
         // Drop the shared GPU context reference. When the last Arc<SharedGPUContext>
-        // drops, the CudaDevice and all associated buffers (including the persistent
-        // stability buffers from visionclaw_unified_stability.cu) are freed by the
-        // CUDA driver context teardown.
+        // drops, the CudaDevice and all associated DeviceBuffers (positions,
+        // velocities, forces, CSR edges, and the stability scratch buffers
+        // partial_kinetic_energy / active_node_count / should_skip_physics owned
+        // by UnifiedGPUCompute) are freed by the CUDA driver context teardown.
         if self.shared_context.take().is_some() {
             info!("[ForceComputeActor] Released SharedGPUContext reference");
         }
@@ -1819,7 +1835,9 @@ impl Handler<ComputeForces> for ForceComputeActor {
                                         },
                                         actor.position_velocity_buffer.len(),
                                     );
-                                    let r_max = if sep > 0.0 { sep * 0.85 } else { 0.0 };
+                                    // Rim radius is the disc's own fixed size, NOT sep —
+                                    // close discs (small sep) stay full-size.
+                                    let r_max = DISC_RIM_RADIUS;
                                     for (i, (pos, _vel)) in actor.position_velocity_buffer.iter_mut().enumerate() {
                                         if let Some(&pop) = actor.node_population.get(i) {
                                             project_node_xy(pos, pop, &centroids, sep, face_scale, r_max);
@@ -2304,7 +2322,9 @@ impl Handler<ForceFullBroadcast> for ForceComputeActor {
                     } else {
                         [(0.0f32, 0.0f32); 3]
                     };
-                    let r_max = if sep > 0.0 { sep * 0.85 } else { 0.0 };
+                    // Rim radius is the disc's own fixed size, NOT sep, so the
+                    // discs keep full size when the user pulls them close together.
+                    let r_max = DISC_RIM_RADIUS;
 
                     let mut node_updates = Vec::with_capacity(pos_x.len());
                     for i in 0..pos_x.len() {

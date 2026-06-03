@@ -136,46 +136,61 @@ graph TD
 
 ## 2. Handler-to-Service-to-Actor Call Chains
 
+> **Updated 2026-06-03.** Wire format corrected to 52 B V3 (was "24 bytes/node",
+> the pre-ADR-031 value). Broadcast route corrected to FCA → GSS → CC (was
+> FCA → PO → CC). Settings call chain corrected to the verified single-path flow
+> (was a stale CQRS/CommandBus path). See §§ 8-11 of this document and
+> `docs/architecture/diagrams/` for the authoritative detail.
+
 ```mermaid
 sequenceDiagram
     participant Client
     participant WS as SocketFlowHandler
     participant CC as ClientCoordinatorActor
-    participant GSS as GraphServiceSupervisor
     participant GSA as GraphStateActor
-    participant PO as PhysicsOrchestratorActor
     participant FCA as ForceComputeActor
+    participant GSS as GraphServiceSupervisor
 
     Client->>WS: WebSocket connect
     WS->>CC: RegisterClient
     CC->>GSA: GetGraphData
     GSA-->>CC: GraphData (binary)
-    CC-->>Client: Initial state (binary)
+    CC-->>Client: Initial state (binary + JSON initialGraphLoad)
 
-    Note over FCA: GPU physics tick
-    FCA->>PO: UpdateNodePositions
-    PO->>CC: BroadcastPositions
-    CC-->>Client: Binary position frame (24 bytes/node)
+    Note over FCA: GPU physics tick (disc projection applied)
+    FCA->>GSS: UpdateNodePositions (projected, 52 B V3 per node)
+    GSS->>CC: BroadcastPositions
+    CC-->>Client: Binary position frame (52 bytes/node, V3)
 ```
 
 ```mermaid
 sequenceDiagram
     participant UI as Client
-    participant API as settings_handler
+    participant ASM as autoSaveManager (500ms debounce)
+    participant HTTP as PUT /api/settings/physics
     participant OSA as OptimizedSettingsActor
-    participant Settings as SqliteSettingsRepository
-    participant PO as PhysicsOrchestratorActor
+    participant GSS as GraphServiceSupervisor
+    participant Orch as PhysicsOrchestratorActor
+    participant FCA as ForceComputeActor
+    participant SQLite as SQLite settings.sqlite3
 
-    UI->>API: PUT /api/settings
-    API->>OSA: UpdateSetting(path, value)
-    OSA->>Settings: persist_setting()
-    OSA->>PO: ApplySettingsChange
-    PO->>PO: reheat_simulation()
-    OSA-->>API: Ok(updated_value)
-    API-->>UI: 200 JSON
+    UI->>ASM: queueChange (slider)
+    ASM->>HTTP: PUT /api/settings/physics (single path)
+    HTTP->>OSA: UpdateSettings
+    HTTP->>GSS: UpdateSimulationParams → Orch → FCA
+    HTTP->>SQLite: persist_setting("physics")
+    HTTP->>GSS: ForceResumePhysics
+    HTTP-->>UI: 200 JSON (new PhysicsSettings)
 ```
 
 ## 3. Data Flow Diagram
+
+> **Note (2026-06-03):** This diagram retains its original shape for structural
+> overview; the two inaccuracies are noted inline. (1) `NEO` should be `OXI`
+> (Oxigraph, per ADR-11 — Neo4j was removed). (2) The broadcast path is
+> `FCA → GraphServiceSupervisor → ClientCoordinatorActor`; the
+> `BroadcastOptimizer` is internal to `ForceComputeActor`. For the verified
+> broadcast sequence see `docs/architecture/diagrams/06-gpu-physics.md`.
 
 ```mermaid
 flowchart LR
@@ -193,16 +208,16 @@ flowchart LR
     end
 
     subgraph Compute
-        NEO -->|load| GSA[GraphStateActor]
-        GSA -->|graph| FCA[ForceComputeActor]
+        OXI -->|load| GSA[GraphStateActor]
+        GSA -->|graph upload| FCA[ForceComputeActor]
         FCA -->|CUDA kernel| GPU[GPU]
         GPU -->|positions| FCA
-        FCA -->|delta| BO[BroadcastOptimizer]
+        FCA -->|projected 52B V3| GSS[GraphServiceSupervisor]
     end
 
     subgraph Deliver
-        BO -->|binary| CC[ClientCoordinatorActor]
-        CC -->|WS binary| CLIENTS[Browser Clients]
+        GSS -->|broadcast| CC[ClientCoordinatorActor]
+        CC -->|WS binary 52B V3| CLIENTS[Browser Clients]
         CC -->|WS JSON| CLIENTS
     end
 ```
