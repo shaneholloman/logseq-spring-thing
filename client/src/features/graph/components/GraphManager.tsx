@@ -104,6 +104,14 @@ const GraphManager: React.FC<GraphManagerProps> = ({ onDragStateChange }) => {
     }
   }, [visibleNodes, perNodeVisualModeMap, graphMode, nodeTypeVisibility])
 
+  // The exact set of rendered node IDs (every filter applied). The edge hot-loop
+  // gates on this so edges never draw to a pruned endpoint (linked_page stubs,
+  // low-degree, quality-filtered) — one source of truth shared with the meshes.
+  const renderedNodeIds = useMemo(
+    () => new Set(typeFilteredNodes.map(n => String(n.id))),
+    [typeFilteredNodes],
+  )
+
   // Cluster hulls are scoped to the ONTOLOGY population. Louvain clusters mix
   // populations through the dominant KG<->ontology cross-links, so unscoped
   // hulls would span the separation gap and join the two discs visually.
@@ -400,7 +408,7 @@ const GraphManager: React.FC<GraphManagerProps> = ({ onDragStateChange }) => {
     perNodeVisualModeMap,
     hierarchyMap,
     graphMode,
-    nodeTypeVisibility,
+    visibleNodeIds: renderedNodeIds,
     graphTypeVisuals,
     nodeSize: nodeSettings?.nodeSize ?? 0.5,
     selectedNodeId,

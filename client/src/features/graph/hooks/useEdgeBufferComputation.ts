@@ -26,7 +26,11 @@ export interface EdgeBufferComputationOptions {
   perNodeVisualModeMap: Map<string, GraphVisualMode>
   hierarchyMap: Map<string, any>
   graphMode: GraphVisualMode
-  nodeTypeVisibility: { knowledge?: boolean; ontology?: boolean; agent?: boolean } | undefined
+  /** IDs of nodes actually rendered (GraphManager's typeFilteredNodes). An edge
+   *  is drawn only when BOTH endpoints are in this set, so pruned nodes
+   *  (linked_page stubs, low-degree, quality-filtered, or type-toggled-off)
+   *  never leave dangling edges. Single source of truth shared with the meshes. */
+  visibleNodeIds: Set<string>
   graphTypeVisuals: any
   nodeSize: number
   selectedNodeId: string | null
@@ -45,7 +49,7 @@ export interface EdgeBufferComputationOptions {
 export function useEdgeBufferComputation(opts: EdgeBufferComputationOptions) {
   const {
     graphData, nodePositionsRef, nodeIdToIndexMap, connectionCountMap,
-    perNodeVisualModeMap, hierarchyMap, graphMode, nodeTypeVisibility,
+    perNodeVisualModeMap, hierarchyMap, graphMode, visibleNodeIds,
     graphTypeVisuals, nodeSize, selectedNodeId, dragDataRef,
     edgeFlowRef, highlightEdgeFlowRef, highlightEdgePoints,
     setEdgePoints, setHighlightEdgePoints,
@@ -107,20 +111,13 @@ export function useEdgeBufferComputation(opts: EdgeBufferComputationOptions) {
     graphData.edges.forEach(edge => {
       const sourceStr = String(edge.source)
       const targetStr = String(edge.target)
+      // Skip edges touching a non-rendered node. Subsumes the node-type toggle
+      // AND the linked_page / min-degree / quality prunes, keeping edges in
+      // lockstep with the population meshes (no edges to invisible endpoints).
+      if (!visibleNodeIds.has(sourceStr) || !visibleNodeIds.has(targetStr)) return
       const sourceNodeIndex = nodeIdToIndexMap.get(sourceStr)
       const targetNodeIndex = nodeIdToIndexMap.get(targetStr)
       if (sourceNodeIndex === undefined || targetNodeIndex === undefined) return
-
-      if (nodeTypeVisibility) {
-        const srcVis = perNodeVisualModeMap.get(sourceStr) || graphMode
-        const tgtVis = perNodeVisualModeMap.get(targetStr) || graphMode
-        if ((srcVis === 'knowledge_graph' && !nodeTypeVisibility.knowledge) ||
-            (srcVis === 'ontology'         && !nodeTypeVisibility.ontology)  ||
-            (srcVis === 'agent'            && !nodeTypeVisibility.agent)     ||
-            (tgtVis === 'knowledge_graph'  && !nodeTypeVisibility.knowledge) ||
-            (tgtVis === 'ontology'         && !nodeTypeVisibility.ontology)  ||
-            (tgtVis === 'agent'            && !nodeTypeVisibility.agent)) return
-      }
 
       const i3s = sourceNodeIndex * 3
       const i3t = targetNodeIndex * 3
@@ -178,17 +175,7 @@ export function useEdgeBufferComputation(opts: EdgeBufferComputationOptions) {
         const sourceStr = String(edge.source)
         const targetStr = String(edge.target)
         if (sourceStr !== selectedNodeId && targetStr !== selectedNodeId) return
-
-        if (nodeTypeVisibility) {
-          const srcVis = perNodeVisualModeMap.get(sourceStr) || graphMode
-          const tgtVis = perNodeVisualModeMap.get(targetStr) || graphMode
-          if ((srcVis === 'knowledge_graph' && !nodeTypeVisibility.knowledge) ||
-              (srcVis === 'ontology'         && !nodeTypeVisibility.ontology)  ||
-              (srcVis === 'agent'            && !nodeTypeVisibility.agent)     ||
-              (tgtVis === 'knowledge_graph'  && !nodeTypeVisibility.knowledge) ||
-              (tgtVis === 'ontology'         && !nodeTypeVisibility.ontology)  ||
-              (tgtVis === 'agent'            && !nodeTypeVisibility.agent)) return
-        }
+        if (!visibleNodeIds.has(sourceStr) || !visibleNodeIds.has(targetStr)) return
 
         const sourceIdx = nodeIdToIndexMap.get(sourceStr)
         const targetIdx = nodeIdToIndexMap.get(targetStr)
