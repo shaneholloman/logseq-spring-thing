@@ -87,7 +87,7 @@ sequenceDiagram
 
     note over FCA: Good frame:<br/>  Clamp positions to MAX_COORD, velocities to MAX_VELOCITY_MAGNITUDE<br/>  Reset consecutive_bad_frames = 0<br/>  Snapshot -> last_good_positions (pristine physics state)
 
-    note over FCA: DISC PROJECTION (display-only, applied to broadcast buffer):<br/>  population_centroids_xy(): per-population median X,Y<br/>  project_node_xy() per node:<br/>    dx=pos.x-cx, dy=pos.y-cy; rim-clamp to r_max=sep*0.85<br/>    pos.x = dx, pos.y = dy  (re-centred around population median)<br/>    pos.z = pos.z*face_scale + target_z  (flatten Z, offset by ±sep)<br/>  Knowledge: target_z=-sep  Ontology: target_z=+sep  Agent: target_z=0
+    note over FCA: DISC PROJECTION (display-only, applied to broadcast buffer):<br/>  population_centroids_xy(): per-population median X,Y<br/>  project_node_xy() per node:<br/>    dx=pos.x-cx, dy=pos.y-cy; rim-clamp to r_max=DISC_RIM_RADIUS=2600 (fixed, DECOUPLED from sep)<br/>    pos.x = dx, pos.y = dy  (re-centred around population median)<br/>    pos.z = pos.z*face_scale + target_z  (flatten Z, offset by ±sep)<br/>  Knowledge: target_z=-sep  Ontology: target_z=+sep  Agent: target_z=0
 
     FCA->>GS: UpdateNodePositions (projected broadcast positions)
 
@@ -142,7 +142,7 @@ flowchart LR
     B -->|No| E["broadcast_buffer = raw physics\n(no transform)"]
     B -->|Yes| C["population_centroids_xy()\nmedian X,Y per population\n(Knowledge=0, Ontology=1, Agent=2)"]
 
-    C --> D["project_node_xy() per node\n  dx = pos.x - centroid_x\n  dy = pos.y - centroid_y\n  rim-clamp to r_max = sep*0.85\n  pos.x = dx\n  pos.y = dy\n  pos.z = pos.z*(1-flatten) + target_z\nAxis asymmetry: X/Y re-centred on\nPER-POPULATION median;\nZ flattened around GLOBAL origin (0)"]
+    C --> D["project_node_xy() per node\n  dx = pos.x - centroid_x\n  dy = pos.y - centroid_y\n  rim-clamp to r_max = DISC_RIM_RADIUS = 2600\n  (fixed const, DECOUPLED from sep — small sep\n   keeps discs full-size)\n  pos.x = dx\n  pos.y = dy\n  pos.z = pos.z*face_scale + target_z\n  (face_scale = 1 - flatten)\nAxis asymmetry: X/Y re-centred on\nPER-POPULATION median;\nZ flattened + separated on the SAME axis (Z)"]
 
     D --> E["broadcast_buffer = projected positions\n(display-only: clients see discs)"]
     E --> F["UpdateNodePositions -> GraphService -> WebSocket clients"]
@@ -169,10 +169,15 @@ discs would never stabilise.
 
 **Costs of the current design:**
 - Every step allocates and reads `last_good_positions` (O(N) clone, host memory).
-- The projection is computed twice when a divergent frame falls back to
-  `last_good_positions` (lines 1731-1763 also project the fallback snapshot).
+- The projection is computed a third time when a divergent frame falls back to
+  `last_good_positions` (lines 1744-1779). As of 2026-06-03 the fallback calls the
+  SAME `project_node_xy` (Z-separation + per-population median re-centre +
+  `DISC_RIM_RADIUS` rim-clamp) as the main path. It previously separated on the
+  Y axis with no centroid/rim-clamp, so a bad frame briefly re-oriented the discs
+  onto a different axis — that inconsistency is now removed.
 - `ForceFullBroadcast` must independently re-implement the same projection
-  (lines 2299-2321), creating a second code path that must stay in sync.
+  (near line 2327, `let r_max = DISC_RIM_RADIUS`), creating a second code path
+  that must stay in sync.
 - Population classification from `metadata["type"]` is a string-match at graph
   upload time (lines 607-633); the result is cached in `node_population` but
   is not re-verified if metadata changes without a graph reload.
@@ -313,12 +318,12 @@ counter and delays convergence detection.
 
 ### Projection per-step apply/undo cost
 
-The disc projection at `force_compute_actor.rs:1816-1831` and the restore at
-`1964-1969` both iterate over all nodes (O(N)) on the hot path every frame that
-has `project=true`. The `last_good_positions.clear()` and rebuild at `1797-1808`
+The disc projection at `force_compute_actor.rs:1829-1846` and the restore at
+`1979-1984` both iterate over all nodes (O(N)) on the hot path every frame that
+has `project=true`. The `last_good_positions.clear()` and rebuild at `1811-1821`
 also copies all N `(node_id, Vec3, Vec3)` triples. For graphs with tens of
 thousands of nodes this is three O(N) passes per frame on the Tokio actor thread
 (not offloaded to `spawn_blocking`), adding CPU-side latency to the
-broadcast-critical path. The `ForceFullBroadcast` handler at `2293-2335` performs
-its own independent projection pass with a separate `population_centroids_xy` call,
-duplicating the computation outside the main loop.
+broadcast-critical path. The `ForceFullBroadcast` handler (around line 2327)
+performs its own independent projection pass with a separate
+`population_centroids_xy` call, duplicating the computation outside the main loop.

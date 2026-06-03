@@ -77,8 +77,8 @@ sequenceDiagram
     Handlers->>GI: updateNodePosition(nodeId, pos)
     Handlers->>Handlers: throttledWebSocketUpdate (100ms)
 
-    Handlers->>WS: sendMessage("nodeDragUpdate", {nodeId, position})<br/>+ sendNodePositionUpdates([{nodeId, position, velocity:{0,0,0}}])
-    Note over Handlers: Two sends per throttle tick:<br/>JSON "nodeDragUpdate" + legacy binary frame
+    Handlers->>WS: sendMessage("nodeDragUpdate", {nodeId, position, timestamp})
+    Note over Handlers: Single send per throttle tick (T2 resolved 2026-06-03):<br/>JSON "nodeDragUpdate" only. The legacy binary frame<br/>(sendNodePositionUpdates) was removed —<br/>useGraphEventHandlers.ts:60-68 — it sent a redundant<br/>SECOND frame per drag move.
 
     WS->>Server: WS frames received
     Server->>Physics: UpdateNodePosition (server-authoritative pin)
@@ -207,13 +207,13 @@ sequenceDiagram
 
     User->>Slider: drag slider (e.g. repelK)
     Slider->>Store: updateSettings(draft => draft[path] = value)
-    Store->>Store: notifyPhysicsUpdate(graphName, params)
-    Store->>API: settingsApi.updatePhysics(params)<br/>→ GET current + PUT merged (endpoints.ts:79-97)
+    Store->>Store: notifyPhysicsUpdate(graphName, params)<br/>NO-OP for persistence (physicsSlice.ts:129-139)
 
     Slider->>ASM: autoSaveManager.queueChange(path, value) (debounced ~500ms)
     ASM->>API: updateSettingsByPaths([{path, value}])<br/>→ routes to updatePhysics if path contains .physics.
+    API->>Server: PUT /api/settings/physics
 
-    Note over API,Server: Both paths call PUT /api/settings/physics<br/>physicsSlice.notifyPhysicsUpdate fires immediately (no debounce)<br/>autoSaveManager fires after debounce (~500ms)<br/>→ DOUBLE PUT for every slider move
+    Note over API,Server: SINGLE PUT per slider move (T2 resolved 2026-06-03):<br/>notifyPhysicsUpdate no longer fires an immediate PUT.<br/>Only the debounced autoSaveManager path (~500ms) persists,<br/>so the change reaches the backend exactly once.
 ```
 
 ---

@@ -1,7 +1,22 @@
 # QE T5 — Analytics Shadow: Data-Path Audit and Dual-Modularity Evidence
 
+> **✅ SUPERSEDED — FIXES LANDED 2026-06-03.** This is a frozen pre-fix reproduction
+> report. Both defects are resolved:
+> - **Claim 1 (hulls never render / handler never writes `node_analytics`)**: the
+>   clustering spawn task now routes its `Vec<Cluster>` through the
+>   `WriteClusterAnalytics` message (`analytics_messages.rs:138`; handled at
+>   `clustering_actor.rs:1193`, `gpu_manager_actor.rs:857`, `analytics_supervisor.rs:422`),
+>   covering both the GPU and CPU-fallback branches via the single writer.
+> - **Claim 2 (dual divergent modularity)**: the CPU shadow `calculate_modularity`
+>   is DELETED (only removal comments remain at `clustering_actor.rs:409,886`); a single
+>   `modularity_csr` with `MODULARITY_GATE=0.3` (`clustering_actor.rs:1336`) remains.
+>
+> Authoritative current state: `07-analysis-clustering.md` (§3b, PARALLEL-1) and
+> `00-anomaly-register.md`. Hulls render on explicit clustering trigger; auto-trigger
+> remains opt-in/OFF by default. Evidence below is retained for historical context.
+
 **Audit date**: 2026-06-03  
-**Status**: CONFIRMED DEFECT — reproduction test in `tests/qe_t5_shadow_modularity.rs`
+**Status**: ~~CONFIRMED DEFECT~~ → RESOLVED — reproduction test in `tests/qe_t5_shadow_modularity.rs`
 
 ---
 

@@ -1745,19 +1745,30 @@ impl Handler<ComputeForces> for ForceComputeActor {
                                         if let Some(_seq) = actor.backpressure.try_acquire() {
                                             let mut node_updates =
                                                 Vec::with_capacity(actor.last_good_positions.len());
+                                            // Compute population centroids from the last-known-good
+                                            // layout so the fallback applies the IDENTICAL projection
+                                            // as the healthy path (Z-separation, per-population median
+                                            // re-centre, fixed DISC_RIM_RADIUS rim-clamp) instead of a
+                                            // divergent Y-separation. A bad frame must not briefly
+                                            // re-orient or collapse the two discs.
+                                            let centroids = if project {
+                                                population_centroids_xy(
+                                                    &actor.node_population,
+                                                    |i| {
+                                                        let (_, p, _) = actor.last_good_positions[i];
+                                                        (p.x, p.y)
+                                                    },
+                                                    actor.last_good_positions.len(),
+                                                )
+                                            } else {
+                                                Default::default()
+                                            };
+                                            let r_max = DISC_RIM_RADIUS;
                                             for (idx, (node_id, pos, vel)) in actor.last_good_positions.iter().enumerate() {
-                                                // Apply the same display-only projection to the
-                                                // fallback so a divergent frame doesn't briefly
-                                                // collapse the two discs back together.
                                                 let mut p = *pos;
                                                 if project {
                                                     if let Some(&pop) = actor.node_population.get(idx) {
-                                                        p.z *= face_scale;
-                                                        match pop {
-                                                            GraphPopulation::Knowledge => p.y -= sep,
-                                                            GraphPopulation::Ontology => p.y += sep,
-                                                            GraphPopulation::Agent => {}
-                                                        }
+                                                        project_node_xy(&mut p, pop, &centroids, sep, face_scale, r_max);
                                                     }
                                                 }
                                                 node_updates.push((*node_id, BinaryNodeDataClient::new(

@@ -1,8 +1,19 @@
 # QE-T1 — Node Population Has No Single Source of Truth
 
-**Anomaly**: T1 (cartography audit #1). **Status**: REPRODUCED, defect confirmed.
+> **✅ SUPERSEDED — FIX LANDED 2026-06-03.** This is a frozen pre-fix reproduction
+> report, retained for historical context. Population now has a single source of
+> truth: `metadata["type"]`, read via `Node::population_type()` / `Node::population()`
+> (`crates/visionclaw-domain/src/models/node.rs:271,283`) and consumed uniformly by
+> `graph_state_actor.rs:242,288` and the GPU path. **Note:** the fix chose the
+> OPPOSITE field from this report's §6 fix-spec — `metadata["type"]` is authoritative,
+> NOT `node_type`. `ontology_enrichment_service` no longer rewrites `node_type`, so
+> the two fields can no longer desync. Authoritative current model:
+> `02-population-handoff.md §7` and `00-anomaly-register.md`. The §2/§4 truth tables
+> below describe pre-fix divergent behaviour that no longer occurs.
+
+**Anomaly**: T1 (cartography audit #1). **Status**: RESOLVED (was: REPRODUCED, defect confirmed).
 **Author**: agentic-QE investigator. **Date**: 2026-06-03.
-**Scope**: reproduction evidence + failing regression test + fix spec. **No production code changed.**
+**Scope**: reproduction evidence + failing regression test + fix spec. **No production code changed *by this report*.**
 
 ---
 

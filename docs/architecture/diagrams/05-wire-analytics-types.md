@@ -95,20 +95,20 @@ sequenceDiagram
     participant CL   as ClusteringActor<br/>(GPU)
     participant AD   as AnomalyDetectionActor<br/>(GPU)
     participant MAP  as node_analytics<br/>Arc<RwLock<HashMap<u32,NodeAnalytics>>>
-    participant CC   as ClientCoordinatorActor<br/>(single-writer consolidation)
+    participant CC   as ClientCoordinatorActor<br/>(READER — broadcast encoder, NOT a writer)
     participant ENC  as encode_node_data_extended_with_sssp()<br/>src/utils/binary_protocol.rs
     participant WS   as WebSocket<br/>(V5 frame)
     participant DEC  as parseBinaryNodeData()<br/>client/src/types/binaryProtocol.ts
     participant WRK  as graph.worker.ts<br/>binary-processor.ts
     participant GEM  as GemNodes.tsx<br/>(render channel)
 
-    Note over PR,AD: GPU kernel results read back to CPU
-    PR  ->> MAP: write entry.centrality = normalised_pagerank<br/>(single writer, resets stale nodes to 0.0)
-    CL  ->> MAP: write entry.cluster_id (1-based, 0=unclustered)<br/>write entry.community_id (Louvain)
-    AD  ->> MAP: write entry.anomaly (LOF/z-score, 0.0–1.0)
+    Note over PR,AD: GPU kernel results read back to CPU.<br/>WRITE OWNERSHIP: each analytics actor is the sole writer of its OWN<br/>field(s) into node_analytics. ClusteringActor owns cluster_id +<br/>community_id (ADR-031 D3 single writer, write_cluster_id_from_assignments);<br/>PageRankActor owns centrality; AnomalyDetectionActor owns anomaly.<br/>ClientCoordinatorActor does NOT write — it only reads at broadcast time.
+    PR  ->> MAP: write entry.centrality = normalised_pagerank<br/>(sole writer of centrality, resets stale nodes to 0.0)
+    CL  ->> MAP: write entry.cluster_id (1-based, 0=unclustered)<br/>write entry.community_id (Louvain)<br/>(sole writer of cluster_id + community_id)
+    AD  ->> MAP: write entry.anomaly (LOF/z-score, 0.0–1.0)<br/>(sole writer of anomaly)
 
-    Note over CC: Physics tick broadcast
-    CC  ->> MAP: node_analytics.read().ok()
+    Note over CC: Physics tick broadcast — CC READS only
+    CC  ->> MAP: node_analytics.read().ok()<br/>(client_coordinator_actor.rs:813,954,1491 — reader)
     MAP -->> CC: Option<&HashMap<u32, NodeAnalytics>>
     CC  ->> ENC: encode_node_data_extended_with_sssp(<br/>  nodes, …, sssp_data=None, analytics_data)
     Note over ENC: Writes 52 B per node into Vec<u8>.<br/>Strips flag bits from node_id before<br/>HashMap lookup (base_id = id & NODE_ID_MASK).

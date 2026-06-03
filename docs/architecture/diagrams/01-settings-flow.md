@@ -52,7 +52,7 @@ sequenceDiagram
     Note over SQLite: settings_routes.rs:405 — persisted after<br/>in-memory update succeeds
     REST_PUT-->>SApi: 200 OK {new PhysicsSettings}
 
-    Note over ZS,SApi: PARALLEL PATH (also triggered by updatePhysics):<br/>physicsSlice.ts:130 — notifyPhysicsUpdate fires<br/>settingsApi.updatePhysics() DIRECTLY,<br/>bypassing autoSaveManager entirely
+    Note over ZS,SApi: SINGLE PUT PATH (T2 resolved 2026-06-03):<br/>physicsSlice.ts:129-139 — notifyPhysicsUpdate is now a NO-OP<br/>for persistence. It used to fire settingsApi.updatePhysics()<br/>DIRECTLY (a 2nd PUT per commit / double warmup reset).<br/>Persistence is owned solely by the debounced autoSaveManager<br/>path, so each change reaches the backend exactly once.
 ```
 
 ---

@@ -1,6 +1,20 @@
 # QE Anomaly Report: T2 (Doubled Write/Dispatch Paths) + T4 (Validation-Ceiling Mismatches)
 
-> Status: REPRODUCTION EVIDENCE — do NOT fix here. Minimal fix specs at bottom.
+> **✅ SUPERSEDED — FIXES LANDED 2026-06-03.** This is a frozen pre-fix reproduction
+> report. Both anomalies are resolved:
+> - **T2** (doubled write/dispatch): the duplicate `notifyPhysicsUpdate` DIRECT PUT
+>   is now a no-op (`physicsSlice.ts:129-138`); slider commits take a single PUT path.
+>   The legacy binary drag frame is removed (`useGraphEventHandlers.ts:61-64`) — one
+>   JSON `nodeDragUpdate` per tick. Backend physics propagation routes solely via
+>   `propagate_physics_to_gpu` (no direct-GPU fallback).
+> - **T4** (validation-ceiling mismatch): resolved by the physics-bounds SSOT in
+>   `src/actors/gpu/physics_bounds.rs`.
+>
+> Authoritative current state: `00-anomaly-register.md` (resolution table T2/T4).
+> Reproduction evidence below is retained for historical context. Note line cites
+> may be stale (e.g. `force_compute_actor.rs:2188` warmup assignment is now at L2203).
+
+> Status: ~~REPRODUCTION EVIDENCE — do NOT fix here~~ → RESOLVED. Minimal fix specs at bottom.
 > Investigator: QE static analysis pass, 2026-06-03
 
 ---
