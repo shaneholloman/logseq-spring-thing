@@ -84,14 +84,28 @@ impl WhelkInferenceEngine {
                 })
             }
             AxiomType::EquivalentClass => {
-                warn!("EquivalentClass axioms require special handling - converting to SubClassOf");
-                let sub_iri = Build::new().iri(axiom.subject.clone());
-                let sup_iri = Build::new().iri(axiom.object.clone());
-
-                Component::SubClassOf(SubClassOf {
-                    sub: ClassExpression::Class(Class(sub_iri)),
-                    sup: ClassExpression::Class(Class(sup_iri)),
-                })
+                // ADR-099 D2: preserve equivalence bidirectionally. Whelk's EL
+                // classifier derives BOTH `A ⊑ B` and `B ⊑ A` from a single
+                // `EquivalentClasses(A, B)` axiom, so we emit the native
+                // equivalence component instead of the lossy single-direction
+                // SubClassOf the old `:86-87` path used.
+                let a_iri = Build::new().iri(axiom.subject.clone());
+                let b_iri = Build::new().iri(axiom.object.clone());
+                Component::EquivalentClasses(horned_owl::model::EquivalentClasses(vec![
+                    ClassExpression::Class(Class(a_iri)),
+                    ClassExpression::Class(Class(b_iri)),
+                ]))
+            }
+            AxiomType::DisjointWith => {
+                // ADR-099 D3: EL-derivable disjointness. Disjoint classes that
+                // are also subsumption-related collapse to owl:Nothing, which
+                // `check_consistency` surfaces and which whelk can entail.
+                let a_iri = Build::new().iri(axiom.subject.clone());
+                let b_iri = Build::new().iri(axiom.object.clone());
+                Component::DisjointClasses(horned_owl::model::DisjointClasses(vec![
+                    ClassExpression::Class(Class(a_iri)),
+                    ClassExpression::Class(Class(b_iri)),
+                ]))
             }
             AxiomType::SubPropertyOf => {
                 let sub_iri = Build::new().iri(axiom.subject.clone());
@@ -145,7 +159,10 @@ impl WhelkInferenceEngine {
                 })
             }
             AxiomType::ObjectPropertyAssertion => {
-                warn!("ObjectPropertyAssertion not directly translated to EL Tbox");
+                // Mereological/associative assertions (hasPart, partOf, sameAs …) are
+                // not EL Tbox axioms; they drive GPU constraint forces directly via the
+                // mapper. Skip them here without log spam (5589+ hasPart triples flow through).
+                debug!("ObjectPropertyAssertion skipped for EL Tbox (drives forces directly)");
                 return None;
             }
             _ => {
@@ -176,6 +193,15 @@ impl WhelkInferenceEngine {
         hasher.finish()
     }
 
+    /// Convert whelk's named subsumptions into materialisable axioms.
+    ///
+    /// ADR-099 D2/D3: in addition to the directed `SubClassOf` closure, this
+    /// detects *bidirectional* subsumptions (`A ⊑ B` AND `B ⊑ A`) and emits a
+    /// single canonical `EquivalentClass(A, B)` axiom for each such pair so the
+    /// store preserves equivalence rather than two opaque sub-class edges. The
+    /// directed `SubClassOf` axioms are retained (asserted-vs-inferred and the
+    /// transitive closure both remain queryable); the equivalence axiom is an
+    /// additional, lossless marker.
     fn convert_subsumptions_to_axioms<V>(subsumptions: &V) -> Vec<OwlAxiom>
     where
         V: IntoIterator<
@@ -185,17 +211,57 @@ impl WhelkInferenceEngine {
                 ),
             > + Clone,
     {
-        subsumptions
+        // owl:Thing / owl:Nothing sentinels are not real equivalences.
+        const TOP: &str = "http://www.w3.org/2002/07/owl#Thing";
+        const BOTTOM: &str = "http://www.w3.org/2002/07/owl#Nothing";
+
+        let pairs: Vec<(String, String)> = subsumptions
             .clone()
             .into_iter()
+            .map(|(sub, sup)| (sub.id.clone(), sup.id.clone()))
+            .collect();
+
+        let directed: std::collections::HashSet<(String, String)> =
+            pairs.iter().cloned().collect();
+
+        let mut out: Vec<OwlAxiom> = pairs
+            .iter()
             .map(|(sub, sup)| OwlAxiom {
                 id: None,
                 axiom_type: AxiomType::SubClassOf,
-                subject: sub.id.clone(),
-                object: sup.id.clone(),
+                subject: sub.clone(),
+                object: sup.clone(),
                 annotations: std::collections::HashMap::new(),
             })
-            .collect()
+            .collect();
+
+        // Emit one canonical EquivalentClass per bidirectional, non-reflexive,
+        // non-sentinel pair. Canonical ordering (subject < object) + a seen-set
+        // dedupes the symmetric match.
+        let mut emitted: std::collections::HashSet<(String, String)> =
+            std::collections::HashSet::new();
+        for (a, b) in &pairs {
+            if a == b || a == TOP || b == TOP || a == BOTTOM || b == BOTTOM {
+                continue;
+            }
+            if directed.contains(&(b.clone(), a.clone())) {
+                let (lo, hi) = if a <= b {
+                    (a.clone(), b.clone())
+                } else {
+                    (b.clone(), a.clone())
+                };
+                if emitted.insert((lo.clone(), hi.clone())) {
+                    out.push(OwlAxiom {
+                        id: None,
+                        axiom_type: AxiomType::EquivalentClass,
+                        subject: lo,
+                        object: hi,
+                        annotations: std::collections::HashMap::new(),
+                    });
+                }
+            }
+        }
+        out
     }
 }
 
@@ -478,6 +544,53 @@ mod tests {
             object: sup.to_string(),
             annotations: std::collections::HashMap::new(),
         }
+    }
+
+    fn equiv_axiom(a: &str, b: &str) -> OwlAxiom {
+        OwlAxiom {
+            id: None,
+            axiom_type: AxiomType::EquivalentClass,
+            subject: a.to_string(),
+            object: b.to_string(),
+            annotations: std::collections::HashMap::new(),
+        }
+    }
+
+    /// ADR-099 D2: an asserted `EquivalentClass(A, B)` must NOT be downgraded.
+    /// Whelk derives both directions, and `convert_subsumptions_to_axioms`
+    /// re-materialises a single canonical `EquivalentClass` axiom in addition
+    /// to the directed sub-class closure — equivalence survives end-to-end.
+    #[tokio::test]
+    async fn equivalent_class_preserved_bidirectionally_no_downgrade() {
+        let mut engine = WhelkInferenceEngine::new();
+        let classes = vec![cls("urn:test:A"), cls("urn:test:B")];
+        let axioms = vec![equiv_axiom("urn:test:A", "urn:test:B")];
+        engine.load_ontology(classes, axioms).await.unwrap();
+        let results = engine.infer().await.unwrap();
+
+        // Both subsumption directions are entailed (the equivalence, not a
+        // single SubClassOf).
+        let a_sub_b = results
+            .inferred_axioms
+            .iter()
+            .any(|ax| ax.axiom_type == AxiomType::SubClassOf
+                && ax.subject == "urn:test:A"
+                && ax.object == "urn:test:B");
+        let b_sub_a = results
+            .inferred_axioms
+            .iter()
+            .any(|ax| ax.axiom_type == AxiomType::SubClassOf
+                && ax.subject == "urn:test:B"
+                && ax.object == "urn:test:A");
+        assert!(a_sub_b && b_sub_a, "both directions must be entailed: {:?}", results.inferred_axioms);
+
+        // A canonical EquivalentClass axiom is materialised (lossless marker).
+        let equiv = results
+            .inferred_axioms
+            .iter()
+            .filter(|ax| ax.axiom_type == AxiomType::EquivalentClass)
+            .count();
+        assert_eq!(equiv, 1, "exactly one canonical EquivalentClass expected: {:?}", results.inferred_axioms);
     }
 
     #[tokio::test]

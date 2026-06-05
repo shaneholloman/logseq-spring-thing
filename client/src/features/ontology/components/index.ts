@@ -6,3 +6,7 @@ export { InferencePanel } from './InferencePanel';
 export { OntologyContribution } from './OntologyContribution';
 export { OntologyProposalList } from './OntologyProposalList';
 export { OntologyBrowser } from './OntologyBrowser';
+export { OntologyTabContent } from './OntologyTabContent';
+export { SparqlConsole } from './SparqlConsole';
+export { OntologyExplorationControls } from './OntologyExplorationControls';
+export type { OntologyScope } from './OntologyExplorationControls';

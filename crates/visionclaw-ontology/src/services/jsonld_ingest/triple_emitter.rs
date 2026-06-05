@@ -39,7 +39,13 @@
 
 use oxigraph::model::{GraphName, Literal, NamedNode, Quad, Subject, Term};
 
-use super::expander::{ExpandedDocument, ExpandedNode, ExpandedValue, OWL_NS, PROV_NS, VC_NS};
+use super::expander::{ExpandedDocument, ExpandedNode, ExpandedValue, OWL_NS, PROV_NS, SKOS_NS, VC_NS};
+
+/// SKOS alignment predicates we capture+emit on nodes/axioms (ADR-100 D4).
+/// We only *record* alignments the source ontology already provides
+/// (typically to Wikidata / DBpedia) — we never invent them.
+pub const SKOS_EXACT_MATCH: &str = "exactMatch";
+pub const SKOS_CLOSE_MATCH: &str = "closeMatch";
 
 pub const GRAPH_KNOWLEDGE: &str = "urn:ngm:graph:knowledge";
 pub const GRAPH_ONTOLOGY_ASSERT: &str = "urn:ngm:graph:ontology:assert";
@@ -184,6 +190,19 @@ fn emit_predicate(
     }
     // `vc:ontology: true` annotation flag — not a triple in the seed.
     if predicate == &format!("{}ontology", VC_NS) {
+        return;
+    }
+
+    // ADR-100 D4 alignment hook: skos:exactMatch / skos:closeMatch capture.
+    // Where the source ontology provides an alignment (e.g. to a Wikidata or
+    // DBpedia entity), record it verbatim on the node/axiom as an object
+    // property. We do NOT synthesise alignments — we only emit what the
+    // source asserts. This is the single documented emission point for
+    // cross-ontology alignment edges.
+    if predicate == &format!("{}{}", SKOS_NS, SKOS_EXACT_MATCH)
+        || predicate == &format!("{}{}", SKOS_NS, SKOS_CLOSE_MATCH)
+    {
+        emit_alignment(subject, predicate, value, graph_name, out);
         return;
     }
 
@@ -391,6 +410,44 @@ fn emit_outbound_wikilinks(
     }
 }
 
+/// Emit a SKOS alignment (`skos:exactMatch` / `skos:closeMatch`) as one
+/// object-property triple per target IRI (ADR-100 D4). Targets are typically
+/// `http://www.wikidata.org/entity/Q…` or `http://dbpedia.org/resource/…`.
+/// Literal/blank values are ignored — an alignment must point at an IRI.
+fn emit_alignment(
+    subject: &Subject,
+    predicate: &str,
+    value: &ExpandedValue,
+    graph_name: &GraphName,
+    out: &mut Vec<Quad>,
+) {
+    let pred = match NamedNode::new(predicate) {
+        Ok(n) => n,
+        Err(_) => return,
+    };
+    let arr = match value {
+        ExpandedValue::Multi(a) => a.clone(),
+        single => vec![single.clone()],
+    };
+    for v in arr {
+        let iri = match v {
+            ExpandedValue::Iri(iri) => Some(iri),
+            ExpandedValue::Nested(node) => node.id.clone(),
+            _ => None,
+        };
+        if let Some(iri) = iri {
+            if NamedNode::new(&iri).is_ok() {
+                out.push(Quad::new(
+                    subject.clone(),
+                    pred.clone(),
+                    Term::NamedNode(NamedNode::new_unchecked(&iri)),
+                    graph_name.clone(),
+                ));
+            }
+        }
+    }
+}
+
 fn emit_repeated_literal(
     subject: &Subject,
     predicate: &str,
@@ -469,5 +526,38 @@ mod tests {
         )));
         // No generatedAtTime quad
         assert!(!quads.iter().any(|q| q.predicate.as_str().contains("generatedAtTime")));
+    }
+
+    #[test]
+    fn emits_skos_alignment_to_wikidata() {
+        // ADR-100 D4: source-provided skos:exactMatch / skos:closeMatch are
+        // captured+emitted verbatim (we record, never invent).
+        let body = r#"{
+            "@context": "https://narrativegoldmine.com/context/v1.jsonld",
+            "@id": "urn:visionclaw:owl:class:cybernetics",
+            "@type": "OntologyClass",
+            "rdfs:subClassOf": { "@id": "urn:visionclaw:owl:class:built-environment" },
+            "skos:exactMatch": { "@id": "http://www.wikidata.org/entity/Q193974" },
+            "skos:closeMatch": [
+                { "@id": "http://dbpedia.org/resource/Cybernetics" }
+            ],
+            "prov:wasAttributedTo": { "@id": "did:nostr:npub1abc" },
+            "prov:generatedAtTime": { "@value": "2026-01-01T00:00:00Z", "@type": "xsd:dateTime" }
+        }"#;
+        let doc = expand_block("align.md", 0, body).unwrap();
+        let quads = emit_quads(&doc);
+
+        let exact = format!("{}{}", SKOS_NS, SKOS_EXACT_MATCH);
+        let close = format!("{}{}", SKOS_NS, SKOS_CLOSE_MATCH);
+        assert!(
+            quads.iter().any(|q| q.predicate.as_str() == exact
+                && q.object.to_string().contains("Q193974")),
+            "exactMatch to Wikidata must be emitted"
+        );
+        assert!(
+            quads.iter().any(|q| q.predicate.as_str() == close
+                && q.object.to_string().contains("dbpedia.org/resource/Cybernetics")),
+            "closeMatch to DBpedia must be emitted"
+        );
     }
 }

@@ -9,6 +9,14 @@
  *  - nodeIdToIndexMap: O(1) lookup from string node ID to its index in graphData.nodes
  *  - filteredEdges: edges whose both endpoints survive filtering (same as graphData.edges
  *    today since edge filtering is position-based, but provided for future use)
+ *
+ * Population scope (PRD-018 WS-4): this hook filters by quality/authority/
+ * linked-page/degree — NOT by population type. Restricting the rendered graph to
+ * a single population (knowledge | ontology | agent) is done SERVER-SIDE via
+ * `graphDataManager.setGraphTypeFilter(...)` → `?graph_type=` so the whole graph
+ * is no longer transferred-then-filtered. The two layers are orthogonal: the
+ * server scopes *which population* is fetched; this hook scopes *which of those
+ * fetched nodes* pass quality/visibility thresholds.
  */
 
 import { useMemo, useEffect } from 'react';

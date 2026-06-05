@@ -717,6 +717,31 @@ impl Handler<ApplyOntologyConstraints> for PhysicsSupervisor {
     }
 }
 
+impl Handler<ApplyMaterializedAxioms> for PhysicsSupervisor {
+    type Result = ResponseActFuture<Self, Result<usize, String>>;
+
+    fn handle(&mut self, msg: ApplyMaterializedAxioms, _ctx: &mut Self::Context) -> Self::Result {
+        let addr = match &self.ontology_constraint_actor {
+            Some(a) if self.ontology_constraint_state.is_running => a.clone(),
+            _ => {
+                return Box::pin(
+                    async { Err("OntologyConstraintActor not available".to_string()) }
+                        .into_actor(self),
+                );
+            }
+        };
+
+        Box::pin(
+            async move {
+                addr.send(msg)
+                    .await
+                    .map_err(|e| format!("Communication failed: {}", e))?
+            }
+            .into_actor(self),
+        )
+    }
+}
+
 /// Get the ForceComputeActor address for direct communication
 impl Handler<GetForceComputeActor> for PhysicsSupervisor {
     type Result = Result<Addr<ForceComputeActor>, String>;

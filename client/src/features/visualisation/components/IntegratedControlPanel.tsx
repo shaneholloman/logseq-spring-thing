@@ -24,6 +24,7 @@ import { AdvancedModeToggle } from './ControlPanel/AdvancedModeToggle';
 import { UnifiedSettingsTabContent } from './ControlPanel/UnifiedSettingsTabContent';
 import { UNIFIED_TABS, filterTabs } from './ControlPanel/unifiedSettingsConfig';
 import { SolidTabContent } from '../../solid/components/SolidTabContent';
+import { OntologyTabContent } from '../../ontology/components/OntologyTabContent';
 import { ControlPanelProvider, useControlPanelContext } from '../../settings/components/control-panel-context';
 import { useSettingsStore } from '../../../store/settingsStore';
 import { Lock, Star } from 'lucide-react';
@@ -226,7 +227,8 @@ const IntegratedControlPanelInner: React.FC<ControlPanelProps> = ({
         <div style={{ flex: 1 }}>
           <SystemHealthIndicator
             graphData={graphData}
-            mcpConnected={false}
+            botsData={botsData}
+            mcpConnected={botsData?.mcpConnected ?? false}
             websocketStatus="connected"
             metadataStatus={(graphData?.nodes?.length ?? 0) > 0 ? 'loaded' : 'loading'}
           />
@@ -339,6 +341,10 @@ const IntegratedControlPanelInner: React.FC<ControlPanelProps> = ({
               <TabsContent key={tab.id} value={tab.id}>
                 {tab.id === 'solid' ? (
                   <SolidTabContent />
+                ) : tab.id === 'ontology' ? (
+                  <ErrorBoundary>
+                    <OntologyTabContent />
+                  </ErrorBoundary>
                 ) : (
                   <UnifiedSettingsTabContent
                     sectionId={tab.id}

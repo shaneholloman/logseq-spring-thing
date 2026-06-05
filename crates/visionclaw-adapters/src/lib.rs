@@ -33,3 +33,12 @@ pub use whelk_inference_engine::WhelkInferenceEngine;
 pub mod messages;
 pub mod oxigraph_ontology_repository;
 pub use oxigraph_ontology_repository::OxigraphOntologyRepository;
+
+// ADR-101 — versioned, idempotent SPARQL migration framework for the Oxigraph
+// triple store (parity with the SQLite `schema_migrations` discipline).
+pub mod sparql_migrations;
+pub use sparql_migrations::{run_pending as run_sparql_migrations, MigrationError, MIGRATIONS};
+
+// WS-1 / ADR-100 — standards-grade RDF round-trip serialisation over oxigraph's
+// bundled oxrdfio (Turtle / JSON-LD / N-Quads). No new dependency.
+pub mod rdf_serializer;

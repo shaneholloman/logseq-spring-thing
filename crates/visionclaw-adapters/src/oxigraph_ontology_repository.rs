@@ -226,6 +226,34 @@ fn db_err<E: std::fmt::Display>(e: E) -> OntologyRepositoryError {
     OntologyRepositoryError::DatabaseError(e.to_string())
 }
 
+/// Encode a `Term` as a SPARQL 1.1 Query Results JSON binding object
+/// (`{ "type": "uri"|"literal"|"bnode", "value": ..., "datatype"?, "xml:lang"? }`).
+fn term_to_json(t: &Term) -> serde_json::Value {
+    const XSD_STRING: &str = "http://www.w3.org/2001/XMLSchema#string";
+    const RDF_LANG_STRING: &str = "http://www.w3.org/1999/02/22-rdf-syntax-ns#langString";
+    match t {
+        Term::NamedNode(n) => serde_json::json!({ "type": "uri", "value": n.as_str() }),
+        Term::BlankNode(b) => serde_json::json!({ "type": "bnode", "value": b.as_str() }),
+        Term::Literal(l) => {
+            let mut obj = serde_json::Map::new();
+            obj.insert("type".into(), serde_json::Value::from("literal"));
+            obj.insert("value".into(), serde_json::Value::from(l.value()));
+            if let Some(lang) = l.language() {
+                obj.insert("xml:lang".into(), serde_json::Value::from(lang));
+            } else {
+                let dt = l.datatype().as_str();
+                // Omit the implicit xsd:string / rdf:langString datatypes per
+                // the SPARQL JSON results convention.
+                if dt != XSD_STRING && dt != RDF_LANG_STRING {
+                    obj.insert("datatype".into(), serde_json::Value::from(dt));
+                }
+            }
+            serde_json::Value::Object(obj)
+        }
+        _ => serde_json::json!({ "type": "literal", "value": "" }),
+    }
+}
+
 // ----------------------------------------------------------------------
 // Predicate catalogue (vc: namespace, ADR-11 §D3).
 // Kept here so the property-bag fold has one source of truth.
@@ -290,6 +318,20 @@ const P_INFERRED_TIME_MS: &str = "https://narrativegoldmine.com/ns/v1#inferenceT
 const P_INFERRED_VERSION: &str = "https://narrativegoldmine.com/ns/v1#reasonerVersion";
 const INFER_META_IRI: &str = "urn:ngm:inference:meta";
 
+// ADR-099 D3: provenance vocabulary attached to every inferred quad so the
+// asserted-vs-inferred distinction is queryable and each inference traces to a
+// reasoner run.
+const P_PROV_GENERATED_BY: &str = "http://www.w3.org/ns/prov#wasGeneratedBy";
+const T_PROV_ACTIVITY: &str = "http://www.w3.org/ns/prov#Activity";
+const P_PROV_ENDED_AT: &str = "http://www.w3.org/ns/prov#endedAtTime";
+const P_DERIVATION: &str = "https://narrativegoldmine.com/ns/v1#derivation";
+const P_CONFIDENCE: &str = "https://narrativegoldmine.com/ns/v1#confidence";
+const P_RUN_ID: &str = "https://narrativegoldmine.com/ns/v1#runId";
+const RDFS_SUBCLASS_OF: &str = "http://www.w3.org/2000/01/rdf-schema#subClassOf";
+const OWL_EQUIVALENT_CLASS: &str = "http://www.w3.org/2002/07/owl#equivalentClass";
+/// Derivation marker value: machine-inferred (vs asserted).
+const DERIVATION_INFERRED: &str = "inferred";
+
 const P_CACHE_COMPUTED_AT: &str = "https://narrativegoldmine.com/ns/v1#computedAt";
 const P_CACHE_DISTANCES: &str = "https://narrativegoldmine.com/ns/v1#distances";
 const P_CACHE_PATHS: &str = "https://narrativegoldmine.com/ns/v1#paths";
@@ -318,9 +360,23 @@ impl OxigraphOntologyRepository {
             .await
             .map_err(|e| db_err(format!("join error: {e}")))?
             .map_err(db_err)?;
-        Ok(Self {
-            store: Arc::new(store),
+        let store = Arc::new(store);
+
+        // ADR-101 D2: apply any pending SPARQL migrations exactly once on
+        // startup, recorded in `urn:ngm:graph:migrations`. Idempotent —
+        // already-applied migrations are skipped via the ledger.
+        let mig_store = Arc::clone(&store);
+        let applied = tokio::task::spawn_blocking(move || {
+            crate::sparql_migrations::run_pending(&mig_store)
         })
+        .await
+        .map_err(|e| db_err(format!("join error: {e}")))?
+        .map_err(db_err)?;
+        if !applied.is_empty() {
+            tracing::info!("applied {} SPARQL migration(s): {:?}", applied.len(), applied);
+        }
+
+        Ok(Self { store })
     }
 
     /// Construct over an already-opened store (used by tests + the migration
@@ -332,6 +388,116 @@ impl OxigraphOntologyRepository {
     /// Convenience accessor for tests / migration tooling.
     pub fn store(&self) -> &Arc<Store> {
         &self.store
+    }
+
+    /// Content-address a reasoner run (ADR-099 D3 provenance). Stable for an
+    /// identical `(timestamp, version, axiom-count)` triple; distinct runs get
+    /// distinct ids. 12 hex chars, same discipline as axiom IRIs.
+    fn inference_run_id(results: &InferenceResults) -> String {
+        let mut hasher = Sha256::new();
+        hasher.update(results.timestamp.to_rfc3339().as_bytes());
+        hasher.update(results.reasoner_version.as_bytes());
+        hasher.update(results.inferred_axioms.len().to_le_bytes());
+        let digest = hasher.finalize();
+        digest.iter().take(6).map(|b| format!("{:02x}", b)).collect()
+    }
+
+    /// ADR-099 D3 — "clear inferred" is a single-graph `CLEAR`. Idempotent;
+    /// touches only `urn:ngm:graph:ontology:inferred`.
+    pub async fn clear_inferred_graph(&self) -> RepoResult<()> {
+        self.run_update(format!(
+            "{PROLOGUE}CLEAR GRAPH <{GRAPH_ONTOLOGY_INFERRED}>\n"
+        ))
+        .await
+    }
+
+    /// Execute a *read-only* SPARQL SELECT/ASK and return SPARQL 1.1 Query
+    /// Results JSON (`{ head: { vars }, results: { bindings } }` for SELECT,
+    /// `{ head: {}, boolean }` for ASK). GPU-only constraint (PRD-018): this
+    /// executes server-side over Oxigraph and only returns rows — it never
+    /// solves layout. The caller MUST pre-validate the query is read-only
+    /// (`validate_read_only_sparql`); this method additionally only accepts
+    /// `Solutions`/`Boolean` result kinds and rejects anything else.
+    pub async fn sparql_select_json(&self, query: String) -> RepoResult<serde_json::Value> {
+        let store = Arc::clone(&self.store);
+        tokio::task::spawn_blocking(move || -> RepoResult<serde_json::Value> {
+            match store.query(&query).map_err(db_err)? {
+                QueryResults::Solutions(solutions) => {
+                    let vars: Vec<String> = solutions
+                        .variables()
+                        .iter()
+                        .map(|v| v.as_str().to_string())
+                        .collect();
+                    let mut bindings: Vec<serde_json::Value> = Vec::new();
+                    for sol in solutions {
+                        let sol = sol.map_err(db_err)?;
+                        let mut row = serde_json::Map::new();
+                        for v in &vars {
+                            if let Some(term) = sol.get(v.as_str()) {
+                                row.insert(v.clone(), term_to_json(term));
+                            }
+                        }
+                        bindings.push(serde_json::Value::Object(row));
+                    }
+                    Ok(serde_json::json!({
+                        "head": { "vars": vars },
+                        "results": { "bindings": bindings },
+                    }))
+                }
+                QueryResults::Boolean(b) => Ok(serde_json::json!({
+                    "head": {},
+                    "boolean": b,
+                })),
+                // CONSTRUCT/DESCRIBE return graphs; not exposed on this JSON
+                // results contract.
+                _ => Err(db_err("query did not return SELECT/ASK results")),
+            }
+        })
+        .await
+        .map_err(|e| db_err(format!("join error: {e}")))?
+    }
+
+    /// Read the inferred named graph as `{ namedGraph, runId?, triples: [...] }`
+    /// where each triple is `{ s, p, o }` lexical strings (ADR-099 D4 surface
+    /// for the `InferencePanel`). Reuses the store's pattern scan over
+    /// `urn:ngm:graph:ontology:inferred` only.
+    pub async fn read_inferred_graph(&self) -> RepoResult<serde_json::Value> {
+        let q = format!(
+            "{PROLOGUE}\
+             SELECT ?s ?p ?o\n\
+             FROM <{GRAPH_ONTOLOGY_INFERRED}>\n\
+             WHERE {{ ?s ?p ?o }}\n"
+        );
+        let (_vars, rows) = self.run_select(q).await?;
+        let triples: Vec<serde_json::Value> = rows
+            .iter()
+            .filter_map(|row| {
+                let s = row.first().and_then(|t| t.as_ref()).map(term_lexical)?;
+                let p = row.get(1).and_then(|t| t.as_ref()).map(term_lexical)?;
+                let o = row.get(2).and_then(|t| t.as_ref()).map(term_lexical)?;
+                Some(serde_json::json!({ "s": s, "p": p, "o": o }))
+            })
+            .collect();
+
+        // Surface the latest run id if recorded.
+        let run_q = format!(
+            "{PROLOGUE}\
+             SELECT ?run\n\
+             FROM <{GRAPH_ONTOLOGY_INFERRED}>\n\
+             WHERE {{ <{INFER_META_IRI}> <{P_RUN_ID}> ?run }}\n"
+        );
+        let (_v, run_rows) = self.run_select(run_q).await?;
+        let run_id = run_rows
+            .first()
+            .and_then(|r| r.first())
+            .and_then(|t| t.as_ref())
+            .map(term_lexical);
+
+        Ok(serde_json::json!({
+            "namedGraph": GRAPH_ONTOLOGY_INFERRED,
+            "runId": run_id,
+            "triples": triples,
+        }))
     }
 
     // ------------------------------------------------------------------
@@ -1675,37 +1841,90 @@ impl OntologyRepository for OxigraphOntologyRepository {
     }
 
     async fn get_axioms(&self) -> RepoResult<Vec<OwlAxiom>> {
+        // ADR-098 / PRD-018 fix: the canonical JSON-LD ingest (matching the
+        // logseq `jsonld_to_turtle.py` converter) writes the OWL structure as
+        // PLAIN triples in the assert graph — `<C> rdfs:subClassOf <D>`,
+        // `<C> owl:equivalentClass <D>`, `<C> owl:disjointWith <D>`, the
+        // mereological `<C> vc:hasPart|isPartOf <D>` object properties, and
+        // existential restrictions `<C> rdfs:subClassOf [owl:onProperty P;
+        // owl:someValuesFrom D]`. It does NOT reify them as `vc:Axiom`
+        // instances. Reading only reified `vc:Axiom` (the historical behaviour)
+        // therefore returned 0 class axioms even with 5k+ subClassOf triples in
+        // the store, starving Whelk and the GPU constraint mapper. This query
+        // reads the plain structural triples AND keeps the reified path for any
+        // axioms minted via `add_axiom`.
         let q = format!(
             "{PROLOGUE}\
-             SELECT ?axiom ?type ?subject ?object ?id\n\
+             SELECT ?type ?subject ?object ?predicate ?id\n\
              FROM <{GRAPH_ONTOLOGY}>\n\
              WHERE {{\n\
-               ?axiom a <{T_VC_AXIOM}> ;\n\
-                      <{P_AXIOM_TYPE}> ?type ;\n\
-                      <{P_AXIOM_SUBJECT}> ?subject ;\n\
-                      <{P_AXIOM_OBJECT}> ?object .\n\
-               OPTIONAL {{ ?axiom <{P_AXIOM_ID}> ?id }}\n\
+               {{\n\
+                 ?axiom a vc:Axiom ;\n\
+                        vc:axiomType ?type ;\n\
+                        vc:subject ?subject ;\n\
+                        vc:object ?object .\n\
+                 OPTIONAL {{ ?axiom vc:axiomId ?id }}\n\
+                 OPTIONAL {{ ?axiom vc:onProperty ?predicate }}\n\
+               }} UNION {{\n\
+                 ?subject rdfs:subClassOf ?object .\n\
+                 FILTER(isIRI(?object))\n\
+                 FILTER(?object != owl:Thing && ?object != owl:Nothing)\n\
+                 BIND(\"SubClassOf\" AS ?type)\n\
+               }} UNION {{\n\
+                 ?subject owl:equivalentClass ?object .\n\
+                 FILTER(isIRI(?object))\n\
+                 BIND(\"EquivalentClass\" AS ?type)\n\
+               }} UNION {{\n\
+                 ?subject owl:disjointWith ?object .\n\
+                 FILTER(isIRI(?object))\n\
+                 BIND(\"DisjointWith\" AS ?type)\n\
+               }} UNION {{\n\
+                 ?subject ?predicate ?object .\n\
+                 FILTER(isIRI(?object))\n\
+                 FILTER(?predicate IN (vc:hasPart, vc:isPartOf, vc:partOf, owl:sameAs))\n\
+                 BIND(\"ObjectPropertyAssertion\" AS ?type)\n\
+               }} UNION {{\n\
+                 ?subject rdfs:subClassOf ?restriction .\n\
+                 ?restriction a owl:Restriction ;\n\
+                              owl:onProperty ?predicate ;\n\
+                              owl:someValuesFrom ?object .\n\
+                 FILTER(isIRI(?object))\n\
+                 BIND(\"SomeValuesFrom\" AS ?type)\n\
+               }}\n\
              }}\n"
         );
         let (_vars, rows) = self.run_select(q).await?;
         let mut out: Vec<OwlAxiom> = Vec::with_capacity(rows.len());
         for row in rows {
-            let axiom_type = match &row[1] {
+            // SELECT order: 0=type 1=subject 2=object 3=predicate 4=id
+            let axiom_type = match &row[0] {
                 Some(Term::Literal(l)) => parse_axiom_type(l.value()),
                 _ => AxiomType::SubClassOf,
             };
-            let subject = row[2].as_ref().map(term_lexical).unwrap_or_default();
-            let object = row[3].as_ref().map(term_lexical).unwrap_or_default();
+            let subject = row[1].as_ref().map(term_lexical).unwrap_or_default();
+            let object = row[2].as_ref().map(term_lexical).unwrap_or_default();
             let id = match &row[4] {
                 Some(Term::Literal(l)) => l.value().parse::<u64>().ok(),
                 _ => None,
             };
+            // The object-property predicate (hasPart/isPartOf/…) and the
+            // restriction's onProperty are surfaced under "predicate" so the
+            // constraint mapper (ADR-098) can classify the force kind and the
+            // Whelk adapter can build the existential restriction.
+            let mut annotations = HashMap::new();
+            if let Some(Term::NamedNode(p)) = &row[3] {
+                annotations.insert("predicate".to_string(), p.as_str().to_string());
+                // Whelk's SomeValuesFrom translation reads the restriction's
+                // onProperty under "property"; keep both keys in sync so the
+                // EL existential restriction is built with the right property.
+                annotations.insert("property".to_string(), p.as_str().to_string());
+            }
             out.push(OwlAxiom {
                 id,
                 axiom_type,
                 subject,
                 object,
-                annotations: HashMap::new(),
+                annotations,
             });
         }
         Ok(out)
@@ -1763,9 +1982,30 @@ impl OntologyRepository for OxigraphOntologyRepository {
     // ------------------------------------------------------------------
 
     async fn store_inference_results(&self, results: &InferenceResults) -> RepoResult<()> {
-        // Build the INSERT body before the format!.
-        let mut body = String::with_capacity(1024);
-        // Metadata triples on a sentinel IRI inside the inferred graph.
+        // ADR-099 D3: each materialisation is a `prov:Activity` (the whelk run);
+        // every inferred quad is `prov:wasGeneratedBy` that run, carries a
+        // `vc:derivation "inferred"` marker and a confidence value, so a SPARQL
+        // query can cleanly separate asserted from inferred. The run id is
+        // content-addressed over the (timestamp, version, axiom count) so the
+        // same closure re-materialised is stable, but distinct runs differ.
+        let run_id = Self::inference_run_id(results);
+        let run_iri = format!("urn:ngm:inference:run:{run_id}");
+
+        let mut body = String::with_capacity(2048);
+
+        // Run activity (provenance anchor).
+        body.push_str(&format!("<{run_iri}> a <{T_PROV_ACTIVITY}> .\n"));
+        body.push_str(&format!(
+            "<{run_iri}> <{P_PROV_ENDED_AT}> \"{}\"^^xsd:dateTime .\n",
+            results.timestamp.to_rfc3339()
+        ));
+        body.push_str(&format!(
+            "<{run_iri}> <{P_INFERRED_VERSION}> \"{}\" .\n",
+            escape_literal(&results.reasoner_version)
+        ));
+
+        // Metadata triples on the sentinel IRI (unchanged read contract) plus a
+        // pointer to the current run.
         body.push_str(&format!(
             "<{INFER_META_IRI}> <{P_INFERRED_AT}> \"{}\"^^xsd:dateTime .\n",
             results.timestamp.to_rfc3339()
@@ -1778,11 +2018,65 @@ impl OntologyRepository for OxigraphOntologyRepository {
             "<{INFER_META_IRI}> <{P_INFERRED_VERSION}> \"{}\" .\n",
             escape_literal(&results.reasoner_version)
         ));
+        body.push_str(&format!(
+            "<{INFER_META_IRI}> <{P_RUN_ID}> \"{}\" .\n",
+            escape_literal(&run_id)
+        ));
+        body.push_str(&format!(
+            "<{INFER_META_IRI}> <{P_PROV_GENERATED_BY}> <{run_iri}> .\n"
+        ));
+
         for axiom in &results.inferred_axioms {
+            // Reified axiom record (existing read path) ...
             body.push_str(&Self::axiom_insert_block(axiom));
+            let iri = axiom_iri(axiom);
+            // ... plus provenance + derivation marker on the axiom IRI.
+            body.push_str(&format!(
+                "<{iri}> <{P_PROV_GENERATED_BY}> <{run_iri}> .\n"
+            ));
+            body.push_str(&format!(
+                "<{iri}> <{P_DERIVATION}> \"{DERIVATION_INFERRED}\" .\n"
+            ));
+            // EL closure is sound: confidence is 1.0. The marker exists so a
+            // future probabilistic path can vary it without a schema change.
+            body.push_str(&format!(
+                "<{iri}> <{P_CONFIDENCE}> \"1.0\"^^xsd:decimal .\n"
+            ));
+            // Materialise the *direct* RDF relation so the inferred graph is a
+            // first-class graph (rdfs:subClassOf / owl:equivalentClass), not
+            // only reified axiom records (ADR-099 D2/D3).
+            if axiom.subject.starts_with("urn:") || axiom.subject.starts_with("http") {
+                if axiom.object.starts_with("urn:") || axiom.object.starts_with("http") {
+                    match axiom.axiom_type {
+                        AxiomType::SubClassOf => {
+                            body.push_str(&format!(
+                                "<{}> <{RDFS_SUBCLASS_OF}> <{}> .\n",
+                                axiom.subject, axiom.object
+                            ));
+                        }
+                        AxiomType::EquivalentClass => {
+                            // Bidirectional materialisation (ADR-099 D2).
+                            body.push_str(&format!(
+                                "<{}> <{OWL_EQUIVALENT_CLASS}> <{}> .\n",
+                                axiom.subject, axiom.object
+                            ));
+                            body.push_str(&format!(
+                                "<{}> <{RDFS_SUBCLASS_OF}> <{}> .\n",
+                                axiom.subject, axiom.object
+                            ));
+                            body.push_str(&format!(
+                                "<{}> <{RDFS_SUBCLASS_OF}> <{}> .\n",
+                                axiom.object, axiom.subject
+                            ));
+                        }
+                        _ => {}
+                    }
+                }
+            }
         }
         // Single SPARQL Update with two statements separated by `;` —
-        // Oxigraph commits them atomically per ADR-11 §D9.
+        // Oxigraph commits them atomically per ADR-11 §D9. The CLEAR confines
+        // re-materialisation to the inferred graph alone (ADR-099 D3).
         let update = format!(
             "{PROLOGUE}\
              DELETE {{ GRAPH <{GRAPH_ONTOLOGY_INFERRED}> {{ ?s ?p ?o }} }}\n\
@@ -2398,5 +2692,112 @@ mod tests {
         repo.add_owl_class(&make_class("urn:test:X", "X")).await.unwrap();
         let metrics = repo.get_metrics().await.unwrap();
         assert!(metrics.class_count >= 1);
+    }
+
+    fn inference_results_with(axioms: Vec<OwlAxiom>) -> InferenceResults {
+        InferenceResults {
+            timestamp: chrono::Utc::now(),
+            inferred_axioms: axioms,
+            inference_time_ms: 7,
+            reasoner_version: "whelk-rs-test".to_string(),
+        }
+    }
+
+    fn equiv(a: &str, b: &str) -> OwlAxiom {
+        OwlAxiom {
+            id: None,
+            axiom_type: AxiomType::EquivalentClass,
+            subject: a.to_string(),
+            object: b.to_string(),
+            annotations: std::collections::HashMap::new(),
+        }
+    }
+
+    /// ADR-099 D3: inferred quads land in the inferred named graph and carry
+    /// provenance (`prov:wasGeneratedBy` a run) + a derivation marker.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn inferred_quads_land_in_inferred_graph_with_provenance() {
+        let repo = in_memory_repo();
+        let results = inference_results_with(vec![make_axiom("urn:test:A", "urn:test:B")]);
+        repo.store_inference_results(&results).await.unwrap();
+
+        // The direct rdfs:subClassOf triple is in the inferred graph.
+        let json = repo
+            .sparql_select_json(format!(
+                "ASK FROM <{GRAPH_ONTOLOGY_INFERRED}> {{ <urn:test:A> <{RDFS_SUBCLASS_OF}> <urn:test:B> }}"
+            ))
+            .await
+            .unwrap();
+        assert_eq!(json["boolean"], serde_json::Value::Bool(true), "subClassOf must be materialised: {json}");
+
+        // Every axiom record is wasGeneratedBy a prov:Activity and marked inferred.
+        let prov = repo
+            .sparql_select_json(format!(
+                "ASK FROM <{GRAPH_ONTOLOGY_INFERRED}> {{ \
+                   ?ax <{P_PROV_GENERATED_BY}> ?run . \
+                   ?run a <{T_PROV_ACTIVITY}> . \
+                   ?ax <{P_DERIVATION}> \"{DERIVATION_INFERRED}\" }}"
+            ))
+            .await
+            .unwrap();
+        assert_eq!(prov["boolean"], serde_json::Value::Bool(true), "provenance + derivation must be present: {prov}");
+
+        // read_inferred_graph exposes the runId + triples for the panel.
+        let g = repo.read_inferred_graph().await.unwrap();
+        assert_eq!(g["namedGraph"], GRAPH_ONTOLOGY_INFERRED);
+        assert!(g["runId"].is_string(), "runId surfaced: {g}");
+        assert!(g["triples"].as_array().map(|a| !a.is_empty()).unwrap_or(false));
+    }
+
+    /// ADR-099 D2: an EquivalentClass inference materialises owl:equivalentClass
+    /// AND both rdfs:subClassOf directions — no downgrade in the store.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn equivalent_class_materialised_bidirectionally() {
+        let repo = in_memory_repo();
+        let results = inference_results_with(vec![equiv("urn:test:A", "urn:test:B")]);
+        repo.store_inference_results(&results).await.unwrap();
+
+        let ask = repo
+            .sparql_select_json(format!(
+                "ASK FROM <{GRAPH_ONTOLOGY_INFERRED}> {{ \
+                   <urn:test:A> <{OWL_EQUIVALENT_CLASS}> <urn:test:B> . \
+                   <urn:test:A> <{RDFS_SUBCLASS_OF}> <urn:test:B> . \
+                   <urn:test:B> <{RDFS_SUBCLASS_OF}> <urn:test:A> }}"
+            ))
+            .await
+            .unwrap();
+        assert_eq!(ask["boolean"], serde_json::Value::Bool(true), "equivalence must be bidirectional: {ask}");
+    }
+
+    /// ADR-099 D3: "clear inferred" empties only the inferred graph.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn clear_inferred_graph_empties_only_inferred() {
+        let repo = in_memory_repo();
+        // Seed the assert graph so we can prove it survives.
+        repo.add_owl_class(&make_class("urn:test:Survivor", "Survivor")).await.unwrap();
+        let results = inference_results_with(vec![make_axiom("urn:test:A", "urn:test:B")]);
+        repo.store_inference_results(&results).await.unwrap();
+
+        repo.clear_inferred_graph().await.unwrap();
+
+        let g = repo.read_inferred_graph().await.unwrap();
+        assert!(g["triples"].as_array().map(|a| a.is_empty()).unwrap_or(false), "inferred graph must be empty: {g}");
+
+        // Assert graph untouched.
+        let classes = repo.list_owl_classes().await.unwrap();
+        assert!(classes.iter().any(|c| c.iri == "urn:test:Survivor"), "assert graph must survive clear");
+    }
+
+    /// SPARQL JSON shape: SELECT returns head.vars + results.bindings.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn sparql_select_json_has_sparql11_shape() {
+        let repo = in_memory_repo();
+        repo.add_owl_class(&make_class("urn:test:Q", "Q")).await.unwrap();
+        let json = repo
+            .sparql_select_json("SELECT ?s WHERE { ?s ?p ?o } LIMIT 1".to_string())
+            .await
+            .unwrap();
+        assert!(json["head"]["vars"].as_array().is_some(), "head.vars present: {json}");
+        assert!(json["results"]["bindings"].as_array().is_some(), "results.bindings present: {json}");
     }
 }

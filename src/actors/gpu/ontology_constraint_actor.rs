@@ -20,10 +20,34 @@ use std::time::Instant;
 use super::shared::{GPUState, SharedGPUContext};
 use crate::actors::messages::*;
 use visionclaw_domain::models::constraints::{Constraint, ConstraintSet};
+use visionclaw_domain::ports::owl_types::{AxiomType as DomainAxiomType, OwlAxiom as DomainOwlAxiom};
+use visionclaw_ontology::services::iri_node_resolver::IriNodeResolver;
 use crate::models::constraints::{ConstraintData, ConstraintSetGpuExt};
+use crate::physics::ontology_constraint_mapper::map_axioms_to_constraints;
 use crate::physics::ontology_constraints::{
-    OWLAxiom, OntologyConstraintTranslator, OntologyReasoningReport,
+    OWLAxiom, OWLAxiomType, OntologyConstraintTranslator, OntologyReasoningReport,
 };
+
+/// Default global force strength applied to the mapper output at dispatch.
+/// Full mapper weight (1.0) collapses the 18k+ mostly-attractive constraints
+/// into a single dense blob; 0.6 keeps the semantic structure visible while the
+/// base repulsion still spreads the graph. The global-strength slider rescales
+/// from the unscaled base, so the user can return to 1.0 or push lower live.
+pub const DEFAULT_GLOBAL_STRENGTH: f32 = 0.6;
+
+/// Scale a copy of the mapper's unscaled constraint buffer by `strength`.
+/// Weight is the only field the global strength touches; node indices, kind,
+/// params (rest-length / min-distance) and activation frame are preserved.
+fn scale_constraint_buffer(base: &[ConstraintData], strength: f32) -> Vec<ConstraintData> {
+    let s = strength.clamp(0.0, 1.0);
+    base.iter()
+        .map(|c| {
+            let mut scaled = c.clone();
+            scaled.weight = c.weight * s;
+            scaled
+        })
+        .collect()
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OntologyConstraintStats {
@@ -65,6 +89,17 @@ pub struct OntologyConstraintActor {
 
     constraint_buffer: Vec<ConstraintData>,
 
+    /// The unscaled mapper output (mapper weights at full strength). The live
+    /// `constraint_buffer` is this scaled by `global_strength`; keeping the base
+    /// lets the global-strength slider scale up AND down reversibly instead of
+    /// permanently multiplying (which made repeated adjustments collapse to 0).
+    constraint_buffer_base: Vec<ConstraintData>,
+
+    /// Current global force strength (0..1) applied to `constraint_buffer_base`
+    /// to produce the live buffer. Default keeps the semantic layout legible
+    /// rather than collapsed into one dense blob at full mapper weight.
+    global_strength: f32,
+
 
     gpu_state: GPUState,
 
@@ -92,6 +127,8 @@ impl OntologyConstraintActor {
             translator: OntologyConstraintTranslator::new(),
             ontology_constraints: Vec::new(),
             constraint_buffer: Vec::new(),
+            constraint_buffer_base: Vec::new(),
+            global_strength: DEFAULT_GLOBAL_STRENGTH,
             gpu_state: GPUState::default(),
             stats: OntologyConstraintStats::default(),
             last_update: Instant::now(),
@@ -118,89 +155,90 @@ impl OntologyConstraintActor {
         reasoning_report: &OntologyReasoningReport,
         graph_data: &visionclaw_domain::models::graph::GraphData,
     ) -> Result<(), String> {
-        let start_time = Instant::now();
-
         info!(
             "OntologyConstraintActor: Applying ontology constraints - {} axioms, {} inferences",
             reasoning_report.axioms.len(),
             reasoning_report.inferences.len()
         );
 
-        
+        // Translator pass populates `ontology_constraints` for the stats/CRUD
+        // surface (GetConstraintStats). The GPU buffer itself is produced by the
+        // canonical live-kernel mapper in `ingest_domain_axioms`, NOT by
+        // `constraint_set.to_gpu_data()` (ADR-098 break #3).
         let constraint_set = self
             .translator
             .apply_ontology_constraints(graph_data, reasoning_report)
             .map_err(|e| format!("Failed to translate ontology constraints: {}", e))?;
-
-        
         self.ontology_constraints = constraint_set.constraints.clone();
-        self.stats.total_axioms_processed += reasoning_report.axioms.len() as u32;
         self.stats.active_ontology_constraints = self
             .ontology_constraints
             .iter()
             .filter(|c| c.active)
             .count() as u32;
 
+        let domain_axioms = Self::report_axioms_to_domain(reasoning_report);
+        self.ingest_domain_axioms(domain_axioms, graph_data)?;
+        Ok(())
+    }
 
-        self.constraint_buffer = constraint_set.to_gpu_data();
+    /// Canonical OWL-axiom → live-kernel constraint ingestion (ADR-098 D1).
+    ///
+    /// Resolves both endpoints of every materialised axiom through the shared
+    /// `IriNodeResolver` (ADR-100), maps them to the live `ConstraintData`
+    /// buffer via the pure anti-corruption mapper (live kind integers
+    /// 0=DISTANCE / 6=SEPARATION, never `to_gpu_data()`), uploads losslessly via
+    /// `set_constraints`, and notifies ForceComputeActor so the live
+    /// `force_pass_kernel` consumes it once ENABLE_CONSTRAINTS is set. Buffered +
+    /// retried when the GPU context is not yet attached. Returns the number of
+    /// constraints produced. Shared by the report-based entry and the post-sync
+    /// `ApplyMaterializedAxioms` entry so the mapper is the single source of truth.
+    fn ingest_domain_axioms(
+        &mut self,
+        domain_axioms: Vec<DomainOwlAxiom>,
+        graph_data: &visionclaw_domain::models::graph::GraphData,
+    ) -> Result<usize, String> {
+        let start_time = Instant::now();
 
+        let mut resolver = IriNodeResolver::from_nodes(&graph_data.nodes);
+        // Keep the unscaled mapper output as the base so the global-strength
+        // slider can rescale reversibly; the live buffer is base × strength.
+        self.constraint_buffer_base = map_axioms_to_constraints(&domain_axioms, &mut resolver);
+        self.constraint_buffer =
+            scale_constraint_buffer(&self.constraint_buffer_base, self.global_strength);
+        self.stats.total_axioms_processed += domain_axioms.len() as u32;
+        let produced = self.constraint_buffer.len();
+        // The materialised-axiom path uploads the full buffer to the GPU live
+        // kernel, so every produced constraint is active. Without this the stats
+        // endpoint reported `activeConstraints: 0` despite 18k+ uploaded.
+        self.stats.active_ontology_constraints = produced as u32;
+
+        info!(
+            "OntologyConstraintActor: Mapped {} OWL axioms → {} live-kernel constraints ({} endpoint lookups unresolved)",
+            domain_axioms.len(),
+            produced,
+            resolver.unresolved_count()
+        );
 
         if self.gpu_initialized && self.shared_context.is_some() {
-            // Try specialized ontology kernels first (5 dedicated CUDA kernels)
-            match self.apply_specialized_constraints(graph_data) {
-                Ok(true) => {
+            match self.upload_constraints_to_gpu() {
+                Ok(_) => {
                     info!(
-                        "OntologyConstraintActor: Specialized ontology kernels executed for {} constraints",
-                        self.ontology_constraints.iter().filter(|c| c.active).count()
+                        "OntologyConstraintActor: Uploaded {} live-kernel constraints to GPU",
+                        produced
                     );
-                }
-                Ok(false) => {
-                    // Ontology PTX module not loaded — fall back to generic constraint upload
-                    info!("OntologyConstraintActor: Ontology PTX not loaded, using generic constraint path");
-                    match self.upload_constraints_to_gpu() {
-                        Ok(_) => {
-                            info!(
-                                "OntologyConstraintActor: Successfully uploaded {} constraints to GPU (generic path)",
-                                self.constraint_buffer.len()
-                            );
-                        }
-                        Err(e) => {
-                            warn!(
-                                "OntologyConstraintActor: GPU upload failed, using CPU fallback: {}",
-                                e
-                            );
-                            self.stats.gpu_failure_count += 1;
-                            self.stats.cpu_fallback_count += 1;
-                        }
-                    }
                 }
                 Err(e) => {
                     warn!(
-                        "OntologyConstraintActor: Specialized kernel execution failed: {}. Falling back to generic path.",
+                        "OntologyConstraintActor: GPU upload failed, deferring to next physics step: {}",
                         e
                     );
                     self.stats.gpu_failure_count += 1;
-                    // Fall back to generic constraint upload
-                    match self.upload_constraints_to_gpu() {
-                        Ok(_) => {
-                            info!(
-                                "OntologyConstraintActor: Fallback generic upload succeeded ({} constraints)",
-                                self.constraint_buffer.len()
-                            );
-                        }
-                        Err(e2) => {
-                            warn!(
-                                "OntologyConstraintActor: Both specialized and generic paths failed: {}",
-                                e2
-                            );
-                            self.stats.cpu_fallback_count += 1;
-                        }
-                    }
+                    self.stats.cpu_fallback_count += 1;
                 }
             }
         } else {
             debug!(
-                "OntologyConstraintActor: GPU not available, constraints stored for CPU processing"
+                "OntologyConstraintActor: GPU not available, constraints cached for next physics step"
             );
             self.stats.cpu_fallback_count += 1;
         }
@@ -209,15 +247,9 @@ impl OntologyConstraintActor {
         self.stats.last_update_time_ms = start_time.elapsed().as_secs_f32() * 1000.0;
         self.stats.constraint_evaluation_count += 1;
 
-        info!(
-            "OntologyConstraintActor: Constraint application completed in {:.2}ms",
-            self.stats.last_update_time_ms
-        );
-
-        // Notify ForceComputeActor about the new constraint buffer
         self.notify_force_compute_actor();
 
-        Ok(())
+        Ok(produced)
     }
 
     /// Send the updated constraint buffer to ForceComputeActor
@@ -252,194 +284,6 @@ impl OntologyConstraintActor {
         Ok(())
     }
 
-    /// Attempt to launch the 5 specialized ontology constraint kernels directly.
-    /// Returns `Ok(true)` if specialized kernels were executed, `Ok(false)` if the
-    /// ontology PTX module is not loaded (caller should fall back to generic path),
-    /// or `Err` on GPU failure.
-    fn apply_specialized_constraints(
-        &self,
-        graph_data: &visionclaw_domain::models::graph::GraphData,
-    ) -> Result<bool, String> {
-        let shared_context = self
-            .shared_context
-            .as_ref()
-            .ok_or("GPU context not available")?;
-
-        let mut unified_compute = shared_context
-            .unified_compute
-            .lock()
-            .map_err(|e| format!("Failed to acquire GPU compute lock: {}", e))?;
-
-        if !unified_compute.has_ontology_module() {
-            return Ok(false);
-        }
-
-        use crate::utils::unified_gpu_compute::{
-            GpuOntologyNode, GpuOntologyConstraint,
-            CONSTRAINT_DISJOINT_CLASSES, CONSTRAINT_SUBCLASS_OF,
-            CONSTRAINT_SAMEAS, CONSTRAINT_FUNCTIONAL,
-        };
-
-        // Build GpuOntologyNode array from graph data and current GPU positions.
-        // We use the array index as the simulation node index.
-        let num_nodes = graph_data.nodes.len();
-        let mut gpu_nodes: Vec<GpuOntologyNode> = Vec::with_capacity(num_nodes);
-
-        for (idx, node) in graph_data.nodes.iter().enumerate() {
-            // Determine ontology type flags from node metadata (HashMap<String, String>)
-            let owl_type = node.metadata.get("owl_type").map(|s| s.as_str()).unwrap_or("");
-            let mut ontology_type: u32 = 0;
-            if owl_type == "class" {
-                ontology_type |= 0x01; // ONTOLOGY_CLASS
-            }
-            if owl_type == "individual" {
-                ontology_type |= 0x02; // ONTOLOGY_INDIVIDUAL
-            }
-            if owl_type == "property" {
-                ontology_type |= 0x04; // ONTOLOGY_PROPERTY
-            }
-            // Default to individual if no owl_type specified
-            if ontology_type == 0 {
-                ontology_type = 0x02;
-            }
-
-            let property_count = node
-                .metadata
-                .get("property_count")
-                .and_then(|v| v.parse::<u32>().ok())
-                .unwrap_or(0);
-
-            let parent_class = node
-                .metadata
-                .get("parent_class_id")
-                .and_then(|v| v.parse::<u32>().ok())
-                .unwrap_or(0);
-
-            let mass = node
-                .metadata
-                .get("mass")
-                .and_then(|v| v.parse::<f32>().ok())
-                .or(node.mass)
-                .unwrap_or(1.0);
-
-            let radius = node
-                .metadata
-                .get("radius")
-                .and_then(|v| v.parse::<f32>().ok())
-                .unwrap_or(10.0);
-
-            gpu_nodes.push(GpuOntologyNode {
-                graph_id: 0, // default graph
-                node_id: idx as u32,
-                ontology_type,
-                constraint_flags: 0,
-                position: [
-                    node.x.unwrap_or(0.0),
-                    node.y.unwrap_or(0.0),
-                    node.z.unwrap_or(0.0),
-                ],
-                velocity: [0.0, 0.0, 0.0],
-                mass,
-                radius,
-                parent_class,
-                property_count,
-                padding: [0; 6],
-            });
-        }
-
-        // Build GpuOntologyConstraint array from ontology_constraints.
-        // Map ConstraintKind to CUDA constraint type constants.
-        // The ontology translator maps OWL axioms as follows:
-        //   DisjointClasses -> ConstraintKind::Separation  -> CUDA type 1
-        //   SubClassOf      -> ConstraintKind::Clustering  -> CUDA type 2
-        //   SameAs          -> ConstraintKind::Clustering (with colocation params) -> CUDA type 3
-        //   FunctionalProp  -> ConstraintKind::Boundary   -> CUDA type 5
-        //   Semantic        -> sub-type encoded in params[0]
-        let mut gpu_constraints: Vec<GpuOntologyConstraint> = Vec::new();
-
-        for constraint in &self.ontology_constraints {
-            if !constraint.active {
-                continue;
-            }
-
-            let cuda_type = match constraint.kind {
-                visionclaw_domain::models::constraints::ConstraintKind::Separation => CONSTRAINT_DISJOINT_CLASSES,
-                visionclaw_domain::models::constraints::ConstraintKind::Clustering => {
-                    // Clustering is used for both SubClassOf and SameAs.
-                    // Distinguish by number of node_indices: SameAs has exactly 2 nodes
-                    // with a very high weight (colocation), SubClassOf has 1 node + centroid params.
-                    if constraint.node_indices.len() == 2 && constraint.weight >= 0.9 {
-                        CONSTRAINT_SAMEAS
-                    } else {
-                        CONSTRAINT_SUBCLASS_OF
-                    }
-                }
-                visionclaw_domain::models::constraints::ConstraintKind::Boundary => CONSTRAINT_FUNCTIONAL,
-                visionclaw_domain::models::constraints::ConstraintKind::Semantic => {
-                    // Semantic constraints encode sub-type in params[0]:
-                    // 1.0=disjoint, 2.0=subclass, 3.0=sameas, 4.0=inverse, 5.0=functional
-                    let sub_type = constraint.params.first().copied().unwrap_or(0.0) as u32;
-                    if sub_type >= 1 && sub_type <= 5 {
-                        sub_type
-                    } else {
-                        CONSTRAINT_SUBCLASS_OF // default to hierarchy
-                    }
-                }
-                _ => continue, // Skip non-ontology constraint types
-            };
-
-            let source_id = constraint.node_indices.first().copied().unwrap_or(0);
-            let target_id = constraint.node_indices.get(1).copied().unwrap_or(0);
-            let graph_id = 0u32; // default graph
-
-            // Pre-compute indices (the host-side equivalent of precompute_constraint_indices)
-            let source_idx = if (source_id as usize) < num_nodes {
-                source_id as i32
-            } else {
-                -1
-            };
-            let target_idx = if (target_id as usize) < num_nodes {
-                target_id as i32
-            } else {
-                -1
-            };
-
-            let distance = constraint.params.get(1).copied().unwrap_or(50.0);
-
-            gpu_constraints.push(GpuOntologyConstraint {
-                constraint_type: cuda_type,
-                source_id,
-                target_id,
-                graph_id,
-                strength: constraint.weight,
-                distance,
-                source_idx,
-                target_idx,
-                padding: [0.0; 8],
-            });
-        }
-
-        if gpu_constraints.is_empty() {
-            info!("OntologyConstraintActor: No active ontology constraints to process via specialized kernels");
-            return Ok(true);
-        }
-
-        info!(
-            "OntologyConstraintActor: Launching specialized ontology kernels - {} nodes, {} constraints",
-            gpu_nodes.len(),
-            gpu_constraints.len()
-        );
-
-        let delta_time = 0.016; // ~60 FPS default timestep
-
-        unified_compute
-            .execute_ontology_constraints(&gpu_nodes, &gpu_constraints, delta_time)
-            .map_err(|e| format!("Specialized ontology kernel execution failed: {}", e))?;
-
-        Ok(true)
-    }
-
-
     fn upload_constraints_to_gpu(&self) -> Result<(), String> {
         let shared_context = self
             .shared_context
@@ -452,19 +296,69 @@ impl OntologyConstraintActor {
             .lock()
             .map_err(|e| format!("Failed to acquire GPU compute lock: {}", e))?;
 
-        
+
         if self.constraint_buffer.is_empty() {
             debug!("OntologyConstraintActor: No constraints to upload, clearing GPU constraints");
             unified_compute
                 .clear_constraints()
                 .map_err(|e| format!("Failed to clear GPU constraints: {}", e))?;
         } else {
+            // ADR-098 break #4: LOSSLESS writer — preserves all 4 node_idx + 8
+            // params and stamps activation_frame for the progressive ramp.
             unified_compute
-                .upload_constraints(&self.constraint_buffer)
+                .set_constraints(self.constraint_buffer.clone())
                 .map_err(|e| format!("Failed to upload constraints to GPU: {}", e))?;
         }
 
         Ok(())
+    }
+
+    /// Convert the reasoning report's physics `OWLAxiom`s into the domain
+    /// `OwlAxiom` form the live-kernel mapper consumes (ADR-098 D1). Only the
+    /// axiom kinds the mapper recognises are emitted; `sameAs` is carried as an
+    /// `ObjectPropertyAssertion` with a `predicate` annotation so the mapper
+    /// classifies it as a colocation.
+    fn report_axioms_to_domain(report: &OntologyReasoningReport) -> Vec<DomainOwlAxiom> {
+        let mut out = Vec::with_capacity(report.axioms.len() + report.inferences.len());
+
+        let mut push = |ax: &OWLAxiom| {
+            let object = match &ax.object {
+                Some(o) => o.clone(),
+                None => return, // pairwise constraints require both endpoints
+            };
+            let (axiom_type, predicate) = match ax.axiom_type {
+                OWLAxiomType::SubClassOf => (DomainAxiomType::SubClassOf, None),
+                OWLAxiomType::EquivalentClasses => (DomainAxiomType::EquivalentClass, None),
+                OWLAxiomType::DisjointClasses => (DomainAxiomType::DisjointWith, None),
+                OWLAxiomType::SameAs => (
+                    DomainAxiomType::ObjectPropertyAssertion,
+                    Some("owl:sameAs".to_string()),
+                ),
+                // Other axiom kinds (InverseOf, FunctionalProperty, …) do not map
+                // to a pairwise layout force in the WS-3 table; skip them.
+                _ => return,
+            };
+            let mut annotations = std::collections::HashMap::new();
+            if let Some(pred) = predicate {
+                annotations.insert("predicate".to_string(), pred);
+            }
+            out.push(DomainOwlAxiom {
+                id: None,
+                axiom_type,
+                subject: ax.subject.clone(),
+                object,
+                annotations,
+            });
+        };
+
+        for ax in &report.axioms {
+            push(ax);
+        }
+        for inf in &report.inferences {
+            push(&inf.inferred_axiom);
+        }
+
+        out
     }
 
     
@@ -586,6 +480,23 @@ impl Handler<ApplyOntologyConstraints> for OntologyConstraintActor {
         }
 
         Ok(())
+    }
+}
+
+impl Handler<crate::actors::messages::ApplyMaterializedAxioms> for OntologyConstraintActor {
+    type Result = Result<usize, String>;
+
+    fn handle(
+        &mut self,
+        msg: crate::actors::messages::ApplyMaterializedAxioms,
+        _ctx: &mut Self::Context,
+    ) -> Self::Result {
+        info!(
+            "OntologyConstraintActor: Received ApplyMaterializedAxioms — {} materialised OWL axioms over {} graph nodes",
+            msg.axioms.len(),
+            msg.graph_data.nodes.len()
+        );
+        self.ingest_domain_axioms(msg.axioms, &msg.graph_data)
     }
 }
 
@@ -785,19 +696,17 @@ impl Handler<AdjustConstraintWeights> for OntologyConstraintActor {
             global_strength
         );
 
-        let mut adjusted_count = 0u32;
-        for constraint in &mut self.ontology_constraints {
-            constraint.weight *= global_strength;
-            adjusted_count += 1;
-        }
-
-        // Rebuild constraint buffer with adjusted weights
-        self.constraint_buffer = self
-            .ontology_constraints
-            .iter()
-            .filter(|c| c.active)
-            .map(|c| ConstraintData::from_constraint(c))
-            .collect();
+        // The live constraints come from the canonical mapper path
+        // (`ingest_domain_axioms`), which fills `constraint_buffer_base` — NOT
+        // the legacy `ontology_constraints` Vec (empty on the mapper path).
+        // Scale the live buffer from that unscaled base so adjustments are
+        // reversible; the previous code multiplied `ontology_constraints`
+        // (0 entries) and re-uploaded an empty buffer, wiping all 18k+
+        // constraints off the GPU on the first slider move.
+        self.global_strength = global_strength;
+        self.constraint_buffer =
+            scale_constraint_buffer(&self.constraint_buffer_base, global_strength);
+        let adjusted_count = self.constraint_buffer.len() as u32;
 
         // Re-upload to GPU if initialized
         if self.gpu_initialized && self.shared_context.is_some() {
@@ -810,11 +719,9 @@ impl Handler<AdjustConstraintWeights> for OntologyConstraintActor {
         // Notify ForceComputeActor about the updated buffer
         self.notify_force_compute_actor();
 
-        self.stats.active_ontology_constraints = self
-            .ontology_constraints
-            .iter()
-            .filter(|c| c.active)
-            .count() as u32;
+        // Strength does not change how many constraints are active — every base
+        // constraint stays in the buffer, only its weight scales.
+        self.stats.active_ontology_constraints = self.constraint_buffer.len() as u32;
 
         Ok(serde_json::json!({
             "success": true,

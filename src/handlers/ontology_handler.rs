@@ -740,8 +740,8 @@ fn validate_read_only_sparql(query: &str) -> Result<(), String> {
     // This is the primary guard: a mutation keyword appearing as a standalone
     // token anywhere in the (comment-stripped) query is rejected, which also
     // catches multi-statement smuggling like `SELECT ...; DELETE ...`.
-    const FORBIDDEN: [&str; 9] = [
-        "INSERT", "DELETE", "DROP", "CLEAR", "LOAD", "CREATE", "ADD", "MOVE", "COPY",
+    const FORBIDDEN: [&str; 10] = [
+        "INSERT", "DELETE", "DROP", "CLEAR", "LOAD", "CREATE", "ADD", "MOVE", "COPY", "WITH",
     ];
     for tok in &tokens {
         if FORBIDDEN.contains(tok) {
@@ -805,6 +805,56 @@ pub async fn query_ontology(
         Err(e) => {
             error!("Thread execution error: {}", e);
             error_json!("Internal server error")
+        }
+    }
+}
+
+/// PRD-018 WS-4: `POST /api/ontology/sparql` — body `{ "query": "<SPARQL>" }`.
+///
+/// Returns SPARQL 1.1 Query Results JSON (`{ head: { vars }, results: { bindings } }`
+/// for SELECT; `{ head: {}, boolean }` for ASK). READ-ONLY: the query is
+/// validated against the mutating-keyword denylist
+/// (INSERT/DELETE/LOAD/CLEAR/DROP/CREATE/ADD/MOVE/COPY/WITH) before it ever
+/// reaches the store (defence in depth — the client guards too), and only
+/// `Solutions`/`Boolean` result kinds are accepted by the repository.
+///
+/// GPU-only constraint (PRD-018): this executes server-side over Oxigraph and
+/// returns rows only; it never solves or returns layout.
+pub async fn sparql_query(
+    state: web::Data<AppState>,
+    request: web::Json<QueryRequest>,
+) -> Result<HttpResponse, actix_web::Error> {
+    let query = request.into_inner().query;
+
+    if let Err(reason) = validate_read_only_sparql(&query) {
+        info!("Rejected non-read-only SPARQL on /ontology/sparql: {}", reason);
+        return crate::bad_request!(&reason);
+    }
+
+    match state.ontology_repository.sparql_select_json(query).await {
+        Ok(json) => ok_json!(json),
+        Err(e) => {
+            error!("SPARQL query failed: {}", e);
+            error_json!("Failed to execute SPARQL query", e.to_string())
+        }
+    }
+}
+
+/// PRD-018 WS-4 / ADR-099 D4: `GET /api/ontology/inferred` — read the inferred
+/// named graph the post-sync reasoner materialises.
+///
+/// Returns `{ namedGraph: "urn:ngm:graph:ontology:inferred", runId?, triples: [...] }`
+/// where each triple is `{ s, p, o }`. Surfaces the provenance-tagged inferences
+/// (rdfs:subClassOf closure, owl:equivalentClass, derivation markers) for the
+/// `InferencePanel`.
+pub async fn get_inferred_graph(
+    state: web::Data<AppState>,
+) -> Result<HttpResponse, actix_web::Error> {
+    match state.ontology_repository.read_inferred_graph().await {
+        Ok(json) => ok_json!(json),
+        Err(e) => {
+            error!("Failed to read inferred graph: {}", e);
+            error_json!("Failed to read inferred graph", e.to_string())
         }
     }
 }
@@ -874,9 +924,16 @@ pub fn config(cfg: &mut web::ServiceConfig) {
             .route("/axioms/{id}", web::delete().to(remove_axiom))
             .route("/inference", web::post().to(store_inference_results))
             .route("/query", web::post().to(query_ontology))
+            // WS-4: read-only SPARQL passthrough. POST (carries a body) so it is
+            // power_user-gated by `mutations_only()` for defence in depth, and
+            // additionally validated to read-only SPARQL by
+            // `validate_read_only_sparql` before reaching Oxigraph.
+            .route("/sparql", web::post().to(sparql_query))
 
             // Read-only inspection — public (safe methods bypass auth)
             .route("/graph", web::get().to(get_ontology_graph))
+            // WS-4: inferred named graph for the InferencePanel (safe GET).
+            .route("/inferred", web::get().to(get_inferred_graph))
             .route("/classes", web::get().to(list_owl_classes))
             .route("/classes/{iri}", web::get().to(get_owl_class))
             .route("/classes/{iri}/axioms", web::get().to(get_class_axioms))

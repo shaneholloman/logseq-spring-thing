@@ -594,6 +594,28 @@ impl Handler<ApplyOntologyConstraints> for GPUManagerActor {
     }
 }
 
+/// Apply materialised OWL axioms (post-sync reasoning) - routes to PhysicsSupervisor
+impl Handler<ApplyMaterializedAxioms> for GPUManagerActor {
+    type Result = ResponseActFuture<Self, Result<usize, String>>;
+
+    fn handle(&mut self, msg: ApplyMaterializedAxioms, ctx: &mut Self::Context) -> Self::Result {
+        let physics = match self.get_supervisors(ctx) {
+            Ok(s) => s.physics.clone(),
+            Err(e) => return Box::pin(async move { Err(e) }.into_actor(self)),
+        };
+
+        Box::pin(
+            async move {
+                physics
+                    .send(msg)
+                    .await
+                    .map_err(|e| format!("Failed to delegate ApplyMaterializedAxioms: {}", e))?
+            }
+            .into_actor(self),
+        )
+    }
+}
+
 /// Get ontology constraint stats - routes to PhysicsSupervisor
 impl Handler<GetOntologyConstraintStats> for GPUManagerActor {
     type Result = ResponseActFuture<Self, Result<OntologyConstraintStats, String>>;

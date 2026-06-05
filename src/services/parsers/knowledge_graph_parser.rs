@@ -351,25 +351,19 @@ impl KnowledgeGraphParser {
 
     
     pub fn page_name_to_id(&self, page_name: &str) -> u32 {
-        use std::collections::hash_map::DefaultHasher;
-        use std::hash::{Hash, Hasher};
-
-        // Canonicalise to the upstream pipeline's slug rule:
-        //   re.sub(r'[^a-z0-9]+', '-', s.lower()).strip('-')
-        // so that "Camera", "camera", and the IRI local-name "camera"
-        // (from urn:ngm:class:camera) all hash to the same id. Without this
-        // step, the `@type: Page` block and the `@type: Class` block of the
-        // same canonical entity end up on different nodes.
-        let slug = Self::slugify(page_name);
-
-        let mut hasher = DefaultHasher::new();
-        slug.hash(&mut hasher);
-        let hash_val = hasher.finish();
-
-        // Use full u32 range to minimize collision probability (birthday paradox)
-        // Reserve 0 as sentinel; map to [1, u32::MAX]
-        let id = (hash_val & 0xFFFF_FFFE) as u32 + 1;
-        id
+        // Deterministic, seeded SHA-256 derivation (ADR-100 D2 / PRD-018 WS-0),
+        // replacing the previous `DefaultHasher` whose output is explicitly NOT
+        // stable across Rust releases and machines — the root cause of the
+        // historical node-ID collisions and broken IRI→node resolution.
+        //
+        // The canonical derivation slugifies internally with the same lower /
+        // collapse-non-alnum rule (now diacritic-preserving via NFKD), so
+        // "Camera", "camera", and the IRI local-name "camera" (from
+        // urn:ngm:class:camera) all resolve to the same id — preserving the
+        // cross-graph join the `@type: Page` / `@type: Class` blocks rely on.
+        visionclaw_ontology::services::canonical_iri::NodeIdHasher::derive_id(
+            &visionclaw_ontology::services::canonical_iri::slugify(page_name),
+        )
     }
 
     /// Canonical slug: lowercase, collapse non-alphanumeric runs to `-`,

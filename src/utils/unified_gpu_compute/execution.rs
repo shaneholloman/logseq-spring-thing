@@ -793,6 +793,13 @@ impl UnifiedGPUCompute {
         if params.use_sssp_distances || self.sssp_spring_adjust_enabled {
             feature_flags |= crate::models::simulation_params::FeatureFlags::ENABLE_SSSP_SPRING_ADJUST;
         }
+        // KEYSTONE (ADR-098 break #1): gate the live force_pass_kernel constraint
+        // loop on. Without this bit the loop at visionclaw_unified.cu:475 never
+        // runs, so the uploaded ontology ConstraintData buffer has zero effect.
+        // Bit 4 (ENABLE_CONSTRAINTS) is set whenever constraints are resident.
+        if self.num_constraints > 0 {
+            feature_flags |= crate::models::simulation_params::FeatureFlags::ENABLE_CONSTRAINTS;
+        }
 
         // Use SimulationParams::to_sim_params() which correctly maps ALL user-facing
         // settings to the GPU-compatible SimParams struct. Previous implementation

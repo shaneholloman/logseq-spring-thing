@@ -580,65 +580,23 @@ impl UnifiedGPUCompute {
         Ok(())
     }
 
+    /// Upload constraints to GPU losslessly.
+    ///
+    /// ADR-098 D3: the previous implementation round-tripped each constraint
+    /// through a 7-float flat array, silently dropping `node_idx[1..3]`, `count`
+    /// and `activation_frame`. Pairwise SEPARATION / DISTANCE constraints (which
+    /// need both endpoints in `node_idx[0..1]`) and the progressive-activation
+    /// ramp (which reads `activation_frame`) were corrupted by that path. This
+    /// now delegates to `set_constraints`, which preserves the full
+    /// `ConstraintData` struct and stamps activation frames.
     pub fn upload_constraints(
         &mut self,
         constraints: &[crate::models::constraints::ConstraintData],
     ) -> Result<()> {
-        self.num_constraints = constraints.len();
-
         if constraints.is_empty() {
             return self.clear_constraints();
         }
-
-
-        let mut constraint_data = Vec::new();
-        for constraint in constraints {
-
-            constraint_data.extend_from_slice(&[
-                constraint.kind as f32,
-                constraint.node_idx[0] as f32,
-                constraint.params[0],
-                constraint.params[1],
-                constraint.params[2],
-                constraint.weight,
-                constraint.params[3],
-            ]);
-        }
-
-
-        if !constraint_data.is_empty() {
-
-            let mut gpu_constraints = Vec::new();
-            for chunk in constraint_data.chunks(7) {
-
-                if chunk.len() == 7 {
-                    let mut constraint = ConstraintData::default();
-                    constraint.kind = chunk[0] as i32;
-                    constraint.node_idx[0] = chunk[1] as i32;
-                    constraint.params[0] = chunk[2];
-                    constraint.params[1] = chunk[3];
-                    constraint.params[2] = chunk[4];
-                    constraint.weight = chunk[5];
-                    constraint.params[3] = chunk[6];
-                    gpu_constraints.push(constraint);
-                }
-            }
-
-            if gpu_constraints.len() > self.constraint_data.len() {
-
-                self.constraint_data = DeviceBuffer::from_slice(&gpu_constraints)?;
-            } else {
-
-                checked_copy_from(&mut self.constraint_data, &gpu_constraints, "constraint_data")?;
-            }
-        }
-
-        info!(
-            "Uploaded {} constraints to GPU ({} floats)",
-            constraints.len(),
-            constraint_data.len()
-        );
-        Ok(())
+        self.set_constraints(constraints.to_vec())
     }
 
 

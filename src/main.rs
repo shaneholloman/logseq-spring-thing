@@ -462,6 +462,17 @@ async fn main() -> std::io::Result<()> {
         app_state.ontology_repository.clone(),
         app_state.sqlite_settings_repository.clone(),
     ));
+    // PRD-018 WS-3 / ADR-098 D1: this is the instance registered as web::Data and
+    // used by POST /api/admin/sync. Wire it to the GPUManagerActor so a manual
+    // re-sync re-dispatches materialised OWL axioms as GPU constraints. Without
+    // this, admin/sync logged "GPUManagerActor address not registered" and the
+    // 30k+ axioms were reasoned but never pushed to the live kernel.
+    if let Some(gpu_manager) = app_state.gpu_manager_addr.clone() {
+        github_sync_service.set_gpu_manager_addr(gpu_manager);
+        info!("[main] Wired GPUManagerActor to admin/sync GitHubSyncService for semantic constraint dispatch");
+    } else {
+        warn!("[main] GPUManagerActor unavailable — admin/sync will not push GPU constraints");
+    }
     info!("[main] GitHub Sync Service initialized");
 
     // Initialize SchemaService for natural language query support

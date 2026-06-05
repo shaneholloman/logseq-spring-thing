@@ -281,7 +281,11 @@ pub async fn get_constraints(state: web::Data<AppState>) -> impl Responder {
         Ok(Ok(stats)) => {
             ok_json!(json!({
                 "activeConstraints": stats.active_ontology_constraints,
-                "totalConstraints": stats.total_axioms_processed,
+                // Constraints currently driving GPU forces. Post-dispatch every
+                // uploaded constraint is active, so total == active here; the
+                // distinct axiom input count is surfaced as `axiomsProcessed`.
+                "totalConstraints": stats.active_ontology_constraints,
+                "axiomsProcessed": stats.total_axioms_processed,
                 "constraintEvaluationCount": stats.constraint_evaluation_count,
                 "lastUpdateTimeMs": stats.last_update_time_ms,
                 "gpuFailureCount": stats.gpu_failure_count,

@@ -66,3 +66,19 @@ pub struct GetOntologyReport {
 pub struct ProcessOntologyData {
     pub pages: Vec<LogseqPage>,
 }
+
+/// PRD-018 WS-3 / ADR-098 D1 — apply materialised OWL axioms (asserted +
+/// Whelk-inferred) directly to the live-kernel constraint buffer via the
+/// canonical `map_axioms_to_constraints` anti-corruption mapper.
+///
+/// Dispatched by `GitHubSyncService::run_post_sync_reasoning` after inference so
+/// the semantic layout forces (subClassOf attraction, disjointWith separation,
+/// sameAs/equivalentClass colocation) actually reach the GPU. Routed
+/// GPUManagerActor → PhysicsSupervisor → OntologyConstraintActor. Returns the
+/// number of live-kernel constraints produced.
+#[derive(Message)]
+#[rtype(result = "Result<usize, String>")]
+pub struct ApplyMaterializedAxioms {
+    pub axioms: Vec<visionclaw_domain::ports::owl_types::OwlAxiom>,
+    pub graph_data: visionclaw_domain::models::graph::GraphData,
+}

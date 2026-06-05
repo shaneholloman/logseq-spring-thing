@@ -105,25 +105,20 @@ struct ConstraintData {
     int activation_frame;       // Frame when this constraint was activated (for progressive activation)
 };
 
-// Constraint kinds enum to match Rust
+// Constraint kinds enum — LIVE-KERNEL numbering. The OWL→constraint mapper
+// (ADR-098 D1) emits these integers DIRECTLY; it does NOT route through the
+// divergent domain `ConstraintKind` enum (verified-topology break #3). The old
+// legacy aliases (`SEPARATION = 1` colliding with POSITION, `BOUNDARY = 6`,
+// etc.) were removed because they conflated distinct semantics with the live
+// branches; SEPARATION is now the canonical one-sided min-distance push.
 enum ConstraintKind {
-    DISTANCE = 0,
-    POSITION = 1,
+    DISTANCE = 0,    // attraction / colocate (subClassOf, partOf, sameAs, equivalentClass)
+    POSITION = 1,    // attract node to a fixed target position
     ANGLE = 2,
     SEMANTIC = 3,
     TEMPORAL = 4,
     GROUP = 5,
-    // Legacy compatibility with models/constraints.rs
-    FIXED_POSITION = 0,
-    SEPARATION = 1,
-    ALIGNMENT_HORIZONTAL = 2,
-    ALIGNMENT_VERTICAL = 3,
-    ALIGNMENT_DEPTH = 4,
-    CLUSTERING = 5,
-    BOUNDARY = 6,
-    DIRECTIONAL_FLOW = 7,
-    RADIAL_DISTANCE = 8,
-    LAYER_DEPTH = 9
+    SEPARATION = 6   // one-sided push-apart when current_dist < params[0] (disjointWith)
 };
 
 // =============================================================================
@@ -544,7 +539,35 @@ __global__ void force_pass_kernel(
                     constraint_force = vec3_scale(diff, force_magnitude / distance);
                 }
             }
-            
+            else if (constraint.kind == ConstraintKind::SEPARATION && constraint.count >= 2) {
+                // Separation constraint (ADR-098 break #2): ONE-SIDED min-distance
+                // push. Disjoint nodes are pushed apart ONLY when they are closer
+                // than params[0]; beyond that the force is exactly zero so two
+                // unrelated nodes are never pulled together (unlike a DISTANCE
+                // spring which would attract at long range).
+                int other_idx = (node_role == 0) ? constraint.node_idx[1] : constraint.node_idx[0];
+                if (other_idx >= 0 && other_idx < num_nodes) {
+                    float3 other_pos = make_vec3(pos_in_x[other_idx], pos_in_y[other_idx], pos_in_z[other_idx]);
+                    float3 diff = vec3_sub(my_pos, other_pos);
+                    float current_dist = vec3_length(diff);
+                    float min_dist = constraint.params[0];
+
+                    if (current_dist > 1e-6f && isfinite(current_dist) && current_dist < min_dist) {
+                        // Penetration depth — only positive inside the clamp radius.
+                        float penetration = min_dist - current_dist;
+                        float effective_weight = constraint.weight * progressive_multiplier;
+                        float force_magnitude = effective_weight * penetration;
+
+                        // Cap to per-node force limit (always repulsive, so clamp to [0, max]).
+                        float max_constraint_force = c_params.constraint_max_force_per_node;
+                        force_magnitude = fminf(force_magnitude, max_constraint_force);
+
+                        // Push my_pos away from other along the separation axis.
+                        constraint_force = vec3_scale(diff, force_magnitude / current_dist);
+                    }
+                }
+            }
+
             // Apply constraint force with safety checks and collect telemetry
             if (isfinite(constraint_force.x) && isfinite(constraint_force.y) && isfinite(constraint_force.z)) {
                 total_force = vec3_add(total_force, constraint_force);
@@ -575,8 +598,21 @@ __global__ void force_pass_kernel(
                         float3 diff = vec3_sub(target_pos, my_pos);
                         violation = vec3_length(diff);
                         energy = 0.5f * constraint.weight * violation * violation;
+                    } else if (constraint.kind == ConstraintKind::SEPARATION && constraint.count >= 2) {
+                        // One-sided: violation is the penetration depth (0 once nodes
+                        // are at or beyond the min-distance), energy is its quadratic.
+                        int other_idx = (node_role == 0) ? constraint.node_idx[1] : constraint.node_idx[0];
+                        if (other_idx >= 0 && other_idx < num_nodes) {
+                            float3 other_pos = make_vec3(pos_in_x[other_idx], pos_in_y[other_idx], pos_in_z[other_idx]);
+                            float3 diff = vec3_sub(my_pos, other_pos);
+                            float current_dist = vec3_length(diff);
+                            float min_dist = constraint.params[0];
+
+                            violation = fmaxf(0.0f, min_dist - current_dist);
+                            energy = 0.5f * constraint.weight * violation * violation;
+                        }
                     }
-                    
+
                     // Atomically add to constraint telemetry (multiple threads might contribute to same constraint)
                     atomicAdd(&constraint_violations[c], violation);
                     atomicAdd(&constraint_energy[c], energy);
@@ -1681,169 +1717,6 @@ __global__ void relabel_communities_kernel(
 // =============================================================================
 
 /**
- * Apply semantic forces based on ontology constraints
- * Grid: (ceil(num_nodes/256), 1, 1), Block: (256, 1, 1)
- * Each thread processes one node and applies semantic forces
- */
-__global__ void apply_semantic_forces(
-    const float* __restrict__ pos_x,
-    const float* __restrict__ pos_y,
-    const float* __restrict__ pos_z,
-    float3* __restrict__ semantic_forces,
-    const ConstraintData* __restrict__ constraints,
-    const int num_constraints,
-    const int* __restrict__ node_class_indices,
-    const int num_nodes,
-    const float dt)
-{
-    const int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx >= num_nodes) return;
-
-    float3 my_pos = make_vec3(pos_x[idx], pos_y[idx], pos_z[idx]);
-    float3 total_semantic_force = make_vec3(0.0f, 0.0f, 0.0f);
-    int my_class = node_class_indices[idx];
-
-    // Process each constraint
-    for (int c = 0; c < num_constraints; c++) {
-        const ConstraintData& constraint = constraints[c];
-
-        // Check if this node is involved in this constraint
-        bool is_involved = false;
-        int node_role = -1;
-        for (int n = 0; n < constraint.count && n < 4; n++) {
-            if (constraint.node_idx[n] == idx) {
-                is_involved = true;
-                node_role = n;
-                break;
-            }
-        }
-
-        if (!is_involved) continue;
-
-        // Progressive activation based on frame
-        float progressive_multiplier = 1.0f;
-        if (c_params.constraint_ramp_frames > 0) {
-            int frames_since_activation = c_params.iteration - constraint.activation_frame;
-            if (frames_since_activation >= 0 && frames_since_activation < c_params.constraint_ramp_frames) {
-                progressive_multiplier = (float)frames_since_activation / (float)c_params.constraint_ramp_frames;
-            }
-        }
-
-        // SEPARATION FORCES: Push nodes of disjoint classes apart
-        if (constraint.kind == ConstraintKind::SEMANTIC && constraint.count >= 2) {
-            // Semantic constraint params: [separation_strength, attraction_strength, alignment_axis]
-            float separation_strength = constraint.params[0];
-            float min_separation_distance = constraint.params[3]; // Store in params[3]
-
-            for (int n = 0; n < constraint.count && n < 4; n++) {
-                if (n == node_role) continue;
-
-                int other_idx = constraint.node_idx[n];
-                if (other_idx < 0 || other_idx >= num_nodes) continue;
-
-                int other_class = node_class_indices[other_idx];
-
-                // Check if classes are disjoint (no common parent)
-                bool disjoint = (my_class != other_class); // Simplified - extend with ontology hierarchy
-
-                if (disjoint) {
-                    float3 other_pos = make_vec3(pos_x[other_idx], pos_y[other_idx], pos_z[other_idx]);
-                    float3 diff = vec3_sub(my_pos, other_pos);
-                    float dist = vec3_length(diff);
-
-                    if (dist > 1e-6f && dist < min_separation_distance) {
-                        // Apply repulsive force to maintain separation
-                        float force_magnitude = separation_strength * (min_separation_distance - dist) / dist;
-                        force_magnitude *= progressive_multiplier * constraint.weight;
-                        force_magnitude = fminf(force_magnitude, c_params.constraint_max_force_per_node);
-
-                        float3 separation_force = vec3_scale(diff, force_magnitude / dist);
-                        total_semantic_force = vec3_add(total_semantic_force, separation_force);
-                    }
-                }
-            }
-        }
-
-        // HIERARCHICAL ATTRACTION: Pull child class nodes toward parent centroids
-        if (constraint.kind == ConstraintKind::SEMANTIC && constraint.count >= 2) {
-            float attraction_strength = constraint.params[1];
-
-            // First node is parent, rest are children
-            int parent_idx = constraint.node_idx[0];
-
-            if (node_role > 0 && parent_idx >= 0 && parent_idx < num_nodes) {
-                // This is a child node - attract to parent
-                float3 parent_pos = make_vec3(pos_x[parent_idx], pos_y[parent_idx], pos_z[parent_idx]);
-                float3 diff = vec3_sub(parent_pos, my_pos);
-                float dist = vec3_length(diff);
-
-                if (dist > 1e-6f) {
-                    // Gentle attraction toward parent
-                    float force_magnitude = attraction_strength * dist;
-                    force_magnitude *= progressive_multiplier * constraint.weight;
-                    force_magnitude = fminf(force_magnitude, c_params.constraint_max_force_per_node);
-
-                    float3 attraction_force = vec3_scale(diff, force_magnitude / dist);
-                    total_semantic_force = vec3_add(total_semantic_force, attraction_force);
-                }
-            }
-        }
-
-        // ALIGNMENT FORCES: Align nodes along axes based on ontology
-        if (constraint.kind == ConstraintKind::SEMANTIC && constraint.count >= 2) {
-            float alignment_axis = constraint.params[2]; // 0=X, 1=Y, 2=Z
-            float alignment_strength = constraint.params[4];
-
-            // Calculate centroid of constraint group
-            float3 centroid = make_vec3(0.0f, 0.0f, 0.0f);
-            int valid_nodes = 0;
-
-            for (int n = 0; n < constraint.count && n < 4; n++) {
-                int node_idx = constraint.node_idx[n];
-                if (node_idx >= 0 && node_idx < num_nodes) {
-                    centroid.x += pos_x[node_idx];
-                    centroid.y += pos_y[node_idx];
-                    centroid.z += pos_z[node_idx];
-                    valid_nodes++;
-                }
-            }
-
-            if (valid_nodes > 0) {
-                centroid = vec3_scale(centroid, 1.0f / valid_nodes);
-
-                // Apply alignment force along specified axis
-                float3 alignment_force = make_vec3(0.0f, 0.0f, 0.0f);
-
-                if (alignment_axis < 0.5f) {
-                    // Align along X axis
-                    alignment_force.y = (centroid.y - my_pos.y) * alignment_strength;
-                    alignment_force.z = (centroid.z - my_pos.z) * alignment_strength;
-                } else if (alignment_axis < 1.5f) {
-                    // Align along Y axis
-                    alignment_force.x = (centroid.x - my_pos.x) * alignment_strength;
-                    alignment_force.z = (centroid.z - my_pos.z) * alignment_strength;
-                } else {
-                    // Align along Z axis
-                    alignment_force.x = (centroid.x - my_pos.x) * alignment_strength;
-                    alignment_force.y = (centroid.y - my_pos.y) * alignment_strength;
-                }
-
-                alignment_force = vec3_scale(alignment_force, progressive_multiplier * constraint.weight);
-                float force_mag = vec3_length(alignment_force);
-                if (force_mag > c_params.constraint_max_force_per_node) {
-                    alignment_force = vec3_scale(alignment_force, c_params.constraint_max_force_per_node / force_mag);
-                }
-
-                total_semantic_force = vec3_add(total_semantic_force, alignment_force);
-            }
-        }
-    }
-
-    // Store semantic forces for blending
-    semantic_forces[idx] = total_semantic_force;
-}
-
-/**
  * Blend semantic forces with physics forces using priority weighting
  * Grid: (ceil(num_nodes/256), 1, 1), Block: (256, 1, 1)
  */
@@ -2254,7 +2127,32 @@ __global__ void force_pass_with_stability_kernel(
                                               fminf(c_params.constraint_max_force_per_node, force_magnitude));
                         
                         float3 constraint_force = vec3_scale(diff, force_magnitude / current_dist);
-                        if (isfinite(constraint_force.x) && isfinite(constraint_force.y) && 
+                        if (isfinite(constraint_force.x) && isfinite(constraint_force.y) &&
+                            isfinite(constraint_force.z)) {
+                            total_force = vec3_add(total_force, constraint_force);
+                        }
+                    }
+                }
+            }
+            else if (constraint.kind == ConstraintKind::SEPARATION && constraint.count >= 2) {
+                // Mirror of the main-pass one-sided separation push (ADR-098 break #2)
+                // so disjointness still holds while the bad-frame fallback is active.
+                int other_idx = (node_role == 0) ? constraint.node_idx[1] : constraint.node_idx[0];
+                if (other_idx >= 0 && other_idx < num_nodes) {
+                    float3 other_pos = make_vec3(pos_in_x[other_idx],
+                                                pos_in_y[other_idx],
+                                                pos_in_z[other_idx]);
+                    float3 diff = vec3_sub(my_pos, other_pos);
+                    float current_dist = vec3_length(diff);
+                    float min_dist = constraint.params[0];
+
+                    if (current_dist > 1e-6f && isfinite(current_dist) && current_dist < min_dist) {
+                        float penetration = min_dist - current_dist;
+                        float force_magnitude = constraint.weight * penetration;
+                        force_magnitude = fminf(force_magnitude, c_params.constraint_max_force_per_node);
+
+                        float3 constraint_force = vec3_scale(diff, force_magnitude / current_dist);
+                        if (isfinite(constraint_force.x) && isfinite(constraint_force.y) &&
                             isfinite(constraint_force.z)) {
                             total_force = vec3_add(total_force, constraint_force);
                         }

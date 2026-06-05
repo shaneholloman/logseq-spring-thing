@@ -74,7 +74,7 @@ pub use settings_messages::{
 
 // --- ontology_messages ---
 pub use ontology_messages::{
-    ApplyInferences, ApplyOntologyConstraints, CachedOntologyInfo, ClearOntologyCaches,
+    ApplyInferences, ApplyMaterializedAxioms, ApplyOntologyConstraints, CachedOntologyInfo, ClearOntologyCaches,
     ConstraintMergeMode, ConstraintStats, GetCachedOntologies, GetConstraintStats,
     GetOntologyConstraintStats, GetOntologyHealth, GetOntologyHealthLegacy, GetValidationReport,
     LoadOntologyAxioms, OntologyConstraintStats, OntologyHealth, ProcessOntologyData,

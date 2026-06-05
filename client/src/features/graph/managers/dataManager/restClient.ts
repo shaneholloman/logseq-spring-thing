@@ -15,21 +15,46 @@ interface RawGraphResponse {
 }
 
 /**
+ * Server-side graph-type filter (PRD-018 WS-4). Sent as `?graph_type=` so the
+ * backend returns only the requested population instead of the whole graph
+ * (which the client then filtered locally — the transfer this eliminates).
+ * `null` / `'all'` → no filter param → server returns the full graph.
+ */
+export type GraphTypeFilter = 'knowledge' | 'ontology' | 'agent' | 'all' | null;
+
+/**
  * Fetch raw graph data from the backend REST API with up to `maxRetries`
  * attempts and exponential back-off.  Returns a validated `GraphData` object
  * with string-coerced node/edge IDs and enriched positions.
+ *
+ * @param graphType   Multi-graph identity (`logseq`/`visionclaw`) — diagnostic only.
+ * @param graphTypeFilter Server-side population filter → `?graph_type=`. When
+ *   `null`/`'all'` the whole graph is requested (back-compat default).
  */
-export async function fetchGraphData(graphType: string): Promise<GraphData> {
+export async function fetchGraphData(
+  graphType: string,
+  graphTypeFilter: GraphTypeFilter = null,
+): Promise<GraphData> {
   const maxRetries   = 3;
   const initialDelay = 500;
+
+  // Build the request URL: only append ?graph_type= for a concrete population.
+  const requestUrl =
+    graphTypeFilter && graphTypeFilter !== 'all'
+      ? `/graph/data?graph_type=${encodeURIComponent(graphTypeFilter)}`
+      : '/graph/data';
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       if (debugState.isEnabled()) {
-        logger.info(`Fetching initial ${graphType} graph data (attempt ${attempt}/${maxRetries})`);
+        logger.info(
+          `Fetching initial ${graphType} graph data` +
+            (graphTypeFilter && graphTypeFilter !== 'all' ? ` (graph_type=${graphTypeFilter})` : '') +
+            ` (attempt ${attempt}/${maxRetries})`,
+        );
       }
 
-      const response = await unifiedApiClient.get('/graph/data', { timeout: 10000 });
+      const response = await unifiedApiClient.get(requestUrl, { timeout: 10000 });
 
       const responseData: RawGraphResponse = response.data.data || response.data;
 
@@ -141,9 +166,14 @@ export function scheduleEmptyDataRetry(
   existingTimerRef: number | null,
   onSuccess: () => Promise<unknown>,
   onReschedule: (handle: number) => void,
+  graphTypeFilter: GraphTypeFilter = null,
 ): void {
   const MAX_ATTEMPTS = 20;
   const INTERVAL_MS  = 15_000;
+  const retryUrl =
+    graphTypeFilter && graphTypeFilter !== 'all'
+      ? `/graph/data?graph_type=${encodeURIComponent(graphTypeFilter)}`
+      : '/graph/data';
 
   if (attempt > MAX_ATTEMPTS) {
     logger.warn(`T6 empty-data retry: reached ${MAX_ATTEMPTS} attempts (${MAX_ATTEMPTS * INTERVAL_MS / 1000}s). Giving up.`);
@@ -157,18 +187,18 @@ export function scheduleEmptyDataRetry(
   const handle = window.setTimeout(async () => {
     console.info(`[GraphDataManager] T6 empty-data retry attempt ${attempt}/${MAX_ATTEMPTS}`);
     try {
-      const response = await unifiedApiClient.get('/graph/data', { timeout: 10000 });
+      const response = await unifiedApiClient.get(retryUrl, { timeout: 10000 });
       const responseData = response.data.data || response.data;
       const nodes = Array.isArray(responseData?.nodes) ? responseData.nodes : [];
       if (nodes.length > 0) {
         console.info(`[GraphDataManager] T6 empty-data retry: received ${nodes.length} nodes on attempt ${attempt}. Triggering full load.`);
         await onSuccess();
       } else {
-        scheduleEmptyDataRetry(attempt + 1, null, onSuccess, onReschedule);
+        scheduleEmptyDataRetry(attempt + 1, null, onSuccess, onReschedule, graphTypeFilter);
       }
     } catch (err) {
       logger.warn(`T6 empty-data retry attempt ${attempt} failed:`, createErrorMetadata(err));
-      scheduleEmptyDataRetry(attempt + 1, null, onSuccess, onReschedule);
+      scheduleEmptyDataRetry(attempt + 1, null, onSuccess, onReschedule, graphTypeFilter);
     }
   }, INTERVAL_MS) as unknown as number;
 

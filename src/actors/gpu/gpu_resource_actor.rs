@@ -137,22 +137,8 @@ impl GPUResourceActor {
             }
         };
 
-        // Load ontology constraints PTX for OWL axiom -> physics force pipeline
-        let _ontology_ptx = match visionclaw_gpu::ptx_loader::load_ptx_module_sync(
-            visionclaw_gpu::ptx_loader::PTXModule::OntologyConstraints,
-        ) {
-            Ok(content) => {
-                info!(
-                    "Ontology constraints PTX loaded successfully, size: {} bytes",
-                    content.len()
-                );
-                Some(content)
-            }
-            Err(e) => {
-                warn!("Failed to load ontology constraints PTX (will use CPU fallback): {}", e);
-                None
-            }
-        };
+        // ADR-098 D3: ontology_constraints.cu PTX retired — OWL axioms now drive
+        // the generic live force_pass_kernel constraint loop, not separate kernels.
 
         // Load APSP PTX for GPU-accelerated landmark distance assembly
         let apsp_ptx = match visionclaw_gpu::ptx_loader::load_ptx_module_sync(

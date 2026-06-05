@@ -8,6 +8,7 @@ import { useSettingsStore } from '../../../store/settingsStore'
 import { BinaryNodeData, getActualNodeId } from '../../../types/binaryProtocol'
 import { GemNodes, GemNodesHandle } from './GemNodes'
 import { GlassEdges, GlassEdgesHandle } from './GlassEdges'
+import { InferredEdges } from './InferredEdges'
 import { KnowledgeRings } from './KnowledgeRings'
 import { ClusterHulls } from './ClusterHulls'
 import { useGraphEventHandlers } from '../hooks/useGraphEventHandlers'
@@ -558,6 +559,14 @@ const GraphManager: React.FC<GraphManagerProps> = ({ onDragStateChange }) => {
         points={highlightEdgePoints}
         settings={settings?.visualisation?.graphs?.logseq?.edges || settings?.visualisation?.edges || defaultEdgeSettings}
         colorOverride={settings?.visualisation?.interaction?.selectionHighlightColor || '#00FFFF'}
+      />
+
+      {/* Inferred-graph edges (urn:ngm:graph:ontology:inferred) rendered in a
+          distinct dashed-amber style, gated by the InferencePanel toggle.
+          Additive overlay — does not touch the GlassEdges instanced pipeline. */}
+      <InferredEdges
+        nodePositionsRef={nodePositionsRef}
+        nodeIdToIndexMap={nodeIdToIndexMap}
       />
 
       <KnowledgeRings

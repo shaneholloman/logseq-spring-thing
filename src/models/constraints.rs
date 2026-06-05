@@ -9,10 +9,20 @@ pub use visionclaw_domain::models::constraints::{
 
 /// GPU-buffer representation of a single constraint.
 /// Kept in webxr (not domain) because it requires bytemuck + cust GPU traits.
-/// Matches the `#[repr(C)]` layout expected by CUDA kernels in
-/// visionclaw_unified.cu / ontology_constraints.cu.
+/// Matches the `#[repr(C)]` layout expected by the CUDA `force_pass_kernel`
+/// constraint loop in visionclaw_unified.cu (ADR-098 D3: the separate
+/// ontology_constraints.cu kernel is retired).
 #[repr(C)]
-#[derive(Debug, Clone, Copy, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    bytemuck::Pod,
+    bytemuck::Zeroable,
+    serde::Serialize,
+    serde::Deserialize,
+)]
 pub struct ConstraintData {
     /// ConstraintKind discriminant cast to i32
     pub kind: i32,

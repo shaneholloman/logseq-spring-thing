@@ -47,8 +47,10 @@ pub mod expander;
 pub mod extractor;
 pub(crate) mod graph_port_shim;
 pub mod pipeline;
+pub mod shacl_gate;
 pub mod triple_emitter;
 pub mod validator;
+pub mod vocab_resolver;
 
 pub use canonical::parse_canonical_entity;
 pub use errors::{JsonLdIngestError, Result};

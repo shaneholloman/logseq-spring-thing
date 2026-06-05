@@ -211,7 +211,8 @@ pub enum PTXModule {
     GpuAabbReduction,
     GpuLandmarkApsp,
     SsspCompact,
-    OntologyConstraints,
+    // ADR-098 D3: OntologyConstraints PTX retired — OWL axioms now drive the
+    // generic live force_pass_kernel constraint loop, not a separate kernel.
     Pagerank,
     GpuConnectedComponents,
 }
@@ -225,7 +226,6 @@ impl PTXModule {
             PTXModule::GpuAabbReduction => "gpu_aabb_reduction.cu",
             PTXModule::GpuLandmarkApsp => "gpu_landmark_apsp.cu",
             PTXModule::SsspCompact => "sssp_compact.cu",
-            PTXModule::OntologyConstraints => "ontology_constraints.cu",
             PTXModule::Pagerank => "pagerank.cu",
             PTXModule::GpuConnectedComponents => "gpu_connected_components.cu",
         }
@@ -239,7 +239,6 @@ impl PTXModule {
             PTXModule::GpuAabbReduction => "GPU_AABB_REDUCTION_PTX_PATH",
             PTXModule::GpuLandmarkApsp => "GPU_LANDMARK_APSP_PTX_PATH",
             PTXModule::SsspCompact => "SSSP_COMPACT_PTX_PATH",
-            PTXModule::OntologyConstraints => "ONTOLOGY_CONSTRAINTS_PTX_PATH",
             PTXModule::Pagerank => "PAGERANK_PTX_PATH",
             PTXModule::GpuConnectedComponents => "GPU_CONNECTED_COMPONENTS_PTX_PATH",
         }
@@ -260,7 +259,6 @@ impl PTXModule {
             PTXModule::GpuAabbReduction => option_env!("GPU_AABB_REDUCTION_PTX_PATH"),
             PTXModule::GpuLandmarkApsp => option_env!("GPU_LANDMARK_APSP_PTX_PATH"),
             PTXModule::SsspCompact => option_env!("SSSP_COMPACT_PTX_PATH"),
-            PTXModule::OntologyConstraints => option_env!("ONTOLOGY_CONSTRAINTS_PTX_PATH"),
             PTXModule::Pagerank => option_env!("PAGERANK_PTX_PATH"),
             PTXModule::GpuConnectedComponents => option_env!("GPU_CONNECTED_COMPONENTS_PTX_PATH"),
         }
@@ -274,7 +272,6 @@ impl PTXModule {
             PTXModule::GpuAabbReduction,
             PTXModule::GpuLandmarkApsp,
             PTXModule::SsspCompact,
-            PTXModule::OntologyConstraints,
             PTXModule::Pagerank,
             PTXModule::GpuConnectedComponents,
         ]
@@ -632,8 +629,10 @@ mod tests {
     // ── PTXModule enum ──────────────────────────────────────────────────────
 
     #[test]
-    fn all_modules_returns_ten_variants() {
-        assert_eq!(PTXModule::all_modules().len(), 10);
+    fn all_modules_returns_eight_variants() {
+        // ADR-098 D3 retired the OntologyConstraints kernel; OWL axioms now feed
+        // the generic live force_pass_kernel constraint loop.
+        assert_eq!(PTXModule::all_modules().len(), 8);
     }
 
     #[test]
@@ -819,19 +818,32 @@ mod tests {
     // ── get_compiled_ptx_path (env-var lookup, no FS access) ──────────────
 
     #[test]
-    fn get_compiled_ptx_path_returns_none_when_env_unset() {
-        // Ensure the env var is not set for this test.
-        std::env::remove_var(PTXModule::DynamicGrid.env_var());
-        assert!(get_compiled_ptx_path(PTXModule::DynamicGrid).is_none());
+    fn get_compiled_ptx_path_none_when_no_baked_and_env_unset() {
+        // Contract: prefer the compile-time baked path; otherwise fall back to
+        // the runtime env override. With the env unset, the result equals the
+        // baked path (when this build baked one) or None (when it did not).
+        let m = PTXModule::DynamicGrid;
+        std::env::remove_var(m.env_var());
+        match m.compiled_ptx_path() {
+            Some(baked) => {
+                assert_eq!(get_compiled_ptx_path(m).unwrap().to_str().unwrap(), baked)
+            }
+            None => assert!(get_compiled_ptx_path(m).is_none()),
+        }
     }
 
     #[test]
-    fn get_compiled_ptx_path_returns_path_when_env_set() {
-        let var = PTXModule::Pagerank.env_var();
+    fn get_compiled_ptx_path_prefers_baked_then_env_fallback() {
+        // Baked path wins when present; the runtime env var is only consulted
+        // when no path was baked at compile time.
+        let m = PTXModule::Pagerank;
+        let var = m.env_var();
         std::env::set_var(var, "/tmp/pagerank.ptx");
-        let path = get_compiled_ptx_path(PTXModule::Pagerank);
+        let path = get_compiled_ptx_path(m);
         std::env::remove_var(var);
-        assert!(path.is_some());
-        assert_eq!(path.unwrap().to_str().unwrap(), "/tmp/pagerank.ptx");
+        match m.compiled_ptx_path() {
+            Some(baked) => assert_eq!(path.unwrap().to_str().unwrap(), baked),
+            None => assert_eq!(path.unwrap().to_str().unwrap(), "/tmp/pagerank.ptx"),
+        }
     }
 }

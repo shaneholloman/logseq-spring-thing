@@ -788,6 +788,14 @@ impl AppState {
             });
             info!("[AppState::new] Sent SetNodeAnalytics to GPUManagerActor");
 
+            // PRD-018 WS-3 / ADR-098 D1: register the GPUManagerActor with the
+            // GitHubSyncService so post-sync reasoning can push materialised OWL
+            // axioms to the live-kernel constraint mapper. The background sync
+            // (spawned above) takes minutes; this address is set well before its
+            // post-reasoning phase fires, so semantic constraints reach the GPU.
+            github_sync_service.set_gpu_manager_addr(gpu_manager.clone());
+            info!("[AppState::new] Registered GPUManagerActor with GitHubSyncService for semantic constraint dispatch");
+
             (Some(gpu_manager), None, Some(shortest_path), Some(connected_components))
         };
 

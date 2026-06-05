@@ -551,27 +551,16 @@ fn wikilink_to_iri(s: &str) -> Option<String> {
     Some(format!("urn:visionclaw:linked:{}", slug))
 }
 
-/// NFKC normalisation is approximated by lowercasing ASCII. The actual
-/// codemod (D13) would use `unicode-normalization`; for the v1 corpus all
-/// labels are ASCII-only and the simpler rule suffices.
+/// Diacritic-preserving deterministic slug (ADR-100 D2).
+///
+/// Delegates to the canonical NFKD + combining-mark-strip slugifier in
+/// `crate::services::canonical_iri`, replacing the previous ASCII-only rule
+/// that silently dropped non-ASCII glyphs (so `Café` and `Cafe` collided to
+/// different/garbage slugs and non-Latin titles degraded). The original
+/// `rdfs:label` is retained verbatim by callers; only the IRI local-part is
+/// slugified.
 pub fn slugify(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    let mut last_dash = true;
-    for c in s.chars() {
-        if c.is_ascii_alphanumeric() {
-            for lc in c.to_lowercase() {
-                out.push(lc);
-            }
-            last_dash = false;
-        } else if !last_dash {
-            out.push('-');
-            last_dash = true;
-        }
-    }
-    while out.ends_with('-') {
-        out.pop();
-    }
-    out
+    crate::services::canonical_iri::slugify(s)
 }
 
 #[cfg(test)]

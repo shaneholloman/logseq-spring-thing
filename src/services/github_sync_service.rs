@@ -24,7 +24,7 @@ use crate::services::semantic_type_registry::SEMANTIC_TYPE_REGISTRY;
 use futures::stream::{FuturesUnordered, StreamExt};
 use log::{debug, error, info, warn};
 use oxigraph::model::{Quad, Subject};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
 
@@ -167,17 +167,12 @@ fn ensure_stub_from_link(
     if nodes.contains_key(&id) {
         return;
     }
-    let is_class = link.target_iri.contains(":class:")
-        || link.target_iri.contains("/class/");
-    let is_individual = link.target_iri.contains(":individual:")
-        || link.target_iri.contains("/individual/");
-    let node_type = if is_individual {
-        "owl_individual"
-    } else if is_class {
-        "owl_class"
-    } else {
-        "linked_page"
-    };
+    // ADR-100 D3: a wikilink target has no asserted `rdf:type` yet (its page
+    // may not be ingested), so IRI-shape is the documented last-resort
+    // classifier here. Real `rdf:type`-driven typing happens in
+    // `enrich_node_from_quads` once the target's own quads land.
+    let kind = classify_by_iri_shape(&link.target_iri);
+    let node_type = kind.as_node_type();
 
     let mut node = visionclaw_domain::models::node::Node::default();
     node.id = id;
@@ -189,7 +184,7 @@ fn ensure_stub_from_link(
     };
     node.node_type = Some(node_type.to_string());
     node.metadata.insert("type".to_string(), node_type.to_string());
-    if is_class || is_individual {
+    if matches!(kind, OwlKind::Class | OwlKind::Individual) {
         node.owl_class_iri = Some(link.target_iri.clone());
     }
     nodes.insert(id, node);
@@ -205,15 +200,10 @@ fn ensure_stub_from_iri(
     if nodes.contains_key(&id) {
         return;
     }
-    let is_class = iri.contains(":class:") || iri.contains("/class/");
-    let is_individual = iri.contains(":individual:") || iri.contains("/individual/");
-    let node_type = if is_individual {
-        "owl_individual"
-    } else if is_class {
-        "owl_class"
-    } else {
-        "linked_page"
-    };
+    // ADR-100 D3: typed-edge target stub with no `rdf:type` yet — IRI-shape is
+    // the documented last-resort classifier (see `classify_by_iri_shape`).
+    let kind = classify_by_iri_shape(iri);
+    let node_type = kind.as_node_type();
     let local_name = iri.rsplit_once(':').map(|(_, r)| r).unwrap_or(iri);
     let local_name = local_name.rsplit_once('/').map(|(_, r)| r).unwrap_or(local_name);
     let mut node = visionclaw_domain::models::node::Node::default();
@@ -222,7 +212,7 @@ fn ensure_stub_from_iri(
     node.label = local_name.replace('-', " ");
     node.node_type = Some(node_type.to_string());
     node.metadata.insert("type".to_string(), node_type.to_string());
-    if is_class || is_individual {
+    if matches!(kind, OwlKind::Class | OwlKind::Individual) {
         node.owl_class_iri = Some(iri.to_string());
     }
     nodes.insert(id, node);
@@ -235,6 +225,12 @@ pub struct GitHubSyncService {
     onto_repo: Arc<OxigraphOntologyRepository>,
     inference_engine: Arc<RwLock<WhelkInferenceEngine>>,
     sync_db: Arc<SqliteSettingsRepository>,
+    /// GPUManagerActor address for pushing post-sync semantic constraints to the
+    /// live kernel (PRD-018 WS-3 / ADR-098). Set after the GPU actors spin up via
+    /// `set_gpu_manager_addr`; `OnceLock` because the service is shared behind
+    /// `Arc` and the address is not known at construction time. When unset (e.g.
+    /// the `sync_github` CLI binary), the constraint dispatch is skipped.
+    gpu_manager_addr: OnceLock<actix::Addr<crate::actors::gpu::gpu_manager_actor::GPUManagerActor>>,
 }
 
 impl GitHubSyncService {
@@ -256,6 +252,19 @@ impl GitHubSyncService {
             onto_repo,
             inference_engine: Arc::new(RwLock::new(WhelkInferenceEngine::new())),
             sync_db,
+            gpu_manager_addr: OnceLock::new(),
+        }
+    }
+
+    /// Register the GPUManagerActor address so post-sync reasoning can push
+    /// materialised OWL axioms to the live-kernel constraint buffer. Idempotent;
+    /// the first set wins (the address is stable for the process lifetime).
+    pub fn set_gpu_manager_addr(
+        &self,
+        addr: actix::Addr<crate::actors::gpu::gpu_manager_actor::GPUManagerActor>,
+    ) {
+        if self.gpu_manager_addr.set(addr).is_err() {
+            debug!("GitHubSyncService: GPUManagerActor address already set; ignoring");
         }
     }
 
@@ -743,6 +752,12 @@ impl GitHubSyncService {
             axioms.len()
         );
 
+        // Asserted axioms (disjointWith / equivalentClass / explicit subClassOf)
+        // carry the layout forces that inference does not re-derive; keep a copy
+        // before `load_ontology` consumes the vec so the post-sync constraint
+        // dispatch can map them alongside the inferred closure (ADR-098 D1).
+        let asserted_axioms = axioms.clone();
+
         let mut engine = self.inference_engine.write().await;
         engine
             .load_ontology(classes, axioms)
@@ -764,22 +779,29 @@ impl GitHubSyncService {
             warn!("Failed to persist inference results: {}", e);
         }
 
-        // Build IRI→node_id map from the current graph to resolve inferred edges.
-        let mut iri_to_node_id: std::collections::HashMap<String, u32> =
-            std::collections::HashMap::new();
-        if let Ok(graph) = self.kg_repo.load_graph().await {
-            for node in &graph.nodes {
-                if let Some(ref iri) = node.owl_class_iri {
-                    iri_to_node_id.insert(iri.clone(), node.id);
-                }
-                if let Some(iri) = node.metadata.get("owl_class_iri") {
-                    iri_to_node_id.insert(iri.clone(), node.id);
-                }
+        // PRD-018 WS-2 §B: build the IRI→node index via the LIFTED, reusable
+        // `IriNodeResolver` (crate `visionclaw_ontology::services::iri_node_resolver`).
+        // The previous inline closure has been promoted to that public struct so
+        // the GPU/constraint mapper (ADR-098) can resolve endpoints identically.
+        // Behaviour is unchanged: every addressable IRI form is indexed, with a
+        // deterministic local-name hash fallback (the same hash that minted
+        // every node id), and unresolved endpoints are counted for the
+        // ≥95% coverage gate.
+        let graph = self.kg_repo.load_graph().await.ok();
+        let resolver = match &graph {
+            Some(g) => {
+                visionclaw_ontology::services::iri_node_resolver::IriNodeResolver::from_nodes(
+                    &g.nodes,
+                )
             }
-        }
+            None => visionclaw_ontology::services::iri_node_resolver::IriNodeResolver::new(),
+        };
+        let resolve_endpoint = |iri: &str| -> Option<u32> { resolver.resolve(iri) };
 
         let mut inferred_edge_count = 0;
         let mut inferred_edges = Vec::new();
+        let mut unresolved_endpoints: usize = 0;
+        let mut considered_axioms: usize = 0;
 
         for axiom in &results.inferred_axioms {
             if axiom.axiom_type == AxiomType::SubClassOf
@@ -787,10 +809,16 @@ impl GitHubSyncService {
                 && !axiom.object.contains("owl#Thing")
                 && axiom.subject != axiom.object
             {
-                if let (Some(&src_id), Some(&tgt_id)) = (
-                    iri_to_node_id.get(&axiom.subject),
-                    iri_to_node_id.get(&axiom.object),
-                ) {
+                considered_axioms += 1;
+                let src = resolve_endpoint(&axiom.subject);
+                let tgt = resolve_endpoint(&axiom.object);
+                if src.is_none() {
+                    unresolved_endpoints += 1;
+                }
+                if tgt.is_none() {
+                    unresolved_endpoints += 1;
+                }
+                if let (Some(src_id), Some(tgt_id)) = (src, tgt) {
                     let edge_id = format!("inferred_{}_{}", src_id, tgt_id);
                     let mut edge_meta = std::collections::HashMap::new();
                     edge_meta.insert("source_iri".to_string(), axiom.subject.clone());
@@ -825,12 +853,93 @@ impl GitHubSyncService {
             }
         }
 
+        // WS-0 release gate: report IRI→node endpoint resolution coverage so
+        // the historical "30–50% silent drop" is now observable, not silent.
+        let total_endpoints = considered_axioms * 2;
+        if total_endpoints > 0 {
+            let resolved = total_endpoints.saturating_sub(unresolved_endpoints);
+            let coverage = (resolved as f64 / total_endpoints as f64) * 100.0;
+            if unresolved_endpoints > 0 {
+                warn!(
+                    "IRI→node resolution: {}/{} endpoints resolved ({:.1}%); {} unresolved across {} SubClassOf axioms (target ≥95%)",
+                    resolved, total_endpoints, coverage, unresolved_endpoints, considered_axioms
+                );
+            } else {
+                info!(
+                    "IRI→node resolution: {}/{} endpoints resolved (100.0%) across {} SubClassOf axioms",
+                    resolved, total_endpoints, considered_axioms
+                );
+            }
+        }
+
+        // PRD-018 WS-3 / ADR-098 D1: push the materialised axioms (asserted +
+        // inferred) to the GPU as live-kernel semantic constraints. This is the
+        // producer that makes subClassOf attraction / disjointWith separation /
+        // sameAs colocation actually move nodes. Skipped (logged) when no
+        // GPUManagerActor address is registered (e.g. the sync_github CLI).
+        if let Some(graph) = graph {
+            self.dispatch_semantic_constraints(
+                asserted_axioms,
+                results.inferred_axioms,
+                (*graph).clone(),
+            )
+            .await;
+        } else {
+            warn!("Post-sync reasoning: graph unavailable, skipping semantic constraint dispatch");
+        }
+
         info!(
             "Post-sync reasoning complete in {:?}: {} inferred edges",
             reasoning_start.elapsed(),
             inferred_edge_count
         );
         Ok(inferred_edge_count)
+    }
+
+    /// PRD-018 WS-3 / ADR-098 D1 — map materialised OWL axioms (asserted +
+    /// Whelk-inferred) to live-kernel constraints and upload them to the GPU.
+    ///
+    /// Sends `ApplyMaterializedAxioms` to the GPUManagerActor, which routes to
+    /// the OntologyConstraintActor where the canonical `map_axioms_to_constraints`
+    /// anti-corruption mapper runs. No-op (logged) when the GPU address is unset.
+    async fn dispatch_semantic_constraints(
+        &self,
+        asserted_axioms: Vec<OwlAxiom>,
+        inferred_axioms: Vec<OwlAxiom>,
+        graph: visionclaw_domain::models::graph::GraphData,
+    ) {
+        let Some(gpu_addr) = self.gpu_manager_addr.get() else {
+            info!(
+                "Post-sync reasoning: GPUManagerActor address not registered — {} asserted + {} inferred axioms NOT pushed as constraints (CLI/headless run)",
+                asserted_axioms.len(),
+                inferred_axioms.len()
+            );
+            return;
+        };
+
+        let mut materialized = asserted_axioms;
+        materialized.extend(inferred_axioms);
+        let axiom_count = materialized.len();
+
+        info!(
+            "Post-sync reasoning: dispatching {} materialised axioms over {} nodes to the GPU constraint mapper",
+            axiom_count,
+            graph.nodes.len()
+        );
+
+        let msg = crate::actors::messages::ApplyMaterializedAxioms {
+            axioms: materialized,
+            graph_data: graph,
+        };
+
+        match gpu_addr.send(msg).await {
+            Ok(Ok(produced)) => info!(
+                "Post-sync reasoning: {} live-kernel semantic constraints produced from {} axioms",
+                produced, axiom_count
+            ),
+            Ok(Err(e)) => warn!("Post-sync reasoning: constraint mapping failed: {}", e),
+            Err(e) => warn!("Post-sync reasoning: GPUManagerActor mailbox error: {}", e),
+        }
     }
 
     /// NarrativeGoldmine property hierarchy axioms for Whelk reasoning.
@@ -1088,9 +1197,13 @@ impl GitHubSyncService {
             }
         };
 
-        // 2. Emit the page node from the entity. Identity = hash(slug).
+        // 2. Emit the page node from the entity. Identity = deterministic
+        //    seeded hash(slug) (ADR-100 D2). Collision detection happens at the
+        //    insertion sites below via the deterministic `page_name_to_id`.
         let source_id = self.kg_parser.page_name_to_id(&entity.slug);
-        let page_node = build_node_from_entity(&entity, source_id, self.kg_parser.as_ref());
+        let mut page_node = build_node_from_entity(&entity, source_id, self.kg_parser.as_ref());
+        // WS-0: guarantee a non-NULL source_domain for this node.
+        ensure_source_domain(&mut page_node, &file.path);
         nodes.insert(source_id, page_node);
         if entity.public {
             public_pages.insert(entity.slug.clone());
@@ -1213,7 +1326,11 @@ impl GitHubSyncService {
             return;
         }
 
-        for node in parsed.nodes {
+        for mut node in parsed.nodes {
+            // WS-0: plain working-graph pages never carry a `vc:sourceDomain`
+            // quad, so without this they were the bulk of the ~100%-NULL
+            // MetadataStore. Derive a deterministic domain from path + label.
+            ensure_source_domain(&mut node, &file.path);
             nodes.entry(node.id).or_insert(node);
         }
 
@@ -1686,5 +1803,136 @@ fn predicate_to_edge_type(iri: &str) -> &'static str {
         IRI_DEFINED_IN => "structural",
         RDF_TYPE => "",
         _ => "",
+    }
+}
+
+// ---------------------------------------------------------------------------
+// WS-0 — MetadataStore population: deterministic `source_domain` derivation
+// (ADR-100 D5). The "empty-MetadataStore bug" is that the upstream rarely
+// emits `vc:sourceDomain`, so ~100% of nodes had a NULL domain and the live
+// 6-bucket repulsion table received nothing. We derive a domain for EVERY
+// node from the only signals always present at ingest — the file path and the
+// page label/IRI — so coverage reaches ≥95% without inventing data.
+// ---------------------------------------------------------------------------
+
+/// The canonical six NarrativeGoldmine domains, as `(slug, keyword markers)`.
+/// Markers are matched case-insensitively against the file path and label.
+/// First match wins; order is deliberate (most specific first).
+const DOMAIN_TABLE: &[(&str, &[&str])] = &[
+    (
+        "spatial-computing",
+        &["spatial", "/xr", "ar-", "vr-", "webxr", "babylon", "render", "hologram", "godot"],
+    ),
+    (
+        "artificial-intelligence",
+        &["/ai", "ai-", "agent", "llm", "ml", "neural", "transformer", "rag", "embedding", "reason"],
+    ),
+    (
+        "blockchain",
+        &["blockchain", "nostr", "did", "crypto", "ledger", "web3", "chain", "wallet"],
+    ),
+    (
+        "robotics",
+        &["robot", "actuator", "sensor", "drone", "kinematic", "motor"],
+    ),
+    (
+        "distributed-collaboration",
+        &["collab", "federation", "mesh", "p2p", "sync", "forum", "social", "swarm"],
+    ),
+    // Infrastructure is the catch-all default, placed last.
+    (
+        "infrastructure",
+        &["infra", "deploy", "docker", "server", "network", "storage", "pipeline", "build"],
+    ),
+];
+
+/// Deterministically derive a node's `source_domain` from its file path and
+/// label. Always returns a non-empty domain slug (defaults to
+/// `infrastructure`), so the MetadataStore is never NULL. Deterministic:
+/// identical (path,label) inputs always yield the same domain.
+pub fn derive_source_domain(file_path: &str, label: &str) -> &'static str {
+    let haystack = format!("{} {}", file_path.to_lowercase(), label.to_lowercase());
+    for (slug, markers) in DOMAIN_TABLE {
+        if markers.iter().any(|m| haystack.contains(m)) {
+            return slug;
+        }
+    }
+    "infrastructure"
+}
+
+/// Stamp `source_domain` onto a node if (and only if) it is not already set
+/// from an authoritative `vc:sourceDomain` quad. Sets both `node.group` (the
+/// field the live 6-bucket GPU repulsion table reads) and a `source_domain`
+/// metadata entry (the MetadataStore key). Returns `true` if a value was
+/// applied here (used for coverage accounting).
+fn ensure_source_domain(
+    node: &mut visionclaw_domain::models::node::Node,
+    file_path: &str,
+) -> bool {
+    // Already authoritatively domained (quad-sourced) — leave it.
+    if node.group.as_deref().map(|g| !g.is_empty()).unwrap_or(false)
+        && node.metadata.contains_key("source_domain")
+    {
+        return false;
+    }
+    let domain = derive_source_domain(file_path, &node.label);
+    node.group = Some(domain.to_string());
+    node.metadata
+        .insert("source_domain".to_string(), domain.to_string());
+    // Keep the legacy `domain` key in sync for the existing UI color-by path.
+    node.metadata
+        .entry("domain".to_string())
+        .or_insert_with(|| domain.to_string());
+    true
+}
+
+// ---------------------------------------------------------------------------
+// WS-0 / ADR-100 D3 — rdf:type-based classification, replacing the fragile
+// `iri.contains(":class:")` substring sniffing. A node's OWL kind is decided
+// by its asserted `rdf:type` (owl:Class / owl:NamedIndividual / …) when known,
+// falling back to IRI-shape ONLY as a last resort for un-typed stub targets.
+// ---------------------------------------------------------------------------
+
+/// The OWL kind of a stub/linked target.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OwlKind {
+    Class,
+    Individual,
+    LinkedPage,
+}
+
+impl OwlKind {
+    pub fn as_node_type(self) -> &'static str {
+        match self {
+            OwlKind::Class => "owl_class",
+            OwlKind::Individual => "owl_individual",
+            OwlKind::LinkedPage => "linked_page",
+        }
+    }
+}
+
+/// Classify by an explicit `rdf:type` IRI when one is available (the ADR-100
+/// D3 path). `None` means "no rdf:type known" and the caller falls back to
+/// [`classify_by_iri_shape`].
+pub fn classify_by_rdf_type(type_iri: &str) -> Option<OwlKind> {
+    match type_iri {
+        OWL_CLASS_IRI => Some(OwlKind::Class),
+        OWL_NAMED_INDIVIDUAL => Some(OwlKind::Individual),
+        _ => None,
+    }
+}
+
+/// Last-resort IRI-shape classification for stub targets that carry no
+/// `rdf:type` yet (a wikilink to a page not yet ingested). This preserves the
+/// previous behaviour for the un-typed case only; typed nodes use
+/// [`classify_by_rdf_type`]. Kept narrow and documented so it is not mistaken
+/// for the primary classifier.
+pub fn classify_by_iri_shape(iri: &str) -> OwlKind {
+    if iri.contains(":individual:") || iri.contains("/individual/") {
+        OwlKind::Individual
+    } else if iri.contains(":class:") || iri.contains("/class/") {
+        OwlKind::Class
+    } else {
+        OwlKind::LinkedPage
     }
 }

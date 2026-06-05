@@ -17,15 +17,33 @@ import { Badge } from '@/features/design-system/components/Badge';
 import { Input } from '@/features/design-system/components/Input';
 import { Switch } from '@/features/design-system/components/Switch';
 import { useToast } from '@/features/design-system/components/Toast';
-import { Brain, CheckCircle, AlertTriangle, AlertCircle, Trash2, FileText } from 'lucide-react';
+import { Brain, CheckCircle, AlertTriangle, AlertCircle, Trash2, FileText, GitMerge, RefreshCw } from 'lucide-react';
 import { useInferenceService, RunInferenceResponse, OntologyClassification } from '../hooks/useInferenceService';
+import type { ReasoningReport } from '../services/inferredAxiomsService';
 
 interface InferencePanelProps {
   ontologyId?: string;
   className?: string;
+  /**
+   * Reasoning-report read-model (ADR-099 D4): the list of inferred triples
+   * materialised into `urn:ngm:graph:ontology:inferred` by the Rust reasoner.
+   * When omitted/empty the panel shows a typed "no inferred axioms yet" state —
+   * it never fabricates inferred data.
+   */
+  report?: ReasoningReport;
+  /** True while the report is being (re)fetched. */
+  reportLoading?: boolean;
+  /** Re-pull the reasoning report from the server. */
+  onRefreshReport?: () => void;
 }
 
-export function InferencePanel({ ontologyId: propOntologyId, className }: InferencePanelProps) {
+export function InferencePanel({
+  ontologyId: propOntologyId,
+  className,
+  report,
+  reportLoading = false,
+  onRefreshReport,
+}: InferencePanelProps) {
   const { toast } = useToast();
   const {
     loading,
@@ -335,6 +353,55 @@ export function InferencePanel({ ontologyId: propOntologyId, className }: Infere
             </div>
           </div>
         )}
+
+        {/* Reasoning report — materialised inferred axioms (ADR-099 D3/D4) */}
+        <div className="border-t pt-4" role="region" aria-label="Reasoning report">
+          <div className="flex items-center justify-between mb-2">
+            <h4 className="font-medium flex items-center gap-2">
+              <GitMerge className="h-4 w-4" />
+              Inferred Axioms
+              {report && report.count > 0 && <Badge>{report.count}</Badge>}
+            </h4>
+            {onRefreshReport && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onRefreshReport}
+                disabled={reportLoading}
+                aria-label="Refresh reasoning report"
+              >
+                <RefreshCw className={`h-4 w-4 ${reportLoading ? 'animate-spin' : ''}`} />
+              </Button>
+            )}
+          </div>
+
+          {reportLoading ? (
+            <p className="text-sm text-muted-foreground py-4 text-center">Loading inferred axioms…</p>
+          ) : !report || report.count === 0 ? (
+            <p className="text-sm text-muted-foreground py-4 text-center">
+              No inferred axioms materialised yet. Inferences appear here once the reasoner writes to{' '}
+              <code className="text-xs">urn:ngm:graph:ontology:inferred</code>.
+            </p>
+          ) : (
+            <ul className="space-y-1 max-h-64 overflow-y-auto" aria-label="Inferred triples">
+              {report.triples.map((t, i) => (
+                <li
+                  key={`${t.subject}-${t.predicate}-${t.object}-${i}`}
+                  className="rounded border bg-muted/30 px-2 py-1.5 text-xs flex flex-wrap items-center gap-1"
+                >
+                  <code className="break-all">{t.subject}</code>
+                  <span className="text-amber-500 font-medium">{t.predicate}</span>
+                  <code className="break-all">{t.object}</code>
+                  {t.justification && (
+                    <Badge variant="secondary" className="ml-auto text-[10px]">
+                      {t.justification}
+                    </Badge>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
 
         {error && (
           <div className="rounded-lg border border-destructive bg-destructive/10 p-3 flex items-start gap-2">

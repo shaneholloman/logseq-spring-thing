@@ -1,0 +1,89 @@
+#-----------------------------------------------------------------------------
+# crates/visionclaw-adapters/migrations/sparql/0001_canonical_iri_remint.rups
+#
+# ADR-100 D1 / ADR-101 D4 — re-mint legacy ad-hoc entity IRIs to the canonical
+# scheme  vc:{domain}/{slug}.
+#
+# Legacy forms rewritten:
+#   urn:ngm:class:<slug>      -> vc:{domain}/<slug>
+#   urn:ngm:property:<slug>   -> vc:{domain}/<slug>
+#   urn:ngm:node:<slug>       -> vc:{domain}/<slug>
+#   urn:visionclaw:linked:<slug> -> vc:{domain}/<slug>
+#
+# The domain is read from the entity's vc:sourceDomain literal when present;
+# otherwise it defaults to "infrastructure" (the catch-all bucket), matching
+# the Rust `derive_source_domain` default so ingest and migration agree.
+#
+# Content-addressed axiom IRIs (urn:ngm:axiom:<sha256-12>) and the named-graph
+# IRIs (urn:ngm:graph:*) are deliberately NOT rewritten — they are already
+# deterministic and stable (ADR-100 D1 reuse directive).
+#
+# ## Atomicity & no dangling references
+#
+# Each operation block is a DELETE/INSERT WHERE that rewrites BOTH the subject
+# and the object position of every triple touching a legacy IRI, in the same
+# UPDATE request. Oxigraph applies a multi-operation UPDATE as one atomic
+# transaction, so no intermediate state leaks a half-rewritten reference.
+#
+# ## Idempotency (ADR-101 D1)
+#
+# Every WHERE clause matches ONLY legacy `urn:ngm:class:` / `urn:ngm:property:`
+# / `urn:ngm:node:` / `urn:visionclaw:linked:` IRIs. After the first run those
+# IRIs no longer exist, so a second run matches nothing and is a no-op. Already
+# canonical `vc:{domain}/{slug}` IRIs never match the legacy STRSTARTS guards.
+#-----------------------------------------------------------------------------
+
+PREFIX vc:   <https://narrativegoldmine.com/ns/v1#>
+PREFIX rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX owl:  <http://www.w3.org/2002/07/owl#>
+PREFIX xsd:  <http://www.w3.org/2001/XMLSchema#>
+
+# ---------------------------------------------------------------------------
+# (1) Rewrite SUBJECT positions across all named graphs.
+#     For every triple ?s ?p ?o where ?s is a legacy IRI, delete it and
+#     re-insert with the canonical subject. The canonical IRI is built from
+#     the legacy local-name (slug) and the entity's domain.
+# ---------------------------------------------------------------------------
+DELETE { GRAPH ?g { ?s ?p ?o } }
+INSERT { GRAPH ?g { ?canon ?p ?o } }
+WHERE  {
+  GRAPH ?g { ?s ?p ?o }
+  FILTER (
+    isIRI(?s) && (
+      STRSTARTS(STR(?s), "urn:ngm:class:") ||
+      STRSTARTS(STR(?s), "urn:ngm:property:") ||
+      STRSTARTS(STR(?s), "urn:ngm:node:") ||
+      STRSTARTS(STR(?s), "urn:visionclaw:linked:")
+    )
+  )
+  # Slug = the substring after the last ':' in the legacy IRI.
+  BIND( REPLACE(STR(?s), "^.*:", "") AS ?slug )
+  # Domain: the entity's vc:sourceDomain when asserted, else "infrastructure".
+  OPTIONAL { GRAPH ?dg { ?s vc:sourceDomain ?dom } }
+  BIND( COALESCE(STR(?dom), "infrastructure") AS ?domain )
+  BIND( IRI(CONCAT("https://narrativegoldmine.com/ns/v1#", ?domain, "/", ?slug)) AS ?canon )
+} ;
+
+# ---------------------------------------------------------------------------
+# (2) Rewrite OBJECT positions across all named graphs, so references from
+#     OTHER triples (e.g. rdfs:subClassOf, owl:sameAs, vc:wikilink) follow the
+#     subject re-mint and nothing dangles.
+# ---------------------------------------------------------------------------
+DELETE { GRAPH ?g { ?s ?p ?o } }
+INSERT { GRAPH ?g { ?s ?p ?canon } }
+WHERE  {
+  GRAPH ?g { ?s ?p ?o }
+  FILTER (
+    isIRI(?o) && (
+      STRSTARTS(STR(?o), "urn:ngm:class:") ||
+      STRSTARTS(STR(?o), "urn:ngm:property:") ||
+      STRSTARTS(STR(?o), "urn:ngm:node:") ||
+      STRSTARTS(STR(?o), "urn:visionclaw:linked:")
+    )
+  )
+  BIND( REPLACE(STR(?o), "^.*:", "") AS ?slug )
+  OPTIONAL { GRAPH ?dg { ?o vc:sourceDomain ?dom } }
+  BIND( COALESCE(STR(?dom), "infrastructure") AS ?domain )
+  BIND( IRI(CONCAT("https://narrativegoldmine.com/ns/v1#", ?domain, "/", ?slug)) AS ?canon )
+}

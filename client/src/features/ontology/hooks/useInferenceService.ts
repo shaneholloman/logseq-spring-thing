@@ -60,7 +60,7 @@ export function useInferenceService() {
       setError(null);
       try {
         const response = await unifiedApiClient.post<RunInferenceResponse>(
-          '/api/inference/run',
+          '/inference/run',
           request
         );
 
@@ -92,7 +92,7 @@ export function useInferenceService() {
       setError(null);
       try {
         const response = await unifiedApiClient.post<{ success: boolean; consistent: boolean; message: string }>(
-          '/api/inference/validate',
+          '/inference/validate',
           request
         );
 
@@ -124,7 +124,7 @@ export function useInferenceService() {
       setError(null);
       try {
         const response = await unifiedApiClient.get<any>(
-          `/api/inference/results/${ontologyId}`
+          `/inference/results/${ontologyId}`
         );
 
         if (isMountedRef.current) {
@@ -155,7 +155,7 @@ export function useInferenceService() {
       setError(null);
       try {
         const response = await unifiedApiClient.get<OntologyClassification>(
-          `/api/inference/classify/${ontologyId}`
+          `/inference/classify/${ontologyId}`
         );
 
         if (isMountedRef.current) {
@@ -186,7 +186,7 @@ export function useInferenceService() {
       setError(null);
       try {
         const response = await unifiedApiClient.get<any>(
-          `/api/inference/consistency/${ontologyId}`
+          `/inference/consistency/${ontologyId}`
         );
 
         if (isMountedRef.current) {
@@ -216,7 +216,7 @@ export function useInferenceService() {
       setLoading(true);
       setError(null);
       try {
-        await unifiedApiClient.delete(`/api/inference/cache/${ontologyId}`);
+        await unifiedApiClient.delete(`/inference/cache/${ontologyId}`);
 
         if (isMountedRef.current) {
           setLoading(false);

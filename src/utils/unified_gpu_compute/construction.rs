@@ -19,7 +19,6 @@ pub struct UnifiedGPUCompute {
     pub(crate) _module: Module,
     pub(crate) clustering_module: Option<Module>,
     pub(crate) apsp_module: Option<Module>,
-    pub(crate) ontology_module: Option<Module>,
     pub(crate) stream: Stream,
 
 
@@ -208,16 +207,19 @@ impl UnifiedGPUCompute {
         clustering_ptx: Option<&str>,
         apsp_ptx: Option<&str>,
     ) -> Result<Self> {
-        Self::new_with_all_modules(num_nodes, num_edges, ptx_content, clustering_ptx, apsp_ptx, None)
+        Self::new_with_all_modules(num_nodes, num_edges, ptx_content, clustering_ptx, apsp_ptx)
     }
 
+    // ADR-098 D3: the separate `ontology_ptx` parameter (and the
+    // `ontology_constraints.cu` module it loaded) is retired. Ontology
+    // constraints now flow through the generic live `force_pass_kernel`
+    // constraint loop via the ConstraintData buffer.
     pub fn new_with_all_modules(
         num_nodes: usize,
         num_edges: usize,
         ptx_content: &str,
         clustering_ptx: Option<&str>,
         apsp_ptx: Option<&str>,
-        ontology_ptx: Option<&str>,
     ) -> Result<Self> {
 
         if let Err(e) = crate::utils::gpu_diagnostics::validate_ptx_content(ptx_content) {
@@ -278,31 +280,6 @@ impl UnifiedGPUCompute {
                     }
                     Err(e) => {
                         warn!("Failed to load APSP module: {}. Continuing without GPU APSP support.", e);
-                        None
-                    }
-                }
-            }
-        } else {
-            None
-        };
-
-        let ontology_module = if let Some(ontology_ptx_content) = ontology_ptx {
-            if let Err(e) =
-                crate::utils::gpu_diagnostics::validate_ptx_content(ontology_ptx_content)
-            {
-                warn!(
-                    "Ontology PTX validation failed: {}. Continuing without specialized ontology kernels.",
-                    e
-                );
-                None
-            } else {
-                match Module::from_ptx(ontology_ptx_content, &[]) {
-                    Ok(module) => {
-                        info!("Successfully loaded ontology constraints module with specialized kernels");
-                        Some(module)
-                    }
-                    Err(e) => {
-                        warn!("Failed to load ontology module: {}. Falling back to generic constraint path.", e);
                         None
                     }
                 }
@@ -422,7 +399,6 @@ impl UnifiedGPUCompute {
             _module: kernel_module,
             clustering_module,
             apsp_module,
-            ontology_module,
             stream,
             build_grid_kernel_name: "build_grid_kernel",
             compute_cell_bounds_kernel_name: "compute_cell_bounds_kernel",

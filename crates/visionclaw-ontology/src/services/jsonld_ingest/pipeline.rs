@@ -30,6 +30,7 @@ use oxigraph::model::Quad;
 use super::errors::{JsonLdIngestError, Result};
 use super::expander::expand_block;
 use super::extractor::extract_jsonld_blocks;
+use super::shacl_gate::{gate_block, ShaclGateReport};
 use super::triple_emitter::emit_quads;
 use super::validator::validate;
 use crate::services::jsonld_ingest::graph_port_shim::GraphRepository;
@@ -71,6 +72,12 @@ pub struct IngestOutcome {
     pub quads: Vec<Quad>,
     /// Source path (echoed from metadata).
     pub source_path: String,
+    /// SHACL-lite gate result over the parsed shapes (ADR-100 D4 / PRD-018
+    /// WS-5). The schema/profile validator runs first and hard-fails ingest;
+    /// this gate then surfaces shape-level findings as a report so the
+    /// operator dashboard sees every violation. `report.is_valid()` is the
+    /// gate decision.
+    pub shacl_report: ShaclGateReport,
 }
 
 /// Build an `IngestOutcome` from a markdown source without touching any
@@ -85,10 +92,20 @@ pub fn parse_and_emit(markdown: &str, metadata: &PageMetadata) -> Result<IngestO
     }
 
     let mut all_quads: Vec<Quad> = Vec::new();
+    let mut shacl_report = ShaclGateReport::default();
 
     for block in &blocks {
         let doc = expand_block(&metadata.source_path, block.index, &block.body)?;
+        // Schema/profile/PROV-O validator: hard gate (first error fails ingest).
         validate(&metadata.source_path, &doc)?;
+        // SHACL-lite shape gate (ADR-100 D4 / PRD-018 WS-5): reuse the
+        // existing `shacl_lite` engine over the parsed JSON-LD shapes and
+        // surface findings as a report. The block body already parsed cleanly
+        // in `expand_block`, so this re-parse cannot fail; on the off chance
+        // it does, the shape gate simply records nothing for that block.
+        if let Ok(value) = serde_json::from_str::<serde_json::Value>(&block.body) {
+            gate_block(&value, block.index, &mut shacl_report);
+        }
         let quads = emit_quads(&doc);
         all_quads.extend(quads);
     }
@@ -98,6 +115,7 @@ pub fn parse_and_emit(markdown: &str, metadata: &PageMetadata) -> Result<IngestO
         quad_count: all_quads.len(),
         quads: all_quads,
         source_path: metadata.source_path.clone(),
+        shacl_report,
     })
 }
 
@@ -170,6 +188,44 @@ mod tests {
         assert_eq!(outcome.block_count, 1);
         assert!(outcome.quad_count > 0);
         assert_eq!(outcome.source_path, "test.md");
+    }
+
+    /// SHACL gate (ADR-100 D4 / PRD-018 WS-5): a structurally valid block
+    /// that also satisfies every shape rule passes the gate with a clean
+    /// report. The gate is wired into `parse_and_emit` and surfaced on the
+    /// outcome.
+    #[test]
+    fn shacl_gate_passes_for_valid_block_and_surfaces_report() {
+        let meta = PageMetadata::new("test.md");
+        let outcome = parse_and_emit(minimal_valid_block(), &meta).unwrap();
+        assert!(
+            outcome.shacl_report.is_valid(),
+            "valid block must pass the SHACL gate: {:?}",
+            outcome.shacl_report
+        );
+        assert!(
+            outcome.shacl_report.shapes_checked >= 1,
+            "the gate must have inspected at least one shape"
+        );
+    }
+
+    /// A well-formed OntologyClass with a `subClassOf` parent satisfies both
+    /// the schema validator and the SHACL shape gate end-to-end.
+    #[test]
+    fn shacl_gate_passes_for_valid_ontology_class() {
+        let markdown = r#"```json-ld
+{
+  "@context": "https://narrativegoldmine.com/context/v1.jsonld",
+  "@id": "urn:visionclaw:owl:class:cybernetics",
+  "@type": "OntologyClass",
+  "rdfs:subClassOf": { "@id": "urn:visionclaw:owl:class:built-environment" },
+  "prov:wasAttributedTo": { "@id": "did:nostr:npub1abc" },
+  "prov:generatedAtTime": { "@value": "2026-01-01T00:00:00Z", "@type": "xsd:dateTime" }
+}
+```"#;
+        let meta = PageMetadata::new("cyber.md");
+        let outcome = parse_and_emit(markdown, &meta).unwrap();
+        assert!(outcome.shacl_report.is_valid(), "{:?}", outcome.shacl_report);
     }
 
     #[test]

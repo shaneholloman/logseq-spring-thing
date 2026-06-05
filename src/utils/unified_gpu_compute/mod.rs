@@ -137,7 +137,6 @@ mod sssp;
 mod clustering;
 mod community;
 mod async_transfer;
-mod ontology;
 mod metrics;
 
 // Re-export all public types from types module
@@ -146,12 +145,9 @@ pub use types::{ComputeMode, GPUPerformanceMetrics, curandState};
 // Re-export the main struct from construction
 pub use construction::UnifiedGPUCompute;
 
-// Re-export ontology GPU types for constraint kernel dispatch
-pub use ontology::{
-    GpuOntologyNode, GpuOntologyConstraint,
-    CONSTRAINT_DISJOINT_CLASSES, CONSTRAINT_SUBCLASS_OF,
-    CONSTRAINT_SAMEAS, CONSTRAINT_INVERSE_OF, CONSTRAINT_FUNCTIONAL,
-};
+// ADR-098 D3: the specialized `ontology_constraints.cu` dispatch path (and its
+// GpuOntologyNode / GpuOntologyConstraint / CONSTRAINT_* types) is retired.
+// Ontology constraints flow through the generic live force_pass_kernel loop.
 
 // Re-export SimParams (it was `pub use` in the original file)
 pub use crate::models::simulation_params::SimParams;

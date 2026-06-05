@@ -60,6 +60,7 @@
 //! ```
 
 pub mod lsh;
+pub mod ontology_constraint_mapper;
 pub mod ontology_constraints;
 pub mod semantic_constraints;
 pub mod simd_forces;
@@ -74,6 +75,7 @@ pub mod engines;
 #[cfg(test)]
 mod integration_tests;
 
+pub use ontology_constraint_mapper::{map_axioms_to_constraints, LiveKernelKind};
 pub use ontology_constraints::{
     OWLAxiom, OWLAxiomType, OntologyConstraintTranslator, OntologyInference,
     OntologyReasoningReport,

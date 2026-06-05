@@ -11,7 +11,7 @@ import { useWorkerErrorStore } from '../../../store/workerErrorStore';
 import { ensureNodeHasValidPosition, validateNodeMappings } from './dataManager/nodeUtils';
 import { buildNodeIdMaps, upsertNodeIdEntry, setDataAndNotify, topologyHash } from './dataManager/topology';
 import { ListenerRegistry } from './dataManager/listeners';
-import { fetchGraphData, scheduleEmptyDataRetry } from './dataManager/restClient';
+import { fetchGraphData, scheduleEmptyDataRetry, type GraphTypeFilter } from './dataManager/restClient';
 import { handleBinaryFrame, sendNodePositions as _sendNodePositions, enableBinaryUpdates as _enableBinaryUpdates } from './dataManager/wsClient';
 
 // Re-export types for backward compat
@@ -42,6 +42,8 @@ class GraphDataManager {
   // ── Worker / graph type ─────────────────────────────────────────────────
   private workerInitialized: boolean = false;
   private graphType: 'logseq' | 'visionclaw' = 'logseq';
+  // Server-side population filter (PRD-018 WS-4). null/'all' = whole graph.
+  private graphTypeFilter: GraphTypeFilter = null;
   private workerUnsubscribers: Array<() => void> = [];
 
   // ── User interaction state ──────────────────────────────────────────────
@@ -166,10 +168,24 @@ class GraphDataManager {
     return this.graphType;
   }
 
+  /**
+   * Set the server-side population filter (PRD-018 WS-4). When set to a concrete
+   * population the next `fetchInitialData` sends `?graph_type=` so only that
+   * subset is transferred instead of the whole graph. `null`/`'all'` clears it.
+   */
+  public setGraphTypeFilter(filter: GraphTypeFilter): void {
+    this.graphTypeFilter = filter;
+    if (debugState.isEnabled()) logger.info(`Graph type filter set to: ${filter ?? 'all'}`);
+  }
+
+  public getGraphTypeFilter(): GraphTypeFilter {
+    return this.graphTypeFilter;
+  }
+
   // ── REST data fetch ───────────────────────────────────────────────────
 
   public async fetchInitialData(): Promise<GraphData> {
-    const validatedData = await fetchGraphData(this.graphType);
+    const validatedData = await fetchGraphData(this.graphType, this.graphTypeFilter);
 
     await this.setGraphData(validatedData);
 
@@ -183,6 +199,7 @@ class GraphDataManager {
         this.retryTimeout,
         () => this.fetchInitialData(),
         handle => { this.retryTimeout = handle; },
+        this.graphTypeFilter,
       );
     }
 

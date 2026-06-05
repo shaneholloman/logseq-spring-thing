@@ -96,6 +96,49 @@ pub struct GraphQuery {
     pub graph_type: Option<String>,
 }
 
+/// The three node populations, mirroring the wire flag bits in
+/// `src/utils/binary_protocol.rs` (AGENT `0x80000000`, KNOWLEDGE `0x40000000`,
+/// ONTOLOGY via `ONTOLOGY_TYPE_MASK 0x1C000000`). On the REST path node ids are
+/// carried *unflagged* (flags are applied only at binary-encode time), so the
+/// authoritative classifier here is `node_type` (the SSOT after the T1 fix),
+/// with a metadata fallback. `graph_type` absent ⇒ no filtering (all nodes).
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum PopulationFilter {
+    Agent,
+    Knowledge,
+    Ontology,
+}
+
+impl PopulationFilter {
+    fn parse(raw: Option<&str>) -> Option<Self> {
+        match raw {
+            Some("agent") => Some(Self::Agent),
+            Some("knowledge") => Some(Self::Knowledge),
+            Some("ontology") => Some(Self::Ontology),
+            _ => None, // absent / unknown ⇒ no filter
+        }
+    }
+
+    /// True if a node belongs to this population. Corresponds bit-for-bit to the
+    /// `binary_protocol::is_agent_node` / `is_knowledge_node` / `is_ontology_node`
+    /// predicates the wire encoder applies, expressed over `node_type`.
+    fn matches(self, node_type: Option<&str>, metadata: &HashMap<String, String>) -> bool {
+        let nt = node_type.unwrap_or("");
+        match self {
+            // AGENT_NODE_FLAG (0x80000000)
+            Self::Agent => nt == "agent" || nt == "bot" || metadata.contains_key("agentType"),
+            // KNOWLEDGE_NODE_FLAG (0x40000000)
+            Self::Knowledge => nt == "page" || nt == "linked_page" || nt.is_empty(),
+            // ONTOLOGY_TYPE_MASK (0x1C000000) — class/individual/property subtypes
+            Self::Ontology => {
+                nt.starts_with("owl_")
+                    || nt == "ontology_node"
+                    || metadata.contains_key("owl_class_iri")
+            }
+        }
+    }
+}
+
 pub async fn get_graph_data(
     state: web::Data<AppState>,
     query: web::Query<GraphQuery>,
@@ -154,25 +197,16 @@ pub async fn get_graph_data(
                 })
                 .collect();
 
-            // Filter nodes by graph_type if specified
+            // Server-side population filtering (PRD-018 WS-4). `graph_type`
+            // absent ⇒ all nodes (behaviour unchanged). Population membership is
+            // defined by `PopulationFilter`, which mirrors the binary-protocol
+            // flag bits so the REST and wire classifications agree.
+            let population = PopulationFilter::parse(query.graph_type.as_deref());
             let filtered_nodes: Vec<NodeWithPosition> = nodes_with_positions
                 .into_iter()
-                .filter(|node| {
-                    match query.graph_type.as_deref() {
-                        Some("knowledge") => {
-                            let nt = node.node_type.as_deref().unwrap_or("");
-                            nt == "page" || nt == "linked_page" || nt.is_empty()
-                        }
-                        Some("ontology") => {
-                            let nt = node.node_type.as_deref().unwrap_or("");
-                            nt.starts_with("owl_") || nt == "ontology_node" || node.metadata.contains_key("owl_class_iri")
-                        }
-                        Some("agent") => {
-                            let nt = node.node_type.as_deref().unwrap_or("");
-                            nt == "agent" || nt == "bot" || node.metadata.contains_key("agentType")
-                        }
-                        _ => true, // No filter, return all
-                    }
+                .filter(|node| match population {
+                    Some(p) => p.matches(node.node_type.as_deref(), &node.metadata),
+                    None => true,
                 })
                 .collect();
 
@@ -604,4 +638,48 @@ pub fn config(cfg: &mut web::ServiceConfig) {
                     .route(web::post().to(refresh_graph)),
             ),
     );
+}
+
+#[cfg(test)]
+mod population_filter_tests {
+    use super::PopulationFilter;
+    use std::collections::HashMap;
+
+    fn md(pairs: &[(&str, &str)]) -> HashMap<String, String> {
+        pairs.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect()
+    }
+
+    #[test]
+    fn absent_or_unknown_graph_type_yields_no_filter() {
+        assert!(PopulationFilter::parse(None).is_none());
+        assert!(PopulationFilter::parse(Some("bogus")).is_none());
+    }
+
+    #[test]
+    fn knowledge_matches_pages_and_untyped() {
+        let p = PopulationFilter::parse(Some("knowledge")).unwrap();
+        assert!(p.matches(Some("page"), &md(&[])));
+        assert!(p.matches(Some("linked_page"), &md(&[])));
+        assert!(p.matches(None, &md(&[])));
+        assert!(!p.matches(Some("owl_class"), &md(&[])));
+        assert!(!p.matches(Some("agent"), &md(&[])));
+    }
+
+    #[test]
+    fn ontology_matches_owl_and_class_iri_metadata() {
+        let p = PopulationFilter::parse(Some("ontology")).unwrap();
+        assert!(p.matches(Some("owl_class"), &md(&[])));
+        assert!(p.matches(Some("ontology_node"), &md(&[])));
+        assert!(p.matches(Some("page"), &md(&[("owl_class_iri", "urn:x")])));
+        assert!(!p.matches(Some("page"), &md(&[])));
+    }
+
+    #[test]
+    fn agent_matches_agent_bot_and_agenttype_metadata() {
+        let p = PopulationFilter::parse(Some("agent")).unwrap();
+        assert!(p.matches(Some("agent"), &md(&[])));
+        assert!(p.matches(Some("bot"), &md(&[])));
+        assert!(p.matches(Some("page"), &md(&[("agentType", "coder")])));
+        assert!(!p.matches(Some("page"), &md(&[])));
+    }
 }

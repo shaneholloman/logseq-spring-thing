@@ -8,7 +8,7 @@
 import type { SectionConfig } from './types';
 import {
   Eye, Sparkles, BarChart3, Gauge, Settings,
-  Bot, Code, Network, Shield, Database
+  Bot, Code, Network, Shield, Database, GitBranch
 } from 'lucide-react';
 // @ts-ignore - These icons exist in lucide-react but types may be outdated
 import { Atom, Glasses } from 'lucide-react';
@@ -56,6 +56,12 @@ export const UNIFIED_TABS: UnifiedTabConfig[] = [
     icon: BarChart3,
     description: 'Metrics, filtering, and clustering',
     buttonKey: '4'
+  },
+  {
+    id: 'ontology',
+    label: 'Ontology',
+    icon: GitBranch,
+    description: 'Ontology browser, reasoning report, SPARQL console, and class focus/isolate'
   },
   {
     id: 'quality',

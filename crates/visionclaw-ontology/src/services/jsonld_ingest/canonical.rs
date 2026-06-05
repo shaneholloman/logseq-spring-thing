@@ -19,33 +19,27 @@ use visionclaw_domain::models::canonical_entity::{
 };
 
 use super::errors::Result;
-use super::expander::{expand_block, slugify, ExpandedNode, ExpandedValue};
+use super::expander::{expand_block, expand_iri_or_keep, slugify, ExpandedNode, ExpandedValue};
 use super::extractor::extract_jsonld_blocks;
 
-/// Predicates we look for inside an expanded node. JSON-LD expansion replaces
-/// `vc:slug` with the full context-resolved IRI, so we match on either the
-/// short or the expanded form to stay robust against context-prefix drift.
-const VC_SLUG_PREDICATES: &[&str] = &[
-    "vc:slug",
-    "https://narrativegoldmine.com/ns/v2#slug",
-    "https://narrativegoldmine.com/context/v1#slug",
-];
-const VC_PUBLIC_PREDICATES: &[&str] =
-    &["vc:public", "https://narrativegoldmine.com/ns/v2#public"];
-const VC_OUTBOUND_PREDICATES: &[&str] = &[
-    "vc:outboundWikilinks",
-    "https://narrativegoldmine.com/ns/v2#outboundWikilinks",
-];
-const VC_LABEL_PREDICATES: &[&str] =
-    &["vc:label", "https://narrativegoldmine.com/ns/v2#label"];
-const TITLE_PREDICATES: &[&str] = &[
-    "title",
-    "https://narrativegoldmine.com/context/v1#title",
-    "https://narrativegoldmine.com/ns/v2#title",
-    "rdfs:label",
-    "http://www.w3.org/2000/01/rdf-schema#label",
-    "label",
-];
+/// Predicates we look for inside an expanded node, expressed in short form.
+/// `node.fields` predicates are always stored expanded (`expand_iri_or_keep`),
+/// so [`pred_matches`] expands these candidates through the same function —
+/// the expander is the single source of truth and namespace-version drift
+/// cannot desync the two lists.
+const VC_SLUG_PREDICATES: &[&str] = &["vc:slug"];
+const VC_PUBLIC_PREDICATES: &[&str] = &["vc:public"];
+const VC_OUTBOUND_PREDICATES: &[&str] = &["vc:outboundWikilinks"];
+const VC_LABEL_PREDICATES: &[&str] = &["vc:label"];
+const TITLE_PREDICATES: &[&str] = &["title", "rdfs:label", "label"];
+
+/// Match a node-field predicate (stored expanded) against short-form
+/// candidates, expanding each through the expander so the two never diverge.
+fn pred_matches(pred: &str, candidates: &[&str]) -> bool {
+    candidates
+        .iter()
+        .any(|c| pred == *c || pred == expand_iri_or_keep(c))
+}
 
 /// Type-token detection. JSON-LD `@type` values are expanded the same way as
 /// predicates; we match on the short forms produced by the source documents
@@ -65,7 +59,7 @@ fn has_type(types: &[String], tokens: &[&str]) -> bool {
 /// Find the first literal/iri value for the given predicates.
 fn find_first_literal(node: &ExpandedNode, preds: &[&str]) -> Option<String> {
     for (pred, val) in &node.fields {
-        if !preds.iter().any(|p| pred == p) {
+        if !pred_matches(pred, preds) {
             continue;
         }
         if let Some(s) = literal_or_iri(val) {
@@ -100,7 +94,7 @@ fn truthy_literal(v: &ExpandedValue) -> bool {
 fn collect_outbound_links(node: &ExpandedNode) -> Vec<OutboundLink> {
     let mut out = Vec::new();
     for (pred, val) in &node.fields {
-        if !VC_OUTBOUND_PREDICATES.iter().any(|p| pred == p) {
+        if !pred_matches(pred, VC_OUTBOUND_PREDICATES) {
             continue;
         }
         push_link_value(val, &mut out);
@@ -230,7 +224,7 @@ pub fn parse_canonical_entity(
         .map(|n| {
             n.fields
                 .iter()
-                .any(|(p, v)| VC_PUBLIC_PREDICATES.contains(&p.as_str()) && truthy_literal(v))
+                .any(|(p, v)| pred_matches(p, VC_PUBLIC_PREDICATES) && truthy_literal(v))
         })
         .unwrap_or(true);
 

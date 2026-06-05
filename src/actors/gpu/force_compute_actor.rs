@@ -467,18 +467,8 @@ impl ForceComputeActor {
             }
         };
 
-        let ontology_ptx = match visionclaw_gpu::ptx_loader::load_ptx_module_sync(
-            visionclaw_gpu::ptx_loader::PTXModule::OntologyConstraints,
-        ) {
-            Ok(c) => {
-                info!("ForceComputeActor: Ontology constraints PTX loaded ({} bytes)", c.len());
-                Some(c)
-            }
-            Err(e) => {
-                warn!("ForceComputeActor: Ontology PTX not available, will use generic path: {}", e);
-                None
-            }
-        };
+        // ADR-098 D3: the separate ontology_constraints.cu PTX is retired;
+        // ontology constraints drive the generic live force_pass_kernel loop.
 
         let unified_compute = match crate::utils::unified_gpu_compute::UnifiedGPUCompute::new_with_all_modules(
             1000,
@@ -486,7 +476,6 @@ impl ForceComputeActor {
             &ptx_content,
             clustering_ptx.as_deref(),
             apsp_ptx.as_deref(),
-            ontology_ptx.as_deref(),
         ) {
             Ok(c) => {
                 info!("ForceComputeActor: UnifiedGPUCompute engine created successfully");
@@ -1304,13 +1293,15 @@ impl ForceComputeActor {
             }
         };
 
-        // Upload constraints to GPU - this is the critical integration point
-        // The upload_constraints method:
-        // 1. Converts ConstraintData to GPU-compatible format
-        // 2. Allocates/updates constraint buffer on GPU
-        // 3. Prepares constraints for processing by ontology_constraints.cu kernels
+        // Upload constraints to GPU via the LOSSLESS writer (ADR-098 break #4).
+        // set_constraints preserves all four node_idx (the *other* endpoint of
+        // every pairwise constraint, which the old upload_constraints 7-float
+        // round-trip dropped) and all eight params, and stamps activation_frame
+        // so the live constraint_ramp_frames progressive ramp engages. The live
+        // force_pass_kernel constraint loop consumes this buffer directly once
+        // ENABLE_CONSTRAINTS is set (execution.rs).
         unified_compute
-            .upload_constraints(constraint_buffer)
+            .set_constraints(constraint_buffer.clone())
             .map_err(|e| format!("Failed to upload ontology constraints to GPU: {}", e))?;
 
         debug!(
@@ -2730,8 +2721,19 @@ impl Handler<GetConstraints> for ForceComputeActor {
 impl Handler<UpdateConstraints> for ForceComputeActor {
     type Result = Result<(), String>;
 
-    fn handle(&mut self, _msg: UpdateConstraints, _ctx: &mut Self::Context) -> Self::Result {
-        info!("ForceComputeActor: UpdateConstraints received (forwarding to ConstraintActor would be done by GPUManagerActor)");
+    fn handle(&mut self, msg: UpdateConstraints, _ctx: &mut Self::Context) -> Self::Result {
+        // ADR-098 break #4/#5: parse the JSON constraint payload into the
+        // lossless GPU ConstraintData buffer and cache it. The next physics step
+        // uploads it via apply_ontology_forces → set_constraints (the live path).
+        let constraints: Vec<crate::models::constraints::ConstraintData> =
+            serde_json::from_value(msg.constraint_data)
+                .map_err(|e| format!("Failed to parse constraint_data: {}", e))?;
+
+        info!(
+            "ForceComputeActor: UpdateConstraints cached {} constraints for the live force_pass_kernel loop",
+            constraints.len()
+        );
+        self.cached_constraint_buffer = constraints;
         Ok(())
     }
 }
@@ -2739,8 +2741,20 @@ impl Handler<UpdateConstraints> for ForceComputeActor {
 impl Handler<UploadConstraintsToGPU> for ForceComputeActor {
     type Result = Result<(), String>;
 
-    fn handle(&mut self, _msg: UploadConstraintsToGPU, _ctx: &mut Self::Context) -> Self::Result {
-        info!("ForceComputeActor: UploadConstraintsToGPU received (forwarding to ConstraintActor would be done by GPUManagerActor)");
+    fn handle(&mut self, msg: UploadConstraintsToGPU, _ctx: &mut Self::Context) -> Self::Result {
+        // ADR-098 break #4/#5: cache the buffer through the canonical
+        // cached_constraint_buffer + UpdateOntologyConstraintBuffer seam, then
+        // upload immediately via the LOSSLESS set_constraints writer if the GPU
+        // is available; otherwise the next physics step picks it up.
+        info!(
+            "ForceComputeActor: UploadConstraintsToGPU caching {} constraints for the live constraint loop",
+            msg.constraint_data.len()
+        );
+        self.cached_constraint_buffer = msg.constraint_data;
+
+        if let Err(e) = self.apply_ontology_forces() {
+            warn!("ForceComputeActor: immediate constraint upload deferred: {}", e);
+        }
         Ok(())
     }
 }
