@@ -109,6 +109,45 @@ interface OntologyContributionState {
   reset: () => void;
 }
 
+// Unwrap the backend StandardResponse envelope ({ success, data }) to the
+// inner array, tolerating endpoints that return a bare array.
+function unwrapData(body: unknown): any[] {
+  if (Array.isArray(body)) return body;
+  const data = (body as { data?: unknown })?.data;
+  return Array.isArray(data) ? data : [];
+}
+
+// Map the snake_case OwlClass domain shape onto the client OntologyClass model.
+// `label` is Option<String> server-side, so fall back to the IRI; `parent_classes`
+// is a Vec — the client tree only models a single parent, so take the first.
+function mapOwlClasses(raw: any[]): OntologyClass[] {
+  return raw.map((c) => ({
+    iri: String(c.iri),
+    label: c.label || String(c.iri),
+    parentClass: Array.isArray(c.parent_classes) ? c.parent_classes[0] : undefined,
+    description: c.description ?? undefined,
+    annotations: c.properties && typeof c.properties === 'object' ? c.properties : undefined,
+  }));
+}
+
+// Map the snake_case OwlProperty domain shape onto OntologyProperty. The server
+// enum is "ObjectProperty" | "DataProperty" | "AnnotationProperty"; domain/range
+// are Vecs collapsed to their first member for the contribution UI.
+function mapOwlProperties(raw: any[]): OntologyProperty[] {
+  const typeMap: Record<string, OntologyProperty['propertyType']> = {
+    ObjectProperty: 'object',
+    DataProperty: 'data',
+    AnnotationProperty: 'annotation',
+  };
+  return raw.map((p) => ({
+    iri: String(p.iri),
+    label: p.label || String(p.iri),
+    domain: Array.isArray(p.domain) ? p.domain[0] : undefined,
+    range: Array.isArray(p.range) ? p.range[0] : undefined,
+    propertyType: typeMap[p.property_type] ?? 'object',
+  }));
+}
+
 // Build tree structure from flat class list
 function buildClassTree(classes: OntologyClass[]): OntologyTreeNode[] {
   const nodeMap = new Map<string, OntologyTreeNode>();
@@ -204,16 +243,24 @@ export const useOntologyContributionStore = create<OntologyContributionState>()(
         set({ loading: true, error: null });
 
         try {
-          const response = await fetch('/api/ontology/public');
+          // The backend exposes OWL classes/properties as two public read-only
+          // endpoints (safe GETs bypass auth via `mutations_only()`); there is no
+          // combined `/public` route. Fetch both in parallel and map the
+          // snake_case OwlClass/OwlProperty domain shapes onto the client model.
+          const [classesRes, propertiesRes] = await Promise.all([
+            fetch('/api/ontology/classes'),
+            fetch('/api/ontology/properties'),
+          ]);
 
-          if (!response.ok) {
-            throw new Error(`Failed to fetch ontology: ${response.statusText}`);
+          if (!classesRes.ok) {
+            throw new Error(`Failed to fetch ontology classes: ${classesRes.statusText}`);
+          }
+          if (!propertiesRes.ok) {
+            throw new Error(`Failed to fetch ontology properties: ${propertiesRes.statusText}`);
           }
 
-          const data = await response.json();
-
-          const classes: OntologyClass[] = data.classes || [];
-          const properties: OntologyProperty[] = data.properties || [];
+          const classes = mapOwlClasses(unwrapData(await classesRes.json()));
+          const properties = mapOwlProperties(unwrapData(await propertiesRes.json()));
 
           set({
             classes,
