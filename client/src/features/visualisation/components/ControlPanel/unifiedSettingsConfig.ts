@@ -195,15 +195,15 @@ export const UNIFIED_SETTINGS_CONFIG: Record<string, SectionConfig> = {
       // Core Forces — the dominant spring/repulsion/gravity terms.
       // Values written raw to the backend (no client-side scaling).
       // ===================================================================
-      { key: 'springK', group: 'Core Forces', label: 'Spring Strength', type: 'slider', min: 0, max: 100, step: 0.5, path: 'visualisation.graphs.logseq.physics.springK', description: 'Edge spring constant for Hooke mode (default 15). In the default LinLog mode the per-population multipliers below govern spring strength.' },
+      { key: 'springK', group: 'Core Forces', label: 'Spring Strength', type: 'slider', min: 0, max: 100, step: 0.5, path: 'visualisation.graphs.logseq.physics.springK', description: 'Edge spring constant for Hooke mode (default 12). In the default LinLog mode the per-population multipliers below govern spring strength.' },
       { key: 'springKKnowledge', group: 'Core Forces', label: 'Spring: Knowledge', type: 'slider', min: 0, max: 10, step: 0.1, path: 'visualisation.graphs.logseq.physics.springKKnowledge', description: 'Spring strength multiplier for knowledge-graph nodes — live in both LinLog and Hooke modes (default 1.0 = baseline).' },
       { key: 'springKOntology', group: 'Core Forces', label: 'Spring: Ontology', type: 'slider', min: 0, max: 10, step: 0.1, path: 'visualisation.graphs.logseq.physics.springKOntology', description: 'Spring strength multiplier for ontology (OWL) nodes (default 1.0 = baseline).' },
       { key: 'springKAgent', group: 'Core Forces', label: 'Spring: Agent', type: 'slider', min: 0, max: 10, step: 0.1, path: 'visualisation.graphs.logseq.physics.springKAgent', description: 'Spring strength multiplier for agent nodes (default 1.0 = baseline).' },
-      { key: 'repelK', group: 'Core Forces', label: 'Repulsion', type: 'slider', min: 0, max: 3000, step: 10, path: 'visualisation.graphs.logseq.physics.repelK', description: 'Node repulsion constant (default 1200)' },
-      { key: 'restLength', group: 'Core Forces', label: 'Node Spacing', type: 'slider', min: 1, max: 200, step: 1, path: 'visualisation.graphs.logseq.physics.restLength', description: 'Spring rest length — small = dense, large = spread (default 80)' },
-      { key: 'centerGravityK', group: 'Core Forces', label: 'Cluster Tightness', type: 'slider', min: 0, max: 1.0, step: 0.01, path: 'visualisation.graphs.logseq.physics.centerGravityK', description: 'Pull towards center — higher values tightly cluster the graph (default 0.05)' },
-      { key: 'gravity', group: 'Core Forces', label: 'Gravity', type: 'slider', min: 0, max: 0.01, step: 0.0001, path: 'visualisation.graphs.logseq.physics.gravity', description: 'Center-pull force — affects how loosely-connected nodes drift (default 0.0001)' },
-      { key: 'maxForce', group: 'Core Forces', label: 'Max Force', type: 'slider', min: 1, max: 2000, step: 5, path: 'visualisation.graphs.logseq.physics.maxForce', description: 'Maximum force per node (default 1000)' },
+      { key: 'repelK', group: 'Core Forces', label: 'Repulsion', type: 'slider', min: 0, max: 500, step: 10, path: 'visualisation.graphs.logseq.physics.repelK', description: 'Node repulsion constant (default 120, backend caps at 500)' },
+      { key: 'restLength', group: 'Core Forces', label: 'Node Spacing', type: 'slider', min: 1, max: 200, step: 1, path: 'visualisation.graphs.logseq.physics.restLength', description: 'Spring rest length — small = dense, large = spread (default 50)' },
+      { key: 'centerGravityK', group: 'Core Forces', label: 'Cluster Tightness', type: 'slider', min: 0, max: 1.0, step: 0.01, path: 'visualisation.graphs.logseq.physics.centerGravityK', description: 'Pull towards center — higher values tightly cluster the graph (default 0.2)' },
+      { key: 'gravity', group: 'Core Forces', label: 'Gravity', type: 'slider', min: 0, max: 0.01, step: 0.0001, path: 'visualisation.graphs.logseq.physics.gravity', description: 'Center-pull force — affects how loosely-connected nodes drift (default 0.002)' },
+      { key: 'maxForce', group: 'Core Forces', label: 'Max Force', type: 'slider', min: 1, max: 2000, step: 5, path: 'visualisation.graphs.logseq.physics.maxForce', description: 'Maximum force per node (default 150)' },
       { key: 'maxVelocity', group: 'Core Forces', label: 'Max Velocity', type: 'slider', min: 1, max: 500, step: 1, path: 'visualisation.graphs.logseq.physics.maxVelocity', description: 'Maximum node speed (default 100)' },
 
       // ===================================================================
@@ -216,8 +216,8 @@ export const UNIFIED_SETTINGS_CONFIG: Record<string, SectionConfig> = {
       { key: 'iterations', group: 'Simulation', label: 'Iterations', type: 'slider', min: 0, max: 2000, step: 10, path: 'visualisation.graphs.logseq.physics.iterations', description: 'Solver iterations per frame — more = finer resolution (default 50)' },
       { key: 'warmupIterations', group: 'Simulation', label: 'Warmup Iterations', type: 'slider', min: 0, max: 500, step: 10, path: 'visualisation.graphs.logseq.physics.warmupIterations', description: 'Initial stabilization iterations (default 100)' },
       { key: 'coolingRate', group: 'Simulation', label: 'Cooling Rate', type: 'slider', min: 0, max: 0.01, step: 0.0005, path: 'visualisation.graphs.logseq.physics.coolingRate', description: 'Simulated annealing rate (default 0.001)' },
-      { key: 'globalSpeed', group: 'Simulation', label: 'Global Speed', type: 'slider', min: 0, max: 5, step: 0.01, path: 'visualisation.graphs.logseq.physics.globalSpeed', description: 'FA2 base integration speed (default 0.5)' },
-      { key: 'damping', group: 'Simulation', label: 'Damping', type: 'slider', min: 0.01, max: 1.0, step: 0.01, path: 'visualisation.graphs.logseq.physics.damping', description: 'Velocity damping — lower = more energy, higher = faster settle (default 0.85)' },
+      { key: 'globalSpeed', group: 'Simulation', label: 'Global Speed', type: 'slider', min: 0, max: 5, step: 0.01, path: 'visualisation.graphs.logseq.physics.globalSpeed', description: 'FA2 base integration speed (default 0.4)' },
+      { key: 'damping', group: 'Simulation', label: 'Damping', type: 'slider', min: 0.01, max: 1.0, step: 0.01, path: 'visualisation.graphs.logseq.physics.damping', description: 'Velocity damping — lower = more energy, higher = faster settle (default 0.9)' },
 
       // ===================================================================
       // Repulsion & Spacing — short-range separation and grid resolution.
@@ -241,7 +241,7 @@ export const UNIFIED_SETTINGS_CONFIG: Record<string, SectionConfig> = {
       { key: 'scalingRatio', group: 'Layout Forces', label: 'FA2 Scaling Ratio', type: 'slider', min: 0.5, max: 100, step: 0.5, path: 'visualisation.graphs.logseq.physics.scalingRatio', description: 'ForceAtlas2 repulsion scaling — higher spreads degree-heavy nodes further (default 10)' },
       { key: 'adaptiveSpeed', group: 'Layout Forces', label: 'Adaptive Speed', type: 'toggle', path: 'visualisation.graphs.logseq.physics.adaptiveSpeed', description: 'Per-node adaptive convergence speed (reduces oscillation)' },
       { key: 'ssspAlpha', group: 'Layout Forces', label: 'SSSP Alpha', type: 'slider', min: 0, max: 5, step: 0.1, path: 'visualisation.graphs.logseq.physics.ssspAlpha', description: 'Single-source shortest-path force weighting (default 1.5)' },
-      { key: 'graphSeparationX', group: 'Layout Forces', label: 'Graph Separation', type: 'slider', min: 0, max: 400, step: 25, path: 'visualisation.graphs.logseq.physics.graphSeparationX', description: 'Separation between the knowledge and ontology graphs — the depth gap between the two facing discs (0 = merged/overlapping, ~250 = clearly separated, default 250). Use with Disc Flatten to make them face one another.' },
+      { key: 'graphSeparationX', group: 'Layout Forces', label: 'Graph Separation', type: 'slider', min: 0, max: 400, step: 25, path: 'visualisation.graphs.logseq.physics.graphSeparationX', description: 'Separation between the knowledge and ontology graphs — the depth gap between the two facing discs (default 0 = merged/overlapping, ~250 = clearly separated). Use with Disc Flatten to make them face one another.' },
       { key: 'axisCompressionZ', group: 'Layout Forces', label: 'Disc Flatten', type: 'slider', min: 0, max: 1.0, step: 0.05, path: 'visualisation.graphs.logseq.physics.axisCompressionZ', description: 'Flatten KG + ontology into two discs that face one another across the gap (0 = full 3D blobs, 1 = flat facing discs, default 0.9). Agents stay 3D as bridges.' },
 
       // ===================================================================
@@ -250,15 +250,19 @@ export const UNIFIED_SETTINGS_CONFIG: Record<string, SectionConfig> = {
       { key: 'constraintRampFrames', group: 'Constraints', label: 'Constraint Ramp', type: 'slider', min: 0, max: 300, step: 5, path: 'visualisation.graphs.logseq.physics.constraintRampFrames', description: 'Frames over which ontology constraints ramp up after a change (default 60)' },
       { key: 'constraintMaxForcePerNode', group: 'Constraints', label: 'Constraint Max Force', type: 'slider', min: 1, max: 2000, step: 5, path: 'visualisation.graphs.logseq.physics.constraintMaxForcePerNode', description: 'Per-node cap on ontology constraint forces (default 50)' },
       { key: 'clusterStrength', group: 'Constraints', label: 'Cluster Strength', type: 'slider', min: 0, max: 0.02, step: 0.0005, path: 'visualisation.graphs.logseq.physics.clusterStrength', description: 'Raw cluster cohesion coefficient (default 0.002)' },
-      { key: 'temperature', group: 'Constraints', label: 'Temperature', type: 'slider', min: 0, max: 5, step: 0.05, path: 'visualisation.graphs.logseq.physics.temperature', description: 'Simulation temperature (energy) — higher = more movement (default 1.0)' },
+      { key: 'temperature', group: 'Constraints', label: 'Temperature', type: 'slider', min: 0, max: 1, step: 0.05, path: 'visualisation.graphs.logseq.physics.temperature', description: 'Simulation temperature (energy) — higher = more movement (default 0, backend caps at 1.0)' },
 
       // ===================================================================
-      // Semantic & Layout Forces — routed to the quality-gates / semantic
-      // endpoints (NOT the physics endpoint), but conceptually physics.
+      // Semantic & Layout Forces — DAG hierarchy + type-clustering layout,
+      // routed to the quality-gates / semantic endpoints (NOT the physics
+      // endpoint). The OWL axiom-derived ontology constraint forces
+      // (SubClassOf→Attract, EquivalentClass→Colocate, DisjointWith→Separate)
+      // are NOT here: they are owned by the dedicated Ontology → Forces panel
+      // (OntologyForcesPanel), the single source of truth for enable + global
+      // strength. The former qualityGates.ontologyPhysics / ontologyStrength
+      // duplicates were removed to avoid a divergent second control surface.
       // ===================================================================
       { key: 'layoutMode', group: 'Semantic & Layout Forces', label: 'Layout Mode', type: 'select', options: ['force-directed', 'dag-topdown', 'dag-radial', 'dag-leftright', 'type-clustering'], path: 'qualityGates.layoutMode', description: 'Graph layout algorithm — force-directed uses spring/repulsion, DAG modes add hierarchical layout, type-clustering groups by node type' },
-      { key: 'ontologyPhysics', group: 'Semantic & Layout Forces', label: 'Ontology Forces', type: 'toggle', path: 'qualityGates.ontologyPhysics', description: 'Enable OWL ontology-derived constraint forces in the physics simulation' },
-      { key: 'ontologyStrength', group: 'Semantic & Layout Forces', label: 'Ontology Strength', type: 'slider', min: 0, max: 1, step: 0.05, path: 'qualityGates.ontologyStrength', description: 'Global strength of ontology constraint forces (lower = gentler, higher = stricter)', isAdvanced: true },
       { key: 'semanticForces', group: 'Semantic & Layout Forces', label: 'Semantic Layout Forces', type: 'toggle', path: 'qualityGates.semanticForces', description: 'Enable DAG hierarchy layout and type-based clustering forces' },
       { key: 'dagLevelAttraction', group: 'Semantic & Layout Forces', label: 'DAG Level Attraction', type: 'slider', min: 0, max: 2.0, step: 0.05, path: 'qualityGates.dagLevelAttraction', description: 'How strongly nodes pull toward their hierarchy level', isAdvanced: true },
       { key: 'dagSiblingRepulsion', group: 'Semantic & Layout Forces', label: 'DAG Sibling Repulsion', type: 'slider', min: 0, max: 2.0, step: 0.05, path: 'qualityGates.dagSiblingRepulsion', description: 'How strongly same-level nodes spread apart', isAdvanced: true },
