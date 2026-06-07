@@ -135,7 +135,11 @@ export const DEFAULT_CLUSTER_HULLS = {
   // default so correct server clusters draw hulls; the JS spatial-grid fallback
   // is a separate opt-in (spatialFallback, default off) and never fabricates hulls.
   enabled: true,
-  opacity: 0.12,
+  // At 0.12 the hulls are effectively invisible against the dark scene at the
+  // default auto-fit zoom (the clustered core occupies a small screen region);
+  // 0.25 makes them legible while staying translucent enough to see the nodes
+  // and overlapping clusters through them.
+  opacity: 0.25,
   padding: 0.15,
   updateInterval: 30,
   maxHulls: 32,

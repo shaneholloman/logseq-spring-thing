@@ -493,7 +493,7 @@ export interface GemMaterialSettings {
 
 export interface ClusterHullSettings {
   enabled: boolean;
-  opacity: number;      // 0-0.5, default 0.12
+  opacity: number;      // 0-0.5, default 0.25
   padding: number;      // 0-0.5, default 0.15
   updateInterval: number; // frames between hull recalculation, default 30
   maxHulls: number;     // largest N clusters to draw, default 32

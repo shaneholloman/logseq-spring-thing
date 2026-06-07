@@ -113,17 +113,14 @@ const GraphManager: React.FC<GraphManagerProps> = ({ onDragStateChange }) => {
     [typeFilteredNodes],
   )
 
-  // Cluster hulls are scoped to the ONTOLOGY population. Louvain clusters mix
-  // populations through the dominant KG<->ontology cross-links, so unscoped
-  // hulls would span the separation gap and join the two discs visually.
-  // Restricting to ontology nodes gives one cleanly delineated hull per
-  // ontology cluster on its own disc.
-  const ontologyHullNodes = useMemo(
-    () => graphData.nodes.filter(
-      node => (perNodeVisualModeMap.get(String(node.id)) || graphMode) === 'ontology'
-    ),
-    [graphData.nodes, perNodeVisualModeMap, graphMode]
-  )
+  // Cluster hulls are fed the full rendered population. The default hull source
+  // is the server's spatial DBSCAN cluster_id (ClusterHulls gives it outright
+  // priority): a DBSCAN cluster is spatially compact by construction, so it
+  // never spans the KG<->ontology separation gap regardless of population — the
+  // ontology-only scoping that the (opt-in) Louvain community fallback needed is
+  // unnecessary and would hide hulls on the dominant knowledge disc, where the
+  // clusters actually live. Reuse `typeFilteredNodes` so hulls cover exactly the
+  // node set the meshes and edges render (one source of truth via renderedNodeIds).
 
   const { agents: agentLayerNodes, connections: agentLayerConnections } = useAgentNodes()
   useFpsMonitor()
@@ -582,7 +579,7 @@ const GraphManager: React.FC<GraphManagerProps> = ({ onDragStateChange }) => {
       />
 
       <ClusterHulls
-        nodes={ontologyHullNodes}
+        nodes={typeFilteredNodes}
         nodePositionsRef={nodePositionsRef}
         nodeIdToIndexMap={nodeIdToIndexMap}
         settings={settings}

@@ -197,6 +197,13 @@ impl ClusteringActor {
         let tolerance = params.tolerance.unwrap_or(0.001);
         let seed = params.seed.unwrap_or(42);
 
+        // Deadlock hardening: refuse a degenerate request before touching the GPU
+        // so the shared `unified_compute` lock is never held across a kernel that
+        // would wedge the CUDA stream (see MIN_NODES_FOR_CLUSTERING).
+        if num_clusters == 0 {
+            return Err("K-means clustering refused: num_clusters must be >= 1".to_string());
+        }
+
         // Move blocking GPU operations to dedicated blocking thread pool
         // This prevents std::sync::Mutex::lock() from blocking Tokio worker threads
         let blocking_result = tokio::task::spawn_blocking(move || -> Result<_, String> {
@@ -207,6 +214,24 @@ impl ClusteringActor {
                     poisoned.into_inner()
                 }
             };
+
+            // Precondition guard (inside the lock, before any kernel launch): a
+            // zero/degenerate node set or coincident positions would launch the
+            // centroid-init kernel with an invalid grid and wedge the shared
+            // stream, deadlocking physics. Refuse cleanly — the guard drops here.
+            let (sx, sy, sz) = gpu_position_spread(&unified_compute);
+            if let Some(reason) =
+                position_clustering_refusal(unified_compute.num_nodes, sx, sy, sz)
+            {
+                warn!("ClusteringActor: K-means refused before launch: {}", reason);
+                return Err(format!("K-means clustering refused: {}", reason));
+            }
+            if num_clusters > unified_compute.num_nodes {
+                return Err(format!(
+                    "K-means clustering refused: num_clusters {} exceeds num_nodes {}",
+                    num_clusters, unified_compute.num_nodes
+                ));
+            }
 
             let start_time = Instant::now();
 
@@ -341,6 +366,21 @@ impl ClusteringActor {
                     poisoned.into_inner()
                 }
             };
+
+            // Deadlock hardening: refuse a degenerate node set before any kernel
+            // launch. Community detection is edge-based (no position-spread check),
+            // but a zero/near-empty graph still launches kernels with an invalid
+            // grid and can wedge the shared GPU context.
+            if unified_compute.num_nodes < MIN_NODES_FOR_CLUSTERING {
+                warn!(
+                    "ClusteringActor: community detection refused before launch: only {} node(s)",
+                    unified_compute.num_nodes
+                );
+                return Err(format!(
+                    "community detection refused: only {} GPU node(s); need >= {}",
+                    unified_compute.num_nodes, MIN_NODES_FOR_CLUSTERING
+                ));
+            }
 
             let start_time = Instant::now();
 
@@ -492,6 +532,18 @@ impl ClusteringActor {
         let epsilon = params.epsilon;
         let min_points = params.min_points;
 
+        // Deadlock hardening: reject pathological params before any GPU access so
+        // the shared `unified_compute` lock is never held across a wedged kernel.
+        if !(epsilon.is_finite() && epsilon > 0.0) {
+            return Err(format!(
+                "DBSCAN clustering refused: epsilon must be finite and > 0 (got {})",
+                epsilon
+            ));
+        }
+        if min_points == 0 {
+            return Err("DBSCAN clustering refused: min_points must be >= 1".to_string());
+        }
+
         // Move blocking GPU operations to dedicated blocking thread pool
         let blocking_result = tokio::task::spawn_blocking(move || -> Result<_, String> {
             let mut unified_compute = match unified_compute_arc.lock() {
@@ -501,6 +553,17 @@ impl ClusteringActor {
                     poisoned.into_inner()
                 }
             };
+
+            // Precondition guard (inside the lock, before launch): refuse a
+            // zero/degenerate node set or coincident positions that would wedge
+            // the neighbour-scan kernel and deadlock the shared GPU context.
+            let (sx, sy, sz) = gpu_position_spread(&unified_compute);
+            if let Some(reason) =
+                position_clustering_refusal(unified_compute.num_nodes, sx, sy, sz)
+            {
+                warn!("ClusteringActor: DBSCAN refused before launch: {}", reason);
+                return Err(format!("DBSCAN clustering refused: {}", reason));
+            }
 
             let start_time = Instant::now();
 
@@ -1335,6 +1398,115 @@ impl Handler<PerformGPUClustering> for ClusteringActor {
 /// every node is left at `community_id = 0`. Strict `<`, so exactly 0.30 accepts.
 pub(crate) const MODULARITY_GATE: f32 = 0.3;
 
+/// Minimum GPU node count below which any clustering run is refused outright.
+/// Below this the centroid-init / neighbour-scan kernels launch with a zero or
+/// negative grid and read past valid buffer extents — an illegal access that
+/// wedges the shared CUDA stream. Because clustering holds the shared
+/// `unified_compute` mutex across the kernel, a wedged stream never releases the
+/// lock and the physics step (which shares that context) deadlocks system-wide.
+/// Refusing degenerate input BEFORE launch lets the lock drop cleanly instead.
+pub(crate) const MIN_NODES_FOR_CLUSTERING: usize = 3;
+
+/// Largest per-axis position spread (max − min, world units) still treated as
+/// "no spread". When all three axes are below this, the nodes are effectively
+/// coincident (the pre-warmup / un-laid-out state where every node sits at the
+/// origin) and distance-based clustering is meaningless — k-means centroid init
+/// can spin selecting coincident seeds. Refused as a degenerate run.
+pub(crate) const MIN_POSITION_SPREAD: f32 = 1e-3;
+
+/// Pure precondition check for position-based GPU clustering (k-means / DBSCAN).
+/// Returns `Some(reason)` when the run must be refused BEFORE any kernel launch
+/// (so the shared `unified_compute` lock releases cleanly rather than being held
+/// across a kernel that never returns), or `None` when the input is safe to run.
+/// Pure over its scalar inputs so it is unit-testable without a GPU.
+pub(crate) fn position_clustering_refusal(
+    num_nodes: usize,
+    spread_x: f32,
+    spread_y: f32,
+    spread_z: f32,
+) -> Option<String> {
+    if num_nodes < MIN_NODES_FOR_CLUSTERING {
+        return Some(format!(
+            "only {} GPU node(s); need >= {}",
+            num_nodes, MIN_NODES_FOR_CLUSTERING
+        ));
+    }
+    if spread_x < MIN_POSITION_SPREAD
+        && spread_y < MIN_POSITION_SPREAD
+        && spread_z < MIN_POSITION_SPREAD
+    {
+        return Some(format!(
+            "node positions are coincident (spread {:.2e}/{:.2e}/{:.2e} < {:.0e}); \
+             layout has not warmed up",
+            spread_x, spread_y, spread_z, MIN_POSITION_SPREAD
+        ));
+    }
+    None
+}
+
+/// Download the GPU position buffers and return per-axis spread (max − min),
+/// ignoring non-finite entries. A cheap, occasional device→host copy used by the
+/// precondition guard before launching a position-based kernel. On any copy
+/// failure an axis contributes 0.0 spread, which conservatively triggers the
+/// coincident-positions refusal rather than risking a degenerate launch.
+fn gpu_position_spread(
+    uc: &crate::utils::unified_gpu_compute::UnifiedGPUCompute,
+) -> (f32, f32, f32) {
+    use cust::memory::CopyDestination;
+    let n = uc.num_nodes;
+    if n == 0 {
+        return (0.0, 0.0, 0.0);
+    }
+    // The device→host `copy_to` below requires the CUDA context to be CURRENT on
+    // this thread. The guard runs inside `spawn_blocking`, where a fresh tokio
+    // worker thread does NOT inherit the primary context — so without this the
+    // copies fail and every axis reads 0.0, producing a FALSE coincident-positions
+    // refusal even when the GPU holds a valid spread layout. Retaining + making the
+    // primary context current (mirrors `get_node_positions`, execution.rs:836) is
+    // what makes the read observe real positions. Hold it for the copies' lifetime.
+    let _thread_context = match cust::context::Context::new(uc.device.clone()) {
+        Ok(ctx) => ctx,
+        Err(e) => {
+            log::warn!(
+                "gpu_position_spread: failed to set CUDA context ({e}); treating as coincident"
+            );
+            return (0.0, 0.0, 0.0);
+        }
+    };
+    let axis_spread = |host: &[f32]| -> f32 {
+        let mut lo = f32::INFINITY;
+        let mut hi = f32::NEG_INFINITY;
+        for &v in host {
+            if v.is_finite() {
+                if v < lo {
+                    lo = v;
+                }
+                if v > hi {
+                    hi = v;
+                }
+            }
+        }
+        if lo.is_finite() && hi.is_finite() {
+            hi - lo
+        } else {
+            0.0
+        }
+    };
+    let read = |buf: &cust::memory::DeviceBuffer<f32>| -> f32 {
+        let blen = buf.len();
+        if blen == 0 {
+            return 0.0;
+        }
+        let mut host = vec![0f32; blen];
+        if buf.copy_to(&mut host).is_err() {
+            return 0.0;
+        }
+        host.truncate(n);
+        axis_spread(&host)
+    };
+    (read(&uc.pos_in_x), read(&uc.pos_in_y), read(&uc.pos_in_z))
+}
+
 /// Pure, behaviour-preserving extraction of the modularity gate's effect on the
 /// analytics map (ADR-031 D1 + D3 single-writer reset). Always clears every
 /// entry's `community_id` first; then, only if `modularity >= MODULARITY_GATE`,
@@ -1423,5 +1595,49 @@ mod gate_tests {
         assert!(apply_modularity_gate(&mut m, &[100, 200], &[5, 6], 0.4));
         assert_eq!(m[&100].community_id, 5);
         assert_eq!(m[&200].community_id, 6);
+    }
+}
+
+#[cfg(test)]
+mod precondition_tests {
+    use super::{
+        position_clustering_refusal, MIN_NODES_FOR_CLUSTERING, MIN_POSITION_SPREAD,
+    };
+
+    #[test]
+    fn refuses_zero_nodes() {
+        let r = position_clustering_refusal(0, 100.0, 100.0, 100.0);
+        assert!(r.is_some());
+        assert!(r.unwrap().contains("0 GPU node"));
+    }
+
+    #[test]
+    fn refuses_below_min_node_count() {
+        // One below the floor is refused; exactly at the floor (with spread) runs.
+        assert!(position_clustering_refusal(MIN_NODES_FOR_CLUSTERING - 1, 50.0, 50.0, 50.0).is_some());
+        assert!(position_clustering_refusal(MIN_NODES_FOR_CLUSTERING, 50.0, 50.0, 50.0).is_none());
+    }
+
+    #[test]
+    fn refuses_coincident_positions() {
+        // All nodes at the origin (pre-warmup): every axis spread is ~0 → refuse.
+        let r = position_clustering_refusal(1000, 0.0, 0.0, 0.0);
+        assert!(r.is_some());
+        assert!(r.unwrap().contains("coincident"));
+    }
+
+    #[test]
+    fn accepts_when_any_axis_has_spread() {
+        // A single axis above the floor is enough structure to cluster on.
+        assert!(position_clustering_refusal(1000, MIN_POSITION_SPREAD * 10.0, 0.0, 0.0).is_none());
+        assert!(position_clustering_refusal(1000, 0.0, MIN_POSITION_SPREAD * 10.0, 0.0).is_none());
+        assert!(position_clustering_refusal(1000, 0.0, 0.0, MIN_POSITION_SPREAD * 10.0).is_none());
+    }
+
+    #[test]
+    fn node_count_refusal_takes_precedence_over_spread() {
+        // Too few nodes is reported first even if positions are well spread.
+        let r = position_clustering_refusal(1, 100.0, 100.0, 100.0);
+        assert!(r.unwrap().contains("GPU node"));
     }
 }
