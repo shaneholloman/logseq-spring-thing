@@ -136,6 +136,7 @@ mod execution;
 mod sssp;
 mod clustering;
 mod community;
+mod leiden;
 mod async_transfer;
 mod metrics;
 

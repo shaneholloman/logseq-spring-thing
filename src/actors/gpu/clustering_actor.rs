@@ -355,6 +355,7 @@ impl ClusteringActor {
         let algorithm = params.algorithm.clone();
         let max_iterations = params.max_iterations.unwrap_or(100);
         let seed = params.seed.unwrap_or(42);
+        let resolution = params.resolution.unwrap_or(1.0);
 
         // Move blocking GPU operations to dedicated blocking thread pool
         // This prevents std::sync::Mutex::lock() from blocking Tokio worker threads
@@ -403,7 +404,7 @@ impl ClusteringActor {
                     let r = unified_compute
                         .run_louvain_community_detection(
                             max_iterations,
-                            1.0,
+                            resolution,
                             seed,
                         )
                         .map_err(|e| {
@@ -412,6 +413,23 @@ impl ClusteringActor {
                         })?;
                     // Task #74: GPU-only Louvain. Record the path on success.
                     record_execution(AnalyticsKernel::Louvain, ExecutionPath::Gpu);
+                    r
+                }
+                CommunityDetectionAlgorithm::Leiden => {
+                    // Leiden: refined Louvain with a connected-community guarantee —
+                    // the same detector that drives the Community Cohesion force, so
+                    // analytics coloring matches cohesion grouping.
+                    let r = unified_compute
+                        .run_leiden_community_detection(
+                            max_iterations,
+                            resolution,
+                            seed,
+                        )
+                        .map_err(|e| {
+                            error!("GPU Leiden community detection failed: {}", e);
+                            format!("Leiden community detection failed: {}", e)
+                        })?;
+                    record_execution(AnalyticsKernel::Leiden, ExecutionPath::Gpu);
                     r
                 }
             };
@@ -1349,13 +1367,23 @@ impl Handler<PerformGPUClustering> for ClusteringActor {
                     let result = actor_clone.perform_dbscan_clustering(dbscan_params).await?;
                     Ok(result.clusters)
                 }
-                "louvain" => {
+                "louvain" | "leiden" | "communities" => {
+                    // "communities" (and "leiden") select the refined Leiden detector —
+                    // the same partition that drives the Community Cohesion force, so
+                    // analytics coloring matches cohesion grouping. "louvain" keeps the
+                    // un-refined variant for comparison.
+                    let algorithm = if method.eq_ignore_ascii_case("louvain") {
+                        CommunityDetectionAlgorithm::Louvain
+                    } else {
+                        CommunityDetectionAlgorithm::Leiden
+                    };
                     let community_params = CommunityDetectionParams {
-                        algorithm: CommunityDetectionAlgorithm::Louvain,
+                        algorithm,
                         max_iterations: msg.params.max_iterations,
                         convergence_tolerance: msg.params.convergence_threshold,
                         synchronous: None,
                         seed: msg.params.seed.map(|s| s as u32),
+                        resolution: msg.params.resolution,
                     };
                     let result = actor_clone.perform_community_detection(community_params).await?;
                     // Convert communities to Cluster format

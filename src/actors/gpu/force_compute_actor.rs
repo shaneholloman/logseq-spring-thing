@@ -2235,6 +2235,22 @@ impl Handler<UpdateSimulationParams> for ForceComputeActor {
     }
 }
 
+impl Handler<UpdateClusteringParams> for ForceComputeActor {
+    type Result = Result<(), String>;
+
+    fn handle(&mut self, msg: UpdateClusteringParams, _ctx: &mut Self::Context) -> Self::Result {
+        let Some(ctx) = &self.shared_context else {
+            return Err("GPU context not initialized".to_string());
+        };
+        let mut compute = ctx
+            .unified_compute
+            .lock()
+            .map_err(|e| format!("GPU lock poisoned: {}", e))?;
+        compute.set_community_detector(&msg.algorithm, msg.resolution, msg.iterations);
+        Ok(())
+    }
+}
+
 /// Message to force a full broadcast of ALL node positions (bypass delta filter).
 /// Sent by PhysicsOrchestratorActor after FastSettle convergence.
 ///

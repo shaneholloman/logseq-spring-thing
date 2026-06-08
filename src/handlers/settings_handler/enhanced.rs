@@ -507,7 +507,6 @@ impl EnhancedSettingsHandler {
                 "/settings/reset",
                 "/physics/update",
                 "/physics/compute-mode",
-                "/clustering/algorithm",
                 "/constraints/update",
                 "/stress/optimization"
             ],

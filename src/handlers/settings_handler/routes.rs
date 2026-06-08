@@ -40,14 +40,7 @@ pub fn config(cfg: &mut web::ServiceConfig) {
             web::scope("/api/physics").route("/compute-mode", web::post().to(super::physics::update_compute_mode)),
         )
         .service(
-            web::scope("/api/clustering")
-                .route("/algorithm", web::post().to(super::physics::update_clustering_algorithm)),
-        )
-        .service(
             web::scope("/api/constraints").route("/update", web::post().to(super::physics::update_constraints)),
-        )
-        .service(
-            web::scope("/api/analytics").route("/clusters", web::get().to(super::physics::get_cluster_analytics)),
         )
         .service(
             web::scope("/api/stress")

@@ -407,47 +407,6 @@ pub(crate) async fn perform_clustering(
     Ok(clusters)
 }
 
-#[allow(dead_code)]
-pub(crate) fn generate_spectral_clusters_from_agents(
-    graph_data: &visionclaw_domain::models::graph::GraphData,
-    agents: &[crate::services::agent_visualization_protocol::MultiMcpAgentStatus],
-    params: &ClusteringParams,
-) -> Vec<Cluster> {
-    let num_clusters = params.num_clusters.unwrap_or(5);
-    generate_agent_based_clusters(graph_data, agents, num_clusters, "spectral")
-}
-
-#[allow(dead_code)]
-pub(crate) fn generate_kmeans_clusters_from_agents(
-    graph_data: &visionclaw_domain::models::graph::GraphData,
-    agents: &[crate::services::agent_visualization_protocol::MultiMcpAgentStatus],
-    params: &ClusteringParams,
-) -> Vec<Cluster> {
-    let num_clusters = params.num_clusters.unwrap_or(8);
-    generate_agent_based_clusters(graph_data, agents, num_clusters, "kmeans")
-}
-
-#[allow(dead_code)]
-pub(crate) fn generate_louvain_clusters_from_agents(
-    graph_data: &visionclaw_domain::models::graph::GraphData,
-    agents: &[crate::services::agent_visualization_protocol::MultiMcpAgentStatus],
-    params: &ClusteringParams,
-) -> Vec<Cluster> {
-    let resolution = params.resolution.unwrap_or(1.0);
-    let num_clusters = std::cmp::min((5.0 / resolution) as u32, agents.len() as u32);
-    generate_agent_based_clusters(graph_data, agents, num_clusters, "louvain")
-}
-
-#[allow(dead_code)]
-pub(crate) fn generate_default_clusters_from_agents(
-    graph_data: &visionclaw_domain::models::graph::GraphData,
-    agents: &[crate::services::agent_visualization_protocol::MultiMcpAgentStatus],
-    params: &ClusteringParams,
-) -> Vec<Cluster> {
-    let cluster_count = std::cmp::min(params.num_clusters.unwrap_or(6), agents.len() as u32);
-    generate_agent_based_clusters(graph_data, agents, cluster_count, "default")
-}
-
 pub(crate) fn generate_agent_based_clusters(
     graph_data: &visionclaw_domain::models::graph::GraphData,
     agents: &[crate::services::agent_visualization_protocol::MultiMcpAgentStatus],

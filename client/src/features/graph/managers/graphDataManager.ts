@@ -8,7 +8,7 @@ import type { GraphData, Node, Edge } from './graphWorkerProxy';
 import { useWorkerErrorStore } from '../../../store/workerErrorStore';
 
 // Sub-modules
-import { ensureNodeHasValidPosition, validateNodeMappings } from './dataManager/nodeUtils';
+import { ensureNodeHasValidPosition, validateNodeMappings, dropLinkedPageStubs } from './dataManager/nodeUtils';
 import { buildNodeIdMaps, upsertNodeIdEntry, setDataAndNotify, topologyHash } from './dataManager/topology';
 import { ListenerRegistry } from './dataManager/listeners';
 import { fetchGraphData, scheduleEmptyDataRetry, type GraphTypeFilter } from './dataManager/restClient';
@@ -185,7 +185,15 @@ class GraphDataManager {
   // ── REST data fetch ───────────────────────────────────────────────────
 
   public async fetchInitialData(): Promise<GraphData> {
-    const validatedData = await fetchGraphData(this.graphType, this.graphTypeFilter);
+    // Drop linked_page stubs at source unless the user has opted to include
+    // them — mirrors the ingestion gate in setGraphData and the server param.
+    const includeLinkedPages =
+      useSettingsStore.getState().settings?.nodeFilter?.includeLinkedPages ?? false;
+    const validatedData = await fetchGraphData(
+      this.graphType,
+      this.graphTypeFilter,
+      !includeLinkedPages,
+    );
 
     await this.setGraphData(validatedData);
 
@@ -216,11 +224,19 @@ class GraphDataManager {
     const storeState = useSettingsStore.getState();
     const qualityGates = storeState.settings?.qualityGates;
     const maxNodeCount = qualityGates?.maxNodeCount ?? Infinity;
+    const includeLinkedPages = storeState.settings?.nodeFilter?.includeLinkedPages ?? false;
 
-    let validatedData = data;
+    // Population gate (ingestion): drop linked_page wikilink-stub nodes before
+    // they reach the worker/topology/render pipeline. This is the dominant
+    // node-count reduction — ~14.7k of 17.1k nodes are linked_page stubs that
+    // the render gate already hides; dropping them here removes the worker and
+    // edge-buffer churn that otherwise blocks the constrained sidecar.
+    const gatedData = dropLinkedPageStubs(data, includeLinkedPages);
 
-    if (data && data.nodes) {
-      let nodesToUse = data.nodes;
+    let validatedData = gatedData;
+
+    if (gatedData && gatedData.nodes) {
+      let nodesToUse = gatedData.nodes;
 
       if (nodesToUse.length > maxNodeCount) {
         logger.info(`Filtering nodes: ${nodesToUse.length} exceeds maxNodeCount ${maxNodeCount}`);
@@ -235,10 +251,10 @@ class GraphDataManager {
         logger.info(`Filtered to ${nodesToUse.length} nodes (by authority/quality score)`);
 
         const keptNodeIds = new Set(nodesToUse.map(n => String(n.id)));
-        const filteredEdges = (data.edges || []).filter(
+        const filteredEdges = (gatedData.edges || []).filter(
           edge => keptNodeIds.has(String(edge.source)) && keptNodeIds.has(String(edge.target)),
         );
-        logger.info(`Filtered edges: ${data.edges?.length ?? 0} -> ${filteredEdges.length}`);
+        logger.info(`Filtered edges: ${gatedData.edges?.length ?? 0} -> ${filteredEdges.length}`);
 
         validatedData = {
           nodes: nodesToUse.map(node => ensureNodeHasValidPosition(node)),
@@ -246,7 +262,7 @@ class GraphDataManager {
         };
       } else {
         validatedData = {
-          ...data,
+          ...gatedData,
           nodes: nodesToUse.map(node => ensureNodeHasValidPosition(node)),
         };
       }

@@ -28,6 +28,21 @@ import type { HierarchyNode } from '../utils/hierarchyDetector';
 
 const logger = createLogger('useGraphFiltering');
 
+/**
+ * Ordinal rank for the OWL `maturity` metadata field — the only real per-node
+ * ontology quality signal on the wire. `qualityScore` is near-constant (0.7-0.8)
+ * and present on ~34% of ontology nodes, so it cannot discriminate; `maturity`
+ * spans six tiers and the server emits it on every owl_type=Class node.
+ */
+const MATURITY_RANK: Record<string, number> = {
+  draft: 1,
+  developing: 2,
+  emerging: 3,
+  growing: 4,
+  established: 5,
+  mature: 6,
+};
+
 // ---------------------------------------------------------------------------
 // Hook return type
 // ---------------------------------------------------------------------------
@@ -77,6 +92,12 @@ export function useGraphFiltering(
   // Set to 1 to suppress the degree-0 orphan spray. Keys directly on the edge-
   // derived connectionCountMap, independent of the quality/authority filter.
   const minConnections = storeNodeFilter?.minConnections ?? 0;
+  // Ontology maturity gate: drop nodes below this OWL maturity tier. 'off' = no
+  // gate. Independent of the quality/authority AND/OR combination (which the
+  // default OR-mode neutralises), mirroring the minConnections hard cutoff.
+  const rawMinMaturity = storeNodeFilter?.minMaturity ?? '';
+  const minMaturityRank =
+    rawMinMaturity && rawMinMaturity !== 'off' ? MATURITY_RANK[rawMinMaturity] ?? 0 : 0;
 
   // Log filter settings changes for debugging
   useEffect(() => {
@@ -120,6 +141,19 @@ export function useGraphFiltering(
         const degree = connectionCountMap.get(node.id) || 0;
         if (degree < minConnections) {
           return false;
+        }
+      }
+
+      // Ontology maturity gate: drop nodes whose OWL maturity tier is below the
+      // selected minimum. Nodes without a `maturity` field (knowledge pages) and
+      // nodes carrying an unrecognised maturity string are kept untouched.
+      if (minMaturityRank > 0) {
+        const m = node.metadata?.maturity as string | undefined;
+        if (m) {
+          const rank = MATURITY_RANK[m];
+          if (rank !== undefined && rank < minMaturityRank) {
+            return false;
+          }
         }
       }
 
@@ -183,7 +217,7 @@ export function useGraphFiltering(
     }
 
     return visible;
-  }, [graphData.nodes, connectionCountMap, hierarchyMap, expansionState, filterEnabled, qualityThreshold, authorityThreshold, filterByQuality, filterByAuthority, filterMode, includeLinkedPages]);
+  }, [graphData.nodes, connectionCountMap, hierarchyMap, expansionState, filterEnabled, qualityThreshold, authorityThreshold, filterByQuality, filterByAuthority, filterMode, includeLinkedPages, minConnections, minMaturityRank]);
 
   // --- filteredEdges (pass-through today) ---
   const filteredEdges = graphData.edges;

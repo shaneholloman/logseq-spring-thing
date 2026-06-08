@@ -59,9 +59,11 @@ export function createGemNodeMaterial(): GemMaterialResult {
     depthWrite: true,
     emissive: new THREE.Color(isWebGPURenderer ? 0.03 : 0.15, isWebGPURenderer ? 0.04 : 0.18, isWebGPURenderer ? 0.1 : 0.3),
     emissiveIntensity: isWebGPURenderer ? 0.4 : 0.3,
-    ...(isWebGPURenderer ? {
-      envMapIntensity: 1.8,
-    } : {}),
+    // envMapIntensity scales reflected-environment light. GraphCanvas installs
+    // scene.environment (drei PMREM) on BOTH backends, so the WebGL gem now
+    // reflects the same as WebGPU (parity, task #50). Previously gated to WebGPU
+    // for no hard reason, leaving WebGL gems flat and non-reflective.
+    envMapIntensity: 1.8,
   });
 
   // TSL ENABLED (r183+) with PBR fallback — the full metadata-driven TSL upgrade

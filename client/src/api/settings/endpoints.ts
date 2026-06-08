@@ -309,20 +309,6 @@ export const getSettingByPath = async <T>(path: string): Promise<T> => {
 };
 
 // ============================================================================
-// Clustering
-// ============================================================================
-
-export const updateClusteringAlgorithm = async <T>(
-  path: string,
-  value: T
-): Promise<void> => {
-  const key = path.split('.').pop()!;
-  const payload: Record<string, unknown> = { [key]: value };
-  logger.debug(`[settingsApi] Sending clustering update: ${key} = ${value}`);
-  await axios.post(`${API_BASE}/api/clustering/algorithm`, payload);
-};
-
-// ============================================================================
 // Profiles
 // ============================================================================
 
@@ -356,8 +342,6 @@ export const updateSettingByPath = async <T>(path: string, value: T): Promise<vo
       await updateNodeFilter({ [path.split('.').pop()!]: value } as Partial<NodeFilterSettings>);
     } else if (path.startsWith('constraints')) {
       await updateConstraints({ [path.split('.').pop()!]: value });
-    } else if (path.startsWith('analytics.clustering')) {
-      await updateClusteringAlgorithm(path, value);
     } else if (isVisualSettingsPath(path)) {
       const visualKey = toVisualKey(path);
       const nested: Record<string, unknown> = {};
@@ -388,7 +372,6 @@ export const updateSettingsByPaths = async (
   const nodeFilterUpdates: Record<string, unknown> = {};
   const constraintsUpdates: Record<string, unknown> = {};
   const visualUpdates: Record<string, unknown> = {};
-  const clusteringUpdates: Record<string, unknown> = {};
   const localOnlyPaths: string[] = [];
 
   for (const { path, value } of updates) {
@@ -406,10 +389,6 @@ export const updateSettingsByPaths = async (
       nodeFilterUpdates[path.split('.').pop()!] = value;
     } else if (path.startsWith('constraints.')) {
       constraintsUpdates[path.split('.').pop()!] = value;
-    } else if (path.startsWith('analytics.clustering.')) {
-      const key = path.split('.').pop()!;
-      clusteringUpdates[key] = value;
-      logger.debug(`[SETTINGS-DIAG] routing ${path} → clustering.${key} = ${value}`);
     } else if (isVisualSettingsPath(path)) {
       setNestedFromDotPath(visualUpdates, toVisualKey(path), value);
       logger.debug(`[SETTINGS-DIAG] routing ${path} → visual.${toVisualKey(path)} = ${value}`);
@@ -430,24 +409,6 @@ export const updateSettingsByPaths = async (
   if (Object.keys(nodeFilterUpdates).length > 0) promises.push(updateNodeFilter(nodeFilterUpdates as Partial<NodeFilterSettings>));
   if (Object.keys(constraintsUpdates).length > 0) promises.push(updateConstraints(constraintsUpdates as Partial<ConstraintSettings>));
   if (Object.keys(visualUpdates).length > 0) promises.push(updateVisualSettings(visualUpdates));
-  if (Object.keys(clusteringUpdates).length > 0) {
-    const clusteringConfig = {
-      algorithm: clusteringUpdates.algorithm || 'none',
-      numClusters: clusteringUpdates.clusterCount || clusteringUpdates.numClusters || 6,
-      resolution: clusteringUpdates.resolution || 1.0,
-      iterations: clusteringUpdates.iterations || 30,
-      exportAssignments: clusteringUpdates.exportAssignments ?? true,
-      autoUpdate: clusteringUpdates.autoUpdate ?? false,
-    };
-    promises.push(
-      axios.post(`${API_BASE}/api/clustering/configure`, clusteringConfig)
-        .then(() => {
-          if (clusteringConfig.algorithm !== 'none') {
-            return axios.post(`${API_BASE}/api/clustering/start`, {});
-          }
-        })
-    );
-  }
 
   if (promises.length > 0) {
     await Promise.all(promises);

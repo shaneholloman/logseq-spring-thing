@@ -57,7 +57,7 @@ pub async fn perform_clustering(
 }
 
 fn validate_clustering_params(request: &ClusteringRequest) -> Result<(), String> {
-    let valid_methods = ["spectral", "hierarchical", "dbscan", "kmeans", "louvain", "affinity"];
+    let valid_methods = ["spectral", "hierarchical", "dbscan", "kmeans", "louvain", "leiden", "communities", "affinity"];
     if !valid_methods.contains(&request.method.as_str()) {
         return Err(format!("Unsupported clustering method: {}. Valid methods: {:?}", request.method, valid_methods));
     }
@@ -96,7 +96,7 @@ fn validate_clustering_params(request: &ClusteringRequest) -> Result<(), String>
                 }
             }
         }
-        "louvain" => {
+        "louvain" | "leiden" | "communities" => {
             if let Some(resolution) = request.params.resolution {
                 if resolution <= 0.0 || resolution > 10.0 {
                     return Err("resolution must be between 0.0 and 10.0".to_string());

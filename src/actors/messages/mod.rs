@@ -51,7 +51,7 @@ pub use physics_messages::{
     SetGpuComputeAddress, SetSharedGPUContext, SimulationStep, StartSimulation,
     StopSimulation, StoreAdvancedGPUContext, StoreGPUComputeAddress,
     StressMajorizationConfig, TriggerStressMajorization, UpdateAdvancedParams, UpdateCameraFrustum,
-    UpdateConstraintData, UpdateConstraints, UpdateForceParams, UpdateGPUGraphData,
+    UpdateClusteringParams, UpdateConstraintData, UpdateConstraints, UpdateForceParams, UpdateGPUGraphData,
     UpdateGPUPositions, UpdateOntologyConstraintBuffer, UpdateSimulationParams,
     UpdateStressMajorizationParams, UpdateVisualAnalyticsParams, UploadConstraintsToGPU,
     UploadPositions,

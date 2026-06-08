@@ -7,7 +7,7 @@ import { settingsApi } from '../../api/settingsApi'
 import { nostrAuth } from '../../services/nostrAuthService'
 import { autoSaveManager } from '../autoSaveManager'
 import { Settings, SettingsPath } from '../../features/settings/config/settings'
-import { SettingsState, ClusteringConfig, ConstraintConfig } from './settingsTypes'
+import { SettingsState, ConstraintConfig } from './settingsTypes'
 import {
   ESSENTIAL_PATHS,
   waitForAuthReady,
@@ -49,7 +49,6 @@ export type CoreSlice = Pick<
   | 'loadSection'
   | 'isLoaded'
   | 'updateComputeMode'
-  | 'updateClustering'
   | 'updateConstraints'
 >
 
@@ -407,21 +406,6 @@ export const createCoreSlice: StateCreator<SettingsState, [], [], CoreSlice> = (
         d.dashboard = { computeMode: '' };
       }
       (d.dashboard as Record<string, unknown>).computeMode = mode;
-    });
-  },
-
-  updateClustering: (config: ClusteringConfig) => {
-    const state = get();
-    state.updateSettings((draft: Settings) => {
-      const d = draft as unknown as Record<string, unknown>;
-      if (!d.analytics) {
-        d.analytics = {};
-      }
-      const analytics = d.analytics as Record<string, unknown>;
-      if (!analytics.clustering) {
-        analytics.clustering = {};
-      }
-      Object.assign(analytics.clustering as Record<string, unknown>, config);
     });
   },
 

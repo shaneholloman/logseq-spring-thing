@@ -354,7 +354,11 @@ impl Default for PhysicsSettings {
             dt: 0.016,
             temperature: 0.0,
             gravity: 0.002,
-            cluster_strength: 0.002,
+            // Community-cohesion force is opt-in: off by default so a fresh graph
+            // opens out under repulsion. The detector auto-runs in the force loop
+            // only when the user raises this above the >0.0001 gate, so a non-zero
+            // default would silently compress every community into its centroid.
+            cluster_strength: 0.0,
 
             rest_length: 50.0,
             repulsion_softening_epsilon: 0.0001,
@@ -369,7 +373,7 @@ impl Default for PhysicsSettings {
             constraint_ramp_frames: default_constraint_ramp_frames(),
             constraint_max_force_per_node: default_constraint_max_force_per_node(),
 
-            clustering_algorithm: "louvain".to_string(),
+            clustering_algorithm: "leiden".to_string(),
             cluster_count: 5,
             clustering_resolution: 1.0,
             clustering_iterations: 50,
@@ -523,7 +527,7 @@ mod tests {
         assert!(ps.enable_bounds);
         assert_eq!(ps.max_repulsion_dist, 400.0);
         assert_eq!(ps.sssp_alpha, 1.5);
-        assert!((ps.cluster_strength - 0.002).abs() < 1e-9);
+        assert_eq!(ps.cluster_strength, 0.0);
         assert!(ps.enabled);
         assert!(!ps.auto_balance);
         // Close full-size dual-disc envelope: the canonical separation must be

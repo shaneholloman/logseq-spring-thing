@@ -79,7 +79,7 @@ pub const MAX_REPULSION_DIST: Bound = (10.0, 5000.0);
 
 // --- Clustering / SSSP ---------------------------------------------------
 
-/// Raw cluster-force coefficient (`cluster_strength`). Canonical default 0.002.
+/// Raw cluster-force coefficient (`cluster_strength`). Canonical default 0.0 (opt-in).
 pub const CLUSTER_STRENGTH: Bound = (0.0, 0.02);
 
 /// SSSP rest-length adjustment strength (`sssp_alpha`). Canonical default 1.5.

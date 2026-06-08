@@ -60,8 +60,9 @@ use visionclaw_domain::models::graph::GraphData;
 // to spatial-grid hulls. These constants drive a self-firing Louvain pass so
 // real community structure flows automatically. Louvain runs on graph topology
 // (edges), not positions, so it only needs the graph uploaded to the GPU — the
-// initial delay just covers GPU init, not layout convergence. Param values
-// mirror the manual handler's hardcoded fallbacks (clustering_handler.rs).
+// initial delay just covers GPU init, not layout convergence. The detector
+// algorithm (leiden/louvain) follows the live physics clusteringAlgorithm
+// setting; these constants only set the auto-pass cadence and detector params.
 // ---------------------------------------------------------------------------
 const AUTO_CLUSTER_INITIAL_DELAY: Duration = Duration::from_secs(8);
 const AUTO_CLUSTER_REFRESH_INTERVAL: Duration = Duration::from_secs(60);

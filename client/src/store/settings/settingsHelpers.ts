@@ -231,8 +231,7 @@ export function getSectionPaths(section: string): string[] {
       'analytics.updateInterval',
       'analytics.showDegreeDistribution',
       'analytics.showClusteringCoefficient',
-      'analytics.showCentrality',
-      'analytics.clustering'
+      'analytics.showCentrality'
     ],
     'qualityGates': [
       'qualityGates'

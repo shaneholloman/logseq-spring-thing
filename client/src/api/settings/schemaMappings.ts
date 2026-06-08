@@ -118,6 +118,8 @@ export function transformApiToClientSettings(
         filterByAuthority: false,
         filterMode: 'or' as const,
         includeLinkedPages: false,
+        minConnections: 0,
+        minMaturity: 'off',
       },
       ...(apiResponse.nodeFilter || {}),
     }

@@ -568,14 +568,14 @@ mod tests {
         assert!((params.gravity - 0.5).abs() < f32::EPSILON);
     }
 
-    // cluster_strength is the raw kernel coefficient now; the contract default
-    // is 0.002 (== the old 0.1 * 0.02 magic-scale behaviour).
+    // cluster_strength is the raw kernel coefficient and the community-cohesion
+    // force is opt-in, so the contract default is 0.0 (below the >0.0001 gate).
     #[test]
     fn test_cluster_strength_default_is_raw_coefficient() {
         let physics = PhysicsSettings::default();
-        assert!((physics.cluster_strength - 0.002).abs() < 1e-9);
+        assert_eq!(physics.cluster_strength, 0.0);
         let params = SimulationParams::from(&physics);
-        assert!((params.cluster_strength - 0.002).abs() < 1e-9);
+        assert_eq!(params.cluster_strength, 0.0);
     }
 
     // alignment_strength is no longer a user-facing setting; the conversion must

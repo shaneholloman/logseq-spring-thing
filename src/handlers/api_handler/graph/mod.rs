@@ -94,6 +94,12 @@ pub struct GraphQuery {
     pub sort: Option<String>,
     pub filter: Option<String>,
     pub graph_type: Option<String>,
+    /// When `true`, drop `linked_page` wikilink-stub nodes (and edges touching
+    /// them) from the response at source. Mirrors the client `nodeFilter
+    /// .includeLinkedPages` gate so the dominant stub population (≈14.7k of
+    /// 17.1k nodes) is never transferred when it will only be hidden anyway.
+    /// Absent ⇒ no stub filtering (back-compat default).
+    pub exclude_linked_pages: Option<bool>,
 }
 
 /// The three node populations, mirroring the wire flag bits in
@@ -202,11 +208,27 @@ pub async fn get_graph_data(
             // defined by `PopulationFilter`, which mirrors the binary-protocol
             // flag bits so the REST and wire classifications agree.
             let population = PopulationFilter::parse(query.graph_type.as_deref());
+            // linked_page stub gate (mirrors client nodeFilter.includeLinkedPages).
+            // Authoritative origin is metadata["type"] (matches the client
+            // `nodePopulationType` precedence), with node_type as the fallback.
+            let exclude_linked_pages = query.exclude_linked_pages.unwrap_or(false);
             let filtered_nodes: Vec<NodeWithPosition> = nodes_with_positions
                 .into_iter()
                 .filter(|node| match population {
                     Some(p) => p.matches(node.node_type.as_deref(), &node.metadata),
                     None => true,
+                })
+                .filter(|node| {
+                    if !exclude_linked_pages {
+                        return true;
+                    }
+                    let origin = node
+                        .metadata
+                        .get("type")
+                        .map(String::as_str)
+                        .or(node.node_type.as_deref())
+                        .unwrap_or("");
+                    origin != "linked_page"
                 })
                 .collect();
 

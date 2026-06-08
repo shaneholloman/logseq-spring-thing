@@ -6,6 +6,7 @@ import type { Node as GraphNode } from '../managers/graphDataManager';
 import { createGemNodeMaterial, createTslGemMaterial, createGemGeometry, applyTslInstanceTransform } from '../../../rendering/materials/GemNodeMaterial';
 import { createCrystalOrbMaterial, createTslCrystalOrbMaterial, createCrystalOrbGeometry } from '../../../rendering/materials/CrystalOrbMaterial';
 import { createAgentCapsuleMaterial, createTslAgentCapsuleMaterial, createAgentCapsuleGeometry } from '../../../rendering/materials/AgentCapsuleMaterial';
+import { applyGlslMetadataGlow, GLSL_GLOW_PRESETS } from '../../../rendering/materials/GlslMetadataGlow';
 import { useSettingsStore } from '../../../store/settingsStore';
 import type { GemMaterialSettings, GraphTypeVisualsSettings, QualityGatesSettings } from '../../settings/config/settings';
 import type { Edge } from '../managers/graphDataManager';
@@ -146,6 +147,15 @@ const GemNodesInner: React.ForwardRefRenderFunction<GemNodesHandle, GemNodesProp
 
   const meshRef = useRef<THREE.InstancedMesh | null>(null);
   const metaTexRef = useRef<THREE.DataTexture | null>(null);
+  // Task #50 (WebGL parity): live uniform driving the GLSL per-instance glow
+  // scale (uGlowStrength). Ticked each frame from the per-type glow strength so
+  // the injected shader breathes per-node instead of the whole mesh sharing one
+  // global emissiveIntensity. Mirrors the WebGPU TSL `uGlowStrength` uniform.
+  const glslGlowStrengthRef = useRef({ value: 1 });
+  // Per-mesh guard: the GLSL augment is applied once per InstancedMesh; a
+  // recreated mesh (mode change / capacity growth) re-applies. Tracks the mesh
+  // the augment was last bound to (the material's own userData guards re-entry).
+  const glslGlowMeshRef = useRef<THREE.InstancedMesh | null>(null);
   // Task #54: per-instance transform texture (RGBA float = x, y, z, scale),
   // sampled on the GPU via instanceIndex by the material's positionNode. When
   // active (WebGPU only), the per-frame loop writes this texture's typed array
@@ -289,6 +299,39 @@ const GemNodesInner: React.ForwardRefRenderFunction<GemNodesHandle, GemNodesProp
     metaTex.needsUpdate = true;
     metaTexRef.current = metaTex;
 
+    // WebGL parity (task #50): the GLSL emissive injection (GlslMetadataGlow)
+    // stays GLSL ES 1.00 and cannot vertex-sample the metadata DataTexture, so it
+    // reads per-instance metadata from InstancedBufferAttributes instead. aGlowMeta
+    // SHARES the same texData buffer (instance i at i*4 — identical layout to the
+    // texture), so the per-frame write site updates both at once. aInstanceIndex is
+    // a static phase seed. WebGPU skips these: its TSL path samples metaTex by
+    // instanceIndex, and an InstancedBufferAttribute there crashes the backend
+    // (drawIndexed(Infinity)) — hence the WebGL-only guard.
+    if (!isWebGPURenderer) {
+      const metaAttr = new THREE.InstancedBufferAttribute(texData, 4);
+      metaAttr.setUsage(THREE.DynamicDrawUsage);
+      geo.setAttribute('aGlowMeta', metaAttr);
+      const idxArr = new Float32Array(metaTexW * metaTexH);
+      for (let i = 0; i < idxArr.length; i++) idxArr[i] = i;
+      geo.setAttribute('aInstanceIndex', new THREE.InstancedBufferAttribute(idxArr, 1));
+
+      // Apply the GLSL metadata-glow augment synchronously to THIS freshly-created
+      // material (mirrors the WebGPU TSL augment). Doing it here — not in a
+      // post-mount effect — guarantees every recreated mesh (capacity growth /
+      // dominant-mode change) gets the per-node emissive: an effect races mesh
+      // recreation and left the active mesh on the flat fallback path.
+      const preset = dominant === 'ontology' ? GLSL_GLOW_PRESETS.orb
+        : dominant === 'agent' ? GLSL_GLOW_PRESETS.agent
+        : GLSL_GLOW_PRESETS.gem;
+      const applied = applyGlslMetadataGlow(
+        matResult.material as THREE.MeshStandardMaterial,
+        matResult.uniforms.time as { value: number },
+        glslGlowStrengthRef.current,
+        preset,
+      );
+      if (applied) glslGlowMeshRef.current = inst;
+    }
+
     // Per-instance transform texture (same row-major grid as the metadata
     // texture). Texel i = (x, y, z, scale). Default scale 1 so an instance is
     // never invisible before its first physics write. Reset the active flag —
@@ -303,6 +346,24 @@ const GemNodesInner: React.ForwardRefRenderFunction<GemNodesHandle, GemNodesProp
     xformTex.needsUpdate = true;
     xformTexRef.current = xformTex;
     gpuTransformRef.current = false;
+
+    // WebGPU parity: apply the TSL emissive + GPU-transform augments to THIS
+    // freshly-created material HERE, not in a post-mount effect. React double-
+    // renders this component (dev), creating two meshes; the effects bound to the
+    // first (stale) mesh while the committed live mesh kept the flat-emissive +
+    // CPU-instanceMatrix fallback — silently off the GPU-resident path. useMemo
+    // runs for the committed mesh, so applying here reaches the live one (this is
+    // exactly what fixed the WebGL aGlowMeta path above). The async augments are
+    // fire-and-forget and mutate only this material; transform flips gpuTransform
+    // on only if this mesh is still the live one when it resolves.
+    if (isWebGPURenderer) {
+      const emissiveAugment = dominant === 'ontology' ? createTslCrystalOrbMaterial
+        : dominant === 'agent' ? createTslAgentCapsuleMaterial
+        : createTslGemMaterial;
+      void emissiveAugment(matResult.material as THREE.MeshStandardMaterial, metaTex, metaTexW, metaTexH);
+      void applyTslInstanceTransform(matResult.material as THREE.MeshStandardMaterial, xformTex, metaTexW, metaTexH)
+        .then(ok => { if (ok && meshRef.current === inst) gpuTransformRef.current = true; });
+    }
 
     meshRef.current = inst;
     return { mesh: inst, uniforms: matResult.uniforms };
@@ -332,72 +393,15 @@ const GemNodesInner: React.ForwardRefRenderFunction<GemNodesHandle, GemNodesProp
     getColorArray: () => meshRef.current?.instanceColor?.array as Float32Array | null ?? null,
   }), [mesh]);
 
-  // TSL ENABLED (r183+) with PBR fallback — wire createTslGemMaterial once
-  // the metadata texture and mesh are ready. Per-frame emissive modulation in
-  // useFrame remains the active fallback path if TSL fails.
-  // Per-node metadata-driven emissive is wired for ALL three dominant modes:
-  // knowledge_graph (gem), ontology (crystal orb) and agent (capsule). Each
-  // material exposes an async TSL augment that samples the same metadata
-  // DataTexture via instanceIndex; the augment is a no-op off WebGPU.
-  const tslAppliedRef = useRef(false);
-  useEffect(() => {
-    const augment =
-      dominant === 'ontology' ? createTslCrystalOrbMaterial :
-      dominant === 'agent' ? createTslAgentCapsuleMaterial :
-      createTslGemMaterial;
-    if (
-      isWebGPURenderer &&
-      mesh &&
-      metaTexRef.current &&
-      nodes.length > 0 &&
-      !tslAppliedRef.current
-    ) {
-      tslAppliedRef.current = true;
-      augment(
-        mesh.material as THREE.MeshPhysicalMaterial,
-        metaTexRef.current,
-        metaTexRef.current.image.width,
-        metaTexRef.current.image.height,
-      ).then(success => {
-        if (success) {
-          logger.debug('[GemNodes] TSL metadata material active', { dominant });
-        } else {
-          tslAppliedRef.current = false; // allow retry on next render cycle
-        }
-      }).catch(() => {
-        tslAppliedRef.current = false;
-      });
-    }
-  }, [dominant, mesh, nodes.length]);
-
-  // Task #54: move the instance transform to the GPU. Wire the positionNode
-  // augment (WebGPU only) once the mesh + transform texture exist. On success,
-  // gpuTransformRef flips on and the per-frame loop writes the transform texture
-  // instead of composing mat4s. The WebGL path leaves this off and keeps using
-  // the instanceMatrix (setMatrixAt). Per-mesh: a recreated mesh re-applies.
-  const xformAppliedMeshRef = useRef<THREE.InstancedMesh | null>(null);
-  useEffect(() => {
-    if (
-      isWebGPURenderer &&
-      mesh &&
-      xformTexRef.current &&
-      xformAppliedMeshRef.current !== mesh
-    ) {
-      xformAppliedMeshRef.current = mesh;
-      applyTslInstanceTransform(
-        mesh.material as THREE.MeshStandardMaterial,
-        xformTexRef.current,
-        xformTexRef.current.image.width,
-        xformTexRef.current.image.height,
-      ).then(success => {
-        gpuTransformRef.current = success;
-        if (success) logger.debug('[GemNodes] GPU instance transform active', { dominant });
-        else xformAppliedMeshRef.current = null; // allow retry
-      }).catch(() => {
-        xformAppliedMeshRef.current = null;
-      });
-    }
-  }, [dominant, mesh]);
+  // Per-node metadata-driven emissive + GPU instance transform (WebGPU) and the
+  // GLSL metadata-glow (WebGL) are BOTH applied synchronously inside the mesh
+  // useMemo above, against the freshly-created material. They are NOT wired from
+  // post-mount effects: React double-renders this component (dev), so useMemo
+  // runs twice and creates two meshes, but an effect binds to only one of them —
+  // it raced mesh recreation and left the committed live mesh on the flat PBR /
+  // CPU-instanceMatrix fallback (the stale mesh kept the augment). useMemo runs
+  // for the committed mesh, so applying there reaches the live one on every
+  // recreation (capacity growth / dominant-mode change). Nothing to do here.
 
   const computeColor = useCallback((node: GraphNode, mode: GraphVisualMode, nodeIndex?: number): THREE.Color => {
     // ADR-031 D6: `colorScheme` is the single "node colour by" selector. The
@@ -714,7 +718,16 @@ const GemNodesInner: React.ForwardRefRenderFunction<GemNodesHandle, GemNodesProp
       const breathingAmplitude = agentVis?.breathingAmplitude ?? 0.4;
       const kgInnerGlow = kgVis?.innerGlowIntensity ?? 0.3;
 
-      if (!pEnabled) {
+      // Task #50 (WebGL parity): when the GLSL per-instance glow owns this mesh,
+      // the injected shader breathes per-node (authority→pulse) from the metadata
+      // texture. Feed it the per-type glow scale via the live uGlowStrength uniform
+      // and hold the base emissiveIntensity at a low stable floor so the per-node
+      // term dominates — matching the WebGPU TSL emissiveNode. NO global breathing
+      // here (that was the uniform-breathing parity gap this replaces).
+      if (glslGlowMeshRef.current === inst) {
+        glslGlowStrengthRef.current.value = glowBase * typeGlowStrength;
+        currentMat.emissiveIntensity = glowBase * kgInnerGlow;
+      } else if (!pEnabled) {
         // Pulse disabled — static emissive from type-specific settings
         currentMat.emissiveIntensity = dominant === 'agent'
           ? agentBaseEmissive * glowBase
@@ -885,6 +898,10 @@ const GemNodesInner: React.ForwardRefRenderFunction<GemNodesHandle, GemNodesProp
           texBuf[i4 + 3] = computeRecency(node.metadata?.lastModified ?? node.metadata?.updatedAt);
         }
         if (metaTexRef.current) metaTexRef.current.needsUpdate = true;
+        // WebGL parity: aGlowMeta wraps the SAME texBuf — re-upload it too so the
+        // GLSL emissive injection sees the refreshed per-instance metadata.
+        const glowAttr = inst.geometry.getAttribute('aGlowMeta');
+        if (glowAttr) glowAttr.needsUpdate = true;
         prevMetaHashRef.current = metaHash;
       }
     }

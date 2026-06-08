@@ -9,7 +9,7 @@ use log::{debug, error, info, warn};
 use std::sync::Arc;
 
 use crate::config::{PhysicsSettings, RenderingSettings};
-use crate::actors::messages::{BroadcastMessage, ForceResumePhysics, GetSettings, ResetPositions, SetComputeMode, UpdateConstraints, UpdateSettings, UpdateSimulationParams};
+use crate::actors::messages::{BroadcastMessage, ForceResumePhysics, GetSettings, ResetPositions, SetComputeMode, UpdateClusteringParams, UpdateConstraints, UpdateSettings, UpdateSimulationParams};
 use crate::utils::unified_gpu_compute::ComputeMode;
 use crate::settings::models::{ConstraintSettings, NodeFilterSettings, QualityGateSettings, AllSettings};
 use crate::settings::auth_extractor::{AuthenticatedUser, OptionalAuth};
@@ -391,6 +391,20 @@ pub async fn update_physics_settings(
                     error!("No GPUComputeActor or GPUManagerActor available — physics won't propagate to GPU!");
                 }
             }
+
+            // Community-detector params (algorithm/resolution/iterations) cannot ride
+            // in the 172-byte repr-C SimParams, so dispatch them separately and
+            // directly to the ForceComputeActor. This is what makes the Physics-tab
+            // "Community Resolution" / "Community Method" controls live: the GPU
+            // re-runs Leiden/Louvain with the new params on the next cohesion pass.
+            if let Some(gpu_addr) = state.get_gpu_compute_addr().await {
+                gpu_addr.do_send(UpdateClusteringParams {
+                    algorithm: new_physics.clustering_algorithm.clone(),
+                    resolution: new_physics.clustering_resolution,
+                    iterations: new_physics.clustering_iterations,
+                });
+            }
+
             info!("Sending UpdateSimulationParams to GraphServiceSupervisor");
             if let Err(e) = state.graph_service_addr.send(update_msg).await {
                 error!("Failed to propagate physics to GraphServiceActor: {}", e);

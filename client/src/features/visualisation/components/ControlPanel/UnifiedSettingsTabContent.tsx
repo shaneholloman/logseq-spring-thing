@@ -1,14 +1,14 @@
 /**
  * Unified Settings Tab Content
  *
- * Renders settings for a given tab with proper advanced mode and power user gating.
+ * Renders every setting for a given tab — no advanced gating. Power-user (auth)
+ * guards remain for server-side write permission only.
  * Integrates with the settingsStore for both local and server-side persistence.
  */
 
-import React, { useCallback, useState, useMemo } from 'react';
+import React, { useCallback, useState } from 'react';
 import { useSettingsStore } from '../../../../store/settingsStore';
-import { useControlPanelContext } from '../../../settings/components/control-panel-context';
-import { UNIFIED_SETTINGS_CONFIG, filterSettingsFields } from './unifiedSettingsConfig';
+import { UNIFIED_SETTINGS_CONFIG } from './unifiedSettingsConfig';
 import { nostrAuth } from '../../../../services/nostrAuthService';
 import { webSocketService } from '../../../../store/websocketStore';
 import type { SettingField } from './types';
@@ -40,20 +40,32 @@ export const UnifiedSettingsTabContent: React.FC<UnifiedSettingsTabContentProps>
   const updateSettings = useSettingsStore(state => state.updateSettings);
   const isPowerUser = useSettingsStore(state => state.isPowerUser);
   const user = useSettingsStore(state => state.user);
-  const { advancedMode } = useControlPanelContext();
 
   const [nostrConnected, setNostrConnected] = useState(false);
   const [nostrPublicKey, setNostrPublicKey] = useState('');
   const [savingField, setSavingField] = useState<string | null>(null);
 
+  // Transient state for the Analytics "Run Grouping" action (localKey fields).
+  // These are one-shot inputs to POST /api/analytics/clustering/run, not settings.
+  const [groupingRunning, setGroupingRunning] = useState(false);
+  const [grouping, setGrouping] = useState<{
+    method: string;
+    numClusters: number;
+    eps: number;
+    minSamples: number;
+    resolution: number;
+  }>({ method: 'communities', numClusters: 8, eps: 5.0, minSamples: 3, resolution: 1.0 });
+
   // Get the section config
   const sectionConfig = UNIFIED_SETTINGS_CONFIG[sectionId];
 
-  // Filter fields based on advanced mode and power user status
-  const visibleFields = useMemo(() => {
-    if (!sectionConfig) return [];
-    return filterSettingsFields(sectionConfig.fields, advancedMode, isPowerUser);
-  }, [sectionConfig, advancedMode, isPowerUser]);
+  // Every field is visible — no advanced gating — except fields with a
+  // `showWhen` clause, which depend on transient grouping state (e.g. DBSCAN
+  // params only appear when method === 'dbscan').
+  const visibleFields = (sectionConfig?.fields ?? []).filter(field =>
+    !field.showWhen ||
+    (grouping as Record<string, any>)[field.showWhen.localKey] === field.showWhen.equals
+  );
 
   // Get value from nested path
   const getValueFromPath = useCallback((path: string): any => {
@@ -123,6 +135,16 @@ export const UnifiedSettingsTabContent: React.FC<UnifiedSettingsTabContentProps>
     }
   }, [updateSettings, isPowerUser, user, onError, onSuccess]);
 
+  // Route a field edit: transient localKey fields mutate local grouping state;
+  // everything else persists through the settings store.
+  const handleFieldChange = useCallback((field: SettingField, value: any) => {
+    if (field.localKey) {
+      setGrouping(prev => ({ ...prev, [field.localKey as string]: value }));
+      return;
+    }
+    if (field.path) updateSettingByPath(field.path, value, field);
+  }, [updateSettingByPath]);
+
   // Nostr login handler
   const handleNostrLogin = async () => {
     try {
@@ -147,7 +169,9 @@ export const UnifiedSettingsTabContent: React.FC<UnifiedSettingsTabContentProps>
 
   // Render a single field
   const renderField = (field: SettingField) => {
-    const value = field.path ? getValueFromPath(field.path) : undefined;
+    const value = field.localKey
+      ? (grouping as Record<string, any>)[field.localKey]
+      : field.path ? getValueFromPath(field.path) : undefined;
     const isWritable = canWrite(field);
     const isSaving = savingField === field.key;
 
@@ -246,7 +270,7 @@ export const UnifiedSettingsTabContent: React.FC<UnifiedSettingsTabContentProps>
               type="range"
               id={field.key}
               value={Number(value) || 0}
-              onChange={(e) => isWritable && field.path && updateSettingByPath(field.path, Number(e.target.value), field)}
+              onChange={(e) => isWritable && handleFieldChange(field, Number(e.target.value))}
               disabled={!isWritable || isSaving}
               min={field.min || 0}
               max={field.max || 100}
@@ -311,7 +335,7 @@ export const UnifiedSettingsTabContent: React.FC<UnifiedSettingsTabContentProps>
             <select
               id={field.key}
               value={value || field.options?.[0] || ''}
-              onChange={(e) => isWritable && field.path && updateSettingByPath(field.path, e.target.value, field)}
+              onChange={(e) => isWritable && handleFieldChange(field, e.target.value)}
               disabled={!isWritable || isSaving}
               style={{
                 width: '100%',
@@ -463,28 +487,60 @@ export const UnifiedSettingsTabContent: React.FC<UnifiedSettingsTabContentProps>
             const currentlyWebGPU = isWebGPURenderer;
             setForceWebGLOverride(currentlyWebGPU);
             window.location.reload();
+          } else if (field.action === 'run_clustering') {
+            if (groupingRunning) return;
+            setGroupingRunning(true);
+            try {
+              // Build the method-specific params; the backend (ClusteringParams,
+              // camelCase) ignores unset Options. Only send what the method uses.
+              const params: Record<string, number> = {};
+              if (grouping.method === 'kmeans') {
+                params.numClusters = grouping.numClusters;
+              } else if (grouping.method === 'dbscan') {
+                params.eps = grouping.eps;
+                params.minSamples = grouping.minSamples;
+              } else {
+                params.resolution = grouping.resolution; // communities (Leiden)
+              }
+              const { default: axios } = await import('axios');
+              await axios.post('/api/analytics/clustering/run', { method: grouping.method, params });
+              onSuccess?.(`Grouping started (${grouping.method}) — colours and hulls update when the GPU run completes`);
+            } catch (err: any) {
+              const status = err?.response?.status;
+              onError?.(status === 401
+                ? 'Sign in to run grouping (authentication required)'
+                : err?.response?.data?.error || 'Failed to start grouping');
+            } finally {
+              setGroupingRunning(false);
+            }
           }
         };
 
         const isWebGPUToggle = field.action === 'toggle-webgpu';
         const isResetLayout = field.action === 'reset_layout';
+        const isRunClustering = field.action === 'run_clustering';
         const webgpuActive = isWebGPUToggle ? isWebGPURenderer : false;
 
         const buttonGradient = isWebGPUToggle
           ? (webgpuActive ? 'linear-gradient(to right, #10b981, #059669)' : 'linear-gradient(to right, #6b7280, #4b5563)')
           : isResetLayout
             ? 'linear-gradient(to right, #f59e0b, #d97706)'
-            : 'linear-gradient(to right, #3b82f6, #2563eb)';
+            : isRunClustering
+              ? 'linear-gradient(to right, #8b5cf6, #7c3aed)'
+              : 'linear-gradient(to right, #3b82f6, #2563eb)';
         const buttonShadow = isWebGPUToggle
           ? (webgpuActive ? '0 2px 4px rgba(16, 185, 129, 0.3)' : '0 2px 4px rgba(107, 114, 128, 0.3)')
           : isResetLayout
             ? '0 2px 4px rgba(245, 158, 11, 0.3)'
-            : '0 2px 4px rgba(59, 130, 246, 0.3)';
+            : isRunClustering
+              ? '0 2px 4px rgba(139, 92, 246, 0.3)'
+              : '0 2px 4px rgba(59, 130, 246, 0.3)';
 
         return (
           <div key={field.key} style={{ padding: '8px 0' }}>
             <button
               onClick={handleAction}
+              disabled={isRunClustering && groupingRunning}
               style={{
                 width: '100%',
                 display: 'flex',
@@ -498,9 +554,10 @@ export const UnifiedSettingsTabContent: React.FC<UnifiedSettingsTabContentProps>
                 fontSize: '11px',
                 fontWeight: '600',
                 border: 'none',
-                cursor: 'pointer',
+                cursor: (isRunClustering && groupingRunning) ? 'wait' : 'pointer',
                 transition: 'all 0.2s',
                 boxShadow: buttonShadow,
+                opacity: (isRunClustering && groupingRunning) ? 0.7 : 1,
               }}
               onMouseEnter={(e) => {
                 e.currentTarget.style.transform = 'translateY(-1px)';
@@ -512,7 +569,9 @@ export const UnifiedSettingsTabContent: React.FC<UnifiedSettingsTabContentProps>
               }}
             >
               <RefreshCw size={14} />
-              {isWebGPUToggle ? (webgpuActive ? 'WebGPU Active — Click for WebGL' : 'WebGL Active — Click for WebGPU') : field.label}
+              {isWebGPUToggle
+                ? (webgpuActive ? 'WebGPU Active — Click for WebGL' : 'WebGL Active — Click for WebGPU')
+                : isRunClustering && groupingRunning ? 'Running…' : field.label}
             </button>
             {field.description && (
               <p style={{
@@ -567,11 +626,6 @@ export const UnifiedSettingsTabContent: React.FC<UnifiedSettingsTabContentProps>
     );
   }
 
-  // Check if entire section is hidden
-  if (sectionConfig.isAdvanced && !advancedMode) {
-    return null;
-  }
-
   if (sectionConfig.isPowerUserOnly && !isPowerUser) {
     return (
       <div style={{
@@ -624,15 +678,6 @@ export const UnifiedSettingsTabContent: React.FC<UnifiedSettingsTabContentProps>
         {sectionConfig.title}
         {sectionConfig.isPowerUserOnly && (
           <Lock size={10} style={{ color: '#fbbf24' }} />
-        )}
-        {!advancedMode && visibleFields.length < sectionConfig.fields.length && (
-          <span style={{
-            fontSize: '8px',
-            color: 'rgba(255,255,255,0.4)',
-            marginLeft: 'auto'
-          }}>
-            +{sectionConfig.fields.length - visibleFields.length} in advanced
-          </span>
         )}
       </h3>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>

@@ -170,7 +170,7 @@ visualisation:
         dt: 0.016
         temperature: 0.0
         gravity: 0.002
-        clusterStrength: 0.002
+        clusterStrength: 0.0
         restLength: 50.0
         repulsionSofteningEpsilon: 0.0001
         centerGravityK: 0.2
@@ -181,7 +181,7 @@ visualisation:
         ssspAlpha: 1.5
         constraintRampFrames: 60
         constraintMaxForcePerNode: 50.0
-        clusteringAlgorithm: louvain
+        clusteringAlgorithm: leiden
         clusterCount: 5
         clusteringResolution: 1.0
         clusteringIterations: 50
@@ -283,7 +283,7 @@ visualisation:
         dt: 0.016
         temperature: 0.0
         gravity: 0.002
-        clusterStrength: 0.002
+        clusterStrength: 0.0
         restLength: 50.0
         repulsionSofteningEpsilon: 0.0001
         centerGravityK: 0.2
@@ -294,7 +294,7 @@ visualisation:
         ssspAlpha: 1.5
         constraintRampFrames: 60
         constraintMaxForcePerNode: 50.0
-        clusteringAlgorithm: louvain
+        clusteringAlgorithm: leiden
         clusterCount: 5
         clusteringResolution: 1.0
         clusteringIterations: 50

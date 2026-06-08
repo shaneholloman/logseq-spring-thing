@@ -49,9 +49,10 @@ export function createCrystalOrbMaterial(): CrystalOrbMaterialResult {
     depthWrite: true,
     emissive: new THREE.Color(0.12, 0.12, 0.25),
     emissiveIntensity: 0.3,
-    ...(isWebGPURenderer ? {
-      envMapIntensity: 2.0,
-    } : {}),
+    // envMapIntensity scales reflected-environment light. GraphCanvas installs
+    // scene.environment (drei PMREM) on BOTH backends, so the WebGL orb now
+    // reflects the same as WebGPU (parity, task #50). Previously gated to WebGPU.
+    envMapIntensity: 2.0,
   });
 
   // TSL ENABLED (r183+) with PBR fallback — the full metadata-driven TSL upgrade

@@ -733,6 +733,10 @@ export interface NodeFilterSettings {
   enabled: boolean;
   minConnections?: number;
   maxConnections?: number;
+  /** Minimum OWL maturity tier for ontology nodes (real per-node quality signal:
+   *  draft<developing<emerging<growing<established<mature). 'off'/undefined = no gate.
+   *  Nodes without a `maturity` field (e.g. knowledge pages) are unaffected. */
+  minMaturity?: string;
   nodeTypes?: string[];
   searchQuery?: string;
   qualityThreshold?: number;

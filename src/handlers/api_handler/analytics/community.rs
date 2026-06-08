@@ -19,6 +19,7 @@ pub struct CommunityDetectionRequest {
     pub convergence_tolerance: Option<f32>,
     pub synchronous: Option<bool>,
     pub seed: Option<u32>,
+    pub resolution: Option<f32>,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -67,6 +68,8 @@ pub async fn run_gpu_community_detection(
     
     let algorithm = match request.algorithm.as_str() {
         "label_propagation" | "lp" => CommunityDetectionAlgorithm::LabelPropagation,
+        "louvain" => CommunityDetectionAlgorithm::Louvain,
+        "leiden" | "communities" => CommunityDetectionAlgorithm::Leiden,
         _ => {
             return Err(format!(
                 "Unsupported community detection algorithm: {}",
@@ -75,13 +78,14 @@ pub async fn run_gpu_community_detection(
         }
     };
 
-    
+
     let params = CommunityDetectionParams {
         algorithm: algorithm.clone(),
         max_iterations: Some(request.max_iterations.unwrap_or(100)),
         convergence_tolerance: Some(request.convergence_tolerance.unwrap_or(0.001)),
         synchronous: Some(request.synchronous.unwrap_or(true)),
         seed: Some(request.seed.unwrap_or(42)),
+        resolution: Some(request.resolution.unwrap_or(1.0)),
     };
 
     

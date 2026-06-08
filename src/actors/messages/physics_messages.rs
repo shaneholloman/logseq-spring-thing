@@ -227,6 +227,19 @@ pub struct UpdateForceParams {
     pub max_velocity: f32,
 }
 
+/// Set the live community-cohesion detector at runtime. Drives the GPU
+/// `refresh_community_cohesion_labels` partition (Leiden default / Louvain),
+/// so the Physics-tab "Community Resolution" control takes effect without a
+/// graph reload. Independent of analytics clustering (node coloring / hulls,
+/// which run task-based via `/api/analytics/clustering/run`).
+#[derive(Message, Clone)]
+#[rtype(result = "Result<(), String>")]
+pub struct UpdateClusteringParams {
+    pub algorithm: String,
+    pub resolution: f32,
+    pub iterations: u32,
+}
+
 // ---------------------------------------------------------------------------
 // Position synchronization
 // ---------------------------------------------------------------------------

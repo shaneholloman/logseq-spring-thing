@@ -155,7 +155,6 @@ function parseCommandToActions(cmd: string): SettingsAction[] {
             if (!draft.visualisation) draft.visualisation = {};
             if (!draft.visualisation.clusterHulls) draft.visualisation.clusterHulls = {};
             draft.visualisation.clusterHulls.enabled = true;
-            draft.visualisation.clusterHulls.opacity = 0.10;
           });
         },
       });
@@ -325,7 +324,8 @@ function parseCommandToActions(cmd: string): SettingsAction[] {
       description: 'Resetting physics to defaults',
       endpoint: '/api/settings/physics',
       method: 'PUT',
-      body: { repelK: 200, springK: 2.0, damping: 0.5, restLength: 80, maxVelocity: 200 },
+      // Canonical defaults — mirror DEFAULT_PHYSICS_SETTINGS exactly.
+      body: { repelK: 120, springK: 12.0, damping: 0.9, restLength: 50, maxVelocity: 100 },
     });
   }
 
@@ -344,30 +344,26 @@ function parseCommandToActions(cmd: string): SettingsAction[] {
     });
   }
 
-  // Clustering algorithm
+  // Grouping — spatial K-means vs topological communities (unified run endpoint)
   if (lower.includes('kmeans') || lower.includes('louvain') || lower.includes('spectral')) {
-    const algo = lower.includes('kmeans') ? 'kmeans' : lower.includes('louvain') ? 'louvain' : 'spectral';
+    const isKmeans = lower.includes('kmeans');
     actions.push({
-      description: `Running ${algo} clustering`,
-      endpoint: '/api/clustering/configure',
+      description: isKmeans ? 'Running K-means grouping' : 'Running community grouping',
+      endpoint: '/api/analytics/clustering/run',
       method: 'POST',
-      body: { algorithm: algo, numClusters: 6, resolution: 1.0, iterations: 30, exportAssignments: true, autoUpdate: false },
-    });
-    actions.push({
-      description: 'Starting clustering computation',
-      endpoint: '/api/clustering/start',
-      method: 'POST',
-      body: {},
+      body: isKmeans
+        ? { method: 'kmeans', params: { numClusters: 6 } }
+        : { method: 'communities', params: { resolution: 1.0 } },
     });
   }
 
   // Semantic clusters — "create semantic clusters", "group by topic", "cluster"
   if ((lower.includes('semantic') && lower.includes('cluster')) || lower.includes('group by')) {
     actions.push({
-      description: 'Enabling semantic layout forces + Louvain clustering',
+      description: 'Enabling community cohesion + Leiden detection',
       endpoint: '/api/settings/physics',
       method: 'PUT',
-      body: { clusteringAlgorithm: 'louvain', clusterCount: 8, clusteringResolution: 1.0, clusteringIterations: 50 },
+      body: { clusterStrength: 0.005, clusteringAlgorithm: 'leiden', clusteringResolution: 1.0, clusteringIterations: 50 },
     });
     actions.push({
       description: 'Enabling cluster visualization',
@@ -380,7 +376,6 @@ function parseCommandToActions(cmd: string): SettingsAction[] {
           if (!draft.visualisation) draft.visualisation = {};
           if (!draft.visualisation.clusterHulls) draft.visualisation.clusterHulls = {};
           draft.visualisation.clusterHulls.enabled = true;
-          draft.visualisation.clusterHulls.opacity = 0.08;
         });
       },
     });
@@ -395,8 +390,9 @@ function parseCommandToActions(cmd: string): SettingsAction[] {
         ss?.updateSettings?.((draft: any) => {
           const labels = draft.visualisation?.graphs?.logseq?.labels;
           if (labels) {
-            labels.labelDistanceThreshold = Math.max(100, (labels.labelDistanceThreshold || 1200) * 0.5);
-            labels.desktopFontSize = Math.max(0.15, (labels.desktopFontSize || 0.35) * 0.7);
+            // Raw target values (no scaling) within the slider bounds.
+            labels.labelDistanceThreshold = 600;
+            labels.desktopFontSize = 0.25;
             labels.showMetadata = false;
           }
         });
@@ -413,8 +409,9 @@ function parseCommandToActions(cmd: string): SettingsAction[] {
         ss?.updateSettings?.((draft: any) => {
           const labels = draft.visualisation?.graphs?.logseq?.labels;
           if (labels) {
-            labels.labelDistanceThreshold = Math.min(2000, (labels.labelDistanceThreshold || 500) * 1.5);
-            labels.desktopFontSize = Math.min(2.0, (labels.desktopFontSize || 0.35) * 1.4);
+            // Raw target values (no scaling) within the slider bounds.
+            labels.labelDistanceThreshold = 1600;
+            labels.desktopFontSize = 0.6;
             labels.enableLabels = true;
           }
         });

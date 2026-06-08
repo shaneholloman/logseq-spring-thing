@@ -21,7 +21,7 @@ use log::info;
 /// weighted degree k_i; `total_weight` is m = Σ k_i / 2. CSR entries store both
 /// directions of every undirected edge, so `intra_c` (the directed intra sum)
 /// already counts each internal edge twice — matching the 2m denominator.
-fn modularity_csr(
+pub(super) fn modularity_csr(
     labels: &[i32],
     offsets: &[i32],
     indices: &[i32],
@@ -762,6 +762,90 @@ impl UnifiedGPUCompute {
         Ok(labels)
     }
 
+    /// Run Louvain community detection and write the resulting community labels
+    /// into `cluster_assignments`, so the force-loop `cluster_cohesion_kernel`
+    /// pulls each node toward its COMMUNITY's centroid (topology-driven cohesion)
+    /// rather than K-means' spatial centroids (which are tautological — they
+    /// re-derive structure from the layout they are meant to shape).
+    ///
+    /// Sets `community_count_active` to the number of distinct communities, which
+    /// the per-frame centroid reduction and cohesion kernel use as `num_clusters`
+    /// (both guard `label < num_clusters`). Returns the community count.
+    ///
+    /// No-op (returns 0, count cleared) when the graph has no edges — Louvain over
+    /// an edgeless graph yields all-singleton communities, for which cohesion is
+    /// meaningless; the caller skips the cohesion pass in that case.
+    pub fn refresh_community_cohesion_labels(&mut self) -> Result<usize> {
+        if self.num_nodes == 0 || self.num_edges == 0 {
+            self.community_count_active = 0;
+            return Ok(0);
+        }
+
+        let iterations = self.clustering_iterations.max(1);
+        let resolution = self.clustering_resolution;
+        // Leiden is the default discrete detector (connected-community guarantee);
+        // "louvain" remains selectable as the un-refined variant. Both drive the
+        // same cohesion path — only the partition quality differs.
+        let (labels, num_communities, modularity, _iters, _sizes, _converged) =
+            if self.clustering_algorithm.eq_ignore_ascii_case("louvain") {
+                self.run_louvain_community_detection(iterations, resolution, 0)?
+            } else {
+                self.run_leiden_community_detection(iterations, resolution, 0)?
+            };
+
+        // Singleton-only or empty partition: no meaningful community structure to
+        // attract toward. Clear the active count so the force loop skips cohesion.
+        if num_communities <= 1 || labels.len() != self.num_nodes {
+            self.community_count_active = 0;
+            return Ok(0);
+        }
+
+        // Labels are dense contiguous in [0, num_communities); upload directly as
+        // the cohesion cluster_assignments (i32, one per node).
+        safe_upload(&mut self.cluster_assignments, &labels)?;
+        self.community_count_active = num_communities;
+
+        info!(
+            "[CohesionLouvain] {} communities drive cohesion (modularity={:.4})",
+            num_communities, modularity
+        );
+        Ok(num_communities)
+    }
+
+    /// Set the live community-cohesion detector parameters at runtime.
+    ///
+    /// The cohesion force supports only the discrete community detectors
+    /// (`leiden` default, `louvain` optional); any other value falls back to
+    /// `leiden`. Clearing `community_count_active` forces the next physics step
+    /// to re-run detection, so a resolution/algorithm change takes effect within
+    /// one frame instead of waiting out the refresh cadence.
+    pub fn set_community_detector(&mut self, algorithm: &str, resolution: f32, iterations: u32) {
+        let algo = if algorithm.eq_ignore_ascii_case("louvain") {
+            "louvain"
+        } else {
+            "leiden"
+        };
+        let resolution = resolution.clamp(0.1, 10.0);
+        let iterations = iterations.clamp(1, 1000);
+
+        let unchanged = self.clustering_algorithm.eq_ignore_ascii_case(algo)
+            && (self.clustering_resolution - resolution).abs() <= f32::EPSILON
+            && self.clustering_iterations == iterations;
+        if unchanged {
+            return;
+        }
+
+        self.clustering_algorithm = algo.to_string();
+        self.clustering_resolution = resolution;
+        self.clustering_iterations = iterations;
+        // Force re-detection on the next cohesion pass.
+        self.community_count_active = 0;
+
+        info!(
+            "[CohesionDetector] params updated: algorithm={}, resolution={:.3}, iterations={}",
+            algo, resolution, iterations
+        );
+    }
 
 }
 

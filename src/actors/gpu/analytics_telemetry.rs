@@ -62,6 +62,7 @@ pub enum AnalyticsKernel {
     Sssp,
     Apsp,
     ConnectedComponents,
+    Leiden,
 }
 
 impl AnalyticsKernel {
@@ -77,6 +78,7 @@ impl AnalyticsKernel {
             AnalyticsKernel::Sssp => "sssp",
             AnalyticsKernel::Apsp => "apsp",
             AnalyticsKernel::ConnectedComponents => "connected_components",
+            AnalyticsKernel::Leiden => "leiden",
         }
     }
 
@@ -92,14 +94,16 @@ impl AnalyticsKernel {
             AnalyticsKernel::Sssp => 6,
             AnalyticsKernel::Apsp => 7,
             AnalyticsKernel::ConnectedComponents => 8,
+            AnalyticsKernel::Leiden => 9,
         }
     }
 }
 
-const KERNEL_COUNT: usize = 9;
+const KERNEL_COUNT: usize = 10;
 
 /// Process-global per-kernel GPU-run counters. Index via [`AnalyticsKernel::idx`].
 static GPU_RUNS: [AtomicU64; KERNEL_COUNT] = [
+    AtomicU64::new(0),
     AtomicU64::new(0),
     AtomicU64::new(0),
     AtomicU64::new(0),
@@ -113,6 +117,7 @@ static GPU_RUNS: [AtomicU64; KERNEL_COUNT] = [
 
 /// Process-global per-kernel CPU-fallback counters. Index via [`AnalyticsKernel::idx`].
 static CPU_FALLBACK_RUNS: [AtomicU64; KERNEL_COUNT] = [
+    AtomicU64::new(0),
     AtomicU64::new(0),
     AtomicU64::new(0),
     AtomicU64::new(0),
@@ -183,6 +188,7 @@ pub fn snapshot() -> Vec<KernelExecutionCounts> {
         AnalyticsKernel::Sssp,
         AnalyticsKernel::Apsp,
         AnalyticsKernel::ConnectedComponents,
+        AnalyticsKernel::Leiden,
     ];
     KERNELS
         .iter()
@@ -257,6 +263,7 @@ mod tests {
             AnalyticsKernel::Sssp,
             AnalyticsKernel::Apsp,
             AnalyticsKernel::ConnectedComponents,
+            AnalyticsKernel::Leiden,
         ];
         let indices: HashSet<usize> = kernels.iter().map(|k| k.idx()).collect();
         assert_eq!(indices.len(), KERNEL_COUNT, "kernel indices must be unique");

@@ -15,19 +15,14 @@ import { ControlPanelHeader } from './ControlPanel/ControlPanelHeader';
 import { SystemInfo } from './ControlPanel/SystemInfo';
 import { BotsStatusPanel } from './ControlPanel/BotsStatusPanel';
 import { SpacePilotStatus } from './ControlPanel/SpacePilotStatus';
-import { TabNavigation } from './ControlPanel/TabNavigation';
 import type { ControlPanelProps } from './ControlPanel/types';
 
 // Unified Control Center Components
 import { SystemHealthIndicator } from './ControlPanel/SystemHealthIndicator';
-import { AdvancedModeToggle } from './ControlPanel/AdvancedModeToggle';
 import { UnifiedSettingsTabContent } from './ControlPanel/UnifiedSettingsTabContent';
-import { UNIFIED_TABS, filterTabs } from './ControlPanel/unifiedSettingsConfig';
+import { UNIFIED_TABS } from './ControlPanel/unifiedSettingsConfig';
 import { SolidTabContent } from '../../solid/components/SolidTabContent';
 import { OntologyTabContent } from '../../ontology/components/OntologyTabContent';
-import { ControlPanelProvider, useControlPanelContext } from '../../settings/components/control-panel-context';
-import { useSettingsStore } from '../../../store/settingsStore';
-import { Lock, Star } from 'lucide-react';
 import { CommandInput } from './CommandInput';
 
 
@@ -44,14 +39,8 @@ const IntegratedControlPanelInner: React.FC<ControlPanelProps> = ({
   const [isExpanded, setIsExpanded] = useState(true);
   const [activeTab, setActiveTab] = useState<string>('graph');
 
-  // Unified Control Center state
-  const { advancedMode } = useControlPanelContext();
-  const isPowerUser = useSettingsStore(state => state.isPowerUser);
-
-  // Filter visible tabs based on advanced mode and power user status
-  const visibleTabs = useMemo(() => {
-    return filterTabs(UNIFIED_TABS, advancedMode, isPowerUser);
-  }, [advancedMode, isPowerUser]);
+  // Every tab is visible — no advanced gating.
+  const visibleTabs = UNIFIED_TABS;
 
   // Calculate grid columns for tab layout
   const gridColumns = useMemo(() => {
@@ -217,25 +206,15 @@ const IntegratedControlPanelInner: React.FC<ControlPanelProps> = ({
         </button>
       </div>
 
-      {/* System Health and Advanced Mode Toggle - NEW UNIFIED COMPONENTS */}
-      <div style={{
-        display: 'flex',
-        gap: '6px',
-        marginBottom: '8px',
-        fontSize: '10px'
-      }}>
-        <div style={{ flex: 1 }}>
-          <SystemHealthIndicator
-            graphData={graphData}
-            botsData={botsData}
-            mcpConnected={botsData?.mcpConnected ?? false}
-            websocketStatus="connected"
-            metadataStatus={(graphData?.nodes?.length ?? 0) > 0 ? 'loaded' : 'loading'}
-          />
-        </div>
-        <div style={{ flex: 1 }}>
-          <AdvancedModeToggle compact />
-        </div>
+      {/* System Health */}
+      <div style={{ marginBottom: '8px', fontSize: '10px' }}>
+        <SystemHealthIndicator
+          graphData={graphData}
+          botsData={botsData}
+          mcpConnected={botsData?.mcpConnected ?? false}
+          websocketStatus="connected"
+          metadataStatus={(graphData?.nodes?.length ?? 0) > 0 ? 'loaded' : 'loading'}
+        />
       </div>
 
       {}
@@ -272,8 +251,6 @@ const IntegratedControlPanelInner: React.FC<ControlPanelProps> = ({
           }}>
             {visibleTabs.map((tab) => {
               const IconComponent = tab.icon;
-              const isAdvancedTab = tab.isAdvanced;
-              const isPowerUserTab = tab.isPowerUserOnly;
 
               return (
                 <TabsTrigger
@@ -288,34 +265,16 @@ const IntegratedControlPanelInner: React.FC<ControlPanelProps> = ({
                     padding: '6px 4px',
                     fontSize: '9px',
                     fontWeight: '500',
-                    color: isAdvancedTab ? 'rgba(168,85,247,0.9)' : 'rgba(255,255,255,0.7)',
-                    border: isPowerUserTab
-                      ? '1px solid rgba(251,191,36,0.3)'
-                      : '0',
+                    color: 'rgba(255,255,255,0.7)',
+                    border: '0',
                     borderRadius: '3px',
-                    background: isPowerUserTab
-                      ? 'rgba(251,191,36,0.05)'
-                      : 'transparent',
+                    background: 'transparent',
                     cursor: 'pointer',
                     height: '100%',
                     transition: 'all 0.2s',
                     position: 'relative'
                   }}
                 >
-                  {/* Power user indicator */}
-                  {isPowerUserTab && (
-                    <div style={{ position: 'absolute', top: '2px', right: '2px' }}>
-                      <Star size={6} style={{ color: '#fbbf24', fill: '#fbbf24' }} />
-                    </div>
-                  )}
-
-                  {/* Advanced mode indicator */}
-                  {isAdvancedTab && !isPowerUserTab && (
-                    <div style={{ position: 'absolute', top: '2px', right: '2px' }}>
-                      <Lock size={6} style={{ color: '#a855f7' }} />
-                    </div>
-                  )}
-
                   {IconComponent && <IconComponent size={14} />}
                   <div style={{ textAlign: 'center', lineHeight: '1.1' }}>
                     {tab.buttonKey && (
@@ -357,35 +316,12 @@ const IntegratedControlPanelInner: React.FC<ControlPanelProps> = ({
           </div>
         </Tabs>
       </div>
-
-      {/* Footer with tab count info */}
-      <div style={{
-        marginTop: '8px',
-        padding: '4px 8px',
-        background: 'rgba(255,255,255,0.03)',
-        borderRadius: '3px',
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        fontSize: '8px',
-        color: 'rgba(255,255,255,0.4)'
-      }}>
-        <span>{visibleTabs.length} tabs visible</span>
-        {!advancedMode && (
-          <span>+{UNIFIED_TABS.filter(t => t.isAdvanced).length} advanced hidden</span>
-        )}
-      </div>
     </div>
   );
 };
 
-// Exported component wrapped with ControlPanelProvider
 export const IntegratedControlPanel: React.FC<ControlPanelProps> = (props) => {
-  return (
-    <ControlPanelProvider>
-      <IntegratedControlPanelInner {...props} />
-    </ControlPanelProvider>
-  );
+  return <IntegratedControlPanelInner {...props} />;
 };
 
 export default IntegratedControlPanel;

@@ -12,6 +12,21 @@ use cust::module::Module;
 use cust::stream::{Stream, StreamFlags};
 use log::{info, warn};
 
+/// Frames between community-label refreshes (Leiden/Louvain) for force cohesion.
+/// Detection is topology-driven (modularity over CSR adjacency) with host-side
+/// refinement/aggregation, so cost scales with graph size — ~10s for a 17k-node
+/// knowledge graph — and it runs INLINE on the physics execute thread, blocking
+/// the step for its duration. Within a session the graph topology is static
+/// (identical modularity across refreshes), and the two cheap mechanisms keep
+/// cohesion correct between refreshes: the per-frame centroid reduction tracks
+/// live positions, and a buffer resize (node add/remove) force-resets the
+/// refresh (memory.rs). So labels only need infrequent recompute to catch
+/// edge-only background re-syncs. Frame-based, so it self-scales: larger graphs
+/// run fewer fps → longer wall-clock interval, exactly where detection is
+/// costliest. 3600 frames ≈ 60s at 60fps (small graphs), several minutes at the
+/// few-fps rates seen on large graphs.
+pub const COHESION_REFRESH_INTERVAL: u32 = 3600;
+
 #[allow(dead_code)]
 pub struct UnifiedGPUCompute {
     pub(crate) device: Device,
@@ -135,6 +150,31 @@ pub struct UnifiedGPUCompute {
     pub min_distances: DeviceBuffer<f32>,
     pub selected_nodes: DeviceBuffer<i32>,
     pub max_clusters: usize,
+
+    /// Per-community centroids for Louvain-driven cohesion. Sized to num_nodes
+    /// (Louvain can yield up to N communities, unlike K-means' fixed max_clusters).
+    /// Recomputed every frame from live positions so cohesion tracks each
+    /// community's running center of mass. Reuses cluster_assignments as labels
+    /// and community_sizes as the per-community counter.
+    pub community_centroids_x: DeviceBuffer<f32>,
+    pub community_centroids_y: DeviceBuffer<f32>,
+    pub community_centroids_z: DeviceBuffer<f32>,
+    /// Number of distinct communities currently labelled in cluster_assignments
+    /// (0 until the first Louvain refresh). Passed to the centroid + cohesion
+    /// kernels as `num_clusters`; both guard `label < num_clusters`.
+    pub community_count_active: usize,
+    /// Active clustering algorithm driving force cohesion ("louvain" | "kmeans").
+    /// Defaults to PhysicsSettings canonical ("louvain"). Gated by cluster_strength.
+    pub clustering_algorithm: String,
+    /// Louvain modularity resolution (PhysicsSettings default 1.0).
+    pub clustering_resolution: f32,
+    /// Louvain max local-pass iterations (PhysicsSettings default 50).
+    pub clustering_iterations: u32,
+    /// Frames between Louvain label refreshes. Labels are topology-driven and
+    /// expensive (host round-trips); centroids recompute every frame regardless.
+    pub cohesion_refresh_interval: u32,
+    /// Iteration index of the last Louvain label refresh (force-step counter).
+    pub last_cohesion_refresh_iter: i32,
 
 
     pub lof_scores: DeviceBuffer<f32>,
@@ -357,6 +397,12 @@ impl UnifiedGPUCompute {
         let distances_to_centroid = DeviceBuffer::zeroed(num_nodes)?;
         let cluster_sizes = DeviceBuffer::zeroed(max_clusters)?;
 
+        // Louvain-driven cohesion: community centroids sized to num_nodes since
+        // Louvain may produce up to N communities (K-means is capped at 50).
+        let community_centroids_x = DeviceBuffer::zeroed(num_nodes.max(1))?;
+        let community_centroids_y = DeviceBuffer::zeroed(num_nodes.max(1))?;
+        let community_centroids_z = DeviceBuffer::zeroed(num_nodes.max(1))?;
+
         let num_blocks = (num_nodes + 255) / 256;
         let partial_inertia = DeviceBuffer::zeroed(num_blocks)?;
         let min_distances = DeviceBuffer::zeroed(num_nodes)?;
@@ -467,6 +513,20 @@ impl UnifiedGPUCompute {
             min_distances,
             selected_nodes,
             max_clusters,
+
+            community_centroids_x,
+            community_centroids_y,
+            community_centroids_z,
+            community_count_active: 0,
+            // Leiden is the default discrete community detector — strict upgrade
+            // over Louvain (guarantees connected communities; eases the modularity
+            // resolution limit). "louvain"/"kmeans" remain selectable. Resolution
+            // and iteration bounds match PhysicsSettings::default() (physics_config.rs:372).
+            clustering_algorithm: "leiden".to_string(),
+            clustering_resolution: 1.0,
+            clustering_iterations: 50,
+            cohesion_refresh_interval: COHESION_REFRESH_INTERVAL,
+            last_cohesion_refresh_iter: 0,
 
             lof_scores,
             local_densities,

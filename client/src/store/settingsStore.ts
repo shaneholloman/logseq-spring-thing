@@ -17,7 +17,6 @@ import {
 export type { SettingsState }
 export type {
   GPUPhysicsParams,
-  ClusteringConfig,
   ConstraintConfig,
   WarmupSettings,
 } from './settings/settingsTypes'

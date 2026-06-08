@@ -57,7 +57,7 @@ export const DEFAULT_PHYSICS_SETTINGS: Partial<PhysicsSettings> = {
   // --- Constraints ---
   constraintRampFrames: 60,
   constraintMaxForcePerNode: 50.0,
-  clusterStrength: 0.002,
+  clusterStrength: 0.0,
 
   // --- Misc ---
   temperature: 0.0,

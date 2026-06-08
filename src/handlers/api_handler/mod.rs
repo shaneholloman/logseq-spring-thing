@@ -136,7 +136,6 @@ pub fn config(cfg: &mut web::ServiceConfig) {
         // .configure(crate::handlers::settings_handler::config)
 
         .configure(crate::handlers::ragflow_handler::config)
-        .configure(crate::handlers::clustering_handler::config)
         .configure(crate::handlers::constraints_handler::config)
         // Ontology routes (previously orphaned outside scope)
         .configure(ontology::config)

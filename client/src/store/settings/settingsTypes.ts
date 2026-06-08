@@ -44,15 +44,6 @@ export interface GPUPhysicsParams {
   iteration?: number;
 }
 
-export interface ClusteringConfig {
-  algorithm: 'none' | 'kmeans' | 'spectral' | 'louvain';
-  clusterCount: number;
-  resolution: number;
-  iterations: number;
-  exportEnabled: boolean;
-  importEnabled: boolean;
-}
-
 export interface ConstraintConfig {
   id: string;
   name: string;
@@ -107,7 +98,6 @@ export interface SettingsState {
   importSettings: (jsonString: string) => Promise<void>;
 
   updateComputeMode: (mode: string) => void;
-  updateClustering: (config: ClusteringConfig) => void;
   updateConstraints: (constraints: ConstraintConfig[]) => void;
   updatePhysics: (graphName: string, params: Partial<GPUPhysicsParams>) => void;
   updateWarmupSettings: (settings: WarmupSettings) => void;

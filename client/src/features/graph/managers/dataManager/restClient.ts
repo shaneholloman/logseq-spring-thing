@@ -34,15 +34,24 @@ export type GraphTypeFilter = 'knowledge' | 'ontology' | 'agent' | 'all' | null;
 export async function fetchGraphData(
   graphType: string,
   graphTypeFilter: GraphTypeFilter = null,
+  excludeLinkedPages: boolean = false,
 ): Promise<GraphData> {
   const maxRetries   = 3;
   const initialDelay = 500;
 
-  // Build the request URL: only append ?graph_type= for a concrete population.
-  const requestUrl =
-    graphTypeFilter && graphTypeFilter !== 'all'
-      ? `/graph/data?graph_type=${encodeURIComponent(graphTypeFilter)}`
-      : '/graph/data';
+  // Build the request URL. `graph_type` scopes the population; the orthogonal
+  // `exclude_linked_pages` drops the wikilink-stub nodes at source so they are
+  // never transferred when the client would only hide them (mirrors the server
+  // gate, shrinking the dominant payload from ~26.6MB to the rendered set).
+  const params = new URLSearchParams();
+  if (graphTypeFilter && graphTypeFilter !== 'all') {
+    params.set('graph_type', graphTypeFilter);
+  }
+  if (excludeLinkedPages) {
+    params.set('exclude_linked_pages', 'true');
+  }
+  const qs = params.toString();
+  const requestUrl = qs ? `/graph/data?${qs}` : '/graph/data';
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {

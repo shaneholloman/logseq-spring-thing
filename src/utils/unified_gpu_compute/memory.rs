@@ -486,6 +486,16 @@ impl UnifiedGPUCompute {
 
         self.cluster_assignments = DeviceBuffer::zeroed(actual_new_nodes)?;
         self.distances_to_centroid = DeviceBuffer::zeroed(actual_new_nodes)?;
+
+        // Louvain cohesion buffers track node count; labels are invalidated on
+        // resize so the next force step re-runs detection before applying cohesion.
+        self.community_centroids_x = DeviceBuffer::zeroed(actual_new_nodes.max(1))?;
+        self.community_centroids_y = DeviceBuffer::zeroed(actual_new_nodes.max(1))?;
+        self.community_centroids_z = DeviceBuffer::zeroed(actual_new_nodes.max(1))?;
+        self.community_sizes = DeviceBuffer::zeroed(actual_new_nodes.max(1))?;
+        self.community_count_active = 0;
+        self.last_cohesion_refresh_iter = 0;
+
         let new_num_blocks = (actual_new_nodes + 255) / 256;
         self.partial_inertia = DeviceBuffer::zeroed(new_num_blocks)?;
         self.min_distances = DeviceBuffer::zeroed(actual_new_nodes)?;

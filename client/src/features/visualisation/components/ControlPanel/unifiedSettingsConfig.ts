@@ -1,8 +1,8 @@
 /**
  * Unified Settings Configuration
  *
- * Reorganized tab structure with proper basic/advanced mode gating.
- * All settings are categorized by feature area with isAdvanced flags.
+ * Flat tab structure — every setting is visible. There is no basic/advanced
+ * gating: all controls live in their canonical tab with no duplicates.
  */
 
 import type { SectionConfig } from './types';
@@ -19,8 +19,6 @@ export interface UnifiedTabConfig {
   icon: typeof Eye;
   description: string;
   buttonKey?: string;
-  isAdvanced?: boolean;
-  isPowerUserOnly?: boolean;
 }
 
 // ============================================================================
@@ -77,32 +75,26 @@ export const UNIFIED_TABS: UnifiedTabConfig[] = [
     description: 'Network, authentication, and system settings',
     buttonKey: '6'
   },
-  // Advanced Tabs
   {
     id: 'xr',
     label: 'XR',
     icon: Glasses,
     description: 'VR/AR immersive settings',
-    buttonKey: '7',
-    isAdvanced: true
+    buttonKey: '7'
   },
   {
     id: 'ai',
     label: 'AI',
     icon: Bot,
     description: 'RAGFlow, Perplexity, and AI integrations',
-    buttonKey: '8',
-    isAdvanced: true,
-    isPowerUserOnly: true
+    buttonKey: '8'
   },
   {
     id: 'developer',
     label: 'Dev',
     icon: Code,
     description: 'Debug tools and developer options',
-    buttonKey: '9',
-    isAdvanced: true,
-    isPowerUserOnly: true
+    buttonKey: '9'
   },
   {
     id: 'solid',
@@ -114,7 +106,7 @@ export const UNIFIED_TABS: UnifiedTabConfig[] = [
 ];
 
 // ============================================================================
-// SETTINGS DEFINITIONS - With proper isAdvanced flags
+// SETTINGS DEFINITIONS - flat, every field visible
 // ============================================================================
 
 export const UNIFIED_SETTINGS_CONFIG: Record<string, SectionConfig> = {
@@ -131,7 +123,7 @@ export const UNIFIED_SETTINGS_CONFIG: Record<string, SectionConfig> = {
       { key: 'nodeSize', label: 'Node Size', type: 'slider', min: 0.1, max: 1, step: 0.05, path: 'visualisation.graphs.logseq.nodes.nodeSize', description: 'Global size gain (per-node magnitude comes from degree + content size)' },
       { key: 'perNodeGlow', label: 'Per-node glow (authority/degree)', type: 'toggle', path: 'visualisation.graphs.logseq.nodes.perNodeGlow', description: 'When on, per-node emissive (from the metadata texture) drives glow; when off, nodes use a uniform glow' },
       // Nodes - Advanced
-      { key: 'enableMetadataShape', label: 'Metadata Shape', type: 'toggle', path: 'visualisation.graphs.logseq.nodes.enableMetadataShape', description: 'Shape based on metadata', isAdvanced: true },
+      { key: 'enableMetadataShape', label: 'Metadata Shape', type: 'toggle', path: 'visualisation.graphs.logseq.nodes.enableMetadataShape', description: 'Shape based on metadata' },
 
       // Node Type Visibility
       { key: 'showKnowledge', label: 'Knowledge Nodes', type: 'toggle', path: 'visualisation.graphs.logseq.nodes.nodeTypeVisibility.knowledge', description: 'Show knowledge graph nodes' },
@@ -147,7 +139,7 @@ export const UNIFIED_SETTINGS_CONFIG: Record<string, SectionConfig> = {
 
       // Knowledge Graph Mode - Basic
       { key: 'kgEdgeColor', label: 'KG Edge Color', type: 'color', path: 'visualisation.graphTypeVisuals.knowledgeGraph.edgeColor', description: 'Edge color for knowledge graph mode' },
-      { key: 'ontologyEdgeColor', label: 'Ontology Edge Color', type: 'color', path: 'visualisation.graphTypeVisuals.ontology.edgeColor', description: 'Edge color for ontology mode', isAdvanced: true },
+      { key: 'ontologyEdgeColor', label: 'Ontology Edge Color', type: 'color', path: 'visualisation.graphTypeVisuals.ontology.edgeColor', description: 'Edge color for ontology mode' },
       { key: 'ringTintByClass', label: 'Tint ontology rings by class', type: 'toggle', path: 'visualisation.graphTypeVisuals.ontology.ringTintByClass', description: 'Tint each ontology node\'s orbital rings by its class instead of a uniform ring colour' },
 
       // Labels - Basic
@@ -157,31 +149,21 @@ export const UNIFIED_SETTINGS_CONFIG: Record<string, SectionConfig> = {
       { key: 'showMetadata', label: 'Show Metadata', type: 'toggle', path: 'visualisation.graphs.logseq.labels.showMetadata', description: 'Show domain, links, and quality info under labels' },
       { key: 'labelStandoff', label: 'Label Standoff', type: 'slider', min: -1.0, max: 3.0, step: 0.05, path: 'visualisation.graphs.logseq.labels.textPadding', description: 'Gap between node surface and label' },
       // Labels - Advanced
-      { key: 'labelOutlineColor', label: 'Outline Color', type: 'color', path: 'visualisation.graphs.logseq.labels.textOutlineColor', description: 'Label outline color', isAdvanced: true },
-      { key: 'labelOutlineWidth', label: 'Outline Width', type: 'slider', min: 0, max: 0.01, step: 0.001, path: 'visualisation.graphs.logseq.labels.textOutlineWidth', description: 'Label outline width', isAdvanced: true },
+      { key: 'labelOutlineColor', label: 'Outline Color', type: 'color', path: 'visualisation.graphs.logseq.labels.textOutlineColor', description: 'Label outline color' },
+      { key: 'labelOutlineWidth', label: 'Outline Width', type: 'slider', min: 0, max: 0.01, step: 0.001, path: 'visualisation.graphs.logseq.labels.textOutlineWidth', description: 'Label outline width' },
       { key: 'labelDistanceThreshold', label: 'Label Draw Distance', type: 'slider', min: 0, max: 2000, step: 25, path: 'visualisation.graphs.logseq.labels.labelDistanceThreshold', description: 'Max camera distance for label visibility' },
-      { key: 'maxLabelWidth', label: 'Max Label Width', type: 'slider', min: 2, max: 20, step: 0.5, path: 'visualisation.graphs.logseq.labels.maxLabelWidth', description: 'Maximum text wrapping width', isAdvanced: true },
+      { key: 'maxLabelWidth', label: 'Max Label Width', type: 'slider', min: 2, max: 20, step: 0.5, path: 'visualisation.graphs.logseq.labels.maxLabelWidth', description: 'Maximum text wrapping width' },
 
       // Rendering - Basic
       { key: 'ambientLight', label: 'Ambient Light', type: 'slider', min: 0, max: 2, step: 0.1, path: 'visualisation.rendering.ambientLightIntensity', description: 'Overall scene brightness' },
       { key: 'directionalLight', label: 'Direct Light', type: 'slider', min: 0, max: 2, step: 0.1, path: 'visualisation.rendering.directionalLightIntensity', description: 'Directional light intensity' },
       // Rendering - Advanced (Phase 6 ADR-04 renderer-architectural controls)
-      { key: 'maxEdgesCeiling', label: 'Max Edges Ceiling', type: 'slider', min: 1024, max: 262144, step: 1024, path: 'visualisation.rendering.maxEdgesCeiling', description: 'Hard cap on dynamically-grown edge instance capacity (Phase 6)', isAdvanced: true },
-      { key: 'softwareFallback', label: 'Software WebGL Fallback', type: 'select', options: ['auto', 'force-on', 'force-off'], path: 'visualisation.rendering.softwareFallback', description: 'Behaviour on software-rendered WebGL contexts (SwiftShader/llvmpipe)', isAdvanced: true },
-      { key: 'labelLayoutEvery', label: 'Label Layout Cadence (frames)', type: 'slider', min: 1, max: 10, step: 1, path: 'visualisation.rendering.labelLayoutEvery', description: 'Frames between full label re-layout passes', isAdvanced: true },
+      { key: 'maxEdgesCeiling', label: 'Max Edges Ceiling', type: 'slider', min: 1024, max: 262144, step: 1024, path: 'visualisation.rendering.maxEdgesCeiling', description: 'Hard cap on dynamically-grown edge instance capacity (Phase 6)' },
+      { key: 'softwareFallback', label: 'Software WebGL Fallback', type: 'select', options: ['auto', 'force-on', 'force-off'], path: 'visualisation.rendering.softwareFallback', description: 'Behaviour on software-rendered WebGL contexts (SwiftShader/llvmpipe)' },
+      { key: 'labelLayoutEvery', label: 'Label Layout Cadence (frames)', type: 'slider', min: 1, max: 10, step: 1, path: 'visualisation.rendering.labelLayoutEvery', description: 'Frames between full label re-layout passes' },
 
       // Selection Highlighting - Basic
-      { key: 'selectionHighlightColor', label: 'Selection Color', type: 'color', path: 'visualisation.interaction.selectionHighlightColor', description: 'Edge color when node is selected' },
-
-      // Analytics Overlays (ADR-031 D6) — server-computed structure on top of the
-      // base graph. Cluster hulls wrap each group's nodes in a translucent volume;
-      // anomaly highlighting recolours outlier nodes red.
-      { key: 'clusterHulls', label: 'Cluster Hulls', type: 'toggle', path: 'visualisation.clusterHulls.enabled', description: 'Draw a translucent convex hull around each server-provided cluster (DBSCAN) or community (Louvain) group' },
-      { key: 'clusterHullOpacity', label: 'Hull Opacity', type: 'slider', min: 0, max: 0.5, step: 0.01, path: 'visualisation.clusterHulls.opacity', description: 'Translucency of cluster hull volumes' },
-      { key: 'clusterHullMax', label: 'Max Hulls', type: 'slider', min: 1, max: 64, step: 1, path: 'visualisation.clusterHulls.maxHulls', description: 'Cap on the number of hulls drawn — the N largest groups are kept so dense graphs stay legible' },
-      { key: 'showAnomalies', label: 'Highlight Anomalies', type: 'toggle', path: 'qualityGates.showAnomalies', description: 'Recolour outlier nodes (LOF anomaly score) red regardless of the colour scheme' },
-      { key: 'clusterHullCommunityFallback', label: 'Community Hull Fallback', type: 'toggle', path: 'visualisation.clusterHulls.communityFallback', description: 'When the server provides no DBSCAN clusters, draw hulls around Louvain communities. Off by default — communities optimise modularity not spatial locality, so their hulls overlap; the cleaner community signal is "Node colour by → community".', isAdvanced: true },
-      { key: 'clusterHullSpatialFallback', label: 'Spatial Hull Fallback', type: 'toggle', path: 'visualisation.clusterHulls.spatialFallback', description: 'When the server provides no cluster or community structure, fabricate hulls from spatial proximity instead of showing none', isAdvanced: true }
+      { key: 'selectionHighlightColor', label: 'Selection Color', type: 'color', path: 'visualisation.interaction.selectionHighlightColor', description: 'Edge color when node is selected' }
     ]
   },
 
@@ -201,7 +183,7 @@ export const UNIFIED_SETTINGS_CONFIG: Record<string, SectionConfig> = {
       { key: 'springKAgent', group: 'Core Forces', label: 'Spring: Agent', type: 'slider', min: 0, max: 10, step: 0.1, path: 'visualisation.graphs.logseq.physics.springKAgent', description: 'Spring strength multiplier for agent nodes (default 1.0 = baseline).' },
       { key: 'repelK', group: 'Core Forces', label: 'Repulsion', type: 'slider', min: 0, max: 500, step: 10, path: 'visualisation.graphs.logseq.physics.repelK', description: 'Node repulsion constant (default 120, backend caps at 500)' },
       { key: 'restLength', group: 'Core Forces', label: 'Node Spacing', type: 'slider', min: 1, max: 200, step: 1, path: 'visualisation.graphs.logseq.physics.restLength', description: 'Spring rest length — small = dense, large = spread (default 50)' },
-      { key: 'centerGravityK', group: 'Core Forces', label: 'Cluster Tightness', type: 'slider', min: 0, max: 1.0, step: 0.01, path: 'visualisation.graphs.logseq.physics.centerGravityK', description: 'Pull towards center — higher values tightly cluster the graph (default 0.2)' },
+      { key: 'centerGravityK', group: 'Core Forces', label: 'Center Gravity', type: 'slider', min: 0, max: 1.0, step: 0.01, path: 'visualisation.graphs.logseq.physics.centerGravityK', description: 'Uniform pull of every node toward the world origin — higher values pack the whole graph tighter around the centre (default 0.2). Distinct from Community Cohesion (Constraints), which pulls toward per-community centroids.' },
       { key: 'gravity', group: 'Core Forces', label: 'Gravity', type: 'slider', min: 0, max: 0.01, step: 0.0001, path: 'visualisation.graphs.logseq.physics.gravity', description: 'Center-pull force — affects how loosely-connected nodes drift (default 0.002)' },
       { key: 'maxForce', group: 'Core Forces', label: 'Max Force', type: 'slider', min: 1, max: 2000, step: 5, path: 'visualisation.graphs.logseq.physics.maxForce', description: 'Maximum force per node (default 150)' },
       { key: 'maxVelocity', group: 'Core Forces', label: 'Max Velocity', type: 'slider', min: 1, max: 500, step: 1, path: 'visualisation.graphs.logseq.physics.maxVelocity', description: 'Maximum node speed (default 100)' },
@@ -249,7 +231,9 @@ export const UNIFIED_SETTINGS_CONFIG: Record<string, SectionConfig> = {
       // ===================================================================
       { key: 'constraintRampFrames', group: 'Constraints', label: 'Constraint Ramp', type: 'slider', min: 0, max: 300, step: 5, path: 'visualisation.graphs.logseq.physics.constraintRampFrames', description: 'Frames over which ontology constraints ramp up after a change (default 60)' },
       { key: 'constraintMaxForcePerNode', group: 'Constraints', label: 'Constraint Max Force', type: 'slider', min: 1, max: 2000, step: 5, path: 'visualisation.graphs.logseq.physics.constraintMaxForcePerNode', description: 'Per-node cap on ontology constraint forces (default 50)' },
-      { key: 'clusterStrength', group: 'Constraints', label: 'Cluster Strength', type: 'slider', min: 0, max: 0.02, step: 0.0005, path: 'visualisation.graphs.logseq.physics.clusterStrength', description: 'Raw cluster cohesion coefficient (default 0.002)' },
+      { key: 'clusterStrength', group: 'Constraints', label: 'Community Cohesion', type: 'slider', min: 0, max: 0.02, step: 0.0005, path: 'visualisation.graphs.logseq.physics.clusterStrength', description: 'Strength of the community-cohesion force — pulls each node toward the centroid of its GPU-detected community. defaults to 0 (off) — raise it to pull communities together; the backend gates on >0.0001 and clamps at 0.02. The partition itself is recomputed on the GPU using the method + resolution below.' },
+      { key: 'clusteringAlgorithm', group: 'Constraints', label: 'Community Method', type: 'select', options: ['leiden', 'louvain'], path: 'visualisation.graphs.logseq.physics.clusteringAlgorithm', description: 'Detector used to partition the graph into communities for the cohesion force. Leiden (default) yields well-connected communities; Louvain is faster but can produce disconnected ones. Applied live on the GPU.' },
+      { key: 'clusteringResolution', group: 'Constraints', label: 'Community Resolution', type: 'slider', min: 0.1, max: 5.0, step: 0.1, path: 'visualisation.graphs.logseq.physics.clusteringResolution', description: 'Resolution of the GPU community detection — higher splits the graph into more, smaller communities; lower merges into fewer, larger ones (default 1.0). Re-runs the detector live; the cohesion force then pulls toward the new centroids.' },
       { key: 'temperature', group: 'Constraints', label: 'Temperature', type: 'slider', min: 0, max: 1, step: 0.05, path: 'visualisation.graphs.logseq.physics.temperature', description: 'Simulation temperature (energy) — higher = more movement (default 0, backend caps at 1.0)' },
 
       // ===================================================================
@@ -264,10 +248,10 @@ export const UNIFIED_SETTINGS_CONFIG: Record<string, SectionConfig> = {
       // ===================================================================
       { key: 'layoutMode', group: 'Semantic & Layout Forces', label: 'Layout Mode', type: 'select', options: ['force-directed', 'dag-topdown', 'dag-radial', 'dag-leftright', 'type-clustering'], path: 'qualityGates.layoutMode', description: 'Graph layout algorithm — force-directed uses spring/repulsion, DAG modes add hierarchical layout, type-clustering groups by node type' },
       { key: 'semanticForces', group: 'Semantic & Layout Forces', label: 'Semantic Layout Forces', type: 'toggle', path: 'qualityGates.semanticForces', description: 'Enable DAG hierarchy layout and type-based clustering forces' },
-      { key: 'dagLevelAttraction', group: 'Semantic & Layout Forces', label: 'DAG Level Attraction', type: 'slider', min: 0, max: 2.0, step: 0.05, path: 'qualityGates.dagLevelAttraction', description: 'How strongly nodes pull toward their hierarchy level', isAdvanced: true },
-      { key: 'dagSiblingRepulsion', group: 'Semantic & Layout Forces', label: 'DAG Sibling Repulsion', type: 'slider', min: 0, max: 2.0, step: 0.05, path: 'qualityGates.dagSiblingRepulsion', description: 'How strongly same-level nodes spread apart', isAdvanced: true },
-      { key: 'typeClusterAttraction', group: 'Semantic & Layout Forces', label: 'Type Cluster Attraction', type: 'slider', min: 0, max: 2.0, step: 0.05, path: 'qualityGates.typeClusterAttraction', description: 'How strongly same-type nodes group together', isAdvanced: true },
-      { key: 'typeClusterRadius', group: 'Semantic & Layout Forces', label: 'Type Cluster Radius', type: 'slider', min: 10, max: 500, step: 10, path: 'qualityGates.typeClusterRadius', description: 'Target radius for type-based cluster zones', isAdvanced: true },
+      { key: 'dagLevelAttraction', group: 'Semantic & Layout Forces', label: 'DAG Level Attraction', type: 'slider', min: 0, max: 2.0, step: 0.05, path: 'qualityGates.dagLevelAttraction', description: 'How strongly nodes pull toward their hierarchy level' },
+      { key: 'dagSiblingRepulsion', group: 'Semantic & Layout Forces', label: 'DAG Sibling Repulsion', type: 'slider', min: 0, max: 2.0, step: 0.05, path: 'qualityGates.dagSiblingRepulsion', description: 'How strongly same-level nodes spread apart' },
+      { key: 'typeClusterAttraction', group: 'Semantic & Layout Forces', label: 'Type Cluster Attraction', type: 'slider', min: 0, max: 2.0, step: 0.05, path: 'qualityGates.typeClusterAttraction', description: 'How strongly same-type nodes group together' },
+      { key: 'typeClusterRadius', group: 'Semantic & Layout Forces', label: 'Type Cluster Radius', type: 'slider', min: 10, max: 500, step: 10, path: 'qualityGates.typeClusterRadius', description: 'Target radius for type-based cluster zones' },
 
       // ===================================================================
       // Smooth Movement — client-side tweening / interpolation (local only).
@@ -275,7 +259,7 @@ export const UNIFIED_SETTINGS_CONFIG: Record<string, SectionConfig> = {
       { key: 'tweeningEnabled', group: 'Smooth Movement', label: 'Smooth Node Movement', type: 'toggle', path: 'visualisation.graphs.logseq.tweening.enabled', description: 'Smoothly animate nodes toward server positions instead of snapping instantly' },
       { key: 'tweeningLerpBase', group: 'Smooth Movement', label: 'Node Animation Speed', type: 'slider', min: 0.0001, max: 0.15, step: 0.001, path: 'visualisation.graphs.logseq.tweening.lerpBase', description: 'How quickly nodes reach their target positions (lower = faster, higher = smoother)' },
       { key: 'tweeningMaxDivergence', group: 'Smooth Movement', label: 'Maximum Node Jump', type: 'slider', min: 1, max: 100, step: 1, path: 'visualisation.graphs.logseq.tweening.maxDivergence', description: 'Distance threshold above which nodes snap instantly instead of animating' },
-      { key: 'tweeningSnapThreshold', group: 'Smooth Movement', label: 'Snap Distance', type: 'slider', min: 0.01, max: 1.0, step: 0.01, path: 'visualisation.graphs.logseq.tweening.snapThreshold', description: 'Distance below which nodes snap to their target (sub-pixel precision)', isAdvanced: true }
+      { key: 'tweeningSnapThreshold', group: 'Smooth Movement', label: 'Snap Distance', type: 'slider', min: 0.01, max: 1.0, step: 0.01, path: 'visualisation.graphs.logseq.tweening.snapThreshold', description: 'Distance below which nodes snap to their target (sub-pixel precision)' }
     ]
   },
 
@@ -293,47 +277,47 @@ export const UNIFIED_SETTINGS_CONFIG: Record<string, SectionConfig> = {
       { key: 'sceneEffectsEnabled', label: 'Scene Effects', type: 'toggle', path: 'visualisation.sceneEffects.enabled', description: 'Enable WASM ambient effects' },
       { key: 'particleCount', label: 'Particle Count', type: 'slider', min: 64, max: 512, step: 32, path: 'visualisation.sceneEffects.particleCount', description: 'Number of ambient dust particles' },
       { key: 'particleOpacity', label: 'Particle Opacity', type: 'slider', min: 0, max: 1, step: 0.05, path: 'visualisation.sceneEffects.particleOpacity', description: 'Brightness of ambient particles' },
-      { key: 'particleDrift', label: 'Particle Drift', type: 'slider', min: 0, max: 2, step: 0.1, path: 'visualisation.sceneEffects.particleDrift', description: 'Drift speed of particles', isAdvanced: true },
+      { key: 'particleDrift', label: 'Particle Drift', type: 'slider', min: 0, max: 2, step: 0.1, path: 'visualisation.sceneEffects.particleDrift', description: 'Drift speed of particles' },
 
       // Energy Wisps (WASM) - Basic
       { key: 'wispsEnabled', label: 'Energy Wisps', type: 'toggle', path: 'visualisation.sceneEffects.wispsEnabled', description: 'Ephemeral glowing orbs that drift and fade' },
       { key: 'wispCount', label: 'Wisp Count', type: 'slider', min: 8, max: 128, step: 8, path: 'visualisation.sceneEffects.wispCount', description: 'Number of energy wisps' },
       { key: 'wispOpacity', label: 'Wisp Opacity', type: 'slider', min: 0, max: 1, step: 0.05, path: 'visualisation.sceneEffects.wispOpacity', description: 'Brightness of wisps' },
-      { key: 'wispDriftSpeed', label: 'Wisp Speed', type: 'slider', min: 0, max: 3, step: 0.1, path: 'visualisation.sceneEffects.wispDriftSpeed', description: 'How fast wisps drift', isAdvanced: true },
+      { key: 'wispDriftSpeed', label: 'Wisp Speed', type: 'slider', min: 0, max: 3, step: 0.1, path: 'visualisation.sceneEffects.wispDriftSpeed', description: 'How fast wisps drift' },
 
       // Atmosphere (WASM) - Basic
       { key: 'fogEnabled', label: 'Atmosphere', type: 'toggle', path: 'visualisation.sceneEffects.fogEnabled', description: 'Nebula background texture' },
       { key: 'fogOpacity', label: 'Atmosphere Opacity', type: 'slider', min: 0, max: 0.15, step: 0.01, path: 'visualisation.sceneEffects.fogOpacity', description: 'Intensity of nebula background' },
-      { key: 'atmosphereResolution', label: 'Atmosphere Detail', type: 'slider', min: 64, max: 256, step: 32, path: 'visualisation.sceneEffects.atmosphereResolution', description: 'Texture resolution (higher = more detail)', isAdvanced: true },
+      { key: 'atmosphereResolution', label: 'Atmosphere Detail', type: 'slider', min: 64, max: 256, step: 32, path: 'visualisation.sceneEffects.atmosphereResolution', description: 'Texture resolution (higher = more detail)' },
 
       // Bloom/Glow - Basic
       { key: 'glow', label: 'Bloom Glow', type: 'toggle', path: 'visualisation.glow.enabled', description: 'Enable bloom post-processing' },
       { key: 'glowIntensity', label: 'Glow Intensity', type: 'slider', min: 0, max: 1.5, step: 0.05, path: 'visualisation.glow.intensity', description: 'Brightness of bloom glow' },
       { key: 'glowRadius', label: 'Glow Radius', type: 'slider', min: 0, max: 1.0, step: 0.05, path: 'visualisation.glow.radius', description: 'Size of glow spread' },
-      { key: 'glowThreshold', label: 'Glow Threshold', type: 'slider', min: 0, max: 1, step: 0.01, path: 'visualisation.glow.threshold', description: 'Minimum brightness for glow', isAdvanced: true },
+      { key: 'glowThreshold', label: 'Glow Threshold', type: 'slider', min: 0, max: 1, step: 0.01, path: 'visualisation.glow.threshold', description: 'Minimum brightness for glow' },
 
       // Gem Material - Advanced
-      { key: 'gemIor', label: 'Gem IOR', type: 'slider', min: 1.0, max: 3.0, step: 0.01, path: 'visualisation.gemMaterial.ior', description: 'Index of refraction for gem nodes', isAdvanced: true },
-      { key: 'gemTransmission', label: 'Gem Transmission', type: 'slider', min: 0, max: 1, step: 0.01, path: 'visualisation.gemMaterial.transmission', description: 'Light transmission through gems', isAdvanced: true },
-      { key: 'gemClearcoat', label: 'Gem Clearcoat', type: 'slider', min: 0, max: 1, step: 0.01, path: 'visualisation.gemMaterial.clearcoat', description: 'Clearcoat intensity on gems', isAdvanced: true },
-      { key: 'gemClearcoatRoughness', label: 'Clearcoat Rough', type: 'slider', min: 0, max: 0.5, step: 0.01, path: 'visualisation.gemMaterial.clearcoatRoughness', description: 'Clearcoat roughness', isAdvanced: true },
-      { key: 'gemEmissiveIntensity', label: 'Gem Emissive', type: 'slider', min: 0, max: 2, step: 0.05, path: 'visualisation.gemMaterial.emissiveIntensity', description: 'Emissive glow intensity of gems', isAdvanced: true },
-      { key: 'gemIridescence', label: 'Gem Iridescence', type: 'slider', min: 0, max: 1, step: 0.05, path: 'visualisation.gemMaterial.iridescence', description: 'Rainbow sheen intensity', isAdvanced: true },
+      { key: 'gemIor', label: 'Gem IOR', type: 'slider', min: 1.0, max: 3.0, step: 0.01, path: 'visualisation.gemMaterial.ior', description: 'Index of refraction for gem nodes' },
+      { key: 'gemTransmission', label: 'Gem Transmission', type: 'slider', min: 0, max: 1, step: 0.01, path: 'visualisation.gemMaterial.transmission', description: 'Light transmission through gems' },
+      { key: 'gemClearcoat', label: 'Gem Clearcoat', type: 'slider', min: 0, max: 1, step: 0.01, path: 'visualisation.gemMaterial.clearcoat', description: 'Clearcoat intensity on gems' },
+      { key: 'gemClearcoatRoughness', label: 'Clearcoat Rough', type: 'slider', min: 0, max: 0.5, step: 0.01, path: 'visualisation.gemMaterial.clearcoatRoughness', description: 'Clearcoat roughness' },
+      { key: 'gemEmissiveIntensity', label: 'Gem Emissive', type: 'slider', min: 0, max: 2, step: 0.05, path: 'visualisation.gemMaterial.emissiveIntensity', description: 'Emissive glow intensity of gems' },
+      { key: 'gemIridescence', label: 'Gem Iridescence', type: 'slider', min: 0, max: 1, step: 0.05, path: 'visualisation.gemMaterial.iridescence', description: 'Rainbow sheen intensity' },
 
       // Embedding Cloud - Basic
       { key: 'embeddingCloudEnabled', label: 'Embedding Cloud', type: 'toggle', path: 'visualisation.embeddingCloud.enabled', description: 'Show RuVector embedding point cloud' },
       { key: 'embeddingCloudScale', label: 'Cloud Scale', type: 'slider', min: 0.5, max: 20, step: 0.5, path: 'visualisation.embeddingCloud.cloudScale', description: 'Overall scale of embedding cloud' },
       { key: 'embeddingPointSize', label: 'Point Size', type: 'slider', min: 0.5, max: 25, step: 0.5, path: 'visualisation.embeddingCloud.pointSize', description: 'Size of embedding points' },
       { key: 'embeddingOpacity', label: 'Cloud Opacity', type: 'slider', min: 0, max: 1, step: 0.05, path: 'visualisation.embeddingCloud.opacity', description: 'Transparency of embedding points' },
-      { key: 'embeddingRotation', label: 'Rotation Speed', type: 'slider', min: 0, max: 0.005, step: 0.0001, path: 'visualisation.embeddingCloud.rotationSpeed', description: 'Auto-rotation speed', isAdvanced: true },
+      { key: 'embeddingRotation', label: 'Rotation Speed', type: 'slider', min: 0, max: 0.005, step: 0.0001, path: 'visualisation.embeddingCloud.rotationSpeed', description: 'Auto-rotation speed' },
 
       // Animation - Basic
       { key: 'nodeAnimations', label: 'Node Animations', type: 'toggle', path: 'visualisation.animations.enableNodeAnimations', description: 'Enable node animations' },
       { key: 'pulseEnabled', label: 'Pulse Effect', type: 'toggle', path: 'visualisation.animations.pulseEnabled', description: 'Pulsing effect on nodes' },
-      { key: 'pulseSpeed', label: 'Pulse Speed', type: 'slider', min: 0.1, max: 2, step: 0.1, path: 'visualisation.animations.pulseSpeed', description: 'Speed of pulse', isAdvanced: true },
-      { key: 'pulseStrength', label: 'Pulse Strength', type: 'slider', min: 0.1, max: 2, step: 0.1, path: 'visualisation.animations.pulseStrength', description: 'Intensity of pulse', isAdvanced: true },
-      { key: 'selectionWave', label: 'Selection Wave', type: 'toggle', path: 'visualisation.animations.selectionWaveEnabled', description: 'Wave effect on selection', isAdvanced: true },
-      { key: 'waveSpeed', label: 'Wave Speed', type: 'slider', min: 0.1, max: 2, step: 0.1, path: 'visualisation.animations.waveSpeed', description: 'Speed of selection wave', isAdvanced: true }
+      { key: 'pulseSpeed', label: 'Pulse Speed', type: 'slider', min: 0.1, max: 2, step: 0.1, path: 'visualisation.animations.pulseSpeed', description: 'Speed of pulse' },
+      { key: 'pulseStrength', label: 'Pulse Strength', type: 'slider', min: 0.1, max: 2, step: 0.1, path: 'visualisation.animations.pulseStrength', description: 'Intensity of pulse' },
+      { key: 'selectionWave', label: 'Selection Wave', type: 'toggle', path: 'visualisation.animations.selectionWaveEnabled', description: 'Wave effect on selection' },
+      { key: 'waveSpeed', label: 'Wave Speed', type: 'slider', min: 0.1, max: 2, step: 0.1, path: 'visualisation.animations.waveSpeed', description: 'Speed of selection wave' }
     ]
   },
 
@@ -343,16 +327,29 @@ export const UNIFIED_SETTINGS_CONFIG: Record<string, SectionConfig> = {
   analytics: {
     title: 'Analytics & Metrics',
     fields: [
-      // Clustering - Advanced
-      { key: 'clusteringAlgorithm', label: 'Clustering Algorithm', type: 'select', options: ['none', 'kmeans', 'spectral', 'louvain', 'dbscan'], path: 'analytics.clustering.algorithm', description: 'Algorithm for clustering', isAdvanced: true },
-      { key: 'clusterCount', label: 'Cluster Count', type: 'slider', min: 2, max: 20, step: 1, path: 'analytics.clustering.clusterCount', description: 'Number of clusters', isAdvanced: true },
-      { key: 'clusterResolution', label: 'Resolution', type: 'slider', min: 0.1, max: 2, step: 0.1, path: 'analytics.clustering.resolution', description: 'Clustering resolution', isAdvanced: true },
-      { key: 'clusterIterations', label: 'Cluster Iterations', type: 'slider', min: 10, max: 100, step: 5, path: 'analytics.clustering.iterations', description: 'Algorithm iterations', isAdvanced: true },
+      // Run Grouping (ADR-031) — analytics clustering is a one-shot, task-based
+      // GPU run via POST /api/analytics/clustering/run, NOT a persisted setting.
+      // The method + params below are transient (localKey, not a settings path);
+      // "Run Grouping" fires the task. The resulting partition colours nodes via
+      // Graph → "Node colour by → cluster / community" and feeds the hulls below.
+      // This is the SINGLE analytics grouping action — distinct from the Physics
+      // tab's live Community Cohesion force, which is a continuous physics input.
+      { key: 'groupingMethod', group: 'Run Grouping', label: 'Method', type: 'select', localKey: 'method', options: ['communities', 'kmeans', 'dbscan'], description: 'How to group nodes: "communities" = topological community detection (Leiden) coloured by partition; "kmeans" = spatial K-means into a fixed number of clusters; "dbscan" = density-based spatial clustering (auto cluster count, marks outliers).' },
+      { key: 'groupingNumClusters', group: 'Run Grouping', label: 'Cluster Count (K)', type: 'slider', localKey: 'numClusters', min: 2, max: 50, step: 1, showWhen: { localKey: 'method', equals: 'kmeans' }, description: 'Number of spatial clusters for K-means (K).' },
+      { key: 'groupingEps', group: 'Run Grouping', label: 'Neighbourhood (eps)', type: 'slider', localKey: 'eps', min: 0.1, max: 10, step: 0.1, showWhen: { localKey: 'method', equals: 'dbscan' }, description: 'DBSCAN neighbourhood radius — larger merges more nodes into each cluster (backend range 0.1–10).' },
+      { key: 'groupingMinSamples', group: 'Run Grouping', label: 'Min Points', type: 'slider', localKey: 'minSamples', min: 1, max: 50, step: 1, showWhen: { localKey: 'method', equals: 'dbscan' }, description: 'DBSCAN minimum points to form a dense region — higher leaves more nodes as outliers.' },
+      { key: 'groupingResolution', group: 'Run Grouping', label: 'Resolution', type: 'slider', localKey: 'resolution', min: 0.1, max: 5, step: 0.1, showWhen: { localKey: 'method', equals: 'communities' }, description: 'Community-detection resolution — higher yields more, smaller communities (backend range 0.1–10). Independent of the Physics-tab cohesion resolution.' },
+      { key: 'runGrouping', group: 'Run Grouping', label: 'Run Grouping', type: 'action-button', action: 'run_clustering', description: 'Run the selected grouping on the GPU. Colours and hulls update when the task completes (a few seconds). Requires sign-in.' },
 
-      // Cluster Hulls - Visual hull rendering around detected clusters
-      { key: 'clusterHullsEnabled', label: 'Cluster Hulls', type: 'toggle', path: 'visualisation.clusterHulls.enabled', description: 'Show translucent hull around clusters' },
-      { key: 'clusterHullsOpacity', label: 'Hull Opacity', type: 'slider', min: 0.01, max: 0.5, step: 0.01, path: 'visualisation.clusterHulls.opacity', description: 'Transparency of cluster hulls' },
-      { key: 'clusterHullsMaxHulls', label: 'Max Hulls', type: 'slider', min: 4, max: 64, step: 1, path: 'visualisation.clusterHulls.maxHulls', description: 'Largest N spatial clusters to outline' }
+      // Cluster Hulls (ADR-031 D6) — SINGLE SOURCE OF TRUTH. Server-computed
+      // structure rendered as translucent convex hulls around each cluster
+      // (DBSCAN) or community (Louvain) group. Defaults mirror DEFAULT_CLUSTER_HULLS
+      // (opacity 0.25, maxHulls 32). Values written raw — no client-side scaling.
+      { key: 'clusterHulls', label: 'Cluster Hulls', type: 'toggle', path: 'visualisation.clusterHulls.enabled', description: 'Draw a translucent convex hull around each server-provided cluster (DBSCAN) or community (Louvain) group' },
+      { key: 'clusterHullOpacity', label: 'Hull Opacity', type: 'slider', min: 0, max: 0.5, step: 0.01, path: 'visualisation.clusterHulls.opacity', description: 'Translucency of cluster hull volumes (default 0.25)' },
+      { key: 'clusterHullMax', label: 'Max Hulls', type: 'slider', min: 1, max: 64, step: 1, path: 'visualisation.clusterHulls.maxHulls', description: 'Cap on the number of hulls drawn — the N largest groups are kept so dense graphs stay legible (default 32)' },
+      { key: 'clusterHullCommunityFallback', label: 'Community Hull Fallback', type: 'toggle', path: 'visualisation.clusterHulls.communityFallback', description: 'When the server provides no DBSCAN clusters, draw hulls around Louvain communities. Off by default — communities optimise modularity not spatial locality, so their hulls overlap; the cleaner community signal is "Node colour by → community".' },
+      { key: 'clusterHullSpatialFallback', label: 'Spatial Hull Fallback', type: 'toggle', path: 'visualisation.clusterHulls.spatialFallback', description: 'When the server provides no cluster or community structure, fabricate hulls from spatial proximity instead of showing none' }
     ]
   },
 
@@ -369,7 +366,9 @@ export const UNIFIED_SETTINGS_CONFIG: Record<string, SectionConfig> = {
       { key: 'qualityThreshold', label: 'Quality Threshold', type: 'slider', min: 0, max: 1, step: 0.05, path: 'nodeFilter.qualityThreshold', description: 'Minimum quality score (0-1)' },
       { key: 'filterByAuthority', label: 'Filter by Authority', type: 'toggle', path: 'nodeFilter.filterByAuthority', description: 'Use authority score for filtering' },
       { key: 'authorityThreshold', label: 'Authority Threshold', type: 'slider', min: 0, max: 1, step: 0.05, path: 'nodeFilter.authorityThreshold', description: 'Minimum authority score (0-1)' },
-      { key: 'filterMode', label: 'Filter Mode', type: 'select', options: ['or', 'and'], path: 'nodeFilter.filterMode', description: 'How to combine filters (and = both, or = either)', isAdvanced: true },
+      { key: 'filterMode', label: 'Filter Mode', type: 'select', options: ['or', 'and'], path: 'nodeFilter.filterMode', description: 'How to combine filters (and = both, or = either)' },
+      { key: 'minMaturity', label: 'Min Ontology Maturity', type: 'select', options: ['off', 'draft', 'developing', 'emerging', 'growing', 'established', 'mature'], path: 'nodeFilter.minMaturity', description: 'Hide ontology nodes below this OWL maturity tier (the real per-node quality signal). Knowledge pages are unaffected. Applied independently of the quality/authority filter mode.' },
+      { key: 'minConnections', label: 'Min Connections (degree)', type: 'slider', min: 0, max: 20, step: 1, path: 'nodeFilter.minConnections', description: 'Hide nodes whose graph degree is below this (0 = off). Suppresses orphan/low-degree spray.' },
       { key: 'refreshGraph', label: 'Refresh Graph', type: 'action-button', action: 'refresh_graph', description: 'Apply filter changes and reload graph' },
 
       // GPU Settings - Basic
@@ -380,11 +379,11 @@ export const UNIFIED_SETTINGS_CONFIG: Record<string, SectionConfig> = {
       // Visualization - Basic
       { key: 'showClusters', label: 'Show Clusters', type: 'toggle', path: 'qualityGates.showClusters', description: 'Color-coded node groups' },
       { key: 'showAnomalies', label: 'Show Anomalies', type: 'toggle', path: 'qualityGates.showAnomalies', description: 'Highlight outliers' },
-      { key: 'showCommunities', label: 'Show Communities', type: 'toggle', path: 'qualityGates.showCommunities', description: 'Louvain communities', isAdvanced: true },
+      { key: 'showCommunities', label: 'Show Communities', type: 'toggle', path: 'qualityGates.showCommunities', description: 'Louvain communities' },
 
       // Advanced Features
-      { key: 'gnnPhysics', label: 'GNN-Enhanced Physics', type: 'toggle', path: 'qualityGates.gnnPhysics', description: 'Graph Neural Network weights', isAdvanced: true, isPowerUserOnly: true },
-      { key: 'ruvectorEnabled', label: 'RuVector Integration', type: 'toggle', path: 'qualityGates.ruvectorEnabled', description: 'HNSW similarity search', isAdvanced: true, isPowerUserOnly: true }
+      { key: 'gnnPhysics', label: 'GNN-Enhanced Physics', type: 'toggle', path: 'qualityGates.gnnPhysics', description: 'Graph Neural Network weights' },
+      { key: 'ruvectorEnabled', label: 'RuVector Integration', type: 'toggle', path: 'qualityGates.ruvectorEnabled', description: 'HNSW similarity search' }
     ]
   },
 
@@ -396,11 +395,11 @@ export const UNIFIED_SETTINGS_CONFIG: Record<string, SectionConfig> = {
     fields: [
       // Auth - Basic
       { key: 'nostr', label: 'Nostr Login', type: 'nostr-button', path: 'auth.nostr', description: 'Connect with Nostr' },
-      { key: 'authEnabled', label: 'Auth Enabled', type: 'toggle', path: 'auth.enabled', description: 'Enable authentication', isAdvanced: true },
-      { key: 'authRequired', label: 'Auth Required', type: 'toggle', path: 'auth.required', description: 'Require authentication', isAdvanced: true, isPowerUserOnly: true },
+      { key: 'authEnabled', label: 'Auth Enabled', type: 'toggle', path: 'auth.enabled', description: 'Enable authentication' },
+      { key: 'authRequired', label: 'Auth Required', type: 'toggle', path: 'auth.required', description: 'Require authentication' },
 
       // System - Basic
-      { key: 'customBackendURL', label: 'Custom Backend URL', type: 'text', path: 'system.customBackendUrl', description: 'Override backend URL', isAdvanced: true, isPowerUserOnly: true }
+      { key: 'customBackendURL', label: 'Custom Backend URL', type: 'text', path: 'system.customBackendUrl', description: 'Override backend URL' }
     ]
   },
 
@@ -409,7 +408,6 @@ export const UNIFIED_SETTINGS_CONFIG: Record<string, SectionConfig> = {
   // -------------------------------------------------------------------------
   xr: {
     title: 'XR/AR Settings',
-    isAdvanced: true,
     fields: [
       // Core XR - Basic within tab
       { key: 'xrEnabled', label: 'XR Mode', type: 'toggle', path: 'xr.enabled', description: 'Enable XR features' },
@@ -427,8 +425,6 @@ export const UNIFIED_SETTINGS_CONFIG: Record<string, SectionConfig> = {
   // -------------------------------------------------------------------------
   ai: {
     title: 'AI Integrations',
-    isAdvanced: true,
-    isPowerUserOnly: true,
     fields: [
       // Perplexity
       { key: 'perplexityModel', label: 'Perplexity Model', type: 'text', path: 'perplexity.model', description: 'Model selection' },
@@ -447,8 +443,6 @@ export const UNIFIED_SETTINGS_CONFIG: Record<string, SectionConfig> = {
   // -------------------------------------------------------------------------
   developer: {
     title: 'Developer Tools',
-    isAdvanced: true,
-    isPowerUserOnly: true,
     fields: [
       // Logging
       { key: 'enableDebug', label: 'Debug Mode', type: 'toggle', path: 'system.debug.enabled', description: 'Enable debug mode' },
@@ -464,31 +458,3 @@ export const UNIFIED_SETTINGS_CONFIG: Record<string, SectionConfig> = {
     ]
   }
 };
-
-// Helper to filter fields based on mode and permissions
-export function filterSettingsFields(
-  fields: SectionConfig['fields'],
-  advancedMode: boolean,
-  isPowerUser: boolean
-): SectionConfig['fields'] {
-  return fields.filter(field => {
-    // Hide advanced fields in basic mode
-    if (field.isAdvanced && !advancedMode) return false;
-    // Hide power user fields from non-power users
-    if (field.isPowerUserOnly && !isPowerUser) return false;
-    return true;
-  });
-}
-
-// Helper to filter tabs based on mode and permissions
-export function filterTabs(
-  tabs: UnifiedTabConfig[],
-  advancedMode: boolean,
-  isPowerUser: boolean
-): UnifiedTabConfig[] {
-  return tabs.filter(tab => {
-    if (tab.isAdvanced && !advancedMode) return false;
-    if (tab.isPowerUserOnly && !isPowerUser) return false;
-    return true;
-  });
-}

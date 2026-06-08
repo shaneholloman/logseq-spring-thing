@@ -90,6 +90,7 @@ pub struct AnomalyDetectionParams {
 pub enum CommunityDetectionAlgorithm {
     LabelPropagation,
     Louvain,
+    Leiden,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -99,6 +100,8 @@ pub struct CommunityDetectionParams {
     pub convergence_tolerance: Option<f32>,
     pub synchronous: Option<bool>,
     pub seed: Option<u32>,
+    /// Modularity resolution (Louvain / Leiden). Higher → more, smaller communities.
+    pub resolution: Option<f32>,
 }
 
 // ---------------------------------------------------------------------------

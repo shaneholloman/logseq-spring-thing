@@ -623,33 +623,79 @@ impl UnifiedGPUCompute {
             }
         }
 
-        // Cluster cohesion: apply gentle attraction toward cluster centroids.
-        // Only runs when cluster_assignments have been computed (GPU clustering ran).
-        // Centroids come from the last k-means/Louvain run stored in centroids_x/y/z.
-        if self.max_clusters > 0 {
-            if let Ok(cohesion_kernel) = self._module.get_function("cluster_cohesion_kernel") {
-                // cluster_strength IS the raw kernel coefficient — no magic scale.
-                // Defensive clamp to the valid contract range [0, 0.02].
-                let cohesion_strength = params.cluster_strength.clamp(0.0, 0.02);
-                if cohesion_strength > 0.0001 {
-                    let stream = &self.stream;
-                    unsafe {
-                        launch!(
-                            cohesion_kernel<<<grid_size as u32, block_size as u32, 0, stream>>>(
-                            self.pos_in_x.as_device_ptr(),
-                            self.pos_in_y.as_device_ptr(),
-                            self.pos_in_z.as_device_ptr(),
-                            self.force_x.as_device_ptr(),
-                            self.force_y.as_device_ptr(),
-                            self.force_z.as_device_ptr(),
-                            self.centroids_x.as_device_ptr(),
-                            self.centroids_y.as_device_ptr(),
-                            self.centroids_z.as_device_ptr(),
-                            self.cluster_assignments.as_device_ptr(),
-                            self.num_nodes as i32,
-                            self.max_clusters as i32,
-                            cohesion_strength
-                        ))?;
+        // Cluster cohesion: gentle attraction toward cluster centroids.
+        // cluster_strength IS the raw kernel coefficient — no magic scale; clamp
+        // to the valid contract range [0, 0.02]. The slider has full authority.
+        let cohesion_strength = params.cluster_strength.clamp(0.0, 0.02);
+        if cohesion_strength > 0.0001 {
+            // Community-driven cohesion (Leiden default / Louvain). Communities are
+            // topology-derived (modularity over CSR adjacency), so attraction follows
+            // graph STRUCTURE; labels refresh on a cadence (host round-trips) while
+            // centroids recompute every frame from live positions. K-means spatial
+            // clustering is an analytics concern (coloring / hulls), not a cohesion force.
+            {
+                let need_refresh = self.community_count_active == 0
+                    || (self.iteration - self.last_cohesion_refresh_iter)
+                        >= self.cohesion_refresh_interval as i32;
+                if need_refresh {
+                    if let Err(e) = self.refresh_community_cohesion_labels() {
+                        log::warn!("[CohesionLouvain] label refresh failed: {}", e);
+                    }
+                    // Throttle to the cadence on both success and error so a
+                    // persistent failure does not re-run Louvain every frame.
+                    self.last_cohesion_refresh_iter = self.iteration;
+                }
+
+                // Only apply when a meaningful partition exists (>1 community).
+                if self.community_count_active > 1 {
+                    let ncomm = self.community_count_active;
+
+                    // (a) per-community centroids from live positions. Reuses the
+                    // K-means update_centroids_kernel: one block per community,
+                    // shared-mem reduction writes mean position + count.
+                    if let Ok(update_kernel) = self._module.get_function("update_centroids_kernel") {
+                        let centroid_shared_memory = block_size as u32 * (3 * 4 + 4);
+                        let stream = &self.stream;
+                        unsafe {
+                            launch!(
+                                update_kernel<<<ncomm as u32, block_size as u32, centroid_shared_memory, stream>>>(
+                                self.pos_in_x.as_device_ptr(),
+                                self.pos_in_y.as_device_ptr(),
+                                self.pos_in_z.as_device_ptr(),
+                                self.cluster_assignments.as_device_ptr(),
+                                self.community_centroids_x.as_device_ptr(),
+                                self.community_centroids_y.as_device_ptr(),
+                                self.community_centroids_z.as_device_ptr(),
+                                self.community_sizes.as_device_ptr(),
+                                self.num_nodes as i32,
+                                ncomm as i32
+                            ))?;
+                        }
+                    }
+
+                    // (b) pull each node toward its community centroid. Same kernel
+                    // as K-means cohesion, fed community labels + centroids; the
+                    // kernel guards `cluster_assignments[i] < num_clusters`.
+                    if let Ok(cohesion_kernel) = self._module.get_function("cluster_cohesion_kernel") {
+                        let stream = &self.stream;
+                        unsafe {
+                            launch!(
+                                cohesion_kernel<<<grid_size as u32, block_size as u32, 0, stream>>>(
+                                self.pos_in_x.as_device_ptr(),
+                                self.pos_in_y.as_device_ptr(),
+                                self.pos_in_z.as_device_ptr(),
+                                self.force_x.as_device_ptr(),
+                                self.force_y.as_device_ptr(),
+                                self.force_z.as_device_ptr(),
+                                self.community_centroids_x.as_device_ptr(),
+                                self.community_centroids_y.as_device_ptr(),
+                                self.community_centroids_z.as_device_ptr(),
+                                self.cluster_assignments.as_device_ptr(),
+                                self.num_nodes as i32,
+                                ncomm as i32,
+                                cohesion_strength
+                            ))?;
+                        }
                     }
                 }
             }
