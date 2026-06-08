@@ -39,6 +39,8 @@ pub mod github_pr_service;
 pub mod briefing_service;
 pub mod nostr_bead_publisher;
 pub mod nostr_bridge;
+// PRD-008 §5.3 — Schnorr identity verifier for the XR presence handshake
+pub mod nostr_identity_verifier;
 
 // JSON-LD validator (Data Sprint Phase D-2). Pure markdown + JSON-LD
 // validation; does NOT depend on the persistence-oxigraph feature.

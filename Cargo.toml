@@ -8,7 +8,12 @@ members = [
     "crates/visionclaw-gpu",
     "crates/visionclaw-ontology",
     "crates/visionclaw-actors",
+    "crates/visionclaw-xr-presence",
 ]
+# PRD-008: the Godot gdext client (xr-client/rust) is its own workspace context
+# (cdylib for the Quest APK, separate target). Exclude it from the server
+# workspace so a server `cargo build` does not try to compile the gdext bindings.
+exclude = ["xr-client/rust"]
 # Note: visionclaw-contracts is independently buildable. To work around the
 # pre-existing `solid-pod-rs { rev = "main" }` resolution error in the root
 # visionclaw-server package (which Cargo treats as a commit SHA, not a branch), run:
@@ -38,6 +43,10 @@ visionclaw-protocol = { path = "crates/visionclaw-protocol" }
 visionclaw-adapters = { path = "crates/visionclaw-adapters" }
 visionclaw-gpu = { path = "crates/visionclaw-gpu" }
 visionclaw-ontology = { path = "crates/visionclaw-ontology" }
+# PRD-008 §5.3 — XR presence protocol crate (room registry, wire codec,
+# delta compression). Consumed by src/handlers/presence_handler.rs and
+# src/actors/presence_actor.rs for the `/ws/presence` WebSocket.
+visionclaw-xr-presence = { path = "crates/visionclaw-xr-presence" }
 
 # Web framework and WebSocket
 actix-web = { version = "4.11.0", features = ["compress-zstd", "macros"] }
@@ -138,6 +147,11 @@ lazy_static = "1.5"
 once_cell = "1.20"
 sha1 = "0.10"
 sha2 = "0.10"
+# PRD-008 §5.3 / docs/xr-godot-threat-model.md §T-WS-1 — Schnorr verification of
+# the XR presence handshake (NostrIdentityVerifier). Already resolved transitively
+# (0.29.1); promoted to a direct dep for src/services/nostr_identity_verifier.rs.
+secp256k1 = { version = "0.29", features = ["rand", "global-context"] }
+hex = "0.4"
 # scopeguard = "1.2"  # Unused - removed during cleanup
 url = "2.5"
 flate2 = "1.0"

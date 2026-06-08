@@ -77,6 +77,9 @@ pub use solid_proxy_handler::init_solid_state;
 pub mod image_gen_handler;
 pub use image_gen_handler::configure_routes as configure_image_gen_routes;
 
+// PRD-008: XR presence WebSocket (`/ws/presence`)
+pub mod presence_handler;
+
 pub use quic_transport_handler::{
     QuicTransportServer, QuicServerConfig,
     PostcardNodeUpdate, PostcardBatchUpdate, PostcardDeltaUpdate,

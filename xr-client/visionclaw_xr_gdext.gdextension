@@ -1,0 +1,11 @@
+[configuration]
+
+entry_symbol = "gdext_rust_init"
+compatibility_minimum = "4.3"
+
+[libraries]
+
+linux.debug.x86_64 = "res://rust/target/debug/libvisionclaw_xr_gdext.so"
+linux.release.x86_64 = "res://rust/target/release/libvisionclaw_xr_gdext.so"
+android.debug.arm64 = "res://rust/target/aarch64-linux-android/debug/libvisionclaw_xr_gdext.so"
+android.release.arm64 = "res://rust/target/aarch64-linux-android/release/libvisionclaw_xr_gdext.so"

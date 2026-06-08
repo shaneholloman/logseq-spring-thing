@@ -18,6 +18,7 @@ use visionclaw_server::{
         multi_mcp_websocket_handler,
         nostr_handler,
         pages_handler,
+        presence_handler::{new_room_registry, ws_presence, PresenceHandlerState},
         socket_flow_handler::{socket_flow_handler, PreReadSocketSettings},
         speech_socket_handler::speech_socket_handler,
         validation_handler,
@@ -689,6 +690,20 @@ async fn main() -> std::io::Result<()> {
 
     info!("Starting HTTP server on {}", bind_address);
 
+    // PRD-008 §5.3 — XR presence room registry + Schnorr identity verifier.
+    // Shared across all Actix workers via web::Data (created before the
+    // HttpServer::new move closure so each worker clones the same registry).
+    let presence_registry = new_room_registry();
+    let presence_verifier: std::sync::Arc<dyn visionclaw_xr_presence::ports::IdentityVerifier> =
+        std::sync::Arc::new(
+            visionclaw_server::services::nostr_identity_verifier::NostrIdentityVerifier::new(),
+        );
+    let presence_handler_state = web::Data::new(PresenceHandlerState {
+        registry: presence_registry,
+        identity_verifier: presence_verifier,
+    });
+    info!("[ws-presence] XR presence registry + verifier initialised at /ws/presence");
+
     // Pre-initialise Solid pod state in the main async context (FsBackend::new
     // is async). The state is injected via app_data so Actix workers don't need
     // to run async init inside their sync configure closure.
@@ -806,7 +821,9 @@ async fn main() -> std::io::Result<()> {
             .app_data(briefing_service.clone())
             .app_data(nostr_publisher.clone())
             .app_data(validation_service.clone())
-            .app_data(physics_service.clone());
+            .app_data(physics_service.clone())
+            // PRD-008 — XR presence handler (Quest 3 native APK)
+            .app_data(presence_handler_state.clone());
 
             // Inject pre-initialised Solid pod state (avoids async init in worker threads)
             #[cfg(feature = "solid-pod-embed")]
@@ -823,6 +840,8 @@ async fn main() -> std::io::Result<()> {
             .route("/ws/mcp-relay", web::get().to(mcp_relay_handler))
             
             .route("/ws/client-messages", web::get().to(client_messages_handler::websocket_client_messages))
+            // PRD-008 §5.3: XR presence WebSocket — Quest 3 native APK multi-user sync
+            .route("/ws/presence", web::get().to(ws_presence))
             // OpenAPI/Swagger documentation
             .service(
                 SwaggerUi::new("/swagger-ui/{_:.*}")

@@ -1,0 +1,48 @@
+[gd_scene load_steps=6 format=3 uid="uid://b3xrboot01vc"]
+
+[ext_resource type="Script" path="res://scripts/xr_boot.gd" id="1_boot"]
+
+[sub_resource type="DirectionalLight3D" id="DirectionalLight3D_amb"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_err"]
+albedo_color = Color(0.95, 0.2, 0.2, 1)
+
+[sub_resource type="QuadMesh" id="QuadMesh_err"]
+size = Vector2(1.6, 0.6)
+
+[sub_resource type="LabelSettings" id="LabelSettings_err"]
+font_size = 36
+
+[node name="XRBoot" type="Node3D"]
+script = ExtResource("1_boot")
+
+[node name="XROrigin3D" type="XROrigin3D" parent="."]
+
+[node name="XRCamera3D" type="XRCamera3D" parent="XROrigin3D"]
+
+[node name="LeftController" type="XRController3D" parent="XROrigin3D"]
+tracker = &"left_hand"
+pose = &"aim"
+
+[node name="RightController" type="XRController3D" parent="XROrigin3D"]
+tracker = &"right_hand"
+pose = &"aim"
+
+[node name="ErrorOverlay" type="Node3D" parent="."]
+visible = false
+
+[node name="ErrorPanel" type="MeshInstance3D" parent="ErrorOverlay"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.6, -2)
+mesh = SubResource("QuadMesh_err")
+material_override = SubResource("StandardMaterial3D_err")
+
+[node name="ErrorLabel" type="Label3D" parent="ErrorOverlay"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.6, -1.99)
+text = "OpenXR initialisation failed."
+font_size = 36
+label_settings = SubResource("LabelSettings_err")
+billboard = 1
+
+[node name="AmbientLight" type="DirectionalLight3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0.7, 0.7, 0, -0.7, 0.7, 0, 4, 0)
+light_energy = 0.6

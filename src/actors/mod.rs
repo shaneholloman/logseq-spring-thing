@@ -45,6 +45,8 @@ pub mod ontology_actor;
 pub mod semantic_processor_actor;
 pub mod task_orchestrator_actor;
 pub mod workspace_actor;
+// PRD-008 §5.3 — per-room XR presence broadcast actor
+pub mod presence_actor;
 
 pub use agent_beam_actor::AgentBeamActor;
 pub use agent_monitor_actor::AgentMonitorActor;
