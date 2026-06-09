@@ -176,9 +176,13 @@ __host__ DynamicGridConfig calculate_grid_config(
 }
 
 // Adaptive grid configuration based on performance feedback
+// P2-08: deeper history (32) and a higher lock threshold (MIN_ADAPTIVE_SAMPLES)
+// keep early, noisy timings from freezing the grid on a transient best config.
+#define PERF_HISTORY_CAPACITY 32
+#define MIN_ADAPTIVE_SAMPLES 30
 struct PerformanceHistory {
-    float execution_times[16]; // Circular buffer of recent execution times
-    DynamicGridConfig configs[16]; // Corresponding configurations
+    float execution_times[PERF_HISTORY_CAPACITY]; // Circular buffer of recent execution times
+    DynamicGridConfig configs[PERF_HISTORY_CAPACITY]; // Corresponding configurations
     int current_index;
     int sample_count;
     float best_time;
@@ -201,8 +205,8 @@ __host__ void update_performance_history(DynamicGridConfig config, float executi
     g_perf_history.execution_times[idx] = execution_time_ms;
     g_perf_history.configs[idx] = config;
 
-    g_perf_history.current_index = (idx + 1) % 16;
-    g_perf_history.sample_count = min(g_perf_history.sample_count + 1, 16);
+    g_perf_history.current_index = (idx + 1) % PERF_HISTORY_CAPACITY;
+    g_perf_history.sample_count = min(g_perf_history.sample_count + 1, PERF_HISTORY_CAPACITY);
 
     // Update best configuration if this one is better
     if (execution_time_ms < g_perf_history.best_time) {
@@ -224,7 +228,7 @@ __host__ DynamicGridConfig get_adaptive_grid_config(
     );
 
     // If we have performance history, consider using the best known configuration
-    if (g_perf_history.initialized && g_perf_history.sample_count >= 3) {
+    if (g_perf_history.initialized && g_perf_history.sample_count >= MIN_ADAPTIVE_SAMPLES) {
         // Use best known configuration if it's significantly better
         return g_perf_history.best_config;
     }
