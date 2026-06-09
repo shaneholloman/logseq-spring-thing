@@ -614,6 +614,7 @@ async fn pay_sell_handler(
 
 /// `GET /pay/.offers` — list active sell orders.
 async fn pay_offers_handler(
+    req: HttpRequest,
     config: web::Data<VcPayConfig>,
     exchange_store: web::Data<Arc<FsExchangeStore>>,
     query: web::Query<HashMap<String, String>>,
@@ -621,6 +622,12 @@ async fn pay_offers_handler(
     if !config.enabled {
         return HttpResponse::Forbidden()
             .json(serde_json::json!({"error": "Payment system is disabled"}));
+    }
+    // Order-book state is non-public exchange data; require an authenticated
+    // caller, matching the write-side .sell/.swap handlers in this file.
+    if extract_caller_pubkey(&req).await.is_none() {
+        return HttpResponse::Unauthorized()
+            .json(serde_json::json!({"error": "Authentication required"}));
     }
     let exchange = exchange_store.read_only().await;
     let pair = query
@@ -704,6 +711,7 @@ fn default_fee_bps() -> u64 {
 /// `GET /pay/.pool?a={}&b={}` — pool info for a currency pair.
 /// `POST /pay/.pool` with body `{"from_currency": ..., "amount": ...}` — AMM swap.
 async fn pay_pool_get_handler(
+    req: HttpRequest,
     config: web::Data<VcPayConfig>,
     exchange_store: web::Data<Arc<FsExchangeStore>>,
     query: web::Query<HashMap<String, String>>,
@@ -711,6 +719,12 @@ async fn pay_pool_get_handler(
     if !config.enabled {
         return HttpResponse::Forbidden()
             .json(serde_json::json!({"error": "Payment system is disabled"}));
+    }
+    // AMM pool balances are non-public liquidity state; require an
+    // authenticated caller, matching the .pool/swap write handler.
+    if extract_caller_pubkey(&req).await.is_none() {
+        return HttpResponse::Unauthorized()
+            .json(serde_json::json!({"error": "Authentication required"}));
     }
     let exchange = exchange_store.read_only().await;
     match (query.get("a"), query.get("b")) {

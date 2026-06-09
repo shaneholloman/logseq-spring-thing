@@ -68,6 +68,7 @@ pub struct EdgeTypeResponse {
 /// }
 /// ```
 pub async fn get_schema(
+    _auth: crate::settings::auth_extractor::AuthenticatedUser,
     schema_service: web::Data<Arc<SchemaService>>,
     graph_state_actor: web::Data<Addr<GraphStateActor>>,
 ) -> impl Responder {
@@ -123,6 +124,7 @@ pub async fn get_schema(
 /// ...
 /// ```
 pub async fn get_llm_context(
+    _auth: crate::settings::auth_extractor::AuthenticatedUser,
     schema_service: web::Data<Arc<SchemaService>>,
 ) -> impl Responder {
     debug!("Retrieving LLM context");
@@ -147,6 +149,7 @@ pub async fn get_llm_context(
 /// }
 /// ```
 pub async fn get_node_types(
+    _auth: crate::settings::auth_extractor::AuthenticatedUser,
     schema_service: web::Data<Arc<SchemaService>>,
 ) -> Result<HttpResponse, actix_web::Error> {
     debug!("Retrieving node types");
@@ -174,6 +177,7 @@ pub async fn get_node_types(
 /// }
 /// ```
 pub async fn get_edge_types(
+    _auth: crate::settings::auth_extractor::AuthenticatedUser,
     schema_service: web::Data<Arc<SchemaService>>,
 ) -> Result<HttpResponse, actix_web::Error> {
     debug!("Retrieving edge types");
@@ -199,6 +203,7 @@ pub async fn get_edge_types(
 /// }
 /// ```
 pub async fn get_node_type_info(
+    _auth: crate::settings::auth_extractor::AuthenticatedUser,
     schema_service: web::Data<Arc<SchemaService>>,
     path: web::Path<String>,
 ) -> Result<HttpResponse, actix_web::Error> {
@@ -231,6 +236,7 @@ pub async fn get_node_type_info(
 /// }
 /// ```
 pub async fn get_edge_type_info(
+    _auth: crate::settings::auth_extractor::AuthenticatedUser,
     schema_service: web::Data<Arc<SchemaService>>,
     path: web::Path<String>,
 ) -> Result<HttpResponse, actix_web::Error> {
